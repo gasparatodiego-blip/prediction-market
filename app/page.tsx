@@ -237,7 +237,7 @@ export default function Home() {
               </span>
             </div>
             <p className="text-gray-400 text-sm max-w-xl">
-              We scan 4 prediction markets every 30 seconds looking for price differences you can profit from
+              We scan 4 prediction markets every 30 seconds looking for price differences you can profit from · AI-powered matching
             </p>
           </div>
           <div className="text-right flex-shrink-0 pt-0.5 space-y-1">
