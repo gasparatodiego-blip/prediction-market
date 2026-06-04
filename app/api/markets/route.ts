@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+import fs from 'fs';
+import path from 'path';
 
 const MANIFOLD_API   = 'https://api.manifold.markets/v0';
 const KALSHI_API     = 'https://api.elections.kalshi.com/trade-api/v2';
@@ -19,6 +21,7 @@ export interface ArbCandidate {
   question: string;
   probability: number; // 0–100
   platform: 'predictit' | 'manifold' | 'kalshi' | 'polymarket';
+  url?: string;
 }
 
 export interface MarketsResponse {
@@ -54,6 +57,41 @@ function polymarketPrice(m: any): number | null {
   // Fallback to lastTradePrice
   const ltp = parseFloat(m.lastTradePrice || '0');
   return ltp > 0 ? Math.round(ltp * 100) : null;
+}
+
+// ── Agent pipeline cache ──────────────────────────
+
+const UI_DATA_FILE = '/tmp/ui-data.json';
+const ARB_FILE     = '/tmp/arbitrage-opportunities.json';
+
+function loadAgentArb(): ArbCandidate[] | null {
+  // Prefer the UI-updater confirmed snapshot, fall back to raw calculator output
+  for (const f of [UI_DATA_FILE, ARB_FILE]) {
+    try {
+      const raw  = fs.readFileSync(f, 'utf8');
+      const data = JSON.parse(raw);
+      const age  = Date.now() - (data.refreshedAt ?? data.updatedAt ?? 0);
+      if (age > 120_000) continue; // stale
+
+      const opps: any[] = data.opportunities ?? [];
+      if (opps.length === 0) continue; // fall back to live matching
+      return opps.map((o: any) => ({
+        id:          o.lowMarket.id,
+        question:    o.question,
+        probability: o.lowMarket.probability,
+        platform:    o.lowMarket.platform,
+        url:         o.lowMarket.url,
+        _paired: {
+          id:          o.highMarket.id,
+          question:    o.question,
+          probability: o.highMarket.probability,
+          platform:    o.highMarket.platform,
+          url:         o.highMarket.url,
+        },
+      }));
+    } catch {}
+  }
+  return null;
 }
 
 // ── Route ─────────────────────────────────────────
@@ -149,6 +187,7 @@ export async function GET() {
                          : String(m.name),
           probability: Math.round(c.lastTradePrice * 100),
           platform:    'predictit' as const,
+          url:         `https://www.predictit.org/markets/detail/${m.id}`,
         }))
     ),
     ...mfMarkets.map((m: any) => ({
@@ -156,20 +195,27 @@ export async function GET() {
       question:    String(m.question),
       probability: Math.round(m.probability * 100),
       platform:    'manifold' as const,
+      url:         m.url ?? `https://manifold.markets/${m.slug ?? ''}`,
     })),
     ...kaMarkets.map((m: any) => ({
       id:          `ka-${m.ticker}`,
       question:    String(m.title),
       probability: kalshiPrice(m),
       platform:    'kalshi' as const,
+      url:         `https://kalshi.com/markets/${m.ticker}`,
     })),
     ...pmMarkets.map((m: any) => ({
       id:          `pm-${m.id}`,
       question:    String(m.question),
       probability: polymarketPrice(m) ?? 50,
       platform:    'polymarket' as const,
+      url:         m.slug ? `https://polymarket.com/event/${m.slug}` : 'https://polymarket.com',
     })),
   ];
+
+  // Prefer agent-pipeline arb candidates when fresh
+  const agentArb = loadAgentArb();
+  const finalArb = agentArb ?? arbCandidates;
 
   const body: MarketsResponse = {
     panels: {
@@ -178,7 +224,7 @@ export async function GET() {
       kalshi:     kalshiPanel,
       polymarket: polymarketPanel,
     },
-    arbCandidates,
+    arbCandidates: finalArb,
   };
 
   return NextResponse.json(body);

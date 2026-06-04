@@ -157,6 +157,7 @@ function timeAgo(date: Date): string {
 
 // ── Main page ─────────────────────────────────────
 
+const REFRESH_INTERVAL = 30;
 const EMPTY_PANELS: MarketsResponse['panels'] = {
   predictit: [], manifold: [], kalshi: [], polymarket: [],
 };
@@ -166,7 +167,7 @@ export default function Home() {
   const [arbCandidates, setArbCandidates] = useState<ArbCandidate[]>([]);
   const [loading,       setLoading]       = useState(true);
   const [lastUpdate,    setLastUpdate]    = useState<Date | null>(null);
-  const [,              setTick]          = useState(0);
+  const [countdown,     setCountdown]     = useState(REFRESH_INTERVAL);
 
   const fetchAll = useCallback(async () => {
     try {
@@ -174,6 +175,7 @@ export default function Home() {
       setPanels(data.panels);
       setArbCandidates(data.arbCandidates);
       setLastUpdate(new Date());
+      setCountdown(REFRESH_INTERVAL);
     } finally {
       setLoading(false);
     }
@@ -181,13 +183,13 @@ export default function Home() {
 
   useEffect(() => {
     fetchAll();
-    const interval = setInterval(fetchAll, 30_000);
+    const interval = setInterval(fetchAll, REFRESH_INTERVAL * 1_000);
     return () => clearInterval(interval);
   }, [fetchAll]);
 
-  // Tick every second so the "X ago" timestamp stays fresh
+  // Countdown timer — ticks every second, resets on each fetch
   useEffect(() => {
-    const t = setInterval(() => setTick(x => x + 1), 1_000);
+    const t = setInterval(() => setCountdown(c => Math.max(0, c - 1)), 1_000);
     return () => clearInterval(t);
   }, []);
 
@@ -238,10 +240,18 @@ export default function Home() {
               We scan 4 prediction markets every 30 seconds looking for price differences you can profit from
             </p>
           </div>
-          <div className="text-right flex-shrink-0 pt-0.5">
+          <div className="text-right flex-shrink-0 pt-0.5 space-y-1">
             <div className="text-xs text-gray-600 uppercase tracking-wider">Last updated</div>
-            <div className="text-sm font-medium text-gray-300 mt-0.5">
+            <div className="text-sm font-medium text-gray-300">
               {lastUpdate ? timeAgo(lastUpdate) : '—'}
+            </div>
+            <div className="flex items-center justify-end gap-1.5">
+              <svg className="w-3 h-3 text-gray-500 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+              </svg>
+              <span className="text-xs text-gray-500 tabular-nums">
+                refresh in {countdown}s
+              </span>
             </div>
           </div>
         </div>
@@ -429,6 +439,36 @@ function ArbCard({ opp, rank, isDemo }: { opp: ArbitrageOpp; rank: number; isDem
               Invest $100 → earn ${opp.earnPer100}
             </span>
           </div>
+
+          {/* Platform links */}
+          {!isDemo && (opp.lowMarket.url || opp.highMarket.url) && (
+            <div className="flex gap-2 mt-2.5 flex-wrap">
+              {opp.lowMarket.url && (
+                <a
+                  href={opp.lowMarket.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg border border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-200 transition-colors"
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${low.dotClass}`} />
+                  View on {low.label}
+                  <svg className="w-3 h-3 opacity-60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                </a>
+              )}
+              {opp.highMarket.url && (
+                <a
+                  href={opp.highMarket.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg border border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-200 transition-colors"
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${high.dotClass}`} />
+                  View on {high.label}
+                  <svg className="w-3 h-3 opacity-60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                </a>
+              )}
+            </div>
+          )}
         </div>
 
       </div>
