@@ -9,12 +9,17 @@ const OUT            = '/tmp/exchange-prices.json';
 const HIST_FILE      = '/tmp/exchange-history.json';
 const BINANCE_COMPAT = '/tmp/binance-prices.json';
 const HB_FILE        = '/tmp/agent-heartbeats.json';
+const ALERT_FILE     = '/tmp/funding-alert.json';
 const POLL_INTERVAL  = 60_000;
 const WRITE_THROTTLE = 2_000;  // min ms between WS-triggered writes
 const COINS          = ['BTC','ETH','SOL','BNB','XRP','DOGE'];
 const CEX_THRESHOLD  = 0.3;
 const FUND_THRESHOLD = 0.05;  // % per 8h — "HIGH FUNDING" (= 54.75% APY)
 const BASIS_THRESHOLD = 0.3;  // % spot vs futures spread — "CASH & CARRY"
+const ALERT_THRESHOLD = 0.01; // % per 8h — Telegram alert trigger
+const TG_TOKEN       = '8920675182:AAExM7SaLI-t7j3_QgkfGb46MqEJkHRlmJ4';
+const TG_CHAT        = '8844610430';
+const EIGHT_HOURS_MS = 8 * 60 * 60 * 1000;
 
 // ── In-memory state ───────────────────────────────
 let wsData    = {};   // Binance WS prices (real-time)
@@ -48,6 +53,88 @@ function get(url) {
     req.on('error', () => resolve(null));
     req.on('timeout', function () { this.destroy(); resolve(null); });
   });
+}
+
+// ── Telegram alerts ───────────────────────────────
+
+function sendTelegram(text) {
+  const body = JSON.stringify({ chat_id: TG_CHAT, text, parse_mode: 'HTML' });
+  const req = https.request({
+    hostname: 'api.telegram.org',
+    path: `/bot${TG_TOKEN}/sendMessage`,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
+  }, res => {
+    let data = '';
+    res.on('data', d => data += d);
+    res.on('end', () => {
+      try {
+        const r = JSON.parse(data);
+        if (!r.ok) console.error('[tg] send failed:', r.description);
+        else console.log('[tg] alert sent OK');
+      } catch {}
+    });
+  });
+  req.on('error', err => console.error('[tg] request error:', err.message));
+  req.write(body);
+  req.end();
+}
+
+function checkFundingAlerts(binPerps) {
+  // Throttle: one combined alert per 8h
+  let alertState = { last_alert_time: 0 };
+  try { alertState = JSON.parse(fs.readFileSync(ALERT_FILE, 'utf8')); } catch {}
+  const now = Date.now();
+  if (now - (alertState.last_alert_time ?? 0) < EIGHT_HOURS_MS) return;
+
+  const rows = [];
+  let best = null;  // { coin, fr } with highest |fr| that exceeds threshold
+
+  for (const coin of COINS) {
+    const fr = binPerps[coin]?.fundingRate;
+    if (typeof fr !== 'number' || isNaN(fr)) continue;
+
+    const absFr  = Math.abs(fr);
+    const frStr  = (fr >= 0 ? '+' : '') + fr.toFixed(4) + '%';
+    const apy    = Math.round(fr * 3 * 365 * 10) / 10;  // % per year
+    const apyAbs = Math.abs(apy);
+
+    let label, emoji;
+    if (absFr < ALERT_THRESHOLD) {
+      label = 'flat'; emoji = '➖';
+    } else if (fr > 0) {
+      label = `${apyAbs.toFixed(0)}% APY`;
+      emoji = absFr >= 0.05 ? '🔥' : '✅';
+    } else {
+      label = 'negative';
+      emoji = absFr >= 0.05 ? '🔥' : '⚠️';
+    }
+
+    rows.push(`${coin}: ${frStr}/8h = ${label} ${emoji}`);
+
+    if (absFr >= ALERT_THRESHOLD) {
+      if (!best || absFr > Math.abs(best.fr)) best = { coin, fr };
+    }
+  }
+
+  if (!best) return;  // nothing above threshold — skip alert
+
+  const bestAbsFr  = Math.abs(best.fr);
+  const bestFrStr  = (best.fr >= 0 ? '+' : '') + best.fr.toFixed(4) + '%';
+  const bestMonthly = Math.round(5000 * (bestAbsFr / 100) * 3 * 30 * 100) / 100;
+
+  const message =
+    `🚀 FUNDING RATE ALERTS\n\n` +
+    rows.join('\n') + '\n\n' +
+    `Best opportunity: ${best.coin} ${bestFrStr}/8h\n` +
+    `On $5,000: $${bestMonthly}/month estimated`;
+
+  sendTelegram(message);
+
+  alertState.last_alert_time = now;
+  alertState.last_best       = best;
+  try { fs.writeFileSync(ALERT_FILE, JSON.stringify(alertState, null, 2)); } catch {}
+  console.log(`[tg] multi-coin funding alert sent — best: ${best.coin} ${bestFrStr}/8h`);
 }
 
 // ── Binance WebSocket ─────────────────────────────
@@ -178,7 +265,7 @@ async function fetchFutures() {
     // Binance FAPI — premiumIndex has markPrice + fundingRate
     get('https://fapi.binance.com/fapi/v1/premiumIndex').then(data => {
       if (!Array.isArray(data)) return {};
-      const map = { BTCUSDT:'BTC', ETHUSDT:'ETH', SOLUSDT:'SOL' };
+      const map = { BTCUSDT:'BTC', ETHUSDT:'ETH', SOLUSDT:'SOL', BNBUSDT:'BNB', XRPUSDT:'XRP', DOGEUSDT:'DOGE' };
       const r = {};
       for (const t of data) {
         const coin = map[t.symbol];
@@ -352,6 +439,8 @@ async function poll() {
   basisTrades = detectBasis(wsData, futures);
   highFunding = detectHighFunding(futures);
   infoLag     = updateInfoLag();
+
+  checkFundingAlerts(futures.binance ?? {});
 
   writeOutput();
   lastWrite = Date.now();
