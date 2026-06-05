@@ -82,5 +82,23 @@ module.exports = {
       watch:         false,
       env:           { NODE_ENV: 'production', HOME: '/root' },
     },
+    {
+      name:          'agent-marketmaker',
+      script:        './agents/agent-marketmaker.js',
+      cwd:           '/root/prediction-market',
+      restart_delay: 15000,
+      max_restarts:  20,
+      watch:         false,
+      env:           { NODE_ENV: 'production', HOME: '/root' },
+    },
+    {
+      name:          'agent-liquidity',
+      script:        './agents/agent-liquidity.js',
+      cwd:           '/root/prediction-market',
+      restart_delay: 15000,
+      max_restarts:  20,
+      watch:         false,
+      env:           { NODE_ENV: 'production', HOME: '/root' },
+    },
   ],
 };
