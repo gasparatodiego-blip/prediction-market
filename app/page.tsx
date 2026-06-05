@@ -1,12 +1,9 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
 import type { MarketsResponse, PanelMarket, ArbCandidate } from './api/markets/route';
 import type { CryptoResponse, ExchangePrice, CryptoMarket, CexArbOpp, FuturesInfo, BasisTrade, HighFunding, DexPrice } from './api/crypto/route';
 import type { SportsResponse, SportsMarket } from './api/sports/route';
 import type { WeatherResponse, WeatherMarket, CityForecast } from './api/weather/route';
-
-interface AuthUser { id: number; email: string; role: 'free' | 'pro' | 'admin'; }
 
 // ── Platform config ───────────────────────────────
 
@@ -329,8 +326,6 @@ const EMPTY_PANELS: MarketsResponse['panels'] = {
 };
 
 export default function Home() {
-  const router = useRouter();
-  const [user,          setUser]          = useState<AuthUser | null>(null);
   const [panels,        setPanels]        = useState<MarketsResponse['panels']>(EMPTY_PANELS);
   const [arbCandidates, setArbCandidates] = useState<ArbCandidate[]>([]);
   const [loading,       setLoading]       = useState(true);
@@ -346,19 +341,24 @@ export default function Home() {
   const [sports,        setSports]        = useState<SportsResponse | null>(null);
   const [weather,       setWeather]       = useState<WeatherResponse | null>(null);
 
-  async function logout() {
-    await fetch('/api/auth/logout', { method: 'POST' });
-    router.replace('/login');
-  }
-
   const fetchAll = useCallback(async () => {
+    const timeout = setTimeout(() => setLoading(false), 8000); // safety: clear loading after 8s
     try {
-      const data: MarketsResponse = await fetch('/api/markets', { cache: 'no-store' }).then(r => r.json());
+      const controller = new AbortController();
+      const tid = setTimeout(() => controller.abort(), 7000);
+      const data: MarketsResponse = await fetch('/api/markets', {
+        cache: 'no-store',
+        signal: controller.signal,
+      }).then(r => r.json());
+      clearTimeout(tid);
       setPanels(data.panels);
       setArbCandidates(data.arbCandidates);
       setLastUpdate(new Date());
       setCountdown(REFRESH_INTERVAL);
+    } catch {
+      // network error or abort — still clear loading
     } finally {
+      clearTimeout(timeout);
       setLoading(false);
     }
   }, []);
@@ -401,12 +401,6 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    fetch('/api/auth/me').then(r => r.json()).then(data => {
-      if (data.user) setUser(data.user);
-    }).catch(() => {});
-  }, []);
-
-  useEffect(() => {
     fetchAll(); fetchSentiment(); fetchCrypto(); fetchSports(); fetchWeather();
     const iv = setInterval(() => { fetchAll(); fetchSentiment(); fetchCrypto(); fetchSports(); fetchWeather(); }, REFRESH_INTERVAL * 1_000);
     return () => clearInterval(iv);
@@ -441,9 +435,6 @@ export default function Home() {
     panels.betfair.length   + panels.metaculus.length  +
     panels.augur.length     + panels.oddsapi.length    +
     panels.opinionmarkets.length;
-
-  const isPro = user?.role === 'pro' || user?.role === 'admin';
-  const FREE_LIMIT = 3;
 
   const bestRoi     = arb[0]?.roi ?? 0;
   const totalSpread = arb.reduce((s, o) => s + o.spread, 0);
@@ -491,28 +482,6 @@ export default function Home() {
                 <span className="text-xs text-gray-500 tabular-nums">refresh in {countdown}s</span>
               </div>
             </div>
-            {user && (
-              <div className="flex flex-col items-end gap-1.5">
-                <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${
-                  user.role === 'admin' ? 'border-purple-700 bg-purple-900/40 text-purple-300' :
-                  user.role === 'pro'   ? 'border-blue-700 bg-blue-900/40 text-blue-300' :
-                                          'border-gray-700 bg-gray-800/40 text-gray-400'
-                }`}>{user.role.toUpperCase()}</span>
-                <span className="text-xs text-gray-600 truncate max-w-[120px]">{user.email}</span>
-                <div className="flex gap-1.5">
-                  {user.role === 'admin' && (
-                    <button onClick={() => router.push('/admin')}
-                      className="text-xs px-2 py-1 rounded border border-purple-800 text-purple-400 hover:border-purple-600 transition-colors">
-                      Admin
-                    </button>
-                  )}
-                  <button onClick={logout}
-                    className="text-xs px-2 py-1 rounded border border-gray-700 text-gray-500 hover:border-gray-500 hover:text-gray-300 transition-colors">
-                    Logout
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
         </div>
       </header>
@@ -642,45 +611,37 @@ export default function Home() {
 
               {arb.length === 0 ? (
                 <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-12 text-center">
-                  <div className="text-5xl mb-4">🔎</div>
-                  <p className="text-gray-300 font-semibold text-lg">
-                    {expiryFilter !== 'all'
-                      ? `No opportunities with a gap age ≤ ${EXPIRY_FILTERS.find(f => f.key === expiryFilter)!.label} right now.`
-                      : 'No opportunities right now'}
-                  </p>
-                  <p className="text-gray-600 text-sm mt-2 max-w-sm mx-auto">
-                    {expiryFilter !== 'all'
-                      ? 'Try a longer timeframe.'
-                      : 'Markets are pricing similar events consistently. Gaps open frequently — check back in 30 seconds.'}
-                  </p>
+                  {totalMarkets === 0 ? (
+                    <>
+                      <div className="text-5xl mb-4">⏳</div>
+                      <p className="text-gray-300 font-semibold text-lg">Waiting for first scan…</p>
+                      <p className="text-gray-600 text-sm mt-2 max-w-sm mx-auto">
+                        The AI master agent runs every 30 minutes. Data will appear automatically — no refresh needed.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <div className="text-5xl mb-4">🔎</div>
+                      <p className="text-gray-300 font-semibold text-lg">
+                        {expiryFilter !== 'all'
+                          ? `No opportunities with a gap age ≤ ${EXPIRY_FILTERS.find(f => f.key === expiryFilter)!.label} right now.`
+                          : 'No opportunities right now'}
+                      </p>
+                      <p className="text-gray-600 text-sm mt-2 max-w-sm mx-auto">
+                        {expiryFilter !== 'all'
+                          ? 'Try a longer timeframe.'
+                          : 'Markets are pricing similar events consistently. Gaps open frequently — check back in 30 seconds.'}
+                      </p>
+                    </>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {arb.map((opp, i) => {
-                    const isLocked = !isPro && i >= FREE_LIMIT;
-                    return isLocked ? (
-                      <div key={i} className="relative rounded-xl border border-gray-800 overflow-hidden">
-                        <div className="blur-sm pointer-events-none select-none opacity-50">
-                          <ArbCard opp={opp} rank={i + 1}
-                            isDemo={demoIds.has(opp.highMarket.id)}
-                            bankroll={bankroll} sentiment={sentiment} />
-                        </div>
-                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-950/70 backdrop-blur-sm gap-3">
-                          <span className="text-2xl">🔒</span>
-                          <p className="text-white font-semibold text-sm">Pro opportunity</p>
-                          <p className="text-gray-400 text-xs">Upgrade to see all {arb.length} opportunities</p>
-                          <a href="mailto:gasparatodiego@gmail.com?subject=Upgrade to Pro"
-                            className="px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold transition-colors">
-                            Upgrade to Pro
-                          </a>
-                        </div>
-                      </div>
-                    ) : (
-                      <ArbCard key={i} opp={opp} rank={i + 1}
-                        isDemo={demoIds.has(opp.highMarket.id)}
-                        bankroll={bankroll} sentiment={sentiment} />
-                    );
-                  })}
+                  {arb.map((opp, i) => (
+                    <ArbCard key={i} opp={opp} rank={i + 1}
+                      isDemo={demoIds.has(opp.highMarket.id)}
+                      bankroll={bankroll} sentiment={sentiment} />
+                  ))}
                 </div>
               )}
             </section>
