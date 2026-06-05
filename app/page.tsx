@@ -145,8 +145,9 @@ interface ArbitrageOpp {
   spread:     number;
   roi:        number;
   earnPer100: number;
-  expiresAt:  number | null; // earliest market close date across both sides
-  gapAge:     number | null; // ms since this exact price gap was established (staleness)
+  expiresAt:  number | null;
+  gapAge:     number | null;
+  biasScore:  number | null; // calibration bias on low-market probability (positive = overpriced)
 }
 
 // ── Keyword matching ──────────────────────────────
@@ -205,8 +206,9 @@ function detectArbitrage(candidates: ArbCandidate[]): ArbitrageOpp[] {
         spread,
         roi,
         earnPer100: Math.round((roi / 100) * 100 * 10) / 10,
-        expiresAt:  expiries.length   ? Math.min(...expiries) : null,
+        expiresAt:  expiries.length ? Math.min(...expiries) : null,
         gapAge,
+        biasScore:  low.biasScore ?? null,
       });
     }
   }
@@ -237,7 +239,7 @@ function getDemoOpps(panels: MarketsResponse['panels']): ArbitrageOpp[] {
     const spread = high.probability - low.probability;
     const roi    = low.probability > 0 ? (spread / low.probability) * 100 : 0;
     return { question: high.question, lowMarket: low, highMarket: high, spread, roi,
-             earnPer100: Math.round(roi * 10) / 10, expiresAt: null, gapAge: null };
+             earnPer100: Math.round(roi * 10) / 10, expiresAt: null, gapAge: null, biasScore: null };
   };
 
   const pi = panels.predictit.filter(m => m.probability != null && m.probability > 5 && m.probability < 80);
@@ -661,10 +663,18 @@ function ArbCard({ opp, rank, isDemo, bankroll, sentiment }: {
   const highVol = opp.highMarket.volume ?? null;
   const lowLiquidity = (lowVol !== null && lowVol < 1000) || (highVol !== null && highVol < 1000);
 
-  // Flags
-  const longshotBias = opp.lowMarket.probability < 8;
-  const expiryText   = expiryLabel(opp.expiresAt);
-  const expiryClass  = expiryUrgencyClass(opp.expiresAt);
+  // Calibration bias (replaces simple < 8% threshold)
+  const bs         = opp.biasScore;
+  const biasStrong = bs != null && bs > 0.30;
+  const biasMild   = bs != null && bs > 0.15 && !biasStrong;
+  const biasClass  = biasStrong ? 'text-red-400' : biasMild ? 'text-yellow-400' : 'text-green-400';
+  const biasBarPct = bs != null ? Math.min(100, Math.round(Math.abs(bs) * 100)) : 0;
+  const biasBarBg  = biasStrong ? 'bg-red-500' : biasMild ? 'bg-yellow-500' : 'bg-green-500';
+  // Fall back to simple heuristic when no calibration data
+  const longshotBias = biasStrong || (bs == null && opp.lowMarket.probability < 8);
+
+  const expiryText  = expiryLabel(opp.expiresAt);
+  const expiryClass = expiryUrgencyClass(opp.expiresAt);
 
   // Sentiment
   const qWords = opp.question.toLowerCase().split(/\s+/);
@@ -695,7 +705,11 @@ function ArbCard({ opp, rank, isDemo, bankroll, sentiment }: {
                 <span className="text-xs font-bold px-1.5 py-0.5 rounded border border-gray-600 text-gray-500">DEMO</span>
               )}
               {longshotBias && (
-                <span className="text-xs font-bold px-1.5 py-0.5 rounded border border-amber-700 bg-amber-900/40 text-amber-400">BIAS ALERT</span>
+                <span className="text-xs font-bold px-1.5 py-0.5 rounded border border-amber-700 bg-amber-900/40 text-amber-400">
+                  {biasStrong && bs != null
+                    ? `BIAS: overpriced ${(bs * 100).toFixed(0)}%`
+                    : 'BIAS ALERT'}
+                </span>
               )}
               {lowLiquidity && (
                 <span className="text-xs font-bold px-1.5 py-0.5 rounded border border-red-800 bg-red-950/40 text-red-400">⚠ LOW LIQ</span>
@@ -725,6 +739,26 @@ function ArbCard({ opp, rank, isDemo, bankroll, sentiment }: {
                   ⏱ {expiryLabel(opp.expiresAt)}
                 </span>
               )}
+            </div>
+          )}
+
+          {/* Bias calibration bar — shown when bias data is available */}
+          {bs != null && (
+            <div className="flex items-center gap-2 mb-2 px-3 py-1.5 rounded-lg bg-gray-800/50 border border-gray-700/40">
+              <span className="text-xs text-gray-500 shrink-0">Longshot bias:</span>
+              <div className="flex-1 h-1.5 bg-gray-700 rounded-full overflow-hidden max-w-28">
+                <div
+                  className={`h-full rounded-full transition-all ${biasBarBg}`}
+                  style={{ width: `${biasBarPct}%` }}
+                />
+              </div>
+              <span className={`text-xs font-semibold shrink-0 ${biasClass}`}>
+                {biasStrong
+                  ? `Historically overpriced ${biasBarPct}%`
+                  : biasMild
+                  ? `Slight bias (${biasBarPct}%)`
+                  : `Well calibrated`}
+              </span>
             </div>
           )}
 

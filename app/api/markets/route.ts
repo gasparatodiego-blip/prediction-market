@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
+import { loadBucketsSync, computeBiasScore, type CalibrationBucket } from '@/lib/calibration';
 
 const MANIFOLD_API    = 'https://api.manifold.markets/v0';
 const KALSHI_API      = 'https://api.elections.kalshi.com/trade-api/v2';
@@ -37,10 +38,11 @@ export interface ArbCandidate {
   platform: 'predictit' | 'manifold' | 'kalshi' | 'polymarket' | 'smarkets' | 'metaculus' | 'augur' | 'oddsapi';
   bookmaker?: string;   // for oddsapi: specific bookmaker name (e.g., "Betfair Exchange")
   url?: string;
-  volume?: number | null;      // total traded USD
-  liquidity?: number | null;   // available-to-trade USD (order book / AMM pool)
-  expiresAt?: number | null;   // Unix ms — when the market closes
-  priceSeenAt?: number | null; // Unix ms — when this exact probability was first observed
+  volume?: number | null;
+  liquidity?: number | null;
+  expiresAt?: number | null;
+  priceSeenAt?: number | null;
+  biasScore?: number | null;   // (prob − historical_hit_rate) / prob; positive = overpriced; null = no data
 }
 
 export interface MarketsResponse {
@@ -547,8 +549,24 @@ export async function GET() {
     ...oddsApiEventCandidates(oddsEvents),
   ];
 
-  const agentArb = loadAgentArb();
-  const finalArb = stampCandidates(agentArb ?? arbCandidates);
+  // ── Calibration: attach bias scores ──────────────
+  // Load synchronously from DB (fast); triggers background refresh if stale (handled by /api/calibration GET)
+  const calibBuckets: CalibrationBucket[] = loadBucketsSync();
+  const scored = (candidates: ArbCandidate[]) =>
+    candidates.map(c => ({
+      ...c,
+      biasScore: computeBiasScore(c.probability, calibBuckets),
+    }));
+
+  const agentArb  = loadAgentArb();
+  const stamped   = stampCandidates(agentArb ?? arbCandidates);
+  const finalArb  = scored(stamped);
+
+  // Trigger background calibration refresh if DB is empty (first run)
+  if (calibBuckets.length === 0) {
+    fetch(`http://localhost:${process.env.PORT ?? 3000}/api/calibration`, { method: 'POST' })
+      .catch(() => {});
+  }
 
   const body: MarketsResponse = {
     panels: {
