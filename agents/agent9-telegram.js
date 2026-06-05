@@ -11,11 +11,11 @@ const https = require('https');
 //   https://api.telegram.org/bot<TOKEN>/getUpdates
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const CHAT_ID   = process.env.TELEGRAM_CHAT_ID   || '';
-const MIN_ROI   = 5; // send alert when ROI exceeds this %
+const MIN_ROI   = parseFloat(process.env.MIN_ROI   || '1');   // default 1%
+const INTERVAL  = parseInt(process.env.INTERVAL    || '30000'); // default 30s
 
 const ARB_FILE = '/tmp/arbitrage-opportunities.json';
 const HB_FILE  = '/tmp/agent-heartbeats.json';
-const INTERVAL = 60_000;
 
 // Track which opportunities we've already alerted on to avoid spam
 const alerted = new Set();
@@ -76,13 +76,26 @@ async function run() {
     const lowProb    = opp.lowMarket?.probability  ?? 0;
     const highProb   = opp.highMarket?.probability ?? 0;
 
-    const msg = [
+    const lowName  = lowPlat.charAt(0) + lowPlat.slice(1).toLowerCase();
+    const highName = highPlat.charAt(0) + highPlat.slice(1).toLowerCase();
+    const lowUrl   = opp.lowMarket?.url  ?? null;
+    const highUrl  = opp.highMarket?.url ?? null;
+
+    const lines = [
       `🚨 <b>ARB ALERT</b>`,
       `Event: ${opp.question ?? 'Unknown'}`,
       `ROI: ${opp.roi.toFixed(1)}%`,
       `Buy ${lowPlat} at ${lowProb}% vs ${highPlat} at ${highProb}%`,
       `Invest $${investAmt} → earn $${earnAmount}`,
-    ].join('\n');
+    ];
+
+    if (lowUrl || highUrl) {
+      lines.push(`🔗 Links:`);
+      if (lowUrl)  lines.push(`• ${lowName}: ${lowUrl}`);
+      if (highUrl) lines.push(`• ${highName}: ${highUrl}`);
+    }
+
+    const msg = lines.join('\n');
 
     console.log('[telegram] sending alert for:', (opp.question ?? '').slice(0, 60));
     await sendTelegram(msg);

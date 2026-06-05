@@ -9,6 +9,7 @@ const MATCH_FILES = [
   { path: '/tmp/matches-other.json',    category: 'sports/tech/econ' },
   { path: '/tmp/matches-crypto.json',   category: 'crypto/finance'   },
 ];
+const ODDS_API_FILE = '/tmp/odds-api-raw.json';
 const OUT_FILE  = '/tmp/arbitrage-opportunities.json';
 const HB_FILE   = '/tmp/agent-heartbeats.json';
 const INTERVAL  = 45_000;
@@ -76,6 +77,79 @@ function saveToDb(opportunities) {
   }
 }
 
+// Cross-bookmaker arb from The Odds API events
+function calcOddsApiArb() {
+  const results = [];
+  try {
+    if (!fs.existsSync(ODDS_API_FILE)) return results;
+    const raw  = JSON.parse(fs.readFileSync(ODDS_API_FILE, 'utf8'));
+    const age  = Date.now() - (raw.fetchedAt || 0);
+    if (age > 600_000) return results; // stale > 10 min
+    const events = raw.events || [];
+
+    for (const ev of events) {
+      const bookmakers = ev.bookmakers || [];
+      // Collect implied probs per outcome across all bookmakers
+      const outcomeProbs = {}; // outcome name → [{bm, prob}]
+      for (const bm of bookmakers) {
+        const h2h = (bm.markets || []).find(m => m.key === 'h2h');
+        if (!h2h) continue;
+        for (const outcome of h2h.outcomes || []) {
+          if (!outcome.price || outcome.price <= 1) continue;
+          const prob = (1 / outcome.price) * 100;
+          if (!outcomeProbs[outcome.name]) outcomeProbs[outcome.name] = [];
+          outcomeProbs[outcome.name].push({ bm: bm.title || bm.key, prob });
+        }
+      }
+
+      // For each outcome, find spread between highest and lowest bookmaker
+      for (const [outcomeName, entries] of Object.entries(outcomeProbs)) {
+        if (entries.length < 2) continue;
+        entries.sort((a, b) => a.prob - b.prob);
+        const low  = entries[0];
+        const high = entries[entries.length - 1];
+        const spread = high.prob - low.prob;
+        if (spread < 3) continue;
+        const roi = (spread / low.prob) * 100;
+        if (roi > 300 || roi <= 0) continue;
+
+        const question = `[${ev.sport_title}] ${ev.home_team} vs ${ev.away_team} — ${outcomeName}`;
+        results.push({
+          question,
+          lowMarket: {
+            id:          `odds-low-${ev.id}-${outcomeName}`,
+            platform:    'oddsapi',
+            bookmaker:   low.bm,
+            probability: Math.round(low.prob * 10) / 10,
+            url:         null,
+            volume:      null,
+            liquidity:   null,
+            expiresAt:   ev.commence_time ? new Date(ev.commence_time).getTime() : null,
+          },
+          highMarket: {
+            id:          `odds-high-${ev.id}-${outcomeName}`,
+            platform:    'oddsapi',
+            bookmaker:   high.bm,
+            probability: Math.round(high.prob * 10) / 10,
+            url:         null,
+            volume:      null,
+            liquidity:   null,
+            expiresAt:   ev.commence_time ? new Date(ev.commence_time).getTime() : null,
+          },
+          spread:     Math.round(spread * 10) / 10,
+          roi:        Math.round(roi * 10) / 10,
+          earnPer100: Math.round((roi / 100) * 100 * 10) / 10,
+          confidence: 0.9,
+          category:   'sports/bookmaker',
+        });
+      }
+    }
+  } catch (e) {
+    console.error('[calculator] odds-api arb error:', e.message);
+  }
+  return results.sort((a, b) => b.roi - a.roi);
+}
+
 function calcArb(matches) {
   const results = [];
   for (const m of matches) {
@@ -121,8 +195,11 @@ function run() {
     } catch {}
   }
 
-  const opportunities = calcArb(allMatches).slice(0, 20);
-  console.log(`[calculator] ${allMatches.length} matches → ${opportunities.length} arbitrage opportunities`);
+  const predMarketOpps = calcArb(allMatches);
+  const oddsApiOpps    = calcOddsApiArb();
+  // Merge: prediction market opps first (AI-matched), then cross-bookmaker sports arb
+  const opportunities  = [...predMarketOpps, ...oddsApiOpps].slice(0, 30);
+  console.log(`[calculator] ${allMatches.length} matches → ${predMarketOpps.length} pred-market opps + ${oddsApiOpps.length} bookmaker opps = ${opportunities.length} total`);
 
   fs.writeFileSync(OUT_FILE, JSON.stringify({
     updatedAt:     Date.now(),

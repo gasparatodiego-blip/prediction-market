@@ -8,7 +8,16 @@ const POLYMARKET_API  = 'https://gamma-api.polymarket.com';
 const SMARKETS_API    = 'https://api.smarkets.com/v3/markets/?state=live&limit=50';
 const METACULUS_API   = 'https://www.metaculus.com/api2/questions/?limit=50&has_crowd_forecast=true';
 const AUGUR_GRAPH_API = 'https://api.thegraph.com/subgraphs/name/augurproject/augur-v2';
-const BETFAIR_API     = 'https://api.betfair.com/exchange/betting/rest/v1.0';
+
+const ODDS_API_KEY    = 'aff711ab10f3f1fba585e30405329c7c';
+const ODDS_SPORTS     = [
+  'soccer_fifa_world_cup',
+  'americanfootball_nfl',
+  'baseball_mlb',
+  'basketball_nba',
+  'tennis_atp_french_open',
+];
+const ODDS_API_FILE   = '/tmp/odds-api-raw.json';
 
 // ── Types ─────────────────────────────────────────
 
@@ -25,11 +34,13 @@ export interface ArbCandidate {
   id: string;
   question: string;
   probability: number;  // 0–100
-  platform: 'predictit' | 'manifold' | 'kalshi' | 'polymarket' | 'smarkets' | 'metaculus' | 'augur' | 'betfair';
+  platform: 'predictit' | 'manifold' | 'kalshi' | 'polymarket' | 'smarkets' | 'metaculus' | 'augur' | 'oddsapi';
+  bookmaker?: string;   // for oddsapi: specific bookmaker name (e.g., "Betfair Exchange")
   url?: string;
-  volume?: number | null;    // total traded USD
-  liquidity?: number | null; // available-to-trade USD (order book / AMM pool)
-  expiresAt?: number | null; // Unix ms
+  volume?: number | null;      // total traded USD
+  liquidity?: number | null;   // available-to-trade USD (order book / AMM pool)
+  expiresAt?: number | null;   // Unix ms — when the market closes
+  priceSeenAt?: number | null; // Unix ms — when this exact probability was first observed
 }
 
 export interface MarketsResponse {
@@ -41,7 +52,7 @@ export interface MarketsResponse {
     smarkets:   PanelMarket[];
     metaculus:  PanelMarket[];
     augur:      PanelMarket[];
-    betfair:    PanelMarket[];
+    oddsapi:    PanelMarket[];
   };
   arbCandidates: ArbCandidate[];
 }
@@ -51,7 +62,6 @@ export interface MarketsResponse {
 function toMs(v: any): number | null {
   if (v == null) return null;
   if (typeof v === 'number') {
-    // If it looks like seconds (< year 3000 in seconds), convert to ms
     return v < 9_999_999_999 ? v * 1000 : v;
   }
   if (typeof v === 'string') {
@@ -113,24 +123,145 @@ function augurPrice(market: any): number | null {
   return Math.round(raw * 100);
 }
 
-function betfairPrice(runner: any): number | null {
-  const ex = runner?.ex;
-  const avail = ex?.availableToBack ?? ex?.availableToLay ?? [];
-  if (!avail.length) return null;
-  const price = avail[0]?.price;
-  if (!price || price <= 1) return null;
-  return Math.round((1 / price) * 100);
+// ── Odds API helpers ──────────────────────────────
+
+interface BookmakerOdds { bm: string; bmTitle: string; prob: number; }
+
+function oddsApiEventCandidates(events: any[]): ArbCandidate[] {
+  const candidates: ArbCandidate[] = [];
+  for (const ev of events) {
+    const bookmakers: any[] = ev.bookmakers ?? [];
+    // Collect implied probs per outcome across all bookmakers
+    const outcomeMap: Record<string, BookmakerOdds[]> = {};
+    for (const bm of bookmakers) {
+      const h2h = (bm.markets ?? []).find((m: any) => m.key === 'h2h');
+      if (!h2h) continue;
+      for (const outcome of h2h.outcomes ?? []) {
+        if (!outcome.price || outcome.price <= 1) continue;
+        const prob = (1 / outcome.price) * 100;
+        if (!outcomeMap[outcome.name]) outcomeMap[outcome.name] = [];
+        outcomeMap[outcome.name].push({ bm: bm.key, bmTitle: bm.title || bm.key, prob });
+      }
+    }
+
+    // For each outcome, emit one candidate per bookmaker
+    for (const [outcomeName, entries] of Object.entries(outcomeMap)) {
+      if (entries.length < 2) continue;
+      const spread = Math.max(...entries.map(e => e.prob)) - Math.min(...entries.map(e => e.prob));
+      if (spread < 2) continue; // only include outcomes with meaningful disagreement
+      const expiry = toMs(ev.commence_time);
+      for (const entry of entries) {
+        candidates.push({
+          id:          `odds-${ev.id}-${entry.bm}-${outcomeName.replace(/\s+/g, '_')}`,
+          question:    `[${ev.sport_title}] ${ev.home_team} vs ${ev.away_team} — ${outcomeName}`,
+          probability: Math.round(entry.prob * 10) / 10,
+          platform:    'oddsapi',
+          bookmaker:   entry.bmTitle,
+          url:         undefined,
+          volume:      null,
+          liquidity:   null,
+          expiresAt:   expiry,
+        });
+      }
+    }
+  }
+  return candidates;
 }
 
-// Sum of available sizes at best price level (Betfair order book)
-function betfairLiquidity(runner: any): number | null {
-  const ex = runner?.ex;
-  const avail: any[] = ex?.availableToBack ?? [];
-  if (!avail.length) return null;
-  const best = avail[0];
-  if (!best?.size || !best?.price) return null;
-  // size is in GBP; price in decimal odds. Size × price ≈ potential USD payout
-  return Math.round(parseFloat(best.size) * parseFloat(best.price));
+function buildOddsApiPanel(events: any[]): PanelMarket[] {
+  const panels: PanelMarket[] = [];
+  for (const ev of events) {
+    // Pick the bookmaker with most disagreement for the home team outcome
+    const bookmakers: any[] = ev.bookmakers ?? [];
+    const homeProbs: number[] = [];
+    for (const bm of bookmakers) {
+      const h2h = (bm.markets ?? []).find((m: any) => m.key === 'h2h');
+      const outcome = (h2h?.outcomes ?? []).find((o: any) => o.name === ev.home_team);
+      if (outcome?.price > 1) homeProbs.push((1 / outcome.price) * 100);
+    }
+    if (homeProbs.length === 0) continue;
+    const bestProb = Math.round(Math.max(...homeProbs) * 10) / 10;
+    const worstProb = Math.round(Math.min(...homeProbs) * 10) / 10;
+    const spread = bestProb - worstProb;
+    panels.push({
+      id:          ev.id,
+      name:        `${ev.home_team} vs ${ev.away_team}`,
+      detail:      `${ev.sport_title} · ${homeProbs.length} bookmakers · spread ${spread.toFixed(1)}%`,
+      probability: Math.round((homeProbs.reduce((a, b) => a + b, 0) / homeProbs.length) * 10) / 10,
+      volume:      null,
+      expiresAt:   toMs(ev.commence_time),
+    });
+  }
+  return panels
+    .sort((a, b) => {
+      const sa = parseFloat(a.detail.split('spread ')[1] ?? '0');
+      const sb = parseFloat(b.detail.split('spread ')[1] ?? '0');
+      return sb - sa;
+    })
+    .slice(0, 30);
+}
+
+// ── Load cached Odds API data (written by agent2-fetcher every 5 min) ──
+
+function loadOddsApiEvents(): any[] {
+  try {
+    const raw  = fs.readFileSync(ODDS_API_FILE, 'utf8');
+    const data = JSON.parse(raw);
+    const age  = Date.now() - (data.fetchedAt ?? 0);
+    if (age > 600_000) return []; // stale > 10 min, trigger fresh fetch below
+    return data.events ?? [];
+  } catch { return []; }
+}
+
+async function fetchOddsApiDirect(): Promise<any[]> {
+  const results: any[] = [];
+  await Promise.all(
+    ODDS_SPORTS.map(sport =>
+      fetch(
+        `https://api.the-odds-api.com/v4/sports/${sport}/odds/?apiKey=${ODDS_API_KEY}&regions=eu&markets=h2h&oddsFormat=decimal`,
+        { cache: 'no-store' }
+      )
+        .then(r => r.json())
+        .then(d => { if (Array.isArray(d)) results.push(...d); })
+        .catch(() => {})
+    )
+  );
+  // Update cache
+  try { fs.writeFileSync(ODDS_API_FILE, JSON.stringify({ fetchedAt: Date.now(), events: results }, null, 2)); } catch {}
+  return results;
+}
+
+// ── Price-staleness tracking ──────────────────────
+
+const PRICES_FILE = '/tmp/arb-prices.json';
+
+type PriceRecord = { p: number; t: number };
+
+function loadPriceSeen(): Record<string, PriceRecord> {
+  try { return JSON.parse(fs.readFileSync(PRICES_FILE, 'utf8')); } catch { return {}; }
+}
+
+function stampCandidates(candidates: ArbCandidate[]): ArbCandidate[] {
+  const seen   = loadPriceSeen();
+  const now    = Date.now();
+  const update = { ...seen };
+
+  const stamped = candidates.map(c => {
+    const key   = `${c.platform}:${c.id}`;
+    const prev  = seen[key];
+    const changed = !prev || Math.abs(prev.p - c.probability) >= 1;
+    if (changed) update[key] = { p: c.probability, t: now };
+    return { ...c, priceSeenAt: changed ? now : prev!.t };
+  });
+
+  const cutoff = now - 7 * 86_400_000;
+  const pruned: Record<string, PriceRecord> = {};
+  for (const [k, v] of Object.entries(update)) {
+    if (v.t > cutoff) pruned[k] = v;
+  }
+  try { fs.writeFileSync(PRICES_FILE, JSON.stringify(pruned)); } catch {}
+
+  return stamped;
 }
 
 // ── Agent pipeline cache ──────────────────────────
@@ -153,6 +284,7 @@ function loadAgentArb(): ArbCandidate[] | null {
         question:    o.question,
         probability: o.lowMarket.probability,
         platform:    o.lowMarket.platform,
+        bookmaker:   o.lowMarket.bookmaker ?? undefined,
         url:         o.lowMarket.url,
         volume:      o.lowMarket.volume    ?? null,
         liquidity:   o.lowMarket.liquidity ?? null,
@@ -162,6 +294,7 @@ function loadAgentArb(): ArbCandidate[] | null {
           question:    o.question,
           probability: o.highMarket.probability,
           platform:    o.highMarket.platform,
+          bookmaker:   o.highMarket.bookmaker ?? undefined,
           url:         o.highMarket.url,
           volume:      o.highMarket.volume    ?? null,
           liquidity:   o.highMarket.liquidity ?? null,
@@ -177,19 +310,14 @@ function loadAgentArb(): ArbCandidate[] | null {
 
 export async function GET() {
 
-  // Betfair auth headers
-  const betfairHeaders: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'Accept': 'application/json',
-  };
-  const bfApiKey  = process.env.BETFAIR_API_KEY;
-  const bfSession = process.env.BETFAIR_SESSION_TOKEN;
-  if (bfApiKey)  betfairHeaders['X-Application']  = bfApiKey;
-  if (bfSession) betfairHeaders['X-Authentication'] = bfSession;
-  const betfairEnabled = !!(bfApiKey && bfSession);
+  // Load Odds API events — use cache if fresh, otherwise fetch directly
+  let oddsEvents = loadOddsApiEvents();
+  if (oddsEvents.length === 0) {
+    oddsEvents = await fetchOddsApiDirect();
+  }
 
   // ── Parallel fetches ──────────────────────────────
-  const [piRaw, mfRaw, kaRaw, pmRaw, smRaw, mcRaw, agRaw, bfRaw] = await Promise.all([
+  const [piRaw, mfRaw, kaRaw, pmRaw, smRaw, mcRaw, agRaw] = await Promise.all([
 
     fetch(PREDICTIT_API, { cache: 'no-store' })
       .then(r => r.json()).catch(() => ({ markets: [] })),
@@ -222,25 +350,6 @@ export async function GET() {
       }),
       cache: 'no-store',
     }).then(r => r.json()).catch(() => ({ data: { markets: [] } })),
-
-    betfairEnabled
-      ? fetch(`${BETFAIR_API}/listMarketCatalogue/`, {
-          method: 'POST',
-          headers: betfairHeaders,
-          body: JSON.stringify({
-            filter: {
-              eventTypeIds: ['1', '2', '26305'],
-              marketCountries: ['GB', 'US'],
-              marketTypeCodes: ['MATCH_ODDS', 'WINNER', 'NEXT_GOAL'],
-              inPlayOnly: false,
-            },
-            marketProjection: ['MARKET_NAME', 'EVENT', 'RUNNER_DESCRIPTION', 'MARKET_START_TIME'],
-            sort: 'MAXIMUM_TRADED',
-            maxResults: '50',
-          }),
-          cache: 'no-store',
-        }).then(r => r.json()).catch(() => [])
-      : Promise.resolve([]),
   ]);
 
   // ── Normalise ─────────────────────────────────────
@@ -278,8 +387,6 @@ export async function GET() {
   const agMarkets: any[] = ((agRaw?.data?.markets ?? []) as any[])
     .filter((m: any) => augurPrice(m) !== null)
     .slice(0, 20);
-
-  const bfCatalogue: any[] = Array.isArray(bfRaw) ? bfRaw.slice(0, 20) : [];
 
   // ── Panels ────────────────────────────────────────
 
@@ -349,17 +456,7 @@ export async function GET() {
     expiresAt:   toMs(m.endTime),
   }));
 
-  const betfairPanel: PanelMarket[] = bfCatalogue.flatMap((cat: any) => {
-    const runners: any[] = cat.runners ?? [];
-    return runners.slice(0, 2).map((r: any) => ({
-      id:          `${cat.marketId}-${r.selectionId}`,
-      name:        `${cat.marketName ?? cat.event?.name ?? 'Market'}: ${r.runnerName ?? r.description ?? ''}`,
-      detail:      cat.event?.name ?? 'Betfair Exchange',
-      probability: betfairPrice(r),
-      volume:      cat.totalMatched ?? null,
-      expiresAt:   toMs(cat.marketStartTime),
-    })).filter(pm => pm.probability !== null);
-  }).slice(0, 20);
+  const oddsApiPanel: PanelMarket[] = buildOddsApiPanel(oddsEvents);
 
   // ── Arb candidates ────────────────────────────────
 
@@ -376,9 +473,8 @@ export async function GET() {
           platform:    'predictit' as const,
           url:         `https://www.predictit.org/markets/detail/${m.id}`,
           volume:      m.tradedVolume ?? null,
-          // PredictIt order book depth not available; use best bid as proxy
           liquidity:   c.bestBuyYesCost != null
-                         ? Math.round(c.bestBuyYesCost * 850)  // rough: $850 typical depth
+                         ? Math.round(c.bestBuyYesCost * 850)
                          : (m.tradedVolume ? Math.round(m.tradedVolume * 0.05) : null),
           expiresAt:   toMs(m.end),
         }))
@@ -400,7 +496,6 @@ export async function GET() {
       platform:    'kalshi' as const,
       url:         `https://kalshi.com/markets/${m.ticker}`,
       volume:      m.volume ?? null,
-      // open_interest × price ≈ dollars at risk = available liquidity proxy
       liquidity:   m.open_interest != null
                      ? Math.round(m.open_interest * kalshiPrice(m) / 100)
                      : (m.volume ? Math.round(m.volume * 0.1) : null),
@@ -448,24 +543,12 @@ export async function GET() {
       liquidity:   null,
       expiresAt:   toMs(m.endTime),
     })),
-    ...bfCatalogue.flatMap((cat: any) =>
-      (cat.runners ?? []).slice(0, 2)
-        .filter((r: any) => betfairPrice(r) !== null)
-        .map((r: any) => ({
-          id:          `bf-${cat.marketId}-${r.selectionId}`,
-          question:    `${cat.marketName ?? cat.event?.name ?? 'Market'}: ${r.runnerName ?? r.description ?? ''}`,
-          probability: betfairPrice(r)!,
-          platform:    'betfair' as const,
-          url:         `https://www.betfair.com/exchange/plus/market/${cat.marketId}`,
-          volume:      cat.totalMatched ?? null,
-          liquidity:   betfairLiquidity(r),
-          expiresAt:   toMs(cat.marketStartTime),
-        }))
-    ),
+    // The Odds API: one candidate per (event × bookmaker × outcome)
+    ...oddsApiEventCandidates(oddsEvents),
   ];
 
   const agentArb = loadAgentArb();
-  const finalArb = agentArb ?? arbCandidates;
+  const finalArb = stampCandidates(agentArb ?? arbCandidates);
 
   const body: MarketsResponse = {
     panels: {
@@ -476,7 +559,7 @@ export async function GET() {
       smarkets:   smarketsPanel,
       metaculus:  metaculusPanel,
       augur:      augurPanel,
-      betfair:    betfairPanel,
+      oddsapi:    oddsApiPanel,
     },
     arbCandidates: finalArb,
   };

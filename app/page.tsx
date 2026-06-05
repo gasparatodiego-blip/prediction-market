@@ -61,8 +61,8 @@ const PLATFORMS = {
     bgClass:     'bg-rose-950/20',
     badgeClass:  'bg-rose-900/60 border-rose-700 text-rose-300',
   },
-  betfair: {
-    label:       'Betfair',
+  oddsapi: {
+    label:       'The Odds API',
     dotClass:    'bg-sky-400',
     headerClass: 'text-sky-400',
     borderClass: 'border-sky-900/40',
@@ -73,14 +73,53 @@ const PLATFORMS = {
 
 type PlatformKey = keyof typeof PLATFORMS;
 
-// ── Expiry filter ─────────────────────────────────
-type ExpiryFilter = 'all' | '1h' | '24h' | '7d';
-const EXPIRY_FILTERS: { key: ExpiryFilter; label: string; ms: number }[] = [
-  { key: 'all', label: 'All',  ms: Infinity },
-  { key: '1h',  label: '< 1h', ms: 3_600_000 },
-  { key: '24h', label: '< 24h', ms: 86_400_000 },
-  { key: '7d',  label: '< 7d',  ms: 7 * 86_400_000 },
+// ── Gap-age filter (price staleness) ─────────────
+// Filters by how long the CURRENT price gap has existed.
+// gapAge = Date.now() - max(low.priceSeenAt, high.priceSeenAt)
+// A small gapAge = fresh opportunity (prices just diverged).
+// A large gapAge = stale (this exact spread has persisted — may be unfillable).
+type ExpiryFilter =
+  | 'all'
+  | '30m' | '1h' | '2h' | '3h' | '6h' | '12h' | '24h'
+  | '2d'  | '3d' | '4d' | '5d' | '7d' | '14d' | '30d+';
+
+const M = 60_000, H = 3_600_000, D = 86_400_000;
+
+const EXPIRY_FILTERS: { key: ExpiryFilter; label: string; ms: number; color: string }[] = [
+  // Row 1 — hours
+  { key: 'all',  label: 'All',  ms: Infinity,    color: 'gray' },
+  { key: '30m',  label: '30m',  ms: 30 * M,      color: 'red'  },
+  { key: '1h',   label: '1h',   ms: H,           color: 'red'  },
+  { key: '2h',   label: '2h',   ms: 2  * H,      color: 'red'  },
+  { key: '3h',   label: '3h',   ms: 3  * H,      color: 'red'  },
+  { key: '6h',   label: '6h',   ms: 6  * H,      color: 'red'  },
+  { key: '12h',  label: '12h',  ms: 12 * H,      color: 'orange'},
+  { key: '24h',  label: '24h',  ms: D,           color: 'orange'},
+  // Row 2 — days
+  { key: '2d',   label: '2d',   ms: 2  * D,      color: 'yellow'},
+  { key: '3d',   label: '3d',   ms: 3  * D,      color: 'yellow'},
+  { key: '4d',   label: '4d',   ms: 4  * D,      color: 'yellow'},
+  { key: '5d',   label: '5d',   ms: 5  * D,      color: 'yellow'},
+  { key: '7d',   label: '7d',   ms: 7  * D,      color: 'yellow'},
+  { key: '14d',  label: '14d',  ms: 14 * D,      color: 'gray' },
+  { key: '30d+', label: '30d+', ms: 30 * D,      color: 'gray' },
 ];
+
+const EXPIRY_ROW1 = EXPIRY_FILTERS.slice(0, 8);
+const EXPIRY_ROW2 = EXPIRY_FILTERS.slice(8);
+
+const COLOR_ACTIVE: Record<string, string> = {
+  red:    'bg-red-700    border-red-600    text-white',
+  orange: 'bg-orange-600 border-orange-500 text-white',
+  yellow: 'bg-yellow-600 border-yellow-500 text-white',
+  gray:   'bg-gray-600   border-gray-500   text-white',
+};
+const COLOR_IDLE: Record<string, string> = {
+  red:    'bg-gray-900 border-red-900/60    text-red-400    hover:border-red-700    hover:text-red-300',
+  orange: 'bg-gray-900 border-orange-900/60 text-orange-400 hover:border-orange-700 hover:text-orange-300',
+  yellow: 'bg-gray-900 border-yellow-900/60 text-yellow-500 hover:border-yellow-700 hover:text-yellow-300',
+  gray:   'bg-gray-900 border-gray-700      text-gray-500   hover:border-gray-500   hover:text-gray-300',
+};
 
 // ── History / Sentiment / Arb types ──────────────
 
@@ -106,8 +145,8 @@ interface ArbitrageOpp {
   spread:     number;
   roi:        number;
   earnPer100: number;
-  // earliest expiry across the two sides (null = no expiry data)
-  expiresAt:  number | null;
+  expiresAt:  number | null; // earliest market close date across both sides
+  gapAge:     number | null; // ms since this exact price gap was established (staleness)
 }
 
 // ── Keyword matching ──────────────────────────────
@@ -141,7 +180,10 @@ function detectArbitrage(candidates: ArbCandidate[]): ArbitrageOpp[] {
   for (let i = 0; i < candidates.length; i++) {
     for (let j = i + 1; j < candidates.length; j++) {
       const a = candidates[i], b = candidates[j];
-      if (a.platform === b.platform) continue;
+      // Skip same source: same platform unless they're different bookmakers (oddsapi)
+      const sameSource = a.platform === b.platform &&
+        (a.platform !== 'oddsapi' || !a.bookmaker || !b.bookmaker || a.bookmaker === b.bookmaker);
+      if (sameSource) continue;
       if (jaccard(a.question, b.question) < 0.25) continue;
       const spread = Math.abs(a.probability - b.probability);
       if (spread < 3) continue;
@@ -152,8 +194,10 @@ function detectArbitrage(candidates: ArbCandidate[]): ArbitrageOpp[] {
       const key = `${low.platform}:${high.platform}:${low.probability}:${high.probability}:${high.question.slice(0, 30)}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      // earliest expiry = the side that closes first (bottleneck)
-      const expiries = [low.expiresAt, high.expiresAt].filter((e): e is number => e != null);
+      const expiries   = [low.expiresAt,    high.expiresAt   ].filter((e): e is number => e != null);
+      const priceTimes = [low.priceSeenAt, high.priceSeenAt].filter((t): t is number => t != null);
+      // gapAge = time since the most recent price change in this pair established the current spread
+      const gapAge = priceTimes.length ? Date.now() - Math.max(...priceTimes) : null;
       results.push({
         question:   high.question,
         lowMarket:  low,
@@ -161,7 +205,8 @@ function detectArbitrage(candidates: ArbCandidate[]): ArbitrageOpp[] {
         spread,
         roi,
         earnPer100: Math.round((roi / 100) * 100 * 10) / 10,
-        expiresAt:  expiries.length ? Math.min(...expiries) : null,
+        expiresAt:  expiries.length   ? Math.min(...expiries) : null,
+        gapAge,
       });
     }
   }
@@ -192,7 +237,7 @@ function getDemoOpps(panels: MarketsResponse['panels']): ArbitrageOpp[] {
     const spread = high.probability - low.probability;
     const roi    = low.probability > 0 ? (spread / low.probability) * 100 : 0;
     return { question: high.question, lowMarket: low, highMarket: high, spread, roi,
-             earnPer100: Math.round(roi * 10) / 10, expiresAt: null };
+             earnPer100: Math.round(roi * 10) / 10, expiresAt: null, gapAge: null };
   };
 
   const pi = panels.predictit.filter(m => m.probability != null && m.probability > 5 && m.probability < 80);
@@ -231,6 +276,21 @@ function expiryUrgencyClass(ms: number | null | undefined): string {
   return 'border-gray-700 bg-gray-800/40 text-gray-400';
 }
 
+function gapAgeLabel(ms: number | null): string | null {
+  if (ms == null) return null;
+  if (ms < 60_000)      return 'just now';
+  if (ms < 3_600_000)   return `${Math.round(ms / 60_000)}m old`;
+  if (ms < 86_400_000)  return `${Math.round(ms / 3_600_000)}h old`;
+  return `${Math.floor(ms / 86_400_000)}d old`;
+}
+
+function gapAgeClass(ms: number | null): string {
+  if (ms == null)       return 'border-gray-700 bg-gray-800/40 text-gray-500';
+  if (ms < 3_600_000)   return 'border-emerald-700 bg-emerald-950/40 text-emerald-400'; // fresh
+  if (ms < 86_400_000)  return 'border-amber-700 bg-amber-900/40 text-amber-400';       // aging
+  return 'border-gray-700 bg-gray-800/40 text-gray-500';                                 // stale
+}
+
 function timeAgo(date: Date): string {
   const s = Math.floor((Date.now() - date.getTime()) / 1000);
   if (s < 60)   return `${s}s ago`;
@@ -249,7 +309,7 @@ function fmtDollars(n: number): string {
 const REFRESH_INTERVAL = 30;
 const EMPTY_PANELS: MarketsResponse['panels'] = {
   predictit: [], manifold: [], kalshi: [], polymarket: [],
-  smarkets: [], metaculus: [], augur: [], betfair: [],
+  smarkets: [], metaculus: [], augur: [], oddsapi: [],
 };
 
 export default function Home() {
@@ -309,22 +369,24 @@ export default function Home() {
   }, [activeTab, fetchHistory]);
 
   const realArb  = detectArbitrage(arbCandidates);
-  const demoOpps = realArb.length < 3 ? getDemoOpps(panels) : [];
+  // Only inject demo fallbacks when no time filter is active — a filtered empty state
+  // should say "nothing here" rather than silently show unrelated opportunities.
+  const demoOpps = realArb.length < 3 && expiryFilter === 'all' ? getDemoOpps(panels) : [];
   const allArb   = [...realArb, ...demoOpps].slice(0, 8);
   const demoIds  = new Set(demoOpps.map(o => o.highMarket.id));
 
-  // Apply expiry filter
+  // Apply gap-age filter: show only opportunities where the price gap is ≤ filterMs old.
   const filterMs = EXPIRY_FILTERS.find(f => f.key === expiryFilter)!.ms;
   const arb = expiryFilter === 'all' ? allArb : allArb.filter(o => {
-    if (!o.expiresAt) return false; // no expiry data — exclude from time-filtered views
-    return (o.expiresAt - Date.now()) <= filterMs;
+    if (o.gapAge == null) return false; // no tracking data — exclude from filtered views
+    return o.gapAge <= filterMs;
   });
 
   const totalMarkets =
     panels.predictit.length + panels.manifold.length +
     panels.kalshi.length    + panels.polymarket.length +
     panels.smarkets.length  + panels.metaculus.length  +
-    panels.augur.length     + panels.betfair.length;
+    panels.augur.length     + panels.oddsapi.length;
 
   const bestRoi     = arb[0]?.roi ?? 0;
   const totalSpread = arb.reduce((s, o) => s + o.spread, 0);
@@ -338,7 +400,7 @@ export default function Home() {
               style={{ animationDelay: `${i * 0.15}s` }} />
           ))}
         </div>
-        <p className="text-gray-400 text-sm tracking-wide">Scanning 8 prediction markets…</p>
+        <p className="text-gray-400 text-sm tracking-wide">Scanning 8 platforms + 40 bookmakers…</p>
       </div>
     );
   }
@@ -358,7 +420,7 @@ export default function Home() {
               </span>
             </div>
             <p className="text-gray-400 text-sm max-w-xl">
-              8 prediction markets · 30s refresh · AI-powered matching · Kelly sizing · expiry tracking
+              8 platforms + 40 bookmakers · 30s refresh · AI-powered matching · Kelly sizing · expiry tracking
             </p>
           </div>
           <div className="text-right flex-shrink-0 pt-0.5 space-y-1">
@@ -394,20 +456,30 @@ export default function Home() {
 
             <div className="w-px h-6 bg-gray-700 hidden sm:block" />
 
-            {/* Expiry filter */}
-            <div className="flex items-center gap-2">
-              <span className="text-gray-500 text-sm whitespace-nowrap">Expires:</span>
-              <div className="flex gap-1">
-                {EXPIRY_FILTERS.map(f => (
-                  <button
-                    key={f.key}
-                    onClick={() => setExpiryFilter(f.key)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                      expiryFilter === f.key
-                        ? 'bg-blue-700 text-white border border-blue-600'
-                        : 'bg-gray-800 text-gray-400 border border-gray-700 hover:text-gray-200'
-                    }`}
-                  >
+            {/* Gap-age filter — hide stale price spreads */}
+            <div className="flex flex-col gap-1.5 flex-1">
+              <div className="flex items-center gap-1.5 mb-0.5">
+                <span className="text-gray-400 text-xs font-medium">Price gap age:</span>
+                <span className="text-gray-600 text-xs">hide spreads older than →</span>
+              </div>
+              <div className="flex items-center gap-1 flex-wrap">
+                <span className="text-gray-600 text-xs w-10 shrink-0">hrs:</span>
+                {EXPIRY_ROW1.map(f => (
+                  <button key={f.key} onClick={() => setExpiryFilter(f.key)}
+                    className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors ${
+                      expiryFilter === f.key ? COLOR_ACTIVE[f.color] : COLOR_IDLE[f.color]
+                    }`}>
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center gap-1 flex-wrap">
+                <span className="text-gray-600 text-xs w-10 shrink-0">days:</span>
+                {EXPIRY_ROW2.map(f => (
+                  <button key={f.key} onClick={() => setExpiryFilter(f.key)}
+                    className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors ${
+                      expiryFilter === f.key ? COLOR_ACTIVE[f.color] : COLOR_IDLE[f.color]
+                    }`}>
                     {f.label}
                   </button>
                 ))}
@@ -424,7 +496,7 @@ export default function Home() {
         <section>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <SummaryCard icon="📡" value={String(totalMarkets)} label="Markets Monitored"
-              sub="across 8 platforms" accent="border-blue-800/50 bg-blue-950/20" />
+              sub="8 platforms + 40 bookmakers" accent="border-blue-800/50 bg-blue-950/20" />
             <SummaryCard icon="🔍" value={String(arb.length)} label="Opportunities Found"
               sub={arb.length > 0 ? 'price gaps detected' : 'markets in sync'}
               accent={arb.length > 0 ? 'border-green-800/50 bg-green-950/20' : 'border-gray-700/40 bg-gray-800/20'} />
@@ -467,11 +539,14 @@ export default function Home() {
                       {arb.length} found
                     </span>
                   )}
-                  {expiryFilter !== 'all' && (
-                    <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold border border-blue-700 bg-blue-900/40 text-blue-300">
-                      filtered: {EXPIRY_FILTERS.find(f => f.key === expiryFilter)!.label}
-                    </span>
-                  )}
+                  {expiryFilter !== 'all' && (() => {
+                    const f = EXPIRY_FILTERS.find(x => x.key === expiryFilter)!;
+                    return (
+                      <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${COLOR_ACTIVE[f.color]}`}>
+                        ≤ {f.label}
+                      </span>
+                    );
+                  })()}
                 </div>
                 <p className="text-gray-500 text-sm mt-1">
                   Same event, different prices across platforms — buy cheap, profit from the gap.
@@ -482,11 +557,13 @@ export default function Home() {
                 <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-12 text-center">
                   <div className="text-5xl mb-4">🔎</div>
                   <p className="text-gray-300 font-semibold text-lg">
-                    {expiryFilter !== 'all' ? 'No opportunities in this time window' : 'No opportunities right now'}
+                    {expiryFilter !== 'all'
+                      ? `No opportunities with a gap age ≤ ${EXPIRY_FILTERS.find(f => f.key === expiryFilter)!.label} right now.`
+                      : 'No opportunities right now'}
                   </p>
                   <p className="text-gray-600 text-sm mt-2 max-w-sm mx-auto">
                     {expiryFilter !== 'all'
-                      ? 'Try a wider expiry filter, or switch to "All".'
+                      ? 'Try a longer timeframe.'
                       : 'Markets are pricing similar events consistently. Gaps open frequently — check back in 30 seconds.'}
                   </p>
                 </div>
@@ -561,8 +638,10 @@ function ArbCard({ opp, rank, isDemo, bankroll, sentiment }: {
   const roiText   = 'text-green-400';
   const roiBorder = 'border-green-700 bg-green-900/50';
 
-  const lowCfg  = PLATFORMS[opp.lowMarket.platform  as PlatformKey];
-  const highCfg = PLATFORMS[opp.highMarket.platform as PlatformKey];
+  const lowCfg  = PLATFORMS[opp.lowMarket.platform  as PlatformKey] ?? PLATFORMS.oddsapi;
+  const highCfg = PLATFORMS[opp.highMarket.platform as PlatformKey] ?? PLATFORMS.oddsapi;
+  const lowLabel  = opp.lowMarket.bookmaker  ?? lowCfg.label;
+  const highLabel = opp.highMarket.bookmaker ?? highCfg.label;
 
   // Kelly + liquidity-aware sizing
   const kelly       = kellyFraction(opp.lowMarket.probability, opp.highMarket.probability);
@@ -633,12 +712,19 @@ function ArbCard({ opp, rank, isDemo, bankroll, sentiment }: {
             </div>
           </div>
 
-          {/* Expiry badge */}
-          {expiryText && (
-            <div className="mb-2">
-              <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded border ${expiryClass}`}>
-                ⏱ {expiryText}
-              </span>
+          {/* Gap-age badge + market expiry badge */}
+          {(gapAgeLabel(opp.gapAge) || expiryLabel(opp.expiresAt)) && (
+            <div className="flex gap-1.5 mb-2 flex-wrap">
+              {gapAgeLabel(opp.gapAge) && (
+                <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded border ${gapAgeClass(opp.gapAge)}`}>
+                  🔄 Gap: {gapAgeLabel(opp.gapAge)}
+                </span>
+              )}
+              {expiryLabel(opp.expiresAt) && (
+                <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded border ${expiryUrgencyClass(opp.expiresAt)}`}>
+                  ⏱ {expiryLabel(opp.expiresAt)}
+                </span>
+              )}
             </div>
           )}
 
@@ -648,8 +734,8 @@ function ArbCard({ opp, rank, isDemo, bankroll, sentiment }: {
             <div className="flex flex-col gap-0.5 px-3 py-1.5 rounded-lg bg-gray-800 border border-gray-700">
               <div className="flex items-center gap-2">
                 <span className={`w-2 h-2 rounded-full flex-shrink-0 ${lowCfg.dotClass}`} />
-                <span className="text-xs text-gray-400">{lowCfg.label}</span>
-                <span className="text-sm font-bold tabular-nums text-red-400">{opp.lowMarket.probability}% YES</span>
+                <span className="text-xs text-gray-400">{lowLabel}</span>
+                <span className="text-sm font-bold tabular-nums text-red-400">{opp.lowMarket.probability}%</span>
               </div>
               {lowLiq != null && (
                 <span className="text-xs text-gray-500 pl-4">
@@ -664,8 +750,8 @@ function ArbCard({ opp, rank, isDemo, bankroll, sentiment }: {
             <div className="flex flex-col gap-0.5 px-3 py-1.5 rounded-lg bg-gray-800 border border-gray-700">
               <div className="flex items-center gap-2">
                 <span className={`w-2 h-2 rounded-full flex-shrink-0 ${highCfg.dotClass}`} />
-                <span className="text-xs text-gray-400">{highCfg.label}</span>
-                <span className="text-sm font-bold tabular-nums text-green-400">{opp.highMarket.probability}% YES</span>
+                <span className="text-xs text-gray-400">{highLabel}</span>
+                <span className="text-sm font-bold tabular-nums text-green-400">{opp.highMarket.probability}%</span>
               </div>
               {highLiq != null && (
                 <span className="text-xs text-gray-500 pl-4">
@@ -694,8 +780,8 @@ function ArbCard({ opp, rank, isDemo, bankroll, sentiment }: {
           {/* Action + Kelly row */}
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <p className="text-xs text-gray-600">
-              Buy on <span className="text-gray-400">{lowCfg.label}</span> at {opp.lowMarket.probability}¢ —{' '}
-              {opp.spread.toFixed(0)}¢ cheaper than <span className="text-gray-400">{highCfg.label}</span>
+              Buy on <span className="text-gray-400">{lowLabel}</span> at {opp.lowMarket.probability}% —{' '}
+              {opp.spread.toFixed(1)}% cheaper than <span className="text-gray-400">{highLabel}</span>
             </p>
             <div className="flex items-center gap-2 flex-wrap">
               <span className={`text-xs font-semibold px-2.5 py-1 rounded-lg border ${roiBorder} ${roiText} whitespace-nowrap`}>
@@ -853,8 +939,7 @@ function HistoryTab({ records }: { records: HistoryRecord[] }) {
 }
 
 function PlatformBadge({ platform, prob }: { platform: string; prob: number }) {
-  const cfg = PLATFORMS[platform as PlatformKey];
-  if (!cfg) return <span className="text-gray-500 text-xs">{platform} {prob}%</span>;
+  const cfg = PLATFORMS[platform as PlatformKey] ?? PLATFORMS.oddsapi;
   return (
     <span className={`inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded border ${cfg.badgeClass}`}>
       <span className={`w-1.5 h-1.5 rounded-full ${cfg.dotClass}`} />
