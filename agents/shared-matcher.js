@@ -24,6 +24,42 @@ function beat(name) {
   fs.writeFileSync(HB_FILE, JSON.stringify(hb, null, 2));
 }
 
+// ── OddsAPI market extraction ──────────────────────
+
+function extractOddsApiMarkets() {
+  const ODDS_FILE = '/tmp/odds-api-raw.json';
+  const markets = [];
+  try {
+    const raw  = JSON.parse(fs.readFileSync(ODDS_FILE, 'utf8'));
+    const age  = Date.now() - (raw.fetchedAt || 0);
+    if (age > 600_000) return markets; // stale > 10 min
+    for (const ev of (raw.events || [])) {
+      const bookmakers = ev.bookmakers || [];
+      if (bookmakers.length === 0) continue;
+      // Average implied probability for home team across bookmakers
+      const homeProbs = [];
+      for (const bm of bookmakers) {
+        const h2h = (bm.markets || []).find(m => m.key === 'h2h');
+        const outcome = (h2h?.outcomes || []).find(o => o.name === ev.home_team);
+        if (outcome?.price > 1) homeProbs.push((1 / outcome.price) * 100);
+      }
+      if (homeProbs.length === 0) continue;
+      const avgProb = Math.round(homeProbs.reduce((a, b) => a + b, 0) / homeProbs.length);
+      markets.push({
+        id:          `odds-${ev.id}`,
+        platform:    'oddsapi',
+        question:    `Will ${ev.home_team} win against ${ev.away_team}?`,
+        probability: avgProb,
+        url:         null,
+        _sport:      ev.sport_title || '',
+        _homeTeam:   ev.home_team   || '',
+        _awayTeam:   ev.away_team   || '',
+      });
+    }
+  } catch {}
+  return markets;
+}
+
 // ── Market extraction ──────────────────────────────
 
 function extractAllMarkets(raw) {
@@ -97,6 +133,10 @@ function extractAllMarkets(raw) {
       url:         m.slug ? `https://polymarket.com/event/${m.slug}` : 'https://polymarket.com',
     });
   }
+
+  // Add OddsAPI sports markets (up to 30) for cross-platform matching
+  const oddsMarkets = extractOddsApiMarkets();
+  markets.push(...oddsMarkets.slice(0, 30));
 
   return markets;
 }

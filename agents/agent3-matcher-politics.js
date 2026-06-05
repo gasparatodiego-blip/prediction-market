@@ -21,25 +21,35 @@ const KEYWORDS = [
   'trump', 'biden', 'harris', 'white house', 'cabinet', 'speaker',
   'majority', 'minority', 'filibuster', 'impeach', 'veto', 'legislation',
   'supreme court', 'scotus', 'justice', 'amendment', 'constitution',
+  'polling', 'approval rating', 'midterm', 'runoff',
   // International elections & government
   'referendum', 'parliament', 'prime minister', 'chancellor', 'coalition',
   'macron', 'uk election', 'labour', 'tory', 'conservative', 'liberal',
-  'modi', 'netanyahu', 'zelensky', 'scholz', 'meloni',
+  'modi', 'netanyahu', 'zelensky', 'scholz', 'meloni', 'lula', 'xi jinping',
+  'macron', 'sunak', 'starmer', 'milei', 'orban', 'erdogan',
   // Geopolitics
   'war', 'ceasefire', 'peace deal', 'treaty', 'nato', 'sanction',
   'ukraine', 'russia', 'china', 'taiwan', 'iran', 'north korea',
   'israel', 'hamas', 'hezbollah', 'middle east', 'invasion', 'military',
   'diplomat', 'alliance', 'summit', 'g7', 'g20', 'un ', 'united nations',
+  'nuclear', 'missile', 'coup', 'regime', 'conflict', 'offensive',
+  'gaza', 'west bank', 'beirut', 'kyiv', 'moscow', 'beijing',
   // Science / Health
   'fda', 'drug', 'vaccine', 'clinical trial', 'approval', 'treatment',
   'cancer', 'pandemic', 'virus', 'covid', 'climate', 'temperature record',
   'nasa', 'spacex', 'rocket', 'moon', 'mars', 'asteroid', 'launch',
-  'Nobel', 'breakthrough', 'discovery',
+  'Nobel', 'breakthrough', 'discovery', 'alzheimer', 'ai regulation',
+  'who ', 'cdc', 'nih', 'pharma', 'biotech', 'gmo', 'crispr',
+  // Economics & crypto (cross-category matching)
+  'bitcoin', 'btc', 'ethereum', 'eth', 'crypto', 'solana', 'sec', 'cftc',
+  'federal reserve', 'fed rate', 'inflation', 'recession', 'gdp',
+  'interest rate', 'tariff', 'trade war', 'debt ceiling', 'default',
 ];
 
 const BOOST = [
   'election', 'president', 'senate', 'congress', 'war', 'ceasefire',
   'fda', 'nasa', 'spacex', 'ukraine', 'taiwan', 'trump', 'harris',
+  'bitcoin', 'btc', 'federal reserve', 'fed rate', 'inflation',
 ];
 
 buildRunner({

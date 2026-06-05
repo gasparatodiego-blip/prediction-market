@@ -10,6 +10,8 @@ const SMARKETS_API    = 'https://api.smarkets.com/v3/markets/?state=live&limit=5
 const METACULUS_API   = 'https://www.metaculus.com/api2/questions/?limit=50&has_crowd_forecast=true';
 const AUGUR_GRAPH_API = 'https://api.thegraph.com/subgraphs/name/augurproject/augur-v2';
 
+const OPINION_MARKETS_API = 'https://opinion.markets/api/markets';
+
 const ODDS_API_KEY    = 'aff711ab10f3f1fba585e30405329c7c';
 const ODDS_SPORTS     = [
   'soccer_fifa_world_cup',
@@ -35,7 +37,7 @@ export interface ArbCandidate {
   id: string;
   question: string;
   probability: number;  // 0–100
-  platform: 'predictit' | 'manifold' | 'kalshi' | 'polymarket' | 'smarkets' | 'metaculus' | 'augur' | 'oddsapi';
+  platform: 'predictit' | 'manifold' | 'kalshi' | 'polymarket' | 'smarkets' | 'metaculus' | 'augur' | 'oddsapi' | 'opinionmarkets';
   bookmaker?: string;   // for oddsapi: specific bookmaker name (e.g., "Betfair Exchange")
   url?: string;
   volume?: number | null;
@@ -47,14 +49,15 @@ export interface ArbCandidate {
 
 export interface MarketsResponse {
   panels: {
-    predictit:  PanelMarket[];
-    manifold:   PanelMarket[];
-    kalshi:     PanelMarket[];
-    polymarket: PanelMarket[];
-    smarkets:   PanelMarket[];
-    metaculus:  PanelMarket[];
-    augur:      PanelMarket[];
-    oddsapi:    PanelMarket[];
+    predictit:      PanelMarket[];
+    manifold:       PanelMarket[];
+    kalshi:         PanelMarket[];
+    polymarket:     PanelMarket[];
+    smarkets:       PanelMarket[];
+    metaculus:      PanelMarket[];
+    augur:          PanelMarket[];
+    oddsapi:        PanelMarket[];
+    opinionmarkets: PanelMarket[];
   };
   arbCandidates: ArbCandidate[];
 }
@@ -203,6 +206,37 @@ function buildOddsApiPanel(events: any[]): PanelMarket[] {
     .slice(0, 30);
 }
 
+// ── Opinion Markets fetch ─────────────────────────
+
+async function fetchOpinionMarkets(): Promise<PanelMarket[]> {
+  try {
+    const res = await fetch(OPINION_MARKETS_API, {
+      cache: 'no-store',
+      signal: AbortSignal.timeout(8000),
+      headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' },
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    const list: any[] = Array.isArray(data) ? data : (data.markets ?? data.data ?? []);
+    return list
+      .filter((m: any) => m && (m.name || m.title || m.question))
+      .slice(0, 20)
+      .map((m: any) => {
+        const name = m.name ?? m.title ?? m.question ?? '';
+        const prob = m.probability ?? m.prob ?? m.yes_price ?? m.price ?? null;
+        const probNum = prob != null ? Math.round(parseFloat(String(prob)) * (prob > 1 ? 1 : 100)) : null;
+        return {
+          id:          String(m.id ?? m.slug ?? name.slice(0, 20)),
+          name,
+          detail:      m.category ?? m.type ?? 'Opinion Markets',
+          probability: probNum != null && probNum >= 1 && probNum <= 99 ? probNum : null,
+          volume:      m.volume != null ? parseFloat(String(m.volume)) : null,
+          expiresAt:   toMs(m.close_time ?? m.closeTime ?? m.end_date ?? m.endDate),
+        };
+      });
+  } catch { return []; }
+}
+
 // ── Load cached Odds API data (written by agent2-fetcher every 5 min) ──
 
 function loadOddsApiEvents(): any[] {
@@ -319,7 +353,7 @@ export async function GET() {
   }
 
   // ── Parallel fetches ──────────────────────────────
-  const [piRaw, mfRaw, kaRaw, pmRaw, smRaw, mcRaw, agRaw] = await Promise.all([
+  const [piRaw, mfRaw, kaRaw, pmRaw, smRaw, mcRaw, agRaw, opinionPanel] = await Promise.all([
 
     fetch(PREDICTIT_API, { cache: 'no-store' })
       .then(r => r.json()).catch(() => ({ markets: [] })),
@@ -352,6 +386,8 @@ export async function GET() {
       }),
       cache: 'no-store',
     }).then(r => r.json()).catch(() => ({ data: { markets: [] } })),
+
+    fetchOpinionMarkets(),
   ]);
 
   // ── Normalise ─────────────────────────────────────
@@ -459,6 +495,7 @@ export async function GET() {
   }));
 
   const oddsApiPanel: PanelMarket[] = buildOddsApiPanel(oddsEvents);
+  // opinionPanel is already built by fetchOpinionMarkets()
 
   // ── Arb candidates ────────────────────────────────
 
@@ -547,6 +584,19 @@ export async function GET() {
     })),
     // The Odds API: one candidate per (event × bookmaker × outcome)
     ...oddsApiEventCandidates(oddsEvents),
+    // Opinion Markets
+    ...opinionPanel
+      .filter(m => m.probability != null && m.probability > 1 && m.probability < 99)
+      .map(m => ({
+        id:          `om-${m.id}`,
+        question:    m.name,
+        probability: m.probability!,
+        platform:    'opinionmarkets' as const,
+        url:         `https://opinion.markets`,
+        volume:      m.volume ?? null,
+        liquidity:   null,
+        expiresAt:   m.expiresAt ?? null,
+      })),
   ];
 
   // ── Calibration: attach bias scores ──────────────
@@ -570,14 +620,15 @@ export async function GET() {
 
   const body: MarketsResponse = {
     panels: {
-      predictit:  predictitPanel,
-      manifold:   manifoldPanel,
-      kalshi:     kalshiPanel,
-      polymarket: polymarketPanel,
-      smarkets:   smarketsPanel,
-      metaculus:  metaculusPanel,
-      augur:      augurPanel,
-      oddsapi:    oddsApiPanel,
+      predictit:      predictitPanel,
+      manifold:       manifoldPanel,
+      kalshi:         kalshiPanel,
+      polymarket:     polymarketPanel,
+      smarkets:       smarketsPanel,
+      metaculus:      metaculusPanel,
+      augur:          augurPanel,
+      oddsapi:        oddsApiPanel,
+      opinionmarkets: opinionPanel,
     },
     arbCandidates: finalArb,
   };
