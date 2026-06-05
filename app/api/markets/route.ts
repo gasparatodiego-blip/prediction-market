@@ -84,33 +84,46 @@ function polymarketPrice(m: any): number | null {
 
 // ── Load /tmp files ────────────────────────────────
 
-const MARKETS_RAW_FILE  = '/tmp/markets-raw.json';
-const KALSHI_RAW_FILE   = '/tmp/kalshi-raw.json';
+const MARKETS_RAW_FILE    = '/tmp/markets-raw.json';
+const KALSHI_RAW_FILE     = '/tmp/kalshi-raw.json';
 const POLYMARKET_RAW_FILE = '/tmp/polymarket-raw.json';
-const ODDS_API_FILE     = '/tmp/odds-api-raw.json';
-const ARB_FILE          = '/tmp/arbitrage-opportunities.json';
-const UI_DATA_FILE      = '/tmp/ui-data.json';
-const PRICES_FILE       = '/tmp/arb-prices.json';
+const MANIFOLD_RAW_FILE   = '/tmp/manifold-raw.json';
+const PREDICTIT_RAW_FILE  = '/tmp/predictit-raw.json';
+const METACULUS_RAW_FILE  = '/tmp/metaculus-raw.json';
+const ODDS_API_FILE       = '/tmp/odds-api-raw.json';
+const ARB_FILE            = '/tmp/arbitrage-opportunities.json';
+const UI_DATA_FILE        = '/tmp/ui-data.json';
+const PRICES_FILE         = '/tmp/arb-prices.json';
 
-function loadMarketsRaw() {
-  return readJson(MARKETS_RAW_FILE);
-}
+function loadMarketsRaw() { return readJson(MARKETS_RAW_FILE); }
 
-// Returns Kalshi markets array — dedicated file takes priority over markets-raw.json
 function loadKalshiMarkets(): any[] {
-  const dedicated = readJson(KALSHI_RAW_FILE);
-  if (dedicated?.markets?.length) return dedicated.markets;
-  // fall back to embedded kalshi key in markets-raw.json
-  const raw = readJson(MARKETS_RAW_FILE);
-  return raw?.kalshi ?? [];
+  const d = readJson(KALSHI_RAW_FILE);
+  if (d?.markets?.length) return d.markets;
+  return readJson(MARKETS_RAW_FILE)?.kalshi ?? [];
 }
 
-// Returns Polymarket markets array — dedicated file takes priority over markets-raw.json
 function loadPolymarketMarkets(): any[] {
-  const dedicated = readJson(POLYMARKET_RAW_FILE);
-  if (dedicated?.markets?.length) return dedicated.markets;
-  const raw = readJson(MARKETS_RAW_FILE);
-  return raw?.polymarket ?? [];
+  const d = readJson(POLYMARKET_RAW_FILE);
+  if (d?.markets?.length) return d.markets;
+  return readJson(MARKETS_RAW_FILE)?.polymarket ?? [];
+}
+
+function loadManifoldMarkets(): any[] {
+  const d = readJson(MANIFOLD_RAW_FILE);
+  if (d?.markets?.length) return d.markets;
+  return readJson(MARKETS_RAW_FILE)?.manifold ?? [];
+}
+
+function loadPredictItMarkets(): any[] {
+  const d = readJson(PREDICTIT_RAW_FILE);
+  if (d?.markets?.length) return d.markets;
+  return readJson(MARKETS_RAW_FILE)?.predictit ?? [];
+}
+
+function loadMetaculusQuestions(): any[] {
+  const d = readJson(METACULUS_RAW_FILE);
+  return d?.questions ?? [];
 }
 
 function loadOddsApiEvents(): any[] {
@@ -306,12 +319,22 @@ export async function GET() {
 
   // ── Normalise prediction market data ─────────────
 
-  const piAllMarkets: any[] = marketsRaw?.predictit ?? [];
+  // PredictIt: dedicated file takes priority
+  const piAllMarkets: any[] = (() => {
+    const d = loadPredictItMarkets();
+    return d.length ? d : (marketsRaw?.predictit ?? []);
+  })();
   const piMarkets = piAllMarkets.slice(0, 20);
 
-  const mfMarkets: any[] = ((marketsRaw?.manifold ?? []) as any[])
-    .filter((m: any) => m.outcomeType === 'BINARY' && m.probability != null)
-    .slice(0, 20);
+  // Manifold: dedicated file takes priority
+  const mfMarkets: any[] = (() => {
+    const d = loadManifoldMarkets();
+    const src = d.length ? d : (marketsRaw?.manifold ?? []);
+    return (src as any[]).filter((m: any) => m.outcomeType === 'BINARY' && m.probability != null && !m.isResolved).slice(0, 20);
+  })();
+
+  // Metaculus
+  const mcQuestions: any[] = loadMetaculusQuestions().slice(0, 20);
 
   // Kalshi: dedicated agent file takes priority
   const kaAllMarkets: any[] = loadKalshiMarkets();
@@ -370,6 +393,17 @@ export async function GET() {
     volume:      m.volume != null ? parseFloat(m.volume) : null,
     expiresAt:   toMs(m.endDateIso ?? m.end_date_iso ?? m.endDate),
   }));
+
+  const metaculusPanel: PanelMarket[] = mcQuestions
+    .filter((q: any) => q.probability != null)
+    .map((q: any) => ({
+      id:          String(q.id),
+      name:        q.question,
+      detail:      `Metaculus · ${q.numForecasts ?? 0} forecasters`,
+      probability: Math.round((q.probability > 1 ? q.probability : q.probability * 100)),
+      volume:      q.numForecasts ?? null,
+      expiresAt:   toMs(q.closeTime),
+    }));
 
   const oddsApiPanel = buildOddsApiPanel(oddsEvents);
   const betfairPanel = buildBetfairPanel(oddsEvents);
@@ -432,6 +466,19 @@ export async function GET() {
       expiresAt:   m.expiresAt ?? null,
     })),
     ...oddsApiEventCandidates(oddsEvents),
+    // Metaculus candidates
+    ...mcQuestions
+      .filter((q: any) => q.probability != null)
+      .map((q: any) => ({
+        id:          `mc-${q.id}`,
+        question:    String(q.question),
+        probability: Math.round(q.probability > 1 ? q.probability : q.probability * 100),
+        platform:    'metaculus' as const,
+        url:         q.url ?? null,
+        volume:      q.numForecasts ?? null,
+        liquidity:   null,
+        expiresAt:   toMs(q.closeTime),
+      })),
   ];
 
   // ── Calibration ───────────────────────────────────
@@ -445,19 +492,26 @@ export async function GET() {
   const stamped  = stampCandidates(base);
   const finalArb = scored(stamped);
 
-  const body: MarketsResponse = {
+  // ── Master opportunities (rich format for Phase 3 dashboard) ──────────────
+  const masterData = (() => {
+    try { return JSON.parse(fs.readFileSync(ARB_FILE, 'utf8')); } catch { return null; }
+  })();
+  const masterOpps = (masterData?.opportunities ?? []).filter((o: any) => o.source === 'AI Master');
+
+  const body: MarketsResponse & { masterOpportunities: any[] } = {
     panels: {
       predictit:      predictitPanel,
       manifold:       manifoldPanel,
       kalshi:         kalshiPanel,
       polymarket:     polymarketPanel,
       betfair:        betfairPanel,
-      metaculus:      [],
+      metaculus:      metaculusPanel,
       augur:          [],
       oddsapi:        oddsApiPanel,
       opinionmarkets: [],
     },
-    arbCandidates: finalArb,
+    arbCandidates:      finalArb,
+    masterOpportunities: masterOpps,
   };
 
   return NextResponse.json(body);
