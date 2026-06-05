@@ -124,5 +124,14 @@ module.exports = {
       watch:         false,
       env:           { NODE_ENV: 'production', HOME: '/root' },
     },
+    {
+      name:          'agent-master',
+      script:        './agents/agent-master.js',
+      cwd:           '/root/prediction-market',
+      restart_delay: 30000,
+      max_restarts:  10,
+      watch:         false,
+      env:           { NODE_ENV: 'production', HOME: '/root' },
+    },
   ],
 };
