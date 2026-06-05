@@ -37,9 +37,68 @@ const PLATFORMS = {
     bgClass:     'bg-purple-950/20',
     badgeClass:  'bg-purple-900/60 border-purple-700 text-purple-300',
   },
+  smarkets: {
+    label:       'Smarkets',
+    dotClass:    'bg-orange-400',
+    headerClass: 'text-orange-400',
+    borderClass: 'border-orange-900/40',
+    bgClass:     'bg-orange-950/20',
+    badgeClass:  'bg-orange-900/60 border-orange-700 text-orange-300',
+  },
+  metaculus: {
+    label:       'Metaculus',
+    dotClass:    'bg-teal-400',
+    headerClass: 'text-teal-400',
+    borderClass: 'border-teal-900/40',
+    bgClass:     'bg-teal-950/20',
+    badgeClass:  'bg-teal-900/60 border-teal-700 text-teal-300',
+  },
+  augur: {
+    label:       'Augur',
+    dotClass:    'bg-rose-400',
+    headerClass: 'text-rose-400',
+    borderClass: 'border-rose-900/40',
+    bgClass:     'bg-rose-950/20',
+    badgeClass:  'bg-rose-900/60 border-rose-700 text-rose-300',
+  },
+  betfair: {
+    label:       'Betfair',
+    dotClass:    'bg-sky-400',
+    headerClass: 'text-sky-400',
+    borderClass: 'border-sky-900/40',
+    bgClass:     'bg-sky-950/20',
+    badgeClass:  'bg-sky-900/60 border-sky-700 text-sky-300',
+  },
 } as const;
 
 type PlatformKey = keyof typeof PLATFORMS;
+
+// ── History record type ───────────────────────────
+
+interface HistoryRecord {
+  id: number;
+  timestamp: string;
+  event_name: string;
+  platform_low: string;
+  platform_high: string;
+  prob_low: number;
+  prob_high: number;
+  roi: number;
+  spread: number;
+}
+
+// ── Sentiment types ───────────────────────────────
+
+interface SentimentEntry {
+  keyword: string;
+  score: number;   // positive = bullish, negative = bearish
+  mentions: number;
+}
+
+interface SentimentData {
+  updatedAt: number;
+  entries: SentimentEntry[];
+}
 
 // ── Arbitrage types ───────────────────────────────
 
@@ -94,9 +153,7 @@ function detectArbitrage(candidates: ArbCandidate[]): ArbitrageOpp[] {
       const low  = a.probability <= b.probability ? a : b;
       const high = a.probability >  b.probability ? a : b;
       const roi  = low.probability > 0 ? (spread / low.probability) * 100 : 0;
-      // Cap ROI at 200% — higher values indicate keyword coincidence, not real arb
       if (roi > 200) continue;
-      // Deduplicate by platform-pair + question fingerprint
       const key = `${low.platform}:${high.platform}:${low.probability}:${high.probability}:${high.question.slice(0, 30)}`;
       if (seen.has(key)) continue;
       seen.add(key);
@@ -113,8 +170,18 @@ function detectArbitrage(candidates: ArbCandidate[]): ArbitrageOpp[] {
   return results.sort((a, b) => b.roi - a.roi).slice(0, 8);
 }
 
-// ── Demo opportunities (real market names, synthetic prices) ──────────────
-// Used as a fallback when the live matcher finds fewer than 3 opportunities.
+// ── Kelly criterion ───────────────────────────────
+
+function kellyFraction(probLow: number, probHigh: number): number {
+  // Edge = (probHigh - probLow) / 100, Odds = (100 / probLow) - 1
+  const edge = (probHigh - probLow) / 100;
+  const odds = (100 / probLow) - 1;
+  if (odds <= 0) return 0;
+  const kelly = edge / odds;
+  return Math.max(0, Math.min(kelly, 0.25)); // cap at 25% of bankroll
+}
+
+// ── Demo opportunities ────────────────────────────
 function getDemoOpps(panels: MarketsResponse['panels']): ArbitrageOpp[] {
   const makeOpp = (
     aName: string, aPlatform: ArbCandidate['platform'], aProb: number,
@@ -160,6 +227,7 @@ function timeAgo(date: Date): string {
 const REFRESH_INTERVAL = 30;
 const EMPTY_PANELS: MarketsResponse['panels'] = {
   predictit: [], manifold: [], kalshi: [], polymarket: [],
+  smarkets: [], metaculus: [], augur: [], betfair: [],
 };
 
 export default function Home() {
@@ -168,6 +236,11 @@ export default function Home() {
   const [loading,       setLoading]       = useState(true);
   const [lastUpdate,    setLastUpdate]    = useState<Date | null>(null);
   const [countdown,     setCountdown]     = useState(REFRESH_INTERVAL);
+  const [bankroll,      setBankroll]      = useState(1000);
+  const [activeTab,     setActiveTab]     = useState<'opportunities' | 'history'>('opportunities');
+  const [history,       setHistory]       = useState<HistoryRecord[]>([]);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
+  const [sentiment,     setSentiment]     = useState<SentimentData | null>(null);
 
   const fetchAll = useCallback(async () => {
     try {
@@ -181,17 +254,37 @@ export default function Home() {
     }
   }, []);
 
+  const fetchHistory = useCallback(async () => {
+    if (historyLoaded) return;
+    try {
+      const data = await fetch('/api/history', { cache: 'no-store' }).then(r => r.json());
+      setHistory(data.records ?? []);
+      setHistoryLoaded(true);
+    } catch {}
+  }, [historyLoaded]);
+
+  const fetchSentiment = useCallback(async () => {
+    try {
+      const resp = await fetch('/api/sentiment', { cache: 'no-store' });
+      if (resp.ok) setSentiment(await resp.json());
+    } catch {}
+  }, []);
+
   useEffect(() => {
     fetchAll();
-    const interval = setInterval(fetchAll, REFRESH_INTERVAL * 1_000);
+    fetchSentiment();
+    const interval = setInterval(() => { fetchAll(); fetchSentiment(); }, REFRESH_INTERVAL * 1_000);
     return () => clearInterval(interval);
-  }, [fetchAll]);
+  }, [fetchAll, fetchSentiment]);
 
-  // Countdown timer — ticks every second, resets on each fetch
   useEffect(() => {
     const t = setInterval(() => setCountdown(c => Math.max(0, c - 1)), 1_000);
     return () => clearInterval(t);
   }, []);
+
+  useEffect(() => {
+    if (activeTab === 'history') fetchHistory();
+  }, [activeTab, fetchHistory]);
 
   const realArb  = detectArbitrage(arbCandidates);
   const demoOpps = realArb.length < 3 ? getDemoOpps(panels) : [];
@@ -200,10 +293,12 @@ export default function Home() {
 
   const totalMarkets =
     panels.predictit.length + panels.manifold.length +
-    panels.kalshi.length    + panels.polymarket.length;
+    panels.kalshi.length    + panels.polymarket.length +
+    panels.smarkets.length  + panels.metaculus.length  +
+    panels.augur.length     + panels.betfair.length;
 
-  const bestRoi      = arb[0]?.roi ?? 0;
-  const totalSpread  = arb.reduce((s, o) => s + o.spread, 0);
+  const bestRoi     = arb[0]?.roi ?? 0;
+  const totalSpread = arb.reduce((s, o) => s + o.spread, 0);
 
   if (loading) {
     return (
@@ -217,7 +312,7 @@ export default function Home() {
             />
           ))}
         </div>
-        <p className="text-gray-400 text-sm tracking-wide">Scanning 4 prediction markets…</p>
+        <p className="text-gray-400 text-sm tracking-wide">Scanning 8 prediction markets…</p>
       </div>
     );
   }
@@ -237,7 +332,7 @@ export default function Home() {
               </span>
             </div>
             <p className="text-gray-400 text-sm max-w-xl">
-              We scan 4 prediction markets every 30 seconds looking for price differences you can profit from · AI-powered matching
+              We scan 8 prediction markets every 30 seconds looking for price differences you can profit from · AI-powered matching
             </p>
           </div>
           <div className="text-right flex-shrink-0 pt-0.5 space-y-1">
@@ -259,6 +354,24 @@ export default function Home() {
 
       <div className="max-w-7xl mx-auto px-6 py-8 space-y-10">
 
+        {/* ── BANKROLL INPUT ───────────────────────── */}
+        <section>
+          <div className="flex items-center gap-4 p-4 rounded-xl border border-gray-800 bg-gray-900/40">
+            <span className="text-gray-400 text-sm font-medium whitespace-nowrap">Your bankroll:</span>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">$</span>
+              <input
+                type="number"
+                min={1}
+                value={bankroll}
+                onChange={e => setBankroll(Math.max(1, parseInt(e.target.value) || 1))}
+                className="pl-7 pr-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm w-32 focus:outline-none focus:border-blue-600"
+              />
+            </div>
+            <span className="text-gray-600 text-xs">Used to calculate Kelly optimal bet sizes on each opportunity</span>
+          </div>
+        </section>
+
         {/* ── SUMMARY CARDS ───────────────────────── */}
         <section>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -266,7 +379,7 @@ export default function Home() {
               icon="📡"
               value={String(totalMarkets)}
               label="Markets Monitored"
-              sub="across 4 platforms"
+              sub="across 8 platforms"
               accent="border-blue-800/50 bg-blue-950/20"
             />
             <SummaryCard
@@ -293,67 +406,103 @@ export default function Home() {
           </div>
         </section>
 
-        {/* ── ARBITRAGE OPPORTUNITIES ─────────────── */}
+        {/* ── TABS ────────────────────────────────── */}
         <section>
-          <div className="mb-5">
-            <div className="flex items-center gap-3">
-              <h2 className="text-xl font-bold">Arbitrage Opportunities</h2>
-              {arb.length > 0 && (
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold border border-green-700 bg-green-900/50 text-green-300">
-                  {arb.length} found
-                </span>
-              )}
-            </div>
-            <p className="text-gray-500 text-sm mt-1">
-              Same event, different prices across platforms — buy cheap, profit from the gap.
-            </p>
-          </div>
-
-          {arb.length === 0 ? (
-            <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-12 text-center">
-              <div className="text-5xl mb-4">🔎</div>
-              <p className="text-gray-300 font-semibold text-lg">No opportunities right now</p>
-              <p className="text-gray-600 text-sm mt-2 max-w-sm mx-auto">
-                Markets are pricing similar events consistently. Gaps open frequently — check back in 30 seconds.
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {arb.map((opp, i) => <ArbCard key={i} opp={opp} rank={i + 1} isDemo={demoIds.has(opp.highMarket.id)} />)}
-            </div>
-          )}
-        </section>
-
-        {/* ── BEGINNER EXPLAINER ──────────────────── */}
-        <section className="rounded-xl border border-gray-800 bg-gray-900/40 p-6">
-          <div className="flex gap-4">
-            <span className="text-3xl flex-shrink-0">💡</span>
-            <div>
-              <h3 className="font-semibold text-gray-200 mb-2">How does this work?</h3>
-              <p className="text-gray-400 text-sm leading-relaxed">
-                Prediction markets let people bet on future events — a <span className="text-white font-medium">65% price</span> means
-                the crowd thinks there's a 65% chance of YES.{' '}
-                <span className="text-white font-medium">Arbitrage</span> happens when Platform A prices the same event at 40%
-                while Platform B prices it at 65%. Buying on A and waiting for prices to converge locks in a{' '}
-                <span className="text-green-400 font-medium">risk-adjusted profit</span> — because one platform must be mispriced.
-              </p>
-            </div>
-          </div>
-        </section>
-
-        {/* ── LIVE MARKETS BY PLATFORM ────────────── */}
-        <section>
-          <h2 className="text-xl font-bold mb-5">Live Markets by Platform</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {(Object.keys(PLATFORMS) as PlatformKey[]).map(key => (
-              <PlatformPanel
-                key={key}
-                platformKey={key}
-                markets={panels[key]}
-              />
+          <div className="flex gap-1 p-1 rounded-xl bg-gray-900 border border-gray-800 w-fit">
+            {(['opportunities', 'history'] as const).map(tab => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`px-5 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                  activeTab === tab
+                    ? 'bg-gray-700 text-white'
+                    : 'text-gray-500 hover:text-gray-300'
+                }`}
+              >
+                {tab === 'opportunities' ? 'Arbitrage Opportunities' : 'History'}
+              </button>
             ))}
           </div>
         </section>
+
+        {activeTab === 'opportunities' && (
+          <>
+            {/* ── ARBITRAGE OPPORTUNITIES ─────────────── */}
+            <section>
+              <div className="mb-5">
+                <div className="flex items-center gap-3">
+                  <h2 className="text-xl font-bold">Arbitrage Opportunities</h2>
+                  {arb.length > 0 && (
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold border border-green-700 bg-green-900/50 text-green-300">
+                      {arb.length} found
+                    </span>
+                  )}
+                </div>
+                <p className="text-gray-500 text-sm mt-1">
+                  Same event, different prices across platforms — buy cheap, profit from the gap.
+                </p>
+              </div>
+
+              {arb.length === 0 ? (
+                <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-12 text-center">
+                  <div className="text-5xl mb-4">🔎</div>
+                  <p className="text-gray-300 font-semibold text-lg">No opportunities right now</p>
+                  <p className="text-gray-600 text-sm mt-2 max-w-sm mx-auto">
+                    Markets are pricing similar events consistently. Gaps open frequently — check back in 30 seconds.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {arb.map((opp, i) => (
+                    <ArbCard
+                      key={i}
+                      opp={opp}
+                      rank={i + 1}
+                      isDemo={demoIds.has(opp.highMarket.id)}
+                      bankroll={bankroll}
+                      sentiment={sentiment}
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
+
+            {/* ── BEGINNER EXPLAINER ──────────────────── */}
+            <section className="rounded-xl border border-gray-800 bg-gray-900/40 p-6">
+              <div className="flex gap-4">
+                <span className="text-3xl flex-shrink-0">💡</span>
+                <div>
+                  <h3 className="font-semibold text-gray-200 mb-2">How does this work?</h3>
+                  <p className="text-gray-400 text-sm leading-relaxed">
+                    Prediction markets let people bet on future events — a <span className="text-white font-medium">65% price</span> means
+                    the crowd thinks there's a 65% chance of YES.{' '}
+                    <span className="text-white font-medium">Arbitrage</span> happens when Platform A prices the same event at 40%
+                    while Platform B prices it at 65%. Buying on A and waiting for prices to converge locks in a{' '}
+                    <span className="text-green-400 font-medium">risk-adjusted profit</span> — because one platform must be mispriced.
+                  </p>
+                </div>
+              </div>
+            </section>
+
+            {/* ── LIVE MARKETS BY PLATFORM ────────────── */}
+            <section>
+              <h2 className="text-xl font-bold mb-5">Live Markets by Platform</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+                {(Object.keys(PLATFORMS) as PlatformKey[]).map(key => (
+                  <PlatformPanel
+                    key={key}
+                    platformKey={key}
+                    markets={panels[key]}
+                  />
+                ))}
+              </div>
+            </section>
+          </>
+        )}
+
+        {activeTab === 'history' && (
+          <HistoryTab records={history} />
+        )}
 
       </div>
     </main>
@@ -375,13 +524,36 @@ function SummaryCard({ icon, value, label, sub, accent }: {
   );
 }
 
-function ArbCard({ opp, rank, isDemo }: { opp: ArbitrageOpp; rank: number; isDemo?: boolean }) {
-  // All displayed opps have spread > 3% — always show green badge per spec
+function ArbCard({ opp, rank, isDemo, bankroll, sentiment }: {
+  opp: ArbitrageOpp;
+  rank: number;
+  isDemo?: boolean;
+  bankroll: number;
+  sentiment: SentimentData | null;
+}) {
   const roiText   = 'text-green-400';
   const roiBorder = 'border-green-700 bg-green-900/50';
 
-  const low  = PLATFORMS[opp.lowMarket.platform];
-  const high = PLATFORMS[opp.highMarket.platform];
+  const low  = PLATFORMS[opp.lowMarket.platform as PlatformKey];
+  const high = PLATFORMS[opp.highMarket.platform as PlatformKey];
+
+  // Kelly criterion
+  const kelly    = kellyFraction(opp.lowMarket.probability, opp.highMarket.probability);
+  const betSize  = Math.round(bankroll * kelly);
+
+  // Liquidity check
+  const lowVol  = opp.lowMarket.volume  ?? null;
+  const highVol = opp.highMarket.volume ?? null;
+  const lowLiquidity = (lowVol !== null && lowVol < 1000) || (highVol !== null && highVol < 1000);
+
+  // Longshot bias flag
+  const longshotBias = opp.lowMarket.probability < 8;
+
+  // Sentiment match — find any keyword in the question
+  const qWords = opp.question.toLowerCase().split(/\s+/);
+  const sentimentMatch = sentiment?.entries.find(e =>
+    qWords.some(w => w.includes(e.keyword.toLowerCase()))
+  ) ?? null;
 
   return (
     <div className={`rounded-xl border bg-gray-900/60 hover:border-gray-700 transition-colors p-5 ${isDemo ? 'border-gray-700/50 opacity-80' : 'border-gray-800'}`}>
@@ -394,50 +566,85 @@ function ArbCard({ opp, rank, isDemo }: { opp: ArbitrageOpp; rank: number; isDem
         </div>
 
         <div className="flex-1 min-w-0">
-          {/* Question */}
-          <div className="flex items-start gap-2 mb-3">
+          {/* Question + badges */}
+          <div className="flex items-start gap-2 mb-2">
             <span className="text-xs font-mono text-gray-600 mt-0.5">#{rank}</span>
             <p className="text-sm font-semibold text-gray-100 line-clamp-2 leading-snug">{opp.question}</p>
-            {isDemo && (
-              <span className="flex-shrink-0 text-xs font-bold px-1.5 py-0.5 rounded border border-gray-600 text-gray-500 mt-0.5">
-                DEMO
-              </span>
-            )}
+            <div className="flex flex-shrink-0 flex-wrap gap-1 mt-0.5">
+              {isDemo && (
+                <span className="text-xs font-bold px-1.5 py-0.5 rounded border border-gray-600 text-gray-500">
+                  DEMO
+                </span>
+              )}
+              {longshotBias && (
+                <span className="text-xs font-bold px-1.5 py-0.5 rounded border border-amber-700 bg-amber-900/40 text-amber-400">
+                  BIAS ALERT
+                </span>
+              )}
+              {lowLiquidity && (
+                <span className="text-xs font-bold px-1.5 py-0.5 rounded border border-red-800 bg-red-950/40 text-red-400">
+                  ⚠ LOW LIQ
+                </span>
+              )}
+              {sentimentMatch && (
+                <span className={`text-xs font-bold px-1.5 py-0.5 rounded border ${
+                  sentimentMatch.score > 0
+                    ? 'border-emerald-700 bg-emerald-900/40 text-emerald-400'
+                    : 'border-red-800 bg-red-950/40 text-red-400'
+                }`}>
+                  {sentimentMatch.score > 0 ? '↑' : '↓'} REDDIT
+                </span>
+              )}
+            </div>
           </div>
 
           {/* Price comparison */}
           <div className="flex flex-wrap items-center gap-2 mb-2.5">
-            {/* Buy side (cheap) */}
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-800 border border-gray-700">
               <span className={`w-2 h-2 rounded-full flex-shrink-0 ${low.dotClass}`} />
               <span className="text-xs text-gray-400">{low.label}</span>
               <span className="text-sm font-bold tabular-nums text-red-400">{opp.lowMarket.probability}% YES</span>
+              {lowVol !== null && (
+                <span className={`text-xs ${lowVol < 1000 ? 'text-red-500' : 'text-gray-600'}`}>
+                  ${lowVol >= 1000 ? `${(lowVol / 1000).toFixed(0)}k` : lowVol.toFixed(0)}
+                </span>
+              )}
             </div>
 
             <span className="text-gray-600 text-sm font-medium">vs</span>
 
-            {/* Sell side (expensive) */}
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-800 border border-gray-700">
               <span className={`w-2 h-2 rounded-full flex-shrink-0 ${high.dotClass}`} />
               <span className="text-xs text-gray-400">{high.label}</span>
               <span className="text-sm font-bold tabular-nums text-green-400">{opp.highMarket.probability}% YES</span>
+              {highVol !== null && (
+                <span className={`text-xs ${highVol < 1000 ? 'text-red-500' : 'text-gray-600'}`}>
+                  ${highVol >= 1000 ? `${(highVol / 1000).toFixed(0)}k` : highVol.toFixed(0)}
+                </span>
+              )}
             </div>
 
-            {/* Spread badge */}
             <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${roiBorder} ${roiText}`}>
               +{opp.spread.toFixed(1)}¢ spread
             </span>
           </div>
 
-          {/* Action line */}
+          {/* Action line + Kelly */}
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <p className="text-xs text-gray-600">
               Buy on <span className="text-gray-400">{low.label}</span> at {opp.lowMarket.probability}¢ —{' '}
               {opp.spread.toFixed(0)}¢ cheaper than <span className="text-gray-400">{high.label}</span>
             </p>
-            <span className={`text-xs font-semibold px-2.5 py-1 rounded-lg border ${roiBorder} ${roiText} whitespace-nowrap`}>
-              Invest $100 → earn ${opp.earnPer100}
-            </span>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className={`text-xs font-semibold px-2.5 py-1 rounded-lg border ${roiBorder} ${roiText} whitespace-nowrap`}>
+                Invest $100 → earn ${opp.earnPer100}
+              </span>
+              {kelly > 0 && (
+                <span className="text-xs font-semibold px-2.5 py-1 rounded-lg border border-blue-800 bg-blue-950/40 text-blue-300 whitespace-nowrap">
+                  Kelly: {(kelly * 100).toFixed(1)}% = ${betSize}
+                </span>
+              )}
+            </div>
           </div>
 
           {/* Platform links */}
@@ -500,9 +707,26 @@ function PlatformPanel({
             key={m.id}
             className="px-5 py-3 flex items-start justify-between gap-3 hover:bg-white/[0.03] transition-colors"
           >
-            <div className="min-w-0">
-              <p className="text-sm text-gray-200 font-medium line-clamp-1">{m.name}</p>
-              <p className="text-xs text-gray-600 mt-0.5">{m.detail}</p>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <p className="text-sm text-gray-200 font-medium line-clamp-1">{m.name}</p>
+                {/* Longshot bias flag */}
+                {m.probability !== null && m.probability < 8 && (
+                  <span className="text-xs font-bold px-1 py-0.5 rounded border border-amber-800 bg-amber-950/40 text-amber-500 whitespace-nowrap">
+                    BIAS
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2 mt-0.5">
+                <p className="text-xs text-gray-600">{m.detail}</p>
+                {/* Liquidity warning */}
+                {m.volume !== null && m.volume !== undefined && m.volume < 1000 && (
+                  <span className="text-xs text-red-500">⚠ low vol</span>
+                )}
+                {m.volume !== null && m.volume !== undefined && m.volume >= 1000 && (
+                  <span className="text-xs text-gray-700">${(m.volume / 1000).toFixed(0)}k vol</span>
+                )}
+              </div>
             </div>
             {m.probability != null && (
               <span className={`flex-shrink-0 text-sm font-bold tabular-nums ${
@@ -516,5 +740,75 @@ function PlatformPanel({
         ))}
       </div>
     </div>
+  );
+}
+
+function HistoryTab({ records }: { records: HistoryRecord[] }) {
+  if (records.length === 0) {
+    return (
+      <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-12 text-center">
+        <div className="text-5xl mb-4">📋</div>
+        <p className="text-gray-300 font-semibold text-lg">No history yet</p>
+        <p className="text-gray-600 text-sm mt-2">
+          Opportunities will appear here once the arbitrage calculator finds and saves them to the database.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <section>
+      <div className="mb-5">
+        <h2 className="text-xl font-bold">Opportunity History</h2>
+        <p className="text-gray-500 text-sm mt-1">Last 100 arbitrage opportunities detected by the pipeline.</p>
+      </div>
+      <div className="rounded-xl border border-gray-800 overflow-hidden">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-gray-800 bg-gray-900/60">
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Date</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Event</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Platforms</th>
+              <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Spread</th>
+              <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">ROI</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-800/50">
+            {records.map(r => (
+              <tr key={r.id} className="hover:bg-white/[0.02] transition-colors">
+                <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">
+                  {new Date(r.timestamp).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                </td>
+                <td className="px-4 py-3 text-gray-200 max-w-xs">
+                  <p className="line-clamp-1">{r.event_name}</p>
+                </td>
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <PlatformBadge platform={r.platform_low} prob={r.prob_low} />
+                    <span className="text-gray-600">vs</span>
+                    <PlatformBadge platform={r.platform_high} prob={r.prob_high} />
+                  </div>
+                </td>
+                <td className="px-4 py-3 text-right text-gray-400 tabular-nums">{r.spread.toFixed(1)}¢</td>
+                <td className="px-4 py-3 text-right">
+                  <span className="font-bold tabular-nums text-green-400">{r.roi.toFixed(1)}%</span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function PlatformBadge({ platform, prob }: { platform: string; prob: number }) {
+  const cfg = PLATFORMS[platform as PlatformKey];
+  if (!cfg) return <span className="text-gray-500 text-xs">{platform} {prob}%</span>;
+  return (
+    <span className={`inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded border ${cfg.badgeClass}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${cfg.dotClass}`} />
+      {cfg.label} {prob}%
+    </span>
   );
 }

@@ -63,5 +63,23 @@ module.exports = {
       watch:         false,
       env:           { NODE_ENV: 'production', HOME: '/root' },
     },
+    {
+      name:          'agent-sentiment',
+      script:        './agents/agent8-sentiment.js',
+      cwd:           '/root/prediction-market',
+      restart_delay: 30000,
+      max_restarts:  10,
+      watch:         false,
+      env:           { NODE_ENV: 'production', HOME: '/root' },
+    },
+    {
+      name:          'agent-telegram',
+      script:        './agents/agent9-telegram.js',
+      cwd:           '/root/prediction-market',
+      restart_delay: 15000,
+      max_restarts:  10,
+      watch:         false,
+      env:           { NODE_ENV: 'production', HOME: '/root' },
+    },
   ],
 };
