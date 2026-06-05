@@ -2,7 +2,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import type { MarketsResponse, PanelMarket, ArbCandidate } from './api/markets/route';
-import type { CryptoResponse, ExchangePrice, CryptoMarket, CexArbOpp } from './api/crypto/route';
+import type { CryptoResponse, ExchangePrice, CryptoMarket, CexArbOpp, FuturesInfo, BasisTrade, HighFunding, DexPrice } from './api/crypto/route';
 
 interface AuthUser { id: number; email: string; role: 'free' | 'pro' | 'admin'; }
 
@@ -1086,10 +1086,21 @@ const EXCHANGE_LABEL: Record<string, string> = {
   bybit: 'Bybit', kraken: 'Kraken', gateio: 'Gate.io',
 };
 
+const DEX_LABEL: Record<string, string> = {
+  jupiter: 'Jupiter (SOL)', dydx: 'dYdX', uniswap: 'Uniswap V3', '1inch': '1inch',
+};
+
 function fmtPrice(p: number): string {
   if (p >= 1000) return `$${p.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
   if (p >= 1)    return `$${p.toFixed(2)}`;
   return `$${p.toFixed(4)}`;
+}
+
+function fundingClass(fr: number): string {
+  if (fr > 0.1)  return 'text-red-400 font-bold';
+  if (fr > 0)    return 'text-red-400';
+  if (fr < -0.1) return 'text-green-400 font-bold';
+  return 'text-green-400';
 }
 
 function CryptoTab({ data }: { data: CryptoResponse | null }) {
@@ -1098,18 +1109,19 @@ function CryptoTab({ data }: { data: CryptoResponse | null }) {
       <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-12 text-center">
         <div className="text-5xl mb-4">⚡</div>
         <p className="text-gray-300 font-semibold text-lg">Loading exchange prices…</p>
-        <p className="text-gray-600 text-sm mt-2">agent10-binance fetches 6 exchanges every 60 seconds.</p>
+        <p className="text-gray-600 text-sm mt-2">agent10-binance (WebSocket + REST) + agent11-dex fetch every 60s / 5min.</p>
       </div>
     );
   }
 
-  const { exchanges, cexArb, infoLag, cryptoMarkets, dataAge } = data;
+  const { exchanges, cexArb, infoLag, futures, basisTrades, highFunding, dex, dexCexSpread, cryptoMarkets, dataAge } = data;
   const dataStale      = dataAge > 180_000;
   const infoLagMarkets = cryptoMarkets.filter(m => m.infoLag);
   const coins          = Object.keys(COIN_META);
   const exchangeNames  = Object.keys(exchanges);
+  const perpCoins      = ['BTC','ETH','SOL'];
+  const dexSources     = Object.keys(dex).filter(s => Object.keys(dex[s]).length > 0);
 
-  // Best (consensus) price per coin: median of available exchange prices
   function bestPrice(coin: string): number | null {
     const prices = exchangeNames.map(ex => exchanges[ex]?.[coin]?.price).filter((p): p is number => p > 0);
     if (!prices.length) return null;
@@ -1117,25 +1129,52 @@ function CryptoTab({ data }: { data: CryptoResponse | null }) {
     return prices[Math.floor(prices.length / 2)];
   }
 
-  function change24h(coin: string): number | null {
-    const b = exchanges.binance?.[coin];
-    return b?.change24hPct ?? null;
-  }
+  function change24h(coin: string) { return exchanges.binance?.[coin]?.change24hPct ?? null; }
 
   return (
     <div className="space-y-8">
 
-      {/* Alerts row */}
+      {/* ── Alert banners ──────────────────────────── */}
       <div className="space-y-3">
+        {highFunding.length > 0 && (
+          <div className="rounded-xl border border-red-700 bg-red-950/30 p-4 flex gap-3 items-start">
+            <span className="text-2xl flex-shrink-0">🔥</span>
+            <div className="flex-1">
+              <p className="font-semibold text-red-300 mb-2">High Funding Rate — {highFunding.length} contract{highFunding.length > 1 ? 's' : ''}</p>
+              <div className="flex flex-wrap gap-2">
+                {highFunding.map((h, i) => (
+                  <span key={i} className="text-xs font-mono px-2 py-1 rounded border border-red-700 bg-red-900/40 text-red-200">
+                    {h.coin} · {EXCHANGE_LABEL[h.exchange] ?? h.exchange} · <span className="font-bold">{h.fundingRate > 0 ? '+' : ''}{h.fundingRate.toFixed(4)}%/8h</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+        {basisTrades.length > 0 && (
+          <div className="rounded-xl border border-violet-700 bg-violet-950/30 p-4 flex gap-3 items-start">
+            <span className="text-2xl flex-shrink-0">⚖️</span>
+            <div className="flex-1">
+              <p className="font-semibold text-violet-300 mb-2">Basis Trade — {basisTrades.length} opportunity{basisTrades.length > 1 ? 'ies' : ''}</p>
+              <div className="flex flex-wrap gap-2">
+                {basisTrades.map(b => (
+                  <span key={b.coin} className="text-xs font-mono px-2 py-1 rounded border border-violet-700 bg-violet-900/40 text-violet-200">
+                    {b.coin}: spot {fmtPrice(b.spot)} vs futures {fmtPrice(b.futures)} — <span className="font-bold">{b.basisPct > 0 ? '+' : ''}{b.basisPct.toFixed(3)}% ({b.direction})</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
         {cexArb.length > 0 && (
           <div className="rounded-xl border border-blue-700 bg-blue-950/30 p-4 flex gap-3 items-start">
             <span className="text-2xl flex-shrink-0">💱</span>
             <div className="flex-1">
-              <p className="font-semibold text-blue-300 mb-2">CEX Arbitrage Detected — {cexArb.length} pair{cexArb.length > 1 ? 's' : ''}</p>
+              <p className="font-semibold text-blue-300 mb-2">CEX Arbitrage — {cexArb.length} pair{cexArb.length > 1 ? 's' : ''}</p>
               <div className="flex flex-wrap gap-2">
                 {cexArb.map(a => (
                   <span key={a.coin} className="text-xs font-mono px-2 py-1 rounded border border-blue-700 bg-blue-900/40 text-blue-200">
-                    {a.coin}: {EXCHANGE_LABEL[a.low] ?? a.low} {fmtPrice(a.lowPrice)} vs {EXCHANGE_LABEL[a.high] ?? a.high} {fmtPrice(a.highPrice)} — <span className="text-blue-300 font-bold">{a.spreadPct.toFixed(3)}%</span>
+                    {a.coin}: {EXCHANGE_LABEL[a.low]??a.low} {fmtPrice(a.lowPrice)} vs {EXCHANGE_LABEL[a.high]??a.high} {fmtPrice(a.highPrice)} — <span className="font-bold">{a.spreadPct.toFixed(3)}%</span>
                   </span>
                 ))}
               </div>
@@ -1146,104 +1185,81 @@ function CryptoTab({ data }: { data: CryptoResponse | null }) {
           <div className="rounded-xl border border-orange-700 bg-orange-950/30 p-4 flex gap-3 items-start">
             <span className="text-2xl flex-shrink-0">⚠️</span>
             <div>
-              <p className="font-semibold text-orange-300">Information Lag — {infoLagMarkets.length} prediction market{infoLagMarkets.length > 1 ? 's' : ''} may not have updated</p>
-              <p className="text-orange-400/70 text-sm mt-0.5">Binance price moved ≥3% in 1h. Prediction markets below highlighted in orange.</p>
+              <p className="font-semibold text-orange-300">Information Lag — {infoLagMarkets.length} prediction market{infoLagMarkets.length > 1 ? 's' : ''} may not have priced in Binance move</p>
+              <p className="text-orange-400/70 text-sm mt-0.5">Binance price moved ≥3% in the last hour.</p>
             </div>
           </div>
         )}
       </div>
 
-      {/* Live prices: coins × exchanges table */}
+      {/* ── Live CEX prices ─────────────────────────── */}
       <section>
         <div className="flex items-center gap-3 mb-4">
-          <h2 className="text-xl font-bold">Live Prices — 6 Exchanges</h2>
-          <span className={`text-xs px-2 py-0.5 rounded-full border ${
-            dataStale
-              ? 'border-red-700 bg-red-950/40 text-red-400'
-              : 'border-green-700 bg-green-900/40 text-green-400'
-          }`}>
-            {dataStale ? 'stale — agent10 offline?' : `live · ${Math.round(dataAge / 1000)}s ago`}
+          <h2 className="text-xl font-bold">Live Prices — 6 CEX · WebSocket + REST</h2>
+          <span className={`text-xs px-2 py-0.5 rounded-full border ${dataStale ? 'border-red-700 bg-red-950/40 text-red-400' : 'border-green-700 bg-green-900/40 text-green-400'}`}>
+            {dataStale ? 'stale — agent10 offline?' : `ws live · REST ${Math.round(dataAge / 1000)}s ago`}
           </span>
         </div>
 
         {/* Coin summary cards */}
-        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 mb-5">
           {coins.map(coin => {
-            const bp  = bestPrice(coin);
-            const chg = change24h(coin);
-            const lag = infoLag[coin];
-            const up  = (chg ?? 0) >= 0;
+            const bp = bestPrice(coin), chg = change24h(coin), lag = infoLag[coin], up = (chg ?? 0) >= 0;
+            const hasFutures = futures.binance?.[coin];
+            const fr = hasFutures?.fundingRate ?? null;
             return (
-              <div key={coin} className={`rounded-xl border p-4 ${
-                lag ? 'border-orange-700 bg-orange-950/30'
-                    : up ? 'border-green-900/50 bg-green-950/20'
-                         : 'border-red-900/50 bg-red-950/20'
-              }`}>
+              <div key={coin} className={`rounded-xl border p-3 ${lag ? 'border-orange-700 bg-orange-950/30' : up ? 'border-green-900/50 bg-green-950/20' : 'border-red-900/50 bg-red-950/20'}`}>
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-base font-bold">{COIN_META[coin].emoji}</span>
-                  {lag && <span className="text-xs font-bold px-1 py-0.5 rounded border border-orange-600 bg-orange-900/60 text-orange-300">LAG</span>}
+                  {lag && <span className="text-xs font-bold px-1 rounded border border-orange-600 bg-orange-900/60 text-orange-300">LAG</span>}
                 </div>
                 <div className="text-xs text-gray-500">{COIN_META[coin].label}</div>
-                {bp != null ? (
-                  <>
-                    <div className="text-base font-bold tabular-nums mt-1 leading-none">{fmtPrice(bp)}</div>
-                    {chg != null && (
-                      <div className={`text-xs font-semibold mt-1 ${up ? 'text-green-400' : 'text-red-400'}`}>
-                        {up ? '▲' : '▼'} {Math.abs(chg).toFixed(2)}%
-                      </div>
-                    )}
-                  </>
-                ) : <div className="text-xs text-gray-600 mt-1">loading…</div>}
+                {bp != null
+                  ? <div className="text-base font-bold tabular-nums mt-1 leading-none">{fmtPrice(bp)}</div>
+                  : <div className="text-xs text-gray-600 mt-1">loading…</div>}
+                {chg != null && <div className={`text-xs font-semibold mt-0.5 ${up ? 'text-green-400' : 'text-red-400'}`}>{up ? '▲' : '▼'} {Math.abs(chg).toFixed(2)}%</div>}
+                {fr != null && <div className={`text-xs mt-0.5 ${fundingClass(fr)}`}>fr {fr > 0 ? '+' : ''}{fr.toFixed(4)}%</div>}
               </div>
             );
           })}
         </div>
 
-        {/* Exchange comparison table */}
+        {/* Exchange × Coin price table */}
         <div className="rounded-xl border border-gray-800 overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-800 bg-gray-900/60">
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Coin</th>
-                {exchangeNames.map(ex => (
-                  <th key={ex} className="px-3 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                    {EXCHANGE_LABEL[ex] ?? ex}
-                  </th>
-                ))}
-                <th className="px-3 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Spread</th>
+                {exchangeNames.map(ex => <th key={ex} className="px-3 py-3 text-right text-xs font-semibold text-gray-500 uppercase">{EXCHANGE_LABEL[ex]??ex}</th>)}
+                <th className="px-3 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Spread</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800/50">
               {coins.map(coin => {
-                const prices = exchangeNames.map(ex => ({ ex, p: exchanges[ex]?.[coin]?.price ?? null }));
+                const prices      = exchangeNames.map(ex => ({ ex, p: exchanges[ex]?.[coin]?.price ?? null }));
                 const validPrices = prices.filter(x => x.p != null).map(x => x.p!);
                 const minP = validPrices.length ? Math.min(...validPrices) : null;
                 const maxP = validPrices.length ? Math.max(...validPrices) : null;
-                const spreadPct = minP && maxP && minP > 0 ? ((maxP - minP) / minP * 100) : 0;
-                const arbOpp    = cexArb.find(a => a.coin === coin);
+                const spread = minP && maxP && minP > 0 ? ((maxP - minP) / minP * 100) : 0;
+                const arb = cexArb.find(a => a.coin === coin);
                 return (
-                  <tr key={coin} className={`hover:bg-white/[0.02] transition-colors ${arbOpp ? 'bg-blue-950/10' : ''}`}>
+                  <tr key={coin} className={`hover:bg-white/[0.02] ${arb ? 'bg-blue-950/10' : ''}`}>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <span className="font-bold text-gray-100">{COIN_META[coin].emoji} {coin}</span>
-                        {arbOpp && <span className="text-xs font-bold px-1.5 py-0.5 rounded border border-blue-600 bg-blue-900/50 text-blue-300">CEX ARB</span>}
-                        {infoLag[coin] && <span className="text-xs font-bold px-1.5 py-0.5 rounded border border-orange-600 bg-orange-900/50 text-orange-300">INFO LAG</span>}
+                        {arb && <span className="text-xs font-bold px-1 rounded border border-blue-600 bg-blue-900/50 text-blue-300">CEX ARB</span>}
+                        {infoLag[coin] && <span className="text-xs font-bold px-1 rounded border border-orange-600 bg-orange-900/50 text-orange-300">LAG</span>}
                       </div>
                     </td>
                     {prices.map(({ ex, p }) => (
                       <td key={ex} className={`px-3 py-3 text-right tabular-nums text-sm ${
                         p == null ? 'text-gray-700' :
                         p === minP && validPrices.length > 1 ? 'text-red-400 font-semibold' :
-                        p === maxP && validPrices.length > 1 ? 'text-green-400 font-semibold' :
-                        'text-gray-300'
-                      }`}>
-                        {p != null ? fmtPrice(p) : '—'}
-                      </td>
+                        p === maxP && validPrices.length > 1 ? 'text-green-400 font-semibold' : 'text-gray-300'
+                      }`}>{p != null ? fmtPrice(p) : '—'}</td>
                     ))}
-                    <td className={`px-3 py-3 text-right text-xs font-bold tabular-nums ${
-                      spreadPct >= 0.3 ? 'text-blue-400' : spreadPct > 0 ? 'text-gray-500' : 'text-gray-700'
-                    }`}>
-                      {spreadPct > 0 ? `${spreadPct.toFixed(3)}%` : '—'}
+                    <td className={`px-3 py-3 text-right text-xs font-bold tabular-nums ${spread >= 0.3 ? 'text-blue-400' : spread > 0 ? 'text-gray-500' : 'text-gray-700'}`}>
+                      {spread > 0 ? `${spread.toFixed(3)}%` : '—'}
                     </td>
                   </tr>
                 );
@@ -1253,27 +1269,96 @@ function CryptoTab({ data }: { data: CryptoResponse | null }) {
         </div>
       </section>
 
-      {/* CEX Arb detail */}
-      {cexArb.length > 0 && (
+      {/* ── Perpetual Futures + Funding Rates ─────────── */}
+      <section>
+        <h2 className="text-xl font-bold mb-4">Perpetual Futures — Funding Rates</h2>
+        <div className="rounded-xl border border-gray-800 overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-800 bg-gray-900/60">
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Asset</th>
+                {['binance','bybit','okx'].map(ex => (
+                  <th key={ex} colSpan={2} className="px-3 py-3 text-center text-xs font-semibold text-gray-500 uppercase border-l border-gray-800">
+                    {EXCHANGE_LABEL[ex]??ex} Futures
+                  </th>
+                ))}
+              </tr>
+              <tr className="border-b border-gray-800 bg-gray-900/40">
+                <th className="px-4 py-2 text-left text-xs text-gray-600" />
+                {['binance','bybit','okx'].map(ex => (
+                  <>
+                    <th key={`${ex}-mark`} className="px-3 py-2 text-right text-xs text-gray-600 border-l border-gray-800">Mark</th>
+                    <th key={`${ex}-fr`} className="px-3 py-2 text-right text-xs text-gray-600">Funding/8h</th>
+                  </>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-800/50">
+              {perpCoins.map(coin => {
+                const spotPrice = exchanges.binance?.[coin]?.price;
+                return (
+                  <tr key={coin} className="hover:bg-white/[0.02]">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-gray-100">{COIN_META[coin]?.emoji} {coin}</span>
+                        {spotPrice && <span className="text-xs text-gray-600">spot {fmtPrice(spotPrice)}</span>}
+                      </div>
+                    </td>
+                    {['binance','bybit','okx'].map(ex => {
+                      const info = futures[ex]?.[coin];
+                      const fr   = info?.fundingRate;
+                      const mark = info?.markPrice;
+                      const highFund = fr != null && Math.abs(fr) >= 0.1;
+                      return (
+                        <>
+                          <td key={`${ex}-${coin}-mark`} className="px-3 py-3 text-right tabular-nums text-sm text-gray-300 border-l border-gray-800">
+                            {mark ? fmtPrice(mark) : <span className="text-gray-700">—</span>}
+                          </td>
+                          <td key={`${ex}-${coin}-fr`} className="px-3 py-3 text-right tabular-nums text-sm">
+                            {fr != null ? (
+                              <span className={`font-mono ${fundingClass(fr)} ${highFund ? 'px-1 rounded border border-current' : ''}`}>
+                                {fr > 0 ? '+' : ''}{fr.toFixed(4)}%
+                                {highFund && ' 🔥'}
+                              </span>
+                            ) : <span className="text-gray-700">—</span>}
+                          </td>
+                        </>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <p className="text-xs text-gray-600 mt-2">
+          Positive funding = longs pay shorts (market is leveraged long — bullish sentiment).
+          Negative funding = shorts pay longs. High funding (&gt;0.1%) = crowded trade risk.
+        </p>
+      </section>
+
+      {/* ── Basis Trade Opportunities ─────────────── */}
+      {basisTrades.length > 0 && (
         <section>
-          <h2 className="text-xl font-bold mb-4">CEX Arbitrage Opportunities</h2>
+          <h2 className="text-xl font-bold mb-4">Basis Trade (Cash &amp; Carry)</h2>
           <div className="space-y-3">
-            {cexArb.map(a => (
-              <div key={a.coin} className="rounded-xl border border-blue-800/50 bg-blue-950/20 p-4 flex items-center gap-4">
-                <div className="text-3xl flex-shrink-0">{COIN_META[a.coin]?.emoji ?? '?'}</div>
+            {basisTrades.map(b => (
+              <div key={b.coin} className="rounded-xl border border-violet-800/50 bg-violet-950/20 p-4 flex items-center gap-4">
+                <div className="text-3xl flex-shrink-0">{COIN_META[b.coin]?.emoji ?? '?'}</div>
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="font-bold text-white">{a.coin}</span>
-                    <span className="text-xs font-bold px-1.5 py-0.5 rounded border border-blue-600 bg-blue-900/60 text-blue-300">CEX ARB</span>
+                    <span className="font-bold text-white">{b.coin}</span>
+                    <span className="text-xs font-bold px-1.5 py-0.5 rounded border border-violet-600 bg-violet-900/60 text-violet-300">BASIS TRADE</span>
+                    <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${b.direction === 'contango' ? 'text-orange-400' : 'text-blue-400'}`}>{b.direction}</span>
                   </div>
-                  <p className="text-sm text-gray-300">
-                    Buy on <span className="text-red-400 font-semibold">{EXCHANGE_LABEL[a.low] ?? a.low}</span> at {fmtPrice(a.lowPrice)}
-                    {' '}→ sell on <span className="text-green-400 font-semibold">{EXCHANGE_LABEL[a.high] ?? a.high}</span> at {fmtPrice(a.highPrice)}
-                  </p>
+                  {b.direction === 'contango'
+                    ? <p className="text-sm text-gray-300">Buy <span className="text-white font-semibold">{b.coin} spot</span> at {fmtPrice(b.spot)}, sell <span className="text-white font-semibold">futures</span> at {fmtPrice(b.futures)} — lock in {b.basisPct.toFixed(3)}% premium</p>
+                    : <p className="text-sm text-gray-300">Sell <span className="text-white font-semibold">{b.coin} spot</span> at {fmtPrice(b.spot)}, buy <span className="text-white font-semibold">futures</span> at {fmtPrice(b.futures)} — {Math.abs(b.basisPct).toFixed(3)}% discount</p>
+                  }
                 </div>
                 <div className="text-right flex-shrink-0">
-                  <div className="text-2xl font-bold text-blue-400">{a.spreadPct.toFixed(3)}%</div>
-                  <div className="text-xs text-gray-500">spread</div>
+                  <div className="text-2xl font-bold text-violet-400">{b.basisPct > 0 ? '+' : ''}{b.basisPct.toFixed(3)}%</div>
+                  <div className="text-xs text-gray-500">basis</div>
                 </div>
               </div>
             ))}
@@ -1281,7 +1366,68 @@ function CryptoTab({ data }: { data: CryptoResponse | null }) {
         </section>
       )}
 
-      {/* Crypto prediction markets */}
+      {/* ── DEX Prices ────────────────────────────── */}
+      {dexSources.length > 0 && (
+        <section>
+          <div className="flex items-center gap-3 mb-4">
+            <h2 className="text-xl font-bold">DEX Prices</h2>
+            <span className="text-xs px-2 py-0.5 rounded-full border border-gray-700 text-gray-500">
+              {dexSources.map(s => DEX_LABEL[s] ?? s).join(' · ')}
+            </span>
+          </div>
+          <div className="rounded-xl border border-gray-800 overflow-x-auto mb-4">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-800 bg-gray-900/60">
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Coin</th>
+                  {dexSources.map(s => <th key={s} className="px-3 py-3 text-right text-xs font-semibold text-gray-500 uppercase">{DEX_LABEL[s]??s}</th>)}
+                  <th className="px-3 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Binance</th>
+                  <th className="px-3 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Max Spread</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-800/50">
+                {coins.filter(coin => dexSources.some(s => dex[s]?.[coin]?.price)).map(coin => {
+                  const binRef = exchanges.binance?.[coin]?.price;
+                  const dexPrices = dexSources.map(s => dex[s]?.[coin]?.price ?? null);
+                  const validDex = dexPrices.filter((p): p is number => p != null && p > 0);
+                  const maxSpread = binRef && validDex.length
+                    ? Math.max(...validDex.map(p => Math.abs((p - binRef) / binRef * 100)))
+                    : null;
+                  return (
+                    <tr key={coin} className="hover:bg-white/[0.02]">
+                      <td className="px-4 py-3 font-bold text-gray-100">{COIN_META[coin]?.emoji} {coin}</td>
+                      {dexSources.map((s, i) => {
+                        const p = dexPrices[i];
+                        const spread = p && binRef ? ((p - binRef) / binRef * 100) : null;
+                        return (
+                          <td key={s} className="px-3 py-3 text-right tabular-nums">
+                            {p ? (
+                              <div>
+                                <span className="text-gray-300">{fmtPrice(p)}</span>
+                                {spread != null && Math.abs(spread) >= 0.1 && (
+                                  <span className={`ml-1 text-xs ${spread > 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                    {spread > 0 ? '+' : ''}{spread.toFixed(2)}%
+                                  </span>
+                                )}
+                              </div>
+                            ) : <span className="text-gray-700">—</span>}
+                          </td>
+                        );
+                      })}
+                      <td className="px-3 py-3 text-right tabular-nums text-gray-400">{binRef ? fmtPrice(binRef) : '—'}</td>
+                      <td className={`px-3 py-3 text-right text-xs font-bold tabular-nums ${maxSpread != null && maxSpread >= 0.5 ? 'text-orange-400' : 'text-gray-600'}`}>
+                        {maxSpread != null ? `${maxSpread.toFixed(3)}%` : '—'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {/* ── Crypto Prediction Markets ─────────────── */}
       <section>
         <div className="flex items-center gap-3 mb-4">
           <h2 className="text-xl font-bold">Crypto Prediction Markets</h2>
@@ -1289,7 +1435,6 @@ function CryptoTab({ data }: { data: CryptoResponse | null }) {
             {cryptoMarkets.length} markets · Polymarket + Kalshi
           </span>
         </div>
-
         {cryptoMarkets.length === 0 ? (
           <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-8 text-center">
             <p className="text-gray-500">No crypto markets found on Polymarket or Kalshi right now.</p>
@@ -1299,26 +1444,22 @@ function CryptoTab({ data }: { data: CryptoResponse | null }) {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-800 bg-gray-900/60">
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Market</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Platform</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Asset</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Live Price</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Mkt Prob</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Market</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Platform</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Asset</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Spot Price</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Mkt Prob</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-800/50">
                 {cryptoMarkets.map(m => {
                   const binPrice = m.coin ? exchanges.binance?.[m.coin] : null;
-                  const chg24h   = binPrice?.change24hPct ?? null;
                   const platCfg  = m.platform === 'polymarket' ? PLATFORMS.polymarket : PLATFORMS.kalshi;
                   return (
                     <tr key={m.id} className={`hover:bg-white/[0.02] transition-colors ${m.infoLag ? 'bg-orange-950/10' : ''}`}>
                       <td className="px-4 py-3 text-gray-200 max-w-xs">
-                        <a href={m.url} target="_blank" rel="noopener noreferrer"
-                          className="line-clamp-1 hover:text-white transition-colors hover:underline">
-                          {m.question}
-                        </a>
+                        <a href={m.url} target="_blank" rel="noopener noreferrer" className="line-clamp-1 hover:text-white transition-colors hover:underline">{m.question}</a>
                       </td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded border ${platCfg.badgeClass}`}>
@@ -1326,28 +1467,19 @@ function CryptoTab({ data }: { data: CryptoResponse | null }) {
                           {platCfg.label}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-gray-400 text-xs">
-                        {m.coin ? (COIN_META[m.coin]?.label ?? m.coin) : '—'}
-                      </td>
+                      <td className="px-4 py-3 text-gray-400 text-xs">{m.coin ? (COIN_META[m.coin]?.label ?? m.coin) : '—'}</td>
                       <td className="px-4 py-3 text-right tabular-nums">
                         {binPrice?.price
-                          ? <span className={(chg24h ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}>
-                              {fmtPrice(binPrice.price)}
-                            </span>
-                          : <span className="text-gray-600">—</span>
-                        }
+                          ? <span className={(binPrice.change24hPct ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}>{fmtPrice(binPrice.price)}</span>
+                          : <span className="text-gray-600">—</span>}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <span className={`font-bold tabular-nums ${
-                          m.probability >= 70 ? 'text-green-400' :
-                          m.probability >= 40 ? 'text-yellow-400' : 'text-red-400'
-                        }`}>{m.probability}%</span>
+                        <span className={`font-bold tabular-nums ${m.probability >= 70 ? 'text-green-400' : m.probability >= 40 ? 'text-yellow-400' : 'text-red-400'}`}>{m.probability}%</span>
                       </td>
                       <td className="px-4 py-3 text-right">
                         {m.infoLag
                           ? <span className="text-xs font-bold px-1.5 py-0.5 rounded border border-orange-600 bg-orange-900/50 text-orange-300">INFO LAG</span>
-                          : <span className="text-xs text-gray-600">—</span>
-                        }
+                          : <span className="text-xs text-gray-600">—</span>}
                       </td>
                     </tr>
                   );

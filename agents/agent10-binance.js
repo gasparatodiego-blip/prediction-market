@@ -3,14 +3,30 @@
 
 const fs    = require('fs');
 const https = require('https');
+const WebSocket = require('ws');
 
-const OUT          = '/tmp/exchange-prices.json';
-const HIST_FILE    = '/tmp/exchange-history.json';
-const BINANCE_COMPAT = '/tmp/binance-prices.json'; // keep for /api/crypto backwards-compat
-const HB_FILE      = '/tmp/agent-heartbeats.json';
-const INTERVAL     = 60_000;
-const COINS        = ['BTC','ETH','SOL','BNB','XRP','DOGE'];
-const CEX_THRESHOLD = 0.3; // % spread to flag CEX arb
+const OUT            = '/tmp/exchange-prices.json';
+const HIST_FILE      = '/tmp/exchange-history.json';
+const BINANCE_COMPAT = '/tmp/binance-prices.json';
+const HB_FILE        = '/tmp/agent-heartbeats.json';
+const POLL_INTERVAL  = 60_000;
+const WRITE_THROTTLE = 2_000;  // min ms between WS-triggered writes
+const COINS          = ['BTC','ETH','SOL','BNB','XRP','DOGE'];
+const CEX_THRESHOLD  = 0.3;
+const FUND_THRESHOLD = 0.1;  // % per 8h — "HIGH FUNDING"
+const BASIS_THRESHOLD = 1.0; // % spot vs futures spread — "BASIS TRADE"
+
+// ── In-memory state ───────────────────────────────
+let wsData    = {};   // Binance WS prices (real-time)
+let restData  = {};   // Other 5 CEX prices (60s REST)
+let futures   = {};   // Perp funding rates + mark prices
+let cexArb    = [];
+let basisTrades = [];
+let highFunding = [];
+let infoLag   = {};
+let lastWrite = 0;
+
+// ── Utilities ─────────────────────────────────────
 
 function beat() {
   let hb = {};
@@ -30,134 +46,195 @@ function get(url) {
       res.on('end', () => { try { resolve(JSON.parse(body)); } catch { resolve(null); } });
     });
     req.on('error', () => resolve(null));
-    req.on('timeout', function() { this.destroy(); resolve(null); });
+    req.on('timeout', function () { this.destroy(); resolve(null); });
   });
 }
 
-// ── Exchange fetchers ─────────────────────────────
+// ── Binance WebSocket ─────────────────────────────
 
-async function fetchBinance() {
+const COIN_SYM = { BTC:'btcusdt', ETH:'ethusdt', SOL:'solusdt', BNB:'bnbusdt', XRP:'xrpusdt', DOGE:'dogeusdt' };
+const SYM_COIN = Object.fromEntries(Object.entries(COIN_SYM).map(([c,s]) => [s, c]));
+const WS_URL   = `wss://stream.binance.com:9443/stream?streams=${Object.values(COIN_SYM).map(s => `${s}@ticker`).join('/')}`;
+
+function connectWS() {
+  let ws;
+  try { ws = new WebSocket(WS_URL); } catch { return; }
+
+  ws.on('open', () => console.log('[ws] Binance stream connected'));
+
+  ws.on('message', raw => {
+    try {
+      const msg  = JSON.parse(raw.toString());
+      const t    = msg.data ?? msg;
+      const coin = SYM_COIN[t.s?.toLowerCase()];
+      if (!coin) return;
+      wsData[coin] = {
+        price:        parseFloat(t.c),  // last price
+        change24hPct: parseFloat(t.P),  // 24h change %
+        high24h:      parseFloat(t.h),
+        low24h:       parseFloat(t.l),
+        volume:       parseFloat(t.v),
+        wsAt:         Date.now(),
+      };
+      const now = Date.now();
+      if (now - lastWrite >= WRITE_THROTTLE) { writeOutput(); lastWrite = now; }
+    } catch {}
+  });
+
+  ws.on('error', err => console.error('[ws] error:', err.message));
+  ws.on('close', () => { console.log('[ws] closed — reconnecting in 5s'); setTimeout(connectWS, 5000); });
+}
+
+// ── CEX REST fetchers ─────────────────────────────
+
+async function fetchBinanceREST() {
   const syms = ['BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','XRPUSDT','DOGEUSDT'];
   const data = await get(`https://api.binance.com/api/v3/ticker/24hr?symbols=${encodeURIComponent(JSON.stringify(syms))}`);
-  if (!Array.isArray(data)) return {};
+  if (!Array.isArray(data)) return;
   const map = { BTCUSDT:'BTC', ETHUSDT:'ETH', SOLUSDT:'SOL', BNBUSDT:'BNB', XRPUSDT:'XRP', DOGEUSDT:'DOGE' };
-  const result = {};
   for (const t of data) {
     const coin = map[t.symbol];
     if (!coin) continue;
-    result[coin] = {
-      price: parseFloat(t.lastPrice),
-      change24hPct: parseFloat(t.priceChangePercent),
-      high24h: parseFloat(t.highPrice),
-      low24h: parseFloat(t.lowPrice),
-      volume: parseFloat(t.volume),
-    };
+    // Only overwrite WS data if WS is stale (>30s old)
+    if (!wsData[coin] || Date.now() - (wsData[coin].wsAt ?? 0) > 30_000) {
+      wsData[coin] = { price: parseFloat(t.lastPrice), change24hPct: parseFloat(t.priceChangePercent), high24h: parseFloat(t.highPrice), low24h: parseFloat(t.lowPrice), volume: parseFloat(t.volume) };
+    }
   }
-  return result;
 }
 
 async function fetchCoinbase() {
   const pairs = { BTC:'BTC-USD', ETH:'ETH-USD', SOL:'SOL-USD', XRP:'XRP-USD', DOGE:'DOGE-USD' };
-  const result = {};
+  const r = {};
   await Promise.all(Object.entries(pairs).map(async ([coin, pair]) => {
-    const data = await get(`https://api.coinbase.com/v2/prices/${pair}/spot`);
-    const price = parseFloat(data?.data?.amount);
-    if (price > 0) result[coin] = { price };
+    const d = await get(`https://api.coinbase.com/v2/prices/${pair}/spot`);
+    const p = parseFloat(d?.data?.amount);
+    if (p > 0) r[coin] = { price: p };
   }));
-  return result;
+  return r;
 }
 
 async function fetchOKX() {
-  const data = await get('https://www.okx.com/api/v5/market/tickers?instType=SPOT');
-  if (!Array.isArray(data?.data)) return {};
+  const d = await get('https://www.okx.com/api/v5/market/tickers?instType=SPOT');
+  if (!Array.isArray(d?.data)) return {};
   const want = { 'BTC-USDT':'BTC','ETH-USDT':'ETH','SOL-USDT':'SOL','BNB-USDT':'BNB','XRP-USDT':'XRP','DOGE-USDT':'DOGE' };
-  const result = {};
-  for (const t of data.data) {
+  const r = {};
+  for (const t of d.data) {
     const coin = want[t.instId];
     if (!coin) continue;
-    const price = parseFloat(t.last);
-    const open  = parseFloat(t.open24h);
-    result[coin] = {
-      price,
-      change24hPct: open > 0 ? ((price - open) / open) * 100 : 0,
-      high24h: parseFloat(t.high24h),
-      low24h:  parseFloat(t.low24h),
-      volume:  parseFloat(t.volCcy24h),
-    };
+    const price = parseFloat(t.last), open = parseFloat(t.open24h);
+    r[coin] = { price, change24hPct: open > 0 ? ((price - open) / open) * 100 : 0, high24h: parseFloat(t.high24h), low24h: parseFloat(t.low24h), volume: parseFloat(t.volCcy24h) };
   }
-  return result;
+  return r;
 }
 
 async function fetchBybit() {
   const syms = ['BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','XRPUSDT','DOGEUSDT'];
   const map  = { BTCUSDT:'BTC', ETHUSDT:'ETH', SOLUSDT:'SOL', BNBUSDT:'BNB', XRPUSDT:'XRP', DOGEUSDT:'DOGE' };
-  const result = {};
+  const r = {};
   await Promise.all(syms.map(async sym => {
-    const data = await get(`https://api.bybit.com/v5/market/tickers?category=spot&symbol=${sym}`);
-    const t    = data?.result?.list?.[0];
-    if (!t) return;
-    result[map[sym]] = {
-      price:        parseFloat(t.lastPrice),
-      change24hPct: parseFloat(t.price24hPcnt) * 100,
-      high24h:      parseFloat(t.highPrice24h),
-      low24h:       parseFloat(t.lowPrice24h),
-      volume:       parseFloat(t.volume24h),
-    };
+    const d = await get(`https://api.bybit.com/v5/market/tickers?category=spot&symbol=${sym}`);
+    const t = d?.result?.list?.[0];
+    if (t) r[map[sym]] = { price: parseFloat(t.lastPrice), change24hPct: parseFloat(t.price24hPcnt) * 100, high24h: parseFloat(t.highPrice24h), low24h: parseFloat(t.lowPrice24h), volume: parseFloat(t.volume24h) };
   }));
-  return result;
+  return r;
 }
 
 async function fetchKraken() {
-  const data = await get('https://api.kraken.com/0/public/Ticker?pair=XBTUSD,ETHUSD,SOLUSD,XRPUSD,XDGUSD');
-  if (!data?.result) return {};
-  const result = {};
-  for (const [key, val] of Object.entries(data.result)) {
-    const last = parseFloat(val.c?.[0] ?? '0');
-    const open = parseFloat(val.o  ?? '0');
-    const high = parseFloat(val.h?.[1] ?? '0');
-    const low  = parseFloat(val.l?.[1] ?? '0');
-    const vol  = parseFloat(val.v?.[1] ?? '0');
+  const d = await get('https://api.kraken.com/0/public/Ticker?pair=XBTUSD,ETHUSD,SOLUSD,XRPUSD,XDGUSD');
+  if (!d?.result) return {};
+  const r = {};
+  for (const [key, val] of Object.entries(d.result)) {
+    const last = parseFloat(val.c?.[0] ?? '0'), open = parseFloat(val.o ?? '0');
     if (last <= 0) continue;
-    const entry = { price: last, change24hPct: open > 0 ? ((last - open) / open) * 100 : 0, high24h: high, low24h: low, volume: vol };
+    const entry = { price: last, change24hPct: open > 0 ? ((last - open) / open) * 100 : 0, high24h: parseFloat(val.h?.[1]??'0'), low24h: parseFloat(val.l?.[1]??'0'), volume: parseFloat(val.v?.[1]??'0') };
     const k = key.toUpperCase();
-    if (k.includes('XBT'))               result['BTC']  = entry;
-    else if (k.includes('ETH'))          result['ETH']  = entry;
-    else if (k.includes('SOL'))          result['SOL']  = entry;
-    else if (k.includes('XRP'))          result['XRP']  = entry;
-    else if (k.includes('XDG') || k.includes('DOGE')) result['DOGE'] = entry;
+    if (k.includes('XBT'))                         r.BTC  = entry;
+    else if (k.includes('ETH'))                    r.ETH  = entry;
+    else if (k.includes('SOL'))                    r.SOL  = entry;
+    else if (k.includes('XRP'))                    r.XRP  = entry;
+    else if (k.includes('XDG') || k.includes('DOGE')) r.DOGE = entry;
   }
-  return result;
+  return r;
 }
 
 async function fetchGateIO() {
-  const data = await get('https://api.gateio.ws/api/v4/spot/tickers');
-  if (!Array.isArray(data)) return {};
+  const d = await get('https://api.gateio.ws/api/v4/spot/tickers');
+  if (!Array.isArray(d)) return {};
   const want = { 'BTC_USDT':'BTC','ETH_USDT':'ETH','SOL_USDT':'SOL','BNB_USDT':'BNB','XRP_USDT':'XRP','DOGE_USDT':'DOGE' };
-  const result = {};
-  for (const t of data) {
+  const r = {};
+  for (const t of d) {
     const coin = want[t.currency_pair];
     if (!coin) continue;
-    result[coin] = {
-      price:        parseFloat(t.last),
-      change24hPct: parseFloat(t.change_percentage ?? '0'),
-      high24h:      parseFloat(t.high_24h ?? '0'),
-      low24h:       parseFloat(t.low_24h  ?? '0'),
-      volume:       parseFloat(t.base_volume ?? '0'),
-    };
+    r[coin] = { price: parseFloat(t.last), change24hPct: parseFloat(t.change_percentage??'0'), high24h: parseFloat(t.high_24h??'0'), low24h: parseFloat(t.low_24h??'0'), volume: parseFloat(t.base_volume??'0') };
   }
-  return result;
+  return r;
 }
 
-// ── CEX arb detection ─────────────────────────────
+// ── Perpetual futures + funding rates ─────────────
+
+async function fetchFutures() {
+  const [binF, bybitF, okxF] = await Promise.all([
+
+    // Binance FAPI — premiumIndex has markPrice + fundingRate
+    get('https://fapi.binance.com/fapi/v1/premiumIndex').then(data => {
+      if (!Array.isArray(data)) return {};
+      const map = { BTCUSDT:'BTC', ETHUSDT:'ETH', SOLUSDT:'SOL' };
+      const r = {};
+      for (const t of data) {
+        const coin = map[t.symbol];
+        if (!coin) continue;
+        r[coin] = {
+          markPrice:   parseFloat(t.markPrice),
+          fundingRate: parseFloat(t.lastFundingRate) * 100,  // convert to %
+          nextFundingTime: parseInt(t.nextFundingTime ?? '0'),
+        };
+      }
+      return r;
+    }).catch(() => ({})),
+
+    // Bybit linear futures
+    Promise.all(['BTCUSDT','ETHUSDT','SOLUSDT'].map(sym =>
+      get(`https://api.bybit.com/v5/market/tickers?category=linear&symbol=${sym}`)
+        .then(d => [sym, d?.result?.list?.[0]]).catch(() => [sym, null])
+    )).then(pairs => {
+      const map = { BTCUSDT:'BTC', ETHUSDT:'ETH', SOLUSDT:'SOL' };
+      const r = {};
+      for (const [sym, t] of pairs) {
+        if (!t) continue;
+        r[map[sym]] = {
+          markPrice:   parseFloat(t.markPrice ?? t.lastPrice ?? '0'),
+          fundingRate: parseFloat(t.fundingRate ?? '0') * 100,
+        };
+      }
+      return r;
+    }),
+
+    // OKX funding rates
+    Promise.all(['BTC-USD-SWAP','ETH-USD-SWAP','SOL-USD-SWAP'].map(instId =>
+      get(`https://www.okx.com/api/v5/public/funding-rate?instId=${instId}`)
+        .then(d => [instId, d?.data?.[0]]).catch(() => [instId, null])
+    )).then(pairs => {
+      const map = { 'BTC-USD-SWAP':'BTC','ETH-USD-SWAP':'ETH','SOL-USD-SWAP':'SOL' };
+      const r = {};
+      for (const [instId, t] of pairs) {
+        if (!t) continue;
+        r[map[instId]] = { fundingRate: parseFloat(t.fundingRate ?? '0') * 100 };
+      }
+      return r;
+    }),
+  ]);
+
+  return { binance: binF, bybit: bybitF, okx: okxF };
+}
+
+// ── Analysis ──────────────────────────────────────
 
 function detectCexArb(exchanges) {
   const arbs = [];
   for (const coin of COINS) {
-    const entries = [];
-    for (const [ex, data] of Object.entries(exchanges)) {
-      const p = data[coin]?.price;
-      if (p > 0) entries.push({ exchange: ex, price: p });
-    }
+    const entries = Object.entries(exchanges)
+      .map(([ex, d]) => ({ exchange: ex, price: d[coin]?.price ?? 0 }))
+      .filter(e => e.price > 0);
     if (entries.length < 2) continue;
     entries.sort((a, b) => a.price - b.price);
     const lo = entries[0], hi = entries[entries.length - 1];
@@ -169,62 +246,107 @@ function detectCexArb(exchanges) {
   return arbs.sort((a, b) => b.spreadPct - a.spreadPct);
 }
 
-// ── 1h info-lag detection ─────────────────────────
+function detectBasis(spot, perps) {
+  const trades = [];
+  for (const coin of ['BTC','ETH','SOL']) {
+    const spotPrice = spot[coin]?.price;
+    const mark      = perps.binance?.[coin]?.markPrice;
+    if (!spotPrice || !mark || spotPrice <= 0) continue;
+    const basisPct = ((mark - spotPrice) / spotPrice) * 100;
+    if (Math.abs(basisPct) >= BASIS_THRESHOLD) {
+      trades.push({
+        coin, spot: spotPrice, futures: mark,
+        basisPct: Math.round(basisPct * 1000) / 1000,
+        direction: basisPct > 0 ? 'contango' : 'backwardation',
+        exchange: 'binance',
+      });
+    }
+  }
+  return trades;
+}
 
-function updateHistory(exchanges) {
-  const now  = Date.now();
-  let hist   = {};
+function detectHighFunding(perps) {
+  const flagged = [];
+  for (const [exchName, data] of Object.entries(perps)) {
+    for (const [coin, info] of Object.entries(data)) {
+      const fr = info.fundingRate ?? 0;
+      if (Math.abs(fr) >= FUND_THRESHOLD) {
+        flagged.push({ coin, exchange: exchName, fundingRate: Math.round(fr * 1000) / 1000 });
+      }
+    }
+  }
+  return flagged.sort((a, b) => Math.abs(b.fundingRate) - Math.abs(a.fundingRate));
+}
+
+function updateInfoLag() {
+  const now = Date.now();
+  let hist = {};
   try { hist = JSON.parse(fs.readFileSync(HIST_FILE, 'utf8')); } catch {}
-  const binance = exchanges.binance ?? {};
-  const infoLag = {};
+  const result = {};
   for (const coin of COINS) {
-    const p = binance[coin]?.price;
+    const p = wsData[coin]?.price;
     if (!hist[coin]) hist[coin] = [];
     if (p > 0) hist[coin].push({ t: now, p });
     hist[coin] = hist[coin].filter(e => now - e.t <= 3_600_000).slice(-60);
-    const window = hist[coin];
-    if (window.length < 2) { infoLag[coin] = false; continue; }
-    const oldest = window[0].p, newest = window[window.length - 1].p;
-    infoLag[coin] = oldest > 0 && Math.abs((newest - oldest) / oldest * 100) >= 3;
+    const w = hist[coin];
+    result[coin] = w.length >= 2 && w[0].p > 0 && Math.abs((w[w.length-1].p - w[0].p) / w[0].p * 100) >= 3;
   }
   try { fs.writeFileSync(HIST_FILE, JSON.stringify(hist)); } catch {}
-  return infoLag;
+  return result;
 }
 
-// ── Main ──────────────────────────────────────────
+// ── File writer ───────────────────────────────────
 
-async function tick() {
-  console.log('[multi-cex] fetching 6 exchanges...');
-  const [binance, coinbase, okx, bybit, kraken, gateio] = await Promise.all([
-    fetchBinance(), fetchCoinbase(), fetchOKX(), fetchBybit(), fetchKraken(), fetchGateIO(),
-  ]);
+function writeOutput() {
+  const exchanges = { binance: wsData, ...restData };
+  try {
+    fs.writeFileSync(OUT, JSON.stringify({
+      fetchedAt: Date.now(),
+      exchanges, cexArb, infoLag,
+      futures, basisTrades, highFunding,
+    }, null, 2));
+  } catch {}
 
-  const exchanges = { binance, coinbase, okx, bybit, kraken, gateio };
-  const cexArb    = detectCexArb(exchanges);
-  const infoLag   = updateHistory(exchanges);
-  const now       = Date.now();
-
-  fs.writeFileSync(OUT, JSON.stringify({ fetchedAt: now, exchanges, cexArb, infoLag }, null, 2));
-
-  // Backwards-compat: write /tmp/binance-prices.json for /api/crypto
+  // Backwards-compat for /api/crypto legacy reader
   const bPrices = {};
   for (const coin of COINS) {
-    const sym = coin + 'USDT';
-    const b   = binance[coin];
+    const sym = `${coin}USDT`, b = wsData[coin];
     if (!b) continue;
-    bPrices[sym] = {
-      symbol: sym, price: b.price,
-      priceChange24h: 0, priceChangePercent24h: b.change24hPct ?? 0,
-      high24h: b.high24h ?? 0, low24h: b.low24h ?? 0, volume: b.volume ?? 0,
-      change1hPct: 0, infoLag: infoLag[coin] ?? false,
-    };
+    bPrices[sym] = { symbol: sym, price: b.price, priceChange24h: 0, priceChangePercent24h: b.change24hPct ?? 0, high24h: b.high24h ?? 0, low24h: b.low24h ?? 0, volume: b.volume ?? 0, change1hPct: 0, infoLag: infoLag[coin] ?? false };
   }
-  fs.writeFileSync(BINANCE_COMPAT, JSON.stringify({ fetchedAt: now, prices: bPrices }, null, 2));
-
-  const arbStr = cexArb.map(a => `${a.coin} ${a.spreadPct.toFixed(2)}%`).join(', ') || 'none';
-  console.log(`[multi-cex] BTC $${binance.BTC?.price?.toLocaleString()} | CEX arb: ${arbStr}`);
-  beat();
+  try { fs.writeFileSync(BINANCE_COMPAT, JSON.stringify({ fetchedAt: Date.now(), prices: bPrices }, null, 2)); } catch {}
 }
 
-tick();
-setInterval(tick, INTERVAL);
+// ── REST poll ─────────────────────────────────────
+
+async function poll() {
+  console.log('[multi-cex] REST poll — 6 CEX + 3 perp exchanges...');
+  await fetchBinanceREST();
+  const [coinbase, okx, bybit, kraken, gateio] = await Promise.all([
+    fetchCoinbase(), fetchOKX(), fetchBybit(), fetchKraken(), fetchGateIO(),
+  ]);
+  restData    = { coinbase, okx, bybit, kraken, gateio };
+  futures     = await fetchFutures();
+
+  const allExchanges = { binance: wsData, ...restData };
+  cexArb      = detectCexArb(allExchanges);
+  basisTrades = detectBasis(wsData, futures);
+  highFunding = detectHighFunding(futures);
+  infoLag     = updateInfoLag();
+
+  writeOutput();
+  lastWrite = Date.now();
+  beat();
+
+  const btc = wsData.BTC?.price;
+  const arbStr  = cexArb.map(a => `${a.coin} ${a.spreadPct.toFixed(2)}%`).join(', ')  || 'none';
+  const bfStr   = basisTrades.map(b => `${b.coin} ${b.basisPct.toFixed(2)}%`).join(', ') || 'none';
+  const binFR   = futures.binance?.BTC?.fundingRate?.toFixed(4) ?? '?';
+  console.log(`[multi-cex] BTC $${btc?.toLocaleString()} | arb: ${arbStr} | basis: ${bfStr} | BTC funding: ${binFR}%`);
+}
+
+// ── Bootstrap ─────────────────────────────────────
+
+connectWS();
+poll();
+setInterval(poll, POLL_INTERVAL);
