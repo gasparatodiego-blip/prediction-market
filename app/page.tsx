@@ -2,6 +2,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import type { MarketsResponse, PanelMarket, ArbCandidate } from './api/markets/route';
+import type { CryptoResponse, BinancePrice, CryptoMarket } from './api/crypto/route';
 
 interface AuthUser { id: number; email: string; role: 'free' | 'pro' | 'admin'; }
 
@@ -335,10 +336,11 @@ export default function Home() {
   const [countdown,     setCountdown]     = useState(REFRESH_INTERVAL);
   const [bankroll,      setBankroll]      = useState(1000);
   const [expiryFilter,  setExpiryFilter]  = useState<ExpiryFilter>('all');
-  const [activeTab,     setActiveTab]     = useState<'opportunities' | 'history'>('opportunities');
+  const [activeTab,     setActiveTab]     = useState<'opportunities' | 'history' | 'crypto'>('opportunities');
   const [history,       setHistory]       = useState<HistoryRecord[]>([]);
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [sentiment,     setSentiment]     = useState<SentimentData | null>(null);
+  const [crypto,        setCrypto]        = useState<CryptoResponse | null>(null);
 
   async function logout() {
     await fetch('/api/auth/logout', { method: 'POST' });
@@ -373,6 +375,13 @@ export default function Home() {
     } catch {}
   }, []);
 
+  const fetchCrypto = useCallback(async () => {
+    try {
+      const resp = await fetch('/api/crypto', { cache: 'no-store' });
+      if (resp.ok) setCrypto(await resp.json());
+    } catch {}
+  }, []);
+
   useEffect(() => {
     fetch('/api/auth/me').then(r => r.json()).then(data => {
       if (data.user) setUser(data.user);
@@ -380,10 +389,10 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    fetchAll(); fetchSentiment();
-    const iv = setInterval(() => { fetchAll(); fetchSentiment(); }, REFRESH_INTERVAL * 1_000);
+    fetchAll(); fetchSentiment(); fetchCrypto();
+    const iv = setInterval(() => { fetchAll(); fetchSentiment(); fetchCrypto(); }, REFRESH_INTERVAL * 1_000);
     return () => clearInterval(iv);
-  }, [fetchAll, fetchSentiment]);
+  }, [fetchAll, fetchSentiment, fetchCrypto]);
 
   useEffect(() => {
     const t = setInterval(() => setCountdown(c => Math.max(0, c - 1)), 1_000);
@@ -570,12 +579,13 @@ export default function Home() {
         {/* ── TABS ────────────────────────────────── */}
         <section>
           <div className="flex gap-1 p-1 rounded-xl bg-gray-900 border border-gray-800 w-fit">
-            {(['opportunities', 'history'] as const).map(tab => (
+            {(['opportunities', 'crypto', 'history'] as const).map(tab => (
               <button key={tab} onClick={() => setActiveTab(tab)}
                 className={`px-5 py-2 rounded-lg text-sm font-semibold transition-colors ${
                   activeTab === tab ? 'bg-gray-700 text-white' : 'text-gray-500 hover:text-gray-300'
                 }`}>
-                {tab === 'opportunities' ? 'Arbitrage Opportunities' : 'History'}
+                {tab === 'opportunities' ? 'Arbitrage Opportunities' :
+                 tab === 'crypto'        ? '⚡ Crypto Intel' : 'History'}
               </button>
             ))}
           </div>
@@ -684,6 +694,7 @@ export default function Home() {
         )}
 
         {activeTab === 'history' && <HistoryTab records={history} />}
+        {activeTab === 'crypto'  && <CryptoTab data={crypto} />}
 
       </div>
     </main>
@@ -1056,5 +1067,185 @@ function PlatformBadge({ platform, prob }: { platform: string; prob: number }) {
       <span className={`w-1.5 h-1.5 rounded-full ${cfg.dotClass}`} />
       {cfg.label} {prob}%
     </span>
+  );
+}
+
+// ── Crypto Tab ────────────────────────────────────
+
+const COIN_META: Record<string, { label: string; emoji: string }> = {
+  BTCUSDT:  { label: 'Bitcoin',  emoji: '₿'  },
+  ETHUSDT:  { label: 'Ethereum', emoji: 'Ξ'  },
+  SOLUSDT:  { label: 'Solana',   emoji: '◎'  },
+  BNBUSDT:  { label: 'BNB',      emoji: '⬡'  },
+  XRPUSDT:  { label: 'XRP',      emoji: '✕'  },
+  DOGEUSDT: { label: 'Dogecoin', emoji: 'Ð'  },
+};
+
+function fmtPrice(p: number): string {
+  if (p >= 1000)  return `$${p.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
+  if (p >= 1)     return `$${p.toFixed(2)}`;
+  return `$${p.toFixed(4)}`;
+}
+
+function CryptoTab({ data }: { data: CryptoResponse | null }) {
+  if (!data) {
+    return (
+      <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-12 text-center">
+        <div className="text-5xl mb-4">⚡</div>
+        <p className="text-gray-300 font-semibold text-lg">Loading Binance prices…</p>
+        <p className="text-gray-600 text-sm mt-2">agent10-binance fetches every 60 seconds.</p>
+      </div>
+    );
+  }
+
+  const { binance, cryptoMarkets, binanceAge } = data;
+  const binanceStale = binanceAge > 120_000;
+  const infoLagMarkets = cryptoMarkets.filter(m => m.infoLag);
+  const symbols = Object.keys(COIN_META);
+
+  return (
+    <div className="space-y-8">
+
+      {/* Info lag alert */}
+      {infoLagMarkets.length > 0 && (
+        <div className="rounded-xl border border-orange-700 bg-orange-950/30 p-4 flex gap-3 items-start">
+          <span className="text-2xl flex-shrink-0">⚠️</span>
+          <div>
+            <p className="font-semibold text-orange-300">Information Lag Detected</p>
+            <p className="text-orange-400/70 text-sm mt-0.5">
+              Binance price moved ≥3% in the last hour but {infoLagMarkets.length} prediction market{infoLagMarkets.length > 1 ? 's haven\'t' : ' hasn\'t'} updated. These may be exploitable.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Live prices grid */}
+      <section>
+        <div className="flex items-center gap-3 mb-4">
+          <h2 className="text-xl font-bold">Live Binance Prices</h2>
+          {binanceStale
+            ? <span className="text-xs px-2 py-0.5 rounded-full border border-red-700 bg-red-950/40 text-red-400">stale — agent10 offline?</span>
+            : <span className="text-xs px-2 py-0.5 rounded-full border border-green-700 bg-green-900/40 text-green-400">live · {Math.round(binanceAge / 1000)}s ago</span>
+          }
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+          {symbols.map(sym => {
+            const p    = binance[sym];
+            const meta = COIN_META[sym];
+            const up   = p ? p.priceChangePercent24h >= 0 : true;
+            const lag  = p?.infoLag;
+            return (
+              <div key={sym} className={`rounded-xl border p-4 ${
+                lag
+                  ? 'border-orange-700 bg-orange-950/30'
+                  : up
+                    ? 'border-green-900/50 bg-green-950/20'
+                    : 'border-red-900/50 bg-red-950/20'
+              }`}>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-lg font-bold">{meta.emoji}</span>
+                  {lag && <span className="text-xs font-bold px-1.5 py-0.5 rounded border border-orange-600 bg-orange-900/60 text-orange-300">INFO LAG</span>}
+                </div>
+                <div className="text-xs text-gray-500 mb-1">{meta.label}</div>
+                {p ? (
+                  <>
+                    <div className="text-lg font-bold tabular-nums leading-none">{fmtPrice(p.price)}</div>
+                    <div className={`text-xs font-semibold mt-1.5 ${up ? 'text-green-400' : 'text-red-400'}`}>
+                      {up ? '▲' : '▼'} {Math.abs(p.priceChangePercent24h).toFixed(2)}% 24h
+                    </div>
+                    {p.change1hPct !== 0 && (
+                      <div className={`text-xs mt-0.5 ${Math.abs(p.change1hPct) >= 3 ? 'text-orange-400 font-semibold' : 'text-gray-600'}`}>
+                        {p.change1hPct >= 0 ? '+' : ''}{p.change1hPct.toFixed(2)}% 1h
+                      </div>
+                    )}
+                    <div className="text-xs text-gray-700 mt-1">
+                      H: {fmtPrice(p.high24h)} · L: {fmtPrice(p.low24h)}
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-sm text-gray-600 mt-1">loading…</div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* Crypto prediction markets */}
+      <section>
+        <div className="flex items-center gap-3 mb-4">
+          <h2 className="text-xl font-bold">Crypto Prediction Markets</h2>
+          <span className="text-xs px-2 py-0.5 rounded-full border border-gray-700 text-gray-500">
+            {cryptoMarkets.length} markets · Polymarket + Kalshi
+          </span>
+        </div>
+
+        {cryptoMarkets.length === 0 ? (
+          <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-8 text-center">
+            <p className="text-gray-500">No crypto markets found on Polymarket or Kalshi right now.</p>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-gray-800 overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-800 bg-gray-900/60">
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Market</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Platform</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Asset</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Live Price</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Mkt Prob</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-800/50">
+                {cryptoMarkets.map(m => {
+                  const bPrice = m.symbol ? binance[m.symbol] : null;
+                  const platCfg = m.platform === 'polymarket' ? PLATFORMS.polymarket : PLATFORMS.kalshi;
+                  return (
+                    <tr key={m.id} className={`hover:bg-white/[0.02] transition-colors ${m.infoLag ? 'bg-orange-950/10' : ''}`}>
+                      <td className="px-4 py-3 text-gray-200 max-w-xs">
+                        <a href={m.url} target="_blank" rel="noopener noreferrer"
+                          className="line-clamp-1 hover:text-white transition-colors hover:underline">
+                          {m.question}
+                        </a>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded border ${platCfg.badgeClass}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${platCfg.dotClass}`} />
+                          {platCfg.label}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-gray-400 text-xs">
+                        {m.symbol ? COIN_META[m.symbol]?.label ?? m.symbol : '—'}
+                      </td>
+                      <td className="px-4 py-3 text-right tabular-nums">
+                        {bPrice
+                          ? <span className={bPrice.priceChangePercent24h >= 0 ? 'text-green-400' : 'text-red-400'}>
+                              {fmtPrice(bPrice.price)}
+                            </span>
+                          : <span className="text-gray-600">—</span>
+                        }
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <span className={`font-bold tabular-nums ${
+                          m.probability >= 70 ? 'text-green-400' :
+                          m.probability >= 40 ? 'text-yellow-400' : 'text-red-400'
+                        }`}>{m.probability}%</span>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        {m.infoLag
+                          ? <span className="text-xs font-bold px-1.5 py-0.5 rounded border border-orange-600 bg-orange-900/50 text-orange-300">INFO LAG</span>
+                          : <span className="text-xs text-gray-600">—</span>
+                        }
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    </div>
   );
 }
