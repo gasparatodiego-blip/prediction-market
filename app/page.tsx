@@ -40,8 +40,8 @@ const PLATFORMS = {
     bgClass:     'bg-purple-950/20',
     badgeClass:  'bg-purple-900/60 border-purple-700 text-purple-300',
   },
-  smarkets: {
-    label:       'Smarkets',
+  betfair: {
+    label:       'Betfair Exchange',
     dotClass:    'bg-orange-400',
     headerClass: 'text-orange-400',
     borderClass: 'border-orange-900/40',
@@ -322,7 +322,7 @@ function fmtDollars(n: number): string {
 const REFRESH_INTERVAL = 30;
 const EMPTY_PANELS: MarketsResponse['panels'] = {
   predictit: [], manifold: [], kalshi: [], polymarket: [],
-  smarkets: [], metaculus: [], augur: [], oddsapi: [], opinionmarkets: [],
+  betfair: [], metaculus: [], augur: [], oddsapi: [], opinionmarkets: [],
 };
 
 export default function Home() {
@@ -411,7 +411,7 @@ export default function Home() {
   const totalMarkets =
     panels.predictit.length + panels.manifold.length +
     panels.kalshi.length    + panels.polymarket.length +
-    panels.smarkets.length  + panels.metaculus.length  +
+    panels.betfair.length   + panels.metaculus.length  +
     panels.augur.length     + panels.oddsapi.length    +
     panels.opinionmarkets.length;
 
@@ -946,8 +946,7 @@ function PlatformPanel({ platformKey, markets }: { platformKey: PlatformKey; mar
       <div className="divide-y divide-gray-800/40">
         {markets.length === 0 && (
           <p className="px-5 py-4 text-sm text-gray-600">
-            {platformKey === 'smarkets'       ? 'API restricted (Cloudflare bot protection)' :
-             platformKey === 'metaculus'      ? 'API now requires authentication' :
+            {platformKey === 'metaculus'      ? 'API now requires authentication' :
              platformKey === 'augur'          ? 'Platform inactive (subgraph moved)' :
              platformKey === 'opinionmarkets' ? 'API unavailable (connection timeout)' :
              'No data available'}

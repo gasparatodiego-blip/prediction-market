@@ -6,9 +6,9 @@ const MANIFOLD_API    = 'https://api.manifold.markets/v0';
 const KALSHI_API      = 'https://api.elections.kalshi.com/trade-api/v2';
 const PREDICTIT_API   = 'https://www.predictit.org/api/marketdata/all/';
 const POLYMARKET_API  = 'https://gamma-api.polymarket.com';
-const SMARKETS_API    = 'https://api.smarkets.com/v3/markets/?state=live&limit=50';
 const METACULUS_API   = 'https://www.metaculus.com/api2/questions/?limit=50&has_crowd_forecast=true';
 const AUGUR_GRAPH_API = 'https://api.thegraph.com/subgraphs/name/augurproject/augur-v2';
+const BETFAIR_BM_KEY  = 'betfair_ex_eu';  // Betfair Exchange EU — present in OddsAPI events
 
 const OPINION_MARKETS_API = 'https://opinion.markets/api/markets';
 
@@ -37,7 +37,7 @@ export interface ArbCandidate {
   id: string;
   question: string;
   probability: number;  // 0–100
-  platform: 'predictit' | 'manifold' | 'kalshi' | 'polymarket' | 'smarkets' | 'metaculus' | 'augur' | 'oddsapi' | 'opinionmarkets';
+  platform: 'predictit' | 'manifold' | 'kalshi' | 'polymarket' | 'betfair' | 'metaculus' | 'augur' | 'oddsapi' | 'opinionmarkets';
   bookmaker?: string;   // for oddsapi: specific bookmaker name (e.g., "Betfair Exchange")
   url?: string;
   volume?: number | null;
@@ -53,7 +53,7 @@ export interface MarketsResponse {
     manifold:       PanelMarket[];
     kalshi:         PanelMarket[];
     polymarket:     PanelMarket[];
-    smarkets:       PanelMarket[];
+    betfair:        PanelMarket[];
     metaculus:      PanelMarket[];
     augur:          PanelMarket[];
     oddsapi:        PanelMarket[];
@@ -95,17 +95,6 @@ function polymarketPrice(m: any): number | null {
   } catch {}
   const ltp = parseFloat(m.lastTradePrice || '0');
   return ltp > 0 ? Math.round(ltp * 100) : null;
-}
-
-function smarketsPrice(market: any): number | null {
-  const contracts: any[] = market.contracts ?? [];
-  if (contracts.length === 0) return null;
-  const first = contracts[0];
-  const raw = first?.last_price ?? first?.best_ask_price ?? first?.best_bid_price;
-  if (raw == null) return null;
-  const val = typeof raw === 'string' ? parseFloat(raw) : raw;
-  if (val <= 0) return null;
-  return Math.round(val / 100);
 }
 
 function metaculusProb(q: any): number | null {
@@ -204,6 +193,29 @@ function buildOddsApiPanel(events: any[]): PanelMarket[] {
       return sb - sa;
     })
     .slice(0, 30);
+}
+
+function buildBetfairPanel(events: any[]): PanelMarket[] {
+  const panels: PanelMarket[] = [];
+  for (const ev of events) {
+    const bfBm = (ev.bookmakers ?? []).find((b: any) => b.key === BETFAIR_BM_KEY);
+    if (!bfBm) continue;
+    const h2h = (bfBm.markets ?? []).find((m: any) => m.key === 'h2h');
+    if (!h2h) continue;
+    for (const outcome of h2h.outcomes ?? []) {
+      if (!outcome.price || outcome.price <= 1) continue;
+      const prob = Math.round((1 / outcome.price) * 1000) / 10;
+      panels.push({
+        id:          `bf-${ev.id}-${outcome.name.replace(/\s+/g, '_')}`,
+        name:        `${ev.home_team} vs ${ev.away_team} — ${outcome.name}`,
+        detail:      `${ev.sport_title} · Betfair Exchange · ${outcome.price.toFixed(2)} dec`,
+        probability: prob,
+        volume:      null,
+        expiresAt:   toMs(ev.commence_time),
+      });
+    }
+  }
+  return panels.slice(0, 30);
 }
 
 // ── Opinion Markets fetch ─────────────────────────
@@ -352,8 +364,11 @@ export async function GET() {
     oddsEvents = await fetchOddsApiDirect();
   }
 
+  // Build Betfair panel from already-loaded OddsAPI events (no extra fetch needed)
+  const betfairPanel: PanelMarket[] = buildBetfairPanel(oddsEvents);
+
   // ── Parallel fetches ──────────────────────────────
-  const [piRaw, mfRaw, kaRaw, pmRaw, smRaw, mcRaw, agRaw, opinionPanel] = await Promise.all([
+  const [piRaw, mfRaw, kaRaw, pmRaw, mcRaw, agRaw, opinionPanel] = await Promise.all([
 
     fetch(PREDICTIT_API, { cache: 'no-store' })
       .then(r => r.json()).catch(() => ({ markets: [] })),
@@ -366,15 +381,6 @@ export async function GET() {
 
     fetch(`${POLYMARKET_API}/markets?active=true&limit=100`, { cache: 'no-store' })
       .then(r => r.json()).catch(() => []),
-
-    // Smarkets: Cloudflare-protected — returns HTML challenge instead of JSON from server IPs
-    fetch(SMARKETS_API, {
-      cache: 'no-store',
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0 Safari/537.36',
-        'Accept': 'application/json',
-      },
-    }).then(r => r.ok ? r.json() : { markets: [] }).catch(() => ({ markets: [] })),
 
     // Metaculus: API now requires authentication — returns permission error without token
     fetch(METACULUS_API, { cache: 'no-store' })
@@ -421,10 +427,6 @@ export async function GET() {
       return p !== null && p > 3 && p < 97;
     })
     .slice(0, 30);
-
-  const smMarkets: any[] = ((smRaw.markets ?? []) as any[])
-    .filter((m: any) => smarketsPrice(m) !== null)
-    .slice(0, 20);
 
   const mcMarkets: any[] = ((mcRaw.results ?? []) as any[])
     .filter((q: any) => metaculusProb(q) !== null)
@@ -473,15 +475,6 @@ export async function GET() {
     probability: polymarketPrice(m),
     volume:      m.volume != null ? parseFloat(m.volume) : null,
     expiresAt:   toMs(m.endDateIso ?? m.end_date_iso ?? m.endDate),
-  }));
-
-  const smarketsPanel: PanelMarket[] = smMarkets.map((m: any) => ({
-    id:          String(m.id),
-    name:        m.name,
-    detail:      m.market_type ?? 'Smarkets',
-    probability: smarketsPrice(m),
-    volume:      m.traded_volume ? parseFloat(m.traded_volume) / 100 : null,
-    expiresAt:   toMs(m.close_time ?? m.end_date),
   }));
 
   const metaculusPanel: PanelMarket[] = mcMarkets.map((q: any) => ({
@@ -560,15 +553,15 @@ export async function GET() {
                      : (m.liquidity != null ? Math.round(parseFloat(m.liquidity)) : null),
       expiresAt:   toMs(m.endDateIso ?? m.end_date_iso ?? m.endDate),
     })),
-    ...smMarkets.map((m: any) => ({
-      id:          `sm-${m.id}`,
-      question:    String(m.name),
-      probability: smarketsPrice(m) ?? 50,
-      platform:    'smarkets' as const,
-      url:         `https://smarkets.com/event/${m.event_id ?? m.id}`,
-      volume:      m.traded_volume ? parseFloat(m.traded_volume) / 100 : null,
-      liquidity:   m.traded_volume ? Math.round(parseFloat(m.traded_volume) / 100 * 0.05) : null,
-      expiresAt:   toMs(m.close_time ?? m.end_date),
+    ...betfairPanel.map(m => ({
+      id:          m.id,
+      question:    m.name,
+      probability: m.probability ?? 50,
+      platform:    'betfair' as const,
+      url:         'https://www.betfair.com/exchange',
+      volume:      null,
+      liquidity:   null,
+      expiresAt:   m.expiresAt ?? null,
     })),
     ...mcMarkets.map((q: any) => ({
       id:          `mc-${q.id}`,
@@ -632,7 +625,7 @@ export async function GET() {
       manifold:       manifoldPanel,
       kalshi:         kalshiPanel,
       polymarket:     polymarketPanel,
-      smarkets:       smarketsPanel,
+      betfair:        betfairPanel,
       metaculus:      metaculusPanel,
       augur:          augurPanel,
       oddsapi:        oddsApiPanel,
