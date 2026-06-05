@@ -17,6 +17,8 @@ const TG_CHAT        = '8844610430';
 const FILES = {
   exchangePrices:   '/tmp/exchange-prices.json',
   marketsRaw:       '/tmp/markets-raw.json',
+  kalshiRaw:        '/tmp/kalshi-raw.json',
+  polymarketRaw:    '/tmp/polymarket-raw.json',
   oddsApiRaw:       '/tmp/odds-api-raw.json',
   rebalancerOutput: '/tmp/rebalancer-output.json',
   masterOut:        '/tmp/master-opportunities.json',
@@ -101,10 +103,18 @@ async function collectData() {
   const pricesAge    = exchangeData ? now - (exchangeData.fetchedAt || 0) : Infinity;
   const prices       = pricesAge < MAX_AGE_MS ? exchangeData : null;
 
-  // Prediction markets (from agent2-fetcher)
-  const marketsRaw = readJson(FILES.marketsRaw);
-  const marketsAge = marketsRaw ? now - (marketsRaw.fetchedAt || 0) : Infinity;
-  const markets    = marketsAge < MAX_AGE_MS ? marketsRaw : null;
+  // Prediction markets — prefer dedicated agent files, fall back to markets-raw.json
+  const marketsRaw  = readJson(FILES.marketsRaw);
+  const marketsAge  = marketsRaw ? now - (marketsRaw.fetchedAt || 0) : Infinity;
+  const markets     = marketsAge < MAX_AGE_MS ? marketsRaw : null;
+
+  const kalshiData  = readJson(FILES.kalshiRaw);
+  const kalshiAge   = kalshiData ? now - (kalshiData.fetchedAt || 0) : Infinity;
+  const kalshi      = kalshiAge < MAX_AGE_MS ? kalshiData : null;
+
+  const pmData      = readJson(FILES.polymarketRaw);
+  const pmAge       = pmData ? now - (pmData.fetchedAt || 0) : Infinity;
+  const polymarket  = pmAge < MAX_AGE_MS ? pmData : null;
 
   // Sports odds (from agent12-sports)
   const oddsRaw  = readJson(FILES.oddsApiRaw);
@@ -120,13 +130,13 @@ async function collectData() {
     get('https://api.alternative.me/fng/?limit=7'),
   ]);
 
-  return { prices, markets, odds, rebal, fngNow, fng7d };
+  return { prices, markets, kalshi, polymarket, odds, rebal, fngNow, fng7d };
 }
 
 // ── Context builder ────────────────────────────────────────────────────────────
 
 function buildContext(data) {
-  const { prices, markets, odds, rebal, fngNow, fng7d } = data;
+  const { prices, markets, kalshi, polymarket, odds, rebal, fngNow, fng7d } = data;
   const lines = [];
 
   // Fear & Greed
@@ -176,22 +186,43 @@ function buildContext(data) {
     lines.push(`Total: $${rebal.total_expected_monthly}/mo (${rebal.total_expected_apy}% APY)`);
   }
 
-  // Prediction markets
-  if (markets) {
-    const allMarkets = [];
-    for (const platform of ['predictit', 'manifold', 'kalshi', 'polymarket']) {
-      const pm = markets[platform];
-      if (!pm) continue;
-      const items = Array.isArray(pm) ? pm : (pm.markets || pm.events || []);
-      items.slice(0, 8).forEach(m => allMarkets.push({ platform, ...m }));
-    }
-    if (allMarkets.length) {
-      lines.push('\n=== PREDICTION MARKETS (sample) ===');
-      allMarkets.slice(0, 20).forEach(m => {
-        const p = m.price ?? m.probability ?? m.yes_bid ?? '?';
-        lines.push(`[${m.platform.toUpperCase()}] ${(m.question || m.title || m.name || '').slice(0, 80)}: ${p}`);
-      });
-    }
+  // Prediction markets — merge dedicated files + markets-raw fallback
+  const pmSources = [
+    { platform: 'predictit',  items: markets?.predictit ?? [] },
+    { platform: 'manifold',   items: markets?.manifold  ?? [] },
+    { platform: 'kalshi',     items: (kalshi?.markets ?? markets?.kalshi ?? []).filter(m =>
+        parseFloat(m.yes_bid_dollars||'0') > 0 || parseFloat(m.yes_ask_dollars||'0') > 0 || parseFloat(m.last_price_dollars||'0') > 0
+      )
+    },
+    { platform: 'polymarket', items: (polymarket?.markets ?? markets?.polymarket ?? []).filter(m => m.active) },
+  ];
+  const allMarkets = [];
+  for (const { platform, items } of pmSources) {
+    if (!Array.isArray(items)) continue;
+    items.slice(0, 8).forEach(m => allMarkets.push({ platform, ...m }));
+  }
+  if (allMarkets.length) {
+    lines.push('\n=== PREDICTION MARKETS (sample) ===');
+    allMarkets.slice(0, 24).forEach(m => {
+      // Kalshi: derive probability from bid/ask/last
+      let p = m.price ?? m.probability ?? null;
+      if (p == null && m.yes_bid_dollars != null) {
+        const bid  = parseFloat(m.yes_bid_dollars  || '0');
+        const ask  = parseFloat(m.yes_ask_dollars  || '0');
+        const last = parseFloat(m.last_price_dollars || '0');
+        p = bid > 0 && ask > 0 ? ((bid + ask) / 2 * 100).toFixed(0)
+          : ask > 0 ? (ask * 100).toFixed(0)
+          : bid > 0 ? (bid * 100).toFixed(0)
+          : last > 0 ? (last * 100).toFixed(0) : '?';
+      }
+      if (p == null && m.outcomePrices != null) {
+        try {
+          const prices = typeof m.outcomePrices === 'string' ? JSON.parse(m.outcomePrices) : m.outcomePrices;
+          if (Array.isArray(prices) && prices[0]) p = (parseFloat(prices[0]) * 100).toFixed(0) + '%';
+        } catch {}
+      }
+      lines.push(`[${m.platform.toUpperCase()}] ${(m.question || m.title || m.name || '').slice(0, 80)}: ${p ?? '?'}`);
+    });
   }
 
   // Sports odds
@@ -268,7 +299,7 @@ async function run() {
 
   const fngValue = data.fngNow?.data?.[0]?.value ?? '?';
   const fngLabel = data.fngNow?.data?.[0]?.value_classification ?? '?';
-  console.log(`[master] FNG: ${fngValue} (${fngLabel}) | prices: ${data.prices ? 'ok' : 'missing'} | markets: ${data.markets ? 'ok' : 'missing'} | odds: ${data.odds ? 'ok' : 'missing'}`);
+  console.log(`[master] FNG: ${fngValue} (${fngLabel}) | prices: ${data.prices ? 'ok' : '-'} | markets: ${data.markets ? 'ok' : '-'} | kalshi: ${data.kalshi ? 'ok' : '-'} | polymarket: ${data.polymarket ? 'ok' : '-'} | odds: ${data.odds ? 'ok' : '-'}`);
 
   const context = buildContext(data);
 

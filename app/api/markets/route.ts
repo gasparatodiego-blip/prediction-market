@@ -2,49 +2,29 @@ import { NextResponse } from 'next/server';
 import fs from 'fs';
 import { loadBucketsSync, computeBiasScore, type CalibrationBucket } from '@/lib/calibration';
 
-const MANIFOLD_API    = 'https://api.manifold.markets/v0';
-const KALSHI_API      = 'https://api.elections.kalshi.com/trade-api/v2';
-const PREDICTIT_API   = 'https://www.predictit.org/api/marketdata/all/';
-const POLYMARKET_API  = 'https://gamma-api.polymarket.com';
-const METACULUS_API   = 'https://www.metaculus.com/api2/questions/?limit=50&has_crowd_forecast=true';
-const AUGUR_GRAPH_API = 'https://api.thegraph.com/subgraphs/name/augurproject/augur-v2';
-const BETFAIR_BM_KEY  = 'betfair_ex_eu';  // Betfair Exchange EU — present in OddsAPI events
-
-const OPINION_MARKETS_API = 'https://opinion.markets/api/markets';
-
-const ODDS_API_KEY    = 'aff711ab10f3f1fba585e30405329c7c';
-const ODDS_SPORTS     = [
-  'soccer_fifa_world_cup',
-  'americanfootball_nfl',
-  'baseball_mlb',
-  'basketball_nba',
-  'tennis_atp_french_open',
-];
-const ODDS_API_FILE   = '/tmp/odds-api-raw.json';
-
 // ── Types ─────────────────────────────────────────
 
 export interface PanelMarket {
   id: string;
   name: string;
   detail: string;
-  probability: number | null; // 0–100
-  volume?: number | null;     // total traded USD
-  expiresAt?: number | null;  // Unix ms
+  probability: number | null;
+  volume?: number | null;
+  expiresAt?: number | null;
 }
 
 export interface ArbCandidate {
   id: string;
   question: string;
-  probability: number;  // 0–100
+  probability: number;
   platform: 'predictit' | 'manifold' | 'kalshi' | 'polymarket' | 'betfair' | 'metaculus' | 'augur' | 'oddsapi' | 'opinionmarkets';
-  bookmaker?: string;   // for oddsapi: specific bookmaker name (e.g., "Betfair Exchange")
+  bookmaker?: string;
   url?: string;
   volume?: number | null;
   liquidity?: number | null;
   expiresAt?: number | null;
   priceSeenAt?: number | null;
-  biasScore?: number | null;   // (prob − historical_hit_rate) / prob; positive = overpriced; null = no data
+  biasScore?: number | null;
 }
 
 export interface MarketsResponse {
@@ -66,28 +46,33 @@ export interface MarketsResponse {
 
 function toMs(v: any): number | null {
   if (v == null) return null;
-  if (typeof v === 'number') {
-    return v < 9_999_999_999 ? v * 1000 : v;
-  }
-  if (typeof v === 'string') {
-    const d = Date.parse(v);
-    return isNaN(d) ? null : d;
-  }
+  if (typeof v === 'number') return v < 9_999_999_999 ? v * 1000 : v;
+  if (typeof v === 'string') { const d = Date.parse(v); return isNaN(d) ? null : d; }
   return null;
 }
 
-function kalshiPrice(m: any): number {
+function readJson(path: string): any {
+  try { return JSON.parse(fs.readFileSync(path, 'utf8')); } catch { return null; }
+}
+
+// ── Normalise price helpers ───────────────────────
+
+function kalshiPrice(m: any): number | null {
   const bid = parseFloat(m.yes_bid_dollars || '0');
   const ask = parseFloat(m.yes_ask_dollars || '0');
-  if (bid > 0 && ask > 0) return Math.round(((bid + ask) / 2) * 100);
-  return Math.round((ask || bid) * 100);
+  const last = parseFloat(m.last_price_dollars || '0');
+  let p = 0;
+  if (bid > 0 && ask > 0) p = (bid + ask) / 2;
+  else if (ask > 0) p = ask;
+  else if (bid > 0) p = bid;
+  else if (last > 0) p = last;
+  const pct = Math.round(p * 100);
+  return pct > 0 && pct < 100 ? pct : null;
 }
 
 function polymarketPrice(m: any): number | null {
   try {
-    const prices = typeof m.outcomePrices === 'string'
-      ? JSON.parse(m.outcomePrices)
-      : m.outcomePrices;
+    const prices = typeof m.outcomePrices === 'string' ? JSON.parse(m.outcomePrices) : m.outcomePrices;
     if (Array.isArray(prices) && prices[0]) {
       const p = parseFloat(prices[0]);
       if (p > 0) return Math.round(p * 100);
@@ -97,37 +82,51 @@ function polymarketPrice(m: any): number | null {
   return ltp > 0 ? Math.round(ltp * 100) : null;
 }
 
-function metaculusProb(q: any): number | null {
-  const cp = q.community_prediction;
-  if (!cp) return null;
-  const raw = cp.q2 ?? cp.full?.q2;
-  if (raw == null || raw <= 0) return null;
-  return Math.round(raw * 100);
+// ── Load /tmp files ────────────────────────────────
+
+const MARKETS_RAW_FILE  = '/tmp/markets-raw.json';
+const KALSHI_RAW_FILE   = '/tmp/kalshi-raw.json';
+const POLYMARKET_RAW_FILE = '/tmp/polymarket-raw.json';
+const ODDS_API_FILE     = '/tmp/odds-api-raw.json';
+const ARB_FILE          = '/tmp/arbitrage-opportunities.json';
+const UI_DATA_FILE      = '/tmp/ui-data.json';
+const PRICES_FILE       = '/tmp/arb-prices.json';
+
+function loadMarketsRaw() {
+  return readJson(MARKETS_RAW_FILE);
 }
 
-function augurPrice(market: any): number | null {
-  const outcomes: any[] = market.outcomes ?? [];
-  const yes = outcomes.find((o: any) =>
-    (o.description ?? '').toLowerCase() === 'yes' ||
-    (o.value ?? '').toLowerCase() === 'yes'
-  ) ?? outcomes[0];
-  if (!yes) return null;
-  const raw = parseFloat(yes.lastPrice ?? yes.price ?? '0');
-  if (raw <= 0) return null;
-  return Math.round(raw * 100);
+// Returns Kalshi markets array — dedicated file takes priority over markets-raw.json
+function loadKalshiMarkets(): any[] {
+  const dedicated = readJson(KALSHI_RAW_FILE);
+  if (dedicated?.markets?.length) return dedicated.markets;
+  // fall back to embedded kalshi key in markets-raw.json
+  const raw = readJson(MARKETS_RAW_FILE);
+  return raw?.kalshi ?? [];
 }
 
-// ── Odds API helpers ──────────────────────────────
+// Returns Polymarket markets array — dedicated file takes priority over markets-raw.json
+function loadPolymarketMarkets(): any[] {
+  const dedicated = readJson(POLYMARKET_RAW_FILE);
+  if (dedicated?.markets?.length) return dedicated.markets;
+  const raw = readJson(MARKETS_RAW_FILE);
+  return raw?.polymarket ?? [];
+}
+
+function loadOddsApiEvents(): any[] {
+  const data = readJson(ODDS_API_FILE);
+  return data?.events ?? [];
+}
+
+// ── Odds API panels ────────────────────────────────
 
 interface BookmakerOdds { bm: string; bmTitle: string; prob: number; }
 
 function oddsApiEventCandidates(events: any[]): ArbCandidate[] {
   const candidates: ArbCandidate[] = [];
   for (const ev of events) {
-    const bookmakers: any[] = ev.bookmakers ?? [];
-    // Collect implied probs per outcome across all bookmakers
     const outcomeMap: Record<string, BookmakerOdds[]> = {};
-    for (const bm of bookmakers) {
+    for (const bm of ev.bookmakers ?? []) {
       const h2h = (bm.markets ?? []).find((m: any) => m.key === 'h2h');
       if (!h2h) continue;
       for (const outcome of h2h.outcomes ?? []) {
@@ -137,12 +136,10 @@ function oddsApiEventCandidates(events: any[]): ArbCandidate[] {
         outcomeMap[outcome.name].push({ bm: bm.key, bmTitle: bm.title || bm.key, prob });
       }
     }
-
-    // For each outcome, emit one candidate per bookmaker
     for (const [outcomeName, entries] of Object.entries(outcomeMap)) {
       if (entries.length < 2) continue;
       const spread = Math.max(...entries.map(e => e.prob)) - Math.min(...entries.map(e => e.prob));
-      if (spread < 2) continue; // only include outcomes with meaningful disagreement
+      if (spread < 2) continue;
       const expiry = toMs(ev.commence_time);
       for (const entry of entries) {
         candidates.push({
@@ -163,53 +160,48 @@ function oddsApiEventCandidates(events: any[]): ArbCandidate[] {
 }
 
 function buildOddsApiPanel(events: any[]): PanelMarket[] {
-  const panels: PanelMarket[] = [];
-  for (const ev of events) {
-    // Pick the bookmaker with most disagreement for the home team outcome
-    const bookmakers: any[] = ev.bookmakers ?? [];
-    const homeProbs: number[] = [];
-    for (const bm of bookmakers) {
-      const h2h = (bm.markets ?? []).find((m: any) => m.key === 'h2h');
-      const outcome = (h2h?.outcomes ?? []).find((o: any) => o.name === ev.home_team);
-      if (outcome?.price > 1) homeProbs.push((1 / outcome.price) * 100);
-    }
-    if (homeProbs.length === 0) continue;
-    const bestProb = Math.round(Math.max(...homeProbs) * 10) / 10;
-    const worstProb = Math.round(Math.min(...homeProbs) * 10) / 10;
-    const spread = bestProb - worstProb;
-    panels.push({
-      id:          ev.id,
-      name:        `${ev.home_team} vs ${ev.away_team}`,
-      detail:      `${ev.sport_title} · ${homeProbs.length} bookmakers · spread ${spread.toFixed(1)}%`,
-      probability: Math.round((homeProbs.reduce((a, b) => a + b, 0) / homeProbs.length) * 10) / 10,
-      volume:      null,
-      expiresAt:   toMs(ev.commence_time),
-    });
-  }
-  return panels
-    .sort((a, b) => {
+  return events
+    .map(ev => {
+      const homeProbs: number[] = [];
+      for (const bm of ev.bookmakers ?? []) {
+        const h2h = (bm.markets ?? []).find((m: any) => m.key === 'h2h');
+        const outcome = (h2h?.outcomes ?? []).find((o: any) => o.name === ev.home_team);
+        if (outcome?.price > 1) homeProbs.push((1 / outcome.price) * 100);
+      }
+      if (!homeProbs.length) return null;
+      const spread = Math.max(...homeProbs) - Math.min(...homeProbs);
+      return {
+        id:          ev.id,
+        name:        `${ev.home_team} vs ${ev.away_team}`,
+        detail:      `${ev.sport_title} · ${homeProbs.length} bookmakers · spread ${spread.toFixed(1)}%`,
+        probability: Math.round((homeProbs.reduce((a, b) => a + b, 0) / homeProbs.length) * 10) / 10,
+        volume:      null,
+        expiresAt:   toMs(ev.commence_time),
+      } as PanelMarket;
+    })
+    .filter(Boolean)
+    .sort((a: any, b: any) => {
       const sa = parseFloat(a.detail.split('spread ')[1] ?? '0');
       const sb = parseFloat(b.detail.split('spread ')[1] ?? '0');
       return sb - sa;
     })
-    .slice(0, 30);
+    .slice(0, 30) as PanelMarket[];
 }
 
 function buildBetfairPanel(events: any[]): PanelMarket[] {
   const panels: PanelMarket[] = [];
   for (const ev of events) {
-    const bfBm = (ev.bookmakers ?? []).find((b: any) => b.key === BETFAIR_BM_KEY);
+    const bfBm = (ev.bookmakers ?? []).find((b: any) => b.key === 'betfair_ex_eu');
     if (!bfBm) continue;
     const h2h = (bfBm.markets ?? []).find((m: any) => m.key === 'h2h');
     if (!h2h) continue;
     for (const outcome of h2h.outcomes ?? []) {
       if (!outcome.price || outcome.price <= 1) continue;
-      const prob = Math.round((1 / outcome.price) * 1000) / 10;
       panels.push({
         id:          `bf-${ev.id}-${outcome.name.replace(/\s+/g, '_')}`,
         name:        `${ev.home_team} vs ${ev.away_team} — ${outcome.name}`,
         detail:      `${ev.sport_title} · Betfair Exchange · ${outcome.price.toFixed(2)} dec`,
-        probability: prob,
+        probability: Math.round((1 / outcome.price) * 1000) / 10,
         volume:      null,
         expiresAt:   toMs(ev.commence_time),
       });
@@ -218,70 +210,65 @@ function buildBetfairPanel(events: any[]): PanelMarket[] {
   return panels.slice(0, 30);
 }
 
-// ── Opinion Markets fetch ─────────────────────────
+// ── Agent arb cache ────────────────────────────────
 
-async function fetchOpinionMarkets(): Promise<PanelMarket[]> {
-  try {
-    const res = await fetch(OPINION_MARKETS_API, {
-      cache: 'no-store',
-      signal: AbortSignal.timeout(8000),
-      headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' },
-    });
-    if (!res.ok) return [];
-    const data = await res.json();
-    const list: any[] = Array.isArray(data) ? data : (data.markets ?? data.data ?? []);
-    return list
-      .filter((m: any) => m && (m.name || m.title || m.question))
-      .slice(0, 20)
-      .map((m: any) => {
-        const name = m.name ?? m.title ?? m.question ?? '';
-        const prob = m.probability ?? m.prob ?? m.yes_price ?? m.price ?? null;
-        const probNum = prob != null ? Math.round(parseFloat(String(prob)) * (prob > 1 ? 1 : 100)) : null;
-        return {
-          id:          String(m.id ?? m.slug ?? name.slice(0, 20)),
-          name,
-          detail:      m.category ?? m.type ?? 'Opinion Markets',
-          probability: probNum != null && probNum >= 1 && probNum <= 99 ? probNum : null,
-          volume:      m.volume != null ? parseFloat(String(m.volume)) : null,
-          expiresAt:   toMs(m.close_time ?? m.closeTime ?? m.end_date ?? m.endDate),
-        };
-      });
-  } catch { return []; }
+function loadAgentArb(): ArbCandidate[] | null {
+  for (const f of [UI_DATA_FILE, ARB_FILE]) {
+    try {
+      const data = readJson(f);
+      if (!data) continue;
+      const age = Date.now() - (data.refreshedAt ?? data.updatedAt ?? 0);
+      if (age > 3_600_000) continue; // up to 60 min stale
+
+      const opps: any[] = data.opportunities ?? [];
+      if (!opps.length) continue;
+
+      // New master-agent format
+      if (opps[0]?.source === 'AI Master') {
+        return opps.map((o: any) => ({
+          id:          o.id,
+          question:    o.title,
+          probability: Math.min(99, Math.max(1, Math.round(o.confidence ?? 50))),
+          platform:    'manifold' as const,
+          url:         undefined,
+          volume:      null,
+          liquidity:   null,
+          expiresAt:   null,
+          _master:     o,
+        }));
+      }
+
+      // Legacy pipeline format
+      if (opps[0]?.lowMarket) {
+        return opps.map((o: any) => ({
+          id:          o.lowMarket.id,
+          question:    o.question,
+          probability: o.lowMarket.probability,
+          platform:    o.lowMarket.platform,
+          bookmaker:   o.lowMarket.bookmaker ?? undefined,
+          url:         o.lowMarket.url,
+          volume:      o.lowMarket.volume    ?? null,
+          liquidity:   o.lowMarket.liquidity ?? null,
+          expiresAt:   o.lowMarket.expiresAt ?? null,
+          _paired: {
+            id:          o.highMarket.id,
+            question:    o.question,
+            probability: o.highMarket.probability,
+            platform:    o.highMarket.platform,
+            bookmaker:   o.highMarket.bookmaker ?? undefined,
+            url:         o.highMarket.url,
+            volume:      o.highMarket.volume    ?? null,
+            liquidity:   o.highMarket.liquidity ?? null,
+            expiresAt:   o.highMarket.expiresAt ?? null,
+          },
+        }));
+      }
+    } catch {}
+  }
+  return null;
 }
 
-// ── Load cached Odds API data (written by agent2-fetcher every 5 min) ──
-
-function loadOddsApiEvents(): any[] {
-  try {
-    const raw  = fs.readFileSync(ODDS_API_FILE, 'utf8');
-    const data = JSON.parse(raw);
-    const age  = Date.now() - (data.fetchedAt ?? 0);
-    if (age > 600_000) return []; // stale > 10 min, trigger fresh fetch below
-    return data.events ?? [];
-  } catch { return []; }
-}
-
-async function fetchOddsApiDirect(): Promise<any[]> {
-  const results: any[] = [];
-  await Promise.all(
-    ODDS_SPORTS.map(sport =>
-      fetch(
-        `https://api.the-odds-api.com/v4/sports/${sport}/odds/?apiKey=${ODDS_API_KEY}&regions=eu&markets=h2h&oddsFormat=decimal`,
-        { cache: 'no-store' }
-      )
-        .then(r => r.json())
-        .then(d => { if (Array.isArray(d)) results.push(...d); })
-        .catch(() => {})
-    )
-  );
-  // Update cache
-  try { fs.writeFileSync(ODDS_API_FILE, JSON.stringify({ fetchedAt: Date.now(), events: results }, null, 2)); } catch {}
-  return results;
-}
-
-// ── Price-staleness tracking ──────────────────────
-
-const PRICES_FILE = '/tmp/arb-prices.json';
+// ── Price staleness tracking ──────────────────────
 
 type PriceRecord = { p: number; t: number };
 
@@ -295,8 +282,8 @@ function stampCandidates(candidates: ArbCandidate[]): ArbCandidate[] {
   const update = { ...seen };
 
   const stamped = candidates.map(c => {
-    const key   = `${c.platform}:${c.id}`;
-    const prev  = seen[key];
+    const key    = `${c.platform}:${c.id}`;
+    const prev   = seen[key];
     const changed = !prev || Math.abs(prev.p - c.probability) >= 1;
     if (changed) update[key] = { p: c.probability, t: now };
     return { ...c, priceSeenAt: changed ? now : prev!.t };
@@ -308,133 +295,38 @@ function stampCandidates(candidates: ArbCandidate[]): ArbCandidate[] {
     if (v.t > cutoff) pruned[k] = v;
   }
   try { fs.writeFileSync(PRICES_FILE, JSON.stringify(pruned)); } catch {}
-
   return stamped;
-}
-
-// ── Agent pipeline cache ──────────────────────────
-
-const UI_DATA_FILE = '/tmp/ui-data.json';
-const ARB_FILE     = '/tmp/arbitrage-opportunities.json';
-
-function loadAgentArb(): ArbCandidate[] | null {
-  for (const f of [UI_DATA_FILE, ARB_FILE]) {
-    try {
-      const raw  = fs.readFileSync(f, 'utf8');
-      const data = JSON.parse(raw);
-      const age  = Date.now() - (data.refreshedAt ?? data.updatedAt ?? 0);
-      if (age > 120_000) continue;
-
-      const opps: any[] = data.opportunities ?? [];
-      if (opps.length === 0) continue;
-      return opps.map((o: any) => ({
-        id:          o.lowMarket.id,
-        question:    o.question,
-        probability: o.lowMarket.probability,
-        platform:    o.lowMarket.platform,
-        bookmaker:   o.lowMarket.bookmaker ?? undefined,
-        url:         o.lowMarket.url,
-        volume:      o.lowMarket.volume    ?? null,
-        liquidity:   o.lowMarket.liquidity ?? null,
-        expiresAt:   o.lowMarket.expiresAt ?? null,
-        _paired: {
-          id:          o.highMarket.id,
-          question:    o.question,
-          probability: o.highMarket.probability,
-          platform:    o.highMarket.platform,
-          bookmaker:   o.highMarket.bookmaker ?? undefined,
-          url:         o.highMarket.url,
-          volume:      o.highMarket.volume    ?? null,
-          liquidity:   o.highMarket.liquidity ?? null,
-          expiresAt:   o.highMarket.expiresAt ?? null,
-        },
-      }));
-    } catch {}
-  }
-  return null;
 }
 
 // ── Route ─────────────────────────────────────────
 
 export async function GET() {
+  const marketsRaw = loadMarketsRaw();
+  const oddsEvents = loadOddsApiEvents();
 
-  // Load Odds API events — use cache if fresh, otherwise fetch directly
-  let oddsEvents = loadOddsApiEvents();
-  if (oddsEvents.length === 0) {
-    oddsEvents = await fetchOddsApiDirect();
-  }
+  // ── Normalise prediction market data ─────────────
 
-  // Build Betfair panel from already-loaded OddsAPI events (no extra fetch needed)
-  const betfairPanel: PanelMarket[] = buildBetfairPanel(oddsEvents);
+  const piAllMarkets: any[] = marketsRaw?.predictit ?? [];
+  const piMarkets = piAllMarkets.slice(0, 20);
 
-  // ── Parallel fetches ──────────────────────────────
-  const [piRaw, mfRaw, kaRaw, pmRaw, mcRaw, agRaw, opinionPanel] = await Promise.all([
-
-    fetch(PREDICTIT_API, { cache: 'no-store' })
-      .then(r => r.json()).catch(() => ({ markets: [] })),
-
-    fetch(`${MANIFOLD_API}/markets?limit=50`, { cache: 'no-store' })
-      .then(r => r.json()).catch(() => []),
-
-    fetch(`${KALSHI_API}/markets?limit=100&status=open`, { cache: 'no-store' })
-      .then(r => r.json()).catch(() => ({ markets: [] })),
-
-    fetch(`${POLYMARKET_API}/markets?active=true&limit=100`, { cache: 'no-store' })
-      .then(r => r.json()).catch(() => []),
-
-    // Metaculus: API now requires authentication — returns permission error without token
-    fetch(METACULUS_API, { cache: 'no-store' })
-      .then(r => r.ok ? r.json() : { results: [] }).catch(() => ({ results: [] })),
-
-    // Augur: The Graph subgraph for augur-v2 has moved — original URL returns 301
-    fetch(AUGUR_GRAPH_API, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        query: `{
-          markets(first: 50, where: { finalizationTime: null }) {
-            id description endTime
-            outcomes { id description lastPrice }
-          }
-        }`,
-      }),
-      cache: 'no-store',
-    }).then(r => r.ok ? r.json() : { data: { markets: [] } }).catch(() => ({ data: { markets: [] } })),
-
-    fetchOpinionMarkets(),
-  ]);
-
-  // ── Normalise ─────────────────────────────────────
-
-  const piAllMarkets: any[] = piRaw.markets ?? [];
-  const piMarkets:    any[] = piAllMarkets.slice(0, 20);
-
-  const mfMarkets: any[] = (Array.isArray(mfRaw) ? mfRaw : [])
+  const mfMarkets: any[] = ((marketsRaw?.manifold ?? []) as any[])
     .filter((m: any) => m.outcomeType === 'BINARY' && m.probability != null)
     .slice(0, 20);
 
-  const kaMarkets: any[] = ((kaRaw.markets ?? []) as any[])
-    .filter((m: any) => {
-      const bid = parseFloat(m.yes_bid_dollars || '0');
-      const ask = parseFloat(m.yes_ask_dollars || '0');
-      return bid > 0 || ask > 0;
-    })
+  // Kalshi: dedicated agent file takes priority
+  const kaAllMarkets: any[] = loadKalshiMarkets();
+  const kaMarkets = kaAllMarkets
+    .filter((m: any) => kalshiPrice(m) !== null)
     .slice(0, 60);
 
-  const pmMarkets: any[] = (Array.isArray(pmRaw) ? pmRaw : [])
+  // Polymarket: dedicated agent file takes priority
+  const pmAllMarkets: any[] = loadPolymarketMarkets();
+  const pmMarkets = pmAllMarkets
     .filter((m: any) => {
       const p = polymarketPrice(m);
       return p !== null && p > 3 && p < 97;
     })
     .slice(0, 30);
-
-  const mcMarkets: any[] = ((mcRaw.results ?? []) as any[])
-    .filter((q: any) => metaculusProb(q) !== null)
-    .slice(0, 20);
-
-  const agMarkets: any[] = ((agRaw?.data?.markets ?? []) as any[])
-    .filter((m: any) => augurPrice(m) !== null)
-    .slice(0, 20);
 
   // ── Panels ────────────────────────────────────────
 
@@ -462,9 +354,11 @@ export async function GET() {
   const kalshiPanel: PanelMarket[] = kaMarkets.map((m: any) => ({
     id:          String(m.ticker),
     name:        m.title,
-    detail:      'Elections / Politics',
+    detail:      m.event_ticker?.includes('NBA') ? 'NBA' :
+                 m.event_ticker?.includes('MLB') ? 'MLB' :
+                 m.event_ticker?.includes('NFL') ? 'NFL' : 'Kalshi',
     probability: kalshiPrice(m),
-    volume:      m.volume ?? null,
+    volume:      m.volume_fp != null ? parseFloat(m.volume_fp) : (m.volume ?? null),
     expiresAt:   toMs(m.expiration_time ?? m.close_time),
   }));
 
@@ -477,45 +371,23 @@ export async function GET() {
     expiresAt:   toMs(m.endDateIso ?? m.end_date_iso ?? m.endDate),
   }));
 
-  const metaculusPanel: PanelMarket[] = mcMarkets.map((q: any) => ({
-    id:          String(q.id),
-    name:        q.title,
-    detail:      q.type ?? 'Forecast',
-    probability: metaculusProb(q),
-    volume:      null,
-    expiresAt:   toMs(q.close_time ?? q.resolution_criteria?.end_time),
-  }));
+  const oddsApiPanel = buildOddsApiPanel(oddsEvents);
+  const betfairPanel = buildBetfairPanel(oddsEvents);
 
-  const augurPanel: PanelMarket[] = agMarkets.map((m: any) => ({
-    id:          String(m.id),
-    name:        m.description,
-    detail:      'Augur',
-    probability: augurPrice(m),
-    volume:      null,
-    expiresAt:   toMs(m.endTime),
-  }));
+  // ── Arb candidates from prediction markets ────────
 
-  const oddsApiPanel: PanelMarket[] = buildOddsApiPanel(oddsEvents);
-  // opinionPanel is already built by fetchOpinionMarkets()
-
-  // ── Arb candidates ────────────────────────────────
-
-  const arbCandidates: ArbCandidate[] = [
+  const liveCandidates: ArbCandidate[] = [
     ...piAllMarkets.flatMap((m: any) =>
       (m.contracts ?? [])
         .filter((c: any) => c.lastTradePrice != null && c.lastTradePrice > 0)
         .map((c: any) => ({
           id:          `pi-${m.id}-${c.id}`,
-          question:    c.name && c.name !== 'Yes'
-                         ? `${m.name} — ${c.name}`
-                         : String(m.name),
+          question:    c.name && c.name !== 'Yes' ? `${m.name} — ${c.name}` : String(m.name),
           probability: Math.round(c.lastTradePrice * 100),
           platform:    'predictit' as const,
           url:         `https://www.predictit.org/markets/detail/${m.id}`,
           volume:      m.tradedVolume ?? null,
-          liquidity:   c.bestBuyYesCost != null
-                         ? Math.round(c.bestBuyYesCost * 850)
-                         : (m.tradedVolume ? Math.round(m.tradedVolume * 0.05) : null),
+          liquidity:   c.bestBuyYesCost != null ? Math.round(c.bestBuyYesCost * 850) : null,
           expiresAt:   toMs(m.end),
         }))
     ),
@@ -532,13 +404,11 @@ export async function GET() {
     ...kaMarkets.map((m: any) => ({
       id:          `ka-${m.ticker}`,
       question:    String(m.title),
-      probability: kalshiPrice(m),
+      probability: kalshiPrice(m) ?? 50,
       platform:    'kalshi' as const,
       url:         `https://kalshi.com/markets/${m.ticker}`,
-      volume:      m.volume ?? null,
-      liquidity:   m.open_interest != null
-                     ? Math.round(m.open_interest * kalshiPrice(m) / 100)
-                     : (m.volume ? Math.round(m.volume * 0.1) : null),
+      volume:      m.volume_fp != null ? parseFloat(m.volume_fp) : (m.volume ?? null),
+      liquidity:   null,
       expiresAt:   toMs(m.expiration_time ?? m.close_time),
     })),
     ...pmMarkets.map((m: any) => ({
@@ -548,9 +418,7 @@ export async function GET() {
       platform:    'polymarket' as const,
       url:         m.slug ? `https://polymarket.com/event/${m.slug}` : 'https://polymarket.com',
       volume:      m.volume != null ? parseFloat(m.volume) : null,
-      liquidity:   m.liquidityNum != null
-                     ? Math.round(parseFloat(m.liquidityNum))
-                     : (m.liquidity != null ? Math.round(parseFloat(m.liquidity)) : null),
+      liquidity:   m.liquidity != null ? Math.round(parseFloat(m.liquidity)) : null,
       expiresAt:   toMs(m.endDateIso ?? m.end_date_iso ?? m.endDate),
     })),
     ...betfairPanel.map(m => ({
@@ -563,61 +431,19 @@ export async function GET() {
       liquidity:   null,
       expiresAt:   m.expiresAt ?? null,
     })),
-    ...mcMarkets.map((q: any) => ({
-      id:          `mc-${q.id}`,
-      question:    String(q.title),
-      probability: metaculusProb(q) ?? 50,
-      platform:    'metaculus' as const,
-      url:         `https://www.metaculus.com/questions/${q.id}`,
-      volume:      null,
-      liquidity:   null,
-      expiresAt:   toMs(q.close_time ?? q.resolution_criteria?.end_time),
-    })),
-    ...agMarkets.map((m: any) => ({
-      id:          `ag-${m.id}`,
-      question:    String(m.description),
-      probability: augurPrice(m) ?? 50,
-      platform:    'augur' as const,
-      url:         `https://augur.net`,
-      volume:      null,
-      liquidity:   null,
-      expiresAt:   toMs(m.endTime),
-    })),
-    // The Odds API: one candidate per (event × bookmaker × outcome)
     ...oddsApiEventCandidates(oddsEvents),
-    // Opinion Markets
-    ...opinionPanel
-      .filter(m => m.probability != null && m.probability > 1 && m.probability < 99)
-      .map(m => ({
-        id:          `om-${m.id}`,
-        question:    m.name,
-        probability: m.probability!,
-        platform:    'opinionmarkets' as const,
-        url:         `https://opinion.markets`,
-        volume:      m.volume ?? null,
-        liquidity:   null,
-        expiresAt:   m.expiresAt ?? null,
-      })),
   ];
 
-  // ── Calibration: attach bias scores ──────────────
-  // Load synchronously from DB (fast); triggers background refresh if stale (handled by /api/calibration GET)
+  // ── Calibration ───────────────────────────────────
+
   const calibBuckets: CalibrationBucket[] = loadBucketsSync();
   const scored = (candidates: ArbCandidate[]) =>
-    candidates.map(c => ({
-      ...c,
-      biasScore: computeBiasScore(c.probability, calibBuckets),
-    }));
+    candidates.map(c => ({ ...c, biasScore: computeBiasScore(c.probability, calibBuckets) }));
 
-  const agentArb  = loadAgentArb();
-  const stamped   = stampCandidates(agentArb ?? arbCandidates);
-  const finalArb  = scored(stamped);
-
-  // Trigger background calibration refresh if DB is empty (first run)
-  if (calibBuckets.length === 0) {
-    fetch(`http://localhost:${process.env.PORT ?? 3000}/api/calibration`, { method: 'POST' })
-      .catch(() => {});
-  }
+  const agentArb = loadAgentArb();
+  const base     = agentArb ?? liveCandidates;
+  const stamped  = stampCandidates(base);
+  const finalArb = scored(stamped);
 
   const body: MarketsResponse = {
     panels: {
@@ -626,10 +452,10 @@ export async function GET() {
       kalshi:         kalshiPanel,
       polymarket:     polymarketPanel,
       betfair:        betfairPanel,
-      metaculus:      metaculusPanel,
-      augur:          augurPanel,
+      metaculus:      [],
+      augur:          [],
       oddsapi:        oddsApiPanel,
-      opinionmarkets: opinionPanel,
+      opinionmarkets: [],
     },
     arbCandidates: finalArb,
   };
