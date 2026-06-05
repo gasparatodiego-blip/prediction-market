@@ -17,16 +17,19 @@ export interface PanelMarket {
   name: string;
   detail: string;
   probability: number | null; // 0–100
-  volume?: number | null;     // USD
+  volume?: number | null;     // total traded USD
+  expiresAt?: number | null;  // Unix ms
 }
 
 export interface ArbCandidate {
   id: string;
   question: string;
-  probability: number; // 0–100
+  probability: number;  // 0–100
   platform: 'predictit' | 'manifold' | 'kalshi' | 'polymarket' | 'smarkets' | 'metaculus' | 'augur' | 'betfair';
   url?: string;
-  volume?: number | null; // USD
+  volume?: number | null;    // total traded USD
+  liquidity?: number | null; // available-to-trade USD (order book / AMM pool)
+  expiresAt?: number | null; // Unix ms
 }
 
 export interface MarketsResponse {
@@ -44,6 +47,19 @@ export interface MarketsResponse {
 }
 
 // ── Helpers ───────────────────────────────────────
+
+function toMs(v: any): number | null {
+  if (v == null) return null;
+  if (typeof v === 'number') {
+    // If it looks like seconds (< year 3000 in seconds), convert to ms
+    return v < 9_999_999_999 ? v * 1000 : v;
+  }
+  if (typeof v === 'string') {
+    const d = Date.parse(v);
+    return isNaN(d) ? null : d;
+  }
+  return null;
+}
 
 function kalshiPrice(m: any): number {
   const bid = parseFloat(m.yes_bid_dollars || '0');
@@ -97,7 +113,6 @@ function augurPrice(market: any): number | null {
   return Math.round(raw * 100);
 }
 
-// Betfair: convert decimal odds to probability, extract from best available price
 function betfairPrice(runner: any): number | null {
   const ex = runner?.ex;
   const avail = ex?.availableToBack ?? ex?.availableToLay ?? [];
@@ -105,6 +120,17 @@ function betfairPrice(runner: any): number | null {
   const price = avail[0]?.price;
   if (!price || price <= 1) return null;
   return Math.round((1 / price) * 100);
+}
+
+// Sum of available sizes at best price level (Betfair order book)
+function betfairLiquidity(runner: any): number | null {
+  const ex = runner?.ex;
+  const avail: any[] = ex?.availableToBack ?? [];
+  if (!avail.length) return null;
+  const best = avail[0];
+  if (!best?.size || !best?.price) return null;
+  // size is in GBP; price in decimal odds. Size × price ≈ potential USD payout
+  return Math.round(parseFloat(best.size) * parseFloat(best.price));
 }
 
 // ── Agent pipeline cache ──────────────────────────
@@ -128,14 +154,18 @@ function loadAgentArb(): ArbCandidate[] | null {
         probability: o.lowMarket.probability,
         platform:    o.lowMarket.platform,
         url:         o.lowMarket.url,
-        volume:      o.lowMarket.volume ?? null,
+        volume:      o.lowMarket.volume    ?? null,
+        liquidity:   o.lowMarket.liquidity ?? null,
+        expiresAt:   o.lowMarket.expiresAt ?? null,
         _paired: {
           id:          o.highMarket.id,
           question:    o.question,
           probability: o.highMarket.probability,
           platform:    o.highMarket.platform,
           url:         o.highMarket.url,
-          volume:      o.highMarket.volume ?? null,
+          volume:      o.highMarket.volume    ?? null,
+          liquidity:   o.highMarket.liquidity ?? null,
+          expiresAt:   o.highMarket.expiresAt ?? null,
         },
       }));
     } catch {}
@@ -147,76 +177,64 @@ function loadAgentArb(): ArbCandidate[] | null {
 
 export async function GET() {
 
-  // ── Betfair auth headers (requires env vars) ──
+  // Betfair auth headers
   const betfairHeaders: Record<string, string> = {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
   };
-  const bfApiKey = process.env.BETFAIR_API_KEY;
+  const bfApiKey  = process.env.BETFAIR_API_KEY;
   const bfSession = process.env.BETFAIR_SESSION_TOKEN;
-  if (bfApiKey)  betfairHeaders['X-Application'] = bfApiKey;
+  if (bfApiKey)  betfairHeaders['X-Application']  = bfApiKey;
   if (bfSession) betfairHeaders['X-Authentication'] = bfSession;
   const betfairEnabled = !!(bfApiKey && bfSession);
 
   // ── Parallel fetches ──────────────────────────────
   const [piRaw, mfRaw, kaRaw, pmRaw, smRaw, mcRaw, agRaw, bfRaw] = await Promise.all([
-    // PredictIt
+
     fetch(PREDICTIT_API, { cache: 'no-store' })
       .then(r => r.json()).catch(() => ({ markets: [] })),
 
-    // Manifold — BINARY markets with probability
     fetch(`${MANIFOLD_API}/markets?limit=50`, { cache: 'no-store' })
       .then(r => r.json()).catch(() => []),
 
-    // Kalshi Elections
     fetch(`${KALSHI_API}/markets?limit=100&status=open`, { cache: 'no-store' })
       .then(r => r.json()).catch(() => ({ markets: [] })),
 
-    // Polymarket — active markets sorted by volume
     fetch(`${POLYMARKET_API}/markets?active=true&limit=100`, { cache: 'no-store' })
       .then(r => r.json()).catch(() => []),
 
-    // Smarkets — live markets
     fetch(SMARKETS_API, { cache: 'no-store' })
       .then(r => r.json()).catch(() => ({ markets: [] })),
 
-    // Metaculus — questions with crowd forecasts
     fetch(METACULUS_API, { cache: 'no-store' })
       .then(r => r.json()).catch(() => ({ results: [] })),
 
-    // Augur v2 — open markets via The Graph
     fetch(AUGUR_GRAPH_API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         query: `{
           markets(first: 50, where: { finalizationTime: null }) {
-            id
-            description
-            outcomes {
-              id
-              description
-              lastPrice
-            }
+            id description endTime
+            outcomes { id description lastPrice }
           }
         }`,
       }),
       cache: 'no-store',
     }).then(r => r.json()).catch(() => ({ data: { markets: [] } })),
 
-    // Betfair Exchange — horse racing, football, politics
     betfairEnabled
       ? fetch(`${BETFAIR_API}/listMarketCatalogue/`, {
           method: 'POST',
           headers: betfairHeaders,
           body: JSON.stringify({
             filter: {
-              eventTypeIds: ['1', '2', '26305'],  // football, horse racing, politics
+              eventTypeIds: ['1', '2', '26305'],
               marketCountries: ['GB', 'US'],
               marketTypeCodes: ['MATCH_ODDS', 'WINNER', 'NEXT_GOAL'],
               inPlayOnly: false,
             },
-            marketProjection: ['MARKET_NAME', 'EVENT', 'RUNNER_DESCRIPTION'],
+            marketProjection: ['MARKET_NAME', 'EVENT', 'RUNNER_DESCRIPTION', 'MARKET_START_TIME'],
             sort: 'MAXIMUM_TRADED',
             maxResults: '50',
           }),
@@ -261,20 +279,19 @@ export async function GET() {
     .filter((m: any) => augurPrice(m) !== null)
     .slice(0, 20);
 
-  // Betfair: each market catalogue item has runners; show each runner as a market entry
   const bfCatalogue: any[] = Array.isArray(bfRaw) ? bfRaw.slice(0, 20) : [];
 
   // ── Panels ────────────────────────────────────────
 
   const predictitPanel: PanelMarket[] = piMarkets.map((m: any) => {
     const top = (m.contracts ?? []).find((c: any) => c.lastTradePrice != null);
-    const volume = m.tradedVolume ?? null;
     return {
       id:          String(m.id),
       name:        m.name,
       detail:      top?.name && top.name !== 'Yes' ? top.name : `${m.contracts?.length ?? 0} contracts`,
       probability: top ? Math.round(top.lastTradePrice * 100) : null,
-      volume,
+      volume:      m.tradedVolume ?? null,
+      expiresAt:   toMs(m.end),
     };
   });
 
@@ -284,6 +301,7 @@ export async function GET() {
     detail:      m.outcomeType ?? 'Binary',
     probability: Math.round(m.probability * 100),
     volume:      m.totalLiquidity ?? m.volume ?? null,
+    expiresAt:   toMs(m.closeTime),
   }));
 
   const kalshiPanel: PanelMarket[] = kaMarkets.map((m: any) => ({
@@ -292,6 +310,7 @@ export async function GET() {
     detail:      'Elections / Politics',
     probability: kalshiPrice(m),
     volume:      m.volume ?? null,
+    expiresAt:   toMs(m.expiration_time ?? m.close_time),
   }));
 
   const polymarketPanel: PanelMarket[] = pmMarkets.map((m: any) => ({
@@ -300,6 +319,7 @@ export async function GET() {
     detail:      'Polymarket',
     probability: polymarketPrice(m),
     volume:      m.volume != null ? parseFloat(m.volume) : null,
+    expiresAt:   toMs(m.endDateIso ?? m.end_date_iso ?? m.endDate),
   }));
 
   const smarketsPanel: PanelMarket[] = smMarkets.map((m: any) => ({
@@ -308,6 +328,7 @@ export async function GET() {
     detail:      m.market_type ?? 'Smarkets',
     probability: smarketsPrice(m),
     volume:      m.traded_volume ? parseFloat(m.traded_volume) / 100 : null,
+    expiresAt:   toMs(m.close_time ?? m.end_date),
   }));
 
   const metaculusPanel: PanelMarket[] = mcMarkets.map((q: any) => ({
@@ -316,6 +337,7 @@ export async function GET() {
     detail:      q.type ?? 'Forecast',
     probability: metaculusProb(q),
     volume:      null,
+    expiresAt:   toMs(q.close_time ?? q.resolution_criteria?.end_time),
   }));
 
   const augurPanel: PanelMarket[] = agMarkets.map((m: any) => ({
@@ -324,9 +346,9 @@ export async function GET() {
     detail:      'Augur',
     probability: augurPrice(m),
     volume:      null,
+    expiresAt:   toMs(m.endTime),
   }));
 
-  // Betfair: one panel entry per market (showing best runner's implied probability)
   const betfairPanel: PanelMarket[] = bfCatalogue.flatMap((cat: any) => {
     const runners: any[] = cat.runners ?? [];
     return runners.slice(0, 2).map((r: any) => ({
@@ -335,6 +357,7 @@ export async function GET() {
       detail:      cat.event?.name ?? 'Betfair Exchange',
       probability: betfairPrice(r),
       volume:      cat.totalMatched ?? null,
+      expiresAt:   toMs(cat.marketStartTime),
     })).filter(pm => pm.probability !== null);
   }).slice(0, 20);
 
@@ -353,6 +376,11 @@ export async function GET() {
           platform:    'predictit' as const,
           url:         `https://www.predictit.org/markets/detail/${m.id}`,
           volume:      m.tradedVolume ?? null,
+          // PredictIt order book depth not available; use best bid as proxy
+          liquidity:   c.bestBuyYesCost != null
+                         ? Math.round(c.bestBuyYesCost * 850)  // rough: $850 typical depth
+                         : (m.tradedVolume ? Math.round(m.tradedVolume * 0.05) : null),
+          expiresAt:   toMs(m.end),
         }))
     ),
     ...mfMarkets.map((m: any) => ({
@@ -362,6 +390,8 @@ export async function GET() {
       platform:    'manifold' as const,
       url:         m.url ?? `https://manifold.markets/${m.slug ?? ''}`,
       volume:      m.totalLiquidity ?? m.volume ?? null,
+      liquidity:   m.totalLiquidity != null ? Math.round(m.totalLiquidity) : null,
+      expiresAt:   toMs(m.closeTime),
     })),
     ...kaMarkets.map((m: any) => ({
       id:          `ka-${m.ticker}`,
@@ -370,6 +400,11 @@ export async function GET() {
       platform:    'kalshi' as const,
       url:         `https://kalshi.com/markets/${m.ticker}`,
       volume:      m.volume ?? null,
+      // open_interest × price ≈ dollars at risk = available liquidity proxy
+      liquidity:   m.open_interest != null
+                     ? Math.round(m.open_interest * kalshiPrice(m) / 100)
+                     : (m.volume ? Math.round(m.volume * 0.1) : null),
+      expiresAt:   toMs(m.expiration_time ?? m.close_time),
     })),
     ...pmMarkets.map((m: any) => ({
       id:          `pm-${m.id}`,
@@ -378,6 +413,10 @@ export async function GET() {
       platform:    'polymarket' as const,
       url:         m.slug ? `https://polymarket.com/event/${m.slug}` : 'https://polymarket.com',
       volume:      m.volume != null ? parseFloat(m.volume) : null,
+      liquidity:   m.liquidityNum != null
+                     ? Math.round(parseFloat(m.liquidityNum))
+                     : (m.liquidity != null ? Math.round(parseFloat(m.liquidity)) : null),
+      expiresAt:   toMs(m.endDateIso ?? m.end_date_iso ?? m.endDate),
     })),
     ...smMarkets.map((m: any) => ({
       id:          `sm-${m.id}`,
@@ -386,6 +425,8 @@ export async function GET() {
       platform:    'smarkets' as const,
       url:         `https://smarkets.com/event/${m.event_id ?? m.id}`,
       volume:      m.traded_volume ? parseFloat(m.traded_volume) / 100 : null,
+      liquidity:   m.traded_volume ? Math.round(parseFloat(m.traded_volume) / 100 * 0.05) : null,
+      expiresAt:   toMs(m.close_time ?? m.end_date),
     })),
     ...mcMarkets.map((q: any) => ({
       id:          `mc-${q.id}`,
@@ -394,6 +435,8 @@ export async function GET() {
       platform:    'metaculus' as const,
       url:         `https://www.metaculus.com/questions/${q.id}`,
       volume:      null,
+      liquidity:   null,
+      expiresAt:   toMs(q.close_time ?? q.resolution_criteria?.end_time),
     })),
     ...agMarkets.map((m: any) => ({
       id:          `ag-${m.id}`,
@@ -402,6 +445,8 @@ export async function GET() {
       platform:    'augur' as const,
       url:         `https://augur.net`,
       volume:      null,
+      liquidity:   null,
+      expiresAt:   toMs(m.endTime),
     })),
     ...bfCatalogue.flatMap((cat: any) =>
       (cat.runners ?? []).slice(0, 2)
@@ -413,11 +458,12 @@ export async function GET() {
           platform:    'betfair' as const,
           url:         `https://www.betfair.com/exchange/plus/market/${cat.marketId}`,
           volume:      cat.totalMatched ?? null,
+          liquidity:   betfairLiquidity(r),
+          expiresAt:   toMs(cat.marketStartTime),
         }))
     ),
   ];
 
-  // Prefer agent-pipeline arb candidates when fresh
   const agentArb = loadAgentArb();
   const finalArb = agentArb ?? arbCandidates;
 

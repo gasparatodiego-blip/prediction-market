@@ -73,7 +73,16 @@ const PLATFORMS = {
 
 type PlatformKey = keyof typeof PLATFORMS;
 
-// ── History record type ───────────────────────────
+// ── Expiry filter ─────────────────────────────────
+type ExpiryFilter = 'all' | '1h' | '24h' | '7d';
+const EXPIRY_FILTERS: { key: ExpiryFilter; label: string; ms: number }[] = [
+  { key: 'all', label: 'All',  ms: Infinity },
+  { key: '1h',  label: '< 1h', ms: 3_600_000 },
+  { key: '24h', label: '< 24h', ms: 86_400_000 },
+  { key: '7d',  label: '< 7d',  ms: 7 * 86_400_000 },
+];
+
+// ── History / Sentiment / Arb types ──────────────
 
 interface HistoryRecord {
   id: number;
@@ -87,28 +96,18 @@ interface HistoryRecord {
   spread: number;
 }
 
-// ── Sentiment types ───────────────────────────────
-
-interface SentimentEntry {
-  keyword: string;
-  score: number;   // positive = bullish, negative = bearish
-  mentions: number;
-}
-
-interface SentimentData {
-  updatedAt: number;
-  entries: SentimentEntry[];
-}
-
-// ── Arbitrage types ───────────────────────────────
+interface SentimentEntry { keyword: string; score: number; mentions: number; }
+interface SentimentData  { updatedAt: number; entries: SentimentEntry[]; }
 
 interface ArbitrageOpp {
-  question:    string;
-  lowMarket:   ArbCandidate;
-  highMarket:  ArbCandidate;
-  spread:      number; // percentage points
-  roi:         number; // %
-  earnPer100:  number; // dollars
+  question:   string;
+  lowMarket:  ArbCandidate;
+  highMarket: ArbCandidate;
+  spread:     number;
+  roi:        number;
+  earnPer100: number;
+  // earliest expiry across the two sides (null = no expiry data)
+  expiresAt:  number | null;
 }
 
 // ── Keyword matching ──────────────────────────────
@@ -123,16 +122,13 @@ const STOPWORDS = new Set([
 
 function keywords(text: string): Set<string> {
   return new Set(
-    text.toLowerCase()
-      .replace(/[^a-z0-9 ]/g, ' ')
-      .split(/\s+/)
+    text.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/)
       .filter(w => w.length > 3 && !STOPWORDS.has(w))
   );
 }
 
 function jaccard(a: string, b: string): number {
-  const ka = keywords(a);
-  const kb = keywords(b);
+  const ka = keywords(a), kb = keywords(b);
   let inter = 0;
   ka.forEach(w => { if (kb.has(w)) inter++; });
   const union = ka.size + kb.size - inter;
@@ -144,8 +140,7 @@ function detectArbitrage(candidates: ArbCandidate[]): ArbitrageOpp[] {
   const results: ArbitrageOpp[] = [];
   for (let i = 0; i < candidates.length; i++) {
     for (let j = i + 1; j < candidates.length; j++) {
-      const a = candidates[i];
-      const b = candidates[j];
+      const a = candidates[i], b = candidates[j];
       if (a.platform === b.platform) continue;
       if (jaccard(a.question, b.question) < 0.25) continue;
       const spread = Math.abs(a.probability - b.probability);
@@ -157,6 +152,8 @@ function detectArbitrage(candidates: ArbCandidate[]): ArbitrageOpp[] {
       const key = `${low.platform}:${high.platform}:${low.probability}:${high.probability}:${high.question.slice(0, 30)}`;
       if (seen.has(key)) continue;
       seen.add(key);
+      // earliest expiry = the side that closes first (bottleneck)
+      const expiries = [low.expiresAt, high.expiresAt].filter((e): e is number => e != null);
       results.push({
         question:   high.question,
         lowMarket:  low,
@@ -164,6 +161,7 @@ function detectArbitrage(candidates: ArbCandidate[]): ArbitrageOpp[] {
         spread,
         roi,
         earnPer100: Math.round((roi / 100) * 100 * 10) / 10,
+        expiresAt:  expiries.length ? Math.min(...expiries) : null,
       });
     }
   }
@@ -173,15 +171,14 @@ function detectArbitrage(candidates: ArbCandidate[]): ArbitrageOpp[] {
 // ── Kelly criterion ───────────────────────────────
 
 function kellyFraction(probLow: number, probHigh: number): number {
-  // Edge = (probHigh - probLow) / 100, Odds = (100 / probLow) - 1
   const edge = (probHigh - probLow) / 100;
   const odds = (100 / probLow) - 1;
   if (odds <= 0) return 0;
-  const kelly = edge / odds;
-  return Math.max(0, Math.min(kelly, 0.25)); // cap at 25% of bankroll
+  return Math.max(0, Math.min(edge / odds, 0.25));
 }
 
 // ── Demo opportunities ────────────────────────────
+
 function getDemoOpps(panels: MarketsResponse['panels']): ArbitrageOpp[] {
   const makeOpp = (
     aName: string, aPlatform: ArbCandidate['platform'], aProb: number,
@@ -194,7 +191,8 @@ function getDemoOpps(panels: MarketsResponse['panels']): ArbitrageOpp[] {
          { id: 'demo-a', question: aName, probability: aProb, platform: aPlatform }];
     const spread = high.probability - low.probability;
     const roi    = low.probability > 0 ? (spread / low.probability) * 100 : 0;
-    return { question: high.question, lowMarket: low, highMarket: high, spread, roi, earnPer100: Math.round(roi * 10) / 10 };
+    return { question: high.question, lowMarket: low, highMarket: high, spread, roi,
+             earnPer100: Math.round(roi * 10) / 10, expiresAt: null };
   };
 
   const pi = panels.predictit.filter(m => m.probability != null && m.probability > 5 && m.probability < 80);
@@ -209,17 +207,41 @@ function getDemoOpps(panels: MarketsResponse['panels']): ArbitrageOpp[] {
     demos.push(makeOpp(pi[1].name, 'predictit', Math.max(3, pi[1].probability! - 9), mf[0].name, 'manifold', mf[0].probability!));
   if (pm[0] && ka[1])
     demos.push(makeOpp(ka[1]?.name ?? 'Market', 'kalshi', Math.max(3, (ka[1]?.probability ?? 50) - 7), pm[0].name, 'polymarket', pm[0].probability!));
-
   return demos.sort((a, b) => b.roi - a.roi);
 }
 
-// ── Helpers ───────────────────────────────────────
+// ── Expiry helpers ────────────────────────────────
+
+function expiryLabel(ms: number | null | undefined): string | null {
+  if (!ms) return null;
+  const diff = ms - Date.now();
+  if (diff <= 0) return 'Expired';
+  const h = diff / 3_600_000;
+  if (h < 1)   return `Expires in ${Math.round(h * 60)}m`;
+  if (h < 24)  return `Expires in ${Math.round(h)}h`;
+  const d = Math.floor(h / 24);
+  return `Expires in ${d}d`;
+}
+
+function expiryUrgencyClass(ms: number | null | undefined): string {
+  if (!ms) return 'border-gray-700 bg-gray-800/40 text-gray-500';
+  const diff = ms - Date.now();
+  if (diff < 3_600_000)  return 'border-red-700 bg-red-950/40 text-red-400';
+  if (diff < 86_400_000) return 'border-amber-700 bg-amber-900/40 text-amber-400';
+  return 'border-gray-700 bg-gray-800/40 text-gray-400';
+}
 
 function timeAgo(date: Date): string {
   const s = Math.floor((Date.now() - date.getTime()) / 1000);
   if (s < 60)   return `${s}s ago`;
   if (s < 3600) return `${Math.floor(s / 60)}m ago`;
   return `${Math.floor(s / 3600)}h ago`;
+}
+
+function fmtDollars(n: number): string {
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000)     return `$${(n / 1_000).toFixed(0)}k`;
+  return `$${Math.round(n)}`;
 }
 
 // ── Main page ─────────────────────────────────────
@@ -237,6 +259,7 @@ export default function Home() {
   const [lastUpdate,    setLastUpdate]    = useState<Date | null>(null);
   const [countdown,     setCountdown]     = useState(REFRESH_INTERVAL);
   const [bankroll,      setBankroll]      = useState(1000);
+  const [expiryFilter,  setExpiryFilter]  = useState<ExpiryFilter>('all');
   const [activeTab,     setActiveTab]     = useState<'opportunities' | 'history'>('opportunities');
   const [history,       setHistory]       = useState<HistoryRecord[]>([]);
   const [historyLoaded, setHistoryLoaded] = useState(false);
@@ -271,10 +294,9 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    fetchAll();
-    fetchSentiment();
-    const interval = setInterval(() => { fetchAll(); fetchSentiment(); }, REFRESH_INTERVAL * 1_000);
-    return () => clearInterval(interval);
+    fetchAll(); fetchSentiment();
+    const iv = setInterval(() => { fetchAll(); fetchSentiment(); }, REFRESH_INTERVAL * 1_000);
+    return () => clearInterval(iv);
   }, [fetchAll, fetchSentiment]);
 
   useEffect(() => {
@@ -288,8 +310,15 @@ export default function Home() {
 
   const realArb  = detectArbitrage(arbCandidates);
   const demoOpps = realArb.length < 3 ? getDemoOpps(panels) : [];
-  const arb      = [...realArb, ...demoOpps].slice(0, 8);
+  const allArb   = [...realArb, ...demoOpps].slice(0, 8);
   const demoIds  = new Set(demoOpps.map(o => o.highMarket.id));
+
+  // Apply expiry filter
+  const filterMs = EXPIRY_FILTERS.find(f => f.key === expiryFilter)!.ms;
+  const arb = expiryFilter === 'all' ? allArb : allArb.filter(o => {
+    if (!o.expiresAt) return false; // no expiry data — exclude from time-filtered views
+    return (o.expiresAt - Date.now()) <= filterMs;
+  });
 
   const totalMarkets =
     panels.predictit.length + panels.manifold.length +
@@ -305,11 +334,8 @@ export default function Home() {
       <div className="bg-gray-950 min-h-screen flex flex-col items-center justify-center gap-4">
         <div className="flex gap-2">
           {[0, 1, 2].map(i => (
-            <div
-              key={i}
-              className="w-3 h-3 bg-blue-500 rounded-full animate-bounce"
-              style={{ animationDelay: `${i * 0.15}s` }}
-            />
+            <div key={i} className="w-3 h-3 bg-blue-500 rounded-full animate-bounce"
+              style={{ animationDelay: `${i * 0.15}s` }} />
           ))}
         </div>
         <p className="text-gray-400 text-sm tracking-wide">Scanning 8 prediction markets…</p>
@@ -332,77 +358,86 @@ export default function Home() {
               </span>
             </div>
             <p className="text-gray-400 text-sm max-w-xl">
-              We scan 8 prediction markets every 30 seconds looking for price differences you can profit from · AI-powered matching
+              8 prediction markets · 30s refresh · AI-powered matching · Kelly sizing · expiry tracking
             </p>
           </div>
           <div className="text-right flex-shrink-0 pt-0.5 space-y-1">
             <div className="text-xs text-gray-600 uppercase tracking-wider">Last updated</div>
-            <div className="text-sm font-medium text-gray-300">
-              {lastUpdate ? timeAgo(lastUpdate) : '—'}
-            </div>
+            <div className="text-sm font-medium text-gray-300">{lastUpdate ? timeAgo(lastUpdate) : '—'}</div>
             <div className="flex items-center justify-end gap-1.5">
               <svg className="w-3 h-3 text-gray-500 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M21 12a9 9 0 1 1-6.219-8.56" />
               </svg>
-              <span className="text-xs text-gray-500 tabular-nums">
-                refresh in {countdown}s
-              </span>
+              <span className="text-xs text-gray-500 tabular-nums">refresh in {countdown}s</span>
             </div>
           </div>
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-6 py-8 space-y-10">
+      <div className="max-w-7xl mx-auto px-6 py-8 space-y-8">
 
-        {/* ── BANKROLL INPUT ───────────────────────── */}
+        {/* ── CONTROLS ROW ─────────────────────────── */}
         <section>
-          <div className="flex items-center gap-4 p-4 rounded-xl border border-gray-800 bg-gray-900/40">
-            <span className="text-gray-400 text-sm font-medium whitespace-nowrap">Your bankroll:</span>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">$</span>
-              <input
-                type="number"
-                min={1}
-                value={bankroll}
-                onChange={e => setBankroll(Math.max(1, parseInt(e.target.value) || 1))}
-                className="pl-7 pr-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm w-32 focus:outline-none focus:border-blue-600"
-              />
+          <div className="flex flex-wrap items-center gap-4 p-4 rounded-xl border border-gray-800 bg-gray-900/40">
+            {/* Bankroll */}
+            <div className="flex items-center gap-2">
+              <span className="text-gray-400 text-sm font-medium whitespace-nowrap">Bankroll:</span>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">$</span>
+                <input
+                  type="number" min={1} value={bankroll}
+                  onChange={e => setBankroll(Math.max(1, parseInt(e.target.value) || 1))}
+                  className="pl-7 pr-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm w-28 focus:outline-none focus:border-blue-600"
+                />
+              </div>
             </div>
-            <span className="text-gray-600 text-xs">Used to calculate Kelly optimal bet sizes on each opportunity</span>
+
+            <div className="w-px h-6 bg-gray-700 hidden sm:block" />
+
+            {/* Expiry filter */}
+            <div className="flex items-center gap-2">
+              <span className="text-gray-500 text-sm whitespace-nowrap">Expires:</span>
+              <div className="flex gap-1">
+                {EXPIRY_FILTERS.map(f => (
+                  <button
+                    key={f.key}
+                    onClick={() => setExpiryFilter(f.key)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                      expiryFilter === f.key
+                        ? 'bg-blue-700 text-white border border-blue-600'
+                        : 'bg-gray-800 text-gray-400 border border-gray-700 hover:text-gray-200'
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <span className="text-gray-600 text-xs ml-auto hidden lg:block">
+              Kelly sizing · max-bet respects available liquidity
+            </span>
           </div>
         </section>
 
         {/* ── SUMMARY CARDS ───────────────────────── */}
         <section>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <SummaryCard
-              icon="📡"
-              value={String(totalMarkets)}
-              label="Markets Monitored"
-              sub="across 8 platforms"
-              accent="border-blue-800/50 bg-blue-950/20"
-            />
-            <SummaryCard
-              icon="🔍"
-              value={String(arb.length)}
-              label="Opportunities Found"
+            <SummaryCard icon="📡" value={String(totalMarkets)} label="Markets Monitored"
+              sub="across 8 platforms" accent="border-blue-800/50 bg-blue-950/20" />
+            <SummaryCard icon="🔍" value={String(arb.length)} label="Opportunities Found"
               sub={arb.length > 0 ? 'price gaps detected' : 'markets in sync'}
-              accent={arb.length > 0 ? 'border-green-800/50 bg-green-950/20' : 'border-gray-700/40 bg-gray-800/20'}
-            />
-            <SummaryCard
-              icon="📈"
+              accent={arb.length > 0 ? 'border-green-800/50 bg-green-950/20' : 'border-gray-700/40 bg-gray-800/20'} />
+            <SummaryCard icon="📈"
               value={bestRoi > 0 ? `${bestRoi.toFixed(1)}%` : '—'}
               label="Best ROI Available"
               sub={bestRoi > 0 ? 'return on investment' : 'no arb detected'}
-              accent={bestRoi > 0 ? 'border-yellow-800/50 bg-yellow-950/20' : 'border-gray-700/40 bg-gray-800/20'}
-            />
-            <SummaryCard
-              icon="💰"
+              accent={bestRoi > 0 ? 'border-yellow-800/50 bg-yellow-950/20' : 'border-gray-700/40 bg-gray-800/20'} />
+            <SummaryCard icon="💰"
               value={totalSpread > 0 ? `${totalSpread.toFixed(1)}¢` : '—'}
               label="Total Profit Potential"
               sub="combined price spreads"
-              accent={totalSpread > 0 ? 'border-purple-800/50 bg-purple-950/20' : 'border-gray-700/40 bg-gray-800/20'}
-            />
+              accent={totalSpread > 0 ? 'border-purple-800/50 bg-purple-950/20' : 'border-gray-700/40 bg-gray-800/20'} />
           </div>
         </section>
 
@@ -410,15 +445,10 @@ export default function Home() {
         <section>
           <div className="flex gap-1 p-1 rounded-xl bg-gray-900 border border-gray-800 w-fit">
             {(['opportunities', 'history'] as const).map(tab => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
+              <button key={tab} onClick={() => setActiveTab(tab)}
                 className={`px-5 py-2 rounded-lg text-sm font-semibold transition-colors ${
-                  activeTab === tab
-                    ? 'bg-gray-700 text-white'
-                    : 'text-gray-500 hover:text-gray-300'
-                }`}
-              >
+                  activeTab === tab ? 'bg-gray-700 text-white' : 'text-gray-500 hover:text-gray-300'
+                }`}>
                 {tab === 'opportunities' ? 'Arbitrage Opportunities' : 'History'}
               </button>
             ))}
@@ -437,6 +467,11 @@ export default function Home() {
                       {arb.length} found
                     </span>
                   )}
+                  {expiryFilter !== 'all' && (
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold border border-blue-700 bg-blue-900/40 text-blue-300">
+                      filtered: {EXPIRY_FILTERS.find(f => f.key === expiryFilter)!.label}
+                    </span>
+                  )}
                 </div>
                 <p className="text-gray-500 text-sm mt-1">
                   Same event, different prices across platforms — buy cheap, profit from the gap.
@@ -446,22 +481,21 @@ export default function Home() {
               {arb.length === 0 ? (
                 <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-12 text-center">
                   <div className="text-5xl mb-4">🔎</div>
-                  <p className="text-gray-300 font-semibold text-lg">No opportunities right now</p>
+                  <p className="text-gray-300 font-semibold text-lg">
+                    {expiryFilter !== 'all' ? 'No opportunities in this time window' : 'No opportunities right now'}
+                  </p>
                   <p className="text-gray-600 text-sm mt-2 max-w-sm mx-auto">
-                    Markets are pricing similar events consistently. Gaps open frequently — check back in 30 seconds.
+                    {expiryFilter !== 'all'
+                      ? 'Try a wider expiry filter, or switch to "All".'
+                      : 'Markets are pricing similar events consistently. Gaps open frequently — check back in 30 seconds.'}
                   </p>
                 </div>
               ) : (
                 <div className="space-y-3">
                   {arb.map((opp, i) => (
-                    <ArbCard
-                      key={i}
-                      opp={opp}
-                      rank={i + 1}
+                    <ArbCard key={i} opp={opp} rank={i + 1}
                       isDemo={demoIds.has(opp.highMarket.id)}
-                      bankroll={bankroll}
-                      sentiment={sentiment}
-                    />
+                      bankroll={bankroll} sentiment={sentiment} />
                   ))}
                 </div>
               )}
@@ -478,7 +512,9 @@ export default function Home() {
                     the crowd thinks there's a 65% chance of YES.{' '}
                     <span className="text-white font-medium">Arbitrage</span> happens when Platform A prices the same event at 40%
                     while Platform B prices it at 65%. Buying on A and waiting for prices to converge locks in a{' '}
-                    <span className="text-green-400 font-medium">risk-adjusted profit</span> — because one platform must be mispriced.
+                    <span className="text-green-400 font-medium">risk-adjusted profit</span>.
+                    The <span className="text-white font-medium">Kelly criterion</span> tells you the mathematically optimal fraction
+                    of your bankroll to bet, capped by available liquidity.
                   </p>
                 </div>
               </div>
@@ -489,20 +525,14 @@ export default function Home() {
               <h2 className="text-xl font-bold mb-5">Live Markets by Platform</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
                 {(Object.keys(PLATFORMS) as PlatformKey[]).map(key => (
-                  <PlatformPanel
-                    key={key}
-                    platformKey={key}
-                    markets={panels[key]}
-                  />
+                  <PlatformPanel key={key} platformKey={key} markets={panels[key]} />
                 ))}
               </div>
             </section>
           </>
         )}
 
-        {activeTab === 'history' && (
-          <HistoryTab records={history} />
-        )}
+        {activeTab === 'history' && <HistoryTab records={history} />}
 
       </div>
     </main>
@@ -525,38 +555,48 @@ function SummaryCard({ icon, value, label, sub, accent }: {
 }
 
 function ArbCard({ opp, rank, isDemo, bankroll, sentiment }: {
-  opp: ArbitrageOpp;
-  rank: number;
-  isDemo?: boolean;
-  bankroll: number;
-  sentiment: SentimentData | null;
+  opp: ArbitrageOpp; rank: number; isDemo?: boolean;
+  bankroll: number; sentiment: SentimentData | null;
 }) {
   const roiText   = 'text-green-400';
   const roiBorder = 'border-green-700 bg-green-900/50';
 
-  const low  = PLATFORMS[opp.lowMarket.platform as PlatformKey];
-  const high = PLATFORMS[opp.highMarket.platform as PlatformKey];
+  const lowCfg  = PLATFORMS[opp.lowMarket.platform  as PlatformKey];
+  const highCfg = PLATFORMS[opp.highMarket.platform as PlatformKey];
 
-  // Kelly criterion
-  const kelly    = kellyFraction(opp.lowMarket.probability, opp.highMarket.probability);
-  const betSize  = Math.round(bankroll * kelly);
+  // Kelly + liquidity-aware sizing
+  const kelly       = kellyFraction(opp.lowMarket.probability, opp.highMarket.probability);
+  const kellyRaw    = Math.round(bankroll * kelly);
+  const lowLiq      = opp.lowMarket.liquidity  ?? null;
+  const highLiq     = opp.highMarket.liquidity ?? null;
+  // Max tradeable = bottleneck side (if we know both; otherwise the one we know)
+  const maxTrade    = lowLiq != null && highLiq != null
+                        ? Math.min(lowLiq, highLiq)
+                        : (lowLiq ?? highLiq ?? null);
+  const betSize     = maxTrade != null ? Math.min(kellyRaw, maxTrade) : kellyRaw;
+  const liqLimited  = maxTrade != null && kellyRaw > maxTrade;
+  const maxProfit   = betSize > 0 ? Math.round(betSize * opp.roi / 100) : null;
 
-  // Liquidity check
+  // Volume / liquidity display
   const lowVol  = opp.lowMarket.volume  ?? null;
   const highVol = opp.highMarket.volume ?? null;
   const lowLiquidity = (lowVol !== null && lowVol < 1000) || (highVol !== null && highVol < 1000);
 
-  // Longshot bias flag
+  // Flags
   const longshotBias = opp.lowMarket.probability < 8;
+  const expiryText   = expiryLabel(opp.expiresAt);
+  const expiryClass  = expiryUrgencyClass(opp.expiresAt);
 
-  // Sentiment match — find any keyword in the question
+  // Sentiment
   const qWords = opp.question.toLowerCase().split(/\s+/);
   const sentimentMatch = sentiment?.entries.find(e =>
     qWords.some(w => w.includes(e.keyword.toLowerCase()))
   ) ?? null;
 
   return (
-    <div className={`rounded-xl border bg-gray-900/60 hover:border-gray-700 transition-colors p-5 ${isDemo ? 'border-gray-700/50 opacity-80' : 'border-gray-800'}`}>
+    <div className={`rounded-xl border bg-gray-900/60 hover:border-gray-700 transition-colors p-5 ${
+      isDemo ? 'border-gray-700/50 opacity-80' : 'border-gray-800'
+    }`}>
       <div className="flex items-start gap-4">
 
         {/* ROI badge */}
@@ -566,25 +606,20 @@ function ArbCard({ opp, rank, isDemo, bankroll, sentiment }: {
         </div>
 
         <div className="flex-1 min-w-0">
-          {/* Question + badges */}
+
+          {/* Question + flags row */}
           <div className="flex items-start gap-2 mb-2">
             <span className="text-xs font-mono text-gray-600 mt-0.5">#{rank}</span>
-            <p className="text-sm font-semibold text-gray-100 line-clamp-2 leading-snug">{opp.question}</p>
+            <p className="text-sm font-semibold text-gray-100 line-clamp-2 leading-snug flex-1">{opp.question}</p>
             <div className="flex flex-shrink-0 flex-wrap gap-1 mt-0.5">
               {isDemo && (
-                <span className="text-xs font-bold px-1.5 py-0.5 rounded border border-gray-600 text-gray-500">
-                  DEMO
-                </span>
+                <span className="text-xs font-bold px-1.5 py-0.5 rounded border border-gray-600 text-gray-500">DEMO</span>
               )}
               {longshotBias && (
-                <span className="text-xs font-bold px-1.5 py-0.5 rounded border border-amber-700 bg-amber-900/40 text-amber-400">
-                  BIAS ALERT
-                </span>
+                <span className="text-xs font-bold px-1.5 py-0.5 rounded border border-amber-700 bg-amber-900/40 text-amber-400">BIAS ALERT</span>
               )}
               {lowLiquidity && (
-                <span className="text-xs font-bold px-1.5 py-0.5 rounded border border-red-800 bg-red-950/40 text-red-400">
-                  ⚠ LOW LIQ
-                </span>
+                <span className="text-xs font-bold px-1.5 py-0.5 rounded border border-red-800 bg-red-950/40 text-red-400">⚠ LOW LIQ</span>
               )}
               {sentimentMatch && (
                 <span className={`text-xs font-bold px-1.5 py-0.5 rounded border ${
@@ -598,50 +633,83 @@ function ArbCard({ opp, rank, isDemo, bankroll, sentiment }: {
             </div>
           </div>
 
-          {/* Price comparison */}
-          <div className="flex flex-wrap items-center gap-2 mb-2.5">
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-800 border border-gray-700">
-              <span className={`w-2 h-2 rounded-full flex-shrink-0 ${low.dotClass}`} />
-              <span className="text-xs text-gray-400">{low.label}</span>
-              <span className="text-sm font-bold tabular-nums text-red-400">{opp.lowMarket.probability}% YES</span>
-              {lowVol !== null && (
-                <span className={`text-xs ${lowVol < 1000 ? 'text-red-500' : 'text-gray-600'}`}>
-                  ${lowVol >= 1000 ? `${(lowVol / 1000).toFixed(0)}k` : lowVol.toFixed(0)}
+          {/* Expiry badge */}
+          {expiryText && (
+            <div className="mb-2">
+              <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded border ${expiryClass}`}>
+                ⏱ {expiryText}
+              </span>
+            </div>
+          )}
+
+          {/* Price comparison with max-bet */}
+          <div className="flex flex-wrap items-start gap-2 mb-2.5">
+            {/* Buy side */}
+            <div className="flex flex-col gap-0.5 px-3 py-1.5 rounded-lg bg-gray-800 border border-gray-700">
+              <div className="flex items-center gap-2">
+                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${lowCfg.dotClass}`} />
+                <span className="text-xs text-gray-400">{lowCfg.label}</span>
+                <span className="text-sm font-bold tabular-nums text-red-400">{opp.lowMarket.probability}% YES</span>
+              </div>
+              {lowLiq != null && (
+                <span className="text-xs text-gray-500 pl-4">
+                  Max bet: <span className={lowLiq < 500 ? 'text-red-400' : 'text-gray-400'}>{fmtDollars(lowLiq)}</span>
                 </span>
               )}
             </div>
 
-            <span className="text-gray-600 text-sm font-medium">vs</span>
+            <span className="text-gray-600 text-sm font-medium self-center">vs</span>
 
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-800 border border-gray-700">
-              <span className={`w-2 h-2 rounded-full flex-shrink-0 ${high.dotClass}`} />
-              <span className="text-xs text-gray-400">{high.label}</span>
-              <span className="text-sm font-bold tabular-nums text-green-400">{opp.highMarket.probability}% YES</span>
-              {highVol !== null && (
-                <span className={`text-xs ${highVol < 1000 ? 'text-red-500' : 'text-gray-600'}`}>
-                  ${highVol >= 1000 ? `${(highVol / 1000).toFixed(0)}k` : highVol.toFixed(0)}
+            {/* Sell side */}
+            <div className="flex flex-col gap-0.5 px-3 py-1.5 rounded-lg bg-gray-800 border border-gray-700">
+              <div className="flex items-center gap-2">
+                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${highCfg.dotClass}`} />
+                <span className="text-xs text-gray-400">{highCfg.label}</span>
+                <span className="text-sm font-bold tabular-nums text-green-400">{opp.highMarket.probability}% YES</span>
+              </div>
+              {highLiq != null && (
+                <span className="text-xs text-gray-500 pl-4">
+                  Max bet: <span className={highLiq < 500 ? 'text-red-400' : 'text-gray-400'}>{fmtDollars(highLiq)}</span>
                 </span>
               )}
             </div>
 
-            <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${roiBorder} ${roiText}`}>
+            <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border self-center ${roiBorder} ${roiText}`}>
               +{opp.spread.toFixed(1)}¢ spread
             </span>
           </div>
 
-          {/* Action line + Kelly */}
+          {/* Max profit row */}
+          {maxTrade != null && maxProfit != null && (
+            <div className="mb-2 px-3 py-1.5 rounded-lg bg-gray-800/60 border border-gray-700/50 text-xs flex items-center gap-2 flex-wrap">
+              <span className="text-gray-500">Bottleneck liquidity:</span>
+              <span className="text-gray-300 font-semibold">{fmtDollars(maxTrade)}</span>
+              <span className="text-gray-600">→</span>
+              <span className="text-gray-500">Max profit:</span>
+              <span className="text-green-400 font-bold">${maxProfit}</span>
+              <span className="text-gray-600">with {fmtDollars(betSize)} invested</span>
+            </div>
+          )}
+
+          {/* Action + Kelly row */}
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <p className="text-xs text-gray-600">
-              Buy on <span className="text-gray-400">{low.label}</span> at {opp.lowMarket.probability}¢ —{' '}
-              {opp.spread.toFixed(0)}¢ cheaper than <span className="text-gray-400">{high.label}</span>
+              Buy on <span className="text-gray-400">{lowCfg.label}</span> at {opp.lowMarket.probability}¢ —{' '}
+              {opp.spread.toFixed(0)}¢ cheaper than <span className="text-gray-400">{highCfg.label}</span>
             </p>
             <div className="flex items-center gap-2 flex-wrap">
               <span className={`text-xs font-semibold px-2.5 py-1 rounded-lg border ${roiBorder} ${roiText} whitespace-nowrap`}>
                 Invest $100 → earn ${opp.earnPer100}
               </span>
               {kelly > 0 && (
-                <span className="text-xs font-semibold px-2.5 py-1 rounded-lg border border-blue-800 bg-blue-950/40 text-blue-300 whitespace-nowrap">
-                  Kelly: {(kelly * 100).toFixed(1)}% = ${betSize}
+                <span className={`text-xs font-semibold px-2.5 py-1 rounded-lg border whitespace-nowrap ${
+                  liqLimited
+                    ? 'border-amber-700 bg-amber-900/30 text-amber-300'
+                    : 'border-blue-800 bg-blue-950/40 text-blue-300'
+                }`}>
+                  {liqLimited
+                    ? `Liq. limited: bet $${betSize}`
+                    : `Kelly: ${(kelly * 100).toFixed(1)}% = $${betSize}`}
                 </span>
               )}
             </div>
@@ -651,45 +719,30 @@ function ArbCard({ opp, rank, isDemo, bankroll, sentiment }: {
           {!isDemo && (opp.lowMarket.url || opp.highMarket.url) && (
             <div className="flex gap-2 mt-2.5 flex-wrap">
               {opp.lowMarket.url && (
-                <a
-                  href={opp.lowMarket.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg border border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-200 transition-colors"
-                >
-                  <span className={`w-1.5 h-1.5 rounded-full ${low.dotClass}`} />
-                  View on {low.label}
+                <a href={opp.lowMarket.url} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg border border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-200 transition-colors">
+                  <span className={`w-1.5 h-1.5 rounded-full ${lowCfg.dotClass}`} />
+                  View on {lowCfg.label}
                   <svg className="w-3 h-3 opacity-60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
                 </a>
               )}
               {opp.highMarket.url && (
-                <a
-                  href={opp.highMarket.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg border border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-200 transition-colors"
-                >
-                  <span className={`w-1.5 h-1.5 rounded-full ${high.dotClass}`} />
-                  View on {high.label}
+                <a href={opp.highMarket.url} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg border border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-200 transition-colors">
+                  <span className={`w-1.5 h-1.5 rounded-full ${highCfg.dotClass}`} />
+                  View on {highCfg.label}
                   <svg className="w-3 h-3 opacity-60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
                 </a>
               )}
             </div>
           )}
         </div>
-
       </div>
     </div>
   );
 }
 
-function PlatformPanel({
-  platformKey,
-  markets,
-}: {
-  platformKey: PlatformKey;
-  markets: PanelMarket[];
-}) {
+function PlatformPanel({ platformKey, markets }: { platformKey: PlatformKey; markets: PanelMarket[] }) {
   const cfg = PLATFORMS[platformKey];
   return (
     <div className={`rounded-xl border overflow-hidden ${cfg.borderClass} ${cfg.bgClass}`}>
@@ -702,42 +755,40 @@ function PlatformPanel({
         {markets.length === 0 && (
           <p className="px-5 py-4 text-sm text-gray-600">No data available</p>
         )}
-        {markets.map(m => (
-          <div
-            key={m.id}
-            className="px-5 py-3 flex items-start justify-between gap-3 hover:bg-white/[0.03] transition-colors"
-          >
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <p className="text-sm text-gray-200 font-medium line-clamp-1">{m.name}</p>
-                {/* Longshot bias flag */}
-                {m.probability !== null && m.probability < 8 && (
-                  <span className="text-xs font-bold px-1 py-0.5 rounded border border-amber-800 bg-amber-950/40 text-amber-500 whitespace-nowrap">
-                    BIAS
-                  </span>
-                )}
+        {markets.map(m => {
+          const expiry = expiryLabel(m.expiresAt);
+          const expClass = expiryUrgencyClass(m.expiresAt);
+          return (
+            <div key={m.id} className="px-5 py-3 flex items-start justify-between gap-3 hover:bg-white/[0.03] transition-colors">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <p className="text-sm text-gray-200 font-medium line-clamp-1">{m.name}</p>
+                  {m.probability !== null && m.probability < 8 && (
+                    <span className="text-xs font-bold px-1 py-0.5 rounded border border-amber-800 bg-amber-950/40 text-amber-500">BIAS</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                  <p className="text-xs text-gray-600">{m.detail}</p>
+                  {m.volume != null && m.volume < 1000 && (
+                    <span className="text-xs text-red-500">⚠ low vol</span>
+                  )}
+                  {m.volume != null && m.volume >= 1000 && (
+                    <span className="text-xs text-gray-700">{fmtDollars(m.volume)} vol</span>
+                  )}
+                  {expiry && (
+                    <span className={`text-xs font-medium px-1.5 py-0.5 rounded border ${expClass}`}>{expiry}</span>
+                  )}
+                </div>
               </div>
-              <div className="flex items-center gap-2 mt-0.5">
-                <p className="text-xs text-gray-600">{m.detail}</p>
-                {/* Liquidity warning */}
-                {m.volume !== null && m.volume !== undefined && m.volume < 1000 && (
-                  <span className="text-xs text-red-500">⚠ low vol</span>
-                )}
-                {m.volume !== null && m.volume !== undefined && m.volume >= 1000 && (
-                  <span className="text-xs text-gray-700">${(m.volume / 1000).toFixed(0)}k vol</span>
-                )}
-              </div>
+              {m.probability != null && (
+                <span className={`flex-shrink-0 text-sm font-bold tabular-nums ${
+                  m.probability >= 70 ? 'text-green-400' :
+                  m.probability >= 40 ? 'text-yellow-400' : 'text-red-400'
+                }`}>{m.probability}%</span>
+              )}
             </div>
-            {m.probability != null && (
-              <span className={`flex-shrink-0 text-sm font-bold tabular-nums ${
-                m.probability >= 70 ? 'text-green-400' :
-                m.probability >= 40 ? 'text-yellow-400' : 'text-red-400'
-              }`}>
-                {m.probability}%
-              </span>
-            )}
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -755,7 +806,6 @@ function HistoryTab({ records }: { records: HistoryRecord[] }) {
       </div>
     );
   }
-
   return (
     <section>
       <div className="mb-5">
@@ -784,7 +834,7 @@ function HistoryTab({ records }: { records: HistoryRecord[] }) {
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <PlatformBadge platform={r.platform_low} prob={r.prob_low} />
+                    <PlatformBadge platform={r.platform_low}  prob={r.prob_low} />
                     <span className="text-gray-600">vs</span>
                     <PlatformBadge platform={r.platform_high} prob={r.prob_high} />
                   </div>
