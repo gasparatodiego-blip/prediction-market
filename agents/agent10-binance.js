@@ -13,8 +13,8 @@ const POLL_INTERVAL  = 60_000;
 const WRITE_THROTTLE = 2_000;  // min ms between WS-triggered writes
 const COINS          = ['BTC','ETH','SOL','BNB','XRP','DOGE'];
 const CEX_THRESHOLD  = 0.3;
-const FUND_THRESHOLD = 0.1;  // % per 8h — "HIGH FUNDING"
-const BASIS_THRESHOLD = 1.0; // % spot vs futures spread — "BASIS TRADE"
+const FUND_THRESHOLD = 0.05;  // % per 8h — "HIGH FUNDING" (= 54.75% APY)
+const BASIS_THRESHOLD = 0.3;  // % spot vs futures spread — "CASH & CARRY"
 
 // ── In-memory state ───────────────────────────────
 let wsData    = {};   // Binance WS prices (real-time)
@@ -248,19 +248,33 @@ function detectCexArb(exchanges) {
 
 function detectBasis(spot, perps) {
   const trades = [];
-  for (const coin of ['BTC','ETH','SOL']) {
+  for (const coin of ['BTC','ETH','SOL','BNB','XRP']) {
     const spotPrice = spot[coin]?.price;
     const mark      = perps.binance?.[coin]?.markPrice;
+    const fr        = perps.binance?.[coin]?.fundingRate ?? 0;  // % per 8h
     if (!spotPrice || !mark || spotPrice <= 0) continue;
     const basisPct = ((mark - spotPrice) / spotPrice) * 100;
-    if (Math.abs(basisPct) >= BASIS_THRESHOLD) {
-      trades.push({
-        coin, spot: spotPrice, futures: mark,
-        basisPct: Math.round(basisPct * 1000) / 1000,
-        direction: basisPct > 0 ? 'contango' : 'backwardation',
-        exchange: 'binance',
-      });
-    }
+    if (Math.abs(basisPct) < BASIS_THRESHOLD) continue;
+
+    // 30-day hold annualized + funding bonus
+    const holdDays = 30;
+    const cashCarryAnnual = basisPct * (365 / holdDays);
+    const fundingAnnual   = fr * 3 * 365;  // 3 intervals/day × 365
+    // Contango: short perp → collect positive funding too
+    // Backwardation: long perp → positive funding is a cost
+    const totalAnnual = basisPct > 0
+      ? cashCarryAnnual + Math.max(0, fundingAnnual)
+      : cashCarryAnnual - Math.max(0, fundingAnnual);
+
+    trades.push({
+      coin, spot: spotPrice, futures: mark,
+      basisPct:        Math.round(basisPct * 1000) / 1000,
+      direction:       basisPct > 0 ? 'contango' : 'backwardation',
+      exchange:        'binance',
+      fundingRate:     Math.round(fr * 10000) / 10000,
+      annualizedReturn: Math.round(totalAnnual * 10) / 10,
+      profitPerUnit:   Math.round(Math.abs(spotPrice * basisPct / 100) * 100) / 100,
+    });
   }
   return trades;
 }
@@ -271,7 +285,12 @@ function detectHighFunding(perps) {
     for (const [coin, info] of Object.entries(data)) {
       const fr = info.fundingRate ?? 0;
       if (Math.abs(fr) >= FUND_THRESHOLD) {
-        flagged.push({ coin, exchange: exchName, fundingRate: Math.round(fr * 1000) / 1000 });
+        const annualizedApy = Math.round(fr * 3 * 365 * 10) / 10;
+        flagged.push({
+          coin, exchange: exchName,
+          fundingRate:  Math.round(fr * 10000) / 10000,
+          annualizedApy,
+        });
       }
     }
   }

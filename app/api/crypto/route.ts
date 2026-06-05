@@ -34,18 +34,22 @@ export interface FuturesInfo {
 }
 
 export interface BasisTrade {
-  coin:      string;
-  spot:      number;
-  futures:   number;
-  basisPct:  number;  // (futures - spot) / spot * 100
-  direction: 'contango' | 'backwardation';
-  exchange:  string;
+  coin:             string;
+  spot:             number;
+  futures:          number;
+  basisPct:         number;   // (futures - spot) / spot * 100
+  direction:        'contango' | 'backwardation';
+  exchange:         string;
+  fundingRate?:     number;   // % per 8h
+  annualizedReturn?: number;  // % per year (cash-and-carry + funding)
+  profitPerUnit?:   number;   // $ per coin at current spot
 }
 
 export interface HighFunding {
-  coin:        string;
-  exchange:    string;
-  fundingRate: number;  // %
+  coin:          string;
+  exchange:      string;
+  fundingRate:   number;      // % per 8h
+  annualizedApy?: number;     // % per year
 }
 
 export interface DexPrice {

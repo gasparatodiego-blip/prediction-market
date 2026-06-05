@@ -3,6 +3,8 @@ import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import type { MarketsResponse, PanelMarket, ArbCandidate } from './api/markets/route';
 import type { CryptoResponse, ExchangePrice, CryptoMarket, CexArbOpp, FuturesInfo, BasisTrade, HighFunding, DexPrice } from './api/crypto/route';
+import type { SportsResponse, SportsMarket } from './api/sports/route';
+import type { WeatherResponse, WeatherMarket, CityForecast } from './api/weather/route';
 
 interface AuthUser { id: number; email: string; role: 'free' | 'pro' | 'admin'; }
 
@@ -336,11 +338,13 @@ export default function Home() {
   const [countdown,     setCountdown]     = useState(REFRESH_INTERVAL);
   const [bankroll,      setBankroll]      = useState(1000);
   const [expiryFilter,  setExpiryFilter]  = useState<ExpiryFilter>('all');
-  const [activeTab,     setActiveTab]     = useState<'opportunities' | 'history' | 'crypto'>('opportunities');
+  const [activeTab,     setActiveTab]     = useState<'opportunities' | 'history' | 'crypto' | 'sports' | 'weather'>('opportunities');
   const [history,       setHistory]       = useState<HistoryRecord[]>([]);
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [sentiment,     setSentiment]     = useState<SentimentData | null>(null);
   const [crypto,        setCrypto]        = useState<CryptoResponse | null>(null);
+  const [sports,        setSports]        = useState<SportsResponse | null>(null);
+  const [weather,       setWeather]       = useState<WeatherResponse | null>(null);
 
   async function logout() {
     await fetch('/api/auth/logout', { method: 'POST' });
@@ -382,6 +386,20 @@ export default function Home() {
     } catch {}
   }, []);
 
+  const fetchSports = useCallback(async () => {
+    try {
+      const resp = await fetch('/api/sports', { cache: 'no-store' });
+      if (resp.ok) setSports(await resp.json());
+    } catch {}
+  }, []);
+
+  const fetchWeather = useCallback(async () => {
+    try {
+      const resp = await fetch('/api/weather', { cache: 'no-store' });
+      if (resp.ok) setWeather(await resp.json());
+    } catch {}
+  }, []);
+
   useEffect(() => {
     fetch('/api/auth/me').then(r => r.json()).then(data => {
       if (data.user) setUser(data.user);
@@ -389,10 +407,10 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    fetchAll(); fetchSentiment(); fetchCrypto();
-    const iv = setInterval(() => { fetchAll(); fetchSentiment(); fetchCrypto(); }, REFRESH_INTERVAL * 1_000);
+    fetchAll(); fetchSentiment(); fetchCrypto(); fetchSports(); fetchWeather();
+    const iv = setInterval(() => { fetchAll(); fetchSentiment(); fetchCrypto(); fetchSports(); fetchWeather(); }, REFRESH_INTERVAL * 1_000);
     return () => clearInterval(iv);
-  }, [fetchAll, fetchSentiment, fetchCrypto]);
+  }, [fetchAll, fetchSentiment, fetchCrypto, fetchSports, fetchWeather]);
 
   useEffect(() => {
     const t = setInterval(() => setCountdown(c => Math.max(0, c - 1)), 1_000);
@@ -578,14 +596,19 @@ export default function Home() {
 
         {/* ── TABS ────────────────────────────────── */}
         <section>
-          <div className="flex gap-1 p-1 rounded-xl bg-gray-900 border border-gray-800 w-fit">
-            {(['opportunities', 'crypto', 'history'] as const).map(tab => (
-              <button key={tab} onClick={() => setActiveTab(tab)}
-                className={`px-5 py-2 rounded-lg text-sm font-semibold transition-colors ${
-                  activeTab === tab ? 'bg-gray-700 text-white' : 'text-gray-500 hover:text-gray-300'
+          <div className="flex flex-wrap gap-1 p-1 rounded-xl bg-gray-900 border border-gray-800 w-fit">
+            {([
+              { key: 'opportunities', label: 'Arbitrage' },
+              { key: 'crypto',        label: '⚡ Crypto Intel' },
+              { key: 'sports',        label: '🏟️ Sports' },
+              { key: 'weather',       label: '🌤️ Weather' },
+              { key: 'history',       label: 'History' },
+            ] as const).map(({ key, label }) => (
+              <button key={key} onClick={() => setActiveTab(key)}
+                className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                  activeTab === key ? 'bg-gray-700 text-white' : 'text-gray-500 hover:text-gray-300'
                 }`}>
-                {tab === 'opportunities' ? 'Arbitrage Opportunities' :
-                 tab === 'crypto'        ? '⚡ Crypto Intel' : 'History'}
+                {label}
               </button>
             ))}
           </div>
@@ -695,6 +718,8 @@ export default function Home() {
 
         {activeTab === 'history' && <HistoryTab records={history} />}
         {activeTab === 'crypto'  && <CryptoTab data={crypto} />}
+        {activeTab === 'sports'  && <SportsTab data={sports} />}
+        {activeTab === 'weather' && <WeatherTab data={weather} />}
 
       </div>
     </main>
@@ -1140,12 +1165,18 @@ function CryptoTab({ data }: { data: CryptoResponse | null }) {
           <div className="rounded-xl border border-red-700 bg-red-950/30 p-4 flex gap-3 items-start">
             <span className="text-2xl flex-shrink-0">🔥</span>
             <div className="flex-1">
-              <p className="font-semibold text-red-300 mb-2">High Funding Rate — {highFunding.length} contract{highFunding.length > 1 ? 's' : ''}</p>
-              <div className="flex flex-wrap gap-2">
+              <p className="font-semibold text-red-300 mb-2">Funding Rate Arbitrage — {highFunding.length} contract{highFunding.length > 1 ? 's' : ''}</p>
+              <div className="space-y-2">
                 {highFunding.map((h, i) => (
-                  <span key={i} className="text-xs font-mono px-2 py-1 rounded border border-red-700 bg-red-900/40 text-red-200">
-                    {h.coin} · {EXCHANGE_LABEL[h.exchange] ?? h.exchange} · <span className="font-bold">{h.fundingRate > 0 ? '+' : ''}{h.fundingRate.toFixed(4)}%/8h</span>
-                  </span>
+                  <div key={i} className="text-xs font-mono px-3 py-2 rounded border border-red-700 bg-red-900/40 text-red-200 flex flex-wrap items-center gap-2">
+                    <span className="font-bold text-white">{h.coin}</span>
+                    <span className="text-red-300">Hold {h.coin} {h.fundingRate > 0 ? 'SHORT' : 'LONG'} on {EXCHANGE_LABEL[h.exchange] ?? h.exchange} Perp</span>
+                    <span className="text-gray-400">|</span>
+                    <span>Earn <span className="text-yellow-300 font-bold">{Math.abs(h.fundingRate).toFixed(4)}% every 8h</span></span>
+                    <span className="text-gray-400">|</span>
+                    <span className="text-green-400 font-bold">= {h.annualizedApy != null ? Math.abs(h.annualizedApy).toFixed(1) : (Math.abs(h.fundingRate) * 3 * 365).toFixed(1)}% APY</span>
+                    <span className="text-gray-500 italic ml-1">(hedge with {h.fundingRate > 0 ? 'spot long' : 'spot short'} to stay neutral)</span>
+                  </div>
                 ))}
               </div>
             </div>
@@ -1155,12 +1186,33 @@ function CryptoTab({ data }: { data: CryptoResponse | null }) {
           <div className="rounded-xl border border-violet-700 bg-violet-950/30 p-4 flex gap-3 items-start">
             <span className="text-2xl flex-shrink-0">⚖️</span>
             <div className="flex-1">
-              <p className="font-semibold text-violet-300 mb-2">Basis Trade — {basisTrades.length} opportunity{basisTrades.length > 1 ? 'ies' : ''}</p>
-              <div className="flex flex-wrap gap-2">
+              <p className="font-semibold text-violet-300 mb-2">Cash &amp; Carry Arbitrage — {basisTrades.length} opportunit{basisTrades.length > 1 ? 'ies' : 'y'}</p>
+              <div className="space-y-2">
                 {basisTrades.map(b => (
-                  <span key={b.coin} className="text-xs font-mono px-2 py-1 rounded border border-violet-700 bg-violet-900/40 text-violet-200">
-                    {b.coin}: spot {fmtPrice(b.spot)} vs futures {fmtPrice(b.futures)} — <span className="font-bold">{b.basisPct > 0 ? '+' : ''}{b.basisPct.toFixed(3)}% ({b.direction})</span>
-                  </span>
+                  <div key={b.coin} className="text-xs font-mono px-3 py-2 rounded border border-violet-700 bg-violet-900/40 text-violet-200 flex flex-wrap items-center gap-2">
+                    <span className="font-bold text-white">{b.coin}</span>
+                    {b.direction === 'contango' ? (
+                      <>
+                        <span>Buy <span className="text-blue-300">{b.coin} spot</span> at {fmtPrice(b.spot)}</span>
+                        <span className="text-gray-400">|</span>
+                        <span>Sell <span className="text-red-300">{b.coin} perp</span> at {fmtPrice(b.futures)}</span>
+                        <span className="text-gray-400">|</span>
+                        <span>Lock <span className="text-green-400 font-bold">{b.basisPct.toFixed(2)}%</span></span>
+                        {b.profitPerUnit != null && <span className="text-yellow-300">(${b.profitPerUnit.toFixed(0)} per coin)</span>}
+                      </>
+                    ) : (
+                      <>
+                        <span>Buy <span className="text-blue-300">{b.coin} perp</span> at {fmtPrice(b.futures)}</span>
+                        <span className="text-gray-400">|</span>
+                        <span>Sell <span className="text-red-300">{b.coin} spot</span> at {fmtPrice(b.spot)}</span>
+                        <span className="text-gray-400">|</span>
+                        <span>Lock <span className="text-green-400 font-bold">{Math.abs(b.basisPct).toFixed(2)}%</span> discount</span>
+                      </>
+                    )}
+                    {b.annualizedReturn != null && (
+                      <><span className="text-gray-400">|</span><span className="text-emerald-400 font-bold">~{b.annualizedReturn.toFixed(1)}% annualized</span></>
+                    )}
+                  </div>
                 ))}
               </div>
             </div>
@@ -1337,29 +1389,72 @@ function CryptoTab({ data }: { data: CryptoResponse | null }) {
         </p>
       </section>
 
-      {/* ── Basis Trade Opportunities ─────────────── */}
+      {/* ── Cash & Carry Opportunities ────────────── */}
       {basisTrades.length > 0 && (
         <section>
-          <h2 className="text-xl font-bold mb-4">Basis Trade (Cash &amp; Carry)</h2>
+          <h2 className="text-xl font-bold mb-4">Cash &amp; Carry (Spot vs Perp Arbitrage)</h2>
           <div className="space-y-3">
             {basisTrades.map(b => (
-              <div key={b.coin} className="rounded-xl border border-violet-800/50 bg-violet-950/20 p-4 flex items-center gap-4">
-                <div className="text-3xl flex-shrink-0">{COIN_META[b.coin]?.emoji ?? '?'}</div>
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="font-bold text-white">{b.coin}</span>
-                    <span className="text-xs font-bold px-1.5 py-0.5 rounded border border-violet-600 bg-violet-900/60 text-violet-300">BASIS TRADE</span>
-                    <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${b.direction === 'contango' ? 'text-orange-400' : 'text-blue-400'}`}>{b.direction}</span>
+              <div key={b.coin} className="rounded-xl border border-violet-800/50 bg-violet-950/20 p-5">
+                <div className="flex items-start justify-between gap-4 mb-3">
+                  <div className="flex items-center gap-3">
+                    <span className="text-3xl">{COIN_META[b.coin]?.emoji ?? '?'}</span>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-white text-lg">{b.coin}</span>
+                        <span className="text-xs font-bold px-1.5 py-0.5 rounded border border-violet-600 bg-violet-900/60 text-violet-300">CASH &amp; CARRY</span>
+                        <span className={`text-xs font-semibold ${b.direction === 'contango' ? 'text-orange-400' : 'text-blue-400'}`}>{b.direction}</span>
+                      </div>
+                      <p className="text-xs text-gray-500 mt-0.5">{b.exchange} · market neutral</p>
+                    </div>
                   </div>
-                  {b.direction === 'contango'
-                    ? <p className="text-sm text-gray-300">Buy <span className="text-white font-semibold">{b.coin} spot</span> at {fmtPrice(b.spot)}, sell <span className="text-white font-semibold">futures</span> at {fmtPrice(b.futures)} — lock in {b.basisPct.toFixed(3)}% premium</p>
-                    : <p className="text-sm text-gray-300">Sell <span className="text-white font-semibold">{b.coin} spot</span> at {fmtPrice(b.spot)}, buy <span className="text-white font-semibold">futures</span> at {fmtPrice(b.futures)} — {Math.abs(b.basisPct).toFixed(3)}% discount</p>
-                  }
+                  <div className="text-right">
+                    <div className="text-2xl font-bold text-violet-400">{b.basisPct > 0 ? '+' : ''}{b.basisPct.toFixed(3)}%</div>
+                    <div className="text-xs text-gray-500">premium</div>
+                    {b.annualizedReturn != null && (
+                      <div className="text-sm font-bold text-emerald-400 mt-1">~{b.annualizedReturn.toFixed(1)}% / yr</div>
+                    )}
+                  </div>
                 </div>
-                <div className="text-right flex-shrink-0">
-                  <div className="text-2xl font-bold text-violet-400">{b.basisPct > 0 ? '+' : ''}{b.basisPct.toFixed(3)}%</div>
-                  <div className="text-xs text-gray-500">basis</div>
+                {/* Trade instruction */}
+                <div className="flex flex-wrap items-center gap-2 text-sm bg-gray-900/60 rounded-lg px-4 py-3 font-mono">
+                  {b.direction === 'contango' ? (
+                    <>
+                      <span className="text-blue-400">Buy {b.coin} spot</span>
+                      <span className="text-gray-600">at</span>
+                      <span className="text-white font-bold">{fmtPrice(b.spot)}</span>
+                      <span className="text-gray-600 mx-1">|</span>
+                      <span className="text-red-400">Sell {b.coin} perp</span>
+                      <span className="text-gray-600">at</span>
+                      <span className="text-white font-bold">{fmtPrice(b.futures)}</span>
+                      <span className="text-gray-600 mx-1">|</span>
+                      <span className="text-green-400 font-bold">Lock {b.basisPct.toFixed(2)}%</span>
+                      {b.profitPerUnit != null && <span className="text-yellow-300">(${b.profitPerUnit.toFixed(0)} per {b.coin})</span>}
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-blue-400">Buy {b.coin} perp</span>
+                      <span className="text-gray-600">at</span>
+                      <span className="text-white font-bold">{fmtPrice(b.futures)}</span>
+                      <span className="text-gray-600 mx-1">|</span>
+                      <span className="text-red-400">Sell {b.coin} spot</span>
+                      <span className="text-gray-600">at</span>
+                      <span className="text-white font-bold">{fmtPrice(b.spot)}</span>
+                      <span className="text-gray-600 mx-1">|</span>
+                      <span className="text-green-400 font-bold">Lock {Math.abs(b.basisPct).toFixed(2)}% discount</span>
+                    </>
+                  )}
                 </div>
+                {/* Funding bonus */}
+                {b.fundingRate != null && Math.abs(b.fundingRate) >= 0.01 && (
+                  <p className="text-xs text-gray-500 mt-2 ml-1">
+                    {b.direction === 'contango' && b.fundingRate > 0
+                      ? `+ Funding bonus: earn ${b.fundingRate.toFixed(4)}%/8h as short (${(b.fundingRate * 3 * 365).toFixed(1)}% APY) on top of basis`
+                      : b.direction === 'contango' && b.fundingRate < 0
+                      ? `⚠ Negative funding: pay ${Math.abs(b.fundingRate).toFixed(4)}%/8h as short — reduces net return`
+                      : `Funding: ${b.fundingRate > 0 ? '+' : ''}${b.fundingRate.toFixed(4)}%/8h`}
+                  </p>
+                )}
               </div>
             ))}
           </div>
@@ -1484,6 +1579,321 @@ function CryptoTab({ data }: { data: CryptoResponse | null }) {
                     </tr>
                   );
                 })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+// ── Sports Tab ────────────────────────────────────
+
+const SPORT_BADGE: Record<string, string> = {
+  'soccer_italy_serie_a':      'border-green-700 bg-green-900/40 text-green-300',
+  'soccer_uefa_champs_league': 'border-yellow-700 bg-yellow-900/40 text-yellow-300',
+  'basketball_nba':            'border-orange-700 bg-orange-900/40 text-orange-300',
+  'americanfootball_nfl':      'border-blue-700 bg-blue-900/40 text-blue-300',
+  'tennis_atp_french_open':    'border-rose-700 bg-rose-900/40 text-rose-300',
+};
+
+function fmtOdds(o: number): string {
+  return o.toFixed(2);
+}
+
+function fmtTime(iso: string): string {
+  try {
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  } catch { return iso; }
+}
+
+function SportsTab({ data }: { data: SportsResponse | null }) {
+  const [sportFilter, setSportFilter] = useState<string>('all');
+  const [arbOnly,     setArbOnly]     = useState(false);
+
+  if (!data || data.dataAge > 3_600_000) {
+    return (
+      <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-12 text-center">
+        <div className="text-5xl mb-4">🏟️</div>
+        <p className="text-gray-300 font-semibold text-lg">Loading sports odds…</p>
+        <p className="text-gray-600 text-sm mt-2">agent12-sports fetches The Odds API every 5 minutes.</p>
+      </div>
+    );
+  }
+
+  const { sportsMeta, markets, arbOpportunities, totalEvents, totalArb, dataAge } = data;
+  const dataStale = dataAge > 600_000;
+
+  const filtered = markets.filter(m => {
+    if (sportFilter !== 'all' && m.sport !== sportFilter) return false;
+    if (arbOnly && !m.arbOpportunity) return false;
+    return true;
+  });
+
+  return (
+    <div className="space-y-6">
+
+      {/* Arb alert banner */}
+      {arbOpportunities.length > 0 && (
+        <div className="rounded-xl border border-green-700 bg-green-950/30 p-4 flex gap-3 items-start">
+          <span className="text-2xl flex-shrink-0">🎯</span>
+          <div className="flex-1">
+            <p className="font-semibold text-green-300 mb-2">
+              Bookmaker Arbitrage — {totalArb} opportunit{totalArb > 1 ? 'ies' : 'y'} found
+            </p>
+            <div className="space-y-2">
+              {arbOpportunities.slice(0, 5).map(m => (
+                <div key={m.id} className="text-xs font-mono px-3 py-2 rounded border border-green-700 bg-green-900/30 text-green-200 flex flex-wrap items-center gap-2">
+                  <span>{m.sportEmoji}</span>
+                  <span className="font-bold text-white">{m.homeTeam} vs {m.awayTeam}</span>
+                  <span className="text-gray-400">|</span>
+                  {m.arbBets.map(b => (
+                    <span key={b.outcome}>
+                      <span className="text-yellow-300">{b.outcome}</span>
+                      <span className="text-gray-400"> @ </span>
+                      <span className="text-white font-bold">{fmtOdds(b.odds)}</span>
+                      <span className="text-gray-400"> ({b.bookmaker}, stake ${b.stake.toFixed(0)})</span>
+                    </span>
+                  ))}
+                  <span className="text-gray-400">|</span>
+                  <span className="text-green-400 font-bold">+{m.arbPct.toFixed(2)}% profit</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Stats + filters */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex gap-3">
+          <div className="rounded-lg border border-gray-800 bg-gray-900/40 px-4 py-2 text-center">
+            <div className="text-xl font-bold tabular-nums">{totalEvents}</div>
+            <div className="text-xs text-gray-500">Events</div>
+          </div>
+          <div className={`rounded-lg border px-4 py-2 text-center ${totalArb > 0 ? 'border-green-800 bg-green-950/30' : 'border-gray-800 bg-gray-900/40'}`}>
+            <div className={`text-xl font-bold tabular-nums ${totalArb > 0 ? 'text-green-400' : ''}`}>{totalArb}</div>
+            <div className="text-xs text-gray-500">Arb Opps</div>
+          </div>
+          <div className={`rounded-lg border px-4 py-2 text-center ${dataStale ? 'border-red-800 bg-red-950/30' : 'border-gray-800 bg-gray-900/40'}`}>
+            <div className={`text-sm font-semibold ${dataStale ? 'text-red-400' : 'text-gray-400'}`}>{Math.round(dataAge / 60000)}m ago</div>
+            <div className="text-xs text-gray-500">Data age</div>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2 ml-auto">
+          <button onClick={() => setArbOnly(v => !v)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+              arbOnly ? 'border-green-600 bg-green-900/50 text-green-300' : 'border-gray-700 text-gray-500 hover:text-gray-300'
+            }`}>
+            🎯 Arb only
+          </button>
+          {[{ key: 'all', label: 'All Sports' }, ...(sportsMeta ?? []).map(s => ({ key: s.key, label: `${s.emoji} ${s.label}` }))].map(f => (
+            <button key={f.key} onClick={() => setSportFilter(f.key)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                sportFilter === f.key ? 'border-blue-600 bg-blue-900/50 text-blue-300' : 'border-gray-700 text-gray-500 hover:text-gray-300'
+              }`}>
+              {f.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Events table */}
+      {filtered.length === 0 ? (
+        <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-12 text-center">
+          <div className="text-5xl mb-4">🔎</div>
+          <p className="text-gray-300 font-semibold">No events match your filter.</p>
+          {arbOnly && totalEvents > 0 && <p className="text-gray-500 text-sm mt-2">No bookmaker arbitrage detected right now.</p>}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {filtered.map(m => (
+            <div key={m.id} className={`rounded-xl border p-4 ${m.arbOpportunity ? 'border-green-800 bg-green-950/10' : 'border-gray-800 bg-gray-900/20'}`}>
+              <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xl">{m.sportEmoji}</span>
+                    <span className="font-bold text-white text-base">{m.homeTeam} vs {m.awayTeam}</span>
+                    {m.arbOpportunity && (
+                      <span className="text-xs font-bold px-2 py-0.5 rounded-full border border-green-600 bg-green-900/50 text-green-300">
+                        ARB +{m.arbPct.toFixed(2)}%
+                      </span>
+                    )}
+                    <span className={`text-xs px-1.5 py-0.5 rounded border ${SPORT_BADGE[m.sport] ?? 'border-gray-700 bg-gray-800 text-gray-400'}`}>
+                      {m.sportLabel}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">{fmtTime(m.commenceTime)} · {m.bookmakers.length} bookmakers</p>
+                </div>
+                <div className="text-right text-xs text-gray-500">
+                  implied: {(m.impliedSum * 100).toFixed(1)}%
+                  {m.impliedSum < 1 && <span className="text-green-400 font-bold ml-1">(under 100% ✓)</span>}
+                </div>
+              </div>
+              {/* Best odds per outcome */}
+              <div className="flex flex-wrap gap-2">
+                {m.bestOdds.map(o => {
+                  const arbBet = m.arbBets.find(b => b.outcome === o.name);
+                  return (
+                    <div key={o.name} className={`rounded-lg border px-3 py-2 text-xs ${arbBet ? 'border-green-700 bg-green-900/20' : 'border-gray-700 bg-gray-800/40'}`}>
+                      <div className="text-gray-400 mb-0.5">{o.name}</div>
+                      <div className="font-bold text-white tabular-nums text-sm">{fmtOdds(o.price)}</div>
+                      <div className="text-gray-500">{o.bookmaker}</div>
+                      {arbBet && <div className="text-green-400 mt-0.5">Stake: ${arbBet.stake.toFixed(0)}</div>}
+                    </div>
+                  );
+                })}
+              </div>
+              {/* Arb breakdown */}
+              {m.arbOpportunity && m.arbBets.length > 0 && (
+                <div className="mt-3 rounded-lg border border-green-800 bg-green-950/20 px-3 py-2 text-xs font-mono text-green-200">
+                  <span className="font-bold text-green-400 mr-2">ARB TRADE ($100 bankroll):</span>
+                  {m.arbBets.map((b, i) => (
+                    <span key={b.outcome}>
+                      {i > 0 && <span className="text-gray-500 mx-1">|</span>}
+                      <span className="text-yellow-300">{b.outcome}</span>
+                      <span className="text-gray-400"> @ </span>
+                      <span className="text-white">{fmtOdds(b.odds)}</span>
+                      <span className="text-gray-400"> on </span>
+                      <span className="text-blue-300">{b.bookmaker}</span>
+                      <span className="text-gray-400">: $</span>
+                      <span className="text-white">{b.stake.toFixed(2)}</span>
+                    </span>
+                  ))}
+                  <span className="text-gray-400 mx-2">→</span>
+                  <span className="text-green-400 font-bold">profit: ${m.arbPct.toFixed(2)}</span>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Weather Tab ───────────────────────────────────
+
+function WeatherTab({ data }: { data: WeatherResponse | null }) {
+  if (!data || data.dataAge > 3_600_000) {
+    return (
+      <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-12 text-center">
+        <div className="text-5xl mb-4">🌤️</div>
+        <p className="text-gray-300 font-semibold text-lg">Loading weather markets…</p>
+        <p className="text-gray-600 text-sm mt-2">agent13-weather fetches Kalshi weather markets + Open-Meteo forecasts every 10 minutes.</p>
+      </div>
+    );
+  }
+
+  const { markets, forecasts, totalMarkets, dataAge } = data;
+  const dataStale = dataAge > 1_200_000;
+
+  return (
+    <div className="space-y-8">
+
+      {/* Header */}
+      <div className="flex items-center gap-4">
+        <div className="rounded-lg border border-gray-800 bg-gray-900/40 px-4 py-2 text-center">
+          <div className="text-xl font-bold tabular-nums">{totalMarkets}</div>
+          <div className="text-xs text-gray-500">Weather Markets</div>
+        </div>
+        <div className={`rounded-lg border px-4 py-2 text-center ${dataStale ? 'border-red-800 bg-red-950/30' : 'border-gray-800 bg-gray-900/40'}`}>
+          <div className={`text-sm font-semibold ${dataStale ? 'text-red-400' : 'text-gray-400'}`}>{Math.round(dataAge / 60000)}m ago</div>
+          <div className="text-xs text-gray-500">Data age</div>
+        </div>
+        <span className="text-xs text-gray-600 ml-2">Source: Kalshi · Open-Meteo</span>
+      </div>
+
+      {/* 7-day forecasts */}
+      {forecasts.length > 0 && (
+        <section>
+          <h2 className="text-xl font-bold mb-4">7-Day Forecasts — Key Cities</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {forecasts.map(city => (
+              <div key={city.city} className="rounded-xl border border-gray-800 bg-gray-900/20 p-4">
+                <h3 className="font-bold text-white mb-3">{city.city}</h3>
+                <div className="space-y-1.5">
+                  {city.days.slice(0, 5).map(day => (
+                    <div key={day.date} className="flex items-center gap-2 text-xs">
+                      <span className="text-gray-500 w-16 flex-shrink-0">
+                        {new Date(day.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                      </span>
+                      {day.maxTempF != null && (
+                        <span className={`font-bold tabular-nums ${day.maxTempF >= 90 ? 'text-red-400' : day.maxTempF >= 70 ? 'text-yellow-400' : day.maxTempF >= 50 ? 'text-blue-300' : 'text-blue-500'}`}>
+                          {Math.round(day.maxTempF)}°F
+                        </span>
+                      )}
+                      {day.minTempF != null && <span className="text-gray-600">/{Math.round(day.minTempF)}°F</span>}
+                      {day.precipProbPct != null && day.precipProbPct > 20 && (
+                        <span className="text-blue-400">💧{day.precipProbPct}%</span>
+                      )}
+                      {day.precipIn != null && day.precipIn > 0.1 && (
+                        <span className="text-blue-300">{day.precipIn.toFixed(2)}&quot;</span>
+                      )}
+                      {day.maxWindMph != null && day.maxWindMph > 25 && (
+                        <span className="text-gray-400">💨{Math.round(day.maxWindMph)}mph</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Kalshi weather markets */}
+      <section>
+        <h2 className="text-xl font-bold mb-4">Kalshi Weather Prediction Markets</h2>
+        {markets.length === 0 ? (
+          <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-8 text-center">
+            <p className="text-gray-500">No active weather markets found on Kalshi right now.</p>
+            <p className="text-gray-600 text-sm mt-2">Weather markets appear during extreme weather events and seasonal forecasts.</p>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-gray-800 overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-800 bg-gray-900/60">
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Market</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Category</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">YES%</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Volume</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Expires</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-800/50">
+                {markets.map(m => (
+                  <tr key={m.id} className="hover:bg-white/[0.02] transition-colors">
+                    <td className="px-4 py-3 text-gray-200 max-w-xs">
+                      <a href={m.url} target="_blank" rel="noopener noreferrer"
+                        className="line-clamp-2 hover:text-white transition-colors hover:underline leading-snug">
+                        {m.title}
+                      </a>
+                      {m.subtitle && <p className="text-xs text-gray-600 mt-0.5 line-clamp-1">{m.subtitle}</p>}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="text-xs px-1.5 py-0.5 rounded border border-sky-700 bg-sky-900/40 text-sky-300 capitalize">
+                        {m.category}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {m.probability != null ? (
+                        <span className={`font-bold tabular-nums ${m.probability >= 70 ? 'text-green-400' : m.probability >= 40 ? 'text-yellow-400' : 'text-red-400'}`}>
+                          {m.probability}%
+                        </span>
+                      ) : <span className="text-gray-600">—</span>}
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums text-gray-400">
+                      {m.volume != null ? `$${m.volume.toLocaleString()}` : '—'}
+                    </td>
+                    <td className="px-4 py-3 text-right text-xs text-gray-500">
+                      {m.expiresAt ? new Date(m.expiresAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }) : '—'}
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
