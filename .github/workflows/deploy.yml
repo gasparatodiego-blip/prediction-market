@@ -8,14 +8,17 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Deploy to server
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host:        ${{ secrets.DEPLOY_HOST }}
-          username:    root
-          key:         ${{ secrets.DEPLOY_KEY }}
-          port:        22
+          host:            ${{ secrets.DEPLOY_HOST }}
+          username:        root
+          key:             ${{ secrets.DEPLOY_KEY }}
+          port:            22
+          timeout:         30s
+          command_timeout: 8m
           script: |
             set -e
             cd /root/prediction-market
@@ -23,4 +26,5 @@ jobs:
             npm install --production=false
             npm run build
             pm2 restart dashboard
+            pm2 save
             echo "Deployed at $(date)"
