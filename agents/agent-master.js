@@ -14,6 +14,7 @@ const INTERVAL_MS = 30 * 60 * 1000;
 const TG_TOKEN    = '8920675182:AAExM7SaLI-t7j3_QgkfGb46MqEJkHRlmJ4';
 const TG_CHAT     = '8844610430';
 const MAX_AGE_MS  = 10 * 60 * 1000;
+const ACCURACY_CHECK_AFTER_MS = 24 * 3600 * 1000; // 24h
 
 const FILES = {
   exchangePrices:   '/tmp/exchange-prices.json',
@@ -28,6 +29,7 @@ const FILES = {
   arbOut:           '/tmp/arbitrage-opportunities.json',
   uiData:           '/tmp/ui-data.json',
   log:              '/tmp/master-log.json',
+  tracker:          '/tmp/prediction-tracker.json',
   hb:               '/tmp/agent-heartbeats.json',
 };
 
@@ -124,7 +126,6 @@ function jaccard(a, b) {
 }
 
 function findCrossPlatformMatches(flatMarkets) {
-  // flatMarkets = [{ platform, title, price, url }]
   const matches = [];
   const seen = new Set();
 
@@ -143,7 +144,7 @@ function findCrossPlatformMatches(flatMarkets) {
       const low  = a.price <= b.price ? a : b;
       const high = a.price >  b.price ? a : b;
       const roi  = low.price > 0 ? (spread / low.price) * 100 : 0;
-      if (roi > 300) continue; // filter out noise
+      if (roi > 300) continue;
 
       const key = `${low.platform}:${high.platform}:${Math.round(low.price)}:${Math.round(high.price)}`;
       if (seen.has(key)) continue;
@@ -153,6 +154,130 @@ function findCrossPlatformMatches(flatMarkets) {
     }
   }
   return matches.sort((a, b) => b.roi - a.roi).slice(0, 15);
+}
+
+// ── Accuracy tracker ───────────────────────────────────────────────────────────
+
+function loadTracker() {
+  const data = readJson(FILES.tracker);
+  if (!data || !Array.isArray(data.predictions)) return { predictions: [] };
+  return data;
+}
+
+function saveTracker(tracker) {
+  // Keep at most 500 resolved + all unresolved
+  const unresolved = tracker.predictions.filter(p => !p.resolved);
+  const resolved   = tracker.predictions.filter(p => p.resolved).slice(-300);
+  writeJson(FILES.tracker, { predictions: [...resolved, ...unresolved], updatedAt: Date.now() });
+}
+
+function savePredictions(opportunities, flatMarkets) {
+  const tracker = loadTracker();
+  const now     = Date.now();
+
+  for (const opp of opportunities) {
+    if (!opp.platform_a || !opp.platform_b) continue;
+
+    // Find matching markets in flat list for this opportunity
+    const mktA = flatMarkets.find(m => m.platform.toLowerCase() === opp.platform_a?.toLowerCase() && m.price != null);
+    const mktB = flatMarkets.find(m => m.platform.toLowerCase() === opp.platform_b?.toLowerCase() && m.price != null);
+
+    tracker.predictions.push({
+      id:            `pred-${now}-${opp.rank}`,
+      predictedAt:   now,
+      type:          opp.type,
+      title:         opp.title,
+      platform_a:    opp.platform_a,
+      price_a_then:  opp.price_a ?? mktA?.price,
+      url_a:         mktA?.url ?? null,
+      platform_b:    opp.platform_b,
+      price_b_then:  opp.price_b ?? mktB?.price,
+      url_b:         mktB?.url ?? null,
+      spread_then:   opp.spread_pct,
+      confidence:    opp.confidence,
+      resolved:      false,
+      correct:       null,
+      outcome_note:  null,
+    });
+  }
+
+  saveTracker(tracker);
+}
+
+function checkAccuracy(currentFlatMarkets) {
+  const tracker = loadTracker();
+  const now     = Date.now();
+  let changed   = false;
+
+  for (const pred of tracker.predictions) {
+    if (pred.resolved) continue;
+    if (now - pred.predictedAt < ACCURACY_CHECK_AFTER_MS) continue;
+
+    // Find current prices for both sides
+    const nowA = currentFlatMarkets.find(m => m.platform.toLowerCase() === pred.platform_a?.toLowerCase() && m.url === pred.url_a);
+    const nowB = currentFlatMarkets.find(m => m.platform.toLowerCase() === pred.platform_b?.toLowerCase() && m.url === pred.url_b);
+
+    if (!nowA && !nowB) {
+      // Markets likely resolved or unavailable
+      pred.resolved    = true;
+      pred.correct     = null;
+      pred.outcome_note = 'markets unavailable after 24h (likely resolved)';
+      changed = true;
+      continue;
+    }
+
+    if (nowA && nowB) {
+      const spreadThen = pred.spread_then ?? Math.abs((pred.price_a_then ?? 50) - (pred.price_b_then ?? 50));
+      const spreadNow  = Math.abs(nowA.price - nowB.price);
+      const converged  = spreadNow < spreadThen * 0.6; // spread narrowed by >40%
+      pred.resolved     = true;
+      pred.correct      = converged;
+      pred.price_a_now  = nowA.price;
+      pred.price_b_now  = nowB.price;
+      pred.spread_now   = +spreadNow.toFixed(1);
+      pred.outcome_note = converged
+        ? `spread ${spreadThen.toFixed(1)}¢ → ${spreadNow.toFixed(1)}¢ (converged ✓)`
+        : `spread ${spreadThen.toFixed(1)}¢ → ${spreadNow.toFixed(1)}¢ (widened ✗)`;
+      changed = true;
+      console.log(`[master] accuracy: "${pred.title?.slice(0, 50)}" → ${pred.outcome_note}`);
+    }
+  }
+
+  if (changed) saveTracker(tracker);
+  return tracker;
+}
+
+function computeAccuracyStats(tracker) {
+  const now     = Date.now();
+  const cutoff7d = now - 7 * 24 * 3600 * 1000;
+
+  const resolved7d  = tracker.predictions.filter(p => p.resolved && p.correct !== null && p.predictedAt > cutoff7d);
+  const correct7d   = resolved7d.filter(p => p.correct === true);
+  const accuracy7d  = resolved7d.length > 0 ? Math.round(100 * correct7d.length / resolved7d.length) : null;
+
+  const totalResolved = tracker.predictions.filter(p => p.resolved && p.correct !== null).length;
+  const totalCorrect  = tracker.predictions.filter(p => p.resolved && p.correct === true).length;
+  const accuracyAll   = totalResolved > 0 ? Math.round(100 * totalCorrect / totalResolved) : null;
+
+  // Recent resolved examples
+  const recentResolved = tracker.predictions
+    .filter(p => p.resolved && p.correct !== null)
+    .slice(-5)
+    .map(p => `  • ${p.title?.slice(0, 50)} → ${p.correct ? '✓' : '✗'} (${p.outcome_note})`);
+
+  // Accuracy by type
+  const byType = {};
+  for (const p of tracker.predictions) {
+    if (!p.resolved || p.correct === null) continue;
+    if (!byType[p.type]) byType[p.type] = { c: 0, n: 0 };
+    byType[p.type].n++;
+    if (p.correct) byType[p.type].c++;
+  }
+  const typeAccuracy = Object.entries(byType)
+    .map(([t, s]) => `${t}: ${Math.round(100 * s.c / s.n)}% (${s.n})`)
+    .join(', ');
+
+  return { accuracy7d, accuracyAll, totalResolved, totalCorrect, recentResolved, typeAccuracy };
 }
 
 // ── Data collection ────────────────────────────────────────────────────────────
@@ -298,7 +423,7 @@ function buildContext(data) {
     });
   }
 
-  // ── Sample prediction markets for context ──────────────────────────────────
+  // ── Platform summary ───────────────────────────────────────────────────────
 
   lines.push(`\n=== PLATFORM SUMMARY ===`);
   lines.push(`Kalshi: ${flatMarkets.filter(m => m.platform === 'kalshi').length} markets`);
@@ -321,25 +446,75 @@ function buildContext(data) {
   return { context: lines.join('\n'), flatMarkets, matches };
 }
 
-// ── Last 24h log summary for context ──────────────────────────────────────────
+// ── History + accuracy context ─────────────────────────────────────────────────
 
-function buildHistoryContext() {
+function buildHistoryContext(accuracyStats) {
   const log = readJson(FILES.log);
   if (!Array.isArray(log) || !log.length) return '';
-  const cutoff = Date.now() - 24 * 3600 * 1000;
-  const recent = log.filter(e => new Date(e.ts).getTime() > cutoff && e.status === 'success');
-  if (!recent.length) return '';
-  const avgConf = Math.round(recent.reduce((s, e) => s + (e.avg_confidence ?? 0), 0) / recent.length);
-  const types   = recent.flatMap(e => e.best ? [e.best.type] : []);
-  const topType = types.sort().find((t, i, a) => a.filter(x => x === t).length > 1) ?? types[0] ?? 'unknown';
-  return `\nLAST 24H: ${recent.length} scans | avg confidence ${avgConf}% | most common type: ${topType}`;
+
+  const lines = ['\n=== ANALYST HISTORY (last 24h) ==='];
+  const cutoff24h = Date.now() - 24 * 3600 * 1000;
+  const recent = log.filter(e => new Date(e.ts).getTime() > cutoff24h && e.status === 'success');
+
+  if (recent.length) {
+    const avgConf = Math.round(recent.reduce((s, e) => s + (e.avg_confidence ?? 0), 0) / recent.length);
+    const types   = recent.flatMap(e => e.best ? [e.best.type] : []);
+    const typeCount = {};
+    types.forEach(t => { typeCount[t] = (typeCount[t] ?? 0) + 1; });
+    const topType = Object.entries(typeCount).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'unknown';
+    lines.push(`Scans: ${recent.length} | avg confidence: ${avgConf}% | most frequent type: ${topType}`);
+
+    // Show top opportunities from last 3 scans
+    const last3 = recent.slice(-3);
+    for (const entry of last3) {
+      if (entry.best) {
+        lines.push(`  ${new Date(entry.ts).toISOString().slice(11, 16)}: [${entry.best.type}] "${entry.best.title?.slice(0, 55)}" conf=${entry.best.confidence}%`);
+      }
+    }
+  } else {
+    lines.push('No successful scans in last 24h yet (first run)');
+  }
+
+  // Accuracy feedback
+  if (accuracyStats.totalResolved > 0) {
+    lines.push('\n=== PREDICTION ACCURACY FEEDBACK ===');
+    if (accuracyStats.accuracy7d !== null) {
+      lines.push(`7-day accuracy: ${accuracyStats.accuracy7d}% (${accuracyStats.totalCorrect}/${accuracyStats.totalResolved} predictions resolved)`);
+    }
+    if (accuracyStats.typeAccuracy) {
+      lines.push(`Accuracy by type: ${accuracyStats.typeAccuracy}`);
+    }
+    if (accuracyStats.recentResolved.length) {
+      lines.push('Recent outcomes:');
+      accuracyStats.recentResolved.forEach(r => lines.push(r));
+    }
+
+    // Calibration hint based on accuracy
+    const acc = accuracyStats.accuracy7d ?? accuracyStats.accuracyAll;
+    if (acc !== null) {
+      if (acc < 40) {
+        lines.push('CALIBRATION NOTE: Recent predictions were mostly wrong. Be more conservative with confidence scores — prefer lower confidence (40-60%) unless the arb is mechanical (CEX/funding rate).');
+      } else if (acc >= 70) {
+        lines.push('CALIBRATION NOTE: Recent predictions have been accurate. Current methodology is working well.');
+      } else {
+        lines.push('CALIBRATION NOTE: Mixed accuracy. Focus on mechanical arbitrage (funding rates, CEX spreads) over subjective prediction market mispricing.');
+      }
+    }
+  } else {
+    lines.push('\n=== PREDICTION ACCURACY ===');
+    lines.push('No resolved predictions yet (tracker started fresh). Use standard confidence scoring.');
+  }
+
+  return lines.join('\n');
 }
 
 // ── System prompt ──────────────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `You are an expert arbitrage analyst with access to real-time data from 5 prediction market platforms plus CEX crypto prices and sports odds.
+const SYSTEM_PROMPT = `You are an expert arbitrage analyst with access to real-time data from 5 prediction market platforms plus CEX crypto prices and sports odds. You also receive feedback on your past predictions' accuracy.
 
 Analyze ALL provided data. Find the top 5 opportunities ranked by (confidence × ROI).
+
+IMPORTANT: Use the PREDICTION ACCURACY FEEDBACK section to calibrate your confidence scores. If past predictions were wrong, be more conservative. If mechanical arbitrage (funding rates, CEX spreads) performed well, favor those.
 
 Return ONLY a valid JSON array with exactly 5 objects. No text before or after. Each object:
 {
@@ -364,15 +539,14 @@ Return ONLY a valid JSON array with exactly 5 objects. No text before or after. 
   "reasoning": "max 200 chars"
 }
 
-Priority order: pre-computed cross-platform matches (highest quality) > funding rate arb > CEX arb > sports arb.
+Priority: pre-computed cross-platform matches > funding rate arb > CEX arb > sports arb.
 For cross-platform matches: use the exact platforms and prices provided.
-For confidence: factor in liquidity, time to resolution, and similarity score.`;
+For confidence: factor in liquidity, time to resolution, similarity score, AND historical accuracy.`;
 
 // ── Claude call ────────────────────────────────────────────────────────────────
 
-async function callClaude(contextText) {
-  const historyNote = buildHistoryContext();
-  const prompt = `${SYSTEM_PROMPT}\n\nMARKET DATA:${historyNote}\n${contextText}\n\nReturn top 5 opportunities as JSON array:`;
+async function callClaude(contextText, historyText) {
+  const prompt = `${SYSTEM_PROMPT}\n\nMARKET DATA:${historyText}\n${contextText}\n\nReturn top 5 opportunities as JSON array:`;
 
   try {
     const { stdout, stderr } = await execFileAsync(
@@ -410,10 +584,17 @@ async function run() {
   };
   console.log('[master] sources:', Object.entries(sources).map(([k, v]) => `${k}:${v ? 'ok' : '-'}`).join(' | '));
 
-  const { context, matches } = buildContext(data);
+  const { context, flatMarkets, matches } = buildContext(data);
   console.log(`[master] context built | cross-platform matches: ${matches.length}`);
 
-  const opportunities = await callClaude(context);
+  // Check accuracy for past predictions using current prices
+  const tracker       = checkAccuracy(flatMarkets);
+  const accuracyStats = computeAccuracyStats(tracker);
+  console.log(`[master] accuracy: ${accuracyStats.accuracy7d ?? '?'}% 7d | ${accuracyStats.totalResolved} resolved`);
+
+  const historyText = buildHistoryContext(accuracyStats);
+  const opportunities = await callClaude(context, historyText);
+
   if (!opportunities?.length) {
     console.error('[master] no opportunities returned');
     appendLog({ ts, status: 'error', reason: 'no opportunities from claude', sources });
@@ -425,16 +606,20 @@ async function run() {
     console.log(`  [${i+1}] ${o.type} | conf=${o.confidence} | urgency=${o.urgency} | ${o.title}`);
   });
 
+  // Save predictions for future accuracy tracking
+  savePredictions(opportunities, flatMarkets);
+
   const fngValue = data.fngNow?.data?.[0]?.value ?? '?';
   const fngLabel = data.fngNow?.data?.[0]?.value_classification ?? '?';
 
   // Write master-opportunities.json (full detail)
   writeJson(FILES.masterOut, {
-    timestamp:    ts,
-    fear_greed:   { value: fngValue, label: fngLabel },
+    timestamp:              ts,
+    fear_greed:             { value: fngValue, label: fngLabel },
     opportunities,
     cross_platform_matches: matches.length,
-    data_sources: sources,
+    accuracy_7d:            accuracyStats.accuracy7d,
+    data_sources:           sources,
   });
 
   // Write arbitrage-opportunities.json (dashboard feed)
@@ -469,30 +654,33 @@ async function run() {
     updatedAt:     Date.now(),
     opportunities: [...arbOpps, ...prevOpps],
     stats: {
-      total:    arbOpps.length + prevOpps.length,
-      bestRoi:  Math.max(...arbOpps.map(o => o.roi), 0),
-      aiMaster: arbOpps.length,
+      total:      arbOpps.length + prevOpps.length,
+      bestRoi:    Math.max(...arbOpps.map(o => o.roi), 0),
+      aiMaster:   arbOpps.length,
+      accuracy7d: accuracyStats.accuracy7d,
     },
   });
 
   // Update ui-data.json
   const ui = readJson(FILES.uiData) || {};
-  ui.masterOpportunities = arbOpps;
-  ui.fearGreed           = { value: fngValue, label: fngLabel };
-  ui.masterUpdatedAt     = ts;
+  ui.masterOpportunities  = arbOpps;
+  ui.fearGreed            = { value: fngValue, label: fngLabel };
+  ui.masterUpdatedAt      = ts;
   ui.crossPlatformMatches = matches.length;
+  ui.accuracy7d           = accuracyStats.accuracy7d;
   writeJson(FILES.uiData, ui);
 
   // Telegram — only high-confidence + high-urgency
   const alerts = opportunities.filter(o => o.confidence >= 80 && o.urgency === 'high');
   if (alerts.length) {
+    const accNote = accuracyStats.accuracy7d !== null ? ` | 7d accuracy: ${accuracyStats.accuracy7d}%` : '';
     const lines = alerts.map(o =>
       `<b>${o.rank}. ${o.title}</b>\n${o.description}\n` +
       (o.platform_a && o.platform_b ? `${o.platform_a} ${o.price_a}¢ → ${o.platform_b} ${o.price_b}¢\n` : '') +
       `Net profit on $1000: <b>$${o.net_profit ?? '?'}</b> | Conf: ${o.confidence}%\n` +
       `Action: ${o.action}\nRisk: ${o.risk} | Expires: ${o.expiry_hours ? o.expiry_hours + 'h' : 'open'}`
     ).join('\n\n');
-    sendTelegram(`🧠 AI MASTER — ${alerts.length} HIGH alert${alerts.length > 1 ? 's' : ''}\nFNG: ${fngValue} (${fngLabel})\n\n${lines}`);
+    sendTelegram(`🧠 AI MASTER — ${alerts.length} HIGH alert${alerts.length > 1 ? 's' : ''}\nFNG: ${fngValue} (${fngLabel})${accNote}\n\n${lines}`);
   }
 
   // Log
@@ -506,10 +694,11 @@ async function run() {
     alerts_sent:    alerts.length,
     fng:            fngValue,
     matches:        matches.length,
+    accuracy_7d:    accuracyStats.accuracy7d,
     data_sources:   sources,
   });
 
-  console.log(`[master] done | avg_conf=${avgConf}% | alerts=${alerts.length} | matches=${matches.length}`);
+  console.log(`[master] done | avg_conf=${avgConf}% | alerts=${alerts.length} | matches=${matches.length} | accuracy_7d=${accuracyStats.accuracy7d ?? 'n/a'}%`);
 }
 
 async function tick() {
