@@ -367,12 +367,20 @@ export async function GET() {
     fetch(`${POLYMARKET_API}/markets?active=true&limit=100`, { cache: 'no-store' })
       .then(r => r.json()).catch(() => []),
 
-    fetch(SMARKETS_API, { cache: 'no-store' })
-      .then(r => r.json()).catch(() => ({ markets: [] })),
+    // Smarkets: Cloudflare-protected — returns HTML challenge instead of JSON from server IPs
+    fetch(SMARKETS_API, {
+      cache: 'no-store',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0 Safari/537.36',
+        'Accept': 'application/json',
+      },
+    }).then(r => r.ok ? r.json() : { markets: [] }).catch(() => ({ markets: [] })),
 
+    // Metaculus: API now requires authentication — returns permission error without token
     fetch(METACULUS_API, { cache: 'no-store' })
-      .then(r => r.json()).catch(() => ({ results: [] })),
+      .then(r => r.ok ? r.json() : { results: [] }).catch(() => ({ results: [] })),
 
+    // Augur: The Graph subgraph for augur-v2 has moved — original URL returns 301
     fetch(AUGUR_GRAPH_API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -385,7 +393,7 @@ export async function GET() {
         }`,
       }),
       cache: 'no-store',
-    }).then(r => r.json()).catch(() => ({ data: { markets: [] } })),
+    }).then(r => r.ok ? r.json() : { data: { markets: [] } }).catch(() => ({ data: { markets: [] } })),
 
     fetchOpinionMarkets(),
   ]);

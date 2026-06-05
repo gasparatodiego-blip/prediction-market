@@ -945,7 +945,13 @@ function PlatformPanel({ platformKey, markets }: { platformKey: PlatformKey; mar
       </div>
       <div className="divide-y divide-gray-800/40">
         {markets.length === 0 && (
-          <p className="px-5 py-4 text-sm text-gray-600">No data available</p>
+          <p className="px-5 py-4 text-sm text-gray-600">
+            {platformKey === 'smarkets'       ? 'API restricted (Cloudflare bot protection)' :
+             platformKey === 'metaculus'      ? 'API now requires authentication' :
+             platformKey === 'augur'          ? 'Platform inactive (subgraph moved)' :
+             platformKey === 'opinionmarkets' ? 'API unavailable (connection timeout)' :
+             'No data available'}
+          </p>
         )}
         {markets.map(m => {
           const expiry = expiryLabel(m.expiresAt);

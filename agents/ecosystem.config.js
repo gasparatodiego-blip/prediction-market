@@ -79,7 +79,14 @@ module.exports = {
       restart_delay: 15000,
       max_restarts:  10,
       watch:         false,
-      env:           { NODE_ENV: 'production', HOME: '/root' },
+      env:           {
+        NODE_ENV:            'production',
+        HOME:                '/root',
+        TELEGRAM_BOT_TOKEN:  '8920675182:AAExM7SaLI-t7j3_QgkfGb46MqEJkHRlmJ4',
+        TELEGRAM_CHAT_ID:    '8844610430',
+        MIN_ROI:             '1',
+        INTERVAL:            '30000',
+      },
     },
   ],
 };
