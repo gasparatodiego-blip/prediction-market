@@ -20,9 +20,21 @@ const securityHeaders = [
 
 const nextConfig = {
   async headers() {
-    return [{ source: '/(.*)', headers: securityHeaders }];
+    return [
+      { source: '/(.*)', headers: securityHeaders },
+      {
+        source: '/_next/static/(.*)',
+        headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],
+      },
+      {
+        source: '/api/markets',
+        headers: [{ key: 'Cache-Control', value: 'public, s-maxage=30, stale-while-revalidate=60' }],
+      },
+    ];
   },
   compress: true,
+  poweredByHeader: false,
+  images: { formats: ['image/webp', 'image/avif'] },
 };
 
 export default nextConfig;
