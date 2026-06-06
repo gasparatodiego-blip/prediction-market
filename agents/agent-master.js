@@ -1,15 +1,48 @@
 #!/usr/bin/env node
 'use strict';
 
-const fs           = require('fs');
-const https        = require('https');
-const { execFile } = require('child_process');
-const { promisify } = require('util');
-const { Pool }     = require('pg');
+const fs             = require('fs');
+const https          = require('https');
+const nodemailer     = require('nodemailer');
+const { execFile }   = require('child_process');
+const { promisify }  = require('util');
+const { Pool }       = require('pg');
 
-const execFileAsync = promisify(execFile);
+const execFileAsync  = promisify(execFile);
 
 const db = new Pool({ connectionString: process.env.DATABASE_URL || 'postgresql://predmarket:PredMarket2024!@localhost:5432/predmarket' });
+
+function createMailTransport() {
+  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) return null;
+  return nodemailer.createTransport({
+    host:   process.env.SMTP_HOST || 'smtp.gmail.com',
+    port:   parseInt(process.env.SMTP_PORT || '587'),
+    secure: false,
+    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+  });
+}
+
+const emailLastSent = {}; // userId -> timestamp, rate limit 1 email/hour/user
+
+async function sendEmailAlert(userEmail, userName, opp) {
+  const transport = createMailTransport();
+  if (!transport) return;
+  const from = process.env.FROM_EMAIL || 'alerts@predictionscanner.com';
+  const html = `<div style="font-family:sans-serif;max-width:520px;background:#111;color:#e5e7eb;padding:32px;border-radius:12px">
+    <div style="background:#16a34a;display:inline-block;color:white;padding:6px 14px;border-radius:6px;font-size:20px;font-weight:700;margin-bottom:16px">+${opp.roi?.toFixed(1) ?? '?'}%</div>
+    <h2 style="margin:0 0 8px;color:white">${(opp.title || '').slice(0,80)}</h2>
+    <p style="color:#9ca3af;font-size:14px">${(opp.description || '').slice(0,200)}</p>
+    ${opp.platform_a && opp.platform_b ? `<p style="color:#6b7280;font-size:13px">${opp.platform_a} → ${opp.platform_b} | Conf: ${opp.confidence}%</p>` : ''}
+    <a href="${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/dashboard" style="display:inline-block;margin-top:16px;padding:10px 20px;background:#2563eb;color:white;border-radius:8px;text-decoration:none;font-weight:600">View Dashboard →</a>
+    <p style="margin-top:20px;font-size:11px;color:#4b5563">Not financial advice.</p>
+  </div>`;
+  try {
+    await transport.sendMail({ from, to: userEmail, subject: `🎯 Arb Alert: ${(opp.title||'').slice(0,50)}`, html });
+    console.log(`[master] email alert sent to ${userEmail}`);
+  } catch (e) {
+    console.error('[master] email failed:', e.message);
+  }
+}
 
 // ── Config ─────────────────────────────────────────────────────────────────────
 const MODEL       = 'claude-sonnet-4-6';
@@ -712,18 +745,22 @@ async function run() {
   ui.accuracy7d           = accuracyStats.accuracy7d;
   writeJson(FILES.uiData, ui);
 
-  // Telegram — personalized per-user alerts
+  // Personalized per-user alerts (Telegram + Email)
   const accNote = accuracyStats.accuracy7d !== null ? ` | 7d accuracy: ${accuracyStats.accuracy7d}%` : '';
   try {
     const { rows: users } = await db.query(
-      `SELECT u."telegramChatId", p."minRoi", p."minConfidence", p."alertTypes", p."platforms", p."alertsEnabled"
+      `SELECT u.id, u.email, u.name, u."telegramChatId", u.plan,
+              p."minRoi", p."minConfidence", p."alertTypes", p."platforms", p."alertsEnabled", p."emailAlerts"
        FROM "User" u
        JOIN "UserPreferences" p ON p."userId" = u.id
-       WHERE u."telegramChatId" IS NOT NULL AND u."telegramChatId" != '' AND p."alertsEnabled" = true`
+       WHERE p."alertsEnabled" = true
+         AND (
+           (u."telegramChatId" IS NOT NULL AND u."telegramChatId" != '')
+           OR (p."emailAlerts" = true AND u.plan IN ('pro','profit_share'))
+         )`
     );
     for (const user of users) {
-      const { telegramChatId, minRoi, minConfidence, alertTypes, platforms, alertsEnabled } = user;
-      if (!alertsEnabled) continue;
+      const { id: userId, email, name, telegramChatId, plan, minRoi, minConfidence, alertTypes, platforms, emailAlerts } = user;
       const userAlerts = opportunities.filter(o => {
         if (o.confidence < (minConfidence ?? 80)) return false;
         if (o.urgency !== 'high') return false;
@@ -737,13 +774,28 @@ async function run() {
         return true;
       });
       if (!userAlerts.length) continue;
-      const lines = userAlerts.map(o =>
-        `<b>${o.rank}. ${o.title}</b>\n${o.description}\n` +
-        (o.platform_a && o.platform_b ? `${o.platform_a} ${o.price_a}¢ → ${o.platform_b} ${o.price_b}¢\n` : '') +
-        `Net profit on $1000: <b>$${o.net_profit ?? '?'}</b> | Conf: ${o.confidence}%\n` +
-        `Action: ${o.action}\nRisk: ${o.risk} | Expires: ${o.expiry_hours ? o.expiry_hours + 'h' : 'open'}`
-      ).join('\n\n');
-      sendTelegramTo(telegramChatId, `🧠 AI MASTER — ${userAlerts.length} alert${userAlerts.length > 1 ? 's' : ''}\nFNG: ${fngValue} (${fngLabel})${accNote}\n\n${lines}`);
+
+      // Telegram alert
+      if (telegramChatId) {
+        const lines = userAlerts.map(o =>
+          `<b>${o.rank}. ${o.title}</b>\n${o.description}\n` +
+          (o.platform_a && o.platform_b ? `${o.platform_a} ${o.price_a}¢ → ${o.platform_b} ${o.price_b}¢\n` : '') +
+          `Net profit on $1000: <b>$${o.net_profit ?? '?'}</b> | Conf: ${o.confidence}%\n` +
+          `Action: ${o.action}\nRisk: ${o.risk} | Expires: ${o.expiry_hours ? o.expiry_hours + 'h' : 'open'}`
+        ).join('\n\n');
+        sendTelegramTo(telegramChatId, `🧠 AI MASTER — ${userAlerts.length} alert${userAlerts.length > 1 ? 's' : ''}\nFNG: ${fngValue} (${fngLabel})${accNote}\n\n${lines}`);
+      }
+
+      // Email alert (PRO/profit_share only, 1 email per hour per user)
+      if (emailAlerts && email && ['pro', 'profit_share'].includes(plan)) {
+        const now = Date.now();
+        if (now - (emailLastSent[userId] ?? 0) > 3600000) {
+          emailLastSent[userId] = now;
+          const topOpp = userAlerts[0];
+          const roi = parseFloat(topOpp.net_profit ?? 0) / 10;
+          await sendEmailAlert(email, name, { ...topOpp, roi });
+        }
+      }
     }
   } catch (e) {
     console.error('[master] personalized alerts db error:', e.message);
