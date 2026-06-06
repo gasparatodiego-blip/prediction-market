@@ -8,19 +8,24 @@ datasource db {
 }
 
 model User {
-  id             String   @id @default(cuid())
-  email          String   @unique
-  passwordHash   String?
-  googleId       String?  @unique
-  telegramChatId String?
-  name           String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id                  String    @id @default(cuid())
+  email               String    @unique
+  passwordHash        String?
+  googleId            String?   @unique
+  telegramChatId      String?
+  name                String?
+  plan                String    @default("free")
+  planExpiresAt       DateTime?
+  profitShareBalance  Float     @default(0)
+  totalProfitTracked  Float     @default(0)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   preferences       UserPreferences?
   trackedOpps       TrackedOpportunity[]
   portfolio         Portfolio?
   alerts            Alert[]
+  subscriptions     Subscription[]
 }
 
 model UserPreferences {
@@ -32,6 +37,7 @@ model UserPreferences {
   alertTypes    String[] @default(["prediction_market", "funding_rate", "cex_arb"])
   maxBankroll   Float    @default(1000)
   alertsEnabled Boolean  @default(true)
+  emailAlerts   Boolean  @default(false)
   updatedAt     DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -75,6 +81,19 @@ model Alert {
   message String
   sentAt  DateTime @default(now())
   read    Boolean  @default(false)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Subscription {
+  id                   String    @id @default(cuid())
+  userId               String
+  plan                 String
+  price                Float     @default(0)
+  startedAt            DateTime  @default(now())
+  expiresAt            DateTime?
+  stripeSubscriptionId String?
+  status               String    @default("active")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

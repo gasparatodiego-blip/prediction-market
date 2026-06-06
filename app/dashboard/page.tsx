@@ -492,6 +492,7 @@ export default function Home() {
   const [lpData,        setLpData]        = useState<LpResponse | null>(null);
   const [healthOk,      setHealthOk]      = useState<boolean | null>(null);
   const [userMenuOpen,  setUserMenuOpen]  = useState(false);
+  const [userPlan,      setUserPlan]      = useState<string>('free');
   const menuRef = useRef<HTMLDivElement>(null);
 
   const fetchMarkets = useCallback(async () => {
@@ -538,6 +539,12 @@ export default function Home() {
     const t = setInterval(() => setCountdown(c => Math.max(0, c - 1)), 1000);
     return () => clearInterval(t);
   }, []);
+
+  useEffect(() => {
+    if (session?.user) {
+      fetch('/api/subscription').then(r => r.json()).then(d => { if (d.plan) setUserPlan(d.plan); }).catch(() => {});
+    }
+  }, [session]);
 
   const liveArb = detectArbitrage(arbCandidates);
   const filteredMaster = typeFilter === 'all' ? masterOpps : masterOpps.filter(o => o.type === typeFilter);
@@ -605,6 +612,9 @@ export default function Home() {
                     {(session.user.name?.[0] ?? session.user.email?.[0] ?? '?').toUpperCase()}
                   </span>
                   <span className="text-gray-300 hidden sm:block max-w-[100px] truncate">{session.user.name ?? session.user.email?.split('@')[0]}</span>
+                  {userPlan !== 'free' && (
+                    <span className="px-1.5 py-0.5 rounded text-xs font-bold bg-blue-600 text-white uppercase">{userPlan === 'profit_share' ? 'PS' : 'PRO'}</span>
+                  )}
                   <span className="text-gray-500 text-xs">▾</span>
                 </button>
               ) : (
@@ -613,10 +623,13 @@ export default function Home() {
                 </Link>
               )}
               {userMenuOpen && session?.user && (
-                <div className="absolute right-0 top-full mt-1 w-48 rounded-xl bg-gray-900 border border-gray-700 shadow-2xl overflow-hidden z-50">
+                <div className="absolute right-0 top-full mt-1 w-52 rounded-xl bg-gray-900 border border-gray-700 shadow-2xl overflow-hidden z-50">
                   <div className="px-4 py-3 border-b border-gray-800">
                     <p className="text-xs text-gray-300 font-semibold truncate">{session.user.name ?? 'User'}</p>
                     <p className="text-xs text-gray-600 truncate">{session.user.email}</p>
+                    <span className="mt-1 inline-block px-2 py-0.5 rounded text-xs font-bold bg-gray-800 text-gray-400 uppercase">
+                      {userPlan === 'profit_share' ? 'Profit Share' : userPlan}
+                    </span>
                   </div>
                   <div className="py-1">
                     <Link href="/dashboard/portfolio" className="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-800 hover:text-white transition-colors" onClick={() => setUserMenuOpen(false)}>
@@ -625,6 +638,11 @@ export default function Home() {
                     <Link href="/dashboard/preferences" className="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-800 hover:text-white transition-colors" onClick={() => setUserMenuOpen(false)}>
                       ⚙️ Preferences
                     </Link>
+                    {userPlan === 'free' && (
+                      <Link href="/dashboard/upgrade" className="flex items-center gap-2 px-4 py-2.5 text-sm text-blue-400 hover:bg-gray-800 hover:text-blue-300 transition-colors font-semibold" onClick={() => setUserMenuOpen(false)}>
+                        ⚡ Upgrade to Pro
+                      </Link>
+                    )}
                   </div>
                   <div className="border-t border-gray-800 py-1">
                     <button onClick={() => signOut({ callbackUrl: '/' })}
@@ -806,6 +824,21 @@ export default function Home() {
         {activeTab === 'liquidity'     && <LiquidityTab data={lpData} />}
 
       </div>
+
+      {/* Upgrade banner for free users */}
+      {session?.user && userPlan === 'free' && (
+        <div className="border-t border-gray-800 bg-gray-900/60 py-3 px-4">
+          <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
+            <p className="text-sm text-gray-400">
+              <span className="text-white font-semibold">Free plan:</span> You see the top 3 opportunities. Upgrade to unlock all signals, Telegram alerts, and Kelly sizing.
+            </p>
+            <Link href="/dashboard/upgrade"
+              className="px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold transition-colors whitespace-nowrap">
+              Upgrade to Pro — €15/mo
+            </Link>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
