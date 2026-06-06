@@ -173,10 +173,24 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
 
 // ── Master opportunity card ───────────────────────
 
+const FEES_CLIENT: Record<string, number> = {
+  kalshi: 0.07, polymarket: 0.02, manifold: 0, metaculus: 0,
+  predictit: 0.15, betfair: 0.05, augur: 0.01, gnosis: 0.02, futuur: 0.02, goodjudgment: 0,
+};
+function sanitizeRoi(v: number) { return Math.min(500, Math.max(-100, isFinite(v) ? v : 0)); }
+function netRoiAfterFees(gross: number, pA?: string, pB?: string) {
+  const fA = FEES_CLIENT[pA?.toLowerCase() ?? ''] ?? 0;
+  const fB = FEES_CLIENT[pB?.toLowerCase() ?? ''] ?? 0;
+  return +(gross * (1 - fA - fB)).toFixed(2);
+}
+
 function MasterOppCard({ opp, bankroll }: { opp: MasterOpp; bankroll: number }) {
   const [showModal, setShowModal] = useState(false);
+  const rawRoi       = sanitizeRoi(opp.roi);
+  const flagRoi      = rawRoi > 100 && (opp.type === 'prediction_market' || opp.type === 'cross_platform');
+  const netRoi       = netRoiAfterFees(rawRoi, opp.platform_a, opp.platform_b);
   const profitBase   = opp.net_profit ?? opp.profit_on_1000 ?? null;
-  const profitScaled = profitBase != null ? Math.round((bankroll / 1000) * profitBase) : null;
+  const profitScaled = profitBase != null ? Math.round((bankroll / 1000) * Math.min(profitBase, 5000)) : null;
 
   return (
     <>
@@ -187,12 +201,15 @@ function MasterOppCard({ opp, bankroll }: { opp: MasterOpp; bankroll: number }) 
           {/* Left badges */}
           <div className="flex-shrink-0 space-y-1.5 min-w-[82px]">
             <div className={`rounded-xl border px-3 py-2 text-center ${
-              opp.roi >= 10 ? 'border-green-700 bg-green-900/40' : opp.roi >= 3 ? 'border-amber-700 bg-amber-900/30' : 'border-blue-800 bg-blue-950/30'
+              rawRoi >= 10 ? 'border-green-700 bg-green-900/40' : rawRoi >= 3 ? 'border-amber-700 bg-amber-900/30' : 'border-blue-800 bg-blue-950/30'
             }`}>
-              <div className={`text-xl font-bold leading-none ${opp.roi >= 10 ? 'text-green-400' : opp.roi >= 3 ? 'text-amber-400' : 'text-blue-400'}`}>
-                {opp.expected_return ?? `+${opp.roi.toFixed(1)}%`}
+              <div className={`text-xl font-bold leading-none ${rawRoi >= 10 ? 'text-green-400' : rawRoi >= 3 ? 'text-amber-400' : 'text-blue-400'}`}>
+                {opp.expected_return ?? `+${rawRoi.toFixed(1)}%`}
+                {flagRoi && <span className="text-yellow-500 text-xs ml-0.5">⚠</span>}
               </div>
-              <div className="text-xs text-gray-500 mt-0.5">return</div>
+              <div className="text-xs text-gray-500 mt-0.5">
+                {netRoi !== rawRoi ? `net ${netRoi.toFixed(1)}%` : 'return'}
+              </div>
             </div>
             <div className={`text-xs font-bold px-2 py-1 rounded-full border text-center ${urgencyBadge(opp.urgency)}`}>
               {opp.urgency.toUpperCase()}
@@ -634,6 +651,9 @@ export default function Home() {
                   <div className="py-1">
                     <Link href="/dashboard/portfolio" className="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-800 hover:text-white transition-colors" onClick={() => setUserMenuOpen(false)}>
                       📊 My Portfolio
+                    </Link>
+                    <Link href="/dashboard/history" className="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-800 hover:text-white transition-colors" onClick={() => setUserMenuOpen(false)}>
+                      📜 History
                     </Link>
                     <Link href="/dashboard/preferences" className="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-800 hover:text-white transition-colors" onClick={() => setUserMenuOpen(false)}>
                       ⚙️ Preferences
