@@ -5,8 +5,11 @@ const fs           = require('fs');
 const https        = require('https');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
+const { Pool }     = require('pg');
 
 const execFileAsync = promisify(execFile);
+
+const db = new Pool({ connectionString: process.env.DATABASE_URL || 'postgresql://predmarket:PredMarket2024!@localhost:5432/predmarket' });
 
 // ── Config ─────────────────────────────────────────────────────────────────────
 const MODEL       = 'claude-sonnet-4-6';
@@ -72,8 +75,8 @@ function get(url) {
   });
 }
 
-function sendTelegram(text) {
-  const body = JSON.stringify({ chat_id: TG_CHAT, text, parse_mode: 'HTML' });
+function sendTelegramTo(chatId, text) {
+  const body = JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' });
   const req  = https.request({
     hostname: 'api.telegram.org',
     path:     `/bot${TG_TOKEN}/sendMessage`,
@@ -90,6 +93,8 @@ function sendTelegram(text) {
   req.on('error', err => console.error('[master] tg error:', err.message));
   req.write(body); req.end();
 }
+
+function sendTelegram(text) { sendTelegramTo(TG_CHAT, text); }
 
 function appendLog(entry) {
   let log = [];
@@ -670,17 +675,52 @@ async function run() {
   ui.accuracy7d           = accuracyStats.accuracy7d;
   writeJson(FILES.uiData, ui);
 
-  // Telegram — only high-confidence + high-urgency
-  const alerts = opportunities.filter(o => o.confidence >= 80 && o.urgency === 'high');
-  if (alerts.length) {
-    const accNote = accuracyStats.accuracy7d !== null ? ` | 7d accuracy: ${accuracyStats.accuracy7d}%` : '';
-    const lines = alerts.map(o =>
-      `<b>${o.rank}. ${o.title}</b>\n${o.description}\n` +
-      (o.platform_a && o.platform_b ? `${o.platform_a} ${o.price_a}¢ → ${o.platform_b} ${o.price_b}¢\n` : '') +
-      `Net profit on $1000: <b>$${o.net_profit ?? '?'}</b> | Conf: ${o.confidence}%\n` +
-      `Action: ${o.action}\nRisk: ${o.risk} | Expires: ${o.expiry_hours ? o.expiry_hours + 'h' : 'open'}`
-    ).join('\n\n');
-    sendTelegram(`🧠 AI MASTER — ${alerts.length} HIGH alert${alerts.length > 1 ? 's' : ''}\nFNG: ${fngValue} (${fngLabel})${accNote}\n\n${lines}`);
+  // Telegram — personalized per-user alerts
+  const accNote = accuracyStats.accuracy7d !== null ? ` | 7d accuracy: ${accuracyStats.accuracy7d}%` : '';
+  try {
+    const { rows: users } = await db.query(
+      `SELECT u."telegramChatId", p."minRoi", p."minConfidence", p."alertTypes", p."platforms", p."alertsEnabled"
+       FROM "User" u
+       JOIN "UserPreferences" p ON p."userId" = u.id
+       WHERE u."telegramChatId" IS NOT NULL AND u."telegramChatId" != '' AND p."alertsEnabled" = true`
+    );
+    for (const user of users) {
+      const { telegramChatId, minRoi, minConfidence, alertTypes, platforms, alertsEnabled } = user;
+      if (!alertsEnabled) continue;
+      const userAlerts = opportunities.filter(o => {
+        if (o.confidence < (minConfidence ?? 80)) return false;
+        if (o.urgency !== 'high') return false;
+        const roi = parseFloat(o.net_profit ?? 0) / 10; // approximate ROI% on $1000
+        if (roi < (minRoi ?? 3)) return false;
+        if (Array.isArray(alertTypes) && alertTypes.length && !alertTypes.includes(o.type)) return false;
+        if (Array.isArray(platforms) && platforms.length) {
+          const inPlatforms = [o.platform_a, o.platform_b].some(p => p && platforms.includes(p.toLowerCase()));
+          if (!inPlatforms) return false;
+        }
+        return true;
+      });
+      if (!userAlerts.length) continue;
+      const lines = userAlerts.map(o =>
+        `<b>${o.rank}. ${o.title}</b>\n${o.description}\n` +
+        (o.platform_a && o.platform_b ? `${o.platform_a} ${o.price_a}¢ → ${o.platform_b} ${o.price_b}¢\n` : '') +
+        `Net profit on $1000: <b>$${o.net_profit ?? '?'}</b> | Conf: ${o.confidence}%\n` +
+        `Action: ${o.action}\nRisk: ${o.risk} | Expires: ${o.expiry_hours ? o.expiry_hours + 'h' : 'open'}`
+      ).join('\n\n');
+      sendTelegramTo(telegramChatId, `🧠 AI MASTER — ${userAlerts.length} alert${userAlerts.length > 1 ? 's' : ''}\nFNG: ${fngValue} (${fngLabel})${accNote}\n\n${lines}`);
+    }
+  } catch (e) {
+    console.error('[master] personalized alerts db error:', e.message);
+    // fallback: send to default chat
+    const alerts = opportunities.filter(o => o.confidence >= 80 && o.urgency === 'high');
+    if (alerts.length) {
+      const lines = alerts.map(o =>
+        `<b>${o.rank}. ${o.title}</b>\n${o.description}\n` +
+        (o.platform_a && o.platform_b ? `${o.platform_a} ${o.price_a}¢ → ${o.platform_b} ${o.price_b}¢\n` : '') +
+        `Net profit on $1000: <b>$${o.net_profit ?? '?'}</b> | Conf: ${o.confidence}%\n` +
+        `Action: ${o.action}\nRisk: ${o.risk} | Expires: ${o.expiry_hours ? o.expiry_hours + 'h' : 'open'}`
+      ).join('\n\n');
+      sendTelegram(`🧠 AI MASTER — ${alerts.length} HIGH alert${alerts.length > 1 ? 's' : ''}\nFNG: ${fngValue} (${fngLabel})${accNote}\n\n${lines}`);
+    }
   }
 
   // Log

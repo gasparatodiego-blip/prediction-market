@@ -1,11 +1,9 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-// In-memory rate limiter: max 1 request per 20s per IP per route
-// Uses edge-compatible Map + sliding window
 const cache = new Map<string, { count: number; reset: number }>();
-const WINDOW_MS   = 20_000;
-const MAX_PER_WIN = 3;
+const WINDOW_MS   = 60_000;
+const MAX_PER_WIN = 100;
 
 function getIp(req: NextRequest): string {
   return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
