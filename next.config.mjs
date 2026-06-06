@@ -30,6 +30,11 @@ const nextConfig = {
         source: '/api/markets',
         headers: [{ key: 'Cache-Control', value: 'public, s-maxage=30, stale-while-revalidate=60' }],
       },
+      // Prevent browsers from caching HTML pages — stale HTML + fresh bundles = stale Server Action IDs
+      {
+        source: '/((?!_next/static|_next/image|favicon).*)',
+        headers: [{ key: 'Cache-Control', value: 'no-cache, must-revalidate' }],
+      },
     ];
   },
   compress: true,
