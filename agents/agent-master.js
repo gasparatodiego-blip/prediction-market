@@ -27,6 +27,11 @@ const FILES = {
   metaculusRaw:     '/tmp/metaculus-raw.json',
   predictitRaw:     '/tmp/predictit-raw.json',
   oddsApiRaw:       '/tmp/odds-api-raw.json',
+  betfairRaw:       '/tmp/betfair-raw.json',
+  augurRaw:         '/tmp/augur-raw.json',
+  gnosisRaw:        '/tmp/gnosis-raw.json',
+  futuurRaw:        '/tmp/futuur-raw.json',
+  goodjudgmentRaw:  '/tmp/goodjudgment-raw.json',
   rebalancerOutput: '/tmp/rebalancer-output.json',
   masterOut:        '/tmp/master-opportunities.json',
   arbOut:           '/tmp/arbitrage-opportunities.json',
@@ -294,14 +299,19 @@ async function collectData() {
   ]);
 
   return {
-    prices:     fresh(readJson(FILES.exchangePrices)),
-    kalshi:     fresh(readJson(FILES.kalshiRaw)),
-    polymarket: fresh(readJson(FILES.polymarketRaw)),
-    manifold:   fresh(readJson(FILES.manifoldRaw)),
-    metaculus:  fresh(readJson(FILES.metaculusRaw)),
-    predictit:  fresh(readJson(FILES.predictitRaw)),
-    odds:       fresh(readJson(FILES.oddsApiRaw)),
-    rebal:      readJson(FILES.rebalancerOutput),
+    prices:       fresh(readJson(FILES.exchangePrices)),
+    kalshi:       fresh(readJson(FILES.kalshiRaw)),
+    polymarket:   fresh(readJson(FILES.polymarketRaw)),
+    manifold:     fresh(readJson(FILES.manifoldRaw)),
+    metaculus:    fresh(readJson(FILES.metaculusRaw)),
+    predictit:    fresh(readJson(FILES.predictitRaw)),
+    odds:         fresh(readJson(FILES.oddsApiRaw)),
+    betfair:      readJson(FILES.betfairRaw),
+    augur:        readJson(FILES.augurRaw),
+    gnosis:       readJson(FILES.gnosisRaw),
+    futuur:       readJson(FILES.futuurRaw),
+    goodjudgment: readJson(FILES.goodjudgmentRaw),
+    rebal:        readJson(FILES.rebalancerOutput),
     fngNow,
     fng7d,
   };
@@ -330,7 +340,7 @@ function polyPrice(m) {
 }
 
 function buildContext(data) {
-  const { prices, kalshi, polymarket, manifold, metaculus, predictit, odds, rebal, fngNow, fng7d } = data;
+  const { prices, kalshi, polymarket, manifold, metaculus, predictit, odds, betfair, augur, gnosis, futuur, goodjudgment, rebal, fngNow, fng7d } = data;
   const lines = [];
 
   // Fear & Greed
@@ -413,6 +423,33 @@ function buildContext(data) {
       if (q.probability != null) flatMarkets.push({ platform: 'metaculus', title: q.question || '', price: +(q.probability * 100).toFixed(1), url: q.url });
     });
   }
+  if (augur?.markets?.length) {
+    augur.markets.slice(0, 20).forEach(m => {
+      const yes = m.outcomes?.find(o => o.description?.toLowerCase().includes('yes'));
+      const p   = yes ? +(parseFloat(yes.price || '0') * 100).toFixed(1) : null;
+      if (p != null && p > 3 && p < 97) flatMarkets.push({ platform: 'augur', title: m.description || '', price: p, url: `https://augur.net` });
+    });
+  }
+  if (gnosis?.markets?.length) {
+    gnosis.markets.slice(0, 20).forEach(m => {
+      const yes = m.prices?.find(o => o.outcome?.toLowerCase().includes('yes') || o.outcome?.toLowerCase().includes('true'));
+      const p   = yes ? +(yes.price * 100).toFixed(1) : (m.prices?.[0] ? +(m.prices[0].price * 100).toFixed(1) : null);
+      if (p != null && p > 3 && p < 97) flatMarkets.push({ platform: 'gnosis', title: m.title || '', price: p, url: m.url || 'https://omen.eth.limo' });
+    });
+  }
+  if (futuur?.markets?.length) {
+    futuur.markets.slice(0, 20).forEach(m => {
+      const yes = m.outcomes?.find(o => o.label?.toLowerCase().includes('yes') || o.label?.toLowerCase().includes('true'));
+      const p   = yes?.prob != null ? +(yes.prob * 100).toFixed(1) : null;
+      if (p != null && p > 3 && p < 97) flatMarkets.push({ platform: 'futuur', title: m.title || '', price: p, url: m.url || 'https://futuur.com' });
+    });
+  }
+  if (goodjudgment?.questions?.length) {
+    goodjudgment.questions.slice(0, 20).forEach(q => {
+      const p = q.probability != null ? +(q.probability * 100).toFixed(1) : null;
+      if (p != null && p > 3 && p < 97) flatMarkets.push({ platform: 'goodjudgment', title: q.title || '', price: p, url: q.url || 'https://www.gjopen.com' });
+    });
+  }
 
   // ── Cross-platform matches ─────────────────────────────────────────────────
 
@@ -431,11 +468,11 @@ function buildContext(data) {
   // ── Platform summary ───────────────────────────────────────────────────────
 
   lines.push(`\n=== PLATFORM SUMMARY ===`);
-  lines.push(`Kalshi: ${flatMarkets.filter(m => m.platform === 'kalshi').length} markets`);
-  lines.push(`Polymarket: ${flatMarkets.filter(m => m.platform === 'polymarket').length} markets`);
-  lines.push(`Manifold: ${flatMarkets.filter(m => m.platform === 'manifold').length} markets`);
-  lines.push(`PredictIt: ${flatMarkets.filter(m => m.platform === 'predictit').length} markets`);
-  lines.push(`Metaculus: ${flatMarkets.filter(m => m.platform === 'metaculus').length} questions`);
+  const pCount = p => flatMarkets.filter(m => m.platform === p).length;
+  lines.push(`Kalshi: ${pCount('kalshi')} | Polymarket: ${pCount('polymarket')} | Manifold: ${pCount('manifold')}`);
+  lines.push(`PredictIt: ${pCount('predictit')} | Metaculus: ${pCount('metaculus')} | Augur: ${pCount('augur')}`);
+  lines.push(`Gnosis: ${pCount('gnosis')} | Futuur: ${pCount('futuur')} | GoodJudgment: ${pCount('goodjudgment')}`);
+  if (betfair?.markets?.length) lines.push(`Betfair: ${betfair.markets.length} markets (${betfair.exchangeCount ?? 0} exchange, ${betfair.oddsApiCount ?? 0} odds-api)`);
 
   // Sports odds
   if (odds?.events?.length) {

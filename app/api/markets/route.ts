@@ -17,7 +17,7 @@ export interface ArbCandidate {
   id: string;
   question: string;
   probability: number;
-  platform: 'predictit' | 'manifold' | 'kalshi' | 'polymarket' | 'betfair' | 'metaculus' | 'augur' | 'oddsapi' | 'opinionmarkets';
+  platform: 'predictit' | 'manifold' | 'kalshi' | 'polymarket' | 'betfair' | 'metaculus' | 'augur' | 'gnosis' | 'futuur' | 'goodjudgment' | 'oddsapi' | 'opinionmarkets';
   bookmaker?: string;
   url?: string;
   volume?: number | null;
@@ -36,6 +36,9 @@ export interface MarketsResponse {
     betfair:        PanelMarket[];
     metaculus:      PanelMarket[];
     augur:          PanelMarket[];
+    gnosis:         PanelMarket[];
+    futuur:         PanelMarket[];
+    goodjudgment:   PanelMarket[];
     oddsapi:        PanelMarket[];
     opinionmarkets: PanelMarket[];
   };
@@ -91,6 +94,11 @@ const MANIFOLD_RAW_FILE   = '/tmp/manifold-raw.json';
 const PREDICTIT_RAW_FILE  = '/tmp/predictit-raw.json';
 const METACULUS_RAW_FILE  = '/tmp/metaculus-raw.json';
 const ODDS_API_FILE       = '/tmp/odds-api-raw.json';
+const BETFAIR_RAW_FILE    = '/tmp/betfair-raw.json';
+const AUGUR_RAW_FILE      = '/tmp/augur-raw.json';
+const GNOSIS_RAW_FILE     = '/tmp/gnosis-raw.json';
+const FUTUUR_RAW_FILE     = '/tmp/futuur-raw.json';
+const GOODJUDGMENT_FILE   = '/tmp/goodjudgment-raw.json';
 const ARB_FILE            = '/tmp/arbitrage-opportunities.json';
 const UI_DATA_FILE        = '/tmp/ui-data.json';
 const PRICES_FILE         = '/tmp/arb-prices.json';
@@ -129,6 +137,31 @@ function loadMetaculusQuestions(): any[] {
 function loadOddsApiEvents(): any[] {
   const data = readJson(ODDS_API_FILE);
   return data?.events ?? [];
+}
+
+function loadBetfairMarkets(): any[] {
+  const d = readJson(BETFAIR_RAW_FILE);
+  return d?.markets ?? [];
+}
+
+function loadAugurMarkets(): any[] {
+  const d = readJson(AUGUR_RAW_FILE);
+  return d?.markets ?? [];
+}
+
+function loadGnosisMarkets(): any[] {
+  const d = readJson(GNOSIS_RAW_FILE);
+  return d?.markets ?? [];
+}
+
+function loadFutuurMarkets(): any[] {
+  const d = readJson(FUTUUR_RAW_FILE);
+  return d?.markets ?? [];
+}
+
+function loadGoodJudgmentQuestions(): any[] {
+  const d = readJson(GOODJUDGMENT_FILE);
+  return d?.questions ?? [];
 }
 
 // ── Odds API panels ────────────────────────────────
@@ -198,6 +231,105 @@ function buildOddsApiPanel(events: any[]): PanelMarket[] {
       const sb = parseFloat(b.detail.split('spread ')[1] ?? '0');
       return sb - sa;
     })
+    .slice(0, 30) as PanelMarket[];
+}
+
+function buildAugurPanel(markets: any[]): PanelMarket[] {
+  return markets
+    .filter(m => m.outcomes?.length >= 2)
+    .map(m => {
+      const yes = m.outcomes.find((o: any) => o.description?.toLowerCase().includes('yes'));
+      const price = yes ? +(parseFloat(yes.price || '0') * 100).toFixed(1) : null;
+      if (price == null) return null;
+      return {
+        id:          m.id,
+        name:        m.description?.slice(0, 80) ?? 'Unknown',
+        detail:      `Augur · vol: ${parseFloat(m.volume || '0').toFixed(0)} DAI`,
+        probability: price,
+        volume:      parseFloat(m.volume || '0'),
+        expiresAt:   m.endTime ? parseInt(m.endTime) * 1000 : null,
+      } as PanelMarket;
+    })
+    .filter(Boolean)
+    .slice(0, 30) as PanelMarket[];
+}
+
+function buildGnosisPanel(markets: any[]): PanelMarket[] {
+  return markets
+    .filter(m => m.title && m.prices?.length)
+    .map(m => {
+      const yes = m.prices.find((p: any) => p.outcome?.toLowerCase().includes('yes') || p.outcome?.toLowerCase().includes('true'));
+      const price = yes ? +(yes.price * 100).toFixed(1) : +(m.prices[0]?.price * 100 || 0).toFixed(1);
+      if (!price || price < 1 || price > 99) return null;
+      return {
+        id:          m.id,
+        name:        m.title?.slice(0, 80) ?? 'Unknown',
+        detail:      `Gnosis/Omen · vol: ${m.volume?.toFixed(0) ?? 0} DAI`,
+        probability: price,
+        volume:      m.volume ?? null,
+        expiresAt:   m.resolvesAt ? new Date(m.resolvesAt).getTime() : null,
+      } as PanelMarket;
+    })
+    .filter(Boolean)
+    .slice(0, 30) as PanelMarket[];
+}
+
+function buildFutuurPanel(markets: any[]): PanelMarket[] {
+  return markets
+    .filter(m => m.title && m.outcomes?.length)
+    .map(m => {
+      const yes = m.outcomes.find((o: any) => o.label?.toLowerCase().includes('yes') || o.label?.toLowerCase().includes('true'));
+      const prob = yes?.prob ?? m.outcomes[0]?.prob;
+      if (prob == null) return null;
+      const price = +(prob * 100).toFixed(1);
+      if (price < 1 || price > 99) return null;
+      return {
+        id:          String(m.id ?? m.title),
+        name:        m.title?.slice(0, 80) ?? 'Unknown',
+        detail:      `Futuur · ${m.category ?? 'General'}`,
+        probability: price,
+        volume:      m.volume ?? null,
+        expiresAt:   m.endsAt ? new Date(m.endsAt).getTime() : null,
+      } as PanelMarket;
+    })
+    .filter(Boolean)
+    .slice(0, 30) as PanelMarket[];
+}
+
+function buildGoodJudgmentPanel(questions: any[]): PanelMarket[] {
+  return questions
+    .filter(q => q.title && q.probability != null)
+    .map(q => {
+      const price = +(q.probability * 100).toFixed(1);
+      if (price < 1 || price > 99) return null;
+      return {
+        id:          String(q.id),
+        name:        q.title?.slice(0, 80) ?? 'Unknown',
+        detail:      `Good Judgment Open · ${q.forecasters ?? 0} forecasters`,
+        probability: price,
+        volume:      null,
+        expiresAt:   q.closesAt ? new Date(q.closesAt).getTime() : null,
+      } as PanelMarket;
+    })
+    .filter(Boolean)
+    .slice(0, 30) as PanelMarket[];
+}
+
+function buildBetfairRawPanel(markets: any[]): PanelMarket[] {
+  return markets
+    .filter(m => m.outcomes?.length)
+    .map(m => {
+      const outcome = m.outcomes[0];
+      return {
+        id:          String(m.id ?? Math.random()),
+        name:        m.event?.slice(0, 80) ?? 'Unknown',
+        detail:      `Betfair · ${m.sport ?? m.bookmaker ?? ''} · ${outcome.price?.toFixed(2) ?? '?'}`,
+        probability: outcome.price > 1 ? +(100 / outcome.price).toFixed(1) : 50,
+        volume:      null,
+        expiresAt:   m.commenceTime ? new Date(m.commenceTime).getTime() : null,
+      } as PanelMarket;
+    })
+    .filter(Boolean)
     .slice(0, 30) as PanelMarket[];
 }
 
@@ -405,8 +537,13 @@ export async function GET() {
       expiresAt:   toMs(q.closeTime),
     }));
 
-  const oddsApiPanel = buildOddsApiPanel(oddsEvents);
-  const betfairPanel = buildBetfairPanel(oddsEvents);
+  const oddsApiPanel    = buildOddsApiPanel(oddsEvents);
+  const betfairPanel    = buildBetfairPanel(oddsEvents);
+  const augurPanel      = buildAugurPanel(loadAugurMarkets());
+  const gnosisPanel     = buildGnosisPanel(loadGnosisMarkets());
+  const futuurPanel     = buildFutuurPanel(loadFutuurMarkets());
+  const goodjudgPanel   = buildGoodJudgmentPanel(loadGoodJudgmentQuestions());
+  const betfairRawPanel = buildBetfairRawPanel(loadBetfairMarkets().filter((m: any) => m.source !== 'odds-api'));
 
   // ── Arb candidates from prediction markets ────────
 
@@ -504,9 +641,12 @@ export async function GET() {
       manifold:       manifoldPanel,
       kalshi:         kalshiPanel,
       polymarket:     polymarketPanel,
-      betfair:        betfairPanel,
+      betfair:        [...betfairPanel, ...betfairRawPanel].slice(0, 30),
       metaculus:      metaculusPanel,
-      augur:          [],
+      augur:          augurPanel,
+      gnosis:         gnosisPanel,
+      futuur:         futuurPanel,
+      goodjudgment:   goodjudgPanel,
       oddsapi:        oddsApiPanel,
       opinionmarkets: [],
     },

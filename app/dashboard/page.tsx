@@ -468,7 +468,8 @@ function StatsTab({ data }: { data: StatsData | null }) {
 const REFRESH = 30;
 const EMPTY_PANELS: MarketsResponse['panels'] = {
   predictit: [], manifold: [], kalshi: [], polymarket: [],
-  betfair: [], metaculus: [], augur: [], oddsapi: [], opinionmarkets: [],
+  betfair: [], metaculus: [], augur: [], gnosis: [], futuur: [],
+  goodjudgment: [], oddsapi: [], opinionmarkets: [],
 };
 type FullResponse = MarketsResponse & { masterOpportunities?: MasterOpp[] };
 
