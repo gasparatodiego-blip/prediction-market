@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useSession, signOut } from 'next-auth/react';
 import Link from 'next/link';
 import type { MarketsResponse, PanelMarket, ArbCandidate } from '@/app/api/markets/route';
@@ -563,8 +563,12 @@ export default function Home() {
     }
   }, [session]);
 
-  const liveArb = detectArbitrage(arbCandidates);
-  const filteredMaster = typeFilter === 'all' ? masterOpps : masterOpps.filter(o => o.type === typeFilter);
+  // Cap to 200 candidates before O(n²) matching to prevent browser freeze
+  const liveArb = useMemo(() => detectArbitrage(arbCandidates.slice(0, 200)), [arbCandidates]);
+  const filteredMaster = useMemo(
+    () => typeFilter === 'all' ? masterOpps : masterOpps.filter(o => o.type === typeFilter),
+    [masterOpps, typeFilter]
+  );
 
   const totalMarkets   = Object.values(panels).reduce((s, p) => s + p.length, 0);
   const platformCount  = Object.values(panels).filter(p => p.length > 0).length;

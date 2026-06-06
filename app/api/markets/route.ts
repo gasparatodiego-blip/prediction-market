@@ -650,7 +650,7 @@ export async function GET() {
       oddsapi:        oddsApiPanel,
       opinionmarkets: [],
     },
-    arbCandidates:      finalArb,
+    arbCandidates:      finalArb.slice(0, 300),
     masterOpportunities: masterOpps,
   };
 
