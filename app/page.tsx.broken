@@ -1,0 +1,214 @@
+'use client';
+
+import Link from 'next/link';
+import { useState, useEffect } from 'react';
+
+export default function HomePage() {
+    const [language, setLanguage] = useState('it');
+    const [currentTip, setCurrentTip] = useState(0);
+    const [currentOpportunity, setCurrentOpportunity] = useState(0);
+    const [currentPrice, setCurrentPrice] = useState(94300);
+
+    // Tips rotanti
+    const tips = [
+        { icon: '💰', text: 'Funding rate BTC: +0.0087%/8h → +9.5% APY' },
+        { icon: '🎯', text: 'Polymarket vs Kalshi: spread 8¢ su elezioni USA' },
+        { icon: '⚽', text: 'Surebet NBA: 2.10 vs 2.15 su bookmaker diversi' },
+        { icon: '🔄', text: 'BTC CEX Arb: Binance $94.300 → Coinbase $94.550' },
+        { icon: '⚡', text: 'HFT 5-min: LONG ETH con confidence 85%' },
+        { icon: '🏦', text: 'LP Polymarket: APY 18% su mercato Netanyahu' },
+        { icon: '📊', text: 'ETH funding: -0.0106%/8h → short conveniente' },
+        { icon: '🎲', text: 'BNB delta-neutral: +10.3% APY funding' }
+    ];
+
+    // Opportunità che scorrono
+    const opportunities = [
+        { type: 'PREDICTION', title: 'Trump vs Biden - Elezioni USA 2024', spread: '+8.2%', confidence: 92 },
+        { type: 'FUNDING', title: 'BTC Funding Rate - Binance Perp', spread: '+0.0087%/8h', confidence: 88 },
+        { type: 'SPORTS', title: 'NBA Finals - Lakers vs Celtics', spread: '+5.4%', confidence: 85 },
+        { type: 'CEX', title: 'BTC Arbitrage - Binance → Coinbase', spread: '+0.32%', confidence: 94 },
+        { type: 'HFT', title: 'BTC 5-min Mean Reversion', spread: '+0.6%', confidence: 78 },
+        { type: 'LP', title: 'Polymarket - Netanyahu 2026', spread: '+18% APY', confidence: 82 }
+    ];
+
+    useEffect(() => {
+        const tipInterval = setInterval(() => setCurrentTip((prev) => (prev + 1) % tips.length), 3500);
+        const oppInterval = setInterval(() => setCurrentOpportunity((prev) => (prev + 1) % opportunities.length), 5000);
+        const priceInterval = setInterval(() => {
+            setCurrentPrice(prev => prev + (Math.random() - 0.5) * 100);
+        }, 3000);
+        return () => {
+            clearInterval(tipInterval);
+            clearInterval(oppInterval);
+            clearInterval(priceInterval);
+        };
+    }, []);
+
+    useEffect(() => {
+        const userLang = navigator.language.split('-')[0];
+        if (['it', 'en', 'es', 'fr', 'de'].includes(userLang)) setLanguage(userLang);
+    }, []);
+
+    const content = {
+        it: {
+            title: 'Prediction Market Arbitrage Scanner',
+            description: 'Scansiona prediction markets, bookmakers e exchange crypto in tempo reale. Scopri opportunità di arbitraggio, ricevi alert istantanei e massimizza i tuoi profitti con strategie automatizzate.',
+            button: 'Accedi alla Dashboard →'
+        },
+        en: {
+            title: 'Prediction Market Arbitrage Scanner',
+            description: 'Scan prediction markets, sports books, and crypto exchanges in real time. Discover arbitrage opportunities, receive instant alerts, and maximize your profits with automated strategies.',
+            button: 'Launch Dashboard →'
+        }
+    };
+
+    const t = content[language as keyof typeof content] || content.it;
+    const currentOpp = opportunities[currentOpportunity];
+
+    return (
+        <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950">
+            {/* Header */}
+            <div className="fixed top-0 left-0 right-0 z-50 bg-gray-900/80 backdrop-blur-md border-b border-gray-800">
+                <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
+                    <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-lg bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center">
+                            <span className="text-white text-sm font-bold">A</span>
+                        </div>
+                        <span className="font-bold text-white">ArbScanner</span>
+                        <span className="text-xs text-gray-500 ml-2 hidden md:inline">Beta</span>
+                    </div>
+                    <Link href="/dashboard" className="px-4 py-1.5 rounded-lg bg-blue-600/20 text-blue-400 text-sm hover:bg-blue-600/30 transition">
+                        Dashboard
+                    </Link>
+                </div>
+            </div>
+
+            {/* Hero Section - TUTTO IN UNA SCHERMATA */}
+            <div className="min-h-screen flex items-center justify-center pt-16">
+                <div className="max-w-5xl mx-auto px-4 py-8">
+                    
+                    {/* Titolo */}
+                    <div className="text-center mb-8">
+                        <div className="inline-flex items-center gap-2 bg-blue-500/10 rounded-full px-4 py-1.5 mb-4 border border-blue-500/20">
+                            <span className="text-purple-400 text-sm">⚡ AI-Powered • 24/7 Real-time</span>
+                        </div>
+                        <h1 className="text-4xl md:text-6xl font-bold mb-4">
+                            <span className="bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+                                {t.title.split(' ').slice(0, 2).join(' ')}
+                            </span>
+                            <br />
+                            <span className="text-white">{t.title.split(' ').slice(2).join(' ')}</span>
+                        </h1>
+                        <p className="text-gray-400 text-base max-w-2xl mx-auto">
+                            {t.description}
+                        </p>
+                    </div>
+
+                    {/* Bottone principale */}
+                    <div className="text-center mb-12">
+                        <Link href="/dashboard" className="inline-flex items-center gap-2 px-8 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-blue-500 text-white font-semibold hover:from-blue-500 hover:to-blue-400 transition-all shadow-lg shadow-blue-500/25">
+                            {t.button}
+                            <span>→</span>
+                        </Link>
+                    </div>
+
+                    {/* Sezione TIPS ROTANTI */}
+                    <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl border border-gray-800 p-4 mb-6">
+                        <div className="flex items-center gap-3">
+                            <div className="text-2xl animate-bounce">{tips[currentTip].icon}</div>
+                            <p className="text-gray-300 text-sm flex-1">{tips[currentTip].text}</p>
+                            <div className="flex gap-1">
+                                {tips.slice(0, 4).map((_, i) => (
+                                    <div key={i} className={`w-1.5 h-1.5 rounded-full transition-all ${i === currentTip % 4 ? 'bg-blue-400 w-2' : 'bg-gray-600'}`} />
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Opportunità in tempo reale che scorrono -->
+                    <div className="rounded-xl border border-blue-500/20 bg-blue-950/10 p-4 mb-6">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <span className="text-green-400 text-sm animate-pulse">●</span>
+                                <span className="text-xs text-gray-400">OPPORTUNITÀ IN TEMPO REALE</span>
+                            </div>
+                            <span className="text-xs text-gray-500">aggiornato ora</span>
+                        </div>
+                        <div className="flex items-center justify-between mt-2">
+                            <div className="flex items-center gap-3">
+                                <span className="px-2 py-0.5 rounded text-xs font-bold bg-blue-500/20 text-blue-400">{currentOpp.type}</span>
+                                <span className="text-white text-sm font-medium">{currentOpp.title}</span>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <span className="text-green-400 font-bold">{currentOpp.spread}</span>
+                                <div className="flex items-center gap-1">
+                                    <div className="w-12 h-1 bg-gray-700 rounded-full overflow-hidden">
+                                        <div className="h-full bg-green-500 rounded-full" style={{ width: `${currentOpp.confidence}%` }} />
+                                    </div>
+                                    <span className="text-xs text-gray-400">{currentOpp.confidence}%</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Prezzi live */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
+                        <div className="bg-gray-900/30 rounded-lg p-3 text-center border border-gray-800">
+                            <div className="text-xs text-gray-500">BTC/USDT</div>
+                            <div className="text-sm font-bold text-white">${currentPrice.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                            <div className={`text-xs ${Math.random() > 0.5 ? 'text-green-400' : 'text-red-400'}`}>
+                                {Math.random() > 0.5 ? '+' : ''}{(Math.random() * 0.5).toFixed(2)}%
+                            </div>
+                        </div>
+                        <div className="bg-gray-900/30 rounded-lg p-3 text-center border border-gray-800">
+                            <div className="text-xs text-gray-500">ETH/USDT</div>
+                            <div className="text-sm font-bold text-white">$3,192</div>
+                            <div className="text-xs text-green-400">+0.43%</div>
+                        </div>
+                        <div className="bg-gray-900/30 rounded-lg p-3 text-center border border-gray-800">
+                            <div className="text-xs text-gray-500">SOL/USDT</div>
+                            <div className="text-sm font-bold text-white">$180.42</div>
+                            <div className="text-xs text-green-400">+1.61%</div>
+                        </div>
+                        <div className="bg-gray-900/30 rounded-lg p-3 text-center border border-gray-800">
+                            <div className="text-xs text-gray-500">Funding BTC</div>
+                            <div className="text-sm font-bold text-purple-400">+0.0087%</div>
+                            <div className="text-xs text-gray-500">/8h</div>
+                        </div>
+                    </div>
+
+                    {/* Categorie in griglia compatta */}
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 mb-8">
+                        {['🎯 Prediction', '💰 Funding', '⚽ Sports', '🔄 CEX', '⚡ HFT', '🏦 LP'].map((cat, i) => (
+                            <div key={i} className="bg-gray-900/30 rounded-lg p-2 text-center border border-gray-800 hover:border-blue-500/30 transition cursor-pointer">
+                                <div className="text-xl">{cat.split(' ')[0]}</div>
+                                <div className="text-xs text-gray-300">{cat.split(' ')[1]}</div>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Statistiche finali */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div className="text-center">
+                            <div className="text-2xl font-bold text-blue-400">14+</div>
+                            <div className="text-xs text-gray-500">AI Agents</div>
+                        </div>
+                        <div className="text-center">
+                            <div className="text-2xl font-bold text-purple-400">40+</div>
+                            <div className="text-xs text-gray-500">Bookmakers</div>
+                        </div>
+                        <div className="text-center">
+                            <div className="text-2xl font-bold text-green-400">12+</div>
+                            <div className="text-xs text-gray-500">Platforms</div>
+                        </div>
+                        <div className="text-center">
+                            <div className="text-2xl font-bold text-yellow-400">24/7</div>
+                            <div className="text-xs text-gray-500">Scanning</div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    );
+}
