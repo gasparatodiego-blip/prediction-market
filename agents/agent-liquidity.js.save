@@ -1,0 +1,75 @@
+ * Monitors Polymarket liquidity positions (AMM).ch active Polymarket markets with high volume
+ *   2. For each market, compute current AMM LP metrics:
+ *      - current price p, implied impermanent loss vs entry price p0
+ *      - LP APY (from fees on volume)
+ *   3. If IL > 3% or price diverged >10% from entry → alert for rebalance
+ *   4. Runs every 10 minutes.
+ */
+
+const fs    = require('fs');
+const https = require('https');
+
+const TG_TOKEN   = '8920675182:AAExM7SaLI-t7j3_QgkfGb46MqEJkHRlmJ4';
+const TG_CHAT    = '8844610430';
+const HB_FILE    = '/tmp/agent-heartbeats.json';
+const PM_RAW     = '/tmp/polymarket-raw.json';
+const OUT_FILE   = '/tmp/liquidity-positions.json';
+const INTERVAL_MS = 10 * 60 * 1000;
+
+// Simulated LP positions (in production these would be loaded from a positions file / on-chain)
+// Each entry: entryPrice (YES price at entry in cents), notionalUSD, entryTs
+const LP_POSITIONS_FILE = '/tmp/lp-positions-config.json';
+
+const DEFAULT_POSITIONS = [
+  // Example positions — replace with real ones via API or manual config
+  // { marketId: 'polymarket-slug', entryPrice: 50, notionalUSD: 1000, entryTs: Date.now() }
+];
+
+function readJson(path) {
+  try { return JSON.parse(fs.readFileSync(path, 'utf8')); } catch { return null; }
+}
+
+function writeJson(path, data) {
+  try { fs.writeFileSync(path, JSON.stringify(data, null, 2)); } catch {}
+}
+
+function beat() {
+  let hb = {};
+  try { hb = JSON.parse(fs.readFileSync(HB_FILE, 'utf8')); } catch {}
+  hb['agent-liquidity'] = Date.now();
+  try { fs.writeFileSync(HB_FILE, JSON.stringify(hb, null, 2)); } catch {}
+}
+
+function sendTelegram(text) {
+  const body = JSON.stringify({ chat_id: TG_CHAT, text, parse_mode: 'HTML' });
+  const req  = https.request({
+    hostname: 'api.telegram.org',
+    path:     `/bot${TG_TOKEN}/sendMessage`,
+    method:   'POST',
+    headers:  { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
+  }, res => {
+    let d = '';
+    res.on('data', c => d += c);
+    res.on('end', () => { try { const r = JSON.parse(d); if (!r.ok) console.error('[lp] tg fail:', r.description); } catch {} });
+  });
+  req.on('error', e => console.error('[lp] tg error:', e.message));
+  req.write(body); req.end();
+}
+
+/**
+ * Impermanent loss for a binary AMM (CLOB-style approximation):
+ * IL = 2*sqrt(p/p0) / (1 + p/p0) - 1
+ * where p = current price, p0 = entry price (both in range 0..1)
+ */
+function computeIL(entryPrice, currentPrice) {
+  const r = currentPrice / entryPrice;
+  const il = 2 * Math.sqrt(r) / (1 + r) - 1;
+  return +(il * 100).toFixed(3); // as %
+}
+
+/**
+ * Estimate LP fee APY from 24h volume.
+ * Assumes 0.1% fee rate on Polymarket AMM, LP earns ~50% of fees.
+ */
+function estimateLpApy(volume24h, notional) {
+

@@ -3,31 +3,47 @@
 @tailwind utilities;
 
 :root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 214, 219, 220;
-  --background-end-rgb: 255, 255, 255;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --foreground-rgb: 255, 255, 255;
-    --background-start-rgb: 0, 0, 0;
-    --background-end-rgb: 0, 0, 0;
-  }
+  --bg: #000000;
+  --surface: #0d0d0d;
+  --elevated: #141414;
+  --border: #2a2a2a;
+  --brand: #1a5c9e;
+  --profit: #2ecc71;
+  --loss: #e74c3c;
+  --ink: #ffffff;
+  --muted: #888888;
 }
 
 body {
-  color: rgb(var(--foreground-rgb));
-  background: linear-gradient(
-      to bottom,
-      transparent,
-      rgb(var(--background-end-rgb))
-    )
-    rgb(var(--background-start-rgb));
+  background: var(--bg);
+  color: var(--ink);
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
 }
 
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
-  }
+.card, .glass {
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 0px !important;
+}
+
+th {
+  background: var(--surface);
+  color: var(--muted);
+  text-transform: uppercase;
+  font-size: 11px;
+  padding: 8px 12px;
+}
+
+td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.text-green-400 { color: var(--profit) !important; }
+.text-red-400 { color: var(--loss) !important; }
+
+h1, h2, h3 {
+  color: var(--ink);
+  font-weight: 500;
 }
