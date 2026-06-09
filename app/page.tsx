@@ -1,21 +1,172 @@
 'use client';
 
 import Link from 'next/link';
-import { useState, useEffect } from 'react';
+import { ArrowRight } from 'lucide-react';
+import TerminalHeader from '@/app/components/TerminalHeader';
+import LiveOpportunitiesPanel from '@/app/components/LiveOpportunitiesPanel';
+
+const stats = [
+  { value: '14+',  label: 'AI AGENTS' },
+  { value: '40+',  label: 'BOOKMAKERS' },
+  { value: '12+',  label: 'PLATFORMS' },
+  { value: '24/7', label: 'SCANNING' },
+];
+
+const strategies = [
+  {
+    tag: 'PREDICTION MARKETS',
+    desc: 'Political, sports & current-events arb across Polymarket, Kalshi, PredictIt — AI-matched in real time.',
+  },
+  {
+    tag: 'FUNDING RATE ARB',
+    desc: 'Perpetual-to-spot divergence on Binance, Bybit, OKX — continuous yield from basis spread.',
+  },
+  {
+    tag: 'SPORTS ARBITRAGE',
+    desc: 'Surebets across 40+ bookmakers. Live odds re-checked every 30 s, auto-flagged on edge.',
+  },
+  {
+    tag: 'CEX ARBITRAGE',
+    desc: 'Cross-exchange price discrepancies with real-time depth analysis on major pairs.',
+  },
+  {
+    tag: 'HFT 5-MIN',
+    desc: 'High-frequency signals on Binance Futures. Sub-minute execution window, autonomous.',
+  },
+  {
+    tag: 'LP STRATEGY',
+    desc: 'Fee yield on Polymarket liquidity pools, calibrated by market volume and price dispersion.',
+  },
+];
 
 export default function HomePage() {
-    const [currentTip, setCurrentTip] = useState(0);
-    const tips = ['🎯 Arbitraggio cross-platform: spread fino a 8%', '💰 Funding Rate BTC: +0.0087%/8h → +9.5% APY', '⚡ API in tempo reale per trading automatizzato', '🏦 LP: guadagna fino a 200% APY su Polymarket'];
+  return (
+    <div className="min-h-screen bg-bg-base text-text-primary relative overflow-hidden">
 
-    useEffect(() => {
-        const interval = setInterval(() => setCurrentTip(prev => (prev + 1) % tips.length), 4000);
-        return () => clearInterval(interval);
-    }, []);
+      {/* Radial accent glow — barely visible */}
+      <div className="pointer-events-none fixed inset-0 z-0" aria-hidden>
+        <div
+          className="absolute top-[-80px] left-1/2 -translate-x-1/2 w-[900px] h-[420px] rounded-full blur-[140px]"
+          style={{ background: 'radial-gradient(ellipse at center, rgba(99,102,241,0.06) 0%, transparent 70%)' }}
+        />
+      </div>
 
-    return (
-        <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950">
-            <div className="fixed top-0 left-0 right-0 z-50 bg-gray-900/80 backdrop-blur-md border-b border-gray-800 px-4 py-3"><div className="max-w-7xl mx-auto flex justify-between items-center"><div className="flex items-center gap-2"><div className="w-8 h-8 rounded-lg bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center"><span className="text-white text-sm font-bold">A</span></div><span className="font-bold text-white text-lg">ArbScanner</span><span className="text-xs text-green-400 animate-pulse">● LIVE</span></div><Link href="/dashboard" className="px-4 py-1.5 rounded-lg bg-blue-600/20 text-blue-400 text-sm hover:bg-blue-600/30">Dashboard</Link></div></div>
-            <div className="relative z-10 pt-20 pb-12"><div className="max-w-7xl mx-auto px-4 text-center"><div className="inline-flex items-center gap-2 bg-blue-500/10 rounded-full px-4 py-1.5 mb-4 border border-blue-500/20"><span className="text-purple-400 text-sm">⚡ AI-Powered • 24/7 Real-time</span></div><h1 className="text-5xl md:text-7xl font-bold mb-4"><span className="bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Prediction Market</span><br /><span className="text-white">Arbitrage Scanner</span></h1><p className="text-gray-400 text-base max-w-2xl mx-auto mb-8">Scansiona prediction markets, bookmaker e exchange crypto in tempo reale. Scopri opportunità di arbitraggio e massimizza i profitti.</p><Link href="/dashboard" className="inline-flex items-center gap-2 px-8 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-blue-500 text-white font-semibold hover:scale-105 transition">Accedi alla Dashboard →</Link><div className="max-w-md mx-auto mt-8"><div className="bg-gray-900/50 rounded-xl border border-gray-800 p-4"><div className="flex items-center gap-3"><span className="text-2xl">{tips[currentTip].split(' ')[0]}</span><p className="text-sm text-gray-300">{tips[currentTip]}</p></div></div></div><div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-10"><div><div className="text-2xl font-bold text-blue-400">14+</div><div className="text-xs text-gray-500">AI Agents</div></div><div><div className="text-2xl font-bold text-purple-400">40+</div><div className="text-xs text-gray-500">Bookmakers</div></div><div><div className="text-2xl font-bold text-green-400">12+</div><div className="text-xs text-gray-500">Platforms</div></div><div><div className="text-2xl font-bold text-yellow-400">24/7</div><div className="text-xs text-gray-500">Scanning</div></div></div></div></div>
+      {/* Grid background */}
+      <div className="bg-grid-subtle pointer-events-none fixed inset-0 z-0 opacity-40" aria-hidden />
+
+      {/* Shared terminal header */}
+      <TerminalHeader />
+
+      {/* ── Hero ──────────────────────────────────────────────── */}
+      <main className="relative z-10 max-w-[1200px] mx-auto px-6 pt-20 pb-24">
+
+        {/* Two-column hero: copy left, live panel right */}
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-10 xl:gap-14 items-start">
+
+          {/* Left: copy */}
+          <div>
+            {/* Terminal tag */}
+            <div className="mb-7">
+              <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-text-muted border border-border px-2.5 py-[5px]">
+                MULTI-STRATEGY ARB PLATFORM
+              </span>
+            </div>
+
+            {/* Headline */}
+            <h1 className="font-sans font-semibold text-5xl md:text-[3.75rem] leading-[1.04] tracking-[-0.03em] text-text-primary mb-6 max-w-2xl">
+              Precision<br />
+              <span className="text-accent">arbitrage</span><br />
+              intelligence.
+            </h1>
+
+            {/* Subhead */}
+            <p className="text-text-secondary text-[15px] max-w-lg mb-10 leading-[1.65]">
+              14 AI agents scan prediction markets, crypto exchanges, and sports books simultaneously.
+              Surface edge. Execute faster.
+            </p>
+
+            {/* CTAs */}
+            <div className="flex items-center gap-3 flex-wrap">
+              <Link
+                href="/dashboard"
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-accent text-white font-mono font-medium text-[12px] uppercase tracking-[0.1em] transition-colors duration-100 hover:bg-accent-bright active:scale-[0.98]"
+              >
+                Open Terminal
+                <ArrowRight className="w-3.5 h-3.5" strokeWidth={2} />
+              </Link>
+              <Link
+                href="/auth/login"
+                className="inline-flex items-center gap-2 px-5 py-2.5 border border-border bg-bg-elevated text-text-secondary font-mono text-[12px] uppercase tracking-[0.1em] transition-colors duration-100 hover:border-accent/40 hover:text-text-primary"
+              >
+                Sign In
+              </Link>
+            </div>
+          </div>
+
+          {/* Right: live opportunities panel */}
+          <div className="lg:pt-1">
+            <LiveOpportunitiesPanel />
+          </div>
+
         </div>
-    );
+
+        {/* ── Stats row ─────────────────────────────────────── */}
+        <div className="mt-16 pt-6 border-t border-border grid grid-cols-2 md:grid-cols-4 gap-8">
+          {stats.map(({ value, label }) => (
+            <div key={label}>
+              <div
+                className={`font-mono font-bold text-[2rem] tabular-nums leading-none ${
+                  label === 'SCANNING' ? 'text-accent' : 'text-text-primary'
+                }`}
+              >
+                {value}
+              </div>
+              <div className="font-mono text-[10px] uppercase tracking-[0.13em] text-text-muted mt-2">
+                {label}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* ── Strategy grid ──────────────────────────────────── */}
+        <div className="mt-20">
+          <h2 className="font-mono text-[10px] uppercase tracking-[0.15em] text-text-muted mb-4">
+            ACTIVE STRATEGIES
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-px bg-border">
+            {strategies.map(({ tag, desc }) => (
+              <div
+                key={tag}
+                className="bg-bg-panel px-5 py-5 hover:bg-bg-elevated transition-colors duration-100 group"
+              >
+                <div className="font-mono text-[10px] uppercase tracking-[0.13em] text-accent mb-2.5">
+                  {tag}
+                </div>
+                <p className="text-text-secondary text-[12px] leading-[1.6]">{desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </main>
+
+      {/* ── Footer ────────────────────────────────────────────── */}
+      <footer className="relative z-10 border-t border-border">
+        <div className="max-w-[1200px] mx-auto px-6 h-10 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-positive shrink-0" />
+            <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-muted">
+              ALL SYSTEMS OPERATIONAL
+            </span>
+          </div>
+          <div className="flex items-center gap-4 shrink-0">
+            <span className="font-mono text-[10px] text-text-muted">v0.1.0</span>
+            <span className="font-mono text-[10px] text-text-muted hidden sm:block">
+              © 2026 ARBSCANNER
+            </span>
+          </div>
+        </div>
+      </footer>
+
+    </div>
+  );
 }
