@@ -23,16 +23,16 @@ interface HistoryData {
   currentOpps: any[];
 }
 
-const TYPE_COLORS: Record<string, string> = {
-  prediction_market: 'bg-blue-900/40 text-blue-300 border-blue-700',
-  funding_rate:      'bg-purple-900/40 text-purple-300 border-purple-700',
-  cex_arb:           'bg-yellow-900/40 text-yellow-300 border-yellow-700',
-  sports_arb:        'bg-green-900/40 text-green-300 border-green-700',
-  cash_carry:        'bg-orange-900/40 text-orange-300 border-orange-700',
+const TYPE_CHIP: Record<string, string> = {
+  prediction_market: 'border-accent/40 text-accent-bright',
+  funding_rate:      'border-accent/30 text-accent',
+  cex_arb:           'border-warning/40 text-warning',
+  sports_arb:        'border-positive/40 text-positive',
+  cash_carry:        'border-warning/30 text-warning',
 };
 
-function typeColor(t: string) {
-  return TYPE_COLORS[t] ?? 'bg-gray-900/40 text-gray-300 border-gray-700';
+function typeChip(t: string) {
+  return TYPE_CHIP[t] ?? 'border-border text-text-secondary';
 }
 
 function fmtDate(iso: string) {
@@ -46,7 +46,7 @@ export default function HistoryPage() {
   const [search,    setSearch]    = useState('');
   const [typeF,     setTypeF]     = useState('all');
   const [statusF,   setStatusF]   = useState('all');
-  const [dateRange, setDateRange] = useState(7); // days
+  const [dateRange, setDateRange] = useState(7);
 
   useEffect(() => {
     fetch('/api/user/history').then(r => r.json()).then(d => { setData(d); setLoading(false); }).catch(() => setLoading(false));
@@ -75,20 +75,23 @@ export default function HistoryPage() {
     URL.revokeObjectURL(url);
   }
 
+  const selectClass = "px-3 py-1.5 rounded border border-border bg-bg-elevated text-xs text-text-secondary font-mono focus:outline-none focus:border-accent/60";
+
   return (
-    <main className="bg-gray-950 text-white min-h-screen">
-      <nav className="border-b border-gray-800 bg-gray-900/80 sticky top-0 z-10">
+    <main className="bg-bg-base text-text-primary min-h-screen">
+      <nav className="border-b border-border bg-bg-panel/80 sticky top-0 z-10 backdrop-blur-sm">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-4 flex-wrap">
-          <Link href="/dashboard" className="text-gray-400 hover:text-white text-sm">← Dashboard</Link>
-          <span className="text-gray-600">|</span>
-          <span className="font-semibold">Scan History</span>
+          <Link href="/dashboard" className="text-text-muted hover:text-text-primary text-xs font-mono transition-colors duration-100">← DASHBOARD</Link>
+          <span className="text-border">|</span>
+          <span className="font-semibold text-text-primary text-xs font-mono uppercase tracking-widest">SCAN HISTORY</span>
           {data && (
-            <span className="text-xs text-gray-500 ml-2">
-              {data.totalScans} scans · {data.totalOpps.toLocaleString()} total opportunities
+            <span className="text-xs text-text-muted font-mono">
+              {data.totalScans} scans · {data.totalOpps.toLocaleString()} total opps
             </span>
           )}
-          <button onClick={exportCsv} className="ml-auto px-3 py-1 rounded-lg border border-gray-700 text-gray-400 text-xs hover:border-gray-500 hover:text-white transition-colors">
-            Export CSV
+          <button onClick={exportCsv}
+            className="ml-auto px-3 py-1.5 rounded border border-border text-text-secondary text-xs font-mono hover:border-accent/30 hover:text-text-primary transition-colors duration-100">
+            EXPORT CSV
           </button>
         </div>
       </nav>
@@ -98,14 +101,14 @@ export default function HistoryPage() {
         {data && (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
-              { label: 'Total Scans', value: data.totalScans },
-              { label: 'Opportunities Found', value: data.totalOpps.toLocaleString() },
-              { label: 'Alerts Sent', value: data.totalAlerts },
-              { label: 'Last Scan', value: data.lastScan ? fmtDate(data.lastScan) : '—' },
+              { label: 'TOTAL SCANS',         value: data.totalScans },
+              { label: 'OPPORTUNITIES FOUND', value: data.totalOpps.toLocaleString() },
+              { label: 'ALERTS SENT',         value: data.totalAlerts },
+              { label: 'LAST SCAN',           value: data.lastScan ? fmtDate(data.lastScan) : '—' },
             ].map(s => (
-              <div key={s.label} className="rounded-xl border border-gray-800 bg-gray-900/40 p-4">
-                <div className="text-xs text-gray-500 mb-1">{s.label}</div>
-                <div className="text-xl font-bold">{s.value}</div>
+              <div key={s.label} className="rounded border border-border bg-bg-panel p-4">
+                <div className="text-xs text-text-muted font-mono uppercase tracking-widest mb-1">{s.label}</div>
+                <div className="text-lg font-bold font-mono tabular-nums text-text-primary">{s.value}</div>
               </div>
             ))}
           </div>
@@ -114,41 +117,38 @@ export default function HistoryPage() {
         {/* Filters */}
         <div className="flex flex-wrap gap-2">
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by title…"
-            className="flex-1 min-w-40 px-3 py-1.5 rounded-lg bg-gray-800 border border-gray-700 text-sm text-gray-300 focus:outline-none focus:border-blue-500" />
-          <select value={dateRange} onChange={e => setDateRange(+e.target.value)}
-            className="px-3 py-1.5 rounded-lg bg-gray-800 border border-gray-700 text-sm text-gray-300 focus:outline-none">
+            className="flex-1 min-w-40 px-3 py-1.5 rounded border border-border bg-bg-elevated text-xs text-text-secondary font-mono focus:outline-none focus:border-accent/60 placeholder:text-text-muted" />
+          <select value={dateRange} onChange={e => setDateRange(+e.target.value)} className={selectClass}>
             <option value={1}>Last 24h</option>
             <option value={7}>Last 7 days</option>
             <option value={30}>Last 30 days</option>
             <option value={999}>All time</option>
           </select>
-          <select value={statusF} onChange={e => setStatusF(e.target.value)}
-            className="px-3 py-1.5 rounded-lg bg-gray-800 border border-gray-700 text-sm text-gray-300 focus:outline-none">
+          <select value={statusF} onChange={e => setStatusF(e.target.value)} className={selectClass}>
             <option value="all">All status</option>
             <option value="success">Success</option>
             <option value="crash">Error</option>
           </select>
-          <select value={typeF} onChange={e => setTypeF(e.target.value)}
-            className="px-3 py-1.5 rounded-lg bg-gray-800 border border-gray-700 text-sm text-gray-300 focus:outline-none">
+          <select value={typeF} onChange={e => setTypeF(e.target.value)} className={selectClass}>
             <option value="all">All types</option>
             <option value="prediction_market">Prediction Market</option>
             <option value="funding_rate">Funding Rate</option>
             <option value="cex_arb">CEX Arb</option>
             <option value="sports_arb">Sports Arb</option>
-            <option value="cash_carry">Cash & Carry</option>
+            <option value="cash_carry">Cash &amp; Carry</option>
           </select>
         </div>
 
         {/* Table */}
         {loading ? (
-          <div className="text-center py-12 text-gray-500">Loading history…</div>
+          <div className="text-center py-12 text-text-muted font-mono text-xs">LOADING HISTORY…</div>
         ) : !filtered.length ? (
-          <div className="text-center py-12 text-gray-500">No scans found for the selected filters.</div>
+          <div className="text-center py-12 text-text-muted font-mono text-xs">NO SCANS FOUND FOR SELECTED FILTERS</div>
         ) : (
-          <div className="rounded-xl border border-gray-800 overflow-hidden">
+          <div className="rounded border border-border overflow-hidden">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-gray-800 bg-gray-900/60 text-gray-500 text-xs">
+                <tr className="border-b border-border bg-bg-panel text-text-muted text-xs font-mono uppercase tracking-widest">
                   <th className="px-4 py-2.5 text-left font-semibold">Date</th>
                   <th className="px-4 py-2.5 text-left font-semibold">Status</th>
                   <th className="px-4 py-2.5 text-right font-semibold">Opps</th>
@@ -160,31 +160,37 @@ export default function HistoryPage() {
               </thead>
               <tbody>
                 {filtered.map((e, i) => (
-                  <tr key={e.ts + i} className="border-b border-gray-800/50 hover:bg-gray-900/30 transition-colors">
-                    <td className="px-4 py-2.5 text-gray-400 text-xs whitespace-nowrap">{fmtDate(e.ts)}</td>
+                  <tr key={e.ts + i} className="border-b border-border/50 hover:bg-bg-elevated/30 transition-colors duration-75">
+                    <td className="px-4 py-2.5 text-text-muted text-xs font-mono tabular-nums whitespace-nowrap">{fmtDate(e.ts)}</td>
                     <td className="px-4 py-2.5">
-                      <span className={`px-2 py-0.5 rounded text-xs font-semibold ${e.status === 'success' ? 'bg-green-900/40 text-green-400' : 'bg-red-900/40 text-red-400'}`}>
+                      <span className={`px-1.5 py-0.5 rounded border text-xs font-mono uppercase tracking-wide ${
+                        e.status === 'success'
+                          ? 'border-positive/40 bg-positive/10 text-positive'
+                          : 'border-negative/40 bg-negative/10 text-negative'
+                      }`}>
                         {e.status}
                       </span>
                     </td>
-                    <td className="px-4 py-2.5 text-right font-bold tabular-nums">{e.opps}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums text-gray-300">
+                    <td className="px-4 py-2.5 text-right font-bold font-mono tabular-nums text-text-primary">{e.opps}</td>
+                    <td className="px-4 py-2.5 text-right font-mono tabular-nums text-text-secondary">
                       {e.avgConf != null ? `${e.avgConf}%` : '—'}
                     </td>
                     <td className="px-4 py-2.5 max-w-xs">
                       {e.best ? (
                         <div className="flex items-center gap-2">
-                          <span className={`px-1.5 py-0.5 rounded border text-xs ${typeColor(e.best.type)}`}>{e.best.type.replace(/_/g, ' ')}</span>
-                          <span className="text-gray-300 truncate text-xs">{e.best.title?.slice(0, 50)}</span>
-                          <span className="text-blue-400 text-xs font-bold ml-auto">{e.best.confidence}%</span>
+                          <span className={`px-1.5 py-0.5 rounded border bg-bg-elevated text-xs font-mono uppercase tracking-wide shrink-0 ${typeChip(e.best.type)}`}>
+                            {e.best.type.replace(/_/g, ' ')}
+                          </span>
+                          <span className="text-text-secondary truncate text-xs font-mono">{e.best.title?.slice(0, 50)}</span>
+                          <span className="text-accent-bright text-xs font-bold font-mono tabular-nums ml-auto shrink-0">{e.best.confidence}%</span>
                         </div>
-                      ) : <span className="text-gray-600">—</span>}
+                      ) : <span className="text-text-muted font-mono">—</span>}
                     </td>
-                    <td className="px-4 py-2.5 text-right text-xs text-gray-500">{e.fng ?? '—'}</td>
-                    <td className="px-4 py-2.5 text-right">
+                    <td className="px-4 py-2.5 text-right text-xs text-text-muted font-mono tabular-nums">{e.fng ?? '—'}</td>
+                    <td className="px-4 py-2.5 text-right font-mono tabular-nums">
                       {e.alertsSent > 0
-                        ? <span className="text-yellow-400 font-bold">{e.alertsSent}</span>
-                        : <span className="text-gray-600">0</span>}
+                        ? <span className="text-warning font-bold">{e.alertsSent}</span>
+                        : <span className="text-text-muted">0</span>}
                     </td>
                   </tr>
                 ))}

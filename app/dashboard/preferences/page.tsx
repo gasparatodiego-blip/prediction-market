@@ -8,7 +8,12 @@ const ALL_ALERT_TYPES = ['prediction_market', 'funding_rate', 'cex_arb', 'sports
 
 export default function PreferencesPage() {
   const { data: session, status } = useSession();
-  const [prefs,   setPrefs]   = useState({ minRoi: 3, minConfidence: 60, platforms: ['kalshi','polymarket','manifold','predictit'], alertTypes: ['prediction_market','funding_rate','cex_arb'], maxBankroll: 1000, alertsEnabled: true });
+  const [prefs, setPrefs] = useState({
+    minRoi: 3, minConfidence: 60,
+    platforms: ['kalshi','polymarket','manifold','predictit'],
+    alertTypes: ['prediction_market','funding_rate','cex_arb'],
+    maxBankroll: 1000, alertsEnabled: true,
+  });
   const [telegram, setTelegram] = useState('');
   const [loading,  setLoading]  = useState(true);
   const [saving,   setSaving]   = useState(false);
@@ -29,8 +34,6 @@ export default function PreferencesPage() {
       if (data.maxBankroll   != null) setPrefs(p => ({ ...p, maxBankroll:   data.maxBankroll }));
       if (data.alertsEnabled != null) setPrefs(p => ({ ...p, alertsEnabled: data.alertsEnabled }));
     }
-    // Load telegram from user
-    const uRes = await fetch('/api/user/preferences');
     setLoading(false);
   }
 
@@ -51,120 +54,152 @@ export default function PreferencesPage() {
   }
 
   if (status === 'loading' || loading) return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center">
-      <div className="flex gap-2">{[0,1,2].map(i => <div key={i} className="w-2.5 h-2.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: `${i*0.15}s` }} />)}</div>
-    </div>
-  );
-
-  if (status === 'unauthenticated') return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center">
-      <div className="text-center">
-        <p className="text-gray-300 mb-4">Sign in to manage preferences</p>
-        <Link href="/auth/login" className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-500">Sign In</Link>
+    <div className="min-h-screen bg-bg-base flex items-center justify-center">
+      <div className="flex gap-1.5">
+        {[0,1,2].map(i => (
+          <div key={i} className="w-2 h-2 bg-accent rounded-full animate-bounce" style={{ animationDelay: `${i*0.15}s` }} />
+        ))}
       </div>
     </div>
   );
 
+  if (status === 'unauthenticated') return (
+    <div className="min-h-screen bg-bg-base flex items-center justify-center">
+      <div className="text-center">
+        <p className="text-text-secondary font-mono text-sm mb-4">SIGN IN TO MANAGE PREFERENCES</p>
+        <Link href="/auth/login" className="px-4 py-2 rounded border border-accent/40 bg-accent/10 text-accent text-xs font-mono hover:bg-accent/20 transition-colors duration-100">
+          SIGN IN
+        </Link>
+      </div>
+    </div>
+  );
+
+  const inputClass = "w-full px-3 py-2 rounded bg-bg-panel border border-border text-text-primary text-sm font-mono focus:outline-none focus:border-accent/60 placeholder:text-text-muted";
+
   return (
-    <main className="min-h-screen bg-gray-950 text-white">
-      <header className="sticky top-0 z-10 border-b border-gray-800 bg-gray-900/90 backdrop-blur-sm px-4 md:px-6 py-4 flex items-center justify-between">
+    <main className="min-h-screen bg-bg-base text-text-primary">
+      <header className="sticky top-0 z-10 border-b border-border bg-bg-panel/90 backdrop-blur-sm px-4 md:px-6 py-3 flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold">Preferences</h1>
-          <p className="text-xs text-gray-500">{session?.user?.email}</p>
+          <h1 className="text-sm font-semibold font-mono uppercase tracking-widest text-text-primary">PREFERENCES</h1>
+          <p className="text-xs text-text-muted font-mono">{session?.user?.email}</p>
         </div>
-        <Link href="/dashboard" className="px-3 py-1.5 rounded-lg border border-gray-700 text-gray-400 text-xs hover:border-gray-500 hover:text-gray-300">← Dashboard</Link>
+        <Link href="/dashboard"
+          className="px-3 py-1.5 rounded border border-border text-text-secondary text-xs font-mono hover:border-accent/30 hover:text-text-primary transition-colors duration-100">
+          ← DASHBOARD
+        </Link>
       </header>
 
       <div className="max-w-2xl mx-auto px-4 md:px-6 py-6">
-        <form onSubmit={save} className="space-y-7">
+        <form onSubmit={save} className="space-y-5">
 
-          {/* Thresholds */}
-          <section className="rounded-xl border border-gray-800 bg-gray-900/40 p-5 space-y-5">
-            <h2 className="text-sm font-bold text-gray-300">Alert Thresholds</h2>
+          {/* Alert Thresholds */}
+          <section className="rounded border border-border bg-bg-panel p-5 space-y-5">
+            <h2 className="text-xs font-semibold text-text-muted font-mono uppercase tracking-widest">ALERT THRESHOLDS</h2>
 
             <div>
               <div className="flex justify-between mb-2">
-                <label className="text-xs text-gray-400 font-semibold">Minimum ROI</label>
-                <span className="text-xs text-blue-400 font-bold">{prefs.minRoi}%</span>
+                <label className="text-xs text-text-secondary font-mono uppercase tracking-wide">Minimum ROI</label>
+                <span className="text-xs text-accent font-bold font-mono tabular-nums">{prefs.minRoi}%</span>
               </div>
               <input type="range" min={0} max={50} step={0.5} value={prefs.minRoi}
                 onChange={e => setPrefs(p => ({ ...p, minRoi: parseFloat(e.target.value) }))}
-                className="w-full accent-blue-500" />
-              <div className="flex justify-between text-xs text-gray-600 mt-1"><span>0%</span><span>50%</span></div>
+                className="w-full accent-accent" />
+              <div className="flex justify-between text-xs text-text-muted font-mono mt-1"><span>0%</span><span>50%</span></div>
             </div>
 
             <div>
               <div className="flex justify-between mb-2">
-                <label className="text-xs text-gray-400 font-semibold">Minimum AI Confidence</label>
-                <span className="text-xs text-blue-400 font-bold">{prefs.minConfidence}%</span>
+                <label className="text-xs text-text-secondary font-mono uppercase tracking-wide">Minimum AI Confidence</label>
+                <span className="text-xs text-accent font-bold font-mono tabular-nums">{prefs.minConfidence}%</span>
               </div>
               <input type="range" min={0} max={100} step={5} value={prefs.minConfidence}
                 onChange={e => setPrefs(p => ({ ...p, minConfidence: parseInt(e.target.value) }))}
-                className="w-full accent-blue-500" />
-              <div className="flex justify-between text-xs text-gray-600 mt-1"><span>0%</span><span>100%</span></div>
+                className="w-full accent-accent" />
+              <div className="flex justify-between text-xs text-text-muted font-mono mt-1"><span>0%</span><span>100%</span></div>
             </div>
 
             <div>
               <div className="flex justify-between mb-2">
-                <label className="text-xs text-gray-400 font-semibold">Default Bankroll</label>
-                <span className="text-xs text-blue-400 font-bold">${prefs.maxBankroll.toLocaleString()}</span>
+                <label className="text-xs text-text-secondary font-mono uppercase tracking-wide">Default Bankroll</label>
+                <span className="text-xs text-accent font-bold font-mono tabular-nums">${prefs.maxBankroll.toLocaleString()}</span>
               </div>
               <input type="number" min={1} value={prefs.maxBankroll}
                 onChange={e => setPrefs(p => ({ ...p, maxBankroll: parseFloat(e.target.value) || 1000 }))}
-                className="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:border-blue-500" />
+                className={inputClass} />
             </div>
           </section>
 
           {/* Platforms */}
-          <section className="rounded-xl border border-gray-800 bg-gray-900/40 p-5 space-y-3">
-            <h2 className="text-sm font-bold text-gray-300">Platforms</h2>
+          <section className="rounded border border-border bg-bg-panel p-5 space-y-3">
+            <h2 className="text-xs font-semibold text-text-muted font-mono uppercase tracking-widest">PLATFORMS</h2>
             <div className="flex flex-wrap gap-2">
               {ALL_PLATFORMS.map(p => (
-                <button type="button" key={p} onClick={() => setPrefs(pr => ({ ...pr, platforms: toggleArr(pr.platforms, p) }))}
-                  className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors capitalize ${
-                    prefs.platforms.includes(p) ? 'border-blue-600 bg-blue-900/50 text-blue-300' : 'border-gray-700 text-gray-500 hover:border-gray-500'
-                  }`}>{p}</button>
+                <button type="button" key={p}
+                  onClick={() => setPrefs(pr => ({ ...pr, platforms: toggleArr(pr.platforms, p) }))}
+                  className={`px-2.5 py-1 rounded border text-xs font-mono uppercase tracking-wide transition-colors duration-100 ${
+                    prefs.platforms.includes(p)
+                      ? 'border-accent/50 bg-accent/10 text-accent'
+                      : 'border-border bg-bg-elevated text-text-muted hover:border-accent/30 hover:text-text-secondary'
+                  }`}>
+                  {p}
+                </button>
               ))}
             </div>
           </section>
 
           {/* Alert types */}
-          <section className="rounded-xl border border-gray-800 bg-gray-900/40 p-5 space-y-3">
-            <h2 className="text-sm font-bold text-gray-300">Alert Types</h2>
+          <section className="rounded border border-border bg-bg-panel p-5 space-y-3">
+            <h2 className="text-xs font-semibold text-text-muted font-mono uppercase tracking-widest">ALERT TYPES</h2>
             <div className="flex flex-wrap gap-2">
               {ALL_ALERT_TYPES.map(t => (
-                <button type="button" key={t} onClick={() => setPrefs(pr => ({ ...pr, alertTypes: toggleArr(pr.alertTypes, t) }))}
-                  className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
-                    prefs.alertTypes.includes(t) ? 'border-blue-600 bg-blue-900/50 text-blue-300' : 'border-gray-700 text-gray-500 hover:border-gray-500'
-                  }`}>{t.replace(/_/g, ' ')}</button>
+                <button type="button" key={t}
+                  onClick={() => setPrefs(pr => ({ ...pr, alertTypes: toggleArr(pr.alertTypes, t) }))}
+                  className={`px-2.5 py-1 rounded border text-xs font-mono uppercase tracking-wide transition-colors duration-100 ${
+                    prefs.alertTypes.includes(t)
+                      ? 'border-accent/50 bg-accent/10 text-accent'
+                      : 'border-border bg-bg-elevated text-text-muted hover:border-accent/30 hover:text-text-secondary'
+                  }`}>
+                  {t.replace(/_/g, ' ')}
+                </button>
               ))}
             </div>
           </section>
 
-          {/* Telegram */}
-          <section className="rounded-xl border border-gray-800 bg-gray-900/40 p-5 space-y-4">
+          {/* Telegram alerts */}
+          <section className="rounded border border-border bg-bg-panel p-5 space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-bold text-gray-300">Telegram Alerts</h2>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <span className="text-xs text-gray-500">Enabled</span>
-                <div className={`w-10 h-5 rounded-full transition-colors cursor-pointer ${prefs.alertsEnabled ? 'bg-blue-600' : 'bg-gray-700'}`}
-                  onClick={() => setPrefs(p => ({ ...p, alertsEnabled: !p.alertsEnabled }))}>
-                  <div className={`w-4 h-4 rounded-full bg-white m-0.5 transition-transform ${prefs.alertsEnabled ? 'translate-x-5' : ''}`} />
+              <h2 className="text-xs font-semibold text-text-muted font-mono uppercase tracking-widest">TELEGRAM ALERTS</h2>
+              <button
+                type="button"
+                onClick={() => setPrefs(p => ({ ...p, alertsEnabled: !p.alertsEnabled }))}
+                className="flex items-center gap-2 cursor-pointer"
+              >
+                <span className="text-xs text-text-muted font-mono">{prefs.alertsEnabled ? 'ON' : 'OFF'}</span>
+                <div className={`w-9 h-5 rounded-full transition-colors duration-100 relative ${prefs.alertsEnabled ? 'bg-accent' : 'bg-bg-elevated border border-border'}`}>
+                  <div className={`w-3.5 h-3.5 rounded-full bg-bg-base absolute top-0.5 transition-transform duration-100 ${prefs.alertsEnabled ? 'translate-x-4' : 'translate-x-0.5'}`} />
                 </div>
-              </label>
+              </button>
             </div>
             <div>
-              <label className="block text-xs text-gray-400 mb-1.5">Your Telegram Chat ID</label>
+              <label className="block text-xs text-text-secondary font-mono uppercase tracking-wide mb-1.5">
+                TELEGRAM CHAT ID
+              </label>
               <input type="text" value={telegram} onChange={e => setTelegram(e.target.value)}
                 placeholder="e.g. 8844610430 (from @userinfobot)"
-                className="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:border-blue-500" />
-              <p className="text-xs text-gray-600 mt-1">Send /start to @userinfobot on Telegram to get your chat ID</p>
+                className={inputClass} />
+              <p className="text-xs text-text-muted font-mono mt-1">
+                Send /start to @userinfobot on Telegram to get your chat ID
+              </p>
             </div>
           </section>
 
           <button type="submit" disabled={saving}
-            className={`w-full py-3 rounded-xl text-sm font-bold transition-colors ${saved ? 'bg-green-600 text-white' : 'bg-blue-600 hover:bg-blue-500 text-white'} disabled:opacity-50`}>
-            {saving ? 'Saving…' : saved ? '✓ Saved!' : 'Save Preferences'}
+            className={`w-full py-2.5 rounded border text-xs font-mono uppercase tracking-widest font-semibold transition-colors duration-100 disabled:opacity-50 ${
+              saved
+                ? 'border-positive/40 bg-positive/10 text-positive'
+                : 'border-accent/40 bg-accent/10 text-accent hover:bg-accent/20'
+            }`}>
+            {saving ? 'SAVING…' : saved ? '✓ SAVED' : 'SAVE PREFERENCES'}
           </button>
         </form>
       </div>
