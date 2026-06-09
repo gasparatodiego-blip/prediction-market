@@ -77,18 +77,7 @@ export default function PreferencesPage() {
   const inputClass = "w-full px-3 py-2 rounded bg-bg-panel border border-border text-text-primary text-sm font-mono focus:outline-none focus:border-accent/60 placeholder:text-text-muted";
 
   return (
-    <main className="min-h-screen bg-bg-base text-text-primary">
-      <header className="sticky top-0 z-10 border-b border-border bg-bg-panel/90 backdrop-blur-sm px-4 md:px-6 py-3 flex items-center justify-between">
-        <div>
-          <h1 className="text-sm font-semibold font-mono uppercase tracking-widest text-text-primary">PREFERENCES</h1>
-          <p className="text-xs text-text-muted font-mono">{session?.user?.email}</p>
-        </div>
-        <Link href="/dashboard"
-          className="px-3 py-1.5 rounded border border-border text-text-secondary text-xs font-mono hover:border-accent/30 hover:text-text-primary transition-colors duration-100">
-          ← DASHBOARD
-        </Link>
-      </header>
-
+    <main className="text-text-primary">
       <div className="max-w-2xl mx-auto px-4 md:px-6 py-6">
         <form onSubmit={save} className="space-y-5">
 

@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import Link from 'next/link';
 
 export default function HFTPage() {
     const [price, setPrice] = useState(94300);
@@ -20,13 +19,7 @@ export default function HFTPage() {
     };
 
     return (
-        <div className="min-h-screen bg-gray-950">
-            <header className="border-b border-gray-800 bg-gray-900/50 px-4 py-3 sticky top-0">
-                <div className="max-w-7xl mx-auto flex justify-between items-center">
-                    <div><h1 className="text-xl font-bold text-white">⚡ HFT 5-min Trading</h1><p className="text-xs text-gray-500">High Frequency • Mean Reversion</p></div>
-                    <Link href="/dashboard" className="px-3 py-1 rounded-lg border border-gray-700 text-gray-400 text-sm">← Dashboard</Link>
-                </div>
-            </header>
+        <div>
             <div className="max-w-7xl mx-auto p-4">
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                     <div className="bg-gray-900/40 rounded-xl border border-gray-800 p-4">

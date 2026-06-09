@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
 
 interface Position {
     marketId: string;
@@ -88,36 +87,7 @@ export default function LPDashboard() {
     }
 
     return (
-        <div className="min-h-screen bg-gray-950 text-white">
-            {/* Header */}
-            <header className="sticky top-0 z-10 border-b border-gray-800 bg-gray-900/90 backdrop-blur-sm px-4 md:px-6 py-4">
-                <div className="flex items-center justify-between">
-                    <div>
-                        <h1 className="text-xl font-bold">💰 LP Provider Dashboard</h1>
-                        <p className="text-xs text-gray-500">Liquidity Provider - Automated Market Making</p>
-                    </div>
-                    <div className="flex gap-3">
-                        <button
-                            onClick={() => setAutoRefresh(!autoRefresh)}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                                autoRefresh ? 'bg-green-600/20 text-green-400 border border-green-600' : 'bg-gray-800 text-gray-500'
-                            }`}
-                        >
-                            {autoRefresh ? '🔄 Auto-refresh ON' : '⏸️ Auto-refresh OFF'}
-                        </button>
-                        <button
-                            onClick={fetchData}
-                            className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-500"
-                        >
-                            🔄 Refresh
-                        </button>
-                        <Link href="/dashboard" className="px-3 py-1.5 rounded-lg border border-gray-700 text-gray-400 text-xs hover:border-gray-500">
-                            ← Dashboard
-                        </Link>
-                    </div>
-                </div>
-            </header>
-
+        <div>
             <div className="max-w-6xl mx-auto px-4 md:px-6 py-6 space-y-6">
                 {/* Summary Cards */}
                 {summary && (

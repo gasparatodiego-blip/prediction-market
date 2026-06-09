@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import Link from 'next/link';
 import { PLATFORM_ICONS, getOpportunityBadge } from '@/lib/arbitrage';
 
 interface Market {
@@ -98,27 +97,7 @@ export default function PredictionPage() {
     }
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950">
-            {/* Header */}
-            <header className="border-b border-gray-800 bg-gray-900/80 backdrop-blur-md sticky top-0 z-20">
-                <div className="max-w-7xl mx-auto px-4 py-4">
-                    <div className="flex justify-between items-center">
-                        <div>
-                            <h1 className="text-2xl font-bold bg-gradient-to-r from-green-400 to-blue-400 bg-clip-text text-transparent">🎯 Prediction Markets</h1>
-                            <p className="text-xs text-gray-500 mt-0.5">{markets.length} mercati da 4 piattaforme • Prezzi reali</p>
-                        </div>
-                        <div className="flex gap-2">
-                            <div className="text-xs text-gray-500 px-3 py-1 rounded-lg bg-gray-800/50">
-                                {lastUpdate ? `🟢 LIVE - ${lastUpdate.toLocaleTimeString()}` : '🟡 Caricamento...'}
-                            </div>
-                            <Link href="/dashboard" className="px-4 py-2 rounded-lg border border-gray-700 text-gray-400 text-sm hover:bg-gray-800 transition">
-                                ← Dashboard
-                            </Link>
-                        </div>
-                    </div>
-                </div>
-            </header>
-
+        <div>
             <div className="max-w-7xl mx-auto px-4 py-6">
                 {/* Statistiche */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">

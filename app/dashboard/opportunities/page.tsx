@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
 
 interface Opportunity {
     id: string;
@@ -120,24 +119,7 @@ export default function OpportunitiesPage() {
     }
 
     return (
-        <div className="min-h-screen bg-bg-base text-text-primary">
-            {/* ── Page header ──────────────────────────────────────── */}
-            <header className="sticky top-0 z-10 border-b border-border bg-bg-panel px-4 py-3">
-                <div className="max-w-7xl mx-auto flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <span className="font-mono text-sm font-semibold text-text-primary tracking-wide">ARB OPPORTUNITIES</span>
-                        <span className="text-text-muted font-mono text-xs">|</span>
-                        <span className="font-mono text-xs text-text-secondary">MULTI-PLATFORM SCANNER</span>
-                    </div>
-                    <Link
-                        href="/dashboard"
-                        className="px-3 py-1 border border-border text-text-secondary text-xs font-mono rounded-sm hover:border-text-muted hover:text-text-primary transition-colors duration-100"
-                    >
-                        ← DASHBOARD
-                    </Link>
-                </div>
-            </header>
-
+        <div>
             <div className="max-w-7xl mx-auto px-4 py-4 space-y-3">
 
                 {/* ── Stats strip ──────────────────────────────────── */}

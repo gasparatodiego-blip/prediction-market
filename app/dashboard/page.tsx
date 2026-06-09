@@ -65,23 +65,7 @@ const stats = [
 
 export default function DashboardPage() {
   return (
-    <div className="min-h-screen bg-bg-base">
-      {/* Page header — chunk 4 will handle the global nav */}
-      <header className="border-b border-border bg-bg-panel px-4 py-4 sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto flex justify-between items-center">
-          <div>
-            <h1 className="text-xl font-semibold text-text-primary font-mono tracking-wide">ARBSCANNER</h1>
-            <p className="text-xs text-text-muted font-mono">MULTI-STRATEGY ARBITRAGE PLATFORM</p>
-          </div>
-          <Link
-            href="/"
-            className="px-3 py-1.5 rounded border border-border text-text-secondary text-xs font-mono hover:border-accent/30 hover:text-text-primary transition-colors duration-100"
-          >
-            ← HOME
-          </Link>
-        </div>
-      </header>
-
+    <div>
       <div className="max-w-7xl mx-auto px-4 py-8">
         <div className="mb-8">
           <h2 className="text-base font-semibold text-text-primary font-mono uppercase tracking-widest">SELECT STRATEGY</h2>

@@ -1,6 +1,5 @@
 'use client';
 import { useEffect, useState, useMemo } from 'react';
-import Link from 'next/link';
 
 interface HistoryEntry {
   ts:         string;
@@ -78,11 +77,9 @@ export default function HistoryPage() {
   const selectClass = "px-3 py-1.5 rounded border border-border bg-bg-elevated text-xs text-text-secondary font-mono focus:outline-none focus:border-accent/60";
 
   return (
-    <main className="bg-bg-base text-text-primary min-h-screen">
-      <nav className="border-b border-border bg-bg-panel/80 sticky top-0 z-10 backdrop-blur-sm">
+    <main className="text-text-primary">
+      <div className="border-b border-border bg-bg-panel/80 backdrop-blur-sm">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-4 flex-wrap">
-          <Link href="/dashboard" className="text-text-muted hover:text-text-primary text-xs font-mono transition-colors duration-100">← DASHBOARD</Link>
-          <span className="text-border">|</span>
           <span className="font-semibold text-text-primary text-xs font-mono uppercase tracking-widest">SCAN HISTORY</span>
           {data && (
             <span className="text-xs text-text-muted font-mono">
@@ -94,7 +91,7 @@ export default function HistoryPage() {
             EXPORT CSV
           </button>
         </div>
-      </nav>
+      </div>
 
       <div className="max-w-6xl mx-auto px-4 py-6 space-y-4">
         {/* Summary stats */}

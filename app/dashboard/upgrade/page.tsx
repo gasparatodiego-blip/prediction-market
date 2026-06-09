@@ -1,7 +1,6 @@
 'use client';
 import { useState } from 'react';
 import { useSession } from 'next-auth/react';
-import Link from 'next/link';
 
 const PLANS = [
   {
@@ -86,15 +85,7 @@ export default function UpgradePage() {
   }
 
   return (
-    <main className="bg-gray-950 text-white min-h-screen">
-      <nav className="border-b border-gray-800 bg-gray-900/80 sticky top-0 z-10">
-        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-4">
-          <Link href="/dashboard" className="text-gray-400 hover:text-white text-sm">← Dashboard</Link>
-          <span className="text-gray-600">|</span>
-          <span className="font-semibold">Upgrade Plan</span>
-        </div>
-      </nav>
-
+    <main className="text-text-primary">
       <div className="max-w-5xl mx-auto px-4 py-12">
         <div className="text-center mb-10">
           <h1 className="text-3xl font-bold mb-3">Choose Your Plan</h1>

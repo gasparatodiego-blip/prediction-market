@@ -176,29 +176,14 @@ export default function PortfolioPage() {
   ];
 
   return (
-    <main className="min-h-screen bg-bg-base text-text-primary">
-      <header className="sticky top-0 z-10 border-b border-border bg-bg-panel/90 backdrop-blur-sm px-4 md:px-6 py-3 flex items-center justify-between">
-        <div>
-          <h1 className="text-sm font-semibold font-mono uppercase tracking-widest text-text-primary">PORTFOLIO TRACKER</h1>
-          <p className="text-xs text-text-muted font-mono">{session?.user?.email}</p>
-        </div>
-        <div className="flex gap-2">
-          <Link href="/dashboard/history"
-            className="px-3 py-1.5 rounded border border-border text-text-secondary text-xs font-mono hover:border-accent/30 hover:text-text-primary transition-colors duration-100">
-            HISTORY
-          </Link>
-          <Link href="/dashboard"
-            className="px-3 py-1.5 rounded border border-border text-text-secondary text-xs font-mono hover:border-accent/30 hover:text-text-primary transition-colors duration-100">
-            ← DASHBOARD
-          </Link>
+    <main className="text-text-primary">
+      <div className="max-w-5xl mx-auto px-4 md:px-6 py-6 space-y-4">
+        <div className="flex items-center justify-end">
           <button onClick={() => setShowAdd(true)}
             className="px-3 py-1.5 rounded border border-accent/40 bg-accent/10 text-accent text-xs font-mono hover:bg-accent/20 transition-colors duration-100">
             + POSITION
           </button>
         </div>
-      </header>
-
-      <div className="max-w-5xl mx-auto px-4 md:px-6 py-6 space-y-4">
         {/* Summary cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {summaryCards.map(c => (
