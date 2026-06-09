@@ -13,8 +13,8 @@ export default function DashboardPage() {
     ];
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950">
-            <header className="border-b border-gray-800 bg-gray-900/80 px-4 py-4 sticky top-0">
+        <div className="min-h-screen bg-[#0A0C10]">
+            <header className="border-b border-[#232834] bg-[#12151C] px-4 py-4 sticky top-0">
                 <div className="max-w-7xl mx-auto flex justify-between items-center">
                     <div><h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">ArbScanner</h1><p className="text-xs text-gray-500">Piattaforma di Arbitraggio Multi-Strategia</p></div>
                     <Link href="/" className="px-4 py-1.5 rounded-lg border border-gray-700 text-gray-400 text-sm">← Home</Link>

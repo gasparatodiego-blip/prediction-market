@@ -9,25 +9,57 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        void:    "#0a0a0f",
-        surface: "#111118",
-        elevated:"#1a1a24",
-        line:    "#2a2a3a",
-        ink:     "#f1f5f9",
-        muted:   "#94a3b8",
-        faint:   "#475569",
-        brand:   "#6366f1",
-        profit:  "#22c55e",
-        warn:    "#f59e0b",
-        loss:    "#ef4444",
+        // v2.0 Bloomberg Terminal palette
+        bg: {
+          base:    "#0A0C10",
+          panel:   "#12151C",
+          elevated:"#1A1E27",
+        },
+        border: {
+          DEFAULT: "#232834",
+        },
+        text: {
+          primary:   "#E4E7EB",
+          secondary: "#8B919E",
+          muted:     "#5A6072",
+        },
+        accent: {
+          DEFAULT: "#6366F1",
+          bright:  "#818CF8",
+        },
+        positive: "#22C55E",
+        negative: "#EF4444",
+        warning:  "#F59E0B",
+        // legacy aliases kept for backward compat
+        void:    "#0A0C10",
+        surface: "#12151C",
+        elevated:"#1A1E27",
+        line:    "#232834",
+        ink:     "#E4E7EB",
+        muted:   "#8B919E",
+        faint:   "#5A6072",
+        brand:   "#6366F1",
+        profit:  "#22C55E",
+        warn:    "#F59E0B",
+        loss:    "#EF4444",
+      },
+      borderRadius: {
+        DEFAULT: "3px",
+        sm: "2px",
+        md: "4px",
+        lg: "6px",
+        xl: "8px",
+        "2xl": "10px",
+        full: "9999px",
+      },
+      fontFamily: {
+        sans: ["var(--font-sans)", "Inter", "system-ui", "sans-serif"],
+        mono: ["var(--font-mono)", "JetBrains Mono", "IBM Plex Mono", "monospace"],
       },
       backgroundImage: {
         "gradient-radial": "radial-gradient(var(--tw-gradient-stops))",
         "gradient-conic":  "conic-gradient(from 180deg at 50% 50%, var(--tw-gradient-stops))",
-        "brand-gradient":  "linear-gradient(135deg,#6366f1,#8b5cf6)",
-      },
-      fontFamily: {
-        sans: ["Inter", "system-ui", "sans-serif"],
+        "brand-gradient":  "linear-gradient(135deg,#6366F1,#818CF8)",
       },
       animation: {
         "pulse-slow": "pulse 3s cubic-bezier(0.4,0,0.6,1) infinite",

@@ -3,28 +3,62 @@
 @tailwind utilities;
 
 :root {
-  --bg: #000000;
-  --surface: #0d0d0d;
-  --elevated: #141414;
-  --border: #2a2a2a;
-  --brand: #1a5c9e;
-  --profit: #2ecc71;
-  --loss: #e74c3c;
-  --ink: #ffffff;
-  --muted: #888888;
+  --bg:      #0A0C10;
+  --surface: #12151C;
+  --elevated:#1A1E27;
+  --border:  #232834;
+  --brand:   #6366F1;
+  --accent:  #818CF8;
+  --profit:  #22C55E;
+  --loss:    #EF4444;
+  --warn:    #F59E0B;
+  --ink:     #E4E7EB;
+  --muted:   #8B919E;
+  --faint:   #5A6072;
+}
+
+/* ── Base shell ──────────────────────────────────────────── */
+html {
+  background: var(--bg);
 }
 
 body {
   background: var(--bg);
   color: var(--ink);
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-sans), Inter, system-ui, sans-serif;
   font-size: 13px;
+  -webkit-font-smoothing: antialiased;
 }
 
+/* Tabular figures for mono font so numbers align in columns */
+.font-mono,
+[class*="font-mono"],
+td,
+th {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Custom scrollbar ────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--surface);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--faint);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+}
+
+/* ── Legacy structural helpers ───────────────────────────── */
 .card, .glass {
   background: var(--surface) !important;
   border: 1px solid var(--border) !important;
-  border-radius: 0px !important;
+  border-radius: 3px !important;
 }
 
 th {
@@ -32,6 +66,7 @@ th {
   color: var(--muted);
   text-transform: uppercase;
   font-size: 11px;
+  letter-spacing: 0.04em;
   padding: 8px 12px;
 }
 
@@ -40,10 +75,10 @@ td {
   border-bottom: 1px solid var(--border);
 }
 
-.text-green-400 { color: var(--profit) !important; }
-.text-red-400 { color: var(--loss) !important; }
-
 h1, h2, h3 {
   color: var(--ink);
   font-weight: 500;
 }
+
+.text-green-400 { color: var(--profit) !important; }
+.text-red-400   { color: var(--loss)   !important; }
