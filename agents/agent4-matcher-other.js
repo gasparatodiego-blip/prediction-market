@@ -59,5 +59,5 @@ buildRunner({
   categoryLabel: 'Sports, Technology & Economics',
   keywords:      KEYWORDS,
   boostKeywords: BOOST,
-  interval:      95_000,
+  interval:      1_800_000,
 });

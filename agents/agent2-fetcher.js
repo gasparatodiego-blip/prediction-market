@@ -54,20 +54,42 @@ async function fetchOddsApi() {
   console.log(`[fetcher] odds-api saved — ${results.length} events`);
 }
 
+function kalshiEventsToMarkets(eventsData) {
+  const markets = [];
+  for (const ev of (eventsData?.events || [])) {
+    const nested = ev.markets || [];
+    // For multi-outcome events, include all markets using the event title
+    for (const m of nested) {
+      const bid = parseFloat(m.yes_bid_dollars || '0');
+      const ask = parseFloat(m.yes_ask_dollars || '0');
+      if (bid <= 0 && ask <= 0) continue;
+      markets.push({
+        ticker:           m.ticker,
+        title:            ev.title || '',
+        yes_bid_dollars:  m.yes_bid_dollars,
+        yes_ask_dollars:  m.yes_ask_dollars,
+      });
+    }
+  }
+  return markets;
+}
+
 async function fetchAll() {
   console.log('[fetcher] fetching all platforms...');
-  const [piRaw, mfRaw, kaRaw, pmRaw] = await Promise.all([
+  const [piRaw, mfRaw, kaEvRaw, pmRaw] = await Promise.all([
     fetchJson('https://www.predictit.org/api/marketdata/all/'),
-    fetchJson('https://api.manifold.markets/v0/markets?limit=100&sort=liquidity&order=desc'),
-    fetchJson('https://api.elections.kalshi.com/trade-api/v2/markets?limit=200&status=open'),
+    fetchJson('https://api.manifold.markets/v0/markets?limit=100&sort=last-bet-time&order=desc'),
+    fetchJson('https://api.elections.kalshi.com/trade-api/v2/events?limit=200&status=open&with_nested_markets=true'),
     fetchJson('https://gamma-api.polymarket.com/markets?active=true&limit=200'),
   ]);
+
+  const kalshiMarkets = kalshiEventsToMarkets(kaEvRaw);
 
   const result = {
     fetchedAt: Date.now(),
     predictit:  piRaw?.markets  ?? [],
     manifold:   Array.isArray(mfRaw) ? mfRaw : [],
-    kalshi:     kaRaw?.markets  ?? [],
+    kalshi:     kalshiMarkets,
     polymarket: Array.isArray(pmRaw) ? pmRaw : [],
   };
 

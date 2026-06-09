@@ -11,7 +11,7 @@ const { execFile } = require('child_process');
 const { promisify } = require('util');
 
 const execFileAsync = promisify(execFile);
-const MODEL         = 'claude-sonnet-4-6';
+const MODEL         = 'claude-haiku-4-5-20251001';
 const BATCH_SIZE    = 20;
 
 // ── Heartbeat ─────────────────────────────────────
@@ -230,8 +230,11 @@ If no matches, return [].`;
     }
 
     const text  = stdout.trim();
-    const match = text.match(/\[[\s\S]*?\]/);
-    if (!match) return [];
+    // Find the outermost JSON array — match from first '[' to matching ']'
+    const start = text.indexOf('[');
+    const end   = text.lastIndexOf(']');
+    if (start === -1 || end === -1 || end <= start) return [];
+    const match = [text.slice(start, end + 1)];
 
     const raw = JSON.parse(match[0]);
     const result = [];

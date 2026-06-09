@@ -4,6 +4,15 @@
 const fs       = require('fs');
 const path     = require('path');
 
+// Fee rates mirror lib/fees.ts — update both if rates change
+const PLATFORM_FEES = {
+  kalshi:     0.07,
+  polymarket: 0.02,
+  predictit:  0.10 + 0.05, // win fee + withdrawal fee
+  manifold:   0.00,
+  oddsapi:    0.00,
+};
+
 const MATCH_FILES = [
   { path: '/tmp/matches-politics.json', category: 'politics'    },
   { path: '/tmp/matches-other.json',    category: 'sports/tech/econ' },
@@ -165,14 +174,19 @@ function calcArb(matches) {
     const roi  = low.probability > 0 ? (spread / low.probability) * 100 : 0;
     if (roi > 300 || roi <= 0) continue;
 
-    const earnPer100 = Math.round((roi / 100) * 100 * 10) / 10;
+    const feeA   = PLATFORM_FEES[low.platform]  || 0;
+    const feeB   = PLATFORM_FEES[high.platform] || 0;
+    const netRoi = roi * (1 - feeA - feeB);
+    if (netRoi <= 0) continue;
+
+    const earnPer100 = Math.round((netRoi / 100) * 100 * 10) / 10;
 
     results.push({
       question:   high.question,
       lowMarket:  { ...low,  platform: low.platform  },
       highMarket: { ...high, platform: high.platform },
       spread:     Math.round(spread * 10) / 10,
-      roi:        Math.round(roi * 10) / 10,
+      roi:        Math.round(netRoi * 10) / 10,
       earnPer100,
       confidence: m.confidence || 1,
       category:   m.category || 'unknown',

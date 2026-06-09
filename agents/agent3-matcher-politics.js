@@ -58,5 +58,5 @@ buildRunner({
   categoryLabel: 'Politics, Geopolitics, Science & Health',
   keywords:      KEYWORDS,
   boostKeywords: BOOST,
-  interval:      90_000,
+  interval:      1_800_000,
 });

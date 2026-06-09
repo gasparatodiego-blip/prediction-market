@@ -1,6 +1,6 @@
 export const PLATFORM_FEES: Record<string, number> = {
     'Polymarket': 0.02,
-    'Kalshi': 0.00,
+    'Kalshi': 0.07,
     'PredictIt': 0.10,
     'Manifold': 0.00
 };
@@ -14,8 +14,7 @@ export const PLATFORM_ICONS: Record<string, string> = {
 
 export function calculateNetProfit(amount: number, totalCost: number, feeA: number, feeB: number) {
     const grossProfit = amount * (100 - totalCost) / 100;
-    const avgFee = (feeA + feeB) / 2;
-    const netProfit = grossProfit * (1 - avgFee);
+    const netProfit = grossProfit * (1 - (feeA + feeB));
     const roi = (netProfit / amount) * 100;
     return {
         invested: amount,
