@@ -39,6 +39,15 @@ interface Stats {
     byType: Record<string, number>;
 }
 
+const TYPE_LABELS: Record<string, string> = {
+    prediction_market: 'PRED-MKT',
+    funding_rate:      'FUND-RATE',
+    cex_arb:           'CEX-ARB',
+    sports_arb:        'SPORTS',
+    cash_carry:        'CASH+CRY',
+    info_lag:          'INFO-LAG',
+};
+
 export default function OpportunitiesPage() {
     const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
     const [markets, setMarkets] = useState<Market[]>([]);
@@ -46,38 +55,37 @@ export default function OpportunitiesPage() {
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState('all');
     const [sortBy, setSortBy] = useState('roi');
+    const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
 
     const fetchData = async () => {
         try {
-            // Fetch opportunità da agent-master
             const arbRes = await fetch('/api/arbitrage');
             const arbData = await arbRes.json();
-            
-            // Fetch prezzi crypto
+
             const marketsRes = await fetch('/api/hft');
             const marketsData = await marketsRes.json();
-            
+
             if (arbData.opportunities) {
                 setOpportunities(arbData.opportunities);
-                
-                // Calcola statistiche
+
                 const byType: Record<string, number> = {};
                 arbData.opportunities.forEach((opp: Opportunity) => {
                     byType[opp.type] = (byType[opp.type] || 0) + 1;
                 });
-                
+
                 setStats({
                     totalOpportunities: arbData.opportunities.length,
                     avgRoi: arbData.opportunities.reduce((s: number, o: Opportunity) => s + o.roi, 0) / arbData.opportunities.length,
                     bestRoi: Math.max(...arbData.opportunities.map((o: Opportunity) => o.roi)),
                     totalProfitPotential: arbData.opportunities.reduce((s: number, o: Opportunity) => s + o.profit_on_1000, 0),
-                    byType
+                    byType,
                 });
             }
-            
+
             if (marketsData.markets) {
                 setMarkets(marketsData.markets);
             }
+            setLastUpdate(new Date());
         } catch (err) {
             console.error('Error fetching data:', err);
         } finally {
@@ -91,43 +99,6 @@ export default function OpportunitiesPage() {
         return () => clearInterval(interval);
     }, []);
 
-    const getTypeColor = (type: string) => {
-        const colors: Record<string, string> = {
-            prediction_market: 'bg-blue-500/20 text-blue-400 border-blue-500',
-            funding_rate: 'bg-purple-500/20 text-purple-400 border-purple-500',
-            cex_arb: 'bg-yellow-500/20 text-yellow-400 border-yellow-500',
-            sports_arb: 'bg-green-500/20 text-green-400 border-green-500',
-            cash_carry: 'bg-orange-500/20 text-orange-400 border-orange-500',
-            info_lag: 'bg-pink-500/20 text-pink-400 border-pink-500'
-        };
-        return colors[type] || 'bg-gray-500/20 text-gray-400 border-gray-500';
-    };
-
-    const getUrgencyColor = (urgency: string) => {
-        switch(urgency) {
-            case 'high': return 'text-red-400 bg-red-950/30';
-            case 'medium': return 'text-yellow-400 bg-yellow-950/30';
-            default: return 'text-green-400 bg-green-950/30';
-        }
-    };
-
-    const getRiskColor = (risk: string) => {
-        switch(risk) {
-            case 'high': return 'text-red-400';
-            case 'medium': return 'text-yellow-400';
-            default: return 'text-green-400';
-        }
-    };
-
-    const formatCurrency = (value: number) => {
-        return new Intl.NumberFormat('en-US', {
-            style: 'currency',
-            currency: 'USD',
-            minimumFractionDigits: 0,
-            maximumFractionDigits: 0
-        }).format(value);
-    };
-
     const filteredOpps = opportunities
         .filter(opp => filter === 'all' || opp.type === filter)
         .sort((a, b) => {
@@ -137,195 +108,277 @@ export default function OpportunitiesPage() {
             return 0;
         });
 
+    const formatCurrency = (value: number) =>
+        new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(value);
+
     if (loading) {
         return (
-            <div className="min-h-screen bg-gray-950 flex items-center justify-center">
-                <div className="text-gray-400">Caricamento opportunità...</div>
+            <div className="min-h-screen bg-bg-base flex items-center justify-center">
+                <span className="font-mono text-xs text-text-muted tracking-widest animate-pulse">LOADING OPPORTUNITIES...</span>
             </div>
         );
     }
 
     return (
-        <div className="min-h-screen bg-gray-950 text-white">
-            {/* Header */}
-            <header className="sticky top-0 z-10 border-b border-gray-800 bg-gray-900/90 backdrop-blur-sm px-4 py-4">
+        <div className="min-h-screen bg-bg-base text-text-primary">
+            {/* ── Page header ──────────────────────────────────────── */}
+            <header className="sticky top-0 z-10 border-b border-border bg-bg-panel px-4 py-3">
                 <div className="max-w-7xl mx-auto flex items-center justify-between">
-                    <div>
-                        <h1 className="text-xl font-bold">🎯 Opportunities Scanner</h1>
-                        <p className="text-xs text-gray-500">Tutti i mercati e opportunità di arbitraggio</p>
+                    <div className="flex items-center gap-3">
+                        <span className="font-mono text-sm font-semibold text-text-primary tracking-wide">ARB OPPORTUNITIES</span>
+                        <span className="text-text-muted font-mono text-xs">|</span>
+                        <span className="font-mono text-xs text-text-secondary">MULTI-PLATFORM SCANNER</span>
                     </div>
-                    <Link href="/dashboard" className="px-3 py-1.5 rounded-lg border border-gray-700 text-gray-400 text-sm hover:border-gray-500">
-                        ← Dashboard
+                    <Link
+                        href="/dashboard"
+                        className="px-3 py-1 border border-border text-text-secondary text-xs font-mono rounded-sm hover:border-text-muted hover:text-text-primary transition-colors duration-100"
+                    >
+                        ← DASHBOARD
                     </Link>
                 </div>
             </header>
 
-            <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
-                {/* STATS SPECCHIETTO */}
+            <div className="max-w-7xl mx-auto px-4 py-4 space-y-3">
+
+                {/* ── Stats strip ──────────────────────────────────── */}
                 {stats && (
-                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                        <div className="rounded-xl border border-gray-800 bg-gradient-to-br from-gray-900/60 to-gray-900/40 p-4">
-                            <div className="text-2xl font-bold text-blue-400">{stats.totalOpportunities}</div>
-                            <div className="text-xs text-gray-500">Opportunità Totali</div>
-                        </div>
-                        <div className="rounded-xl border border-gray-800 bg-gradient-to-br from-gray-900/60 to-gray-900/40 p-4">
-                            <div className="text-2xl font-bold text-green-400">{stats.avgRoi.toFixed(1)}%</div>
-                            <div className="text-xs text-gray-500">ROI Medio</div>
-                        </div>
-                        <div className="rounded-xl border border-gray-800 bg-gradient-to-br from-gray-900/60 to-gray-900/40 p-4">
-                            <div className="text-2xl font-bold text-yellow-400">{stats.bestRoi.toFixed(1)}%</div>
-                            <div className="text-xs text-gray-500">Best ROI</div>
-                        </div>
-                        <div className="rounded-xl border border-gray-800 bg-gradient-to-br from-gray-900/60 to-gray-900/40 p-4">
-                            <div className="text-2xl font-bold text-purple-400">{formatCurrency(stats.totalProfitPotential)}</div>
-                            <div className="text-xs text-gray-500">Profitto Potenziale</div>
-                        </div>
-                        <div className="rounded-xl border border-gray-800 bg-gradient-to-br from-gray-900/60 to-gray-900/40 p-4">
-                            <div className="text-xs text-gray-400 space-y-1">
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+                        {[
+                            { label: 'OPPORTUNITIES',    value: stats.totalOpportunities,           color: 'text-accent'    },
+                            { label: 'AVG ROI',          value: `${stats.avgRoi.toFixed(2)}%`,      color: 'text-positive'  },
+                            { label: 'BEST ROI',         value: `${stats.bestRoi.toFixed(2)}%`,     color: 'text-warning'   },
+                            { label: 'PROFIT POTENTIAL', value: formatCurrency(stats.totalProfitPotential), color: 'text-positive' },
+                        ].map(({ label, value, color }) => (
+                            <div key={label} className="border border-border bg-bg-panel p-3 rounded-sm">
+                                <div className={`font-mono text-lg font-bold ${color}`}>{value}</div>
+                                <div className="font-mono text-xs text-text-muted uppercase tracking-wider mt-0.5">{label}</div>
+                            </div>
+                        ))}
+                        <div className="border border-border bg-bg-panel p-3 rounded-sm">
+                            <div className="space-y-1">
                                 {Object.entries(stats.byType).map(([type, count]) => (
-                                    <div key={type} className="flex justify-between">
-                                        <span className="capitalize">{type.replace('_', ' ')}</span>
-                                        <span className="text-white font-bold">{count}</span>
+                                    <div key={type} className="flex justify-between items-center">
+                                        <span className="font-mono text-xs text-text-secondary">{TYPE_LABELS[type] || type.toUpperCase()}</span>
+                                        <span className="font-mono text-xs text-text-primary font-bold">{count}</span>
                                     </div>
                                 ))}
                             </div>
-                            <div className="text-xs text-gray-500 mt-1">Per Tipo</div>
+                            <div className="font-mono text-xs text-text-muted uppercase tracking-wider mt-1">BY TYPE</div>
                         </div>
                     </div>
                 )}
 
-                {/* FILTRI */}
-                <div className="flex flex-wrap gap-2 items-center justify-between">
-                    <div className="flex flex-wrap gap-2">
-                        <button onClick={() => setFilter('all')} className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${filter === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>Tutti</button>
-                        <button onClick={() => setFilter('prediction_market')} className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${filter === 'prediction_market' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>Prediction Market</button>
-                        <button onClick={() => setFilter('funding_rate')} className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${filter === 'funding_rate' ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>Funding Rate</button>
-                        <button onClick={() => setFilter('cex_arb')} className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${filter === 'cex_arb' ? 'bg-yellow-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>CEX Arb</button>
-                        <button onClick={() => setFilter('cash_carry')} className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${filter === 'cash_carry' ? 'bg-orange-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>Cash & Carry</button>
+                {/* ── Filter / sort bar ────────────────────────────── */}
+                <div className="flex flex-wrap gap-1.5 items-center justify-between border border-border bg-bg-panel px-3 py-2 rounded-sm">
+                    <div className="flex flex-wrap gap-1.5">
+                        {[
+                            { key: 'all',               label: 'ALL'      },
+                            { key: 'prediction_market', label: 'PRED-MKT' },
+                            { key: 'funding_rate',      label: 'FUND-RATE'},
+                            { key: 'cex_arb',           label: 'CEX-ARB'  },
+                            { key: 'cash_carry',        label: 'CASH+CRY' },
+                        ].map(({ key, label }) => (
+                            <button
+                                key={key}
+                                onClick={() => setFilter(key)}
+                                className={`px-2 py-0.5 font-mono text-xs border rounded-sm transition-colors duration-100 ${
+                                    filter === key
+                                        ? 'bg-accent text-white border-accent'
+                                        : 'border-border text-text-secondary hover:border-text-muted hover:text-text-primary'
+                                }`}
+                            >
+                                {label}
+                            </button>
+                        ))}
                     </div>
-                    <div className="flex gap-2">
-                        <button onClick={() => setSortBy('roi')} className={`px-3 py-1.5 rounded-lg text-xs ${sortBy === 'roi' ? 'bg-gray-700 text-white' : 'bg-gray-800 text-gray-400'}`}>Per ROI</button>
-                        <button onClick={() => setSortBy('profit')} className={`px-3 py-1.5 rounded-lg text-xs ${sortBy === 'profit' ? 'bg-gray-700 text-white' : 'bg-gray-800 text-gray-400'}`}>Per Profitto</button>
-                        <button onClick={() => setSortBy('confidence')} className={`px-3 py-1.5 rounded-lg text-xs ${sortBy === 'confidence' ? 'bg-gray-700 text-white' : 'bg-gray-800 text-gray-400'}`}>Per Confidence</button>
+                    <div className="flex gap-1.5">
+                        {[
+                            { key: 'roi',        label: 'ROI'    },
+                            { key: 'profit',     label: 'PROFIT' },
+                            { key: 'confidence', label: 'CONF'   },
+                        ].map(({ key, label }) => (
+                            <button
+                                key={key}
+                                onClick={() => setSortBy(key)}
+                                className={`px-2 py-0.5 font-mono text-xs border rounded-sm transition-colors duration-100 ${
+                                    sortBy === key
+                                        ? 'bg-bg-elevated border-text-muted text-text-primary'
+                                        : 'border-border text-text-muted hover:border-text-secondary'
+                                }`}
+                            >
+                                SORT:{label}
+                            </button>
+                        ))}
                     </div>
                 </div>
 
-                {/* TABELLA OPPORTUNITÀ */}
-                <div className="rounded-xl border border-gray-800 overflow-hidden">
-                    <div className="bg-gray-900/60 px-4 py-3 border-b border-gray-800">
-                        <h2 className="font-semibold text-sm">📈 Opportunità di Arbitraggio</h2>
+                {/* ── Main opportunities table ─────────────────────── */}
+                <div className="border border-border rounded-sm overflow-hidden">
+
+                    {/* Table title + LIVE indicator */}
+                    <div className="bg-bg-panel px-4 py-2 border-b border-border flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <span className="font-mono text-xs font-semibold text-text-primary uppercase tracking-wider">
+                                ARBITRAGE OPPORTUNITIES
+                            </span>
+                            <div className="flex items-center gap-1.5 ml-2">
+                                <span className="relative flex h-1.5 w-1.5">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75" />
+                                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-accent" />
+                                </span>
+                                <span className="font-mono text-xs text-accent">LIVE</span>
+                                {lastUpdate && (
+                                    <span className="font-mono text-xs text-text-muted ml-1">
+                                        {lastUpdate.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                        <span className="font-mono text-xs text-text-muted">{filteredOpps.length} RESULTS</span>
                     </div>
+
                     {filteredOpps.length === 0 ? (
-                        <div className="p-12 text-center text-gray-500">
-                            <div className="text-4xl mb-2">🔍</div>
-                            <p>Nessuna opportunità trovata</p>
-                            <p className="text-xs mt-1">Attendi che l'AI Master analizzi i mercati</p>
+                        <div className="p-12 text-center bg-bg-panel">
+                            <div className="font-mono text-xs text-text-muted">NO OPPORTUNITIES FOUND</div>
+                            <div className="font-mono text-xs text-text-muted mt-1">WAITING FOR AI AGENT ANALYSIS...</div>
                         </div>
                     ) : (
                         <div className="overflow-x-auto">
-                            <table className="w-full text-sm">
-                                <thead className="border-b border-gray-800 bg-gray-900/40 text-gray-500">
+                            <table className="w-full">
+                                <thead className="sticky top-0 z-10 bg-bg-panel border-b-2 border-border">
                                     <tr>
-                                        <th className="px-4 py-3 text-left">Opportunità</th>
-                                        <th className="px-4 py-3 text-center">Tipo</th>
-                                        <th className="px-4 py-3 text-right">ROI Lordo</th>
-                                        <th className="px-4 py-3 text-right">ROI Netto</th>
-                                        <th className="px-4 py-3 text-right">Profitto $1000</th>
-                                        <th className="px-4 py-3 text-center">Conf</th>
-                                        <th className="px-4 py-3 text-center">Urgenza</th>
-                                        <th className="px-4 py-3 text-center">Rischio</th>
-                                        <th className="px-4 py-3 text-center">Azione</th>
+                                        <th className="px-3 py-2 text-left  font-mono text-xs text-text-muted uppercase tracking-wider whitespace-nowrap">OPPORTUNITY</th>
+                                        <th className="px-3 py-2 text-left  font-mono text-xs text-text-muted uppercase tracking-wider whitespace-nowrap">PLATFORMS</th>
+                                        <th className="px-3 py-2 text-right font-mono text-xs text-text-muted uppercase tracking-wider whitespace-nowrap">ROI GROSS</th>
+                                        <th className="px-3 py-2 text-right font-mono text-xs text-text-muted uppercase tracking-wider whitespace-nowrap">ROI NET</th>
+                                        <th className="px-3 py-2 text-right font-mono text-xs text-text-muted uppercase tracking-wider whitespace-nowrap">P/L $1K</th>
+                                        <th className="px-3 py-2 text-center font-mono text-xs text-text-muted uppercase tracking-wider whitespace-nowrap">CONF</th>
+                                        <th className="px-3 py-2 text-center font-mono text-xs text-text-muted uppercase tracking-wider whitespace-nowrap">URG</th>
+                                        <th className="px-3 py-2 text-center font-mono text-xs text-text-muted uppercase tracking-wider whitespace-nowrap">RISK</th>
+                                        <th className="px-3 py-2 text-center font-mono text-xs text-text-muted uppercase tracking-wider whitespace-nowrap">ACT</th>
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-gray-800/50">
-                                    {filteredOpps.map((opp, idx) => (
-                                        <tr key={idx} className="hover:bg-white/[0.02] transition-colors">
-                                            <td className="px-4 py-3">
-                                                <div className="max-w-md">
-                                                    <p className="text-gray-200 text-sm font-medium">{opp.title}</p>
-                                                    <p className="text-gray-600 text-xs mt-0.5">
-                                                        {opp.platform_a} → {opp.platform_b}
+                                <tbody>
+                                    {filteredOpps.map((opp, idx) => {
+                                        const isBest   = idx === 0 && sortBy === 'roi';
+                                        const roiVal   = opp.roi;
+                                        const netVal   = opp.net_roi ?? opp.roi;
+                                        const urgColor = opp.urgency === 'high'   ? 'text-negative' : opp.urgency === 'medium' ? 'text-warning' : 'text-positive';
+                                        const riskColor= opp.risk    === 'high'   ? 'text-negative' : opp.risk    === 'medium' ? 'text-warning' : 'text-positive';
+                                        return (
+                                            <tr
+                                                key={idx}
+                                                className="border-b border-border hover:bg-bg-elevated transition-colors duration-100"
+                                            >
+                                                {/* Opportunity title */}
+                                                <td className="px-3 py-1.5">
+                                                    <p className={`text-xs max-w-xs truncate ${isBest ? 'text-accent font-semibold' : 'text-text-primary'}`}>
+                                                        {opp.title}
                                                     </p>
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-3 text-center">
-                                                <span className={`px-2 py-1 rounded-full text-xs font-semibold border ${getTypeColor(opp.type)}`}>
-                                                    {opp.type.replace('_', ' ')}
-                                                </span>
-                                            </td>
-                                            <td className="px-4 py-3 text-right">
-                                                <span className="font-bold text-green-400">+{opp.roi.toFixed(1)}%</span>
-                                            </td>
-                                            <td className="px-4 py-3 text-right">
-                                                <span className="font-bold text-blue-400">+{opp.net_roi?.toFixed(1) || opp.roi.toFixed(1)}%</span>
-                                            </td>
-                                            <td className="px-4 py-3 text-right">
-                                                <span className="font-bold text-yellow-400">+${opp.profit_on_1000.toFixed(0)}</span>
-                                            </td>
-                                            <td className="px-4 py-3 text-center">
-                                                <div className="flex items-center justify-center gap-1">
-                                                    <div className="w-12 h-1.5 bg-gray-700 rounded-full overflow-hidden">
-                                                        <div className="h-full bg-green-500 rounded-full" style={{ width: `${opp.confidence}%` }} />
+                                                </td>
+
+                                                {/* Platform chips */}
+                                                <td className="px-3 py-1.5">
+                                                    <div className="flex flex-wrap gap-1">
+                                                        {[opp.platform_a, opp.platform_b].filter(Boolean).map((p) => (
+                                                            <span
+                                                                key={p}
+                                                                className="font-mono text-xs px-1.5 py-px bg-bg-elevated border border-border text-text-secondary uppercase rounded-sm leading-tight"
+                                                            >
+                                                                {p}
+                                                            </span>
+                                                        ))}
                                                     </div>
-                                                    <span className="text-xs text-gray-400">{opp.confidence}%</span>
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-3 text-center">
-                                                <span className={`px-2 py-0.5 rounded text-xs font-semibold ${getUrgencyColor(opp.urgency)}`}>
-                                                    {opp.urgency?.toUpperCase() || 'MEDIUM'}
-                                                </span>
-                                            </td>
-                                            <td className="px-4 py-3 text-center">
-                                                <span className={`text-xs font-semibold ${getRiskColor(opp.risk)}`}>
-                                                    {opp.risk?.toUpperCase() || 'MEDIUM'}
-                                                </span>
-                                            </td>
-                                            <td className="px-4 py-3 text-center">
-                                                <button className="px-3 py-1 rounded-lg bg-blue-600/20 text-blue-400 text-xs hover:bg-blue-600/30 transition-colors">
-                                                    Esegui
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    ))}
+                                                </td>
+
+                                                {/* ROI gross */}
+                                                <td className="px-3 py-1.5 text-right">
+                                                    <span className={`font-mono text-xs font-bold ${isBest ? 'text-accent' : roiVal >= 0 ? 'text-positive' : 'text-negative'}`}>
+                                                        {roiVal >= 0 ? '+' : ''}{roiVal.toFixed(2)}%
+                                                    </span>
+                                                </td>
+
+                                                {/* ROI net */}
+                                                <td className="px-3 py-1.5 text-right">
+                                                    <span className={`font-mono text-xs ${netVal >= 0 ? 'text-positive' : 'text-negative'}`}>
+                                                        {netVal >= 0 ? '+' : ''}{netVal.toFixed(2)}%
+                                                    </span>
+                                                </td>
+
+                                                {/* P/L on $1K */}
+                                                <td className="px-3 py-1.5 text-right">
+                                                    <span className={`font-mono text-xs font-bold ${opp.profit_on_1000 >= 0 ? 'text-positive' : 'text-negative'}`}>
+                                                        {opp.profit_on_1000 >= 0 ? '+' : ''}${opp.profit_on_1000.toFixed(1)}
+                                                    </span>
+                                                </td>
+
+                                                {/* Confidence bar */}
+                                                <td className="px-3 py-1.5 text-center">
+                                                    <div className="flex items-center justify-center gap-1.5">
+                                                        <div className="w-10 h-1 bg-bg-elevated rounded-sm overflow-hidden">
+                                                            <div className="h-full bg-positive rounded-sm" style={{ width: `${opp.confidence}%` }} />
+                                                        </div>
+                                                        <span className="font-mono text-xs text-text-secondary">{opp.confidence}%</span>
+                                                    </div>
+                                                </td>
+
+                                                {/* Urgency */}
+                                                <td className="px-3 py-1.5 text-center">
+                                                    <span className={`font-mono text-xs font-bold ${urgColor}`}>
+                                                        {(opp.urgency || 'MED').toUpperCase().slice(0, 3)}
+                                                    </span>
+                                                </td>
+
+                                                {/* Risk */}
+                                                <td className="px-3 py-1.5 text-center">
+                                                    <span className={`font-mono text-xs font-bold ${riskColor}`}>
+                                                        {(opp.risk || 'MED').toUpperCase().slice(0, 3)}
+                                                    </span>
+                                                </td>
+
+                                                {/* Action */}
+                                                <td className="px-3 py-1.5 text-center">
+                                                    <button className="px-2 py-0.5 border border-border text-text-secondary font-mono text-xs hover:border-accent hover:text-accent transition-colors duration-100 rounded-sm">
+                                                        EXEC
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
                                 </tbody>
                             </table>
                         </div>
                     )}
                 </div>
 
-                {/* SPECCHIETTO RIASSUNTIVO FINALE */}
-                <div className="rounded-xl border border-green-800/40 bg-green-950/20 p-5">
-                    <div className="flex items-start gap-4">
-                        <div className="text-3xl">📊</div>
-                        <div className="flex-1">
-                            <h3 className="font-bold text-green-400 mb-2">Specchietto Riassuntivo - Opportunità di Guadagno</h3>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                                <div>
-                                    <p className="text-gray-400">🚀 Miglior ROI</p>
-                                    <p className="text-2xl font-bold text-green-400">{stats?.bestRoi.toFixed(1)}%</p>
-                                    <p className="text-xs text-gray-500">su {filteredOpps[0]?.title?.slice(0, 50) || 'N/A'}</p>
-                                </div>
-                                <div>
-                                    <p className="text-gray-400">💰 Profitto Totale Potenziale</p>
-                                    <p className="text-2xl font-bold text-yellow-400">{formatCurrency(stats?.totalProfitPotential || 0)}</p>
-                                    <p className="text-xs text-gray-500">su investimento $1000 per opportunità</p>
-                                </div>
-                                <div>
-                                    <p className="text-gray-400">⭐ Confidence Media</p>
-                                    <p className="text-2xl font-bold text-purple-400">
-                                        {opportunities.length > 0 
-                                            ? (opportunities.reduce((s, o) => s + o.confidence, 0) / opportunities.length).toFixed(0)
-                                            : 0}%
-                                    </p>
-                                    <p className="text-xs text-gray-500">affidabilità dei segnali</p>
-                                </div>
+                {/* ── Summary strip ────────────────────────────────── */}
+                <div className="border border-border bg-bg-panel p-4 rounded-sm">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                            <div className="font-mono text-xs text-text-muted uppercase tracking-wider mb-1">BEST ROI</div>
+                            <div className="font-mono text-2xl font-bold text-positive">{stats?.bestRoi.toFixed(2)}%</div>
+                            <div className="font-mono text-xs text-text-muted mt-0.5 truncate">{filteredOpps[0]?.title?.slice(0, 50) || 'N/A'}</div>
+                        </div>
+                        <div>
+                            <div className="font-mono text-xs text-text-muted uppercase tracking-wider mb-1">TOTAL PROFIT POTENTIAL</div>
+                            <div className="font-mono text-2xl font-bold text-warning">{formatCurrency(stats?.totalProfitPotential || 0)}</div>
+                            <div className="font-mono text-xs text-text-muted mt-0.5">ON $1K PER OPPORTUNITY</div>
+                        </div>
+                        <div>
+                            <div className="font-mono text-xs text-text-muted uppercase tracking-wider mb-1">AVG CONFIDENCE</div>
+                            <div className="font-mono text-2xl font-bold text-accent">
+                                {opportunities.length > 0
+                                    ? (opportunities.reduce((s, o) => s + o.confidence, 0) / opportunities.length).toFixed(0)
+                                    : 0}%
                             </div>
-                            <div className="mt-4 pt-3 border-t border-green-800/30 text-xs text-gray-500">
-                                ⚡ Le opportunità vengono aggiornate ogni 30 secondi | Dati in tempo reale da AI Master Agent
-                            </div>
+                            <div className="font-mono text-xs text-text-muted mt-0.5">SIGNAL RELIABILITY</div>
                         </div>
                     </div>
+                    <div className="mt-3 pt-3 border-t border-border font-mono text-xs text-text-muted">
+                        REFRESH EVERY 30S &nbsp;|&nbsp; REAL-TIME DATA FROM AI MASTER AGENT &nbsp;|&nbsp; {filteredOpps.length} ACTIVE OPPORTUNITIES
+                    </div>
                 </div>
+
             </div>
         </div>
     );
