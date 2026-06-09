@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
     try {
         const polymarket = JSON.parse(fs.readFileSync('/tmp/polymarket-raw.json', 'utf8') || '{"markets":[]}');

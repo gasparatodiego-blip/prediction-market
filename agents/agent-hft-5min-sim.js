@@ -265,7 +265,8 @@ function checkExitConditions(position, currentPrice, entryTime) {
 async function executeTrade(symbol, analysis) {
     const market = marketPrices[symbol];
     if (!market) return null;
-    
+    if (!analysis?.signal) return null;
+
     const size = Math.min(CONFIG.baseTradeSize, state.usdtBalance * 0.15);
     if (size < 300 || state.usdtBalance < size) return null;
     
