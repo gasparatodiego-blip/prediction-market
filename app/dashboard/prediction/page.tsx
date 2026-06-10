@@ -1,237 +1,416 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { PLATFORM_ICONS, getOpportunityBadge } from '@/lib/arbitrage';
+import { useState, useEffect, useCallback } from 'react';
+import { ExternalLink, ChevronDown, ChevronUp } from 'lucide-react';
 
-interface Market {
-    id: string;
-    title: string;
-    platform: string;
-    category: string;
-    yesPrice: number;
-    noPrice: number;
-    volume: number;
-    endDate: string;
-    fee: number;
-    url: string;
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+interface Leg {
+  platform:    string;
+  probability: number;   // 0–100 (cents equivalent)
+  url:         string;
+  fee:         number;   // 0–1 fraction
+  expiresAt:   number | null;
 }
 
 interface Opportunity {
-    id: string;
-    event: string;
-    buyYesOn: string;
-    buyYesPrice: number;
-    buyYesFee: number;
-    buyNoOn: string;
-    buyNoPrice: number;
-    buyNoFee: number;
-    spread: string;
-    totalCost: number;
-    profitPer100: any;
+  id:          string;
+  question:    string;
+  lowMarket:   Leg;
+  highMarket:  Leg;
+  spread:      number;
+  roi:         number;
+  earnPer100:  number;
+  confidence:  number;
+  category:    string;
+  type:        'cashable' | 'signal';
 }
 
-export default function PredictionPage() {
-    const [markets, setMarkets] = useState<Market[]>([]);
-    const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
-    const [selectedOpportunity, setSelectedOpportunity] = useState<Opportunity | null>(null);
-    const [investAmount, setInvestAmount] = useState(100);
-    const [showProfitModal, setShowProfitModal] = useState(false);
-    const [activeTab, setActiveTab] = useState<'arbitrage' | 'markets'>('arbitrage');
+interface Stats {
+  validCount:    number;
+  cashableCount: number;
+  signalCount:   number;
+  bestRoi:       number | null;
+  marketsTracked: number;
+  platforms:     number;
+  updatedAt:     number | null;
+  pipelineAge:   number | null;
+}
 
-    useEffect(() => {
-        fetchAll();
-        const interval = setInterval(fetchAll, 30000);
-        return () => clearInterval(interval);
-    }, []);
+interface ApiResponse {
+  valid:    Opportunity[];
+  rejected: number;
+  stats:    Stats;
+}
 
-    const fetchAll = async () => {
-        try {
-            const [poly, kalshi, pi, manifold, arb] = await Promise.all([
-                fetch('/api/polymarket').then(r => r.json()),
-                fetch('/api/kalshi').then(r => r.json()),
-                fetch('/api/predictit').then(r => r.json()),
-                fetch('/api/manifold').then(r => r.json()),
-                fetch('/api/arbitrage').then(r => r.json())
-            ]);
-            
-            const allMarkets: Market[] = [
-                ...(poly.markets || []),
-                ...(kalshi.markets || []),
-                ...(pi.markets || []),
-                ...(manifold.markets || [])
-            ];
-            
-            setMarkets(allMarkets);
-            setOpportunities(arb.opportunities || []);
-            setLastUpdate(new Date());
-        } catch (err) {
-            console.error('Error:', err);
-        } finally {
-            setLoading(false);
-        }
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function platformLabel(p: string): string {
+  const MAP: Record<string, string> = {
+    kalshi: 'KALSHI', polymarket: 'POLYMARKET',
+    predictit: 'PREDICTIT', manifold: 'MANIFOLD', oddsapi: 'ODDS API',
+  };
+  return MAP[p?.toLowerCase()] ?? p.toUpperCase();
+}
+
+// ── Countdown hook (component-level so it's safe per row) ────────────────────
+
+function Countdown({ expiresAt }: { expiresAt: number | null }) {
+  const [text, setText] = useState<string>('');
+
+  useEffect(() => {
+    if (!expiresAt) { setText(''); return; }
+    const update = () => {
+      const ms = expiresAt - Date.now();
+      if (ms <= 0) { setText('EXPIRED'); return; }
+      const d = Math.floor(ms / 86_400_000);
+      const h = Math.floor((ms % 86_400_000) / 3_600_000);
+      const m = Math.floor((ms % 3_600_000) / 60_000);
+      const s = Math.floor((ms % 60_000) / 1_000);
+      const p = (n: number) => String(n).padStart(2, '0');
+      setText(`${p(d)}:${p(h)}:${p(m)}:${p(s)}`);
     };
+    update();
+    const t = setInterval(update, 1_000);
+    return () => clearInterval(t);
+  }, [expiresAt]);
 
-    const openProfitModal = (opp: Opportunity) => {
-        setSelectedOpportunity(opp);
-        setShowProfitModal(true);
-    };
+  if (!expiresAt) return <span className="text-text-muted font-mono text-[10px]">NO EXPIRY DATA</span>;
+  return <span className="font-mono text-[10px] tabular-nums text-text-secondary">{text}</span>;
+}
 
-    const getPlatformColor = (platform: string) => {
-        const colors: Record<string, string> = {
-            Polymarket: 'bg-purple-500/20 text-purple-400',
-            Kalshi: 'bg-blue-500/20 text-blue-400',
-            PredictIt: 'bg-orange-500/20 text-orange-400',
-            Manifold: 'bg-green-500/20 text-green-400'
-        };
-        return colors[platform] || 'bg-gray-500/20 text-gray-400';
-    };
+// ── Skeleton ──────────────────────────────────────────────────────────────────
 
-    if (loading) {
-        return (
-            <div className="min-h-screen bg-gray-950 flex items-center justify-center">
-                <div className="text-gray-400">Caricamento mercati da 4 piattaforme...</div>
-            </div>
-        );
-    }
+function Skeleton({ h }: { h: string }) {
+  return <div className={`${h} bg-bg-elevated animate-pulse border border-border`} />;
+}
 
+// ── Stat panel ────────────────────────────────────────────────────────────────
+
+function StatPanel({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div className="bg-bg-panel border border-border px-4 py-3 min-w-0">
+      <div className="font-mono text-[10px] text-text-muted uppercase tracking-widest mb-1 truncate">{label}</div>
+      <div className="font-mono text-base text-text-primary tabular-nums">{value}</div>
+      {sub && <div className="font-mono text-[10px] text-text-muted mt-0.5 truncate">{sub}</div>}
+    </div>
+  );
+}
+
+// ── Profit calculator ─────────────────────────────────────────────────────────
+
+function Calculator({ opp }: { opp: Opportunity }) {
+  const [stake, setStake] = useState(100);
+
+  if (opp.type === 'signal') {
     return (
-        <div>
-            <div className="max-w-7xl mx-auto px-4 py-6">
-                {/* Statistiche */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-                    <div className="bg-gradient-to-br from-blue-950/40 to-gray-900/40 rounded-xl p-4 border border-blue-800/30">
-                        <div className="text-2xl font-bold text-blue-400">{opportunities.length}</div>
-                        <div className="text-xs text-gray-500">Opportunità Arbitraggio</div>
-                    </div>
-                    <div className="bg-gradient-to-br from-green-950/40 to-gray-900/40 rounded-xl p-4 border border-green-800/30">
-                        <div className="text-2xl font-bold text-green-400">{markets.length}</div>
-                        <div className="text-xs text-gray-500">Mercati Totali</div>
-                    </div>
-                    <div className="bg-gradient-to-br from-purple-950/40 to-gray-900/40 rounded-xl p-4 border border-purple-800/30">
-                        <div className="text-2xl font-bold text-purple-400">4</div>
-                        <div className="text-xs text-gray-500">Piattaforme</div>
-                    </div>
-                    <div className="bg-gradient-to-br from-yellow-950/40 to-gray-900/40 rounded-xl p-4 border border-yellow-800/30">
-                        <div className="text-2xl font-bold text-yellow-400">{opportunities.length > 0 ? opportunities[0]?.spread : 0}%</div>
-                        <div className="text-xs text-gray-500">Miglior Spread</div>
-                    </div>
-                </div>
-
-                {/* Tabs */}
-                <div className="flex gap-2 mb-6 border-b border-gray-800">
-                    <button onClick={() => setActiveTab('arbitrage')} className={`px-6 py-2 text-sm font-semibold transition ${activeTab === 'arbitrage' ? 'text-green-400 border-b-2 border-green-400' : 'text-gray-400 hover:text-gray-300'}`}>
-                        🔥 Opportunità Arbitraggio
-                    </button>
-                    <button onClick={() => setActiveTab('markets')} className={`px-6 py-2 text-sm font-semibold transition ${activeTab === 'markets' ? 'text-green-400 border-b-2 border-green-400' : 'text-gray-400 hover:text-gray-300'}`}>
-                        📊 Tutti i Mercati
-                    </button>
-                </div>
-
-                {/* Tab Arbitraggio */}
-                {activeTab === 'arbitrage' && (
-                    <>
-                        {opportunities.length === 0 ? (
-                            <div className="text-center py-12 text-gray-500 bg-gray-900/30 rounded-xl">
-                                <p>🔍 Nessuna opportunità di arbitraggio al momento</p>
-                                <p className="text-xs mt-1">Controlla tra 30 secondi per nuovi aggiornamenti</p>
-                            </div>
-                        ) : (
-                            <div className="space-y-4">
-                                <h2 className="text-lg font-bold text-white">🔥 TOP OPPORTUNITÀ DI ARBITRAGGIO</h2>
-                                {opportunities.slice(0, 5).map((opp, idx) => {
-                                    const badge = getOpportunityBadge(parseFloat(opp.spread));
-                                    return (
-                                        <div key={opp.id} className="bg-gradient-to-r from-green-950/30 to-emerald-950/20 rounded-xl border border-green-800/30 p-4">
-                                            <div className="flex justify-between items-start mb-2">
-                                                <div className="flex items-center gap-2">
-                                                    <span className={`px-2 py-1 rounded-full text-xs font-bold ${badge.bgColor} ${badge.textColor}`}>{badge.label}</span>
-                                                    <span className="text-xs text-gray-500">Spread {opp.spread}%</span>
-                                                </div>
-                                                <button onClick={() => openProfitModal(opp)} className="text-xs text-blue-400 hover:text-blue-300">💲 Calcola profitto</button>
-                                            </div>
-                                            <h3 className="text-white font-semibold mb-3">{opp.event}</h3>
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                <div className="bg-gray-800/50 rounded-lg p-3">
-                                                    <div className="text-xs text-gray-400 mb-1">COMPRA SÌ su {PLATFORM_ICONS[opp.buyYesOn]} {opp.buyYesOn}</div>
-                                                    <div className="text-2xl font-bold text-green-400">{opp.buyYesPrice}¢</div>
-                                                    <div className="text-xs text-gray-500">Fee: {opp.buyYesFee * 100}%</div>
-                                                    <a href="#" target="_blank" className="inline-block mt-2 px-3 py-1 rounded bg-green-600/20 text-green-400 text-xs hover:bg-green-600/30">Esegui su {opp.buyYesOn} →</a>
-                                                </div>
-                                                <div className="bg-gray-800/50 rounded-lg p-3">
-                                                    <div className="text-xs text-gray-400 mb-1">COMPRA NO su {PLATFORM_ICONS[opp.buyNoOn]} {opp.buyNoOn}</div>
-                                                    <div className="text-2xl font-bold text-red-400">{opp.buyNoPrice}¢</div>
-                                                    <div className="text-xs text-gray-500">Fee: {opp.buyNoFee * 100}%</div>
-                                                    <a href="#" target="_blank" className="inline-block mt-2 px-3 py-1 rounded bg-red-600/20 text-red-400 text-xs hover:bg-red-600/30">Esegui su {opp.buyNoOn} →</a>
-                                                </div>
-                                            </div>
-                                            <div className="mt-3 pt-2 border-t border-gray-700 text-center text-sm">
-                                                <span className="text-yellow-400">💰 Investi $100 → Profitto netto ${opp.profitPer100.netProfit} ({opp.profitPer100.roi}% ROI)</span>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        )}
-                    </>
-                )}
-
-                {/* Tab Mercati */}
-                {activeTab === 'markets' && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {markets.slice(0, 30).map((market, idx) => (
-                            <div key={`${market.platform}-${market.id}-${idx}`} className="bg-gray-900/40 rounded-xl border border-gray-800 p-4 hover:border-blue-500/50 transition-all">
-                                <div className="flex justify-between items-start mb-2">
-                                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${getPlatformColor(market.platform)}`}>
-                                        {market.platform} {market.fee > 0 ? `(fee ${market.fee}%)` : ''}
-                                    </span>
-                                    <span className="text-xs text-gray-500">Scade: {market.endDate}</span>
-                                </div>
-                                <h3 className="font-semibold text-white mb-3 text-sm line-clamp-2">{market.title}</h3>
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div className="bg-green-950/30 rounded-lg p-3 text-center border border-green-800/30">
-                                        <div className="text-xs text-green-400">SÌ</div>
-                                        <div className="text-2xl font-bold text-green-400">{market.yesPrice}¢</div>
-                                    </div>
-                                    <div className="bg-red-950/30 rounded-lg p-3 text-center border border-red-800/30">
-                                        <div className="text-xs text-red-400">NO</div>
-                                        <div className="text-2xl font-bold text-red-400">{market.noPrice}¢</div>
-                                    </div>
-                                </div>
-                                {market.volume > 0 && (
-                                    <div className="mt-3 text-xs text-gray-500 text-center">
-                                        Volume: ${market.volume.toLocaleString()}k
-                                    </div>
-                                )}
-                            </div>
-                        ))}
-                    </div>
-                )}
-            </div>
-
-            {/* Modal Calcolo Profitto */}
-            {showProfitModal && selectedOpportunity && (
-                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                    <div className="bg-gray-900 rounded-2xl border border-gray-700 max-w-md w-full p-6">
-                        <h3 className="text-white font-bold text-lg mb-4">💰 Calcolo Profitto Arbitraggio</h3>
-                        <p className="text-gray-300 text-sm mb-3">{selectedOpportunity.event}</p>
-                        <div className="bg-gray-800 rounded-lg p-3 space-y-2 text-sm">
-                            <div className="flex justify-between"><span className="text-gray-400">Compra SÌ su:</span><span className="text-green-400">{selectedOpportunity.buyYesOn} a {selectedOpportunity.buyYesPrice}¢ (fee {selectedOpportunity.buyYesFee * 100}%)</span></div>
-                            <div className="flex justify-between"><span className="text-gray-400">Compra NO su:</span><span className="text-red-400">{selectedOpportunity.buyNoOn} a {selectedOpportunity.buyNoPrice}¢ (fee {selectedOpportunity.buyNoFee * 100}%)</span></div>
-                            <div className="flex justify-between"><span className="text-gray-400">Costo totale:</span><span className="text-white">{selectedOpportunity.buyYesPrice + selectedOpportunity.buyNoPrice}¢</span></div>
-                            <div className="flex justify-between"><span className="text-gray-400">Spread:</span><span className="text-green-400">{selectedOpportunity.spread}%</span></div>
-                            <div className="flex justify-between pt-2 border-t border-gray-700"><span className="text-gray-400">Importo:</span><input type="number" value={investAmount} onChange={(e) => setInvestAmount(parseFloat(e.target.value) || 0)} className="w-32 px-2 py-1 rounded bg-gray-700 text-white text-right" /></div>
-                            <div className="flex justify-between"><span className="text-gray-400">Profitto netto:</span><span className="text-yellow-400 font-bold">${(parseFloat(selectedOpportunity.profitPer100.netProfit) * (investAmount / 100)).toFixed(2)}</span></div>
-                            <div className="flex justify-between"><span className="text-gray-400">ROI:</span><span className="text-green-400">{selectedOpportunity.profitPer100.roi}%</span></div>
-                        </div>
-                        <div className="flex gap-3 mt-4">
-                            <button onClick={() => setShowProfitModal(false)} className="flex-1 py-2 rounded-lg bg-gray-800 text-gray-400">Chiudi</button>
-                            <button className="flex-1 py-2 rounded-lg bg-green-600 text-white">Esegui Trade</button>
-                        </div>
-                    </div>
-                </div>
-            )}
-        </div>
+      <div className="px-4 py-3 bg-bg-base border-t border-border">
+        <span className="font-mono text-[11px] text-warning uppercase tracking-widest">
+          MANIFOLD USES PLAY MONEY (MANA) · INFORMATIONAL ONLY · NO EUR CALCULATION AVAILABLE
+        </span>
+      </div>
     );
+  }
+
+  // Reconstruct gross from net ROI: roi_net = roi_gross × (1 − feeA − feeB)
+  const totalFeeRate = opp.lowMarket.fee + opp.highMarket.fee;
+  const roiGross     = totalFeeRate < 1 ? opp.roi / (1 - totalFeeRate) : opp.roi;
+  const grossProfit  = stake * roiGross / 100;
+  const feeA         = grossProfit * opp.lowMarket.fee;
+  const feeB         = grossProfit * opp.highMarket.fee;
+  const netProfit    = stake * opp.roi / 100;
+
+  return (
+    <div className="px-4 py-4 bg-bg-base border-t border-border">
+      <div className="font-mono text-[10px] text-text-muted uppercase tracking-widest mb-3">PROFIT CALCULATOR</div>
+      <div className="flex flex-wrap gap-6 items-end">
+
+        <div>
+          <label className="block font-mono text-[10px] text-text-muted uppercase tracking-widest mb-1">
+            STAKE (EUR)
+          </label>
+          <input
+            type="number"
+            min={1}
+            value={stake}
+            onChange={e => setStake(Math.max(1, Number(e.target.value) || 1))}
+            className="w-28 bg-bg-elevated border border-border font-mono text-sm text-text-primary px-2 py-1.5 focus:outline-none focus:border-accent"
+          />
+        </div>
+
+        <div>
+          <div className="font-mono text-[10px] text-text-muted uppercase tracking-widest mb-1">GROSS EDGE</div>
+          <div className="font-mono text-sm text-text-primary">€{grossProfit.toFixed(2)}</div>
+        </div>
+
+        <div>
+          <div className="font-mono text-[10px] text-text-muted uppercase tracking-widest mb-1">
+            {platformLabel(opp.lowMarket.platform)} FEE ({(opp.lowMarket.fee * 100).toFixed(0)}%)
+          </div>
+          <div className="font-mono text-sm text-negative">-€{feeA.toFixed(2)}</div>
+        </div>
+
+        <div>
+          <div className="font-mono text-[10px] text-text-muted uppercase tracking-widest mb-1">
+            {platformLabel(opp.highMarket.platform)} FEE ({(opp.highMarket.fee * 100).toFixed(0)}%)
+          </div>
+          <div className="font-mono text-sm text-negative">-€{feeB.toFixed(2)}</div>
+        </div>
+
+        <div>
+          <div className="font-mono text-[10px] text-text-muted uppercase tracking-widest mb-1">NET PROFIT</div>
+          <div className="font-mono text-sm font-semibold text-positive">
+            €{netProfit.toFixed(2)}&nbsp;
+            <span className="text-[11px] text-positive/80">({opp.roi.toFixed(2)}% ROI)</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  );
+}
+
+// ── Opportunity row ───────────────────────────────────────────────────────────
+
+function OppRow({
+  opp,
+  isExpanded,
+  onToggle,
+}: {
+  opp:        Opportunity;
+  isExpanded: boolean;
+  onToggle:   () => void;
+}) {
+  const isCashable = opp.type === 'cashable';
+  // For a binary arb: buy YES at lowMarket, buy NO at highMarket
+  // NO price on highMarket = 100 - highMarket.probability
+  const noPriceHighMarket = 100 - opp.highMarket.probability;
+  const expiry = opp.lowMarket.expiresAt ?? opp.highMarket.expiresAt ?? null;
+
+  return (
+    <div className="border border-border mb-1.5 last:mb-0">
+
+      {/* Clickable summary row */}
+      <button
+        onClick={onToggle}
+        className="w-full text-left px-4 py-3 hover:bg-bg-elevated transition-colors duration-100 focus:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+        aria-expanded={isExpanded}
+      >
+        <div className="flex flex-wrap gap-x-4 gap-y-2 items-start">
+
+          {/* Type chip */}
+          <div className="shrink-0 mt-0.5">
+            {isCashable ? (
+              <span className="font-mono text-[10px] uppercase tracking-widest px-1.5 py-0.5 bg-positive/10 text-positive border border-positive/25">
+                CASHABLE
+              </span>
+            ) : (
+              <span className="font-mono text-[10px] uppercase tracking-widest px-1.5 py-0.5 bg-warning/10 text-warning border border-warning/25">
+                SIGNAL · PLAY MONEY
+              </span>
+            )}
+          </div>
+
+          {/* Question + category */}
+          <div className="flex-1 min-w-[180px]">
+            <div className="font-mono text-[12px] text-text-primary leading-snug line-clamp-2">{opp.question}</div>
+            <div className="font-mono text-[10px] text-text-muted mt-0.5 uppercase tracking-widest">{opp.category}</div>
+          </div>
+
+          {/* Trade legs */}
+          <div className="shrink-0 space-y-1">
+            <div className="font-mono text-[11px]">
+              <span className="text-positive">BUY YES @ {opp.lowMarket.probability}¢</span>
+              <span className="text-border mx-1.5">·</span>
+              <span className="text-text-secondary">{platformLabel(opp.lowMarket.platform)}</span>
+              <span className="text-text-muted ml-2 text-[10px]">FEE {(opp.lowMarket.fee * 100).toFixed(0)}%</span>
+            </div>
+            <div className="font-mono text-[11px]">
+              <span className="text-accent">BUY NO  @ {noPriceHighMarket}¢</span>
+              <span className="text-border mx-1.5">·</span>
+              <span className="text-text-secondary">{platformLabel(opp.highMarket.platform)}</span>
+              <span className="text-text-muted ml-2 text-[10px]">FEE {(opp.highMarket.fee * 100).toFixed(0)}%</span>
+            </div>
+          </div>
+
+          {/* ROI + metrics */}
+          <div className="shrink-0 text-right">
+            <div className="font-mono text-[13px] font-semibold text-positive tabular-nums">
+              +{opp.roi.toFixed(1)}% NET ROI
+            </div>
+            <div className="font-mono text-[10px] text-text-muted tabular-nums">
+              {opp.spread.toFixed(1)}pp SPREAD · CONF {Math.round(opp.confidence * 100)}%
+            </div>
+          </div>
+
+          {/* Expiry */}
+          <div className="shrink-0 text-right min-w-[90px]">
+            <div className="font-mono text-[10px] text-text-muted uppercase tracking-widest mb-0.5">EXPIRES</div>
+            <Countdown expiresAt={expiry} />
+          </div>
+
+          {/* Chevron */}
+          <div className="shrink-0 self-center text-text-muted">
+            {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+          </div>
+
+        </div>
+      </button>
+
+      {/* Expanded panel */}
+      {isExpanded && (
+        <div>
+          {/* Deep links */}
+          <div className="px-4 py-2.5 border-t border-border bg-bg-elevated flex flex-wrap items-center gap-4">
+            <a
+              href={opp.lowMarket.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 font-mono text-[11px] text-accent hover:text-accent-bright transition-colors duration-100 uppercase tracking-widest"
+            >
+              <ExternalLink size={11} strokeWidth={1.5} />
+              OPEN ON {platformLabel(opp.lowMarket.platform)} →
+            </a>
+            <span className="text-border text-xs" aria-hidden>|</span>
+            <a
+              href={opp.highMarket.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 font-mono text-[11px] text-accent hover:text-accent-bright transition-colors duration-100 uppercase tracking-widest"
+            >
+              <ExternalLink size={11} strokeWidth={1.5} />
+              OPEN ON {platformLabel(opp.highMarket.platform)} →
+            </a>
+          </div>
+
+          {/* Profit calculator */}
+          <Calculator opp={opp} />
+        </div>
+      )}
+
+    </div>
+  );
+}
+
+// ── Page ──────────────────────────────────────────────────────────────────────
+
+export default function PredictionPage() {
+  const [data,      setData]      = useState<ApiResponse | null>(null);
+  const [loading,   setLoading]   = useState(true);
+  const [expanded,  setExpanded]  = useState<string | null>(null);
+  const [fetchedAt, setFetchedAt] = useState<Date | null>(null);
+
+  const loadData = useCallback(async () => {
+    try {
+      const res  = await fetch('/api/prediction');
+      const json: ApiResponse = await res.json();
+      setData(json);
+      setFetchedAt(new Date());
+    } catch {
+      // keep previous data on transient error
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadData();
+    const t = setInterval(loadData, 30_000);
+    return () => clearInterval(t);
+  }, [loadData]);
+
+  const stats = data?.stats;
+  const opps  = data?.valid ?? [];
+
+  return (
+    <div className="max-w-[1400px] mx-auto px-4 py-6">
+
+      {/* Page header */}
+      <div className="flex flex-wrap items-baseline justify-between gap-2 mb-5">
+        <div>
+          <h1 className="font-mono text-sm uppercase tracking-widest text-text-primary">
+            PREDICTION MARKET ARBITRAGE
+          </h1>
+          <p className="font-mono text-[10px] text-text-muted mt-0.5">
+            CROSS-PLATFORM · AI-MATCHED · FEE-ADJUSTED NET ROI
+          </p>
+        </div>
+        {fetchedAt && (
+          <span className="font-mono text-[10px] text-text-muted">
+            LAST FETCH {fetchedAt.toLocaleTimeString('en-GB')}
+          </span>
+        )}
+      </div>
+
+      {/* Stats strip */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-5">
+        {loading ? (
+          Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} h="h-16" />)
+        ) : (
+          <>
+            <StatPanel
+              label="VALID OPPORTUNITIES"
+              value={String(stats?.validCount ?? 0)}
+              sub={`${data?.rejected ?? 0} REJECTED BY VALIDATION`}
+            />
+            <StatPanel
+              label="MARKETS TRACKED"
+              value={stats?.marketsTracked ? String(stats.marketsTracked) : '—'}
+              sub="ACROSS 4 PLATFORMS"
+            />
+            <StatPanel
+              label="CASHABLE / SIGNAL"
+              value={`${stats?.cashableCount ?? 0} / ${stats?.signalCount ?? 0}`}
+              sub="REAL MONEY / PLAY MONEY"
+            />
+            <StatPanel
+              label="BEST NET ROI"
+              value={stats?.bestRoi != null ? `+${stats.bestRoi.toFixed(1)}%` : '—'}
+              sub="CASHABLE ONLY · FEES DEDUCTED"
+            />
+          </>
+        )}
+      </div>
+
+      {/* Stale data warning */}
+      {!loading && stats?.pipelineAge != null && stats.pipelineAge > 600 && (
+        <div className="mb-4 px-3 py-2 border border-warning/30 bg-warning/5 font-mono text-[11px] text-warning uppercase tracking-widest">
+          PIPELINE DATA IS {Math.round(stats.pipelineAge / 60)}m OLD — MATCHERS MAY BE STOPPED (pm2 status)
+        </div>
+      )}
+
+      {/* Opportunity list */}
+      {loading ? (
+        <div className="space-y-2">
+          {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} h="h-[88px]" />)}
+        </div>
+      ) : opps.length === 0 ? (
+        <div className="border border-border px-6 py-16 text-center">
+          <div className="font-mono text-sm text-text-secondary uppercase tracking-widest mb-2">
+            SCANNING — NO VALID OPPORTUNITIES RIGHT NOW
+          </div>
+          <div className="font-mono text-[10px] text-text-muted">
+            {(data?.rejected ?? 0) > 0
+              ? `${data!.rejected} ENTR${data!.rejected === 1 ? 'Y' : 'IES'} FAILED VALIDATION (null prices, roi > 50%, missing urls)`
+              : 'MATCHERS PRODUCING NO OUTPUT — START agent2-fetcher + agent3-matcher-politics + agent4-matcher-other'}
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="font-mono text-[10px] text-text-muted uppercase tracking-widest mb-3">
+            {opps.length} VALID · {data!.rejected} REJECTED · CASHABLE FIRST · SORTED BY NET ROI DESC
+          </div>
+          {opps.map(opp => (
+            <OppRow
+              key={opp.id}
+              opp={opp}
+              isExpanded={expanded === opp.id}
+              onToggle={() => setExpanded(prev => prev === opp.id ? null : opp.id)}
+            />
+          ))}
+        </>
+      )}
+
+    </div>
+  );
 }
