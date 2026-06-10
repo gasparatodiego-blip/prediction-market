@@ -172,7 +172,7 @@ function calcArb(matches) {
     const low  = a.probability <= b.probability ? a : b;
     const high = a.probability >  b.probability ? a : b;
     const roi  = low.probability > 0 ? (spread / low.probability) * 100 : 0;
-    if (roi > 300 || roi <= 0) continue;
+    if (roi > 80 || roi <= 0) continue;
 
     const feeA   = PLATFORM_FEES[low.platform]  || 0;
     const feeB   = PLATFORM_FEES[high.platform] || 0;

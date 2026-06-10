@@ -70,10 +70,12 @@ function extractAllMarkets(raw) {
     if (!title) continue;
     const top = (m.contracts || []).find(c => c.lastTradePrice != null);
     if (!top) continue;
+    const contractLabel = top.shortName || top.name || '';
+    const piQuestion = contractLabel ? `${title} [outcome: ${contractLabel}]` : title;
     markets.push({
       id:          `pi-${m.id}`,
       platform:    'predictit',
-      question:    title,
+      question:    piQuestion,
       probability: Math.round(top.lastTradePrice * 100),
       url:         `https://www.predictit.org/markets/detail/${m.id}`,
     });
@@ -101,10 +103,12 @@ function extractAllMarkets(raw) {
     const prob = bid > 0 && ask > 0
       ? Math.round(((bid + ask) / 2) * 100)
       : Math.round((ask || bid) * 100);
+    const tickerSuffix = m.ticker ? m.ticker.split('-').pop() : '';
+    const kaQuestion = tickerSuffix ? `${title} [outcome: ${tickerSuffix}]` : title;
     markets.push({
       id:          `ka-${m.ticker}`,
       platform:    'kalshi',
-      question:    title,
+      question:    kaQuestion,
       probability: prob,
       url:         `https://kalshi.com/markets/${m.ticker}`,
     });
@@ -211,6 +215,7 @@ Rules:
 - Only match markets from DIFFERENT platforms
 - Only match when you are highly confident (≥0.65) the markets resolve on the same outcome
 - Compare the MEANING, not just keywords — "Will X happen by 2025?" and "X by end of 2025?" are the same
+- If Platform A prices outcome X of a multi-choice event and Platform B prices outcome Y of the same event, do NOT match them — both legs must price the IDENTICAL outcome
 - Ignore markets that are clearly about different things
 
 Respond with ONLY a JSON array (no other text):
