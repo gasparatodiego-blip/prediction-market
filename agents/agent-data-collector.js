@@ -46,30 +46,108 @@ function write(file, data) {
 async function fetchKalshi() {
   try {
     beat('agent-kalshi');
-    const data = await get('https://api.elections.kalshi.com/trade-api/v2/markets?limit=100&status=open');
-    if (!data || data._blocked) { write('/tmp/kalshi-raw.json', { fetchedAt: Date.now(), total: 0, markets: [] }); return; }
-    const markets = data.markets ?? data.market_responses ?? [];
-    write('/tmp/kalshi-raw.json', { fetchedAt: Date.now(), total: markets.length, priced: markets.filter(m => parseFloat(m.yes_bid_dollars||0) > 0 || parseFloat(m.yes_ask_dollars||0) > 0).length, markets });
-    console.log(`[kalshi] ${markets.length} markets`);
+    const all = [];
+    let cursor = null;
+    let page   = 0;
+    const MAX_PAGES = 60;
+
+    while (page < MAX_PAGES) {
+      let url = 'https://api.elections.kalshi.com/trade-api/v2/events?limit=200&status=open&with_nested_markets=true';
+      if (cursor) url += `&cursor=${encodeURIComponent(cursor)}`;
+      const data = await get(url);
+      if (!data || data._blocked) break;
+      const events = data.events || [];
+      if (!events.length) break;
+
+      for (const ev of events) {
+        for (const m of (ev.markets || [])) {
+          all.push({
+            ticker:          m.ticker,
+            title:           ev.title || '',
+            yes_bid_dollars: m.yes_bid_dollars,
+            yes_ask_dollars: m.yes_ask_dollars,
+          });
+        }
+      }
+
+      cursor = data.cursor || '';
+      page++;
+      if (!cursor || !events.length) break;
+      await new Promise(r => setTimeout(r, 150));
+    }
+
+    const priced = all.filter(m => parseFloat(m.yes_bid_dollars||0) > 0 || parseFloat(m.yes_ask_dollars||0) > 0);
+    write('/tmp/kalshi-raw.json', { fetchedAt: Date.now(), pages: page, total: all.length, priced: priced.length, markets: all });
+    console.log(`[kalshi] ${page} pages, ${all.length} markets (${priced.length} priced)`);
   } catch (e) { console.error('[kalshi] error:', e.message); }
 }
 
 // ── Polymarket ────────────────────────────────────────────────────────────────
 
+const _SPORT_TAG_KW = [
+  'world-cup','nfl','nba','nhl','mlb','soccer','football','basketball',
+  'baseball','hockey','tennis','boxing','ufc','mma','golf','cricket',
+  'rugby','olympics','formula-one','motorsports','cycling','swimming',
+  'athletics','volleyball','esport','chess',
+];
+
+const _MUST_INCLUDE_SLUGS = ['world-cup'];
+
+async function _pmSportSlugs() {
+  const slugs = [..._MUST_INCLUDE_SLUGS];
+  for (let offset = 0; offset < 600; offset += 100) {
+    const data = await get(`https://gamma-api.polymarket.com/tags?limit=100&offset=${offset}`);
+    if (!Array.isArray(data) || !data.length) break;
+    for (const t of data) {
+      const slug = (t.slug || t.id || '').toLowerCase();
+      if (_SPORT_TAG_KW.some(k => slug.includes(k))) slugs.push(t.slug || t.id);
+    }
+    if (data.length < 100) break;
+    await new Promise(r => setTimeout(r, 100));
+  }
+  return [...new Set(slugs)];
+}
+
 async function fetchPolymarket() {
   try {
     beat('agent-polymarket');
-    const results = [];
+
+    // Volume-sorted base (3 pages)
+    const base = [];
     for (let page = 0; page < 3; page++) {
       const data = await get(`https://gamma-api.polymarket.com/markets?limit=100&offset=${page * 100}&active=true&closed=false`);
       if (!data || data._blocked) break;
       const items = Array.isArray(data) ? data : (data.markets ?? data.data ?? []);
       if (!items.length) break;
-      results.push(...items);
+      base.push(...items);
       if (items.length < 100) break;
     }
-    write('/tmp/polymarket-raw.json', { fetchedAt: Date.now(), total: results.length, active: results.filter(m => m.active).length, markets: results });
-    console.log(`[polymarket] ${results.length} markets`);
+
+    // Tag-based sport event discovery
+    const byId = new Map(base.map(m => [String(m.id || m.conditionId || ''), m]));
+    const slugs = await _pmSportSlugs();
+    let tagAdded = 0;
+    for (const slug of slugs) {
+      let offset = 0;
+      while (true) {
+        const data = await get(`https://gamma-api.polymarket.com/events?active=true&limit=50&offset=${offset}&tag_slug=${slug}`);
+        const events = Array.isArray(data) ? data : [];
+        if (!events.length) break;
+        for (const ev of events) {
+          for (const m of (ev.markets || [])) {
+            const id = String(m.id || m.conditionId || m.questionID || '');
+            if (id && !byId.has(id)) { byId.set(id, m); tagAdded++; }
+          }
+        }
+        if (events.length < 50) break;
+        offset += 50;
+        await new Promise(r => setTimeout(r, 100));
+      }
+    }
+
+    const results = [...byId.values()];
+    write('/tmp/polymarket-raw.json', { fetchedAt: Date.now(), total: results.length, base: base.length, tagAdded, active: results.filter(m => m.active).length, markets: results });
+    console.log(`[polymarket] ${base.length} base + ${tagAdded} tag-added (${slugs.length} slugs) = ${results.length} total`);
   } catch (e) { console.error('[polymarket] error:', e.message); }
 }
 
