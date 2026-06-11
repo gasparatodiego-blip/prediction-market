@@ -38,10 +38,10 @@ const HIGH_IDF_THRESHOLD = 4.0;  // "truly distinctive" token threshold (df < N/
 const MIN_HIGH_IDF_SHARED = 2;   // pair must share ≥ 2 truly-distinctive tokens
                                   // separates entity matches (correct) from context matches (noise)
 
-// Stage 2
-const MIN_SPREAD_PP     = 3;     // gross spread threshold for cashable arb
-const MIN_SIGNAL_SPREAD = 5;     // spread threshold for signal (play-money) pair
-const ROI_CAP           = 80;    // discard ROI > 80% (false-positive guard)
+// Stage 2 — executable bid/ask arb math
+const MIN_SIGNAL_SPREAD = 5;      // mid-spread threshold for signal (play-money) pairs
+const MAX_SPREAD_WIDTH  = 0.10;   // yesAsk-yesBid > 10¢ on either leg → illiquid, skip cashable
+const SUSPICIOUS_ROI    = 15;     // netROI above 15% → quarantine (real arbs are ~1-8%)
 
 // Stage 3
 const MAX_CLAUDE_PAIRS  = 60;
@@ -274,6 +274,10 @@ function loadAndClean(raw) {
       const prob = Math.round(c.lastTradePrice * 100);
       if (prob <= 1 || prob >= 99) continue;
       const outcome = c.shortName || c.name || '';
+      // yesBid = 1 - bestBuyNoCost (what buyers would pay for NO → implied YES bid)
+      // yesAsk = bestBuyYesCost (lowest ask for YES)
+      const piYesAsk = c.bestBuyYesCost != null ? c.bestBuyYesCost : c.lastTradePrice;
+      const piYesBid = c.bestBuyNoCost  != null ? (1 - c.bestBuyNoCost) : c.lastTradePrice;
       markets.push({
         id: `pi-${m.id}-${c.id}`,
         platform:   'predictit',
@@ -281,6 +285,8 @@ function loadAndClean(raw) {
         baseTitle:  title,
         outcome,
         probability: prob,
+        yesBid:     +piYesBid.toFixed(4),
+        yesAsk:     +piYesAsk.toFixed(4),
         realMoney:  true,
         url: `https://www.predictit.org/markets/detail/${m.id}`,
       });
@@ -288,13 +294,14 @@ function loadAndClean(raw) {
     }
   }
 
-  // Manifold — BINARY only
+  // Manifold — BINARY only (play money, no real order book)
   for (const m of (raw.manifold || [])) {
     if (m.outcomeType !== 'BINARY' || m.probability == null) continue;
     const q = m.question || '';
     if (!q) continue;
     const prob = Math.round(m.probability * 100);
     if (prob <= 1 || prob >= 99) continue;
+    const single = m.probability;
     markets.push({
       id: `mf-${m.id}`,
       platform:   'manifold',
@@ -302,6 +309,8 @@ function loadAndClean(raw) {
       baseTitle:  q,
       outcome:    '',
       probability: prob,
+      yesBid:     single,  // play-money: no real book, use prob as pointlike price
+      yesAsk:     single,
       realMoney:  false,
       url: m.url || `https://manifold.markets/`,
     });
@@ -328,16 +337,18 @@ function loadAndClean(raw) {
       rawTitle:   tickerSuffix ? `${title} [outcome: ${tickerSuffix}]` : title,
       baseTitle:  title,
       outcome:    tickerSuffix,
-      tickerExtra,             // e.g. "world cup" for KXWC* tickers
-      suffixFullName,          // e.g. "mexico" for MEX suffix
+      tickerExtra,
+      suffixFullName,
       probability: prob,
+      yesBid:     bid,   // raw executable best bid for YES
+      yesAsk:     ask,   // raw executable best ask for YES
       realMoney:  true,
       url: `https://kalshi.com/markets/${m.ticker}`,
     });
     counts.ka++;
   }
 
-  // Polymarket — YES price from outcomePrices[0]
+  // Polymarket — YES price for similarity; bestBid/bestAsk for executable arb
   for (const m of (raw.polymarket || [])) {
     const q = m.question || '';
     if (!q) continue;
@@ -351,7 +362,6 @@ function loadAndClean(raw) {
       const ltp = parseFloat(m.lastTradePrice || '0');
       if (ltp > 0) prob = Math.round(ltp * 100);
     }
-    // Fallback: bestBid/bestAsk midpoint (tag-event markets often lack outcomePrices)
     if (prob == null) {
       const bid = parseFloat(m.bestBid || '0');
       const ask = parseFloat(m.bestAsk || '0');
@@ -360,6 +370,12 @@ function loadAndClean(raw) {
       else if (ask > 0 && ask < 1)  prob = Math.round(ask * 100);
     }
     if (prob == null || prob <= 1 || prob >= 99) continue;
+    // Executable prices: prefer bestBid/bestAsk; fall back to outcomePrices as pointlike
+    const pmBid = parseFloat(m.bestBid || '0');
+    const pmAsk = parseFloat(m.bestAsk || '0');
+    const pmSingle = prob / 100;
+    const yB = pmBid > 0 ? pmBid : pmSingle;
+    const yA = (pmAsk > 0 && pmAsk < 1) ? pmAsk : pmSingle;
     markets.push({
       id: `pm-${m.id || m.conditionId}`,
       platform:   'polymarket',
@@ -367,6 +383,8 @@ function loadAndClean(raw) {
       baseTitle:  q,
       outcome:    '',
       probability: prob,
+      yesBid:     yB,
+      yesAsk:     yA,
       realMoney:  true,
       url: m.slug ? `https://polymarket.com/event/${m.slug}` : 'https://polymarket.com',
     });
@@ -462,32 +480,74 @@ function candidatePairing(markets) {
   return { candidates };
 }
 
-// ── Stage 2: Arb pre-filter ───────────────────────────────────────────────────
+// ── Stage 2: Executable arb pre-filter ───────────────────────────────────────
+// ROI formula: buy YES on one platform + buy NO (= 1 - yesBid) on the other.
+// Correct arb: cost = yesAsk_A + (1 - yesBid_B); profit = 1 - cost; ROI = profit/cost.
+// We try both directions and take the cheaper one.
 
 function arbPrefilter(candidates, markets) {
-  const survivors = [];
+  const survivors   = [];
+  const quarantined = [];
 
   for (const c of candidates) {
     const a = markets[c.ai], b = markets[c.bi];
-    const spread = Math.abs(a.probability - b.probability);
 
-    if (a.realMoney && b.realMoney && spread >= MIN_SPREAD_PP) {
-      const low  = a.probability <= b.probability ? a : b;
-      const high = a.probability >  b.probability ? a : b;
-      const gross = low.probability > 0 ? (spread / low.probability) * 100 : 0;
-      if (gross > ROI_CAP || gross <= 0) continue;
-      const feeA  = PLATFORM_FEES[low.platform]  || 0;
-      const feeB  = PLATFORM_FEES[high.platform] || 0;
-      const net   = gross * (1 - feeA - feeB);
-      if (net <= 0) continue;
-      survivors.push({ ...c, a, b, spread, gross: +gross.toFixed(1), net: +net.toFixed(1), type: 'cashable' });
-
-    } else if ((!a.realMoney || !b.realMoney) && spread >= MIN_SIGNAL_SPREAD) {
-      survivors.push({ ...c, a, b, spread, gross: 0, net: 0, type: 'signal' });
+    // ── Signal path: at least one play-money leg ──────────────────────────
+    if (!a.realMoney || !b.realMoney) {
+      const spreadMid = Math.abs(a.probability - b.probability);
+      if (spreadMid >= MIN_SIGNAL_SPREAD) {
+        survivors.push({ ...c, a, b, spread: spreadMid, gross: 0, net: 0, type: 'signal' });
+      }
+      continue;
     }
+
+    // ── Cashable path: both real-money ────────────────────────────────────
+
+    // Guard 1: one-sided market (no bid or ask at limit)
+    if (a.yesBid <= 0 || a.yesAsk >= 1) continue;
+    if (b.yesBid <= 0 || b.yesAsk >= 1) continue;
+
+    // Guard 2: illiquid (bid-ask spread > 10¢ on either leg)
+    if ((a.yesAsk - a.yesBid) > MAX_SPREAD_WIDTH) continue;
+    if ((b.yesAsk - b.yesBid) > MAX_SPREAD_WIDTH) continue;
+
+    // Try both directions; pick the cheaper one
+    const dir1Cost = a.yesAsk + (1 - b.yesBid); // buy YES on A, buy NO on B
+    const dir2Cost = b.yesAsk + (1 - a.yesBid); // buy YES on B, buy NO on A
+    const [bestCost, bestDir] = dir1Cost <= dir2Cost
+      ? [dir1Cost, 1] : [dir2Cost, 2];
+
+    const grossProfit = 1 - bestCost;
+    if (grossProfit <= 0) continue; // not an arb at these prices
+
+    const grossROI = (grossProfit / bestCost) * 100;
+
+    // Fee-aware net ROI (win fees applied to both platforms)
+    const feeA  = PLATFORM_FEES[a.platform] || 0;
+    const feeB  = PLATFORM_FEES[b.platform] || 0;
+    const netROI = grossROI * (1 - feeA - feeB);
+    if (netROI <= 0) continue;
+
+    const entry = {
+      ...c, a, b,
+      spread:   Math.abs(a.probability - b.probability),
+      gross:    +grossROI.toFixed(2),
+      net:      +netROI.toFixed(2),
+      bestCost: +bestCost.toFixed(4),
+      bestDir,
+      type: 'cashable',
+    };
+
+    // Sanity quarantine: real executable arbs are typically 1-8%
+    if (netROI > SUSPICIOUS_ROI) {
+      quarantined.push(entry);
+      continue;
+    }
+
+    survivors.push(entry);
   }
 
-  // Prioritise cashable by net ROI, then signal by spread
+  // Cashable first (by netROI), then signal (by spread)
   survivors.sort((a, b) =>
     a.type === b.type
       ? (b.net || b.spread) - (a.net || a.spread)
@@ -496,8 +556,8 @@ function arbPrefilter(candidates, markets) {
 
   const nc = survivors.filter(s => s.type === 'cashable').length;
   const ns = survivors.filter(s => s.type === 'signal').length;
-  console.log(`[v2] Stage 2: ${candidates.length} candidates → ${survivors.length} survivors (${nc} cashable, ${ns} signal)`);
-  return survivors;
+  console.log(`[v2] Stage 2: ${candidates.length} candidates → ${survivors.length} survivors (${nc} cashable, ${ns} signal), ${quarantined.length} quarantined (netROI>${SUSPICIOUS_ROI}%)`);
+  return { survivors, quarantined };
 }
 
 // ── Stage 3: Haiku confirmation ───────────────────────────────────────────────
@@ -592,8 +652,10 @@ function formatOutput(confirmed) {
       cashable:        p.type === 'cashable',
       spread:          p.spread,
       grossRoi:        p.gross,
-      lowMarket:       { id: low.id,  platform: low.platform,  probability: low.probability,  url: low.url  },
-      highMarket:      { id: high.id, platform: high.platform, probability: high.probability, url: high.url },
+      bestCost:        p.bestCost,
+      bestDir:         p.bestDir,
+      lowMarket:       { id: low.id,  platform: low.platform,  probability: low.probability,  yesBid: low.yesBid,  yesAsk: low.yesAsk,  url: low.url  },
+      highMarket:      { id: high.id, platform: high.platform, probability: high.probability, yesBid: high.yesBid, yesAsk: high.yesAsk, url: high.url },
       outcome_a:       low.outcome,
       outcome_b:       high.outcome,
       confirmReason:   p.confirmReason,
@@ -614,30 +676,67 @@ function formatOutput(confirmed) {
 // ── Sanity check helpers ──────────────────────────────────────────────────────
 
 function reportSanityCheck(markets, candidates) {
-  console.log('\n── Sanity Check: KXWCGROUPWIN-26A-MEX ⟷ Polymarket Mexico Group A ──');
-  const kaWc = markets.find(m => m.id === 'ka-KXWCGROUPWIN-26A-MEX');
-  const pmMex = markets.find(m =>
-    m.platform === 'polymarket' &&
-    m.rawTitle.toLowerCase().includes('mexico') &&
-    m.rawTitle.toLowerCase().includes('group a')
-  );
+  const showPair = (label, findA, findB) => {
+    console.log(`\n── Sanity Check: ${label} ──`);
+    const mA = markets.find(findA);
+    const mB = markets.find(findB);
 
-  if (!kaWc)  console.log('  WARN: Kalshi KXWCGROUPWIN-26A-MEX NOT in cleaned markets');
-  else        console.log(`  Kalshi:     "${kaWc.rawTitle}" @ ${kaWc.probability}%`);
-  if (!pmMex) console.log('  WARN: Polymarket Mexico Group A NOT in cleaned markets');
-  else        console.log(`  Polymarket: "${pmMex.rawTitle}" @ ${pmMex.probability}%`);
+    if (!mA) { console.log('  WARN: market A NOT found'); return; }
+    if (!mB) { console.log('  WARN: market B NOT found'); return; }
 
-  if (kaWc && pmMex) {
-    const ki = markets.indexOf(kaWc), pi = markets.indexOf(pmMex);
+    const fmtBidAsk = m => `bid=${m.yesBid} ask=${m.yesAsk} mid=${m.probability}%`;
+    console.log(`  A: "${mA.rawTitle}" — ${fmtBidAsk(mA)}`);
+    console.log(`  B: "${mB.rawTitle}" — ${fmtBidAsk(mB)}`);
+
+    const ai = markets.indexOf(mA), bi = markets.indexOf(mB);
     const pair = candidates.find(c =>
-      (c.ai === ki && c.bi === pi) || (c.ai === pi && c.bi === ki)
+      (c.ai === ai && c.bi === bi) || (c.ai === bi && c.bi === ai)
     );
     if (pair) {
-      const spread = Math.abs(kaWc.probability - pmMex.probability);
-      console.log(`  Stage 1:  FOUND ✓  idfScore=${pair.idfScore}  spread=${spread}pp  (${spread < 3 ? 'spread<3pp → Stage 2 drops correctly' : 'spread≥3pp → cashable candidate'})`);
+      console.log(`  Stage 1: FOUND ✓  idfScore=${pair.idfScore}`);
+      // Compute arb cost manually to show why it's cashable or not
+      if (mA.realMoney && mB.realMoney) {
+        const d1 = mA.yesAsk + (1 - mB.yesBid);
+        const d2 = mB.yesAsk + (1 - mA.yesBid);
+        const best = Math.min(d1, d2);
+        const profit = 1 - best;
+        console.log(`  Arb costs: dir1=${d1.toFixed(4)} dir2=${d2.toFixed(4)} bestCost=${best.toFixed(4)}`);
+        console.log(`  Gross profit: ${profit.toFixed(4)} → ${profit > 0 ? `grossROI=${((profit/best)*100).toFixed(2)}%` : 'NO ARB (cost>$1)'}`);
+        if (mA.yesBid <= 0 || mA.yesAsk >= 1) console.log('  GUARD: mA is one-sided (yesBid<=0 or yesAsk>=1)');
+        if (mB.yesBid <= 0 || mB.yesAsk >= 1) console.log('  GUARD: mB is one-sided');
+        if ((mA.yesAsk - mA.yesBid) > MAX_SPREAD_WIDTH) console.log(`  GUARD: mA bid-ask spread ${(mA.yesAsk-mA.yesBid).toFixed(2)} > ${MAX_SPREAD_WIDTH}`);
+        if ((mB.yesAsk - mB.yesBid) > MAX_SPREAD_WIDTH) console.log(`  GUARD: mB bid-ask spread ${(mB.yesAsk-mB.yesBid).toFixed(2)} > ${MAX_SPREAD_WIDTH}`);
+      }
     } else {
-      console.log('  Stage 1:  NOT FOUND — pairing miss');
+      console.log('  Stage 1: NOT FOUND — pairing miss');
     }
+  };
+
+  showPair(
+    'KXWCGROUPWIN-26A-MEX ⟷ Polymarket Mexico Group A',
+    m => m.id === 'ka-KXWCGROUPWIN-26A-MEX',
+    m => m.platform === 'polymarket' && m.rawTitle.toLowerCase().includes('mexico') && m.rawTitle.toLowerCase().includes('group a')
+  );
+
+  // Brazil FPA: find all markets matching, group by platform
+  const brazilFpa = markets.filter(m => m.rawTitle.toLowerCase().includes('brazil') && m.rawTitle.toLowerCase().includes('fair play'));
+  if (brazilFpa.length < 2) {
+    console.log('\n── Sanity Check: Brazil WC Fair Play ──');
+    brazilFpa.forEach(m => console.log(`  Found: "${m.rawTitle}" (${m.platform}) bid=${m.yesBid} ask=${m.yesAsk}`));
+    if (brazilFpa.length === 0) console.log('  NOT in cleaned markets — may have resolved');
+    else console.log('  Only 1 market found — no cross-platform pair');
+  } else {
+    showPair('Brazil WC Fair Play', m => brazilFpa.indexOf(m) === 0, m => brazilFpa.indexOf(m) === 1);
+  }
+
+  const englandFpa = markets.filter(m => m.rawTitle.toLowerCase().includes('england') && m.rawTitle.toLowerCase().includes('fair play'));
+  if (englandFpa.length < 2) {
+    console.log('\n── Sanity Check: England WC Fair Play ──');
+    englandFpa.forEach(m => console.log(`  Found: "${m.rawTitle}" (${m.platform}) bid=${m.yesBid} ask=${m.yesAsk}`));
+    if (englandFpa.length === 0) console.log('  NOT in cleaned markets — may have resolved');
+    else console.log('  Only 1 market found — no cross-platform pair');
+  } else {
+    showPair('England WC Fair Play', m => englandFpa.indexOf(m) === 0, m => englandFpa.indexOf(m) === 1);
   }
 }
 
@@ -670,7 +769,7 @@ async function main() {
   const { candidates } = candidatePairing(markets);
 
   // Stage 2
-  const survivors = arbPrefilter(candidates, markets);
+  const { survivors, quarantined } = arbPrefilter(candidates, markets);
 
   // Stage 3
   const { confirmed, claudeCalls } = await haikuConfirm(survivors);
@@ -690,6 +789,7 @@ async function main() {
   console.log(`║  Total markets loaded         : ${String(markets.length).padEnd(16)} ║`);
   console.log(`║  Candidate pairs  (Stage 1)   : ${String(candidates.length).padEnd(16)} ║`);
   console.log(`║  Survivors        (Stage 2)   : ${String(survivors.length).padEnd(16)} ║`);
+  console.log(`║  Quarantined      (ROI>${SUSPICIOUS_ROI}%)    : ${String(quarantined.length).padEnd(16)} ║`);
   console.log(`║  Sent to Haiku    (Stage 3)   : ${String(Math.min(survivors.length, MAX_CLAUDE_PAIRS)).padEnd(16)} ║`);
   console.log(`║  Claude calls                 : ${String(claudeCalls).padEnd(16)} ║`);
   console.log(`║  Final cashable               : ${String(cashable.length).padEnd(16)} ║`);
@@ -705,8 +805,10 @@ async function main() {
     console.log('\n── Top Cashable Opportunities ──────────────────────');
     cashable.slice(0, 5).forEach(o => {
       console.log(`  ${o.platform_a} ↔ ${o.platform_b}: ${o.title.slice(0, 65)}`);
-      console.log(`    spread=${o.spread}pp  netROI=${o.roi}%  conf=${o.confidence}`);
-      console.log(`    low=${o.lowMarket.probability}% (${o.lowMarket.url?.slice(0, 55)})`);
+      console.log(`    spread=${o.spread}pp  grossROI=${o.grossRoi}%  netROI=${o.roi}%  bestCost=${o.bestCost}  dir=${o.bestDir}`);
+      console.log(`    A: bid=${o.lowMarket.yesBid}  ask=${o.lowMarket.yesAsk}  mid=${o.lowMarket.probability}%  (${o.lowMarket.platform})`);
+      console.log(`    B: bid=${o.highMarket.yesBid}  ask=${o.highMarket.yesAsk}  mid=${o.highMarket.probability}%  (${o.highMarket.platform})`);
+      if (o.lowMarket.url) console.log(`    url: ${o.lowMarket.url.slice(0, 75)}`);
     });
   }
 

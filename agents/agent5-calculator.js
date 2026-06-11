@@ -119,7 +119,7 @@ function calcOddsApiArb() {
         const high = entries[entries.length - 1];
         const spread = high.prob - low.prob;
         if (spread < 3) continue;
-        const roi = (spread / low.prob) * 100;
+        const roi = spread > 0 && spread < 100 ? (spread / (100 - spread)) * 100 : 0;
         if (roi > 300 || roi <= 0) continue;
 
         const question = `[${ev.sport_title}] ${ev.home_team} vs ${ev.away_team} — ${outcomeName}`;
@@ -171,7 +171,7 @@ function calcArb(matches) {
 
     const low  = a.probability <= b.probability ? a : b;
     const high = a.probability >  b.probability ? a : b;
-    const roi  = low.probability > 0 ? (spread / low.probability) * 100 : 0;
+    const roi  = spread > 0 && spread < 100 ? (spread / (100 - spread)) * 100 : 0;
     if (roi > 80 || roi <= 0) continue;
 
     const feeA   = PLATFORM_FEES[low.platform]  || 0;
