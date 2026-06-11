@@ -54,9 +54,13 @@ const PLATFORM_FEES = {
   polymarket: 0.02,
   predictit:  0.15,   // 10% win + 5% withdrawal
   manifold:   0.00,
+  futuur:     0.05,   // ~4-6% win fee (tax_real_money field); signal-only so not used in arb math
 };
-const REAL_MONEY = new Set(['kalshi', 'polymarket', 'predictit']);
-const DISPLAY    = { kalshi: 'Kalshi', polymarket: 'Polymarket', predictit: 'PredictIt', manifold: 'Manifold' };
+// realBook = true means the platform exposes executable bid/ask (CLOB or best-bid/ask).
+// Cashable arb requires realBook=true on BOTH legs.
+// realMoney=true but realBook=false → signal-only (Futuur: mid-price from orderbook API only)
+const REAL_BOOK = new Set(['kalshi', 'polymarket', 'predictit']);
+const DISPLAY   = { kalshi: 'Kalshi', polymarket: 'Polymarket', predictit: 'PredictIt', manifold: 'Manifold', futuur: 'Futuur' };
 
 // ── Text normalisation ────────────────────────────────────────────────────────
 
@@ -188,12 +192,29 @@ async function fetchPolymarketAll() {
   return all;
 }
 
+async function fetchFutuurAll() {
+  const all = [];
+  let offset = 0;
+  while (true) {
+    const data = await fetchJson(`https://api.futuur.com/api/v1/markets/?status=open&limit=100&offset=${offset}`);
+    if (!data?.results?.length) break;
+    all.push(...data.results);
+    const total = data.pagination?.total ?? all.length;
+    if (all.length >= total) break;
+    offset += 100;
+    await sleep(150);
+  }
+  console.log(`[v2/fetch] futuur: ${all.length} markets`);
+  return all;
+}
+
 async function freshFetch() {
   console.log('[v2/fetch] Raw data stale — running one-shot fetch...');
-  const [kalshi, piRaw, mfRaw] = await Promise.all([
+  const [kalshi, piRaw, mfRaw, futuur] = await Promise.all([
     fetchKalshiAll(),
     fetchJson('https://www.predictit.org/api/marketdata/all/'),
     fetchJson('https://api.manifold.markets/v0/markets?limit=100&sort=last-bet-time&order=desc'),
+    fetchFutuurAll(),
   ]);
   const polymarket = await fetchPolymarketAll();
   const result = {
@@ -202,9 +223,10 @@ async function freshFetch() {
     manifold:   Array.isArray(mfRaw) ? mfRaw : [],
     kalshi,
     polymarket,
+    futuur,
   };
   fs.writeFileSync(RAW_FILE, JSON.stringify(result, null, 2));
-  console.log(`[v2/fetch] saved — KA:${kalshi.length} PM:${polymarket.length} PI:${result.predictit.length} MF:${result.manifold.length}`);
+  console.log(`[v2/fetch] saved — KA:${kalshi.length} PM:${polymarket.length} PI:${result.predictit.length} MF:${result.manifold.length} FU:${futuur.length}`);
   return result;
 }
 
@@ -263,7 +285,7 @@ function kalshiTickerExtra(ticker) {
 
 function loadAndClean(raw) {
   const markets = [];
-  const counts  = { ka: 0, pm: 0, pi: 0, mf: 0 };
+  const counts  = { ka: 0, pm: 0, pi: 0, mf: 0, fu: 0 };
 
   // PredictIt — one market per CONTRACT (each contract = a specific outcome)
   for (const m of (raw.predictit || [])) {
@@ -288,6 +310,7 @@ function loadAndClean(raw) {
         yesBid:     +piYesBid.toFixed(4),
         yesAsk:     +piYesAsk.toFixed(4),
         realMoney:  true,
+        realBook:   true,
         url: `https://www.predictit.org/markets/detail/${m.id}`,
       });
       counts.pi++;
@@ -312,6 +335,7 @@ function loadAndClean(raw) {
       yesBid:     single,  // play-money: no real book, use prob as pointlike price
       yesAsk:     single,
       realMoney:  false,
+      realBook:   false,
       url: m.url || `https://manifold.markets/`,
     });
     counts.mf++;
@@ -343,6 +367,7 @@ function loadAndClean(raw) {
       yesBid:     bid,   // raw executable best bid for YES
       yesAsk:     ask,   // raw executable best ask for YES
       realMoney:  true,
+      realBook:   true,
       url: `https://kalshi.com/markets/${m.ticker}`,
     });
     counts.ka++;
@@ -386,12 +411,52 @@ function loadAndClean(raw) {
       yesBid:     yB,
       yesAsk:     yA,
       realMoney:  true,
+      realBook:   true,
       url: m.slug ? `https://polymarket.com/event/${m.slug}` : 'https://polymarket.com',
     });
     counts.pm++;
   }
 
-  console.log(`[v2] Stage 0: KA:${counts.ka} PM:${counts.pm} PI:${counts.pi} MF:${counts.mf} → ${markets.length} pass (prob 2–98)`);
+  // Futuur — multi-outcome, real-money USDC; mid-price only (realBook=false → signal-only)
+  // Each market outcome becomes a separate entry.  Single-outcome markets are effectively binary.
+  for (const m of (raw.futuur || [])) {
+    const baseTitle = (m.title || '').trim();
+    if (!baseTitle) continue;
+    const useMoney  = m.real_currency_available;
+    const rawOutcomes = Array.isArray(m.outcomes) ? m.outcomes : [];
+    for (const o of rawOutcomes) {
+      if (o.disabled) continue;
+      const mid = useMoney
+        ? (o.price?.USDC ?? o.price?.OOM ?? null)
+        : (o.price?.OOM ?? null);
+      if (mid == null) continue;
+      const prob = Math.round(mid * 100);
+      if (prob <= 1 || prob >= 99) continue;
+      const outcomeTitle = (o.title || '').trim();
+      // For single-outcome markets (effectively "Will X happen?"), the outcome label
+      // is usually redundant with the question — include it only if it adds info.
+      const rawTitle = rawOutcomes.length === 1
+        ? baseTitle
+        : `${baseTitle} [outcome: ${outcomeTitle}]`;
+      markets.push({
+        id:          `fu-${m.id}-${o.id}`,
+        platform:    'futuur',
+        rawTitle,
+        baseTitle,
+        outcome:     outcomeTitle,
+        probability: prob,
+        yesBid:      mid,  // mid-price only — no real executable book
+        yesAsk:      mid,
+        realMoney:   useMoney,
+        realBook:    false,  // signal-only; never enters cashable arb path
+        volume:      useMoney ? (m.volume_real_money ?? 0) : (m.volume_play_money ?? 0),
+        url: `https://futuur.com/q/${m.slug || m.id}`,
+      });
+      counts.fu++;
+    }
+  }
+
+  console.log(`[v2] Stage 0: KA:${counts.ka} PM:${counts.pm} PI:${counts.pi} MF:${counts.mf} FU:${counts.fu} → ${markets.length} pass (prob 2–98)`);
   return markets;
 }
 
@@ -492,8 +557,8 @@ function arbPrefilter(candidates, markets) {
   for (const c of candidates) {
     const a = markets[c.ai], b = markets[c.bi];
 
-    // ── Signal path: at least one play-money leg ──────────────────────────
-    if (!a.realMoney || !b.realMoney) {
+    // ── Signal path: either leg lacks executable orderbook (Manifold, Futuur) ──
+    if (!a.realBook || !b.realBook) {
       const spreadMid = Math.abs(a.probability - b.probability);
       if (spreadMid >= MIN_SIGNAL_SPREAD) {
         survivors.push({ ...c, a, b, spread: spreadMid, gross: 0, net: 0, type: 'signal' });
@@ -786,7 +851,9 @@ async function main() {
   console.log('\n╔══════════════════════════════════════════════════╗');
   console.log('║  matcher-v2 run summary                          ║');
   console.log('╠══════════════════════════════════════════════════╣');
+  const fuCount = markets.filter(m => m.platform === 'futuur').length;
   console.log(`║  Total markets loaded         : ${String(markets.length).padEnd(16)} ║`);
+  console.log(`║    of which Futuur            : ${String(fuCount).padEnd(16)} ║`);
   console.log(`║  Candidate pairs  (Stage 1)   : ${String(candidates.length).padEnd(16)} ║`);
   console.log(`║  Survivors        (Stage 2)   : ${String(survivors.length).padEnd(16)} ║`);
   console.log(`║  Quarantined      (ROI>${SUSPICIOUS_ROI}%)    : ${String(quarantined.length).padEnd(16)} ║`);

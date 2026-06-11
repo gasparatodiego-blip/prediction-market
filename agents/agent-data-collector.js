@@ -256,22 +256,43 @@ async function fetchBetfair() {
 async function fetchFutuur() {
   try {
     beat('agent-futuur');
-    const results = [];
-    for (let page = 1; page <= 3; page++) {
-      const data = await get(`https://futuur.com/api/v1/questions/?status=open&limit=100&page=${page}`);
-      if (!data || data._blocked || data._notFound) break;
-      const items = Array.isArray(data) ? data : (data.results ?? data.questions ?? data.data ?? []);
-      if (!items.length) break;
-      results.push(...items);
-      if (items.length < 100) break;
+    // Public API — no auth required: https://api.futuur.com/api/v1/markets/
+    const all = [];
+    let offset = 0;
+    while (true) {
+      const data = await get(`https://api.futuur.com/api/v1/markets/?status=open&limit=100&offset=${offset}`);
+      if (!data?.results?.length) break;
+      all.push(...data.results);
+      const total = data.pagination?.total ?? all.length;
+      if (all.length >= total) break;
+      offset += 100;
+      await new Promise(r => setTimeout(r, 150));
     }
-    const normalized = results.map(m => ({
-      id: m.id ?? m.slug, title: m.title ?? m.question ?? m.name ?? 'Unknown', description: m.description ?? '',
-      outcomes: (m.outcomes ?? m.answers ?? []).map((o, i) => ({ id: o.id ?? i, label: o.name ?? o.label ?? String(o), prob: typeof o.probability === 'number' ? o.probability : null })),
-      volume: m.volume ?? 0, endsAt: m.close_time ?? m.end_time ?? null, url: m.url ?? (m.slug ? `https://futuur.com/q/${m.slug}` : null),
+    // Normalise: expand each outcome into its own arb-ready entry
+    const normalized = all.map(m => ({
+      id:                    m.id,
+      title:                 m.title ?? '',
+      slug:                  m.slug ?? String(m.id),
+      status:                m.status,
+      real_currency_available: m.real_currency_available ?? false,
+      is_binary:             m.is_binary ?? false,
+      volume_real_money:     m.volume_real_money ?? 0,
+      volume_play_money:     m.volume_play_money ?? 0,
+      tax_real_money:        m.tax_real_money ?? 0,
+      bet_end_date:          m.bet_end_date ?? null,
+      category:              m.category ?? null,
+      outcomes: (m.outcomes ?? []).map(o => ({
+        id:       o.id,
+        title:    o.title ?? '',
+        disabled: o.disabled ?? false,
+        price: {
+          OOM:  o.price?.OOM  ?? null,
+          USDC: o.price?.USDC ?? null,
+        },
+      })),
     }));
     write('/tmp/futuur-raw.json', { fetchedAt: Date.now(), total: normalized.length, markets: normalized });
-    console.log(`[futuur] ${normalized.length} markets`);
+    console.log(`[futuur] ${normalized.length} markets (${all.filter(m => m.real_currency_available).length} real-money)`);
   } catch (e) { console.error('[futuur] error:', e.message); }
 }
 
