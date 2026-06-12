@@ -122,7 +122,13 @@ function kalshiPageToMarkets(data) {
       const bid = parseFloat(m.yes_bid_dollars || '0');
       const ask = parseFloat(m.yes_ask_dollars || '0');
       if (bid <= 0 && ask <= 0) continue;
-      out.push({ ticker: m.ticker, title: ev.title || '', yes_bid_dollars: m.yes_bid_dollars, yes_ask_dollars: m.yes_ask_dollars });
+      out.push({
+        ticker:          m.ticker,
+        title:           ev.title || '',
+        yes_bid_dollars: m.yes_bid_dollars,
+        yes_ask_dollars: m.yes_ask_dollars,
+        close_time:      m.close_time || ev.close_time || null,
+      });
     }
   }
   return out;
@@ -369,10 +375,11 @@ function loadAndClean(raw) {
       tickerExtra,
       suffixFullName,
       probability: prob,
-      yesBid:     bid,   // raw executable best bid for YES
-      yesAsk:     ask,   // raw executable best ask for YES
+      yesBid:     bid,
+      yesAsk:     ask,
       realMoney:  true,
       realBook:   true,
+      closeTime:  m.close_time || null,
       url: `https://kalshi.com/markets/${m.ticker}`,
     });
     counts.ka++;
@@ -406,17 +413,21 @@ function loadAndClean(raw) {
     const pmSingle = prob / 100;
     const yB = pmBid > 0 ? pmBid : pmSingle;
     const yA = (pmAsk > 0 && pmAsk < 1) ? pmAsk : pmSingle;
+    let clobTokenId = null;
+    try { clobTokenId = JSON.parse(m.clobTokenIds || '[]')[0] || null; } catch {}
     markets.push({
       id: `pm-${m.id || m.conditionId}`,
-      platform:   'polymarket',
-      rawTitle:   q,
-      baseTitle:  q,
-      outcome:    '',
-      probability: prob,
-      yesBid:     yB,
-      yesAsk:     yA,
-      realMoney:  true,
-      realBook:   true,
+      platform:     'polymarket',
+      rawTitle:     q,
+      baseTitle:    q,
+      outcome:      '',
+      probability:  prob,
+      yesBid:       yB,
+      yesAsk:       yA,
+      realMoney:    true,
+      realBook:     true,
+      closeTime:    m.endDate || m.endDateIso || null,
+      clobTokenId,
       url: m.slug ? `https://polymarket.com/event/${m.slug}` : 'https://polymarket.com',
     });
     counts.pm++;
@@ -768,6 +779,14 @@ function formatOutput(confirmed) {
       outcome_a:       low.outcome,
       outcome_b:       high.outcome,
       confirmReason:   p.confirmReason,
+      // Time / capital-efficiency enrichment
+      resolutionDate:  p.resolutionDate  ?? null,
+      daysToResolution: p.daysToResolution ?? null,
+      annualizedROI:   p.annualizedROI   ?? null,
+      lockupFlag:      p.lockupFlag      ?? null,
+      // Depth enrichment
+      capacityUsd:     p.capacityUsd     ?? null,
+      capacityFlag:    p.capacityFlag    ?? null,
     };
   });
 
@@ -849,6 +868,147 @@ function reportSanityCheck(markets, candidates) {
   }
 }
 
+// ── Enrichment: time + capacity ───────────────────────────────────────────────
+// computeCapacity sweeps YES-ask and NO-ask ladders simultaneously and
+// accumulates $ deployed until the combined per-unit cost reaches $1.00.
+// Returns total $ deployable, or null if book data was unavailable.
+//
+// Kalshi orderbook_fp: { yes_dollars: [["price$","qty$"],...], no_dollars: [[...]] }
+//   yes_dollars = YES bids (buyers); no_dollars = NO bids (buyers)
+//   YES ask derived from NO bids: ask = 1 - no_bid_price; qty in $
+//   NO  ask derived from YES bids: no_ask = 1 - yes_bid_price; qty in $
+//
+// Polymarket CLOB: { bids: [{price,size},...], asks: [{price,size},...] }
+//   asks[] = YES ask prices (ascending); bids[] = YES bid prices (descending)
+//   NO ask prices derived from YES bids: no_ask = 1 - bid_price
+
+function computeCapacity(arb, yesLeg, noLeg, kalshiBook, pmBook) {
+  let yesAsks = [];
+  let noAsks  = [];
+
+  if (yesLeg.platform === 'kalshi' && kalshiBook) {
+    // YES ask derived from NO bids: sort descending by price, YES ask = 1 - no_bid
+    const noBids = (kalshiBook.no_dollars || [])
+      .map(([p, q]) => ({ price: parseFloat(p), qty: parseFloat(q) }))
+      .sort((a, b) => b.price - a.price);
+    yesAsks = noBids
+      .map(x => ({ price: 1 - x.price, qty: x.qty }))
+      .filter(x => x.price > 0 && x.price < 1);
+  } else if (yesLeg.platform === 'polymarket' && pmBook) {
+    yesAsks = (pmBook.asks || [])
+      .map(a => ({ price: parseFloat(a.price), qty: parseFloat(a.size) }))
+      .filter(x => x.price > 0 && x.price < 1 && x.qty > 0)
+      .sort((a, b) => a.price - b.price);
+  }
+
+  if (noLeg.platform === 'kalshi' && kalshiBook) {
+    // NO ask derived from YES bids: sort descending, NO ask = 1 - yes_bid
+    const yesBids = (kalshiBook.yes_dollars || [])
+      .map(([p, q]) => ({ price: parseFloat(p), qty: parseFloat(q) }))
+      .sort((a, b) => b.price - a.price);
+    noAsks = yesBids
+      .map(x => ({ price: 1 - x.price, qty: x.qty }))
+      .filter(x => x.price > 0 && x.price < 1);
+  } else if (noLeg.platform === 'polymarket' && pmBook) {
+    const yesBids = (pmBook.bids || [])
+      .map(b => ({ price: parseFloat(b.price), qty: parseFloat(b.size) }))
+      .filter(x => x.price > 0 && x.price < 1 && x.qty > 0)
+      .sort((a, b) => b.price - a.price);
+    noAsks = yesBids.map(b => ({ price: 1 - b.price, qty: b.qty }));
+  }
+
+  if (yesAsks.length === 0 || noAsks.length === 0) return null;
+
+  let totalDeployed = 0;
+  let yi = 0, ni = 0;
+  let yqty = yesAsks[0].qty, nqty = noAsks[0].qty;
+
+  while (yi < yesAsks.length && ni < noAsks.length) {
+    const yP = yesAsks[yi].price;
+    const nP = noAsks[ni].price;
+    if (yP + nP >= 1.00) break;
+    const stepQty = Math.min(yqty, nqty);
+    totalDeployed += stepQty * (yP + nP);
+    yqty -= stepQty;
+    nqty -= stepQty;
+    if (yqty < 1e-8) { yi++; if (yi < yesAsks.length) yqty = yesAsks[yi].qty; }
+    if (nqty < 1e-8) { ni++; if (ni < noAsks.length)  nqty = noAsks[ni].qty;  }
+  }
+
+  return totalDeployed > 0 ? +totalDeployed.toFixed(2) : 0;
+}
+
+async function enrichArbs(confirmed) {
+  if (confirmed.length === 0) return confirmed;
+  console.log(`[v2/enrich] enriching ${confirmed.length} confirmed cashable arb(s)...`);
+  const now = Date.now();
+
+  for (const arb of confirmed) {
+    if (arb.type !== 'cashable') continue;
+    const legA = arb.a, legB = arb.b;
+
+    // ── Time ────────────────────────────────────────────────────────────
+    const tsA = legA.closeTime ? new Date(legA.closeTime).getTime() : null;
+    const tsB = legB.closeTime ? new Date(legB.closeTime).getTime() : null;
+    const resTs = (tsA && tsB) ? Math.min(tsA, tsB) : (tsA || tsB || null);
+
+    arb.resolutionDate   = resTs ? new Date(resTs).toISOString().slice(0, 10) : null;
+    arb.daysToResolution = resTs ? Math.round((resTs - now) / 86_400_000) : null;
+    arb.annualizedROI    = (arb.daysToResolution > 0)
+      ? +(arb.net * 365 / arb.daysToResolution).toFixed(2) : null;
+    arb.lockupFlag       = (arb.daysToResolution > 120 && arb.net < 3)
+      ? 'low value - capital lockup' : null;
+
+    // ── Capacity ────────────────────────────────────────────────────────
+    const yesLeg = arb.bestDir === 1 ? legA : legB;
+    const noLeg  = arb.bestDir === 1 ? legB : legA;
+
+    arb.capacityUsd  = null;
+    arb.capacityFlag = 'depth unknown';
+
+    let kalshiBook = null, pmBook = null;
+
+    const kalshiLeg = [legA, legB].find(l => l.platform === 'kalshi');
+    if (kalshiLeg) {
+      const ticker = kalshiLeg.id.replace(/^ka-/, '');
+      try {
+        const data = await fetchJson(`https://api.elections.kalshi.com/trade-api/v2/markets/${ticker}/orderbook`);
+        if (data?.orderbook_fp) kalshiBook = data.orderbook_fp;
+        else console.log(`[v2/enrich] Kalshi book empty for ${ticker}: keys=${Object.keys(data||{}).join(',')}`);
+      } catch (e) {
+        console.log(`[v2/enrich] Kalshi book fetch failed: ${e.message}`);
+      }
+    }
+
+    const pmLeg = [legA, legB].find(l => l.platform === 'polymarket');
+    if (pmLeg?.clobTokenId) {
+      try {
+        const data = await fetchJson(`https://clob.polymarket.com/book?token_id=${pmLeg.clobTokenId}`);
+        if (data?.bids || data?.asks) pmBook = data;
+        else console.log(`[v2/enrich] PM CLOB book empty for ${pmLeg.clobTokenId?.slice(0, 20)}...`);
+      } catch (e) {
+        console.log(`[v2/enrich] PM CLOB fetch failed: ${e.message}`);
+      }
+    } else if (pmLeg) {
+      console.log(`[v2/enrich] PM leg has no clobTokenId (id=${pmLeg.id})`);
+    }
+
+    const cap = computeCapacity(arb, yesLeg, noLeg, kalshiBook, pmBook);
+    arb.capacityUsd  = cap;
+    arb.capacityFlag = (cap !== null) ? null : 'depth unknown';
+
+    await sleep(300);
+  }
+
+  // Rank by annualizedROI desc (nulls last)
+  confirmed.sort((x, y) => {
+    if (x.annualizedROI !== null && y.annualizedROI !== null) return y.annualizedROI - x.annualizedROI;
+    return (x.annualizedROI !== null) ? -1 : 1;
+  });
+
+  return confirmed;
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -883,6 +1043,9 @@ async function main() {
   // Stage 3
   const { confirmed, claudeCalls, sentCount } = await haikuConfirm(survivors);
 
+  // Enrichment (time + capacity); enrichArbs sorts confirmed in-place by annualizedROI
+  await enrichArbs(confirmed);
+
   // Output
   const output = formatOutput(confirmed);
   fs.writeFileSync(OUT_FILE, JSON.stringify(output, null, 2));
@@ -914,13 +1077,17 @@ async function main() {
 
   // Top cashable
   if (cashable.length > 0) {
-    console.log('\n── Top Cashable Opportunities ──────────────────────');
-    cashable.slice(0, 5).forEach(o => {
-      console.log(`  ${o.platform_a} ↔ ${o.platform_b}: ${o.title.slice(0, 65)}`);
-      console.log(`    spread=${o.spread}pp  grossROI=${o.grossRoi}%  netROI=${o.roi}%  bestCost=${o.bestCost}  dir=${o.bestDir}`);
-      console.log(`    A: bid=${o.lowMarket.yesBid}  ask=${o.lowMarket.yesAsk}  mid=${o.lowMarket.probability}%  (${o.lowMarket.platform})`);
-      console.log(`    B: bid=${o.highMarket.yesBid}  ask=${o.highMarket.yesAsk}  mid=${o.highMarket.probability}%  (${o.highMarket.platform})`);
-      if (o.lowMarket.url) console.log(`    url: ${o.lowMarket.url.slice(0, 75)}`);
+    console.log('\n── Cashable Opportunities (ranked by annualizedROI) ─');
+    cashable.forEach(o => {
+      console.log(`\n  ${o.platform_a} ↔ ${o.platform_b}: ${o.title.slice(0, 65)}`);
+      console.log(`    netROI=${o.roi}%  annualROI=${o.annualizedROI !== null ? o.annualizedROI + '%/yr' : 'n/a'}  bestCost=$${o.bestCost}  dir=${o.bestDir}`);
+      console.log(`    resolution: ${o.resolutionDate ?? 'unknown'}  days: ${o.daysToResolution ?? '?'}`);
+      if (o.lockupFlag) console.log(`    ⚠ ${o.lockupFlag}`);
+      const capStr = o.capacityUsd !== null ? `$${o.capacityUsd}` : o.capacityFlag;
+      console.log(`    capacity: ${capStr}`);
+      console.log(`    A(low):  bid=${o.lowMarket.yesBid}  ask=${o.lowMarket.yesAsk}  mid=${o.lowMarket.probability}%  [${o.lowMarket.platform}]`);
+      console.log(`    B(high): bid=${o.highMarket.yesBid}  ask=${o.highMarket.yesAsk}  mid=${o.highMarket.probability}%  [${o.highMarket.platform}]`);
+      if (o.lowMarket.url) console.log(`    url: ${o.lowMarket.url.slice(0, 80)}`);
     });
   }
 
