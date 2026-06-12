@@ -86,77 +86,112 @@ function saveToDb(opportunities) {
   }
 }
 
-// Cross-bookmaker arb from The Odds API events
+// ── OddsAPI arb constants ─────────────────────────────────────────────────────
+const ODDS_MIN_MARGIN    = 0;              // % — include all positive margins
+const ODDS_STALE_MARGIN  = 5;             // % — flag as likely stale / limit-only
+const ODDS_STAKE_SAMPLE  = 1_000;         // $ — reference stake for stake-split output
+const ODDS_MAX_AGE_MS    = 8 * 3_600_000; // 8 h — matches the 6 h live-fetch cadence
+const ODDS_SNAPSHOT_FILE = '/tmp/odds-snapshot.json'; // offline cache takes priority
+
+// Per-event arb check.
+// For each outcome find the BEST decimal odds across all bookmakers, then
+// test whether Σ(1/bestOdds_i) < 1 — the only correct arb condition.
+// Requires legs from ≥ 2 different bookmakers (single-book "arb" isn't executable).
+// Works for both 2-way (h2h without draw) and 3-way (h2h with draw).
+// Ported from MIT reference: github.com/carterlasalle/SportsArbFinder
+function findEventArb(ev, marketKey) {
+  const best = {}; // outcome name → { odds, bookmaker }
+  for (const bm of (ev.bookmakers || [])) {
+    const market = (bm.markets || []).find(m => m.key === marketKey);
+    if (!market) continue;
+    for (const o of (market.outcomes || [])) {
+      if (!o.price || o.price <= 1) continue;
+      if (!best[o.name] || o.price > best[o.name].odds)
+        best[o.name] = { odds: o.price, bookmaker: bm.title || bm.key };
+    }
+  }
+  const names = Object.keys(best);
+  if (names.length < 2) return null;
+  if (new Set(names.map(n => best[n].bookmaker)).size < 2) return null; // single-book guard
+  const legs = names.map(n => ({
+    outcome: n, bookmaker: best[n].bookmaker,
+    odds: best[n].odds, impliedProb: 1 / best[n].odds,
+  }));
+  const impliedSum = legs.reduce((s, l) => s + l.impliedProb, 0);
+  if (impliedSum >= 1) return null;
+  return { margin: (1 / impliedSum - 1) * 100, legs, impliedSum };
+}
+
+// Cross-bookmaker arb from The Odds API events.
+// Correct formula: pick best odds per outcome across bookmakers, sum implied probs.
+// If Σ(1/bestOdds_i) < 1 → guaranteed profit regardless of outcome.
 function calcOddsApiArb() {
-  const results = [];
+  const actionable = [], stale = [];
   try {
-    if (!fs.existsSync(ODDS_API_FILE)) return results;
-    const raw  = JSON.parse(fs.readFileSync(ODDS_API_FILE, 'utf8'));
-    const age  = Date.now() - (raw.fetchedAt || 0);
-    if (age > 600_000) return results; // stale > 10 min
+    // Prefer offline snapshot; fall back to live-fetched file
+    const filePath = [ODDS_SNAPSHOT_FILE, ODDS_API_FILE].find(f => fs.existsSync(f));
+    if (!filePath) return [];
+    const raw = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    if (filePath === ODDS_API_FILE) {
+      const age = Date.now() - (raw.fetchedAt || 0);
+      if (age > ODDS_MAX_AGE_MS) {
+        console.log('[calculator] odds-api data too old, skipping');
+        return [];
+      }
+    }
     const events = raw.events || [];
+    if (!events.length) {
+      console.log('[calculator] odds-api: 0 events (quota exhausted or no snapshot)');
+      return [];
+    }
 
     for (const ev of events) {
-      const bookmakers = ev.bookmakers || [];
-      // Collect implied probs per outcome across all bookmakers
-      const outcomeProbs = {}; // outcome name → [{bm, prob}]
-      for (const bm of bookmakers) {
-        const h2h = (bm.markets || []).find(m => m.key === 'h2h');
-        if (!h2h) continue;
-        for (const outcome of h2h.outcomes || []) {
-          if (!outcome.price || outcome.price <= 1) continue;
-          const prob = (1 / outcome.price) * 100;
-          if (!outcomeProbs[outcome.name]) outcomeProbs[outcome.name] = [];
-          outcomeProbs[outcome.name].push({ bm: bm.title || bm.key, prob });
-        }
-      }
+      const result = findEventArb(ev, 'h2h');
+      if (!result || result.margin < ODDS_MIN_MARGIN) continue;
+      const { margin, legs, impliedSum } = result;
 
-      // For each outcome, find spread between highest and lowest bookmaker
-      for (const [outcomeName, entries] of Object.entries(outcomeProbs)) {
-        if (entries.length < 2) continue;
-        entries.sort((a, b) => a.prob - b.prob);
-        const low  = entries[0];
-        const high = entries[entries.length - 1];
-        const spread = high.prob - low.prob;
-        if (spread < 3) continue;
-        const roi = spread > 0 && spread < 100 ? (spread / (100 - spread)) * 100 : 0;
-        if (roi > 300 || roi <= 0) continue;
+      // Optimal stake split: stake_i = S × (1/odds_i) / Σ(1/odds_j)
+      // guarantees equal payout = S / impliedSum regardless of outcome
+      const withStakes = legs.map(leg => ({
+        ...leg,
+        stake:  +(ODDS_STAKE_SAMPLE * leg.impliedProb / impliedSum).toFixed(2),
+        payout: +(ODDS_STAKE_SAMPLE * leg.impliedProb / impliedSum * leg.odds).toFixed(2),
+      }));
 
-        const question = `[${ev.sport_title}] ${ev.home_team} vs ${ev.away_team} — ${outcomeName}`;
-        results.push({
-          question,
-          lowMarket: {
-            id:          `odds-low-${ev.id}-${outcomeName}`,
-            platform:    'oddsapi',
-            bookmaker:   low.bm,
-            probability: Math.round(low.prob * 10) / 10,
-            url:         null,
-            volume:      null,
-            liquidity:   null,
-            expiresAt:   ev.commence_time ? new Date(ev.commence_time).getTime() : null,
-          },
-          highMarket: {
-            id:          `odds-high-${ev.id}-${outcomeName}`,
-            platform:    'oddsapi',
-            bookmaker:   high.bm,
-            probability: Math.round(high.prob * 10) / 10,
-            url:         null,
-            volume:      null,
-            liquidity:   null,
-            expiresAt:   ev.commence_time ? new Date(ev.commence_time).getTime() : null,
-          },
-          spread:     Math.round(spread * 10) / 10,
-          roi:        Math.round(roi * 10) / 10,
-          earnPer100: Math.round((roi / 100) * 100 * 10) / 10,
-          confidence: 0.9,
-          category:   'sports/bookmaker',
-        });
-      }
+      const sorted   = [...withStakes].sort((a, b) => b.impliedProb - a.impliedProb);
+      const expiry   = ev.commence_time ? new Date(ev.commence_time).getTime() : null;
+      const mkMarket = (leg, role) => ({
+        id: `odds-${ev.id}-${role}`, platform: 'oddsapi', bookmaker: leg.bookmaker,
+        probability: Math.round(leg.impliedProb * 100), url: null, volume: null, expiresAt: expiry,
+      });
+
+      const opp = {
+        question:      `[${ev.sport_title}] ${ev.home_team} vs ${ev.away_team}`,
+        sport:         ev.sport_title,
+        market:        'h2h',
+        commence_time: ev.commence_time,
+        legs:          withStakes,
+        impliedSum:    +impliedSum.toFixed(6),
+        margin:        +margin.toFixed(4),
+        roi:           +margin.toFixed(2),
+        spread:        +((sorted[0].impliedProb - sorted.at(-1).impliedProb) * 100).toFixed(2),
+        stale:         margin > ODDS_STALE_MARGIN,
+        earnPer100:    +margin.toFixed(2),
+        confidence:    margin > ODDS_STALE_MARGIN ? 0.3 : 0.9,
+        category:      'sports/bookmaker',
+        lowMarket:     mkMarket(sorted.at(-1), 'high'),
+        highMarket:    mkMarket(sorted[0],     'low'),
+      };
+      (margin > ODDS_STALE_MARGIN ? stale : actionable).push(opp);
     }
   } catch (e) {
     console.error('[calculator] odds-api arb error:', e.message);
   }
-  return results.sort((a, b) => b.roi - a.roi);
+  console.log(`[calculator] odds-api: ${actionable.length} actionable, ${stale.length} stale-flagged`);
+  return [
+    ...actionable.sort((a, b) => b.margin - a.margin),
+    ...stale.sort((a, b) => b.margin - a.margin),
+  ];
 }
 
 function calcArb(matches) {

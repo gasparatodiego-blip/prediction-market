@@ -9,10 +9,17 @@ const OUT          = '/tmp/markets-raw.json';
 const ODDS_OUT     = '/tmp/odds-api-raw.json';
 const HB_FILE      = '/tmp/agent-heartbeats.json';
 const INTERVAL     = 60_000;
-const ODDS_INTERVAL = 300_000; // 5 min — be quota-friendly
+const ODDS_INTERVAL = 6 * 60 * 60 * 1000; // 6 h — ~4×/day, preserves monthly quota
 
-const ODDS_API_KEY  = 'aff711ab10f3f1fba585e30405329c7c';
-const ODDS_SPORTS   = [
+// ── OddsAPI quota safety ──────────────────────────────────────────────────────
+// Live fetch is DISABLED by default — set ODDS_API_LIVE=1 to enable.
+// The free tier (500 req/month) burns out in <9h at the old 5-min cadence.
+// When enabled, fetch at most 4× per day (every 6 h).
+const ODDS_API_LIVE  = process.env.ODDS_API_LIVE === '1';
+const ODDS_API_KEY   = 'aff711ab10f3f1fba585e30405329c7c';
+const ODDS_SNAPSHOT  = '/tmp/odds-snapshot.json'; // offline cache; calculator prefers this
+const ODDS_LOW_QUOTA = 20; // stop live fetching when fewer than this many requests remain
+const ODDS_SPORTS    = [
   'soccer_fifa_world_cup',
   'americanfootball_nfl',
   'baseball_mlb',
@@ -42,16 +49,83 @@ function fetchJson(url) {
   });
 }
 
+// Fetch one OddsAPI URL and return { data, remaining, used, status }
+function fetchOddsRaw(url) {
+  return new Promise(resolve => {
+    const mod = url.startsWith('https') ? https : http;
+    const req = mod.get(url, { headers: { 'User-Agent': 'prediction-arb-scanner/1.0' }, timeout: 15000 }, res => {
+      const remaining = parseInt(res.headers['x-requests-remaining'] ?? '-1', 10);
+      const used      = parseInt(res.headers['x-requests-used']      ?? '-1', 10);
+      let body = '';
+      res.on('data', d => body += d);
+      res.on('end', () => {
+        try { resolve({ data: JSON.parse(body), remaining, used, status: res.statusCode }); }
+        catch { resolve({ data: null, remaining, used, status: res.statusCode }); }
+      });
+    });
+    req.on('error', () => resolve({ data: null, remaining: -1, used: -1, status: 0 }));
+    req.on('timeout', () => { req.destroy(); resolve({ data: null, remaining: -1, used: -1, status: 0 }); });
+  });
+}
+
 async function fetchOddsApi() {
-  console.log('[fetcher] fetching The Odds API...');
+  if (!ODDS_API_LIVE) {
+    console.log('[fetcher] odds-api: ODDS_API_LIVE not set — skipping live fetch (quota guard)');
+    return;
+  }
+
+  // Serve offline snapshot if it exists and is fresh enough
+  if (fs.existsSync(ODDS_SNAPSHOT)) {
+    try {
+      const snap    = JSON.parse(fs.readFileSync(ODDS_SNAPSHOT, 'utf8'));
+      const snapAge = Date.now() - (snap.fetchedAt || 0);
+      if (snapAge < ODDS_INTERVAL && Array.isArray(snap.events) && snap.events.length > 0) {
+        console.log(`[fetcher] odds-api: using snapshot (${Math.round(snapAge / 60000)}m old, ${snap.events.length} events)`);
+        fs.writeFileSync(ODDS_OUT, JSON.stringify(snap, null, 2));
+        return;
+      }
+    } catch {}
+  }
+
+  console.log('[fetcher] odds-api: fetching live...');
   const results = [];
+  let quotaOk = true;
+
   for (const sport of ODDS_SPORTS) {
     const url = `https://api.the-odds-api.com/v4/sports/${sport}/odds/?apiKey=${ODDS_API_KEY}&regions=eu&markets=h2h&oddsFormat=decimal`;
-    const data = await fetchJson(url);
+    const { data, remaining, used, status } = await fetchOddsRaw(url);
+
+    if (status === 429) {
+      console.log('[fetcher] odds-api: 429 rate-limited — stopping, not overwriting file');
+      quotaOk = false;
+      break;
+    }
+    if (status === 401) {
+      console.log('[fetcher] odds-api: 401 unauthorized — check API key');
+      quotaOk = false;
+      break;
+    }
+    if (remaining >= 0) {
+      console.log(`[fetcher] odds-api [${sport}]: remaining=${remaining} used=${used}`);
+      if (remaining <= ODDS_LOW_QUOTA) {
+        console.log(`[fetcher] odds-api: quota low (${remaining} left) — stopping to preserve reserve`);
+        quotaOk = false;
+        break;
+      }
+    }
     if (Array.isArray(data)) results.push(...data);
+    await sleep(500);
   }
-  fs.writeFileSync(ODDS_OUT, JSON.stringify({ fetchedAt: Date.now(), events: results }, null, 2));
-  console.log(`[fetcher] odds-api saved — ${results.length} events`);
+
+  if (!results.length) {
+    console.log('[fetcher] odds-api: 0 events returned — not overwriting existing file');
+    return;
+  }
+
+  const out = { fetchedAt: Date.now(), events: results };
+  fs.writeFileSync(ODDS_OUT,      JSON.stringify(out, null, 2));
+  fs.writeFileSync(ODDS_SNAPSHOT, JSON.stringify(out, null, 2)); // update offline cache
+  console.log(`[fetcher] odds-api saved — ${results.length} events (quotaOk=${quotaOk})`);
 }
 
 function kalshiPageToMarkets(eventsData) {
@@ -185,6 +259,11 @@ async function fetchAll() {
 }
 
 fetchAll();
-fetchOddsApi();
 setInterval(fetchAll, INTERVAL);
-setInterval(fetchOddsApi, ODDS_INTERVAL);
+// OddsAPI: only run when explicitly enabled (ODDS_API_LIVE=1) to protect monthly quota
+if (ODDS_API_LIVE) {
+  fetchOddsApi();
+  setInterval(fetchOddsApi, ODDS_INTERVAL);
+} else {
+  console.log('[fetcher] odds-api live fetch disabled (set ODDS_API_LIVE=1 to enable)');
+}
