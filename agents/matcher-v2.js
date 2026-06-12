@@ -43,9 +43,14 @@ const MIN_SIGNAL_SPREAD = 5;      // mid-spread threshold for signal (play-money
 const MAX_SPREAD_WIDTH  = 0.10;   // yesAsk-yesBid > 10¢ on either leg → illiquid, skip cashable
 const SUSPICIOUS_ROI    = 15;     // netROI above 15% → quarantine (real arbs are ~1-8%)
 
-// Stage 3
-const MAX_CLAUDE_PAIRS  = 60;
-const CONFIRM_BATCH     = 10;    // pairs per Haiku call
+// Stage 3 — Haiku selection budget
+const MAX_CLAUDE_PAIRS   = 60;
+const CONFIRM_BATCH      = 10;   // pairs per Haiku call
+// Real executable arbs cluster in the plausible band; outside it candidates are
+// either too thin (noise) or suspiciously wide (semantic mismatch / stale price).
+const ARB_BAND_LOW       = 2.0;  // netROI% lower bound for plausible-band priority
+const ARB_BAND_HIGH      = 8.0;  // netROI% upper bound for plausible-band priority
+const HAIKU_BAND_SLOTS   = 40;   // max slots reserved for the plausible band
 
 // ── Platform metadata ─────────────────────────────────────────────────────────
 
@@ -626,14 +631,53 @@ function arbPrefilter(candidates, markets) {
 }
 
 // ── Stage 3: Haiku confirmation ───────────────────────────────────────────────
+// Only cashable pairs go to Haiku.  Signal pairs are already categorised.
+//
+// Selection strategy: real executable arbs cluster in the plausible band
+// (ARB_BAND_LOW–ARB_BAND_HIGH).  Candidates just below the 15% quarantine
+// ceiling are the most likely semantic mismatches — don't waste all slots there.
+//
+//   1. Fill up to HAIKU_BAND_SLOTS from the plausible band (sorted by netROI asc).
+//   2. Fill remaining slots with a uniform sample across the rest of the cashable
+//      distribution (both tails: 0–ARB_BAND_LOW and ARB_BAND_HIGH–SUSPICIOUS_ROI).
+
+function selectForHaiku(cashableSurvivors) {
+  const band = cashableSurvivors.filter(s => s.net >= ARB_BAND_LOW && s.net <= ARB_BAND_HIGH);
+  const rest = cashableSurvivors.filter(s => s.net < ARB_BAND_LOW || s.net > ARB_BAND_HIGH);
+
+  band.sort((a, b) => a.net - b.net);  // lowest plausible ROI first
+  const selected = band.slice(0, HAIKU_BAND_SLOTS);
+
+  const remaining = MAX_CLAUDE_PAIRS - selected.length;
+  if (remaining > 0 && rest.length > 0) {
+    rest.sort((a, b) => a.net - b.net);
+    const step = rest.length / remaining;
+    for (let i = 0; i < remaining; i++) {
+      const idx = Math.min(Math.floor(i * step), rest.length - 1);
+      selected.push(rest[idx]);
+    }
+  }
+
+  return selected.slice(0, MAX_CLAUDE_PAIRS);
+}
 
 async function haikuConfirm(survivors) {
-  const toSend = survivors.slice(0, MAX_CLAUDE_PAIRS);
-  if (toSend.length === 0) {
-    console.log('[v2] Stage 3: no survivors to confirm');
-    return { confirmed: [], claudeCalls: 0 };
+  const cashable = survivors.filter(s => s.type === 'cashable');
+
+  if (cashable.length === 0) {
+    console.log('[v2] Stage 3: no cashable survivors to confirm');
+    return { confirmed: [], claudeCalls: 0, sentCount: 0 };
   }
+
+  const toSend = selectForHaiku(cashable);
+
+  // ROI distribution of the selected set
+  const rois = toSend.map(p => p.net).sort((a, b) => a - b);
+  const median = rois[Math.floor(rois.length / 2)] ?? 0;
+  const inBand = rois.filter(r => r >= ARB_BAND_LOW && r <= ARB_BAND_HIGH).length;
   console.log(`[v2] Stage 3: sending ${toSend.length} pairs to Haiku in batches of ${CONFIRM_BATCH}`);
+  console.log(`[v2]   plausible band (${ARB_BAND_LOW}–${ARB_BAND_HIGH}%): ${inBand}/${toSend.length} slots`);
+  console.log(`[v2]   ROI dist: min=${rois[0]?.toFixed(2)}%  median=${median.toFixed(2)}%  max=${rois.at(-1)?.toFixed(2)}%`);
 
   let claudeCalls = 0;
   const confirmed = [];
@@ -694,7 +738,7 @@ Respond ONLY with a JSON array (one entry per pair, in order):
   }
 
   console.log(`[v2] Stage 3: ${claudeCalls} Claude calls → ${confirmed.length} confirmed`);
-  return { confirmed, claudeCalls };
+  return { confirmed, claudeCalls, sentCount: toSend.length };
 }
 
 // ── Output formatting ─────────────────────────────────────────────────────────
@@ -837,7 +881,7 @@ async function main() {
   const { survivors, quarantined } = arbPrefilter(candidates, markets);
 
   // Stage 3
-  const { confirmed, claudeCalls } = await haikuConfirm(survivors);
+  const { confirmed, claudeCalls, sentCount } = await haikuConfirm(survivors);
 
   // Output
   const output = formatOutput(confirmed);
@@ -857,7 +901,8 @@ async function main() {
   console.log(`║  Candidate pairs  (Stage 1)   : ${String(candidates.length).padEnd(16)} ║`);
   console.log(`║  Survivors        (Stage 2)   : ${String(survivors.length).padEnd(16)} ║`);
   console.log(`║  Quarantined      (ROI>${SUSPICIOUS_ROI}%)    : ${String(quarantined.length).padEnd(16)} ║`);
-  console.log(`║  Sent to Haiku    (Stage 3)   : ${String(Math.min(survivors.length, MAX_CLAUDE_PAIRS)).padEnd(16)} ║`);
+  console.log(`║  Sent to Haiku    (Stage 3)   : ${String(sentCount).padEnd(16)} ║`);
+  console.log(`║    band (${ARB_BAND_LOW}–${ARB_BAND_HIGH}%) / rest sampled  : ${String(Math.min(survivors.filter(s=>s.type==='cashable'&&s.net>=ARB_BAND_LOW&&s.net<=ARB_BAND_HIGH).length, HAIKU_BAND_SLOTS) + ' / ' + Math.max(0, sentCount - Math.min(survivors.filter(s=>s.type==='cashable'&&s.net>=ARB_BAND_LOW&&s.net<=ARB_BAND_HIGH).length, HAIKU_BAND_SLOTS))).padEnd(16)} ║`);
   console.log(`║  Claude calls                 : ${String(claudeCalls).padEnd(16)} ║`);
   console.log(`║  Final cashable               : ${String(cashable.length).padEnd(16)} ║`);
   console.log(`║  Final signal                 : ${String(signal.length).padEnd(16)} ║`);
