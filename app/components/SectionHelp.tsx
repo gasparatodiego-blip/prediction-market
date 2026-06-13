@@ -151,6 +151,31 @@ const CONTENT: Record<string, { title: string; blocks: Block[] }> = {
     ],
   },
 
+  hft: {
+    title: 'How to use: HFT / 5-Min Signal',
+    blocks: [
+      { t: 'h', s: 'What it is' },
+      { t: 'p', s: 'A read-only divergence detector for Polymarket\'s short-duration crypto Up/Down markets (5-min, 15-min, 4-hour, 1-hour). It estimates a fair probability for the Up outcome using a log-normal digital-option model, then flags when the Polymarket price diverges by more than 5 percentage points. Signal-only — it never places orders.' },
+
+      { t: 'h', s: 'Source confidence' },
+      { t: 'dl', items: [
+        ['CANONICAL', 'Hourly markets that resolve on the Binance BTC/USDT 1H candle. Our model uses the same Binance data — alignment is exact. Primary signals.'],
+        ['PROXY', '5-min, 15-min, and 4-hour markets that resolve on Chainlink BTC/USD data streams. We proxy the open price from Binance spot (free). Basis between Binance and Chainlink can create false divergences. Experimental only.'],
+      ]},
+
+      { t: 'h', s: 'The Measurement Log' },
+      { t: 'p', s: 'Every flagged divergence is recorded with the eventual resolution outcome (Up or Down won). This lets you track, over days, whether flagged signals for canonical markets win more than chance — or whether proxy signals are just noise. Hit-rate is not meaningful until ≥50 canonical signals are resolved.' },
+
+      { t: 'h', s: 'Hard limitations' },
+      { t: 'ul', items: [
+        'Fair value is a model estimate. Real edges (if any) exist only in the last few seconds before resolution — where polling latency alone may prevent execution.',
+        'Capacity shown is the real orderbook depth at the best price at time of detection, not guaranteed available at execution.',
+        'Proxy signals (5m/15m/4h) may diverge due to Binance/Chainlink basis, not from genuine mispricing. Track separately.',
+        'High-frequency bots already monitor these markets. Any edge detected by this 10-second poller has likely been arbitraged out.',
+      ]},
+    ],
+  },
+
   history: {
     title: 'How to use: History',
     blocks: [

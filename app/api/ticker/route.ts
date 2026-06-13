@@ -5,6 +5,7 @@ export const dynamic = 'force-dynamic';
 
 const UNIFIED_FILE  = '/tmp/unified-opportunities.json';
 const EXCHANGE_FILE = '/tmp/exchange-prices.json';
+const HFT_FILE      = '/tmp/poly-hft-signals.json';
 
 export interface TickerItem {
   key:        string;
@@ -34,6 +35,18 @@ export async function GET() {
     const e   = JSON.parse(fs.readFileSync(EXCHANGE_FILE, 'utf8'));
     cexArb    = e.cexArb ?? [];
     exchangeAt = e.fetchedAt ?? null;
+  } catch { /* file absent */ }
+
+  // ── Read HFT signals ──────────────────────────────────────────────────────
+  let hftSignals: any[] = [];
+  let hftMonitored = 0;
+  let hftRunning   = false;
+  try {
+    const hft    = JSON.parse(fs.readFileSync(HFT_FILE, 'utf8'));
+    const age    = Date.now() - new Date(hft.updatedAt ?? 0).getTime();
+    hftRunning   = age < 90_000;
+    hftSignals   = hft.liveSignals ?? [];
+    hftMonitored = (hft.monitoredMarkets ?? []).length;
   } catch { /* file absent */ }
 
   // ── Derive per-category bests ─────────────────────────────────────────────
@@ -98,12 +111,20 @@ export async function GET() {
     {
       key:        'hft',
       label:      'HFT / 5-Min',
-      bestNetPct: null,
-      unit:       '',
-      status:     'coming-soon',
-      count:      0,
-      href:       '/dashboard',
-      note:       'engine in development',
+      bestNetPct: hftSignals.length > 0
+        ? Math.max(...hftSignals.map((s: any) => s.edgeP ?? 0)) * 100
+        : null,
+      unit:       'pp edge',
+      status:     !hftRunning ? 'offline'
+                : hftSignals.length > 0 ? 'live'
+                : 'no-opp',
+      count:      hftSignals.length,
+      href:       '/dashboard/hft',
+      note:       hftSignals.length > 0
+        ? `best: ${hftSignals[0]?.coin} ${hftSignals[0]?.duration} · signal-only`
+        : hftRunning
+          ? `monitoring ${hftMonitored} market${hftMonitored !== 1 ? 's' : ''}`
+          : 'agent offline',
     },
     {
       key:        'liquidity',
