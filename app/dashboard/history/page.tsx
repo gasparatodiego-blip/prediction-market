@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState, useMemo } from 'react';
+import SectionHelp from '@/app/components/SectionHelp';
 
 interface HistoryEntry {
   ts:         string;
@@ -94,6 +95,7 @@ export default function HistoryPage() {
       </div>
 
       <div className="max-w-6xl mx-auto px-4 py-6 space-y-4">
+        <SectionHelp section="history" />
         {/* Summary stats */}
         {data && (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, Fragment } from 'react';
+import SectionHelp from '@/app/components/SectionHelp';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -498,6 +499,8 @@ export default function CryptoPage() {
           )}
         </div>
       </div>
+
+      <SectionHelp section="funding" />
 
       {loading ? (
         <div className="py-20 text-center font-mono text-[10px] uppercase tracking-widest text-text-muted animate-pulse">

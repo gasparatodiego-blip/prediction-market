@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import SectionHelp from '@/app/components/SectionHelp';
 import Link from 'next/link';
 import {
   Crosshair, Coins, Trophy, ArrowLeftRight, Zap, Landmark,
@@ -132,6 +133,8 @@ export default function DashboardPage() {
   return (
     <div>
       <div className="max-w-7xl mx-auto px-4 py-8">
+
+        <SectionHelp section="overview" />
 
         {/* Header */}
         <div className="mb-8">

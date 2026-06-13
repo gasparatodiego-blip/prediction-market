@@ -2,6 +2,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
+import SectionHelp from '@/app/components/SectionHelp';
 
 interface Position {
   id:         string;
@@ -178,6 +179,7 @@ export default function PortfolioPage() {
   return (
     <main className="text-text-primary">
       <div className="max-w-5xl mx-auto px-4 md:px-6 py-6 space-y-4">
+        <SectionHelp section="portfolio" />
         <div className="flex items-center justify-end">
           <button onClick={() => setShowAdd(true)}
             className="px-3 py-1.5 rounded border border-accent/40 bg-accent/10 text-accent text-xs font-mono hover:bg-accent/20 transition-colors duration-100">

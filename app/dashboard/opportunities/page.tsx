@@ -1,4 +1,5 @@
 import OpportunitiesPanel from '@/app/components/OpportunitiesPanel';
+import SectionHelp from '@/app/components/SectionHelp';
 
 export default function OpportunitiesPage() {
   return (
@@ -11,6 +12,7 @@ export default function OpportunitiesPage() {
           CASHABLE · SIGNAL · SPORTS · RANKED BY ANNUALIZED ROI
         </p>
       </div>
+      <SectionHelp section="opportunities" />
       <OpportunitiesPanel />
     </div>
   );
