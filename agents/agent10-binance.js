@@ -4,6 +4,7 @@
 const fs    = require('fs');
 const https = require('https');
 const WebSocket = require('ws');
+const { annualize } = require('../lib/funding-math');
 
 const OUT            = '/tmp/exchange-prices.json';
 const HIST_FILE      = '/tmp/exchange-history.json';
@@ -55,6 +56,29 @@ function get(url) {
   });
 }
 
+function postJson(hostname, path, body) {
+  return new Promise(resolve => {
+    const buf = Buffer.from(body);
+    const req = https.request({
+      hostname, path, method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': buf.length,
+        'User-Agent': 'prediction-arb-scanner/1.0',
+      },
+      timeout: 10000,
+    }, res => {
+      let data = '';
+      res.on('data', d => data += d);
+      res.on('end', () => { try { resolve(JSON.parse(data)); } catch { resolve(null); } });
+    });
+    req.on('error', () => resolve(null));
+    req.on('timeout', function () { this.destroy(); resolve(null); });
+    req.write(buf);
+    req.end();
+  });
+}
+
 // ── Telegram alerts ───────────────────────────────
 
 function sendTelegram(text) {
@@ -96,7 +120,7 @@ function checkFundingAlerts(binPerps) {
 
     const absFr  = Math.abs(fr);
     const frStr  = (fr >= 0 ? '+' : '') + fr.toFixed(4) + '%';
-    const apy    = Math.round(fr * 3 * 365 * 10) / 10;  // % per year
+    const apy    = Math.round(annualize(fr, 8) * 10) / 10;  // Binance is 8h interval
     const apyAbs = Math.abs(apy);
 
     let label, emoji;
@@ -259,8 +283,44 @@ async function fetchGateIO() {
 
 // ── Perpetual futures + funding rates ─────────────
 
+function nextHourUTC() {
+  return Math.ceil(Date.now() / 3_600_000) * 3_600_000;
+}
+
+async function fetchHyperliquid() {
+  try {
+    const raw = await postJson(
+      'api.hyperliquid.xyz', '/info',
+      JSON.stringify({ type: 'metaAndAssetCtxs' }),
+    );
+    if (!Array.isArray(raw) || raw.length < 2) return {};
+    const meta = raw[0], ctxs = raw[1];
+    const WANT = new Set(COINS);
+    const r = {};
+    for (let i = 0; i < (meta.universe?.length ?? 0); i++) {
+      const name = meta.universe[i]?.name;
+      if (!WANT.has(name)) continue;
+      const ctx = ctxs[i];
+      if (!ctx) continue;
+      const fr = parseFloat(ctx.funding);
+      if (!isFinite(fr)) continue;
+      r[name] = {
+        markPrice:           parseFloat(ctx.markPx) || null,
+        fundingRate:         fr * 100,  // fraction/hr → %/hr
+        fundingIntervalHours: 1,        // Hyperliquid settles hourly
+        nextFundingTime:     nextHourUTC(),
+        openInterest:        parseFloat(ctx.openInterest) || null,
+      };
+    }
+    return r;
+  } catch (e) {
+    console.error('[hl] fetchHyperliquid error:', e.message);
+    return {};
+  }
+}
+
 async function fetchFutures() {
-  const [binF, bybitF, okxF] = await Promise.all([
+  const [binF, bybitF, okxF, hlF] = await Promise.all([
 
     // Binance FAPI — premiumIndex has markPrice + fundingRate
     get('https://fapi.binance.com/fapi/v1/premiumIndex').then(data => {
@@ -271,9 +331,10 @@ async function fetchFutures() {
         const coin = map[t.symbol];
         if (!coin) continue;
         r[coin] = {
-          markPrice:   parseFloat(t.markPrice),
-          fundingRate: parseFloat(t.lastFundingRate) * 100,  // convert to %
-          nextFundingTime: parseInt(t.nextFundingTime ?? '0'),
+          markPrice:            parseFloat(t.markPrice),
+          fundingRate:          parseFloat(t.lastFundingRate) * 100,  // fraction → %
+          fundingIntervalHours: 8,
+          nextFundingTime:      parseInt(t.nextFundingTime ?? '0'),
         };
       }
       return r;
@@ -289,8 +350,9 @@ async function fetchFutures() {
       for (const [sym, t] of pairs) {
         if (!t) continue;
         r[map[sym]] = {
-          markPrice:   parseFloat(t.markPrice ?? t.lastPrice ?? '0'),
-          fundingRate: parseFloat(t.fundingRate ?? '0') * 100,
+          markPrice:            parseFloat(t.markPrice ?? t.lastPrice ?? '0'),
+          fundingRate:          parseFloat(t.fundingRate ?? '0') * 100,
+          fundingIntervalHours: 8,
         };
       }
       return r;
@@ -305,13 +367,21 @@ async function fetchFutures() {
       const r = {};
       for (const [instId, t] of pairs) {
         if (!t) continue;
-        r[map[instId]] = { fundingRate: parseFloat(t.fundingRate ?? '0') * 100 };
+        r[map[instId]] = {
+          fundingRate:          parseFloat(t.fundingRate ?? '0') * 100,
+          fundingIntervalHours: 8,
+        };
       }
       return r;
     }),
+
+    fetchHyperliquid(),
   ]);
 
-  return { binance: binF, bybit: bybitF, okx: okxF };
+  // Only include venues with data; hyperliquid absent on fetch failure
+  const out = { binance: binF, bybit: bybitF, okx: okxF };
+  if (Object.keys(hlF).length > 0) out.hyperliquid = hlF;
+  return out;
 }
 
 // ── Analysis ──────────────────────────────────────
@@ -346,7 +416,7 @@ function detectBasis(spot, perps) {
     // 30-day hold annualized + funding bonus
     const holdDays = 30;
     const cashCarryAnnual = basisPct * (365 / holdDays);
-    const fundingAnnual   = fr * 3 * 365;  // 3 intervals/day × 365
+    const fundingAnnual   = annualize(fr, 8);  // Binance perp: 8h interval
     // Contango: short perp → collect positive funding too
     // Backwardation: long perp → positive funding is a cost
     const totalAnnual = basisPct > 0
@@ -370,13 +440,15 @@ function detectHighFunding(perps) {
   const flagged = [];
   for (const [exchName, data] of Object.entries(perps)) {
     for (const [coin, info] of Object.entries(data)) {
-      const fr = info.fundingRate ?? 0;
+      const fr           = info.fundingRate ?? 0;
+      const intervalHours = info.fundingIntervalHours ?? 8;
       if (Math.abs(fr) >= FUND_THRESHOLD) {
-        const annualizedApy = Math.round(fr * 3 * 365 * 10) / 10;
+        const annualizedApy = Math.round(annualize(fr, intervalHours) * 10) / 10;
         flagged.push({
           coin, exchange: exchName,
-          fundingRate:  Math.round(fr * 10000) / 10000,
+          fundingRate:   Math.round(fr * 10000) / 10000,
           annualizedApy,
+          fundingIntervalHours: intervalHours,
         });
       }
     }

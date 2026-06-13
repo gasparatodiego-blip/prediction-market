@@ -4,10 +4,11 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 const NAV_LINKS = [
-  { href: '/dashboard',             label: 'DASHBOARD' },
-  { href: '/dashboard/portfolio',   label: 'PORTFOLIO' },
-  { href: '/dashboard/history',     label: 'HISTORY' },
-  { href: '/dashboard/preferences', label: 'PREFERENCES' },
+  { href: '/dashboard',                  label: 'DASHBOARD'     },
+  { href: '/dashboard/opportunities',    label: 'OPPORTUNITIES' },
+  { href: '/dashboard/portfolio',        label: 'PORTFOLIO'     },
+  { href: '/dashboard/history',          label: 'HISTORY'       },
+  { href: '/dashboard/preferences',      label: 'PREFERENCES'   },
 ];
 
 export default function TerminalHeader() {

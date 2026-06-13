@@ -26,6 +26,8 @@ const execFileAsync = promisify(execFile);
 
 const RAW_FILE          = '/tmp/markets-raw.json';
 const OUT_FILE          = '/tmp/arbitrage-opportunities.json';
+const UNIFIED_FILE      = '/tmp/unified-opportunities.json';
+const SPORTS_FILE       = '/tmp/sports-odds.json';
 const MODEL             = 'claude-haiku-4-5-20251001';
 const MAX_STALE_MS      = 10 * 60 * 1000;   // auto-refresh if older than 10 min
 
@@ -1009,6 +1011,168 @@ async function enrichArbs(confirmed) {
   return confirmed;
 }
 
+// ── Unified opportunities writer ──────────────────────────────────────────────
+// Zero Claude cost — pure reformatting of already-computed data.
+// Reads /tmp/sports-odds.json if present (written by agent12-sports, optional).
+// Writes /tmp/unified-opportunities.json for the dashboard OpportunitiesPanel.
+
+function predVerdictFor(o) {
+  if (!o.cashable) return 'signal';
+  return o.lockupFlag ? 'capital-lockup-skip' : 'Actionable';
+}
+
+function predOppToUnified(o) {
+  const legs = o.cashable
+    ? [
+        // buy YES on the cheaper (low-prob) side
+        { platform: o.platform_a, side: 'YES', price: o.lowMarket.yesAsk,             url: o.lowMarket.url  },
+        // buy NO  on the more-expensive (high-prob) side
+        { platform: o.platform_b, side: 'NO',  price: +(1 - o.highMarket.yesBid).toFixed(4), url: o.highMarket.url },
+      ]
+    : [
+        // signal: show mid-probability on each side
+        { platform: o.platform_a, side: 'MID', price: +(o.lowMarket.probability  / 100).toFixed(4), url: o.lowMarket.url  },
+        { platform: o.platform_b, side: 'MID', price: +(o.highMarket.probability / 100).toFixed(4), url: o.highMarket.url },
+      ];
+
+  return {
+    type:             o.cashable ? 'CASHABLE' : 'SIGNAL',
+    id:               o.id,
+    question:         o.title,
+    legs,
+    annualizedROI:    o.annualizedROI    ?? null,
+    netROI:           o.cashable ? o.roi : null,
+    grossROI:         o.grossRoi         ?? null,
+    spread:           o.spread           ?? null,
+    daysToResolution: o.daysToResolution ?? null,
+    resolutionDate:   o.resolutionDate   ?? null,
+    capacityUsd:      o.capacityUsd      ?? null,
+    lockupFlag:       o.lockupFlag       ?? null,
+    verdict:          predVerdictFor(o),
+    confidence:       o.confidence,
+  };
+}
+
+function sportsOppToUnified(s) {
+  const now     = Date.now();
+  const matchTs = s.commenceTime ? new Date(s.commenceTime).getTime() : null;
+  const daysToResolution = matchTs ? Math.round((matchTs - now) / 86_400_000) : null;
+  // Sports arbs resolve at kickoff — annualize only if > 0 days away
+  const annualizedROI = (daysToResolution != null && daysToResolution > 0)
+    ? +(s.arbPct * 365 / daysToResolution).toFixed(2) : null;
+
+  // arbBets: [{outcome, bookmaker, odds (decimal), stake (on $100)}]
+  const legs = (s.arbBets || []).map(b => ({
+    platform: b.bookmaker,
+    side:     b.outcome,
+    price:    b.odds,    // decimal odds (e.g. 2.10)
+    stake:    b.stake,   // optimal stake split for $100 bankroll
+    url:      null,
+  }));
+
+  const isStale = s.arbPct > 5;   // > 5% is almost certainly limit-only / stale
+
+  return {
+    type:             'SPORTS',
+    id:               `sports-${s.id}`,
+    question:         `${s.homeTeam} vs ${s.awayTeam}`,
+    sport:            s.sportLabel || s.sport,
+    legs,
+    annualizedROI,
+    netROI:           s.arbPct,
+    grossROI:         s.arbPct,
+    spread:           null,
+    daysToResolution,
+    resolutionDate:   matchTs ? new Date(matchTs).toISOString().slice(0, 10) : null,
+    capacityUsd:      null,
+    lockupFlag:       null,
+    verdict:          isStale ? 'stale-check' : 'Actionable',
+    confidence:       isStale ? 0.3 : 0.9,
+  };
+}
+
+function writeUnified(matcherV2Output) {
+  const predOpps = matcherV2Output.opportunities || [];
+  const unified  = predOpps.map(predOppToUnified);
+
+  // Optional: merge sports arb if file is present and < 24 h old
+  let sportsMeta = null;
+  try {
+    if (fs.existsSync(SPORTS_FILE)) {
+      const sports = JSON.parse(fs.readFileSync(SPORTS_FILE, 'utf8'));
+      const ageMs  = Date.now() - (sports.fetchedAt || 0);
+      if (ageMs < 24 * 3_600_000) {
+        const arbOpps = sports.arbOpportunities || [];
+        for (const s of arbOpps) unified.push(sportsOppToUnified(s));
+        sportsMeta = { fetchedAt: sports.fetchedAt, arbCount: arbOpps.length, totalEvents: sports.totalEvents || 0 };
+        console.log(`[v2/unified] sports: ${arbOpps.length} arb opportunities merged`);
+      } else {
+        console.log(`[v2/unified] sports file is ${Math.round(ageMs / 3_600_000)}h old — skipped`);
+      }
+    } else {
+      console.log('[v2/unified] no sports-odds.json present — SPORTS items absent');
+    }
+  } catch (e) {
+    console.log(`[v2/unified] sports read error: ${e.message}`);
+  }
+
+  // Type-preserving merge: read existing file and keep FUNDING items we don't own
+  let existingFunding = [];
+  let existingSources = {};
+  try {
+    const existing = JSON.parse(fs.readFileSync(UNIFIED_FILE, 'utf8'));
+    existingFunding = (existing.opportunities || []).filter(o => o.type === 'FUNDING');
+    existingSources = existing.sources || {};
+  } catch { /* file absent or corrupt — start without existing data */ }
+
+  const merged = [...unified, ...existingFunding];
+
+  // Re-sort after merge
+  const TYPE_RANK2 = { CASHABLE: 0, SPORTS: 1, SIGNAL: 2, FUNDING: 3 };
+  merged.sort((a, b) => {
+    const ra = TYPE_RANK2[a.type] ?? 9, rb = TYPE_RANK2[b.type] ?? 9;
+    if (ra !== rb) return ra - rb;
+    if (a.annualizedROI !== null && b.annualizedROI !== null) return b.annualizedROI - a.annualizedROI;
+    if (a.annualizedROI !== null) return -1;
+    if (b.annualizedROI !== null) return 1;
+    return (b.netROI ?? 0) - (a.netROI ?? 0);
+  });
+
+  const cashableCount = merged.filter(o => o.type === 'CASHABLE').length;
+  const signalCount   = merged.filter(o => o.type === 'SIGNAL').length;
+  const sportsCount   = merged.filter(o => o.type === 'SPORTS').length;
+  const fundingCount  = merged.filter(o => o.type === 'FUNDING').length;
+
+  const result = {
+    generatedAt: Date.now(),
+    sources: {
+      ...existingSources,
+      matcherV2: {
+        generatedAt:   matcherV2Output.updatedAt,
+        cashableCount: predOpps.filter(o => o.cashable).length,
+        signalCount:   predOpps.filter(o => !o.cashable).length,
+      },
+      sports: sportsMeta,
+    },
+    summary: {
+      total:          merged.length,
+      cashable:       cashableCount,
+      signal:         signalCount,
+      sports:         sportsCount,
+      funding:        fundingCount,
+      bestAnnualized: (() => { const r = merged.map(o => o.annualizedROI).filter(v => v != null); return r.length ? Math.max(...r) : null; })(),
+    },
+    opportunities: merged,
+  };
+
+  // Atomic write: write to temp file, then rename (atomic on Linux same filesystem)
+  const tmpPath = UNIFIED_FILE + '.tmp.' + process.pid;
+  fs.writeFileSync(tmpPath, JSON.stringify(result, null, 2));
+  fs.renameSync(tmpPath, UNIFIED_FILE);
+  console.log(`[v2/unified] wrote ${merged.length} items → ${UNIFIED_FILE}`);
+  console.log(`[v2/unified]   CASHABLE:${cashableCount}  SIGNAL:${signalCount}  SPORTS:${sportsCount}`);
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -1049,6 +1213,9 @@ async function main() {
   // Output
   const output = formatOutput(confirmed);
   fs.writeFileSync(OUT_FILE, JSON.stringify(output, null, 2));
+
+  // Unified opportunities file (zero Claude cost — pure reformatting)
+  writeUnified(output);
 
   const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
   const cashable = output.opportunities.filter(o => o.cashable);

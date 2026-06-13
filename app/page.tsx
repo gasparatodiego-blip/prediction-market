@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { ArrowRight } from 'lucide-react';
 import TerminalHeader from '@/app/components/TerminalHeader';
-import LiveOpportunitiesPanel from '@/app/components/LiveOpportunitiesPanel';
+import OpportunitiesPanel from '@/app/components/OpportunitiesPanel';
 
 const stats = [
   { value: '14+',  label: 'AI AGENTS' },
@@ -105,7 +105,7 @@ export default function HomePage() {
 
           {/* Right: live opportunities panel */}
           <div className="lg:pt-1">
-            <LiveOpportunitiesPanel />
+            <OpportunitiesPanel />
           </div>
 
         </div>
