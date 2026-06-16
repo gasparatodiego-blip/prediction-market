@@ -1,47 +1,8 @@
-import Link from 'next/link';
-import { ArrowRight } from 'lucide-react';
 import TerminalHeader from '@/app/components/TerminalHeader';
-import StrategyTicker from '@/app/components/StrategyTicker';
-
-const stats = [
-  { value: '4',   label: 'PREDICTION PLATFORMS' },
-  { value: '4',   label: 'CRYPTO VENUES' },
-  { value: '24/7', label: 'ALWAYS SCANNING' },
-  { value: '60s',  label: 'DATA REFRESH' },
-];
-
-const strategies = [
-  {
-    tag:    'PREDICTION MARKETS',
-    live:   true,
-    desc:   'Binary outcome arb across PredictIt, Manifold, Kalshi, Polymarket. AI-matched by topic; best spread surfaced in real time.',
-  },
-  {
-    tag:    'FUNDING RATE ARB',
-    live:   true,
-    desc:   'Cross-exchange perp funding spread — Binance, Bybit, OKX (8h) and Hyperliquid DEX (1h). Delta-neutral; net after fees.',
-  },
-  {
-    tag:    'SPORTS ARBITRAGE',
-    live:   false,
-    desc:   'Surebets across major bookmakers via OddsAPI. Engine built and ready; live data feed disabled (cost control).',
-  },
-  {
-    tag:    'CEX ARBITRAGE',
-    live:   true,
-    desc:   'Spot price divergence across Binance, Bybit, OKX on major pairs. Signals only — no current spread above threshold.',
-  },
-  {
-    tag:    'HFT / 5-MIN',
-    live:   false,
-    desc:   'High-frequency signals on Binance Futures perps. Sub-minute execution window. Engine in development.',
-  },
-  {
-    tag:    'LP / LIQUIDITY',
-    live:   false,
-    desc:   'Fee yield and LP opportunity scanning on Polymarket pools. Calibrated by volume and price dispersion. In development.',
-  },
-];
+import LandingHero from '@/app/components/LandingHero';
+import LiveTickerBanner from '@/app/components/LiveTickerBanner';
+import StrategyCards from '@/app/components/StrategyCards';
+import Reveal from '@/app/components/Reveal';
 
 export default function HomePage() {
   return (
@@ -51,134 +12,175 @@ export default function HomePage() {
       <div className="pointer-events-none fixed inset-0 z-0" aria-hidden>
         <div
           className="absolute top-[-80px] left-1/2 -translate-x-1/2 w-[900px] h-[420px] rounded-full blur-[140px]"
-          style={{ background: 'radial-gradient(ellipse at center, rgba(99,102,241,0.06) 0%, transparent 70%)' }}
+          style={{ background: 'radial-gradient(ellipse at center, rgba(99,102,241,0.09) 0%, transparent 70%)' }}
         />
       </div>
-
-      {/* Grid background */}
       <div className="bg-grid-subtle pointer-events-none fixed inset-0 z-0 opacity-40" aria-hidden />
 
       <TerminalHeader />
 
-      <main className="relative z-10 max-w-[1200px] mx-auto px-6 pt-20 pb-24">
+      {/* ── Live ticker — full-width scrolling strip ────────────────────────── */}
+      <div className="relative z-10">
+        <LiveTickerBanner />
+      </div>
 
-        {/* ── Hero ────────────────────────────────────────────────────────────── */}
-        <div className="mb-14">
-          <div className="mb-7">
-            <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-text-muted border border-border px-2.5 py-[5px]">
-              MULTI-STRATEGY SCANNER
-            </span>
-          </div>
+      <main className="relative z-10 max-w-[900px] mx-auto px-6 pt-10 pb-20">
 
-          <h1 className="font-sans font-semibold text-5xl md:text-[3.75rem] leading-[1.04] tracking-[-0.03em] text-text-primary mb-5 max-w-2xl">
-            Live arb &amp;<br />
-            <span className="text-accent">funding</span><br />
-            scanner.
-          </h1>
+        {/* ── 1. HERO ─────────────────────────────────────────────────────────── */}
+        <LandingHero />
 
-          <p className="text-text-secondary text-[15px] max-w-xl mb-3 leading-[1.65]">
-            ArbScanner surfaces live arbitrage and funding-rate opportunities across prediction markets,
-            crypto perpetuals (CEX + Hyperliquid DEX), and sports.
-            Returns shown are current snapshots — variable rates can flip at the next funding period.
-          </p>
-          <p className="font-mono text-[10px] text-text-muted/50 max-w-xl mb-9 leading-relaxed">
-            Not financial advice. Returns are variable and not guaranteed.
-            Do your own research before committing capital.
-          </p>
-
-          <div className="flex items-center gap-3 flex-wrap">
-            <Link
-              href="/dashboard/opportunities"
-              className="inline-flex items-center gap-2 px-5 py-2.5 bg-accent text-white font-mono font-medium text-[12px] uppercase tracking-[0.1em] transition-colors duration-100 hover:bg-accent-bright active:scale-[0.98]"
-            >
-              Live Opportunities
-              <ArrowRight className="w-3.5 h-3.5" strokeWidth={2} />
-            </Link>
-            <Link
-              href="/dashboard/crypto"
-              className="inline-flex items-center px-5 py-2.5 border border-border bg-bg-elevated text-text-secondary font-mono text-[12px] uppercase tracking-[0.1em] transition-colors duration-100 hover:border-accent/40 hover:text-text-primary"
-            >
-              Funding Monitor
-            </Link>
-          </div>
-        </div>
-
-        {/* ── Live strategy ticker ─────────────────────────────────────────────── */}
-        <div className="mb-16">
-          <div className="flex items-baseline justify-between mb-3 gap-4">
-            <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-text-muted shrink-0">
-              LIVE STRATEGY SNAPSHOT
-            </span>
-            <span className="font-mono text-[9px] text-text-muted/50 hidden sm:block">
-              Best net opportunity per category · Click to explore
-            </span>
-          </div>
-          <StrategyTicker />
-          <p className="font-mono text-[9px] text-text-muted/40 mt-2 leading-relaxed">
-            Numbers shown are the BEST live result per category — net after fees where applicable.
-            Empty categories show a status word, never a fabricated figure. Refreshes every 30 s.
-          </p>
-        </div>
-
-        {/* ── Stats row ────────────────────────────────────────────────────────── */}
-        <div className="pt-6 border-t border-border grid grid-cols-2 md:grid-cols-4 gap-8 mb-16">
-          {stats.map(({ value, label }) => (
-            <div key={label}>
-              <div className="font-mono font-bold text-[2rem] tabular-nums leading-none text-text-primary">
-                {value}
-              </div>
-              <div className="font-mono text-[10px] uppercase tracking-[0.13em] text-text-muted mt-2">
-                {label}
-              </div>
+        {/* ── 2. STRATEGIES (each category once) ──────────────────────────────── */}
+        <Reveal>
+          <section className="mt-12 pt-8 border-t border-border/40">
+            <div className="flex items-baseline justify-between mb-5 gap-4 flex-wrap">
+              <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-text-muted">
+                STRATEGIES
+              </span>
+              <span className="font-mono text-[9px] text-text-muted/50 hidden sm:block">
+                Eight ways to find an edge. All monitored. All measured.
+              </span>
             </div>
-          ))}
-        </div>
+            <StrategyCards />
+          </section>
+        </Reveal>
 
-        {/* ── Strategy grid ────────────────────────────────────────────────────── */}
-        <div>
-          <h2 className="font-mono text-[10px] uppercase tracking-[0.15em] text-text-muted mb-4">
-            ACTIVE STRATEGIES
-          </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-px bg-border">
-            {strategies.map(({ tag, live, desc }) => (
-              <div
-                key={tag}
-                className="bg-bg-panel px-5 py-5 hover:bg-bg-elevated transition-colors duration-100"
-              >
-                <div className="flex items-center gap-2 mb-2.5">
-                  <span
-                    className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${
-                      live ? 'bg-positive' : 'bg-text-muted/40'
-                    }`}
-                  />
-                  <span className={`font-mono text-[10px] uppercase tracking-[0.13em] ${
-                    live ? 'text-accent' : 'text-text-muted/60'
-                  }`}>
-                    {tag}
+        {/* ── 3. HOW IT WORKS ─────────────────────────────────────────────────── */}
+        <Reveal delay={60}>
+          <section className="mt-12 pt-8 border-t border-border/40">
+            <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-text-muted block mb-5">
+              HOW IT WORKS
+            </span>
+            <div className="grid grid-cols-1 sm:grid-cols-3 border border-border overflow-hidden">
+              {([
+                {
+                  step:  '01',
+                  title: 'Scan',
+                  body:  'Agents watch Polymarket, Kalshi, Bybit, OKX, Dydx, and Deribit continuously — prices and funding rates pulled every 60 s.',
+                },
+                {
+                  step:  '02',
+                  title: 'Rank',
+                  body:  'Every opportunity is net-of-fees before it appears. Best result per category surfaced automatically, ranked by real yield.',
+                },
+                {
+                  step:  '03',
+                  title: 'Decide',
+                  body:  'You act on what you see, or wait for an alert (Pro — coming soon). Nothing is automated on your behalf.',
+                },
+              ] as const).map((s, i) => (
+                <div
+                  key={s.step}
+                  className={`bg-bg-panel px-5 py-5 ${i < 2 ? 'border-b sm:border-b-0 sm:border-r border-border' : ''}`}
+                >
+                  <div className="font-mono text-[9px] text-text-muted/40 mb-1.5">{s.step}</div>
+                  <div className="font-mono text-[12px] text-text-primary font-semibold mb-2">{s.title}</div>
+                  <p className="font-mono text-[10px] text-text-muted leading-relaxed">{s.body}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        </Reveal>
+
+        {/* ── 4. PLANS ────────────────────────────────────────────────────────── */}
+        <Reveal delay={80}>
+          <section className="mt-12 pt-8 border-t border-border/40">
+            <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-text-muted block mb-5">
+              PLANS
+            </span>
+            <div className="grid grid-cols-1 sm:grid-cols-3 border border-border overflow-hidden">
+
+              {/* FREE */}
+              <div className="bg-bg-panel px-5 py-5 flex flex-col border-b sm:border-b-0 sm:border-r border-border">
+                <div className="font-mono text-[9px] uppercase tracking-widest text-text-muted mb-1.5">FREE</div>
+                <div className="mb-0.5">
+                  <span className="font-mono text-[20px] font-bold text-text-primary">€0</span>
+                </div>
+                <div className="font-mono text-[9px] text-text-muted/60 mb-4">always</div>
+                <ul className="space-y-2 flex-1">
+                  {['All strategy pages, live', 'Funding rate monitor', 'Full opportunity list', 'No account needed'].map(f => (
+                    <li key={f} className="flex items-start gap-1.5">
+                      <span className="text-positive font-mono text-[10px] mt-px leading-none">✓</span>
+                      <span className="font-mono text-[10px] text-text-secondary leading-snug">{f}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="mt-5">
+                  <span className="inline-block font-mono text-[9px] uppercase tracking-widest px-3.5 py-1.5 border border-border text-text-muted/50 cursor-default">
+                    Current plan
                   </span>
                 </div>
-                <p className="text-text-secondary text-[12px] leading-[1.6]">{desc}</p>
               </div>
-            ))}
-          </div>
-        </div>
+
+              {/* PRO */}
+              <div className="bg-bg-panel px-5 py-5 flex flex-col relative border-b sm:border-b-0 sm:border-r border-border">
+                <div className="absolute top-0 left-0 right-0 h-[2px] bg-accent" />
+                <div className="font-mono text-[9px] uppercase tracking-widest text-accent mb-1.5">PRO</div>
+                <div className="mb-0.5">
+                  <span className="font-mono text-[20px] font-bold text-text-primary">€15</span>
+                  <span className="font-mono text-[11px] font-normal text-text-muted">/mo</span>
+                </div>
+                <div className="font-mono text-[9px] text-text-muted/60 mb-4">billed monthly</div>
+                <ul className="space-y-2 flex-1">
+                  {['Real-time Telegram + email alerts', 'Kelly position sizing', 'Opportunity history log', 'Priority data refresh'].map(f => (
+                    <li key={f} className="flex items-start gap-1.5">
+                      <span className="text-accent font-mono text-[10px] mt-px leading-none">✓</span>
+                      <span className="font-mono text-[10px] text-text-secondary leading-snug">{f}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="mt-5">
+                  <span className="inline-block font-mono text-[9px] uppercase tracking-widest px-3.5 py-1.5 border border-border/50 text-text-muted/50 cursor-default">
+                    Coming soon
+                  </span>
+                </div>
+              </div>
+
+              {/* PROFIT SHARE */}
+              <div className="bg-bg-panel px-5 py-5 flex flex-col">
+                <div className="font-mono text-[9px] uppercase tracking-widest text-text-muted mb-1.5">PROFIT SHARE</div>
+                <div className="mb-0.5">
+                  <span className="font-mono text-[20px] font-bold text-text-primary">€0</span>
+                  <span className="font-mono text-[11px] font-normal text-text-muted"> + 10%</span>
+                </div>
+                <div className="font-mono text-[9px] text-text-muted/60 mb-4">of verified profits</div>
+                <ul className="space-y-2 flex-1">
+                  {['Everything in Pro', 'Pay only when you profit', 'On-chain verification', 'No monthly risk'].map(f => (
+                    <li key={f} className="flex items-start gap-1.5">
+                      <span className="text-text-muted/60 font-mono text-[10px] mt-px leading-none">✓</span>
+                      <span className="font-mono text-[10px] text-text-secondary leading-snug">{f}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="mt-5">
+                  <span className="inline-block font-mono text-[9px] uppercase tracking-widest px-3.5 py-1.5 border border-border/50 text-text-muted/50 cursor-default">
+                    Coming soon
+                  </span>
+                </div>
+              </div>
+
+            </div>
+            <p className="font-mono text-[9px] text-text-muted/40 mt-3 leading-relaxed">
+              Payments not yet wired. Dashboard is fully open — no login required.
+              Plans shown are the intended roadmap, not a live gate.
+            </p>
+          </section>
+        </Reveal>
 
       </main>
 
-      {/* ── Footer ───────────────────────────────────────────────────────────── */}
+      {/* ── 5. FOOTER ───────────────────────────────────────────────────────── */}
       <footer className="relative z-10 border-t border-border">
-        <div className="max-w-[1200px] mx-auto px-6 h-10 flex items-center justify-between gap-4">
+        <div className="max-w-[900px] mx-auto px-6 py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <span className="inline-block w-1.5 h-1.5 rounded-full bg-positive shrink-0" />
             <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-muted">
               ALL SYSTEMS OPERATIONAL
             </span>
           </div>
-          <div className="flex items-center gap-4 shrink-0">
+          <div className="flex items-center gap-4 flex-wrap">
+            <span className="font-mono text-[9px] text-text-muted/50">Not financial advice. Capital at risk.</span>
             <span className="font-mono text-[10px] text-text-muted">v0.1.0</span>
-            <span className="font-mono text-[10px] text-text-muted hidden sm:block">
-              © 2026 ARBSCANNER
-            </span>
+            <span className="font-mono text-[10px] text-text-muted hidden sm:block">© 2026 ARBSCANNER</span>
           </div>
         </div>
       </footer>

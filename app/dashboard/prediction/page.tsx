@@ -14,33 +14,43 @@ interface Leg {
 }
 
 interface Opportunity {
-  id:          string;
-  question:    string;
-  lowMarket:   Leg;
-  highMarket:  Leg;
-  spread:      number;
-  roi:         number;
-  earnPer100:  number;
-  confidence:  number;
-  category:    string;
-  type:        'cashable' | 'signal';
+  id:               string;
+  question:         string;
+  lowMarket:        Leg;
+  highMarket:       Leg;
+  spread:           number;
+  roi:              number;
+  earnPer100:       number;
+  confidence:       number;
+  category:         string;
+  type:             'cashable' | 'signal';
+  annualizedROI?:   number | null;
+  daysToResolution?: number | null;
 }
 
 interface Stats {
-  validCount:    number;
-  cashableCount: number;
-  signalCount:   number;
-  bestRoi:       number | null;
+  validCount:     number;
+  cashableCount:  number;
+  signalCount:    number;
+  bestRoi:        number | null;
   marketsTracked: number;
-  platforms:     number;
-  updatedAt:     number | null;
-  pipelineAge:   number | null;
+  platforms:      number;
+  updatedAt:      number | null;
+  pipelineAge:    number | null;
+}
+
+interface Freshness {
+  updatedAt:  number | null;
+  ageMinutes: number | null;
+  isFresh:    boolean;
+  label:      string | null;
 }
 
 interface ApiResponse {
-  valid:    Opportunity[];
-  rejected: number;
-  stats:    Stats;
+  valid:     Opportunity[];
+  rejected:  number;
+  stats:     Stats;
+  freshness: Freshness;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -53,7 +63,7 @@ function platformLabel(p: string): string {
   return MAP[p?.toLowerCase()] ?? p.toUpperCase();
 }
 
-// ── Countdown hook (component-level so it's safe per row) ────────────────────
+// ── Countdown hook ────────────────────────────────────────────────────────────
 
 function Countdown({ expiresAt }: { expiresAt: number | null }) {
   const [text, setText] = useState<string>('');
@@ -112,7 +122,6 @@ function Calculator({ opp }: { opp: Opportunity }) {
     );
   }
 
-  // Reconstruct gross from net ROI: roi_net = roi_gross × (1 − feeA − feeB)
   const totalFeeRate = opp.lowMarket.fee + opp.highMarket.fee;
   const roiGross     = totalFeeRate < 1 ? opp.roi / (1 - totalFeeRate) : opp.roi;
   const grossProfit  = stake * roiGross / 100;
@@ -181,11 +190,9 @@ function OppRow({
   isExpanded: boolean;
   onToggle:   () => void;
 }) {
-  const isCashable = opp.type === 'cashable';
-  // For a binary arb: buy YES at lowMarket, buy NO at highMarket
-  // NO price on highMarket = 100 - highMarket.probability
-  const noPriceHighMarket = 100 - opp.highMarket.probability;
-  const expiry = opp.lowMarket.expiresAt ?? opp.highMarket.expiresAt ?? null;
+  const isCashable         = opp.type === 'cashable';
+  const noPriceHighMarket  = 100 - opp.highMarket.probability;
+  const expiry             = opp.lowMarket.expiresAt ?? opp.highMarket.expiresAt ?? null;
 
   return (
     <div className="border border-border mb-1.5 last:mb-0">
@@ -217,7 +224,7 @@ function OppRow({
             <div className="font-mono text-[10px] text-text-muted mt-0.5 uppercase tracking-widest">{opp.category}</div>
           </div>
 
-          {/* Trade legs */}
+          {/* Trade legs + caveat hint */}
           <div className="shrink-0 space-y-1">
             <div className="font-mono text-[11px]">
               <span className="text-positive">BUY YES @ {opp.lowMarket.probability}¢</span>
@@ -231,13 +238,24 @@ function OppRow({
               <span className="text-text-secondary">{platformLabel(opp.highMarket.platform)}</span>
               <span className="text-text-muted ml-2 text-[10px]">FEE {(opp.highMarket.fee * 100).toFixed(0)}%</span>
             </div>
+            {isCashable && (
+              <div className="font-mono text-[9px] text-warning/50 leading-snug">
+                ⚠ verify resolution criteria · fill not guaranteed
+              </div>
+            )}
           </div>
 
-          {/* ROI + metrics */}
+          {/* ROI + annualized */}
           <div className="shrink-0 text-right">
             <div className="font-mono text-[13px] font-semibold text-positive tabular-nums">
               +{opp.roi.toFixed(1)}% NET ROI
             </div>
+            {opp.annualizedROI != null && (
+              <div className="font-mono text-[10px] text-positive/60 tabular-nums">
+                {opp.annualizedROI.toFixed(1)}% ANN
+                {opp.daysToResolution != null ? ` · ${opp.daysToResolution}d` : ''}
+              </div>
+            )}
             <div className="font-mono text-[10px] text-text-muted tabular-nums">
               {opp.spread.toFixed(1)}pp SPREAD · CONF {Math.round(opp.confidence * 100)}%
             </div>
@@ -260,6 +278,16 @@ function OppRow({
       {/* Expanded panel */}
       {isExpanded && (
         <div>
+          {/* Resolution caveat — cashable only */}
+          {isCashable && (
+            <div className="px-4 py-2.5 border-t border-warning/30 bg-warning/[0.04]">
+              <span className="font-mono text-[9px] text-warning/70 leading-relaxed">
+                ⚠ LOCKED ONLY IF BOTH PLATFORMS RESOLVE IDENTICALLY — VERIFY RESOLUTION CRITERIA
+                BEFORE ACTING. LIQUIDITY AND FILL AT STATED PRICE NOT GUARANTEED.
+              </span>
+            </div>
+          )}
+
           {/* Deep links */}
           <div className="px-4 py-2.5 border-t border-border bg-bg-elevated flex flex-wrap items-center gap-4">
             <a
@@ -319,8 +347,9 @@ export default function PredictionPage() {
     return () => clearInterval(t);
   }, [loadData]);
 
-  const stats = data?.stats;
-  const opps  = data?.valid ?? [];
+  const stats     = data?.stats;
+  const opps      = data?.valid ?? [];
+  const freshness = data?.freshness ?? null;
 
   return (
     <div className="max-w-[1400px] mx-auto px-4 py-6">
@@ -341,6 +370,29 @@ export default function PredictionPage() {
           </span>
         )}
       </div>
+
+      {/* Freshness banner — always visible once loaded */}
+      {!loading && (
+        <div className={`mb-4 px-3 py-2 border font-mono text-[11px] uppercase tracking-widest flex items-center gap-2 ${
+          freshness?.isFresh
+            ? 'border-positive/30 bg-positive/5 text-positive/80'
+            : 'border-warning/30 bg-warning/5 text-warning/80'
+        }`}>
+          {freshness?.isFresh ? (
+            <>
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-positive animate-pulse shrink-0" />
+              LIVE — MATCHER DATA FRESH ({freshness.ageMinutes}m OLD)
+            </>
+          ) : freshness?.updatedAt ? (
+            <>
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-warning/60 shrink-0" />
+              NOT LIVE RIGHT NOW — MATCHER LAST RAN {freshness.label}
+            </>
+          ) : (
+            'MATCHER NOT RUN YET — NO LIVE DATA'
+          )}
+        </div>
+      )}
 
       {/* Stats strip */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-5">
@@ -372,13 +424,6 @@ export default function PredictionPage() {
         )}
       </div>
 
-      {/* Stale data warning */}
-      {!loading && stats?.pipelineAge != null && stats.pipelineAge > 600 && (
-        <div className="mb-4 px-3 py-2 border border-warning/30 bg-warning/5 font-mono text-[11px] text-warning uppercase tracking-widest">
-          PIPELINE DATA IS {Math.round(stats.pipelineAge / 60)}m OLD — MATCHERS MAY BE STOPPED (pm2 status)
-        </div>
-      )}
-
       {/* Opportunity list */}
       {loading ? (
         <div className="space-y-2">
@@ -387,12 +432,16 @@ export default function PredictionPage() {
       ) : opps.length === 0 ? (
         <div className="border border-border px-6 py-16 text-center">
           <div className="font-mono text-sm text-text-secondary uppercase tracking-widest mb-2">
-            SCANNING — NO VALID OPPORTUNITIES RIGHT NOW
+            NO VALID PREDICTION ARB FOUND
           </div>
           <div className="font-mono text-[10px] text-text-muted">
             {(data?.rejected ?? 0) > 0
-              ? `${data!.rejected} ENTR${data!.rejected === 1 ? 'Y' : 'IES'} FAILED VALIDATION (null prices, roi > 50%, missing urls)`
-              : 'MATCHERS PRODUCING NO OUTPUT — START agent2-fetcher + agent3-matcher-politics + agent4-matcher-other'}
+              ? `${data!.rejected} ENTR${data!.rejected === 1 ? 'Y' : 'IES'} FAILED VALIDATION (ROI > 50%, NULL PRICES, MISSING URLS)`
+              : freshness?.isFresh
+                ? 'MATCHER RAN RECENTLY BUT FOUND NO EXPLOITABLE SPREAD'
+                : freshness?.updatedAt
+                  ? `LAST MATCHER RUN: ${freshness.label} — RUN MATCHER TO REFRESH DATA`
+                  : 'MATCHER HAS NOT BEEN RUN YET — NO DATA AVAILABLE'}
           </div>
         </div>
       ) : (

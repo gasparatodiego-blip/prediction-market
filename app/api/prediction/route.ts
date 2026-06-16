@@ -88,15 +88,17 @@ export async function GET() {
 
       valid.push({
         id: pairKey,
-        question:   o.question,
-        lowMarket:  { platform: low.platform,  probability: low.probability,  url: low.url,  fee: fA, expiresAt: low.expiresAt  ?? null },
-        highMarket: { platform: high.platform, probability: high.probability, url: high.url, fee: fB, expiresAt: high.expiresAt ?? null },
-        spread:     o.spread,
-        roi:        o.roi,
-        earnPer100: o.earnPer100,
-        confidence: o.confidence,
-        category:   o.category ?? 'unknown',
-        type:       isSignal ? 'signal' : 'cashable',
+        question:         o.question ?? o.title ?? '—',
+        lowMarket:        { platform: low.platform,  probability: low.probability,  url: low.url,  fee: fA, expiresAt: low.expiresAt  ?? null },
+        highMarket:       { platform: high.platform, probability: high.probability, url: high.url, fee: fB, expiresAt: high.expiresAt ?? null },
+        spread:           o.spread,
+        roi:              o.roi,
+        earnPer100:       o.earnPer100,
+        confidence:       o.confidence,
+        category:         o.category ?? 'unknown',
+        type:             isSignal ? 'signal' : 'cashable',
+        annualizedROI:    o.annualizedROI    ?? null,
+        daysToResolution: o.daysToResolution ?? null,
       });
     }
 
@@ -106,8 +108,11 @@ export async function GET() {
       return b.roi - a.roi;
     });
 
-    const cashable = valid.filter(o => o.type === 'cashable');
-    const bestRoi  = cashable.length > 0 ? cashable[0].roi : null;
+    const cashable   = valid.filter(o => o.type === 'cashable');
+    const bestRoi    = cashable.length > 0 ? cashable[0].roi : null;
+    const updatedAt  = raw.updatedAt ?? null;
+    const ageMinutes = updatedAt ? Math.round((Date.now() - updatedAt) / 60_000) : null;
+    const isFresh    = ageMinutes !== null && ageMinutes < 60;
 
     return NextResponse.json({
       valid,
@@ -119,8 +124,17 @@ export async function GET() {
         bestRoi,
         marketsTracked,
         platforms:    4,
-        updatedAt:    raw.updatedAt ?? null,
-        pipelineAge:  raw.updatedAt ? Math.round((Date.now() - raw.updatedAt) / 1000) : null,
+        updatedAt,
+        pipelineAge:  updatedAt ? Math.round((Date.now() - updatedAt) / 1000) : null,
+      },
+      freshness: {
+        updatedAt,
+        ageMinutes,
+        isFresh,
+        label: !ageMinutes   ? null
+             : ageMinutes < 60   ? 'LIVE'
+             : ageMinutes < 1440 ? `${Math.round(ageMinutes / 60)}h AGO`
+             :                     `${Math.round(ageMinutes / 1440)}d AGO`,
       },
     });
   } catch {
@@ -132,6 +146,7 @@ export async function GET() {
         bestRoi: null, marketsTracked: 0, platforms: 4,
         updatedAt: null, pipelineAge: null,
       },
+      freshness: { updatedAt: null, ageMinutes: null, isFresh: false, label: null },
     });
   }
 }

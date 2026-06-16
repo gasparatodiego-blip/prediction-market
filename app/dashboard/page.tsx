@@ -4,8 +4,8 @@ import { useState } from 'react';
 import SectionHelp from '@/app/components/SectionHelp';
 import Link from 'next/link';
 import {
-  Crosshair, Coins, Trophy, ArrowLeftRight, Zap, Landmark,
-  ChevronDown, ArrowRight,
+  Crosshair, Coins, Trophy, Zap, Landmark, Users,
+  ChevronDown, ArrowRight, GitMerge,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -44,55 +44,65 @@ const strategies: Strategy[] = [
     id: 'sports',
     Icon: Trophy,
     name: 'Sports Arbitrage',
-    platforms: ['Bet365', 'DraftKings'],
-    summary: 'Surebets across 40+ bookmakers',
+    platforms: ['Bet365', 'DraftKings', 'OddsAPI'],
+    summary: 'Surebets across 40+ bookmakers — agent off by default',
     explanation:
-      'When bookmakers disagree on odds for the same match, backing every outcome across different books can lock in a profit regardless of the result. The scanner finds these surebets across 40+ books. Risk: bookmakers may limit accounts, and odds move fast.',
+      'When bookmakers disagree on odds for the same match, backing every outcome across different books can lock in a profit regardless of the result. The scanner finds these surebets across 40+ books via OddsAPI. Agent is disabled by default (set ODDS_API_LIVE=true to enable). Risk: bookmakers may limit accounts, and odds move fast.',
     link: '/dashboard/sports',
   },
   {
-    id: 'cex',
-    Icon: ArrowLeftRight,
-    name: 'CEX Arbitrage',
-    platforms: ['Binance', 'Coinbase', 'Kraken'],
-    summary: 'Price discrepancies across exchanges',
+    id: 'carry',
+    Icon: GitMerge,
+    name: 'Cash & Carry',
+    platforms: ['Binance', 'OKX', 'Deribit'],
+    summary: 'Locked basis return via spot + dated futures',
     explanation:
-      "The same coin trades at slightly different prices on different exchanges. Buy where it's cheap, sell where it's dear. The scanner flags the gaps in real time. Risk: withdrawal times, transfer fees, and gaps that close within seconds.",
-    link: '/dashboard/cex',
+      'Buy spot and simultaneously short a dated (quarterly) futures contract on the same exchange. At expiry the future delivers at spot price, so the gap (basis) you locked in at entry is your return — regardless of where the price goes. Risk: exchange counterparty risk over the hold period. Coin-margined contracts settle in the coin, not USDT — USD return is not fully locked.',
+    link: '/dashboard/carry',
   },
   {
-    id: 'hft',
+    id: 'mm',
     Icon: Zap,
-    name: 'HFT 5-min',
-    platforms: ['Binance Futures'],
-    summary: 'High-frequency algorithmic trading',
+    name: 'MM Analyzer',
+    platforms: ['Polymarket CLOB'],
+    summary: 'Passive market-making simulation (read-only)',
     explanation:
-      "A higher-frequency strategy that reacts to very short-lived price dislocations on Binance futures. It's automated and noisier — best for users comfortable with frequent small trades. Risk: the highest of the set; tiny edges, very execution-sensitive.",
-    link: '/dashboard/hft',
+      "Simulates a two-sided passive maker quote on eligible Polymarket binary markets. Infers fills from public trade data and tracks whether spread capture exceeds adverse-selection losses. Read-only — no orders are placed. Two P&L numbers: measured (verified) and estimated rewards (labeled assumption, not from any API).",
+    link: '/dashboard/mm',
   },
   {
     id: 'lp',
     Icon: Landmark,
     name: 'Liquidity Provider',
     platforms: ['Polymarket LP'],
-    summary: 'Earn fees by providing market liquidity',
+    summary: 'Simulated LP position tracker (read-only)',
     explanation:
-      "Instead of taking trades, you provide liquidity (e.g. on Polymarket) and earn fees from other people's trades. The scanner tracks your fees and impermanent loss. Risk: impermanent loss can offset fees if prices swing hard.",
+      "Instead of taking trades, you provide liquidity (e.g. on Polymarket) and earn fees from other people's trades. This tracker simulates LP positions and tracks estimated fees and impermanent loss. Positions are simulated — no real capital is deployed. Risk: impermanent loss can offset fees if prices swing hard.",
     link: '/dashboard/lp',
+  },
+  {
+    id: 'traders',
+    Icon: Users,
+    name: 'Traders Hub',
+    platforms: ['Polymarket'],
+    summary: 'Leaderboard + follow + alerts — one place, read-only, zero keys',
+    explanation:
+      'Browse the Polymarket realized P&L leaderboard by category (Politics, Sports, Crypto, Pop Culture, World), follow any wallet, and get Telegram alerts when followed traders make new trades. No private keys collected at any step. Auto-copy execution is locked pending security hardening (step 2 of 3). Past P&L ≠ future results. Not financial advice.',
+    link: '/dashboard/traders',
   },
 ];
 
 const stats = [
-  { value: '14+',  label: 'AI Agents',  color: 'text-accent-bright' },
-  { value: '40+',  label: 'Bookmakers', color: 'text-accent' },
-  { value: '12+',  label: 'Platforms',  color: 'text-positive' },
-  { value: '24/7', label: 'Scanning',   color: 'text-warning' },
+  { value: '6',    label: 'Live Agents',  color: 'text-accent-bright' },
+  { value: '9+',   label: 'Venues',       color: 'text-accent' },
+  { value: '40+',  label: 'Bookmakers',   color: 'text-positive' },
+  { value: '24/7', label: 'Scanning',     color: 'text-warning' },
 ];
 
 const generalFaqs = [
   {
     q: 'Which strategy should I start with?',
-    a: 'For the steadiest, lowest-stress option, Crypto & Funding (delta-neutral, 1× leverage) is the classic starting point. Prediction-market and sports arbitrage have clearer "locked" edges but need fast execution. HFT is for advanced users only.',
+    a: 'For the steadiest, lowest-stress option, Crypto & Funding (delta-neutral, 1× leverage) is the classic starting point. Cash & Carry locks in a basis at entry and holds to expiry — lower variance, no rate-flip risk. Prediction-market and sports arbitrage have clearer "locked" edges but need fast execution and account access.',
   },
   {
     q: 'Is the profit guaranteed?',
@@ -141,7 +151,7 @@ export default function DashboardPage() {
           <h2 className="text-base font-semibold text-text-primary font-mono uppercase tracking-widest">
             SELECT STRATEGY
           </h2>
-          <p className="text-xs text-text-muted font-mono mt-1">8 automated strategies · 14 AI agents</p>
+          <p className="text-xs text-text-muted font-mono mt-1">7 strategies · 6 live agents · 9+ venues</p>
         </div>
 
         {/* Strategy cards — master */}

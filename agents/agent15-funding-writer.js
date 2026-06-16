@@ -18,7 +18,8 @@
 const fs = require('fs');
 const {
   annualize,
-  roundTripFee,
+  venueFeePct,
+  roundTripFeeByVenue,
   netApy30d,
   breakevenDays,
   spreadStatus,
@@ -47,7 +48,28 @@ function cap(s) {
 }
 
 function venueLabel(exchange, isDex) {
+  if (exchange === 'dydx')        return 'dYdX (DEX)';
+  if (exchange === 'hyperliquid') return 'Hyperliquid (DEX)';
   return isDex ? `${cap(exchange)} (DEX)` : cap(exchange);
+}
+
+function liquidityUsd(data) {
+  return Math.max(data?.openInterestUsd ?? 0, data?.vol24hUsd ?? 0);
+}
+
+function liqTier(usd) {
+  if (usd >= 50_000_000) return 'DEEP';
+  if (usd >= 10_000_000) return 'OK';
+  if (usd >= 1_000_000)  return 'THIN';
+  return 'VERY THIN';
+}
+
+function dexBridgeNote(shortVenue, longVenue) {
+  const venues = new Set([shortVenue, longVenue]);
+  const notes  = [];
+  if (venues.has('hyperliquid')) notes.push('HL: USDC bridge ~10 min + ~$1-5 ETH gas one-time');
+  if (venues.has('dydx'))        notes.push('dYdX: USDC bridge via Noble ~5 min + ~$3-10 gas');
+  return notes.join('; ');
 }
 
 // ── Cross-exchange funding spread ─────────────────────────────────────────────
@@ -68,9 +90,9 @@ function crossExchangeSpread(futures) {
   const byExchange = {};
 
   for (const [ex, coins] of Object.entries(futures)) {
-    const isDex = ex === 'hyperliquid';
+    const isDex = ex === 'hyperliquid' || ex === 'dydx';
     for (const [coin, data] of Object.entries(coins || {})) {
-      const fr           = data?.fundingRate;
+      const fr            = data?.fundingRate;
       const intervalHours = data?.fundingIntervalHours ?? 8;
       if (fr == null || typeof fr !== 'number' || !isFinite(fr)) continue;
       if (!byExchange[coin]) byExchange[coin] = [];
@@ -87,9 +109,9 @@ function crossExchangeSpread(futures) {
       for (let j = i + 1; j < list.length; j++) {
         const A = list[i], B = list[j];
 
-        // Interval-aware annualization — the key fix
-        const annA = annualize(A.fr, A.intervalHours);
-        const annB = annualize(B.fr, B.intervalHours);
+        // Interval-aware annualization
+        const annA     = annualize(A.fr, A.intervalHours);
+        const annB     = annualize(B.fr, B.intervalHours);
         const grossApy = Math.abs(annA - annB);
 
         if (grossApy < THRESHOLD_APY) continue;
@@ -98,24 +120,38 @@ function crossExchangeSpread(futures) {
         const shortSide = annA >= annB ? A : B;
         const longSide  = annA >= annB ? B : A;
 
-        const totalFees = roundTripFee(shortSide.isDex, longSide.isDex);
+        // Per-venue fee: HL=0.025%/leg, dYdX=0.05%/leg, CEX=0.04%/leg
+        const totalFees = roundTripFeeByVenue(shortSide.exchange, longSide.exchange);
         const net30d    = netApy30d(grossApy, totalFees);
         const beDays    = breakevenDays(grossApy, totalFees);
         const status    = spreadStatus(beDays);
         const hasDexLeg = shortSide.isDex || longSide.isDex;
 
-        // Describe how legs reset
-        const resetNote = hasDexLeg
-          ? 'HL leg resets HOURLY; CEX leg every 8h — each can flip independently.'
+        // Liquidity: use OI or vol24h from each leg; capacity = min(both legs, 1% of OI)
+        const shortData  = (futures[shortSide.exchange] || {})[coin] || {};
+        const longData   = (futures[longSide.exchange]  || {})[coin] || {};
+        const shortLiq   = liquidityUsd(shortData);
+        const longLiq    = liquidityUsd(longData);
+        const minLiq     = shortLiq > 0 && longLiq > 0
+          ? Math.min(shortLiq, longLiq)
+          : Math.max(shortLiq, longLiq);
+        const capUsd     = minLiq > 0 ? Math.round(Math.min(minLiq * 0.01, 500_000)) : null;
+        const tier       = minLiq > 0 ? liqTier(minLiq) : null;
+        const thinFlag   = tier === 'THIN' || tier === 'VERY THIN';
+
+        // Reset cadence note
+        const resetParts = [];
+        if (shortSide.intervalHours === 1) resetParts.push(`${shortSide.exchange} resets HOURLY`);
+        if (longSide.intervalHours  === 1) resetParts.push(`${longSide.exchange} resets HOURLY`);
+        const resetNote = resetParts.length > 0
+          ? resetParts.join('; ') + ' — these legs can flip every hour. CEX legs every 8h.'
           : 'Both legs reset every 8h.';
 
-        const feeNote = hasDexLeg
-          ? `Round-trip fees: CEX 0.04%/leg × 2 + HL ${VENUE_FEE_PCT.dex}%/leg × 2 = ${totalFees.toFixed(3)}%`
-          : `Round-trip fees: 4 CEX legs × 0.04% = ${totalFees.toFixed(3)}%`;
+        const shortFeePct = venueFeePct(shortSide.exchange);
+        const longFeePct  = venueFeePct(longSide.exchange);
+        const feeNote = `Round-trip fees: ${shortSide.exchange} ${shortFeePct}%/leg + ${longSide.exchange} ${longFeePct}%/leg × 2 = ${totalFees.toFixed(3)}%`;
 
-        const bridgeNote = hasDexLeg
-          ? 'Bridge friction: ~10 min + ~$1–5 ETH gas one-time to deposit to Hyperliquid L1.'
-          : '';
+        const bridgeNoteStr = hasDexLeg ? dexBridgeNote(shortSide.exchange, longSide.exchange) : '';
 
         opps.push({
           type:             'FUNDING',
@@ -123,38 +159,40 @@ function crossExchangeSpread(futures) {
           question:         `${coin}/USDT Funding Spread`,
           legs: [
             {
-              platform:     venueLabel(shortSide.exchange, shortSide.isDex),
-              side:         'SHORT',
-              price:        +shortSide.fr.toFixed(6),         // %/interval
+              platform:      venueLabel(shortSide.exchange, shortSide.isDex),
+              side:          'SHORT',
+              price:         +shortSide.fr.toFixed(6),
               intervalHours: shortSide.intervalHours,
-              isDex:        shortSide.isDex,
-              url:          null,
+              isDex:         shortSide.isDex,
+              url:           null,
             },
             {
-              platform:     venueLabel(longSide.exchange, longSide.isDex),
-              side:         'LONG',
-              price:        +longSide.fr.toFixed(6),
+              platform:      venueLabel(longSide.exchange, longSide.isDex),
+              side:          'LONG',
+              price:         +longSide.fr.toFixed(6),
               intervalHours: longSide.intervalHours,
-              isDex:        longSide.isDex,
-              url:          null,
+              isDex:         longSide.isDex,
+              url:           null,
             },
           ],
           annualizedROI:    +grossApy.toFixed(2),
-          netROI:           net30d,     // net 30d APY %/yr (for OpportunitiesPanel secondary line)
+          netROI:           net30d,
           grossROI:         +grossApy.toFixed(2),
           spread:           null,
           daysToResolution: null,
           resolutionDate:   null,
-          capacityUsd:      null,       // no orderbook depth → display as "—"
+          capacityUsd:      capUsd,
           lockupFlag:       null,
-          verdict:          'HARVEST · variable',
+          verdict:          thinFlag ? 'HARVEST · thin — not executable at size' : 'HARVEST · variable',
           confidence:       grossApy > 10 ? 0.7 : 0.85,
-          note:             [feeNote, resetNote, bridgeNote].filter(Boolean).join(' '),
-          // Extended fields consumed by /api/crypto and crypto page
+          note:             [feeNote, resetNote, bridgeNoteStr].filter(Boolean).join(' '),
           hasDexLeg,
           totalFeesPct:     +totalFees.toFixed(3),
           breakevenDays:    beDays,
           status,
+          liquidityTier:    tier,
+          oiUsd:            minLiq > 0 ? Math.round(minLiq) : null,
+          thinFlag,
           fundingIntervalHoursShort: shortSide.intervalHours,
           fundingIntervalHoursLong:  longSide.intervalHours,
         });

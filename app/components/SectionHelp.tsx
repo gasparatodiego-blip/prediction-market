@@ -128,6 +128,8 @@ const CONTENT: Record<string, { title: string; blocks: Block[] }> = {
         ['Sports',           'Cross-bookmaker arb. Currently OFFLINE — live data needs a paid OddsAPI plan.'],
         ['Portfolio',        'Manual log of trades you have entered. Track realized P&L.'],
         ['History',          'Log of scanner-detected opportunities over time.'],
+        ['MM Analyzer',      'Read-only Polymarket market-making simulation. Two P&L numbers: measured (verified) and estimated rewards (labeled assumption).'],
+        ['Whale Watch',      'Realized-PnL ranking of consistently-active Polymarket short-market wallets. Observational only.'],
       ]},
 
       { t: 'h', s: 'Honesty' },
@@ -151,27 +153,84 @@ const CONTENT: Record<string, { title: string; blocks: Block[] }> = {
     ],
   },
 
-  hft: {
-    title: 'How to use: HFT / 5-Min Signal',
+  mm: {
+    title: 'How to use: MM Analyzer',
     blocks: [
       { t: 'h', s: 'What it is' },
-      { t: 'p', s: 'A read-only divergence detector for Polymarket\'s short-duration crypto Up/Down markets (5-min, 15-min, 4-hour, 1-hour). It estimates a fair probability for the Up outcome using a log-normal digital-option model, then flags when the Polymarket price diverges by more than 5 percentage points. Signal-only — it never places orders.' },
+      { t: 'p', s: 'A read-only simulation of passive two-sided market making on Polymarket binary markets. The agent models a $50 resting YES quote (bid and ask) on each eligible market, infers fills from the public trade stream, and records each simulated cycle\'s outcome. No orders are placed. Zero Claude API calls.' },
 
-      { t: 'h', s: 'Source confidence' },
+      { t: 'h', s: 'Market eligibility (golden rule)' },
       { t: 'dl', items: [
-        ['CANONICAL', 'Hourly markets that resolve on the Binance BTC/USDT 1H candle. Our model uses the same Binance data — alignment is exact. Primary signals.'],
-        ['PROXY', '5-min, 15-min, and 4-hour markets that resolve on Chainlink BTC/USD data streams. We proxy the open price from Binance spot (free). Basis between Binance and Chainlink can create false divergences. Experimental only.'],
+        ['Mid 0.30–0.70', 'Markets near 50/50 — wide enough that both sides attract real volume.'],
+        ['Vol ≥$100/day', 'Minimum 24h trade volume; below this fills are too sparse to simulate.'],
+        ['≥14 days',      'Enough time horizon that a maker position can cycle multiple times before resolution.'],
+        ['acceptingOrders', 'CLOB must be open (some markets pause order books near resolution).'],
       ]},
 
-      { t: 'h', s: 'The Measurement Log' },
-      { t: 'p', s: 'Every flagged divergence is recorded with the eventual resolution outcome (Up or Down won). This lets you track, over days, whether flagged signals for canonical markets win more than chance — or whether proxy signals are just noise. Hit-rate is not meaningful until ≥50 canonical signals are resolved.' },
+      { t: 'h', s: 'Fill simulation — APPROXIMATE' },
+      { t: 'p', s: 'Fills are inferred from the public data-api trade stream. When a SELL Yes trade crosses at price ≤ our bid, we assume our buy order filled. When a BUY Yes trade crosses at price ≥ our ask, we assume our sell order filled. Queue position is unknown — actual fills in a live order book depend on time-priority. This is a statistical approximation, not an exact replay.' },
+
+      { t: 'h', s: 'Cycle types' },
+      { t: 'dl', items: [
+        ['perfect', 'Both bid and ask filled within the 30-min window — spread captured. P&L = (ask − bid) × shares.'],
+        ['adverse', 'Only one side filled. Closed at 5pp adverse move (cut-loss) or after 30-min timeout. P&L may be negative.'],
+        ['resolved', 'Market resolved before the cycle closed. P&L computed from terminal payoff.'],
+      ]},
+
+      { t: 'h', s: 'Two P&L numbers — why separate' },
+      { t: 'dl', items: [
+        ['Measured net P&L', 'Spread captures minus adverse-selection losses. Computed from observed trade data. Verified and honest — this is what the simulation actually shows.'],
+        ['Estimated rewards', 'ASSUMPTION: 0.25%/day of quoted notional. The actual Polymarket maker reward rate is set by governance off-chain and is NOT available in any public API. This number is an adjustable estimate, not a fact. Typical published range: 0.10%–0.50%/day.'],
+      ]},
+
+      { t: 'h', s: 'Why adverse selection is the killer' },
+      { t: 'ul', items: [
+        'In active markets, informed traders (bots with private feeds or better models) trade against stale quotes.',
+        'A passive maker\'s ask fills when someone is confident the true price is ABOVE the ask. That\'s adverse for us.',
+        'A single 10pp adverse move can erase 5× the spread earned on perfect cycles.',
+        'The measured P&L is honest about this — rewards are kept entirely separate so the real cost of adverse selection is visible.',
+        'If measured P&L is negative and the total only becomes positive with rewards, the strategy is reward-dependent — a fragile position if Polymarket changes its reward program.',
+      ]},
 
       { t: 'h', s: 'Hard limitations' },
       { t: 'ul', items: [
-        'Fair value is a model estimate. Real edges (if any) exist only in the last few seconds before resolution — where polling latency alone may prevent execution.',
-        'Capacity shown is the real orderbook depth at the best price at time of detection, not guaranteed available at execution.',
-        'Proxy signals (5m/15m/4h) may diverge due to Binance/Chainlink basis, not from genuine mispricing. Track separately.',
-        'High-frequency bots already monitor these markets. Any edge detected by this 10-second poller has likely been arbitraged out.',
+        'Queue position unknown. Fill inference may over- or under-count actual fills.',
+        'Gas/spread costs on Polymarket (MATIC gas, 0% maker fee but taker-driven) are not modeled.',
+        'negRisk markets (multi-outcome) may have different fill dynamics; treated identically here.',
+        'Reward rate is not from any API. If you rely on rewards, verify the actual current rate via Polymarket\'s reward documentation before sizing in.',
+      ]},
+    ],
+  },
+
+  whales: {
+    title: 'How to use: Whale Watch',
+    blocks: [
+      { t: 'h', s: 'What it is' },
+      { t: 'p', s: 'A read-only analysis of Polymarket short-crypto-market wallets (5-min, 15-min, 4-hour, 1-hour Up/Down markets). For each resolved market, it pulls all public trades, groups by pseudonymous proxyWallet, and computes realized PnL. Wallets appearing in ≥10 resolved markets over the past 7 days are ranked.' },
+
+      { t: 'h', s: 'PnL methodology' },
+      { t: 'dl', items: [
+        ['Cost basis', 'Sum of all BUY orders (in USDC) across both Up and Down outcomes.'],
+        ['Payoff',     'Winning-outcome tokens held at resolution × $1.00. Losing tokens → $0.'],
+        ['PnL',        'Sell proceeds + terminal payoff − cost basis. Negative = loss.'],
+        ['Caveat',     'Computed from public trade data only. Off-chain netting or OTC activity is invisible.'],
+      ]},
+
+      { t: 'h', s: 'Observable patterns' },
+      { t: 'dl', items: [
+        ['Entry timing', 'Average trade timestamp relative to the window start (0% = entered at open, 100% = at close). Late-window entry may indicate latency advantages.'],
+        ['Side bias',    'Whether the wallet predominantly bet Up or Down across markets. Balanced suggests market-making; skewed suggests directional conviction or systematic model.'],
+        ['Trades/market', 'Average number of trades per market. High count suggests algorithmic order splitting.'],
+        ['Avg exposure', 'Average USDC deployed per market. Small, consistent sizing = systematic; large variable sizing = discretionary.'],
+      ]},
+
+      { t: 'h', s: 'Critical honesty warnings' },
+      { t: 'ul', items: [
+        'Most consistently-profitable wallets in 5m/15m markets are almost certainly latency arbitrage bots with co-location or private data-feed advantages — not humans with better models.',
+        'Observing WHAT a wallet does tells you nothing about WHY, and copying behavior without the same infrastructure cannot replicate the edge.',
+        'PnL is historical over a 7-day window. A wallet ranking #1 today may be flat or negative this week.',
+        'proxyWallet is a pseudonymous identifier. One person can operate many wallets; one wallet can be controlled by many people.',
+        'This is pattern analysis, not a copy-trade signal. Never mirror positions based solely on this data.',
       ]},
     ],
   },

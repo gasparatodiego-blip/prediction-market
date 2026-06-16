@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import fs from 'fs';
 import {
   annualize,
-  roundTripFee,
+  venueFeePct,
+  roundTripFeeByVenue,
   netApy30d,
   breakevenDays,
   spreadStatus,
@@ -19,6 +20,8 @@ interface FuturesCoin {
   fundingIntervalHours?: number;
   nextFundingTime?:      number;
   openInterest?:         number | null;
+  openInterestUsd?:      number | null;
+  vol24hUsd?:            number | null;
 }
 
 export interface SpreadItem {
@@ -37,10 +40,24 @@ export interface SpreadItem {
   totalFeesPct:      number;
   breakevenDays:     number;
   status:            'HARVEST' | 'CAUTION' | 'MARGINAL';
+  liquidityTier:     string | null;
+  capacityUsd:       number | null;
+  thinFlag:          boolean;
 }
 
 function isDex(exchange: string): boolean {
-  return exchange === 'hyperliquid';
+  return exchange === 'hyperliquid' || exchange === 'dydx';
+}
+
+function liqUsd(data: FuturesCoin | undefined): number {
+  return Math.max(data?.openInterestUsd ?? 0, data?.vol24hUsd ?? 0);
+}
+
+function liqTier(usd: number): string {
+  if (usd >= 50_000_000) return 'DEEP';
+  if (usd >= 10_000_000) return 'OK';
+  if (usd >= 1_000_000)  return 'THIN';
+  return 'VERY THIN';
 }
 
 function computeSpreads(
@@ -74,34 +91,48 @@ function computeSpreads(
         const shortSide = annA >= annB ? A : B;
         const longSide  = annA >= annB ? B : A;
 
-        const totalFees = roundTripFee(shortSide.dex, longSide.dex);
+        // Per-venue fees: HL=0.025%, dYdX=0.05%, CEX=0.04%
+        const totalFees = roundTripFeeByVenue(shortSide.exchange, longSide.exchange);
         const net30d    = netApy30d(grossApy, totalFees);
         const beDays    = breakevenDays(grossApy, totalFees);
         const status    = spreadStatus(beDays);
         const dexLeg    = shortSide.dex || longSide.dex;
 
+        // Liquidity from the thinner leg
+        const shortLiq  = liqUsd(futures[shortSide.exchange]?.[coin]);
+        const longLiq   = liqUsd(futures[longSide.exchange]?.[coin]);
+        const minLiq    = shortLiq > 0 && longLiq > 0
+          ? Math.min(shortLiq, longLiq)
+          : Math.max(shortLiq, longLiq);
+        const tier      = minLiq > 0 ? liqTier(minLiq) : null;
+        const capUsd    = minLiq > 0 ? Math.round(Math.min(minLiq * 0.01, 500_000)) : null;
+        const thin      = tier === 'THIN' || tier === 'VERY THIN';
+
         out.push({
           coin,
-          shortExchange:     shortSide.exchange,
-          longExchange:      longSide.exchange,
-          frShort:           +shortSide.fr.toFixed(6),
-          frLong:            +longSide.fr.toFixed(6),
+          shortExchange:      shortSide.exchange,
+          longExchange:       longSide.exchange,
+          frShort:            +shortSide.fr.toFixed(6),
+          frLong:             +longSide.fr.toFixed(6),
           intervalHoursShort: shortSide.intervalHours,
           intervalHoursLong:  longSide.intervalHours,
-          shortIsDex:        shortSide.dex,
-          longIsDex:         longSide.dex,
-          hasDexLeg:         dexLeg,
+          shortIsDex:         shortSide.dex,
+          longIsDex:          longSide.dex,
+          hasDexLeg:          dexLeg,
           grossApy,
-          netApy30d:         net30d,
-          totalFeesPct:      +totalFees.toFixed(3),
-          breakevenDays:     beDays,
+          netApy30d:          net30d,
+          totalFeesPct:       +totalFees.toFixed(3),
+          breakevenDays:      beDays,
           status,
+          liquidityTier:      tier,
+          capacityUsd:        capUsd,
+          thinFlag:           thin,
         });
       }
     }
   }
 
-  return out.sort((a, b) => b.grossApy - a.grossApy);
+  return out.sort((a, b) => b.netApy30d - a.netApy30d);
 }
 
 export async function GET() {

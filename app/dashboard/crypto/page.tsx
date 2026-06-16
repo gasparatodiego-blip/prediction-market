@@ -29,6 +29,9 @@ interface SpreadItem {
   totalFeesPct:       number;
   breakevenDays:      number;
   status:             'HARVEST' | 'CAUTION' | 'MARGINAL';
+  liquidityTier:      string | null;
+  capacityUsd:        number | null;
+  thinFlag:           boolean;
 }
 
 interface SpotCoin {
@@ -43,6 +46,15 @@ interface Meta {
   note:         string;
 }
 
+interface CexArbItem {
+  coin:      string;
+  low:       string;
+  lowPrice:  number;
+  high:      string;
+  highPrice: number;
+  spreadPct: number;
+}
+
 interface ApiResponse {
   ok:           boolean;
   generatedAt:  number | null;
@@ -50,6 +62,7 @@ interface ApiResponse {
   futures:      Record<string, Record<string, FuturesCoin>>;
   spot:         Record<string, Record<string, SpotCoin>>;
   spreads:      SpreadItem[];
+  cexArb:       CexArbItem[];
   meta:         Meta | null;
 }
 
@@ -83,6 +96,8 @@ function cap(s: string): string {
 }
 
 function venueLabel(exchange: string, isDex: boolean): string {
+  if (exchange === 'dydx')        return 'dYdX (DEX)';
+  if (exchange === 'hyperliquid') return 'Hyperliquid (DEX)';
   return isDex ? `${cap(exchange)} (DEX)` : cap(exchange);
 }
 
@@ -180,13 +195,36 @@ function VariabilityBanner({
   );
 }
 
+function fmtCapacity(n: number | null): string {
+  if (n == null) return '—';
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000)     return `$${Math.round(n / 1_000)}k`;
+  return `$${n}`;
+}
+
+function LiqChip({ tier, thin }: { tier: string | null; thin: boolean }) {
+  if (!tier) return <span className="font-mono text-[9px] text-text-muted">—</span>;
+  const cls: Record<string, string> = {
+    DEEP:       'border-accent/40 text-accent',
+    OK:         'border-border text-text-secondary',
+    THIN:       'border-warning/50 text-warning',
+    'VERY THIN':'border-negative/40 text-negative/80',
+  };
+  return (
+    <span className={`px-1 py-[1px] border text-[8px] font-mono uppercase ${cls[tier] ?? 'border-border text-text-muted'}`}>
+      {tier}{thin ? ' ⚠' : ''}
+    </span>
+  );
+}
+
 function FeeNote({ meta }: { meta: Meta | null }) {
   if (!meta) return null;
   return (
     <p className="font-mono text-[9px] text-text-muted mt-1.5 leading-relaxed">
-      Fee assumption: CEX {meta.feePerLeg.cex}%/leg · Hyperliquid (DEX) {meta.feePerLeg.dex}%/leg.
-      Round-trip = open + close both sides (4 legs). NET 30d = gross spread × 30d − fees, annualized.
+      Fee/leg: CEX {meta.feePerLeg.cex}% · Hyperliquid {meta.feePerLeg.dex}% · dYdX 0.05%.
+      Round-trip = 4 legs (open+close both sides). NET 30d = gross × 30d − fees.
       MARGINAL = &gt;10d breakeven · CAUTION = &gt;5d · HARVEST = ≤5d.
+      Liquidity tier = min OI or vol24h across both legs (DEEP≥$50M · OK≥$10M · THIN≥$1M).
     </p>
   );
 }
@@ -251,6 +289,12 @@ function SpreadTable({
         </span>
       </div>
 
+      {/* Caveat */}
+      <p className="px-4 py-2 font-mono text-[9px] text-warning/70 border-b border-border/30 leading-relaxed">
+        Annualized = the rate <em>if</em> the spread persists. Funding is variable and can flip in hours — breakeven-days is the real risk.
+        Ranked by NET 30d APY (gross minus one-time round-trip fees amortized over 30 days).
+      </p>
+
       {/* Table */}
       {spreads.length === 0 ? (
         <div className="py-8 text-center font-mono text-[10px] text-text-muted">
@@ -261,8 +305,8 @@ function SpreadTable({
           <table className="w-full font-mono text-[11px] border-collapse">
             <thead>
               <tr className="border-b border-border">
-                {['COIN', 'SHORT (collect)', 'LONG (pay)', 'GROSS APY', 'FEES', 'BREAKEVEN', 'NET 30d APY', 'STATUS'].map(h => (
-                  <th key={h} className="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-text-muted font-normal whitespace-nowrap">
+                {['COIN', 'SHORT (collect)', 'LONG (pay)', 'NET 30d APY ↓', 'GROSS APY', 'FEES (rt)', 'BREAKEVEN', 'STATUS', 'LIQUIDITY'].map(h => (
+                  <th key={h} className={`px-3 py-2 text-left text-[9px] uppercase tracking-widest font-normal whitespace-nowrap ${h.startsWith('NET') ? 'text-positive' : 'text-text-muted'}`}>
                     {h}
                   </th>
                 ))}
@@ -275,7 +319,7 @@ function SpreadTable({
                 const sz        = capital > 0 ? calcSpreadSizing(s, capital, leverage) : null;
                 return (
                   <Fragment key={key}>
-                    <tr className={`border-b ${sz ? 'border-border/20' : 'border-border/50'} hover:bg-bg-elevated/40 transition-colors duration-100 ${isMarginal ? 'opacity-50' : ''}`}>
+                    <tr className={`border-b ${sz ? 'border-border/20' : 'border-border/50'} hover:bg-bg-elevated/40 transition-colors duration-100 ${isMarginal ? 'opacity-50' : ''} ${s.thinFlag ? 'opacity-70' : ''}`}>
                       <td className="px-3 py-2.5 font-semibold text-text-primary">{s.coin}</td>
 
                       {/* SHORT leg */}
@@ -300,7 +344,13 @@ function SpreadTable({
                         </span>
                       </td>
 
-                      <td className="px-3 py-2.5 tabular-nums font-semibold text-positive">
+                      {/* NET 30d APY — hero column */}
+                      <td className={`px-3 py-2.5 tabular-nums text-base font-bold ${s.netApy30d > 0 ? 'text-positive' : 'text-negative/70'}`}>
+                        {fmtApy(s.netApy30d)}
+                      </td>
+
+                      {/* GROSS APY — demoted */}
+                      <td className="px-3 py-2.5 tabular-nums text-[10px] text-text-muted">
                         {fmtApy(s.grossApy)}
                       </td>
 
@@ -313,20 +363,25 @@ function SpreadTable({
                         {s.breakevenDays}d
                       </td>
 
-                      <td className={`px-3 py-2.5 tabular-nums font-semibold ${s.netApy30d > 0 ? 'text-positive' : 'text-negative/70'}`}>
-                        {fmtApy(s.netApy30d)}
-                      </td>
-
                       <td className="px-3 py-2.5">
                         <span className={`px-1.5 py-[2px] border text-[9px] uppercase tracking-widest ${statusBadgeCls(s.status)}`}>
                           {s.status}
                         </span>
                       </td>
+
+                      <td className="px-3 py-2.5 whitespace-nowrap">
+                        <div className="flex flex-col gap-0.5">
+                          <LiqChip tier={s.liquidityTier} thin={s.thinFlag} />
+                          {s.capacityUsd != null && (
+                            <span className="font-mono text-[8px] text-text-muted">cap {fmtCapacity(s.capacityUsd)}</span>
+                          )}
+                        </div>
+                      </td>
                     </tr>
 
                     {sz && (
                       <tr className="border-b border-border/50 bg-bg-elevated/10">
-                        <td colSpan={8} className="px-3 py-1.5">
+                        <td colSpan={9} className="px-3 py-1.5">
                           <div className="flex flex-wrap gap-x-4 font-mono text-[10px]">
                             <span className="text-text-muted">
                               N/leg <span className="text-text-primary tabular-nums">{fmtUsd(sz.N)}</span>
@@ -362,10 +417,13 @@ function SpreadTable({
             </tbody>
           </table>
           {spreads.some(s => s.hasDexLeg) && (
-            <div className="px-3 pb-2 pt-1 font-mono text-[9px] text-accent/70">
-              † DEX leg (Hyperliquid): {meta?.feePerLeg.dex ?? 0.025}%/leg taker fee.
-              Bridge friction: ~10 min + ~$1–5 ETH gas one-time to deposit USDC.
-              HL funds HOURLY — this leg can flip every hour.
+            <div className="px-3 pb-2 pt-1 font-mono text-[9px] text-accent/70 space-y-0.5">
+              {spreads.some(s => s.shortExchange === 'hyperliquid' || s.longExchange === 'hyperliquid') && (
+                <div>† Hyperliquid: {meta?.feePerLeg.dex ?? 0.025}%/leg taker · USDC bridge ~10 min + ~$1-5 ETH gas one-time · funds HOURLY</div>
+              )}
+              {spreads.some(s => s.shortExchange === 'dydx' || s.longExchange === 'dydx') && (
+                <div>‡ dYdX v4: 0.05%/leg taker · USDC bridge via Noble ~5 min + ~$3-10 gas · funds HOURLY</div>
+              )}
             </div>
           )}
         </div>
@@ -376,7 +434,7 @@ function SpreadTable({
 
 function RateHeatmap({ futures }: { futures: Record<string, Record<string, FuturesCoin>> }) {
   const CEX_ORDER    = ['binance', 'bybit', 'okx'];
-  const DEX_ORDER    = ['hyperliquid'];
+  const DEX_ORDER    = ['hyperliquid', 'dydx'];
   const allExchanges = [
     ...CEX_ORDER.filter(e => futures[e]),
     ...DEX_ORDER.filter(e => futures[e]),
@@ -388,7 +446,7 @@ function RateHeatmap({ futures }: { futures: Record<string, Record<string, Futur
     for (const c of Object.keys(coins)) coinSet[c] = true;
   }
   const allCoins  = Object.keys(coinSet);
-  const COIN_ORDER = ['BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'DOGE'];
+  const COIN_ORDER = ['BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'DOGE', 'AVAX', 'LINK'];
   const coins = [
     ...COIN_ORDER.filter(c => coinSet[c]),
     ...allCoins.filter(c => !COIN_ORDER.includes(c)).sort(),
@@ -401,8 +459,8 @@ function RateHeatmap({ futures }: { futures: Record<string, Record<string, Futur
           <tr className="border-b border-border">
             <th className="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-text-muted font-normal">COIN</th>
             {allExchanges.map(ex => (
-              <th key={ex} className={`px-3 py-2 text-left text-[9px] uppercase tracking-widest font-normal whitespace-nowrap ${ex === 'hyperliquid' ? 'text-accent' : 'text-text-muted'}`}>
-                {cap(ex)}{ex === 'hyperliquid' ? ' (DEX)' : ''}
+              <th key={ex} className={`px-3 py-2 text-left text-[9px] uppercase tracking-widest font-normal whitespace-nowrap ${DEX_ORDER.includes(ex) ? 'text-accent' : 'text-text-muted'}`}>
+                {ex === 'dydx' ? 'dYdX (DEX)' : ex === 'hyperliquid' ? 'Hyperliquid (DEX)' : cap(ex)}
               </th>
             ))}
           </tr>
@@ -416,18 +474,18 @@ function RateHeatmap({ futures }: { futures: Record<string, Record<string, Futur
                 if (!data) {
                   return <td key={ex} className="px-3 py-2.5 text-text-muted/30 text-[10px]">—</td>;
                 }
-                const isHl = ex === 'hyperliquid';
+                const intervalH = data.fundingIntervalHours ?? 8;
                 return (
                   <td key={ex} className="px-3 py-2.5 tabular-nums whitespace-nowrap">
                     <span className={rateCls(data.fundingRate)}>
-                      {fmtRate(data.fundingRate, data.fundingIntervalHours)}
+                      {fmtRate(data.fundingRate, intervalH)}
                     </span>
                     {data.markPrice != null && (
                       <span className="ml-2 text-text-muted text-[9px]">
                         ${data.markPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}
                       </span>
                     )}
-                    {isHl && (
+                    {intervalH === 1 && (
                       <span className="ml-1 text-[8px] text-accent/60">1h</span>
                     )}
                   </td>
@@ -437,6 +495,71 @@ function RateHeatmap({ futures }: { futures: Record<string, Record<string, Futur
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+// ── CEX Spot Arbitrage section ────────────────────────────────────────────────
+
+function CexArbSection({ items }: { items: CexArbItem[] }) {
+  return (
+    <div id="cex-arb" className="bg-bg-panel border border-border mb-5 scroll-mt-16">
+      <div className="px-4 py-2 border-b border-border flex items-center justify-between flex-wrap gap-2">
+        <span className="font-mono text-[10px] uppercase tracking-widest text-text-muted">
+          CEX Spot Arbitrage
+        </span>
+        <span className="font-mono text-[9px] text-text-muted">
+          {items.length > 0
+            ? `${items.length} spread${items.length > 1 ? 's' : ''} above 0.3% threshold`
+            : 'spot price spread · threshold 0.3%'}
+        </span>
+      </div>
+
+      {items.length === 0 ? (
+        <div className="px-4 py-6 text-center space-y-1">
+          <div className="font-mono text-[11px] text-text-muted">
+            No spot spread above threshold right now
+          </div>
+          <div className="font-mono text-[9px] text-text-muted/50">
+            Scanner checks Binance · Bybit · OKX every 60 s · threshold 0.3% · execution risk: slippage + withdrawal lag
+          </div>
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full font-mono text-[11px] border-collapse">
+            <thead>
+              <tr className="border-b border-border">
+                {['COIN', 'BUY ON (low)', 'BUY PRICE', 'SELL ON (high)', 'SELL PRICE', 'SPREAD'].map(h => (
+                  <th key={h} className="px-3 py-2 text-left text-[9px] uppercase tracking-widest font-normal text-text-muted whitespace-nowrap">
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {items.map(a => (
+                <tr key={`${a.coin}-${a.low}-${a.high}`} className="border-b border-border/50 hover:bg-bg-elevated/40 transition-colors duration-100">
+                  <td className="px-3 py-2.5 font-semibold text-text-primary">{a.coin}</td>
+                  <td className="px-3 py-2.5 text-text-secondary capitalize">{a.low}</td>
+                  <td className="px-3 py-2.5 tabular-nums text-text-primary">
+                    ${a.lowPrice.toLocaleString(undefined, { maximumFractionDigits: a.lowPrice > 1 ? 2 : 5 })}
+                  </td>
+                  <td className="px-3 py-2.5 text-text-secondary capitalize">{a.high}</td>
+                  <td className="px-3 py-2.5 tabular-nums text-text-primary">
+                    ${a.highPrice.toLocaleString(undefined, { maximumFractionDigits: a.highPrice > 1 ? 2 : 5 })}
+                  </td>
+                  <td className="px-3 py-2.5 tabular-nums font-bold text-positive">
+                    +{a.spreadPct.toFixed(3)}%
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="px-4 py-2 font-mono text-[9px] text-text-muted/60">
+            Spread is gross · subtract withdrawal fee + transfer time · signals only, no execution.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
@@ -471,6 +594,7 @@ export default function CryptoPage() {
   const cautionPairs = data?.spreads.filter(s => s.status === 'CAUTION')  ?? [];
   const allPairs     = data?.spreads ?? [];
   const dexPairs     = allPairs.filter(s => s.hasDexLeg);
+  const cexArbItems  = data?.cexArb ?? [];
 
   return (
     <div className="max-w-[1200px] mx-auto px-4 py-6">
@@ -533,16 +657,16 @@ export default function CryptoPage() {
             ))}
             {allPairs.length > 0 && (
               <div className="px-3 py-1.5 border border-positive/30 font-mono text-[10px] text-positive ml-auto">
-                Best gross: <span className="font-bold">{fmtApy(allPairs[0].grossApy)}</span>
+                Best net: <span className="font-bold">{fmtApy(allPairs[0].netApy30d)}</span>
               </div>
             )}
           </div>
 
-          {/* Section 1: Spread opportunities */}
-          <div className="bg-bg-panel border border-border mb-5">
+          {/* Section 1: Funding spread opportunities */}
+          <div id="funding-spreads" className="bg-bg-panel border border-border mb-5 scroll-mt-16">
             <div className="px-4 py-2 border-b border-border flex items-center justify-between flex-wrap gap-2">
               <span className="font-mono text-[10px] uppercase tracking-widest text-text-muted">
-                Cross-Exchange Spread Opportunities
+                Funding Spreads — Cross-Exchange
               </span>
               <span className="font-mono text-[9px] text-text-muted">
                 SHORT collect-side · LONG pay-side · delta-neutral · gross of fees
@@ -588,7 +712,7 @@ export default function CryptoPage() {
 
           {/* Section 3: Spot price strip */}
           {Object.keys(data.spot.binance ?? {}).length > 0 && (
-            <div className="bg-bg-panel border border-border">
+            <div className="bg-bg-panel border border-border mb-5">
               <div className="px-4 py-2 border-b border-border">
                 <span className="font-mono text-[10px] uppercase tracking-widest text-text-muted">
                   Spot Prices (Binance)
@@ -611,6 +735,9 @@ export default function CryptoPage() {
               </div>
             </div>
           )}
+
+          {/* Section 4: CEX Spot Arbitrage — always shown so the tile's "empty" state is visible */}
+          <CexArbSection items={cexArbItems} />
         </>
       )}
     </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import type { TickerItem } from '@/app/api/ticker/route';
 
@@ -31,60 +31,65 @@ const STATUS_WORD: Record<string, string> = {
   'coming-soon': 'COMING SOON',
 };
 
-function TickerTile({ cat }: { cat: TickerItem }) {
+function TickerTile({ cat, flashKey }: { cat: TickerItem; flashKey: number }) {
   const isLive     = cat.status === 'live';
   const isDisabled = cat.status === 'coming-soon';
 
   const inner = (
     <div className={`
-      flex-none w-48 h-40 border flex flex-col p-4
+      h-full min-h-[136px] flex flex-col p-3.5
+      border-r border-b border-border
       transition-colors duration-100
       ${isLive
-        ? 'border-border bg-bg-panel hover:bg-bg-elevated hover:border-positive/40 cursor-pointer'
+        ? 'bg-bg-panel hover:bg-bg-elevated hover:border-positive/40'
         : cat.status === 'offline'
-        ? 'border-border/50 bg-bg-panel/70 hover:bg-bg-elevated/70 cursor-pointer'
+        ? 'bg-bg-panel/80 hover:bg-bg-elevated/80'
         : cat.status === 'no-opp'
-        ? 'border-border bg-bg-panel hover:bg-bg-elevated cursor-pointer'
-        : 'border-border/30 bg-bg-panel/40 opacity-50 cursor-default pointer-events-none'
+        ? 'bg-bg-panel hover:bg-bg-elevated'
+        : 'bg-bg-panel/40 opacity-50 cursor-default pointer-events-none'
       }
     `}>
       {/* Label row */}
-      <div className="flex items-center gap-1.5 mb-auto">
+      <div className="flex items-center gap-1.5 mb-auto pb-2">
         {isLive && (
-          <span className="inline-block w-1.5 h-1.5 rounded-full bg-positive shrink-0 animate-pulse-slow"
-            style={{ boxShadow: '0 0 4px #22C55E' }} />
+          <span
+            className="inline-block w-1.5 h-1.5 rounded-full bg-positive shrink-0 animate-pulse-slow"
+            style={{ boxShadow: '0 0 4px #22C55E' }}
+          />
         )}
-        <span className="font-mono text-[9px] uppercase tracking-widest text-text-muted leading-snug">
+        <span className="font-mono text-[8px] uppercase tracking-widest text-text-muted leading-snug">
           {cat.label}
         </span>
       </div>
 
-      {/* Metric */}
-      <div className="flex-1 flex flex-col justify-center">
+      {/* Metric — key={flashKey} forces remount → CSS animation restarts on real value change */}
+      <div className="flex-1 flex flex-col justify-center" key={flashKey}>
         {isLive && cat.bestNetPct != null ? (
           <>
             <div className="font-mono font-bold tabular-nums text-positive leading-none">
-              <span className="text-[26px]">
+              <span
+                className={`text-[22px] ${flashKey > 0 ? 'animate-number-flash' : ''}`}
+              >
                 +{cat.bestNetPct.toFixed(1)}
               </span>
-              <span className="text-[12px] font-normal text-positive/70 ml-0.5">
+              <span className="text-[10px] font-normal text-positive/70 ml-0.5">
                 {cat.unit}
               </span>
             </div>
-            <div className="font-mono text-[9px] text-text-muted mt-1.5 leading-snug">
+            <div className="font-mono text-[8px] text-text-muted mt-1 leading-snug">
               {cat.note}
             </div>
           </>
         ) : (
           <>
-            <div className={`font-mono text-[11px] font-semibold tracking-wider ${
+            <div className={`font-mono text-[10px] font-semibold tracking-wider ${
               cat.status === 'offline'     ? 'text-warning/60' :
               cat.status === 'coming-soon' ? 'text-text-muted/40' :
               'text-text-muted'
             }`}>
               {STATUS_WORD[cat.status] ?? '—'}
             </div>
-            <div className="font-mono text-[9px] text-text-muted/60 mt-1 leading-snug">
+            <div className="font-mono text-[8px] text-text-muted/60 mt-1 leading-snug">
               {cat.note}
             </div>
           </>
@@ -92,48 +97,88 @@ function TickerTile({ cat }: { cat: TickerItem }) {
       </div>
 
       {/* Footer */}
-      <div className="flex items-center justify-between gap-2 mt-3">
-        <span className="font-mono text-[9px] text-text-muted/50 tabular-nums">
+      <div className="flex items-center justify-between gap-2 mt-2.5">
+        <span className="font-mono text-[8px] text-text-muted/50 tabular-nums">
           {cat.count > 0 ? `${cat.count} found` : ''}
         </span>
-        <span className={`font-mono text-[8px] uppercase tracking-widest px-1.5 py-[2px] border shrink-0 ${STATUS_CLS[cat.status]}`}>
+        <span className={`font-mono text-[7px] uppercase tracking-widest px-1.5 py-[2px] border shrink-0 ${STATUS_CLS[cat.status]}`}>
           {STATUS_BADGE[cat.status]}
         </span>
       </div>
     </div>
   );
 
-  if (isDisabled) return <div key={cat.key}>{inner}</div>;
+  if (isDisabled) return <div>{inner}</div>;
   return (
-    <Link key={cat.key} href={cat.href} className="block flex-none">
+    <Link href={cat.href} className="block">
       {inner}
     </Link>
   );
 }
 
+function fmt(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
 export default function StrategyTicker() {
-  const [data,    setData]    = useState<TickerData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [data,      setData]      = useState<TickerData | null>(null);
+  const [loading,   setLoading]   = useState(true);
+  const [fetchedAt, setFetchedAt] = useState<Date | null>(null);
+  const [error,     setError]     = useState(false);
+
+  // Per-category flash keys — incremented only when a value actually changes
+  const [flashKeys,    setFlashKeys]    = useState<Record<string, number>>({});
+  const prevValuesRef = useRef<Record<string, number | null>>({});
+
+  const load = useCallback(async () => {
+    try {
+      const res  = await fetch(`/api/ticker?_=${Date.now()}`);
+      if (!res.ok) throw new Error(String(res.status));
+      const json = await res.json();
+      setData(json);
+      setFetchedAt(new Date());
+      setError(false);
+    } catch {
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    const load = async () => {
-      try {
-        const res  = await fetch('/api/ticker', { cache: 'no-store' });
-        const json = await res.json();
-        setData(json);
-      } catch { /* keep stale */ }
-      finally { setLoading(false); }
-    };
     load();
     const t = setInterval(load, 30_000);
     return () => clearInterval(t);
-  }, []);
+  }, [load]);
+
+  // Detect which categories changed value and bump their flash key
+  useEffect(() => {
+    if (!data) return;
+    const prev = prevValuesRef.current;
+    const changed: string[] = [];
+
+    for (const cat of data.categories) {
+      const pv = prev[cat.key];
+      if (pv !== undefined && pv !== cat.bestNetPct) changed.push(cat.key);
+      prev[cat.key] = cat.bestNetPct;
+    }
+
+    if (changed.length > 0) {
+      setFlashKeys(fk => {
+        const next = { ...fk };
+        for (const k of changed) next[k] = (next[k] ?? 0) + 1;
+        return next;
+      });
+    }
+    prevValuesRef.current = prev;
+  }, [data]);
 
   if (loading) {
     return (
-      <div className="flex gap-3 overflow-x-auto pb-2" style={{ scrollbarWidth: 'none' }}>
-        {Array.from({ length: 6 }).map((_, i) => (
-          <div key={i} className="flex-none w-48 h-40 bg-bg-panel border border-border animate-pulse" />
+      <div className="grid grid-cols-2 sm:grid-cols-4 border border-border overflow-hidden">
+        {Array.from({ length: 8 }).map((_, i) => (
+          <div key={i} className="min-h-[136px] border-r border-b border-border bg-bg-panel animate-pulse" />
         ))}
       </div>
     );
@@ -149,16 +194,37 @@ export default function StrategyTicker() {
 
   return (
     <div>
-      <div className="flex gap-3 overflow-x-auto pb-2" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+      {/* Responsive grid — fills full width, wraps on mobile */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 border border-border overflow-hidden">
         {data.categories.map(cat => (
-          <TickerTile key={cat.key} cat={cat} />
+          <TickerTile
+            key={cat.key}
+            cat={cat}
+            flashKey={flashKeys[cat.key] ?? 0}
+          />
         ))}
       </div>
-      {(data.staleMinutes ?? 0) > 5 && (
-        <div className="font-mono text-[9px] text-warning/60 mt-2">
-          Data {data.staleMinutes}m old — agents may be paused
+
+      {/* Live status footer */}
+      <div className="flex items-center justify-between mt-2 gap-4 flex-wrap">
+        <div className="flex items-center gap-1.5">
+          {error ? (
+            <span className="font-mono text-[9px] text-warning/60">fetch failed · showing last good data</span>
+          ) : fetchedAt ? (
+            <>
+              <span className="inline-block w-1 h-1 rounded-full bg-positive animate-pulse-slow shrink-0" />
+              <span className="font-mono text-[9px] text-positive/50 tabular-nums">
+                LIVE · data as of {fmt(fetchedAt)} · polls every 30 s
+              </span>
+            </>
+          ) : null}
         </div>
-      )}
+        {(data.staleMinutes ?? 0) > 5 && (
+          <span className="font-mono text-[9px] text-warning/60">
+            Agent data {data.staleMinutes}m old — agents may be paused
+          </span>
+        )}
+      </div>
     </div>
   );
 }

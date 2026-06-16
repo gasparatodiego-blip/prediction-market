@@ -6,9 +6,12 @@ import { usePathname } from 'next/navigation';
 const NAV_LINKS = [
   { href: '/dashboard',                  label: 'DASHBOARD'     },
   { href: '/dashboard/opportunities',    label: 'OPPORTUNITIES' },
+  { href: '/dashboard/prediction',       label: 'PREDICTION'    },
+  { href: '/dashboard/crypto',           label: 'FUNDING'       },
+  { href: '/dashboard/carry',            label: 'CARRY'         },
+  { href: '/dashboard/mm',               label: 'MM'            },
+  { href: '/dashboard/traders',           label: 'TRADERS'       },
   { href: '/dashboard/portfolio',        label: 'PORTFOLIO'     },
-  { href: '/dashboard/history',          label: 'HISTORY'       },
-  { href: '/dashboard/preferences',      label: 'PREFERENCES'   },
 ];
 
 export default function TerminalHeader() {
