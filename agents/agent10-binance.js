@@ -390,24 +390,26 @@ async function fetchGateIOPerps() {
 
 async function fetchBitget() {
   try {
-    const data = await get('https://api.bitget.com/api/mix/v1/market/tickers?productType=umcbl');
+    const data = await get('https://api.bitget.com/api/v2/mix/market/tickers?productType=USDT-FUTURES');
     if (!Array.isArray(data?.data)) return {};
     const r = {};
     for (const t of data.data) {
       const symbol = t.symbol ?? '';
-      const coin   = symbol.replace('USDT_UMCBL', '');
-      if (!coin || !PERP_COINS.has(coin)) continue;
+      // v2 format: "BTCUSDT" (no _UMCBL suffix)
+      if (!symbol.endsWith('USDT')) continue;
+      const coin = symbol.slice(0, -4);
+      if (!PERP_COINS.has(coin)) continue;
       const fr    = parseFloat(t.fundingRate ?? '0') * 100; // fraction → %
       if (!isFinite(fr)) continue;
-      const markPx = parseFloat(t.markPrice ?? '0');
-      const oi     = parseFloat(t.holding ?? '0');
+      const markPx = parseFloat(t.markPrice    ?? '0');
+      const oi     = parseFloat(t.holdingAmount ?? '0');
       r[coin] = {
-        markPrice:            markPx  || null,
+        markPrice:            markPx || null,
         fundingRate:          fr,
         fundingIntervalHours: 8,
-        openInterest:         oi      || null,
+        openInterest:         oi     || null,
         openInterestUsd:      oi > 0 && markPx > 0 ? oi * markPx : null,
-        vol24hUsd:            parseFloat(t.quoteVolume ?? '0') || null,
+        vol24hUsd:            parseFloat(t.usdtVolume ?? '0') || null,
       };
     }
     console.log(`[bitget] ${Object.keys(r).length} markets`);

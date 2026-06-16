@@ -156,10 +156,10 @@ export async function GET() {
       cexArb:      raw.cexArb      ?? [],
       spreads,
       meta: {
-        feePerLeg:    { cex: VENUE_FEE_PCT.cex, dex: VENUE_FEE_PCT.dex },
+        feePerLeg:    { cex: VENUE_FEE_PCT.cex, dex: VENUE_FEE_PCT.dex, gateio: VENUE_FEE_PCT.gateio, bitget: VENUE_FEE_PCT.bitget },
         legCount:     4,
         periodsPerYr: { cex: 1095, hl: 8760 },
-        note:         'CEX rounds every 8h; Hyperliquid rounds hourly. annualize(rate, intervalHours) is the shared formula.',
+        note:         'CEX/Gate.io/Bitget settle every 8h; Hyperliquid/dYdX settle hourly. annualize(rate, intervalHours) normalises all venues to %/yr.',
       },
     });
   } catch {

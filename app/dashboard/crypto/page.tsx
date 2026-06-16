@@ -40,7 +40,7 @@ interface SpotCoin {
 }
 
 interface Meta {
-  feePerLeg:    { cex: number; dex: number };
+  feePerLeg:    { cex: number; dex: number; gateio?: number; bitget?: number };
   legCount:     number;
   periodsPerYr: { cex: number; hl: number };
   note:         string;
@@ -98,6 +98,8 @@ function cap(s: string): string {
 function venueLabel(exchange: string, isDex: boolean): string {
   if (exchange === 'dydx')        return 'dYdX (DEX)';
   if (exchange === 'hyperliquid') return 'Hyperliquid (DEX)';
+  if (exchange === 'gateio')      return 'Gate.io';
+  if (exchange === 'bitget')      return 'Bitget';
   return isDex ? `${cap(exchange)} (DEX)` : cap(exchange);
 }
 
@@ -221,10 +223,10 @@ function FeeNote({ meta }: { meta: Meta | null }) {
   if (!meta) return null;
   return (
     <p className="font-mono text-[9px] text-text-muted mt-1.5 leading-relaxed">
-      Fee/leg: CEX {meta.feePerLeg.cex}% · Hyperliquid {meta.feePerLeg.dex}% · dYdX 0.05%.
-      Round-trip = 4 legs (open+close both sides). NET 30d = gross × 30d − fees.
+      Fee/leg: Binance/Bybit/OKX {meta.feePerLeg.cex}% · Gate.io 0.05% · Bitget 0.06% · Hyperliquid {meta.feePerLeg.dex}% · dYdX 0.05%.
+      Round-trip = 4 legs (open+close both sides). NET 30d = gross APR × 30d − fees.
       MARGINAL = &gt;10d breakeven · CAUTION = &gt;5d · HARVEST = ≤5d.
-      Liquidity tier = min OI or vol24h across both legs (DEEP≥$50M · OK≥$10M · THIN≥$1M).
+      Liquidity tier = min OI or vol24h across both legs (DEEP≥$50M · OK≥$10M · THIN≥$1M · pairs below $500k filtered out).
     </p>
   );
 }
