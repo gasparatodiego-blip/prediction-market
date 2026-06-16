@@ -13,7 +13,13 @@ const HB_FILE        = '/tmp/agent-heartbeats.json';
 const ALERT_FILE     = '/tmp/funding-alert.json';
 const POLL_INTERVAL  = 60_000;
 const WRITE_THROTTLE = 2_000;
-const COINS          = ['BTC','ETH','SOL','BNB','XRP','DOGE','AVAX','LINK'];
+const COINS          = ['BTC','ETH','SOL','BNB','XRP','DOGE','AVAX','LINK']; // spot + alerts
+// Expanded set for perp/funding monitoring (≥2 exchanges each)
+const PERP_COINS     = new Set([
+  'BTC','ETH','SOL','BNB','XRP','DOGE','ADA','AVAX','DOT','LINK',
+  'UNI','LTC','MATIC','ATOM','NEAR','APT','ARB','OP','SUI','PEPE',
+  'TRX','INJ','TIA','WIF','TON',
+]);
 const CEX_THRESHOLD  = 0.3;
 const FUND_THRESHOLD = 0.05;  // % per 8h
 const BASIS_THRESHOLD = 0.3;
@@ -280,14 +286,14 @@ const BIN_PERP_MAP = {
 };
 
 async function fetchBinancePerpVol() {
-  const syms = Object.keys(BIN_PERP_MAP);
+  const syms = [...PERP_COINS].map(c => `${c}USDT`);
   try {
     const data = await get(`https://fapi.binance.com/fapi/v1/ticker/24hr?symbols=${encodeURIComponent(JSON.stringify(syms))}`);
     if (!Array.isArray(data)) return {};
     const r = {};
     for (const t of data) {
-      const coin = BIN_PERP_MAP[t.symbol];
-      if (coin) r[coin] = parseFloat(t.quoteVolume);
+      const coin = t.symbol?.replace('USDT', '');
+      if (coin && PERP_COINS.has(coin)) r[coin] = parseFloat(t.quoteVolume);
     }
     return r;
   } catch { return {}; }
@@ -298,7 +304,7 @@ async function fetchHyperliquid() {
     const raw = await postJson('api.hyperliquid.xyz', '/info', JSON.stringify({ type: 'metaAndAssetCtxs' }));
     if (!Array.isArray(raw) || raw.length < 2) return {};
     const meta = raw[0], ctxs = raw[1];
-    const WANT = new Set(COINS);
+    const WANT = PERP_COINS;
     const r = {};
     for (let i = 0; i < (meta.universe?.length ?? 0); i++) {
       const name = meta.universe[i]?.name;
@@ -356,16 +362,73 @@ async function fetchDydx() {
   }
 }
 
+async function fetchGateIOPerps() {
+  try {
+    const data = await get('https://api.gateio.ws/api/v4/futures/usdt/tickers');
+    if (!Array.isArray(data)) return {};
+    const r = {};
+    for (const t of data) {
+      const coin = t.contract?.replace('_USDT', '');
+      if (!coin || !PERP_COINS.has(coin)) continue;
+      const fr = parseFloat(t.funding_rate ?? '0') * 100; // fraction → %
+      if (!isFinite(fr)) continue;
+      r[coin] = {
+        markPrice:            parseFloat(t.mark_price ?? '0') || null,
+        fundingRate:          fr,
+        fundingIntervalHours: 8,
+        openInterestUsd:      null, // contract unit varies; use vol as liquidity proxy
+        vol24hUsd:            parseFloat(t.vol_24h_settle ?? t.vol_24h_quote ?? '0') || null,
+      };
+    }
+    console.log(`[gateio-perps] ${Object.keys(r).length} markets`);
+    return r;
+  } catch (e) {
+    console.error('[gateio-perps] error:', e.message);
+    return {};
+  }
+}
+
+async function fetchBitget() {
+  try {
+    const data = await get('https://api.bitget.com/api/mix/v1/market/tickers?productType=umcbl');
+    if (!Array.isArray(data?.data)) return {};
+    const r = {};
+    for (const t of data.data) {
+      const symbol = t.symbol ?? '';
+      const coin   = symbol.replace('USDT_UMCBL', '');
+      if (!coin || !PERP_COINS.has(coin)) continue;
+      const fr    = parseFloat(t.fundingRate ?? '0') * 100; // fraction → %
+      if (!isFinite(fr)) continue;
+      const markPx = parseFloat(t.markPrice ?? '0');
+      const oi     = parseFloat(t.holding ?? '0');
+      r[coin] = {
+        markPrice:            markPx  || null,
+        fundingRate:          fr,
+        fundingIntervalHours: 8,
+        openInterest:         oi      || null,
+        openInterestUsd:      oi > 0 && markPx > 0 ? oi * markPx : null,
+        vol24hUsd:            parseFloat(t.quoteVolume ?? '0') || null,
+      };
+    }
+    console.log(`[bitget] ${Object.keys(r).length} markets`);
+    return r;
+  } catch (e) {
+    console.error('[bitget] error:', e.message);
+    return {};
+  }
+}
+
 async function fetchFutures() {
   const [binF, bybitF, okxF, hlF] = await Promise.all([
 
-    // Binance FAPI — premiumIndex has markPrice + fundingRate
+    // Binance FAPI — premiumIndex returns ALL perps; filter by PERP_COINS
     get('https://fapi.binance.com/fapi/v1/premiumIndex').then(data => {
       if (!Array.isArray(data)) return {};
       const r = {};
       for (const t of data) {
-        const coin = BIN_PERP_MAP[t.symbol];
-        if (!coin) continue;
+        if (!t.symbol.endsWith('USDT')) continue;
+        const coin = t.symbol.slice(0, -4);
+        if (!PERP_COINS.has(coin)) continue;
         r[coin] = {
           markPrice:            parseFloat(t.markPrice),
           fundingRate:          parseFloat(t.lastFundingRate) * 100,
@@ -376,48 +439,57 @@ async function fetchFutures() {
       return r;
     }).catch(() => ({})),
 
-    // Bybit linear futures — includes openInterestValue (USD) + turnover24h (USD vol)
-    Promise.all(['BTCUSDT','ETHUSDT','SOLUSDT','AVAXUSDT','LINKUSDT'].map(sym =>
-      get(`https://api.bybit.com/v5/market/tickers?category=linear&symbol=${sym}`)
-        .then(d => [sym, d?.result?.list?.[0]]).catch(() => [sym, null])
-    )).then(pairs => {
-      const map = { BTCUSDT:'BTC', ETHUSDT:'ETH', SOLUSDT:'SOL', AVAXUSDT:'AVAX', LINKUSDT:'LINK' };
+    // Bybit — single bulk call for all linear perps, filter by PERP_COINS
+    get('https://api.bybit.com/v5/market/tickers?category=linear').then(data => {
+      const list = data?.result?.list;
+      if (!Array.isArray(list)) return {};
       const r = {};
-      for (const [sym, t] of pairs) {
-        if (!t) continue;
-        r[map[sym]] = {
-          markPrice:            parseFloat(t.markPrice ?? t.lastPrice ?? '0'),
+      for (const t of list) {
+        if (!t.symbol.endsWith('USDT')) continue;
+        const coin = t.symbol.slice(0, -4);
+        if (!PERP_COINS.has(coin)) continue;
+        r[coin] = {
+          markPrice:            parseFloat(t.markPrice  ?? t.lastPrice ?? '0'),
           fundingRate:          parseFloat(t.fundingRate ?? '0') * 100,
           fundingIntervalHours: 8,
           openInterestUsd:      parseFloat(t.openInterestValue ?? '0') || null,
-          vol24hUsd:            parseFloat(t.turnover24h ?? '0')        || null,
+          vol24hUsd:            parseFloat(t.turnover24h        ?? '0') || null,
         };
       }
       return r;
-    }),
+    }).catch(() => ({})),
 
-    // OKX coin-margined SWAP funding rates (BTC-USD-SWAP, ETH-USD-SWAP, SOL-USD-SWAP)
-    Promise.all(['BTC-USDT-SWAP','ETH-USDT-SWAP','SOL-USDT-SWAP','AVAX-USDT-SWAP','LINK-USDT-SWAP'].map(instId =>
-      get(`https://www.okx.com/api/v5/public/funding-rate?instId=${instId}`)
-        .then(d => [instId, d?.data?.[0]]).catch(() => [instId, null])
-    )).then(pairs => {
-      const map = { 'BTC-USDT-SWAP':'BTC','ETH-USDT-SWAP':'ETH','SOL-USDT-SWAP':'SOL','AVAX-USDT-SWAP':'AVAX','LINK-USDT-SWAP':'LINK' };
+    // OKX USDT SWAP — parallel requests for PERP_COINS
+    (async () => {
+      const coins = [...PERP_COINS];
+      const pairs = await Promise.all(
+        coins.map(c =>
+          get(`https://www.okx.com/api/v5/public/funding-rate?instId=${c}-USDT-SWAP`)
+            .then(d => [c, d?.data?.[0]])
+            .catch(() => [c, null])
+        )
+      );
       const r = {};
-      for (const [instId, t] of pairs) {
+      for (const [coin, t] of pairs) {
         if (!t) continue;
-        r[map[instId]] = {
+        r[coin] = {
           fundingRate:          parseFloat(t.fundingRate ?? '0') * 100,
           fundingIntervalHours: 8,
         };
       }
       return r;
-    }),
+    })(),
 
     fetchHyperliquid(),
   ]);
 
-  // Secondary parallel: Binance vol24h + dYdX (separate round to not delay main fetches)
-  const [dydxF, binVol] = await Promise.all([fetchDydx(), fetchBinancePerpVol()]);
+  // Secondary parallel: Binance vol, dYdX, Gate.io perps, Bitget perps
+  const [dydxF, binVol, gateF, bitF] = await Promise.all([
+    fetchDydx(),
+    fetchBinancePerpVol(),
+    fetchGateIOPerps(),
+    fetchBitget(),
+  ]);
 
   // Merge Binance vol into rate data
   for (const [coin, vol] of Object.entries(binVol)) {
@@ -426,7 +498,9 @@ async function fetchFutures() {
 
   const out = { binance: binF, bybit: bybitF, okx: okxF };
   if (Object.keys(hlF).length   > 0) out.hyperliquid = hlF;
-  if (Object.keys(dydxF).length > 0) out.dydx = dydxF;
+  if (Object.keys(dydxF).length > 0) out.dydx        = dydxF;
+  if (Object.keys(gateF).length > 0) out.gateio       = gateF;
+  if (Object.keys(bitF).length  > 0) out.bitget       = bitF;
   return out;
 }
 
