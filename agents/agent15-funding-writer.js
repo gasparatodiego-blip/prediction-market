@@ -31,8 +31,10 @@ const UNIFIED_FILE   = '/tmp/unified-opportunities.json';
 const HB_FILE        = '/tmp/agent-heartbeats.json';
 const INTERVAL_MS    = 60_000;
 
-const THRESHOLD_APY  = 3.0;        // min gross %/yr to emit to unified panel
-const MAX_DATA_AGE   = 5 * 60_000; // skip if exchange data > 5 min old
+const THRESHOLD_APY  = 3.0;          // min gross %/yr to emit
+const MAX_GROSS_APY  = 200;          // sanity cap — >200%/yr almost certainly stale data
+const MIN_LIQ_USD    = 500_000;      // $500k OI or vol on the thinner leg minimum
+const MAX_DATA_AGE   = 5 * 60_000;  // skip if exchange data > 5 min old
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -50,6 +52,8 @@ function cap(s) {
 function venueLabel(exchange, isDex) {
   if (exchange === 'dydx')        return 'dYdX (DEX)';
   if (exchange === 'hyperliquid') return 'Hyperliquid (DEX)';
+  if (exchange === 'gateio')      return 'Gate.io';
+  if (exchange === 'bitget')      return 'Bitget';
   return isDex ? `${cap(exchange)} (DEX)` : cap(exchange);
 }
 
@@ -115,6 +119,8 @@ function crossExchangeSpread(futures) {
         const grossApy = Math.abs(annA - annB);
 
         if (grossApy < THRESHOLD_APY) continue;
+        // Sanity cap: >200%/yr almost always means stale or erroneous data
+        if (grossApy > MAX_GROSS_APY) continue;
 
         // SHORT = higher annualized rate (collect), LONG = lower
         const shortSide = annA >= annB ? A : B;
@@ -135,6 +141,8 @@ function crossExchangeSpread(futures) {
         const minLiq     = shortLiq > 0 && longLiq > 0
           ? Math.min(shortLiq, longLiq)
           : Math.max(shortLiq, longLiq);
+        // Hard floor: skip illiquid pairs where neither leg has OI/vol data or both are tiny
+        if (minLiq > 0 && minLiq < MIN_LIQ_USD) continue;
         const capUsd     = minLiq > 0 ? Math.round(Math.min(minLiq * 0.01, 500_000)) : null;
         const tier       = minLiq > 0 ? liqTier(minLiq) : null;
         const thinFlag   = tier === 'THIN' || tier === 'VERY THIN';
