@@ -97,3 +97,10 @@ model Subscription {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
+
+model Lead {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  source    String
+  createdAt DateTime @default(now())
+}
