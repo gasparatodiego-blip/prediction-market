@@ -21,7 +21,8 @@ export async function GET() {
       marketsScanned: raw.marketsScanned,
       totalWallets:  raw.totalWallets,
       minMarketsToRank: raw.minMarketsToRank,
-      categories:    raw.categories ?? {},
+      categories:    raw.categories   ?? {},
+      mmCategories:  raw.mmCategories ?? {},
       disclaimer:    raw.disclaimer,
     });
   } catch {

@@ -37,6 +37,42 @@ function wilsonLower(wins, n) {
   return Math.max(0, (ctr - mar) / den);
 }
 
+// ── One-time migration: backfill twoSided for CIDs cached before this feature ─
+// Re-fetches trades for every processedCid without twoSidedChecked flag.
+// Rate-limited via the same queue; writes progress every 100 CIDs.
+async function migrateAddTwoSided() {
+  const toMigrate = Object.entries(processedCids)
+    .filter(([, info]) => !info.twoSidedChecked)
+    .sort((a, b) => (b[1].vol || 0) - (a[1].vol || 0)); // highest-volume first
+
+  if (toMigrate.length === 0) { console.log('[LB] Migration: twoSided already up to date'); return; }
+  console.log(`[LB] Migration: backfilling twoSided for ${toMigrate.length} cached CIDs`);
+
+  let done = 0;
+  for (const [cid, info] of toMigrate) {
+    if (!info.winner) { processedCids[cid].twoSidedChecked = true; continue; }
+    const trades = await fetchTrades(cid);
+    if (trades.length > 0) {
+      const pnls = computePnL(trades, info.winner);
+      for (const [addr, d] of Object.entries(pnls)) {
+        if (!wallets[addr]) wallets[addr] = { name: d.name, markets: [] };
+        if (d.name && !wallets[addr].name) wallets[addr].name = d.name;
+        wallets[addr].markets = wallets[addr].markets.filter(m => m.cid !== cid);
+        const rec = { cid, category: info.category, pnl: d.pnl, vol: d.vol, won: d.won, ts: d.lastTs };
+        if (info.durationMin != null) rec.durationMin = info.durationMin;
+        if (d.twoSided) rec.twoSided = true;
+        wallets[addr].markets.push(rec);
+      }
+    }
+    processedCids[cid].twoSidedChecked = true;
+    done++;
+    if (done % 100 === 0) { saveCache(); writeOutput(); console.log(`[LB] Migration: ${done}/${toMigrate.length}`); }
+  }
+  saveCache();
+  writeOutput();
+  console.log(`[LB] Migration complete: ${done} CIDs re-processed`);
+}
+
 // ── Rate-limited HTTP ─────────────────────────────────────────────────────────
 const queue = [];
 let busy = false;
@@ -261,6 +297,7 @@ function buildLeaderboard() {
       lastActive,
       wins,
       losses:     recent.length - wins,
+      twoSidedMkts,
       twoSidedPct,
       walletType,
     };
@@ -271,9 +308,10 @@ function buildLeaderboard() {
     for (const cat of CATS.slice(1)) {
       const catMarkets = recent.filter(m => m.category === cat);
       if (catMarkets.length < MIN_MARKETS_RANK) continue;
-      const cWins = catMarkets.filter(m => m.won).length;
-      const cPnl  = catMarkets.reduce((s, m) => s + m.pnl, 0);
-      const cVol  = catMarkets.reduce((s, m) => s + m.vol, 0);
+      const cWins     = catMarkets.filter(m => m.won).length;
+      const cPnl      = catMarkets.reduce((s, m) => s + m.pnl, 0);
+      const cVol      = catMarkets.reduce((s, m) => s + m.vol, 0);
+      const cTwoSided = catMarkets.filter(m => m.twoSided).length;
       categorized[cat].push({
         ...entry,
         pnlUsdc:    Math.round(cPnl * 100) / 100,
@@ -284,6 +322,7 @@ function buildLeaderboard() {
         volumeUsdc: Math.round(cVol * 100) / 100,
         wins: cWins,
         losses: catMarkets.length - cWins,
+        twoSidedMkts: cTwoSided,
       });
     }
 
@@ -292,7 +331,8 @@ function buildLeaderboard() {
     const fastMkts      = recent.filter(m => m.durationMin != null && m.durationMin > 5 && m.durationMin <= 15);
 
     if (ultraFastMkts.length >= MIN_MARKETS_RANK) {
-      const uWins = ultraFastMkts.filter(m => m.won).length;
+      const uWins     = ultraFastMkts.filter(m => m.won).length;
+      const uTwoSided = ultraFastMkts.filter(m => m.twoSided).length;
       categorized['Ultra-fast ≤5 min'].push({
         ...entry,
         pnlUsdc:    Math.round(ultraFastMkts.reduce((s, m) => s + m.pnl, 0) * 100) / 100,
@@ -303,9 +343,11 @@ function buildLeaderboard() {
         volumeUsdc: Math.round(ultraFastMkts.reduce((s, m) => s + m.vol, 0) * 100) / 100,
         wins:   uWins,
         losses: ultraFastMkts.length - uWins,
+        twoSidedMkts: uTwoSided,
       });
     } else if (fastMkts.length >= MIN_MARKETS_RANK) {
-      const fWins = fastMkts.filter(m => m.won).length;
+      const fWins     = fastMkts.filter(m => m.won).length;
+      const fTwoSided = fastMkts.filter(m => m.twoSided).length;
       categorized['Fast 5–15 min'].push({
         ...entry,
         pnlUsdc:    Math.round(fastMkts.reduce((s, m) => s + m.pnl, 0) * 100) / 100,
@@ -316,20 +358,32 @@ function buildLeaderboard() {
         volumeUsdc: Math.round(fastMkts.reduce((s, m) => s + m.vol, 0) * 100) / 100,
         wins:   fWins,
         losses: fastMkts.length - fWins,
+        twoSidedMkts: fTwoSided,
       });
     }
   }
 
+  const categories   = {};
+  const mmCategories = {};
+
   for (const cat of ALL) {
-    categorized[cat].sort((a, b) => b.wilsonScore - a.wilsonScore);
-    categorized[cat] = categorized[cat].slice(0, TOP_N_PER_CAT);
+    // Directional/All view: Wilson 95% CI sort
+    categories[cat] = [...categorized[cat]]
+      .sort((a, b) => b.wilsonScore - a.wilsonScore)
+      .slice(0, TOP_N_PER_CAT);
+    // MM view: only MM wallets, sorted by twoSidedMkts (activity), then volumeUsdc
+    // Wilson is wrong for MM — their win rate is ~50% by construction (spread capture).
+    mmCategories[cat] = categorized[cat]
+      .filter(e => e.walletType === 'MM')
+      .sort((a, b) => (b.twoSidedMkts || 0) - (a.twoSidedMkts || 0) || b.volumeUsdc - a.volumeUsdc)
+      .slice(0, TOP_N_PER_CAT);
   }
 
-  return categorized;
+  return { categories, mmCategories };
 }
 
 function writeOutput() {
-  const categories = buildLeaderboard();
+  const { categories, mmCategories } = buildLeaderboard();
   const totalWallets = Object.values(wallets).filter(w => (w.markets || []).length >= MIN_MARKETS_RANK).length;
 
   atomicWrite(LEADERBOARD_FILE, {
@@ -339,6 +393,7 @@ function writeOutput() {
     totalWallets,
     minMarketsToRank: MIN_MARKETS_RANK,
     categories,
+    mmCategories,
     disclaimer: 'Descriptive leaderboard from on-chain resolved markets. Past performance is not predictive. Not financial advice.',
   });
 
@@ -360,16 +415,16 @@ async function processMarket(cid, winner, category, vol, durationMin) {
   for (const [addr, d] of Object.entries(pnls)) {
     if (!wallets[addr]) wallets[addr] = { name: d.name, markets: [] };
     if (d.name && !wallets[addr].name) wallets[addr].name = d.name;
-
     if (d.name && d.name !== addr) wallets[addr].name = d.name;
-
+    // Dedup: remove stale record for same CID before adding fresh one
+    wallets[addr].markets = wallets[addr].markets.filter(m => m.cid !== cid);
     const rec = { cid, category, pnl: d.pnl, vol: d.vol, won: d.won, ts: d.lastTs };
     if (durationMin  != null) rec.durationMin = durationMin;
     if (d.twoSided)            rec.twoSided   = true;
     wallets[addr].markets.push(rec);
   }
 
-  processedCids[cid] = { category, winner, vol, durationMin, processedAt: Date.now() };
+  processedCids[cid] = { category, winner, vol, durationMin, processedAt: Date.now(), twoSidedChecked: true };
   return trades.length;
 }
 
@@ -464,6 +519,7 @@ console.log('[LB] Starting agent20-leaderboard — read-only, zero Claude, 2 req
 writeOutput(); // emit cached data immediately so UI isn't blank
 
 setTimeout(async () => {
+  await migrateAddTwoSided(); // one-time: backfill twoSided for pre-feature CIDs
   await scan();
   setInterval(scan, SCAN_INTERVAL_MS);
 }, 5_000);

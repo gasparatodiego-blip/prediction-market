@@ -17,6 +17,7 @@ interface LbEntry {
   lastActive:      number;
   wins:            number;
   losses:          number;
+  twoSidedMkts?:   number;
   twoSidedPct?:    number;
   walletType?:     'MM' | 'DIRECTIONAL' | null;
 }
@@ -30,7 +31,8 @@ interface LbData {
   marketsScanned: number;
   totalWallets:   number;
   minMarketsToRank: number;
-  categories:     Record<string, LbEntry[]>;
+  categories:    Record<string, LbEntry[]>;
+  mmCategories?: Record<string, LbEntry[]>;
 }
 
 interface FollowedEntry {
@@ -1134,13 +1136,15 @@ export default function TradersPage() {
 
   const isSearchAddr = isWalletAddress(search);
 
-  // Browse data — filtered
-  const allTraders = lbData?.categories?.[cat] ?? [];
+  // Browse data — MM view uses a separately sorted list (twoSidedMkts + vol);
+  // directional/all views use the Wilson-sorted list.
+  const allTraders = typeFilter === 'MM'
+    ? (lbData?.mmCategories?.[cat] ?? [])
+    : (lbData?.categories?.[cat]   ?? []);
   const traders = isSearchAddr ? [] : allTraders.filter(e => {
     if (!matchesSearch(e, search)) return false;
-    if (typeFilter === 'MM')          return e.walletType === 'MM';
     if (typeFilter === 'DIRECTIONAL') return e.walletType === 'DIRECTIONAL';
-    return true; // 'all' shows everything including unclassified
+    return true;
   });
   const warmingUp = !lbData || (!lbData.ok && !lbData.updatedAt);
 
@@ -1302,7 +1306,10 @@ export default function TradersPage() {
             )}
           </div>
           <p className="font-mono text-[9px] text-text-muted mb-3">
-            {CAT_META[cat].desc} · min {lbData?.minMarketsToRank ?? 20} resolved markets to rank · sorted by Wilson 95% win-rate CI
+            {CAT_META[cat].desc} · min {lbData?.minMarketsToRank ?? 20} resolved markets to rank
+            {typeFilter === 'MM'
+              ? ' · MM wallets sorted by two-sided market count (spread activity)'
+              : ' · sorted by Wilson 95% win-rate CI'}
             {search && !isSearchAddr && ` · ${traders.length} matching "${search}"`}
             {isSearchAddr && ' · paste complete address above then press Enter to look up'}
           </p>
