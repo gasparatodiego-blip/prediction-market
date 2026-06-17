@@ -2,5 +2,5 @@
 import { redirect } from 'next/navigation';
 
 export default function CEXRedirect() {
-  redirect('/dashboard/crypto');
+  redirect('/dashboard/funding-arb');
 }

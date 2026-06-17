@@ -38,7 +38,7 @@ const strategies: Strategy[] = [
     summary: 'Funding rates and spot-futures arbitrage',
     explanation:
       "On perpetual futures, traders pay each other a funding rate. You hold spot plus an offsetting short future (delta-neutral), so you're not exposed to price — you just collect the funding. Realistic returns are modest in calm markets (~5–11%/yr) and higher when funding spikes. Risk: funding can flip; use 1× leverage to avoid liquidation.",
-    link: '/dashboard/crypto',
+    link: '/dashboard/funding-arb',
   },
   {
     id: 'sports',

@@ -24,7 +24,7 @@ export default function LandingCTAs() {
         </button>
 
         <button
-          onClick={() => setModal({ source: 'funding', destination: '/dashboard/crypto' })}
+          onClick={() => setModal({ source: 'funding', destination: '/dashboard/funding-arb' })}
           className="inline-flex items-center px-5 py-2.5 border border-border bg-bg-elevated text-text-secondary font-mono text-[12px] uppercase tracking-[0.1em] transition-colors duration-100 hover:border-accent/40 hover:text-text-primary"
         >
           Funding Monitor

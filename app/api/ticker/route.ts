@@ -120,7 +120,7 @@ export async function GET() {
       unit:       '%/yr',
       status:     fundingOpps.length > 0 ? 'live' : 'no-opp',
       count:      fundingOpps.length,
-      href:       '/dashboard/crypto',
+      href:       '/dashboard/funding-arb',
       note:       'net after fees · variable rate',
     },
     {
@@ -150,7 +150,7 @@ export async function GET() {
       unit:       '%',
       status:     cexSorted.length > 0 ? 'live' : 'no-opp',
       count:      cexSorted.length,
-      href:       '/dashboard/crypto#cex-arb',
+      href:       '/dashboard/funding-arb#cex-arb',
       note:       'spot price spread · execution risk',
     },
     {

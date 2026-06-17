@@ -19,6 +19,11 @@ const securityHeaders = [
 ];
 
 const nextConfig = {
+  async redirects() {
+    return [
+      { source: '/dashboard/crypto', destination: '/dashboard/funding-arb', permanent: true },
+    ];
+  },
   async headers() {
     return [
       { source: '/(.*)', headers: securityHeaders },
