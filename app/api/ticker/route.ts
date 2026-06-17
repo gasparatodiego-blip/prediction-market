@@ -9,6 +9,7 @@ const MM_FILE           = '/tmp/mm-analysis.json';
 const BASIS_FILE        = '/tmp/basis-opportunities.json';
 const LEADERBOARD_FILE  = '/tmp/leaderboard.json';
 const COPY_FILE         = '/tmp/copy-watcher.json';
+const SPORTS_FILE       = '/tmp/sports-odds.json';
 
 export interface TickerItem {
   key:        string;
@@ -78,6 +79,23 @@ export async function GET() {
     if (top) { lbTopPnl = top.pnlUsdc; lbTopName = top.name; }
   } catch { /* file absent */ }
 
+  // ── Read Sports Arb data ──────────────────────────────────────────────────
+  let sportsRunning   = false;
+  let sportsArbCount  = 0;
+  let sportsBestMargin: number | null = null;
+  let sportsPaused    = false;
+  let sportsCredits:   number | null = null;
+  try {
+    const sp  = JSON.parse(fs.readFileSync(SPORTS_FILE, 'utf8'));
+    const age = Date.now() - (sp.fetchedAt ?? 0);
+    sportsRunning    = age < 2 * 60 * 60_000;  // stale after 2h (agent polls 45 min)
+    sportsPaused     = sp.paused ?? false;
+    sportsArbCount   = sp.totalArb ?? 0;
+    sportsCredits    = sp.creditsRemaining ?? null;
+    const best       = (sp.arbOpportunities ?? [])[0];
+    if (best) sportsBestMargin = best.netMargin;
+  } catch { /* file absent */ }
+
   // ── Read Copy Watcher data ────────────────────────────────────────────────
   let copyOnline    = false;
   let copyWatched   = 0;
@@ -104,7 +122,7 @@ export async function GET() {
     .filter(o => o.type === 'CASHABLE' && typeof o.annualizedROI === 'number')
     .sort((a: any, b: any) => b.annualizedROI - a.annualizedROI);
 
-  const sportsOpps = opps.filter(o => o.type === 'SPORTS');
+  // sportsOpps from unified file replaced by agent12 → /tmp/sports-odds.json (see above)
 
   const cexSorted = [...cexArb].sort(
     (a: any, b: any) => (b.spreadPct ?? 0) - (a.spreadPct ?? 0)
@@ -136,12 +154,18 @@ export async function GET() {
     {
       key:        'sports',
       label:      'Sports Arbitrage',
-      bestNetPct: null,
+      bestNetPct: sportsRunning && sportsBestMargin != null ? sportsBestMargin : null,
       unit:       '%',
-      status:     sportsOpps.length > 0 ? 'live' : 'offline',
-      count:      sportsOpps.length,
+      status:     !sportsRunning ? 'offline'
+                : sportsPaused   ? 'offline'
+                : sportsArbCount > 0 ? 'live'
+                : 'no-opp',
+      count:      sportsArbCount,
       href:       '/dashboard/sports',
-      note:       'OddsAPI live: off',
+      note:       !sportsRunning  ? 'agent offline'
+                : sportsPaused   ? `paused — ${sportsCredits ?? '?'} API credits left`
+                : sportsArbCount > 0 ? `${sportsArbCount} surebet${sportsArbCount !== 1 ? 's' : ''} · h2h only`
+                : 'no surebets found — all implied sums ≥ 1',
     },
     {
       key:        'cex',

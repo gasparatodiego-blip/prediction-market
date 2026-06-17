@@ -170,5 +170,17 @@ module.exports = {
       autorestart:   true,
       env:           { NODE_ENV: 'production', HOME: '/root' },
     },
+    {
+      name:          'agent12-sports',
+      script:        './agents/agent12-sports.js',
+      cwd:           '/root/prediction-market',
+      restart_delay: 60000,
+      max_restarts:  5,
+      watch:         false,
+      autorestart:   true,
+      // Disabled by default — set ODDS_API_LIVE=true to activate.
+      // Without it, the process is registered but never started automatically.
+      env:           { NODE_ENV: 'production', HOME: '/root', ODDS_API_LIVE: 'false' },
+    },
   ],
 };

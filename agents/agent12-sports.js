@@ -18,15 +18,18 @@ const MARKETS       = ['h2h'];
 const REGIONS       = ['eu', 'us'];
 const MAX_SPORTS    = 3;   // never fetch more than 3 sport/odds endpoints per cycle
 
-// Ordered by expected in-season relevance — filtered against /sports active list
+// Ordered by expected in-season relevance — filtered against /sports active list.
+// /sports (0 credits) confirms which are actually active before we spend any quota.
 const WANTED_SPORTS = [
-  'soccer_epl',
-  'soccer_uefa_champs_league',
-  'basketball_nba',
-  'americanfootball_nfl',
-  'tennis_atp_wimbledon',
-  'soccer_italy_serie_a',
-  'tennis_wta_wimbledon',
+  'soccer_fifa_world_cup',            // FIFA World Cup 2026 — best liquidity
+  'tennis_atp_halle_open',            // pre-Wimbledon grass (June)
+  'tennis_atp_queens_club_champ',     // pre-Wimbledon grass (June)
+  'baseball_mlb',                     // MLB in season
+  'mma_mixed_martial_arts',           // UFC/Bellator year-round
+  'basketball_wnba',                  // WNBA in season
+  'soccer_conmebol_copa_libertadores',// Copa Libertadores
+  'americanfootball_nfl',             // NFL preseason starts August
+  'soccer_epl',                       // EPL resumes August
 ];
 
 // ── Files ─────────────────────────────────────────────────────────────────────
