@@ -10,6 +10,8 @@ interface LbEntry {
   name:            string;
   pnlUsdc:         number;
   winRate:         number;
+  wilsonScore?:    number;
+  lowSample?:      boolean;
   resolvedMarkets: number;
   volumeUsdc:      number;
   lastActive:      number;
@@ -688,7 +690,12 @@ function BrowseRow({ e, rank, cat, isFollowed, onFollow, pending, onDetail }: {
         </span>
       </td>
       <td className="px-3 py-2.5 hidden sm:table-cell">
-        <span className={`font-mono text-[10px] ${wrColor(e.winRate)}`}>{e.winRate.toFixed(1)}%</span>
+        <div className="flex items-center gap-1">
+          <span className={`font-mono text-[10px] ${wrColor(e.winRate)}`}>{e.winRate.toFixed(1)}%</span>
+          {e.lowSample && (
+            <span className="font-mono text-[7px] text-warning/70 border border-warning/30 px-0.5 leading-tight" title="Low sample — fewer than 30 resolved markets; win rate not yet reliable">~</span>
+          )}
+        </div>
         <div className="font-mono text-[8px] text-text-muted">{e.wins}W/{e.losses}L</div>
       </td>
       <td className="px-3 py-2.5 hidden md:table-cell">
@@ -762,6 +769,9 @@ function BrowseCard({ e, rank, cat, isFollowed, onFollow, pending, onDetail }: {
       </div>
       <div className="flex gap-3 mt-1.5 ml-7 flex-wrap items-center">
         <span className={`font-mono text-[9px] ${wrColor(e.winRate)}`}>{e.winRate.toFixed(1)}% WR</span>
+        {e.lowSample && (
+          <span className="font-mono text-[7px] text-warning/70 border border-warning/30 px-0.5 leading-tight" title="Low sample — fewer than 30 resolved markets; win rate not yet reliable">~</span>
+        )}
         <span className="font-mono text-[9px] text-text-muted">{e.resolvedMarkets} mkts</span>
         <span className="font-mono text-[9px] text-text-muted">{fmtVol(e.volumeUsdc)}</span>
         <span className="font-mono text-[9px] text-text-muted">{fmtAge(e.lastActive)}</span>
@@ -1292,7 +1302,7 @@ export default function TradersPage() {
             )}
           </div>
           <p className="font-mono text-[9px] text-text-muted mb-3">
-            {CAT_META[cat].desc} · min {lbData?.minMarketsToRank ?? 5} resolved markets to rank
+            {CAT_META[cat].desc} · min {lbData?.minMarketsToRank ?? 20} resolved markets to rank · sorted by Wilson 95% win-rate CI
             {search && !isSearchAddr && ` · ${traders.length} matching "${search}"`}
             {isSearchAddr && ' · paste complete address above then press Enter to look up'}
           </p>
@@ -1327,8 +1337,8 @@ export default function TradersPage() {
                     <tr className="border-b border-border bg-bg-elevated/30">
                       <th className="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-text-muted font-normal w-8">#</th>
                       <th className="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-text-muted font-normal">Trader</th>
-                      <th className="px-3 py-2 text-right text-[9px] uppercase tracking-widest text-positive font-normal pr-4">P&amp;L ↓</th>
-                      <th className="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-text-muted font-normal hidden sm:table-cell">Win Rate</th>
+                      <th className="px-3 py-2 text-right text-[9px] uppercase tracking-widest text-text-muted font-normal pr-4">P&amp;L</th>
+                      <th className="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-positive font-normal hidden sm:table-cell">Win Rate ↓</th>
                       <th className="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-text-muted font-normal hidden md:table-cell">Mkts</th>
                       <th className="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-text-muted font-normal hidden lg:table-cell">Volume</th>
                       <th className="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-text-muted font-normal hidden xl:table-cell">Active</th>

@@ -16,12 +16,26 @@ const HB_FILE           = '/tmp/agent-heartbeats.json';
 const SCAN_INTERVAL_MS  = 30 * 60_000;   // 30-min cadence
 const MAX_RPS           = 2.0;            // 2 req/sec (no other agent hitting Polymarket)
 const MIN_MARKET_VOL    = 500;            // skip markets under $500 volume
-const MIN_MARKETS_RANK  = 5;             // wallet needs ≥5 resolved markets per category
-const TOP_N_PER_CAT     = 25;
+const MIN_MARKETS_RANK     = 20;  // raised from 5 — 5 binary markets is statistically meaningless
+const LOW_SAMPLE_THRESHOLD = 30;  // below this show a warning even if above the floor
+const TOP_N_PER_CAT        = 25;
 const MAX_TRADES_PER_MKT = 400;           // 8 pages of 50
 const MAX_CIDS_CACHED   = 1500;          // memory bound
 const WINDOW_DAYS       = 730;           // 2-year window (covers 2024 election, 2025 sports)
 const MM_THRESHOLD_PCT  = 50;            // ≥50% two-sided markets → MM / NEUTRAL
+
+// Wilson 95% lower bound for binary win rate — penalizes small samples so
+// a 16W/2L wallet outranks a 5W/0L one.  z=1.96 → 95% CI.
+function wilsonLower(wins, n) {
+  if (n === 0) return 0;
+  const z   = 1.96;
+  const z2  = z * z;
+  const p   = wins / n;
+  const den = 1 + z2 / n;
+  const ctr = p + z2 / (2 * n);
+  const mar = z * Math.sqrt(p * (1 - p) / n + z2 / (4 * n * n));
+  return Math.max(0, (ctr - mar) / den);
+}
 
 // ── Rate-limited HTTP ─────────────────────────────────────────────────────────
 const queue = [];
@@ -240,6 +254,8 @@ function buildLeaderboard() {
       name:       w.name || (addr.slice(0, 6) + '…' + addr.slice(-4)),
       pnlUsdc:    Math.round(totalPnl * 100) / 100,
       winRate:    Math.round(wins / recent.length * 1000) / 10,
+      wilsonScore: Math.round(wilsonLower(wins, recent.length) * 10000) / 10000,
+      lowSample:   recent.length < LOW_SAMPLE_THRESHOLD,
       resolvedMarkets: recent.length,
       volumeUsdc: Math.round(totalVol * 100) / 100,
       lastActive,
@@ -262,6 +278,8 @@ function buildLeaderboard() {
         ...entry,
         pnlUsdc:    Math.round(cPnl * 100) / 100,
         winRate:    Math.round(cWins / catMarkets.length * 1000) / 10,
+        wilsonScore: Math.round(wilsonLower(cWins, catMarkets.length) * 10000) / 10000,
+        lowSample:   catMarkets.length < LOW_SAMPLE_THRESHOLD,
         resolvedMarkets: catMarkets.length,
         volumeUsdc: Math.round(cVol * 100) / 100,
         wins: cWins,
@@ -279,6 +297,8 @@ function buildLeaderboard() {
         ...entry,
         pnlUsdc:    Math.round(ultraFastMkts.reduce((s, m) => s + m.pnl, 0) * 100) / 100,
         winRate:    Math.round(uWins / ultraFastMkts.length * 1000) / 10,
+        wilsonScore: Math.round(wilsonLower(uWins, ultraFastMkts.length) * 10000) / 10000,
+        lowSample:   ultraFastMkts.length < LOW_SAMPLE_THRESHOLD,
         resolvedMarkets: ultraFastMkts.length,
         volumeUsdc: Math.round(ultraFastMkts.reduce((s, m) => s + m.vol, 0) * 100) / 100,
         wins:   uWins,
@@ -290,6 +310,8 @@ function buildLeaderboard() {
         ...entry,
         pnlUsdc:    Math.round(fastMkts.reduce((s, m) => s + m.pnl, 0) * 100) / 100,
         winRate:    Math.round(fWins / fastMkts.length * 1000) / 10,
+        wilsonScore: Math.round(wilsonLower(fWins, fastMkts.length) * 10000) / 10000,
+        lowSample:   fastMkts.length < LOW_SAMPLE_THRESHOLD,
         resolvedMarkets: fastMkts.length,
         volumeUsdc: Math.round(fastMkts.reduce((s, m) => s + m.vol, 0) * 100) / 100,
         wins:   fWins,
@@ -299,7 +321,7 @@ function buildLeaderboard() {
   }
 
   for (const cat of ALL) {
-    categorized[cat].sort((a, b) => b.pnlUsdc - a.pnlUsdc);
+    categorized[cat].sort((a, b) => b.wilsonScore - a.wilsonScore);
     categorized[cat] = categorized[cat].slice(0, TOP_N_PER_CAT);
   }
 
