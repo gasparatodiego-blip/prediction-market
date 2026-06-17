@@ -16,7 +16,7 @@ const ODDS_INTERVAL = 6 * 60 * 60 * 1000; // 6 h — ~4×/day, preserves monthly
 // The free tier (500 req/month) burns out in <9h at the old 5-min cadence.
 // When enabled, fetch at most 4× per day (every 6 h).
 const ODDS_API_LIVE  = process.env.ODDS_API_LIVE === '1';
-const ODDS_API_KEY   = 'aff711ab10f3f1fba585e30405329c7c';
+const ODDS_API_KEY   = process.env.ODDS_API_KEY || '';
 const ODDS_SNAPSHOT  = '/tmp/odds-snapshot.json'; // offline cache; calculator prefers this
 const ODDS_LOW_QUOTA = 20; // stop live fetching when fewer than this many requests remain
 const ODDS_SPORTS    = [

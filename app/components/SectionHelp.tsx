@@ -99,8 +99,8 @@ const CONTENT: Record<string, { title: string; blocks: Block[] }> = {
         'Odds move fast. Speed and dual-tab execution matter; this is manual, not automated.',
       ]},
 
-      { t: 'h', s: 'Status: OFFLINE' },
-      { t: 'p', s: 'Live odds fetching via OddsAPI is currently disabled. The free-tier quota is too small for continuous scanning across multiple sports and bookmakers. Enabling live data requires a paid OddsAPI subscription. The matching engine, stake-split calculator, and margin logic are all built and will activate when the feed is live.' },
+      { t: 'h', s: 'Credit-safe polling' },
+      { t: 'p', s: 'The scanner polls OddsAPI every 45 minutes (configurable). It calls /sports first (0 credits) to discover active leagues, then fetches /odds only for the top 3 in-season sports. Two free-tier API keys rotate automatically — the agent pauses and sends a Telegram alert when both hit the credit floor (default: 50 remaining). No fake data is ever shown: when offline or paused, the card shows an honest OFFLINE / PAUSED status.' },
 
       { t: 'h', s: 'When live, each row will show' },
       { t: 'ul', items: [
@@ -125,7 +125,7 @@ const CONTENT: Record<string, { title: string; blocks: Block[] }> = {
       { t: 'dl', items: [
         ['Opportunities',    'The main ranked list. Shows all live items across every strategy type. Best first stop.'],
         ['Funding Monitor',  'Real-time cross-exchange perp funding-rate spreads (Binance / Bybit / OKX / Hyperliquid). For delta-neutral trades.'],
-        ['Sports',           'Cross-bookmaker arb. Currently OFFLINE — live data needs a paid OddsAPI plan.'],
+        ['Sports',           'Cross-bookmaker arb via OddsAPI. Polls every 45 min with credit-safe key rotation. Shows OFFLINE / PAUSED when data is unavailable — never fake numbers.'],
         ['Portfolio',        'Manual log of trades you have entered. Track realized P&L.'],
         ['History',          'Log of scanner-detected opportunities over time.'],
         ['MM Analyzer',      'Read-only Polymarket market-making simulation. Two P&L numbers: measured (verified) and estimated rewards (labeled assumption).'],

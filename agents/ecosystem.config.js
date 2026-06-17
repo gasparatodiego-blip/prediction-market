@@ -178,9 +178,9 @@ module.exports = {
       max_restarts:  5,
       watch:         false,
       autorestart:   true,
-      // Disabled by default — set ODDS_API_LIVE=true to activate.
-      // Without it, the process is registered but never started automatically.
-      env:           { NODE_ENV: 'production', HOME: '/root', ODDS_API_LIVE: 'false' },
+      // Keys are read from .env.local at process start via dotenv or shell export.
+      // ODDS_API_KEY and ODDS_API_KEY_2 must be set in .env.local — never committed.
+      env:           { NODE_ENV: 'production', HOME: '/root' },
     },
   ],
 };
