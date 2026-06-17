@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
-const DATA_API = 'https://data-api.polymarket.com';
-const TIMEOUT  = 10_000;
+const DATA_API         = 'https://data-api.polymarket.com';
+const TIMEOUT          = 10_000;
+const MM_THRESHOLD_PCT = 50; // ≥50% two-sided markets → MM / NEUTRAL
 
 function fetchJSON(url: string): Promise<any> {
   return new Promise((resolve, reject) => {
@@ -95,6 +96,10 @@ export async function GET(
       address: raw,
       name: null,
       notFound: true,
+      walletType: null,
+      twoSidedPct: 0,
+      twoSidedMarkets: 0,
+      totalPosMarkets: 0,
       resolvedMarkets: 0,
       realizedPnl: 0,
       unrealizedPnl: 0,
@@ -144,6 +149,22 @@ export async function GET(
     price:     t.price,
     timestamp: t.timestamp,
   }));
+
+  // ── MM / DIRECTIONAL classification (from trade history) ─────────────────
+  // conditionId is shared between both outcome tokens of the same binary market.
+  // A wallet that traded BOTH outcomes within the same conditionId is "two-sided" (MM pattern).
+  // Trades (not positions) are used because redeemed/resolved positions vanish from the
+  // positions endpoint, making it an unreliable signal for historical behavior.
+  const outcomesByCondId: Record<string, Set<string>> = {};
+  for (const t of trades) {
+    if (!outcomesByCondId[t.conditionId]) outcomesByCondId[t.conditionId] = new Set();
+    outcomesByCondId[t.conditionId].add(t.outcome);
+  }
+  const totalPosMarkets   = Object.keys(outcomesByCondId).length;
+  const twoSidedMarkets   = Object.values(outcomesByCondId).filter(s => s.size >= 2).length;
+  const twoSidedPct       = totalPosMarkets > 0
+    ? Math.round(twoSidedMarkets / totalPosMarkets * 1000) / 10 : 0;
+  const walletType: 'MM' | 'DIRECTIONAL' = twoSidedPct >= MM_THRESHOLD_PCT ? 'MM' : 'DIRECTIONAL';
 
   // ── Split positions: open vs resolved ─────────────────────────────────────
   // Open = redeemable:false (market still live, cashPnl is mark-to-market)
@@ -200,6 +221,11 @@ export async function GET(
     address: raw,
     name: name && !name.startsWith('0x') ? name : null,
     notFound: false,
+
+    walletType,
+    twoSidedPct,
+    twoSidedMarkets,
+    totalPosMarkets,
 
     resolvedMarkets,
     realizedPnl:    Math.round(realizedPnl   * 100) / 100,

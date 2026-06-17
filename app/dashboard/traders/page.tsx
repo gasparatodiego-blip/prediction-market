@@ -15,6 +15,8 @@ interface LbEntry {
   lastActive:      number;
   wins:            number;
   losses:          number;
+  twoSidedPct?:    number;
+  walletType?:     'MM' | 'DIRECTIONAL' | null;
 }
 
 interface LbData {
@@ -103,6 +105,10 @@ interface WalletDetail {
   address:         string;
   name:            string | null;
   notFound:        boolean;
+  walletType:      'MM' | 'DIRECTIONAL' | null;
+  twoSidedPct:     number;
+  twoSidedMarkets: number;
+  totalPosMarkets: number;
   resolvedMarkets: number;
   realizedPnl:     number;
   unrealizedPnl:   number;
@@ -330,7 +336,7 @@ function WalletDetailPanel({
 
             {/* Address header */}
             <div className="flex items-start justify-between gap-3 flex-wrap">
-              <div>
+              <div className="min-w-0">
                 {detail.name && (
                   <div className="font-mono text-sm text-text-primary mb-0.5">{detail.name}</div>
                 )}
@@ -347,6 +353,23 @@ function WalletDetailPanel({
                 </div>
                 {!detail.name && (
                   <div className="font-mono text-[9px] text-text-muted mt-0.5">No Polymarket username found</div>
+                )}
+                {/* Classification badge */}
+                {detail.walletType && (
+                  <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                    <span className={[
+                      'font-mono text-[8px] px-2 py-0.5 border uppercase tracking-widest',
+                      detail.walletType === 'MM'
+                        ? 'border-warning/50 text-warning bg-warning/5'
+                        : 'border-accent/40 text-accent bg-accent/5',
+                    ].join(' ')}>
+                      {detail.walletType === 'MM' ? 'MM / NEUTRAL' : 'DIRECTIONAL'}
+                    </span>
+                    <span className="font-mono text-[8px] text-text-muted">
+                      {detail.twoSidedPct.toFixed(0)}% two-sided
+                      · {detail.twoSidedMarkets}/{detail.totalPosMarkets} recent markets
+                    </span>
+                  </div>
                 )}
               </div>
               <button
@@ -365,6 +388,16 @@ function WalletDetailPanel({
                                : <><UserPlus  className="w-3 h-3"/>Follow</>}
               </button>
             </div>
+            {/* MM advisory note */}
+            {detail.walletType === 'MM' && !detail.notFound && (
+              <div className="flex items-start gap-2 px-3 py-2 border border-warning/30 bg-warning/5">
+                <AlertCircle className="w-3 h-3 text-warning/70 shrink-0 mt-0.5"/>
+                <p className="font-mono text-[9px] text-warning/80 leading-relaxed">
+                  Trades both sides of the same market (market making / neutral). This is not a directional signal
+                  and is not meant to be copied — P&amp;L reflects spread capture, not outcome prediction.
+                </p>
+              </div>
+            )}
 
             {/* Not found */}
             {detail.notFound && (
@@ -632,7 +665,19 @@ function BrowseRow({ e, rank, cat, isFollowed, onFollow, pending, onDetail }: {
         {rank <= 3 ? ['🥇','🥈','🥉'][rank-1] : rank}
       </td>
       <td className="px-3 py-2.5 min-w-0 max-w-[160px]">
-        <div className="font-mono text-[11px] text-text-primary truncate">{displayName(e)}</div>
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="font-mono text-[11px] text-text-primary truncate">{displayName(e)}</span>
+          {e.walletType && (
+            <span className={[
+              'font-mono text-[7px] px-1 py-px border shrink-0 uppercase tracking-wide',
+              e.walletType === 'MM'
+                ? 'border-warning/40 text-warning/80'
+                : 'border-accent/30 text-accent/70',
+            ].join(' ')}>
+              {e.walletType === 'MM' ? 'MM' : 'DIR'}
+            </span>
+          )}
+        </div>
         {e.name && !e.name.startsWith('0x') && (
           <div className="font-mono text-[9px] text-text-muted truncate">{fmtWallet(e.wallet)}</div>
         )}
@@ -695,7 +740,19 @@ function BrowseCard({ e, rank, cat, isFollowed, onFollow, pending, onDetail }: {
             {rank <= 3 ? ['🥇','🥈','🥉'][rank-1] : rank}
           </span>
           <div className="min-w-0">
-            <div className="font-mono text-[11px] text-text-primary truncate">{displayName(e)}</div>
+            <div className="flex items-center gap-1.5">
+              <span className="font-mono text-[11px] text-text-primary truncate">{displayName(e)}</span>
+              {e.walletType && (
+                <span className={[
+                  'font-mono text-[7px] px-1 py-px border shrink-0 uppercase',
+                  e.walletType === 'MM'
+                    ? 'border-warning/40 text-warning/80'
+                    : 'border-accent/30 text-accent/70',
+                ].join(' ')}>
+                  {e.walletType === 'MM' ? 'MM' : 'DIR'}
+                </span>
+              )}
+            </div>
             <div className="font-mono text-[9px] text-text-muted">{fmtWallet(e.wallet)}</div>
           </div>
         </div>
@@ -955,6 +1012,7 @@ export default function TradersPage() {
   const [tab,           setTab]          = useState<Tab>('browse');
   const [cat,           setCat]          = useState<Category>('All');
   const [search,        setSearch]       = useState('');
+  const [typeFilter,    setTypeFilter]   = useState<'all' | 'DIRECTIONAL' | 'MM'>('all');
   const [lbData,        setLbData]       = useState<LbData | null>(null);
   const [copyData,      setCopyData]     = useState<CopyData | null>(null);
   const [followLoading, setFollowLoading] = useState<Set<string>>(new Set());
@@ -1066,9 +1124,14 @@ export default function TradersPage() {
 
   const isSearchAddr = isWalletAddress(search);
 
-  // Browse data — filtered (but skip if search is an exact address — show hint instead)
+  // Browse data — filtered
   const allTraders = lbData?.categories?.[cat] ?? [];
-  const traders = isSearchAddr ? [] : allTraders.filter(e => matchesSearch(e, search));
+  const traders = isSearchAddr ? [] : allTraders.filter(e => {
+    if (!matchesSearch(e, search)) return false;
+    if (typeFilter === 'MM')          return e.walletType === 'MM';
+    if (typeFilter === 'DIRECTIONAL') return e.walletType === 'DIRECTIONAL';
+    return true; // 'all' shows everything including unclassified
+  });
   const warmingUp = !lbData || (!lbData.ok && !lbData.updatedAt);
 
   // Following data
@@ -1199,6 +1262,34 @@ export default function TradersPage() {
                 </button>
               );
             })}
+          </div>
+          {/* Type filter toggle */}
+          <div className="flex items-center gap-2 mb-3 flex-wrap">
+            {(['all', 'DIRECTIONAL', 'MM'] as const).map(f => {
+              const labels = { all: 'All Types', DIRECTIONAL: 'Directional', MM: 'MM / Neutral' } as const;
+              const active = typeFilter === f;
+              return (
+                <button key={f} onClick={() => setTypeFilter(f)}
+                  className={[
+                    'px-2.5 py-1 border font-mono text-[9px] uppercase tracking-widest transition-colors',
+                    active
+                      ? f === 'MM'
+                        ? 'border-warning/60 text-warning bg-warning/5'
+                        : f === 'DIRECTIONAL'
+                          ? 'border-accent text-accent bg-accent/5'
+                          : 'border-border text-text-primary bg-bg-elevated/40'
+                      : 'border-border/60 text-text-muted hover:border-border hover:text-text-secondary',
+                  ].join(' ')}>
+                  {labels[f]}
+                </button>
+              );
+            })}
+            {typeFilter === 'DIRECTIONAL' && (
+              <span className="font-mono text-[8px] text-text-muted">directional = copy-worthy · MM = observe only</span>
+            )}
+            {typeFilter === 'MM' && (
+              <span className="font-mono text-[8px] text-warning/70">trades both sides — not a directional signal</span>
+            )}
           </div>
           <p className="font-mono text-[9px] text-text-muted mb-3">
             {CAT_META[cat].desc} · min {lbData?.minMarketsToRank ?? 5} resolved markets to rank

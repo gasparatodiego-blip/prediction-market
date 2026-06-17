@@ -21,6 +21,7 @@ const TOP_N_PER_CAT     = 25;
 const MAX_TRADES_PER_MKT = 400;           // 8 pages of 50
 const MAX_CIDS_CACHED   = 1500;          // memory bound
 const WINDOW_DAYS       = 730;           // 2-year window (covers 2024 election, 2025 sports)
+const MM_THRESHOLD_PCT  = 50;            // ≥50% two-sided markets → MM / NEUTRAL
 
 // ── Rate-limited HTTP ─────────────────────────────────────────────────────────
 const queue = [];
@@ -164,12 +165,15 @@ function computePnL(trades, winner) {
       const terminalVal  = isWinner ? terminalToks * 1.0 : 0;
       pnl += pos.proceeds + terminalVal - pos.cost;
     }
+    // Detect two-sided: wallet bought tokens on ≥2 distinct outcomes within this market
+    const twoSided = Object.values(wd.positions).filter(pos => pos.cost > 0).length >= 2;
     result[w] = {
       name:    wd.name,
       pnl:     Math.round(pnl * 100) / 100,
       vol:     Math.round(wd.totalBuyUsdc * 100) / 100,
       won:     pnl > 0,
       lastTs:  wd.lastTs,
+      twoSided,
     };
   }
   return result;
@@ -212,8 +216,10 @@ function saveCache() {
 // ── Rank wallets per category ─────────────────────────────────────────────────
 function buildLeaderboard() {
   const cutoff = Date.now() / 1000 - WINDOW_DAYS * 86400;
-  const CATS = ['All', 'Politics', 'Sports', 'Crypto', 'Pop Culture', 'World'];
-  const categorized = Object.fromEntries(CATS.map(c => [c, []]));
+  const CATS  = ['All', 'Politics', 'Sports', 'Crypto', 'Pop Culture', 'World'];
+  const DCATS = ['Ultra-fast ≤5 min', 'Fast 5–15 min'];
+  const ALL   = [...CATS, ...DCATS];
+  const categorized = Object.fromEntries(ALL.map(c => [c, []]));
 
   for (const [addr, w] of Object.entries(wallets)) {
     const recent = (w.markets || []).filter(m => !m.ts || m.ts > cutoff);
@@ -223,6 +229,11 @@ function buildLeaderboard() {
     const totalPnl   = recent.reduce((s, m) => s + m.pnl, 0);
     const totalVol   = recent.reduce((s, m) => s + m.vol, 0);
     const lastActive = Math.max(...recent.map(m => m.ts || 0));
+
+    // Two-sided / MM classification: % of markets where wallet bought both outcomes
+    const twoSidedMkts = recent.filter(m => m.twoSided).length;
+    const twoSidedPct  = Math.round(twoSidedMkts / recent.length * 1000) / 10;
+    const walletType   = twoSidedPct >= MM_THRESHOLD_PCT ? 'MM' : 'DIRECTIONAL';
 
     const entry = {
       wallet:     addr,
@@ -234,11 +245,13 @@ function buildLeaderboard() {
       lastActive,
       wins,
       losses:     recent.length - wins,
+      twoSidedPct,
+      walletType,
     };
 
     categorized['All'].push(entry);
 
-    // Per-category entry
+    // Topic-category entries
     for (const cat of CATS.slice(1)) {
       const catMarkets = recent.filter(m => m.category === cat);
       if (catMarkets.length < MIN_MARKETS_RANK) continue;
@@ -255,9 +268,37 @@ function buildLeaderboard() {
         losses: catMarkets.length - cWins,
       });
     }
+
+    // Duration buckets — ultra-fast takes priority (no double-count)
+    const ultraFastMkts = recent.filter(m => m.durationMin != null && m.durationMin <= 5);
+    const fastMkts      = recent.filter(m => m.durationMin != null && m.durationMin > 5 && m.durationMin <= 15);
+
+    if (ultraFastMkts.length >= MIN_MARKETS_RANK) {
+      const uWins = ultraFastMkts.filter(m => m.won).length;
+      categorized['Ultra-fast ≤5 min'].push({
+        ...entry,
+        pnlUsdc:    Math.round(ultraFastMkts.reduce((s, m) => s + m.pnl, 0) * 100) / 100,
+        winRate:    Math.round(uWins / ultraFastMkts.length * 1000) / 10,
+        resolvedMarkets: ultraFastMkts.length,
+        volumeUsdc: Math.round(ultraFastMkts.reduce((s, m) => s + m.vol, 0) * 100) / 100,
+        wins:   uWins,
+        losses: ultraFastMkts.length - uWins,
+      });
+    } else if (fastMkts.length >= MIN_MARKETS_RANK) {
+      const fWins = fastMkts.filter(m => m.won).length;
+      categorized['Fast 5–15 min'].push({
+        ...entry,
+        pnlUsdc:    Math.round(fastMkts.reduce((s, m) => s + m.pnl, 0) * 100) / 100,
+        winRate:    Math.round(fWins / fastMkts.length * 1000) / 10,
+        resolvedMarkets: fastMkts.length,
+        volumeUsdc: Math.round(fastMkts.reduce((s, m) => s + m.vol, 0) * 100) / 100,
+        wins:   fWins,
+        losses: fastMkts.length - fWins,
+      });
+    }
   }
 
-  for (const cat of CATS) {
+  for (const cat of ALL) {
     categorized[cat].sort((a, b) => b.pnlUsdc - a.pnlUsdc);
     categorized[cat] = categorized[cat].slice(0, TOP_N_PER_CAT);
   }
@@ -288,7 +329,7 @@ function writeOutput() {
 }
 
 // ── Process one market ────────────────────────────────────────────────────────
-async function processMarket(cid, winner, category, vol) {
+async function processMarket(cid, winner, category, vol, durationMin) {
   const trades = await fetchTrades(cid);
   if (trades.length === 0) return 0;
 
@@ -298,19 +339,15 @@ async function processMarket(cid, winner, category, vol) {
     if (!wallets[addr]) wallets[addr] = { name: d.name, markets: [] };
     if (d.name && !wallets[addr].name) wallets[addr].name = d.name;
 
-    // Update display name if we got a better one
     if (d.name && d.name !== addr) wallets[addr].name = d.name;
 
-    wallets[addr].markets.push({
-      cid, category,
-      pnl: d.pnl,
-      vol: d.vol,
-      won: d.won,
-      ts:  d.lastTs,
-    });
+    const rec = { cid, category, pnl: d.pnl, vol: d.vol, won: d.won, ts: d.lastTs };
+    if (durationMin  != null) rec.durationMin = durationMin;
+    if (d.twoSided)            rec.twoSided   = true;
+    wallets[addr].markets.push(rec);
   }
 
-  processedCids[cid] = { category, winner, vol, processedAt: Date.now() };
+  processedCids[cid] = { category, winner, vol, durationMin, processedAt: Date.now() };
   return trades.length;
 }
 
@@ -329,8 +366,11 @@ async function processEventBatch(order, ascending, limit) {
   const toProcess = [];
   for (const ev of events) {
     const tags = (ev.tags || []).map(t => typeof t === 'string' ? t : (t.label || ''));
-    // Skip recurring 5-minute markets
-    if (tags.some(t => t.toLowerCase().includes('recurring') || t === '5M' || t === '15M')) continue;
+
+    // Derive duration hint from event tags (5M / 15M recurring markets)
+    let evDurationMin = null;
+    if (tags.some(t => t === '5M'))  evDurationMin = 5;
+    else if (tags.some(t => t === '15M')) evDurationMin = 15;
 
     const category = inferCategory(tags);
 
@@ -338,13 +378,20 @@ async function processEventBatch(order, ascending, limit) {
       const cid = mkt.conditionId;
       if (!cid || processedCids[cid]) continue;
 
-      const vol    = mkt.volumeNum || parseFloat(mkt.volume || '0') || 0;
+      const vol = mkt.volumeNum || parseFloat(mkt.volume || '0') || 0;
       if (vol < MIN_MARKET_VOL) continue;
 
       const winner = getWinner(mkt);
       if (!winner) continue; // not resolved yet
 
-      toProcess.push({ cid, winner, category, vol, question: mkt.question?.slice(0, 80) });
+      // Compute per-market duration; fall back to event-level tag hint
+      let durationMin = evDurationMin;
+      if (durationMin == null && mkt.startDate && mkt.endDate) {
+        const ms = new Date(mkt.endDate) - new Date(mkt.startDate);
+        if (ms > 0) durationMin = ms / 60000;
+      }
+
+      toProcess.push({ cid, winner, category, vol, durationMin, question: mkt.question?.slice(0, 80) });
     }
   }
 
@@ -352,9 +399,10 @@ async function processEventBatch(order, ascending, limit) {
 
   let processed = 0;
   for (const m of toProcess) {
-    const count = await processMarket(m.cid, m.winner, m.category, m.vol);
+    const count = await processMarket(m.cid, m.winner, m.category, m.vol, m.durationMin);
     if (count > 0) {
-      console.log(`[LB]   [${m.category}] ${m.question} → winner:${m.winner}, trades:${count}`);
+      const dur = m.durationMin != null ? ` ${m.durationMin <= 5 ? '⚡' : m.durationMin <= 15 ? '⏱' : ''}${m.durationMin.toFixed(0)}min` : '';
+      console.log(`[LB]   [${m.category}]${dur} ${m.question} → winner:${m.winner}, trades:${count}`);
     }
     processed++;
     // Save every 20 markets to avoid losing data on crash
