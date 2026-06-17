@@ -23,6 +23,8 @@ const MAX_TRADES_PER_MKT = 400;           // 8 pages of 50
 const MAX_CIDS_CACHED   = 1500;          // memory bound
 const WINDOW_DAYS       = 730;           // 2-year window (covers 2024 election, 2025 sports)
 const MM_THRESHOLD_PCT  = 50;            // ≥50% two-sided markets → MM / NEUTRAL
+const CLASSIFY_TOP_N    = 300;           // wallet-centric classification for top-N by volume
+const CLASSIFY_STALE_DAYS = 7;          // re-classify wallet every 7 days
 
 // Wilson 95% lower bound for binary win rate — penalizes small samples so
 // a 16W/2L wallet outranks a 5W/0L one.  z=1.96 → 95% CI.
@@ -263,6 +265,57 @@ function saveCache() {
   atomicWrite(CACHE_FILE, { processedCids, wallets, savedAt: new Date().toISOString() });
 }
 
+// ── Wallet-centric MM classification for top-N by volume ─────────────────────
+// Fetches personal trade history for each of the top CLASSIFY_TOP_N wallets
+// (by total volume) and detects two-sided behavior across conditionIds.
+// This is the same logic as the per-wallet detail panel, giving accurate MM tags
+// without needing per-market two-sided data. Stores results at the wallet level
+// so buildLeaderboard() can use them in preference to per-market inference.
+async function classifyTopWallets() {
+  const staleMs = CLASSIFY_STALE_DAYS * 86400_000;
+  const now     = Date.now();
+
+  const candidates = Object.entries(wallets)
+    .filter(([, w]) => (w.markets || []).length >= MIN_MARKETS_RANK)
+    .map(([addr, w]) => ({
+      addr,
+      vol:          (w.markets || []).reduce((s, m) => s + (m.vol || 0), 0),
+      classifiedAt: w.classifiedAt || 0,
+    }))
+    .sort((a, b) => b.vol - a.vol)
+    .slice(0, CLASSIFY_TOP_N)
+    .filter(c => now - c.classifiedAt > staleMs);
+
+  if (candidates.length === 0) { console.log('[LB] Wallet classification: all up to date'); return; }
+  console.log(`[LB] Classifying ${candidates.length} top-volume wallets for MM/DIRECTIONAL`);
+
+  let done = 0;
+  for (const { addr } of candidates) {
+    let trades;
+    try { trades = await get(`https://data-api.polymarket.com/trades?user=${addr}&limit=200`); }
+    catch { continue; }
+    if (!Array.isArray(trades) || trades.length === 0) { wallets[addr].classifiedAt = now; continue; }
+
+    const byCondId = {};
+    for (const t of trades) {
+      if (!t.conditionId || !t.outcome) continue;
+      if (!byCondId[t.conditionId]) byCondId[t.conditionId] = new Set();
+      byCondId[t.conditionId].add(t.outcome);
+    }
+    const total     = Object.keys(byCondId).length;
+    const twoSided  = Object.values(byCondId).filter(s => s.size >= 2).length;
+    const pct       = total > 0 ? Math.round(twoSided / total * 1000) / 10 : 0;
+
+    wallets[addr].classifiedAt = now;
+    wallets[addr].twoSidedPct  = pct;
+    wallets[addr].walletType   = pct >= MM_THRESHOLD_PCT ? 'MM' : 'DIRECTIONAL';
+    done++;
+  }
+
+  if (done > 0) { saveCache(); writeOutput(); }
+  console.log(`[LB] Wallet classification done: ${done} classified`);
+}
+
 // ── Rank wallets per category ─────────────────────────────────────────────────
 function buildLeaderboard() {
   const cutoff = Date.now() / 1000 - WINDOW_DAYS * 86400;
@@ -280,10 +333,15 @@ function buildLeaderboard() {
     const totalVol   = recent.reduce((s, m) => s + m.vol, 0);
     const lastActive = Math.max(...recent.map(m => m.ts || 0));
 
-    // Two-sided / MM classification: % of markets where wallet bought both outcomes
+    // MM classification: prefer wallet-level (from classifyTopWallets) if available;
+    // fall back to per-market twoSided count which underestimates MM activity.
     const twoSidedMkts = recent.filter(m => m.twoSided).length;
-    const twoSidedPct  = Math.round(twoSidedMkts / recent.length * 1000) / 10;
-    const walletType   = twoSidedPct >= MM_THRESHOLD_PCT ? 'MM' : 'DIRECTIONAL';
+    const twoSidedPct  = w.twoSidedPct !== undefined
+      ? w.twoSidedPct
+      : Math.round(twoSidedMkts / recent.length * 1000) / 10;
+    const walletType   = w.walletType !== undefined
+      ? w.walletType
+      : (twoSidedPct >= MM_THRESHOLD_PCT ? 'MM' : 'DIRECTIONAL');
 
     const entry = {
       wallet:     addr,
@@ -506,6 +564,9 @@ async function scan() {
 
   // Always check recently-closed events for freshness
   await processEventBatch('closedTime', false, 50);
+
+  // Wallet-centric MM classification for top-volume wallets
+  await classifyTopWallets();
 
   saveCache();
   writeOutput();
