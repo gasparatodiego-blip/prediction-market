@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Lock, Bell, BellOff, UserMinus, UserPlus, AlertCircle, Search, X } from 'lucide-react';
+import { Lock, Bell, BellOff, UserMinus, UserPlus, AlertCircle, Search, X, ExternalLink, ChevronRight } from 'lucide-react';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -65,18 +65,62 @@ interface CopyData {
   maxWallets:       number;
 }
 
+interface RecentTrade {
+  title:     string;
+  side:      string;
+  outcome:   string;
+  size:      number;
+  price:     number;
+  timestamp: number;
+}
+
+interface CatBreakdown {
+  category: string;
+  count:    number;
+  pct:      number;
+}
+
+interface PnlPoint {
+  date:          string;
+  cumulativePnl: number;
+}
+
+interface WalletDetail {
+  address:         string;
+  name:            string | null;
+  notFound:        boolean;
+  resolvedMarkets: number;
+  estimatedPnl:    number;
+  winRate:         number;
+  wins:            number;
+  losses:          number;
+  avgPositionSize: number;
+  totalVolume:     number;
+  tradeCount:      number;
+  firstActive:     number | null;
+  lastActive:      number | null;
+  portfolioValue:  number | null;
+  pnlHistory:      PnlPoint[];
+  categoryBreakdown: CatBreakdown[];
+  recentTrades:    RecentTrade[];
+  disclaimer:      string;
+  error?:          string;
+}
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const CATEGORIES = ['All', 'Politics', 'Sports', 'Crypto', 'Pop Culture', 'World'] as const;
+const CATEGORIES = ['All', 'Politics', 'Sports', 'Crypto', 'Pop Culture', 'World', 'Ultra-fast ≤5 min', 'Fast 5–15 min'] as const;
 type Category = typeof CATEGORIES[number];
 
 const CAT_META: Record<Category, { emoji: string; desc: string }> = {
-  'All':         { emoji: '🏆', desc: 'Top traders across all markets'          },
-  'Politics':    { emoji: '🗳️',  desc: 'Elections, policy, geopolitics'          },
-  'Sports':      { emoji: '⚽',  desc: 'NBA, NFL, Soccer, UFC and more'          },
-  'Crypto':      { emoji: '₿',   desc: 'BTC, ETH, SOL price markets'            },
-  'Pop Culture': { emoji: '🎬',  desc: 'Entertainment, music, celebrities'       },
-  'World':       { emoji: '🌍',  desc: 'Science, tech, global events'            },
+  'All':               { emoji: '🏆', desc: 'Top traders across all markets'                           },
+  'Politics':          { emoji: '🗳️',  desc: 'Elections, policy, geopolitics'                          },
+  'Sports':            { emoji: '⚽',  desc: 'NBA, NFL, Soccer, UFC and more'                          },
+  'Crypto':            { emoji: '₿',   desc: 'BTC, ETH, SOL price markets'                            },
+  'Pop Culture':       { emoji: '🎬',  desc: 'Entertainment, music, celebrities'                       },
+  'World':             { emoji: '🌍',  desc: 'Science, tech, global events'                            },
+  'Ultra-fast ≤5 min': { emoji: '⚡',  desc: 'Specialists in markets lasting ≤5 min · not in Fast bucket' },
+  'Fast 5–15 min':     { emoji: '⏱',  desc: 'Specialists in 5–15 min markets · excludes ≤5 min traders' },
 };
 
 const CAT_COLOR: Record<string, string> = {
@@ -85,6 +129,14 @@ const CAT_COLOR: Record<string, string> = {
   'Crypto':      'text-orange-400/80',
   'Pop Culture': 'text-pink-400/80',
   'World':       'text-green-400/80',
+};
+
+const CAT_BAR_COLOR: Record<string, string> = {
+  'Crypto':     'bg-orange-400/70',
+  'Sports':     'bg-blue-400/70',
+  'Politics':   'bg-yellow-400/70',
+  'Pop Culture':'bg-pink-400/70',
+  'World':      'bg-green-400/70',
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -120,6 +172,10 @@ function fmtAge(ts: number | null | undefined): string {
   return Math.floor(secs / 86400 / 365) + 'yr ago';
 }
 
+function fmtDate(ts: number): string {
+  return new Date(ts * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
+}
+
 function wrColor(r: number | null | undefined): string {
   if (r == null) return 'text-text-muted';
   if (r >= 60) return 'text-positive';
@@ -137,15 +193,325 @@ function matchesSearch(entry: { name?: string; wallet: string }, q: string): boo
   return (entry.name ?? '').toLowerCase().includes(lq) || entry.wallet.toLowerCase().includes(lq);
 }
 
+function isWalletAddress(q: string): boolean {
+  return /^0x[0-9a-fA-F]{40}$/.test(q.trim());
+}
+
+// ── SVG P&L Chart ─────────────────────────────────────────────────────────────
+
+function PnlChart({ history }: { history: PnlPoint[] }) {
+  if (history.length < 2) {
+    return (
+      <div className="h-20 flex items-center justify-center font-mono text-[9px] text-text-muted border border-border/40 bg-bg-elevated/20">
+        Not enough resolved positions for a chart ({history.length} data point{history.length !== 1 ? 's' : ''})
+      </div>
+    );
+  }
+
+  const W = 600;
+  const H = 80;
+  const PAD = { t: 8, b: 8, l: 4, r: 4 };
+  const iW = W - PAD.l - PAD.r;
+  const iH = H - PAD.t - PAD.b;
+
+  const vals = history.map(p => p.cumulativePnl);
+  const minV = Math.min(0, ...vals);
+  const maxV = Math.max(0, ...vals);
+  const range = maxV - minV || 1;
+
+  const toY = (v: number) => PAD.t + iH - ((v - minV) / range) * iH;
+  const toX = (i: number) => PAD.l + (i / (history.length - 1)) * iW;
+
+  const pts = history.map((p, i) => `${toX(i)},${toY(p.cumulativePnl)}`).join(' ');
+  const zeroY = toY(0);
+  const finalPnl = vals[vals.length - 1];
+  const lineColor = finalPnl >= 0 ? '#4ade80' : '#f87171';
+  const fillColor = finalPnl >= 0 ? 'rgba(74,222,128,0.08)' : 'rgba(248,113,113,0.08)';
+
+  // Filled area path: down from first point, along zero, up to last, back along line
+  const firstX = toX(0);
+  const lastX  = toX(history.length - 1);
+  const areaPts = `${firstX},${zeroY} ${pts} ${lastX},${zeroY}`;
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-20" preserveAspectRatio="none">
+      {/* Zero baseline */}
+      <line x1={PAD.l} y1={zeroY} x2={W - PAD.r} y2={zeroY} stroke="rgba(255,255,255,0.1)" strokeWidth="1"/>
+      {/* Fill */}
+      <polygon points={areaPts} fill={fillColor}/>
+      {/* Line */}
+      <polyline points={pts} fill="none" stroke={lineColor} strokeWidth="1.5"/>
+      {/* Start dot */}
+      <circle cx={toX(0)} cy={toY(vals[0])} r="2" fill={lineColor}/>
+      {/* End dot */}
+      <circle cx={toX(history.length-1)} cy={toY(vals[history.length-1])} r="2.5" fill={lineColor}/>
+    </svg>
+  );
+}
+
+// ── Wallet detail panel ───────────────────────────────────────────────────────
+
+function WalletDetailPanel({
+  detail, loading, error, onClose, onFollow, isFollowed, followPending,
+}: {
+  detail:        WalletDetail | null;
+  loading:       boolean;
+  error:         string;
+  onClose:       () => void;
+  onFollow:      () => void;
+  isFollowed:    boolean;
+  followPending: boolean;
+}) {
+  const addr = detail?.address ?? '';
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 bg-black/50 z-40"
+        onClick={onClose}
+      />
+
+      {/* Sliding panel */}
+      <div className="fixed inset-y-0 right-0 w-full sm:w-[680px] bg-bg-base border-l border-border z-50 overflow-y-auto flex flex-col">
+
+        {/* Panel header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-bg-elevated/40 sticky top-0 z-10">
+          <span className="font-mono text-[10px] uppercase tracking-widest text-text-muted">Wallet Detail</span>
+          <button onClick={onClose} className="text-text-muted hover:text-text-primary transition-colors">
+            <X className="w-4 h-4"/>
+          </button>
+        </div>
+
+        {loading && (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="font-mono text-[11px] text-text-muted animate-pulse">Fetching from Polymarket…</div>
+          </div>
+        )}
+
+        {!loading && error && (
+          <div className="p-6">
+            <div className="flex items-start gap-2 p-3 border border-negative/40 bg-negative/5">
+              <AlertCircle className="w-3.5 h-3.5 text-negative shrink-0 mt-0.5"/>
+              <span className="font-mono text-[10px] text-negative">{error}</span>
+            </div>
+          </div>
+        )}
+
+        {!loading && !error && detail && (
+          <div className="p-5 space-y-5 flex-1">
+
+            {/* Address header */}
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+              <div>
+                {detail.name && (
+                  <div className="font-mono text-sm text-text-primary mb-0.5">{detail.name}</div>
+                )}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-mono text-[10px] text-text-secondary break-all">{detail.address}</span>
+                  <a
+                    href={`https://polymarket.com/profile/${detail.address}`}
+                    target="_blank" rel="noopener noreferrer"
+                    className="text-text-muted hover:text-accent transition-colors"
+                    title="View on Polymarket"
+                  >
+                    <ExternalLink className="w-3 h-3"/>
+                  </a>
+                </div>
+                {!detail.name && (
+                  <div className="font-mono text-[9px] text-text-muted mt-0.5">No Polymarket username found</div>
+                )}
+              </div>
+              <button
+                onClick={onFollow}
+                disabled={followPending}
+                className={[
+                  'flex items-center gap-1.5 px-3 py-1.5 border font-mono text-[9px] uppercase tracking-widest transition-colors shrink-0',
+                  isFollowed
+                    ? 'border-accent/50 text-accent hover:border-negative/50 hover:text-negative'
+                    : 'border-border text-text-muted hover:border-accent/50 hover:text-accent',
+                  followPending ? 'opacity-40 cursor-not-allowed' : '',
+                ].join(' ')}
+              >
+                {followPending ? '…'
+                  : isFollowed ? <><UserMinus className="w-3 h-3"/>Unfollow</>
+                               : <><UserPlus  className="w-3 h-3"/>Follow</>}
+              </button>
+            </div>
+
+            {/* Not found */}
+            {detail.notFound && (
+              <div className="p-6 border border-border bg-bg-panel text-center">
+                <div className="font-mono text-[11px] text-text-secondary mb-1">No trades found</div>
+                <div className="font-mono text-[9px] text-text-muted">
+                  This wallet has no recorded Polymarket activity. It may be new or inactive.
+                </div>
+              </div>
+            )}
+
+            {!detail.notFound && (
+              <>
+                {/* Key stats */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 border border-border bg-bg-panel p-4">
+                  <div>
+                    <div className="font-mono text-[9px] text-text-muted uppercase tracking-widest mb-0.5">Est. P&amp;L</div>
+                    <div className={`font-mono text-sm font-bold tabular-nums ${detail.estimatedPnl >= 0 ? 'text-positive' : 'text-negative'}`}>
+                      {fmtPnl(detail.estimatedPnl)}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="font-mono text-[9px] text-text-muted uppercase tracking-widest mb-0.5">Win Rate</div>
+                    <div className={`font-mono text-sm tabular-nums ${wrColor(detail.winRate)}`}>{detail.winRate.toFixed(1)}%</div>
+                    <div className="font-mono text-[8px] text-text-muted">{detail.wins}W / {detail.losses}L</div>
+                  </div>
+                  <div>
+                    <div className="font-mono text-[9px] text-text-muted uppercase tracking-widest mb-0.5">Trades</div>
+                    <div className="font-mono text-sm text-text-primary tabular-nums">{detail.tradeCount.toLocaleString()}</div>
+                    <div className="font-mono text-[8px] text-text-muted">{detail.resolvedMarkets} resolved mkts</div>
+                  </div>
+                  <div>
+                    <div className="font-mono text-[9px] text-text-muted uppercase tracking-widest mb-0.5">Active</div>
+                    <div className="font-mono text-[10px] text-text-secondary">{fmtAge(detail.lastActive)}</div>
+                    {detail.firstActive && detail.lastActive && detail.firstActive !== detail.lastActive && (
+                      <div className="font-mono text-[8px] text-text-muted">since {fmtDate(detail.firstActive)}</div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Secondary stats */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 border border-border bg-bg-panel p-4">
+                  <div>
+                    <div className="font-mono text-[9px] text-text-muted uppercase tracking-widest mb-0.5">Volume (sample)</div>
+                    <div className="font-mono text-[11px] text-text-primary tabular-nums">{fmtVol(detail.totalVolume)}</div>
+                  </div>
+                  <div>
+                    <div className="font-mono text-[9px] text-text-muted uppercase tracking-widest mb-0.5">Avg Trade Size</div>
+                    <div className="font-mono text-[11px] text-text-primary tabular-nums">{fmtVol(detail.avgPositionSize)}</div>
+                  </div>
+                  {detail.portfolioValue != null && (
+                    <div>
+                      <div className="font-mono text-[9px] text-text-muted uppercase tracking-widest mb-0.5">Portfolio Value</div>
+                      <div className="font-mono text-[11px] text-text-primary tabular-nums">${detail.portfolioValue.toLocaleString('en-US', { maximumFractionDigits: 0 })}</div>
+                    </div>
+                  )}
+                </div>
+
+                {/* P&L chart */}
+                <div className="border border-border bg-bg-panel p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-mono text-[9px] uppercase tracking-widest text-text-muted">
+                      Cumulative Realized P&amp;L · {detail.resolvedMarkets} positions
+                    </span>
+                    <span className={`font-mono text-[9px] font-bold ${detail.estimatedPnl >= 0 ? 'text-positive' : 'text-negative'}`}>
+                      {fmtPnl(detail.estimatedPnl)}
+                    </span>
+                  </div>
+                  <PnlChart history={detail.pnlHistory}/>
+                  {detail.pnlHistory.length >= 2 && (
+                    <div className="flex justify-between font-mono text-[8px] text-text-muted mt-1">
+                      <span>{detail.pnlHistory[0]?.date}</span>
+                      <span>{detail.pnlHistory[detail.pnlHistory.length - 1]?.date}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Category breakdown */}
+                {detail.categoryBreakdown.length > 0 && (
+                  <div className="border border-border bg-bg-panel p-4">
+                    <div className="font-mono text-[9px] uppercase tracking-widest text-text-muted mb-3">
+                      Category Breakdown · {detail.tradeCount} trades
+                    </div>
+                    <div className="space-y-2">
+                      {detail.categoryBreakdown.map(c => (
+                        <div key={c.category} className="flex items-center gap-2">
+                          <span className="font-mono text-[9px] text-text-muted w-20 shrink-0">{c.category}</span>
+                          <div className="flex-1 h-2 bg-bg-elevated rounded-sm overflow-hidden">
+                            <div
+                              className={`h-full ${CAT_BAR_COLOR[c.category] ?? 'bg-text-muted/40'} rounded-sm`}
+                              style={{ width: `${c.pct}%` }}
+                            />
+                          </div>
+                          <span className="font-mono text-[9px] text-text-secondary w-8 text-right tabular-nums">{c.pct}%</span>
+                          <span className="font-mono text-[8px] text-text-muted tabular-nums w-10 text-right">({c.count})</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Recent trades */}
+                {detail.recentTrades.length > 0 && (
+                  <div className="border border-border bg-bg-panel overflow-hidden">
+                    <div className="px-4 py-2.5 border-b border-border bg-bg-elevated/40">
+                      <span className="font-mono text-[9px] uppercase tracking-widest text-text-muted">
+                        Recent Trades (last {detail.recentTrades.length})
+                      </span>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full font-mono min-w-[500px]">
+                        <thead>
+                          <tr className="border-b border-border/40 bg-bg-elevated/10">
+                            <th className="px-3 py-2 text-left text-[8px] text-text-muted font-normal">Market</th>
+                            <th className="px-2 py-2 text-left text-[8px] text-text-muted font-normal">Side</th>
+                            <th className="px-2 py-2 text-left text-[8px] text-text-muted font-normal">Outcome</th>
+                            <th className="px-2 py-2 text-right text-[8px] text-text-muted font-normal">Size</th>
+                            <th className="px-2 py-2 text-right text-[8px] text-text-muted font-normal">Price</th>
+                            <th className="px-2 py-2 text-right text-[8px] text-text-muted font-normal">Date</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {detail.recentTrades.map((t, i) => {
+                            const isBuy = t.side === 'BUY';
+                            return (
+                              <tr key={i} className="border-b border-border/30 hover:bg-bg-elevated/20">
+                                <td className="px-3 py-1.5 text-[9px] text-text-secondary max-w-[180px] truncate" title={t.title}>
+                                  {t.title}
+                                </td>
+                                <td className="px-2 py-1.5">
+                                  <span className={`text-[8px] font-bold px-1 rounded-sm ${isBuy ? 'bg-positive/10 text-positive' : 'bg-negative/10 text-negative'}`}>
+                                    {t.side}
+                                  </span>
+                                </td>
+                                <td className="px-2 py-1.5 text-[9px] text-text-muted">{t.outcome}</td>
+                                <td className="px-2 py-1.5 text-[9px] text-text-secondary tabular-nums text-right">${t.size.toFixed(0)}</td>
+                                <td className="px-2 py-1.5 text-[9px] text-text-muted tabular-nums text-right">{t.price.toFixed(3)}</td>
+                                <td className="px-2 py-1.5 text-[8px] text-text-muted text-right whitespace-nowrap">{fmtAge(t.timestamp)}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* Disclaimer */}
+                <div className="flex items-start gap-2 p-3 border border-border/50 bg-bg-elevated/20">
+                  <AlertCircle className="w-3 h-3 text-text-muted shrink-0 mt-0.5"/>
+                  <p className="font-mono text-[8px] text-text-muted leading-relaxed">{detail.disclaimer}</p>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
 // ── Browse row (leaderboard) ──────────────────────────────────────────────────
 
-function BrowseRow({ e, rank, cat, isFollowed, onFollow, pending }: {
+function BrowseRow({ e, rank, cat, isFollowed, onFollow, pending, onDetail }: {
   e: LbEntry; rank: number; cat: string;
   isFollowed: boolean; onFollow: () => void; pending: boolean;
+  onDetail: () => void;
 }) {
   const pos = e.pnlUsdc >= 0;
   return (
-    <tr className="border-b border-border/40 hover:bg-bg-elevated/30 transition-colors duration-75 group">
+    <tr
+      className="border-b border-border/40 hover:bg-bg-elevated/30 transition-colors duration-75 group cursor-pointer"
+      onClick={onDetail}
+    >
       <td className="px-3 py-2.5 font-mono text-[10px] text-text-muted tabular-nums w-8 shrink-0">
         {rank <= 3 ? ['🥇','🥈','🥉'][rank-1] : rank}
       </td>
@@ -175,7 +541,7 @@ function BrowseRow({ e, rank, cat, isFollowed, onFollow, pending }: {
       <td className="px-3 py-2.5 hidden xl:table-cell">
         <span className="font-mono text-[9px] text-text-muted">{fmtAge(e.lastActive)}</span>
       </td>
-      <td className="px-3 py-2">
+      <td className="px-3 py-2" onClick={ev => ev.stopPropagation()}>
         <button onClick={onFollow} disabled={pending}
           className={[
             'flex items-center gap-1 px-2 py-1 border font-mono text-[9px] transition-colors whitespace-nowrap',
@@ -189,17 +555,24 @@ function BrowseRow({ e, rank, cat, isFollowed, onFollow, pending }: {
                          : <><UserPlus  className="w-2.5 h-2.5"/>Follow</>}
         </button>
       </td>
+      <td className="px-2 py-2">
+        <ChevronRight className="w-3 h-3 text-text-muted/40 group-hover:text-text-muted transition-colors"/>
+      </td>
     </tr>
   );
 }
 
-function BrowseCard({ e, rank, cat, isFollowed, onFollow, pending }: {
+function BrowseCard({ e, rank, cat, isFollowed, onFollow, pending, onDetail }: {
   e: LbEntry; rank: number; cat: string;
   isFollowed: boolean; onFollow: () => void; pending: boolean;
+  onDetail: () => void;
 }) {
   const pos = e.pnlUsdc >= 0;
   return (
-    <div className="border-b border-border/40 px-4 py-3 hover:bg-bg-elevated/20">
+    <div
+      className="border-b border-border/40 px-4 py-3 hover:bg-bg-elevated/20 cursor-pointer"
+      onClick={onDetail}
+    >
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <span className="font-mono text-[10px] text-text-muted w-5 shrink-0">
@@ -219,7 +592,7 @@ function BrowseCard({ e, rank, cat, isFollowed, onFollow, pending }: {
         <span className="font-mono text-[9px] text-text-muted">{e.resolvedMarkets} mkts</span>
         <span className="font-mono text-[9px] text-text-muted">{fmtVol(e.volumeUsdc)}</span>
         <span className="font-mono text-[9px] text-text-muted">{fmtAge(e.lastActive)}</span>
-        <button onClick={onFollow} disabled={pending}
+        <button onClick={ev => { ev.stopPropagation(); onFollow(); }} disabled={pending}
           className={[
             'ml-auto flex items-center gap-1 px-2 py-0.5 border font-mono text-[9px] transition-colors',
             isFollowed ? 'border-accent/50 text-accent' : 'border-border text-text-muted hover:border-accent/40 hover:text-accent',
@@ -235,14 +608,18 @@ function BrowseCard({ e, rank, cat, isFollowed, onFollow, pending }: {
 
 // ── Followed row ──────────────────────────────────────────────────────────────
 
-function FollowedRow({ f, onUnfollow, onToggle, pending }: {
+function FollowedRow({ f, onUnfollow, onToggle, pending, onDetail }: {
   f: FollowedEntry;
   onUnfollow: () => void; onToggle: () => void; pending: boolean;
+  onDetail: () => void;
 }) {
   const pos = (f.pnlUsdc ?? 0) >= 0;
   const catColor = CAT_COLOR[f.category] ?? 'text-text-muted';
   return (
-    <tr className="border-b border-border/40 hover:bg-bg-elevated/30 transition-colors duration-75">
+    <tr
+      className="border-b border-border/40 hover:bg-bg-elevated/30 transition-colors duration-75 cursor-pointer"
+      onClick={onDetail}
+    >
       <td className="px-3 py-2.5 min-w-0">
         <div className="font-mono text-[11px] text-text-primary">{displayName(f)}</div>
         <div className="font-mono text-[9px] text-text-muted">{fmtWallet(f.wallet)}</div>
@@ -264,7 +641,7 @@ function FollowedRow({ f, onUnfollow, onToggle, pending }: {
       <td className="px-3 py-2.5 hidden lg:table-cell">
         <span className="font-mono text-[9px] text-text-muted">{fmtAge(f.lastActive)}</span>
       </td>
-      <td className="px-3 py-2">
+      <td className="px-3 py-2" onClick={ev => ev.stopPropagation()}>
         <button onClick={onToggle} disabled={pending}
           title={f.alertsEnabled ? 'Alerts on — click to mute' : 'Alerts off'}
           className={[
@@ -276,7 +653,7 @@ function FollowedRow({ f, onUnfollow, onToggle, pending }: {
           {f.alertsEnabled ? <><Bell className="w-2.5 h-2.5"/>ON</> : <><BellOff className="w-2.5 h-2.5"/>OFF</>}
         </button>
       </td>
-      <td className="px-3 py-2">
+      <td className="px-3 py-2" onClick={ev => ev.stopPropagation()}>
         <button onClick={onUnfollow} disabled={pending}
           className="flex items-center gap-1 px-2 py-1 border border-border/60 font-mono text-[9px] text-text-muted hover:border-negative/40 hover:text-negative transition-colors">
           <UserMinus className="w-2.5 h-2.5"/>Remove
@@ -286,14 +663,18 @@ function FollowedRow({ f, onUnfollow, onToggle, pending }: {
   );
 }
 
-function FollowedCard({ f, onUnfollow, onToggle, pending }: {
+function FollowedCard({ f, onUnfollow, onToggle, pending, onDetail }: {
   f: FollowedEntry;
   onUnfollow: () => void; onToggle: () => void; pending: boolean;
+  onDetail: () => void;
 }) {
   const pos = (f.pnlUsdc ?? 0) >= 0;
   const catColor = CAT_COLOR[f.category] ?? 'text-text-muted';
   return (
-    <div className="border-b border-border/40 px-4 py-3 hover:bg-bg-elevated/20">
+    <div
+      className="border-b border-border/40 px-4 py-3 hover:bg-bg-elevated/20 cursor-pointer"
+      onClick={onDetail}
+    >
       <div className="flex items-center justify-between gap-2">
         <div>
           <div className="font-mono text-[11px] text-text-primary">{displayName(f)}</div>
@@ -308,14 +689,14 @@ function FollowedCard({ f, onUnfollow, onToggle, pending }: {
         {f.winRate != null && <span className={`font-mono text-[9px] ${wrColor(f.winRate)}`}>{f.winRate.toFixed(0)}% WR</span>}
         <span className="font-mono text-[9px] text-text-muted">{fmtVol(f.volumeUsdc)}</span>
         <span className="font-mono text-[9px] text-text-muted">{fmtAge(f.lastActive)}</span>
-        <button onClick={onToggle} disabled={pending}
+        <button onClick={ev => { ev.stopPropagation(); onToggle(); }} disabled={pending}
           className={[
             'ml-auto flex items-center gap-1 px-2 py-0.5 border font-mono text-[9px]',
             f.alertsEnabled ? 'border-accent/40 text-accent' : 'border-border text-text-muted',
           ].join(' ')}>
           {f.alertsEnabled ? <><Bell className="w-2.5 h-2.5"/>ON</> : <><BellOff className="w-2.5 h-2.5"/>OFF</>}
         </button>
-        <button onClick={onUnfollow} disabled={pending}
+        <button onClick={ev => { ev.stopPropagation(); onUnfollow(); }} disabled={pending}
           className="flex items-center gap-1 px-2 py-0.5 border border-border/60 font-mono text-[9px] text-text-muted hover:text-negative transition-colors">
           <UserMinus className="w-2.5 h-2.5"/>Remove
         </button>
@@ -412,7 +793,6 @@ function LockedPanel() {
         <span className="font-mono text-[9px] px-2 py-0.5 border border-border text-text-muted uppercase tracking-widest bg-bg-elevated">LOCKED</span>
       </div>
       <div className="p-5">
-        {/* Disabled toggle */}
         <div className="flex items-center gap-3 mb-5 pb-4 border-b border-border/50">
           <div className="w-10 h-5 rounded-full bg-border/30 flex items-center px-0.5 cursor-not-allowed select-none">
             <div className="w-4 h-4 rounded-full bg-text-muted/40"/>
@@ -420,7 +800,6 @@ function LockedPanel() {
           <span className="font-mono text-[11px] text-text-muted">Enable auto-copy execution</span>
           <Lock className="w-3 h-3 text-text-muted/60 ml-auto"/>
         </div>
-        {/* Steps */}
         <div className="space-y-4">
           {steps.map(({ n, label, desc, done }) => (
             <div key={n} className="flex items-start gap-3">
@@ -437,7 +816,6 @@ function LockedPanel() {
             </div>
           ))}
         </div>
-        {/* Honesty note */}
         <div className="mt-5 p-3 bg-bg-elevated/50 border border-border/60">
           <div className="flex items-start gap-2">
             <AlertCircle className="w-3 h-3 text-text-muted shrink-0 mt-0.5"/>
@@ -468,6 +846,13 @@ export default function TradersPage() {
   const [error,         setError]        = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
 
+  // Wallet detail panel state
+  const [detailOpen,    setDetailOpen]    = useState(false);
+  const [detailWallet,  setDetailWallet]  = useState('');
+  const [detailData,    setDetailData]    = useState<WalletDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError,   setDetailError]   = useState('');
+
   // Polling
   const loadLb = useCallback(async () => {
     try { setLbData(await (await fetch('/api/leaderboard')).json()); }
@@ -490,7 +875,33 @@ export default function TradersPage() {
   const followedSet = new Set((copyData?.wallets ?? []).map(w => w.wallet));
   const followedCount = copyData?.wallets?.length ?? 0;
 
-  // Follow / unfollow
+  // Open wallet detail panel
+  async function openDetail(address: string) {
+    const addr = address.toLowerCase().trim();
+    setDetailWallet(addr);
+    setDetailOpen(true);
+    setDetailLoading(true);
+    setDetailError('');
+    setDetailData(null);
+    try {
+      const r = await fetch(`/api/wallet/${addr}`);
+      const d = await r.json();
+      if (!r.ok) setDetailError(d.error || 'Failed to load wallet');
+      else setDetailData(d);
+    } catch (e: any) {
+      setDetailError(e.message || 'Network error');
+    } finally {
+      setDetailLoading(false);
+    }
+  }
+
+  function closeDetail() {
+    setDetailOpen(false);
+    setDetailData(null);
+    setDetailError('');
+  }
+
+  // Follow / unfollow (used from detail panel too)
   async function toggleFollow(wallet: string, name: string, category: string) {
     setFollowLoading(prev => new Set(prev).add(wallet));
     const action = followedSet.has(wallet) ? 'unfollow' : 'follow';
@@ -530,9 +941,18 @@ export default function TradersPage() {
     await loadCopy();
   }
 
-  // Browse data — filtered
+  // Search key handler — Enter on a valid wallet address opens detail
+  function handleSearchKey(ev: React.KeyboardEvent<HTMLInputElement>) {
+    if (ev.key === 'Enter' && isWalletAddress(search)) {
+      openDetail(search.trim());
+    }
+  }
+
+  const isSearchAddr = isWalletAddress(search);
+
+  // Browse data — filtered (but skip if search is an exact address — show hint instead)
   const allTraders = lbData?.categories?.[cat] ?? [];
-  const traders = allTraders.filter(e => matchesSearch(e, search));
+  const traders = isSearchAddr ? [] : allTraders.filter(e => matchesSearch(e, search));
   const warmingUp = !lbData || (!lbData.ok && !lbData.updatedAt);
 
   // Following data
@@ -542,6 +962,23 @@ export default function TradersPage() {
 
   return (
     <div className="max-w-[1100px] mx-auto px-4 py-6">
+
+      {/* Wallet detail panel (when open) */}
+      {detailOpen && (
+        <WalletDetailPanel
+          detail={detailData}
+          loading={detailLoading}
+          error={detailError}
+          onClose={closeDetail}
+          onFollow={() => toggleFollow(
+            detailData?.address ?? detailWallet,
+            detailData?.name ?? '',
+            'Unknown',
+          )}
+          isFollowed={followedSet.has(detailData?.address ?? detailWallet)}
+          followPending={followLoading.has(detailData?.address ?? detailWallet)}
+        />
+      )}
 
       {/* ── Header ──────────────────────────────────────────────────────────── */}
       <div className="mb-4 flex items-start justify-between gap-4 flex-wrap">
@@ -563,14 +1000,15 @@ export default function TradersPage() {
       </div>
 
       {/* ── Search ──────────────────────────────────────────────────────────── */}
-      <div className="relative mb-3">
+      <div className="relative mb-1">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-muted pointer-events-none"/>
         <input
           ref={searchRef}
           type="text"
           value={search}
           onChange={e => setSearch(e.target.value)}
-          placeholder="Search by trader name or wallet address…"
+          onKeyDown={handleSearchKey}
+          placeholder="Search by trader name or wallet address — paste 0x… and press Enter to look up"
           className="w-full font-mono text-[11px] bg-bg-elevated border border-border pl-8 pr-8 py-2 text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent/50"
         />
         {search && (
@@ -580,6 +1018,20 @@ export default function TradersPage() {
           </button>
         )}
       </div>
+      {/* Address lookup hint */}
+      {isSearchAddr ? (
+        <div className="mb-3 flex items-center gap-2">
+          <button
+            onClick={() => openDetail(search.trim())}
+            className="flex items-center gap-1.5 px-3 py-1 border border-accent/50 text-accent font-mono text-[9px] uppercase tracking-widest hover:bg-accent/5 transition-colors"
+          >
+            <Search className="w-3 h-3"/>Look up {fmtWallet(search.trim())} on Polymarket ↗
+          </button>
+          <span className="font-mono text-[8px] text-text-muted">or press Enter</span>
+        </div>
+      ) : (
+        <div className="mb-3"/>
+      )}
 
       {/* ── Main tabs ───────────────────────────────────────────────────────── */}
       <div className="flex gap-0 border-b border-border mb-4">
@@ -593,7 +1045,6 @@ export default function TradersPage() {
             {tab === t && <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-accent"/>}
           </button>
         ))}
-        {/* staleness note aligned right */}
         {lbData?.updatedAt && !lbData.stale && (
           <span className="ml-auto self-center font-mono text-[9px] text-text-muted pr-1">
             updated {new Date(lbData.updatedAt).toLocaleTimeString()}
@@ -635,7 +1086,8 @@ export default function TradersPage() {
           </div>
           <p className="font-mono text-[9px] text-text-muted mb-3">
             {CAT_META[cat].desc} · min {lbData?.minMarketsToRank ?? 5} resolved markets to rank
-            {search && ` · ${traders.length} matching "${search}"`}
+            {search && !isSearchAddr && ` · ${traders.length} matching "${search}"`}
+            {isSearchAddr && ' · paste complete address above then press Enter to look up'}
           </p>
 
           {/* Warming up */}
@@ -647,7 +1099,7 @@ export default function TradersPage() {
           )}
 
           {/* No results */}
-          {!warmingUp && traders.length === 0 && (
+          {!warmingUp && !isSearchAddr && traders.length === 0 && (
             <div className="border border-border bg-bg-panel p-8 text-center">
               <div className="font-mono text-[11px] text-text-secondary mb-1">
                 {search ? `No traders matching "${search}" in ${cat}` : `No traders ranked in ${cat} yet`}
@@ -660,7 +1112,7 @@ export default function TradersPage() {
           )}
 
           {/* Desktop table */}
-          {!warmingUp && traders.length > 0 && (
+          {!warmingUp && !isSearchAddr && traders.length > 0 && (
             <>
               <div className="hidden sm:block border border-border bg-bg-panel overflow-hidden">
                 <table className="w-full font-mono">
@@ -674,6 +1126,7 @@ export default function TradersPage() {
                       <th className="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-text-muted font-normal hidden lg:table-cell">Volume</th>
                       <th className="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-text-muted font-normal hidden xl:table-cell">Active</th>
                       <th className="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-accent font-normal">Follow</th>
+                      <th className="w-6"/>
                     </tr>
                   </thead>
                   <tbody>
@@ -682,6 +1135,7 @@ export default function TradersPage() {
                         isFollowed={followedSet.has(e.wallet)}
                         onFollow={() => toggleFollow(e.wallet, e.name, cat)}
                         pending={followLoading.has(e.wallet)}
+                        onDetail={() => openDetail(e.wallet)}
                       />
                     ))}
                   </tbody>
@@ -699,6 +1153,7 @@ export default function TradersPage() {
                     isFollowed={followedSet.has(e.wallet)}
                     onFollow={() => toggleFollow(e.wallet, e.name, cat)}
                     pending={followLoading.has(e.wallet)}
+                    onDetail={() => openDetail(e.wallet)}
                   />
                 ))}
               </div>
@@ -769,6 +1224,7 @@ export default function TradersPage() {
                         onUnfollow={() => copyAction('unfollow', f.wallet)}
                         onToggle={() => copyAction('toggle_alerts', f.wallet)}
                         pending={actionLoading === f.wallet}
+                        onDetail={() => openDetail(f.wallet)}
                       />
                     ))}
                   </tbody>
@@ -781,6 +1237,7 @@ export default function TradersPage() {
                     onUnfollow={() => copyAction('unfollow', f.wallet)}
                     onToggle={() => copyAction('toggle_alerts', f.wallet)}
                     pending={actionLoading === f.wallet}
+                    onDetail={() => openDetail(f.wallet)}
                   />
                 ))}
               </div>
