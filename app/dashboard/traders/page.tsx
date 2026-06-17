@@ -85,11 +85,27 @@ interface PnlPoint {
   cumulativePnl: number;
 }
 
+interface OpenPosition {
+  conditionId:   string;
+  title:         string;
+  outcome:       string;
+  size:          number;
+  avgPrice:      number;
+  curPrice:      number;
+  currentValue:  number;
+  initialValue:  number;
+  unrealizedPnl: number;
+  unrealizedPct: number;
+  endDate:       string | null;
+}
+
 interface WalletDetail {
   address:         string;
   name:            string | null;
   notFound:        boolean;
   resolvedMarkets: number;
+  realizedPnl:     number;
+  unrealizedPnl:   number;
   estimatedPnl:    number;
   winRate:         number;
   wins:            number;
@@ -100,6 +116,7 @@ interface WalletDetail {
   firstActive:     number | null;
   lastActive:      number | null;
   portfolioValue:  number | null;
+  openPositions:   OpenPosition[];
   pnlHistory:      PnlPoint[];
   categoryBreakdown: CatBreakdown[];
   recentTrades:    RecentTrade[];
@@ -174,6 +191,16 @@ function fmtAge(ts: number | null | undefined): string {
 
 function fmtDate(ts: number): string {
   return new Date(ts * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
+}
+
+function fmtEndDate(dateStr: string | null): string {
+  if (!dateStr) return '—';
+  const today    = new Date().toISOString().slice(0, 10);
+  const tomorrow = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
+  if (dateStr === today)    return 'today';
+  if (dateStr === tomorrow) return 'tomorrow';
+  const d = new Date(dateStr + 'T12:00:00Z');
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
 function wrColor(r: number | null | undefined): string {
@@ -354,9 +381,26 @@ function WalletDetailPanel({
                 {/* Key stats */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 border border-border bg-bg-panel p-4">
                   <div>
-                    <div className="font-mono text-[9px] text-text-muted uppercase tracking-widest mb-0.5">Est. P&amp;L</div>
+                    <div className="font-mono text-[9px] text-text-muted uppercase tracking-widest mb-0.5">Total P&amp;L</div>
                     <div className={`font-mono text-sm font-bold tabular-nums ${detail.estimatedPnl >= 0 ? 'text-positive' : 'text-negative'}`}>
                       {fmtPnl(detail.estimatedPnl)}
+                    </div>
+                    <div className="font-mono text-[8px] text-text-muted mt-0.5 space-y-0.5">
+                      <div>
+                        <span className="text-text-muted/70">realized </span>
+                        <span className={detail.realizedPnl >= 0 ? 'text-positive/80' : 'text-negative/80'}>
+                          {fmtPnl(detail.realizedPnl)}
+                        </span>
+                      </div>
+                      {detail.openPositions.length > 0 && (
+                        <div>
+                          <span className="text-text-muted/70">unrealized </span>
+                          <span className={detail.unrealizedPnl >= 0 ? 'text-positive/80' : 'text-negative/80'}>
+                            {fmtPnl(detail.unrealizedPnl)}
+                          </span>
+                          <span className="text-text-muted/50"> ~</span>
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div>
@@ -396,14 +440,82 @@ function WalletDetailPanel({
                   )}
                 </div>
 
-                {/* P&L chart */}
+                {/* Open positions (unrealized) */}
+                {detail.openPositions.length > 0 && (
+                  <div className="border border-border bg-bg-panel overflow-hidden">
+                    <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-bg-elevated/40">
+                      <div>
+                        <span className="font-mono text-[9px] uppercase tracking-widest text-text-muted">
+                          Open Positions ({detail.openPositions.length})
+                        </span>
+                        <span className="ml-2 font-mono text-[8px] text-warning/80">· mark-to-market · unrealized · can go to zero</span>
+                      </div>
+                      <span className={`font-mono text-[9px] font-bold tabular-nums ${detail.unrealizedPnl >= 0 ? 'text-positive' : 'text-negative'}`}>
+                        {fmtPnl(detail.unrealizedPnl)} <span className="font-normal text-text-muted">~</span>
+                      </span>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full font-mono min-w-[520px]">
+                        <thead>
+                          <tr className="border-b border-border/40 bg-bg-elevated/10">
+                            <th className="px-3 py-2 text-left text-[8px] text-text-muted font-normal">Market</th>
+                            <th className="px-2 py-2 text-left text-[8px] text-text-muted font-normal">Side</th>
+                            <th className="px-2 py-2 text-right text-[8px] text-text-muted font-normal">Tokens</th>
+                            <th className="px-2 py-2 text-right text-[8px] text-text-muted font-normal">Entry</th>
+                            <th className="px-2 py-2 text-right text-[8px] text-text-muted font-normal">Current</th>
+                            <th className="px-2 py-2 text-right text-[8px] text-warning/70 font-normal">Unrealized</th>
+                            <th className="px-2 py-2 text-right text-[8px] text-text-muted font-normal">Resolves</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {detail.openPositions.map((p, i) => {
+                            const pos = p.unrealizedPnl >= 0;
+                            const pct = p.unrealizedPct > 0 ? '+' + p.unrealizedPct.toFixed(1) : p.unrealizedPct.toFixed(1);
+                            return (
+                              <tr key={i} className="border-b border-border/30 hover:bg-bg-elevated/20">
+                                <td className="px-3 py-1.5 text-[9px] text-text-secondary max-w-[160px] truncate" title={p.title}>
+                                  {p.title}
+                                </td>
+                                <td className="px-2 py-1.5">
+                                  <span className={`text-[8px] font-bold px-1 rounded-sm ${p.outcome === 'Up' || p.outcome === 'Yes' ? 'bg-positive/10 text-positive' : 'bg-negative/10 text-negative'}`}>
+                                    {p.outcome}
+                                  </span>
+                                </td>
+                                <td className="px-2 py-1.5 text-[9px] text-text-muted tabular-nums text-right">{p.size.toFixed(1)}</td>
+                                <td className="px-2 py-1.5 text-[9px] text-text-muted tabular-nums text-right">${p.avgPrice.toFixed(3)}</td>
+                                <td className="px-2 py-1.5 text-[9px] text-text-secondary tabular-nums text-right font-medium">${p.curPrice.toFixed(3)}</td>
+                                <td className="px-2 py-1.5 tabular-nums text-right">
+                                  <span className={`text-[9px] font-bold ${pos ? 'text-positive' : 'text-negative'}`}>
+                                    {fmtPnl(p.unrealizedPnl)}
+                                  </span>
+                                  <div className={`text-[7px] ${pos ? 'text-positive/70' : 'text-negative/70'}`}>{pct}%</div>
+                                </td>
+                                <td className="px-2 py-1.5 text-[8px] text-text-muted text-right whitespace-nowrap">
+                                  {fmtEndDate(p.endDate)}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="px-4 py-2 border-t border-border/30 flex items-center gap-2">
+                      <AlertCircle className="w-3 h-3 text-warning/60 shrink-0"/>
+                      <span className="font-mono text-[8px] text-text-muted">
+                        Prices are live mark-to-market. Unresolved positions can settle at 0 or 1 — unrealized P&amp;L is variable until resolution.
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Realized P&L chart (closed positions only) */}
                 <div className="border border-border bg-bg-panel p-4">
                   <div className="flex items-center justify-between mb-2">
                     <span className="font-mono text-[9px] uppercase tracking-widest text-text-muted">
-                      Cumulative Realized P&amp;L · {detail.resolvedMarkets} positions
+                      Realized P&amp;L · {detail.resolvedMarkets} closed positions
                     </span>
-                    <span className={`font-mono text-[9px] font-bold ${detail.estimatedPnl >= 0 ? 'text-positive' : 'text-negative'}`}>
-                      {fmtPnl(detail.estimatedPnl)}
+                    <span className={`font-mono text-[9px] font-bold ${detail.realizedPnl >= 0 ? 'text-positive' : 'text-negative'}`}>
+                      {fmtPnl(detail.realizedPnl)}
                     </span>
                   </div>
                   <PnlChart history={detail.pnlHistory}/>
@@ -488,7 +600,11 @@ function WalletDetailPanel({
                 {/* Disclaimer */}
                 <div className="flex items-start gap-2 p-3 border border-border/50 bg-bg-elevated/20">
                   <AlertCircle className="w-3 h-3 text-text-muted shrink-0 mt-0.5"/>
-                  <p className="font-mono text-[8px] text-text-muted leading-relaxed">{detail.disclaimer}</p>
+                  <p className="font-mono text-[8px] text-text-muted leading-relaxed">
+                    <strong className="text-text-secondary">Realized P&amp;L</strong> is final (settled markets).{' '}
+                    <strong className="text-text-secondary">Unrealized P&amp;L</strong> is mark-to-market and variable — open positions can still resolve to zero.{' '}
+                    {detail.disclaimer}
+                  </p>
                 </div>
               </>
             )}
