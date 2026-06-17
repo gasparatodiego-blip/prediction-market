@@ -1,23 +1,59 @@
 #!/usr/bin/env node
 'use strict';
 
-const fs    = require('fs');
-const https = require('https');
+// Sports arbitrage agent — credit-safe polling via OddsAPI.
+// Calls /sports (0 credits) each cycle to filter active sports before
+// spending any credits on /odds. Stops polling if credits < CREDIT_FLOOR.
 
-const OUT      = '/tmp/sports-odds.json';
-const HB_FILE  = '/tmp/agent-heartbeats.json';
-const INTERVAL = 300_000;  // 5 min (OddsAPI free tier quota)
+const fs   = require('fs');
+const path = require('path');
+const { OddsApiRetriever } = require(path.join(__dirname, '../lib/odds-retriever'));
+const { detectArbs }       = require(path.join(__dirname, '../lib/sports-arb'));
 
-const API_KEY = 'aff711ab10f3f1fba585e30405329c7c';
+// ── Config ────────────────────────────────────────────────────────────────────
+const API_KEY       = process.env.ODDS_API_KEY      || 'aff711ab10f3f1fba585e30405329c7c';
+const POLL_MS       = parseInt(process.env.SPORTS_POLL_INTERVAL_MS || '') || 45 * 60_000;  // 45 min
+const CREDIT_FLOOR  = parseInt(process.env.ODDS_CREDIT_FLOOR       || '') || 50;
+const MARKETS       = ['h2h'];
+const REGIONS       = ['eu', 'us'];
+const MAX_SPORTS    = 3;   // never fetch more than 3 sport/odds endpoints per cycle
 
-const SPORTS = [
-  { key: 'soccer_italy_serie_a',        label: 'Serie A',          emoji: '⚽', region: 'eu' },
-  { key: 'soccer_uefa_champs_league',   label: 'Champions League', emoji: '🏆', region: 'eu' },
-  { key: 'basketball_nba',              label: 'NBA',              emoji: '🏀', region: 'us' },
-  { key: 'americanfootball_nfl',        label: 'NFL',              emoji: '🏈', region: 'us' },
-  { key: 'tennis_atp_french_open',      label: 'Tennis ATP',       emoji: '🎾', region: 'eu' },
+// Ordered by expected in-season relevance — filtered against /sports active list
+const WANTED_SPORTS = [
+  'soccer_epl',
+  'soccer_uefa_champs_league',
+  'basketball_nba',
+  'americanfootball_nfl',
+  'tennis_atp_wimbledon',
+  'soccer_italy_serie_a',
+  'tennis_wta_wimbledon',
 ];
 
+// ── Files ─────────────────────────────────────────────────────────────────────
+const OUT_FILE = '/tmp/sports-odds.json';
+const HB_FILE  = '/tmp/agent-heartbeats.json';
+
+// ── Telegram ──────────────────────────────────────────────────────────────────
+const https     = require('https');
+const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
+const CHAT_ID   = process.env.TELEGRAM_CHAT_ID   || '';
+
+function sendTelegram(text) {
+  if (!BOT_TOKEN || !CHAT_ID) { console.warn('[sports] Telegram not configured'); return Promise.resolve(); }
+  return new Promise(resolve => {
+    const body = JSON.stringify({ chat_id: CHAT_ID, text, parse_mode: 'HTML' });
+    const req  = https.request(
+      { hostname: 'api.telegram.org', path: `/bot${BOT_TOKEN}/sendMessage`,
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } },
+      () => resolve()
+    );
+    req.on('error', () => resolve());
+    req.write(body);
+    req.end();
+  });
+}
+
+// ── Heartbeat ─────────────────────────────────────────────────────────────────
 function beat() {
   let hb = {};
   try { hb = JSON.parse(fs.readFileSync(HB_FILE, 'utf8')); } catch {}
@@ -25,144 +61,99 @@ function beat() {
   try { fs.writeFileSync(HB_FILE, JSON.stringify(hb, null, 2)); } catch {}
 }
 
-function get(url) {
-  return new Promise(resolve => {
-    const req = https.get(url, {
-      headers: { 'User-Agent': 'prediction-arb-scanner/1.0', 'Accept': 'application/json' },
-      timeout: 15000,
-    }, res => {
-      let body = '';
-      res.on('data', d => body += d);
-      res.on('end', () => {
-        try { resolve({ status: res.statusCode, data: JSON.parse(body) }); }
-        catch { resolve({ status: res.statusCode, data: null }); }
-      });
-    });
-    req.on('error', () => resolve({ status: 0, data: null }));
-    req.on('timeout', function () { this.destroy(); resolve({ status: 0, data: null }); });
-  });
-}
+// ── State ─────────────────────────────────────────────────────────────────────
+const retriever = new OddsApiRetriever(API_KEY);
+let paused = false;
 
-async function fetchSportOdds(sport) {
-  const url = `https://api.the-odds-api.com/v4/sports/${sport.key}/odds/?apiKey=${API_KEY}&regions=${sport.region}&markets=h2h&oddsFormat=decimal`;
-  const { status, data } = await get(url);
-  if (status !== 200 || !Array.isArray(data)) {
-    console.log(`[sports] ${sport.label}: HTTP ${status} — no data`);
-    return [];
+// ── Poll ──────────────────────────────────────────────────────────────────────
+async function poll() {
+  if (paused) {
+    console.log('[sports] PAUSED — credit floor reached; skipping cycle');
+    beat();
+    return;
   }
-  console.log(`[sports] ${sport.label}: ${data.length} events`);
-  return data;
-}
 
-// ── Arbitrage detection ───────────────────────────
-// For each event, find the best price for each outcome across all bookmakers.
-// If sum(1/bestOdds) < 1 → guaranteed profit.
+  console.log(`[sports] poll start — interval ${POLL_MS / 60_000} min, floor ${CREDIT_FLOOR} credits`);
 
-function detectArb(events, sport) {
-  const results = [];
+  // Step 1: discover active sports (costs 0 credits)
+  let activeKeys = new Set();
+  try {
+    const activeSports = await retriever.getActiveSports();
+    activeKeys = new Set(activeSports.map(s => s.key));
+    console.log(`[sports] /sports returned ${activeSports.length} active leagues`);
+  } catch (err) {
+    console.error('[sports] /sports fetch failed:', err.message);
+  }
 
-  for (const ev of events) {
-    if (!ev.bookmakers?.length) continue;
+  const toFetch = WANTED_SPORTS.filter(k => activeKeys.has(k)).slice(0, MAX_SPORTS);
+  if (toFetch.length === 0) {
+    console.log('[sports] no wanted sports are currently active — writing empty result');
+    writeOutput([], [], null, []);
+    beat();
+    return;
+  }
+  console.log(`[sports] fetching odds for: ${toFetch.join(', ')}`);
 
-    // Gather all outcomes and best odds per outcome
-    const bestOdds = {};   // outcomeName → { price, bookmaker }
-    for (const bk of ev.bookmakers) {
-      for (const mkt of (bk.markets ?? [])) {
-        if (mkt.key !== 'h2h') continue;
-        for (const oc of (mkt.outcomes ?? [])) {
-          const prev = bestOdds[oc.name];
-          if (!prev || oc.price > prev.price) {
-            bestOdds[oc.name] = { price: oc.price, bookmaker: bk.title, key: bk.key };
-          }
+  // Step 2: fetch odds, tracking credits after each call
+  const allEvents      = [];
+  let   creditsLeft    = null;
+  let   creditsPaused  = false;
+
+  for (const sportKey of toFetch) {
+    try {
+      const { events, creditsRemaining, creditsUsed } = await retriever.getOdds(sportKey, MARKETS, REGIONS);
+      console.log(`[sports] ${sportKey}: ${events.length} events | remaining: ${creditsRemaining ?? '?'} | used: ${creditsUsed ?? '?'}`);
+      allEvents.push(...events);
+
+      if (creditsRemaining != null) {
+        creditsLeft = creditsRemaining;
+        if (creditsRemaining < CREDIT_FLOOR) {
+          console.warn(`[sports] ⚠ credit floor hit: ${creditsRemaining} remaining — PAUSING`);
+          await sendTelegram(
+            `⚠️ <b>Sports arb agent paused</b>\n` +
+            `OddsAPI credits remaining: <b>${creditsRemaining}</b> (floor: ${CREDIT_FLOOR}).\n` +
+            `Polling suspended — resume next billing cycle or raise ODDS_CREDIT_FLOOR env var.`
+          );
+          paused         = true;
+          creditsPaused  = true;
+          break;
         }
       }
-    }
-
-    const outcomes = Object.keys(bestOdds);
-    if (outcomes.length < 2) continue;
-
-    const impliedSum = outcomes.reduce((s, n) => s + 1 / bestOdds[n].price, 0);
-    const arbPct     = (1 - impliedSum) * 100;  // positive = profit %
-    const isArb      = impliedSum < 1.0;
-
-    // Optimal stakes for $100 bankroll
-    const stakes = isArb
-      ? outcomes.map(n => ({
-          outcome:    n,
-          bookmaker:  bestOdds[n].bookmaker,
-          bookmakerId: bestOdds[n].key,
-          odds:       bestOdds[n].price,
-          stake:      Math.round((1 / bestOdds[n].price / impliedSum) * 100 * 100) / 100,
-        }))
-      : [];
-
-    // Flatten bookmakers list for display (deduplicate)
-    const bookmakerList = [...new Set(ev.bookmakers.map(b => b.title))];
-
-    results.push({
-      id:           ev.id,
-      sport:        sport.key,
-      sportLabel:   sport.label,
-      sportEmoji:   sport.emoji,
-      homeTeam:     ev.home_team,
-      awayTeam:     ev.away_team,
-      commenceTime: ev.commence_time,
-      bookmakers:   bookmakerList,
-      bestOdds:     outcomes.map(n => ({ name: n, price: bestOdds[n].price, bookmaker: bestOdds[n].bookmaker })),
-      impliedSum:   Math.round(impliedSum * 10000) / 10000,
-      arbOpportunity: isArb,
-      arbPct:       isArb ? Math.round(arbPct * 100) / 100 : 0,
-      arbBets:      stakes,
-    });
-  }
-
-  // Sort: arb opportunities first, then by commence time
-  results.sort((a, b) => {
-    if (a.arbOpportunity !== b.arbOpportunity) return a.arbOpportunity ? -1 : 1;
-    return new Date(a.commenceTime) - new Date(b.commenceTime);
-  });
-  return results;
-}
-
-async function poll() {
-  console.log('[sports] Fetching odds from The Odds API…');
-  const allMarkets = [];
-  let totalArb = 0;
-
-  for (const sport of SPORTS) {
-    try {
-      const events  = await fetchSportOdds(sport);
-      const markets = detectArb(events, sport);
-      allMarkets.push(...markets);
-      const arbCount = markets.filter(m => m.arbOpportunity).length;
-      totalArb += arbCount;
-      if (arbCount > 0) console.log(`[sports] *** ${sport.label}: ${arbCount} ARB opportunities ***`);
     } catch (err) {
-      console.error(`[sports] ${sport.label} error:`, err.message);
+      console.error(`[sports] ${sportKey} error:`, err.message);
     }
   }
 
-  const arbOpportunities = allMarkets.filter(m => m.arbOpportunity);
-  const output = {
-    fetchedAt:        Date.now(),
-    sports:           SPORTS.map(s => s.key),
-    sportsMeta:       SPORTS,
-    markets:          allMarkets,
-    arbOpportunities,
-    totalEvents:      allMarkets.length,
-    totalArb,
-  };
-
-  try {
-    fs.writeFileSync(OUT, JSON.stringify(output, null, 2));
-    console.log(`[sports] Wrote ${allMarkets.length} events, ${totalArb} arb opportunities → ${OUT}`);
-  } catch (err) {
-    console.error('[sports] write error:', err.message);
+  const arbOpportunities = detectArbs(allEvents);
+  writeOutput(allEvents, arbOpportunities, creditsLeft, toFetch);
+  if (arbOpportunities.length > 0 && !creditsPaused) {
+    console.log(`[sports] *** ${arbOpportunities.length} ARB opportunities ***`);
+    for (const a of arbOpportunities.slice(0, 3)) {
+      console.log(`  ${a.homeTeam} vs ${a.awayTeam} — ${a.netMargin.toFixed(2)}% net margin`);
+    }
   }
-
   beat();
 }
 
-// Run immediately then on interval
+function writeOutput(allEvents, arbOpportunities, creditsLeft, sportsChecked) {
+  const out = {
+    updatedAt:        new Date().toISOString(),
+    fetchedAt:        Date.now(),
+    creditsRemaining: creditsLeft,
+    paused,
+    sportsChecked,
+    totalEvents:      allEvents.length,
+    totalArb:         arbOpportunities.length,
+    arbOpportunities,
+    allEvents,
+  };
+  try {
+    fs.writeFileSync(OUT_FILE, JSON.stringify(out, null, 2));
+    console.log(`[sports] wrote ${allEvents.length} events, ${arbOpportunities.length} arbs → ${OUT_FILE}`);
+  } catch (err) {
+    console.error('[sports] write error:', err.message);
+  }
+}
+
 poll();
-setInterval(poll, INTERVAL);
+setInterval(poll, POLL_MS);
