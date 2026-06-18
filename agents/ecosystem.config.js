@@ -182,5 +182,15 @@ module.exports = {
       // ODDS_API_KEY and ODDS_API_KEY_2 must be set in .env.local — never committed.
       env:           { NODE_ENV: 'production', HOME: '/root' },
     },
+    {
+      name:          'agent22-funding-alerts',
+      script:        './agents/agent22-funding-alerts.js',
+      cwd:           '/root/prediction-market',
+      restart_delay: 10000,
+      max_restarts:  20,
+      watch:         false,
+      autorestart:   true,
+      env:           { NODE_ENV: 'production', HOME: '/root' },
+    },
   ],
 };
