@@ -228,9 +228,11 @@ function CapitalControl({
   );
 }
 
-// ── Opportunity cards ─────────────────────────────────────────────────────────
+// ── Opportunity cards / list ──────────────────────────────────────────────────
 
 const CARDS_DEFAULT = 6;
+
+type OppView = 'cards' | 'list';
 
 function OpportunityCards({
   spreads, capital, leverage,
@@ -240,120 +242,199 @@ function OpportunityCards({
   leverage: Leverage;
 }) {
   const [showMore, setShowMore] = useState(false);
+  const [view,     setView]     = useState<OppView>('cards');
 
-  // Best spread per unique coin, all of them
+  // Best spread per unique coin
   const seenCoins = new Set<string>();
-  const allCards: SpreadItem[] = [];
+  const allItems: SpreadItem[] = [];
   for (const s of spreads) {
     if (!seenCoins.has(s.coin)) {
       seenCoins.add(s.coin);
-      allCards.push(s);
+      allItems.push(s);
     }
   }
 
-  if (allCards.length === 0) return null;
+  if (allItems.length === 0) return null;
 
-  const visible  = showMore ? allCards : allCards.slice(0, CARDS_DEFAULT);
-  const remaining = allCards.length - CARDS_DEFAULT;
-  const N0       = capital * leverage / 2;
+  const visible   = showMore ? allItems : allItems.slice(0, CARDS_DEFAULT);
+  const remaining = allItems.length - CARDS_DEFAULT;
+  const N0        = capital * leverage / 2;
 
   return (
     <div className="mb-5">
-      <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-        {visible.map(s => {
-          const dayUsd     = N0 > 0 ? (N0 * s.netApy30d / 100) / 365 : null;
-          const feesUsd    = N0 > 0 ? N0 * s.totalFeesPct / 100 : null;
-          const hasDex     = s.shortExchange === 'hyperliquid' || s.longExchange === 'hyperliquid'
-                          || s.shortExchange === 'dydx'        || s.longExchange === 'dydx';
-          const resetLabel = hasDex ? 'hourly' : 'every 8h';
-
-          return (
-            <div
-              key={`${s.coin}-${s.shortExchange}-${s.longExchange}`}
-              className={`border bg-bg-panel p-4 flex flex-col gap-3 ${
-                s.status === 'HARVEST' ? 'border-positive/25' :
-                s.status === 'CAUTION' ? 'border-warning/25' : 'border-border'
+      {/* View toggle */}
+      <div className="flex items-center justify-between mb-3">
+        <span className="font-mono text-[9px] text-text-muted/50 uppercase tracking-widest">
+          Top opportunities · best per asset
+        </span>
+        <div className="flex border border-border font-mono text-[10px]">
+          {(['cards', 'list'] as OppView[]).map(v => (
+            <button
+              key={v}
+              onClick={() => setView(v)}
+              className={`px-2.5 py-1 capitalize transition-colors duration-100 ${
+                view === v
+                  ? 'bg-accent text-white'
+                  : 'text-text-muted hover:text-text-primary'
               }`}
             >
-              {/* Badge + liquidity tier */}
-              <div className="flex items-center justify-between">
+              {v}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Cards view */}
+      {view === 'cards' && (
+        <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+          {visible.map(s => {
+            const dayUsd     = N0 > 0 ? (N0 * s.netApy30d / 100) / 365 : null;
+            const feesUsd    = N0 > 0 ? N0 * s.totalFeesPct / 100 : null;
+            const hasDex     = s.shortExchange === 'hyperliquid' || s.longExchange === 'hyperliquid'
+                            || s.shortExchange === 'dydx'        || s.longExchange === 'dydx';
+            const resetLabel = hasDex ? 'hourly' : 'every 8h';
+
+            return (
+              <div
+                key={`${s.coin}-${s.shortExchange}-${s.longExchange}`}
+                className={`border bg-bg-panel p-4 flex flex-col gap-3 ${
+                  s.status === 'HARVEST' ? 'border-positive/25' :
+                  s.status === 'CAUTION' ? 'border-warning/25' : 'border-border'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className={`px-1.5 py-[2px] border text-[9px] font-mono uppercase tracking-widest ${statusBadgeCls(s.status)}`}>
+                    {s.status}
+                  </span>
+                  <span className="font-mono text-[9px] text-text-muted">
+                    {s.thinFlag ? '⚠ thin liq.' : (s.liquidityTier ?? '')}
+                  </span>
+                </div>
+
+                <div>
+                  <span className="font-mono text-[16px] font-bold text-text-primary">{s.coin}</span>
+                  <div className="font-mono text-[11px] mt-1.5 leading-snug space-y-0.5">
+                    <div>
+                      <span className="text-negative/80 font-medium">↓ SHORT</span>
+                      <span className="text-text-muted"> on </span>
+                      <span className={s.shortIsDex ? 'text-accent' : 'text-text-secondary'}>{venueLabel(s.shortExchange)}</span>
+                      {s.shortIsDex && <span className="text-accent/60 text-[9px] ml-1">DEX</span>}
+                      <span className="text-text-muted/50 ml-2 text-[10px]">collect {fmtRate(s.frShort, s.intervalHoursShort)}</span>
+                    </div>
+                    <div>
+                      <span className="text-positive/80 font-medium">↑ LONG</span>
+                      <span className="text-text-muted"> on </span>
+                      <span className={s.longIsDex ? 'text-accent' : 'text-text-secondary'}>{venueLabel(s.longExchange)}</span>
+                      {s.longIsDex && <span className="text-accent/60 text-[9px] ml-1">DEX</span>}
+                      <span className="text-text-muted/50 ml-2 text-[10px]">pay {fmtRate(s.frLong, s.intervalHoursLong)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <p className="font-mono text-[10px] text-text-muted leading-relaxed">
+                  Hold opposite positions on two exchanges and collect the funding-fee difference {resetLabel}.
+                  Market-neutral — not a bet on {s.coin} price direction.
+                </p>
+
+                {dayUsd !== null && capital > 0 ? (
+                  <div className="p-2.5 bg-bg-elevated/30 border border-border/40">
+                    <div className="font-mono text-[22px] font-bold text-positive tabular-nums leading-none">
+                      ≈ {fmtDayUsd(dayUsd)}
+                    </div>
+                    <div className="font-mono text-[10px] text-text-secondary mt-1">
+                      on ${capital.toLocaleString()}{leverage > 1 ? ` · ${leverage}× leverage` : ''}
+                    </div>
+                    {feesUsd !== null && feesUsd > 0 && (
+                      <div className="font-mono text-[10px] text-text-muted mt-1.5">
+                        Fees {fmtUsd(feesUsd)} · paid back in {s.breakevenDays}d, then profit while spread holds.
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="p-2.5 bg-bg-elevated/30 border border-border/40 font-mono text-[10px] text-text-muted">
+                    Enter capital above to see $/day estimate
+                  </div>
+                )}
+
+                <div className="font-mono text-[10px] text-text-muted/60 leading-relaxed border-t border-border/20 pt-2.5">
+                  <span className="text-text-muted">{fmtApy(s.netApy30d)}</span>{' '}
+                  theoretical ceiling — assumes this rate holds all year.
+                  Changes {resetLabel}; treat as upper bound, not a promise.
+                </div>
+
+                {s.capacityUsd != null && (
+                  <div className="font-mono text-[10px] text-text-muted/70">
+                    You can move up to {fmtCapWords(s.capacityUsd)} before impacting the market.
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* List view */}
+      {view === 'list' && (
+        <div className="border border-border bg-bg-panel divide-y divide-border/40">
+          {visible.map(s => {
+            const dayUsd  = N0 > 0 ? (N0 * s.netApy30d / 100) / 365 : null;
+            const feesUsd = N0 > 0 ? N0 * s.totalFeesPct / 100 : null;
+            return (
+              <div
+                key={`${s.coin}-${s.shortExchange}-${s.longExchange}`}
+                className="px-4 py-3 flex flex-wrap items-baseline gap-x-4 gap-y-1.5 hover:bg-bg-elevated/30 transition-colors duration-100"
+              >
+                {/* Asset */}
+                <span className="font-mono text-[14px] font-bold text-text-primary w-12 shrink-0">
+                  {s.coin}
+                </span>
+
+                {/* Action */}
+                <span className="font-mono text-[11px] text-text-secondary">
+                  <span className="text-negative/80">↓ SHORT</span>
+                  <span className="text-text-muted"> on </span>
+                  <span className={s.shortIsDex ? 'text-accent' : ''}>{venueLabel(s.shortExchange)}</span>
+                  <span className="text-text-muted/40 mx-1.5">/</span>
+                  <span className="text-positive/80">↑ LONG</span>
+                  <span className="text-text-muted"> on </span>
+                  <span className={s.longIsDex ? 'text-accent' : ''}>{venueLabel(s.longExchange)}</span>
+                </span>
+
+                {/* $/day — prominent */}
+                <span className="font-mono tabular-nums ml-auto sm:ml-0">
+                  {dayUsd !== null && capital > 0 ? (
+                    <>
+                      <span className="text-[14px] font-bold text-positive">≈ {fmtDayUsd(dayUsd)}</span>
+                      {feesUsd !== null && feesUsd > 0 && (
+                        <span className="text-[10px] text-text-muted ml-2">fees back in {s.breakevenDays}d</span>
+                      )}
+                    </>
+                  ) : (
+                    <span className="text-[11px] text-text-muted">set capital above</span>
+                  )}
+                </span>
+
+                {/* %/yr ceiling — small, greyed */}
+                <span className="font-mono text-[10px] text-text-muted/50 tabular-nums">
+                  {fmtApy(s.netApy30d)} ceiling
+                </span>
+
+                {/* Status badge */}
                 <span className={`px-1.5 py-[2px] border text-[9px] font-mono uppercase tracking-widest ${statusBadgeCls(s.status)}`}>
                   {s.status}
                 </span>
-                <span className="font-mono text-[9px] text-text-muted">
-                  {s.thinFlag ? '⚠ thin liq.' : (s.liquidityTier ?? '')}
-                </span>
+
+                {/* Max size */}
+                {s.capacityUsd != null && (
+                  <span className="font-mono text-[10px] text-text-muted/60">
+                    up to {fmtCapWords(s.capacityUsd)}
+                  </span>
+                )}
               </div>
-
-              {/* Headline action */}
-              <div>
-                <span className="font-mono text-[16px] font-bold text-text-primary">{s.coin}</span>
-                <div className="font-mono text-[11px] mt-1.5 leading-snug space-y-0.5">
-                  <div>
-                    <span className="text-negative/80 font-medium">↓ SHORT</span>
-                    <span className="text-text-muted"> on </span>
-                    <span className={s.shortIsDex ? 'text-accent' : 'text-text-secondary'}>
-                      {venueLabel(s.shortExchange)}
-                    </span>
-                    {s.shortIsDex && <span className="text-accent/60 text-[9px] ml-1">DEX</span>}
-                    <span className="text-text-muted/50 ml-2 text-[10px]">collect {fmtRate(s.frShort, s.intervalHoursShort)}</span>
-                  </div>
-                  <div>
-                    <span className="text-positive/80 font-medium">↑ LONG</span>
-                    <span className="text-text-muted"> on </span>
-                    <span className={s.longIsDex ? 'text-accent' : 'text-text-secondary'}>
-                      {venueLabel(s.longExchange)}
-                    </span>
-                    {s.longIsDex && <span className="text-accent/60 text-[9px] ml-1">DEX</span>}
-                    <span className="text-text-muted/50 ml-2 text-[10px]">pay {fmtRate(s.frLong, s.intervalHoursLong)}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Plain-English */}
-              <p className="font-mono text-[10px] text-text-muted leading-relaxed">
-                Hold opposite positions on two exchanges and collect the funding-fee difference {resetLabel}.
-                Market-neutral — not a bet on {s.coin} price direction.
-              </p>
-
-              {/* Primary: $/day */}
-              {dayUsd !== null && capital > 0 ? (
-                <div className="p-2.5 bg-bg-elevated/30 border border-border/40">
-                  <div className="font-mono text-[22px] font-bold text-positive tabular-nums leading-none">
-                    ≈ {fmtDayUsd(dayUsd)}
-                  </div>
-                  <div className="font-mono text-[10px] text-text-secondary mt-1">
-                    on ${capital.toLocaleString()}{leverage > 1 ? ` · ${leverage}× leverage` : ''}
-                  </div>
-                  {feesUsd !== null && feesUsd > 0 && (
-                    <div className="font-mono text-[10px] text-text-muted mt-1.5">
-                      Fees {fmtUsd(feesUsd)} · paid back in {s.breakevenDays}d, then profit while spread holds.
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="p-2.5 bg-bg-elevated/30 border border-border/40 font-mono text-[10px] text-text-muted">
-                  Enter capital above to see $/day estimate
-                </div>
-              )}
-
-              {/* Secondary: annualized ceiling (honest, greyed) */}
-              <div className="font-mono text-[10px] text-text-muted/60 leading-relaxed border-t border-border/20 pt-2.5">
-                <span className="text-text-muted">{fmtApy(s.netApy30d)}</span>{' '}
-                theoretical ceiling — assumes this rate holds all year.
-                Changes {resetLabel}; treat as upper bound, not a promise.
-              </div>
-
-              {/* Liquidity in words */}
-              {s.capacityUsd != null && (
-                <div className="font-mono text-[10px] text-text-muted/70">
-                  You can move up to {fmtCapWords(s.capacityUsd)} before impacting the market.
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
 
       {remaining > 0 && (
         <button
