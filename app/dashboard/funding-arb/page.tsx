@@ -284,23 +284,21 @@ function OpportunityCards({
         </div>
       </div>
 
-      {/* Cards view */}
+      {/* Cards view — flat, no outer border */}
       {view === 'cards' && (
-        <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-x-8 gap-y-0 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
           {visible.map(s => {
             const dayUsd     = N0 > 0 ? (N0 * s.netApy30d / 100) / 365 : null;
             const feesUsd    = N0 > 0 ? N0 * s.totalFeesPct / 100 : null;
             const hasDex     = s.shortExchange === 'hyperliquid' || s.longExchange === 'hyperliquid'
                             || s.shortExchange === 'dydx'        || s.longExchange === 'dydx';
             const resetLabel = hasDex ? 'hourly' : 'every 8h';
+            const tgHref     = `https://t.me/Gaspola_bot?start=fund_${s.coin}`;
 
             return (
               <div
                 key={`${s.coin}-${s.shortExchange}-${s.longExchange}`}
-                className={`border bg-bg-panel p-4 flex flex-col gap-3 ${
-                  s.status === 'HARVEST' ? 'border-positive/25' :
-                  s.status === 'CAUTION' ? 'border-warning/25' : 'border-border'
-                }`}
+                className="py-5 border-b border-border/15 flex flex-col gap-3 last:border-b-0"
               >
                 <div className="flex items-center justify-between">
                   <span className={`px-1.5 py-[2px] border text-[9px] font-mono uppercase tracking-widest ${statusBadgeCls(s.status)}`}>
@@ -337,7 +335,7 @@ function OpportunityCards({
                 </p>
 
                 {dayUsd !== null && capital > 0 ? (
-                  <div className="p-2.5 bg-bg-elevated/30 border border-border/40">
+                  <div className="p-2.5 bg-bg-elevated/25">
                     <div className="font-mono text-[22px] font-bold text-positive tabular-nums leading-none">
                       ≈ {fmtDayUsd(dayUsd)}
                     </div>
@@ -351,38 +349,49 @@ function OpportunityCards({
                     )}
                   </div>
                 ) : (
-                  <div className="p-2.5 bg-bg-elevated/30 border border-border/40 font-mono text-[10px] text-text-muted">
+                  <div className="p-2.5 bg-bg-elevated/25 font-mono text-[10px] text-text-muted">
                     Enter capital above to see $/day estimate
                   </div>
                 )}
 
-                <div className="font-mono text-[10px] text-text-muted/60 leading-relaxed border-t border-border/20 pt-2.5">
+                <div className="font-mono text-[10px] text-text-muted/60 leading-relaxed pt-0.5">
                   <span className="text-text-muted">{fmtApy(s.netApy30d)}</span>{' '}
                   theoretical ceiling — assumes this rate holds all year.
                   Changes {resetLabel}; treat as upper bound, not a promise.
                 </div>
 
-                {s.capacityUsd != null && (
-                  <div className="font-mono text-[10px] text-text-muted/70">
-                    You can move up to {fmtCapWords(s.capacityUsd)} before impacting the market.
-                  </div>
-                )}
+                <div className="flex items-center justify-between">
+                  {s.capacityUsd != null && (
+                    <span className="font-mono text-[10px] text-text-muted/70">
+                      Up to {fmtCapWords(s.capacityUsd)}
+                    </span>
+                  )}
+                  <a
+                    href={tgHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="ml-auto font-mono text-[9px] px-2 py-1 border border-accent/25 text-accent/60 hover:border-accent/50 hover:text-accent transition-colors duration-100 whitespace-nowrap"
+                  >
+                    ✈ Follow on Telegram
+                  </a>
+                </div>
               </div>
             );
           })}
         </div>
       )}
 
-      {/* List view */}
+      {/* List view — hairline dividers, no outer border */}
       {view === 'list' && (
-        <div className="border border-border bg-bg-panel divide-y divide-border/40">
+        <div className="divide-y divide-border/15">
           {visible.map(s => {
             const dayUsd  = N0 > 0 ? (N0 * s.netApy30d / 100) / 365 : null;
             const feesUsd = N0 > 0 ? N0 * s.totalFeesPct / 100 : null;
+            const tgHref  = `https://t.me/Gaspola_bot?start=fund_${s.coin}`;
             return (
               <div
                 key={`${s.coin}-${s.shortExchange}-${s.longExchange}`}
-                className="px-4 py-3 flex flex-wrap items-baseline gap-x-4 gap-y-1.5 hover:bg-bg-elevated/30 transition-colors duration-100"
+                className="py-3 flex flex-wrap items-baseline gap-x-4 gap-y-1.5 hover:bg-bg-elevated/20 transition-colors duration-100"
               >
                 {/* Asset */}
                 <span className="font-mono text-[14px] font-bold text-text-primary w-12 shrink-0">
@@ -430,6 +439,16 @@ function OpportunityCards({
                     up to {fmtCapWords(s.capacityUsd)}
                   </span>
                 )}
+
+                {/* Follow */}
+                <a
+                  href={tgHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-mono text-[9px] px-2 py-1 border border-accent/25 text-accent/60 hover:border-accent/50 hover:text-accent transition-colors duration-100 whitespace-nowrap"
+                >
+                  ✈ Follow
+                </a>
               </div>
             );
           })}
