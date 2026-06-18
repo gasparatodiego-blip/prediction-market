@@ -15,8 +15,8 @@ const FEE_RATE      = 0.0002;    // 0.02% Binance taker per trade
 const OUT_FILE      = '/tmp/rebalancer-output.json';
 const STATE_FILE    = '/tmp/rebalancer-state.json';
 const HB_FILE       = '/tmp/agent-heartbeats.json';
-const TG_TOKEN      = '8920675182:AAExM7SaLI-t7j3_QgkfGb46MqEJkHRlmJ4';
-const TG_CHAT       = '8844610430';
+const TG_TOKEN      = process.env.TELEGRAM_BOT_TOKEN;
+const TG_CHAT       = process.env.TELEGRAM_CHAT_ID;
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 

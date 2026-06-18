@@ -24,8 +24,8 @@ const CEX_THRESHOLD  = 0.3;
 const FUND_THRESHOLD = 0.05;  // % per 8h
 const BASIS_THRESHOLD = 0.3;
 const ALERT_THRESHOLD = 0.01; // % per 8h
-const TG_TOKEN       = '8920675182:AAExM7SaLI-t7j3_QgkfGb46MqEJkHRlmJ4';
-const TG_CHAT        = '8844610430';
+const TG_TOKEN       = process.env.TELEGRAM_BOT_TOKEN;
+const TG_CHAT        = process.env.TELEGRAM_CHAT_ID;
 const EIGHT_HOURS_MS = 8 * 60 * 60 * 1000;
 
 // dYdX: min USD OI to include a market (filter noise)

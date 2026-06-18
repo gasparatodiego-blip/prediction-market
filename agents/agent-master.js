@@ -47,8 +47,8 @@ async function sendEmailAlert(userEmail, userName, opp) {
 // ── Config ─────────────────────────────────────────────────────────────────────
 const MODEL       = 'claude-sonnet-4-6';
 const INTERVAL_MS = 30 * 60 * 1000;
-const TG_TOKEN    = '8920675182:AAExM7SaLI-t7j3_QgkfGb46MqEJkHRlmJ4';
-const TG_CHAT     = '8844610430';
+const TG_TOKEN    = process.env.TELEGRAM_BOT_TOKEN;
+const TG_CHAT     = process.env.TELEGRAM_CHAT_ID;
 const MAX_AGE_MS  = 10 * 60 * 1000;
 const ACCURACY_CHECK_AFTER_MS = 24 * 3600 * 1000; // 24h
 

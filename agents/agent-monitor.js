@@ -16,8 +16,8 @@ const { promisify } = require('util');
 
 const execFileAsync = promisify(execFile);
 
-const TG_TOKEN    = '8920675182:AAExM7SaLI-t7j3_QgkfGb46MqEJkHRlmJ4';
-const TG_CHAT     = '8844610430';
+const TG_TOKEN    = process.env.TELEGRAM_BOT_TOKEN;
+const TG_CHAT     = process.env.TELEGRAM_CHAT_ID;
 const HB_FILE     = '/tmp/agent-heartbeats.json';
 const STATUS_OUT  = '/tmp/monitor-status.json';
 const INTERVAL_MS = 2 * 60 * 1000;

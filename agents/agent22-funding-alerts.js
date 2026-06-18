@@ -13,7 +13,7 @@ const path = require('path');
 const https = require('https');
 
 // ── Config ─────────────────────────────────────────────────────────────────
-const TOKEN    = process.env.TELEGRAM_BOT_TOKEN || '8920675182:AAExM7SaLI-t7j3_QgkfGb46MqEJkHRlmJ4';
+const TOKEN    = process.env.TELEGRAM_BOT_TOKEN;
 const API_BASE = `https://api.telegram.org/bot${TOKEN}`;
 const SUBS_FILE = path.join(__dirname, '../data/fund-subscriptions.json');
 const UNI_FILE  = '/tmp/unified-opportunities.json';
@@ -304,7 +304,6 @@ async function runAlertScan(subs) {
 // ── Main ──────────────────────────────────────────────────────────────────────
 async function main() {
   if (!TOKEN) { console.error('[A22] TELEGRAM_BOT_TOKEN not set'); process.exit(1); }
-  log(`Bot token: ...${TOKEN.slice(-6)}`);
 
   log('Starting — subscriptions file:', SUBS_FILE);
   const subs = loadSubs();
