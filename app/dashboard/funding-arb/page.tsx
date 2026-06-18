@@ -147,8 +147,8 @@ function nextFundingMs(futures: Record<string, Record<string, FuturesCoin>>): nu
     const nft = futures.binance?.[coin]?.nextFundingTime;
     if (nft && nft > Date.now()) return nft;
   }
-  const now   = Date.now();
-  const h8ms  = 8 * 3_600_000;
+  const now  = Date.now();
+  const h8ms = 8 * 3_600_000;
   const midnight = new Date(); midnight.setUTCHours(0, 0, 0, 0);
   let t = midnight.getTime();
   while (t <= now) t += h8ms;
@@ -224,43 +224,13 @@ function CapitalControl({
       {leverage > 1 && (
         <span className="font-mono text-[9px] text-warning/70">liquidation risk at {leverage}×</span>
       )}
-      <span className="font-mono text-[9px] text-text-muted/40 ml-auto hidden sm:block">
-        cards + table rows update to show $/day estimates
-      </span>
-    </div>
-  );
-}
-
-// ── Status legend ─────────────────────────────────────────────────────────────
-
-function StatusLegend() {
-  return (
-    <div className="px-4 py-2 bg-bg-elevated/20 border-b border-border/30 flex flex-wrap gap-x-5 gap-y-0.5 items-center">
-      <span className="font-mono text-[9px]">
-        <span className="text-positive font-semibold">HARVEST</span>
-        <span className="text-text-muted"> = fees back in ≤5 days</span>
-      </span>
-      <span className="font-mono text-[9px]">
-        <span className="text-warning font-semibold">CAUTION</span>
-        <span className="text-text-muted"> = 5–10 days</span>
-      </span>
-      <span className="font-mono text-[9px]">
-        <span className="text-negative/70 font-semibold">MARGINAL</span>
-        <span className="text-text-muted"> = {'>'}10 days — spread likely shifts first</span>
-      </span>
-      <span className="font-mono text-[9px] ml-auto hidden sm:inline">
-        <span className="text-accent">DEEP</span>
-        <span className="text-text-muted"> &gt;$50M · </span>
-        <span className="text-text-secondary">OK</span>
-        <span className="text-text-muted"> &gt;$10M · </span>
-        <span className="text-warning">THIN</span>
-        <span className="text-text-muted"> &gt;$1M</span>
-      </span>
     </div>
   );
 }
 
 // ── Opportunity cards ─────────────────────────────────────────────────────────
+
+const CARDS_DEFAULT = 6;
 
 function OpportunityCards({
   spreads, capital, leverage,
@@ -269,37 +239,32 @@ function OpportunityCards({
   capital:  number;
   leverage: Leverage;
 }) {
-  // Best spread per unique coin, top 3
+  const [showMore, setShowMore] = useState(false);
+
+  // Best spread per unique coin, all of them
   const seenCoins = new Set<string>();
-  const cards: SpreadItem[] = [];
+  const allCards: SpreadItem[] = [];
   for (const s of spreads) {
     if (!seenCoins.has(s.coin)) {
       seenCoins.add(s.coin);
-      cards.push(s);
-      if (cards.length >= 3) break;
+      allCards.push(s);
     }
   }
-  if (cards.length === 0) return null;
 
-  const N0 = capital * leverage / 2; // per-leg notional at selected capital
+  if (allCards.length === 0) return null;
+
+  const visible  = showMore ? allCards : allCards.slice(0, CARDS_DEFAULT);
+  const remaining = allCards.length - CARDS_DEFAULT;
+  const N0       = capital * leverage / 2;
 
   return (
     <div className="mb-5">
-      <div className="flex items-baseline gap-3 mb-3">
-        <h2 className="font-mono text-[10px] uppercase tracking-widest text-text-muted">
-          Top Opportunities
-        </h2>
-        <span className="font-mono text-[9px] text-text-muted/50">
-          best spread per asset · market-neutral · no price bet
-        </span>
-      </div>
-
       <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-        {cards.map(s => {
-          const dayUsd  = N0 > 0 ? (N0 * s.netApy30d / 100) / 365 : null;
-          const feesUsd = N0 > 0 ? N0 * s.totalFeesPct / 100 : null;
-          const hasDex  = s.shortExchange === 'hyperliquid' || s.longExchange === 'hyperliquid'
-                       || s.shortExchange === 'dydx'        || s.longExchange === 'dydx';
+        {visible.map(s => {
+          const dayUsd     = N0 > 0 ? (N0 * s.netApy30d / 100) / 365 : null;
+          const feesUsd    = N0 > 0 ? N0 * s.totalFeesPct / 100 : null;
+          const hasDex     = s.shortExchange === 'hyperliquid' || s.longExchange === 'hyperliquid'
+                          || s.shortExchange === 'dydx'        || s.longExchange === 'dydx';
           const resetLabel = hasDex ? 'hourly' : 'every 8h';
 
           return (
@@ -310,7 +275,7 @@ function OpportunityCards({
                 s.status === 'CAUTION' ? 'border-warning/25' : 'border-border'
               }`}
             >
-              {/* Badge + liquidity */}
+              {/* Badge + liquidity tier */}
               <div className="flex items-center justify-between">
                 <span className={`px-1.5 py-[2px] border text-[9px] font-mono uppercase tracking-widest ${statusBadgeCls(s.status)}`}>
                   {s.status}
@@ -372,11 +337,11 @@ function OpportunityCards({
                 </div>
               )}
 
-              {/* Secondary: annualized ceiling */}
+              {/* Secondary: annualized ceiling (honest, greyed) */}
               <div className="font-mono text-[10px] text-text-muted/60 leading-relaxed border-t border-border/20 pt-2.5">
                 <span className="text-text-muted">{fmtApy(s.netApy30d)}</span>{' '}
                 theoretical ceiling — assumes this rate holds all year.
-                It changes {resetLabel}; treat as upper bound, not a promise.
+                Changes {resetLabel}; treat as upper bound, not a promise.
               </div>
 
               {/* Liquidity in words */}
@@ -389,47 +354,51 @@ function OpportunityCards({
           );
         })}
       </div>
+
+      {remaining > 0 && (
+        <button
+          onClick={() => setShowMore(v => !v)}
+          className="mt-4 font-mono text-[10px] text-accent/70 hover:text-accent transition-colors duration-100"
+        >
+          {showMore
+            ? 'Show fewer opportunities ↑'
+            : `Show ${remaining} more opportunities ↓`}
+        </button>
+      )}
     </div>
   );
 }
 
-// ── Variability banner ────────────────────────────────────────────────────────
+// ── Status legend (advanced only) ─────────────────────────────────────────────
 
-function VariabilityBanner({
-  cexNextMs, hlNextMs,
-}: { cexNextMs: number | null; hlNextMs: number | null }) {
+function StatusLegend() {
   return (
-    <div className="border border-warning/30 bg-warning/5 px-4 py-2.5 mb-5 flex flex-wrap items-center gap-x-6 gap-y-1.5">
-      <span className="font-mono text-[10px] uppercase tracking-widest text-warning shrink-0">
-        Variable rate
+    <div className="px-4 py-2 bg-bg-elevated/20 border-b border-border/30 flex flex-wrap gap-x-5 gap-y-0.5 items-center">
+      <span className="font-mono text-[9px]">
+        <span className="text-positive font-semibold">HARVEST</span>
+        <span className="text-text-muted"> = fees back in ≤5 days</span>
       </span>
-      <span className="font-mono text-[10px] text-text-secondary">
-        All %/yr figures project the current rate forward — not locked. CEX resets every 8h; Hyperliquid resets hourly.
+      <span className="font-mono text-[9px]">
+        <span className="text-warning font-semibold">CAUTION</span>
+        <span className="text-text-muted"> = 5–10 days</span>
       </span>
-      <div className="ml-auto flex gap-6 shrink-0">
-        {cexNextMs != null && (
-          <span className="font-mono text-[10px] text-text-muted">
-            CEX next: <span className="text-text-primary"><FundingCountdown targetMs={cexNextMs} /></span>
-          </span>
-        )}
-        {hlNextMs != null && (
-          <span className="font-mono text-[10px] text-text-muted">
-            HL next: <span className="text-accent"><FundingCountdown targetMs={hlNextMs} /></span>
-          </span>
-        )}
-      </div>
+      <span className="font-mono text-[9px]">
+        <span className="text-negative/70 font-semibold">MARGINAL</span>
+        <span className="text-text-muted"> = {'>'}10 days — spread likely shifts first</span>
+      </span>
+      <span className="font-mono text-[9px] ml-auto hidden sm:inline">
+        <span className="text-accent">DEEP</span>
+        <span className="text-text-muted"> &gt;$50M · </span>
+        <span className="text-text-secondary">OK</span>
+        <span className="text-text-muted"> &gt;$10M · </span>
+        <span className="text-warning">THIN</span>
+        <span className="text-text-muted"> &gt;$1M</span>
+      </span>
     </div>
   );
 }
 
 // ── Table helpers ─────────────────────────────────────────────────────────────
-
-function fmtCapacity(n: number | null): string {
-  if (n == null) return '—';
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000)     return `$${Math.round(n / 1_000)}k`;
-  return `$${n}`;
-}
 
 function LiqChip({ tier, thin }: { tier: string | null; thin: boolean }) {
   if (!tier) return <span className="font-mono text-[9px] text-text-muted">—</span>;
@@ -457,8 +426,6 @@ function FeeNote({ meta }: { meta: Meta | null }) {
     </p>
   );
 }
-
-// ── Spread table ──────────────────────────────────────────────────────────────
 
 const TABLE_HEADERS: { label: string; tip?: string; cls?: string }[] = [
   { label: 'Asset' },
@@ -505,11 +472,8 @@ function SpreadTable({
   return (
     <div>
       <StatusLegend />
-
       {spreads.length === 0 ? (
-        <div className="py-8 text-center font-mono text-[10px] text-text-muted">
-          No pairs in current data.
-        </div>
+        <div className="py-8 text-center font-mono text-[10px] text-text-muted">No pairs in current data.</div>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full font-mono text-[11px] border-collapse">
@@ -531,89 +495,52 @@ function SpreadTable({
                 const key        = `${s.coin}-${s.shortExchange}-${s.longExchange}`;
                 const isMarginal = s.status === 'MARGINAL';
                 const sz         = capital > 0 ? calcSpreadSizing(s, capital, leverage) : null;
-
                 return (
                   <Fragment key={key}>
                     <tr className={`border-b ${sz ? 'border-border/20' : 'border-border/50'} hover:bg-bg-elevated/40 transition-colors duration-100 ${isMarginal ? 'opacity-50' : ''} ${s.thinFlag ? 'opacity-70' : ''}`}>
                       <td className="px-3 py-2.5 font-semibold text-text-primary">{s.coin}</td>
-
                       <td className="px-3 py-2.5 whitespace-nowrap">
-                        <span className={s.shortIsDex ? 'text-accent' : 'text-text-secondary'}>
-                          {venueLabel(s.shortExchange)}
-                        </span>
+                        <span className={s.shortIsDex ? 'text-accent' : 'text-text-secondary'}>{venueLabel(s.shortExchange)}</span>
                         <span className="text-border mx-1">·</span>
-                        <span className={rateCls(s.frShort)}>
-                          {fmtRate(s.frShort, s.intervalHoursShort)}
-                        </span>
+                        <span className={rateCls(s.frShort)}>{fmtRate(s.frShort, s.intervalHoursShort)}</span>
                       </td>
-
                       <td className="px-3 py-2.5 whitespace-nowrap">
-                        <span className={s.longIsDex ? 'text-accent' : 'text-text-secondary'}>
-                          {venueLabel(s.longExchange)}
-                        </span>
+                        <span className={s.longIsDex ? 'text-accent' : 'text-text-secondary'}>{venueLabel(s.longExchange)}</span>
                         <span className="text-border mx-1">·</span>
-                        <span className={rateCls(s.frLong)}>
-                          {fmtRate(s.frLong, s.intervalHoursLong)}
-                        </span>
+                        <span className={rateCls(s.frLong)}>{fmtRate(s.frLong, s.intervalHoursLong)}</span>
                       </td>
-
                       <td className={`px-3 py-2.5 tabular-nums text-base font-bold ${s.netApy30d > 0 ? 'text-positive' : 'text-negative/70'}`}>
                         {fmtApy(s.netApy30d)}
                       </td>
-
-                      <td className="px-3 py-2.5 tabular-nums text-[10px] text-text-muted">
-                        {fmtApy(s.grossApy)}
-                      </td>
-
+                      <td className="px-3 py-2.5 tabular-nums text-[10px] text-text-muted">{fmtApy(s.grossApy)}</td>
                       <td className="px-3 py-2.5 tabular-nums text-text-muted text-[10px] whitespace-nowrap">
-                        {s.totalFeesPct.toFixed(2)}%
-                        {s.hasDexLeg && <span className="text-accent ml-1">†</span>}
+                        {s.totalFeesPct.toFixed(2)}%{s.hasDexLeg && <span className="text-accent ml-1">†</span>}
                       </td>
-
-                      <td className="px-3 py-2.5 tabular-nums text-text-secondary whitespace-nowrap">
-                        {s.breakevenDays}d
-                      </td>
-
+                      <td className="px-3 py-2.5 tabular-nums text-text-secondary whitespace-nowrap">{s.breakevenDays}d</td>
                       <td className="px-3 py-2.5">
                         <span className={`px-1.5 py-[2px] border text-[9px] uppercase tracking-widest ${statusBadgeCls(s.status)}`}>
                           {s.status}
                         </span>
                       </td>
-
                       <td className="px-3 py-2.5 whitespace-nowrap">
                         <div className="flex flex-col gap-0.5">
                           <LiqChip tier={s.liquidityTier} thin={s.thinFlag} />
                           {s.capacityUsd != null && (
-                            <span className="font-mono text-[8px] text-text-muted">
-                              {fmtCapWords(s.capacityUsd)}
-                            </span>
+                            <span className="font-mono text-[8px] text-text-muted">{fmtCapWords(s.capacityUsd)}</span>
                           )}
                         </div>
                       </td>
                     </tr>
-
                     {sz && (
                       <tr className="border-b border-border/50 bg-bg-elevated/10">
                         <td colSpan={9} className="px-3 py-1.5">
                           <div className="flex flex-wrap gap-x-4 font-mono text-[10px]">
-                            <span className="text-positive font-semibold tabular-nums">
-                              ≈ {fmtDayUsd(sz.dayUsd)}
-                            </span>
-                            <span className="text-text-muted">
-                              N/leg <span className="text-text-primary tabular-nums">{fmtUsd(sz.N)}</span>
-                            </span>
-                            <span className="text-text-muted">
-                              Fees <span className="text-text-primary tabular-nums">{fmtUsd(sz.feesUsd)}</span>
-                            </span>
-                            <span className="text-text-muted">
-                              Net 30d <span className={`tabular-nums ${sz.net30dUsd >= 0 ? 'text-positive' : 'text-negative'}`}>{fmtUsd(sz.net30dUsd)}</span>
-                            </span>
-                            <span className="text-text-muted">
-                              Net/yr <span className={`tabular-nums ${sz.netYrUsd >= 0 ? 'text-positive' : 'text-negative'}`}>{fmtUsd(sz.netYrUsd)}</span>
-                            </span>
-                            <span className="ml-auto text-text-muted">
-                              ROC <span className={`tabular-nums font-semibold ${sz.roc >= 0 ? 'text-positive' : 'text-negative'}`}>{sz.roc >= 0 ? '+' : ''}{sz.roc.toFixed(1)}%/yr</span>
-                            </span>
+                            <span className="text-positive font-semibold tabular-nums">≈ {fmtDayUsd(sz.dayUsd)}</span>
+                            <span className="text-text-muted">N/leg <span className="text-text-primary tabular-nums">{fmtUsd(sz.N)}</span></span>
+                            <span className="text-text-muted">Fees <span className="text-text-primary tabular-nums">{fmtUsd(sz.feesUsd)}</span></span>
+                            <span className="text-text-muted">Net 30d <span className={`tabular-nums ${sz.net30dUsd >= 0 ? 'text-positive' : 'text-negative'}`}>{fmtUsd(sz.net30dUsd)}</span></span>
+                            <span className="text-text-muted">Net/yr <span className={`tabular-nums ${sz.netYrUsd >= 0 ? 'text-positive' : 'text-negative'}`}>{fmtUsd(sz.netYrUsd)}</span></span>
+                            <span className="ml-auto text-text-muted">ROC <span className={`tabular-nums font-semibold ${sz.roc >= 0 ? 'text-positive' : 'text-negative'}`}>{sz.roc >= 0 ? '+' : ''}{sz.roc.toFixed(1)}%/yr</span></span>
                           </div>
                         </td>
                       </tr>
@@ -623,11 +550,10 @@ function SpreadTable({
               })}
             </tbody>
           </table>
-
           {spreads.some(s => s.hasDexLeg) && (
             <div className="px-3 pb-2 pt-1 font-mono text-[9px] text-accent/70 space-y-0.5">
               {spreads.some(s => s.shortExchange === 'hyperliquid' || s.longExchange === 'hyperliquid') && (
-                <div>† Hyperliquid: {0.025}%/leg taker · USDC bridge ~10 min + ~$1–5 ETH gas one-time · resets HOURLY</div>
+                <div>† Hyperliquid: 0.025%/leg taker · USDC bridge ~10 min + ~$1–5 ETH gas one-time · resets HOURLY</div>
               )}
               {spreads.some(s => s.shortExchange === 'dydx' || s.longExchange === 'dydx') && (
                 <div>‡ dYdX v4: 0.05%/leg taker · USDC bridge via Noble ~5 min + ~$3–10 gas · resets HOURLY</div>
@@ -684,9 +610,7 @@ function RateHeatmap({ futures }: { futures: Record<string, Record<string, Futur
                 const intervalH = data.fundingIntervalHours ?? 8;
                 return (
                   <td key={ex} className="px-3 py-2.5 tabular-nums whitespace-nowrap">
-                    <span className={rateCls(data.fundingRate)}>
-                      {fmtRate(data.fundingRate, intervalH)}
-                    </span>
+                    <span className={rateCls(data.fundingRate)}>{fmtRate(data.fundingRate, intervalH)}</span>
                     {data.markPrice != null && (
                       <span className="ml-2 text-text-muted text-[9px]">
                         ${data.markPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}
@@ -707,18 +631,15 @@ function RateHeatmap({ futures }: { futures: Record<string, Record<string, Futur
 
 function CexArbSection({ items }: { items: CexArbItem[] }) {
   return (
-    <div id="cex-arb" className="bg-bg-panel border border-border mb-5 scroll-mt-16">
+    <div>
       <div className="px-4 py-2 border-b border-border flex items-center justify-between flex-wrap gap-2">
-        <span className="font-mono text-[10px] uppercase tracking-widest text-text-muted">
-          CEX Spot Arbitrage
-        </span>
+        <span className="font-mono text-[10px] uppercase tracking-widest text-text-muted">CEX Spot Arbitrage</span>
         <span className="font-mono text-[9px] text-text-muted">
           {items.length > 0
             ? `${items.length} spread${items.length > 1 ? 's' : ''} above 0.3% threshold`
             : 'spot price spread · threshold 0.3%'}
         </span>
       </div>
-
       {items.length === 0 ? (
         <div className="px-4 py-6 text-center space-y-1">
           <div className="font-mono text-[11px] text-text-muted">No spot spread above threshold right now</div>
@@ -732,9 +653,7 @@ function CexArbSection({ items }: { items: CexArbItem[] }) {
             <thead>
               <tr className="border-b border-border">
                 {['Asset', 'Buy on (low)', 'Buy price', 'Sell on (high)', 'Sell price', 'Spread'].map(h => (
-                  <th key={h} className="px-3 py-2 text-left text-[9px] uppercase tracking-widest font-normal text-text-muted whitespace-nowrap">
-                    {h}
-                  </th>
+                  <th key={h} className="px-3 py-2 text-left text-[9px] uppercase tracking-widest font-normal text-text-muted whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -750,9 +669,7 @@ function CexArbSection({ items }: { items: CexArbItem[] }) {
                   <td className="px-3 py-2.5 tabular-nums text-text-primary">
                     ${a.highPrice.toLocaleString(undefined, { maximumFractionDigits: a.highPrice > 1 ? 2 : 5 })}
                   </td>
-                  <td className="px-3 py-2.5 tabular-nums font-bold text-positive">
-                    +{a.spreadPct.toFixed(3)}%
-                  </td>
+                  <td className="px-3 py-2.5 tabular-nums font-bold text-positive">+{a.spreadPct.toFixed(3)}%</td>
                 </tr>
               ))}
             </tbody>
@@ -769,11 +686,11 @@ function CexArbSection({ items }: { items: CexArbItem[] }) {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function CryptoPage() {
-  const [data,      setData]      = useState<ApiResponse | null>(null);
-  const [loading,   setLoading]   = useState(true);
-  const [capital,   setCapital]   = useState(1000);
-  const [leverage,  setLeverage]  = useState<Leverage>(1);
-  const [showTable, setShowTable] = useState(true);
+  const [data,         setData]         = useState<ApiResponse | null>(null);
+  const [loading,      setLoading]      = useState(true);
+  const [capital,      setCapital]      = useState(1000);
+  const [leverage,     setLeverage]     = useState<Leverage>(1);
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -799,8 +716,7 @@ export default function CryptoPage() {
   const dexPairs     = allPairs.filter(s => s.hasDexLeg);
   const cexArbItems  = data?.cexArb ?? [];
 
-  // Best $/day on selected capital (uses top pair's net APY)
-  const N0 = capital * leverage / 2;
+  const N0         = capital * leverage / 2;
   const bestDayUsd = allPairs.length > 0 && capital > 0
     ? (N0 * allPairs[0].netApy30d / 100) / 365
     : null;
@@ -833,15 +749,13 @@ export default function CryptoPage() {
         </div>
       </div>
 
-      {/* Plain-English intro */}
-      <p className="font-mono text-[10px] text-text-muted mb-5 leading-relaxed max-w-2xl">
-        Go short on one exchange (collect the funding fee from traders betting the price goes up), go long
-        on another (pay little or nothing). You pocket the net difference every 1–8 hours.
-        Market-neutral — your profit does not depend on whether the price moves up or down.
-        Rates change every reset; the spread can shrink or flip at any time.
-      </p>
-
+      {/* How this works — collapsible, collapsed by default */}
       <SectionHelp section="funding" />
+
+      {/* Honest one-liner — replaces the dense variability banner */}
+      <p className="font-mono text-[10px] text-text-muted/70 mb-5 mt-3">
+        Rates are variable and change hourly — these are current estimates, not locked.
+      </p>
 
       {loading ? (
         <div className="py-20 text-center font-mono text-[10px] uppercase tracking-widest text-text-muted animate-pulse">
@@ -856,44 +770,7 @@ export default function CryptoPage() {
         </div>
       ) : (
         <>
-          <VariabilityBanner cexNextMs={cexNextMs} hlNextMs={hlNextMs} />
-
-          {/* Summary chips */}
-          <div className="flex flex-wrap gap-2 mb-5">
-            {[
-              { label: 'HARVEST',  val: harvestPairs.length, cls: 'text-positive border-positive/30' },
-              { label: 'CAUTION',  val: cautionPairs.length, cls: 'text-warning border-warning/30'   },
-              {
-                label: 'MARGINAL',
-                val: allPairs.length - harvestPairs.length - cautionPairs.length,
-                cls: 'text-text-muted border-border opacity-50',
-              },
-              { label: 'CEX↔DEX', val: dexPairs.length,  cls: 'text-accent border-accent/30'       },
-              { label: 'TOTAL',   val: allPairs.length,   cls: 'text-text-secondary border-border'  },
-            ].map(({ label, val, cls }) => (
-              <div key={label} className={`px-3 py-1.5 border font-mono text-[10px] ${cls}`}>
-                <span className="text-[12px] font-bold tabular-nums mr-1.5">{val}</span>
-                {label}
-              </div>
-            ))}
-
-            {/* Best: $/day on selected capital, NOT raw APY% */}
-            {bestDayUsd !== null ? (
-              <div className="px-3 py-1.5 border border-positive/30 font-mono text-[10px] text-positive ml-auto">
-                Best: <span className="font-bold">{fmtDayUsd(bestDayUsd)}</span>
-                <span className="text-[9px] text-positive/50 ml-1.5">on ${capital.toLocaleString()}</span>
-              </div>
-            ) : allPairs.length > 0 ? (
-              <div
-                className="px-3 py-1.5 border border-positive/30 font-mono text-[10px] text-positive ml-auto"
-                title="Theoretical ceiling — rate changes hourly. Set capital above for $/day estimate."
-              >
-                Best ceiling: <span className="font-bold">{fmtApy(allPairs[0].netApy30d)}</span>
-              </div>
-            ) : null}
-          </div>
-
-          {/* Capital control — shared between cards and table */}
+          {/* Capital selector */}
           <div className="mb-5 px-4 py-2.5 bg-bg-panel border border-border">
             <CapitalControl
               capital={capital} leverage={leverage}
@@ -901,97 +778,142 @@ export default function CryptoPage() {
             />
           </div>
 
-          {/* Top opportunity cards */}
+          {/* Top opportunity cards — 6 visible, "show more" reveals the rest */}
           <OpportunityCards spreads={allPairs} capital={capital} leverage={leverage} />
 
-          {/* Full table — collapsible */}
-          <div id="funding-spreads" className="bg-bg-panel border border-border mb-5 scroll-mt-16">
-            <div className="px-4 py-2 border-b border-border flex items-center justify-between flex-wrap gap-2">
-              <span className="font-mono text-[10px] uppercase tracking-widest text-text-muted">
-                All Pairs — Full Table
-              </span>
-              <div className="flex items-center gap-4">
-                <span className="font-mono text-[9px] text-text-muted">
-                  {allPairs.length} pairs · ranked by net yield (30d)
-                </span>
-                <button
-                  onClick={() => setShowTable(v => !v)}
-                  className="font-mono text-[9px] text-accent/70 hover:text-accent transition-colors duration-100"
-                >
-                  {showTable ? 'Hide ↑' : 'Show ↓'}
-                </button>
-              </div>
-            </div>
+          {/* ── Advanced / full data ──────────────────────────────────── */}
+          <div className="border border-border mb-5">
+            <button
+              onClick={() => setShowAdvanced(v => !v)}
+              className="w-full px-4 py-3 flex items-center justify-between font-mono text-[10px] text-text-muted hover:text-text-primary hover:bg-bg-elevated/20 transition-colors duration-100"
+            >
+              <span className="uppercase tracking-widest">Advanced / full data</span>
+              <span className="text-text-muted/50">{showAdvanced ? 'collapse ↑' : `${allPairs.length} pairs · expand ↓`}</span>
+            </button>
 
-            {showTable && (
-              <>
-                <SpreadTable
-                  spreads={allPairs}
-                  meta={data.meta}
-                  capital={capital}
-                  leverage={leverage}
-                />
-                <div className="px-4 pb-3">
-                  <FeeNote meta={data.meta} />
-                </div>
-              </>
-            )}
-          </div>
+            {showAdvanced && (
+              <div className="border-t border-border">
 
-          {/* Per-exchange rate heatmap */}
-          <div className="bg-bg-panel border border-border mb-5">
-            <div className="px-4 py-2 border-b border-border flex items-center justify-between flex-wrap gap-2">
-              <span className="font-mono text-[10px] uppercase tracking-widest text-text-muted">
-                Per-Exchange Funding Rates
-              </span>
-              <span className="font-mono text-[9px] text-text-muted">
-                Positive → shorts collect · Negative → longs collect ·{' '}
-                <span className="text-accent">DEX = Hyperliquid (1h intervals)</span>
-              </span>
-            </div>
-            <RateHeatmap futures={data.futures} />
-            <div className="px-4 py-2 border-t border-border flex flex-wrap gap-x-6 gap-y-0.5">
-              <span className="font-mono text-[9px] text-text-muted">
-                CEX next reset: <span className="text-text-primary"><FundingCountdown targetMs={cexNextMs} /></span>
-                <span className="ml-2 text-text-muted/50">(Bin/Bybit/OKX at 00:00, 08:00, 16:00 UTC)</span>
-              </span>
-              {data.futures.hyperliquid && (
-                <span className="font-mono text-[9px] text-text-muted">
-                  HL next reset: <span className="text-accent"><FundingCountdown targetMs={hlNextMs} /></span>
-                  <span className="ml-2 text-text-muted/50">(every UTC hour)</span>
-                </span>
-              )}
-            </div>
-          </div>
-
-          {/* Spot prices */}
-          {Object.keys(data.spot.binance ?? {}).length > 0 && (
-            <div className="bg-bg-panel border border-border mb-5">
-              <div className="px-4 py-2 border-b border-border">
-                <span className="font-mono text-[10px] uppercase tracking-widest text-text-muted">
-                  Spot Prices (Binance)
-                </span>
-              </div>
-              <div className="flex flex-wrap gap-px">
-                {Object.entries(data.spot.binance).map(([coin, s]) => (
-                  <div key={coin} className="flex-1 min-w-[110px] px-4 py-3 border-r border-border/50 last:border-0">
-                    <div className="font-mono text-[10px] text-text-muted mb-1">{coin}/USDT</div>
-                    <div className="font-mono text-[13px] text-text-primary tabular-nums">
-                      ${s.price.toLocaleString(undefined, { maximumFractionDigits: s.price > 1 ? 2 : 5 })}
+                {/* Status counters + timers */}
+                <div className="px-4 py-3 border-b border-border/40 flex flex-wrap gap-2 items-center">
+                  {[
+                    { label: 'HARVEST',  val: harvestPairs.length, cls: 'text-positive border-positive/30' },
+                    { label: 'CAUTION',  val: cautionPairs.length, cls: 'text-warning border-warning/30'   },
+                    {
+                      label: 'MARGINAL',
+                      val:   allPairs.length - harvestPairs.length - cautionPairs.length,
+                      cls:   'text-text-muted border-border opacity-50',
+                    },
+                    { label: 'CEX↔DEX', val: dexPairs.length,  cls: 'text-accent border-accent/30'      },
+                    { label: 'TOTAL',   val: allPairs.length,  cls: 'text-text-secondary border-border'  },
+                  ].map(({ label, val, cls }) => (
+                    <div key={label} className={`px-2.5 py-1 border font-mono text-[10px] ${cls}`}>
+                      <span className="text-[11px] font-bold tabular-nums mr-1">{val}</span>
+                      {label}
                     </div>
-                    {s.change24hPct != null && (
-                      <div className={`font-mono text-[10px] tabular-nums mt-0.5 ${s.change24hPct >= 0 ? 'text-positive' : 'text-negative'}`}>
-                        {s.change24hPct >= 0 ? '+' : ''}{s.change24hPct.toFixed(2)}%
-                      </div>
+                  ))}
+
+                  {bestDayUsd !== null ? (
+                    <div className="px-2.5 py-1 border border-positive/30 font-mono text-[10px] text-positive">
+                      Best: <span className="font-bold">{fmtDayUsd(bestDayUsd)}</span>
+                      <span className="text-[9px] text-positive/50 ml-1">on ${capital.toLocaleString()}</span>
+                    </div>
+                  ) : allPairs.length > 0 ? (
+                    <div className="px-2.5 py-1 border border-positive/30 font-mono text-[10px] text-positive"
+                      title="Theoretical ceiling — rate changes hourly.">
+                      Best ceiling: <span className="font-bold">{fmtApy(allPairs[0].netApy30d)}</span>
+                    </div>
+                  ) : null}
+
+                  {/* Reset timers */}
+                  <div className="ml-auto flex gap-4 shrink-0">
+                    {cexNextMs != null && (
+                      <span className="font-mono text-[9px] text-text-muted">
+                        CEX next: <span className="text-text-primary"><FundingCountdown targetMs={cexNextMs} /></span>
+                      </span>
+                    )}
+                    {hlNextMs != null && (
+                      <span className="font-mono text-[9px] text-text-muted">
+                        HL next: <span className="text-accent"><FundingCountdown targetMs={hlNextMs} /></span>
+                      </span>
                     )}
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
+                </div>
 
-          {/* CEX spot arbitrage */}
-          <CexArbSection items={cexArbItems} />
+                {/* Full spread table */}
+                <div id="funding-spreads" className="scroll-mt-16">
+                  <div className="px-4 py-2 border-b border-border/40 flex items-center justify-between">
+                    <span className="font-mono text-[9px] uppercase tracking-widest text-text-muted">
+                      All Pairs
+                    </span>
+                    <span className="font-mono text-[9px] text-text-muted">
+                      {allPairs.length} pairs · ranked by net yield (30d)
+                    </span>
+                  </div>
+                  <SpreadTable spreads={allPairs} meta={data.meta} capital={capital} leverage={leverage} />
+                  <div className="px-4 pb-3">
+                    <FeeNote meta={data.meta} />
+                  </div>
+                </div>
+
+                {/* Per-exchange rate heatmap */}
+                <div className="border-t border-border">
+                  <div className="px-4 py-2 border-b border-border/40 flex items-center justify-between flex-wrap gap-2">
+                    <span className="font-mono text-[9px] uppercase tracking-widest text-text-muted">
+                      Per-Exchange Funding Rates
+                    </span>
+                    <span className="font-mono text-[9px] text-text-muted">
+                      Positive → shorts collect · Negative → longs collect ·{' '}
+                      <span className="text-accent">DEX = Hyperliquid (1h)</span>
+                    </span>
+                  </div>
+                  <RateHeatmap futures={data.futures} />
+                  <div className="px-4 py-2 border-t border-border/40 flex flex-wrap gap-x-6 gap-y-0.5">
+                    <span className="font-mono text-[9px] text-text-muted">
+                      CEX next reset: <span className="text-text-primary"><FundingCountdown targetMs={cexNextMs} /></span>
+                      <span className="ml-2 text-text-muted/50">(00:00, 08:00, 16:00 UTC)</span>
+                    </span>
+                    {data.futures.hyperliquid && (
+                      <span className="font-mono text-[9px] text-text-muted">
+                        HL next reset: <span className="text-accent"><FundingCountdown targetMs={hlNextMs} /></span>
+                        <span className="ml-2 text-text-muted/50">(every UTC hour)</span>
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Spot prices */}
+                {Object.keys(data.spot.binance ?? {}).length > 0 && (
+                  <div className="border-t border-border">
+                    <div className="px-4 py-2 border-b border-border/40">
+                      <span className="font-mono text-[9px] uppercase tracking-widest text-text-muted">Spot Prices (Binance)</span>
+                    </div>
+                    <div className="flex flex-wrap gap-px">
+                      {Object.entries(data.spot.binance).map(([coin, s]) => (
+                        <div key={coin} className="flex-1 min-w-[110px] px-4 py-3 border-r border-border/50 last:border-0">
+                          <div className="font-mono text-[10px] text-text-muted mb-1">{coin}/USDT</div>
+                          <div className="font-mono text-[13px] text-text-primary tabular-nums">
+                            ${s.price.toLocaleString(undefined, { maximumFractionDigits: s.price > 1 ? 2 : 5 })}
+                          </div>
+                          {s.change24hPct != null && (
+                            <div className={`font-mono text-[10px] tabular-nums mt-0.5 ${s.change24hPct >= 0 ? 'text-positive' : 'text-negative'}`}>
+                              {s.change24hPct >= 0 ? '+' : ''}{s.change24hPct.toFixed(2)}%
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* CEX spot arbitrage */}
+                <div className="border-t border-border">
+                  <CexArbSection items={cexArbItems} />
+                </div>
+
+              </div>
+            )}
+          </div>
         </>
       )}
     </div>
