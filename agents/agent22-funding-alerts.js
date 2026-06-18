@@ -105,17 +105,44 @@ async function handleUpdate(update, subs) {
   const chatId = String(msg.chat.id);
   const text   = msg.text.trim();
 
-  // /start fund_BTC  (deep link from dashboard Follow button)
-  const startMatch = text.match(/^\/start\s+fund_([A-Za-z0-9]+)/i);
+  // /start fund_BTC           — status-change alerts only
+  // /start fund_BTC_exit_55   — status alerts + exit alert at 5.5%/yr (value × 10 encoded)
+  const startMatch = text.match(/^\/start\s+fund_([A-Za-z0-9]+)(?:_exit_(\d+))?/i);
   if (startMatch) {
-    const asset = startMatch[1].toUpperCase();
-    const key   = subKey(chatId, asset);
-    subs[key] = { chatId, asset, addedAt: Date.now(), lastAlertAt: 0, lastStatus: null };
+    const asset         = startMatch[1].toUpperCase();
+    const exitThreshold = startMatch[2] != null ? parseInt(startMatch[2], 10) / 10 : null;
+    const key           = subKey(chatId, asset);
+    const prev          = subs[key] || {};
+    subs[key] = {
+      chatId,
+      asset,
+      addedAt:       prev.addedAt || Date.now(),
+      lastAlertAt:   prev.lastAlertAt || 0,
+      lastStatus:    prev.lastStatus || null,
+      exitThreshold: exitThreshold ?? prev.exitThreshold ?? null,
+      exitAlertSent: exitThreshold != null ? false : (prev.exitAlertSent || false),
+    };
     saveSubs(subs);
-    await sendMessage(chatId,
-      `✅ You're following <b>${asset}</b> funding.\n\nI'll alert you when the spread status changes meaningfully — e.g. when it becomes worth harvesting or drops off.\n\nRates are variable and change hourly — alerts are estimates, not promises.\n\n/unfollow ${asset} to stop, or /stop to clear all.`
-    );
-    log(`Subscribed chatId=${chatId} asset=${asset}`);
+    if (exitThreshold != null) {
+      await sendMessage(chatId,
+        `✅ Following <b>${asset}</b> — exit alert set at <b>${exitThreshold.toFixed(1)}%/yr</b> gross spread.\n\n` +
+        `I'll send one message when the ${asset} spread drops below ${exitThreshold.toFixed(1)}%/yr, ` +
+        `and also notify you on status changes (HARVEST/CAUTION/MARGINAL).\n\n` +
+        `Rates vary hourly — alerts are estimates, not financial advice. ` +
+        `No orders are placed.\n\n` +
+        `/unfollow ${asset} to cancel · /list to see all alerts`
+      );
+      log(`Subscribed chatId=${chatId} asset=${asset} exitThreshold=${exitThreshold}`);
+    } else {
+      await sendMessage(chatId,
+        `✅ Following <b>${asset}</b> funding.\n\n` +
+        `I'll alert you when the spread status changes meaningfully ` +
+        `(e.g. CAUTION → HARVEST or HARVEST → MARGINAL).\n\n` +
+        `Rates change hourly — alerts are estimates, not promises.\n\n` +
+        `/unfollow ${asset} to stop · /stop to clear all`
+      );
+      log(`Subscribed chatId=${chatId} asset=${asset}`);
+    }
     return;
   }
 
@@ -155,8 +182,14 @@ async function handleUpdate(update, subs) {
     if (keys.length === 0) {
       await sendMessage(chatId, 'No active funding alerts. Visit the dashboard and tap ✈ Follow on any opportunity.');
     } else {
-      const assets = keys.map(k => subs[k].asset).join(', ');
-      await sendMessage(chatId, `Currently following: <b>${assets}</b>\n\nSend /unfollow ASSET to stop one, or /stop to clear all.`);
+      const lines = keys.map(k => {
+        const s = subs[k];
+        const thresh = s.exitThreshold != null ? ` · exit alert <${s.exitThreshold.toFixed(1)}%/yr` : '';
+        return `• <b>${s.asset}</b>${thresh}`;
+      });
+      await sendMessage(chatId,
+        `Active alerts:\n${lines.join('\n')}\n\n/unfollow ASSET to cancel one · /stop to clear all`
+      );
     }
     return;
   }
@@ -229,7 +262,7 @@ function statusEmoji(status) {
   return '⚪';
 }
 
-function buildAlertText(opp, prevStatus) {
+function buildStatusAlertText(opp, prevStatus) {
   const coin   = opp.coin;
   const short  = (opp.legs[0]?.platform || '').replace(/\s*\(DEX\)/, '');
   const long   = (opp.legs[1]?.platform || '').replace(/\s*\(DEX\)/, '');
@@ -237,67 +270,95 @@ function buildAlertText(opp, prevStatus) {
   const status = opp.status;
   const beDays = typeof opp.breakevenDays === 'number' ? opp.breakevenDays.toFixed(1) : '?';
 
-  const changeLabel = prevStatus
-    ? `Status: ${prevStatus} → ${status}`
-    : `Status: ${status}`;
-
   return [
-    `${statusEmoji(status)} <b>${coin} Funding Alert</b> — ${changeLabel}`,
+    `${statusEmoji(status)} <b>${coin} Funding</b> — ${prevStatus} → ${status}`,
     '',
     `↓ SHORT ${short} / ↑ LONG ${long}`,
-    `≈ ${day} on $${REF_CAPITAL.toLocaleString()} ref capital`,
-    `Breakeven: ${beDays} days`,
+    `≈ ${day} on $${REF_CAPITAL.toLocaleString()} ref capital · breakeven ${beDays}d`,
     '',
-    `Net yield: ${opp.netROI.toFixed(1)}%/yr theoretical ceiling`,
-    `<i>Rates change hourly — this is a current estimate, not a promise.</i>`,
+    `Gross spread: ${(opp.annualizedROI || opp.grossROI || 0).toFixed(1)}%/yr`,
+    `<i>Rates change hourly — estimate only, not a promise.</i>`,
     '',
-    `/unfollow ${coin} to stop these alerts · /list to see all`,
+    `/unfollow ${coin} · /list`,
+  ].join('\n');
+}
+
+function buildExitAlertText(opp, threshold) {
+  const coin  = opp.coin;
+  const gross = (opp.annualizedROI || opp.grossROI || 0).toFixed(1);
+  const short = (opp.legs[0]?.platform || '').replace(/\s*\(DEX\)/, '');
+  const long  = (opp.legs[1]?.platform || '').replace(/\s*\(DEX\)/, '');
+
+  return [
+    `⚠️ <b>${coin} exit alert</b>`,
+    '',
+    `Gross spread is now <b>${gross}%/yr</b> — below your exit threshold of ${threshold.toFixed(1)}%/yr.`,
+    `↓ SHORT ${short} / ↑ LONG ${long}`,
+    '',
+    `Consider closing both legs simultaneously to avoid leg risk.`,
+    `<b>No orders have been placed</b> — this is a notification only.`,
+    '',
+    `<i>Not financial advice. Verify rates on your exchange before acting.</i>`,
+    '',
+    `/unfollow ${coin} to stop these alerts · /list`,
   ].join('\n');
 }
 
 async function runAlertScan(subs) {
-  const opps       = loadFundingData();
+  const opps = loadFundingData();
   if (opps.length === 0) return;
 
   const byAsset = bestPerCoin(opps);
   const now     = Date.now();
+  let   dirty   = false;
 
   for (const [key, sub] of Object.entries(subs)) {
     const opp = byAsset[sub.asset];
     if (!opp) continue;
 
     const currentStatus = opp.status;
-    const prevStatus    = sub.lastStatus;
+    const currentGross  = opp.annualizedROI ?? opp.grossROI ?? 0;
 
-    // Alert only on status change
-    const changed = prevStatus !== null && prevStatus !== currentStatus;
-    if (!changed) continue;
+    // First scan: record baseline, no alert
+    if (sub.lastStatus === null) {
+      sub.lastStatus = currentStatus;
+      dirty = true;
+      continue;
+    }
 
-    // Throttle: max 1 alert/hr per (chat, asset)
-    if (now - sub.lastAlertAt < THROTTLE_MS) continue;
+    // ── Status-change alert ───────────────────────────────────────────────────
+    if (sub.lastStatus !== currentStatus) {
+      if (now - sub.lastAlertAt >= THROTTLE_MS) {
+        const text = buildStatusAlertText(opp, sub.lastStatus);
+        await sendMessage(sub.chatId, text);
+        log(`Status alert chatId=${sub.chatId} asset=${sub.asset} ${sub.lastStatus}→${currentStatus}`);
+        sub.lastAlertAt = now;
+      }
+      sub.lastStatus = currentStatus;
+      dirty = true;
+    }
 
-    const text = buildAlertText(opp, prevStatus);
-    await sendMessage(sub.chatId, text);
-    log(`Alert sent chatId=${sub.chatId} asset=${sub.asset} ${prevStatus}→${currentStatus}`);
-
-    // Update sub state
-    sub.lastAlertAt = now;
-    sub.lastStatus  = currentStatus;
-  }
-
-  // Always update lastStatus even when no alert sent (so we track baseline)
-  let dirty = false;
-  for (const [key, sub] of Object.entries(subs)) {
-    const opp = byAsset[sub.asset];
-    if (!opp) continue;
-    if (subs[key].lastStatus !== opp.status) {
-      if (subs[key].lastStatus === null) {
-        // first scan: just record status, don't alert
-        subs[key].lastStatus = opp.status;
+    // ── Exit threshold alert ──────────────────────────────────────────────────
+    if (sub.exitThreshold != null && !sub.exitAlertSent) {
+      if (currentGross < sub.exitThreshold && now - sub.lastAlertAt >= THROTTLE_MS) {
+        const text = buildExitAlertText(opp, sub.exitThreshold);
+        await sendMessage(sub.chatId, text);
+        log(`Exit alert chatId=${sub.chatId} asset=${sub.asset} gross=${currentGross.toFixed(1)} threshold=${sub.exitThreshold}`);
+        sub.exitAlertSent = true;
+        sub.lastAlertAt   = now;
         dirty = true;
       }
     }
+    // Reset exitAlertSent when spread recovers >10% above threshold
+    if (sub.exitAlertSent && sub.exitThreshold != null) {
+      if (currentGross > sub.exitThreshold * 1.1) {
+        sub.exitAlertSent = false;
+        dirty = true;
+        log(`Exit alert reset chatId=${sub.chatId} asset=${sub.asset} gross=${currentGross.toFixed(1)}`);
+      }
+    }
   }
+
   if (dirty) saveSubs(subs);
 }
 
