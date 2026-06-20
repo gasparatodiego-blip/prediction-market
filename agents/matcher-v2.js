@@ -240,6 +240,7 @@ function kalshiPageToMarkets(data) {
         event_ticker:    ev.event_ticker || null,   // authoritative event-level ticker for URL
         series_ticker:   ev.series_ticker || null,
         title:           ev.title || '',
+        yes_sub_title:   m.yes_sub_title || '',     // specific outcome name (e.g. "Mark Cuban")
         yes_bid_dollars: m.yes_bid_dollars,
         yes_ask_dollars: m.yes_ask_dollars,
         close_time:      m.close_time || ev.close_time || null,
@@ -498,12 +499,15 @@ function loadAndClean(raw) {
     const tickerSuffix   = m.ticker ? m.ticker.split('-').pop() : '';
     const tickerExtra    = kalshiTickerExtra(m.ticker);
     const suffixFullName = tickerSuffix ? expandCode(tickerSuffix) : '';
+    // Prefer yes_sub_title ("Mark Cuban", "Korea Republic") over raw ticker code ("MCUB", "KOR")
+    // so the Haiku confirmation prompt contains human-readable outcome names.
+    const outcomeLabel = m.yes_sub_title || (suffixFullName || tickerSuffix);
     markets.push({
       id: `ka-${m.ticker}`,
       platform:   'kalshi',
-      rawTitle:   tickerSuffix ? `${title} [outcome: ${tickerSuffix}]` : title,
+      rawTitle:   outcomeLabel ? `${title} [outcome: ${outcomeLabel}]` : title,
       baseTitle:  title,
-      outcome:    tickerSuffix,
+      outcome:    outcomeLabel,
       tickerExtra,
       suffixFullName,
       probability: prob,
@@ -792,10 +796,32 @@ function arbPrefilter(candidates, markets) {
       : a.type === 'cashable' ? -1 : 1
   );
 
-  const nc = survivors.filter(s => s.type === 'cashable').length;
-  const ns = survivors.filter(s => s.type === 'signal').length;
-  console.log(`[v2] Stage 2: ${candidates.length} candidates → ${survivors.length} survivors (${nc} cashable, ${ns} signal), ${quarantined.length} quarantined (netROI>${SUSPICIOUS_ROI}%)`);
-  return { survivors, quarantined };
+  // Dedup: one PM id → one Kalshi market and one Kalshi id → one PM market.
+  // Multi-outcome Kalshi events (mutually exclusive markets) produce multiple hits
+  // against the same PM market via shared IDF tokens; keep only the highest-ROI one.
+  const pmIdSeen = new Set();
+  const kaIdSeen = new Set();
+  const dedupedSurvivors = [];
+  let dedupDropped = 0;
+  for (const s of survivors) {
+    if (s.type !== 'cashable') { dedupedSurvivors.push(s); continue; }
+    const pmId = s.a.platform === 'polymarket' ? s.a.id
+               : s.b.platform === 'polymarket' ? s.b.id : null;
+    const kaId = s.a.platform === 'kalshi'     ? s.a.id
+               : s.b.platform === 'kalshi'     ? s.b.id : null;
+    if ((pmId && pmIdSeen.has(pmId)) || (kaId && kaIdSeen.has(kaId))) {
+      dedupDropped++;
+      continue;
+    }
+    if (pmId) pmIdSeen.add(pmId);
+    if (kaId) kaIdSeen.add(kaId);
+    dedupedSurvivors.push(s);
+  }
+
+  const nc = dedupedSurvivors.filter(s => s.type === 'cashable').length;
+  const ns = dedupedSurvivors.filter(s => s.type === 'signal').length;
+  console.log(`[v2] Stage 2: ${candidates.length} candidates → ${dedupedSurvivors.length} survivors (${nc} cashable, ${ns} signal), ${quarantined.length} quarantined (netROI>${SUSPICIOUS_ROI}%), ${dedupDropped} deduped`);
+  return { survivors: dedupedSurvivors, quarantined };
 }
 
 // ── Stage 3: Cache-first Haiku confirmation ───────────────────────────────────
@@ -891,9 +917,12 @@ ${pairsText}
 
 Rules:
 - IDENTICAL means the same specific team/candidate/entity wins (or the same specific event happens)
-- If A prices "Mexico wins Group A" and B prices "Mexico wins Group A" → identical=true
+- The outcome label after [outcome: ...] is the AUTHORITATIVE named entity — use it, do not guess
+- If A says [outcome: Mark Cuban] and B says "Josh Shapiro" → DIFFERENT people → identical=false
+- If A says [outcome: Korea Republic] and B says "Bosnia and Herzegovina" → DIFFERENT teams → identical=false
 - If A prices outcome X and B prices outcome Y of the same multi-choice event → identical=false
-- Different phrasing ("will X win?" vs "X to win") of the same trigger → identical=true
+- Different phrasing ("will X win?" vs "X to win") of the SAME named entity → identical=true
+- Do NOT infer or assume what a ticker code means; trust only explicit names
 
 Respond ONLY with a JSON array (one entry per pair, in order):
 [{"index":0,"identical":true,"reason":"brief"},{"index":1,"identical":false,"reason":"brief"},...]`;
