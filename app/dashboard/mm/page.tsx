@@ -4,91 +4,51 @@ import { useEffect, useState } from 'react';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
-interface MarketSummary {
-  cid:             string;
-  title:           string;
-  rewardTag:       'reward' | 'balanced';
-  mid:             number;
-  quoteBid:        number;
-  quoteAsk:        number;
-  spread:          number;
-  spreadPct:       number;
-  vol24:           number;
-  days:            number;
-  negRisk:         boolean;
-  rms:             number;
-  rmn:             number;
-  takerFeeRate:    number;
-  rebateRate:      number;
-  dailyPool:       number | null;
-  competingDepth:  number | null;
-  ourShare:        number | null;
-  estRewardPerDay: number | null;
-  estRewardCum:    number | null;
-  hasOpenPosition: boolean;
-  positionDirection: 'long' | 'short' | null;
-  totalCycles:     number;
-  perfectCycles:   number;
-  adverseCycles:   number;
-  measuredPnl:     number;
-  quotedHours:     number;
-}
-
-interface RecentCycle {
-  id:           string;
-  title:        string;
-  rewardTag:    string;
-  direction:    string;
-  type:         string;
-  entryTs:      number;
-  exitTs:       number | null;
-  entryPrice:   number;
-  exitPrice:    number | null;
-  exitReason:   string | null;
-  measuredPnl:  number | null;
-  winner:       string | null;
+interface RewardMarket {
+  cid:                   string;
+  title:                 string;
+  slug:                  string;
+  negRisk:               boolean;
+  mid:                   number;
+  bid:                   number;
+  ask:                   number;
+  spread:                number;
+  vol24:                 number;
+  daysLeft:              number;
+  rewardsMaxSpread:      number;
+  rewardsMinSize:        number;
+  takerFeeRate:          number;
+  rebateRate:            number;
+  sampleCapital:         number;
+  lpRewardRateAvailable: boolean;
+  makerRebatePerFill:    number;
+  competingDepth:        number | null;
+  adverseRiskLevel:      'LOW' | 'MED' | 'MED-HIGH' | 'HIGH';
+  adverseRiskNote:       string;
 }
 
 interface Aggregate {
-  totalMarkets:     number;
-  rewardMarkets:    number;
-  balancedMarkets:  number;
-  totalCycles:      number;
-  openCycles:       number;
-  perfectCycles:    number;
-  adverseCycles:    number;
-  resolvedCycles:   number;
-  measuredPnl:      number;
-  estRewardPerDay:  number;
-  estimatedRewards: number;
-  totalWithRewards: number;
-  quotedHours:      number;
+  totalMarkets:          number;
+  marketsWithDepth:      number;
+  lowRiskMarkets:        number;
+  emptyBookMarkets:      number;
+  lpRewardRatePublished: boolean;
+  headlineNote:          string;
 }
 
 interface MMData {
-  agentStatus:    'running' | 'stale' | 'offline';
-  updatedAt:      string | null;
-  rewardPoolNote: string;
-  markets:        MarketSummary[];
-  aggregate:      Aggregate;
-  recentCycles:   RecentCycle[];
-  disclaimer:     string;
+  agentStatus:           'running' | 'stale' | 'offline';
+  updatedAt:             string | null;
+  sampleCapital:         number;
+  note:                  string;
+  lpRewardRatePublished: boolean;
+  lpRewardRateNote:      string;
+  markets:               RewardMarket[];
+  aggregate:             Aggregate;
+  disclaimer:            string;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
-
-function fmt$(n: number | null | undefined, decimals = 2): string {
-  if (n == null) return '—';
-  const abs = Math.abs(n);
-  if (abs >= 1000) return `$${n.toFixed(0)}`;
-  if (abs >= 10)   return `$${n.toFixed(1)}`;
-  return `$${n.toFixed(decimals)}`;
-}
-
-function fmtPct(n: number | null | undefined, decimals = 1): string {
-  if (n == null) return '—';
-  return `${(n * 100).toFixed(decimals)}%`;
-}
 
 function ago(iso: string | null): string {
   if (!iso) return 'never';
@@ -98,245 +58,119 @@ function ago(iso: string | null): string {
   return `${Math.floor(secs / 3600)}h ago`;
 }
 
-function sign$(n: number): string {
-  if (n === 0) return '$0.00';
-  return n > 0 ? `+$${n.toFixed(2)}` : `-$${Math.abs(n).toFixed(2)}`;
+function fmtDepth(n: number | null): string {
+  if (n === null) return '—';
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000)     return `$${(n / 1_000).toFixed(0)}k`;
+  return `$${n.toFixed(0)}`;
 }
+
+function fmtVol(n: number): string {
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000)     return `$${(n / 1_000).toFixed(0)}k`;
+  return `$${n.toFixed(0)}`;
+}
+
+const RISK_CLS: Record<string, string> = {
+  'LOW':      'text-emerald-400 border-emerald-700/40 bg-emerald-950/20',
+  'MED':      'text-amber-400   border-amber-600/40   bg-amber-950/20',
+  'MED-HIGH': 'text-orange-400  border-orange-600/40  bg-orange-950/20',
+  'HIGH':     'text-red-400     border-red-700/40     bg-red-950/20',
+};
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
 
-function Chip({ label, value, accent }: { label: string; value: string; accent?: string }) {
-  return (
-    <span className={['inline-flex gap-1 items-center px-1.5 py-0.5 rounded font-mono text-[10px] border', accent ?? 'border-zinc-700 bg-zinc-800 text-zinc-300'].join(' ')}>
-      <span className="text-zinc-500">{label}</span>
-      <span>{value}</span>
+function StatusBadge({ status }: { status: MMData['agentStatus'] }) {
+  if (status === 'running') return (
+    <span className="flex items-center gap-1.5 font-mono text-xs text-emerald-400 border border-emerald-600/40 bg-emerald-950/30 px-2 py-0.5">
+      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+      LIVE
     </span>
   );
-}
-
-function MeasuredPanel({ agg }: { agg: Aggregate }) {
-  const measured = agg.measuredPnl ?? 0;
-  const isPos    = measured >= 0;
-  const enough   = agg.totalCycles >= 10;
+  if (status === 'stale') return (
+    <span className="font-mono text-xs text-orange-400 border border-orange-500/40 px-2 py-0.5">STALE</span>
+  );
   return (
-    <div className="border-l-4 border-indigo-500 border border-zinc-700 bg-zinc-900 p-5" style={{ borderLeftWidth: '4px' }}>
-      <div className="flex items-center gap-2 mb-1 flex-wrap">
-        <span className="font-mono text-xs text-indigo-400 uppercase tracking-widest">Measured net P&amp;L</span>
-        <span className="font-mono text-[10px] px-1.5 py-0.5 rounded border border-indigo-500/40 text-indigo-400 bg-indigo-950/40">VERIFIABLE</span>
-      </div>
-      <div className={`font-mono text-3xl font-bold tabular-nums mt-2 ${isPos ? 'text-emerald-400' : 'text-red-400'}`}>
-        {sign$(measured)}
-      </div>
-      <p className="font-mono text-xs text-zinc-500 mt-2">
-        {enough
-          ? `${agg.totalCycles} closed cycles — spread captures minus adverse losses. No rewards included.`
-          : `${agg.totalCycles}/10 cycles — need ≥10 closed cycles before this is meaningful.`}
-      </p>
-      <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-        <div>
-          <div className="font-mono text-sm text-emerald-400 tabular-nums">{agg.perfectCycles}</div>
-          <div className="font-mono text-[10px] text-zinc-600 uppercase">perfect</div>
-        </div>
-        <div>
-          <div className="font-mono text-sm text-red-400 tabular-nums">{agg.adverseCycles}</div>
-          <div className="font-mono text-[10px] text-zinc-600 uppercase">adverse</div>
-        </div>
-        <div>
-          <div className="font-mono text-sm text-zinc-400 tabular-nums">{(agg.quotedHours ?? 0).toFixed(1)}h</div>
-          <div className="font-mono text-[10px] text-zinc-600 uppercase">quoted</div>
-        </div>
-      </div>
-    </div>
+    <span className="font-mono text-xs text-red-400 border border-red-600/40 px-2 py-0.5">OFFLINE</span>
   );
 }
 
-function RewardsPanel({ agg }: { agg: Aggregate }) {
-  const perDay = agg.estRewardPerDay ?? 0;
-  const cum    = agg.estimatedRewards ?? 0;
+function MarketRow({ m, rank }: { m: RewardMarket; rank: number }) {
+  const riskCls    = RISK_CLS[m.adverseRiskLevel] ?? RISK_CLS['MED'];
+  const isEmptyBook = m.competingDepth !== null && m.competingDepth < 100;
+
   return (
-    <div className="border border-dashed border-amber-500/60 bg-zinc-900/60 p-5">
-      <div className="flex items-center gap-2 mb-1 flex-wrap">
-        <span className="font-mono text-xs text-amber-400 uppercase tracking-widest">Estimated rewards</span>
-        <span className="font-mono text-[10px] px-1.5 py-0.5 rounded border border-amber-500/40 text-amber-400 bg-amber-950/40">ASSUMPTION</span>
-        <span className="font-mono text-[10px] text-zinc-500">competition-dependent</span>
-      </div>
-      <div className="font-mono text-3xl font-bold tabular-nums mt-2 text-amber-400">
-        {fmt$(cum)}
-      </div>
-      <p className="font-mono text-xs text-zinc-500 mt-2">
-        Real daily pool × estimated share (CLOB book depth snapshot — changes continuously).
-      </p>
-      <div className="mt-3 grid grid-cols-2 gap-2 text-center">
-        <div>
-          <div className="font-mono text-sm text-amber-400 tabular-nums">{fmt$(perDay)}/day</div>
-          <div className="font-mono text-[10px] text-zinc-600 uppercase">pool × our share</div>
+    <div className="border-t border-zinc-800 py-3 grid grid-cols-12 gap-2 items-start text-xs font-mono">
+      {/* Rank */}
+      <div className="col-span-1 text-zinc-600 pt-0.5">#{rank}</div>
+
+      {/* Title + badges */}
+      <div className="col-span-4 min-w-0">
+        <p className="text-zinc-200 leading-snug line-clamp-2">{m.title}</p>
+        <div className="flex flex-wrap gap-1 mt-1.5">
+          {m.negRisk && (
+            <span className="px-1 py-px border border-zinc-700 bg-zinc-800 text-zinc-500 text-[9px] uppercase">
+              negRisk
+            </span>
+          )}
+          <span className="px-1 py-px border border-zinc-700 bg-zinc-800 text-zinc-500 text-[9px] uppercase">
+            mid {m.mid.toFixed(3)}
+          </span>
+          <span className="px-1 py-px border border-zinc-700 bg-zinc-800 text-zinc-500 text-[9px] uppercase">
+            ±{m.rewardsMaxSpread}¢ band
+          </span>
+          {m.daysLeft > 0 && (
+            <span className="px-1 py-px border border-zinc-700 bg-zinc-800 text-zinc-500 text-[9px] uppercase">
+              {m.daysLeft.toFixed(0)}d left
+            </span>
+          )}
         </div>
-        <div>
-          <div className="font-mono text-sm text-zinc-400 tabular-nums">{agg.rewardMarkets}</div>
-          <div className="font-mono text-[10px] text-zinc-600 uppercase">reward markets</div>
+      </div>
+
+      {/* Competing depth */}
+      <div className="col-span-2 space-y-0.5">
+        <div className={isEmptyBook ? 'text-emerald-400 tabular-nums' : 'text-zinc-300 tabular-nums'}>
+          {fmtDepth(m.competingDepth)}
         </div>
+        <div className="text-zinc-600 text-[10px]">competing</div>
+        {isEmptyBook && (
+          <div className="text-emerald-600 text-[9px] uppercase">thin/empty</div>
+        )}
       </div>
-    </div>
-  );
-}
 
-function VerdictLine({ agg }: { agg: Aggregate }) {
-  const enough   = agg.totalCycles >= 10;
-  const measured = agg.measuredPnl ?? 0;
-  const total    = agg.totalWithRewards ?? 0;
-  const perDay   = agg.estRewardPerDay ?? 0;
-  if (!enough) {
-    return (
-      <p className="font-mono text-xs text-zinc-500 border-l-2 border-zinc-700 pl-3">
-        Need {10 - agg.totalCycles} more cycles before meaningful verdict. Collecting data…
-      </p>
-    );
-  }
-  if (measured >= 0 && total >= 0) {
-    return (
-      <p className="font-mono text-xs text-emerald-400 border-l-2 border-emerald-700 pl-3">
-        Above breakeven on both measured ({sign$(measured)}) and with estimated rewards ({sign$(total)}).
-        {perDay > 0 ? ` Reward income: ~${fmt$(perDay)}/day (estimate).` : ''}
-      </p>
-    );
-  }
-  if (measured < 0 && total >= 0) {
-    return (
-      <p className="font-mono text-xs text-amber-400 border-l-2 border-amber-700 pl-3">
-        Measured net is negative ({sign$(measured)}) but estimated rewards flip it positive ({sign$(total)}).
-        Interpretation: adverse selection is being subsidised by the reward program.
-      </p>
-    );
-  }
-  return (
-    <p className="font-mono text-xs text-red-400 border-l-2 border-red-800 pl-3">
-      Below breakeven measured ({sign$(measured)}) and with rewards ({sign$(total)}).
-      Adverse selection exceeds both spread captures and estimated reward income.
-    </p>
-  );
-}
-
-function HonestyBlock() {
-  const items = [
-    'Fill inference is APPROXIMATE — Polymarket data-api has no maker/taker flag. Fills inferred from price-crossing; queue position and partial fills unknown.',
-    'Adverse selection is the dominant risk. If informed flow consistently crosses our simulated quotes, measured P&L will trend negative regardless of reward income.',
-    'Reward pool split is estimated from a CLOB book snapshot (changes continuously). Actual reward allocations are not published in any public endpoint.',
-    'No orders are placed. This is a read-only simulation. Not financial advice.',
-  ];
-  return (
-    <div className="border border-zinc-700 bg-zinc-900/40 p-4 space-y-1.5">
-      <p className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest mb-2">Honesty disclosure</p>
-      {items.map((t, i) => (
-        <p key={i} className="font-mono text-[11px] text-zinc-500 leading-relaxed pl-3 border-l border-zinc-700">{t}</p>
-      ))}
-    </div>
-  );
-}
-
-function MeasurementBar({ agg }: { agg: Aggregate }) {
-  const filled = Math.min(agg.totalCycles, 10);
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-1">
-        <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">Measurement status</span>
-        <span className="font-mono text-[10px] text-zinc-400">{agg.totalCycles}/10 cycles</span>
+      {/* Vol 24h */}
+      <div className="col-span-2 space-y-0.5">
+        <div className="text-zinc-400 tabular-nums">{fmtVol(m.vol24)}</div>
+        <div className="text-zinc-600 text-[10px]">vol 24h</div>
+        <div className="text-zinc-600 text-[10px]">fee {(m.takerFeeRate * 100).toFixed(0)}%</div>
       </div>
-      <div className="flex gap-1">
-        {Array.from({ length: 10 }).map((_, i) => (
-          <div key={i} className={['h-2 flex-1 rounded-sm', i < filled ? 'bg-indigo-500' : 'bg-zinc-800'].join(' ')} />
-        ))}
+
+      {/* Rebate per fill */}
+      <div className="col-span-2 space-y-0.5">
+        <div className="text-amber-400 tabular-nums font-semibold">
+          ${m.makerRebatePerFill.toFixed(2)}
+        </div>
+        <div className="text-zinc-600 text-[10px]">rebate/fill</div>
+        <div className="text-zinc-600 text-[10px]">fill-dependent</div>
       </div>
-      {agg.totalCycles < 10 && (
-        <p className="font-mono text-[10px] text-zinc-600 mt-1">
-          {10 - agg.totalCycles} more closed cycles needed for a meaningful measured P&amp;L.
-        </p>
-      )}
-    </div>
-  );
-}
 
-function MarketCard({ m }: { m: MarketSummary }) {
-  const isReward = m.rewardTag === 'reward';
-  const pnlColor = m.measuredPnl >= 0 ? 'text-emerald-400' : 'text-red-400';
-  const vol24Fmt = m.vol24 >= 1000 ? `$${(m.vol24 / 1000).toFixed(1)}k` : `$${m.vol24.toFixed(0)}`;
-
-  return (
-    <div className={['border bg-zinc-900 p-4', isReward ? 'border-amber-500/30' : 'border-zinc-700'].join(' ')}>
-      <div className="flex items-start gap-2 mb-3 flex-wrap">
-        <span className={['shrink-0 font-mono text-[10px] px-1.5 py-0.5 rounded border uppercase', isReward ? 'border-amber-500/40 bg-amber-950/30 text-amber-400' : 'border-indigo-500/40 bg-indigo-950/30 text-indigo-400'].join(' ')}>
-          {isReward ? 'REWARD' : 'BALANCED'}
+      {/* Risk */}
+      <div className="col-span-1">
+        <span className={`inline-block px-1 py-0.5 border text-[9px] uppercase tracking-wide ${riskCls}`}>
+          {m.adverseRiskLevel}
         </span>
-        {m.negRisk && <span className="shrink-0 font-mono text-[10px] px-1.5 py-0.5 rounded border border-zinc-600 bg-zinc-800 text-zinc-400 uppercase">negRisk</span>}
-        {m.hasOpenPosition && <span className="shrink-0 font-mono text-[10px] px-1.5 py-0.5 rounded border border-zinc-600 bg-zinc-800 text-zinc-400 uppercase">{m.positionDirection}</span>}
       </div>
-
-      <p className="font-mono text-xs text-zinc-300 leading-relaxed mb-3 line-clamp-2">{m.title}</p>
-
-      <div className="flex flex-wrap gap-1.5 mb-3">
-        <Chip label="mid"    value={m.mid.toFixed(3)} />
-        <Chip label="spread" value={`${(m.spread * 100).toFixed(1)}¢`} />
-        <Chip label="vol24"  value={vol24Fmt} />
-        {m.days > 0 && <Chip label="days" value={m.days.toFixed(0)} />}
-        {isReward && m.rms > 0 && (
-          <Chip label="max-spr" value={`±${m.rms}¢`} accent="border-amber-700/50 bg-amber-950/20 text-amber-300" />
-        )}
-        {isReward && m.rmn > 0 && (
-          <Chip label="min-sz" value={`$${m.rmn}`} accent="border-amber-700/50 bg-amber-950/20 text-amber-300" />
-        )}
-        {isReward && m.dailyPool != null && (
-          <Chip label="pool" value={`${fmt$(m.dailyPool)}/d`} accent="border-amber-600/50 bg-amber-950/30 text-amber-300" />
-        )}
-        {isReward && m.ourShare != null && (
-          <Chip label="our%" value={fmtPct(m.ourShare, 1)} accent="border-amber-700/50 bg-amber-950/20 text-amber-300" />
-        )}
-        {isReward && m.competingDepth != null && (
-          <Chip label="competing" value={`$${m.competingDepth}`} />
-        )}
-      </div>
-
-      <div className="grid grid-cols-3 gap-2 pt-2 border-t border-zinc-800 text-center">
-        <div>
-          <div className={`font-mono text-xs tabular-nums ${pnlColor}`}>{sign$(m.measuredPnl)}</div>
-          <div className="font-mono text-[10px] text-zinc-600">meas.P&amp;L</div>
-        </div>
-        <div>
-          <div className="font-mono text-xs tabular-nums text-amber-400">{m.estRewardCum != null ? fmt$(m.estRewardCum) : '—'}</div>
-          <div className="font-mono text-[10px] text-zinc-600">est.reward</div>
-        </div>
-        <div>
-          <div className="font-mono text-xs tabular-nums text-zinc-400">{m.quotedHours.toFixed(1)}h</div>
-          <div className="font-mono text-[10px] text-zinc-600">quoted</div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function CycleRow({ c }: { c: RecentCycle }) {
-  const typeColor = c.type === 'perfect'  ? 'text-emerald-400'
-                  : c.type === 'adverse'  ? 'text-red-400'
-                  : c.type === 'resolved' ? 'text-indigo-400'
-                  :                         'text-zinc-500';
-  const pnlColor  = (c.measuredPnl ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
-  return (
-    <div className="flex items-center gap-3 py-2 border-t border-zinc-800 text-xs font-mono">
-      <span className={`shrink-0 w-16 uppercase ${typeColor}`}>{c.type}</span>
-      <span className="shrink-0 w-12 text-zinc-500">{c.direction}</span>
-      <span className="flex-1 text-zinc-400 truncate min-w-0">{c.title}</span>
-      <span className={`shrink-0 w-16 text-right tabular-nums ${pnlColor}`}>
-        {c.measuredPnl != null ? sign$(c.measuredPnl) : '—'}
-      </span>
     </div>
   );
 }
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
-const POLL_MS = 30_000;
+const POLL_MS = 60_000;
 
-export default function MMPage() {
-  const [data, setData]         = useState<MMData | null>(null);
-  const [error, setError]       = useState<string | null>(null);
+export default function LiquidityRewardsPage() {
+  const [data,     setData]     = useState<MMData | null>(null);
+  const [error,    setError]    = useState<string | null>(null);
   const [lastPoll, setLastPoll] = useState<Date | null>(null);
 
   async function poll() {
@@ -357,19 +191,10 @@ export default function MMPage() {
     return () => clearInterval(id);
   }, []);
 
-  const agg: Aggregate = data?.aggregate ?? {
-    totalMarkets: 0, rewardMarkets: 0, balancedMarkets: 0,
-    totalCycles: 0, openCycles: 0, perfectCycles: 0,
-    adverseCycles: 0, resolvedCycles: 0,
-    measuredPnl: 0, estRewardPerDay: 0, estimatedRewards: 0,
-    totalWithRewards: 0, quotedHours: 0,
-  };
-
-  const status       = data?.agentStatus ?? 'offline';
-  const allMarkets   = data?.markets ?? [];
-  const cycles       = data?.recentCycles ?? [];
-  const rewardMkts   = allMarkets.filter(m => m.rewardTag === 'reward');
-  const balancedMkts = allMarkets.filter(m => m.rewardTag === 'balanced');
+  const status   = data?.agentStatus ?? 'offline';
+  const markets  = data?.markets ?? [];
+  const agg      = data?.aggregate;
+  const capital  = data?.sampleCapital ?? 200;
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -377,120 +202,158 @@ export default function MMPage() {
 
         {/* Context line */}
         <p className="font-mono text-[11px] text-zinc-600 uppercase tracking-widest">
-          Polymarket CLOB · Read-only simulation · Zero Claude · No orders placed
+          Polymarket CLOB · Read-only · Eligibility scanner · No orders placed
         </p>
 
         {/* Header */}
-        <div className="flex items-center gap-4 flex-wrap">
-          <h1 className="font-mono text-xl font-bold text-zinc-100 tracking-tight">MM Analyzer</h1>
-          {status === 'running' && (
-            <span className="flex items-center gap-1.5 font-mono text-xs text-amber-400 border border-amber-500/40 bg-amber-950/30 px-2 py-0.5 rounded">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-              Measuring
-            </span>
-          )}
-          {status === 'stale'   && <span className="font-mono text-xs text-orange-400 border border-orange-500/40 px-2 py-0.5 rounded">stale</span>}
-          {status === 'offline' && <span className="font-mono text-xs text-red-400   border border-red-500/40    px-2 py-0.5 rounded">offline</span>}
+        <div className="flex items-center gap-3 flex-wrap">
+          <h1 className="font-mono text-xl font-bold text-zinc-100 tracking-tight">
+            Liquidity Rewards
+          </h1>
+          <StatusBadge status={status} />
           <span className="font-mono text-[10px] text-zinc-600 ml-auto">
-            updated {lastPoll ? ago(lastPoll.toISOString()) : '—'}
+            {lastPoll ? `updated ${ago(lastPoll.toISOString())}` : '—'}
           </span>
+        </div>
+
+        {/* Honest-first banner — the key finding */}
+        <div className="border border-amber-600/40 bg-amber-950/15 p-4 space-y-2">
+          <p className="font-mono text-[10px] text-amber-500 uppercase tracking-widest">
+            LP Reward rates not published in public API
+          </p>
+          <p className="font-mono text-sm text-zinc-300 leading-relaxed">
+            Polymarket's LP Reward program pays daily to qualified liquidity providers,
+            but the per-market daily rate is <span className="text-amber-400">not available in any public API</span>{' '}
+            (<code className="text-zinc-400">rewards.rates</code> returns <code className="text-zinc-400">null</code> for all markets in the CLOB API).
+            No yield estimate is possible from public data.
+          </p>
+          <p className="font-mono text-xs text-zinc-500 leading-relaxed">
+            What IS known: each market's reward-band parameters, the competing book depth (your competition),
+            and the maker rebate you'd earn per fill (a separate, fill-dependent fee-rebate program).
+            Markets are sorted by competing depth — lowest first means you'd be closer to sole provider.
+          </p>
         </div>
 
         {error && (
-          <div className="font-mono text-xs text-red-400 border border-red-800 bg-red-950/20 px-3 py-2">{error}</div>
-        )}
-
-        {/* Lede */}
-        <p className="font-mono text-sm text-zinc-400 leading-relaxed max-w-2xl">
-          Simulates a passive $50 YES quote on eligible Polymarket binary markets. Infers fills
-          from the public trade stream (price-crossing heuristic — no maker/taker flag exists).
-          Two P&L numbers:{' '}
-          <span className="text-indigo-400">Measured net</span> tracks spread captures minus
-          adverse losses with zero assumptions;{' '}
-          <span className="text-amber-400">Estimated rewards</span> derives the real LP reward
-          pool from public fee schedules and estimates our share from CLOB book depth.
-        </p>
-
-        {/* SIGNATURE two-number panel */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <MeasuredPanel agg={agg} />
-          <RewardsPanel  agg={agg} />
-        </div>
-
-        {/* Total with rewards */}
-        <div className="flex items-center gap-3 border border-zinc-700 bg-zinc-900 px-5 py-3">
-          <span className="font-mono text-xs text-zinc-500 uppercase tracking-widest">Total (meas. + est. rewards)</span>
-          <span className={`font-mono text-xl font-bold tabular-nums ml-auto ${(agg.totalWithRewards ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-            {sign$(agg.totalWithRewards ?? 0)}
-          </span>
-        </div>
-
-        {/* Verdict */}
-        <VerdictLine agg={agg} />
-
-        {/* Honesty disclosure */}
-        <HonestyBlock />
-
-        {/* Measurement status bar */}
-        <MeasurementBar agg={agg} />
-
-        {/* REWARD markets */}
-        {rewardMkts.length > 0 && (
-          <section className="space-y-3">
-            <div className="flex items-center gap-3 flex-wrap">
-              <span className="font-mono text-xs text-amber-400 uppercase tracking-widest">Reward markets ({rewardMkts.length})</span>
-              <span className="font-mono text-[10px] text-zinc-600">LP reward program · any mid · tight spreads · real pool formula</span>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {rewardMkts.map(m => <MarketCard key={m.cid} m={m} />)}
-            </div>
-          </section>
-        )}
-
-        {/* BALANCED markets */}
-        {balancedMkts.length > 0 && (
-          <section className="space-y-3">
-            <div className="flex items-center gap-3 flex-wrap">
-              <span className="font-mono text-xs text-indigo-400 uppercase tracking-widest">Balanced markets ({balancedMkts.length})</span>
-              <span className="font-mono text-[10px] text-zinc-600">mid 0.30–0.70 · vol≥$100/d · 14+ days · no reward program</span>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {balancedMkts.map(m => <MarketCard key={m.cid} m={m} />)}
-            </div>
-          </section>
-        )}
-
-        {allMarkets.length === 0 && (
-          <div className="border border-zinc-800 bg-zinc-900 p-8 text-center">
-            <p className="font-mono text-sm text-zinc-500">No markets yet — agent discovering…</p>
+          <div className="font-mono text-xs text-red-400 border border-red-800 bg-red-950/20 px-3 py-2">
+            {error}
           </div>
         )}
 
-        {/* Recent cycles */}
-        {cycles.length > 0 && (
-          <section className="space-y-2">
-            <span className="font-mono text-xs text-zinc-500 uppercase tracking-widest">Recent cycles</span>
-            <div className="border border-zinc-800 bg-zinc-900 px-4">
-              {cycles.slice(0, 20).map(c => <CycleRow key={c.id} c={c} />)}
+        {/* Summary bar — no yield, only verifiable counts */}
+        {agg && agg.totalMarkets > 0 && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="border border-zinc-800 bg-zinc-900 p-3 text-center">
+              <div className="font-mono text-lg font-bold text-emerald-400 tabular-nums">
+                {agg.totalMarkets}
+              </div>
+              <div className="font-mono text-[10px] text-zinc-600 uppercase mt-0.5">eligible markets</div>
             </div>
-          </section>
+            <div className="border border-zinc-800 bg-zinc-900 p-3 text-center">
+              <div className="font-mono text-lg font-bold text-emerald-400 tabular-nums">
+                {agg.emptyBookMarkets ?? 0}
+              </div>
+              <div className="font-mono text-[10px] text-zinc-600 uppercase mt-0.5">thin/empty book</div>
+            </div>
+            <div className="border border-zinc-800 bg-zinc-900 p-3 text-center">
+              <div className="font-mono text-lg font-bold text-zinc-300 tabular-nums">
+                {agg.lowRiskMarkets}
+              </div>
+              <div className="font-mono text-[10px] text-zinc-600 uppercase mt-0.5">low adverse risk</div>
+            </div>
+            <div className="border border-zinc-800 bg-zinc-900 p-3 text-center">
+              <div className="font-mono text-lg font-bold text-amber-400/60 tabular-nums">N/A</div>
+              <div className="font-mono text-[10px] text-zinc-600 uppercase mt-0.5">LP yield — not available</div>
+            </div>
+          </div>
         )}
 
-        {/* Methodology note (collapsible) */}
-        {data?.rewardPoolNote && (
-          <details>
-            <summary className="font-mono text-[10px] text-zinc-600 cursor-pointer hover:text-zinc-400 uppercase tracking-widest select-none">
-              Reward pool methodology ▸
+        {/* What the maker rebate per fill means */}
+        <div className="border border-zinc-700/40 bg-zinc-900/40 p-4 space-y-2">
+          <p className="font-mono text-[10px] text-zinc-400 uppercase tracking-widest">
+            What "rebate/fill" means
+          </p>
+          <p className="font-mono text-xs text-zinc-500 leading-relaxed">
+            When a taker crosses your resting order, Polymarket returns{' '}
+            <span className="text-zinc-300">{(0.25 * 100).toFixed(0)}% of the taker fee</span> to you as
+            the maker. For a ${capital} position: rebate = ${capital} × fee_rate × 0.25. This is the
+            fee-rebate program — separate from, and much smaller than, the LP Rewards program.
+            It is <span className="text-amber-400">fill-dependent</span>: you only earn it when a taker
+            actually hits your order. How often that happens depends on your queue position, price
+            level chosen, and market activity — none of which are estimable from book snapshots.
+          </p>
+        </div>
+
+        {/* Market table */}
+        {markets.length > 0 ? (
+          <section className="space-y-2">
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="font-mono text-xs text-zinc-400 uppercase tracking-widest">
+                Eligible markets — sorted by competing depth (lowest = least competition)
+              </span>
+              <span className="font-mono text-[10px] text-zinc-600">
+                ${capital} sample · depth snapshot every 15 min
+              </span>
+            </div>
+
+            {/* Column headers */}
+            <div className="grid grid-cols-12 gap-2 pb-1 border-b border-zinc-800 font-mono text-[10px] text-zinc-600 uppercase tracking-widest">
+              <div className="col-span-1">#</div>
+              <div className="col-span-4">Market</div>
+              <div className="col-span-2">Competing $</div>
+              <div className="col-span-2">Vol 24h</div>
+              <div className="col-span-2">Rebate/fill</div>
+              <div className="col-span-1">Risk</div>
+            </div>
+
+            {markets.map((m, i) => (
+              <MarketRow key={m.cid} m={m} rank={i + 1} />
+            ))}
+          </section>
+        ) : (
+          <div className="border border-zinc-800 bg-zinc-900 p-8 text-center space-y-2">
+            <p className="font-mono text-sm text-zinc-400">
+              {status === 'offline'
+                ? 'Agent is offline — reward data will appear once it connects.'
+                : 'Scanning for reward-eligible markets…'}
+            </p>
+            <p className="font-mono text-xs text-zinc-600">
+              First scan runs ~10 s after agent start. Refreshes every 15 min.
+            </p>
+          </div>
+        )}
+
+        {/* Methodology */}
+        <div className="border border-zinc-800/60 bg-zinc-900/30 p-4 space-y-3">
+          <p className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
+            Methodology — what is and isn't known
+          </p>
+          <ul className="space-y-2">
+            {[
+              'LP Reward rate: NOT published. rewards.rates field in CLOB API returns null for all markets. Polymarket calculates rewards on-chain; the per-market daily rate is not exposed.',
+              'Maker rebate per fill: REAL number from published feeSchedule (takerFeeRate × rebateRate). Fill-dependent — you earn it only when a taker hits your order.',
+              'Competing depth: CLOB book snapshot of USDC resting within the reward band (±rewardsMaxSpread of mid). Snapshot is stale immediately; competition moves continuously.',
+              'Adverse risk: qualitative structural proxy. HIGH near resolution (informed flow likely). LOW for negRisk correlated outcomes (slow drift). Cannot measure without live fill history.',
+              'This page is read-only. No orders are placed. Not financial advice.',
+            ].map((t, i) => (
+              <li key={i} className="font-mono text-[11px] text-zinc-600 leading-relaxed pl-3 border-l border-zinc-700/40">
+                {t}
+              </li>
+            ))}
+          </ul>
+          <details className="mt-2">
+            <summary className="font-mono text-[10px] text-zinc-700 cursor-pointer hover:text-zinc-500 uppercase tracking-widest select-none">
+              Raw methodology note ▸
             </summary>
-            <p className="font-mono text-[11px] text-zinc-600 mt-2 leading-relaxed pl-3 border-l border-zinc-800">
-              {data.rewardPoolNote}
+            <p className="font-mono text-[10px] text-zinc-700 mt-2 leading-relaxed">
+              {data?.note ?? ''}
             </p>
           </details>
-        )}
+        </div>
 
-        {/* Disclaimer footer */}
+        {/* Footer */}
         <p className="font-mono text-[10px] text-zinc-700 border-t border-zinc-800 pt-4">
-          {data?.disclaimer ?? 'Read-only simulation. No orders placed. Not financial advice.'}
+          {data?.disclaimer ?? 'Read-only. No orders placed. Not financial advice.'}
         </p>
 
       </div>

@@ -21,7 +21,10 @@ const securityHeaders = [
 const nextConfig = {
   async redirects() {
     return [
-      { source: '/dashboard/crypto', destination: '/dashboard/funding-arb', permanent: true },
+      { source: '/dashboard/crypto',        destination: '/dashboard/funding-arb', permanent: true },
+      { source: '/dashboard/opportunities', destination: '/dashboard',             permanent: true },
+      { source: '/dashboard/lp',            destination: '/dashboard',             permanent: true },
+      { source: '/dashboard/mm',            destination: '/dashboard',             permanent: true },
     ];
   },
   async headers() {

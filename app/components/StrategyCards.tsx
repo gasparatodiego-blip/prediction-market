@@ -11,17 +11,14 @@ interface TickerData {
 const TAGLINES: Record<string, string> = {
   funding:    'Collect funding while you sleep. Delta-neutral, net of fees.',
   prediction: 'Two prices, one outcome. Pocket the gap.',
-  mm:         'Make the spread, not the bet. Measured to the cent.',
   carry:      'Lock the basis. Hands-off yield to expiry.',
   traders:    'Shadow the wallets that win. Real P&L, zero hype.',
   // strip-only (shown when offline / empty / coming-soon)
   sports:     'Books disagree, you win either way.',
   cex:        "Catch the gap before it closes — only when it's real.",
-  liquidity:  'Passive yield. Coming soon.',
 };
 
 const HREF_OVERRIDE: Record<string, string> = {
-  liquidity:  '/dashboard/lp',
   prediction: '/dashboard/prediction',
 };
 
@@ -98,10 +95,18 @@ function LiveCard({ cat, flashKey }: { cat: TickerItem; flashKey: number }) {
                   {cat.unit}
                 </span>
               </div>
-              {cat.key === 'mm' && (
+              {/* Context badge — de-emphasizes figures that need qualification */}
+              {cat.displayKind === 'ceiling' && (
                 <div className="mt-1 mb-0.5">
                   <span className="font-mono text-[6.5px] uppercase tracking-widest px-1 py-[2px] border border-text-muted/20 text-text-muted/40">
-                    CUMULATIVE · NOT ANNUALIZED
+                    CEILING · VARIABLE RATE
+                  </span>
+                </div>
+              )}
+              {cat.displayKind === 'net' && (
+                <div className="mt-1 mb-0.5">
+                  <span className="font-mono text-[6.5px] uppercase tracking-widest px-1 py-[2px] border border-positive/20 text-positive/40">
+                    CONFIRMED · NET OF FEES
                   </span>
                 </div>
               )}

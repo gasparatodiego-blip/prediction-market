@@ -4,7 +4,7 @@ import fs from 'fs';
 export const dynamic = 'force-dynamic';
 
 const MM_FILE  = '/tmp/mm-analysis.json';
-const STALE_MS = 10 * 60_000; // 10 min (agent runs every 3 min)
+const STALE_MS = 20 * 60_000;  // agent writes every 15 min; stale after 20 min
 
 export async function GET() {
   let data: any = null;
@@ -14,33 +14,35 @@ export async function GET() {
     data = JSON.parse(fs.readFileSync(MM_FILE, 'utf8'));
     const age = Date.now() - new Date(data.updatedAt ?? 0).getTime();
     agentStatus = age < STALE_MS ? 'running' : 'stale';
-  } catch { /* file absent */ }
+  } catch { /* file absent or malformed */ }
 
   if (!data) {
     return NextResponse.json({
-      agentStatus: 'offline',
-      updatedAt:   null,
-      rewardPoolNote: '',
-      markets:     [],
+      agentStatus:           'offline',
+      updatedAt:             null,
+      sampleCapital:         200,
+      note:                  '',
+      lpRewardRatePublished: false,
+      lpRewardRateNote:      'Agent offline.',
+      markets:               [],
       aggregate: {
-        totalMarkets: 0, rewardMarkets: 0, balancedMarkets: 0,
-        totalCycles: 0, openCycles: 0, perfectCycles: 0,
-        adverseCycles: 0, resolvedCycles: 0,
-        measuredPnl: 0, estRewardPerDay: 0, estimatedRewards: 0,
-        totalWithRewards: 0, quotedHours: 0,
+        totalMarkets: 0, marketsWithDepth: 0, lowRiskMarkets: 0,
+        emptyBookMarkets: 0, lpRewardRatePublished: false,
+        headlineNote: 'LP reward rate not in public API — no yield estimate possible',
       },
-      recentCycles: [],
       disclaimer: '',
     });
   }
 
   return NextResponse.json({
     agentStatus,
-    updatedAt:      data.updatedAt,
-    rewardPoolNote: data.rewardPoolNote ?? '',
-    markets:        data.markets        ?? [],
-    aggregate:      data.aggregate      ?? {},
-    recentCycles:   data.recentCycles   ?? [],
-    disclaimer:     data.disclaimer     ?? '',
+    updatedAt:             data.updatedAt,
+    sampleCapital:         data.sampleCapital ?? 200,
+    note:                  data.note          ?? '',
+    lpRewardRatePublished: false,
+    lpRewardRateNote:      data.lpRewardRateNote ?? '',
+    markets:               data.markets       ?? [],
+    aggregate:             data.aggregate     ?? {},
+    disclaimer:            data.disclaimer    ?? '',
   });
 }

@@ -4,7 +4,7 @@ import { useState } from 'react';
 import SectionHelp from '@/app/components/SectionHelp';
 import Link from 'next/link';
 import {
-  Crosshair, Coins, Trophy, Zap, Landmark, Users,
+  Crosshair, Coins, Trophy, Users,
   ChevronDown, ArrowRight, GitMerge,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -17,9 +17,20 @@ interface Strategy {
   summary: string;
   explanation: string;
   link: string;
+  comingSoon?: boolean;
 }
 
 const strategies: Strategy[] = [
+  {
+    id: 'crypto',
+    Icon: Coins,
+    name: 'Funding Arb',
+    platforms: ['Binance', 'Bybit', 'OKX'],
+    summary: 'Funding rates and spot-futures arbitrage',
+    explanation:
+      "On perpetual futures, traders pay each other a funding rate. You hold spot plus an offsetting short future (delta-neutral), so you're not exposed to price — you just collect the funding. Realistic returns are modest in calm markets (~5–11%/yr) and higher when funding spikes. Risk: funding can flip; use 1× leverage to avoid liquidation.",
+    link: '/dashboard/funding-arb',
+  },
   {
     id: 'prediction',
     Icon: Crosshair,
@@ -29,26 +40,6 @@ const strategies: Strategy[] = [
     explanation:
       'When the same event (e.g. an election result) is priced differently on Polymarket, Kalshi and PredictIt, you buy the cheaper side and hedge the other. If the combined cost is below the guaranteed payout, the difference is your edge — no matter who wins. Risk: prices can move before both legs fill, and fees eat thin spreads.',
     link: '/dashboard/prediction',
-  },
-  {
-    id: 'crypto',
-    Icon: Coins,
-    name: 'Crypto & Funding',
-    platforms: ['Binance', 'Bybit', 'OKX'],
-    summary: 'Funding rates and spot-futures arbitrage',
-    explanation:
-      "On perpetual futures, traders pay each other a funding rate. You hold spot plus an offsetting short future (delta-neutral), so you're not exposed to price — you just collect the funding. Realistic returns are modest in calm markets (~5–11%/yr) and higher when funding spikes. Risk: funding can flip; use 1× leverage to avoid liquidation.",
-    link: '/dashboard/funding-arb',
-  },
-  {
-    id: 'sports',
-    Icon: Trophy,
-    name: 'Sports Arbitrage',
-    platforms: ['Bet365', 'DraftKings', 'OddsAPI'],
-    summary: 'Surebets across 40+ bookmakers — agent off by default',
-    explanation:
-      'When bookmakers disagree on odds for the same match, backing every outcome across different books can lock in a profit regardless of the result. The scanner finds these surebets across 40+ books via OddsAPI. Agent is disabled by default (set ODDS_API_LIVE=true to enable). Risk: bookmakers may limit accounts, and odds move fast.',
-    link: '/dashboard/sports',
   },
   {
     id: 'carry',
@@ -61,26 +52,6 @@ const strategies: Strategy[] = [
     link: '/dashboard/carry',
   },
   {
-    id: 'mm',
-    Icon: Zap,
-    name: 'MM Analyzer',
-    platforms: ['Polymarket CLOB'],
-    summary: 'Passive market-making simulation (read-only)',
-    explanation:
-      "Simulates a two-sided passive maker quote on eligible Polymarket binary markets. Infers fills from public trade data and tracks whether spread capture exceeds adverse-selection losses. Read-only — no orders are placed. Two P&L numbers: measured (verified) and estimated rewards (labeled assumption, not from any API).",
-    link: '/dashboard/mm',
-  },
-  {
-    id: 'lp',
-    Icon: Landmark,
-    name: 'Liquidity Provider',
-    platforms: ['Polymarket LP'],
-    summary: 'Simulated LP position tracker (read-only)',
-    explanation:
-      "Instead of taking trades, you provide liquidity (e.g. on Polymarket) and earn fees from other people's trades. This tracker simulates LP positions and tracks estimated fees and impermanent loss. Positions are simulated — no real capital is deployed. Risk: impermanent loss can offset fees if prices swing hard.",
-    link: '/dashboard/lp',
-  },
-  {
     id: 'traders',
     Icon: Users,
     name: 'Traders Hub',
@@ -89,6 +60,17 @@ const strategies: Strategy[] = [
     explanation:
       'Browse the Polymarket realized P&L leaderboard by category (Politics, Sports, Crypto, Pop Culture, World), follow any wallet, and get Telegram alerts when followed traders make new trades. No private keys collected at any step. Auto-copy execution is locked pending security hardening (step 2 of 3). Past P&L ≠ future results. Not financial advice.',
     link: '/dashboard/traders',
+  },
+  {
+    id: 'sports',
+    Icon: Trophy,
+    name: 'Sports Arb',
+    platforms: ['Bet365', 'DraftKings', 'OddsAPI'],
+    summary: 'Surebets across 40+ bookmakers — soft-book filter in progress',
+    explanation:
+      'When bookmakers disagree on odds for the same match, backing every outcome across different books can lock in a profit regardless of the result. The scanner finds these surebets across 40+ books via OddsAPI. The soft-book false-positive filter is not yet built — enabling live output now would show unreliable results. Coming soon.',
+    link: '/dashboard/sports',
+    comingSoon: true,
   },
 ];
 
@@ -136,7 +118,7 @@ function AccordionItem({ q, a }: { q: string; a: string }) {
 }
 
 export default function DashboardPage() {
-  const [selectedId, setSelectedId] = useState('prediction');
+  const [selectedId, setSelectedId] = useState('crypto');
   const selected = strategies.find(s => s.id === selectedId) ?? strategies[0];
   const SelectedIcon = selected.Icon;
 
@@ -148,10 +130,10 @@ export default function DashboardPage() {
 
         {/* Header */}
         <div className="mb-8">
-          <h2 className="text-base font-semibold text-text-primary font-mono uppercase tracking-widest">
-            SELECT STRATEGY
+          <h2 className="text-lg font-semibold text-text-primary font-mono mb-1">
+            Choose the category that interests you most
           </h2>
-          <p className="text-xs text-text-muted font-mono mt-1">7 strategies · 6 live agents · 9+ venues</p>
+          <p className="text-xs text-text-muted font-mono">5 strategies · live agents running 24/7 · select one to see current opportunities</p>
         </div>
 
         {/* Strategy cards — master */}
@@ -159,6 +141,41 @@ export default function DashboardPage() {
           {strategies.map((s) => {
             const CardIcon = s.Icon;
             const isSelected = s.id === selectedId;
+
+            if (s.comingSoon) {
+              return (
+                <div
+                  key={s.id}
+                  className="p-5 rounded border text-left w-full h-full border-border bg-bg-panel opacity-45 cursor-not-allowed"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="mt-0.5 shrink-0">
+                      <CardIcon className="w-5 h-5 text-accent" />
+                    </div>
+                    <div className="min-w-0 w-full">
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <h3 className="font-semibold text-text-primary text-sm">{s.name}</h3>
+                        <span className="font-mono text-[9px] uppercase tracking-[0.15em] text-text-muted border border-border px-1.5 py-0.5 shrink-0">
+                          COMING SOON
+                        </span>
+                      </div>
+                      <p className="text-xs text-text-secondary leading-relaxed">{s.summary}</p>
+                      <div className="flex flex-wrap gap-1 mt-3">
+                        {s.platforms.map(p => (
+                          <span
+                            key={p}
+                            className="text-xs px-1.5 py-0.5 rounded border border-border bg-bg-elevated font-mono uppercase tracking-wide text-text-secondary"
+                          >
+                            {p}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+
             return (
               <button
                 key={s.id}

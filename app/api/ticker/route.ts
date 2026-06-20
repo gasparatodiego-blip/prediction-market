@@ -5,21 +5,25 @@ export const dynamic = 'force-dynamic';
 
 const UNIFIED_FILE      = '/tmp/unified-opportunities.json';
 const EXCHANGE_FILE     = '/tmp/exchange-prices.json';
-const MM_FILE           = '/tmp/mm-analysis.json';
 const BASIS_FILE        = '/tmp/basis-opportunities.json';
 const LEADERBOARD_FILE  = '/tmp/leaderboard.json';
 const COPY_FILE         = '/tmp/copy-watcher.json';
 const SPORTS_FILE       = '/tmp/sports-odds.json';
 
 export interface TickerItem {
-  key:        string;
-  label:      string;
-  bestNetPct: number | null;
-  unit:       string;
-  status:     'live' | 'offline' | 'coming-soon' | 'no-opp';
-  count:      number;
-  href:       string;
-  note:       string;
+  key:         string;
+  label:       string;
+  bestNetPct:  number | null;
+  unit:        string;
+  status:      'live' | 'offline' | 'coming-soon' | 'no-opp';
+  count:       number;
+  href:        string;
+  note:        string;
+  // displayKind drives the de-emphasis badge in StrategyCards:
+  //   'net'        → confirmed net ROI (honest, no annualization)
+  //   'annualized' → annualized with locked resolution date (Cash & Carry)
+  //   'ceiling'    → theoretical ceiling, variable/not locked (Crypto & Funding)
+  displayKind?: 'net' | 'annualized' | 'ceiling';
 }
 
 export async function GET() {
@@ -51,18 +55,6 @@ export async function GET() {
     basisRunning  = age < 15 * 60_000;   // stale after 15 min (agent runs every 5)
     basisSummary  = b.summary ?? null;
     basisOpps     = b.opportunities ?? [];
-  } catch { /* file absent */ }
-
-  // ── Read MM Analyzer data ─────────────────────────────────────────────────
-  let mmRunning    = false;
-  let mmAgg:       any = null;
-  let mmMarkets:   number = 0;
-  try {
-    const mm  = JSON.parse(fs.readFileSync(MM_FILE, 'utf8'));
-    const age = Date.now() - new Date(mm.updatedAt ?? 0).getTime();
-    mmRunning  = age < 10 * 60_000;  // stale after 10 min
-    mmAgg      = mm.aggregate ?? null;
-    mmMarkets  = mm.markets?.length ?? 0;
   } catch { /* file absent */ }
 
   // ── Read Leaderboard data ─────────────────────────────────────────────────
@@ -118,9 +110,14 @@ export async function GET() {
     .filter(o => o.type === 'FUNDING' && typeof o.netROI === 'number')
     .sort((a: any, b: any) => b.netROI - a.netROI);
 
+  // Prediction: sort by netROI (not annualizedROI) to avoid short-dated amplification.
+  // A 7-day 7.91% position annualizes to 400%+ — never use annualizedROI as the hero number.
+  // ROI > SUSPICIOUS_ROI (15%) is quarantined by the dashboard; we apply the same guard here.
+  const LANDING_ANNUALIZED_CEILING = 15;  // matches dashboard's SUSPICIOUS_ROI quarantine
   const cashableOpps = opps
-    .filter(o => o.type === 'CASHABLE' && typeof o.annualizedROI === 'number')
-    .sort((a: any, b: any) => b.annualizedROI - a.annualizedROI);
+    .filter(o => o.type === 'CASHABLE' && typeof o.netROI === 'number' && o.netROI <= LANDING_ANNUALIZED_CEILING)
+    .sort((a: any, b: any) => b.netROI - a.netROI);
+  const bestCashable = cashableOpps[0] ?? null;
 
   // sportsOpps from unified file replaced by agent12 → /tmp/sports-odds.json (see above)
 
@@ -132,28 +129,37 @@ export async function GET() {
 
   const categories: TickerItem[] = [
     {
-      key:        'funding',
-      label:      'Crypto & Funding',
-      bestNetPct: fundingOpps[0]?.netROI ?? null,
-      unit:       '%/yr',
-      status:     fundingOpps.length > 0 ? 'live' : 'no-opp',
-      count:      fundingOpps.length,
-      href:       '/dashboard/funding-arb',
-      note:       'net after fees · variable rate',
+      key:         'funding',
+      label:       'Funding Arb',
+      // Show the best net-of-fees rate, but always flag it as a ceiling:
+      // this is the instantaneous annualized spread — not a locked, guaranteed return.
+      bestNetPct:  fundingOpps[0]?.netROI ?? null,
+      unit:        '%/yr',
+      status:      fundingOpps.length > 0 ? 'live' : 'no-opp',
+      count:       fundingOpps.length,
+      href:        '/dashboard/funding-arb',
+      note:        'net after fees · theoretical ceiling · variable, not locked',
+      displayKind: 'ceiling',
     },
     {
-      key:        'prediction',
-      label:      'Prediction Markets',
-      bestNetPct: cashableOpps[0]?.annualizedROI ?? null,
-      unit:       '%/yr',
-      status:     cashableOpps.length > 0 ? 'live' : 'no-opp',
-      count:      cashableOpps.length,
-      href:       '/dashboard/opportunities',
-      note:       'annualized · capital locked to resolution',
+      key:         'prediction',
+      label:       'Prediction Markets',
+      // Show confirmed net ROI — never annualize short-dated positions.
+      // annualizedROI for a 7-day 7.91% arb = 400%+; that is technically correct
+      // but misleading as a headline. The net ROI is what the trader actually earns.
+      bestNetPct:  bestCashable?.netROI ?? null,
+      unit:        '% net',
+      status:      cashableOpps.length > 0 ? 'live' : 'no-opp',
+      count:       cashableOpps.length,
+      href:        '/dashboard/prediction',
+      note:        bestCashable != null
+        ? `confirmed · ${bestCashable.daysToResolution ?? '?'}d to resolution · fees deducted`
+        : 'confirmed cashable · fees deducted',
+      displayKind: 'net',
     },
     {
       key:        'sports',
-      label:      'Sports Arbitrage',
+      label:      'Sports Arb',
       bestNetPct: sportsRunning && sportsBestMargin != null ? sportsBestMargin : null,
       unit:       '%',
       status:     !sportsRunning ? 'offline'
@@ -178,52 +184,21 @@ export async function GET() {
       note:       'spot price spread · execution risk',
     },
     {
-      // MM Analyzer tile: shows measured-only P&L (no rewards).
-      // Rewards are shown separately on the MM page, clearly labeled as assumption.
-      key:        'mm',
-      label:      'MM Analyzer',
-      bestNetPct: (() => {
-        if (!mmAgg || mmAgg.totalCycles < 10) return null;
-        // Express measured P&L as % of deployed notional (QUOTE_SIZE × markets)
-        const deployed = 50 * (mmMarkets || 1);
-        return deployed > 0 ? (mmAgg.measuredPnl / deployed) * 100 : null;
-      })(),
-      unit:       '% cumul.',
-      status:     !mmRunning ? 'offline'
-                : mmAgg && mmAgg.totalCycles >= 10 && mmAgg.measuredPnl > 0 ? 'live'
-                : 'no-opp',
-      count:      mmAgg?.totalCycles ?? 0,
-      href:       '/dashboard/mm',
-      note:       !mmRunning ? 'agent offline'
-                : !mmAgg || mmAgg.totalCycles < 10
-                  ? `measuring: ${mmAgg?.totalCycles ?? 0} cycles · need 10+`
-                  : `${mmAgg.totalCycles} cycles · cumulative since launch · not annualized`,
-    },
-    {
-      key:        'carry',
-      label:      'Cash & Carry',
-      bestNetPct: basisRunning && basisSummary?.bestNetAnnualized != null
+      key:         'carry',
+      label:       'Cash & Carry',
+      bestNetPct:  basisRunning && basisSummary?.bestNetAnnualized != null
         ? basisSummary.bestNetAnnualized * 100
         : null,
-      unit:       '%/yr locked',
-      status:     !basisRunning ? 'offline'
-                : basisOpps.length > 0 ? 'live'
-                : 'no-opp',
-      count:      basisSummary?.count ?? 0,
-      href:       '/dashboard/carry',
-      note:       basisRunning && basisSummary?.bestContract
+      unit:        '%/yr locked',
+      status:      !basisRunning ? 'offline'
+                 : basisOpps.length > 0 ? 'live'
+                 : 'no-opp',
+      count:       basisSummary?.count ?? 0,
+      href:        '/dashboard/carry',
+      note:        basisRunning && basisSummary?.bestContract
         ? `${basisSummary.bestContract} · ${basisSummary.bestExchange} · basis locked at entry`
         : basisRunning ? 'no qualifying contracts' : 'agent offline',
-    },
-    {
-      key:        'liquidity',
-      label:      'LP / Liquidity',
-      bestNetPct: null,
-      unit:       '',
-      status:     'coming-soon',
-      count:      0,
-      href:       '/dashboard',
-      note:       'engine in development',
+      displayKind: 'annualized',  // honest locked basis — no de-emphasis needed
     },
     {
       key:        'traders',

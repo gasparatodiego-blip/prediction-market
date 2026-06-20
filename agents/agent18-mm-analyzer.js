@@ -1,74 +1,61 @@
 #!/usr/bin/env node
-// agent18-mm-analyzer.js — Polymarket two-sided maker SIMULATOR (read-only, zero Claude)
+// agent18-mm-analyzer.js — Polymarket Liquidity Reward Eligibility Scanner (read-only)
 //
-// Models a passive YES quote on each eligible binary market. Infers fills from the
-// public trade stream (APPROXIMATE — no public maker/taker flag; queue position unknown).
-// Persists cycles to disk and back-fills resolutions via CLOB on startup.
+// Scans reward-eligible Polymarket CLOB markets and reports:
+//   • Whether the market qualifies for LP rewards (rewardsMaxSpread/rewardsMinSize set)
+//   • Competing book depth (CLOB snapshot — who you'd compete with)
+//   • Maker rebate per fill (what you earn each time a taker hits your order)
+//   • Adverse-selection risk (qualitative structural proxy)
 //
-// TWO P&L numbers in /tmp/mm-analysis.json:
-//   measuredPnl      = spread captures − adverse losses                    (verifiable)
-//   estimatedRewards = vol × takerFee × price-factor × rebate × our-share  (derived from public data)
-//                      our-share = our-size / (our-size + CLOB book depth in reward band)
+// What it does NOT claim:
+//   • LP Rewards daily rate — rewards.rates is NULL in CLOB API for all markets.
+//     Polymarket does not publish the actual LP Reward program amounts in any public API.
+//   • Daily yield estimate — fill rate depends on queue position & price level,
+//     unknowable without live order placement.
 //
-// Reward pool formula replaces the old flat 0.25%/day assumption.
-// All inputs (vol24, feeSchedule.rate, feeSchedule.rebateRate, book depth) are public.
-// Competition depth is a snapshot — label it ESTIMATE in UI.
+// Replaces agent18-liquidity-rewards v1 which used pool formula (vol × fee × rebate)
+// to fabricate daily yield estimates — that formula computed maker fee rebates, not LP
+// Reward amounts, and produced inflated yields (46-128%/day) due to empty-book markets.
+//
+// NO order placement. NO Claude API calls. NO synthetic fill simulation.
+// OUTPUT: /tmp/mm-analysis.json
 'use strict';
 
 const fs    = require('fs');
 const https = require('https');
 
-// ── CONFIG ─────────────────────────────────────────────────────────────────────
+// ── Config ────────────────────────────────────────────────────────────────────
+const SCAN_INTERVAL_MS = 15 * 60_000;
+const STARTUP_DELAY_MS = 10_000;
+const MAX_RPS          = 0.8;
+const SAMPLE_CAPITAL   = 200;
+const MAX_MARKETS      = 30;
+const OUTPUT_FILE      = '/tmp/mm-analysis.json';
 
-const DISCOVERY_MS    = 15 * 60_000;  // re-scan Gamma every 15 min
-const FILL_CHECK_MS   = 3  * 60_000;  // check fills every 3 min
-const STARTUP_DELAY   = 12_000;
-const MAX_RPS         = 1.0;          // ≤1 req/sec
-const QUOTE_SIZE      = 50;           // USDC per simulated order (floor)
-const FILL_WINDOW_MS  = 30 * 60_000;  // 30-min window to pair bid+ask → perfect cycle
-const CUT_LOSS_PP     = 0.05;         // 5pp adverse move → cut simulated position
-const MAX_REWARD_MKTS = 15;           // reward-program markets (any mid, any vol, just rms>0)
-const MAX_BALANCED    = 10;           // golden-rule markets (mid 0.30–0.70, ≥$100/d, ≥14d)
-
-// Golden-rule eligibility (for the BALANCED tier only)
-const MIN_VOL24 = 100;
-const MIN_DAYS  = 14;
-const MID_LOW   = 0.30;
-const MID_HIGH  = 0.70;
-
-// ── REWARD POOL NOTE ──────────────────────────────────────────────────────────
-// The daily reward pool is DERIVED from public Gamma data — NOT from a dedicated
-// rewards endpoint (none exists). Formula:
-//   pool = vol24hr × feeSchedule.rate × 2 × min(mid, 1−mid) × feeSchedule.rebateRate
-// This equals the USDC that Polymarket redistributes daily to qualifying makers as
-// fee rebates. The 2 × min(mid, 1−mid) factor accounts for the price-scaled fee.
-// Our share of the pool = our-quote-size / (our-size + competing-depth-in-reward-band).
-// Competing depth is a CLOB book snapshot — it changes continuously.
-const REWARD_POOL_NOTE =
-  'Daily pool = vol24hr × rate × 2 × min(mid, 1−mid) × rebateRate. ' +
-  'All inputs from public Gamma feeSchedule. ' +
-  'Competing depth from CLOB book snapshot (changes continuously — estimate only). ' +
-  'Our share = $50 / ($50 + competingDepth). ' +
-  'umaReward in Gamma is a fixed UMA-bond field (always $5) — NOT the daily pool.';
+const NOTE = [
+  'LP Reward daily rate: rewards.rates is NULL in the Polymarket CLOB API for all markets.',
+  'Polymarket does not publish the actual LP Reward program amounts in any public API endpoint.',
+  'makerRebatePerFill = sampleCapital × takerFeeRate × rebateRate — this is the USDC rebate',
+  'you receive each time a taker fills your entire position. It is fill-dependent; you only',
+  'earn it when a taker crosses your quote. Daily fill frequency is unknowable without live trading.',
+  'competingDepth = USDC resting in the CLOB reward band (snapshot, changes continuously).',
+  'Markets are sorted by competingDepth ASC: low depth = less competition = higher fill probability.',
+  'Adverse risk: HIGH near resolution (informed flow); LOW for negRisk correlated outcomes; MED otherwise.',
+].join(' ');
 
 const DISCLAIMER =
-  'Fill simulation is APPROXIMATE — no public maker/taker flag in Polymarket data-api. ' +
-  'Fills inferred from price-crossing; queue position unknown. ' +
-  'measuredPnl = captured spread − adverse losses, NO rewards. ' +
-  'estimatedRewards = real pool formula × estimated share (competition snapshot).';
+  'Data from public Gamma + CLOB APIs. LP Reward rate not available in any public API. ' +
+  'Maker rebate is real but fill-dependent — you earn it only when a taker fills your order. ' +
+  'Daily yield is NOT estimable without fill-rate data from live trading. ' +
+  'Read-only. No orders placed. Not financial advice.';
 
-// ── File paths ─────────────────────────────────────────────────────────────────
-const LOG_FILE    = '/tmp/mm-log.json';
-const STATE_FILE  = '/tmp/mm-state.json';
-const OUTPUT_FILE = '/tmp/mm-analysis.json';
-
-// ── Rate-limited HTTP queue (serial, ≤1 req/sec) ──────────────────────────────
+// ── Rate-limited HTTP queue ───────────────────────────────────────────────────
 const _q = [];
 let _running = false;
 
-function httpGet(url, timeoutMs = 12_000) {
-  return new Promise((resolve, reject) => {
-    _q.push({ url, timeoutMs, resolve, reject });
+function httpGet(url, timeoutMs = 15_000) {
+  return new Promise((res, rej) => {
+    _q.push({ url, timeoutMs, res, rej });
     _drain();
   });
 }
@@ -76,634 +63,301 @@ function httpGet(url, timeoutMs = 12_000) {
 async function _drain() {
   if (_running) return;
   _running = true;
-  while (_q.length > 0) {
-    const { url, timeoutMs, resolve, reject } = _q.shift();
+  while (_q.length) {
+    const { url, timeoutMs, res, rej } = _q.shift();
     const t0 = Date.now();
-    try   { resolve(await _rawGet(url, timeoutMs)); }
-    catch (e) { reject(e); }
+    try   { res(await _rawGet(url, timeoutMs)); }
+    catch (e) { rej(e); }
     const gap = Math.ceil(1000 / MAX_RPS) - (Date.now() - t0);
     if (gap > 0) await sleep(gap);
   }
   _running = false;
-  if (_q.length > 0) _drain();
 }
 
 function _rawGet(url, ms) {
-  return new Promise((resolve, reject) => {
-    const req = https.get(url, { timeout: ms }, res => {
+  return new Promise((res, rej) => {
+    const req = https.get(url, { timeout: ms }, r => {
       const chunks = [];
-      res.on('data', c => chunks.push(c));
-      res.on('end', () => {
+      r.on('data', c => chunks.push(c));
+      r.on('end', () => {
         const body = Buffer.concat(chunks).toString();
-        try   { resolve({ status: res.statusCode, data: JSON.parse(body) }); }
-        catch (e) { reject(new Error(`JSON(${res.statusCode}): ${body.slice(0, 80)}`)); }
+        try   { res({ status: r.statusCode, data: JSON.parse(body) }); }
+        catch (e) { rej(new Error(`JSON(${r.statusCode}): ${body.slice(0, 80)}`)); }
       });
     });
-    req.on('error', reject);
-    req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
+    req.on('error', rej);
+    req.on('timeout', () => { req.destroy(); rej(new Error('timeout')); });
   });
 }
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-// ── Atomic write ───────────────────────────────────────────────────────────────
 function atomicWrite(path, obj) {
   const tmp = path + '.tmp.' + process.pid;
   fs.writeFileSync(tmp, JSON.stringify(obj, null, 2));
   fs.renameSync(tmp, path);
 }
 
-// ── In-memory state ───────────────────────────────────────────────────────────
-const markets = new Map();
-let   cycles  = [];
-
-// ── Persistence ───────────────────────────────────────────────────────────────
-
-function loadPersisted() {
-  try {
-    const log = JSON.parse(fs.readFileSync(LOG_FILE, 'utf8'));
-    cycles = Array.isArray(log.cycles) ? log.cycles : [];
-    console.log(`[init] loaded ${cycles.length} cycles from log`);
-  } catch { cycles = []; }
-
-  try {
-    const st = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
-    const nowSec = Math.floor(Date.now() / 1000);
-    for (const [cid, m] of Object.entries(st.markets ?? {})) {
-      // Advance any market with lastTradeTs=0 so we don't replay historical trades as our fills.
-      if (!m.lastTradeTs) m.lastTradeTs = nowSec;
-      markets.set(cid, m);
+// ── Fetch all reward-eligible markets from Gamma ──────────────────────────────
+async function fetchRewardMarkets() {
+  const markets = [];
+  for (let offset = 0; offset < 800; offset += 100) {
+    let res;
+    try {
+      res = await httpGet(
+        `https://gamma-api.polymarket.com/markets?active=true&closed=false&limit=100&offset=${offset}`
+      );
+    } catch (e) {
+      console.warn(`[gamma] offset=${offset}: ${e.message}`);
+      break;
     }
-    console.log(`[init] loaded ${markets.size} market states`);
-  } catch {}
-}
+    if (res.status !== 200 || !Array.isArray(res.data)) break;
 
-function savePersisted() {
-  atomicWrite(LOG_FILE, { savedAt: new Date().toISOString(), cycles });
-  const mkObj = {};
-  for (const [cid, m] of markets) mkObj[cid] = m;
-  atomicWrite(STATE_FILE, { savedAt: new Date().toISOString(), markets: mkObj });
-}
+    for (const m of res.data) {
+      if (!m.acceptingOrders || m.closed || !m.active) continue;
 
-// ── Cycle helpers ─────────────────────────────────────────────────────────────
+      const rms = parseFloat(m.rewardsMaxSpread ?? 0);
+      const rmn = parseFloat(m.rewardsMinSize   ?? 0);
+      if (rms <= 0 || rmn <= 0) continue;  // not in reward program
 
-function openCycle(market, direction, entryPrice, entryTs) {
-  const id = `${market.cid}_${entryTs}`;
-  const cycle = {
-    id,
-    cid:          market.cid,
-    title:        market.title,
-    rewardTag:    market.rewardTag,
-    direction,
-    quoteBid:     market.quoteBid,
-    quoteAsk:     market.quoteAsk,
-    quoteSize:    QUOTE_SIZE,
-    entryTs,
-    entryPrice,
-    entryShares:  QUOTE_SIZE / Math.max(entryPrice, 0.05),  // cap at 1 000 shares; penny markets distort P&L
-    exitTs:       null,
-    exitPrice:    null,
-    exitReason:   null,
-    type:         'open',
-    measuredPnl:  null,
-    winner:       null,
-    resolutionTs: null,
-  };
-  cycles.push(cycle);
-  return cycle;
-}
+      let tids = [];
+      try { tids = JSON.parse(m.clobTokenIds || '[]'); } catch {}
+      if (!tids[0]) continue;
 
-function closeCycle(cycleId, type, exitPrice, exitTs, exitReason) {
-  const cycle = cycles.find(c => c.id === cycleId);
-  if (!cycle || cycle.type !== 'open') return;
-  cycle.exitTs     = exitTs;
-  cycle.exitPrice  = exitPrice;
-  cycle.exitReason = exitReason;
-  cycle.type       = type;
+      let bid = parseFloat(m.bestBid ?? 0);
+      let ask = parseFloat(m.bestAsk ?? 0);
+      if (bid <= 0 || ask <= 0) {
+        try {
+          const px = JSON.parse(m.outcomePrices || '["0.5","0.5"]');
+          const p  = parseFloat(px[0]);
+          bid = Math.max(0.001, p - 0.001);
+          ask = Math.min(0.999, p + 0.001);
+        } catch {}
+      }
+      if (bid <= 0 || ask <= 0 || ask <= bid) continue;
+      const mid = (bid + ask) / 2;
 
-  if (type === 'perfect') {
-    cycle.measuredPnl = (cycle.quoteAsk - cycle.quoteBid) * cycle.entryShares;
-  } else {
-    cycle.measuredPnl = cycle.direction === 'long'
-      ? (exitPrice - cycle.entryPrice) * cycle.entryShares
-      : (cycle.entryPrice - exitPrice) * cycle.entryShares;
+      let takerFeeRate = m.negRisk ? 0.03 : 0.05;
+      let rebateRate   = 0.25;
+      try {
+        const fs2 = typeof m.feeSchedule === 'string'
+          ? JSON.parse(m.feeSchedule)
+          : (m.feeSchedule || {});
+        if (fs2.rate)       takerFeeRate = parseFloat(fs2.rate);
+        if (fs2.rebateRate) rebateRate   = parseFloat(fs2.rebateRate);
+      } catch {}
+
+      const vol24    = parseFloat(m.volume24hr ?? m.volumeNum ?? 0);
+      const end      = m.endDate ? new Date(m.endDate).getTime() : 0;
+      const daysLeft = end > 0 ? Math.max(0, (end - Date.now()) / 86_400_000) : 0;
+
+      markets.push({
+        cid:          m.conditionId,
+        title:        m.question ?? m.slug ?? m.conditionId.slice(0, 12),
+        slug:         m.slug ?? '',
+        yesTokenId:   tids[0],
+        negRisk:      !!m.negRisk,
+        bid, ask, mid,
+        spread:       ask - bid,
+        vol24,
+        daysLeft,
+        rewardsMaxSpread: rms,
+        rewardsMinSize:   rmn,
+        takerFeeRate,
+        rebateRate,
+      });
+    }
+
+    if (res.data.length < 100) break;
   }
-  return cycle;
+
+  console.log(`[gamma] found ${markets.length} reward-eligible markets`);
+  return markets;
 }
 
-function resolveOpenCycle(cycleId, winner, resolutionTs) {
-  const cycle = cycles.find(c => c.id === cycleId);
-  if (!cycle || cycle.type !== 'open') return;
-  cycle.winner       = winner;
-  cycle.resolutionTs = resolutionTs;
-  cycle.type         = 'resolved';
-  cycle.exitTs       = resolutionTs;
-  cycle.exitReason   = `resolved: ${winner} won`;
-  const yesWon = winner === cycle.yesOutcome || winner === 'Yes';
-  const payoff = yesWon ? 1.0 : 0.0;
-  cycle.exitPrice   = cycle.direction === 'long' ? payoff : (1 - payoff);
-  cycle.measuredPnl = cycle.direction === 'long'
-    ? (payoff - cycle.entryPrice) * cycle.entryShares
-    : (cycle.entryPrice - payoff) * cycle.entryShares;
-}
-
-// ── Competition depth (CLOB book) ─────────────────────────────────────────────
-// Sums the USDC value of resting orders within the reward band [mid ± rms/100].
-// This is a snapshot — competition changes continuously. Labeled as ESTIMATE.
-
+// ── Fetch CLOB book depth within the reward band ──────────────────────────────
 async function fetchCompetingDepth(market) {
-  const rms = market.rms;
-  if (!rms || rms <= 0 || !market.yesTokenId) return 0;
-
   try {
-    const res = await httpGet(`https://clob.polymarket.com/book?token_id=${market.yesTokenId}`);
-    if (res.status !== 200 || !res.data) return 0;
+    const res = await httpGet(
+      `https://clob.polymarket.com/book?token_id=${market.yesTokenId}`
+    );
+    if (res.status !== 200 || !res.data) return null;
 
-    const bids = (res.data.bids || []).map(b => ({
-      price: parseFloat(b.price), size: parseFloat(b.size),
-    }));
-    const asks = (res.data.asks || []).map(a => ({
-      price: parseFloat(a.price), size: parseFloat(a.size),
-    }));
+    const mid      = market.mid;
+    const bandHalf = market.rewardsMaxSpread / 100;
+    const lo       = mid - bandHalf;
+    const hi       = mid + bandHalf;
 
-    const mid = market.mid;
-    const lo  = mid - rms / 100;  // lower bound of reward band
-    const hi  = mid + rms / 100;  // upper bound
+    const bidDepth = (res.data.bids || [])
+      .filter(b => parseFloat(b.price) >= lo)
+      .reduce((s, b) => s + parseFloat(b.size) * parseFloat(b.price), 0);
 
-    // Qualifying bids: resting buy orders within the band (price ≥ lo and ≤ mid)
-    const bidDepth = bids
-      .filter(b => b.price >= lo)
-      .reduce((s, b) => s + b.size * b.price, 0);
-
-    // Qualifying asks: resting sell orders within the band (price ≤ hi and ≥ mid)
-    const askDepth = asks
-      .filter(a => a.price <= hi)
-      .reduce((s, a) => s + a.size * a.price, 0);
+    const askDepth = (res.data.asks || [])
+      .filter(a => parseFloat(a.price) <= hi)
+      .reduce((s, a) => s + parseFloat(a.size) * parseFloat(a.price), 0);
 
     return Math.round((bidDepth + askDepth) * 100) / 100;
   } catch (e) {
     console.warn(`[depth] ${market.cid.slice(0, 8)}: ${e.message}`);
-    return 0;
+    return null;
   }
 }
 
-// ── Market discovery (Gamma) ───────────────────────────────────────────────────
+// ── Adverse-selection risk scoring ────────────────────────────────────────────
+function scoreAdverseRisk(m) {
+  const mid = m.mid;
 
-async function discoverMarkets() {
-  console.log('[discover] scanning Gamma…');
-  const now            = Date.now();
-  const rewardEligible = [];
-  const balancedEligible = [];
+  if (mid < 0.03 || mid > 0.97) {
+    return {
+      level: 'HIGH',
+      note: 'Near resolution — informed traders likely know outcome. Fills are probably adverse.',
+    };
+  }
+  if (mid < 0.05 || mid > 0.95) {
+    return {
+      level: 'MED-HIGH',
+      note: 'Close to resolution — elevated risk of informed fills.',
+    };
+  }
+  if (m.negRisk && mid >= 0.05 && mid <= 0.90) {
+    return {
+      level: 'LOW',
+      note: 'negRisk — correlated outcomes, slow drift, low jump risk.',
+    };
+  }
+  if (mid >= 0.30 && mid <= 0.70) {
+    return {
+      level: 'MED',
+      note: 'Balanced binary — news-driven jumps possible.',
+    };
+  }
+  return {
+    level: 'MED',
+    note: 'Directional — monitor for resolution triggers.',
+  };
+}
 
+// ── Main scan ─────────────────────────────────────────────────────────────────
+async function scan() {
+  console.log('[scan] starting Gamma scan…');
+
+  let allMarkets;
   try {
-    for (let offset = 0; offset < 400; offset += 100) {
-      const url = `https://gamma-api.polymarket.com/markets?active=true&closed=false&limit=100&offset=${offset}`;
-      const res = await httpGet(url);
-      if (res.status !== 200 || !Array.isArray(res.data)) break;
-
-      for (const m of res.data) {
-        if (!m.acceptingOrders || m.closed || !m.active) continue;
-
-        let tids = [];
-        try { tids = JSON.parse(m.clobTokenIds || '[]'); } catch {}
-        if (tids.length < 2) continue;
-
-        let outcomeNames = ['Yes', 'No'];
-        try {
-          const raw = JSON.parse(m.outcomes || '["Yes","No"]');
-          if (Array.isArray(raw) && raw.length >= 2) outcomeNames = raw;
-        } catch {}
-
-        const bid  = parseFloat(m.bestBid ?? 0);
-        const ask  = parseFloat(m.bestAsk ?? 0);
-        const mid  = bid > 0 && ask > 0 ? (bid + ask) / 2 : 0;
-        const vol  = parseFloat(m.volume24hr ?? m.volumeNum ?? 0);
-        const end  = m.endDate ? new Date(m.endDate).getTime() : 0;
-        const days = end > 0 ? (end - now) / 86_400_000 : 0;
-
-        if (bid <= 0 || ask <= 0 || mid <= 0) continue;
-
-        const spread = ask - bid;
-        const rms    = parseFloat(m.rewardsMaxSpread ?? 0);
-        const rmn    = parseFloat(m.rewardsMinSize   ?? 0);
-
-        // Parse fee schedule (comes as JSON string from Gamma)
-        let fs = {};
-        try { fs = typeof m.feeSchedule === 'string' ? JSON.parse(m.feeSchedule) : (m.feeSchedule ?? {}); } catch {}
-        const takerFeeRate = parseFloat(fs.rate ?? 0.05);
-        const rebateRate   = parseFloat(fs.rebateRate ?? 0.25);
-
-        const base = {
-          cid: m.conditionId,
-          title: m.question ?? m.slug ?? m.conditionId.slice(0, 12),
-          slug: m.slug ?? '',
-          yesTokenId: tids[0],
-          noTokenId:  tids[1] ?? '',
-          yesOutcome: outcomeNames[0],
-          negRisk:    !!m.negRisk,
-          quoteBid: bid, quoteAsk: ask, mid, spread,
-          vol24: vol, days, rms, rmn, takerFeeRate, rebateRate,
-        };
-
-        // REWARD tier: any market in the LP reward program (rewardsMinSize > 0)
-        if (rms > 0 && rmn > 0) {
-          rewardEligible.push({ ...base, rewardTag: 'reward' });
-        }
-        // BALANCED tier: golden-rule long-dated balanced markets (no reward program)
-        else if (mid >= MID_LOW && mid <= MID_HIGH && vol >= MIN_VOL24 && days >= MIN_DAYS) {
-          balancedEligible.push({ ...base, rewardTag: 'balanced' });
-        }
-      }
-
-      if (res.data.length < 100) break;
-    }
+    allMarkets = await fetchRewardMarkets();
   } catch (e) {
-    console.error('[discover] error:', e.message);
+    console.error('[scan] Gamma fetch failed:', e.message);
     return;
   }
 
-  rewardEligible.sort((a, b) => b.vol24 - a.vol24);
-  balancedEligible.sort((a, b) => b.vol24 - a.vol24);
-
-  const topReward   = rewardEligible.slice(0, MAX_REWARD_MKTS);
-  const topBalanced = balancedEligible
-    .filter(m => !topReward.some(r => r.cid === m.cid))
-    .slice(0, MAX_BALANCED);
-
-  const top    = [...topReward, ...topBalanced];
-  const newCids = new Set(top.map(m => m.cid));
-
-  for (const m of top) {
-    const existing = markets.get(m.cid);
-    if (existing) {
-      Object.assign(existing, {
-        quoteBid: m.quoteBid, quoteAsk: m.quoteAsk, mid: m.mid,
-        spread: m.spread, vol24: m.vol24, days: m.days,
-        rms: m.rms, rmn: m.rmn, rewardTag: m.rewardTag,
-        takerFeeRate: m.takerFeeRate, rebateRate: m.rebateRate,
-      });
-    } else {
-      markets.set(m.cid, {
-        ...m,
-        lastTradeTs:      Math.floor(now / 1000),  // only count trades from discovery onward
-        lastRefreshTs:    now,
-        position:         null,
-        resolved:         false,
-        competingDepth:   null,
-        competingDepthAt: 0,
-        stats: {
-          totalCycles: 0, perfectCycles: 0, adverseCycles: 0,
-          resolvedCycles: 0, measuredPnlTotal: 0, quotedSeconds: 0,
-        },
-      });
-      console.log(`[discover] +${m.rewardTag} ${m.title.slice(0, 55)} mid=${m.mid.toFixed(3)}`);
-    }
-  }
-
-  for (const [cid, m] of markets) {
-    if (!newCids.has(cid) && !m.resolved && !m.position) {
-      markets.delete(cid);
-    }
-  }
-
-  // Fetch competition depth for all reward markets (1 CLOB book req each)
-  for (const m of [...markets.values()].filter(m => m.rewardTag === 'reward')) {
-    m.competingDepth   = await fetchCompetingDepth(m);
-    m.competingDepthAt = Date.now();
-  }
-
-  const rN = [...markets.values()].filter(m => m.rewardTag === 'reward').length;
-  const bN = [...markets.values()].filter(m => m.rewardTag === 'balanced').length;
-  console.log(`[discover] ${rN} reward + ${bN} balanced = ${markets.size} total`);
-}
-
-// ── Quote refresh (CLOB /price per market) ────────────────────────────────────
-
-async function refreshQuote(market) {
-  try {
-    const [bidRes, askRes] = await Promise.all([
-      httpGet(`https://clob.polymarket.com/price?token_id=${market.yesTokenId}&side=buy`),
-      httpGet(`https://clob.polymarket.com/price?token_id=${market.yesTokenId}&side=sell`),
-    ]);
-    const bid = parseFloat(bidRes.data?.price ?? bidRes.data ?? market.quoteBid);
-    const ask = parseFloat(askRes.data?.price ?? askRes.data ?? market.quoteAsk);
-    if (bid > 0 && ask > 0 && ask > bid) {
-      market.quoteBid = bid;
-      market.quoteAsk = ask;
-      market.mid      = (bid + ask) / 2;
-      market.spread   = ask - bid;
-    }
-  } catch (e) {
-    console.warn(`[quote] ${market.cid.slice(0, 8)}: ${e.message}`);
-  }
-}
-
-// ── Fill check (data-api activity) ────────────────────────────────────────────
-
-async function checkFills(market) {
-  // Fill inference and spread model are unreliable at extreme prices: near-zero markets
-  // have rounding-noise spreads and 50k+ implied share counts that distort P&L.
-  if (market.mid < 0.03 || market.mid > 0.97) return;
-
-  let trades;
-  try {
-    const res = await httpGet(`https://data-api.polymarket.com/trades?market=${market.cid}&limit=100`);
-    if (res.status !== 200 || !Array.isArray(res.data)) return;
-    trades = res.data;
-  } catch (e) {
-    console.warn(`[fills] ${market.cid.slice(0, 8)}: ${e.message}`);
+  if (allMarkets.length === 0) {
+    console.warn('[scan] no reward markets found — skipping write');
     return;
   }
 
-  const newTrades = trades.length === 0 ? [] : trades
-    .filter(t => (t.timestamp ?? 0) > market.lastTradeTs)
-    .sort((a, b) => a.timestamp - b.timestamp);
+  // Pick top MAX_MARKETS by vol24 (highest volume = most likely to earn rebates when filled)
+  allMarkets.sort((a, b) => b.vol24 - a.vol24);
+  const candidates = allMarkets.slice(0, MAX_MARKETS);
 
-  if (newTrades.length === 0) {
-    if (market.position) {
-      const age = Date.now() - market.position.entryTs;
-      if (age > FILL_WINDOW_MS) {
-        const pos = market.position;
-        const unwindPrice = pos.direction === 'long' ? market.quoteBid : market.quoteAsk;
-        closeCycle(pos.cycleId, 'adverse', unwindPrice, Date.now(), 'fill-window-timeout');
-        updateStats(market, 'adverse');
-        market.position = null;
-      }
-    }
-    return;
+  const results = [];
+  for (const m of candidates) {
+    const competingDepth = await fetchCompetingDepth(m);
+
+    // Maker rebate per fill: the USDC you receive each time a taker fills your
+    // entire sampleCapital position. Real number from published feeSchedule.
+    // NOT a daily yield — fill frequency is unknowable without live trading.
+    const capital          = Math.max(SAMPLE_CAPITAL, m.rewardsMinSize);
+    const makerRebatePerFill = round2(capital * m.takerFeeRate * m.rebateRate);
+
+    const risk = scoreAdverseRisk(m);
+
+    const entry = {
+      cid:              m.cid,
+      title:            m.title,
+      slug:             m.slug,
+      negRisk:          m.negRisk,
+      mid:              round4(m.mid),
+      bid:              round4(m.bid),
+      ask:              round4(m.ask),
+      spread:           round4(m.spread),
+      vol24:            Math.round(m.vol24),
+      daysLeft:         Math.round(m.daysLeft * 10) / 10,
+      rewardsMaxSpread: m.rewardsMaxSpread,
+      rewardsMinSize:   m.rewardsMinSize,
+      takerFeeRate:     m.takerFeeRate,
+      rebateRate:       m.rebateRate,
+      sampleCapital:    capital,
+      // LP reward rate: NOT published in any public API
+      lpRewardRateAvailable: false,
+      // Maker rebate per fill: real, from feeSchedule, but fill-dependent
+      makerRebatePerFill,
+      // Competing depth: who you'd share fills with
+      competingDepth:   competingDepth !== null ? Math.round(competingDepth) : null,
+      adverseRiskLevel: risk.level,
+      adverseRiskNote:  risk.note,
+    };
+
+    results.push(entry);
+    console.log(
+      `[market] ${m.title.slice(0, 40)} | vol24=$${(m.vol24/1000).toFixed(0)}k` +
+      ` | depth=$${competingDepth !== null ? Math.round(competingDepth) : '?'}` +
+      ` | rebate/fill=$${makerRebatePerFill}` +
+      ` | risk=${risk.level}`
+    );
   }
 
-  market.lastTradeTs = Math.max(...newTrades.map(t => t.timestamp));
-
-  const now = Date.now();
-  for (const trade of newTrades) {
-    const price   = parseFloat(trade.price ?? 0);
-    const side    = trade.side;
-    const outcome = trade.outcome ?? '';
-    const ts      = (trade.timestamp ?? 0) * 1000;
-
-    if (outcome !== market.yesOutcome) continue;
-    if (price <= 0) continue;
-
-    const B = market.quoteBid;
-    const A = market.quoteAsk;
-
-    // Fill inference (APPROXIMATE): price-crossing rule, queue position unknown.
-    const crossesBid = side === 'SELL' && price <= B;
-    const crossesAsk = side === 'BUY'  && price >= A;
-    if (!crossesBid && !crossesAsk) continue;
-
-    if (!market.position) {
-      if (crossesBid) {
-        const cycle = openCycle(market, 'long', B, ts);
-        market.position = { direction: 'long', entryTs: ts, entryPrice: B, cycleId: cycle.id };
-        console.log(`[fill] LONG  ${market.cid.slice(0, 8)} @${B.toFixed(3)}`);
-      } else if (crossesAsk) {
-        const cycle = openCycle(market, 'short', A, ts);
-        market.position = { direction: 'short', entryTs: ts, entryPrice: A, cycleId: cycle.id };
-        console.log(`[fill] SHORT ${market.cid.slice(0, 8)} @${A.toFixed(3)}`);
-      }
-    } else {
-      const pos = market.position;
-      if (ts - pos.entryTs > FILL_WINDOW_MS) {
-        const unwindPrice = pos.direction === 'long' ? market.quoteBid : market.quoteAsk;
-        closeCycle(pos.cycleId, 'adverse', unwindPrice, ts, 'fill-window-timeout');
-        updateStats(market, 'adverse');
-        market.position = null;
-        continue;
-      }
-
-      if (pos.direction === 'long') {
-        if (crossesAsk) {
-          closeCycle(pos.cycleId, 'perfect', A, ts, 'ask-fill');
-          updateStats(market, 'perfect');
-          market.position = null;
-          const c = cycles.find(c => c.id === pos.cycleId);
-          console.log(`[fill] PERFECT ${market.cid.slice(0, 8)} pnl=${c?.measuredPnl?.toFixed(3)}`);
-        } else if (price <= pos.entryPrice - CUT_LOSS_PP) {
-          closeCycle(pos.cycleId, 'adverse', price, ts, `cut-loss @${price.toFixed(3)}`);
-          updateStats(market, 'adverse');
-          market.position = null;
-        }
-      } else {
-        if (crossesBid) {
-          closeCycle(pos.cycleId, 'perfect', B, ts, 'bid-fill');
-          updateStats(market, 'perfect');
-          market.position = null;
-          const c = cycles.find(c => c.id === pos.cycleId);
-          console.log(`[fill] PERFECT ${market.cid.slice(0, 8)} pnl=${c?.measuredPnl?.toFixed(3)}`);
-        } else if (price >= pos.entryPrice + CUT_LOSS_PP) {
-          closeCycle(pos.cycleId, 'adverse', price, ts, `cut-loss @${price.toFixed(3)}`);
-          updateStats(market, 'adverse');
-          market.position = null;
-        }
-      }
-    }
-  }
-
-  if (market.position) {
-    const age = now - market.position.entryTs;
-    if (age > FILL_WINDOW_MS) {
-      const pos = market.position;
-      const unwindPrice = pos.direction === 'long' ? market.quoteBid : market.quoteAsk;
-      closeCycle(pos.cycleId, 'adverse', unwindPrice, now, 'fill-window-timeout');
-      updateStats(market, 'adverse');
-      market.position = null;
-    }
-  }
-}
-
-function updateStats(market, type) {
-  const cycle = cycles.find(c => c.id === market.position?.cycleId);
-  market.stats.totalCycles++;
-  const pnl = cycle?.measuredPnl ?? 0;
-  if      (type === 'perfect')  { market.stats.perfectCycles++;  market.stats.measuredPnlTotal += pnl; }
-  else if (type === 'adverse')  { market.stats.adverseCycles++;  market.stats.measuredPnlTotal += pnl; }
-  else if (type === 'resolved') { market.stats.resolvedCycles++; market.stats.measuredPnlTotal += pnl; }
-}
-
-// ── Back-fill resolutions (CLOB tokens[].winner) ──────────────────────────────
-
-async function backFillResolutions() {
-  const openCycles = cycles.filter(c => c.type === 'open');
-  if (openCycles.length === 0) return;
-
-  console.log(`[backfill] checking ${openCycles.length} open cycles…`);
-  const checked = new Set();
-
-  for (const cycle of openCycles) {
-    if (checked.has(cycle.cid)) continue;
-    checked.add(cycle.cid);
-    try {
-      const res = await httpGet(`https://clob.polymarket.com/markets/${cycle.cid}`);
-      if (res.status !== 200) continue;
-      const tokens = res.data?.tokens ?? [];
-      const winner = tokens.find(t => t.winner)?.outcome ?? null;
-      if (winner) {
-        const resTs = Date.now();
-        for (const c of cycles.filter(x => x.cid === cycle.cid && x.type === 'open')) {
-          resolveOpenCycle(c.id, winner, resTs);
-          const m = markets.get(c.cid);
-          if (m) { m.position = null; m.resolved = true; updateStats(m, 'resolved'); }
-        }
-        console.log(`[backfill] ${cycle.cid.slice(0, 8)} resolved → ${winner}`);
-      }
-    } catch (e) {
-      console.warn(`[backfill] ${cycle.cid.slice(0, 8)}: ${e.message}`);
-    }
-  }
-}
-
-// ── Write output ───────────────────────────────────────────────────────────────
-
-function writeOutput() {
-  const now = Date.now();
-
-  // Cycle aggregates
-  let totalCycles=0, perfectCycles=0, adverseCycles=0, resolvedCycles=0, openCycles=0, measuredPnl=0;
-  for (const c of cycles) {
-    if      (c.type === 'open')     { openCycles++; }
-    else if (c.type === 'perfect')  { perfectCycles++;  totalCycles++; measuredPnl += c.measuredPnl ?? 0; }
-    else if (c.type === 'adverse')  { adverseCycles++;  totalCycles++; measuredPnl += c.measuredPnl ?? 0; }
-    else if (c.type === 'resolved') { resolvedCycles++; totalCycles++; measuredPnl += c.measuredPnl ?? 0; }
-  }
-
-  // Per-market reward computation and summaries
-  let totalQuotedHours = 0;
-  let aggEstPerDay     = 0;   // $/day at current competition snapshot
-  let aggEstCum        = 0;   // accumulated since agent start
-
-  const marketSummaries = [];
-  for (const m of markets.values()) {
-    const hours = m.stats.quotedSeconds / 3600;
-    totalQuotedHours += hours;
-
-    let dailyPool = null, ourShare = null, estPerDay = null, estCum = null;
-
-    if (m.rewardTag === 'reward') {
-      // Pool = vol24 × takerRate × priceFactor × rebateRate
-      // priceFactor = 2 × min(mid, 1-mid) peaks at 1.0 when mid=0.5, lower for extreme prices
-      const priceFactor = 2 * Math.min(m.mid, 1 - m.mid);
-      dailyPool  = m.vol24 * m.takerFeeRate * priceFactor * m.rebateRate;
-      const quoteSize = Math.max(QUOTE_SIZE, m.rmn);  // meet reward minimum
-      const competing = m.competingDepth ?? 0;
-      ourShare   = quoteSize / (quoteSize + competing);
-      estPerDay  = dailyPool * ourShare;
-      estCum     = estPerDay * (hours / 24);
-      aggEstPerDay += estPerDay;
-      aggEstCum    += estCum;
-    }
-
-    marketSummaries.push({
-      cid:            m.cid,
-      title:          m.title,
-      rewardTag:      m.rewardTag,
-      mid:            m.mid,
-      quoteBid:       m.quoteBid,
-      quoteAsk:       m.quoteAsk,
-      spread:         m.spread,
-      spreadPct:      m.spread * 100,
-      vol24:          m.vol24,
-      days:           m.days,
-      negRisk:        m.negRisk,
-      rms:            m.rms,
-      rmn:            m.rmn,
-      takerFeeRate:   m.takerFeeRate,
-      rebateRate:     m.rebateRate,
-      dailyPool:      dailyPool  !== null ? Math.round(dailyPool  * 100) / 100 : null,
-      competingDepth: m.competingDepth !== null ? Math.round(m.competingDepth) : null,
-      ourShare:       ourShare   !== null ? Math.round(ourShare   * 10000) / 10000 : null,
-      estRewardPerDay: estPerDay !== null ? Math.round(estPerDay  * 10000) / 10000 : null,
-      estRewardCum:   estCum     !== null ? Math.round(estCum     * 10000) / 10000 : null,
-      hasOpenPosition:   !!m.position,
-      positionDirection: m.position?.direction ?? null,
-      totalCycles:       m.stats.totalCycles,
-      perfectCycles:     m.stats.perfectCycles,
-      adverseCycles:     m.stats.adverseCycles,
-      measuredPnl:       m.stats.measuredPnlTotal,
-      quotedHours:       Math.round(hours * 10) / 10,
-    });
-  }
-
-  // Sort: reward markets first (by vol24 desc), then balanced
-  marketSummaries.sort((a, b) => {
-    if (a.rewardTag !== b.rewardTag) return a.rewardTag === 'reward' ? -1 : 1;
-    return b.vol24 - a.vol24;
+  // Sort: competing depth ASC (null last) — less competition = more opportunity
+  results.sort((a, b) => {
+    if (a.competingDepth === null && b.competingDepth === null) return 0;
+    if (a.competingDepth === null) return 1;
+    if (b.competingDepth === null) return -1;
+    return a.competingDepth - b.competingDepth;
   });
 
-  const recentCycles = cycles
-    .filter(c => c.type !== 'open')
-    .slice(-30)
-    .reverse()
-    .map(c => ({
-      id: c.id, title: c.title, rewardTag: c.rewardTag, direction: c.direction,
-      type: c.type, entryTs: c.entryTs, exitTs: c.exitTs,
-      entryPrice: c.entryPrice, exitPrice: c.exitPrice,
-      exitReason: c.exitReason, measuredPnl: c.measuredPnl, winner: c.winner,
-    }));
-
-  const rN = [...markets.values()].filter(m => m.rewardTag === 'reward').length;
-  const bN = [...markets.values()].filter(m => m.rewardTag === 'balanced').length;
+  const withDepth  = results.filter(m => m.competingDepth !== null);
+  const lowRisk    = results.filter(m => m.adverseRiskLevel === 'LOW');
+  const emptyBook  = results.filter(m => m.competingDepth !== null && m.competingDepth < 100);
 
   atomicWrite(OUTPUT_FILE, {
-    updatedAt:      new Date(now).toISOString(),
-    agentVersion:   'agent18-mm-analyzer v2',
-    rewardPoolNote: REWARD_POOL_NOTE,
-    markets:        marketSummaries,
+    updatedAt:    new Date().toISOString(),
+    agentVersion: 'agent18-eligibility-scanner v2',
+    sampleCapital: SAMPLE_CAPITAL,
+    note:          NOTE,
+    // LP reward rates: confirmed NOT available in public API
+    lpRewardRatePublished: false,
+    lpRewardRateNote: 'rewards.rates is null in CLOB API for all markets. ' +
+      'Polymarket does not publish LP Reward program daily amounts in any public endpoint.',
+    markets: results,
     aggregate: {
-      totalMarkets:     markets.size,
-      rewardMarkets:    rN,
-      balancedMarkets:  bN,
-      totalCycles, openCycles, perfectCycles, adverseCycles, resolvedCycles,
-      measuredPnl:       Math.round(measuredPnl    * 10000) / 10000,
-      // Reward: derived from real pool × estimated competition share.
-      estRewardPerDay:   Math.round(aggEstPerDay   * 10000) / 10000,
-      estimatedRewards:  Math.round(aggEstCum      * 10000) / 10000,
-      totalWithRewards:  Math.round((measuredPnl + aggEstCum) * 10000) / 10000,
-      quotedHours:       Math.round(totalQuotedHours * 10) / 10,
+      totalMarkets:          results.length,
+      marketsWithDepth:      withDepth.length,
+      lowRiskMarkets:        lowRisk.length,
+      emptyBookMarkets:      emptyBook.length,
+      lpRewardRatePublished: false,
+      headlineNote:          'LP reward rate not in public API — no yield estimate possible',
     },
-    recentCycles,
     disclaimer: DISCLAIMER,
   });
+
+  console.log(
+    `[scan] wrote ${results.length} markets. ` +
+    `${emptyBook.length} with empty/thin book (<$100 depth). ` +
+    `${lowRisk.length} low-risk.`
+  );
 }
+
+function round2(n) { return Math.round((n ?? 0) * 100) / 100; }
+function round4(n) { return Math.round((n ?? 0) * 10000) / 10000; }
 
 // ── Main loop ─────────────────────────────────────────────────────────────────
-
-async function fillCheckCycle() {
-  for (const market of markets.values()) {
-    if (market.resolved) continue;
-    if (market.mid < 0.03 || market.mid > 0.97) {
-      market.position = null;  // discard any position opened before this filter existed
-      continue;
-    }
-    await refreshQuote(market);
-    await checkFills(market);
-    market.stats.quotedSeconds += FILL_CHECK_MS / 1000;
-  }
-  writeOutput();
-  savePersisted();
-}
-
-async function discoveryCycle() {
-  await discoverMarkets();  // also fetches competingDepth for reward markets
-  await backFillResolutions();
-  writeOutput();
-  savePersisted();
-}
-
 async function main() {
-  console.log('[agent18] v2 starting — real pool formula, two tiers, zero Claude');
-  await sleep(STARTUP_DELAY);
+  console.log('[agent18] Liquidity Eligibility Scanner starting…');
+  await sleep(STARTUP_DELAY_MS);
 
-  loadPersisted();
-  await backFillResolutions();
-  await discoveryCycle();
-
-  setInterval(fillCheckCycle,  FILL_CHECK_MS);
-  setInterval(discoveryCycle,  DISCOVERY_MS);
-
-  writeOutput();
-  console.log('[agent18] running — fills every 3 min, discovery+depth every 15 min');
+  while (true) {
+    try   { await scan(); }
+    catch (e) { console.error('[main] scan error:', e.message); }
+    await sleep(SCAN_INTERVAL_MS);
+  }
 }
 
-main().catch(e => { console.error('[agent18] fatal:', e); process.exit(1); });
+main().catch(e => { console.error('[fatal]', e); process.exit(1); });
