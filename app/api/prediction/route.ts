@@ -29,6 +29,20 @@ function stableOppId(low: any, high: any): string {
 // Platforms that use play money — opportunities involving these are SIGNAL only
 const PLAY_MONEY_PLATFORMS = new Set(['manifold']);
 
+// matcher-v2 cron schedule: 06:00, 14:00, 22:00 UTC (every 8h)
+const CRON_HOURS_UTC = [6, 14, 22];
+const OVERDUE_MIN    = 9 * 60; // one full cycle + 1h buffer
+
+function nextCronRunAt(nowMs: number): number {
+  const d    = new Date(nowMs);
+  const base = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  for (const h of CRON_HOURS_UTC) {
+    const t = base + h * 3_600_000;
+    if (t > nowMs) return t;
+  }
+  return base + 24 * 3_600_000 + CRON_HOURS_UTC[0] * 3_600_000; // 06:00 next day
+}
+
 function feeFor(platform: string): number {
   return PLATFORM_FEES[platform?.toLowerCase()] ?? 0;
 }
@@ -148,7 +162,9 @@ export async function GET() {
     const bestRoi    = cashable.length > 0 ? cashable[0].roi : null;
     const updatedAt  = raw.updatedAt ?? null;
     const ageMinutes = updatedAt ? Math.round((Date.now() - updatedAt) / 60_000) : null;
-    const isFresh    = ageMinutes !== null && ageMinutes < 60;
+
+    const isOverdue = ageMinutes !== null && ageMinutes >= OVERDUE_MIN;
+    const nextRunAt = nextCronRunAt(Date.now());
 
     // Honest pipeline counts from matcher-v2 output
     const confirmedCashable      = raw.stats?.confirmedCashable      ?? cashable.length;
@@ -174,9 +190,9 @@ export async function GET() {
       freshness: {
         updatedAt,
         ageMinutes,
-        isFresh,
+        isOverdue,
+        nextRunAt,
         label: !ageMinutes   ? null
-             : ageMinutes < 60   ? 'LIVE'
              : ageMinutes < 1440 ? `${Math.round(ageMinutes / 60)}h AGO`
              :                     `${Math.round(ageMinutes / 1440)}d AGO`,
       },
@@ -190,7 +206,7 @@ export async function GET() {
         bestRoi: null, marketsTracked: 0, platforms: 4,
         updatedAt: null, pipelineAge: null,
       },
-      freshness: { updatedAt: null, ageMinutes: null, isFresh: false, label: null },
+      freshness: { updatedAt: null, ageMinutes: null, isOverdue: false, nextRunAt: null, label: null },
     });
   }
 }
