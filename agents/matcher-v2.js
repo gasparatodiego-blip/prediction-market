@@ -164,6 +164,51 @@ function saveConfirmCache(cache) {
   fs.renameSync(tmp, CONFIRM_CACHE_FILE);
 }
 
+// ── Kalshi URL helpers ───────────────────────────────────────────────────────
+
+function slugify(str) {
+  return (str || '').toLowerCase().trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+// Derives event_ticker from market ticker by stripping the market-specific suffix.
+// e.g. KXWCSTAGEOFELIM-26BIH-R16 + series KXWCSTAGEOFELIM → KXWCSTAGEOFELIM-26BIH
+function kalshiEventTicker(marketTicker, seriesTicker) {
+  if (!seriesTicker || !marketTicker || !marketTicker.startsWith(seriesTicker + '-')) return marketTicker;
+  const remainder = marketTicker.slice(seriesTicker.length + 1);
+  const dashIdx   = remainder.indexOf('-');
+  if (dashIdx === -1) return marketTicker; // single segment after series → event = market ticker
+  return seriesTicker + '-' + remainder.slice(0, dashIdx);
+}
+
+// In-memory cache: series_ticker → slugified series title from external-api.kalshi.com
+const _kalshiSeriesSlugCache = new Map();
+
+async function fetchKalshiSeriesSlug(seriesTicker) {
+  if (_kalshiSeriesSlugCache.has(seriesTicker)) return _kalshiSeriesSlugCache.get(seriesTicker);
+  try {
+    const data = await fetchJson(`https://external-api.kalshi.com/trade-api/v2/series/${seriesTicker}`);
+    const slug = slugify(data?.series?.title || '');
+    _kalshiSeriesSlugCache.set(seriesTicker, slug || null);
+    return slug || null;
+  } catch {
+    _kalshiSeriesSlugCache.set(seriesTicker, null);
+    return null;
+  }
+}
+
+async function prefetchKalshiSeriesSlugs(kalshiMarkets) {
+  const tickers = [...new Set((kalshiMarkets || []).map(m => m.series_ticker).filter(Boolean))];
+  if (tickers.length === 0) return;
+  console.log(`[v2/kalshi] pre-fetching series slugs for ${tickers.length} series…`);
+  await Promise.allSettled(tickers.map(t => fetchKalshiSeriesSlug(t)));
+  const hits = [..._kalshiSeriesSlugCache.values()].filter(Boolean).length;
+  console.log(`[v2/kalshi] series slug cache: ${hits}/${tickers.length} resolved`);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 function kalshiPageToMarkets(data) {
   const out = [];
   for (const ev of (data?.events || [])) {
@@ -173,7 +218,8 @@ function kalshiPageToMarkets(data) {
       if (bid <= 0 && ask <= 0) continue;
       out.push({
         ticker:          m.ticker,
-        series_ticker:   ev.series_ticker || null,  // event-level, used for canonical URL
+        event_ticker:    ev.event_ticker || null,   // authoritative event-level ticker for URL
+        series_ticker:   ev.series_ticker || null,
         title:           ev.title || '',
         yes_bid_dollars: m.yes_bid_dollars,
         yes_ask_dollars: m.yes_ask_dollars,
@@ -435,12 +481,21 @@ function loadAndClean(raw) {
       realMoney:  true,
       realBook:   true,
       closeTime:  m.close_time || null,
-      // series_ticker (event-level) → canonical series page.
-      // Full ticker fallback is lowercase per Kalshi URL convention.
-      url: m.series_ticker
-        ? `https://kalshi.com/markets/${m.series_ticker.toLowerCase()}`
-        : `https://kalshi.com/markets/${m.ticker.toLowerCase()}`,
-      urlVerified: !!(m.series_ticker || m.ticker),
+      // Three-segment canonical URL: /markets/{series}/{series_slug}/{event_ticker}
+      // series_slug comes from the external-api series endpoint (pre-fetched into cache).
+      // event_ticker is stored at fetch time (ev.event_ticker) or derived by stripping the
+      // market-specific suffix from the market ticker.
+      ...(() => {
+        const evTicker   = m.event_ticker || kalshiEventTicker(m.ticker, m.series_ticker);
+        const seriesLow  = m.series_ticker?.toLowerCase();
+        const seriesSlug = m.series_ticker ? (_kalshiSeriesSlugCache.get(m.series_ticker) ?? null) : null;
+        if (seriesLow && seriesSlug && evTicker) {
+          return { url: `https://kalshi.com/markets/${seriesLow}/${seriesSlug}/${evTicker.toLowerCase()}`, urlVerified: true };
+        } else if (seriesLow) {
+          return { url: `https://kalshi.com/markets/${seriesLow}`, urlVerified: false };
+        }
+        return { url: 'https://kalshi.com', urlVerified: false };
+      })(),
     });
     counts.ka++;
   }
@@ -1335,6 +1390,10 @@ async function main() {
     console.log(`[v2] Using existing raw data (${Math.round(age / 60000)}m old)`);
     raw = existing;
   }
+
+  // Pre-fetch Kalshi series slugs (needed for 3-segment canonical URLs).
+  // Runs once per series (few series, many markets) before loadAndClean reads the cache.
+  await prefetchKalshiSeriesSlugs(raw.kalshi);
 
   // Stage 0
   const markets = loadAndClean(raw);

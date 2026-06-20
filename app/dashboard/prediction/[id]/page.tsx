@@ -79,7 +79,8 @@ function getMarketUrl(leg: Leg): { url: string; verified: boolean } {
         if (/polymarket\.com\/event\/[^/]+/.test(leg.url)) return { url: leg.url, verified: true };
         break;
       case 'kalshi':
-        if (/kalshi\.com\/markets\/.+/.test(leg.url) && leg.url !== 'https://kalshi.com') return { url: leg.url, verified: true };
+        // Canonical format: /markets/{series}/{series_slug}/{event_ticker} (3 segments)
+        if (/kalshi\.com\/markets\/[^/]+\/[^/]+\/.+/.test(leg.url)) return { url: leg.url, verified: true };
         break;
       case 'predictit':
         if (/predictit\.org\/markets\/detail\/\d+/.test(leg.url)) return { url: leg.url, verified: true };
