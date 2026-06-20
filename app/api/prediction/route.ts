@@ -4,12 +4,27 @@ import fs from 'fs';
 export const dynamic = 'force-dynamic';
 
 const PLATFORM_FEES: Record<string, number> = {
-  kalshi:     0.07,
-  polymarket: 0.02,
+  kalshi:     0.07,  // variable curve; display only — detail page uses real formula
+  polymarket: 0.00,  // 0% trading fee (as of 2024)
   predictit:  0.15,
   manifold:   0.00,
   oddsapi:    0.00,
 };
+
+// Stable URL-safe ID — djb2 hash of sorted (platform|url) pairs; no special chars.
+// Computed identically by the list link and detail loader.
+function stableOppId(low: any, high: any): string {
+  const parts = [
+    (low.platform ?? '')  + '|' + (low.url  ?? ''),
+    (high.platform ?? '') + '|' + (high.url ?? ''),
+  ].sort();
+  const src = parts.join('\n');
+  let h = 5381;
+  for (let i = 0; i < src.length; i++) {
+    h = (Math.imul(h, 33) ^ src.charCodeAt(i)) >>> 0;
+  }
+  return h.toString(36);  // e.g. "5ozo0x" — alphanumeric, no encoding needed
+}
 
 // Platforms that use play money — opportunities involving these are SIGNAL only
 const PLAY_MONEY_PLATFORMS = new Set(['manifold']);
@@ -75,8 +90,8 @@ export async function GET() {
       const low  = o.lowMarket;
       const high = o.highMarket;
 
-      // Deduplicate by sorted pair id
-      const pairKey = [low.id, high.id].sort().join('::');
+      // Deduplicate by stable content hash (platform|url pairs)
+      const pairKey = stableOppId(low, high);
       if (seen.has(pairKey)) { rejected++; continue; }
       seen.add(pairKey);
 
@@ -89,16 +104,37 @@ export async function GET() {
       valid.push({
         id: pairKey,
         question:         o.question ?? o.title ?? '—',
-        lowMarket:        { platform: low.platform,  probability: low.probability,  url: low.url,  fee: fA, expiresAt: low.expiresAt  ?? null },
-        highMarket:       { platform: high.platform, probability: high.probability, url: high.url, fee: fB, expiresAt: high.expiresAt ?? null },
+        lowMarket: {
+          platform:    low.platform,
+          probability: low.probability,
+          url:         low.url,
+          urlVerified: low.urlVerified  ?? false,
+          fee:         fA,
+          expiresAt:   low.expiresAt  ?? null,
+          yesBid:      typeof low.yesBid  === 'number' ? low.yesBid  : null,
+          yesAsk:      typeof low.yesAsk  === 'number' ? low.yesAsk  : null,
+        },
+        highMarket: {
+          platform:    high.platform,
+          probability: high.probability,
+          url:         high.url,
+          urlVerified: high.urlVerified ?? false,
+          fee:         fB,
+          expiresAt:   high.expiresAt ?? null,
+          yesBid:      typeof high.yesBid === 'number' ? high.yesBid : null,
+          yesAsk:      typeof high.yesAsk === 'number' ? high.yesAsk : null,
+        },
         spread:           o.spread,
         roi:              o.roi,
-        earnPer100:       o.earnPer100,
+        earnPer100:       o.earnPer100 ?? null,
         confidence:       o.confidence,
         category:         o.category ?? 'unknown',
         type:             isSignal ? 'signal' : 'cashable',
         annualizedROI:    o.annualizedROI    ?? null,
         daysToResolution: o.daysToResolution ?? null,
+        resolutionDate:   o.resolutionDate   ?? null,
+        confirmReason:    o.confirmReason    ?? null,
+        lockupFlag:       o.lockupFlag       ?? null,
       });
     }
 
@@ -114,13 +150,21 @@ export async function GET() {
     const ageMinutes = updatedAt ? Math.round((Date.now() - updatedAt) / 60_000) : null;
     const isFresh    = ageMinutes !== null && ageMinutes < 60;
 
+    // Honest pipeline counts from matcher-v2 output
+    const confirmedCashable      = raw.stats?.confirmedCashable      ?? cashable.length;
+    const totalCashableCandidates = raw.stats?.totalCashableCandidates ?? cashable.length;
+    const pendingVerification    = raw.stats?.pendingVerification    ?? 0;
+
     return NextResponse.json({
       valid,
       rejected,
       stats: {
-        validCount:    valid.length,
-        cashableCount: cashable.length,
-        signalCount:   valid.filter(o => o.type === 'signal').length,
+        validCount:               valid.length,
+        cashableCount:            cashable.length,
+        signalCount:              valid.filter(o => o.type === 'signal').length,
+        confirmedCashable,
+        totalCashableCandidates,
+        pendingVerification,
         bestRoi,
         marketsTracked,
         platforms:    4,

@@ -17,10 +17,28 @@ const fs        = require('fs');
 const https     = require('https');
 const http      = require('http');
 const path      = require('path');
-const { execFile } = require('child_process');
-const { promisify } = require('util');
+const Anthropic = require('@anthropic-ai/sdk');
 
-const execFileAsync = promisify(execFile);
+// Load ANTHROPIC_API_KEY from .env.matcher (chmod 600, gitignored).
+// Cron runs without the interactive shell environment — self-load so the key
+// is always present regardless of how the script is invoked.
+// SECURITY: the key value is read into process.env and never written to logs.
+function loadEnvFile() {
+  const envPath = path.join(__dirname, '..', '.env.matcher');
+  try {
+    for (const line of fs.readFileSync(envPath, 'utf8').split('\n')) {
+      const t = line.trim();
+      if (!t || t.startsWith('#')) continue;
+      const eq = t.indexOf('=');
+      if (eq < 1) continue;
+      const k = t.slice(0, eq).trim();
+      const v = t.slice(eq + 1).trim();
+      // Only set if not already in environment; never overwrite a caller-supplied value.
+      if (k && v && !process.env[k]) process.env[k] = v;
+    }
+  } catch { /* file absent — key must come from environment */ }
+}
+loadEnvFile();
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -28,6 +46,7 @@ const RAW_FILE          = '/tmp/markets-raw.json';
 const OUT_FILE          = '/tmp/arbitrage-opportunities.json';
 const UNIFIED_FILE      = '/tmp/unified-opportunities.json';
 const SPORTS_FILE       = '/tmp/sports-odds.json';
+const CONFIRM_CACHE_FILE = path.join(__dirname, '..', 'data', 'confirmation-cache.json');
 const MODEL             = 'claude-haiku-4-5-20251001';
 const MAX_STALE_MS      = 10 * 60 * 1000;   // auto-refresh if older than 10 min
 
@@ -45,14 +64,14 @@ const MIN_SIGNAL_SPREAD = 5;      // mid-spread threshold for signal (play-money
 const MAX_SPREAD_WIDTH  = 0.10;   // yesAsk-yesBid > 10¢ on either leg → illiquid, skip cashable
 const SUSPICIOUS_ROI    = 15;     // netROI above 15% → quarantine (real arbs are ~1-8%)
 
-// Stage 3 — Haiku selection budget
-const MAX_CLAUDE_PAIRS   = 60;
+// Stage 3 — cache-first confirmation
 const CONFIRM_BATCH      = 10;   // pairs per Haiku call
+const MAX_NEW_PAIRS      = parseInt(process.env.NEW_PAIRS_PER_RUN || '200', 10);  // new (uncached) cap per run
+const CACHE_RECONFIRM_MS = 90 * 24 * 60 * 60 * 1000;  // re-confirm entries older than 90 days
 // Real executable arbs cluster in the plausible band; outside it candidates are
 // either too thin (noise) or suspiciously wide (semantic mismatch / stale price).
 const ARB_BAND_LOW       = 2.0;  // netROI% lower bound for plausible-band priority
 const ARB_BAND_HIGH      = 8.0;  // netROI% upper bound for plausible-band priority
-const HAIKU_BAND_SLOTS   = 40;   // max slots reserved for the plausible band
 
 // ── Platform metadata ─────────────────────────────────────────────────────────
 
@@ -117,6 +136,34 @@ function fetchJson(url) {
 }
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
+// ── Confirmation cache ────────────────────────────────────────────────────────
+// Stable pair key: djb2 hash of sorted (platform|url) leg pairs.
+// Matches the stableOppId scheme used in app/api/prediction/route.ts.
+
+function stableOppId(a, b) {
+  const parts = [
+    (a.platform ?? '') + '|' + (a.url ?? ''),
+    (b.platform ?? '') + '|' + (b.url ?? ''),
+  ].sort();
+  const src = parts.join('\n');
+  let h = 5381;
+  for (let i = 0; i < src.length; i++) {
+    h = (Math.imul(h, 33) ^ src.charCodeAt(i)) >>> 0;
+  }
+  return h.toString(36);
+}
+
+function loadConfirmCache() {
+  try { return JSON.parse(fs.readFileSync(CONFIRM_CACHE_FILE, 'utf8')); }
+  catch { return {}; }
+}
+
+function saveConfirmCache(cache) {
+  const tmp = CONFIRM_CACHE_FILE + '.tmp.' + process.pid;
+  fs.writeFileSync(tmp, JSON.stringify(cache, null, 2));
+  fs.renameSync(tmp, CONFIRM_CACHE_FILE);
+}
+
 function kalshiPageToMarkets(data) {
   const out = [];
   for (const ev of (data?.events || [])) {
@@ -126,6 +173,7 @@ function kalshiPageToMarkets(data) {
       if (bid <= 0 && ask <= 0) continue;
       out.push({
         ticker:          m.ticker,
+        series_ticker:   ev.series_ticker || null,  // event-level, used for canonical URL
         title:           ev.title || '',
         yes_bid_dollars: m.yes_bid_dollars,
         yes_ask_dollars: m.yes_ask_dollars,
@@ -192,7 +240,10 @@ async function fetchPolymarketAll() {
       for (const ev of evs) {
         for (const m of (ev.markets || [])) {
           const id = String(m.id || m.conditionId || m.questionID || '');
-          if (id && !byId.has(id)) { byId.set(id, m); added++; }
+          // Attach the parent event slug so URL building can use event/{eventSlug}/{marketSlug}.
+          // Markets from the base /markets endpoint already carry m.events[0].slug; markets
+          // fetched here (nested inside event responses) do not — save it explicitly.
+          if (id && !byId.has(id)) { byId.set(id, { ...m, _eventSlug: ev.slug || null }); added++; }
         }
       }
       if (evs.length < 50) break;
@@ -325,6 +376,7 @@ function loadAndClean(raw) {
         realMoney:  true,
         realBook:   true,
         url: `https://www.predictit.org/markets/detail/${m.id}`,
+        urlVerified: true,
       });
       counts.pi++;
     }
@@ -350,6 +402,7 @@ function loadAndClean(raw) {
       realMoney:  false,
       realBook:   false,
       url: m.url || `https://manifold.markets/`,
+      urlVerified: !!(m.url && m.url !== 'https://manifold.markets/'),
     });
     counts.mf++;
   }
@@ -382,7 +435,12 @@ function loadAndClean(raw) {
       realMoney:  true,
       realBook:   true,
       closeTime:  m.close_time || null,
-      url: `https://kalshi.com/markets/${m.ticker}`,
+      // series_ticker (event-level) → canonical series page.
+      // Full ticker fallback is lowercase per Kalshi URL convention.
+      url: m.series_ticker
+        ? `https://kalshi.com/markets/${m.series_ticker.toLowerCase()}`
+        : `https://kalshi.com/markets/${m.ticker.toLowerCase()}`,
+      urlVerified: !!(m.series_ticker || m.ticker),
     });
     counts.ka++;
   }
@@ -430,7 +488,17 @@ function loadAndClean(raw) {
       realBook:     true,
       closeTime:    m.endDate || m.endDateIso || null,
       clobTokenId,
-      url: m.slug ? `https://polymarket.com/event/${m.slug}` : 'https://polymarket.com',
+      // Build canonical URL: event/{eventSlug}/{marketSlug} when both available.
+      // eventSlug comes from (a) _eventSlug set by fetchPolymarketAll for tag-endpoint markets,
+      // or (b) m.events[0].slug for markets from the base /markets endpoint.
+      // Falls back to markets homepage (verified=false) when neither is available.
+      ...((() => {
+        const eventSlug  = m._eventSlug || (Array.isArray(m.events) && m.events[0]?.slug) || null;
+        const marketSlug = m.slug || null;
+        if (eventSlug && marketSlug) return { url: `https://polymarket.com/event/${eventSlug}/${marketSlug}`, urlVerified: true };
+        if (eventSlug)               return { url: `https://polymarket.com/event/${eventSlug}`,               urlVerified: true };
+        return                              { url: 'https://polymarket.com/markets',                          urlVerified: false };
+      })()),
     });
     counts.pm++;
   }
@@ -469,6 +537,7 @@ function loadAndClean(raw) {
         realBook:    false,  // signal-only; never enters cashable arb path
         volume:      useMoney ? (m.volume_real_money ?? 0) : (m.volume_play_money ?? 0),
         url: `https://futuur.com/q/${m.slug || m.id}`,
+        urlVerified: !!(m.slug || m.id),
       });
       counts.fu++;
     }
@@ -643,35 +712,24 @@ function arbPrefilter(candidates, markets) {
   return { survivors, quarantined };
 }
 
-// ── Stage 3: Haiku confirmation ───────────────────────────────────────────────
+// ── Stage 3: Cache-first Haiku confirmation ───────────────────────────────────
 // Only cashable pairs go to Haiku.  Signal pairs are already categorised.
 //
-// Selection strategy: real executable arbs cluster in the plausible band
-// (ARB_BAND_LOW–ARB_BAND_HIGH).  Candidates just below the 15% quarantine
-// ceiling are the most likely semantic mismatches — don't waste all slots there.
-//
-//   1. Fill up to HAIKU_BAND_SLOTS from the plausible band (sorted by netROI asc).
-//   2. Fill remaining slots with a uniform sample across the rest of the cashable
-//      distribution (both tails: 0–ARB_BAND_LOW and ARB_BAND_HIGH–SUSPICIOUS_ROI).
+// Strategy:
+//   1. Load persistent cache (platform|url keyed, permanent true/false verdicts).
+//   2. For every cashable candidate, compute its pairKey and check the cache.
+//      Cache hit (≤90 days old) → reuse verdict for free (no API call).
+//   3. From uncached candidates, select up to MAX_NEW_PAIRS to confirm this run.
+//      Priority: plausible band (ARB_BAND_LOW–ARB_BAND_HIGH) first, then by ROI desc.
+//   4. Run Haiku on selected new pairs; persist BOTH true and false verdicts.
+//   5. confirmed = cached-true hits + newly confirmed true pairs.
 
-function selectForHaiku(cashableSurvivors) {
-  const band = cashableSurvivors.filter(s => s.net >= ARB_BAND_LOW && s.net <= ARB_BAND_HIGH);
-  const rest = cashableSurvivors.filter(s => s.net < ARB_BAND_LOW || s.net > ARB_BAND_HIGH);
-
-  band.sort((a, b) => a.net - b.net);  // lowest plausible ROI first
-  const selected = band.slice(0, HAIKU_BAND_SLOTS);
-
-  const remaining = MAX_CLAUDE_PAIRS - selected.length;
-  if (remaining > 0 && rest.length > 0) {
-    rest.sort((a, b) => a.net - b.net);
-    const step = rest.length / remaining;
-    for (let i = 0; i < remaining; i++) {
-      const idx = Math.min(Math.floor(i * step), rest.length - 1);
-      selected.push(rest[idx]);
-    }
-  }
-
-  return selected.slice(0, MAX_CLAUDE_PAIRS);
+function selectNewPairs(uncached) {
+  const band = uncached.filter(s => s.net >= ARB_BAND_LOW && s.net <= ARB_BAND_HIGH);
+  const rest = uncached.filter(s => s.net < ARB_BAND_LOW  || s.net > ARB_BAND_HIGH);
+  band.sort((a, b) => b.net - a.net);  // highest plausible ROI first
+  rest.sort((a, b) => b.net - a.net);
+  return [...band, ...rest].slice(0, MAX_NEW_PAIRS);
 }
 
 async function haikuConfirm(survivors) {
@@ -679,21 +737,60 @@ async function haikuConfirm(survivors) {
 
   if (cashable.length === 0) {
     console.log('[v2] Stage 3: no cashable survivors to confirm');
-    return { confirmed: [], claudeCalls: 0, sentCount: 0 };
+    return { confirmed: [], claudeCalls: 0, newSent: 0, cacheHits: 0, totalCandidates: 0 };
   }
 
-  const toSend = selectForHaiku(cashable);
+  const totalCandidates = cashable.length;
 
-  // ROI distribution of the selected set
-  const rois = toSend.map(p => p.net).sort((a, b) => a - b);
+  // Load persistent cache
+  const cache = loadConfirmCache();
+  const now   = Date.now();
+
+  // Partition: cached (fresh) vs needs confirmation
+  const cachedTrue  = [];
+  const uncached    = [];
+
+  for (const p of cashable) {
+    const key   = stableOppId(p.a, p.b);
+    p._pairKey  = key;
+    const entry = cache[key];
+    if (entry && (now - new Date(entry.confirmedAt).getTime()) < CACHE_RECONFIRM_MS) {
+      if (entry.identical) cachedTrue.push({ ...p, confirmReason: entry.reason, _fromCache: true });
+      // false verdicts: counted but not added to confirmed
+    } else {
+      uncached.push(p);
+    }
+  }
+
+  const cacheHits = cashable.length - uncached.length;
+  console.log(`[v2] Stage 3: ${totalCandidates} cashable candidates`);
+  console.log(`[v2]   cache: ${cacheHits} hits (${cachedTrue.length} true, ${cacheHits - cachedTrue.length} false) · ${uncached.length} uncached`);
+  console.log(`[v2]   new confirmations this run: up to ${MAX_NEW_PAIRS} (NEW_PAIRS_PER_RUN=${MAX_NEW_PAIRS})`);
+
+  const toSend = selectNewPairs(uncached);
+
+  if (toSend.length === 0) {
+    console.log('[v2] Stage 3: all candidates already cached — 0 API calls this run');
+    return { confirmed: cachedTrue, claudeCalls: 0, newSent: 0, cacheHits, totalCandidates };
+  }
+
+  // Instantiate client here so the key check in main() runs first.
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+  const rois   = toSend.map(p => p.net).sort((a, b) => a - b);
   const median = rois[Math.floor(rois.length / 2)] ?? 0;
   const inBand = rois.filter(r => r >= ARB_BAND_LOW && r <= ARB_BAND_HIGH).length;
-  console.log(`[v2] Stage 3: sending ${toSend.length} pairs to Haiku in batches of ${CONFIRM_BATCH}`);
-  console.log(`[v2]   plausible band (${ARB_BAND_LOW}–${ARB_BAND_HIGH}%): ${inBand}/${toSend.length} slots`);
+  console.log(`[v2] Stage 3: sending ${toSend.length} NEW pairs to Haiku in batches of ${CONFIRM_BATCH}`);
+  console.log(`[v2]   plausible band (${ARB_BAND_LOW}–${ARB_BAND_HIGH}%): ${inBand}/${toSend.length}`);
   console.log(`[v2]   ROI dist: min=${rois[0]?.toFixed(2)}%  median=${median.toFixed(2)}%  max=${rois.at(-1)?.toFixed(2)}%`);
 
-  let claudeCalls = 0;
-  const confirmed = [];
+  // Estimated cost: ~500 input + ~200 output tokens per 10-pair batch
+  const batches  = Math.ceil(toSend.length / CONFIRM_BATCH);
+  const estCostUsd = ((batches * 500 / 1e6) * 0.25 + (batches * 200 / 1e6) * 1.25).toFixed(4);
+  console.log(`[v2]   estimated API cost this run: $${estCostUsd} (${batches} batches)`);
+
+  let claudeCalls    = 0;
+  const newlyConfirmed = [];
 
   for (let start = 0; start < toSend.length; start += CONFIRM_BATCH) {
     const batch = toSend.slice(start, start + CONFIRM_BATCH);
@@ -715,32 +812,47 @@ Rules:
 Respond ONLY with a JSON array (one entry per pair, in order):
 [{"index":0,"identical":true,"reason":"brief"},{"index":1,"identical":false,"reason":"brief"},...]`;
 
-    let stdout = null;
+    let responseText = null;
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        ({ stdout } = await execFileAsync('claude', ['-p', prompt, '--model', MODEL], {
-          timeout: 90_000, env: { ...process.env, HOME: '/root' },
-        }));
+        const msg = await anthropic.messages.create({
+          model:      MODEL,
+          max_tokens: 1024,
+          messages:   [{ role: 'user', content: prompt }],
+        });
+        responseText = msg.content?.[0]?.text ?? null;
         claudeCalls++;
         break;
       } catch (e) {
+        const detail = e.status ? `HTTP ${e.status}` : e.message?.slice(0, 80);
         if (attempt === 0) {
-          console.log(`[v2] Stage 3 batch retry (attempt 1 failed: ${e.message?.slice(0, 60)})`);
+          console.log(`[v2] Stage 3 batch retry (attempt 1 failed: ${detail})`);
           await sleep(3000);
         } else {
-          console.error(`[v2] Stage 3 batch failed: ${e.message?.slice(0, 120)}`);
+          console.error(`[v2] Stage 3 batch failed: ${detail}`);
         }
       }
     }
-    if (!stdout) continue;
+    if (!responseText) continue;
     try {
-      const text  = stdout.trim();
+      const text   = responseText.trim();
       const start2 = text.indexOf('['), end2 = text.lastIndexOf(']');
       if (start2 === -1 || end2 === -1) continue;
       const results = JSON.parse(text.slice(start2, end2 + 1));
       for (const r of (Array.isArray(results) ? results : [])) {
-        if (r.identical && batch[r.index]) {
-          confirmed.push({ ...batch[r.index], confirmReason: r.reason || '' });
+        if (r.index == null || !batch[r.index]) continue;
+        const p       = batch[r.index];
+        const reason  = r.reason || '';
+        // Persist verdict (both true and false) permanently
+        cache[p._pairKey] = {
+          pairKey:     p._pairKey,
+          identical:   !!r.identical,
+          reason,
+          model:       MODEL,
+          confirmedAt: new Date().toISOString(),
+        };
+        if (r.identical) {
+          newlyConfirmed.push({ ...p, confirmReason: reason });
         }
       }
     } catch (e) {
@@ -750,13 +862,22 @@ Respond ONLY with a JSON array (one entry per pair, in order):
     if (start + CONFIRM_BATCH < toSend.length) await sleep(1500);
   }
 
-  console.log(`[v2] Stage 3: ${claudeCalls} Claude calls → ${confirmed.length} confirmed`);
-  return { confirmed, claudeCalls, sentCount: toSend.length };
+  // Persist updated cache atomically
+  saveConfirmCache(cache);
+
+  const cacheSize = Object.keys(cache).length;
+  const runsToFullCoverage = Math.ceil(uncached.length / MAX_NEW_PAIRS);
+  console.log(`[v2] Stage 3: ${claudeCalls} Haiku API calls → ${newlyConfirmed.length} new confirmed`);
+  console.log(`[v2]   cache now has ${cacheSize} entries · ${uncached.length - toSend.length} uncached pairs deferred to future runs`);
+  console.log(`[v2]   runs to cover remaining uncached: ~${runsToFullCoverage} (at ${MAX_NEW_PAIRS}/run)`);
+
+  const confirmed = [...cachedTrue, ...newlyConfirmed];
+  return { confirmed, claudeCalls, newSent: toSend.length, cacheHits, totalCandidates };
 }
 
 // ── Output formatting ─────────────────────────────────────────────────────────
 
-function formatOutput(confirmed) {
+function formatOutput(confirmed, totalCashableCandidates) {
   const opps = confirmed.map((p, i) => {
     const low   = p.a.probability <= p.b.probability ? p.a : p.b;
     const high  = p.a.probability >  p.b.probability ? p.a : p.b;
@@ -776,8 +897,8 @@ function formatOutput(confirmed) {
       grossRoi:        p.gross,
       bestCost:        p.bestCost,
       bestDir:         p.bestDir,
-      lowMarket:       { id: low.id,  platform: low.platform,  probability: low.probability,  yesBid: low.yesBid,  yesAsk: low.yesAsk,  url: low.url  },
-      highMarket:      { id: high.id, platform: high.platform, probability: high.probability, yesBid: high.yesBid, yesAsk: high.yesAsk, url: high.url },
+      lowMarket:       { id: low.id,  platform: low.platform,  probability: low.probability,  yesBid: low.yesBid,  yesAsk: low.yesAsk,  url: low.url,  urlVerified: low.urlVerified  ?? false },
+      highMarket:      { id: high.id, platform: high.platform, probability: high.probability, yesBid: high.yesBid, yesAsk: high.yesAsk, url: high.url, urlVerified: high.urlVerified ?? false },
       outcome_a:       low.outcome,
       outcome_b:       high.outcome,
       confirmReason:   p.confirmReason,
@@ -792,11 +913,17 @@ function formatOutput(confirmed) {
     };
   });
 
+  const confirmedCashable = opps.filter(o => o.cashable).length;
+  const pending = Math.max(0, (totalCashableCandidates ?? 0) - confirmedCashable);
+
   return {
     updatedAt: Date.now(),
     opportunities: opps,
     stats: {
-      total:       opps.length,
+      total:                   opps.length,
+      confirmedCashable,
+      totalCashableCandidates: totalCashableCandidates ?? confirmedCashable,
+      pendingVerification:     pending,
       bestRoi:     opps.filter(o => o.cashable).reduce((b, o) => Math.max(b, o.roi), 0),
       totalSpread: opps.reduce((s, o) => s + o.spread, 0),
     },
@@ -1181,6 +1308,20 @@ async function main() {
   console.log('[v2] ═══════════════════════════════════════');
   const t0 = Date.now();
 
+  // SECURITY: validate key before any work.
+  // Exit without touching arbitrage-opportunities.json so the banner stays
+  // honest ("stale") rather than showing zero results on a config error.
+  const apiKey = (process.env.ANTHROPIC_API_KEY || '').trim();
+  if (!apiKey) {
+    console.error('[v2] FATAL: ANTHROPIC_API_KEY is not set.');
+    console.error('[v2]   Paste your key into /root/prediction-market/.env.matcher');
+    console.error('[v2]   File must contain:  ANTHROPIC_API_KEY=sk-ant-...');
+    console.error('[v2]   Existing arbitrage-opportunities.json left unchanged.');
+    process.exit(1);
+  }
+  // Confirm key is loaded — print length only, never the value.
+  console.log(`[v2] API key loaded (${apiKey.length} chars)`);
+
   // Ensure data freshness
   let raw;
   const existing = fs.existsSync(RAW_FILE)
@@ -1205,13 +1346,13 @@ async function main() {
   const { survivors, quarantined } = arbPrefilter(candidates, markets);
 
   // Stage 3
-  const { confirmed, claudeCalls, sentCount } = await haikuConfirm(survivors);
+  const { confirmed, claudeCalls, newSent, cacheHits, totalCandidates } = await haikuConfirm(survivors);
 
   // Enrichment (time + capacity); enrichArbs sorts confirmed in-place by annualizedROI
   await enrichArbs(confirmed);
 
   // Output
-  const output = formatOutput(confirmed);
+  const output = formatOutput(confirmed, totalCandidates);
   fs.writeFileSync(OUT_FILE, JSON.stringify(output, null, 2));
 
   // Unified opportunities file (zero Claude cost — pure reformatting)
@@ -1220,6 +1361,12 @@ async function main() {
   const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
   const cashable = output.opportunities.filter(o => o.cashable);
   const signal   = output.opportunities.filter(o => !o.cashable);
+  const { confirmedCashable, totalCashableCandidates, pendingVerification } = output.stats;
+
+  // Steady-state cost estimate (once all candidates are cached)
+  const batchesPerRun   = Math.ceil(MAX_NEW_PAIRS / CONFIRM_BATCH);
+  const costPerRunFill  = ((batchesPerRun * 500 / 1e6) * 0.25 + (batchesPerRun * 200 / 1e6) * 1.25);
+  const runsToFull      = Math.ceil((totalCandidates - cacheHits) / MAX_NEW_PAIRS);
 
   // ── Summary table ──────────────────────────────────────────────────────────
   console.log('\n╔══════════════════════════════════════════════════╗');
@@ -1231,13 +1378,19 @@ async function main() {
   console.log(`║  Candidate pairs  (Stage 1)   : ${String(candidates.length).padEnd(16)} ║`);
   console.log(`║  Survivors        (Stage 2)   : ${String(survivors.length).padEnd(16)} ║`);
   console.log(`║  Quarantined      (ROI>${SUSPICIOUS_ROI}%)    : ${String(quarantined.length).padEnd(16)} ║`);
-  console.log(`║  Sent to Haiku    (Stage 3)   : ${String(sentCount).padEnd(16)} ║`);
-  console.log(`║    band (${ARB_BAND_LOW}–${ARB_BAND_HIGH}%) / rest sampled  : ${String(Math.min(survivors.filter(s=>s.type==='cashable'&&s.net>=ARB_BAND_LOW&&s.net<=ARB_BAND_HIGH).length, HAIKU_BAND_SLOTS) + ' / ' + Math.max(0, sentCount - Math.min(survivors.filter(s=>s.type==='cashable'&&s.net>=ARB_BAND_LOW&&s.net<=ARB_BAND_HIGH).length, HAIKU_BAND_SLOTS))).padEnd(16)} ║`);
-  console.log(`║  Claude calls                 : ${String(claudeCalls).padEnd(16)} ║`);
-  console.log(`║  Final cashable               : ${String(cashable.length).padEnd(16)} ║`);
+  console.log(`║  Cashable candidates          : ${String(totalCandidates).padEnd(16)} ║`);
+  console.log(`║  Cache hits (reused free)     : ${String(cacheHits).padEnd(16)} ║`);
+  console.log(`║  New pairs sent to Haiku      : ${String(newSent).padEnd(16)} ║`);
+  console.log(`║  Claude API calls             : ${String(claudeCalls).padEnd(16)} ║`);
+  console.log(`║  Confirmed cashable           : ${String(confirmedCashable).padEnd(16)} ║`);
+  console.log(`║  Pending verification         : ${String(pendingVerification).padEnd(16)} ║`);
   console.log(`║  Final signal                 : ${String(signal.length).padEnd(16)} ║`);
+  console.log(`║  Est. cost this run           : $${String(costPerRunFill.toFixed(4)).padEnd(15)} ║`);
+  console.log(`║  Est. monthly (fill phase)    : $${String((costPerRunFill * 3 * 30).toFixed(2)).padEnd(15)} ║`);
+  console.log(`║  Runs to full cache coverage  : ${String('~' + runsToFull).padEnd(16)} ║`);
   console.log(`║  Elapsed                      : ${String(elapsed + 's').padEnd(16)} ║`);
   console.log('╚══════════════════════════════════════════════════╝');
+  console.log(`\n[v2] HONEST COUNT: ${confirmedCashable} confirmed · ${totalCashableCandidates} candidates · ${pendingVerification} pending verification`);
 
   // Sanity check
   reportSanityCheck(markets, candidates);
