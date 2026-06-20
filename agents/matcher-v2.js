@@ -19,6 +19,10 @@ const http      = require('http');
 const path      = require('path');
 const Anthropic = require('@anthropic-ai/sdk');
 
+// Shared fee constants — single source of truth used by both matcher-v2 and agent23-prediction-repricer.
+// Import here so the two tiers can never have divergent fee math.
+const { PLATFORM_FEES: _PLATFORM_FEES } = require('../lib/arb-math');
+
 // Load ANTHROPIC_API_KEY from .env.matcher (chmod 600, gitignored).
 // Cron runs without the interactive shell environment — self-load so the key
 // is always present regardless of how the script is invoked.
@@ -75,13 +79,8 @@ const ARB_BAND_HIGH      = 8.0;  // netROI% upper bound for plausible-band prior
 
 // ── Platform metadata ─────────────────────────────────────────────────────────
 
-const PLATFORM_FEES = {
-  kalshi:     0.07,
-  polymarket: 0.02,
-  predictit:  0.15,   // 10% win + 5% withdrawal
-  manifold:   0.00,
-  futuur:     0.05,   // ~4-6% win fee (tax_real_money field); signal-only so not used in arb math
-};
+// Imported from lib/arb-math.js — do NOT duplicate here.
+const PLATFORM_FEES = _PLATFORM_FEES;
 // realBook = true means the platform exposes executable bid/ask (CLOB or best-bid/ask).
 // Cashable arb requires realBook=true on BOTH legs.
 // realMoney=true but realBook=false → signal-only (Futuur: mid-price from orderbook API only)
@@ -134,6 +133,26 @@ function fetchJson(url) {
     req.on('timeout', () => { req.destroy(); resolve(null); });
   });
 }
+
+// Like fetchJson but also returns the HTTP status code and Retry-After header.
+function fetchJsonWithStatus(url) {
+  return new Promise(resolve => {
+    const mod = url.startsWith('https') ? https : http;
+    const req = mod.get(url, { headers: { 'User-Agent': 'prediction-arb-scanner/1.0' }, timeout: 20000 }, res => {
+      const status     = res.statusCode;
+      const retryAfter = parseInt(res.headers['retry-after'] || '0', 10) || 0;
+      let body = '';
+      res.on('data', d => body += d);
+      res.on('end', () => {
+        try { resolve({ data: JSON.parse(body), status, retryAfter }); }
+        catch { resolve({ data: null, status, retryAfter }); }
+      });
+    });
+    req.on('error', () => resolve({ data: null, status: 0, retryAfter: 0 }));
+    req.on('timeout', () => { req.destroy(); resolve({ data: null, status: 0, retryAfter: 0 }); });
+  });
+}
+
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 // ── Confirmation cache ────────────────────────────────────────────────────────
@@ -232,11 +251,23 @@ function kalshiPageToMarkets(data) {
 
 async function fetchKalshiAll() {
   const all = []; let cursor = null, page = 0;
+  let consecutiveErrors = 0;
   while (page < 60) {
     let url = 'https://api.elections.kalshi.com/trade-api/v2/events?limit=200&status=open&with_nested_markets=true';
     if (cursor) url += '&cursor=' + encodeURIComponent(cursor);
-    const data = await fetchJson(url);
-    if (!data || !Array.isArray(data.events) || !data.events.length) break;
+    const { data, status, retryAfter } = await fetchJsonWithStatus(url);
+    if (status === 429) {
+      const wait = Math.max(retryAfter || 5, 5) * 1000;
+      console.log(`[v2/fetch] Kalshi 429 — waiting ${wait / 1000}s before retry`);
+      await sleep(wait);
+      continue; // retry same page, don't increment
+    }
+    if (!data || !Array.isArray(data.events) || !data.events.length) {
+      if (++consecutiveErrors >= 3) break;
+      await sleep(1000);
+      continue;
+    }
+    consecutiveErrors = 0;
     all.push(...kalshiPageToMarkets(data));
     cursor = data.cursor || '';
     page++;
@@ -952,8 +983,8 @@ function formatOutput(confirmed, totalCashableCandidates) {
       grossRoi:        p.gross,
       bestCost:        p.bestCost,
       bestDir:         p.bestDir,
-      lowMarket:       { id: low.id,  platform: low.platform,  probability: low.probability,  yesBid: low.yesBid,  yesAsk: low.yesAsk,  url: low.url,  urlVerified: low.urlVerified  ?? false },
-      highMarket:      { id: high.id, platform: high.platform, probability: high.probability, yesBid: high.yesBid, yesAsk: high.yesAsk, url: high.url, urlVerified: high.urlVerified ?? false },
+      lowMarket:       { id: low.id,  platform: low.platform,  probability: low.probability,  yesBid: low.yesBid,  yesAsk: low.yesAsk,  url: low.url,  urlVerified: low.urlVerified  ?? false, clobTokenId: low.clobTokenId  ?? null },
+      highMarket:      { id: high.id, platform: high.platform, probability: high.probability, yesBid: high.yesBid, yesAsk: high.yesAsk, url: high.url, urlVerified: high.urlVerified ?? false, clobTokenId: high.clobTokenId ?? null },
       outcome_a:       low.outcome,
       outcome_b:       high.outcome,
       confirmReason:   p.confirmReason,
@@ -1445,7 +1476,7 @@ async function main() {
   console.log(`║  Pending verification         : ${String(pendingVerification).padEnd(16)} ║`);
   console.log(`║  Final signal                 : ${String(signal.length).padEnd(16)} ║`);
   console.log(`║  Est. cost this run           : $${String(costPerRunFill.toFixed(4)).padEnd(15)} ║`);
-  console.log(`║  Est. monthly (fill phase)    : $${String((costPerRunFill * 3 * 30).toFixed(2)).padEnd(15)} ║`);
+  console.log(`║  Est. monthly (fill phase)    : $${String((costPerRunFill * 8 * 30).toFixed(2)).padEnd(15)} ║`);
   console.log(`║  Runs to full cache coverage  : ${String('~' + runsToFull).padEnd(16)} ║`);
   console.log(`║  Elapsed                      : ${String(elapsed + 's').padEnd(16)} ║`);
   console.log('╚══════════════════════════════════════════════════╝');

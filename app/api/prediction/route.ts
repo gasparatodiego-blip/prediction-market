@@ -29,18 +29,20 @@ function stableOppId(low: any, high: any): string {
 // Platforms that use play money — opportunities involving these are SIGNAL only
 const PLAY_MONEY_PLATFORMS = new Set(['manifold']);
 
-// matcher-v2 cron schedule: 06:00, 14:00, 22:00 UTC (every 8h)
-const CRON_HOURS_UTC = [6, 14, 22];
-const OVERDUE_MIN    = 9 * 60; // one full cycle + 1h buffer
+// Discovery cron: every 3h (0 */3 * * *)
+// isOverdue = last discovery run missed a slot (>4h)
+const DISCOVERY_OVERDUE_MIN = 4 * 60;  // 4h
+const REPRICE_OVERDUE_MIN   = 40;      // 40 min — re-pricer stalled
 
-function nextCronRunAt(nowMs: number): number {
+function nextDiscoveryRunAt(nowMs: number): number {
+  // Cron: 0 */3 * * * → runs at 00, 03, 06, 09, 12, 15, 18, 21 UTC
   const d    = new Date(nowMs);
   const base = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
-  for (const h of CRON_HOURS_UTC) {
+  for (let h = 0; h < 24; h += 3) {
     const t = base + h * 3_600_000;
     if (t > nowMs) return t;
   }
-  return base + 24 * 3_600_000 + CRON_HOURS_UTC[0] * 3_600_000; // 06:00 next day
+  return base + 24 * 3_600_000; // 00:00 next day
 }
 
 function feeFor(platform: string): number {
@@ -51,35 +53,46 @@ function isValidOpp(o: any): string | null {
   const low  = o?.lowMarket;
   const high = o?.highMarket;
 
-  // Both legs must exist
   if (!low || !high) return 'missing legs';
 
-  // Prices (probabilities 0–100 → fractions 0–1) must be strictly between 0 and 1
   const pLow  = typeof low.probability  === 'number' ? low.probability  / 100 : null;
   const pHigh = typeof high.probability === 'number' ? high.probability / 100 : null;
   if (pLow  == null || pLow  <= 0 || pLow  >= 1) return `bad low price (${low.probability})`;
   if (pHigh == null || pHigh <= 0 || pHigh >= 1) return `bad high price (${high.probability})`;
 
-  // Fees must each be ≤ 15%
   const fA = feeFor(low.platform);
   const fB = feeFor(high.platform);
   if (fA > 0.15) return `fee too high on ${low.platform} (${fA})`;
   if (fB > 0.15) return `fee too high on ${high.platform} (${fB})`;
 
-  // Net ROI: finite, positive, ≤ 50%
   if (!isFinite(o.roi) || o.roi <= 0) return `non-positive roi (${o.roi})`;
   if (o.roi > 50) return `roi too high, likely unreliable (${o.roi}%)`;
 
-  // URLs and platform names required
   if (!low.platform  || !high.platform)  return 'missing platform name';
   if (!low.url       || !high.url)       return 'missing url';
 
-  return null; // valid
+  return null;
 }
 
 export async function GET() {
   try {
-    const raw = JSON.parse(fs.readFileSync('/tmp/arbitrage-opportunities.json', 'utf8'));
+    // Prefer the re-priced view (live prices, evaporated pairs removed).
+    // Fall back to the discovery snapshot if the re-pricer hasn't run yet.
+    let raw: any;
+    let repricedAt: number | null    = null;
+    let discoveryAt: number | null   = null;
+
+    try {
+      const repriced = JSON.parse(fs.readFileSync('/tmp/repriced-opportunities.json', 'utf8'));
+      repricedAt  = repriced.repriced_at   ?? null;
+      discoveryAt = repriced.discovery_at  ?? null;
+      raw = { ...repriced, updatedAt: repriced.repriced_at ?? repriced.discovery_at };
+    } catch {
+      // Re-pricer hasn't produced output yet — use discovery snapshot directly
+      raw         = JSON.parse(fs.readFileSync('/tmp/arbitrage-opportunities.json', 'utf8'));
+      discoveryAt = raw.updatedAt ?? null;
+    }
+
     const allOpps: any[] = raw.opportunities ?? [];
 
     // Market count from markets-raw.json (best-effort)
@@ -87,11 +100,11 @@ export async function GET() {
     try {
       const mraw = JSON.parse(fs.readFileSync('/tmp/markets-raw.json', 'utf8'));
       marketsTracked =
-        (mraw.predictit?.length ?? 0) +
-        (mraw.manifold?.length  ?? 0) +
-        (mraw.kalshi?.length    ?? 0) +
+        (mraw.predictit?.length  ?? 0) +
+        (mraw.manifold?.length   ?? 0) +
+        (mraw.kalshi?.length     ?? 0) +
         (mraw.polymarket?.length ?? 0);
-    } catch { /* markets-raw.json may be absent when fetcher is stopped */ }
+    } catch {}
 
     const seen  = new Set<string>();
     const valid: any[] = [];
@@ -104,7 +117,6 @@ export async function GET() {
       const low  = o.lowMarket;
       const high = o.highMarket;
 
-      // Deduplicate by stable content hash (platform|url pairs)
       const pairKey = stableOppId(low, high);
       if (seen.has(pairKey)) { rejected++; continue; }
       seen.add(pairKey);
@@ -152,24 +164,29 @@ export async function GET() {
       });
     }
 
-    // Cashable first, then signal; within each group sort by net ROI desc
     valid.sort((a, b) => {
       if (a.type !== b.type) return a.type === 'cashable' ? -1 : 1;
       return b.roi - a.roi;
     });
 
-    const cashable   = valid.filter(o => o.type === 'cashable');
-    const bestRoi    = cashable.length > 0 ? cashable[0].roi : null;
-    const updatedAt  = raw.updatedAt ?? null;
-    const ageMinutes = updatedAt ? Math.round((Date.now() - updatedAt) / 60_000) : null;
+    const cashable = valid.filter(o => o.type === 'cashable');
+    const bestRoi  = cashable.length > 0 ? cashable[0].roi : null;
+    const now      = Date.now();
 
-    const isOverdue = ageMinutes !== null && ageMinutes >= OVERDUE_MIN;
-    const nextRunAt = nextCronRunAt(Date.now());
+    // Freshness: two independent clocks
+    const repriceAgeMin   = repricedAt  ? Math.round((now - repricedAt)  / 60_000) : null;
+    const discoveryAgeMin = discoveryAt ? Math.round((now - discoveryAt) / 60_000) : null;
+    const repriceStale    = repriceAgeMin   !== null && repriceAgeMin   >= REPRICE_OVERDUE_MIN;
+    const discoveryStale  = discoveryAgeMin !== null && discoveryAgeMin >= DISCOVERY_OVERDUE_MIN;
+    const nextDiscoveryAt = nextDiscoveryRunAt(now);
 
-    // Honest pipeline counts from matcher-v2 output
-    const confirmedCashable      = raw.stats?.confirmedCashable      ?? cashable.length;
-    const totalCashableCandidates = raw.stats?.totalCashableCandidates ?? cashable.length;
-    const pendingVerification    = raw.stats?.pendingVerification    ?? 0;
+    // Pipeline counts from re-pricer stats (or fall back to discovery stats)
+    const repricerStats   = raw.stats ?? {};
+    const confirmedCashable      = repricerStats.live_cashable ?? repricerStats.confirmedCashable      ?? cashable.length;
+    const totalCashableCandidates = repricerStats.discovery_cashable ?? repricerStats.totalCashableCandidates ?? cashable.length;
+    const evaporated             = repricerStats.evaporated ?? 0;
+    const inactive               = repricerStats.inactive   ?? 0;
+    const pendingVerification    = repricerStats.pendingVerification ?? 0;
 
     return NextResponse.json({
       valid,
@@ -180,21 +197,27 @@ export async function GET() {
         signalCount:              valid.filter(o => o.type === 'signal').length,
         confirmedCashable,
         totalCashableCandidates,
+        evaporated,
+        inactive,
         pendingVerification,
         bestRoi,
         marketsTracked,
         platforms:    4,
-        updatedAt,
-        pipelineAge:  updatedAt ? Math.round((Date.now() - updatedAt) / 1000) : null,
+        updatedAt:    repricedAt ?? discoveryAt,
+        pipelineAge:  repricedAt ? Math.round((now - repricedAt) / 1000) : null,
       },
       freshness: {
-        updatedAt,
-        ageMinutes,
-        isOverdue,
-        nextRunAt,
-        label: !ageMinutes   ? null
-             : ageMinutes < 1440 ? `${Math.round(ageMinutes / 60)}h AGO`
-             :                     `${Math.round(ageMinutes / 1440)}d AGO`,
+        pricesAt:       repricedAt,
+        discoveryAt,
+        nextDiscoveryAt,
+        repriceStale,
+        discoveryStale,
+        repriceAgeMin,
+        discoveryAgeMin,
+        repriceLabel:   repriceAgeMin   !== null ? `${repriceAgeMin}m AGO`   : null,
+        discoveryLabel: discoveryAgeMin !== null
+          ? (discoveryAgeMin < 60 ? `${discoveryAgeMin}m AGO` : `${Math.round(discoveryAgeMin / 60)}h AGO`)
+          : null,
       },
     });
   } catch {
@@ -206,7 +229,12 @@ export async function GET() {
         bestRoi: null, marketsTracked: 0, platforms: 4,
         updatedAt: null, pipelineAge: null,
       },
-      freshness: { updatedAt: null, ageMinutes: null, isOverdue: false, nextRunAt: null, label: null },
+      freshness: {
+        pricesAt: null, discoveryAt: null, nextDiscoveryAt: null,
+        repriceStale: false, discoveryStale: false,
+        repriceAgeMin: null, discoveryAgeMin: null,
+        repriceLabel: null, discoveryLabel: null,
+      },
     });
   }
 }

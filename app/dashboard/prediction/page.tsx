@@ -49,11 +49,15 @@ interface Stats {
 }
 
 interface Freshness {
-  updatedAt:  number | null;
-  ageMinutes: number | null;
-  isOverdue:  boolean;
-  nextRunAt:  number | null;
-  label:      string | null;
+  pricesAt:        number | null;
+  discoveryAt:     number | null;
+  nextDiscoveryAt: number | null;
+  repriceStale:    boolean;
+  discoveryStale:  boolean;
+  repriceAgeMin:   number | null;
+  discoveryAgeMin: number | null;
+  repriceLabel:    string | null;
+  discoveryLabel:  string | null;
 }
 
 interface ApiResponse {
@@ -250,29 +254,50 @@ export default function PredictionPage() {
         )}
       </div>
 
-      {/* Snapshot freshness line — warning only if a scheduled run was genuinely missed */}
+      {/* Dual freshness — prices (15 min re-pricer) + discovery (3h cron) */}
       {!loading && (
-        <div className={`mb-4 px-3 py-2 border font-mono text-[11px] uppercase tracking-widest flex items-center gap-2 ${
-          freshness?.isOverdue
+        <div className={`mb-4 px-3 py-2 border font-mono text-[10px] uppercase tracking-widest ${
+          (freshness?.repriceStale || freshness?.discoveryStale)
             ? 'border-warning/30 bg-warning/5 text-warning/80'
             : 'border-border bg-bg-panel text-text-muted'
         }`}>
-          {freshness?.isOverdue ? (
-            <>
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-warning/60 shrink-0" />
-              LAST SNAPSHOT {freshness.label} — UPDATE MAY BE DELAYED
-            </>
-          ) : freshness?.updatedAt ? (
-            <>
-              SNAPSHOT FROM {new Date(freshness.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-              {freshness.nextRunAt != null && (
-                <> · NEXT UPDATE {new Date(freshness.nextRunAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</>
+          <div className="flex flex-wrap gap-x-4 gap-y-1 items-center">
+            {/* Prices line */}
+            <span className="flex items-center gap-1.5">
+              {freshness?.repriceStale
+                ? <span className="inline-block w-1.5 h-1.5 rounded-full bg-warning/60 shrink-0" />
+                : <span className="inline-block w-1.5 h-1.5 rounded-full bg-positive/60 shrink-0" />}
+              {freshness?.pricesAt
+                ? <>PRICES {new Date(freshness.pricesAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · REFRESH ~15 MIN</>
+                : freshness?.discoveryAt
+                  ? <>PRICES FROM DISCOVERY SNAPSHOT · RE-PRICER STARTING</>
+                  : 'NO PRICE DATA YET'}
+              {freshness?.repriceStale && freshness.repriceLabel && (
+                <span className="text-warning"> ({freshness.repriceLabel} — STALLED?)</span>
               )}
-              {' '}· 8H CADENCE
-            </>
-          ) : (
-            'NO SNAPSHOT YET — MATCHER HAS NOT RUN'
-          )}
+            </span>
+
+            <span className="text-text-muted/40">|</span>
+
+            {/* Discovery line */}
+            <span className="flex items-center gap-1.5">
+              {freshness?.discoveryStale
+                ? <span className="inline-block w-1.5 h-1.5 rounded-full bg-warning/60 shrink-0" />
+                : null}
+              {freshness?.discoveryAt ? (
+                <>
+                  MARKETS RESCANNED {new Date(freshness.discoveryAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  {freshness.nextDiscoveryAt != null && (
+                    <> · NEXT {new Date(freshness.nextDiscoveryAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</>
+                  )}
+                  {' '}· 3H CADENCE
+                </>
+              ) : 'DISCOVERY NOT RUN YET'}
+              {freshness?.discoveryStale && freshness.discoveryLabel && (
+                <span className="text-warning"> ({freshness.discoveryLabel} — MISSED SLOT?)</span>
+              )}
+            </span>
+          </div>
         </div>
       )}
 
@@ -323,7 +348,7 @@ export default function PredictionPage() {
           <div className="font-mono text-[10px] text-text-muted">
             {(data?.rejected ?? 0) > 0
               ? `${data!.rejected} ENTR${data!.rejected === 1 ? 'Y' : 'IES'} FAILED VALIDATION (ROI > 50%, NULL PRICES, MISSING URLS)`
-              : freshness?.updatedAt
+              : freshness?.discoveryAt
                 ? 'LAST SNAPSHOT FOUND NO EXPLOITABLE SPREAD ABOVE THRESHOLD'
                 : 'NO SNAPSHOT YET — MATCHER HAS NOT RUN'}
           </div>
