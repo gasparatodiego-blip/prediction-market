@@ -932,6 +932,7 @@ CRITICAL RULES (read carefully):
 - "bottom of group" / "last in group" → BINARY, boundary="last place in group"
 - A mutually-exclusive event means ONLY ONE stage/outcome resolves YES — always use EXACT
 - NEVER guess entity names from ticker codes; trust only explicit names in the title
+- For US elections without an explicit year: if the title uses future tense ("will"), extract "2026 US Midterm Elections" (next cycle) — NEVER back-fill a past year like 2022 for a market that says "will" or "after the Midterms"
 
 Respond ONLY with a JSON array (one entry per market, same order):
 [{"index":0,"subject":"...","metric":"...","relation":"EXACT","boundary":"...","timeframe":"...","yes_condition":"..."},...]`;
@@ -1034,8 +1035,8 @@ function compareSignatures(sigA, sigB) {
     return `relation: "${sigA.relation}" vs "${sigB.relation}"`;
   if (normSig(sigA.subject) !== normSig(sigB.subject))
     return `subject: "${sigA.subject}" vs "${sigB.subject}"`;
-  if (normSig(sigA.metric) !== normSig(sigB.metric))
-    return `metric: "${sigA.metric}" vs "${sigB.metric}"`;
+  // metric intentionally omitted: "held"/"controlled"/"won" are synonyms;
+  // subject + relation + boundary + timeframe already uniquely identifies the event.
   if (normSig(sigA.boundary) !== normSig(sigB.boundary))
     return `boundary: "${sigA.boundary}" vs "${sigB.boundary}"`;
   if (normSig(sigA.timeframe) !== normSig(sigB.timeframe))
