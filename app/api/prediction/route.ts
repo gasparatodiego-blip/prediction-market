@@ -92,8 +92,10 @@ function isValidOpp(o: any): string | null {
   if (fA > 0.15) return `fee too high on ${low.platform} (${fA})`;
   if (fB > 0.15) return `fee too high on ${high.platform} (${fB})`;
 
-  if (!isFinite(o.roi) || o.roi <= 0) return `non-positive roi (${o.roi})`;
+  if (!isFinite(o.roi)) return `invalid roi (${o.roi})`;
   if (o.roi > 50) return `roi too high, likely unreliable (${o.roi}%)`;
+  // Signal/divergence pairs carry roi=0 but a non-zero spread; allow them through
+  if (o.roi <= 0 && !(o.cashable === false && (o.spread ?? 0) > 0)) return `non-positive roi (${o.roi})`;
 
   if (!low.platform  || !high.platform)  return 'missing platform name';
   if (!low.url       || !high.url)       return 'missing url';
@@ -209,7 +211,8 @@ export async function GET() {
 
     valid.sort((a, b) => {
       if (a.type !== b.type) return a.type === 'cashable' ? -1 : 1;
-      return b.roi - a.roi;
+      if (a.type === 'cashable') return b.roi - a.roi;
+      return b.spread - a.spread;  // divergence: sort by price gap desc
     });
 
     const cashable = valid.filter(o => o.type === 'cashable');

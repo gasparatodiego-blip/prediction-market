@@ -137,17 +137,11 @@ function OppRow({ opp }: { opp: Opportunity }) {
       <div className="px-4 py-3">
         <div className="flex flex-wrap gap-x-4 gap-y-2 items-start">
 
-          {/* Type chip */}
+          {/* Unified label — no cashable/signal distinction shown on card */}
           <div className="shrink-0 mt-0.5">
-            {isCashable ? (
-              <span className="font-mono text-[10px] uppercase tracking-widest px-1.5 py-0.5 bg-positive/10 text-positive border border-positive/25">
-                CASHABLE
-              </span>
-            ) : (
-              <span className="font-mono text-[10px] uppercase tracking-widest px-1.5 py-0.5 bg-warning/10 text-warning border border-warning/25">
-                SIGNAL
-              </span>
-            )}
+            <span className="font-mono text-[10px] uppercase tracking-widest px-1.5 py-0.5 bg-accent/10 text-accent border border-accent/25">
+              RISULTATO TROVATO
+            </span>
           </div>
 
           {/* Question + category */}
@@ -172,29 +166,14 @@ function OppRow({ opp }: { opp: Opportunity }) {
             </div>
           </div>
 
-          {/* ROI + annualized — cashable only; signal cards show spread only (no fake ROI) */}
+          {/* Divario headline — never rendered as profit/ROI/guaranteed */}
           <div className="shrink-0 text-right">
-            {isCashable && (
-              <div className="font-mono text-[13px] font-semibold text-positive tabular-nums">
-                +{opp.roi.toFixed(1)}% NET ROI
-              </div>
-            )}
-            {/* ANN only when expiry is known — never show on unknown-expiry markets */}
-            {isCashable && opp.annualizedROI != null && expiry != null && (opp.daysToResolution ?? 0) > 0 && (
-              <div className="font-mono text-[10px] text-positive/60 tabular-nums">
-                {opp.annualizedROI.toFixed(1)}% ANN · {opp.daysToResolution}d
-              </div>
-            )}
-            <div className="font-mono text-[10px] text-text-muted tabular-nums">
-              {opp.spread.toFixed(1)}pp SPREAD · CONF {Math.round(opp.confidence * 100)}%
+            <div className="font-mono text-[13px] font-semibold text-accent tabular-nums">
+              DIVARIO {opp.spread.toFixed(1)}%
             </div>
-            {opp.capacityUsd != null && opp.capacityUsd > 0 && (
-              <div className="font-mono text-[10px] text-text-muted tabular-nums">
-                ~${opp.capacityUsd < 1000
-                  ? opp.capacityUsd.toFixed(0)
-                  : (opp.capacityUsd / 1000).toFixed(1) + 'K'} EXEC SIZE
-              </div>
-            )}
+            <div className="font-mono text-[10px] text-text-muted tabular-nums">
+              CONF {Math.round(opp.confidence * 100)}%
+            </div>
           </div>
 
           {/* Expiry */}
@@ -318,9 +297,9 @@ export default function PredictionPage() {
         ) : (
           <>
             <StatPanel
-              label="OPPORTUNITIES"
-              value={`${stats?.cashableCount ?? 0} CASHABLE`}
-              sub={`${stats?.signalCount ?? 0} SIGNAL · ${data?.rejected ?? 0} REJECTED`}
+              label="RISULTATI TROVATI"
+              value={`${stats?.validCount ?? 0}`}
+              sub={`${data?.rejected ?? 0} ESCLUSI`}
             />
             <StatPanel
               label="MARKETS TRACKED"
@@ -328,18 +307,14 @@ export default function PredictionPage() {
               sub="ACROSS 4 PLATFORMS"
             />
             <StatPanel
-              label="CONFIRMED CASHABLE"
-              value={String(stats?.confirmedCashable ?? stats?.cashableCount ?? 0)}
-              sub={
-                (stats?.totalCashableCandidates ?? 0) > (stats?.confirmedCashable ?? 0)
-                  ? `${(stats?.totalCashableCandidates ?? 0).toLocaleString()} CANDIDATES · ${(stats?.pendingVerification ?? 0).toLocaleString()} PENDING AI VERIFICATION`
-                  : 'AI-VERIFIED · SIGNAL: ' + (stats?.signalCount ?? 0)
-              }
+              label="CANDIDATI ANALIZZATI"
+              value={`${(stats?.totalCashableCandidates ?? 0).toLocaleString()}`}
+              sub={`${(stats?.pendingVerification ?? 0) > 0 ? `${stats!.pendingVerification} PENDING AI` : 'AI-VERIFIED'}`}
             />
             <StatPanel
-              label="BEST NET ROI"
-              value={stats?.bestRoi != null ? `+${stats.bestRoi.toFixed(1)}%` : '—'}
-              sub="CASHABLE ONLY · FEES DEDUCTED"
+              label="DIVARIO MIGLIORE"
+              value={opps.length > 0 ? `${Math.max(...opps.map(o => o.spread)).toFixed(1)}%` : '—'}
+              sub="MID-PRICE GAP · VEDI DETTAGLIO"
             />
           </>
         )}
@@ -353,22 +328,20 @@ export default function PredictionPage() {
       ) : opps.length === 0 ? (
         <div className="border border-border px-6 py-16 text-center">
           <div className="font-mono text-sm text-text-secondary uppercase tracking-widest mb-2">
-            NO VALID PREDICTION ARB FOUND
+            NESSUN RISULTATO TROVATO
           </div>
           <div className="font-mono text-[10px] text-text-muted">
             {(data?.rejected ?? 0) > 0
               ? `${data!.rejected} ENTR${data!.rejected === 1 ? 'Y' : 'IES'} FAILED VALIDATION (ROI > 50%, NULL PRICES, MISSING URLS)`
               : freshness?.discoveryAt
-                ? 'LAST SNAPSHOT FOUND NO EXPLOITABLE SPREAD ABOVE THRESHOLD'
+                ? 'LAST SNAPSHOT FOUND NO SAME-EVENT DIVERGENCE ABOVE THRESHOLD'
                 : 'NO SNAPSHOT YET — MATCHER HAS NOT RUN'}
           </div>
         </div>
       ) : (
         <>
           <div className="font-mono text-[10px] text-text-muted uppercase tracking-widest mb-3">
-            {stats?.cashableCount ?? opps.filter(o => o.type === 'cashable').length} CASHABLE
-            {' · '}{stats?.signalCount ?? opps.filter(o => o.type === 'signal').length} SIGNAL
-            {' · '}{data!.rejected} REJECTED · SORTED BY NET ROI DESC
+            {opps.length} RISULTATI TROVATI · {data!.rejected} ESCLUSI · SORTED BY DIVARIO DESC
           </div>
           {opps.map(opp => (
             <OppRow key={opp.id} opp={opp} />

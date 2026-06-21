@@ -80,6 +80,10 @@ const SIGNATURE_CACHE_FILE  = path.join(__dirname, '..', 'data', 'resolution-sig
 const SIGNATURE_TTL_MS      = 30 * 24 * 60 * 60 * 1000;  // re-extract after 30 days
 const SIGNATURE_BATCH       = 6;   // markets per Haiku extraction call
 
+// Divergence surfacing — apply same-event gate to top signal pairs too
+const MIN_DIVERGENCE_SPREAD   = 5;   // pp minimum mid-price gap to surface as divergence
+const MAX_DIVERGENCE_SURFACED = 50;  // cap: top N by spread after gate
+
 // Stage 3c — cache-first confirmation (cashable only, runs after same-event gate)
 const CONFIRM_BATCH      = 10;   // pairs per Haiku call
 const MAX_NEW_PAIRS      = parseInt(process.env.NEW_PAIRS_PER_RUN || '200', 10);  // new (uncached) cap per run
@@ -952,17 +956,13 @@ Respond ONLY with a JSON array (one entry per market, same order):
   return [];
 }
 
-async function extractResolutionSignatures(survivors, anthropic) {
-  // Only extract signatures for cashable survivors — these are the ones that claim
-  // executable arb; signal pairs (non-real-book legs) are already conservative.
-  const cashable = survivors.filter(s => s.type === 'cashable');
-
+async function extractResolutionSignatures(toProcess, anthropic) {
   const cache = loadSignatureCache();
   const now   = Date.now();
 
-  // Collect unique legs from cashable survivors only
+  // Collect unique legs from all pairs to process (cashable + top divergence)
   const legsById = new Map();
-  for (const s of cashable) {
+  for (const s of toProcess) {
     for (const leg of [s.a, s.b]) {
       if (!legsById.has(leg.id)) legsById.set(leg.id, leg);
     }
@@ -976,7 +976,7 @@ async function extractResolutionSignatures(survivors, anthropic) {
     }
   }
 
-  console.log(`[v2] Stage 3a: ${cashable.length} cashable survivors → ${legsById.size} unique legs (${legsById.size - uncached.length} cached, ${uncached.length} to extract)`);
+  console.log(`[v2] Stage 3a: ${toProcess.length} pairs → ${legsById.size} unique legs (${legsById.size - uncached.length} cached, ${uncached.length} to extract)`);
 
   let totalCalls = 0;
   for (let i = 0; i < uncached.length; i += SIGNATURE_BATCH) {
@@ -1043,19 +1043,12 @@ function compareSignatures(sigA, sigB) {
   return null;  // same event
 }
 
-function sameEventGate(survivors, sigMap) {
-  // Only gate cashable survivors — they claim executable arb and must be verified.
-  // Signal survivors (non-real-book legs) are already conservative; pass through.
+function sameEventGate(toGate, sigMap) {
+  // Gate ALL pairs — both cashable and top-divergence signal pairs must prove same event.
   const sameEvent = [];
   const rejected  = [];
 
-  for (const s of survivors) {
-    if (s.type === 'signal') {
-      sameEvent.push(s);   // non-executable signals pass through without gate
-      continue;
-    }
-
-    // Cashable path: both legs must have signatures and they must match
+  for (const s of toGate) {
     const sigA = sigMap[s.a.id];
     const sigB = sigMap[s.b.id];
 
@@ -1072,9 +1065,11 @@ function sameEventGate(survivors, sigMap) {
     }
   }
 
-  const cashableIn  = survivors.filter(s => s.type === 'cashable').length;
+  const cashableIn  = toGate.filter(s => s.type === 'cashable').length;
   const cashableOut = sameEvent.filter(s => s.type === 'cashable').length;
-  console.log(`[v2] Stage 3b: ${cashableIn} cashable → ${cashableOut} SAME_EVENT, ${rejected.length} REJECTED (signals pass through unchanged)`);
+  const signalIn    = toGate.filter(s => s.type === 'signal').length;
+  const signalOut   = sameEvent.filter(s => s.type === 'signal').length;
+  console.log(`[v2] Stage 3b: ${cashableIn} cashable + ${signalIn} divergence → ${cashableOut} cashable + ${signalOut} divergence passed, ${rejected.length} REJECTED`);
 
   // Log up to 5 example rejections
   const examples = rejected.slice(0, 5);
@@ -1694,6 +1689,39 @@ function writeUnified(matcherV2Output) {
   console.log(`[v2/unified]   CASHABLE:${cashableCount}  SIGNAL:${signalCount}  SPORTS:${sportsCount}`);
 }
 
+// ── Keep-good check ───────────────────────────────────────────────────────────
+// Verify known same-event pairs pass the gate (false-negative validation).
+// Runs after Stage 3b signature extraction; logs PASS / FAIL / SKIP.
+function keepGoodCheck(sigMap) {
+  const KNOWN_GOOD = [
+    { label: 'GOP Senate 48 seats', aId: 'ka-RSENATESEATS-27-E48',  bId: 'pi-8163-31968' },
+    { label: 'GOP Senate 49 seats', aId: 'ka-RSENATESEATS-27-E49',  bId: 'pi-8163-31969' },
+    { label: 'Dem Senate 50 seats', aId: 'ka-KXDSENATESEATS-27-50', bId: 'pi-8163-31965' },
+  ];
+  console.log('\n── Keep-good check (false-negative validation) ─────');
+  let anyChecked = false;
+  for (const { label, aId, bId } of KNOWN_GOOD) {
+    const sigA = sigMap[aId];
+    const sigB = sigMap[bId];
+    if (!sigA || !sigB) {
+      console.log(`  ${label}: SKIP (not in toGate — spread below threshold or pair inactive)`);
+      continue;
+    }
+    anyChecked = true;
+    const diff = compareSignatures(sigA, sigB);
+    if (diff) {
+      console.log(`  ${label}: FAIL [${diff}] ← gate is over-strict; fix normalization`);
+      console.log(`    A: ${JSON.stringify(sigA)}`);
+      console.log(`    B: ${JSON.stringify(sigB)}`);
+    } else {
+      console.log(`  ${label}: PASS`);
+      console.log(`    A yes_condition: "${sigA.yes_condition}"`);
+      console.log(`    B yes_condition: "${sigB.yes_condition}"`);
+    }
+  }
+  if (!anyChecked) console.log('  (all skipped — pairs not in current toGate)');
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -1746,34 +1774,57 @@ async function main() {
   // Create a single Anthropic client shared by stages 3a and 3c
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-  // Stage 3a: Extract resolution signatures for every survivor leg (per-market cache)
-  const sigMap = await extractResolutionSignatures(survivors, anthropic);
+  // Select pairs for same-event gate: all cashable + top-N divergence signal pairs
+  const cashableSurvivors = survivors.filter(s => s.type === 'cashable');
+  const topDivergence = survivors
+    .filter(s => s.type === 'signal' && s.spread >= MIN_DIVERGENCE_SPREAD)
+    .sort((a, b) => b.spread - a.spread)
+    .slice(0, MAX_DIVERGENCE_SURFACED);
+  const toGate = [...cashableSurvivors, ...topDivergence];
+  console.log(`[v2] Stage 3 input: ${cashableSurvivors.length} cashable + ${topDivergence.length} top-divergence (spread≥${MIN_DIVERGENCE_SPREAD}pp) → ${toGate.length} to gate`);
 
-  // Stage 3b: Same-event gate — deterministic 5-field comparison; reject mismatches
-  const { sameEvent, rejected: rejectedNotSameEvent } = sameEventGate(survivors, sigMap);
+  // Stage 3a: Extract resolution signatures for cashable + top divergence (per-market cache)
+  const sigMap = await extractResolutionSignatures(toGate, anthropic);
 
-  // Stage 3c: Cache-first Haiku confirmation (cashable pairs from sameEvent only)
-  // Non-real-book signal survivors were never in the output before and stay out —
-  // they're too numerous (50K+) and haven't been same-event gated individually.
+  // Stage 3b: Same-event gate — all pairs in toGate must pass
+  const { sameEvent, rejected: rejectedNotSameEvent } = sameEventGate(toGate, sigMap);
+
+  // Keep-good check: verify known same-event pairs pass the gate (false-negative validation)
+  keepGoodCheck(sigMap);
+
+  // Stage 3c: Cache-first Haiku confirmation (cashable pairs only)
+  const sameEventCashable   = sameEvent.filter(s => s.type === 'cashable');
+  const sameEventDivergence = sameEvent.filter(s => s.type === 'signal');
   const { confirmed: confirmedCashable, claudeCalls, newSent, cacheHits, totalCandidates } =
-    await haikuConfirm(sameEvent, anthropic);
+    await haikuConfirm(sameEventCashable, anthropic);
 
-  const allConfirmed = [...confirmedCashable];
+  // Divergence pairs that passed the same-event gate surface alongside cashable
+  const allConfirmed = [...confirmedCashable, ...sameEventDivergence];
 
   // Enrichment (time + capacity); enrichArbs sorts confirmed in-place by annualizedROI
   await enrichArbs(allConfirmed);
 
-  // STEP 4 pre-output: print yes_conditions for all cashable survivors (honesty proof)
-  const cashableSurvivors = allConfirmed.filter(s => s.type === 'cashable');
-  if (cashableSurvivors.length > 0) {
+  // STEP 4 pre-output: print yes_conditions for confirmed cashable (honesty proof)
+  const cashableOutput = allConfirmed.filter(s => s.type === 'cashable');
+  if (cashableOutput.length > 0) {
     console.log('\n── STEP 4: Cashable yes_conditions (same-event proof) ─');
-    for (const p of cashableSurvivors) {
+    for (const p of cashableOutput) {
       console.log(`\n  ${p.a.platform} ↔ ${p.b.platform}`);
       if (p.sigA) console.log(`    A yes_condition: "${p.sigA.yes_condition}"`);
       if (p.sigB) console.log(`    B yes_condition: "${p.sigB.yes_condition}"`);
     }
   } else {
-    console.log('\n── STEP 4: 0 cashable survivors — same-event gate cleared all arb candidates');
+    console.log('\n── STEP 4: 0 cashable — same-event gate cleared all cashable candidates');
+  }
+  // STEP 4 divergence: print yes_conditions for surfaced divergence pairs
+  if (sameEventDivergence.length > 0) {
+    console.log('\n── STEP 4: Divergence yes_conditions (same-event proof) ─');
+    sameEventDivergence.slice(0, 5).forEach(p => {
+      console.log(`\n  ${p.a.platform} ↔ ${p.b.platform}: "${p.a.rawTitle.slice(0, 60)}"`);
+      console.log(`    spread=${p.spread.toFixed(1)}pp`);
+      if (p.sigA) console.log(`    A yes_condition: "${p.sigA.yes_condition}"`);
+      if (p.sigB) console.log(`    B yes_condition: "${p.sigB.yes_condition}"`);
+    });
   }
 
   // Output
@@ -1803,6 +1854,7 @@ async function main() {
   console.log(`║  Candidate pairs  (Stage 1)   : ${String(candidates.length).padEnd(16)} ║`);
   console.log(`║  Survivors        (Stage 2)   : ${String(survivors.length).padEnd(16)} ║`);
   console.log(`║  Quarantined      (ROI>${SUSPICIOUS_ROI}%)    : ${String(quarantined.length).padEnd(16)} ║`);
+  console.log(`║  toGate (cashable+divergence) : ${String(toGate.length).padEnd(16)} ║`);
   console.log(`║  Passed same-event gate (3b)  : ${String(sameEvent.length).padEnd(16)} ║`);
   console.log(`║  Rejected not-same-event (3b) : ${String(rejectedNotSameEvent.length).padEnd(16)} ║`);
   console.log(`║  Cashable candidates          : ${String(totalCandidates).padEnd(16)} ║`);
@@ -1811,7 +1863,8 @@ async function main() {
   console.log(`║  Claude API calls             : ${String(claudeCalls).padEnd(16)} ║`);
   console.log(`║  Confirmed cashable           : ${String(confirmedCashableCount).padEnd(16)} ║`);
   console.log(`║  Pending verification         : ${String(pendingVerification).padEnd(16)} ║`);
-  console.log(`║  Final signal                 : ${String(signal.length).padEnd(16)} ║`);
+  console.log(`║  Divergence surfaced          : ${String(sameEventDivergence.length).padEnd(16)} ║`);
+  console.log(`║  Final risultati trovati      : ${String(allConfirmed.length).padEnd(16)} ║`);
   console.log(`║  Est. cost this run           : $${String(costPerRunFill.toFixed(4)).padEnd(15)} ║`);
   console.log(`║  Est. monthly (fill phase)    : $${String((costPerRunFill * 8 * 30).toFixed(2)).padEnd(15)} ║`);
   console.log(`║  Runs to full cache coverage  : ${String('~' + runsToFull).padEnd(16)} ║`);
