@@ -32,6 +32,7 @@ interface Opportunity {
   resolutionDate?:  string | null;
   confirmReason?:   string | null;
   lockupFlag?:      string | null;
+  capacityUsd?:     number | null;
 }
 
 interface Stats {
@@ -144,7 +145,7 @@ function OppRow({ opp }: { opp: Opportunity }) {
               </span>
             ) : (
               <span className="font-mono text-[10px] uppercase tracking-widest px-1.5 py-0.5 bg-warning/10 text-warning border border-warning/25">
-                SIGNAL · PLAY MONEY
+                SIGNAL
               </span>
             )}
           </div>
@@ -176,15 +177,22 @@ function OppRow({ opp }: { opp: Opportunity }) {
             <div className="font-mono text-[13px] font-semibold text-positive tabular-nums">
               +{opp.roi.toFixed(1)}% NET ROI
             </div>
-            {opp.annualizedROI != null && (
+            {/* ANN only when expiry is known — never show on unknown-expiry markets */}
+            {opp.annualizedROI != null && expiry != null && (opp.daysToResolution ?? 0) > 0 && (
               <div className="font-mono text-[10px] text-positive/60 tabular-nums">
-                {opp.annualizedROI.toFixed(1)}% ANN
-                {opp.daysToResolution != null ? ` · ${opp.daysToResolution}d` : ''}
+                {opp.annualizedROI.toFixed(1)}% ANN · {opp.daysToResolution}d
               </div>
             )}
             <div className="font-mono text-[10px] text-text-muted tabular-nums">
               {opp.spread.toFixed(1)}pp SPREAD · CONF {Math.round(opp.confidence * 100)}%
             </div>
+            {opp.capacityUsd != null && opp.capacityUsd > 0 && (
+              <div className="font-mono text-[10px] text-text-muted tabular-nums">
+                ~${opp.capacityUsd < 1000
+                  ? opp.capacityUsd.toFixed(0)
+                  : (opp.capacityUsd / 1000).toFixed(1) + 'K'} EXEC SIZE
+              </div>
+            )}
           </div>
 
           {/* Expiry */}

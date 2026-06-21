@@ -64,9 +64,16 @@ const MIN_HIGH_IDF_SHARED = 2;   // pair must share ≥ 2 truly-distinctive toke
                                   // separates entity matches (correct) from context matches (noise)
 
 // Stage 2 — executable bid/ask arb math
-const MIN_SIGNAL_SPREAD = 5;      // mid-spread threshold for signal (play-money) pairs
-const MAX_SPREAD_WIDTH  = 0.10;   // yesAsk-yesBid > 10¢ on either leg → illiquid, skip cashable
-const SUSPICIOUS_ROI    = 15;     // netROI above 15% → quarantine (real arbs are ~1-8%)
+const MIN_SIGNAL_SPREAD      = 5;     // mid-spread threshold for signal (play-money) pairs
+const MAX_SPREAD_WIDTH        = 0.10;  // yesAsk-yesBid > 10¢ on either leg → illiquid, skip cashable
+const SUSPICIOUS_ROI          = 15;    // netROI above 15% → quarantine (real arbs are ~1-8%)
+const CASHABLE_MIN_CONFIDENCE = 0.85;  // IDF-derived confidence below this → unverified candidate
+const CASHABLE_MIN_SIZE_USD   = 50;    // capacityUsd below this → reclassified at re-price stage
+
+// Tokens in PM titles that indicate cumulative "reach/advance" semantics.
+// Kalshi mutually-exclusive outcomes (eliminated AT stage X) are NOT complements
+// of cumulative PM "reach stage X or further" markets — block those from cashable.
+const CUMULATIVE_REACH_RE = /\breach\b|\bqualif|\badvance|\bfurthest\b/;
 
 // Stage 3 — cache-first confirmation
 const CONFIRM_BATCH      = 10;   // pairs per Haiku call
@@ -236,14 +243,16 @@ function kalshiPageToMarkets(data) {
       const ask = parseFloat(m.yes_ask_dollars || '0');
       if (bid <= 0 && ask <= 0) continue;
       out.push({
-        ticker:          m.ticker,
-        event_ticker:    ev.event_ticker || null,   // authoritative event-level ticker for URL
-        series_ticker:   ev.series_ticker || null,
-        title:           ev.title || '',
-        yes_sub_title:   m.yes_sub_title || '',     // specific outcome name (e.g. "Mark Cuban")
-        yes_bid_dollars: m.yes_bid_dollars,
-        yes_ask_dollars: m.yes_ask_dollars,
-        close_time:      m.close_time || ev.close_time || null,
+        ticker:              m.ticker,
+        event_ticker:        ev.event_ticker || null,
+        series_ticker:       ev.series_ticker || null,
+        title:               ev.title || '',
+        yes_sub_title:       m.yes_sub_title || '',      // e.g. "Mark Cuban", "Round of 16"
+        yes_bid_dollars:     m.yes_bid_dollars,
+        yes_ask_dollars:     m.yes_ask_dollars,
+        close_time:          m.close_time || ev.close_time || null,
+        mutually_exclusive:  ev.mutually_exclusive ?? false,  // event-level flag
+        category:            ev.category || '',              // e.g. "Sports", "Elections"
       });
     }
   }
@@ -504,18 +513,20 @@ function loadAndClean(raw) {
     const outcomeLabel = m.yes_sub_title || (suffixFullName || tickerSuffix);
     markets.push({
       id: `ka-${m.ticker}`,
-      platform:   'kalshi',
-      rawTitle:   outcomeLabel ? `${title} [outcome: ${outcomeLabel}]` : title,
-      baseTitle:  title,
-      outcome:    outcomeLabel,
+      platform:          'kalshi',
+      rawTitle:          outcomeLabel ? `${title} [outcome: ${outcomeLabel}]` : title,
+      baseTitle:         title,
+      outcome:           outcomeLabel,
       tickerExtra,
       suffixFullName,
-      probability: prob,
-      yesBid:     bid,
-      yesAsk:     ask,
-      realMoney:  true,
-      realBook:   true,
-      closeTime:  m.close_time || null,
+      probability:       prob,
+      yesBid:            bid,
+      yesAsk:            ask,
+      realMoney:         true,
+      realBook:          true,
+      closeTime:         m.close_time || null,
+      isMutuallyExclusive: !!(m.mutually_exclusive),  // from event-level flag
+      category:          m.category || '',
       // Three-segment canonical URL: /markets/{series}/{series_slug}/{event_ticker}
       // series_slug comes from the external-api series endpoint (pre-fetched into cache).
       // event_ticker is stored at fetch time (ev.event_ticker) or derived by stripping the
@@ -744,6 +755,33 @@ function arbPrefilter(candidates, markets) {
     }
 
     // ── Cashable path: both real-money ────────────────────────────────────
+
+    // Guard: IDF confidence too low → unverified candidate, keep as signal if spread exists.
+    // Real executable arbs require unambiguous entity+outcome match; low confidence = noisy IDF.
+    const pairConf = Math.min(1, c.idfScore / 20);
+    if (pairConf < CASHABLE_MIN_CONFIDENCE) {
+      const spreadMid = Math.abs(a.probability - b.probability);
+      if (spreadMid >= MIN_SIGNAL_SPREAD) {
+        survivors.push({ ...c, a, b, spread: spreadMid, gross: 0, net: 0, type: 'signal' });
+      }
+      continue;
+    }
+
+    // Guard: mutually-exclusive Kalshi outcome vs cumulative PM "reach/qualify" market.
+    // Example: "eliminated AT Round of 16" (21%) is NOT the complement of
+    // "reach Round of 16 or further" (39%). Buying both doesn't hedge when the team
+    // advances past the stated stage (both legs pay $0). Only block when Kalshi is the
+    // mutually-exclusive leg; Kalshi↔PredictIt "exactly N seats" pairs are allowed.
+    if (a.isMutuallyExclusive || b.isMutuallyExclusive) {
+      const pmLeg = a.platform === 'polymarket' ? a : (b.platform === 'polymarket' ? b : null);
+      if (pmLeg && CUMULATIVE_REACH_RE.test((pmLeg.rawTitle || '').toLowerCase())) {
+        const spreadMid = Math.abs(a.probability - b.probability);
+        if (spreadMid >= MIN_SIGNAL_SPREAD) {
+          survivors.push({ ...c, a, b, spread: spreadMid, gross: 0, net: 0, type: 'signal' });
+        }
+        continue;
+      }
+    }
 
     // Guard 1: one-sided market (no bid or ask at limit)
     if (a.yesBid <= 0 || a.yesAsk >= 1) continue;
@@ -1012,10 +1050,21 @@ function formatOutput(confirmed, totalCashableCandidates) {
       grossRoi:        p.gross,
       bestCost:        p.bestCost,
       bestDir:         p.bestDir,
-      lowMarket:       { id: low.id,  platform: low.platform,  probability: low.probability,  yesBid: low.yesBid,  yesAsk: low.yesAsk,  url: low.url,  urlVerified: low.urlVerified  ?? false, clobTokenId: low.clobTokenId  ?? null },
-      highMarket:      { id: high.id, platform: high.platform, probability: high.probability, yesBid: high.yesBid, yesAsk: high.yesAsk, url: high.url, urlVerified: high.urlVerified ?? false, clobTokenId: high.clobTokenId ?? null },
+      lowMarket:  {
+        id: low.id, platform: low.platform, probability: low.probability,
+        yesBid: low.yesBid, yesAsk: low.yesAsk, url: low.url,
+        urlVerified: low.urlVerified ?? false, clobTokenId: low.clobTokenId ?? null,
+        expiresAt: low.closeTime ? new Date(low.closeTime).getTime() : null,
+      },
+      highMarket: {
+        id: high.id, platform: high.platform, probability: high.probability,
+        yesBid: high.yesBid, yesAsk: high.yesAsk, url: high.url,
+        urlVerified: high.urlVerified ?? false, clobTokenId: high.clobTokenId ?? null,
+        expiresAt: high.closeTime ? new Date(high.closeTime).getTime() : null,
+      },
       outcome_a:       low.outcome,
       outcome_b:       high.outcome,
+      category:        low.category  || high.category  || 'unknown',
       confirmReason:   p.confirmReason,
       // Time / capital-efficiency enrichment
       resolutionDate:  p.resolutionDate  ?? null,

@@ -49,6 +49,29 @@ function feeFor(platform: string): number {
   return PLATFORM_FEES[platform?.toLowerCase()] ?? 0;
 }
 
+// Minimum executable $ size for cashable label.
+// Pairs below this threshold pass structural checks but are reclassified to signal.
+const CASHABLE_MIN_SIZE_USD    = 50;
+// Minimum IDF-derived confidence for cashable label (mirrors matcher-v2 constant).
+const CASHABLE_MIN_CONFIDENCE  = 0.85;
+
+// Detect Kalshi single-stage mutually-exclusive outcomes (eliminated AT stage X) that
+// were falsely paired with cumulative Polymarket "reach stage X or further" markets.
+// These legs are NOT complements: advancing past the stated stage means BOTH legs pay $0.
+// This guard fires on the current discovery file until the next matcher run applies the fix.
+const STAGEOFELIM_RE    = /STAGEOFELIM/i;
+const CUMULATIVE_PM_RE  = /\breach\b|\bqualif|\badvance|\bfurthest\b/i;
+
+function hasMutuallyExclusiveVsCumulativeMismatch(o: any): boolean {
+  const low = o?.lowMarket; const high = o?.highMarket;
+  if (!low || !high) return false;
+  const kaId  = low.platform  === 'kalshi'     ? low.id  : high.platform === 'kalshi'     ? high.id  : '';
+  const pmLeg = low.platform  === 'polymarket' ? low      : high.platform === 'polymarket' ? high     : null;
+  if (!pmLeg) return false;
+  const pmTitle = String(o.title ?? o.question ?? '').toLowerCase();
+  return STAGEOFELIM_RE.test(kaId) && CUMULATIVE_PM_RE.test(pmTitle);
+}
+
 function isValidOpp(o: any): string | null {
   const low  = o?.lowMarket;
   const high = o?.highMarket;
@@ -123,9 +146,24 @@ export async function GET() {
 
       const fA = feeFor(low.platform);
       const fB = feeFor(high.platform);
-      const isSignal =
+
+      // Determine type: play-money → signal; semantic-mismatch → signal; otherwise cashable
+      const isPlayMoney =
         PLAY_MONEY_PLATFORMS.has(low.platform?.toLowerCase()) ||
         PLAY_MONEY_PLATFORMS.has(high.platform?.toLowerCase());
+
+      // Gate 1 (immediate stopgap): mutually-exclusive Kalshi single-stage vs cumulative PM.
+      // STAGEOFELIM tickers in the current discovery file were not yet blocked by matcher-v2.
+      const isStageMismatch = hasMutuallyExclusiveVsCumulativeMismatch(o);
+
+      // Gate 2: IDF confidence too low for cashable label
+      const confTooLow = typeof o.confidence === 'number' && o.confidence < CASHABLE_MIN_CONFIDENCE;
+
+      // Gate 3: executable size too small (computed by enrichArbs in matcher-v2)
+      const capUsd     = typeof o.capacityUsd === 'number' ? o.capacityUsd : null;
+      const tooSmall   = capUsd !== null && capUsd < CASHABLE_MIN_SIZE_USD;
+
+      const isCashable = !isPlayMoney && !isStageMismatch && !confTooLow && !tooSmall;
 
       valid.push({
         id: pairKey,
@@ -136,7 +174,7 @@ export async function GET() {
           url:         low.url,
           urlVerified: low.urlVerified  ?? false,
           fee:         fA,
-          expiresAt:   low.expiresAt  ?? null,
+          expiresAt:   low.expiresAt   ?? null,
           yesBid:      typeof low.yesBid  === 'number' ? low.yesBid  : null,
           yesAsk:      typeof low.yesAsk  === 'number' ? low.yesAsk  : null,
         },
@@ -146,21 +184,22 @@ export async function GET() {
           url:         high.url,
           urlVerified: high.urlVerified ?? false,
           fee:         fB,
-          expiresAt:   high.expiresAt ?? null,
+          expiresAt:   high.expiresAt  ?? null,
           yesBid:      typeof high.yesBid === 'number' ? high.yesBid : null,
           yesAsk:      typeof high.yesAsk === 'number' ? high.yesAsk : null,
         },
         spread:           o.spread,
         roi:              o.roi,
-        earnPer100:       o.earnPer100 ?? null,
+        earnPer100:       o.earnPer100  ?? null,
         confidence:       o.confidence,
-        category:         o.category ?? 'unknown',
-        type:             isSignal ? 'signal' : 'cashable',
+        category:         o.category   ?? 'unknown',
+        type:             isCashable ? 'cashable' : 'signal',
         annualizedROI:    o.annualizedROI    ?? null,
         daysToResolution: o.daysToResolution ?? null,
         resolutionDate:   o.resolutionDate   ?? null,
         confirmReason:    o.confirmReason    ?? null,
         lockupFlag:       o.lockupFlag       ?? null,
+        capacityUsd:      capUsd,
       });
     }
 
