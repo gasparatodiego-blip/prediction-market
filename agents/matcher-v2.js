@@ -932,7 +932,7 @@ CRITICAL RULES (read carefully):
 - "bottom of group" / "last in group" → BINARY, boundary="last place in group"
 - A mutually-exclusive event means ONLY ONE stage/outcome resolves YES — always use EXACT
 - NEVER guess entity names from ticker codes; trust only explicit names in the title
-- For US elections without an explicit year: if the title uses future tense ("will"), extract "2026 US Midterm Elections" (next cycle) — NEVER back-fill a past year like 2022 for a market that says "will" or "after the Midterms"
+- For US elections without an explicit year: if the title uses future tense ("will") or "after the [Election/Midterms]", extract the NEXT occurrence of that election type from the current date — NEVER back-fill a historical year. E.g. if the current year is 2025 or 2026, "the Midterms" means the 2026 US Midterm Elections; "the Presidential election" means the 2028 US Presidential Election. Do NOT default to a past year like 2022
 
 Respond ONLY with a JSON array (one entry per market, same order):
 [{"index":0,"subject":"...","metric":"...","relation":"EXACT","boundary":"...","timeframe":"...","yes_condition":"..."},...]`;
@@ -1029,14 +1029,42 @@ function normSig(s) {
   return (s || '').toLowerCase().trim().replace(/\s+/g, ' ');
 }
 
+// Normalize a metric string to a canonical form so that synonymous phrasings
+// compare equal, while semantically distinct metrics remain distinct.
+// Conservative: unknown phrases pass through unchanged; if they don't match,
+// they reject — a missed true-positive is safer than a false arb.
+function normMetric(raw) {
+  let s = normSig(raw);  // lowercase + collapse whitespace
+
+  // Legislative seat control — "held", "controlled", "won", "gained" are synonyms
+  s = s.replace(/\bseats?\s+(held|controlled|won|gained|secured)\b/g, 'seats held');
+  s = s.replace(/\bseats?\s+held\s+by\b/g, 'seats held by');
+  s = s.replace(/\b(holds?|controls?)\s+(\d+)\s+seats?\b/g, 'seats held');
+
+  // Generic legislative chamber: always keep "senate" ≠ "house"
+  // (no synonym needed — just prevent false normalization)
+
+  // Goals in sport: keep "scored"/"for" ≠ "allowed"/"conceded"/"against"
+  // so "goals scored" and "goals allowed" are NOT collapsed
+  s = s.replace(/\bgoals?\s+(scored|for)\b/g,              'goals scored');
+  s = s.replace(/\bgoals?\s+(allowed|conceded|against)\b/g, 'goals allowed');
+
+  // Election type: keep "primary" ≠ "general" ≠ "runoff"
+  // (no synonym — distinct races must stay distinct)
+
+  return s;
+}
+
 function compareSignatures(sigA, sigB) {
   // Check relation first — it's the most critical structural distinction
   if (normSig(sigA.relation) !== normSig(sigB.relation))
     return `relation: "${sigA.relation}" vs "${sigB.relation}"`;
   if (normSig(sigA.subject) !== normSig(sigB.subject))
     return `subject: "${sigA.subject}" vs "${sigB.subject}"`;
-  // metric intentionally omitted: "held"/"controlled"/"won" are synonyms;
-  // subject + relation + boundary + timeframe already uniquely identifies the event.
+  // Metric: normalize synonyms (held≡controlled for seats) before comparing.
+  // Distinct metrics (scored≠allowed, senate≠house, primary≠general) must still differ.
+  if (normMetric(sigA.metric) !== normMetric(sigB.metric))
+    return `metric: "${sigA.metric}" vs "${sigB.metric}"`;
   if (normSig(sigA.boundary) !== normSig(sigB.boundary))
     return `boundary: "${sigA.boundary}" vs "${sigB.boundary}"`;
   if (normSig(sigA.timeframe) !== normSig(sigB.timeframe))
