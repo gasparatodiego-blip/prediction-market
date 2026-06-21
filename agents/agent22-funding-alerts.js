@@ -15,8 +15,12 @@ const https = require('https');
 // ── Config ─────────────────────────────────────────────────────────────────
 const TOKEN    = process.env.TELEGRAM_BOT_TOKEN;
 const API_BASE = `https://api.telegram.org/bot${TOKEN}`;
-const SUBS_FILE = path.join(__dirname, '../data/fund-subscriptions.json');
-const UNI_FILE  = '/tmp/unified-opportunities.json';
+const SUBS_FILE  = path.join(__dirname, '../data/fund-subscriptions.json');
+const UNI_FILE   = '/tmp/unified-opportunities.json';
+// Prediction alerts: same post-gate source as /api/prediction
+const PRED_REPRICED   = '/tmp/repriced-opportunities.json';
+const PRED_DISCOVERY  = '/tmp/arbitrage-opportunities.json';
+const PRED_ROI_CEIL   = 15;  // matches dashboard quarantine threshold
 
 const POLL_TIMEOUT   = 25;          // seconds for long-poll
 const ALERT_INTERVAL = 60_000;      // ms between alert scans
@@ -105,12 +109,37 @@ async function handleUpdate(update, subs) {
   const chatId = String(msg.chat.id);
   const text   = msg.text.trim();
 
-  // /start fund_BTC           — status-change alerts only
-  // /start fund_BTC_exit_55   — status alerts + exit alert at 5.5%/yr (value × 10 encoded)
+  // /start pred_new — subscribe to new prediction-market verified results
+  if (/^\/start\s+pred_new/i.test(text)) {
+    const key  = `${chatId}:PRED_NEW`;
+    const prev = subs[key] || {};
+    subs[key]  = {
+      chatId,
+      type:         'pred_new',
+      addedAt:      prev.addedAt    || Date.now(),
+      lastAlertAt:  prev.lastAlertAt || 0,
+      knownOppIds:  prev.knownOppIds ?? null,  // null = baseline scan pending
+    };
+    saveSubs(subs);
+    await sendMessage(chatId,
+      `✅ <b>Prediction alerts active.</b>\n\n` +
+      `You'll be notified when a new verified prediction-market result appears.\n\n` +
+      `Alerts fire only on results that:\n` +
+      `• Passed the AI same-event gate\n` +
+      `• Are live-cashable at current bid/ask prices\n\n` +
+      `Max 1 alert per new result per hour.\n\n` +
+      `/stop to cancel all alerts · /list to see active alerts`
+    );
+    log(`Pred subscription chatId=${chatId}`);
+    return;
+  }
+
+  // /start fund_BTC            — status-change alerts only
+  // /start fund_BTC_exit_550   — status alerts + exit alert at 5.5%/yr (basis points: value ÷ 100 = %/yr)
   const startMatch = text.match(/^\/start\s+fund_([A-Za-z0-9]+)(?:_exit_(\d+))?/i);
   if (startMatch) {
     const asset         = startMatch[1].toUpperCase();
-    const exitThreshold = startMatch[2] != null ? parseInt(startMatch[2], 10) / 10 : null;
+    const exitThreshold = startMatch[2] != null ? parseInt(startMatch[2], 10) / 100 : null;
     const key           = subKey(chatId, asset);
     const prev          = subs[key] || {};
     subs[key] = {
@@ -180,15 +209,16 @@ async function handleUpdate(update, subs) {
   if (text.startsWith('/list')) {
     const keys = Object.keys(subs).filter(k => k.startsWith(`${chatId}:`));
     if (keys.length === 0) {
-      await sendMessage(chatId, 'No active funding alerts. Visit the dashboard and tap ✈ Follow on any opportunity.');
+      await sendMessage(chatId, 'No active alerts. Visit the dashboard to subscribe.');
     } else {
       const lines = keys.map(k => {
         const s = subs[k];
+        if (s.type === 'pred_new') return `• <b>Prediction Markets</b> — new verified results`;
         const thresh = s.exitThreshold != null ? ` · exit alert <${s.exitThreshold.toFixed(1)}%/yr` : '';
-        return `• <b>${s.asset}</b>${thresh}`;
+        return `• <b>${s.asset}</b> funding${thresh}`;
       });
       await sendMessage(chatId,
-        `Active alerts:\n${lines.join('\n')}\n\n/unfollow ASSET to cancel one · /stop to clear all`
+        `Active alerts:\n${lines.join('\n')}\n\n/unfollow ASSET to cancel funding alert · /stop to clear all`
       );
     }
     return;
@@ -304,6 +334,89 @@ function buildExitAlertText(opp, threshold) {
   ].join('\n');
 }
 
+// ── Prediction alert scanning ─────────────────────────────────────────────────
+function loadPredictionData() {
+  // Reads from the same post-same-event-gate sources as /api/prediction.
+  // Only live-cashable results (passed repricer) qualify for alerts.
+  try {
+    const f = JSON.parse(fs.readFileSync(PRED_REPRICED, 'utf8'));
+    return (f.opportunities || []).filter(
+      o => o.cashable === true && typeof o.roi === 'number' && o.roi > 0 && o.roi <= PRED_ROI_CEIL
+    );
+  } catch {
+    try {
+      const f = JSON.parse(fs.readFileSync(PRED_DISCOVERY, 'utf8'));
+      return (f.opportunities || []).filter(
+        o => o.cashable === true && typeof o.roi === 'number' && o.roi > 0 && o.roi <= PRED_ROI_CEIL
+      );
+    } catch { return []; }
+  }
+}
+
+function buildPredAlertText(opp) {
+  const q       = (opp.question || opp.title || '').slice(0, 100);
+  const low     = opp.lowMarket  || {};
+  const high    = opp.highMarket || {};
+  const spread  = (opp.spread  || 0).toFixed(1);
+  const roi     = (opp.roi     || 0).toFixed(2);
+  const days    = opp.daysToResolution ? `${opp.daysToResolution}d to resolution` : '';
+  const yesPrice = low.yesAsk  ? (low.yesAsk  * 100).toFixed(1) : String(low.probability  || '?');
+  const noPrice  = high.yesBid ? ((1 - high.yesBid) * 100).toFixed(1) : String(100 - (high.probability || 0));
+
+  return [
+    `🔔 <b>New prediction result</b>`,
+    ``,
+    `<b>${q}</b>`,
+    ``,
+    `Spread: <b>${spread}pp</b>${days ? `  ·  ${days}` : ''}`,
+    ``,
+    `How to act: Buy YES on <b>${low.platform || '?'}</b> at ${yesPrice}¢,`,
+    `then Buy NO on <b>${high.platform || '?'}</b> at ${noPrice}¢.`,
+    `Est. net after fees: <b>+${roi}%</b>`,
+    ``,
+    `⚠ Verify resolution criteria on both platforms before trading.`,
+    `<i>Not financial advice. Prices are snapshots.</i>`,
+  ].join('\n');
+}
+
+async function scanPredictionAlerts(subs) {
+  const predKeys = Object.keys(subs).filter(k => k.endsWith(':PRED_NEW'));
+  if (predKeys.length === 0) return;
+
+  const opps  = loadPredictionData();
+  const now   = Date.now();
+  let dirty   = false;
+
+  for (const key of predKeys) {
+    const sub = subs[key];
+
+    // First scan ever: record baseline, no alert (avoids firing on existing state at subscribe time)
+    if (sub.knownOppIds === null) {
+      sub.knownOppIds = opps.map(o => o.id);
+      dirty = true;
+      log(`Pred baseline chatId=${sub.chatId} count=${opps.length}`);
+      continue;
+    }
+
+    const prevSet = new Set(sub.knownOppIds || []);
+    const newOpps = opps.filter(o => !prevSet.has(o.id));
+
+    if (newOpps.length > 0 && now - sub.lastAlertAt >= THROTTLE_MS) {
+      const best = newOpps.sort((a, b) => b.roi - a.roi)[0];
+      const text = buildPredAlertText(best);
+      await sendMessage(sub.chatId, text);
+      log(`Pred alert chatId=${sub.chatId} new=${newOpps.length} opp="${(best.question || best.title || '').slice(0, 40)}"`);
+      sub.lastAlertAt = now;
+    }
+
+    // Always update known IDs so alerts don't repeat for the same result
+    sub.knownOppIds = opps.map(o => o.id);
+    dirty = true;
+  }
+
+  if (dirty) saveSubs(subs);
+}
+
 async function runAlertScan(subs) {
   const opps = loadFundingData();
   if (opps.length === 0) return;
@@ -360,6 +473,9 @@ async function runAlertScan(subs) {
   }
 
   if (dirty) saveSubs(subs);
+
+  // Also scan prediction alerts in the same cycle
+  await scanPredictionAlerts(subs);
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
