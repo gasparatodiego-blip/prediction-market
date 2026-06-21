@@ -171,6 +171,23 @@ export async function GET() {
 
       const isCashable = !isSignalOnly && !isStageMismatch && !confTooLow && !tooSmall;
 
+      // Expose the specific reason a pair is non-cashable so the detail page can show
+      // an accurate "HOW TO OPERATE" section without defaulting to Manifold boilerplate.
+      const nonCashableReason: string | null = isCashable ? null
+        : isSignalOnly    ? 'play_money'
+        : isStageMismatch ? 'stage_mismatch'
+        : confTooLow      ? 'low_confidence'
+        : tooSmall        ? 'small_capacity'
+        : 'no_arb';
+
+      const confidenceNote: string | null = confTooLow && typeof o.confidence === 'number'
+        ? `${Math.round(o.confidence * 100)}% (min: ${Math.round(CASHABLE_MIN_CONFIDENCE * 100)}%)`
+        : null;
+
+      const capacityNote: string | null = tooSmall && capUsd !== null
+        ? `$${Math.round(capUsd)} (min: $${CASHABLE_MIN_SIZE_USD})`
+        : null;
+
       valid.push({
         id: pairKey,
         question:         o.question ?? o.title ?? '—',
@@ -203,9 +220,12 @@ export async function GET() {
         annualizedROI:    o.annualizedROI    ?? null,
         daysToResolution: o.daysToResolution ?? null,
         resolutionDate:   o.resolutionDate   ?? null,
-        confirmReason:    o.confirmReason    ?? null,
-        lockupFlag:       o.lockupFlag       ?? null,
-        capacityUsd:      capUsd,
+        confirmReason:        o.confirmReason    ?? null,
+        lockupFlag:           o.lockupFlag       ?? null,
+        capacityUsd:          capUsd,
+        nonCashableReason,
+        confidenceNote,
+        capacityNote,
       });
     }
 

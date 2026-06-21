@@ -27,12 +27,15 @@ interface Opportunity {
   earnPer100:       number | null;
   confidence:       number;
   category:         string;
-  type:             'cashable' | 'signal';
-  annualizedROI?:   number | null;
-  daysToResolution?: number | null;
-  resolutionDate?:  string | null;
-  confirmReason?:   string | null;
-  lockupFlag?:      string | null;
+  type:                 'cashable' | 'signal';
+  annualizedROI?:       number | null;
+  daysToResolution?:    number | null;
+  resolutionDate?:      string | null;
+  confirmReason?:       string | null;
+  lockupFlag?:          string | null;
+  nonCashableReason?:   'play_money' | 'stage_mismatch' | 'low_confidence' | 'small_capacity' | 'no_arb' | null;
+  confidenceNote?:      string | null;
+  capacityNote?:        string | null;
 }
 
 interface ApiResponse {
@@ -563,116 +566,478 @@ function CashableDetail({ opp, capital, setCapital }: {
   );
 }
 
-// ── SIGNAL detail ─────────────────────────────────────────────────────────────
+// ── HOW TO OPERATE — signal pairs ────────────────────────────────────────────
+// Replaces the old "SIGNAL ONLY / WHY THIS CANNOT BE EXECUTED" pattern.
+// Three cases:
+//   1. Play-money leg (Manifold) → directional-only with honest play-money explanation.
+//   2. Real-money × real-money, live net ≤ 0 → directional-only + true reason + arithmetic.
+//   3. Real-money × real-money, live net > 0 → full executable HOW TO OPERATE guide.
 
-function SignalDetail({ opp }: { opp: Opportunity }) {
+function SignalDetail({ opp, capital, setCapital }: {
+  opp:        Opportunity;
+  capital:    number;
+  setCapital: (n: number) => void;
+}) {
   const low  = opp.lowMarket;
   const high = opp.highMarket;
 
+  const PLAY_MONEY_PLATFORMS = new Set(['manifold']);
+  const lowIsPlay  = PLAY_MONEY_PLATFORMS.has(low.platform?.toLowerCase()  ?? '');
+  const highIsPlay = PLAY_MONEY_PLATFORMS.has(high.platform?.toLowerCase() ?? '');
+  const hasPlayMoney = lowIsPlay || highIsPlay;
+
+  // Live arithmetic for real-money pairs (same model as CashableDetail)
+  const priceYES     = low.yesAsk   ?? (low.probability  / 100);
+  const priceNO      = high.yesBid  != null ? (1 - high.yesBid) : ((100 - high.probability) / 100);
+  const costPerPair  = priceYES + priceNO;
+  const grossPerPair = 1 - costPerPair;
+  const highYesDec   = high.yesAsk  ?? (high.probability / 100);
+  const feePerContLow  = contractFeePerPair(low.platform,  priceYES);
+  const feePerContHigh = contractFeePerPair(high.platform, highYesDec);
+  const netPerPair   = grossPerPair - feePerContLow - feePerContHigh;
+  const liveNetROI   = !hasPlayMoney && costPerPair > 0 ? (netPerPair / costPerPair) * 100 : 0;
+  const isExecutable = !hasPlayMoney && liveNetROI > 0;
+
+  const N            = isExecutable && capital > 0 ? Math.floor(capital / costPerPair) : 0;
+  const totalCost    = N * costPerPair;
+  const totalFeeLow  = N * feePerContLow;
+  const totalFeeHigh = N * feePerContHigh;
+  const netTotal     = N * netPerPair;
+
+  const usingLiveYES = low.yesAsk  != null;
+  const usingLiveNO  = high.yesBid != null;
+
+  // Scanner reason why this was not classified as cashable
+  const scannerNote = (() => {
+    switch (opp.nonCashableReason) {
+      case 'low_confidence':
+        return `AI match confidence below threshold${opp.confidenceNote ? ` (${opp.confidenceNote})` : ''}. Verify both markets resolve on identical criteria before trading.`;
+      case 'small_capacity':
+        return `Executable size is small${opp.capacityNote ? ` (${opp.capacityNote})` : ''}. Execution cost may exceed potential profit at this size.`;
+      case 'stage_mismatch':
+        return 'Possible resolution-criteria mismatch (Kalshi single-stage vs Polymarket cumulative). Verify both descriptions resolve identically.';
+      case 'no_arb':
+        return 'Spread did not survive fees at discovery-time prices.';
+      default:
+        return null;
+    }
+  })();
+
+  // ── CASE 1: play-money leg ──────────────────────────────────────────────────
+  if (hasPlayMoney) {
+    const playName = lowIsPlay ? platformLabel(low.platform) : platformLabel(high.platform);
+    return (
+      <>
+        <SectionTitle title="How to operate" />
+        <div className="mb-5 px-4 py-4 bg-bg-panel border border-warning/30">
+          <div className="font-mono text-[11px] font-semibold text-warning uppercase tracking-widest mb-2">
+            Directional only — not a cashable arbitrage
+          </div>
+          <div className="font-mono text-[10px] text-text-muted leading-relaxed space-y-2">
+            <p>
+              <span className="text-text-secondary">{playName}</span> uses play money (MANA) — not real currency and not convertible to cash.
+              The price divergence cannot be captured as guaranteed profit between these platforms.
+            </p>
+            <p>
+              <span className="text-text-secondary">What it means: </span>
+              {platformLabel(low.platform)} prices this at {low.probability}¢ while{' '}
+              {platformLabel(high.platform)} prices it at {high.probability}¢ — a {opp.spread.toFixed(1)}pp divergence.
+              Use this as a directional signal only.
+            </p>
+            <p>
+              If you believe the real-money platform is mispriced, trade that side accepting full directional risk.
+              No cross-platform settlement exists — prediction-market shares are platform-specific tokens.
+            </p>
+          </div>
+        </div>
+
+        <SectionTitle title="Price comparison (informational)" />
+        <div className="mb-6 px-4 py-4 bg-bg-panel border border-border font-mono text-[10px]">
+          <div className="grid grid-cols-2 gap-4">
+            {([low, high] as const).map((leg, i) => {
+              const isPlay = i === 0 ? lowIsPlay : highIsPlay;
+              return (
+                <div key={i}>
+                  <div className="text-[9px] uppercase tracking-widest text-text-muted mb-1">{platformLabel(leg.platform)}</div>
+                  <div className="text-[18px] font-bold text-text-primary tabular-nums">{leg.probability}¢ YES</div>
+                  <div className="text-[9px] text-text-muted/70 mt-0.5">
+                    {isPlay ? 'Play-money (MANA) — not convertible to cash' : 'Real-money market'}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="mt-3 pt-3 border-t border-border/30">
+            <span className="text-text-muted">Spread: </span>
+            <span className="text-warning font-medium">{opp.spread.toFixed(1)}pp</span>
+            <span className="text-text-muted ml-2">· Conf {Math.round(opp.confidence * 100)}%</span>
+          </div>
+          {opp.confirmReason && (
+            <p className="text-[9px] text-text-muted/60 mt-2 italic">&quot;{opp.confirmReason}&quot;</p>
+          )}
+        </div>
+
+        <SectionTitle title="Market links (reference)" />
+        <div className="mb-6 flex flex-wrap gap-3">
+          {([low, high] as const).map((leg, i) => {
+            const { url, verified } = getMarketUrl(leg);
+            return (
+              <a key={i} href={url} target="_blank" rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 font-mono text-[10px] px-3 py-1.5 border border-border text-text-muted hover:border-text-secondary hover:text-text-primary transition-colors duration-100">
+                <ExternalLink size={10} />
+                {platformLabel(leg.platform)} market{!verified && ' (search)'}
+              </a>
+            );
+          })}
+        </div>
+      </>
+    );
+  }
+
+  // ── CASE 2: real-money × real-money, net ≤ 0 at live prices ────────────────
+  if (!isExecutable) {
+    return (
+      <>
+        <SectionTitle title="How to operate" />
+        <div className="mb-5 px-4 py-4 bg-bg-panel border border-border">
+          <div className="font-mono text-[11px] font-semibold text-text-secondary uppercase tracking-widest mb-2">
+            Directional only — spread does not lock positive at live bid/ask prices
+          </div>
+          <div className="font-mono text-[10px] text-text-muted leading-relaxed space-y-2">
+            <p>
+              Both {platformLabel(low.platform)} and {platformLabel(high.platform)} are real-money platforms.
+              Arithmetic at current executable (bid/ask) prices:
+            </p>
+            <div className="my-2 px-3 py-2 bg-bg-elevated border border-border font-mono text-[10px] space-y-0.5">
+              <div>
+                <span className="text-text-muted">Buy YES on {platformLabel(low.platform)}: </span>
+                <span className="text-positive tabular-nums font-medium">{(priceYES * 100).toFixed(1)}¢</span>
+                {usingLiveYES && <span className="text-text-muted/50 text-[9px]"> (ask · mid {low.probability}¢)</span>}
+              </div>
+              <div>
+                <span className="text-text-muted">Buy NO on {platformLabel(high.platform)}: </span>
+                <span className="text-accent tabular-nums font-medium">{(priceNO * 100).toFixed(1)}¢</span>
+                {usingLiveNO && <span className="text-text-muted/50 text-[9px]"> (1 − bid · mid {100 - high.probability}¢)</span>}
+              </div>
+              <div className="border-t border-border/30 pt-1 mt-0.5">
+                <span className="text-text-muted">Total cost: </span>
+                <span className="tabular-nums font-medium">{(costPerPair * 100).toFixed(1)}¢</span>
+                <span className="text-text-muted ml-3">Gross: </span>
+                <span className={`tabular-nums font-medium ${grossPerPair > 0 ? 'text-positive' : 'text-negative/80'}`}>
+                  {grossPerPair >= 0 ? '+' : ''}{(grossPerPair * 100).toFixed(2)}¢
+                </span>
+              </div>
+              <div>
+                <span className="text-text-muted">After fees: </span>
+                <span className={`tabular-nums font-medium ${netPerPair > 0 ? 'text-positive' : 'text-negative/80'}`}>
+                  {netPerPair >= 0 ? '+' : ''}{(netPerPair * 100).toFixed(3)}¢ per contract pair
+                </span>
+                <span className="text-text-muted/60 text-[9px] ml-2">({liveNetROI.toFixed(2)}% net ROI)</span>
+              </div>
+            </div>
+            {scannerNote && (
+              <p className="text-[9px] text-text-muted/60 border-l-2 border-border pl-2">
+                <span className="text-text-secondary font-medium">Scanner: </span>{scannerNote}
+              </p>
+            )}
+            <p>
+              <span className="text-text-secondary">How to act: </span>
+              Track the spread — if YES prices diverge further the arithmetic may become positive.
+              Trade the mispriced side with full directional risk if you have a view.
+            </p>
+          </div>
+        </div>
+
+        <SectionTitle title="Price comparison" />
+        <div className="mb-6 px-4 py-4 bg-bg-panel border border-border font-mono text-[10px]">
+          <div className="grid grid-cols-2 gap-4">
+            {([low, high] as const).map((leg, i) => (
+              <div key={i}>
+                <div className="text-[9px] uppercase tracking-widest text-text-muted mb-1">{platformLabel(leg.platform)}</div>
+                <div className="text-[18px] font-bold text-text-primary tabular-nums">{leg.probability}¢ YES</div>
+                <div className="text-[9px] text-text-muted/70 mt-0.5">Real-money market</div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-3 pt-3 border-t border-border/30">
+            <span className="text-text-muted">Spread: </span>
+            <span className="font-medium tabular-nums">{opp.spread.toFixed(1)}pp</span>
+            <span className="text-text-muted ml-2">· Conf {Math.round(opp.confidence * 100)}%</span>
+          </div>
+          {opp.confirmReason && (
+            <p className="text-[9px] text-text-muted/60 mt-2 italic">&quot;{opp.confirmReason}&quot;</p>
+          )}
+        </div>
+
+        <SectionTitle title="Market links" />
+        <div className="mb-6 flex flex-wrap gap-3">
+          {([low, high] as const).map((leg, i) => {
+            const { url, verified } = getMarketUrl(leg);
+            return (
+              <a key={i} href={url} target="_blank" rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 font-mono text-[10px] px-3 py-1.5 border border-border text-text-muted hover:border-text-secondary hover:text-text-primary transition-colors duration-100">
+                <ExternalLink size={10} />
+                {platformLabel(leg.platform)} market{!verified && ' (search)'}
+              </a>
+            );
+          })}
+        </div>
+      </>
+    );
+  }
+
+  // ── CASE 3: real-money × real-money, live net > 0 — full execution guide ────
   return (
     <>
-      {/* What this is */}
-      <div className="mb-5 px-4 py-4 bg-bg-panel border border-warning/30">
-        <div className="font-mono text-[11px] font-semibold text-warning uppercase tracking-widest mb-2">
-          Signal only — not a cashable arbitrage
-        </div>
-        <div className="font-mono text-[10px] text-text-muted leading-relaxed space-y-2">
-          <p>
-            At least one leg of this opportunity is on a platform that does not use real money.
-            You cannot exchange positions between these platforms, so the shown price divergence
-            cannot be captured as guaranteed profit.
-          </p>
-          <p>
-            <span className="text-text-secondary">What it means instead: </span>
-            the {platformLabel(low.platform)} crowd prices this event at {low.probability}¢
-            while {platformLabel(high.platform)} prices it at {high.probability}¢ — a {opp.spread.toFixed(1)}pp
-            divergence. This is directional information, not a risk-free arb.
-          </p>
-          <p>
-            If you believe one platform&apos;s crowd is correct and the other is wrong, you can trade
-            the mispriced side on whichever executable platform is involved — accepting full
-            directional risk.
-          </p>
-        </div>
-      </div>
+      <SectionTitle title="How to operate" />
 
-      {/* Price comparison */}
-      <SectionTitle title="Price comparison (informational only)" />
-      <div className="mb-6 px-4 py-4 bg-bg-panel border border-border font-mono text-[10px]">
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <div className="text-[9px] uppercase tracking-widest text-text-muted mb-1">{platformLabel(low.platform)}</div>
-            <div className="text-[18px] font-bold text-text-primary tabular-nums">{low.probability}¢ YES</div>
-            <div className="text-[9px] text-text-muted/70 mt-0.5">
-              {['manifold'].includes(low.platform?.toLowerCase())
-                ? 'Play-money (MANA) — not convertible to cash'
-                : 'Real-money market'
-              }
-            </div>
-          </div>
-          <div>
-            <div className="text-[9px] uppercase tracking-widest text-text-muted mb-1">{platformLabel(high.platform)}</div>
-            <div className="text-[18px] font-bold text-text-primary tabular-nums">{high.probability}¢ YES</div>
-            <div className="text-[9px] text-text-muted/70 mt-0.5">
-              {['manifold'].includes(high.platform?.toLowerCase())
-                ? 'Play-money (MANA) — not convertible to cash'
-                : 'Real-money market'
-              }
-            </div>
-          </div>
+      {/* Explain why the scanner flagged it as informational despite positive arithmetic */}
+      {scannerNote && (
+        <div className="mb-4 px-4 py-3 border border-warning/30 bg-warning/5 font-mono text-[10px] text-warning/80">
+          <span className="font-semibold">Scanner note: </span>{scannerNote}{' '}
+          The live arithmetic below is positive — verify resolution criteria on both platforms before trading.
         </div>
-        <div className="mt-3 pt-3 border-t border-border/30">
-          <span className="text-text-muted">Spread: </span>
-          <span className="text-warning font-medium">{opp.spread.toFixed(1)}pp</span>
-          <span className="text-text-muted ml-2">· Conf {Math.round(opp.confidence * 100)}%</span>
+      )}
+
+      {/* Price snapshot */}
+      <div className="mb-5 px-4 py-3 bg-bg-panel border border-border font-mono text-[11px]">
+        <div className="font-mono text-[9px] uppercase tracking-widest text-text-muted mb-2">Current prices (snapshot)</div>
+        <div className="flex flex-wrap gap-x-8 gap-y-1.5">
+          <span>
+            <span className="text-text-muted">YES on {platformLabel(low.platform)}: </span>
+            <span className="text-positive font-medium tabular-nums">{(priceYES * 100).toFixed(1)}¢</span>
+            {usingLiveYES && <span className="text-text-muted/60 text-[9px] ml-1">(ask · mid {low.probability}¢)</span>}
+          </span>
+          <span>
+            <span className="text-text-muted">NO on {platformLabel(high.platform)}: </span>
+            <span className="text-accent font-medium tabular-nums">{(priceNO * 100).toFixed(1)}¢</span>
+            {usingLiveNO && <span className="text-text-muted/60 text-[9px] ml-1">(1 − bid · mid {100 - high.probability}¢)</span>}
+          </span>
+          <span>
+            <span className="text-text-muted">Cost per pair: </span>
+            <span className="text-text-primary tabular-nums font-medium">{(costPerPair * 100).toFixed(1)}¢</span>
+          </span>
+          <span>
+            <span className="text-text-muted">Net ROI: </span>
+            <span className="text-positive font-medium tabular-nums">{fmtPct(liveNetROI, 2)}</span>
+            <span className="text-text-muted/60 text-[9px] ml-1">(live fee model)</span>
+          </span>
         </div>
-        {opp.confirmReason && (
-          <p className="text-[9px] text-text-muted/60 mt-2 italic">&quot;{opp.confirmReason}&quot;</p>
+        {!usingLiveYES && !usingLiveNO && (
+          <p className="font-mono text-[9px] text-warning/60 mt-1.5">
+            No order-book data — prices shown are mid-market. Actual executable prices may differ.
+          </p>
         )}
       </div>
 
-      {/* Why non-executable explainer */}
-      <SectionTitle title="Why this cannot be executed as an arbitrage" />
-      <div className="mb-6 space-y-2 font-mono text-[10px] text-text-muted leading-relaxed">
-        {[
-          {
-            label: 'Play-money platform',
-            body: 'Manifold Markets uses MANA, a non-transferable play currency. You cannot deposit or withdraw real money. A "price" on Manifold represents community belief, not an executable bid or offer.',
-          },
-          {
-            label: 'No cross-platform settlement',
-            body: 'Prediction market shares are platform-specific tokens. There is no mechanism to move a YES share from one platform to another. Each platform resolves independently.',
-          },
-          {
-            label: 'What you can do',
-            body: 'If the real-money side (e.g. Kalshi or Polymarket) is priced very differently from the crowd wisdom shown on Manifold, and you trust the Manifold crowd, you can trade the real-money side accepting full directional risk.',
-          },
-        ].map(({ label, body }) => (
-          <div key={label} className="flex items-start gap-3">
-            <span className="text-warning/60 shrink-0 mt-px">▸</span>
-            <span>
-              <span className="text-text-secondary font-medium">{label}: </span>
-              {body}
-            </span>
-          </div>
-        ))}
+      {/* Capital input */}
+      <div className="mb-5 px-4 py-3 bg-bg-panel border border-border">
+        <div className="font-mono text-[9px] uppercase tracking-widest text-text-muted mb-2">Your capital</div>
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-[10px] text-text-muted">$</span>
+          <input
+            type="number" min={0} step={100} value={capital}
+            onChange={e => setCapital(Math.max(0, parseFloat(e.target.value) || 0))}
+            className="w-[5rem] px-1.5 py-0.5 font-mono text-[11px] bg-bg-panel border border-border text-text-primary focus:border-accent/50 focus:outline-none tabular-nums"
+          />
+        </div>
       </div>
 
-      {/* Links for reference */}
-      <SectionTitle title="Market links (reference only)" />
+      {/* P&L estimate */}
+      {capital > 0 && N > 0 && (
+        <div className="mb-6 px-4 py-4 border border-positive/25 bg-positive/5">
+          <div className="font-mono text-[9px] uppercase tracking-widest text-text-muted mb-2">
+            Estimated outcome at ${capital.toLocaleString()}
+          </div>
+          <div className="flex flex-wrap gap-x-6 gap-y-1.5 font-mono text-[11px] mb-4">
+            <span>
+              <span className="text-text-muted">Contracts: </span>
+              <span className="text-text-primary font-medium tabular-nums">{N} pairs</span>
+              <span className="text-text-muted/60 text-[9px] ml-1">({N} YES + {N} NO)</span>
+            </span>
+            <span>
+              <span className="text-text-muted">Deployed: </span>
+              <span className="text-text-primary tabular-nums font-medium">{fmtUsd(totalCost)}</span>
+              <span className="text-text-muted/60 text-[9px] ml-1">({fmtUsd(capital - totalCost)} undeployed)</span>
+            </span>
+            <span>
+              <span className="text-positive font-bold text-[14px] tabular-nums">{fmtUsd(netTotal)} locked profit</span>
+              <span className="text-text-muted/60 text-[9px] ml-1">(net, at resolution)</span>
+            </span>
+          </div>
+          <div className="border-t border-border/30 pt-3">
+            <div className="font-mono text-[9px] uppercase tracking-widest text-text-muted mb-2">Fee breakdown</div>
+            <div className="space-y-[3px] font-mono text-[10px]">
+              <div className="flex gap-2">
+                <span className="text-text-muted w-[120px] shrink-0">Gross profit</span>
+                <span className="text-text-muted/60 text-[9px]">{N} × {(grossPerPair * 100).toFixed(2)}¢</span>
+                <span className="text-text-primary tabular-nums ml-auto">{fmtUsd(N * grossPerPair)}</span>
+              </div>
+              <div className="flex gap-2">
+                <span className="text-text-muted w-[120px] shrink-0">{platformLabel(low.platform)} fee</span>
+                <span className="text-text-muted/60 text-[9px]">
+                  {low.platform?.toLowerCase() === 'kalshi'
+                    ? `7%×${(priceYES*100).toFixed(1)}¢×${((1-priceYES)*100).toFixed(1)}¢`
+                    : low.platform?.toLowerCase() === 'polymarket' ? '0% · no trading fee'
+                    : `${(low.fee*100).toFixed(0)}% on winnings`}
+                </span>
+                <span className={`tabular-nums ml-auto ${totalFeeLow === 0 ? 'text-text-muted/50' : 'text-negative/80'}`}>
+                  {fmtUsd(-totalFeeLow)}
+                </span>
+              </div>
+              <div className="flex gap-2">
+                <span className="text-text-muted w-[120px] shrink-0">{platformLabel(high.platform)} fee</span>
+                <span className="text-text-muted/60 text-[9px]">
+                  {high.platform?.toLowerCase() === 'kalshi'
+                    ? `7%×${(highYesDec*100).toFixed(1)}¢×${((1-highYesDec)*100).toFixed(1)}¢`
+                    : high.platform?.toLowerCase() === 'polymarket' ? '0% · no trading fee'
+                    : `${(high.fee*100).toFixed(0)}% on winnings`}
+                </span>
+                <span className={`tabular-nums ml-auto ${totalFeeHigh === 0 ? 'text-text-muted/50' : 'text-negative/80'}`}>
+                  {fmtUsd(-totalFeeHigh)}
+                </span>
+              </div>
+              <div className="flex gap-2 border-t border-border/30 pt-1.5 mt-1">
+                <span className="text-text-secondary font-medium">Net profit</span>
+                <span className="text-text-muted/50 text-[9px] ml-1">({liveNetROI.toFixed(2)}% ROI)</span>
+                <span className="text-positive font-medium tabular-nums ml-auto">{fmtUsd(netTotal)}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {capital > 0 && N === 0 && (
+        <div className="mb-6 px-4 py-3 border border-border bg-bg-panel font-mono text-[10px] text-warning/70">
+          Capital too low for one contract pair at {(costPerPair * 100).toFixed(1)}¢/pair cost.
+        </div>
+      )}
+
+      {/* Step-by-step */}
+      <SectionTitle title="Step-by-step execution" />
+      <div className="space-y-0 mb-6">
+        <div className="border-b border-border/20 pb-4 mb-4">
+          <StepLabel n={1} text={`Buy YES on ${platformLabel(low.platform)}`} />
+          <div className="ml-[42px] font-mono text-[10px] text-text-muted leading-relaxed space-y-1">
+            <p>Market: <span className="text-text-secondary">{opp.question}</span></p>
+            <p>
+              Outcome: <span className="text-positive font-medium">YES</span>
+              {' '}· Price: <span className="text-positive tabular-nums font-medium">{(priceYES * 100).toFixed(1)}¢/share</span>
+              {usingLiveYES && <span className="text-text-muted/60"> (order-book ask)</span>}
+            </p>
+            {capital > 0 && N > 0 && (
+              <p>Quantity: <span className="tabular-nums text-text-primary">{N} shares</span> · Cost: <span className="tabular-nums">{fmtUsd(N * priceYES)}</span></p>
+            )}
+            <p className="text-[9px] text-text-muted/60 border-l border-border/30 pl-2 mt-1">
+              {(() => { const { url, verified } = getMarketUrl(low); return (
+                <a href={url} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-accent hover:text-accent-bright">
+                  Open {platformLabel(low.platform)} market{!verified && ' (search)'} <ExternalLink size={9} />
+                </a>
+              ); })()}
+              {' · '}{low.platform?.toLowerCase() === 'kalshi'
+                ? `Kalshi fee: 7%×p×(1−p) ≈ ${(feePerContLow * 100).toFixed(3)}¢/contract.`
+                : low.platform?.toLowerCase() === 'polymarket'
+                  ? 'Polymarket: 0% trading fee.'
+                  : `Fee: ${(low.fee * 100).toFixed(0)}%.`}
+            </p>
+          </div>
+        </div>
+
+        <div className="border-b border-border/20 pb-4 mb-4">
+          <StepLabel n={2} text={`Buy NO on ${platformLabel(high.platform)}`} />
+          <div className="ml-[42px] font-mono text-[10px] text-text-muted leading-relaxed space-y-1">
+            <p>Market: <span className="text-text-secondary">{opp.question}</span></p>
+            <p>
+              Outcome: <span className="text-accent font-medium">NO</span>
+              {' '}· Price: <span className="text-accent tabular-nums font-medium">{(priceNO * 100).toFixed(1)}¢/share</span>
+              {usingLiveNO && <span className="text-text-muted/60"> (1 − YES bid)</span>}
+            </p>
+            {capital > 0 && N > 0 && (
+              <p>Quantity: <span className="tabular-nums text-text-primary">{N} shares</span> · Cost: <span className="tabular-nums">{fmtUsd(N * priceNO)}</span></p>
+            )}
+            <p className="text-[9px] text-text-muted/60 border-l border-border/30 pl-2 mt-1">
+              {(() => { const { url, verified } = getMarketUrl(high); return (
+                <a href={url} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-accent hover:text-accent-bright">
+                  Open {platformLabel(high.platform)} market{!verified && ' (search)'} <ExternalLink size={9} />
+                </a>
+              ); })()}
+              {' · '}{high.platform?.toLowerCase() === 'polymarket'
+                ? 'Polymarket: 0% trading fee.'
+                : high.platform?.toLowerCase() === 'kalshi'
+                  ? `Kalshi fee: 7%×p×(1−p) ≈ ${(feePerContHigh * 100).toFixed(3)}¢/contract.`
+                  : `Fee: ${(high.fee * 100).toFixed(0)}%.`}
+            </p>
+          </div>
+        </div>
+
+        <div className="border-b border-border/20 pb-4 mb-4">
+          <StepLabel n={3} text="Open both legs as simultaneously as possible" />
+          <div className="ml-[42px] font-mono text-[10px] text-text-muted leading-relaxed">
+            <p>Between fills the price can move. An unhedged leg is a directional bet. Minimize time between clicks.</p>
+          </div>
+        </div>
+
+        <div className="border-b border-border/20 pb-4 mb-4">
+          <StepLabel n={4} text="Hold to resolution — no active management needed" />
+          <div className="ml-[42px] font-mono text-[10px] text-text-muted leading-relaxed space-y-1">
+            <p>Shares are non-fungible platform tokens — hold both until resolution.</p>
+            {opp.resolutionDate && (
+              <p>
+                <span className="text-text-secondary">Resolution: </span>
+                <span className="font-medium">{fmtDate(opp.resolutionDate)}</span>
+                {opp.daysToResolution != null && <span className="text-text-muted/60"> · {opp.daysToResolution} days</span>}
+              </p>
+            )}
+            {opp.lockupFlag && <p className="text-warning/70 text-[9px]">⚠ {opp.lockupFlag}</p>}
+          </div>
+        </div>
+      </div>
+
+      {/* Resolution risk warning */}
+      <div className="mb-6 px-4 py-4 border-2 border-negative/40 bg-negative/5">
+        <div className="font-mono text-[11px] font-bold text-negative uppercase tracking-widest mb-3">
+          ⚠ Resolution-risk warning — read before trading
+        </div>
+        <div className="font-mono text-[10px] text-text-muted leading-relaxed space-y-2">
+          <p>
+            <span className="text-text-secondary font-medium">This is only a locked arb if both platforms resolve on the exact same real-world criteria, source, and date.</span>
+            {' '}If they diverge — one says YES, one says NO — you lose on both legs simultaneously.
+          </p>
+          {opp.confirmReason && (
+            <p>
+              <span className="text-text-secondary">AI confirmation: </span>
+              <span className="italic">&quot;{opp.confirmReason}&quot;</span>
+              <span className="text-text-muted/50"> — AI-generated, not guaranteed correct.</span>
+            </p>
+          )}
+          <ul className="list-none space-y-1 ml-3 text-[9px]">
+            <li>· <span className="text-text-secondary">Criteria risk:</span> each platform writes its own resolution rules — read both descriptions carefully.</li>
+            <li>· <span className="text-text-secondary">Date risk:</span> one platform may resolve early (e.g. election night) while the other waits for certification.</li>
+            <li>· <span className="text-text-secondary">Void risk:</span> if either market is voided you carry a one-sided open position.</li>
+            <li>· <span className="text-text-secondary">Fill risk:</span> prices are snapshots — order book may move before you execute.</li>
+          </ul>
+          <p className="text-text-muted/60 text-[9px] mt-1">
+            Manually verify resolution rules on both platforms before committing capital.
+          </p>
+        </div>
+      </div>
+
+      {/* Market links */}
+      <SectionTitle title="Market links" />
       <div className="mb-6 flex flex-wrap gap-3">
-        {(() => { const { url: lu, verified: lv } = getMarketUrl(low); return (
-          <a href={lu} target="_blank" rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 font-mono text-[10px] px-3 py-1.5 border border-border text-text-muted hover:border-text-secondary hover:text-text-primary transition-colors duration-100">
+        {(() => { const { url, verified } = getMarketUrl(low); return (
+          <a href={url} target="_blank" rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 font-mono text-[10px] px-3 py-1.5 border border-positive/30 text-positive/70 hover:border-positive hover:text-positive transition-colors duration-100">
             <ExternalLink size={10} />
-            {platformLabel(low.platform)} market{!lv && ' (search)'}
+            {platformLabel(low.platform)} — YES market{!verified && ' (search)'}
           </a>
         ); })()}
-        {(() => { const { url: hu, verified: hv } = getMarketUrl(high); return (
-          <a href={hu} target="_blank" rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 font-mono text-[10px] px-3 py-1.5 border border-border text-text-muted hover:border-text-secondary hover:text-text-primary transition-colors duration-100">
+        {(() => { const { url, verified } = getMarketUrl(high); return (
+          <a href={url} target="_blank" rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 font-mono text-[10px] px-3 py-1.5 border border-accent/30 text-accent/70 hover:border-accent hover:text-accent transition-colors duration-100">
             <ExternalLink size={10} />
-            {platformLabel(high.platform)} market{!hv && ' (search)'}
+            {platformLabel(high.platform)} — NO market{!verified && ' (search)'}
           </a>
         ); })()}
       </div>
@@ -739,15 +1104,9 @@ export default function PredictionDetailPage({ params }: { params: { id: string 
           {/* Header */}
           <div className="mb-5">
             <div className="flex items-center gap-3 mb-2">
-              {opp.type === 'cashable' ? (
-                <span className="font-mono text-[10px] uppercase tracking-widest px-1.5 py-[2px] bg-positive/10 text-positive border border-positive/25">
-                  CASHABLE ARB
-                </span>
-              ) : (
-                <span className="font-mono text-[10px] uppercase tracking-widest px-1.5 py-[2px] bg-warning/10 text-warning border border-warning/25">
-                  SIGNAL ONLY
-                </span>
-              )}
+              <span className="font-mono text-[10px] uppercase tracking-widest px-1.5 py-[2px] bg-accent/10 text-accent border border-accent/25">
+                RESULT FOUND
+              </span>
               <span className="font-mono text-[9px] text-text-muted uppercase tracking-widest">{opp.category}</span>
             </div>
             <h1 className="font-mono text-[17px] font-bold text-text-primary leading-snug mb-1">
@@ -755,8 +1114,11 @@ export default function PredictionDetailPage({ params }: { params: { id: string 
             </h1>
             <p className="font-mono text-[11px] text-text-muted">
               {platformLabel(opp.lowMarket.platform)} × {platformLabel(opp.highMarket.platform)}
-              {' · '}{fmtPct(opp.roi, 2)} net ROI
-              {opp.annualizedROI != null && ` · ${opp.annualizedROI.toFixed(1)}%/yr annualized`}
+              {' · '}
+              {opp.type === 'cashable'
+                ? `${fmtPct(opp.roi, 2)} net ROI${opp.annualizedROI != null && opp.daysToResolution != null ? ` · ${opp.annualizedROI.toFixed(1)}%/yr (${opp.daysToResolution}d lock)` : ''}`
+                : `${opp.spread.toFixed(1)}pp spread`
+              }
             </p>
           </div>
 
@@ -764,7 +1126,7 @@ export default function PredictionDetailPage({ params }: { params: { id: string 
           {opp.type === 'cashable' ? (
             <CashableDetail opp={opp} capital={capital} setCapital={setCapital} />
           ) : (
-            <SignalDetail opp={opp} />
+            <SignalDetail opp={opp} capital={capital} setCapital={setCapital} />
           )}
 
           {/* Disclaimer */}
