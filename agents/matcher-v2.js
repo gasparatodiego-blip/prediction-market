@@ -953,12 +953,16 @@ Respond ONLY with a JSON array (one entry per market, same order):
 }
 
 async function extractResolutionSignatures(survivors, anthropic) {
+  // Only extract signatures for cashable survivors — these are the ones that claim
+  // executable arb; signal pairs (non-real-book legs) are already conservative.
+  const cashable = survivors.filter(s => s.type === 'cashable');
+
   const cache = loadSignatureCache();
   const now   = Date.now();
 
-  // Collect unique legs
+  // Collect unique legs from cashable survivors only
   const legsById = new Map();
-  for (const s of survivors) {
+  for (const s of cashable) {
     for (const leg of [s.a, s.b]) {
       if (!legsById.has(leg.id)) legsById.set(leg.id, leg);
     }
@@ -972,7 +976,7 @@ async function extractResolutionSignatures(survivors, anthropic) {
     }
   }
 
-  console.log(`[v2] Stage 3a: ${legsById.size} unique legs (${legsById.size - uncached.length} cached, ${uncached.length} to extract)`);
+  console.log(`[v2] Stage 3a: ${cashable.length} cashable survivors → ${legsById.size} unique legs (${legsById.size - uncached.length} cached, ${uncached.length} to extract)`);
 
   let totalCalls = 0;
   for (let i = 0; i < uncached.length; i += SIGNATURE_BATCH) {
@@ -1001,7 +1005,7 @@ async function extractResolutionSignatures(survivors, anthropic) {
       };
     }
     totalCalls++;
-    if (i + SIGNATURE_BATCH < uncached.length) await sleep(1000);
+    if (i + SIGNATURE_BATCH < uncached.length) await sleep(200);
   }
 
   if (uncached.length > 0) {
@@ -1040,10 +1044,18 @@ function compareSignatures(sigA, sigB) {
 }
 
 function sameEventGate(survivors, sigMap) {
+  // Only gate cashable survivors — they claim executable arb and must be verified.
+  // Signal survivors (non-real-book legs) are already conservative; pass through.
   const sameEvent = [];
   const rejected  = [];
 
   for (const s of survivors) {
+    if (s.type === 'signal') {
+      sameEvent.push(s);   // non-executable signals pass through without gate
+      continue;
+    }
+
+    // Cashable path: both legs must have signatures and they must match
     const sigA = sigMap[s.a.id];
     const sigB = sigMap[s.b.id];
 
@@ -1060,7 +1072,9 @@ function sameEventGate(survivors, sigMap) {
     }
   }
 
-  console.log(`[v2] Stage 3b: ${survivors.length} survivors → ${sameEvent.length} SAME_EVENT, ${rejected.length} REJECTED`);
+  const cashableIn  = survivors.filter(s => s.type === 'cashable').length;
+  const cashableOut = sameEvent.filter(s => s.type === 'cashable').length;
+  console.log(`[v2] Stage 3b: ${cashableIn} cashable → ${cashableOut} SAME_EVENT, ${rejected.length} REJECTED (signals pass through unchanged)`);
 
   // Log up to 5 example rejections
   const examples = rejected.slice(0, 5);
@@ -1448,7 +1462,8 @@ function computeCapacity(arb, yesLeg, noLeg, kalshiBook, pmBook) {
 
 async function enrichArbs(confirmed) {
   if (confirmed.length === 0) return confirmed;
-  console.log(`[v2/enrich] enriching ${confirmed.length} confirmed cashable arb(s)...`);
+  const cashableCount = confirmed.filter(a => a.type === 'cashable').length;
+  console.log(`[v2/enrich] enriching ${confirmed.length} arb(s) (${cashableCount} cashable)...`);
   const now = Date.now();
 
   for (const arb of confirmed) {
@@ -1738,13 +1753,12 @@ async function main() {
   const { sameEvent, rejected: rejectedNotSameEvent } = sameEventGate(survivors, sigMap);
 
   // Stage 3c: Cache-first Haiku confirmation (cashable pairs from sameEvent only)
-  // Signal pairs (non-real-book legs) pass through without Haiku confirmation.
-  const sameEventSignal = sameEvent.filter(s => s.type === 'signal');
+  // Non-real-book signal survivors were never in the output before and stay out —
+  // they're too numerous (50K+) and haven't been same-event gated individually.
   const { confirmed: confirmedCashable, claudeCalls, newSent, cacheHits, totalCandidates } =
     await haikuConfirm(sameEvent, anthropic);
 
-  // Merge: confirmed cashable + same-event signal pairs
-  const allConfirmed = [...confirmedCashable, ...sameEventSignal];
+  const allConfirmed = [...confirmedCashable];
 
   // Enrichment (time + capacity); enrichArbs sorts confirmed in-place by annualizedROI
   await enrichArbs(allConfirmed);
