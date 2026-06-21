@@ -9,6 +9,9 @@ const BASIS_FILE        = '/tmp/basis-opportunities.json';
 const LEADERBOARD_FILE  = '/tmp/leaderboard.json';
 const COPY_FILE         = '/tmp/copy-watcher.json';
 const SPORTS_FILE       = '/tmp/sports-odds.json';
+// Prediction: same post-gate sources as the detail page (/api/prediction)
+const REPRICED_FILE     = '/tmp/repriced-opportunities.json';
+const DISCOVERY_FILE    = '/tmp/arbitrage-opportunities.json';
 
 export interface TickerItem {
   key:         string;
@@ -104,20 +107,33 @@ export async function GET() {
     if (last) copyLastAlert = `${last.name || 'trader'}: ${last.side} ${last.outcome}`;
   } catch { /* file absent */ }
 
+  // ── Prediction: read from the same post-gate sources as the detail page ─────
+  // repriced-opportunities.json has live prices (evaporated pairs removed);
+  // fall back to arbitrage-opportunities.json (discovery snapshot) if repricer hasn't run.
+  // Field names differ from the unified file: `roi` (not `netROI`), `cashable` (boolean).
+  const PRED_ROI_CEILING = 15;  // matches dashboard's SUSPICIOUS_ROI quarantine
+  let predCashableOpps: any[] = [];
+  try {
+    const repriced = JSON.parse(fs.readFileSync(REPRICED_FILE, 'utf8'));
+    predCashableOpps = (repriced.opportunities ?? []).filter(
+      (o: any) => o.cashable === true && typeof o.roi === 'number' && o.roi > 0 && o.roi <= PRED_ROI_CEILING
+    );
+  } catch {
+    try {
+      const disc = JSON.parse(fs.readFileSync(DISCOVERY_FILE, 'utf8'));
+      predCashableOpps = (disc.opportunities ?? []).filter(
+        (o: any) => o.cashable === true && typeof o.roi === 'number' && o.roi > 0 && o.roi <= PRED_ROI_CEILING
+      );
+    } catch { /* no data */ }
+  }
+  predCashableOpps.sort((a: any, b: any) => b.roi - a.roi);
+  const bestPred = predCashableOpps[0] ?? null;
+
   // ── Derive per-category bests ─────────────────────────────────────────────
 
   const fundingOpps = opps
     .filter(o => o.type === 'FUNDING' && typeof o.netROI === 'number')
     .sort((a: any, b: any) => b.netROI - a.netROI);
-
-  // Prediction: sort by netROI (not annualizedROI) to avoid short-dated amplification.
-  // A 7-day 7.91% position annualizes to 400%+ — never use annualizedROI as the hero number.
-  // ROI > SUSPICIOUS_ROI (15%) is quarantined by the dashboard; we apply the same guard here.
-  const LANDING_ANNUALIZED_CEILING = 15;  // matches dashboard's SUSPICIOUS_ROI quarantine
-  const cashableOpps = opps
-    .filter(o => o.type === 'CASHABLE' && typeof o.netROI === 'number' && o.netROI <= LANDING_ANNUALIZED_CEILING)
-    .sort((a: any, b: any) => b.netROI - a.netROI);
-  const bestCashable = cashableOpps[0] ?? null;
 
   // sportsOpps from unified file replaced by agent12 → /tmp/sports-odds.json (see above)
 
@@ -147,13 +163,15 @@ export async function GET() {
       // Show confirmed net ROI — never annualize short-dated positions.
       // annualizedROI for a 7-day 7.91% arb = 400%+; that is technically correct
       // but misleading as a headline. The net ROI is what the trader actually earns.
-      bestNetPct:  bestCashable?.netROI ?? null,
+      // Source: repriced-opportunities.json (live prices) → arbitrage-opportunities.json
+      // (same post-same-event-gate sources as /api/prediction, never the stale unified file).
+      bestNetPct:  bestPred?.roi ?? null,
       unit:        '% net',
-      status:      cashableOpps.length > 0 ? 'live' : 'no-opp',
-      count:       cashableOpps.length,
+      status:      predCashableOpps.length > 0 ? 'live' : 'no-opp',
+      count:       predCashableOpps.length,
       href:        '/dashboard/prediction',
-      note:        bestCashable != null
-        ? `confirmed · ${bestCashable.daysToResolution ?? '?'}d to resolution · fees deducted`
+      note:        bestPred != null
+        ? `confirmed · ${bestPred.daysToResolution ?? '?'}d to resolution · fees deducted`
         : 'confirmed cashable · fees deducted',
       displayKind: 'net',
     },
