@@ -137,10 +137,10 @@ function OppRow({ opp }: { opp: Opportunity }) {
       <div className="px-4 py-3">
         <div className="flex flex-wrap gap-x-4 gap-y-2 items-start">
 
-          {/* Unified label — no cashable/signal distinction shown on card */}
+          {/* Unified label */}
           <div className="shrink-0 mt-0.5">
             <span className="font-mono text-[10px] uppercase tracking-widest px-1.5 py-0.5 bg-accent/10 text-accent border border-accent/25">
-              RISULTATO TROVATO
+              RESULT FOUND
             </span>
           </div>
 
@@ -166,10 +166,10 @@ function OppRow({ opp }: { opp: Opportunity }) {
             </div>
           </div>
 
-          {/* Divario headline — never rendered as profit/ROI/guaranteed */}
+          {/* Spread headline — never rendered as profit/ROI/guaranteed */}
           <div className="shrink-0 text-right">
             <div className="font-mono text-[13px] font-semibold text-accent tabular-nums">
-              DIVARIO {opp.spread.toFixed(1)}%
+              SPREAD {opp.spread.toFixed(1)}%
             </div>
             <div className="font-mono text-[10px] text-text-muted tabular-nums">
               CONF {Math.round(opp.confidence * 100)}%
@@ -236,11 +236,21 @@ export default function PredictionPage() {
             CROSS-PLATFORM · IDF PAIR + AI-CONFIRMED · FEE-ADJUSTED NET ROI
           </p>
         </div>
-        {fetchedAt && (
-          <span className="font-mono text-[10px] text-text-muted">
-            LAST FETCH {fetchedAt.toLocaleTimeString('en-GB')}
-          </span>
-        )}
+        <div className="flex items-center gap-3 flex-wrap">
+          <a
+            href="https://t.me/Gaspola_bot?start=pred_new"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 font-mono text-[10px] px-3 py-1.5 border border-border text-text-muted hover:border-accent/50 hover:text-accent transition-colors duration-100 whitespace-nowrap"
+          >
+            ✈ Notify via Telegram
+          </a>
+          {fetchedAt && (
+            <span className="font-mono text-[10px] text-text-muted">
+              LAST FETCH {fetchedAt.toLocaleTimeString('en-GB')}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Dual freshness — prices (15 min re-pricer) + discovery (3h cron) */}
@@ -297,9 +307,9 @@ export default function PredictionPage() {
         ) : (
           <>
             <StatPanel
-              label="RISULTATI TROVATI"
+              label="RESULTS FOUND"
               value={`${stats?.validCount ?? 0}`}
-              sub={`${data?.rejected ?? 0} ESCLUSI`}
+              sub={`${data?.rejected ?? 0} EXCLUDED`}
             />
             <StatPanel
               label="MARKETS TRACKED"
@@ -307,14 +317,14 @@ export default function PredictionPage() {
               sub="ACROSS 4 PLATFORMS"
             />
             <StatPanel
-              label="CANDIDATI ANALIZZATI"
+              label="CANDIDATES ANALYZED"
               value={`${(stats?.totalCashableCandidates ?? 0).toLocaleString()}`}
               sub={`${(stats?.pendingVerification ?? 0) > 0 ? `${stats!.pendingVerification} PENDING AI` : 'AI-VERIFIED'}`}
             />
             <StatPanel
-              label="DIVARIO MIGLIORE"
+              label="BEST SPREAD"
               value={opps.length > 0 ? `${Math.max(...opps.map(o => o.spread)).toFixed(1)}%` : '—'}
-              sub="MID-PRICE GAP · VEDI DETTAGLIO"
+              sub="MID-PRICE GAP · SEE DETAIL"
             />
           </>
         )}
@@ -328,7 +338,7 @@ export default function PredictionPage() {
       ) : opps.length === 0 ? (
         <div className="border border-border px-6 py-16 text-center">
           <div className="font-mono text-sm text-text-secondary uppercase tracking-widest mb-2">
-            NESSUN RISULTATO TROVATO
+            NO RESULT FOUND
           </div>
           <div className="font-mono text-[10px] text-text-muted">
             {(data?.rejected ?? 0) > 0
@@ -341,7 +351,7 @@ export default function PredictionPage() {
       ) : (
         <>
           <div className="font-mono text-[10px] text-text-muted uppercase tracking-widest mb-3">
-            {opps.length} RISULTATI TROVATI · {data!.rejected} ESCLUSI · SORTED BY DIVARIO DESC
+            {opps.length} RESULT{opps.length !== 1 ? 'S' : ''} FOUND · {data!.rejected} EXCLUDED · SORTED BY SPREAD DESC
           </div>
           {opps.map(opp => (
             <OppRow key={opp.id} opp={opp} />
