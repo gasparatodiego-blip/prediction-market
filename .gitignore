@@ -37,5 +37,12 @@ next-env.d.ts
 
 /lib/generated/prisma
 
-# secret env file — never commit
+# secret env files — never commit any key material
 .env
+.env*
+.env.matcher
+
+# persistent AI confirmation cache — local data, not committed
+data/confirmation-cache.json
+# per-market resolution signature cache — local data, not committed
+data/resolution-signatures.json

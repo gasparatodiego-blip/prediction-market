@@ -75,7 +75,12 @@ const CASHABLE_MIN_SIZE_USD   = 50;    // capacityUsd below this → reclassifie
 // of cumulative PM "reach stage X or further" markets — block those from cashable.
 const CUMULATIVE_REACH_RE = /\breach\b|\bqualif|\badvance|\bfurthest\b/;
 
-// Stage 3 — cache-first confirmation
+// Stage 3a — resolution-signature extraction (per-market, cached)
+const SIGNATURE_CACHE_FILE  = path.join(__dirname, '..', 'data', 'resolution-signatures.json');
+const SIGNATURE_TTL_MS      = 30 * 24 * 60 * 60 * 1000;  // re-extract after 30 days
+const SIGNATURE_BATCH       = 6;   // markets per Haiku extraction call
+
+// Stage 3c — cache-first confirmation (cashable only, runs after same-event gate)
 const CONFIRM_BATCH      = 10;   // pairs per Haiku call
 const MAX_NEW_PAIRS      = parseInt(process.env.NEW_PAIRS_PER_RUN || '200', 10);  // new (uncached) cap per run
 const CACHE_RECONFIRM_MS = 90 * 24 * 60 * 60 * 1000;  // re-confirm entries older than 90 days
@@ -865,7 +870,212 @@ function arbPrefilter(candidates, markets) {
   return { survivors: dedupedSurvivors, quarantined };
 }
 
-// ── Stage 3: Cache-first Haiku confirmation ───────────────────────────────────
+// ── Stage 3a: Resolution-signature extraction ─────────────────────────────────
+// For every surviving market leg, Haiku extracts a structured 6-field resolution
+// signature from the title.  Results are cached per market-id (30-day TTL).
+//
+// Signature fields:
+//   subject      — precise entity (e.g. "Germany", "Josh Shapiro", "GOP")
+//   metric       — what is measured (e.g. "2026 World Cup elimination stage")
+//   relation     — EXACT | AT_LEAST | AT_MOST | RANGE | BINARY
+//   boundary     — the threshold/stage (e.g. "Semifinals", "48", "presidency")
+//   timeframe    — competition/election context
+//   yes_condition — one-sentence plain-English YES condition
+
+function loadSignatureCache() {
+  try { return JSON.parse(fs.readFileSync(SIGNATURE_CACHE_FILE, 'utf8')); } catch { return {}; }
+}
+
+function saveSignatureCache(cache) {
+  const tmp = SIGNATURE_CACHE_FILE + '.tmp.' + process.pid;
+  fs.writeFileSync(tmp, JSON.stringify(cache, null, 2));
+  fs.renameSync(tmp, SIGNATURE_CACHE_FILE);
+}
+
+async function haikuExtractBatch(anthropic, batch) {
+  // batch: array of { id, platform, rawTitle, isMutuallyExclusive, outcome }
+  const marketsText = batch.map((m, i) => {
+    const parts = [`${i}. [${m.platform}] "${m.rawTitle}"`];
+    if (m.isMutuallyExclusive) parts.push('(mutually-exclusive event: exactly one outcome resolves YES)');
+    if (m.outcome) parts.push(`authoritative outcome label: "${m.outcome}"`);
+    return parts.join(' | ');
+  }).join('\n');
+
+  const prompt =
+`You are a prediction market analyst. For each market, extract its YES-resolution signature from the title.
+
+MARKETS:
+${marketsText}
+
+For each market extract exactly:
+  subject      : the precise entity this market is about (team, candidate, party). Use the full name: "Germany", "Josh Shapiro", "Republican Party".
+  metric       : what is being measured. E.g. "2026 FIFA World Cup stage reached", "US Senate seats won by Republican Party", "2028 presidential nomination winner".
+  relation     : EXACTLY ONE of:
+      EXACT    — resolves YES only when the outcome equals EXACTLY the boundary (e.g. "eliminated at exactly SF", "= 48 seats", any single outcome in a mutually-exclusive event)
+      AT_LEAST — resolves YES when outcome ≥ boundary (e.g. "reaches SF or further", "qualifies for", "advances to", "wins at least X")
+      AT_MOST  — resolves YES when outcome ≤ boundary
+      RANGE    — resolves YES when outcome falls within a range
+      BINARY   — simple yes/no with no stage/numeric boundary (e.g. "will X announce campaign?", "will Y win the election?", "will Z be named running-mate?")
+  boundary     : the stage/value/label (e.g. "Semifinals", "48", "presidency"). Use the authoritative outcome label when given. For BINARY set to the event name (e.g. "wins election").
+  timeframe    : competition/election scope (e.g. "2026 FIFA World Cup", "2028 US Presidential Election", "2027 US Senate elections").
+  yes_condition: ONE plain sentence — the exact real-world condition for YES resolution.
+
+CRITICAL RULES (read carefully):
+- "reach X" / "qualify for X" / "advance to X" / "X or further" / "at least X" → AT_LEAST, boundary=X
+- "eliminated at X" / "Stage of Elimination [outcome: X]" / single outcome in a mutually-exclusive event → EXACT, boundary=X
+- "wins nomination" / "wins election" / "is elected" → BINARY
+- "announces campaign" / "is named as running-mate" / "is picked as VP" → BINARY
+- "bottom of group" / "last in group" → BINARY, boundary="last place in group"
+- A mutually-exclusive event means ONLY ONE stage/outcome resolves YES — always use EXACT
+- NEVER guess entity names from ticker codes; trust only explicit names in the title
+
+Respond ONLY with a JSON array (one entry per market, same order):
+[{"index":0,"subject":"...","metric":"...","relation":"EXACT","boundary":"...","timeframe":"...","yes_condition":"..."},...]`;
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const msg = await anthropic.messages.create({
+        model:      MODEL,
+        max_tokens: 1400,
+        messages:   [{ role: 'user', content: prompt }],
+      });
+      const text  = (msg.content?.[0]?.text ?? '').trim();
+      const start = text.indexOf('['), end = text.lastIndexOf(']');
+      if (start === -1 || end === -1) throw new Error('no JSON array in response');
+      return JSON.parse(text.slice(start, end + 1));
+    } catch (err) {
+      if (attempt === 0) { await sleep(2000); continue; }
+      console.error(`[v2] sig-extract batch failed: ${err.message?.slice(0, 80)}`);
+      return [];
+    }
+  }
+  return [];
+}
+
+async function extractResolutionSignatures(survivors, anthropic) {
+  const cache = loadSignatureCache();
+  const now   = Date.now();
+
+  // Collect unique legs
+  const legsById = new Map();
+  for (const s of survivors) {
+    for (const leg of [s.a, s.b]) {
+      if (!legsById.has(leg.id)) legsById.set(leg.id, leg);
+    }
+  }
+
+  const uncached = [];
+  for (const [id, leg] of legsById) {
+    const entry = cache[id];
+    if (!entry || (now - new Date(entry.extractedAt).getTime()) > SIGNATURE_TTL_MS) {
+      uncached.push(leg);
+    }
+  }
+
+  console.log(`[v2] Stage 3a: ${legsById.size} unique legs (${legsById.size - uncached.length} cached, ${uncached.length} to extract)`);
+
+  let totalCalls = 0;
+  for (let i = 0; i < uncached.length; i += SIGNATURE_BATCH) {
+    const batch = uncached.slice(i, i + SIGNATURE_BATCH).map(m => ({
+      id:                  m.id,
+      platform:            m.platform,
+      rawTitle:            m.rawTitle,
+      isMutuallyExclusive: m.isMutuallyExclusive || false,
+      outcome:             m.outcome || '',
+    }));
+    const results = await haikuExtractBatch(anthropic, batch);
+    for (const r of (Array.isArray(results) ? results : [])) {
+      const leg = batch[r.index];
+      if (!leg) continue;
+      cache[leg.id] = {
+        sig: {
+          subject:       (r.subject      || '').trim(),
+          metric:        (r.metric       || '').trim(),
+          relation:      (r.relation     || '').toUpperCase().trim(),
+          boundary:      (r.boundary     || '').trim(),
+          timeframe:     (r.timeframe    || '').trim(),
+          yes_condition: (r.yes_condition || '').trim(),
+        },
+        marketTitle:  leg.rawTitle,
+        extractedAt:  new Date().toISOString(),
+      };
+    }
+    totalCalls++;
+    if (i + SIGNATURE_BATCH < uncached.length) await sleep(1000);
+  }
+
+  if (uncached.length > 0) {
+    saveSignatureCache(cache);
+    console.log(`[v2] Stage 3a: ${totalCalls} Haiku calls → signatures saved (${Object.keys(cache).length} total cached)`);
+  }
+
+  // Build id → sig map for all survivors' legs
+  const sigMap = {};
+  for (const [id] of legsById) sigMap[id] = cache[id]?.sig ?? null;
+  return sigMap;
+}
+
+// ── Stage 3b: Same-event gate ─────────────────────────────────────────────────
+// A pair is SAME_EVENT only if ALL five signature fields match between the two legs.
+// ANY difference → REJECT (not cashable, not signal — wrong pairing entirely).
+// Critically: EXACT vs AT_LEAST on the same boundary → REJECT.
+
+function normSig(s) {
+  return (s || '').toLowerCase().trim().replace(/\s+/g, ' ');
+}
+
+function compareSignatures(sigA, sigB) {
+  // Check relation first — it's the most critical structural distinction
+  if (normSig(sigA.relation) !== normSig(sigB.relation))
+    return `relation: "${sigA.relation}" vs "${sigB.relation}"`;
+  if (normSig(sigA.subject) !== normSig(sigB.subject))
+    return `subject: "${sigA.subject}" vs "${sigB.subject}"`;
+  if (normSig(sigA.metric) !== normSig(sigB.metric))
+    return `metric: "${sigA.metric}" vs "${sigB.metric}"`;
+  if (normSig(sigA.boundary) !== normSig(sigB.boundary))
+    return `boundary: "${sigA.boundary}" vs "${sigB.boundary}"`;
+  if (normSig(sigA.timeframe) !== normSig(sigB.timeframe))
+    return `timeframe: "${sigA.timeframe}" vs "${sigB.timeframe}"`;
+  return null;  // same event
+}
+
+function sameEventGate(survivors, sigMap) {
+  const sameEvent = [];
+  const rejected  = [];
+
+  for (const s of survivors) {
+    const sigA = sigMap[s.a.id];
+    const sigB = sigMap[s.b.id];
+
+    if (!sigA || !sigB) {
+      rejected.push({ ...s, rejectReason: 'signature extraction failed', sigA: sigA ?? null, sigB: sigB ?? null });
+      continue;
+    }
+
+    const diff = compareSignatures(sigA, sigB);
+    if (diff) {
+      rejected.push({ ...s, rejectReason: diff, sigA, sigB });
+    } else {
+      sameEvent.push({ ...s, sigA, sigB });
+    }
+  }
+
+  console.log(`[v2] Stage 3b: ${survivors.length} survivors → ${sameEvent.length} SAME_EVENT, ${rejected.length} REJECTED`);
+
+  // Log up to 5 example rejections
+  const examples = rejected.slice(0, 5);
+  for (const r of examples) {
+    const labelA = r.a.rawTitle.slice(0, 55);
+    const labelB = r.b.rawTitle.slice(0, 55);
+    console.log(`[v2]   REJECT [${r.rejectReason}]`);
+    console.log(`[v2]     A: "${labelA}"`);
+    console.log(`[v2]     B: "${labelB}"`);
+  }
+
+  return { sameEvent, rejected };
+}
+
+// ── Stage 3c: Cache-first Haiku confirmation ──────────────────────────────────
 // Only cashable pairs go to Haiku.  Signal pairs are already categorised.
 //
 // Strategy:
@@ -885,11 +1095,11 @@ function selectNewPairs(uncached) {
   return [...band, ...rest].slice(0, MAX_NEW_PAIRS);
 }
 
-async function haikuConfirm(survivors) {
+async function haikuConfirm(survivors, anthropicClient) {
   const cashable = survivors.filter(s => s.type === 'cashable');
 
   if (cashable.length === 0) {
-    console.log('[v2] Stage 3: no cashable survivors to confirm');
+    console.log('[v2] Stage 3c: no cashable survivors to confirm');
     return { confirmed: [], claudeCalls: 0, newSent: 0, cacheHits: 0, totalCandidates: 0 };
   }
 
@@ -916,7 +1126,7 @@ async function haikuConfirm(survivors) {
   }
 
   const cacheHits = cashable.length - uncached.length;
-  console.log(`[v2] Stage 3: ${totalCandidates} cashable candidates`);
+  console.log(`[v2] Stage 3c: ${totalCandidates} cashable candidates`);
   console.log(`[v2]   cache: ${cacheHits} hits (${cachedTrue.length} true, ${cacheHits - cachedTrue.length} false) · ${uncached.length} uncached`);
   console.log(`[v2]   new confirmations this run: up to ${MAX_NEW_PAIRS} (NEW_PAIRS_PER_RUN=${MAX_NEW_PAIRS})`);
 
@@ -927,8 +1137,8 @@ async function haikuConfirm(survivors) {
     return { confirmed: cachedTrue, claudeCalls: 0, newSent: 0, cacheHits, totalCandidates };
   }
 
-  // Instantiate client here so the key check in main() runs first.
-  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  // Use shared client (passed from main) or create one (key check already done in main).
+  const anthropic = anthropicClient ?? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
   const rois   = toSend.map(p => p.net).sort((a, b) => a - b);
   const median = rois[Math.floor(rois.length / 2)] ?? 0;
@@ -1033,7 +1243,8 @@ Respond ONLY with a JSON array (one entry per pair, in order):
 
 // ── Output formatting ─────────────────────────────────────────────────────────
 
-function formatOutput(confirmed, totalCashableCandidates) {
+function formatOutput(confirmed, totalCashableCandidates, rejectedNotSameEvent) {
+  rejectedNotSameEvent = rejectedNotSameEvent ?? 0;
   const opps = confirmed.map((p, i) => {
     const low   = p.a.probability <= p.b.probability ? p.a : p.b;
     const high  = p.a.probability >  p.b.probability ? p.a : p.b;
@@ -1091,6 +1302,7 @@ function formatOutput(confirmed, totalCashableCandidates) {
       confirmedCashable,
       totalCashableCandidates: totalCashableCandidates ?? confirmedCashable,
       pendingVerification:     pending,
+      rejectedNotSameEvent,
       bestRoi:     opps.filter(o => o.cashable).reduce((b, o) => Math.max(b, o.roi), 0),
       totalSpread: opps.reduce((s, o) => s + o.spread, 0),
     },
@@ -1516,14 +1728,42 @@ async function main() {
   // Stage 2
   const { survivors, quarantined } = arbPrefilter(candidates, markets);
 
-  // Stage 3
-  const { confirmed, claudeCalls, newSent, cacheHits, totalCandidates } = await haikuConfirm(survivors);
+  // Create a single Anthropic client shared by stages 3a and 3c
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+  // Stage 3a: Extract resolution signatures for every survivor leg (per-market cache)
+  const sigMap = await extractResolutionSignatures(survivors, anthropic);
+
+  // Stage 3b: Same-event gate — deterministic 5-field comparison; reject mismatches
+  const { sameEvent, rejected: rejectedNotSameEvent } = sameEventGate(survivors, sigMap);
+
+  // Stage 3c: Cache-first Haiku confirmation (cashable pairs from sameEvent only)
+  // Signal pairs (non-real-book legs) pass through without Haiku confirmation.
+  const sameEventSignal = sameEvent.filter(s => s.type === 'signal');
+  const { confirmed: confirmedCashable, claudeCalls, newSent, cacheHits, totalCandidates } =
+    await haikuConfirm(sameEvent, anthropic);
+
+  // Merge: confirmed cashable + same-event signal pairs
+  const allConfirmed = [...confirmedCashable, ...sameEventSignal];
 
   // Enrichment (time + capacity); enrichArbs sorts confirmed in-place by annualizedROI
-  await enrichArbs(confirmed);
+  await enrichArbs(allConfirmed);
+
+  // STEP 4 pre-output: print yes_conditions for all cashable survivors (honesty proof)
+  const cashableSurvivors = allConfirmed.filter(s => s.type === 'cashable');
+  if (cashableSurvivors.length > 0) {
+    console.log('\n── STEP 4: Cashable yes_conditions (same-event proof) ─');
+    for (const p of cashableSurvivors) {
+      console.log(`\n  ${p.a.platform} ↔ ${p.b.platform}`);
+      if (p.sigA) console.log(`    A yes_condition: "${p.sigA.yes_condition}"`);
+      if (p.sigB) console.log(`    B yes_condition: "${p.sigB.yes_condition}"`);
+    }
+  } else {
+    console.log('\n── STEP 4: 0 cashable survivors — same-event gate cleared all arb candidates');
+  }
 
   // Output
-  const output = formatOutput(confirmed, totalCandidates);
+  const output = formatOutput(allConfirmed, totalCandidates, rejectedNotSameEvent.length);
   fs.writeFileSync(OUT_FILE, JSON.stringify(output, null, 2));
 
   // Unified opportunities file (zero Claude cost — pure reformatting)
@@ -1532,7 +1772,7 @@ async function main() {
   const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
   const cashable = output.opportunities.filter(o => o.cashable);
   const signal   = output.opportunities.filter(o => !o.cashable);
-  const { confirmedCashable, totalCashableCandidates, pendingVerification } = output.stats;
+  const { confirmedCashable: confirmedCashableCount, totalCashableCandidates, pendingVerification, rejectedNotSameEvent: rejectedCount } = output.stats;
 
   // Steady-state cost estimate (once all candidates are cached)
   const batchesPerRun   = Math.ceil(MAX_NEW_PAIRS / CONFIRM_BATCH);
@@ -1549,11 +1789,13 @@ async function main() {
   console.log(`║  Candidate pairs  (Stage 1)   : ${String(candidates.length).padEnd(16)} ║`);
   console.log(`║  Survivors        (Stage 2)   : ${String(survivors.length).padEnd(16)} ║`);
   console.log(`║  Quarantined      (ROI>${SUSPICIOUS_ROI}%)    : ${String(quarantined.length).padEnd(16)} ║`);
+  console.log(`║  Passed same-event gate (3b)  : ${String(sameEvent.length).padEnd(16)} ║`);
+  console.log(`║  Rejected not-same-event (3b) : ${String(rejectedNotSameEvent.length).padEnd(16)} ║`);
   console.log(`║  Cashable candidates          : ${String(totalCandidates).padEnd(16)} ║`);
   console.log(`║  Cache hits (reused free)     : ${String(cacheHits).padEnd(16)} ║`);
   console.log(`║  New pairs sent to Haiku      : ${String(newSent).padEnd(16)} ║`);
   console.log(`║  Claude API calls             : ${String(claudeCalls).padEnd(16)} ║`);
-  console.log(`║  Confirmed cashable           : ${String(confirmedCashable).padEnd(16)} ║`);
+  console.log(`║  Confirmed cashable           : ${String(confirmedCashableCount).padEnd(16)} ║`);
   console.log(`║  Pending verification         : ${String(pendingVerification).padEnd(16)} ║`);
   console.log(`║  Final signal                 : ${String(signal.length).padEnd(16)} ║`);
   console.log(`║  Est. cost this run           : $${String(costPerRunFill.toFixed(4)).padEnd(15)} ║`);
@@ -1561,10 +1803,22 @@ async function main() {
   console.log(`║  Runs to full cache coverage  : ${String('~' + runsToFull).padEnd(16)} ║`);
   console.log(`║  Elapsed                      : ${String(elapsed + 's').padEnd(16)} ║`);
   console.log('╚══════════════════════════════════════════════════╝');
-  console.log(`\n[v2] HONEST COUNT: ${confirmedCashable} confirmed · ${totalCashableCandidates} candidates · ${pendingVerification} pending verification`);
+  console.log(`\n[v2] HONEST COUNT: ${confirmedCashableCount} confirmed · ${totalCashableCandidates} candidates · ${pendingVerification} pending · ${rejectedCount ?? 0} rejected-not-same-event`);
 
   // Sanity check
   reportSanityCheck(markets, candidates);
+
+  // STEP 4 — same-event rejection examples
+  if (rejectedNotSameEvent.length > 0) {
+    console.log('\n── STEP 4: Rejected (not same-event) examples ─────');
+    rejectedNotSameEvent.slice(0, 4).forEach(r => {
+      console.log(`\n  REJECT [${r.rejectReason}]`);
+      console.log(`    A [${r.a.platform}]: "${r.a.rawTitle.slice(0, 70)}"`);
+      if (r.sigA) console.log(`      sig: ${r.sigA.relation} · ${r.sigA.subject} · ${r.sigA.boundary}`);
+      console.log(`    B [${r.b.platform}]: "${r.b.rawTitle.slice(0, 70)}"`);
+      if (r.sigB) console.log(`      sig: ${r.sigB.relation} · ${r.sigB.subject} · ${r.sigB.boundary}`);
+    });
+  }
 
   // Top cashable
   if (cashable.length > 0) {
