@@ -172,13 +172,15 @@ function OppRow({ opp }: { opp: Opportunity }) {
             </div>
           </div>
 
-          {/* ROI + annualized */}
+          {/* ROI + annualized — cashable only; signal cards show spread only (no fake ROI) */}
           <div className="shrink-0 text-right">
-            <div className="font-mono text-[13px] font-semibold text-positive tabular-nums">
-              +{opp.roi.toFixed(1)}% NET ROI
-            </div>
+            {isCashable && (
+              <div className="font-mono text-[13px] font-semibold text-positive tabular-nums">
+                +{opp.roi.toFixed(1)}% NET ROI
+              </div>
+            )}
             {/* ANN only when expiry is known — never show on unknown-expiry markets */}
-            {opp.annualizedROI != null && expiry != null && (opp.daysToResolution ?? 0) > 0 && (
+            {isCashable && opp.annualizedROI != null && expiry != null && (opp.daysToResolution ?? 0) > 0 && (
               <div className="font-mono text-[10px] text-positive/60 tabular-nums">
                 {opp.annualizedROI.toFixed(1)}% ANN · {opp.daysToResolution}d
               </div>

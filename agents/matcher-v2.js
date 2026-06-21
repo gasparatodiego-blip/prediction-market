@@ -90,8 +90,10 @@ const ARB_BAND_HIGH      = 8.0;  // netROI% upper bound for plausible-band prior
 const PLATFORM_FEES = _PLATFORM_FEES;
 // realBook = true means the platform exposes executable bid/ask (CLOB or best-bid/ask).
 // Cashable arb requires realBook=true on BOTH legs.
-// realMoney=true but realBook=false → signal-only (Futuur: mid-price from orderbook API only)
-const REAL_BOOK = new Set(['kalshi', 'polymarket', 'predictit']);
+// PredictIt: realMoney but realBook=false → signal-only. Reasons: 10% profit fee + 5%
+// withdrawal fee on total payout makes all observed spreads negative after fees, plus
+// $850 per-contract position cap makes meaningful execution impossible.
+const REAL_BOOK = new Set(['kalshi', 'polymarket']);
 const DISPLAY   = { kalshi: 'Kalshi', polymarket: 'Polymarket', predictit: 'PredictIt', manifold: 'Manifold', futuur: 'Futuur' };
 
 // ── Text normalisation ────────────────────────────────────────────────────────
@@ -461,7 +463,8 @@ function loadAndClean(raw) {
         yesBid:     +piYesBid.toFixed(4),
         yesAsk:     +piYesAsk.toFixed(4),
         realMoney:  true,
-        realBook:   true,
+        realBook:   false,  // signal-only; 10% profit fee + 5% withdrawal makes spreads negative
+        capacityUsd: 850,   // $850 per-contract position cap
         url: `https://www.predictit.org/markets/detail/${m.id}`,
         urlVerified: true,
       });

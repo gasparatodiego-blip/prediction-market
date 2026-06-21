@@ -26,8 +26,12 @@ function stableOppId(low: any, high: any): string {
   return h.toString(36);  // e.g. "5ozo0x" — alphanumeric, no encoding needed
 }
 
-// Platforms that use play money — opportunities involving these are SIGNAL only
-const PLAY_MONEY_PLATFORMS = new Set(['manifold']);
+// Platforms that are signal-only — opportunities involving any of these are NEVER cashable.
+// Manifold: play money.
+// PredictIt: real money but 10% profit fee + 5% withdrawal fee on total payout makes all
+//   observed spreads negative after fees; $850 per-contract position cap prevents meaningful size.
+// Futuur: real money but exposes only mid-price (no executable CLOB); spread unconfirmable.
+const SIGNAL_ONLY_PLATFORMS = new Set(['manifold', 'predictit', 'futuur']);
 
 // Discovery cron: every 3h (0 */3 * * *)
 // isOverdue = last discovery run missed a slot (>4h)
@@ -147,10 +151,10 @@ export async function GET() {
       const fA = feeFor(low.platform);
       const fB = feeFor(high.platform);
 
-      // Determine type: play-money → signal; semantic-mismatch → signal; otherwise cashable
-      const isPlayMoney =
-        PLAY_MONEY_PLATFORMS.has(low.platform?.toLowerCase()) ||
-        PLAY_MONEY_PLATFORMS.has(high.platform?.toLowerCase());
+      // Determine type: signal-only platform → signal; semantic-mismatch → signal; otherwise cashable
+      const isSignalOnly =
+        SIGNAL_ONLY_PLATFORMS.has(low.platform?.toLowerCase()) ||
+        SIGNAL_ONLY_PLATFORMS.has(high.platform?.toLowerCase());
 
       // Gate 1 (immediate stopgap): mutually-exclusive Kalshi single-stage vs cumulative PM.
       // STAGEOFELIM tickers in the current discovery file were not yet blocked by matcher-v2.
@@ -163,7 +167,7 @@ export async function GET() {
       const capUsd     = typeof o.capacityUsd === 'number' ? o.capacityUsd : null;
       const tooSmall   = capUsd !== null && capUsd < CASHABLE_MIN_SIZE_USD;
 
-      const isCashable = !isPlayMoney && !isStageMismatch && !confTooLow && !tooSmall;
+      const isCashable = !isSignalOnly && !isStageMismatch && !confTooLow && !tooSmall;
 
       valid.push({
         id: pairKey,
@@ -189,7 +193,7 @@ export async function GET() {
           yesAsk:      typeof high.yesAsk === 'number' ? high.yesAsk : null,
         },
         spread:           o.spread,
-        roi:              o.roi,
+        roi:              isCashable ? o.roi : 0,
         earnPer100:       o.earnPer100  ?? null,
         confidence:       o.confidence,
         category:         o.category   ?? 'unknown',
