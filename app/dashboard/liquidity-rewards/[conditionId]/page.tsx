@@ -1,0 +1,664 @@
+'use client';
+
+import { useEffect, useState, useCallback, useRef } from 'react';
+import Link from 'next/link';
+import { useParams } from 'next/navigation';
+
+// ── Types ──────────────────────────────────────────────────────────────────────
+
+type VolRisk = 'LOW' | 'MEDIUM' | 'HIGH';
+type Side    = 'BUY' | 'SELL' | 'BOTH';
+
+interface Level {
+  capital:        number;
+  share:          number;
+  grossRewardDay: number;
+  dayYieldPct:    number;
+  flags:          string[];
+}
+
+interface MarketMeta {
+  question:           string;
+  conditionId:        string;
+  rewardsDailyRate:   number;
+  rewardsMaxSpread:   number;
+  rewardsMinSize:     number;
+  mid:                number;
+  bookSpread:         number | null;
+  existing_depth_usd: number;
+  volatilityRisk:     VolRisk;
+  volatilityStdev:    number | null;
+  endDate:            string | null;
+  negRisk:            boolean;
+  levels:             Record<string, Level>;
+  tokenId:            string;
+  tokenIdNo:          string | null;
+}
+
+interface BookLevel {
+  price: number;
+  size:  number;
+}
+
+interface BookData {
+  conditionId: string;
+  yes:         { bids: {price:string;size:string}[]; asks: {price:string;size:string}[]; last_trade_price?: string };
+  no:          { bids: {price:string;size:string}[]; asks: {price:string;size:string}[] } | null;
+  fetchedAt:   string;
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
+
+function fmtP(n: number) { return (n * 100).toFixed(1) + '¢'; }
+function fmtS(n: number) { return n >= 1000 ? (n / 1000).toFixed(1) + 'k' : n.toFixed(0); }
+function fmtUsd(n: number) {
+  if (n >= 1000) return '$' + (n / 1000).toFixed(1) + 'k';
+  if (n >= 10)   return '$' + n.toFixed(0);
+  return '$' + n.toFixed(2);
+}
+function ago(iso: string) {
+  const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 60)   return s + 's ago';
+  if (s < 3600) return Math.floor(s / 60) + 'm ago';
+  return Math.floor(s / 3600) + 'h ago';
+}
+
+const VOL_CLS: Record<VolRisk, string> = {
+  LOW:    'text-emerald-400 border-emerald-700/40 bg-emerald-950/20',
+  MEDIUM: 'text-amber-400   border-amber-600/40   bg-amber-950/20',
+  HIGH:   'text-red-400     border-red-700/40     bg-red-950/20',
+};
+
+// ── Reward math ────────────────────────────────────────────────────────────────
+// Quadratic weight: w = (1 - |price - mid| / halfBand)²
+// halfBand = (rewardsMaxSpread / 100) / 2
+// effectiveDollar = size * price * w
+// share = effectiveDollar / (effectiveDollar + existing_depth_usd)
+// rewardDay = share * rewardsDailyRate
+// BOTH boost: ~2× (two-sided LP gets doubled score weight per Polymarket docs)
+
+function calcReward(params: {
+  price:           number;
+  size:            number;
+  side:            Side;
+  mid:             number;
+  rewardsMaxSpread: number;
+  rewardsMinSize:  number;
+  existing_depth_usd: number;
+  rewardsDailyRate: number;
+}) {
+  const { price, size, side, mid, rewardsMaxSpread, rewardsMinSize, existing_depth_usd, rewardsDailyRate } = params;
+  const halfBand = (rewardsMaxSpread / 100) / 2;
+  const dist     = Math.abs(price - mid);
+  const inBand   = dist <= halfBand;
+  const aboveMin = size >= rewardsMinSize;
+
+  const proximity = inBand ? Math.max(0, 1 - dist / halfBand) : 0;
+  const quadW     = proximity * proximity;
+
+  const dollarsPerSide = size * price * quadW;
+  const totalDollars   = side === 'BOTH' ? dollarsPerSide * 2 : dollarsPerSide;
+
+  const share         = totalDollars / (totalDollars + existing_depth_usd);
+  const rewardDay     = share * rewardsDailyRate;
+  const bothBoost     = side === 'BOTH';
+
+  return { inBand, aboveMin, proximity, quadW, dollarsPerSide, share, rewardDay, bothBoost };
+}
+
+// ── Order book parsing ─────────────────────────────────────────────────────────
+
+function parseLevels(raw: {price:string;size:string}[]): BookLevel[] {
+  return raw
+    .map(r => ({ price: parseFloat(r.price), size: parseFloat(r.size) }))
+    .filter(r => r.price > 0 && r.size > 0);
+}
+
+// ── Depth ladder row ──────────────────────────────────────────────────────────
+
+function BookRow({
+  level,
+  side,
+  mid,
+  halfBand,
+  maxSize,
+  ticketPrice,
+  onClickPrice,
+}: {
+  level:        BookLevel;
+  side:         'bid' | 'ask';
+  mid:          number;
+  halfBand:     number;
+  maxSize:      number;
+  ticketPrice:  number | null;
+  onClickPrice: (p: number) => void;
+}) {
+  const inBand    = Math.abs(level.price - mid) <= halfBand;
+  const isMid     = Math.abs(level.price - mid) < 0.0005;
+  const isTicket  = ticketPrice !== null && Math.abs(level.price - ticketPrice) < 0.0005;
+  const barPct    = (level.size / maxSize) * 100;
+  const barCls    = side === 'bid' ? 'bg-emerald-900/40' : 'bg-red-900/30';
+  const bandCls   = inBand ? (side === 'bid' ? 'bg-emerald-950/30' : 'bg-blue-950/30') : '';
+  const ringCls   = isTicket ? 'ring-1 ring-amber-400/70' : '';
+
+  return (
+    <button
+      onClick={() => onClickPrice(level.price)}
+      className={`w-full relative flex items-center justify-between text-[11px] font-mono
+        px-2 py-[3px] transition-colors hover:bg-zinc-700/30 ${bandCls} ${ringCls}`}
+    >
+      {/* Bar behind */}
+      <span
+        className={`absolute inset-y-0 ${side === 'bid' ? 'right-0' : 'left-0'} ${barCls}`}
+        style={{ width: `${barPct}%`, pointerEvents: 'none' }}
+      />
+      {/* Content */}
+      {side === 'bid' ? (
+        <>
+          <span className="relative text-zinc-500 tabular-nums">{fmtS(level.size)}</span>
+          <span className={`relative tabular-nums ${inBand ? 'text-emerald-300' : 'text-emerald-600/70'}`}>
+            {fmtP(level.price)}
+          </span>
+        </>
+      ) : (
+        <>
+          <span className={`relative tabular-nums ${inBand ? 'text-red-300' : 'text-red-600/70'}`}>
+            {fmtP(level.price)}
+          </span>
+          <span className="relative text-zinc-500 tabular-nums">{fmtS(level.size)}</span>
+        </>
+      )}
+      {isMid && (
+        <span className="absolute inset-0 ring-1 ring-zinc-400/30 pointer-events-none" />
+      )}
+    </button>
+  );
+}
+
+// ── Main page ──────────────────────────────────────────────────────────────────
+
+export default function MarketDetailPage() {
+  const params      = useParams();
+  const conditionId = decodeURIComponent(params.conditionId as string);
+
+  // Market metadata from list endpoint
+  const [mkt,       setMkt]       = useState<MarketMeta | null>(null);
+  const [mktError,  setMktError]  = useState<string | null>(null);
+
+  // Live order book
+  const [book,      setBook]      = useState<BookData | null>(null);
+  const [bookError, setBookError] = useState<string | null>(null);
+  const [bookAge,   setBookAge]   = useState<Date | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval>>();
+
+  // Trade ticket state
+  const [side,      setSide]      = useState<Side>('BOTH');
+  const [ticketPrice, setTicketPrice] = useState<string>('');
+  const [ticketSize,  setTicketSize]  = useState<string>('');
+  const [showTooltip, setShowTooltip] = useState(false);
+
+  // Fetch market metadata
+  useEffect(() => {
+    async function loadMeta() {
+      try {
+        const r = await fetch('/api/liquidity-rewards', { cache: 'no-store' });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const d = await r.json();
+        const m = (d.markets as MarketMeta[]).find(x => x.conditionId === conditionId);
+        if (!m) { setMktError('Market not found in current data'); return; }
+        setMkt(m);
+        if (!ticketPrice && m.mid) setTicketPrice((m.mid).toFixed(3));
+        if (!ticketSize)           setTicketSize(String(m.rewardsMinSize));
+      } catch (e: unknown) {
+        setMktError(e instanceof Error ? e.message : String(e));
+      }
+    }
+    loadMeta();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conditionId]);
+
+  // Fetch order book
+  const fetchBook = useCallback(async () => {
+    try {
+      const r = await fetch(`/api/liquidity-rewards/book?conditionId=${encodeURIComponent(conditionId)}`, { cache: 'no-store' });
+      if (!r.ok) { const e = await r.json(); throw new Error(e.error || `HTTP ${r.status}`); }
+      const d = await r.json() as BookData;
+      setBook(d);
+      setBookError(null);
+      setBookAge(new Date());
+    } catch (e: unknown) {
+      setBookError(e instanceof Error ? e.message : String(e));
+    }
+  }, [conditionId]);
+
+  useEffect(() => {
+    fetchBook();
+    pollRef.current = setInterval(fetchBook, 7_500);
+    return () => clearInterval(pollRef.current);
+  }, [fetchBook]);
+
+  // ── Derived order book data
+  const yesBids = book ? parseLevels(book.yes.bids).sort((a, b) => b.price - a.price) : [];
+  const yesAsks = book ? parseLevels(book.yes.asks).sort((a, b) => a.price - b.price) : [];
+
+  const mid = mkt?.mid ?? (
+    yesBids.length && yesAsks.length
+      ? (yesBids[0].price + yesAsks[0].price) / 2
+      : 0.5
+  );
+
+  const halfBand  = mkt ? (mkt.rewardsMaxSpread / 100) / 2 : 0;
+  const bandLo    = mid - halfBand;
+  const bandHi    = mid + halfBand;
+
+  const allSizes  = [...yesBids, ...yesAsks].map(l => l.size);
+  const maxSize   = allSizes.length ? Math.max(...allSizes) : 1;
+
+  // ── Trade ticket
+  const tpNum     = parseFloat(ticketPrice);
+  const tsNum     = parseFloat(ticketSize);
+  const validInputs = mkt && !isNaN(tpNum) && tpNum > 0 && tpNum < 1 && !isNaN(tsNum) && tsNum > 0;
+
+  const est = validInputs && mkt ? calcReward({
+    price:              tpNum,
+    size:               tsNum,
+    side,
+    mid,
+    rewardsMaxSpread:   mkt.rewardsMaxSpread,
+    rewardsMinSize:     mkt.rewardsMinSize,
+    existing_depth_usd: mkt.existing_depth_usd,
+    rewardsDailyRate:   mkt.rewardsDailyRate,
+  }) : null;
+
+  function handleClickPrice(p: number) {
+    setTicketPrice(p.toFixed(3));
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────────
+
+  if (mktError) {
+    return (
+      <div className="min-h-screen bg-zinc-950 text-zinc-100 p-8 font-mono">
+        <Link href="/dashboard/liquidity-rewards" className="text-zinc-500 hover:text-zinc-300 text-xs">
+          ← back
+        </Link>
+        <p className="mt-6 text-red-400 text-sm">{mktError}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-zinc-950 text-zinc-100">
+      <div className="max-w-5xl mx-auto px-4 py-6 space-y-5">
+
+        {/* Breadcrumb */}
+        <Link
+          href="/dashboard/liquidity-rewards"
+          className="font-mono text-[11px] text-zinc-600 hover:text-zinc-400 uppercase tracking-widest"
+        >
+          ← Liquidity Rewards
+        </Link>
+
+        {/* ── Header ──────────────────────────────────────────────────── */}
+        <div className="space-y-2">
+          <p className="font-mono text-[10px] text-zinc-600 uppercase tracking-widest">
+            Polymarket CLOB · live · read-only · no orders placed
+          </p>
+          {mkt ? (
+            <>
+              <h1 className="font-mono text-lg font-bold text-zinc-100 leading-snug">
+                {mkt.question}
+              </h1>
+              <div className="flex flex-wrap gap-2 items-center">
+                <span className={`font-mono text-[10px] px-1.5 py-px border uppercase ${VOL_CLS[mkt.volatilityRisk]}`}>
+                  {mkt.volatilityRisk} risk
+                </span>
+                {mkt.negRisk && (
+                  <span className="font-mono text-[10px] px-1.5 py-px border border-zinc-700 bg-zinc-800 text-zinc-500 uppercase">
+                    negRisk
+                  </span>
+                )}
+                <span className="font-mono text-[10px] px-1.5 py-px border border-zinc-700 bg-zinc-800 text-zinc-500">
+                  pool ${mkt.rewardsDailyRate}/day
+                </span>
+                <span className="font-mono text-[10px] px-1.5 py-px border border-zinc-700 bg-zinc-800 text-zinc-500">
+                  ±{mkt.rewardsMaxSpread}¢ band
+                </span>
+                <span className="font-mono text-[10px] px-1.5 py-px border border-zinc-700 bg-zinc-800 text-zinc-500">
+                  min {mkt.rewardsMinSize} size
+                </span>
+                <span className="font-mono text-[10px] px-1.5 py-px border border-zinc-700 bg-zinc-800 text-zinc-500">
+                  mid {(mid * 100).toFixed(1)}¢
+                </span>
+              </div>
+            </>
+          ) : (
+            <div className="h-8 bg-zinc-800/40 animate-pulse rounded w-2/3" />
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+
+          {/* ── Order Book ─────────────────────────────────────────── */}
+          <div className="border border-zinc-800 bg-zinc-900/50 flex flex-col">
+
+            {/* Book header */}
+            <div className="flex items-center justify-between px-3 py-2 border-b border-zinc-800">
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-[10px] text-zinc-400 uppercase tracking-widest">Order Book · YES</span>
+                {bookAge && !bookError && (
+                  <span className="flex items-center gap-1 font-mono text-[9px] text-emerald-500">
+                    <span className="w-1 h-1 rounded-full bg-emerald-400 animate-pulse" />
+                    {ago(bookAge.toISOString())}
+                  </span>
+                )}
+              </div>
+              <button
+                onClick={fetchBook}
+                className="font-mono text-[9px] text-zinc-600 hover:text-zinc-400 uppercase"
+              >
+                ↻ refresh
+              </button>
+            </div>
+
+            {bookError && (
+              <div className="px-3 py-2 font-mono text-[11px] text-red-400">{bookError}</div>
+            )}
+
+            {/* Band legend */}
+            {mkt && (
+              <div className="flex items-center gap-3 px-3 py-1.5 border-b border-zinc-800/60 bg-zinc-900">
+                <span className="font-mono text-[9px] text-zinc-600 uppercase tracking-wider">Reward band:</span>
+                <span className="font-mono text-[9px] text-emerald-500">{fmtP(bandLo)} – {fmtP(bandHi)}</span>
+                <span className="font-mono text-[9px] text-zinc-700">orders outside band earn nothing</span>
+              </div>
+            )}
+
+            {/* Column labels */}
+            <div className="flex justify-between px-2 py-1 font-mono text-[9px] text-zinc-700 uppercase border-b border-zinc-800/40">
+              <span>size</span>
+              <span>price (YES)</span>
+            </div>
+
+            {/* Ask side (inverted — lowest ask on top) */}
+            <div className="flex flex-col-reverse max-h-48 overflow-y-auto scrollbar-thin">
+              {yesAsks.length === 0 && !bookError && (
+                <div className="px-3 py-2 font-mono text-[10px] text-zinc-700 text-center">
+                  {book ? 'no asks' : 'loading…'}
+                </div>
+              )}
+              {yesAsks.map((l, i) => (
+                <BookRow
+                  key={`ask-${i}`}
+                  level={l}
+                  side="ask"
+                  mid={mid}
+                  halfBand={halfBand}
+                  maxSize={maxSize}
+                  ticketPrice={!isNaN(tpNum) ? tpNum : null}
+                  onClickPrice={handleClickPrice}
+                />
+              ))}
+            </div>
+
+            {/* Mid marker */}
+            {mkt && (
+              <div className="flex items-center gap-2 px-2 py-1 bg-zinc-800/60 border-y border-zinc-700/50">
+                <span className="font-mono text-[10px] text-zinc-300 tabular-nums font-semibold">
+                  Mid {fmtP(mid)}
+                </span>
+                {mkt.bookSpread !== null && (
+                  <span className="font-mono text-[10px] text-zinc-500">
+                    spread {fmtP(mkt.bookSpread)}
+                  </span>
+                )}
+                <span className="font-mono text-[9px] text-emerald-600 ml-auto">▲ asks / bids ▼</span>
+              </div>
+            )}
+
+            {/* Bid side */}
+            <div className="flex flex-col max-h-48 overflow-y-auto scrollbar-thin">
+              {yesBids.length === 0 && !bookError && (
+                <div className="px-3 py-2 font-mono text-[10px] text-zinc-700 text-center">
+                  {book ? 'no bids' : 'loading…'}
+                </div>
+              )}
+              {yesBids.map((l, i) => (
+                <BookRow
+                  key={`bid-${i}`}
+                  level={l}
+                  side="bid"
+                  mid={mid}
+                  halfBand={halfBand}
+                  maxSize={maxSize}
+                  ticketPrice={!isNaN(tpNum) ? tpNum : null}
+                  onClickPrice={handleClickPrice}
+                />
+              ))}
+            </div>
+
+            {/* Depth summary */}
+            {mkt && (
+              <div className="px-3 py-2 border-t border-zinc-800 font-mono text-[10px] text-zinc-600">
+                Existing depth in band: {fmtUsd(mkt.existing_depth_usd)} · pool {fmtUsd(mkt.rewardsDailyRate)}/day
+              </div>
+            )}
+          </div>
+
+          {/* ── Trade Ticket ────────────────────────────────────────── */}
+          <div className="border border-zinc-800 bg-zinc-900/50 flex flex-col">
+
+            {/* Preview banner */}
+            <div className="bg-amber-950/40 border-b border-amber-700/40 px-3 py-2 text-center">
+              <span className="font-mono text-[11px] font-bold text-amber-400 uppercase tracking-widest">
+                PREVIEW · NO ORDER PLACED
+              </span>
+            </div>
+
+            <div className="p-4 space-y-4 flex-1">
+
+              {/* Side selector */}
+              <div className="space-y-1.5">
+                <label className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">Side</label>
+                <div className="flex gap-1.5">
+                  {(['BUY', 'SELL', 'BOTH'] as Side[]).map(s => (
+                    <button
+                      key={s}
+                      onClick={() => setSide(s)}
+                      className={`flex-1 font-mono text-xs py-1.5 border transition-colors
+                        ${side === s
+                          ? s === 'BUY'  ? 'border-emerald-600 bg-emerald-950/50 text-emerald-300'
+                          : s === 'SELL' ? 'border-red-700    bg-red-950/40      text-red-300'
+                          :               'border-accent      bg-accent/10       text-accent'
+                          : 'border-zinc-700 bg-zinc-800 text-zinc-500 hover:border-zinc-500'}`}
+                    >
+                      {s === 'BOTH' ? 'BOTH SIDES' : s}
+                    </button>
+                  ))}
+                </div>
+                {side === 'BOTH' && (
+                  <p className="font-mono text-[10px] text-zinc-600">
+                    Two-sided boost: ~2× score weight (Polymarket program benefit).
+                  </p>
+                )}
+              </div>
+
+              {/* Price input */}
+              <div className="space-y-1.5">
+                <label className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
+                  Price (0–1) · or click a row in the book
+                </label>
+                <input
+                  type="number"
+                  min="0.001"
+                  max="0.999"
+                  step="0.001"
+                  value={ticketPrice}
+                  onChange={e => setTicketPrice(e.target.value)}
+                  className="w-full bg-zinc-800 border border-zinc-700 text-zinc-200 font-mono text-sm
+                    px-3 py-2 focus:outline-none focus:border-zinc-500"
+                  placeholder="e.g. 0.210"
+                />
+                {mkt && !isNaN(tpNum) && tpNum > 0 && (
+                  <p className="font-mono text-[10px] text-zinc-600">
+                    Distance from mid: {((Math.abs(tpNum - mid)) * 100).toFixed(2)}¢
+                    {' '}· halfBand: {(halfBand * 100).toFixed(2)}¢
+                  </p>
+                )}
+              </div>
+
+              {/* Size input */}
+              <div className="space-y-1.5">
+                <label className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
+                  Size (shares per side)
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={ticketSize}
+                  onChange={e => setTicketSize(e.target.value)}
+                  className="w-full bg-zinc-800 border border-zinc-700 text-zinc-200 font-mono text-sm
+                    px-3 py-2 focus:outline-none focus:border-zinc-500"
+                  placeholder={mkt ? `min ${mkt.rewardsMinSize}` : '50'}
+                />
+                {mkt && !isNaN(tsNum) && (
+                  <p className="font-mono text-[10px] text-zinc-600">
+                    Notional ≈ {fmtUsd(tsNum * (isNaN(tpNum) ? mid : tpNum))}
+                  </p>
+                )}
+              </div>
+
+              {/* Estimate output */}
+              {est && mkt && (
+                <div className={`border p-3 space-y-2.5 ${
+                  !est.inBand || !est.aboveMin
+                    ? 'border-zinc-700 bg-zinc-800/40'
+                    : 'border-emerald-800/50 bg-emerald-950/20'
+                }`}>
+
+                  {/* Qualification warnings */}
+                  {!est.inBand && (
+                    <div className="font-mono text-[11px] text-red-400 border border-red-800/50 bg-red-950/20 px-2 py-1.5">
+                      Price outside reward band ({fmtP(bandLo)} – {fmtP(bandHi)}) · earns no liquidity reward
+                    </div>
+                  )}
+                  {!est.aboveMin && (
+                    <div className="font-mono text-[11px] text-orange-400 border border-orange-700/50 bg-orange-950/20 px-2 py-1.5">
+                      Size {tsNum} &lt; min {mkt.rewardsMinSize} · won't qualify for rewards
+                    </div>
+                  )}
+
+                  {/* Metrics */}
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                    <Metric label="Distance from mid" value={`${((Math.abs(tpNum - mid)) * 100).toFixed(2)}¢`} />
+                    <Metric label="Quadratic weight" value={`${(est.quadW * 100).toFixed(1)}%`} dim={!est.inBand} />
+                    <Metric label="Effective $" value={fmtUsd(side === 'BOTH' ? est.dollarsPerSide * 2 : est.dollarsPerSide)} dim={!est.inBand} />
+                    <Metric label="Est. pool share" value={`${(est.share * 100).toFixed(3)}%`} dim={!est.inBand} />
+                  </div>
+
+                  <div className={`border-t pt-2.5 ${est.inBand && est.aboveMin ? 'border-emerald-800/30' : 'border-zinc-700/30'}`}>
+                    <div className="flex items-baseline justify-between">
+                      <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">Est. gross reward</span>
+                      <span className={`font-mono text-xl font-bold tabular-nums ${
+                        !est.inBand || !est.aboveMin ? 'text-zinc-600' : 'text-emerald-400'
+                      }`}>
+                        {est.inBand && est.aboveMin ? fmtUsd(est.rewardDay) : '$0.00'}
+                      </span>
+                    </div>
+                    <p className="font-mono text-[10px] text-zinc-600 text-right">
+                      per day · quadratic · GROSS · adverse risk not subtracted
+                    </p>
+                    {est.bothBoost && est.inBand && est.aboveMin && (
+                      <p className="font-mono text-[10px] text-emerald-700 mt-0.5 text-right">
+                        includes 2× two-sided boost
+                      </p>
+                    )}
+                  </div>
+
+                  <p className="font-mono text-[9px] text-zinc-700 leading-relaxed">
+                    ESTIMATE ONLY. Real scoring uses exact quadratic formula over all resting orders.
+                    Share compresses as more makers enter. Adverse-fill risk not modelled here.
+                  </p>
+                </div>
+              )}
+
+              {/* Auto-mirror toggle (ghost / placeholder) */}
+              <div className="border border-zinc-800/50 bg-zinc-900/30 p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-[11px] text-zinc-600 uppercase tracking-widest">
+                    Auto-mirror on fill
+                  </span>
+                  <div
+                    className="relative w-8 h-4 bg-zinc-800 border border-zinc-700 rounded-full opacity-40 cursor-not-allowed"
+                    title="Coming with API keys"
+                  >
+                    <span className="absolute left-0.5 top-0.5 w-3 h-3 bg-zinc-600 rounded-full" />
+                  </div>
+                </div>
+                <p className="font-mono text-[9px] text-zinc-700 leading-relaxed">
+                  Live mode — coming when API keys are added.{' '}
+                  <span
+                    className="underline decoration-dotted cursor-help text-zinc-600"
+                    onMouseEnter={() => setShowTooltip(true)}
+                    onMouseLeave={() => setShowTooltip(false)}
+                  >
+                    Mirror ≠ free hedge
+                  </span>
+                  {showTooltip && (
+                    <span className="absolute z-10 ml-2 w-56 bg-zinc-800 border border-zinc-700 p-2 text-[9px] text-zinc-400 leading-relaxed shadow-lg">
+                      Adverse-fill risk: when your order fills, you bought/sold against informed flow.
+                      Mirroring on the other side incurs a second round of adverse selection —
+                      it is NOT a free hedge.
+                    </span>
+                  )}
+                </p>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+        {/* ── Market detail stats ──────────────────────────────────── */}
+        {mkt && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <StatBox label="Pool $/day" value={`$${mkt.rewardsDailyRate}`} />
+            <StatBox label="Max spread" value={`±${mkt.rewardsMaxSpread}¢`} />
+            <StatBox label="Min size" value={String(mkt.rewardsMinSize)} />
+            <StatBox label="Existing depth" value={fmtUsd(mkt.existing_depth_usd)} />
+          </div>
+        )}
+
+        {/* Disclaimer */}
+        <div className="border-t border-zinc-800 pt-4">
+          <p className="font-mono text-[10px] text-zinc-700 leading-relaxed">
+            Polymarket CLOB data is public and read-only. No trades are placed, no keys are used.
+            All reward figures are GROSS estimates — adverse-fill risk is not subtracted.
+            Not financial advice.
+          </p>
+        </div>
+
+      </div>
+    </div>
+  );
+}
+
+// ── Small helper components ────────────────────────────────────────────────────
+
+function Metric({ label, value, dim }: { label: string; value: string; dim?: boolean }) {
+  return (
+    <div>
+      <div className="font-mono text-[9px] text-zinc-600 uppercase tracking-wider">{label}</div>
+      <div className={`font-mono text-sm tabular-nums ${dim ? 'text-zinc-600' : 'text-zinc-300'}`}>{value}</div>
+    </div>
+  );
+}
+
+function StatBox({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="border border-zinc-800 bg-zinc-900 p-3">
+      <div className="font-mono text-sm font-semibold text-zinc-200 tabular-nums">{value}</div>
+      <div className="font-mono text-[10px] text-zinc-600 uppercase mt-0.5">{label}</div>
+    </div>
+  );
+}

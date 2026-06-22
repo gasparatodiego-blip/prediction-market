@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -145,8 +146,12 @@ function MarketCard({
   const shareStr  = `${(lv.share * 100).toFixed(2)}%`;
 
   return (
-    <div className={`border-t py-3 grid grid-cols-12 gap-2 items-start text-xs font-mono
-      ${isFlagged ? 'border-zinc-800/60 opacity-75' : 'border-zinc-800'}`}>
+    <Link
+      href={`/dashboard/liquidity-rewards/${encodeURIComponent(market.conditionId)}`}
+      className={`border-t py-3 grid grid-cols-12 gap-2 items-start text-xs font-mono
+        hover:bg-zinc-800/30 transition-colors cursor-pointer
+        ${isFlagged ? 'border-zinc-800/60 opacity-75' : 'border-zinc-800'}`}
+    >
 
       {/* Rank */}
       <div className="col-span-1 text-zinc-600 pt-0.5 tabular-nums">#{rank}</div>
@@ -204,7 +209,7 @@ function MarketCard({
         <div className="text-zinc-500 tabular-nums text-[10px]">{lv.dayYieldPct.toFixed(2)}%/day yield</div>
         <div className="text-zinc-700 text-[9px]">adverse risk not sub.</div>
       </div>
-    </div>
+    </Link>
   );
 }
 
