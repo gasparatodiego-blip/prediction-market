@@ -187,9 +187,10 @@ export default function MarketDetailPage() {
   const [mktError,  setMktError]  = useState<string | null>(null);
 
   // Live order book
-  const [book,      setBook]      = useState<BookData | null>(null);
-  const [bookError, setBookError] = useState<string | null>(null);
-  const [bookAge,   setBookAge]   = useState<Date | null>(null);
+  const [book,        setBook]        = useState<BookData | null>(null);
+  const [bookError,   setBookError]   = useState<string | null>(null);
+  const [bookAge,     setBookAge]     = useState<Date | null>(null);
+  const [bookLoading, setBookLoading] = useState(true);
   const pollRef = useRef<ReturnType<typeof setInterval>>();
 
   // Trade ticket state
@@ -232,12 +233,14 @@ export default function MarketDetailPage() {
       setBookAge(new Date());
     } catch (e: unknown) {
       setBookError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBookLoading(false);
     }
   }, [conditionId]);
 
   useEffect(() => {
     fetchBook();
-    pollRef.current = setInterval(fetchBook, 7_500);
+    pollRef.current = setInterval(fetchBook, 4_000);
     return () => clearInterval(pollRef.current);
   }, [fetchBook]);
 
@@ -263,8 +266,9 @@ export default function MarketDetailPage() {
   const activeBids = bookSide === 'yes' ? yesBids : noBids;
   const activeAsks = bookSide === 'yes' ? yesAsks : noAsks;
 
-  // Asks display: highest price at top (descending toward mid)
-  const displayAsks = [...activeAsks].sort((a, b) => b.price - a.price);
+  // Take the 15 BEST asks (lowest prices, closest to mid), display highest-of-those at top
+  // so the best ask sits at the bottom of the section, directly above the mid row.
+  const displayAsks = activeAsks.slice(0, 15).sort((a, b) => b.price - a.price);
 
   // Cumulative totals computed outward from mid
   const askCumMap = new Map<number, number>();
@@ -442,9 +446,9 @@ export default function MarketDetailPage() {
             {/* ASK rows — highest price at top, descending toward mid */}
             <div className="flex flex-col max-h-[160px] overflow-y-auto scrollbar-thin">
               {displayAsks.length === 0 && !bookError && (
-                <div className="px-3 py-2 font-mono text-[10px] text-zinc-700 text-center">
-                  {book ? 'no asks' : 'loading…'}
-                </div>
+                bookLoading
+                  ? <SkeletonRows />
+                  : <div className="px-3 py-2 font-mono text-[10px] text-zinc-700 text-center">no asks</div>
               )}
               {displayAsks.map((l, i) => (
                 <BookRow
@@ -481,9 +485,9 @@ export default function MarketDetailPage() {
             {/* BID rows — highest bid just below mid, descending */}
             <div className="flex flex-col max-h-[160px] overflow-y-auto scrollbar-thin">
               {activeBids.length === 0 && !bookError && (
-                <div className="px-3 py-2 font-mono text-[10px] text-zinc-700 text-center">
-                  {book ? 'no bids' : 'loading…'}
-                </div>
+                bookLoading
+                  ? <SkeletonRows />
+                  : <div className="px-3 py-2 font-mono text-[10px] text-zinc-700 text-center">no bids</div>
               )}
               {activeBids.map((l, i) => (
                 <BookRow
@@ -707,6 +711,20 @@ export default function MarketDetailPage() {
 }
 
 // ── Small helper components ────────────────────────────────────────────────────
+
+function SkeletonRows({ count = 7 }: { count?: number }) {
+  return (
+    <>
+      {Array.from({ length: count }, (_, i) => (
+        <div key={i} className="grid grid-cols-3 px-2 py-[4px] gap-2 animate-pulse">
+          <span className="h-2.5 bg-zinc-800 rounded w-10" />
+          <span className="h-2.5 bg-zinc-800 rounded w-8 ml-auto" />
+          <span className="h-2.5 bg-zinc-800 rounded w-8 ml-auto" />
+        </div>
+      ))}
+    </>
+  );
+}
 
 function Metric({ label, value, dim }: { label: string; value: string; dim?: boolean }) {
   return (
