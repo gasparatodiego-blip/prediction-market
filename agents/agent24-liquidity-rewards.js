@@ -62,17 +62,26 @@ async function _drain() {
 
 function _rawGet(url, ms) {
   return new Promise((res, rej) => {
-    const req = https.get(url, { timeout: ms }, r => {
+    let settled = false;
+    const settle = (fn, val) => { if (!settled) { settled = true; fn(val); } };
+
+    // Hard wall-clock deadline — socket-inactivity timeout alone can't catch trickle-stalls
+    const timer = setTimeout(() => {
+      req.destroy();
+      settle(rej, new Error('timeout'));
+    }, ms);
+
+    const req = https.get(url, r => {
       const chunks = [];
       r.on('data', c => chunks.push(c));
       r.on('end', () => {
+        clearTimeout(timer);
         const body = Buffer.concat(chunks).toString();
-        try   { res({ status: r.statusCode, data: JSON.parse(body) }); }
-        catch (e) { rej(new Error(`HTTP ${r.statusCode} / bad JSON: ${body.slice(0, 80)}`)); }
+        try   { settle(res, { status: r.statusCode, data: JSON.parse(body) }); }
+        catch (e) { settle(rej, new Error(`HTTP ${r.statusCode} / bad JSON: ${body.slice(0, 80)}`)); }
       });
     });
-    req.on('error', rej);
-    req.on('timeout', () => { req.destroy(); rej(new Error('timeout')); });
+    req.on('error', e => { clearTimeout(timer); settle(rej, e); });
   });
 }
 

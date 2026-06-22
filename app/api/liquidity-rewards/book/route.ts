@@ -19,6 +19,28 @@ async function fetchBook(tokenId: string): Promise<{ bids: {price:string;size:st
   }
 }
 
+// Resolve token IDs from CLOB /markets/{conditionId} when stored data is stale
+async function resolveTokenIds(conditionId: string): Promise<{ tokenId: string | null; tokenIdNo: string | null }> {
+  try {
+    const r = await fetch(`${CLOB_BASE}/markets/${conditionId}`, {
+      next: { revalidate: 0 },
+      headers: { 'Accept': 'application/json' },
+    });
+    if (!r.ok) return { tokenId: null, tokenIdNo: null };
+    const data = await r.json();
+    const tokens = data.tokens as Array<{ token_id: string; outcome: string }> | undefined;
+    if (!tokens?.length) return { tokenId: null, tokenIdNo: null };
+    const yes = tokens.find(t => t.outcome === 'Yes');
+    const no  = tokens.find(t => t.outcome === 'No');
+    return {
+      tokenId:   yes?.token_id ?? null,
+      tokenIdNo: no?.token_id  ?? null,
+    };
+  } catch {
+    return { tokenId: null, tokenIdNo: null };
+  }
+}
+
 export async function GET(req: NextRequest) {
   const conditionId = req.nextUrl.searchParams.get('conditionId');
   if (!conditionId) {
@@ -47,8 +69,18 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: `data read error: ${msg}` }, { status: 500 });
   }
 
+  // Fallback: resolve token IDs from CLOB when stored data is stale/missing them
   if (!tokenId) {
-    return NextResponse.json({ error: 'tokenId missing from stored data', conditionId }, { status: 404 });
+    const resolved = await resolveTokenIds(conditionId);
+    tokenId   = resolved.tokenId;
+    tokenIdNo = resolved.tokenIdNo;
+  }
+
+  if (!tokenId) {
+    return NextResponse.json(
+      { error: 'order book temporarily unavailable for this market', conditionId },
+      { status: 503 },
+    );
   }
 
   // Fetch YES book; NO book optional
