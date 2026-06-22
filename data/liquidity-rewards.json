@@ -1,0 +1,5622 @@
+{
+  "meta": {
+    "generatedAt": "2026-06-22T09:40:35.506Z",
+    "scanDurationMs": 173565,
+    "rewardMarketsFound": 440,
+    "totalMarkets": 120,
+    "saneAt500": 82,
+    "flaggedAt500": 38,
+    "capitalLevels": [
+      500,
+      5000,
+      50000
+    ],
+    "disclaimer": "grossRewardDay and share are FIRST-ORDER LINEAR ESTIMATES. Real LP reward scoring weights orders closer to mid quadratically and rewards two-sided depth. existing_depth_usd is a point-in-time CLOB snapshot measured as dollar NOTIONAL (price × size). THIN_BOOK flag: dayYieldPct > 5% — book is thin, real share will compress as MMs arrive. BELOW_FLOOR flag: grossRewardDay < $1 — minimum daily payout not met. Figures are GROSS — adverse-fill risk (being picked off) is not subtracted. Not financial advice."
+  },
+  "markets": [
+    {
+      "question": "Will JD Vance win the 2028 US Presidential Election?",
+      "conditionId": "0x7ad403c3508f8e3912940fd1a913f227591145ca0614074208e0b962d5fcc422",
+      "rewardsDailyRate": 444,
+      "rewardsMaxSpread": 5.5,
+      "rewardsMinSize": 200,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.2075,
+      "bookSpread": 0.001,
+      "existing_depth_usd": 99441,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0.0017,
+      "volatilityRange": 0.0055,
+      "endDate": "2028-11-07T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.005003,
+          "grossRewardDay": 2.2213,
+          "dayYieldPct": 0.444,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.047874,
+          "grossRewardDay": 21.256,
+          "dayYieldPct": 0.425,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.33458,
+          "grossRewardDay": 148.5536,
+          "dayYieldPct": 0.297,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will Gavin Newsom win the 2028 US Presidential Election?",
+      "conditionId": "0x4567b275e6b667a6217f5cb4f06a797d3a1eaf1d0281fb5bc8c75e2046ae7e57",
+      "rewardsDailyRate": 278,
+      "rewardsMaxSpread": 5.5,
+      "rewardsMinSize": 200,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.1545,
+      "bookSpread": 0.001,
+      "existing_depth_usd": 44567,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0,
+      "volatilityRange": 0,
+      "endDate": "2028-11-07T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.011095,
+          "grossRewardDay": 3.0843,
+          "dayYieldPct": 0.617,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.100874,
+          "grossRewardDay": 28.0429,
+          "dayYieldPct": 0.561,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.528726,
+          "grossRewardDay": 146.9857,
+          "dayYieldPct": 0.294,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will Marco Rubio win the 2028 US Presidential Election?",
+      "conditionId": "0x2053d8515f1b8cbeea4ccdb56e60e89c2617e43a8660d95166b8e71d27865277",
+      "rewardsDailyRate": 278,
+      "rewardsMaxSpread": 5.5,
+      "rewardsMinSize": 200,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.1535,
+      "bookSpread": 0.001,
+      "existing_depth_usd": 49337,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0.00062,
+      "volatilityRange": 0.002,
+      "endDate": "2028-11-07T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.010033,
+          "grossRewardDay": 2.7891,
+          "dayYieldPct": 0.558,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.092018,
+          "grossRewardDay": 25.5811,
+          "dayYieldPct": 0.512,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.503337,
+          "grossRewardDay": 139.9277,
+          "dayYieldPct": 0.28,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will Jordan Bardella win the 2027 French presidential election?",
+      "conditionId": "0x1166388a24a3f2a9bb0a45956bdb205c70f0ecafb8539e277a57adf022e306be",
+      "rewardsDailyRate": 227,
+      "rewardsMaxSpread": 5.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.245,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 29384,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0.00499,
+      "volatilityRange": 0.01,
+      "endDate": "2027-04-30T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.016731,
+          "grossRewardDay": 3.798,
+          "dayYieldPct": 0.76,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.145416,
+          "grossRewardDay": 33.0095,
+          "dayYieldPct": 0.66,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.62985,
+          "grossRewardDay": 142.9759,
+          "dayYieldPct": 0.286,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will Gadi Eizenkot be the next Prime Minister of Israel?",
+      "conditionId": "0xdbe93b5a701f36076a560fa4b9ba59e365a6e8e2ea6a83764640010657277ca4",
+      "rewardsDailyRate": 219,
+      "rewardsMaxSpread": 5.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.3735,
+      "bookSpread": 0.001,
+      "existing_depth_usd": 19890,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0.00055,
+      "volatilityRange": 0.0015,
+      "endDate": "2026-12-31T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.024522,
+          "grossRewardDay": 5.3703,
+          "dayYieldPct": 1.074,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.200884,
+          "grossRewardDay": 43.9936,
+          "dayYieldPct": 0.88,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.71541,
+          "grossRewardDay": 156.6748,
+          "dayYieldPct": 0.313,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will Édouard Philippe win the 2027 French presidential election?",
+      "conditionId": "0x46f2f457e14ee9021ebd0ef4c27eacd98fdceaf7f2938b484e2551e9e3275ae8",
+      "rewardsDailyRate": 170,
+      "rewardsMaxSpread": 5.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.195,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 18853,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0,
+      "volatilityRange": 0,
+      "endDate": "2027-04-30T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.025836,
+          "grossRewardDay": 4.3921,
+          "dayYieldPct": 0.878,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.209617,
+          "grossRewardDay": 35.6349,
+          "dayYieldPct": 0.713,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.726185,
+          "grossRewardDay": 123.4514,
+          "dayYieldPct": 0.247,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will Gavin Newsom win the 2028 Democratic presidential nomination?",
+      "conditionId": "0x0f49db97f71c68b1e42a6d16e3de93d85dbf7d4148e3f018eb79e88554be9f75",
+      "rewardsDailyRate": 124,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 100,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.2325,
+      "bookSpread": 0.001,
+      "existing_depth_usd": 24602,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0,
+      "volatilityRange": 0,
+      "endDate": "2028-11-07T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.019919,
+          "grossRewardDay": 2.4699,
+          "dayYieldPct": 0.494,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.168908,
+          "grossRewardDay": 20.9445,
+          "dayYieldPct": 0.419,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.670223,
+          "grossRewardDay": 83.1077,
+          "dayYieldPct": 0.166,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will no Fed rate cuts happen in 2026?",
+      "conditionId": "0xd4e77ba6f29fc093509d24f508631abd445ecf506bbdc9c4c80e60256a318527",
+      "rewardsDailyRate": 116,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.802,
+      "bookSpread": 0.002,
+      "existing_depth_usd": 45739,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0.00471,
+      "volatilityRange": 0.014,
+      "endDate": "2026-12-31T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.010813,
+          "grossRewardDay": 1.2544,
+          "dayYieldPct": 0.251,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.098544,
+          "grossRewardDay": 11.431,
+          "dayYieldPct": 0.229,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.522253,
+          "grossRewardDay": 60.5814,
+          "dayYieldPct": 0.121,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will the Iranian regime fall before 2027?",
+      "conditionId": "0xbb4d51e6364066d92eb6f9b8413dd7193de70966736044463b205834805a1f3b",
+      "rewardsDailyRate": 100,
+      "rewardsMaxSpread": 3.5,
+      "rewardsMinSize": 200,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.095,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 47794,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0,
+      "volatilityRange": 0,
+      "endDate": "2026-12-31T00:00:00Z",
+      "negRisk": false,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.010353,
+          "grossRewardDay": 1.0353,
+          "dayYieldPct": 0.207,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.094708,
+          "grossRewardDay": 9.4708,
+          "dayYieldPct": 0.189,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.511279,
+          "grossRewardDay": 51.1279,
+          "dayYieldPct": 0.102,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will the US confirm that aliens exist before 2027?",
+      "conditionId": "0x747dc809fb79e1b05be09c42d6179459a58de2ef3e40f02484a4e1260f741f75",
+      "rewardsDailyRate": 100,
+      "rewardsMaxSpread": 3.5,
+      "rewardsMinSize": 200,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.095,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 48714,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0,
+      "volatilityRange": 0,
+      "endDate": "2026-12-31T00:00:00Z",
+      "negRisk": false,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.01016,
+          "grossRewardDay": 1.016,
+          "dayYieldPct": 0.203,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.093086,
+          "grossRewardDay": 9.3086,
+          "dayYieldPct": 0.186,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.506514,
+          "grossRewardDay": 50.6514,
+          "dayYieldPct": 0.101,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will Jean-Luc Mélenchon win the 2027 French presidential election?",
+      "conditionId": "0x174ea87d011bfd0b230efc45e0b4d0756d38af91f0ffbab70013a582603c2be8",
+      "rewardsDailyRate": 80,
+      "rewardsMaxSpread": 5.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.115,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 6256,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0.00266,
+      "volatilityRange": 0.01,
+      "endDate": "2027-04-30T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.074008,
+          "grossRewardDay": 5.9207,
+          "dayYieldPct": 1.184,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.444208,
+          "grossRewardDay": 35.5366,
+          "dayYieldPct": 0.711,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.888794,
+          "grossRewardDay": 71.1035,
+          "dayYieldPct": 0.142,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will Naftali Bennett be the next Prime Minister of Israel?",
+      "conditionId": "0x9ed0ecc8b8589e67967d44c4420944a41b6a6806419019a1581d514174eee9b1",
+      "rewardsDailyRate": 75,
+      "rewardsMaxSpread": 5.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.165,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 5048,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0.00668,
+      "volatilityRange": 0.02,
+      "endDate": "2026-12-31T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.090123,
+          "grossRewardDay": 6.7592,
+          "dayYieldPct": 1.352,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.497611,
+          "grossRewardDay": 37.3209,
+          "dayYieldPct": 0.746,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.908298,
+          "grossRewardDay": 68.1224,
+          "dayYieldPct": 0.136,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will South America (CONMEBOL) win the 2026 FIFA World Cup?",
+      "conditionId": "0x0ed2e5e985631ab71750ad21a40503508a5f7d928032b2d1f8c901013f4e002f",
+      "rewardsDailyRate": 75,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 200,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.195,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 12813,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0,
+      "volatilityRange": 0,
+      "endDate": null,
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.037557,
+          "grossRewardDay": 2.8168,
+          "dayYieldPct": 0.563,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.280694,
+          "grossRewardDay": 21.052,
+          "dayYieldPct": 0.421,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.796014,
+          "grossRewardDay": 59.701,
+          "dayYieldPct": 0.119,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will Renan Santos win the 2026 Brazilian presidential election?",
+      "conditionId": "0x05297f854d3b757d5e51a1a29c7f225a80b14b2a161d6b7f9a61677da7a80ced",
+      "rewardsDailyRate": 67,
+      "rewardsMaxSpread": 5.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.1445,
+      "bookSpread": 0.003,
+      "existing_depth_usd": 9455,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0.00234,
+      "volatilityRange": 0.009,
+      "endDate": "2026-10-04T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.050226,
+          "grossRewardDay": 3.3651,
+          "dayYieldPct": 0.673,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.345901,
+          "grossRewardDay": 23.1754,
+          "dayYieldPct": 0.464,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.840972,
+          "grossRewardDay": 56.3451,
+          "dayYieldPct": 0.113,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will 1 Fed rate cut happen in 2026?",
+      "conditionId": "0x5e082f0b57f47a29044aa35b4c5658393122e659d5feae521c06b57cdd7f905c",
+      "rewardsDailyRate": 66,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.135,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 2789,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0.00462,
+      "volatilityRange": 0.01,
+      "endDate": "2026-12-31T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.152022,
+          "grossRewardDay": 10.0334,
+          "dayYieldPct": 2.007,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.641931,
+          "grossRewardDay": 42.3674,
+          "dayYieldPct": 0.847,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.947167,
+          "grossRewardDay": 62.513,
+          "dayYieldPct": 0.125,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will Steve Hilton win the California Governor Election in 2026?",
+      "conditionId": "0x119b6b3b744ac3239c7a71100165d254234eaecea401abde5a3d303bef21d19e",
+      "rewardsDailyRate": 50,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 100,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.0985,
+      "bookSpread": 0.001,
+      "existing_depth_usd": 9136,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0.0029,
+      "volatilityRange": 0.0095,
+      "endDate": "2026-11-03T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.051889,
+          "grossRewardDay": 2.5944,
+          "dayYieldPct": 0.519,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.353707,
+          "grossRewardDay": 17.6853,
+          "dayYieldPct": 0.354,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.845509,
+          "grossRewardDay": 42.2754,
+          "dayYieldPct": 0.085,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Billionaire one-time wealth tax passes in California election 2026?",
+      "conditionId": "0x9345d5142a67f5541264c96515496affee02580f1c572680759eac9fd2a1588a",
+      "rewardsDailyRate": 50,
+      "rewardsMaxSpread": 3.5,
+      "rewardsMinSize": 200,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.23,
+      "bookSpread": 0.02,
+      "existing_depth_usd": 831,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0.00243,
+      "volatilityRange": 0.005,
+      "endDate": "2026-11-03T00:00:00Z",
+      "negRisk": false,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.375657,
+          "grossRewardDay": 18.7829,
+          "dayYieldPct": 3.757,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.857486,
+          "grossRewardDay": 42.8743,
+          "dayYieldPct": 0.857,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.983652,
+          "grossRewardDay": 49.1826,
+          "dayYieldPct": 0.098,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will Ostium launch a token by December 31, 2026?",
+      "conditionId": "0xf9ef8c1386d8ee35b4ea45c585a8b9ea0e61e755b43a721cc8a784ea1c210970",
+      "rewardsDailyRate": 40,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 20,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.435,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 1901,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0,
+      "volatilityRange": 0,
+      "endDate": "2027-01-01T05:00:00Z",
+      "negRisk": false,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.208247,
+          "grossRewardDay": 8.3299,
+          "dayYieldPct": 1.666,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.724533,
+          "grossRewardDay": 28.9813,
+          "dayYieldPct": 0.58,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.963373,
+          "grossRewardDay": 38.5349,
+          "dayYieldPct": 0.077,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will Alexandria Ocasio-Cortez win the 2028 Democratic presidential nomination?",
+      "conditionId": "0xe6bcc2f1dd025ce5e1833190f7c60a71171c94f805df55b9ab0ded695ec93565",
+      "rewardsDailyRate": 34,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 100,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.1005,
+      "bookSpread": 0.001,
+      "existing_depth_usd": 11337,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0.0038,
+      "volatilityRange": 0.009,
+      "endDate": "2028-11-07T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.04224,
+          "grossRewardDay": 1.4362,
+          "dayYieldPct": 0.287,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.306054,
+          "grossRewardDay": 10.4058,
+          "dayYieldPct": 0.208,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.815169,
+          "grossRewardDay": 27.7157,
+          "dayYieldPct": 0.055,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "OpenAI IPO before 2027?",
+      "conditionId": "0x7844ad013088564a11d5d4d3b1766c57ad936a55247f0ae1efe28180d7285af3",
+      "rewardsDailyRate": 30,
+      "rewardsMaxSpread": 3.5,
+      "rewardsMinSize": 200,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.535,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 2773,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0.00369,
+      "volatilityRange": 0.01,
+      "endDate": "2026-12-31T00:00:00Z",
+      "negRisk": false,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.152765,
+          "grossRewardDay": 4.583,
+          "dayYieldPct": 0.917,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.643252,
+          "grossRewardDay": 19.2976,
+          "dayYieldPct": 0.386,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.947454,
+          "grossRewardDay": 28.4236,
+          "dayYieldPct": 0.057,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will ACA premium tax credits not be extended and will the Democratic Party win the House in 2026?",
+      "conditionId": "0xb1dd35e85b6a712dbd1049c0bd4e7637d7bfea7e1020a12d761732418a279d37",
+      "rewardsDailyRate": 28,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.805,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 9226,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0,
+      "volatilityRange": 0,
+      "endDate": "2026-11-03T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.051409,
+          "grossRewardDay": 1.4394,
+          "dayYieldPct": 0.288,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.351469,
+          "grossRewardDay": 9.8411,
+          "dayYieldPct": 0.197,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.844224,
+          "grossRewardDay": 23.6383,
+          "dayYieldPct": 0.047,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will Parti Québécois win the most seats in the 2026 Quebec general election?",
+      "conditionId": "0x30d4a64f70d80faee66508a797b347ef65e63913e4200bca954718fc824ea10e",
+      "rewardsDailyRate": 27,
+      "rewardsMaxSpread": 5.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.625,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 6667,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0.00231,
+      "volatilityRange": 0.005,
+      "endDate": "2026-10-05T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.069764,
+          "grossRewardDay": 1.8836,
+          "dayYieldPct": 0.377,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.428559,
+          "grossRewardDay": 11.5711,
+          "dayYieldPct": 0.231,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.882348,
+          "grossRewardDay": 23.8234,
+          "dayYieldPct": 0.048,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will the Democratic Progressive Party (DPP) win the most head of local government elections in the 2026 Taiwan local elections?",
+      "conditionId": "0xea3b1d0099085f43a3098b3e1fbcbe62284ce1bda99384b3d46b82ff202ac016",
+      "rewardsDailyRate": 27,
+      "rewardsMaxSpread": 5.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.185,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 2916,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0.0018,
+      "volatilityRange": 0.005,
+      "endDate": null,
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.14637,
+          "grossRewardDay": 3.952,
+          "dayYieldPct": 0.79,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.631632,
+          "grossRewardDay": 17.0541,
+          "dayYieldPct": 0.341,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.944894,
+          "grossRewardDay": 25.5121,
+          "dayYieldPct": 0.051,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will there be another US government shutdown by January 31 and will the Democratic Party win the House in 2026?",
+      "conditionId": "0x9317b943475e9d550402f328a1ea9cb5f69a616ffd471cffb0a4978ac22a8c3c",
+      "rewardsDailyRate": 26,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.812,
+      "bookSpread": 0.004,
+      "existing_depth_usd": 4896,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0.00023,
+      "volatilityRange": 0.0005,
+      "endDate": "2026-11-03T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.092661,
+          "grossRewardDay": 2.4092,
+          "dayYieldPct": 0.482,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.505255,
+          "grossRewardDay": 13.1366,
+          "dayYieldPct": 0.263,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.910813,
+          "grossRewardDay": 23.6811,
+          "dayYieldPct": 0.047,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will there be another US government shutdown by January 31 and will the Republican Party win the House in 2026?",
+      "conditionId": "0x02df71403f5136e9c803231cb8e2333a1b9f575bb51792bd91bde8dfe4242220",
+      "rewardsDailyRate": 24,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.1835,
+      "bookSpread": 0.001,
+      "existing_depth_usd": 1138,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0.00042,
+      "volatilityRange": 0.0015,
+      "endDate": "2026-11-03T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.30525,
+          "grossRewardDay": 7.326,
+          "dayYieldPct": 1.465,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.814598,
+          "grossRewardDay": 19.5503,
+          "dayYieldPct": 0.391,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.977746,
+          "grossRewardDay": 23.4659,
+          "dayYieldPct": 0.047,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will Marine Le Pen win the 2027 French presidential election?",
+      "conditionId": "0x8126317d621047fb13d508a2651eecc8d38305904671822a62309c5aabd353aa",
+      "rewardsDailyRate": 23,
+      "rewardsMaxSpread": 5.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.065,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 3445,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0.00487,
+      "volatilityRange": 0.01,
+      "endDate": "2027-04-30T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.126743,
+          "grossRewardDay": 2.9151,
+          "dayYieldPct": 0.583,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.592066,
+          "grossRewardDay": 13.6175,
+          "dayYieldPct": 0.272,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.935541,
+          "grossRewardDay": 21.5174,
+          "dayYieldPct": 0.043,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will Kuomintang (KMT) win the most head of local government elections in the 2026 Taiwan local elections?",
+      "conditionId": "0xc0f076bc4d90a44df34a729277e9d1f294f0cb60d2c3b1b3800908b1e15b923b",
+      "rewardsDailyRate": 23,
+      "rewardsMaxSpread": 5.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.825,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 10966,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0,
+      "volatilityRange": 0,
+      "endDate": null,
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.043607,
+          "grossRewardDay": 1.003,
+          "dayYieldPct": 0.201,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.313165,
+          "grossRewardDay": 7.2028,
+          "dayYieldPct": 0.144,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.820129,
+          "grossRewardDay": 18.863,
+          "dayYieldPct": 0.038,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will the Democrats win the Texas Senate race in 2026?",
+      "conditionId": "0x34918035a590555ba1fb1d6a019d766ab6e557d63e7f3140b63b4550eee7f417",
+      "rewardsDailyRate": 20,
+      "rewardsMaxSpread": 3.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.435,
+      "bookSpread": 0.03,
+      "existing_depth_usd": 1794,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0.00331,
+      "volatilityRange": 0.01,
+      "endDate": null,
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.21796,
+          "grossRewardDay": 4.3592,
+          "dayYieldPct": 0.872,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.735943,
+          "grossRewardDay": 14.7189,
+          "dayYieldPct": 0.294,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.965363,
+          "grossRewardDay": 19.3073,
+          "dayYieldPct": 0.039,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will the Republicans win the Texas Senate race in 2026?",
+      "conditionId": "0x94521176f57d2ce81dde01e0b7699ca4279423042d37ed53908f0c8bfefe7e14",
+      "rewardsDailyRate": 20,
+      "rewardsMaxSpread": 3.5,
+      "rewardsMinSize": 200,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.565,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 8728,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0,
+      "volatilityRange": 0,
+      "endDate": null,
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.054183,
+          "grossRewardDay": 1.0837,
+          "dayYieldPct": 0.217,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.364219,
+          "grossRewardDay": 7.2844,
+          "dayYieldPct": 0.146,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.851383,
+          "grossRewardDay": 17.0277,
+          "dayYieldPct": 0.034,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will a new country join the Abraham Accords before 2027?",
+      "conditionId": "0x0a26a2aeaee92f943b6a5649c4a096766f07675c6c710527fca730bd1e395797",
+      "rewardsDailyRate": 15,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 100,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.473,
+      "bookSpread": 0.006,
+      "existing_depth_usd": 4333,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0.00194,
+      "volatilityRange": 0.006,
+      "endDate": "2026-12-31T00:00:00Z",
+      "negRisk": false,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.103455,
+          "grossRewardDay": 1.5518,
+          "dayYieldPct": 0.31,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.535733,
+          "grossRewardDay": 8.036,
+          "dayYieldPct": 0.161,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.920251,
+          "grossRewardDay": 13.8038,
+          "dayYieldPct": 0.028,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will 2 Fed rate cuts happen in 2026?",
+      "conditionId": "0xe0d9f508a249e0070db06eb7d1e1fb17eb23c963f6fb722c4c3f81e23240c1cd",
+      "rewardsDailyRate": 12,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.0255,
+      "bookSpread": 0.001,
+      "existing_depth_usd": 1170,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0.00105,
+      "volatilityRange": 0.003,
+      "endDate": "2026-12-31T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.299401,
+          "grossRewardDay": 3.5928,
+          "dayYieldPct": 0.719,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.810373,
+          "grossRewardDay": 9.7245,
+          "dayYieldPct": 0.194,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.977135,
+          "grossRewardDay": 11.7256,
+          "dayYieldPct": 0.023,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will Spider-Man: Brand New Day be the top grossing movie of 2026?",
+      "conditionId": "0xc4b07998e8f9bf6b95f079d6dc0529f3c6f59698d4e168817ad5f99304de6c57",
+      "rewardsDailyRate": 12,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.665,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 2259,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0,
+      "volatilityRange": 0,
+      "endDate": "2026-12-31T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.181225,
+          "grossRewardDay": 2.1747,
+          "dayYieldPct": 0.435,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.6888,
+          "grossRewardDay": 8.2656,
+          "dayYieldPct": 0.165,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.956773,
+          "grossRewardDay": 11.4813,
+          "dayYieldPct": 0.023,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will Bernadette Wilson win the 2026 Alaska governor election?",
+      "conditionId": "0x9aba5bf074182d803c1b6a10814497875562ebb1c62483b36d2a305fc49e0792",
+      "rewardsDailyRate": 11,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 20,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.235,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 1160,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0,
+      "volatilityRange": 0,
+      "endDate": "2026-11-03T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.301205,
+          "grossRewardDay": 3.3133,
+          "dayYieldPct": 0.663,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.811688,
+          "grossRewardDay": 8.9286,
+          "dayYieldPct": 0.179,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.977326,
+          "grossRewardDay": 10.7506,
+          "dayYieldPct": 0.022,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will Avengers: Doomsday have the best domestic opening weekend in 2026?",
+      "conditionId": "0x14d327328063504ab74b2ab11fe68ad305525fafc70effcd5ba5c5c688971988",
+      "rewardsDailyRate": 11,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.75,
+      "bookSpread": 0.02,
+      "existing_depth_usd": 3136,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0.00249,
+      "volatilityRange": 0.005,
+      "endDate": "2026-12-31T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.137514,
+          "grossRewardDay": 1.5127,
+          "dayYieldPct": 0.303,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.614553,
+          "grossRewardDay": 6.7601,
+          "dayYieldPct": 0.135,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.940982,
+          "grossRewardDay": 10.3508,
+          "dayYieldPct": 0.021,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will the Republicans win the Maine Senate race in 2026?",
+      "conditionId": "0x2c00cb09722a0f0501c5e49131b898ed57bb5c075db4dc2bcbc14908f45b8c48",
+      "rewardsDailyRate": 10,
+      "rewardsMaxSpread": 3.5,
+      "rewardsMinSize": 200,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.385,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 3593,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0.00211,
+      "volatilityRange": 0.005,
+      "endDate": null,
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.12216,
+          "grossRewardDay": 1.2216,
+          "dayYieldPct": 0.244,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.581869,
+          "grossRewardDay": 5.8187,
+          "dayYieldPct": 0.116,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.932958,
+          "grossRewardDay": 9.3296,
+          "dayYieldPct": 0.019,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Anthropic IPO before 2027?",
+      "conditionId": "0x6522024c060166830e53a48b0db1cab9296601a8539ab005124db5e4bf50a303",
+      "rewardsDailyRate": 10,
+      "rewardsMaxSpread": 3.5,
+      "rewardsMinSize": 200,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.77,
+      "bookSpread": 0.02,
+      "existing_depth_usd": 2384,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0,
+      "volatilityRange": 0,
+      "endDate": "2026-12-31T00:00:00Z",
+      "negRisk": false,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.17337,
+          "grossRewardDay": 1.7337,
+          "dayYieldPct": 0.347,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.67714,
+          "grossRewardDay": 6.7714,
+          "dayYieldPct": 0.135,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.95449,
+          "grossRewardDay": 9.5449,
+          "dayYieldPct": 0.019,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will Parti libéral du Québec win the most seats in the 2026 Quebec general election?",
+      "conditionId": "0x9b609d94cd0e303bf36f68a422a93f7dad9f58a2f8e4212eef51eed93480f323",
+      "rewardsDailyRate": 10,
+      "rewardsMaxSpread": 5.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.17,
+      "bookSpread": 0.02,
+      "existing_depth_usd": 1369,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0.00196,
+      "volatilityRange": 0.01,
+      "endDate": "2026-10-05T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.267523,
+          "grossRewardDay": 2.6752,
+          "dayYieldPct": 0.535,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.785053,
+          "grossRewardDay": 7.8505,
+          "dayYieldPct": 0.157,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.97335,
+          "grossRewardDay": 9.7335,
+          "dayYieldPct": 0.019,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will Linke win the most seats in the 2026 Berlin state elections?",
+      "conditionId": "0xda4fbe6eec3d6cc6f6d14785f25f86823514b0b4b37c63227af5b2670f2627f4",
+      "rewardsDailyRate": 10,
+      "rewardsMaxSpread": 5.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.21,
+      "bookSpread": 0.02,
+      "existing_depth_usd": 1521,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0.00249,
+      "volatilityRange": 0.005,
+      "endDate": "2026-09-20T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.247402,
+          "grossRewardDay": 2.474,
+          "dayYieldPct": 0.495,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.766754,
+          "grossRewardDay": 7.6675,
+          "dayYieldPct": 0.153,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.970478,
+          "grossRewardDay": 9.7048,
+          "dayYieldPct": 0.019,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will AfD win the most seats in the 2026 Berlin state elections?",
+      "conditionId": "0x8aaaca6ea5c037d3cdfe85272ab9029b7165694dcae8af0de5071f01a1a944f0",
+      "rewardsDailyRate": 8,
+      "rewardsMaxSpread": 5.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.165,
+      "bookSpread": 0.008,
+      "existing_depth_usd": 1665,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0.00023,
+      "volatilityRange": 0.0005,
+      "endDate": "2026-09-20T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.230947,
+          "grossRewardDay": 1.8476,
+          "dayYieldPct": 0.37,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.750188,
+          "grossRewardDay": 6.0015,
+          "dayYieldPct": 0.12,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.967773,
+          "grossRewardDay": 7.7422,
+          "dayYieldPct": 0.015,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will Jonathan Kreiss-Tomkins win the 2026 Alaska governor election?",
+      "conditionId": "0x43cedce4a6af0136d37d53408fc965388baee3145db6da72a5b5da8d2746ced3",
+      "rewardsDailyRate": 7,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 20,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.1515,
+      "bookSpread": 0.007,
+      "existing_depth_usd": 928,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0.00042,
+      "volatilityRange": 0.001,
+      "endDate": "2026-11-03T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.35014,
+          "grossRewardDay": 2.451,
+          "dayYieldPct": 0.49,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.843455,
+          "grossRewardDay": 5.9042,
+          "dayYieldPct": 0.118,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.981778,
+          "grossRewardDay": 6.8724,
+          "dayYieldPct": 0.014,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will Spider-Man: Brand New Day have the best domestic opening weekend in 2026?",
+      "conditionId": "0x76c1a69f2b0a7fcfa97b56ddbeaad1981a8cb3d8f24c1adce62ffa2d010ebbe0",
+      "rewardsDailyRate": 7,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.185,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 174,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0.00369,
+      "volatilityRange": 0.01,
+      "endDate": "2026-12-31T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.74184,
+          "grossRewardDay": 5.1929,
+          "dayYieldPct": 1.039,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.96637,
+          "grossRewardDay": 6.7646,
+          "dayYieldPct": 0.135,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.996532,
+          "grossRewardDay": 6.9757,
+          "dayYieldPct": 0.014,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will the Sweden Democrats (SD) win the most seats in the 2026 Swedish parliamentary election?",
+      "conditionId": "0xa39535caf2ce2c47dfbdc64c3cef9a00b7599a24c34b4091caed34df27094639",
+      "rewardsDailyRate": 6,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.033,
+      "bookSpread": 0.006,
+      "existing_depth_usd": 314,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0.00036,
+      "volatilityRange": 0.0015,
+      "endDate": "2026-09-13T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.614251,
+          "grossRewardDay": 3.6855,
+          "dayYieldPct": 0.737,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.940911,
+          "grossRewardDay": 5.6455,
+          "dayYieldPct": 0.113,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.993759,
+          "grossRewardDay": 5.9626,
+          "dayYieldPct": 0.012,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will Tom Begich win the 2026 Alaska governor election?",
+      "conditionId": "0xb120cb1c26ad4568844f8e7ee7a91487d5cf4d246fd40410c1f3d4061bfd3587",
+      "rewardsDailyRate": 5,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 20,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.305,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 1075,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0.00211,
+      "volatilityRange": 0.005,
+      "endDate": "2026-11-03T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.31746,
+          "grossRewardDay": 1.5873,
+          "dayYieldPct": 0.317,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.823045,
+          "grossRewardDay": 4.1152,
+          "dayYieldPct": 0.082,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.978953,
+          "grossRewardDay": 4.8948,
+          "dayYieldPct": 0.01,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Spain snap election called by June 30, 2026?",
+      "conditionId": "0xb935ba8bc67b99825f2d7e4759d5d619f9c2beea0b799cc6f444d48c8cdf6149",
+      "rewardsDailyRate": 5,
+      "rewardsMaxSpread": 3.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.045,
+      "bookSpread": 0.006,
+      "existing_depth_usd": 114,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0.00437,
+      "volatilityRange": 0.0175,
+      "endDate": null,
+      "negRisk": false,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.814332,
+          "grossRewardDay": 4.0717,
+          "dayYieldPct": 0.814,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.977708,
+          "grossRewardDay": 4.8885,
+          "dayYieldPct": 0.098,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.997725,
+          "grossRewardDay": 4.9886,
+          "dayYieldPct": 0.01,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Yoon out of custody before 2027?",
+      "conditionId": "0x9f94a3f64e8db20bf9d1766643b3bf4c345e3439d282d779775e171c780e9ddf",
+      "rewardsDailyRate": 5,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.1025,
+      "bookSpread": 0.003,
+      "existing_depth_usd": 327,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0.00038,
+      "volatilityRange": 0.001,
+      "endDate": "2026-12-31T00:00:00Z",
+      "negRisk": false,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.604595,
+          "grossRewardDay": 3.023,
+          "dayYieldPct": 0.605,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.938615,
+          "grossRewardDay": 4.6931,
+          "dayYieldPct": 0.094,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.993502,
+          "grossRewardDay": 4.9675,
+          "dayYieldPct": 0.01,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will Luiz Inácio Lula da Silva win the 2026 Brazilian presidential election?",
+      "conditionId": "0xdf8e2dc5860027decbe6164555c3c1c9645c3bd33e16b9dc57ca87125047d4a8",
+      "rewardsDailyRate": 291,
+      "rewardsMaxSpread": 5.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.555,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 53590,
+      "volatilityRisk": "MEDIUM",
+      "volatilityStdev": 0.01976,
+      "volatilityRange": 0.05,
+      "endDate": "2026-10-04T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.009244,
+          "grossRewardDay": 2.69,
+          "dayYieldPct": 0.538,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.085339,
+          "grossRewardDay": 24.8336,
+          "dayYieldPct": 0.497,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.482672,
+          "grossRewardDay": 140.4576,
+          "dayYieldPct": 0.281,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will Benjamin Netanyahu be the next Prime Minister of Israel?",
+      "conditionId": "0x7586a96520578acaaaa4ea84a2582f197f84255da1f3392a7aa300386c187b37",
+      "rewardsDailyRate": 206,
+      "rewardsMaxSpread": 5.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.345,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 21718,
+      "volatilityRisk": "MEDIUM",
+      "volatilityStdev": 0.00973,
+      "volatilityRange": 0.03,
+      "endDate": "2026-12-31T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.022504,
+          "grossRewardDay": 4.6359,
+          "dayYieldPct": 0.927,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.18714,
+          "grossRewardDay": 38.5508,
+          "dayYieldPct": 0.771,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.697175,
+          "grossRewardDay": 143.6181,
+          "dayYieldPct": 0.287,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will the U.S. invade Iran before 2027?",
+      "conditionId": "0x5db999fad322cea2914535aae5517060c3f80ad6d8c0231cde2124a434d16846",
+      "rewardsDailyRate": 200,
+      "rewardsMaxSpread": 3.5,
+      "rewardsMinSize": 200,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.135,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 14759,
+      "volatilityRisk": "MEDIUM",
+      "volatilityStdev": 0.00606,
+      "volatilityRange": 0.02,
+      "endDate": "2026-12-31T00:00:00Z",
+      "negRisk": false,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.032768,
+          "grossRewardDay": 6.5535,
+          "dayYieldPct": 1.311,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.253049,
+          "grossRewardDay": 50.6098,
+          "dayYieldPct": 1.012,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.772093,
+          "grossRewardDay": 154.4187,
+          "dayYieldPct": 0.309,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will Flávio Bolsonaro win the 2026 Brazilian presidential election?",
+      "conditionId": "0x1a01bf78f56a507fcb666d564d8c8b91b0750679163ed6e96746102c9b7d285d",
+      "rewardsDailyRate": 136,
+      "rewardsMaxSpread": 5.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.2335,
+      "bookSpread": 0.001,
+      "existing_depth_usd": 25049,
+      "volatilityRisk": "MEDIUM",
+      "volatilityStdev": 0.00777,
+      "volatilityRange": 0.023,
+      "endDate": "2026-10-04T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.01957,
+          "grossRewardDay": 2.6616,
+          "dayYieldPct": 0.532,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.166395,
+          "grossRewardDay": 22.6297,
+          "dayYieldPct": 0.453,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.666231,
+          "grossRewardDay": 90.6075,
+          "dayYieldPct": 0.181,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will Europe (UEFA) win the 2026 FIFA World Cup?",
+      "conditionId": "0x3561a95d16ac2edfd3831aba4612c88c6f5b84a6f0924bdb6b07dc7cfe73e121",
+      "rewardsDailyRate": 125,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 200,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.695,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 55923,
+      "volatilityRisk": "MEDIUM",
+      "volatilityStdev": 0.00991,
+      "volatilityRange": 0.03,
+      "endDate": null,
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.008862,
+          "grossRewardDay": 1.1077,
+          "dayYieldPct": 0.222,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.082071,
+          "grossRewardDay": 10.2589,
+          "dayYieldPct": 0.205,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.472041,
+          "grossRewardDay": 59.0051,
+          "dayYieldPct": 0.118,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will OpenAI not IPO by December 31, 2026?",
+      "conditionId": "0x3849e1d62e0807801913d3e2427e8caf3cc6dd1c8ef42d8d5c08c6f9c449dc5e",
+      "rewardsDailyRate": 88,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 100,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.475,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 4093,
+      "volatilityRisk": "MEDIUM",
+      "volatilityStdev": 0.00798,
+      "volatilityRange": 0.025,
+      "endDate": "2027-01-01T01:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.108861,
+          "grossRewardDay": 9.5798,
+          "dayYieldPct": 1.916,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.549874,
+          "grossRewardDay": 48.3889,
+          "dayYieldPct": 0.968,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.924334,
+          "grossRewardDay": 81.3414,
+          "dayYieldPct": 0.163,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Ukraine signs peace deal with Russia before 2027?",
+      "conditionId": "0x4167e22670f31e5f93d132f78108f3fae809bd15cadf78983eff096845ed1415",
+      "rewardsDailyRate": 30,
+      "rewardsMaxSpread": 3.5,
+      "rewardsMinSize": 200,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.295,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 4394,
+      "volatilityRisk": "MEDIUM",
+      "volatilityStdev": 0.00937,
+      "volatilityRange": 0.04,
+      "endDate": "2026-12-31T00:00:00Z",
+      "negRisk": false,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.102166,
+          "grossRewardDay": 3.065,
+          "dayYieldPct": 0.613,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.532255,
+          "grossRewardDay": 15.9676,
+          "dayYieldPct": 0.319,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.919219,
+          "grossRewardDay": 27.5766,
+          "dayYieldPct": 0.055,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will ACA premium tax credits not be extended and will the Republican Party win the House in 2026?",
+      "conditionId": "0x00b4efa709503b5ceb106866f1bccfe18161896d04c7081ade933ef499aa0b5c",
+      "rewardsDailyRate": 22,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.155,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 491,
+      "volatilityRisk": "MEDIUM",
+      "volatilityStdev": 0.01215,
+      "volatilityRange": 0.03,
+      "endDate": "2026-11-03T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.504541,
+          "grossRewardDay": 11.0999,
+          "dayYieldPct": 2.22,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.910581,
+          "grossRewardDay": 20.0328,
+          "dayYieldPct": 0.401,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.990275,
+          "grossRewardDay": 21.7861,
+          "dayYieldPct": 0.044,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will OpenAI IPO by December 31 2026?",
+      "conditionId": "0x66f5b8203ee1c36b993af623fd7f9ef7271dd87b3aebf6df508048ad4b563432",
+      "rewardsDailyRate": 20,
+      "rewardsMaxSpread": 3.5,
+      "rewardsMinSize": 200,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.51,
+      "bookSpread": 0.02,
+      "existing_depth_usd": 22,
+      "volatilityRisk": "MEDIUM",
+      "volatilityStdev": 0.01206,
+      "volatilityRange": 0.045,
+      "endDate": null,
+      "negRisk": false,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.957854,
+          "grossRewardDay": 19.1571,
+          "dayYieldPct": 3.831,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.995619,
+          "grossRewardDay": 19.9124,
+          "dayYieldPct": 0.398,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.99956,
+          "grossRewardDay": 19.9912,
+          "dayYieldPct": 0.04,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will Saudi Arabia join the Abraham Accords before 2027?",
+      "conditionId": "0x15f442103bfad36b0dcc569d9698b4d020d12a2c935b9ac9050bb190a9238ec6",
+      "rewardsDailyRate": 20,
+      "rewardsMaxSpread": 3.5,
+      "rewardsMinSize": 200,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.11,
+      "bookSpread": 0.02,
+      "existing_depth_usd": 179,
+      "volatilityRisk": "MEDIUM",
+      "volatilityStdev": 0.00941,
+      "volatilityRange": 0.025,
+      "endDate": "2026-12-31T00:00:00Z",
+      "negRisk": false,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.736377,
+          "grossRewardDay": 14.7275,
+          "dayYieldPct": 2.946,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.965437,
+          "grossRewardDay": 19.3087,
+          "dayYieldPct": 0.386,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.996433,
+          "grossRewardDay": 19.9287,
+          "dayYieldPct": 0.04,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will CDU win the most seats in the 2026 Berlin state elections?",
+      "conditionId": "0x71a21eab87c301a53f2f33fad4dca7a1e7da8911b847c82ca37ed49d859a17a0",
+      "rewardsDailyRate": 19,
+      "rewardsMaxSpread": 5.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.35,
+      "bookSpread": 0.02,
+      "existing_depth_usd": 1118,
+      "volatilityRisk": "MEDIUM",
+      "volatilityStdev": 0.01211,
+      "volatilityRange": 0.03,
+      "endDate": "2026-09-20T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.309023,
+          "grossRewardDay": 5.8714,
+          "dayYieldPct": 1.174,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.817261,
+          "grossRewardDay": 15.528,
+          "dayYieldPct": 0.311,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.978129,
+          "grossRewardDay": 18.5845,
+          "dayYieldPct": 0.037,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will Coalition Avenir Québec win the most seats in the 2026 Quebec general election?",
+      "conditionId": "0xc7bc5d759ecbd05cfbf3b41ec98f1cd7ab306234bf76fd6c1768d3be1d6b9e76",
+      "rewardsDailyRate": 13,
+      "rewardsMaxSpread": 5.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.195,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 634,
+      "volatilityRisk": "MEDIUM",
+      "volatilityStdev": 0.00784,
+      "volatilityRange": 0.02,
+      "endDate": "2026-10-05T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.440917,
+          "grossRewardDay": 5.7319,
+          "dayYieldPct": 1.146,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.887469,
+          "grossRewardDay": 11.5371,
+          "dayYieldPct": 0.231,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.987479,
+          "grossRewardDay": 12.8372,
+          "dayYieldPct": 0.026,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will Grüne win the most seats in the 2026 Berlin state elections?",
+      "conditionId": "0xe56ea36629f22db9d86fffb7a326a1d64750d3da6037ef69dd7d3ff301ff880b",
+      "rewardsDailyRate": 12,
+      "rewardsMaxSpread": 5.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.231,
+      "bookSpread": 0.012,
+      "existing_depth_usd": 3083,
+      "volatilityRisk": "MEDIUM",
+      "volatilityStdev": 0.01078,
+      "volatilityRange": 0.0275,
+      "endDate": "2026-09-20T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.139548,
+          "grossRewardDay": 1.6746,
+          "dayYieldPct": 0.335,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.618582,
+          "grossRewardDay": 7.423,
+          "dayYieldPct": 0.148,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.941921,
+          "grossRewardDay": 11.3031,
+          "dayYieldPct": 0.023,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will Genter Drummond win the 2026 Oklahoma Governor Republican primary election?",
+      "conditionId": "0x6f78fd69fd6dafb695a8f4074dac11971b1da612bd150aa0c837efbd86417292",
+      "rewardsDailyRate": 411,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.235,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 11301,
+      "volatilityRisk": "HIGH",
+      "volatilityStdev": 0.00211,
+      "volatilityRange": 0.005,
+      "endDate": "2026-06-16T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.042369,
+          "grossRewardDay": 17.4138,
+          "dayYieldPct": 3.483,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.30673,
+          "grossRewardDay": 126.0659,
+          "dayYieldPct": 2.521,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.815647,
+          "grossRewardDay": 335.2311,
+          "dayYieldPct": 0.67,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will Claire Valdez be the Democratic nominee for NY-07?",
+      "conditionId": "0xc47d5386411a75a6b87c78cafd47993a42ad8b8b0df166e9722a275269449612",
+      "rewardsDailyRate": 400,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.82,
+      "bookSpread": 0.02,
+      "existing_depth_usd": 40353,
+      "volatilityRisk": "HIGH",
+      "volatilityStdev": 0.00439,
+      "volatilityRange": 0.01,
+      "endDate": "2026-06-23T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.012239,
+          "grossRewardDay": 4.8956,
+          "dayYieldPct": 0.979,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.110246,
+          "grossRewardDay": 44.0985,
+          "dayYieldPct": 0.882,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.553385,
+          "grossRewardDay": 221.354,
+          "dayYieldPct": 0.443,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will Cait Conley be the Democratic nominee for NY-17?",
+      "conditionId": "0xed5dbf2e63a4222099bcbaf60c4c70333b29c2940d0f127c8da2ee0920632d34",
+      "rewardsDailyRate": 400,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.895,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 48379,
+      "volatilityRisk": "HIGH",
+      "volatilityStdev": 0,
+      "volatilityRange": 0,
+      "endDate": "2026-06-23T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.010229,
+          "grossRewardDay": 4.0917,
+          "dayYieldPct": 0.818,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.09367,
+          "grossRewardDay": 37.4679,
+          "dayYieldPct": 0.749,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.508239,
+          "grossRewardDay": 203.2954,
+          "dayYieldPct": 0.407,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will Micah Lasher be the democratic nominee for NY-12?",
+      "conditionId": "0x3ff129c6f6737846a0b7912778da9c68f3766fbe4c8056224bd12de7e3ecfc10",
+      "rewardsDailyRate": 394,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.625,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 7787,
+      "volatilityRisk": "HIGH",
+      "volatilityStdev": 0.01915,
+      "volatilityRange": 0.05,
+      "endDate": "2026-06-23T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.060335,
+          "grossRewardDay": 23.7722,
+          "dayYieldPct": 4.754,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.391022,
+          "grossRewardDay": 154.0627,
+          "dayYieldPct": 3.081,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.865247,
+          "grossRewardDay": 340.9071,
+          "dayYieldPct": 0.682,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will Mike Mazzei win the 2026 Oklahoma Governor Republican primary election?",
+      "conditionId": "0xb07a22fd501dc1c8b1470b549b41af3b94551c80fcf0e124f14fe08e8577bb00",
+      "rewardsDailyRate": 389,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.769,
+      "bookSpread": 0.002,
+      "existing_depth_usd": 27796,
+      "volatilityRisk": "HIGH",
+      "volatilityStdev": 0.0007,
+      "volatilityRange": 0.003,
+      "endDate": "2026-06-16T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.01767,
+          "grossRewardDay": 6.8738,
+          "dayYieldPct": 1.375,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.152458,
+          "grossRewardDay": 59.306,
+          "dayYieldPct": 1.186,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.642707,
+          "grossRewardDay": 250.0129,
+          "dayYieldPct": 0.5,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will Ben McAdams be the Democratic nominee for UT-01?",
+      "conditionId": "0x89c32a0f93d0fb5b46225e4ac76f3e00a8614f55e6aa365e0152d5ee92722a81",
+      "rewardsDailyRate": 333,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.895,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 61423,
+      "volatilityRisk": "HIGH",
+      "volatilityStdev": 0.00462,
+      "volatilityRange": 0.01,
+      "endDate": "2026-06-23T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.008075,
+          "grossRewardDay": 2.6888,
+          "dayYieldPct": 0.538,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.075275,
+          "grossRewardDay": 25.0666,
+          "dayYieldPct": 0.501,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.44874,
+          "grossRewardDay": 149.4305,
+          "dayYieldPct": 0.299,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will Egypt win Group G in the 2026 FIFA World Cup?",
+      "conditionId": "0xd5f291e4d2dfc44a42ee0eb1d83f2e42a90ce943a71f643cadf4e98c5a6ec3eb",
+      "rewardsDailyRate": 105,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 200,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.65,
+      "bookSpread": 0.02,
+      "existing_depth_usd": 20569,
+      "volatilityRisk": "HIGH",
+      "volatilityStdev": 0.18087,
+      "volatilityRange": 0.46,
+      "endDate": "2026-06-27T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.023732,
+          "grossRewardDay": 2.4918,
+          "dayYieldPct": 0.498,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.195549,
+          "grossRewardDay": 20.5327,
+          "dayYieldPct": 0.411,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.708526,
+          "grossRewardDay": 74.3953,
+          "dayYieldPct": 0.149,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will Uruguay win Group H in the 2026 FIFA World Cup?",
+      "conditionId": "0xd136f80c161a40baa5890a7792a2a5bf264de0d5ef2711a23e4564b429969ff8",
+      "rewardsDailyRate": 86,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 200,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.105,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 4258,
+      "volatilityRisk": "HIGH",
+      "volatilityStdev": 0.0432,
+      "volatilityRange": 0.11,
+      "endDate": "2026-06-27T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.105086,
+          "grossRewardDay": 9.0374,
+          "dayYieldPct": 1.807,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.540073,
+          "grossRewardDay": 46.4463,
+          "dayYieldPct": 0.929,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.921523,
+          "grossRewardDay": 79.251,
+          "dayYieldPct": 0.159,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will Belgium win Group G in the 2026 FIFA World Cup?",
+      "conditionId": "0x1e285f49c483634426c54834f840f6bfe780e0039eb0ad31357b936600b7c2d2",
+      "rewardsDailyRate": 73,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 200,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.245,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 3409,
+      "volatilityRisk": "HIGH",
+      "volatilityStdev": 0.17339,
+      "volatilityRange": 0.41,
+      "endDate": "2026-06-27T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.12791,
+          "grossRewardDay": 9.3374,
+          "dayYieldPct": 1.867,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.594601,
+          "grossRewardDay": 43.4059,
+          "dayYieldPct": 0.868,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.936172,
+          "grossRewardDay": 68.3405,
+          "dayYieldPct": 0.137,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will Norway win Group I in the 2026 FIFA World Cup?",
+      "conditionId": "0x9da323e862ca9e583ae67a5130c8c79960cf173e7d76165cefd4ecd7f9333b90",
+      "rewardsDailyRate": 52,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 200,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.215,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 11652,
+      "volatilityRisk": "HIGH",
+      "volatilityStdev": 0,
+      "volatilityRange": 0,
+      "endDate": "2026-06-27T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.041145,
+          "grossRewardDay": 2.1396,
+          "dayYieldPct": 0.428,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.300264,
+          "grossRewardDay": 15.6137,
+          "dayYieldPct": 0.312,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.811004,
+          "grossRewardDay": 42.1722,
+          "dayYieldPct": 0.084,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will Anthropic have the best AI model at the end of June 2026?",
+      "conditionId": "0xa4d72632ac0ddadcac5247ffc586a193f1bc3bc839cf9ce993c2471e0d599cca",
+      "rewardsDailyRate": 50,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 100,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.9275,
+      "bookSpread": 0.003,
+      "existing_depth_usd": 16611,
+      "volatilityRisk": "HIGH",
+      "volatilityStdev": 0.01139,
+      "volatilityRange": 0.035,
+      "endDate": "2026-06-30T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.029221,
+          "grossRewardDay": 1.461,
+          "dayYieldPct": 0.292,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.231364,
+          "grossRewardDay": 11.5682,
+          "dayYieldPct": 0.231,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.750627,
+          "grossRewardDay": 37.5313,
+          "dayYieldPct": 0.075,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will the United Hearts Movement win the most seats in the 2025 Central African Republic National Assembly election?",
+      "conditionId": "0xff9b7b20b485b5e2acf06908b06e1606d4ac4b231550351ba09d2d8a00add35f",
+      "rewardsDailyRate": 50,
+      "rewardsMaxSpread": 5.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.939,
+      "bookSpread": 0.006,
+      "existing_depth_usd": 3370,
+      "volatilityRisk": "HIGH",
+      "volatilityStdev": 0.00051,
+      "volatilityRange": 0.002,
+      "endDate": "2025-12-28T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.129199,
+          "grossRewardDay": 6.4599,
+          "dayYieldPct": 1.292,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.597372,
+          "grossRewardDay": 29.8686,
+          "dayYieldPct": 0.597,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.936856,
+          "grossRewardDay": 46.8428,
+          "dayYieldPct": 0.094,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will Austria win Group J in the 2026 FIFA World Cup?",
+      "conditionId": "0xf8e8b9cd02f6658ad6011530ece2650290aa528c8e27c8e6ea16e742d4e764f7",
+      "rewardsDailyRate": 50,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 200,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.135,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 5674,
+      "volatilityRisk": "HIGH",
+      "volatilityStdev": 0,
+      "volatilityRange": 0,
+      "endDate": "2026-06-27T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.080985,
+          "grossRewardDay": 4.0492,
+          "dayYieldPct": 0.81,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.468428,
+          "grossRewardDay": 23.4214,
+          "dayYieldPct": 0.468,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.898085,
+          "grossRewardDay": 44.9043,
+          "dayYieldPct": 0.09,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will Nithya Raman win the 2026 Los Angeles mayoral election?",
+      "conditionId": "0x694595d0a008f10e4701285d071e4b08407495f6f8a6bd8cbdd7de522fa9b463",
+      "rewardsDailyRate": 30,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 100,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.374,
+      "bookSpread": 0.004,
+      "existing_depth_usd": 8613,
+      "volatilityRisk": "HIGH",
+      "volatilityStdev": 0.00057,
+      "volatilityRange": 0.0025,
+      "endDate": "2026-06-02T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.054867,
+          "grossRewardDay": 1.646,
+          "dayYieldPct": 0.329,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.367296,
+          "grossRewardDay": 11.0189,
+          "dayYieldPct": 0.22,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.853053,
+          "grossRewardDay": 25.5916,
+          "dayYieldPct": 0.051,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will Colombia win Group K in the 2026 FIFA World Cup?",
+      "conditionId": "0x881c23cb7b27ca775bfc550550ee94e6dc980a1b4dff7ca7f6f5f24e95bff060",
+      "rewardsDailyRate": 26,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 100,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.495,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 8766,
+      "volatilityRisk": "HIGH",
+      "volatilityStdev": 0.00421,
+      "volatilityRange": 0.01,
+      "endDate": "2026-06-27T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.053961,
+          "grossRewardDay": 1.403,
+          "dayYieldPct": 0.281,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.363214,
+          "grossRewardDay": 9.4436,
+          "dayYieldPct": 0.189,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.850832,
+          "grossRewardDay": 22.1216,
+          "dayYieldPct": 0.044,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will Japan win Group F in the 2026 FIFA World Cup?",
+      "conditionId": "0xde6e8331eaaf0b212f688a04f6c4ff5f895ab633a467cb3e9f3da48fce7c6801",
+      "rewardsDailyRate": 24,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 100,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.205,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 3051,
+      "volatilityRisk": "HIGH",
+      "volatilityStdev": 0.00237,
+      "volatilityRange": 0.01,
+      "endDate": "2026-06-27T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.140805,
+          "grossRewardDay": 3.3793,
+          "dayYieldPct": 0.676,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.621041,
+          "grossRewardDay": 14.905,
+          "dayYieldPct": 0.298,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.942489,
+          "grossRewardDay": 22.6197,
+          "dayYieldPct": 0.045,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will Portugal win Group K in the 2026 FIFA World Cup?",
+      "conditionId": "0x4795571ed1c6992ca07b6d34853d07d07ef4977b892660b4205cd2f3752c4826",
+      "rewardsDailyRate": 24,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 100,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.455,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 7581,
+      "volatilityRisk": "HIGH",
+      "volatilityStdev": 0,
+      "volatilityRange": 0,
+      "endDate": "2026-06-27T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.061874,
+          "grossRewardDay": 1.485,
+          "dayYieldPct": 0.297,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.397425,
+          "grossRewardDay": 9.5382,
+          "dayYieldPct": 0.191,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.868342,
+          "grossRewardDay": 20.8402,
+          "dayYieldPct": 0.042,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will Iran win Group G in the 2026 FIFA World Cup?",
+      "conditionId": "0x5bf2c54fb4ca9d63427816cd88ab8f7b5ede5b2b9166c366a940f1a0d6d0a290",
+      "rewardsDailyRate": 22,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 200,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.108,
+      "bookSpread": 0.002,
+      "existing_depth_usd": 1708,
+      "volatilityRisk": "HIGH",
+      "volatilityStdev": 0.02264,
+      "volatilityRange": 0.0685,
+      "endDate": "2026-06-27T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.226449,
+          "grossRewardDay": 4.9819,
+          "dayYieldPct": 0.996,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.745379,
+          "grossRewardDay": 16.3983,
+          "dayYieldPct": 0.328,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.966968,
+          "grossRewardDay": 21.2733,
+          "dayYieldPct": 0.043,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will Karen Bass win the 2026 Los Angeles mayoral election?",
+      "conditionId": "0x0c9ada12c527451fbdd43c0397a8a006b8aaf2a01567ae069d37220b51937595",
+      "rewardsDailyRate": 20,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 200,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.615,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 8706,
+      "volatilityRisk": "HIGH",
+      "volatilityStdev": 0.00133,
+      "volatilityRange": 0.005,
+      "endDate": "2026-06-02T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.054312,
+          "grossRewardDay": 1.0862,
+          "dayYieldPct": 0.217,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.364804,
+          "grossRewardDay": 7.2961,
+          "dayYieldPct": 0.146,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.851702,
+          "grossRewardDay": 17.034,
+          "dayYieldPct": 0.034,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will Anthropic have the top AI model at the end of June 2026?",
+      "conditionId": "0x0811ed7f71c2466d04f9ba801c0e21c9cfb016385cdff97b5c9984df0fa5801e",
+      "rewardsDailyRate": 20,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.9395,
+      "bookSpread": 0.003,
+      "existing_depth_usd": 5900,
+      "volatilityRisk": "HIGH",
+      "volatilityStdev": 0.00463,
+      "volatilityRange": 0.016,
+      "endDate": "2026-06-30T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.078125,
+          "grossRewardDay": 1.5625,
+          "dayYieldPct": 0.313,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.458716,
+          "grossRewardDay": 9.1743,
+          "dayYieldPct": 0.183,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.894454,
+          "grossRewardDay": 17.8891,
+          "dayYieldPct": 0.036,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will Anthropic have the second best AI model at the end of June 2026?",
+      "conditionId": "0xd0e97d28b706d26f47ada6b739674efe7768bf7a407481008474d5a0d4c4c55a",
+      "rewardsDailyRate": 20,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.93,
+      "bookSpread": 0.02,
+      "existing_depth_usd": 3426,
+      "volatilityRisk": "HIGH",
+      "volatilityStdev": 0.00525,
+      "volatilityRange": 0.02,
+      "endDate": "2026-06-30T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.127356,
+          "grossRewardDay": 2.5471,
+          "dayYieldPct": 0.509,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.593401,
+          "grossRewardDay": 11.868,
+          "dayYieldPct": 0.237,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.935874,
+          "grossRewardDay": 18.7175,
+          "dayYieldPct": 0.037,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Labour leadership election scheduled by June 30?",
+      "conditionId": "0x6bc2c22c0200475f44030c497e48617311d87c299d8c65d039897a912ebc05b2",
+      "rewardsDailyRate": 20,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 100,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.66,
+      "bookSpread": 0.08,
+      "existing_depth_usd": 0,
+      "volatilityRisk": "HIGH",
+      "volatilityStdev": 0.09881,
+      "volatilityRange": 0.335,
+      "endDate": "2026-06-30T00:00:00Z",
+      "negRisk": false,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 1,
+          "grossRewardDay": 20,
+          "dayYieldPct": 4,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 1,
+          "grossRewardDay": 20,
+          "dayYieldPct": 0.4,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 1,
+          "grossRewardDay": 20,
+          "dayYieldPct": 0.04,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will s1mple retire by June 30?",
+      "conditionId": "0xa398add0863d807a2a2264621d219b1ceff3133707da323c2b9505dbd4745cc5",
+      "rewardsDailyRate": 20,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.0285,
+      "bookSpread": 0.003,
+      "existing_depth_usd": 275,
+      "volatilityRisk": "HIGH",
+      "volatilityStdev": 0.00025,
+      "volatilityRange": 0.0005,
+      "endDate": "2026-06-30T00:00:00Z",
+      "negRisk": false,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.645161,
+          "grossRewardDay": 12.9032,
+          "dayYieldPct": 2.581,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.947867,
+          "grossRewardDay": 18.9573,
+          "dayYieldPct": 0.379,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.99453,
+          "grossRewardDay": 19.8906,
+          "dayYieldPct": 0.04,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will Pamela Evette win the 2026 South Carolina Governor Republican primary election?",
+      "conditionId": "0x2ff32cec61a2e9924b5e1207974fdb171efe4568bff1aff58b3d15b26237b36b",
+      "rewardsDailyRate": 20,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.018,
+      "bookSpread": 0.004,
+      "existing_depth_usd": 1061,
+      "volatilityRisk": "HIGH",
+      "volatilityStdev": 0.00913,
+      "volatilityRange": 0.0305,
+      "endDate": "2026-06-09T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.320307,
+          "grossRewardDay": 6.4061,
+          "dayYieldPct": 1.281,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.824946,
+          "grossRewardDay": 16.4989,
+          "dayYieldPct": 0.33,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.979221,
+          "grossRewardDay": 19.5844,
+          "dayYieldPct": 0.039,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": true
+    },
+    {
+      "question": "Will France win the 2026 FIFA World Cup?",
+      "conditionId": "0x9b6fef249040fd17e9c107955b37ac2c3e923509b6b0ff01cc463a331ddeb894",
+      "rewardsDailyRate": 3571,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 200,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.1975,
+      "bookSpread": 0.001,
+      "existing_depth_usd": 6496364,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0,
+      "volatilityRange": 0,
+      "endDate": "2026-07-20T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.000077,
+          "grossRewardDay": 0.2748,
+          "dayYieldPct": 0.055,
+          "thinBookFlag": false,
+          "belowFloorFlag": true,
+          "flags": [
+            "below $1 payout floor at this capital"
+          ]
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.000769,
+          "grossRewardDay": 2.7463,
+          "dayYieldPct": 0.055,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.007638,
+          "grossRewardDay": 27.2747,
+          "dayYieldPct": 0.055,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": false
+    },
+    {
+      "question": "Will Spain win the 2026 FIFA World Cup?",
+      "conditionId": "0x7976b8dbacf9077eb1453a62bcefd6ab2df199acd28aad276ff0d920d6992892",
+      "rewardsDailyRate": 2143,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 200,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.1385,
+      "bookSpread": 0.001,
+      "existing_depth_usd": 6325626,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0.00228,
+      "volatilityRange": 0.008,
+      "endDate": "2026-07-20T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.000079,
+          "grossRewardDay": 0.1694,
+          "dayYieldPct": 0.034,
+          "thinBookFlag": false,
+          "belowFloorFlag": true,
+          "flags": [
+            "below $1 payout floor at this capital"
+          ]
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.00079,
+          "grossRewardDay": 1.6926,
+          "dayYieldPct": 0.034,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.007842,
+          "grossRewardDay": 16.8062,
+          "dayYieldPct": 0.034,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": false
+    },
+    {
+      "question": "Will England win the 2026 FIFA World Cup?",
+      "conditionId": "0x375409bc5eeeff961e82b479caeccc20f33d15738e5bce1186d628aa3d9dfb1f",
+      "rewardsDailyRate": 1905,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 200,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.1255,
+      "bookSpread": 0.001,
+      "existing_depth_usd": 6298581,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0,
+      "volatilityRange": 0,
+      "endDate": "2026-07-20T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.000079,
+          "grossRewardDay": 0.1512,
+          "dayYieldPct": 0.03,
+          "thinBookFlag": false,
+          "belowFloorFlag": true,
+          "flags": [
+            "below $1 payout floor at this capital"
+          ]
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.000793,
+          "grossRewardDay": 1.511,
+          "dayYieldPct": 0.03,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.007876,
+          "grossRewardDay": 15.0034,
+          "dayYieldPct": 0.03,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": false
+    },
+    {
+      "question": "Will Argentina win the 2026 FIFA World Cup?",
+      "conditionId": "0x0c4cd2055d6ea89354ffddc55d6dbcef9355748112ea952fc925f3db6a5c457f",
+      "rewardsDailyRate": 1667,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 200,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.128,
+      "bookSpread": 0.002,
+      "existing_depth_usd": 1020550,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0.00214,
+      "volatilityRange": 0.008,
+      "endDate": "2026-07-20T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.00049,
+          "grossRewardDay": 0.8163,
+          "dayYieldPct": 0.163,
+          "thinBookFlag": false,
+          "belowFloorFlag": true,
+          "flags": [
+            "below $1 payout floor at this capital"
+          ]
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.004875,
+          "grossRewardDay": 8.1273,
+          "dayYieldPct": 0.163,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.046705,
+          "grossRewardDay": 77.8572,
+          "dayYieldPct": 0.156,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": false
+    },
+    {
+      "question": "Will Portugal win the 2026 FIFA World Cup?",
+      "conditionId": "0x4f3421fb2daf5cca7430ed8d8132463963081572d75434393a1808fdb8829fe8",
+      "rewardsDailyRate": 476,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 200,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.0665,
+      "bookSpread": 0.001,
+      "existing_depth_usd": 523136,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0.00084,
+      "volatilityRange": 0.002,
+      "endDate": "2026-07-20T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.000955,
+          "grossRewardDay": 0.4545,
+          "dayYieldPct": 0.091,
+          "thinBookFlag": false,
+          "belowFloorFlag": true,
+          "flags": [
+            "below $1 payout floor at this capital"
+          ]
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.009467,
+          "grossRewardDay": 4.5064,
+          "dayYieldPct": 0.09,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.087239,
+          "grossRewardDay": 41.5259,
+          "dayYieldPct": 0.083,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": false
+    },
+    {
+      "question": "Putin out as President of Russia by December 31, 2026?",
+      "conditionId": "0x6bd56627aa21311850825edb27e53434a0e17a4f782be0086bc07f71eee00d0d",
+      "rewardsDailyRate": 50,
+      "rewardsMaxSpread": 3.5,
+      "rewardsMinSize": 200,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.085,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 120093,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0,
+      "volatilityRange": 0,
+      "endDate": "2026-12-31T18:30:00Z",
+      "negRisk": false,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.004146,
+          "grossRewardDay": 0.2073,
+          "dayYieldPct": 0.041,
+          "thinBookFlag": false,
+          "belowFloorFlag": true,
+          "flags": [
+            "below $1 payout floor at this capital"
+          ]
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.03997,
+          "grossRewardDay": 1.9985,
+          "dayYieldPct": 0.04,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.293957,
+          "grossRewardDay": 14.6978,
+          "dayYieldPct": 0.029,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": false
+    },
+    {
+      "question": "Will China invade Taiwan by end of 2026?",
+      "conditionId": "0xd9fb1184af0064e5e34b129f5b79afa5a17b7e32f2953ab05efed82315fee6d4",
+      "rewardsDailyRate": 50,
+      "rewardsMaxSpread": 3.5,
+      "rewardsMinSize": 200,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.0635,
+      "bookSpread": 0.001,
+      "existing_depth_usd": 50603,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0.00041,
+      "volatilityRange": 0.001,
+      "endDate": "2026-12-31T00:00:00Z",
+      "negRisk": false,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.009784,
+          "grossRewardDay": 0.4892,
+          "dayYieldPct": 0.098,
+          "thinBookFlag": false,
+          "belowFloorFlag": true,
+          "flags": [
+            "below $1 payout floor at this capital"
+          ]
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.089923,
+          "grossRewardDay": 4.4962,
+          "dayYieldPct": 0.09,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.497003,
+          "grossRewardDay": 24.8502,
+          "dayYieldPct": 0.05,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": false
+    },
+    {
+      "question": "Will J.D. Vance win the 2028 Republican presidential nomination?",
+      "conditionId": "0x18b1c135d0a40c5894da9412e77311827d9caf16cf4cd6591b247a34730af919",
+      "rewardsDailyRate": 31,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.3735,
+      "bookSpread": 0.001,
+      "existing_depth_usd": 86604,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0.00108,
+      "volatilityRange": 0.003,
+      "endDate": "2028-11-07T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.00574,
+          "grossRewardDay": 0.1779,
+          "dayYieldPct": 0.036,
+          "thinBookFlag": false,
+          "belowFloorFlag": true,
+          "flags": [
+            "below $1 payout floor at this capital"
+          ]
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.054583,
+          "grossRewardDay": 1.6921,
+          "dayYieldPct": 0.034,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.366021,
+          "grossRewardDay": 11.3467,
+          "dayYieldPct": 0.023,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": false
+    },
+    {
+      "question": "Will Jon Ossoff win the 2028 Democratic presidential nomination?",
+      "conditionId": "0x74dba1ce1ae9dd535414e85f2d9ab5ea32c0fb1acc9b7130b67e6d91217e24e1",
+      "rewardsDailyRate": 28,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 100,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.0925,
+      "bookSpread": 0.001,
+      "existing_depth_usd": 14210,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0.00067,
+      "volatilityRange": 0.002,
+      "endDate": "2028-11-07T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.03399,
+          "grossRewardDay": 0.9517,
+          "dayYieldPct": 0.19,
+          "thinBookFlag": false,
+          "belowFloorFlag": true,
+          "flags": [
+            "below $1 payout floor at this capital"
+          ]
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.260281,
+          "grossRewardDay": 7.2879,
+          "dayYieldPct": 0.146,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.778695,
+          "grossRewardDay": 21.8035,
+          "dayYieldPct": 0.044,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": false
+    },
+    {
+      "question": "Will the Republican Party control the House after the 2026 Midterm elections?",
+      "conditionId": "0x4e4f77e7dbf4cab666e9a1943674d7ae66348e862df03ea6f44b11eb95731928",
+      "rewardsDailyRate": 26,
+      "rewardsMaxSpread": 5.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.195,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 53123,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0,
+      "volatilityRange": 0,
+      "endDate": "2026-11-03T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.009324,
+          "grossRewardDay": 0.2424,
+          "dayYieldPct": 0.048,
+          "thinBookFlag": false,
+          "belowFloorFlag": true,
+          "flags": [
+            "below $1 payout floor at this capital"
+          ]
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.086024,
+          "grossRewardDay": 2.2366,
+          "dayYieldPct": 0.045,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.484858,
+          "grossRewardDay": 12.6063,
+          "dayYieldPct": 0.025,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": false
+    },
+    {
+      "question": "Will the Democratic Party control the Senate after the 2026 Midterm elections?",
+      "conditionId": "0x307a1ed89d60b61002dd5bbf00e1408c5ed2ab3fcdb056191ca7ef9bc34d38f3",
+      "rewardsDailyRate": 25,
+      "rewardsMaxSpread": 5.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.425,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 26202,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0.0018,
+      "volatilityRange": 0.005,
+      "endDate": "2026-11-03T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.018725,
+          "grossRewardDay": 0.4681,
+          "dayYieldPct": 0.094,
+          "thinBookFlag": false,
+          "belowFloorFlag": true,
+          "flags": [
+            "below $1 payout floor at this capital"
+          ]
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.160246,
+          "grossRewardDay": 4.0062,
+          "dayYieldPct": 0.08,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.656151,
+          "grossRewardDay": 16.4038,
+          "dayYieldPct": 0.033,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": false
+    },
+    {
+      "question": "Will the Republican Party control the Senate after the 2026 Midterm elections?",
+      "conditionId": "0x86bfb53af7250a40928975c551d12c185b762fa4ce0b40c6a64a50c946d72587",
+      "rewardsDailyRate": 25,
+      "rewardsMaxSpread": 5.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.575,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 17464,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0.00361,
+      "volatilityRange": 0.01,
+      "endDate": "2026-11-03T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.027833,
+          "grossRewardDay": 0.6958,
+          "dayYieldPct": 0.139,
+          "thinBookFlag": false,
+          "belowFloorFlag": true,
+          "flags": [
+            "below $1 payout floor at this capital"
+          ]
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.222578,
+          "grossRewardDay": 5.5645,
+          "dayYieldPct": 0.111,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.741136,
+          "grossRewardDay": 18.5284,
+          "dayYieldPct": 0.037,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": false
+    },
+    {
+      "question": "Will the Republicans win the 2028 US Presidential Election?",
+      "conditionId": "0x0a99479228e93524b25676ae69b94bd3f4278a6bca8d8c265c84d24755399cf5",
+      "rewardsDailyRate": 25,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.405,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 19901,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0,
+      "volatilityRange": 0,
+      "endDate": "2028-11-07T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.024509,
+          "grossRewardDay": 0.6127,
+          "dayYieldPct": 0.123,
+          "thinBookFlag": false,
+          "belowFloorFlag": true,
+          "flags": [
+            "below $1 payout floor at this capital"
+          ]
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.200795,
+          "grossRewardDay": 5.0199,
+          "dayYieldPct": 0.1,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.715297,
+          "grossRewardDay": 17.8824,
+          "dayYieldPct": 0.036,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": false
+    },
+    {
+      "question": "Will the Democrats win the 2028 US Presidential Election?",
+      "conditionId": "0xb106a3c9d1c59ed8117493dae6459a3ff79369a8f7cddaf62f4a05828b89195e",
+      "rewardsDailyRate": 25,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.585,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 28632,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0,
+      "volatilityRange": 0,
+      "endDate": "2028-11-07T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.017163,
+          "grossRewardDay": 0.4291,
+          "dayYieldPct": 0.086,
+          "thinBookFlag": false,
+          "belowFloorFlag": true,
+          "flags": [
+            "below $1 payout floor at this capital"
+          ]
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.148668,
+          "grossRewardDay": 3.7167,
+          "dayYieldPct": 0.074,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.635873,
+          "grossRewardDay": 15.8968,
+          "dayYieldPct": 0.032,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": false
+    },
+    {
+      "question": "Will the Democratic Party control the House after the 2026 Midterm elections?",
+      "conditionId": "0xd5d9fc47718bd553592d126b1fa5e87183d27f3936975b0c04cc0f2dec1f1bb4",
+      "rewardsDailyRate": 24,
+      "rewardsMaxSpread": 5.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.805,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 230361,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0,
+      "volatilityRange": 0,
+      "endDate": "2026-11-03T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.002166,
+          "grossRewardDay": 0.052,
+          "dayYieldPct": 0.01,
+          "thinBookFlag": false,
+          "belowFloorFlag": true,
+          "flags": [
+            "below $1 payout floor at this capital"
+          ]
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.021244,
+          "grossRewardDay": 0.5099,
+          "dayYieldPct": 0.01,
+          "thinBookFlag": false,
+          "belowFloorFlag": true,
+          "flags": [
+            "below $1 payout floor at this capital"
+          ]
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.178341,
+          "grossRewardDay": 4.2802,
+          "dayYieldPct": 0.009,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": false
+    },
+    {
+      "question": "Will Xavier Becerra win the California Governor Election in 2026?",
+      "conditionId": "0xa5d79e71e66c9fe122f8b8b3ca6ab7a0e3048bd8508f130746944e92ed79ddf3",
+      "rewardsDailyRate": 20,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 100,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.8875,
+      "bookSpread": 0.003,
+      "existing_depth_usd": 53129,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0.00063,
+      "volatilityRange": 0.002,
+      "endDate": "2026-11-03T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.009323,
+          "grossRewardDay": 0.1865,
+          "dayYieldPct": 0.037,
+          "thinBookFlag": false,
+          "belowFloorFlag": true,
+          "flags": [
+            "below $1 payout floor at this capital"
+          ]
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.086016,
+          "grossRewardDay": 1.7203,
+          "dayYieldPct": 0.034,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.48483,
+          "grossRewardDay": 9.6966,
+          "dayYieldPct": 0.019,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": false
+    },
+    {
+      "question": "Will Marco Rubio win the 2028 Republican presidential nomination?",
+      "conditionId": "0x21ad31a46bfaa51650766eff6dc69c866959e32d965ffb116020e37694b6317d",
+      "rewardsDailyRate": 17,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.2215,
+      "bookSpread": 0.001,
+      "existing_depth_usd": 27129,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0.00066,
+      "volatilityRange": 0.002,
+      "endDate": "2028-11-07T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.018097,
+          "grossRewardDay": 0.3076,
+          "dayYieldPct": 0.062,
+          "thinBookFlag": false,
+          "belowFloorFlag": true,
+          "flags": [
+            "below $1 payout floor at this capital"
+          ]
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.155623,
+          "grossRewardDay": 2.6456,
+          "dayYieldPct": 0.053,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.648265,
+          "grossRewardDay": 11.0205,
+          "dayYieldPct": 0.022,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": false
+    },
+    {
+      "question": "Trump out as President before 2027?",
+      "conditionId": "0x48b0b0bca515f68fccf95af4793dbd0edbfec1f8ec6e8df2c0f69ba74f8c4722",
+      "rewardsDailyRate": 15,
+      "rewardsMaxSpread": 3.5,
+      "rewardsMinSize": 100,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.105,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 18145,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0.00369,
+      "volatilityRange": 0.01,
+      "endDate": "2026-12-31T00:00:00Z",
+      "negRisk": false,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.026817,
+          "grossRewardDay": 0.4023,
+          "dayYieldPct": 0.08,
+          "thinBookFlag": false,
+          "belowFloorFlag": true,
+          "flags": [
+            "below $1 payout floor at this capital"
+          ]
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.216029,
+          "grossRewardDay": 3.2404,
+          "dayYieldPct": 0.065,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.73373,
+          "grossRewardDay": 11.0059,
+          "dayYieldPct": 0.022,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": false
+    },
+    {
+      "question": "Will Kamala Harris win the 2028 Democratic presidential nomination?",
+      "conditionId": "0x909659c9436228e2be56d5582ba6188166f2f8bf3c596335512c8f2e380d01ec",
+      "rewardsDailyRate": 14,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 100,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.0715,
+      "bookSpread": 0.001,
+      "existing_depth_usd": 15963,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0,
+      "volatilityRange": 0,
+      "endDate": "2028-11-07T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.030371,
+          "grossRewardDay": 0.4252,
+          "dayYieldPct": 0.085,
+          "thinBookFlag": false,
+          "belowFloorFlag": true,
+          "flags": [
+            "below $1 payout floor at this capital"
+          ]
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.238515,
+          "grossRewardDay": 3.3392,
+          "dayYieldPct": 0.067,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.758001,
+          "grossRewardDay": 10.612,
+          "dayYieldPct": 0.021,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": false
+    },
+    {
+      "question": "Will the Swedish Social Democratic Party (S) win the most seats in the 2026 Swedish parliamentary election?",
+      "conditionId": "0xe5acfef8707df2e25a99a6e4d9568d033fa063b006022f68375ab3bbcf376818",
+      "rewardsDailyRate": 13,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.945,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 52436,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0.00541,
+      "volatilityRange": 0.015,
+      "endDate": "2026-09-13T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.009445,
+          "grossRewardDay": 0.1228,
+          "dayYieldPct": 0.025,
+          "thinBookFlag": false,
+          "belowFloorFlag": true,
+          "flags": [
+            "below $1 payout floor at this capital"
+          ]
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.087053,
+          "grossRewardDay": 1.1317,
+          "dayYieldPct": 0.023,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.48811,
+          "grossRewardDay": 6.3454,
+          "dayYieldPct": 0.013,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": false
+    },
+    {
+      "question": "Xi Jinping out before 2027?",
+      "conditionId": "0xa467b14d51f01b957109d9cbb1d6c124fab2a089d52ed8f471d23c2812e743b7",
+      "rewardsDailyRate": 10,
+      "rewardsMaxSpread": 3.5,
+      "rewardsMinSize": 200,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.0635,
+      "bookSpread": 0.001,
+      "existing_depth_usd": 17134,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0.00055,
+      "volatilityRange": 0.0015,
+      "endDate": "2026-12-31T00:00:00Z",
+      "negRisk": false,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.028354,
+          "grossRewardDay": 0.2835,
+          "dayYieldPct": 0.057,
+          "thinBookFlag": false,
+          "belowFloorFlag": true,
+          "flags": [
+            "below $1 payout floor at this capital"
+          ]
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.225897,
+          "grossRewardDay": 2.259,
+          "dayYieldPct": 0.045,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.744779,
+          "grossRewardDay": 7.4478,
+          "dayYieldPct": 0.015,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": false
+    },
+    {
+      "question": "2026 Balance of Power: D Senate, D House",
+      "conditionId": "0x16c63b7cc37f012b9f59ee164ec03877914c701d06d48291ae8d6fc08a088b0d",
+      "rewardsDailyRate": 10,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.415,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 90607,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0,
+      "volatilityRange": 0,
+      "endDate": "2026-11-03T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.005488,
+          "grossRewardDay": 0.0549,
+          "dayYieldPct": 0.011,
+          "thinBookFlag": false,
+          "belowFloorFlag": true,
+          "flags": [
+            "below $1 payout floor at this capital"
+          ]
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.052297,
+          "grossRewardDay": 0.523,
+          "dayYieldPct": 0.01,
+          "thinBookFlag": false,
+          "belowFloorFlag": true,
+          "flags": [
+            "below $1 payout floor at this capital"
+          ]
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.355601,
+          "grossRewardDay": 3.556,
+          "dayYieldPct": 0.007,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": false
+    },
+    {
+      "question": "Will the Democrats win the Maine Senate race in 2026?",
+      "conditionId": "0x66bbf6d55e0296278858b3147689f3df9259374f158f9f028b608baa322a639c",
+      "rewardsDailyRate": 10,
+      "rewardsMaxSpread": 3.5,
+      "rewardsMinSize": 200,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.625,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 6639,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0,
+      "volatilityRange": 0,
+      "endDate": null,
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.070038,
+          "grossRewardDay": 0.7004,
+          "dayYieldPct": 0.14,
+          "thinBookFlag": false,
+          "belowFloorFlag": true,
+          "flags": [
+            "below $1 payout floor at this capital"
+          ]
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.42959,
+          "grossRewardDay": 4.2959,
+          "dayYieldPct": 0.086,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.882784,
+          "grossRewardDay": 8.8278,
+          "dayYieldPct": 0.018,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": false
+    },
+    {
+      "question": "2026 Balance of Power: R Senate, D House",
+      "conditionId": "0x998bc71817b2d76921d1999ce0f3431cfd5945583667a371280ca2b430b0c06e",
+      "rewardsDailyRate": 7,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.365,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 11023,
+      "volatilityRisk": "LOW",
+      "volatilityStdev": 0,
+      "volatilityRange": 0,
+      "endDate": "2026-11-03T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.043391,
+          "grossRewardDay": 0.3037,
+          "dayYieldPct": 0.061,
+          "thinBookFlag": false,
+          "belowFloorFlag": true,
+          "flags": [
+            "below $1 payout floor at this capital"
+          ]
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.312051,
+          "grossRewardDay": 2.1844,
+          "dayYieldPct": 0.044,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.819363,
+          "grossRewardDay": 5.7355,
+          "dayYieldPct": 0.011,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": false
+    },
+    {
+      "question": "Will Nate Blouin be the Democratic nominee for UT-01?",
+      "conditionId": "0x49f4f5e99bc76806bdce33713e6958a3a35c55405d909b9f546b2632d9ec55c3",
+      "rewardsDailyRate": 467,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.115,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 5960,
+      "volatilityRisk": "HIGH",
+      "volatilityStdev": 0.00462,
+      "volatilityRange": 0.01,
+      "endDate": "2026-06-23T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.077399,
+          "grossRewardDay": 36.1455,
+          "dayYieldPct": 7.229,
+          "thinBookFlag": true,
+          "belowFloorFlag": false,
+          "flags": [
+            "THIN BOOK — share will compress"
+          ]
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.456204,
+          "grossRewardDay": 213.0474,
+          "dayYieldPct": 4.261,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.893495,
+          "grossRewardDay": 417.2623,
+          "dayYieldPct": 0.835,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": false
+    },
+    {
+      "question": "Will Alex Bores be the democratic nominee for NY-12?",
+      "conditionId": "0x1af009052969324fe877b8339e173ae39c8c8c6b7db75a41cd091bfe4ec04265",
+      "rewardsDailyRate": 406,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.375,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 6221,
+      "volatilityRisk": "HIGH",
+      "volatilityStdev": 0.02308,
+      "volatilityRange": 0.05,
+      "endDate": "2026-06-23T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.074394,
+          "grossRewardDay": 30.2038,
+          "dayYieldPct": 6.041,
+          "thinBookFlag": true,
+          "belowFloorFlag": false,
+          "flags": [
+            "THIN BOOK — share will compress"
+          ]
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.445593,
+          "grossRewardDay": 180.9108,
+          "dayYieldPct": 3.618,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.889347,
+          "grossRewardDay": 361.075,
+          "dayYieldPct": 0.722,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": false
+    },
+    {
+      "question": "Will Antonio Reynoso be the Democratic nominee for NY-07?",
+      "conditionId": "0xdc00146a77dbe0f17e69b4c5d71e9358b0e9eaae4908ab993e0fff0c566abb11",
+      "rewardsDailyRate": 400,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.175,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 7203,
+      "volatilityRisk": "HIGH",
+      "volatilityStdev": 0.00243,
+      "volatilityRange": 0.005,
+      "endDate": "2026-06-23T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.06491,
+          "grossRewardDay": 25.9639,
+          "dayYieldPct": 5.193,
+          "thinBookFlag": true,
+          "belowFloorFlag": false,
+          "flags": [
+            "THIN BOOK — share will compress"
+          ]
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.409735,
+          "grossRewardDay": 163.8941,
+          "dayYieldPct": 3.278,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.87408,
+          "grossRewardDay": 349.632,
+          "dayYieldPct": 0.699,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": false
+    },
+    {
+      "question": "Will Beth Davidson be the Democratic nominee for NY-17?",
+      "conditionId": "0xd81e304a53cfdac107189a8ab1fe862416c4f6de3a009b3243d057eb89fa8491",
+      "rewardsDailyRate": 400,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.095,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 1474,
+      "volatilityRisk": "HIGH",
+      "volatilityStdev": 0.00133,
+      "volatilityRange": 0.005,
+      "endDate": "2026-06-23T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.253293,
+          "grossRewardDay": 101.3171,
+          "dayYieldPct": 20.263,
+          "thinBookFlag": true,
+          "belowFloorFlag": false,
+          "flags": [
+            "THIN BOOK — share will compress"
+          ]
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.77232,
+          "grossRewardDay": 308.928,
+          "dayYieldPct": 6.179,
+          "thinBookFlag": true,
+          "belowFloorFlag": false,
+          "flags": [
+            "THIN BOOK — share will compress"
+          ]
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.971364,
+          "grossRewardDay": 388.5457,
+          "dayYieldPct": 0.777,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": false
+    },
+    {
+      "question": "Will Argentina win Group J in the 2026 FIFA World Cup?",
+      "conditionId": "0x174018cba2df7afe76f434e8ca93e55c76f2eb13015a5caf941ce6d270ba6264",
+      "rewardsDailyRate": 50,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 200,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.855,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 26976,
+      "volatilityRisk": "HIGH",
+      "volatilityStdev": 0.00462,
+      "volatilityRange": 0.01,
+      "endDate": "2026-06-27T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.018198,
+          "grossRewardDay": 0.9099,
+          "dayYieldPct": 0.182,
+          "thinBookFlag": false,
+          "belowFloorFlag": true,
+          "flags": [
+            "below $1 payout floor at this capital"
+          ]
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.156367,
+          "grossRewardDay": 7.8184,
+          "dayYieldPct": 0.156,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.649553,
+          "grossRewardDay": 32.4777,
+          "dayYieldPct": 0.065,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": false
+    },
+    {
+      "question": "Will England win Group L in the 2026 FIFA World Cup?",
+      "conditionId": "0xd3d833727b8191e8611862f431d5fc0286f3fbd8ac70a9b618d8377526e9bdf5",
+      "rewardsDailyRate": 50,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 100,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.925,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 46059,
+      "volatilityRisk": "HIGH",
+      "volatilityStdev": 0,
+      "volatilityRange": 0,
+      "endDate": "2026-06-27T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.010739,
+          "grossRewardDay": 0.537,
+          "dayYieldPct": 0.107,
+          "thinBookFlag": false,
+          "belowFloorFlag": true,
+          "flags": [
+            "below $1 payout floor at this capital"
+          ]
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.097926,
+          "grossRewardDay": 4.8963,
+          "dayYieldPct": 0.098,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.520513,
+          "grossRewardDay": 26.0257,
+          "dayYieldPct": 0.052,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": false
+    },
+    {
+      "question": "Will France win Group I in the 2026 FIFA World Cup?",
+      "conditionId": "0x4ae4a0aecfc6479374c5a9a355f0f0cba2c0680dff010b48a2c8b380423efd05",
+      "rewardsDailyRate": 48,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 200,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.785,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 31391,
+      "volatilityRisk": "HIGH",
+      "volatilityStdev": 0.00555,
+      "volatilityRange": 0.02,
+      "endDate": "2026-06-27T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.015678,
+          "grossRewardDay": 0.7526,
+          "dayYieldPct": 0.151,
+          "thinBookFlag": false,
+          "belowFloorFlag": true,
+          "flags": [
+            "below $1 payout floor at this capital"
+          ]
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.137397,
+          "grossRewardDay": 6.595,
+          "dayYieldPct": 0.132,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.614319,
+          "grossRewardDay": 29.4873,
+          "dayYieldPct": 0.059,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": false
+    },
+    {
+      "question": "Billionaire one-time wealth tax on California ballot?",
+      "conditionId": "0x04f1a10e79a106d18dc45e6087f0757456197ec5c6ffec2506cd066e8215fc62",
+      "rewardsDailyRate": 30,
+      "rewardsMaxSpread": 3.5,
+      "rewardsMinSize": 200,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.575,
+      "bookSpread": 0.03,
+      "existing_depth_usd": 52,
+      "volatilityRisk": "HIGH",
+      "volatilityStdev": 0.08038,
+      "volatilityRange": 0.325,
+      "endDate": "2026-06-25T00:00:00Z",
+      "negRisk": false,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.905797,
+          "grossRewardDay": 27.1739,
+          "dayYieldPct": 5.435,
+          "thinBookFlag": true,
+          "belowFloorFlag": false,
+          "flags": [
+            "THIN BOOK — share will compress"
+          ]
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.989707,
+          "grossRewardDay": 29.6912,
+          "dayYieldPct": 0.594,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.998961,
+          "grossRewardDay": 29.9688,
+          "dayYieldPct": 0.06,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": false
+    },
+    {
+      "question": "Will Netherlands win Group F in the 2026 FIFA World Cup?",
+      "conditionId": "0x9ad73ff7534b1051e2dad167a0b1617ae20f64f20770ae8bf89a59a7a7290669",
+      "rewardsDailyRate": 26,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 100,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.765,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 28367,
+      "volatilityRisk": "HIGH",
+      "volatilityStdev": 0.0018,
+      "volatilityRange": 0.005,
+      "endDate": "2026-06-27T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.017321,
+          "grossRewardDay": 0.4503,
+          "dayYieldPct": 0.09,
+          "thinBookFlag": false,
+          "belowFloorFlag": true,
+          "flags": [
+            "below $1 payout floor at this capital"
+          ]
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.149849,
+          "grossRewardDay": 3.8961,
+          "dayYieldPct": 0.078,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.638024,
+          "grossRewardDay": 16.5886,
+          "dayYieldPct": 0.033,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": false
+    },
+    {
+      "question": "Will Brazil win Group C in the 2026 FIFA World Cup?",
+      "conditionId": "0x33ec07ceef529f87a3a070e06d5f9b6df9d3e4e6713faec26d9510786f7cd6be",
+      "rewardsDailyRate": 25,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 100,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.665,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 32320,
+      "volatilityRisk": "HIGH",
+      "volatilityStdev": 0,
+      "volatilityRange": 0,
+      "endDate": "2026-06-27T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.015235,
+          "grossRewardDay": 0.3809,
+          "dayYieldPct": 0.076,
+          "thinBookFlag": false,
+          "belowFloorFlag": true,
+          "flags": [
+            "below $1 payout floor at this capital"
+          ]
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.133976,
+          "grossRewardDay": 3.3494,
+          "dayYieldPct": 0.067,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.607386,
+          "grossRewardDay": 15.1846,
+          "dayYieldPct": 0.03,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": false
+    },
+    {
+      "question": "Will Morocco win Group C in the 2026 FIFA World Cup?",
+      "conditionId": "0xcd82ced289c1009bb08ea7d74cdc4c56d7e3feaf4eebafa429e04d8d08ba8eb6",
+      "rewardsDailyRate": 25,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 100,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.325,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 16442,
+      "volatilityRisk": "HIGH",
+      "volatilityStdev": 0,
+      "volatilityRange": 0,
+      "endDate": "2026-06-27T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.029512,
+          "grossRewardDay": 0.7378,
+          "dayYieldPct": 0.148,
+          "thinBookFlag": false,
+          "belowFloorFlag": true,
+          "flags": [
+            "below $1 payout floor at this capital"
+          ]
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.233187,
+          "grossRewardDay": 5.8297,
+          "dayYieldPct": 0.117,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.752536,
+          "grossRewardDay": 18.8134,
+          "dayYieldPct": 0.038,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": false
+    },
+    {
+      "question": "Will Alan Wilson win the 2026 South Carolina Governor Republican primary election?",
+      "conditionId": "0xfec5e4fb10dd82bc4fb945dfed9c126a244f1bc3311a6a28c7a1515580ebc190",
+      "rewardsDailyRate": 20,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.984,
+      "bookSpread": 0.006,
+      "existing_depth_usd": 116311,
+      "volatilityRisk": "HIGH",
+      "volatilityStdev": 0.00811,
+      "volatilityRange": 0.032,
+      "endDate": "2026-06-09T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.00428,
+          "grossRewardDay": 0.0856,
+          "dayYieldPct": 0.017,
+          "thinBookFlag": false,
+          "belowFloorFlag": true,
+          "flags": [
+            "below $1 payout floor at this capital"
+          ]
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.041216,
+          "grossRewardDay": 0.8243,
+          "dayYieldPct": 0.016,
+          "thinBookFlag": false,
+          "belowFloorFlag": true,
+          "flags": [
+            "below $1 payout floor at this capital"
+          ]
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.300642,
+          "grossRewardDay": 6.0128,
+          "dayYieldPct": 0.012,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": false
+    },
+    {
+      "question": "Will Canada win Group B in the 2026 FIFA World Cup?",
+      "conditionId": "0xec3db24e9dd340f3e1aa8f68d730c666845c8e85f90f2a49df03290b18c66f74",
+      "rewardsDailyRate": 10,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.615,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 17861,
+      "volatilityRisk": "HIGH",
+      "volatilityStdev": 0,
+      "volatilityRange": 0,
+      "endDate": "2026-06-27T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.027232,
+          "grossRewardDay": 0.2723,
+          "dayYieldPct": 0.054,
+          "thinBookFlag": false,
+          "belowFloorFlag": true,
+          "flags": [
+            "below $1 payout floor at this capital"
+          ]
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.218713,
+          "grossRewardDay": 2.1871,
+          "dayYieldPct": 0.044,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.7368,
+          "grossRewardDay": 7.368,
+          "dayYieldPct": 0.015,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": false
+    },
+    {
+      "question": "Will Switzerland win Group B in the 2026 FIFA World Cup?",
+      "conditionId": "0xbfac0154700ea285426e145725716c4ebb35f3ff1e00a3beeab0e94756b5995e",
+      "rewardsDailyRate": 10,
+      "rewardsMaxSpread": 4.5,
+      "rewardsMinSize": 50,
+      "assetAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "mid": 0.395,
+      "bookSpread": 0.01,
+      "existing_depth_usd": 15200,
+      "volatilityRisk": "HIGH",
+      "volatilityStdev": 0,
+      "volatilityRange": 0,
+      "endDate": "2026-06-27T00:00:00Z",
+      "negRisk": true,
+      "levels": {
+        "500": {
+          "capital": 500,
+          "share": 0.031847,
+          "grossRewardDay": 0.3185,
+          "dayYieldPct": 0.064,
+          "thinBookFlag": false,
+          "belowFloorFlag": true,
+          "flags": [
+            "below $1 payout floor at this capital"
+          ]
+        },
+        "5000": {
+          "capital": 5000,
+          "share": 0.247525,
+          "grossRewardDay": 2.4752,
+          "dayYieldPct": 0.05,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        },
+        "50000": {
+          "capital": 50000,
+          "share": 0.766871,
+          "grossRewardDay": 7.6687,
+          "dayYieldPct": 0.015,
+          "thinBookFlag": false,
+          "belowFloorFlag": false,
+          "flags": []
+        }
+      },
+      "sane500": false
+    }
+  ]
+}

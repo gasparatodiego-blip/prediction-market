@@ -5,11 +5,10 @@ import { usePathname } from 'next/navigation';
 
 const NAV_LINKS = [
   { href: '/dashboard',                  label: 'DASHBOARD'     },
-  { href: '/dashboard/opportunities',    label: 'OPPORTUNITIES' },
   { href: '/dashboard/prediction',       label: 'PREDICTION'    },
   { href: '/dashboard/funding-arb',       label: 'FUNDING ARB'   },
   { href: '/dashboard/carry',            label: 'CARRY'         },
-  { href: '/dashboard/mm',               label: 'MM'            },
+  { href: '/dashboard/liquidity-rewards', label: 'REWARDS'      },
   { href: '/dashboard/traders',           label: 'TRADERS'       },
   { href: '/dashboard/portfolio',        label: 'PORTFOLIO'     },
 ];
