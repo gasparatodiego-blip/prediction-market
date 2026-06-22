@@ -1,6 +1,24 @@
 module.exports = {
   apps: [
     {
+      name:          'agent25-kalshi-rewards',
+      script:        './agents/agent25-kalshi-rewards.js',
+      cwd:           '/root/prediction-market',
+      restart_delay: 60000,
+      max_restarts:  20,
+      watch:         false,
+      env:           { NODE_ENV: 'production', HOME: '/root' },
+    },
+    {
+      name:          'agent24-liquidity-rewards',
+      script:        './agents/agent24-liquidity-rewards.js',
+      cwd:           '/root/prediction-market',
+      restart_delay: 60000,
+      max_restarts:  20,
+      watch:         false,
+      env:           { NODE_ENV: 'production', HOME: '/root' },
+    },
+    {
       name:          'agent23-prediction-repricer',
       script:        './agents/agent23-prediction-repricer.js',
       cwd:           '/root/prediction-market',
