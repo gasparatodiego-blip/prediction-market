@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState, useCallback, Fragment } from 'react';
+import { useEffect, useState, useCallback, useRef, Fragment } from 'react';
+import Link from 'next/link';
 import SectionHelp from '@/app/components/SectionHelp';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -140,6 +141,76 @@ function calcSpreadSizing(s: SpreadItem, capital: number, leverage: Leverage) {
   return { N, feesUsd, net30dUsd, netYrUsd, dayUsd, roc };
 }
 
+// ── Arb-type filter ───────────────────────────────────────────────────────────
+
+type ArbType = 'all' | 'perp_perp' | 'spot_perp';
+
+function TypeFilterToggle({
+  value, onChange,
+}: { value: ArbType; onChange: (v: ArbType) => void }) {
+  const opts: { id: ArbType; label: string; disabled?: boolean; hint?: string; whyDisabled?: string }[] = [
+    { id: 'all',       label: 'All' },
+    { id: 'perp_perp', label: 'Perp / Perp' },
+    {
+      id: 'spot_perp', label: 'Spot / Perp', disabled: true, hint: 'coming soon',
+      whyDisabled: 'Spot / Perp (cash & carry) scanning is not yet live. Currently only Perp / Perp cross-exchange funding differential is computed. Spot / Perp will appear here once the backend agent starts producing basisTrades.',
+    },
+  ];
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      <span className="font-mono text-[9px] uppercase tracking-widest text-text-muted shrink-0">
+        Strategy
+      </span>
+      <div className="flex border border-border font-mono text-[10px] divide-x divide-border">
+        {opts.map(opt => (
+          <button
+            key={opt.id}
+            disabled={!!opt.disabled}
+            onClick={() => !opt.disabled && onChange(opt.id)}
+            title={opt.whyDisabled ?? undefined}
+            aria-disabled={!!opt.disabled}
+            className={`relative px-2.5 py-1 transition-colors duration-100 ${
+              value === opt.id
+                ? 'bg-accent text-white'
+                : opt.disabled
+                  ? 'text-text-muted/30 cursor-not-allowed bg-bg-elevated/10'
+                  : 'text-text-muted hover:text-text-primary'
+            }`}
+          >
+            {opt.label}
+            {opt.hint && (
+              <span className="ml-1 text-[7px] text-text-muted/40 align-middle">{opt.hint}</span>
+            )}
+          </button>
+        ))}
+      </div>
+      {value === 'perp_perp' && (
+        <span className="font-mono text-[9px] text-text-muted/60">
+          Short one perp, long another — collect the funding differential
+        </span>
+      )}
+    </div>
+  );
+}
+
+// ── Funding settlement note ───────────────────────────────────────────────────
+
+function FundingSettlementNote({ s }: { s: SpreadItem }) {
+  const hasCex = !s.shortIsDex || !s.longIsDex;
+  const hasHl  = s.shortExchange === 'hyperliquid' || s.longExchange === 'hyperliquid';
+  const hasDydx = s.shortExchange === 'dydx'       || s.longExchange === 'dydx';
+  const parts: string[] = [];
+  if (hasCex)  parts.push('CEX legs settle every 8h in USDT');
+  if (hasHl)   parts.push('Hyperliquid settles hourly in USDC');
+  if (hasDydx) parts.push('dYdX settles hourly in USDC');
+  return (
+    <p className="font-mono text-[9px] text-text-muted/55 leading-relaxed">
+      {parts.join(' · ')}.
+      {' '}APY above is annualized — actual receipt is per interval, varies each reset.
+    </p>
+  );
+}
+
 // ── Countdown ─────────────────────────────────────────────────────────────────
 
 function nextFundingMs(futures: Record<string, Record<string, FuturesCoin>>): number | null {
@@ -211,7 +282,12 @@ function CapitalControl({
           <button
             key={lev}
             onClick={() => setLeverage(lev)}
-            className={`px-1.5 py-0.5 font-mono text-[10px] border transition-colors duration-100 ${
+            title={
+              lev === 1
+                ? '1× — no leverage. Each leg sized to your full capital. No liquidation risk from basis moves.'
+                : `${lev}× — both perp legs use ${lev}× margin. Each leg notional = capital × ${lev} / 2. Funding yield on capital is multiplied by ${lev}, but so is liquidation risk if the spot/perp basis moves against you. Not free yield.`
+            }
+            className={`px-1.5 py-0.5 font-mono text-[10px] border transition-colors duration-100 cursor-help ${
               leverage === lev
                 ? 'bg-accent text-white border-accent'
                 : 'border-border text-text-muted hover:border-text-secondary hover:text-text-primary'
@@ -222,7 +298,9 @@ function CapitalControl({
         ))}
       </div>
       {leverage > 1 && (
-        <span className="font-mono text-[9px] text-warning/70">liquidation risk at {leverage}×</span>
+        <span className="font-mono text-[9px] text-warning/70">
+          {leverage}× applies to both perp legs — liquidation risk if basis widens
+        </span>
       )}
     </div>
   );
@@ -340,7 +418,7 @@ function OpportunityCards({
                       ≈ {fmtDayUsd(dayUsd)}
                     </div>
                     <div className="font-mono text-[10px] text-text-secondary mt-1">
-                      on ${capital.toLocaleString()}{leverage > 1 ? ` · ${leverage}× leverage` : ''}
+                      on ${capital.toLocaleString()}{leverage > 1 ? ` · ${leverage}× leverage (both perp legs)` : ''}
                     </div>
                     {feesUsd !== null && feesUsd > 0 && (
                       <div className="font-mono text-[10px] text-text-muted mt-1.5">
@@ -360,20 +438,30 @@ function OpportunityCards({
                   Changes {resetLabel}; treat as upper bound, not a promise.
                 </div>
 
-                <div className="flex items-center justify-between">
+                <FundingSettlementNote s={s} />
+
+                <div className="flex items-center justify-between gap-2 flex-wrap">
                   {s.capacityUsd != null && (
                     <span className="font-mono text-[10px] text-text-muted/70">
                       Up to {fmtCapWords(s.capacityUsd)}
                     </span>
                   )}
-                  <a
-                    href={tgHref}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="ml-auto font-mono text-[9px] px-2 py-1 border border-accent/25 text-accent/60 hover:border-accent/50 hover:text-accent transition-colors duration-100 whitespace-nowrap"
-                  >
-                    ✈ Follow on Telegram
-                  </a>
+                  <div className="ml-auto flex items-center gap-1.5">
+                    <Link
+                      href={`/dashboard/funding-arb/${s.coin}-${s.shortExchange}-${s.longExchange}`}
+                      className="font-mono text-[9px] px-2 py-1 border border-border text-text-muted hover:border-text-secondary hover:text-text-primary transition-colors duration-100 whitespace-nowrap"
+                    >
+                      Execution guide →
+                    </Link>
+                    <a
+                      href={tgHref}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-mono text-[9px] px-2 py-1 border border-accent/25 text-accent/60 hover:border-accent/50 hover:text-accent transition-colors duration-100 whitespace-nowrap"
+                    >
+                      ✈ Follow
+                    </a>
+                  </div>
                 </div>
               </div>
             );
@@ -440,7 +528,13 @@ function OpportunityCards({
                   </span>
                 )}
 
-                {/* Follow */}
+                {/* Guide + Follow */}
+                <Link
+                  href={`/dashboard/funding-arb/${s.coin}-${s.shortExchange}-${s.longExchange}`}
+                  className="font-mono text-[9px] px-2 py-1 border border-border text-text-muted hover:border-text-secondary hover:text-text-primary transition-colors duration-100 whitespace-nowrap"
+                >
+                  Guide →
+                </Link>
                 <a
                   href={tgHref}
                   target="_blank"
@@ -791,6 +885,8 @@ export default function CryptoPage() {
   const [capital,      setCapital]      = useState(1000);
   const [leverage,     setLeverage]     = useState<Leverage>(1);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [typeFilter,   setTypeFilter]   = useState<ArbType>('all');
+  const pendingHashScroll               = useRef(false);
 
   const load = useCallback(async () => {
     try {
@@ -807,18 +903,43 @@ export default function CryptoPage() {
     return () => clearInterval(t);
   }, [load]);
 
+  // Scroll to #cex-arb once the advanced section is open
+  useEffect(() => {
+    if (showAdvanced && pendingHashScroll.current) {
+      pendingHashScroll.current = false;
+      requestAnimationFrame(() => {
+        document.getElementById('cex-arb')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    }
+  }, [showAdvanced]);
+
+  // Hash deep-link: #cex-arb opens advanced section and scrolls to CEX spot arb
+  useEffect(() => {
+    const applyHash = () => {
+      if (window.location.hash === '#cex-arb') {
+        pendingHashScroll.current = true;
+        setShowAdvanced(true);
+      }
+    };
+    applyHash();
+    window.addEventListener('hashchange', applyHash);
+    return () => window.removeEventListener('hashchange', applyHash);
+  }, []);
+
   const cexNextMs    = data?.ok ? nextFundingMs(data.futures)   : null;
   const hlNextMs     = data?.ok ? nextHlFundingMs(data.futures) : null;
   const isStale      = (data?.staleMinutes ?? 0) > 5;
+  // All current spreads are perp/perp — spot/perp (cash & carry) is not yet computed
   const allPairs     = data?.spreads ?? [];
-  const harvestPairs = allPairs.filter(s => s.status === 'HARVEST');
-  const cautionPairs = allPairs.filter(s => s.status === 'CAUTION');
-  const dexPairs     = allPairs.filter(s => s.hasDexLeg);
+  const filteredPairs = typeFilter === 'spot_perp' ? [] : allPairs; // spot_perp is coming soon
+  const harvestPairs = filteredPairs.filter(s => s.status === 'HARVEST');
+  const cautionPairs = filteredPairs.filter(s => s.status === 'CAUTION');
+  const dexPairs     = filteredPairs.filter(s => s.hasDexLeg);
   const cexArbItems  = data?.cexArb ?? [];
 
   const N0         = capital * leverage / 2;
-  const bestDayUsd = allPairs.length > 0 && capital > 0
-    ? (N0 * allPairs[0].netApy30d / 100) / 365
+  const bestDayUsd = filteredPairs.length > 0 && capital > 0
+    ? (N0 * filteredPairs[0].netApy30d / 100) / 365
     : null;
 
   return (
@@ -870,6 +991,11 @@ export default function CryptoPage() {
         </div>
       ) : (
         <>
+          {/* Strategy type filter */}
+          <div className="mb-3 px-4 py-2.5 bg-bg-panel border border-border">
+            <TypeFilterToggle value={typeFilter} onChange={setTypeFilter} />
+          </div>
+
           {/* Capital selector */}
           <div className="mb-5 px-4 py-2.5 bg-bg-panel border border-border">
             <CapitalControl
@@ -879,7 +1005,7 @@ export default function CryptoPage() {
           </div>
 
           {/* Top opportunity cards — 6 visible, "show more" reveals the rest */}
-          <OpportunityCards spreads={allPairs} capital={capital} leverage={leverage} />
+          <OpportunityCards spreads={filteredPairs} capital={capital} leverage={leverage} />
 
           {/* ── Advanced / full data ──────────────────────────────────── */}
           <div className="border border-border mb-5">
@@ -888,7 +1014,7 @@ export default function CryptoPage() {
               className="w-full px-4 py-3 flex items-center justify-between font-mono text-[10px] text-text-muted hover:text-text-primary hover:bg-bg-elevated/20 transition-colors duration-100"
             >
               <span className="uppercase tracking-widest">Advanced / full data</span>
-              <span className="text-text-muted/50">{showAdvanced ? 'collapse ↑' : `${allPairs.length} pairs · expand ↓`}</span>
+              <span className="text-text-muted/50">{showAdvanced ? 'collapse ↑' : `${filteredPairs.length} pairs · expand ↓`}</span>
             </button>
 
             {showAdvanced && (
@@ -901,11 +1027,11 @@ export default function CryptoPage() {
                     { label: 'CAUTION',  val: cautionPairs.length, cls: 'text-warning border-warning/30'   },
                     {
                       label: 'MARGINAL',
-                      val:   allPairs.length - harvestPairs.length - cautionPairs.length,
+                      val:   filteredPairs.length - harvestPairs.length - cautionPairs.length,
                       cls:   'text-text-muted border-border opacity-50',
                     },
-                    { label: 'CEX↔DEX', val: dexPairs.length,  cls: 'text-accent border-accent/30'      },
-                    { label: 'TOTAL',   val: allPairs.length,  cls: 'text-text-secondary border-border'  },
+                    { label: 'CEX↔DEX', val: dexPairs.length,     cls: 'text-accent border-accent/30'      },
+                    { label: 'TOTAL',   val: filteredPairs.length, cls: 'text-text-secondary border-border'  },
                   ].map(({ label, val, cls }) => (
                     <div key={label} className={`px-2.5 py-1 border font-mono text-[10px] ${cls}`}>
                       <span className="text-[11px] font-bold tabular-nums mr-1">{val}</span>
@@ -918,10 +1044,10 @@ export default function CryptoPage() {
                       Best: <span className="font-bold">{fmtDayUsd(bestDayUsd)}</span>
                       <span className="text-[9px] text-positive/50 ml-1">on ${capital.toLocaleString()}</span>
                     </div>
-                  ) : allPairs.length > 0 ? (
+                  ) : filteredPairs.length > 0 ? (
                     <div className="px-2.5 py-1 border border-positive/30 font-mono text-[10px] text-positive"
                       title="Theoretical ceiling — rate changes hourly.">
-                      Best ceiling: <span className="font-bold">{fmtApy(allPairs[0].netApy30d)}</span>
+                      Best ceiling: <span className="font-bold">{fmtApy(filteredPairs[0].netApy30d)}</span>
                     </div>
                   ) : null}
 
@@ -947,10 +1073,10 @@ export default function CryptoPage() {
                       All Pairs
                     </span>
                     <span className="font-mono text-[9px] text-text-muted">
-                      {allPairs.length} pairs · ranked by net yield (30d)
+                      {filteredPairs.length} pairs · ranked by net yield (30d)
                     </span>
                   </div>
-                  <SpreadTable spreads={allPairs} meta={data.meta} capital={capital} leverage={leverage} />
+                  <SpreadTable spreads={filteredPairs} meta={data.meta} capital={capital} leverage={leverage} />
                   <div className="px-4 pb-3">
                     <FeeNote meta={data.meta} />
                   </div>
@@ -1007,7 +1133,7 @@ export default function CryptoPage() {
                 )}
 
                 {/* CEX spot arbitrage */}
-                <div className="border-t border-border">
+                <div id="cex-arb" className="border-t border-border scroll-mt-16">
                   <CexArbSection items={cexArbItems} />
                 </div>
 
