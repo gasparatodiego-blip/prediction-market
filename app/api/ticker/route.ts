@@ -4,7 +4,6 @@ import fs from 'fs';
 export const dynamic = 'force-dynamic';
 
 const UNIFIED_FILE      = '/tmp/unified-opportunities.json';
-const EXCHANGE_FILE     = '/tmp/exchange-prices.json';
 const BASIS_FILE        = '/tmp/basis-opportunities.json';
 const LEADERBOARD_FILE  = '/tmp/leaderboard.json';
 const COPY_FILE         = '/tmp/copy-watcher.json';
@@ -37,15 +36,6 @@ export async function GET() {
     const u  = JSON.parse(fs.readFileSync(UNIFIED_FILE, 'utf8'));
     opps     = u.opportunities ?? [];
     unifiedAt = u.generatedAt ?? null;
-  } catch { /* file absent */ }
-
-  // ── Read exchange prices (for CEX arb) ───────────────────────────────────
-  let cexArb: any[]          = [];
-  let exchangeAt: number | null = null;
-  try {
-    const e   = JSON.parse(fs.readFileSync(EXCHANGE_FILE, 'utf8'));
-    cexArb    = e.cexArb ?? [];
-    exchangeAt = e.fetchedAt ?? null;
   } catch { /* file absent */ }
 
   // ── Read Basis (Cash & Carry) data ───────────────────────────────────────
@@ -137,10 +127,6 @@ export async function GET() {
 
   // sportsOpps from unified file replaced by agent12 → /tmp/sports-odds.json (see above)
 
-  const cexSorted = [...cexArb].sort(
-    (a: any, b: any) => (b.spreadPct ?? 0) - (a.spreadPct ?? 0)
-  );
-
   // ── Build categories ──────────────────────────────────────────────────────
 
   const categories: TickerItem[] = [
@@ -192,16 +178,6 @@ export async function GET() {
                 : 'no surebets found — all implied sums ≥ 1',
     },
     {
-      key:        'cex',
-      label:      'CEX Arbitrage',
-      bestNetPct: cexSorted[0]?.spreadPct ?? null,
-      unit:       '%',
-      status:     cexSorted.length > 0 ? 'live' : 'no-opp',
-      count:      cexSorted.length,
-      href:       '/dashboard/funding-arb#cex-arb',
-      note:       'spot price spread · execution risk',
-    },
-    {
       key:         'carry',
       label:       'Cash & Carry',
       bestNetPct:  basisRunning && basisSummary?.bestNetAnnualized != null
@@ -234,14 +210,13 @@ export async function GET() {
     },
   ];
 
-  // Use whichever source is freshest so staleMinutes reflects current data age
-  const generatedAt  = exchangeAt ?? unifiedAt;
+  const generatedAt  = unifiedAt;
   const staleMinutes = generatedAt != null
     ? Math.floor((Date.now() - generatedAt) / 60_000)
     : null;
 
   return NextResponse.json(
-    { ok: opps.length > 0 || cexArb.length > 0, generatedAt, staleMinutes, categories },
+    { ok: opps.length > 0, generatedAt, staleMinutes, categories },
     { headers: { 'Cache-Control': 'no-store, must-revalidate' } },
   );
 }

@@ -15,7 +15,6 @@ const TAGLINES: Record<string, string> = {
   traders:    'Shadow the wallets that win. Real P&L, zero hype.',
   // strip-only (shown when offline / empty / coming-soon)
   sports:     'Books disagree, you win either way.',
-  cex:        "Catch the gap before it closes — only when it's real.",
 };
 
 const HREF_OVERRIDE: Record<string, string> = {
