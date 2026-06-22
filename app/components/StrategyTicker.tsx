@@ -76,6 +76,28 @@ function TickerTile({ cat, flashKey }: { cat: TickerItem; flashKey: number }) {
                 {cat.unit}
               </span>
             </div>
+            {/* Context badges for figures that need qualification */}
+            {cat.displayKind === 'ceiling' && (
+              <div className="mt-1">
+                <span className="font-mono text-[6.5px] uppercase tracking-widest px-1 py-[2px] border border-text-muted/20 text-text-muted/40">
+                  CEILING · VARIABLE
+                </span>
+              </div>
+            )}
+            {cat.displayKind === 'net' && (
+              <div className="mt-1">
+                <span className="font-mono text-[6.5px] uppercase tracking-widest px-1 py-[2px] border border-positive/20 text-positive/40">
+                  CONFIRMED · NET
+                </span>
+              </div>
+            )}
+            {cat.displayKind === 'estimate' && (
+              <div className="mt-1">
+                <span className="font-mono text-[6.5px] uppercase tracking-widest px-1 py-[2px] border border-amber-500/20 text-amber-400/40">
+                  ESTIMATE · GROSS · NOT NET
+                </span>
+              </div>
+            )}
             <div className="font-mono text-[8px] text-text-muted mt-1 leading-snug">
               {cat.note}
             </div>

@@ -13,6 +13,7 @@ const TAGLINES: Record<string, string> = {
   prediction: 'Two prices, one outcome. Pocket the gap.',
   carry:      'Lock the basis. Hands-off yield to expiry.',
   traders:    'Shadow the wallets that win. Real P&L, zero hype.',
+  rewards:    'Get paid to quote near the mid. Real pools, your measured share.',
   // strip-only (shown when offline / empty / coming-soon)
   sports:     'Books disagree, you win either way.',
 };
@@ -109,6 +110,13 @@ function LiveCard({ cat, flashKey }: { cat: TickerItem; flashKey: number }) {
                   </span>
                 </div>
               )}
+              {cat.displayKind === 'estimate' && (
+                <div className="mt-1 mb-0.5">
+                  <span className="font-mono text-[6.5px] uppercase tracking-widest px-1 py-[2px] border border-amber-500/20 text-amber-400/40">
+                    ESTIMATE · GROSS · NOT NET
+                  </span>
+                </div>
+              )}
               <div className="font-mono text-[7.5px] text-text-muted/45 mt-0.5 truncate">
                 {cat.note}
               </div>
@@ -169,8 +177,8 @@ export default function StrategyCards() {
   if (loading) {
     return (
       <div className="space-y-3">
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-          {Array.from({ length: 5 }).map((_, i) => (
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="h-[110px] border border-border bg-bg-panel animate-pulse" />
           ))}
         </div>
@@ -194,7 +202,7 @@ export default function StrategyCards() {
   return (
     <div>
       {/* ── Live strategy cards (compact grid) ─────────────────────────────── */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         {liveCards.map(cat => (
           <LiveCard
             key={cat.key}

@@ -11,6 +11,7 @@ const SPORTS_FILE       = '/tmp/sports-odds.json';
 // Prediction: same post-gate sources as the detail page (/api/prediction)
 const REPRICED_FILE     = '/tmp/repriced-opportunities.json';
 const DISCOVERY_FILE    = '/tmp/arbitrage-opportunities.json';
+const REWARDS_FILE      = '/root/prediction-market/data/liquidity-rewards.json';
 
 export interface TickerItem {
   key:         string;
@@ -25,7 +26,8 @@ export interface TickerItem {
   //   'net'        → confirmed net ROI (honest, no annualization)
   //   'annualized' → annualized with locked resolution date (Cash & Carry)
   //   'ceiling'    → theoretical ceiling, variable/not locked (Crypto & Funding)
-  displayKind?: 'net' | 'annualized' | 'ceiling';
+  //   'estimate'   → linear share estimate, gross, adverse-fill risk not subtracted
+  displayKind?: 'net' | 'annualized' | 'ceiling' | 'estimate';
 }
 
 export async function GET() {
@@ -95,6 +97,44 @@ export async function GET() {
     copyAlertCnt  = alerts.length;
     const last    = alerts[0];
     if (last) copyLastAlert = `${last.name || 'trader'}: ${last.side} ${last.outcome}`;
+  } catch { /* file absent */ }
+
+  // ── Read Liquidity Rewards data ───────────────────────────────────────────
+  let rewardsRunning   = false;
+  let rewardsBestPct:   number | null = null;
+  let rewardsBestGross: number | null = null;
+  let rewardsSaneCount = 0;
+  let rewardsNote      = '';
+  try {
+    const rw  = JSON.parse(fs.readFileSync(REWARDS_FILE, 'utf8'));
+    const age = Date.now() - new Date(rw.meta?.generatedAt ?? 0).getTime();
+    rewardsRunning = age < 40 * 60_000;  // agent runs every 15 min; stale after 40 min
+
+    const mkts: any[] = rw.markets ?? [];
+    const VOL_ORD: Record<string, number> = { LOW: 0, MEDIUM: 1, HIGH: 2 };
+
+    // Sane at $500: no thin-book flag, no below-floor flag
+    const sane = mkts.filter((m: any) => {
+      const lv = m.levels?.['500'];
+      return lv && !lv.thinBookFlag && !lv.belowFloorFlag;
+    });
+    rewardsSaneCount = sane.length;
+
+    // Match the page's sort: LOW vol first, then by grossRewardDay desc
+    sane.sort((a: any, b: any) => {
+      const vA = VOL_ORD[a.volatilityRisk] ?? 2;
+      const vB = VOL_ORD[b.volatilityRisk] ?? 2;
+      if (vA !== vB) return vA - vB;
+      return (b.levels['500']?.grossRewardDay ?? 0) - (a.levels['500']?.grossRewardDay ?? 0);
+    });
+
+    const best = sane[0];
+    if (best) {
+      const lv = best.levels['500'];
+      rewardsBestPct   = lv.dayYieldPct;
+      rewardsBestGross = lv.grossRewardDay;
+      rewardsNote = `$${lv.grossRewardDay.toFixed(2)}/day est · $500 · gross`;
+    }
   } catch { /* file absent */ }
 
   // ── Prediction: read from the same post-gate sources as the detail page ─────
@@ -207,6 +247,22 @@ export async function GET() {
       note:       lbRunning && lbTopPnl != null
         ? `#1 ${lbTopName}: +$${Math.round(lbTopPnl).toLocaleString()} · ${lbWallets} ranked${copyWatched > 0 ? ` · ${copyWatched} followed` : ''}`
         : lbRunning ? 'accumulating data…' : 'agent warming up',
+    },
+    {
+      key:         'rewards',
+      label:       'Liquidity Rewards',
+      bestNetPct:  rewardsRunning && rewardsBestPct != null ? rewardsBestPct : null,
+      unit:        '%/day',
+      status:      !rewardsRunning ? 'offline'
+                 : rewardsSaneCount > 0 ? 'live'
+                 : 'no-opp',
+      count:       rewardsSaneCount,
+      href:        '/dashboard/liquidity-rewards',
+      note:        rewardsRunning && rewardsBestGross != null
+        ? rewardsNote
+        : rewardsRunning ? 'no sane markets · try later'
+        : 'agent warming up',
+      displayKind: 'estimate' as const,
     },
   ];
 
