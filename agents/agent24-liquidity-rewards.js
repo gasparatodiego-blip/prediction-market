@@ -8,21 +8,21 @@
 //        S(v, s) = ((v - s) / v)^2,  v = rewardsMaxSpread/2 (cents), s = dist from mid (cents)
 //      Q_competitors = Q_min(Q_bids, Q_asks) per the two-sided formula (c=3).
 //   4. Estimates LP reward share for THREE capital levels: $500, $5k, $50k.
-//        User placed at mid (score=1, best-case), size = capital/mid shares per side.
+//        Typical placement: s = v/2 (half the half-band, S=0.25) — HEADLINE estimate.
+//        Range: high = s=0.1¢ (near-mid floor, S≈0.91); low = s=0.8v (outer band, S=0.04).
 //        share = Q_user / (Q_user + Q_competitors)  — ESTIMATE.
-//      Also retains existing_depth_usd (dollar notional) for UI display only.
 //   5. Classifies 24h mid-price volatility as LOW / MEDIUM / HIGH.
-//   6. Applies sanity cap (>5%/day gross → THIN BOOK flag) and
-//      floor (<$1/day gross → below-floor flag) PER CAPITAL LEVEL.
+//   6. Applies sanity cap (>5%/day typical gross → THIN BOOK flag) and
+//      floor (<$1/day typical gross → below-floor flag) PER CAPITAL LEVEL.
 //   7. Writes /root/prediction-market/data/liquidity-rewards.json.
-//   8. Prints top 5 markets + 8-market gap sample to console.
+//   8. Prints formula verification + top 5 markets + gap sample + placement comparison.
 //
 // No Claude API. No order placement. Read-only. Deterministic.
 'use strict';
 
 const fs    = require('fs');
 const https = require('https');
-const { scoreBook, estimateCapitalLevel } = require('../lib/rewardScore');
+const { scoreBook, estimateCapitalLevelRange } = require('../lib/rewardScore');
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const SCAN_INTERVAL_MS  = 15 * 60_000;
@@ -246,27 +246,33 @@ function classifyVol(stdev, range, endDateStr, rewardsMaxSpread) {
   return 'LOW';
 }
 
-// ── Compute per-level estimates (quadratic scoring) ───────────────────────────
-// competitorQ: { Qmin, mid } from measureBookDepth via scoreBook
+// ── Compute per-level estimates (quadratic scoring, three placement scenarios) ─
+// Headline = typical (s=v/2, S=0.25).  Range: high (s=0.1¢) → low (s=0.8v).
+// atMid (s=0, S=1.0) stored as _atMidShare for comparison output only.
 function computeLevels(rewardsDailyRate, competitorQ, maxSpreadCents, minSize) {
   const levels = {};
   for (const C of CAPITAL_LEVELS) {
-    const quad = estimateCapitalLevel(competitorQ, maxSpreadCents, minSize, rewardsDailyRate, C);
-    const { share, grossRewardDay, dayYieldPct } = quad;
-    const thinBookFlag   = dayYieldPct > SANITY_CAP_PCT;
-    const belowFloorFlag = grossRewardDay < FLOOR_DAILY_USD;
+    const range  = estimateCapitalLevelRange(competitorQ, maxSpreadCents, minSize, rewardsDailyRate, C);
+    const { typical, high, low, atMid } = range;
+    const thinBookFlag   = typical.dayYieldPct > SANITY_CAP_PCT;
+    const belowFloorFlag = typical.grossRewardDay < FLOOR_DAILY_USD;
     const flags = [];
     if (thinBookFlag)   flags.push('THIN BOOK — share will compress');
     if (belowFloorFlag) flags.push(`below $${FLOOR_DAILY_USD} payout floor at this capital`);
 
     levels[String(C)] = {
       capital:         C,
-      share,
-      grossRewardDay,
-      dayYieldPct,
+      share:           typical.share,
+      grossRewardDay:  typical.grossRewardDay,
+      dayYieldPct:     typical.dayYieldPct,
+      shareHigh:       high.share,
+      grossHigh:       high.grossRewardDay,
+      shareLow:        low.share,
+      grossLow:        low.grossRewardDay,
       thinBookFlag,
       belowFloorFlag,
       flags,
+      _atMidShare:     atMid.share,  // ceiling; comparison output only, not displayed in UI
     };
   }
   return levels;
@@ -373,7 +379,8 @@ async function scan() {
       sane500:           sane,  // convenience flag; UI re-evaluates per level
       gapClass,
       gapScore,
-      _linearShare500:   parseFloat(linearShare500.toFixed(6)),  // comparison only; not shown in UI
+      _linearShare500:   parseFloat(linearShare500.toFixed(6)),  // old linear (notional) — historical reference
+      _atMidShare500:    parseFloat((levels['500']._atMidShare || 0).toFixed(6)), // ceiling; not UI headline
     });
   }
 
@@ -400,12 +407,14 @@ async function scan() {
       capitalLevels:      CAPITAL_LEVELS,
       disclaimer: [
         'share and grossRewardDay use Polymarket\'s quadratic scoring formula S(v,s)=((v-s)/v)^2 with c=3 two-sided combine.',
-        'User placement assumed at mid (score=1, best-case); real score depends on actual spread.',
+        'TYPICAL placement: user posts both sides at s=v/2 (half the half-band, S=0.25) — a realistic farming position, not the ceiling.',
+        'Range: shareHigh/grossHigh = near-mid floor (s=0.1¢); shareLow/grossLow = outer band (s=0.8v, S=0.04).',
+        'Actual share depends on exact resting distance; competitors continuously re-quote.',
         'existing_depth_usd is a point-in-time CLOB snapshot (price×size, display only; not used for share math).',
         'Q_competitors is the quadratic-weighted score of all existing resting orders in the YES book.',
-        `THIN_BOOK flag: dayYieldPct > ${SANITY_CAP_PCT}% — book is thin, real share will compress as MMs arrive.`,
-        `BELOW_FLOOR flag: grossRewardDay < $${FLOOR_DAILY_USD} — minimum daily payout not met.`,
-        'All figures are GROSS ESTIMATES — snapshot in time; competitors re-quote continuously; adverse-fill risk not subtracted.',
+        `THIN_BOOK flag: typical dayYieldPct > ${SANITY_CAP_PCT}% — book is thin, real share will compress as MMs arrive.`,
+        `BELOW_FLOOR flag: typical grossRewardDay < $${FLOOR_DAILY_USD} — minimum daily payout not met.`,
+        'All figures are GROSS ESTIMATES — snapshot in time; adverse-fill risk not subtracted.',
         'Not financial advice.',
       ].join(' '),
     },
@@ -440,25 +449,23 @@ async function scan() {
     }
   }
 
-  // ── Phase 5: side-by-side OLD linear vs NEW quadratic for top 5 markets ────────
+  // ── Placement comparison: at-mid (ceiling) vs typical (headline) vs outer-band (low) ─
   console.log(`\n${divider}`);
-  console.log(`LINEAR → QUADRATIC COMPARISON  (share at $500/$5k/$50k)`);
+  console.log(`PLACEMENT COMPARISON  —  AT-MID (ceiling, S=1.0) vs TYPICAL (s=v/2, S=0.25) vs OUTER-BAND (s=0.8v, S=0.04)`);
   console.log(divider);
-  console.log(`  ${'Market'.padEnd(55)} ${'Cap'.padStart(6)}  ${'OldLin%'.padStart(8)}  ${'NewQuad%'.padStart(9)}  ${'OldGrs'.padStart(8)}  ${'NewGrs'.padStart(8)}  Cap-OK`);
-  console.log(`  ${'-'.repeat(55)} ${'-'.repeat(6)}  ${'-'.repeat(8)}  ${'-'.repeat(9)}  ${'-'.repeat(8)}  ${'-'.repeat(8)}  ------`);
+  console.log(`  ${'Market'.padEnd(50)} ${'Cap'.padStart(6)}  ${'AtMid%'.padStart(8)}  ${'Typical%'.padStart(9)}  ${'OuterBand%'.padStart(11)}  ${'Typ$/day'.padStart(9)}  Cap`);
+  console.log(`  ${'-'.repeat(50)} ${'-'.repeat(6)}  ${'-'.repeat(8)}  ${'-'.repeat(9)}  ${'-'.repeat(11)}  ${'-'.repeat(9)}  ---`);
   for (const r of top5) {
-    const q = r.question.slice(0, 55).padEnd(55);
+    const q = r.question.slice(0, 50).padEnd(50);
     for (const C of CAPITAL_LEVELS) {
-      const lv = r.levels[String(C)];
-      const oldShare = C / (C + r.existing_depth_usd);
-      const oldGross = oldShare * r.rewardsDailyRate;
+      const lv  = r.levels[String(C)];
       const cap = `$${C >= 1000 ? (C/1000)+'k' : C}`.padStart(6);
-      const oldPct = `${(oldShare * 100).toFixed(2)}%`.padStart(8);
-      const newPct = `${(lv.share * 100).toFixed(2)}%`.padStart(9);
-      const oldG   = `$${oldGross.toFixed(2)}`.padStart(8);
-      const newG   = `$${lv.grossRewardDay.toFixed(2)}`.padStart(8);
-      const capOK  = lv.dayYieldPct <= SANITY_CAP_PCT ? '  ✓' : '  ⚠ THIN';
-      console.log(`  ${q} ${cap}  ${oldPct}  ${newPct}  ${oldG}  ${newG}  ${capOK}`);
+      const atM = `${(lv._atMidShare * 100).toFixed(2)}%`.padStart(8);
+      const typ = `${(lv.share     * 100).toFixed(2)}%`.padStart(9);
+      const low = `${(lv.shareLow  * 100).toFixed(2)}%`.padStart(11);
+      const grs = `$${lv.grossRewardDay.toFixed(2)}`.padStart(9);
+      const flg = lv.dayYieldPct > SANITY_CAP_PCT ? '⚠' : '✓';
+      console.log(`  ${q} ${cap}  ${atM}  ${typ}  ${low}  ${grs}  ${flg}`);
     }
   }
 
@@ -492,13 +499,38 @@ async function scan() {
 
   console.log(`\n${divider}`);
   console.log(`Written: ${OUTPUT_FILE}`);
-  console.log(`FORMULA: S(v,s)=((v-s)/v)^2, c=3, user at mid (score=1 best-case). ESTIMATE: snapshot-in-time; competitors re-quote; not a guarantee.`);
+  console.log(`FORMULA: S(v,s)=((v-s)/v)^2, c=3. Headline=typical (s=v/2,S=0.25). Range: high s=0.1¢, low s=0.8v.`);
+  console.log(`ESTIMATE: snapshot-in-time; competitors re-quote; share compresses as makers enter; not a guarantee.`);
   console.log(divider);
+}
+
+// ── Formula self-test (runs once at startup) ──────────────────────────────────
+function runFormulaVerification() {
+  const { scoreBook: sb } = require('../lib/rewardScore');
+  const testBook = {
+    bids: [{ price: '0.49', size: '100' }, { price: '0.48', size: '100' }],
+    asks: [{ price: '0.51', size: '100' }, { price: '0.505', size: '100' }],
+  };
+  const r  = sb(testBook, 6, 1, 0.50);  // maxSpread=6¢ → v=3¢, minSize=1
+  const ok = Math.abs(r.Qmin - 73.61) < 0.02;
+  const W  = 130;
+  console.log('─'.repeat(W));
+  console.log('FORMULA VERIFICATION  S(v,s)=((v-s)/v)^2  c=3  adjusted-mid');
+  console.log(`  Test: bids=[0.49×100, 0.48×100] asks=[0.51×100, 0.505×100]  v=3¢  minSize=1`);
+  console.log(`  adjustedMid = (0.49+0.505)/2 = ${r.mid}  (bestBid=0.49, bestAsk=0.505)`);
+  console.log(`  Qbids = S(0.75¢)×100 + S(1.75¢)×100 = ${r.Qbids.toFixed(2)}   (0.5625×100 + 0.1736×100)`);
+  console.log(`  Qasks = S(1.25¢)×100 + S(0.75¢)×100 = ${r.Qasks.toFixed(2)}  (0.3403×100 + 0.5625×100)`);
+  console.log(`  Qmin(${r.Qbids.toFixed(2)}, ${r.Qasks.toFixed(2)}, 0.4975) = max(min,max(÷3)) = ${r.Qmin.toFixed(2)}  ${ok ? '✓ CORRECT' : '✗ MISMATCH'}`);
+  console.log(`  NOTE: prior "111.11" was wrong — traced to Qbids×2 with size=200, no qMin, wrong mid.`);
+  console.log(`  Polymarket docs show the formula steps but do not state a Q_min value for their example.`);
+  console.log(`  HEADLINE = typical placement (s=v/2, S=0.25). Range: high s=0.1¢ / low s=0.8v.`);
+  console.log('─'.repeat(W));
 }
 
 // ── Entry point ───────────────────────────────────────────────────────────────
 (async () => {
   console.log(`[agent24-liquidity-rewards] starting (capital levels: ${CAPITAL_LEVELS.map(c => '$'+c).join(', ')})…`);
+  runFormulaVerification();
   await sleep(STARTUP_DELAY_MS);
   while (true) {
     try   { await scan(); }

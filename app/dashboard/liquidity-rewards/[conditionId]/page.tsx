@@ -11,9 +11,13 @@ type Side    = 'BUY' | 'SELL' | 'BOTH';
 
 interface Level {
   capital:        number;
-  share:          number;
+  share:          number;     // typical placement headline
   grossRewardDay: number;
   dayYieldPct:    number;
+  shareHigh?:     number;
+  grossHigh?:     number;
+  shareLow?:      number;
+  grossLow?:      number;
   flags:          string[];
 }
 
@@ -672,7 +676,7 @@ export default function MarketDetailPage() {
                       </span>
                     </div>
                     <p className="font-mono text-[10px] text-zinc-600 text-right">
-                      per day · quadratic · GROSS · adverse risk not subtracted
+                      per day · exact price · GROSS · adverse risk not subtracted
                     </p>
                     {est.bothBoost && est.inBand && est.aboveMin && (
                       <p className="font-mono text-[10px] text-emerald-700 mt-0.5 text-right">
@@ -726,12 +730,54 @@ export default function MarketDetailPage() {
 
         {/* ── Market detail stats ──────────────────────────────────── */}
         {mkt && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <StatBox label="Pool $/day" value={`$${mkt.rewardsDailyRate}`} />
-            <StatBox label="Max spread" value={`±${mkt.rewardsMaxSpread}¢`} />
-            <StatBox label="Min size" value={String(mkt.rewardsMinSize)} />
-            <StatBox label="Existing depth" value={fmtUsd(mkt.existing_depth_usd)} />
-          </div>
+          <>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <StatBox label="Pool $/day" value={`$${mkt.rewardsDailyRate}`} />
+              <StatBox label="Max spread" value={`±${mkt.rewardsMaxSpread}¢`} />
+              <StatBox label="Min size" value={String(mkt.rewardsMinSize)} />
+              <StatBox label="Existing depth" value={fmtUsd(mkt.existing_depth_usd)} />
+            </div>
+
+            {/* Per-capital typical estimate + range */}
+            <div className="border border-zinc-800 bg-zinc-900/30">
+              <div className="px-3 py-2 border-b border-zinc-800">
+                <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
+                  Est. reward · typical placement · range low–high
+                </span>
+              </div>
+              <div className="grid grid-cols-3 divide-x divide-zinc-800">
+                {(['500', '5000', '50000'] as const).map(key => {
+                  const lv = mkt.levels?.[key];
+                  if (!lv) return null;
+                  const capLabel = key === '500' ? '$500' : key === '5000' ? '$5k' : '$50k';
+                  return (
+                    <div key={key} className="px-3 py-2.5 space-y-0.5">
+                      <div className="font-mono text-[10px] text-zinc-600 uppercase">{capLabel}</div>
+                      <div className="font-mono text-sm font-semibold text-emerald-400 tabular-nums">
+                        {fmtUsd(lv.grossRewardDay)}/day
+                      </div>
+                      <div className="font-mono text-[10px] text-zinc-500 tabular-nums">
+                        {(lv.share * 100).toFixed(2)}% share
+                      </div>
+                      {lv.grossLow != null && lv.grossHigh != null && (
+                        <div className="font-mono text-[9px] text-zinc-700 tabular-nums">
+                          range {fmtUsd(lv.grossLow)}–{fmtUsd(lv.grossHigh)}
+                        </div>
+                      )}
+                      {lv.flags.length > 0 && (
+                        <div className="font-mono text-[9px] text-orange-400">{lv.flags[0].split('—')[0].trim()}</div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="px-3 py-1.5 border-t border-zinc-800">
+                <p className="font-mono text-[9px] text-zinc-700">
+                  ESTIMATE · S(v,s)=((v-s)/v)² · typical s=v/2 · range: outer-band s=0.8v → near-mid s=0.1¢ · share compresses as makers enter
+                </p>
+              </div>
+            </div>
+          </>
         )}
 
         {/* Disclaimer */}

@@ -12,9 +12,13 @@ type SortMode = 'default' | 'gap';
 
 interface LevelData {
   capital:         number;
-  share:           number;
+  share:           number;     // typical placement (s=v/2, S=0.25) — HEADLINE
   grossRewardDay:  number;
   dayYieldPct:     number;
+  shareHigh?:      number;     // near-mid floor (s=0.1¢) — optimistic bound
+  grossHigh?:      number;
+  shareLow?:       number;     // outer band (s=0.8v) — pessimistic bound
+  grossLow?:       number;
   thinBookFlag:    boolean;
   belowFloorFlag:  boolean;
   flags:           string[];
@@ -244,19 +248,29 @@ function MarketCard({
         <div className="text-zinc-600 text-[10px]">existing depth</div>
       </div>
 
-      {/* Share estimate */}
+      {/* Share estimate — typical + range */}
       <div className="col-span-2 space-y-0.5">
         <div className="text-zinc-300 tabular-nums">{shareStr}</div>
-        <div className="text-zinc-600 text-[10px]">est. share</div>
+        <div className="text-zinc-600 text-[10px]">typ. est. share</div>
+        {lv.shareLow != null && lv.shareHigh != null && (
+          <div className="text-zinc-700 text-[9px] tabular-nums">
+            {(lv.shareLow * 100).toFixed(2)}–{(lv.shareHigh * 100).toFixed(2)}% range
+          </div>
+        )}
         <div className="text-zinc-600 text-[10px]">min {market.rewardsMinSize} size</div>
       </div>
 
-      {/* Gross reward — primary number */}
+      {/* Gross reward — typical + range */}
       <div className="col-span-2 space-y-0.5">
         <div className={`tabular-nums font-semibold ${isFlagged ? 'text-zinc-500' : 'text-emerald-400'}`}>
           {fmtReward(lv.grossRewardDay)}
         </div>
-        <div className="text-zinc-600 text-[10px]">est. gross/day</div>
+        <div className="text-zinc-600 text-[10px]">typ. gross/day</div>
+        {lv.grossLow != null && lv.grossHigh != null && (
+          <div className="text-zinc-700 text-[9px] tabular-nums">
+            {fmtReward(lv.grossLow)}–{fmtReward(lv.grossHigh)} range
+          </div>
+        )}
         <div className="text-zinc-500 tabular-nums text-[10px]">{lv.dayYieldPct.toFixed(2)}%/day yield</div>
         <div className="text-zinc-700 text-[9px]">adverse risk not sub.</div>
       </div>
@@ -310,7 +324,7 @@ export default function LiquidityRewardsPage() {
 
         {/* Context chip */}
         <p className="font-mono text-[11px] text-zinc-600 uppercase tracking-widest">
-          Polymarket CLOB · Read-only · Quadratic scoring estimate · No orders placed
+          Polymarket CLOB · Read-only · Typical placement estimate · No orders placed
         </p>
 
         {/* Header */}
@@ -370,7 +384,7 @@ export default function LiquidityRewardsPage() {
                 {[
                   ['Pool $/day (real)', 'The dollar amount Polymarket allocates to reward makers on this market per day. This is the actual program rate — not an estimate.'],
                   ['Existing depth', 'Dollar notional (price × size) of all qualifying resting orders currently in the CLOB within the reward band. This is your competition. It changes continuously.'],
-                  ['Est. share', 'Your estimated fraction of the reward pool using Polymarket\'s exact quadratic formula: S(v,s) = ((v-s)/v)², applied to all resting CLOB orders and your hypothetical order. Assumes you post both sides at mid for the best-case score. Real score depends on actual placement and competitor re-quoting.'],
+                  ['Typ. est. share', 'Estimated pool fraction using Polymarket\'s quadratic formula S(v,s)=((v-s)/v)². TYPICAL placement: both sides posted at s=v/2 (half the half-band, S=0.25) — a realistic farming position. Range shows outer-band low (s=0.8v, S=0.04) to near-mid high (s=0.1¢). Actual share depends on exact resting price and competitor re-quoting. Share compresses as makers enter.'],
                   ['Est. gross reward/day', 'share × pool $/day. GROSS — adverse-fill risk (being picked off when you\'re wrong) is not subtracted. That risk rises with volatility.'],
                   ['THIN BOOK flag', 'Gross yield >5%/day at this capital: the book is very thin and your share will compress as other makers arrive.'],
                   ['BELOW FLOOR flag', 'Gross reward <$1/day at this capital: Polymarket pays out in whole dollars; this position likely earns nothing.'],
