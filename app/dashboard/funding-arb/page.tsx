@@ -887,6 +887,7 @@ export default function CryptoPage() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [typeFilter,   setTypeFilter]   = useState<ArbType>('all');
   const pendingHashScroll               = useRef(false);
+  const rafHandle                       = useRef<number | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -903,27 +904,53 @@ export default function CryptoPage() {
     return () => clearInterval(t);
   }, [load]);
 
-  // Scroll to #cex-arb once the advanced section is open
+  // Poll for the element after the panel is open, retrying up to 20 rAFs (~1s)
+  const scrollToCexArb = useCallback(() => {
+    let attempts = 0;
+    const tryScroll = () => {
+      const el = document.getElementById('cex-arb');
+      if (el) {
+        pendingHashScroll.current = false;
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } else if (attempts < 20) {
+        attempts++;
+        rafHandle.current = requestAnimationFrame(tryScroll);
+      }
+    };
+    // Double-rAF to run after React commits + paints
+    rafHandle.current = requestAnimationFrame(() => {
+      rafHandle.current = requestAnimationFrame(tryScroll);
+    });
+  }, []);
+
+  // Scroll once the advanced panel has been opened by the hash link
   useEffect(() => {
     if (showAdvanced && pendingHashScroll.current) {
-      pendingHashScroll.current = false;
-      requestAnimationFrame(() => {
-        document.getElementById('cex-arb')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      });
+      scrollToCexArb();
     }
-  }, [showAdvanced]);
+  }, [showAdvanced, scrollToCexArb]);
 
   // Hash deep-link: #cex-arb opens advanced section and scrolls to CEX spot arb
   useEffect(() => {
     const applyHash = () => {
       if (window.location.hash === '#cex-arb') {
-        pendingHashScroll.current = true;
-        setShowAdvanced(true);
+        if (showAdvanced) {
+          // Panel already open — effect above won't re-fire, so poll directly
+          pendingHashScroll.current = true;
+          scrollToCexArb();
+        } else {
+          pendingHashScroll.current = true;
+          setShowAdvanced(true);
+        }
       }
     };
     applyHash();
     window.addEventListener('hashchange', applyHash);
-    return () => window.removeEventListener('hashchange', applyHash);
+    return () => {
+      window.removeEventListener('hashchange', applyHash);
+      if (rafHandle.current !== null) cancelAnimationFrame(rafHandle.current);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const cexNextMs    = data?.ok ? nextFundingMs(data.futures)   : null;
@@ -1133,7 +1160,7 @@ export default function CryptoPage() {
                 )}
 
                 {/* CEX spot arbitrage */}
-                <div id="cex-arb" className="border-t border-border scroll-mt-16">
+                <div id="cex-arb" className="border-t border-border scroll-mt-24">
                   <CexArbSection items={cexArbItems} />
                 </div>
 
