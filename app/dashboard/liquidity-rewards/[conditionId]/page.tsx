@@ -191,7 +191,8 @@ export default function MarketDetailPage() {
   const [bookError,   setBookError]   = useState<string | null>(null);
   const [bookAge,     setBookAge]     = useState<Date | null>(null);
   const [bookLoading, setBookLoading] = useState(true);
-  const pollRef = useRef<ReturnType<typeof setInterval>>();
+  const pollRef        = useRef<ReturnType<typeof setInterval>>();
+  const askContainerRef = useRef<HTMLDivElement>(null);
 
   // Trade ticket state
   const [side,      setSide]      = useState<Side>('BOTH');
@@ -244,15 +245,28 @@ export default function MarketDetailPage() {
     return () => clearInterval(pollRef.current);
   }, [fetchBook]);
 
+  // Scroll ask section to bottom (best ask adjacent to mid) whenever book data changes.
+  // The ask container renders worst asks at top and best ask at bottom; without scrolling
+  // the viewport shows the wrong end.
+  useEffect(() => {
+    const el = askContainerRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [book, bookSide]);
+
   // ── Derived order book data
   const yesBids = book ? parseLevels(book.yes.bids).sort((a, b) => b.price - a.price) : [];
   const yesAsks = book ? parseLevels(book.yes.asks).sort((a, b) => a.price - b.price) : [];
 
-  const mid = mkt?.mid ?? (
-    yesBids.length && yesAsks.length
-      ? (yesBids[0].price + yesAsks[0].price) / 2
-      : 0.5
-  );
+  // Derive mid and spread from the live book so header, band, and estimates
+  // always match what the ladder displays — never stale stored metadata.
+  const liveBestBid = yesBids[0]?.price ?? null;
+  const liveBestAsk = yesAsks[0]?.price ?? null;
+  const liveSpread  = liveBestBid !== null && liveBestAsk !== null
+    ? liveBestAsk - liveBestBid
+    : null;
+  const mid = liveBestBid !== null && liveBestAsk !== null
+    ? (liveBestBid + liveBestAsk) / 2
+    : mkt?.mid ?? 0.5;
 
   const halfBand  = mkt ? (mkt.rewardsMaxSpread / 100) / 2 : 0;
   const bandLo    = mid - halfBand;
@@ -444,7 +458,7 @@ export default function MarketDetailPage() {
             </div>
 
             {/* ASK rows — highest price at top, descending toward mid */}
-            <div className="flex flex-col max-h-[160px] overflow-y-auto scrollbar-thin">
+            <div ref={askContainerRef} className="flex flex-col max-h-[160px] overflow-y-auto scrollbar-thin">
               {displayAsks.length === 0 && !bookError && (
                 bookLoading
                   ? <SkeletonRows />
@@ -470,9 +484,9 @@ export default function MarketDetailPage() {
               <span className="font-mono text-[11px] text-zinc-200 tabular-nums font-semibold">
                 Mid {fmtP(mid)}
               </span>
-              {mkt?.bookSpread != null && (
+              {liveSpread !== null && (
                 <span className="font-mono text-[10px] text-zinc-500">
-                  Spread {fmtP(mkt.bookSpread)}
+                  Spread {fmtP(liveSpread)}
                 </span>
               )}
               {book?.yes?.last_trade_price && (
