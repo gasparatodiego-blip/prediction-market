@@ -114,63 +114,64 @@ function parseLevels(raw: {price:string;size:string}[]): BookLevel[] {
     .filter(r => r.price > 0 && r.size > 0);
 }
 
-// ── Depth ladder row ──────────────────────────────────────────────────────────
+// ── Depth ladder row — Polymarket 3-column style ──────────────────────────────
 
 function BookRow({
   level,
+  cumTotal,
+  maxCumTotal,
   side,
   mid,
   halfBand,
-  maxSize,
   ticketPrice,
   onClickPrice,
 }: {
   level:        BookLevel;
+  cumTotal:     number;
+  maxCumTotal:  number;
   side:         'bid' | 'ask';
   mid:          number;
   halfBand:     number;
-  maxSize:      number;
   ticketPrice:  number | null;
   onClickPrice: (p: number) => void;
 }) {
-  const inBand    = Math.abs(level.price - mid) <= halfBand;
-  const isMid     = Math.abs(level.price - mid) < 0.0005;
-  const isTicket  = ticketPrice !== null && Math.abs(level.price - ticketPrice) < 0.0005;
-  const barPct    = (level.size / maxSize) * 100;
-  const barCls    = side === 'bid' ? 'bg-emerald-900/40' : 'bg-red-900/30';
-  const bandCls   = inBand ? (side === 'bid' ? 'bg-emerald-950/30' : 'bg-blue-950/30') : '';
-  const ringCls   = isTicket ? 'ring-1 ring-amber-400/70' : '';
+  const inBand   = Math.abs(level.price - mid) <= halfBand;
+  const isTicket = ticketPrice !== null && Math.abs(level.price - ticketPrice) < 0.0005;
+  const barPct   = maxCumTotal > 0 ? (cumTotal / maxCumTotal) * 100 : 0;
+
+  const isAsk    = side === 'ask';
+  const priceCls = isAsk
+    ? (inBand ? 'text-red-300'     : 'text-red-800/60')
+    : (inBand ? 'text-emerald-300' : 'text-emerald-800/60');
+  const barCls   = isAsk ? 'bg-red-950/55' : 'bg-emerald-950/55';
+  const bandCls  = inBand
+    ? (isAsk ? 'border-l-2 border-red-500/35' : 'border-l-2 border-emerald-500/35')
+    : '';
 
   return (
     <button
       onClick={() => onClickPrice(level.price)}
-      className={`w-full relative flex items-center justify-between text-[11px] font-mono
-        px-2 py-[3px] transition-colors hover:bg-zinc-700/30 ${bandCls} ${ringCls}`}
+      className={`w-full relative grid grid-cols-3 items-center text-[11px] font-mono
+        px-2 py-[3px] transition-colors hover:bg-zinc-700/25
+        ${isTicket ? 'ring-1 ring-inset ring-amber-400/60' : ''} ${bandCls}`}
     >
-      {/* Bar behind */}
+      {/* Depth bar — cumulative, anchored from right edge */}
       <span
-        className={`absolute inset-y-0 ${side === 'bid' ? 'right-0' : 'left-0'} ${barCls}`}
+        className={`absolute inset-y-0 right-0 ${barCls}`}
         style={{ width: `${barPct}%`, pointerEvents: 'none' }}
       />
-      {/* Content */}
-      {side === 'bid' ? (
-        <>
-          <span className="relative text-zinc-500 tabular-nums">{fmtS(level.size)}</span>
-          <span className={`relative tabular-nums ${inBand ? 'text-emerald-300' : 'text-emerald-600/70'}`}>
-            {fmtP(level.price)}
-          </span>
-        </>
-      ) : (
-        <>
-          <span className={`relative tabular-nums ${inBand ? 'text-red-300' : 'text-red-600/70'}`}>
-            {fmtP(level.price)}
-          </span>
-          <span className="relative text-zinc-500 tabular-nums">{fmtS(level.size)}</span>
-        </>
-      )}
-      {isMid && (
-        <span className="absolute inset-0 ring-1 ring-zinc-400/30 pointer-events-none" />
-      )}
+      {/* Col 1: PRICE */}
+      <span className={`relative tabular-nums text-left ${priceCls}`}>
+        {fmtP(level.price)}
+      </span>
+      {/* Col 2: SHARES */}
+      <span className="relative text-zinc-400 tabular-nums text-right">
+        {fmtS(level.size)}
+      </span>
+      {/* Col 3: TOTAL (cumulative outward from mid) */}
+      <span className="relative text-zinc-600 tabular-nums text-right">
+        {fmtS(cumTotal)}
+      </span>
     </button>
   );
 }
@@ -196,6 +197,9 @@ export default function MarketDetailPage() {
   const [ticketPrice, setTicketPrice] = useState<string>('');
   const [ticketSize,  setTicketSize]  = useState<string>('');
   const [showTooltip, setShowTooltip] = useState(false);
+
+  // YES / NO book toggle
+  const [bookSide, setBookSide] = useState<'yes' | 'no'>('yes');
 
   // Fetch market metadata
   useEffect(() => {
@@ -251,8 +255,33 @@ export default function MarketDetailPage() {
   const bandLo    = mid - halfBand;
   const bandHi    = mid + halfBand;
 
-  const allSizes  = [...yesBids, ...yesAsks].map(l => l.size);
-  const maxSize   = allSizes.length ? Math.max(...allSizes) : 1;
+  // Parse NO book
+  const noBids = book?.no ? parseLevels(book.no.bids).sort((a, b) => b.price - a.price) : [];
+  const noAsks = book?.no ? parseLevels(book.no.asks).sort((a, b) => a.price - b.price) : [];
+
+  // Active side
+  const activeBids = bookSide === 'yes' ? yesBids : noBids;
+  const activeAsks = bookSide === 'yes' ? yesAsks : noAsks;
+
+  // Asks display: highest price at top (descending toward mid)
+  const displayAsks = [...activeAsks].sort((a, b) => b.price - a.price);
+
+  // Cumulative totals computed outward from mid
+  const askCumMap = new Map<number, number>();
+  let askRunning = 0;
+  for (const lvl of [...activeAsks].sort((a, b) => a.price - b.price)) {
+    askRunning += lvl.size;
+    askCumMap.set(lvl.price, askRunning);
+  }
+
+  const bidCumMap = new Map<number, number>();
+  let bidRunning = 0;
+  for (const lvl of activeBids) { // already sorted highest→lowest
+    bidRunning += lvl.size;
+    bidCumMap.set(lvl.price, bidRunning);
+  }
+
+  const maxCumTotal = Math.max(askRunning, bidRunning, 1);
 
   // ── Trade ticket
   const tpNum     = parseFloat(ticketPrice);
@@ -339,13 +368,38 @@ export default function MarketDetailPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
 
-          {/* ── Order Book ─────────────────────────────────────────── */}
+          {/* ── Order Book — Polymarket-style ──────────────────── */}
           <div className="border border-zinc-800 bg-zinc-900/50 flex flex-col">
 
-            {/* Book header */}
+            {/* Header: YES/NO toggle + live indicator */}
             <div className="flex items-center justify-between px-3 py-2 border-b border-zinc-800">
-              <div className="flex items-center gap-2">
-                <span className="font-mono text-[10px] text-zinc-400 uppercase tracking-widest">Order Book · YES</span>
+              <div className="flex items-center gap-3">
+                <div className="flex gap-0.5">
+                  <button
+                    onClick={() => setBookSide('yes')}
+                    className={`font-mono text-[10px] px-2.5 py-1 border transition-colors ${
+                      bookSide === 'yes'
+                        ? 'border-zinc-500 bg-zinc-700 text-zinc-100'
+                        : 'border-zinc-700 bg-zinc-800/60 text-zinc-500 hover:text-zinc-400'
+                    }`}
+                  >
+                    YES
+                  </button>
+                  <button
+                    onClick={() => book?.no ? setBookSide('no') : undefined}
+                    disabled={!book?.no}
+                    className={`font-mono text-[10px] px-2.5 py-1 border transition-colors ${
+                      bookSide === 'no'
+                        ? 'border-zinc-500 bg-zinc-700 text-zinc-100'
+                        : book?.no
+                        ? 'border-zinc-700 bg-zinc-800/60 text-zinc-500 hover:text-zinc-400'
+                        : 'border-zinc-800 bg-zinc-900/30 text-zinc-700 cursor-not-allowed'
+                    }`}
+                  >
+                    NO
+                  </button>
+                </div>
+                <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">Order Book</span>
                 {bookAge && !bookError && (
                   <span className="flex items-center gap-1 font-mono text-[9px] text-emerald-500">
                     <span className="w-1 h-1 rounded-full bg-emerald-400 animate-pulse" />
@@ -370,67 +424,72 @@ export default function MarketDetailPage() {
               <div className="flex items-center gap-3 px-3 py-1.5 border-b border-zinc-800/60 bg-zinc-900">
                 <span className="font-mono text-[9px] text-zinc-600 uppercase tracking-wider">Reward band:</span>
                 <span className="font-mono text-[9px] text-emerald-500">{fmtP(bandLo)} – {fmtP(bandHi)}</span>
-                <span className="font-mono text-[9px] text-zinc-700">orders outside band earn nothing</span>
+                <span className="font-mono text-[9px] text-zinc-700">levels inside earn rewards</span>
               </div>
             )}
 
-            {/* Column labels */}
-            <div className="flex justify-between px-2 py-1 font-mono text-[9px] text-zinc-700 uppercase border-b border-zinc-800/40">
-              <span>size</span>
-              <span>price (YES)</span>
+            {/* Column headers */}
+            <div className="grid grid-cols-3 px-2 py-1 font-mono text-[9px] text-zinc-700 uppercase border-b border-zinc-800/40">
+              <span>Price</span>
+              <span className="text-right">Shares</span>
+              <span className="text-right">Total</span>
             </div>
 
-            {/* Ask side (inverted — lowest ask on top) */}
-            <div className="flex flex-col-reverse max-h-48 overflow-y-auto scrollbar-thin">
-              {yesAsks.length === 0 && !bookError && (
+            {/* ASK rows — highest price at top, descending toward mid */}
+            <div className="flex flex-col max-h-[160px] overflow-y-auto scrollbar-thin">
+              {displayAsks.length === 0 && !bookError && (
                 <div className="px-3 py-2 font-mono text-[10px] text-zinc-700 text-center">
                   {book ? 'no asks' : 'loading…'}
                 </div>
               )}
-              {yesAsks.map((l, i) => (
+              {displayAsks.map((l, i) => (
                 <BookRow
                   key={`ask-${i}`}
                   level={l}
+                  cumTotal={askCumMap.get(l.price) ?? 0}
+                  maxCumTotal={maxCumTotal}
                   side="ask"
                   mid={mid}
                   halfBand={halfBand}
-                  maxSize={maxSize}
                   ticketPrice={!isNaN(tpNum) ? tpNum : null}
                   onClickPrice={handleClickPrice}
                 />
               ))}
             </div>
 
-            {/* Mid marker */}
-            {mkt && (
-              <div className="flex items-center gap-2 px-2 py-1 bg-zinc-800/60 border-y border-zinc-700/50">
-                <span className="font-mono text-[10px] text-zinc-300 tabular-nums font-semibold">
-                  Mid {fmtP(mid)}
+            {/* Center spread row */}
+            <div className="flex items-center gap-3 px-3 py-1.5 bg-zinc-800/70 border-y border-zinc-700/60">
+              <span className="font-mono text-[11px] text-zinc-200 tabular-nums font-semibold">
+                Mid {fmtP(mid)}
+              </span>
+              {mkt?.bookSpread != null && (
+                <span className="font-mono text-[10px] text-zinc-500">
+                  Spread {fmtP(mkt.bookSpread)}
                 </span>
-                {mkt.bookSpread !== null && (
-                  <span className="font-mono text-[10px] text-zinc-500">
-                    spread {fmtP(mkt.bookSpread)}
-                  </span>
-                )}
-                <span className="font-mono text-[9px] text-emerald-600 ml-auto">▲ asks / bids ▼</span>
-              </div>
-            )}
+              )}
+              {book?.yes?.last_trade_price && (
+                <span className="font-mono text-[10px] text-zinc-600 ml-auto">
+                  Last {(parseFloat(book.yes.last_trade_price) * 100).toFixed(1)}¢
+                </span>
+              )}
+            </div>
 
-            {/* Bid side */}
-            <div className="flex flex-col max-h-48 overflow-y-auto scrollbar-thin">
-              {yesBids.length === 0 && !bookError && (
+            {/* BID rows — highest bid just below mid, descending */}
+            <div className="flex flex-col max-h-[160px] overflow-y-auto scrollbar-thin">
+              {activeBids.length === 0 && !bookError && (
                 <div className="px-3 py-2 font-mono text-[10px] text-zinc-700 text-center">
                   {book ? 'no bids' : 'loading…'}
                 </div>
               )}
-              {yesBids.map((l, i) => (
+              {activeBids.map((l, i) => (
                 <BookRow
                   key={`bid-${i}`}
                   level={l}
+                  cumTotal={bidCumMap.get(l.price) ?? 0}
+                  maxCumTotal={maxCumTotal}
                   side="bid"
                   mid={mid}
                   halfBand={halfBand}
-                  maxSize={maxSize}
                   ticketPrice={!isNaN(tpNum) ? tpNum : null}
                   onClickPrice={handleClickPrice}
                 />
