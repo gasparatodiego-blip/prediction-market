@@ -97,7 +97,7 @@ export default function HomePage() {
                 </div>
                 <div className="font-mono text-[9px] text-text-muted/60 mb-4">always</div>
                 <ul className="space-y-2 flex-1">
-                  {['All strategy pages, live', 'Funding rate monitor', 'Full opportunity list', 'No account needed'].map(f => (
+                  {['All strategy pages, live', 'Funding rate monitor', 'Full opportunity list', 'Basic Telegram alerts', 'No account needed'].map(f => (
                     <li key={f} className="flex items-start gap-1.5">
                       <span className="text-positive font-mono text-[10px] mt-px leading-none">✓</span>
                       <span className="font-mono text-[10px] text-text-secondary leading-snug">{f}</span>
@@ -121,7 +121,7 @@ export default function HomePage() {
                 </div>
                 <div className="font-mono text-[9px] text-text-muted/60 mb-4">billed monthly</div>
                 <ul className="space-y-2 flex-1">
-                  {['Real-time Telegram + email alerts', 'Kelly position sizing', 'Opportunity history log', 'Priority data refresh'].map(f => (
+                  {['Email alerts + priority Telegram (all strategies)', 'Kelly position sizing', 'Opportunity history log', 'Priority data refresh'].map(f => (
                     <li key={f} className="flex items-start gap-1.5">
                       <span className="text-accent font-mono text-[10px] mt-px leading-none">✓</span>
                       <span className="font-mono text-[10px] text-text-secondary leading-snug">{f}</span>
@@ -172,9 +172,9 @@ export default function HomePage() {
       <footer className="relative z-10 border-t border-border">
         <div className="max-w-[900px] mx-auto px-6 py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <span className="inline-block w-1.5 h-1.5 rounded-full bg-positive shrink-0" />
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-warning shrink-0" />
             <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-muted">
-              ALL SYSTEMS OPERATIONAL
+              CORE SYSTEMS OPERATIONAL · SPORTS &amp; TRADERS OFFLINE
             </span>
           </div>
           <div className="flex items-center gap-4 flex-wrap">

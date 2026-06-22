@@ -243,7 +243,7 @@ export default function PredictionPage() {
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1.5 font-mono text-[10px] px-3 py-1.5 border border-border text-text-muted hover:border-accent/50 hover:text-accent transition-colors duration-100 whitespace-nowrap"
           >
-            ✈ Notify via Telegram
+            ✈ Basic alert via Telegram
           </a>
           {fetchedAt && (
             <span className="font-mono text-[10px] text-text-muted">

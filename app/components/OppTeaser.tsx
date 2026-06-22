@@ -101,7 +101,7 @@ export default function OppTeaser() {
         {/* Footer: link to full list */}
         <div className="border-t border-border px-4 py-3 bg-bg-elevated">
           <Link
-            href="/dashboard/opportunities"
+            href="/dashboard/prediction"
             className="inline-flex items-center gap-1.5 font-mono text-[10px] text-accent hover:text-accent-bright transition-colors"
           >
             See all {data.total} opportunities in the dashboard
@@ -120,7 +120,7 @@ export default function OppTeaser() {
         <div>
           <span className="font-mono text-[9px] uppercase tracking-widest text-accent/70 mr-2">PRO · COMING SOON</span>
           <span className="font-mono text-[9px] text-text-muted">
-            Real-time alerts · Telegram &amp; email · Kelly position sizing · full opportunity history
+Email alerts · priority Telegram (all strategies) · Kelly position sizing · full opportunity history
           </span>
         </div>
         <span className="font-mono text-[8px] text-text-muted/40 border border-border/40 px-2 py-1 cursor-default shrink-0 whitespace-nowrap">
