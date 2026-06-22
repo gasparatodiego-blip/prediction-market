@@ -310,7 +310,7 @@ export default function LiquidityRewardsPage() {
 
         {/* Context chip */}
         <p className="font-mono text-[11px] text-zinc-600 uppercase tracking-widest">
-          Polymarket CLOB · Read-only · Linear first-order estimate · No orders placed
+          Polymarket CLOB · Read-only · Quadratic scoring estimate · No orders placed
         </p>
 
         {/* Header */}
@@ -370,7 +370,7 @@ export default function LiquidityRewardsPage() {
                 {[
                   ['Pool $/day (real)', 'The dollar amount Polymarket allocates to reward makers on this market per day. This is the actual program rate — not an estimate.'],
                   ['Existing depth', 'Dollar notional (price × size) of all qualifying resting orders currently in the CLOB within the reward band. This is your competition. It changes continuously.'],
-                  ['Est. share', 'Your estimated fraction of the pool: C ÷ (C + existing depth). LINEAR first-order only — real scoring weights orders closer to mid quadratically and rewards two-sided depth.'],
+                  ['Est. share', 'Your estimated fraction of the reward pool using Polymarket\'s exact quadratic formula: S(v,s) = ((v-s)/v)², applied to all resting CLOB orders and your hypothetical order. Assumes you post both sides at mid for the best-case score. Real score depends on actual placement and competitor re-quoting.'],
                   ['Est. gross reward/day', 'share × pool $/day. GROSS — adverse-fill risk (being picked off when you\'re wrong) is not subtracted. That risk rises with volatility.'],
                   ['THIN BOOK flag', 'Gross yield >5%/day at this capital: the book is very thin and your share will compress as other makers arrive.'],
                   ['BELOW FLOOR flag', 'Gross reward <$1/day at this capital: Polymarket pays out in whole dollars; this position likely earns nothing.'],

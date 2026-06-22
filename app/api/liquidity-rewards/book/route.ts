@@ -6,26 +6,37 @@ export const dynamic = 'force-dynamic';
 const DATA_FILE = '/root/prediction-market/data/liquidity-rewards.json';
 const CLOB_BASE = 'https://clob.polymarket.com';
 
-async function fetchBook(tokenId: string): Promise<{ bids: {price:string;size:string}[]; asks: {price:string;size:string}[] } | null> {
+// 2-second in-memory cache keyed by conditionId to absorb repeat/simultaneous opens
+const bookCache = new Map<string, { data: object; ts: number }>();
+const CACHE_TTL_MS = 2_000;
+
+async function clobFetch(url: string, timeoutMs = 3_500): Promise<Response> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const r = await fetch(`${CLOB_BASE}/book?token_id=${tokenId}`, {
-      next: { revalidate: 0 },
-      headers: { 'Accept': 'application/json' },
-    });
-    if (!r.ok) return null;
-    return await r.json();
-  } catch {
-    return null;
+    return await fetch(url, { signal: ctrl.signal, headers: { Accept: 'application/json' } });
+  } finally {
+    clearTimeout(timer);
   }
+}
+
+async function fetchBook(tokenId: string): Promise<{ bids: {price:string;size:string}[]; asks: {price:string;size:string}[] } | null> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const r = await clobFetch(`${CLOB_BASE}/book?token_id=${tokenId}`);
+      if (!r.ok) return null;
+      return await r.json();
+    } catch {
+      // retry once on abort/network error, then give up
+    }
+  }
+  return null;
 }
 
 // Resolve token IDs from CLOB /markets/{conditionId} when stored data is stale
 async function resolveTokenIds(conditionId: string): Promise<{ tokenId: string | null; tokenIdNo: string | null }> {
   try {
-    const r = await fetch(`${CLOB_BASE}/markets/${conditionId}`, {
-      next: { revalidate: 0 },
-      headers: { 'Accept': 'application/json' },
-    });
+    const r = await clobFetch(`${CLOB_BASE}/markets/${conditionId}`);
     if (!r.ok) return { tokenId: null, tokenIdNo: null };
     const data = await r.json();
     const tokens = data.tokens as Array<{ token_id: string; outcome: string }> | undefined;
@@ -45,6 +56,12 @@ export async function GET(req: NextRequest) {
   const conditionId = req.nextUrl.searchParams.get('conditionId');
   if (!conditionId) {
     return NextResponse.json({ error: 'conditionId required' }, { status: 400 });
+  }
+
+  // Serve from cache if fresh
+  const cached = bookCache.get(conditionId);
+  if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
+    return NextResponse.json(cached.data);
   }
 
   // Look up token IDs from stored data
@@ -93,7 +110,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'CLOB fetch failed', tokenId }, { status: 502 });
   }
 
-  return NextResponse.json({
+  const payload = {
     conditionId,
     tokenId,
     tokenIdNo,
@@ -101,5 +118,7 @@ export async function GET(req: NextRequest) {
     no:  noBook,
     fetchedAt: new Date().toISOString(),
     source: 'Polymarket CLOB · read-only · no orders placed',
-  });
+  };
+  bookCache.set(conditionId, { data: payload, ts: Date.now() });
+  return NextResponse.json(payload);
 }

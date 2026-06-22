@@ -3,24 +3,26 @@
 //
 // Every 15 min:
 //   1. Fetches all active Gamma markets with clobRewards[0].rewardsDailyRate > 0
-//   2. For each, reads the CLOB order book and sums resting depth within
-//      the qualifying band (rewardsMaxSpread / 2 each side of mid) as
-//      DOLLAR NOTIONAL (price × size) — dimensionally consistent with capital.
-//   3. Estimates LP reward share for THREE capital levels: $500, $5k, $50k.
-//      share = C / (C + existing_depth_usd)   — linear first-order estimate.
-//      Real scoring weights orders closer to mid quadratically and rewards
-//      two-sided depth — actual share will differ.
-//   4. Classifies 24h mid-price volatility as LOW / MEDIUM / HIGH.
-//   5. Applies sanity cap (>5%/day gross → THIN BOOK flag) and
+//   2. For each, reads the CLOB order book.
+//   3. Scores resting orders with Polymarket's exact quadratic formula:
+//        S(v, s) = ((v - s) / v)^2,  v = rewardsMaxSpread/2 (cents), s = dist from mid (cents)
+//      Q_competitors = Q_min(Q_bids, Q_asks) per the two-sided formula (c=3).
+//   4. Estimates LP reward share for THREE capital levels: $500, $5k, $50k.
+//        User placed at mid (score=1, best-case), size = capital/mid shares per side.
+//        share = Q_user / (Q_user + Q_competitors)  — ESTIMATE.
+//      Also retains existing_depth_usd (dollar notional) for UI display only.
+//   5. Classifies 24h mid-price volatility as LOW / MEDIUM / HIGH.
+//   6. Applies sanity cap (>5%/day gross → THIN BOOK flag) and
 //      floor (<$1/day gross → below-floor flag) PER CAPITAL LEVEL.
-//   6. Writes /root/prediction-market/data/liquidity-rewards.json.
-//   7. Prints top 5 markets (3 capital levels each) to console.
+//   7. Writes /root/prediction-market/data/liquidity-rewards.json.
+//   8. Prints top 5 markets + 8-market gap sample to console.
 //
 // No Claude API. No order placement. Read-only. Deterministic.
 'use strict';
 
 const fs    = require('fs');
 const https = require('https');
+const { scoreBook, estimateCapitalLevel } = require('../lib/rewardScore');
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const SCAN_INTERVAL_MS  = 15 * 60_000;
@@ -150,54 +152,57 @@ async function fetchRewardMarkets() {
   return markets;
 }
 
-// ── Measure qualifying depth from CLOB order book (DOLLAR NOTIONAL) ──────────
-// Qualifying depth = sum of (price × size) for all resting orders within
-// rewardsMaxSpread/2 of mid on each side.  Dollar-notional is dimensionally
-// consistent with the capital levels we compare against.
-async function measureBookDepth(tokenId, rewardsMaxSpread, fallbackMid) {
+// ── Measure book depth + quadratic competitor score from CLOB ─────────────────
+// Returns:
+//   existingDepthUsd  — dollar notional (price×size) of in-band orders (UI display only)
+//   Qbids, Qasks, Qmin — quadratic competitor scores (used for share estimation)
+//   mid               — size-cutoff-adjusted midpoint
+async function measureBookDepth(tokenId, rewardsMaxSpread, minSize, fallbackMid) {
   try {
     const r = await httpGet(`https://clob.polymarket.com/book?token_id=${tokenId}`);
     if (r.status !== 200 || !r.data) {
-      return { mid: fallbackMid, existingDepthUsd: 0, bookSpread: null, emptyBook: true };
+      return { mid: fallbackMid, existingDepthUsd: 0, bookSpread: null, emptyBook: true, Qbids: 0, Qasks: 0, Qmin: 0 };
     }
 
     const bids = (r.data.bids || [])
-      .map(b => ({ p: parseFloat(b.price), s: parseFloat(b.size) }))
-      .filter(b => b.p > 0 && b.s > 0)
-      .sort((a, b) => b.p - a.p);
+      .map(b => ({ price: parseFloat(b.price), size: parseFloat(b.size) }))
+      .filter(b => b.price > 0 && b.size > 0)
+      .sort((a, b) => b.price - a.price);
 
     const asks = (r.data.asks || [])
-      .map(a => ({ p: parseFloat(a.price), s: parseFloat(a.size) }))
-      .filter(a => a.p > 0 && a.s > 0)
-      .sort((a, b) => a.p - b.p);
+      .map(a => ({ price: parseFloat(a.price), size: parseFloat(a.size) }))
+      .filter(a => a.price > 0 && a.size > 0)
+      .sort((a, b) => a.price - b.price);
 
     if (!bids.length && !asks.length) {
-      return { mid: fallbackMid, existingDepthUsd: 0, bookSpread: null, emptyBook: true };
+      return { mid: fallbackMid, existingDepthUsd: 0, bookSpread: null, emptyBook: true, Qbids: 0, Qasks: 0, Qmin: 0 };
     }
 
-    const bestBid  = bids.length ? bids[0].p : fallbackMid - 0.01;
-    const bestAsk  = asks.length ? asks[0].p : fallbackMid + 0.01;
-    const mid      = (bestBid + bestAsk) / 2;
+    const bestBid  = bids.length ? bids[0].price : fallbackMid - 0.01;
+    const bestAsk  = asks.length ? asks[0].price : fallbackMid + 0.01;
+    const plainMid = (bestBid + bestAsk) / 2;
     const bookSprd = parseFloat((bestAsk - bestBid).toFixed(4));
 
+    // Dollar notional (kept for UI display; NOT used for share math)
     const halfBand = rewardsMaxSpread / 2 / 100;
+    const qBidsUsd = bids.filter(b => b.price >= plainMid - halfBand).reduce((acc, b) => acc + b.price * b.size, 0);
+    const qAsksUsd = asks.filter(a => a.price <= plainMid + halfBand).reduce((acc, a) => acc + a.price * a.size, 0);
+    const existingDepthUsd = Math.round(qBidsUsd + qAsksUsd);
 
-    // Dollar notional: price × size for each qualifying resting order
-    const qBidsUsd = bids
-      .filter(b => b.p >= mid - halfBand)
-      .reduce((acc, b) => acc + b.p * b.s, 0);
-    const qAsksUsd = asks
-      .filter(a => a.p <= mid + halfBand)
-      .reduce((acc, a) => acc + a.p * a.s, 0);
+    // Quadratic competitor scoring (the actual denominator for share estimates)
+    const qs = scoreBook({ bids, asks }, rewardsMaxSpread, minSize, plainMid);
 
     return {
-      mid:              parseFloat(mid.toFixed(4)),
+      mid:              qs.mid,
       bookSpread:       bookSprd,
-      existingDepthUsd: Math.round(qBidsUsd + qAsksUsd),
+      existingDepthUsd,
       emptyBook:        false,
+      Qbids:            qs.Qbids,
+      Qasks:            qs.Qasks,
+      Qmin:             qs.Qmin,
     };
   } catch (e) {
-    return { mid: fallbackMid, existingDepthUsd: 0, bookSpread: null, error: e.message };
+    return { mid: fallbackMid, existingDepthUsd: 0, bookSpread: null, error: e.message, Qbids: 0, Qasks: 0, Qmin: 0 };
   }
 }
 
@@ -241,13 +246,13 @@ function classifyVol(stdev, range, endDateStr, rewardsMaxSpread) {
   return 'LOW';
 }
 
-// ── Compute per-level estimates ───────────────────────────────────────────────
-function computeLevels(rewardsDailyRate, existingDepthUsd) {
+// ── Compute per-level estimates (quadratic scoring) ───────────────────────────
+// competitorQ: { Qmin, mid } from measureBookDepth via scoreBook
+function computeLevels(rewardsDailyRate, competitorQ, maxSpreadCents, minSize) {
   const levels = {};
   for (const C of CAPITAL_LEVELS) {
-    const share          = C / (C + existingDepthUsd);
-    const grossRewardDay = share * rewardsDailyRate;
-    const dayYieldPct    = (grossRewardDay / C) * 100;
+    const quad = estimateCapitalLevel(competitorQ, maxSpreadCents, minSize, rewardsDailyRate, C);
+    const { share, grossRewardDay, dayYieldPct } = quad;
     const thinBookFlag   = dayYieldPct > SANITY_CAP_PCT;
     const belowFloorFlag = grossRewardDay < FLOOR_DAILY_USD;
     const flags = [];
@@ -256,9 +261,9 @@ function computeLevels(rewardsDailyRate, existingDepthUsd) {
 
     levels[String(C)] = {
       capital:         C,
-      share:           parseFloat(share.toFixed(6)),
-      grossRewardDay:  parseFloat(grossRewardDay.toFixed(4)),
-      dayYieldPct:     parseFloat(dayYieldPct.toFixed(3)),
+      share,
+      grossRewardDay,
+      dayYieldPct,
       thinBookFlag,
       belowFloorFlag,
       flags,
@@ -330,14 +335,18 @@ async function scan() {
       || (m.bestBid && m.bestAsk ? (m.bestBid + m.bestAsk) / 2 : 0.5);
 
     const [book, vol] = await Promise.all([
-      measureBookDepth(m.tokenId, m.rewardsMaxSpread, fallbackMid),
+      measureBookDepth(m.tokenId, m.rewardsMaxSpread, m.rewardsMinSize, fallbackMid),
       measure24hVolatility(m.tokenId),
     ]);
 
-    const volatilityRisk = classifyVol(vol.stdev, vol.range, m.endDate, m.rewardsMaxSpread);
+    const volatilityRisk   = classifyVol(vol.stdev, vol.range, m.endDate, m.rewardsMaxSpread);
     const existingDepthUsd = book.existingDepthUsd;
-    const levels = computeLevels(m.rewardsDailyRate, existingDepthUsd);
+    const competitorQ      = { Qmin: book.Qmin, Qbids: book.Qbids, Qasks: book.Qasks, mid: book.mid };
+    const levels           = computeLevels(m.rewardsDailyRate, competitorQ, m.rewardsMaxSpread, m.rewardsMinSize);
     const { gapClass, gapScore } = classifyGap(levels, volatilityRisk);
+
+    // OLD linear share for side-by-side comparison in console
+    const linearShare500 = existingDepthUsd > 0 ? 500 / (500 + existingDepthUsd) : 1.0;
 
     // sane/flagged based on $500 level (for sorting; UI re-evaluates per selected level)
     const level500 = levels['500'];
@@ -364,6 +373,7 @@ async function scan() {
       sane500:           sane,  // convenience flag; UI re-evaluates per level
       gapClass,
       gapScore,
+      _linearShare500:   parseFloat(linearShare500.toFixed(6)),  // comparison only; not shown in UI
     });
   }
 
@@ -389,12 +399,13 @@ async function scan() {
       flaggedAt500:       results.filter(r => !r.sane500).length,
       capitalLevels:      CAPITAL_LEVELS,
       disclaimer: [
-        'grossRewardDay and share are FIRST-ORDER LINEAR ESTIMATES.',
-        'Real LP reward scoring weights orders closer to mid quadratically and rewards two-sided depth.',
-        'existing_depth_usd is a point-in-time CLOB snapshot measured as dollar NOTIONAL (price × size).',
+        'share and grossRewardDay use Polymarket\'s quadratic scoring formula S(v,s)=((v-s)/v)^2 with c=3 two-sided combine.',
+        'User placement assumed at mid (score=1, best-case); real score depends on actual spread.',
+        'existing_depth_usd is a point-in-time CLOB snapshot (price×size, display only; not used for share math).',
+        'Q_competitors is the quadratic-weighted score of all existing resting orders in the YES book.',
         `THIN_BOOK flag: dayYieldPct > ${SANITY_CAP_PCT}% — book is thin, real share will compress as MMs arrive.`,
         `BELOW_FLOOR flag: grossRewardDay < $${FLOOR_DAILY_USD} — minimum daily payout not met.`,
-        'Figures are GROSS — adverse-fill risk (being picked off) is not subtracted.',
+        'All figures are GROSS ESTIMATES — snapshot in time; competitors re-quote continuously; adverse-fill risk not subtracted.',
         'Not financial advice.',
       ].join(' '),
     },
@@ -429,6 +440,28 @@ async function scan() {
     }
   }
 
+  // ── Phase 5: side-by-side OLD linear vs NEW quadratic for top 5 markets ────────
+  console.log(`\n${divider}`);
+  console.log(`LINEAR → QUADRATIC COMPARISON  (share at $500/$5k/$50k)`);
+  console.log(divider);
+  console.log(`  ${'Market'.padEnd(55)} ${'Cap'.padStart(6)}  ${'OldLin%'.padStart(8)}  ${'NewQuad%'.padStart(9)}  ${'OldGrs'.padStart(8)}  ${'NewGrs'.padStart(8)}  Cap-OK`);
+  console.log(`  ${'-'.repeat(55)} ${'-'.repeat(6)}  ${'-'.repeat(8)}  ${'-'.repeat(9)}  ${'-'.repeat(8)}  ${'-'.repeat(8)}  ------`);
+  for (const r of top5) {
+    const q = r.question.slice(0, 55).padEnd(55);
+    for (const C of CAPITAL_LEVELS) {
+      const lv = r.levels[String(C)];
+      const oldShare = C / (C + r.existing_depth_usd);
+      const oldGross = oldShare * r.rewardsDailyRate;
+      const cap = `$${C >= 1000 ? (C/1000)+'k' : C}`.padStart(6);
+      const oldPct = `${(oldShare * 100).toFixed(2)}%`.padStart(8);
+      const newPct = `${(lv.share * 100).toFixed(2)}%`.padStart(9);
+      const oldG   = `$${oldGross.toFixed(2)}`.padStart(8);
+      const newG   = `$${lv.grossRewardDay.toFixed(2)}`.padStart(8);
+      const capOK  = lv.dayYieldPct <= SANITY_CAP_PCT ? '  ✓' : '  ⚠ THIN';
+      console.log(`  ${q} ${cap}  ${oldPct}  ${newPct}  ${oldG}  ${newG}  ${capOK}`);
+    }
+  }
+
   // ── Gap sample: 8 markets showing gapClass + inputs (sanity check) ────────────
   const opens = results.filter(r => r.gapClass === 'OPEN');
   const traps = results.filter(r => r.gapClass === 'TRAP');
@@ -459,7 +492,7 @@ async function scan() {
 
   console.log(`\n${divider}`);
   console.log(`Written: ${OUTPUT_FILE}`);
-  console.log(`NOTE: depth measured as dollar NOTIONAL (price×size). Share is LINEAR estimate (real: quadratic + two-sided bonus).`);
+  console.log(`FORMULA: S(v,s)=((v-s)/v)^2, c=3, user at mid (score=1 best-case). ESTIMATE: snapshot-in-time; competitors re-quote; not a guarantee.`);
   console.log(divider);
 }
 

@@ -69,39 +69,62 @@ const VOL_CLS: Record<VolRisk, string> = {
   HIGH:   'text-red-400     border-red-700/40     bg-red-950/20',
 };
 
-// ── Reward math ────────────────────────────────────────────────────────────────
-// Quadratic weight: w = (1 - |price - mid| / halfBand)²
-// halfBand = (rewardsMaxSpread / 100) / 2
-// effectiveDollar = size * price * w
-// share = effectiveDollar / (effectiveDollar + existing_depth_usd)
-// rewardDay = share * rewardsDailyRate
-// BOTH boost: ~2× (two-sided LP gets doubled score weight per Polymarket docs)
+// ── Reward math — Polymarket exact quadratic scoring ──────────────────────────
+// S(v, s) = ((v - s) / v)^2   where v = maxSpread/2 (half-band, cents), s = dist from mid (cents)
+// Q_competitors = Q_min(Q_bids, Q_asks) over live CLOB book
+// Q_user        = S(s_user) * size,  then Q_min applied with c=3
+// share = Q_user / (Q_user + Q_competitors)
+// Adjusted mid: recomputed from orders ≥ minSize (per Polymarket spec).
+// ESTIMATE: snapshot-in-time; competitors re-quote; not a guarantee.
 
 function calcReward(params: {
-  price:           number;
-  size:            number;
-  side:            Side;
-  mid:             number;
-  rewardsMaxSpread: number;
-  rewardsMinSize:  number;
-  existing_depth_usd: number;
+  price:            number;
+  size:             number;
+  side:             Side;
+  mid:              number;         // adjusted mid (from live book)
+  rewardsMaxSpread: number;         // cents (total band width)
+  rewardsMinSize:   number;         // shares
+  bookBids:         BookLevel[];    // live YES bids, sorted desc
+  bookAsks:         BookLevel[];    // live YES asks, sorted asc
   rewardsDailyRate: number;
 }) {
-  const { price, size, side, mid, rewardsMaxSpread, rewardsMinSize, existing_depth_usd, rewardsDailyRate } = params;
-  const halfBand = (rewardsMaxSpread / 100) / 2;
-  const dist     = Math.abs(price - mid);
-  const inBand   = dist <= halfBand;
-  const aboveMin = size >= rewardsMinSize;
+  const { price, size, side, mid, rewardsMaxSpread, rewardsMinSize, bookBids, bookAsks, rewardsDailyRate } = params;
+  const v = rewardsMaxSpread / 2;                     // half-band in cents
+  const S = (p: number): number => {
+    const s = Math.abs(p - mid) * 100;               // distance in cents
+    if (s >= v || v <= 0) return 0;
+    const r = (v - s) / v;
+    return r * r;
+  };
+  const Qminf = (Qb: number, Qa: number): number => {
+    if (mid < 0.10 || mid > 0.90) return Math.min(Qb, Qa);
+    return Math.max(Math.min(Qb, Qa), Math.max(Qb / 3, Qa / 3));
+  };
 
-  const proximity = inBand ? Math.max(0, 1 - dist / halfBand) : 0;
+  // Competitor Q from live book (all orders ≥ minSize)
+  const Qcomp_b = bookBids.filter(l => l.size >= rewardsMinSize).reduce((a, l) => a + S(l.price) * l.size, 0);
+  const Qcomp_a = bookAsks.filter(l => l.size >= rewardsMinSize).reduce((a, l) => a + S(l.price) * l.size, 0);
+  const Qcompetitors = Qminf(Qcomp_b, Qcomp_a);
+
+  // User order
+  const dist     = Math.abs(price - mid);
+  const inBand   = dist * 100 < v;
+  const aboveMin = size >= rewardsMinSize;
+  const proximity = inBand ? (v - dist * 100) / v : 0;
   const quadW     = proximity * proximity;
 
-  const dollarsPerSide = size * price * quadW;
-  const totalDollars   = side === 'BOTH' ? dollarsPerSide * 2 : dollarsPerSide;
+  let Qu_b = 0, Qu_a = 0;
+  if (inBand && aboveMin) {
+    const Qu = quadW * size;
+    if (side === 'BUY'  || side === 'BOTH') Qu_b = Qu;
+    if (side === 'SELL' || side === 'BOTH') Qu_a = Qu;
+  }
+  const Quser = Qminf(Qu_b, Qu_a);
 
-  const share         = totalDollars / (totalDollars + existing_depth_usd);
-  const rewardDay     = share * rewardsDailyRate;
-  const bothBoost     = side === 'BOTH';
+  const share          = Quser > 0 ? Quser / (Quser + Qcompetitors) : 0;
+  const rewardDay      = share * rewardsDailyRate;
+  const dollarsPerSide = size * price * quadW;  // display-only effective $ proxy
+  const bothBoost      = side === 'BOTH';
 
   return { inBand, aboveMin, proximity, quadW, dollarsPerSide, share, rewardDay, bothBoost };
 }
@@ -307,14 +330,15 @@ export default function MarketDetailPage() {
   const validInputs = mkt && !isNaN(tpNum) && tpNum > 0 && tpNum < 1 && !isNaN(tsNum) && tsNum > 0;
 
   const est = validInputs && mkt ? calcReward({
-    price:              tpNum,
-    size:               tsNum,
+    price:            tpNum,
+    size:             tsNum,
     side,
     mid,
-    rewardsMaxSpread:   mkt.rewardsMaxSpread,
-    rewardsMinSize:     mkt.rewardsMinSize,
-    existing_depth_usd: mkt.existing_depth_usd,
-    rewardsDailyRate:   mkt.rewardsDailyRate,
+    rewardsMaxSpread: mkt.rewardsMaxSpread,
+    rewardsMinSize:   mkt.rewardsMinSize,
+    bookBids:         yesBids,
+    bookAsks:         yesAsks,
+    rewardsDailyRate: mkt.rewardsDailyRate,
   }) : null;
 
   function handleClickPrice(p: number) {
@@ -652,14 +676,14 @@ export default function MarketDetailPage() {
                     </p>
                     {est.bothBoost && est.inBand && est.aboveMin && (
                       <p className="font-mono text-[10px] text-emerald-700 mt-0.5 text-right">
-                        includes 2× two-sided boost
+                        two-sided: Q_min(bid Q, ask Q) — highest combined score
                       </p>
                     )}
                   </div>
 
                   <p className="font-mono text-[9px] text-zinc-700 leading-relaxed">
-                    ESTIMATE ONLY. Real scoring uses exact quadratic formula over all resting orders.
-                    Share compresses as more makers enter. Adverse-fill risk not modelled here.
+                    ESTIMATE ONLY · S(v,s)=((v-s)/v)² · live CLOB snapshot · competitors re-quote continuously ·
+                    share compresses as makers enter · adverse-fill risk not modelled.
                   </p>
                 </div>
               )}
