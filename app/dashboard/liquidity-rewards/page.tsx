@@ -5,8 +5,10 @@ import Link from 'next/link';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type VolRisk = 'LOW' | 'MEDIUM' | 'HIGH';
-type Capital = 500 | 5000 | 50000;
+type VolRisk  = 'LOW' | 'MEDIUM' | 'HIGH';
+type GapClass = 'OPEN' | 'TRAP' | 'none';
+type Capital  = 500 | 5000 | 50000;
+type SortMode = 'default' | 'gap';
 
 interface LevelData {
   capital:         number;
@@ -33,6 +35,8 @@ interface Market {
   bookSpread:        number | null;
   sane500:           boolean;
   levels:            Record<string, LevelData>;
+  gapClass:          GapClass;
+  gapScore:          number;
 }
 
 interface Meta {
@@ -92,23 +96,43 @@ function daysLeft(endDate: string | null): number | null {
 }
 
 // ── Sort markets by selected capital level ────────────────────────────────────
-function sortMarkets(markets: Market[], capital: Capital): Market[] {
+function defaultCmp(capital: Capital) {
   const key = String(capital);
-  return [...markets].sort((a, b) => {
+  return (a: Market, b: Market): number => {
     const la = a.levels[key];
     const lb = b.levels[key];
     if (!la || !lb) return 0;
-
     const aFlagged = la.flags.length > 0 ? 1 : 0;
     const bFlagged = lb.flags.length > 0 ? 1 : 0;
     if (aFlagged !== bFlagged) return aFlagged - bFlagged;
-
     const vA = VOL_ORDER[a.volatilityRisk] ?? 2;
     const vB = VOL_ORDER[b.volatilityRisk] ?? 2;
     if (vA !== vB) return vA - vB;
-
     return lb.grossRewardDay - la.grossRewardDay;
-  });
+  };
+}
+
+function sortMarkets(markets: Market[], capital: Capital, mode: SortMode): Market[] {
+  if (mode === 'gap') {
+    // OPEN markets first (by gapScore desc), then rest in default order.
+    // TRAP markets are NOT promoted — they stay in default order with their badge.
+    const opens = markets.filter(m => m.gapClass === 'OPEN').sort((a, b) => b.gapScore - a.gapScore);
+    const rest  = markets.filter(m => m.gapClass !== 'OPEN').sort(defaultCmp(capital));
+    return [...opens, ...rest];
+  }
+  return [...markets].sort(defaultCmp(capital));
+}
+
+// Module-level set so prefetch state survives re-renders without causing them
+const prefetchedBooks = new Set<string>();
+
+function prefetchBook(conditionId: string) {
+  if (prefetchedBooks.has(conditionId)) return;
+  prefetchedBooks.add(conditionId);
+  fetch(`/api/liquidity-rewards/book?conditionId=${encodeURIComponent(conditionId)}`, {
+    cache: 'no-store',
+    priority: 'low',
+  } as RequestInit).catch(() => {/* fire-and-forget */});
 }
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
@@ -126,6 +150,30 @@ function FlagBadge({ text }: { text: string }) {
       {isThin ? 'THIN BOOK' : isFloor ? 'BELOW FLOOR' : text.split('—')[0].trim()}
     </span>
   );
+}
+
+function GapBadge({ gapClass }: { gapClass: GapClass }) {
+  if (gapClass === 'OPEN') {
+    return (
+      <span
+        title="Thinly-covered reward band — low competition entry window. Fills fast and closes as other makers enter. Share is an estimate."
+        className="inline-block px-1.5 py-px border border-emerald-600/60 bg-emerald-950/40 text-emerald-400 text-[9px] font-mono uppercase tracking-wide"
+      >
+        OPEN BAND
+      </span>
+    );
+  }
+  if (gapClass === 'TRAP') {
+    return (
+      <span
+        title="Band is uncovered because adverse-fill risk deters makers — high volatility. Not a free opportunity."
+        className="inline-block px-1.5 py-px border border-amber-600/50 bg-amber-950/30 text-amber-400 text-[9px] font-mono uppercase tracking-wide"
+      >
+        GAP · ADVERSE RISK
+      </span>
+    );
+  }
+  return null;
 }
 
 function MarketCard({
@@ -148,6 +196,8 @@ function MarketCard({
   return (
     <Link
       href={`/dashboard/liquidity-rewards/${encodeURIComponent(market.conditionId)}`}
+      prefetch={true}
+      onMouseEnter={() => prefetchBook(market.conditionId)}
       className={`border-t py-3 grid grid-cols-12 gap-2 items-start text-xs font-mono
         hover:bg-zinc-800/30 transition-colors cursor-pointer
         ${isFlagged ? 'border-zinc-800/60 opacity-75' : 'border-zinc-800'}`}
@@ -182,6 +232,7 @@ function MarketCard({
             </span>
           )}
           {lv.flags.map((f, i) => <FlagBadge key={i} text={f} />)}
+          <GapBadge gapClass={market.gapClass ?? 'none'} />
         </div>
       </div>
 
@@ -218,6 +269,7 @@ function MarketCard({
 export default function LiquidityRewardsPage() {
   const [data,       setData]       = useState<ApiResponse | null>(null);
   const [capital,    setCapital]    = useState<Capital>(500);
+  const [sortMode,   setSortMode]   = useState<SortMode>('default');
   const [howToOpen,  setHowToOpen]  = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [lastFetch,  setLastFetch]  = useState<Date | null>(null);
@@ -245,7 +297,8 @@ export default function LiquidityRewardsPage() {
   const meta    = data?.meta;
   const isStale = data?.stale ?? true;
 
-  const sorted    = sortMarkets(markets, capital);
+  const sorted    = sortMarkets(markets, capital, sortMode);
+  const openCount = markets.filter(m => m.gapClass === 'OPEN').length;
   const levelKey  = String(capital);
   const saneCount = sorted.filter(m => m.levels[levelKey]?.flags.length === 0).length;
 
@@ -322,6 +375,8 @@ export default function LiquidityRewardsPage() {
                   ['THIN BOOK flag', 'Gross yield >5%/day at this capital: the book is very thin and your share will compress as other makers arrive.'],
                   ['BELOW FLOOR flag', 'Gross reward <$1/day at this capital: Polymarket pays out in whole dollars; this position likely earns nothing.'],
                   ['Adverse risk class', 'LOW = slow-moving market, far from resolution. HIGH = near expiry or high recent volatility. HIGH-risk markets are likely to see informed flow picking off your orders.'],
+                  ['OPEN BAND badge', 'Thinly-covered reward band at $500 capital (≥20% estimated share) with a meaningful pool and LOW or MEDIUM adverse-fill risk. This marks where there is room to enter — not a promised return. The window fills quickly as other makers arrive and share compresses. All figures are estimates.'],
+                  ['GAP · ADVERSE RISK badge', 'Band is thinly covered — but precisely because HIGH volatility deters other makers from resting orders. Not a free opportunity: informed flow is likely to pick off your resting orders at a loss that exceeds the reward income.'],
                 ].map(([term, def]) => (
                   <li key={term} className="font-mono text-[11px] text-zinc-500 leading-relaxed pl-3 border-l border-zinc-700/40">
                     <span className="text-zinc-400">{term}:</span> {def}
@@ -374,11 +429,21 @@ export default function LiquidityRewardsPage() {
               </div>
               <div className="font-mono text-[10px] text-zinc-600 uppercase mt-0.5">total pool $/day</div>
             </div>
-            <div className="border border-zinc-800 bg-zinc-900 p-3 text-center">
-              <div className="font-mono text-[11px] font-bold text-zinc-500 tabular-nums pt-1">
-                {meta.generatedAt ? ago(meta.generatedAt) : '—'}
+            <div
+              className={`border p-3 text-center cursor-pointer transition-colors ${
+                openCount > 0
+                  ? 'border-emerald-700/50 bg-emerald-950/20 hover:bg-emerald-950/35'
+                  : 'border-zinc-800 bg-zinc-900'
+              }`}
+              onClick={() => openCount > 0 && setSortMode(m => m === 'gap' ? 'default' : 'gap')}
+              title={openCount > 0 ? 'Toggle: surface open-band markets to the top' : 'No open bands at this scan'}
+            >
+              <div className={`font-mono text-lg font-bold tabular-nums ${openCount > 0 ? 'text-emerald-400' : 'text-zinc-600'}`}>
+                {openCount}
               </div>
-              <div className="font-mono text-[10px] text-zinc-600 uppercase mt-0.5">last scan</div>
+              <div className={`font-mono text-[10px] uppercase mt-0.5 ${openCount > 0 ? 'text-emerald-600' : 'text-zinc-700'}`}>
+                {sortMode === 'gap' ? '▲ open bands (active)' : 'open band gaps'}
+              </div>
             </div>
           </div>
         )}
@@ -388,12 +453,31 @@ export default function LiquidityRewardsPage() {
           <section className="space-y-1">
             <div className="flex items-center gap-3 flex-wrap mb-2">
               <span className="font-mono text-xs text-zinc-400 uppercase tracking-widest">
-                Reward markets — LOW adverse-risk sane first, flagged last
+                {sortMode === 'gap'
+                  ? 'Open-band gaps first — est. share ≥ 20% at $500, LOW/MED risk'
+                  : 'Reward markets — LOW adverse-risk sane first, flagged last'}
               </span>
               <span className="font-mono text-[10px] text-zinc-600">
                 {CAPITAL_LABELS[capital]} capital · depth snapshot every 15 min
               </span>
+              <button
+                onClick={() => setSortMode(m => m === 'gap' ? 'default' : 'gap')}
+                className={`ml-auto font-mono text-[10px] px-2.5 py-1 border transition-colors ${
+                  sortMode === 'gap'
+                    ? 'border-emerald-600/60 bg-emerald-950/30 text-emerald-400'
+                    : 'border-zinc-700 bg-zinc-900 text-zinc-500 hover:border-zinc-500 hover:text-zinc-300'
+                }`}
+              >
+                {sortMode === 'gap' ? '▲ open bands first' : 'open-band gaps first'}
+              </button>
             </div>
+
+            {sortMode === 'gap' && openCount === 0 && (
+              <div className="border border-zinc-800 bg-zinc-900/50 px-4 py-3 font-mono text-[11px] text-zinc-500">
+                No open band gaps detected in this scan — all reward bands are adequately covered at the 20% share threshold.
+                Check back after the next 15-min depth snapshot.
+              </div>
+            )}
 
             {/* Column headers */}
             <div className="grid grid-cols-12 gap-2 pb-1 border-b border-zinc-800 font-mono text-[10px] text-zinc-600 uppercase tracking-widest">

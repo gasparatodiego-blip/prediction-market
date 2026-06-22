@@ -34,6 +34,7 @@ const NEAR_EXPIRY_DAYS  = 14;    // markets closing within → force HIGH vol
 const GAMMA_PAGE_SIZE   = 100;
 const MAX_PAGES         = 21;    // offset 0..2000 (21 × 100)
 const MAX_CLOB_MARKETS  = 120;   // top-N by rate for CLOB depth
+const GAP_SHARE_THRESH  = 0.20;  // ≥20% estimated share at $500 → band is thinly covered
 
 // ── Rate-limited HTTP queue ───────────────────────────────────────────────────
 const _queue = [];
@@ -266,6 +267,32 @@ function computeLevels(rewardsDailyRate, existingDepthUsd) {
   return levels;
 }
 
+// ── Gap / open-band classification ────────────────────────────────────────────
+// gapScore: band-coverage measure = share at $500 expressed as a %, bounded 0–100.
+//   Higher → thinner band → more uncovered.  NOT a yield or return figure.
+// gapClass:
+//   "OPEN"  — thinly covered (share ≥ GAP_SHARE_THRESH) + above $1/day floor
+//              + LOW or MEDIUM volatility → real entry window, not an adverse trap.
+//   "TRAP"  — thinly covered but HIGH volatility: band is thin precisely because
+//              informed flow deters makers.  NOT a free opportunity.
+//   "none"  — band is adequately covered or below floor.
+function classifyGap(levels, volatilityRisk) {
+  const lv500   = levels['500'];
+  const share500 = lv500.share;
+  const gross500 = lv500.grossRewardDay;
+  const gapScore = parseFloat((share500 * 100).toFixed(1));
+
+  let gapClass = 'none';
+  if (share500 >= GAP_SHARE_THRESH && gross500 >= FLOOR_DAILY_USD) {
+    if (volatilityRisk === 'LOW' || volatilityRisk === 'MEDIUM') {
+      gapClass = 'OPEN';
+    } else {
+      gapClass = 'TRAP';
+    }
+  }
+  return { gapClass, gapScore };
+}
+
 // ── Friendly depth string (e.g. $2.3k, $1.2M) ─────────────────────────────────
 function fmtUsd(d) {
   if (d >= 1_000_000) return `$${(d/1_000_000).toFixed(1)}M`;
@@ -310,6 +337,7 @@ async function scan() {
     const volatilityRisk = classifyVol(vol.stdev, vol.range, m.endDate, m.rewardsMaxSpread);
     const existingDepthUsd = book.existingDepthUsd;
     const levels = computeLevels(m.rewardsDailyRate, existingDepthUsd);
+    const { gapClass, gapScore } = classifyGap(levels, volatilityRisk);
 
     // sane/flagged based on $500 level (for sorting; UI re-evaluates per selected level)
     const level500 = levels['500'];
@@ -334,6 +362,8 @@ async function scan() {
       negRisk:           m.negRisk,
       levels,
       sane500:           sane,  // convenience flag; UI re-evaluates per level
+      gapClass,
+      gapScore,
     });
   }
 
@@ -386,7 +416,7 @@ async function scan() {
   for (const r of top5) {
     const q = r.question.slice(0, 80);
     console.log(`\n  ${q}`);
-    console.log(`  Pool: $${r.rewardsDailyRate}/day  Spread: ${r.rewardsMaxSpread}¢  Depth: ${fmtUsd(r.existing_depth_usd)}  Vol: ${r.volatilityRisk}`);
+    console.log(`  Pool: $${r.rewardsDailyRate}/day  Spread: ${r.rewardsMaxSpread}¢  Depth: ${fmtUsd(r.existing_depth_usd)}  Vol: ${r.volatilityRisk}  Gap: ${r.gapClass} (score ${r.gapScore}%)`);
     console.log(`  ${'Capital'.padEnd(10)}  ${'Share%'.padStart(8)}  ${'Gross/day'.padStart(10)}  ${'Yield%'.padStart(8)}  Flags`);
     for (const C of CAPITAL_LEVELS) {
       const lv  = r.levels[String(C)];
@@ -397,6 +427,34 @@ async function scan() {
       const flg = lv.flags.length ? lv.flags.map(f => f.split('—')[0].trim()).join('; ') : '—';
       console.log(`  ${cap}  ${shr}  ${grs}  ${yld}  ${flg}`);
     }
+  }
+
+  // ── Gap sample: 8 markets showing gapClass + inputs (sanity check) ────────────
+  const opens = results.filter(r => r.gapClass === 'OPEN');
+  const traps = results.filter(r => r.gapClass === 'TRAP');
+  const gapSample = [
+    ...opens.slice(0, 5),
+    ...traps.slice(0, 3),
+  ].slice(0, 8);
+
+  if (gapSample.length > 0) {
+    console.log(`\n${divider}`);
+    console.log(`GAP ANALYSIS  —  OPEN: ${opens.length}  TRAP: ${traps.length}  (threshold: share@$500 ≥ ${GAP_SHARE_THRESH * 100}%, gross ≥ $${FLOOR_DAILY_USD}/day)`);
+    console.log(divider);
+    console.log(`  ${'Market (truncated)'.padEnd(55)} ${'Gap'.padEnd(6)} ${'Score'.padStart(6)} ${'Depth'.padStart(8)} ${'Shr@500'.padStart(9)} ${'Grs@500'.padStart(9)} Vol`);
+    console.log(`  ${'-'.repeat(55)} ${'-'.repeat(6)} ${'-'.repeat(6)} ${'-'.repeat(8)} ${'-'.repeat(9)} ${'-'.repeat(9)} ---`);
+    for (const r of gapSample) {
+      const q   = r.question.slice(0, 55).padEnd(55);
+      const gc  = r.gapClass.padEnd(6);
+      const gs  = `${r.gapScore}%`.padStart(6);
+      const dep = fmtUsd(r.existing_depth_usd).padStart(8);
+      const shr = `${(r.levels['500'].share * 100).toFixed(1)}%`.padStart(9);
+      const grs = `$${r.levels['500'].grossRewardDay.toFixed(2)}`.padStart(9);
+      const vol = r.volatilityRisk;
+      console.log(`  ${q} ${gc} ${gs} ${dep} ${shr} ${grs} ${vol}`);
+    }
+  } else {
+    console.log(`\n  GAP ANALYSIS: no open bands or traps at this threshold (share@$500 < ${GAP_SHARE_THRESH * 100}%)`);
   }
 
   console.log(`\n${divider}`);
