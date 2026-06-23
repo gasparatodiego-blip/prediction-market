@@ -85,6 +85,46 @@ function isWarnPrice(p: number): boolean {
   return (p >= 0.80 && p <= 0.90) || (p >= 0.10 && p <= 0.20);
 }
 
+const OBSERVED_MODEL_FULL =
+  "Kalshi hasn't published its LIP scoring formula. This is an inferred flat " +
+  "pro-rata model, not official. Kalshi LIP competition is currently thin, so " +
+  "yields read higher than Polymarket and will compress as makers enter. Estimate only.";
+
+function ObservedModelChip() {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="relative inline-flex items-center">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="inline-flex items-center gap-1 px-2 py-0.5 border border-amber-600/50
+          bg-amber-950/30 text-amber-400 font-mono text-[9px] uppercase tracking-wide
+          hover:bg-amber-950/50 transition-colors"
+        aria-expanded={open}
+      >
+        <span className="w-1.5 h-1.5 rounded-full bg-amber-400/70 shrink-0" />
+        OBSERVED MODEL · estimate
+        <span className="text-amber-600 ml-0.5">{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <span
+          className="absolute top-full left-0 z-20 mt-1.5 w-72 border border-amber-600/40
+            bg-zinc-900 shadow-lg px-3 py-2.5"
+        >
+          <p className="font-mono text-[10px] text-amber-300/80 leading-relaxed">
+            {OBSERVED_MODEL_FULL}
+          </p>
+          <button
+            onClick={() => setOpen(false)}
+            className="font-mono text-[9px] text-zinc-600 hover:text-zinc-400 mt-1.5"
+          >
+            close ✕
+          </button>
+        </span>
+      )}
+    </span>
+  );
+}
+
 // Parse raw Kalshi book response
 function parseKalshiBook(raw: Record<string, unknown>): KBook {
   const ob = (raw.orderbook_fp ?? {}) as Record<string, [string, string][]>;
@@ -418,27 +458,19 @@ export default function KalshiMarketDetailPage() {
       <div className="max-w-5xl mx-auto px-4 py-6 space-y-5">
 
         {/* Breadcrumb */}
-        <Link
-          href="/dashboard/liquidity-rewards"
-          className="font-mono text-[11px] text-zinc-600 hover:text-zinc-400 uppercase tracking-widest"
-        >
-          ← Liquidity Rewards (switch to Kalshi tab)
-        </Link>
-
-        {/* OBSERVED MODEL banner */}
-        <div className="border border-amber-500/50 bg-amber-950/20 px-3 py-2 space-y-0.5">
-          <p className="font-mono text-[11px] text-amber-300 font-semibold uppercase tracking-wide">
-            OBSERVED MODEL — flat pro-rata · NOT Polymarket's quadratic · NOT Kalshi's official formula (not public) · Estimate only
-          </p>
-          <p className="font-mono text-[10px] text-amber-700 leading-relaxed">
-            Kalshi LIP competition is thin — yields compress as makers enter. Not a structural edge.
-          </p>
+        <div className="flex items-center gap-3 flex-wrap">
+          <Link
+            href="/dashboard/liquidity-rewards"
+            className="font-mono text-[11px] text-zinc-600 hover:text-zinc-400 uppercase tracking-widest"
+          >
+            ← Liquidity Rewards
+          </Link>
+          <span className="font-mono text-[10px] text-zinc-700">·</span>
+          <span className="font-mono text-[10px] text-zinc-600 uppercase tracking-widest">
+            Kalshi · live · read-only · no orders placed
+          </span>
+          <ObservedModelChip />
         </div>
-
-        {/* Header context */}
-        <p className="font-mono text-[10px] text-zinc-600 uppercase tracking-widest">
-          Kalshi · live order book · read-only · no orders placed
-        </p>
 
         {/* Market header */}
         <div className="space-y-2">
@@ -636,13 +668,6 @@ export default function KalshiMarketDetailPage() {
               </span>
             </div>
 
-            {/* Observed model note */}
-            <div className="border-b border-amber-800/30 bg-amber-950/10 px-3 py-1.5">
-              <p className="font-mono text-[10px] text-amber-700 leading-relaxed">
-                OBSERVED MODEL — flat pro-rata, not Kalshi's official formula (not public). Estimate only.
-              </p>
-            </div>
-
             <div className="p-4 space-y-4 flex-1">
 
               {/* Posting side */}
@@ -763,7 +788,7 @@ export default function KalshiMarketDetailPage() {
 
                   {/* Reward headline */}
                   <div className="border-t pt-2.5 border-emerald-800/30">
-                    <div className="flex items-baseline justify-between">
+                    <div className="flex items-baseline justify-between gap-2">
                       <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
                         Est. gross reward
                       </span>
@@ -773,20 +798,20 @@ export default function KalshiMarketDetailPage() {
                         {est.aboveMin && !isTrap ? fmtUsd(est.rewardDay) : '$—'}
                       </span>
                     </div>
-                    <p className="font-mono text-[10px] text-zinc-600 text-right">
-                      per day · GROSS · adverse fill risk not modelled
-                    </p>
+                    <div className="flex items-center justify-between mt-0.5">
+                      <span className="font-mono text-[9px] text-amber-700/80 uppercase tracking-wide">
+                        OBSERVED MODEL · estimate
+                      </span>
+                      <span className="font-mono text-[10px] text-zinc-600">
+                        per day · GROSS
+                      </span>
+                    </div>
                     {ticketSide === 'BOTH' && est.aboveMin && (
                       <p className="font-mono text-[10px] text-zinc-700 mt-0.5 text-right">
                         share = min(bid {(est.bidShare*100).toFixed(2)}%, ask {(est.askShare*100).toFixed(2)}%)
                       </p>
                     )}
                   </div>
-
-                  <p className="font-mono text-[9px] text-zinc-700 leading-relaxed">
-                    OBSERVED MODEL · flat pro-rata user_shares/(user+comp) · live book snapshot ·
-                    competitors re-quote · share compresses as makers enter · not Kalshi's official formula.
-                  </p>
                 </div>
               )}
 

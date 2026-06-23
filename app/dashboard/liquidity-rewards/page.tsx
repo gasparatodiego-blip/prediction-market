@@ -522,6 +522,48 @@ function KMarketRow({
   );
 }
 
+// ── Kalshi observed-model chip (compact, expandable) ──────────────────────────
+
+const OBSERVED_MODEL_FULL =
+  "Kalshi hasn't published its LIP scoring formula. This is an inferred flat " +
+  "pro-rata model, not official. Kalshi LIP competition is currently thin, so " +
+  "yields read higher than Polymarket and will compress as makers enter. Estimate only.";
+
+function ObservedModelChip() {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="relative inline-flex items-center">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="inline-flex items-center gap-1 px-2 py-0.5 border border-amber-600/50
+          bg-amber-950/30 text-amber-400 font-mono text-[9px] uppercase tracking-wide
+          hover:bg-amber-950/50 transition-colors"
+        aria-expanded={open}
+      >
+        <span className="w-1.5 h-1.5 rounded-full bg-amber-400/70 shrink-0" />
+        OBSERVED MODEL · estimate
+        <span className="text-amber-600 ml-0.5">{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <span
+          className="absolute top-full left-0 z-20 mt-1.5 w-72 border border-amber-600/40
+            bg-zinc-900 shadow-lg px-3 py-2.5"
+        >
+          <p className="font-mono text-[10px] text-amber-300/80 leading-relaxed">
+            {OBSERVED_MODEL_FULL}
+          </p>
+          <button
+            onClick={() => setOpen(false)}
+            className="font-mono text-[9px] text-zinc-600 hover:text-zinc-400 mt-1.5"
+          >
+            close ✕
+          </button>
+        </span>
+      )}
+    </span>
+  );
+}
+
 // ── KalshiView ─────────────────────────────────────────────────────────────────
 
 function KalshiView() {
@@ -568,23 +610,12 @@ function KalshiView() {
   return (
     <div className="space-y-7">
 
-      {/* OBSERVED MODEL banner */}
-      <div className="border border-amber-500/50 bg-amber-950/20 px-4 py-3 space-y-1.5">
-        <p className="font-mono text-xs text-amber-300 font-semibold uppercase tracking-wide">
-          OBSERVED MODEL — flat pro-rata · NOT Polymarket's quadratic · NOT Kalshi's official formula (not public) · Estimate only
-        </p>
-        <p className="font-mono text-[11px] text-amber-600 leading-relaxed">
-          Kalshi has not published their LIP scoring formula. This model is inferred from observed 1¢/99¢ order stacking behavior.{' '}
-          Kalshi LIP competition is currently thin, so yields read higher than Polymarket — this compresses as makers enter.{' '}
-          <span className="text-amber-500 font-semibold">Not a structural edge.</span>
-        </p>
-      </div>
-
       {/* Header */}
       <div className="flex items-center gap-3 flex-wrap">
         <h1 className="font-mono text-xl font-bold text-zinc-100 tracking-tight">
           KALSHI LIP REWARDS
         </h1>
+        <ObservedModelChip />
         {meta && !isStale ? (
           <span className="flex items-center gap-1.5 font-mono text-xs text-emerald-400 border border-emerald-600/40 bg-emerald-950/30 px-2 py-0.5">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
