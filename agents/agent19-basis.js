@@ -2,6 +2,9 @@
 // agent19-basis.js — Cash-and-carry / basis scanner
 // Covers: Binance COIN-M, Binance USDT-M, OKX, Deribit for BTC/ETH/BNB.
 // Applies the 7 filters from Step-1 analysis. Zero Claude, read-only, free.
+// v2: executable prices (long spot @ spotAsk, short future @ futureBid).
+//     Indicative mid/last values preserved as indicativeBasisPct / netAnnualizedIndicative.
+//     No bid/ask → contract excluded; no fallback to mid.
 'use strict';
 
 const fs    = require('fs');
@@ -21,7 +24,8 @@ const CAP_VOL_F      = 0.05;    // capacity = 5% of vol24
 const CAP_OI_F       = 0.02;    // capacity = 2% of OI (take min)
 const MAX_CAP        = 500_000; // USD, any single opportunity
 
-// Round-trip taker fees (open spot + open future; delivery at expiry ~free)
+// Round-trip taker fees: spot open (taker) + future open (taker) + delivery close (~free).
+// bidSpreadPct is NOT subtracted here — it is already baked into the executable leg prices.
 const FEES = {
   COINM:   0.00165,  // spot 0.10% + COIN-M futures 0.05% + delivery 0.015%
   USDTM:   0.00140,  // spot 0.10% + USDT-M futures 0.04%
@@ -86,7 +90,6 @@ function parseBinanceSym(sym, isUSDTM = false) {
 // BTC-USD-260925 → {asset:'BTC', expiry:Date}
 function parseOKXSym(instId) {
   const parts = instId.split('-');
-  // Only handle BTC-USD-YYMMDD and ETH-USD-YYMMDD (3 parts, no _UM / XPERP)
   if (parts.length !== 3) return null;
   if (parts[1] !== 'USD') return null;
   const ymd = parts[2];
@@ -126,39 +129,76 @@ function capacity(vol24Usd, oiUsd, asset) {
 }
 
 // ── Contract builder ───────────────────────────────────────────────────────────
+//
+// Executable basis: long spot @ spotAsk, short dated future @ futureBid.
+// If either price is missing/zero the contract is excluded — no mid fallback.
+// Fee constants subtract exchange taker fees per leg; bid/ask spread is NOT
+// also subtracted (it is already embedded in the executable leg prices above).
+// Annualization: basis × 365/daysToExpiry — correct for dated delivery futures
+// (no 8-hour funding reset; expiry is the single settlement horizon).
 
-function buildContract({ asset, exchange, venueKey, contract, spot, future, expiryMs,
-                          vol24Usd, oiUsd, bidSpreadPct }) {
+function buildContract({ asset, exchange, venueKey, contract,
+                          spotMid, spotBid, spotAsk,
+                          futureLast, futureBid, futureAsk,
+                          expiryMs, vol24Usd, oiUsd }) {
   const now = Date.now();
   const daysToExpiry = (expiryMs - now) / 86_400_000;
 
   // Filter 1: daysToExpiry < MIN_DAYS
   if (daysToExpiry < MIN_DAYS) return null;
 
-  const basis           = (future - spot) / spot;
-  const grossAnnualized = basis * 365 / daysToExpiry;
-  const fee             = FEES[venueKey] || 0.002;
-  const netAnnualized   = (basis - fee) * 365 / daysToExpiry;
+  // Require real bid/ask on both future legs — book-midpoint indicative needs both;
+  // no fallback to last/mark. Spot bid/ask already guaranteed by fetchSpot bookTicker.
+  if (!spotAsk || spotAsk <= 0 || !futureBid || futureBid <= 0 || !futureAsk || futureAsk <= 0) return null;
 
-  // Filter 4: exclude XPERP — already handled upstream (never passed in)
+  // Book midpoint for future — structural guarantee: futureMidBook >= futureBid and
+  // spotMid <= spotAsk, so indicative >= executable by construction.
+  const futureMidBook = (futureBid + futureAsk) / 2;
 
-  // Backwardation signal (filter 5)
-  if (basis < 0) {
-    if (vol24Usd < MIN_VOL_THIN) return null; // too thin to surface even as signal
+  // ── Indicative basis (book midpoint) ──────────────────────────────────────
+  const indicativeBasisPct      = (futureMidBook - spotMid) / spotMid;
+  const grossAnnualized         = indicativeBasisPct * 365 / daysToExpiry;
+  const fee                     = FEES[venueKey] || 0.002;
+  const netAnnualizedIndicative = (indicativeBasisPct - fee) * 365 / daysToExpiry;
+
+  // ── Executable basis (long spot @ ask, short future @ bid) ───────────────
+  const executableBasisPct      = (futureBid - spotAsk) / spotAsk;
+  const grossAnnualizedExec     = executableBasisPct * 365 / daysToExpiry;
+  // fee subtracted once (taker open on each leg); spread already baked into prices above
+  const netAnnualizedExecutable = (executableBasisPct - fee) * 365 / daysToExpiry;
+
+  // bidSpreadPct on future leg — informational only; already baked into executable
+  const bidSpreadPct = (futureBid > 0 && futureAsk && futureAsk > 0)
+    ? (futureAsk - futureBid) / futureBid
+    : null;
+
+  // Backwardation signal (filter 5) — determined from executable basis
+  if (executableBasisPct < 0) {
+    if (vol24Usd < MIN_VOL_THIN) return null;
     return {
-      type:          'backwardation',
+      type:               'backwardation',
       asset,
       exchange,
       contract,
-      expiry:        new Date(expiryMs).toISOString().slice(0, 10),
-      daysToExpiry:  Math.round(daysToExpiry),
-      spot,
-      future,
-      basis:         round4(basis),
-      annualized:    round4(grossAnnualized),
-      vol24Usd:      Math.round(vol24Usd),
-      signal:        `${asset} futures trade BELOW spot. Likely staking/yield exceeds risk-free rate. ` +
-                     `Reverse carry (short spot + long future) collects the basis but requires borrowing ${asset}.`,
+      expiry:             new Date(expiryMs).toISOString().slice(0, 10),
+      daysToExpiry:       Math.round(daysToExpiry),
+      // Book-mid prices (used for indicative)
+      spot:               round2(spotMid),
+      future:             round2(futureMidBook),
+      futureLast:         futureLast > 0 ? round2(futureLast) : null,
+      // Executable leg prices
+      spotBid:            spotBid != null ? round2(spotBid) : null,
+      spotAsk:            round2(spotAsk),
+      futureBid:          round2(futureBid),
+      futureAsk:          round2(futureAsk),
+      // Basis
+      indicativeBasisPct: round4(indicativeBasisPct),
+      executableBasisPct: round4(executableBasisPct),
+      basis:              round4(indicativeBasisPct),  // backward-compat alias
+      annualized:         round4(grossAnnualizedExec), // executable-based for display
+      vol24Usd:           Math.round(vol24Usd),
+      signal: `${asset} futures trade BELOW spot. Likely staking/yield exceeds risk-free rate. ` +
+              `Reverse carry (short spot + long future) collects the basis but requires borrowing ${asset}.`,
     };
   }
 
@@ -166,14 +206,10 @@ function buildContract({ asset, exchange, venueKey, contract, spot, future, expi
   const t = tier(vol24Usd, oiUsd);
   if (t === 'VERY THIN') return null;
 
-  // Filter 3: net annualized must be > 0
-  if (netAnnualized <= 0) return null;
+  // Filter 3: net annualized must be > 0 — checked on EXECUTABLE basis (conservative)
+  if (netAnnualizedExecutable <= 0) return null;
 
   // Filter 6: coin-margined disclaimer
-  // COIN-M = coin-settled (BTC/ETH collateral, USD-denominated contracts)
-  // Binance USDT-M = linear, cash-settled in USDT → CLEAN USD (only one)
-  // Binance COIN-M / OKX BTC-USD / Deribit std futures = INVERSE / coin-settled
-  // Deribit: instrument_type=reversed, settlement_currency=BTC/ETH — NOT USD
   const coinMargined = ['COINM', 'OKX', 'DERIBIT'].includes(venueKey);
   const coinMarginedNote = coinMargined
     ? venueKey === 'DERIBIT'
@@ -183,34 +219,50 @@ function buildContract({ asset, exchange, venueKey, contract, spot, future, expi
 
   // Filter 7: capacity estimate
   const cap = capacity(vol24Usd, oiUsd, asset);
-
   const expiryDate = new Date(expiryMs).toISOString().slice(0, 10);
-  const verdict    = coinMargined
-    ? `Net +${(netAnnualized * 100).toFixed(2)}%/yr. Coin-settled — USD return not locked.`
-    : `Locked +${(netAnnualized * 100).toFixed(2)}%/yr if held to ${expiryDate}. Cash-settled.`;
+
+  // Headline verdict uses executable (conservative) number
+  const verdict = coinMargined
+    ? `Net +${(netAnnualizedExecutable * 100).toFixed(2)}%/yr executable. Coin-settled — USD return not locked.`
+    : `Locked +${(netAnnualizedExecutable * 100).toFixed(2)}%/yr executable if held to ${expiryDate}. Cash-settled.`;
 
   return {
-    type:             'contango',
+    type:                    'contango',
     asset,
     exchange,
     venueKey,
     contract,
-    expiry:           expiryDate,
-    daysToExpiry:     Math.round(daysToExpiry),
-    spot:             round2(spot),
-    future:           round2(future),
-    basis:            round4(basis),
-    grossAnnualized:  round4(grossAnnualized),
+    expiry:                  expiryDate,
+    daysToExpiry:            Math.round(daysToExpiry),
+    // Book-mid prices (used for indicative); futureLast is last/mark, display only
+    spot:                    round2(spotMid),
+    future:                  round2(futureMidBook),
+    futureLast:              futureLast > 0 ? round2(futureLast) : null,
+    // Executable leg prices
+    spotBid:                 spotBid != null ? round2(spotBid) : null,
+    spotAsk:                 round2(spotAsk),
+    futureBid:               round2(futureBid),
+    futureAsk:               round2(futureAsk),
+    // Basis values
+    indicativeBasisPct:      round4(indicativeBasisPct),
+    executableBasisPct:      round4(executableBasisPct),
+    basis:                   round4(indicativeBasisPct),   // backward-compat alias
+    // Annualized returns (annualization: × 365/daysToExpiry; correct for dated futures)
+    grossAnnualized:         round4(grossAnnualized),
+    grossAnnualizedExec:     round4(grossAnnualizedExec),
     fee,
-    netAnnualized:    round4(netAnnualized),
-    vol24Usd:         Math.round(vol24Usd),
-    oiUsd:            oiUsd ? Math.round(oiUsd) : null,
-    capacityUsd:      cap,
-    tier:             t,
-    thinFlag:         t === 'THIN',
+    netAnnualizedIndicative: round4(netAnnualizedIndicative),
+    netAnnualizedExecutable: round4(netAnnualizedExecutable),
+    netAnnualized:           round4(netAnnualizedExecutable), // headline = executable
+    // Market quality
+    vol24Usd:                Math.round(vol24Usd),
+    oiUsd:                   oiUsd ? Math.round(oiUsd) : null,
+    capacityUsd:             cap,
+    tier:                    t,
+    thinFlag:                t === 'THIN',
     coinMargined,
     coinMarginedNote,
-    bidSpreadPct:     bidSpreadPct ? round4(bidSpreadPct) : null,
+    bidSpreadPct:            bidSpreadPct ? round4(bidSpreadPct) : null,
     verdict,
   };
 }
@@ -219,44 +271,53 @@ function round2(n) { return Math.round(n * 100) / 100; }
 function round4(n) { return Math.round(n * 10000) / 10000; }
 
 // ── Spot prices ────────────────────────────────────────────────────────────────
+// Uses bookTicker to get executable bid/ask on spot leg.
+// Fallback (file) provides mid only — bid/ask = null → contracts excluded.
 
 async function fetchSpot() {
-  // Primary: try exchange-prices.json for BTC/ETH
-  let btc = null, eth = null;
   try {
-    const raw = JSON.parse(fs.readFileSync(SPOT_FILE, 'utf8'));
-    const b   = raw.exchanges?.binance || {};
-    btc = b.BTC?.price ?? null;
-    eth = b.ETH?.price ?? null;
-  } catch { /* file missing */ }
-
-  // Always fetch fresh for BNB/SOL/XRP (not guaranteed in spot file)
-  try {
-    const syms  = encodeURIComponent('["BTCUSDT","ETHUSDT","BNBUSDT","SOLUSDT","XRPUSDT"]');
-    const res   = await get(`https://api.binance.com/api/v3/ticker/price?symbols=${syms}`);
-    const prices = {};
-    for (const { symbol, price } of (res.data || [])) {
-      prices[symbol] = parseFloat(price);
+    const syms = encodeURIComponent('["BTCUSDT","ETHUSDT","BNBUSDT","SOLUSDT","XRPUSDT"]');
+    const res  = await get(`https://api.binance.com/api/v3/ticker/bookTicker?symbols=${syms}`);
+    const out  = {};
+    for (const { symbol, bidPrice, askPrice } of (res.data || [])) {
+      const asset = symbol.replace('USDT', '');
+      const bid   = parseFloat(bidPrice);
+      const ask   = parseFloat(askPrice);
+      out[asset]  = { bid, ask, mid: (bid + ask) / 2 };
     }
-    // Prefer live fetch over file for BTC/ETH too
-    return {
-      BTC: prices.BTCUSDT ?? btc,
-      ETH: prices.ETHUSDT ?? eth,
-      BNB: prices.BNBUSDT ?? null,
-      SOL: prices.SOLUSDT ?? null,
-      XRP: prices.XRPUSDT ?? null,
-    };
+    return out;
   } catch (e) {
-    console.warn('[basis] spot fetch failed, using file:', e.message);
-    return { BTC: btc, ETH: eth, BNB: null, SOL: null, XRP: null };
+    console.warn('[basis] spot bookTicker failed — bid/ask unavailable:', e.message);
+    // File fallback: mid only; bid/ask=null means no executable contracts this cycle
+    try {
+      const raw = JSON.parse(fs.readFileSync(SPOT_FILE, 'utf8'));
+      const b   = raw.exchanges?.binance || {};
+      const out = {};
+      for (const [asset, info] of Object.entries(b)) {
+        if (info?.price) out[asset] = { bid: null, ask: null, mid: info.price };
+      }
+      return out;
+    } catch { return {}; }
   }
 }
 
 // ── Binance COIN-M ────────────────────────────────────────────────────────────
 
 async function fetchCOINM(spot) {
-  const res = await get('https://dapi.binance.com/dapi/v1/ticker/24hr');
+  // Fetch 24hr ticker (volume/lastPrice) and bookTicker (bid/ask) in parallel
+  const [res, btRes] = await Promise.all([
+    get('https://dapi.binance.com/dapi/v1/ticker/24hr'),
+    get('https://dapi.binance.com/dapi/v1/ticker/bookTicker'),
+  ]);
   if (res.status !== 200 || !Array.isArray(res.data)) return [];
+
+  // Build bid/ask map from bookTicker
+  const btMap = {};
+  for (const x of (Array.isArray(btRes.data) ? btRes.data : [])) {
+    const bid = parseFloat(x.bidPrice || 0);
+    const ask = parseFloat(x.askPrice || 0);
+    if (bid > 0 && ask > 0) btMap[x.symbol] = { bid, ask };
+  }
 
   // Filter: dated (has _), not PERP
   const dated = res.data.filter(x => x.symbol.includes('_') && !x.symbol.includes('PERP'));
@@ -279,8 +340,8 @@ async function fetchCOINM(spot) {
     if (!parsed) continue;
     const { asset, expiry } = parsed;
 
-    const spotPrice = spot[asset];
-    if (!spotPrice) continue;
+    const sp = spot[asset];
+    if (!sp?.mid) continue;
 
     // Filter: only BTC, ETH, BNB, SOL per decision matrix
     if (!['BTC', 'ETH', 'BNB', 'SOL'].includes(asset)) continue;
@@ -289,18 +350,20 @@ async function fetchCOINM(spot) {
     const vol24Usd = parseFloat(x.volume || 0) * csz;
     const oiContr  = oiMap[x.symbol] ?? 0;
     const oiUsd    = oiContr * csz;
-    const future   = parseFloat(x.lastPrice || 0);
-
-    if (future <= 0) continue;
+    const bt       = btMap[x.symbol];
 
     const c = buildContract({
       asset,
-      exchange:    'Binance COIN-M',
-      venueKey:    'COINM',
-      contract:    x.symbol,
-      spot:        spotPrice,
-      future,
-      expiryMs:    expiry.getTime(),
+      exchange:  'Binance COIN-M',
+      venueKey:  'COINM',
+      contract:  x.symbol,
+      spotMid:   sp.mid,
+      spotBid:   sp.bid,
+      spotAsk:   sp.ask,
+      futureLast: parseFloat(x.lastPrice || 0),
+      futureBid:  bt?.bid ?? null,
+      futureAsk:  bt?.ask ?? null,
+      expiryMs:   expiry.getTime(),
       vol24Usd,
       oiUsd,
     });
@@ -312,8 +375,19 @@ async function fetchCOINM(spot) {
 // ── Binance USDT-M ────────────────────────────────────────────────────────────
 
 async function fetchUSDTM(spot) {
-  const res = await get('https://fapi.binance.com/fapi/v1/ticker/24hr');
+  // Fetch 24hr ticker (volume/lastPrice) and bookTicker (bid/ask) in parallel
+  const [res, btRes] = await Promise.all([
+    get('https://fapi.binance.com/fapi/v1/ticker/24hr'),
+    get('https://fapi.binance.com/fapi/v1/ticker/bookTicker'),
+  ]);
   if (res.status !== 200 || !Array.isArray(res.data)) return [];
+
+  const btMap = {};
+  for (const x of (Array.isArray(btRes.data) ? btRes.data : [])) {
+    const bid = parseFloat(x.bidPrice || 0);
+    const ask = parseFloat(x.askPrice || 0);
+    if (bid > 0 && ask > 0) btMap[x.symbol] = { bid, ask };
+  }
 
   // Only quarterly dated contracts (symbol has _ and no PERP)
   const dated = res.data.filter(x => x.symbol.includes('_') && !x.symbol.includes('PERP'));
@@ -326,13 +400,12 @@ async function fetchUSDTM(spot) {
   for (let i = 0; i < dated.length; i++) {
     const r = oiRes[i];
     if (r.status === 'fulfilled' && r.value.data?.openInterest) {
-      const sym = dated[i].symbol;
+      const sym    = dated[i].symbol;
       const parsed = parseBinanceSym(sym, true);
       if (parsed) {
-        // OI in the asset (BTC/ETH)
         const oiAsset = parseFloat(r.value.data.openInterest);
-        const sp = spot[parsed.asset] ?? 0;
-        oiMap[sym] = oiAsset * sp;
+        const spMid   = spot[parsed.asset]?.mid ?? 0;
+        oiMap[sym]    = oiAsset * spMid;
       }
     }
   }
@@ -345,24 +418,26 @@ async function fetchUSDTM(spot) {
 
     // Only BTC, ETH per decision matrix
     if (!['BTC', 'ETH'].includes(asset)) continue;
-    const spotPrice = spot[asset];
-    if (!spotPrice) continue;
+    const sp = spot[asset];
+    if (!sp?.mid) continue;
 
     // quoteVolume for USDT-M is in USDT (USD)
     const vol24Usd = parseFloat(x.quoteVolume || 0);
     const oiUsd    = oiMap[x.symbol] ?? null;
-    const future   = parseFloat(x.lastPrice || 0);
-
-    if (future <= 0) continue;
+    const bt       = btMap[x.symbol];
 
     const c = buildContract({
       asset,
-      exchange: 'Binance USDT-M',
-      venueKey: 'USDTM',
-      contract: x.symbol,
-      spot:     spotPrice,
-      future,
-      expiryMs: expiry.getTime(),
+      exchange:  'Binance USDT-M',
+      venueKey:  'USDTM',
+      contract:  x.symbol,
+      spotMid:   sp.mid,
+      spotBid:   sp.bid,
+      spotAsk:   sp.ask,
+      futureLast: parseFloat(x.lastPrice || 0),
+      futureBid:  bt?.bid ?? null,
+      futureAsk:  bt?.ask ?? null,
+      expiryMs:   expiry.getTime(),
       vol24Usd,
       oiUsd,
     });
@@ -374,19 +449,19 @@ async function fetchUSDTM(spot) {
 // ── OKX ───────────────────────────────────────────────────────────────────────
 
 async function fetchOKX(spot) {
-  // Fetch tickers + OI for BTC-USD and ETH-USD in parallel
+  // tickers payload includes last, bidPx, askPx — no extra bookTicker call needed
   const [tickRes, oiBtc, oiEth] = await Promise.all([
     get('https://www.okx.com/api/v5/market/tickers?instType=FUTURES'),
     get('https://www.okx.com/api/v5/public/open-interest?instType=FUTURES&uly=BTC-USD'),
     get('https://www.okx.com/api/v5/public/open-interest?instType=FUTURES&uly=ETH-USD'),
   ]);
 
-  // Build OI map (oiCcy = in coin, multiply by spot for USD)
+  // Build OI map (oiCcy = in coin, multiply by spot mid for USD)
   const oiMap = {};
   for (const [oiData, asset] of [[oiBtc, 'BTC'], [oiEth, 'ETH']]) {
     for (const x of (oiData.data?.data || [])) {
-      const sp = spot[asset] ?? 0;
-      oiMap[x.instId] = parseFloat(x.oiCcy || 0) * sp;
+      const spMid = spot[asset]?.mid ?? 0;
+      oiMap[x.instId] = parseFloat(x.oiCcy || 0) * spMid;
     }
   }
 
@@ -402,30 +477,29 @@ async function fetchOKX(spot) {
 
     // Decision matrix: BTC and ETH only for OKX
     if (!['BTC', 'ETH'].includes(asset)) continue;
-    const spotPrice = spot[asset];
-    if (!spotPrice) continue;
+    const sp = spot[asset];
+    if (!sp?.mid) continue;
 
-    // vol24Ccy is in the coin (BTC/ETH) — convert to USD
-    const vol24Usd = parseFloat(x.volCcy24h || 0) * spotPrice;
+    // vol24Ccy is in the coin (BTC/ETH) — convert to USD using mid
+    const vol24Usd = parseFloat(x.volCcy24h || 0) * sp.mid;
     const oiUsd    = oiMap[instId] ?? null;
-    const future   = parseFloat(x.last || 0);
     const bid      = parseFloat(x.bidPx || 0);
     const ask      = parseFloat(x.askPx || 0);
-    const bidSpreadPct = (bid > 0 && ask > 0) ? (ask - bid) / bid : null;
-
-    if (future <= 0) continue;
 
     const c = buildContract({
       asset,
-      exchange:    'OKX',
-      venueKey:    'OKX',
-      contract:    instId,
-      spot:        spotPrice,
-      future,
-      expiryMs:    expiry.getTime(),
+      exchange:  'OKX',
+      venueKey:  'OKX',
+      contract:  instId,
+      spotMid:   sp.mid,
+      spotBid:   sp.bid,
+      spotAsk:   sp.ask,
+      futureLast: parseFloat(x.last || 0),
+      futureBid:  bid > 0 ? bid : null,
+      futureAsk:  ask > 0 ? ask : null,
+      expiryMs:  expiry.getTime(),
       vol24Usd,
       oiUsd,
-      bidSpreadPct,
     });
     if (c) results.push(c);
   }
@@ -435,6 +509,7 @@ async function fetchOKX(spot) {
 // ── Deribit ───────────────────────────────────────────────────────────────────
 
 async function fetchDeribit(spot) {
+  // book_summary includes mark_price, last, bid_price, ask_price — no extra call needed
   const [btcRes, ethRes] = await Promise.all([
     get('https://www.deribit.com/api/v2/public/get_book_summary_by_currency?currency=BTC&kind=future'),
     get('https://www.deribit.com/api/v2/public/get_book_summary_by_currency?currency=ETH&kind=future'),
@@ -443,8 +518,8 @@ async function fetchDeribit(spot) {
   const results = [];
   for (const [data, asset] of [[btcRes.data?.result, 'BTC'], [ethRes.data?.result, 'ETH']]) {
     if (!Array.isArray(data)) continue;
-    const spotPrice = spot[asset];
-    if (!spotPrice) continue;
+    const sp = spot[asset];
+    if (!sp?.mid) continue;
 
     for (const x of data) {
       const name = x.instrument_name;
@@ -453,27 +528,26 @@ async function fetchDeribit(spot) {
       const parsed = parseDeribitSym(name);
       if (!parsed || parsed.asset !== asset) continue;
 
-      const future   = parseFloat(x.mark_price || x.last || 0);
+      const bid      = parseFloat(x.bid_price || 0);
+      const ask      = parseFloat(x.ask_price || 0);
       // vol24_usd and open_interest are in USD for Deribit futures
       const vol24Usd = parseFloat(x.volume_usd || 0);
       const oiUsd    = parseFloat(x.open_interest || 0);
-      const bid      = parseFloat(x.bid_price || 0);
-      const ask      = parseFloat(x.ask_price || 0);
-      const bidSpreadPct = (bid > 0 && ask > 0) ? (ask - bid) / bid : null;
-
-      if (future <= 0) continue;
 
       const c = buildContract({
         asset,
-        exchange:    'Deribit',
-        venueKey:    'DERIBIT',
-        contract:    name,
-        spot:        spotPrice,
-        future,
-        expiryMs:    parsed.expiry.getTime(),
+        exchange:  'Deribit',
+        venueKey:  'DERIBIT',
+        contract:  name,
+        spotMid:    sp.mid,
+        spotBid:    sp.bid,
+        spotAsk:    sp.ask,
+        futureLast: parseFloat(x.mark_price || x.last || 0),
+        futureBid:  bid > 0 ? bid : null,
+        futureAsk:  ask > 0 ? ask : null,
+        expiryMs:  parsed.expiry.getTime(),
         vol24Usd,
         oiUsd,
-        bidSpreadPct,
       });
       if (c) results.push(c);
     }
@@ -516,17 +590,22 @@ async function scan() {
   const best = opportunities[0] ?? null;
 
   atomicWrite(OUTPUT_FILE, {
-    updatedAt:      new Date().toISOString(),
-    agentVersion:   'agent19-basis v1',
-    spot:           { BTC: spot.BTC, ETH: spot.ETH, BNB: spot.BNB, SOL: spot.SOL },
+    updatedAt:    new Date().toISOString(),
+    agentVersion: 'agent19-basis v2',
+    spot: {
+      BTC: spot.BTC?.mid ?? null,
+      ETH: spot.ETH?.mid ?? null,
+      BNB: spot.BNB?.mid ?? null,
+      SOL: spot.SOL?.mid ?? null,
+    },
     opportunities,
     backwardation,
     summary: {
-      count:              opportunities.length,
-      bestNetAnnualized:  best?.netAnnualized ?? null,
-      bestContract:       best?.contract ?? null,
-      bestExchange:       best?.exchange ?? null,
-      bestAsset:          best?.asset ?? null,
+      count:             opportunities.length,
+      bestNetAnnualized: best?.netAnnualized ?? null,
+      bestContract:      best?.contract ?? null,
+      bestExchange:      best?.exchange ?? null,
+      bestAsset:         best?.asset ?? null,
     },
     disclaimer: DISCLAIMER,
   });
@@ -534,12 +613,12 @@ async function scan() {
   console.log(
     `[basis] done in ${Date.now() - t0}ms — ` +
     `${opportunities.length} opportunities, ${backwardation.length} backwardation signals. ` +
-    `Best: ${best ? `${best.exchange} ${best.contract} net=${(best.netAnnualized*100).toFixed(2)}%/yr` : 'none'}`
+    `Best: ${best ? `${best.exchange} ${best.contract} exec=${(best.netAnnualizedExecutable*100).toFixed(2)}%/yr ind=${(best.netAnnualizedIndicative*100).toFixed(2)}%/yr` : 'none'}`
   );
 }
 
 async function main() {
-  console.log('[agent19] basis scanner starting — zero Claude, read-only');
+  console.log('[agent19] basis scanner v2 starting — executable prices, zero Claude, read-only');
   await sleep(STARTUP_DELAY);
   await scan();
   setInterval(scan, REFRESH_MS);

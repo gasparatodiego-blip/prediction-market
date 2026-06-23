@@ -5,40 +5,60 @@ import Link from 'next/link';
 import { ArrowLeft, RefreshCw, TrendingDown } from 'lucide-react';
 
 interface Contract {
-  asset:            string;
-  exchange:         string;
-  venueKey:         string;
-  contract:         string;
-  expiry:           string;
-  daysToExpiry:     number;
-  spot:             number;
-  future:           number;
-  basis:            number;
-  grossAnnualized:  number;
-  fee:              number;
-  netAnnualized:    number;
-  vol24Usd:         number;
-  oiUsd:            number | null;
-  capacityUsd:      number;
-  tier:             string;
-  thinFlag:         boolean;
-  coinMargined:     boolean;
-  coinMarginedNote: string | null;
-  verdict:          string;
+  asset:                   string;
+  exchange:                string;
+  venueKey:                string;
+  contract:                string;
+  expiry:                  string;
+  daysToExpiry:            number;
+  // Book-mid prices (indicative basis uses these)
+  spot:                    number;
+  future:                  number;  // futureMidBook = (futureBid + futureAsk) / 2
+  futureLast:              number | null;  // last trade or mark price — display only
+  // Executable leg prices
+  spotBid:                 number | null;
+  spotAsk:                 number | null;
+  futureBid:               number | null;
+  futureAsk:               number | null;
+  // Basis values
+  indicativeBasisPct:      number;
+  executableBasisPct:      number;
+  basis:                   number;  // backward-compat alias = indicativeBasisPct
+  // Annualized returns
+  grossAnnualized:         number;
+  grossAnnualizedExec:     number;
+  fee:                     number;
+  netAnnualizedIndicative: number;
+  netAnnualizedExecutable: number;
+  netAnnualized:           number;  // headline = netAnnualizedExecutable
+  // Market quality
+  vol24Usd:                number;
+  oiUsd:                   number | null;
+  capacityUsd:             number;
+  tier:                    string;
+  thinFlag:                boolean;
+  coinMargined:            boolean;
+  coinMarginedNote:        string | null;
+  bidSpreadPct:            number | null;
+  verdict:                 string;
 }
 
 interface BackwardContract {
-  asset:        string;
-  exchange:     string;
-  contract:     string;
-  expiry:       string;
-  daysToExpiry: number;
-  spot:         number;
-  future:       number;
-  basis:        number;
-  annualized:   number;
-  vol24Usd:     number;
-  signal:       string;
+  asset:               string;
+  exchange:            string;
+  contract:            string;
+  expiry:              string;
+  daysToExpiry:        number;
+  spot:                number;
+  future:              number;
+  spotAsk:             number | null;
+  futureBid:           number | null;
+  indicativeBasisPct:  number;
+  executableBasisPct:  number;
+  basis:               number;  // backward-compat alias
+  annualized:          number;
+  vol24Usd:            number;
+  signal:              string;
 }
 
 interface Summary {
@@ -113,24 +133,27 @@ function ContangoRow({ c }: { c: Contract }) {
             )}
           </div>
 
-          {/* Hero: net annualized % */}
+          {/* Hero: net annualized % — executable (conservative) */}
           <div className="text-right shrink-0">
             <div className={`font-mono text-xl font-bold tabular-nums ${isClean ? 'text-emerald-300' : 'text-amber-300'}`}>
-              +{(c.netAnnualized * 100).toFixed(2)}%
+              +{(c.netAnnualizedExecutable * 100).toFixed(2)}%
             </div>
-            <div className="font-mono text-xs text-zinc-500">net/yr locked basis</div>
+            <div className="font-mono text-xs text-zinc-500">net/yr (executable)</div>
+            <div className="font-mono text-xs text-zinc-600 mt-0.5">
+              indicative (mid): +{(c.netAnnualizedIndicative * 100).toFixed(2)}%
+            </div>
           </div>
         </div>
 
         {/* Chips row: spot · future · basis · capacity */}
         <div className="flex flex-wrap gap-2 mt-3">
           {[
-            { label: 'spot',     value: `$${c.spot.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` },
-            { label: 'future',   value: `$${c.future.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` },
-            { label: 'basis',    value: `+${(c.basis * 100).toFixed(2)}%` },
-            { label: 'capacity', value: fmtK(c.capacityUsd) },
-            { label: 'vol 24h',  value: fmtK(c.vol24Usd) },
-            { label: 'exp',      value: c.expiry },
+            { label: 'spot ask',   value: c.spotAsk != null ? `$${c.spotAsk.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `$${c.spot.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` },
+            { label: 'future bid', value: c.futureBid != null ? `$${c.futureBid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `$${c.future.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` },
+            { label: 'exec basis', value: `+${(c.executableBasisPct * 100).toFixed(2)}%` },
+            { label: 'capacity',   value: fmtK(c.capacityUsd) },
+            { label: 'vol 24h',    value: fmtK(c.vol24Usd) },
+            { label: 'exp',        value: c.expiry },
           ].map(({ label, value }) => (
             <div key={label} className="flex items-center gap-1 text-xs font-mono px-2 py-1 rounded bg-zinc-800 border border-zinc-700">
               <span className="text-zinc-500">{label}</span>
