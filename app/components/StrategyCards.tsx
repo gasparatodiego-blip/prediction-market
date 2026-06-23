@@ -13,7 +13,7 @@ const TAGLINES: Record<string, string> = {
   prediction: 'Two prices, one outcome. Pocket the gap.',
   carry:      'Lock the basis. Hands-off yield to expiry.',
   traders:    'Shadow the wallets that win. Real P&L, zero hype.',
-  rewards:    'Get paid to quote near the mid. Real pools, your measured share.',
+  rewards:    'Get paid to quote near the mid — real pools, your measured share.',
   // strip-only (shown when offline / empty / coming-soon)
   sports:     'Books disagree, you win either way.',
 };
@@ -78,9 +78,16 @@ function LiveCard({ cat, flashKey }: { cat: TickerItem; flashKey: number }) {
         </div>
 
         {/* Tagline */}
-        <p className="font-mono text-[8.5px] text-text-secondary leading-relaxed flex-1 mb-2">
-          {TAGLINES[cat.key] ?? cat.note}
-        </p>
+        <div className="flex-1 mb-2">
+          <p className="font-mono text-[8.5px] text-text-secondary leading-relaxed">
+            {TAGLINES[cat.key] ?? cat.note}
+          </p>
+          {cat.platforms && cat.platforms.length > 0 && (
+            <p className="font-mono text-[7px] text-text-muted/40 mt-0.5">
+              {cat.platforms.join(' · ')}
+            </p>
+          )}
+        </div>
 
         {/* Metric — remounts on value change → flash plays */}
         <div key={flashKey}>

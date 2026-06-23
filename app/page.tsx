@@ -37,7 +37,7 @@ export default function HomePage() {
                 STRATEGIES
               </span>
               <span className="font-mono text-[9px] text-text-muted/50 hidden sm:block">
-                Eight ways to find an edge. All monitored. All measured.
+                Multiple ways to find an edge. All monitored, all net of fees.
               </span>
             </div>
             <StrategyCards />

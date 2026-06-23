@@ -11,7 +11,9 @@ const SPORTS_FILE       = '/tmp/sports-odds.json';
 // Prediction: same post-gate sources as the detail page (/api/prediction)
 const REPRICED_FILE     = '/tmp/repriced-opportunities.json';
 const DISCOVERY_FILE    = '/tmp/arbitrage-opportunities.json';
-const REWARDS_FILE      = '/root/prediction-market/data/liquidity-rewards.json';
+const REWARDS_FILE         = '/root/prediction-market/data/liquidity-rewards.json';
+const KALSHI_REWARDS_FILE  = '/root/prediction-market/data/kalshi-rewards.json';
+const LIMITLESS_REWARDS_FILE = '/root/prediction-market/data/limitless-rewards.json';
 
 export interface TickerItem {
   key:         string;
@@ -28,6 +30,7 @@ export interface TickerItem {
   //   'ceiling'    → theoretical ceiling, variable/not locked (Crypto & Funding)
   //   'estimate'   → linear share estimate, gross, adverse-fill risk not subtracted
   displayKind?: 'net' | 'annualized' | 'ceiling' | 'estimate';
+  platforms?:  string[];  // rewards card: live-data platform names
 }
 
 export async function GET() {
@@ -136,6 +139,25 @@ export async function GET() {
       rewardsNote = `$${lv.grossRewardDay.toFixed(2)}/day est · $500 · gross`;
     }
   } catch { /* file absent */ }
+
+  // ── Check which reward platforms have fresh data ───────────────────────────
+  let kalshiRewardsLive = false;
+  try {
+    const kr  = JSON.parse(fs.readFileSync(KALSHI_REWARDS_FILE, 'utf8'));
+    const age = Date.now() - new Date(kr._meta?.timestamp ?? 0).getTime();
+    kalshiRewardsLive = age < 40 * 60_000 && (kr.markets?.length ?? 0) > 0;
+  } catch { /* file absent */ }
+
+  let limitlessRewardsLive = false;
+  try {
+    const lr = JSON.parse(fs.readFileSync(LIMITLESS_REWARDS_FILE, 'utf8'));
+    limitlessRewardsLive = (lr.markets?.length ?? 0) > 0;
+  } catch { /* file absent */ }
+
+  const rewardsPlatforms: string[] = [];
+  if (rewardsRunning)       rewardsPlatforms.push('Polymarket');
+  if (kalshiRewardsLive)    rewardsPlatforms.push('Kalshi');
+  if (limitlessRewardsLive) rewardsPlatforms.push('Limitless');
 
   // ── Prediction: read from the same post-gate sources as the detail page ─────
   // repriced-opportunities.json has live prices (evaporated pairs removed);
@@ -263,6 +285,7 @@ export async function GET() {
         : rewardsRunning ? 'no sane markets · try later'
         : 'agent warming up',
       displayKind: 'estimate' as const,
+      platforms:   rewardsPlatforms,
     },
   ];
 
