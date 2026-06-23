@@ -336,21 +336,15 @@ function buildExitAlertText(opp, threshold) {
 
 // ── Prediction alert scanning ─────────────────────────────────────────────────
 function loadPredictionData() {
-  // Reads from the same post-same-event-gate sources as /api/prediction.
-  // Only live-cashable results (passed repricer) qualify for alerts.
+  // Only reads from agent23's live-verified repriced file.
+  // If the file is absent, unreadable, or an opportunity has not been repriced
+  // yet, this returns [] — no alert fires. Never falls through to raw discovery.
   try {
     const f = JSON.parse(fs.readFileSync(PRED_REPRICED, 'utf8'));
     return (f.opportunities || []).filter(
       o => o.cashable === true && typeof o.roi === 'number' && o.roi > 0 && o.roi <= PRED_ROI_CEIL
     );
-  } catch {
-    try {
-      const f = JSON.parse(fs.readFileSync(PRED_DISCOVERY, 'utf8'));
-      return (f.opportunities || []).filter(
-        o => o.cashable === true && typeof o.roi === 'number' && o.roi > 0 && o.roi <= PRED_ROI_CEIL
-      );
-    } catch { return []; }
-  }
+  } catch { return []; }
 }
 
 function buildPredAlertText(opp) {
