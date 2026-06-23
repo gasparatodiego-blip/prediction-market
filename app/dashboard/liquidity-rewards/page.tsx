@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 
 // ── Types · Polymarket ─────────────────────────────────────────────────────────
@@ -571,7 +571,9 @@ function KalshiView() {
   const [capital,    setCapital]    = useState<Capital>(500);
   const [howToOpen,  setHowToOpen]  = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [retryNote,  setRetryNote]  = useState<string | null>(null);
   const [lastFetch,  setLastFetch]  = useState<Date | null>(null);
+  const hasLoadedRef = useRef(false);
 
   async function poll() {
     try {
@@ -580,9 +582,16 @@ function KalshiView() {
       const json = await res.json() as KData;
       setData(json);
       setFetchError(null);
+      setRetryNote(null);
       setLastFetch(new Date());
+      hasLoadedRef.current = true;
     } catch (e: any) {
-      setFetchError(e.message ?? 'fetch error');
+      const msg = e.message ?? 'fetch error';
+      if (hasLoadedRef.current) {
+        setRetryNote(msg);
+      } else {
+        setFetchError(msg);
+      }
     }
   }
 
@@ -641,9 +650,15 @@ function KalshiView() {
         </div>
       )}
 
-      {fetchError && (
+      {fetchError && !data && (
         <div className="font-mono text-xs text-red-400 border border-red-800 bg-red-950/20 px-3 py-2">
           {fetchError}
+        </div>
+      )}
+
+      {retryNote && data && (
+        <div className="font-mono text-xs text-zinc-500 border border-zinc-800 bg-zinc-900/50 px-3 py-2">
+          ↻ retrying… ({retryNote}){lastFetch ? ` · data ${ago(lastFetch.toISOString())}` : ''}
         </div>
       )}
 

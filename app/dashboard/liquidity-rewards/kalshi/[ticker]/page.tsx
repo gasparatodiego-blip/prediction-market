@@ -365,10 +365,12 @@ export default function KalshiMarketDetailPage() {
     return () => clearInterval(pollRef.current);
   }, [fetchBook]);
 
-  // Scroll ask section to bottom (best ask sits at bottom above mid row)
+  // Scroll ask section to bottom so best ask sits adjacent to mid row.
+  // requestAnimationFrame defers until after browser layout is committed.
   useEffect(() => {
     const el = askContainerRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (!el) return;
+    requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
   }, [book, bookSide]);
 
   // ── Derived book data ─────────────────────────────────────────────────────────
