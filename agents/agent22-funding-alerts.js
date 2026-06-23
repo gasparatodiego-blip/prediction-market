@@ -354,29 +354,42 @@ function loadPredictionData() {
 }
 
 function buildPredAlertText(opp) {
-  const q       = (opp.question || opp.title || '').slice(0, 100);
-  const low     = opp.lowMarket  || {};
-  const high    = opp.highMarket || {};
-  const spread  = (opp.spread  || 0).toFixed(1);
-  const roi     = (opp.roi     || 0).toFixed(2);
-  const days    = opp.daysToResolution ? `${opp.daysToResolution}d to resolution` : '';
-  const yesPrice = low.yesAsk  ? (low.yesAsk  * 100).toFixed(1) : String(low.probability  || '?');
-  const noPrice  = high.yesBid ? ((1 - high.yesBid) * 100).toFixed(1) : String(100 - (high.probability || 0));
+  const detectedAt = new Date().toUTCString().replace(/:\d\d GMT$/, ' UTC');
+  const q          = (opp.question || opp.title || '').slice(0, 100);
+  const low        = opp.lowMarket  || {};
+  const high       = opp.highMarket || {};
+  const roi        = (opp.roi || 0).toFixed(2);
+  const days       = opp.daysToResolution ? `${opp.daysToResolution}d to resolution` : '';
+  const yesPrice   = low.yesAsk  ? (low.yesAsk  * 100).toFixed(1) : String(low.probability  || '?');
+  const noPrice    = high.yesBid ? ((1 - high.yesBid) * 100).toFixed(1) : String(100 - (high.probability || 0));
+  const lowPlat    = low.platform  || '?';
+  const highPlat   = high.platform || '?';
+  const lowUrl     = low.url  || null;
+  const highUrl    = high.url || null;
 
-  return [
-    `🔔 <b>New prediction result</b>`,
+  const lines = [
+    `🔔 <b>Prediction arb detected — ${detectedAt}</b>`,
+    `<i>Prices move fast. Verify live before acting.</i>`,
     ``,
     `<b>${q}</b>`,
     ``,
-    `Spread: <b>${spread}pp</b>${days ? `  ·  ${days}` : ''}`,
+    `At detection: <b>${lowPlat}</b> YES ${yesPrice}¢ / <b>${highPlat}</b> NO ${noPrice}¢ → est. <b>+${roi}%</b> net${days ? `  ·  ${days}` : ''}`,
+    `<i>These prices are from the detection moment and may already have moved.</i>`,
     ``,
-    `How to act: Buy YES on <b>${low.platform || '?'}</b> at ${yesPrice}¢,`,
-    `then Buy NO on <b>${high.platform || '?'}</b> at ${noPrice}¢.`,
-    `Est. net after fees: <b>+${roi}%</b>`,
-    ``,
-    `⚠ Verify resolution criteria on both platforms before trading.`,
-    `<i>Not financial advice. Prices are snapshots.</i>`,
-  ].join('\n');
+    `Open both markets and confirm the spread still exists before trading — short-dated and sports markets often close within minutes.`,
+  ];
+
+  if (lowUrl || highUrl) {
+    lines.push(``);
+    if (lowUrl)  lines.push(`• ${lowPlat}: ${lowUrl}`);
+    if (highUrl) lines.push(`• ${highPlat}: ${highUrl}`);
+  }
+
+  lines.push(``);
+  lines.push(`⚠ Verify resolution criteria match on both platforms before trading.`);
+  lines.push(`<i>Not financial advice.</i>`);
+
+  return lines.join('\n');
 }
 
 async function scanPredictionAlerts(subs) {
