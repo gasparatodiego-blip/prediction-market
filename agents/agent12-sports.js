@@ -134,6 +134,53 @@ function sportLabelFor(key) {
   return SPORT_LABEL_MAP[key] ?? key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
+// ── Settlement-basis derivation ───────────────────────────────────────────────
+// WC 2026: group stage ends Jun 26; Round of 32 (first knockout) starts Jun 27.
+// Use Jun 28 as conservative cutoff to catch any late group games and all knockouts.
+const WC_KNOCKOUT_START = new Date('2026-06-28T00:00:00Z');
+
+function deriveSettlement(sport, type, commenceTime) {
+  if (sport === 'soccer_fifa_world_cup') {
+    const isKnockout = new Date(commenceTime) >= WC_KNOCKOUT_START;
+    if (isKnockout) {
+      return {
+        basis: 'Knockout match: books may settle h2h on 90-min result, full result incl. extra time, OR to-advance. These are NOT equivalent — legs from different books may settle on different bases.',
+        isKnockout: true,
+        basisAmbiguous: true,
+        crossSettlementRisk: true,
+      };
+    }
+    return {
+      basis: 'Regulation 90 min (incl. injury time). Draw is a separate outcome. Extra time / penalties do NOT count.',
+      isKnockout: false,
+      basisAmbiguous: false,
+      crossSettlementRisk: false,
+    };
+  }
+  if (sport === 'baseball_mlb') {
+    return {
+      basis: 'Moneyline, full game incl. extra innings.',
+      isKnockout: false, basisAmbiguous: false, crossSettlementRisk: false,
+    };
+  }
+  if (sport === 'basketball_wnba') {
+    return {
+      basis: 'Moneyline, incl. overtime.',
+      isKnockout: false, basisAmbiguous: false, crossSettlementRisk: false,
+    };
+  }
+  if (sport === 'tennis_atp' || sport === 'tennis_wta') {
+    return {
+      basis: 'Match winner; retirement/walkover rules vary by book.',
+      isKnockout: false, basisAmbiguous: false, crossSettlementRisk: false,
+    };
+  }
+  return {
+    basis: 'Settlement rules vary by bookmaker — verify before placing.',
+    isKnockout: false, basisAmbiguous: false, crossSettlementRisk: false,
+  };
+}
+
 // ── Files ─────────────────────────────────────────────────────────────────────
 const DATA_DIR     = path.join(__dirname, '../data/sports');
 const OUTPUT_FILE  = path.join(DATA_DIR, 'opportunities.json');
@@ -259,22 +306,26 @@ function computeArb(ev, sportKey) {
   const impliedClean = hasAllClean ? legsClean.reduce((s, l) => s + 1 / l.price, 0) : null;
 
   // Build scan entry for browsable list (every event passing the books gate)
-  const scanEntry = hasAllClean ? {
+  const eventType  = names.length === 2 ? '2way' : '3way';
+  const settlement = deriveSettlement(sportKey, eventType, ev.commence_time);
+  const scanEntry  = hasAllClean ? {
     sport:        sportKey,
     sportLabel:   sportLabelFor(sportKey),
     eventName:    `${ev.home_team} vs ${ev.away_team}`,
     commenceTime: ev.commence_time,
-    type:         names.length === 2 ? '2way' : '3way',
+    type:         eventType,
     booksCount:   bookmakers.length,
     bestLegs:     legsClean.map((l, i) => ({
-      outcome:   names[i],
-      bookmaker: l.bookmaker,
-      region:    BOOKMAKER_REGION[l.bookmakerId] ?? 'unknown',
-      odd:       l.price,
+      outcome:     names[i],
+      bookmaker:   l.bookmaker,
+      bookmakerId: l.bookmakerId,
+      region:      BOOKMAKER_REGION[l.bookmakerId] ?? 'unknown',
+      odd:         l.price,
     })),
     impliedSum:      Math.round(impliedClean * 10000) / 10000,
     marginPct:       Math.round((impliedClean - 1) * 10000) / 100,
     outliersRemoved,
+    settlement,
   } : null;
 
   // (c) Check whether any arb exists with ALL books (including outliers)
@@ -307,7 +358,7 @@ function computeArb(ev, sportKey) {
     sport:           sportKey,
     eventName:       `${ev.home_team} vs ${ev.away_team}`,
     commenceTime:    ev.commence_time,
-    type:            names.length === 2 ? '2way' : '3way',
+    type:            eventType,
     legs,
     roiPct:          Math.round(roi * 10000) / 100,
     impliedSum:      Math.round(impliedClean * 10000) / 10000,
@@ -315,6 +366,7 @@ function computeArb(ev, sportKey) {
     crossJurisdiction,
     numBookmakers:   bookmakers.length,
     lastUpdated:     new Date().toISOString(),
+    settlement,
   };
 
   // (d) Quarantine implausibly high ROI

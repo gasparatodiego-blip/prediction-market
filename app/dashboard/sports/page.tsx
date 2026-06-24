@@ -7,6 +7,9 @@ import type {
   SnapshotOpportunity,
   SnapshotQuarantine,
   ScannedEvent,
+  ScannedEventLeg,
+  SnapshotLeg,
+  Settlement,
   SportScanEntry,
 } from '@/app/api/sports-snapshot/route';
 
@@ -32,6 +35,78 @@ const SPORT_LABELS: Record<string, string> = {
 function sportLabel(key: string): string {
   return SPORT_LABELS[key] ?? key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
+
+// Static bookmaker homepage map (key → URL). OddsAPI returns no betslip links on our plan.
+// Prefer these URLs; fall back to plain book name when key is absent.
+const BOOKMAKER_HOME: Record<string, string> = {
+  // EU
+  pinnacle:        'https://www.pinnacle.com',
+  nordicbet:       'https://www.nordicbet.com',
+  coolbet:         'https://www.coolbet.com',
+  betsson:         'https://www.betsson.com',
+  bwin:            'https://www.bwin.com',
+  betclic:         'https://www.betclic.com',
+  unibet_eu:       'https://www.unibet.eu',
+  unibet_fr:       'https://www.unibet.fr',
+  unibet_nl:       'https://www.unibet.nl',
+  unibet_se:       'https://www.unibet.se',
+  leovegas:        'https://www.leovegas.com',
+  leovegas_se:     'https://www.leovegas.se',
+  marathonbet:     'https://www.marathonbet.com',
+  matchbook:       'https://www.matchbook.com',
+  betfair_ex_eu:   'https://www.betfair.com',
+  betano:          'https://www.betano.com',
+  tonybet:         'https://www.tonybet.com',
+  onexbet:         'https://www.1xbet.com',
+  stoiximan:       'https://www.stoiximan.gr',
+  livescore_bets:  'https://www.livescorebets.com',
+  bethard:         'https://www.bethard.com',
+  everygame:       'https://www.everygame.eu',
+  '10bet':         'https://www.10bet.com',
+  tipwin:          'https://www.tipwin.com',
+  winamax_fr:      'https://www.winamax.fr',
+  winamax_de:      'https://www.winamax.de',
+  // UK
+  bet365:          'https://www.bet365.com',
+  smarkets:        'https://smarkets.com',
+  betfair_ex_uk:   'https://www.betfair.com',
+  betfair_sb_uk:   'https://www.betfair.com',
+  williamhill:     'https://www.williamhill.com',
+  paddypower:      'https://www.paddypower.com',
+  skybet:          'https://www.skybet.com',
+  ladbrokes_uk:    'https://www.ladbrokes.com',
+  coral:           'https://www.coral.co.uk',
+  unibet_uk:       'https://www.unibet.co.uk',
+  unibet_gb:       'https://www.unibet.co.uk',
+  betway:          'https://www.betway.com',
+  boylesports:     'https://www.boylesports.com',
+  betvictor:       'https://www.betvictor.com',
+  spreadex:        'https://www.spreadex.com',
+  betfred_uk:      'https://www.betfred.com',
+  // US
+  draftkings:      'https://sportsbook.draftkings.com',
+  fanduel:         'https://sportsbook.fanduel.com',
+  betmgm:          'https://sports.betmgm.com',
+  caesars:         'https://www.caesarssportsbook.com',
+  betrivers:       'https://www.betrivers.com',
+  williamhill_us:  'https://www.williamhillsportsbook.com',
+  pointsbet_us:    'https://www.pointsbet.com',
+  bovada:          'https://www.bovada.lv',
+  mybookieag:      'https://www.mybookie.ag',
+  betonlineag:     'https://www.betonline.ag',
+  betus:           'https://www.betus.com.pa',
+  lowvig:          'https://www.lowvig.ag',
+  gtbets:          'https://www.gtbets.eu',
+  superbook:       'https://www.superbook.com',
+  espnbet:         'https://www.espnbet.com',
+  fanatics:        'https://www.fanatics.com/sportsbook',
+  hard_rock_bet:   'https://www.hardrock.bet',
+  bet365_us:       'https://www.bet365.com',
+  betparx:         'https://www.betparx.com',
+  fliff:           'https://www.getfliff.com',
+  unibet_us:       'https://www.unibet.com/us',
+  wynnbet:         'https://www.wynnbet.com',
+};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -167,10 +242,82 @@ function CreditMeter({ remaining, used }: { remaining: number | null; used: numb
   );
 }
 
+// ── Settlement panel (shared by both card types) ──────────────────────────────
+
+type LegForPanel = Pick<ScannedEventLeg | SnapshotLeg, 'outcome' | 'bookmaker' | 'odd'> & {
+  bookmakerId?: string;
+  region?:      string;
+};
+
+function SettlementPanel({ settlement, legs }: { settlement: Settlement; legs: LegForPanel[] }) {
+  return (
+    <div className="border-t border-border/50 pt-3 space-y-3 mt-1">
+
+      {/* Settlement rules */}
+      <div className="space-y-1.5">
+        <p className="font-mono text-[9px] uppercase tracking-widest text-text-muted">
+          Settlement rules
+        </p>
+        <p className="font-mono text-[10px] text-text-muted/80 leading-relaxed">
+          {settlement.basis}
+        </p>
+        {settlement.basisAmbiguous && (
+          <div className="border border-amber-500/50 bg-amber-950/25 px-3 py-2.5 mt-1">
+            <p className="font-mono text-[10px] text-amber-300 leading-relaxed">
+              <span className="font-semibold">⚠ CROSS-SETTLEMENT RISK</span> — an arb that combines
+              bookmakers settling on different bases is not a guaranteed hedge. Verify the exact
+              settlement rule at each book before placing any bet.
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* Per-leg book links */}
+      <div className="space-y-1.5">
+        <p className="font-mono text-[9px] uppercase tracking-widest text-text-muted">
+          Books — verify current odds &amp; settlement rules before acting
+        </p>
+        <div className="border border-border/50 divide-y divide-border/30">
+          {legs.map((leg, i) => {
+            const reg  = (leg.region ?? 'unknown').toUpperCase();
+            const url  = BOOKMAKER_HOME[leg.bookmakerId ?? ''] ?? null;
+            return (
+              <div key={i} className="grid grid-cols-4 items-center px-3 py-2 gap-2 font-mono text-[10px]">
+                <span className="text-text-muted truncate pr-1">{leg.outcome}</span>
+                <span className="truncate pr-1">
+                  {url ? (
+                    <a href={url} target="_blank" rel="noopener noreferrer"
+                      className="text-accent hover:underline">
+                      {leg.bookmaker}
+                    </a>
+                  ) : (
+                    <span className="text-text-secondary">{leg.bookmaker}</span>
+                  )}
+                </span>
+                <span>
+                  <span className={`inline-block font-mono text-[9px] uppercase px-1 py-px border ${regionChipCls(reg)}`}>
+                    {reg}
+                  </span>
+                </span>
+                <span className="text-right text-accent tabular-nums">{leg.odd.toFixed(3)}</span>
+              </div>
+            );
+          })}
+        </div>
+        <p className="font-mono text-[9px] text-text-muted/40 leading-relaxed">
+          Links open bookmaker homepage only — no betslip pre-fill. Verify odds independently.
+          No orders are placed by this tool.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 // ── Opportunity card ──────────────────────────────────────────────────────────
 
 function OpportunityCard({ opp }: { opp: SnapshotOpportunity }) {
-  const inMs = new Date(opp.commenceTime).getTime() - Date.now();
+  const [open, setOpen] = useState(false);
+  const inMs      = new Date(opp.commenceTime).getTime() - Date.now();
   const isStarted = inMs < 0;
 
   return (
@@ -267,12 +414,27 @@ function OpportunityCard({ opp }: { opp: SnapshotOpportunity }) {
         </div>
       )}
 
-      {/* Footer note */}
-      <p className="font-mono text-[9px] text-text-muted/50 leading-relaxed">
-        Stake % is a preview hedge split for equalized payout. No orders placed by this tool.
-        Verify both sides independently before acting — odds change in seconds.
-        {opp.numBookmakers != null && ` ${opp.numBookmakers} books quoted this event.`}
-      </p>
+      {/* Footer note + expand toggle */}
+      <div className="flex items-end justify-between gap-3 flex-wrap">
+        <p className="font-mono text-[9px] text-text-muted/50 leading-relaxed">
+          Stake % is a preview hedge split for equalized payout. No orders placed by this tool.
+          Verify both sides independently before acting — odds change in seconds.
+          {opp.numBookmakers != null && ` ${opp.numBookmakers} books quoted this event.`}
+        </p>
+        {opp.settlement && (
+          <button
+            onClick={() => setOpen(v => !v)}
+            className="shrink-0 font-mono text-[9px] text-text-muted/50 hover:text-text-muted transition-colors whitespace-nowrap"
+            aria-expanded={open}
+          >
+            {open ? '▲ hide details' : '▼ settlement rules + book links'}
+          </button>
+        )}
+      </div>
+
+      {open && opp.settlement && (
+        <SettlementPanel settlement={opp.settlement} legs={opp.legs} />
+      )}
     </div>
   );
 }
@@ -342,6 +504,7 @@ function regionChipCls(region: string) {
 // ── Scanned event card (browsable list, NOT an arb opportunity) ───────────────
 
 function ScannedEventCard({ ev }: { ev: ScannedEvent }) {
+  const [open, setOpen] = useState(false);
   const isStarted  = new Date(ev.commenceTime).getTime() < Date.now();
   const isArb      = ev.marginPct < 0;
   const isNearMiss = !isArb && ev.marginPct < 1.5;
@@ -426,6 +589,23 @@ function ScannedEventCard({ ev }: { ev: ScannedEvent }) {
           );
         })}
       </div>
+
+      {/* Expand toggle */}
+      {ev.settlement && (
+        <div className="flex justify-end">
+          <button
+            onClick={() => setOpen(v => !v)}
+            className="font-mono text-[9px] text-text-muted/50 hover:text-text-muted transition-colors"
+            aria-expanded={open}
+          >
+            {open ? '▲ hide details' : '▼ settlement rules + book links'}
+          </button>
+        </div>
+      )}
+
+      {open && ev.settlement && (
+        <SettlementPanel settlement={ev.settlement} legs={ev.bestLegs} />
+      )}
     </div>
   );
 }

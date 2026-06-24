@@ -10,6 +10,13 @@ const FILE    = path.join(process.cwd(), 'data/sports/opportunities.json');
 // On-demand snapshot; flag stale after 24h (one natural scan cycle)
 const STALE_MS = 24 * 60 * 60_000;
 
+export interface Settlement {
+  basis:               string;
+  isKnockout:          boolean;
+  basisAmbiguous:      boolean;
+  crossSettlementRisk: boolean;
+}
+
 export interface SnapshotLeg {
   outcome:      string;
   bookmaker:    string;
@@ -31,6 +38,7 @@ export interface SnapshotOpportunity {
   crossJurisdiction?: boolean;
   numBookmakers:      number;
   lastUpdated:        string;
+  settlement?:        Settlement;
 }
 
 export interface SnapshotQuarantine {
@@ -43,10 +51,11 @@ export interface SnapshotQuarantine {
 }
 
 export interface ScannedEventLeg {
-  outcome:   string;
-  bookmaker: string;
-  region:    string;
-  odd:       number;
+  outcome:      string;
+  bookmaker:    string;
+  bookmakerId?: string;
+  region:       string;
+  odd:          number;
 }
 
 export interface ScannedEvent {
@@ -60,6 +69,7 @@ export interface ScannedEvent {
   impliedSum:      number;
   marginPct:       number;
   outliersRemoved: boolean;
+  settlement?:     Settlement;
 }
 
 export interface SportScanEntry {
