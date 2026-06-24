@@ -8,6 +8,7 @@ const NAV_LINKS = [
   { href: '/dashboard/prediction',       label: 'PREDICTION'    },
   { href: '/dashboard/funding-arb',       label: 'FUNDING ARB'   },
   { href: '/dashboard/carry',            label: 'CARRY'         },
+  { href: '/dashboard/sports',           label: 'SPORTS'        },
   { href: '/dashboard/liquidity-rewards', label: 'REWARDS'      },
   { href: '/dashboard/traders',           label: 'TRADERS'       },
   { href: '/dashboard/portfolio',        label: 'PORTFOLIO'     },

@@ -6,6 +6,8 @@ import type {
   SnapshotResponse,
   SnapshotOpportunity,
   SnapshotQuarantine,
+  ScannedEvent,
+  SportScanEntry,
 } from '@/app/api/sports-snapshot/route';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -238,19 +240,12 @@ function OpportunityCard({ opp }: { opp: SnapshotOpportunity }) {
         </div>
         {opp.legs.map((leg, i) => {
           const reg = (leg.region ?? 'unknown').toUpperCase();
-          const regCls = reg === 'US'
-            ? 'text-blue-400 border-blue-500/40 bg-blue-950/30'
-            : reg === 'UK'
-              ? 'text-violet-400 border-violet-500/40 bg-violet-950/30'
-              : reg === 'EU'
-                ? 'text-emerald-400 border-emerald-500/40 bg-emerald-950/30'
-                : 'text-text-muted/50 border-border';
           return (
             <div key={i} className="grid grid-cols-5 px-3 py-2 font-mono text-[11px]">
               <span className="text-text-primary truncate pr-2">{leg.outcome}</span>
               <span className="text-text-secondary truncate pr-2">{leg.bookmaker}</span>
               <span>
-                <span className={`inline-block font-mono text-[9px] uppercase px-1 py-px border ${regCls}`}>
+                <span className={`inline-block font-mono text-[9px] uppercase px-1 py-px border ${regionChipCls(reg)}`}>
                   {reg}
                 </span>
               </span>
@@ -334,11 +329,113 @@ function QuarantineSection({ items }: { items: SnapshotQuarantine[] }) {
   );
 }
 
+// ── Region chip helper (shared by OpportunityCard and ScannedEventCard) ───────
+
+function regionChipCls(region: string) {
+  const r = region.toUpperCase();
+  if (r === 'US') return 'text-blue-400 border-blue-500/40 bg-blue-950/30';
+  if (r === 'UK') return 'text-violet-400 border-violet-500/40 bg-violet-950/30';
+  if (r === 'EU') return 'text-emerald-400 border-emerald-500/40 bg-emerald-950/30';
+  return 'text-text-muted/50 border-border';
+}
+
+// ── Scanned event card (browsable list, NOT an arb opportunity) ───────────────
+
+function ScannedEventCard({ ev }: { ev: ScannedEvent }) {
+  const isStarted  = new Date(ev.commenceTime).getTime() < Date.now();
+  const isArb      = ev.marginPct < 0;
+  const isNearMiss = !isArb && ev.marginPct < 1.5;
+
+  return (
+    <div className={`border p-4 space-y-3 ${isArb ? 'border-positive/40 bg-positive/5' : isNearMiss ? 'border-amber-600/40 bg-amber-950/10' : 'border-border bg-bg-panel'}`}>
+
+      {/* Header */}
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5 flex-wrap mb-1">
+            <span className="font-mono text-[9px] uppercase tracking-widest text-text-muted">
+              {ev.sportLabel}
+            </span>
+            <span className="font-mono text-[9px] text-text-muted/40">·</span>
+            <span className="font-mono text-[9px] uppercase tracking-wide border border-border px-1 py-px text-text-muted">
+              {ev.type}
+            </span>
+            <span className="font-mono text-[9px] text-text-muted/60">
+              {ev.booksCount} books
+            </span>
+            {ev.outliersRemoved && (
+              <span className="font-mono text-[9px] uppercase tracking-wide border border-border/40 text-text-muted/50 px-1 py-px">
+                outlier-filtered
+              </span>
+            )}
+            {isStarted && (
+              <span className="font-mono text-[9px] uppercase border border-warning/40 text-warning px-1 py-px">
+                STARTED
+              </span>
+            )}
+          </div>
+          <p className="font-mono text-sm font-semibold text-text-primary leading-tight">
+            {ev.eventName}
+          </p>
+          <p className="font-mono text-[10px] text-text-muted mt-0.5">
+            {isStarted
+              ? 'Match already started'
+              : `Starts in ${commenceRelative(ev.commenceTime)}`}
+          </p>
+        </div>
+
+        {/* Margin display */}
+        <div className="text-right shrink-0">
+          <div className={`font-mono text-xl font-bold tabular-nums leading-none ${isArb ? 'text-positive' : isNearMiss ? 'text-amber-400' : 'text-text-secondary'}`}>
+            {ev.marginPct.toFixed(2)}%
+          </div>
+          <div className="font-mono text-[9px] text-text-muted mt-0.5 whitespace-nowrap">
+            {isArb
+              ? <span className="text-positive/80">surebet · listed above</span>
+              : isNearMiss
+                ? <span className="text-amber-400/80">near-miss · watch</span>
+                : 'overround — not an arb'}
+          </div>
+          <div className="font-mono text-[10px] text-text-muted/50 mt-0.5">
+            impl. sum {(ev.impliedSum * 100).toFixed(2)}%
+          </div>
+        </div>
+      </div>
+
+      {/* Best-odds table */}
+      <div className="border border-border divide-y divide-border">
+        <div className="grid grid-cols-4 px-3 py-1.5 font-mono text-[9px] uppercase tracking-widest text-text-muted">
+          <span>Outcome</span>
+          <span>Bookmaker</span>
+          <span>Region</span>
+          <span className="text-right">Best odd</span>
+        </div>
+        {ev.bestLegs.map((leg, i) => {
+          const reg = (leg.region ?? 'unknown').toUpperCase();
+          return (
+            <div key={i} className="grid grid-cols-4 px-3 py-2 font-mono text-[11px]">
+              <span className="text-text-primary truncate pr-2">{leg.outcome}</span>
+              <span className="text-text-secondary truncate pr-2">{leg.bookmaker}</span>
+              <span>
+                <span className={`inline-block font-mono text-[9px] uppercase px-1 py-px border ${regionChipCls(reg)}`}>
+                  {reg}
+                </span>
+              </span>
+              <span className="text-right text-accent tabular-nums">{leg.odd.toFixed(3)}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function SportsSnapshotPage() {
-  const [data,      setData]      = useState<SnapshotResponse | null>(null);
-  const [lastFetch, setLastFetch] = useState<Date | null>(null);
+  const [data,          setData]          = useState<SnapshotResponse | null>(null);
+  const [lastFetch,     setLastFetch]     = useState<Date | null>(null);
+  const [selectedSport, setSelectedSport] = useState<string | null>(null);
 
   async function load() {
     try {
@@ -355,11 +452,28 @@ export default function SportsSnapshotPage() {
     return () => clearInterval(id);
   }, []);
 
-  const opps       = data?.opportunities ?? [];
-  const qItems     = data?.quarantine    ?? [];
-  const scanned    = data?.sportsScanned ?? [];
-  const lastUpdated = data?.lastUpdated ?? null;
-  const isMissing  = data?.missing ?? false;
+  // Initialize default tab to sport with most events, only once when data first loads
+  useEffect(() => {
+    if (selectedSport !== null) return;
+    const sports = data?.summary?.sportsScanned ?? [];
+    const withEvents = sports.filter((s: SportScanEntry) => s.eventCount > 0);
+    if (!withEvents.length) return;
+    const max = withEvents.reduce((b: SportScanEntry, s: SportScanEntry) => s.eventCount > b.eventCount ? s : b);
+    setSelectedSport(max.key);
+  }, [data, selectedSport]);
+
+  const opps          = data?.opportunities  ?? [];
+  const qItems        = data?.quarantine     ?? [];
+  const scannedEvs    = data?.scannedEvents  ?? [];
+  const summary       = data?.summary        ?? null;
+  const lastUpdated   = data?.lastUpdated    ?? null;
+  const isMissing     = data?.missing        ?? false;
+  const effectiveSport = selectedSport ?? 'all';
+
+  const filteredEvents = effectiveSport === 'all'
+    ? scannedEvs
+    : scannedEvs.filter(ev => ev.sport === effectiveSport);
+  const sortedEvents = [...filteredEvents].sort((a, b) => a.marginPct - b.marginPct);
 
   return (
     <div className="max-w-[900px] mx-auto px-4 py-6 space-y-5">
@@ -419,30 +533,6 @@ export default function SportsSnapshotPage() {
             used={data.creditsUsed}
           />
 
-          {/* Sports-scanned row */}
-          {scanned.length > 0 && (
-            <div className="space-y-1.5">
-              <div className="flex flex-wrap gap-1.5 items-center">
-                <span className="font-mono text-[9px] uppercase tracking-widest text-text-muted mr-1">
-                  scanned:
-                </span>
-                {scanned.map(key => (
-                  <span
-                    key={key}
-                    className="font-mono text-[10px] px-2 py-0.5 border border-border bg-bg-elevated text-text-secondary"
-                  >
-                    {sportLabel(key)}
-                  </span>
-                ))}
-              </div>
-              <p className="font-mono text-[9px] text-text-muted/50">
-                regions: {(data.regions ?? []).join(', ')} · markets: h2h
-                {data.ageMinutes != null && ` · snapshot ${data.ageMinutes}m old`}
-                {lastFetch && ` · page fetched ${ago(lastFetch.toISOString())}`}
-              </p>
-            </div>
-          )}
-
           {/* Stale banner */}
           {data.stale && lastUpdated && (
             <div className="border border-warning/30 bg-warning/5 px-4 py-2.5 font-mono text-[11px] text-warning/80">
@@ -462,10 +552,10 @@ export default function SportsSnapshotPage() {
                 This is the expected result most of the time — genuine arb windows are rare and
                 close in seconds. No arbs is honest, not a bug.
               </p>
-              {scanned.length > 0 && (
+              {(summary?.totalEvents ?? 0) > 0 && (
                 <p className="font-mono text-[10px] text-text-muted/50 mt-2">
-                  {scanned.length} sport{scanned.length > 1 ? 's' : ''} scanned · outlier filter active ·
-                  events with &lt;4 books excluded
+                  {summary!.sportsScanned.length} sport{summary!.sportsScanned.length > 1 ? 's' : ''} scanned ·
+                  {summary!.totalEvents} events browsable below · outlier filter active · events with &lt;4 books excluded
                 </p>
               )}
             </div>
@@ -487,6 +577,71 @@ export default function SportsSnapshotPage() {
 
           {/* Quarantine */}
           <QuarantineSection items={qItems} />
+
+          {/* ── Browse all scanned events ──────────────────────────────────── */}
+          {scannedEvs.length > 0 && summary && (
+            <div className="space-y-3 border-t border-border pt-5">
+
+              {/* Section header */}
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <span className="font-mono text-[10px] text-text-muted uppercase tracking-widest">
+                  Browse scanned events — {summary.totalEvents} total
+                </span>
+                <span className="font-mono text-[9px] text-text-muted/50">
+                  sorted by overround · closest to arb first
+                </span>
+              </div>
+
+              {/* Sport tabs */}
+              <div className="flex flex-wrap gap-1.5">
+                <button
+                  onClick={() => setSelectedSport('all')}
+                  className={`font-mono text-[10px] px-2.5 py-1 border transition-colors duration-100 ${
+                    effectiveSport === 'all'
+                      ? 'border-accent text-accent bg-accent/10'
+                      : 'border-border text-text-secondary hover:text-text-primary hover:border-border/80'
+                  }`}
+                >
+                  All ({summary.totalEvents})
+                </button>
+                {summary.sportsScanned
+                  .filter((s: SportScanEntry) => s.eventCount > 0)
+                  .map((s: SportScanEntry) => (
+                    <button
+                      key={s.key}
+                      onClick={() => setSelectedSport(s.key)}
+                      className={`font-mono text-[10px] px-2.5 py-1 border transition-colors duration-100 ${
+                        effectiveSport === s.key
+                          ? 'border-accent text-accent bg-accent/10'
+                          : 'border-border text-text-secondary hover:text-text-primary hover:border-border/80'
+                      }`}
+                    >
+                      {s.label} ({s.eventCount})
+                    </button>
+                  ))}
+              </div>
+
+              {/* Scan metadata */}
+              <p className="font-mono text-[9px] text-text-muted/50">
+                regions: {(data.regions ?? []).join(', ')} · markets: h2h
+                {data.ageMinutes != null && ` · snapshot ${data.ageMinutes}m old`}
+                {lastFetch && ` · page fetched ${ago(lastFetch.toISOString())}`}
+              </p>
+
+              {/* Event list */}
+              {sortedEvents.length === 0 ? (
+                <p className="font-mono text-[11px] text-text-muted py-4 text-center">
+                  No events for this sport.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {sortedEvents.map((ev, i) => (
+                    <ScannedEventCard key={i} ev={ev} />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </>
       )}
 

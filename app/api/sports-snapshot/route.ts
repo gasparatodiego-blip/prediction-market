@@ -42,6 +42,37 @@ export interface SnapshotQuarantine {
   reason:       string;
 }
 
+export interface ScannedEventLeg {
+  outcome:   string;
+  bookmaker: string;
+  region:    string;
+  odd:       number;
+}
+
+export interface ScannedEvent {
+  sport:           string;
+  sportLabel:      string;
+  eventName:       string;
+  commenceTime:    string;
+  type:            '2way' | '3way';
+  booksCount:      number;
+  bestLegs:        ScannedEventLeg[];
+  impliedSum:      number;
+  marginPct:       number;
+  outliersRemoved: boolean;
+}
+
+export interface SportScanEntry {
+  key:        string;
+  label:      string;
+  eventCount: number;
+}
+
+export interface ScanSummary {
+  sportsScanned: SportScanEntry[];
+  totalEvents:   number;
+}
+
 export interface SnapshotResponse {
   ok:               boolean;
   missing:          boolean;
@@ -55,13 +86,15 @@ export interface SnapshotResponse {
   sportsScanned:    string[];
   opportunities:    SnapshotOpportunity[];
   quarantine:       SnapshotQuarantine[];
+  scannedEvents:    ScannedEvent[];
+  summary:          ScanSummary | null;
 }
 
 const EMPTY: SnapshotResponse = {
   ok: false, missing: true, stale: true, ageMinutes: null,
   lastUpdated: null, creditsRemaining: null, creditsUsed: null,
   scanMode: 'snapshot', regions: [], sportsScanned: [],
-  opportunities: [], quarantine: [],
+  opportunities: [], quarantine: [], scannedEvents: [], summary: null,
 };
 
 export async function GET(): Promise<NextResponse<SnapshotResponse>> {

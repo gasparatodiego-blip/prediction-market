@@ -76,15 +76,21 @@ const BOOKMAKER_REGION = {
   bet365:            'uk',
   williamhill:       'uk',
   betfair_ex_uk:     'uk',
+  betfair_sb_uk:     'uk',
   paddypower:        'uk',
   skybet:            'uk',
   ladbrokes_uk:      'uk',
   coral:             'uk',
   unibet_gb:         'uk',
+  unibet_uk:         'uk',
   betway:            'uk',
   boylesports:       'uk',
   betvictor:         'uk',
   spreadex:          'uk',
+  smarkets:          'uk',
+  betfred_uk:        'uk',
+  // US
+  gtbets:            'us',
   // EU
   pinnacle:          'eu',
   onexbet:           'eu',
@@ -104,7 +110,29 @@ const BOOKMAKER_REGION = {
   tipwin:            'eu',
   bethard:           'eu',
   everygame:         'eu',
+  betfair_ex_eu:     'eu',
+  unibet_fr:         'eu',
+  unibet_nl:         'eu',
+  unibet_se:         'eu',
+  leovegas:          'eu',
+  leovegas_se:       'eu',
+  winamax_fr:        'eu',
+  winamax_de:        'eu',
 };
+
+// Sport labels used in scannedEvents summary (matches SPORTS_ALLOWLIST keys)
+const SPORT_LABEL_MAP = {
+  soccer_fifa_world_cup: 'World Cup',
+  baseball_mlb:          'MLB',
+  basketball_wnba:       'WNBA',
+  tennis_atp:            'ATP',
+  tennis_wta:            'WTA',
+  soccer_usa_mls:        'MLS',
+};
+
+function sportLabelFor(key) {
+  return SPORT_LABEL_MAP[key] ?? key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
 
 // ── Files ─────────────────────────────────────────────────────────────────────
 const DATA_DIR     = path.join(__dirname, '../data/sports');
@@ -188,13 +216,17 @@ function computeArb(ev, sportKey) {
   // (a) Minimum bookmaker gate
   if (bookmakers.length < MIN_BOOKMAKERS) return { type: 'too_few_books' };
 
-  // Collect all (bookmaker, price) pairs per outcome
+  // Collect all (bookmaker, price) pairs per outcome.
+  // OddsAPI response: bk.markets[{key,outcomes}], not bk.outcomes directly.
   const outcomeMap = {};  // outcomeName → [{bookmakerId, bookmaker, price}]
   for (const bk of bookmakers) {
-    for (const oc of bk.outcomes ?? []) {
-      if (!oc.name || !(oc.price > 1)) continue;
-      if (!outcomeMap[oc.name]) outcomeMap[oc.name] = [];
-      outcomeMap[oc.name].push({ bookmakerId: bk.key, bookmaker: bk.title, price: oc.price });
+    for (const market of bk.markets ?? []) {
+      if (market.key !== 'h2h') continue;
+      for (const oc of market.outcomes ?? []) {
+        if (!oc.name || !(oc.price > 1)) continue;
+        if (!outcomeMap[oc.name]) outcomeMap[oc.name] = [];
+        outcomeMap[oc.name].push({ bookmakerId: bk.key, bookmaker: bk.title, price: oc.price });
+      }
     }
   }
   const names = Object.keys(outcomeMap);
@@ -205,13 +237,8 @@ function computeArb(ev, sportKey) {
     return cands.length ? cands.reduce((b, e) => e.price > b.price ? e : b) : null;
   }
 
-  // Check whether any arb exists at all (with ALL books, including outliers)
-  const legsAll = names.map(n => bestFrom(n, new Set()));
-  if (legsAll.some(l => !l)) return { type: 'no_arb' };
-  const impliedAll = legsAll.reduce((s, l) => s + 1 / l.price, 0);
-  if (impliedAll >= 1) return { type: 'no_arb' };
-
   // (b) Outlier detection: flag books whose implied prob is >OUTLIER_PCT below median per outcome
+  // Always computed so scannedEvents has clean bestLegs for every passing event.
   const outlierIds = new Set();
   for (const name of names) {
     const entries = outcomeMap[name];
@@ -224,29 +251,55 @@ function computeArb(ev, sportKey) {
       if (median - (1 / e.price) > OUTLIER_PCT) outlierIds.add(e.bookmakerId);
     }
   }
-
-  // (c) Recompute without outliers — if arb vanishes it was a false positive
   const outliersRemoved = outlierIds.size > 0;
-  const legsClean = names.map(n => bestFrom(n, outlierIds));
-  if (legsClean.some(l => !l)) return { type: 'false_positive', reason: 'no_clean_price_after_outlier_removal' };
 
-  const impliedClean = legsClean.reduce((s, l) => s + 1 / l.price, 0);
-  if (impliedClean >= 1) return { type: 'false_positive', reason: 'outlier_was_only_arb_leg' };
+  // Best legs with outliers removed — used for both scan entry and clean arb check
+  const legsClean = names.map(n => bestFrom(n, outlierIds));
+  const hasAllClean = !legsClean.some(l => !l);
+  const impliedClean = hasAllClean ? legsClean.reduce((s, l) => s + 1 / l.price, 0) : null;
+
+  // Build scan entry for browsable list (every event passing the books gate)
+  const scanEntry = hasAllClean ? {
+    sport:        sportKey,
+    sportLabel:   sportLabelFor(sportKey),
+    eventName:    `${ev.home_team} vs ${ev.away_team}`,
+    commenceTime: ev.commence_time,
+    type:         names.length === 2 ? '2way' : '3way',
+    booksCount:   bookmakers.length,
+    bestLegs:     legsClean.map((l, i) => ({
+      outcome:   names[i],
+      bookmaker: l.bookmaker,
+      region:    BOOKMAKER_REGION[l.bookmakerId] ?? 'unknown',
+      odd:       l.price,
+    })),
+    impliedSum:      Math.round(impliedClean * 10000) / 10000,
+    marginPct:       Math.round((impliedClean - 1) * 10000) / 100,
+    outliersRemoved,
+  } : null;
+
+  // (c) Check whether any arb exists with ALL books (including outliers)
+  const legsAll = names.map(n => bestFrom(n, new Set()));
+  if (legsAll.some(l => !l)) return { type: 'no_arb', scanEntry };
+  const impliedAll = legsAll.reduce((s, l) => s + 1 / l.price, 0);
+  if (impliedAll >= 1) return { type: 'no_arb', scanEntry };
+
+  // Arb exists with all books — check if it survives outlier removal
+  if (!hasAllClean) return { type: 'false_positive', reason: 'no_clean_price_after_outlier_removal', scanEntry };
+  if (impliedClean >= 1) return { type: 'false_positive', reason: 'outlier_was_only_arb_leg', scanEntry };
 
   const roi = (1 / impliedClean) - 1;
 
   const legs = legsClean.map((l, i) => ({
-    outcome:   names[i],
-    bookmaker: l.bookmaker,
+    outcome:     names[i],
+    bookmaker:   l.bookmaker,
     bookmakerId: l.bookmakerId,
-    odd:       l.price,
-    stakePct:  Math.round(((1 / l.price) / impliedClean) * 10000) / 100,
-    region:    BOOKMAKER_REGION[l.bookmakerId] ?? 'unknown',
+    odd:         l.price,
+    stakePct:    Math.round(((1 / l.price) / impliedClean) * 10000) / 100,
+    region:      BOOKMAKER_REGION[l.bookmakerId] ?? 'unknown',
   }));
 
   // crossJurisdiction: true when any leg is US-only and another is EU/UK
-  // (a typical single bettor cannot hold accounts on both sides)
-  const hasUs = legs.some(l => l.region === 'us');
+  const hasUs     = legs.some(l => l.region === 'us');
   const hasEuOrUk = legs.some(l => l.region === 'eu' || l.region === 'uk');
   const crossJurisdiction = hasUs && hasEuOrUk;
 
@@ -266,10 +319,10 @@ function computeArb(ev, sportKey) {
 
   // (d) Quarantine implausibly high ROI
   if (roi > MAX_PLAUSIBLE_ROI) {
-    return { type: 'quarantine', record: { ...record, reason: 'roi_above_plausible' } };
+    return { type: 'quarantine', record: { ...record, reason: 'roi_above_plausible' }, scanEntry };
   }
 
-  return { type: 'real', record };
+  return { type: 'real', record, scanEntry };
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
@@ -314,6 +367,7 @@ async function scan() {
   const opportunities      = [];
   const quarantine         = [];
   const sportsScanned      = [];
+  const scannedEvents      = [];
   let   tooFewBooks        = 0;
   let   noArbCount         = 0;
   let   falsePositives     = 0;
@@ -358,12 +412,13 @@ async function scan() {
 
     for (const ev of events) {
       const res = computeArb(ev, sportKey);
+      if (res.scanEntry) scannedEvents.push(res.scanEntry);
       switch (res.type) {
-        case 'real':          opportunities.push(res.record);  break;
-        case 'quarantine':    quarantine.push(res.record);     break;
-        case 'false_positive': falsePositives++;               break;
-        case 'too_few_books': tooFewBooks++;                   break;
-        case 'no_arb':        noArbCount++;                    break;
+        case 'real':           opportunities.push(res.record);  break;
+        case 'quarantine':     quarantine.push(res.record);     break;
+        case 'false_positive': falsePositives++;                break;
+        case 'too_few_books':  tooFewBooks++;                   break;
+        case 'no_arb':         noArbCount++;                    break;
       }
     }
 
@@ -371,6 +426,20 @@ async function scan() {
   }
 
   opportunities.sort((a, b) => b.roiPct - a.roiPct);
+
+  // Build summary: per-sport event counts for the browsable list
+  const sportCounts = {};
+  for (const ev of scannedEvents) {
+    sportCounts[ev.sport] = (sportCounts[ev.sport] ?? 0) + 1;
+  }
+  const summary = {
+    sportsScanned: sportsScanned.map(key => ({
+      key,
+      label:      sportLabelFor(key),
+      eventCount: sportCounts[key] ?? 0,
+    })),
+    totalEvents: scannedEvents.length,
+  };
 
   // Write output atomically
   const output = {
@@ -382,6 +451,8 @@ async function scan() {
     sportsScanned,
     opportunities,
     quarantine,
+    scannedEvents,
+    summary,
   };
   atomicWrite(OUTPUT_FILE, output);
 
