@@ -346,6 +346,8 @@ function computeArb(ev, sportKey) {
     marginPct:       Math.round((impliedClean - 1) * 10000) / 100,
     outliersRemoved,
     settlement,
+    cashable:    false,
+    execReasons: [],
   } : null;
 
   // (c) Check whether any arb exists with ALL books (including outliers)
@@ -398,9 +400,11 @@ function computeArb(ev, sportKey) {
   //     soft/restrictive books, betting exchanges, or requires cross-jurisdiction access.
   const execReasons = getExecReasons(record);
   if (execReasons.length > 0) {
+    if (scanEntry) scanEntry.execReasons = execReasons;
     return { type: 'flagged', record: { ...record, reasons: execReasons }, scanEntry };
   }
 
+  if (scanEntry) scanEntry.cashable = true;
   return { type: 'real', record, scanEntry };
 }
 

@@ -501,16 +501,45 @@ function regionChipCls(region: string) {
   return 'text-text-muted/50 border-border';
 }
 
+// ── Exec-reason formatter ─────────────────────────────────────────────────────
+
+const EXEC_BOOK_NAMES: Record<string, string> = {
+  onexbet:   '1xBet',
+  gtbets:    'GTbets',
+  nordicbet: 'NordicBet',
+  betus:     'BetUS',
+};
+
+function formatExecReasons(reasons: string[]): string {
+  const parts: string[] = [];
+  const seen = new Set<string>();
+  for (const r of reasons) {
+    if (r === 'crossJurisdiction' && !seen.has(r)) {
+      parts.push('cross-jurisdiction'); seen.add(r);
+    } else if (r.startsWith('soft:') && !seen.has(r)) {
+      const bid = r.slice(5);
+      parts.push(EXEC_BOOK_NAMES[bid] ?? bid); seen.add(r);
+    } else if (r.startsWith('exchange:') && !seen.has('exchange')) {
+      parts.push('exchange leg'); seen.add('exchange');
+    }
+  }
+  return parts.join(' · ');
+}
+
 // ── Scanned event card (browsable list, NOT an arb opportunity) ───────────────
 
 function ScannedEventCard({ ev }: { ev: ScannedEvent }) {
   const [open, setOpen] = useState(false);
   const isStarted  = new Date(ev.commenceTime).getTime() < Date.now();
-  const isArb      = ev.marginPct < 0;
-  const isNearMiss = !isArb && ev.marginPct < 1.5;
+  const isNegative = ev.marginPct < 0;
+  const isCashable = isNegative && ev.cashable === true;
+  const isPaperArb = isNegative && !isCashable;
+  const isNearMiss = !isNegative && ev.marginPct < 1.5;
+
+  const paperArbReason = isPaperArb ? formatExecReasons(ev.execReasons ?? []) : '';
 
   return (
-    <div className={`border p-4 space-y-3 ${isArb ? 'border-positive/40 bg-positive/5' : isNearMiss ? 'border-amber-600/40 bg-amber-950/10' : 'border-border bg-bg-panel'}`}>
+    <div className={`border p-4 space-y-3 ${isCashable ? 'border-positive/40 bg-positive/5' : isNearMiss ? 'border-amber-600/40 bg-amber-950/10' : 'border-border bg-bg-panel'}`}>
 
       {/* Header */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -549,15 +578,19 @@ function ScannedEventCard({ ev }: { ev: ScannedEvent }) {
 
         {/* Margin display */}
         <div className="text-right shrink-0">
-          <div className={`font-mono text-xl font-bold tabular-nums leading-none ${isArb ? 'text-positive' : isNearMiss ? 'text-amber-400' : 'text-text-secondary'}`}>
+          <div className={`font-mono text-xl font-bold tabular-nums leading-none ${isCashable ? 'text-positive' : isNearMiss ? 'text-amber-400' : 'text-text-secondary'}`}>
             {ev.marginPct.toFixed(2)}%
           </div>
-          <div className="font-mono text-[9px] text-text-muted mt-0.5 whitespace-nowrap">
-            {isArb
-              ? <span className="text-positive/80">surebet · listed above</span>
-              : isNearMiss
-                ? <span className="text-amber-400/80">near-miss · watch</span>
-                : 'overround — not an arb'}
+          <div className="font-mono text-[9px] text-text-muted mt-0.5">
+            {isCashable
+              ? <span className="text-positive/80">cashable surebet</span>
+              : isPaperArb
+                ? <span className="text-amber-500/70">
+                    paper arb — NOT cashable{paperArbReason ? ` · ${paperArbReason}` : ''}
+                  </span>
+                : isNearMiss
+                  ? <span className="text-amber-400/80">near-miss · watch</span>
+                  : 'overround — not an arb'}
           </div>
           <div className="font-mono text-[10px] text-text-muted/50 mt-0.5">
             impl. sum {(ev.impliedSum * 100).toFixed(2)}%

@@ -70,6 +70,8 @@ export interface ScannedEvent {
   marginPct:       number;
   outliersRemoved: boolean;
   settlement?:     Settlement;
+  cashable?:       boolean;
+  execReasons?:    string[];
 }
 
 export interface SportScanEntry {
