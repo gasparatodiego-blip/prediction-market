@@ -198,18 +198,6 @@ module.exports = {
       env:           { NODE_ENV: 'production', HOME: '/root' },
     },
     {
-      name:          'agent12-sports',
-      script:        './agents/agent12-sports.js',
-      cwd:           '/root/prediction-market',
-      restart_delay: 60000,
-      max_restarts:  5,
-      watch:         false,
-      autorestart:   true,
-      // Keys are read from .env.local at process start via dotenv or shell export.
-      // ODDS_API_KEY and ODDS_API_KEY_2 must be set in .env.local — never committed.
-      env:           { NODE_ENV: 'production', HOME: '/root' },
-    },
-    {
       name:          'agent22-funding-alerts',
       script:        './agents/agent22-funding-alerts.js',
       cwd:           '/root/prediction-market',

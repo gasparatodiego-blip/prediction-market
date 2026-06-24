@@ -46,3 +46,11 @@ next-env.d.ts
 data/confirmation-cache.json
 # per-market resolution signature cache — local data, not committed
 data/resolution-signatures.json
+# live scan outputs — rewritten each cycle, never committed
+data/liquidity-rewards.json
+data/kalshi-rewards.json
+# bot alert state — contains Telegram chat IDs (personal data)
+data/fund-subscriptions.json
+data/copy-watchlist.json
+# sports arb scanner outputs — rewritten each scan, credit state is local
+data/sports/
