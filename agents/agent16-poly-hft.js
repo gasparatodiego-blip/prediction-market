@@ -252,11 +252,15 @@ async function pollMarket(mkt) {
       try {
         const bk = await httpsGet(`https://clob.polymarket.com/book?token_id=${queryToken}`);
         if (bk?.asks?.length) {
-          mkt.bestAsk      = parseFloat(bk.asks[0].price);
-          mkt.capacityUsdc = parseFloat(bk.asks[0].size);
+          // Lowest ask = executable BUY price; API returns asks descending so reduce(min) is order-safe.
+          const ba     = bk.asks.reduce((b, a) => parseFloat(a.price) < parseFloat(b.price) ? a : b);
+          mkt.bestAsk      = parseFloat(ba.price);
+          mkt.capacityUsdc = parseFloat(ba.size);
         }
         if (bk?.bids?.length) {
-          mkt.bestBid = parseFloat(bk.bids[0].price);
+          // Highest bid = executable SELL price; API returns bids ascending so reduce(max) is order-safe.
+          const bb    = bk.bids.reduce((b, a) => parseFloat(a.price) > parseFloat(b.price) ? a : b);
+          mkt.bestBid = parseFloat(bb.price);
         }
       } catch { }
     }
