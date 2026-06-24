@@ -65,7 +65,7 @@ const strategies: Strategy[] = [
     id: 'sports',
     Icon: Trophy,
     name: 'Sports Arb',
-    platforms: ['OddsAPI', 'EU Books'],
+    platforms: ['EU Books'],
     summary: 'Cross-bookmaker surebet scanner — outlier-filtered, credit-safe snapshot',
     explanation:
       'When bookmakers disagree on odds for the same match, backing every outcome across different books locks in a profit regardless of result. Phase A: periodic snapshot scanner (EU h2h, on-demand run). Opportunities survive a 4-book minimum gate, a median outlier filter that removes suspiciously generous prices, and a 6% ROI plausibility cap. Preview only — no orders placed.',
