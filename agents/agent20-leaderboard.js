@@ -444,12 +444,12 @@ function buildLeaderboard() {
   return { categories, mmCategories };
 }
 
-function writeOutput() {
+function writeOutput(tsOverride = null) {
   const { categories, mmCategories } = buildLeaderboard();
   const totalWallets = Object.values(wallets).filter(w => (w.markets || []).length >= MIN_MARKETS_RANK).length;
 
   atomicWrite(LEADERBOARD_FILE, {
-    updatedAt:      new Date().toISOString(),
+    updatedAt:      tsOverride ?? new Date().toISOString(),
     windowDays:     WINDOW_DAYS,
     marketsScanned: Object.keys(processedCids).length,
     totalWallets,
@@ -581,7 +581,11 @@ async function scan() {
 // ── Boot ──────────────────────────────────────────────────────────────────────
 loadCache();
 console.log('[LB] Starting agent20-leaderboard — read-only, zero Claude, 2 req/sec');
-writeOutput(); // emit cached data immediately so UI isn't blank
+// Preserve the on-disk updatedAt so the ticker keeps showing STALE/OFFLINE
+// while catching up — only flips to 'live' once a real scan writes a fresh timestamp.
+let _bootTs = null;
+try { _bootTs = JSON.parse(fs.readFileSync(LEADERBOARD_FILE, 'utf8')).updatedAt ?? null; } catch {}
+writeOutput(_bootTs); // emit cached data immediately so UI isn't blank
 
 setTimeout(async () => {
   await migrateAddTwoSided(); // one-time: backfill twoSided for pre-feature CIDs
