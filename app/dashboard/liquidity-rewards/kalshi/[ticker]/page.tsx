@@ -13,6 +13,8 @@ interface KLevelData {
   askShare:       number;
   grossRewardDay: number;
   dayYieldPct:    number;
+  netRewardDay?:  number;
+  netYieldPct?:   number;
 }
 
 interface KMarket {
@@ -792,7 +794,7 @@ export default function KalshiMarketDetailPage() {
                   <div className="border-t pt-2.5 border-emerald-800/30">
                     <div className="flex items-baseline justify-between gap-2">
                       <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
-                        Est. gross reward
+                        Est. net reward
                       </span>
                       <span className={`font-mono text-xl font-bold tabular-nums ${
                         !est.aboveMin || isTrap ? 'text-zinc-600' : 'text-emerald-400'
@@ -805,7 +807,7 @@ export default function KalshiMarketDetailPage() {
                         OBSERVED MODEL · estimate
                       </span>
                       <span className="font-mono text-[10px] text-zinc-600">
-                        per day · GROSS
+                        per day · net of platform fees · inv. risk not sub.
                       </span>
                     </div>
                     {ticketSide === 'BOTH' && est.aboveMin && (
@@ -860,13 +862,13 @@ export default function KalshiMarketDetailPage() {
                       {lv.aboveMin ? (
                         <>
                           <div className="font-mono text-sm font-semibold text-emerald-400 tabular-nums">
-                            {fmtUsd(lv.grossRewardDay)}/day
+                            {fmtUsd(lv.netRewardDay ?? lv.grossRewardDay)}/day
                           </div>
                           <div className="font-mono text-[10px] text-zinc-500 tabular-nums">
                             {(lv.share * 100).toFixed(2)}% share
                           </div>
                           <div className="font-mono text-[10px] text-zinc-600 tabular-nums">
-                            {lv.dayYieldPct.toFixed(2)}%/day yield
+                            {(lv.netYieldPct ?? lv.dayYieldPct).toFixed(2)}%/day
                           </div>
                         </>
                       ) : (
@@ -878,8 +880,8 @@ export default function KalshiMarketDetailPage() {
               </div>
               <div className="px-3 py-1.5 border-t border-zinc-800">
                 <p className="font-mono text-[9px] text-zinc-700">
-                  OBSERVED MODEL · flat pro-rata · snapshot at last scan · not Kalshi's official formula ·
-                  share compresses as makers enter
+                  EST · NET OF PLATFORM FEES (reward paid from pool, no fee deducted) · OBSERVED MODEL · flat pro-rata ·
+                  not Kalshi's official formula · share compresses as makers enter · inv. risk not sub.
                 </p>
               </div>
             </div>
@@ -930,8 +932,8 @@ export default function KalshiMarketDetailPage() {
         <div className="border-t border-zinc-800 pt-4">
           <p className="font-mono text-[10px] text-zinc-700 leading-relaxed">
             Kalshi order book data fetched live from the public Kalshi Trade API v2. No login, no keys, no orders placed.
-            All reward figures are GROSS estimates using an OBSERVED flat pro-rata model — Kalshi's official formula is not public.
-            Adverse-fill risk not modelled. Not financial advice.
+            All reward figures are NET OF PLATFORM FEES estimates (Kalshi LIP reward paid from incentive pool separately from trading fees) using an OBSERVED flat pro-rata model — Kalshi's official formula is not public.
+            Inventory/adverse-fill risk not modelled. Not financial advice.
           </p>
         </div>
 

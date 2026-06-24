@@ -42,6 +42,11 @@ const TRAP_HI          = 0.90;      // last_price > 0.90 → TRAP
 const TRAP_LO          = 0.10;      // last_price < 0.10 → TRAP
 const BURST_DAYS       = 1.0;       // period_days < 1 → SHORT_BURST
 
+// LIP rewards are paid from Kalshi's incentive pool with no fee deducted from the disbursement.
+// The winFee in lib/fees.ts (7%) applies to resolved winning positions, not to reward income.
+// fee_discount_pct is a BENEFIT (discount on trading fees for LIP makers), not a cost.
+const KALSHI_REWARD_FEE_RATE = 0;
+
 // ── Rate-limited HTTP queue ─────────────────────────────────────────────────
 const _queue    = [];
 let   _draining = false;
@@ -154,6 +159,9 @@ function estimateKalshiLevels(bookScore, minSize, poolDay, lastPrice) {
 
     const grossRewardDay = share * poolDay;
     const dayYieldPct    = (grossRewardDay / capital) * 100;
+    // net = gross: LIP reward is paid from incentive pool with no fee; KALSHI_REWARD_FEE_RATE = 0.
+    const netRewardDay   = grossRewardDay * (1 - KALSHI_REWARD_FEE_RATE);
+    const netYieldPct    = (netRewardDay / capital) * 100;
 
     result[capital] = {
       aboveMin:       true,
@@ -162,6 +170,8 @@ function estimateKalshiLevels(bookScore, minSize, poolDay, lastPrice) {
       askShare:       parseFloat(askShare.toFixed(6)),
       grossRewardDay: parseFloat(grossRewardDay.toFixed(4)),
       dayYieldPct:    parseFloat(dayYieldPct.toFixed(3)),
+      netRewardDay:   parseFloat(netRewardDay.toFixed(4)),
+      netYieldPct:    parseFloat(netYieldPct.toFixed(3)),
     };
   }
   return result;

@@ -128,7 +128,7 @@ function LiveCard({ cat, flashKey }: { cat: TickerItem; flashKey: number }) {
               {cat.displayKind === 'estimate' && (
                 <div className="mt-1 mb-0.5">
                   <span className="font-mono text-[6.5px] uppercase tracking-widest px-1 py-[2px] border border-amber-500/20 text-amber-400/40">
-                    ESTIMATE · GROSS · NOT NET
+                    EST · NET OF PLATFORM FEES
                   </span>
                 </div>
               )}

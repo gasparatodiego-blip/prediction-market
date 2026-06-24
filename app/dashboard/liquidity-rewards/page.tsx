@@ -15,10 +15,14 @@ interface LevelData {
   share:           number;
   grossRewardDay:  number;
   dayYieldPct:     number;
+  netRewardDay?:   number;
+  netYieldPct?:    number;
   shareHigh?:      number;
   grossHigh?:      number;
+  netHigh?:        number;
   shareLow?:       number;
   grossLow?:       number;
+  netLow?:         number;
   thinBookFlag:    boolean;
   belowFloorFlag:  boolean;
   flags:           string[];
@@ -68,6 +72,8 @@ interface KLevelData {
   askShare:       number;
   grossRewardDay: number;
   dayYieldPct:    number;
+  netRewardDay?:  number;
+  netYieldPct?:   number;
 }
 
 interface KMarket {
@@ -338,16 +344,16 @@ function MarketCard({
 
       <div className="col-span-2 space-y-0.5">
         <div className={`tabular-nums font-semibold ${isFlagged ? 'text-zinc-500' : 'text-emerald-400'}`}>
-          {fmtReward(lv.grossRewardDay)}
+          {fmtReward(lv.netRewardDay ?? lv.grossRewardDay)}
         </div>
-        <div className="text-zinc-600 text-[10px]">typ. gross/day</div>
-        {lv.grossLow != null && lv.grossHigh != null && (
+        <div className="text-zinc-600 text-[10px]">typ. net/day</div>
+        {(lv.netLow ?? lv.grossLow) != null && (lv.netHigh ?? lv.grossHigh) != null && (
           <div className="text-zinc-700 text-[9px] tabular-nums">
-            {fmtReward(lv.grossLow)}–{fmtReward(lv.grossHigh)} range
+            {fmtReward(lv.netLow ?? lv.grossLow!)}–{fmtReward(lv.netHigh ?? lv.grossHigh!)} range
           </div>
         )}
-        <div className="text-zinc-500 tabular-nums text-[10px]">{lv.dayYieldPct.toFixed(2)}%/day yield</div>
-        <div className="text-zinc-700 text-[9px]">adverse risk not sub.</div>
+        <div className="text-zinc-500 tabular-nums text-[10px]">{(lv.netYieldPct ?? lv.dayYieldPct).toFixed(2)}%/day</div>
+        <div className="text-zinc-700 text-[9px]">inv. risk not sub.</div>
       </div>
     </Link>
   );
@@ -508,11 +514,11 @@ function KMarketRow({
             <div className="text-zinc-600 text-[10px]">est. share</div>
             <div className={`tabular-nums font-semibold
               ${isTrap ? 'text-zinc-600' : anyFlag ? 'text-zinc-500' : 'text-emerald-400'}`}>
-              {fmtReward(lv.grossRewardDay)}
+              {fmtReward(lv.netRewardDay ?? lv.grossRewardDay)}
             </div>
-            <div className="text-zinc-600 text-[10px]">est. gross/day</div>
-            <div className="text-zinc-500 tabular-nums text-[10px]">{lv.dayYieldPct.toFixed(2)}%/day</div>
-            <div className="text-zinc-700 text-[9px]">obs. model only</div>
+            <div className="text-zinc-600 text-[10px]">est. net/day</div>
+            <div className="text-zinc-500 tabular-nums text-[10px]">{(lv.netYieldPct ?? lv.dayYieldPct).toFixed(2)}%/day</div>
+            <div className="text-zinc-700 text-[9px]">obs. model · inv. risk not sub.</div>
           </>
         ) : (
           <div className="text-zinc-700 text-[10px]">below min at this capital</div>
@@ -688,8 +694,8 @@ function KalshiView() {
                 ['Min size (shares)',   'Minimum qualifying order size in shares. Kalshi has not published exact qualifying rules.'],
                 ['Bid / ask depth ≈USD','Competitor qualifying depth per side, converted from shares to approximate USD at current mid. Your capital competes against this.'],
                 ['Est. share',          'Flat pro-rata per side: your_shares / (your_shares + competitor_shares), min(bid, ask). OBSERVED MODEL — not Kalshi\'s official formula (not public).'],
-                ['Est. gross/day',      'share × pool/day. Gross only — adverse fill risk is not subtracted. Yields look high because competition is thin now; they will compress as makers enter.'],
-                ['%/day',              'gross / capital. >5%/day (THIN/CAP) means the book is very thin and yield will compress rapidly.'],
+                ['Est. net/day',        'share × pool/day. NET OF PLATFORM FEES — Kalshi LIP rewards are paid from the incentive pool separately from trading fees (fee_discount_pct is a benefit, not a cost). Does not subtract inventory/adverse-selection risk from fills. Yields look high because competition is thin now; they will compress as makers enter.'],
+                ['%/day',              'net reward / capital. >5%/day (THIN/CAP) means the book is very thin and yield will compress rapidly.'],
                 ['TRAP',               'last_price > 0.90 or < 0.10: near-certain outcome, one side nearly empty. Adverse fill risk is extreme. Pushed to bottom.'],
                 ['WARN · lopsided',    'last_price 0.80–0.90 or 0.10–0.20: lopsided book, elevated adverse fill risk. Shown but de-emphasised.'],
                 ['SHORT BURST',        'Period < 1 day. The daily rate is extrapolated from a very short window — the total period reward is the grounding number.'],
@@ -908,7 +914,7 @@ export default function LiquidityRewardsPage() {
                       ['Pool $/day (real)', 'The dollar amount Polymarket allocates to reward makers on this market per day. This is the actual program rate — not an estimate.'],
                       ['Existing depth', 'Dollar notional (price × size) of all qualifying resting orders currently in the CLOB within the reward band. This is your competition. It changes continuously.'],
                       ['Typ. est. share', 'Estimated pool fraction using Polymarket\'s quadratic formula S(v,s)=((v-s)/v)². TYPICAL placement: both sides posted at s=v/2 (half the half-band, S=0.25) — a realistic farming position. Range shows outer-band low (s=0.8v, S=0.04) to near-mid high (s=0.1¢). Actual share depends on exact resting price and competitor re-quoting. Share compresses as makers enter.'],
-                      ['Est. gross reward/day', 'share × pool $/day. GROSS — adverse-fill risk (being picked off when you\'re wrong) is not subtracted. That risk rises with volatility.'],
+                      ['Est. net/day', 'share × pool $/day. NET OF PLATFORM FEES — Polymarket CLOB maker fee is 0%; reward is paid from the pool in USDC with no fee deducted; Polygon gas ≈ $0. Does NOT subtract inventory/adverse-selection risk from fills — that is non-deterministic and rises with volatility.'],
                       ['THIN BOOK flag', 'Gross yield >5%/day at this capital: the book is very thin and your share will compress as other makers arrive.'],
                       ['BELOW FLOOR flag', 'Gross reward <$1/day at this capital: Polymarket pays out in whole dollars; this position likely earns nothing.'],
                       ['Adverse risk class', 'LOW = slow-moving market, far from resolution. HIGH = near expiry or high recent volatility. HIGH-risk markets are likely to see informed flow picking off your orders.'],
@@ -1021,7 +1027,7 @@ export default function LiquidityRewardsPage() {
                   <div className="col-span-5">Market / risk / flags</div>
                   <div className="col-span-2">Pool + depth</div>
                   <div className="col-span-2">Est. share</div>
-                  <div className="col-span-2">Est. gross/day</div>
+                  <div className="col-span-2">Est. net/day</div>
                 </div>
 
                 {sorted.map((m, i) => (

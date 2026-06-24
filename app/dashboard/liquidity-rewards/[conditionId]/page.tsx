@@ -14,10 +14,14 @@ interface Level {
   share:          number;     // typical placement headline
   grossRewardDay: number;
   dayYieldPct:    number;
+  netRewardDay?:  number;
+  netYieldPct?:   number;
   shareHigh?:     number;
   grossHigh?:     number;
+  netHigh?:       number;
   shareLow?:      number;
   grossLow?:      number;
+  netLow?:        number;
   flags:          string[];
 }
 
@@ -668,7 +672,7 @@ export default function MarketDetailPage() {
 
                   <div className={`border-t pt-2.5 ${est.inBand && est.aboveMin ? 'border-emerald-800/30' : 'border-zinc-700/30'}`}>
                     <div className="flex items-baseline justify-between">
-                      <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">Est. gross reward</span>
+                      <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">Est. net reward</span>
                       <span className={`font-mono text-xl font-bold tabular-nums ${
                         !est.inBand || !est.aboveMin ? 'text-zinc-600' : 'text-emerald-400'
                       }`}>
@@ -676,7 +680,7 @@ export default function MarketDetailPage() {
                       </span>
                     </div>
                     <p className="font-mono text-[10px] text-zinc-600 text-right">
-                      per day · exact price · GROSS · adverse risk not subtracted
+                      per day · exact price · net of platform fees · inv. risk not sub.
                     </p>
                     {est.bothBoost && est.inBand && est.aboveMin && (
                       <p className="font-mono text-[10px] text-emerald-700 mt-0.5 text-right">
@@ -686,8 +690,8 @@ export default function MarketDetailPage() {
                   </div>
 
                   <p className="font-mono text-[9px] text-zinc-700 leading-relaxed">
-                    ESTIMATE ONLY · S(v,s)=((v-s)/v)² · live CLOB snapshot · competitors re-quote continuously ·
-                    share compresses as makers enter · adverse-fill risk not modelled.
+                    EST · NET OF PLATFORM FEES (maker fee 0%; gas ≈ $0) · S(v,s)=((v-s)/v)² · live CLOB snapshot ·
+                    share compresses as makers enter · inventory/adverse-fill risk NOT modelled.
                   </p>
                 </div>
               )}
@@ -754,14 +758,14 @@ export default function MarketDetailPage() {
                     <div key={key} className="px-3 py-2.5 space-y-0.5">
                       <div className="font-mono text-[10px] text-zinc-600 uppercase">{capLabel}</div>
                       <div className="font-mono text-sm font-semibold text-emerald-400 tabular-nums">
-                        {fmtUsd(lv.grossRewardDay)}/day
+                        {fmtUsd(lv.netRewardDay ?? lv.grossRewardDay)}/day
                       </div>
                       <div className="font-mono text-[10px] text-zinc-500 tabular-nums">
                         {(lv.share * 100).toFixed(2)}% share
                       </div>
-                      {lv.grossLow != null && lv.grossHigh != null && (
+                      {(lv.netLow ?? lv.grossLow) != null && (lv.netHigh ?? lv.grossHigh) != null && (
                         <div className="font-mono text-[9px] text-zinc-700 tabular-nums">
-                          range {fmtUsd(lv.grossLow)}–{fmtUsd(lv.grossHigh)}
+                          range {fmtUsd(lv.netLow ?? lv.grossLow!)}–{fmtUsd(lv.netHigh ?? lv.grossHigh!)}
                         </div>
                       )}
                       {lv.flags.length > 0 && (
@@ -773,7 +777,7 @@ export default function MarketDetailPage() {
               </div>
               <div className="px-3 py-1.5 border-t border-zinc-800">
                 <p className="font-mono text-[9px] text-zinc-700">
-                  ESTIMATE · S(v,s)=((v-s)/v)² · typical s=v/2 · range: outer-band s=0.8v → near-mid s=0.1¢ · share compresses as makers enter
+                  EST · NET OF PLATFORM FEES · S(v,s)=((v-s)/v)² · typical s=v/2 · range: outer-band s=0.8v → near-mid s=0.1¢ · inv. risk not sub.
                 </p>
               </div>
             </div>
@@ -784,7 +788,7 @@ export default function MarketDetailPage() {
         <div className="border-t border-zinc-800 pt-4">
           <p className="font-mono text-[10px] text-zinc-700 leading-relaxed">
             Polymarket CLOB data is public and read-only. No trades are placed, no keys are used.
-            All reward figures are GROSS estimates — adverse-fill risk is not subtracted.
+            All reward figures are NET OF PLATFORM FEES estimates (maker fee 0%; gas ≈ $0) — inventory/adverse-fill risk is not subtracted.
             Not financial advice.
           </p>
         </div>

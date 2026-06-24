@@ -155,9 +155,9 @@ export async function GET() {
     const best = sane[0];
     if (best) {
       const lv = best.levels['500'];
-      rewardsBestPct   = lv.dayYieldPct;
-      rewardsBestGross = lv.grossRewardDay;
-      rewardsNote = `$${lv.grossRewardDay.toFixed(2)}/day est · $500 · gross`;
+      rewardsBestPct   = lv.netYieldPct   ?? lv.dayYieldPct;
+      rewardsBestGross = lv.netRewardDay  ?? lv.grossRewardDay;
+      rewardsNote = `$${(lv.netRewardDay ?? lv.grossRewardDay).toFixed(2)}/day est · $500 · net of platform fees`;
     }
   } catch { /* file absent */ }
 
