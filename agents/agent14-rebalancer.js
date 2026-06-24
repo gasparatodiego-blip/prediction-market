@@ -2,7 +2,7 @@
 'use strict';
 
 const fs    = require('fs');
-const https = require('https');
+const { httpGet: _sharedGet, httpPost: _httpPost } = require('../lib/httpGet');
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const COINS         = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE'];
@@ -28,41 +28,15 @@ function beat() {
 }
 
 function get(url) {
-  return new Promise(resolve => {
-    const req = https.get(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0 prediction-arb-scanner/1.0', 'Accept': 'application/json' },
-      timeout: 10000,
-    }, res => {
-      let body = '';
-      res.on('data', d => body += d);
-      res.on('end', () => { try { resolve(JSON.parse(body)); } catch { resolve(null); } });
-    });
-    req.on('error', () => resolve(null));
-    req.on('timeout', function () { this.destroy(); resolve(null); });
-  });
+  return _sharedGet(url, { timeoutMs: 10_000, headers: { 'User-Agent': 'Mozilla/5.0 prediction-arb-scanner/1.0', 'Accept': 'application/json' } })
+    .then(r => r.data).catch(() => null);
 }
 
 function sendTelegram(text) {
   const body = JSON.stringify({ chat_id: TG_CHAT, text, parse_mode: 'HTML' });
-  const req  = https.request({
-    hostname: 'api.telegram.org',
-    path:     `/bot${TG_TOKEN}/sendMessage`,
-    method:   'POST',
-    headers:  { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
-  }, res => {
-    let data = '';
-    res.on('data', d => data += d);
-    res.on('end', () => {
-      try {
-        const r = JSON.parse(data);
-        if (!r.ok) console.error('[tg] failed:', r.description);
-        else console.log('[tg] sent OK');
-      } catch {}
-    });
-  });
-  req.on('error', err => console.error('[tg] error:', err.message));
-  req.write(body);
-  req.end();
+  _httpPost(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, body, { timeoutMs: 10_000 })
+    .then(r => { if (!r.data?.ok) console.error('[tg] failed:', r.data?.description); else console.log('[tg] sent OK'); })
+    .catch(e => console.error('[tg] error:', e.message));
 }
 
 function loadState() {

@@ -10,7 +10,7 @@
 
 const fs   = require('fs');
 const path = require('path');
-const https = require('https');
+const { httpGet: _sharedGet, httpPost: _httpPost } = require('../lib/httpGet');
 
 // ── Config ─────────────────────────────────────────────────────────────────
 const TOKEN    = process.env.TELEGRAM_BOT_TOKEN;
@@ -30,44 +30,12 @@ const REF_CAPITAL    = 1_000;       // $ for $/day headline in alerts
 // ── Helpers ─────────────────────────────────────────────────────────────────
 function log(...a) { console.log('[A22]', ...a); }
 
-function httpGet(url) {
-  return new Promise((resolve, reject) => {
-    const req = https.get(url, (res) => {
-      const chunks = [];
-      res.on('data', c => chunks.push(c));
-      res.on('end', () => {
-        try { resolve(JSON.parse(Buffer.concat(chunks).toString())); }
-        catch (e) { reject(e); }
-      });
-    });
-    req.on('error', reject);
-    req.setTimeout(35_000, () => { req.destroy(new Error('timeout')); });
-  });
-}
+// timeoutMs=35_000 matches the old socket-inactivity value and provides a safe
+// ceiling for the Telegram long-poll (POLL_TIMEOUT=25 s + 10 s margin).
+function httpGet(url) { return _sharedGet(url, { timeoutMs: 35_000 }).then(r => r.data); }
 
-function httpPost(url, body) {
-  return new Promise((resolve, reject) => {
-    const payload = JSON.stringify(body);
-    const urlObj  = new URL(url);
-    const options = {
-      hostname: urlObj.hostname,
-      path:     urlObj.pathname,
-      method:   'POST',
-      headers:  { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
-    };
-    const req = https.request(options, (res) => {
-      const chunks = [];
-      res.on('data', c => chunks.push(c));
-      res.on('end', () => {
-        try { resolve(JSON.parse(Buffer.concat(chunks).toString())); }
-        catch (e) { reject(e); }
-      });
-    });
-    req.on('error', reject);
-    req.write(payload);
-    req.end();
-  });
-}
+// sendMessage / other POSTs — add the wall-clock deadline that was missing.
+function httpPost(url, body) { return _httpPost(url, body, { timeoutMs: 15_000 }).then(r => r.data); }
 
 async function sendMessage(chatId, text) {
   try {

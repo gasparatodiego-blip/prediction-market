@@ -2,8 +2,8 @@
 'use strict';
 
 const fs    = require('fs');
-const https = require('https');
 const WebSocket = require('ws');
+const { httpGet: _sharedGet, httpPost: _httpPost } = require('../lib/httpGet');
 const { annualize } = require('../lib/funding-math');
 
 const OUT            = '/tmp/exchange-prices.json';
@@ -50,66 +50,22 @@ function beat() {
 }
 
 function get(url) {
-  return new Promise(resolve => {
-    const req = https.get(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0 prediction-arb-scanner/1.0', 'Accept': 'application/json' },
-      timeout: 10000,
-    }, res => {
-      let body = '';
-      res.on('data', d => body += d);
-      res.on('end', () => { try { resolve(JSON.parse(body)); } catch { resolve(null); } });
-    });
-    req.on('error', () => resolve(null));
-    req.on('timeout', function () { this.destroy(); resolve(null); });
-  });
+  return _sharedGet(url, { timeoutMs: 10_000, headers: { 'User-Agent': 'Mozilla/5.0 prediction-arb-scanner/1.0', 'Accept': 'application/json' } })
+    .then(r => r.data).catch(() => null);
 }
 
 function postJson(hostname, path, body) {
-  return new Promise(resolve => {
-    const buf = Buffer.from(body);
-    const req = https.request({
-      hostname, path, method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Content-Length': buf.length,
-        'User-Agent': 'prediction-arb-scanner/1.0',
-      },
-      timeout: 10000,
-    }, res => {
-      let data = '';
-      res.on('data', d => data += d);
-      res.on('end', () => { try { resolve(JSON.parse(data)); } catch { resolve(null); } });
-    });
-    req.on('error', () => resolve(null));
-    req.on('timeout', function () { this.destroy(); resolve(null); });
-    req.write(buf);
-    req.end();
-  });
+  return _httpPost(`https://${hostname}${path}`, body, { timeoutMs: 10_000, headers: { 'User-Agent': 'prediction-arb-scanner/1.0' } })
+    .then(r => r.data).catch(() => null);
 }
 
 // ── Telegram alerts ───────────────────────────────────────────────────────────
 
 function sendTelegram(text) {
   const body = JSON.stringify({ chat_id: TG_CHAT, text, parse_mode: 'HTML' });
-  const req = https.request({
-    hostname: 'api.telegram.org',
-    path: `/bot${TG_TOKEN}/sendMessage`,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
-  }, res => {
-    let data = '';
-    res.on('data', d => data += d);
-    res.on('end', () => {
-      try {
-        const r = JSON.parse(data);
-        if (!r.ok) console.error('[tg] send failed:', r.description);
-        else console.log('[tg] alert sent OK');
-      } catch {}
-    });
-  });
-  req.on('error', err => console.error('[tg] request error:', err.message));
-  req.write(body);
-  req.end();
+  _httpPost(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, body, { timeoutMs: 10_000 })
+    .then(r => { if (!r.data?.ok) console.error('[tg] send failed:', r.data?.description); else console.log('[tg] alert sent OK'); })
+    .catch(e => console.error('[tg] request error:', e.message));
 }
 
 function checkFundingAlerts(binPerps) {

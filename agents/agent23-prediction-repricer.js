@@ -17,9 +17,8 @@
  */
 
 const fs    = require('fs');
-const https = require('https');
-const http  = require('http');
 const path  = require('path');
+const { httpGet: _sharedGet } = require('../lib/httpGet');
 
 const { PLATFORM_FEES, computeArbROI } = require('../lib/arb-math');
 
@@ -44,16 +43,9 @@ function beat() {
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 function fetchJson(url) {
-  return new Promise(resolve => {
-    const mod = url.startsWith('https') ? https : http;
-    const req = mod.get(url, { headers: { 'User-Agent': 'prediction-arb-repricer/1.0' }, timeout: 15000 }, res => {
-      let body = '';
-      res.on('data', d => body += d);
-      res.on('end', () => { try { resolve({ data: JSON.parse(body), status: res.statusCode }); } catch { resolve({ data: null, status: res.statusCode }); } });
-    });
-    req.on('error', () => resolve({ data: null, status: 0 }));
-    req.on('timeout', () => { req.destroy(); resolve({ data: null, status: 0 }); });
-  });
+  return _sharedGet(url, { timeoutMs: 15_000, headers: { 'User-Agent': 'prediction-arb-repricer/1.0' } })
+    .then(r => ({ data: r.data, status: r.status }))
+    .catch(() => ({ data: null, status: 0 }));
 }
 
 function writeAtomic(filePath, obj) {

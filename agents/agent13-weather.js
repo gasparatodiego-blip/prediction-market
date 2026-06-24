@@ -2,7 +2,7 @@
 'use strict';
 
 const fs    = require('fs');
-const https = require('https');
+const { httpGet: _sharedGet } = require('../lib/httpGet');
 
 const OUT      = '/tmp/weather-markets.json';
 const HB_FILE  = '/tmp/agent-heartbeats.json';
@@ -33,21 +33,9 @@ function beat() {
 }
 
 function get(url) {
-  return new Promise(resolve => {
-    const req = https.get(url, {
-      headers: { 'User-Agent': 'prediction-arb-scanner/1.0', 'Accept': 'application/json' },
-      timeout: 15000,
-    }, res => {
-      let body = '';
-      res.on('data', d => body += d);
-      res.on('end', () => {
-        try { resolve({ status: res.statusCode, data: JSON.parse(body) }); }
-        catch { resolve({ status: res.statusCode, data: null }); }
-      });
-    });
-    req.on('error', e => { console.error('[weather] GET error:', e.message); resolve({ status: 0, data: null }); });
-    req.on('timeout', function () { this.destroy(); resolve({ status: 0, data: null }); });
-  });
+  return _sharedGet(url, { timeoutMs: 15_000, headers: { 'User-Agent': 'prediction-arb-scanner/1.0', 'Accept': 'application/json' } })
+    .then(r => ({ status: r.status, data: r.data }))
+    .catch(e => { console.error('[weather] GET error:', e.message); return { status: 0, data: null }; });
 }
 
 // ── Kalshi weather markets ─────────────────────────

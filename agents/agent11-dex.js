@@ -2,7 +2,7 @@
 'use strict';
 
 const fs    = require('fs');
-const https = require('https');
+const { httpGet: _sharedGet, httpPost: _httpPost } = require('../lib/httpGet');
 
 const OUT      = '/tmp/dex-prices.json';
 const HB_FILE  = '/tmp/agent-heartbeats.json';
@@ -16,41 +16,13 @@ function beat() {
 }
 
 function get(url) {
-  return new Promise(resolve => {
-    const req = https.get(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0 prediction-arb-scanner/1.0', 'Accept': 'application/json' },
-      timeout: 12000,
-    }, res => {
-      let body = '';
-      res.on('data', d => body += d);
-      res.on('end', () => { try { resolve(JSON.parse(body)); } catch { resolve(null); } });
-    });
-    req.on('error', () => resolve(null));
-    req.on('timeout', function () { this.destroy(); resolve(null); });
-  });
+  return _sharedGet(url, { timeoutMs: 12_000, headers: { 'User-Agent': 'Mozilla/5.0 prediction-arb-scanner/1.0', 'Accept': 'application/json' } })
+    .then(r => r.data).catch(() => null);
 }
 
 function post(url, bodyObj) {
-  return new Promise(resolve => {
-    const body = JSON.stringify(bodyObj);
-    const u    = new URL(url);
-    const opts = {
-      hostname: u.hostname,
-      path: u.pathname + u.search,
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body), 'User-Agent': 'prediction-arb-scanner/1.0' },
-      timeout: 12000,
-    };
-    const req = https.request(opts, res => {
-      let data = '';
-      res.on('data', d => data += d);
-      res.on('end', () => { try { resolve(JSON.parse(data)); } catch { resolve(null); } });
-    });
-    req.on('error', () => resolve(null));
-    req.on('timeout', function () { this.destroy(); resolve(null); });
-    req.write(body);
-    req.end();
-  });
+  return _httpPost(url, bodyObj, { timeoutMs: 12_000, headers: { 'User-Agent': 'prediction-arb-scanner/1.0' } })
+    .then(r => r.data).catch(() => null);
 }
 
 // ── DEX fetchers ──────────────────────────────────
