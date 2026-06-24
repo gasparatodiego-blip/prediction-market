@@ -27,10 +27,15 @@ if (fs.existsSync(_envLocal)) {
 const REGIONS          = ['eu', 'uk', 'us'];
 const MARKETS          = ['h2h'];
 const ODDS_FORMAT      = 'decimal';
+// Season-dependent — revisit when seasons change (EPL/Serie A/La Liga return ~Aug;
+// NFL/NHL/NBA return Sep–Oct; Champions League returns Sep).
 const SPORTS_ALLOWLIST = [
-  'soccer_epl', 'soccer_uefa_champs_league', 'soccer_italy_serie_a',
-  'soccer_spain_la_liga', 'basketball_nba', 'americanfootball_nfl',
-  'icehockey_nhl', 'baseball_mlb', 'tennis_atp', 'tennis_wta',
+  'soccer_fifa_world_cup',  // LIVE Jun–Jul 2026: group stage + knockouts, many books per match
+  'baseball_mlb',           // in season
+  'basketball_wnba',        // in season
+  'tennis_atp',             // grass/Wimbledon window — kept so active weeks are not missed
+  'tennis_wta',             // same
+  'soccer_usa_mls',         // in season — kept; intersection skips if not yet active
 ];
 const MIN_BOOKMAKERS      = 4;     // event ignored if fewer books quote it
 const OUTLIER_PCT         = 0.25;  // book's implied prob deviating > this from median → outlier
