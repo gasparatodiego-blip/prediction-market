@@ -201,6 +201,16 @@ function computeArb(ev, sportKey) {
 async function scan() {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 
+  // Monthly budget floor guard — exits before ANY HTTP call (including free /sports)
+  if (floorReached()) {
+    console.log(
+      `[sports] MONTHLY FLOOR — scan skipped` +
+      ` (remaining: ${credits.remaining} <= ${CREDIT_SAFETY_FLOOR})` +
+      ` — credits reset at start of next billing cycle`
+    );
+    process.exit(0);
+  }
+
   const creditsBefore = credits.remaining;
   console.log(`[sports] === snapshot scan start | credits before: ${creditsBefore ?? 'unknown'} ===`);
 

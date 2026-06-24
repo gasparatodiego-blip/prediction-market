@@ -54,3 +54,5 @@ data/fund-subscriptions.json
 data/copy-watchlist.json
 # sports arb scanner outputs — rewritten each scan, credit state is local
 data/sports/
+# cron runtime logs — appended by system crontab, not source-controlled
+logs/
