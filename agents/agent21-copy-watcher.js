@@ -8,6 +8,7 @@
 const fs   = require('fs');
 const https = require('https');
 const path  = require('path');
+const { httpGet: _sharedGet } = require('../lib/httpGet');
 
 // ── Load .env for Telegram creds (pm2 doesn't auto-load project env files) ───
 for (const envFile of ['.env.local', '.env']) {
@@ -62,20 +63,7 @@ async function drain() {
   if (queue.length) drain();
 }
 
-function rawGet(url, ms) {
-  return new Promise((res, rej) => {
-    const req = https.get(url, { timeout: ms }, r => {
-      const bufs = [];
-      r.on('data', b => bufs.push(b));
-      r.on('end', () => {
-        try { res(JSON.parse(Buffer.concat(bufs).toString())); }
-        catch (e) { rej(new Error('parse: ' + e.message)); }
-      });
-    });
-    req.on('error', rej);
-    req.on('timeout', () => { req.destroy(); rej(new Error('timeout')); });
-  });
-}
+function rawGet(url, ms) { return _sharedGet(url, { timeoutMs: ms }).then(r => r.data); }
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 

@@ -22,7 +22,7 @@
 'use strict';
 
 const fs    = require('fs');
-const https = require('https');
+const { httpGet: _sharedGet } = require('../lib/httpGet');
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const SCAN_INTERVAL_MS = 15 * 60_000;
@@ -74,21 +74,7 @@ async function _drain() {
   _running = false;
 }
 
-function _rawGet(url, ms) {
-  return new Promise((res, rej) => {
-    const req = https.get(url, { timeout: ms }, r => {
-      const chunks = [];
-      r.on('data', c => chunks.push(c));
-      r.on('end', () => {
-        const body = Buffer.concat(chunks).toString();
-        try   { res({ status: r.statusCode, data: JSON.parse(body) }); }
-        catch (e) { rej(new Error(`JSON(${r.statusCode}): ${body.slice(0, 80)}`)); }
-      });
-    });
-    req.on('error', rej);
-    req.on('timeout', () => { req.destroy(); rej(new Error('timeout')); });
-  });
-}
+function _rawGet(url, ms) { return _sharedGet(url, { timeoutMs: ms }); }
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 

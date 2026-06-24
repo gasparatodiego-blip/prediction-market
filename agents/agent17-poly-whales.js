@@ -11,7 +11,7 @@
 'use strict';
 
 const fs    = require('fs');
-const https = require('https');
+const { httpGet: _sharedGet } = require('../lib/httpGet');
 
 // ── Paths ─────────────────────────────────────────────────────────────────
 const WHALE_FILE = '/tmp/poly-whales.json';
@@ -50,20 +50,7 @@ async function drainQ() {
   if (queue.length > 0) drainQ();
 }
 
-function rawGet(url, ms) {
-  return new Promise((resolve, reject) => {
-    const req = https.get(url, { timeout: ms }, res => {
-      const bufs = [];
-      res.on('data', b => bufs.push(b));
-      res.on('end', () => {
-        try { resolve(JSON.parse(Buffer.concat(bufs).toString())); }
-        catch (e) { reject(new Error('JSON: ' + e.message)); }
-      });
-    });
-    req.on('error', reject);
-    req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
-  });
-}
+function rawGet(url, ms) { return _sharedGet(url, { timeoutMs: ms }).then(r => r.data); }
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 

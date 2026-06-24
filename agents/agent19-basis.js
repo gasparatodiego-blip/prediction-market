@@ -8,7 +8,7 @@
 'use strict';
 
 const fs    = require('fs');
-const https = require('https');
+const { httpGet: _sharedGet } = require('../lib/httpGet');
 
 // ── CONFIG ─────────────────────────────────────────────────────────────────────
 const REFRESH_MS    = 5 * 60_000;
@@ -47,21 +47,7 @@ const DISCLAIMER =
   'Exchange / counterparty risk over the full hold period. Not financial advice.';
 
 // ── HTTP ───────────────────────────────────────────────────────────────────────
-function get(url, ms = 14_000) {
-  return new Promise((resolve, reject) => {
-    const req = https.get(url, { timeout: ms }, res => {
-      const buf = [];
-      res.on('data', c => buf.push(c));
-      res.on('end', () => {
-        const body = Buffer.concat(buf).toString();
-        try { resolve({ status: res.statusCode, data: JSON.parse(body) }); }
-        catch (e) { reject(new Error(`${res.statusCode} parse: ${body.slice(0, 80)}`)); }
-      });
-    });
-    req.on('error', reject);
-    req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
-  });
-}
+function get(url, ms = 14_000) { return _sharedGet(url, { timeoutMs: ms }); }
 
 function atomicWrite(path, obj) {
   const tmp = path + '.tmp.' + process.pid;
