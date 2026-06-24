@@ -23,29 +23,33 @@ const HREF_OVERRIDE: Record<string, string> = {
 };
 
 const STATUS_BADGE: Record<string, string> = {
-  'live':        'LIVE',
-  'no-opp':      'EMPTY',
-  'offline':     'OFFLINE',
-  'coming-soon': 'SOON',
+  'live':             'LIVE',
+  'no-opp':           'EMPTY',
+  'snapshot-no-opp':  'NO CASHABLE ARB',
+  'offline':          'OFFLINE',
+  'coming-soon':      'SOON',
 };
 
 const CARD_BADGE_CLS: Record<string, string> = {
-  'live':        'bg-positive/10 text-positive border-positive/25',
-  'no-opp':      'bg-border/50 text-text-muted/50 border-border/50',
-  'offline':     'bg-warning/10 text-warning/60 border-warning/20',
-  'coming-soon': 'bg-border/20 text-text-muted/30 border-border/20',
+  'live':             'bg-positive/10 text-positive border-positive/25',
+  'no-opp':           'bg-border/50 text-text-muted/50 border-border/50',
+  'snapshot-no-opp':  'bg-border/50 text-text-muted/50 border-border/50',
+  'offline':          'bg-warning/10 text-warning/60 border-warning/20',
+  'coming-soon':      'bg-border/20 text-text-muted/30 border-border/20',
 };
 
 const STRIP_BADGE_CLS: Record<string, string> = {
-  'no-opp':      'text-text-muted/40 border-border/40',
-  'offline':     'text-warning/50 border-warning/20',
-  'coming-soon': 'text-text-muted/30 border-border/30',
+  'no-opp':           'text-text-muted/40 border-border/40',
+  'snapshot-no-opp':  'text-text-muted/40 border-border/40',
+  'offline':          'text-warning/50 border-warning/20',
+  'coming-soon':      'text-text-muted/30 border-border/30',
 };
 
 const STATUS_WORD: Record<string, string> = {
-  'no-opp':      'NO LIVE OPP',
-  'offline':     'OFFLINE',
-  'coming-soon': 'COMING SOON',
+  'no-opp':           'NO LIVE OPP',
+  'snapshot-no-opp':  'NO CASHABLE ARB',
+  'offline':          'OFFLINE',
+  'coming-soon':      'COMING SOON',
 };
 
 // ── Compact live card ────────────────────────────────────────────────────────
@@ -121,6 +125,13 @@ function LiveCard({ cat, flashKey }: { cat: TickerItem; flashKey: number }) {
                 <div className="mt-1 mb-0.5">
                   <span className="font-mono text-[6.5px] uppercase tracking-widest px-1 py-[2px] border border-amber-500/20 text-amber-400/40">
                     ESTIMATE · GROSS · NOT NET
+                  </span>
+                </div>
+              )}
+              {cat.displayKind === 'snapshot' && (
+                <div className="mt-1 mb-0.5">
+                  <span className="font-mono text-[6.5px] uppercase tracking-widest px-1 py-[2px] border border-text-muted/20 text-text-muted/40">
+                    SNAPSHOT · DAILY SCAN
                   </span>
                 </div>
               )}
@@ -238,7 +249,7 @@ export default function StrategyCards() {
                   {cat.label}
                 </span>
                 <span className="font-mono text-[8px] text-text-muted/35 flex-1 truncate hidden sm:block">
-                  {TAGLINES[cat.key]}
+                  {cat.status === 'snapshot-no-opp' ? cat.note : TAGLINES[cat.key]}
                 </span>
                 <span className={`font-mono text-[7px] uppercase tracking-widest px-1.5 py-[2px] border shrink-0 ${STRIP_BADGE_CLS[cat.status] ?? 'text-text-muted/40 border-border/40'}`}>
                   {STATUS_BADGE[cat.status]}

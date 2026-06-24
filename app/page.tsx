@@ -174,7 +174,7 @@ export default function HomePage() {
           <div className="flex items-center gap-2">
             <span className="inline-block w-1.5 h-1.5 rounded-full bg-warning shrink-0" />
             <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-muted">
-              CORE SYSTEMS OPERATIONAL · SPORTS &amp; TRADERS OFFLINE
+              CORE SYSTEMS OPERATIONAL · TRADERS HUB OFFLINE
             </span>
           </div>
           <div className="flex items-center gap-4 flex-wrap">

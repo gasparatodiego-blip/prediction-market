@@ -7,7 +7,8 @@ const UNIFIED_FILE      = '/tmp/unified-opportunities.json';
 const BASIS_FILE        = '/tmp/basis-opportunities.json';
 const LEADERBOARD_FILE  = '/tmp/leaderboard.json';
 const COPY_FILE         = '/tmp/copy-watcher.json';
-const SPORTS_FILE       = '/tmp/sports-odds.json';
+// Cron-based snapshot scanner writes here (not agent12 /tmp/sports-odds.json)
+const SPORTS_FILE       = '/root/prediction-market/data/sports/opportunities.json';
 // Prediction: same post-gate sources as the detail page (/api/prediction)
 const REPRICED_FILE     = '/tmp/repriced-opportunities.json';
 const DISCOVERY_FILE    = '/tmp/arbitrage-opportunities.json';
@@ -20,7 +21,8 @@ export interface TickerItem {
   label:       string;
   bestNetPct:  number | null;
   unit:        string;
-  status:      'live' | 'offline' | 'coming-soon' | 'no-opp';
+  // 'snapshot-no-opp' = snapshot scanner ran recently but found 0 cashable arbs
+  status:      'live' | 'offline' | 'coming-soon' | 'no-opp' | 'snapshot-no-opp';
   count:       number;
   href:        string;
   note:        string;
@@ -29,7 +31,8 @@ export interface TickerItem {
   //   'annualized' → annualized with locked resolution date (Cash & Carry)
   //   'ceiling'    → theoretical ceiling, variable/not locked (Crypto & Funding)
   //   'estimate'   → linear share estimate, gross, adverse-fill risk not subtracted
-  displayKind?: 'net' | 'annualized' | 'ceiling' | 'estimate';
+  //   'snapshot'   → not a live feed; shows SNAPSHOT · DAILY SCAN badge
+  displayKind?: 'net' | 'annualized' | 'ceiling' | 'estimate' | 'snapshot';
   platforms?:  string[];  // rewards card: live-data platform names
 }
 
@@ -69,21 +72,20 @@ export async function GET() {
     if (top) { lbTopPnl = top.pnlUsdc; lbTopName = top.name; }
   } catch { /* file absent */ }
 
-  // ── Read Sports Arb data ──────────────────────────────────────────────────
+  // ── Read Sports Arb data (cron snapshot, not a live agent) ──────────────
   let sportsRunning   = false;
   let sportsArbCount  = 0;
   let sportsBestMargin: number | null = null;
-  let sportsPaused    = false;
-  let sportsCredits:   number | null = null;
+  let sportsAgeHours  = 0;
   try {
     const sp  = JSON.parse(fs.readFileSync(SPORTS_FILE, 'utf8'));
-    const age = Date.now() - (sp.fetchedAt ?? 0);
-    sportsRunning    = age < 2 * 60 * 60_000;  // stale after 2h (agent polls 45 min)
-    sportsPaused     = sp.paused ?? false;
-    sportsArbCount   = sp.totalArb ?? 0;
-    sportsCredits    = sp.creditsRemaining ?? null;
-    const best       = (sp.arbOpportunities ?? [])[0];
-    if (best) sportsBestMargin = best.netMargin;
+    const age = Date.now() - new Date(sp.lastUpdated ?? 0).getTime();
+    sportsAgeHours = Math.round(age / 3_600_000);
+    sportsRunning  = age < 36 * 60 * 60_000;   // 36h threshold — snapshot runs ~once/day
+    const opps     = sp.opportunities ?? [];
+    sportsArbCount = opps.length;
+    const best     = opps[0];
+    if (best) sportsBestMargin = best.roiPct ?? null;
   } catch { /* file absent */ }
 
   // ── Read Copy Watcher data ────────────────────────────────────────────────
@@ -224,20 +226,22 @@ export async function GET() {
       displayKind: 'net',
     },
     {
-      key:        'sports',
-      label:      'Sports Arb',
-      bestNetPct: sportsRunning && sportsBestMargin != null ? sportsBestMargin : null,
-      unit:       '%',
-      status:     !sportsRunning ? 'offline'
-                : sportsPaused   ? 'offline'
-                : sportsArbCount > 0 ? 'live'
-                : 'no-opp',
-      count:      sportsArbCount,
-      href:       '/dashboard/sports',
-      note:       !sportsRunning  ? 'agent offline'
-                : sportsPaused   ? `paused — ${sportsCredits ?? '?'} API credits left`
-                : sportsArbCount > 0 ? `${sportsArbCount} surebet${sportsArbCount !== 1 ? 's' : ''} · h2h only`
-                : 'no surebets found — all implied sums ≥ 1',
+      key:         'sports',
+      label:       'Sports Arb',
+      bestNetPct:  sportsRunning && sportsBestMargin != null ? sportsBestMargin : null,
+      unit:        '%',
+      // Status depends on data file freshness, not on any PM2 agent
+      status:      !sportsRunning    ? 'offline'
+                 : sportsArbCount > 0 ? 'live'
+                 : 'snapshot-no-opp',
+      count:       sportsArbCount,
+      href:        '/dashboard/sports',
+      note:        !sportsRunning
+                 ? `no snapshot in 36h — last updated ${sportsAgeHours}h ago`
+                 : sportsArbCount > 0
+                 ? `${sportsArbCount} cashable · SNAPSHOT · updated ${sportsAgeHours}h ago`
+                 : `0 cashable · SNAPSHOT · updated ${sportsAgeHours}h ago`,
+      displayKind: 'snapshot' as const,
     },
     {
       key:         'carry',
