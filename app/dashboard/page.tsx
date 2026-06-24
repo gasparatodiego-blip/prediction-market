@@ -65,12 +65,12 @@ const strategies: Strategy[] = [
     id: 'sports',
     Icon: Trophy,
     name: 'Sports Arb',
-    platforms: ['Bet365', 'DraftKings', 'OddsAPI'],
-    summary: 'Surebets across 40+ bookmakers — soft-book filter in progress',
+    platforms: ['OddsAPI', 'EU Books'],
+    summary: 'Cross-bookmaker surebet scanner — outlier-filtered, credit-safe snapshot',
     explanation:
-      'When bookmakers disagree on odds for the same match, backing every outcome across different books can lock in a profit regardless of the result. The scanner finds these surebets across 40+ books via OddsAPI. The soft-book false-positive filter is not yet built — enabling live output now would show unreliable results. Coming soon.',
+      'When bookmakers disagree on odds for the same match, backing every outcome across different books locks in a profit regardless of result. Phase A: periodic snapshot scanner (EU h2h, on-demand run). Opportunities survive a 4-book minimum gate, a median outlier filter that removes suspiciously generous prices, and a 6% ROI plausibility cap. Preview only — no orders placed.',
     link: '/dashboard/sports',
-    comingSoon: true,
+    // TODO: tier-gate same as other live strategies — leaving accessible (Free) for now
   },
 ];
 
