@@ -3,6 +3,7 @@ import LandingHero from '@/app/components/LandingHero';
 import LiveTickerBanner from '@/app/components/LiveTickerBanner';
 import StrategyCards from '@/app/components/StrategyCards';
 import Reveal from '@/app/components/Reveal';
+import FooterStatus from '@/app/components/FooterStatus';
 
 export default function HomePage() {
   return (
@@ -171,12 +172,7 @@ export default function HomePage() {
       {/* ── 5. FOOTER ───────────────────────────────────────────────────────── */}
       <footer className="relative z-10 border-t border-border">
         <div className="max-w-[900px] mx-auto px-6 py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <span className="inline-block w-1.5 h-1.5 rounded-full bg-warning shrink-0" />
-            <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-muted">
-              CORE SYSTEMS OPERATIONAL · TRADERS HUB OFFLINE
-            </span>
-          </div>
+          <FooterStatus />
           <div className="flex items-center gap-4 flex-wrap">
             <span className="font-mono text-[9px] text-text-muted/50">Not financial advice. Capital at risk.</span>
             <span className="font-mono text-[10px] text-text-muted">v0.1.0</span>

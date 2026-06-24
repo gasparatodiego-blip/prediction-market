@@ -68,10 +68,14 @@ function LiveCard({ cat, flashKey }: { cat: TickerItem; flashKey: number }) {
         {/* Header */}
         <div className="flex items-start justify-between gap-1.5 mb-2">
           <div className="flex items-center gap-1.5 min-w-0">
-            <span
-              className="inline-block w-1.5 h-1.5 rounded-full bg-positive shrink-0 animate-pulse-slow"
-              style={{ boxShadow: '0 0 4px #22C55E' }}
-            />
+            {cat.status === 'live' ? (
+              <span
+                className="inline-block w-1.5 h-1.5 rounded-full bg-positive shrink-0 animate-pulse-slow"
+                style={{ boxShadow: '0 0 4px #22C55E' }}
+              />
+            ) : (
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-text-muted/30 shrink-0" />
+            )}
             <span className="font-mono text-[8px] uppercase tracking-widest text-text-muted truncate">
               {cat.label}
             </span>
@@ -213,9 +217,11 @@ export default function StrategyCards() {
     );
   }
 
-  // Split: live = full cards; non-live = compact strip
-  const liveCards   = data.categories.filter(c => c.status === 'live');
-  const nonLiveItems = data.categories.filter(c => c.status !== 'live');
+  // Full cards: live agents AND honest-but-empty results (scanner ran, found 0).
+  // Dim strip: genuinely offline (missing/stale data file) or coming-soon only.
+  const FULL_CARD_STATUSES = new Set(['live', 'snapshot-no-opp', 'no-opp']);
+  const liveCards   = data.categories.filter(c => FULL_CARD_STATUSES.has(c.status));
+  const nonLiveItems = data.categories.filter(c => !FULL_CARD_STATUSES.has(c.status));
 
   return (
     <div>
