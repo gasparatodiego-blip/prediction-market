@@ -24,7 +24,7 @@ if (fs.existsSync(_envLocal)) {
 }
 
 // ── Config ────────────────────────────────────────────────────────────────────
-const REGIONS          = ['eu'];
+const REGIONS          = ['eu', 'uk', 'us'];
 const MARKETS          = ['h2h'];
 const ODDS_FORMAT      = 'decimal';
 const SPORTS_ALLOWLIST = [
@@ -36,6 +36,70 @@ const MIN_BOOKMAKERS      = 4;     // event ignored if fewer books quote it
 const OUTLIER_PCT         = 0.25;  // book's implied prob deviating > this from median → outlier
 const MAX_PLAUSIBLE_ROI   = 0.06;  // h2h arb > 6% net → almost certainly a data error → quarantine
 const CREDIT_SAFETY_FLOOR = 30;    // stop scanning if remaining credits would drop to this
+
+// Each /odds call costs 1 credit PER region requested. With 3 regions, cost = 3 per sport.
+const CREDITS_PER_SPORT = REGIONS.length;
+
+// ── Bookmaker → jurisdiction lookup (best-effort static map from OddsAPI docs) ─
+// 'us' = US-licensed books; 'eu' = EU-licensed; 'uk' = UK-licensed (UKGC)
+// EU and UK are treated as mutually accessible for a European bettor.
+// US books are a separate jurisdiction that most non-US bettors cannot access.
+const BOOKMAKER_REGION = {
+  // US
+  draftkings:        'us',
+  fanduel:           'us',
+  betmgm:            'us',
+  caesars:           'us',
+  betrivers:         'us',
+  unibet_us:         'us',
+  williamhill_us:    'us',
+  pointsbet_us:      'us',
+  bovada:            'us',
+  mybookieag:        'us',
+  betonlineag:       'us',
+  betus:             'us',
+  lowvig:            'us',
+  superbook:         'us',
+  wynnbet:           'us',
+  hard_rock_bet:     'us',
+  espnbet:           'us',
+  fliff:             'us',
+  bet365_us:         'us',
+  betparx:           'us',
+  fanatics:          'us',
+  // UK
+  bet365:            'uk',
+  williamhill:       'uk',
+  betfair_ex_uk:     'uk',
+  paddypower:        'uk',
+  skybet:            'uk',
+  ladbrokes_uk:      'uk',
+  coral:             'uk',
+  unibet_gb:         'uk',
+  betway:            'uk',
+  boylesports:       'uk',
+  betvictor:         'uk',
+  spreadex:          'uk',
+  // EU
+  pinnacle:          'eu',
+  onexbet:           'eu',
+  betclic:           'eu',
+  unibet_eu:         'eu',
+  marathonbet:       'eu',
+  nordicbet:         'eu',
+  coolbet:           'eu',
+  betsson:           'eu',
+  stoiximan:         'eu',
+  bwin:              'eu',
+  livescore_bets:    'eu',
+  matchbook:         'eu',
+  tonybet:           'eu',
+  betano:            'eu',
+  '10bet':           'eu',
+  tipwin:            'eu',
+  bethard:           'eu',
+  everygame:         'eu',
+};
 
 // ── Files ─────────────────────────────────────────────────────────────────────
 const DATA_DIR     = path.join(__dirname, '../data/sports');
@@ -166,28 +230,34 @@ function computeArb(ev, sportKey) {
 
   const roi = (1 / impliedClean) - 1;
 
+  const legs = legsClean.map((l, i) => ({
+    outcome:   names[i],
+    bookmaker: l.bookmaker,
+    bookmakerId: l.bookmakerId,
+    odd:       l.price,
+    stakePct:  Math.round(((1 / l.price) / impliedClean) * 10000) / 100,
+    region:    BOOKMAKER_REGION[l.bookmakerId] ?? 'unknown',
+  }));
+
+  // crossJurisdiction: true when any leg is US-only and another is EU/UK
+  // (a typical single bettor cannot hold accounts on both sides)
+  const hasUs = legs.some(l => l.region === 'us');
+  const hasEuOrUk = legs.some(l => l.region === 'eu' || l.region === 'uk');
+  const crossJurisdiction = hasUs && hasEuOrUk;
+
   const record = {
     sport:           sportKey,
     eventName:       `${ev.home_team} vs ${ev.away_team}`,
     commenceTime:    ev.commence_time,
     type:            names.length === 2 ? '2way' : '3way',
-    legs: legsClean.map(l => ({
-      outcome:   l.outcome ?? names[legsClean.indexOf(l)],
-      bookmaker: l.bookmaker,
-      odd:       l.price,
-      stakePct:  Math.round(((1 / l.price) / impliedClean) * 10000) / 100,
-    })),
+    legs,
     roiPct:          Math.round(roi * 10000) / 100,
     impliedSum:      Math.round(impliedClean * 10000) / 10000,
     outliersRemoved,
+    crossJurisdiction,
     numBookmakers:   bookmakers.length,
     lastUpdated:     new Date().toISOString(),
   };
-
-  // Fix outcome names in legs (map through original names array)
-  for (let i = 0; i < names.length; i++) {
-    record.legs[i].outcome = names[i];
-  }
 
   // (d) Quarantine implausibly high ROI
   if (roi > MAX_PLAUSIBLE_ROI) {
@@ -212,7 +282,7 @@ async function scan() {
   }
 
   const creditsBefore = credits.remaining;
-  console.log(`[sports] === snapshot scan start | credits before: ${creditsBefore ?? 'unknown'} ===`);
+  console.log(`[sports] === snapshot scan start | credits before: ${creditsBefore ?? 'unknown'} | regions: ${REGIONS.join(',')} | cost per sport: ${CREDITS_PER_SPORT} ===`);
 
   // Step 1: GET /sports — FREE (0 credits consumed)
   let activeSportKeys = new Set();
@@ -235,7 +305,7 @@ async function scan() {
     console.log(`[sports] target: ${targetSports.join(', ')}`);
   }
 
-  // Step 2: GET /odds per sport (each call costs 1 credit)
+  // Step 2: GET /odds per sport (each call costs CREDITS_PER_SPORT credits = 1 per region requested)
   const opportunities      = [];
   const quarantine         = [];
   const sportsScanned      = [];
@@ -244,11 +314,11 @@ async function scan() {
   let   falsePositives     = 0;
 
   for (const sportKey of targetSports) {
-    // Credit guard: check BEFORE spending
-    if (floorReached()) {
+    // Credit guard: check BEFORE spending — account for full multi-region cost
+    if (credits.remaining != null && (credits.remaining - CREDITS_PER_SPORT) <= CREDIT_SAFETY_FLOOR) {
       console.warn(
-        `[sports] CREDIT FLOOR REACHED (${credits.remaining} <= ${CREDIT_SAFETY_FLOOR})` +
-        ` — scan stopped to protect monthly budget`
+        `[sports] CREDIT FLOOR — stopping before next request would breach floor` +
+        ` (remaining: ${credits.remaining}, cost: ${CREDITS_PER_SPORT}, floor: ${CREDIT_SAFETY_FLOOR})`
       );
       break;
     }

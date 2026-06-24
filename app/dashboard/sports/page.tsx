@@ -76,9 +76,10 @@ function commenceRelative(iso: string): string {
 // ── Disclaimer chip (same amber expandable pattern as ObservedModelChip) ──────
 
 const DISCLAIMER_TEXT =
-  'Snapshot scan of EU h2h odds via OddsAPI. NOT a live feed — data is from the last manual scan run. ' +
+  'Snapshot scan of EU/UK/US h2h odds via OddsAPI. NOT a live feed — data is from the last manual scan run. ' +
   'Surebets shown survive a minimum-bookmakers gate (≥4 books), a median outlier filter that removes ' +
   'suspiciously generous prices, and a plausibility cap (ROI > 6% → quarantine). ' +
+  'Surebets may combine bookmakers from different jurisdictions (US vs EU/UK); these are flagged and may not be executable by a single account. ' +
   'Preview only — no orders are placed. Always verify odds independently before acting.';
 
 function DisclaimerChip() {
@@ -157,7 +158,7 @@ function CreditMeter({ remaining, used }: { remaining: number | null; used: numb
         />
       </div>
       <p className="font-mono text-[9px] text-text-muted/50 leading-relaxed">
-        Each /odds request costs 1 credit. The /sports discovery call is free.
+        Each /odds request costs 3 credits (1 per region: EU + UK + US). The /sports discovery call is free.
         Scanner respects a {CREDIT_LOW_FLOOR}-credit safety floor and stops automatically.
       </p>
     </div>
@@ -197,6 +198,14 @@ function OpportunityCard({ opp }: { opp: SnapshotOpportunity }) {
                 STARTED
               </span>
             )}
+            {opp.crossJurisdiction && (
+              <span
+                title="Legs span US and EU/UK bookmakers. Most bettors cannot hold accounts in both jurisdictions simultaneously — verify access before acting."
+                className="font-mono text-[9px] uppercase tracking-wide border border-amber-500/50 bg-amber-950/40 text-amber-400 px-1 py-px"
+              >
+                CROSS-JURISDICTION
+              </span>
+            )}
           </div>
           <p className="font-mono text-sm font-semibold text-text-primary leading-tight">
             {opp.eventName}
@@ -220,21 +229,48 @@ function OpportunityCard({ opp }: { opp: SnapshotOpportunity }) {
 
       {/* Leg table */}
       <div className="border border-border divide-y divide-border">
-        <div className="grid grid-cols-4 px-3 py-1.5 font-mono text-[9px] uppercase tracking-widest text-text-muted">
+        <div className="grid grid-cols-5 px-3 py-1.5 font-mono text-[9px] uppercase tracking-widest text-text-muted">
           <span>Outcome</span>
           <span>Bookmaker</span>
+          <span>Region</span>
           <span className="text-right">Best odd</span>
           <span className="text-right">Stake %</span>
         </div>
-        {opp.legs.map((leg, i) => (
-          <div key={i} className="grid grid-cols-4 px-3 py-2 font-mono text-[11px]">
-            <span className="text-text-primary truncate pr-2">{leg.outcome}</span>
-            <span className="text-text-secondary truncate pr-2">{leg.bookmaker}</span>
-            <span className="text-right text-accent tabular-nums">{leg.odd.toFixed(3)}</span>
-            <span className="text-right text-positive tabular-nums">{leg.stakePct.toFixed(1)}%</span>
-          </div>
-        ))}
+        {opp.legs.map((leg, i) => {
+          const reg = (leg.region ?? 'unknown').toUpperCase();
+          const regCls = reg === 'US'
+            ? 'text-blue-400 border-blue-500/40 bg-blue-950/30'
+            : reg === 'UK'
+              ? 'text-violet-400 border-violet-500/40 bg-violet-950/30'
+              : reg === 'EU'
+                ? 'text-emerald-400 border-emerald-500/40 bg-emerald-950/30'
+                : 'text-text-muted/50 border-border';
+          return (
+            <div key={i} className="grid grid-cols-5 px-3 py-2 font-mono text-[11px]">
+              <span className="text-text-primary truncate pr-2">{leg.outcome}</span>
+              <span className="text-text-secondary truncate pr-2">{leg.bookmaker}</span>
+              <span>
+                <span className={`inline-block font-mono text-[9px] uppercase px-1 py-px border ${regCls}`}>
+                  {reg}
+                </span>
+              </span>
+              <span className="text-right text-accent tabular-nums">{leg.odd.toFixed(3)}</span>
+              <span className="text-right text-positive tabular-nums">{leg.stakePct.toFixed(1)}%</span>
+            </div>
+          );
+        })}
       </div>
+
+      {/* Cross-jurisdiction warning */}
+      {opp.crossJurisdiction && (
+        <div className="border border-amber-500/40 bg-amber-950/20 px-3 py-2.5">
+          <p className="font-mono text-[10px] text-amber-300/90 leading-relaxed">
+            <span className="font-semibold">CROSS-JURISDICTION</span> — this surebet combines US bookmakers
+            and EU/UK bookmakers. A single user may not be able to hold accounts in both jurisdictions.
+            Verify you have access to all bookmakers listed before acting.
+          </p>
+        </div>
+      )}
 
       {/* Footer note */}
       <p className="font-mono text-[9px] text-text-muted/50 leading-relaxed">
@@ -349,7 +385,7 @@ export default function SportsSnapshotPage() {
             )}
           </div>
           <p className="font-mono text-[10px] text-text-muted mt-0.5">
-            CROSS-BOOKMAKER SUREBETS · EU H2H · PERIODIC SNAPSHOT · NO ORDERS PLACED
+            CROSS-BOOKMAKER SUREBETS · EU/UK/US H2H · PERIODIC SNAPSHOT · NO ORDERS PLACED
           </p>
         </div>
         <DisclaimerChip />
@@ -369,7 +405,7 @@ export default function SportsSnapshotPage() {
             node agents/agent12-sports.js
           </code>
           <p className="font-mono text-[10px] text-text-muted/50">
-            Each scan uses ~1 OddsAPI credit per sport. Check credits.json before running.
+            Each scan uses ~3 OddsAPI credits per sport (1 per region: EU+UK+US). Check credits.json before running.
           </p>
         </div>
       )}
@@ -471,7 +507,8 @@ export default function SportsSnapshotPage() {
           Bookmakers limit arb accounts; always verify odds manually before acting.
         </p>
         <p className="font-mono text-[10px] text-text-muted/40">
-          Data via The Odds API (EU region, h2h markets) · credit-safe scanner (floor: 30 remaining) ·
+          Data via The Odds API (EU/UK/US regions, h2h markets) · credit-safe scanner (floor: 30 remaining, 3 credits/sport) ·
+          Surebets may combine bookmakers from different jurisdictions (US vs EU/UK); these are flagged and may not be executable by a single account. ·
           run manually with <code>node agents/agent12-sports.js</code>
         </p>
       </div>

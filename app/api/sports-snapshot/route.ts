@@ -11,23 +11,26 @@ const FILE    = path.join(process.cwd(), 'data/sports/opportunities.json');
 const STALE_MS = 24 * 60 * 60_000;
 
 export interface SnapshotLeg {
-  outcome:   string;
-  bookmaker: string;
-  odd:       number;
-  stakePct:  number;
+  outcome:      string;
+  bookmaker:    string;
+  bookmakerId?: string;
+  odd:          number;
+  stakePct:     number;
+  region?:      string;
 }
 
 export interface SnapshotOpportunity {
-  sport:           string;
-  eventName:       string;
-  commenceTime:    string;
-  type:            '2way' | '3way';
-  legs:            SnapshotLeg[];
-  roiPct:          number;
-  impliedSum:      number;
-  outliersRemoved: boolean;
-  numBookmakers:   number;
-  lastUpdated:     string;
+  sport:              string;
+  eventName:          string;
+  commenceTime:       string;
+  type:               '2way' | '3way';
+  legs:               SnapshotLeg[];
+  roiPct:             number;
+  impliedSum:         number;
+  outliersRemoved:    boolean;
+  crossJurisdiction?: boolean;
+  numBookmakers:      number;
+  lastUpdated:        string;
 }
 
 export interface SnapshotQuarantine {
