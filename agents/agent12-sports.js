@@ -120,6 +120,26 @@ const BOOKMAKER_REGION = {
   winamax_de:        'eu',
 };
 
+// ── Executability classifier ──────────────────────────────────────────────────
+// A 'real' arb is only CASHABLE if every leg is at a sharp/standard book:
+//   no soft/restrictive books, no betting exchanges, no cross-jurisdiction legs.
+const EXEC_SOFT_BOOKS = new Set(['onexbet', 'gtbets', 'nordicbet']);
+
+function execIsExchange(bid) {
+  return bid === 'matchbook' || bid === 'smarkets' || bid.startsWith('betfair_ex_');
+}
+
+function getExecReasons(record) {
+  const reasons = [];
+  if (record.crossJurisdiction) reasons.push('crossJurisdiction');
+  for (const leg of record.legs ?? []) {
+    const bid = leg.bookmakerId ?? '';
+    if (EXEC_SOFT_BOOKS.has(bid))  reasons.push(`soft:${bid}`);
+    if (execIsExchange(bid))       reasons.push(`exchange:${bid}`);
+  }
+  return reasons;
+}
+
 // Sport labels used in scannedEvents summary (matches SPORTS_ALLOWLIST keys)
 const SPORT_LABEL_MAP = {
   soccer_fifa_world_cup: 'World Cup',
@@ -374,6 +394,13 @@ function computeArb(ev, sportKey) {
     return { type: 'quarantine', record: { ...record, reason: 'roi_above_plausible' }, scanEntry };
   }
 
+  // (e) Executability classifier — real arb, but not cashable if it depends on
+  //     soft/restrictive books, betting exchanges, or requires cross-jurisdiction access.
+  const execReasons = getExecReasons(record);
+  if (execReasons.length > 0) {
+    return { type: 'flagged', record: { ...record, reasons: execReasons }, scanEntry };
+  }
+
   return { type: 'real', record, scanEntry };
 }
 
@@ -416,7 +443,8 @@ async function scan() {
   }
 
   // Step 2: GET /odds per sport (each call costs CREDITS_PER_SPORT credits = 1 per region requested)
-  const opportunities      = [];
+  const opportunities      = [];   // genuinely cashable: no soft/exchange/cross-juris
+  const flaggedArbs        = [];   // real arb but not cashable (soft/exchange/cross-juris)
   const quarantine         = [];
   const sportsScanned      = [];
   const scannedEvents      = [];
@@ -467,6 +495,7 @@ async function scan() {
       if (res.scanEntry) scannedEvents.push(res.scanEntry);
       switch (res.type) {
         case 'real':           opportunities.push(res.record);  break;
+        case 'flagged':        flaggedArbs.push(res.record);    break;
         case 'quarantine':     quarantine.push(res.record);     break;
         case 'false_positive': falsePositives++;                break;
         case 'too_few_books':  tooFewBooks++;                   break;
@@ -501,7 +530,8 @@ async function scan() {
     scanMode:         'snapshot',
     regions:          REGIONS,
     sportsScanned,
-    opportunities,
+    opportunities,    // cashable only: passed executability classifier
+    flaggedArbs,      // real arb math but blocked by soft/exchange/cross-juris legs
     quarantine,
     scannedEvents,
     summary,
@@ -520,14 +550,16 @@ async function scan() {
   console.log(`  Credits before scan:     ${creditsBefore ?? 'unknown'}`);
   console.log(`  Credits remaining:       ${credits.remaining ?? 'unknown'}`);
   console.log(`  Credits spent this run:  ${creditsSpent ?? 'unknown'}`);
-  console.log(`  Real arb opportunities:  ${opportunities.length}`);
+  console.log(`  Cashable arb opps:       ${opportunities.length}  (passed executability classifier)`);
+  console.log(`  Flagged (not cashable):  ${flaggedArbs.length}  (soft/exchange/cross-juris legs)`);
   console.log(`  Quarantined (bad data):  ${quarantine.length}`);
   console.log(`  False positives removed: ${falsePositives}  (outlier was the only arb leg)`);
   console.log(`  Skipped (< ${MIN_BOOKMAKERS} books):   ${tooFewBooks}`);
   console.log(`  No arb at all:           ${noArbCount}`);
 
   if (opportunities.length === 0) {
-    console.log('\n  [honest] 0 real arb opportunities — this is the expected result most of the time.');
+    console.log('\n  [honest] 0 cashable arb opportunities — this is the expected result most of the time.');
+    console.log(`  ${flaggedArbs.length} arb(s) found but not cashable (soft/exchange/cross-juris legs).`);
     console.log('  Sports books are efficient; genuine arb windows are rare and close in seconds.');
   } else {
     console.log('\n  Top real opportunities:');

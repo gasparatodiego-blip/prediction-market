@@ -3,6 +3,22 @@ import fs from 'fs';
 
 export const dynamic = 'force-dynamic';
 
+// ── Sports executability classifier ──────────────────────────────────────────
+// Mirrors the rules agreed in session: soft books, exchanges, and cross-
+// jurisdiction legs make an arb non-cashable even if mathematically real.
+const SPORTS_SOFT_BOOKS = new Set(['onexbet', 'gtbets', 'nordicbet']);
+function sportsBidIsExchange(bid: string): boolean {
+  return bid === 'matchbook' || bid === 'smarkets' || bid.startsWith('betfair_ex_');
+}
+function isCashableSportsOpp(opp: any): boolean {
+  if (opp.crossJurisdiction) return false;
+  for (const leg of opp.legs ?? []) {
+    const bid: string = leg.bookmakerId ?? '';
+    if (SPORTS_SOFT_BOOKS.has(bid) || sportsBidIsExchange(bid)) return false;
+  }
+  return true;
+}
+
 const UNIFIED_FILE      = '/tmp/unified-opportunities.json';
 const BASIS_FILE        = '/tmp/basis-opportunities.json';
 const LEADERBOARD_FILE  = '/tmp/leaderboard.json';
@@ -63,10 +79,12 @@ export async function GET() {
   let lbTopPnl:   number | null = null;
   let lbWallets:  number = 0;
   let lbTopName:  string = '';
+  let lbAgeDays:  number = 0;
   try {
     const lb  = JSON.parse(fs.readFileSync(LEADERBOARD_FILE, 'utf8'));
     const age = Date.now() - new Date(lb.updatedAt ?? 0).getTime();
     lbRunning   = age < 40 * 60_000;
+    lbAgeDays   = Math.round(age / 86_400_000);
     lbWallets   = lb.totalWallets ?? 0;
     const top   = lb.categories?.All?.[0];
     if (top) { lbTopPnl = top.pnlUsdc; lbTopName = top.name; }
@@ -82,9 +100,10 @@ export async function GET() {
     const age = Date.now() - new Date(sp.lastUpdated ?? 0).getTime();
     sportsAgeHours = Math.round(age / 3_600_000);
     sportsRunning  = age < 36 * 60 * 60_000;   // 36h threshold — snapshot runs ~once/day
-    const opps     = sp.opportunities ?? [];
-    sportsArbCount = opps.length;
-    const best     = opps[0];
+    const rawOpps    = sp.opportunities ?? [];
+    const cashableOpps = rawOpps.filter(isCashableSportsOpp);
+    sportsArbCount = cashableOpps.length;
+    const best     = cashableOpps[0];
     if (best) sportsBestMargin = best.roiPct ?? null;
   } catch { /* file absent */ }
 
@@ -272,7 +291,7 @@ export async function GET() {
       href:       '/dashboard/traders',
       note:       lbRunning && lbTopPnl != null
         ? `#1 ${lbTopName}: +$${Math.round(lbTopPnl).toLocaleString()} · ${lbWallets} ranked${copyWatched > 0 ? ` · ${copyWatched} followed` : ''}`
-        : lbRunning ? 'accumulating data…' : 'agent warming up',
+        : lbRunning ? 'accumulating data…' : `STALE — data ${lbAgeDays}d old`,
     },
     {
       key:         'rewards',
