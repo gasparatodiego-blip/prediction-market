@@ -102,16 +102,20 @@ async function drain() {
 
 function rawGet(url, ms) {
   return new Promise((res, rej) => {
-    const req = https.get(url, { timeout: ms }, r => {
+    // Hard wall-clock deadline: destroys the request after ms regardless of
+    // socket activity (socket-inactivity timeout doesn't catch slow chunked responses).
+    let settled = false;
+    function settle(fn, val) { if (!settled) { settled = true; clearTimeout(deadline); fn(val); } }
+    const req = https.get(url, r => {
       const bufs = [];
       r.on('data', b => bufs.push(b));
       r.on('end', () => {
-        try { res(JSON.parse(Buffer.concat(bufs).toString())); }
-        catch (e) { rej(new Error('JSON parse: ' + e.message)); }
+        try { settle(res, JSON.parse(Buffer.concat(bufs).toString())); }
+        catch (e) { settle(rej, new Error('JSON parse: ' + e.message)); }
       });
     });
-    req.on('error', rej);
-    req.on('timeout', () => { req.destroy(); rej(new Error('timeout: ' + url.slice(0, 60))); });
+    const deadline = setTimeout(() => { req.destroy(); settle(rej, new Error('deadline: ' + url.slice(0, 60))); }, ms);
+    req.on('error', e => settle(rej, e));
   });
 }
 
