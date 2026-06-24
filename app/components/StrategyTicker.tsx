@@ -91,13 +91,7 @@ function TickerTile({ cat, flashKey }: { cat: TickerItem; flashKey: number }) {
                 </span>
               </div>
             )}
-            {cat.displayKind === 'estimate' && (
-              <div className="mt-1">
-                <span className="font-mono text-[6.5px] uppercase tracking-widest px-1 py-[2px] border border-amber-500/20 text-amber-400/40">
-                  EST · NET OF PLATFORM FEES
-                </span>
-              </div>
-            )}
+
             <div className="font-mono text-[8px] text-text-muted mt-1 leading-snug">
               {cat.note}
             </div>
