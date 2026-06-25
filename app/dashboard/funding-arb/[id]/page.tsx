@@ -14,6 +14,17 @@ interface FuturesCoin {
   openInterestUsd?:       number | null;
 }
 
+interface SlipPoint {
+  size:          number;
+  fillable:      boolean;
+  slipBps:       number | null;
+  slipUsd:       number | null;
+  grossDayUsd:   number;
+  netDayUsd:     number | null;
+  slipOverGross: number | null;
+  state:         'GREEN' | 'YELLOW' | 'RED';
+}
+
 interface SpreadItem {
   coin:               string;
   shortExchange:      string;
@@ -31,10 +42,13 @@ interface SpreadItem {
   breakevenDays:      number;
   status:             'HARVEST' | 'CAUTION' | 'MARGINAL';
   liquidityTier:      string | null;
-  capacityUsd:        number | null;  // capped at fillable 20bps depth when fresh
-  thinFlag:           boolean;        // OI-tier based
-  depthThin?:         boolean;        // depth-based THIN flag
-  depthNote?:         string | null;  // "THIN · ~$X fills within 20bps" or null
+  capacityUsd:        number | null;
+  thinFlag:           boolean;
+  depthThin?:         boolean;
+  depthNote?:         string | null;
+  slipCurve:          SlipPoint[] | null;
+  greenCapacityUsd:   number | null;
+  slipCurveMaxFillable: number | null;
 }
 
 interface ApiResponse {
@@ -146,11 +160,12 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
   const shortExchange = parts[1] ?? '';
   const longExchange  = parts[2] ?? '';
 
-  const [data,           setData]           = useState<ApiResponse | null>(null);
-  const [loading,        setLoading]        = useState(true);
-  const [capital,        setCapital]        = useState(1000);
-  const [leverage,       setLeverage]       = useState<Leverage>(1);
+  const [data,       setData]       = useState<ApiResponse | null>(null);
+  const [loading,    setLoading]    = useState(true);
+  const [capital,    setCapital]    = useState(1000);
+  const [leverage,   setLeverage]   = useState<Leverage>(1);
   const [paybackDays, setPaybackDays] = useState(10);
+  const [slipIdx,    setSlipIdx]    = useState(0);
 
   const load = useCallback(async () => {
     try {
@@ -208,9 +223,28 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
   const effectiveThreshold = marginalBoundary;
 
   const tgFollowHref = `https://t.me/Gaspola_bot?start=fund_${coin}`;
-  // Threshold encoded as basis points (×100) — integer, Telegram-safe, no dots
-  // Decode: parseInt(param) / 100 = %/yr. e.g. 7.3%/yr → 730 → /100 = 7.3
   const tgAlertHref  = `https://t.me/Gaspola_bot?start=fund_${coin}_exit_${Math.round(effectiveThreshold * 100)}`;
+
+  // Slip-curve slider (detail page)
+  const slipPts  = (spread?.slipCurve ?? []).filter(p => p.fillable);
+  const slipPt   = slipPts[slipIdx] ?? null;
+  const slipStateCls = (st: 'GREEN' | 'YELLOW' | 'RED') =>
+    st === 'GREEN' ? 'text-positive' : st === 'YELLOW' ? 'text-warning' : 'text-negative/80';
+
+  // Reset slider to greenCapacityUsd default when spread changes
+  useEffect(() => {
+    if (!spread?.slipCurve) { setSlipIdx(0); return; }
+    const pts = spread.slipCurve.filter(p => p.fillable);
+    const green = spread.greenCapacityUsd ?? 0;
+    if (green > 0) {
+      let last = 0;
+      for (let i = 0; i < pts.length; i++) { if (pts[i].state === 'GREEN') last = i; }
+      setSlipIdx(last);
+    } else {
+      setSlipIdx(0);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spread?.coin, spread?.shortExchange, spread?.longExchange]);
 
   return (
     <div className="max-w-[860px] mx-auto px-4 py-6">
@@ -347,6 +381,105 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
               )}
             </div>
           </div>
+
+          {/* Slip-aware capacity slider */}
+          {slipPts.length > 0 && (
+            <div className="mb-5 px-4 py-4 border border-border">
+              <div className="font-mono text-[9px] uppercase tracking-widest text-text-muted mb-3">
+                Liquidity-aware sizing · incl. modeled entry/exit slippage (14d amortized)
+              </div>
+              <p className="font-mono text-[9px] text-text-muted/55 mb-3 leading-relaxed">
+                Capacity = size you can enter before slippage eats &gt;30% of gross yield.
+                {(spread.greenCapacityUsd ?? 0) === 0
+                  ? ' Honest capacity is $0 here — books are thin at all tested sizes. Drag to see the cost at each level.'
+                  : ` Green cap: ${spread.greenCapacityUsd != null
+                      ? (spread.greenCapacityUsd >= 1_000_000 ? `~$${(spread.greenCapacityUsd/1_000_000).toFixed(1)}M` : spread.greenCapacityUsd >= 1_000 ? `~$${Math.round(spread.greenCapacityUsd/1_000)}k` : `~$${spread.greenCapacityUsd}`)
+                      : '—'}.`
+                }
+              </p>
+
+              {/* Slider */}
+              <div className="flex items-center gap-2 mb-3">
+                <span className="font-mono text-[9px] text-text-muted shrink-0">Position</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={slipPts.length - 1}
+                  value={slipIdx}
+                  step={1}
+                  onChange={e => setSlipIdx(parseInt(e.target.value))}
+                  className="flex-1 h-[3px] accent-accent cursor-pointer"
+                />
+                {slipPt && (
+                  <span className="font-mono text-[10px] tabular-nums text-text-secondary shrink-0 w-16 text-right">
+                    {slipPt.size >= 1_000_000 ? `$${(slipPt.size/1_000_000).toFixed(1)}M` : slipPt.size >= 1_000 ? `$${Math.round(slipPt.size/1_000)}k` : `$${slipPt.size}`}
+                  </span>
+                )}
+                {slipPt && (
+                  <span className={`font-mono text-[10px] font-semibold shrink-0 w-14 text-right ${slipStateCls(slipPt.state)}`}>
+                    {slipPt.state}
+                  </span>
+                )}
+              </div>
+
+              {/* Numbers at slider position */}
+              {slipPt && (
+                <div className="flex flex-wrap gap-x-6 gap-y-1.5 font-mono text-[11px]">
+                  <span>
+                    <span className={`text-[18px] font-bold tabular-nums ${slipStateCls(slipPt.state)}`}>
+                      {slipPt.netDayUsd != null
+                        ? `${slipPt.netDayUsd >= 0 ? '≈ $' : '-$'}${Math.abs(slipPt.netDayUsd).toFixed(2)}/day`
+                        : '—'}
+                    </span>
+                  </span>
+                  <span>
+                    <span className="text-text-muted">ROC: </span>
+                    <span className={`tabular-nums font-medium ${slipStateCls(slipPt.state)}`}>
+                      {slipPt.netDayUsd != null && slipPt.size > 0
+                        ? `${(slipPt.netDayUsd * 365 / slipPt.size * 100) >= 0 ? '+' : ''}${(slipPt.netDayUsd * 365 / slipPt.size * 100).toFixed(1)}%/yr`
+                        : '—'
+                      }
+                    </span>
+                    <span className="text-text-muted/50 text-[9px] ml-1">run-rate · not guaranteed</span>
+                  </span>
+                  {slipPt.slipBps != null && (
+                    <span>
+                      <span className="text-text-muted">Slip: </span>
+                      <span className="tabular-nums text-text-secondary">{slipPt.slipBps}bps</span>
+                      <span className="text-text-muted/50 text-[9px] ml-1">round-trip</span>
+                    </span>
+                  )}
+                  {slipPt.slipOverGross != null && (
+                    <span>
+                      <span className="text-text-muted">Slip/yield: </span>
+                      <span className={`tabular-nums ${slipStateCls(slipPt.state)}`}>{slipPt.slipOverGross}%</span>
+                      <span className="text-text-muted/50 text-[9px] ml-1">of 14d gross</span>
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* Curve summary — all points */}
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {slipPts.map((pt, i) => (
+                  <button
+                    key={pt.size}
+                    onClick={() => setSlipIdx(i)}
+                    className={`font-mono text-[8px] px-1.5 py-0.5 border transition-colors duration-100 ${
+                      i === slipIdx
+                        ? pt.state === 'GREEN'  ? 'bg-positive/20 border-positive/50 text-positive'
+                        : pt.state === 'YELLOW' ? 'bg-warning/20 border-warning/50 text-warning'
+                        :                         'bg-negative/10 border-negative/30 text-negative/80'
+                        : 'border-border text-text-muted/50 hover:border-text-muted'
+                    }`}
+                  >
+                    {pt.size >= 1_000 ? `$${Math.round(pt.size/1_000)}k` : `$${pt.size}`}
+                    <span className="ml-0.5 opacity-60">{pt.state[0]}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Sizing + fee breakdown */}
           {capital > 0 && (

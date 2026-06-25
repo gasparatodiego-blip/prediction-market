@@ -27,6 +27,17 @@ interface FuturesCoin {
   vol24hUsd?:            number | null;
 }
 
+export interface SlipPoint {
+  size:          number;
+  fillable:      boolean;
+  slipBps:       number | null;
+  slipUsd:       number | null;
+  grossDayUsd:   number;
+  netDayUsd:     number | null;
+  slipOverGross: number | null;
+  state:         'GREEN' | 'YELLOW' | 'RED';
+}
+
 export interface SpreadItem {
   coin:              string;
   shortExchange:     string;
@@ -44,11 +55,14 @@ export interface SpreadItem {
   breakevenDays:     number;
   status:            'HARVEST' | 'CAUTION' | 'MARGINAL';
   liquidityTier:     string | null;
-  capacityUsd:       number | null;   // capped at fillable 20bps depth when agent15 depth is fresh
-  thinFlag:          boolean;         // OI-tier based (drives LiqChip ⚠, row dimming)
-  depthThin:         boolean;         // depth-based THIN flag (binding < 2×N0_capped OR < $5k)
-  depthNote:         string | null;   // "THIN · ~$X fills within 20bps" or null
-  oneLegUnverified:  boolean;         // true = ≥1 leg has no settled history; spread uses predicted rate
+  capacityUsd:       number | null;            // = greenCapacityUsd when agent15 data fresh
+  thinFlag:          boolean;                  // OI-tier based (drives LiqChip ⚠, row dimming)
+  depthThin:         boolean;                  // true when greenCapacityUsd === 0
+  depthNote:         string | null;
+  oneLegUnverified:  boolean;                  // true = ≥1 leg has no settled history
+  slipCurve:         SlipPoint[] | null;       // null when not yet computed
+  greenCapacityUsd:  number | null;            // largest GREEN size (0 if none)
+  slipCurveMaxFillable: number | null;         // largest fillable size (slider clamp)
 }
 
 function isDex(exchange: string): boolean {
@@ -132,10 +146,13 @@ function computeSpreads(
           status,
           liquidityTier:      tier,
           capacityUsd:        capUsd,
-          thinFlag:           thin,
-          depthThin:          false,   // overwritten by UNI lookup map() when agent15 depth is fresh
-          depthNote:          null,    // overwritten by UNI lookup map() when agent15 depth is fresh
-          oneLegUnverified:   false,   // overwritten by UNI lookup map() in GET()
+          thinFlag:             thin,
+          depthThin:            false,  // overwritten by UNI lookup
+          depthNote:            null,   // overwritten by UNI lookup
+          oneLegUnverified:     false,  // overwritten by UNI lookup
+          slipCurve:            null,   // overwritten by UNI lookup
+          greenCapacityUsd:     null,   // overwritten by UNI lookup
+          slipCurveMaxFillable: null,   // overwritten by UNI lookup
         });
       }
     }
@@ -156,10 +173,13 @@ export async function GET() {
     // route.ts keys by predicted-rate order — these can differ. Normalize to sorted pair.
     // Unknown (stale/missing file, key absent) → oneLegUnverified: true. Never default to false.
     interface UniEntry {
-      oneLegUnverified: boolean;
-      capacityUsd?:     number | null;   // depth-capped (Part A)
-      depthThin?:       boolean;         // depth THIN flag (Part B)
-      depthNote?:       string | null;   // display string
+      oneLegUnverified:    boolean;
+      capacityUsd?:        number | null;
+      depthThin?:          boolean;
+      depthNote?:          string | null;
+      slipCurve?:          SlipPoint[] | null;
+      greenCapacityUsd?:   number | null;
+      slipCurveMaxFillable?: number | null;
     }
     const uniLookup = new Map<string, UniEntry>();
     try {
@@ -172,16 +192,22 @@ export async function GET() {
           capacityUsd?: number | null;
           depthThin?: boolean;
           depthNote?: string | null;
+          slipCurve?: SlipPoint[] | null;
+          greenCapacityUsd?: number | null;
+          slipCurveMaxFillable?: number | null;
         }[]) {
           if (opp.type !== 'FUNDING') continue;
           const parts = (opp.id ?? '').split('-');
           if (parts.length !== 4 || parts[0] !== 'funding') continue;
           const [, coin, ex1, ex2] = parts;
           uniLookup.set(`${coin}|${[ex1, ex2].sort().join('|')}`, {
-            oneLegUnverified: opp.oneLegUnverified === true,
-            capacityUsd:      typeof opp.capacityUsd === 'number' ? opp.capacityUsd : undefined,
-            depthThin:        opp.depthThin === true,
-            depthNote:        typeof opp.depthNote === 'string' ? opp.depthNote : null,
+            oneLegUnverified:    opp.oneLegUnverified === true,
+            capacityUsd:         typeof opp.capacityUsd === 'number' ? opp.capacityUsd : undefined,
+            depthThin:           opp.depthThin === true,
+            depthNote:           typeof opp.depthNote === 'string' ? opp.depthNote : null,
+            slipCurve:           Array.isArray(opp.slipCurve) ? opp.slipCurve : null,
+            greenCapacityUsd:    typeof opp.greenCapacityUsd === 'number' ? opp.greenCapacityUsd : null,
+            slipCurveMaxFillable: typeof opp.slipCurveMaxFillable === 'number' ? opp.slipCurveMaxFillable : null,
           });
         }
       }
@@ -193,11 +219,13 @@ export async function GET() {
       const lu  = uniLookup.get(key);
       return {
         ...s,
-        oneLegUnverified: lu === undefined ? true : lu.oneLegUnverified,
-        // Override capacity and depth flags with agent15's depth-grounded values when fresh
-        capacityUsd: lu?.capacityUsd !== undefined ? lu.capacityUsd : s.capacityUsd,
-        depthThin:   lu?.depthThin   !== undefined ? lu.depthThin   : false,
-        depthNote:   lu?.depthNote   !== undefined ? lu.depthNote   : null,
+        oneLegUnverified:     lu === undefined ? true : lu.oneLegUnverified,
+        capacityUsd:          lu?.capacityUsd          !== undefined ? lu.capacityUsd          : s.capacityUsd,
+        depthThin:            lu?.depthThin            !== undefined ? lu.depthThin            : false,
+        depthNote:            lu?.depthNote            !== undefined ? lu.depthNote            : null,
+        slipCurve:            lu?.slipCurve            !== undefined ? lu.slipCurve            : null,
+        greenCapacityUsd:     lu?.greenCapacityUsd     !== undefined ? lu.greenCapacityUsd     : null,
+        slipCurveMaxFillable: lu?.slipCurveMaxFillable !== undefined ? lu.slipCurveMaxFillable : null,
       };
     });
 

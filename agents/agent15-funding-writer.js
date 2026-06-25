@@ -56,10 +56,10 @@ const CONFIRM_LOOK       = 3;            // last N settlements to check directio
 const CONFIRM_MIN        = 2;            // need ≥ this many same-direction as trailing
 const HOURLY_SPIKE_ANN   = 115;          // %/yr — extreme threshold for hourly venues (no history)
 
-// Order-book depth
-const DEPTH_BAND_BPS     = 20;           // ±20bps band around mid for depth measurement
-const DEPTH_FLOOR_USD    = 5_000;        // absolute illiquidity floor — always THIN below this
-const MULT_REFRESH_MS    = 15 * 60_000;  // contract multiplier cache refresh cadence
+// Slip-curve sizing
+const SIZE_LADDER         = [500, 1_000, 2_500, 5_000, 10_000, 25_000, 50_000, 100_000, 250_000, 500_000];
+const SLIPPAGE_AMORT_DAYS = 14;          // amortize round-trip entry+exit cost over 14 days
+const MULT_REFRESH_MS     = 15 * 60_000; // contract multiplier cache refresh cadence
 
 let historyCache     = null;
 let historyFetchedAt = 0;
@@ -114,78 +114,54 @@ async function refreshMultiplierCache() {
 }
 
 // ── Per-exchange depth fetchers ───────────────────────────────────────────────
-// Each returns { bidDepthUsd, askDepthUsd } within DEPTH_BAND_BPS of mid,
-// using the order book's own best-bid/ask midpoint. Returns null on fetch failure.
+// Each returns { bids: [price, qty][], asks: [price, qty][], mid } (raw levels, coins).
+// bids sorted descending (best bid first), asks ascending (best ask first).
+// Returns null on fetch failure.
 
 async function depthBinance(coin) {
   const d = await get(`https://fapi.binance.com/fapi/v1/depth?symbol=${coin}USDT&limit=100`);
   if (!Array.isArray(d?.bids) || !d.bids.length || !Array.isArray(d?.asks) || !d.asks.length) return null;
-  const mid = (parseFloat(d.bids[0][0]) + parseFloat(d.asks[0][0])) / 2;
-  const lo  = mid * (1 - DEPTH_BAND_BPS / 10_000);
-  const hi  = mid * (1 + DEPTH_BAND_BPS / 10_000);
-  const bidDepthUsd = d.bids.filter(([p]) => parseFloat(p) >= lo)
-    .reduce((s, [p, q]) => s + parseFloat(p) * parseFloat(q), 0);
-  const askDepthUsd = d.asks.filter(([p]) => parseFloat(p) <= hi)
-    .reduce((s, [p, q]) => s + parseFloat(p) * parseFloat(q), 0);
-  return { bidDepthUsd, askDepthUsd };
+  const bids = d.bids.map(([p, q]) => [parseFloat(p), parseFloat(q)]);
+  const asks = d.asks.map(([p, q]) => [parseFloat(p), parseFloat(q)]);
+  return { bids, asks, mid: (bids[0][0] + asks[0][0]) / 2 };
 }
 
 async function depthBybit(coin) {
   const d = await get(`https://api.bybit.com/v5/market/orderbook?category=linear&symbol=${coin}USDT&limit=200`);
-  const bids = d?.result?.b, asks = d?.result?.a;
-  if (!Array.isArray(bids) || !bids.length || !Array.isArray(asks) || !asks.length) return null;
-  const mid = (parseFloat(bids[0][0]) + parseFloat(asks[0][0])) / 2;
-  const lo  = mid * (1 - DEPTH_BAND_BPS / 10_000);
-  const hi  = mid * (1 + DEPTH_BAND_BPS / 10_000);
-  const bidDepthUsd = bids.filter(([p]) => parseFloat(p) >= lo)
-    .reduce((s, [p, q]) => s + parseFloat(p) * parseFloat(q), 0);
-  const askDepthUsd = asks.filter(([p]) => parseFloat(p) <= hi)
-    .reduce((s, [p, q]) => s + parseFloat(p) * parseFloat(q), 0);
-  return { bidDepthUsd, askDepthUsd };
+  const bRaw = d?.result?.b, aRaw = d?.result?.a;
+  if (!Array.isArray(bRaw) || !bRaw.length || !Array.isArray(aRaw) || !aRaw.length) return null;
+  const bids = bRaw.map(([p, q]) => [parseFloat(p), parseFloat(q)]);
+  const asks = aRaw.map(([p, q]) => [parseFloat(p), parseFloat(q)]);
+  return { bids, asks, mid: (bids[0][0] + asks[0][0]) / 2 };
 }
 
 async function depthOkx(coin) {
-  const d = await get(`https://www.okx.com/api/v5/market/books?instId=${coin}-USDT-SWAP&sz=100`);
+  const d    = await get(`https://www.okx.com/api/v5/market/books?instId=${coin}-USDT-SWAP&sz=100`);
   const book = d?.data?.[0];
   if (!Array.isArray(book?.bids) || !book.bids.length || !Array.isArray(book?.asks) || !book.asks.length) return null;
   const mult = multCache.okx[coin] ?? 1;
-  const mid  = (parseFloat(book.bids[0][0]) + parseFloat(book.asks[0][0])) / 2;
-  const lo   = mid * (1 - DEPTH_BAND_BPS / 10_000);
-  const hi   = mid * (1 + DEPTH_BAND_BPS / 10_000);
-  const bidDepthUsd = book.bids.filter(([p]) => parseFloat(p) >= lo)
-    .reduce((s, [p, q]) => s + parseFloat(p) * parseFloat(q) * mult, 0);
-  const askDepthUsd = book.asks.filter(([p]) => parseFloat(p) <= hi)
-    .reduce((s, [p, q]) => s + parseFloat(p) * parseFloat(q) * mult, 0);
-  return { bidDepthUsd, askDepthUsd };
+  const bids = book.bids.map(([p, q]) => [parseFloat(p), parseFloat(q) * mult]);
+  const asks = book.asks.map(([p, q]) => [parseFloat(p), parseFloat(q) * mult]);
+  return { bids, asks, mid: (bids[0][0] + asks[0][0]) / 2 };
 }
 
 async function depthBitget(coin) {
-  const d = await get(`https://api.bitget.com/api/v2/mix/market/orderbook?symbol=${coin}USDT&productType=usdt-futures&limit=100`);
-  const bids = d?.data?.bids, asks = d?.data?.asks;
-  if (!Array.isArray(bids) || !bids.length || !Array.isArray(asks) || !asks.length) return null;
+  const d    = await get(`https://api.bitget.com/api/v2/mix/market/orderbook?symbol=${coin}USDT&productType=usdt-futures&limit=100`);
+  const bRaw = d?.data?.bids, aRaw = d?.data?.asks;
+  if (!Array.isArray(bRaw) || !bRaw.length || !Array.isArray(aRaw) || !aRaw.length) return null;
   const mult = multCache.bitget[coin] ?? 1;
-  const mid  = (parseFloat(bids[0][0]) + parseFloat(asks[0][0])) / 2;
-  const lo   = mid * (1 - DEPTH_BAND_BPS / 10_000);
-  const hi   = mid * (1 + DEPTH_BAND_BPS / 10_000);
-  const bidDepthUsd = bids.filter(([p]) => parseFloat(p) >= lo)
-    .reduce((s, [p, q]) => s + parseFloat(p) * parseFloat(q) * mult, 0);
-  const askDepthUsd = asks.filter(([p]) => parseFloat(p) <= hi)
-    .reduce((s, [p, q]) => s + parseFloat(p) * parseFloat(q) * mult, 0);
-  return { bidDepthUsd, askDepthUsd };
+  const bids = bRaw.map(([p, q]) => [parseFloat(p), parseFloat(q) * mult]);
+  const asks = aRaw.map(([p, q]) => [parseFloat(p), parseFloat(q) * mult]);
+  return { bids, asks, mid: (bids[0][0] + asks[0][0]) / 2 };
 }
 
 async function depthGateio(coin) {
   const d = await get(`https://api.gateio.ws/api/v4/futures/usdt/order_book?contract=${coin}_USDT&limit=100`);
   if (!Array.isArray(d?.bids) || !d.bids.length || !Array.isArray(d?.asks) || !d.asks.length) return null;
   const mult = multCache.gateio[coin] ?? 1;
-  const mid  = (parseFloat(d.bids[0].p) + parseFloat(d.asks[0].p)) / 2;
-  const lo   = mid * (1 - DEPTH_BAND_BPS / 10_000);
-  const hi   = mid * (1 + DEPTH_BAND_BPS / 10_000);
-  const bidDepthUsd = d.bids.filter(e => parseFloat(e.p) >= lo)
-    .reduce((s, e) => s + parseFloat(e.p) * Math.abs(parseFloat(e.s)) * mult, 0);
-  const askDepthUsd = d.asks.filter(e => parseFloat(e.p) <= hi)
-    .reduce((s, e) => s + parseFloat(e.p) * Math.abs(parseFloat(e.s)) * mult, 0);
-  return { bidDepthUsd, askDepthUsd };
+  const bids = d.bids.map(e => [parseFloat(e.p), Math.abs(parseFloat(e.s)) * mult]);
+  const asks = d.asks.map(e => [parseFloat(e.p), Math.abs(parseFloat(e.s)) * mult]);
+  return { bids, asks, mid: (bids[0][0] + asks[0][0]) / 2 };
 }
 
 const DEPTH_FETCHERS = {
@@ -196,16 +172,85 @@ const DEPTH_FETCHERS = {
   gateio:  depthGateio,
 };
 
-function fmtDepthUsd(n) {
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000)     return `$${Math.round(n / 1_000)}k`;
-  return `$${Math.round(n)}`;
+// Walk `levels` [[price, qty_coins], ...] to fill `targetUsd` of notional.
+// Returns { fillable, vwap } — vwap is null if nothing filled.
+function vwapWalk(levels, targetUsd) {
+  let remaining  = targetUsd;
+  let totalPaid  = 0;
+  let totalCoins = 0;
+
+  for (const [price, qty] of levels) {
+    if (remaining <= 0) break;
+    const levelUsd = price * qty;
+    if (levelUsd <= remaining) {
+      totalPaid  += levelUsd;
+      totalCoins += qty;
+      remaining  -= levelUsd;
+    } else {
+      totalPaid  += remaining;
+      totalCoins += remaining / price;
+      remaining   = 0;
+    }
+  }
+
+  return { fillable: remaining <= 0, vwap: totalCoins > 0 ? totalPaid / totalCoins : null };
 }
 
-// Enrich confirmed opps in place: cap capacityUsd at real 20bps book depth,
-// compute depth-based THIN flag (binding < 2×N0_capped OR binding < DEPTH_FLOOR).
+// Compute slip curve for a pair. Each SIZE_LADDER point models:
+//   entry: sell N into shortBook.bids + buy N from longBook.asks
+//   exit:  buy N from shortBook.asks + sell N into longBook.bids   (N = size/2)
+// Returns an array of curve points. If either book is null → all RED sentinels.
+function computeSlipCurve(shortBook, longBook, grossApy) {
+  if (!shortBook || !longBook) {
+    return SIZE_LADDER.map(size => ({
+      size,
+      fillable:      false,
+      slipBps:       null,
+      slipUsd:       null,
+      grossDayUsd:   +(grossApy / 100 * size / 365).toFixed(4),
+      netDayUsd:     null,
+      slipOverGross: null,
+      state:         'RED',
+    }));
+  }
+
+  return SIZE_LADDER.map(size => {
+    const N          = size / 2;
+    const sBid       = vwapWalk(shortBook.bids, N);
+    const lAsk       = vwapWalk(longBook.asks,  N);
+    const sAsk       = vwapWalk(shortBook.asks, N);
+    const lBid       = vwapWalk(longBook.bids,  N);
+    const fillable   = sBid.fillable && lAsk.fillable && sAsk.fillable && lBid.fillable;
+    const grossDayUsd = +(grossApy / 100 * size / 365).toFixed(4);
+
+    if (!fillable) {
+      return { size, fillable: false, slipBps: null, slipUsd: null, grossDayUsd, netDayUsd: null, slipOverGross: null, state: 'RED' };
+    }
+
+    // Dollar slippage = VWAP deviation from mid × notional (always ≥ 0)
+    const eSlipS = Math.max(0, (shortBook.mid - sBid.vwap) / shortBook.mid * N);
+    const eSlipL = Math.max(0, (lAsk.vwap - longBook.mid)  / longBook.mid  * N);
+    const xSlipS = Math.max(0, (sAsk.vwap - shortBook.mid) / shortBook.mid * N);
+    const xSlipL = Math.max(0, (longBook.mid - lBid.vwap)  / longBook.mid  * N);
+    const slipUsd = eSlipS + eSlipL + xSlipS + xSlipL;
+
+    const slipBps      = +(slipUsd / size * 10_000).toFixed(2);
+    const netDayUsd    = +(grossDayUsd - slipUsd / SLIPPAGE_AMORT_DAYS).toFixed(4);
+    const slipOverGross = grossDayUsd > 0
+      ? +(slipUsd / (grossDayUsd * SLIPPAGE_AMORT_DAYS) * 100).toFixed(1)
+      : Infinity;
+
+    const state = slipOverGross <= 30  ? 'GREEN'
+                : slipOverGross <= 100 ? 'YELLOW'
+                :                        'RED';
+
+    return { size, fillable: true, slipBps, slipUsd: +slipUsd.toFixed(4), grossDayUsd, netDayUsd, slipOverGross, state };
+  });
+}
+
+// Enrich confirmed opps in place: compute slipCurve[], greenCapacityUsd,
+// slipCurveMaxFillable. capacityUsd = greenCapacityUsd (honest green-only capacity).
 async function enrichWithDepth(opps) {
-  // Collect unique (coin, exchange) pairs from opp ids: funding-{COIN}-{shortEx}-{longEx}
   const pairs = new Set();
   for (const opp of opps) {
     const parts   = opp.id.split('-');
@@ -216,14 +261,13 @@ async function enrichWithDepth(opps) {
     if (DEPTH_FETCHERS[longEx])  pairs.add(`${coin}|${longEx}`);
   }
 
-  // Fetch all unique pairs in parallel
-  const depthMap = {};
+  const bookMap = {};
   await Promise.all([...pairs].map(async key => {
     const [coin, exchange] = key.split('|');
-    depthMap[key] = await DEPTH_FETCHERS[exchange](coin);
+    bookMap[key] = await DEPTH_FETCHERS[exchange](coin);
   }));
 
-  const ok = Object.values(depthMap).filter(v => v !== null).length;
+  const ok = Object.values(bookMap).filter(v => v !== null).length;
   console.log(`[funding-depth] fetched ${pairs.size} pairs → ${ok} ok, ${pairs.size - ok} failed`);
 
   for (const opp of opps) {
@@ -231,39 +275,29 @@ async function enrichWithDepth(opps) {
     const coin      = parts[1];
     const shortEx   = parts[2];
     const longEx    = parts[3];
-    const shortData = depthMap[`${coin}|${shortEx}`] ?? null;
-    const longData  = depthMap[`${coin}|${longEx}`]  ?? null;
+    const shortBook = bookMap[`${coin}|${shortEx}`] ?? null;
+    const longBook  = bookMap[`${coin}|${longEx}`]  ?? null;
 
-    // SHORT leg collects — we sell into bids; LONG leg buys — we lift asks
-    const shortBid = shortData !== null ? shortData.bidDepthUsd : null;
-    const longAsk  = longData  !== null ? longData.askDepthUsd  : null;
-    const binding  = (shortBid !== null && longAsk !== null) ? Math.min(shortBid, longAsk) : null;
+    const grossApy  = opp.grossROI ?? opp.annualizedROI ?? 0;
+    const slipCurve = computeSlipCurve(shortBook, longBook, grossApy);
 
-    const heuristicCap = opp.capacityUsd; // original OI-based estimate
-
-    let cappedCap, depthThin, depthNote;
-
-    if (binding !== null) {
-      // Part A: cap displayed capacity at fillable book depth
-      cappedCap = heuristicCap !== null
-        ? Math.floor(Math.min(heuristicCap, binding))
-        : Math.floor(binding);
-
-      // Part B: THIN if binding < 2×N0(capped) OR binding < absolute floor
-      const N0_capped = cappedCap / 2;
-      depthThin = binding < 2 * N0_capped || binding < DEPTH_FLOOR_USD;
-      depthNote = depthThin ? `THIN · ~${fmtDepthUsd(binding)} fills within 20bps` : null;
-    } else {
-      // One or both leg fetches failed — keep heuristic cap, flag THIN conservatively
-      cappedCap = heuristicCap;
-      depthThin = true;
-      depthNote = 'THIN · depth unknown';
+    let slipCurveMaxFillable = null;
+    let greenCapacityUsd     = 0;
+    for (const pt of slipCurve) {
+      if (pt.fillable) slipCurveMaxFillable = pt.size;
+      if (pt.state === 'GREEN') greenCapacityUsd = pt.size;
     }
 
-    opp.capacityUsd       = cappedCap;
-    opp.bindingDepth20bps = binding;
-    opp.depthThin         = depthThin;
-    opp.depthNote         = depthNote;
+    opp.slipCurve            = slipCurve;
+    opp.greenCapacityUsd     = greenCapacityUsd;
+    opp.slipCurveMaxFillable = slipCurveMaxFillable;
+    opp.capacityUsd          = greenCapacityUsd;
+    opp.depthThin            = greenCapacityUsd === 0;
+    opp.depthNote            = greenCapacityUsd === 0
+      ? (shortBook && longBook
+          ? 'THIN · slippage > 30% of yield at all sizes'
+          : 'THIN · depth unavailable')
+      : null;
   }
 }
 
@@ -770,12 +804,13 @@ async function run() {
 
     const spikedCount = allOpps.filter(o => o.spikeFlag || !o.allConfirmed).length;
     const thinCount   = confirmedOpps.filter(o => o.depthThin).length;
-    console.log(`[funding] ${allOpps.length} pairs ≥${THRESHOLD_APY}%/yr — ${spikedCount} spike/unconfirmed — ${thinCount}/${confirmedOpps.length} confirmed THIN depth:`);
+    console.log(`[funding] ${allOpps.length} pairs ≥${THRESHOLD_APY}%/yr — ${spikedCount} spike/unconfirmed — ${thinCount}/${confirmedOpps.length} confirmed THIN (green=$0):`);
     for (const o of allOpps.slice(0, 10)) {
       const spikeMark = (o.spikeFlag || !o.allConfirmed) ? ' ⚠SPIKE' : '';
-      const depthMark = o.depthThin ? ` 📉THIN` : '';
       const predNote  = o.spikeFlag ? ` [pred:${o.predictedGrossApy}%]` : '';
-      console.log(`  ${o.id}: trailing:+${o.annualizedROI}%/yr${predNote}  cap:${o.capacityUsd != null ? '$'+Math.round(o.capacityUsd/1000)+'k' : 'null'}  ${o.status}${spikeMark}${depthMark}`);
+      const greenMark = o.greenCapacityUsd != null ? ` 🟢$${Math.round(o.greenCapacityUsd/1000)}k` : '';
+      const maxMark   = o.slipCurveMaxFillable != null ? `/max$${Math.round(o.slipCurveMaxFillable/1000)}k` : '';
+      console.log(`  ${o.id}: trailing:+${o.annualizedROI}%/yr${predNote}  cap:${o.capacityUsd != null ? '$'+Math.round(o.capacityUsd/1000)+'k' : 'null'}${greenMark}${maxMark}  ${o.status}${spikeMark}`);
     }
 
     mergeUnifiedFunding(allOpps);
