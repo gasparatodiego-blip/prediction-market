@@ -403,6 +403,7 @@ async function runAlertScan(subs) {
   for (const [key, sub] of Object.entries(subs)) {
     const opp = byAsset[sub.asset];
     if (!opp) continue;
+    if (!opp.fullyConfirmed) continue;  // suppress: oneLegUnverified, spikeFlag, or otherwise not fully confirmed
 
     const currentStatus = opp.status;
     const currentGross  = opp.annualizedROI ?? opp.grossROI ?? 0;

@@ -33,6 +33,7 @@ interface SpreadItem {
   liquidityTier:      string | null;
   capacityUsd:        number | null;
   thinFlag:           boolean;
+  oneLegUnverified:   boolean;
 }
 
 interface SpotCoin {
@@ -414,13 +415,18 @@ function OpportunityCards({
 
                 {dayUsd !== null && capital > 0 ? (
                   <div className="p-2.5 bg-bg-elevated/25">
-                    <div className="font-mono text-[22px] font-bold text-positive tabular-nums leading-none">
+                    <div className={`font-mono text-[22px] font-bold tabular-nums leading-none ${s.oneLegUnverified ? 'text-text-muted' : 'text-positive'}`}>
                       ≈ {fmtDayUsd(dayUsd)}
                     </div>
+                    {s.oneLegUnverified && (
+                      <div className="font-mono text-[9px] text-text-muted/70 mt-1 italic">
+                        1 leg unverified — spread uses predicted rate, may be overstated.
+                      </div>
+                    )}
                     <div className="font-mono text-[10px] text-text-secondary mt-1">
                       on ${capital.toLocaleString()}{leverage > 1 ? ` · ${leverage}× leverage (both perp legs)` : ''}
                     </div>
-                    {feesUsd !== null && feesUsd > 0 && (
+                    {!s.oneLegUnverified && feesUsd !== null && feesUsd > 0 && (
                       <div className="font-mono text-[10px] text-text-muted mt-1.5">
                         Fees {fmtUsd(feesUsd)} · paid back in {s.breakevenDays}d, then profit while spread holds.
                       </div>
@@ -501,9 +507,17 @@ function OpportunityCards({
                 <span className="font-mono tabular-nums ml-auto sm:ml-0">
                   {dayUsd !== null && capital > 0 ? (
                     <>
-                      <span className="text-[14px] font-bold text-positive">≈ {fmtDayUsd(dayUsd)}</span>
-                      {feesUsd !== null && feesUsd > 0 && (
-                        <span className="text-[10px] text-text-muted ml-2">fees back in {s.breakevenDays}d</span>
+                      <span className={`text-[14px] font-bold ${s.oneLegUnverified ? 'text-text-muted' : 'text-positive'}`}>
+                        ≈ {fmtDayUsd(dayUsd)}
+                      </span>
+                      {s.oneLegUnverified ? (
+                        <span className="text-[9px] text-text-muted/70 ml-2 italic">
+                          1 leg unverified — spread uses predicted rate, may be overstated.
+                        </span>
+                      ) : (
+                        feesUsd !== null && feesUsd > 0 && (
+                          <span className="text-[10px] text-text-muted ml-2">fees back in {s.breakevenDays}d</span>
+                        )
                       )}
                     </>
                   ) : (
@@ -729,7 +743,10 @@ function SpreadTable({
                       <tr className="border-b border-border/50 bg-bg-elevated/10">
                         <td colSpan={9} className="px-3 py-1.5">
                           <div className="flex flex-wrap gap-x-4 font-mono text-[10px]">
-                            <span className="text-positive font-semibold tabular-nums">≈ {fmtDayUsd(sz.dayUsd)}</span>
+                            <span className={`font-semibold tabular-nums ${s.oneLegUnverified ? 'text-text-muted' : 'text-positive'}`}>≈ {fmtDayUsd(sz.dayUsd)}</span>
+                            {s.oneLegUnverified && (
+                              <span className="text-text-muted/70 italic">1 leg unverified — spread uses predicted rate, may be overstated.</span>
+                            )}
                             <span className="text-text-muted">N/leg <span className="text-text-primary tabular-nums">{fmtUsd(sz.N)}</span></span>
                             <span className="text-text-muted">Fees <span className="text-text-primary tabular-nums">{fmtUsd(sz.feesUsd)}</span></span>
                             <span className="text-text-muted">Net 30d <span className={`tabular-nums ${sz.net30dUsd >= 0 ? 'text-positive' : 'text-negative'}`}>{fmtUsd(sz.net30dUsd)}</span></span>

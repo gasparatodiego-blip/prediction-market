@@ -13,6 +13,9 @@ import {
 export const dynamic = 'force-dynamic';
 
 const EXCHANGE_FILE = '/tmp/exchange-prices.json';
+const UNI_FILE      = '/tmp/unified-opportunities.json';
+// treat as missing if agent15 hasn't written within 10 min (runs every 60 s)
+const UNI_STALE_MS  = 10 * 60_000;
 
 interface FuturesCoin {
   markPrice?:            number | null;
@@ -43,6 +46,7 @@ export interface SpreadItem {
   liquidityTier:     string | null;
   capacityUsd:       number | null;
   thinFlag:          boolean;
+  oneLegUnverified:  boolean;   // true = ≥1 leg has no settled history; spread uses predicted rate
 }
 
 function isDex(exchange: string): boolean {
@@ -127,6 +131,7 @@ function computeSpreads(
           liquidityTier:      tier,
           capacityUsd:        capUsd,
           thinFlag:           thin,
+          oneLegUnverified:   false,  // placeholder; overwritten by the UNI lookup map() in GET()
         });
       }
     }
@@ -143,7 +148,30 @@ export async function GET() {
       ? Math.floor((Date.now() - generatedAt) / 60_000)
       : null;
 
-    const spreads = computeSpreads(raw.futures ?? {});
+    // Build direction-independent lookup: agent15 keys by trailing-rate SHORT/LONG order;
+    // route.ts keys by predicted-rate order — these can differ. Normalize to sorted pair.
+    // Unknown (stale/missing file, key absent) → oneLegUnverified: true. Never default to false.
+    const uniLookup = new Map<string, boolean>();
+    try {
+      const uniRaw     = JSON.parse(fs.readFileSync(UNI_FILE, 'utf8'));
+      const fundingAge = Date.now() - (uniRaw.sources?.funding?.updatedAt ?? 0);
+      if (fundingAge < UNI_STALE_MS) {
+        for (const opp of (uniRaw.opportunities ?? []) as { type: string; id: string; oneLegUnverified: boolean }[]) {
+          if (opp.type !== 'FUNDING') continue;
+          const parts = (opp.id ?? '').split('-');
+          if (parts.length !== 4 || parts[0] !== 'funding') continue;
+          const [, coin, ex1, ex2] = parts;
+          uniLookup.set(`${coin}|${[ex1, ex2].sort().join('|')}`, opp.oneLegUnverified === true);
+        }
+      }
+      // stale branch falls through: uniLookup stays empty → all keys missing → all demote
+    } catch { /* missing/unreadable: uniLookup empty → all rows default oneLegUnverified: true */ }
+
+    const spreads = computeSpreads(raw.futures ?? {}).map(s => {
+      const key = `${s.coin}|${[s.shortExchange, s.longExchange].sort().join('|')}`;
+      const lu  = uniLookup.get(key);
+      return { ...s, oneLegUnverified: lu === undefined ? true : lu };
+    });
 
     return NextResponse.json({
       ok:          true,
