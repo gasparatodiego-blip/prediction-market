@@ -128,7 +128,7 @@ const CONTENT: Record<string, { title: string; blocks: Block[] }> = {
         ['Sports',           'Cross-bookmaker arb via OddsAPI. Polls every 45 min with credit-safe key rotation. Shows OFFLINE / PAUSED when data is unavailable — never fake numbers.'],
         ['Portfolio',        'Manual log of trades you have entered. Track realized P&L.'],
         ['History',          'Log of scanner-detected opportunities over time.'],
-        ['MM Analyzer',      'Read-only Polymarket market-making simulation. Two P&L numbers: measured (verified) and estimated rewards (labeled assumption).'],
+        ['Liquidity Rewards', 'Read-only LP reward yield estimator. Ranks Polymarket reward-eligible markets by estimated daily reward per $200 deployed. All figures are estimates — actual rewards not available in any public API.'],
         ['Whale Watch',      'Realized-PnL ranking of consistently-active Polymarket short-market wallets. Observational only.'],
       ]},
 
@@ -154,50 +154,28 @@ const CONTENT: Record<string, { title: string; blocks: Block[] }> = {
   },
 
   mm: {
-    title: 'How to use: MM Analyzer',
+    title: 'How to use: Liquidity Rewards',
     blocks: [
       { t: 'h', s: 'What it is' },
-      { t: 'p', s: 'A read-only simulation of passive two-sided market making on Polymarket binary markets. The agent models a $50 resting YES quote (bid and ask) on each eligible market, infers fills from the public trade stream, and records each simulated cycle\'s outcome. No orders are placed. Zero Claude API calls.' },
+      { t: 'p', s: 'Polymarket pays daily rewards to wallets that post resting liquidity near the mid-price on eligible CLOB markets. This analyzer scans all reward-eligible markets, estimates the daily reward pool, measures the competing book depth (your share of that pool), and ranks markets by estimated daily yield per $200 deployed. No orders are placed. Read-only.' },
 
-      { t: 'h', s: 'Market eligibility (golden rule)' },
+      { t: 'h', s: 'How the reward pool is estimated' },
       { t: 'dl', items: [
-        ['Mid 0.30–0.70', 'Markets near 50/50 — wide enough that both sides attract real volume.'],
-        ['Vol ≥$100/day', 'Minimum 24h trade volume; below this fills are too sparse to simulate.'],
-        ['≥14 days',      'Enough time horizon that a maker position can cycle multiple times before resolution.'],
-        ['acceptingOrders', 'CLOB must be open (some markets pause order books near resolution).'],
+        ['Daily pool', 'vol24 × takerFeeRate × 2×min(mid,1−mid) × rebateRate. This equals the USDC Polymarket redistributes daily to qualifying makers as fee rebates. The priceFactor term (2×min(mid,1−mid)) peaks at 1.0 when mid=0.5, shrinking for extreme prices.'],
+        ['Our share', 'sampleCapital / (sampleCapital + competingDepth). competingDepth = USDC resting in the CLOB book within the reward band — fetched as a live snapshot every 15 min.'],
+        ['Est. daily reward', 'dailyPool × ourShare. Changes whenever competition changes.'],
+        ['Est. yield %/day', 'estDailyReward / sampleCapital × 100.'],
       ]},
 
-      { t: 'h', s: 'Fill simulation — APPROXIMATE' },
-      { t: 'p', s: 'Fills are inferred from the public data-api trade stream. When a SELL Yes trade crosses at price ≤ our bid, we assume our buy order filled. When a BUY Yes trade crosses at price ≥ our ask, we assume our sell order filled. Queue position is unknown — actual fills in a live order book depend on time-priority. This is a statistical approximation, not an exact replay.' },
+      { t: 'h', s: 'Adverse selection risk' },
+      { t: 'p', s: 'Passive makers earn the reward but bear adverse selection: when informed traders know the true price is away from where you\'re quoting, they fill your order and you lose on the position. The risk score (LOW / MED / MED-HIGH / HIGH) is a structural proxy: negRisk markets in the 0.05–0.90 range are rated LOW (slow, correlated price drift); near-resolution markets (mid<0.05 or >0.95) are rated HIGH (informed flow almost certainly dominant).' },
 
-      { t: 'h', s: 'Cycle types' },
-      { t: 'dl', items: [
-        ['perfect', 'Both bid and ask filled within the 30-min window — spread captured. P&L = (ask − bid) × shares.'],
-        ['adverse', 'Only one side filled. Closed at 5pp adverse move (cut-loss) or after 30-min timeout. P&L may be negative.'],
-        ['resolved', 'Market resolved before the cycle closed. P&L computed from terminal payoff.'],
-      ]},
-
-      { t: 'h', s: 'Two P&L numbers — why separate' },
-      { t: 'dl', items: [
-        ['Measured net P&L', 'Spread captures minus adverse-selection losses. Computed from observed trade data. Verified and honest — this is what the simulation actually shows.'],
-        ['Estimated rewards', 'ASSUMPTION: 0.25%/day of quoted notional. The actual Polymarket maker reward rate is set by governance off-chain and is NOT available in any public API. This number is an adjustable estimate, not a fact. Typical published range: 0.10%–0.50%/day.'],
-      ]},
-
-      { t: 'h', s: 'Why adverse selection is the killer' },
+      { t: 'h', s: 'What these estimates cannot tell you' },
       { t: 'ul', items: [
-        'In active markets, informed traders (bots with private feeds or better models) trade against stale quotes.',
-        'A passive maker\'s ask fills when someone is confident the true price is ABOVE the ask. That\'s adverse for us.',
-        'A single 10pp adverse move can erase 5× the spread earned on perfect cycles.',
-        'The measured P&L is honest about this — rewards are kept entirely separate so the real cost of adverse selection is visible.',
-        'If measured P&L is negative and the total only becomes positive with rewards, the strategy is reward-dependent — a fragile position if Polymarket changes its reward program.',
-      ]},
-
-      { t: 'h', s: 'Hard limitations' },
-      { t: 'ul', items: [
-        'Queue position unknown. Fill inference may over- or under-count actual fills.',
-        'Gas/spread costs on Polymarket (MATIC gas, 0% maker fee but taker-driven) are not modeled.',
-        'negRisk markets (multi-outcome) may have different fill dynamics; treated identically here.',
-        'Reward rate is not from any API. If you rely on rewards, verify the actual current rate via Polymarket\'s reward documentation before sizing in.',
+        'Actual rewards: Polymarket calculates rewards on-chain using a liquidity-score formula not exposed in any public API. The estimate here is a reasonable model, not a verified figure.',
+        'Your real fill rate and adverse loss: unmeasurable without placing live orders.',
+        'Competition changes between scans: depth snapshots are taken every 15 min; real competition is continuous.',
+        'Reward program changes: Polymarket can adjust reward rates or eligibility criteria at any time.',
       ]},
     ],
   },
