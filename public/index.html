@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ArbScanner - Dashboard Live</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #0A0C10;
+            color: #E4E7EB;
+            font-family: "Courier New", monospace;
+            padding: 20px;
+        }
+        .header {
+            border-bottom: 1px solid #1f2937;
+            padding-bottom: 15px;
+            margin-bottom: 25px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        h1 { color: #6366f1; font-size: 24px; }
+        .status { color: #22c55e; font-size: 12px; }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+        .stat-box {
+            background: #1a1c23;
+            border-radius: 8px;
+            padding: 15px;
+            text-align: center;
+            border: 1px solid #2d3748;
+        }
+        .stat-number {
+            font-size: 28px;
+            font-weight: bold;
+            color: #6366f1;
+        }
+        .stat-label {
+            font-size: 10px;
+            text-transform: uppercase;
+            color: #9ca3af;
+            margin-top: 5px;
+        }
+        .card {
+            background: #1a1c23;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border: 1px solid #2d3748;
+        }
+        .opportunity {
+            background: #0f1117;
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 10px;
+            border-left: 2px solid #22c55e;
+        }
+        .footer {
+            margin-top: 30px;
+            padding-top: 15px;
+            border-top: 1px solid #1f2937;
+            font-size: 11px;
+            color: #6b7280;
+            text-align: center;
+        }
+        .refresh-btn {
+            background: #6366f1;
+            border: none;
+            color: white;
+            padding: 5px 12px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 11px;
+        }
+        .refresh-btn:hover { background: #4f52e0; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div>
+            <h1>🔍 ArbScanner</h1>
+            <div class="status" id="status">🟢 LIVE</div>
+        </div>
+        <button class="refresh-btn" onclick="location.reload()">⟳ Aggiorna</button>
+    </div>
+
+    <div class="stats">
+        <div class="stat-box">
+            <div class="stat-number" id="kalshiCount">--</div>
+            <div class="stat-label">Kalshi Markets</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-number" id="polyCount">--</div>
+            <div class="stat-label">Polymarket Markets</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-number" id="arbCount">--</div>
+            <div class="stat-label">Arbitraggi Trovati</div>
+        </div>
+    </div>
+
+    <div class="card">
+        <h3>📡 Ultima Scansione</h3>
+        <div id="timestamp" style="color:#9ca3af; font-size:13px; margin-top:8px;">Caricamento...</div>
+    </div>
+
+    <div class="card">
+        <h3>🎯 Opportunità di Arbitraggio</h3>
+        <div id="opportunities" style="margin-top:12px;">Caricamento...</div>
+    </div>
+
+    <div class="footer">
+        🔄 Scansione automatica ogni 5 minuti | 🤖 Alert Telegram @ArbScannerBot
+    </div>
+
+    <script>
+        async function loadData() {
+            try {
+                const res = await fetch('/latest-opportunities.json?' + Date.now());
+                const data = await res.json();
+                
+                document.getElementById('kalshiCount').innerText = data.kalshi_markets || 0;
+                document.getElementById('polyCount').innerText = data.polymarket_markets || 0;
+                document.getElementById('arbCount').innerText = data.arbitrages_found || 0;
+                
+                const date = new Date(data.timestamp);
+                document.getElementById('timestamp').innerHTML = date.toLocaleString();
+                
+                if (data.arbitrages_found > 0) {
+                    let html = '<div style="color:#22c55e; margin-bottom:12px;">🚨 TROVATI ' + data.arbitrages_found + ' ARBITRAGGI!</div>';
+                    for (const opp of data.opportunities) {
+                        html += '<div class="opportunity"><strong>' + (opp.market || opp.question || "N/D") + '</strong><br>' +
+                                'Spread: ' + (opp.spread || "calcolo in corso") + ' | Fonte: ' + (opp.source || "Polymarket/Kalshi") + '</div>';
+                    }
+                    document.getElementById('opportunities').innerHTML = html;
+                    document.getElementById('status').innerHTML = '🔴 ARBITRAGGIO TROVATO!';
+                    document.getElementById('status').style.color = '#ef4444';
+                } else {
+                    document.getElementById('opportunities').innerHTML = '<div style="color:#9ca3af;">✅ Nessun arbitraggio cashable al momento.<br>I mercati sono efficienti.</div>';
+                    document.getElementById('status').innerHTML = '🟢 LIVE - Nessun arbitraggio';
+                    document.getElementById('status').style.color = '#22c55e';
+                }
+            } catch(e) {
+                document.getElementById('opportunities').innerHTML = '<div style="color:#ef4444;">⚠️ Errore: ' + e.message + '</div>';
+            }
+        }
+        
+        loadData();
+        setInterval(loadData, 30000);
+    </script>
+</body>
+</html>
