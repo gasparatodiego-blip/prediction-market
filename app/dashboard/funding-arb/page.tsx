@@ -31,8 +31,10 @@ interface SpreadItem {
   breakevenDays:      number;
   status:             'HARVEST' | 'CAUTION' | 'MARGINAL';
   liquidityTier:      string | null;
-  capacityUsd:        number | null;
-  thinFlag:           boolean;
+  capacityUsd:        number | null;  // capped at fillable 20bps depth when fresh
+  thinFlag:           boolean;        // OI-tier based
+  depthThin:          boolean;        // depth-based: binding < 2×N0_capped OR < $5k
+  depthNote:          string | null;  // "THIN · ~$X fills within 20bps" or null
   oneLegUnverified:   boolean;
 }
 
@@ -369,6 +371,7 @@ function OpportunityCards({
           {visible.map(s => {
             const dayUsd     = N0 > 0 ? (N0 * s.netApy30d / 100) / 365 : null;
             const feesUsd    = N0 > 0 ? N0 * s.totalFeesPct / 100 : null;
+            const rocPct     = capital > 0 ? leverage * s.netApy30d / 2 : null;
             const hasDex     = s.shortExchange === 'hyperliquid' || s.longExchange === 'hyperliquid'
                             || s.shortExchange === 'dydx'        || s.longExchange === 'dydx';
             const resetLabel = hasDex ? 'hourly' : 'every 8h';
@@ -424,7 +427,7 @@ function OpportunityCards({
                       </div>
                     )}
                     <div className="font-mono text-[10px] text-text-secondary mt-1">
-                      on ${capital.toLocaleString()}{leverage > 1 ? ` · ${leverage}× leverage (both perp legs)` : ''}
+                      on ${capital.toLocaleString()}{leverage > 1 ? ` · ${leverage}× leverage (both perp legs)` : ''}{' · excl. entry slippage'}
                     </div>
                     {!s.oneLegUnverified && feesUsd !== null && feesUsd > 0 && (
                       <div className="font-mono text-[10px] text-text-muted mt-1.5">
@@ -439,10 +442,16 @@ function OpportunityCards({
                 )}
 
                 <div className="font-mono text-[10px] text-text-muted/60 leading-relaxed pt-0.5">
-                  <span className="text-text-muted">{fmtApy(s.netApy30d)}</span>{' '}
-                  theoretical ceiling — assumes this rate holds all year.
-                  Changes {resetLabel}; treat as upper bound, not a promise.
+                  {rocPct !== null ? (
+                    <><span className="text-text-muted">{fmtApy(rocPct)}</span>{' '}ROC · run-rate · not guaranteed</>
+                  ) : (
+                    <>set capital above to see ROC · run-rate · not guaranteed</>
+                  )}
                 </div>
+
+                {s.depthThin && s.depthNote && (
+                  <div className="font-mono text-[9px] text-warning/80">{s.depthNote}</div>
+                )}
 
                 <FundingSettlementNote s={s} />
 
@@ -481,6 +490,7 @@ function OpportunityCards({
           {visible.map(s => {
             const dayUsd  = N0 > 0 ? (N0 * s.netApy30d / 100) / 365 : null;
             const feesUsd = N0 > 0 ? N0 * s.totalFeesPct / 100 : null;
+            const rocPct  = capital > 0 ? leverage * s.netApy30d / 2 : null;
             const tgHref  = `https://t.me/Gaspola_bot?start=fund_${s.coin}`;
             return (
               <div
@@ -525,10 +535,14 @@ function OpportunityCards({
                   )}
                 </span>
 
-                {/* %/yr ceiling — small, greyed */}
+                {/* ROC · run-rate */}
                 <span className="font-mono text-[10px] text-text-muted/50 tabular-nums">
-                  {fmtApy(s.netApy30d)} ceiling
+                  {rocPct !== null ? `${fmtApy(rocPct)} ROC · run-rate · excl. entry slippage` : '—'}
                 </span>
+
+                {s.depthThin && s.depthNote && (
+                  <span className="font-mono text-[9px] text-warning/80">{s.depthNote}</span>
+                )}
 
                 {/* Status badge */}
                 <span className={`px-1.5 py-[2px] border text-[9px] font-mono uppercase tracking-widest ${statusBadgeCls(s.status)}`}>
@@ -630,7 +644,7 @@ function FeeNote({ meta }: { meta: Meta | null }) {
       Fee/leg: Binance/Bybit/OKX {meta.feePerLeg.cex}% · Gate.io 0.05% · Bitget 0.06% · Hyperliquid {meta.feePerLeg.dex}% · dYdX 0.05%.
       Round-trip = 4 legs (open+close both sides). Net yield (30d) = gross APR × 30d − fees.
       MARGINAL = &gt;10d · CAUTION = &gt;5d · HARVEST = ≤5d.
-      Max size ≈ 1% of min OI or vol24h across both legs (DEEP ≥ $50M · OK ≥ $10M · THIN ≥ $1M).
+      Max size = fillable within 20bps of mid (both legs). Tier labels (DEEP ≥ $50M · OK ≥ $10M · THIN ≥ $1M) are OI-based.
     </p>
   );
 }
@@ -646,8 +660,8 @@ const TABLE_HEADERS: { label: string; tip?: string; cls?: string }[] = [
     tip:   'LONG this exchange — you pay little or zero fee (negative rate = they pay you)',
   },
   {
-    label: 'Net yield (30d) ↓',
-    tip:   'Annualized % after round-trip fees, projected as if held 30 days. NOT guaranteed — rate changes every 1h or 8h.',
+    label: 'Net $/day · ROC ↓',
+    tip:   '$/day on your capital (primary when capital is set), with run-rate ROC %/yr on total capital below. Fees deducted, 30d hold projected. NOT guaranteed — rate changes every 1h or 8h.',
     cls:   'text-positive',
   },
   {
@@ -717,8 +731,21 @@ function SpreadTable({
                         <span className="text-border mx-1">·</span>
                         <span className={rateCls(s.frLong)}>{fmtRate(s.frLong, s.intervalHoursLong)}</span>
                       </td>
-                      <td className={`px-3 py-2.5 tabular-nums text-base font-bold ${s.netApy30d > 0 ? 'text-positive' : 'text-negative/70'}`}>
-                        {fmtApy(s.netApy30d)}
+                      <td className="px-3 py-2.5 tabular-nums">
+                        {sz ? (
+                          <div className="flex flex-col gap-0.5">
+                            <span className={`text-base font-bold ${s.oneLegUnverified ? 'text-text-muted' : sz.roc > 0 ? 'text-positive' : 'text-negative/70'}`}>
+                              {fmtDayUsd(sz.dayUsd)}
+                            </span>
+                            <span className="font-mono text-[9px] text-text-muted/60">
+                              {fmtApy(sz.roc)} ROC · run-rate · excl. entry slippage
+                            </span>
+                          </div>
+                        ) : (
+                          <span className={`text-base font-bold ${s.netApy30d > 0 ? 'text-positive' : 'text-negative/70'}`}>
+                            {fmtApy(s.netApy30d)}
+                          </span>
+                        )}
                       </td>
                       <td className="px-3 py-2.5 tabular-nums text-[10px] text-text-muted">{fmtApy(s.grossApy)}</td>
                       <td className="px-3 py-2.5 tabular-nums text-text-muted text-[10px] whitespace-nowrap">
@@ -736,6 +763,9 @@ function SpreadTable({
                           {s.capacityUsd != null && (
                             <span className="font-mono text-[8px] text-text-muted">{fmtCapWords(s.capacityUsd)}</span>
                           )}
+                          {s.depthThin && s.depthNote && (
+                            <span className="font-mono text-[8px] text-warning/70 leading-tight">{s.depthNote}</span>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -743,7 +773,6 @@ function SpreadTable({
                       <tr className="border-b border-border/50 bg-bg-elevated/10">
                         <td colSpan={9} className="px-3 py-1.5">
                           <div className="flex flex-wrap gap-x-4 font-mono text-[10px]">
-                            <span className={`font-semibold tabular-nums ${s.oneLegUnverified ? 'text-text-muted' : 'text-positive'}`}>≈ {fmtDayUsd(sz.dayUsd)}</span>
                             {s.oneLegUnverified && (
                               <span className="text-text-muted/70 italic">1 leg unverified — spread uses predicted rate, may be overstated.</span>
                             )}

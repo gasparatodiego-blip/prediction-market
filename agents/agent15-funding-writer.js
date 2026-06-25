@@ -56,8 +56,15 @@ const CONFIRM_LOOK       = 3;            // last N settlements to check directio
 const CONFIRM_MIN        = 2;            // need ≥ this many same-direction as trailing
 const HOURLY_SPIKE_ANN   = 115;          // %/yr — extreme threshold for hourly venues (no history)
 
+// Order-book depth
+const DEPTH_BAND_BPS     = 20;           // ±20bps band around mid for depth measurement
+const DEPTH_FLOOR_USD    = 5_000;        // absolute illiquidity floor — always THIN below this
+const MULT_REFRESH_MS    = 15 * 60_000;  // contract multiplier cache refresh cadence
+
 let historyCache     = null;
 let historyFetchedAt = 0;
+let multCache        = { okx: {}, gateio: {}, bitget: {} };
+let multFetchedAt    = 0;
 let isRunning        = false;
 
 // ── HTTP helper ───────────────────────────────────────────────────────────────
@@ -67,6 +74,197 @@ function get(url) {
     timeoutMs: 12_000,
     headers: { 'User-Agent': 'Mozilla/5.0 prediction-arb-scanner/1.0', 'Accept': 'application/json' },
   }).then(r => r.data).catch(() => null);
+}
+
+// ── Contract multiplier cache ─────────────────────────────────────────────────
+// OKX books report qty in contracts (ctVal coins each).
+// Gate.io books report qty in contracts (quanto_multiplier coins each).
+// Bitget books report qty in contracts (sizeMultiplier coins each).
+// Binance/Bybit report qty directly in base-currency units — no multiplier needed.
+
+async function refreshMultiplierCache() {
+  console.log('[funding-depth] refreshing contract multiplier caches…');
+  const [okxInst, gateContracts, bitgetContracts] = await Promise.all([
+    get('https://www.okx.com/api/v5/public/instruments?instType=SWAP'),
+    get('https://api.gateio.ws/api/v4/futures/usdt/contracts'),
+    get('https://api.bitget.com/api/v2/mix/market/contracts?productType=usdt-futures'),
+  ]);
+
+  const fresh = { okx: {}, gateio: {}, bitget: {} };
+  for (const inst of okxInst?.data ?? []) {
+    const m = inst.instId?.match(/^([A-Z0-9]+)-USDT-SWAP$/);
+    if (m && isFinite(parseFloat(inst.ctVal))) fresh.okx[m[1]] = parseFloat(inst.ctVal);
+  }
+  for (const c of gateContracts ?? []) {
+    const m = c.name?.match(/^([A-Z0-9]+)_USDT$/);
+    if (m && isFinite(parseFloat(c.quanto_multiplier))) fresh.gateio[m[1]] = parseFloat(c.quanto_multiplier);
+  }
+  for (const c of bitgetContracts?.data ?? []) {
+    const m = c.symbol?.match(/^([A-Z0-9]+)USDT$/);
+    if (m && isFinite(parseFloat(c.sizeMultiplier))) fresh.bitget[m[1]] = parseFloat(c.sizeMultiplier);
+  }
+
+  // Merge: new entries overwrite; failed fetches keep stale values
+  Object.assign(multCache.okx,    fresh.okx);
+  Object.assign(multCache.gateio, fresh.gateio);
+  Object.assign(multCache.bitget, fresh.bitget);
+  multFetchedAt = Date.now();
+  const total = Object.keys(multCache.okx).length + Object.keys(multCache.gateio).length + Object.keys(multCache.bitget).length;
+  console.log(`[funding-depth] multipliers ready: ${total} coin-exchange pairs`);
+}
+
+// ── Per-exchange depth fetchers ───────────────────────────────────────────────
+// Each returns { bidDepthUsd, askDepthUsd } within DEPTH_BAND_BPS of mid,
+// using the order book's own best-bid/ask midpoint. Returns null on fetch failure.
+
+async function depthBinance(coin) {
+  const d = await get(`https://fapi.binance.com/fapi/v1/depth?symbol=${coin}USDT&limit=100`);
+  if (!Array.isArray(d?.bids) || !d.bids.length || !Array.isArray(d?.asks) || !d.asks.length) return null;
+  const mid = (parseFloat(d.bids[0][0]) + parseFloat(d.asks[0][0])) / 2;
+  const lo  = mid * (1 - DEPTH_BAND_BPS / 10_000);
+  const hi  = mid * (1 + DEPTH_BAND_BPS / 10_000);
+  const bidDepthUsd = d.bids.filter(([p]) => parseFloat(p) >= lo)
+    .reduce((s, [p, q]) => s + parseFloat(p) * parseFloat(q), 0);
+  const askDepthUsd = d.asks.filter(([p]) => parseFloat(p) <= hi)
+    .reduce((s, [p, q]) => s + parseFloat(p) * parseFloat(q), 0);
+  return { bidDepthUsd, askDepthUsd };
+}
+
+async function depthBybit(coin) {
+  const d = await get(`https://api.bybit.com/v5/market/orderbook?category=linear&symbol=${coin}USDT&limit=200`);
+  const bids = d?.result?.b, asks = d?.result?.a;
+  if (!Array.isArray(bids) || !bids.length || !Array.isArray(asks) || !asks.length) return null;
+  const mid = (parseFloat(bids[0][0]) + parseFloat(asks[0][0])) / 2;
+  const lo  = mid * (1 - DEPTH_BAND_BPS / 10_000);
+  const hi  = mid * (1 + DEPTH_BAND_BPS / 10_000);
+  const bidDepthUsd = bids.filter(([p]) => parseFloat(p) >= lo)
+    .reduce((s, [p, q]) => s + parseFloat(p) * parseFloat(q), 0);
+  const askDepthUsd = asks.filter(([p]) => parseFloat(p) <= hi)
+    .reduce((s, [p, q]) => s + parseFloat(p) * parseFloat(q), 0);
+  return { bidDepthUsd, askDepthUsd };
+}
+
+async function depthOkx(coin) {
+  const d = await get(`https://www.okx.com/api/v5/market/books?instId=${coin}-USDT-SWAP&sz=100`);
+  const book = d?.data?.[0];
+  if (!Array.isArray(book?.bids) || !book.bids.length || !Array.isArray(book?.asks) || !book.asks.length) return null;
+  const mult = multCache.okx[coin] ?? 1;
+  const mid  = (parseFloat(book.bids[0][0]) + parseFloat(book.asks[0][0])) / 2;
+  const lo   = mid * (1 - DEPTH_BAND_BPS / 10_000);
+  const hi   = mid * (1 + DEPTH_BAND_BPS / 10_000);
+  const bidDepthUsd = book.bids.filter(([p]) => parseFloat(p) >= lo)
+    .reduce((s, [p, q]) => s + parseFloat(p) * parseFloat(q) * mult, 0);
+  const askDepthUsd = book.asks.filter(([p]) => parseFloat(p) <= hi)
+    .reduce((s, [p, q]) => s + parseFloat(p) * parseFloat(q) * mult, 0);
+  return { bidDepthUsd, askDepthUsd };
+}
+
+async function depthBitget(coin) {
+  const d = await get(`https://api.bitget.com/api/v2/mix/market/orderbook?symbol=${coin}USDT&productType=usdt-futures&limit=100`);
+  const bids = d?.data?.bids, asks = d?.data?.asks;
+  if (!Array.isArray(bids) || !bids.length || !Array.isArray(asks) || !asks.length) return null;
+  const mult = multCache.bitget[coin] ?? 1;
+  const mid  = (parseFloat(bids[0][0]) + parseFloat(asks[0][0])) / 2;
+  const lo   = mid * (1 - DEPTH_BAND_BPS / 10_000);
+  const hi   = mid * (1 + DEPTH_BAND_BPS / 10_000);
+  const bidDepthUsd = bids.filter(([p]) => parseFloat(p) >= lo)
+    .reduce((s, [p, q]) => s + parseFloat(p) * parseFloat(q) * mult, 0);
+  const askDepthUsd = asks.filter(([p]) => parseFloat(p) <= hi)
+    .reduce((s, [p, q]) => s + parseFloat(p) * parseFloat(q) * mult, 0);
+  return { bidDepthUsd, askDepthUsd };
+}
+
+async function depthGateio(coin) {
+  const d = await get(`https://api.gateio.ws/api/v4/futures/usdt/order_book?contract=${coin}_USDT&limit=100`);
+  if (!Array.isArray(d?.bids) || !d.bids.length || !Array.isArray(d?.asks) || !d.asks.length) return null;
+  const mult = multCache.gateio[coin] ?? 1;
+  const mid  = (parseFloat(d.bids[0].p) + parseFloat(d.asks[0].p)) / 2;
+  const lo   = mid * (1 - DEPTH_BAND_BPS / 10_000);
+  const hi   = mid * (1 + DEPTH_BAND_BPS / 10_000);
+  const bidDepthUsd = d.bids.filter(e => parseFloat(e.p) >= lo)
+    .reduce((s, e) => s + parseFloat(e.p) * Math.abs(parseFloat(e.s)) * mult, 0);
+  const askDepthUsd = d.asks.filter(e => parseFloat(e.p) <= hi)
+    .reduce((s, e) => s + parseFloat(e.p) * Math.abs(parseFloat(e.s)) * mult, 0);
+  return { bidDepthUsd, askDepthUsd };
+}
+
+const DEPTH_FETCHERS = {
+  binance: depthBinance,
+  bybit:   depthBybit,
+  okx:     depthOkx,
+  bitget:  depthBitget,
+  gateio:  depthGateio,
+};
+
+function fmtDepthUsd(n) {
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000)     return `$${Math.round(n / 1_000)}k`;
+  return `$${Math.round(n)}`;
+}
+
+// Enrich confirmed opps in place: cap capacityUsd at real 20bps book depth,
+// compute depth-based THIN flag (binding < 2×N0_capped OR binding < DEPTH_FLOOR).
+async function enrichWithDepth(opps) {
+  // Collect unique (coin, exchange) pairs from opp ids: funding-{COIN}-{shortEx}-{longEx}
+  const pairs = new Set();
+  for (const opp of opps) {
+    const parts   = opp.id.split('-');
+    const coin    = parts[1];
+    const shortEx = parts[2];
+    const longEx  = parts[3];
+    if (DEPTH_FETCHERS[shortEx]) pairs.add(`${coin}|${shortEx}`);
+    if (DEPTH_FETCHERS[longEx])  pairs.add(`${coin}|${longEx}`);
+  }
+
+  // Fetch all unique pairs in parallel
+  const depthMap = {};
+  await Promise.all([...pairs].map(async key => {
+    const [coin, exchange] = key.split('|');
+    depthMap[key] = await DEPTH_FETCHERS[exchange](coin);
+  }));
+
+  const ok = Object.values(depthMap).filter(v => v !== null).length;
+  console.log(`[funding-depth] fetched ${pairs.size} pairs → ${ok} ok, ${pairs.size - ok} failed`);
+
+  for (const opp of opps) {
+    const parts     = opp.id.split('-');
+    const coin      = parts[1];
+    const shortEx   = parts[2];
+    const longEx    = parts[3];
+    const shortData = depthMap[`${coin}|${shortEx}`] ?? null;
+    const longData  = depthMap[`${coin}|${longEx}`]  ?? null;
+
+    // SHORT leg collects — we sell into bids; LONG leg buys — we lift asks
+    const shortBid = shortData !== null ? shortData.bidDepthUsd : null;
+    const longAsk  = longData  !== null ? longData.askDepthUsd  : null;
+    const binding  = (shortBid !== null && longAsk !== null) ? Math.min(shortBid, longAsk) : null;
+
+    const heuristicCap = opp.capacityUsd; // original OI-based estimate
+
+    let cappedCap, depthThin, depthNote;
+
+    if (binding !== null) {
+      // Part A: cap displayed capacity at fillable book depth
+      cappedCap = heuristicCap !== null
+        ? Math.floor(Math.min(heuristicCap, binding))
+        : Math.floor(binding);
+
+      // Part B: THIN if binding < 2×N0(capped) OR binding < absolute floor
+      const N0_capped = cappedCap / 2;
+      depthThin = binding < 2 * N0_capped || binding < DEPTH_FLOOR_USD;
+      depthNote = depthThin ? `THIN · ~${fmtDepthUsd(binding)} fills within 20bps` : null;
+    } else {
+      // One or both leg fetches failed — keep heuristic cap, flag THIN conservatively
+      cappedCap = heuristicCap;
+      depthThin = true;
+      depthNote = 'THIN · depth unknown';
+    }
+
+    opp.capacityUsd       = cappedCap;
+    opp.bindingDepth20bps = binding;
+    opp.depthThin         = depthThin;
+    opp.depthNote         = depthNote;
+  }
 }
 
 // ── Venue history fetchers ────────────────────────────────────────────────────
@@ -557,15 +755,27 @@ async function run() {
     if (Date.now() - historyFetchedAt > HISTORY_REFRESH_MS) {
       await refreshHistoryCache(data.futures || {});
     }
+    // Refresh contract multipliers at the same cadence (needed for depth accuracy)
+    if (Date.now() - multFetchedAt > MULT_REFRESH_MS) {
+      await refreshMultiplierCache();
+    }
 
     const allOpps = crossExchangeSpread(data.futures || {}, historyCache || {});
 
+    // Enrich confirmed opps with real order-book depth, cap capacityUsd, set depthThin
+    const confirmedOpps = allOpps.filter(o => o.fullyConfirmed);
+    if (confirmedOpps.length > 0) {
+      await enrichWithDepth(confirmedOpps);
+    }
+
     const spikedCount = allOpps.filter(o => o.spikeFlag || !o.allConfirmed).length;
-    console.log(`[funding] ${allOpps.length} pairs ≥${THRESHOLD_APY}%/yr (trailing) — ${spikedCount} spike/unconfirmed:`);
+    const thinCount   = confirmedOpps.filter(o => o.depthThin).length;
+    console.log(`[funding] ${allOpps.length} pairs ≥${THRESHOLD_APY}%/yr — ${spikedCount} spike/unconfirmed — ${thinCount}/${confirmedOpps.length} confirmed THIN depth:`);
     for (const o of allOpps.slice(0, 10)) {
       const spikeMark = (o.spikeFlag || !o.allConfirmed) ? ' ⚠SPIKE' : '';
+      const depthMark = o.depthThin ? ` 📉THIN` : '';
       const predNote  = o.spikeFlag ? ` [pred:${o.predictedGrossApy}%]` : '';
-      console.log(`  ${o.id}: trailing:+${o.annualizedROI}%/yr${predNote}  net:+${o.netROI}%/yr  ${o.status}${spikeMark}`);
+      console.log(`  ${o.id}: trailing:+${o.annualizedROI}%/yr${predNote}  cap:${o.capacityUsd != null ? '$'+Math.round(o.capacityUsd/1000)+'k' : 'null'}  ${o.status}${spikeMark}${depthMark}`);
     }
 
     mergeUnifiedFunding(allOpps);

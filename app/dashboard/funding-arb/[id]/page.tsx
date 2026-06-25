@@ -31,8 +31,10 @@ interface SpreadItem {
   breakevenDays:      number;
   status:             'HARVEST' | 'CAUTION' | 'MARGINAL';
   liquidityTier:      string | null;
-  capacityUsd:        number | null;
-  thinFlag:           boolean;
+  capacityUsd:        number | null;  // capped at fillable 20bps depth when fresh
+  thinFlag:           boolean;        // OI-tier based
+  depthThin?:         boolean;        // depth-based THIN flag
+  depthNote?:         string | null;  // "THIN · ~$X fills within 20bps" or null
 }
 
 interface ApiResponse {
@@ -736,9 +738,9 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
               },
               {
                 label: 'Liquidity',
-                body: spread.thinFlag
-                  ? `THIN on at least one leg (capacity ≈ ${spread.capacityUsd != null ? '$' + (spread.capacityUsd / 1000).toFixed(0) + 'k' : 'unknown'}). Large orders will move the market against you.`
-                  : `Est. deployable: ${spread.capacityUsd != null ? '$' + (spread.capacityUsd / 1000).toFixed(0) + 'k' : 'unknown'} (~1% of thinner leg's OI/vol). Slippage grows above this.`,
+                body: (spread.depthThin ?? spread.thinFlag)
+                  ? `${spread.depthNote ?? 'THIN — book depth limited'}. Large orders will move the market against you.`
+                  : `Est. deployable: ${spread.capacityUsd != null ? '$' + (spread.capacityUsd / 1000).toFixed(0) + 'k' : 'unknown'} (fillable within 20bps of mid). Slippage grows above this.`,
               },
             ].map(({ label, body }) => (
               <div key={label} className="flex items-start gap-3">

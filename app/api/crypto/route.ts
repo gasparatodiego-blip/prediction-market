@@ -44,9 +44,11 @@ export interface SpreadItem {
   breakevenDays:     number;
   status:            'HARVEST' | 'CAUTION' | 'MARGINAL';
   liquidityTier:     string | null;
-  capacityUsd:       number | null;
-  thinFlag:          boolean;
-  oneLegUnverified:  boolean;   // true = ≥1 leg has no settled history; spread uses predicted rate
+  capacityUsd:       number | null;   // capped at fillable 20bps depth when agent15 depth is fresh
+  thinFlag:          boolean;         // OI-tier based (drives LiqChip ⚠, row dimming)
+  depthThin:         boolean;         // depth-based THIN flag (binding < 2×N0_capped OR < $5k)
+  depthNote:         string | null;   // "THIN · ~$X fills within 20bps" or null
+  oneLegUnverified:  boolean;         // true = ≥1 leg has no settled history; spread uses predicted rate
 }
 
 function isDex(exchange: string): boolean {
@@ -131,7 +133,9 @@ function computeSpreads(
           liquidityTier:      tier,
           capacityUsd:        capUsd,
           thinFlag:           thin,
-          oneLegUnverified:   false,  // placeholder; overwritten by the UNI lookup map() in GET()
+          depthThin:          false,   // overwritten by UNI lookup map() when agent15 depth is fresh
+          depthNote:          null,    // overwritten by UNI lookup map() when agent15 depth is fresh
+          oneLegUnverified:   false,   // overwritten by UNI lookup map() in GET()
         });
       }
     }
@@ -151,17 +155,34 @@ export async function GET() {
     // Build direction-independent lookup: agent15 keys by trailing-rate SHORT/LONG order;
     // route.ts keys by predicted-rate order — these can differ. Normalize to sorted pair.
     // Unknown (stale/missing file, key absent) → oneLegUnverified: true. Never default to false.
-    const uniLookup = new Map<string, boolean>();
+    interface UniEntry {
+      oneLegUnverified: boolean;
+      capacityUsd?:     number | null;   // depth-capped (Part A)
+      depthThin?:       boolean;         // depth THIN flag (Part B)
+      depthNote?:       string | null;   // display string
+    }
+    const uniLookup = new Map<string, UniEntry>();
     try {
       const uniRaw     = JSON.parse(fs.readFileSync(UNI_FILE, 'utf8'));
       const fundingAge = Date.now() - (uniRaw.sources?.funding?.updatedAt ?? 0);
       if (fundingAge < UNI_STALE_MS) {
-        for (const opp of (uniRaw.opportunities ?? []) as { type: string; id: string; oneLegUnverified: boolean }[]) {
+        for (const opp of (uniRaw.opportunities ?? []) as {
+          type: string; id: string;
+          oneLegUnverified: boolean;
+          capacityUsd?: number | null;
+          depthThin?: boolean;
+          depthNote?: string | null;
+        }[]) {
           if (opp.type !== 'FUNDING') continue;
           const parts = (opp.id ?? '').split('-');
           if (parts.length !== 4 || parts[0] !== 'funding') continue;
           const [, coin, ex1, ex2] = parts;
-          uniLookup.set(`${coin}|${[ex1, ex2].sort().join('|')}`, opp.oneLegUnverified === true);
+          uniLookup.set(`${coin}|${[ex1, ex2].sort().join('|')}`, {
+            oneLegUnverified: opp.oneLegUnverified === true,
+            capacityUsd:      typeof opp.capacityUsd === 'number' ? opp.capacityUsd : undefined,
+            depthThin:        opp.depthThin === true,
+            depthNote:        typeof opp.depthNote === 'string' ? opp.depthNote : null,
+          });
         }
       }
       // stale branch falls through: uniLookup stays empty → all keys missing → all demote
@@ -170,7 +191,14 @@ export async function GET() {
     const spreads = computeSpreads(raw.futures ?? {}).map(s => {
       const key = `${s.coin}|${[s.shortExchange, s.longExchange].sort().join('|')}`;
       const lu  = uniLookup.get(key);
-      return { ...s, oneLegUnverified: lu === undefined ? true : lu };
+      return {
+        ...s,
+        oneLegUnverified: lu === undefined ? true : lu.oneLegUnverified,
+        // Override capacity and depth flags with agent15's depth-grounded values when fresh
+        capacityUsd: lu?.capacityUsd !== undefined ? lu.capacityUsd : s.capacityUsd,
+        depthThin:   lu?.depthThin   !== undefined ? lu.depthThin   : false,
+        depthNote:   lu?.depthNote   !== undefined ? lu.depthNote   : null,
+      };
     });
 
     return NextResponse.json({
