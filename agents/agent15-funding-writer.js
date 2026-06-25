@@ -16,7 +16,9 @@
  *      — PRESERVES type=CASHABLE/SIGNAL/SPORTS, REPLACES type=FUNDING
  *
  * Venues WITHOUT settled history (Hyperliquid 1h, dYdX 1h):
- *   trailingRate = predictedRate, confirmed = false only if rate > HOURLY_SPIKE_ANN %/yr.
+ *   trailingRate = predictedRate (best available estimate, clearly unverified)
+ *   oneLegUnverified = true → verdict = 'PARTIAL — 1 leg unverified' → fullyConfirmed = false
+ *   These are NOT shown as green/confirmed on any surface (headline, list, alerts).
  *
  * Zero Claude calls. No trades. Read-only + math only.
  */
@@ -342,8 +344,10 @@ function crossExchangeSpread(futures, hCache) {
             : [B, A, analB, analA];
 
         // Spike / confirmation flags
-        const spikeFlag    = analShort.spike || analLong.spike;
-        const allConfirmed = analShort.confirmed && analLong.confirmed;
+        const spikeFlag        = analShort.spike || analLong.spike;
+        const allConfirmed     = analShort.confirmed && analLong.confirmed;
+        const oneLegUnverified = !analShort.historyAvailable || !analLong.historyAvailable;
+        const fullyConfirmed   = allConfirmed && !oneLegUnverified && !spikeFlag;
 
         const totalFees  = roundTripFeeByVenue(shortSide.exchange, longSide.exchange);
         const net30d     = netApy30d(trailingGrossApy, totalFees);
@@ -389,10 +393,12 @@ function crossExchangeSpread(futures, hCache) {
           spikeNote = `SPIKE FLAG: ${spikeLeg} predicted rate annualizes to ${spikePredAnn >= 0 ? '+' : ''}${spikePredAnn}%/yr vs trailing avg ${spikeTrailAnn >= 0 ? '+' : ''}${spikeTrailAnn}%/yr — headline uses trailing.`;
         }
 
-        // Verdict
+        // Verdict — severity order: SPIKE > PARTIAL > THIN > HARVEST
         let verdict;
         if (spikeFlag || !allConfirmed) {
           verdict = 'SPIKE — predicted, unconfirmed';
+        } else if (oneLegUnverified) {
+          verdict = 'PARTIAL — 1 leg unverified';
         } else if (thinFlag) {
           verdict = 'HARVEST · thin — not executable at size';
         } else {
@@ -444,6 +450,8 @@ function crossExchangeSpread(futures, hCache) {
           // ── Spike/confirmation flags ──
           spikeFlag,
           allConfirmed,
+          oneLegUnverified,
+          fullyConfirmed,
           // ── Existing fields ──
           spread:             null,
           daysToResolution:   null,
@@ -451,7 +459,10 @@ function crossExchangeSpread(futures, hCache) {
           capacityUsd:        capUsd,
           lockupFlag:         null,
           verdict,
-          confidence:         (spikeFlag || !allConfirmed) ? 0.3 : (trailingGrossApy > 10 ? 0.7 : 0.85),
+          confidence:         (spikeFlag || !allConfirmed) ? 0.3
+                            : oneLegUnverified             ? 0.5
+                            : trailingGrossApy > 10        ? 0.7
+                            :                               0.85,
           note:               [feeNote, resetNote, spikeNote, bridgeNoteStr].filter(Boolean).join(' '),
           hasDexLeg,
           totalFeesPct:       +totalFees.toFixed(3),
