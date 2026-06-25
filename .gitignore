@@ -56,3 +56,6 @@ data/copy-watchlist.json
 data/sports/
 # cron runtime logs — appended by system crontab, not source-controlled
 logs/
+
+data/fund-subscriptions.json
+data/liquidity-rewards.json
