@@ -204,9 +204,24 @@ export async function GET() {
 
   // ── Derive per-category bests ─────────────────────────────────────────────
 
-  const fundingOpps = opps
-    .filter(o => o.type === 'FUNDING' && typeof o.netROI === 'number')
-    .sort((a: any, b: any) => b.netROI - a.netROI);
+  // Funding: net $/day at greenCapacityUsd — mirrors funding dashboard's slipSortScore.
+  // state='GREEN' means slipOverGross ≤30%; that is the agreed honest-capacity threshold.
+  function fundingNetDayAtGreenCap(o: any): number {
+    const greenCap: number = o.greenCapacityUsd ?? 0;
+    if (!greenCap) return -Infinity;
+    const curve: any[] = Array.isArray(o.slipCurve) ? o.slipCurve : [];
+    const pt = curve.find((p: any) => p.fillable && p.size === greenCap && p.state === 'GREEN');
+    const nd = pt?.netDayUsd;
+    return typeof nd === 'number' ? nd : -Infinity;
+  }
+
+  const fundingCandidates = opps
+    .filter((o: any) => o.type === 'FUNDING' && (o.greenCapacityUsd ?? 0) > 0 && Array.isArray(o.slipCurve))
+    .sort((a: any, b: any) => fundingNetDayAtGreenCap(b) - fundingNetDayAtGreenCap(a));
+
+  const bestFunding    = fundingCandidates[0] ?? null;
+  const bestFundingDay = bestFunding != null ? fundingNetDayAtGreenCap(bestFunding) : null;
+  const fundingLive    = typeof bestFundingDay === 'number' && isFinite(bestFundingDay) && bestFundingDay > 0;
 
   // sportsOpps from unified file replaced by agent12 → /tmp/sports-odds.json (see above)
 
@@ -216,15 +231,15 @@ export async function GET() {
     {
       key:         'funding',
       label:       'Funding Arb',
-      // Show the best net-of-fees rate, but always flag it as a ceiling:
-      // this is the instantaneous annualized spread — not a locked, guaranteed return.
-      bestNetPct:  fundingOpps[0]?.netROI ?? null,
-      unit:        '%/yr',
-      status:      fundingOpps.length > 0 ? 'live' : 'no-opp',
-      count:       fundingOpps.length,
+      bestNetPct:  fundingLive ? bestFundingDay : null,
+      unit:        '$/day',
+      status:      fundingLive ? 'live' : 'no-opp',
+      count:       fundingCandidates.length,
       href:        '/dashboard/funding-arb',
-      note:        'net after fees · theoretical ceiling · variable, not locked',
-      displayKind: 'ceiling',
+      note:        fundingLive
+        ? 'net/day · at honest cap · incl. slippage'
+        : 'no clean size right now',
+      displayKind: 'net',
     },
     {
       key:         'prediction',
