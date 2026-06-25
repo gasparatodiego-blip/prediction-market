@@ -62,11 +62,12 @@ const BADGE_CLS: Record<string, string> = {
 };
 
 const VERDICT_CLS: Record<string, string> = {
-  'Actionable':          'text-positive',
-  'capital-lockup-skip': 'text-warning',
-  'signal':              'text-text-muted',
-  'stale-check':         'text-negative',
-  'HARVEST · variable':  'text-accent',
+  'Actionable':                      'text-positive',
+  'capital-lockup-skip':             'text-warning',
+  'signal':                          'text-text-muted',
+  'stale-check':                     'text-negative',
+  'HARVEST · variable':              'text-accent',
+  'SPIKE — predicted, unconfirmed':  'text-negative/60',
 };
 
 function fmtRoi(n: number | null, suffix = '%', places = 1): string {
