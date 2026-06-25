@@ -148,7 +148,7 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
   const [loading,        setLoading]        = useState(true);
   const [capital,        setCapital]        = useState(1000);
   const [leverage,       setLeverage]       = useState<Leverage>(1);
-  const [alertThreshold, setAlertThreshold] = useState<number | null>(null);
+  const [paybackDays, setPaybackDays] = useState(10);
 
   const load = useCallback(async () => {
     try {
@@ -200,13 +200,15 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
     ? Math.ceil(spread.breakevenDays * 24 / spread.intervalHoursLong)
     : 0;
 
-  // MARGINAL boundary — gross spread below which fees take >10d to recover
-  const marginalBoundary = spread ? +(spread.totalFeesPct * 36.5).toFixed(1) : 5;
+  // MARGINAL boundary — gross spread below which fees take >paybackDays to recover
+  // Formula: totalFeesPct × (365 / paybackDays) = the APY at which breakeven = paybackDays
+  const marginalBoundary   = spread ? +(spread.totalFeesPct * 365 / paybackDays).toFixed(1) : 5;
+  const effectiveThreshold = marginalBoundary;
 
-  // Threshold alert — default to MARGINAL boundary
-  const effectiveThreshold = alertThreshold ?? marginalBoundary;
-  const tgFollowHref       = `https://t.me/Gaspola_bot?start=fund_${coin}`;
-  const tgAlertHref        = `https://t.me/Gaspola_bot?start=fund_${coin}_exit_${Math.round(effectiveThreshold * 10)}`;
+  const tgFollowHref = `https://t.me/Gaspola_bot?start=fund_${coin}`;
+  // Threshold encoded as basis points (×100) — integer, Telegram-safe, no dots
+  // Decode: parseInt(param) / 100 = %/yr. e.g. 7.3%/yr → 730 → /100 = 7.3
+  const tgAlertHref  = `https://t.me/Gaspola_bot?start=fund_${coin}_exit_${Math.round(effectiveThreshold * 100)}`;
 
   return (
     <div className="max-w-[860px] mx-auto px-4 py-6">
@@ -420,18 +422,18 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
 
                 {/* Maker alternative */}
                 <div className="mt-3 pt-2.5 border-t border-border/15 font-mono text-[9px] text-text-muted/70 leading-relaxed">
-                  <span className="text-text-muted">Maker alternative: </span>
+                  <span className="text-text-muted">Estimated maker fees (if using limit orders): </span>
                   {shortExchange === 'hyperliquid'
-                    ? `${venueLabel(shortExchange)} maker = 0%`
-                    : `${venueLabel(shortExchange)} maker ≈ ${shortMakerPct}%/leg`
+                    ? `${venueLabel(shortExchange)} maker = 0% (confirmed)`
+                    : `${venueLabel(shortExchange)} est. maker ≈ ${shortMakerPct}%/leg`
                   }
                   {' / '}
                   {longExchange === 'hyperliquid'
-                    ? `${venueLabel(longExchange)} maker = 0%`
-                    : `${venueLabel(longExchange)} maker ≈ ${longMakerPct}%/leg`
+                    ? `${venueLabel(longExchange)} maker = 0% (confirmed)`
+                    : `${venueLabel(longExchange)} est. maker ≈ ${longMakerPct}%/leg`
                   }
                   {makerSavingPct > 0.001 && (
-                    <> — saves ≈{fmtUsd(makerSavingUsd)} vs taker on this capital.</>
+                    <> — est. saving ≈{fmtUsd(makerSavingUsd)} vs taker on this capital.</>
                   )}
                   <span className="text-warning/70">
                     {' '}Risk: limit orders on two venues cannot be guaranteed to fill simultaneously.
@@ -497,10 +499,10 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
                 </p>
                 <p className="text-[9px] text-text-muted/60 border-l border-border/30 pl-2 mt-1">
                   <span className="text-text-muted">Fee assumption: </span>
-                  taker {shortTakerPct}%/leg (used in net estimate above).
+                  taker {shortTakerPct}%/leg (real published rate — used in net estimate above).
                   {shortExchange === 'hyperliquid'
-                    ? ' Maker = 0% on HL — free if filled, but no fill guarantee.'
-                    : ` Maker ≈${shortMakerPct}%/leg if filled — cheaper, but no simultaneous-fill guarantee with the other leg.`
+                    ? ' Est. maker = 0% on HL — free if filled, but no fill guarantee.'
+                    : ` Est. maker ≈${shortMakerPct}%/leg if filled — cheaper, but no simultaneous-fill guarantee with the other leg. Verify on exchange.`
                   }
                 </p>
               </div>
@@ -532,10 +534,10 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
                 </p>
                 <p className="text-[9px] text-text-muted/60 border-l border-border/30 pl-2 mt-1">
                   <span className="text-text-muted">Fee assumption: </span>
-                  taker {longTakerPct}%/leg (used in net estimate above).
+                  taker {longTakerPct}%/leg (real published rate — used in net estimate above).
                   {longExchange === 'hyperliquid'
-                    ? ' Maker = 0% on HL — free if filled, but no fill guarantee.'
-                    : ` Maker ≈${longMakerPct}%/leg if filled — cheaper, but no simultaneous-fill guarantee.`
+                    ? ' Est. maker = 0% on HL — free if filled, but no fill guarantee.'
+                    : ` Est. maker ≈${longMakerPct}%/leg if filled — cheaper, but no simultaneous-fill guarantee. Verify on exchange.`
                   }
                 </p>
               </div>
@@ -601,7 +603,7 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
 
                 <p className="text-text-muted">Close both legs when any trigger occurs:</p>
                 <ul className="list-none space-y-0.5 ml-3 text-[9px]">
-                  <li>· Gross spread drops below ≈{marginalBoundary.toFixed(1)}%/yr (MARGINAL boundary — fees take {'>'}10d to recover).</li>
+                  <li>· Gross spread drops below ≈{marginalBoundary.toFixed(1)}%/yr (fees take {'>'}{paybackDays}d to recover — your minimum).</li>
                   <li>· Short-side rate flips negative — you begin paying instead of collecting.</li>
                   <li>· Net funding income on either interval is negative.</li>
                   <li>· Margin on either leg drops below your risk threshold.</li>
@@ -634,7 +636,7 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
                 <div className="font-mono text-[9px] uppercase tracking-widest text-text-muted mb-1">Exit at gross spread ≤</div>
                 <div className="font-mono text-[18px] font-bold text-warning tabular-nums">{marginalBoundary.toFixed(1)}%/yr</div>
                 <div className="font-mono text-[9px] text-text-muted/70 mt-0.5">
-                  below this, fees take {'>'} 10d to recover
+                  fees take {'>'}{paybackDays}d to recover at this spread
                 </div>
               </div>
               <div>
@@ -657,8 +659,8 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
                 round-trip fees ({spread.totalFeesPct.toFixed(3)}%) ÷ gross spread ({spread.grossApy.toFixed(2)}%/yr) × 365 = {spread.breakevenDays}d
               </p>
               <p>
-                <span className="text-text-secondary">MARGINAL boundary: </span>
-                {spread.totalFeesPct.toFixed(3)}% × 36.5 = {marginalBoundary.toFixed(1)}%/yr — the gross spread at which breakeven extends past 10 days.
+                <span className="text-text-secondary">Exit threshold: </span>
+                {spread.totalFeesPct.toFixed(3)}% × (365 ÷ {paybackDays}d) = {marginalBoundary.toFixed(1)}%/yr — the gross spread at which breakeven extends past {paybackDays} days. Adjust the payback period in the alert section below.
               </p>
               <p>
                 <span className="text-text-secondary">Recommended exit when: </span>
@@ -779,23 +781,30 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
               <span className="text-text-secondary">Exit threshold alert: </span>
               sends one message when the gross spread drops below a level you set.
             </p>
-            <p className="font-mono text-[9px] text-text-muted/60 mb-3 leading-relaxed">
-              Default {marginalBoundary.toFixed(1)}%/yr = MARGINAL boundary (fees take {'>'} 10d to recover).
-              Adjust to match your exit strategy. Alert resets if the spread recovers 10% above your threshold.
+            <p className="font-mono text-[9px] text-text-muted/60 mb-2 leading-relaxed">
+              Alert fires when gross spread falls below the fee-payback threshold you set.
+              Alert resets if the spread recovers 10% above the threshold.
             </p>
 
-            <div className="flex items-center gap-2 flex-wrap mb-3">
-              <span className="font-mono text-[10px] text-text-muted">Alert me when gross spread drops below</span>
+            <div className="flex items-center gap-2 flex-wrap mb-1">
+              <span className="font-mono text-[10px] text-text-muted">Minimum fee-payback period</span>
               <input
                 type="number"
-                min={0}
-                step={0.5}
-                value={effectiveThreshold}
-                onChange={e => setAlertThreshold(Math.max(0, parseFloat(e.target.value) || 0))}
-                className="w-[4.5rem] px-1.5 py-0.5 font-mono text-[11px] bg-bg-panel border border-border text-text-primary focus:border-accent/50 focus:outline-none tabular-nums"
+                min={1}
+                step={1}
+                value={paybackDays}
+                onChange={e => setPaybackDays(Math.max(1, parseInt(e.target.value) || 1))}
+                className="w-[3.5rem] px-1.5 py-0.5 font-mono text-[11px] bg-bg-panel border border-border text-text-primary focus:border-accent/50 focus:outline-none tabular-nums"
               />
-              <span className="font-mono text-[10px] text-text-muted">%/yr gross spread</span>
+              <span className="font-mono text-[10px] text-text-muted">days</span>
             </div>
+            {spread && (
+              <p className="font-mono text-[9px] text-text-muted/50 mb-3 leading-relaxed">
+                {spread.totalFeesPct.toFixed(3)}% fees × (365 ÷ {paybackDays}d) ={' '}
+                <span className="text-warning">{effectiveThreshold.toFixed(1)}%/yr</span>
+                {' '}— alert triggers when gross spread drops below this.
+              </p>
+            )}
 
             <a
               href={tgAlertHref}
@@ -803,12 +812,12 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 font-mono text-[10px] px-3 py-1.5 border border-warning/30 text-warning/70 hover:border-warning hover:text-warning transition-colors duration-100"
             >
-              ⚠ Set exit alert at {effectiveThreshold.toFixed(1)}%/yr in Telegram
+              ⚠ Set exit alert at {effectiveThreshold.toFixed(1)}%/yr ({paybackDays}d payback) in Telegram
             </a>
 
             <p className="font-mono text-[9px] text-text-muted/50 mt-2 leading-relaxed">
               Opens @Gaspola_bot. The bot stores your threshold per your Telegram chat ID and sends one alert
-              when {coin} gross spread drops below {effectiveThreshold.toFixed(1)}%/yr.
+              when {coin} gross spread drops below {effectiveThreshold.toFixed(1)}%/yr ({paybackDays}d fee-payback threshold).
               Message: &quot;{coin} spread at X%/yr — below your {effectiveThreshold.toFixed(1)}%/yr exit — consider closing both legs.&quot;
             </p>
             <p className="font-mono text-[9px] text-warning/60 mt-1 font-medium">
