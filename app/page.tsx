@@ -26,15 +26,15 @@ const SIX_WAYS = [
   {
     chip:  'cashable' as const,
     title: 'Prediction arbitrage',
-    desc:  'Same-outcome contracts priced differently on Kalshi and Polymarket. Both legs AI-verified, capacity-confirmed. A green badge means you can actually fill it.',
+    desc:  'Same-outcome contracts priced differently on Kalshi and Polymarket. Both legs checked, capacity-confirmed. A green badge means you can actually fill it.',
   },
   {
-    chip:  'speculative' as const,
+    chip:  'cashable' as const,
     title: 'Funding spreads',
     desc:  "Earn perpetual funding by holding long spot and short perp — or the reverse. Rates reset every 8 hours; no lockup, but no guarantee of tomorrow's rate.",
   },
   {
-    chip:  'speculative' as const,
+    chip:  'cashable' as const,
     title: 'Cash & carry',
     desc:  'Lock in the basis between spot and a dated futures contract. Yield is fixed at expiry — most contracts are coin-margined, so the USD return drifts with spot price.',
   },
@@ -351,7 +351,7 @@ export default function LandingPage() {
                     ? `net / day per $1k notional · ${funding.symbol} · ${funding.exchange}`
                     : 'No live funding data right now'
                 }
-                demoted={funding ? `est. ${funding.annPct}%/yr — rate variable` : undefined}
+                demoted={funding ? `est. ${funding.annPct > 200 ? '>200%/yr · run-rate, not guaranteed' : `${funding.annPct}%/yr · rate variable`}` : undefined}
               />
 
               {/* Prediction cashable */}
