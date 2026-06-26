@@ -1,8 +1,14 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
-import { ArrowLeft, RefreshCw, TrendingDown } from 'lucide-react';
+import { RefreshCw, TrendingDown } from 'lucide-react';
+import Eyebrow from '@/app/components/ui/Eyebrow';
+import SectionHeading from '@/app/components/ui/SectionHeading';
+import StatCard from '@/app/components/ui/StatCard';
+import BlipRow from '@/app/components/ui/BlipRow';
+import EdgeChip, { type EdgeChipVariant } from '@/app/components/ui/EdgeChip';
+
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 interface Contract {
   asset:                   string;
@@ -11,27 +17,22 @@ interface Contract {
   contract:                string;
   expiry:                  string;
   daysToExpiry:            number;
-  // Book-mid prices (indicative basis uses these)
   spot:                    number;
-  future:                  number;  // futureMidBook = (futureBid + futureAsk) / 2
-  futureLast:              number | null;  // last trade or mark price — display only
-  // Executable leg prices
+  future:                  number;
+  futureLast:              number | null;
   spotBid:                 number | null;
   spotAsk:                 number | null;
   futureBid:               number | null;
   futureAsk:               number | null;
-  // Basis values
   indicativeBasisPct:      number;
   executableBasisPct:      number;
-  basis:                   number;  // backward-compat alias = indicativeBasisPct
-  // Annualized returns
+  basis:                   number;
   grossAnnualized:         number;
   grossAnnualizedExec:     number;
   fee:                     number;
   netAnnualizedIndicative: number;
   netAnnualizedExecutable: number;
-  netAnnualized:           number;  // headline = netAnnualizedExecutable
-  // Market quality
+  netAnnualized:           number;
   vol24Usd:                number;
   oiUsd:                   number | null;
   capacityUsd:             number;
@@ -55,7 +56,7 @@ interface BackwardContract {
   futureBid:           number | null;
   indicativeBasisPct:  number;
   executableBasisPct:  number;
-  basis:               number;  // backward-compat alias
+  basis:               number;
   annualized:          number;
   vol24Usd:            number;
   signal:              string;
@@ -79,173 +80,240 @@ interface CarryData {
   disclaimer:    string;
 }
 
-function fmtK(n: number | null) {
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+const APY_CAP = 2.0; // 200%/yr cap
+
+function capApy(n: number): { display: number; capped: boolean } {
+  return n > APY_CAP
+    ? { display: APY_CAP, capped: true }
+    : { display: n,       capped: false };
+}
+
+function fmtAnnualized(n: number, prefix = '+'): string {
+  const { display } = capApy(n);
+  const sign = display >= 0 ? prefix : '';
+  return `${sign}${(display * 100).toFixed(2)}%`;
+}
+
+function fmtK(n: number | null): string {
   if (n == null) return '—';
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000)     return `$${Math.round(n / 1_000)}k`;
   return `$${Math.round(n)}`;
 }
-function fmtAge(iso: string | null) {
+
+function fmtPrice(n: number): string {
+  return `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function fmtAge(iso: string | null): string {
   if (!iso) return '—';
   const s = (Date.now() - new Date(iso).getTime()) / 1000;
   if (s < 60) return `${Math.round(s)}s ago`;
   return `${Math.round(s / 60)}m ago`;
 }
 
-// ── Contango row ───────────────────────────────────────────────────────────────
+function coinEmoji(asset: string): string {
+  if (asset === 'BTC') return '₿';
+  if (asset === 'ETH') return 'Ξ';
+  if (asset === 'BNB') return '◆';
+  if (asset === 'SOL') return '◎';
+  return '○';
+}
 
-function ContangoRow({ c }: { c: Contract }) {
-  const isClean = !c.coinMargined; // USDT-M or Deribit cash-settled
+function chipVariant(c: Contract): EdgeChipVariant {
+  if (c.executableBasisPct <= 0) return 'signal';
+  if (c.thinFlag || c.coinMargined) return 'speculative';
+  return 'cashable';
+}
+
+// ── Skeletons ─────────────────────────────────────────────────────────────────
+
+function CardSkeleton() {
+  return (
+    <div className="rounded-card shadow-card bg-surface px-5 py-5 animate-pulse">
+      <div className="h-3 w-24 bg-bg-soft rounded mb-3" />
+      <div className="h-8 w-16 bg-bg-soft rounded" />
+    </div>
+  );
+}
+
+function RowSkeleton() {
+  return (
+    <div className="rounded-card shadow-card bg-surface px-4 py-3 animate-pulse">
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 bg-bg-soft rounded-[11px] flex-shrink-0" />
+        <div className="flex-1 space-y-2">
+          <div className="h-3 bg-bg-soft rounded w-2/3" />
+          <div className="h-2.5 bg-bg-soft rounded w-1/2" />
+        </div>
+        <div className="w-14 h-5 bg-bg-soft rounded" />
+      </div>
+    </div>
+  );
+}
+
+// ── Contango card ─────────────────────────────────────────────────────────────
+
+function ContangoCard({ c }: { c: Contract }) {
+  const variant    = chipVariant(c);
+  const tileColor  = variant === 'cashable' ? 'mint' : 'gold';
+  const execCap    = capApy(c.netAnnualizedExecutable);
+  const indicCap   = capApy(c.netAnnualizedIndicative);
+
+  // Honest-engine: flag invariant violation (should not occur in production data)
+  const invariantViolated = c.executableBasisPct > c.indicativeBasisPct + 0.0001;
+
+  const spotPx   = c.spotAsk  ?? c.spot;
+  const futurePx = c.futureBid ?? c.future;
+
+  const chips: { label: string; value: string }[] = [
+    { label: 'spot ask',   value: fmtPrice(spotPx) },
+    { label: 'future bid', value: fmtPrice(futurePx) },
+    { label: 'exec basis', value: `+${(c.executableBasisPct * 100).toFixed(2)}%` },
+    { label: 'capacity',   value: fmtK(c.capacityUsd) },
+    { label: 'vol 24h',    value: fmtK(c.vol24Usd) },
+    { label: 'exp',        value: c.expiry },
+  ];
 
   return (
-    <div className={`flex gap-0 rounded overflow-hidden border ${isClean ? 'border-emerald-900' : 'border-amber-900'}`}>
-      {/* Left accent bar */}
-      <div className={`w-1 shrink-0 ${isClean ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+    <div className="rounded-card shadow-card bg-surface overflow-hidden">
+      {/* Header row via BlipRow */}
+      <BlipRow
+        icon={coinEmoji(c.asset)}
+        tileColor={tileColor}
+        name={`${c.asset} — ${c.exchange} · ${c.contract} · ${c.daysToExpiry}d`}
+        sub={`spot ask ${fmtPrice(spotPx)} · future bid ${fmtPrice(futurePx)} · cap ${fmtK(c.capacityUsd)}`}
+        chip={variant}
+        value={fmtAnnualized(c.netAnnualizedExecutable)}
+        unit="net/yr executable"
+        valueTone={variant === 'cashable' ? 'up' : 'neutral'}
+      />
 
-      <div className="flex-1 p-4 bg-zinc-900/60">
-        {/* Top row: asset + tags + hero % */}
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-mono text-sm font-bold text-zinc-100">{c.asset}</span>
-            <span className="font-mono text-xs text-zinc-500">{c.exchange} · {c.contract} · {c.daysToExpiry}d</span>
+      {/* Detail panel */}
+      <div className="px-4 pb-4 space-y-3">
 
-            {/* CONTANGO tag */}
-            <span className="text-xs font-mono px-1.5 py-0.5 rounded border border-zinc-700 bg-zinc-800 text-zinc-400 uppercase tracking-wide">
-              CONTANGO
-            </span>
-
-            {/* CLEAN USD or COIN-MARGINED tag */}
-            {isClean ? (
-              <span className="text-xs font-mono px-1.5 py-0.5 rounded border border-emerald-800 bg-emerald-900/40 text-emerald-300 uppercase tracking-wide">
-                CLEAN USD
-              </span>
-            ) : (
-              <span className="text-xs font-mono px-1.5 py-0.5 rounded border border-amber-800 bg-amber-900/30 text-amber-300 uppercase tracking-wide">
-                COIN-MARGINED
-              </span>
-            )}
-
-            {/* Thin flag */}
-            {c.thinFlag && (
-              <span className="text-xs font-mono px-1.5 py-0.5 rounded border border-yellow-800 bg-yellow-900/30 text-yellow-400">
-                THIN ⚠
-              </span>
-            )}
+        {/* Invariant violation flag */}
+        {invariantViolated && (
+          <div className="px-3 py-2 rounded-md bg-coral-tint border border-coral-ink/20 font-body text-[11px] text-coral-ink">
+            Invariant flag: executable ({(c.executableBasisPct * 100).toFixed(2)}%) exceeds indicative ({(c.indicativeBasisPct * 100).toFixed(2)}%) — verify source data
           </div>
+        )}
 
-          {/* Hero: net annualized % — executable (conservative) */}
-          <div className="text-right shrink-0">
-            <div className={`font-mono text-xl font-bold tabular-nums ${isClean ? 'text-emerald-300' : 'text-amber-300'}`}>
-              +{(c.netAnnualizedExecutable * 100).toFixed(2)}%
-            </div>
-            <div className="font-mono text-xs text-zinc-500">net/yr (executable)</div>
-            <div className="font-mono text-xs text-zinc-600 mt-0.5">
-              indicative (mid): +{(c.netAnnualizedIndicative * 100).toFixed(2)}%
-            </div>
-          </div>
+        {/* Indicative demoted row */}
+        <div className="flex flex-wrap gap-x-4 gap-y-1 items-center">
+          <span className="font-body text-[12px] text-muted">
+            Indicative mid:{' '}
+            <span className="text-ink-2">{fmtAnnualized(c.netAnnualizedIndicative)}/yr</span>
+            <span className="text-muted/60 ml-1 text-[11px]">(exec ≤ indicative ✓)</span>
+          </span>
+          {(execCap.capped || indicCap.capped) && (
+            <span className="font-body text-[11px] text-gold">† run-rate, not guaranteed — capped at 200%/yr display</span>
+          )}
         </div>
 
-        {/* Chips row: spot · future · basis · capacity */}
-        <div className="flex flex-wrap gap-2 mt-3">
-          {[
-            { label: 'spot ask',   value: c.spotAsk != null ? `$${c.spotAsk.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `$${c.spot.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` },
-            { label: 'future bid', value: c.futureBid != null ? `$${c.futureBid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `$${c.future.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` },
-            { label: 'exec basis', value: `+${(c.executableBasisPct * 100).toFixed(2)}%` },
-            { label: 'capacity',   value: fmtK(c.capacityUsd) },
-            { label: 'vol 24h',    value: fmtK(c.vol24Usd) },
-            { label: 'exp',        value: c.expiry },
-          ].map(({ label, value }) => (
-            <div key={label} className="flex items-center gap-1 text-xs font-mono px-2 py-1 rounded bg-zinc-800 border border-zinc-700">
-              <span className="text-zinc-500">{label}</span>
-              <span className="text-zinc-200">{value}</span>
+        {/* Detail chips */}
+        <div className="flex flex-wrap gap-2">
+          {chips.map(({ label, value }) => (
+            <div
+              key={label}
+              className="flex items-center gap-1.5 font-body text-[11px] px-2.5 py-1 rounded-md bg-bg-soft border border-line"
+            >
+              <span className="text-muted">{label}</span>
+              <span className="text-ink-2 font-medium">{value}</span>
             </div>
           ))}
         </div>
 
-        {/* One-line verdict */}
-        <p className={`mt-3 text-xs font-mono leading-relaxed ${isClean ? 'text-emerald-200/80' : 'text-amber-200/80'}`}>
-          {c.verdict}
-          {c.coinMarginedNote && ` ${c.coinMarginedNote}`}
-        </p>
+        {/* Verdict */}
+        {c.verdict && (
+          <p className="font-body text-[12px] text-muted leading-relaxed">{c.verdict}</p>
+        )}
+
+        {/* Coin-margined caveat — always shown when applicable */}
+        {c.coinMargined && (
+          <div className="px-3 py-2 rounded-md bg-gold-tint border border-gold/25 font-body text-[12px] text-gold">
+            Coin-settled: USD return drifts with spot price — this is not a locked USD yield.
+            {c.coinMarginedNote ? ` ${c.coinMarginedNote}` : ''}
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-// ── Backwardation card ─────────────────────────────────────────────────────────
+// ── Backwardation row ─────────────────────────────────────────────────────────
 
-function BackwardCard({ c }: { c: BackwardContract }) {
+function BackwardRow({ c }: { c: BackwardContract }) {
   return (
-    <div className="rounded border border-dashed border-amber-800 p-4 bg-amber-950/20">
-      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-        <div className="flex items-center gap-2 flex-wrap">
-          <TrendingDown className="w-4 h-4 text-amber-400 shrink-0" />
-          <span className="font-mono text-sm font-semibold text-zinc-200">{c.asset}</span>
-          <span className="font-mono text-xs text-zinc-500">{c.exchange} · {c.contract} · {c.daysToExpiry}d</span>
-          <span className="text-xs font-mono px-1.5 py-0.5 rounded border border-amber-800 bg-amber-900/30 text-amber-300 uppercase tracking-wide">
-            BACKWARDATION
-          </span>
-        </div>
-        <div className="font-mono text-lg font-bold text-amber-300 tabular-nums shrink-0">
-          {(c.annualized * 100).toFixed(2)}%<span className="text-xs font-normal text-zinc-500">/yr basis</span>
-        </div>
-      </div>
-      <p className="text-xs font-mono text-zinc-400 leading-relaxed">{c.signal}</p>
-      <div className="flex flex-wrap gap-3 mt-2 text-xs font-mono text-zinc-600">
-        <span>spot <span className="text-zinc-400">${c.spot.toLocaleString()}</span></span>
-        <span>future <span className="text-zinc-400">${c.future.toLocaleString()}</span></span>
-        <span>vol <span className="text-zinc-400">{fmtK(c.vol24Usd)}</span></span>
-        <span>exp <span className="text-zinc-400">{c.expiry}</span></span>
-      </div>
+    <div className="rounded-card shadow-card bg-surface overflow-hidden">
+      <BlipRow
+        icon={coinEmoji(c.asset)}
+        tileColor="violet"
+        name={`${c.asset} — ${c.exchange} · ${c.contract} · ${c.daysToExpiry}d`}
+        sub={`spot ${fmtPrice(c.spot)} · future ${fmtPrice(c.future)} · vol ${fmtK(c.vol24Usd)}`}
+        chip="signal"
+        value={`${(c.annualized * 100).toFixed(2)}%`}
+        unit="backwardation basis"
+        valueTone="neutral"
+      />
+      {c.signal && (
+        <p className="px-4 pb-4 font-body text-[12px] text-muted leading-relaxed">{c.signal}</p>
+      )}
     </div>
   );
 }
 
-// ── Honesty disclosure block ───────────────────────────────────────────────────
+// ── Honesty block ─────────────────────────────────────────────────────────────
+
+const DISCLOSURES = [
+  {
+    label: 'Locked only at expiry.',
+    body:  'The basis return is fixed at entry IF you hold the spot + futures position until contract expiry on the same exchange. Closing early re-buys the future at an unknown price — the locked return disappears.',
+  },
+  {
+    label: 'USDT-M only = clean USD.',
+    body:  'Only Binance USDT-M quarterly contracts (e.g. BTCUSDT_260925) settle in USDT — your USD P&L is fully locked. Binance COIN-M, OKX BTC-USD, and OKX ETH-USD settle in the coin: if BTC falls 10% your USD return shrinks by ~10% even though the basis held.',
+  },
+  {
+    label: 'Capacity is an estimate.',
+    body:  'Capacity = min(5% of 24h vol, 2% of OI, $500k). It represents a rough execution bound — actual fill at size may move the basis. BNB is hard-capped at $50k due to thinner markets.',
+  },
+  {
+    label: 'Quiet markets, thin basis.',
+    body:  "Annualized basis of 1–4% reflects today's contango. Basis widens with volatility and fear — in calm markets it compresses toward funding rates. The number you see is today's snapshot, not a long-run yield.",
+  },
+  {
+    label: 'Not financial advice.',
+    body:  'Exchange / counterparty risk over the full hold period. Read-only scanner — no orders placed, no position held. Verify all numbers on-exchange before trading.',
+  },
+];
 
 function HonestyBlock() {
   return (
-    <div className="border border-zinc-800 rounded p-4 space-y-2">
-      <p className="text-xs font-mono text-zinc-500 uppercase tracking-widest mb-3">Honesty disclosures</p>
-      {[
-        {
-          label: 'Locked only at expiry.',
-          body:  'The basis return is fixed at entry IF you hold the spot + futures position until contract expiry on the same exchange. Closing early re-buys the future at an unknown price — the locked return disappears.',
-        },
-        {
-          label: 'USDT-M only = clean USD.',
-          body:  'Only Binance USDT-M quarterly contracts (e.g. BTCUSDT_260925) settle in USDT — your USD P&L is fully locked. Binance COIN-M, OKX BTC-USD, and OKX ETH-USD settle in the coin: if BTC falls 10% your USD return shrinks by ~10% even though the basis held.',
-        },
-        {
-          label: 'Capacity is an estimate.',
-          body:  'Capacity = min(5% of 24h vol, 2% of OI, $500k). It represents a rough execution bound — actual fill at size may move the basis. BNB is hard-capped at $50k due to thinner markets.',
-        },
-        {
-          label: 'Quiet markets, thin basis.',
-          body:  'Annualized basis of 1–4% reflects today\'s contango. Basis widens with volatility and fear — in calm markets it compresses toward funding rates. The number you see is today\'s snapshot, not a long-run yield.',
-        },
-        {
-          label: 'Not financial advice.',
-          body:  'Exchange / counterparty risk over the full hold period. Read-only scanner — no orders placed, no position held. Verify all numbers on-exchange before trading.',
-        },
-      ].map(({ label, body }) => (
-        <div key={label} className="flex gap-2 text-xs font-mono leading-relaxed">
-          <span className="shrink-0 text-zinc-500">—</span>
-          <p className="text-zinc-500">
-            <span className="text-zinc-300">{label}</span>{' '}{body}
-          </p>
-        </div>
-      ))}
+    <div className="rounded-card shadow-card bg-surface px-5 py-5">
+      <p className="font-body text-[11px] uppercase tracking-wide text-muted mb-4">Honesty disclosures</p>
+      <div className="space-y-3">
+        {DISCLOSURES.map(({ label, body }) => (
+          <div key={label} className="flex gap-3">
+            <span className="shrink-0 text-muted font-body text-[12px] mt-0.5">—</span>
+            <p className="font-body text-[12px] text-muted leading-relaxed">
+              <span className="text-ink-2 font-medium">{label}</span>{' '}{body}
+            </p>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
 
-// ── Page ───────────────────────────────────────────────────────────────────────
+// ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function CarryPage() {
-  const [data, setData]     = useState<CarryData | null>(null);
+  const [data,    setData]    = useState<CarryData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError]   = useState<string | null>(null);
+  const [error,   setError]   = useState<string | null>(null);
 
   async function load() {
     try {
@@ -260,176 +328,240 @@ export default function CarryPage() {
     }
   }
 
-  useEffect(() => { load(); const t = setInterval(load, 30_000); return () => clearInterval(t); }, []);
+  useEffect(() => {
+    load();
+    const t = setInterval(load, 30_000);
+    return () => clearInterval(t);
+  }, []);
 
-  const isRunning = data?.agentStatus === 'running';
-  const statusColor = isRunning ? 'bg-emerald-500' : 'bg-zinc-600';
-  const statusLabel = data?.agentStatus === 'running' ? 'LIVE'
-                    : data?.agentStatus === 'stale'   ? 'STALE'
-                    : 'OFFLINE';
+  const isRunning  = data?.agentStatus === 'running';
+  const isStale    = data?.agentStatus === 'stale';
+  const isOffline  = data?.agentStatus === 'offline';
 
-  // Split opportunities into clean-USD first, then coin-margined
-  const cleanOpps = data?.opportunities.filter(c => !c.coinMargined) ?? [];
-  const coinOpps  = data?.opportunities.filter(c => c.coinMargined)  ?? [];
+  const cleanOpps  = data?.opportunities.filter(c => !c.coinMargined) ?? [];
+  const coinOpps   = data?.opportunities.filter(c => c.coinMargined)  ?? [];
+
+  // Best clean-USD executable return (for headline StatCard)
+  const bestClean  = cleanOpps.length > 0
+    ? Math.max(...cleanOpps.map(c => c.netAnnualizedExecutable))
+    : null;
+  const bestOverall = data?.summary.bestNetAnnualized ?? null;
+  const bestDisplay = bestClean ?? bestOverall;
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-200">
-      <div className="max-w-4xl mx-auto px-4 py-8">
+    <div className="max-w-[1400px] mx-auto px-4 py-8">
 
-        {/* Header */}
-        <div className="flex items-center gap-3 mb-2">
-          <Link href="/dashboard" className="text-zinc-600 hover:text-zinc-300 transition-colors">
-            <ArrowLeft className="w-4 h-4" />
-          </Link>
-          <div className="flex-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="font-mono text-lg font-semibold text-zinc-100">Cash &amp; Carry</h1>
-              <span className={`flex items-center gap-1.5 text-xs font-mono px-2 py-0.5 rounded-full text-zinc-900 font-semibold ${statusColor}`}>
-                <span className={`w-1.5 h-1.5 rounded-full bg-zinc-900/60 ${isRunning ? 'animate-pulse' : ''}`} />
-                {statusLabel}
-              </span>
-              {data?.updatedAt && (
-                <span className="text-xs font-mono text-zinc-600">{fmtAge(data.updatedAt)}</span>
-              )}
-            </div>
-            <p className="text-xs font-mono text-zinc-600 mt-0.5">
-              Spot + dated futures · BTC / ETH / BNB · Binance COIN-M + USDT-M · OKX · Deribit · refreshes every 5 min
-            </p>
-          </div>
-          <button onClick={load} className="text-zinc-600 hover:text-zinc-300 transition-colors shrink-0">
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+      {/* ── Header ──────────────────────────────────────────────────────────── */}
+      <div className="flex flex-wrap items-end justify-between gap-4 mb-6">
+        <div>
+          <Eyebrow className="mb-1">Cash &amp; Carry</Eyebrow>
+          <SectionHeading as="h1" className="text-2xl">
+            Spot + Dated Futures Basis
+          </SectionHeading>
+          <p className="font-body text-sm text-muted mt-1">
+            BTC · ETH · BNB — Binance COIN-M + USDT-M · OKX · Deribit · refreshes every 5 min
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          {data?.updatedAt && (
+            <span className="font-body text-[12px] text-muted">
+              {fmtAge(data.updatedAt)}
+            </span>
+          )}
+          <button
+            onClick={load}
+            aria-label="Refresh"
+            className="p-2 rounded-button border border-line text-muted hover:text-ink-2 hover:border-mint/40 transition-colors duration-150"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
           </button>
         </div>
-
-        {/* Context lede */}
-        <p className="text-xs font-mono text-zinc-500 leading-relaxed mb-6 mt-3">
-          Buy spot on an exchange and simultaneously short a dated (quarterly / March / December) futures contract.
-          At expiry the futures price converges to spot — you capture the basis gap locked in at entry.
-          Return is <span className="text-zinc-300">deterministic</span> (known at entry) if held to expiry,
-          unlike variable funding rates.
-          7 filters applied: days to expiry, volume, net-of-fee basis, XPERP exclusion, backwardation signal,
-          coin-margin label, capacity estimate.
-        </p>
-
-        {error && (
-          <div className="mb-4 p-3 rounded border border-rose-800 bg-rose-900/20 text-rose-300 font-mono text-xs">{error}</div>
-        )}
-
-        {/* Best opportunity hero bar */}
-        {isRunning && data && data.summary.bestNetAnnualized != null && (
-          <div className="mb-6 p-4 rounded border border-emerald-900 bg-emerald-950/30 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-bold font-mono text-emerald-300 tabular-nums">
-                  +{(data.summary.bestNetAnnualized * 100).toFixed(2)}%
-                </span>
-                <span className="text-sm font-mono text-zinc-400">/yr net locked basis</span>
-              </div>
-              <div className="text-xs font-mono text-zinc-500 mt-0.5">
-                {data.summary.bestContract} · {data.summary.bestExchange} · {data.summary.count} contract{data.summary.count !== 1 ? 's' : ''} qualifying
-              </div>
-            </div>
-            <div className="flex gap-4 text-xs font-mono text-zinc-600">
-              {data.spot && Object.entries(data.spot).map(([a, p]) =>
-                p != null ? (
-                  <span key={a}>
-                    <span className="text-zinc-400">{a}</span>{' '}
-                    ${(p as number).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                  </span>
-                ) : null
-              )}
-            </div>
-          </div>
-        )}
-
-        {loading && !data && (
-          <div className="py-16 text-center text-zinc-600 font-mono text-sm animate-pulse">scanning exchanges…</div>
-        )}
-
-        {data?.agentStatus === 'offline' && (
-          <div className="py-12 text-center text-zinc-600 font-mono text-sm">
-            agent19-basis offline —{' '}
-            <code className="text-zinc-400">pm2 start agents/ecosystem.config.js --only agent19-basis</code>
-          </div>
-        )}
-
-        {/* ── SECTION 1: Contango ─────────────────────────────────────────────── */}
-        {data && data.opportunities.length > 0 && (
-          <section className="mb-8">
-            <p className="font-mono text-xs text-zinc-500 uppercase tracking-widest mb-3">
-              Contango — standard cash &amp; carry ({data.opportunities.length})
-            </p>
-
-            {/* Clean-USD first */}
-            {cleanOpps.length > 0 && (
-              <div className="space-y-2 mb-4">
-                <p className="text-xs font-mono text-zinc-700 mb-1">
-                  ▸ Clean USD return (USDT-M / Deribit cash-settled)
-                </p>
-                {cleanOpps.map(c => <ContangoRow key={`${c.exchange}:${c.contract}`} c={c} />)}
-              </div>
-            )}
-
-            {/* Coin-margined */}
-            {coinOpps.length > 0 && (
-              <div className="space-y-2">
-                <p className="text-xs font-mono text-zinc-700 mb-1">
-                  ▸ Coin-margined (P&L settles in {coinOpps.map(c => c.asset).filter((v,i,a)=>a.indexOf(v)===i).join('/')})
-                </p>
-                {coinOpps.map(c => <ContangoRow key={`${c.exchange}:${c.contract}`} c={c} />)}
-              </div>
-            )}
-          </section>
-        )}
-
-        {data && data.opportunities.length === 0 && isRunning && (
-          <div className="py-8 text-center text-zinc-600 font-mono text-sm">
-            No qualifying contango contracts right now — all filtered by the 7 criteria.
-          </div>
-        )}
-
-        {/* ── SECTION 2: Backwardation ─────────────────────────────────────────── */}
-        {data && data.backwardation.length > 0 && (
-          <section className="mb-8">
-            <p className="font-mono text-xs text-zinc-500 uppercase tracking-widest mb-2">
-              Backwardation — not cash &amp; carry ({data.backwardation.length})
-            </p>
-            <p className="text-xs font-mono text-zinc-600 mb-3 leading-relaxed">
-              Futures trade <em>below</em> spot — basis is negative. Standard cash &amp; carry loses money here.
-              Typically driven by staking yield (SOL ~7%/yr) or strong spot demand. Reverse carry (short spot + long future)
-              collects the basis but requires borrowing the coin.
-            </p>
-            <div className="space-y-2">
-              {data.backwardation.map(c => <BackwardCard key={`${c.exchange}:${c.contract}`} c={c} />)}
-            </div>
-          </section>
-        )}
-
-        {/* ── Honesty block ───────────────────────────────────────────────────── */}
-        <div className="mb-8">
-          <HonestyBlock />
-        </div>
-
-        {/* ── Filters collapsible ─────────────────────────────────────────────── */}
-        <details className="mb-6">
-          <summary className="cursor-pointer font-mono text-xs text-zinc-600 uppercase tracking-widest hover:text-zinc-400 transition-colors">
-            Engine filters &amp; methodology
-          </summary>
-          <div className="mt-3 text-xs font-mono text-zinc-500 leading-relaxed border-l-2 border-zinc-800 pl-4 space-y-1">
-            <p>1. daysToExpiry ≥ 20 days (too-near-expiry excluded)</p>
-            <p>2. vol24h ≥ $500k → DEEP/OK; ≥ $100k → THIN (flagged); &lt; $100k → excluded</p>
-            <p>3. netAnnualized = (basis − fees) × 365/days &gt; 0 (after fees, positive carry only)</p>
-            <p>4. OKX symbols with XPERP excluded (extended perpetuals to Apr 2031, not delivery futures)</p>
-            <p>5. basis &lt; 0 → backwardation[], not opportunities[]</p>
-            <p>6. COIN-M / OKX BTC-USD / ETH-USD labeled COIN-MARGINED; USD return drifts with spot</p>
-            <p>7. capacity = min(vol×5%, OI×2%, $500k); BNB hard cap $50k</p>
-            <p className="pt-2 text-zinc-600">Fees (round-trip taker): COIN-M 0.165% · USDT-M 0.140% · OKX 0.150% · Deribit 0.150%</p>
-            <p className="text-zinc-600">Universe: BTC (COIN-M + USDT-M + OKX + Deribit) · ETH (same) · BNB (COIN-M only)</p>
-            <p className="text-zinc-600">Excluded: SOL/XRP (no clean contract or decision-matrix rejected) · Bybit (dead ETH contract) · Hyperliquid/dYdX (perp DEX, no dated futures)</p>
-          </div>
-        </details>
-
       </div>
+
+      {/* ── Context lede ────────────────────────────────────────────────────── */}
+      <p className="font-body text-sm text-muted leading-relaxed mb-6 max-w-3xl">
+        Buy spot and simultaneously short a dated (quarterly / March / December) futures contract.
+        At expiry the futures price converges to spot — you capture the basis locked in at entry.
+        Return is <span className="text-ink-2 font-medium">deterministic</span> (known at entry) if held to expiry,
+        unlike variable funding rates.
+        7 filters applied: days to expiry, volume, net-of-fee basis, XPERP exclusion, backwardation signal,
+        coin-margin label, capacity estimate.
+      </p>
+
+      {/* ── Agent status / error banners ────────────────────────────────────── */}
+      {error && (
+        <div className="mb-4 px-4 py-3 rounded-card border border-coral-ink/25 bg-coral-tint font-body text-sm text-coral-ink">
+          {error}
+        </div>
+      )}
+      {isStale && (
+        <div className="mb-4 px-4 py-3 rounded-card border border-gold/25 bg-gold-tint font-body text-sm text-gold">
+          Data is stale — agent19-basis may have missed a run. Last update: {fmtAge(data?.updatedAt ?? null)}
+        </div>
+      )}
+      {isOffline && !loading && (
+        <div className="mb-4 px-4 py-3 rounded-card border border-line bg-surface font-body text-sm text-muted">
+          agent19-basis offline —{' '}
+          <code className="text-ink-2 font-mono text-[12px]">pm2 start agents/ecosystem.config.js --only agent19-basis</code>
+        </div>
+      )}
+
+      {/* ── Stats strip ─────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        {loading && !data ? (
+          Array.from({ length: 4 }).map((_, i) => <CardSkeleton key={i} />)
+        ) : (
+          <>
+            <StatCard
+              label="Best net/yr (executable)"
+              value={bestDisplay != null ? fmtAnnualized(bestDisplay) : '—'}
+              note={
+                bestDisplay != null
+                  ? `${data?.summary.bestAsset ?? ''} · ${data?.summary.bestExchange ?? ''}`
+                  : 'no qualifying contracts'
+              }
+              demoted={bestDisplay != null && !cleanOpps.some(c => !c.coinMargined) ? 'coin-settled — USD return drifts' : undefined}
+            />
+            <StatCard
+              label="Contracts qualifying"
+              value={`${data?.opportunities.length ?? 0}`}
+              note={`${cleanOpps.length} clean USD · ${coinOpps.length} coin-margined`}
+            />
+            <StatCard
+              label="Backwardation"
+              value={`${data?.backwardation.length ?? 0}`}
+              note="futures below spot — carry inverted"
+            />
+            <StatCard
+              label="Agent"
+              value={isRunning ? 'Live' : isStale ? 'Stale' : 'Offline'}
+              note={data?.updatedAt ? fmtAge(data.updatedAt) : 'no data'}
+            />
+          </>
+        )}
+      </div>
+
+      {/* Spot prices strip */}
+      {data?.spot && Object.keys(data.spot).length > 0 && (
+        <div className="flex flex-wrap gap-x-6 gap-y-1 mb-6">
+          {Object.entries(data.spot).map(([asset, price]) =>
+            price != null ? (
+              <span key={asset} className="font-body text-[12px] text-muted">
+                {asset}{' '}
+                <span className="text-ink-2 font-medium">
+                  ${(price as number).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                </span>
+              </span>
+            ) : null
+          )}
+        </div>
+      )}
+
+      {/* ── Loading ──────────────────────────────────────────────────────────── */}
+      {loading && !data && (
+        <div className="space-y-3">
+          {Array.from({ length: 3 }).map((_, i) => <RowSkeleton key={i} />)}
+        </div>
+      )}
+
+      {/* ── SECTION 1: Contango ─────────────────────────────────────────────── */}
+      {data && data.opportunities.length > 0 && (
+        <section className="mb-8">
+          <div className="flex items-center gap-2 mb-4">
+            <EdgeChip variant="cashable" />
+            <span className="font-body text-[12px] text-muted">
+              Contango — standard cash &amp; carry ({data.opportunities.length} contract{data.opportunities.length !== 1 ? 's' : ''})
+            </span>
+          </div>
+
+          {/* Clean USD first */}
+          {cleanOpps.length > 0 && (
+            <div className="space-y-3 mb-5">
+              <p className="font-body text-[11px] uppercase tracking-wide text-muted">
+                Clean USD return — USDT-M / Deribit cash-settled
+              </p>
+              {cleanOpps.map(c => (
+                <ContangoCard key={`${c.exchange}:${c.contract}`} c={c} />
+              ))}
+            </div>
+          )}
+
+          {/* Coin-margined */}
+          {coinOpps.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <EdgeChip variant="speculative" />
+                <p className="font-body text-[11px] text-muted">
+                  Coin-margined — P&amp;L settles in{' '}
+                  {coinOpps.map(c => c.asset).filter((v, i, a) => a.indexOf(v) === i).join('/')}
+                  {' '}· USD return drifts with spot
+                </p>
+              </div>
+              <div className="space-y-3">
+                {coinOpps.map(c => (
+                  <ContangoCard key={`${c.exchange}:${c.contract}`} c={c} />
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
+      )}
+
+      {data && data.opportunities.length === 0 && isRunning && (
+        <div className="rounded-card shadow-card bg-surface px-6 py-12 text-center mb-8">
+          <p className="font-display font-bold text-4xl text-ink mb-3">0</p>
+          <p className="font-body text-base text-muted">
+            No qualifying contango contracts right now — all filtered by the 7 criteria
+          </p>
+        </div>
+      )}
+
+      {/* ── SECTION 2: Backwardation ─────────────────────────────────────────── */}
+      {data && data.backwardation.length > 0 && (
+        <section className="mb-8">
+          <div className="flex items-center gap-2 mb-3">
+            <EdgeChip variant="signal" />
+            <span className="font-body text-[12px] text-muted">
+              Backwardation — futures below spot ({data.backwardation.length})
+            </span>
+          </div>
+          <p className="font-body text-[12px] text-muted leading-relaxed mb-4">
+            Futures trade below spot — basis is negative. Standard cash &amp; carry loses money here.
+            Typically driven by staking yield (SOL ~7%/yr) or strong spot demand. Reverse carry (short spot + long future)
+            collects the basis but requires borrowing the coin.
+          </p>
+          <div className="space-y-3">
+            {data.backwardation.map(c => (
+              <BackwardRow key={`${c.exchange}:${c.contract}`} c={c} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* ── Honesty block ───────────────────────────────────────────────────── */}
+      <div className="mb-8">
+        <HonestyBlock />
+      </div>
+
+      {/* ── Methodology collapsible ─────────────────────────────────────────── */}
+      <details className="mb-6 rounded-card shadow-card bg-surface px-5 py-4">
+        <summary className="cursor-pointer font-body text-[12px] uppercase tracking-wide text-muted hover:text-ink-2 transition-colors select-none">
+          Engine filters &amp; methodology
+        </summary>
+        <div className="mt-4 font-body text-[12px] text-muted leading-relaxed space-y-1.5 border-l-2 border-line pl-4">
+          <p>1. daysToExpiry ≥ 20 days (too-near-expiry excluded)</p>
+          <p>2. vol24h ≥ $500k → DEEP/OK; ≥ $100k → THIN (flagged); &lt; $100k → excluded</p>
+          <p>3. netAnnualized = (basis − fees) × 365/days &gt; 0 (after fees, positive carry only)</p>
+          <p>4. OKX symbols with XPERP excluded (extended perpetuals to Apr 2031, not delivery futures)</p>
+          <p>5. basis &lt; 0 → backwardation[], not opportunities[]</p>
+          <p>6. COIN-M / OKX BTC-USD / ETH-USD labeled COIN-MARGINED; USD return drifts with spot</p>
+          <p>7. capacity = min(vol×5%, OI×2%, $500k); BNB hard cap $50k</p>
+          <p className="pt-2 text-muted/70">Fees (round-trip taker): COIN-M 0.165% · USDT-M 0.140% · OKX 0.150% · Deribit 0.150%</p>
+          <p className="text-muted/70">Universe: BTC (COIN-M + USDT-M + OKX + Deribit) · ETH (same) · BNB (COIN-M only)</p>
+          <p className="text-muted/70">Excluded: SOL/XRP (no clean contract or decision-matrix rejected) · Bybit (dead ETH contract) · Hyperliquid/dYdX (perp DEX, no dated futures)</p>
+        </div>
+      </details>
+
     </div>
   );
 }
