@@ -2,6 +2,11 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import Eyebrow from '@/app/components/ui/Eyebrow';
+import SectionHeading from '@/app/components/ui/SectionHeading';
+import StatCard from '@/app/components/ui/StatCard';
+import BlipRow from '@/app/components/ui/BlipRow';
+import EdgeChip, { type EdgeChipVariant } from '@/app/components/ui/EdgeChip';
 
 // ── Types · Polymarket ─────────────────────────────────────────────────────────
 
@@ -129,12 +134,6 @@ const POLL_MS = 5 * 60_000;
 
 const VOL_ORDER: Record<VolRisk, number> = { LOW: 0, MEDIUM: 1, HIGH: 2 };
 
-const VOL_CLS: Record<VolRisk, string> = {
-  LOW:    'text-emerald-400 border-emerald-700/40 bg-emerald-950/20',
-  MEDIUM: 'text-amber-400   border-amber-600/40   bg-amber-950/20',
-  HIGH:   'text-red-400     border-red-700/40     bg-red-950/20',
-};
-
 // ── Shared helpers ─────────────────────────────────────────────────────────────
 
 function ago(iso: string): string {
@@ -159,33 +158,6 @@ function fmtReward(n: number): string {
 function daysLeft(endDate: string | null): number | null {
   if (!endDate) return null;
   return (new Date(endDate).getTime() - Date.now()) / 86_400_000;
-}
-
-// ── Platform toggle ────────────────────────────────────────────────────────────
-
-function PlatformToggle({
-  platform,
-  onChange,
-}: {
-  platform: 'polymarket' | 'kalshi';
-  onChange: (p: 'polymarket' | 'kalshi') => void;
-}) {
-  return (
-    <div className="flex items-center gap-0 border border-zinc-700/50 bg-zinc-900/50 p-1 w-fit">
-      {(['polymarket', 'kalshi'] as const).map(p => (
-        <button
-          key={p}
-          onClick={() => onChange(p)}
-          className={`font-mono text-[11px] uppercase tracking-widest px-4 py-1.5 transition-colors duration-100
-            ${platform === p
-              ? 'bg-accent/15 border border-accent/40 text-accent'
-              : 'text-zinc-500 hover:text-zinc-300 border border-transparent'}`}
-        >
-          {p === 'polymarket' ? 'Polymarket' : 'Kalshi'}
-        </button>
-      ))}
-    </div>
-  );
 }
 
 // ── Polymarket sort ────────────────────────────────────────────────────────────
@@ -226,139 +198,6 @@ function prefetchBook(conditionId: string) {
   } as RequestInit).catch(() => {/* fire-and-forget */});
 }
 
-// ── Polymarket sub-components ──────────────────────────────────────────────────
-
-function FlagBadge({ text }: { text: string }) {
-  const isThin  = text.includes('THIN BOOK');
-  const isFloor = text.includes('payout floor');
-  const cls = isThin
-    ? 'border-orange-600/50 bg-orange-950/30 text-orange-400'
-    : isFloor
-      ? 'border-zinc-600/50 bg-zinc-900/50 text-zinc-500'
-      : 'border-yellow-600/50 bg-yellow-950/30 text-yellow-400';
-  return (
-    <span className={`inline-block px-1.5 py-px border text-[9px] font-mono uppercase tracking-wide ${cls}`}>
-      {isThin ? 'THIN BOOK' : isFloor ? 'BELOW FLOOR' : text.split('—')[0].trim()}
-    </span>
-  );
-}
-
-function GapBadge({ gapClass }: { gapClass: GapClass }) {
-  if (gapClass === 'OPEN') {
-    return (
-      <span
-        title="Thinly-covered reward band — low competition entry window."
-        className="inline-block px-1.5 py-px border border-emerald-600/60 bg-emerald-950/40 text-emerald-400 text-[9px] font-mono uppercase tracking-wide"
-      >
-        OPEN BAND
-      </span>
-    );
-  }
-  if (gapClass === 'TRAP') {
-    return (
-      <span
-        title="Band is uncovered because adverse-fill risk deters makers — high volatility."
-        className="inline-block px-1.5 py-px border border-amber-600/50 bg-amber-950/30 text-amber-400 text-[9px] font-mono uppercase tracking-wide"
-      >
-        GAP · ADVERSE RISK
-      </span>
-    );
-  }
-  return null;
-}
-
-function MarketCard({
-  market,
-  capital,
-  rank,
-}: {
-  market:  Market;
-  capital: Capital;
-  rank:    number;
-}) {
-  const lv     = market.levels[String(capital)];
-  if (!lv) return null;
-
-  const volCls    = VOL_CLS[market.volatilityRisk] ?? VOL_CLS.HIGH;
-  const isFlagged = lv.flags.length > 0;
-  const days      = daysLeft(market.endDate);
-  const shareStr  = `${(lv.share * 100).toFixed(2)}%`;
-
-  return (
-    <Link
-      href={`/dashboard/liquidity-rewards/${encodeURIComponent(market.conditionId)}`}
-      prefetch={true}
-      onMouseEnter={() => prefetchBook(market.conditionId)}
-      className={`border-t py-3 grid grid-cols-12 gap-2 items-start text-xs font-mono
-        hover:bg-zinc-800/30 transition-colors cursor-pointer
-        ${isFlagged ? 'border-zinc-800/60 opacity-75' : 'border-zinc-800'}`}
-    >
-      <div className="col-span-1 text-zinc-600 pt-0.5 tabular-nums">#{rank}</div>
-
-      <div className="col-span-5 min-w-0">
-        <p className={`leading-snug line-clamp-2 ${isFlagged ? 'text-zinc-500' : 'text-zinc-200'}`}>
-          {market.question}
-        </p>
-        <div className="flex flex-wrap gap-1 mt-1.5">
-          <span className={`px-1 py-px border text-[9px] uppercase ${volCls}`}>
-            {market.volatilityRisk} risk
-          </span>
-          {market.negRisk && (
-            <span className="px-1 py-px border border-zinc-700 bg-zinc-800 text-zinc-600 text-[9px] uppercase">
-              negRisk
-            </span>
-          )}
-          <span className="px-1 py-px border border-zinc-700 bg-zinc-800 text-zinc-600 text-[9px] uppercase">
-            mid {market.mid.toFixed(3)}
-          </span>
-          <span className="px-1 py-px border border-zinc-700 bg-zinc-800 text-zinc-600 text-[9px] uppercase">
-            ±{market.rewardsMaxSpread}¢ band
-          </span>
-          {days !== null && days > 0 && days < 30 && (
-            <span className={`px-1 py-px border text-[9px] uppercase ${days < 7 ? 'border-red-700/40 text-red-500' : 'border-zinc-700 bg-zinc-800 text-zinc-600'}`}>
-              {Math.floor(days)}d left
-            </span>
-          )}
-          {lv.flags.map((f, i) => <FlagBadge key={i} text={f} />)}
-          <GapBadge gapClass={market.gapClass ?? 'none'} />
-        </div>
-      </div>
-
-      <div className="col-span-2 space-y-0.5">
-        <div className="text-zinc-200 tabular-nums">${market.rewardsDailyRate.toFixed(0)}</div>
-        <div className="text-zinc-600 text-[10px]">pool/day (real)</div>
-        <div className="text-zinc-500 tabular-nums">{fmtDepth(market.existing_depth_usd)}</div>
-        <div className="text-zinc-600 text-[10px]">existing depth</div>
-      </div>
-
-      <div className="col-span-2 space-y-0.5">
-        <div className="text-zinc-300 tabular-nums">{shareStr}</div>
-        <div className="text-zinc-600 text-[10px]">typ. est. share</div>
-        {lv.shareLow != null && lv.shareHigh != null && (
-          <div className="text-zinc-700 text-[9px] tabular-nums">
-            {(lv.shareLow * 100).toFixed(2)}–{(lv.shareHigh * 100).toFixed(2)}% range
-          </div>
-        )}
-        <div className="text-zinc-600 text-[10px]">min {market.rewardsMinSize} size</div>
-      </div>
-
-      <div className="col-span-2 space-y-0.5">
-        <div className={`tabular-nums font-semibold ${isFlagged ? 'text-zinc-500' : 'text-emerald-400'}`}>
-          {fmtReward(lv.netRewardDay ?? lv.grossRewardDay)}
-        </div>
-        <div className="text-zinc-600 text-[10px]">typ. net/day</div>
-        {(lv.netLow ?? lv.grossLow) != null && (lv.netHigh ?? lv.grossHigh) != null && (
-          <div className="text-zinc-700 text-[9px] tabular-nums">
-            {fmtReward(lv.netLow ?? lv.grossLow!)}–{fmtReward(lv.netHigh ?? lv.grossHigh!)} range
-          </div>
-        )}
-        <div className="text-zinc-500 tabular-nums text-[10px]">{(lv.netYieldPct ?? lv.dayYieldPct).toFixed(2)}%/day</div>
-        <div className="text-zinc-700 text-[9px]">inv. risk not sub.</div>
-      </div>
-    </Link>
-  );
-}
-
 // ── Kalshi helpers ─────────────────────────────────────────────────────────────
 
 function kIsWarn(m: KMarket): boolean {
@@ -391,21 +230,245 @@ function kSortMarkets(markets: KMarket[], capital: Capital): KMarket[] {
   });
 }
 
-// ── Kalshi components ──────────────────────────────────────────────────────────
+// ── Platform toggle ────────────────────────────────────────────────────────────
+
+function PlatformToggle({
+  platform,
+  onChange,
+}: {
+  platform: 'polymarket' | 'kalshi';
+  onChange: (p: 'polymarket' | 'kalshi') => void;
+}) {
+  return (
+    <div className="flex items-center gap-1 p-1 rounded-pill bg-bg-soft border border-line w-fit">
+      {(['polymarket', 'kalshi'] as const).map(p => (
+        <button
+          key={p}
+          onClick={() => onChange(p)}
+          className={`font-body font-medium text-[13px] px-4 py-1.5 rounded-pill transition-colors duration-100
+            ${platform === p
+              ? 'bg-surface shadow-sm text-ink'
+              : 'text-muted hover:text-ink-2'}`}
+        >
+          {p === 'polymarket' ? 'Polymarket' : 'Kalshi'}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ── Polymarket flag + gap badges ───────────────────────────────────────────────
+
+function FlagBadge({ text }: { text: string }) {
+  const isThin  = text.includes('THIN BOOK');
+  const isFloor = text.includes('payout floor');
+  const cls = isThin
+    ? 'bg-gold-tint text-gold border-gold/25'
+    : isFloor
+      ? 'bg-bg-soft text-muted border-line'
+      : 'bg-gold-tint text-gold border-gold/25';
+  return (
+    <span className={`inline-flex items-center px-2 py-[2px] rounded-md font-body font-medium text-[10px] border ${cls}`}>
+      {isThin ? 'THIN BOOK' : isFloor ? 'BELOW FLOOR' : text.split('—')[0].trim()}
+    </span>
+  );
+}
+
+function GapBadge({ gapClass }: { gapClass: GapClass }) {
+  if (gapClass === 'OPEN') {
+    return (
+      <span
+        title="Thinly-covered reward band — low competition entry window."
+        className="inline-flex items-center px-2 py-[2px] rounded-md font-body font-medium text-[10px] border bg-mint-tint text-mint-deep border-mint-deep/20"
+      >
+        OPEN BAND
+      </span>
+    );
+  }
+  if (gapClass === 'TRAP') {
+    return (
+      <span
+        title="Band is uncovered because adverse-fill risk deters makers — high volatility."
+        className="inline-flex items-center px-2 py-[2px] rounded-md font-body font-medium text-[10px] border bg-gold-tint text-gold border-gold/25"
+      >
+        GAP · ADVERSE RISK
+      </span>
+    );
+  }
+  return null;
+}
+
+// ── Polymarket chip variant ────────────────────────────────────────────────────
+
+function pmChipVariant(lv: LevelData): EdgeChipVariant {
+  if (lv.thinBookFlag) return 'speculative';
+  if (lv.flags.length > 0) return 'speculative';
+  return 'signal';
+}
+
+// ── Detail chip (shared small info pill) ──────────────────────────────────────
+
+function DetailChip({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center gap-1.5 font-body text-[11px] px-2.5 py-1 rounded-md bg-bg-soft border border-line">
+      <span className="text-muted">{label}</span>
+      <span className="text-ink-2 font-medium">{value}</span>
+    </div>
+  );
+}
+
+// ── Polymarket market card ─────────────────────────────────────────────────────
+
+function MarketCard({
+  market,
+  capital,
+  rank,
+}: {
+  market:  Market;
+  capital: Capital;
+  rank:    number;
+}) {
+  const lv = market.levels[String(capital)];
+  if (!lv) return null;
+
+  const isFlagged  = lv.flags.length > 0;
+  const chip       = pmChipVariant(lv);
+  const tileColor: 'mint' | 'violet' | 'gold' =
+    market.volatilityRisk === 'LOW' ? 'mint' : 'gold';
+  const days       = daysLeft(market.endDate);
+  const shareStr   = `${(lv.share * 100).toFixed(2)}%`;
+
+  const volIcon =
+    market.volatilityRisk === 'LOW' ? '◎'
+    : market.volatilityRisk === 'HIGH' ? '△'
+    : '◈';
+
+  const subParts = [
+    `±${market.rewardsMaxSpread}¢ band`,
+    `${market.volatilityRisk.toLowerCase()} vol`,
+    `mid ${market.mid.toFixed(3)}`,
+  ];
+  if (days != null && days > 0 && days < 30) subParts.push(`${Math.floor(days)}d left`);
+
+  return (
+    <Link
+      href={`/dashboard/liquidity-rewards/${encodeURIComponent(market.conditionId)}`}
+      prefetch={true}
+      onMouseEnter={() => prefetchBook(market.conditionId)}
+      className="block"
+    >
+      <div className={`rounded-card shadow-card bg-surface overflow-hidden hover:shadow-lg transition-shadow ${isFlagged ? 'opacity-80' : ''}`}>
+
+        <BlipRow
+          icon={volIcon}
+          tileColor={tileColor}
+          name={market.question.length > 72 ? market.question.slice(0, 69) + '…' : market.question}
+          sub={`#${rank} · ${subParts.join(' · ')}`}
+          chip={chip}
+          value={fmtReward(lv.netRewardDay ?? lv.grossRewardDay)}
+          unit={`/day · est. net · ${shareStr} share`}
+          valueTone={isFlagged ? 'neutral' : 'up'}
+        />
+
+        {/* Detail strip */}
+        <div className="px-4 pb-3 flex flex-wrap gap-1.5">
+          <DetailChip label="pool/day" value={`$${market.rewardsDailyRate.toFixed(0)}`} />
+          <DetailChip label="depth" value={fmtDepth(market.existing_depth_usd)} />
+          <DetailChip label="min sz" value={String(market.rewardsMinSize)} />
+          {lv.shareLow != null && lv.shareHigh != null && (
+            <DetailChip
+              label="share range"
+              value={`${(lv.shareLow * 100).toFixed(2)}–${(lv.shareHigh * 100).toFixed(2)}%`}
+            />
+          )}
+          {(lv.netLow ?? lv.grossLow) != null && (lv.netHigh ?? lv.grossHigh) != null && (
+            <DetailChip
+              label="net range"
+              value={`${fmtReward(lv.netLow ?? lv.grossLow!)}–${fmtReward(lv.netHigh ?? lv.grossHigh!)}`}
+            />
+          )}
+          <DetailChip
+            label="est. %/day"
+            value={`${(lv.netYieldPct ?? lv.dayYieldPct).toFixed(2)}%`}
+          />
+          {lv.flags.map((f, i) => <FlagBadge key={i} text={f} />)}
+          <GapBadge gapClass={market.gapClass ?? 'none'} />
+          {market.negRisk && (
+            <span className="inline-flex items-center px-2 py-[2px] rounded-md font-body font-medium text-[10px] border bg-bg-soft text-muted border-line">
+              negRisk
+            </span>
+          )}
+        </div>
+
+        <p className="px-4 pb-3 font-body text-[10px] text-muted/60 leading-relaxed">
+          Inv. risk not subtracted · estimate only · not financial advice
+        </p>
+      </div>
+    </Link>
+  );
+}
+
+// ── Kalshi observed-model chip ─────────────────────────────────────────────────
+
+const OBSERVED_MODEL_FULL =
+  "Kalshi hasn't published its LIP scoring formula. This is an inferred flat " +
+  "pro-rata model, not official. Kalshi LIP competition is currently thin, so " +
+  "yields read higher than Polymarket and will compress as makers enter. Estimate only.";
+
+function ObservedModelChip() {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="relative inline-flex items-center">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-pill border border-gold/40 bg-gold-tint text-gold font-body font-medium text-[10px] hover:border-gold/60 transition-colors"
+        aria-expanded={open}
+      >
+        <span className="w-1.5 h-1.5 rounded-full bg-gold flex-shrink-0" aria-hidden />
+        OBSERVED MODEL · estimate
+        <span className="text-gold/60 ml-0.5">{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <span className="absolute top-full left-0 z-20 mt-1.5 w-80 rounded-card border border-line bg-surface shadow-card px-4 py-3">
+          <p className="font-body text-[12px] text-muted leading-relaxed">{OBSERVED_MODEL_FULL}</p>
+          <button
+            onClick={() => setOpen(false)}
+            className="font-body text-[11px] text-muted/60 hover:text-muted mt-2"
+          >
+            close ✕
+          </button>
+        </span>
+      )}
+    </span>
+  );
+}
+
+// ── Kalshi flag badge ──────────────────────────────────────────────────────────
 
 function KBadge({ label, color }: { label: string; color: 'red' | 'amber' | 'orange' | 'zinc' }) {
-  const cls = {
-    red:    'border-red-700/50 bg-red-950/30 text-red-400',
-    amber:  'border-amber-600/50 bg-amber-950/30 text-amber-400',
-    orange: 'border-orange-600/50 bg-orange-950/30 text-orange-400',
-    zinc:   'border-zinc-600/50 bg-zinc-900/50 text-zinc-500',
-  }[color];
+  const cls: Record<string, string> = {
+    red:    'bg-coral-tint text-coral-ink border-coral-ink/20',
+    amber:  'bg-gold-tint text-gold border-gold/25',
+    orange: 'bg-gold-tint text-gold border-gold/25',
+    zinc:   'bg-bg-soft text-muted border-line',
+  };
   return (
-    <span className={`inline-block px-1.5 py-px border text-[9px] font-mono uppercase tracking-wide ${cls}`}>
+    <span className={`inline-flex items-center px-2 py-[2px] rounded-md font-body font-medium text-[10px] border ${cls[color]}`}>
       {label}
     </span>
   );
 }
+
+// ── Kalshi chip variant ────────────────────────────────────────────────────────
+
+function kChipVariant(m: KMarket, capital: Capital): EdgeChipVariant {
+  if (m.flags.TRAP) return 'trap';
+  if (kIsWarn(m) || m.flags.SHORT_BURST || m.flags.THIN_CAP || m.flags.ONE_SIDED || m.flags.BELOW_FLOOR) return 'speculative';
+  if (!(m.levels[String(capital)]?.aboveMin)) return 'speculative';
+  return 'signal';
+}
+
+// ── Kalshi market row ──────────────────────────────────────────────────────────
 
 function KMarketRow({
   market,
@@ -427,7 +490,9 @@ function KMarketRow({
   const isOneSided = market.flags.ONE_SIDED;
   const isBelowMin = !lv?.aboveMin;
 
-  const anyFlag = isTrap || isWarn || isBurst || isThinCap || isFloor || isOneSided || isBelowMin;
+  const anyFlag    = isTrap || isWarn || isBurst || isThinCap || isFloor || isOneSided || isBelowMin;
+  const chip       = kChipVariant(market, capital);
+  const tileColor: 'mint' | 'violet' | 'gold' = isTrap ? 'gold' : anyFlag ? 'gold' : 'mint';
 
   const mid      = market.book_mid ?? market.last_price;
   const bidDepth = kDepthUsd(market.competitor_qualifying_bids, market.best_bid,  mid);
@@ -438,135 +503,116 @@ function KMarketRow({
   return (
     <Link
       href={`/dashboard/liquidity-rewards/kalshi/${encodeURIComponent(market.ticker)}`}
-      className={`border-t py-3 grid grid-cols-12 gap-2 items-start text-xs font-mono
-        hover:bg-zinc-800/20 transition-colors cursor-pointer
-        ${isTrap   ? 'border-zinc-800/40 opacity-40'
-        : anyFlag  ? 'border-zinc-800/60 opacity-75'
-                   : 'border-zinc-800'}`}
+      className="block"
     >
-      {/* Rank */}
-      <div className="col-span-1 text-zinc-600 pt-0.5 tabular-nums">#{rank}</div>
+      <div className={`rounded-card shadow-card bg-surface overflow-hidden hover:shadow-lg transition-shadow ${isTrap ? 'opacity-50' : anyFlag ? 'opacity-80' : ''}`}>
 
-      {/* Question + badges */}
-      <div className="col-span-5 min-w-0">
-        <p className={`leading-snug line-clamp-2
-          ${isTrap ? 'text-zinc-600' : anyFlag ? 'text-zinc-500' : 'text-zinc-200'}`}>
-          {market.question}
-        </p>
-        <div className="flex flex-wrap gap-1 mt-1.5">
-          <span className="px-1 py-px border border-zinc-700 bg-zinc-800 text-zinc-600 text-[9px] uppercase">
-            {mid.toFixed(3)} mid
-          </span>
-          <span className="px-1 py-px border border-zinc-700 bg-zinc-800 text-zinc-600 text-[9px] uppercase">
-            {market.fee_discount_pct}% fee disc
-          </span>
-          {hoursLeft > 0 && hoursLeft < 24 && (
-            <span className="px-1 py-px border border-orange-700/40 text-orange-400 text-[9px] uppercase">
-              {hoursLeft.toFixed(1)}h left
-            </span>
+        <BlipRow
+          icon="◎"
+          tileColor={tileColor}
+          name={market.question.length > 72 ? market.question.slice(0, 69) + '…' : market.question}
+          sub={`#${rank} · ${mid.toFixed(3)} mid · ${market.fee_discount_pct}% fee disc${hoursLeft > 0 && hoursLeft < 24 ? ` · ${hoursLeft.toFixed(1)}h left` : ''}`}
+          chip={chip}
+          value={lv && lv.aboveMin ? fmtReward(lv.netRewardDay ?? lv.grossRewardDay) : '—'}
+          unit={lv && lv.aboveMin ? `/day · est. net · ${(lv.share * 100).toFixed(2)}% share` : `below min at ${CAPITAL_LABELS[capital]}`}
+          valueTone={anyFlag ? 'neutral' : 'up'}
+        />
+
+        {/* Trap / warn inline notes */}
+        {isTrap && market.trap_reason && (
+          <p className="px-4 pt-0 pb-2 font-body text-[11px] text-coral-ink leading-relaxed">
+            {market.trap_reason}
+          </p>
+        )}
+        {isWarn && (
+          <p className="px-4 pt-0 pb-2 font-body text-[11px] text-gold leading-relaxed">
+            Lopsided price — adverse fill risk elevated
+          </p>
+        )}
+
+        {/* Detail strip */}
+        <div className="px-4 pb-3 flex flex-wrap gap-1.5">
+          <DetailChip label="pool/day" value={`$${market.pool_day.toFixed(0)}`} />
+          {isBurst ? (
+            <>
+              <DetailChip label="total" value={`$${market.total_period_usd.toFixed(0)}`} />
+              <DetailChip label="period" value={`${(market.period_days * 24).toFixed(0)}h burst`} />
+            </>
+          ) : (
+            <DetailChip label="period" value={`${market.period_days.toFixed(1)}d`} />
           )}
+          <DetailChip label="bid depth" value={kFmtD(bidDepth)} />
+          <DetailChip label="ask depth" value={kFmtD(askDepth)} />
+          {lv && lv.aboveMin && (
+            <DetailChip label="est. %/day" value={`${(lv.netYieldPct ?? lv.dayYieldPct).toFixed(2)}%`} />
+          )}
+          <DetailChip label="min sz" value={market.min_size.toLocaleString()} />
+
           {isTrap     && <KBadge label="TRAP"            color="red"    />}
           {isWarn     && <KBadge label="WARN · lopsided" color="amber"  />}
           {isBurst    && <KBadge label="SHORT BURST"     color="orange" />}
-          {isThinCap  && <KBadge label="THIN/CAP"        color="orange" />}
+          {isThinCap  && <KBadge label="THIN / CAP"      color="orange" />}
           {isFloor    && <KBadge label="BELOW FLOOR"     color="zinc"   />}
           {isOneSided && <KBadge label="ONE-SIDED"       color="zinc"   />}
           {isBelowMin && !isTrap && (
             <KBadge label={`< ${CAPITAL_LABELS[capital]} min`} color="zinc" />
           )}
         </div>
-        {isTrap && market.trap_reason && (
-          <p className="text-[9px] text-red-900 mt-0.5 truncate">{market.trap_reason}</p>
-        )}
-        {isWarn && (
-          <p className="text-[9px] text-amber-900 mt-0.5">lopsided price — adverse fill risk elevated</p>
-        )}
-      </div>
 
-      {/* Pool + period */}
-      <div className="col-span-2 space-y-0.5">
-        <div className="text-zinc-200 tabular-nums">${market.pool_day.toFixed(0)}</div>
-        <div className="text-zinc-600 text-[10px]">pool/day (real)</div>
-        {isBurst ? (
-          <>
-            <div className="text-orange-400/80 tabular-nums">${market.total_period_usd.toFixed(0)} total</div>
-            <div className="text-zinc-600 text-[10px]">for {(market.period_days * 24).toFixed(0)}h burst</div>
-          </>
-        ) : (
-          <div className="text-zinc-500 tabular-nums text-[10px]">{market.period_days.toFixed(1)}d period</div>
-        )}
-        <div className="text-zinc-600 text-[10px]">min {market.min_size.toLocaleString()} shares</div>
-      </div>
-
-      {/* Depth bid/ask */}
-      <div className="col-span-2 space-y-0.5">
-        <div className="text-zinc-400 tabular-nums">{kFmtD(bidDepth)}</div>
-        <div className="text-zinc-600 text-[10px]">bid depth ≈USD</div>
-        <div className="text-zinc-400 tabular-nums">{kFmtD(askDepth)}</div>
-        <div className="text-zinc-600 text-[10px]">ask depth ≈USD</div>
-      </div>
-
-      {/* Share + gross */}
-      <div className="col-span-2 space-y-0.5">
-        {lv && lv.aboveMin ? (
-          <>
-            <div className="text-zinc-300 tabular-nums">{(lv.share * 100).toFixed(2)}%</div>
-            <div className="text-zinc-600 text-[10px]">est. share</div>
-            <div className={`tabular-nums font-semibold
-              ${isTrap ? 'text-zinc-600' : anyFlag ? 'text-zinc-500' : 'text-emerald-400'}`}>
-              {fmtReward(lv.netRewardDay ?? lv.grossRewardDay)}
-            </div>
-            <div className="text-zinc-600 text-[10px]">est. net/day</div>
-            <div className="text-zinc-500 tabular-nums text-[10px]">{(lv.netYieldPct ?? lv.dayYieldPct).toFixed(2)}%/day</div>
-            <div className="text-zinc-700 text-[9px]">obs. model · inv. risk not sub.</div>
-          </>
-        ) : (
-          <div className="text-zinc-700 text-[10px]">below min at this capital</div>
-        )}
+        <p className="px-4 pb-3 font-body text-[10px] text-muted/60">
+          Observed model · inv. risk not subtracted · estimate only
+        </p>
       </div>
     </Link>
   );
 }
 
-// ── Kalshi observed-model chip (compact, expandable) ──────────────────────────
+// ── Live / stale badge ─────────────────────────────────────────────────────────
 
-const OBSERVED_MODEL_FULL =
-  "Kalshi hasn't published its LIP scoring formula. This is an inferred flat " +
-  "pro-rata model, not official. Kalshi LIP competition is currently thin, so " +
-  "yields read higher than Polymarket and will compress as makers enter. Estimate only.";
-
-function ObservedModelChip() {
-  const [open, setOpen] = useState(false);
+function LiveBadge({ live }: { live: boolean }) {
+  if (live) {
+    return (
+      <span className="flex items-center gap-1.5 font-body font-medium text-xs text-mint-deep border border-mint-deep/30 bg-mint-tint px-2.5 py-1 rounded-pill">
+        <span className="w-1.5 h-1.5 rounded-full bg-mint flex-shrink-0" aria-hidden />
+        LIVE
+      </span>
+    );
+  }
   return (
-    <span className="relative inline-flex items-center">
-      <button
-        onClick={() => setOpen(v => !v)}
-        className="inline-flex items-center gap-1 px-2 py-0.5 border border-amber-600/50
-          bg-amber-950/30 text-amber-400 font-mono text-[9px] uppercase tracking-wide
-          hover:bg-amber-950/50 transition-colors"
-        aria-expanded={open}
-      >
-        <span className="w-1.5 h-1.5 rounded-full bg-amber-400/70 shrink-0" />
-        OBSERVED MODEL · estimate
-        <span className="text-amber-600 ml-0.5">{open ? '▲' : '▼'}</span>
-      </button>
-      {open && (
-        <span
-          className="absolute top-full left-0 z-20 mt-1.5 w-72 border border-amber-600/40
-            bg-zinc-900 shadow-lg px-3 py-2.5"
-        >
-          <p className="font-mono text-[10px] text-amber-300/80 leading-relaxed">
-            {OBSERVED_MODEL_FULL}
-          </p>
-          <button
-            onClick={() => setOpen(false)}
-            className="font-mono text-[9px] text-zinc-600 hover:text-zinc-400 mt-1.5"
-          >
-            close ✕
-          </button>
-        </span>
-      )}
+    <span className="font-body font-medium text-xs text-gold border border-gold/30 bg-gold-tint px-2.5 py-1 rounded-pill">
+      STALE
     </span>
+  );
+}
+
+// ── Capital selector (shared) ──────────────────────────────────────────────────
+
+function CapitalSelector({
+  capital,
+  onChange,
+  note,
+}: {
+  capital:  Capital;
+  onChange: (c: Capital) => void;
+  note?:    string;
+}) {
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      <span className="font-body text-[11px] uppercase tracking-wide text-muted mr-1">Capital:</span>
+      {CAPITAL_OPTIONS.map(c => (
+        <button
+          key={c}
+          onClick={() => onChange(c)}
+          className={`font-body font-medium text-sm px-3 py-1.5 rounded-button border transition-colors duration-100
+            ${capital === c
+              ? 'border-mint-deep/40 bg-mint-tint text-mint-deep'
+              : 'border-line bg-surface text-muted hover:border-mint-deep/30 hover:text-ink-2'}`}
+        >
+          {CAPITAL_LABELS[c]}
+        </button>
+      ))}
+      {note && <span className="font-body text-[11px] text-muted ml-2">{note}</span>}
+    </div>
   );
 }
 
@@ -619,180 +665,152 @@ function KalshiView() {
     m.levels[key]?.aboveMin,
   ).length;
 
-  const trapCount = markets.filter(m => m.flags.TRAP).length;
-  const totalPool = markets.reduce((s, m) => s + m.pool_day, 0);
+  const trapCount  = markets.filter(m => m.flags.TRAP).length;
+  const totalPool  = markets.reduce((s, m) => s + m.pool_day, 0);
 
   return (
-    <div className="space-y-7">
+    <div className="space-y-6">
 
       {/* Header */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <h1 className="font-mono text-xl font-bold text-zinc-100 tracking-tight">
-          KALSHI LIP REWARDS
-        </h1>
-        <ObservedModelChip />
-        {meta && !isStale ? (
-          <span className="flex items-center gap-1.5 font-mono text-xs text-emerald-400 border border-emerald-600/40 bg-emerald-950/30 px-2 py-0.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            LIVE
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <Eyebrow className="mb-1">Liquidity Rewards</Eyebrow>
+          <SectionHeading as="h1" className="text-2xl flex items-center gap-3 flex-wrap">
+            Kalshi LIP Rewards
+            <ObservedModelChip />
+          </SectionHeading>
+          <p className="font-body text-sm text-muted mt-1">
+            Kalshi Liquidity Incentive Program — makers earn rewards for resting qualifying orders.
+            Real pools, flat pro-rata share estimate.
+          </p>
+        </div>
+        <div className="flex items-center gap-3 flex-wrap">
+          <LiveBadge live={!!(meta && !isStale)} />
+          <span className="font-body text-[12px] text-muted">
+            {lastFetch ? `fetched ${ago(lastFetch.toISOString())}` : '—'}
+            {meta ? ` · data ${ago(meta.timestamp)}` : ''}
           </span>
-        ) : (
-          <span className="font-mono text-xs text-orange-400 border border-orange-500/40 px-2 py-0.5">STALE</span>
-        )}
-        <span className="font-mono text-[10px] text-zinc-600 ml-auto">
-          {lastFetch ? `fetched ${ago(lastFetch.toISOString())}` : '—'}
-          {meta ? ` · data ${ago(meta.timestamp)}` : ''}
-        </span>
+        </div>
       </div>
 
-      <p className="font-mono text-sm text-zinc-400 leading-relaxed">
-        Kalshi Liquidity Incentive Program — makers earn rewards for resting qualifying orders.{' '}
-        <span className="text-zinc-300">Real pools, flat pro-rata share estimate.</span>
-      </p>
-
+      {/* Banners */}
       {isStale && meta && (
-        <div className="border border-orange-600/40 bg-orange-950/15 px-4 py-3 font-mono text-xs text-orange-400">
+        <div className="px-4 py-3 rounded-card border border-gold/25 bg-gold-tint font-body text-sm text-gold">
           Data is stale (last scan: {ago(meta.timestamp)}). Scanner may be offline — check back shortly.
         </div>
       )}
-
       {fetchError && !data && (
-        <div className="font-mono text-xs text-red-400 border border-red-800 bg-red-950/20 px-3 py-2">
+        <div className="px-4 py-3 rounded-card border border-coral-ink/25 bg-coral-tint font-body text-sm text-coral-ink">
           {fetchError}
         </div>
       )}
-
       {retryNote && data && (
-        <div className="font-mono text-xs text-zinc-500 border border-zinc-800 bg-zinc-900/50 px-3 py-2">
+        <div className="px-4 py-3 rounded-card border border-line bg-surface font-body text-sm text-muted">
           ↻ retrying… ({retryNote}){lastFetch ? ` · data ${ago(lastFetch.toISOString())}` : ''}
         </div>
       )}
-
       {!data && !fetchError && (
-        <div className="border border-zinc-800 bg-zinc-900/50 px-4 py-3 font-mono text-xs text-zinc-500">
+        <div className="px-4 py-3 rounded-card border border-line bg-surface font-body text-sm text-muted">
           Loading — or run agent25-kalshi-rewards to generate data/kalshi-rewards.json.
         </div>
       )}
 
       {/* How to read */}
-      <div className="border border-zinc-700/50 bg-zinc-900/40">
+      <div className="rounded-card shadow-card bg-surface overflow-hidden">
         <button
-          className="w-full flex items-center justify-between px-4 py-3 text-left"
+          className="w-full flex items-center justify-between px-5 py-4 text-left"
           onClick={() => setHowToOpen(v => !v)}
         >
-          <span className="font-mono text-[10px] text-zinc-400 uppercase tracking-widest">
-            How to read these numbers (Kalshi)
-          </span>
-          <span className="font-mono text-[10px] text-zinc-600">{howToOpen ? '▲ close' : '▼ expand'}</span>
+          <span className="font-body font-medium text-sm text-ink-2">How to read these numbers (Kalshi)</span>
+          <span className="font-body text-[11px] text-muted">{howToOpen ? '▲ close' : '▼ expand'}</span>
         </button>
         {howToOpen && (
-          <div className="px-4 pb-4 space-y-2 border-t border-zinc-800">
-            <ul className="mt-3 space-y-2">
+          <div className="px-5 pb-5 space-y-3 border-t border-line">
+            <ul className="mt-4 space-y-2.5">
               {([
                 ['Pool $/day (real)',    'Dollar amount Kalshi allocates to LIP makers per day. From the Kalshi API — not an estimate.'],
                 ['Period',              'Program duration. SHORT BURST programs last < 1 day — the $/day number is extrapolated. Check the period total reward instead.'],
                 ['Min size (shares)',   'Minimum qualifying order size in shares. Kalshi has not published exact qualifying rules.'],
                 ['Bid / ask depth ≈USD','Competitor qualifying depth per side, converted from shares to approximate USD at current mid. Your capital competes against this.'],
-                ['Est. share',          'Flat pro-rata per side: your_shares / (your_shares + competitor_shares), min(bid, ask). OBSERVED MODEL — not Kalshi\'s official formula (not public).'],
-                ['Est. net/day',        'share × pool/day. NET OF PLATFORM FEES — Kalshi LIP rewards are paid from the incentive pool separately from trading fees (fee_discount_pct is a benefit, not a cost). Does not subtract inventory/adverse-selection risk from fills. Yields look high because competition is thin now; they will compress as makers enter.'],
+                ['Est. share',          "Flat pro-rata per side: your_shares / (your_shares + competitor_shares), min(bid, ask). OBSERVED MODEL — not Kalshi's official formula (not public)."],
+                ['Est. net/day',        'share × pool/day. NET OF PLATFORM FEES — Kalshi LIP rewards are paid from the incentive pool separately from trading fees. Does not subtract inventory/adverse-selection risk from fills. Yields look high because competition is thin now; they will compress as makers enter.'],
                 ['%/day',              'net reward / capital. >5%/day (THIN/CAP) means the book is very thin and yield will compress rapidly.'],
                 ['TRAP',               'last_price > 0.90 or < 0.10: near-certain outcome, one side nearly empty. Adverse fill risk is extreme. Pushed to bottom.'],
                 ['WARN · lopsided',    'last_price 0.80–0.90 or 0.10–0.20: lopsided book, elevated adverse fill risk. Shown but de-emphasised.'],
                 ['SHORT BURST',        'Period < 1 day. The daily rate is extrapolated from a very short window — the total period reward is the grounding number.'],
                 ['THIN/CAP',           '>5%/day yield at this capital: book is very thin, share will compress as competitors arrive.'],
               ] as [string, string][]).map(([term, def]) => (
-                <li key={term} className="font-mono text-[11px] text-zinc-500 leading-relaxed pl-3 border-l border-zinc-700/40">
-                  <span className="text-zinc-400">{term}:</span> {def}
+                <li key={term} className="font-body text-[12px] text-muted leading-relaxed pl-3 border-l-2 border-line">
+                  <span className="text-ink-2 font-medium">{term}:</span>{' '}{def}
                 </li>
               ))}
             </ul>
-            <p className="font-mono text-[10px] text-zinc-700 pt-2">
-              No &quot;profit&quot;, &quot;guaranteed&quot;, or &quot;signal&quot; implied. Estimates only. Not financial advice.
+            <p className="font-body text-[11px] text-muted/60 pt-1">
+              No "profit", "guaranteed", or "signal" implied. Estimates only. Not financial advice.
             </p>
           </div>
         )}
       </div>
 
       {/* Capital selector */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest mr-1">Capital:</span>
-        {CAPITAL_OPTIONS.map(c => (
-          <button
-            key={c}
-            onClick={() => setCapital(c)}
-            className={`font-mono text-xs px-3 py-1.5 border transition-colors duration-100
-              ${capital === c
-                ? 'border-accent bg-accent/10 text-accent'
-                : 'border-zinc-700 bg-zinc-900 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200'}`}
-          >
-            {CAPITAL_LABELS[c]}
-          </button>
-        ))}
-        <span className="font-mono text-[10px] text-zinc-600 ml-2">per-side · two-sided posting</span>
-      </div>
+      <CapitalSelector
+        capital={capital}
+        onChange={setCapital}
+        note="per-side · two-sided posting"
+      />
 
-      {/* Summary bar */}
+      {/* Summary stat cards */}
       {meta && markets.length > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="border border-zinc-800 bg-zinc-900 p-3 text-center">
-            <div className="font-mono text-lg font-bold text-zinc-200 tabular-nums">{meta.processed}</div>
-            <div className="font-mono text-[10px] text-zinc-600 uppercase mt-0.5">programs scanned</div>
-          </div>
-          <div className="border border-zinc-800 bg-zinc-900 p-3 text-center">
-            <div className="font-mono text-lg font-bold text-emerald-400 tabular-nums">{saneCount}</div>
-            <div className="font-mono text-[10px] text-zinc-600 uppercase mt-0.5">clean at {CAPITAL_LABELS[capital]}</div>
-          </div>
-          <div className="border border-zinc-800 bg-zinc-900 p-3 text-center">
-            <div className="font-mono text-lg font-bold text-zinc-300 tabular-nums">
-              ${Math.round(totalPool).toLocaleString()}
-            </div>
-            <div className="font-mono text-[10px] text-zinc-600 uppercase mt-0.5">total pool $/day</div>
-          </div>
-          <div className="border border-red-900/30 bg-red-950/10 p-3 text-center">
-            <div className="font-mono text-lg font-bold text-red-400 tabular-nums">{trapCount}</div>
-            <div className="font-mono text-[10px] text-red-800 uppercase mt-0.5">TRAP (pushed down)</div>
+          <StatCard
+            label="Programs scanned"
+            value={String(meta.processed)}
+          />
+          <StatCard
+            label={`Clean at ${CAPITAL_LABELS[capital]}`}
+            value={String(saneCount)}
+            note="no trap / warn / flag"
+          />
+          <StatCard
+            label="Total pool / day"
+            value={`$${Math.round(totalPool).toLocaleString()}`}
+            demoted="real pool — est. share not included"
+          />
+          <StatCard
+            label="Trap markets"
+            value={String(trapCount)}
+            note="adverse fill risk"
+            demoted="pushed to bottom of list"
+          />
+        </div>
+      )}
+
+      {/* Market table label */}
+      {sorted.length > 0 && (
+        <div>
+          <p className="font-body text-[11px] uppercase tracking-wide text-muted mb-3">
+            Reward markets — sane first · TRAP/WARN/flagged last · {CAPITAL_LABELS[capital]} capital · flat pro-rata observed model
+          </p>
+          <div className="space-y-2">
+            {sorted.map((m, i) => (
+              <KMarketRow key={m.ticker} market={m} capital={capital} rank={i + 1} />
+            ))}
           </div>
         </div>
       )}
 
-      {/* Market table */}
-      {sorted.length > 0 && (
-        <section className="space-y-1">
-          <div className="flex items-center gap-3 flex-wrap mb-2">
-            <span className="font-mono text-xs text-zinc-400 uppercase tracking-widest">
-              Reward markets — sane first · TRAP/WARN/flagged last
-            </span>
-            <span className="font-mono text-[10px] text-zinc-600">
-              {CAPITAL_LABELS[capital]} capital · flat pro-rata observed model
-            </span>
-          </div>
-
-          <div className="grid grid-cols-12 gap-2 pb-1 border-b border-zinc-800 font-mono text-[10px] text-zinc-600 uppercase tracking-widest">
-            <div className="col-span-1">#</div>
-            <div className="col-span-5">Market / flags</div>
-            <div className="col-span-2">Pool / period</div>
-            <div className="col-span-2">Depth (bid/ask)</div>
-            <div className="col-span-2">Est. share / gross</div>
-          </div>
-
-          {sorted.map((m, i) => (
-            <KMarketRow key={m.ticker} market={m} capital={capital} rank={i + 1} />
-          ))}
-        </section>
-      )}
-
       {markets.length === 0 && data && !data.error && (
-        <div className="border border-zinc-800 bg-zinc-900 p-8 text-center">
-          <p className="font-mono text-sm text-zinc-400">No reward-eligible markets found in this scan.</p>
+        <div className="rounded-card shadow-card bg-surface px-5 py-10 text-center">
+          <p className="font-body text-sm text-muted">No reward-eligible markets found in this scan.</p>
         </div>
       )}
 
       {/* Footer */}
-      <div className="border-t border-zinc-800 pt-4 space-y-1">
-        <p className="font-mono text-[10px] text-zinc-700 leading-relaxed">
+      <div className="pt-4 border-t border-line space-y-1">
+        <p className="font-body text-[11px] text-muted/60 leading-relaxed">
           {meta?.disclaimer ?? 'ESTIMATE ONLY · Kalshi LIP scoring formula not public · behavioral inference · not financial advice'}
         </p>
-        <p className="font-mono text-[10px] text-zinc-700">
+        <p className="font-body text-[11px] text-muted/60">
           Read-only. No orders placed. No login required. Source: Kalshi Trade API v2.
         </p>
       </div>
@@ -830,9 +848,9 @@ export default function LiquidityRewardsPage() {
     return () => clearInterval(id);
   }, []);
 
-  const markets = data?.markets ?? [];
-  const meta    = data?.meta;
-  const isStale = data?.stale ?? true;
+  const markets  = data?.markets ?? [];
+  const meta     = data?.meta;
+  const isStale  = data?.stale ?? true;
 
   const sorted    = sortMarkets(markets, capital, sortMode);
   const openCount = markets.filter(m => m.gapClass === 'OPEN').length;
@@ -841,224 +859,196 @@ export default function LiquidityRewardsPage() {
   const totalPool = markets.reduce((s, m) => s + m.rewardsDailyRate, 0);
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100">
-      <div className="max-w-5xl mx-auto px-4 py-8 space-y-7">
+    <div
+      className="min-h-screen"
+      style={{ background: 'radial-gradient(circle at 50% -10%, rgba(15,190,130,.05), transparent 60%), #F5F8F6' }}
+    >
+      <div className="max-w-5xl mx-auto px-4 py-8 space-y-8">
 
         {/* Platform toggle */}
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 flex-wrap">
           <PlatformToggle platform={platform} onChange={setPlatform} />
-          <span className="font-mono text-[10px] text-zinc-600 uppercase tracking-widest">
-            {platform === 'polymarket' ? 'Polymarket CLOB · Read-only · Typical placement estimate · No orders placed'
-                                       : 'Kalshi LIP · Read-only · Observed model · No orders placed'}
+          <span className="font-body text-[12px] text-muted">
+            {platform === 'polymarket'
+              ? 'Polymarket CLOB · read-only · typical placement estimate · no orders placed'
+              : 'Kalshi LIP · read-only · observed model · no orders placed'}
           </span>
         </div>
 
         {/* ── Polymarket view ── */}
         {platform === 'polymarket' && (
-          <>
+          <div className="space-y-6">
+
             {/* Header */}
-            <div className="flex items-center gap-3 flex-wrap">
-              <h1 className="font-mono text-xl font-bold text-zinc-100 tracking-tight">
-                LIQUIDITY REWARDS
-              </h1>
-              {meta && !isStale && (
-                <span className="flex items-center gap-1.5 font-mono text-xs text-emerald-400 border border-emerald-600/40 bg-emerald-950/30 px-2 py-0.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  LIVE
+            <div className="flex flex-wrap items-end justify-between gap-4">
+              <div>
+                <Eyebrow className="mb-1">Liquidity Rewards</Eyebrow>
+                <SectionHeading as="h1" className="text-2xl">
+                  Polymarket CLOB Rewards
+                </SectionHeading>
+                <p className="font-body text-sm text-muted mt-1">
+                  Polymarket pays makers who rest limit orders near the mid — filled or not.
+                  Real pools, your measured share.
+                </p>
+              </div>
+              <div className="flex items-center gap-3 flex-wrap">
+                <LiveBadge live={!!(meta && !isStale)} />
+                <span className="font-body text-[12px] text-muted">
+                  {lastFetch ? `fetched ${ago(lastFetch.toISOString())}` : '—'}
+                  {meta ? ` · data ${ago(meta.generatedAt)}` : ''}
                 </span>
-              )}
-              {isStale && (
-                <span className="font-mono text-xs text-orange-400 border border-orange-500/40 px-2 py-0.5">STALE</span>
-              )}
-              <span className="font-mono text-[10px] text-zinc-600 ml-auto">
-                {lastFetch ? `fetched ${ago(lastFetch.toISOString())}` : '—'}
-                {meta ? ` · data ${ago(meta.generatedAt)}` : ''}
-              </span>
+              </div>
             </div>
 
-            {/* Subtitle */}
-            <p className="font-mono text-sm text-zinc-400 leading-relaxed">
-              Polymarket pays makers who rest limit orders near the mid — filled or not.{' '}
-              <span className="text-zinc-300">Real pools, your measured share.</span>
-            </p>
-
-            {/* Stale warning */}
+            {/* Banners */}
             {isStale && meta && (
-              <div className="border border-orange-600/40 bg-orange-950/15 px-4 py-3 font-mono text-xs text-orange-400">
+              <div className="px-4 py-3 rounded-card border border-gold/25 bg-gold-tint font-body text-sm text-gold">
                 Data is stale (last scan: {ago(meta.generatedAt)}). Agent may be restarting or scanning — check back shortly.
               </div>
             )}
-
             {fetchError && (
-              <div className="font-mono text-xs text-red-400 border border-red-800 bg-red-950/20 px-3 py-2">
+              <div className="px-4 py-3 rounded-card border border-coral-ink/25 bg-coral-tint font-body text-sm text-coral-ink">
                 {fetchError}
               </div>
             )}
 
-            {/* Honest framing */}
-            <div className="border border-zinc-700/50 bg-zinc-900/40">
+            {/* How to read */}
+            <div className="rounded-card shadow-card bg-surface overflow-hidden">
               <button
-                className="w-full flex items-center justify-between px-4 py-3 text-left"
+                className="w-full flex items-center justify-between px-5 py-4 text-left"
                 onClick={() => setHowToOpen(v => !v)}
               >
-                <span className="font-mono text-[10px] text-zinc-400 uppercase tracking-widest">
-                  How to read these numbers
-                </span>
-                <span className="font-mono text-[10px] text-zinc-600">{howToOpen ? '▲ close' : '▼ expand'}</span>
+                <span className="font-body font-medium text-sm text-ink-2">How to read these numbers</span>
+                <span className="font-body text-[11px] text-muted">{howToOpen ? '▲ close' : '▼ expand'}</span>
               </button>
-
               {howToOpen && (
-                <div className="px-4 pb-4 space-y-2 border-t border-zinc-800">
-                  <ul className="mt-3 space-y-2">
-                    {[
+                <div className="px-5 pb-5 space-y-3 border-t border-line">
+                  <ul className="mt-4 space-y-2.5">
+                    {([
                       ['Pool $/day (real)', 'The dollar amount Polymarket allocates to reward makers on this market per day. This is the actual program rate — not an estimate.'],
                       ['Existing depth', 'Dollar notional (price × size) of all qualifying resting orders currently in the CLOB within the reward band. This is your competition. It changes continuously.'],
-                      ['Typ. est. share', 'Estimated pool fraction using Polymarket\'s quadratic formula S(v,s)=((v-s)/v)². TYPICAL placement: both sides posted at s=v/2 (half the half-band, S=0.25) — a realistic farming position. Range shows outer-band low (s=0.8v, S=0.04) to near-mid high (s=0.1¢). Actual share depends on exact resting price and competitor re-quoting. Share compresses as makers enter.'],
+                      ['Typ. est. share', "Estimated pool fraction using Polymarket's quadratic formula S(v,s)=((v-s)/v)². TYPICAL placement: both sides posted at s=v/2 (half the half-band, S=0.25) — a realistic farming position. Range shows outer-band low (s=0.8v, S=0.04) to near-mid high (s=0.1¢). Actual share depends on exact resting price and competitor re-quoting. Share compresses as makers enter."],
                       ['Est. net/day', 'share × pool $/day. NET OF PLATFORM FEES — Polymarket CLOB maker fee is 0%; reward is paid from the pool in USDC with no fee deducted; Polygon gas ≈ $0. Does NOT subtract inventory/adverse-selection risk from fills — that is non-deterministic and rises with volatility.'],
                       ['THIN BOOK flag', 'Gross yield >5%/day at this capital: the book is very thin and your share will compress as other makers arrive.'],
                       ['BELOW FLOOR flag', 'Gross reward <$1/day at this capital: Polymarket pays out in whole dollars; this position likely earns nothing.'],
                       ['Adverse risk class', 'LOW = slow-moving market, far from resolution. HIGH = near expiry or high recent volatility. HIGH-risk markets are likely to see informed flow picking off your orders.'],
                       ['OPEN BAND badge', 'Thinly-covered reward band at $500 capital (≥20% estimated share) with a meaningful pool and LOW or MEDIUM adverse-fill risk. This marks where there is room to enter — not a promised return. The window fills quickly as other makers arrive and share compresses. All figures are estimates.'],
                       ['GAP · ADVERSE RISK badge', 'Band is thinly covered — but precisely because HIGH volatility deters other makers from resting orders. Not a free opportunity: informed flow is likely to pick off your resting orders at a loss that exceeds the reward income.'],
-                    ].map(([term, def]) => (
-                      <li key={term} className="font-mono text-[11px] text-zinc-500 leading-relaxed pl-3 border-l border-zinc-700/40">
-                        <span className="text-zinc-400">{term}:</span> {def}
+                    ] as [string, string][]).map(([term, def]) => (
+                      <li key={term} className="font-body text-[12px] text-muted leading-relaxed pl-3 border-l-2 border-line">
+                        <span className="text-ink-2 font-medium">{term}:</span>{' '}{def}
                       </li>
                     ))}
                   </ul>
-                  <p className="font-mono text-[10px] text-zinc-700 pt-2">
-                    No &quot;profit&quot;, &quot;guaranteed&quot;, or &quot;signal&quot; implied. These are estimates for educational and research purposes only.
+                  <p className="font-body text-[11px] text-muted/60 pt-1">
+                    No "profit", "guaranteed", or "signal" implied. These are estimates for educational and research purposes only.
                   </p>
                 </div>
               )}
             </div>
 
             {/* Capital selector */}
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest mr-1">Capital:</span>
-              {CAPITAL_OPTIONS.map(c => (
-                <button
-                  key={c}
-                  onClick={() => setCapital(c)}
-                  className={`font-mono text-xs px-3 py-1.5 border transition-colors duration-100
-                    ${capital === c
-                      ? 'border-accent bg-accent/10 text-accent'
-                      : 'border-zinc-700 bg-zinc-900 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200'}`}
-                >
-                  {CAPITAL_LABELS[c]}
-                </button>
-              ))}
-              <span className="font-mono text-[10px] text-zinc-600 ml-2">
-                per-side estimate — two-sided posting assumed
-              </span>
-            </div>
+            <CapitalSelector
+              capital={capital}
+              onChange={setCapital}
+              note="per-side estimate — two-sided posting assumed"
+            />
 
-            {/* Summary bar */}
+            {/* Summary stat cards */}
             {meta && markets.length > 0 && (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="border border-zinc-800 bg-zinc-900 p-3 text-center">
-                  <div className="font-mono text-lg font-bold text-zinc-200 tabular-nums">{meta.totalMarkets}</div>
-                  <div className="font-mono text-[10px] text-zinc-600 uppercase mt-0.5">markets scanned</div>
-                </div>
-                <div className="border border-zinc-800 bg-zinc-900 p-3 text-center">
-                  <div className="font-mono text-lg font-bold text-emerald-400 tabular-nums">{saneCount}</div>
-                  <div className="font-mono text-[10px] text-zinc-600 uppercase mt-0.5">
-                    clean at {CAPITAL_LABELS[capital]}
-                  </div>
-                </div>
-                <div className="border border-zinc-800 bg-zinc-900 p-3 text-center">
-                  <div className="font-mono text-lg font-bold text-zinc-300 tabular-nums">
-                    ${totalPool.toLocaleString()}
-                  </div>
-                  <div className="font-mono text-[10px] text-zinc-600 uppercase mt-0.5">total pool $/day</div>
-                </div>
+                <StatCard label="Markets scanned" value={String(meta.totalMarkets)} />
+                <StatCard
+                  label={`Clean at ${CAPITAL_LABELS[capital]}`}
+                  value={String(saneCount)}
+                  note="no THIN BOOK / BELOW FLOOR flags"
+                />
+                <StatCard
+                  label="Total pool / day"
+                  value={`$${Math.round(totalPool).toLocaleString()}`}
+                  demoted="real pool — est. share not included"
+                />
                 <div
-                  className={`border p-3 text-center cursor-pointer transition-colors ${
-                    openCount > 0
-                      ? 'border-emerald-700/50 bg-emerald-950/20 hover:bg-emerald-950/35'
-                      : 'border-zinc-800 bg-zinc-900'
-                  }`}
+                  className={`rounded-card shadow-card bg-surface px-5 py-5 ${openCount > 0 ? 'cursor-pointer border border-mint-deep/20 hover:border-mint-deep/40 transition-colors' : ''}`}
                   onClick={() => openCount > 0 && setSortMode(m => m === 'gap' ? 'default' : 'gap')}
                   title={openCount > 0 ? 'Toggle: surface open-band markets to the top' : 'No open bands at this scan'}
                 >
-                  <div className={`font-mono text-lg font-bold tabular-nums ${openCount > 0 ? 'text-emerald-400' : 'text-zinc-600'}`}>
+                  <p className="font-body text-[11px] uppercase tracking-wide text-muted mb-2">Open band gaps</p>
+                  <p className="font-display font-bold text-ink leading-none tracking-tight" style={{ fontSize: 33 }}>
                     {openCount}
-                  </div>
-                  <div className={`font-mono text-[10px] uppercase mt-0.5 ${openCount > 0 ? 'text-emerald-600' : 'text-zinc-700'}`}>
-                    {sortMode === 'gap' ? '▲ open bands (active)' : 'open band gaps'}
-                  </div>
+                  </p>
+                  {openCount > 0 ? (
+                    <p className="font-body text-sm text-ink-2 mt-2 leading-snug">
+                      {sortMode === 'gap' ? '▲ surfaced to top' : 'tap to surface'}
+                    </p>
+                  ) : (
+                    <p className="font-body text-[11px] text-muted mt-1.5 leading-snug">no gaps this scan</p>
+                  )}
                 </div>
               </div>
             )}
 
-            {/* Market table */}
+            {/* Market list */}
             {sorted.length > 0 ? (
-              <section className="space-y-1">
-                <div className="flex items-center gap-3 flex-wrap mb-2">
-                  <span className="font-mono text-xs text-zinc-400 uppercase tracking-widest">
+              <div>
+                <div className="flex items-center gap-3 flex-wrap mb-3">
+                  <p className="font-body text-[11px] uppercase tracking-wide text-muted">
                     {sortMode === 'gap'
                       ? 'Open-band gaps first — est. share ≥ 20% at $500, LOW/MED risk'
                       : 'Reward markets — LOW adverse-risk sane first, flagged last'}
-                  </span>
-                  <span className="font-mono text-[10px] text-zinc-600">
+                  </p>
+                  <span className="font-body text-[11px] text-muted/60">
                     {CAPITAL_LABELS[capital]} capital · depth snapshot every 15 min
                   </span>
                   <button
                     onClick={() => setSortMode(m => m === 'gap' ? 'default' : 'gap')}
-                    className={`ml-auto font-mono text-[10px] px-2.5 py-1 border transition-colors ${
-                      sortMode === 'gap'
-                        ? 'border-emerald-600/60 bg-emerald-950/30 text-emerald-400'
-                        : 'border-zinc-700 bg-zinc-900 text-zinc-500 hover:border-zinc-500 hover:text-zinc-300'
-                    }`}
+                    className={`ml-auto font-body font-medium text-[11px] px-3 py-1.5 rounded-button border transition-colors
+                      ${sortMode === 'gap'
+                        ? 'border-mint-deep/40 bg-mint-tint text-mint-deep'
+                        : 'border-line bg-surface text-muted hover:text-ink-2'}`}
                   >
-                    {sortMode === 'gap' ? '▲ open bands first' : 'open-band gaps first'}
+                    {sortMode === 'gap' ? '▲ open bands first' : 'show open-band gaps first'}
                   </button>
                 </div>
 
                 {sortMode === 'gap' && openCount === 0 && (
-                  <div className="border border-zinc-800 bg-zinc-900/50 px-4 py-3 font-mono text-[11px] text-zinc-500">
+                  <div className="mb-3 px-4 py-3 rounded-card border border-line bg-surface font-body text-[12px] text-muted">
                     No open band gaps detected in this scan — all reward bands are adequately covered at the 20% share threshold.
                     Check back after the next 15-min depth snapshot.
                   </div>
                 )}
 
-                <div className="grid grid-cols-12 gap-2 pb-1 border-b border-zinc-800 font-mono text-[10px] text-zinc-600 uppercase tracking-widest">
-                  <div className="col-span-1">#</div>
-                  <div className="col-span-5">Market / risk / flags</div>
-                  <div className="col-span-2">Pool + depth</div>
-                  <div className="col-span-2">Est. share</div>
-                  <div className="col-span-2">Est. net/day</div>
+                <div className="space-y-2">
+                  {sorted.map((m, i) => (
+                    <MarketCard key={m.conditionId} market={m} capital={capital} rank={i + 1} />
+                  ))}
                 </div>
-
-                {sorted.map((m, i) => (
-                  <MarketCard key={m.conditionId} market={m} capital={capital} rank={i + 1} />
-                ))}
-              </section>
+              </div>
             ) : (
-              <div className="border border-zinc-800 bg-zinc-900 p-8 text-center space-y-2">
-                <p className="font-mono text-sm text-zinc-400">
+              <div className="rounded-card shadow-card bg-surface px-5 py-10 text-center space-y-2">
+                <p className="font-body text-sm text-muted">
                   {data === null
                     ? 'Loading reward data…'
                     : isStale
                       ? 'Agent is scanning — data will appear once the first cycle completes (~3 min).'
                       : 'No reward-eligible markets found in this scan.'}
                 </p>
-                <p className="font-mono text-xs text-zinc-600">
+                <p className="font-body text-[12px] text-muted/60">
                   First scan runs ~10 s after agent start. Refreshes every 15 min.
                 </p>
               </div>
             )}
 
             {/* Disclaimer footer */}
-            <div className="border-t border-zinc-800 pt-4 space-y-1">
-              <p className="font-mono text-[10px] text-zinc-700 leading-relaxed">
+            <div className="pt-4 border-t border-line space-y-1">
+              <p className="font-body text-[11px] text-muted/60 leading-relaxed">
                 {meta?.disclaimer ?? 'Estimates only. Adverse-fill risk not subtracted. Not financial advice.'}
               </p>
-              <p className="font-mono text-[10px] text-zinc-700">
+              <p className="font-body text-[11px] text-muted/60">
                 Read-only. No orders placed. No login required.
               </p>
             </div>
-          </>
+          </div>
         )}
 
         {/* ── Kalshi view ── */}
