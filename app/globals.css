@@ -2,6 +2,9 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Legacy terminal tokens ──────────────────────────────────────────────────
+   Kept until each page is rebuilt under Edgeradar. Their consumers reference
+   these vars directly (not via Tailwind), so they must stay until pages flip. */
 :root {
   --bg:      #0A0C10;
   --surface: #12151C;
@@ -15,17 +18,50 @@
   --ink:     #E4E7EB;
   --muted:   #8B919E;
   --faint:   #5A6072;
+
+  /* ── Edgeradar design tokens ─────────────────────────────────────────────── */
+  /* Base neutrals */
+  --er-bg:        #F5F8F6;
+  --er-bg-soft:   #EBF1EE;
+  --er-surface:   #FFFFFF;
+  --er-ink:       #0B1A15;
+  --er-ink-2:     #33433D;
+  --er-muted:     #6C7E78;
+  --er-line:      #E3ECE7;
+  /* Signal: cashable */
+  --er-mint:      #0FBE82;
+  --er-mint-deep: #0A9D6B;
+  --er-mint-tint: #E2F7EE;
+  /* Signal: paper / indicative */
+  --er-coral:     #FF7A59;
+  --er-coral-tint:#FFEAE3;
+  --er-coral-ink: #D5552F;
+  /* Signal: divergence / low-confidence */
+  --er-violet:    #5566D6;
+  --er-violet-tint:#EEF1FF;
+  /* Signal: speculative */
+  --er-gold:      #C8821C;
+  --er-gold-tint: #FFF3E2;
+  /* Trap */
+  --er-trap:      #E5564E;
+
+  /* Font alias: --font-body resolves to the Inter next/font var (--font-sans) */
+  --font-body: var(--font-sans);
 }
 
-/* ── Base shell ──────────────────────────────────────────── */
+/* ── App base shell ──────────────────────────────────────────────────────────
+   Light Edgeradar background. Terminal pages will look off until rebuilt —
+   that is expected and handled in later phases. */
 html {
-  background: var(--bg);
+  background: var(--er-bg);
 }
 
 body {
-  background: var(--bg);
-  color: var(--ink);
-  font-family: var(--font-sans), Inter, system-ui, sans-serif;
+  background:
+    radial-gradient(circle at 50% -10%, rgba(15,190,130,.05), transparent 60%),
+    var(--er-bg);
+  color: var(--er-ink);
+  font-family: var(--font-body), Inter, system-ui, sans-serif;
   font-size: 13px;
   -webkit-font-smoothing: antialiased;
 }
@@ -38,23 +74,25 @@ th {
   font-variant-numeric: tabular-nums;
 }
 
-/* ── Custom scrollbar ────────────────────────────────────── */
+/* ── Custom scrollbar ────────────────────────────────────────────────────────
+   Neutral scrollbar that works on both old (dark) and new (light) pages. */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: var(--surface);
+  background: var(--er-bg-soft);
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--faint);
+  background: var(--er-line);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--muted);
+  background: var(--er-muted);
 }
 
-/* ── Legacy structural helpers ───────────────────────────── */
+/* ── Legacy structural helpers (terminal pages) ──────────────────────────────
+   These classes are used by old pages; removing them would break the build. */
 .card, .glass {
   background: var(--surface) !important;
   border: 1px solid var(--border) !important;
@@ -83,18 +121,18 @@ h1, h2, h3 {
 .text-green-400 { color: var(--profit) !important; }
 .text-red-400   { color: var(--loss)   !important; }
 
-/* ── Focus & selection ───────────────────────────────── */
+/* ── Focus & selection ───────────────────────────────────────────────────── */
 :focus-visible {
-  outline: 1px solid var(--brand);
+  outline: 1px solid var(--er-mint);
   outline-offset: 2px;
 }
 
 ::selection {
-  background: rgba(99, 102, 241, 0.18);
-  color: var(--ink);
+  background: rgba(15, 190, 130, 0.14);
+  color: var(--er-ink);
 }
 
-/* ── Strategy detail panel fade ─────────────────────── */
+/* ── Strategy detail panel fade ─────────────────────────────────────────── */
 @keyframes fadeIn {
   from { opacity: 0; }
   to   { opacity: 1; }
@@ -103,7 +141,7 @@ h1, h2, h3 {
   animation: fadeIn 120ms ease-out;
 }
 
-/* ── Subtle grid overlay ─────────────────────────────── */
+/* ── Subtle grid overlay (terminal landing) ──────────────────────────────── */
 .bg-grid-subtle {
   background-image:
     linear-gradient(rgba(35, 40, 52, 0.6) 1px, transparent 1px),
@@ -111,7 +149,7 @@ h1, h2, h3 {
   background-size: 48px 48px;
 }
 
-/* ── Marquee ticker ──────────────────────────────────── */
+/* ── Marquee ticker ──────────────────────────────────────────────────────── */
 @keyframes marquee {
   from { transform: translateX(0); }
   to   { transform: translateX(-50%); }
@@ -121,7 +159,7 @@ h1, h2, h3 {
   will-change: transform;
 }
 
-/* ── Number flash on value change ────────────────────── */
+/* ── Number flash on value change ────────────────────────────────────────── */
 @keyframes number-flash {
   0%   { color: #22C55E; text-shadow: 0 0 12px rgba(34,197,94,0.6); }
   50%  { color: #22C55E; text-shadow: 0 0 6px rgba(34,197,94,0.3); }
@@ -131,7 +169,7 @@ h1, h2, h3 {
   animation: number-flash 500ms ease-out forwards;
 }
 
-/* ── Shimmer on blurred teaser rows ──────────────────── */
+/* ── Shimmer on blurred teaser rows ──────────────────────────────────────── */
 @keyframes shimmer {
   0%   { background-position: -600px 0; }
   100% { background-position: 600px 0; }
@@ -147,7 +185,7 @@ h1, h2, h3 {
   animation: shimmer 2.2s ease-in-out infinite;
 }
 
-/* ── Scroll reveal ───────────────────────────────────── */
+/* ── Scroll reveal ───────────────────────────────────────────────────────── */
 .reveal-hidden {
   opacity: 0;
   transform: translateY(18px);
@@ -158,11 +196,23 @@ h1, h2, h3 {
   transform: translateY(0);
 }
 
-/* ── Reduced motion overrides ────────────────────────── */
+/* ── Edgeradar: radar ping ───────────────────────────────────────────────── */
+@keyframes er-ping {
+  0%       { transform: scale(.4); opacity: .7; }
+  80%, 100%{ transform: scale(2.2); opacity: 0; }
+}
+.animate-er-ping {
+  animation: er-ping 1.4s ease-out infinite;
+}
+
+/* ── Reduced-motion overrides ─────────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   .animate-marquee,
   .animate-shimmer,
-  .animate-number-flash {
+  .animate-number-flash,
+  .animate-er-ping,
+  .animate-spin,
+  .animate-ping {
     animation: none !important;
   }
   .reveal-hidden {
