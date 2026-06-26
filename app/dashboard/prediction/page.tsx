@@ -3,36 +3,45 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { ChevronRight } from 'lucide-react';
+import Eyebrow from '@/app/components/ui/Eyebrow';
+import SectionHeading from '@/app/components/ui/SectionHeading';
+import StatCard from '@/app/components/ui/StatCard';
+import BlipRow from '@/app/components/ui/BlipRow';
+import EdgeChip, { type EdgeChipVariant } from '@/app/components/ui/EdgeChip';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface Leg {
   platform:    string;
-  probability: number;   // 0–100 (cents equivalent)
+  probability: number;
   url:         string;
-  fee:         number;   // 0–1 fraction
+  urlVerified: boolean;
+  fee:         number;
   expiresAt:   number | null;
   yesBid?:     number | null;
   yesAsk?:     number | null;
 }
 
 interface Opportunity {
-  id:               string;
-  question:         string;
-  lowMarket:        Leg;
-  highMarket:       Leg;
-  spread:           number;
-  roi:              number;
-  earnPer100:       number;
-  confidence:       number;
-  category:         string;
-  type:             'cashable' | 'signal';
-  annualizedROI?:   number | null;
-  daysToResolution?: number | null;
-  resolutionDate?:  string | null;
-  confirmReason?:   string | null;
-  lockupFlag?:      string | null;
-  capacityUsd?:     number | null;
+  id:                  string;
+  question:            string;
+  lowMarket:           Leg;
+  highMarket:          Leg;
+  spread:              number;
+  roi:                 number;
+  earnPer100:          number | null;
+  confidence:          number;
+  category:            string;
+  type:                'cashable' | 'signal';
+  annualizedROI?:      number | null;
+  daysToResolution?:   number | null;
+  resolutionDate?:     string | null;
+  confirmReason?:      string | null;
+  lockupFlag?:         string | null;
+  capacityUsd?:        number | null;
+  nonCashableReason?:  string | null;
+  confidenceNote?:     string | null;
+  capacityNote?:       string | null;
 }
 
 interface Stats {
@@ -41,6 +50,8 @@ interface Stats {
   signalCount:              number;
   confirmedCashable:        number;
   totalCashableCandidates:  number;
+  evaporated?:              number;
+  inactive?:                number;
   pendingVerification:      number;
   bestRoi:                  number | null;
   marketsTracked:           number;
@@ -72,13 +83,50 @@ interface ApiResponse {
 
 function platformLabel(p: string): string {
   const MAP: Record<string, string> = {
-    kalshi: 'KALSHI', polymarket: 'POLYMARKET',
-    predictit: 'PREDICTIT', manifold: 'MANIFOLD', oddsapi: 'ODDS API',
+    kalshi: 'Kalshi', polymarket: 'Polymarket',
+    predictit: 'PredictIt', manifold: 'Manifold', oddsapi: 'Odds API',
   };
-  return MAP[p?.toLowerCase()] ?? p.toUpperCase();
+  return MAP[p?.toLowerCase()] ?? p;
 }
 
-// ── Countdown hook ────────────────────────────────────────────────────────────
+function categoryIcon(cat: string): string {
+  const c = cat?.toLowerCase() ?? '';
+  if (c.includes('politic') || c.includes('election')) return '🗳';
+  if (c.includes('sport')   || c.includes('nfl') || c.includes('nba')) return '⚽';
+  if (c.includes('crypto')  || c.includes('bitcoin') || c.includes('btc')) return '₿';
+  if (c.includes('finance') || c.includes('econ')) return '📈';
+  if (c.includes('weather')) return '🌤';
+  return '🔍';
+}
+
+function chipVariant(opp: Opportunity): EdgeChipVariant {
+  if (opp.type === 'cashable') return 'cashable';
+  const reason = opp.nonCashableReason;
+  if (reason === 'stage_mismatch') return 'trap';
+  if (reason === 'play_money')     return 'paper';
+  return 'signal';
+}
+
+function reasonNote(opp: Opportunity): string | null {
+  if (opp.type === 'cashable') return null;
+  const reason = opp.nonCashableReason;
+  if (reason === 'play_money')     return 'mid-price or play money — signal only';
+  if (reason === 'stage_mismatch') return 'resolution criteria differ';
+  if (reason === 'low_confidence') return opp.confidenceNote
+    ? `confidence ${opp.confidenceNote}`
+    : 'confidence below threshold';
+  if (reason === 'small_capacity') return opp.capacityNote
+    ? `capacity ${opp.capacityNote}`
+    : 'capacity below minimum';
+  return 'spread collapses at executable depth';
+}
+
+function nextCheckMin(freshness: Freshness | null): number {
+  if (!freshness?.nextDiscoveryAt) return 180;
+  return Math.max(1, Math.round((freshness.nextDiscoveryAt - Date.now()) / 60_000));
+}
+
+// ── Countdown ─────────────────────────────────────────────────────────────────
 
 function Countdown({ expiresAt }: { expiresAt: number | null }) {
   const [text, setText] = useState<string>('');
@@ -100,24 +148,30 @@ function Countdown({ expiresAt }: { expiresAt: number | null }) {
     return () => clearInterval(t);
   }, [expiresAt]);
 
-  if (!expiresAt) return <span className="text-text-muted font-mono text-[10px]">NO EXPIRY DATA</span>;
-  return <span className="font-mono text-[10px] tabular-nums text-text-secondary">{text}</span>;
+  if (!expiresAt) return <span className="font-body text-[11px] text-muted">no expiry</span>;
+  return <span className="font-body text-[11px] tabular-nums text-ink-2">{text}</span>;
 }
 
-// ── Skeleton ──────────────────────────────────────────────────────────────────
+// ── Loading skeleton ──────────────────────────────────────────────────────────
 
-function Skeleton({ h }: { h: string }) {
-  return <div className={`${h} bg-bg-elevated animate-pulse border border-border`} />;
-}
-
-// ── Stat panel ────────────────────────────────────────────────────────────────
-
-function StatPanel({ label, value, sub }: { label: string; value: string; sub?: string }) {
+function CardSkeleton() {
   return (
-    <div className="bg-bg-panel border border-border px-4 py-3 min-w-0">
-      <div className="font-mono text-[10px] text-text-muted uppercase tracking-widest mb-1 truncate">{label}</div>
-      <div className="font-mono text-base text-text-primary tabular-nums">{value}</div>
-      {sub && <div className="font-mono text-[10px] text-text-muted mt-0.5 truncate">{sub}</div>}
+    <div className="rounded-card shadow-card bg-surface px-5 py-5 animate-pulse">
+      <div className="h-3 w-24 bg-bg-soft rounded mb-3" />
+      <div className="h-8 w-16 bg-bg-soft rounded" />
+    </div>
+  );
+}
+
+function RowSkeleton() {
+  return (
+    <div className="rounded-card shadow-card bg-surface px-4 py-3 animate-pulse flex items-center gap-3">
+      <div className="w-10 h-10 bg-bg-soft rounded-[11px] flex-shrink-0" />
+      <div className="flex-1 space-y-2">
+        <div className="h-3 bg-bg-soft rounded w-3/4" />
+        <div className="h-2.5 bg-bg-soft rounded w-1/2" />
+      </div>
+      <div className="w-12 h-5 bg-bg-soft rounded" />
     </div>
   );
 }
@@ -125,70 +179,48 @@ function StatPanel({ label, value, sub }: { label: string; value: string; sub?: 
 // ── Opportunity row ───────────────────────────────────────────────────────────
 
 function OppRow({ opp }: { opp: Opportunity }) {
-  const isCashable        = opp.type === 'cashable';
-  const noPriceHighMarket = 100 - opp.highMarket.probability;
-  const expiry            = opp.lowMarket.expiresAt ?? opp.highMarket.expiresAt ?? null;
+  const variant  = chipVariant(opp);
+  const note     = reasonNote(opp);
+  const expiry   = opp.lowMarket.expiresAt ?? opp.highMarket.expiresAt ?? null;
+  const conf     = Math.round(opp.confidence * 100);
+  const noPriceHigh = 100 - opp.highMarket.probability;
+
+  const tileColor = variant === 'cashable' ? 'mint'
+    : variant === 'speculative'            ? 'gold'
+    : 'violet';
+
+  const subParts = [
+    `${platformLabel(opp.lowMarket.platform)} × ${platformLabel(opp.highMarket.platform)}`,
+    `conf ${conf}%`,
+  ];
+  if (note) subParts.push(note);
 
   return (
     <Link
       href={`/dashboard/prediction/${encodeURIComponent(opp.id)}`}
-      className="block border border-border mb-1.5 last:mb-0 hover:border-accent/40 transition-colors duration-100"
+      className="block rounded-card shadow-card bg-surface hover:shadow-[0_2px_8px_rgba(11,26,21,.09)] transition-shadow duration-150"
     >
-      <div className="px-4 py-3">
-        <div className="flex flex-wrap gap-x-4 gap-y-2 items-start">
-
-          {/* Unified label */}
-          <div className="shrink-0 mt-0.5">
-            <span className="font-mono text-[10px] uppercase tracking-widest px-1.5 py-0.5 bg-accent/10 text-accent border border-accent/25">
-              RESULT FOUND
-            </span>
-          </div>
-
-          {/* Question + category */}
-          <div className="flex-1 min-w-[180px]">
-            <div className="font-mono text-[12px] text-text-primary leading-snug line-clamp-2">{opp.question}</div>
-            <div className="font-mono text-[10px] text-text-muted mt-0.5 uppercase tracking-widest">{opp.category}</div>
-          </div>
-
-          {/* Trade legs */}
-          <div className="shrink-0 space-y-1">
-            <div className="font-mono text-[11px]">
-              <span className="text-positive">BUY YES @ {opp.lowMarket.probability}¢</span>
-              <span className="text-border mx-1.5">·</span>
-              <span className="text-text-secondary">{platformLabel(opp.lowMarket.platform)}</span>
-              <span className="text-text-muted ml-2 text-[10px]">FEE {(opp.lowMarket.fee * 100).toFixed(0)}%</span>
-            </div>
-            <div className="font-mono text-[11px]">
-              <span className="text-accent">BUY NO  @ {noPriceHighMarket}¢</span>
-              <span className="text-border mx-1.5">·</span>
-              <span className="text-text-secondary">{platformLabel(opp.highMarket.platform)}</span>
-              <span className="text-text-muted ml-2 text-[10px]">FEE {(opp.highMarket.fee * 100).toFixed(0)}%</span>
-            </div>
-          </div>
-
-          {/* Spread headline — never rendered as profit/ROI/guaranteed */}
-          <div className="shrink-0 text-right">
-            <div className="font-mono text-[13px] font-semibold text-accent tabular-nums">
-              SPREAD {opp.spread.toFixed(1)}%
-            </div>
-            <div className="font-mono text-[10px] text-text-muted tabular-nums">
-              CONF {Math.round(opp.confidence * 100)}%
-            </div>
-          </div>
-
-          {/* Expiry */}
-          <div className="shrink-0 text-right min-w-[90px]">
-            <div className="font-mono text-[10px] text-text-muted uppercase tracking-widest mb-0.5">EXPIRES</div>
-            <Countdown expiresAt={expiry} />
-          </div>
-
-          {/* Arrow */}
-          <div className="shrink-0 self-center text-text-muted">
-            <ChevronRight size={13} />
-          </div>
-
+      <BlipRow
+        icon={categoryIcon(opp.category)}
+        tileColor={tileColor}
+        name={opp.question}
+        sub={subParts.join(' · ')}
+        chip={variant}
+        value={`${opp.spread.toFixed(1)}%`}
+        unit={
+          opp.earnPer100 != null && opp.type === 'cashable'
+            ? `$${opp.earnPer100.toFixed(2)} per $100`
+            : 'spread'
+        }
+        valueTone={opp.type === 'cashable' ? 'up' : 'neutral'}
+      />
+      {/* Expiry row — only shown when data exists */}
+      {expiry && (
+        <div className="px-4 pb-3 flex items-center gap-2">
+          <span className="font-body text-[11px] text-muted uppercase tracking-wide">expires</span>
+          <Countdown expiresAt={expiry} />
         </div>
-      </div>
+      )}
     </Link>
   );
 }
@@ -222,140 +254,176 @@ export default function PredictionPage() {
   const stats     = data?.stats;
   const opps      = data?.valid ?? [];
   const freshness = data?.freshness ?? null;
+  const isStale   = freshness?.repriceStale || freshness?.discoveryStale;
 
   return (
-    <div className="max-w-[1400px] mx-auto px-4 py-6">
+    <div className="max-w-[1400px] mx-auto px-4 py-8">
 
-      {/* Page header */}
-      <div className="flex flex-wrap items-baseline justify-between gap-2 mb-5">
+      {/* ── Header ──────────────────────────────────────────────────────────── */}
+      <div className="flex flex-wrap items-end justify-between gap-4 mb-6">
         <div>
-          <h1 className="font-mono text-sm uppercase tracking-widest text-text-primary">
-            PREDICTION MARKET ARBITRAGE
-          </h1>
-          <p className="font-mono text-[10px] text-text-muted mt-0.5">
-            CROSS-PLATFORM · IDF PAIR + AI-CONFIRMED · FEE-ADJUSTED NET ROI
+          <Eyebrow className="mb-1">Prediction Markets</Eyebrow>
+          <SectionHeading as="h1" className="text-2xl">
+            Cross-Platform Arbitrage
+          </SectionHeading>
+          <p className="font-body text-sm text-muted mt-1">
+            Polymarket · Kalshi · PredictIt · Manifold — AI-confirmed pairs, fee-adjusted net ROI
           </p>
         </div>
+
         <div className="flex items-center gap-3 flex-wrap">
           <a
             href="https://t.me/Gaspola_bot?start=pred_new"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 font-mono text-[10px] px-3 py-1.5 border border-border text-text-muted hover:border-accent/50 hover:text-accent transition-colors duration-100 whitespace-nowrap"
+            className="inline-flex items-center gap-1.5 font-body text-sm px-4 py-2 rounded-button border border-line text-muted hover:border-mint/40 hover:text-ink-2 transition-colors duration-150 whitespace-nowrap"
           >
-            ✈ Basic alert via Telegram
+            Telegram alerts
           </a>
-          {fetchedAt && (
-            <span className="font-mono text-[10px] text-text-muted">
-              LAST FETCH {fetchedAt.toLocaleTimeString('en-GB')}
+          {fetchedAt && !loading && (
+            <span className="font-body text-[12px] text-muted">
+              Updated {fetchedAt.toLocaleTimeString('en-GB')}
             </span>
           )}
         </div>
       </div>
 
-      {/* Dual freshness — prices (15 min re-pricer) + discovery (3h cron) */}
+      {/* ── Freshness bar ───────────────────────────────────────────────────── */}
       {!loading && (
-        <div className={`mb-4 px-3 py-2 border font-mono text-[10px] uppercase tracking-widest ${
-          (freshness?.repriceStale || freshness?.discoveryStale)
-            ? 'border-warning/30 bg-warning/5 text-warning/80'
-            : 'border-border bg-bg-panel text-text-muted'
+        <div className={`mb-6 px-4 py-3 rounded-card border font-body text-[12px] ${
+          isStale
+            ? 'border-gold/30 bg-gold-tint text-gold'
+            : 'border-line bg-surface text-muted'
         }`}>
-          <div className="flex flex-wrap gap-x-4 gap-y-1 items-center">
-            {/* Prices line */}
+          <div className="flex flex-wrap gap-x-5 gap-y-1 items-center">
+            {/* Prices */}
             <span className="flex items-center gap-1.5">
-              {freshness?.repriceStale
-                ? <span className="inline-block w-1.5 h-1.5 rounded-full bg-warning/60 shrink-0" />
-                : <span className="inline-block w-1.5 h-1.5 rounded-full bg-positive/60 shrink-0" />}
+              <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                freshness?.repriceStale ? 'bg-gold' : 'bg-mint'
+              }`} />
               {freshness?.pricesAt
-                ? <>PRICES {new Date(freshness.pricesAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · REFRESH ~15 MIN</>
+                ? <>Prices {new Date(freshness.pricesAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · refresh ~15 min</>
                 : freshness?.discoveryAt
-                  ? <>PRICES FROM DISCOVERY SNAPSHOT · RE-PRICER STARTING</>
-                  : 'NO PRICE DATA YET'}
+                  ? 'Prices from discovery snapshot — re-pricer starting'
+                  : 'No price data yet'}
               {freshness?.repriceStale && freshness.repriceLabel && (
-                <span className="text-warning"> ({freshness.repriceLabel} — STALLED?)</span>
+                <span className="text-gold"> ({freshness.repriceLabel} — stalled?)</span>
               )}
             </span>
 
-            <span className="text-text-muted/40">|</span>
+            <span className={isStale ? 'text-gold/40' : 'text-line'}>|</span>
 
-            {/* Discovery line */}
+            {/* Discovery */}
             <span className="flex items-center gap-1.5">
-              {freshness?.discoveryStale
-                ? <span className="inline-block w-1.5 h-1.5 rounded-full bg-warning/60 shrink-0" />
-                : null}
+              {freshness?.discoveryStale && (
+                <span className="w-1.5 h-1.5 rounded-full bg-gold flex-shrink-0" />
+              )}
               {freshness?.discoveryAt ? (
                 <>
-                  MARKETS RESCANNED {new Date(freshness.discoveryAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  Markets rescanned {new Date(freshness.discoveryAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   {freshness.nextDiscoveryAt != null && (
-                    <> · NEXT {new Date(freshness.nextDiscoveryAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</>
-                  )}
-                  {' '}· 3H CADENCE
+                    <> · next {new Date(freshness.nextDiscoveryAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</>
+                  )}{' '}· 3h cadence
                 </>
-              ) : 'DISCOVERY NOT RUN YET'}
+              ) : 'Discovery not run yet'}
               {freshness?.discoveryStale && freshness.discoveryLabel && (
-                <span className="text-warning"> ({freshness.discoveryLabel} — MISSED SLOT?)</span>
+                <span className="text-gold"> ({freshness.discoveryLabel} — missed slot?)</span>
               )}
             </span>
           </div>
         </div>
       )}
 
-      {/* Stats strip */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-5">
+      {/* ── Stats strip ─────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         {loading ? (
-          Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} h="h-16" />)
+          Array.from({ length: 4 }).map((_, i) => <CardSkeleton key={i} />)
         ) : (
           <>
-            <StatPanel
-              label="RESULTS FOUND"
-              value={`${stats?.validCount ?? 0}`}
-              sub={`${data?.rejected ?? 0} EXCLUDED`}
+            <StatCard
+              label="Confirmed arb"
+              value={`${stats?.cashableCount ?? 0}`}
+              note={
+                (stats?.cashableCount ?? 0) === 0
+                  ? `Checking again in ${nextCheckMin(freshness)}m`
+                  : `of ${stats?.totalCashableCandidates ?? stats?.cashableCount ?? 0} candidates assessed`
+              }
             />
-            <StatPanel
-              label="MARKETS TRACKED"
+            <StatCard
+              label="Markets tracked"
               value={stats?.marketsTracked ? String(stats.marketsTracked) : '—'}
-              sub="ACROSS 4 PLATFORMS"
+              note="across 4 platforms"
             />
-            <StatPanel
-              label="CANDIDATES ANALYZED"
-              value={`${(stats?.totalCashableCandidates ?? 0).toLocaleString()}`}
-              sub={`${(stats?.pendingVerification ?? 0) > 0 ? `${stats!.pendingVerification} PENDING AI` : 'AI-VERIFIED'}`}
+            <StatCard
+              label="Signals watching"
+              value={`${stats?.signalCount ?? 0}`}
+              note="divergence detected, below threshold"
             />
-            <StatPanel
-              label="BEST SPREAD"
-              value={opps.length > 0 ? `${Math.max(...opps.map(o => o.spread)).toFixed(1)}%` : '—'}
-              sub="MID-PRICE GAP · SEE DETAIL"
+            <StatCard
+              label="Quarantined"
+              value={`${data?.rejected ?? 0}`}
+              note="excluded — ROI > 50%, bad URLs, or mismatch"
             />
           </>
         )}
       </div>
 
-      {/* Opportunity list */}
+      {/* ── Opportunity list ─────────────────────────────────────────────────── */}
       {loading ? (
-        <div className="space-y-2">
-          {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} h="h-[88px]" />)}
+        <div className="space-y-3">
+          {Array.from({ length: 3 }).map((_, i) => <RowSkeleton key={i} />)}
         </div>
       ) : opps.length === 0 ? (
-        <div className="border border-border px-6 py-16 text-center">
-          <div className="font-mono text-sm text-text-secondary uppercase tracking-widest mb-2">
-            NO RESULT FOUND
-          </div>
-          <div className="font-mono text-[10px] text-text-muted">
-            {(data?.rejected ?? 0) > 0
-              ? `${data!.rejected} ENTR${data!.rejected === 1 ? 'Y' : 'IES'} FAILED VALIDATION (ROI > 50%, NULL PRICES, MISSING URLS)`
-              : freshness?.discoveryAt
-                ? 'LAST SNAPSHOT FOUND NO SAME-EVENT DIVERGENCE ABOVE THRESHOLD'
-                : 'NO SNAPSHOT YET — MATCHER HAS NOT RUN'}
-          </div>
+        <div className="rounded-card shadow-card bg-surface px-6 py-16 text-center">
+          <p className="font-display font-bold text-4xl text-ink mb-3">0</p>
+          <p className="font-body text-base text-ink-2 mb-1">
+            No confirmed arb right now — checking again in {nextCheckMin(freshness)}m
+          </p>
+          <p className="font-body text-sm text-muted">
+            {(stats?.signalCount ?? 0) > 0
+              ? `${stats!.signalCount} signal${stats!.signalCount !== 1 ? 's' : ''} detected below confidence threshold`
+              : (data?.rejected ?? 0) > 0
+                ? `${data!.rejected} entr${data!.rejected === 1 ? 'y' : 'ies'} quarantined — ROI > 50%, null prices, or resolution mismatch`
+                : freshness?.discoveryAt
+                  ? 'Last scan found no same-event divergence above threshold'
+                  : 'Matcher has not run yet'}
+          </p>
         </div>
       ) : (
         <>
-          <div className="font-mono text-[10px] text-text-muted uppercase tracking-widest mb-3">
-            {opps.length} RESULT{opps.length !== 1 ? 'S' : ''} FOUND · {data!.rejected} EXCLUDED · SORTED BY SPREAD DESC
-          </div>
-          {opps.map(opp => (
-            <OppRow key={opp.id} opp={opp} />
-          ))}
+          {/* Cashable arb section */}
+          {opps.some(o => o.type === 'cashable') && (
+            <div className="mb-6">
+              <div className="flex items-center gap-2 mb-3">
+                <EdgeChip variant="cashable" />
+                <span className="font-body text-[12px] text-muted">
+                  {opps.filter(o => o.type === 'cashable').length} confirmed executable — both legs verified, confidence ≥ 85%, capacity ≥ $50
+                </span>
+              </div>
+              <div className="space-y-3">
+                {opps.filter(o => o.type === 'cashable').map(opp => (
+                  <OppRow key={opp.id} opp={opp} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Signal / paper section */}
+          {opps.some(o => o.type === 'signal') && (
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <EdgeChip variant="signal" />
+                <span className="font-body text-[12px] text-muted">
+                  {opps.filter(o => o.type === 'signal').length} signal{opps.filter(o => o.type === 'signal').length !== 1 ? 's' : ''} — divergence detected, not yet executable
+                </span>
+              </div>
+              <div className="space-y-3">
+                {opps.filter(o => o.type === 'signal').map(opp => (
+                  <OppRow key={opp.id} opp={opp} />
+                ))}
+              </div>
+            </div>
+          )}
         </>
       )}
 
