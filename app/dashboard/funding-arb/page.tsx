@@ -238,7 +238,7 @@ function TypeFilterToggle({
           >
             {opt.label}
             {opt.hint && (
-              <span className="ml-1 text-[7px] text-text-muted/40 align-middle">{opt.hint}</span>
+              <span className="ml-1 text-[7px] text-muted/40 align-middle">{opt.hint}</span>
             )}
           </button>
         ))}
@@ -600,7 +600,7 @@ function OpportunityCards({
 
       {/* List view — hairline dividers, no outer border */}
       {view === 'list' && (
-        <div className="divide-y divide-border/15">
+        <div className="divide-y divide-line/15">
           {visible.map(s => {
             const dayUsd  = N0 > 0 ? (N0 * s.netApy30d / 100) / 365 : null;
             const feesUsd = N0 > 0 ? N0 * s.totalFeesPct / 100 : null;
@@ -709,26 +709,26 @@ function OpportunityCards({
 
 function StatusLegend() {
   return (
-    <div className="px-4 py-2 bg-bg-elevated/20 border-b border-border/30 flex flex-wrap gap-x-5 gap-y-0.5 items-center">
-      <span className="font-mono text-[9px]">
-        <span className="text-positive font-semibold">HARVEST</span>
-        <span className="text-text-muted"> = fees back in ≤5 days</span>
+    <div className="px-4 py-2 bg-bg-soft/20 border-b border-line/30 flex flex-wrap gap-x-5 gap-y-0.5 items-center">
+      <span className="font-body text-[9px]">
+        <span className="text-mint-deep font-semibold">HARVEST</span>
+        <span className="text-muted"> = fees back in ≤5 days</span>
       </span>
-      <span className="font-mono text-[9px]">
-        <span className="text-warning font-semibold">CAUTION</span>
-        <span className="text-text-muted"> = 5–10 days</span>
+      <span className="font-body text-[9px]">
+        <span className="text-gold font-semibold">CAUTION</span>
+        <span className="text-muted"> = 5–10 days</span>
       </span>
-      <span className="font-mono text-[9px]">
-        <span className="text-negative/70 font-semibold">MARGINAL</span>
-        <span className="text-text-muted"> = {'>'}10 days — spread likely shifts first</span>
+      <span className="font-body text-[9px]">
+        <span className="text-coral-ink/70 font-semibold">MARGINAL</span>
+        <span className="text-muted"> = {'>'}10 days — spread likely shifts first</span>
       </span>
-      <span className="font-mono text-[9px] ml-auto hidden sm:inline">
-        <span className="text-accent">DEEP</span>
-        <span className="text-text-muted"> &gt;$50M · </span>
-        <span className="text-text-secondary">OK</span>
-        <span className="text-text-muted"> &gt;$10M · </span>
-        <span className="text-warning">THIN</span>
-        <span className="text-text-muted"> &gt;$1M</span>
+      <span className="font-body text-[9px] ml-auto hidden sm:inline">
+        <span className="text-mint">DEEP</span>
+        <span className="text-muted"> &gt;$50M · </span>
+        <span className="text-ink-2">OK</span>
+        <span className="text-muted"> &gt;$10M · </span>
+        <span className="text-gold">THIN</span>
+        <span className="text-muted"> &gt;$1M</span>
       </span>
     </div>
   );
@@ -737,15 +737,15 @@ function StatusLegend() {
 // ── Table helpers ─────────────────────────────────────────────────────────────
 
 function LiqChip({ tier, thin }: { tier: string | null; thin: boolean }) {
-  if (!tier) return <span className="font-mono text-[9px] text-text-muted">—</span>;
+  if (!tier) return <span className="font-body text-[9px] text-muted">—</span>;
   const cls: Record<string, string> = {
-    DEEP:        'border-accent/40 text-accent',
-    OK:          'border-border text-text-secondary',
-    THIN:        'border-warning/50 text-warning',
-    'VERY THIN': 'border-negative/40 text-negative/80',
+    DEEP:        'border-mint/40 text-mint',
+    OK:          'border-line text-ink-2',
+    THIN:        'border-gold/50 text-gold',
+    'VERY THIN': 'border-coral-ink/40 text-coral-ink/80',
   };
   return (
-    <span className={`px-1 py-[1px] border text-[8px] font-mono uppercase ${cls[tier] ?? 'border-border text-text-muted'}`}>
+    <span className={`px-1 py-[1px] border text-[8px] font-body uppercase ${cls[tier] ?? 'border-line text-muted'}`}>
       {tier}{thin ? ' ⚠' : ''}
     </span>
   );
@@ -754,7 +754,7 @@ function LiqChip({ tier, thin }: { tier: string | null; thin: boolean }) {
 function FeeNote({ meta }: { meta: Meta | null }) {
   if (!meta) return null;
   return (
-    <p className="font-mono text-[9px] text-text-muted mt-1.5 leading-relaxed">
+    <p className="font-body text-[9px] text-muted mt-1.5 leading-relaxed">
       Fee/leg: Binance/Bybit/OKX {meta.feePerLeg.cex}% · Gate.io 0.05% · Bitget 0.06% · Hyperliquid {meta.feePerLeg.dex}% · dYdX 0.05%.
       Round-trip = 4 legs (open+close both sides). Net yield (30d) = gross APR × 30d − fees.
       MARGINAL = &gt;10d · CAUTION = &gt;5d · HARVEST = ≤5d.
@@ -776,7 +776,7 @@ const TABLE_HEADERS: { label: string; tip?: string; cls?: string }[] = [
   {
     label: 'Net $/day · ROC ↓',
     tip:   '$/day on your capital (primary when capital is set), with run-rate ROC %/yr on total capital below. Fees deducted, 30d hold projected. NOT guaranteed — rate changes every 1h or 8h.',
-    cls:   'text-positive',
+    cls:   'text-mint-deep',
   },
   {
     label: 'Before fees',
@@ -809,17 +809,17 @@ function SpreadTable({
     <div>
       <StatusLegend />
       {spreads.length === 0 ? (
-        <div className="py-8 text-center font-mono text-[10px] text-text-muted">No pairs in current data.</div>
+        <div className="py-8 text-center font-body text-[10px] text-muted">No pairs in current data.</div>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full font-mono text-[11px] border-collapse">
             <thead>
-              <tr className="border-b border-border">
+              <tr className="border-b border-line">
                 {TABLE_HEADERS.map(h => (
                   <th
                     key={h.label}
                     title={h.tip}
-                    className={`px-3 py-2 text-left text-[9px] uppercase tracking-widest font-normal whitespace-nowrap ${h.cls ?? 'text-text-muted'} ${h.tip ? 'cursor-help' : ''}`}
+                    className={`px-3 py-2 text-left text-[9px] uppercase tracking-widest font-normal whitespace-nowrap ${h.cls ?? 'text-muted'} ${h.tip ? 'cursor-help' : ''}`}
                   >
                     {h.label}
                   </th>
@@ -833,41 +833,41 @@ function SpreadTable({
                 const sz         = capital > 0 ? calcSpreadSizing(s, capital, leverage) : null;
                 return (
                   <Fragment key={key}>
-                    <tr className={`border-b ${sz ? 'border-border/20' : 'border-border/50'} hover:bg-bg-elevated/40 transition-colors duration-100 ${isMarginal ? 'opacity-50' : ''} ${s.thinFlag ? 'opacity-70' : ''}`}>
-                      <td className="px-3 py-2.5 font-semibold text-text-primary">{s.coin}</td>
+                    <tr className={`border-b ${sz ? 'border-line/20' : 'border-line/50'} hover:bg-bg-soft/40 transition-colors duration-100 ${isMarginal ? 'opacity-50' : ''} ${s.thinFlag ? 'opacity-70' : ''}`}>
+                      <td className="px-3 py-2.5 font-semibold text-ink">{s.coin}</td>
                       <td className="px-3 py-2.5 whitespace-nowrap">
-                        <span className={s.shortIsDex ? 'text-accent' : 'text-text-secondary'}>{venueLabel(s.shortExchange)}</span>
-                        <span className="text-border mx-1">·</span>
+                        <span className={s.shortIsDex ? 'text-mint' : 'text-ink-2'}>{venueLabel(s.shortExchange)}</span>
+                        <span className="text-line mx-1">·</span>
                         <span className={rateCls(s.frShort)}>{fmtRate(s.frShort, s.intervalHoursShort)}</span>
                       </td>
                       <td className="px-3 py-2.5 whitespace-nowrap">
-                        <span className={s.longIsDex ? 'text-accent' : 'text-text-secondary'}>{venueLabel(s.longExchange)}</span>
-                        <span className="text-border mx-1">·</span>
+                        <span className={s.longIsDex ? 'text-mint' : 'text-ink-2'}>{venueLabel(s.longExchange)}</span>
+                        <span className="text-line mx-1">·</span>
                         <span className={rateCls(s.frLong)}>{fmtRate(s.frLong, s.intervalHoursLong)}</span>
                       </td>
                       <td className="px-3 py-2.5 tabular-nums">
                         {sz ? (
                           <div className="flex flex-col gap-0.5">
-                            <span className={`text-base font-bold ${s.oneLegUnverified ? 'text-text-muted' : sz.roc > 0 ? 'text-positive' : 'text-negative/70'}`}>
+                            <span className={`text-base font-bold ${s.oneLegUnverified ? 'text-muted' : sz.roc > 0 ? 'text-mint-deep' : 'text-coral-ink/70'}`}>
                               {fmtDayUsd(sz.dayUsd)}
                             </span>
-                            <span className="font-mono text-[9px] text-text-muted/60">
+                            <span className="font-mono text-[9px] text-muted/60">
                               {fmtApy(sz.roc)} ROC · run-rate · excl. entry slippage
                             </span>
                           </div>
                         ) : (
-                          <span className={`text-base font-bold ${s.netApy30d > 0 ? 'text-positive' : 'text-negative/70'}`}>
+                          <span className={`text-base font-bold ${s.netApy30d > 0 ? 'text-mint-deep' : 'text-coral-ink/70'}`}>
                             {fmtApy(s.netApy30d)}
                           </span>
                         )}
                       </td>
-                      <td className="px-3 py-2.5 tabular-nums text-[10px] text-text-muted">{fmtApy(s.grossApy)}</td>
-                      <td className="px-3 py-2.5 tabular-nums text-text-muted text-[10px] whitespace-nowrap">
-                        {s.totalFeesPct.toFixed(2)}%{s.hasDexLeg && <span className="text-accent ml-1">†</span>}
+                      <td className="px-3 py-2.5 tabular-nums text-[10px] text-muted">{fmtApy(s.grossApy)}</td>
+                      <td className="px-3 py-2.5 tabular-nums text-muted text-[10px] whitespace-nowrap">
+                        {s.totalFeesPct.toFixed(2)}%{s.hasDexLeg && <span className="text-mint ml-1">†</span>}
                       </td>
-                      <td className="px-3 py-2.5 tabular-nums text-text-secondary whitespace-nowrap">{s.breakevenDays}d</td>
+                      <td className="px-3 py-2.5 tabular-nums text-ink-2 whitespace-nowrap">{s.breakevenDays}d</td>
                       <td className="px-3 py-2.5">
-                        <span className={`px-1.5 py-[2px] border text-[9px] uppercase tracking-widest ${statusBadgeCls(s.status)}`}>
+                        <span className={`px-1.5 py-[2px] border text-[9px] uppercase tracking-widest font-body ${statusBadgeCls(s.status)}`}>
                           {s.status}
                         </span>
                       </td>
@@ -875,28 +875,28 @@ function SpreadTable({
                         <div className="flex flex-col gap-0.5">
                           <LiqChip tier={s.liquidityTier} thin={s.thinFlag} />
                           {s.greenCapacityUsd != null && (
-                            <span className={`font-mono text-[8px] ${s.greenCapacityUsd === 0 ? 'text-warning/70' : 'text-positive/70'}`}>
+                            <span className={`font-mono text-[8px] ${s.greenCapacityUsd === 0 ? 'text-gold/70' : 'text-mint-deep/70'}`}>
                               {s.greenCapacityUsd === 0 ? '$0 green' : fmtCapWords(s.greenCapacityUsd)}
                             </span>
                           )}
                           {s.depthThin && s.depthNote && (
-                            <span className="font-mono text-[8px] text-warning/70 leading-tight">{s.depthNote}</span>
+                            <span className="font-mono text-[8px] text-gold/70 leading-tight">{s.depthNote}</span>
                           )}
                         </div>
                       </td>
                     </tr>
                     {sz && (
-                      <tr className="border-b border-border/50 bg-bg-elevated/10">
+                      <tr className="border-b border-line/50 bg-bg-soft/10">
                         <td colSpan={9} className="px-3 py-1.5">
                           <div className="flex flex-wrap gap-x-4 font-mono text-[10px]">
                             {s.oneLegUnverified && (
-                              <span className="text-text-muted/70 italic">1 leg unverified — spread uses predicted rate, may be overstated.</span>
+                              <span className="text-muted/70 italic">1 leg unverified — spread uses predicted rate, may be overstated.</span>
                             )}
-                            <span className="text-text-muted">N/leg <span className="text-text-primary tabular-nums">{fmtUsd(sz.N)}</span></span>
-                            <span className="text-text-muted">Fees <span className="text-text-primary tabular-nums">{fmtUsd(sz.feesUsd)}</span></span>
-                            <span className="text-text-muted">Net 30d <span className={`tabular-nums ${sz.net30dUsd >= 0 ? 'text-positive' : 'text-negative'}`}>{fmtUsd(sz.net30dUsd)}</span></span>
-                            <span className="text-text-muted">Net/yr <span className={`tabular-nums ${sz.netYrUsd >= 0 ? 'text-positive' : 'text-negative'}`}>{fmtUsd(sz.netYrUsd)}</span></span>
-                            <span className="ml-auto text-text-muted">ROC <span className={`tabular-nums font-semibold ${sz.roc >= 0 ? 'text-positive' : 'text-negative'}`}>{sz.roc >= 0 ? '+' : ''}{sz.roc.toFixed(1)}%/yr</span></span>
+                            <span className="text-muted">N/leg <span className="text-ink tabular-nums">{fmtUsd(sz.N)}</span></span>
+                            <span className="text-muted">Fees <span className="text-ink tabular-nums">{fmtUsd(sz.feesUsd)}</span></span>
+                            <span className="text-muted">Net 30d <span className={`tabular-nums ${sz.net30dUsd >= 0 ? 'text-mint-deep' : 'text-coral-ink'}`}>{fmtUsd(sz.net30dUsd)}</span></span>
+                            <span className="text-muted">Net/yr <span className={`tabular-nums ${sz.netYrUsd >= 0 ? 'text-mint-deep' : 'text-coral-ink'}`}>{fmtUsd(sz.netYrUsd)}</span></span>
+                            <span className="ml-auto text-muted">ROC <span className={`tabular-nums font-semibold ${sz.roc >= 0 ? 'text-mint-deep' : 'text-coral-ink'}`}>{sz.roc >= 0 ? '+' : ''}{sz.roc.toFixed(1)}%/yr</span></span>
                           </div>
                         </td>
                       </tr>
@@ -907,7 +907,7 @@ function SpreadTable({
             </tbody>
           </table>
           {spreads.some(s => s.hasDexLeg) && (
-            <div className="px-3 pb-2 pt-1 font-mono text-[9px] text-accent/70 space-y-0.5">
+            <div className="px-3 pb-2 pt-1 font-body text-[9px] text-mint/70 space-y-0.5">
               {spreads.some(s => s.shortExchange === 'hyperliquid' || s.longExchange === 'hyperliquid') && (
                 <div>† Hyperliquid: 0.025%/leg taker · USDC bridge ~10 min + ~$1–5 ETH gas one-time · resets HOURLY</div>
               )}
@@ -947,10 +947,10 @@ function RateHeatmap({ futures }: { futures: Record<string, Record<string, Futur
     <div className="overflow-x-auto">
       <table className="w-full font-mono text-[11px] border-collapse">
         <thead>
-          <tr className="border-b border-border">
-            <th className="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-text-muted font-normal">Asset</th>
+          <tr className="border-b border-line">
+            <th className="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-muted font-normal">Asset</th>
             {allExchanges.map(ex => (
-              <th key={ex} className={`px-3 py-2 text-left text-[9px] uppercase tracking-widest font-normal whitespace-nowrap ${DEX_ORDER.includes(ex) ? 'text-accent' : 'text-text-muted'}`}>
+              <th key={ex} className={`px-3 py-2 text-left text-[9px] uppercase tracking-widest font-normal whitespace-nowrap ${DEX_ORDER.includes(ex) ? 'text-mint' : 'text-muted'}`}>
                 {ex === 'dydx' ? 'dYdX (DEX)' : ex === 'hyperliquid' ? 'Hyperliquid (DEX)' : capFirst(ex)}
               </th>
             ))}
@@ -958,17 +958,17 @@ function RateHeatmap({ futures }: { futures: Record<string, Record<string, Futur
         </thead>
         <tbody>
           {coins.map(coin => (
-            <tr key={coin} className="border-b border-border/50 hover:bg-bg-elevated/40 transition-colors duration-100">
-              <td className="px-3 py-2.5 font-semibold text-text-primary">{coin}</td>
+            <tr key={coin} className="border-b border-line/50 hover:bg-bg-soft/40 transition-colors duration-100">
+              <td className="px-3 py-2.5 font-semibold text-ink">{coin}</td>
               {allExchanges.map(ex => {
                 const data = futures[ex]?.[coin];
-                if (!data) return <td key={ex} className="px-3 py-2.5 text-text-muted/30 text-[10px]">—</td>;
+                if (!data) return <td key={ex} className="px-3 py-2.5 text-muted/30 text-[10px]">—</td>;
                 const intervalH = data.fundingIntervalHours ?? 8;
                 return (
                   <td key={ex} className="px-3 py-2.5 tabular-nums whitespace-nowrap">
                     <span className={rateCls(data.fundingRate)}>{fmtRate(data.fundingRate, intervalH)}</span>
                     {data.markPrice != null && (
-                      <span className="ml-2 text-text-muted text-[9px]">
+                      <span className="ml-2 text-muted text-[9px]">
                         ${data.markPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}
                       </span>
                     )}
@@ -988,9 +988,9 @@ function RateHeatmap({ futures }: { futures: Record<string, Record<string, Futur
 function CexArbSection({ items }: { items: CexArbItem[] }) {
   return (
     <div>
-      <div className="px-4 py-2 border-b border-border flex items-center justify-between flex-wrap gap-2">
-        <span className="font-mono text-[10px] uppercase tracking-widest text-text-muted">CEX Spot Arbitrage</span>
-        <span className="font-mono text-[9px] text-text-muted">
+      <div className="px-4 py-2 border-b border-line flex items-center justify-between flex-wrap gap-2">
+        <span className="font-body text-[10px] uppercase tracking-widest text-muted">CEX Spot Arbitrage</span>
+        <span className="font-body text-[9px] text-muted">
           {items.length > 0
             ? `${items.length} spread${items.length > 1 ? 's' : ''} above 0.3% threshold`
             : 'spot price spread · threshold 0.3%'}
@@ -998,8 +998,8 @@ function CexArbSection({ items }: { items: CexArbItem[] }) {
       </div>
       {items.length === 0 ? (
         <div className="px-4 py-6 text-center space-y-1">
-          <div className="font-mono text-[11px] text-text-muted">No spot spread above threshold right now</div>
-          <div className="font-mono text-[9px] text-text-muted/50">
+          <div className="font-body text-[11px] text-muted">No spot spread above threshold right now</div>
+          <div className="font-body text-[9px] text-muted/50">
             Scanner checks Binance · Bybit · OKX every 60s · threshold 0.3% · execution risk: slippage + withdrawal lag
           </div>
         </div>
@@ -1007,30 +1007,30 @@ function CexArbSection({ items }: { items: CexArbItem[] }) {
         <div className="overflow-x-auto">
           <table className="w-full font-mono text-[11px] border-collapse">
             <thead>
-              <tr className="border-b border-border">
+              <tr className="border-b border-line">
                 {['Asset', 'Buy on (low)', 'Buy price', 'Sell on (high)', 'Sell price', 'Spread'].map(h => (
-                  <th key={h} className="px-3 py-2 text-left text-[9px] uppercase tracking-widest font-normal text-text-muted whitespace-nowrap">{h}</th>
+                  <th key={h} className="px-3 py-2 text-left text-[9px] uppercase tracking-widest font-normal text-muted whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {items.map(a => (
-                <tr key={`${a.coin}-${a.low}-${a.high}`} className="border-b border-border/50 hover:bg-bg-elevated/40 transition-colors duration-100">
-                  <td className="px-3 py-2.5 font-semibold text-text-primary">{a.coin}</td>
-                  <td className="px-3 py-2.5 text-text-secondary capitalize">{a.low}</td>
-                  <td className="px-3 py-2.5 tabular-nums text-text-primary">
+                <tr key={`${a.coin}-${a.low}-${a.high}`} className="border-b border-line/50 hover:bg-bg-soft/40 transition-colors duration-100">
+                  <td className="px-3 py-2.5 font-semibold text-ink">{a.coin}</td>
+                  <td className="px-3 py-2.5 text-ink-2 capitalize">{a.low}</td>
+                  <td className="px-3 py-2.5 tabular-nums text-ink">
                     ${a.lowPrice.toLocaleString(undefined, { maximumFractionDigits: a.lowPrice > 1 ? 2 : 5 })}
                   </td>
-                  <td className="px-3 py-2.5 text-text-secondary capitalize">{a.high}</td>
-                  <td className="px-3 py-2.5 tabular-nums text-text-primary">
+                  <td className="px-3 py-2.5 text-ink-2 capitalize">{a.high}</td>
+                  <td className="px-3 py-2.5 tabular-nums text-ink">
                     ${a.highPrice.toLocaleString(undefined, { maximumFractionDigits: a.highPrice > 1 ? 2 : 5 })}
                   </td>
-                  <td className="px-3 py-2.5 tabular-nums font-bold text-positive">+{a.spreadPct.toFixed(3)}%</td>
+                  <td className="px-3 py-2.5 tabular-nums font-bold text-mint-deep">+{a.spreadPct.toFixed(3)}%</td>
                 </tr>
               ))}
             </tbody>
           </table>
-          <p className="px-4 py-2 font-mono text-[9px] text-text-muted/60">
+          <p className="px-4 py-2 font-body text-[9px] text-muted/60">
             Spread is gross · subtract withdrawal fee + transfer time · signals only, no execution.
           </p>
         </div>
@@ -1176,7 +1176,7 @@ export default function CryptoPage() {
       ) : !data?.ok ? (
         <div className="py-20 text-center space-y-2">
           <div className="font-body text-sm text-coral-ink">No data</div>
-          <div className="font-mono text-[10px] text-muted">
+          <div className="font-mono text-[10px] text-muted/70">
             pm2 start ecosystem.config.js --only agent10-binance
           </div>
         </div>

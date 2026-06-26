@@ -24,15 +24,15 @@ interface HistoryData {
 }
 
 const TYPE_CHIP: Record<string, string> = {
-  prediction_market: 'border-accent/40 text-accent-bright',
-  funding_rate:      'border-accent/30 text-accent',
-  cex_arb:           'border-warning/40 text-warning',
-  sports_arb:        'border-positive/40 text-positive',
-  cash_carry:        'border-warning/30 text-warning',
+  prediction_market: 'border-violet/40 text-violet',
+  funding_rate:      'border-mint/30 text-mint',
+  cex_arb:           'border-gold/40 text-gold',
+  sports_arb:        'border-mint-deep/40 text-mint-deep',
+  cash_carry:        'border-gold/30 text-gold',
 };
 
 function typeChip(t: string) {
-  return TYPE_CHIP[t] ?? 'border-border text-text-secondary';
+  return TYPE_CHIP[t] ?? 'border-line text-ink-2';
 }
 
 function fmtDate(iso: string) {
@@ -75,20 +75,20 @@ export default function HistoryPage() {
     URL.revokeObjectURL(url);
   }
 
-  const selectClass = "px-3 py-1.5 rounded border border-border bg-bg-elevated text-xs text-text-secondary font-mono focus:outline-none focus:border-accent/60";
+  const selectClass = "px-3 py-1.5 rounded-button border border-line bg-bg-soft text-xs text-ink-2 font-body focus:outline-none focus:border-mint/60";
 
   return (
-    <main className="text-text-primary">
-      <div className="border-b border-border bg-bg-panel/80 backdrop-blur-sm">
+    <main className="text-ink">
+      <div className="border-b border-line bg-surface/80 backdrop-blur-sm">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-4 flex-wrap">
-          <span className="font-semibold text-text-primary text-xs font-mono uppercase tracking-widest">SCAN HISTORY</span>
+          <span className="font-body font-semibold text-ink text-xs uppercase tracking-widest">SCAN HISTORY</span>
           {data && (
-            <span className="text-xs text-text-muted font-mono">
+            <span className="font-body text-xs text-muted">
               {data.totalScans} scans · {data.totalOpps.toLocaleString()} total opps
             </span>
           )}
           <button onClick={exportCsv}
-            className="ml-auto px-3 py-1.5 rounded border border-border text-text-secondary text-xs font-mono hover:border-accent/30 hover:text-text-primary transition-colors duration-100">
+            className="ml-auto px-3 py-1.5 rounded-button border border-line text-ink-2 font-body text-xs hover:border-mint/30 hover:text-ink transition-colors duration-100">
             EXPORT CSV
           </button>
         </div>
@@ -105,9 +105,9 @@ export default function HistoryPage() {
               { label: 'ALERTS SENT',         value: data.totalAlerts },
               { label: 'LAST SCAN',           value: data.lastScan ? fmtDate(data.lastScan) : '—' },
             ].map(s => (
-              <div key={s.label} className="rounded border border-border bg-bg-panel p-4">
-                <div className="text-xs text-text-muted font-mono uppercase tracking-widest mb-1">{s.label}</div>
-                <div className="text-lg font-bold font-mono tabular-nums text-text-primary">{s.value}</div>
+              <div key={s.label} className="rounded-card border border-line bg-surface p-4 shadow-card">
+                <div className="font-body text-xs text-muted uppercase tracking-widest mb-1">{s.label}</div>
+                <div className="font-mono text-lg font-bold tabular-nums text-ink">{s.value}</div>
               </div>
             ))}
           </div>
@@ -116,7 +116,7 @@ export default function HistoryPage() {
         {/* Filters */}
         <div className="flex flex-wrap gap-2">
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by title…"
-            className="flex-1 min-w-40 px-3 py-1.5 rounded border border-border bg-bg-elevated text-xs text-text-secondary font-mono focus:outline-none focus:border-accent/60 placeholder:text-text-muted" />
+            className="flex-1 min-w-40 px-3 py-1.5 rounded-button border border-line bg-bg-soft text-xs text-ink-2 font-body focus:outline-none focus:border-mint/60 placeholder:text-muted" />
           <select value={dateRange} onChange={e => setDateRange(+e.target.value)} className={selectClass}>
             <option value={1}>Last 24h</option>
             <option value={7}>Last 7 days</option>
@@ -140,14 +140,14 @@ export default function HistoryPage() {
 
         {/* Table */}
         {loading ? (
-          <div className="text-center py-12 text-text-muted font-mono text-xs">LOADING HISTORY…</div>
+          <div className="text-center py-12 font-body text-xs text-muted">LOADING HISTORY…</div>
         ) : !filtered.length ? (
-          <div className="text-center py-12 text-text-muted font-mono text-xs">NO SCANS FOUND FOR SELECTED FILTERS</div>
+          <div className="text-center py-12 font-body text-xs text-muted">NO SCANS FOUND FOR SELECTED FILTERS</div>
         ) : (
-          <div className="rounded border border-border overflow-hidden">
+          <div className="rounded-card border border-line overflow-hidden shadow-card">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-border bg-bg-panel text-text-muted text-xs font-mono uppercase tracking-widest">
+                <tr className="border-b border-line bg-surface text-muted text-xs font-body uppercase tracking-widest">
                   <th className="px-4 py-2.5 text-left font-semibold">Date</th>
                   <th className="px-4 py-2.5 text-left font-semibold">Status</th>
                   <th className="px-4 py-2.5 text-right font-semibold">Opps</th>
@@ -159,37 +159,37 @@ export default function HistoryPage() {
               </thead>
               <tbody>
                 {filtered.map((e, i) => (
-                  <tr key={e.ts + i} className="border-b border-border/50 hover:bg-bg-elevated/30 transition-colors duration-75">
-                    <td className="px-4 py-2.5 text-text-muted text-xs font-mono tabular-nums whitespace-nowrap">{fmtDate(e.ts)}</td>
+                  <tr key={e.ts + i} className="border-b border-line/50 hover:bg-bg-soft/30 transition-colors duration-75">
+                    <td className="px-4 py-2.5 text-muted text-xs font-mono tabular-nums whitespace-nowrap">{fmtDate(e.ts)}</td>
                     <td className="px-4 py-2.5">
-                      <span className={`px-1.5 py-0.5 rounded border text-xs font-mono uppercase tracking-wide ${
+                      <span className={`px-1.5 py-0.5 rounded-sm border font-body text-xs uppercase tracking-wide ${
                         e.status === 'success'
-                          ? 'border-positive/40 bg-positive/10 text-positive'
-                          : 'border-negative/40 bg-negative/10 text-negative'
+                          ? 'border-mint-deep/40 bg-mint-tint text-mint-deep'
+                          : 'border-coral-ink/40 bg-coral-tint text-coral-ink'
                       }`}>
                         {e.status}
                       </span>
                     </td>
-                    <td className="px-4 py-2.5 text-right font-bold font-mono tabular-nums text-text-primary">{e.opps}</td>
-                    <td className="px-4 py-2.5 text-right font-mono tabular-nums text-text-secondary">
+                    <td className="px-4 py-2.5 text-right font-bold font-mono tabular-nums text-ink">{e.opps}</td>
+                    <td className="px-4 py-2.5 text-right font-mono tabular-nums text-ink-2">
                       {e.avgConf != null ? `${e.avgConf}%` : '—'}
                     </td>
                     <td className="px-4 py-2.5 max-w-xs">
                       {e.best ? (
                         <div className="flex items-center gap-2">
-                          <span className={`px-1.5 py-0.5 rounded border bg-bg-elevated text-xs font-mono uppercase tracking-wide shrink-0 ${typeChip(e.best.type)}`}>
+                          <span className={`px-1.5 py-0.5 rounded-sm border bg-bg-soft font-body text-xs uppercase tracking-wide shrink-0 ${typeChip(e.best.type)}`}>
                             {e.best.type.replace(/_/g, ' ')}
                           </span>
-                          <span className="text-text-secondary truncate text-xs font-mono">{e.best.title?.slice(0, 50)}</span>
-                          <span className="text-accent-bright text-xs font-bold font-mono tabular-nums ml-auto shrink-0">{e.best.confidence}%</span>
+                          <span className="text-ink-2 truncate font-body text-xs">{e.best.title?.slice(0, 50)}</span>
+                          <span className="text-mint font-bold font-mono tabular-nums text-xs ml-auto shrink-0">{e.best.confidence}%</span>
                         </div>
-                      ) : <span className="text-text-muted font-mono">—</span>}
+                      ) : <span className="text-muted font-body">—</span>}
                     </td>
-                    <td className="px-4 py-2.5 text-right text-xs text-text-muted font-mono tabular-nums">{e.fng ?? '—'}</td>
+                    <td className="px-4 py-2.5 text-right text-xs text-muted font-mono tabular-nums">{e.fng ?? '—'}</td>
                     <td className="px-4 py-2.5 text-right font-mono tabular-nums">
                       {e.alertsSent > 0
-                        ? <span className="text-warning font-bold">{e.alertsSent}</span>
-                        : <span className="text-text-muted">0</span>}
+                        ? <span className="text-gold font-bold">{e.alertsSent}</span>
+                        : <span className="text-muted">0</span>}
                     </td>
                   </tr>
                 ))}

@@ -57,7 +57,7 @@ function fmtPnl(v: number) {
 }
 
 function pnlClass(v: number) {
-  return v > 0 ? 'text-green-400' : v < 0 ? 'text-red-400' : 'text-text-muted';
+  return v > 0 ? 'text-mint-deep' : v < 0 ? 'text-coral-ink' : 'text-muted';
 }
 
 function shortWallet(w: string) {
@@ -68,47 +68,47 @@ function shortWallet(w: string) {
 
 function AgentBanner({ status, updatedAt }: { status: string; updatedAt: string | null }) {
   const colors: Record<string, string> = {
-    running: 'border-green-500/30 text-green-400',
-    stale:   'border-yellow-500/30 text-yellow-400',
-    offline: 'border-red-500/30 text-red-400',
+    running: 'border-mint-deep/30 text-mint-deep',
+    stale:   'border-gold/30 text-gold',
+    offline: 'border-coral-ink/30 text-coral-ink',
   };
   const age = updatedAt
     ? Math.floor((Date.now() - new Date(updatedAt).getTime()) / 60_000)
     : null;
 
   return (
-    <div className={`border px-3 py-1.5 flex items-center gap-3 font-mono text-[10px] ${colors[status] ?? colors.offline}`}>
+    <div className={`border px-3 py-1.5 flex items-center gap-3 font-body text-[10px] rounded-card ${colors[status] ?? colors.offline}`}>
       <span className="uppercase tracking-widest">{status}</span>
       {age !== null && (
-        <span className="text-text-muted/50">updated {age}m ago</span>
+        <span className="text-muted/50">updated {age}m ago</span>
       )}
-      <span className="text-text-muted/30 ml-auto">agent17-poly-whales · ≤0.5 req/s · zero Claude</span>
+      <span className="text-muted/30 ml-auto">agent17-poly-whales · ≤0.5 req/s · zero Claude</span>
     </div>
   );
 }
 
 function WinRate({ pct }: { pct: number }) {
-  const color = pct >= 60 ? 'text-green-400' : pct >= 50 ? 'text-yellow-400' : 'text-red-400';
+  const color = pct >= 60 ? 'text-mint-deep' : pct >= 50 ? 'text-gold' : 'text-coral-ink';
   return <span className={`font-mono font-bold ${color}`}>{pct.toFixed(1)}%</span>;
 }
 
 function WalletCard({ w, rank }: { w: TopWallet; rank: number }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="border border-border/40 bg-bg-panel/30">
+    <div className="border border-line/40 bg-surface/30 rounded-card">
       {/* Header row */}
       <button
-        className="w-full px-4 py-3 flex items-center gap-4 text-left hover:bg-bg-elevated/20 transition-colors"
+        className="w-full px-4 py-3 flex items-center gap-4 text-left hover:bg-bg-soft/20 transition-colors"
         onClick={() => setOpen(o => !o)}
       >
-        <span className="font-mono text-[10px] text-text-muted/40 w-5 shrink-0">#{rank}</span>
+        <span className="font-mono text-[10px] text-muted/40 w-5 shrink-0">#{rank}</span>
 
         <div className="flex-1 min-w-0">
-          <div className="font-mono text-[11px] text-text-secondary truncate">
+          <div className="font-body text-[11px] text-ink-2 truncate">
             {w.name !== shortWallet(w.wallet) && w.name ? w.name : ''}
-            <span className="text-text-muted/50 ml-1">{shortWallet(w.wallet)}</span>
+            <span className="text-muted/50 ml-1 font-mono">{shortWallet(w.wallet)}</span>
           </div>
-          <div className="font-mono text-[10px] text-text-muted/40 mt-0.5">
+          <div className="font-body text-[10px] text-muted/40 mt-0.5">
             {w.resolvedMarkets} markets · {w.wins}W / {w.losses}L
           </div>
         </div>
@@ -120,40 +120,40 @@ function WalletCard({ w, rank }: { w: TopWallet; rank: number }) {
           </div>
         </div>
 
-        <span className="font-mono text-[9px] text-text-muted/30 ml-2">{open ? '▾' : '▸'}</span>
+        <span className="font-body text-[9px] text-muted/30 ml-2">{open ? '▾' : '▸'}</span>
       </button>
 
       {/* Expanded pattern detail */}
       {open && (
-        <div className="border-t border-border/30 px-4 py-3 grid grid-cols-2 gap-x-6 gap-y-2">
+        <div className="border-t border-line/30 px-4 py-3 grid grid-cols-2 gap-x-6 gap-y-2">
           <div>
-            <div className="font-mono text-[9px] uppercase tracking-widest text-text-muted/50 mb-1">Entry timing</div>
-            <div className="font-mono text-[11px] text-text-secondary">{w.pattern.timingLabel}</div>
+            <div className="font-body text-[9px] uppercase tracking-widest text-muted/50 mb-1">Entry timing</div>
+            <div className="font-body text-[11px] text-ink-2">{w.pattern.timingLabel}</div>
             {w.pattern.avgEntryTimingPct !== null && (
-              <div className="font-mono text-[10px] text-text-muted/40">{w.pattern.avgEntryTimingPct.toFixed(1)}% into window (avg)</div>
+              <div className="font-mono text-[10px] text-muted/40">{w.pattern.avgEntryTimingPct.toFixed(1)}% into window (avg)</div>
             )}
           </div>
           <div>
-            <div className="font-mono text-[9px] uppercase tracking-widest text-text-muted/50 mb-1">Side bias</div>
-            <div className="font-mono text-[11px] text-text-secondary">{w.pattern.sideBias}</div>
-            <div className="font-mono text-[10px] text-text-muted/40">Up-bet rate: {w.pattern.upBiasRate.toFixed(1)}%</div>
+            <div className="font-body text-[9px] uppercase tracking-widest text-muted/50 mb-1">Side bias</div>
+            <div className="font-body text-[11px] text-ink-2">{w.pattern.sideBias}</div>
+            <div className="font-mono text-[10px] text-muted/40">Up-bet rate: {w.pattern.upBiasRate.toFixed(1)}%</div>
           </div>
           <div>
-            <div className="font-mono text-[9px] uppercase tracking-widest text-text-muted/50 mb-1">Activity</div>
-            <div className="font-mono text-[11px] text-text-secondary">{w.pattern.avgTradesPerMarket.toFixed(1)} trades/market</div>
-            <div className="font-mono text-[10px] text-text-muted/40">avg ${w.pattern.avgExposurePerMarket.toFixed(0)} USDC/market</div>
+            <div className="font-body text-[9px] uppercase tracking-widest text-muted/50 mb-1">Activity</div>
+            <div className="font-mono text-[11px] text-ink-2">{w.pattern.avgTradesPerMarket.toFixed(1)} trades/market</div>
+            <div className="font-mono text-[10px] text-muted/40">avg ${w.pattern.avgExposurePerMarket.toFixed(0)} USDC/market</div>
           </div>
           <div>
-            <div className="font-mono text-[9px] uppercase tracking-widest text-text-muted/50 mb-1">Markets traded</div>
-            <div className="font-mono text-[11px] text-text-secondary">
+            <div className="font-body text-[9px] uppercase tracking-widest text-muted/50 mb-1">Markets traded</div>
+            <div className="font-body text-[11px] text-ink-2">
               {w.pattern.durationsTraded.length > 0 ? w.pattern.durationsTraded.join(', ') : '—'}
             </div>
-            <div className="font-mono text-[10px] text-text-muted/40">avg {fmtPnl(w.avgPnlPerMarket)}/market</div>
+            <div className="font-mono text-[10px] text-muted/40">avg {fmtPnl(w.avgPnlPerMarket)}/market</div>
           </div>
 
           {/* Disclaimer */}
-          <div className="col-span-2 mt-1 border-t border-border/20 pt-2">
-            <p className="font-mono text-[9px] text-text-muted/40 leading-relaxed">{w.disclaimer}</p>
+          <div className="col-span-2 mt-1 border-t border-line/20 pt-2">
+            <p className="font-body text-[9px] text-muted/40 leading-relaxed">{w.disclaimer}</p>
           </div>
         </div>
       )}
@@ -192,8 +192,8 @@ export default function WhalesPage() {
   return (
     <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
       <div>
-        <h1 className="font-mono text-lg font-bold text-text-primary tracking-tight">Whale Watch</h1>
-        <p className="font-mono text-[11px] text-text-muted mt-1">
+        <h1 className="font-display font-semibold text-lg text-ink tracking-tight">Whale Watch</h1>
+        <p className="font-body text-[11px] text-muted mt-1">
           Polymarket short-crypto-market wallets ranked by realized PnL — read-only, observational only
         </p>
       </div>
@@ -201,11 +201,11 @@ export default function WhalesPage() {
       <SectionHelp section="whales" />
 
       {loading && (
-        <div className="font-mono text-[11px] text-text-muted/50">Loading…</div>
+        <div className="font-body text-[11px] text-muted/50">Loading…</div>
       )}
 
       {error && (
-        <div className="font-mono text-[11px] text-red-400">Error: {error}</div>
+        <div className="font-body text-[11px] text-coral-ink">Error: {error}</div>
       )}
 
       {data && (
@@ -220,28 +220,28 @@ export default function WhalesPage() {
               { label: 'Unique wallets seen', value: data.uniqueWallets },
               { label: `Ranked (≥${data.minMarketsToRank} mkts)`, value: data.qualifiedWallets },
             ].map(({ label, value }) => (
-              <div key={label} className="border border-border/30 bg-bg-panel/20 px-3 py-2">
-                <div className="font-mono text-[9px] uppercase tracking-widest text-text-muted/50">{label}</div>
-                <div className="font-mono text-lg font-bold text-text-secondary mt-0.5">{value}</div>
+              <div key={label} className="border border-line/30 bg-surface/20 px-3 py-2 rounded-card">
+                <div className="font-body text-[9px] uppercase tracking-widest text-muted/50">{label}</div>
+                <div className="font-mono text-lg font-bold text-ink-2 mt-0.5">{value}</div>
               </div>
             ))}
           </div>
 
           {/* Disclaimer block */}
-          <div className="border border-yellow-500/20 bg-yellow-500/5 px-4 py-3 space-y-1">
-            <div className="font-mono text-[9px] uppercase tracking-widest text-yellow-400/70">Read before interpreting</div>
-            <p className="font-mono text-[10px] text-text-muted/70 leading-relaxed">
+          <div className="border border-gold/20 bg-gold/5 px-4 py-3 space-y-1 rounded-card">
+            <div className="font-body text-[9px] uppercase tracking-widest text-gold/70">Read before interpreting</div>
+            <p className="font-body text-[10px] text-muted/70 leading-relaxed">
               {data.stats?.disclaimer ?? 'Requires minimum resolved markets to rank a wallet. Most consistently-profitable wallets in short-duration markets are latency bots with infrastructure advantages not replicable by manual traders.'}
             </p>
-            <p className="font-mono text-[10px] text-text-muted/50 leading-relaxed">
+            <p className="font-body text-[10px] text-muted/50 leading-relaxed">
               This is observed behavior — WHAT they did, not WHY. PnL is computed from public trade data; wallet identities are pseudonymous (proxyWallet). No copy-trade signal is implied. Patterns may reflect bot strategies with microsecond latency advantages.
             </p>
           </div>
 
           {/* Top wallets */}
           {data.topWallets.length === 0 ? (
-            <div className="border border-border/30 bg-bg-panel/20 px-4 py-8 text-center">
-              <div className="font-mono text-[11px] text-text-muted/50">
+            <div className="border border-line/30 bg-surface/20 px-4 py-8 text-center rounded-card">
+              <div className="font-body text-[11px] text-muted/50">
                 {data.agentStatus === 'offline'
                   ? 'Agent offline — no data yet'
                   : data.marketsProcessed === 0
@@ -251,7 +251,7 @@ export default function WhalesPage() {
             </div>
           ) : (
             <div className="space-y-2">
-              <div className="font-mono text-[9px] uppercase tracking-widest text-text-muted/50">
+              <div className="font-body text-[9px] uppercase tracking-widest text-muted/50">
                 Top {data.topWallets.length} wallets by realized PnL · {data.windowDays}-day rolling window · click to expand pattern
               </div>
               {data.topWallets.map((w, i) => (
@@ -263,13 +263,13 @@ export default function WhalesPage() {
           {/* Recent markets processed */}
           {data.recentMarkets.length > 0 && (
             <div className="space-y-2">
-              <div className="font-mono text-[9px] uppercase tracking-widest text-text-muted/50">
+              <div className="font-body text-[9px] uppercase tracking-widest text-muted/50">
                 Recently processed markets
               </div>
-              <div className="border border-border/30 overflow-hidden">
-                <table className="w-full font-mono text-[10px]">
+              <div className="border border-line/30 overflow-hidden rounded-card">
+                <table className="w-full font-body text-[10px]">
                   <thead>
-                    <tr className="border-b border-border/30 text-text-muted/40">
+                    <tr className="border-b border-line/30 text-muted/40">
                       <th className="text-left px-3 py-2 font-normal">Market</th>
                       <th className="text-left px-3 py-2 font-normal">Winner</th>
                       <th className="text-right px-3 py-2 font-normal">Trades</th>
@@ -278,13 +278,13 @@ export default function WhalesPage() {
                   </thead>
                   <tbody>
                     {data.recentMarkets.map((m, i) => (
-                      <tr key={i} className="border-b border-border/20 last:border-0">
-                        <td className="px-3 py-1.5 text-text-secondary">{m.title}</td>
-                        <td className="px-3 py-1.5 text-text-muted">
-                          <span className={m.winner === 'Up' ? 'text-green-400' : 'text-red-400'}>{m.winner}</span>
+                      <tr key={i} className="border-b border-line/20 last:border-0">
+                        <td className="px-3 py-1.5 text-ink-2">{m.title}</td>
+                        <td className="px-3 py-1.5 text-muted">
+                          <span className={m.winner === 'Up' ? 'text-mint-deep' : 'text-coral-ink'}>{m.winner}</span>
                         </td>
-                        <td className="px-3 py-1.5 text-right text-text-muted">{m.tradeCount}</td>
-                        <td className="px-3 py-1.5 text-right text-text-muted/40">
+                        <td className="px-3 py-1.5 text-right font-mono text-muted">{m.tradeCount}</td>
+                        <td className="px-3 py-1.5 text-right font-mono text-muted/40">
                           {new Date(m.processedAt).toLocaleTimeString()}
                         </td>
                       </tr>

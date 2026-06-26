@@ -79,7 +79,7 @@ export default function EmailCaptureModal({ open, source, destination, onClose }
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/70 backdrop-blur-sm"
       aria-modal="true"
       role="dialog"
       aria-labelledby="modal-heading"
@@ -87,14 +87,14 @@ export default function EmailCaptureModal({ open, source, destination, onClose }
         if (e.target === e.currentTarget && status !== 'success') onClose();
       }}
     >
-      <div className="relative bg-bg-panel border border-border w-full max-w-md mx-4 p-6 shadow-[0_24px_64px_rgba(0,0,0,0.6)]">
+      <div className="relative bg-surface border border-line w-full max-w-md mx-4 p-6 shadow-card rounded-card">
 
         {/* X close button */}
         {status !== 'success' && (
           <button
             onClick={onClose}
             aria-label="Close"
-            className="absolute top-3 right-3 p-1.5 text-text-muted/60 hover:text-text-primary transition-colors duration-100"
+            className="absolute top-3 right-3 p-1.5 text-muted/60 hover:text-ink transition-colors duration-100"
           >
             <X size={14} strokeWidth={1.5} />
           </button>
@@ -102,13 +102,13 @@ export default function EmailCaptureModal({ open, source, destination, onClose }
 
         {status === 'success' ? (
           <div className="text-center py-4">
-            <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-positive mb-3">
+            <div className="font-body text-[10px] uppercase tracking-[0.2em] text-mint-deep mb-3">
               ✓ YOU'RE IN
             </div>
-            <p className="font-mono text-[12px] text-text-secondary leading-relaxed">
+            <p className="font-body text-[12px] text-ink-2 leading-relaxed">
               We'll notify you when alerts go live.
             </p>
-            <p className="font-mono text-[10px] text-text-muted/60 mt-4">
+            <p className="font-body text-[10px] text-muted/60 mt-4">
               Taking you there now…
             </p>
           </div>
@@ -116,19 +116,19 @@ export default function EmailCaptureModal({ open, source, destination, onClose }
           <>
             {/* Badge */}
             <div className="mb-4">
-              <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-text-muted border border-border px-2 py-[4px]">
+              <span className="font-body text-[9px] uppercase tracking-[0.18em] text-muted border border-line px-2 py-[4px] rounded-pill">
                 PRE-LAUNCH
               </span>
             </div>
 
             <h2
               id="modal-heading"
-              className="font-mono font-semibold text-[18px] uppercase tracking-[0.04em] text-text-primary mb-2"
+              className="font-display font-semibold text-[18px] text-ink mb-2"
             >
               Get Early Access
             </h2>
 
-            <p className="font-mono text-[11px] text-text-secondary leading-[1.7] mb-5">
+            <p className="font-body text-[11px] text-ink-2 leading-[1.7] mb-5">
               Drop your email — we'll alert you when the engine goes live.
             </p>
 
@@ -144,17 +144,17 @@ export default function EmailCaptureModal({ open, source, destination, onClose }
                   if (status === 'error') setStatus('idle');
                 }}
                 disabled={status === 'submitting'}
-                className="w-full bg-bg-elevated border border-border font-mono text-[12px] text-text-primary placeholder:text-text-muted/35 px-3 py-2.5 mb-3 focus:outline-none focus:border-accent disabled:opacity-50 transition-colors duration-100"
+                className="w-full bg-bg-soft border border-line font-body text-[12px] text-ink placeholder:text-muted/35 px-3 py-2.5 mb-3 focus:outline-none focus:border-mint disabled:opacity-50 transition-colors duration-100 rounded-button"
               />
 
               {status === 'error' && (
-                <p className="font-mono text-[10px] text-negative mb-3">{errMsg}</p>
+                <p className="font-body text-[10px] text-coral-ink mb-3">{errMsg}</p>
               )}
 
               <button
                 type="submit"
                 disabled={status === 'submitting' || email.trim().length === 0}
-                className="w-full inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-accent text-white font-mono font-medium text-[12px] uppercase tracking-[0.1em] transition-colors duration-100 hover:bg-accent-bright active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-mint-deep text-white font-body font-medium text-[12px] uppercase tracking-[0.1em] transition-colors duration-100 hover:bg-mint active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed rounded-button"
               >
                 {status === 'submitting' ? 'SAVING…' : 'GET ACCESS'}
                 {status !== 'submitting' && <ArrowRight className="w-3.5 h-3.5" strokeWidth={2} />}
@@ -165,7 +165,7 @@ export default function EmailCaptureModal({ open, source, destination, onClose }
             <div className="mt-5 text-center">
               <button
                 onClick={skip}
-                className="font-mono text-[10px] text-text-muted/45 hover:text-text-muted transition-colors duration-100 underline underline-offset-2"
+                className="font-body text-[10px] text-muted/45 hover:text-muted transition-colors duration-100 underline underline-offset-2"
               >
                 Skip for now →
               </button>

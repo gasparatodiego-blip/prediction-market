@@ -14,27 +14,27 @@ interface PreviewData {
 }
 
 const TYPE_CLS: Record<string, string> = {
-  'Funding Rate':   'bg-positive/10 text-positive border-positive/25',
-  'Cash & Carry':   'bg-accent/10 text-accent/80 border-accent/25',
-  'Prediction Arb': 'bg-warning/10 text-warning/80 border-warning/25',
+  'Funding Rate':   'bg-mint-deep/10 text-mint-deep border-mint-deep/25',
+  'Cash & Carry':   'bg-violet/10 text-violet/80 border-violet/25',
+  'Prediction Arb': 'bg-gold/10 text-gold/80 border-gold/25',
 };
 
 function OppRow({ item, rank }: { item: OppPreviewItem; rank: number }) {
-  const badge = TYPE_CLS[item.type] ?? 'bg-border/50 text-text-muted border-border';
+  const badge = TYPE_CLS[item.type] ?? 'bg-line/50 text-muted border-line';
   return (
-    <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 px-4 py-3 border-b border-border last:border-b-0">
-      <span className="font-mono text-[9px] text-text-muted/40 w-4 shrink-0 tabular-nums">#{rank}</span>
-      <span className={`font-mono text-[8px] uppercase tracking-wider border px-1.5 py-[2px] shrink-0 ${badge}`}>
+    <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 px-4 py-3 border-b border-line last:border-b-0">
+      <span className="font-mono text-[9px] text-muted/40 w-4 shrink-0 tabular-nums">#{rank}</span>
+      <span className={`font-body text-[8px] uppercase tracking-wider border px-1.5 py-[2px] shrink-0 rounded-sm ${badge}`}>
         {item.type}
       </span>
-      <span className="font-mono text-[11px] text-text-primary flex-1 truncate min-w-0">
+      <span className="font-body text-[11px] text-ink flex-1 truncate min-w-0">
         {item.label}
       </span>
-      <span className="font-mono text-[9px] text-text-muted/60 shrink-0 hidden sm:block truncate max-w-[140px]">
+      <span className="font-body text-[9px] text-muted/60 shrink-0 hidden sm:block truncate max-w-[140px]">
         {item.venue}
       </span>
-      <span className="font-mono text-[15px] font-semibold text-positive tabular-nums shrink-0">
-        +{item.netPct.toFixed(1)}<span className="text-[10px] font-normal text-positive/70 ml-0.5">{item.unit}</span>
+      <span className="font-mono text-[15px] font-semibold text-mint-deep tabular-nums shrink-0">
+        +{item.netPct.toFixed(1)}<span className="text-[10px] font-normal text-mint-deep/70 ml-0.5">{item.unit}</span>
       </span>
     </div>
   );
@@ -59,12 +59,12 @@ export default function OppTeaser() {
 
   if (!data) {
     return (
-      <div className="border border-border overflow-hidden">
-        <div className="px-4 py-2.5 border-b border-border bg-bg-elevated flex items-center justify-between">
-          <span className="font-mono text-[9px] uppercase tracking-widest text-text-muted">LIVE OPPORTUNITIES</span>
+      <div className="border border-line overflow-hidden rounded-card">
+        <div className="px-4 py-2.5 border-b border-line bg-bg-soft flex items-center justify-between">
+          <span className="font-body text-[9px] uppercase tracking-widest text-muted">LIVE OPPORTUNITIES</span>
         </div>
         {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="h-12 border-b border-border bg-bg-panel last:border-b-0 animate-pulse" />
+          <div key={i} className="h-12 border-b border-line bg-surface last:border-b-0 animate-pulse" />
         ))}
       </div>
     );
@@ -72,9 +72,9 @@ export default function OppTeaser() {
 
   if (data.items.length === 0) {
     return (
-      <div className="border border-border bg-bg-panel px-5 py-8 text-center">
-        <div className="font-mono text-[11px] text-text-muted mb-2">NO LIVE OPPORTUNITIES RIGHT NOW</div>
-        <div className="font-mono text-[9px] text-text-muted/50">Scanner is watching — rates update every 60 s</div>
+      <div className="border border-line bg-surface px-5 py-8 text-center rounded-card">
+        <div className="font-body text-[11px] text-muted mb-2">NO LIVE OPPORTUNITIES RIGHT NOW</div>
+        <div className="font-body text-[9px] text-muted/50">Scanner is watching — rates update every 60 s</div>
       </div>
     );
   }
@@ -84,11 +84,11 @@ export default function OppTeaser() {
 
   return (
     <div>
-      <div className="border border-border overflow-hidden">
+      <div className="border border-line overflow-hidden rounded-card shadow-card">
         {/* Header */}
-        <div className="px-4 py-2.5 border-b border-border bg-bg-elevated flex items-center justify-between gap-4">
-          <span className="font-mono text-[9px] uppercase tracking-widest text-text-muted">LIVE OPPORTUNITIES</span>
-          <span className="font-mono text-[9px] text-text-muted/60 tabular-nums">
+        <div className="px-4 py-2.5 border-b border-line bg-bg-soft flex items-center justify-between gap-4">
+          <span className="font-body text-[9px] uppercase tracking-widest text-muted">LIVE OPPORTUNITIES</span>
+          <span className="font-mono text-[9px] text-muted/60 tabular-nums">
             {data.total} found · ranked by net %
           </span>
         </div>
@@ -99,16 +99,16 @@ export default function OppTeaser() {
         ))}
 
         {/* Footer: link to full list */}
-        <div className="border-t border-border px-4 py-3 bg-bg-elevated">
+        <div className="border-t border-line px-4 py-3 bg-bg-soft">
           <Link
             href="/dashboard/prediction"
-            className="inline-flex items-center gap-1.5 font-mono text-[10px] text-accent hover:text-accent-bright transition-colors"
+            className="inline-flex items-center gap-1.5 font-body text-[10px] text-mint hover:text-mint-deep transition-colors"
           >
             See all {data.total} opportunities in the dashboard
             <ArrowRight className="w-3 h-3" strokeWidth={2} />
           </Link>
           {remaining > 0 && (
-            <span className="font-mono text-[9px] text-text-muted/50 ml-3">
+            <span className="font-body text-[9px] text-muted/50 ml-3">
               (+{remaining} more not shown here)
             </span>
           )}
@@ -116,14 +116,14 @@ export default function OppTeaser() {
       </div>
 
       {/* Honest Pro teaser — no fake lock, promises real future value */}
-      <div className="mt-3 border border-border/50 bg-bg-panel/60 px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div className="mt-3 border border-line/50 bg-surface/60 px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-card">
         <div>
-          <span className="font-mono text-[9px] uppercase tracking-widest text-accent/70 mr-2">PRO · COMING SOON</span>
-          <span className="font-mono text-[9px] text-text-muted">
+          <span className="font-body text-[9px] uppercase tracking-widest text-mint/70 mr-2">PRO · COMING SOON</span>
+          <span className="font-body text-[9px] text-muted">
 Email alerts · priority Telegram (all strategies) · Kelly position sizing · full opportunity history
           </span>
         </div>
-        <span className="font-mono text-[8px] text-text-muted/40 border border-border/40 px-2 py-1 cursor-default shrink-0 whitespace-nowrap">
+        <span className="font-body text-[8px] text-muted/40 border border-line/40 px-2 py-1 cursor-default shrink-0 whitespace-nowrap rounded-sm">
           Not yet available
         </span>
       </div>

@@ -122,7 +122,7 @@ function fmtDate(d: string | null | undefined): string {
 
 function SectionTitle({ title }: { title: string }) {
   return (
-    <h2 className="font-mono text-[9px] uppercase tracking-widest text-text-muted mb-3 mt-6 border-b border-border/30 pb-1.5">
+    <h2 className="font-body text-[9px] uppercase tracking-widest text-muted mb-3 mt-6 border-b border-line/30 pb-1.5">
       {title}
     </h2>
   );
@@ -131,10 +131,10 @@ function SectionTitle({ title }: { title: string }) {
 function StepLabel({ n, text }: { n: number; text: string }) {
   return (
     <div className="flex items-start gap-3 mb-4">
-      <span className="font-mono text-[9px] px-1.5 py-[2px] border border-border text-text-muted shrink-0 mt-0.5">
+      <span className="font-mono text-[9px] px-1.5 py-[2px] border border-line text-muted shrink-0 mt-0.5">
         {String(n).padStart(2, '0')}
       </span>
-      <span className="font-mono text-[11px] text-text-secondary font-medium">{text}</span>
+      <span className="font-body text-[11px] text-ink-2 font-medium">{text}</span>
     </div>
   );
 }
@@ -194,136 +194,136 @@ function CashableDetail({ opp, capital, setCapital }: {
   return (
     <>
       {/* Price snapshot */}
-      <div className="mb-5 px-4 py-3 bg-bg-panel border border-border font-mono text-[11px]">
-        <div className="font-mono text-[9px] uppercase tracking-widest text-text-muted mb-2">Current prices (snapshot)</div>
+      <div className="mb-5 px-4 py-3 bg-surface border border-line rounded-card font-mono text-[11px]">
+        <div className="font-body text-[9px] uppercase tracking-widest text-muted mb-2">Current prices (snapshot)</div>
         <div className="flex flex-wrap gap-x-8 gap-y-1.5">
           <span>
-            <span className="text-text-muted">YES on {platformLabel(low.platform)}: </span>
-            <span className="text-positive font-medium tabular-nums">
+            <span className="text-muted">YES on {platformLabel(low.platform)}: </span>
+            <span className="text-mint-deep font-medium tabular-nums">
               {(priceYES * 100).toFixed(1)}¢
             </span>
             {usingLiveYES && (
-              <span className="text-text-muted/60 text-[9px] ml-1">
+              <span className="text-muted/60 text-[9px] ml-1">
                 (ask · mid {low.probability}¢)
               </span>
             )}
           </span>
           <span>
-            <span className="text-text-muted">NO on {platformLabel(high.platform)}: </span>
-            <span className="text-accent font-medium tabular-nums">
+            <span className="text-muted">NO on {platformLabel(high.platform)}: </span>
+            <span className="text-violet font-medium tabular-nums">
               {(priceNO * 100).toFixed(1)}¢
             </span>
             {usingLiveNO && (
-              <span className="text-text-muted/60 text-[9px] ml-1">
+              <span className="text-muted/60 text-[9px] ml-1">
                 (1 − bid · mid {(100 - high.probability)}¢)
               </span>
             )}
           </span>
           <span>
-            <span className="text-text-muted">Cost per contract pair: </span>
-            <span className="text-text-primary tabular-nums font-medium">{(costPerPair * 100).toFixed(1)}¢</span>
+            <span className="text-muted">Cost per contract pair: </span>
+            <span className="text-ink tabular-nums font-medium">{(costPerPair * 100).toFixed(1)}¢</span>
           </span>
           <span>
-            <span className="text-text-muted">Net ROI: </span>
-            <span className="text-positive font-medium tabular-nums">{fmtPct(netROI, 2)}</span>
-            <span className="text-text-muted/60 text-[9px] ml-1">(real fee model · matcher: {fmtPct(opp.roi, 2)})</span>
+            <span className="text-muted">Net ROI: </span>
+            <span className="text-mint-deep font-medium tabular-nums">{fmtPct(netROI, 2)}</span>
+            <span className="text-muted/60 text-[9px] ml-1">(real fee model · matcher: {fmtPct(opp.roi, 2)})</span>
           </span>
         </div>
         {!usingLiveYES && !usingLiveNO && (
-          <p className="font-mono text-[9px] text-warning/60 mt-1.5">
+          <p className="font-body text-[9px] text-gold/60 mt-1.5">
             No order-book data — prices shown are mid-market. Actual executable prices may differ.
           </p>
         )}
       </div>
 
       {/* Capital input */}
-      <div className="mb-5 px-4 py-3 bg-bg-panel border border-border">
-        <div className="font-mono text-[9px] uppercase tracking-widest text-text-muted mb-2">Your capital</div>
+      <div className="mb-5 px-4 py-3 bg-surface border border-line rounded-card">
+        <div className="font-body text-[9px] uppercase tracking-widest text-muted mb-2">Your capital</div>
         <div className="flex items-center gap-2">
-          <span className="font-mono text-[10px] text-text-muted">$</span>
+          <span className="font-mono text-[10px] text-muted">$</span>
           <input
             type="number" min={0} step={100} value={capital}
             onChange={e => setCapital(Math.max(0, parseFloat(e.target.value) || 0))}
-            className="w-[5rem] px-1.5 py-0.5 font-mono text-[11px] bg-bg-panel border border-border text-text-primary focus:border-accent/50 focus:outline-none tabular-nums"
+            className="w-[5rem] px-1.5 py-0.5 font-mono text-[11px] bg-surface border border-line text-ink focus:border-mint/50 focus:outline-none tabular-nums rounded-sm"
           />
         </div>
       </div>
 
       {/* P&L estimate */}
       {capital > 0 && N > 0 && (
-        <div className="mb-6 px-4 py-4 border border-positive/25 bg-positive/5">
-          <div className="font-mono text-[9px] uppercase tracking-widest text-text-muted mb-2">
+        <div className="mb-6 px-4 py-4 border border-mint-deep/25 bg-mint-tint/30 rounded-card">
+          <div className="font-body text-[9px] uppercase tracking-widest text-muted mb-2">
             Estimated outcome at ${capital.toLocaleString()}
           </div>
 
           <div className="flex flex-wrap gap-x-6 gap-y-1.5 font-mono text-[11px] mb-4">
             <span>
-              <span className="text-text-muted">Contracts: </span>
-              <span className="text-text-primary font-medium tabular-nums">{N} pairs</span>
-              <span className="text-text-muted/60 text-[9px] ml-1">({N} YES + {N} NO)</span>
+              <span className="text-muted">Contracts: </span>
+              <span className="text-ink font-medium tabular-nums">{N} pairs</span>
+              <span className="text-muted/60 text-[9px] ml-1">({N} YES + {N} NO)</span>
             </span>
             <span>
-              <span className="text-text-muted">Total deployed: </span>
-              <span className="text-text-primary tabular-nums font-medium">{fmtUsd(totalCost)}</span>
-              <span className="text-text-muted/60 text-[9px] ml-1">({fmtUsd(capital - totalCost)} undeployed)</span>
+              <span className="text-muted">Total deployed: </span>
+              <span className="text-ink tabular-nums font-medium">{fmtUsd(totalCost)}</span>
+              <span className="text-muted/60 text-[9px] ml-1">({fmtUsd(capital - totalCost)} undeployed)</span>
             </span>
             <span>
-              <span className="text-positive font-bold text-[14px] tabular-nums">{fmtUsd(netProfit)} locked profit</span>
-              <span className="text-text-muted/60 text-[9px] ml-1">(net, at resolution)</span>
+              <span className="text-mint-deep font-bold text-[14px] tabular-nums">{fmtUsd(netProfit)} locked profit</span>
+              <span className="text-muted/60 text-[9px] ml-1">(net, at resolution)</span>
             </span>
             {opp.annualizedROI != null && opp.daysToResolution != null && (
               <span>
-                <span className="text-text-muted">Annualized: </span>
-                <span className="text-positive tabular-nums">{fmtPct(opp.annualizedROI, 1)}/yr</span>
-                <span className="text-text-muted/60 text-[9px] ml-1">({opp.daysToResolution}d lock)</span>
+                <span className="text-muted">Annualized: </span>
+                <span className="text-mint-deep tabular-nums">{fmtPct(opp.annualizedROI, 1)}/yr</span>
+                <span className="text-muted/60 text-[9px] ml-1">({opp.daysToResolution}d lock)</span>
               </span>
             )}
           </div>
 
           {/* Fee breakdown */}
-          <div className="border-t border-border/30 pt-3">
-            <div className="font-mono text-[9px] uppercase tracking-widest text-text-muted mb-2">Fee breakdown</div>
+          <div className="border-t border-line/30 pt-3">
+            <div className="font-body text-[9px] uppercase tracking-widest text-muted mb-2">Fee breakdown</div>
             <div className="space-y-[3px] font-mono text-[10px]">
               <div className="flex gap-2">
-                <span className="text-text-muted w-[120px] shrink-0">Gross profit</span>
-                <span className="text-text-muted/60 text-[9px]">{N} × {(grossProfitPerPair * 100).toFixed(2)}¢</span>
-                <span className="text-text-primary tabular-nums ml-auto">{fmtUsd(grossProfit)}</span>
+                <span className="text-muted w-[120px] shrink-0">Gross profit</span>
+                <span className="text-muted/60 text-[9px]">{N} × {(grossProfitPerPair * 100).toFixed(2)}¢</span>
+                <span className="text-ink tabular-nums ml-auto">{fmtUsd(grossProfit)}</span>
               </div>
               <div className="flex gap-2">
-                <span className="text-text-muted w-[120px] shrink-0">{platformLabel(low.platform)} fee</span>
-                <span className="text-text-muted/60 text-[9px]">
+                <span className="text-muted w-[120px] shrink-0">{platformLabel(low.platform)} fee</span>
+                <span className="text-muted/60 text-[9px]">
                   {low.platform?.toLowerCase() === 'polymarket' ? '0% · no trading fee'
                    : low.platform?.toLowerCase() === 'kalshi'
                      ? `7%×${(priceYES*100).toFixed(1)}¢×${((1-priceYES)*100).toFixed(1)}¢`
                      : `${(low.fee*100).toFixed(0)}% on winnings`}
                 </span>
-                <span className={`tabular-nums ml-auto ${totalFeeOnLow === 0 ? 'text-text-muted/50' : 'text-negative/80'}`}>
+                <span className={`tabular-nums ml-auto ${totalFeeOnLow === 0 ? 'text-muted/50' : 'text-coral-ink/80'}`}>
                   {fmtUsd(-totalFeeOnLow)}
                 </span>
               </div>
               <div className="flex gap-2">
-                <span className="text-text-muted w-[120px] shrink-0">{platformLabel(high.platform)} fee</span>
-                <span className="text-text-muted/60 text-[9px]">
+                <span className="text-muted w-[120px] shrink-0">{platformLabel(high.platform)} fee</span>
+                <span className="text-muted/60 text-[9px]">
                   {high.platform?.toLowerCase() === 'polymarket' ? '0% · no trading fee'
                    : high.platform?.toLowerCase() === 'kalshi'
                      ? `7%×${(highYesDec*100).toFixed(1)}¢×${((1-highYesDec)*100).toFixed(1)}¢`
                      : `${(high.fee*100).toFixed(0)}% on winnings`}
                 </span>
-                <span className={`tabular-nums ml-auto ${totalFeeOnHigh === 0 ? 'text-text-muted/50' : 'text-negative/80'}`}>
+                <span className={`tabular-nums ml-auto ${totalFeeOnHigh === 0 ? 'text-muted/50' : 'text-coral-ink/80'}`}>
                   {fmtUsd(-totalFeeOnHigh)}
                 </span>
               </div>
-              <div className="flex gap-2 border-t border-border/30 pt-1.5 mt-1">
-                <span className="text-text-secondary font-medium">Net profit</span>
-                <span className="text-text-muted/50 text-[9px] ml-1">({netROI.toFixed(2)}% ROI on deployed)</span>
-                <span className="text-positive font-medium tabular-nums ml-auto">{fmtUsd(netProfit)}</span>
+              <div className="flex gap-2 border-t border-line/30 pt-1.5 mt-1">
+                <span className="text-ink-2 font-medium">Net profit</span>
+                <span className="text-muted/50 text-[9px] ml-1">({netROI.toFixed(2)}% ROI on deployed)</span>
+                <span className="text-mint-deep font-medium tabular-nums ml-auto">{fmtUsd(netProfit)}</span>
               </div>
             </div>
           </div>
         </div>
       )}
       {capital > 0 && N === 0 && (
-        <div className="mb-6 px-4 py-3 border border-border bg-bg-panel font-mono text-[10px] text-warning/70">
+        <div className="mb-6 px-4 py-3 border border-line bg-surface rounded-card font-body text-[10px] text-gold/70">
           Capital too low to buy even one contract pair at {(costPerPair * 100).toFixed(1)}¢/pair cost.
         </div>
       )}
@@ -332,27 +332,27 @@ function CashableDetail({ opp, capital, setCapital }: {
       <SectionTitle title="Step-by-step execution guide" />
       <div className="space-y-0 mb-6">
 
-        <div className="border-b border-border/20 pb-4 mb-4">
+        <div className="border-b border-line/20 pb-4 mb-4">
           <StepLabel n={1} text={`Buy YES on ${platformLabel(low.platform)}`} />
-          <div className="ml-[42px] font-mono text-[10px] text-text-muted leading-relaxed space-y-1">
+          <div className="ml-[42px] font-body text-[10px] text-muted leading-relaxed space-y-1">
             <p>
-              Market: <span className="text-text-secondary">{opp.question}</span>
+              Market: <span className="text-ink-2">{opp.question}</span>
             </p>
             <p>
-              Outcome to buy: <span className="text-positive font-medium">YES</span>
-              {' '} · Price: <span className="text-positive tabular-nums font-medium">{(priceYES * 100).toFixed(1)}¢ per share</span>
-              {usingLiveYES && <span className="text-text-muted/60"> (order-book ask)</span>}
+              Outcome to buy: <span className="text-mint-deep font-medium">YES</span>
+              {' '} · Price: <span className="text-mint-deep tabular-nums font-medium font-mono">{(priceYES * 100).toFixed(1)}¢ per share</span>
+              {usingLiveYES && <span className="text-muted/60"> (order-book ask)</span>}
             </p>
             {capital > 0 && N > 0 && (
               <p>
-                Quantity: <span className="text-text-primary tabular-nums">{N} shares</span>
-                {' '}· Cost: <span className="tabular-nums text-text-primary">{fmtUsd(N * priceYES)}</span>
+                Quantity: <span className="text-ink tabular-nums font-mono">{N} shares</span>
+                {' '}· Cost: <span className="tabular-nums text-ink font-mono">{fmtUsd(N * priceYES)}</span>
               </p>
             )}
-            <p className="text-[9px] text-text-muted/60 border-l border-border/30 pl-2 mt-1">
+            <p className="text-[9px] text-muted/60 border-l border-line/30 pl-2 mt-1">
               {(() => { const { url: lu, verified: lv } = getMarketUrl(low); return (
                 <a href={lu} target="_blank" rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-accent hover:text-accent-bright">
+                  className="inline-flex items-center gap-1 text-mint hover:text-mint-deep">
                   Open {platformLabel(low.platform)} market{!lv && ' (search)'} <ExternalLink size={9} />
                 </a>
               ); })()}
@@ -366,27 +366,27 @@ function CashableDetail({ opp, capital, setCapital }: {
           </div>
         </div>
 
-        <div className="border-b border-border/20 pb-4 mb-4">
+        <div className="border-b border-line/20 pb-4 mb-4">
           <StepLabel n={2} text={`Buy NO on ${platformLabel(high.platform)}`} />
-          <div className="ml-[42px] font-mono text-[10px] text-text-muted leading-relaxed space-y-1">
+          <div className="ml-[42px] font-body text-[10px] text-muted leading-relaxed space-y-1">
             <p>
-              Market: <span className="text-text-secondary">{opp.question}</span>
+              Market: <span className="text-ink-2">{opp.question}</span>
             </p>
             <p>
-              Outcome to buy: <span className="text-accent font-medium">NO</span>
-              {' '}· Price: <span className="text-accent tabular-nums font-medium">{(priceNO * 100).toFixed(1)}¢ per share</span>
-              {usingLiveNO && <span className="text-text-muted/60"> (1 − YES bid)</span>}
+              Outcome to buy: <span className="text-violet font-medium">NO</span>
+              {' '}· Price: <span className="text-violet tabular-nums font-medium font-mono">{(priceNO * 100).toFixed(1)}¢ per share</span>
+              {usingLiveNO && <span className="text-muted/60"> (1 − YES bid)</span>}
             </p>
             {capital > 0 && N > 0 && (
               <p>
-                Quantity: <span className="text-text-primary tabular-nums">{N} shares</span>
-                {' '}· Cost: <span className="tabular-nums text-text-primary">{fmtUsd(N * priceNO)}</span>
+                Quantity: <span className="text-ink tabular-nums font-mono">{N} shares</span>
+                {' '}· Cost: <span className="tabular-nums text-ink font-mono">{fmtUsd(N * priceNO)}</span>
               </p>
             )}
-            <p className="text-[9px] text-text-muted/60 border-l border-border/30 pl-2 mt-1">
+            <p className="text-[9px] text-muted/60 border-l border-line/30 pl-2 mt-1">
               {(() => { const { url: hu, verified: hv } = getMarketUrl(high); return (
                 <a href={hu} target="_blank" rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-accent hover:text-accent-bright">
+                  className="inline-flex items-center gap-1 text-mint hover:text-mint-deep">
                   Open {platformLabel(high.platform)} market{!hv && ' (search)'} <ExternalLink size={9} />
                 </a>
               ); })()}
@@ -400,38 +400,38 @@ function CashableDetail({ opp, capital, setCapital }: {
           </div>
         </div>
 
-        <div className="border-b border-border/20 pb-4 mb-4">
+        <div className="border-b border-line/20 pb-4 mb-4">
           <StepLabel n={3} text="Why equal contract count (not equal dollar size)" />
-          <div className="ml-[42px] font-mono text-[10px] text-text-muted leading-relaxed space-y-1.5">
+          <div className="ml-[42px] font-body text-[10px] text-muted leading-relaxed space-y-1.5">
             <p>
               You buy the same number of shares ({N > 0 ? N : 'N'}) on each side — not equal dollars.
               Each share resolves to exactly $1 (win) or $0 (loss).
             </p>
             <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 my-2 text-[9px]">
-              <div className="text-text-secondary font-medium">If YES resolves:</div>
-              <div className="text-text-secondary font-medium">If NO resolves:</div>
-              <div className="text-positive">YES shares → $1/share × {N > 0 ? N : 'N'} = ${N > 0 ? N : 'N'}</div>
-              <div className="text-text-muted">YES shares → $0/share × {N > 0 ? N : 'N'} = $0</div>
-              <div className="text-text-muted">NO shares → $0/share × {N > 0 ? N : 'N'} = $0</div>
-              <div className="text-positive">NO shares → $1/share × {N > 0 ? N : 'N'} = ${N > 0 ? N : 'N'}</div>
-              <div className="text-text-secondary font-medium pt-0.5">Net received: ${N > 0 ? N : 'N'}</div>
-              <div className="text-text-secondary font-medium pt-0.5">Net received: ${N > 0 ? N : 'N'}</div>
+              <div className="text-ink-2 font-medium">If YES resolves:</div>
+              <div className="text-ink-2 font-medium">If NO resolves:</div>
+              <div className="text-mint-deep">YES shares → $1/share × {N > 0 ? N : 'N'} = ${N > 0 ? N : 'N'}</div>
+              <div className="text-muted">YES shares → $0/share × {N > 0 ? N : 'N'} = $0</div>
+              <div className="text-muted">NO shares → $0/share × {N > 0 ? N : 'N'} = $0</div>
+              <div className="text-mint-deep">NO shares → $1/share × {N > 0 ? N : 'N'} = ${N > 0 ? N : 'N'}</div>
+              <div className="text-ink-2 font-medium pt-0.5">Net received: ${N > 0 ? N : 'N'}</div>
+              <div className="text-ink-2 font-medium pt-0.5">Net received: ${N > 0 ? N : 'N'}</div>
             </div>
             <p>
               In both cases you receive ${N > 0 ? N.toLocaleString() : 'N'}.
               You paid {fmtUsd(totalCost > 0 ? totalCost : costPerPair)}{N > 0 ? ` total` : ` per pair`}.
               Gross profit = ${N > 0 ? N : 'N'} − {fmtUsd(totalCost > 0 ? totalCost : costPerPair)} = {fmtUsd(N > 0 ? (N - totalCost) : grossProfitPerPair)}.
             </p>
-            <p className="text-[9px] text-warning/70">
+            <p className="text-[9px] text-gold/70">
               This only holds if both platforms resolve identically (same real-world outcome, same criteria, same date).
               See the resolution-risk warning below.
             </p>
           </div>
         </div>
 
-        <div className="border-b border-border/20 pb-4 mb-4">
+        <div className="border-b border-line/20 pb-4 mb-4">
           <StepLabel n={4} text="Open both legs as simultaneously as possible" />
-          <div className="ml-[42px] font-mono text-[10px] text-text-muted leading-relaxed">
+          <div className="ml-[42px] font-body text-[10px] text-muted leading-relaxed">
             <p>
               Between your first fill and your second, the price can move on either platform.
               An unhedged leg is a directional bet on the event. Minimize the time between clicks.
@@ -439,9 +439,9 @@ function CashableDetail({ opp, capital, setCapital }: {
           </div>
         </div>
 
-        <div className="border-b border-border/20 pb-4 mb-4">
+        <div className="border-b border-line/20 pb-4 mb-4">
           <StepLabel n={5} text="Hold to resolution — no active management needed" />
-          <div className="ml-[42px] font-mono text-[10px] text-text-muted leading-relaxed space-y-1">
+          <div className="ml-[42px] font-body text-[10px] text-muted leading-relaxed space-y-1">
             <p>
               Shares are non-fungible claims — they cannot be transferred between platforms.
               Once bought, hold both legs until the market resolves. You can sell early on each platform&apos;s
@@ -449,22 +449,22 @@ function CashableDetail({ opp, capital, setCapital }: {
             </p>
             {opp.resolutionDate && (
               <p>
-                <span className="text-text-secondary">Resolution date: </span>
-                <span className="text-text-primary font-medium">{fmtDate(opp.resolutionDate)}</span>
+                <span className="text-ink-2">Resolution date: </span>
+                <span className="text-ink font-medium">{fmtDate(opp.resolutionDate)}</span>
                 {opp.daysToResolution != null && (
-                  <span className="text-text-muted/60"> · {opp.daysToResolution} days from now</span>
+                  <span className="text-muted/60"> · {opp.daysToResolution} days from now</span>
                 )}
               </p>
             )}
             {opp.lockupFlag && (
-              <p className="text-warning/70 text-[9px]">⚠ {opp.lockupFlag}</p>
+              <p className="text-gold/70 text-[9px]">⚠ {opp.lockupFlag}</p>
             )}
           </div>
         </div>
 
-        <div className="border-b border-border/20 pb-4 mb-4">
+        <div className="border-b border-line/20 pb-4 mb-4">
           <StepLabel n={6} text="At resolution — collect payout" />
-          <div className="ml-[42px] font-mono text-[10px] text-text-muted leading-relaxed space-y-1">
+          <div className="ml-[42px] font-body text-[10px] text-muted leading-relaxed space-y-1">
             <p>
               The winning platform credits $1/share × {N > 0 ? N : 'N'} to your account (after platform fee).
               The losing platform&apos;s shares expire worthless — those {N > 0 ? N : 'N'} shares cost ${N > 0 ? N.toFixed(0) : 'N'} × the price you paid
@@ -480,34 +480,34 @@ function CashableDetail({ opp, capital, setCapital }: {
 
       {/* Exit triggers */}
       <SectionTitle title="Exit triggers — computed from current data" />
-      <div className="mb-6 px-4 py-4 bg-bg-panel border border-border">
+      <div className="mb-6 px-4 py-4 bg-surface border border-line rounded-card">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-6 gap-y-4 mb-4">
           <div>
-            <div className="font-mono text-[9px] uppercase tracking-widest text-text-muted mb-1">Net ROI at current price</div>
-            <div className="font-mono text-[18px] font-bold text-positive tabular-nums">{fmtPct(netROI, 2)}</div>
-            <div className="font-mono text-[9px] text-text-muted/70 mt-0.5">real fee model · matcher stored {fmtPct(opp.roi, 2)}</div>
+            <div className="font-body text-[9px] uppercase tracking-widest text-muted mb-1">Net ROI at current price</div>
+            <div className="font-mono text-[18px] font-bold text-mint-deep tabular-nums">{fmtPct(netROI, 2)}</div>
+            <div className="font-body text-[9px] text-muted/70 mt-0.5">real fee model · matcher stored {fmtPct(opp.roi, 2)}</div>
           </div>
           {opp.annualizedROI != null && (
             <div>
-              <div className="font-mono text-[9px] uppercase tracking-widest text-text-muted mb-1">Annualized ROI</div>
-              <div className="font-mono text-[18px] font-bold text-positive/80 tabular-nums">{fmtPct(opp.annualizedROI, 1)}/yr</div>
-              <div className="font-mono text-[9px] text-text-muted/70 mt-0.5">capital locked {opp.daysToResolution ?? '?'}d to resolution</div>
+              <div className="font-body text-[9px] uppercase tracking-widest text-muted mb-1">Annualized ROI</div>
+              <div className="font-mono text-[18px] font-bold text-mint-deep/80 tabular-nums">{fmtPct(opp.annualizedROI, 1)}/yr</div>
+              <div className="font-body text-[9px] text-muted/70 mt-0.5">capital locked {opp.daysToResolution ?? '?'}d to resolution</div>
             </div>
           )}
           <div>
-            <div className="font-mono text-[9px] uppercase tracking-widest text-text-muted mb-1">Spread</div>
-            <div className="font-mono text-[18px] font-bold text-text-primary tabular-nums">{opp.spread.toFixed(1)}pp</div>
-            <div className="font-mono text-[9px] text-text-muted/70 mt-0.5">YES price difference between platforms</div>
+            <div className="font-body text-[9px] uppercase tracking-widest text-muted mb-1">Spread</div>
+            <div className="font-mono text-[18px] font-bold text-ink tabular-nums">{opp.spread.toFixed(1)}pp</div>
+            <div className="font-body text-[9px] text-muted/70 mt-0.5">YES price difference between platforms</div>
           </div>
         </div>
-        <div className="font-mono text-[9px] text-text-muted leading-relaxed space-y-1">
+        <div className="font-body text-[9px] text-muted leading-relaxed space-y-1">
           <p>
-            <span className="text-text-secondary">Exit early when: </span>
+            <span className="text-ink-2">Exit early when: </span>
             spread narrows to near-zero (most edge is captured) OR one platform changes its resolution criteria
             OR you need liquidity before resolution.
           </p>
           <p>
-            <span className="text-text-secondary">Early exit cost: </span>
+            <span className="text-ink-2">Early exit cost: </span>
             selling early on each platform incurs spread + fees a second time, reducing net profit.
             Compare early-exit prices carefully before acting.
           </p>
@@ -515,29 +515,29 @@ function CashableDetail({ opp, capital, setCapital }: {
       </div>
 
       {/* RESOLUTION RISK — PROMINENT */}
-      <div className="mb-6 px-4 py-4 border-2 border-negative/40 bg-negative/5">
-        <div className="font-mono text-[11px] font-bold text-negative uppercase tracking-widest mb-3">
+      <div className="mb-6 px-4 py-4 border-2 border-coral-ink/40 bg-coral-tint/30 rounded-card">
+        <div className="font-body text-[11px] font-bold text-coral-ink uppercase tracking-widest mb-3">
           ⚠ Resolution-risk warning — read before trading
         </div>
-        <div className="font-mono text-[10px] text-text-muted leading-relaxed space-y-2">
+        <div className="font-body text-[10px] text-muted leading-relaxed space-y-2">
           <p>
-            <span className="text-text-secondary font-medium">This is only a locked arb if both platforms resolve on the exact same real-world criteria, source, and date.</span>
+            <span className="text-ink-2 font-medium">This is only a locked arb if both platforms resolve on the exact same real-world criteria, source, and date.</span>
             {' '}If they diverge — one says YES, one says NO — you lose on both legs simultaneously.
           </p>
           {opp.confirmReason && (
             <p>
-              <span className="text-text-secondary">AI confirmation: </span>
-              <span className="text-text-muted/80 italic">&quot;{opp.confirmReason}&quot;</span>
-              <span className="text-text-muted/50"> — AI-generated, not guaranteed to be correct.</span>
+              <span className="text-ink-2">AI confirmation: </span>
+              <span className="text-muted/80 italic">&quot;{opp.confirmReason}&quot;</span>
+              <span className="text-muted/50"> — AI-generated, not guaranteed to be correct.</span>
             </p>
           )}
           <ul className="list-none space-y-1 ml-3 text-[9px]">
-            <li>· <span className="text-text-secondary">Criteria risk:</span> each platform writes its own resolution rules. Read both market descriptions carefully. Words like &quot;wins&quot; or &quot;elected&quot; can differ in edge cases.</li>
-            <li>· <span className="text-text-secondary">Date risk:</span> if one platform resolves early (e.g. on election night) and the other waits for official certification, you carry a one-sided open position in between.</li>
-            <li>· <span className="text-text-secondary">Void / cancel risk:</span> if either market is voided or cancelled, that leg reverts to cost price while the other leg may already have resolved. This leaves you with a one-sided directional position you did not intend to hold.</li>
-            <li>· <span className="text-text-secondary">Fill risk:</span> prices shown are snapshots. The order book may have moved or dried up by the time you execute. Partial fills create uncovered directional exposure.</li>
+            <li>· <span className="text-ink-2">Criteria risk:</span> each platform writes its own resolution rules. Read both market descriptions carefully. Words like &quot;wins&quot; or &quot;elected&quot; can differ in edge cases.</li>
+            <li>· <span className="text-ink-2">Date risk:</span> if one platform resolves early (e.g. on election night) and the other waits for official certification, you carry a one-sided open position in between.</li>
+            <li>· <span className="text-ink-2">Void / cancel risk:</span> if either market is voided or cancelled, that leg reverts to cost price while the other leg may already have resolved. This leaves you with a one-sided directional position you did not intend to hold.</li>
+            <li>· <span className="text-ink-2">Fill risk:</span> prices shown are snapshots. The order book may have moved or dried up by the time you execute. Partial fills create uncovered directional exposure.</li>
           </ul>
-          <p className="text-text-muted/60 text-[9px] mt-1">
+          <p className="text-muted/60 text-[9px] mt-1">
             Manually verify the resolution rules on both platforms before committing capital.
             This page does not and cannot guarantee that the two markets resolve identically.
           </p>
@@ -549,14 +549,14 @@ function CashableDetail({ opp, capital, setCapital }: {
       <div className="mb-6 flex flex-wrap gap-3">
         {(() => { const { url: lu, verified: lv } = getMarketUrl(low); return (
           <a href={lu} target="_blank" rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 font-mono text-[10px] px-3 py-1.5 border border-positive/30 text-positive/70 hover:border-positive hover:text-positive transition-colors duration-100">
+            className="inline-flex items-center gap-1.5 font-body text-[10px] px-3 py-1.5 border border-mint-deep/30 text-mint-deep/70 hover:border-mint-deep hover:text-mint-deep rounded-button transition-colors duration-100">
             <ExternalLink size={10} />
             {platformLabel(low.platform)} — YES market{!lv && ' (search)'}
           </a>
         ); })()}
         {(() => { const { url: hu, verified: hv } = getMarketUrl(high); return (
           <a href={hu} target="_blank" rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 font-mono text-[10px] px-3 py-1.5 border border-accent/30 text-accent/70 hover:border-accent hover:text-accent transition-colors duration-100">
+            className="inline-flex items-center gap-1.5 font-body text-[10px] px-3 py-1.5 border border-violet/30 text-violet/70 hover:border-violet hover:text-violet rounded-button transition-colors duration-100">
             <ExternalLink size={10} />
             {platformLabel(high.platform)} — NO market{!hv && ' (search)'}
           </a>
@@ -629,17 +629,17 @@ function SignalDetail({ opp, capital, setCapital }: {
     return (
       <>
         <SectionTitle title="How to operate" />
-        <div className="mb-5 px-4 py-4 bg-bg-panel border border-warning/30">
-          <div className="font-mono text-[11px] font-semibold text-warning uppercase tracking-widest mb-2">
+        <div className="mb-5 px-4 py-4 bg-surface border border-gold/30 rounded-card">
+          <div className="font-body text-[11px] font-semibold text-gold uppercase tracking-widest mb-2">
             Directional only — not a cashable arbitrage
           </div>
-          <div className="font-mono text-[10px] text-text-muted leading-relaxed space-y-2">
+          <div className="font-body text-[10px] text-muted leading-relaxed space-y-2">
             <p>
-              <span className="text-text-secondary">{playName}</span> uses play money (MANA) — not real currency and not convertible to cash.
+              <span className="text-ink-2">{playName}</span> uses play money (MANA) — not real currency and not convertible to cash.
               The price divergence cannot be captured as guaranteed profit between these platforms.
             </p>
             <p>
-              <span className="text-text-secondary">What it means: </span>
+              <span className="text-ink-2">What it means: </span>
               {platformLabel(low.platform)} prices this at {low.probability}¢ while{' '}
               {platformLabel(high.platform)} prices it at {high.probability}¢ — a {opp.spread.toFixed(1)}pp divergence.
               Use this as a directional signal only.
@@ -652,28 +652,28 @@ function SignalDetail({ opp, capital, setCapital }: {
         </div>
 
         <SectionTitle title="Price comparison (informational)" />
-        <div className="mb-6 px-4 py-4 bg-bg-panel border border-border font-mono text-[10px]">
+        <div className="mb-6 px-4 py-4 bg-surface border border-line rounded-card font-mono text-[10px]">
           <div className="grid grid-cols-2 gap-4">
             {([low, high] as const).map((leg, i) => {
               const isPlay = i === 0 ? lowIsPlay : highIsPlay;
               return (
                 <div key={i}>
-                  <div className="text-[9px] uppercase tracking-widest text-text-muted mb-1">{platformLabel(leg.platform)}</div>
-                  <div className="text-[18px] font-bold text-text-primary tabular-nums">{leg.probability}¢ YES</div>
-                  <div className="text-[9px] text-text-muted/70 mt-0.5">
+                  <div className="font-body text-[9px] uppercase tracking-widest text-muted mb-1">{platformLabel(leg.platform)}</div>
+                  <div className="text-[18px] font-bold text-ink tabular-nums">{leg.probability}¢ YES</div>
+                  <div className="font-body text-[9px] text-muted/70 mt-0.5">
                     {isPlay ? 'Play-money (MANA) — not convertible to cash' : 'Real-money market'}
                   </div>
                 </div>
               );
             })}
           </div>
-          <div className="mt-3 pt-3 border-t border-border/30">
-            <span className="text-text-muted">Spread: </span>
-            <span className="text-warning font-medium">{opp.spread.toFixed(1)}pp</span>
-            <span className="text-text-muted ml-2">· Conf {Math.round(opp.confidence * 100)}%</span>
+          <div className="mt-3 pt-3 border-t border-line/30">
+            <span className="text-muted">Spread: </span>
+            <span className="text-gold font-medium">{opp.spread.toFixed(1)}pp</span>
+            <span className="text-muted ml-2">· Conf {Math.round(opp.confidence * 100)}%</span>
           </div>
           {opp.confirmReason && (
-            <p className="text-[9px] text-text-muted/60 mt-2 italic">&quot;{opp.confirmReason}&quot;</p>
+            <p className="font-body text-[9px] text-muted/60 mt-2 italic">&quot;{opp.confirmReason}&quot;</p>
           )}
         </div>
 
@@ -683,7 +683,7 @@ function SignalDetail({ opp, capital, setCapital }: {
             const { url, verified } = getMarketUrl(leg);
             return (
               <a key={i} href={url} target="_blank" rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 font-mono text-[10px] px-3 py-1.5 border border-border text-text-muted hover:border-text-secondary hover:text-text-primary transition-colors duration-100">
+                className="inline-flex items-center gap-1.5 font-body text-[10px] px-3 py-1.5 border border-line text-muted hover:border-ink-2 hover:text-ink rounded-button transition-colors duration-100">
                 <ExternalLink size={10} />
                 {platformLabel(leg.platform)} market{!verified && ' (search)'}
               </a>
@@ -699,49 +699,49 @@ function SignalDetail({ opp, capital, setCapital }: {
     return (
       <>
         <SectionTitle title="How to operate" />
-        <div className="mb-5 px-4 py-4 bg-bg-panel border border-border">
-          <div className="font-mono text-[11px] font-semibold text-text-secondary uppercase tracking-widest mb-2">
+        <div className="mb-5 px-4 py-4 bg-surface border border-line rounded-card">
+          <div className="font-body text-[11px] font-semibold text-ink-2 uppercase tracking-widest mb-2">
             Directional only — spread does not lock positive at live bid/ask prices
           </div>
-          <div className="font-mono text-[10px] text-text-muted leading-relaxed space-y-2">
+          <div className="font-body text-[10px] text-muted leading-relaxed space-y-2">
             <p>
               Both {platformLabel(low.platform)} and {platformLabel(high.platform)} are real-money platforms.
               Arithmetic at current executable (bid/ask) prices:
             </p>
-            <div className="my-2 px-3 py-2 bg-bg-elevated border border-border font-mono text-[10px] space-y-0.5">
+            <div className="my-2 px-3 py-2 bg-bg-soft border border-line rounded-card font-mono text-[10px] space-y-0.5">
               <div>
-                <span className="text-text-muted">Buy YES on {platformLabel(low.platform)}: </span>
-                <span className="text-positive tabular-nums font-medium">{(priceYES * 100).toFixed(1)}¢</span>
-                {usingLiveYES && <span className="text-text-muted/50 text-[9px]"> (ask · mid {low.probability}¢)</span>}
+                <span className="text-muted">Buy YES on {platformLabel(low.platform)}: </span>
+                <span className="text-mint-deep tabular-nums font-medium">{(priceYES * 100).toFixed(1)}¢</span>
+                {usingLiveYES && <span className="text-muted/50 text-[9px]"> (ask · mid {low.probability}¢)</span>}
               </div>
               <div>
-                <span className="text-text-muted">Buy NO on {platformLabel(high.platform)}: </span>
-                <span className="text-accent tabular-nums font-medium">{(priceNO * 100).toFixed(1)}¢</span>
-                {usingLiveNO && <span className="text-text-muted/50 text-[9px]"> (1 − bid · mid {100 - high.probability}¢)</span>}
+                <span className="text-muted">Buy NO on {platformLabel(high.platform)}: </span>
+                <span className="text-violet tabular-nums font-medium">{(priceNO * 100).toFixed(1)}¢</span>
+                {usingLiveNO && <span className="text-muted/50 text-[9px]"> (1 − bid · mid {100 - high.probability}¢)</span>}
               </div>
-              <div className="border-t border-border/30 pt-1 mt-0.5">
-                <span className="text-text-muted">Total cost: </span>
+              <div className="border-t border-line/30 pt-1 mt-0.5">
+                <span className="text-muted">Total cost: </span>
                 <span className="tabular-nums font-medium">{(costPerPair * 100).toFixed(1)}¢</span>
-                <span className="text-text-muted ml-3">Gross: </span>
-                <span className={`tabular-nums font-medium ${grossPerPair > 0 ? 'text-positive' : 'text-negative/80'}`}>
+                <span className="text-muted ml-3">Gross: </span>
+                <span className={`tabular-nums font-medium ${grossPerPair > 0 ? 'text-mint-deep' : 'text-coral-ink/80'}`}>
                   {grossPerPair >= 0 ? '+' : ''}{(grossPerPair * 100).toFixed(2)}¢
                 </span>
               </div>
               <div>
-                <span className="text-text-muted">After fees: </span>
-                <span className={`tabular-nums font-medium ${netPerPair > 0 ? 'text-positive' : 'text-negative/80'}`}>
+                <span className="text-muted">After fees: </span>
+                <span className={`tabular-nums font-medium ${netPerPair > 0 ? 'text-mint-deep' : 'text-coral-ink/80'}`}>
                   {netPerPair >= 0 ? '+' : ''}{(netPerPair * 100).toFixed(3)}¢ per contract pair
                 </span>
-                <span className="text-text-muted/60 text-[9px] ml-2">({liveNetROI.toFixed(2)}% net ROI)</span>
+                <span className="text-muted/60 text-[9px] ml-2">({liveNetROI.toFixed(2)}% net ROI)</span>
               </div>
             </div>
             {scannerNote && (
-              <p className="text-[9px] text-text-muted/60 border-l-2 border-border pl-2">
-                <span className="text-text-secondary font-medium">Scanner: </span>{scannerNote}
+              <p className="text-[9px] text-muted/60 border-l-2 border-line pl-2">
+                <span className="text-ink-2 font-medium">Scanner: </span>{scannerNote}
               </p>
             )}
             <p>
-              <span className="text-text-secondary">How to act: </span>
+              <span className="text-ink-2">How to act: </span>
               Track the spread — if YES prices diverge further the arithmetic may become positive.
               Trade the mispriced side with full directional risk if you have a view.
             </p>
@@ -749,23 +749,23 @@ function SignalDetail({ opp, capital, setCapital }: {
         </div>
 
         <SectionTitle title="Price comparison" />
-        <div className="mb-6 px-4 py-4 bg-bg-panel border border-border font-mono text-[10px]">
+        <div className="mb-6 px-4 py-4 bg-surface border border-line rounded-card font-mono text-[10px]">
           <div className="grid grid-cols-2 gap-4">
             {([low, high] as const).map((leg, i) => (
               <div key={i}>
-                <div className="text-[9px] uppercase tracking-widest text-text-muted mb-1">{platformLabel(leg.platform)}</div>
-                <div className="text-[18px] font-bold text-text-primary tabular-nums">{leg.probability}¢ YES</div>
-                <div className="text-[9px] text-text-muted/70 mt-0.5">Real-money market</div>
+                <div className="font-body text-[9px] uppercase tracking-widest text-muted mb-1">{platformLabel(leg.platform)}</div>
+                <div className="text-[18px] font-bold text-ink tabular-nums">{leg.probability}¢ YES</div>
+                <div className="font-body text-[9px] text-muted/70 mt-0.5">Real-money market</div>
               </div>
             ))}
           </div>
-          <div className="mt-3 pt-3 border-t border-border/30">
-            <span className="text-text-muted">Spread: </span>
+          <div className="mt-3 pt-3 border-t border-line/30">
+            <span className="text-muted">Spread: </span>
             <span className="font-medium tabular-nums">{opp.spread.toFixed(1)}pp</span>
-            <span className="text-text-muted ml-2">· Conf {Math.round(opp.confidence * 100)}%</span>
+            <span className="text-muted ml-2">· Conf {Math.round(opp.confidence * 100)}%</span>
           </div>
           {opp.confirmReason && (
-            <p className="text-[9px] text-text-muted/60 mt-2 italic">&quot;{opp.confirmReason}&quot;</p>
+            <p className="font-body text-[9px] text-muted/60 mt-2 italic">&quot;{opp.confirmReason}&quot;</p>
           )}
         </div>
 
@@ -775,7 +775,7 @@ function SignalDetail({ opp, capital, setCapital }: {
             const { url, verified } = getMarketUrl(leg);
             return (
               <a key={i} href={url} target="_blank" rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 font-mono text-[10px] px-3 py-1.5 border border-border text-text-muted hover:border-text-secondary hover:text-text-primary transition-colors duration-100">
+                className="inline-flex items-center gap-1.5 font-body text-[10px] px-3 py-1.5 border border-line text-muted hover:border-ink-2 hover:text-ink rounded-button transition-colors duration-100">
                 <ExternalLink size={10} />
                 {platformLabel(leg.platform)} market{!verified && ' (search)'}
               </a>
@@ -793,121 +793,121 @@ function SignalDetail({ opp, capital, setCapital }: {
 
       {/* Explain why the scanner flagged it as informational despite positive arithmetic */}
       {scannerNote && (
-        <div className="mb-4 px-4 py-3 border border-warning/30 bg-warning/5 font-mono text-[10px] text-warning/80">
+        <div className="mb-4 px-4 py-3 border border-gold/30 bg-gold/5 rounded-card font-body text-[10px] text-gold/80">
           <span className="font-semibold">Scanner note: </span>{scannerNote}{' '}
           The live arithmetic below is positive — verify resolution criteria on both platforms before trading.
         </div>
       )}
 
       {/* Price snapshot */}
-      <div className="mb-5 px-4 py-3 bg-bg-panel border border-border font-mono text-[11px]">
-        <div className="font-mono text-[9px] uppercase tracking-widest text-text-muted mb-2">Current prices (snapshot)</div>
+      <div className="mb-5 px-4 py-3 bg-surface border border-line rounded-card font-mono text-[11px]">
+        <div className="font-body text-[9px] uppercase tracking-widest text-muted mb-2">Current prices (snapshot)</div>
         <div className="flex flex-wrap gap-x-8 gap-y-1.5">
           <span>
-            <span className="text-text-muted">YES on {platformLabel(low.platform)}: </span>
-            <span className="text-positive font-medium tabular-nums">{(priceYES * 100).toFixed(1)}¢</span>
-            {usingLiveYES && <span className="text-text-muted/60 text-[9px] ml-1">(ask · mid {low.probability}¢)</span>}
+            <span className="text-muted">YES on {platformLabel(low.platform)}: </span>
+            <span className="text-mint-deep font-medium tabular-nums">{(priceYES * 100).toFixed(1)}¢</span>
+            {usingLiveYES && <span className="text-muted/60 text-[9px] ml-1">(ask · mid {low.probability}¢)</span>}
           </span>
           <span>
-            <span className="text-text-muted">NO on {platformLabel(high.platform)}: </span>
-            <span className="text-accent font-medium tabular-nums">{(priceNO * 100).toFixed(1)}¢</span>
-            {usingLiveNO && <span className="text-text-muted/60 text-[9px] ml-1">(1 − bid · mid {100 - high.probability}¢)</span>}
+            <span className="text-muted">NO on {platformLabel(high.platform)}: </span>
+            <span className="text-violet font-medium tabular-nums">{(priceNO * 100).toFixed(1)}¢</span>
+            {usingLiveNO && <span className="text-muted/60 text-[9px] ml-1">(1 − bid · mid {100 - high.probability}¢)</span>}
           </span>
           <span>
-            <span className="text-text-muted">Cost per pair: </span>
-            <span className="text-text-primary tabular-nums font-medium">{(costPerPair * 100).toFixed(1)}¢</span>
+            <span className="text-muted">Cost per pair: </span>
+            <span className="text-ink tabular-nums font-medium">{(costPerPair * 100).toFixed(1)}¢</span>
           </span>
           <span>
-            <span className="text-text-muted">Net ROI: </span>
-            <span className="text-positive font-medium tabular-nums">{fmtPct(liveNetROI, 2)}</span>
-            <span className="text-text-muted/60 text-[9px] ml-1">(live fee model)</span>
+            <span className="text-muted">Net ROI: </span>
+            <span className="text-mint-deep font-medium tabular-nums">{fmtPct(liveNetROI, 2)}</span>
+            <span className="text-muted/60 text-[9px] ml-1">(live fee model)</span>
           </span>
         </div>
         {!usingLiveYES && !usingLiveNO && (
-          <p className="font-mono text-[9px] text-warning/60 mt-1.5">
+          <p className="font-body text-[9px] text-gold/60 mt-1.5">
             No order-book data — prices shown are mid-market. Actual executable prices may differ.
           </p>
         )}
       </div>
 
       {/* Capital input */}
-      <div className="mb-5 px-4 py-3 bg-bg-panel border border-border">
-        <div className="font-mono text-[9px] uppercase tracking-widest text-text-muted mb-2">Your capital</div>
+      <div className="mb-5 px-4 py-3 bg-surface border border-line rounded-card">
+        <div className="font-body text-[9px] uppercase tracking-widest text-muted mb-2">Your capital</div>
         <div className="flex items-center gap-2">
-          <span className="font-mono text-[10px] text-text-muted">$</span>
+          <span className="font-mono text-[10px] text-muted">$</span>
           <input
             type="number" min={0} step={100} value={capital}
             onChange={e => setCapital(Math.max(0, parseFloat(e.target.value) || 0))}
-            className="w-[5rem] px-1.5 py-0.5 font-mono text-[11px] bg-bg-panel border border-border text-text-primary focus:border-accent/50 focus:outline-none tabular-nums"
+            className="w-[5rem] px-1.5 py-0.5 font-mono text-[11px] bg-surface border border-line text-ink focus:border-mint/50 focus:outline-none tabular-nums rounded-sm"
           />
         </div>
       </div>
 
       {/* P&L estimate */}
       {capital > 0 && N > 0 && (
-        <div className="mb-6 px-4 py-4 border border-positive/25 bg-positive/5">
-          <div className="font-mono text-[9px] uppercase tracking-widest text-text-muted mb-2">
+        <div className="mb-6 px-4 py-4 border border-mint-deep/25 bg-mint-tint/30 rounded-card">
+          <div className="font-body text-[9px] uppercase tracking-widest text-muted mb-2">
             Estimated outcome at ${capital.toLocaleString()}
           </div>
           <div className="flex flex-wrap gap-x-6 gap-y-1.5 font-mono text-[11px] mb-4">
             <span>
-              <span className="text-text-muted">Contracts: </span>
-              <span className="text-text-primary font-medium tabular-nums">{N} pairs</span>
-              <span className="text-text-muted/60 text-[9px] ml-1">({N} YES + {N} NO)</span>
+              <span className="text-muted">Contracts: </span>
+              <span className="text-ink font-medium tabular-nums">{N} pairs</span>
+              <span className="text-muted/60 text-[9px] ml-1">({N} YES + {N} NO)</span>
             </span>
             <span>
-              <span className="text-text-muted">Deployed: </span>
-              <span className="text-text-primary tabular-nums font-medium">{fmtUsd(totalCost)}</span>
-              <span className="text-text-muted/60 text-[9px] ml-1">({fmtUsd(capital - totalCost)} undeployed)</span>
+              <span className="text-muted">Deployed: </span>
+              <span className="text-ink tabular-nums font-medium">{fmtUsd(totalCost)}</span>
+              <span className="text-muted/60 text-[9px] ml-1">({fmtUsd(capital - totalCost)} undeployed)</span>
             </span>
             <span>
-              <span className="text-positive font-bold text-[14px] tabular-nums">{fmtUsd(netTotal)} locked profit</span>
-              <span className="text-text-muted/60 text-[9px] ml-1">(net, at resolution)</span>
+              <span className="text-mint-deep font-bold text-[14px] tabular-nums">{fmtUsd(netTotal)} locked profit</span>
+              <span className="text-muted/60 text-[9px] ml-1">(net, at resolution)</span>
             </span>
           </div>
-          <div className="border-t border-border/30 pt-3">
-            <div className="font-mono text-[9px] uppercase tracking-widest text-text-muted mb-2">Fee breakdown</div>
+          <div className="border-t border-line/30 pt-3">
+            <div className="font-body text-[9px] uppercase tracking-widest text-muted mb-2">Fee breakdown</div>
             <div className="space-y-[3px] font-mono text-[10px]">
               <div className="flex gap-2">
-                <span className="text-text-muted w-[120px] shrink-0">Gross profit</span>
-                <span className="text-text-muted/60 text-[9px]">{N} × {(grossPerPair * 100).toFixed(2)}¢</span>
-                <span className="text-text-primary tabular-nums ml-auto">{fmtUsd(N * grossPerPair)}</span>
+                <span className="text-muted w-[120px] shrink-0">Gross profit</span>
+                <span className="text-muted/60 text-[9px]">{N} × {(grossPerPair * 100).toFixed(2)}¢</span>
+                <span className="text-ink tabular-nums ml-auto">{fmtUsd(N * grossPerPair)}</span>
               </div>
               <div className="flex gap-2">
-                <span className="text-text-muted w-[120px] shrink-0">{platformLabel(low.platform)} fee</span>
-                <span className="text-text-muted/60 text-[9px]">
+                <span className="text-muted w-[120px] shrink-0">{platformLabel(low.platform)} fee</span>
+                <span className="text-muted/60 text-[9px]">
                   {low.platform?.toLowerCase() === 'kalshi'
                     ? `7%×${(priceYES*100).toFixed(1)}¢×${((1-priceYES)*100).toFixed(1)}¢`
                     : low.platform?.toLowerCase() === 'polymarket' ? '0% · no trading fee'
                     : `${(low.fee*100).toFixed(0)}% on winnings`}
                 </span>
-                <span className={`tabular-nums ml-auto ${totalFeeLow === 0 ? 'text-text-muted/50' : 'text-negative/80'}`}>
+                <span className={`tabular-nums ml-auto ${totalFeeLow === 0 ? 'text-muted/50' : 'text-coral-ink/80'}`}>
                   {fmtUsd(-totalFeeLow)}
                 </span>
               </div>
               <div className="flex gap-2">
-                <span className="text-text-muted w-[120px] shrink-0">{platformLabel(high.platform)} fee</span>
-                <span className="text-text-muted/60 text-[9px]">
+                <span className="text-muted w-[120px] shrink-0">{platformLabel(high.platform)} fee</span>
+                <span className="text-muted/60 text-[9px]">
                   {high.platform?.toLowerCase() === 'kalshi'
                     ? `7%×${(highYesDec*100).toFixed(1)}¢×${((1-highYesDec)*100).toFixed(1)}¢`
                     : high.platform?.toLowerCase() === 'polymarket' ? '0% · no trading fee'
                     : `${(high.fee*100).toFixed(0)}% on winnings`}
                 </span>
-                <span className={`tabular-nums ml-auto ${totalFeeHigh === 0 ? 'text-text-muted/50' : 'text-negative/80'}`}>
+                <span className={`tabular-nums ml-auto ${totalFeeHigh === 0 ? 'text-muted/50' : 'text-coral-ink/80'}`}>
                   {fmtUsd(-totalFeeHigh)}
                 </span>
               </div>
-              <div className="flex gap-2 border-t border-border/30 pt-1.5 mt-1">
-                <span className="text-text-secondary font-medium">Net profit</span>
-                <span className="text-text-muted/50 text-[9px] ml-1">({liveNetROI.toFixed(2)}% ROI)</span>
-                <span className="text-positive font-medium tabular-nums ml-auto">{fmtUsd(netTotal)}</span>
+              <div className="flex gap-2 border-t border-line/30 pt-1.5 mt-1">
+                <span className="text-ink-2 font-medium">Net profit</span>
+                <span className="text-muted/50 text-[9px] ml-1">({liveNetROI.toFixed(2)}% ROI)</span>
+                <span className="text-mint-deep font-medium tabular-nums ml-auto">{fmtUsd(netTotal)}</span>
               </div>
             </div>
           </div>
         </div>
       )}
       {capital > 0 && N === 0 && (
-        <div className="mb-6 px-4 py-3 border border-border bg-bg-panel font-mono text-[10px] text-warning/70">
+        <div className="mb-6 px-4 py-3 border border-line bg-surface rounded-card font-body text-[10px] text-gold/70">
           Capital too low for one contract pair at {(costPerPair * 100).toFixed(1)}¢/pair cost.
         </div>
       )}
@@ -915,22 +915,22 @@ function SignalDetail({ opp, capital, setCapital }: {
       {/* Step-by-step */}
       <SectionTitle title="Step-by-step execution" />
       <div className="space-y-0 mb-6">
-        <div className="border-b border-border/20 pb-4 mb-4">
+        <div className="border-b border-line/20 pb-4 mb-4">
           <StepLabel n={1} text={`Buy YES on ${platformLabel(low.platform)}`} />
-          <div className="ml-[42px] font-mono text-[10px] text-text-muted leading-relaxed space-y-1">
-            <p>Market: <span className="text-text-secondary">{opp.question}</span></p>
+          <div className="ml-[42px] font-body text-[10px] text-muted leading-relaxed space-y-1">
+            <p>Market: <span className="text-ink-2">{opp.question}</span></p>
             <p>
-              Outcome: <span className="text-positive font-medium">YES</span>
-              {' '}· Price: <span className="text-positive tabular-nums font-medium">{(priceYES * 100).toFixed(1)}¢/share</span>
-              {usingLiveYES && <span className="text-text-muted/60"> (order-book ask)</span>}
+              Outcome: <span className="text-mint-deep font-medium">YES</span>
+              {' '}· Price: <span className="text-mint-deep tabular-nums font-medium font-mono">{(priceYES * 100).toFixed(1)}¢/share</span>
+              {usingLiveYES && <span className="text-muted/60"> (order-book ask)</span>}
             </p>
             {capital > 0 && N > 0 && (
-              <p>Quantity: <span className="tabular-nums text-text-primary">{N} shares</span> · Cost: <span className="tabular-nums">{fmtUsd(N * priceYES)}</span></p>
+              <p>Quantity: <span className="tabular-nums text-ink font-mono">{N} shares</span> · Cost: <span className="tabular-nums font-mono">{fmtUsd(N * priceYES)}</span></p>
             )}
-            <p className="text-[9px] text-text-muted/60 border-l border-border/30 pl-2 mt-1">
+            <p className="text-[9px] text-muted/60 border-l border-line/30 pl-2 mt-1">
               {(() => { const { url, verified } = getMarketUrl(low); return (
                 <a href={url} target="_blank" rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-accent hover:text-accent-bright">
+                  className="inline-flex items-center gap-1 text-mint hover:text-mint-deep">
                   Open {platformLabel(low.platform)} market{!verified && ' (search)'} <ExternalLink size={9} />
                 </a>
               ); })()}
@@ -943,22 +943,22 @@ function SignalDetail({ opp, capital, setCapital }: {
           </div>
         </div>
 
-        <div className="border-b border-border/20 pb-4 mb-4">
+        <div className="border-b border-line/20 pb-4 mb-4">
           <StepLabel n={2} text={`Buy NO on ${platformLabel(high.platform)}`} />
-          <div className="ml-[42px] font-mono text-[10px] text-text-muted leading-relaxed space-y-1">
-            <p>Market: <span className="text-text-secondary">{opp.question}</span></p>
+          <div className="ml-[42px] font-body text-[10px] text-muted leading-relaxed space-y-1">
+            <p>Market: <span className="text-ink-2">{opp.question}</span></p>
             <p>
-              Outcome: <span className="text-accent font-medium">NO</span>
-              {' '}· Price: <span className="text-accent tabular-nums font-medium">{(priceNO * 100).toFixed(1)}¢/share</span>
-              {usingLiveNO && <span className="text-text-muted/60"> (1 − YES bid)</span>}
+              Outcome: <span className="text-violet font-medium">NO</span>
+              {' '}· Price: <span className="text-violet tabular-nums font-medium font-mono">{(priceNO * 100).toFixed(1)}¢/share</span>
+              {usingLiveNO && <span className="text-muted/60"> (1 − YES bid)</span>}
             </p>
             {capital > 0 && N > 0 && (
-              <p>Quantity: <span className="tabular-nums text-text-primary">{N} shares</span> · Cost: <span className="tabular-nums">{fmtUsd(N * priceNO)}</span></p>
+              <p>Quantity: <span className="tabular-nums text-ink font-mono">{N} shares</span> · Cost: <span className="tabular-nums font-mono">{fmtUsd(N * priceNO)}</span></p>
             )}
-            <p className="text-[9px] text-text-muted/60 border-l border-border/30 pl-2 mt-1">
+            <p className="text-[9px] text-muted/60 border-l border-line/30 pl-2 mt-1">
               {(() => { const { url, verified } = getMarketUrl(high); return (
                 <a href={url} target="_blank" rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-accent hover:text-accent-bright">
+                  className="inline-flex items-center gap-1 text-mint hover:text-mint-deep">
                   Open {platformLabel(high.platform)} market{!verified && ' (search)'} <ExternalLink size={9} />
                 </a>
               ); })()}
@@ -971,53 +971,53 @@ function SignalDetail({ opp, capital, setCapital }: {
           </div>
         </div>
 
-        <div className="border-b border-border/20 pb-4 mb-4">
+        <div className="border-b border-line/20 pb-4 mb-4">
           <StepLabel n={3} text="Open both legs as simultaneously as possible" />
-          <div className="ml-[42px] font-mono text-[10px] text-text-muted leading-relaxed">
+          <div className="ml-[42px] font-body text-[10px] text-muted leading-relaxed">
             <p>Between fills the price can move. An unhedged leg is a directional bet. Minimize time between clicks.</p>
           </div>
         </div>
 
-        <div className="border-b border-border/20 pb-4 mb-4">
+        <div className="border-b border-line/20 pb-4 mb-4">
           <StepLabel n={4} text="Hold to resolution — no active management needed" />
-          <div className="ml-[42px] font-mono text-[10px] text-text-muted leading-relaxed space-y-1">
+          <div className="ml-[42px] font-body text-[10px] text-muted leading-relaxed space-y-1">
             <p>Shares are non-fungible platform tokens — hold both until resolution.</p>
             {opp.resolutionDate && (
               <p>
-                <span className="text-text-secondary">Resolution: </span>
+                <span className="text-ink-2">Resolution: </span>
                 <span className="font-medium">{fmtDate(opp.resolutionDate)}</span>
-                {opp.daysToResolution != null && <span className="text-text-muted/60"> · {opp.daysToResolution} days</span>}
+                {opp.daysToResolution != null && <span className="text-muted/60"> · {opp.daysToResolution} days</span>}
               </p>
             )}
-            {opp.lockupFlag && <p className="text-warning/70 text-[9px]">⚠ {opp.lockupFlag}</p>}
+            {opp.lockupFlag && <p className="text-gold/70 text-[9px]">⚠ {opp.lockupFlag}</p>}
           </div>
         </div>
       </div>
 
       {/* Resolution risk warning */}
-      <div className="mb-6 px-4 py-4 border-2 border-negative/40 bg-negative/5">
-        <div className="font-mono text-[11px] font-bold text-negative uppercase tracking-widest mb-3">
+      <div className="mb-6 px-4 py-4 border-2 border-coral-ink/40 bg-coral-tint/30 rounded-card">
+        <div className="font-body text-[11px] font-bold text-coral-ink uppercase tracking-widest mb-3">
           ⚠ Resolution-risk warning — read before trading
         </div>
-        <div className="font-mono text-[10px] text-text-muted leading-relaxed space-y-2">
+        <div className="font-body text-[10px] text-muted leading-relaxed space-y-2">
           <p>
-            <span className="text-text-secondary font-medium">This is only a locked arb if both platforms resolve on the exact same real-world criteria, source, and date.</span>
+            <span className="text-ink-2 font-medium">This is only a locked arb if both platforms resolve on the exact same real-world criteria, source, and date.</span>
             {' '}If they diverge — one says YES, one says NO — you lose on both legs simultaneously.
           </p>
           {opp.confirmReason && (
             <p>
-              <span className="text-text-secondary">AI confirmation: </span>
+              <span className="text-ink-2">AI confirmation: </span>
               <span className="italic">&quot;{opp.confirmReason}&quot;</span>
-              <span className="text-text-muted/50"> — AI-generated, not guaranteed correct.</span>
+              <span className="text-muted/50"> — AI-generated, not guaranteed correct.</span>
             </p>
           )}
           <ul className="list-none space-y-1 ml-3 text-[9px]">
-            <li>· <span className="text-text-secondary">Criteria risk:</span> each platform writes its own resolution rules — read both descriptions carefully.</li>
-            <li>· <span className="text-text-secondary">Date risk:</span> one platform may resolve early (e.g. election night) while the other waits for certification.</li>
-            <li>· <span className="text-text-secondary">Void risk:</span> if either market is voided you carry a one-sided open position.</li>
-            <li>· <span className="text-text-secondary">Fill risk:</span> prices are snapshots — order book may move before you execute.</li>
+            <li>· <span className="text-ink-2">Criteria risk:</span> each platform writes its own resolution rules — read both descriptions carefully.</li>
+            <li>· <span className="text-ink-2">Date risk:</span> one platform may resolve early (e.g. election night) while the other waits for certification.</li>
+            <li>· <span className="text-ink-2">Void risk:</span> if either market is voided you carry a one-sided open position.</li>
+            <li>· <span className="text-ink-2">Fill risk:</span> prices are snapshots — order book may move before you execute.</li>
           </ul>
-          <p className="text-text-muted/60 text-[9px] mt-1">
+          <p className="text-muted/60 text-[9px] mt-1">
             Manually verify resolution rules on both platforms before committing capital.
           </p>
         </div>
@@ -1028,14 +1028,14 @@ function SignalDetail({ opp, capital, setCapital }: {
       <div className="mb-6 flex flex-wrap gap-3">
         {(() => { const { url, verified } = getMarketUrl(low); return (
           <a href={url} target="_blank" rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 font-mono text-[10px] px-3 py-1.5 border border-positive/30 text-positive/70 hover:border-positive hover:text-positive transition-colors duration-100">
+            className="inline-flex items-center gap-1.5 font-body text-[10px] px-3 py-1.5 border border-mint-deep/30 text-mint-deep/70 hover:border-mint-deep hover:text-mint-deep rounded-button transition-colors duration-100">
             <ExternalLink size={10} />
             {platformLabel(low.platform)} — YES market{!verified && ' (search)'}
           </a>
         ); })()}
         {(() => { const { url, verified } = getMarketUrl(high); return (
           <a href={url} target="_blank" rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 font-mono text-[10px] px-3 py-1.5 border border-accent/30 text-accent/70 hover:border-accent hover:text-accent transition-colors duration-100">
+            className="inline-flex items-center gap-1.5 font-body text-[10px] px-3 py-1.5 border border-violet/30 text-violet/70 hover:border-violet hover:text-violet rounded-button transition-colors duration-100">
             <ExternalLink size={10} />
             {platformLabel(high.platform)} — NO market{!verified && ' (search)'}
           </a>
@@ -1074,27 +1074,27 @@ export default function PredictionDetailPage({ params }: { params: { id: string 
       <div className="mb-5">
         <Link
           href="/dashboard/prediction"
-          className="font-mono text-[10px] text-text-muted hover:text-text-primary transition-colors duration-100"
+          className="font-body text-[10px] text-muted hover:text-ink transition-colors duration-100"
         >
           ← Back to Prediction Markets
         </Link>
       </div>
 
       {loading ? (
-        <div className="py-20 text-center font-mono text-[10px] uppercase tracking-widest text-text-muted animate-pulse">
+        <div className="py-20 text-center font-body text-[10px] uppercase tracking-widest text-muted animate-pulse">
           Loading…
         </div>
       ) : !data?.valid ? (
-        <div className="py-20 text-center font-mono text-[10px] text-negative">
+        <div className="py-20 text-center font-body text-[10px] text-coral-ink">
           Data unavailable — matcher pipeline not running.
         </div>
       ) : !opp ? (
         <div className="py-20 text-center space-y-2">
-          <div className="font-mono text-[11px] text-text-muted">
+          <div className="font-body text-[11px] text-muted">
             Opportunity not found — it may have expired or the spread closed.
           </div>
           <div className="mt-4">
-            <Link href="/dashboard/prediction" className="font-mono text-[10px] text-accent">
+            <Link href="/dashboard/prediction" className="font-body text-[10px] text-mint">
               ← Return to list
             </Link>
           </div>
@@ -1104,15 +1104,15 @@ export default function PredictionDetailPage({ params }: { params: { id: string 
           {/* Header */}
           <div className="mb-5">
             <div className="flex items-center gap-3 mb-2">
-              <span className="font-mono text-[10px] uppercase tracking-widest px-1.5 py-[2px] bg-accent/10 text-accent border border-accent/25">
+              <span className="font-body text-[10px] uppercase tracking-widest px-1.5 py-[2px] bg-mint/10 text-mint border border-mint/25 rounded-sm">
                 RESULT FOUND
               </span>
-              <span className="font-mono text-[9px] text-text-muted uppercase tracking-widest">{opp.category}</span>
+              <span className="font-body text-[9px] text-muted uppercase tracking-widest">{opp.category}</span>
             </div>
-            <h1 className="font-mono text-[17px] font-bold text-text-primary leading-snug mb-1">
+            <h1 className="font-display font-bold text-[17px] text-ink leading-snug mb-1">
               {opp.question}
             </h1>
-            <p className="font-mono text-[11px] text-text-muted">
+            <p className="font-body text-[11px] text-muted">
               {platformLabel(opp.lowMarket.platform)} × {platformLabel(opp.highMarket.platform)}
               {' · '}
               {opp.type === 'cashable'
@@ -1130,7 +1130,7 @@ export default function PredictionDetailPage({ params }: { params: { id: string 
           )}
 
           {/* Disclaimer */}
-          <div className="px-4 py-3 border border-border/30 bg-bg-elevated/10 font-mono text-[9px] text-text-muted/50 leading-relaxed">
+          <div className="px-4 py-3 border border-line/30 bg-bg-soft/10 rounded-card font-body text-[9px] text-muted/50 leading-relaxed">
             Educational only. Not financial advice. Numbers are derived from a live data snapshot and will change.
             Resolution-criteria matching is AI-assisted and may be incorrect — verify both market descriptions on each platform
             before committing capital. Execution is entirely at your own risk.

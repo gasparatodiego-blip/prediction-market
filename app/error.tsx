@@ -15,33 +15,33 @@ export default function Error({
   }, [error]);
 
   return (
-    <div className="min-h-screen bg-bg-base text-text-primary flex items-center justify-center px-6">
-      <div className="max-w-md w-full border border-border bg-bg-panel p-8">
-        <div className="font-mono text-[9px] uppercase tracking-widest text-warning/70 mb-4">
+    <div className="min-h-screen bg-bg text-ink flex items-center justify-center px-6">
+      <div className="max-w-md w-full border border-line bg-surface p-8 rounded-card shadow-card">
+        <div className="font-body text-[9px] uppercase tracking-widest text-gold/70 mb-4">
           RENDER ERROR
         </div>
-        <h2 className="font-mono text-sm text-text-primary mb-3">
+        <h2 className="font-display font-semibold text-sm text-ink mb-3">
           Something went wrong loading this page.
         </h2>
-        <p className="font-mono text-[10px] text-text-muted leading-relaxed mb-6">
+        <p className="font-body text-[11px] text-muted leading-relaxed mb-6">
           This is usually transient. Try refreshing — if it persists,
           the data agent feeding this page may be offline.
         </p>
         {error.digest && (
-          <p className="font-mono text-[8px] text-text-muted/40 mb-5">
+          <p className="font-mono text-[8px] text-muted/40 mb-5">
             ref: {error.digest}
           </p>
         )}
         <div className="flex items-center gap-3">
           <button
             onClick={reset}
-            className="font-mono text-[10px] uppercase tracking-widest px-4 py-2 bg-accent text-white hover:bg-accent/90 transition-colors"
+            className="font-body text-[11px] font-medium uppercase tracking-wide px-4 py-2 bg-mint-deep text-white hover:bg-mint transition-colors rounded-button"
           >
             Try again
           </button>
           <Link
             href="/dashboard"
-            className="font-mono text-[10px] uppercase tracking-widest px-4 py-2 border border-border text-text-muted hover:text-text-primary transition-colors"
+            className="font-body text-[11px] font-medium uppercase tracking-wide px-4 py-2 border border-line text-muted hover:text-ink transition-colors rounded-button"
           >
             Dashboard
           </Link>

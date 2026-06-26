@@ -21,7 +21,7 @@ export const metadata = { title: 'UI Preview | Edgeradar' };
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="space-y-4">
-      <p className="font-mono text-[10px] uppercase tracking-widest text-muted border-b border-line pb-2">
+      <p className="font-body text-[10px] uppercase tracking-widest text-muted border-b border-line pb-2">
         {title}
       </p>
       {children}

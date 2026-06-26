@@ -31,18 +31,18 @@ const STATUS_BADGE: Record<string, string> = {
 };
 
 const CARD_BADGE_CLS: Record<string, string> = {
-  'live':             'bg-positive/10 text-positive border-positive/25',
-  'no-opp':           'bg-border/50 text-text-muted/50 border-border/50',
-  'snapshot-no-opp':  'bg-border/50 text-text-muted/50 border-border/50',
-  'offline':          'bg-warning/10 text-warning/60 border-warning/20',
-  'coming-soon':      'bg-border/20 text-text-muted/30 border-border/20',
+  'live':             'bg-mint-deep/10 text-mint-deep border-mint-deep/25',
+  'no-opp':           'bg-line/50 text-muted/50 border-line/50',
+  'snapshot-no-opp':  'bg-line/50 text-muted/50 border-line/50',
+  'offline':          'bg-gold/10 text-gold/60 border-gold/20',
+  'coming-soon':      'bg-line/20 text-muted/30 border-line/20',
 };
 
 const STRIP_BADGE_CLS: Record<string, string> = {
-  'no-opp':           'text-text-muted/40 border-border/40',
-  'snapshot-no-opp':  'text-text-muted/40 border-border/40',
-  'offline':          'text-warning/50 border-warning/20',
-  'coming-soon':      'text-text-muted/30 border-border/30',
+  'no-opp':           'text-muted/40 border-line/40',
+  'snapshot-no-opp':  'text-muted/40 border-line/40',
+  'offline':          'text-gold/50 border-gold/20',
+  'coming-soon':      'text-muted/30 border-line/30',
 };
 
 const STATUS_WORD: Record<string, string> = {
@@ -59,10 +59,10 @@ function LiveCard({ cat, flashKey }: { cat: TickerItem; flashKey: number }) {
   return (
     <Link href={href} className="block">
       <div className={[
-        'flex flex-col h-full p-3 border border-border bg-bg-panel',
+        'flex flex-col h-full p-3 border border-line bg-surface rounded-card shadow-card',
         'transition-colors duration-150',
         'motion-safe:hover:-translate-y-0.5 motion-safe:transition-all motion-safe:duration-200',
-        'hover:border-accent/25 hover:bg-bg-elevated hover:shadow-[0_4px_16px_rgba(99,102,241,0.07)]',
+        'hover:border-mint/25 hover:bg-bg-soft hover:shadow-[0_4px_16px_rgba(15,190,130,0.07)]',
       ].join(' ')}>
 
         {/* Header */}
@@ -70,28 +70,28 @@ function LiveCard({ cat, flashKey }: { cat: TickerItem; flashKey: number }) {
           <div className="flex items-center gap-1.5 min-w-0">
             {cat.status === 'live' ? (
               <span
-                className="inline-block w-1.5 h-1.5 rounded-full bg-positive shrink-0 animate-pulse-slow"
-                style={{ boxShadow: '0 0 4px #22C55E' }}
+                className="inline-block w-1.5 h-1.5 rounded-full bg-mint-deep shrink-0 animate-pulse-slow"
+                style={{ boxShadow: '0 0 4px #0A9D6B' }}
               />
             ) : (
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-text-muted/30 shrink-0" />
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-muted/30 shrink-0" />
             )}
-            <span className="font-mono text-[8px] uppercase tracking-widest text-text-muted truncate">
+            <span className="font-body text-[8px] uppercase tracking-widest text-muted truncate">
               {cat.label}
             </span>
           </div>
-          <span className={`font-mono text-[6.5px] uppercase tracking-widest px-1 py-[2px] border shrink-0 ${CARD_BADGE_CLS[cat.status]}`}>
+          <span className={`font-body text-[6.5px] uppercase tracking-widest px-1 py-[2px] border shrink-0 rounded-sm ${CARD_BADGE_CLS[cat.status]}`}>
             {STATUS_BADGE[cat.status]}
           </span>
         </div>
 
         {/* Tagline */}
         <div className="flex-1 mb-2">
-          <p className="font-mono text-[8.5px] text-text-secondary leading-relaxed">
+          <p className="font-body text-[8.5px] text-ink-2 leading-relaxed">
             {TAGLINES[cat.key] ?? cat.note}
           </p>
           {cat.platforms && cat.platforms.length > 0 && (
-            <p className="font-mono text-[7px] text-text-muted/40 mt-0.5">
+            <p className="font-body text-[7px] text-muted/40 mt-0.5">
               {cat.platforms.join(' · ')}
             </p>
           )}
@@ -103,24 +103,24 @@ function LiveCard({ cat, flashKey }: { cat: TickerItem; flashKey: number }) {
             <>
               <div
                 className={`font-mono font-bold tabular-nums leading-none ${flashKey > 0 ? 'animate-number-flash' : ''}`}
-                style={{ fontSize: '1.15rem', color: '#22C55E' }}
+                style={{ fontSize: '1.15rem', color: '#0A9D6B' }}
               >
                 +{cat.bestNetPct.toFixed(1)}
-                <span className="text-[9px] font-normal ml-0.5" style={{ color: 'rgba(34,197,94,0.6)' }}>
+                <span className="text-[9px] font-normal ml-0.5" style={{ color: 'rgba(10,157,107,0.6)' }}>
                   {cat.unit}
                 </span>
               </div>
               {/* Context badge — de-emphasizes figures that need qualification */}
               {cat.displayKind === 'ceiling' && (
                 <div className="mt-1 mb-0.5">
-                  <span className="font-mono text-[6.5px] uppercase tracking-widest px-1 py-[2px] border border-text-muted/20 text-text-muted/40">
+                  <span className="font-body text-[6.5px] uppercase tracking-widest px-1 py-[2px] border border-muted/20 text-muted/40">
                     CEILING · VARIABLE RATE
                   </span>
                 </div>
               )}
               {cat.displayKind === 'net' && (
                 <div className="mt-1 mb-0.5">
-                  <span className="font-mono text-[6.5px] uppercase tracking-widest px-1 py-[2px] border border-positive/20 text-positive/40">
+                  <span className="font-body text-[6.5px] uppercase tracking-widest px-1 py-[2px] border border-mint-deep/20 text-mint-deep/40">
                     CONFIRMED · NET OF FEES
                   </span>
                 </div>
@@ -128,17 +128,17 @@ function LiveCard({ cat, flashKey }: { cat: TickerItem; flashKey: number }) {
 
               {cat.displayKind === 'snapshot' && (
                 <div className="mt-1 mb-0.5">
-                  <span className="font-mono text-[6.5px] uppercase tracking-widest px-1 py-[2px] border border-text-muted/20 text-text-muted/40">
+                  <span className="font-body text-[6.5px] uppercase tracking-widest px-1 py-[2px] border border-muted/20 text-muted/40">
                     SNAPSHOT · DAILY SCAN
                   </span>
                 </div>
               )}
-              <div className="font-mono text-[7.5px] text-text-muted/45 mt-0.5 truncate">
+              <div className="font-body text-[7.5px] text-muted/45 mt-0.5 truncate">
                 {cat.note}
               </div>
             </>
           ) : (
-            <div className="font-mono text-[8.5px] text-text-muted/60 leading-snug">
+            <div className="font-body text-[8.5px] text-muted/60 leading-snug">
               {cat.note}
             </div>
           )}
@@ -195,17 +195,17 @@ export default function StrategyCards() {
       <div className="space-y-3">
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="h-[110px] border border-border bg-bg-panel animate-pulse" />
+            <div key={i} className="h-[110px] border border-line bg-surface animate-pulse rounded-card" />
           ))}
         </div>
-        <div className="h-[72px] border border-border/40 bg-bg-panel/40 animate-pulse" />
+        <div className="h-[72px] border border-line/40 bg-surface/40 animate-pulse rounded-card" />
       </div>
     );
   }
 
   if (!data?.categories?.length) {
     return (
-      <div className="font-mono text-[10px] text-text-muted py-4">
+      <div className="font-body text-[10px] text-muted py-4">
         Agents not running — start agent10-binance and agent15-funding-writer.
       </div>
     );
@@ -232,7 +232,7 @@ export default function StrategyCards() {
 
       {/* ── Non-live strip — honest status, no phantom empty cards ─────────── */}
       {nonLiveItems.length > 0 && (
-        <div className="mt-3 border border-border/35 overflow-hidden">
+        <div className="mt-3 border border-line/35 overflow-hidden rounded-card">
           {nonLiveItems.map((cat, i) => {
             const href = HREF_OVERRIDE[cat.key] ?? cat.href;
             return (
@@ -240,18 +240,18 @@ export default function StrategyCards() {
                 key={cat.key}
                 href={href}
                 className={[
-                  'flex items-center gap-3 px-3 py-2 bg-bg-panel/40',
-                  i > 0 ? 'border-t border-border/25' : '',
-                  'hover:bg-bg-elevated/40 transition-colors duration-100',
+                  'flex items-center gap-3 px-3 py-2 bg-surface/40',
+                  i > 0 ? 'border-t border-line/25' : '',
+                  'hover:bg-bg-soft/40 transition-colors duration-100',
                 ].join(' ')}
               >
-                <span className="font-mono text-[8.5px] text-text-muted/60 shrink-0 w-28">
+                <span className="font-body text-[8.5px] text-muted/60 shrink-0 w-28">
                   {cat.label}
                 </span>
-                <span className="font-mono text-[8px] text-text-muted/35 flex-1 truncate hidden sm:block">
+                <span className="font-body text-[8px] text-muted/35 flex-1 truncate hidden sm:block">
                   {cat.status === 'snapshot-no-opp' ? cat.note : TAGLINES[cat.key]}
                 </span>
-                <span className={`font-mono text-[7px] uppercase tracking-widest px-1.5 py-[2px] border shrink-0 ${STRIP_BADGE_CLS[cat.status] ?? 'text-text-muted/40 border-border/40'}`}>
+                <span className={`font-body text-[7px] uppercase tracking-widest px-1.5 py-[2px] border shrink-0 ${STRIP_BADGE_CLS[cat.status] ?? 'text-muted/40 border-line/40'}`}>
                   {STATUS_BADGE[cat.status]}
                 </span>
               </Link>
@@ -260,7 +260,7 @@ export default function StrategyCards() {
         </div>
       )}
 
-      <p className="font-mono text-[8px] text-text-muted/35 mt-2 leading-relaxed">
+      <p className="font-body text-[8px] text-muted/35 mt-2 leading-relaxed">
         Live numbers are best current result per category — net of fees. Empty categories show an honest status word. Refreshes every 30 s.
       </p>
     </div>

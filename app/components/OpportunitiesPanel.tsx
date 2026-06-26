@@ -55,19 +55,19 @@ interface ApiResponse {
 // ── Display helpers ───────────────────────────────────────────────────────────
 
 const BADGE_CLS: Record<string, string> = {
-  CASHABLE: 'bg-positive/10 text-positive border-positive/25',
-  SIGNAL:   'bg-warning/10 text-warning border-warning/25',
-  SPORTS:   'bg-accent/10 text-accent-bright border-accent/25',
-  FUNDING:  'bg-text-muted/10 text-text-secondary border-border',
+  CASHABLE: 'bg-mint-deep/10 text-mint-deep border-mint-deep/25',
+  SIGNAL:   'bg-gold/10 text-gold border-gold/25',
+  SPORTS:   'bg-violet/10 text-violet border-violet/25',
+  FUNDING:  'bg-muted/10 text-ink-2 border-line',
 };
 
 const VERDICT_CLS: Record<string, string> = {
-  'Actionable':                      'text-positive',
-  'capital-lockup-skip':             'text-warning',
-  'signal':                          'text-text-muted',
-  'stale-check':                     'text-negative',
-  'HARVEST · variable':              'text-accent',
-  'SPIKE — predicted, unconfirmed':  'text-negative/60',
+  'Actionable':                      'text-mint-deep',
+  'capital-lockup-skip':             'text-gold',
+  'signal':                          'text-muted',
+  'stale-check':                     'text-coral-ink',
+  'HARVEST · variable':              'text-mint',
+  'SPIKE — predicted, unconfirmed':  'text-coral-ink/60',
 };
 
 function fmtRoi(n: number | null, suffix = '%', places = 1): string {
@@ -89,10 +89,10 @@ function fmtDays(days: number | null): string {
 }
 
 function fuseColorCls(days: number | null): string {
-  if (days === null) return 'bg-border';
-  if (days < 7)  return 'bg-negative';
-  if (days < 30) return 'bg-warning';
-  return 'bg-positive';
+  if (days === null) return 'bg-line';
+  if (days < 7)  return 'bg-coral-ink';
+  if (days < 30) return 'bg-gold';
+  return 'bg-mint-deep';
 }
 
 function fusePct(days: number | null): number {
@@ -152,19 +152,19 @@ function SizingControl({
 }) {
   const N = capital * leverage / 2;
   return (
-    <div className="px-3 py-2 border-b border-border flex flex-wrap items-center gap-x-4 gap-y-1.5 bg-bg-elevated/20">
-      <span className="font-mono text-[9px] uppercase tracking-widest text-text-muted shrink-0">
+    <div className="px-3 py-2 border-b border-line flex flex-wrap items-center gap-x-4 gap-y-1.5 bg-bg-soft/20">
+      <span className="font-body text-[9px] uppercase tracking-widest text-muted shrink-0">
         Capital
       </span>
       <div className="flex items-center gap-1">
-        <span className="font-mono text-[10px] text-text-muted">$</span>
+        <span className="font-body text-[10px] text-muted">$</span>
         <input
           type="number"
           min={0}
           step={100}
           value={capital}
           onChange={e => setCapital(Math.max(0, parseFloat(e.target.value) || 0))}
-          className="w-[4.5rem] px-1.5 py-0.5 font-mono text-[11px] bg-bg-panel border border-border text-text-primary focus:border-accent/50 focus:outline-none tabular-nums"
+          className="w-[4.5rem] px-1.5 py-0.5 font-mono text-[11px] bg-surface border border-line text-ink focus:border-mint/50 focus:outline-none tabular-nums rounded-sm"
         />
       </div>
       <div className="flex items-center gap-1">
@@ -172,10 +172,10 @@ function SizingControl({
           <button
             key={lev}
             onClick={() => setLeverage(lev)}
-            className={`px-1.5 py-0.5 font-mono text-[10px] border transition-colors duration-100 ${
+            className={`px-1.5 py-0.5 font-body text-[10px] border rounded-sm transition-colors duration-100 ${
               leverage === lev
-                ? 'bg-accent text-white border-accent'
-                : 'border-border text-text-muted hover:border-text-secondary hover:text-text-primary'
+                ? 'bg-mint-deep text-white border-mint-deep'
+                : 'border-line text-muted hover:border-ink-2 hover:text-ink'
             }`}
           >
             {lev}×
@@ -183,11 +183,11 @@ function SizingControl({
         ))}
       </div>
       {capital > 0 && (
-        <span className="font-mono text-[9px] text-text-muted">
-          N/leg: <span className="text-text-secondary tabular-nums">{fmtUsd(N)}</span>
+        <span className="font-body text-[9px] text-muted">
+          N/leg: <span className="text-ink-2 tabular-nums font-mono">{fmtUsd(N)}</span>
         </span>
       )}
-      <span className="font-mono text-[9px] text-text-muted/40 ml-auto hidden sm:block">
+      <span className="font-body text-[9px] text-muted/40 ml-auto hidden sm:block">
         Projected at current rate · not locked
       </span>
     </div>
@@ -204,44 +204,44 @@ function FundingSizingBlock({ opp, capital, leverage }: {
   const s = calcFundingSizing(opp.annualizedROI, opp.netROI, totalFeesPct, capital, leverage);
 
   return (
-    <div className="mt-1.5 pt-1.5 border-t border-border/30 space-y-0.5">
+    <div className="mt-1.5 pt-1.5 border-t border-line/30 space-y-0.5">
       <div className="flex flex-wrap gap-x-3 font-mono text-[10px]">
-        <span className="text-text-muted">
-          N/leg <span className="text-text-primary tabular-nums">{fmtUsd(s.N)}</span>
+        <span className="text-muted">
+          N/leg <span className="text-ink tabular-nums">{fmtUsd(s.N)}</span>
         </span>
-        <span className="text-text-muted">
-          Fees <span className="text-text-primary tabular-nums">{fmtUsd(s.feesUsd)}</span>
+        <span className="text-muted">
+          Fees <span className="text-ink tabular-nums">{fmtUsd(s.feesUsd)}</span>
         </span>
-        <span className="text-text-muted">
+        <span className="text-muted">
           Net 30d{' '}
-          <span className={`tabular-nums ${s.net30dUsd >= 0 ? 'text-positive' : 'text-negative'}`}>
+          <span className={`tabular-nums ${s.net30dUsd >= 0 ? 'text-mint-deep' : 'text-coral-ink'}`}>
             {fmtUsd(s.net30dUsd)}
           </span>
         </span>
-        <span className="text-text-muted">
+        <span className="text-muted">
           Net/yr{' '}
-          <span className={`tabular-nums ${s.netYrUsd >= 0 ? 'text-positive' : 'text-negative'}`}>
+          <span className={`tabular-nums ${s.netYrUsd >= 0 ? 'text-mint-deep' : 'text-coral-ink'}`}>
             {fmtUsd(s.netYrUsd)}
           </span>
         </span>
-        <span className="ml-auto text-text-muted">
+        <span className="ml-auto text-muted">
           ROC{' '}
-          <span className={`tabular-nums font-semibold ${s.roc >= 0 ? 'text-positive' : 'text-negative'}`}>
+          <span className={`tabular-nums font-semibold ${s.roc >= 0 ? 'text-mint-deep' : 'text-coral-ink'}`}>
             {s.roc >= 0 ? '+' : ''}{s.roc.toFixed(1)}%/yr
           </span>
         </span>
       </div>
       {leverage === 1 ? (
-        <div className="font-mono text-[9px] text-text-muted/60 leading-snug">
+        <div className="font-body text-[9px] text-muted/60 leading-snug">
           APY on notional ({fmtUsd(s.N)}/leg) — at 1× you deploy ~{fmtUsd(s.N * 2)} total;
           return-on-capital ({s.roc.toFixed(1)}%) is ~half gross APY on notional.
         </div>
       ) : (
-        <div className="font-mono text-[9px] text-warning/70 leading-snug">
+        <div className="font-body text-[9px] text-gold/70 leading-snug">
           At {leverage}×: higher return-on-capital but LIQUIDATION risk if price moves against margin.
         </div>
       )}
-      <div className="font-mono text-[9px] text-text-muted/40 leading-snug">
+      <div className="font-body text-[9px] text-muted/40 leading-snug">
         Liquidity at this size NOT verified (no orderbook depth). $ figures project current rate — not locked.
       </div>
     </div>
@@ -253,7 +253,7 @@ function CashableSizingBlock({ opp, capital }: { opp: Opp; capital: number }) {
   const maxCap = opp.capacityUsd;
   if (maxCap === null) {
     return (
-      <div className="mt-1 pt-1 border-t border-border/30 font-mono text-[10px] text-text-muted">
+      <div className="mt-1 pt-1 border-t border-line/30 font-body text-[10px] text-muted">
         Size unknown — no depth data
       </div>
     );
@@ -263,17 +263,17 @@ function CashableSizingBlock({ opp, capital }: { opp: Opp; capital: number }) {
   const lockedProfit = capped * (opp.netROI ?? 0) / 100;
 
   return (
-    <div className="mt-1 pt-1 border-t border-border/30 flex flex-wrap items-center gap-x-3 font-mono text-[10px]">
+    <div className="mt-1 pt-1 border-t border-line/30 flex flex-wrap items-center gap-x-3 font-mono text-[10px]">
       {wasCapped && (
-        <span className="text-warning">Capped at max {fmtCap(maxCap)} depth</span>
+        <span className="text-gold">Capped at max {fmtCap(maxCap)} depth</span>
       )}
-      <span className="text-text-muted">
-        Deploy <span className="text-text-primary tabular-nums">{fmtUsd(capped)}</span>
+      <span className="text-muted">
+        Deploy <span className="text-ink tabular-nums">{fmtUsd(capped)}</span>
       </span>
-      <span className="text-text-muted">
-        Locked profit <span className="text-positive tabular-nums">{fmtUsd(lockedProfit)}</span>
+      <span className="text-muted">
+        Locked profit <span className="text-mint-deep tabular-nums">{fmtUsd(lockedProfit)}</span>
       </span>
-      <span className="font-mono text-[9px] text-text-muted/40 w-full mt-0.5">
+      <span className="font-body text-[9px] text-muted/40 w-full mt-0.5">
         One-time, not annualized · locked until resolution
       </span>
     </div>
@@ -286,17 +286,17 @@ function SportsSizingBlock({ opp, capital }: { opp: Opp; capital: number }) {
   const totalOriginalStake = opp.legs.reduce((s, l) => s + (l.stake ?? 0), 0);
 
   return (
-    <div className="mt-1 pt-1 border-t border-border/30 flex flex-wrap items-center gap-x-3 font-mono text-[10px]">
-      <span className="text-text-muted">
-        Total stake <span className="text-text-primary tabular-nums">{fmtUsd(capital)}</span>
+    <div className="mt-1 pt-1 border-t border-line/30 flex flex-wrap items-center gap-x-3 font-mono text-[10px]">
+      <span className="text-muted">
+        Total stake <span className="text-ink tabular-nums">{fmtUsd(capital)}</span>
       </span>
-      <span className="text-text-muted">
-        Locked profit <span className="text-positive tabular-nums">{fmtUsd(lockedProfit)}</span>
+      <span className="text-muted">
+        Locked profit <span className="text-mint-deep tabular-nums">{fmtUsd(lockedProfit)}</span>
       </span>
       {totalOriginalStake > 0 && opp.legs.map((leg, i) => {
         const scaled = leg.stake != null ? (leg.stake / totalOriginalStake) * capital : null;
         return scaled != null ? (
-          <span key={i} className="text-text-muted/70">{leg.platform}: {fmtUsd(scaled)}</span>
+          <span key={i} className="text-muted/70">{leg.platform}: {fmtUsd(scaled)}</span>
         ) : null;
       })}
     </div>
@@ -328,38 +328,38 @@ function Countdown({ resolutionDate }: { resolutionDate: string | null }) {
 
   if (!text) return null;
   return (
-    <span className="font-mono text-[10px] tabular-nums text-text-secondary">{text}</span>
+    <span className="font-mono text-[10px] tabular-nums text-ink-2">{text}</span>
   );
 }
 
 // ── Opportunity row ───────────────────────────────────────────────────────────
 
 function OppRow({ opp, capital, leverage }: { opp: Opp; capital: number; leverage: Leverage }) {
-  const verdictCls = VERDICT_CLS[opp.verdict] ?? 'text-text-muted';
+  const verdictCls = VERDICT_CLS[opp.verdict] ?? 'text-muted';
   const badgeCls   = BADGE_CLS[opp.type] ?? BADGE_CLS.FUNDING;
 
   return (
-    <div className="px-4 py-3 border-b border-border last:border-0 hover:bg-bg-elevated/50 transition-colors duration-100">
+    <div className="px-4 py-3 border-b border-line last:border-0 hover:bg-bg-soft/50 transition-colors duration-100">
 
       {/* Line 1: type badge · question · annualized ROI */}
       <div className="flex items-start gap-2 mb-1.5">
-        <span className={`shrink-0 mt-px font-mono text-[9px] uppercase tracking-widest px-1.5 py-[2px] border ${badgeCls}`}>
+        <span className={`shrink-0 mt-px font-body text-[9px] uppercase tracking-widest px-1.5 py-[2px] border rounded-sm ${badgeCls}`}>
           {opp.type}
         </span>
-        <span className="flex-1 font-mono text-[11px] text-text-primary leading-snug min-w-0 line-clamp-2">
+        <span className="flex-1 font-body text-[11px] text-ink leading-snug min-w-0 line-clamp-2">
           {opp.question}
           {opp.sport && (
-            <span className="text-text-muted ml-1.5 text-[10px]">· {opp.sport}</span>
+            <span className="text-muted ml-1.5 text-[10px]">· {opp.sport}</span>
           )}
         </span>
         <div className="shrink-0 text-right ml-2">
-          <div className="font-mono text-[14px] font-bold text-positive tabular-nums leading-none">
+          <div className="font-mono text-[14px] font-bold text-mint-deep tabular-nums leading-none">
             {opp.annualizedROI !== null
               ? `${opp.annualizedROI >= 0 ? '+' : ''}${opp.annualizedROI.toFixed(1)}%/yr`
               : '—'}
           </div>
           {opp.type !== 'SIGNAL' && opp.netROI !== null && (
-            <div className="font-mono text-[10px] text-text-muted tabular-nums mt-0.5">
+            <div className="font-mono text-[10px] text-muted tabular-nums mt-0.5">
               {opp.type === 'FUNDING' ? `net/yr ${fmtRoi(opp.netROI)}` : `net ${fmtRoi(opp.netROI)}`}
             </div>
           )}
@@ -370,25 +370,25 @@ function OppRow({ opp, capital, leverage }: { opp: Opp; capital: number; leverag
       <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mb-1.5">
         {opp.legs.map((leg, i) => (
           <span key={i} className="inline-flex items-center gap-1 font-mono text-[10px]">
-            {i > 0 && <span className="text-border mx-0.5">↔</span>}
-            <span className="text-text-secondary">{leg.platform}</span>
-            <span className="text-border">·</span>
+            {i > 0 && <span className="text-line mx-0.5">↔</span>}
+            <span className="text-ink-2">{leg.platform}</span>
+            <span className="text-line">·</span>
             <span className={
-              leg.side === 'YES' ? 'text-positive' :
-              leg.side === 'NO'  ? 'text-accent-bright' :
-              'text-text-secondary'
+              leg.side === 'YES' ? 'text-mint-deep' :
+              leg.side === 'NO'  ? 'text-mint' :
+              'text-ink-2'
             }>
               {leg.side}
             </span>
-            <span className="text-border">·</span>
-            <span className="text-text-primary tabular-nums">{fmtLegPrice(leg, opp.type)}</span>
+            <span className="text-line">·</span>
+            <span className="text-ink tabular-nums">{fmtLegPrice(leg, opp.type)}</span>
             {leg.stake != null && (
-              <span className="text-text-muted">(${leg.stake.toFixed(0)})</span>
+              <span className="text-muted">(${leg.stake.toFixed(0)})</span>
             )}
           </span>
         ))}
         {opp.type === 'SIGNAL' && opp.spread !== null && (
-          <span className="font-mono text-[10px] text-text-muted ml-1">
+          <span className="font-mono text-[10px] text-muted ml-1">
             {opp.spread}pp spread
           </span>
         )}
@@ -396,7 +396,7 @@ function OppRow({ opp, capital, leverage }: { opp: Opp; capital: number; leverag
 
       {/* DEX bridge friction notice */}
       {opp.hasDexLeg && (
-        <div className="font-mono text-[9px] text-warning/70 mb-1 leading-snug">
+        <div className="font-body text-[9px] text-gold/70 mb-1 leading-snug">
           DEX leg: ~10 min bridge + ~$1–5 one-time · HL funds hourly (rate can flip every 1h)
         </div>
       )}
@@ -404,24 +404,24 @@ function OppRow({ opp, capital, leverage }: { opp: Opp; capital: number; leverag
       {/* Line 3: fuse bar · countdown · capacity · verdict */}
       <div className="flex items-center gap-3 flex-wrap">
         <div className="flex items-center gap-1.5">
-          <div className="w-16 h-[3px] bg-bg-elevated rounded-full overflow-hidden">
+          <div className="w-16 h-[3px] bg-bg-soft rounded-full overflow-hidden">
             <div
               className={`h-full rounded-full ${fuseColorCls(opp.daysToResolution)}`}
               style={{ width: `${fusePct(opp.daysToResolution)}%` }}
             />
           </div>
-          <span className="font-mono text-[10px] text-text-muted tabular-nums">
+          <span className="font-mono text-[10px] text-muted tabular-nums">
             {fmtDays(opp.daysToResolution)}
           </span>
         </div>
 
         <Countdown resolutionDate={opp.resolutionDate} />
 
-        <span className="font-mono text-[10px] text-text-muted">
+        <span className="font-body text-[10px] text-muted">
           max {fmtCap(opp.capacityUsd)}
         </span>
 
-        <span className={`ml-auto font-mono text-[10px] uppercase tracking-widest ${verdictCls}`}>
+        <span className={`ml-auto font-body text-[10px] uppercase tracking-widest ${verdictCls}`}>
           {opp.verdict}
         </span>
       </div>
@@ -480,27 +480,27 @@ export default function OpportunitiesPanel() {
   const isStale = (data?.staleMinutes ?? 0) > 60;
 
   return (
-    <div className="bg-bg-panel border border-border flex flex-col">
+    <div className="bg-surface border border-line flex flex-col rounded-card shadow-card">
 
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-line shrink-0">
         <div className="flex items-center gap-2">
           <span
-            className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${noData ? 'bg-warning' : 'bg-positive animate-pulse-slow'}`}
-            style={noData ? undefined : { boxShadow: '0 0 4px #22C55E' }}
+            className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${noData ? 'bg-gold' : 'bg-mint-deep animate-pulse-slow'}`}
+            style={noData ? undefined : { boxShadow: '0 0 4px #0A9D6B' }}
           />
-          <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-text-muted">
+          <span className="font-body text-[10px] uppercase tracking-[0.14em] text-muted">
             Opportunities
           </span>
         </div>
         <div className="flex items-center gap-2">
           {isStale && (
-            <span className="font-mono text-[10px] text-warning">
+            <span className="font-body text-[10px] text-gold">
               stale {data!.staleMinutes}m
             </span>
           )}
           {data?.generatedAt && (
-            <span className="font-mono text-[10px] tabular-nums text-text-muted">
+            <span className="font-mono text-[10px] tabular-nums text-muted">
               {new Date(data.generatedAt).toLocaleTimeString('en-GB', { hour12: false })}
             </span>
           )}
@@ -508,7 +508,7 @@ export default function OpportunitiesPanel() {
       </div>
 
       {/* Filter pills */}
-      <div className="flex gap-1.5 px-3 py-2 border-b border-border flex-wrap">
+      <div className="flex gap-1.5 px-3 py-2 border-b border-line flex-wrap">
         {FILTER_PILLS.map(({ key, label }) => {
           const count = key === 'ALL'
             ? (data?.summary?.total ?? 0)
@@ -517,10 +517,10 @@ export default function OpportunitiesPanel() {
             <button
               key={key}
               onClick={() => setFilter(key)}
-              className={`px-2 py-0.5 font-mono text-[10px] border rounded-sm transition-colors duration-100 ${
+              className={`px-2 py-0.5 font-body text-[10px] border rounded-sm transition-colors duration-100 ${
                 filter === key
-                  ? 'bg-accent text-white border-accent'
-                  : 'border-border text-text-muted hover:border-text-secondary hover:text-text-primary'
+                  ? 'bg-mint-deep text-white border-mint-deep'
+                  : 'border-line text-muted hover:border-ink-2 hover:text-ink'
               }`}
             >
               {label}
@@ -542,16 +542,16 @@ export default function OpportunitiesPanel() {
 
       {/* Body */}
       {loading ? (
-        <div className="py-10 text-center font-mono text-[10px] uppercase tracking-widest text-text-muted animate-pulse">
+        <div className="py-10 text-center font-body text-[10px] uppercase tracking-widest text-muted animate-pulse">
           Loading…
         </div>
       ) : noData ? (
         <div className="py-10 text-center space-y-1.5">
-          <div className="font-mono text-[10px] uppercase tracking-widest text-warning">No data</div>
-          <div className="font-mono text-[10px] text-text-muted">Run matcher-v2 to populate</div>
+          <div className="font-body text-[10px] uppercase tracking-widest text-gold">No data</div>
+          <div className="font-body text-[10px] text-muted">Run matcher-v2 to populate</div>
         </div>
       ) : opps.length === 0 ? (
-        <div className="py-8 text-center font-mono text-[10px] uppercase tracking-widest text-text-muted">
+        <div className="py-8 text-center font-body text-[10px] uppercase tracking-widest text-muted">
           No {filter !== 'ALL' ? filter.toLowerCase() + ' ' : ''}opportunities
         </div>
       ) : (
@@ -564,12 +564,12 @@ export default function OpportunitiesPanel() {
 
       {/* Footer */}
       {!loading && !noData && (
-        <div className="px-3 py-1.5 border-t border-border mt-auto flex items-center justify-between">
-          <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-text-muted">
+        <div className="px-3 py-1.5 border-t border-line mt-auto flex items-center justify-between">
+          <span className="font-body text-[9px] uppercase tracking-[0.1em] text-muted">
             Refresh 30s
           </span>
           {data?.summary?.bestAnnualized != null && (
-            <span className="font-mono text-[9px] text-positive tabular-nums">
+            <span className="font-mono text-[9px] text-mint-deep tabular-nums">
               Best {data.summary.bestAnnualized >= 0 ? '+' : ''}{data.summary.bestAnnualized.toFixed(1)}%/yr
             </span>
           )}

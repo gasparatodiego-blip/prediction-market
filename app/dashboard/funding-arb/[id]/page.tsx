@@ -126,9 +126,9 @@ function settlementCurrency(exchange: string): string {
 }
 
 function statusBadgeCls(s: string): string {
-  if (s === 'HARVEST') return 'bg-positive/10 text-positive border-positive/25';
-  if (s === 'CAUTION') return 'bg-warning/10 text-warning border-warning/25';
-  return 'bg-negative/10 text-negative/70 border-negative/25';
+  if (s === 'HARVEST') return 'bg-mint-tint text-mint-deep border-mint-deep/25';
+  if (s === 'CAUTION') return 'bg-gold/10 text-gold border-gold/25';
+  return 'bg-coral-tint/50 text-coral-ink/70 border-coral-ink/25';
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -136,17 +136,17 @@ function statusBadgeCls(s: string): string {
 function StepLabel({ n, text }: { n: number; text: string }) {
   return (
     <div className="flex items-start gap-3 mb-4">
-      <span className="font-mono text-[9px] px-1.5 py-[2px] border border-border text-text-muted shrink-0 mt-0.5">
+      <span className="font-mono text-[9px] px-1.5 py-[2px] border border-line text-muted shrink-0 mt-0.5">
         {String(n).padStart(2, '0')}
       </span>
-      <span className="font-mono text-[11px] text-text-secondary font-medium">{text}</span>
+      <span className="font-body text-[11px] text-ink-2 font-medium">{text}</span>
     </div>
   );
 }
 
 function SectionTitle({ title }: { title: string }) {
   return (
-    <h2 className="font-mono text-[9px] uppercase tracking-widest text-text-muted mb-3 mt-6 border-b border-border/30 pb-1.5">
+    <h2 className="font-body text-[9px] uppercase tracking-widest text-muted mb-3 mt-6 border-b border-line/30 pb-1.5">
       {title}
     </h2>
   );
@@ -229,7 +229,7 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
   const slipPts  = (spread?.slipCurve ?? []).filter(p => p.fillable);
   const slipPt   = slipPts[slipIdx] ?? null;
   const slipStateCls = (st: 'GREEN' | 'YELLOW' | 'RED') =>
-    st === 'GREEN' ? 'text-positive' : st === 'YELLOW' ? 'text-warning' : 'text-negative/80';
+    st === 'GREEN' ? 'text-mint-deep' : st === 'YELLOW' ? 'text-gold' : 'text-coral-ink/80';
 
   // Reset slider to greenCapacityUsd default when spread changes
   useEffect(() => {
@@ -253,30 +253,30 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
       <div className="mb-5">
         <Link
           href="/dashboard/funding-arb"
-          className="font-mono text-[10px] text-text-muted hover:text-text-primary transition-colors duration-100"
+          className="font-body text-[10px] text-muted hover:text-ink transition-colors duration-100"
         >
           ← Back to Funding Rate Monitor
         </Link>
       </div>
 
       {loading ? (
-        <div className="py-20 text-center font-mono text-[10px] uppercase tracking-widest text-text-muted animate-pulse">
+        <div className="py-20 text-center font-body text-[10px] uppercase tracking-widest text-muted animate-pulse">
           Loading…
         </div>
       ) : !data?.ok ? (
-        <div className="py-20 text-center font-mono text-[10px] text-negative">
+        <div className="py-20 text-center font-body text-[10px] text-coral-ink">
           Data unavailable — agent not running.
         </div>
       ) : !spread ? (
         <div className="py-20 text-center space-y-2">
-          <div className="font-mono text-[11px] text-text-muted">
+          <div className="font-body text-[11px] text-muted">
             Opportunity not found: {coin} · {shortExchange} / {longExchange}
           </div>
-          <div className="font-mono text-[9px] text-text-muted/50">
+          <div className="font-body text-[9px] text-muted/50">
             This pair may have dropped out of the current snapshot — check the main list.
           </div>
           <div className="mt-4">
-            <Link href="/dashboard/funding-arb" className="font-mono text-[10px] text-accent">
+            <Link href="/dashboard/funding-arb" className="font-body text-[10px] text-mint">
               ← Return to list
             </Link>
           </div>
@@ -287,19 +287,19 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
           <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
             <div>
               <div className="flex items-center gap-3 mb-1">
-                <h1 className="font-mono text-[22px] font-bold text-text-primary">{coin}</h1>
-                <span className={`px-1.5 py-[2px] border text-[9px] font-mono uppercase tracking-widest ${statusBadgeCls(spread.status)}`}>
+                <h1 className="font-display text-[22px] font-bold text-ink">{coin}</h1>
+                <span className={`px-1.5 py-[2px] border text-[9px] font-body uppercase tracking-widest ${statusBadgeCls(spread.status)}`}>
                   {spread.status}
                 </span>
                 {spread.thinFlag && (
-                  <span className="font-mono text-[9px] text-warning">⚠ thin liquidity</span>
+                  <span className="font-body text-[9px] text-gold">⚠ thin liquidity</span>
                 )}
               </div>
-              <p className="font-mono text-[11px] text-text-muted">
+              <p className="font-body text-[11px] text-muted">
                 Short {venueLabel(shortExchange)}{spread.shortIsDex ? ' (DEX)' : ''} ·{' '}
                 Long {venueLabel(longExchange)}{spread.longIsDex ? ' (DEX)' : ''}
               </p>
-              <p className="font-mono text-[9px] text-text-muted/60 mt-1">
+              <p className="font-body text-[9px] text-muted/60 mt-1">
                 Perp / Perp · both legs are perpetual futures · no spot leg
               </p>
             </div>
@@ -307,52 +307,52 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
               href={tgFollowHref}
               target="_blank"
               rel="noopener noreferrer"
-              className="font-mono text-[10px] px-3 py-1.5 border border-accent/30 text-accent/70 hover:border-accent hover:text-accent transition-colors duration-100 whitespace-nowrap"
+              className="font-body text-[10px] px-3 py-1.5 border border-mint/30 text-mint/70 hover:border-mint hover:text-mint transition-colors duration-100 rounded-button whitespace-nowrap"
             >
               ✈ Follow {coin} on Telegram
             </a>
           </div>
 
           {/* Current rates snapshot */}
-          <div className="mb-5 px-4 py-3 bg-bg-panel border border-border font-mono text-[11px]">
-            <div className="text-[9px] uppercase tracking-widest text-text-muted mb-2">Live rates (current snapshot)</div>
+          <div className="mb-5 px-4 py-3 bg-surface border border-line rounded-card font-body text-[11px]">
+            <div className="text-[9px] uppercase tracking-widest text-muted mb-2">Live rates (current snapshot)</div>
             <div className="flex flex-wrap gap-x-8 gap-y-1.5">
               <span>
-                <span className="text-text-muted">Short {venueLabel(shortExchange)}: </span>
-                <span className="text-positive font-medium tabular-nums">collect {fmtRate(spread.frShort, spread.intervalHoursShort)}</span>
+                <span className="text-muted">Short {venueLabel(shortExchange)}: </span>
+                <span className="text-mint-deep font-medium tabular-nums font-mono">collect {fmtRate(spread.frShort, spread.intervalHoursShort)}</span>
               </span>
               <span>
-                <span className="text-text-muted">Long {venueLabel(longExchange)}: </span>
-                <span className={spread.frLong <= 0 ? 'text-positive font-medium' : 'text-negative/80 font-medium'}>
+                <span className="text-muted">Long {venueLabel(longExchange)}: </span>
+                <span className={`font-mono tabular-nums font-medium ${spread.frLong <= 0 ? 'text-mint-deep' : 'text-coral-ink/80'}`}>
                   {spread.frLong <= 0 ? 'collect' : 'pay'} {fmtRate(Math.abs(spread.frLong), spread.intervalHoursLong)}
                 </span>
               </span>
               <span>
-                <span className="text-text-muted">Gross spread: </span>
-                <span className="text-text-primary tabular-nums">{fmtApy(spread.grossApy)}</span>
+                <span className="text-muted">Gross spread: </span>
+                <span className="text-ink tabular-nums font-mono">{fmtApy(spread.grossApy)}</span>
               </span>
               <span>
-                <span className="text-text-muted">Net (30d proj): </span>
-                <span className={`tabular-nums font-medium ${spread.netApy30d > 0 ? 'text-positive' : 'text-negative'}`}>
+                <span className="text-muted">Net (30d proj): </span>
+                <span className={`tabular-nums font-mono font-medium ${spread.netApy30d > 0 ? 'text-mint-deep' : 'text-coral-ink'}`}>
                   {fmtApy(spread.netApy30d)}
                 </span>
               </span>
             </div>
             {data.staleMinutes != null && data.staleMinutes > 5 && (
-              <div className="mt-2 text-[9px] text-warning">Data is {data.staleMinutes}m old — rates may have shifted.</div>
+              <div className="mt-2 text-[9px] text-gold">Data is {data.staleMinutes}m old — rates may have shifted.</div>
             )}
           </div>
 
           {/* Capital & leverage input */}
-          <div className="mb-5 px-4 py-3 bg-bg-panel border border-border">
-            <div className="font-mono text-[9px] uppercase tracking-widest text-text-muted mb-2">Your capital</div>
+          <div className="mb-5 px-4 py-3 bg-surface border border-line rounded-card">
+            <div className="font-body text-[9px] uppercase tracking-widest text-muted mb-2">Your capital</div>
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
               <div className="flex items-center gap-1">
-                <span className="font-mono text-[10px] text-text-muted">$</span>
+                <span className="font-body text-[10px] text-muted">$</span>
                 <input
                   type="number" min={0} step={100} value={capital}
                   onChange={e => setCapital(Math.max(0, parseFloat(e.target.value) || 0))}
-                  className="w-[5rem] px-1.5 py-0.5 font-mono text-[11px] bg-bg-panel border border-border text-text-primary focus:border-accent/50 focus:outline-none tabular-nums"
+                  className="w-[5rem] px-1.5 py-0.5 font-mono text-[11px] bg-surface border border-line text-ink focus:border-mint/50 focus:outline-none tabular-nums rounded-sm"
                 />
               </div>
               <div className="flex items-center gap-1">
@@ -364,10 +364,10 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
                       ? '1× — no leverage; each leg sized to half capital. No liquidation risk from basis moves.'
                       : `${lev}× — both legs use ${lev}× margin. Notional/leg = capital × ${lev} / 2. Higher yield, higher liquidation risk.`
                     }
-                    className={`px-1.5 py-0.5 font-mono text-[10px] border transition-colors duration-100 cursor-help ${
+                    className={`px-1.5 py-0.5 font-body text-[10px] border transition-colors duration-100 cursor-help rounded-sm ${
                       leverage === lev
-                        ? 'bg-accent text-white border-accent'
-                        : 'border-border text-text-muted hover:border-text-secondary hover:text-text-primary'
+                        ? 'bg-mint-deep text-white border-mint-deep'
+                        : 'border-line text-muted hover:border-ink-2 hover:text-ink'
                     }`}
                   >
                     {lev}×
@@ -375,7 +375,7 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
                 ))}
               </div>
               {leverage > 1 && (
-                <span className="font-mono text-[9px] text-warning/70">
+                <span className="font-body text-[9px] text-gold/70">
                   {leverage}× applied to both perp legs — liquidation risk if basis widens
                 </span>
               )}
@@ -384,11 +384,11 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
 
           {/* Slip-aware capacity slider */}
           {slipPts.length > 0 && (
-            <div className="mb-5 px-4 py-4 border border-border">
-              <div className="font-mono text-[9px] uppercase tracking-widest text-text-muted mb-3">
+            <div className="mb-5 px-4 py-4 border border-line rounded-card">
+              <div className="font-body text-[9px] uppercase tracking-widest text-muted mb-3">
                 Liquidity-aware sizing · incl. modeled entry/exit slippage (14d amortized)
               </div>
-              <p className="font-mono text-[9px] text-text-muted/55 mb-3 leading-relaxed">
+              <p className="font-body text-[9px] text-muted/55 mb-3 leading-relaxed">
                 Capacity = size you can enter before slippage eats &gt;30% of gross yield.
                 {(spread.greenCapacityUsd ?? 0) === 0
                   ? ' Honest capacity is $0 here — books are thin at all tested sizes. Drag to see the cost at each level.'
@@ -400,7 +400,7 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
 
               {/* Slider */}
               <div className="flex items-center gap-2 mb-3">
-                <span className="font-mono text-[9px] text-text-muted shrink-0">Position</span>
+                <span className="font-body text-[9px] text-muted shrink-0">Position</span>
                 <input
                   type="range"
                   min={0}
@@ -408,10 +408,10 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
                   value={slipIdx}
                   step={1}
                   onChange={e => setSlipIdx(parseInt(e.target.value))}
-                  className="flex-1 h-[3px] accent-accent cursor-pointer"
+                  className="flex-1 h-[3px] accent-mint cursor-pointer"
                 />
                 {slipPt && (
-                  <span className="font-mono text-[10px] tabular-nums text-text-secondary shrink-0 w-16 text-right">
+                  <span className="font-mono text-[10px] tabular-nums text-ink-2 shrink-0 w-16 text-right">
                     {slipPt.size >= 1_000_000 ? `$${(slipPt.size/1_000_000).toFixed(1)}M` : slipPt.size >= 1_000 ? `$${Math.round(slipPt.size/1_000)}k` : `$${slipPt.size}`}
                   </span>
                 )}
@@ -433,27 +433,27 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
                     </span>
                   </span>
                   <span>
-                    <span className="text-text-muted">ROC: </span>
+                    <span className="text-muted">ROC: </span>
                     <span className={`tabular-nums font-medium ${slipStateCls(slipPt.state)}`}>
                       {slipPt.netDayUsd != null && slipPt.size > 0
                         ? `${(slipPt.netDayUsd * 365 / slipPt.size * 100) >= 0 ? '+' : ''}${(slipPt.netDayUsd * 365 / slipPt.size * 100).toFixed(1)}%/yr`
                         : '—'
                       }
                     </span>
-                    <span className="text-text-muted/50 text-[9px] ml-1">run-rate · not guaranteed</span>
+                    <span className="text-muted/50 text-[9px] ml-1">run-rate · not guaranteed</span>
                   </span>
                   {slipPt.slipBps != null && (
                     <span>
-                      <span className="text-text-muted">Slip: </span>
-                      <span className="tabular-nums text-text-secondary">{slipPt.slipBps}bps</span>
-                      <span className="text-text-muted/50 text-[9px] ml-1">round-trip</span>
+                      <span className="text-muted">Slip: </span>
+                      <span className="tabular-nums text-ink-2">{slipPt.slipBps}bps</span>
+                      <span className="text-muted/50 text-[9px] ml-1">round-trip</span>
                     </span>
                   )}
                   {slipPt.slipOverGross != null && (
                     <span>
-                      <span className="text-text-muted">Slip/yield: </span>
+                      <span className="text-muted">Slip/yield: </span>
                       <span className={`tabular-nums ${slipStateCls(slipPt.state)}`}>{slipPt.slipOverGross}%</span>
-                      <span className="text-text-muted/50 text-[9px] ml-1">of 14d gross</span>
+                      <span className="text-muted/50 text-[9px] ml-1">of 14d gross</span>
                     </span>
                   )}
                 </div>
@@ -465,12 +465,12 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
                   <button
                     key={pt.size}
                     onClick={() => setSlipIdx(i)}
-                    className={`font-mono text-[8px] px-1.5 py-0.5 border transition-colors duration-100 ${
+                    className={`font-mono text-[8px] px-1.5 py-0.5 border transition-colors duration-100 rounded-sm ${
                       i === slipIdx
-                        ? pt.state === 'GREEN'  ? 'bg-positive/20 border-positive/50 text-positive'
-                        : pt.state === 'YELLOW' ? 'bg-warning/20 border-warning/50 text-warning'
-                        :                         'bg-negative/10 border-negative/30 text-negative/80'
-                        : 'border-border text-text-muted/50 hover:border-text-muted'
+                        ? pt.state === 'GREEN'  ? 'bg-mint-tint border-mint-deep/50 text-mint-deep'
+                        : pt.state === 'YELLOW' ? 'bg-gold/20 border-gold/50 text-gold'
+                        :                         'bg-coral-tint/50 border-coral-ink/30 text-coral-ink/80'
+                        : 'border-line text-muted/50 hover:border-muted'
                     }`}
                   >
                     {pt.size >= 1_000 ? `$${Math.round(pt.size/1_000)}k` : `$${pt.size}`}
@@ -483,45 +483,45 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
 
           {/* Sizing + fee breakdown */}
           {capital > 0 && (
-            <div className="mb-6 px-4 py-4 border border-positive/25 bg-positive/5">
+            <div className="mb-6 px-4 py-4 border border-mint-deep/25 bg-mint-tint/30 rounded-card">
 
-              <div className="font-mono text-[9px] uppercase tracking-widest text-text-muted mb-2">
+              <div className="font-body text-[9px] uppercase tracking-widest text-muted mb-2">
                 Estimated outcome at ${capital.toLocaleString()}{leverage > 1 ? ` · ${leverage}×` : ''}
               </div>
 
               {/* Key metrics row */}
               <div className="flex flex-wrap gap-x-6 gap-y-1.5 font-mono text-[11px] mb-4">
                 <span>
-                  <span className="text-text-muted">Notional/leg: </span>
-                  <span className="text-text-primary tabular-nums font-medium">{fmtUsd(notionalPerLeg)}</span>
+                  <span className="text-muted">Notional/leg: </span>
+                  <span className="text-ink tabular-nums font-medium">{fmtUsd(notionalPerLeg)}</span>
                 </span>
                 {qty != null && markPrice != null && (
                   <span>
-                    <span className="text-text-muted">Qty: </span>
-                    <span className="text-text-primary tabular-nums font-medium">{fmtQty(qty)} {coin}</span>
-                    <span className="text-text-muted/50 text-[9px] ml-1">@ ${markPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+                    <span className="text-muted">Qty: </span>
+                    <span className="text-ink tabular-nums font-medium">{fmtQty(qty)} {coin}</span>
+                    <span className="text-muted/50 text-[9px] ml-1">@ ${markPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
                   </span>
                 )}
                 {dayUsd != null && (
                   <span>
-                    <span className="text-positive font-bold text-[14px] tabular-nums">{fmtUsd(dayUsd)}/day</span>
-                    <span className="text-text-muted/50 text-[9px] ml-1">(net, annualized at current rate)</span>
+                    <span className="text-mint-deep font-bold text-[14px] tabular-nums">{fmtUsd(dayUsd)}/day</span>
+                    <span className="text-muted/50 text-[9px] ml-1">(net, annualized at current rate)</span>
                   </span>
                 )}
                 {net30dUsd != null && (
                   <span>
-                    <span className="text-text-muted">Net 30d: </span>
-                    <span className={`tabular-nums font-medium ${net30dUsd >= 0 ? 'text-positive' : 'text-negative'}`}>
+                    <span className="text-muted">Net 30d: </span>
+                    <span className={`tabular-nums font-medium ${net30dUsd >= 0 ? 'text-mint-deep' : 'text-coral-ink'}`}>
                       {fmtUsd(net30dUsd)}
                     </span>
-                    <span className="text-text-muted/50 text-[9px] ml-1">(if rate holds 30d)</span>
+                    <span className="text-muted/50 text-[9px] ml-1">(if rate holds 30d)</span>
                   </span>
                 )}
               </div>
 
               {/* Fee breakdown */}
-              <div className="border-t border-border/30 pt-3">
-                <div className="font-mono text-[9px] uppercase tracking-widest text-text-muted mb-2">
+              <div className="border-t border-line/30 pt-3">
+                <div className="font-body text-[9px] uppercase tracking-widest text-muted mb-2">
                   Fee breakdown — taker fills assumed · full round-trip (4 legs)
                 </div>
 
@@ -533,31 +533,31 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
                     ['Close LONG ', longExchange,  longTakerPct],
                   ] as [string, string, number][]).map(([action, ex, pct], i) => (
                     <div key={i} className="flex items-baseline gap-2">
-                      <span className="text-text-muted w-[70px] shrink-0">{action}</span>
-                      <span className="text-text-secondary w-[90px] shrink-0">{venueLabel(ex)}</span>
-                      <span className="text-text-muted/60 tabular-nums w-[55px] shrink-0 text-[9px]">{pct}%/leg</span>
-                      <span className="text-text-muted/50 text-[9px] shrink-0">×</span>
-                      <span className="text-text-muted/60 tabular-nums text-[9px] shrink-0">{fmtUsd(notionalPerLeg)}</span>
-                      <span className="text-text-muted/50 text-[9px] shrink-0">=</span>
-                      <span className="tabular-nums text-negative/70 ml-auto">{fmtUsd(-(notionalPerLeg * pct / 100))}</span>
+                      <span className="text-muted w-[70px] shrink-0">{action}</span>
+                      <span className="text-ink-2 w-[90px] shrink-0">{venueLabel(ex)}</span>
+                      <span className="text-muted/60 tabular-nums w-[55px] shrink-0 text-[9px]">{pct}%/leg</span>
+                      <span className="text-muted/50 text-[9px] shrink-0">×</span>
+                      <span className="text-muted/60 tabular-nums text-[9px] shrink-0">{fmtUsd(notionalPerLeg)}</span>
+                      <span className="text-muted/50 text-[9px] shrink-0">=</span>
+                      <span className="tabular-nums text-coral-ink/70 ml-auto">{fmtUsd(-(notionalPerLeg * pct / 100))}</span>
                     </div>
                   ))}
-                  <div className="flex items-baseline gap-2 border-t border-border/30 pt-1.5 mt-1">
-                    <span className="text-text-secondary font-medium">Total</span>
-                    <span className="text-text-muted/50 text-[9px] ml-1">({spread.totalFeesPct.toFixed(3)}% of notional/leg)</span>
-                    <span className="tabular-nums text-negative font-medium ml-auto">
+                  <div className="flex items-baseline gap-2 border-t border-line/30 pt-1.5 mt-1">
+                    <span className="text-ink-2 font-medium">Total</span>
+                    <span className="text-muted/50 text-[9px] ml-1">({spread.totalFeesPct.toFixed(3)}% of notional/leg)</span>
+                    <span className="tabular-nums text-coral-ink font-medium ml-auto">
                       {feesUsd != null ? fmtUsd(-feesUsd) : '—'}
                     </span>
                   </div>
-                  <div className="flex justify-between text-[9px] text-text-muted/60">
+                  <div className="flex justify-between text-[9px] text-muted/60">
                     <span>Recovered in ≈{spread.breakevenDays}d at current rate</span>
                     <span>Already subtracted from net estimate above</span>
                   </div>
                 </div>
 
                 {/* Maker alternative */}
-                <div className="mt-3 pt-2.5 border-t border-border/15 font-mono text-[9px] text-text-muted/70 leading-relaxed">
-                  <span className="text-text-muted">Estimated maker fees (if using limit orders): </span>
+                <div className="mt-3 pt-2.5 border-t border-line/15 font-body text-[9px] text-muted/70 leading-relaxed">
+                  <span className="text-muted">Estimated maker fees (if using limit orders): </span>
                   {shortExchange === 'hyperliquid'
                     ? `${venueLabel(shortExchange)} maker = 0% (confirmed)`
                     : `${venueLabel(shortExchange)} est. maker ≈ ${shortMakerPct}%/leg`
@@ -570,7 +570,7 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
                   {makerSavingPct > 0.001 && (
                     <> — est. saving ≈{fmtUsd(makerSavingUsd)} vs taker on this capital.</>
                   )}
-                  <span className="text-warning/70">
+                  <span className="text-gold/70">
                     {' '}Risk: limit orders on two venues cannot be guaranteed to fill simultaneously.
                     A partial fill on one leg creates a one-sided directional position.
                     Use taker (market/IOC) to guarantee both fills close together.
@@ -578,7 +578,7 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
                 </div>
               </div>
 
-              <p className="font-mono text-[9px] text-text-muted/50 mt-3 leading-relaxed">
+              <p className="font-body text-[9px] text-muted/50 mt-3 leading-relaxed">
                 Estimates assume the current snapshot rate holds. Rate resets{' '}
                 {intervalLabel(Math.min(spread.intervalHoursShort, spread.intervalHoursLong))} and can move in either direction.
                 Treat all figures as an upper bound, not a guarantee.
@@ -590,50 +590,50 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
           <SectionTitle title="Step-by-step execution guide" />
           <div className="space-y-0 mb-6">
 
-            <div className="border-b border-border/20 pb-4 mb-4">
+            <div className="border-b border-line/20 pb-4 mb-4">
               <StepLabel n={1} text="Fund both exchange accounts" />
-              <div className="ml-[42px] font-mono text-[10px] text-text-muted leading-relaxed space-y-1">
+              <div className="ml-[42px] font-body text-[10px] text-muted leading-relaxed space-y-1">
                 <p>
                   Transfer {settlementCurrency(shortExchange)} to{' '}
-                  <span className="text-text-secondary">{venueLabel(shortExchange)}</span>
+                  <span className="text-ink-2">{venueLabel(shortExchange)}</span>
                   {spread.shortIsDex ? ' (bridge from mainnet via USDC — allow ~10 min + gas)' : ''}.
                 </p>
                 <p>
                   Transfer {settlementCurrency(longExchange)} to{' '}
-                  <span className="text-text-secondary">{venueLabel(longExchange)}</span>
+                  <span className="text-ink-2">{venueLabel(longExchange)}</span>
                   {spread.longIsDex ? ' (bridge from mainnet via USDC — allow ~10 min + gas)' : ''}.
                 </p>
                 {capital > 0 && (
-                  <p className="text-text-muted/70 mt-1">
-                    Target: ≈{fmtUsd(notionalPerLeg)} margin on each side
+                  <p className="text-muted/70 mt-1">
+                    Target: ≈<span className="font-mono">{fmtUsd(notionalPerLeg)}</span> margin on each side
                     {leverage > 1 ? ` (${leverage}× leverage — adjust margin to exchange minimum)` : ''}.
                   </p>
                 )}
               </div>
             </div>
 
-            <div className="border-b border-border/20 pb-4 mb-4">
+            <div className="border-b border-line/20 pb-4 mb-4">
               <StepLabel n={2} text={`Open SHORT on ${venueLabel(shortExchange)}`} />
-              <div className="ml-[42px] font-mono text-[10px] text-text-muted leading-relaxed space-y-1">
+              <div className="ml-[42px] font-body text-[10px] text-muted leading-relaxed space-y-1">
                 <p>
-                  Instrument: <span className="text-text-secondary">{coin}-PERP</span> (USDT-margined perpetual)
+                  Instrument: <span className="text-ink-2">{coin}-PERP</span> (USDT-margined perpetual)
                 </p>
                 <p>
-                  Direction: <span className="text-negative/80 font-medium">SHORT</span>
+                  Direction: <span className="text-coral-ink/80 font-medium">SHORT</span>
                   {qty != null && (
-                    <span> · <span className="tabular-nums">{fmtQty(qty)} {coin}</span></span>
+                    <span> · <span className="font-mono tabular-nums">{fmtQty(qty)} {coin}</span></span>
                   )}
                   {capital > 0 && (
-                    <span> · Notional: <span className="text-text-primary tabular-nums">{fmtUsd(notionalPerLeg)}</span></span>
+                    <span> · Notional: <span className="text-ink font-mono tabular-nums">{fmtUsd(notionalPerLeg)}</span></span>
                   )}
                 </p>
                 <p>
-                  You will <span className="text-positive">collect</span> funding of{' '}
-                  <span className="text-positive tabular-nums">{fmtRate(spread.frShort, spread.intervalHoursShort)}</span>{' '}
+                  You will <span className="text-mint-deep">collect</span> funding of{' '}
+                  <span className="text-mint-deep font-mono tabular-nums">{fmtRate(spread.frShort, spread.intervalHoursShort)}</span>{' '}
                   {intervalLabel(spread.intervalHoursShort)} in {settlementCurrency(shortExchange)}.
                 </p>
-                <p className="text-[9px] text-text-muted/60 border-l border-border/30 pl-2 mt-1">
-                  <span className="text-text-muted">Fee assumption: </span>
+                <p className="text-[9px] text-muted/60 border-l border-line/30 pl-2 mt-1">
+                  <span className="text-muted">Fee assumption: </span>
                   taker {shortTakerPct}%/leg (real published rate — used in net estimate above).
                   {shortExchange === 'hyperliquid'
                     ? ' Est. maker = 0% on HL — free if filled, but no fill guarantee.'
@@ -643,32 +643,32 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
               </div>
             </div>
 
-            <div className="border-b border-border/20 pb-4 mb-4">
+            <div className="border-b border-line/20 pb-4 mb-4">
               <StepLabel n={3} text={`Open LONG on ${venueLabel(longExchange)}`} />
-              <div className="ml-[42px] font-mono text-[10px] text-text-muted leading-relaxed space-y-1">
+              <div className="ml-[42px] font-body text-[10px] text-muted leading-relaxed space-y-1">
                 <p>
-                  Instrument: <span className="text-text-secondary">{coin}-PERP</span> (USDT-margined perpetual)
+                  Instrument: <span className="text-ink-2">{coin}-PERP</span> (USDT-margined perpetual)
                 </p>
                 <p>
-                  Direction: <span className="text-positive/80 font-medium">LONG</span>
+                  Direction: <span className="text-mint-deep/80 font-medium">LONG</span>
                   {qty != null && (
-                    <span> · <span className="tabular-nums">{fmtQty(qty)} {coin}</span></span>
+                    <span> · <span className="font-mono tabular-nums">{fmtQty(qty)} {coin}</span></span>
                   )}
                   {capital > 0 && (
-                    <span> · Notional: <span className="text-text-primary tabular-nums">{fmtUsd(notionalPerLeg)}</span></span>
+                    <span> · Notional: <span className="text-ink font-mono tabular-nums">{fmtUsd(notionalPerLeg)}</span></span>
                   )}
                 </p>
                 <p>
                   {spread.frLong <= 0
-                    ? <>Also <span className="text-positive">collect</span> funding of{' '}
-                        <span className="text-positive tabular-nums">{fmtRate(Math.abs(spread.frLong), spread.intervalHoursLong)}</span> on this leg.</>
-                    : <><span className="text-negative/80">Pay</span> funding of{' '}
-                        <span className="text-negative/80 tabular-nums">{fmtRate(spread.frLong, spread.intervalHoursLong)}</span>{' '}
+                    ? <>Also <span className="text-mint-deep">collect</span> funding of{' '}
+                        <span className="text-mint-deep font-mono tabular-nums">{fmtRate(Math.abs(spread.frLong), spread.intervalHoursLong)}</span> on this leg.</>
+                    : <><span className="text-coral-ink/80">Pay</span> funding of{' '}
+                        <span className="text-coral-ink/80 font-mono tabular-nums">{fmtRate(spread.frLong, spread.intervalHoursLong)}</span>{' '}
                         {intervalLabel(spread.intervalHoursLong)} in {settlementCurrency(longExchange)}.</>
                   }
                 </p>
-                <p className="text-[9px] text-text-muted/60 border-l border-border/30 pl-2 mt-1">
-                  <span className="text-text-muted">Fee assumption: </span>
+                <p className="text-[9px] text-muted/60 border-l border-line/30 pl-2 mt-1">
+                  <span className="text-muted">Fee assumption: </span>
                   taker {longTakerPct}%/leg (real published rate — used in net estimate above).
                   {longExchange === 'hyperliquid'
                     ? ' Est. maker = 0% on HL — free if filled, but no fill guarantee.'
@@ -678,9 +678,9 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
               </div>
             </div>
 
-            <div className="border-b border-border/20 pb-4 mb-4">
+            <div className="border-b border-line/20 pb-4 mb-4">
               <StepLabel n={4} text="Open both legs as simultaneously as possible" />
-              <div className="ml-[42px] font-mono text-[10px] text-text-muted leading-relaxed">
+              <div className="ml-[42px] font-body text-[10px] text-muted leading-relaxed">
                 <p>
                   Between opening the first and second leg, {coin} price can move.
                   An unhedged leg is a directional bet.
@@ -690,60 +690,60 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
               </div>
             </div>
 
-            <div className="border-b border-border/20 pb-4 mb-4">
+            <div className="border-b border-line/20 pb-4 mb-4">
               <StepLabel n={5} text="Monitor funding resets" />
-              <div className="ml-[42px] font-mono text-[10px] text-text-muted leading-relaxed space-y-1.5">
+              <div className="ml-[42px] font-body text-[10px] text-muted leading-relaxed space-y-1.5">
                 <div className="flex flex-wrap gap-x-6 gap-y-1">
                   <span>
-                    <span className="text-text-secondary">{venueLabel(shortExchange)}: </span>
+                    <span className="text-ink-2">{venueLabel(shortExchange)}: </span>
                     {spread.intervalHoursShort === 1
                       ? `resets every hour — 24 payments/day in ${settlementCurrency(shortExchange)}`
                       : `resets 00:00 / 08:00 / 16:00 UTC — 3 payments/day in ${settlementCurrency(shortExchange)}`
                     }
                   </span>
                   <span>
-                    <span className="text-text-secondary">{venueLabel(longExchange)}: </span>
+                    <span className="text-ink-2">{venueLabel(longExchange)}: </span>
                     {spread.intervalHoursLong === 1
                       ? `resets every hour — 24 payments/day in ${settlementCurrency(longExchange)}`
                       : `resets 00:00 / 08:00 / 16:00 UTC — 3 payments/day in ${settlementCurrency(longExchange)}`
                     }
                   </span>
                 </div>
-                <p className="text-text-muted/60">
+                <p className="text-muted/60">
                   Funding accrues directly to your margin balance — no action needed between resets.
                 </p>
               </div>
             </div>
 
-            <div className="border-b border-border/20 pb-4 mb-4">
+            <div className="border-b border-line/20 pb-4 mb-4">
               <StepLabel n={6} text="Exit: close both legs simultaneously" />
-              <div className="ml-[42px] font-mono text-[10px] text-text-muted leading-relaxed space-y-1.5">
+              <div className="ml-[42px] font-body text-[10px] text-muted leading-relaxed space-y-1.5">
 
                 {/* Breakeven box */}
-                <div className="px-3 py-2 border border-warning/20 bg-warning/5 rounded-sm mb-2">
-                  <p className="text-text-secondary font-medium text-[10px]">
+                <div className="px-3 py-2 border border-gold/20 bg-gold/5 rounded-card mb-2">
+                  <p className="text-ink-2 font-medium text-[10px]">
                     Breakeven: hold for at least {spread.breakevenDays}d to recover round-trip fees
                   </p>
-                  <p className="text-[9px] text-text-muted/80 mt-0.5">
+                  <p className="text-[9px] text-muted/80 mt-0.5">
                     = {beShortIntervals} {spread.intervalHoursShort === 1 ? 'hourly' : '8h'} intervals on {venueLabel(shortExchange)}
                     {beLongIntervals !== beShortIntervals && (
                       <> / {beLongIntervals} {spread.intervalHoursLong === 1 ? 'hourly' : '8h'} intervals on {venueLabel(longExchange)}</>
                     )}
                   </p>
-                  <p className="text-[9px] text-warning/80 mt-1">
+                  <p className="text-[9px] text-gold/80 mt-1">
                     Exiting before {spread.breakevenDays}d means fees exceed what you&apos;ve earned — you lose money
                     even if every funding payment was positive.
                   </p>
                 </div>
 
-                <p className="text-text-muted">Close both legs when any trigger occurs:</p>
+                <p className="text-muted">Close both legs when any trigger occurs:</p>
                 <ul className="list-none space-y-0.5 ml-3 text-[9px]">
                   <li>· Gross spread drops below ≈{marginalBoundary.toFixed(1)}%/yr (fees take {'>'}{paybackDays}d to recover — your minimum).</li>
                   <li>· Short-side rate flips negative — you begin paying instead of collecting.</li>
                   <li>· Net funding income on either interval is negative.</li>
                   <li>· Margin on either leg drops below your risk threshold.</li>
                 </ul>
-                <p className="text-[9px] text-text-muted/60 mt-1">
+                <p className="text-[9px] text-muted/60 mt-1">
                   Use taker (market/IOC) on exit to guarantee fill — leg risk on close is identical to leg risk on open.
                   Close both legs within the same minute where possible.
                 </p>
@@ -754,13 +754,13 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
 
           {/* When to exit — computed */}
           <SectionTitle title="Exit triggers — computed from current data" />
-          <div className="mb-6 px-4 py-4 bg-bg-panel border border-border">
+          <div className="mb-6 px-4 py-4 bg-surface border border-line rounded-card">
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-6 gap-y-4 mb-4">
               <div>
-                <div className="font-mono text-[9px] uppercase tracking-widest text-text-muted mb-1">Breakeven hold time</div>
-                <div className="font-mono text-[18px] font-bold text-text-primary tabular-nums">{spread.breakevenDays}d</div>
-                <div className="font-mono text-[9px] text-text-muted/70 mt-0.5 leading-relaxed">
+                <div className="font-body text-[9px] uppercase tracking-widest text-muted mb-1">Breakeven hold time</div>
+                <div className="font-mono text-[18px] font-bold text-ink tabular-nums">{spread.breakevenDays}d</div>
+                <div className="font-body text-[9px] text-muted/70 mt-0.5 leading-relaxed">
                   {beShortIntervals} intervals ({spread.intervalHoursShort}h) on {venueLabel(shortExchange)}
                   {beLongIntervals !== beShortIntervals && (
                     <><br />{beLongIntervals} intervals ({spread.intervalHoursLong}h) on {venueLabel(longExchange)}</>
@@ -768,18 +768,18 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
                 </div>
               </div>
               <div>
-                <div className="font-mono text-[9px] uppercase tracking-widest text-text-muted mb-1">Exit at gross spread ≤</div>
-                <div className="font-mono text-[18px] font-bold text-warning tabular-nums">{marginalBoundary.toFixed(1)}%/yr</div>
-                <div className="font-mono text-[9px] text-text-muted/70 mt-0.5">
+                <div className="font-body text-[9px] uppercase tracking-widest text-muted mb-1">Exit at gross spread ≤</div>
+                <div className="font-mono text-[18px] font-bold text-gold tabular-nums">{marginalBoundary.toFixed(1)}%/yr</div>
+                <div className="font-body text-[9px] text-muted/70 mt-0.5">
                   fees take {'>'}{paybackDays}d to recover at this spread
                 </div>
               </div>
               <div>
-                <div className="font-mono text-[9px] uppercase tracking-widest text-text-muted mb-1">Current gross spread</div>
-                <div className={`font-mono text-[18px] font-bold tabular-nums ${spread.grossApy > marginalBoundary ? 'text-positive' : 'text-negative'}`}>
+                <div className="font-body text-[9px] uppercase tracking-widest text-muted mb-1">Current gross spread</div>
+                <div className={`font-mono text-[18px] font-bold tabular-nums ${spread.grossApy > marginalBoundary ? 'text-mint-deep' : 'text-coral-ink'}`}>
                   {fmtApy(spread.grossApy)}
                 </div>
-                <div className="font-mono text-[9px] text-text-muted/70 mt-0.5">
+                <div className="font-body text-[9px] text-muted/70 mt-0.5">
                   {spread.grossApy > marginalBoundary
                     ? `+${(spread.grossApy - marginalBoundary).toFixed(1)}%/yr above exit trigger`
                     : 'below exit trigger — consider closing'
@@ -788,22 +788,22 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
               </div>
             </div>
 
-            <div className="border-t border-border/20 pt-3 font-mono text-[9px] text-text-muted leading-relaxed space-y-1.5">
+            <div className="border-t border-line/20 pt-3 font-body text-[9px] text-muted leading-relaxed space-y-1.5">
               <p>
-                <span className="text-text-secondary">Breakeven formula: </span>
+                <span className="text-ink-2">Breakeven formula: </span>
                 round-trip fees ({spread.totalFeesPct.toFixed(3)}%) ÷ gross spread ({spread.grossApy.toFixed(2)}%/yr) × 365 = {spread.breakevenDays}d
               </p>
               <p>
-                <span className="text-text-secondary">Exit threshold: </span>
+                <span className="text-ink-2">Exit threshold: </span>
                 {spread.totalFeesPct.toFixed(3)}% × (365 ÷ {paybackDays}d) = {marginalBoundary.toFixed(1)}%/yr — the gross spread at which breakeven extends past {paybackDays} days. Adjust the payback period in the alert section below.
               </p>
               <p>
-                <span className="text-text-secondary">Recommended exit when: </span>
+                <span className="text-ink-2">Recommended exit when: </span>
                 gross spread falls below {marginalBoundary.toFixed(1)}%/yr
                 OR the short-leg rate flips sign
                 OR basis risk / margin buffer is consumed.
               </p>
-              <p className="text-text-muted/50 mt-1">
+              <p className="text-muted/50 mt-1">
                 Computed from current snapshot. Rate resets {intervalLabel(spread.intervalHoursShort === 1 ? 1 : 8)} — verify manually at each reset.
                 These are mechanical triggers, not financial advice.
               </p>
@@ -812,28 +812,28 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
 
           {/* Funding settlement detail */}
           <SectionTitle title="Funding settlement detail" />
-          <div className="mb-6 px-4 py-3 bg-bg-panel border border-border font-mono text-[10px] text-text-muted leading-relaxed space-y-2">
+          <div className="mb-6 px-4 py-3 bg-surface border border-line rounded-card font-body text-[10px] text-muted leading-relaxed space-y-2">
             <p>
-              All contracts are <span className="text-text-secondary">linear (USDT/USDC-margined) perpetuals</span>.
+              All contracts are <span className="text-ink-2">linear (USDT/USDC-margined) perpetuals</span>.
               No inverse (coin-margined) legs.
             </p>
             <p>
-              <span className="text-text-secondary">{venueLabel(shortExchange)} short leg: </span>
-              funding credited to you in <span className="text-text-primary">{settlementCurrency(shortExchange)}</span>,{' '}
+              <span className="text-ink-2">{venueLabel(shortExchange)} short leg: </span>
+              funding credited to you in <span className="text-ink">{settlementCurrency(shortExchange)}</span>,{' '}
               {spread.intervalHoursShort === 1 ? 'hourly' : 'every 8h'}.
-              Rate: <span className="text-positive tabular-nums">{fmtRate(spread.frShort, spread.intervalHoursShort)}</span>.
+              Rate: <span className="text-mint-deep font-mono tabular-nums">{fmtRate(spread.frShort, spread.intervalHoursShort)}</span>.
             </p>
             <p>
-              <span className="text-text-secondary">{venueLabel(longExchange)} long leg: </span>
+              <span className="text-ink-2">{venueLabel(longExchange)} long leg: </span>
               {spread.frLong >= 0
-                ? <>funding <span className="text-negative/80">debited from you</span> in{' '}</>
-                : <>funding <span className="text-positive">credited to you</span> in{' '}</>
+                ? <>funding <span className="text-coral-ink/80">debited from you</span> in{' '}</>
+                : <>funding <span className="text-mint-deep">credited to you</span> in{' '}</>
               }
-              <span className="text-text-primary">{settlementCurrency(longExchange)}</span>,{' '}
+              <span className="text-ink">{settlementCurrency(longExchange)}</span>,{' '}
               {spread.intervalHoursLong === 1 ? 'hourly' : 'every 8h'}.
-              Rate: <span className="tabular-nums">{fmtRate(spread.frLong, spread.intervalHoursLong)}</span>.
+              Rate: <span className="font-mono tabular-nums">{fmtRate(spread.frLong, spread.intervalHoursLong)}</span>.
             </p>
-            <p className="text-text-muted/60">
+            <p className="text-muted/60">
               The net yield ({fmtApy(spread.netApy30d)}) is annualized assuming current rates hold 30 days.
               Actual income is per-interval and differs as rates move.
             </p>
@@ -841,7 +841,7 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
 
           {/* Risks */}
           <SectionTitle title="Risks" />
-          <div className="mb-6 space-y-2 font-mono text-[10px] text-text-muted leading-relaxed">
+          <div className="mb-6 space-y-2 font-body text-[10px] text-muted leading-relaxed">
             {[
               {
                 label: 'Funding flip',
@@ -877,9 +877,9 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
               },
             ].map(({ label, body }) => (
               <div key={label} className="flex items-start gap-3">
-                <span className="text-warning/60 shrink-0 mt-px">▸</span>
+                <span className="text-gold/60 shrink-0 mt-px">▸</span>
                 <span>
-                  <span className="text-text-secondary font-medium">{label}: </span>
+                  <span className="text-ink-2 font-medium">{label}: </span>
                   {body}
                 </span>
               </div>
@@ -890,9 +890,9 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
           <SectionTitle title="Alerts — notification only, no orders placed" />
 
           {/* Status-change follow */}
-          <div className="mb-3 px-4 py-3 bg-bg-panel border border-border">
-            <p className="font-mono text-[10px] text-text-muted leading-relaxed mb-2">
-              <span className="text-text-secondary">Status-change alert: </span>
+          <div className="mb-3 px-4 py-3 bg-surface border border-line rounded-card">
+            <p className="font-body text-[10px] text-muted leading-relaxed mb-2">
+              <span className="text-ink-2">Status-change alert: </span>
               @Gaspola_bot sends one Telegram message when this opportunity&apos;s status changes
               (e.g. CAUTION → HARVEST or HARVEST → MARGINAL). Throttled to at most one per hour.
             </p>
@@ -900,43 +900,43 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
               href={tgFollowHref}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-block font-mono text-[10px] px-3 py-1.5 border border-accent/30 text-accent/70 hover:border-accent hover:text-accent transition-colors duration-100"
+              className="inline-block font-body text-[10px] px-3 py-1.5 border border-mint/30 text-mint/70 hover:border-mint hover:text-mint transition-colors duration-100 rounded-button"
             >
               ✈ Follow {coin} on Telegram
             </a>
-            <p className="font-mono text-[9px] text-text-muted/50 mt-1.5">
+            <p className="font-body text-[9px] text-muted/50 mt-1.5">
               Tapping opens Telegram and auto-sends <code>/start fund_{coin}</code> to the bot.
               Send <code>/list</code> to see active alerts · <code>/unfollow {coin}</code> · <code>/stop</code> for all.
             </p>
           </div>
 
           {/* Exit threshold alert */}
-          <div className="mb-6 px-4 py-3 bg-bg-panel border border-border">
-            <p className="font-mono text-[10px] text-text-muted leading-relaxed mb-1">
-              <span className="text-text-secondary">Exit threshold alert: </span>
+          <div className="mb-6 px-4 py-3 bg-surface border border-line rounded-card">
+            <p className="font-body text-[10px] text-muted leading-relaxed mb-1">
+              <span className="text-ink-2">Exit threshold alert: </span>
               sends one message when the gross spread drops below a level you set.
             </p>
-            <p className="font-mono text-[9px] text-text-muted/60 mb-2 leading-relaxed">
+            <p className="font-body text-[9px] text-muted/60 mb-2 leading-relaxed">
               Alert fires when gross spread falls below the fee-payback threshold you set.
               Alert resets if the spread recovers 10% above the threshold.
             </p>
 
             <div className="flex items-center gap-2 flex-wrap mb-1">
-              <span className="font-mono text-[10px] text-text-muted">Minimum fee-payback period</span>
+              <span className="font-body text-[10px] text-muted">Minimum fee-payback period</span>
               <input
                 type="number"
                 min={1}
                 step={1}
                 value={paybackDays}
                 onChange={e => setPaybackDays(Math.max(1, parseInt(e.target.value) || 1))}
-                className="w-[3.5rem] px-1.5 py-0.5 font-mono text-[11px] bg-bg-panel border border-border text-text-primary focus:border-accent/50 focus:outline-none tabular-nums"
+                className="w-[3.5rem] px-1.5 py-0.5 font-mono text-[11px] bg-surface border border-line text-ink focus:border-mint/50 focus:outline-none tabular-nums rounded-sm"
               />
-              <span className="font-mono text-[10px] text-text-muted">days</span>
+              <span className="font-body text-[10px] text-muted">days</span>
             </div>
             {spread && (
-              <p className="font-mono text-[9px] text-text-muted/50 mb-3 leading-relaxed">
+              <p className="font-body text-[9px] text-muted/50 mb-3 leading-relaxed">
                 {spread.totalFeesPct.toFixed(3)}% fees × (365 ÷ {paybackDays}d) ={' '}
-                <span className="text-warning">{effectiveThreshold.toFixed(1)}%/yr</span>
+                <span className="text-gold font-mono">{effectiveThreshold.toFixed(1)}%/yr</span>
                 {' '}— alert triggers when gross spread drops below this.
               </p>
             )}
@@ -945,23 +945,23 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
               href={tgAlertHref}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 font-mono text-[10px] px-3 py-1.5 border border-warning/30 text-warning/70 hover:border-warning hover:text-warning transition-colors duration-100"
+              className="inline-flex items-center gap-1.5 font-body text-[10px] px-3 py-1.5 border border-gold/30 text-gold/70 hover:border-gold hover:text-gold transition-colors duration-100 rounded-button"
             >
               ⚠ Set exit alert at {effectiveThreshold.toFixed(1)}%/yr ({paybackDays}d payback) in Telegram
             </a>
 
-            <p className="font-mono text-[9px] text-text-muted/50 mt-2 leading-relaxed">
+            <p className="font-body text-[9px] text-muted/50 mt-2 leading-relaxed">
               Opens @Gaspola_bot. The bot stores your threshold per your Telegram chat ID and sends one alert
               when {coin} gross spread drops below {effectiveThreshold.toFixed(1)}%/yr ({paybackDays}d fee-payback threshold).
               Message: &quot;{coin} spread at X%/yr — below your {effectiveThreshold.toFixed(1)}%/yr exit — consider closing both legs.&quot;
             </p>
-            <p className="font-mono text-[9px] text-warning/60 mt-1 font-medium">
+            <p className="font-body text-[9px] text-gold/60 mt-1 font-medium">
               This alert does not place, modify, or cancel any position on any exchange.
             </p>
           </div>
 
           {/* Disclaimer */}
-          <div className="px-4 py-3 border border-border/30 bg-bg-elevated/10 font-mono text-[9px] text-text-muted/50 leading-relaxed">
+          <div className="px-4 py-3 border border-line/30 bg-bg-soft/10 rounded-card font-body text-[9px] text-muted/50 leading-relaxed">
             Educational only. Not financial advice. All numbers are derived from the current data snapshot and will change.
             Execution is entirely at your own risk — this page describes the mechanics of a funding rate arbitrage strategy, not a recommendation.
             Verify all figures on your exchange before committing capital.

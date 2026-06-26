@@ -26,14 +26,14 @@ export default function FooterStatus() {
                                   'TRADERS HUB OFFLINE';
 
   const dotCls =
-    tradersStatus === 'live'    ? 'bg-positive' :
-    tradersStatus === 'offline' ? 'bg-warning'  :
-                                  'bg-text-muted/30';
+    tradersStatus === 'live'    ? 'bg-mint-deep' :
+    tradersStatus === 'offline' ? 'bg-gold'      :
+                                  'bg-muted/30';
 
   return (
     <div className="flex items-center gap-2">
       <span className={`inline-block w-1.5 h-1.5 rounded-full ${dotCls} shrink-0`} />
-      <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-muted">
+      <span className="font-body text-[10px] uppercase tracking-[0.12em] text-muted">
         CORE SYSTEMS OPERATIONAL · {tradersLabel}
       </span>
     </div>

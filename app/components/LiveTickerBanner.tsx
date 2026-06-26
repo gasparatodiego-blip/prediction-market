@@ -30,24 +30,24 @@ export default function LiveTickerBanner() {
 
   return (
     <div
-      className="overflow-hidden border-b border-border bg-bg-panel/80 py-2"
+      className="overflow-hidden border-b border-line bg-surface/80 py-2"
       aria-hidden  // decorative — screen readers skip this
     >
       <div className="animate-marquee flex gap-10 w-max">
         {doubled.map((item, i) => (
           <span key={i} className="inline-flex items-center gap-2 shrink-0">
-            <span className="font-mono text-[8px] uppercase tracking-wider text-text-muted/50">
+            <span className="font-body text-[8px] uppercase tracking-wider text-muted/50">
               {item.type}
             </span>
-            <span className="font-mono text-[9px] text-text-muted/30">·</span>
-            <span className="font-mono text-[9px] text-text-secondary/80">
+            <span className="font-body text-[9px] text-muted/30">·</span>
+            <span className="font-body text-[9px] text-ink-2/80">
               {item.label.length > 38 ? item.label.slice(0, 38) + '…' : item.label}
             </span>
-            <span className="font-mono text-[9px] text-text-muted/30">·</span>
-            <span className="font-mono text-[10px] font-semibold text-positive tabular-nums">
+            <span className="font-body text-[9px] text-muted/30">·</span>
+            <span className="font-mono text-[10px] font-semibold text-mint-deep tabular-nums">
               +{item.netPct.toFixed(1)}{item.unit}
             </span>
-            <span className="font-mono text-[8px] text-accent/30 ml-3 select-none">▸</span>
+            <span className="font-body text-[8px] text-mint/30 ml-3 select-none">▸</span>
           </span>
         ))}
       </div>

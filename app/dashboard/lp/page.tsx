@@ -109,7 +109,7 @@ export default function LPDashboard() {
                             <div className="text-xs text-gray-500">Capitale Residuo</div>
                         </div>
                         <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-4">
-                            <div className="text-2xl font-bold text-orange-400">{formatCurrency(summary.totalFees)}</div>
+                            <div className="text-2xl font-bold text-gold">{formatCurrency(summary.totalFees)}</div>
                             <div className="text-xs text-gray-500">Fee Accumulate</div>
                         </div>
                     </div>

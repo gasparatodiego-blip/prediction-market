@@ -98,26 +98,26 @@ function ObservedModelChip() {
     <span className="relative inline-flex items-center">
       <button
         onClick={() => setOpen(v => !v)}
-        className="inline-flex items-center gap-1 px-2 py-0.5 border border-amber-600/50
-          bg-amber-950/30 text-amber-400 font-mono text-[9px] uppercase tracking-wide
-          hover:bg-amber-950/50 transition-colors"
+        className="inline-flex items-center gap-1 px-2 py-0.5 border border-gold/40
+          bg-gold/5 text-gold font-body text-[9px] uppercase tracking-wide
+          hover:bg-gold/5/50 transition-colors"
         aria-expanded={open}
       >
-        <span className="w-1.5 h-1.5 rounded-full bg-amber-400/70 shrink-0" />
+        <span className="w-1.5 h-1.5 rounded-full bg-gold/70 shrink-0" />
         OBSERVED MODEL · estimate
-        <span className="text-amber-600 ml-0.5">{open ? '▲' : '▼'}</span>
+        <span className="text-gold/70 ml-0.5">{open ? '▲' : '▼'}</span>
       </button>
       {open && (
         <span
-          className="absolute top-full left-0 z-20 mt-1.5 w-72 border border-amber-600/40
-            bg-zinc-900 shadow-lg px-3 py-2.5"
+          className="absolute top-full left-0 z-20 mt-1.5 w-72 border border-gold/40
+            bg-surface shadow-lg px-3 py-2.5"
         >
-          <p className="font-mono text-[10px] text-amber-300/80 leading-relaxed">
+          <p className="font-mono text-[10px] text-gold/80 leading-relaxed">
             {OBSERVED_MODEL_FULL}
           </p>
           <button
             onClick={() => setOpen(false)}
-            className="font-mono text-[9px] text-zinc-600 hover:text-zinc-400 mt-1.5"
+            className="font-mono text-[9px] text-muted/70 hover:text-ink-2 mt-1.5"
           >
             close ✕
           </button>
@@ -238,14 +238,14 @@ function KBookRow({
 }) {
   const barPct   = maxCumUsd > 0 ? Math.min((cumUsd / maxCumUsd) * 100, 100) : 0;
   const isAsk    = side === 'ask';
-  const priceCls = isAsk ? 'text-red-300' : 'text-emerald-300';
-  const barCls   = isAsk ? 'bg-red-950/55' : 'bg-emerald-950/55';
+  const priceCls = isAsk ? 'text-coral-ink' : 'text-mint-deep';
+  const barCls   = isAsk ? 'bg-coral-tint/60' : 'bg-mint-tint/60';
 
   return (
     <button
       onClick={() => onClickPrice(level.price)}
       className="w-full relative grid grid-cols-3 items-center text-[11px] font-mono
-        px-2 py-[3px] transition-colors hover:bg-zinc-700/25"
+        px-2 py-[3px] transition-colors hover:bg-bg-soft/40"
     >
       <span
         className={`absolute inset-y-0 right-0 ${barCls}`}
@@ -254,10 +254,10 @@ function KBookRow({
       <span className={`relative tabular-nums text-left ${priceCls}`}>
         {fmtP(level.price)}
       </span>
-      <span className="relative text-zinc-400 tabular-nums text-right">
+      <span className="relative text-muted tabular-nums text-right">
         {fmtUsd(level.usd)}
       </span>
-      <span className="relative text-zinc-600 tabular-nums text-right">
+      <span className="relative text-muted/70 tabular-nums text-right">
         {fmtUsd(cumUsd)}
       </span>
     </button>
@@ -271,9 +271,9 @@ function SkeletonRows({ count = 7 }: { count?: number }) {
     <>
       {Array.from({ length: count }, (_, i) => (
         <div key={i} className="grid grid-cols-3 px-2 py-[4px] gap-2 animate-pulse">
-          <span className="h-2.5 bg-zinc-800 rounded w-10" />
-          <span className="h-2.5 bg-zinc-800 rounded w-8 ml-auto" />
-          <span className="h-2.5 bg-zinc-800 rounded w-8 ml-auto" />
+          <span className="h-2.5 bg-bg-soft rounded w-10" />
+          <span className="h-2.5 bg-bg-soft rounded w-8 ml-auto" />
+          <span className="h-2.5 bg-bg-soft rounded w-8 ml-auto" />
         </div>
       ))}
     </>
@@ -283,18 +283,18 @@ function SkeletonRows({ count = 7 }: { count?: number }) {
 function Metric({ label, value, dim }: { label: string; value: string; dim?: boolean }) {
   return (
     <div>
-      <div className="font-mono text-[9px] text-zinc-600 uppercase tracking-wider">{label}</div>
-      <div className={`font-mono text-sm tabular-nums ${dim ? 'text-zinc-600' : 'text-zinc-300'}`}>{value}</div>
+      <div className="font-body text-[9px] text-muted/70 uppercase tracking-wider">{label}</div>
+      <div className={`font-mono text-sm tabular-nums'}`}>{value}</div>
     </div>
   );
 }
 
 function StatBox({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <div className="border border-zinc-800 bg-zinc-900 p-3">
-      <div className="font-mono text-sm font-semibold text-zinc-200 tabular-nums">{value}</div>
-      <div className="font-mono text-[10px] text-zinc-600 uppercase mt-0.5">{label}</div>
-      {sub && <div className="font-mono text-[9px] text-zinc-700 mt-0.5">{sub}</div>}
+    <div className="border border-line bg-surface rounded-card p-3">
+      <div className="font-mono text-sm font-semibold text-ink tabular-nums">{value}</div>
+      <div className="font-body text-[10px] text-muted/70 uppercase mt-0.5">{label}</div>
+      {sub && <div className="font-body text-[9px] text-muted/50 mt-0.5">{sub}</div>}
     </div>
   );
 }
@@ -445,12 +445,12 @@ export default function KalshiMarketDetailPage() {
 
   if (mktError) {
     return (
-      <div className="min-h-screen bg-zinc-950 text-zinc-100 p-8 font-mono">
-        <Link href="/dashboard/liquidity-rewards" className="text-zinc-500 hover:text-zinc-300 text-xs">
+      <div className="min-h-screen bg-bg text-ink p-8 font-body">
+        <Link href="/dashboard/liquidity-rewards" className="text-muted hover:text-ink-2 text-xs">
           ← Kalshi LIP Rewards
         </Link>
-        <p className="mt-6 text-red-400 text-sm">{mktError}</p>
-        <p className="mt-2 text-zinc-600 text-xs">Ticker: {ticker}</p>
+        <p className="mt-6 text-coral-ink text-sm">{mktError}</p>
+        <p className="mt-2 text-muted/70 text-xs">Ticker: {ticker}</p>
       </div>
     );
   }
@@ -458,19 +458,19 @@ export default function KalshiMarketDetailPage() {
   // ── Render ────────────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100">
+    <div className="min-h-screen bg-bg text-ink">
       <div className="max-w-5xl mx-auto px-4 py-6 space-y-5">
 
         {/* Breadcrumb */}
         <div className="flex items-center gap-3 flex-wrap">
           <Link
             href="/dashboard/liquidity-rewards"
-            className="font-mono text-[11px] text-zinc-600 hover:text-zinc-400 uppercase tracking-widest"
+            className="font-body text-[11px] text-muted hover:text-ink-2 uppercase tracking-widest"
           >
             ← Liquidity Rewards
           </Link>
-          <span className="font-mono text-[10px] text-zinc-700">·</span>
-          <span className="font-mono text-[10px] text-zinc-600 uppercase tracking-widest">
+          <span className="font-body text-[10px] text-muted/50">·</span>
+          <span className="font-body text-[10px] text-muted uppercase tracking-widest">
             Kalshi · live · read-only · no orders placed
           </span>
           <ObservedModelChip />
@@ -480,43 +480,43 @@ export default function KalshiMarketDetailPage() {
         <div className="space-y-2">
           {mkt ? (
             <>
-              <div className="font-mono text-[10px] text-zinc-600 uppercase tracking-wider">
+              <div className="font-body text-[10px] text-muted uppercase tracking-wider">
                 {ticker}
               </div>
-              <h1 className="font-mono text-lg font-bold text-zinc-100 leading-snug">
+              <h1 className="font-display text-lg font-bold text-ink leading-snug">
                 {mkt.question}
               </h1>
               <div className="flex flex-wrap gap-2 items-center">
-                <span className="font-mono text-[10px] px-1.5 py-px border border-zinc-700 bg-zinc-800 text-zinc-400">
+                <span className="font-body text-[10px] px-1.5 py-px border border-line bg-bg-soft text-muted">
                   pool ${mkt.pool_day.toFixed(0)}/day
                 </span>
-                <span className="font-mono text-[10px] px-1.5 py-px border border-zinc-700 bg-zinc-800 text-zinc-400">
+                <span className="font-body text-[10px] px-1.5 py-px border border-line bg-bg-soft text-muted">
                   ${mkt.total_period_usd.toFixed(0)} period total
                 </span>
-                <span className="font-mono text-[10px] px-1.5 py-px border border-zinc-700 bg-zinc-800 text-zinc-500">
+                <span className="font-body text-[10px] px-1.5 py-px border border-line bg-bg-soft text-muted">
                   min {mkt.min_size.toLocaleString()} shares
                 </span>
-                <span className="font-mono text-[10px] px-1.5 py-px border border-zinc-700 bg-zinc-800 text-zinc-500">
+                <span className="font-body text-[10px] px-1.5 py-px border border-line bg-bg-soft text-muted">
                   {mkt.fee_discount_pct}% fee discount
                 </span>
-                <span className="font-mono text-[10px] px-1.5 py-px border border-zinc-700 bg-zinc-800 text-zinc-500">
+                <span className="font-body text-[10px] px-1.5 py-px border border-line bg-bg-soft text-muted">
                   last {(mkt.last_price * 100).toFixed(0)}¢
                 </span>
-                <span className="font-mono text-[10px] px-1.5 py-px border border-zinc-700 bg-zinc-800 text-zinc-500">
+                <span className="font-body text-[10px] px-1.5 py-px border border-line bg-bg-soft text-muted">
                   {mkt.period_days.toFixed(1)}d period
                 </span>
                 {isTrap && (
-                  <span className="font-mono text-[10px] px-1.5 py-px border border-red-700/50 bg-red-950/30 text-red-400 uppercase">
+                  <span className="font-body text-[10px] px-1.5 py-px border border-coral-ink/50 bg-coral-tint/30 text-coral-ink uppercase rounded-sm">
                     TRAP
                   </span>
                 )}
                 {isWarn && !isTrap && (
-                  <span className="font-mono text-[10px] px-1.5 py-px border border-amber-600/50 bg-amber-950/30 text-amber-400 uppercase">
+                  <span className="font-mono text-[10px] px-1.5 py-px border border-gold/40 bg-gold/5/30 text-gold uppercase">
                     WARN · lopsided
                   </span>
                 )}
                 {isBurst && (
-                  <span className="font-mono text-[10px] px-1.5 py-px border border-orange-600/50 bg-orange-950/30 text-orange-400 uppercase">
+                  <span className="font-body text-[10px] px-1.5 py-px border border-gold/50 bg-gold/5 text-gold uppercase rounded-sm">
                     SHORT BURST
                   </span>
                 )}
@@ -524,7 +524,7 @@ export default function KalshiMarketDetailPage() {
 
               {/* TRAP warning */}
               {isTrap && mkt.trap_reason && (
-                <div className="border border-red-800/50 bg-red-950/20 px-3 py-2 font-mono text-[11px] text-red-400">
+                <div className="border border-coral-ink/40 bg-coral-tint/30 px-3 py-2 font-body text-[11px] text-coral-ink rounded-sm">
                   {mkt.trap_reason} — near-certain outcome, one side of the book is nearly empty.
                   Adverse fill risk is extreme. Do not promote this market.
                 </div>
@@ -532,8 +532,8 @@ export default function KalshiMarketDetailPage() {
             </>
           ) : (
             <>
-              <div className="h-4 bg-zinc-800/40 animate-pulse rounded w-32" />
-              <div className="h-7 bg-zinc-800/40 animate-pulse rounded w-3/4" />
+              <div className="h-4 bg-bg-soft/40 animate-pulse rounded w-32" />
+              <div className="h-7 bg-bg-soft/40 animate-pulse rounded w-3/4" />
             </>
           )}
         </div>
@@ -542,47 +542,47 @@ export default function KalshiMarketDetailPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
 
           {/* ORDER BOOK */}
-          <div className="border border-zinc-800 bg-zinc-900/50 flex flex-col">
+          <div className="border border-line bg-surface/50 rounded-card flex flex-col">
 
             {/* Header */}
-            <div className="flex items-center justify-between px-3 py-2 border-b border-zinc-800">
+            <div className="flex items-center justify-between px-3 py-2 border-b border-line">
               <div className="flex items-center gap-3">
                 <div className="flex gap-0.5">
                   {(['yes', 'no'] as const).map(s => (
                     <button
                       key={s}
                       onClick={() => setBookSide(s)}
-                      className={`font-mono text-[10px] px-2.5 py-1 border transition-colors ${
+                      className={`font-body text-[10px] px-2.5 py-1 border transition-colors ${
                         bookSide === s
-                          ? 'border-zinc-500 bg-zinc-700 text-zinc-100'
-                          : 'border-zinc-700 bg-zinc-800/60 text-zinc-500 hover:text-zinc-400'
+                          ? 'border-ink-2/50 bg-bg-soft text-ink'
+                          : 'border-line bg-surface/50 text-muted hover:text-ink-2'
                       }`}
                     >
                       {s.toUpperCase()}
                     </button>
                   ))}
                 </div>
-                <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
+                <span className="font-body text-[10px] text-muted uppercase tracking-widest">
                   {bookSide === 'yes' ? 'YES book' : 'NO book'}
                 </span>
                 {bookAge && !bookError && (
-                  <span className="flex items-center gap-1 font-mono text-[9px] text-emerald-500">
-                    <span className="w-1 h-1 rounded-full bg-emerald-400 animate-pulse" />
+                  <span className="flex items-center gap-1 font-body text-[9px] text-mint-deep">
+                    <span className="w-1 h-1 rounded-full bg-mint-deep animate-pulse" />
                     {ago(bookAge.toISOString())}
                   </span>
                 )}
               </div>
               <button
                 onClick={fetchBook}
-                className="font-mono text-[9px] text-zinc-600 hover:text-zinc-400 uppercase"
+                className="font-body text-[9px] text-muted hover:text-ink-2 uppercase"
               >
                 ↻
               </button>
             </div>
 
             {/* Note about structure */}
-            <div className="px-3 py-1.5 bg-zinc-900/80 border-b border-zinc-800/40">
-              <p className="font-mono text-[9px] text-zinc-700 leading-relaxed">
+            <div className="px-3 py-1.5 bg-surface/80 border-b border-line/40">
+              <p className="font-body text-[9px] text-muted/50 leading-relaxed">
                 {bookSide === 'yes'
                   ? 'YES bids from API · YES asks derived from NO bids (1 − no_price)'
                   : 'NO bids from API · NO asks derived from YES bids (1 − yes_price)'}
@@ -590,13 +590,13 @@ export default function KalshiMarketDetailPage() {
             </div>
 
             {bookError && (
-              <div className="px-3 py-2 font-mono text-[11px] text-zinc-500">
+              <div className="px-3 py-2 font-body text-[11px] text-muted">
                 {bookError}
               </div>
             )}
 
             {/* Column headers */}
-            <div className="grid grid-cols-3 px-2 py-1 font-mono text-[9px] text-zinc-700 uppercase border-b border-zinc-800/40">
+            <div className="grid grid-cols-3 px-2 py-1 font-body text-[9px] text-muted/50 uppercase border-b border-line/40">
               <span>Price</span>
               <span className="text-right">$USD</span>
               <span className="text-right">Σ$</span>
@@ -607,7 +607,7 @@ export default function KalshiMarketDetailPage() {
               {displayAsks.length === 0 && !bookError && (
                 bookLoading
                   ? <SkeletonRows />
-                  : <div className="px-3 py-2 font-mono text-[10px] text-zinc-700 text-center">
+                  : <div className="px-3 py-2 font-body text-[10px] text-muted/50 text-center">
                       no asks · {bookSide === 'yes' ? 'NO bids empty' : 'YES bids empty'}
                     </div>
               )}
@@ -624,16 +624,16 @@ export default function KalshiMarketDetailPage() {
             </div>
 
             {/* Mid/spread row */}
-            <div className="flex items-center gap-3 px-3 py-1.5 bg-zinc-800/70 border-y border-zinc-700/60">
-              <span className="font-mono text-[11px] text-zinc-200 tabular-nums font-semibold">
+            <div className="flex items-center gap-3 px-3 py-1.5 bg-bg-soft/70 border-y border-line/60">
+              <span className="font-mono text-[11px] text-ink tabular-nums font-semibold">
                 Mid {fmtPFull(liveMid)}
               </span>
               {liveSpread !== null && (
-                <span className="font-mono text-[10px] text-zinc-500">
+                <span className="font-body text-[10px] text-muted">
                   Spread {fmtPFull(liveSpread)}
                 </span>
               )}
-              <span className="font-mono text-[9px] text-zinc-700 ml-auto">from live book</span>
+              <span className="font-body text-[9px] text-muted/50 ml-auto">from live book</span>
             </div>
 
             {/* BID rows */}
@@ -641,7 +641,7 @@ export default function KalshiMarketDetailPage() {
               {activeBids.length === 0 && !bookError && (
                 bookLoading
                   ? <SkeletonRows />
-                  : <div className="px-3 py-2 font-mono text-[10px] text-zinc-700 text-center">no bids</div>
+                  : <div className="px-3 py-2 font-body text-[10px] text-muted/50 text-center">no bids</div>
               )}
               {activeBids.map((l, i) => (
                 <KBookRow
@@ -656,18 +656,18 @@ export default function KalshiMarketDetailPage() {
             </div>
 
             {/* Depth footer */}
-            <div className="px-3 py-2 border-t border-zinc-800 font-mono text-[10px] text-zinc-600">
+            <div className="px-3 py-2 border-t border-line font-body text-[10px] text-muted/70">
               {mkt && `pool $${mkt.pool_day.toFixed(0)}/day · min ${mkt.min_size.toLocaleString()} shares`}
               {' '}· Kalshi · read-only
             </div>
           </div>
 
           {/* TRADE TICKET */}
-          <div className="border border-zinc-800 bg-zinc-900/50 flex flex-col">
+          <div className="border border-line bg-surface/50 rounded-card flex flex-col">
 
             {/* Preview banner */}
-            <div className="bg-amber-950/40 border-b border-amber-700/40 px-3 py-2 text-center">
-              <span className="font-mono text-[11px] font-bold text-amber-400 uppercase tracking-widest">
+            <div className="bg-gold/5 border-b border-gold/40 px-3 py-2 text-center">
+              <span className="font-body text-[11px] font-bold text-gold uppercase tracking-widest">
                 PREVIEW · NO ORDER PLACED
               </span>
             </div>
@@ -676,7 +676,7 @@ export default function KalshiMarketDetailPage() {
 
               {/* Posting side */}
               <div className="space-y-1.5">
-                <label className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
+                <label className="font-body text-[10px] text-muted uppercase tracking-widest">
                   Side
                 </label>
                 <div className="flex gap-1.5">
@@ -684,18 +684,18 @@ export default function KalshiMarketDetailPage() {
                     <button
                       key={s}
                       onClick={() => setTicketSide(s)}
-                      className={`flex-1 font-mono text-xs py-1.5 border transition-colors
+                      className={`flex-1 font-body text-xs py-1.5 border transition-colors
                         ${ticketSide === s
-                          ? s === 'BUY'  ? 'border-emerald-600 bg-emerald-950/50 text-emerald-300'
-                          : s === 'SELL' ? 'border-red-700    bg-red-950/40      text-red-300'
-                          :               'border-accent      bg-accent/10       text-accent'
-                          : 'border-zinc-700 bg-zinc-800 text-zinc-500 hover:border-zinc-500'}`}
+                          ? s === 'BUY'  ? 'border-mint-deep/60 bg-mint-tint/50 text-mint-deep'
+                          : s === 'SELL' ? 'border-coral-ink/50    bg-coral-tint/40      text-coral-ink'
+                          :               'border-mint bg-mint/10 text-mint'
+                          : 'border-line bg-bg-soft text-muted hover:border-muted'}`}
                     >
                       {s === 'BOTH' ? 'BOTH SIDES' : s === 'BUY' ? 'BUY YES' : 'SELL YES'}
                     </button>
                   ))}
                 </div>
-                <p className="font-mono text-[10px] text-zinc-600">
+                <p className="font-body text-[10px] text-muted/70">
                   {ticketSide === 'BOTH'
                     ? 'Two-sided: LIP typically requires both sides. share = min(bid, ask).'
                     : ticketSide === 'BUY'
@@ -706,19 +706,19 @@ export default function KalshiMarketDetailPage() {
 
               {/* Price */}
               <div className="space-y-1.5">
-                <label className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
+                <label className="font-body text-[10px] text-muted uppercase tracking-widest">
                   Price (0–1) · click a row in the book
                 </label>
                 <input
                   type="number" min="0.01" max="0.99" step="0.01"
                   value={ticketPrice}
                   onChange={e => setTicketPrice(e.target.value)}
-                  className="w-full bg-zinc-800 border border-zinc-700 text-zinc-200 font-mono text-sm
-                    px-3 py-2 focus:outline-none focus:border-zinc-500"
+                  className="w-full bg-bg-soft border border-line text-ink font-mono text-sm
+                    px-3 py-2 focus:outline-none focus:border-ink-2/50"
                   placeholder="e.g. 0.30"
                 />
                 {!isNaN(tpNum) && tpNum > 0 && (
-                  <p className="font-mono text-[10px] text-zinc-600">
+                  <p className="font-body text-[10px] text-muted/70">
                     {fmtPFull(tpNum)} · mid {fmtPFull(liveMid)} · spread {liveSpread !== null ? fmtPFull(liveSpread) : '—'}
                   </p>
                 )}
@@ -726,19 +726,19 @@ export default function KalshiMarketDetailPage() {
 
               {/* Size */}
               <div className="space-y-1.5">
-                <label className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
+                <label className="font-body text-[10px] text-muted uppercase tracking-widest">
                   Size (shares per side)
                 </label>
                 <input
                   type="number" min="1" step="1"
                   value={ticketSize}
                   onChange={e => setTicketSize(e.target.value)}
-                  className="w-full bg-zinc-800 border border-zinc-700 text-zinc-200 font-mono text-sm
-                    px-3 py-2 focus:outline-none focus:border-zinc-500"
+                  className="w-full bg-bg-soft border border-line text-ink font-mono text-sm
+                    px-3 py-2 focus:outline-none focus:border-ink-2/50"
                   placeholder={mkt ? `min ${mkt.min_size.toLocaleString()}` : '1000'}
                 />
                 {mkt && !isNaN(tsNum) && !isNaN(tpNum) && tpNum > 0 && (
-                  <p className="font-mono text-[10px] text-zinc-600">
+                  <p className="font-body text-[10px] text-muted/70">
                     Notional ≈ {fmtUsd(tsNum * tpNum)} at {fmtPFull(tpNum)}
                     {mkt.min_size > 0 && ` · min ${mkt.min_size.toLocaleString()} shares`}
                   </p>
@@ -749,25 +749,25 @@ export default function KalshiMarketDetailPage() {
               {est && mkt && (
                 <div className={`border p-3 space-y-2.5 ${
                   !est.aboveMin
-                    ? 'border-zinc-700 bg-zinc-800/40'
+                    ? 'border-line bg-bg-soft/40'
                     : isTrap
-                    ? 'border-red-800/50 bg-red-950/10'
-                    : 'border-emerald-800/50 bg-emerald-950/20'
+                    ? 'border-coral-ink/40/50 bg-coral-tint/10'
+                    : 'border-mint/40/50 bg-mint-tint/20'
                 }`}>
 
                   {/* Warnings */}
                   {!est.aboveMin && (
-                    <div className="font-mono text-[11px] text-orange-400 border border-orange-700/50 bg-orange-950/20 px-2 py-1.5">
+                    <div className="font-mono text-[11px] text-gold border border-gold/50/50 bg-gold/5/20 px-2 py-1.5">
                       Size {tsNum.toFixed(0)} &lt; min {mkt.min_size.toLocaleString()} shares · won't qualify for rewards
                     </div>
                   )}
                   {isTrap && (
-                    <div className="font-mono text-[11px] text-red-400 border border-red-800/50 bg-red-950/20 px-2 py-1.5">
+                    <div className="font-mono text-[11px] text-coral-ink border border-coral-ink/40/50 bg-coral-tint/20 px-2 py-1.5">
                       TRAP market — near-certain outcome, one side nearly empty. Adverse fill risk is extreme.
                     </div>
                   )}
                   {isWarn && !isTrap && (
-                    <div className="font-mono text-[11px] text-amber-400 border border-amber-700/50 bg-amber-950/20 px-2 py-1.5">
+                    <div className="font-mono text-[11px] text-gold border border-gold/40/50 bg-gold/5/20 px-2 py-1.5">
                       WARN: lopsided price ({fmtPFull(mkt.last_price)}) — adverse fill risk elevated on one side.
                     </div>
                   )}
@@ -791,27 +791,27 @@ export default function KalshiMarketDetailPage() {
                   </div>
 
                   {/* Reward headline */}
-                  <div className="border-t pt-2.5 border-emerald-800/30">
+                  <div className="border-t pt-2.5 border-mint/40/30">
                     <div className="flex items-baseline justify-between gap-2">
-                      <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
+                      <span className="font-body text-[10px] text-muted uppercase tracking-widest">
                         Est. net reward
                       </span>
                       <span className={`font-mono text-xl font-bold tabular-nums ${
-                        !est.aboveMin || isTrap ? 'text-zinc-600' : 'text-emerald-400'
+                        !est.aboveMin || isTrap ? 'text-muted/70' : 'text-mint-deep'
                       }`}>
                         {est.aboveMin && !isTrap ? fmtUsd(est.rewardDay) : '$—'}
                       </span>
                     </div>
                     <div className="flex items-center justify-between mt-0.5">
-                      <span className="font-mono text-[9px] text-amber-700/80 uppercase tracking-wide">
+                      <span className="font-body text-[9px] text-gold/70 uppercase tracking-wide">
                         OBSERVED MODEL · estimate
                       </span>
-                      <span className="font-mono text-[10px] text-zinc-600">
+                      <span className="font-body text-[10px] text-muted/70">
                         per day · net of platform fees · inv. risk not sub.
                       </span>
                     </div>
                     {ticketSide === 'BOTH' && est.aboveMin && (
-                      <p className="font-mono text-[10px] text-zinc-700 mt-0.5 text-right">
+                      <p className="font-body text-[10px] text-muted/50 mt-0.5 text-right">
                         share = min(bid {(est.bidShare*100).toFixed(2)}%, ask {(est.askShare*100).toFixed(2)}%)
                       </p>
                     )}
@@ -820,19 +820,19 @@ export default function KalshiMarketDetailPage() {
               )}
 
               {/* Auto-mirror placeholder */}
-              <div className="border border-zinc-800/50 bg-zinc-900/30 p-3 space-y-1.5">
+              <div className="border border-line/50 bg-surface/30 p-3 space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <span className="font-mono text-[11px] text-zinc-600 uppercase tracking-widest">
+                  <span className="font-body text-[11px] text-muted/70 uppercase tracking-widest">
                     Auto-mirror (live mode)
                   </span>
                   <div
-                    className="relative w-8 h-4 bg-zinc-800 border border-zinc-700 rounded-full opacity-40 cursor-not-allowed"
+                    className="relative w-8 h-4 bg-bg-soft border border-line rounded-full opacity-40 cursor-not-allowed"
                     title="Coming with API keys"
                   >
-                    <span className="absolute left-0.5 top-0.5 w-3 h-3 bg-zinc-600 rounded-full" />
+                    <span className="absolute left-0.5 top-0.5 w-3 h-3 bg-muted/60 rounded-full" />
                   </div>
                 </div>
-                <p className="font-mono text-[9px] text-zinc-700">
+                <p className="font-body text-[9px] text-muted/50">
                   Ghost — coming with API keys. Mirroring ≠ free hedge; adverse fills on both sides.
                 </p>
               </div>
@@ -844,42 +844,42 @@ export default function KalshiMarketDetailPage() {
         {/* ── Per-capital estimates from stored scan data ──────────────────────── */}
         {mkt && (
           <>
-            <div className="border border-zinc-800 bg-zinc-900/30">
-              <div className="px-3 py-2 border-b border-zinc-800 flex items-center gap-3">
-                <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
+            <div className="border border-line bg-surface rounded-card/30">
+              <div className="px-3 py-2 border-b border-line flex items-center gap-3">
+                <span className="font-body text-[10px] text-muted uppercase tracking-widest">
                   Estimated reward at each capital level
                 </span>
-                <span className="font-mono text-[9px] text-zinc-700">from last scan · observed model</span>
+                <span className="font-mono text-[9px] text-muted/50">from last scan · observed model</span>
               </div>
               <div className="grid grid-cols-3 divide-x divide-zinc-800">
                 {(['500', '5000', '50000'] as const).map(key => {
                   const lv = mkt.levels[key];
                   const capLabel = key === '500' ? '$500' : key === '5000' ? '$5k' : '$50k';
-                  if (!lv) return <div key={key} className="px-3 py-3 text-zinc-700 font-mono text-[10px]">—</div>;
+                  if (!lv) return <div key={key} className="px-3 py-3 text-muted/50 font-mono text-[10px]">—</div>;
                   return (
                     <div key={key} className="px-3 py-2.5 space-y-0.5">
-                      <div className="font-mono text-[10px] text-zinc-600 uppercase">{capLabel}</div>
+                      <div className="font-body text-[10px] text-muted/70 uppercase">{capLabel}</div>
                       {lv.aboveMin ? (
                         <>
-                          <div className="font-mono text-sm font-semibold text-emerald-400 tabular-nums">
+                          <div className="font-mono text-sm font-semibold text-mint-deep tabular-nums">
                             {fmtUsd(lv.netRewardDay ?? lv.grossRewardDay)}/day
                           </div>
-                          <div className="font-mono text-[10px] text-zinc-500 tabular-nums">
+                          <div className="font-body text-[10px] text-muted tabular-nums">
                             {(lv.share * 100).toFixed(2)}% share
                           </div>
-                          <div className="font-mono text-[10px] text-zinc-600 tabular-nums">
+                          <div className="font-body text-[10px] text-muted/70 tabular-nums">
                             {(lv.netYieldPct ?? lv.dayYieldPct).toFixed(2)}%/day
                           </div>
                         </>
                       ) : (
-                        <div className="font-mono text-[10px] text-zinc-700">below min size</div>
+                        <div className="font-body text-[10px] text-muted/50">below min size</div>
                       )}
                     </div>
                   );
                 })}
               </div>
-              <div className="px-3 py-1.5 border-t border-zinc-800">
-                <p className="font-mono text-[9px] text-zinc-700">
+              <div className="px-3 py-1.5 border-t border-line">
+                <p className="font-mono text-[9px] text-muted/50">
                   EST · NET OF PLATFORM FEES (reward paid from pool, no fee deducted) · OBSERVED MODEL · flat pro-rata ·
                   not Kalshi's official formula · share compresses as makers enter · inv. risk not sub.
                 </p>
@@ -898,18 +898,18 @@ export default function KalshiMarketDetailPage() {
         )}
 
         {/* How to read */}
-        <div className="border border-zinc-700/50 bg-zinc-900/40">
+        <div className="border border-line/50 bg-surface/40">
           <button
             className="w-full flex items-center justify-between px-4 py-3 text-left"
             onClick={() => setHowToOpen(v => !v)}
           >
-            <span className="font-mono text-[10px] text-zinc-400 uppercase tracking-widest">
+            <span className="font-mono text-[10px] text-muted uppercase tracking-widest">
               How the book and estimate work (Kalshi)
             </span>
-            <span className="font-mono text-[10px] text-zinc-600">{howToOpen ? '▲ close' : '▼ expand'}</span>
+            <span className="font-body text-[10px] text-muted/70">{howToOpen ? '▲ close' : '▼ expand'}</span>
           </button>
           {howToOpen && (
-            <div className="px-4 pb-4 border-t border-zinc-800">
+            <div className="px-4 pb-4 border-t border-line">
               <ul className="mt-3 space-y-2">
                 {([
                   ['YES/NO book toggle', 'Kalshi has a single order book where both YES-buyers and NO-buyers place bids. YES bids come directly from the API (yes_dollars). YES asks are derived from NO bids: yes_ask_price = 1 − no_bid_price. Switch to NO to see the mirror.'],
@@ -919,8 +919,8 @@ export default function KalshiMarketDetailPage() {
                   ['Min size', 'Competitor levels below min_size are excluded from the qualifying depth sum. If your size < min_size, you won\'t qualify.'],
                   ['TRAP', 'last_price > 0.90 or < 0.10: near-certain outcome, one side of the book is nearly empty. Do not trade.'],
                 ] as [string, string][]).map(([term, def]) => (
-                  <li key={term} className="font-mono text-[11px] text-zinc-500 leading-relaxed pl-3 border-l border-zinc-700/40">
-                    <span className="text-zinc-400">{term}:</span> {def}
+                  <li key={term} className="font-mono text-[11px] text-muted leading-relaxed pl-3 border-l border-line/40">
+                    <span className="text-muted">{term}:</span> {def}
                   </li>
                 ))}
               </ul>
@@ -929,8 +929,8 @@ export default function KalshiMarketDetailPage() {
         </div>
 
         {/* Disclaimer */}
-        <div className="border-t border-zinc-800 pt-4">
-          <p className="font-mono text-[10px] text-zinc-700 leading-relaxed">
+        <div className="border-t border-line pt-4">
+          <p className="font-body text-[10px] text-muted/50 leading-relaxed">
             Kalshi order book data fetched live from the public Kalshi Trade API v2. No login, no keys, no orders placed.
             All reward figures are NET OF PLATFORM FEES estimates (Kalshi LIP reward paid from incentive pool separately from trading fees) using an OBSERVED flat pro-rata model — Kalshi's official formula is not public.
             Inventory/adverse-fill risk not modelled. Not financial advice.

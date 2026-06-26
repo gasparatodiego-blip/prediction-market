@@ -235,13 +235,13 @@ function renderBlock(block: Block, i: number) {
   switch (block.t) {
     case 'h':
       return (
-        <div key={i} className={`font-mono text-[9px] uppercase tracking-widest text-text-muted/80 ${i === 0 ? 'mt-0' : 'mt-3'}`}>
+        <div key={i} className={`font-body text-[10px] uppercase tracking-widest text-muted/80 ${i === 0 ? 'mt-0' : 'mt-3'}`}>
           {block.s}
         </div>
       );
     case 'p':
       return (
-        <p key={i} className="font-mono text-[11px] text-text-muted leading-relaxed">
+        <p key={i} className="font-body text-[11px] text-muted leading-relaxed">
           {block.s}
         </p>
       );
@@ -249,10 +249,10 @@ function renderBlock(block: Block, i: number) {
       return (
         <dl key={i} className="space-y-1">
           {block.items.map(([term, def], j) => (
-            <div key={j} className="font-mono text-[11px] leading-relaxed">
-              <span className="text-text-secondary">{term}</span>
-              <span className="text-text-muted/50"> — </span>
-              <span className="text-text-muted">{def}</span>
+            <div key={j} className="font-body text-[11px] leading-relaxed">
+              <span className="text-ink-2 font-medium">{term}</span>
+              <span className="text-muted/50"> — </span>
+              <span className="text-muted">{def}</span>
             </div>
           ))}
         </dl>
@@ -261,8 +261,8 @@ function renderBlock(block: Block, i: number) {
       return (
         <ul key={i} className="space-y-0.5">
           {block.items.map((item, j) => (
-            <li key={j} className="font-mono text-[11px] text-text-muted leading-relaxed flex gap-1.5">
-              <span className="text-text-muted/40 shrink-0 mt-px">·</span>
+            <li key={j} className="font-body text-[11px] text-muted leading-relaxed flex gap-1.5">
+              <span className="text-muted/40 shrink-0 mt-px">·</span>
               <span>{item}</span>
             </li>
           ))}
@@ -279,22 +279,22 @@ export default function SectionHelp({ section }: { section: string }) {
   if (!content) return null;
 
   return (
-    <div className="border border-border/50 mb-5 bg-bg-panel/40">
+    <div className="border border-line/50 mb-5 bg-surface rounded-card">
       <button
         onClick={() => setOpen(o => !o)}
-        className="w-full px-4 py-2.5 flex items-center justify-between text-left hover:bg-bg-elevated/30 transition-colors duration-100 focus-visible:outline-none"
+        className="w-full px-4 py-2.5 flex items-center justify-between text-left hover:bg-bg-soft/30 transition-colors duration-100 focus-visible:outline-none rounded-card"
         aria-expanded={open}
       >
-        <span className="font-mono text-[10px] uppercase tracking-widest text-text-muted/70">
+        <span className="font-body text-[10px] uppercase tracking-widest text-muted/70">
           How to use this section
         </span>
-        <span className="font-mono text-[10px] text-text-muted/40 ml-2 shrink-0 select-none">
+        <span className="font-body text-[10px] text-muted/40 ml-2 shrink-0 select-none">
           {open ? '▾' : '▸'}
         </span>
       </button>
 
       {open && (
-        <div className="px-4 pb-4 pt-1 border-t border-border/30 space-y-2">
+        <div className="px-4 pb-4 pt-1 border-t border-line/30 space-y-2">
           {content.blocks.map((block, i) => renderBlock(block, i))}
         </div>
       )}

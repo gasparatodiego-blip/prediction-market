@@ -46,7 +46,7 @@ export default function LoginPage() {
               placeholder="••••••••" />
           </div>
 
-          {error && <p className="text-red-400 text-xs">{error}</p>}
+          {error && <p className="text-coral-ink text-xs">{error}</p>}
 
           <button type="submit" disabled={loading}
             className="w-full py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold transition-colors disabled:opacity-50">

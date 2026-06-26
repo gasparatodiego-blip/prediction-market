@@ -8,7 +8,7 @@ const PLANS = [
     name:        'Free',
     price:       '€0',
     period:      'forever',
-    color:       'border-gray-700',
+    color:       'border-line',
     badge:       null,
     features: [
       'Top 3 opportunities per scan',
@@ -25,7 +25,7 @@ const PLANS = [
     name:        'Pro',
     price:       '€15',
     period:      '/month',
-    color:       'border-blue-500',
+    color:       'border-violet',
     badge:       'Most Popular',
     features: [
       'All opportunities (unlimited)',
@@ -44,7 +44,7 @@ const PLANS = [
     name:        'Profit Share',
     price:       '€0 upfront',
     period:      '+ 10% of profits',
-    color:       'border-purple-500',
+    color:       'border-violet/50',
     badge:       'Best Value',
     features: [
       'Everything in Pro',
@@ -85,35 +85,35 @@ export default function UpgradePage() {
   }
 
   return (
-    <main className="text-text-primary">
+    <main className="text-ink">
       <div className="max-w-5xl mx-auto px-4 py-12">
         <div className="text-center mb-10">
-          <h1 className="text-3xl font-bold mb-3">Choose Your Plan</h1>
-          <p className="text-gray-400">Unlock the full power of AI-driven prediction market arbitrage</p>
+          <h1 className="font-display font-bold text-3xl text-ink mb-3">Choose Your Plan</h1>
+          <p className="font-body text-muted">Unlock the full power of AI-driven prediction market arbitrage</p>
         </div>
 
-        {error   && <div className="mb-6 p-3 rounded-lg bg-red-900/40 border border-red-700 text-red-300 text-sm text-center">{error}</div>}
-        {success && <div className="mb-6 p-3 rounded-lg bg-green-900/40 border border-green-700 text-green-300 text-sm text-center">Plan upgraded successfully! Refresh the page to see changes.</div>}
+        {error   && <div className="mb-6 p-3 rounded-card bg-coral-tint border border-coral-ink/30 text-coral-ink font-body text-sm text-center">{error}</div>}
+        {success && <div className="mb-6 p-3 rounded-card bg-mint-tint border border-mint-deep/30 text-mint-deep font-body text-sm text-center">Plan upgraded successfully! Refresh the page to see changes.</div>}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {PLANS.map(plan => (
-            <div key={plan.key} className={`rounded-xl border-2 ${plan.color} bg-gray-900/60 p-6 flex flex-col relative`}>
+            <div key={plan.key} className={`rounded-card border-2 ${plan.color} bg-surface p-6 flex flex-col relative shadow-card`}>
               {plan.badge && (
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full bg-blue-600 text-xs font-bold text-white">
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-pill bg-violet text-xs font-body font-bold text-white">
                   {plan.badge}
                 </div>
               )}
               <div className="mb-4">
-                <h2 className="text-xl font-bold mb-1">{plan.name}</h2>
+                <h2 className="font-display font-semibold text-xl text-ink mb-1">{plan.name}</h2>
                 <div className="flex items-baseline gap-1">
-                  <span className="text-3xl font-black">{plan.price}</span>
-                  <span className="text-gray-400 text-sm">{plan.period}</span>
+                  <span className="font-display font-black text-3xl text-ink">{plan.price}</span>
+                  <span className="font-body text-muted text-sm">{plan.period}</span>
                 </div>
               </div>
               <ul className="space-y-2 flex-1 mb-6">
                 {plan.features.map(f => (
-                  <li key={f} className="flex items-start gap-2 text-sm text-gray-300">
-                    <span className="text-green-400 mt-0.5">✓</span>{f}
+                  <li key={f} className="flex items-start gap-2 font-body text-sm text-ink-2">
+                    <span className="text-mint-deep mt-0.5">✓</span>{f}
                   </li>
                 ))}
               </ul>
@@ -121,15 +121,15 @@ export default function UpgradePage() {
                 <button
                   onClick={() => upgrade(plan.ctaFn!)}
                   disabled={loading === plan.ctaFn || success === plan.ctaFn}
-                  className={`w-full py-2.5 rounded-lg font-semibold text-sm transition-colors
+                  className={`w-full py-2.5 rounded-button font-body font-semibold text-sm transition-colors
                     ${plan.key === 'pro'
-                      ? 'bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50'
-                      : 'bg-purple-700 hover:bg-purple-600 text-white disabled:opacity-50'}`}
+                      ? 'bg-violet hover:bg-violet/90 text-white disabled:opacity-50'
+                      : 'bg-violet/70 hover:bg-violet/60 text-white disabled:opacity-50'}`}
                 >
                   {loading === plan.ctaFn ? 'Processing…' : success === plan.ctaFn ? '✓ Upgraded' : plan.cta}
                 </button>
               ) : (
-                <div className="w-full py-2.5 rounded-lg font-semibold text-sm text-center bg-gray-800 text-gray-400">
+                <div className="w-full py-2.5 rounded-button font-body font-semibold text-sm text-center bg-bg-soft text-muted">
                   {plan.cta}
                 </div>
               )}
@@ -137,7 +137,7 @@ export default function UpgradePage() {
           ))}
         </div>
 
-        <p className="text-center text-gray-500 text-xs mt-8">
+        <p className="text-center font-body text-muted text-xs mt-8">
           For Pro: pay via bank transfer or crypto — contact us after clicking Upgrade.<br />
           Not financial advice. Always verify opportunities before trading.
         </p>
