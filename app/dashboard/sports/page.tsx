@@ -2,6 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import SectionHelp from '@/app/components/SectionHelp';
+import Eyebrow from '@/app/components/ui/Eyebrow';
+import SectionHeading from '@/app/components/ui/SectionHeading';
+import StatCard from '@/app/components/ui/StatCard';
+import BlipRow from '@/app/components/ui/BlipRow';
+import EdgeChip, { type EdgeChipVariant } from '@/app/components/ui/EdgeChip';
 import type {
   SnapshotResponse,
   SnapshotOpportunity,
@@ -15,9 +20,9 @@ import type {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const POLL_MS          = 5 * 60_000;  // re-fetch every 5 min (data only changes when scanner runs)
-const CREDIT_TOTAL     = 500;         // OddsAPI free-tier monthly budget
-const CREDIT_LOW_FLOOR = 60;          // amber warning below this
+const POLL_MS          = 5 * 60_000;
+const CREDIT_TOTAL     = 500;
+const CREDIT_LOW_FLOOR = 60;
 
 const SPORT_LABELS: Record<string, string> = {
   soccer_epl:                  'Premier League',
@@ -36,8 +41,16 @@ function sportLabel(key: string): string {
   return SPORT_LABELS[key] ?? key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
-// Static bookmaker homepage map (key → URL). OddsAPI returns no betslip links on our plan.
-// Prefer these URLs; fall back to plain book name when key is absent.
+function sportEmoji(key: string): string {
+  if (key.startsWith('soccer'))              return '⚽';
+  if (key.startsWith('basketball'))          return '🏀';
+  if (key.startsWith('americanfootball'))    return '🏈';
+  if (key.startsWith('icehockey'))           return '🏒';
+  if (key.startsWith('baseball'))            return '⚾';
+  if (key.startsWith('tennis'))              return '🎾';
+  return '🏆';
+}
+
 const BOOKMAKER_HOME: Record<string, string> = {
   // EU
   pinnacle:        'https://www.pinnacle.com',
@@ -150,7 +163,17 @@ function commenceRelative(iso: string): string {
   } catch { return '—'; }
 }
 
-// ── Disclaimer chip (same amber expandable pattern as ObservedModelChip) ──────
+// ── Region chip ───────────────────────────────────────────────────────────────
+
+function regionChipCls(region: string) {
+  const r = region.toUpperCase();
+  if (r === 'US') return 'text-violet border-violet/30 bg-violet-tint';
+  if (r === 'UK') return 'text-gold border-gold/30 bg-gold-tint';
+  if (r === 'EU') return 'text-mint-deep border-mint-deep/30 bg-mint-tint';
+  return 'text-muted border-line bg-bg-soft';
+}
+
+// ── Disclaimer ────────────────────────────────────────────────────────────────
 
 const DISCLAIMER_TEXT =
   'Snapshot scan of EU/UK/US h2h odds via OddsAPI. NOT a live feed — data is from the last manual scan run. ' +
@@ -165,24 +188,19 @@ function DisclaimerChip() {
     <span className="relative inline-flex items-center">
       <button
         onClick={() => setOpen(v => !v)}
-        className="inline-flex items-center gap-1 px-2 py-0.5 border border-amber-600/50
-          bg-amber-950/30 text-amber-400 font-mono text-[9px] uppercase tracking-wide
-          hover:bg-amber-950/50 transition-colors"
+        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-pill border border-gold/40 bg-gold-tint text-gold font-body font-medium text-[10px] hover:border-gold/60 transition-colors"
         aria-expanded={open}
       >
-        <span className="w-1.5 h-1.5 rounded-full bg-amber-400/70 shrink-0" />
+        <span className="w-1.5 h-1.5 rounded-full bg-gold flex-shrink-0" aria-hidden />
         SNAPSHOT · preview only
-        <span className="text-amber-600 ml-0.5">{open ? '▲' : '▼'}</span>
+        <span className="text-gold/60 ml-0.5">{open ? '▲' : '▼'}</span>
       </button>
       {open && (
-        <span className="absolute top-full left-0 z-20 mt-1.5 w-80 border border-amber-600/40
-          bg-zinc-900 shadow-lg px-3 py-2.5">
-          <p className="font-mono text-[10px] text-amber-300/80 leading-relaxed">
-            {DISCLAIMER_TEXT}
-          </p>
+        <span className="absolute top-full right-0 z-20 mt-1.5 w-80 rounded-card border border-line bg-surface shadow-card px-4 py-3">
+          <p className="font-body text-[11px] text-muted leading-relaxed">{DISCLAIMER_TEXT}</p>
           <button
             onClick={() => setOpen(false)}
-            className="font-mono text-[9px] text-zinc-600 hover:text-zinc-400 mt-1.5"
+            className="font-body text-[10px] text-muted/60 hover:text-muted mt-2"
           >
             close ✕
           </button>
@@ -197,44 +215,30 @@ function DisclaimerChip() {
 function CreditMeter({ remaining, used }: { remaining: number | null; used: number | null }) {
   if (remaining == null) {
     return (
-      <div className="border border-border bg-bg-panel px-4 py-3 space-y-1.5">
-        <div className="font-mono text-[10px] text-text-muted uppercase tracking-widest">
-          OddsAPI monthly budget
-        </div>
-        <div className="font-mono text-[10px] text-text-muted/50">
-          Credit data not yet available — run a scan first.
-        </div>
+      <div className="rounded-card shadow-card bg-surface px-5 py-4">
+        <p className="font-body text-[11px] uppercase tracking-wide text-muted mb-1">OddsAPI monthly budget</p>
+        <p className="font-body text-[12px] text-muted/60">Credit data not yet available — run a scan first.</p>
       </div>
     );
   }
 
-  const pct     = Math.max(0, Math.min(100, (remaining / CREDIT_TOTAL) * 100));
-  const isLow   = remaining < CREDIT_LOW_FLOOR;
-  const barCls  = isLow
-    ? 'bg-warning/70'
-    : pct > 40
-      ? 'bg-positive/60'
-      : 'bg-positive/40';
-  const numCls  = isLow ? 'text-warning' : 'text-text-secondary';
+  const pct    = Math.max(0, Math.min(100, (remaining / CREDIT_TOTAL) * 100));
+  const isLow  = remaining < CREDIT_LOW_FLOOR;
+  const barCls = isLow ? 'bg-gold' : pct > 40 ? 'bg-mint' : 'bg-mint/60';
 
   return (
-    <div className={`border px-4 py-3 space-y-2 ${isLow ? 'border-warning/30 bg-warning/5' : 'border-border bg-bg-panel'}`}>
-      <div className="flex items-center justify-between">
-        <span className="font-mono text-[10px] text-text-muted uppercase tracking-widest">
-          OddsAPI monthly budget
-        </span>
-        <span className={`font-mono text-[10px] ${numCls}`}>
+    <div className={`rounded-card shadow-card bg-surface px-5 py-4 space-y-2${isLow ? ' border border-gold/30' : ''}`}>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <p className="font-body text-[11px] uppercase tracking-wide text-muted">OddsAPI monthly budget</p>
+        <span className={`font-body text-[12px] font-medium ${isLow ? 'text-gold' : 'text-ink-2'}`}>
           {remaining} / {CREDIT_TOTAL} remaining{used != null ? ` · ${used} used` : ''}
-          {isLow && <span className="ml-1.5 text-warning font-semibold">LOW</span>}
+          {isLow && <span className="ml-1.5 font-semibold">LOW</span>}
         </span>
       </div>
-      <div className="h-1.5 bg-bg-elevated rounded-sm overflow-hidden">
-        <div
-          className={`h-full transition-all duration-300 ${barCls}`}
-          style={{ width: `${pct}%` }}
-        />
+      <div className="h-1.5 bg-bg-soft rounded-full overflow-hidden">
+        <div className={`h-full transition-all duration-300 rounded-full ${barCls}`} style={{ width: `${pct}%` }} />
       </div>
-      <p className="font-mono text-[9px] text-text-muted/50 leading-relaxed">
+      <p className="font-body text-[11px] text-muted/60 leading-relaxed">
         Each /odds request costs 3 credits (1 per region: EU + UK + US). The /sports discovery call is free.
         Scanner respects a {CREDIT_LOW_FLOOR}-credit safety floor and stops automatically.
       </p>
@@ -242,7 +246,7 @@ function CreditMeter({ remaining, used }: { remaining: number | null; used: numb
   );
 }
 
-// ── Settlement panel (shared by both card types) ──────────────────────────────
+// ── Settlement panel ──────────────────────────────────────────────────────────
 
 type LegForPanel = Pick<ScannedEventLeg | SnapshotLeg, 'outcome' | 'bookmaker' | 'odd'> & {
   bookmakerId?: string;
@@ -251,19 +255,14 @@ type LegForPanel = Pick<ScannedEventLeg | SnapshotLeg, 'outcome' | 'bookmaker' |
 
 function SettlementPanel({ settlement, legs }: { settlement: Settlement; legs: LegForPanel[] }) {
   return (
-    <div className="border-t border-border/50 pt-3 space-y-3 mt-1">
+    <div className="border-t border-line pt-4 space-y-4 mt-1">
 
-      {/* Settlement rules */}
-      <div className="space-y-1.5">
-        <p className="font-mono text-[9px] uppercase tracking-widest text-text-muted">
-          Settlement rules
-        </p>
-        <p className="font-mono text-[10px] text-text-muted/80 leading-relaxed">
-          {settlement.basis}
-        </p>
+      <div className="space-y-2">
+        <p className="font-body text-[10px] uppercase tracking-widest text-muted">Settlement rules</p>
+        <p className="font-body text-[12px] text-muted leading-relaxed">{settlement.basis}</p>
         {settlement.basisAmbiguous && (
-          <div className="border border-amber-500/50 bg-amber-950/25 px-3 py-2.5 mt-1">
-            <p className="font-mono text-[10px] text-amber-300 leading-relaxed">
+          <div className="px-3 py-2.5 rounded-md bg-gold-tint border border-gold/25">
+            <p className="font-body text-[12px] text-gold leading-relaxed">
               <span className="font-semibold">⚠ CROSS-SETTLEMENT RISK</span> — an arb that combines
               bookmakers settling on different bases is not a guaranteed hedge. Verify the exact
               settlement rule at each book before placing any bet.
@@ -272,233 +271,44 @@ function SettlementPanel({ settlement, legs }: { settlement: Settlement; legs: L
         )}
       </div>
 
-      {/* Per-leg book links */}
-      <div className="space-y-1.5">
-        <p className="font-mono text-[9px] uppercase tracking-widest text-text-muted">
+      <div className="space-y-2">
+        <p className="font-body text-[10px] uppercase tracking-widest text-muted">
           Books — verify current odds &amp; settlement rules before acting
         </p>
-        <div className="border border-border/50 divide-y divide-border/30">
+        <div className="rounded-md border border-line overflow-hidden divide-y divide-line">
           {legs.map((leg, i) => {
-            const reg  = (leg.region ?? 'unknown').toUpperCase();
-            const url  = BOOKMAKER_HOME[leg.bookmakerId ?? ''] ?? null;
+            const reg = (leg.region ?? 'unknown').toUpperCase();
+            const url = BOOKMAKER_HOME[leg.bookmakerId ?? ''] ?? null;
             return (
-              <div key={i} className="grid grid-cols-4 items-center px-3 py-2 gap-2 font-mono text-[10px]">
-                <span className="text-text-muted truncate pr-1">{leg.outcome}</span>
-                <span className="truncate pr-1">
+              <div key={i} className="grid grid-cols-4 items-center px-3 py-2.5 gap-2 font-body text-[12px] bg-surface">
+                <span className="text-muted truncate">{leg.outcome}</span>
+                <span className="truncate">
                   {url ? (
                     <a href={url} target="_blank" rel="noopener noreferrer"
-                      className="text-accent hover:underline">
+                      className="text-mint-deep hover:underline">
                       {leg.bookmaker}
                     </a>
                   ) : (
-                    <span className="text-text-secondary">{leg.bookmaker}</span>
+                    <span className="text-ink-2">{leg.bookmaker}</span>
                   )}
                 </span>
                 <span>
-                  <span className={`inline-block font-mono text-[9px] uppercase px-1 py-px border ${regionChipCls(reg)}`}>
+                  <span className={`inline-flex items-center font-body text-[10px] uppercase px-1.5 py-0.5 rounded border ${regionChipCls(reg)}`}>
                     {reg}
                   </span>
                 </span>
-                <span className="text-right text-accent tabular-nums">{leg.odd.toFixed(3)}</span>
+                <span className="text-right text-ink-2 tabular-nums font-medium">{leg.odd.toFixed(3)}</span>
               </div>
             );
           })}
         </div>
-        <p className="font-mono text-[9px] text-text-muted/40 leading-relaxed">
+        <p className="font-body text-[11px] text-muted/60 leading-relaxed">
           Links open bookmaker homepage only — no betslip pre-fill. Verify odds independently.
           No orders are placed by this tool.
         </p>
       </div>
     </div>
   );
-}
-
-// ── Opportunity card ──────────────────────────────────────────────────────────
-
-function OpportunityCard({ opp }: { opp: SnapshotOpportunity }) {
-  const [open, setOpen] = useState(false);
-  const inMs      = new Date(opp.commenceTime).getTime() - Date.now();
-  const isStarted = inMs < 0;
-
-  return (
-    <div className="border border-border bg-bg-panel p-4 space-y-3">
-
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div className="min-w-0">
-          <div className="flex items-center gap-1.5 flex-wrap mb-1">
-            <span className="font-mono text-[9px] uppercase tracking-widest text-text-muted">
-              {sportLabel(opp.sport)}
-            </span>
-            <span className="font-mono text-[9px] text-text-muted/40">·</span>
-            <span className="font-mono text-[9px] uppercase tracking-wide border border-border px-1 py-px text-text-muted">
-              {opp.type}
-            </span>
-            {opp.outliersRemoved && (
-              <span
-                title="Arb survived removal of outlier bookmaker prices — stronger trust signal."
-                className="font-mono text-[9px] uppercase tracking-wide border border-positive/30 bg-positive/5 text-positive/70 px-1 py-px"
-              >
-                OUTLIER-FILTERED
-              </span>
-            )}
-            {isStarted && (
-              <span className="font-mono text-[9px] uppercase border border-warning/40 text-warning px-1 py-px">
-                STARTED
-              </span>
-            )}
-            {opp.crossJurisdiction && (
-              <span
-                title="Legs span US and EU/UK bookmakers. Most bettors cannot hold accounts in both jurisdictions simultaneously — verify access before acting."
-                className="font-mono text-[9px] uppercase tracking-wide border border-amber-500/50 bg-amber-950/40 text-amber-400 px-1 py-px"
-              >
-                CROSS-JURISDICTION
-              </span>
-            )}
-          </div>
-          <p className="font-mono text-sm font-semibold text-text-primary leading-tight">
-            {opp.eventName}
-          </p>
-          <p className="font-mono text-[10px] text-text-muted mt-0.5">
-            {isStarted
-              ? 'Match already started — verify odds are still valid'
-              : `Starts in ${commenceRelative(opp.commenceTime)} · ${absoluteTime(opp.commenceTime)}`}
-          </p>
-        </div>
-        <div className="text-right shrink-0">
-          <div className="font-mono text-xl font-bold text-positive tabular-nums leading-none">
-            +{opp.roiPct.toFixed(2)}%
-          </div>
-          <div className="font-mono text-[9px] text-text-muted mt-0.5">ROI</div>
-          <div className="font-mono text-[10px] text-text-muted/60 mt-0.5">
-            impl. sum {(opp.impliedSum * 100).toFixed(2)}%
-          </div>
-        </div>
-      </div>
-
-      {/* Leg table */}
-      <div className="border border-border divide-y divide-border">
-        <div className="grid grid-cols-5 px-3 py-1.5 font-mono text-[9px] uppercase tracking-widest text-text-muted">
-          <span>Outcome</span>
-          <span>Bookmaker</span>
-          <span>Region</span>
-          <span className="text-right">Best odd</span>
-          <span className="text-right">Stake %</span>
-        </div>
-        {opp.legs.map((leg, i) => {
-          const reg = (leg.region ?? 'unknown').toUpperCase();
-          return (
-            <div key={i} className="grid grid-cols-5 px-3 py-2 font-mono text-[11px]">
-              <span className="text-text-primary truncate pr-2">{leg.outcome}</span>
-              <span className="text-text-secondary truncate pr-2">{leg.bookmaker}</span>
-              <span>
-                <span className={`inline-block font-mono text-[9px] uppercase px-1 py-px border ${regionChipCls(reg)}`}>
-                  {reg}
-                </span>
-              </span>
-              <span className="text-right text-accent tabular-nums">{leg.odd.toFixed(3)}</span>
-              <span className="text-right text-positive tabular-nums">{leg.stakePct.toFixed(1)}%</span>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Cross-jurisdiction warning */}
-      {opp.crossJurisdiction && (
-        <div className="border border-amber-500/40 bg-amber-950/20 px-3 py-2.5">
-          <p className="font-mono text-[10px] text-amber-300/90 leading-relaxed">
-            <span className="font-semibold">CROSS-JURISDICTION</span> — this surebet combines US bookmakers
-            and EU/UK bookmakers. A single user may not be able to hold accounts in both jurisdictions.
-            Verify you have access to all bookmakers listed before acting.
-          </p>
-        </div>
-      )}
-
-      {/* Footer note + expand toggle */}
-      <div className="flex items-end justify-between gap-3 flex-wrap">
-        <p className="font-mono text-[9px] text-text-muted/50 leading-relaxed">
-          Stake % is a preview hedge split for equalized payout. No orders placed by this tool.
-          Verify both sides independently before acting — odds change in seconds.
-          {opp.numBookmakers != null && ` ${opp.numBookmakers} books quoted this event.`}
-        </p>
-        {opp.settlement && (
-          <button
-            onClick={() => setOpen(v => !v)}
-            className="shrink-0 font-mono text-[9px] text-text-muted/50 hover:text-text-muted transition-colors whitespace-nowrap"
-            aria-expanded={open}
-          >
-            {open ? '▲ hide details' : '▼ settlement rules + book links'}
-          </button>
-        )}
-      </div>
-
-      {open && opp.settlement && (
-        <SettlementPanel settlement={opp.settlement} legs={opp.legs} />
-      )}
-    </div>
-  );
-}
-
-// ── Quarantine section ────────────────────────────────────────────────────────
-
-function QuarantineSection({ items }: { items: SnapshotQuarantine[] }) {
-  const [open, setOpen] = useState(false);
-  if (items.length === 0) return null;
-
-  return (
-    <div className="border border-border/50">
-      <button
-        onClick={() => setOpen(v => !v)}
-        className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-bg-elevated/20 transition-colors duration-100"
-        aria-expanded={open}
-      >
-        <div className="flex items-center gap-2">
-          <span className="font-mono text-[10px] text-text-muted uppercase tracking-widest">
-            Quarantined — excluded, suspected bad data
-          </span>
-          <span className="font-mono text-[9px] text-text-muted/50 border border-border px-1 py-px">
-            {items.length}
-          </span>
-        </div>
-        <span className="font-mono text-[10px] text-text-muted/40">{open ? '▲ close' : '▼ show'}</span>
-      </button>
-
-      {open && (
-        <div className="px-4 pb-4 border-t border-border/40 space-y-3 pt-3">
-          <p className="font-mono text-[10px] text-text-muted/60 leading-relaxed">
-            These events showed a surebet ROI above {6}% after outlier removal — implausibly high for
-            real h2h markets. Most likely a data error (stale price, feed glitch, or bad scrape).
-            They are listed here for transparency only and must NOT be acted upon.
-          </p>
-          <div className="space-y-1">
-            {items.map((q, i) => (
-              <div
-                key={i}
-                className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 px-3 py-2 border border-border/30 bg-bg-base/50"
-              >
-                <span className="font-mono text-[10px] text-text-muted/50">{sportLabel(q.sport)}</span>
-                <span className="font-mono text-[11px] text-text-muted">{q.eventName}</span>
-                <span className="font-mono text-[10px] text-warning/60 tabular-nums ml-auto">
-                  +{q.roiPct.toFixed(2)}%
-                </span>
-                <span className="font-mono text-[9px] text-text-muted/40">{q.reason}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Region chip helper (shared by OpportunityCard and ScannedEventCard) ───────
-
-function regionChipCls(region: string) {
-  const r = region.toUpperCase();
-  if (r === 'US') return 'text-blue-400 border-blue-500/40 bg-blue-950/30';
-  if (r === 'UK') return 'text-violet-400 border-violet-500/40 bg-violet-950/30';
-  if (r === 'EU') return 'text-emerald-400 border-emerald-500/40 bg-emerald-950/30';
-  return 'text-text-muted/50 border-border';
 }
 
 // ── Exec-reason formatter ─────────────────────────────────────────────────────
@@ -526,7 +336,188 @@ function formatExecReasons(reasons: string[]): string {
   return parts.join(' · ');
 }
 
-// ── Scanned event card (browsable list, NOT an arb opportunity) ───────────────
+// ── Opportunity card ──────────────────────────────────────────────────────────
+
+function oppChipVariant(opp: SnapshotOpportunity): EdgeChipVariant {
+  return opp.crossJurisdiction ? 'paper' : 'cashable';
+}
+
+function OpportunityCard({ opp }: { opp: SnapshotOpportunity }) {
+  const [open, setOpen] = useState(false);
+  const inMs      = new Date(opp.commenceTime).getTime() - Date.now();
+  const isStarted = inMs < 0;
+  const variant   = oppChipVariant(opp);
+
+  return (
+    <div className="rounded-card shadow-card bg-surface overflow-hidden">
+
+      <BlipRow
+        icon={sportEmoji(opp.sport)}
+        tileColor={variant === 'cashable' ? 'mint' : 'gold'}
+        name={opp.eventName}
+        sub={`${sportLabel(opp.sport)} · ${opp.type}${isStarted ? ' · started' : ` · in ${commenceRelative(opp.commenceTime)}`}`}
+        chip={variant}
+        value={`+${opp.roiPct.toFixed(2)}%`}
+        unit="surebet ROI"
+        valueTone={variant === 'cashable' ? 'up' : 'neutral'}
+      />
+
+      <div className="px-4 pb-4 space-y-3">
+
+        {/* Badges + implied sum */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          {opp.outliersRemoved && (
+            <span
+              title="Arb survived removal of outlier bookmaker prices — stronger trust signal."
+              className="inline-flex items-center px-2 py-0.5 rounded-md bg-mint-tint border border-mint-deep/20 font-body text-[10px] text-mint-deep"
+            >
+              outlier-filtered
+            </span>
+          )}
+          {isStarted && (
+            <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-coral-tint border border-coral-ink/20 font-body text-[10px] text-coral-ink">
+              STARTED
+            </span>
+          )}
+          {opp.crossJurisdiction && (
+            <span
+              title="Legs span US and EU/UK bookmakers. Most bettors cannot hold accounts in both jurisdictions simultaneously."
+              className="inline-flex items-center px-2 py-0.5 rounded-md bg-gold-tint border border-gold/25 font-body text-[10px] text-gold"
+            >
+              CROSS-JURISDICTION
+            </span>
+          )}
+          <span className="font-body text-[11px] text-muted">
+            impl. sum {(opp.impliedSum * 100).toFixed(2)}%
+            {opp.numBookmakers != null && ` · ${opp.numBookmakers} books`}
+          </span>
+          {!isStarted && (
+            <span className="font-body text-[11px] text-muted" title={absoluteTime(opp.commenceTime)}>
+              · {absoluteTime(opp.commenceTime)}
+            </span>
+          )}
+        </div>
+
+        {/* Leg table */}
+        <div className="rounded-md border border-line overflow-hidden">
+          <div className="grid grid-cols-5 px-3 py-2 bg-bg-soft font-body text-[10px] uppercase tracking-wide text-muted">
+            <span>Outcome</span>
+            <span>Bookmaker</span>
+            <span>Region</span>
+            <span className="text-right">Best odd</span>
+            <span className="text-right">Stake %</span>
+          </div>
+          {opp.legs.map((leg, i) => {
+            const reg = (leg.region ?? 'unknown').toUpperCase();
+            return (
+              <div key={i} className="grid grid-cols-5 px-3 py-2.5 font-body text-[12px] border-t border-line">
+                <span className="text-ink truncate pr-2">{leg.outcome}</span>
+                <span className="text-ink-2 truncate pr-2">{leg.bookmaker}</span>
+                <span>
+                  <span className={`inline-flex items-center font-body text-[10px] uppercase px-1.5 py-0.5 rounded border ${regionChipCls(reg)}`}>
+                    {reg}
+                  </span>
+                </span>
+                <span className="text-right text-ink-2 tabular-nums font-medium">{leg.odd.toFixed(3)}</span>
+                <span className="text-right text-mint-deep tabular-nums font-medium">{leg.stakePct.toFixed(1)}%</span>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Cross-jurisdiction warning */}
+        {opp.crossJurisdiction && (
+          <div className="px-3 py-2.5 rounded-md bg-gold-tint border border-gold/25">
+            <p className="font-body text-[12px] text-gold leading-relaxed">
+              <span className="font-semibold">CROSS-JURISDICTION</span> — this surebet combines US bookmakers
+              and EU/UK bookmakers. A single user may not be able to hold accounts in both jurisdictions.
+              Verify you have access to all bookmakers listed before acting.
+            </p>
+          </div>
+        )}
+
+        {/* Footer */}
+        <div className="flex items-end justify-between gap-3 flex-wrap">
+          <p className="font-body text-[11px] text-muted/70 leading-relaxed">
+            Stake % is a preview hedge split for equalized payout. No orders placed by this tool.
+            Verify both sides independently before acting — odds change in seconds.
+          </p>
+          {opp.settlement && (
+            <button
+              onClick={() => setOpen(v => !v)}
+              className="shrink-0 font-body text-[11px] text-muted hover:text-ink-2 transition-colors whitespace-nowrap"
+              aria-expanded={open}
+            >
+              {open ? '▲ hide details' : '▼ settlement + book links'}
+            </button>
+          )}
+        </div>
+
+        {open && opp.settlement && (
+          <SettlementPanel settlement={opp.settlement} legs={opp.legs} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Quarantine section ────────────────────────────────────────────────────────
+
+function QuarantineSection({ items }: { items: SnapshotQuarantine[] }) {
+  const [open, setOpen] = useState(false);
+  if (items.length === 0) return null;
+
+  return (
+    <div className="rounded-card shadow-card bg-surface overflow-hidden">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-bg-soft/60 transition-colors"
+        aria-expanded={open}
+      >
+        <div className="flex items-center gap-2">
+          <span className="font-body text-[12px] text-muted">Quarantined — excluded, suspected bad data</span>
+          <span className="px-2 py-0.5 rounded-pill bg-coral-tint text-coral-ink font-body font-medium text-[10px]">
+            {items.length}
+          </span>
+        </div>
+        <span className="font-body text-[11px] text-muted/60">{open ? '▲ close' : '▼ show'}</span>
+      </button>
+
+      {open && (
+        <div className="px-5 pb-5 border-t border-line space-y-3 pt-4">
+          <p className="font-body text-[12px] text-muted leading-relaxed">
+            These events showed a surebet ROI above {6}% after outlier removal — implausibly high for
+            real h2h markets. Most likely a data error (stale price, feed glitch, or bad scrape).
+            Listed here for transparency only. Do NOT act on these.
+          </p>
+          <div className="rounded-md border border-line overflow-hidden divide-y divide-line">
+            {items.map((q, i) => (
+              <div
+                key={i}
+                className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 px-3 py-2.5 bg-surface font-body text-[12px]"
+              >
+                <span className="text-muted text-[10px]">{sportLabel(q.sport)}</span>
+                <span className="text-ink-2">{q.eventName}</span>
+                <span className="text-gold tabular-nums ml-auto">+{q.roiPct.toFixed(2)}%</span>
+                <span className="text-muted text-[10px]">{q.reason}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Scanned event card ────────────────────────────────────────────────────────
+
+function scannedChipVariant(ev: ScannedEvent): EdgeChipVariant | undefined {
+  const isNegative = ev.marginPct < 0;
+  if (isNegative && ev.cashable === true) return 'cashable';
+  if (isNegative && ev.cashable !== true) return 'paper';
+  if (!isNegative && ev.marginPct < 1.5)  return 'signal';
+  return undefined;
+}
 
 function ScannedEventCard({ ev }: { ev: ScannedEvent }) {
   const [open, setOpen] = useState(false);
@@ -537,108 +528,77 @@ function ScannedEventCard({ ev }: { ev: ScannedEvent }) {
   const isNearMiss = !isNegative && ev.marginPct < 1.5;
 
   const paperArbReason = isPaperArb ? formatExecReasons(ev.execReasons ?? []) : '';
+  const chip      = scannedChipVariant(ev);
+  const tileColor = isCashable ? 'mint' : isPaperArb ? 'gold' : isNearMiss ? 'violet' : 'mint';
+
+  const unitLabel = isCashable
+    ? 'cashable surebet'
+    : isPaperArb
+      ? `paper arb${paperArbReason ? ` · ${paperArbReason}` : ''}`
+      : isNearMiss
+        ? 'near-miss · watch'
+        : 'overround';
 
   return (
-    <div className={`border p-4 space-y-3 ${isCashable ? 'border-positive/40 bg-positive/5' : isNearMiss ? 'border-amber-600/40 bg-amber-950/10' : 'border-border bg-bg-panel'}`}>
+    <div className="rounded-card border border-line bg-surface overflow-hidden">
 
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div className="min-w-0">
-          <div className="flex items-center gap-1.5 flex-wrap mb-1">
-            <span className="font-mono text-[9px] uppercase tracking-widest text-text-muted">
-              {ev.sportLabel}
-            </span>
-            <span className="font-mono text-[9px] text-text-muted/40">·</span>
-            <span className="font-mono text-[9px] uppercase tracking-wide border border-border px-1 py-px text-text-muted">
-              {ev.type}
-            </span>
-            <span className="font-mono text-[9px] text-text-muted/60">
-              {ev.booksCount} books
-            </span>
-            {ev.outliersRemoved && (
-              <span className="font-mono text-[9px] uppercase tracking-wide border border-border/40 text-text-muted/50 px-1 py-px">
-                outlier-filtered
-              </span>
-            )}
-            {isStarted && (
-              <span className="font-mono text-[9px] uppercase border border-warning/40 text-warning px-1 py-px">
-                STARTED
-              </span>
-            )}
-          </div>
-          <p className="font-mono text-sm font-semibold text-text-primary leading-tight">
-            {ev.eventName}
-          </p>
-          <p className="font-mono text-[10px] text-text-muted mt-0.5">
-            {isStarted
-              ? 'Match already started'
-              : `Starts in ${commenceRelative(ev.commenceTime)}`}
-          </p>
-        </div>
+      <BlipRow
+        icon={sportEmoji(ev.sport)}
+        tileColor={tileColor}
+        name={ev.eventName}
+        sub={`${ev.sportLabel} · ${ev.type} · ${ev.booksCount} books${isStarted ? ' · started' : ` · in ${commenceRelative(ev.commenceTime)}`}${ev.outliersRemoved ? ' · outlier-filtered' : ''}`}
+        chip={chip}
+        value={`${ev.marginPct.toFixed(2)}%`}
+        unit={unitLabel}
+        valueTone={isCashable ? 'up' : 'neutral'}
+      />
 
-        {/* Margin display */}
-        <div className="text-right shrink-0">
-          <div className={`font-mono text-xl font-bold tabular-nums leading-none ${isCashable ? 'text-positive' : isNearMiss ? 'text-amber-400' : 'text-text-secondary'}`}>
-            {ev.marginPct.toFixed(2)}%
+      <div className="px-4 pb-4 space-y-3">
+
+        {/* Best-odds table */}
+        <div className="rounded-md border border-line overflow-hidden">
+          <div className="grid grid-cols-4 px-3 py-2 bg-bg-soft font-body text-[10px] uppercase tracking-wide text-muted">
+            <span>Outcome</span>
+            <span>Bookmaker</span>
+            <span>Region</span>
+            <span className="text-right">Best odd</span>
           </div>
-          <div className="font-mono text-[9px] text-text-muted mt-0.5">
-            {isCashable
-              ? <span className="text-positive/80">cashable surebet</span>
-              : isPaperArb
-                ? <span className="text-amber-500/70">
-                    paper arb — NOT cashable{paperArbReason ? ` · ${paperArbReason}` : ''}
+          {ev.bestLegs.map((leg, i) => {
+            const reg = (leg.region ?? 'unknown').toUpperCase();
+            return (
+              <div key={i} className="grid grid-cols-4 px-3 py-2.5 font-body text-[12px] border-t border-line">
+                <span className="text-ink truncate pr-2">{leg.outcome}</span>
+                <span className="text-ink-2 truncate pr-2">{leg.bookmaker}</span>
+                <span>
+                  <span className={`inline-flex items-center font-body text-[10px] uppercase px-1.5 py-0.5 rounded border ${regionChipCls(reg)}`}>
+                    {reg}
                   </span>
-                : isNearMiss
-                  ? <span className="text-amber-400/80">near-miss · watch</span>
-                  : 'overround — not an arb'}
-          </div>
-          <div className="font-mono text-[10px] text-text-muted/50 mt-0.5">
-            impl. sum {(ev.impliedSum * 100).toFixed(2)}%
-          </div>
-        </div>
-      </div>
-
-      {/* Best-odds table */}
-      <div className="border border-border divide-y divide-border">
-        <div className="grid grid-cols-4 px-3 py-1.5 font-mono text-[9px] uppercase tracking-widest text-text-muted">
-          <span>Outcome</span>
-          <span>Bookmaker</span>
-          <span>Region</span>
-          <span className="text-right">Best odd</span>
-        </div>
-        {ev.bestLegs.map((leg, i) => {
-          const reg = (leg.region ?? 'unknown').toUpperCase();
-          return (
-            <div key={i} className="grid grid-cols-4 px-3 py-2 font-mono text-[11px]">
-              <span className="text-text-primary truncate pr-2">{leg.outcome}</span>
-              <span className="text-text-secondary truncate pr-2">{leg.bookmaker}</span>
-              <span>
-                <span className={`inline-block font-mono text-[9px] uppercase px-1 py-px border ${regionChipCls(reg)}`}>
-                  {reg}
                 </span>
-              </span>
-              <span className="text-right text-accent tabular-nums">{leg.odd.toFixed(3)}</span>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Expand toggle */}
-      {ev.settlement && (
-        <div className="flex justify-end">
-          <button
-            onClick={() => setOpen(v => !v)}
-            className="font-mono text-[9px] text-text-muted/50 hover:text-text-muted transition-colors"
-            aria-expanded={open}
-          >
-            {open ? '▲ hide details' : '▼ settlement rules + book links'}
-          </button>
+                <span className="text-right text-ink-2 tabular-nums font-medium">{leg.odd.toFixed(3)}</span>
+              </div>
+            );
+          })}
         </div>
-      )}
 
-      {open && ev.settlement && (
-        <SettlementPanel settlement={ev.settlement} legs={ev.bestLegs} />
-      )}
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <span className="font-body text-[11px] text-muted/60">
+            impl. sum {(ev.impliedSum * 100).toFixed(2)}%
+          </span>
+          {ev.settlement && (
+            <button
+              onClick={() => setOpen(v => !v)}
+              className="font-body text-[11px] text-muted hover:text-ink-2 transition-colors"
+              aria-expanded={open}
+            >
+              {open ? '▲ hide details' : '▼ settlement rules + book links'}
+            </button>
+          )}
+        </div>
+
+        {open && ev.settlement && (
+          <SettlementPanel settlement={ev.settlement} legs={ev.bestLegs} />
+        )}
+      </div>
     </div>
   );
 }
@@ -665,22 +625,21 @@ export default function SportsSnapshotPage() {
     return () => clearInterval(id);
   }, []);
 
-  // Initialize default tab to sport with most events, only once when data first loads
   useEffect(() => {
     if (selectedSport !== null) return;
-    const sports = data?.summary?.sportsScanned ?? [];
+    const sports     = data?.summary?.sportsScanned ?? [];
     const withEvents = sports.filter((s: SportScanEntry) => s.eventCount > 0);
     if (!withEvents.length) return;
     const max = withEvents.reduce((b: SportScanEntry, s: SportScanEntry) => s.eventCount > b.eventCount ? s : b);
     setSelectedSport(max.key);
   }, [data, selectedSport]);
 
-  const opps          = data?.opportunities  ?? [];
-  const qItems        = data?.quarantine     ?? [];
-  const scannedEvs    = data?.scannedEvents  ?? [];
-  const summary       = data?.summary        ?? null;
-  const lastUpdated   = data?.lastUpdated    ?? null;
-  const isMissing     = data?.missing        ?? false;
+  const opps           = data?.opportunities  ?? [];
+  const qItems         = data?.quarantine     ?? [];
+  const scannedEvs     = data?.scannedEvents  ?? [];
+  const summary        = data?.summary        ?? null;
+  const lastUpdated    = data?.lastUpdated    ?? null;
+  const isMissing      = data?.missing        ?? false;
   const effectiveSport = selectedSport ?? 'all';
 
   const filteredEvents = effectiveSport === 'all'
@@ -688,50 +647,48 @@ export default function SportsSnapshotPage() {
     : scannedEvs.filter(ev => ev.sport === effectiveSport);
   const sortedEvents = [...filteredEvents].sort((a, b) => a.marginPct - b.marginPct);
 
-  return (
-    <div className="max-w-[900px] mx-auto px-4 py-6 space-y-5">
+  const sportsWithEvents = summary?.sportsScanned.filter((s: SportScanEntry) => s.eventCount > 0) ?? [];
 
-      {/* Header row */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+  return (
+    <div className="max-w-[900px] mx-auto px-4 py-8 space-y-6">
+
+      {/* ── Header ────────────────────────────────────────────────────────── */}
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="font-mono text-sm uppercase tracking-widest text-text-primary">
-              SPORTS ARBITRAGE
-            </h1>
-            {/* SNAPSHOT badge — static (not pulsing like LIVE) */}
-            <span className="font-mono text-[9px] uppercase tracking-widest px-2 py-0.5 border border-border text-text-muted">
+          <Eyebrow className="mb-1">Sports Arbitrage</Eyebrow>
+          <SectionHeading as="h1" className="text-2xl">
+            Cross-Bookmaker Surebets
+          </SectionHeading>
+          <div className="flex flex-wrap items-center gap-2 mt-1.5">
+            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-pill bg-gold-tint border border-gold/30 font-body font-medium text-[10px] text-gold">
+              <span className="w-1.5 h-1.5 rounded-full bg-gold flex-shrink-0" aria-hidden />
               SNAPSHOT
             </span>
             {lastUpdated && (
-              <span
-                title={absoluteTime(lastUpdated)}
-                className="font-mono text-[10px] text-text-muted cursor-default"
-              >
+              <span className="font-body text-[12px] text-muted" title={absoluteTime(lastUpdated)}>
                 updated {relativeTime(lastUpdated)}
               </span>
             )}
+            <span className="font-body text-[12px] text-muted">EU · UK · US · H2H · no orders placed</span>
           </div>
-          <p className="font-mono text-[10px] text-text-muted mt-0.5">
-            CROSS-BOOKMAKER SUREBETS · EU/UK/US H2H · PERIODIC SNAPSHOT · NO ORDERS PLACED
-          </p>
         </div>
         <DisclaimerChip />
       </div>
 
-      {/* How to use */}
+      {/* ── How to use ────────────────────────────────────────────────────── */}
       <SectionHelp section="sports" />
 
       {/* ── Missing file state ─────────────────────────────────────────────── */}
       {isMissing && (
-        <div className="border border-border bg-bg-panel px-4 py-8 text-center space-y-3">
-          <p className="font-mono text-sm text-text-secondary">No snapshot yet</p>
-          <p className="font-mono text-[11px] text-text-muted leading-relaxed">
+        <div className="rounded-card shadow-card bg-surface px-6 py-12 text-center space-y-4">
+          <p className="font-display font-semibold text-lg text-ink">No snapshot yet</p>
+          <p className="font-body text-sm text-muted leading-relaxed">
             Run a scan to populate opportunities data:
           </p>
-          <code className="font-mono text-[11px] text-accent bg-bg-elevated px-3 py-1.5 block w-fit mx-auto border border-border">
+          <code className="font-mono text-[12px] text-mint-deep bg-bg-soft px-4 py-2 rounded-md block w-fit mx-auto border border-line">
             node agents/agent12-sports.js
           </code>
-          <p className="font-mono text-[10px] text-text-muted/50">
+          <p className="font-body text-[11px] text-muted/60">
             Each scan uses ~3 OddsAPI credits per sport (1 per region: EU+UK+US). Check credits.json before running.
           </p>
         </div>
@@ -740,45 +697,67 @@ export default function SportsSnapshotPage() {
       {/* ── Data available ─────────────────────────────────────────────────── */}
       {!isMissing && data && (
         <>
-          {/* Credit meter */}
-          <CreditMeter
-            remaining={data.creditsRemaining}
-            used={data.creditsUsed}
-          />
-
           {/* Stale banner */}
           {data.stale && lastUpdated && (
-            <div className="border border-warning/30 bg-warning/5 px-4 py-2.5 font-mono text-[11px] text-warning/80">
+            <div className="px-4 py-3 rounded-card border border-gold/30 bg-gold-tint font-body text-sm text-gold">
               Snapshot is over 24h old (last: {absoluteTime(lastUpdated)}).
               Run another scan when the monthly credit budget allows.
             </div>
           )}
 
+          {/* Stat summary */}
+          {summary && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+              <StatCard
+                label="Events scanned"
+                value={String(summary.totalEvents)}
+                note={`${sportsWithEvents.length} sport${sportsWithEvents.length !== 1 ? 's' : ''}`}
+              />
+              <StatCard
+                label="Surebets found"
+                value={String(opps.length)}
+                note={opps.length === 0 ? 'No confirmed arb right now' : 'Confirm before acting'}
+              />
+              <StatCard
+                label="OddsAPI credits"
+                value={data.creditsRemaining != null ? String(data.creditsRemaining) : '—'}
+                note={`of ${CREDIT_TOTAL} remaining`}
+                demoted={
+                  data.creditsRemaining != null && data.creditsRemaining < CREDIT_LOW_FLOOR
+                    ? 'LOW — approaching safety floor'
+                    : undefined
+                }
+              />
+            </div>
+          )}
+
+          {/* Credit meter */}
+          <CreditMeter remaining={data.creditsRemaining} used={data.creditsUsed} />
+
           {/* Opportunities */}
           {opps.length === 0 ? (
-            <div className="border border-border bg-bg-panel px-4 py-8 text-center space-y-2">
-              <p className="font-mono text-sm text-text-secondary">
-                0 cashable surebets in this snapshot
+            <div className="rounded-card shadow-card bg-surface px-6 py-12 text-center space-y-3">
+              <p className="font-display font-semibold text-lg text-ink">
+                No confirmed arb right now
               </p>
-              <p className="font-mono text-[11px] text-text-muted leading-relaxed max-w-md mx-auto">
-                The scanned markets are efficiently priced right now.
-                This is the expected result most of the time — genuine arb windows are rare and
-                close in seconds. No arbs is honest, not a bug.
+              <p className="font-body text-sm text-muted leading-relaxed max-w-md mx-auto">
+                The scanned markets are efficiently priced. Genuine arb windows are rare and close in
+                seconds — 0 surebets is honest, not a bug.
               </p>
               {(summary?.totalEvents ?? 0) > 0 && (
-                <p className="font-mono text-[10px] text-text-muted/50 mt-2">
-                  {summary!.sportsScanned.length} sport{summary!.sportsScanned.length > 1 ? 's' : ''} scanned ·
-                  {summary!.totalEvents} events browsable below · outlier filter active · events with &lt;4 books excluded
+                <p className="font-body text-[12px] text-muted/70 mt-2">
+                  {sportsWithEvents.length} sport{sportsWithEvents.length !== 1 ? 's' : ''} scanned ·{' '}
+                  {summary!.totalEvents} events browsable below · outlier filter active · &lt;4 books excluded
                 </p>
               )}
             </div>
           ) : (
             <div className="space-y-4">
               <div className="flex items-center justify-between flex-wrap gap-2">
-                <span className="font-mono text-[10px] text-text-muted uppercase tracking-widest">
+                <p className="font-body font-semibold text-sm text-ink-2">
                   {opps.length} surebet{opps.length !== 1 ? 's' : ''} — ranked by ROI
-                </span>
-                <span className="font-mono text-[9px] text-text-muted/50">
+                </p>
+                <span className="font-body text-[12px] text-muted">
                   outlier-filtered · ≥4 bookmakers · ROI ≤ 6% plausibility cap
                 </span>
               </div>
@@ -791,59 +770,54 @@ export default function SportsSnapshotPage() {
           {/* Quarantine */}
           <QuarantineSection items={qItems} />
 
-          {/* ── Browse all scanned events ──────────────────────────────────── */}
+          {/* ── Browse all scanned events ─────────────────────────────────── */}
           {scannedEvs.length > 0 && summary && (
-            <div className="space-y-3 border-t border-border pt-5">
+            <div className="space-y-4 pt-2">
 
-              {/* Section header */}
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <span className="font-mono text-[10px] text-text-muted uppercase tracking-widest">
-                  Browse scanned events — {summary.totalEvents} total
-                </span>
-                <span className="font-mono text-[9px] text-text-muted/50">
-                  sorted by overround · closest to arb first
-                </span>
+              <div className="flex flex-wrap items-end justify-between gap-2">
+                <div>
+                  <Eyebrow className="mb-0.5">Browse scanned events</Eyebrow>
+                  <p className="font-body text-[12px] text-muted">
+                    {summary.totalEvents} total · sorted by overround, closest to arb first
+                  </p>
+                </div>
+                <p className="font-body text-[11px] text-muted/60">
+                  {(data.regions ?? []).join(' · ')} · h2h
+                  {data.ageMinutes != null && ` · ${data.ageMinutes}m old`}
+                  {lastFetch && ` · fetched ${ago(lastFetch.toISOString())}`}
+                </p>
               </div>
 
               {/* Sport tabs */}
               <div className="flex flex-wrap gap-1.5">
                 <button
                   onClick={() => setSelectedSport('all')}
-                  className={`font-mono text-[10px] px-2.5 py-1 border transition-colors duration-100 ${
+                  className={`font-body text-[12px] px-3 py-1.5 rounded-button border transition-colors duration-100 ${
                     effectiveSport === 'all'
-                      ? 'border-accent text-accent bg-accent/10'
-                      : 'border-border text-text-secondary hover:text-text-primary hover:border-border/80'
+                      ? 'border-mint bg-mint-tint text-mint-deep'
+                      : 'border-line text-muted hover:text-ink-2 hover:border-ink-2/30'
                   }`}
                 >
                   All ({summary.totalEvents})
                 </button>
-                {summary.sportsScanned
-                  .filter((s: SportScanEntry) => s.eventCount > 0)
-                  .map((s: SportScanEntry) => (
-                    <button
-                      key={s.key}
-                      onClick={() => setSelectedSport(s.key)}
-                      className={`font-mono text-[10px] px-2.5 py-1 border transition-colors duration-100 ${
-                        effectiveSport === s.key
-                          ? 'border-accent text-accent bg-accent/10'
-                          : 'border-border text-text-secondary hover:text-text-primary hover:border-border/80'
-                      }`}
-                    >
-                      {s.label} ({s.eventCount})
-                    </button>
-                  ))}
+                {sportsWithEvents.map((s: SportScanEntry) => (
+                  <button
+                    key={s.key}
+                    onClick={() => setSelectedSport(s.key)}
+                    className={`font-body text-[12px] px-3 py-1.5 rounded-button border transition-colors duration-100 ${
+                      effectiveSport === s.key
+                        ? 'border-mint bg-mint-tint text-mint-deep'
+                        : 'border-line text-muted hover:text-ink-2 hover:border-ink-2/30'
+                    }`}
+                  >
+                    {s.label} ({s.eventCount})
+                  </button>
+                ))}
               </div>
-
-              {/* Scan metadata */}
-              <p className="font-mono text-[9px] text-text-muted/50">
-                regions: {(data.regions ?? []).join(', ')} · markets: h2h
-                {data.ageMinutes != null && ` · snapshot ${data.ageMinutes}m old`}
-                {lastFetch && ` · page fetched ${ago(lastFetch.toISOString())}`}
-              </p>
 
               {/* Event list */}
               {sortedEvents.length === 0 ? (
-                <p className="font-mono text-[11px] text-text-muted py-4 text-center">
+                <p className="font-body text-sm text-muted py-6 text-center">
                   No events for this sport.
                 </p>
               ) : (
@@ -860,24 +834,25 @@ export default function SportsSnapshotPage() {
 
       {/* Loading skeleton */}
       {!data && (
-        <div className="space-y-3 animate-pulse">
-          <div className="h-16 bg-bg-elevated border border-border" />
-          <div className="h-24 bg-bg-elevated border border-border" />
-          <div className="h-32 bg-bg-elevated border border-border" />
+        <div className="space-y-4 animate-pulse">
+          <div className="h-20 rounded-card bg-bg-soft" />
+          <div className="h-28 rounded-card bg-bg-soft" />
+          <div className="h-36 rounded-card bg-bg-soft" />
         </div>
       )}
 
-      {/* Disclaimer footer */}
-      <div className="border-t border-border pt-4 space-y-1">
-        <p className="font-mono text-[10px] text-text-muted/50 leading-relaxed">
+      {/* Footer */}
+      <div className="border-t border-line pt-5 space-y-1.5">
+        <p className="font-body text-[11px] text-muted/70 leading-relaxed">
           Snapshot-mode scanner only — does NOT place orders or access any bookmaker account.
           Stake percentages are illustrative hedge splits for equalized payout on any bankroll size.
           Bookmakers limit arb accounts; always verify odds manually before acting.
         </p>
-        <p className="font-mono text-[10px] text-text-muted/40">
+        <p className="font-body text-[11px] text-muted/50 leading-relaxed">
           Data via The Odds API (EU/UK/US regions, h2h markets) · credit-safe scanner (floor: 30 remaining, 3 credits/sport) ·
-          Surebets may combine bookmakers from different jurisdictions (US vs EU/UK); these are flagged and may not be executable by a single account. ·
-          run manually with <code>node agents/agent12-sports.js</code>
+          Surebets may combine bookmakers from different jurisdictions; cross-jurisdiction pairs are flagged and may not be executable. ·
+          run manually with{' '}
+          <code className="font-mono text-[10px] text-ink-2">node agents/agent12-sports.js</code>
         </p>
       </div>
 
