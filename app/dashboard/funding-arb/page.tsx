@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef, Fragment } from 'react';
 import Link from 'next/link';
 import SectionHelp from '@/app/components/SectionHelp';
+import EdgeChip, { type EdgeChipVariant } from '@/app/components/ui/EdgeChip';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -86,6 +87,14 @@ interface ApiResponse {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+const APY_CAP = 200; // %/yr — never display annualized above this; cap before showing
+
+function chipVariant(s: SpreadItem): EdgeChipVariant {
+  if (s.oneLegUnverified) return 'signal';
+  if (s.thinFlag || s.depthThin) return 'speculative';
+  return 'cashable';
+}
+
 function fmtRate(fr: number, intervalHours?: number): string {
   const sign   = fr >= 0 ? '+' : '';
   const suffix = intervalHours === 1 ? '/hr' : '/8h';
@@ -119,16 +128,16 @@ function fmtUsd(n: number): string {
 }
 
 function rateCls(fr: number): string {
-  if (fr > 0.005) return 'text-positive font-medium';
-  if (fr > 0)     return 'text-positive/70';
-  if (fr < 0)     return 'text-negative/80';
-  return 'text-text-muted';
+  if (fr > 0.005) return 'text-mint-deep font-medium';
+  if (fr > 0)     return 'text-mint-deep/70';
+  if (fr < 0)     return 'text-coral-ink/80';
+  return 'text-muted';
 }
 
 function statusBadgeCls(s: string): string {
-  if (s === 'HARVEST') return 'bg-positive/10 text-positive border-positive/25';
-  if (s === 'CAUTION') return 'bg-warning/10 text-warning border-warning/25';
-  return 'bg-negative/10 text-negative/70 border-negative/25';
+  if (s === 'HARVEST') return 'bg-mint-tint text-mint-deep border-mint/25';
+  if (s === 'CAUTION') return 'bg-gold-tint text-gold border-gold/25';
+  return 'bg-coral-tint/50 text-coral-ink/70 border-coral-ink/25';
 }
 
 function capFirst(s: string): string {
@@ -146,9 +155,9 @@ function venueLabel(exchange: string): string {
 // ── Slip-curve helpers ────────────────────────────────────────────────────────
 
 function slipStateCls(state: 'GREEN' | 'YELLOW' | 'RED'): string {
-  if (state === 'GREEN')  return 'text-positive';
-  if (state === 'YELLOW') return 'text-warning';
-  return 'text-negative/80';
+  if (state === 'GREEN')  return 'text-mint-deep';
+  if (state === 'YELLOW') return 'text-gold';
+  return 'text-coral-ink';
 }
 
 function fillablePoints(curve: SlipPoint[] | null): SlipPoint[] {
@@ -208,10 +217,10 @@ function TypeFilterToggle({
   ];
   return (
     <div className="flex items-center gap-2 flex-wrap">
-      <span className="font-mono text-[9px] uppercase tracking-widest text-text-muted shrink-0">
+      <span className="font-body text-[11px] uppercase tracking-wide text-muted shrink-0">
         Strategy
       </span>
-      <div className="flex border border-border font-mono text-[10px] divide-x divide-border">
+      <div className="flex border border-line rounded-button overflow-hidden font-body text-[11px] divide-x divide-line">
         {opts.map(opt => (
           <button
             key={opt.id}
@@ -219,12 +228,12 @@ function TypeFilterToggle({
             onClick={() => !opt.disabled && onChange(opt.id)}
             title={opt.whyDisabled ?? undefined}
             aria-disabled={!!opt.disabled}
-            className={`relative px-2.5 py-1 transition-colors duration-100 ${
+            className={`relative px-3 py-1 transition-colors duration-100 ${
               value === opt.id
-                ? 'bg-accent text-white'
+                ? 'bg-mint-deep text-white'
                 : opt.disabled
-                  ? 'text-text-muted/30 cursor-not-allowed bg-bg-elevated/10'
-                  : 'text-text-muted hover:text-text-primary'
+                  ? 'text-muted/30 cursor-not-allowed'
+                  : 'text-muted hover:text-ink-2'
             }`}
           >
             {opt.label}
@@ -235,7 +244,7 @@ function TypeFilterToggle({
         ))}
       </div>
       {value === 'perp_perp' && (
-        <span className="font-mono text-[9px] text-text-muted/60">
+        <span className="font-body text-[11px] text-muted">
           Short one perp, long another — collect the funding differential
         </span>
       )}
@@ -254,7 +263,7 @@ function FundingSettlementNote({ s }: { s: SpreadItem }) {
   if (hasHl)   parts.push('Hyperliquid settles hourly in USDC');
   if (hasDydx) parts.push('dYdX settles hourly in USDC');
   return (
-    <p className="font-mono text-[9px] text-text-muted/55 leading-relaxed">
+    <p className="font-body text-[11px] text-muted/60 leading-relaxed">
       {parts.join(' · ')}.
       {' '}APY above is annualized — actual receipt is per interval, varies each reset.
     </p>
@@ -316,15 +325,15 @@ function CapitalControl({
 }) {
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
-      <span className="font-mono text-[9px] uppercase tracking-widest text-text-muted shrink-0">
+      <span className="font-body text-[11px] uppercase tracking-wide text-muted shrink-0">
         Your capital
       </span>
       <div className="flex items-center gap-1">
-        <span className="font-mono text-[10px] text-text-muted">$</span>
+        <span className="font-body text-[11px] text-muted">$</span>
         <input
           type="number" min={0} step={100} value={capital}
           onChange={e => setCapital(Math.max(0, parseFloat(e.target.value) || 0))}
-          className="w-[4.5rem] px-1.5 py-0.5 font-mono text-[11px] bg-bg-panel border border-border text-text-primary focus:border-accent/50 focus:outline-none tabular-nums"
+          className="w-[4.5rem] px-1.5 py-0.5 font-mono text-[11px] bg-bg-soft border border-line text-ink rounded-sm focus:border-mint/50 focus:outline-none tabular-nums"
         />
       </div>
       <div className="flex items-center gap-1">
@@ -337,10 +346,10 @@ function CapitalControl({
                 ? '1× — no leverage. Each leg sized to your full capital. No liquidation risk from basis moves.'
                 : `${lev}× — both perp legs use ${lev}× margin. Each leg notional = capital × ${lev} / 2. Funding yield on capital is multiplied by ${lev}, but so is liquidation risk if the spot/perp basis moves against you. Not free yield.`
             }
-            className={`px-1.5 py-0.5 font-mono text-[10px] border transition-colors duration-100 cursor-help ${
+            className={`px-1.5 py-0.5 font-mono text-[10px] border rounded-sm transition-colors duration-100 cursor-help ${
               leverage === lev
-                ? 'bg-accent text-white border-accent'
-                : 'border-border text-text-muted hover:border-text-secondary hover:text-text-primary'
+                ? 'bg-mint-deep text-white border-mint-deep'
+                : 'border-line text-muted hover:border-ink-2 hover:text-ink'
             }`}
           >
             {lev}×
@@ -348,7 +357,7 @@ function CapitalControl({
         ))}
       </div>
       {leverage > 1 && (
-        <span className="font-mono text-[9px] text-warning/70">
+        <span className="font-body text-[11px] text-gold">
           {leverage}× applies to both perp legs — liquidation risk if basis widens
         </span>
       )}
@@ -359,57 +368,63 @@ function CapitalControl({
 // ── Slip-aware card ───────────────────────────────────────────────────────────
 
 function SlipAwareCard({ s }: { s: SpreadItem }) {
-  const pts          = fillablePoints(s.slipCurve);
+  const pts           = fillablePoints(s.slipCurve);
   const [idx, setIdx] = useState(() => defaultSliderIdx(s.slipCurve, s.greenCapacityUsd));
-  const pt           = pts[idx] ?? null;
-  const hasCurve     = pts.length > 0;
-  const tgHref       = `https://t.me/Gaspola_bot?start=fund_${s.coin}`;
-  const hasDex       = s.shortExchange === 'hyperliquid' || s.longExchange === 'hyperliquid'
-                    || s.shortExchange === 'dydx'        || s.longExchange === 'dydx';
-  const resetLabel   = hasDex ? 'hourly' : 'every 8h';
+  const pt            = pts[idx] ?? null;
+  const hasCurve      = pts.length > 0;
+  const tgHref        = `https://t.me/Gaspola_bot?start=fund_${s.coin}`;
+  const hasDex        = s.shortExchange === 'hyperliquid' || s.longExchange === 'hyperliquid'
+                     || s.shortExchange === 'dydx'        || s.longExchange === 'dydx';
+  const resetLabel    = hasDex ? 'hourly' : 'every 8h';
 
   return (
-    <div className="py-5 border-b border-border/15 flex flex-col gap-3 last:border-b-0">
-      <div className="flex items-center justify-between">
-        <span className={`px-1.5 py-[2px] border text-[9px] font-mono uppercase tracking-widest ${statusBadgeCls(s.status)}`}>
-          {s.status}
-        </span>
-        <span className="font-mono text-[9px] text-text-muted">
-          {s.thinFlag ? '⚠ thin liq.' : (s.liquidityTier ?? '')}
-        </span>
+    <div className="py-5 border-b border-line/20 flex flex-col gap-3 last:border-b-0">
+
+      {/* Signal chip row */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <EdgeChip variant={chipVariant(s)} />
+        {(s.thinFlag || s.depthThin) && (
+          <span className="font-body text-[11px] text-gold bg-gold-tint px-2 py-0.5 rounded-pill">
+            ⚠ thin depth
+          </span>
+        )}
+        {s.liquidityTier && !s.thinFlag && (
+          <span className="font-body text-[11px] text-muted">{s.liquidityTier}</span>
+        )}
       </div>
 
+      {/* Coin + legs */}
       <div>
-        <span className="font-mono text-[16px] font-bold text-text-primary">{s.coin}</span>
+        <span className="font-display font-bold text-ink" style={{ fontSize: 16 }}>{s.coin}</span>
         <div className="font-mono text-[11px] mt-1.5 leading-snug space-y-0.5">
           <div>
-            <span className="text-negative/80 font-medium">↓ SHORT</span>
-            <span className="text-text-muted"> on </span>
-            <span className={s.shortIsDex ? 'text-accent' : 'text-text-secondary'}>{venueLabel(s.shortExchange)}</span>
-            {s.shortIsDex && <span className="text-accent/60 text-[9px] ml-1">DEX</span>}
-            <span className="text-text-muted/50 ml-2 text-[10px]">collect {fmtRate(s.frShort, s.intervalHoursShort)}</span>
+            <span className="text-coral-ink font-medium">↓ SHORT</span>
+            <span className="text-muted"> on </span>
+            <span className={s.shortIsDex ? 'text-mint-deep' : 'text-ink-2'}>{venueLabel(s.shortExchange)}</span>
+            {s.shortIsDex && <span className="text-mint text-[9px] ml-1">DEX</span>}
+            <span className="text-muted/60 ml-2 text-[10px]">collect {fmtRate(s.frShort, s.intervalHoursShort)}</span>
           </div>
           <div>
-            <span className="text-positive/80 font-medium">↑ LONG</span>
-            <span className="text-text-muted"> on </span>
-            <span className={s.longIsDex ? 'text-accent' : 'text-text-secondary'}>{venueLabel(s.longExchange)}</span>
-            {s.longIsDex && <span className="text-accent/60 text-[9px] ml-1">DEX</span>}
-            <span className="text-text-muted/50 ml-2 text-[10px]">pay {fmtRate(s.frLong, s.intervalHoursLong)}</span>
+            <span className="text-mint-deep font-medium">↑ LONG</span>
+            <span className="text-muted"> on </span>
+            <span className={s.longIsDex ? 'text-mint-deep' : 'text-ink-2'}>{venueLabel(s.longExchange)}</span>
+            {s.longIsDex && <span className="text-mint text-[9px] ml-1">DEX</span>}
+            <span className="text-muted/60 ml-2 text-[10px]">pay {fmtRate(s.frLong, s.intervalHoursLong)}</span>
           </div>
         </div>
       </div>
 
-      <p className="font-mono text-[10px] text-text-muted leading-relaxed">
+      <p className="font-body text-[12px] text-muted leading-relaxed">
         Hold opposite positions on two exchanges and collect the funding-fee difference {resetLabel}.
         Market-neutral — not a bet on {s.coin} price direction.
       </p>
 
       {/* Slip-curve box */}
       {hasCurve ? (
-        <div className="p-2.5 bg-bg-elevated/25 flex flex-col gap-2">
+        <div className="p-3 bg-bg-soft/60 rounded-[8px] flex flex-col gap-2">
           {/* Slider */}
           <div className="flex items-center gap-2">
-            <span className="font-mono text-[9px] text-text-muted shrink-0">Position</span>
+            <span className="font-body text-[11px] text-muted shrink-0">Position</span>
             <input
               type="range"
               min={0}
@@ -417,9 +432,9 @@ function SlipAwareCard({ s }: { s: SpreadItem }) {
               value={idx}
               step={1}
               onChange={e => setIdx(parseInt(e.target.value))}
-              className="flex-1 h-[3px] accent-accent cursor-pointer"
+              className="flex-1 h-[3px] accent-[#0FBE82] cursor-pointer"
             />
-            <span className="font-mono text-[10px] tabular-nums text-text-secondary shrink-0 w-14 text-right">
+            <span className="font-mono text-[10px] tabular-nums text-ink-2 shrink-0 w-14 text-right">
               {fmtCapWords(pt?.size ?? 0)}
             </span>
             {pt && (
@@ -429,61 +444,67 @@ function SlipAwareCard({ s }: { s: SpreadItem }) {
             )}
           </div>
 
-          {/* $/day */}
+          {/* $/day — dominant value */}
           {pt ? (
             <>
-              <div className={`font-mono text-[22px] font-bold tabular-nums leading-none ${
-                s.oneLegUnverified ? 'text-text-muted'
-                : pt.state === 'GREEN'  ? 'text-positive'
-                : pt.state === 'YELLOW' ? 'text-warning'
-                : 'text-negative/80'
-              }`}>
+              <div className={`font-display font-bold tabular-nums leading-none ${
+                s.oneLegUnverified ? 'text-muted'
+                : pt.state === 'GREEN'  ? 'text-mint-deep'
+                : pt.state === 'YELLOW' ? 'text-gold'
+                : 'text-coral-ink'
+              }`} style={{ fontSize: 22 }}>
                 ≈ {pt.netDayUsd != null ? fmtDayUsd(pt.netDayUsd) : '—'}
               </div>
               {s.oneLegUnverified && (
-                <div className="font-mono text-[9px] text-text-muted/70 italic">
-                  1 leg unverified — spread uses predicted rate, may be overstated.
+                <div className="font-body text-[11px] text-muted">
+                  1 leg predicted — rate unconfirmed
                 </div>
               )}
-              <div className="font-mono text-[10px] text-text-secondary">
+              <div className="font-body text-[11px] text-ink-2">
                 incl. modeled entry/exit slippage (14d)
               </div>
-              <div className="font-mono text-[10px] text-text-muted/60">
-                {pt.netDayUsd != null && pt.size > 0
-                  ? <><span className="text-text-muted">{fmtApy(pt.netDayUsd * 365 / pt.size * 100)}</span>{' '}ROC · run-rate · not guaranteed</>
-                  : <>ROC · run-rate · not guaranteed</>
-                }
+              {/* Annualized % — demoted, capped, labeled */}
+              <div className="font-body text-[11px] text-muted">
+                {pt.netDayUsd != null && pt.size > 0 ? (
+                  <>
+                    {fmtApy(Math.min(pt.netDayUsd * 365 / pt.size * 100, APY_CAP))}
+                    {pt.netDayUsd * 365 / pt.size * 100 > APY_CAP && ' (capped)'}
+                    {' '}<span className="text-muted/70">est. %/yr — run-rate, not guaranteed</span>
+                  </>
+                ) : (
+                  <span className="text-muted/70">est. %/yr — run-rate, not guaranteed</span>
+                )}
               </div>
               {(s.greenCapacityUsd ?? 0) === 0 && (
-                <div className="font-mono text-[9px] text-text-muted/60 leading-snug">
-                  Honest capacity is small here — deeper size adds slippage. Drag to see the cost.
+                <div className="font-body text-[11px] text-muted leading-snug">
+                  Thin book — all sizes above slippage threshold. Drag slider to explore.
                 </div>
               )}
             </>
           ) : null}
         </div>
       ) : (
-        <div className="p-2.5 bg-bg-elevated/25 font-mono text-[10px] text-text-muted">
+        <div className="p-3 bg-bg-soft/60 rounded-[8px] font-body text-[12px] text-muted">
           Depth data pending — check detail page for estimates
         </div>
       )}
 
       {s.depthThin && s.depthNote && (
-        <div className="font-mono text-[9px] text-warning/80">{s.depthNote}</div>
+        <p className="font-body text-[11px] text-gold leading-snug">{s.depthNote}</p>
       )}
 
       <FundingSettlementNote s={s} />
 
       <div className="flex items-center justify-between gap-2 flex-wrap">
         {s.greenCapacityUsd != null && (
-          <span className="font-mono text-[10px] text-text-muted/70">
+          <span className="font-body text-[12px] text-muted">
             Green cap {fmtCapWords(s.greenCapacityUsd)}
           </span>
         )}
         <div className="ml-auto flex items-center gap-1.5">
           <Link
             href={`/dashboard/funding-arb/${s.coin}-${s.shortExchange}-${s.longExchange}`}
-            className="font-mono text-[9px] px-2 py-1 border border-border text-text-muted hover:border-text-secondary hover:text-text-primary transition-colors duration-100 whitespace-nowrap"
+            className="font-body text-[11px] px-2.5 py-1 border border-line text-muted hover:border-ink-2 hover:text-ink-2 rounded-button transition-colors duration-100 whitespace-nowrap"
           >
             Execution guide →
           </Link>
@@ -491,7 +512,7 @@ function SlipAwareCard({ s }: { s: SpreadItem }) {
             href={tgHref}
             target="_blank"
             rel="noopener noreferrer"
-            className="font-mono text-[9px] px-2 py-1 border border-accent/25 text-accent/60 hover:border-accent/50 hover:text-accent transition-colors duration-100 whitespace-nowrap"
+            className="font-body text-[11px] px-2.5 py-1 border border-mint/25 text-mint hover:border-mint/50 hover:text-mint-deep rounded-button transition-colors duration-100 whitespace-nowrap"
           >
             ✈ Follow
           </a>
@@ -543,18 +564,18 @@ function OpportunityCards({
     <div className="mb-5">
       {/* View toggle + capacity explainer */}
       <div className="flex items-center justify-between mb-1">
-        <span className="font-mono text-[9px] text-text-muted/50 uppercase tracking-widest">
+        <span className="font-body text-[11px] text-muted uppercase tracking-wide">
           Top opportunities · best per asset
         </span>
-        <div className="flex border border-border font-mono text-[10px]">
+        <div className="flex border border-line rounded-button overflow-hidden font-body text-[11px]">
           {(['cards', 'list'] as OppView[]).map(v => (
             <button
               key={v}
               onClick={() => setView(v)}
-              className={`px-2.5 py-1 capitalize transition-colors duration-100 ${
+              className={`px-3 py-1 capitalize transition-colors duration-100 ${
                 view === v
-                  ? 'bg-accent text-white'
-                  : 'text-text-muted hover:text-text-primary'
+                  ? 'bg-mint-deep text-white'
+                  : 'text-muted hover:text-ink-2'
               }`}
             >
               {v}
@@ -562,7 +583,7 @@ function OpportunityCards({
           ))}
         </div>
       </div>
-      <p className="font-mono text-[9px] text-text-muted/50 mb-3">
+      <p className="font-body text-[11px] text-muted mb-3">
         Capacity = size you can enter before slippage eats &gt;30% of the yield.
         Most altcoin perp books are thin; green ranges are deliberately conservative.
         Sorted by net $/day at green capacity.
@@ -588,63 +609,63 @@ function OpportunityCards({
             return (
               <div
                 key={`${s.coin}-${s.shortExchange}-${s.longExchange}`}
-                className="py-3 flex flex-wrap items-baseline gap-x-4 gap-y-1.5 hover:bg-bg-elevated/20 transition-colors duration-100"
+                className="py-3 flex flex-wrap items-baseline gap-x-4 gap-y-1.5 hover:bg-bg-soft/50 transition-colors duration-100"
               >
                 {/* Asset */}
-                <span className="font-mono text-[14px] font-bold text-text-primary w-12 shrink-0">
+                <span className="font-display font-bold text-ink w-12 shrink-0" style={{ fontSize: 14 }}>
                   {s.coin}
                 </span>
 
                 {/* Action */}
-                <span className="font-mono text-[11px] text-text-secondary">
-                  <span className="text-negative/80">↓ SHORT</span>
-                  <span className="text-text-muted"> on </span>
-                  <span className={s.shortIsDex ? 'text-accent' : ''}>{venueLabel(s.shortExchange)}</span>
-                  <span className="text-text-muted/40 mx-1.5">/</span>
-                  <span className="text-positive/80">↑ LONG</span>
-                  <span className="text-text-muted"> on </span>
-                  <span className={s.longIsDex ? 'text-accent' : ''}>{venueLabel(s.longExchange)}</span>
+                <span className="font-mono text-[11px] text-ink-2">
+                  <span className="text-coral-ink">↓ SHORT</span>
+                  <span className="text-muted"> on </span>
+                  <span className={s.shortIsDex ? 'text-mint-deep' : ''}>{venueLabel(s.shortExchange)}</span>
+                  <span className="text-muted/40 mx-1.5">/</span>
+                  <span className="text-mint-deep">↑ LONG</span>
+                  <span className="text-muted"> on </span>
+                  <span className={s.longIsDex ? 'text-mint-deep' : ''}>{venueLabel(s.longExchange)}</span>
                 </span>
 
-                {/* $/day — prominent */}
+                {/* $/day — dominant value */}
                 <span className="font-mono tabular-nums ml-auto sm:ml-0">
                   {dayUsd !== null && capital > 0 ? (
                     <>
-                      <span className={`text-[14px] font-bold ${s.oneLegUnverified ? 'text-text-muted' : 'text-positive'}`}>
+                      <span className={`font-display font-bold ${s.oneLegUnverified ? 'text-muted' : 'text-mint-deep'}`} style={{ fontSize: 14 }}>
                         ≈ {fmtDayUsd(dayUsd)}
                       </span>
                       {s.oneLegUnverified ? (
-                        <span className="text-[9px] text-text-muted/70 ml-2 italic">
-                          1 leg unverified — spread uses predicted rate, may be overstated.
+                        <span className="font-body text-[11px] text-muted ml-2">
+                          1 leg predicted — rate unconfirmed
                         </span>
                       ) : (
                         feesUsd !== null && feesUsd > 0 && (
-                          <span className="text-[10px] text-text-muted ml-2">fees back in {s.breakevenDays}d</span>
+                          <span className="font-body text-[11px] text-muted ml-2">fees back in {s.breakevenDays}d</span>
                         )
                       )}
                     </>
                   ) : (
-                    <span className="text-[11px] text-text-muted">set capital above</span>
+                    <span className="font-body text-[11px] text-muted">set capital above</span>
                   )}
                 </span>
 
-                {/* ROC · run-rate */}
-                <span className="font-mono text-[10px] text-text-muted/50 tabular-nums">
-                  {rocPct !== null ? `${fmtApy(rocPct)} ROC · run-rate · excl. entry slippage` : '—'}
+                {/* Annualized % — demoted, capped */}
+                <span className="font-body text-[11px] text-muted tabular-nums">
+                  {rocPct !== null
+                    ? `${fmtApy(Math.min(rocPct, APY_CAP))}${rocPct > APY_CAP ? ' (capped)' : ''} est. %/yr · run-rate, not guaranteed`
+                    : '—'}
                 </span>
 
                 {s.depthThin && s.depthNote && (
-                  <span className="font-mono text-[9px] text-warning/80">{s.depthNote}</span>
+                  <span className="font-body text-[11px] text-gold">{s.depthNote}</span>
                 )}
 
-                {/* Status badge */}
-                <span className={`px-1.5 py-[2px] border text-[9px] font-mono uppercase tracking-widest ${statusBadgeCls(s.status)}`}>
-                  {s.status}
-                </span>
+                {/* Signal chip */}
+                <EdgeChip variant={chipVariant(s)} />
 
                 {/* Green capacity */}
                 {s.greenCapacityUsd != null && (
-                  <span className="font-mono text-[10px] text-text-muted/60">
+                  <span className="font-body text-[11px] text-muted">
                     green cap {fmtCapWords(s.greenCapacityUsd)}
                   </span>
                 )}
@@ -652,7 +673,7 @@ function OpportunityCards({
                 {/* Guide + Follow */}
                 <Link
                   href={`/dashboard/funding-arb/${s.coin}-${s.shortExchange}-${s.longExchange}`}
-                  className="font-mono text-[9px] px-2 py-1 border border-border text-text-muted hover:border-text-secondary hover:text-text-primary transition-colors duration-100 whitespace-nowrap"
+                  className="font-body text-[11px] px-2.5 py-1 border border-line text-muted hover:border-ink-2 hover:text-ink-2 rounded-button transition-colors duration-100 whitespace-nowrap"
                 >
                   Guide →
                 </Link>
@@ -660,7 +681,7 @@ function OpportunityCards({
                   href={tgHref}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="font-mono text-[9px] px-2 py-1 border border-accent/25 text-accent/60 hover:border-accent/50 hover:text-accent transition-colors duration-100 whitespace-nowrap"
+                  className="font-body text-[11px] px-2.5 py-1 border border-mint/25 text-mint hover:border-mint/50 hover:text-mint-deep rounded-button transition-colors duration-100 whitespace-nowrap"
                 >
                   ✈ Follow
                 </a>
@@ -673,7 +694,7 @@ function OpportunityCards({
       {remaining > 0 && (
         <button
           onClick={() => setShowMore(v => !v)}
-          className="mt-4 font-mono text-[10px] text-accent/70 hover:text-accent transition-colors duration-100"
+          className="mt-4 font-body text-sm text-mint hover:text-mint-deep transition-colors duration-100"
         >
           {showMore
             ? 'Show fewer opportunities ↑'
@@ -1116,24 +1137,26 @@ export default function CryptoPage() {
       {/* Header */}
       <div className="mb-4 flex flex-wrap items-baseline gap-x-6 gap-y-1">
         <div>
-          <h1 className="font-mono text-sm uppercase tracking-widest text-text-primary">
+          <h1 className="font-display font-semibold text-xl text-ink">
             Funding Rate Monitor
           </h1>
-          <p className="font-mono text-[10px] text-text-muted mt-0.5">
+          <p className="font-body text-sm text-muted mt-1">
             Cross-exchange spread · Binance / Bybit / OKX / Gate.io / Bitget · Hyperliquid / dYdX
           </p>
         </div>
         <div className="ml-auto flex items-center gap-3 shrink-0">
           {isStale && (
-            <span className="font-mono text-[10px] text-warning">DATA {data?.staleMinutes}m OLD</span>
+            <span className="font-body text-xs text-gold bg-gold-tint px-2 py-0.5 rounded-pill">
+              DATA {data?.staleMinutes}m OLD
+            </span>
           )}
           {data?.generatedAt && (
-            <span className="font-mono text-[10px] text-text-muted tabular-nums">
+            <span className="font-body text-xs text-muted tabular-nums">
               {new Date(data.generatedAt).toLocaleTimeString('en-GB', { hour12: false })}
             </span>
           )}
           {!loading && !data?.ok && (
-            <span className="font-mono text-[10px] text-negative">agent10 not running</span>
+            <span className="font-body text-xs text-coral-ink">agent10 not running</span>
           )}
         </div>
       </div>
@@ -1141,31 +1164,31 @@ export default function CryptoPage() {
       {/* How this works — collapsible, collapsed by default */}
       <SectionHelp section="funding" />
 
-      {/* Honest one-liner — replaces the dense variability banner */}
-      <p className="font-mono text-[10px] text-text-muted/70 mb-5 mt-3">
+      {/* Honest one-liner — rates are variable */}
+      <p className="font-body text-xs text-muted mb-5 mt-3">
         Rates are variable and change hourly — these are current estimates, not locked.
       </p>
 
       {loading ? (
-        <div className="py-20 text-center font-mono text-[10px] uppercase tracking-widest text-text-muted animate-pulse">
+        <div className="py-20 text-center font-body text-sm text-muted animate-pulse">
           Loading…
         </div>
       ) : !data?.ok ? (
         <div className="py-20 text-center space-y-2">
-          <div className="font-mono text-[10px] uppercase tracking-widest text-negative">No data</div>
-          <div className="font-mono text-[10px] text-text-muted">
+          <div className="font-body text-sm text-coral-ink">No data</div>
+          <div className="font-mono text-[10px] text-muted">
             pm2 start ecosystem.config.js --only agent10-binance
           </div>
         </div>
       ) : (
         <>
           {/* Strategy type filter */}
-          <div className="mb-3 px-4 py-2.5 bg-bg-panel border border-border">
+          <div className="mb-3 px-4 py-2.5 rounded-card bg-surface shadow-card border border-line">
             <TypeFilterToggle value={typeFilter} onChange={setTypeFilter} />
           </div>
 
           {/* Capital selector */}
-          <div className="mb-5 px-4 py-2.5 bg-bg-panel border border-border">
+          <div className="mb-5 px-4 py-2.5 rounded-card bg-surface shadow-card border border-line">
             <CapitalControl
               capital={capital} leverage={leverage}
               setCapital={setCapital} setLeverage={setLeverage}
@@ -1176,59 +1199,59 @@ export default function CryptoPage() {
           <OpportunityCards spreads={filteredPairs} capital={capital} leverage={leverage} />
 
           {/* ── Advanced / full data ──────────────────────────────────── */}
-          <div className="border border-border mb-5">
+          <div className="border border-line rounded-card bg-surface shadow-card mb-5">
             <button
               onClick={() => setShowAdvanced(v => !v)}
-              className="w-full px-4 py-3 flex items-center justify-between font-mono text-[10px] text-text-muted hover:text-text-primary hover:bg-bg-elevated/20 transition-colors duration-100"
+              className="w-full px-4 py-3 flex items-center justify-between font-body text-[11px] text-muted hover:text-ink-2 hover:bg-bg-soft/40 rounded-card transition-colors duration-100"
             >
-              <span className="uppercase tracking-widest">Advanced / full data</span>
-              <span className="text-text-muted/50">{showAdvanced ? 'collapse ↑' : `${filteredPairs.length} pairs · expand ↓`}</span>
+              <span className="uppercase tracking-wide">Advanced / full data</span>
+              <span className="text-muted/50">{showAdvanced ? 'collapse ↑' : `${filteredPairs.length} pairs · expand ↓`}</span>
             </button>
 
             {showAdvanced && (
-              <div className="border-t border-border">
+              <div className="border-t border-line">
 
                 {/* Status counters + timers */}
-                <div className="px-4 py-3 border-b border-border/40 flex flex-wrap gap-2 items-center">
+                <div className="px-4 py-3 border-b border-line/40 flex flex-wrap gap-2 items-center">
                   {[
-                    { label: 'HARVEST',  val: harvestPairs.length, cls: 'text-positive border-positive/30' },
-                    { label: 'CAUTION',  val: cautionPairs.length, cls: 'text-warning border-warning/30'   },
+                    { label: 'HARVEST',  val: harvestPairs.length, cls: 'text-mint-deep border-mint/30 bg-mint-tint/30' },
+                    { label: 'CAUTION',  val: cautionPairs.length, cls: 'text-gold border-gold/30 bg-gold-tint/30'       },
                     {
                       label: 'MARGINAL',
                       val:   filteredPairs.length - harvestPairs.length - cautionPairs.length,
-                      cls:   'text-text-muted border-border opacity-50',
+                      cls:   'text-muted border-line opacity-50',
                     },
-                    { label: 'CEX↔DEX', val: dexPairs.length,     cls: 'text-accent border-accent/30'      },
-                    { label: 'TOTAL',   val: filteredPairs.length, cls: 'text-text-secondary border-border'  },
+                    { label: 'CEX↔DEX', val: dexPairs.length,     cls: 'text-violet border-violet/30 bg-violet-tint/30' },
+                    { label: 'TOTAL',   val: filteredPairs.length, cls: 'text-ink-2 border-line'                         },
                   ].map(({ label, val, cls }) => (
-                    <div key={label} className={`px-2.5 py-1 border font-mono text-[10px] ${cls}`}>
-                      <span className="text-[11px] font-bold tabular-nums mr-1">{val}</span>
+                    <div key={label} className={`px-2.5 py-1 border rounded-md font-body text-[11px] ${cls}`}>
+                      <span className="font-bold tabular-nums mr-1">{val}</span>
                       {label}
                     </div>
                   ))}
 
                   {bestDayUsd !== null ? (
-                    <div className="px-2.5 py-1 border border-positive/30 font-mono text-[10px] text-positive">
+                    <div className="px-2.5 py-1 border border-mint/30 bg-mint-tint/30 rounded-md font-body text-[11px] text-mint-deep">
                       Best: <span className="font-bold">{fmtDayUsd(bestDayUsd)}</span>
-                      <span className="text-[9px] text-positive/50 ml-1">on ${capital.toLocaleString()}</span>
+                      <span className="text-[10px] text-mint-deep/60 ml-1">on ${capital.toLocaleString()}</span>
                     </div>
                   ) : filteredPairs.length > 0 ? (
-                    <div className="px-2.5 py-1 border border-positive/30 font-mono text-[10px] text-positive"
+                    <div className="px-2.5 py-1 border border-mint/30 bg-mint-tint/30 rounded-md font-body text-[11px] text-mint-deep"
                       title="Theoretical ceiling — rate changes hourly.">
-                      Best ceiling: <span className="font-bold">{fmtApy(filteredPairs[0].netApy30d)}</span>
+                      Best ceiling: <span className="font-bold">{fmtApy(Math.min(filteredPairs[0].netApy30d, APY_CAP))}</span>
                     </div>
                   ) : null}
 
                   {/* Reset timers */}
                   <div className="ml-auto flex gap-4 shrink-0">
                     {cexNextMs != null && (
-                      <span className="font-mono text-[9px] text-text-muted">
-                        CEX next: <span className="text-text-primary"><FundingCountdown targetMs={cexNextMs} /></span>
+                      <span className="font-body text-[11px] text-muted">
+                        CEX next: <span className="text-ink"><FundingCountdown targetMs={cexNextMs} /></span>
                       </span>
                     )}
                     {hlNextMs != null && (
-                      <span className="font-mono text-[9px] text-text-muted">
-                        HL next: <span className="text-accent"><FundingCountdown targetMs={hlNextMs} /></span>
+                      <span className="font-body text-[11px] text-muted">
+                        HL next: <span className="text-mint-deep"><FundingCountdown targetMs={hlNextMs} /></span>
                       </span>
                     )}
                   </div>
@@ -1236,11 +1259,11 @@ export default function CryptoPage() {
 
                 {/* Full spread table */}
                 <div id="funding-spreads" className="scroll-mt-16">
-                  <div className="px-4 py-2 border-b border-border/40 flex items-center justify-between">
-                    <span className="font-mono text-[9px] uppercase tracking-widest text-text-muted">
+                  <div className="px-4 py-2 border-b border-line/40 flex items-center justify-between">
+                    <span className="font-body text-[11px] uppercase tracking-wide text-muted">
                       All Pairs
                     </span>
-                    <span className="font-mono text-[9px] text-text-muted">
+                    <span className="font-body text-[11px] text-muted">
                       {filteredPairs.length} pairs · ranked by net yield (30d)
                     </span>
                   </div>
@@ -1251,26 +1274,26 @@ export default function CryptoPage() {
                 </div>
 
                 {/* Per-exchange rate heatmap */}
-                <div className="border-t border-border">
-                  <div className="px-4 py-2 border-b border-border/40 flex items-center justify-between flex-wrap gap-2">
-                    <span className="font-mono text-[9px] uppercase tracking-widest text-text-muted">
+                <div className="border-t border-line">
+                  <div className="px-4 py-2 border-b border-line/40 flex items-center justify-between flex-wrap gap-2">
+                    <span className="font-body text-[11px] uppercase tracking-wide text-muted">
                       Per-Exchange Funding Rates
                     </span>
-                    <span className="font-mono text-[9px] text-text-muted">
+                    <span className="font-body text-[11px] text-muted">
                       Positive → shorts collect · Negative → longs collect ·{' '}
-                      <span className="text-accent">DEX = Hyperliquid (1h)</span>
+                      <span className="text-mint-deep">DEX = Hyperliquid (1h)</span>
                     </span>
                   </div>
                   <RateHeatmap futures={data.futures} />
-                  <div className="px-4 py-2 border-t border-border/40 flex flex-wrap gap-x-6 gap-y-0.5">
-                    <span className="font-mono text-[9px] text-text-muted">
-                      CEX next reset: <span className="text-text-primary"><FundingCountdown targetMs={cexNextMs} /></span>
-                      <span className="ml-2 text-text-muted/50">(00:00, 08:00, 16:00 UTC)</span>
+                  <div className="px-4 py-2 border-t border-line/40 flex flex-wrap gap-x-6 gap-y-0.5">
+                    <span className="font-body text-[11px] text-muted">
+                      CEX next reset: <span className="text-ink"><FundingCountdown targetMs={cexNextMs} /></span>
+                      <span className="ml-2 text-muted/50">(00:00, 08:00, 16:00 UTC)</span>
                     </span>
                     {data.futures.hyperliquid && (
-                      <span className="font-mono text-[9px] text-text-muted">
-                        HL next reset: <span className="text-accent"><FundingCountdown targetMs={hlNextMs} /></span>
-                        <span className="ml-2 text-text-muted/50">(every UTC hour)</span>
+                      <span className="font-body text-[11px] text-muted">
+                        HL next reset: <span className="text-mint-deep"><FundingCountdown targetMs={hlNextMs} /></span>
+                        <span className="ml-2 text-muted/50">(every UTC hour)</span>
                       </span>
                     )}
                   </div>
@@ -1278,19 +1301,19 @@ export default function CryptoPage() {
 
                 {/* Spot prices */}
                 {Object.keys(data.spot.binance ?? {}).length > 0 && (
-                  <div className="border-t border-border">
-                    <div className="px-4 py-2 border-b border-border/40">
-                      <span className="font-mono text-[9px] uppercase tracking-widest text-text-muted">Spot Prices (Binance)</span>
+                  <div className="border-t border-line">
+                    <div className="px-4 py-2 border-b border-line/40">
+                      <span className="font-body text-[11px] uppercase tracking-wide text-muted">Spot Prices (Binance)</span>
                     </div>
                     <div className="flex flex-wrap gap-px">
                       {Object.entries(data.spot.binance).map(([coin, s]) => (
-                        <div key={coin} className="flex-1 min-w-[110px] px-4 py-3 border-r border-border/50 last:border-0">
-                          <div className="font-mono text-[10px] text-text-muted mb-1">{coin}/USDT</div>
-                          <div className="font-mono text-[13px] text-text-primary tabular-nums">
+                        <div key={coin} className="flex-1 min-w-[110px] px-4 py-3 border-r border-line/50 last:border-0">
+                          <div className="font-body text-[11px] text-muted mb-1">{coin}/USDT</div>
+                          <div className="font-mono text-[13px] text-ink tabular-nums">
                             ${s.price.toLocaleString(undefined, { maximumFractionDigits: s.price > 1 ? 2 : 5 })}
                           </div>
                           {s.change24hPct != null && (
-                            <div className={`font-mono text-[10px] tabular-nums mt-0.5 ${s.change24hPct >= 0 ? 'text-positive' : 'text-negative'}`}>
+                            <div className={`font-body text-[11px] tabular-nums mt-0.5 ${s.change24hPct >= 0 ? 'text-mint-deep' : 'text-coral-ink'}`}>
                               {s.change24hPct >= 0 ? '+' : ''}{s.change24hPct.toFixed(2)}%
                             </div>
                           )}
@@ -1301,7 +1324,7 @@ export default function CryptoPage() {
                 )}
 
                 {/* CEX spot arbitrage */}
-                <div id="cex-arb" className="border-t border-border scroll-mt-24">
+                <div id="cex-arb" className="border-t border-line scroll-mt-24">
                   <CexArbSection items={cexArbItems} />
                 </div>
 
