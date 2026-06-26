@@ -4,7 +4,7 @@ import EdgeradarNav from '@/app/components/EdgeradarNav';
 import Pill         from '@/app/components/ui/Pill';
 import Eyebrow      from '@/app/components/ui/Eyebrow';
 import SectionHeading from '@/app/components/ui/SectionHeading';
-import EdgeChip     from '@/app/components/ui/EdgeChip';
+import EdgeChip, { type EdgeChipVariant } from '@/app/components/ui/EdgeChip';
 import RadarMark    from '@/app/components/ui/RadarMark';
 import RadarScope   from '@/app/components/ui/RadarScope';
 import BlipRow      from '@/app/components/ui/BlipRow';
@@ -39,9 +39,9 @@ const SIX_WAYS = [
     desc:  'Lock in the basis between spot and a dated futures contract. Yield is fixed at expiry — most contracts are coin-margined, so the USD return drifts with spot price.',
   },
   {
-    chip:  'signal' as const,
+    chip:  'cashable' as const,
     title: 'Liquidity rewards',
-    desc:  "Provide liquidity to prediction market protocols and earn reward tokens. Program rates aren't in public APIs yet; we estimate from docs and flag anything we can't confirm.",
+    desc:  'Earn real maker rewards for providing liquidity on Polymarket and Kalshi. We show net estimated reward/day and flag any program rate we can\'t confirm.',
   },
   {
     chip:  'signal' as const,
@@ -49,9 +49,9 @@ const SIX_WAYS = [
     desc:  "Every public Polymarket wallet ranked by true win rate, not just P&L. See who's actually skilled versus who rode a lucky streak. Worth watching — not a copy-trade signal.",
   },
   {
-    chip:  'paper' as const,
+    chip:  'cashable' as const,
     title: 'Sports edges',
-    desc:  'Prediction market mispricing on NFL, NBA, and soccer outcomes. Midpoint prices only — no live CLOB. Verify before you act.',
+    desc:  'Lock a guaranteed margin when the same outcome is priced differently across 40+ sportsbooks. Soft-book and cross-jurisdiction legs are flagged so you only act on truly takeable ones.',
   },
 ] as const;
 
@@ -75,11 +75,31 @@ const HONEST_ENGINE = [
 interface FundingStat  { perDay1k: number; symbol: string; exchange: string; annPct: number }
 interface PredStat     { cashable: number; pairsChecked: number }
 interface BasisStat    { netAnnualized: number; asset: string; exchange: string; contract: string; coinMargined: boolean }
+interface SportsStat   { netMargin: number; homeTeam: string; awayTeam: string; sport: string }
+interface RewardsStat  { bestDay: number; dayYieldPct: number; capital: number; platform: string }
 
-function readLandingStats(): { funding: FundingStat | null; prediction: PredStat | null; basis: BasisStat | null } {
+interface LiveRow {
+  key:        string;
+  icon:       string;
+  tileColor:  'mint' | 'violet' | 'gold';
+  name:       string;
+  sub?:       string;
+  chip:       EdgeChipVariant;
+  value:      string;
+  unit:       string;
+  valueTone:  'up' | 'neutral';
+  rankScore:  number;
+}
+
+function readLandingStats(): {
+  funding: FundingStat | null; prediction: PredStat | null;
+  basis: BasisStat | null; sports: SportsStat | null; rewards: RewardsStat | null;
+} {
   let funding: FundingStat | null    = null;
   let prediction: PredStat | null    = null;
   let basis: BasisStat | null        = null;
+  let sports: SportsStat | null      = null;
+  let rewards: RewardsStat | null    = null;
 
   try {
     const raw  = JSON.parse(fs.readFileSync('/tmp/arbitrage-opportunities.json', 'utf8'));
@@ -87,28 +107,28 @@ function readLandingStats(): { funding: FundingStat | null; prediction: PredStat
     const cash = s.confirmedCashable ?? 0;
     const tot  = cash + (s.rejectedNotSameEvent ?? 0) + (s.pendingVerification ?? 0);
     prediction = { cashable: cash, pairsChecked: tot };
-  } catch { /* file absent or stale — show zero state */ }
+  } catch { /* file absent or stale */ }
 
   try {
     const raw     = JSON.parse(fs.readFileSync('/tmp/exchange-prices.json', 'utf8'));
     const futures = (raw?.futures ?? {}) as Record<string, Record<string, { fundingRate?: number; fundingIntervalHours?: number }>>;
-    const majorExchanges = ['binance', 'bybit', 'okx'];
+    const exchanges = ['binance', 'bybit', 'okx', 'hyperliquid'];
     let best: FundingStat | null = null;
-    for (const exc of majorExchanges) {
+    for (const exc of exchanges) {
       const markets = futures[exc] ?? {};
-      for (const sym of ['ETH', 'BTC', 'SOL']) {
+      for (const sym of ['SOL', 'ETH', 'BTC']) {
         const info = markets[sym];
         if (!info || typeof info.fundingRate !== 'number') continue;
-        const hrs     = info.fundingIntervalHours ?? 8;
-        const perDay  = Math.abs(info.fundingRate) * (24 / hrs) * 1000;
-        const annPct  = Math.abs(info.fundingRate) * (24 / hrs) * 365 * 100;
+        const hrs    = info.fundingIntervalHours ?? 8;
+        const perDay = Math.abs(info.fundingRate) * (24 / hrs) * 1000;
+        const annPct = Math.abs(info.fundingRate) * (24 / hrs) * 365 * 100;
         if (!best || perDay > best.perDay1k) {
           best = { perDay1k: Math.round(perDay), symbol: sym, exchange: exc, annPct: Math.round(annPct) };
         }
       }
     }
     funding = best;
-  } catch { /* file absent — show empty state */ }
+  } catch { /* file absent */ }
 
   try {
     const raw  = JSON.parse(fs.readFileSync('/tmp/basis-opportunities.json', 'utf8'));
@@ -116,25 +136,163 @@ function readLandingStats(): { funding: FundingStat | null; prediction: PredStat
       asset: string; exchange: string; contract: string;
       netAnnualizedExecutable?: number; netAnnualized?: number; coinMargined?: boolean;
     }>;
-    const sorted = [...opps].sort((a, b) => (b.netAnnualizedExecutable ?? b.netAnnualized ?? 0) - (a.netAnnualizedExecutable ?? a.netAnnualized ?? 0));
+    const sorted = [...opps]
+      .filter(o => (o.netAnnualizedExecutable ?? o.netAnnualized ?? 0) > 0)
+      .sort((a, b) => (b.netAnnualizedExecutable ?? b.netAnnualized ?? 0) - (a.netAnnualizedExecutable ?? a.netAnnualized ?? 0));
     if (sorted.length > 0) {
       const top = sorted[0];
       basis = {
-        netAnnualized: Math.round((top.netAnnualizedExecutable ?? top.netAnnualized ?? 0) * 1000) / 10,
+        netAnnualized: Math.round((top.netAnnualizedExecutable ?? top.netAnnualized ?? 0) * 10) / 10,
         asset:         top.asset,
         exchange:      top.exchange,
         contract:      top.contract,
         coinMargined:  top.coinMargined ?? false,
       };
     }
-  } catch { /* file absent — show empty state */ }
+  } catch { /* file absent */ }
 
-  return { funding, prediction, basis };
+  try {
+    const raw = JSON.parse(fs.readFileSync('/tmp/sports-odds.json', 'utf8'));
+    // Only use data fresh within 2 hours
+    const ageMs = Date.now() - (typeof raw.fetchedAt === 'number' ? raw.fetchedAt : 0);
+    if (ageMs < 7_200_000) {
+      const arbs = (raw?.arbOpportunities ?? []) as Array<{
+        homeTeam: string; awayTeam: string; sport: string;
+        netMargin: number; grossMargin: number; isStale?: boolean;
+      }>;
+      const valid = arbs
+        .filter(a => !a.isStale && (a.netMargin ?? a.grossMargin ?? 0) > 0)
+        .sort((a, b) => (b.netMargin ?? 0) - (a.netMargin ?? 0));
+      if (valid.length > 0) {
+        sports = {
+          netMargin: valid[0].netMargin ?? valid[0].grossMargin,
+          homeTeam:  valid[0].homeTeam,
+          awayTeam:  valid[0].awayTeam,
+          sport:     valid[0].sport,
+        };
+      }
+    }
+  } catch { /* file absent or stale */ }
+
+  try {
+    let bestReward: RewardsStat | null = null;
+
+    // Polymarket
+    const polyRaw  = JSON.parse(fs.readFileSync('/root/prediction-market/data/liquidity-rewards.json', 'utf8'));
+    const polyMkts = (polyRaw?.markets ?? []) as Array<{
+      levels: Record<string, { grossRewardDay?: number; dayYieldPct?: number; belowFloorFlag?: boolean; thinBookFlag?: boolean }>;
+    }>;
+    for (const m of polyMkts) {
+      for (const capStr of ['500', '1000', '2000']) {
+        const lv = m.levels?.[capStr];
+        if (!lv || !lv.grossRewardDay || lv.belowFloorFlag || lv.thinBookFlag) continue;
+        const score = (lv.dayYieldPct ?? 0) * 365;
+        if (!bestReward || score > bestReward.dayYieldPct * 365) {
+          bestReward = { bestDay: Math.round(lv.grossRewardDay), dayYieldPct: lv.dayYieldPct ?? 0, capital: +capStr, platform: 'Polymarket' };
+        }
+        break;
+      }
+    }
+
+    // Kalshi
+    const kalshiRaw  = JSON.parse(fs.readFileSync('/root/prediction-market/data/kalshi-rewards.json', 'utf8'));
+    const kalshiMkts = (kalshiRaw?.markets ?? []) as Array<{
+      levels: Record<string, { aboveMin?: boolean; grossRewardDay?: number; dayYieldPct?: number }>;
+    }>;
+    for (const m of kalshiMkts) {
+      for (const capStr of ['500', '1000', '2000']) {
+        const lv = m.levels?.[capStr];
+        if (!lv || !lv.aboveMin || !lv.grossRewardDay) continue;
+        const score = (lv.dayYieldPct ?? 0) * 365;
+        if (!bestReward || score > bestReward.dayYieldPct * 365) {
+          bestReward = { bestDay: Math.round(lv.grossRewardDay), dayYieldPct: lv.dayYieldPct ?? 0, capital: +capStr, platform: 'Kalshi' };
+        }
+        break;
+      }
+    }
+
+    rewards = bestReward;
+  } catch { /* file absent */ }
+
+  return { funding, prediction, basis, sports, rewards };
+}
+
+// ── Live card rows ─────────────────────────────────────────────────────────
+function buildLiveRows(stats: ReturnType<typeof readLandingStats>): LiveRow[] {
+  const { funding, prediction, basis, sports, rewards } = stats;
+  const rows: LiveRow[] = [];
+
+  if (funding && funding.perDay1k > 0) {
+    const icon = funding.symbol === 'BTC' ? '₿' : funding.symbol === 'ETH' ? 'Ξ' : funding.symbol[0];
+    rows.push({
+      key: 'funding', icon, tileColor: 'mint',
+      name: `${funding.symbol} funding spread`,
+      sub:  `${funding.exchange} · net of fees`,
+      chip: 'cashable', valueTone: 'up',
+      value: `+$${funding.perDay1k}`,
+      unit:  'net/day per $1k',
+      rankScore: funding.annPct,
+    });
+  }
+
+  if (sports && sports.netMargin > 0) {
+    const icon = sports.sport.includes('basketball') ? '🏀' : sports.sport.includes('football') ? '🏈' : '⚽';
+    rows.push({
+      key: 'sports', icon, tileColor: 'mint',
+      name: 'Cross-book arb',
+      sub:  `${sports.homeTeam} vs ${sports.awayTeam}`.slice(0, 34),
+      chip: 'cashable', valueTone: 'up',
+      value: `+${sports.netMargin.toFixed(1)}%`,
+      unit:  'confirmed margin',
+      rankScore: sports.netMargin * 260,
+    });
+  }
+
+  if (rewards && rewards.bestDay > 0) {
+    rows.push({
+      key: 'rewards', icon: '◈', tileColor: 'mint',
+      name: `${rewards.platform} maker rewards`,
+      sub:  `est. net/day at $${rewards.capital.toLocaleString()} deployed`,
+      chip: 'cashable', valueTone: 'up',
+      value: `$${rewards.bestDay}`,
+      unit:  'est. net/day',
+      rankScore: rewards.dayYieldPct * 365,
+    });
+  }
+
+  if (basis && basis.netAnnualized > 0) {
+    rows.push({
+      key: 'carry', icon: '◉', tileColor: 'gold',
+      name: `${basis.asset} carry`,
+      sub:  `${basis.exchange} · ${basis.contract}`,
+      chip: 'cashable', valueTone: 'up',
+      value: `+${basis.netAnnualized}%/yr`,
+      unit:  basis.coinMargined ? 'basis · coin-margined' : 'executable basis',
+      rankScore: basis.netAnnualized,
+    });
+  }
+
+  if (prediction && prediction.cashable > 0) {
+    rows.push({
+      key: 'prediction', icon: '◎', tileColor: 'mint',
+      name: 'Prediction arb',
+      sub:  `${prediction.pairsChecked} pairs checked`,
+      chip: 'cashable', valueTone: 'up',
+      value: String(prediction.cashable),
+      unit:  'cashable right now',
+      rankScore: prediction.cashable * 20,
+    });
+  }
+
+  rows.sort((a, b) => b.rankScore - a.rankScore);
+  return rows.slice(0, 3);
 }
 
 // ── Page ───────────────────────────────────────────────────────────────────
 export default function LandingPage() {
-  const { funding, prediction, basis } = readLandingStats();
+  const stats = readLandingStats();
+  const { funding, prediction, basis } = stats;
+  const liveRows = buildLiveRows(stats);
 
   return (
     <div className="min-h-screen">
@@ -151,8 +309,6 @@ export default function LandingPage() {
 
             {/* Left col */}
             <div className="space-y-6 lg:max-w-xl">
-              <Pill>Prediction markets + crypto, on one radar</Pill>
-
               <SectionHeading
                 id="hero-heading"
                 as="h1"
@@ -215,34 +371,33 @@ export default function LandingPage() {
                   />
                 </div>
 
-                {/* Blip rows */}
+                {/* Blip rows — real opportunities only */}
                 <div className="divide-y divide-line">
-                  <BlipRow
-                    icon="Ξ"
-                    tileColor="mint"
-                    name="ETH funding"
-                    chip="cashable"
-                    value="+$42"
-                    unit="net / day"
-                    valueTone="up"
-                  />
-                  <BlipRow
-                    icon="↗"
-                    tileColor="violet"
-                    name="Top trader to watch"
-                    chip="signal"
-                    value="68%"
-                    unit="true win rate"
-                  />
-                  <BlipRow
-                    icon="◎"
-                    tileColor="mint"
-                    name="Prediction markets"
-                    sub="No fake fills"
-                    chip="paper"
-                    value="0"
-                    unit="cashable now"
-                  />
+                  {liveRows.length > 0 ? (
+                    liveRows.map(row => (
+                      <BlipRow
+                        key={row.key}
+                        icon={row.icon}
+                        tileColor={row.tileColor}
+                        name={row.name}
+                        sub={row.sub}
+                        chip={row.chip}
+                        value={row.value}
+                        unit={row.unit}
+                        valueTone={row.valueTone}
+                      />
+                    ))
+                  ) : (
+                    <BlipRow
+                      icon="◎"
+                      tileColor="mint"
+                      name="Scanning markets"
+                      sub="checking all sources now"
+                      chip="signal"
+                      value="—"
+                      unit="no edge confirmed yet"
+                    />
+                  )}
                 </div>
 
               </div>
