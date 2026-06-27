@@ -8,7 +8,6 @@ import EdgeChip, { type EdgeChipVariant } from '@/app/components/ui/EdgeChip';
 import RadarMark    from '@/app/components/ui/RadarMark';
 import RadarScope   from '@/app/components/ui/RadarScope';
 import BlipRow      from '@/app/components/ui/BlipRow';
-import StatCard     from '@/app/components/ui/StatCard';
 
 export const dynamic = 'force-dynamic';
 
@@ -291,7 +290,6 @@ function buildLiveRows(stats: ReturnType<typeof readLandingStats>): LiveRow[] {
 // ── Page ───────────────────────────────────────────────────────────────────
 export default function LandingPage() {
   const stats = readLandingStats();
-  const { funding, prediction, basis } = stats;
   const liveRows = buildLiveRows(stats);
 
   return (
@@ -481,69 +479,7 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* ── 4. TODAY SNAPSHOT ─────────────────────────────────────────────── */}
-        <section
-          id="today"
-          className="border-t border-line bg-bg-soft/50"
-          aria-labelledby="today-heading"
-        >
-          <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
-            <div className="mb-10">
-              <Eyebrow className="mb-2">Today</Eyebrow>
-              <SectionHeading id="today-heading" className="text-2xl sm:text-3xl">
-                What's live right now
-              </SectionHeading>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-
-              {/* Funding rate stat */}
-              <StatCard
-                label="Top funding rate"
-                value={funding ? `$${funding.perDay1k}` : '—'}
-                note={
-                  funding
-                    ? `net / day per $1k notional · ${funding.symbol} · ${funding.exchange}`
-                    : 'No live funding data right now'
-                }
-                demoted={funding ? `est. ${funding.annPct > 200 ? '>200%/yr · run-rate, not guaranteed' : `${funding.annPct}%/yr · rate variable`}` : undefined}
-              />
-
-              {/* Prediction cashable */}
-              <StatCard
-                label="Prediction cashable"
-                value={prediction ? String(prediction.cashable) : '0'}
-                note={
-                  prediction && prediction.cashable > 0
-                    ? `confirmed cashable pair${prediction.cashable !== 1 ? 's' : ''}`
-                    : 'No confirmed arb right now'
-                }
-                demoted={prediction ? `${prediction.pairsChecked} pairs checked` : undefined}
-              />
-
-              {/* Carry basis */}
-              <StatCard
-                label="Best carry basis"
-                value={basis ? `${basis.netAnnualized}%/yr` : '—'}
-                note={
-                  basis
-                    ? `executable basis · ${basis.asset} · ${basis.exchange}`
-                    : 'No carry data available'
-                }
-                demoted={
-                  basis
-                    ? basis.coinMargined
-                      ? 'coin-margined — USD return not locked'
-                      : 'indicative — verify before trading'
-                    : undefined
-                }
-              />
-
-            </div>
-          </div>
-        </section>
-
-        {/* ── 5. FINAL CTA ──────────────────────────────────────────────────── */}
+        {/* ── 4. FINAL CTA ──────────────────────────────────────────────────── */}
         <section className="border-t border-line" aria-labelledby="cta-heading">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 py-20 sm:py-28 text-center">
             <SectionHeading

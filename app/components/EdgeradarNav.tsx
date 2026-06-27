@@ -8,7 +8,6 @@ import Button from '@/app/components/ui/Button';
 const NAV_LINKS = [
   { href: '#what-it-finds', label: 'What it finds' },
   { href: '#why-honest',    label: "Why it's honest" },
-  { href: '#today',         label: 'Today' },
 ];
 
 export default function EdgeradarNav() {
