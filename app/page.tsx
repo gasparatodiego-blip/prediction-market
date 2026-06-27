@@ -339,7 +339,7 @@ export default function LandingPage() {
 
               {/* Capability strip */}
               <div className="flex flex-wrap gap-2 pt-1" role="list" aria-label="Edge types covered">
-                {['Arbitrage', 'Funding', 'Carry', 'Liquidity rewards', 'Top traders', 'Sports'].map(cap => (
+                {['Arbitrage', 'Funding', 'Cash & carry', 'Liquidity rewards', 'Top traders', 'Sports'].map(cap => (
                   <span key={cap} role="listitem">
                     <Pill>{cap}</Pill>
                   </span>
@@ -354,7 +354,7 @@ export default function LandingPage() {
                 {/* Card header */}
                 <div className="px-4 py-3 border-b border-line flex items-center gap-2">
                   <RadarMark size={18} />
-                  <span className="font-body font-semibold text-sm text-ink">Scanning 11 markets</span>
+                  <span className="font-body font-semibold text-sm text-ink">Here&apos;s what&apos;s live inside</span>
                 </div>
 
                 {/* Radar visual */}
