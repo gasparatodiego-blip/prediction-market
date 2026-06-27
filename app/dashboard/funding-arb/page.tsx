@@ -164,17 +164,23 @@ function fillablePoints(curve: SlipPoint[] | null): SlipPoint[] {
   return (curve ?? []).filter(p => p.fillable);
 }
 
-function defaultSliderIdx(curve: SlipPoint[] | null, greenCapacity: number | null): number {
+function closestFillablePoint(curve: SlipPoint[] | null, targetSize: number): SlipPoint | null {
   const pts = fillablePoints(curve);
-  if (!pts.length) return 0;
-  if ((greenCapacity ?? 0) > 0) {
-    let last = 0;
-    for (let i = 0; i < pts.length; i++) {
-      if (pts[i].state === 'GREEN') last = i;
-    }
-    return last;
+  if (!pts.length) return null;
+  if (targetSize <= 0) return pts[0];
+  let bestIdx = 0;
+  let bestDiff = Infinity;
+  for (let i = 0; i < pts.length; i++) {
+    const diff = Math.abs(pts[i].size - targetSize);
+    if (diff < bestDiff) { bestDiff = diff; bestIdx = i; }
   }
-  return 0; // smallest fillable
+  return pts[bestIdx];
+}
+
+function slipSortScoreAtSize(s: SpreadItem, targetSize: number): number {
+  if (targetSize <= 0) return slipSortScore(s);
+  const pt = closestFillablePoint(s.slipCurve, targetSize);
+  return pt?.netDayUsd ?? -Infinity;
 }
 
 function slipSortScore(s: SpreadItem): number {
@@ -265,7 +271,7 @@ function FundingSettlementNote({ s }: { s: SpreadItem }) {
   return (
     <p className="font-body text-[11px] text-muted/60 leading-relaxed">
       {parts.join(' · ')}.
-      {' '}APY above is annualized — actual receipt is per interval, varies each reset.
+      {' '}Annualized run-rate above — actual receipt is per interval, varies each reset.
     </p>
   );
 }
@@ -367,11 +373,23 @@ function CapitalControl({
 
 // ── Slip-aware card ───────────────────────────────────────────────────────────
 
-function SlipAwareCard({ s }: { s: SpreadItem }) {
-  const pts           = fillablePoints(s.slipCurve);
-  const [idx, setIdx] = useState(() => defaultSliderIdx(s.slipCurve, s.greenCapacityUsd));
-  const pt            = pts[idx] ?? null;
-  const hasCurve      = pts.length > 0;
+function SlipAwareCard({ s, capital, leverage }: { s: SpreadItem; capital: number; leverage: Leverage }) {
+  const pts      = fillablePoints(s.slipCurve);
+  const hasCurve = pts.length > 0;
+  const userN    = capital * leverage / 2;
+
+  const [inputStr, setInputStr] = useState(() => String(Math.round(userN)));
+
+  useEffect(() => {
+    setInputStr(String(Math.round(capital * leverage / 2)));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [capital, leverage, s.coin, s.shortExchange, s.longExchange]);
+
+  const typedSize = Math.max(0, parseFloat(inputStr) || 0);
+  const pt        = closestFillablePoint(s.slipCurve, typedSize);
+  const overCap   = typedSize > 0
+    && (s.greenCapacityUsd ?? 0) > 0
+    && typedSize > (s.greenCapacityUsd ?? 0);
   const tgHref        = `https://t.me/Gaspola_bot?start=fund_${s.coin}`;
   const hasDex        = s.shortExchange === 'hyperliquid' || s.longExchange === 'hyperliquid'
                      || s.shortExchange === 'dydx'        || s.longExchange === 'dydx';
@@ -422,39 +440,50 @@ function SlipAwareCard({ s }: { s: SpreadItem }) {
       {/* Slip-curve box */}
       {hasCurve ? (
         <div className="p-3 bg-bg-soft/60 rounded-[8px] flex flex-col gap-2">
-          {/* Slider */}
-          <div className="flex items-center gap-2">
-            <span className="font-body text-[11px] text-muted shrink-0">Position</span>
+          {/* Position calculator */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-body text-[11px] text-muted shrink-0">$ Position</span>
             <input
-              type="range"
+              type="number"
               min={0}
-              max={pts.length - 1}
-              value={idx}
-              step={1}
-              onChange={e => setIdx(parseInt(e.target.value))}
-              className="flex-1 h-[3px] accent-[#0FBE82] cursor-pointer"
+              step={100}
+              value={inputStr}
+              onChange={e => setInputStr(e.target.value)}
+              onBlur={() => {
+                const v = Math.max(0, parseFloat(inputStr) || 0);
+                setInputStr(String(Math.round(v)));
+              }}
+              className="w-[5.5rem] px-1.5 py-0.5 font-body text-[11px] bg-surface border border-line text-ink rounded-sm focus:border-mint/50 focus:outline-none tabular-nums"
             />
-            <span className="font-mono text-[10px] tabular-nums text-ink-2 shrink-0 w-14 text-right">
-              {fmtCapWords(pt?.size ?? 0)}
-            </span>
             {pt && (
-              <span className={`font-mono text-[9px] font-semibold shrink-0 w-10 text-right ${slipStateCls(pt.state)}`}>
+              <span className={`font-mono text-[9px] font-semibold shrink-0 ${slipStateCls(pt.state)}`}>
                 {pt.state}
               </span>
             )}
           </div>
+          {overCap && (
+            <div className="font-body text-[10px] text-gold">
+              ⚠ above book green capacity — slippage will exceed model
+            </div>
+          )}
 
           {/* $/day — dominant value */}
           {pt ? (
             <>
               <div className={`font-display font-bold tabular-nums leading-none ${
-                s.oneLegUnverified ? 'text-muted'
+                overCap ? 'text-gold'
+                : s.oneLegUnverified ? 'text-muted'
                 : pt.state === 'GREEN'  ? 'text-mint-deep'
                 : pt.state === 'YELLOW' ? 'text-gold'
                 : 'text-coral-ink'
               }`} style={{ fontSize: 22 }}>
-                ≈ {pt.netDayUsd != null ? fmtDayUsd(pt.netDayUsd) : '—'}
+                {overCap ? '~' : '≈'} {pt.netDayUsd != null ? fmtDayUsd(pt.netDayUsd) : '—'}
               </div>
+              {overCap && (
+                <div className="font-body text-[11px] text-gold/80">
+                  indicative — modeled at {fmtCapWords(pt.size)} (green cap)
+                </div>
+              )}
               {s.oneLegUnverified && (
                 <div className="font-body text-[11px] text-muted">
                   1 leg predicted — rate unconfirmed
@@ -477,7 +506,7 @@ function SlipAwareCard({ s }: { s: SpreadItem }) {
               </div>
               {(s.greenCapacityUsd ?? 0) === 0 && (
                 <div className="font-body text-[11px] text-muted leading-snug">
-                  Thin book — all sizes above slippage threshold. Drag slider to explore.
+                  Thin book — all sizes above slippage threshold.
                 </div>
               )}
             </>
@@ -538,9 +567,10 @@ function OpportunityCards({
   const [showMore, setShowMore] = useState(false);
   const [view,     setView]     = useState<OppView>('cards');
 
-  // Sort by net $/day at greenCapacityUsd; $0-green and no-curve sink to bottom
+  // Sort by net $/day at user's sized position; falls back to green-cap sort if capital is 0
+  const userSize = capital * leverage / 2;
   const sorted = [...spreads].sort((a, b) => {
-    const as = slipSortScore(a), bs = slipSortScore(b);
+    const as = slipSortScoreAtSize(a, userSize), bs = slipSortScoreAtSize(b, userSize);
     return as !== bs ? bs - as : b.netApy30d - a.netApy30d;
   });
 
@@ -593,7 +623,7 @@ function OpportunityCards({
       {view === 'cards' && (
         <div className="grid gap-x-8 gap-y-0 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
           {visible.map(s => (
-            <SlipAwareCard key={`${s.coin}-${s.shortExchange}-${s.longExchange}`} s={s} />
+            <SlipAwareCard key={`${s.coin}-${s.shortExchange}-${s.longExchange}`} s={s} capital={capital} leverage={leverage} />
           ))}
         </div>
       )}
