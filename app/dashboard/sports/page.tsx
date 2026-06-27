@@ -603,6 +603,98 @@ function ScannedEventCard({ ev }: { ev: ScannedEvent }) {
   );
 }
 
+// ── Stake limits & execution risk guide ──────────────────────────────────────
+
+function StakeLimitsGuide() {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="rounded-card shadow-card bg-surface overflow-hidden">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-bg-soft/60 transition-colors"
+        aria-expanded={open}
+      >
+        <div className="flex items-center gap-2">
+          <span className="font-body text-[12px] font-medium text-ink-2">Stake limits &amp; execution risk</span>
+          <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-gold-tint border border-gold/25 font-body font-medium text-[10px] text-gold uppercase tracking-wide">
+            INDICATIVE
+          </span>
+        </div>
+        <span className="font-body text-[11px] text-muted/60 shrink-0">{open ? '▲ close' : '▼ show'}</span>
+      </button>
+
+      {open && (
+        <div className="px-5 pb-5 border-t border-line space-y-4 pt-4">
+          <p className="font-body text-[12px] text-muted leading-relaxed">
+            Bookmaker max-stake limits aren&apos;t available via our data feed and aren&apos;t
+            fixed — books often lower an arber&apos;s personal limit after a few bets. Use the
+            ranges below as rough guidance only and verify on each book.
+          </p>
+
+          {/* Indicative range table */}
+          <div className="space-y-1.5">
+            <p className="font-body text-[10px] uppercase tracking-widest text-muted/80">
+              Typical max stake — indicative, varies by event/market/account
+            </p>
+            <div className="rounded-md border border-line overflow-hidden divide-y divide-line">
+              <div className="grid grid-cols-[1fr_auto] items-start px-3 py-2.5 gap-3 bg-surface">
+                <div>
+                  <span className="font-body text-[12px] text-ink-2 font-medium">Sharp books / exchanges</span>
+                  <span className="font-body text-[11px] text-muted ml-1.5">e.g. Pinnacle, Betfair</span>
+                  <p className="font-body text-[11px] text-muted mt-0.5">Often €/$ thousands; rarely limit winners</p>
+                </div>
+                <span className="font-body text-[12px] font-semibold text-mint-deep shrink-0">High</span>
+              </div>
+              <div className="grid grid-cols-[1fr_auto] items-start px-3 py-2.5 gap-3 bg-surface">
+                <div>
+                  <span className="font-body text-[12px] text-ink-2 font-medium">Major regulated books</span>
+                  <span className="font-body text-[11px] text-muted ml-1.5">bet365, William Hill, etc.</span>
+                  <p className="font-body text-[11px] text-muted mt-0.5">Hundreds to low thousands; may limit consistent winners</p>
+                </div>
+                <span className="font-body text-[12px] font-semibold text-ink-2 shrink-0">Medium</span>
+              </div>
+              <div className="grid grid-cols-[1fr_auto] items-start px-3 py-2.5 gap-3 bg-surface">
+                <div>
+                  <span className="font-body text-[12px] text-ink-2 font-medium">Soft / promo-driven EU books</span>
+                  <p className="font-body text-[11px] text-muted mt-0.5">Tens to low hundreds once flagged; fastest to restrict arbers</p>
+                </div>
+                <span className="font-body text-[12px] font-semibold text-gold shrink-0">Low</span>
+              </div>
+            </div>
+            <p className="font-body text-[10px] text-muted/60">
+              Ranges are illustrative only — actual limits vary by account history, jurisdiction, and event.
+            </p>
+          </div>
+
+          {/* Execution risk */}
+          <div className="space-y-2">
+            <p className="font-body text-[10px] uppercase tracking-widest text-muted/80">Execution risk</p>
+            <ul className="space-y-1">
+              {[
+                'Odds move in seconds — the second leg can shift before you fill it.',
+                'Bet delay: many books hold a bet several seconds to validate; the other side may re-price meanwhile.',
+                'Markets can suspend mid-placement, leaving you one-legged.',
+                'Soft books may void or limit large / arb stakes after the fact.',
+                'Always place the harder / most-likely-to-move leg first.',
+              ].map((item, i) => (
+                <li key={i} className="flex gap-1.5 font-body text-[12px] text-muted leading-relaxed">
+                  <span className="text-muted/40 shrink-0 mt-px">·</span>
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <p className="font-body text-[11px] text-muted/60 border-t border-line pt-3 leading-relaxed">
+            No orders placed by this tool. Verify both sides independently before acting.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function SportsSnapshotPage() {
@@ -840,6 +932,9 @@ export default function SportsSnapshotPage() {
           <div className="h-36 rounded-card bg-bg-soft" />
         </div>
       )}
+
+      {/* Stake limits & execution risk */}
+      <StakeLimitsGuide />
 
       {/* Footer */}
       <div className="border-t border-line pt-5 space-y-1.5">
