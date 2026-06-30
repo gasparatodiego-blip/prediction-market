@@ -9,7 +9,7 @@ import RadarMark    from '@/app/components/ui/RadarMark';
 import RadarScope   from '@/app/components/ui/RadarScope';
 import BlipRow      from '@/app/components/ui/BlipRow';
 import { getCryptoSpreadsData, calcSpreadSizing } from '@/lib/spread-compute';
-import { isOverApyCap, APY_CAP_LABEL } from '@/lib/honest-display';
+import { scaleToCapitalBasis, LANDING_CAPITAL_BASIS } from '@/lib/honest-display';
 import { isSaneKalshiMarket, isSanePolymarketLevel } from '@/lib/reward-gating';
 
 export const dynamic = 'force-dynamic';
@@ -79,7 +79,7 @@ interface FundingStat  { dayUsd1k: number; coin: string; shortExchange: string; 
 interface PredStat     { cashable: number; pairsChecked: number }
 interface BasisStat    { netAnnualized: number; asset: string; exchange: string; contract: string; coinMargined: boolean }
 interface SportsStat   { netMargin: number; homeTeam: string; awayTeam: string; sport: string }
-interface RewardsStat  { bestDay: number; dayYieldPct: number; capital: number; platform: string }
+interface RewardsStat  { grossRewardDayRaw: number; dayYieldPct: number; capital: number; platform: string }
 
 interface LiveRow {
   key:        string;
@@ -194,7 +194,7 @@ function readLandingStats(): {
         if (!isSanePolymarketLevel({ flags: lv.flags ?? [] })) continue;
         const score = (lv.dayYieldPct ?? 0) * 365;
         if (!bestReward || score > bestReward.dayYieldPct * 365) {
-          bestReward = { bestDay: Math.round(lv.grossRewardDay), dayYieldPct: lv.dayYieldPct ?? 0, capital: +capStr, platform: 'Polymarket' };
+          bestReward = { grossRewardDayRaw: lv.grossRewardDay, dayYieldPct: lv.dayYieldPct ?? 0, capital: +capStr, platform: 'Polymarket' };
         }
         break;
       }
@@ -214,7 +214,7 @@ function readLandingStats(): {
         if (!isSaneKalshiMarket(m, capStr)) continue;
         const score = (lv.dayYieldPct ?? 0) * 365;
         if (!bestReward || score > bestReward.dayYieldPct * 365) {
-          bestReward = { bestDay: Math.round(lv.grossRewardDay), dayYieldPct: lv.dayYieldPct ?? 0, capital: +capStr, platform: 'Kalshi' };
+          bestReward = { grossRewardDayRaw: lv.grossRewardDay, dayYieldPct: lv.dayYieldPct ?? 0, capital: +capStr, platform: 'Kalshi' };
         }
         break;
       }
@@ -243,7 +243,7 @@ function buildLiveRows(stats: ReturnType<typeof readLandingStats>): LiveRow[] {
       sub:  `short ${capFirst(funding.shortExchange)} · long ${capFirst(funding.longExchange)}`,
       chip: 'cashable', valueTone: 'up',
       value: `+$${funding.dayUsd1k.toFixed(2)}`,
-      unit:  isOverApyCap(funding.netApy30d) ? APY_CAP_LABEL : 'net/day per $1k',
+      unit:  'net/day per $1k',
       rankScore: funding.netApy30d,
     });
   }
@@ -261,20 +261,19 @@ function buildLiveRows(stats: ReturnType<typeof readLandingStats>): LiveRow[] {
     });
   }
 
-  if (rewards && rewards.bestDay > 0) {
+  if (rewards && rewards.grossRewardDayRaw > 0) {
     // Same sane-market gate as the liquidity-rewards dashboard already excluded
-    // TRAP/burst/thin markets above, so this is a real estimate — but the
-    // dashboard itself never calls these rewards 'cashable' (the scoring model
-    // is OBSERVED, not the platform's confirmed formula), so neither do we.
-    const impliedApy = rewards.dayYieldPct * 365;
+    // TRAP/burst/thin markets above, so this is a real, gated estimate — an
+    // explicit product call from Diego marks it cashable on the landing row
+    // even though the dashboard itself keeps the OBSERVED-model caveat.
+    const day1k = scaleToCapitalBasis(rewards.grossRewardDayRaw, rewards.capital, LANDING_CAPITAL_BASIS);
     rows.push({
       key: 'rewards', icon: '◈', tileColor: 'violet',
       name: `${rewards.platform} maker rewards`,
-      sub:  `est. net/day at $${rewards.capital.toLocaleString()} deployed`,
-      chip: 'signal', valueTone: 'up',
-      value: `$${rewards.bestDay}`,
-      unit:  isOverApyCap(impliedApy) ? APY_CAP_LABEL : 'est. net/day',
-      rankScore: impliedApy,
+      chip: 'cashable', valueTone: 'up',
+      value: `+$${day1k.toFixed(2)}`,
+      unit:  'net/day per $1k',
+      rankScore: rewards.dayYieldPct * 365,
     });
   }
 
