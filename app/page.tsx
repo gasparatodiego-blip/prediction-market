@@ -43,14 +43,15 @@ const SIX_WAYS = [
     desc:  'Earn real maker rewards for providing liquidity on Polymarket and Kalshi. We show net estimated reward/day and flag any program rate we can\'t confirm.',
   },
   {
-    chip:  'signal' as const,
-    title: 'Top traders',
-    desc:  "Every public Polymarket wallet ranked by true win rate, not just P&L. See who's actually skilled versus who rode a lucky streak. Worth watching — not a copy-trade signal.",
-  },
-  {
     chip:  'cashable' as const,
     title: 'Sports edges',
     desc:  'Lock a guaranteed margin when the same outcome is priced differently across 40+ sportsbooks. Soft-book and cross-jurisdiction legs are flagged so you only act on truly takeable ones.',
+  },
+  {
+    chip:  'signal' as const,
+    chip2: 'copy_trader' as const,
+    title: 'Top traders',
+    desc:  "Every public Polymarket wallet ranked by true win rate, not just P&L. See who's actually skilled versus who rode a lucky streak. Copy the wallets you trust, straight from the leaderboard.",
   },
 ] as const;
 
@@ -424,7 +425,10 @@ export default function LandingPage() {
                   key={card.title}
                   className="bg-surface rounded-card shadow-card border border-line p-5 flex flex-col gap-3"
                 >
-                  <EdgeChip variant={card.chip} />
+                  <div className="flex items-center gap-1.5">
+                    <EdgeChip variant={card.chip} />
+                    {'chip2' in card && <EdgeChip variant={card.chip2} />}
+                  </div>
                   <div>
                     <h3 className="font-display font-semibold text-[15px] text-ink mb-1.5 leading-snug">
                       {card.title}

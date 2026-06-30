@@ -4,6 +4,7 @@ export type EdgeChipVariant =
   | 'cashable'
   | 'paper'
   | 'signal'
+  | 'copy_trader'
   | 'speculative'
   | 'trap';
 
@@ -11,6 +12,7 @@ const LABELS: Record<EdgeChipVariant, string> = {
   cashable:    'CASHABLE',
   paper:       'PAPER',
   signal:      'SIGNAL',
+  copy_trader: 'COPY TRADER',
   speculative: 'SPECULATIVE',
   trap:        'TRAP',
 };
@@ -21,6 +23,7 @@ const CHIP_CLS: Record<EdgeChipVariant, string> = {
   cashable:    'bg-mint-tint   text-mint-deep',
   paper:       'bg-coral-tint  text-coral-ink',
   signal:      'bg-violet-tint text-violet',
+  copy_trader: 'bg-violet-tint text-violet',
   speculative: 'bg-gold-tint   text-gold',
   trap:        'text-[#E5564E]',            // bg applied via inline style below
 };
@@ -29,6 +32,7 @@ const CHIP_CLS: Record<EdgeChipVariant, string> = {
 const DOT_CLS: Partial<Record<EdgeChipVariant, string>> = {
   paper:       'bg-coral-ink',
   signal:      'bg-violet',
+  copy_trader: 'bg-violet',
   speculative: 'bg-gold',
   trap:        'bg-[#E5564E]',
 };
