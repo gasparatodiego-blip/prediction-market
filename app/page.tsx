@@ -30,12 +30,12 @@ const SIX_WAYS = [
   {
     chip:  'cashable' as const,
     title: 'Funding spreads',
-    desc:  "Earn perpetual funding by holding long spot and short perp — or the reverse. Rates reset every 8 hours; no lockup, but no guarantee of tomorrow's rate.",
+    desc:  "Earn perpetual funding — the recurring payment between long and short positions in crypto futures — by holding long spot and short perp, or the reverse. Rates reset every 8 hours; no lockup, but no guarantee of tomorrow's rate.",
   },
   {
     chip:  'cashable' as const,
     title: 'Cash & carry',
-    desc:  'Lock in the basis between spot and a dated futures contract. Yield is fixed at expiry — most contracts are coin-margined, so the USD return drifts with spot price.',
+    desc:  'Lock in the basis — the price gap between spot and a dated futures contract. Yield is fixed at expiry — most contracts are coin-margined, so the USD return drifts with spot price.',
   },
   {
     chip:  'cashable' as const,
@@ -417,6 +417,10 @@ export default function LandingPage() {
               <SectionHeading id="six-ways-heading" className="text-2xl sm:text-3xl">
                 Six ways to find your edge
               </SectionHeading>
+              <p className="font-body text-sm text-ink-2 mt-2 max-w-2xl">
+                Whether you came from crypto or traditional finance, every edge below — across
+                prediction markets, crypto, and sports — is scored the same honest way.
+              </p>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -439,6 +443,15 @@ export default function LandingPage() {
                   </div>
                 </div>
               ))}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 mt-6 font-body text-[13px] text-ink-2">
+              <span className="inline-flex items-center gap-2">
+                <EdgeChip variant="cashable" /> you can actually execute it and pocket the result
+              </span>
+              <span className="inline-flex items-center gap-2">
+                <EdgeChip variant="signal" /> an indicator to watch — not directly executable
+              </span>
             </div>
           </div>
         </section>
