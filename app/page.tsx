@@ -8,6 +8,9 @@ import EdgeChip, { type EdgeChipVariant } from '@/app/components/ui/EdgeChip';
 import RadarMark    from '@/app/components/ui/RadarMark';
 import RadarScope   from '@/app/components/ui/RadarScope';
 import BlipRow      from '@/app/components/ui/BlipRow';
+import { getCryptoSpreadsData, calcSpreadSizing } from '@/lib/spread-compute';
+import { isOverApyCap, APY_CAP_LABEL } from '@/lib/honest-display';
+import { isSaneKalshiMarket, isSanePolymarketLevel } from '@/lib/reward-gating';
 
 export const dynamic = 'force-dynamic';
 
@@ -72,7 +75,7 @@ const HONEST_ENGINE = [
 ] as const;
 
 // ── Server-side stats ──────────────────────────────────────────────────────
-interface FundingStat  { perDay1k: number; symbol: string; exchange: string; annPct: number }
+interface FundingStat  { dayUsd1k: number; coin: string; shortExchange: string; longExchange: string; netApy30d: number }
 interface PredStat     { cashable: number; pairsChecked: number }
 interface BasisStat    { netAnnualized: number; asset: string; exchange: string; contract: string; coinMargined: boolean }
 interface SportsStat   { netMargin: number; homeTeam: string; awayTeam: string; sport: string }
@@ -110,24 +113,21 @@ function readLandingStats(): {
   } catch { /* file absent or stale */ }
 
   try {
-    const raw     = JSON.parse(fs.readFileSync('/tmp/exchange-prices.json', 'utf8'));
-    const futures = (raw?.futures ?? {}) as Record<string, Record<string, { fundingRate?: number; fundingIntervalHours?: number }>>;
-    const exchanges = ['binance', 'bybit', 'okx', 'hyperliquid'];
-    let best: FundingStat | null = null;
-    for (const exc of exchanges) {
-      const markets = futures[exc] ?? {};
-      for (const sym of ['SOL', 'ETH', 'BTC']) {
-        const info = markets[sym];
-        if (!info || typeof info.fundingRate !== 'number') continue;
-        const hrs    = info.fundingIntervalHours ?? 8;
-        const perDay = Math.abs(info.fundingRate) * (24 / hrs) * 1000;
-        const annPct = Math.abs(info.fundingRate) * (24 / hrs) * 365 * 100;
-        if (!best || perDay > best.perDay1k) {
-          best = { perDay1k: Math.round(perDay), symbol: sym, exchange: exc, annPct: Math.round(annPct) };
-        }
-      }
+    // Same pipeline the funding-arb dashboard uses (lib/spread-compute.ts) — no
+    // parallel fundingRate math here. Only a spread that's verified + liquid
+    // (the dashboard's own 'cashable' condition) is eligible for the landing.
+    const { spreads } = getCryptoSpreadsData();
+    const sane = spreads.find(s => !s.oneLegUnverified && !s.thinFlag && !s.depthThin);
+    if (sane) {
+      const sizing = calcSpreadSizing(sane, 1000, 1);
+      funding = {
+        dayUsd1k:      Math.round(sizing.dayUsd * 100) / 100,
+        coin:          sane.coin,
+        shortExchange: sane.shortExchange,
+        longExchange:  sane.longExchange,
+        netApy30d:     sane.netApy30d,
+      };
     }
-    funding = best;
   } catch { /* file absent */ }
 
   try {
@@ -175,17 +175,23 @@ function readLandingStats(): {
   } catch { /* file absent or stale */ }
 
   try {
+    // Capital tiers as actually keyed in the agent output (matches the
+    // liquidity-rewards dashboard's CAPITAL_OPTIONS). A market only qualifies
+    // at a tier if it passes the SAME sane-market gate the dashboard uses —
+    // TRAP / SHORT_BURST / THIN_CAP / BELOW_FLOOR / ONE_SIDED / WARN all disqualify.
+    const CAPITAL_TIERS = ['500', '5000', '50000'];
     let bestReward: RewardsStat | null = null;
 
     // Polymarket
     const polyRaw  = JSON.parse(fs.readFileSync('/root/prediction-market/data/liquidity-rewards.json', 'utf8'));
     const polyMkts = (polyRaw?.markets ?? []) as Array<{
-      levels: Record<string, { grossRewardDay?: number; dayYieldPct?: number; belowFloorFlag?: boolean; thinBookFlag?: boolean }>;
+      levels: Record<string, { grossRewardDay?: number; dayYieldPct?: number; flags?: string[] }>;
     }>;
     for (const m of polyMkts) {
-      for (const capStr of ['500', '1000', '2000']) {
+      for (const capStr of CAPITAL_TIERS) {
         const lv = m.levels?.[capStr];
-        if (!lv || !lv.grossRewardDay || lv.belowFloorFlag || lv.thinBookFlag) continue;
+        if (!lv || !lv.grossRewardDay) continue;
+        if (!isSanePolymarketLevel({ flags: lv.flags ?? [] })) continue;
         const score = (lv.dayYieldPct ?? 0) * 365;
         if (!bestReward || score > bestReward.dayYieldPct * 365) {
           bestReward = { bestDay: Math.round(lv.grossRewardDay), dayYieldPct: lv.dayYieldPct ?? 0, capital: +capStr, platform: 'Polymarket' };
@@ -197,12 +203,15 @@ function readLandingStats(): {
     // Kalshi
     const kalshiRaw  = JSON.parse(fs.readFileSync('/root/prediction-market/data/kalshi-rewards.json', 'utf8'));
     const kalshiMkts = (kalshiRaw?.markets ?? []) as Array<{
+      flags: { TRAP: boolean; SHORT_BURST: boolean; BELOW_FLOOR: boolean; THIN_CAP: boolean; ONE_SIDED: boolean };
+      last_price: number;
       levels: Record<string, { aboveMin?: boolean; grossRewardDay?: number; dayYieldPct?: number }>;
     }>;
     for (const m of kalshiMkts) {
-      for (const capStr of ['500', '1000', '2000']) {
+      for (const capStr of CAPITAL_TIERS) {
         const lv = m.levels?.[capStr];
-        if (!lv || !lv.aboveMin || !lv.grossRewardDay) continue;
+        if (!lv || !lv.grossRewardDay) continue;
+        if (!isSaneKalshiMarket(m, capStr)) continue;
         const score = (lv.dayYieldPct ?? 0) * 365;
         if (!bestReward || score > bestReward.dayYieldPct * 365) {
           bestReward = { bestDay: Math.round(lv.grossRewardDay), dayYieldPct: lv.dayYieldPct ?? 0, capital: +capStr, platform: 'Kalshi' };
@@ -217,21 +226,25 @@ function readLandingStats(): {
   return { funding, prediction, basis, sports, rewards };
 }
 
+function capFirst(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 // ── Live card rows ─────────────────────────────────────────────────────────
 function buildLiveRows(stats: ReturnType<typeof readLandingStats>): LiveRow[] {
   const { funding, prediction, basis, sports, rewards } = stats;
   const rows: LiveRow[] = [];
 
-  if (funding && funding.perDay1k > 0) {
-    const icon = funding.symbol === 'BTC' ? '₿' : funding.symbol === 'ETH' ? 'Ξ' : funding.symbol[0];
+  if (funding && funding.dayUsd1k > 0) {
+    const icon = funding.coin === 'BTC' ? '₿' : funding.coin === 'ETH' ? 'Ξ' : funding.coin[0];
     rows.push({
       key: 'funding', icon, tileColor: 'mint',
-      name: `${funding.symbol} funding spread`,
-      sub:  `${funding.exchange} · net of fees`,
+      name: `${funding.coin} funding spread`,
+      sub:  `short ${capFirst(funding.shortExchange)} · long ${capFirst(funding.longExchange)}`,
       chip: 'cashable', valueTone: 'up',
-      value: `+$${funding.perDay1k}`,
-      unit:  'net/day per $1k',
-      rankScore: funding.annPct,
+      value: `+$${funding.dayUsd1k.toFixed(2)}`,
+      unit:  isOverApyCap(funding.netApy30d) ? APY_CAP_LABEL : 'net/day per $1k',
+      rankScore: funding.netApy30d,
     });
   }
 
@@ -249,14 +262,19 @@ function buildLiveRows(stats: ReturnType<typeof readLandingStats>): LiveRow[] {
   }
 
   if (rewards && rewards.bestDay > 0) {
+    // Same sane-market gate as the liquidity-rewards dashboard already excluded
+    // TRAP/burst/thin markets above, so this is a real estimate — but the
+    // dashboard itself never calls these rewards 'cashable' (the scoring model
+    // is OBSERVED, not the platform's confirmed formula), so neither do we.
+    const impliedApy = rewards.dayYieldPct * 365;
     rows.push({
-      key: 'rewards', icon: '◈', tileColor: 'mint',
+      key: 'rewards', icon: '◈', tileColor: 'violet',
       name: `${rewards.platform} maker rewards`,
       sub:  `est. net/day at $${rewards.capital.toLocaleString()} deployed`,
-      chip: 'cashable', valueTone: 'up',
+      chip: 'signal', valueTone: 'up',
       value: `$${rewards.bestDay}`,
-      unit:  'est. net/day',
-      rankScore: rewards.dayYieldPct * 365,
+      unit:  isOverApyCap(impliedApy) ? APY_CAP_LABEL : 'est. net/day',
+      rankScore: impliedApy,
     });
   }
 

@@ -4,54 +4,16 @@ import { useEffect, useState, useCallback, useRef, Fragment } from 'react';
 import Link from 'next/link';
 import SectionHelp from '@/app/components/SectionHelp';
 import EdgeChip, { type EdgeChipVariant } from '@/app/components/ui/EdgeChip';
+import {
+  type FuturesCoin,
+  type SlipPoint,
+  type SpreadItem,
+  type Leverage,
+  calcSpreadSizing,
+} from '@/lib/spread-types';
+import { APY_CAP } from '@/lib/honest-display';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-
-interface FuturesCoin {
-  markPrice?:            number | null;
-  fundingRate:           number;
-  fundingIntervalHours?: number;
-  nextFundingTime?:      number;
-  openInterest?:         number | null;
-}
-
-interface SlipPoint {
-  size:          number;
-  fillable:      boolean;
-  slipBps:       number | null;
-  slipUsd:       number | null;
-  grossDayUsd:   number;
-  netDayUsd:     number | null;
-  slipOverGross: number | null;
-  state:         'GREEN' | 'YELLOW' | 'RED';
-}
-
-interface SpreadItem {
-  coin:               string;
-  shortExchange:      string;
-  longExchange:       string;
-  frShort:            number;
-  frLong:             number;
-  intervalHoursShort: number;
-  intervalHoursLong:  number;
-  shortIsDex:         boolean;
-  longIsDex:          boolean;
-  hasDexLeg:          boolean;
-  grossApy:           number;
-  netApy30d:          number;
-  totalFeesPct:       number;
-  breakevenDays:      number;
-  status:             'HARVEST' | 'CAUTION' | 'MARGINAL';
-  liquidityTier:      string | null;
-  capacityUsd:        number | null;          // = greenCapacityUsd when fresh
-  thinFlag:           boolean;
-  depthThin:          boolean;
-  depthNote:          string | null;
-  oneLegUnverified:   boolean;
-  slipCurve:          SlipPoint[] | null;
-  greenCapacityUsd:   number | null;
-  slipCurveMaxFillable: number | null;
-}
 
 interface SpotCoin {
   price:         number;
@@ -86,8 +48,6 @@ interface ApiResponse {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-const APY_CAP = 200; // %/yr — never display annualized above this; cap before showing
 
 function chipVariant(s: SpreadItem): EdgeChipVariant {
   if (s.oneLegUnverified) return 'signal';
@@ -193,18 +153,7 @@ function slipSortScore(s: SpreadItem): number {
 
 // ── Sizing ────────────────────────────────────────────────────────────────────
 
-type Leverage = 1 | 2 | 3 | 5;
 const LEVERAGE_OPTIONS: Leverage[] = [1, 2, 3, 5];
-
-function calcSpreadSizing(s: SpreadItem, capital: number, leverage: Leverage) {
-  const N         = capital * leverage / 2;
-  const feesUsd   = N * s.totalFeesPct / 100;
-  const net30dUsd = N * s.grossApy / 100 * 30 / 365 - feesUsd;
-  const netYrUsd  = N * s.netApy30d / 100;
-  const dayUsd    = netYrUsd / 365;
-  const roc       = capital > 0 ? netYrUsd / capital * 100 : 0;
-  return { N, feesUsd, net30dUsd, netYrUsd, dayUsd, roc };
-}
 
 // ── Arb-type filter ───────────────────────────────────────────────────────────
 

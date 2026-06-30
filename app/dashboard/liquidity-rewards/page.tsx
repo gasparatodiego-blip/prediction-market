@@ -7,6 +7,7 @@ import SectionHeading from '@/app/components/ui/SectionHeading';
 import StatCard from '@/app/components/ui/StatCard';
 import BlipRow from '@/app/components/ui/BlipRow';
 import EdgeChip, { type EdgeChipVariant } from '@/app/components/ui/EdgeChip';
+import { kIsWarn, isSaneKalshiMarket, isSanePolymarketLevel } from '@/lib/reward-gating';
 
 // ── Types · Polymarket ─────────────────────────────────────────────────────────
 
@@ -200,12 +201,6 @@ function prefetchBook(conditionId: string) {
 
 // ── Kalshi helpers ─────────────────────────────────────────────────────────────
 
-function kIsWarn(m: KMarket): boolean {
-  if (m.flags.TRAP) return false;
-  const p = m.last_price;
-  return (p >= 0.80 && p <= 0.90) || (p >= 0.10 && p <= 0.20);
-}
-
 function kDepthUsd(shares: number, price: number | null, mid: number | null): number {
   return shares * (price ?? mid ?? 0);
 }
@@ -331,7 +326,7 @@ function MarketCard({
   const lv = market.levels[String(capital)];
   if (!lv) return null;
 
-  const isFlagged  = lv.flags.length > 0;
+  const isFlagged  = !isSanePolymarketLevel(lv);
   const chip       = pmChipVariant(lv);
   const tileColor: 'mint' | 'violet' | 'gold' =
     market.volatilityRisk === 'LOW' ? 'mint' : 'gold';
@@ -659,11 +654,7 @@ function KalshiView() {
   const sorted    = kSortMarkets(markets, capital);
   const key       = String(capital);
 
-  const saneCount = sorted.filter(m =>
-    !m.flags.TRAP && !kIsWarn(m) &&
-    !m.flags.SHORT_BURST && !m.flags.THIN_CAP && !m.flags.BELOW_FLOOR && !m.flags.ONE_SIDED &&
-    m.levels[key]?.aboveMin,
-  ).length;
+  const saneCount = sorted.filter(m => isSaneKalshiMarket(m, key)).length;
 
   const trapCount  = markets.filter(m => m.flags.TRAP).length;
   const totalPool  = markets.reduce((s, m) => s + m.pool_day, 0);
