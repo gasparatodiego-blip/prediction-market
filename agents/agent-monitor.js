@@ -35,25 +35,30 @@ const TG_CHAT     = process.env.TELEGRAM_CHAT_ID;
 const HB_FILE     = '/tmp/agent-heartbeats.json';
 const STATUS_OUT  = '/tmp/monitor-status.json';
 const INTERVAL_MS = 2 * 60 * 1000;
-const STALE_MS    = 10 * 60 * 1000; // 10 min without heartbeat = stale
+const STALE_MS    = 10 * 60 * 1000; // default: 10 min without heartbeat = stale
 
 // pm2Name = the pm2 process name; hbKey = the key that agent actually writes
 // into /tmp/agent-heartbeats.json (several agents' hbKey differs from their
 // pm2 name — e.g. agent15-funding-writer writes 'agent15-funding'). hbKey:
 // null means the agent writes no heartbeat at all — those are checked by
 // pm2 status only, same as dashboard always was.
+// staleMs: only needed for agents whose own scan cycle is longer than the
+// default STALE_MS — otherwise they'd look "down" for most of every cycle
+// (agent20/23/26 beat once per 30/15/30-min cycle respectively; confirmed
+// this was firing real false-positive Telegram alerts via agent-monitor).
+// Set to cycle length + ~10 min buffer so one slow tick doesn't false-alarm.
 const WATCHED_AGENTS = [
   { pm2Name: 'agent10-binance',            hbKey: 'agent10-binance' },
   { pm2Name: 'agent15-funding-writer',     hbKey: 'agent15-funding' },
   { pm2Name: 'agent18-mm-analyzer',        hbKey: null },
   { pm2Name: 'agent19-basis',              hbKey: null },
-  { pm2Name: 'agent20-leaderboard',        hbKey: 'agent20-leaderboard' },
+  { pm2Name: 'agent20-leaderboard',        hbKey: 'agent20-leaderboard',    staleMs: 40 * 60 * 1000 },
   { pm2Name: 'agent21-copy-watcher',       hbKey: 'agent21-copy-watcher' },
   { pm2Name: 'agent22-funding-alerts',     hbKey: null },
-  { pm2Name: 'agent23-prediction-repricer', hbKey: 'repricer' },
+  { pm2Name: 'agent23-prediction-repricer', hbKey: 'repricer',              staleMs: 25 * 60 * 1000 },
   { pm2Name: 'agent24-liquidity-rewards',  hbKey: null },
   { pm2Name: 'agent25-kalshi-rewards',     hbKey: null },
-  { pm2Name: 'agent26-landing-auditor',    hbKey: 'agent26-landing-auditor' },
+  { pm2Name: 'agent26-landing-auditor',    hbKey: 'agent26-landing-auditor', staleMs: 40 * 60 * 1000 },
   { pm2Name: 'dashboard',                  hbKey: null },
 ];
 
@@ -106,7 +111,7 @@ async function checkHealth() {
   const agentStatuses = [];
   const alerted = [];
 
-  for (const { pm2Name: name, hbKey } of WATCHED_AGENTS) {
+  for (const { pm2Name: name, hbKey, staleMs } of WATCHED_AGENTS) {
     const heartbeatRequired = hbKey != null;
     const lastBeat = heartbeatRequired ? (hb[hbKey] ?? null) : null;
     const pm2proc  = pm2map[name];
@@ -114,7 +119,7 @@ async function checkHealth() {
     const pm2uptime = pm2proc?.pm2_env?.pm_uptime ? Math.round((now - pm2proc.pm2_env.pm_uptime) / 1000) : null;
 
     const beatAge = lastBeat ? now - lastBeat : null;
-    const isStale = beatAge != null ? beatAge > STALE_MS : true;
+    const isStale = beatAge != null ? beatAge > (staleMs ?? STALE_MS) : true;
     const isDashboard = !heartbeatRequired;
 
     // Agents with no heartbeat (incl. dashboard): only check PM2 status.
