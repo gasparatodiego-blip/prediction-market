@@ -35,32 +35,54 @@ const TG_CHAT     = process.env.TELEGRAM_CHAT_ID;
 const HB_FILE     = '/tmp/agent-heartbeats.json';
 const STATUS_OUT  = '/tmp/monitor-status.json';
 const INTERVAL_MS = 2 * 60 * 1000;
-const STALE_MS    = 10 * 60 * 1000; // default: 10 min without heartbeat = stale
+
+// Floor so a fast-cycle agent still gets caught reasonably quickly even at
+// 2.5x cadence (e.g. a hypothetical 30s-cycle agent wouldn't get a 75s window).
+const MIN_STALE_MS = 5 * 60 * 1000;
 
 // pm2Name = the pm2 process name; hbKey = the key that agent actually writes
 // into /tmp/agent-heartbeats.json (several agents' hbKey differs from their
 // pm2 name — e.g. agent15-funding-writer writes 'agent15-funding'). hbKey:
 // null means the agent writes no heartbeat at all — those are checked by
-// pm2 status only, same as dashboard always was.
-// staleMs: only needed for agents whose own scan cycle is longer than the
-// default STALE_MS — otherwise they'd look "down" for most of every cycle
-// (agent20/23/26 beat once per 30/15/30-min cycle respectively; confirmed
-// this was firing real false-positive Telegram alerts via agent-monitor).
-// Set to cycle length + ~10 min buffer so one slow tick doesn't false-alarm.
-const WATCHED_AGENTS = [
-  { pm2Name: 'agent10-binance',            hbKey: 'agent10-binance' },
-  { pm2Name: 'agent15-funding-writer',     hbKey: 'agent15-funding' },
+// PM2 status ONLY, never by staleness.
+// cadenceMs: the agent's own real scan/poll interval, read from its source
+// (setInterval/loop constant) — NOT a guess. Per-agent stale threshold is
+// derived as max(2.5 * cadenceMs, MIN_STALE_MS) below, so a slow-cycle agent
+// (e.g. agent26's 30-min audit) gets enough slack to not false-alarm between
+// its own beats, while a fast-cycle agent (e.g. agent10's 1-min poll) stays
+// tightly watched. This replaced a single global 10-min threshold that was
+// confirmed to fire real false-positive "down" Telegram alerts for agent20/
+// 23/26, whose cadences (30/15/30 min) all exceeded it.
+const WATCHED_AGENTS_RAW = [
+  { pm2Name: 'agent10-binance',            hbKey: 'agent10-binance',         cadenceMs: 1  * 60_000 }, // agent10-binance.js POLL_INTERVAL
+  { pm2Name: 'agent15-funding-writer',     hbKey: 'agent15-funding',         cadenceMs: 1  * 60_000 }, // agent15-funding-writer.js INTERVAL_MS
   { pm2Name: 'agent18-mm-analyzer',        hbKey: null },
   { pm2Name: 'agent19-basis',              hbKey: null },
-  { pm2Name: 'agent20-leaderboard',        hbKey: 'agent20-leaderboard',    staleMs: 40 * 60 * 1000 },
-  { pm2Name: 'agent21-copy-watcher',       hbKey: 'agent21-copy-watcher' },
+  { pm2Name: 'agent20-leaderboard',        hbKey: 'agent20-leaderboard',     cadenceMs: 30 * 60_000 }, // agent20-leaderboard.js SCAN_INTERVAL_MS
+  { pm2Name: 'agent21-copy-watcher',       hbKey: 'agent21-copy-watcher',    cadenceMs: 5  * 60_000 }, // agent21-copy-watcher.js POLL_INTERVAL_MS
   { pm2Name: 'agent22-funding-alerts',     hbKey: null },
-  { pm2Name: 'agent23-prediction-repricer', hbKey: 'repricer',              staleMs: 25 * 60 * 1000 },
+  { pm2Name: 'agent23-prediction-repricer', hbKey: 'repricer',              cadenceMs: 15 * 60_000 }, // agent23-prediction-repricer.js INTERVAL_MS
   { pm2Name: 'agent24-liquidity-rewards',  hbKey: null },
   { pm2Name: 'agent25-kalshi-rewards',     hbKey: null },
-  { pm2Name: 'agent26-landing-auditor',    hbKey: 'agent26-landing-auditor', staleMs: 40 * 60 * 1000 },
+  { pm2Name: 'agent26-landing-auditor',    hbKey: 'agent26-landing-auditor', cadenceMs: 30 * 60_000 }, // agent26-landing-auditor.js SCAN_INTERVAL_MS
   { pm2Name: 'dashboard',                  hbKey: null },
 ];
+
+const WATCHED_AGENTS = WATCHED_AGENTS_RAW.map(a => ({
+  ...a,
+  staleMs: a.hbKey != null ? Math.max(2.5 * a.cadenceMs, MIN_STALE_MS) : null,
+}));
+
+function logThresholdTable() {
+  console.log('[monitor] Per-agent heartbeat staleness thresholds:');
+  console.log(`  ${'agent'.padEnd(28)}${'cadence'.padEnd(12)}stale threshold`);
+  for (const a of WATCHED_AGENTS) {
+    const cadenceStr = a.cadenceMs != null ? `${(a.cadenceMs / 60_000).toFixed(1)}min` : 'n/a';
+    const staleStr   = a.staleMs   != null ? `${(a.staleMs   / 60_000).toFixed(1)}min` : 'n/a (PM2 status only)';
+    console.log(`  ${a.pm2Name.padEnd(28)}${cadenceStr.padEnd(12)}${staleStr}`);
+  }
+}
+logThresholdTable();
 
 // Rate limit alerts: don't spam same agent within 30 min
 const alertCooldown = {};
@@ -119,7 +141,7 @@ async function checkHealth() {
     const pm2uptime = pm2proc?.pm2_env?.pm_uptime ? Math.round((now - pm2proc.pm2_env.pm_uptime) / 1000) : null;
 
     const beatAge = lastBeat ? now - lastBeat : null;
-    const isStale = beatAge != null ? beatAge > (staleMs ?? STALE_MS) : true;
+    const isStale = beatAge != null ? beatAge > staleMs : true;
     const isDashboard = !heartbeatRequired;
 
     // Agents with no heartbeat (incl. dashboard): only check PM2 status.
