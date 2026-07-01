@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { ChevronRight, Landmark, Trophy, Bitcoin, TrendingUp, CloudSun, Search, ShieldCheck } from 'lucide-react';
+import { ChevronRight, Landmark, Trophy, Bitcoin, TrendingUp, CloudSun, Search, ShieldCheck, Send } from 'lucide-react';
 import Eyebrow from '@/app/components/ui/Eyebrow';
 import SectionHeading from '@/app/components/ui/SectionHeading';
 import StatCard from '@/app/components/ui/StatCard';
@@ -288,12 +288,13 @@ export default function PredictionPage() {
 
         <div className="flex items-center gap-3 flex-wrap">
           <a
-            href="https://t.me/Gaspola_bot?start=pred_new"
+            href="https://t.me/Gaspola_bot?start=follow_prediction"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 font-body text-sm px-4 py-2 rounded-button border border-line text-muted hover:border-mint/40 hover:text-ink-2 transition-colors duration-150 whitespace-nowrap"
+            className="inline-flex items-center gap-1.5 font-body font-medium text-sm px-4 py-2 rounded-button border border-line text-ink-2 hover:border-mint hover:text-mint-deep transition-colors duration-150 whitespace-nowrap"
           >
-            Telegram alerts
+            <Send size={15} />
+            Follow on Telegram
           </a>
           {fetchedAt && !loading && (
             <span className="font-body text-[12px] text-muted">

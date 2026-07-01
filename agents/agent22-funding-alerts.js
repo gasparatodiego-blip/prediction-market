@@ -91,8 +91,9 @@ async function handleUpdate(update, subs) {
   const chatId = String(msg.chat.id);
   const text   = msg.text.trim();
 
-  // /start pred_new — subscribe to new prediction-market verified results
-  if (/^\/start\s+pred_new/i.test(text)) {
+  // /start pred_new (or follow_prediction, the dashboard button's payload)
+  // — subscribe to new prediction-market verified results
+  if (/^\/start\s+(?:pred_new|follow_prediction)/i.test(text)) {
     const key  = `${chatId}:PRED_NEW`;
     const prev = subs[key] || {};
     subs[key]  = {
@@ -110,7 +111,7 @@ async function handleUpdate(update, subs) {
       `• Passed the AI same-event gate\n` +
       `• Are live-cashable at current bid/ask prices\n\n` +
       `Max 1 alert per new result per hour.\n\n` +
-      `/stop to cancel all alerts · /list to see active alerts`
+      `Send /unfollow prediction to stop · /list to see active alerts`
     );
     log(`Pred subscription chatId=${chatId}`);
     return;
@@ -153,6 +154,20 @@ async function handleUpdate(update, subs) {
         `/unfollow ${asset} to stop · /stop to clear all`
       );
       log(`Subscribed chatId=${chatId} asset=${asset}`);
+    }
+    return;
+  }
+
+  // /unfollow prediction — remove prediction-market subscription only
+  if (/^\/unfollow\s+prediction/i.test(text)) {
+    const key = `${chatId}:PRED_NEW`;
+    if (subs[key]) {
+      delete subs[key];
+      saveSubs(subs);
+      await sendMessage(chatId, `Stopped prediction-market alerts.`);
+      log(`Unsubscribed chatId=${chatId} type=prediction`);
+    } else {
+      await sendMessage(chatId, `You weren't following prediction-market alerts.`);
     }
     return;
   }
