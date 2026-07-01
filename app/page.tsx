@@ -1,5 +1,7 @@
 import fs from 'fs';
+import type { ReactNode } from 'react';
 import Link from 'next/link';
+import PlatformLogo from '@/components/PlatformLogo';
 import EdgeradarNav from '@/app/components/EdgeradarNav';
 import Pill         from '@/app/components/ui/Pill';
 import Eyebrow      from '@/app/components/ui/Eyebrow';
@@ -85,8 +87,8 @@ interface LiveRow {
   key:        string;
   icon:       string;
   tileColor:  'mint' | 'violet' | 'gold';
-  name:       string;
-  sub?:       string;
+  name:       ReactNode;
+  sub?:       ReactNode;
   chip:       EdgeChipVariant;
   value:      string;
   unit:       string;
@@ -240,7 +242,13 @@ function buildLiveRows(stats: ReturnType<typeof readLandingStats>): LiveRow[] {
     rows.push({
       key: 'funding', icon, tileColor: 'mint',
       name: `${funding.coin} funding spread`,
-      sub:  `short ${capFirst(funding.shortExchange)} · long ${capFirst(funding.longExchange)}`,
+      sub: (
+        <>
+          short <PlatformLogo platform={funding.shortExchange} size={12} className="mx-1" />
+          {capFirst(funding.shortExchange)} · long <PlatformLogo platform={funding.longExchange} size={12} className="mx-1" />
+          {capFirst(funding.longExchange)}
+        </>
+      ),
       chip: 'cashable', valueTone: 'up',
       value: `+$${funding.dayUsd1k.toFixed(2)}`,
       unit:  'net/day per $1k',
@@ -269,7 +277,12 @@ function buildLiveRows(stats: ReturnType<typeof readLandingStats>): LiveRow[] {
     const day1k = scaleToCapitalBasis(rewards.grossRewardDayRaw, rewards.capital, LANDING_CAPITAL_BASIS);
     rows.push({
       key: 'rewards', icon: '◈', tileColor: 'violet',
-      name: `${rewards.platform} maker rewards`,
+      name: (
+        <>
+          <PlatformLogo platform={rewards.platform} size={14} className="mr-1.5" />
+          {rewards.platform} maker rewards
+        </>
+      ),
       chip: 'cashable', valueTone: 'up',
       value: `+$${day1k.toFixed(2)}`,
       unit:  'net/day per $1k',
@@ -281,7 +294,12 @@ function buildLiveRows(stats: ReturnType<typeof readLandingStats>): LiveRow[] {
     rows.push({
       key: 'carry', icon: '◉', tileColor: 'gold',
       name: `${basis.asset} carry`,
-      sub:  `${basis.exchange} · ${basis.contract}`,
+      sub: (
+        <>
+          <PlatformLogo platform={basis.exchange} size={12} className="mr-1" />
+          {basis.exchange} · {basis.contract}
+        </>
+      ),
       chip: 'cashable', valueTone: 'up',
       value: `+${basis.netAnnualized}%/yr`,
       unit:  basis.coinMargined ? 'basis · coin-margined' : 'executable basis',

@@ -19,8 +19,8 @@ interface BlipRowProps {
   /** Glyph, emoji, or any React node for the icon tile */
   icon:        ReactNode;
   tileColor?:  TileColor;
-  name:        string;
-  sub?:        string;
+  name:        ReactNode;
+  sub?:        ReactNode;
   chip?:       EdgeChipVariant;
   /** Primary display value, e.g. "+$42" */
   value:       string;
