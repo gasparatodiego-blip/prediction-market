@@ -11,6 +11,7 @@ import PlatformLogo from '@/components/PlatformLogo';
 import type {
   SnapshotResponse,
   SnapshotOpportunity,
+  SnapshotFlaggedArb,
   SnapshotQuarantine,
   ScannedEvent,
   ScannedEventLeg,
@@ -315,11 +316,36 @@ function SettlementPanel({ settlement, legs }: { settlement: Settlement; legs: L
 
 // ── Exec-reason formatter ─────────────────────────────────────────────────────
 
+// Friendly display names for bookmakerIds that can appear in an 'unverified:' exec
+// reason. Backend now flags EVERY book not on its sharp allowlist (pinnacle only),
+// so this covers the common ones; anything missing falls back to the raw id below.
 const EXEC_BOOK_NAMES: Record<string, string> = {
-  onexbet:   '1xBet',
-  gtbets:    'GTbets',
-  nordicbet: 'NordicBet',
-  betus:     'BetUS',
+  onexbet:      '1xBet',
+  gtbets:       'GTbets',
+  nordicbet:    'NordicBet',
+  betus:        'BetUS',
+  betsson:      'Betsson',
+  betano:       'Betano',
+  tonybet:      'TonyBet',
+  stoiximan:    'Stoiximan',
+  bethard:      'Bethard',
+  livescore_bets: 'LiveScore Bet',
+  everygame:    'Everygame',
+  leovegas:     'LeoVegas',
+  mybookieag:   'MyBookie',
+  betonlineag:  'BetOnline',
+  bet365:       'Bet365',
+  draftkings:   'DraftKings',
+  fanduel:      'FanDuel',
+  betmgm:       'BetMGM',
+  williamhill:  'William Hill',
+  unibet_eu:    'Unibet',
+  unibet_uk:    'Unibet',
+  unibet_nl:    'Unibet',
+  unibet_se:    'Unibet',
+  unibet_fr:    'Unibet',
+  winamax_de:   'Winamax',
+  winamax_fr:   'Winamax',
 };
 
 function formatExecReasons(reasons: string[]): string {
@@ -328,9 +354,9 @@ function formatExecReasons(reasons: string[]): string {
   for (const r of reasons) {
     if (r === 'crossJurisdiction' && !seen.has(r)) {
       parts.push('cross-jurisdiction'); seen.add(r);
-    } else if (r.startsWith('soft:') && !seen.has(r)) {
-      const bid = r.slice(5);
-      parts.push(EXEC_BOOK_NAMES[bid] ?? bid); seen.add(r);
+    } else if (r.startsWith('unverified:') && !seen.has(r)) {
+      const bid = r.slice(11);
+      parts.push(`${EXEC_BOOK_NAMES[bid] ?? bid} (unverified)`); seen.add(r);
     } else if (r.startsWith('exchange:') && !seen.has('exchange')) {
       parts.push('exchange leg'); seen.add('exchange');
     }
@@ -340,15 +366,20 @@ function formatExecReasons(reasons: string[]): string {
 
 // ── Opportunity card ──────────────────────────────────────────────────────────
 
-function oppChipVariant(opp: SnapshotOpportunity): EdgeChipVariant {
+function oppChipVariant(opp: SnapshotOpportunity, flagged: boolean): EdgeChipVariant {
+  if (flagged) return 'paper';
   return opp.crossJurisdiction ? 'paper' : 'cashable';
 }
 
-function OpportunityCard({ opp }: { opp: SnapshotOpportunity }) {
-  const [open, setOpen] = useState(false);
-  const inMs      = new Date(opp.commenceTime).getTime() - Date.now();
-  const isStarted = inMs < 0;
-  const variant   = oppChipVariant(opp);
+// `reasons` is only passed for flaggedArbs (real arb math, but a soft/exchange/
+// cross-jurisdiction leg blocks it from ever being cashable) — never for opportunities.
+function OpportunityCard({ opp, reasons }: { opp: SnapshotOpportunity; reasons?: string[] }) {
+  const [open, setOpen]  = useState(false);
+  const inMs       = new Date(opp.commenceTime).getTime() - Date.now();
+  const isStarted  = inMs < 0;
+  const flagged    = !!reasons && reasons.length > 0;
+  const variant    = oppChipVariant(opp, flagged);
+  const reasonText = flagged ? formatExecReasons(reasons!) : '';
 
   return (
     <div className="rounded-card shadow-card bg-surface overflow-hidden">
@@ -360,8 +391,8 @@ function OpportunityCard({ opp }: { opp: SnapshotOpportunity }) {
         sub={`${sportLabel(opp.sport)} · ${opp.type}${isStarted ? ' · started' : ` · in ${commenceRelative(opp.commenceTime)}`}`}
         chip={variant}
         value={`+${opp.roiPct.toFixed(2)}%`}
-        unit="surebet ROI"
-        valueTone={variant === 'cashable' ? 'up' : 'neutral'}
+        unit={flagged ? `not cashable${reasonText ? ` · ${reasonText}` : ''}` : 'surebet ROI'}
+        valueTone={flagged ? 'neutral' : variant === 'cashable' ? 'up' : 'neutral'}
       />
 
       <div className="px-4 pb-4 space-y-3">
@@ -430,8 +461,19 @@ function OpportunityCard({ opp }: { opp: SnapshotOpportunity }) {
           })}
         </div>
 
+        {/* Not-cashable reason (flaggedArbs only) */}
+        {flagged && (
+          <div className="px-3 py-2.5 rounded-md bg-gold-tint border border-gold/25">
+            <p className="font-body text-[12px] text-gold leading-relaxed">
+              <span className="font-semibold">NOT CASHABLE — unverified leg</span> — real arb math, but blocked
+              by: {reasonText}. This is a signal, not a guaranteed hedge — verify every leg independently before
+              acting, if at all.
+            </p>
+          </div>
+        )}
+
         {/* Cross-jurisdiction warning */}
-        {opp.crossJurisdiction && (
+        {!flagged && opp.crossJurisdiction && (
           <div className="px-3 py-2.5 rounded-md bg-gold-tint border border-gold/25">
             <p className="font-body text-[12px] text-gold leading-relaxed">
               <span className="font-semibold">CROSS-JURISDICTION</span> — this surebet combines US bookmakers
@@ -462,6 +504,35 @@ function OpportunityCard({ opp }: { opp: SnapshotOpportunity }) {
           <SettlementPanel settlement={opp.settlement} legs={opp.legs} />
         )}
       </div>
+    </div>
+  );
+}
+
+// ── Flagged arbs section (real arb math, blocked from cashable) ──────────────
+
+function FlaggedArbsSection({ items }: { items: SnapshotFlaggedArb[] }) {
+  if (items.length === 0) return null;
+
+  return (
+    <div className="space-y-4 pt-2">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <p className="font-body font-semibold text-sm text-ink-2 flex items-center gap-2">
+          Signal / not cashable — unverified leg
+          <span className="px-2 py-0.5 rounded-pill bg-gold-tint text-gold font-body font-medium text-[10px]">
+            {items.length}
+          </span>
+        </p>
+        <span className="font-body text-[12px] text-muted">
+          Real arb math, but a soft/unverified book, exchange, or cross-jurisdiction leg blocks it
+        </span>
+      </div>
+      <p className="font-body text-[12px] text-muted leading-relaxed">
+        These are NOT guaranteed hedges — never treat them as cashable. Shown for transparency only;
+        verify every leg independently before acting, if at all.
+      </p>
+      {items.map((opp, i) => (
+        <OpportunityCard key={i} opp={opp} reasons={opp.reasons} />
+      ))}
     </div>
   );
 }
@@ -735,6 +806,7 @@ export default function SportsSnapshotPage() {
   }, [data, selectedSport]);
 
   const opps           = data?.opportunities  ?? [];
+  const flaggedArbs    = data?.flaggedArbs    ?? [];
   const qItems         = data?.quarantine     ?? [];
   const scannedEvs     = data?.scannedEvents  ?? [];
   const summary        = data?.summary        ?? null;
@@ -868,6 +940,8 @@ export default function SportsSnapshotPage() {
           )}
 
           {/* Quarantine */}
+          <FlaggedArbsSection items={flaggedArbs} />
+
           <QuarantineSection items={qItems} />
 
           {/* ── Browse all scanned events ─────────────────────────────────── */}

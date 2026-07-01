@@ -121,12 +121,28 @@ const BOOKMAKER_REGION = {
 };
 
 // ── Executability classifier ──────────────────────────────────────────────────
-// A 'real' arb is only CASHABLE if every leg is at a sharp/standard book:
-//   no soft/restrictive books, no betting exchanges, no cross-jurisdiction legs.
-const EXEC_SOFT_BOOKS = new Set(['onexbet', 'gtbets', 'nordicbet']);
+// A 'real' arb is only CASHABLE if every leg is at a book on the sharp allowlist
+// below. Safer-by-default: this is an ALLOWLIST, not a blocklist — a book that's
+// unrecognized, soft, promo-driven, or newly added to the OddsAPI roster is NOT
+// cashable until someone explicitly vets it and adds it here. A blocklist (the
+// previous approach) silently defaults NEW books to "cashable", which is exactly
+// backwards for a tool that must never overstate what's actually takeable.
+//
+// Pinnacle is the only book on our current roster with no track record of
+// voiding/limiting arb-sized winning bets. Every other retail sportsbook —
+// including large regulated brands (bet365, DraftKings, Unibet, William Hill,
+// etc.) — is well documented to limit or restrict consistent winners, so it
+// does not qualify as "verified takeable" for a guaranteed-hedge claim.
+const EXEC_SHARP_BOOKS = new Set(['pinnacle']);
 
 function execIsExchange(bid) {
   return bid === 'matchbook' || bid === 'smarkets' || bid.startsWith('betfair_ex_');
+}
+
+function classifyBookmaker(bid) {
+  if (EXEC_SHARP_BOOKS.has(bid)) return 'sharp';
+  if (execIsExchange(bid))       return 'exchange';
+  return 'unverified';
 }
 
 function getExecReasons(record) {
@@ -134,8 +150,11 @@ function getExecReasons(record) {
   if (record.crossJurisdiction) reasons.push('crossJurisdiction');
   for (const leg of record.legs ?? []) {
     const bid = leg.bookmakerId ?? '';
-    if (EXEC_SOFT_BOOKS.has(bid))  reasons.push(`soft:${bid}`);
-    if (execIsExchange(bid))       reasons.push(`exchange:${bid}`);
+    if (execIsExchange(bid)) {
+      reasons.push(`exchange:${bid}`);
+    } else if (!EXEC_SHARP_BOOKS.has(bid)) {
+      reasons.push(`unverified:${bid}`);
+    }
   }
   return reasons;
 }
@@ -447,11 +466,12 @@ async function scan() {
   }
 
   // Step 2: GET /odds per sport (each call costs CREDITS_PER_SPORT credits = 1 per region requested)
-  const opportunities      = [];   // genuinely cashable: no soft/exchange/cross-juris
-  const flaggedArbs        = [];   // real arb but not cashable (soft/exchange/cross-juris)
+  const opportunities      = [];   // genuinely cashable: every leg on the sharp allowlist
+  const flaggedArbs        = [];   // real arb but not cashable (unverified/exchange/cross-juris leg)
   const quarantine         = [];
   const sportsScanned      = [];
   const scannedEvents      = [];
+  const observedBookmakerIds = new Set();  // every bookmakerId seen this run, for the classification printout
   let   tooFewBooks        = 0;
   let   noArbCount         = 0;
   let   falsePositives     = 0;
@@ -495,6 +515,9 @@ async function scan() {
     }
 
     for (const ev of events) {
+      for (const bk of ev.bookmakers ?? []) {
+        if (bk.key) observedBookmakerIds.add(bk.key);
+      }
       const res = computeArb(ev, sportKey);
       if (res.scanEntry) scannedEvents.push(res.scanEntry);
       switch (res.type) {
@@ -535,7 +558,7 @@ async function scan() {
     regions:          REGIONS,
     sportsScanned,
     opportunities,    // cashable only: passed executability classifier
-    flaggedArbs,      // real arb math but blocked by soft/exchange/cross-juris legs
+    flaggedArbs,      // real arb math but blocked by unverified/exchange/cross-juris legs
     quarantine,
     scannedEvents,
     summary,
@@ -555,15 +578,27 @@ async function scan() {
   console.log(`  Credits remaining:       ${credits.remaining ?? 'unknown'}`);
   console.log(`  Credits spent this run:  ${creditsSpent ?? 'unknown'}`);
   console.log(`  Cashable arb opps:       ${opportunities.length}  (passed executability classifier)`);
-  console.log(`  Flagged (not cashable):  ${flaggedArbs.length}  (soft/exchange/cross-juris legs)`);
+  console.log(`  Flagged (not cashable):  ${flaggedArbs.length}  (unverified/exchange/cross-juris legs)`);
   console.log(`  Quarantined (bad data):  ${quarantine.length}`);
   console.log(`  False positives removed: ${falsePositives}  (outlier was the only arb leg)`);
   console.log(`  Skipped (< ${MIN_BOOKMAKERS} books):   ${tooFewBooks}`);
   console.log(`  No arb at all:           ${noArbCount}`);
 
+  // Bookmaker classification table — every bookmakerId observed this run, plus the
+  // full known-universe map, classified sharp / exchange / unverified. Printed every
+  // run so a NEW book the scanner starts emitting shows up here immediately instead
+  // of silently slipping into (or out of) the cashable bucket.
+  const allKnownBids = new Set([...observedBookmakerIds, ...Object.keys(BOOKMAKER_REGION)]);
+  console.log(`\n[sports] === Bookmaker classification (${allKnownBids.size} known, ${observedBookmakerIds.size} observed this run) ===`);
+  for (const bid of [...allKnownBids].sort()) {
+    const cls    = classifyBookmaker(bid);
+    const seen   = observedBookmakerIds.has(bid) ? '' : '  (not observed this run)';
+    console.log(`  ${bid.padEnd(20)} ${cls.padEnd(10)}${seen}`);
+  }
+
   if (opportunities.length === 0) {
     console.log('\n  [honest] 0 cashable arb opportunities — this is the expected result most of the time.');
-    console.log(`  ${flaggedArbs.length} arb(s) found but not cashable (soft/exchange/cross-juris legs).`);
+    console.log(`  ${flaggedArbs.length} arb(s) found but not cashable (unverified/exchange/cross-juris legs).`);
     console.log('  Sports books are efficient; genuine arb windows are rare and close in seconds.');
   } else {
     console.log('\n  Top real opportunities:');

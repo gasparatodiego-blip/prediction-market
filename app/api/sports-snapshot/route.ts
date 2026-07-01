@@ -41,6 +41,10 @@ export interface SnapshotOpportunity {
   settlement?:        Settlement;
 }
 
+export interface SnapshotFlaggedArb extends SnapshotOpportunity {
+  reasons: string[];  // e.g. 'unverified:betsson', 'exchange:smarkets', 'crossJurisdiction'
+}
+
 export interface SnapshotQuarantine {
   sport:        string;
   eventName:    string;
@@ -97,6 +101,7 @@ export interface SnapshotResponse {
   regions:          string[];
   sportsScanned:    string[];
   opportunities:    SnapshotOpportunity[];
+  flaggedArbs:      SnapshotFlaggedArb[];
   quarantine:       SnapshotQuarantine[];
   scannedEvents:    ScannedEvent[];
   summary:          ScanSummary | null;
@@ -106,7 +111,7 @@ const EMPTY: SnapshotResponse = {
   ok: false, missing: true, stale: true, ageMinutes: null,
   lastUpdated: null, creditsRemaining: null, creditsUsed: null,
   scanMode: 'snapshot', regions: [], sportsScanned: [],
-  opportunities: [], quarantine: [], scannedEvents: [], summary: null,
+  opportunities: [], flaggedArbs: [], quarantine: [], scannedEvents: [], summary: null,
 };
 
 export async function GET(): Promise<NextResponse<SnapshotResponse>> {
