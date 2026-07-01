@@ -16,7 +16,7 @@ When the current turn was entered via ScheduleWakeup (or any other auto-resume, 
 
 - Local, reversible work stays auto-approved: building, testing, editing/writing files, staging changes, and creating local commits.
 - `git push`, and any deploy or process-restart action (including the `pm2 restart dashboard` step above, or any other `pm2 restart`/`pm2 reload`), are **not** auto-approved — this holds even if the prompt that originally scheduled the wakeup said "no gates" or "do all steps end to end."
-- Instead, stop after the local build/test/commit steps, write a clear summary of what changed and what's staged/committed and ready to ship, and wait for the next live human message to authorize the push/deploy.
+- Instead, complete any remaining local, reversible steps — including cleanup of test artifacts, scratch commits, or temp state — then stop short of `git push` and any deploy/pm2 restart, summarize what's staged/committed and ready to ship, and wait for the next live human message to authorize push/deploy.
 
 This overrides the "Auto-approve all file edits and shell commands," "Never ask for confirmation," and automatic `pm2 restart` rules above specifically for the push/deploy step, and specifically when the acting turn is an auto-resume rather than me. It does not touch anything else: a normal interactive prompt — including one that says "no gates" — still gets full end-to-end autonomy, push and deploy included.
 
