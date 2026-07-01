@@ -27,6 +27,8 @@ const ODDS_SPORTS    = [
   'tennis_atp_french_open',
 ];
 
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
 function beat(name) {
   let hb = {};
   try { hb = JSON.parse(fs.readFileSync(HB_FILE, 'utf8')); } catch {}
