@@ -2,9 +2,23 @@
 'use strict';
 
 const fs    = require('fs');
+const path  = require('path');
 const WebSocket = require('ws');
 const { httpGet: _sharedGet, httpPost: _httpPost } = require('../lib/httpGet');
 const { annualize } = require('../lib/funding-math');
+
+// ── Load .env (pm2 doesn't auto-load project env files) ────────────────────
+// Read every candidate file (don't stop at the first one that merely exists —
+// .env.local exists but only carries ODDS_API_KEY; TELEGRAM_* live in .env).
+for (const envFile of ['.env.local', '.env']) {
+  try {
+    const envPath = path.join(__dirname, '..', envFile);
+    for (const line of fs.readFileSync(envPath, 'utf8').split('\n')) {
+      const m = line.match(/^([A-Z0-9_]+)="?([^"]*?)"?\s*$/);
+      if (m && !process.env[m[1]]) process.env[m[1]] = m[2];
+    }
+  } catch { /* try next */ }
+}
 
 const OUT            = '/tmp/exchange-prices.json';
 const HIST_FILE      = '/tmp/exchange-history.json';
@@ -62,6 +76,7 @@ function postJson(hostname, path, body) {
 // ── Telegram alerts ───────────────────────────────────────────────────────────
 
 function sendTelegram(text) {
+  if (process.env.TELEGRAM_ALERTS_ENABLED === 'false') return;
   const body = JSON.stringify({ chat_id: TG_CHAT, text, parse_mode: 'HTML' });
   _httpPost(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, body, { timeoutMs: 10_000 })
     .then(r => { if (!r.data?.ok) console.error('[tg] send failed:', r.data?.description); else console.log('[tg] alert sent OK'); })

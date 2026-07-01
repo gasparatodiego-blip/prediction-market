@@ -2,7 +2,21 @@
 'use strict';
 
 const fs    = require('fs');
+const path  = require('path');
 const https = require('https');
+
+// ── Load .env (pm2 doesn't auto-load project env files) ────────────────────
+// Read every candidate file (don't stop at the first one that merely exists —
+// .env.local exists but only carries ODDS_API_KEY; TELEGRAM_* live in .env).
+for (const envFile of ['.env.local', '.env']) {
+  try {
+    const envPath = path.join(__dirname, '..', envFile);
+    for (const line of fs.readFileSync(envPath, 'utf8').split('\n')) {
+      const m = line.match(/^([A-Z0-9_]+)="?([^"]*?)"?\s*$/);
+      if (m && !process.env[m[1]]) process.env[m[1]] = m[2];
+    }
+  } catch { /* try next */ }
+}
 
 // ── Config ──────────────────────────────────────
 // Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in environment or here.
@@ -28,6 +42,7 @@ function beat(name) {
 }
 
 function sendTelegram(text) {
+  if (process.env.TELEGRAM_ALERTS_ENABLED === 'false') return Promise.resolve();
   if (!BOT_TOKEN || !CHAT_ID) {
     console.log('[telegram] skipped — BOT_TOKEN or CHAT_ID not set');
     return Promise.resolve();

@@ -2,11 +2,25 @@
 'use strict';
 
 const fs             = require('fs');
+const path           = require('path');
 const https          = require('https');
 const nodemailer     = require('nodemailer');
 const { execFile }   = require('child_process');
 const { promisify }  = require('util');
 const { Pool }       = require('pg');
+
+// ── Load .env (pm2 doesn't auto-load project env files) ────────────────────
+// Read every candidate file (don't stop at the first one that merely exists —
+// .env.local exists but only carries ODDS_API_KEY; TELEGRAM_* live in .env).
+for (const envFile of ['.env.local', '.env']) {
+  try {
+    const envPath = path.join(__dirname, '..', envFile);
+    for (const line of fs.readFileSync(envPath, 'utf8').split('\n')) {
+      const m = line.match(/^([A-Z0-9_]+)="?([^"]*?)"?\s*$/);
+      if (m && !process.env[m[1]]) process.env[m[1]] = m[2];
+    }
+  } catch { /* try next */ }
+}
 
 const execFileAsync  = promisify(execFile);
 
@@ -114,6 +128,7 @@ function get(url) {
 }
 
 function sendTelegramTo(chatId, text) {
+  if (process.env.TELEGRAM_ALERTS_ENABLED === 'false') return;
   const body = JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' });
   const req  = https.request({
     hostname: 'api.telegram.org',

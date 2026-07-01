@@ -11,6 +11,8 @@ const path  = require('path');
 const { httpGet: _sharedGet } = require('../lib/httpGet');
 
 // ── Load .env for Telegram creds (pm2 doesn't auto-load project env files) ───
+// Read every candidate file (don't stop at the first one that merely exists —
+// .env.local exists but only carries ODDS_API_KEY; TELEGRAM_* live in .env).
 for (const envFile of ['.env.local', '.env']) {
   try {
     const envPath = path.join(__dirname, '..', envFile);
@@ -18,7 +20,6 @@ for (const envFile of ['.env.local', '.env']) {
       const m = line.match(/^([A-Z0-9_]+)="?([^"]*?)"?\s*$/);
       if (m && !process.env[m[1]]) process.env[m[1]] = m[2];
     }
-    break;
   } catch { /* try next */ }
 }
 
@@ -84,6 +85,7 @@ function beat() {
 
 // ── Telegram ──────────────────────────────────────────────────────────────────
 async function sendTelegram(html) {
+  if (process.env.TELEGRAM_ALERTS_ENABLED === 'false') return;
   if (!BOT_TOKEN || !CHAT_ID) {
     console.log('[CW] Telegram not configured — alert logged only');
     return;
