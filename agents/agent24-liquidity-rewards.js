@@ -30,7 +30,7 @@ const STARTUP_DELAY_MS  = 8_000;
 const OUTPUT_FILE       = '/root/prediction-market/data/liquidity-rewards.json';
 const MAX_RPS           = 1.5;
 const CAPITAL_LEVELS    = [500, 5_000, 50_000];
-const SANITY_CAP_PCT    = 5.0;   // %/day → THIN BOOK flag per level
+const SANITY_CAP_PCT    = 2.0;   // %/day → THIN BOOK flag per level. Mirrors lib/reward-gating.ts REWARD_SANITY_CAP_PCT — keep in sync (this is a plain Node script, can't import the .ts file).
 const FLOOR_DAILY_USD   = 1.0;   // $/day minimum gross; below = below-floor flag per level
 const NEAR_EXPIRY_DAYS  = 14;    // markets closing within → force HIGH vol
 const GAMMA_PAGE_SIZE   = 100;

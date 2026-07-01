@@ -395,7 +395,9 @@ function recomputeBasis() {
     .sort((a, b) => (b.netAnnualizedExecutable ?? b.netAnnualized ?? 0) - (a.netAnnualizedExecutable ?? a.netAnnualized ?? 0));
   if (!sorted.length) return null;
   const top = sorted[0];
-  return { asset: top.asset, netAnnualized: Math.round((top.netAnnualizedExecutable ?? top.netAnnualized ?? 0) * 10) / 10 };
+  // netAnnualizedExecutable/netAnnualized are fractions (0.0363 = 3.63%/yr) —
+  // *100 before rounding. Mirrors app/page.tsx's readLandingStats() basis block.
+  return { asset: top.asset, netAnnualized: Math.round((top.netAnnualizedExecutable ?? top.netAnnualized ?? 0) * 1000) / 10 };
 }
 
 function recomputeSports() {

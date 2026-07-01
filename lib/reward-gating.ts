@@ -9,6 +9,16 @@
 // confirmed/cashable reward anywhere in the app. This is the single
 // implementation of that rule — do not re-derive it elsewhere.
 
+// %/day → THIN_CAP / "THIN BOOK" flag threshold. Single source of truth for
+// agent24 (Polymarket) and agent25 (Kalshi), which compute this flag while
+// scanning live order books, and for the gate functions below that consume
+// the resulting flag. agent24/25 are plain Node scripts (no ts-node in this
+// repo) so they mirror this numeric value rather than importing it — keep
+// both in sync with this constant if it ever changes.
+// 2%/day ≈ 730%/yr — still generous, but rejects the ~4-5%/day thin-book
+// artifacts (implying >1500%/yr) that the old 5%/day cap let through.
+export const REWARD_SANITY_CAP_PCT = 2.0;
+
 export interface KalshiGatingFlags {
   TRAP:        boolean;
   SHORT_BURST: boolean;

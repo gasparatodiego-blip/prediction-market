@@ -93,7 +93,14 @@ interface LiveRow {
   value:      string;
   unit:       string;
   valueTone:  'up' | 'neutral';
-  rankScore:  number;
+  // Net $/day this row is actually worth at the shared LANDING_CAPITAL_BASIS
+  // ($1k). Only set when that's a genuine, non-fabricated number — a
+  // continuously-accruing rate (funding, rewards, carry) has one; a one-off
+  // matched-bet arb (sports) or an opportunity count (prediction) does not,
+  // and we never invent a day-rate for those. Rows with a real $/day sort
+  // above rows without one; each bucket is then ordered by its own metric.
+  dayUsd1k:   number | null;
+  fallbackScore: number;
 }
 
 function readLandingStats(): {
@@ -144,7 +151,10 @@ function readLandingStats(): {
     if (sorted.length > 0) {
       const top = sorted[0];
       basis = {
-        netAnnualized: Math.round((top.netAnnualizedExecutable ?? top.netAnnualized ?? 0) * 10) / 10,
+        // netAnnualizedExecutable/netAnnualized are fractions (0.0363 = 3.63%/yr,
+        // see verdict field in /tmp/basis-opportunities.json) — *100 before rounding
+        // to 1 decimal, same conversion app/dashboard/carry/page.tsx's fmtAnnualized() uses.
+        netAnnualized: Math.round((top.netAnnualizedExecutable ?? top.netAnnualized ?? 0) * 1000) / 10,
         asset:         top.asset,
         exchange:      top.exchange,
         contract:      top.contract,
@@ -252,7 +262,7 @@ function buildLiveRows(stats: ReturnType<typeof readLandingStats>): LiveRow[] {
       chip: 'cashable', valueTone: 'up',
       value: `+$${funding.dayUsd1k.toFixed(2)}`,
       unit:  'net/day per $1k',
-      rankScore: funding.netApy30d,
+      dayUsd1k: funding.dayUsd1k, fallbackScore: funding.dayUsd1k,
     });
   }
 
@@ -265,7 +275,10 @@ function buildLiveRows(stats: ReturnType<typeof readLandingStats>): LiveRow[] {
       chip: 'cashable', valueTone: 'up',
       value: `+${sports.netMargin.toFixed(1)}%`,
       unit:  'confirmed margin',
-      rankScore: sports.netMargin * 260,
+      // A matched-bet margin is a one-off locked profit, not a recurring
+      // rate — no genuine $/day exists without a fabricated settlement-time
+      // assumption, so this stays out of the $/day ranking (see LiveRow.dayUsd1k).
+      dayUsd1k: null, fallbackScore: sports.netMargin,
     });
   }
 
@@ -286,11 +299,16 @@ function buildLiveRows(stats: ReturnType<typeof readLandingStats>): LiveRow[] {
       chip: 'cashable', valueTone: 'up',
       value: `+$${day1k.toFixed(2)}`,
       unit:  'net/day per $1k',
-      rankScore: rewards.dayYieldPct * 365,
+      dayUsd1k: day1k, fallbackScore: day1k,
     });
   }
 
   if (basis && basis.netAnnualized > 0) {
+    // Same $1k basis as funding/rewards, re-expressed from the already-computed
+    // annualized rate (fee-adjusted, executable) — a unit conversion, not a new
+    // number. Display stays %/yr (existing convention for this row); this is
+    // sort-only.
+    const day1k = LANDING_CAPITAL_BASIS * (basis.netAnnualized / 100) / 365;
     rows.push({
       key: 'carry', icon: '◉', tileColor: 'gold',
       name: `${basis.asset} carry`,
@@ -303,7 +321,7 @@ function buildLiveRows(stats: ReturnType<typeof readLandingStats>): LiveRow[] {
       chip: 'cashable', valueTone: 'up',
       value: `+${basis.netAnnualized}%/yr`,
       unit:  basis.coinMargined ? 'basis · coin-margined' : 'executable basis',
-      rankScore: basis.netAnnualized,
+      dayUsd1k: day1k, fallbackScore: day1k,
     });
   }
 
@@ -315,12 +333,23 @@ function buildLiveRows(stats: ReturnType<typeof readLandingStats>): LiveRow[] {
       chip: 'cashable', valueTone: 'up',
       value: String(prediction.cashable),
       unit:  'cashable right now',
-      rankScore: prediction.cashable * 20,
+      // A count of opportunities, not a dollar amount — no $/day exists here either.
+      dayUsd1k: null, fallbackScore: prediction.cashable,
     });
   }
 
-  rows.sort((a, b) => b.rankScore - a.rankScore);
-  return rows.slice(0, 3);
+  // Net $/day (per $1k) is the primary, comparable metric — rows with a
+  // genuine one rank first, highest first. Rows with no real day-rate
+  // (one-off event arbs, opportunity counts) rank after, by their own
+  // native metric. No cap: every row that reached this point already
+  // passed its own honest gate above, so all of them render.
+  rows.sort((a, b) => {
+    if (a.dayUsd1k !== null && b.dayUsd1k !== null) return b.dayUsd1k - a.dayUsd1k;
+    if (a.dayUsd1k !== null) return -1;
+    if (b.dayUsd1k !== null) return 1;
+    return b.fallbackScore - a.fallbackScore;
+  });
+  return rows;
 }
 
 // ── Page ───────────────────────────────────────────────────────────────────
