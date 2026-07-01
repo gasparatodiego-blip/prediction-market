@@ -118,6 +118,21 @@ const BOOKMAKER_REGION = {
   leovegas_se:       'eu',
   winamax_fr:        'eu',
   winamax_de:        'eu',
+  // Newly observed (2026-07) — region-only additions. None of these are on
+  // EXEC_SHARP_BOOKS, so they remain 'unverified' for cashable purposes;
+  // this block only improves crossJurisdiction detection.
+  betanysports:      'us',  // offshore US-facing book (OddsAPI us2 bucket)
+  casumo:            'uk',
+  grosvenor:         'uk',
+  livescorebet:      'uk',  // UKGC-licensed; distinct key from livescore_bets above
+  pmu_fr:            'eu',  // Pari Mutuel Urbain (France)
+  sport888:          'eu',  // 888sport
+  tipico_de:         'eu',  // Tipico Germany
+  virginbet:         'uk',
+  betclic_fr:        'eu',  // France-specific key, distinct from betclic above
+  // betfair_sb: no bare "betfair_sb" bookmakerId has ever been observed —
+  // the only Betfair sportsbook key we get from OddsAPI is betfair_sb_uk
+  // (already mapped 'uk' above). Not adding a duplicate/guessed entry.
 };
 
 // ── Executability classifier ──────────────────────────────────────────────────
