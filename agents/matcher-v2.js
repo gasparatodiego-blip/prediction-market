@@ -10,7 +10,9 @@
  * Stage 3  Haiku confirmation — ONLY on Stage-2 survivors, max 60 pairs
  *
  * Run once:  node agents/matcher-v2.js
- * Output:    /tmp/arbitrage-opportunities.json  (same format dashboard reads)
+ * Output:    /tmp/unified-opportunities.json (sources.matcherV2 section — read by
+ *            app/api/unified-opportunities/route.ts). Writes no other discovery file;
+ *            agent5-calculator.js owns the legacy per-cycle discovery feed.
  */
 
 const fs        = require('fs');
@@ -47,7 +49,6 @@ loadEnvFile();
 // ── Config ────────────────────────────────────────────────────────────────────
 
 const RAW_FILE          = '/tmp/markets-raw.json';
-const OUT_FILE          = '/tmp/arbitrage-opportunities.json';
 const UNIFIED_FILE      = '/tmp/unified-opportunities.json';
 const SPORTS_FILE       = '/tmp/sports-odds.json';
 const CONFIRM_CACHE_FILE = path.join(__dirname, '..', 'data', 'confirmation-cache.json');
@@ -1760,14 +1761,14 @@ async function main() {
   const t0 = Date.now();
 
   // SECURITY: validate key before any work.
-  // Exit without touching arbitrage-opportunities.json so the banner stays
+  // Exit without touching the unified opportunities output so the banner stays
   // honest ("stale") rather than showing zero results on a config error.
   const apiKey = (process.env.ANTHROPIC_API_KEY || '').trim();
   if (!apiKey) {
     console.error('[v2] FATAL: ANTHROPIC_API_KEY is not set.');
     console.error('[v2]   Paste your key into /root/prediction-market/.env.matcher');
     console.error('[v2]   File must contain:  ANTHROPIC_API_KEY=sk-ant-...');
-    console.error('[v2]   Existing arbitrage-opportunities.json left unchanged.');
+    console.error('[v2]   Existing unified-opportunities.json left unchanged.');
     process.exit(1);
   }
   // Confirm key is loaded — print length only, never the value.
@@ -1858,9 +1859,11 @@ async function main() {
 
   // Output
   const output = formatOutput(allConfirmed, totalCandidates, rejectedNotSameEvent.length);
-  fs.writeFileSync(OUT_FILE, JSON.stringify(output, null, 2));
 
   // Unified opportunities file (zero Claude cost — pure reformatting)
+  // NOTE: matcher-v2 writes no other discovery output — a separate 45s-cadence agent
+  // already owns the legacy per-cycle discovery feed; writing it here would be redundant
+  // and immediately overwritten.
   writeUnified(output);
 
   const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
@@ -1941,7 +1944,7 @@ async function main() {
     });
   }
 
-  console.log(`\n[v2] Done. Output → ${OUT_FILE}`);
+  console.log(`\n[v2] Done. Output → ${UNIFIED_FILE}`);
   process.exit(0);
 }
 
