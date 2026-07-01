@@ -3,6 +3,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import SectionHelp from '@/app/components/SectionHelp';
+import PlatformLogo from '@/components/PlatformLogo';
 
 interface Position {
   id:         string;
@@ -237,8 +238,10 @@ export default function PortfolioPage() {
                       <td className="px-4 py-2.5 max-w-[180px]">
                         <p className="text-ink text-xs line-clamp-2">{p.title}</p>
                         {p.platformA && (
-                          <p className="text-muted text-xs font-mono mt-0.5">
-                            {p.platformA}{p.platformB ? ` → ${p.platformB}` : ''}
+                          <p className="text-muted text-xs font-mono mt-0.5 inline-flex items-center gap-1">
+                            <PlatformLogo platform={p.platformA} size={11} />
+                            {p.platformA}
+                            {p.platformB && <> → <PlatformLogo platform={p.platformB} size={11} />{p.platformB}</>}
                           </p>
                         )}
                       </td>

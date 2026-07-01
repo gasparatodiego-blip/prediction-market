@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
+import PlatformLogo from '@/components/PlatformLogo';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -295,9 +296,9 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
                   <span className="font-body text-[9px] text-gold">⚠ thin liquidity</span>
                 )}
               </div>
-              <p className="font-body text-[11px] text-muted">
-                Short {venueLabel(shortExchange)}{spread.shortIsDex ? ' (DEX)' : ''} ·{' '}
-                Long {venueLabel(longExchange)}{spread.longIsDex ? ' (DEX)' : ''}
+              <p className="font-body text-[11px] text-muted inline-flex items-center flex-wrap">
+                Short <PlatformLogo platform={shortExchange} size={12} className="mx-1" />{venueLabel(shortExchange)}{spread.shortIsDex ? ' (DEX)' : ''} ·{' '}
+                Long <PlatformLogo platform={longExchange} size={12} className="mx-1" />{venueLabel(longExchange)}{spread.longIsDex ? ' (DEX)' : ''}
               </p>
               <p className="font-body text-[9px] text-muted/60 mt-1">
                 Perp / Perp · both legs are perpetual futures · no spot leg
@@ -318,11 +319,11 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
             <div className="text-[9px] uppercase tracking-widest text-muted mb-2">Live rates (current snapshot)</div>
             <div className="flex flex-wrap gap-x-8 gap-y-1.5">
               <span>
-                <span className="text-muted">Short {venueLabel(shortExchange)}: </span>
+                <span className="text-muted inline-flex items-center">Short <PlatformLogo platform={shortExchange} size={11} className="mx-1" />{venueLabel(shortExchange)}: </span>
                 <span className="text-mint-deep font-medium tabular-nums font-mono">collect {fmtRate(spread.frShort, spread.intervalHoursShort)}</span>
               </span>
               <span>
-                <span className="text-muted">Long {venueLabel(longExchange)}: </span>
+                <span className="text-muted inline-flex items-center">Long <PlatformLogo platform={longExchange} size={11} className="mx-1" />{venueLabel(longExchange)}: </span>
                 <span className={`font-mono tabular-nums font-medium ${spread.frLong <= 0 ? 'text-mint-deep' : 'text-coral-ink/80'}`}>
                   {spread.frLong <= 0 ? 'collect' : 'pay'} {fmtRate(Math.abs(spread.frLong), spread.intervalHoursLong)}
                 </span>
@@ -534,7 +535,7 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
                   ] as [string, string, number][]).map(([action, ex, pct], i) => (
                     <div key={i} className="flex items-baseline gap-2">
                       <span className="text-muted w-[70px] shrink-0">{action}</span>
-                      <span className="text-ink-2 w-[90px] shrink-0">{venueLabel(ex)}</span>
+                      <span className="text-ink-2 w-[90px] shrink-0 inline-flex items-center gap-1"><PlatformLogo platform={ex} size={10} />{venueLabel(ex)}</span>
                       <span className="text-muted/60 tabular-nums w-[55px] shrink-0 text-[9px]">{pct}%/leg</span>
                       <span className="text-muted/50 text-[9px] shrink-0">×</span>
                       <span className="text-muted/60 tabular-nums text-[9px] shrink-0">{fmtUsd(notionalPerLeg)}</span>
@@ -558,11 +559,13 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
                 {/* Maker alternative */}
                 <div className="mt-3 pt-2.5 border-t border-line/15 font-body text-[9px] text-muted/70 leading-relaxed">
                   <span className="text-muted">Estimated maker fees (if using limit orders): </span>
+                  <PlatformLogo platform={shortExchange} size={10} className="mr-1" />
                   {shortExchange === 'hyperliquid'
                     ? `${venueLabel(shortExchange)} maker = 0% (confirmed)`
                     : `${venueLabel(shortExchange)} est. maker ≈ ${shortMakerPct}%/leg`
                   }
                   {' / '}
+                  <PlatformLogo platform={longExchange} size={10} className="mr-1" />
                   {longExchange === 'hyperliquid'
                     ? `${venueLabel(longExchange)} maker = 0% (confirmed)`
                     : `${venueLabel(longExchange)} est. maker ≈ ${longMakerPct}%/leg`
@@ -595,12 +598,12 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
               <div className="ml-[42px] font-body text-[10px] text-muted leading-relaxed space-y-1">
                 <p>
                   Transfer {settlementCurrency(shortExchange)} to{' '}
-                  <span className="text-ink-2">{venueLabel(shortExchange)}</span>
+                  <span className="text-ink-2 inline-flex items-center gap-1"><PlatformLogo platform={shortExchange} size={11} />{venueLabel(shortExchange)}</span>
                   {spread.shortIsDex ? ' (bridge from mainnet via USDC — allow ~10 min + gas)' : ''}.
                 </p>
                 <p>
                   Transfer {settlementCurrency(longExchange)} to{' '}
-                  <span className="text-ink-2">{venueLabel(longExchange)}</span>
+                  <span className="text-ink-2 inline-flex items-center gap-1"><PlatformLogo platform={longExchange} size={11} />{venueLabel(longExchange)}</span>
                   {spread.longIsDex ? ' (bridge from mainnet via USDC — allow ~10 min + gas)' : ''}.
                 </p>
                 {capital > 0 && (
@@ -695,14 +698,14 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
               <div className="ml-[42px] font-body text-[10px] text-muted leading-relaxed space-y-1.5">
                 <div className="flex flex-wrap gap-x-6 gap-y-1">
                   <span>
-                    <span className="text-ink-2">{venueLabel(shortExchange)}: </span>
+                    <span className="text-ink-2 inline-flex items-center gap-1"><PlatformLogo platform={shortExchange} size={11} />{venueLabel(shortExchange)}: </span>
                     {spread.intervalHoursShort === 1
                       ? `resets every hour — 24 payments/day in ${settlementCurrency(shortExchange)}`
                       : `resets 00:00 / 08:00 / 16:00 UTC — 3 payments/day in ${settlementCurrency(shortExchange)}`
                     }
                   </span>
                   <span>
-                    <span className="text-ink-2">{venueLabel(longExchange)}: </span>
+                    <span className="text-ink-2 inline-flex items-center gap-1"><PlatformLogo platform={longExchange} size={11} />{venueLabel(longExchange)}: </span>
                     {spread.intervalHoursLong === 1
                       ? `resets every hour — 24 payments/day in ${settlementCurrency(longExchange)}`
                       : `resets 00:00 / 08:00 / 16:00 UTC — 3 payments/day in ${settlementCurrency(longExchange)}`
@@ -818,13 +821,13 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
               No inverse (coin-margined) legs.
             </p>
             <p>
-              <span className="text-ink-2">{venueLabel(shortExchange)} short leg: </span>
+              <span className="text-ink-2 inline-flex items-center gap-1"><PlatformLogo platform={shortExchange} size={11} />{venueLabel(shortExchange)} short leg: </span>
               funding credited to you in <span className="text-ink">{settlementCurrency(shortExchange)}</span>,{' '}
               {spread.intervalHoursShort === 1 ? 'hourly' : 'every 8h'}.
               Rate: <span className="text-mint-deep font-mono tabular-nums">{fmtRate(spread.frShort, spread.intervalHoursShort)}</span>.
             </p>
             <p>
-              <span className="text-ink-2">{venueLabel(longExchange)} long leg: </span>
+              <span className="text-ink-2 inline-flex items-center gap-1"><PlatformLogo platform={longExchange} size={11} />{venueLabel(longExchange)} long leg: </span>
               {spread.frLong >= 0
                 ? <>funding <span className="text-coral-ink/80">debited from you</span> in{' '}</>
                 : <>funding <span className="text-mint-deep">credited to you</span> in{' '}</>

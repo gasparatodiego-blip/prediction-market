@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { ExternalLink } from 'lucide-react';
+import PlatformLogo from '@/components/PlatformLogo';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -198,7 +199,7 @@ function CashableDetail({ opp, capital, setCapital }: {
         <div className="font-body text-[9px] uppercase tracking-widest text-muted mb-2">Current prices (snapshot)</div>
         <div className="flex flex-wrap gap-x-8 gap-y-1.5">
           <span>
-            <span className="text-muted">YES on {platformLabel(low.platform)}: </span>
+            <span className="text-muted inline-flex items-center gap-1">YES on <PlatformLogo platform={low.platform} size={11} />{platformLabel(low.platform)}: </span>
             <span className="text-mint-deep font-medium tabular-nums">
               {(priceYES * 100).toFixed(1)}¢
             </span>
@@ -209,7 +210,7 @@ function CashableDetail({ opp, capital, setCapital }: {
             )}
           </span>
           <span>
-            <span className="text-muted">NO on {platformLabel(high.platform)}: </span>
+            <span className="text-muted inline-flex items-center gap-1">NO on <PlatformLogo platform={high.platform} size={11} />{platformLabel(high.platform)}: </span>
             <span className="text-violet font-medium tabular-nums">
               {(priceNO * 100).toFixed(1)}¢
             </span>
@@ -290,7 +291,7 @@ function CashableDetail({ opp, capital, setCapital }: {
                 <span className="text-ink tabular-nums ml-auto">{fmtUsd(grossProfit)}</span>
               </div>
               <div className="flex gap-2">
-                <span className="text-muted w-[120px] shrink-0">{platformLabel(low.platform)} fee</span>
+                <span className="text-muted w-[120px] shrink-0 inline-flex items-center gap-1"><PlatformLogo platform={low.platform} size={10} />{platformLabel(low.platform)} fee</span>
                 <span className="text-muted/60 text-[9px]">
                   {low.platform?.toLowerCase() === 'polymarket' ? '0% · no trading fee'
                    : low.platform?.toLowerCase() === 'kalshi'
@@ -302,7 +303,7 @@ function CashableDetail({ opp, capital, setCapital }: {
                 </span>
               </div>
               <div className="flex gap-2">
-                <span className="text-muted w-[120px] shrink-0">{platformLabel(high.platform)} fee</span>
+                <span className="text-muted w-[120px] shrink-0 inline-flex items-center gap-1"><PlatformLogo platform={high.platform} size={10} />{platformLabel(high.platform)} fee</span>
                 <span className="text-muted/60 text-[9px]">
                   {high.platform?.toLowerCase() === 'polymarket' ? '0% · no trading fee'
                    : high.platform?.toLowerCase() === 'kalshi'
@@ -353,6 +354,7 @@ function CashableDetail({ opp, capital, setCapital }: {
               {(() => { const { url: lu, verified: lv } = getMarketUrl(low); return (
                 <a href={lu} target="_blank" rel="noopener noreferrer"
                   className="inline-flex items-center gap-1 text-mint hover:text-mint-deep">
+                  <PlatformLogo platform={low.platform} size={10} />
                   Open {platformLabel(low.platform)} market{!lv && ' (search)'} <ExternalLink size={9} />
                 </a>
               ); })()}
@@ -387,6 +389,7 @@ function CashableDetail({ opp, capital, setCapital }: {
               {(() => { const { url: hu, verified: hv } = getMarketUrl(high); return (
                 <a href={hu} target="_blank" rel="noopener noreferrer"
                   className="inline-flex items-center gap-1 text-mint hover:text-mint-deep">
+                  <PlatformLogo platform={high.platform} size={10} />
                   Open {platformLabel(high.platform)} market{!hv && ' (search)'} <ExternalLink size={9} />
                 </a>
               ); })()}
@@ -551,6 +554,7 @@ function CashableDetail({ opp, capital, setCapital }: {
           <a href={lu} target="_blank" rel="noopener noreferrer"
             className="inline-flex items-center gap-1.5 font-body text-[10px] px-3 py-1.5 border border-mint-deep/30 text-mint-deep/70 hover:border-mint-deep hover:text-mint-deep rounded-button transition-colors duration-100">
             <ExternalLink size={10} />
+            <PlatformLogo platform={low.platform} size={10} />
             {platformLabel(low.platform)} — YES market{!lv && ' (search)'}
           </a>
         ); })()}
@@ -558,6 +562,7 @@ function CashableDetail({ opp, capital, setCapital }: {
           <a href={hu} target="_blank" rel="noopener noreferrer"
             className="inline-flex items-center gap-1.5 font-body text-[10px] px-3 py-1.5 border border-violet/30 text-violet/70 hover:border-violet hover:text-violet rounded-button transition-colors duration-100">
             <ExternalLink size={10} />
+            <PlatformLogo platform={high.platform} size={10} />
             {platformLabel(high.platform)} — NO market{!hv && ' (search)'}
           </a>
         ); })()}
@@ -625,7 +630,8 @@ function SignalDetail({ opp, capital, setCapital }: {
 
   // ── CASE 1: play-money leg ──────────────────────────────────────────────────
   if (hasPlayMoney) {
-    const playName = lowIsPlay ? platformLabel(low.platform) : platformLabel(high.platform);
+    const playPlatform = lowIsPlay ? low.platform : high.platform;
+    const playName = platformLabel(playPlatform);
     return (
       <>
         <SectionTitle title="How to operate" />
@@ -635,12 +641,14 @@ function SignalDetail({ opp, capital, setCapital }: {
           </div>
           <div className="font-body text-[10px] text-muted leading-relaxed space-y-2">
             <p>
-              <span className="text-ink-2">{playName}</span> uses play money (MANA) — not real currency and not convertible to cash.
+              <span className="text-ink-2 inline-flex items-center gap-1"><PlatformLogo platform={playPlatform} size={11} />{playName}</span> uses play money (MANA) — not real currency and not convertible to cash.
               The price divergence cannot be captured as guaranteed profit between these platforms.
             </p>
             <p>
               <span className="text-ink-2">What it means: </span>
+              <PlatformLogo platform={low.platform} size={11} className="mr-0.5" />
               {platformLabel(low.platform)} prices this at {low.probability}¢ while{' '}
+              <PlatformLogo platform={high.platform} size={11} className="mr-0.5" />
               {platformLabel(high.platform)} prices it at {high.probability}¢ — a {opp.spread.toFixed(1)}pp divergence.
               Use this as a directional signal only.
             </p>
@@ -658,7 +666,7 @@ function SignalDetail({ opp, capital, setCapital }: {
               const isPlay = i === 0 ? lowIsPlay : highIsPlay;
               return (
                 <div key={i}>
-                  <div className="font-body text-[9px] uppercase tracking-widest text-muted mb-1">{platformLabel(leg.platform)}</div>
+                  <div className="font-body text-[9px] uppercase tracking-widest text-muted mb-1 inline-flex items-center gap-1"><PlatformLogo platform={leg.platform} size={10} />{platformLabel(leg.platform)}</div>
                   <div className="text-[18px] font-bold text-ink tabular-nums">{leg.probability}¢ YES</div>
                   <div className="font-body text-[9px] text-muted/70 mt-0.5">
                     {isPlay ? 'Play-money (MANA) — not convertible to cash' : 'Real-money market'}
@@ -685,6 +693,7 @@ function SignalDetail({ opp, capital, setCapital }: {
               <a key={i} href={url} target="_blank" rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 font-body text-[10px] px-3 py-1.5 border border-line text-muted hover:border-ink-2 hover:text-ink rounded-button transition-colors duration-100">
                 <ExternalLink size={10} />
+                <PlatformLogo platform={leg.platform} size={10} />
                 {platformLabel(leg.platform)} market{!verified && ' (search)'}
               </a>
             );
@@ -705,17 +714,18 @@ function SignalDetail({ opp, capital, setCapital }: {
           </div>
           <div className="font-body text-[10px] text-muted leading-relaxed space-y-2">
             <p>
-              Both {platformLabel(low.platform)} and {platformLabel(high.platform)} are real-money platforms.
+              Both <PlatformLogo platform={low.platform} size={11} className="mr-0.5" />{platformLabel(low.platform)} and{' '}
+              <PlatformLogo platform={high.platform} size={11} className="mr-0.5" />{platformLabel(high.platform)} are real-money platforms.
               Arithmetic at current executable (bid/ask) prices:
             </p>
             <div className="my-2 px-3 py-2 bg-bg-soft border border-line rounded-card font-mono text-[10px] space-y-0.5">
               <div>
-                <span className="text-muted">Buy YES on {platformLabel(low.platform)}: </span>
+                <span className="text-muted inline-flex items-center gap-1">Buy YES on <PlatformLogo platform={low.platform} size={11} />{platformLabel(low.platform)}: </span>
                 <span className="text-mint-deep tabular-nums font-medium">{(priceYES * 100).toFixed(1)}¢</span>
                 {usingLiveYES && <span className="text-muted/50 text-[9px]"> (ask · mid {low.probability}¢)</span>}
               </div>
               <div>
-                <span className="text-muted">Buy NO on {platformLabel(high.platform)}: </span>
+                <span className="text-muted inline-flex items-center gap-1">Buy NO on <PlatformLogo platform={high.platform} size={11} />{platformLabel(high.platform)}: </span>
                 <span className="text-violet tabular-nums font-medium">{(priceNO * 100).toFixed(1)}¢</span>
                 {usingLiveNO && <span className="text-muted/50 text-[9px]"> (1 − bid · mid {100 - high.probability}¢)</span>}
               </div>
@@ -753,7 +763,7 @@ function SignalDetail({ opp, capital, setCapital }: {
           <div className="grid grid-cols-2 gap-4">
             {([low, high] as const).map((leg, i) => (
               <div key={i}>
-                <div className="font-body text-[9px] uppercase tracking-widest text-muted mb-1">{platformLabel(leg.platform)}</div>
+                <div className="font-body text-[9px] uppercase tracking-widest text-muted mb-1 inline-flex items-center gap-1"><PlatformLogo platform={leg.platform} size={10} />{platformLabel(leg.platform)}</div>
                 <div className="text-[18px] font-bold text-ink tabular-nums">{leg.probability}¢ YES</div>
                 <div className="font-body text-[9px] text-muted/70 mt-0.5">Real-money market</div>
               </div>
@@ -777,6 +787,7 @@ function SignalDetail({ opp, capital, setCapital }: {
               <a key={i} href={url} target="_blank" rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 font-body text-[10px] px-3 py-1.5 border border-line text-muted hover:border-ink-2 hover:text-ink rounded-button transition-colors duration-100">
                 <ExternalLink size={10} />
+                <PlatformLogo platform={leg.platform} size={10} />
                 {platformLabel(leg.platform)} market{!verified && ' (search)'}
               </a>
             );
@@ -804,12 +815,12 @@ function SignalDetail({ opp, capital, setCapital }: {
         <div className="font-body text-[9px] uppercase tracking-widest text-muted mb-2">Current prices (snapshot)</div>
         <div className="flex flex-wrap gap-x-8 gap-y-1.5">
           <span>
-            <span className="text-muted">YES on {platformLabel(low.platform)}: </span>
+            <span className="text-muted inline-flex items-center gap-1">YES on <PlatformLogo platform={low.platform} size={11} />{platformLabel(low.platform)}: </span>
             <span className="text-mint-deep font-medium tabular-nums">{(priceYES * 100).toFixed(1)}¢</span>
             {usingLiveYES && <span className="text-muted/60 text-[9px] ml-1">(ask · mid {low.probability}¢)</span>}
           </span>
           <span>
-            <span className="text-muted">NO on {platformLabel(high.platform)}: </span>
+            <span className="text-muted inline-flex items-center gap-1">NO on <PlatformLogo platform={high.platform} size={11} />{platformLabel(high.platform)}: </span>
             <span className="text-violet font-medium tabular-nums">{(priceNO * 100).toFixed(1)}¢</span>
             {usingLiveNO && <span className="text-muted/60 text-[9px] ml-1">(1 − bid · mid {100 - high.probability}¢)</span>}
           </span>
@@ -874,7 +885,7 @@ function SignalDetail({ opp, capital, setCapital }: {
                 <span className="text-ink tabular-nums ml-auto">{fmtUsd(N * grossPerPair)}</span>
               </div>
               <div className="flex gap-2">
-                <span className="text-muted w-[120px] shrink-0">{platformLabel(low.platform)} fee</span>
+                <span className="text-muted w-[120px] shrink-0 inline-flex items-center gap-1"><PlatformLogo platform={low.platform} size={10} />{platformLabel(low.platform)} fee</span>
                 <span className="text-muted/60 text-[9px]">
                   {low.platform?.toLowerCase() === 'kalshi'
                     ? `7%×${(priceYES*100).toFixed(1)}¢×${((1-priceYES)*100).toFixed(1)}¢`
@@ -886,7 +897,7 @@ function SignalDetail({ opp, capital, setCapital }: {
                 </span>
               </div>
               <div className="flex gap-2">
-                <span className="text-muted w-[120px] shrink-0">{platformLabel(high.platform)} fee</span>
+                <span className="text-muted w-[120px] shrink-0 inline-flex items-center gap-1"><PlatformLogo platform={high.platform} size={10} />{platformLabel(high.platform)} fee</span>
                 <span className="text-muted/60 text-[9px]">
                   {high.platform?.toLowerCase() === 'kalshi'
                     ? `7%×${(highYesDec*100).toFixed(1)}¢×${((1-highYesDec)*100).toFixed(1)}¢`
@@ -931,6 +942,7 @@ function SignalDetail({ opp, capital, setCapital }: {
               {(() => { const { url, verified } = getMarketUrl(low); return (
                 <a href={url} target="_blank" rel="noopener noreferrer"
                   className="inline-flex items-center gap-1 text-mint hover:text-mint-deep">
+                  <PlatformLogo platform={low.platform} size={10} />
                   Open {platformLabel(low.platform)} market{!verified && ' (search)'} <ExternalLink size={9} />
                 </a>
               ); })()}
@@ -959,6 +971,7 @@ function SignalDetail({ opp, capital, setCapital }: {
               {(() => { const { url, verified } = getMarketUrl(high); return (
                 <a href={url} target="_blank" rel="noopener noreferrer"
                   className="inline-flex items-center gap-1 text-mint hover:text-mint-deep">
+                  <PlatformLogo platform={high.platform} size={10} />
                   Open {platformLabel(high.platform)} market{!verified && ' (search)'} <ExternalLink size={9} />
                 </a>
               ); })()}
@@ -1030,6 +1043,7 @@ function SignalDetail({ opp, capital, setCapital }: {
           <a href={url} target="_blank" rel="noopener noreferrer"
             className="inline-flex items-center gap-1.5 font-body text-[10px] px-3 py-1.5 border border-mint-deep/30 text-mint-deep/70 hover:border-mint-deep hover:text-mint-deep rounded-button transition-colors duration-100">
             <ExternalLink size={10} />
+            <PlatformLogo platform={low.platform} size={10} />
             {platformLabel(low.platform)} — YES market{!verified && ' (search)'}
           </a>
         ); })()}
@@ -1037,6 +1051,7 @@ function SignalDetail({ opp, capital, setCapital }: {
           <a href={url} target="_blank" rel="noopener noreferrer"
             className="inline-flex items-center gap-1.5 font-body text-[10px] px-3 py-1.5 border border-violet/30 text-violet/70 hover:border-violet hover:text-violet rounded-button transition-colors duration-100">
             <ExternalLink size={10} />
+            <PlatformLogo platform={high.platform} size={10} />
             {platformLabel(high.platform)} — NO market{!verified && ' (search)'}
           </a>
         ); })()}
@@ -1113,7 +1128,10 @@ export default function PredictionDetailPage({ params }: { params: { id: string 
               {opp.question}
             </h1>
             <p className="font-body text-[11px] text-muted">
-              {platformLabel(opp.lowMarket.platform)} × {platformLabel(opp.highMarket.platform)}
+              <PlatformLogo platform={opp.lowMarket.platform} size={11} className="mr-0.5" />
+              {platformLabel(opp.lowMarket.platform)} ×{' '}
+              <PlatformLogo platform={opp.highMarket.platform} size={11} className="mx-0.5" />
+              {platformLabel(opp.highMarket.platform)}
               {' · '}
               {opp.type === 'cashable'
                 ? `${fmtPct(opp.roi, 2)} net ROI${opp.annualizedROI != null && opp.daysToResolution != null ? ` · ${opp.annualizedROI.toFixed(1)}%/yr (${opp.daysToResolution}d lock)` : ''}`

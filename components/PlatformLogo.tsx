@@ -22,6 +22,8 @@ const SLUG_MAP: Record<string, string> = {
   'gate-io':          'gate-io',
   bitget:             'bitget',
   deribit:            'deribit',
+  predictit:          'predictit',
+  manifold:           'manifold',
 };
 
 function toSlug(platform: string): string {

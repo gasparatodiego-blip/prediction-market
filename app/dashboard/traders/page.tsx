@@ -6,6 +6,7 @@ import Eyebrow        from '@/app/components/ui/Eyebrow';
 import SectionHeading from '@/app/components/ui/SectionHeading';
 import StatCard       from '@/app/components/ui/StatCard';
 import EdgeChip       from '@/app/components/ui/EdgeChip';
+import PlatformLogo   from '@/components/PlatformLogo';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -1160,7 +1161,7 @@ export default function TradersPage() {
       {/* ── Page header ───────────────────────────────────────────────────────── */}
       <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <Eyebrow>Polymarket · Leaderboard</Eyebrow>
+          <Eyebrow className="inline-flex items-center gap-1.5"><PlatformLogo platform="polymarket" size={12} />Polymarket · Leaderboard</Eyebrow>
           <SectionHeading as="h1" className="text-3xl mt-1">Traders</SectionHeading>
           <p className="font-body text-sm text-muted mt-1.5">
             Realized P&amp;L · {lbData?.windowDays ?? 730}d window ·{' '}
@@ -1216,7 +1217,7 @@ export default function TradersPage() {
             onClick={() => openDetail(search.trim())}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-button border border-violet/50 text-violet bg-violet-tint font-body text-[10px] font-medium uppercase tracking-wide hover:border-violet transition-colors"
           >
-            <Search className="w-3 h-3"/>Look up {fmtWallet(search.trim())} on Polymarket ↗
+            <Search className="w-3 h-3"/>Look up {fmtWallet(search.trim())} on <PlatformLogo platform="polymarket" size={11} className="mx-1" />Polymarket ↗
           </button>
           <span className="font-body text-[10px] text-muted">or press Enter</span>
         </div>

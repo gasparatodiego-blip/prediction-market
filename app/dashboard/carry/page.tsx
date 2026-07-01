@@ -7,6 +7,7 @@ import SectionHeading from '@/app/components/ui/SectionHeading';
 import StatCard from '@/app/components/ui/StatCard';
 import BlipRow from '@/app/components/ui/BlipRow';
 import EdgeChip, { type EdgeChipVariant } from '@/app/components/ui/EdgeChip';
+import PlatformLogo from '@/components/PlatformLogo';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -183,7 +184,7 @@ function ContangoCard({ c }: { c: Contract }) {
       <BlipRow
         icon={coinEmoji(c.asset)}
         tileColor={tileColor}
-        name={`${c.asset} — ${c.exchange} · ${c.contract} · ${c.daysToExpiry}d`}
+        name={<>{c.asset} — <PlatformLogo platform={c.exchange} size={12} className="mx-1" />{c.exchange} · {c.contract} · {c.daysToExpiry}d</>}
         sub={`spot ask ${fmtPrice(spotPx)} · future bid ${fmtPrice(futurePx)} · cap ${fmtK(c.capacityUsd)}`}
         chip={variant}
         value={fmtAnnualized(c.netAnnualizedExecutable)}
@@ -251,7 +252,7 @@ function BackwardRow({ c }: { c: BackwardContract }) {
       <BlipRow
         icon={coinEmoji(c.asset)}
         tileColor="violet"
-        name={`${c.asset} — ${c.exchange} · ${c.contract} · ${c.daysToExpiry}d`}
+        name={<>{c.asset} — <PlatformLogo platform={c.exchange} size={12} className="mx-1" />{c.exchange} · {c.contract} · {c.daysToExpiry}d</>}
         sub={`spot ${fmtPrice(c.spot)} · future ${fmtPrice(c.future)} · vol ${fmtK(c.vol24Usd)}`}
         chip="signal"
         value={`${(c.annualized * 100).toFixed(2)}%`}

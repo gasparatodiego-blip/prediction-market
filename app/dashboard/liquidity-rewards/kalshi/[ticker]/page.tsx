@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import PlatformLogo from '@/components/PlatformLogo';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -470,7 +471,8 @@ export default function KalshiMarketDetailPage() {
             ← Liquidity Rewards
           </Link>
           <span className="font-body text-[10px] text-muted/50">·</span>
-          <span className="font-body text-[10px] text-muted uppercase tracking-widest">
+          <span className="font-body text-[10px] text-muted uppercase tracking-widest inline-flex items-center gap-1">
+            <PlatformLogo platform="kalshi" size={11} />
             Kalshi · live · read-only · no orders placed
           </span>
           <ObservedModelChip />

@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef, Fragment } from 'react';
 import Link from 'next/link';
 import SectionHelp from '@/app/components/SectionHelp';
 import EdgeChip, { type EdgeChipVariant } from '@/app/components/ui/EdgeChip';
+import PlatformLogo from '@/components/PlatformLogo';
 import {
   type FuturesCoin,
   type SlipPoint,
@@ -367,14 +368,14 @@ function SlipAwareCard({ s, capital, leverage }: { s: SpreadItem; capital: numbe
           <div>
             <span className="text-coral-ink font-medium">↓ SHORT</span>
             <span className="text-muted"> on </span>
-            <span className={s.shortIsDex ? 'text-mint-deep' : 'text-ink-2'}>{venueLabel(s.shortExchange)}</span>
+            <span className={`inline-flex items-center gap-1 ${s.shortIsDex ? 'text-mint-deep' : 'text-ink-2'}`}><PlatformLogo platform={s.shortExchange} size={11} />{venueLabel(s.shortExchange)}</span>
             {s.shortIsDex && <span className="text-mint text-[9px] ml-1">DEX</span>}
             <span className="text-muted/60 ml-2 text-[10px]">collect {fmtRate(s.frShort, s.intervalHoursShort)}</span>
           </div>
           <div>
             <span className="text-mint-deep font-medium">↑ LONG</span>
             <span className="text-muted"> on </span>
-            <span className={s.longIsDex ? 'text-mint-deep' : 'text-ink-2'}>{venueLabel(s.longExchange)}</span>
+            <span className={`inline-flex items-center gap-1 ${s.longIsDex ? 'text-mint-deep' : 'text-ink-2'}`}><PlatformLogo platform={s.longExchange} size={11} />{venueLabel(s.longExchange)}</span>
             {s.longIsDex && <span className="text-mint text-[9px] ml-1">DEX</span>}
             <span className="text-muted/60 ml-2 text-[10px]">pay {fmtRate(s.frLong, s.intervalHoursLong)}</span>
           </div>
@@ -599,11 +600,11 @@ function OpportunityCards({
                 <span className="font-mono text-[11px] text-ink-2">
                   <span className="text-coral-ink">↓ SHORT</span>
                   <span className="text-muted"> on </span>
-                  <span className={s.shortIsDex ? 'text-mint-deep' : ''}>{venueLabel(s.shortExchange)}</span>
+                  <span className={`inline-flex items-center gap-1 ${s.shortIsDex ? 'text-mint-deep' : ''}`}><PlatformLogo platform={s.shortExchange} size={11} />{venueLabel(s.shortExchange)}</span>
                   <span className="text-muted/40 mx-1.5">/</span>
                   <span className="text-mint-deep">↑ LONG</span>
                   <span className="text-muted"> on </span>
-                  <span className={s.longIsDex ? 'text-mint-deep' : ''}>{venueLabel(s.longExchange)}</span>
+                  <span className={`inline-flex items-center gap-1 ${s.longIsDex ? 'text-mint-deep' : ''}`}><PlatformLogo platform={s.longExchange} size={11} />{venueLabel(s.longExchange)}</span>
                 </span>
 
                 {/* $/day — dominant value */}
@@ -815,12 +816,12 @@ function SpreadTable({
                     <tr className={`border-b ${sz ? 'border-line/20' : 'border-line/50'} hover:bg-bg-soft/40 transition-colors duration-100 ${isMarginal ? 'opacity-50' : ''} ${s.thinFlag ? 'opacity-70' : ''}`}>
                       <td className="px-3 py-2.5 font-semibold text-ink">{s.coin}</td>
                       <td className="px-3 py-2.5 whitespace-nowrap">
-                        <span className={s.shortIsDex ? 'text-mint' : 'text-ink-2'}>{venueLabel(s.shortExchange)}</span>
+                        <span className={`inline-flex items-center gap-1 ${s.shortIsDex ? 'text-mint' : 'text-ink-2'}`}><PlatformLogo platform={s.shortExchange} size={11} />{venueLabel(s.shortExchange)}</span>
                         <span className="text-line mx-1">·</span>
                         <span className={rateCls(s.frShort)}>{fmtRate(s.frShort, s.intervalHoursShort)}</span>
                       </td>
                       <td className="px-3 py-2.5 whitespace-nowrap">
-                        <span className={s.longIsDex ? 'text-mint' : 'text-ink-2'}>{venueLabel(s.longExchange)}</span>
+                        <span className={`inline-flex items-center gap-1 ${s.longIsDex ? 'text-mint' : 'text-ink-2'}`}><PlatformLogo platform={s.longExchange} size={11} />{venueLabel(s.longExchange)}</span>
                         <span className="text-line mx-1">·</span>
                         <span className={rateCls(s.frLong)}>{fmtRate(s.frLong, s.intervalHoursLong)}</span>
                       </td>
@@ -930,7 +931,10 @@ function RateHeatmap({ futures }: { futures: Record<string, Record<string, Futur
             <th className="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-muted font-normal">Asset</th>
             {allExchanges.map(ex => (
               <th key={ex} className={`px-3 py-2 text-left text-[9px] uppercase tracking-widest font-normal whitespace-nowrap ${DEX_ORDER.includes(ex) ? 'text-mint' : 'text-muted'}`}>
-                {ex === 'dydx' ? 'dYdX (DEX)' : ex === 'hyperliquid' ? 'Hyperliquid (DEX)' : capFirst(ex)}
+                <span className="inline-flex items-center gap-1">
+                  <PlatformLogo platform={ex} size={10} />
+                  {ex === 'dydx' ? 'dYdX (DEX)' : ex === 'hyperliquid' ? 'Hyperliquid (DEX)' : capFirst(ex)}
+                </span>
               </th>
             ))}
           </tr>
@@ -996,11 +1000,15 @@ function CexArbSection({ items }: { items: CexArbItem[] }) {
               {items.map(a => (
                 <tr key={`${a.coin}-${a.low}-${a.high}`} className="border-b border-line/50 hover:bg-bg-soft/40 transition-colors duration-100">
                   <td className="px-3 py-2.5 font-semibold text-ink">{a.coin}</td>
-                  <td className="px-3 py-2.5 text-ink-2 capitalize">{a.low}</td>
+                  <td className="px-3 py-2.5 text-ink-2 capitalize">
+                    <span className="inline-flex items-center gap-1"><PlatformLogo platform={a.low} size={11} />{a.low}</span>
+                  </td>
                   <td className="px-3 py-2.5 tabular-nums text-ink">
                     ${a.lowPrice.toLocaleString(undefined, { maximumFractionDigits: a.lowPrice > 1 ? 2 : 5 })}
                   </td>
-                  <td className="px-3 py-2.5 text-ink-2 capitalize">{a.high}</td>
+                  <td className="px-3 py-2.5 text-ink-2 capitalize">
+                    <span className="inline-flex items-center gap-1"><PlatformLogo platform={a.high} size={11} />{a.high}</span>
+                  </td>
                   <td className="px-3 py-2.5 tabular-nums text-ink">
                     ${a.highPrice.toLocaleString(undefined, { maximumFractionDigits: a.highPrice > 1 ? 2 : 5 })}
                   </td>

@@ -8,6 +8,7 @@ import SectionHeading from '@/app/components/ui/SectionHeading';
 import StatCard from '@/app/components/ui/StatCard';
 import BlipRow from '@/app/components/ui/BlipRow';
 import EdgeChip, { type EdgeChipVariant } from '@/app/components/ui/EdgeChip';
+import PlatformLogo from '@/components/PlatformLogo';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -189,11 +190,8 @@ function OppRow({ opp }: { opp: Opportunity }) {
     : variant === 'speculative'            ? 'gold'
     : 'violet';
 
-  const subParts = [
-    `${platformLabel(opp.lowMarket.platform)} × ${platformLabel(opp.highMarket.platform)}`,
-    `conf ${conf}%`,
-  ];
-  if (note) subParts.push(note);
+  const subTail = [`conf ${conf}%`];
+  if (note) subTail.push(note);
 
   return (
     <Link
@@ -204,7 +202,14 @@ function OppRow({ opp }: { opp: Opportunity }) {
         icon={categoryIcon(opp.category)}
         tileColor={tileColor}
         name={opp.question}
-        sub={subParts.join(' · ')}
+        sub={
+          <>
+            <PlatformLogo platform={opp.lowMarket.platform} size={11} className="mr-0.5" />
+            {platformLabel(opp.lowMarket.platform)} ×{' '}
+            <PlatformLogo platform={opp.highMarket.platform} size={11} className="mx-0.5" />
+            {platformLabel(opp.highMarket.platform)} · {subTail.join(' · ')}
+          </>
+        }
         chip={variant}
         value={`${opp.spread.toFixed(1)}%`}
         unit={

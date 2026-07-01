@@ -7,6 +7,7 @@ import SectionHeading from '@/app/components/ui/SectionHeading';
 import StatCard from '@/app/components/ui/StatCard';
 import BlipRow from '@/app/components/ui/BlipRow';
 import EdgeChip, { type EdgeChipVariant } from '@/app/components/ui/EdgeChip';
+import PlatformLogo from '@/components/PlatformLogo';
 import { kIsWarn, isSaneKalshiMarket, isSanePolymarketLevel } from '@/lib/reward-gating';
 
 // ── Types · Polymarket ─────────────────────────────────────────────────────────
@@ -240,11 +241,12 @@ function PlatformToggle({
         <button
           key={p}
           onClick={() => onChange(p)}
-          className={`font-body font-medium text-[13px] px-4 py-1.5 rounded-pill transition-colors duration-100
+          className={`inline-flex items-center gap-1.5 font-body font-medium text-[13px] px-4 py-1.5 rounded-pill transition-colors duration-100
             ${platform === p
               ? 'bg-surface shadow-sm text-ink'
               : 'text-muted hover:text-ink-2'}`}
         >
+          <PlatformLogo platform={p} size={14} />
           {p === 'polymarket' ? 'Polymarket' : 'Kalshi'}
         </button>
       ))}
@@ -667,6 +669,7 @@ function KalshiView() {
         <div>
           <Eyebrow className="mb-1">Liquidity Rewards</Eyebrow>
           <SectionHeading as="h1" className="text-2xl flex items-center gap-3 flex-wrap">
+            <PlatformLogo platform="kalshi" size={20} />
             Kalshi LIP Rewards
             <ObservedModelChip />
           </SectionHeading>
@@ -874,7 +877,8 @@ export default function LiquidityRewardsPage() {
             <div className="flex flex-wrap items-end justify-between gap-4">
               <div>
                 <Eyebrow className="mb-1">Liquidity Rewards</Eyebrow>
-                <SectionHeading as="h1" className="text-2xl">
+                <SectionHeading as="h1" className="text-2xl flex items-center gap-3">
+                  <PlatformLogo platform="polymarket" size={20} />
                   Polymarket CLOB Rewards
                 </SectionHeading>
                 <p className="font-body text-sm text-muted mt-1">

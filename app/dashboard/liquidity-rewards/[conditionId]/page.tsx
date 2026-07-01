@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import PlatformLogo from '@/components/PlatformLogo';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -380,7 +381,8 @@ export default function MarketDetailPage() {
 
         {/* ── Header ──────────────────────────────────────────────────── */}
         <div className="space-y-2">
-          <p className="font-body text-[10px] text-muted uppercase tracking-widest">
+          <p className="font-body text-[10px] text-muted uppercase tracking-widest inline-flex items-center gap-1">
+            <PlatformLogo platform="polymarket" size={11} />
             Polymarket CLOB · live · read-only · no orders placed
           </p>
           {mkt ? (

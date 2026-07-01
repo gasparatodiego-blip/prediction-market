@@ -12,6 +12,7 @@ import Eyebrow from '@/app/components/ui/Eyebrow';
 import SectionHeading from '@/app/components/ui/SectionHeading';
 import StatCard from '@/app/components/ui/StatCard';
 import RadarScope from '@/app/components/ui/RadarScope';
+import PlatformLogo from '@/components/PlatformLogo';
 import type { Blip } from '@/app/components/ui/RadarScope';
 
 interface Strategy {
@@ -177,8 +178,9 @@ export default function DashboardPage() {
                         {s.platforms.map(p => (
                           <span
                             key={p}
-                            className="font-body text-[11px] px-2 py-0.5 rounded-pill border border-line bg-bg-soft text-muted"
+                            className="inline-flex items-center gap-1 font-body text-[11px] px-2 py-0.5 rounded-pill border border-line bg-bg-soft text-muted"
                           >
+                            {p !== 'EU Books' && <PlatformLogo platform={p} size={11} />}
                             {p}
                           </span>
                         ))}
@@ -214,12 +216,13 @@ export default function DashboardPage() {
                       {s.platforms.map(p => (
                         <span
                           key={p}
-                          className={`font-body text-[11px] px-2 py-0.5 rounded-pill border ${
+                          className={`inline-flex items-center gap-1 font-body text-[11px] px-2 py-0.5 rounded-pill border ${
                             isSelected
                               ? 'border-mint/30 bg-mint-tint text-mint-deep'
                               : 'border-line bg-bg-soft text-muted'
                           }`}
                         >
+                          {p !== 'EU Books' && <PlatformLogo platform={p} size={11} />}
                           {p}
                         </span>
                       ))}
@@ -246,8 +249,9 @@ export default function DashboardPage() {
                 {selected.platforms.map(p => (
                   <span
                     key={p}
-                    className="font-body text-[11px] px-2 py-0.5 border border-line bg-bg-soft rounded-pill text-muted"
+                    className="inline-flex items-center gap-1 font-body text-[11px] px-2 py-0.5 border border-line bg-bg-soft rounded-pill text-muted"
                   >
+                    {p !== 'EU Books' && <PlatformLogo platform={p} size={11} />}
                     {p}
                   </span>
                 ))}
