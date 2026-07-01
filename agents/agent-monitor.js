@@ -3,18 +3,32 @@
 
 /**
  * Agent Monitor — Phase 5
- * Watches all 8 PM2 agents via heartbeats + process status.
+ * Watches the current PM2 fleet via heartbeats + process status.
  * Sends Telegram alert if any agent goes silent >10 min.
  * Writes /tmp/monitor-status.json for /api/health.
  * Runs every 2 minutes.
  */
 
 const fs    = require('fs');
+const path  = require('path');
 const https = require('https');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
 
 const execFileAsync = promisify(execFile);
+
+// Read every candidate env file — a fresh `pm2 start` does not inherit the
+// shell's exported vars, and .env.local exists but doesn't carry TELEGRAM_*
+// (see agents/agent26-landing-auditor.js for the same fix + full rationale).
+for (const envFile of ['.env.local', '.env']) {
+  try {
+    const envPath = path.join(__dirname, '..', envFile);
+    for (const line of fs.readFileSync(envPath, 'utf8').split('\n')) {
+      const m = line.match(/^([A-Z0-9_]+)="?([^"]*?)"?\s*$/);
+      if (m && !process.env[m[1]]) process.env[m[1]] = m[2];
+    }
+  } catch { /* try next */ }
+}
 
 const TG_TOKEN    = process.env.TELEGRAM_BOT_TOKEN;
 const TG_CHAT     = process.env.TELEGRAM_CHAT_ID;
@@ -23,15 +37,24 @@ const STATUS_OUT  = '/tmp/monitor-status.json';
 const INTERVAL_MS = 2 * 60 * 1000;
 const STALE_MS    = 10 * 60 * 1000; // 10 min without heartbeat = stale
 
+// pm2Name = the pm2 process name; hbKey = the key that agent actually writes
+// into /tmp/agent-heartbeats.json (several agents' hbKey differs from their
+// pm2 name — e.g. agent15-funding-writer writes 'agent15-funding'). hbKey:
+// null means the agent writes no heartbeat at all — those are checked by
+// pm2 status only, same as dashboard always was.
 const WATCHED_AGENTS = [
-  'agent10-binance',
-  'agent-kalshi',
-  'agent-polymarket',
-  'agent-manifold',
-  'agent-metaculus',
-  'agent-predictit',
-  'agent-master',
-  'dashboard',
+  { pm2Name: 'agent10-binance',            hbKey: 'agent10-binance' },
+  { pm2Name: 'agent15-funding-writer',     hbKey: 'agent15-funding' },
+  { pm2Name: 'agent18-mm-analyzer',        hbKey: null },
+  { pm2Name: 'agent19-basis',              hbKey: null },
+  { pm2Name: 'agent20-leaderboard',        hbKey: 'agent20-leaderboard' },
+  { pm2Name: 'agent21-copy-watcher',       hbKey: 'agent21-copy-watcher' },
+  { pm2Name: 'agent22-funding-alerts',     hbKey: null },
+  { pm2Name: 'agent23-prediction-repricer', hbKey: 'repricer' },
+  { pm2Name: 'agent24-liquidity-rewards',  hbKey: null },
+  { pm2Name: 'agent25-kalshi-rewards',     hbKey: null },
+  { pm2Name: 'agent26-landing-auditor',    hbKey: 'agent26-landing-auditor' },
+  { pm2Name: 'dashboard',                  hbKey: null },
 ];
 
 // Rate limit alerts: don't spam same agent within 30 min
@@ -83,18 +106,19 @@ async function checkHealth() {
   const agentStatuses = [];
   const alerted = [];
 
-  for (const name of WATCHED_AGENTS) {
-    const lastBeat = hb[name] ?? null;
+  for (const { pm2Name: name, hbKey } of WATCHED_AGENTS) {
+    const heartbeatRequired = hbKey != null;
+    const lastBeat = heartbeatRequired ? (hb[hbKey] ?? null) : null;
     const pm2proc  = pm2map[name];
     const pm2status = pm2proc?.pm2_env?.status ?? 'unknown';
     const pm2uptime = pm2proc?.pm2_env?.pm_uptime ? Math.round((now - pm2proc.pm2_env.pm_uptime) / 1000) : null;
 
-    const beatAge     = lastBeat ? now - lastBeat : null;
-    const isStale     = beatAge != null ? beatAge > STALE_MS : true;
-    const isDashboard = name === 'dashboard';
+    const beatAge = lastBeat ? now - lastBeat : null;
+    const isStale = beatAge != null ? beatAge > STALE_MS : true;
+    const isDashboard = !heartbeatRequired;
 
-    // Dashboard: only check PM2 status, not heartbeat (it doesn't write one)
-    const healthy = isDashboard
+    // Agents with no heartbeat (incl. dashboard): only check PM2 status.
+    const healthy = !heartbeatRequired
       ? pm2status === 'online'
       : (pm2status === 'online' && !isStale);
 
