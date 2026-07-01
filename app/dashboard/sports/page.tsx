@@ -7,6 +7,7 @@ import SectionHeading from '@/app/components/ui/SectionHeading';
 import StatCard from '@/app/components/ui/StatCard';
 import BlipRow from '@/app/components/ui/BlipRow';
 import EdgeChip, { type EdgeChipVariant } from '@/app/components/ui/EdgeChip';
+import PlatformLogo from '@/components/PlatformLogo';
 import type {
   SnapshotResponse,
   SnapshotOpportunity,
@@ -282,14 +283,15 @@ function SettlementPanel({ settlement, legs }: { settlement: Settlement; legs: L
             return (
               <div key={i} className="grid grid-cols-4 items-center px-3 py-2.5 gap-2 font-body text-[12px] bg-surface">
                 <span className="text-muted truncate">{leg.outcome}</span>
-                <span className="truncate">
+                <span className="truncate inline-flex items-center gap-1">
+                  <PlatformLogo platform={leg.bookmakerId ?? leg.bookmaker} size={12} />
                   {url ? (
                     <a href={url} target="_blank" rel="noopener noreferrer"
-                      className="text-mint-deep hover:underline">
+                      className="text-mint-deep hover:underline truncate">
                       {leg.bookmaker}
                     </a>
                   ) : (
-                    <span className="text-ink-2">{leg.bookmaker}</span>
+                    <span className="text-ink-2 truncate">{leg.bookmaker}</span>
                   )}
                 </span>
                 <span>
@@ -412,7 +414,10 @@ function OpportunityCard({ opp }: { opp: SnapshotOpportunity }) {
             return (
               <div key={i} className="grid grid-cols-5 px-3 py-2.5 font-body text-[12px] border-t border-line">
                 <span className="text-ink truncate pr-2">{leg.outcome}</span>
-                <span className="text-ink-2 truncate pr-2">{leg.bookmaker}</span>
+                <span className="text-ink-2 truncate pr-2 inline-flex items-center gap-1">
+                  <PlatformLogo platform={leg.bookmakerId ?? leg.bookmaker} size={12} />
+                  <span className="truncate">{leg.bookmaker}</span>
+                </span>
                 <span>
                   <span className={`inline-flex items-center font-body text-[10px] uppercase px-1.5 py-0.5 rounded border ${regionChipCls(reg)}`}>
                     {reg}
@@ -568,7 +573,10 @@ function ScannedEventCard({ ev }: { ev: ScannedEvent }) {
             return (
               <div key={i} className="grid grid-cols-4 px-3 py-2.5 font-body text-[12px] border-t border-line">
                 <span className="text-ink truncate pr-2">{leg.outcome}</span>
-                <span className="text-ink-2 truncate pr-2">{leg.bookmaker}</span>
+                <span className="text-ink-2 truncate pr-2 inline-flex items-center gap-1">
+                  <PlatformLogo platform={leg.bookmakerId ?? leg.bookmaker} size={12} />
+                  <span className="truncate">{leg.bookmaker}</span>
+                </span>
                 <span>
                   <span className={`inline-flex items-center font-body text-[10px] uppercase px-1.5 py-0.5 rounded border ${regionChipCls(reg)}`}>
                     {reg}
