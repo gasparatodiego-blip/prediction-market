@@ -2,17 +2,133 @@
 'use strict';
 
 /**
- * Shared semantic matching utilities used by all matcher agents.
- * Uses `claude -p --model claude-sonnet-4-6` for meaning-based matching.
+ * Shared deterministic matching utilities used by all matcher agents.
+ * deterministic matcher — no external API calls
  */
 
-const fs    = require('fs');
-const { execFile } = require('child_process');
-const { promisify } = require('util');
+const fs = require('fs');
 
-const execFileAsync = promisify(execFile);
-const MODEL         = 'claude-haiku-4-5-20251001';
-const BATCH_SIZE    = 20;
+const BATCH_SIZE = 20;
+
+// ── Deterministic matching config ──────────────────
+// Fees mirror agent5-calculator.js PLATFORM_FEES — keep both in sync if rates change.
+const PLATFORM_FEES = {
+  kalshi:     0.07,
+  polymarket: 0.02,
+  predictit:  0.10 + 0.05,
+  manifold:   0.00,
+  oddsapi:    0.00,
+};
+const REAL_BOOK          = new Set(['kalshi', 'polymarket']); // platforms with an executable bid/ask book
+const MIN_CONFIDENCE     = 0.65;   // same confidence bar the previous matching pipeline used
+// IDF must be computed over the FULL market universe (tens of thousands of markets), not a
+// small per-category batch — otherwise generic context words (e.g. "world cup", "2026") look
+// artificially rare/distinctive in a small sample, producing false matches, while common phrasing
+// shared by genuinely-matching pairs looks artificially common, producing false rejections.
+const MIN_IDF_SCORE      = 8.0;    // pair must accumulate >= this total IDF from shared tokens
+// 4.0 let tournament/umbrella-event words through as "distinctive" (e.g. "fifa"/"world_cup" sit at
+// idf~3.7-4.6 in a market universe that's a few % World Cup props) — enough shared umbrella terms
+// alone cleared the old bar and matched unrelated props under the same event. 5.0 requires the
+// shared vocabulary to include something genuinely entity-specific (a name, a narrow phrase).
+const HIGH_IDF_THRESHOLD = 5.0;    // "distinctive" token: rare across the full market universe
+const MIN_HIGH_IDF_SHARED = 2;     // must share >=2 distinctive tokens to be considered same event
+const SUSPICIOUS_ROI     = 15;     // netROI% above this on a real-book pair → quarantine (unreliable)
+const MAX_SPREAD_WIDTH   = 0.10;   // yesAsk-yesBid > 10c on either leg → illiquid, skip arb check
+
+const STOPWORDS = new Set([
+  'will','the','a','an','in','by','of','at','to','for','and','or','is','are',
+  'be','as','its','it','win','wins','winning','market','prediction','happen',
+  'occur','make','have','has','that','this','with','from','on','not','no',
+  'yes','next','how','which','who','what','when','where','why','than','their',
+  'they','he','she','we','do','did','does','before','after','during','outcome',
+  'over','under','more','less','most','least','any','all','each','first','last',
+  'new','old','get','got','been','were','was','would','could','should','may',
+  'might','can','shall','must','about','between','against','without','within',
+  'through','into','onto','upon','around','per','if',
+]);
+
+function tokenize(text) {
+  const clean = (text || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ');
+  const words = clean.split(/\s+/).filter(t => t.length >= 3 && !STOPWORDS.has(t));
+  const toks  = new Set(words);
+  for (let i = 0; i < words.length - 1; i++) toks.add(`${words[i]}_${words[i + 1]}`);
+  return toks;
+}
+
+// Document-frequency/IDF index built once per run over the FULL extracted market universe
+// (all platforms, all categories) — see MIN_IDF_SCORE comment above for why this must not be
+// scoped to a single category's small sample.
+function buildIdfIndex(allMarkets) {
+  const N = allMarkets.length;
+  const tokensById = new Map();
+  const df = new Map();
+  for (const m of allMarkets) {
+    const toks = tokenize(m.question);
+    tokensById.set(m.id, toks);
+    for (const t of toks) df.set(t, (df.get(t) || 0) + 1);
+  }
+  const idf = new Map();
+  for (const [t, freq] of df) idf.set(t, Math.log(N / freq));
+  return { idf, tokensById };
+}
+
+// Markets built by extractAllMarkets() embed the outcome label as "[outcome: X]"
+// in the question string (see predictit/kalshi below) — use it as a deterministic
+// same-event gate without any external call.
+function extractOutcomeLabel(question) {
+  const m = /\[outcome:\s*([^\]]+)\]/i.exec(question || '');
+  return m ? m[1].trim().toLowerCase() : '';
+}
+
+// If a market's raw text mentions a specific outcome word (e.g. an opponent candidate's
+// surname), it must show up in the other leg's text too — otherwise the two legs are pricing
+// different specific outcomes of the same umbrella event (e.g. "Trump wins" vs "[outcome: Vance]").
+function questionMentions(question, label) {
+  if (label === 'yes' || label === 'no') return true;
+  const q = (question || '').toLowerCase();
+  const words = label.split(/\s+/).filter(w => w.length >= 3);
+  if (words.length === 0) return true;
+  return words.some(w => q.includes(w));
+}
+
+function outcomesCompatible(a, b) {
+  const oa = extractOutcomeLabel(a.question);
+  const ob = extractOutcomeLabel(b.question);
+  if (oa && ob) {
+    if (oa === ob) return true;
+    if (oa === 'yes' || oa === 'no' || ob === 'yes' || ob === 'no') return true;
+    return false;
+  }
+  if (oa && !ob) return questionMentions(b.question, oa);
+  if (ob && !oa) return questionMentions(a.question, ob);
+  return true; // neither leg carries an explicit outcome label — nothing to cross-check
+}
+
+function stripOutcome(q) {
+  return (q || '').replace(/\s*\[outcome:[^\]]*\]/i, '').trim();
+}
+
+function describeEvent(a, b) {
+  const qa = stripOutcome(a.question), qb = stripOutcome(b.question);
+  return qa.length >= qb.length ? qa : qb;
+}
+
+// Executable bid/ask arb — NEVER probability/midpoint. Only meaningful when both
+// legs expose a real order book (kalshi, polymarket); returns null otherwise.
+function bestNetRoi(a, b) {
+  if (a.yesBid <= 0 || a.yesAsk >= 1 || b.yesBid <= 0 || b.yesAsk >= 1) return null;
+  if ((a.yesAsk - a.yesBid) > MAX_SPREAD_WIDTH) return null;
+  if ((b.yesAsk - b.yesBid) > MAX_SPREAD_WIDTH) return null;
+  const dir1 = a.yesAsk + (1 - b.yesBid); // buy YES on A, buy NO on B
+  const dir2 = b.yesAsk + (1 - a.yesBid); // buy YES on B, buy NO on A
+  const bestCost = Math.min(dir1, dir2);
+  const grossProfit = 1 - bestCost;
+  if (grossProfit <= 0) return null;
+  const grossROI = (grossProfit / bestCost) * 100;
+  const feeA = PLATFORM_FEES[a.platform] || 0;
+  const feeB = PLATFORM_FEES[b.platform] || 0;
+  return grossROI * (1 - feeA - feeB);
+}
 
 // ── Heartbeat ─────────────────────────────────────
 
@@ -50,6 +166,9 @@ function extractOddsApiMarkets() {
         platform:    'oddsapi',
         question:    `Will ${ev.home_team} win against ${ev.away_team}?`,
         probability: avgProb,
+        yesBid:      avgProb / 100,
+        yesAsk:      avgProb / 100,
+        realBook:    false,
         url:         null,
         _sport:      ev.sport_title || '',
         _homeTeam:   ev.home_team   || '',
@@ -72,11 +191,16 @@ function extractAllMarkets(raw) {
     if (!top) continue;
     const contractLabel = top.shortName || top.name || '';
     const piQuestion = contractLabel ? `${title} [outcome: ${contractLabel}]` : title;
+    const piYesAsk = top.bestBuyYesCost != null ? top.bestBuyYesCost : top.lastTradePrice;
+    const piYesBid = top.bestBuyNoCost  != null ? (1 - top.bestBuyNoCost) : top.lastTradePrice;
     markets.push({
       id:          `pi-${m.id}`,
       platform:    'predictit',
       question:    piQuestion,
       probability: Math.round(top.lastTradePrice * 100),
+      yesBid:      +piYesBid.toFixed(4),
+      yesAsk:      +piYesAsk.toFixed(4),
+      realBook:    false, // 10% profit fee + 5% withdrawal fee makes spreads unreliable — signal only
       url:         `https://www.predictit.org/markets/detail/${m.id}`,
     });
   }
@@ -90,6 +214,9 @@ function extractAllMarkets(raw) {
       platform:    'manifold',
       question:    q,
       probability: Math.round(m.probability * 100),
+      yesBid:      m.probability,
+      yesAsk:      m.probability,
+      realBook:    false, // play money, no real order book — signal only
       url:         m.url || `https://manifold.markets/${m.slug || ''}`,
     });
   }
@@ -110,6 +237,9 @@ function extractAllMarkets(raw) {
       platform:    'kalshi',
       question:    kaQuestion,
       probability: prob,
+      yesBid:      bid,
+      yesAsk:      ask,
+      realBook:    true,
       url:         `https://kalshi.com/markets/${m.ticker}`,
     });
   }
@@ -129,11 +259,19 @@ function extractAllMarkets(raw) {
       if (ltp > 0) prob = Math.round(ltp * 100);
     }
     if (prob == null || prob < 1 || prob > 99) continue;
+    const pmBid    = parseFloat(m.bestBid || '0');
+    const pmAsk    = parseFloat(m.bestAsk || '0');
+    const pmSingle = prob / 100;
+    const yB = pmBid > 0 ? pmBid : pmSingle;
+    const yA = (pmAsk > 0 && pmAsk < 1) ? pmAsk : pmSingle;
     markets.push({
       id:          `pm-${m.id}`,
       platform:    'polymarket',
       question:    q,
       probability: prob,
+      yesBid:      yB,
+      yesAsk:      yA,
+      realBook:    true,
       url:         m.slug ? `https://polymarket.com/event/${m.slug}` : 'https://polymarket.com',
     });
   }
@@ -199,68 +337,64 @@ function createBatches(markets) {
   return batches;
 }
 
-// ── Claude semantic matching ───────────────────────
+// ── Deterministic IDF-weighted matching ────────────
+// Same-event pairing via token-overlap scoring, executable bid/ask arb math,
+// and a >15% netROI quarantine — no external API calls.
 
-async function matchBatch(batch, categoryLabel) {
-  const list = batch
-    .map((m, i) => `${i}. [${m.platform}] ${m.question} (${m.probability}%)`)
-    .join('\n');
+async function matchBatch(batch, categoryLabel, corpusIndex) {
+  // corpusIndex should be built once per run over the full market universe (buildIdfIndex(allMarkets))
+  // and passed in by buildRunner. Falls back to a batch-local index only for standalone/direct calls.
+  const { idf, tokensById } = corpusIndex || buildIdfIndex(batch);
 
-  const prompt =
-`You are a prediction market arbitrage analyst. Given these ${batch.length} markets from different platforms, find all pairs that refer to the EXACT SAME real-world event or question. Focus on ${categoryLabel} markets.
+  const result = [];
+  let rejectedNotSameEvent = 0;
+  let quarantined = 0;
 
-${list}
-
-Rules:
-- Only match markets from DIFFERENT platforms
-- Only match when you are highly confident (≥0.65) the markets resolve on the same outcome
-- Compare the MEANING, not just keywords — "Will X happen by 2025?" and "X by end of 2025?" are the same
-- If Platform A prices outcome X of a multi-choice event and Platform B prices outcome Y of the same event, do NOT match them — both legs must price the IDENTICAL outcome
-- Ignore markets that are clearly about different things
-
-Respond with ONLY a JSON array (no other text):
-[{"indices":[i,j],"confidence":0.0-1.0,"event":"one-sentence description of the shared event"}]
-
-If no matches, return [].`;
-
-  try {
-    const { stdout, stderr } = await execFileAsync(
-      'claude',
-      ['-p', prompt, '--model', MODEL],
-      { timeout: 90_000, env: { ...process.env, HOME: '/root' } }
-    );
-
-    if (stderr && stderr.includes('Error')) {
-      console.error(`[matcher] claude stderr: ${stderr.slice(0, 200)}`);
-    }
-
-    const text  = stdout.trim();
-    // Find the outermost JSON array — match from first '[' to matching ']'
-    const start = text.indexOf('[');
-    const end   = text.lastIndexOf(']');
-    if (start === -1 || end === -1 || end <= start) return [];
-    const match = [text.slice(start, end + 1)];
-
-    const raw = JSON.parse(match[0]);
-    const result = [];
-    for (const m of Array.isArray(raw) ? raw : []) {
-      const a = batch[m.indices?.[0]];
-      const b = batch[m.indices?.[1]];
-      if (!a || !b) continue;
+  for (let i = 0; i < batch.length; i++) {
+    for (let j = i + 1; j < batch.length; j++) {
+      const a = batch[i], b = batch[j];
       if (a.platform === b.platform) continue;
-      if ((m.confidence || 0) < 0.65) continue;
+
+      const tokA = tokensById.get(a.id) || tokenize(a.question);
+      const tokB = tokensById.get(b.id) || tokenize(b.question);
+      let score = 0, distinctiveShared = 0;
+      for (const t of tokA) {
+        if (!tokB.has(t)) continue;
+        const v = idf.get(t) || 0;
+        score += v;
+        if (v >= HIGH_IDF_THRESHOLD) distinctiveShared++;
+      }
+      if (score < MIN_IDF_SCORE) continue;
+      if (distinctiveShared < MIN_HIGH_IDF_SHARED) continue;
+
+      const confidence = +Math.min(1, score / 20).toFixed(3);
+      if (confidence < MIN_CONFIDENCE) continue;
+
+      // Same-event gate — reject when both legs carry an explicit, different outcome label
+      if (!outcomesCompatible(a, b)) { rejectedNotSameEvent++; continue; }
+
+      // Executable bid/ask arb quarantine (only meaningful when both legs have a real book;
+      // predictit/manifold/futuur/oddsapi legs are unconfirmed/mid-price → signal, never cashable,
+      // so they skip this check and are never quarantined for implausible ROI).
+      if (REAL_BOOK.has(a.platform) && REAL_BOOK.has(b.platform)) {
+        const netRoi = bestNetRoi(a, b);
+        if (netRoi != null && netRoi > SUSPICIOUS_ROI) { quarantined++; continue; }
+      }
+
       result.push({
         marketA:    a,
         marketB:    b,
-        confidence: m.confidence,
-        event:      m.event || '',
+        confidence,
+        event:      describeEvent(a, b),
       });
     }
-    return result;
-  } catch (err) {
-    console.error(`[matcher] batch call failed: ${err.message?.slice(0, 120)}`);
-    return [];
   }
+
+  if (rejectedNotSameEvent > 0 || quarantined > 0) {
+    console.log(`[matcher] ${categoryLabel}: ${rejectedNotSameEvent} rejected (not same event), ${quarantined} quarantined (netROI>${SUSPICIOUS_ROI}%)`);
+  }
+
+  return result;
 }
 
 // ── Deduplication ──────────────────────────────────
@@ -298,17 +432,19 @@ function buildRunner({ agentName, outFile, categoryLabel, keywords, boostKeyword
       return;
     }
 
-    const allMarkets = extractAllMarkets(raw);
-    const sampled    = sampleByCategory(allMarkets, keywords, boostKeywords, 30, 1);
-    const batches    = createBatches(sampled);
+    const allMarkets  = extractAllMarkets(raw);
+    const sampled     = sampleByCategory(allMarkets, keywords, boostKeywords, 30, 1);
+    const batches     = createBatches(sampled);
+    // Built once over the FULL market universe so IDF reflects true corpus-wide rarity —
+    // see MIN_IDF_SCORE comment near the config constants.
+    const corpusIndex = buildIdfIndex(allMarkets);
 
     console.log(`[${agentName}] ${sampled.length} markets in ${batches.length} batches for "${categoryLabel}"`);
 
     const allMatches = [];
     for (let i = 0; i < batches.length; i++) {
-      const matches = await matchBatch(batches[i], categoryLabel);
+      const matches = await matchBatch(batches[i], categoryLabel, corpusIndex);
       allMatches.push(...matches);
-      if (i < batches.length - 1) await sleep(2000); // brief pause between calls
     }
 
     const unique = deduplicateMatches(allMatches);
@@ -322,6 +458,4 @@ function buildRunner({ agentName, outFile, categoryLabel, keywords, boostKeyword
   setInterval(run, interval);
 }
 
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-
-module.exports = { buildRunner, extractAllMarkets, sampleByCategory, createBatches, matchBatch, deduplicateMatches, beat };
+module.exports = { buildRunner, extractAllMarkets, sampleByCategory, createBatches, buildIdfIndex, matchBatch, deduplicateMatches, beat };
