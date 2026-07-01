@@ -1,6 +1,16 @@
 module.exports = {
   apps: [
     {
+      name:          'agent26-landing-auditor',
+      script:        './agents/agent26-landing-auditor.js',
+      cwd:           '/root/prediction-market',
+      restart_delay: 30000,
+      max_restarts:  20,
+      watch:         false,
+      autorestart:   true,
+      env:           { NODE_ENV: 'production', HOME: '/root' },
+    },
+    {
       name:          'agent25-kalshi-rewards',
       script:        './agents/agent25-kalshi-rewards.js',
       cwd:           '/root/prediction-market',

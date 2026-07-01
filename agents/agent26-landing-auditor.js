@@ -1,0 +1,591 @@
+#!/usr/bin/env node
+// agent26-landing-auditor.js — read-only landing-page honest-engine auditor.
+//
+// READ-ONLY · Zero Claude API · never edits code, never restarts anything,
+// never writes to any file the dashboard reads. Every 30 min it:
+//   1. Fetches http://localhost:3000 and extracts the "live inside" rows
+//      that app/page.tsx's buildLiveRows()/readLandingStats() produced.
+//   2. Independently recomputes each row's expected value straight from the
+//      same /tmp + data/*.json source files, using the same gating rules
+//      and formulas app/page.tsx uses (reused where require()-able, mirrored
+//      with a source-of-truth comment where the original is TypeScript).
+//   3. Flags honest-engine invariant violations and sends ONE deduped
+//      Telegram alert. Silent when clean (no news = good). Logs every cycle
+//      either way.
+//
+// This agent has NO write access to anything the app reads — its only
+// outputs are its own log line, its own state file (dedupe hash), and an
+// outbound Telegram message.
+'use strict';
+
+const fs    = require('fs');
+const path  = require('path');
+const http  = require('http');
+const https = require('https');
+const crypto = require('crypto');
+const { httpPost: _sharedPost } = require('../lib/httpGet');
+const { annualize, roundTripFeeByVenue, netApy30d } = require('../lib/funding-math');
+
+// ── Load .env for Telegram creds (pm2 doesn't auto-load project env files) ───
+// Same pattern as agents/agent21-copy-watcher.js — do NOT hardcode or commit
+// the token; this only reads whatever's already in the gitignored .env files.
+// Read every candidate file (don't stop at the first one that merely exists —
+// .env.local exists but only carries ODDS_API_KEY; TELEGRAM_* live in .env).
+for (const envFile of ['.env.local', '.env']) {
+  try {
+    const envPath = path.join(__dirname, '..', envFile);
+    for (const line of fs.readFileSync(envPath, 'utf8').split('\n')) {
+      const m = line.match(/^([A-Z0-9_]+)="?([^"]*?)"?\s*$/);
+      if (m && !process.env[m[1]]) process.env[m[1]] = m[2];
+    }
+  } catch { /* try next */ }
+}
+
+const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
+const CHAT_ID   = process.env.TELEGRAM_CHAT_ID   || '';
+
+// ── Config ────────────────────────────────────────────────────────────────
+const LANDING_URL       = 'http://localhost:3000/';
+const SCAN_INTERVAL_MS  = 30 * 60_000;
+const STARTUP_DELAY_MS  = 10_000;
+const FETCH_TIMEOUT_MS  = 15_000;
+const ALERT_COOLDOWN_MS = 6 * 3_600_000; // dedupe: same violation set at most once per 6h
+const HB_FILE           = '/tmp/agent-heartbeats.json';
+const STATE_FILE        = '/tmp/landing-auditor-state.json'; // this agent's own bookkeeping only
+
+const EXCHANGE_FILE       = '/tmp/exchange-prices.json';
+const UNI_FILE            = '/tmp/unified-opportunities.json';
+const BASIS_FILE          = '/tmp/basis-opportunities.json';
+const SPORTS_FILE         = '/tmp/sports-odds.json';
+const ARB_FILE            = '/tmp/arbitrage-opportunities.json';
+const POLY_REWARDS_FILE   = '/root/prediction-market/data/liquidity-rewards.json';
+const KALSHI_REWARDS_FILE = '/root/prediction-market/data/kalshi-rewards.json';
+
+const UNI_STALE_MS    = 10 * 60_000; // matches lib/spread-compute.ts UNI_STALE_MS
+const SPORTS_STALE_MS = 7_200_000;   // matches app/page.tsx readLandingStats()
+
+function log(...a) { console.log('[A26]', new Date().toISOString(), ...a); }
+
+// ── Replicated honest-engine helpers ─────────────────────────────────────────
+// lib/reward-gating.ts, lib/honest-display.ts and lib/spread-types.ts are
+// TypeScript — this repo has no ts-node, and every other agent only
+// require()s plain .js lib files (see agents/agent10-binance.js etc.), so
+// these can't be imported directly from a plain Node script. Mirrored
+// verbatim below; if the source file changes, this block must change too.
+
+const APY_CAP       = 200; // lib/honest-display.ts APY_CAP
+const APY_CAP_LABEL = '>200%/yr · run-rate, not guaranteed'; // lib/honest-display.ts APY_CAP_LABEL
+const LANDING_CAPITAL_BASIS = 1000; // lib/honest-display.ts LANDING_CAPITAL_BASIS
+
+function scaleToCapitalBasis(amountAtCapital, fromCapital, toCapital = LANDING_CAPITAL_BASIS) { // lib/honest-display.ts scaleToCapitalBasis
+  if (fromCapital <= 0) return 0;
+  return amountAtCapital * (toCapital / fromCapital);
+}
+
+function kIsWarn(m) { // lib/reward-gating.ts kIsWarn
+  if (m.flags.TRAP) return false;
+  const p = m.last_price;
+  return (p >= 0.80 && p <= 0.90) || (p >= 0.10 && p <= 0.20);
+}
+function isSaneKalshiMarket(m, capitalKey) { // lib/reward-gating.ts isSaneKalshiMarket
+  return (
+    !m.flags.TRAP && !kIsWarn(m) &&
+    !m.flags.SHORT_BURST && !m.flags.THIN_CAP && !m.flags.BELOW_FLOOR && !m.flags.ONE_SIDED &&
+    !!m.levels[capitalKey]?.aboveMin
+  );
+}
+function isSanePolymarketLevel(lv) { // lib/reward-gating.ts isSanePolymarketLevel
+  return lv.flags.length === 0;
+}
+
+function calcSpreadSizing(s, capital, leverage) { // lib/spread-types.ts calcSpreadSizing
+  const N         = capital * leverage / 2;
+  const feesUsd   = N * s.totalFeesPct / 100;
+  const net30dUsd = N * s.grossApy / 100 * 30 / 365 - feesUsd;
+  const netYrUsd  = N * s.netApy30d / 100;
+  const dayUsd    = netYrUsd / 365;
+  const roc       = capital > 0 ? netYrUsd / capital * 100 : 0;
+  return { N, feesUsd, net30dUsd, netYrUsd, dayUsd, roc };
+}
+
+function isDex(exchange) { return exchange === 'hyperliquid' || exchange === 'dydx'; } // lib/spread-compute.ts isDex
+function liqUsd(data) { return Math.max(data?.openInterestUsd ?? 0, data?.vol24hUsd ?? 0); } // lib/spread-compute.ts liqUsd
+function liqTier(usd) { // lib/spread-compute.ts liqTier
+  if (usd >= 50_000_000) return 'DEEP';
+  if (usd >= 10_000_000) return 'OK';
+  if (usd >= 1_000_000)  return 'THIN';
+  return 'VERY THIN';
+}
+
+// ── Wall-clock-deadline text fetch ───────────────────────────────────────────
+// lib/httpGet.js's httpGet() always JSON.parse()s the body, which the HTML
+// landing page response is not. This mirrors its settle-once / hard
+// wall-clock-deadline fix (see lib/httpGet.js) but resolves raw text.
+function fetchText(url, timeoutMs = FETCH_TIMEOUT_MS) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let res;
+    const settle = (fn, val) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(deadline);
+      req.destroy();
+      if (res) res.destroy();
+      fn(val);
+    };
+    let deadline;
+    const req = (url.startsWith('http:') ? http : https).get(url, r => {
+      res = r;
+      const chunks = [];
+      res.on('data', c => chunks.push(c));
+      res.on('end', () => settle(resolve, Buffer.concat(chunks).toString()));
+      res.on('error', e => settle(reject, e));
+    });
+    deadline = setTimeout(() => settle(reject, new Error('wall-clock timeout: ' + url)), timeoutMs);
+    req.on('error', e => settle(reject, e));
+  });
+}
+
+function httpPost(url, body) { return _sharedPost(url, body, { timeoutMs: 15_000 }).then(r => r.data); }
+
+async function sendTelegram(text) {
+  if (!BOT_TOKEN || !CHAT_ID) {
+    log('Telegram not configured — alert logged only:', text.slice(0, 200));
+    return;
+  }
+  try {
+    await httpPost(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+      chat_id: CHAT_ID, text, parse_mode: 'HTML',
+    });
+  } catch (e) {
+    log('sendTelegram error:', e.message);
+  }
+}
+
+function readJsonSafe(file) {
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; }
+}
+
+function beat() {
+  let hb = {};
+  try { hb = JSON.parse(fs.readFileSync(HB_FILE, 'utf8')); } catch {}
+  hb['agent26-landing-auditor'] = Date.now();
+  try { fs.writeFileSync(HB_FILE, JSON.stringify(hb, null, 2)); } catch {}
+}
+
+function loadState() {
+  return readJsonSafe(STATE_FILE) || { lastAlertHash: null, lastAlertAt: 0, firstCheckDone: false };
+}
+function saveState(state) {
+  try { fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2)); } catch (e) { log('saveState error:', e.message); }
+}
+
+// ── Parse the landing page's "live inside" rows out of the rendered HTML ────
+// No data-testid/data-attributes exist on BlipRow (app/components/ui/BlipRow.tsx),
+// so this anchors on the row UNIT strings, which are a small fixed vocabulary
+// hardcoded in app/page.tsx's buildLiveRows() (one of: 'net/day per $1k',
+// 'confirmed margin', 'basis · coin-margined', 'executable basis',
+// 'cashable right now'). The value div always immediately precedes its unit
+// div in BlipRow's markup, and the chip (CASHABLE/SIGNAL) always immediately
+// precedes the row's sub-text — so anchoring on (value, unit) pairs and
+// walking backward to the nearest chip is robust to className/markup churn.
+const UNIT_VOCAB = [
+  'net/day per $1k',
+  'confirmed margin',
+  'basis · coin-margined',
+  'executable basis',
+  'cashable right now',
+];
+
+function parseLandingRows(html) {
+  // Only look at the actual rendered DOM, not the RSC flight-data <script>
+  // blob Next.js appends after it (which re-serializes the same row text as
+  // escaped JSON strings and would otherwise double-match every anchor).
+  const scriptIdx = html.indexOf('<script>self.__next_f.push');
+  const domOnly   = scriptIdx > -1 ? html.slice(0, scriptIdx) : html;
+
+  const headerMarker = 'live inside';
+  const footerMarker = 'More than arbitrage';
+  const startIdx = domOnly.indexOf(headerMarker);
+  const endIdx   = domOnly.indexOf(footerMarker);
+  if (startIdx === -1 || endIdx === -1) {
+    throw new Error('landing page structure not found (header/footer markers missing) — page markup may have changed');
+  }
+  const segment = domOnly.slice(startIdx + headerMarker.length, endIdx);
+
+  if (segment.includes('no edge confirmed yet')) return []; // empty-state placeholder, not a violation
+
+  const tokens = segment
+    .replace(/<[^>]+>/g, '\n')
+    .replace(/&#x27;/g, "'")
+    .split('\n')
+    .map(t => t.trim())
+    .filter(Boolean);
+
+  const rows = [];
+  let searchFrom = 0;
+  for (let i = 0; i < tokens.length; i++) {
+    if (!UNIT_VOCAB.includes(tokens[i])) continue;
+    const unitIdx  = i;
+    const valueIdx = unitIdx - 1;
+    if (valueIdx < searchFrom) continue;
+    const value = tokens[valueIdx];
+
+    let chipIdx = -1;
+    for (let j = valueIdx - 1; j >= searchFrom; j--) {
+      if (tokens[j] === 'CASHABLE' || tokens[j] === 'SIGNAL') { chipIdx = j; break; }
+    }
+    if (chipIdx === -1) { searchFrom = unitIdx + 1; continue; } // malformed row, skip rather than misattribute
+
+    const nameRaw = tokens.slice(searchFrom, chipIdx).join(' ');
+    const subRaw  = tokens.slice(chipIdx + 1, valueIdx).join(' ');
+    const chip    = tokens[chipIdx] === 'CASHABLE' ? 'cashable' : 'signal';
+
+    rows.push({ nameRaw, subRaw, chip, value, unit: tokens[unitIdx] });
+    searchFrom = unitIdx + 1;
+  }
+  return rows;
+}
+
+function classifyRow(row) {
+  if (/funding spread/.test(row.nameRaw)) {
+    const m = /(\S+)\s+funding spread/.exec(row.nameRaw);
+    return { key: 'funding', coin: m ? m[1] : null };
+  }
+  if (/maker rewards/.test(row.nameRaw)) {
+    const platform = /Polymarket/.test(row.nameRaw) ? 'Polymarket' : /Kalshi/.test(row.nameRaw) ? 'Kalshi' : null;
+    return { key: 'rewards', platform };
+  }
+  if (/carry/.test(row.nameRaw)) {
+    const m = /(\S+)\s+carry/.exec(row.nameRaw);
+    return { key: 'carry', asset: m ? m[1] : null };
+  }
+  if (/Cross-book arb/.test(row.nameRaw)) return { key: 'sports' };
+  if (/Prediction arb/.test(row.nameRaw)) return { key: 'prediction' };
+  return { key: 'unknown' };
+}
+
+function parseNumber(str) {
+  const m = /(-?[\d.]+)/.exec(String(str).replace(/,/g, ''));
+  return m ? parseFloat(m[1]) : NaN;
+}
+
+// ── Independent recompute: funding ───────────────────────────────────────────
+function recomputeFunding(shortExchangeGuess, longExchangeGuess, coin) {
+  const raw = readJsonSafe(EXCHANGE_FILE);
+  if (!raw || !raw.futures) return null;
+  const shortEx = shortExchangeGuess.toLowerCase();
+  const longEx  = longExchangeGuess.toLowerCase();
+  const A = raw.futures[shortEx]?.[coin];
+  const B = raw.futures[longEx]?.[coin];
+  if (!A || !B || typeof A.fundingRate !== 'number' || typeof B.fundingRate !== 'number') return null;
+
+  const annA = annualize(A.fundingRate, A.fundingIntervalHours ?? 8);
+  const annB = annualize(B.fundingRate, B.fundingIntervalHours ?? 8);
+  // computeSpreads() picks whichever side has the higher annualized rate as short.
+  const actualShort = annA >= annB ? shortEx : longEx;
+  const actualLong  = annA >= annB ? longEx  : shortEx;
+
+  const grossApy = +(Math.abs(annA - annB)).toFixed(2);
+  const totalFeesPct = roundTripFeeByVenue(actualShort, actualLong);
+  const net30d = netApy30d(grossApy, totalFeesPct);
+  const sizing = calcSpreadSizing({ totalFeesPct, grossApy, netApy30d: net30d }, 1000, 1);
+  const dayUsd1k = Math.round(sizing.dayUsd * 100) / 100;
+
+  const shortLiq = liqUsd(A);
+  const longLiq  = liqUsd(B);
+  const minLiq   = shortLiq > 0 && longLiq > 0 ? Math.min(shortLiq, longLiq) : Math.max(shortLiq, longLiq);
+  const tier     = minLiq > 0 ? liqTier(minLiq) : null;
+  const thinFlag = tier === 'THIN' || tier === 'VERY THIN';
+
+  let oneLegUnverified = true;
+  let depthThin = false;
+  const uni = readJsonSafe(UNI_FILE);
+  if (uni && Date.now() - (uni.sources?.funding?.updatedAt ?? 0) < UNI_STALE_MS) {
+    const key = `${coin}|${[shortEx, longEx].sort().join('|')}`;
+    for (const opp of uni.opportunities ?? []) {
+      if (opp.type !== 'FUNDING') continue;
+      const parts = (opp.id ?? '').split('-');
+      if (parts.length !== 4 || parts[0] !== 'funding') continue;
+      const [, oCoin, ex1, ex2] = parts;
+      if (`${oCoin}|${[ex1, ex2].sort().join('|')}` === key) {
+        oneLegUnverified = opp.oneLegUnverified === true;
+        depthThin        = opp.depthThin === true;
+        break;
+      }
+    }
+  }
+
+  return { dayUsd1k, netApy30d: net30d, expectedSane: !oneLegUnverified && !thinFlag && !depthThin };
+}
+
+// ── Independent recompute: rewards (mirrors readLandingStats()'s Poly+Kalshi loop) ─
+function recomputeRewards() {
+  const CAPITAL_TIERS = ['500', '5000', '50000'];
+  let best = null;
+
+  const polyRaw = readJsonSafe(POLY_REWARDS_FILE);
+  for (const m of polyRaw?.markets ?? []) {
+    for (const capStr of CAPITAL_TIERS) {
+      const lv = m.levels?.[capStr];
+      if (!lv || !lv.grossRewardDay) continue;
+      if (!isSanePolymarketLevel({ flags: lv.flags ?? [] })) continue;
+      const score = (lv.dayYieldPct ?? 0) * 365;
+      if (!best || score > best.score) best = { platform: 'Polymarket', grossRewardDay: lv.grossRewardDay, capital: +capStr, dayYieldPct: lv.dayYieldPct ?? 0, score };
+      break;
+    }
+  }
+
+  const kalshiRaw = readJsonSafe(KALSHI_REWARDS_FILE);
+  for (const m of kalshiRaw?.markets ?? []) {
+    for (const capStr of CAPITAL_TIERS) {
+      const lv = m.levels?.[capStr];
+      if (!lv || !lv.grossRewardDay) continue;
+      if (!isSaneKalshiMarket(m, capStr)) continue;
+      const score = (lv.dayYieldPct ?? 0) * 365;
+      if (!best || score > best.score) best = { platform: 'Kalshi', grossRewardDay: lv.grossRewardDay, capital: +capStr, dayYieldPct: lv.dayYieldPct ?? 0, score };
+      break;
+    }
+  }
+  if (!best) return null;
+  return { platform: best.platform, day1k: scaleToCapitalBasis(best.grossRewardDay, best.capital, LANDING_CAPITAL_BASIS), dayYieldPct: best.dayYieldPct };
+}
+
+// GATE INTEGRITY (user-scoped to rewards only): does the specific level that
+// produces the DISPLAYED $/day figure pass the platform's own sane-market gate?
+function findDisplayedRewardGateStatus(platform, displayedDay1k) {
+  const CAPITAL_TIERS = ['500', '5000', '50000'];
+  if (platform === 'Polymarket') {
+    const raw = readJsonSafe(POLY_REWARDS_FILE);
+    for (const m of raw?.markets ?? []) {
+      for (const capStr of CAPITAL_TIERS) {
+        const lv = m.levels?.[capStr];
+        if (!lv || !lv.grossRewardDay) continue;
+        const day1k = scaleToCapitalBasis(lv.grossRewardDay, +capStr, LANDING_CAPITAL_BASIS);
+        if (Math.abs(day1k - displayedDay1k) < Math.max(0.01, displayedDay1k * 0.02)) {
+          return { found: true, sane: isSanePolymarketLevel({ flags: lv.flags ?? [] }) };
+        }
+      }
+    }
+  } else if (platform === 'Kalshi') {
+    const raw = readJsonSafe(KALSHI_REWARDS_FILE);
+    for (const m of raw?.markets ?? []) {
+      for (const capStr of CAPITAL_TIERS) {
+        const lv = m.levels?.[capStr];
+        if (!lv || !lv.grossRewardDay) continue;
+        const day1k = scaleToCapitalBasis(lv.grossRewardDay, +capStr, LANDING_CAPITAL_BASIS);
+        if (Math.abs(day1k - displayedDay1k) < Math.max(0.01, displayedDay1k * 0.02)) {
+          return { found: true, sane: isSaneKalshiMarket(m, capStr) };
+        }
+      }
+    }
+  }
+  return { found: false, sane: null };
+}
+
+// ── Independent recompute: basis / sports / prediction ───────────────────────
+// These files already carry the final computed number (agent19/agent-fetcher
+// own that math); the landing page's job is only selection, so the parallel
+// path here re-derives the SAME selection rule from the SAME data.
+function recomputeBasis() {
+  const raw = readJsonSafe(BASIS_FILE);
+  const opps = raw?.opportunities ?? [];
+  const sorted = [...opps]
+    .filter(o => (o.netAnnualizedExecutable ?? o.netAnnualized ?? 0) > 0)
+    .sort((a, b) => (b.netAnnualizedExecutable ?? b.netAnnualized ?? 0) - (a.netAnnualizedExecutable ?? a.netAnnualized ?? 0));
+  if (!sorted.length) return null;
+  const top = sorted[0];
+  return { asset: top.asset, netAnnualized: Math.round((top.netAnnualizedExecutable ?? top.netAnnualized ?? 0) * 10) / 10 };
+}
+
+function recomputeSports() {
+  const raw = readJsonSafe(SPORTS_FILE);
+  if (!raw) return null;
+  if (Date.now() - (typeof raw.fetchedAt === 'number' ? raw.fetchedAt : 0) >= SPORTS_STALE_MS) return null;
+  const valid = (raw.arbOpportunities ?? [])
+    .filter(a => !a.isStale && (a.netMargin ?? a.grossMargin ?? 0) > 0)
+    .sort((a, b) => (b.netMargin ?? 0) - (a.netMargin ?? 0));
+  if (!valid.length) return null;
+  return { netMargin: valid[0].netMargin ?? valid[0].grossMargin };
+}
+
+function recomputePrediction() {
+  const raw = readJsonSafe(ARB_FILE);
+  const s = raw?.stats ?? {};
+  const cash = s.confirmedCashable ?? 0;
+  const tot  = cash + (s.rejectedNotSameEvent ?? 0) + (s.pendingVerification ?? 0);
+  return { cashable: cash, pairsChecked: tot };
+}
+
+// ── Evaluate one displayed row against its independent recompute ────────────
+const TOL = (a, b, absTol, relTol) => Math.abs(a - b) <= Math.max(absTol, Math.abs(b) * relTol);
+
+function evaluateRow(row, hasApyCapLabel) {
+  const violations = [];
+  const cls = classifyRow(row);
+  const rawVal = row.value;
+
+  if (/NaN|undefined|Infinity/i.test(rawVal) || /NaN|undefined|Infinity/i.test(row.unit)) {
+    violations.push(`MISSING/FABRICATED: "${row.nameRaw}" shows "${rawVal}" — non-finite value rendered`);
+    return { cls, violations, impliedApy: null };
+  }
+
+  const num = parseNumber(rawVal);
+  if (Number.isNaN(num)) {
+    violations.push(`MISSING/FABRICATED: "${row.nameRaw}" value "${rawVal}" is not parseable as a number`);
+    return { cls, violations, impliedApy: null };
+  }
+
+  let impliedApy = null; // only rows expressing a $/day-per-$1k or %/yr rate get the daily/annual checks
+
+  if (cls.key === 'funding' && cls.coin) {
+    const m = /short (\S+)\s*·\s*long (\S+)/.exec(row.subRaw) || /short (\S+).*long (\S+)/.exec(row.subRaw);
+    if (!m) {
+      violations.push(`MISSING/FABRICATED: funding row "${row.nameRaw}" — could not parse short/long exchanges from "${row.subRaw}"`);
+    } else {
+      const expected = recomputeFunding(m[1], m[2], cls.coin);
+      if (!expected) {
+        violations.push(`MISSING/FABRICATED: funding row shows ${cls.coin} ${m[1]}/${m[2]} at $${num}/day but no matching entry found in ${EXCHANGE_FILE}`);
+      } else {
+        if (!TOL(num, expected.dayUsd1k, 0.02, 0.02)) {
+          violations.push(`DIVERGENCE: funding ${cls.coin} displayed $${num}/day vs recomputed $${expected.dayUsd1k}/day (independent path from ${EXCHANGE_FILE})`);
+        }
+        if (!expected.expectedSane) {
+          violations.push(`DIVERGENCE: funding ${cls.coin} ${m[1]}/${m[2]} is displayed cashable but independent recompute flags it thin/unverified — parallel-path regression`);
+        }
+      }
+    }
+    impliedApy = num * 36.5; // $/day per $1k → %/yr (num/1000 * 365 * 100)
+  }
+
+  if (cls.key === 'rewards' && cls.platform) {
+    const expected = recomputeRewards();
+    if (!expected || expected.platform !== cls.platform) {
+      violations.push(`MISSING/FABRICATED: rewards row shows ${cls.platform} $${num}/day but independent recompute found no matching sane candidate`);
+    } else if (!TOL(num, expected.day1k, 0.02, 0.02)) {
+      violations.push(`DIVERGENCE: ${cls.platform} rewards displayed $${num}/day vs recomputed $${expected.day1k.toFixed(2)}/day`);
+    }
+    const gate = findDisplayedRewardGateStatus(cls.platform, num);
+    if (gate.found && gate.sane === false) {
+      violations.push(`GATE INTEGRITY: displayed ${cls.platform} reward $${num}/day matches a market that FAILS the sane-market gate (TRAP/SHORT_BURST/THIN_CAP/BELOW_FLOOR/ONE_SIDED/flags) — should have been excluded`);
+    } else if (!gate.found) {
+      violations.push(`MISSING/FABRICATED: displayed ${cls.platform} reward $${num}/day has no matching level in the source rewards file`);
+    }
+    impliedApy = num * 36.5;
+  }
+
+  if (cls.key === 'carry' && cls.asset) {
+    const expected = recomputeBasis();
+    if (!expected || expected.asset !== cls.asset) {
+      violations.push(`MISSING/FABRICATED: carry row shows ${cls.asset} +${num}%/yr but independent recompute found no matching top candidate`);
+    } else if (!TOL(num, expected.netAnnualized, 0.1, 0.02)) {
+      violations.push(`DIVERGENCE: ${cls.asset} carry displayed +${num}%/yr vs recomputed +${expected.netAnnualized}%/yr`);
+    }
+    impliedApy = num;
+  }
+
+  if (cls.key === 'sports') {
+    const expected = recomputeSports();
+    if (!expected) {
+      violations.push(`MISSING/FABRICATED: sports row shows +${num}% but independent recompute found no fresh valid arb`);
+    } else if (!TOL(num, expected.netMargin, 0.1, 0.02)) {
+      violations.push(`DIVERGENCE: sports margin displayed +${num}% vs recomputed +${expected.netMargin}%`);
+    }
+    // netMargin is a one-time per-event margin, not a daily/annual rate — excluded from impliedApy checks.
+  }
+
+  if (cls.key === 'prediction') {
+    const expected = recomputePrediction();
+    if (!expected || expected.cashable !== num) {
+      violations.push(`DIVERGENCE: prediction arb count displayed ${num} vs recomputed ${expected ? expected.cashable : 'null'} from ${ARB_FILE}`);
+    }
+    // a count, not a rate — excluded from impliedApy checks.
+  }
+
+  if (impliedApy != null) {
+    const impliedDailyPct = impliedApy / 365;
+    if (impliedDailyPct > 10) {
+      violations.push(`HARD IMPOSSIBLE: "${row.nameRaw}" implies ${impliedDailyPct.toFixed(1)}%/day (~${impliedApy.toFixed(0)}%/yr) — regardless of chip/label this is not real`);
+    }
+    if (row.chip === 'cashable' && impliedApy > APY_CAP) {
+      violations.push(`CASHABLE-TOO-GOOD: "${row.nameRaw}" is marked cashable but implies ${impliedApy.toFixed(0)}%/yr — too good to be true, verify it's real`);
+    }
+    if (row.chip !== 'cashable' && impliedApy > APY_CAP && !hasApyCapLabel) {
+      violations.push(`LABEL RULE: "${row.nameRaw}" is non-cashable and implies ${impliedApy.toFixed(0)}%/yr without the "${APY_CAP_LABEL}" label`);
+    }
+  }
+
+  return { cls, violations, impliedApy };
+}
+
+// ── One audit cycle ───────────────────────────────────────────────────────
+async function runCycle() {
+  const html = await fetchText(LANDING_URL);
+  const hasApyCapLabel = html.includes(APY_CAP_LABEL);
+  const rows = parseLandingRows(html);
+
+  const allViolations = [];
+  for (const row of rows) {
+    const { violations } = evaluateRow(row, hasApyCapLabel);
+    allViolations.push(...violations);
+  }
+
+  log(`cycle ok — ${rows.length} live row(s), ${allViolations.length} violation(s)`);
+  return allViolations;
+}
+
+function hashViolations(violations) {
+  return crypto.createHash('sha256').update(JSON.stringify([...violations].sort())).digest('hex').slice(0, 16);
+}
+
+async function maybeAlert(violations, state, { forceFirstSend = false } = {}) {
+  if (violations.length === 0) {
+    if (forceFirstSend) await sendTelegram('landing-auditor online — first check: OK, no honest-engine violations found.');
+    return state;
+  }
+  const hash = hashViolations(violations);
+  const now  = Date.now();
+  if (!forceFirstSend && hash === state.lastAlertHash && now - state.lastAlertAt < ALERT_COOLDOWN_MS) {
+    log('violations unchanged since last alert — staying silent (dedupe window active)');
+    return state;
+  }
+  const text = `⚠️ <b>Landing page honest-engine violation${violations.length > 1 ? 's' : ''}</b>\n\n` +
+    violations.map((v, i) => `${i + 1}. ${v}`).join('\n\n');
+  await sendTelegram(forceFirstSend ? `landing-auditor online — first check found issues:\n\n${text}` : text);
+  return { ...state, lastAlertHash: hash, lastAlertAt: now };
+}
+
+async function main() {
+  log('agent26-landing-auditor starting — read-only, zero Claude API');
+  log(`  Landing URL: ${LANDING_URL}`);
+  log(`  Interval: ${SCAN_INTERVAL_MS / 60_000} min · alert dedupe window: ${ALERT_COOLDOWN_MS / 3_600_000}h`);
+
+  await new Promise(r => setTimeout(r, STARTUP_DELAY_MS));
+
+  let state = loadState();
+  let first = !state.firstCheckDone;
+
+  while (true) {
+    try {
+      const violations = await runCycle();
+      state = await maybeAlert(violations, state, { forceFirstSend: first });
+      if (first) { state.firstCheckDone = true; first = false; }
+      saveState(state);
+      beat();
+    } catch (e) {
+      log('Cycle error:', e.message);
+      const hash = 'ERROR:' + hashViolations([e.message]);
+      const now = Date.now();
+      if (first || hash !== state.lastAlertHash || now - state.lastAlertAt >= ALERT_COOLDOWN_MS) {
+        await sendTelegram(`⚠️ landing-auditor cycle error (fetch/parse failed, not a data violation): ${e.message}`);
+        state = { ...state, lastAlertHash: hash, lastAlertAt: now, firstCheckDone: true };
+        saveState(state);
+      }
+      first = false;
+      beat();
+    }
+    await new Promise(r => setTimeout(r, SCAN_INTERVAL_MS));
+  }
+}
+
+main().catch(e => { console.error('[A26] Fatal:', e); process.exit(1); });
