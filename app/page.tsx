@@ -251,7 +251,14 @@ function buildLiveRows(stats: ReturnType<typeof readLandingStats>): LiveRow[] {
     const icon = funding.coin === 'BTC' ? '₿' : funding.coin === 'ETH' ? 'Ξ' : funding.coin[0];
     rows.push({
       key: 'funding', icon, tileColor: 'mint',
-      name: `${funding.coin} funding spread`,
+      name: (
+        <>
+          {funding.coin} funding spread{' '}
+          <span className="text-muted font-normal text-[11px] ml-0.5">
+            — fee gap between exchanges you capture
+          </span>
+        </>
+      ),
       sub: (
         <>
           short <PlatformLogo platform={funding.shortExchange} size={12} className="mx-1" />
@@ -293,7 +300,10 @@ function buildLiveRows(stats: ReturnType<typeof readLandingStats>): LiveRow[] {
       name: (
         <>
           <PlatformLogo platform={rewards.platform} size={14} className="mr-1.5" />
-          {rewards.platform} maker rewards
+          {rewards.platform} maker rewards{' '}
+          <span className="text-muted font-normal text-[11px] ml-0.5">
+            — paid for providing liquidity
+          </span>
         </>
       ),
       chip: 'cashable', valueTone: 'up',
@@ -311,7 +321,14 @@ function buildLiveRows(stats: ReturnType<typeof readLandingStats>): LiveRow[] {
     const day1k = LANDING_CAPITAL_BASIS * (basis.netAnnualized / 100) / 365;
     rows.push({
       key: 'carry', icon: '◉', tileColor: 'gold',
-      name: `${basis.asset} carry`,
+      name: (
+        <>
+          {basis.asset} carry{' '}
+          <span className="text-muted font-normal text-[11px] ml-0.5">
+            — gap between spot and futures price
+          </span>
+        </>
+      ),
       sub: (
         <>
           <PlatformLogo platform={basis.exchange} size={12} className="mr-1" />
@@ -382,9 +399,10 @@ export default function LandingPage() {
               </SectionHeading>
 
               <p className="font-body text-base text-ink-2 leading-relaxed max-w-[46ch]">
-                Arbitrage is just the start. Edgeradar tracks funding spreads, carry, liquidity
-                rewards and the traders actually worth following — all fee-adjusted, all
-                executable, and zero when there's nothing real.
+                Edgeradar scans prediction markets, crypto exchanges and sportsbooks for real,
+                fee-adjusted edges — and shows you only the ones you can actually act on. It
+                tracks funding spreads, carry, liquidity rewards and the traders actually worth
+                following, and shows zero when there's nothing real.
               </p>
 
               <div className="flex flex-wrap gap-3 pt-1">
