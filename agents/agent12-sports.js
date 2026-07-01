@@ -130,6 +130,7 @@ const BOOKMAKER_REGION = {
   tipico_de:         'eu',  // Tipico Germany
   virginbet:         'uk',
   betclic_fr:        'eu',  // France-specific key, distinct from betclic above
+  codere_it:         'eu',  // Codere Italy
   // betfair_sb: no bare "betfair_sb" bookmakerId has ever been observed —
   // the only Betfair sportsbook key we get from OddsAPI is betfair_sb_uk
   // (already mapped 'uk' above). Not adding a duplicate/guessed entry.
