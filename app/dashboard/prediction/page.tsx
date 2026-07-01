@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, Landmark, Trophy, Bitcoin, TrendingUp, CloudSun, Search, ShieldCheck } from 'lucide-react';
 import Eyebrow from '@/app/components/ui/Eyebrow';
 import SectionHeading from '@/app/components/ui/SectionHeading';
 import StatCard from '@/app/components/ui/StatCard';
@@ -90,14 +90,24 @@ function platformLabel(p: string): string {
   return MAP[p?.toLowerCase()] ?? p;
 }
 
-function categoryIcon(cat: string): string {
-  const c = cat?.toLowerCase() ?? '';
-  if (c.includes('politic') || c.includes('election')) return '🗳';
-  if (c.includes('sport')   || c.includes('nfl') || c.includes('nba')) return '⚽';
-  if (c.includes('crypto')  || c.includes('bitcoin') || c.includes('btc')) return '₿';
-  if (c.includes('finance') || c.includes('econ')) return '📈';
-  if (c.includes('weather')) return '🌤';
-  return '🔍';
+function CategoryIcon({ category, size = 18 }: { category: string; size?: number }) {
+  const c = category?.toLowerCase() ?? '';
+  if (c.includes('politic') || c.includes('election')) return <Landmark size={size} />;
+  if (c.includes('sport')   || c.includes('nfl') || c.includes('nba')) return <Trophy size={size} />;
+  if (c.includes('crypto')  || c.includes('bitcoin') || c.includes('btc')) return <Bitcoin size={size} />;
+  if (c.includes('finance') || c.includes('econ')) return <TrendingUp size={size} />;
+  if (c.includes('weather')) return <CloudSun size={size} />;
+  return <Search size={size} />;
+}
+
+// Relative time string for a scan timestamp — "just now" / "12s ago" / "5m ago" / "2h ago".
+function relativeTime(ts: number | null | undefined): string {
+  if (!ts) return 'unknown';
+  const ms = Date.now() - ts;
+  if (ms < 5_000) return 'just now';
+  if (ms < 60_000) return `${Math.floor(ms / 1_000)}s ago`;
+  if (ms < 3_600_000) return `${Math.floor(ms / 60_000)}m ago`;
+  return `${Math.floor(ms / 3_600_000)}h ago`;
 }
 
 function chipVariant(opp: Opportunity): EdgeChipVariant {
@@ -199,7 +209,7 @@ function OppRow({ opp }: { opp: Opportunity }) {
       className="block rounded-card shadow-card bg-surface hover:shadow-[0_2px_8px_rgba(11,26,21,.09)] transition-shadow duration-150"
     >
       <BlipRow
-        icon={categoryIcon(opp.category)}
+        icon={<CategoryIcon category={opp.category} />}
         tileColor={tileColor}
         name={opp.question}
         sub={
@@ -379,19 +389,25 @@ export default function PredictionPage() {
           {Array.from({ length: 3 }).map((_, i) => <RowSkeleton key={i} />)}
         </div>
       ) : opps.length === 0 ? (
-        <div className="rounded-card shadow-card bg-surface px-6 py-16 text-center">
+        <div className="rounded-card shadow-card bg-surface px-6 py-14 text-center">
+          <div className="mx-auto mb-4 w-12 h-12 rounded-full bg-mint-tint text-mint-deep flex items-center justify-center">
+            <ShieldCheck size={22} />
+          </div>
           <p className="font-display font-bold text-4xl text-ink mb-3">0</p>
-          <p className="font-body text-base text-ink-2 mb-1">
+          <p className="font-body text-base text-ink-2 mb-2">
             No confirmed arb right now — checking again in {nextCheckMin(freshness)}m
           </p>
-          <p className="font-body text-sm text-muted">
-            {(stats?.signalCount ?? 0) > 0
-              ? `${stats!.signalCount} signal${stats!.signalCount !== 1 ? 's' : ''} detected below confidence threshold`
-              : (data?.rejected ?? 0) > 0
-                ? `${data!.rejected} entr${data!.rejected === 1 ? 'y' : 'ies'} quarantined — ROI > 50%, null prices, or resolution mismatch`
-                : freshness?.discoveryAt
-                  ? 'Last scan found no same-event divergence above threshold'
-                  : 'Matcher has not run yet'}
+          <p className="font-body text-sm text-muted max-w-lg mx-auto leading-relaxed mb-4">
+            Cross-platform cashable arb is rare by design — it only exists when the same event
+            is priced differently on two real-money venues, with enough executable depth to lock
+            in profit after fees. Showing zero calmly is the honest result of this scan, not a
+            broken page.
+          </p>
+          <p className="font-body text-[11px] text-muted uppercase tracking-wide">
+            Checked {relativeTime(freshness?.pricesAt ?? freshness?.discoveryAt)}
+            {stats?.marketsTracked ? ` · ${stats.marketsTracked.toLocaleString()} markets tracked` : ''}
+            {stats?.platforms ? ` · ${stats.platforms} platforms scanned` : ''}
+            {(data?.rejected ?? 0) > 0 ? ` · ${data!.rejected} pair${data!.rejected === 1 ? '' : 's'} quarantined` : ''}
           </p>
         </div>
       ) : (
