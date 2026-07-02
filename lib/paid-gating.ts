@@ -171,17 +171,14 @@ export const REDACTION_MAP: Record<RouteKey, string[]> = {
     'opportunities[].capacityUsd',
     'opportunities[].bidSpreadPct',
     'opportunities[].oiUsd',
+    // backwardation[] items have a different (simpler) shape than
+    // opportunities[] — confirmed against live /tmp/basis-opportunities.json:
+    // { indicativeBasisPct, executableBasisPct, basis, annualized, ... }.
+    // No grossAnnualized/netAnnualized*/capacityUsd/bidSpreadPct/oiUsd fields exist here.
     'backwardation[].indicativeBasisPct',
     'backwardation[].executableBasisPct',
     'backwardation[].basis',
-    'backwardation[].grossAnnualized',
-    'backwardation[].grossAnnualizedExec',
-    'backwardation[].netAnnualizedIndicative',
-    'backwardation[].netAnnualizedExecutable',
-    'backwardation[].netAnnualized',
-    'backwardation[].capacityUsd',
-    'backwardation[].bidSpreadPct',
-    'backwardation[].oiUsd',
+    'backwardation[].annualized',
     'summary.bestNetAnnualized',
   ],
 
