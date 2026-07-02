@@ -150,6 +150,10 @@ function kalshiPageToMarkets(eventsData) {
         // (matches the "before <date>" wording in the question). expiration_time is
         // a settlement-buffer fallback for the rare market missing close_time.
         close_time:      m.close_time || m.expiration_time || m.latest_expiration_time || null,
+        // Total traded volume in CONTRACTS (Kalshi exposes no dollar_volume field) —
+        // never converted to a dollar figure here since each contract's price varies
+        // trade to trade; see shared-matcher.js's volumeNative handling.
+        volume:          m.volume_fp ?? null,
       });
     }
   }

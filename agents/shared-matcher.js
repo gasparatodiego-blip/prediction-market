@@ -523,7 +523,12 @@ function buildEventBuckets(markets) {
       tier:           REAL_BOOK.has(leg.platform) ? 'executable' : 'reference',
       yesPrice:       +leg.yesAsk.toFixed(4),
       noPrice:        +(1 - leg.yesBid).toFixed(4),
+      // volumeUsd is a genuine dollar figure (Polymarket only, today) — null for
+      // any platform whose native volume isn't dollar-denominated. volumeNative
+      // carries that platform's own unit (Kalshi: contracts, Manifold: mana) so
+      // the UI can still show a number without mislabeling its currency.
       volumeUsd:      leg.volumeUsd ?? null,
+      volumeNative:   leg.volumeNative ?? null,
       marketUrl:      leg.url ?? null,
       // No order-book ladder is fetched at this discovery-time grouping stage
       // (that only happens for confirmed cashable pairs, in
@@ -617,7 +622,8 @@ function extractOddsApiMarkets() {
         realBook:    false,
         url:         null,
         resolutionDate: null, // handled separately via commence_time in agent5-calculator's oddsapi path
-        volumeUsd:   null,
+        volumeUsd:    null,
+        volumeNative: null,
         _sport:      ev.sport_title || '',
         _homeTeam:   ev.home_team   || '',
         _awayTeam:   ev.away_team   || '',
@@ -649,9 +655,12 @@ function extractAllMarkets(raw) {
       yesBid:      +piYesBid.toFixed(4),
       yesAsk:      +piYesAsk.toFixed(4),
       realBook:    false, // 10% profit fee + 5% withdrawal fee makes spreads unreliable — signal only
-      url:         `https://www.predictit.org/markets/detail/${m.id}`,
+      // Prefer PredictIt's own full canonical URL (includes the slug) over a
+      // reconstructed one — deep-links straight to the market, never guessed.
+      url:         m.url || `https://www.predictit.org/markets/detail/${m.id}`,
       resolutionDate: null, // PredictIt raw feed carries no reliable close/expiry field
-      volumeUsd:   null, // not extracted from PredictIt's contract payload
+      volumeUsd:   null, // PredictIt's contract payload carries no volume field at all
+      volumeNative: null,
     });
   }
 
@@ -669,7 +678,12 @@ function extractAllMarkets(raw) {
       realBook:    false, // play money, no real order book — signal only
       url:         m.url || `https://manifold.markets/${m.slug || ''}`,
       resolutionDate: normalizeResolutionDate(m.closeTime),
-      volumeUsd:   typeof m.volume === 'number' ? m.volume : null,
+      // Manifold's volume is denominated in Mana (M$), its play-money unit — NOT
+      // USD. Labeling it volumeUsd would misrepresent play money as real dollar
+      // volume, so it stays null there; the raw Mana figure is carried separately
+      // with its unit so the UI can show it without implying a $ figure.
+      volumeUsd:    null,
+      volumeNative: typeof m.volume === 'number' ? { amount: m.volume, unit: 'mana' } : null,
     });
   }
 
@@ -702,7 +716,12 @@ function extractAllMarkets(raw) {
       realBook:    true,
       url:         `https://kalshi.com/markets/${m.ticker}`,
       resolutionDate: normalizeResolutionDate(m.close_time),
-      volumeUsd:   null, // not captured by agent2-fetcher's Kalshi field allowlist — never fabricated
+      // Kalshi's volume_fp is denominated in CONTRACTS, not dollars — each
+      // contract's price varies trade to trade, so multiplying by the current
+      // yes price would misrepresent historical dollar volume as a real figure.
+      // volumeUsd stays null; the raw contract count is carried with its unit.
+      volumeUsd:    null,
+      volumeNative: (() => { const v = parseFloat(m.volume); return isFinite(v) && v > 0 ? { amount: v, unit: 'contracts' } : null; })(),
     });
   }
 
@@ -736,7 +755,11 @@ function extractAllMarkets(raw) {
       realBook:    true,
       url:         m.slug ? `https://polymarket.com/event/${m.slug}` : 'https://polymarket.com',
       resolutionDate: normalizeResolutionDate(m.endDate),
-      volumeUsd:   (() => { const v = parseFloat(m.volume); return isFinite(v) && v > 0 ? v : null; })(),
+      // Polymarket's volume is USDC, 1:1 with USD (same convention already used
+      // elsewhere in this codebase, e.g. capacityUsd) — a genuine dollar figure,
+      // unlike Kalshi's contract-denominated volume or Manifold's play-money Mana.
+      volumeUsd:    (() => { const v = parseFloat(m.volume); return isFinite(v) && v > 0 ? v : null; })(),
+      volumeNative: (() => { const v = parseFloat(m.volume); return isFinite(v) && v > 0 ? { amount: v, unit: 'usd' } : null; })(),
     });
   }
 
