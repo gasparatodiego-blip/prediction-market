@@ -402,6 +402,19 @@ function scoreMarket(question, keywords, boostKeywords = []) {
   return score;
 }
 
+// Kalshi tickers follow "{series}-{outcome}" (e.g. "KXPRESNOMD-28-GN"; also the
+// convention extractOutcomeLabel's bracket already relies on for the trailing
+// segment). The part before the last "-" is Kalshi's own event/series id, shared
+// by every outcome-row of one umbrella market — recoverable from data already in
+// markets-raw.json, no fetcher change needed. Verified against a live snapshot:
+// 62,473 Kalshi rows collapse to 7,641 umbrellas this way with only a handful of
+// coincidental ticker-prefix reuse across unrelated sibling markets.
+function kalshiUmbrellaKey(marketId) {
+  const ticker = marketId.startsWith('ka-') ? marketId.slice(3) : marketId;
+  const i = ticker.lastIndexOf('-');
+  return i === -1 ? ticker : ticker.slice(0, i);
+}
+
 function sampleByCategory(markets, keywords, boostKeywords, perPlatform = 30, minScore = 1) {
   const byPlatform = {};
   for (const m of markets) {
@@ -411,9 +424,28 @@ function sampleByCategory(markets, keywords, boostKeywords, perPlatform = 30, mi
     byPlatform[m.platform].push({ ...m, _score: s });
   }
   const result = [];
-  for (const list of Object.values(byPlatform)) {
-    list.sort((a, b) => b._score - a._score);
-    result.push(...list.slice(0, perPlatform));
+  for (const [platform, list] of Object.entries(byPlatform)) {
+    if (platform !== 'kalshi') {
+      list.sort((a, b) => b._score - a._score);
+      result.push(...list.slice(0, perPlatform));
+      continue;
+    }
+
+    // Kalshi explodes one umbrella event (e.g. a multi-candidate election) into many
+    // per-outcome rows. Capping that flat row list lets a single umbrella's outcome-rows
+    // crowd out every other distinct Kalshi event before matching ever runs. Group by
+    // umbrella first, cap over umbrellas (using each umbrella's best real per-row score,
+    // never an invented blended one), then expand the selected umbrellas back to their
+    // full outcome-row list so downstream pairing still sees every individual candidate.
+    const byUmbrella = new Map();
+    for (const m of list) {
+      const key = kalshiUmbrellaKey(m.id);
+      if (!byUmbrella.has(key)) byUmbrella.set(key, []);
+      byUmbrella.get(key).push(m);
+    }
+    const umbrellas = [...byUmbrella.values()];
+    umbrellas.sort((a, b) => Math.max(...b.map(m => m._score)) - Math.max(...a.map(m => m._score)));
+    for (const rows of umbrellas.slice(0, perPlatform)) result.push(...rows);
   }
   return result;
 }
@@ -422,27 +454,27 @@ function sampleByCategory(markets, keywords, boostKeywords, perPlatform = 30, mi
 // Interleave platforms so each batch has a mix, maximising cross-platform pair opportunities.
 
 function createBatches(markets) {
-  // Group by platform and interleave
+  // Group by platform
   const byPlatform = {};
   for (const m of markets) {
     if (!byPlatform[m.platform]) byPlatform[m.platform] = [];
     byPlatform[m.platform].push(m);
   }
 
-  const interleaved = [];
-  const queues = Object.values(byPlatform);
-  let i = 0;
-  while (queues.some(q => q.length > 0)) {
-    const q = queues[i % queues.length];
-    if (q.length > 0) interleaved.push(q.shift());
-    i++;
+  // Distribute each platform's queue round-robin across every batch slot (not a
+  // sequential dequeue-then-chunk pass) so a platform with far more sampled rows
+  // than another — e.g. Kalshi after umbrella expansion in sampleByCategory —
+  // still lands alongside the smaller platforms' rows in the SAME batches instead
+  // of piling into platform-only tail batches once the smaller queues run dry.
+  // Those tail batches can never produce a cross-platform pair (matchBatch only
+  // compares markets on different platforms), which would silently undo the
+  // sampling fix that lets Kalshi keep a full umbrella's outcome-rows.
+  const numBatches = Math.max(1, Math.ceil(markets.length / BATCH_SIZE));
+  const batches = Array.from({ length: numBatches }, () => []);
+  for (const queue of Object.values(byPlatform)) {
+    queue.forEach((m, i) => batches[i % numBatches].push(m));
   }
-
-  const batches = [];
-  for (let start = 0; start < interleaved.length; start += BATCH_SIZE) {
-    batches.push(interleaved.slice(start, start + BATCH_SIZE));
-  }
-  return batches;
+  return batches.filter(b => b.length > 0);
 }
 
 // ── Deterministic IDF-weighted matching ────────────
@@ -566,4 +598,4 @@ function buildRunner({ agentName, outFile, categoryLabel, keywords, boostKeyword
   setInterval(run, interval);
 }
 
-module.exports = { buildRunner, extractAllMarkets, sampleByCategory, createBatches, buildIdfIndex, matchBatch, deduplicateMatches, beat };
+module.exports = { buildRunner, extractAllMarkets, sampleByCategory, createBatches, buildIdfIndex, matchBatch, deduplicateMatches, beat, kalshiUmbrellaKey };
