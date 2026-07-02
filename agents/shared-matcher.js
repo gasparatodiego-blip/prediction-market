@@ -147,6 +147,17 @@ const PROPOSITION_SIGNATURES = [
   ['resign_removal',  /\bresign|\bremoved?\s+from\s+office|\bstep(s)?\s+down|\bousted?\b/i],
   ['election_win',    /\bwin(s)?\b[^.?]{0,40}\b(election|president|presidency|primary|race|seat)\b|\b(election|president|presidency|primary|race)\b[^.?]{0,40}\bwin(s)?\b/i],
   ['nomination',      /\bnominee|\bnomination|\bnominate/i],
+  // Announcing/entering a race is a different proposition from winning it — a
+  // candidate can announce and still lose, or win without being "first to
+  // announce". Checked after election_win/nomination (first-match-wins) so a
+  // title that already signals win/nominate keeps that classification; this
+  // only catches the "will they run" phrasing common on both platforms
+  // (verified against live titles: "announce a presidential run", "announce
+  // his presidential candidacy", "run for President in 2028", etc — and does
+  // NOT fire on unrelated "announced" usage like "departure announced" or
+  // "announcers say during [game]", which lack a run/bid/campaign/candidacy
+  // object within range).
+  ['announce_candidacy', /\b(announc|declar)(e|es|ed|ing)\b[^.?]{0,40}\b(run|bid|campaign|candidacy)\b|\benter(s|ed|ing)?\b[^.?]{0,40}\b(race|campaign)\b|\blaunch(es|ed|ing)?\b[^.?]{0,40}\b(campaign|bid)\b|\bfile(s|d)?\s+to\s+run\b|\bexploratory\s+committee\b|\brun(s)?\s+for\s+(president|office|senate|governor|mayor)\b/i],
   ['holds_office',    /\bstill\s+(be\s+)?president|\bin\s+office|\bserving\s+as|\bremain(s)?\s+in\s+office|\bout\s+as\s+president/i],
   ['price_threshold', /\breach(es)?\s*\$|\babove\s*\$|\bbelow\s*\$|\$[\d,.]+[kmb]?\b/i],
 ];
