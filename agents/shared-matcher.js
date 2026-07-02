@@ -241,7 +241,16 @@ function hasEntityMismatch(qa, qb) {
 const PROPOSITION_SIGNATURES = [
   ['impeachment',     /\bimpeach/i],
   ['resign_removal',  /\bresign|\bremoved?\s+from\s+office|\bstep(s)?\s+down|\bousted?\b/i],
-  ['election_win',    /\bwin(s)?\b[^.?]{0,40}\b(election|president|presidency|primary|race|seat)\b|\b(election|president|presidency|primary|race)\b[^.?]{0,40}\bwin(s)?\b/i],
+  // Noun form ("...Election winner?", "winner of the ... race") is a separate
+  // phrasing of the SAME proposition as the verb form ("win(s) the election")
+  // — Kalshi favors "winner?" titles, Polymarket favors "Will X win...?", and
+  // \bwin(s)?\b's word boundary never matched "winner" (would need "winner"
+  // to end right after "win", but it continues with "ner"), so these stayed
+  // unclassified (null) and the proposition gate went neutral by omission
+  // rather than confirming them as the same type by design. Kept as one
+  // signature (not split out) since it's the same proposition, just a
+  // different part of speech.
+  ['election_win',    /\bwin(s)?\b[^.?]{0,40}\b(election|president|presidency|primary|race|seat)\b|\b(election|president|presidency|primary|race)\b[^.?]{0,40}\bwin(s)?\b|\bwinner\b[^.?]{0,40}\b(election|president|presidency|primary|race|seat)\b|\b(election|president|presidency|primary|race|seat)\b[^.?]{0,40}\bwinner\b/i],
   ['nomination',      /\bnominee|\bnomination|\bnominate/i],
   // Announcing/entering a race is a different proposition from winning it — a
   // candidate can announce and still lose, or win without being "first to
