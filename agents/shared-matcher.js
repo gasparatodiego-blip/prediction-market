@@ -91,17 +91,125 @@ function questionMentions(question, label) {
   return words.some(w => q.includes(w));
 }
 
+// ── Bracket-independent same-event checks ──────────────────────────────────
+// The [outcome: X] bracket convention (Kalshi/PredictIt) was the only same-event
+// signal outcomesCompatible() had. Polymarket/Manifold titles never carry that
+// bracket, so two unrelated events that merely share a name/keyword could clear
+// the IDF token-overlap gate and get paired as if they were the same market —
+// e.g. "Will Donald Trump win the 2028 Election?" (Polymarket) matched against
+// "Will Donald Trump be impeached during his second term?" (Manifold): same
+// person, completely different proposition.
+//
+// These checks run for EVERY pair (bracketed or not), in addition to the
+// bracket logic above — never in place of it. Conservative by design: each
+// only ever REJECTS on a positive, specific conflict signal; when a signal
+// can't be determined on either side it stays neutral rather than guess,
+// since here a missed match is far cheaper than a fabricated spread.
+
+const GENERATIONAL_SUFFIXES = new Set(['jr', 'sr', 'ii', 'iii', 'iv', 'v']);
+
+// Proper-noun phrases: 2+ consecutive Title-Case words (original casing, not
+// the lowercased tokenizer output) — a crude but deterministic person-name
+// detector. No NER available; this only ever feeds a same-base-name +
+// suffix-conflict check below, so an imprecise extraction just falls through
+// neutral rather than causing a false reject.
+function extractNamePhrases(question) {
+  const clean = stripOutcome(question || '');
+  const matches = clean.match(/\b(?:[A-Z][a-zA-Z'’-]*\s+){1,4}[A-Z][a-zA-Z'’-]*\b/g) || [];
+  return matches
+    .map(phrase => phrase.trim().split(/\s+/).map(w => w.toLowerCase().replace(/[.'’]/g, '')))
+    .filter(words => words.length >= 2);
+}
+
+// True when both titles reference the SAME base name but exactly one phrase
+// carries a generational suffix ("Trump" vs "Trump Jr.") — different people,
+// a shared surname/substring alone is never enough to call this a match.
+function hasEntitySuffixConflict(qa, qb) {
+  const namesA = extractNamePhrases(qa);
+  const namesB = extractNamePhrases(qb);
+  for (const wa of namesA) {
+    const suffixA = GENERATIONAL_SUFFIXES.has(wa.at(-1)) ? wa.at(-1) : null;
+    const baseA   = (suffixA ? wa.slice(0, -1) : wa).join(' ');
+    for (const wb of namesB) {
+      const suffixB = GENERATIONAL_SUFFIXES.has(wb.at(-1)) ? wb.at(-1) : null;
+      const baseB   = (suffixB ? wb.slice(0, -1) : wb).join(' ');
+      if (baseA && baseA === baseB && suffixA !== suffixB) return true;
+    }
+  }
+  return false;
+}
+
+// Proposition-type signatures — ordered, first match wins. Deliberately narrow
+// and specific (not a general topic classifier) so unrelated markets stay
+// unclassified (null) rather than forced into a wrong bucket.
+const PROPOSITION_SIGNATURES = [
+  ['impeachment',     /\bimpeach/i],
+  ['resign_removal',  /\bresign|\bremoved?\s+from\s+office|\bstep(s)?\s+down|\bousted?\b/i],
+  ['election_win',    /\bwin(s)?\b[^.?]{0,40}\b(election|president|presidency|primary|race|seat)\b|\b(election|president|presidency|primary|race)\b[^.?]{0,40}\bwin(s)?\b/i],
+  ['nomination',      /\bnominee|\bnomination|\bnominate/i],
+  ['holds_office',    /\bstill\s+(be\s+)?president|\bin\s+office|\bserving\s+as|\bremain(s)?\s+in\s+office|\bout\s+as\s+president/i],
+  ['price_threshold', /\breach(es)?\s*\$|\babove\s*\$|\bbelow\s*\$|\$[\d,.]+[kmb]?\b/i],
+];
+
+function classifyProposition(question) {
+  const clean = stripOutcome(question || '');
+  for (const [label, re] of PROPOSITION_SIGNATURES) {
+    if (re.test(clean)) return label;
+  }
+  return null; // no confident signature match — stays neutral, never blocks on its own
+}
+
+// Reject only when BOTH legs classify to a known, DIFFERENT proposition type.
+// An unclassified leg on either side means we don't know enough to compare —
+// that must not force a reject (it would wreck recall on ordinary markets
+// that don't match any signature), so this stays neutral in that case.
+function hasPropositionTypeMismatch(qa, qb) {
+  const pa = classifyProposition(qa);
+  const pb = classifyProposition(qb);
+  return pa !== null && pb !== null && pa !== pb;
+}
+
+// Resolution-window years — if both titles name a year and the sets share
+// none, they resolve on different timelines and can't be the same market.
+function extractYears(question) {
+  const clean = stripOutcome(question || '');
+  const years = (clean.match(/\b(20[2-3]\d)\b/g) || []).map(Number);
+  return new Set(years);
+}
+
+function hasDateWindowMismatch(qa, qb) {
+  const ya = extractYears(qa);
+  const yb = extractYears(qb);
+  if (ya.size === 0 || yb.size === 0) return false; // can't compare — stay neutral
+  for (const y of ya) if (yb.has(y)) return false;   // any shared year → compatible
+  return true;
+}
+
 function outcomesCompatible(a, b) {
   const oa = extractOutcomeLabel(a.question);
   const ob = extractOutcomeLabel(b.question);
+  let bracketOk;
   if (oa && ob) {
-    if (oa === ob) return true;
-    if (oa === 'yes' || oa === 'no' || ob === 'yes' || ob === 'no') return true;
-    return false;
+    if (oa === ob) bracketOk = true;
+    else if (oa === 'yes' || oa === 'no' || ob === 'yes' || ob === 'no') bracketOk = true;
+    else return false; // explicit different outcomes — reject immediately, unchanged behavior
+  } else if (oa && !ob) {
+    bracketOk = questionMentions(b.question, oa);
+  } else if (ob && !oa) {
+    bracketOk = questionMentions(a.question, ob);
+  } else {
+    bracketOk = true; // neither leg carries an explicit outcome label — nothing to cross-check from brackets
   }
-  if (oa && !ob) return questionMentions(b.question, oa);
-  if (ob && !oa) return questionMentions(a.question, ob);
-  return true; // neither leg carries an explicit outcome label — nothing to cross-check
+  if (!bracketOk) return false;
+
+  // Bracket-independent checks — run for ALL pairs, bracketed or not. This is
+  // the layer that catches Polymarket/Manifold false pairs the bracket logic
+  // above can never see (those platforms never emit an [outcome: X] bracket).
+  if (hasEntitySuffixConflict(a.question, b.question)) return false;
+  if (hasPropositionTypeMismatch(a.question, b.question)) return false;
+  if (hasDateWindowMismatch(a.question, b.question)) return false;
+
+  return true;
 }
 
 function stripOutcome(q) {
