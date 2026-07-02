@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { Lock, ExternalLink, Copy, Check, KeyRound, ShieldAlert } from 'lucide-react';
 import PlatformLogo from '@/components/PlatformLogo';
@@ -16,7 +17,7 @@ import { platformLabel, formatCents, formatVolume, formatResolutionDate } from '
 // an exact-id join isn't possible here — this is a best-effort match, and the
 // calculator falls back to "capacity unknown" rather than fabricating one
 // when nothing lines up.
-function findValidMatch(edge: LockableEdge, valid: Opportunity[]): Opportunity | null {
+export function findValidMatch(edge: LockableEdge, valid: Opportunity[]): Opportunity | null {
   const mo = edge.matchedOpportunity;
   if (!mo) return null;
   return valid.find(o => {
@@ -191,7 +192,77 @@ function AutoExecutePanel() {
   );
 }
 
-function DeployCalculator({
+// Platform-by-platform price table — executable tier first, reference tier
+// after, plus the reference-median row. Shared between the compact comparator
+// card and the event detail page so the arb-critical BEST tags and tiering
+// can never drift between the two views.
+export function PlatformComparatorTable({ event }: { event: EventBucket }) {
+  const edge = event.lockableEdge;
+  const bestYes = edge?.yesPlatform ?? null;
+  const bestNo  = edge?.noPlatform  ?? null;
+
+  const executable = event.platforms.filter(p => p.tier === 'executable');
+  const reference   = event.platforms.filter(p => p.tier === 'reference');
+  const rows = [...executable, ...reference];
+
+  return (
+    <div className="overflow-x-auto -mx-1">
+      <table className="w-full text-left border-collapse">
+        <thead>
+          <tr className="font-body text-[10.5px] text-muted uppercase tracking-wide">
+            <th className="px-1 pb-1.5 font-medium">Platform</th>
+            <th className="px-1 pb-1.5 font-medium">Yes</th>
+            <th className="px-1 pb-1.5 font-medium">No</th>
+            <th className="hidden sm:table-cell px-1 pb-1.5 font-medium text-right">Vol</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(p => {
+            const isBestYes = p.tier === 'executable' && p.platform === bestYes;
+            const isBestNo  = p.tier === 'executable' && p.platform === bestNo;
+            return (
+              <tr key={p.legId} className={p.tier === 'reference' ? 'opacity-55' : ''}>
+                <td className="px-1 py-1.5">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <PlatformLogo platform={p.platform} size={13} />
+                    <span className="font-body text-xs text-ink-2">{platformLabel(p.platform)}</span>
+                    <TierBadge tier={p.tier} />
+                  </div>
+                  <div className="sm:hidden font-mono text-[10px] text-muted mt-0.5 tabular-nums">
+                    vol {formatVolume(p)}
+                  </div>
+                </td>
+                <td className={`px-1 py-1.5 font-mono text-xs tabular-nums ${isBestYes ? 'text-mint-deep font-semibold' : 'text-ink-2'}`}>
+                  {formatCents(p.yesPrice)}
+                  {isBestYes && <span className="ml-1.5 font-body font-bold text-[9px] text-mint-deep align-middle">BEST</span>}
+                </td>
+                <td className={`px-1 py-1.5 font-mono text-xs tabular-nums ${isBestNo ? 'text-mint-deep font-semibold' : 'text-ink-2'}`}>
+                  {formatCents(p.noPrice)}
+                  {isBestNo && <span className="ml-1.5 font-body font-bold text-[9px] text-mint-deep align-middle">BEST</span>}
+                </td>
+                <td className="hidden sm:table-cell px-1 py-1.5 font-mono text-xs text-muted text-right tabular-nums">{formatVolume(p)}</td>
+              </tr>
+            );
+          })}
+          <tr className="opacity-55">
+            <td className="px-1 py-1.5">
+              <span className="font-body text-[10.5px] text-muted uppercase tracking-wide">
+                Market median · reference only · not executable
+              </span>
+            </td>
+            <td className="px-1 py-1.5 font-mono text-xs text-muted tabular-nums">{formatCents(event.referenceMedian.yesPrice)}</td>
+            <td className="px-1 py-1.5 font-mono text-xs text-muted tabular-nums">
+              {event.referenceMedian.yesPrice != null ? formatCents(1 - event.referenceMedian.yesPrice) : '—'}
+            </td>
+            <td className="hidden sm:table-cell px-1 py-1.5 text-right text-muted">—</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export function DeployCalculator({
   event,
   edge,
   mo,
@@ -353,19 +424,28 @@ function DeployCalculator({
 }
 
 export default function EventCard({ event, valid }: { event: EventBucket; valid: Opportunity[] }) {
+  const router = useRouter();
   const edge = event.lockableEdge;
   const mo   = edge?.matchedOpportunity ?? null;
   const validMatch = edge && mo ? findValidMatch(edge, valid) : null;
 
-  const bestYes = edge?.yesPlatform ?? null;
-  const bestNo  = edge?.noPlatform  ?? null;
-
-  const executable = event.platforms.filter(p => p.tier === 'executable');
-  const reference   = event.platforms.filter(p => p.tier === 'reference');
-  const rows = [...executable, ...reference];
+  const href = `/dashboard/prediction/event/${encodeURIComponent(event.eventKey)}`;
+  const goToDetail = () => router.push(href);
 
   return (
-    <div className="rounded-card shadow-card bg-surface px-5 py-5">
+    <div
+      role="link"
+      tabIndex={0}
+      aria-label={`View operational steps for ${event.title}`}
+      onClick={goToDetail}
+      onKeyDown={e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          goToDetail();
+        }
+      }}
+      className="rounded-card shadow-card bg-surface px-5 py-5 cursor-pointer hover:shadow-[0_2px_8px_rgba(11,26,21,.09)] transition-shadow duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-mint/50"
+    >
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
         <div className="flex items-center gap-2 min-w-0">
@@ -385,70 +465,23 @@ export default function EventCard({ event, valid }: { event: EventBucket; valid:
           instead, so PLATFORM/YES/NO (the arb-critical columns) never have to
           compete with it for space. overflow-x-auto stays as a safety net for
           extreme cases (long category/platform names), not the primary fix. */}
-      <div className="overflow-x-auto -mx-1">
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="font-body text-[10.5px] text-muted uppercase tracking-wide">
-              <th className="px-1 pb-1.5 font-medium">Platform</th>
-              <th className="px-1 pb-1.5 font-medium">Yes</th>
-              <th className="px-1 pb-1.5 font-medium">No</th>
-              <th className="hidden sm:table-cell px-1 pb-1.5 font-medium text-right">Vol</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map(p => {
-              const isBestYes = p.tier === 'executable' && p.platform === bestYes;
-              const isBestNo  = p.tier === 'executable' && p.platform === bestNo;
-              return (
-                <tr key={p.legId} className={p.tier === 'reference' ? 'opacity-55' : ''}>
-                  <td className="px-1 py-1.5">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <PlatformLogo platform={p.platform} size={13} />
-                      <span className="font-body text-xs text-ink-2">{platformLabel(p.platform)}</span>
-                      <TierBadge tier={p.tier} />
-                    </div>
-                    <div className="sm:hidden font-mono text-[10px] text-muted mt-0.5 tabular-nums">
-                      vol {formatVolume(p)}
-                    </div>
-                  </td>
-                  <td className={`px-1 py-1.5 font-mono text-xs tabular-nums ${isBestYes ? 'text-mint-deep font-semibold' : 'text-ink-2'}`}>
-                    {formatCents(p.yesPrice)}
-                    {isBestYes && <span className="ml-1.5 font-body font-bold text-[9px] text-mint-deep align-middle">BEST</span>}
-                  </td>
-                  <td className={`px-1 py-1.5 font-mono text-xs tabular-nums ${isBestNo ? 'text-mint-deep font-semibold' : 'text-ink-2'}`}>
-                    {formatCents(p.noPrice)}
-                    {isBestNo && <span className="ml-1.5 font-body font-bold text-[9px] text-mint-deep align-middle">BEST</span>}
-                  </td>
-                  <td className="hidden sm:table-cell px-1 py-1.5 font-mono text-xs text-muted text-right tabular-nums">{formatVolume(p)}</td>
-                </tr>
-              );
-            })}
-            <tr className="opacity-55">
-              <td className="px-1 py-1.5">
-                <span className="font-body text-[10.5px] text-muted uppercase tracking-wide">
-                  Market median · reference only · not executable
-                </span>
-              </td>
-              <td className="px-1 py-1.5 font-mono text-xs text-muted tabular-nums">{formatCents(event.referenceMedian.yesPrice)}</td>
-              <td className="px-1 py-1.5 font-mono text-xs text-muted tabular-nums">
-                {event.referenceMedian.yesPrice != null ? formatCents(1 - event.referenceMedian.yesPrice) : '—'}
-              </td>
-              <td className="hidden sm:table-cell px-1 py-1.5 text-right text-muted">—</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      <PlatformComparatorTable event={event} />
 
-      {/* Lockable edge + deploy calculator, or calm "no edge" note */}
-      {edge && mo ? (
-        <DeployCalculator event={event} edge={edge} mo={mo} validMatch={validMatch} />
-      ) : (
-        <p className="font-body text-[12.5px] text-muted mt-3 pt-3 border-t border-line">
-          {edge
-            ? 'No lockable edge right now — the spread doesn’t clear the executable threshold.'
-            : 'No lockable edge right now — fewer than two executable venues are quoting this event.'}
-        </p>
-      )}
+      {/* Lockable edge + deploy calculator, or calm "no edge" note. Wrapped with
+          stopPropagation so the capital/slippage inputs, copy buttons and deep
+          links inside remain fully usable without triggering card navigation —
+          only the header/table zone above navigates to the detail page. */}
+      <div onClick={e => e.stopPropagation()}>
+        {edge && mo ? (
+          <DeployCalculator event={event} edge={edge} mo={mo} validMatch={validMatch} />
+        ) : (
+          <p className="font-body text-[12.5px] text-muted mt-3 pt-3 border-t border-line">
+            {edge
+              ? 'No lockable edge right now — the spread doesn’t clear the executable threshold.'
+              : 'No lockable edge right now — fewer than two executable venues are quoting this event.'}
+          </p>
+        )}
+      </div>
     </div>
   );
 }
