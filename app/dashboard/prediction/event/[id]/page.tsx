@@ -7,6 +7,7 @@ import PlatformLogo from '@/components/PlatformLogo';
 import {
   PlatformComparatorTable,
   DeployCalculator,
+  AutoExecutePanel,
   findValidMatch,
 } from '../../_components/EventCard';
 import { platformLabel, formatCents, formatResolutionDate } from '../../_components/format';
@@ -153,7 +154,7 @@ function NoEdgeExplanation({ event }: { event: EventBucket }) {
         No lockable edge right now — the cheapest executable YES ({yesCents}¢ on {platformLabel(edge.yesPlatform)}) +
         NO ({noCents}¢ on {platformLabel(edge.noPlatform)}) = {sumCents}¢.{' '}
         {clearsRawCost
-          ? 'That raw sum is under 100¢, but this exact pair hasn’t cleared full match verification (AI confirmation, confidence, or capacity checks) yet — no trade steps are shown until it’s confirmed.'
+          ? 'That raw sum is under 100¢, but this exact pair hasn’t cleared full match verification (same-event confirmation, confidence, and capacity checks) yet — no trade steps are shown until it’s confirmed.'
           : `This would become lockable if the combined executable cost drops below 100¢ (currently ${sumCents}¢).`}
       </p>
       <div className="flex flex-wrap gap-4 px-4 py-3 rounded-card border border-line bg-bg-soft/40 font-mono text-xs">
@@ -206,6 +207,9 @@ function EventDetail({ event, valid }: { event: EventBucket; valid: ApiResponse[
         <div className="rounded-card shadow-card bg-surface px-5 py-5 mt-6">
           <h2 className="font-display font-bold text-base text-ink mb-3">Operational steps</h2>
           <NoEdgeExplanation event={event} />
+          <div className="mt-4 pt-4 border-t border-line">
+            <AutoExecutePanel noEdgeYet />
+          </div>
         </div>
       )}
     </>

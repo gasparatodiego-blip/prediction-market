@@ -142,7 +142,11 @@ function ConnectKeysForm() {
   );
 }
 
-function AutoExecutePanel() {
+// noEdgeYet: this event currently has no confirmed lockable edge. The panel
+// still renders (never gated behind an edge existing) but stays honest that
+// there is nothing to auto-execute for this event until one is confirmed —
+// regardless of whether AUTO_EXECUTE_ENABLED is on.
+export function AutoExecutePanel({ noEdgeYet = false }: { noEdgeYet?: boolean }) {
   const { data: session } = useSession();
 
   if (!AUTO_EXECUTE_ENABLED) {
@@ -155,6 +159,22 @@ function AutoExecutePanel() {
         <p className="font-body text-[11px] text-muted leading-relaxed">
           Coming soon — currently disabled. Auto-copy will require linked platform API keys and a
           separate signed-in area; Edgeradar never touches funds directly.
+          {noEdgeYet && ' This event also has no confirmed lockable edge right now, so there would be nothing to auto-execute here even once enabled.'}
+        </p>
+      </div>
+    );
+  }
+
+  if (noEdgeYet) {
+    return (
+      <div className="rounded-card border border-line bg-bg-soft/60 px-4 py-4 opacity-70">
+        <div className="flex items-center gap-2 mb-1.5">
+          <KeyRound size={14} className="text-muted" />
+          <span className="font-body font-semibold text-sm text-ink-2">Auto-execute · no edge yet</span>
+        </div>
+        <p className="font-body text-[11px] text-muted leading-relaxed">
+          This event has no confirmed lockable edge right now, so there&apos;s nothing to auto-execute.
+          This will activate for this event once a lockable edge is confirmed.
         </p>
       </div>
     );
