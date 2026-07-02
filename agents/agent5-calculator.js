@@ -17,6 +17,12 @@ const PLATFORM_FEES = {
 // matcher-v2.js and agent23-prediction-repricer.js already use, so the
 // cashable determination here can never diverge from the live re-pricer's math.
 const { computeArbROI: computeExecutableArbROI, EXECUTABLE_PLATFORMS } = require('../lib/arb-math');
+// Event-level comparator buckets (additive to the pairwise arb output below) —
+// same entity/proposition/office/year signals the same-event gate already
+// computes, reused as a grouping key. See shared-matcher.js for the full
+// rationale and the honest-engine guards (tiering, referenceOnly median, no
+// fabricated quotes for platforms that don't list the event).
+const { extractAllMarkets, buildEventBuckets } = require('./shared-matcher');
 
 // Same-event legs should carry the same/similar resolution date; when the platforms'
 // native fields disagree by more than a day (e.g. Kalshi keeps an umbrella market open
@@ -44,10 +50,60 @@ const MATCH_FILES = [
   { path: '/tmp/matches-crypto.json',   category: 'crypto/finance'   },
 ];
 const ODDS_API_FILE = '/tmp/odds-api-raw.json';
+const RAW_MARKETS_FILE = '/tmp/markets-raw.json';
 const OUT_FILE  = '/tmp/arbitrage-opportunities.json';
 const HB_FILE   = '/tmp/agent-heartbeats.json';
 const INTERVAL  = 45_000;
 const DB_PATH   = path.join(__dirname, '..', 'data', 'opportunities.db');
+const EVENTS_MAX_AGE_MS = 5 * 60_000; // matches the matchers' own staleness bar on markets-raw.json
+
+// Attaches the caller's already-computed pairwise opportunity (roi/cashable/
+// capacity/settlement fields) to a bucket's lockableEdge, when one exists for
+// the exact same two leg ids — never recomputes arb math independently of
+// calcArb() above, so the two code paths can never disagree.
+function attachMatchedOpportunity(edge, predMarketOpps) {
+  if (!edge) return edge;
+  const wanted = new Set([edge.yesLegId, edge.noLegId]);
+  const match = predMarketOpps.find(o => {
+    const ids = new Set([o.lowMarket?.id, o.highMarket?.id]);
+    return ids.size === 2 && [...wanted].every(id => ids.has(id));
+  });
+  if (!match) return edge;
+  return {
+    ...edge,
+    matchedOpportunity: {
+      cashable:           match.cashable,
+      roi:                match.roi,
+      spread:             match.spread,
+      earnPer100:         match.earnPer100,
+      resolutionDate:     match.resolutionDate,
+      daysToResolution:   match.daysToResolution,
+      resolutionMismatch: match.resolutionMismatch,
+      settlementType:     match.settlementType,
+    },
+  };
+}
+
+// Builds the additive event-comparator buckets over the FULL market universe
+// (not just legs that cleared the pairwise IDF gate) so a platform phrased too
+// differently to pair still shows up side by side. Returns [] (never throws,
+// never blocks the pairwise output above) when markets-raw.json is missing or
+// stale — same 5-min staleness bar the matcher agents apply to the same file.
+function buildEvents(predMarketOpps) {
+  try {
+    const raw = JSON.parse(fs.readFileSync(RAW_MARKETS_FILE, 'utf8'));
+    const age = Date.now() - (raw.fetchedAt || 0);
+    if (age > EVENTS_MAX_AGE_MS) return [];
+    const allMarkets = extractAllMarkets(raw);
+    return buildEventBuckets(allMarkets).map(bucket => ({
+      ...bucket,
+      lockableEdge: attachMatchedOpportunity(bucket.lockableEdge, predMarketOpps),
+    }));
+  } catch (e) {
+    console.error('[calculator] event bucketing error:', e.message);
+    return [];
+  }
+}
 
 function beat(name) {
   let hb = {};
@@ -305,9 +361,17 @@ function run() {
   const opportunities  = [...predMarketOpps, ...oddsApiOpps].slice(0, 30);
   console.log(`[calculator] ${allMatches.length} matches → ${predMarketOpps.length} pred-market opps + ${oddsApiOpps.length} bookmaker opps = ${opportunities.length} total`);
 
+  // Additive event-comparator buckets — built from the FULL pairwise list
+  // (predMarketOpps, before the slice(0,30) cap above) so a lockable edge can
+  // still find its matching opportunity even if that opportunity didn't make
+  // the top-30 cut. Never alters `opportunities` itself.
+  const events = buildEvents(predMarketOpps);
+  console.log(`[calculator] ${events.length} event buckets (${events.filter(e => e.lockableEdge).length} with a lockable edge)`);
+
   fs.writeFileSync(OUT_FILE, JSON.stringify({
     updatedAt:     Date.now(),
     opportunities,
+    events,
     stats: {
       total:       opportunities.length,
       bestRoi:     opportunities[0]?.roi ?? 0,

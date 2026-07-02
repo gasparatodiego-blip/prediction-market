@@ -241,6 +241,10 @@ async function reprice() {
     repriced_at:    Date.now(),
     discovery_at:   discovery.updatedAt ?? null,
     opportunities:  [...liveCashable, ...passedSignal],
+    // Event-comparator buckets pass through unchanged from discovery — this
+    // repricer only re-verifies confirmed cashable PAIRS against live order
+    // books; it does not re-fetch every bucket's platform quotes.
+    events:         discovery.events ?? [],
     evaporated,
     inactive,
     stats: {

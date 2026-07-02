@@ -266,8 +266,15 @@ export async function GET() {
     const inactive               = repricerStats.inactive   ?? 0;
     const pendingVerification    = repricerStats.pendingVerification ?? 0;
 
+    // Event-comparator buckets — additive, alongside the existing pairwise
+    // `valid` array above (unchanged). Each bucket's platforms are already
+    // tagged tier: "executable" | "reference" upstream (shared-matcher.js);
+    // passed through as-is, never recomputed here.
+    const events: any[] = raw.events ?? [];
+
     return NextResponse.json({
       valid,
+      events,
       rejected,
       stats: {
         validCount:               valid.length,
@@ -301,6 +308,7 @@ export async function GET() {
   } catch {
     return NextResponse.json({
       valid:    [],
+      events:   [],
       rejected: 0,
       stats: {
         validCount: 0, cashableCount: 0, signalCount: 0,

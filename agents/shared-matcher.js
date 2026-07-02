@@ -363,6 +363,219 @@ function bestNetRoi(a, b) {
   return grossROI * (1 - feeA - feeB);
 }
 
+// ── Event-level grouping (comparator buckets) ──────────────────────────────
+// Additive to the pairwise matcher above: buckets ALL legs (any platform, matched
+// pair or not) that resolve the same real-world event, so a UI can show every
+// platform quoting an event side by side (ArbBets-style), not just the two legs
+// that happened to clear the pairwise IDF/token-overlap gate.
+//
+// Reuses the exact same signals the same-event gate above already computes per
+// leg — extractPrimaryEntity, classifyProposition, extractYears — turned into a
+// single canonical KEY instead of a pairwise compatibility check. A key requires
+// all three signals to resolve confidently; a leg missing any one of them is
+// left out of every bucket rather than guessed into one — a missed grouping is
+// cheaper than a fabricated one, same philosophy as the gate itself.
+
+// entityTokens() already treats "JD Vance" and "Vance" as equivalent for the
+// pairwise SUBSET check (hasEntityMismatch) — the exact-SET version here
+// (sorted, joined) turns that same equivalence into a map key: {vance} ==
+// {vance}, but {biden,hunter} != {biden,joe}, so two people who only share a
+// surname still land in different buckets.
+function entityKeyComponent(question) {
+  const entity = extractPrimaryEntity(question);
+  if (!entity) return null;
+  const toks = entityTokens(entity);
+  if (toks.length === 0) return null;
+  // hasEntitySuffixConflict (pairwise) catches "Trump" vs "Trump Jr" separately
+  // from hasEntityMismatch, because entityTokens' length>=3 filter drops "jr" —
+  // without this, both would collapse to the same {trump} set here. Fold the
+  // generational suffix (if present) back into the key so it isn't lost.
+  const words  = entity.split(' ');
+  const suffix = GENERATIONAL_SUFFIXES.has(words.at(-1)) ? words.at(-1) : null;
+  const base   = [...new Set(toks)].sort().join('_');
+  return suffix ? `${base}+${suffix}` : base;
+}
+
+// Canonical single year for the key: the earliest year named in the title. Title
+// years are a resolution-WINDOW signal (see hasDateWindowMismatch above), not
+// necessarily the exact resolution date — resolutionDate (native platform field,
+// carried on the bucket itself) is the accurate value; this is only for grouping.
+function yearKeyComponent(question) {
+  const years = extractYears(question);
+  return years.size === 0 ? null : Math.min(...years);
+}
+
+// classifyProposition's 'nomination' signature matches the bare word ("nominee",
+// "nomination") with no regard to WHICH office — verified live: the same person
+// carries a "2028 Democratic VP nominee" price, a "2028 Democratic presidential
+// nominee" price, and (for AOC specifically) a "NY Democratic Senate nominee"
+// price, all classified identically as propositionType="nomination" with wildly
+// different values (0.08 / 0.14 / 0.52) because they are three different real-
+// world events, not one. The pairwise gate tolerates this ambiguity because IDF
+// token-overlap narrows candidates down separately before this ever matters;
+// bucketing has no such secondary filter, so this office qualifier is a NEW,
+// bucketing-only signal — it does not touch classifyProposition() itself (the
+// pairwise gate's behavior must not change).
+const OFFICE_SIGNATURES = [
+  ['vice_president', /\bvice\s+president(ial)?\b|\bvp\b/i],
+  ['president',      /\bpresident(ial)?\b/i],
+  ['senate',         /\bsenat(e|or)\b/i],
+  ['house',          /\bhouse\s+of\s+representatives\b|\brepresentative\b/i],
+  ['governor',       /\bgovernor\b/i],
+  ['mayor',          /\bmayor\b/i],
+];
+
+function officeKeyComponent(question) {
+  const clean = stripOutcome(question || '');
+  for (const [label, re] of OFFICE_SIGNATURES) {
+    if (re.test(clean)) return label;
+  }
+  return null; // no confident office scope — stays ungroupable rather than a guess
+}
+
+// "Who will run for the nomination" and "is the nominee" both contain the bare
+// word "nomination" — classifyProposition labels both 'nomination' — but running
+// is not winning, and the two price very differently for the same person
+// (verified live: AOC "run for the Dem nomination" priced 0.55 vs AOC "is the
+// Dem nominee" priced 0.14). Same reasoning as OFFICE_SIGNATURES above: a new
+// bucketing-only guard, not a change to the shared classifyProposition().
+const CANDIDACY_PHRASING_RE = /\bwho\s+will\s+run\b|\brun(s)?\s+for\s+the\s+[a-z]+\s+nomination\b/i;
+
+// Same signals the same-event gate already computes, reused as a grouping key:
+// `${entity}|${propositionType}|${office}|${year}`. Returns null when any signal
+// is missing, or when the text uses running/candidacy phrasing that would blur
+// two different real-world propositions together — the leg stays ungrouped
+// rather than joining a bucket on a guess.
+function eventKeyFor(market) {
+  const q = market?.question || '';
+  const clean = stripOutcome(q);
+  if (CANDIDACY_PHRASING_RE.test(clean)) return null;
+  const entityKey = entityKeyComponent(q);
+  if (!entityKey) return null;
+  const prop = classifyProposition(q);
+  if (!prop) return null;
+  const office = officeKeyComponent(q);
+  if (!office) return null;
+  const year = yearKeyComponent(q);
+  if (year == null) return null;
+  return `${entityKey}|${prop}|${office}|${year}`;
+}
+
+// Best-effort category label from the classified proposition type — these are
+// all political proposition signatures today except price_threshold.
+const PROPOSITION_CATEGORY = {
+  impeachment:        'politics',
+  resign_removal:     'politics',
+  election_win:       'politics',
+  nomination:         'politics',
+  announce_candidacy: 'politics',
+  holds_office:       'politics',
+  price_threshold:    'finance',
+};
+
+// Earliest non-null resolutionDate across a bucket's legs — same "the binding
+// leg forces settlement first" rule agent5-calculator's resolutionInfo() uses
+// for pairwise opportunities.
+function earliestResolutionDate(legs) {
+  const dates = legs
+    .map(l => l.resolutionDate ? new Date(l.resolutionDate) : null)
+    .filter(d => d && !isNaN(d.getTime()));
+  if (dates.length === 0) return null;
+  return new Date(Math.min(...dates.map(d => d.getTime()))).toISOString();
+}
+
+function median(values) {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+// Groups the full extracted market universe into event buckets keyed by
+// eventKeyFor(). ADDITIVE ONLY — never touches pairwise matching/output.
+//
+// Each bucket tags every leg executable ("kalshi"/"polymarket", real order
+// book) or reference (display-only — PredictIt/Manifold/OddsAPI never feed
+// cashable/depth math). A referenceOnly:true market median is informational
+// only. The "lockable edge" is the cheapest executable YES + cheapest
+// executable NO across executable-tier legs only (never a reference leg) —
+// it carries no roi/cashable fields of its own; the caller (agent5-calculator)
+// attaches those from its already-computed pairwise opportunity for the same
+// two leg ids, if one exists, so arb math is never computed twice from two
+// different code paths.
+function buildEventBuckets(markets) {
+  const byKey = new Map();
+  for (const m of markets) {
+    const key = eventKeyFor(m);
+    if (!key) continue;
+    if (!byKey.has(key)) byKey.set(key, []);
+    byKey.get(key).push(m);
+  }
+
+  const buckets = [];
+  for (const [eventKey, legs] of byKey) {
+    // A comparator needs ≥2 quotes; a single-platform bucket has nothing to compare.
+    if (legs.length < 2) continue;
+
+    const prop = classifyProposition(legs[0].question);
+    const platforms = legs.map(leg => ({
+      platform:       leg.platform,
+      tier:           REAL_BOOK.has(leg.platform) ? 'executable' : 'reference',
+      yesPrice:       +leg.yesAsk.toFixed(4),
+      noPrice:        +(1 - leg.yesBid).toFixed(4),
+      volumeUsd:      leg.volumeUsd ?? null,
+      marketUrl:      leg.url ?? null,
+      // No order-book ladder is fetched at this discovery-time grouping stage
+      // (that only happens for confirmed cashable pairs, in
+      // agent23-prediction-repricer.js) — always false here, never guessed true.
+      depthAvailable: false,
+      legId:          leg.id,
+    }));
+
+    const executableLegs = legs.filter(l => REAL_BOOK.has(l.platform));
+    let lockableEdge = null;
+    if (executableLegs.length >= 2) {
+      let best = null;
+      for (const yesLeg of executableLegs) {
+        for (const noLeg of executableLegs) {
+          if (yesLeg === noLeg || yesLeg.platform === noLeg.platform) continue;
+          const cost = yesLeg.yesAsk + (1 - noLeg.yesBid);
+          if (!best || cost < best.cost) best = { cost, yesLeg, noLeg };
+        }
+      }
+      if (best) {
+        lockableEdge = {
+          yesPlatform: best.yesLeg.platform,
+          yesPrice:    +best.yesLeg.yesAsk.toFixed(4),
+          yesLegId:    best.yesLeg.id,
+          noPlatform:  best.noLeg.platform,
+          noPrice:     +(1 - best.noLeg.yesBid).toFixed(4),
+          noLegId:     best.noLeg.id,
+          matchedOpportunity: null, // filled in by agent5-calculator.js when a pairwise opp exists for this pair
+        };
+      }
+    }
+
+    buckets.push({
+      eventKey,
+      title: legs.reduce((longest, l) => {
+        const stripped = stripOutcome(l.question);
+        return stripped.length >= longest.length ? stripped : longest;
+      }, ''),
+      category:        PROPOSITION_CATEGORY[prop] || 'unknown',
+      resolutionDate:  earliestResolutionDate(legs),
+      platforms,
+      referenceMedian: {
+        yesPrice:      median(platforms.map(p => p.yesPrice)),
+        referenceOnly: true,
+      },
+      lockableEdge,
+    });
+  }
+
+  return buckets;
+}
+
 // ── Heartbeat ─────────────────────────────────────
 
 function beat(name) {
@@ -404,6 +617,7 @@ function extractOddsApiMarkets() {
         realBook:    false,
         url:         null,
         resolutionDate: null, // handled separately via commence_time in agent5-calculator's oddsapi path
+        volumeUsd:   null,
         _sport:      ev.sport_title || '',
         _homeTeam:   ev.home_team   || '',
         _awayTeam:   ev.away_team   || '',
@@ -437,6 +651,7 @@ function extractAllMarkets(raw) {
       realBook:    false, // 10% profit fee + 5% withdrawal fee makes spreads unreliable — signal only
       url:         `https://www.predictit.org/markets/detail/${m.id}`,
       resolutionDate: null, // PredictIt raw feed carries no reliable close/expiry field
+      volumeUsd:   null, // not extracted from PredictIt's contract payload
     });
   }
 
@@ -454,6 +669,7 @@ function extractAllMarkets(raw) {
       realBook:    false, // play money, no real order book — signal only
       url:         m.url || `https://manifold.markets/${m.slug || ''}`,
       resolutionDate: normalizeResolutionDate(m.closeTime),
+      volumeUsd:   typeof m.volume === 'number' ? m.volume : null,
     });
   }
 
@@ -486,6 +702,7 @@ function extractAllMarkets(raw) {
       realBook:    true,
       url:         `https://kalshi.com/markets/${m.ticker}`,
       resolutionDate: normalizeResolutionDate(m.close_time),
+      volumeUsd:   null, // not captured by agent2-fetcher's Kalshi field allowlist — never fabricated
     });
   }
 
@@ -519,6 +736,7 @@ function extractAllMarkets(raw) {
       realBook:    true,
       url:         m.slug ? `https://polymarket.com/event/${m.slug}` : 'https://polymarket.com',
       resolutionDate: normalizeResolutionDate(m.endDate),
+      volumeUsd:   (() => { const v = parseFloat(m.volume); return isFinite(v) && v > 0 ? v : null; })(),
     });
   }
 
@@ -736,4 +954,4 @@ function buildRunner({ agentName, outFile, categoryLabel, keywords, boostKeyword
   setInterval(run, interval);
 }
 
-module.exports = { buildRunner, extractAllMarkets, sampleByCategory, createBatches, buildIdfIndex, matchBatch, deduplicateMatches, beat, kalshiUmbrellaKey, normalizeResolutionDate };
+module.exports = { buildRunner, extractAllMarkets, sampleByCategory, createBatches, buildIdfIndex, matchBatch, deduplicateMatches, beat, kalshiUmbrellaKey, normalizeResolutionDate, buildEventBuckets, eventKeyFor };
