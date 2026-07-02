@@ -139,6 +139,102 @@ function hasEntitySuffixConflict(qa, qb) {
   return false;
 }
 
+// ── General primary-entity mismatch ─────────────────────────────────────────
+// hasEntitySuffixConflict above only fires when both legs share a base name
+// with a differing generational suffix (Trump vs Trump Jr) — it has no signal
+// at all when two legs simply name two ENTIRELY DIFFERENT people/teams (e.g.
+// Manifold "Will JD Vance win 2028?" vs Polymarket "Will Gavin Newsom win
+// 2028?"): same proposition, same year, high shared IDF on generic words
+// ("win", "2028", "presidential", "election"), but two different people.
+// Neither leg carries an [outcome: X] bracket, so the bracket path in
+// outcomesCompatible() never sees this either. This closes that gap.
+
+function normalizeEntity(name) {
+  return (name || '').toLowerCase().replace(/[.'’]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+// Deliberately narrow: every token must start with a capital letter and the
+// phrase must contain no digits — excludes Kalshi's date/numeric outcome
+// buckets ("Before 2050", "500000", "50JAN01") which look nothing like a
+// person/team/thing name, while still accepting real names and brand-style
+// single words ("Nike"). Never lowercases its input — casing is the signal.
+function looksLikeProperNounPhrase(text) {
+  const t = (text || '').trim();
+  if (!t || /\d/.test(t) || /\b(and|or|vs\.?|versus)\b/i.test(t)) return false;
+  return /^(?:[A-Z][a-zA-Z'’.-]*\s*){1,4}$/.test(t);
+}
+
+function extractOutcomeLabelRaw(question) {
+  const m = /\[outcome:\s*([^\]]+)\]/i.exec(question || '');
+  return m ? m[1].trim() : '';
+}
+
+// Primary entity = the single person/team/thing a leg's market resolves on.
+// Free text is checked FIRST, before any outcome bracket: a leg like Kalshi's
+// "Will Elon Musk visit Mars in his lifetime? [outcome: Mars]" has "Mars" as
+// its bracket, but "Mars" is a topic tag for a binary yes/no bet, not the
+// entity — the real subject ("Elon Musk") is in the sentence itself, and must
+// win over the bracket. Only when the free text yields no confident subject
+// (umbrella/noun-phrase titles like "2028 Democratic presidential nominee",
+// which never match the "Will <Subject> <verb>" sentence shape) does the
+// resolved bracket name (from d85dedd's yes_sub_title, e.g. "Mark Cuban")
+// become the primary entity. Returns null — never a guess — when neither
+// source is confident, e.g. multi-subject "Will Rubio and Vance run..." or
+// field markets like "Who will win the Presidency, House, and Senate?".
+function extractPrimaryEntity(question) {
+  const clean = stripOutcome(question || '').trim();
+  // No /i flag here: it would make [A-Z] match lowercase too and swallow the
+  // predicate verb into the "entity" capture (e.g. "Marco Rubio announce a").
+  // Sentence-initial "Will" is case-sensitive-safe — every real title we've
+  // seen capitalizes it.
+  const m = /^Will\s+((?:[A-Z][a-zA-Z'’.-]*\s+){0,3}[A-Z][a-zA-Z'’.-]*)\s+([a-z]+)/.exec(clean);
+  if (m) {
+    if (/^(and|or|vs|versus)$/i.test(m[2])) return null; // multiple named subjects
+    return normalizeEntity(m[1]);
+  }
+
+  const rawLabel = extractOutcomeLabelRaw(question);
+  if (rawLabel && !/^(yes|no)$/i.test(rawLabel) && looksLikeProperNounPhrase(rawLabel)) {
+    return normalizeEntity(rawLabel);
+  }
+
+  return null; // no confident subject either way — stay neutral upstream
+}
+
+// Split into significant (length>=3) tokens for a token-SET comparison rather
+// than a raw substring check — a raw substring test fails on middle initials
+// ("donald j trump" does not contain "donald trump" as a contiguous
+// substring, since "j" sits in between) and would wrongly reject a genuine
+// same-person pair. Short tokens (initials like "j", "jd") are dropped so
+// "JD Vance" and "Vance" reduce to the same {vance} token set.
+function entityTokens(name) {
+  return name.split(' ').filter(w => w.length >= 3);
+}
+
+// Reject only when BOTH legs yield a confident primary entity AND those
+// entities clearly differ. One entity's significant-token set being a subset
+// of the other's ("vance" ⊆ "jd vance", "donald trump" ⊆ "donald j trump") is
+// the same entity at different specificity/formatting, not a conflict —
+// hasEntitySuffixConflict above is what catches the genuinely different-
+// suffix case (Trump vs Trump Jr), so that stays neutral here rather than
+// duplicate that logic. Two names sharing only a surname ("Hunter Biden" vs
+// "Joe Biden") are NOT a subset either way, so they correctly conflict. Any
+// unresolvable entity on either side (field markets, multi-subject titles,
+// non-name outcome buckets) stays neutral — a missed reject is far cheaper
+// than a fabricated one.
+function hasEntityMismatch(qa, qb) {
+  const ea = extractPrimaryEntity(qa);
+  const eb = extractPrimaryEntity(qb);
+  if (!ea || !eb) return false;
+  if (ea === eb) return false;
+  const ta = entityTokens(ea), tb = entityTokens(eb);
+  if (ta.length === 0 || tb.length === 0) return false; // nothing significant to compare — stay neutral
+  const setB = new Set(tb);
+  const setA = new Set(ta);
+  if (ta.every(t => setB.has(t)) || tb.every(t => setA.has(t))) return false;
+  return true;
+}
+
 // Proposition-type signatures — ordered, first match wins. Deliberately narrow
 // and specific (not a general topic classifier) so unrelated markets stay
 // unclassified (null) rather than forced into a wrong bucket.
@@ -217,6 +313,7 @@ function outcomesCompatible(a, b) {
   // the layer that catches Polymarket/Manifold false pairs the bracket logic
   // above can never see (those platforms never emit an [outcome: X] bracket).
   if (hasEntitySuffixConflict(a.question, b.question)) return false;
+  if (hasEntityMismatch(a.question, b.question)) return false;
   if (hasPropositionTypeMismatch(a.question, b.question)) return false;
   if (hasDateWindowMismatch(a.question, b.question)) return false;
 
