@@ -54,6 +54,10 @@ data/fund-subscriptions.json
 data/copy-watchlist.json
 # sports arb scanner outputs — rewritten each scan, credit state is local
 data/sports/
+# runtime SQLite DB — written continuously by agent5-calculator, not source-controlled
+data/opportunities.db
+data/opportunities.db-wal
+data/opportunities.db-shm
 # cron runtime logs — appended by system crontab, not source-controlled
 logs/
 
