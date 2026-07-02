@@ -1,94 +1,19 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
-import { ChevronRight, Landmark, Trophy, Bitcoin, TrendingUp, CloudSun, Search, ShieldCheck, Send } from 'lucide-react';
+import { ChevronRight, Landmark, Trophy, Bitcoin, TrendingUp, CloudSun, Search, ShieldCheck, Send, Copy, Check } from 'lucide-react';
 import Eyebrow from '@/app/components/ui/Eyebrow';
 import SectionHeading from '@/app/components/ui/SectionHeading';
 import StatCard from '@/app/components/ui/StatCard';
 import BlipRow from '@/app/components/ui/BlipRow';
 import EdgeChip, { type EdgeChipVariant } from '@/app/components/ui/EdgeChip';
 import PlatformLogo from '@/components/PlatformLogo';
-
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-interface Leg {
-  platform:    string;
-  probability: number;
-  url:         string;
-  urlVerified: boolean;
-  fee:         number;
-  expiresAt:   number | null;
-  yesBid?:     number | null;
-  yesAsk?:     number | null;
-}
-
-interface Opportunity {
-  id:                  string;
-  question:            string;
-  lowMarket:           Leg;
-  highMarket:          Leg;
-  spread:              number;
-  roi:                 number;
-  earnPer100:          number | null;
-  confidence:          number;
-  category:            string;
-  type:                'cashable' | 'signal';
-  annualizedROI?:      number | null;
-  daysToResolution?:   number | null;
-  resolutionDate?:     string | null;
-  confirmReason?:      string | null;
-  lockupFlag?:         string | null;
-  capacityUsd?:        number | null;
-  nonCashableReason?:  string | null;
-  confidenceNote?:     string | null;
-  capacityNote?:       string | null;
-}
-
-interface Stats {
-  validCount:               number;
-  cashableCount:            number;
-  signalCount:              number;
-  confirmedCashable:        number;
-  totalCashableCandidates:  number;
-  evaporated?:              number;
-  inactive?:                number;
-  pendingVerification:      number;
-  bestRoi:                  number | null;
-  marketsTracked:           number;
-  platforms:                number;
-  updatedAt:                number | null;
-  pipelineAge:              number | null;
-}
-
-interface Freshness {
-  pricesAt:        number | null;
-  discoveryAt:     number | null;
-  nextDiscoveryAt: number | null;
-  repriceStale:    boolean;
-  discoveryStale:  boolean;
-  repriceAgeMin:   number | null;
-  discoveryAgeMin: number | null;
-  repriceLabel:    string | null;
-  discoveryLabel:  string | null;
-}
-
-interface ApiResponse {
-  valid:     Opportunity[];
-  rejected:  number;
-  stats:     Stats;
-  freshness: Freshness;
-}
+import EventCard from './_components/EventCard';
+import { platformLabel, formatCents, formatResolutionDate } from './_components/format';
+import type { Freshness, Opportunity, EventBucket, ApiResponse } from './_components/types';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-function platformLabel(p: string): string {
-  const MAP: Record<string, string> = {
-    kalshi: 'Kalshi', polymarket: 'Polymarket',
-    predictit: 'PredictIt', manifold: 'Manifold', oddsapi: 'Odds API',
-  };
-  return MAP[p?.toLowerCase()] ?? p;
-}
 
 function CategoryIcon({ category, size = 18 }: { category: string; size?: number }) {
   const c = category?.toLowerCase() ?? '';
@@ -242,10 +167,27 @@ function OppRow({ opp }: { opp: Opportunity }) {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
+const INITIAL_EVENTS_SHOWN = 12;
+
+// Lockable-edge-first, highest-ROI-first — the comparator leads with the events
+// that actually have an executable pair, same ordering rule as the existing
+// pairwise list below.
+function sortEvents(events: EventBucket[]): EventBucket[] {
+  return [...events].sort((a, b) => {
+    const aScore = a.lockableEdge?.matchedOpportunity ? 2 : a.lockableEdge ? 1 : 0;
+    const bScore = b.lockableEdge?.matchedOpportunity ? 2 : b.lockableEdge ? 1 : 0;
+    if (aScore !== bScore) return bScore - aScore;
+    if (aScore === 2) return b.lockableEdge!.matchedOpportunity!.roi - a.lockableEdge!.matchedOpportunity!.roi;
+    return 0;
+  });
+}
+
 export default function PredictionPage() {
-  const [data,      setData]      = useState<ApiResponse | null>(null);
-  const [loading,   setLoading]   = useState(true);
-  const [fetchedAt, setFetchedAt] = useState<Date | null>(null);
+  const [data,         setData]         = useState<ApiResponse | null>(null);
+  const [loading,      setLoading]      = useState(true);
+  const [fetchedAt,    setFetchedAt]    = useState<Date | null>(null);
+  const [showAllEvents, setShowAllEvents] = useState(false);
+  const [copiedSignal, setCopiedSignal] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -268,8 +210,41 @@ export default function PredictionPage() {
 
   const stats     = data?.stats;
   const opps      = data?.valid ?? [];
+  const events    = data?.events ?? [];
   const freshness = data?.freshness ?? null;
   const isStale   = freshness?.repriceStale || freshness?.discoveryStale;
+
+  const sortedEvents = useMemo(() => sortEvents(events), [events]);
+
+  // Best available signal to copy — leads with a matched event edge (has real
+  // ROI + resolution date), falls back to the top pairwise cashable pair.
+  const topSignalText = useMemo(() => {
+    const bestEvent = sortedEvents.find(e => e.lockableEdge?.matchedOpportunity);
+    if (bestEvent?.lockableEdge?.matchedOpportunity) {
+      const edge = bestEvent.lockableEdge;
+      const mo   = edge.matchedOpportunity!;
+      return `${bestEvent.title}\n` +
+        `Buy YES @ ${formatCents(edge.yesPrice)} on ${platformLabel(edge.yesPlatform)}\n` +
+        `Buy NO @ ${formatCents(edge.noPrice)} on ${platformLabel(edge.noPlatform)}\n` +
+        `Total ROI: ${mo.roi.toFixed(2)}% · one-time · unlock ${formatResolutionDate(mo.resolutionDate)}`;
+    }
+    const bestOpp = opps.find(o => o.type === 'cashable');
+    if (bestOpp) {
+      return `${bestOpp.question}\n` +
+        `Buy YES on ${platformLabel(bestOpp.lowMarket.platform)} · buy NO on ${platformLabel(bestOpp.highMarket.platform)}\n` +
+        `Total ROI: ${bestOpp.roi.toFixed(2)}%`;
+    }
+    return null;
+  }, [sortedEvents, opps]);
+
+  const copySignal = useCallback(async () => {
+    if (!topSignalText) return;
+    try {
+      await navigator.clipboard.writeText(topSignalText);
+      setCopiedSignal(true);
+      setTimeout(() => setCopiedSignal(false), 1500);
+    } catch {}
+  }, [topSignalText]);
 
   return (
     <div className="max-w-[1400px] mx-auto px-4 py-8">
@@ -287,6 +262,15 @@ export default function PredictionPage() {
         </div>
 
         <div className="flex items-center gap-3 flex-wrap">
+          <button
+            type="button"
+            onClick={copySignal}
+            disabled={!topSignalText}
+            className="inline-flex items-center gap-1.5 font-body font-medium text-sm px-4 py-2 rounded-button bg-mint-deep text-white shadow-card hover:bg-mint transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+          >
+            {copiedSignal ? <Check size={15} /> : <Copy size={15} />}
+            {copiedSignal ? 'Copied' : 'Copy signal'}
+          </button>
           <a
             href="https://t.me/Gaspola_bot?start=follow_prediction"
             target="_blank"
@@ -351,19 +335,24 @@ export default function PredictionPage() {
       )}
 
       {/* ── Stats strip ─────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
         {loading ? (
-          Array.from({ length: 4 }).map((_, i) => <CardSkeleton key={i} />)
+          Array.from({ length: 5 }).map((_, i) => <CardSkeleton key={i} />)
         ) : (
           <>
             <StatCard
-              label="Confirmed arb"
+              label="Cashable now"
               value={`${stats?.cashableCount ?? 0}`}
               note={
                 (stats?.cashableCount ?? 0) === 0
                   ? `Checking again in ${nextCheckMin(freshness)}m`
                   : `of ${stats?.totalCashableCandidates ?? stats?.cashableCount ?? 0} candidates assessed`
               }
+            />
+            <StatCard
+              label="Event buckets"
+              value={`${events.length}`}
+              note="comparator groups across platforms"
             />
             <StatCard
               label="Markets tracked"
@@ -384,7 +373,53 @@ export default function PredictionPage() {
         )}
       </div>
 
+      {/* ── Event comparator ────────────────────────────────────────────────── */}
+      <div className="mb-8">
+        <SectionHeading as="h2" className="text-lg mb-1">Event comparator</SectionHeading>
+        <p className="font-body text-sm text-muted mb-4">
+          Same event, side by side across platforms — Kalshi/Polymarket are executable, Manifold/PredictIt are reference-only.
+        </p>
+        {loading ? (
+          <div className="space-y-3">
+            {Array.from({ length: 2 }).map((_, i) => <CardSkeleton key={i} />)}
+          </div>
+        ) : sortedEvents.length === 0 ? (
+          <div className="rounded-card shadow-card bg-surface px-6 py-14 text-center">
+            <div className="mx-auto mb-4 w-12 h-12 rounded-full bg-mint-tint text-mint-deep flex items-center justify-center">
+              <ShieldCheck size={22} />
+            </div>
+            <p className="font-display font-bold text-4xl text-ink mb-3">0</p>
+            <p className="font-body text-base text-ink-2 mb-2">No comparable events right now</p>
+            <p className="font-body text-sm text-muted max-w-lg mx-auto leading-relaxed">
+              The comparator groups markets that reference the same real-world event across
+              platforms. None currently clear that bar — showing zero calmly, not as an error.
+            </p>
+          </div>
+        ) : (
+          <>
+            <div className="space-y-4">
+              {(showAllEvents ? sortedEvents : sortedEvents.slice(0, INITIAL_EVENTS_SHOWN)).map(event => (
+                <EventCard key={event.eventKey} event={event} valid={opps} />
+              ))}
+            </div>
+            {sortedEvents.length > INITIAL_EVENTS_SHOWN && (
+              <button
+                type="button"
+                onClick={() => setShowAllEvents(s => !s)}
+                className="mt-4 font-body text-sm font-medium text-mint-deep hover:text-mint transition-colors duration-150"
+              >
+                {showAllEvents ? 'Show fewer' : `Show all ${sortedEvents.length} events`}
+              </button>
+            )}
+          </>
+        )}
+      </div>
+
       {/* ── Opportunity list ─────────────────────────────────────────────────── */}
+      <SectionHeading as="h2" className="text-lg mb-1">Pairwise opportunities</SectionHeading>
+      <p className="font-body text-sm text-muted mb-4">
+        Flat list of every confirmed pair, including ones that don't fit an event bucket above.
+      </p>
       {loading ? (
         <div className="space-y-3">
           {Array.from({ length: 3 }).map((_, i) => <RowSkeleton key={i} />)}
