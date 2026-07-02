@@ -13,6 +13,11 @@ const PLATFORM_FEES = {
   oddsapi:    0.00,
 };
 
+// Canonical executable-price arb check + executable-platform set — same source
+// matcher-v2.js and agent23-prediction-repricer.js already use, so the
+// cashable determination here can never diverge from the live re-pricer's math.
+const { computeArbROI: computeExecutableArbROI, EXECUTABLE_PLATFORMS } = require('../lib/arb-math');
+
 const MATCH_FILES = [
   { path: '/tmp/matches-politics.json', category: 'politics'    },
   { path: '/tmp/matches-other.json',    category: 'sports/tech/econ' },
@@ -216,8 +221,27 @@ function calcArb(matches) {
 
     const earnPer100 = Math.round((netRoi / 100) * 100 * 10) / 10;
 
+    // Canonical cashable determination — NEVER the midpoint `roi` above (that's
+    // derived from `.probability`, a last-trade/AMM value on some platforms).
+    // Cashable requires: both legs on a real executable-book platform (Kalshi,
+    // Polymarket — never Manifold/PredictIt/OddsAPI regardless of spread size),
+    // AND a positive net-of-fees edge on the legs' actual yesBid/yesAsk quotes.
+    // This only certifies the Tier-1 snapshot is a genuine candidate; agent23
+    // re-verifies against live order books before anything reaches the API as
+    // truly live-cashable.
+    const bothExecutable = EXECUTABLE_PLATFORMS.has(a.platform) && EXECUTABLE_PLATFORMS.has(b.platform);
+    const executableArb  = bothExecutable
+      ? computeExecutableArbROI({
+          yesAsk_A: a.yesAsk, yesBid_A: a.yesBid,
+          yesAsk_B: b.yesAsk, yesBid_B: b.yesBid,
+          platformA: a.platform, platformB: b.platform,
+        })
+      : null;
+    const cashable = bothExecutable && executableArb !== null;
+
     results.push({
       question:   high.question,
+      cashable,
       lowMarket:  { ...low,  platform: low.platform  },
       highMarket: { ...high, platform: high.platform },
       spread:     Math.round(spread * 10) / 10,
