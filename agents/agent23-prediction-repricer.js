@@ -21,6 +21,9 @@ const path  = require('path');
 const { httpGet: _sharedGet } = require('../lib/httpGet');
 
 const { PLATFORM_FEES, computeArbROI } = require('../lib/arb-math');
+// Shared order-book ladder extraction + capacity walk — same source matcher-v2 (Tier 1
+// discovery) uses, so live-refreshed capacity here can never diverge from discovery math.
+const { laddersFromKalshiBook, laddersFromPmBook, computeCapacity, ladderToWireFormat } = require('../lib/depth');
 
 const DISCOVERY_FILE = '/tmp/arbitrage-opportunities.json';
 const REPRICED_FILE  = '/tmp/repriced-opportunities.json';
@@ -54,43 +57,33 @@ function writeAtomic(filePath, obj) {
   fs.renameSync(tmp, filePath);
 }
 
-// ── Kalshi orderbook quote extraction ────────────────────────────────────────
-// Kalshi exposes YES bids and NO bids.
-// YES ask = 1 − best_NO_bid   (they're complementary)
-// YES bid = best_YES_bid
+// ── Kalshi / Polymarket quote + depth extraction ─────────────────────────────
+// Both the scalar best bid/ask AND the full executable ladder come from the
+// SAME parsed book (lib/depth.js) — previously this function threw the ladder
+// away right after reading [0]; the book was already being fetched in full on
+// every cycle, it just wasn't kept. yesBid is derived from the same no-ask
+// ladder used for capacity (complementary: no_ask = 1 - yes_bid) so the
+// scalar and the ladder can never disagree.
+// depth = the leg's own YES-ask ladder (cost to buy YES), best price first —
+// same side/convention as the existing yesAsk scalar, just multiple levels.
 
-function bestFromKalshiBook(book) {
-  if (!book) return { yesAsk: null, yesBid: null };
-  const noBids = (book.no_dollars || [])
-    .map(([p, q]) => ({ price: parseFloat(p), qty: parseFloat(q) }))
-    .filter(x => x.price > 0 && x.price < 1)
-    .sort((a, b) => b.price - a.price);
-  const yesBids = (book.yes_dollars || [])
-    .map(([p, q]) => ({ price: parseFloat(p), qty: parseFloat(q) }))
-    .filter(x => x.price > 0 && x.price < 1)
-    .sort((a, b) => b.price - a.price);
+function quoteFromKalshiBook(book) {
+  if (!book) return { yesAsk: null, yesBid: null, depth: [] };
+  const { yesAsks, noAsks } = laddersFromKalshiBook(book);
   return {
-    yesAsk: noBids.length  > 0 ? +(1 - noBids[0].price).toFixed(4)  : null,
-    yesBid: yesBids.length > 0 ? +yesBids[0].price.toFixed(4)        : null,
+    yesAsk: yesAsks.length > 0 ? +yesAsks[0].price.toFixed(4)      : null,
+    yesBid: noAsks.length  > 0 ? +(1 - noAsks[0].price).toFixed(4) : null,
+    depth:  ladderToWireFormat(yesAsks),
   };
 }
 
-// ── Polymarket CLOB quote extraction ─────────────────────────────────────────
-// CLOB book for the YES token: asks = YES asks (ascending), bids = YES bids (descending).
-
-function bestFromPmBook(book) {
-  if (!book) return { yesAsk: null, yesBid: null };
-  const asks = (book.asks || [])
-    .map(a => ({ price: parseFloat(a.price), qty: parseFloat(a.size) }))
-    .filter(x => x.price > 0 && x.price < 1)
-    .sort((a, b) => a.price - b.price);
-  const bids = (book.bids || [])
-    .map(b => ({ price: parseFloat(b.price), qty: parseFloat(b.size) }))
-    .filter(x => x.price > 0 && x.price < 1)
-    .sort((a, b) => b.price - a.price);
+function quoteFromPmBook(book) {
+  if (!book) return { yesAsk: null, yesBid: null, depth: [] };
+  const { yesAsks, noAsks } = laddersFromPmBook(book);
   return {
-    yesAsk: asks.length > 0 ? +asks[0].price.toFixed(4) : null,
-    yesBid: bids.length > 0 ? +bids[0].price.toFixed(4) : null,
+    yesAsk: yesAsks.length > 0 ? +yesAsks[0].price.toFixed(4)      : null,
+    yesBid: noAsks.length  > 0 ? +(1 - noAsks[0].price).toFixed(4) : null,
+    depth:  ladderToWireFormat(yesAsks),
   };
 }
 
@@ -111,27 +104,32 @@ function pmClobTokenId(leg, rawPmById) {
 
 // ── Live quote fetching ───────────────────────────────────────────────────────
 
+// rawBook is kept (not discarded) so the same already-fetched book can be
+// walked for capacity below — no second request.
+
 async function fetchKalshiQuote(ticker) {
-  if (!ticker) return { yesAsk: null, yesBid: null };
+  if (!ticker) return { yesAsk: null, yesBid: null, depth: [], rawBook: null };
   const url = `https://api.elections.kalshi.com/trade-api/v2/markets/${ticker}/orderbook`;
   const { data, status } = await fetchJson(url);
   if (status === 429) {
     console.log(`[repricer] Kalshi 429 for ${ticker} — skipping`);
-    return { yesAsk: null, yesBid: null };
+    return { yesAsk: null, yesBid: null, depth: [], rawBook: null };
   }
-  return bestFromKalshiBook(data?.orderbook_fp ?? null);
+  const rawBook = data?.orderbook_fp ?? null;
+  return { ...quoteFromKalshiBook(rawBook), rawBook };
 }
 
 async function fetchPmQuote(tokenId) {
-  if (!tokenId) return { yesAsk: null, yesBid: null };
+  if (!tokenId) return { yesAsk: null, yesBid: null, depth: [], rawBook: null };
   const { data } = await fetchJson(`https://clob.polymarket.com/book?token_id=${tokenId}`);
-  return bestFromPmBook((data?.bids || data?.asks) ? data : null);
+  const rawBook = (data?.bids || data?.asks) ? data : null;
+  return { ...quoteFromPmBook(rawBook), rawBook };
 }
 
 async function liveQuote(leg, rawPmById) {
   if (leg.platform === 'kalshi')     return fetchKalshiQuote(kalshiTicker(leg.id));
   if (leg.platform === 'polymarket') return fetchPmQuote(pmClobTokenId(leg, rawPmById));
-  return { yesAsk: null, yesBid: null };
+  return { yesAsk: null, yesBid: null, depth: [], rawBook: null };
 }
 
 // ── Main reprice loop ─────────────────────────────────────────────────────────
@@ -189,7 +187,21 @@ async function reprice() {
       continue;
     }
 
-    // Live-cashable: update prices + ROI; keep all discovery fields intact
+    // Capacity — refreshed every cycle from the ladders just fetched above
+    // (was a stale one-time discovery-time scalar before this change).
+    // Walk direction follows the winning arb direction from computeArbROI:
+    // dir 1 = buy YES on A(low) + NO on B(high); dir 2 = the reverse.
+    const yesLeg     = liveResult.bestDir === 1 ? low  : high;
+    const noLeg      = liveResult.bestDir === 1 ? high : low;
+    const kalshiBook = low.platform === 'kalshi'     ? lowQ.rawBook : high.platform === 'kalshi'     ? highQ.rawBook : null;
+    const pmBook     = low.platform === 'polymarket' ? lowQ.rawBook : high.platform === 'polymarket' ? highQ.rawBook : null;
+    // capacityUsd is a joint constraint of the paired position (both legs must
+    // fill together to realize the arb) — not independently splittable, so the
+    // same binding number is attached to each leg rather than inventing a
+    // per-leg-only figure that wouldn't correspond to anything tradeable alone.
+    const capacityUsd = computeCapacity(yesLeg, noLeg, kalshiBook, pmBook);
+
+    // Live-cashable: update prices + ROI + depth + capacity; keep discovery fields intact
     liveCashable.push({
       ...opp,
       status:         'cashable',
@@ -199,17 +211,22 @@ async function reprice() {
       live_bestCost:  liveResult.bestCost,
       live_bestDir:   liveResult.bestDir,
       discovery_roi:  opp.roi,
+      capacityUsd,
       lowMarket: {
         ...low,
         yesBid:      lowQ.yesBid,
         yesAsk:      lowQ.yesAsk,
         probability: Math.round((lowQ.yesAsk ?? low.yesAsk ?? 0) * 100),
+        depth:       (low.platform === 'kalshi' || low.platform === 'polymarket') ? lowQ.depth : null,
+        capacityUsd,
       },
       highMarket: {
         ...high,
         yesBid:      highQ.yesBid,
         yesAsk:      highQ.yesAsk,
         probability: Math.round((highQ.yesAsk ?? high.yesAsk ?? 0) * 100),
+        depth:       (high.platform === 'kalshi' || high.platform === 'polymarket') ? highQ.depth : null,
+        capacityUsd,
       },
     });
   }

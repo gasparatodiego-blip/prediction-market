@@ -24,6 +24,9 @@ const Anthropic = require('@anthropic-ai/sdk');
 // Shared fee constants — single source of truth used by both matcher-v2 and agent23-prediction-repricer.
 // Import here so the two tiers can never have divergent fee math.
 const { PLATFORM_FEES: _PLATFORM_FEES } = require('../lib/arb-math');
+// Shared order-book ladder + capacity walk — same reason: matcher-v2 (discovery) and
+// agent23 (live re-pricer) must compute capacity identically.
+const { computeCapacity } = require('../lib/depth');
 
 // Load ANTHROPIC_API_KEY from .env.matcher (chmod 600, gitignored).
 // Cron runs without the interactive shell environment — self-load so the key
@@ -1416,74 +1419,9 @@ function reportSanityCheck(markets, candidates) {
 }
 
 // ── Enrichment: time + capacity ───────────────────────────────────────────────
-// computeCapacity sweeps YES-ask and NO-ask ladders simultaneously and
-// accumulates $ deployed until the combined per-unit cost reaches $1.00.
+// computeCapacity (lib/depth.js) sweeps YES-ask and NO-ask ladders simultaneously
+// and accumulates $ deployed until the combined per-unit cost reaches $1.00.
 // Returns total $ deployable, or null if book data was unavailable.
-//
-// Kalshi orderbook_fp: { yes_dollars: [["price$","qty$"],...], no_dollars: [[...]] }
-//   yes_dollars = YES bids (buyers); no_dollars = NO bids (buyers)
-//   YES ask derived from NO bids: ask = 1 - no_bid_price; qty in $
-//   NO  ask derived from YES bids: no_ask = 1 - yes_bid_price; qty in $
-//
-// Polymarket CLOB: { bids: [{price,size},...], asks: [{price,size},...] }
-//   asks[] = YES ask prices (ascending); bids[] = YES bid prices (descending)
-//   NO ask prices derived from YES bids: no_ask = 1 - bid_price
-
-function computeCapacity(arb, yesLeg, noLeg, kalshiBook, pmBook) {
-  let yesAsks = [];
-  let noAsks  = [];
-
-  if (yesLeg.platform === 'kalshi' && kalshiBook) {
-    // YES ask derived from NO bids: sort descending by price, YES ask = 1 - no_bid
-    const noBids = (kalshiBook.no_dollars || [])
-      .map(([p, q]) => ({ price: parseFloat(p), qty: parseFloat(q) }))
-      .sort((a, b) => b.price - a.price);
-    yesAsks = noBids
-      .map(x => ({ price: 1 - x.price, qty: x.qty }))
-      .filter(x => x.price > 0 && x.price < 1);
-  } else if (yesLeg.platform === 'polymarket' && pmBook) {
-    yesAsks = (pmBook.asks || [])
-      .map(a => ({ price: parseFloat(a.price), qty: parseFloat(a.size) }))
-      .filter(x => x.price > 0 && x.price < 1 && x.qty > 0)
-      .sort((a, b) => a.price - b.price);
-  }
-
-  if (noLeg.platform === 'kalshi' && kalshiBook) {
-    // NO ask derived from YES bids: sort descending, NO ask = 1 - yes_bid
-    const yesBids = (kalshiBook.yes_dollars || [])
-      .map(([p, q]) => ({ price: parseFloat(p), qty: parseFloat(q) }))
-      .sort((a, b) => b.price - a.price);
-    noAsks = yesBids
-      .map(x => ({ price: 1 - x.price, qty: x.qty }))
-      .filter(x => x.price > 0 && x.price < 1);
-  } else if (noLeg.platform === 'polymarket' && pmBook) {
-    const yesBids = (pmBook.bids || [])
-      .map(b => ({ price: parseFloat(b.price), qty: parseFloat(b.size) }))
-      .filter(x => x.price > 0 && x.price < 1 && x.qty > 0)
-      .sort((a, b) => b.price - a.price);
-    noAsks = yesBids.map(b => ({ price: 1 - b.price, qty: b.qty }));
-  }
-
-  if (yesAsks.length === 0 || noAsks.length === 0) return null;
-
-  let totalDeployed = 0;
-  let yi = 0, ni = 0;
-  let yqty = yesAsks[0].qty, nqty = noAsks[0].qty;
-
-  while (yi < yesAsks.length && ni < noAsks.length) {
-    const yP = yesAsks[yi].price;
-    const nP = noAsks[ni].price;
-    if (yP + nP >= 1.00) break;
-    const stepQty = Math.min(yqty, nqty);
-    totalDeployed += stepQty * (yP + nP);
-    yqty -= stepQty;
-    nqty -= stepQty;
-    if (yqty < 1e-8) { yi++; if (yi < yesAsks.length) yqty = yesAsks[yi].qty; }
-    if (nqty < 1e-8) { ni++; if (ni < noAsks.length)  nqty = noAsks[ni].qty;  }
-  }
-
-  return totalDeployed > 0 ? +totalDeployed.toFixed(2) : 0;
-}
 
 async function enrichArbs(confirmed) {
   if (confirmed.length === 0) return confirmed;
@@ -1541,7 +1479,7 @@ async function enrichArbs(confirmed) {
       console.log(`[v2/enrich] PM leg has no clobTokenId (id=${pmLeg.id})`);
     }
 
-    const cap = computeCapacity(arb, yesLeg, noLeg, kalshiBook, pmBook);
+    const cap = computeCapacity(yesLeg, noLeg, kalshiBook, pmBook);
     arb.capacityUsd  = cap;
     arb.capacityFlag = (cap !== null) ? null : 'depth unknown';
 

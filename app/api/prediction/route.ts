@@ -200,6 +200,11 @@ export async function GET() {
           expiresAt:   low.expiresAt   ?? null,
           yesBid:      typeof low.yesBid  === 'number' ? low.yesBid  : null,
           yesAsk:      typeof low.yesAsk  === 'number' ? low.yesAsk  : null,
+          // Executable YES-ask ladder (2-5 levels, best price first). Only Kalshi/Polymarket
+          // expose a real order book — Manifold (AMM, no discrete book) and PredictIt (no
+          // book endpoint) stay null here, never a fabricated ladder.
+          depth:       Array.isArray(low.depth) ? low.depth : null,
+          capacityUsd: typeof low.capacityUsd === 'number' ? low.capacityUsd : null,
         },
         highMarket: {
           platform:    high.platform,
@@ -210,6 +215,8 @@ export async function GET() {
           expiresAt:   high.expiresAt  ?? null,
           yesBid:      typeof high.yesBid === 'number' ? high.yesBid : null,
           yesAsk:      typeof high.yesAsk === 'number' ? high.yesAsk : null,
+          depth:       Array.isArray(high.depth) ? high.depth : null,
+          capacityUsd: typeof high.capacityUsd === 'number' ? high.capacityUsd : null,
         },
         spread:           o.spread,
         roi:              isCashable ? o.roi : 0,
