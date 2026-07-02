@@ -142,6 +142,10 @@ function kalshiPageToMarkets(eventsData) {
         title:           ev.title || '',
         yes_bid_dollars: m.yes_bid_dollars,
         yes_ask_dollars: m.yes_ask_dollars,
+        // Kalshi's own human-readable outcome name (e.g. "Mark Cuban" for ticker
+        // suffix "MC") — lets the matcher's same-event gate resolve real identity
+        // instead of pattern-matching the short ticker code. See shared-matcher.js.
+        yes_sub_title:   m.yes_sub_title || '',
       });
     }
   }

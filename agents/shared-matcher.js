@@ -338,8 +338,16 @@ function extractAllMarkets(raw) {
     const prob = bid > 0 && ask > 0
       ? Math.round(((bid + ask) / 2) * 100)
       : Math.round((ask || bid) * 100);
-    const tickerSuffix = m.ticker ? m.ticker.split('-').pop() : '';
-    const kaQuestion = tickerSuffix ? `${title} [outcome: ${tickerSuffix}]` : title;
+    // Use Kalshi's own human-readable outcome name (yes_sub_title, e.g. "Mark Cuban"),
+    // never the raw 3-6 letter ticker code (e.g. "MC"). The ticker is an id, not text
+    // to match on — questionMentions() below treats bracket content as words that must
+    // literally appear on the other leg, and a short opaque code either never matches a
+    // real title (blocking genuine pairs) or slips under the length>=3 word filter and
+    // auto-passes with no verification at all (the false Kalshi[MC]<->Poly "Kamala
+    // Harris" pairing this replaces). If Kalshi ever fails to supply a name, omit the
+    // bracket entirely — stay neutral rather than fall back to the ticker as text.
+    const outcomeName = (m.yes_sub_title || '').trim();
+    const kaQuestion = outcomeName ? `${title} [outcome: ${outcomeName}]` : title;
     markets.push({
       id:          `ka-${m.ticker}`,
       platform:    'kalshi',
