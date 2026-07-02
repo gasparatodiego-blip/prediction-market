@@ -18,6 +18,26 @@ const PLATFORM_FEES = {
 // cashable determination here can never diverge from the live re-pricer's math.
 const { computeArbROI: computeExecutableArbROI, EXECUTABLE_PLATFORMS } = require('../lib/arb-math');
 
+// Same-event legs should carry the same/similar resolution date; when the platforms'
+// native fields disagree by more than a day (e.g. Kalshi keeps an umbrella market open
+// through the following cycle while Polymarket closes at the named election date), the
+// binding constraint for a hedged position is the EARLIER date — that leg forces
+// settlement/close first — so the pair is flagged rather than silently averaged.
+const RESOLUTION_MISMATCH_MS = 24 * 60 * 60 * 1000; // 1 day
+
+function resolutionInfo(a, b) {
+  const da = a.resolutionDate ? new Date(a.resolutionDate) : null;
+  const db = b.resolutionDate ? new Date(b.resolutionDate) : null;
+  const valid = [da, db].filter(d => d && !isNaN(d.getTime()));
+  if (valid.length === 0) return { resolutionDate: null, daysToResolution: null, resolutionMismatch: false };
+
+  const earliest = new Date(Math.min(...valid.map(d => d.getTime())));
+  const resolutionMismatch = da && db && Math.abs(da.getTime() - db.getTime()) > RESOLUTION_MISMATCH_MS;
+  const daysToResolution = Math.max(0, Math.ceil((earliest.getTime() - Date.now()) / (24 * 60 * 60 * 1000)));
+
+  return { resolutionDate: earliest.toISOString(), daysToResolution, resolutionMismatch };
+}
+
 const MATCH_FILES = [
   { path: '/tmp/matches-politics.json', category: 'politics'    },
   { path: '/tmp/matches-other.json',    category: 'sports/tech/econ' },
@@ -239,6 +259,13 @@ function calcArb(matches) {
       : null;
     const cashable = bothExecutable && executableArb !== null;
 
+    // Prediction-market pairs pay out ONCE at resolution — there is no recurring
+    // yield to annualize, so settlementType is always "one_time" and no $/day or
+    // annualized figure is ever derived here, regardless of how far out the
+    // resolution date sits (honest-engine: fabricating a rate from a one-time
+    // payout is the failure mode this exists to prevent).
+    const { resolutionDate, daysToResolution, resolutionMismatch } = resolutionInfo(low, high);
+
     results.push({
       question:   high.question,
       cashable,
@@ -249,6 +276,10 @@ function calcArb(matches) {
       earnPer100,
       confidence: m.confidence || 1,
       category:   m.category || 'unknown',
+      resolutionDate,
+      daysToResolution,
+      resolutionMismatch,
+      settlementType: 'one_time',
     });
   }
   return results.sort((a, b) => b.roi - a.roi);

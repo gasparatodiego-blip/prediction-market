@@ -47,6 +47,14 @@ const STOPWORDS = new Set([
   'through','into','onto','upon','around','per','if',
 ]);
 
+// Normalizes a platform's native resolution/expiry field to ISO 8601 UTC.
+// Returns null for anything absent or unparseable — never a guessed date.
+function normalizeResolutionDate(raw) {
+  if (!raw) return null;
+  const d = new Date(raw);
+  return isNaN(d.getTime()) ? null : d.toISOString();
+}
+
 function tokenize(text) {
   const clean = (text || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ');
   const words = clean.split(/\s+/).filter(t => t.length >= 3 && !STOPWORDS.has(t));
@@ -395,6 +403,7 @@ function extractOddsApiMarkets() {
         yesAsk:      avgProb / 100,
         realBook:    false,
         url:         null,
+        resolutionDate: null, // handled separately via commence_time in agent5-calculator's oddsapi path
         _sport:      ev.sport_title || '',
         _homeTeam:   ev.home_team   || '',
         _awayTeam:   ev.away_team   || '',
@@ -427,6 +436,7 @@ function extractAllMarkets(raw) {
       yesAsk:      +piYesAsk.toFixed(4),
       realBook:    false, // 10% profit fee + 5% withdrawal fee makes spreads unreliable — signal only
       url:         `https://www.predictit.org/markets/detail/${m.id}`,
+      resolutionDate: null, // PredictIt raw feed carries no reliable close/expiry field
     });
   }
 
@@ -443,6 +453,7 @@ function extractAllMarkets(raw) {
       yesAsk:      m.probability,
       realBook:    false, // play money, no real order book — signal only
       url:         m.url || `https://manifold.markets/${m.slug || ''}`,
+      resolutionDate: normalizeResolutionDate(m.closeTime),
     });
   }
 
@@ -474,6 +485,7 @@ function extractAllMarkets(raw) {
       yesAsk:      ask,
       realBook:    true,
       url:         `https://kalshi.com/markets/${m.ticker}`,
+      resolutionDate: normalizeResolutionDate(m.close_time),
     });
   }
 
@@ -506,6 +518,7 @@ function extractAllMarkets(raw) {
       yesAsk:      yA,
       realBook:    true,
       url:         m.slug ? `https://polymarket.com/event/${m.slug}` : 'https://polymarket.com',
+      resolutionDate: normalizeResolutionDate(m.endDate),
     });
   }
 
@@ -723,4 +736,4 @@ function buildRunner({ agentName, outFile, categoryLabel, keywords, boostKeyword
   setInterval(run, interval);
 }
 
-module.exports = { buildRunner, extractAllMarkets, sampleByCategory, createBatches, buildIdfIndex, matchBatch, deduplicateMatches, beat, kalshiUmbrellaKey };
+module.exports = { buildRunner, extractAllMarkets, sampleByCategory, createBatches, buildIdfIndex, matchBatch, deduplicateMatches, beat, kalshiUmbrellaKey, normalizeResolutionDate };

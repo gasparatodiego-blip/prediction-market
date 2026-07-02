@@ -224,9 +224,14 @@ export async function GET() {
         confidence:       o.confidence,
         category:         o.category   ?? 'unknown',
         type:             isCashable ? 'cashable' : 'signal',
-        annualizedROI:    o.annualizedROI    ?? null,
-        daysToResolution: o.daysToResolution ?? null,
-        resolutionDate:   o.resolutionDate   ?? null,
+        // Prediction pairs settle once at resolution, never recurring — always null here
+        // regardless of what upstream sets, so a future change to agent5-calculator can
+        // never leak a fabricated annualized/per-day figure into this API (honest-engine).
+        annualizedROI:      null,
+        daysToResolution:   o.daysToResolution   ?? null,
+        resolutionDate:     o.resolutionDate     ?? null,
+        resolutionMismatch: o.resolutionMismatch ?? false,
+        settlementType:     o.settlementType     ?? 'one_time',
         confirmReason:        o.confirmReason    ?? null,
         lockupFlag:           o.lockupFlag       ?? null,
         capacityUsd:          capUsd,

@@ -146,6 +146,10 @@ function kalshiPageToMarkets(eventsData) {
         // suffix "MC") — lets the matcher's same-event gate resolve real identity
         // instead of pattern-matching the short ticker code. See shared-matcher.js.
         yes_sub_title:   m.yes_sub_title || '',
+        // When this market resolves — semantically the same as Polymarket's endDate
+        // (matches the "before <date>" wording in the question). expiration_time is
+        // a settlement-buffer fallback for the rare market missing close_time.
+        close_time:      m.close_time || m.expiration_time || m.latest_expiration_time || null,
       });
     }
   }
