@@ -30,14 +30,18 @@ function eventPlatform(event: EventBucket, legId: string): EventPlatform | null 
   return event.platforms.find(p => p.legId === legId) ?? null;
 }
 
+// Short label on phone widths so the platform column never has to fight the
+// chip for space; full word from sm: up, where there's room for it.
 function TierBadge({ tier }: { tier: 'executable' | 'reference' }) {
-  return tier === 'executable' ? (
-    <span className="inline-flex items-center px-1.5 py-[2px] rounded-md bg-mint-tint text-mint-deep font-body font-semibold text-[9px] uppercase tracking-wide">
-      Executable
-    </span>
-  ) : (
-    <span className="inline-flex items-center px-1.5 py-[2px] rounded-md bg-bg-soft text-muted font-body font-semibold text-[9px] uppercase tracking-wide">
-      Reference
+  const isExecutable = tier === 'executable';
+  return (
+    <span
+      className={`inline-flex items-center px-1.5 py-[2px] rounded-md font-body font-semibold text-[9px] uppercase tracking-wide flex-shrink-0 ${
+        isExecutable ? 'bg-mint-tint text-mint-deep' : 'bg-bg-soft text-muted'
+      }`}
+    >
+      <span className="sm:hidden">{isExecutable ? 'Exec' : 'Ref'}</span>
+      <span className="hidden sm:inline">{isExecutable ? 'Executable' : 'Reference'}</span>
     </span>
   );
 }
@@ -376,7 +380,11 @@ export default function EventCard({ event, valid }: { event: EventBucket; valid:
         </div>
       </div>
 
-      {/* Platform table */}
+      {/* Platform table — VOL is a column from sm: up; on phone widths it drops
+          out of the table entirely and shows inline under the platform name
+          instead, so PLATFORM/YES/NO (the arb-critical columns) never have to
+          compete with it for space. overflow-x-auto stays as a safety net for
+          extreme cases (long category/platform names), not the primary fix. */}
       <div className="overflow-x-auto -mx-1">
         <table className="w-full text-left border-collapse">
           <thead>
@@ -384,7 +392,7 @@ export default function EventCard({ event, valid }: { event: EventBucket; valid:
               <th className="px-1 pb-1.5 font-medium">Platform</th>
               <th className="px-1 pb-1.5 font-medium">Yes</th>
               <th className="px-1 pb-1.5 font-medium">No</th>
-              <th className="px-1 pb-1.5 font-medium text-right">Vol</th>
+              <th className="hidden sm:table-cell px-1 pb-1.5 font-medium text-right">Vol</th>
             </tr>
           </thead>
           <tbody>
@@ -394,10 +402,13 @@ export default function EventCard({ event, valid }: { event: EventBucket; valid:
               return (
                 <tr key={p.legId} className={p.tier === 'reference' ? 'opacity-55' : ''}>
                   <td className="px-1 py-1.5">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <PlatformLogo platform={p.platform} size={13} />
                       <span className="font-body text-xs text-ink-2">{platformLabel(p.platform)}</span>
                       <TierBadge tier={p.tier} />
+                    </div>
+                    <div className="sm:hidden font-mono text-[10px] text-muted mt-0.5 tabular-nums">
+                      vol {formatVolume(p)}
                     </div>
                   </td>
                   <td className={`px-1 py-1.5 font-mono text-xs tabular-nums ${isBestYes ? 'text-mint-deep font-semibold' : 'text-ink-2'}`}>
@@ -408,7 +419,7 @@ export default function EventCard({ event, valid }: { event: EventBucket; valid:
                     {formatCents(p.noPrice)}
                     {isBestNo && <span className="ml-1.5 font-body font-bold text-[9px] text-mint-deep align-middle">BEST</span>}
                   </td>
-                  <td className="px-1 py-1.5 font-mono text-xs text-muted text-right tabular-nums">{formatVolume(p)}</td>
+                  <td className="hidden sm:table-cell px-1 py-1.5 font-mono text-xs text-muted text-right tabular-nums">{formatVolume(p)}</td>
                 </tr>
               );
             })}
@@ -422,7 +433,7 @@ export default function EventCard({ event, valid }: { event: EventBucket; valid:
               <td className="px-1 py-1.5 font-mono text-xs text-muted tabular-nums">
                 {event.referenceMedian.yesPrice != null ? formatCents(1 - event.referenceMedian.yesPrice) : '—'}
               </td>
-              <td className="px-1 py-1.5 text-right text-muted">—</td>
+              <td className="hidden sm:table-cell px-1 py-1.5 text-right text-muted">—</td>
             </tr>
           </tbody>
         </table>
