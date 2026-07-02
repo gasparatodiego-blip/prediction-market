@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
+import { getIsPaid, redactForTier } from '@/lib/paid-gating';
 
 export async function GET() {
     try {
@@ -44,7 +47,10 @@ export async function GET() {
             }
         }
         
-        return NextResponse.json({
+        const session = await getServerSession(authOptions);
+        const isPaid  = await getIsPaid(session);
+
+        const body = redactForTier({
             success: true,
             positions: activePositions,
             history: history.trades?.slice(-20) || [],
@@ -59,7 +65,9 @@ export async function GET() {
             },
             candidates: candidates.slice(0, 5),
             lastUpdate: new Date().toISOString()
-        });
+        }, 'lp', isPaid);
+
+        return NextResponse.json(body);
     } catch (error) {
         return NextResponse.json({
             success: false,

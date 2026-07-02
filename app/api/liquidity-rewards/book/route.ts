@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
+import { getIsPaid, redactForTier } from '@/lib/paid-gating';
 
 export const dynamic = 'force-dynamic';
 
@@ -58,10 +61,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'conditionId required' }, { status: 400 });
   }
 
+  const session = await getServerSession(authOptions);
+  const isPaid  = await getIsPaid(session);
+
   // Serve from cache if fresh
   const cached = bookCache.get(conditionId);
   if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
-    return NextResponse.json(cached.data);
+    return NextResponse.json(redactForTier(cached.data, 'liquidity-rewards-book', isPaid));
   }
 
   // Look up token IDs from stored data
@@ -120,5 +126,5 @@ export async function GET(req: NextRequest) {
     source: 'Polymarket CLOB · read-only · no orders placed',
   };
   bookCache.set(conditionId, { data: payload, ts: Date.now() });
-  return NextResponse.json(payload);
+  return NextResponse.json(redactForTier(payload, 'liquidity-rewards-book', isPaid));
 }

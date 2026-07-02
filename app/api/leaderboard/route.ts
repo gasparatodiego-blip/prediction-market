@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
+import { getIsPaid, redactForTier } from '@/lib/paid-gating';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,7 +15,9 @@ export async function GET() {
     const age  = Date.now() - new Date(raw.updatedAt ?? 0).getTime();
     const staleMinutes = Math.floor(age / 60_000);
 
-    return NextResponse.json({
+    const session = await getServerSession(authOptions);
+    const isPaid  = await getIsPaid(session);
+    const body    = redactForTier({
       ok:            true,
       stale:         age > STALE_MS,
       staleMinutes,
@@ -24,7 +29,9 @@ export async function GET() {
       categories:    raw.categories   ?? {},
       mmCategories:  raw.mmCategories ?? {},
       disclaimer:    raw.disclaimer,
-    });
+    }, 'leaderboard', isPaid);
+
+    return NextResponse.json(body);
   } catch {
     return NextResponse.json({
       ok:            false,

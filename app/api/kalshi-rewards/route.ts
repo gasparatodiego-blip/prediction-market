@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
+import { getIsPaid, redactForTier } from '@/lib/paid-gating';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,7 +15,12 @@ export async function GET() {
     const data = JSON.parse(raw);
     const ts   = data?._meta?.timestamp;
     const age  = ts ? Date.now() - new Date(ts).getTime() : Infinity;
-    return NextResponse.json({ ...data, stale: age > STALE_MS });
+
+    const session = await getServerSession(authOptions);
+    const isPaid  = await getIsPaid(session);
+    const body    = redactForTier({ ...data, stale: age > STALE_MS }, 'kalshi-rewards', isPaid);
+
+    return NextResponse.json(body);
   } catch (e: any) {
     return NextResponse.json(
       { error: e.message ?? 'failed to read kalshi-rewards.json', markets: [], _meta: null, stale: true },

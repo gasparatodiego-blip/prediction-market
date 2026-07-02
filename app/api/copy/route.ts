@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
+import { getIsPaid, redactForTier } from '@/lib/paid-gating';
 
 export const dynamic = 'force-dynamic';
 
@@ -69,7 +72,9 @@ export async function GET() {
     };
   });
 
-  return NextResponse.json({
+  const session = await getServerSession(authOptions);
+  const isPaid  = await getIsPaid(session);
+  const body    = redactForTier({
     ok:               online || wallets.length > 0,
     online,
     staleMinutes:     state ? Math.floor(staleMs / 60_000) : null,
@@ -78,7 +83,9 @@ export async function GET() {
     wallets:          enriched,
     updatedAt:        state?.updatedAt ?? null,
     maxWallets:       MAX_WALLETS,
-  });
+  }, 'copy', isPaid);
+
+  return NextResponse.json(body);
 }
 
 // ── POST — actions: follow | unfollow | toggle_alerts ─────────────────────────

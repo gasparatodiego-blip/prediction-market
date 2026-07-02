@@ -1,4 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
+import { getIsPaid, redactForTier } from '@/lib/paid-gating';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,8 +31,13 @@ export async function GET(req: NextRequest) {
   const ticker = req.nextUrl.searchParams.get('ticker');
   if (!ticker) return NextResponse.json({ error: 'ticker required' }, { status: 400 });
 
+  const session = await getServerSession(authOptions);
+  const isPaid  = await getIsPaid(session);
+
   const hit = cache.get(ticker);
-  if (hit && Date.now() - hit.ts < CACHE_TTL_MS) return NextResponse.json(hit.data);
+  if (hit && Date.now() - hit.ts < CACHE_TTL_MS) {
+    return NextResponse.json(redactForTier(hit.data, 'kalshi-rewards-book', isPaid));
+  }
 
   const raw = await fetchBook(ticker);
   if (!raw) {
@@ -41,5 +49,5 @@ export async function GET(req: NextRequest) {
 
   const payload = { ...(raw as object), ticker, fetchedAt: new Date().toISOString() };
   cache.set(ticker, { data: payload, ts: Date.now() });
-  return NextResponse.json(payload);
+  return NextResponse.json(redactForTier(payload, 'kalshi-rewards-book', isPaid));
 }

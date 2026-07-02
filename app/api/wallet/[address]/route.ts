@@ -1,4 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
+import { getIsPaid, redactForTier } from '@/lib/paid-gating';
 
 export const dynamic = 'force-dynamic';
 
@@ -217,7 +220,10 @@ export async function GET(
     return { date, cumulativePnl: Math.round(cum * 100) / 100 };
   });
 
-  return NextResponse.json({
+  const session = await getServerSession(authOptions);
+  const isPaid  = await getIsPaid(session);
+
+  const body = redactForTier({
     address: raw,
     name: name && !name.startsWith('0x') ? name : null,
     notFound: false,
@@ -250,5 +256,7 @@ export async function GET(
       'Realized P&L is final (from resolved markets). Unrealized P&L is mark-to-market at current prices — variable and can go to zero before resolution. ' +
       `Sample: ${tradeCount} recent trades, ${resolvedMarkets} resolved + ${openPos.length} open positions shown. ` +
       'Past performance ≠ future results. Not financial advice.',
-  });
+  }, 'wallet', isPaid);
+
+  return NextResponse.json(body);
 }

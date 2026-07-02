@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
 import { readFileSync } from 'fs';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
+import { getIsPaid, redactForTier } from '@/lib/paid-gating';
 
 const MASTER_LOG  = '/tmp/master-log.json';
 const MASTER_OPPS = '/tmp/master-opportunities.json';
@@ -27,7 +30,9 @@ export async function GET() {
     sources:     entry.data_sources ?? [],
   })).slice(-200) : [];
 
-  return NextResponse.json({
+  const session = await getServerSession(authOptions);
+  const isPaid  = await getIsPaid(session);
+  const body    = redactForTier({
     history,
     totalScans:    history.filter((e: any) => e.status === 'success').length,
     totalOpps:     history.reduce((s: number, e: any) => s + (e.opps ?? 0), 0),
@@ -35,5 +40,7 @@ export async function GET() {
     lastScan:      history[history.length - 1]?.ts ?? null,
     currentOpps:   opps.opportunities ?? [],
     currentStats:  arb.stats ?? null,
-  });
+  }, 'user-history', isPaid);
+
+  return NextResponse.json(body);
 }

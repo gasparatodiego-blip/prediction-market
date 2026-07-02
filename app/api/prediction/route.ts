@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
+import { getIsPaid, redactForTier } from '@/lib/paid-gating';
 
 export const dynamic = 'force-dynamic';
 
@@ -105,6 +108,9 @@ function isValidOpp(o: any): string | null {
 
 export async function GET() {
   try {
+    const session = await getServerSession(authOptions);
+    const isPaid  = await getIsPaid(session);
+
     // Prefer the re-priced view (live prices, evaporated pairs removed).
     // Fall back to the discovery snapshot if the re-pricer hasn't run yet.
     let raw: any;
@@ -272,7 +278,7 @@ export async function GET() {
     // passed through as-is, never recomputed here.
     const events: any[] = raw.events ?? [];
 
-    return NextResponse.json({
+    const body = redactForTier({
       valid,
       events,
       rejected,
@@ -304,7 +310,9 @@ export async function GET() {
           ? (discoveryAgeMin < 60 ? `${discoveryAgeMin}m AGO` : `${Math.round(discoveryAgeMin / 60)}h AGO`)
           : null,
       },
-    });
+    }, 'prediction', isPaid);
+
+    return NextResponse.json(body);
   } catch {
     return NextResponse.json({
       valid:    [],

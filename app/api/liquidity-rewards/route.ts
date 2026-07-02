@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
+import { getIsPaid, redactForTier } from '@/lib/paid-gating';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,7 +16,12 @@ export async function GET() {
     const age  = data?.meta?.generatedAt
       ? Date.now() - new Date(data.meta.generatedAt).getTime()
       : Infinity;
-    return NextResponse.json({ ...data, stale: age > STALE_MS });
+
+    const session = await getServerSession(authOptions);
+    const isPaid  = await getIsPaid(session);
+    const body    = redactForTier({ ...data, stale: age > STALE_MS }, 'liquidity-rewards', isPaid);
+
+    return NextResponse.json(body);
   } catch (e: any) {
     return NextResponse.json(
       { error: e.message ?? 'failed to read liquidity-rewards.json', markets: [], meta: null, stale: true },

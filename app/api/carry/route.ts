@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
+import { getIsPaid, redactForTier } from '@/lib/paid-gating';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,7 +31,10 @@ export async function GET() {
     });
   }
 
-  return NextResponse.json({
+  const session = await getServerSession(authOptions);
+  const isPaid  = await getIsPaid(session);
+
+  const body = redactForTier({
     agentStatus,
     updatedAt:     data.updatedAt,
     opportunities: data.opportunities  ?? [],
@@ -36,5 +42,7 @@ export async function GET() {
     summary:       data.summary        ?? {},
     spot:          data.spot           ?? {},
     disclaimer:    data.disclaimer     ?? '',
-  });
+  }, 'carry', isPaid);
+
+  return NextResponse.json(body);
 }

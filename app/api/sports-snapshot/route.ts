@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
+import { getIsPaid, redactForTier } from '@/lib/paid-gating';
 
 export const dynamic = 'force-dynamic';
 
@@ -121,13 +124,18 @@ export async function GET(): Promise<NextResponse<SnapshotResponse>> {
     const age  = data.lastUpdated
       ? Date.now() - new Date(data.lastUpdated).getTime()
       : Infinity;
-    return NextResponse.json({
+
+    const session = await getServerSession(authOptions);
+    const isPaid  = await getIsPaid(session);
+    const body    = redactForTier({
       ...data,
       ok:         true,
       missing:    false,
       stale:      age > STALE_MS,
       ageMinutes: Number.isFinite(age) ? Math.floor(age / 60_000) : null,
-    });
+    }, 'sports-snapshot', isPaid);
+
+    return NextResponse.json(body);
   } catch {
     return NextResponse.json(EMPTY);
   }
