@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import RadarMark from './ui/RadarMark';
 import RadarScope from './ui/RadarScope';
 
@@ -18,10 +19,14 @@ const NAV_LINKS = [
 
 export default function EdgeradarHeader() {
   const pathname  = usePathname();
+  const { data: session } = useSession();
   const [menuOpen, setMenuOpen] = useState(false);
 
   const isActive = (href: string) =>
     href === '/dashboard' ? pathname === '/dashboard' : pathname.startsWith(href);
+
+  const accountActive = pathname.startsWith('/dashboard/account');
+  const initial = (session?.user?.name?.trim()?.[0] ?? session?.user?.email?.[0] ?? '?').toUpperCase();
 
   return (
     <header className="sticky top-0 z-50 bg-surface border-b border-line">
@@ -58,9 +63,24 @@ export default function EdgeradarHeader() {
         </nav>
 
         {/* Live motif */}
-        <div className="ml-auto flex items-center gap-2 shrink-0">
+        <div className="ml-auto flex items-center gap-3 shrink-0">
           <RadarScope size={26} />
           <span className="font-body text-[11px] text-muted hidden sm:block">Live</span>
+
+          {session?.user && (
+            <Link
+              href="/dashboard/account"
+              title="Account"
+              className={[
+                'hidden md:flex items-center justify-center w-7 h-7 rounded-full font-body text-[11px] font-semibold transition-colors duration-100',
+                accountActive
+                  ? 'bg-mint-deep text-white'
+                  : 'bg-mint-tint text-mint-deep hover:bg-mint/30',
+              ].join(' ')}
+            >
+              {initial}
+            </Link>
+          )}
         </div>
 
         {/* Hamburger — mobile */}
@@ -100,6 +120,23 @@ export default function EdgeradarHeader() {
               </Link>
             );
           })}
+          {session?.user && (
+            <Link
+              href="/dashboard/account"
+              onClick={() => setMenuOpen(false)}
+              className={[
+                'flex items-center gap-2.5 px-4 py-3 font-body text-[13px] border-b border-line/50 transition-colors duration-100',
+                accountActive
+                  ? 'text-mint-deep font-medium bg-mint-tint/40'
+                  : 'text-muted hover:text-ink-2 hover:bg-bg-soft',
+              ].join(' ')}
+            >
+              {accountActive && (
+                <span className="w-1.5 h-1.5 rounded-full bg-mint-deep flex-shrink-0" aria-hidden />
+              )}
+              Account
+            </Link>
+          )}
         </div>
       )}
     </header>
