@@ -193,6 +193,7 @@ module.exports = {
       cwd:           '/root/prediction-market',
       restart_delay: 30000,
       max_restarts:  20,
+      max_memory_restart: '450M',
       watch:         false,
       autorestart:   true,
       env:           { NODE_ENV: 'production', HOME: '/root' },
