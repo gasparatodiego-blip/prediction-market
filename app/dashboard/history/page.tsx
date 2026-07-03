@@ -1,6 +1,8 @@
 'use client';
 import { useEffect, useState, useMemo } from 'react';
 import SectionHelp from '@/app/components/SectionHelp';
+import { Redacted } from '@/app/components/ui/Redacted';
+import { safeNum } from '@/lib/fmt-safe';
 
 interface HistoryEntry {
   ts:         string;
@@ -67,7 +69,7 @@ export default function HistoryPage() {
     if (!filtered.length) return;
     const header = 'Date,Status,Opportunities,AvgConfidence,BestType,BestTitle,Alerts,FNG,Accuracy7d\n';
     const rows   = filtered.map(e =>
-      `"${e.ts}","${e.status}",${e.opps},${e.avgConf ?? ''},"${e.best?.type ?? ''}","${(e.best?.title ?? '').replace(/"/g, '""')}",${e.alertsSent},${e.fng ?? ''},${e.accuracy7d ?? ''}`
+      `"${e.ts}","${e.status}",${e.opps},${safeNum(e.avgConf)},"${e.best?.type ?? ''}","${(e.best?.title ?? '').replace(/"/g, '""')}",${e.alertsSent},${e.fng ?? ''},${safeNum(e.accuracy7d)}`
     ).join('\n');
     const blob = new Blob([header + rows], { type: 'text/csv' });
     const url  = URL.createObjectURL(blob);
@@ -172,18 +174,20 @@ export default function HistoryPage() {
                     </td>
                     <td className="px-4 py-2.5 text-right font-bold font-mono tabular-nums text-ink">{e.opps}</td>
                     <td className="px-4 py-2.5 text-right font-mono tabular-nums text-ink-2">
-                      {e.avgConf != null ? `${e.avgConf}%` : '—'}
+                      <Redacted value={e.avgConf}>{v => `${v}%`}</Redacted>
                     </td>
                     <td className="px-4 py-2.5 max-w-xs">
-                      {e.best ? (
-                        <div className="flex items-center gap-2">
-                          <span className={`px-1.5 py-0.5 rounded-sm border bg-bg-soft font-body text-xs uppercase tracking-wide shrink-0 ${typeChip(e.best.type)}`}>
-                            {e.best.type.replace(/_/g, ' ')}
-                          </span>
-                          <span className="text-ink-2 truncate font-body text-xs">{e.best.title?.slice(0, 50)}</span>
-                          <span className="text-mint font-bold font-mono tabular-nums text-xs ml-auto shrink-0">{e.best.confidence}%</span>
-                        </div>
-                      ) : <span className="text-muted font-body">—</span>}
+                      <Redacted value={e.best}>
+                        {best => (
+                          <div className="flex items-center gap-2">
+                            <span className={`px-1.5 py-0.5 rounded-sm border bg-bg-soft font-body text-xs uppercase tracking-wide shrink-0 ${typeChip(best.type)}`}>
+                              {best.type.replace(/_/g, ' ')}
+                            </span>
+                            <span className="text-ink-2 truncate font-body text-xs">{best.title?.slice(0, 50)}</span>
+                            <span className="text-mint font-bold font-mono tabular-nums text-xs ml-auto shrink-0">{best.confidence}%</span>
+                          </div>
+                        )}
+                      </Redacted>
                     </td>
                     <td className="px-4 py-2.5 text-right text-xs text-muted font-mono tabular-nums">{e.fng ?? '—'}</td>
                     <td className="px-4 py-2.5 text-right font-mono tabular-nums">

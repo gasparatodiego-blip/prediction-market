@@ -7,21 +7,24 @@ import SectionHeading from '@/app/components/ui/SectionHeading';
 import StatCard       from '@/app/components/ui/StatCard';
 import EdgeChip       from '@/app/components/ui/EdgeChip';
 import PlatformLogo   from '@/components/PlatformLogo';
+import { Redacted, RedactedPanel } from '@/app/components/ui/Redacted';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+// pnlUsdc/winRate/wilsonScore/volumeUsdc/wins/losses: null on free tier
+// (server-side redaction, lib/paid-gating.ts).
 interface LbEntry {
   wallet:          string;
   name:            string;
-  pnlUsdc:         number;
-  winRate:         number;
-  wilsonScore?:    number;
+  pnlUsdc:         number | null;
+  winRate:         number | null;
+  wilsonScore?:    number | null;
   lowSample?:      boolean;
   resolvedMarkets: number;
-  volumeUsdc:      number;
+  volumeUsdc:      number | null;
   lastActive:      number;
-  wins:            number;
-  losses:          number;
+  wins:            number | null;
+  losses:          number | null;
   twoSidedMkts?:   number;
   twoSidedPct?:    number;
   walletType?:     'MM' | 'DIRECTIONAL' | null;
@@ -71,17 +74,19 @@ interface CopyData {
   ok:               boolean;
   online:           boolean;
   walletsMonitored: number;
-  recentAlerts:     TradeAlert[];
+  // whole array null on free tier (server-side redaction) — this feed IS the product.
+  recentAlerts:     TradeAlert[] | null;
   wallets:          FollowedEntry[];
   maxWallets:       number;
 }
 
+// size/price: null on free tier (server-side redaction).
 interface RecentTrade {
   title:     string;
   side:      string;
   outcome:   string;
-  size:      number;
-  price:     number;
+  size:      number | null;
+  price:     number | null;
   timestamp: number;
 }
 
@@ -91,25 +96,30 @@ interface CatBreakdown {
   pct:      number;
 }
 
+// cumulativePnl: null on free tier (server-side redaction).
 interface PnlPoint {
   date:          string;
-  cumulativePnl: number;
+  cumulativePnl: number | null;
 }
 
+// avgPrice/curPrice/currentValue/initialValue/unrealizedPnl/unrealizedPct:
+// null on free tier (server-side redaction).
 interface OpenPosition {
   conditionId:   string;
   title:         string;
   outcome:       string;
   size:          number;
-  avgPrice:      number;
-  curPrice:      number;
-  currentValue:  number;
-  initialValue:  number;
-  unrealizedPnl: number;
-  unrealizedPct: number;
+  avgPrice:      number | null;
+  curPrice:      number | null;
+  currentValue:  number | null;
+  initialValue:  number | null;
+  unrealizedPnl: number | null;
+  unrealizedPct: number | null;
   endDate:       string | null;
 }
 
+// realizedPnl/unrealizedPnl/estimatedPnl/winRate/wins/losses/avgPositionSize/
+// totalVolume: null on free tier (server-side redaction, lib/paid-gating.ts).
 interface WalletDetail {
   address:         string;
   name:            string | null;
@@ -119,14 +129,14 @@ interface WalletDetail {
   twoSidedMarkets: number;
   totalPosMarkets: number;
   resolvedMarkets: number;
-  realizedPnl:     number;
-  unrealizedPnl:   number;
-  estimatedPnl:    number;
-  winRate:         number;
-  wins:            number;
-  losses:          number;
-  avgPositionSize: number;
-  totalVolume:     number;
+  realizedPnl:     number | null;
+  unrealizedPnl:   number | null;
+  estimatedPnl:    number | null;
+  winRate:         number | null;
+  wins:            number | null;
+  losses:          number | null;
+  avgPositionSize: number | null;
+  totalVolume:     number | null;
   tradeCount:      number;
   firstActive:     number | null;
   lastActive:      number | null;
@@ -270,10 +280,15 @@ function WalletTypeBadge({ type }: { type: 'MM' | 'DIRECTIONAL' }) {
 // ── SVG P&L Chart ─────────────────────────────────────────────────────────────
 
 function PnlChart({ history }: { history: PnlPoint[] }) {
-  if (history.length < 2) {
+  // cumulativePnl is redacted (null) on free tier — never plot a null-coerced-to-0 point.
+  const pts2 = history.filter((p): p is PnlPoint & { cumulativePnl: number } => p.cumulativePnl != null);
+
+  if (pts2.length < 2) {
     return (
       <div className="h-20 flex items-center justify-center font-body text-[11px] text-muted border border-line bg-bg-soft">
-        Not enough resolved positions for a chart ({history.length} data point{history.length !== 1 ? 's' : ''})
+        {history.length >= 2 && pts2.length === 0
+          ? <RedactedPanel label="Available on Pro" className="!py-3 !border-0" />
+          : <>Not enough resolved positions for a chart ({pts2.length} data point{pts2.length !== 1 ? 's' : ''})</>}
       </div>
     );
   }
@@ -284,22 +299,22 @@ function PnlChart({ history }: { history: PnlPoint[] }) {
   const iW = W - PAD.l - PAD.r;
   const iH = H - PAD.t - PAD.b;
 
-  const vals = history.map(p => p.cumulativePnl);
+  const vals = pts2.map(p => p.cumulativePnl);
   const minV = Math.min(0, ...vals);
   const maxV = Math.max(0, ...vals);
   const range = maxV - minV || 1;
 
   const toY = (v: number) => PAD.t + iH - ((v - minV) / range) * iH;
-  const toX = (i: number) => PAD.l + (i / (history.length - 1)) * iW;
+  const toX = (i: number) => PAD.l + (i / (pts2.length - 1)) * iW;
 
-  const pts = history.map((p, i) => `${toX(i)},${toY(p.cumulativePnl)}`).join(' ');
+  const pts = pts2.map((p, i) => `${toX(i)},${toY(p.cumulativePnl)}`).join(' ');
   const zeroY = toY(0);
   const finalPnl = vals[vals.length - 1];
   const lineColor = finalPnl >= 0 ? '#0A9D6B' : '#D5552F';
   const fillColor = finalPnl >= 0 ? 'rgba(10,157,107,0.09)' : 'rgba(213,85,47,0.09)';
 
   const firstX = toX(0);
-  const lastX  = toX(history.length - 1);
+  const lastX  = toX(pts2.length - 1);
   const areaPts = `${firstX},${zeroY} ${pts} ${lastX},${zeroY}`;
 
   return (
@@ -308,7 +323,7 @@ function PnlChart({ history }: { history: PnlPoint[] }) {
       <polygon points={areaPts} fill={fillColor}/>
       <polyline points={pts} fill="none" stroke={lineColor} strokeWidth="1.5"/>
       <circle cx={toX(0)} cy={toY(vals[0])} r="2" fill={lineColor}/>
-      <circle cx={toX(history.length-1)} cy={toY(vals[history.length-1])} r="2.5" fill={lineColor}/>
+      <circle cx={toX(pts2.length-1)} cy={toY(vals[pts2.length-1])} r="2.5" fill={lineColor}/>
     </svg>
   );
 }
@@ -434,21 +449,21 @@ function WalletDetailPanel({
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 border border-line bg-bg-soft rounded-card p-4">
                   <div>
                     <div className="font-body text-[10px] text-muted uppercase tracking-wide mb-0.5">Total P&amp;L</div>
-                    <div className={`font-display font-bold text-lg tabular-nums leading-none ${detail.estimatedPnl >= 0 ? 'text-mint-deep' : 'text-coral-ink'}`}>
-                      {fmtPnl(detail.estimatedPnl)}
+                    <div className={`font-display font-bold text-lg tabular-nums leading-none ${detail.estimatedPnl != null ? (detail.estimatedPnl >= 0 ? 'text-mint-deep' : 'text-coral-ink') : 'text-muted'}`}>
+                      <Redacted value={detail.estimatedPnl}>{v => fmtPnl(v)}</Redacted>
                     </div>
                     <div className="font-body text-[10px] text-muted mt-1 space-y-0.5">
                       <div>
                         <span className="text-muted/70">realized </span>
-                        <span className={detail.realizedPnl >= 0 ? 'text-mint-deep/80' : 'text-coral-ink/80'}>
-                          {fmtPnl(detail.realizedPnl)}
+                        <span className={detail.realizedPnl != null ? (detail.realizedPnl >= 0 ? 'text-mint-deep/80' : 'text-coral-ink/80') : 'text-muted'}>
+                          <Redacted value={detail.realizedPnl}>{v => fmtPnl(v)}</Redacted>
                         </span>
                       </div>
                       {detail.openPositions.length > 0 && (
                         <div>
                           <span className="text-muted/70">unrealized </span>
-                          <span className={detail.unrealizedPnl >= 0 ? 'text-mint-deep/80' : 'text-coral-ink/80'}>
-                            {fmtPnl(detail.unrealizedPnl)}
+                          <span className={detail.unrealizedPnl != null ? (detail.unrealizedPnl >= 0 ? 'text-mint-deep/80' : 'text-coral-ink/80') : 'text-muted'}>
+                            <Redacted value={detail.unrealizedPnl}>{v => fmtPnl(v)}</Redacted>
                           </span>
                           <span className="text-muted/50"> ~</span>
                         </div>
@@ -457,8 +472,12 @@ function WalletDetailPanel({
                   </div>
                   <div>
                     <div className="font-body text-[10px] text-muted uppercase tracking-wide mb-0.5">Win Rate</div>
-                    <div className={`font-display font-semibold text-lg tabular-nums leading-none ${wrColor(detail.winRate)}`}>{detail.winRate.toFixed(1)}%</div>
-                    <div className="font-body text-[10px] text-muted mt-1">{detail.wins}W / {detail.losses}L</div>
+                    <div className={`font-display font-semibold text-lg tabular-nums leading-none ${wrColor(detail.winRate)}`}>
+                      <Redacted value={detail.winRate}>{v => `${v.toFixed(1)}%`}</Redacted>
+                    </div>
+                    <div className="font-body text-[10px] text-muted mt-1">
+                      <Redacted value={detail.wins}>{v => String(v)}</Redacted>W / <Redacted value={detail.losses}>{v => String(v)}</Redacted>L
+                    </div>
                   </div>
                   <div>
                     <div className="font-body text-[10px] text-muted uppercase tracking-wide mb-0.5">Trades</div>
@@ -478,11 +497,15 @@ function WalletDetailPanel({
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 border border-line bg-bg-soft rounded-card p-4">
                   <div>
                     <div className="font-body text-[10px] text-muted uppercase tracking-wide mb-0.5">Volume (sample)</div>
-                    <div className="font-body font-medium text-sm text-ink tabular-nums">{fmtVol(detail.totalVolume)}</div>
+                    <div className="font-body font-medium text-sm text-ink tabular-nums">
+                      <Redacted value={detail.totalVolume}>{v => fmtVol(v)}</Redacted>
+                    </div>
                   </div>
                   <div>
                     <div className="font-body text-[10px] text-muted uppercase tracking-wide mb-0.5">Avg Trade Size</div>
-                    <div className="font-body font-medium text-sm text-ink tabular-nums">{fmtVol(detail.avgPositionSize)}</div>
+                    <div className="font-body font-medium text-sm text-ink tabular-nums">
+                      <Redacted value={detail.avgPositionSize}>{v => fmtVol(v)}</Redacted>
+                    </div>
                   </div>
                   {detail.portfolioValue != null && (
                     <div>
@@ -502,8 +525,8 @@ function WalletDetailPanel({
                         </span>
                         <span className="ml-2 font-body text-[10px] text-gold/80">· mark-to-market · unrealized · can go to zero</span>
                       </div>
-                      <span className={`font-body font-semibold text-[11px] tabular-nums ${detail.unrealizedPnl >= 0 ? 'text-mint-deep' : 'text-coral-ink'}`}>
-                        {fmtPnl(detail.unrealizedPnl)} <span className="font-normal text-muted">~</span>
+                      <span className={`font-body font-semibold text-[11px] tabular-nums ${detail.unrealizedPnl != null ? (detail.unrealizedPnl >= 0 ? 'text-mint-deep' : 'text-coral-ink') : 'text-muted'}`}>
+                        <Redacted value={detail.unrealizedPnl}>{v => fmtPnl(v)}</Redacted> <span className="font-normal text-muted">~</span>
                       </span>
                     </div>
                     <div className="overflow-x-auto">
@@ -521,8 +544,7 @@ function WalletDetailPanel({
                         </thead>
                         <tbody>
                           {detail.openPositions.map((p, i) => {
-                            const pos = p.unrealizedPnl >= 0;
-                            const pct = p.unrealizedPct > 0 ? '+' + p.unrealizedPct.toFixed(1) : p.unrealizedPct.toFixed(1);
+                            const pos = (p.unrealizedPnl ?? 0) >= 0;
                             return (
                               <tr key={i} className="border-b border-line/50 hover:bg-bg-soft/40">
                                 <td className="px-3 py-1.5 font-body text-[11px] text-ink-2 max-w-[160px] truncate" title={p.title}>
@@ -534,13 +556,19 @@ function WalletDetailPanel({
                                   </span>
                                 </td>
                                 <td className="px-2 py-1.5 font-body text-[11px] text-muted tabular-nums text-right">{p.size.toFixed(1)}</td>
-                                <td className="px-2 py-1.5 font-body text-[11px] text-muted tabular-nums text-right">${p.avgPrice.toFixed(3)}</td>
-                                <td className="px-2 py-1.5 font-body text-[11px] text-ink-2 tabular-nums text-right font-medium">${p.curPrice.toFixed(3)}</td>
+                                <td className="px-2 py-1.5 font-body text-[11px] text-muted tabular-nums text-right">
+                                  $<Redacted value={p.avgPrice}>{v => v.toFixed(3)}</Redacted>
+                                </td>
+                                <td className="px-2 py-1.5 font-body text-[11px] text-ink-2 tabular-nums text-right font-medium">
+                                  $<Redacted value={p.curPrice}>{v => v.toFixed(3)}</Redacted>
+                                </td>
                                 <td className="px-2 py-1.5 tabular-nums text-right">
                                   <span className={`font-body text-[11px] font-semibold ${pos ? 'text-mint-deep' : 'text-coral-ink'}`}>
                                     {fmtPnl(p.unrealizedPnl)}
                                   </span>
-                                  <div className={`font-body text-[9px] ${pos ? 'text-mint-deep/70' : 'text-coral-ink/70'}`}>{pct}%</div>
+                                  <div className={`font-body text-[9px] ${pos ? 'text-mint-deep/70' : 'text-coral-ink/70'}`}>
+                                    <Redacted value={p.unrealizedPct}>{v => `${v > 0 ? '+' : ''}${v.toFixed(1)}`}</Redacted>%
+                                  </div>
                                 </td>
                                 <td className="px-2 py-1.5 font-body text-[10px] text-muted text-right whitespace-nowrap">
                                   {fmtEndDate(p.endDate)}
@@ -566,8 +594,8 @@ function WalletDetailPanel({
                     <span className="font-body font-medium text-[11px] uppercase tracking-wide text-muted">
                       Realized P&amp;L · {detail.resolvedMarkets} closed positions
                     </span>
-                    <span className={`font-body font-semibold text-[11px] ${detail.realizedPnl >= 0 ? 'text-mint-deep' : 'text-coral-ink'}`}>
-                      {fmtPnl(detail.realizedPnl)}
+                    <span className={`font-body font-semibold text-[11px] ${detail.realizedPnl != null ? (detail.realizedPnl >= 0 ? 'text-mint-deep' : 'text-coral-ink') : 'text-muted'}`}>
+                      <Redacted value={detail.realizedPnl}>{v => fmtPnl(v)}</Redacted>
                     </span>
                   </div>
                   <PnlChart history={detail.pnlHistory}/>
@@ -637,8 +665,12 @@ function WalletDetailPanel({
                                   </span>
                                 </td>
                                 <td className="px-2 py-1.5 font-body text-[11px] text-muted">{t.outcome}</td>
-                                <td className="px-2 py-1.5 font-body text-[11px] text-ink-2 tabular-nums text-right">${t.size.toFixed(0)}</td>
-                                <td className="px-2 py-1.5 font-body text-[11px] text-muted tabular-nums text-right">{t.price.toFixed(3)}</td>
+                                <td className="px-2 py-1.5 font-body text-[11px] text-ink-2 tabular-nums text-right">
+                                  $<Redacted value={t.size}>{v => v.toFixed(0)}</Redacted>
+                                </td>
+                                <td className="px-2 py-1.5 font-body text-[11px] text-muted tabular-nums text-right">
+                                  <Redacted value={t.price}>{v => v.toFixed(3)}</Redacted>
+                                </td>
                                 <td className="px-2 py-1.5 font-body text-[10px] text-muted text-right whitespace-nowrap">{fmtAge(t.timestamp)}</td>
                               </tr>
                             );
@@ -674,7 +706,7 @@ function BrowseRow({ e, rank, cat, isFollowed, onFollow, pending, onDetail }: {
   isFollowed: boolean; onFollow: () => void; pending: boolean;
   onDetail: () => void;
 }) {
-  const pos = e.pnlUsdc >= 0;
+  const pos = (e.pnlUsdc ?? 0) >= 0;
   return (
     <tr
       className="border-b border-line hover:bg-bg-soft/40 transition-colors duration-75 group cursor-pointer"
@@ -694,15 +726,19 @@ function BrowseRow({ e, rank, cat, isFollowed, onFollow, pending, onDetail }: {
       </td>
       <td className="px-3 py-2.5 tabular-nums text-right pr-4">
         <span className={`font-display font-bold text-base ${pos ? 'text-mint-deep' : 'text-coral-ink'}`}>
-          {fmtPnl(e.pnlUsdc)}
+          <Redacted value={e.pnlUsdc}>{v => fmtPnl(v)}</Redacted>
         </span>
       </td>
       <td className="px-3 py-2.5 hidden sm:table-cell">
         <div className="flex items-center gap-1.5 flex-wrap">
-          <span className={`font-body font-medium text-sm ${wrColor(e.winRate)}`}>{e.winRate.toFixed(1)}%</span>
+          <span className={`font-body font-medium text-sm ${wrColor(e.winRate)}`}>
+            <Redacted value={e.winRate}>{v => `${v.toFixed(1)}%`}</Redacted>
+          </span>
           {e.lowSample && <LowSampleBadge />}
         </div>
-        <div className="font-body text-[10px] text-muted mt-0.5">{e.wins}W/{e.losses}L</div>
+        <div className="font-body text-[10px] text-muted mt-0.5">
+          <Redacted value={e.wins}>{v => String(v)}</Redacted>W/<Redacted value={e.losses}>{v => String(v)}</Redacted>L
+        </div>
       </td>
       <td className="px-3 py-2.5 hidden md:table-cell">
         <span className="font-body text-sm text-ink-2 tabular-nums">{e.resolvedMarkets}</span>
@@ -741,7 +777,7 @@ function BrowseCard({ e, rank, cat, isFollowed, onFollow, pending, onDetail }: {
   isFollowed: boolean; onFollow: () => void; pending: boolean;
   onDetail: () => void;
 }) {
-  const pos = e.pnlUsdc >= 0;
+  const pos = (e.pnlUsdc ?? 0) >= 0;
   return (
     <div
       className="border-b border-line px-4 py-3 hover:bg-bg-soft/40 cursor-pointer"
@@ -761,11 +797,11 @@ function BrowseCard({ e, rank, cat, isFollowed, onFollow, pending, onDetail }: {
           </div>
         </div>
         <span className={`font-display font-bold text-base tabular-nums shrink-0 ${pos ? 'text-mint-deep' : 'text-coral-ink'}`}>
-          {fmtPnl(e.pnlUsdc)}
+          <Redacted value={e.pnlUsdc}>{v => fmtPnl(v)}</Redacted>
         </span>
       </div>
       <div className="flex gap-2 mt-1.5 ml-7 flex-wrap items-center">
-        <span className={`font-body text-[11px] ${wrColor(e.winRate)}`}>{e.winRate.toFixed(1)}% WR</span>
+        <span className={`font-body text-[11px] ${wrColor(e.winRate)}`}><Redacted value={e.winRate}>{v => `${v.toFixed(1)}% WR`}</Redacted></span>
         {e.lowSample && <LowSampleBadge />}
         <span className="font-body text-[11px] text-muted">{e.resolvedMarkets} resolved</span>
         <span className="font-body text-[11px] text-muted">{fmtVol(e.volumeUsdc)}</span>
@@ -809,7 +845,7 @@ function FollowedRow({ f, onUnfollow, onToggle, pending, onDetail }: {
       </td>
       <td className="px-3 py-2.5 tabular-nums text-right pr-4">
         <span className={`font-display font-semibold text-base ${f.pnlUsdc != null ? (pos ? 'text-mint-deep' : 'text-coral-ink') : 'text-muted'}`}>
-          {fmtPnl(f.pnlUsdc)}
+          <Redacted value={f.pnlUsdc}>{v => fmtPnl(v)}</Redacted>
         </span>
         {f.winRate != null && (
           <div className={`font-body text-[10px] mt-0.5 ${wrColor(f.winRate)}`}>{f.winRate.toFixed(0)}% WR</div>
@@ -861,7 +897,7 @@ function FollowedCard({ f, onUnfollow, onToggle, pending, onDetail }: {
           <div className="font-body text-[10px] text-muted">{fmtWallet(f.wallet)}</div>
         </div>
         <span className={`font-display font-bold text-base tabular-nums ${f.pnlUsdc != null ? (pos ? 'text-mint-deep' : 'text-coral-ink') : 'text-muted'}`}>
-          {fmtPnl(f.pnlUsdc)}
+          <Redacted value={f.pnlUsdc}>{v => fmtPnl(v)}</Redacted>
         </span>
       </div>
       <div className="flex items-center gap-2 mt-1.5 flex-wrap">
@@ -1490,7 +1526,9 @@ export default function TradersPage() {
               </span>
               <span className="font-body text-[11px] text-muted">Telegram + shown here</span>
             </div>
-            {alerts.length === 0 ? (
+            {copyData?.recentAlerts === null ? (
+              <RedactedPanel label="The trade alerts feed is available on Pro" className="!border-0" />
+            ) : alerts.length === 0 ? (
               <div className="px-4 py-8 text-center font-body text-sm text-muted">
                 {followed.length === 0
                   ? 'Watch a trader to receive alerts'

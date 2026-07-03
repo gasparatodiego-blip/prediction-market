@@ -22,10 +22,10 @@ interface BlipRowProps {
   name:        ReactNode;
   sub?:        ReactNode;
   chip?:       EdgeChipVariant;
-  /** Primary display value, e.g. "+$42" */
-  value:       string;
+  /** Primary display value, e.g. "+$42" — or a <Redacted> blur/CTA node for free tier */
+  value:       ReactNode;
   /** Small unit label below the value, e.g. "/day · net of fees" */
-  unit?:       string;
+  unit?:       ReactNode;
   /** 'up' → mint-deep; 'neutral' → ink */
   valueTone?:  'up' | 'neutral';
   className?:  string;

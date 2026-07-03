@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import Eyebrow from '@/app/components/ui/Eyebrow';
 import SectionHeading from '@/app/components/ui/SectionHeading';
@@ -9,6 +9,7 @@ import BlipRow from '@/app/components/ui/BlipRow';
 import EdgeChip, { type EdgeChipVariant } from '@/app/components/ui/EdgeChip';
 import PlatformLogo from '@/components/PlatformLogo';
 import { kIsWarn, isSaneKalshiMarket, isSanePolymarketLevel } from '@/lib/reward-gating';
+import { Redacted } from '@/app/components/ui/Redacted';
 
 // ── Types · Polymarket ─────────────────────────────────────────────────────────
 
@@ -17,19 +18,22 @@ type GapClass = 'OPEN' | 'TRAP' | 'none';
 type Capital  = 500 | 5000 | 50000;
 type SortMode = 'default' | 'gap';
 
+// share/grossRewardDay/dayYieldPct/rewardsDailyRate/etc: null on free tier
+// (server-side redaction, lib/paid-gating.ts) — teaser fields (question,
+// dates, flags, min size... wait rewardsMinSize IS sensitive, see below) stay real.
 interface LevelData {
   capital:         number;
-  share:           number;
-  grossRewardDay:  number;
-  dayYieldPct:     number;
-  netRewardDay?:   number;
-  netYieldPct?:    number;
-  shareHigh?:      number;
-  grossHigh?:      number;
-  netHigh?:        number;
-  shareLow?:       number;
-  grossLow?:       number;
-  netLow?:         number;
+  share:           number | null;
+  grossRewardDay:  number | null;
+  dayYieldPct:     number | null;
+  netRewardDay?:   number | null;
+  netYieldPct?:    number | null;
+  shareHigh?:      number | null;
+  grossHigh?:      number | null;
+  netHigh?:        number | null;
+  shareLow?:       number | null;
+  grossLow?:       number | null;
+  netLow?:         number | null;
   thinBookFlag:    boolean;
   belowFloorFlag:  boolean;
   flags:           string[];
@@ -38,15 +42,15 @@ interface LevelData {
 interface Market {
   question:          string;
   conditionId:       string;
-  rewardsDailyRate:  number;
-  rewardsMaxSpread:  number;
-  rewardsMinSize:    number;
-  existing_depth_usd: number;
+  rewardsDailyRate:  number | null;
+  rewardsMaxSpread:  number | null;
+  rewardsMinSize:    number | null;
+  existing_depth_usd: number | null;
   volatilityRisk:    VolRisk;
   volatilityStdev:   number | null;
   endDate:           string | null;
   negRisk:           boolean;
-  mid:               number;
+  mid:               number | null;
   bookSpread:        number | null;
   sane500:           boolean;
   levels:            Record<string, LevelData>;
@@ -74,31 +78,31 @@ interface ApiResponse {
 
 interface KLevelData {
   aboveMin:       boolean;
-  share:          number;
-  bidShare:       number;
-  askShare:       number;
-  grossRewardDay: number;
-  dayYieldPct:    number;
-  netRewardDay?:  number;
-  netYieldPct?:   number;
+  share:          number | null;
+  bidShare:       number | null;
+  askShare:       number | null;
+  grossRewardDay: number | null;
+  dayYieldPct:    number | null;
+  netRewardDay?:  number | null;
+  netYieldPct?:   number | null;
 }
 
 interface KMarket {
   ticker:                     string;
   question:                   string;
-  pool_day:                   number;
-  total_period_usd:           number;
+  pool_day:                   number | null;
+  total_period_usd:           number | null;
   period_days:                number;
   period_start:               string;
   period_end:                 string;
   min_size:                   number;
   fee_discount_pct:           number;
-  last_price:                 number;
+  last_price:                 number | null;
   book_mid:                   number | null;
   best_bid:                   number | null;
   best_ask:                   number | null;
-  competitor_qualifying_bids: number;
-  competitor_qualifying_asks: number;
+  competitor_qualifying_bids: number | null;
+  competitor_qualifying_asks: number | null;
   levels:                     Record<string, KLevelData>;
   flags: {
     TRAP:        boolean;
@@ -176,7 +180,7 @@ function defaultCmp(capital: Capital) {
     const vA = VOL_ORDER[a.volatilityRisk] ?? 2;
     const vB = VOL_ORDER[b.volatilityRisk] ?? 2;
     if (vA !== vB) return vA - vB;
-    return lb.grossRewardDay - la.grossRewardDay;
+    return (lb.grossRewardDay ?? 0) - (la.grossRewardDay ?? 0);
   };
 }
 
@@ -202,7 +206,8 @@ function prefetchBook(conditionId: string) {
 
 // ── Kalshi helpers ─────────────────────────────────────────────────────────────
 
-function kDepthUsd(shares: number, price: number | null, mid: number | null): number {
+function kDepthUsd(shares: number | null, price: number | null, mid: number | null): number | null {
+  if (shares == null) return null;
   return shares * (price ?? mid ?? 0);
 }
 
@@ -305,7 +310,7 @@ function pmChipVariant(lv: LevelData): EdgeChipVariant {
 
 // ── Detail chip (shared small info pill) ──────────────────────────────────────
 
-function DetailChip({ label, value }: { label: string; value: string }) {
+function DetailChip({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="flex items-center gap-1.5 font-body text-[11px] px-2.5 py-1 rounded-md bg-bg-soft border border-line">
       <span className="text-muted">{label}</span>
@@ -333,19 +338,16 @@ function MarketCard({
   const tileColor: 'mint' | 'violet' | 'gold' =
     market.volatilityRisk === 'LOW' ? 'mint' : 'gold';
   const days       = daysLeft(market.endDate);
-  const shareStr   = `${(lv.share * 100).toFixed(2)}%`;
+  const netOrGross = lv.netRewardDay ?? lv.grossRewardDay;
+  const shareLowHigh = lv.shareLow != null && lv.shareHigh != null ? [lv.shareLow, lv.shareHigh] as const : null;
+  const netLowHigh   = (lv.netLow ?? lv.grossLow) != null && (lv.netHigh ?? lv.grossHigh) != null
+    ? [lv.netLow ?? lv.grossLow!, lv.netHigh ?? lv.grossHigh!] as const : null;
+  const yieldPct   = lv.netYieldPct ?? lv.dayYieldPct;
 
   const volIcon =
     market.volatilityRisk === 'LOW' ? '◎'
     : market.volatilityRisk === 'HIGH' ? '△'
     : '◈';
-
-  const subParts = [
-    `±${market.rewardsMaxSpread}¢ band`,
-    `${market.volatilityRisk.toLowerCase()} vol`,
-    `mid ${market.mid.toFixed(3)}`,
-  ];
-  if (days != null && days > 0 && days < 30) subParts.push(`${Math.floor(days)}d left`);
 
   return (
     <Link
@@ -360,33 +362,39 @@ function MarketCard({
           icon={volIcon}
           tileColor={tileColor}
           name={market.question.length > 72 ? market.question.slice(0, 69) + '…' : market.question}
-          sub={`#${rank} · ${subParts.join(' · ')}`}
+          sub={
+            <>
+              #{rank} · ±<Redacted value={market.rewardsMaxSpread}>{v => `${v}`}</Redacted>¢ band · {market.volatilityRisk.toLowerCase()} vol · mid{' '}
+              <Redacted value={market.mid}>{v => v.toFixed(3)}</Redacted>
+              {days != null && days > 0 && days < 30 ? ` · ${Math.floor(days)}d left` : ''}
+            </>
+          }
           chip={chip}
-          value={fmtReward(lv.netRewardDay ?? lv.grossRewardDay)}
-          unit={`/day · est. net · ${shareStr} share`}
+          value={<Redacted value={netOrGross}>{v => fmtReward(v)}</Redacted>}
+          unit={<>/day · est. net · <Redacted value={lv.share}>{v => `${(v * 100).toFixed(2)}%`}</Redacted> share</>}
           valueTone={isFlagged ? 'neutral' : 'up'}
         />
 
         {/* Detail strip */}
         <div className="px-4 pb-3 flex flex-wrap gap-1.5">
-          <DetailChip label="pool/day" value={`$${market.rewardsDailyRate.toFixed(0)}`} />
-          <DetailChip label="depth" value={fmtDepth(market.existing_depth_usd)} />
-          <DetailChip label="min sz" value={String(market.rewardsMinSize)} />
-          {lv.shareLow != null && lv.shareHigh != null && (
+          <DetailChip label="pool/day" value={<Redacted value={market.rewardsDailyRate}>{v => `$${v.toFixed(0)}`}</Redacted>} />
+          <DetailChip label="depth" value={<Redacted value={market.existing_depth_usd}>{v => fmtDepth(v)}</Redacted>} />
+          <DetailChip label="min sz" value={<Redacted value={market.rewardsMinSize}>{v => String(v)}</Redacted>} />
+          {shareLowHigh && (
             <DetailChip
               label="share range"
-              value={`${(lv.shareLow * 100).toFixed(2)}–${(lv.shareHigh * 100).toFixed(2)}%`}
+              value={`${(shareLowHigh[0] * 100).toFixed(2)}–${(shareLowHigh[1] * 100).toFixed(2)}%`}
             />
           )}
-          {(lv.netLow ?? lv.grossLow) != null && (lv.netHigh ?? lv.grossHigh) != null && (
+          {netLowHigh && (
             <DetailChip
               label="net range"
-              value={`${fmtReward(lv.netLow ?? lv.grossLow!)}–${fmtReward(lv.netHigh ?? lv.grossHigh!)}`}
+              value={`${fmtReward(netLowHigh[0])}–${fmtReward(netLowHigh[1])}`}
             />
           )}
           <DetailChip
             label="est. %/day"
-            value={`${(lv.netYieldPct ?? lv.dayYieldPct).toFixed(2)}%`}
+            value={<Redacted value={yieldPct}>{v => `${v.toFixed(2)}%`}</Redacted>}
           />
           {lv.flags.map((f, i) => <FlagBadge key={i} text={f} />)}
           <GapBadge gapClass={market.gapClass ?? 'none'} />
@@ -494,6 +502,8 @@ function KMarketRow({
   const mid      = market.book_mid ?? market.last_price;
   const bidDepth = kDepthUsd(market.competitor_qualifying_bids, market.best_bid,  mid);
   const askDepth = kDepthUsd(market.competitor_qualifying_asks, market.best_ask, mid);
+  const netOrGross = lv?.netRewardDay ?? lv?.grossRewardDay ?? null;
+  const yieldPct   = lv?.netYieldPct  ?? lv?.dayYieldPct    ?? null;
 
   const hoursLeft = (new Date(market.period_end).getTime() - Date.now()) / 3_600_000;
 
@@ -508,10 +518,17 @@ function KMarketRow({
           icon="◎"
           tileColor={tileColor}
           name={market.question.length > 72 ? market.question.slice(0, 69) + '…' : market.question}
-          sub={`#${rank} · ${mid.toFixed(3)} mid · ${market.fee_discount_pct}% fee disc${hoursLeft > 0 && hoursLeft < 24 ? ` · ${hoursLeft.toFixed(1)}h left` : ''}`}
+          sub={
+            <>
+              #{rank} · <Redacted value={mid}>{v => v.toFixed(3)}</Redacted> mid · {market.fee_discount_pct}% fee disc
+              {hoursLeft > 0 && hoursLeft < 24 ? ` · ${hoursLeft.toFixed(1)}h left` : ''}
+            </>
+          }
           chip={chip}
-          value={lv && lv.aboveMin ? fmtReward(lv.netRewardDay ?? lv.grossRewardDay) : '—'}
-          unit={lv && lv.aboveMin ? `/day · est. net · ${(lv.share * 100).toFixed(2)}% share` : `below min at ${CAPITAL_LABELS[capital]}`}
+          value={lv && lv.aboveMin ? <Redacted value={netOrGross}>{v => fmtReward(v)}</Redacted> : '—'}
+          unit={lv && lv.aboveMin
+            ? <>/day · est. net · <Redacted value={lv.share}>{v => `${(v * 100).toFixed(2)}%`}</Redacted> share</>
+            : `below min at ${CAPITAL_LABELS[capital]}`}
           valueTone={anyFlag ? 'neutral' : 'up'}
         />
 
@@ -529,19 +546,19 @@ function KMarketRow({
 
         {/* Detail strip */}
         <div className="px-4 pb-3 flex flex-wrap gap-1.5">
-          <DetailChip label="pool/day" value={`$${market.pool_day.toFixed(0)}`} />
+          <DetailChip label="pool/day" value={<Redacted value={market.pool_day}>{v => `$${v.toFixed(0)}`}</Redacted>} />
           {isBurst ? (
             <>
-              <DetailChip label="total" value={`$${market.total_period_usd.toFixed(0)}`} />
+              <DetailChip label="total" value={<Redacted value={market.total_period_usd}>{v => `$${v.toFixed(0)}`}</Redacted>} />
               <DetailChip label="period" value={`${(market.period_days * 24).toFixed(0)}h burst`} />
             </>
           ) : (
             <DetailChip label="period" value={`${market.period_days.toFixed(1)}d`} />
           )}
-          <DetailChip label="bid depth" value={kFmtD(bidDepth)} />
-          <DetailChip label="ask depth" value={kFmtD(askDepth)} />
+          <DetailChip label="bid depth" value={<Redacted value={bidDepth}>{v => kFmtD(v)}</Redacted>} />
+          <DetailChip label="ask depth" value={<Redacted value={askDepth}>{v => kFmtD(v)}</Redacted>} />
           {lv && lv.aboveMin && (
-            <DetailChip label="est. %/day" value={`${(lv.netYieldPct ?? lv.dayYieldPct).toFixed(2)}%`} />
+            <DetailChip label="est. %/day" value={<Redacted value={yieldPct}>{v => `${v.toFixed(2)}%`}</Redacted>} />
           )}
           <DetailChip label="min sz" value={market.min_size.toLocaleString()} />
 
@@ -659,7 +676,10 @@ function KalshiView() {
   const saneCount = sorted.filter(m => isSaneKalshiMarket(m, key)).length;
 
   const trapCount  = markets.filter(m => m.flags.TRAP).length;
-  const totalPool  = markets.reduce((s, m) => s + m.pool_day, 0);
+  // null (not 0) when every market's pool_day is redacted — never silently
+  // undercounts a real total by summing nulls as zero.
+  const poolVals   = markets.map(m => m.pool_day).filter((v): v is number => v != null);
+  const totalPool  = markets.length > 0 && poolVals.length === 0 ? null : poolVals.reduce((s, v) => s + v, 0);
 
   return (
     <div className="space-y-6">
@@ -767,7 +787,7 @@ function KalshiView() {
           />
           <StatCard
             label="Total pool / day"
-            value={`$${Math.round(totalPool).toLocaleString()}`}
+            value={<Redacted value={totalPool}>{v => `$${Math.round(v).toLocaleString()}`}</Redacted>}
             demoted="real pool — est. share not included"
           />
           <StatCard
@@ -850,7 +870,9 @@ export default function LiquidityRewardsPage() {
   const openCount = markets.filter(m => m.gapClass === 'OPEN').length;
   const levelKey  = String(capital);
   const saneCount = sorted.filter(m => m.levels[levelKey]?.flags.length === 0).length;
-  const totalPool = markets.reduce((s, m) => s + m.rewardsDailyRate, 0);
+  // null (not 0) when every market's rewardsDailyRate is redacted.
+  const poolVals  = markets.map(m => m.rewardsDailyRate).filter((v): v is number => v != null);
+  const totalPool = markets.length > 0 && poolVals.length === 0 ? null : poolVals.reduce((s, v) => s + v, 0);
 
   return (
     <div
@@ -960,7 +982,7 @@ export default function LiquidityRewardsPage() {
                 />
                 <StatCard
                   label="Total pool / day"
-                  value={`$${Math.round(totalPool).toLocaleString()}`}
+                  value={<Redacted value={totalPool}>{v => `$${Math.round(v).toLocaleString()}`}</Redacted>}
                   demoted="real pool — est. share not included"
                 />
                 <div

@@ -29,13 +29,15 @@ export interface KalshiGatingFlags {
 
 export interface KalshiGatingMarket {
   flags:      KalshiGatingFlags;
-  last_price: number;
+  // null on free tier (server-side redaction, lib/paid-gating.ts) — treated
+  // as "not warn" below (silent, not fabricated) rather than guessing.
+  last_price: number | null;
   levels:     Record<string, { aboveMin?: boolean } | undefined>;
 }
 
 /** Lopsided last-price band: not TRAP-extreme, but adverse-fill risk is elevated. */
 export function kIsWarn(m: KalshiGatingMarket): boolean {
-  if (m.flags.TRAP) return false;
+  if (m.flags.TRAP || m.last_price == null) return false;
   const p = m.last_price;
   return (p >= 0.80 && p <= 0.90) || (p >= 0.10 && p <= 0.20);
 }

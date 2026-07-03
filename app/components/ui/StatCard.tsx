@@ -1,6 +1,9 @@
+import type { ReactNode } from 'react';
+
 interface StatCardProps {
   label:     string;
-  value:     string;
+  /** Usually a string — or a <Redacted> blur/CTA node for a free-tier value */
+  value:     ReactNode;
   note?:     string;
   /** Secondary caption — caveats, rate labels, methodology notes. Clearly demoted. */
   demoted?:  string;
