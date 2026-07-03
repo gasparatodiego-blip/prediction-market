@@ -121,13 +121,43 @@ function CardShell({
 
 // ── 1. Prediction arbitrage (cashable) ──────────────────────────────────
 
+type PredictionPhase = 'idle' | 'buy' | 'sell' | 'done';
+
+// Custom variable-length phase timer (idle/buy/sell hold briefly, done holds
+// longer) — the fixed-interval useCycle() above can't express uneven step
+// durations, so this schedules its own timeouts and re-arms them every loop.
+function usePredictionPhase(active: boolean): PredictionPhase {
+  const [phase, setPhase] = useState<PredictionPhase>('idle');
+  useEffect(() => {
+    if (!active) return;
+    let cycleTimers: ReturnType<typeof setTimeout>[] = [];
+    function runCycle() {
+      cycleTimers.forEach(clearTimeout);
+      cycleTimers = [];
+      setPhase('idle');
+      cycleTimers.push(setTimeout(() => setPhase('buy'), 700));
+      cycleTimers.push(setTimeout(() => setPhase('sell'), 1700));
+      cycleTimers.push(setTimeout(() => setPhase('done'), 2700));
+    }
+    runCycle();
+    const loopId = setInterval(runCycle, 5200);
+    return () => {
+      cycleTimers.forEach(clearTimeout);
+      clearInterval(loopId);
+    };
+  }, [active]);
+  return phase;
+}
+
 function PredictionArbCard({ reducedMotion }: { reducedMotion: boolean }) {
   const [ref, inView] = useInView<HTMLDivElement>();
   const active = inView && !reducedMotion;
-  const liveStep = useCycle(3, 600, active); // 3 * 600ms = 1.8s per loop
-  const s = reducedMotion ? 2 : liveStep;
-  const highlighted = s >= 1;
-  const showLine = s >= 2;
+  const livePhase = usePredictionPhase(active);
+  const phase = reducedMotion ? 'done' : livePhase;
+
+  const kalshiFilled = phase === 'buy' || phase === 'sell' || phase === 'done';
+  const polyFilled   = phase === 'sell' || phase === 'done';
+  const done         = phase === 'done';
 
   return (
     <CardShell
@@ -136,38 +166,81 @@ function PredictionArbCard({ reducedMotion }: { reducedMotion: boolean }) {
       desc="Same-outcome contracts priced differently on Kalshi and Polymarket. Both legs checked, capacity-confirmed. A green badge means you can actually fill it."
       rootRef={ref}
     >
-      <div className="w-full h-full flex flex-col items-center justify-center gap-3 px-4">
-        <div className="flex items-center gap-3">
-          <div className="px-3 py-2 rounded-lg border border-line bg-surface text-center min-w-[76px]">
-            <div className="text-[9px] text-muted uppercase tracking-wide">Kalshi</div>
-            <div className="font-display font-bold text-ink text-sm">58&cent;</div>
-          </div>
-          <span className={`text-lg transition-colors duration-300 ${highlighted ? 'text-mint-deep' : 'text-muted'}`} aria-hidden>
-            &rarr;
-          </span>
+      <div className="w-full h-full flex flex-col items-center justify-center gap-2.5 px-3">
+        <div className="flex items-center gap-2">
+          {/* Kalshi */}
           <div
-            className={`px-3 py-2 rounded-lg border text-center min-w-[76px] transition-colors duration-300 ${
-              highlighted ? 'border-mint bg-mint-tint' : 'border-line bg-surface'
+            className={`px-2 py-2 rounded-lg border-2 text-center w-[100px] transition-colors duration-300 ${
+              kalshiFilled ? 'bg-[#ecfdf5] border-[#10b981]' : 'bg-surface border-line'
             }`}
           >
-            <div className="text-[9px] text-muted uppercase tracking-wide">Polymarket</div>
-            <div className={`font-display font-bold text-sm ${highlighted ? 'text-mint-deep' : 'text-ink'}`}>62&cent;</div>
+            <div className="flex items-center justify-center gap-1 mb-1">
+              <span className="w-3.5 h-3.5 rounded-full bg-[#10b981] text-white font-body font-bold text-[7.5px] flex items-center justify-center flex-shrink-0" aria-hidden>
+                K
+              </span>
+              <span className="text-[8px] text-muted uppercase tracking-wide">Kalshi</span>
+            </div>
+            <div className="font-display font-bold text-ink text-sm">58&cent;</div>
+            <div
+              className={`mt-1 px-1.5 py-[2px] rounded-sm font-body font-semibold text-[8.5px] transition-colors duration-300 ${
+                kalshiFilled ? 'bg-[#10b981] text-white' : 'text-muted'
+              }`}
+            >
+              {kalshiFilled ? <>&darr; BUY</> : 'buy side'}
+            </div>
+          </div>
+
+          {/* Center: gap / value / arrow */}
+          <div className="flex flex-col items-center gap-0.5 flex-shrink-0 w-[36px]">
+            <span className="text-[8px] uppercase tracking-wide text-muted">gap</span>
+            <span
+              className={`font-display font-bold text-base leading-none transition-all duration-300 ${
+                done ? 'text-[#047857] scale-125' : 'text-ink-2 scale-100'
+              }`}
+            >
+              4&cent;
+            </span>
+            <span className={`text-sm leading-none transition-colors duration-300 ${polyFilled ? 'text-mint-deep' : 'text-muted'}`} aria-hidden>
+              &rarr;
+            </span>
+          </div>
+
+          {/* Polymarket */}
+          <div
+            className={`px-2 py-2 rounded-lg border-2 text-center w-[100px] transition-colors duration-300 ${
+              polyFilled ? 'bg-[#eef4ff] border-[#1652f0]' : 'bg-surface border-line'
+            }`}
+          >
+            <div className="flex items-center justify-center gap-1 mb-1">
+              <span className="w-3.5 h-3.5 rounded-full bg-[#1652f0] text-white font-body font-bold text-[7.5px] flex items-center justify-center flex-shrink-0" aria-hidden>
+                P
+              </span>
+              <span className="text-[8px] text-muted uppercase tracking-wide">Polymarket</span>
+            </div>
+            <div className="font-display font-bold text-ink text-sm">62&cent;</div>
+            <div
+              className={`mt-1 px-1.5 py-[2px] rounded-sm font-body font-semibold text-[8.5px] transition-colors duration-300 ${
+                polyFilled ? 'bg-[#1652f0] text-white' : 'text-muted'
+              }`}
+            >
+              {polyFilled ? <>&uarr; SELL</> : 'sell side'}
+            </div>
           </div>
         </div>
-        <span
-          className={`px-2 py-[2px] rounded-pill bg-mint-tint text-mint-deep font-body font-semibold text-[10px] transition-opacity duration-300 ${
-            highlighted ? 'opacity-100' : 'opacity-0'
+
+        {/* Result bar */}
+        <div
+          className={`w-full max-w-[264px] px-2.5 py-1.5 rounded-md border flex items-center justify-between gap-2 transition-colors duration-300 ${
+            done ? 'bg-[#ecfdf5] border-[#d1fae5]' : 'bg-surface border-line'
           }`}
         >
-          gap 4&cent;
-        </span>
-        <p
-          className={`font-body text-[11px] text-mint-deep font-semibold transition-opacity duration-300 ${
-            showLine ? 'opacity-100' : 'opacity-0'
-          }`}
-        >
-          &#10003; cashable &mdash; you can fill it
-        </p>
+          <span className={`font-body text-[10.5px] truncate ${done ? 'font-bold text-[#047857]' : 'text-muted'}`}>
+            {done ? <>&#10003; cashable &mdash; you can fill it</> : 'checking both legs…'}
+          </span>
+          <span className={`font-body font-bold text-[10.5px] flex-shrink-0 ${done ? 'text-[#047857]' : 'text-muted'}`}>
+            +4&cent;
+          </span>
+        </div>
       </div>
     </CardShell>
   );
