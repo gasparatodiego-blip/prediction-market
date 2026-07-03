@@ -119,45 +119,170 @@ function CardShell({
   );
 }
 
+// ── Shared animated cursor (Prediction / Funding / Liquidity cards) ─────
+// A single pointer that glides to measured target elements and fires a
+// click-ripple on arrival. Positions are measured off real DOM rects so
+// the cursor lines up with its target at any card width (mobile included).
+
+type Point = { x: number; y: number };
+
+// Re-measures target centers (relative to `frameRef`) plus a "home" resting
+// corner, on every render and on window resize — guarded so it only calls
+// setState when a value actually changed, to avoid a render loop.
+function useCursorPoints(
+  frameRef: RefObject<HTMLElement>,
+  targetRefs: RefObject<HTMLElement>[],
+): { home: Point; points: Point[] } {
+  const [state, setState] = useState<{ home: Point; points: Point[] }>({
+    home: { x: 0, y: 0 },
+    points: targetRefs.map(() => ({ x: 0, y: 0 })),
+  });
+  useEffect(() => {
+    function measure() {
+      const frame = frameRef.current;
+      if (!frame) return;
+      const frameRect = frame.getBoundingClientRect();
+      const points = targetRefs.map(r => {
+        const el = r.current;
+        if (!el) return { x: 0, y: 0 };
+        const rect = el.getBoundingClientRect();
+        return {
+          x: rect.left - frameRect.left + rect.width / 2,
+          y: rect.top - frameRect.top + rect.height / 2,
+        };
+      });
+      const home = { x: frameRect.width - 18, y: frameRect.height - 16 };
+      setState(prev => {
+        const same =
+          prev.home.x === home.x &&
+          prev.home.y === home.y &&
+          prev.points.length === points.length &&
+          prev.points.every((p, i) => p.x === points[i].x && p.y === points[i].y);
+        return same ? prev : { home, points };
+      });
+    }
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  });
+  return state;
+}
+
+// One-shot expanding ring, re-triggered by remounting with a fresh `key`.
+function ClickRipple() {
+  const [grow, setGrow] = useState(false);
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => setGrow(true));
+    return () => cancelAnimationFrame(raf);
+  }, []);
+  return (
+    <span
+      aria-hidden
+      className={`absolute top-0 left-0 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-mint pointer-events-none transition-all duration-500 ease-out ${
+        grow ? 'w-7 h-7 opacity-0' : 'w-1.5 h-1.5 opacity-90'
+      }`}
+    />
+  );
+}
+
+function AnimatedCursor({
+  point, visible, clickKey,
+}: {
+  point: Point;
+  visible: boolean;
+  clickKey: number | null;
+}) {
+  return (
+    <div
+      className="absolute top-0 left-0 z-20 pointer-events-none"
+      style={{
+        transform: `translate(${point.x - 2}px, ${point.y - 2}px)`,
+        opacity: visible ? 1 : 0,
+        transition: 'transform 700ms ease-out, opacity 300ms ease-out',
+      }}
+      aria-hidden
+    >
+      <svg width="16" height="18" viewBox="0 0 16 18" className="drop-shadow-md">
+        <path
+          d="M1 1 L1 14.5 L4.8 11.2 L7 16.5 L9.3 15.5 L7.1 10.3 L12 10.3 Z"
+          fill="#0B1A15"
+          stroke="#F4FBF8"
+          strokeWidth="1"
+          strokeLinejoin="round"
+        />
+      </svg>
+      {clickKey !== null && <ClickRipple key={clickKey} />}
+    </div>
+  );
+}
+
 // ── 1. Prediction arbitrage (cashable) ──────────────────────────────────
 
-type PredictionPhase = 'idle' | 'buy' | 'sell' | 'done';
+type PredictionState = {
+  kalshiFilled: boolean;
+  polyFilled: boolean;
+  done: boolean;
+  cursorVisible: boolean;
+  cursorTarget: 0 | 1; // 0 = Kalshi pill, 1 = Polymarket pill
+  clickKey: number | null;
+};
 
-// Custom variable-length phase timer (idle/buy/sell hold briefly, done holds
-// longer) — the fixed-interval useCycle() above can't express uneven step
-// durations, so this schedules its own timeouts and re-arms them every loop.
-function usePredictionPhase(active: boolean): PredictionPhase {
-  const [phase, setPhase] = useState<PredictionPhase>('idle');
+const PREDICTION_IDLE: PredictionState = {
+  kalshiFilled: false, polyFilled: false, done: false,
+  cursorVisible: false, cursorTarget: 0, clickKey: null,
+};
+const PREDICTION_DONE: PredictionState = {
+  kalshiFilled: true, polyFilled: true, done: true,
+  cursorVisible: false, cursorTarget: 1, clickKey: null,
+};
+
+// Custom variable-length phase timer: cursor travels to the Kalshi pill and
+// clicks it, travels to the Polymarket pill and clicks it, then the result
+// bar settles — each stage holds a different duration, so the fixed-interval
+// useCycle() above can't express it.
+function usePredictionAnimation(active: boolean): PredictionState {
+  const [state, setState] = useState<PredictionState>(PREDICTION_IDLE);
+  const clickRef = useRef(0);
   useEffect(() => {
     if (!active) return;
-    let cycleTimers: ReturnType<typeof setTimeout>[] = [];
+    let timers: ReturnType<typeof setTimeout>[] = [];
     function runCycle() {
-      cycleTimers.forEach(clearTimeout);
-      cycleTimers = [];
-      setPhase('idle');
-      cycleTimers.push(setTimeout(() => setPhase('buy'), 700));
-      cycleTimers.push(setTimeout(() => setPhase('sell'), 1700));
-      cycleTimers.push(setTimeout(() => setPhase('done'), 2700));
+      timers.forEach(clearTimeout);
+      timers = [];
+      setState(PREDICTION_IDLE);
+      timers.push(setTimeout(() => setState(s => ({ ...s, cursorVisible: true, cursorTarget: 0 })), 300));
+      timers.push(setTimeout(() => {
+        clickRef.current += 1;
+        setState(s => ({ ...s, kalshiFilled: true, cursorTarget: 1, clickKey: clickRef.current }));
+      }, 1000));
+      timers.push(setTimeout(() => {
+        clickRef.current += 1;
+        setState(s => ({ ...s, polyFilled: true, clickKey: clickRef.current }));
+      }, 1700));
+      timers.push(setTimeout(() => setState(s => ({ ...s, cursorVisible: false, done: true })), 2100));
     }
     runCycle();
-    const loopId = setInterval(runCycle, 5200);
+    const loopId = setInterval(runCycle, 6000);
     return () => {
-      cycleTimers.forEach(clearTimeout);
+      timers.forEach(clearTimeout);
       clearInterval(loopId);
     };
   }, [active]);
-  return phase;
+  return state;
 }
 
 function PredictionArbCard({ reducedMotion }: { reducedMotion: boolean }) {
   const [ref, inView] = useInView<HTMLDivElement>();
   const active = inView && !reducedMotion;
-  const livePhase = usePredictionPhase(active);
-  const phase = reducedMotion ? 'done' : livePhase;
+  const liveState = usePredictionAnimation(active);
+  const { kalshiFilled, polyFilled, done, cursorVisible, cursorTarget, clickKey } =
+    reducedMotion ? PREDICTION_DONE : liveState;
 
-  const kalshiFilled = phase === 'buy' || phase === 'sell' || phase === 'done';
-  const polyFilled   = phase === 'sell' || phase === 'done';
-  const done         = phase === 'done';
+  const frameRef = useRef<HTMLDivElement>(null);
+  const kalshiPillRef = useRef<HTMLDivElement>(null);
+  const polyPillRef = useRef<HTMLDivElement>(null);
+  const { home, points } = useCursorPoints(frameRef, [kalshiPillRef, polyPillRef]);
+  const cursorPoint = cursorVisible ? points[cursorTarget] : home;
 
   return (
     <CardShell
@@ -166,7 +291,7 @@ function PredictionArbCard({ reducedMotion }: { reducedMotion: boolean }) {
       desc="Same-outcome contracts priced differently on Kalshi and Polymarket. Both legs checked, capacity-confirmed. A green badge means you can actually fill it."
       rootRef={ref}
     >
-      <div className="w-full h-full flex flex-col items-center justify-center gap-2.5 px-3">
+      <div ref={frameRef} className="relative w-full h-full flex flex-col items-center justify-center gap-2.5 px-3">
         <div className="flex items-center gap-2">
           {/* Kalshi */}
           <div
@@ -182,11 +307,12 @@ function PredictionArbCard({ reducedMotion }: { reducedMotion: boolean }) {
             </div>
             <div className="font-display font-bold text-ink text-sm">58&cent;</div>
             <div
+              ref={kalshiPillRef}
               className={`mt-1 px-1.5 py-[2px] rounded-sm font-body font-semibold text-[8.5px] transition-colors duration-300 ${
                 kalshiFilled ? 'bg-[#10b981] text-white' : 'text-muted'
               }`}
             >
-              {kalshiFilled ? <>&darr; BUY</> : 'buy side'}
+              {kalshiFilled ? <>&#10003; BUY</> : 'buy side'}
             </div>
           </div>
 
@@ -219,11 +345,12 @@ function PredictionArbCard({ reducedMotion }: { reducedMotion: boolean }) {
             </div>
             <div className="font-display font-bold text-ink text-sm">62&cent;</div>
             <div
+              ref={polyPillRef}
               className={`mt-1 px-1.5 py-[2px] rounded-sm font-body font-semibold text-[8.5px] transition-colors duration-300 ${
                 polyFilled ? 'bg-[#1652f0] text-white' : 'text-muted'
               }`}
             >
-              {polyFilled ? <>&uarr; SELL</> : 'sell side'}
+              {polyFilled ? <>&#10003; SELL</> : 'sell side'}
             </div>
           </div>
         </div>
@@ -235,12 +362,14 @@ function PredictionArbCard({ reducedMotion }: { reducedMotion: boolean }) {
           }`}
         >
           <span className={`font-body text-[10.5px] truncate ${done ? 'font-bold text-[#047857]' : 'text-muted'}`}>
-            {done ? <>&#10003; cashable &mdash; you can fill it</> : 'checking both legs…'}
+            {done ? <>&#10003; cashable &mdash; you locked the gap</> : 'checking both legs…'}
           </span>
           <span className={`font-body font-bold text-[10.5px] flex-shrink-0 ${done ? 'text-[#047857]' : 'text-muted'}`}>
-            +4&cent;
+            +$4.00
           </span>
         </div>
+
+        {!reducedMotion && <AnimatedCursor point={cursorPoint} visible={cursorVisible} clickKey={clickKey} />}
       </div>
     </CardShell>
   );
@@ -250,13 +379,74 @@ function PredictionArbCard({ reducedMotion }: { reducedMotion: boolean }) {
 
 const FUNDING_LABELS = ['0h', 'after 8h', 'after 16h', 'after 24h'];
 
+type FundingState = {
+  longOpen: boolean;
+  shortOpen: boolean;
+  step: number; // 0..3 -> FUNDING_LABELS index, only counts once both legs are open
+  cursorVisible: boolean;
+  cursorTarget: 0 | 1; // 0 = LONG spot tile, 1 = SHORT perp tile
+  clickKey: number | null;
+};
+
+const FUNDING_IDLE: FundingState = {
+  longOpen: false, shortOpen: false, step: 0,
+  cursorVisible: false, cursorTarget: 0, clickKey: null,
+};
+const FUNDING_DONE: FundingState = {
+  longOpen: true, shortOpen: true, step: 3,
+  cursorVisible: false, cursorTarget: 1, clickKey: null,
+};
+
+// Custom timer: cursor opens the long leg, opens the short leg, then the
+// 0h/8h/16h/24h timeline steps while the funding-collected counter climbs.
+function useFundingAnimation(active: boolean): FundingState {
+  const [state, setState] = useState<FundingState>(FUNDING_IDLE);
+  const clickRef = useRef(0);
+  useEffect(() => {
+    if (!active) return;
+    let timers: ReturnType<typeof setTimeout>[] = [];
+    function runCycle() {
+      timers.forEach(clearTimeout);
+      timers = [];
+      setState(FUNDING_IDLE);
+      timers.push(setTimeout(() => setState(s => ({ ...s, cursorVisible: true, cursorTarget: 0 })), 300));
+      timers.push(setTimeout(() => {
+        clickRef.current += 1;
+        setState(s => ({ ...s, longOpen: true, cursorTarget: 1, clickKey: clickRef.current }));
+      }, 1000));
+      timers.push(setTimeout(() => {
+        clickRef.current += 1;
+        setState(s => ({ ...s, shortOpen: true, clickKey: clickRef.current }));
+      }, 1700));
+      timers.push(setTimeout(() => setState(s => ({ ...s, cursorVisible: false })), 2100));
+      timers.push(setTimeout(() => setState(s => ({ ...s, step: 1 })), 3200));
+      timers.push(setTimeout(() => setState(s => ({ ...s, step: 2 })), 4300));
+      timers.push(setTimeout(() => setState(s => ({ ...s, step: 3 })), 5400));
+    }
+    runCycle();
+    const loopId = setInterval(runCycle, 6600);
+    return () => {
+      timers.forEach(clearTimeout);
+      clearInterval(loopId);
+    };
+  }, [active]);
+  return state;
+}
+
 function FundingSpreadCard({ reducedMotion }: { reducedMotion: boolean }) {
   const [ref, inView] = useInView<HTMLDivElement>();
   const active = inView && !reducedMotion;
-  const liveStep = useCycle(4, 1600, active);
-  const s = reducedMotion ? 3 : liveStep;
-  const value = (s * 0.12).toFixed(2);
-  const popStyle = usePop(s, active);
+  const liveState = useFundingAnimation(active);
+  const { longOpen, shortOpen, step, cursorVisible, cursorTarget, clickKey } =
+    reducedMotion ? FUNDING_DONE : liveState;
+  const value = (step * 0.12).toFixed(2);
+  const popStyle = usePop(step, active);
+
+  const frameRef = useRef<HTMLDivElement>(null);
+  const longRef = useRef<HTMLSpanElement>(null);
+  const shortRef = useRef<HTMLSpanElement>(null);
+  const { home, points } = useCursorPoints(frameRef, [longRef, shortRef]);
+  const cursorPoint = cursorVisible ? points[cursorTarget] : home;
 
   return (
     <CardShell
@@ -265,20 +455,32 @@ function FundingSpreadCard({ reducedMotion }: { reducedMotion: boolean }) {
       desc="Earn perpetual funding — the recurring payment between long and short positions in crypto futures — by holding long spot and short perp, or the reverse. Rates reset every 8 hours; no lockup, but no guarantee of tomorrow's rate."
       rootRef={ref}
     >
-      <div className="w-full h-full flex flex-col items-center justify-center gap-3 px-4">
+      <div ref={frameRef} className="relative w-full h-full flex flex-col items-center justify-center gap-3 px-4">
         <div className="flex items-center gap-2">
-          <span className="px-2 py-1 rounded-md bg-mint-tint text-mint-deep font-body font-semibold text-[10px]">
-            LONG spot
+          <span
+            ref={longRef}
+            className={`px-2 py-1 rounded-md font-body font-semibold text-[10px] transition-colors duration-300 ${
+              longOpen ? 'bg-[#10b981] text-white' : 'bg-mint-tint text-mint-deep'
+            }`}
+          >
+            {longOpen ? <>&#10003; open</> : 'LONG spot'}
           </span>
-          <span className="px-2 py-1 rounded-md bg-coral-tint text-coral-ink font-body font-semibold text-[10px]">
-            SHORT perp
+          <span
+            ref={shortRef}
+            className={`px-2 py-1 rounded-md font-body font-semibold text-[10px] transition-colors duration-300 ${
+              shortOpen ? 'bg-[#dc2626] text-white' : 'bg-coral-tint text-coral-ink'
+            }`}
+          >
+            {shortOpen ? <>&#10003; open</> : 'SHORT perp'}
           </span>
         </div>
         <div className="flex items-center gap-3">
           {FUNDING_LABELS.map((label, i) => (
             <div key={label} className="flex flex-col items-center gap-1">
               <span
-                className={`w-2 h-2 rounded-full transition-colors duration-300 ${i <= s ? 'bg-mint' : 'bg-line'}`}
+                className={`w-2 h-2 rounded-full transition-colors duration-300 ${
+                  longOpen && shortOpen && i <= step ? 'bg-mint' : 'bg-line'
+                }`}
                 aria-hidden
               />
               <span className="text-[7.5px] text-muted whitespace-nowrap">{label}</span>
@@ -292,8 +494,10 @@ function FundingSpreadCard({ reducedMotion }: { reducedMotion: boolean }) {
           >
             ${value}
           </div>
-          <p className="text-[10px] text-muted text-center mt-0.5">funding collected</p>
+          <p className="text-[10px] text-muted text-center mt-0.5">$ funding collected</p>
         </div>
+
+        {!reducedMotion && <AnimatedCursor point={cursorPoint} visible={cursorVisible} clickKey={clickKey} />}
       </div>
     </CardShell>
   );
@@ -365,43 +569,109 @@ function CarryCard({ reducedMotion }: { reducedMotion: boolean }) {
 
 // ── 4. Liquidity rewards (cashable) ─────────────────────────────────────
 
+type BookRowStatus = 'none' | 'placing' | 'resting';
+
 function BookRow({
-  price, size, tone, highlighted,
+  price, size, tone, status,
 }: {
-  price: string; size: number; tone: 'ask' | 'bid'; highlighted: boolean;
+  price: string; size: number; tone: 'ask' | 'bid'; status: BookRowStatus;
 }) {
   const barColor = tone === 'ask' ? 'bg-coral/25' : 'bg-mint/25';
   const baseTint = tone === 'ask' ? 'bg-coral-tint/50' : 'bg-mint-tint/50';
+  const yours = status !== 'none';
   return (
     <div
-      className={`relative flex items-center justify-between px-2 py-[3px] text-[10px] rounded-sm overflow-hidden transition-all duration-300 ${
-        highlighted ? 'ring-1 ring-mint bg-mint-tint/70' : baseTint
+      className={`relative flex items-center justify-between px-2 py-[3px] text-[10px] rounded-sm overflow-hidden transition-colors duration-300 ${
+        yours ? 'ring-1 ring-mint bg-mint-tint/70' : baseTint
       }`}
     >
       <span className={`absolute inset-y-0 left-0 ${barColor}`} style={{ width: `${size}%` }} aria-hidden />
       <span className="relative font-body text-ink-2 font-medium">{price}</span>
       <span
-        className={`relative font-body font-semibold text-[9px] uppercase tracking-wide transition-opacity duration-300 ${
-          highlighted ? 'text-mint-deep opacity-100 animate-pulse' : 'opacity-0'
+        className={`relative font-body font-semibold text-[9px] uppercase tracking-wide ${
+          status === 'resting' ? 'text-mint-deep animate-pulse'
+          : status === 'placing' ? 'text-mint-deep'
+          : 'opacity-0'
         }`}
       >
-        resting
+        {status === 'placing' ? 'placing…' : 'resting'}
       </span>
     </div>
   );
 }
 
-const REWARD_STEPS = [0.00, 0.02, 0.05, 0.07, 0.09];
+const REWARD_STEPS = [0.00, 0.04, 0.08, 0.12, 0.16, 0.20, 0.24];
+
+type LiquidityState = {
+  askStatus: BookRowStatus;
+  bidStatus: BookRowStatus;
+  rewardStep: number; // index into REWARD_STEPS
+  cursorVisible: boolean;
+  cursorTarget: 0 | 1; // 0 = ask row, 1 = bid row
+  clickKey: number | null;
+};
+
+const LIQUIDITY_IDLE: LiquidityState = {
+  askStatus: 'none', bidStatus: 'none', rewardStep: 0,
+  cursorVisible: false, cursorTarget: 0, clickKey: null,
+};
+const LIQUIDITY_DONE: LiquidityState = {
+  askStatus: 'resting', bidStatus: 'resting', rewardStep: REWARD_STEPS.length - 1,
+  cursorVisible: false, cursorTarget: 1, clickKey: null,
+};
+
+// Custom timer: cursor places the ask, then the bid, then the rewards
+// counter ticks up while both orders sit resting (never filled).
+function useLiquidityAnimation(active: boolean): LiquidityState {
+  const [state, setState] = useState<LiquidityState>(LIQUIDITY_IDLE);
+  const clickRef = useRef(0);
+  useEffect(() => {
+    if (!active) return;
+    let timers: ReturnType<typeof setTimeout>[] = [];
+    function runCycle() {
+      timers.forEach(clearTimeout);
+      timers = [];
+      setState(LIQUIDITY_IDLE);
+      timers.push(setTimeout(() => setState(s => ({ ...s, cursorVisible: true, cursorTarget: 0 })), 300));
+      timers.push(setTimeout(() => {
+        clickRef.current += 1;
+        setState(s => ({ ...s, askStatus: 'placing', clickKey: clickRef.current }));
+      }, 1000));
+      timers.push(setTimeout(() => setState(s => ({ ...s, askStatus: 'resting', cursorTarget: 1 })), 1500));
+      timers.push(setTimeout(() => {
+        clickRef.current += 1;
+        setState(s => ({ ...s, bidStatus: 'placing', clickKey: clickRef.current }));
+      }, 2500));
+      timers.push(setTimeout(() => setState(s => ({ ...s, bidStatus: 'resting', cursorVisible: false })), 3000));
+      REWARD_STEPS.forEach((_, i) => {
+        if (i === 0) return;
+        timers.push(setTimeout(() => setState(s => ({ ...s, rewardStep: i })), 3300 + (i - 1) * 500));
+      });
+    }
+    runCycle();
+    const loopId = setInterval(runCycle, 7200);
+    return () => {
+      timers.forEach(clearTimeout);
+      clearInterval(loopId);
+    };
+  }, [active]);
+  return state;
+}
 
 function LiquidityRewardsCard({ reducedMotion }: { reducedMotion: boolean }) {
   const [ref, inView] = useInView<HTMLDivElement>();
   const active = inView && !reducedMotion;
-  const liveStep = useCycle(5, 750, active); // 3.75s loop
-  const s = reducedMotion ? 4 : liveStep;
-  const askResting = s >= 1;
-  const bidResting = s >= 2;
-  const reward = REWARD_STEPS[s].toFixed(2);
-  const popStyle = usePop(s, active);
+  const liveState = useLiquidityAnimation(active);
+  const { askStatus, bidStatus, rewardStep, cursorVisible, cursorTarget, clickKey } =
+    reducedMotion ? LIQUIDITY_DONE : liveState;
+  const reward = REWARD_STEPS[rewardStep].toFixed(2);
+  const popStyle = usePop(rewardStep, active);
+
+  const frameRef = useRef<HTMLDivElement>(null);
+  const askRowRef = useRef<HTMLDivElement>(null);
+  const bidRowRef = useRef<HTMLDivElement>(null);
+  const { home, points } = useCursorPoints(frameRef, [askRowRef, bidRowRef]);
+  const cursorPoint = cursorVisible ? points[cursorTarget] : home;
 
   return (
     <CardShell
@@ -410,22 +680,28 @@ function LiquidityRewardsCard({ reducedMotion }: { reducedMotion: boolean }) {
       desc="Earn real maker rewards for providing liquidity on Polymarket and Kalshi. We show net estimated reward/day and flag any program rate we can't confirm."
       rootRef={ref}
     >
-      <div className="w-full h-full flex items-center gap-3 px-3">
+      <div ref={frameRef} className="relative w-full h-full flex items-center gap-3 px-3">
         <div className="flex-1 flex flex-col gap-[3px]">
-          <BookRow price="0.66" size={40} tone="ask" highlighted={false} />
-          <BookRow price="0.64" size={60} tone="ask" highlighted={false} />
-          <BookRow price="0.63" size={50} tone="ask" highlighted={askResting} />
+          <BookRow price="0.66" size={40} tone="ask" status="none" />
+          <BookRow price="0.64" size={60} tone="ask" status="none" />
+          <div ref={askRowRef}>
+            <BookRow price="0.63" size={50} tone="ask" status={askStatus} />
+          </div>
           <p className="text-center text-[8.5px] text-muted py-[1px]">&mdash; spread &mdash;</p>
-          <BookRow price="0.61" size={55} tone="bid" highlighted={bidResting} />
-          <BookRow price="0.59" size={45} tone="bid" highlighted={false} />
-          <BookRow price="0.57" size={35} tone="bid" highlighted={false} />
+          <div ref={bidRowRef}>
+            <BookRow price="0.61" size={55} tone="bid" status={bidStatus} />
+          </div>
+          <BookRow price="0.59" size={45} tone="bid" status="none" />
+          <BookRow price="0.57" size={35} tone="bid" status="none" />
         </div>
         <div className="flex flex-col items-center justify-center flex-shrink-0 w-[70px]">
           <div className="font-display font-bold text-mint-deep text-lg text-center" style={popStyle}>
             ${reward}
           </div>
-          <p className="text-[8.5px] text-muted text-center mt-0.5 leading-tight">rewards earned</p>
+          <p className="text-[8.5px] text-muted text-center mt-0.5 leading-tight">$ rewards earned</p>
         </div>
+
+        {!reducedMotion && <AnimatedCursor point={cursorPoint} visible={cursorVisible} clickKey={clickKey} />}
       </div>
     </CardShell>
   );
