@@ -36,10 +36,14 @@ export interface SpreadItem {
   shortIsDex:         boolean;
   longIsDex:          boolean;
   hasDexLeg:          boolean;
-  grossApy:           number;
-  netApy30d:          number;
-  totalFeesPct:       number;
-  breakevenDays:      number;
+  // grossApy/netApy30d/totalFeesPct/breakevenDays: null on free tier
+  // (server-side redaction, lib/paid-gating.ts). netApy30d in particular is a
+  // reliable single proxy for "is this row's derived-edge data visible" —
+  // frShort/frLong/markPrice stay real for everyone (public reference data).
+  grossApy:           number | null;
+  netApy30d:          number | null;
+  totalFeesPct:       number | null;
+  breakevenDays:      number | null;
   status:             'HARVEST' | 'CAUTION' | 'MARGINAL';
   liquidityTier:      string | null;
   capacityUsd:        number | null;          // = greenCapacityUsd when agent15 data fresh
@@ -78,7 +82,12 @@ export interface CryptoSpreadsData {
 // this rather than re-deriving $/day from fundingRate itself.
 export type Leverage = 1 | 2 | 3 | 5;
 
-export function calcSpreadSizing(s: SpreadItem, capital: number, leverage: Leverage) {
+// Returns null when the derived-edge fields are redacted (free tier) — never
+// silently computes off a coerced-to-0 null. Callers gate their display on this.
+export function calcSpreadSizing(s: SpreadItem, capital: number, leverage: Leverage): {
+  N: number; feesUsd: number; net30dUsd: number; netYrUsd: number; dayUsd: number; roc: number;
+} | null {
+  if (s.totalFeesPct == null || s.grossApy == null || s.netApy30d == null) return null;
   const N         = capital * leverage / 2;
   const feesUsd   = N * s.totalFeesPct / 100;
   const net30dUsd = N * s.grossApy / 100 * 30 / 365 - feesUsd;

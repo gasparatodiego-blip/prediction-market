@@ -5,7 +5,8 @@
 
 export interface Leg {
   platform:    string;
-  probability: number;
+  // null on free tier (server-side redaction) — see lib/paid-gating.ts
+  probability: number | null;
   url:         string;
   urlVerified: boolean;
   fee:         number;
@@ -28,10 +29,11 @@ export interface Opportunity {
   question:            string;
   lowMarket:           Leg;
   highMarket:          Leg;
-  spread:              number;
-  roi:                 number;
+  // spread/roi/confidence: null on free tier (server-side redaction)
+  spread:              number | null;
+  roi:                 number | null;
   earnPer100:          number | null;
-  confidence:          number;
+  confidence:          number | null;
   category:            string;
   type:                'cashable' | 'signal';
   annualizedROI?:      number | null;
@@ -84,8 +86,9 @@ export interface VolumeNative {
 export interface EventPlatform {
   platform:       string;
   tier:           'executable' | 'reference';
-  yesPrice:       number;
-  noPrice:        number;
+  // null on free tier (server-side redaction)
+  yesPrice:       number | null;
+  noPrice:        number | null;
   volumeUsd:      number | null;
   volumeNative:   VolumeNative | null;
   marketUrl:      string | null;

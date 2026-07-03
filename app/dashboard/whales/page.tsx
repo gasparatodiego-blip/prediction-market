@@ -2,8 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import SectionHelp from '@/app/components/SectionHelp';
+import { Redacted } from '@/app/components/ui/Redacted';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
+// wins/losses/winRatePct/totalPnlUsdc/avgPnlPerMarket/avgExposurePerMarket:
+// null on free tier (server-side redaction, lib/paid-gating.ts).
 
 interface WalletPattern {
   avgEntryTimingPct: number | null;
@@ -11,7 +14,7 @@ interface WalletPattern {
   sideBias: string;
   upBiasRate: number;
   avgTradesPerMarket: number;
-  avgExposurePerMarket: number;
+  avgExposurePerMarket: number | null;
   durationsTraded: string[];
 }
 
@@ -19,11 +22,11 @@ interface TopWallet {
   wallet: string;
   name: string;
   resolvedMarkets: number;
-  wins: number;
-  losses: number;
-  winRatePct: number;
-  totalPnlUsdc: number;
-  avgPnlPerMarket: number;
+  wins: number | null;
+  losses: number | null;
+  winRatePct: number | null;
+  totalPnlUsdc: number | null;
+  avgPnlPerMarket: number | null;
   pattern: WalletPattern;
   disclaimer: string;
 }
@@ -87,9 +90,9 @@ function AgentBanner({ status, updatedAt }: { status: string; updatedAt: string 
   );
 }
 
-function WinRate({ pct }: { pct: number }) {
-  const color = pct >= 60 ? 'text-mint-deep' : pct >= 50 ? 'text-gold' : 'text-coral-ink';
-  return <span className={`font-mono font-bold ${color}`}>{pct.toFixed(1)}%</span>;
+function WinRate({ pct }: { pct: number | null }) {
+  const color = pct == null ? 'text-muted' : pct >= 60 ? 'text-mint-deep' : pct >= 50 ? 'text-gold' : 'text-coral-ink';
+  return <span className={`font-mono font-bold ${color}`}><Redacted value={pct}>{v => `${v.toFixed(1)}%`}</Redacted></span>;
 }
 
 function WalletCard({ w, rank }: { w: TopWallet; rank: number }) {
@@ -109,14 +112,14 @@ function WalletCard({ w, rank }: { w: TopWallet; rank: number }) {
             <span className="text-muted/50 ml-1 font-mono">{shortWallet(w.wallet)}</span>
           </div>
           <div className="font-body text-[10px] text-muted/40 mt-0.5">
-            {w.resolvedMarkets} markets · {w.wins}W / {w.losses}L
+            {w.resolvedMarkets} markets · <Redacted value={w.wins}>{v => String(v)}</Redacted>W / <Redacted value={w.losses}>{v => String(v)}</Redacted>L
           </div>
         </div>
 
         <div className="text-right shrink-0">
           <WinRate pct={w.winRatePct} />
-          <div className={`font-mono text-[10px] mt-0.5 ${pnlClass(w.totalPnlUsdc)}`}>
-            {fmtPnl(w.totalPnlUsdc)} total
+          <div className={`font-mono text-[10px] mt-0.5 ${w.totalPnlUsdc != null ? pnlClass(w.totalPnlUsdc) : 'text-muted'}`}>
+            <Redacted value={w.totalPnlUsdc}>{v => fmtPnl(v)}</Redacted> total
           </div>
         </div>
 
@@ -141,14 +144,18 @@ function WalletCard({ w, rank }: { w: TopWallet; rank: number }) {
           <div>
             <div className="font-body text-[9px] uppercase tracking-widest text-muted/50 mb-1">Activity</div>
             <div className="font-mono text-[11px] text-ink-2">{w.pattern.avgTradesPerMarket.toFixed(1)} trades/market</div>
-            <div className="font-mono text-[10px] text-muted/40">avg ${w.pattern.avgExposurePerMarket.toFixed(0)} USDC/market</div>
+            <div className="font-mono text-[10px] text-muted/40">
+              avg $<Redacted value={w.pattern.avgExposurePerMarket}>{v => v.toFixed(0)}</Redacted> USDC/market
+            </div>
           </div>
           <div>
             <div className="font-body text-[9px] uppercase tracking-widest text-muted/50 mb-1">Markets traded</div>
             <div className="font-body text-[11px] text-ink-2">
               {w.pattern.durationsTraded.length > 0 ? w.pattern.durationsTraded.join(', ') : '—'}
             </div>
-            <div className="font-mono text-[10px] text-muted/40">avg {fmtPnl(w.avgPnlPerMarket)}/market</div>
+            <div className="font-mono text-[10px] text-muted/40">
+              avg <Redacted value={w.avgPnlPerMarket}>{v => fmtPnl(v)}</Redacted>/market
+            </div>
           </div>
 
           {/* Disclaimer */}

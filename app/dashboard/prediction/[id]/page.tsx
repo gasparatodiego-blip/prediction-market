@@ -4,12 +4,14 @@ import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { ExternalLink } from 'lucide-react';
 import PlatformLogo from '@/components/PlatformLogo';
+import { RedactedPanel } from '@/app/components/ui/Redacted';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface Leg {
   platform:    string;
-  probability: number;     // 0–100 (mid-price in cents)
+  // null on free tier (server-side redaction) — see lib/paid-gating.ts
+  probability: number | null;  // 0–100 (mid-price in cents)
   url:         string;
   urlVerified: boolean;    // true = canonical deep link; false = fallback/homepage
   fee:         number;     // display rate (0–1); fee calculation uses per-platform model below
@@ -23,10 +25,14 @@ interface Opportunity {
   question:         string;
   lowMarket:        Leg;   // leg where YES is cheaper — we BUY YES here
   highMarket:       Leg;   // leg where YES is more expensive — we BUY NO here
-  spread:           number;
-  roi:              number;        // net ROI % after fees (authoritative)
+  // spread/roi/confidence: null on free tier (server-side redaction) — gated
+  // as a whole calculator section below rather than field-by-field (see
+  // PredictionDetailPage's `isRedacted`), since every downstream number in
+  // CashableDetail/SignalDetail derives from these same few inputs.
+  spread:           number | null;
+  roi:              number | null;        // net ROI % after fees (authoritative)
   earnPer100:       number | null;
-  confidence:       number;
+  confidence:       number | null;
   category:         string;
   type:                 'cashable' | 'signal';
   annualizedROI?:       number | null;
@@ -38,6 +44,19 @@ interface Opportunity {
   confidenceNote?:      string | null;
   capacityNote?:        string | null;
 }
+
+// Narrowed shape used inside CashableDetail/SignalDetail — both components are
+// only ever rendered after PredictionDetailPage's `isRedacted` check confirms
+// roi (and therefore the whole redacted-together field set: spread, confidence,
+// lowMarket/highMarket.probability) is non-null, i.e. this is a paid response.
+type PaidLeg = Leg & { probability: number };
+type PaidOpportunity = Opportunity & {
+  roi:        number;
+  spread:     number;
+  confidence: number;
+  lowMarket:  PaidLeg;
+  highMarket: PaidLeg;
+};
 
 interface ApiResponse {
   valid:     Opportunity[];
@@ -157,7 +176,7 @@ function contractFeePerPair(platform: string, yesPriceDec: number): number {
 // ── CASHABLE detail ───────────────────────────────────────────────────────────
 
 function CashableDetail({ opp, capital, setCapital }: {
-  opp:        Opportunity;
+  opp:        PaidOpportunity;
   capital:    number;
   setCapital: (n: number) => void;
 }) {
@@ -579,7 +598,7 @@ function CashableDetail({ opp, capital, setCapital }: {
 //   3. Real-money × real-money, live net > 0 → full executable HOW TO OPERATE guide.
 
 function SignalDetail({ opp, capital, setCapital }: {
-  opp:        Opportunity;
+  opp:        PaidOpportunity;
   capital:    number;
   setCapital: (n: number) => void;
 }) {
@@ -1081,6 +1100,10 @@ export default function PredictionDetailPage({ params }: { params: { id: string 
   useEffect(() => { load(); }, [load]);
 
   const opp = data?.valid?.find(o => o.id === id) ?? null;
+  // roi/spread/confidence/probability/yesBid/yesAsk are redacted together as a
+  // set for free tier — opp.roi is a reliable single proxy for "is this
+  // opportunity's numbers visible" (see lib/paid-gating.ts REDACTION_MAP.prediction).
+  const isRedacted = opp != null && opp.roi == null;
 
   return (
     <div className="max-w-[860px] mx-auto px-4 py-6">
@@ -1133,18 +1156,28 @@ export default function PredictionDetailPage({ params }: { params: { id: string 
               <PlatformLogo platform={opp.highMarket.platform} size={11} className="mx-0.5" />
               {platformLabel(opp.highMarket.platform)}
               {' · '}
-              {opp.type === 'cashable'
-                ? `${fmtPct(opp.roi, 2)} net ROI${opp.annualizedROI != null && opp.daysToResolution != null ? ` · ${opp.annualizedROI.toFixed(1)}%/yr (${opp.daysToResolution}d lock)` : ''}`
-                : `${opp.spread.toFixed(1)}pp spread`
+              {isRedacted
+                ? 'upgrade to see ROI/spread'
+                : opp.type === 'cashable'
+                  ? `${fmtPct(opp.roi!, 2)} net ROI${opp.annualizedROI != null && opp.daysToResolution != null ? ` · ${opp.annualizedROI.toFixed(1)}%/yr (${opp.daysToResolution}d lock)` : ''}`
+                  : `${opp.spread!.toFixed(1)}pp spread`
               }
             </p>
           </div>
 
-          {/* Branch on type */}
-          {opp.type === 'cashable' ? (
-            <CashableDetail opp={opp} capital={capital} setCapital={setCapital} />
+          {/* Branch on type — the live calculator, real bid/ask, ROI and
+              step-by-step guide all derive from the same redacted field set,
+              so free tier gets one panel rather than ~40 individually-blurred
+              numbers (which would be unreadable in a dense calculator like this). */}
+          {isRedacted ? (
+            <RedactedPanel
+              label="The live calculator, real prices, ROI, and step-by-step execution guide are available on Pro"
+              className="mt-4"
+            />
+          ) : opp.type === 'cashable' ? (
+            <CashableDetail opp={opp as PaidOpportunity} capital={capital} setCapital={setCapital} />
           ) : (
-            <SignalDetail opp={opp} capital={capital} setCapital={setCapital} />
+            <SignalDetail opp={opp as PaidOpportunity} capital={capital} setCapital={setCapital} />
           )}
 
           {/* Disclaimer */}

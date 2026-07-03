@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { RefreshCw, TrendingDown } from 'lucide-react';
 import Eyebrow from '@/app/components/ui/Eyebrow';
 import SectionHeading from '@/app/components/ui/SectionHeading';
@@ -8,8 +8,12 @@ import StatCard from '@/app/components/ui/StatCard';
 import BlipRow from '@/app/components/ui/BlipRow';
 import EdgeChip, { type EdgeChipVariant } from '@/app/components/ui/EdgeChip';
 import PlatformLogo from '@/components/PlatformLogo';
+import { Redacted } from '@/app/components/ui/Redacted';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
+// Derived basis/annualized/capacity fields are null on free tier (server-side
+// redaction, lib/paid-gating.ts). Raw spot/future/bid/ask prices, volume, and
+// descriptive fields stay real for everyone — see REDACTION_MAP.carry.
 
 interface Contract {
   asset:                   string;
@@ -25,24 +29,26 @@ interface Contract {
   spotAsk:                 number | null;
   futureBid:               number | null;
   futureAsk:               number | null;
-  indicativeBasisPct:      number;
-  executableBasisPct:      number;
-  basis:                   number;
-  grossAnnualized:         number;
-  grossAnnualizedExec:     number;
+  indicativeBasisPct:      number | null;
+  executableBasisPct:      number | null;
+  basis:                   number | null;
+  grossAnnualized:         number | null;
+  grossAnnualizedExec:     number | null;
   fee:                     number;
-  netAnnualizedIndicative: number;
-  netAnnualizedExecutable: number;
-  netAnnualized:           number;
+  netAnnualizedIndicative: number | null;
+  netAnnualizedExecutable: number | null;
+  netAnnualized:           number | null;
   vol24Usd:                number;
   oiUsd:                   number | null;
-  capacityUsd:             number;
+  capacityUsd:             number | null;
   tier:                    string;
   thinFlag:                boolean;
   coinMargined:            boolean;
   coinMarginedNote:        string | null;
   bidSpreadPct:            number | null;
-  verdict:                 string;
+  // prose headline embeds the exact netAnnualizedExecutable % — redacted
+  // together with the numeric fields (server-side, lib/paid-gating.ts)
+  verdict:                 string | null;
 }
 
 interface BackwardContract {
@@ -55,10 +61,10 @@ interface BackwardContract {
   future:              number;
   spotAsk:             number | null;
   futureBid:           number | null;
-  indicativeBasisPct:  number;
-  executableBasisPct:  number;
-  basis:               number;
-  annualized:          number;
+  indicativeBasisPct:  number | null;
+  executableBasisPct:  number | null;
+  basis:               number | null;
+  annualized:          number | null;
   vol24Usd:            number;
   signal:              string;
 }
@@ -124,6 +130,7 @@ function coinEmoji(asset: string): string {
 }
 
 function chipVariant(c: Contract): EdgeChipVariant {
+  if (c.executableBasisPct == null) return 'signal'; // redacted — don't overclaim
   if (c.executableBasisPct <= 0) return 'signal';
   if (c.thinFlag || c.coinMargined) return 'speculative';
   return 'cashable';
@@ -160,20 +167,21 @@ function RowSkeleton() {
 function ContangoCard({ c }: { c: Contract }) {
   const variant    = chipVariant(c);
   const tileColor  = variant === 'cashable' ? 'mint' : 'gold';
-  const execCap    = capApy(c.netAnnualizedExecutable);
-  const indicCap   = capApy(c.netAnnualizedIndicative);
 
   // Honest-engine: flag invariant violation (should not occur in production data)
-  const invariantViolated = c.executableBasisPct > c.indicativeBasisPct + 0.0001;
+  const invariantViolated = c.executableBasisPct != null && c.indicativeBasisPct != null
+    && c.executableBasisPct > c.indicativeBasisPct + 0.0001;
+  const isCapped = (c.netAnnualizedExecutable != null && capApy(c.netAnnualizedExecutable).capped)
+    || (c.netAnnualizedIndicative != null && capApy(c.netAnnualizedIndicative).capped);
 
   const spotPx   = c.spotAsk  ?? c.spot;
   const futurePx = c.futureBid ?? c.future;
 
-  const chips: { label: string; value: string }[] = [
+  const chips: { label: string; value: ReactNode }[] = [
     { label: 'spot ask',   value: fmtPrice(spotPx) },
     { label: 'future bid', value: fmtPrice(futurePx) },
-    { label: 'exec basis', value: `+${(c.executableBasisPct * 100).toFixed(2)}%` },
-    { label: 'capacity',   value: fmtK(c.capacityUsd) },
+    { label: 'exec basis', value: <Redacted value={c.executableBasisPct}>{v => `+${(v * 100).toFixed(2)}%`}</Redacted> },
+    { label: 'capacity',   value: <Redacted value={c.capacityUsd}>{v => fmtK(v)}</Redacted> },
     { label: 'vol 24h',    value: fmtK(c.vol24Usd) },
     { label: 'exp',        value: c.expiry },
   ];
@@ -185,9 +193,9 @@ function ContangoCard({ c }: { c: Contract }) {
         icon={coinEmoji(c.asset)}
         tileColor={tileColor}
         name={<>{c.asset} — <PlatformLogo platform={c.exchange} size={12} className="mx-1" />{c.exchange} · {c.contract} · {c.daysToExpiry}d</>}
-        sub={`spot ask ${fmtPrice(spotPx)} · future bid ${fmtPrice(futurePx)} · cap ${fmtK(c.capacityUsd)}`}
+        sub={<>spot ask {fmtPrice(spotPx)} · future bid {fmtPrice(futurePx)} · cap <Redacted value={c.capacityUsd}>{v => fmtK(v)}</Redacted></>}
         chip={variant}
-        value={fmtAnnualized(c.netAnnualizedExecutable)}
+        value={<Redacted value={c.netAnnualizedExecutable}>{v => fmtAnnualized(v)}</Redacted>}
         unit="net/yr executable"
         valueTone={variant === 'cashable' ? 'up' : 'neutral'}
       />
@@ -198,7 +206,7 @@ function ContangoCard({ c }: { c: Contract }) {
         {/* Invariant violation flag */}
         {invariantViolated && (
           <div className="px-3 py-2 rounded-md bg-coral-tint border border-coral-ink/20 font-body text-[11px] text-coral-ink">
-            Invariant flag: executable ({(c.executableBasisPct * 100).toFixed(2)}%) exceeds indicative ({(c.indicativeBasisPct * 100).toFixed(2)}%) — verify source data
+            Invariant flag: executable ({(c.executableBasisPct! * 100).toFixed(2)}%) exceeds indicative ({(c.indicativeBasisPct! * 100).toFixed(2)}%) — verify source data
           </div>
         )}
 
@@ -206,10 +214,10 @@ function ContangoCard({ c }: { c: Contract }) {
         <div className="flex flex-wrap gap-x-4 gap-y-1 items-center">
           <span className="font-body text-[12px] text-muted">
             Indicative mid:{' '}
-            <span className="text-ink-2">{fmtAnnualized(c.netAnnualizedIndicative)}/yr</span>
+            <span className="text-ink-2"><Redacted value={c.netAnnualizedIndicative}>{v => fmtAnnualized(v)}</Redacted>/yr</span>
             <span className="text-muted/60 ml-1 text-[11px]">(exec ≤ indicative ✓)</span>
           </span>
-          {(execCap.capped || indicCap.capped) && (
+          {isCapped && (
             <span className="font-body text-[11px] text-gold">† run-rate, not guaranteed — capped at 200%/yr display</span>
           )}
         </div>
@@ -228,9 +236,9 @@ function ContangoCard({ c }: { c: Contract }) {
         </div>
 
         {/* Verdict */}
-        {c.verdict && (
-          <p className="font-body text-[12px] text-muted leading-relaxed">{c.verdict}</p>
-        )}
+        <p className="font-body text-[12px] text-muted leading-relaxed">
+          <Redacted value={c.verdict}>{v => v}</Redacted>
+        </p>
 
         {/* Coin-margined caveat — always shown when applicable */}
         {c.coinMargined && (
@@ -255,7 +263,7 @@ function BackwardRow({ c }: { c: BackwardContract }) {
         name={<>{c.asset} — <PlatformLogo platform={c.exchange} size={12} className="mx-1" />{c.exchange} · {c.contract} · {c.daysToExpiry}d</>}
         sub={`spot ${fmtPrice(c.spot)} · future ${fmtPrice(c.future)} · vol ${fmtK(c.vol24Usd)}`}
         chip="signal"
-        value={`${(c.annualized * 100).toFixed(2)}%`}
+        value={<Redacted value={c.annualized}>{v => `${(v * 100).toFixed(2)}%`}</Redacted>}
         unit="backwardation basis"
         valueTone="neutral"
       />
@@ -342,10 +350,11 @@ export default function CarryPage() {
   const cleanOpps  = data?.opportunities.filter(c => !c.coinMargined) ?? [];
   const coinOpps   = data?.opportunities.filter(c => c.coinMargined)  ?? [];
 
-  // Best clean-USD executable return (for headline StatCard)
-  const bestClean  = cleanOpps.length > 0
-    ? Math.max(...cleanOpps.map(c => c.netAnnualizedExecutable))
-    : null;
+  // Best clean-USD executable return (for headline StatCard) — filter nulls
+  // (redacted, free tier) before Math.max, which would otherwise coerce a
+  // null to 0 and fabricate a "0%" best return if every row were redacted.
+  const cleanExecVals = cleanOpps.map(c => c.netAnnualizedExecutable).filter((v): v is number => v != null);
+  const bestClean  = cleanExecVals.length > 0 ? Math.max(...cleanExecVals) : null;
   const bestOverall = data?.summary.bestNetAnnualized ?? null;
   const bestDisplay = bestClean ?? bestOverall;
 

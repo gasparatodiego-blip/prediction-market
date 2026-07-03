@@ -169,6 +169,10 @@ export const REDACTION_MAP: Record<RouteKey, string[]> = {
     'opportunities[].netAnnualizedExecutable',
     'opportunities[].netAnnualized',
     'opportunities[].capacityUsd',
+    // verdict is a prose headline that embeds the exact netAnnualizedExecutable
+    // % (agent19-basis.js) — redact it too, or the number leaks through text
+    // even with the numeric field nulled.
+    'opportunities[].verdict',
     'opportunities[].bidSpreadPct',
     'opportunities[].oiUsd',
     // backwardation[] items have a different (simpler) shape than

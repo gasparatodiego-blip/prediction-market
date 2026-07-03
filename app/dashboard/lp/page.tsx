@@ -1,35 +1,38 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { Redacted } from '@/app/components/ui/Redacted';
 
+// amountUSD/feesEarned/estimatedAPY, summary totals, and candidate price are
+// null on free tier (server-side redaction, lib/paid-gating.ts).
 interface Position {
     marketId: string;
     question: string;
     source: string;
     entryPrice: number;
-    amountUSD: number;
-    estimatedAPY: number;
+    amountUSD: number | null;
+    estimatedAPY: number | null;
     volume24h: number;
     enteredAt: number;
     status: string;
-    feesEarned: number;
+    feesEarned: number | null;
     isSimulated?: boolean;
 }
 
 interface Summary {
-    totalExposure: number;
-    totalFees: number;
-    avgAPY: number;
+    totalExposure: number | null;
+    totalFees: number | null;
+    avgAPY: number | null;
     activeCount: number;
     maxPositions: number;
     maxExposure: number;
-    remainingCapital: number;
+    remainingCapital: number | null;
 }
 
 interface Candidate {
     id: string;
     question: string;
-    price: number;
+    price: number | null;
     volume24h: number;
     url: string;
 }
@@ -97,19 +100,27 @@ export default function LPDashboard() {
                             <div className="text-xs text-gray-500">Posizioni Attive</div>
                         </div>
                         <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-4">
-                            <div className="text-2xl font-bold text-green-400">{formatCurrency(summary.totalExposure)}</div>
+                            <div className="text-2xl font-bold text-green-400">
+                                <Redacted value={summary.totalExposure}>{v => formatCurrency(v)}</Redacted>
+                            </div>
                             <div className="text-xs text-gray-500">Esposizione Totale</div>
                         </div>
                         <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-4">
-                            <div className="text-2xl font-bold text-yellow-400">{summary.avgAPY}%</div>
+                            <div className="text-2xl font-bold text-yellow-400">
+                                <Redacted value={summary.avgAPY}>{v => `${v}%`}</Redacted>
+                            </div>
                             <div className="text-xs text-gray-500">APY Media</div>
                         </div>
                         <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-4">
-                            <div className="text-2xl font-bold text-purple-400">{formatCurrency(summary.remainingCapital)}</div>
+                            <div className="text-2xl font-bold text-purple-400">
+                                <Redacted value={summary.remainingCapital}>{v => formatCurrency(v)}</Redacted>
+                            </div>
                             <div className="text-xs text-gray-500">Capitale Residuo</div>
                         </div>
                         <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-4">
-                            <div className="text-2xl font-bold text-gold">{formatCurrency(summary.totalFees)}</div>
+                            <div className="text-2xl font-bold text-gold">
+                                <Redacted value={summary.totalFees}>{v => formatCurrency(v)}</Redacted>
+                            </div>
                             <div className="text-xs text-gray-500">Fee Accumulate</div>
                         </div>
                     </div>
@@ -152,13 +163,15 @@ export default function LPDashboard() {
                                                 </div>
                                             </td>
                                             <td className="px-4 py-3 text-right font-semibold text-green-400">
-                                                {formatCurrency(pos.amountUSD)}
+                                                <Redacted value={pos.amountUSD}>{v => formatCurrency(v)}</Redacted>
                                             </td>
                                             <td className="px-4 py-3 text-right text-gray-300">
                                                 {pos.entryPrice}¢
                                             </td>
                                             <td className="px-4 py-3 text-right">
-                                                <span className="text-green-400 font-semibold">{pos.estimatedAPY.toFixed(0)}%</span>
+                                                <span className="text-green-400 font-semibold">
+                                                    <Redacted value={pos.estimatedAPY}>{v => `${v.toFixed(0)}%`}</Redacted>
+                                                </span>
                                             </td>
                                             <td className="px-4 py-3 text-right text-gray-400">
                                                 {formatCurrency(pos.volume24h)}
@@ -188,7 +201,7 @@ export default function LPDashboard() {
                                     <div className="flex-1">
                                         <p className="text-gray-200 text-sm">{c.question}</p>
                                         <div className="flex gap-4 mt-1 text-xs text-gray-500">
-                                            <span>💰 Prezzo: {c.price}¢</span>
+                                            <span>💰 Prezzo: <Redacted value={c.price}>{v => `${v}¢`}</Redacted></span>
                                             <span>📊 Volume 24h: {formatCurrency(c.volume24h)}</span>
                                         </div>
                                     </div>

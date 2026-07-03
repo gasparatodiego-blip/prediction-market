@@ -1,40 +1,44 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import PlatformLogo from '@/components/PlatformLogo';
+import { Redacted, RedactedPanel } from '@/app/components/ui/Redacted';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
+// Sensitive fields null on free tier (server-side redaction, lib/paid-gating.ts).
+// `book.yes`/`book.no` are redacted as WHOLE objects (the live order book IS the
+// product), not per-field — see REDACTION_MAP['liquidity-rewards-book'].
 
 type VolRisk = 'LOW' | 'MEDIUM' | 'HIGH';
 type Side    = 'BUY' | 'SELL' | 'BOTH';
 
 interface Level {
   capital:        number;
-  share:          number;     // typical placement headline
-  grossRewardDay: number;
-  dayYieldPct:    number;
-  netRewardDay?:  number;
-  netYieldPct?:   number;
-  shareHigh?:     number;
-  grossHigh?:     number;
-  netHigh?:       number;
-  shareLow?:      number;
-  grossLow?:      number;
-  netLow?:        number;
+  share:          number | null;     // typical placement headline
+  grossRewardDay: number | null;
+  dayYieldPct:    number | null;
+  netRewardDay?:  number | null;
+  netYieldPct?:   number | null;
+  shareHigh?:     number | null;
+  grossHigh?:     number | null;
+  netHigh?:       number | null;
+  shareLow?:      number | null;
+  grossLow?:      number | null;
+  netLow?:        number | null;
   flags:          string[];
 }
 
 interface MarketMeta {
   question:           string;
   conditionId:        string;
-  rewardsDailyRate:   number;
-  rewardsMaxSpread:   number;
-  rewardsMinSize:     number;
-  mid:                number;
+  rewardsDailyRate:   number | null;
+  rewardsMaxSpread:   number | null;
+  rewardsMinSize:     number | null;
+  mid:                number | null;
   bookSpread:         number | null;
-  existing_depth_usd: number;
+  existing_depth_usd: number | null;
   volatilityRisk:     VolRisk;
   volatilityStdev:    number | null;
   endDate:            string | null;
@@ -51,7 +55,7 @@ interface BookLevel {
 
 interface BookData {
   conditionId: string;
-  yes:         { bids: {price:string;size:string}[]; asks: {price:string;size:string}[]; last_trade_price?: string };
+  yes:         { bids: {price:string;size:string}[]; asks: {price:string;size:string}[]; last_trade_price?: string } | null;
   no:          { bids: {price:string;size:string}[]; asks: {price:string;size:string}[] } | null;
   fetchedAt:   string;
 }
@@ -245,8 +249,8 @@ export default function MarketDetailPage() {
         const m = (d.markets as MarketMeta[]).find(x => x.conditionId === conditionId);
         if (!m) { setMktError('Market not found in current data'); return; }
         setMkt(m);
-        if (!ticketPrice && m.mid) setTicketPrice((m.mid).toFixed(3));
-        if (!ticketSize)           setTicketSize(String(m.rewardsMinSize));
+        if (!ticketPrice && m.mid != null) setTicketPrice(m.mid.toFixed(3));
+        if (!ticketSize && m.rewardsMinSize != null) setTicketSize(String(m.rewardsMinSize));
       } catch (e: unknown) {
         setMktError(e instanceof Error ? e.message : String(e));
       }
@@ -285,9 +289,14 @@ export default function MarketDetailPage() {
     if (el) el.scrollTop = el.scrollHeight;
   }, [book, bookSide]);
 
+  // Sensitive fields (mkt.rewardsDailyRate etc, book.yes/book.no) are redacted
+  // together as a set for free tier — rewardsDailyRate is a reliable proxy for
+  // "is this market's live book + reward data visible" (see REDACTION_MAP).
+  const isRedacted = mkt != null && mkt.rewardsDailyRate == null;
+
   // ── Derived order book data
-  const yesBids = book ? parseLevels(book.yes.bids).sort((a, b) => b.price - a.price) : [];
-  const yesAsks = book ? parseLevels(book.yes.asks).sort((a, b) => a.price - b.price) : [];
+  const yesBids = book?.yes ? parseLevels(book.yes.bids).sort((a, b) => b.price - a.price) : [];
+  const yesAsks = book?.yes ? parseLevels(book.yes.asks).sort((a, b) => a.price - b.price) : [];
 
   // Derive mid and spread from the live book so header, band, and estimates
   // always match what the ladder displays — never stale stored metadata.
@@ -299,8 +308,11 @@ export default function MarketDetailPage() {
   const mid = liveBestBid !== null && liveBestAsk !== null
     ? (liveBestBid + liveBestAsk) / 2
     : mkt?.mid ?? 0.5;
+  // For display only — null (not the internal 0.5 layout fallback above) when
+  // there's no real mid available, so the header never shows a fabricated 50.0¢.
+  const displayMid = liveBestBid !== null && liveBestAsk !== null ? mid : mkt?.mid ?? null;
 
-  const halfBand  = mkt ? (mkt.rewardsMaxSpread / 100) / 2 : 0;
+  const halfBand  = mkt && mkt.rewardsMaxSpread != null ? (mkt.rewardsMaxSpread / 100) / 2 : 0;
   const bandLo    = mid - halfBand;
   const bandHi    = mid + halfBand;
 
@@ -338,17 +350,18 @@ export default function MarketDetailPage() {
   const tsNum     = parseFloat(ticketSize);
   const validInputs = mkt && !isNaN(tpNum) && tpNum > 0 && tpNum < 1 && !isNaN(tsNum) && tsNum > 0;
 
-  const est = validInputs && mkt ? calcReward({
-    price:            tpNum,
-    size:             tsNum,
-    side,
-    mid,
-    rewardsMaxSpread: mkt.rewardsMaxSpread,
-    rewardsMinSize:   mkt.rewardsMinSize,
-    bookBids:         yesBids,
-    bookAsks:         yesAsks,
-    rewardsDailyRate: mkt.rewardsDailyRate,
-  }) : null;
+  const est = (validInputs && mkt && mkt.rewardsMaxSpread != null && mkt.rewardsMinSize != null && mkt.rewardsDailyRate != null)
+    ? calcReward({
+        price:            tpNum,
+        size:             tsNum,
+        side,
+        mid,
+        rewardsMaxSpread: mkt.rewardsMaxSpread,
+        rewardsMinSize:   mkt.rewardsMinSize,
+        bookBids:         yesBids,
+        bookAsks:         yesAsks,
+        rewardsDailyRate: mkt.rewardsDailyRate,
+      }) : null;
 
   function handleClickPrice(p: number) {
     setTicketPrice(p.toFixed(3));
@@ -400,16 +413,16 @@ export default function MarketDetailPage() {
                   </span>
                 )}
                 <span className="font-mono text-[10px] px-1.5 py-px border border-line bg-bg-soft text-muted">
-                  pool ${mkt.rewardsDailyRate}/day
+                  pool $<Redacted value={mkt.rewardsDailyRate}>{v => String(v)}</Redacted>/day
                 </span>
                 <span className="font-mono text-[10px] px-1.5 py-px border border-line bg-bg-soft text-muted">
-                  ±{mkt.rewardsMaxSpread}¢ band
+                  ±<Redacted value={mkt.rewardsMaxSpread}>{v => String(v)}</Redacted>¢ band
                 </span>
                 <span className="font-mono text-[10px] px-1.5 py-px border border-line bg-bg-soft text-muted">
-                  min {mkt.rewardsMinSize} size
+                  min <Redacted value={mkt.rewardsMinSize}>{v => String(v)}</Redacted> size
                 </span>
                 <span className="font-mono text-[10px] px-1.5 py-px border border-line bg-bg-soft text-muted">
-                  mid {(mid * 100).toFixed(1)}¢
+                  mid <Redacted value={displayMid}>{v => (v * 100).toFixed(1)}</Redacted>¢
                 </span>
               </div>
             </>
@@ -418,6 +431,10 @@ export default function MarketDetailPage() {
           )}
         </div>
 
+        {isRedacted ? (
+          <RedactedPanel label="The live order book, trade ticket calculator, and per-capital reward estimates are available on Pro" />
+        ) : (
+        <>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
 
           {/* ── Order Book — Polymarket-style ──────────────────── */}
@@ -555,7 +572,8 @@ export default function MarketDetailPage() {
             {/* Depth summary */}
             {mkt && (
               <div className="px-3 py-2 border-t border-line font-body text-[10px] text-muted/60">
-                Existing depth in band: {fmtUsd(mkt.existing_depth_usd)} · pool {fmtUsd(mkt.rewardsDailyRate)}/day
+                Existing depth in band: <Redacted value={mkt.existing_depth_usd}>{v => fmtUsd(v)}</Redacted>
+                {' '}· pool <Redacted value={mkt.rewardsDailyRate}>{v => fmtUsd(v)}</Redacted>/day
               </div>
             )}
           </div>
@@ -635,7 +653,7 @@ export default function MarketDetailPage() {
                   onChange={e => setTicketSize(e.target.value)}
                   className="w-full bg-bg-soft border border-line text-ink font-mono text-sm
                     px-3 py-2 focus:outline-none focus:border-ink-2/50"
-                  placeholder={mkt ? `min ${mkt.rewardsMinSize}` : '50'}
+                  placeholder={mkt?.rewardsMinSize != null ? `min ${mkt.rewardsMinSize}` : '50'}
                 />
                 {mkt && !isNaN(tsNum) && (
                   <p className="font-body text-[10px] text-muted/70">
@@ -660,7 +678,7 @@ export default function MarketDetailPage() {
                   )}
                   {!est.aboveMin && (
                     <div className="font-body text-[11px] text-gold border border-gold/50 bg-gold/5 px-2 py-1.5 rounded-sm">
-                      Size {tsNum} &lt; min {mkt.rewardsMinSize} · won't qualify for rewards
+                      Size {tsNum} &lt; min {mkt.rewardsMinSize ?? '—'} · won't qualify for rewards
                     </div>
                   )}
 
@@ -738,10 +756,10 @@ export default function MarketDetailPage() {
         {mkt && (
           <>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <StatBox label="Pool $/day" value={`$${mkt.rewardsDailyRate}`} />
-              <StatBox label="Max spread" value={`±${mkt.rewardsMaxSpread}¢`} />
-              <StatBox label="Min size" value={String(mkt.rewardsMinSize)} />
-              <StatBox label="Existing depth" value={fmtUsd(mkt.existing_depth_usd)} />
+              <StatBox label="Pool $/day" value={<Redacted value={mkt.rewardsDailyRate}>{v => `$${v}`}</Redacted>} />
+              <StatBox label="Max spread" value={<Redacted value={mkt.rewardsMaxSpread}>{v => `±${v}¢`}</Redacted>} />
+              <StatBox label="Min size" value={<Redacted value={mkt.rewardsMinSize}>{v => String(v)}</Redacted>} />
+              <StatBox label="Existing depth" value={<Redacted value={mkt.existing_depth_usd}>{v => fmtUsd(v)}</Redacted>} />
             </div>
 
             {/* Per-capital typical estimate + range */}
@@ -756,18 +774,21 @@ export default function MarketDetailPage() {
                   const lv = mkt.levels?.[key];
                   if (!lv) return null;
                   const capLabel = key === '500' ? '$500' : key === '5000' ? '$5k' : '$50k';
+                  const netOrGross = lv.netRewardDay ?? lv.grossRewardDay;
+                  const lowHigh = (lv.netLow ?? lv.grossLow) != null && (lv.netHigh ?? lv.grossHigh) != null
+                    ? [lv.netLow ?? lv.grossLow!, lv.netHigh ?? lv.grossHigh!] as const : null;
                   return (
                     <div key={key} className="px-3 py-2.5 space-y-0.5">
                       <div className="font-body text-[10px] text-muted/70 uppercase">{capLabel}</div>
                       <div className="font-mono text-sm font-semibold text-mint-deep tabular-nums">
-                        {fmtUsd(lv.netRewardDay ?? lv.grossRewardDay)}/day
+                        <Redacted value={netOrGross}>{v => fmtUsd(v)}</Redacted>/day
                       </div>
                       <div className="font-body text-[10px] text-muted tabular-nums">
-                        {(lv.share * 100).toFixed(2)}% share
+                        <Redacted value={lv.share}>{v => `${(v * 100).toFixed(2)}%`}</Redacted> share
                       </div>
-                      {(lv.netLow ?? lv.grossLow) != null && (lv.netHigh ?? lv.grossHigh) != null && (
+                      {lowHigh && (
                         <div className="font-body text-[9px] text-muted/50 tabular-nums">
-                          range {fmtUsd(lv.netLow ?? lv.grossLow!)}–{fmtUsd(lv.netHigh ?? lv.grossHigh!)}
+                          range {fmtUsd(lowHigh[0])}–{fmtUsd(lowHigh[1])}
                         </div>
                       )}
                       {lv.flags.length > 0 && (
@@ -784,6 +805,8 @@ export default function MarketDetailPage() {
               </div>
             </div>
           </>
+        )}
+        </>
         )}
 
         {/* Disclaimer */}
@@ -825,7 +848,7 @@ function Metric({ label, value, dim }: { label: string; value: string; dim?: boo
   );
 }
 
-function StatBox({ label, value }: { label: string; value: string }) {
+function StatBox({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="border border-line bg-surface p-3">
       <div className="font-mono text-sm font-semibold text-ink tabular-nums">{value}</div>

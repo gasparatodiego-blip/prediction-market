@@ -123,7 +123,9 @@ export function computeSpreads(
     }
   }
 
-  return out.sort((a, b) => b.netApy30d - a.netApy30d);
+  // netApy30d is always freshly computed (non-null) at this point — redaction
+  // for free tier happens later, in app/api/crypto/route.ts via redactForTier.
+  return out.sort((a, b) => (b.netApy30d ?? 0) - (a.netApy30d ?? 0));
 }
 
 /**

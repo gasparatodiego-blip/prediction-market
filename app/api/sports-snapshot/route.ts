@@ -20,12 +20,14 @@ export interface Settlement {
   crossSettlementRisk: boolean;
 }
 
+// odd/stakePct/roiPct/impliedSum/marginPct: null on free tier (server-side
+// redaction, lib/paid-gating.ts) — see REDACTION_MAP['sports-snapshot'].
 export interface SnapshotLeg {
   outcome:      string;
   bookmaker:    string;
   bookmakerId?: string;
-  odd:          number;
-  stakePct:     number;
+  odd:          number | null;
+  stakePct:     number | null;
   region?:      string;
 }
 
@@ -35,8 +37,8 @@ export interface SnapshotOpportunity {
   commenceTime:       string;
   type:               '2way' | '3way';
   legs:               SnapshotLeg[];
-  roiPct:             number;
-  impliedSum:         number;
+  roiPct:             number | null;
+  impliedSum:         number | null;
   outliersRemoved:    boolean;
   crossJurisdiction?: boolean;
   numBookmakers:      number;
@@ -53,7 +55,7 @@ export interface SnapshotQuarantine {
   eventName:    string;
   commenceTime: string;
   type:         string;
-  roiPct:       number;
+  roiPct:       number | null;
   reason:       string;
 }
 
@@ -62,7 +64,7 @@ export interface ScannedEventLeg {
   bookmaker:    string;
   bookmakerId?: string;
   region:       string;
-  odd:          number;
+  odd:          number | null;
 }
 
 export interface ScannedEvent {
@@ -73,8 +75,8 @@ export interface ScannedEvent {
   type:            '2way' | '3way';
   booksCount:      number;
   bestLegs:        ScannedEventLeg[];
-  impliedSum:      number;
-  marginPct:       number;
+  impliedSum:      number | null;
+  marginPct:       number | null;
   outliersRemoved: boolean;
   settlement?:     Settlement;
   cashable?:       boolean;

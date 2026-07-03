@@ -8,6 +8,7 @@ import SectionHeading from '@/app/components/ui/SectionHeading';
 import StatCard from '@/app/components/ui/StatCard';
 import BlipRow from '@/app/components/ui/BlipRow';
 import EdgeChip, { type EdgeChipVariant } from '@/app/components/ui/EdgeChip';
+import { Redacted } from '@/app/components/ui/Redacted';
 import PlatformLogo from '@/components/PlatformLogo';
 import EventCard from './_components/EventCard';
 import { platformLabel, formatCents, formatResolutionDate } from './_components/format';
@@ -118,15 +119,10 @@ function OppRow({ opp }: { opp: Opportunity }) {
   const variant  = chipVariant(opp);
   const note     = reasonNote(opp);
   const expiry   = opp.lowMarket.expiresAt ?? opp.highMarket.expiresAt ?? null;
-  const conf     = Math.round(opp.confidence * 100);
-  const noPriceHigh = 100 - opp.highMarket.probability;
 
   const tileColor = variant === 'cashable' ? 'mint'
     : variant === 'speculative'            ? 'gold'
     : 'violet';
-
-  const subTail = [`conf ${conf}%`];
-  if (note) subTail.push(note);
 
   return (
     <Link
@@ -142,11 +138,13 @@ function OppRow({ opp }: { opp: Opportunity }) {
             <PlatformLogo platform={opp.lowMarket.platform} size={11} className="mr-0.5" />
             {platformLabel(opp.lowMarket.platform)} ×{' '}
             <PlatformLogo platform={opp.highMarket.platform} size={11} className="mx-0.5" />
-            {platformLabel(opp.highMarket.platform)} · {subTail.join(' · ')}
+            {platformLabel(opp.highMarket.platform)} · conf{' '}
+            <Redacted value={opp.confidence}>{v => `${Math.round(v * 100)}%`}</Redacted>
+            {note && <> · {note}</>}
           </>
         }
         chip={variant}
-        value={`${opp.spread.toFixed(1)}%`}
+        value={<Redacted value={opp.spread}>{v => `${v.toFixed(1)}%`}</Redacted>}
         unit={
           opp.earnPer100 != null && opp.type === 'cashable'
             ? `$${opp.earnPer100.toFixed(2)} per $100`
@@ -228,8 +226,8 @@ export default function PredictionPage() {
         `Buy NO @ ${formatCents(edge.noPrice)} on ${platformLabel(edge.noPlatform)}\n` +
         `Total ROI: ${mo.roi.toFixed(2)}% · one-time · unlock ${formatResolutionDate(mo.resolutionDate)}`;
     }
-    const bestOpp = opps.find(o => o.type === 'cashable');
-    if (bestOpp) {
+    const bestOpp = opps.find(o => o.type === 'cashable' && o.roi != null);
+    if (bestOpp && bestOpp.roi != null) {
       return `${bestOpp.question}\n` +
         `Buy YES on ${platformLabel(bestOpp.lowMarket.platform)} · buy NO on ${platformLabel(bestOpp.highMarket.platform)}\n` +
         `Total ROI: ${bestOpp.roi.toFixed(2)}%`;

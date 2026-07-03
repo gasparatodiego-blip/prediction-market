@@ -1,39 +1,45 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import PlatformLogo from '@/components/PlatformLogo';
+import { Redacted, RedactedPanel } from '@/app/components/ui/Redacted';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
+// Sensitive fields null on free tier (server-side redaction, lib/paid-gating.ts).
+// The live orderbook (raw.orderbook_fp) is redacted as a WHOLE field — see
+// REDACTION_MAP['kalshi-rewards-book'] — parseKalshiBook() already degrades to
+// empty arrays gracefully (`raw.orderbook_fp ?? {}`), so no crash risk there,
+// but pool_day is the reliable proxy for gating the CTA panel (below).
 
 interface KLevelData {
   aboveMin:       boolean;
-  share:          number;
-  bidShare:       number;
-  askShare:       number;
-  grossRewardDay: number;
-  dayYieldPct:    number;
-  netRewardDay?:  number;
-  netYieldPct?:   number;
+  share:          number | null;
+  bidShare:       number | null;
+  askShare:       number | null;
+  grossRewardDay: number | null;
+  dayYieldPct:    number | null;
+  netRewardDay?:  number | null;
+  netYieldPct?:   number | null;
 }
 
 interface KMarket {
   ticker:                     string;
   question:                   string;
-  pool_day:                   number;
-  total_period_usd:           number;
+  pool_day:                   number | null;
+  total_period_usd:           number | null;
   period_days:                number;
   period_start:               string;
   period_end:                 string;
   min_size:                   number;
   fee_discount_pct:           number;
-  last_price:                 number;
+  last_price:                 number | null;
   book_mid:                   number | null;
   best_bid:                   number | null;
   best_ask:                   number | null;
-  competitor_qualifying_bids: number;
-  competitor_qualifying_asks: number;
+  competitor_qualifying_bids: number | null;
+  competitor_qualifying_asks: number | null;
   levels:                     Record<string, KLevelData>;
   flags: {
     TRAP:        boolean;
@@ -281,7 +287,7 @@ function SkeletonRows({ count = 7 }: { count?: number }) {
   );
 }
 
-function Metric({ label, value, dim }: { label: string; value: string; dim?: boolean }) {
+function Metric({ label, value, dim }: { label: string; value: ReactNode; dim?: boolean }) {
   return (
     <div>
       <div className="font-body text-[9px] text-muted/70 uppercase tracking-wider">{label}</div>
@@ -290,7 +296,7 @@ function Metric({ label, value, dim }: { label: string; value: string; dim?: boo
   );
 }
 
-function StatBox({ label, value, sub }: { label: string; value: string; sub?: string }) {
+function StatBox({ label, value, sub }: { label: string; value: ReactNode; sub?: string }) {
   return (
     <div className="border border-line bg-surface rounded-card p-3">
       <div className="font-mono text-sm font-semibold text-ink tabular-nums">{value}</div>
@@ -336,7 +342,8 @@ export default function KalshiMarketDetailPage() {
         const m = (d.markets as KMarket[]).find(x => x.ticker === ticker);
         if (!m) { setMktError(`Market ${ticker} not found in current scan`); return; }
         setMkt(m);
-        if (!ticketPrice) setTicketPrice((m.book_mid ?? m.last_price).toFixed(3));
+        const defaultPrice = m.book_mid ?? m.last_price;
+        if (!ticketPrice && defaultPrice != null) setTicketPrice(defaultPrice.toFixed(3));
         if (!ticketSize)  setTicketSize(String(m.min_size));
       } catch (e: unknown) {
         setMktError(e instanceof Error ? e.message : String(e));
@@ -393,6 +400,11 @@ export default function KalshiMarketDetailPage() {
   const liveMid        = liveBestYesBid !== null && liveBestYesAsk !== null
     ? (liveBestYesBid + liveBestYesAsk) / 2
     : (mkt?.book_mid ?? mkt?.last_price ?? 0.5);
+  // Display-only — null (not the internal 0.5 layout fallback above) when
+  // there's no real mid, so the header never shows a fabricated 50¢.
+  const displayMid     = liveBestYesBid !== null && liveBestYesAsk !== null
+    ? liveMid
+    : mkt?.book_mid ?? mkt?.last_price ?? null;
   const liveSpread     = liveBestYesBid !== null && liveBestYesAsk !== null
     ? liveBestYesAsk - liveBestYesBid : null;
 
@@ -425,7 +437,11 @@ export default function KalshiMarketDetailPage() {
   const tsNum = parseFloat(ticketSize);
   const validInputs = mkt && !isNaN(tpNum) && tpNum > 0 && tpNum < 1 && !isNaN(tsNum) && tsNum > 0;
 
-  const est = validInputs && mkt ? calcKalshiReward({
+  // pool_day/total_period_usd/last_price/etc are redacted together as a set
+  // for free tier — pool_day is a reliable single proxy (see REDACTION_MAP).
+  const isRedacted = mkt != null && mkt.pool_day == null;
+
+  const est = (validInputs && mkt && mkt.pool_day != null) ? calcKalshiReward({
     userShares: tsNum,
     minSize:    mkt.min_size,
     yesBids,
@@ -439,7 +455,7 @@ export default function KalshiMarketDetailPage() {
   // ── Flags ─────────────────────────────────────────────────────────────────────
 
   const isTrap  = mkt?.flags.TRAP ?? false;
-  const isWarn  = mkt ? isWarnPrice(mkt.last_price) : false;
+  const isWarn  = mkt?.last_price != null ? isWarnPrice(mkt.last_price) : false;
   const isBurst = mkt?.flags.SHORT_BURST ?? false;
 
   // ── Error state ───────────────────────────────────────────────────────────────
@@ -490,10 +506,10 @@ export default function KalshiMarketDetailPage() {
               </h1>
               <div className="flex flex-wrap gap-2 items-center">
                 <span className="font-body text-[10px] px-1.5 py-px border border-line bg-bg-soft text-muted">
-                  pool ${mkt.pool_day.toFixed(0)}/day
+                  pool $<Redacted value={mkt.pool_day}>{v => v.toFixed(0)}</Redacted>/day
                 </span>
                 <span className="font-body text-[10px] px-1.5 py-px border border-line bg-bg-soft text-muted">
-                  ${mkt.total_period_usd.toFixed(0)} period total
+                  $<Redacted value={mkt.total_period_usd}>{v => v.toFixed(0)}</Redacted> period total
                 </span>
                 <span className="font-body text-[10px] px-1.5 py-px border border-line bg-bg-soft text-muted">
                   min {mkt.min_size.toLocaleString()} shares
@@ -502,7 +518,7 @@ export default function KalshiMarketDetailPage() {
                   {mkt.fee_discount_pct}% fee discount
                 </span>
                 <span className="font-body text-[10px] px-1.5 py-px border border-line bg-bg-soft text-muted">
-                  last {(mkt.last_price * 100).toFixed(0)}¢
+                  last <Redacted value={mkt.last_price}>{v => (v * 100).toFixed(0)}</Redacted>¢
                 </span>
                 <span className="font-body text-[10px] px-1.5 py-px border border-line bg-bg-soft text-muted">
                   {mkt.period_days.toFixed(1)}d period
@@ -541,6 +557,10 @@ export default function KalshiMarketDetailPage() {
         </div>
 
         {/* ── Two-panel: book + ticket ─────────────────────────────────────────── */}
+        {isRedacted ? (
+          <RedactedPanel label="The live order book, trade ticket calculator, and per-capital reward estimates are available on Pro" />
+        ) : (
+        <>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
 
           {/* ORDER BOOK */}
@@ -659,7 +679,7 @@ export default function KalshiMarketDetailPage() {
 
             {/* Depth footer */}
             <div className="px-3 py-2 border-t border-line font-body text-[10px] text-muted/70">
-              {mkt && `pool $${mkt.pool_day.toFixed(0)}/day · min ${mkt.min_size.toLocaleString()} shares`}
+              {mkt && <>pool $<Redacted value={mkt.pool_day}>{v => v.toFixed(0)}</Redacted>/day · min {mkt.min_size.toLocaleString()} shares</>}
               {' '}· Kalshi · read-only
             </div>
           </div>
@@ -770,7 +790,7 @@ export default function KalshiMarketDetailPage() {
                   )}
                   {isWarn && !isTrap && (
                     <div className="font-mono text-[11px] text-gold border border-gold/40/50 bg-gold/5/20 px-2 py-1.5">
-                      WARN: lopsided price ({fmtPFull(mkt.last_price)}) — adverse fill risk elevated on one side.
+                      WARN: lopsided price ({fmtPFull(mkt.last_price!)}) — adverse fill risk elevated on one side.
                     </div>
                   )}
 
@@ -864,13 +884,13 @@ export default function KalshiMarketDetailPage() {
                       {lv.aboveMin ? (
                         <>
                           <div className="font-mono text-sm font-semibold text-mint-deep tabular-nums">
-                            {fmtUsd(lv.netRewardDay ?? lv.grossRewardDay)}/day
+                            <Redacted value={lv.netRewardDay ?? lv.grossRewardDay}>{v => fmtUsd(v)}</Redacted>/day
                           </div>
                           <div className="font-body text-[10px] text-muted tabular-nums">
-                            {(lv.share * 100).toFixed(2)}% share
+                            <Redacted value={lv.share}>{v => `${(v * 100).toFixed(2)}%`}</Redacted> share
                           </div>
                           <div className="font-body text-[10px] text-muted/70 tabular-nums">
-                            {(lv.netYieldPct ?? lv.dayYieldPct).toFixed(2)}%/day
+                            <Redacted value={lv.netYieldPct ?? lv.dayYieldPct}>{v => `${v.toFixed(2)}%`}</Redacted>/day
                           </div>
                         </>
                       ) : (
@@ -890,13 +910,15 @@ export default function KalshiMarketDetailPage() {
 
             {/* Stats row */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <StatBox label="Pool $/day" value={`$${mkt.pool_day.toFixed(0)}`} />
-              <StatBox label="Period total" value={`$${mkt.total_period_usd.toFixed(0)}`}
+              <StatBox label="Pool $/day" value={<Redacted value={mkt.pool_day}>{v => `$${v.toFixed(0)}`}</Redacted>} />
+              <StatBox label="Period total" value={<Redacted value={mkt.total_period_usd}>{v => `$${v.toFixed(0)}`}</Redacted>}
                 sub={`${mkt.period_days.toFixed(1)}d period`} />
               <StatBox label="Min size" value={`${mkt.min_size.toLocaleString()} shares`} />
               <StatBox label="Fee discount" value={`${mkt.fee_discount_pct}%`} />
             </div>
           </>
+        )}
+        </>
         )}
 
         {/* How to read */}

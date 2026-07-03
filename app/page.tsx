@@ -127,8 +127,11 @@ function readLandingStats(): {
     // (the dashboard's own 'cashable' condition) is eligible for the landing.
     const { spreads } = getCryptoSpreadsData();
     const sane = spreads.find(s => !s.oneLegUnverified && !s.thinFlag && !s.depthThin);
-    if (sane) {
-      const sizing = calcSpreadSizing(sane, 1000, 1);
+    // This reads getCryptoSpreadsData() directly (not through the paid-gated
+    // /api/crypto route), so sane.netApy30d is never redacted here — the null
+    // check is just type hygiene after widening SpreadItem for the dashboard.
+    const sizing = sane ? calcSpreadSizing(sane, 1000, 1) : null;
+    if (sane && sizing && sane.netApy30d != null) {
       funding = {
         dayUsd1k:      Math.round(sizing.dayUsd * 100) / 100,
         coin:          sane.coin,

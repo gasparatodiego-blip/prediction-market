@@ -8,6 +8,7 @@ import StatCard from '@/app/components/ui/StatCard';
 import BlipRow from '@/app/components/ui/BlipRow';
 import EdgeChip, { type EdgeChipVariant } from '@/app/components/ui/EdgeChip';
 import PlatformLogo from '@/components/PlatformLogo';
+import { Redacted } from '@/app/components/ui/Redacted';
 import type {
   SnapshotResponse,
   SnapshotOpportunity,
@@ -300,7 +301,7 @@ function SettlementPanel({ settlement, legs }: { settlement: Settlement; legs: L
                     {reg}
                   </span>
                 </span>
-                <span className="text-right text-ink-2 tabular-nums font-medium">{leg.odd.toFixed(3)}</span>
+                <span className="text-right text-ink-2 tabular-nums font-medium"><Redacted value={leg.odd}>{v => v.toFixed(3)}</Redacted></span>
               </div>
             );
           })}
@@ -390,7 +391,7 @@ function OpportunityCard({ opp, reasons }: { opp: SnapshotOpportunity; reasons?:
         name={opp.eventName}
         sub={`${sportLabel(opp.sport)} · ${opp.type}${isStarted ? ' · started' : ` · in ${commenceRelative(opp.commenceTime)}`}`}
         chip={variant}
-        value={`+${opp.roiPct.toFixed(2)}%`}
+        value={<Redacted value={opp.roiPct}>{v => `+${v.toFixed(2)}%`}</Redacted>}
         unit={flagged ? `not cashable${reasonText ? ` · ${reasonText}` : ''}` : 'surebet ROI'}
         valueTone={flagged ? 'neutral' : variant === 'cashable' ? 'up' : 'neutral'}
       />
@@ -421,7 +422,7 @@ function OpportunityCard({ opp, reasons }: { opp: SnapshotOpportunity; reasons?:
             </span>
           )}
           <span className="font-body text-[11px] text-muted">
-            impl. sum {(opp.impliedSum * 100).toFixed(2)}%
+            impl. sum <Redacted value={opp.impliedSum}>{v => `${(v * 100).toFixed(2)}%`}</Redacted>
             {opp.numBookmakers != null && ` · ${opp.numBookmakers} books`}
           </span>
           {!isStarted && (
@@ -454,8 +455,10 @@ function OpportunityCard({ opp, reasons }: { opp: SnapshotOpportunity; reasons?:
                     {reg}
                   </span>
                 </span>
-                <span className="text-right text-ink-2 tabular-nums font-medium">{leg.odd.toFixed(3)}</span>
-                <span className="text-right text-mint-deep tabular-nums font-medium">{leg.stakePct.toFixed(1)}%</span>
+                <span className="text-right text-ink-2 tabular-nums font-medium"><Redacted value={leg.odd}>{v => v.toFixed(3)}</Redacted></span>
+                <span className="text-right text-mint-deep tabular-nums font-medium">
+                  <Redacted value={leg.stakePct}>{v => `${v.toFixed(1)}%`}</Redacted>
+                </span>
               </div>
             );
           })}
@@ -574,7 +577,7 @@ function QuarantineSection({ items }: { items: SnapshotQuarantine[] }) {
               >
                 <span className="text-muted text-[10px]">{sportLabel(q.sport)}</span>
                 <span className="text-ink-2">{q.eventName}</span>
-                <span className="text-gold tabular-nums ml-auto">+{q.roiPct.toFixed(2)}%</span>
+                <span className="text-gold tabular-nums ml-auto">+<Redacted value={q.roiPct}>{v => v.toFixed(2)}</Redacted>%</span>
                 <span className="text-muted text-[10px]">{q.reason}</span>
               </div>
             ))}
@@ -588,6 +591,7 @@ function QuarantineSection({ items }: { items: SnapshotQuarantine[] }) {
 // ── Scanned event card ────────────────────────────────────────────────────────
 
 function scannedChipVariant(ev: ScannedEvent): EdgeChipVariant | undefined {
+  if (ev.marginPct == null) return undefined; // redacted — don't overclaim cashable/paper
   const isNegative = ev.marginPct < 0;
   if (isNegative && ev.cashable === true) return 'cashable';
   if (isNegative && ev.cashable !== true) return 'paper';
@@ -598,10 +602,10 @@ function scannedChipVariant(ev: ScannedEvent): EdgeChipVariant | undefined {
 function ScannedEventCard({ ev }: { ev: ScannedEvent }) {
   const [open, setOpen] = useState(false);
   const isStarted  = new Date(ev.commenceTime).getTime() < Date.now();
-  const isNegative = ev.marginPct < 0;
+  const isNegative = ev.marginPct != null && ev.marginPct < 0;
   const isCashable = isNegative && ev.cashable === true;
   const isPaperArb = isNegative && !isCashable;
-  const isNearMiss = !isNegative && ev.marginPct < 1.5;
+  const isNearMiss = ev.marginPct != null && !isNegative && ev.marginPct < 1.5;
 
   const paperArbReason = isPaperArb ? formatExecReasons(ev.execReasons ?? []) : '';
   const chip      = scannedChipVariant(ev);
@@ -624,7 +628,7 @@ function ScannedEventCard({ ev }: { ev: ScannedEvent }) {
         name={ev.eventName}
         sub={`${ev.sportLabel} · ${ev.type} · ${ev.booksCount} books${isStarted ? ' · started' : ` · in ${commenceRelative(ev.commenceTime)}`}${ev.outliersRemoved ? ' · outlier-filtered' : ''}`}
         chip={chip}
-        value={`${ev.marginPct.toFixed(2)}%`}
+        value={<Redacted value={ev.marginPct}>{v => `${v.toFixed(2)}%`}</Redacted>}
         unit={unitLabel}
         valueTone={isCashable ? 'up' : 'neutral'}
       />
@@ -653,7 +657,7 @@ function ScannedEventCard({ ev }: { ev: ScannedEvent }) {
                     {reg}
                   </span>
                 </span>
-                <span className="text-right text-ink-2 tabular-nums font-medium">{leg.odd.toFixed(3)}</span>
+                <span className="text-right text-ink-2 tabular-nums font-medium"><Redacted value={leg.odd}>{v => v.toFixed(3)}</Redacted></span>
               </div>
             );
           })}
@@ -661,7 +665,7 @@ function ScannedEventCard({ ev }: { ev: ScannedEvent }) {
 
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <span className="font-body text-[11px] text-muted/60">
-            impl. sum {(ev.impliedSum * 100).toFixed(2)}%
+            impl. sum <Redacted value={ev.impliedSum}>{v => `${(v * 100).toFixed(2)}%`}</Redacted>
           </span>
           {ev.settlement && (
             <button
@@ -817,7 +821,7 @@ export default function SportsSnapshotPage() {
   const filteredEvents = effectiveSport === 'all'
     ? scannedEvs
     : scannedEvs.filter(ev => ev.sport === effectiveSport);
-  const sortedEvents = [...filteredEvents].sort((a, b) => a.marginPct - b.marginPct);
+  const sortedEvents = [...filteredEvents].sort((a, b) => (a.marginPct ?? 0) - (b.marginPct ?? 0));
 
   const sportsWithEvents = summary?.sportsScanned.filter((s: SportScanEntry) => s.eventCount > 0) ?? [];
 

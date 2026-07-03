@@ -13,6 +13,7 @@ import {
   calcSpreadSizing,
 } from '@/lib/spread-types';
 import { APY_CAP } from '@/lib/honest-display';
+import { Redacted, RedactedPanel } from '@/app/components/ui/Redacted';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -427,7 +428,7 @@ function SlipAwareCard({ s, capital, leverage }: { s: SpreadItem; capital: numbe
                 : pt.state === 'YELLOW' ? 'text-gold'
                 : 'text-coral-ink'
               }`} style={{ fontSize: 22 }}>
-                {overCap ? '~' : '≈'} {pt.netDayUsd != null ? fmtDayUsd(pt.netDayUsd) : '—'}
+                {overCap ? '~' : '≈'} <Redacted value={pt.netDayUsd}>{v => fmtDayUsd(v)}</Redacted>
               </div>
               {overCap && (
                 <div className="font-body text-[11px] text-gold/80">
@@ -444,15 +445,15 @@ function SlipAwareCard({ s, capital, leverage }: { s: SpreadItem; capital: numbe
               </div>
               {/* Annualized % — demoted, capped, labeled */}
               <div className="font-body text-[11px] text-muted">
-                {pt.netDayUsd != null && pt.size > 0 ? (
-                  <>
-                    {fmtApy(Math.min(pt.netDayUsd * 365 / pt.size * 100, APY_CAP))}
-                    {pt.netDayUsd * 365 / pt.size * 100 > APY_CAP && ' (capped)'}
-                    {' '}<span className="text-muted/70">est. %/yr — run-rate, not guaranteed</span>
-                  </>
-                ) : (
-                  <span className="text-muted/70">est. %/yr — run-rate, not guaranteed</span>
-                )}
+                {pt.size > 0 ? (
+                  <Redacted value={pt.netDayUsd}>
+                    {v => {
+                      const annualPct = v * 365 / pt.size * 100;
+                      return <>{fmtApy(Math.min(annualPct, APY_CAP))}{annualPct > APY_CAP && ' (capped)'}</>;
+                    }}
+                  </Redacted>
+                ) : null}
+                {' '}<span className="text-muted/70">est. %/yr — run-rate, not guaranteed</span>
               </div>
               {(s.greenCapacityUsd ?? 0) === 0 && (
                 <div className="font-body text-[11px] text-muted leading-snug">
@@ -462,6 +463,8 @@ function SlipAwareCard({ s, capital, leverage }: { s: SpreadItem; capital: numbe
             </>
           ) : null}
         </div>
+      ) : s.netApy30d == null ? (
+        <RedactedPanel label="Live position sizing & slippage curve are available on Pro" className="!py-4" />
       ) : (
         <div className="p-3 bg-bg-soft/60 rounded-[8px] font-body text-[12px] text-muted">
           Depth data pending — check detail page for estimates
@@ -521,7 +524,7 @@ function OpportunityCards({
   const userSize = capital * leverage / 2;
   const sorted = [...spreads].sort((a, b) => {
     const as = slipSortScoreAtSize(a, userSize), bs = slipSortScoreAtSize(b, userSize);
-    return as !== bs ? bs - as : b.netApy30d - a.netApy30d;
+    return as !== bs ? bs - as : (b.netApy30d ?? 0) - (a.netApy30d ?? 0);
   });
 
   // Best spread per unique coin (post-sort → best green-capacity coin first)
@@ -582,9 +585,6 @@ function OpportunityCards({
       {view === 'list' && (
         <div className="divide-y divide-line/15">
           {visible.map(s => {
-            const dayUsd  = N0 > 0 ? (N0 * s.netApy30d / 100) / 365 : null;
-            const feesUsd = N0 > 0 ? N0 * s.totalFeesPct / 100 : null;
-            const rocPct  = capital > 0 ? leverage * s.netApy30d / 2 : null;
             const tgHref  = `https://t.me/Gaspola_bot?start=fund_${s.coin}`;
             return (
               <div
@@ -609,21 +609,29 @@ function OpportunityCards({
 
                 {/* $/day — dominant value */}
                 <span className="font-mono tabular-nums ml-auto sm:ml-0">
-                  {dayUsd !== null && capital > 0 ? (
-                    <>
-                      <span className={`font-display font-bold ${s.oneLegUnverified ? 'text-muted' : 'text-mint-deep'}`} style={{ fontSize: 14 }}>
-                        ≈ {fmtDayUsd(dayUsd)}
-                      </span>
-                      {s.oneLegUnverified ? (
-                        <span className="font-body text-[11px] text-muted ml-2">
-                          1 leg predicted — rate unconfirmed
-                        </span>
-                      ) : (
-                        feesUsd !== null && feesUsd > 0 && (
-                          <span className="font-body text-[11px] text-muted ml-2">fees back in {s.breakevenDays}d</span>
-                        )
-                      )}
-                    </>
+                  {capital > 0 ? (
+                    <Redacted value={s.netApy30d}>
+                      {netApy30d => {
+                        const dayUsd  = (N0 * netApy30d / 100) / 365;
+                        const feesUsd = s.totalFeesPct != null ? N0 * s.totalFeesPct / 100 : null;
+                        return (
+                          <>
+                            <span className={`font-display font-bold ${s.oneLegUnverified ? 'text-muted' : 'text-mint-deep'}`} style={{ fontSize: 14 }}>
+                              ≈ {fmtDayUsd(dayUsd)}
+                            </span>
+                            {s.oneLegUnverified ? (
+                              <span className="font-body text-[11px] text-muted ml-2">
+                                1 leg predicted — rate unconfirmed
+                              </span>
+                            ) : (
+                              feesUsd !== null && feesUsd > 0 && (
+                                <span className="font-body text-[11px] text-muted ml-2">fees back in {s.breakevenDays}d</span>
+                              )
+                            )}
+                          </>
+                        );
+                      }}
+                    </Redacted>
                   ) : (
                     <span className="font-body text-[11px] text-muted">set capital above</span>
                   )}
@@ -631,9 +639,14 @@ function OpportunityCards({
 
                 {/* Annualized % — demoted, capped */}
                 <span className="font-body text-[11px] text-muted tabular-nums">
-                  {rocPct !== null
-                    ? `${fmtApy(Math.min(rocPct, APY_CAP))}${rocPct > APY_CAP ? ' (capped)' : ''} est. %/yr · run-rate, not guaranteed`
-                    : '—'}
+                  {capital > 0 ? (
+                    <Redacted value={s.netApy30d}>
+                      {netApy30d => {
+                        const rocPct = leverage * netApy30d / 2;
+                        return <>{fmtApy(Math.min(rocPct, APY_CAP))}{rocPct > APY_CAP ? ' (capped)' : ''} est. %/yr · run-rate, not guaranteed</>;
+                      }}
+                    </Redacted>
+                  ) : '—'}
                 </span>
 
                 {s.depthThin && s.depthNote && (
@@ -836,16 +849,21 @@ function SpreadTable({
                             </span>
                           </div>
                         ) : (
-                          <span className={`text-base font-bold ${s.netApy30d > 0 ? 'text-mint-deep' : 'text-coral-ink/70'}`}>
-                            {fmtApy(s.netApy30d)}
+                          <span className={`text-base font-bold ${(s.netApy30d ?? 0) > 0 ? 'text-mint-deep' : 'text-coral-ink/70'}`}>
+                            <Redacted value={s.netApy30d}>{v => fmtApy(v)}</Redacted>
                           </span>
                         )}
                       </td>
-                      <td className="px-3 py-2.5 tabular-nums text-[10px] text-muted">{fmtApy(s.grossApy)}</td>
-                      <td className="px-3 py-2.5 tabular-nums text-muted text-[10px] whitespace-nowrap">
-                        {s.totalFeesPct.toFixed(2)}%{s.hasDexLeg && <span className="text-mint ml-1">†</span>}
+                      <td className="px-3 py-2.5 tabular-nums text-[10px] text-muted">
+                        <Redacted value={s.grossApy}>{v => fmtApy(v)}</Redacted>
                       </td>
-                      <td className="px-3 py-2.5 tabular-nums text-ink-2 whitespace-nowrap">{s.breakevenDays}d</td>
+                      <td className="px-3 py-2.5 tabular-nums text-muted text-[10px] whitespace-nowrap">
+                        <Redacted value={s.totalFeesPct}>{v => `${v.toFixed(2)}%`}</Redacted>
+                        {s.hasDexLeg && <span className="text-mint ml-1">†</span>}
+                      </td>
+                      <td className="px-3 py-2.5 tabular-nums text-ink-2 whitespace-nowrap">
+                        <Redacted value={s.breakevenDays}>{v => `${v}d`}</Redacted>
+                      </td>
                       <td className="px-3 py-2.5">
                         <span className={`px-1.5 py-[2px] border text-[9px] uppercase tracking-widest font-body ${statusBadgeCls(s.status)}`}>
                           {s.status}
@@ -1114,9 +1132,6 @@ export default function CryptoPage() {
   const cexArbItems  = data?.cexArb ?? [];
 
   const N0         = capital * leverage / 2;
-  const bestDayUsd = filteredPairs.length > 0 && capital > 0
-    ? (N0 * filteredPairs[0].netApy30d / 100) / 365
-    : null;
 
   return (
     <div className="max-w-[1200px] mx-auto px-4 py-6">
@@ -1217,15 +1232,20 @@ export default function CryptoPage() {
                     </div>
                   ))}
 
-                  {bestDayUsd !== null ? (
+                  {filteredPairs.length > 0 ? (
                     <div className="px-2.5 py-1 border border-mint/30 bg-mint-tint/30 rounded-md font-body text-[11px] text-mint-deep">
-                      Best: <span className="font-bold">{fmtDayUsd(bestDayUsd)}</span>
-                      <span className="text-[10px] text-mint-deep/60 ml-1">on ${capital.toLocaleString()}</span>
-                    </div>
-                  ) : filteredPairs.length > 0 ? (
-                    <div className="px-2.5 py-1 border border-mint/30 bg-mint-tint/30 rounded-md font-body text-[11px] text-mint-deep"
-                      title="Theoretical ceiling — rate changes hourly.">
-                      Best ceiling: <span className="font-bold">{fmtApy(Math.min(filteredPairs[0].netApy30d, APY_CAP))}</span>
+                      <Redacted value={filteredPairs[0].netApy30d}>
+                        {netApy30d => capital > 0 ? (
+                          <>
+                            Best: <span className="font-bold">{fmtDayUsd((N0 * netApy30d / 100) / 365)}</span>
+                            <span className="text-[10px] text-mint-deep/60 ml-1">on ${capital.toLocaleString()}</span>
+                          </>
+                        ) : (
+                          <span title="Theoretical ceiling — rate changes hourly.">
+                            Best ceiling: <span className="font-bold">{fmtApy(Math.min(netApy30d, APY_CAP))}</span>
+                          </span>
+                        )}
+                      </Redacted>
                     </div>
                   ) : null}
 

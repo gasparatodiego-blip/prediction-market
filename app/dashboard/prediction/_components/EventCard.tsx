@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { Lock, ExternalLink, Copy, Check, KeyRound, ShieldAlert } from 'lucide-react';
 import PlatformLogo from '@/components/PlatformLogo';
+import { Redacted } from '@/app/components/ui/Redacted';
 import { AUTO_EXECUTE_ENABLED } from '@/lib/flags';
 import type { EventBucket, EventPlatform, LockableEdge, MatchedOpportunity, Opportunity, Leg } from './types';
 import { platformLabel, formatCents, formatVolume, formatResolutionDate } from './format';
@@ -23,7 +24,8 @@ export function findValidMatch(edge: LockableEdge, valid: Opportunity[]): Opport
   return valid.find(o => {
     const plats = new Set([o.lowMarket.platform, o.highMarket.platform]);
     if (!(plats.has(edge.yesPlatform) && plats.has(edge.noPlatform))) return false;
-    return Math.abs(o.roi - mo.roi) < 0.05 && Math.abs(o.spread - mo.spread) < 0.05;
+    return o.roi != null && o.spread != null
+      && Math.abs(o.roi - mo.roi) < 0.05 && Math.abs(o.spread - mo.spread) < 0.05;
   }) ?? null;
 }
 
@@ -253,11 +255,11 @@ export function PlatformComparatorTable({ event }: { event: EventBucket }) {
                   </div>
                 </td>
                 <td className={`px-1 py-1.5 font-mono text-xs tabular-nums ${isBestYes ? 'text-mint-deep font-semibold' : 'text-ink-2'}`}>
-                  {formatCents(p.yesPrice)}
+                  <Redacted value={p.yesPrice}>{v => formatCents(v)}</Redacted>
                   {isBestYes && <span className="ml-1.5 font-body font-bold text-[9px] text-mint-deep align-middle">BEST</span>}
                 </td>
                 <td className={`px-1 py-1.5 font-mono text-xs tabular-nums ${isBestNo ? 'text-mint-deep font-semibold' : 'text-ink-2'}`}>
-                  {formatCents(p.noPrice)}
+                  <Redacted value={p.noPrice}>{v => formatCents(v)}</Redacted>
                   {isBestNo && <span className="ml-1.5 font-body font-bold text-[9px] text-mint-deep align-middle">BEST</span>}
                 </td>
                 <td className="hidden sm:table-cell px-1 py-1.5 font-mono text-xs text-muted text-right tabular-nums">{formatVolume(p)}</td>
@@ -270,9 +272,11 @@ export function PlatformComparatorTable({ event }: { event: EventBucket }) {
                 Market median · reference only · not executable
               </span>
             </td>
-            <td className="px-1 py-1.5 font-mono text-xs text-muted tabular-nums">{formatCents(event.referenceMedian.yesPrice)}</td>
             <td className="px-1 py-1.5 font-mono text-xs text-muted tabular-nums">
-              {event.referenceMedian.yesPrice != null ? formatCents(1 - event.referenceMedian.yesPrice) : '—'}
+              <Redacted value={event.referenceMedian.yesPrice}>{v => formatCents(v)}</Redacted>
+            </td>
+            <td className="px-1 py-1.5 font-mono text-xs text-muted tabular-nums">
+              <Redacted value={event.referenceMedian.yesPrice}>{v => formatCents(1 - v)}</Redacted>
             </td>
             <td className="hidden sm:table-cell px-1 py-1.5 text-right text-muted">—</td>
           </tr>

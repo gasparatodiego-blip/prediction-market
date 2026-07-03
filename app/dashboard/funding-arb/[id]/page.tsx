@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import PlatformLogo from '@/components/PlatformLogo';
+import { Redacted, RedactedPanel } from '@/app/components/ui/Redacted';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -37,10 +38,13 @@ interface SpreadItem {
   shortIsDex:         boolean;
   longIsDex:          boolean;
   hasDexLeg:          boolean;
-  grossApy:           number;
-  netApy30d:          number;
-  totalFeesPct:       number;
-  breakevenDays:      number;
+  // null on free tier (server-side redaction) — see lib/paid-gating.ts.
+  // netApy30d is a reliable single proxy for "is this row's derived-edge
+  // data visible" — frShort/frLong/markPrice stay real for everyone.
+  grossApy:           number | null;
+  netApy30d:          number | null;
+  totalFeesPct:       number | null;
+  breakevenDays:      number | null;
   status:             'HARVEST' | 'CAUTION' | 'MARGINAL';
   liquidityTier:      string | null;
   capacityUsd:        number | null;
@@ -182,6 +186,11 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
   const spread = data?.spreads?.find(
     s => s.coin === coin && s.shortExchange === shortExchange && s.longExchange === longExchange
   ) ?? null;
+  // grossApy/netApy30d/totalFeesPct/breakevenDays are redacted together as a
+  // set for free tier — netApy30d is a reliable single proxy (see spread.netApy30d
+  // comment above). The whole sizing calculator + execution guide gates on this,
+  // same pattern as app/dashboard/prediction/[id]/page.tsx's isRedacted.
+  const isRedacted = spread != null && spread.netApy30d == null;
 
   const shortMark = data?.futures?.[shortExchange]?.[coin]?.markPrice ?? null;
   const longMark  = data?.futures?.[longExchange]?.[coin]?.markPrice  ?? null;
@@ -193,34 +202,35 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
     ? notionalPerLeg / markPrice
     : null;
 
-  // P&L estimates
-  const netYrUsd  = spread ? notionalPerLeg * spread.netApy30d / 100 : null;
+  // P&L estimates — all null when spread is absent OR redacted (never
+  // computed off a null-coerced-to-0 field; see isRedacted above)
+  const netYrUsd  = spread && spread.netApy30d   != null ? notionalPerLeg * spread.netApy30d / 100 : null;
   const dayUsd    = netYrUsd != null ? netYrUsd / 365 : null;
-  const feesUsd   = spread ? notionalPerLeg * spread.totalFeesPct / 100 : null;
-  const net30dUsd = (netYrUsd != null && feesUsd != null && spread)
+  const feesUsd   = spread && spread.totalFeesPct != null ? notionalPerLeg * spread.totalFeesPct / 100 : null;
+  const net30dUsd = (netYrUsd != null && feesUsd != null && spread && spread.grossApy != null)
     ? notionalPerLeg * spread.grossApy / 100 * 30 / 365 - feesUsd
     : null;
 
-  // Per-leg fee breakdown (taker)
+  // Per-leg fee breakdown (taker) — only meaningful (and only rendered) when !isRedacted
   const shortTakerPct  = takerFeePct(shortExchange);
   const longTakerPct   = takerFeePct(longExchange);
   const shortMakerPct  = makerFeePct(shortExchange);
   const longMakerPct   = makerFeePct(longExchange);
   const makerTotalPct  = (shortMakerPct + longMakerPct) * 2;
-  const makerSavingPct = spread ? spread.totalFeesPct - makerTotalPct : 0;
+  const makerSavingPct = spread && spread.totalFeesPct != null ? spread.totalFeesPct - makerTotalPct : 0;
   const makerSavingUsd = capital > 0 ? notionalPerLeg * makerSavingPct / 100 : 0;
 
   // Breakeven expressed in funding intervals
-  const beShortIntervals = spread
+  const beShortIntervals = spread && spread.breakevenDays != null
     ? Math.ceil(spread.breakevenDays * 24 / spread.intervalHoursShort)
     : 0;
-  const beLongIntervals  = spread
+  const beLongIntervals  = spread && spread.breakevenDays != null
     ? Math.ceil(spread.breakevenDays * 24 / spread.intervalHoursLong)
     : 0;
 
   // MARGINAL boundary — gross spread below which fees take >paybackDays to recover
   // Formula: totalFeesPct × (365 / paybackDays) = the APY at which breakeven = paybackDays
-  const marginalBoundary   = spread ? +(spread.totalFeesPct * 365 / paybackDays).toFixed(1) : 5;
+  const marginalBoundary   = spread && spread.totalFeesPct != null ? +(spread.totalFeesPct * 365 / paybackDays).toFixed(1) : 5;
   const effectiveThreshold = marginalBoundary;
 
   const tgFollowHref = `https://t.me/Gaspola_bot?start=fund_${coin}`;
@@ -330,12 +340,14 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
               </span>
               <span>
                 <span className="text-muted">Gross spread: </span>
-                <span className="text-ink tabular-nums font-mono">{fmtApy(spread.grossApy)}</span>
+                <span className="text-ink tabular-nums font-mono">
+                  <Redacted value={spread.grossApy}>{v => fmtApy(v)}</Redacted>
+                </span>
               </span>
               <span>
                 <span className="text-muted">Net (30d proj): </span>
-                <span className={`tabular-nums font-mono font-medium ${spread.netApy30d > 0 ? 'text-mint-deep' : 'text-coral-ink'}`}>
-                  {fmtApy(spread.netApy30d)}
+                <span className={`tabular-nums font-mono font-medium ${(spread.netApy30d ?? 0) > 0 ? 'text-mint-deep' : 'text-coral-ink'}`}>
+                  <Redacted value={spread.netApy30d}>{v => fmtApy(v)}</Redacted>
                 </span>
               </span>
             </div>
@@ -343,6 +355,19 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
               <div className="mt-2 text-[9px] text-gold">Data is {data.staleMinutes}m old — rates may have shifted.</div>
             )}
           </div>
+
+          {/* Everything below (sizing calculator, slip slider, execution guide,
+              exit triggers, settlement detail, risks, alert thresholds) derives
+              from the same redacted-together field set — one gate, matching
+              prediction/[id]/page.tsx's isRedacted pattern, rather than ~30
+              individually-blurred numbers across a dense multi-section guide. */}
+          {isRedacted ? (
+            <RedactedPanel
+              label="The full position-sizing calculator, execution guide, breakeven math and exit-alert thresholds are available on Pro"
+              className="mt-4 mb-6"
+            />
+          ) : (
+          <>
 
           {/* Capital & leverage input */}
           <div className="mb-5 px-4 py-3 bg-surface border border-line rounded-card">
@@ -545,7 +570,7 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
                   ))}
                   <div className="flex items-baseline gap-2 border-t border-line/30 pt-1.5 mt-1">
                     <span className="text-ink-2 font-medium">Total</span>
-                    <span className="text-muted/50 text-[9px] ml-1">({spread.totalFeesPct.toFixed(3)}% of notional/leg)</span>
+                    <span className="text-muted/50 text-[9px] ml-1">({spread.totalFeesPct!.toFixed(3)}% of notional/leg)</span>
                     <span className="tabular-nums text-coral-ink font-medium ml-auto">
                       {feesUsd != null ? fmtUsd(-feesUsd) : '—'}
                     </span>
@@ -779,12 +804,12 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
               </div>
               <div>
                 <div className="font-body text-[9px] uppercase tracking-widest text-muted mb-1">Current gross spread</div>
-                <div className={`font-mono text-[18px] font-bold tabular-nums ${spread.grossApy > marginalBoundary ? 'text-mint-deep' : 'text-coral-ink'}`}>
-                  {fmtApy(spread.grossApy)}
+                <div className={`font-mono text-[18px] font-bold tabular-nums ${spread.grossApy! > marginalBoundary ? 'text-mint-deep' : 'text-coral-ink'}`}>
+                  {fmtApy(spread.grossApy!)}
                 </div>
                 <div className="font-body text-[9px] text-muted/70 mt-0.5">
-                  {spread.grossApy > marginalBoundary
-                    ? `+${(spread.grossApy - marginalBoundary).toFixed(1)}%/yr above exit trigger`
+                  {spread.grossApy! > marginalBoundary
+                    ? `+${(spread.grossApy! - marginalBoundary).toFixed(1)}%/yr above exit trigger`
                     : 'below exit trigger — consider closing'
                   }
                 </div>
@@ -794,11 +819,11 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
             <div className="border-t border-line/20 pt-3 font-body text-[9px] text-muted leading-relaxed space-y-1.5">
               <p>
                 <span className="text-ink-2">Breakeven formula: </span>
-                round-trip fees ({spread.totalFeesPct.toFixed(3)}%) ÷ gross spread ({spread.grossApy.toFixed(2)}%/yr) × 365 = {spread.breakevenDays}d
+                round-trip fees ({spread.totalFeesPct!.toFixed(3)}%) ÷ gross spread ({spread.grossApy!.toFixed(2)}%/yr) × 365 = {spread.breakevenDays}d
               </p>
               <p>
                 <span className="text-ink-2">Exit threshold: </span>
-                {spread.totalFeesPct.toFixed(3)}% × (365 ÷ {paybackDays}d) = {marginalBoundary.toFixed(1)}%/yr — the gross spread at which breakeven extends past {paybackDays} days. Adjust the payback period in the alert section below.
+                {spread.totalFeesPct!.toFixed(3)}% × (365 ÷ {paybackDays}d) = {marginalBoundary.toFixed(1)}%/yr — the gross spread at which breakeven extends past {paybackDays} days. Adjust the payback period in the alert section below.
               </p>
               <p>
                 <span className="text-ink-2">Recommended exit when: </span>
@@ -837,7 +862,7 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
               Rate: <span className="font-mono tabular-nums">{fmtRate(spread.frLong, spread.intervalHoursLong)}</span>.
             </p>
             <p className="text-muted/60">
-              The net yield ({fmtApy(spread.netApy30d)}) is annualized assuming current rates hold 30 days.
+              The net yield ({fmtApy(spread.netApy30d!)}) is annualized assuming current rates hold 30 days.
               Actual income is per-interval and differs as rates move.
             </p>
           </div>
@@ -866,7 +891,7 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
               },
               {
                 label: 'Round-trip fees',
-                body: `Total taker cost: ${spread.totalFeesPct.toFixed(3)}% of notional (open short ${shortTakerPct}% + open long ${longTakerPct}% + close short ${shortTakerPct}% + close long ${longTakerPct}%). Already subtracted from the net estimate. Recovered in ~${spread.breakevenDays}d at current spread.`,
+                body: `Total taker cost: ${spread.totalFeesPct!.toFixed(3)}% of notional (open short ${shortTakerPct}% + open long ${longTakerPct}% + close short ${shortTakerPct}% + close long ${longTakerPct}%). Already subtracted from the net estimate. Recovered in ~${spread.breakevenDays}d at current spread.`,
               },
               {
                 label: 'Exchange / counterparty',
@@ -938,7 +963,7 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
             </div>
             {spread && (
               <p className="font-body text-[9px] text-muted/50 mb-3 leading-relaxed">
-                {spread.totalFeesPct.toFixed(3)}% fees × (365 ÷ {paybackDays}d) ={' '}
+                {spread.totalFeesPct!.toFixed(3)}% fees × (365 ÷ {paybackDays}d) ={' '}
                 <span className="text-gold font-mono">{effectiveThreshold.toFixed(1)}%/yr</span>
                 {' '}— alert triggers when gross spread drops below this.
               </p>
@@ -962,6 +987,9 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
               This alert does not place, modify, or cancel any position on any exchange.
             </p>
           </div>
+
+          </>
+          )}
 
           {/* Disclaimer */}
           <div className="px-4 py-3 border border-line/30 bg-bg-soft/10 rounded-card font-body text-[9px] text-muted/50 leading-relaxed">
