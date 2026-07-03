@@ -21,6 +21,7 @@ const LOW_SAMPLE_THRESHOLD = 30;  // below this show a warning even if above the
 const TOP_N_PER_CAT        = 25;
 const MAX_TRADES_PER_MKT = 400;           // 8 pages of 50
 const MAX_CIDS_CACHED   = 1500;          // memory bound
+const MAX_WALLETS_CACHED = 5000;         // memory bound — mirrors MAX_CIDS_CACHED
 const WINDOW_DAYS       = 730;           // 2-year window (covers 2024 election, 2025 sports)
 const MM_THRESHOLD_PCT  = 50;            // ≥50% two-sided markets → MM / NEUTRAL
 const CLASSIFY_TOP_N    = 300;           // wallet-centric classification for top-N by volume
@@ -64,6 +65,7 @@ async function migrateAddTwoSided() {
         if (info.durationMin != null) rec.durationMin = info.durationMin;
         if (d.twoSided) rec.twoSided = true;
         wallets[addr].markets.push(rec);
+        wallets[addr].lastSeen = Date.now();
       }
     }
     processedCids[cid].twoSidedChecked = true;
@@ -241,6 +243,55 @@ function computePnL(trades, winner) {
 let processedCids = {};
 let wallets       = {};
 
+// A wallet can only ever appear on the leaderboard once it has at least
+// MIN_MARKETS_RANK resolved markets inside the WINDOW_DAYS window — this is
+// the same gate buildLeaderboard() applies (see the `recent.length <
+// MIN_MARKETS_RANK` check below). Anything under that can be evicted for
+// free: it was never going to rank. (LOW_SAMPLE_THRESHOLD is not a gate —
+// it only flags low-confidence entries that already rank — so it's not used
+// here; using it as an eviction cutoff would change who qualifies.)
+function isAboveFloor(w) {
+  const cutoff = Date.now() / 1000 - WINDOW_DAYS * 86400;
+  const recentCount = (w.markets || []).filter(m => !m.ts || m.ts > cutoff).length;
+  return recentCount >= MIN_MARKETS_RANK;
+}
+
+function walletLastSeen(w) {
+  if (w.lastSeen) return w.lastSeen;
+  const maxTs = (w.markets || []).reduce((mx, m) => (m.ts ? Math.max(mx, m.ts) : mx), 0);
+  return maxTs ? maxTs * 1000 : 0;
+}
+
+// Bound the wallets cache to MAX_WALLETS_CACHED. Never evicts a wallet
+// currently in the computed top-N output (categories or mmCategories), so
+// this cannot change today's leaderboard. Among the rest, evicts
+// below-floor wallets first (can never rank), then least-recently-seen.
+function evictWallets() {
+  const total = Object.keys(wallets).length;
+  if (total <= MAX_WALLETS_CACHED) return 0;
+
+  const { categories, mmCategories } = buildLeaderboard();
+  const protectedAddrs = new Set();
+  for (const list of [...Object.values(categories), ...Object.values(mmCategories)]) {
+    for (const e of list) protectedAddrs.add(e.wallet);
+  }
+
+  const evictable  = Object.keys(wallets).filter(a => !protectedAddrs.has(a));
+  const belowFloor = evictable.filter(a => !isAboveFloor(wallets[a]))
+    .sort((a, b) => walletLastSeen(wallets[a]) - walletLastSeen(wallets[b]));
+  const aboveFloor = evictable.filter(a => isAboveFloor(wallets[a]))
+    .sort((a, b) => walletLastSeen(wallets[a]) - walletLastSeen(wallets[b]));
+
+  const toEvict = [...belowFloor, ...aboveFloor];
+  const overBy  = total - MAX_WALLETS_CACHED;
+  let evicted   = 0;
+  for (let i = 0; i < overBy && i < toEvict.length; i++) {
+    delete wallets[toEvict[i]];
+    evicted++;
+  }
+  return evicted;
+}
+
 function loadCache() {
   try {
     const c = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8'));
@@ -251,6 +302,15 @@ function loadCache() {
     processedCids = {};
     wallets       = {};
     console.log('[LB] No cache — cold start');
+    return;
+  }
+
+  const before = Object.keys(wallets).length;
+  if (before > MAX_WALLETS_CACHED) {
+    evictWallets();
+    const after = Object.keys(wallets).length;
+    console.log(`[LB] wallets cache trimmed ${before} -> ${after} on load`);
+    saveCache();
   }
 }
 
@@ -265,6 +325,11 @@ function saveCache() {
   const cidEntries = Object.entries(processedCids).sort((a, b) => (b[1].processedAt || 0) - (a[1].processedAt || 0));
   if (cidEntries.length > MAX_CIDS_CACHED) {
     processedCids = Object.fromEntries(cidEntries.slice(0, MAX_CIDS_CACHED));
+  }
+  // Trim wallets to MAX_WALLETS_CACHED (below-floor first, then LRU) — memory bound
+  const walletsEvicted = evictWallets();
+  if (walletsEvicted > 0) {
+    console.log(`[LB] wallets cache trimmed -${walletsEvicted} (${Object.keys(wallets).length} remain)`);
   }
   atomicWrite(CACHE_FILE, { processedCids, wallets, savedAt: new Date().toISOString() });
 }
@@ -484,6 +549,7 @@ async function processMarket(cid, winner, category, vol, durationMin) {
     if (durationMin  != null) rec.durationMin = durationMin;
     if (d.twoSided)            rec.twoSided   = true;
     wallets[addr].markets.push(rec);
+    wallets[addr].lastSeen = Date.now();
   }
 
   processedCids[cid] = { category, winner, vol, durationMin, processedAt: Date.now(), twoSidedChecked: true };
