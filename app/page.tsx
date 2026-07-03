@@ -6,7 +6,7 @@ import EdgeradarNav from '@/app/components/EdgeradarNav';
 import Pill         from '@/app/components/ui/Pill';
 import Eyebrow      from '@/app/components/ui/Eyebrow';
 import SectionHeading from '@/app/components/ui/SectionHeading';
-import EdgeChip, { type EdgeChipVariant } from '@/app/components/ui/EdgeChip';
+import { type EdgeChipVariant } from '@/app/components/ui/EdgeChip';
 import RadarMark    from '@/app/components/ui/RadarMark';
 import RadarScope   from '@/app/components/ui/RadarScope';
 import BlipRow      from '@/app/components/ui/BlipRow';
@@ -25,41 +25,6 @@ const BTN_BASE =
 const BTN_PRIMARY_LG = 'bg-mint-deep text-white shadow-card hover:bg-mint px-6 py-3 text-base gap-2';
 const BTN_GHOST_LG   = 'border border-line text-ink-2 hover:border-mint hover:text-mint-deep px-6 py-3 text-base gap-2';
 const BTN_PRIMARY_MD = 'bg-mint-deep text-white shadow-card hover:bg-mint px-4 py-2 text-sm gap-1.5';
-
-// ── Six ways data ──────────────────────────────────────────────────────────
-const SIX_WAYS = [
-  {
-    chip:  'cashable' as const,
-    title: 'Prediction arbitrage',
-    desc:  'Same-outcome contracts priced differently on Kalshi and Polymarket. Both legs checked, capacity-confirmed. A green badge means you can actually fill it.',
-  },
-  {
-    chip:  'cashable' as const,
-    title: 'Funding spreads',
-    desc:  "Earn perpetual funding — the recurring payment between long and short positions in crypto futures — by holding long spot and short perp, or the reverse. Rates reset every 8 hours; no lockup, but no guarantee of tomorrow's rate.",
-  },
-  {
-    chip:  'cashable' as const,
-    title: 'Cash & carry',
-    desc:  'Lock in the basis — the price gap between spot and a dated futures contract. Yield is fixed at expiry — most contracts are coin-margined, so the USD return drifts with spot price.',
-  },
-  {
-    chip:  'cashable' as const,
-    title: 'Liquidity rewards',
-    desc:  'Earn real maker rewards for providing liquidity on Polymarket and Kalshi. We show net estimated reward/day and flag any program rate we can\'t confirm.',
-  },
-  {
-    chip:  'cashable' as const,
-    title: 'Sports edges',
-    desc:  'Lock a guaranteed margin when the same outcome is priced differently across 40+ sportsbooks. Soft-book and cross-jurisdiction legs are flagged so you only act on truly takeable ones.',
-  },
-  {
-    chip:  'signal' as const,
-    chip2: 'copy_trader' as const,
-    title: 'Top traders',
-    desc:  "Every public Polymarket wallet ranked by true win rate, not just P&L. See who's actually skilled versus who rode a lucky streak. Copy the wallets you trust, straight from the leaderboard.",
-  },
-] as const;
 
 // ── Honest engine data ─────────────────────────────────────────────────────
 const HONEST_ENGINE = [
@@ -491,58 +456,7 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* ── 2. SIX WAYS ───────────────────────────────────────────────────── */}
-        <section
-          id="what-it-finds"
-          className="border-t border-line bg-bg-soft/50"
-          aria-labelledby="six-ways-heading"
-        >
-          <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
-            <div className="mb-10">
-              <Eyebrow className="mb-2">More than arbitrage</Eyebrow>
-              <SectionHeading id="six-ways-heading" className="text-2xl sm:text-3xl">
-                Six ways to find your edge
-              </SectionHeading>
-              <p className="font-body text-sm text-ink-2 mt-2 max-w-2xl">
-                Whether you came from crypto or traditional finance, every edge below — across
-                prediction markets, crypto, and sports — is scored the same honest way.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {SIX_WAYS.map(card => (
-                <div
-                  key={card.title}
-                  className="bg-surface rounded-card shadow-card border border-line p-5 flex flex-col gap-3"
-                >
-                  <div className="flex items-center gap-1.5">
-                    <EdgeChip variant={card.chip} />
-                    {'chip2' in card && <EdgeChip variant={card.chip2} />}
-                  </div>
-                  <div>
-                    <h3 className="font-display font-semibold text-[15px] text-ink mb-1.5 leading-snug">
-                      {card.title}
-                    </h3>
-                    <p className="font-body text-[13px] text-ink-2 leading-relaxed">
-                      {card.desc}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 mt-6 font-body text-[13px] text-ink-2">
-              <span className="inline-flex items-center gap-2">
-                <EdgeChip variant="cashable" /> you can actually execute it and pocket the result
-              </span>
-              <span className="inline-flex items-center gap-2">
-                <EdgeChip variant="signal" /> an indicator to watch — not directly executable
-              </span>
-            </div>
-          </div>
-        </section>
-
-        {/* ── 2b. WHAT'S INSIDE — ANIMATED STRATEGIES ──────────────────────── */}
+        {/* ── 2. SIX WAYS — ANIMATED STRATEGIES ────────────────────────────── */}
         <AnimatedStrategies />
 
         {/* ── 3. HONEST ENGINE ─────────────────────────────────────────────── */}

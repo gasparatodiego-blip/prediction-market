@@ -78,14 +78,16 @@ function ExampleTag() {
 }
 
 function CardShell({
-  chip,
+  chips,
   title,
+  desc,
   footer,
   rootRef,
   children,
 }: {
-  chip: EdgeChipVariant;
+  chips: EdgeChipVariant[];
   title: string;
+  desc: string;
   footer?: ReactNode;
   rootRef: RefObject<HTMLDivElement>;
   children: ReactNode;
@@ -96,12 +98,19 @@ function CardShell({
       className="bg-surface rounded-card shadow-card border border-line p-5 flex flex-col gap-3"
     >
       <div className="flex items-center justify-between gap-2">
-        <EdgeChip variant={chip} />
+        <div className="flex items-center gap-1.5">
+          {chips.map(c => <EdgeChip key={c} variant={c} />)}
+        </div>
         <ExampleTag />
       </div>
-      <h3 className="font-display font-semibold text-[15px] text-ink leading-snug">
-        {title}
-      </h3>
+      <div>
+        <h3 className="font-display font-semibold text-[15px] text-ink leading-snug mb-1">
+          {title}
+        </h3>
+        <p className="font-body text-[13px] text-ink-2 leading-relaxed">
+          {desc}
+        </p>
+      </div>
       <div className="relative h-[176px] rounded-[12px] bg-bg-soft/60 border border-line overflow-hidden">
         {children}
       </div>
@@ -121,7 +130,12 @@ function PredictionArbCard({ reducedMotion }: { reducedMotion: boolean }) {
   const showLine = s >= 2;
 
   return (
-    <CardShell chip="cashable" title="Prediction arbitrage" rootRef={ref}>
+    <CardShell
+      chips={['cashable']}
+      title="Prediction arbitrage"
+      desc="Same-outcome contracts priced differently on Kalshi and Polymarket. Both legs checked, capacity-confirmed. A green badge means you can actually fill it."
+      rootRef={ref}
+    >
       <div className="w-full h-full flex flex-col items-center justify-center gap-3 px-4">
         <div className="flex items-center gap-3">
           <div className="px-3 py-2 rounded-lg border border-line bg-surface text-center min-w-[76px]">
@@ -172,7 +186,12 @@ function FundingSpreadCard({ reducedMotion }: { reducedMotion: boolean }) {
   const popStyle = usePop(s, active);
 
   return (
-    <CardShell chip="cashable" title="Funding spreads" rootRef={ref}>
+    <CardShell
+      chips={['cashable']}
+      title="Funding spreads"
+      desc="Earn perpetual funding — the recurring payment between long and short positions in crypto futures — by holding long spot and short perp, or the reverse. Rates reset every 8 hours; no lockup, but no guarantee of tomorrow's rate."
+      rootRef={ref}
+    >
       <div className="w-full h-full flex flex-col items-center justify-center gap-3 px-4">
         <div className="flex items-center gap-2">
           <span className="px-2 py-1 rounded-md bg-mint-tint text-mint-deep font-body font-semibold text-[10px]">
@@ -242,7 +261,12 @@ function CarryCard({ reducedMotion }: { reducedMotion: boolean }) {
   const basisPct = (1.7 * (1 - tt)).toFixed(1);
 
   return (
-    <CardShell chip="cashable" title="Cash & carry" rootRef={ref}>
+    <CardShell
+      chips={['cashable']}
+      title="Cash & carry"
+      desc="Lock in the basis — the price gap between spot and a dated futures contract. Yield is fixed at expiry — most contracts are coin-margined, so the USD return drifts with spot price."
+      rootRef={ref}
+    >
       <div className="w-full h-full flex flex-col items-center justify-center gap-1.5 px-3">
         <svg width="100%" height="86" viewBox="0 0 260 100" className="overflow-visible" role="img" aria-label="Spot and future price convergence">
           <line x1={x0} y1={spotY} x2={x1} y2={spotY} stroke="#0B1A15" strokeWidth={2} />
@@ -307,7 +331,12 @@ function LiquidityRewardsCard({ reducedMotion }: { reducedMotion: boolean }) {
   const popStyle = usePop(s, active);
 
   return (
-    <CardShell chip="cashable" title="Liquidity rewards" rootRef={ref}>
+    <CardShell
+      chips={['cashable']}
+      title="Liquidity rewards"
+      desc="Earn real maker rewards for providing liquidity on Polymarket and Kalshi. We show net estimated reward/day and flag any program rate we can't confirm."
+      rootRef={ref}
+    >
       <div className="w-full h-full flex items-center gap-3 px-3">
         <div className="flex-1 flex flex-col gap-[3px]">
           <BookRow price="0.66" size={40} tone="ask" highlighted={false} />
@@ -362,7 +391,12 @@ function TopTradersCard({ reducedMotion }: { reducedMotion: boolean }) {
   const expanded = s >= 3;
 
   return (
-    <CardShell chip="signal" title="Top traders" rootRef={ref}>
+    <CardShell
+      chips={['signal', 'copy_trader']}
+      title="Top traders"
+      desc="Every public Polymarket wallet ranked by true win rate, with statistical confidence. Open a name to see its equity curve, then copy the ones worth following."
+      rootRef={ref}
+    >
       <div className="w-full h-full flex flex-col gap-2 px-3 py-2.5">
         <div className="flex items-center gap-1.5">
           <span className="px-2 py-[3px] rounded-md bg-[#EEF1FF] text-[#3B4FD0] font-body font-semibold text-[9.5px]">
@@ -426,8 +460,9 @@ function SportsArbCard({ reducedMotion }: { reducedMotion: boolean }) {
 
   return (
     <CardShell
-      chip="signal"
-      title="Sports arbitrage"
+      chips={['signal']}
+      title="Sports edges"
+      desc="Lock a margin when the same outcome is priced differently across 40+ sportsbooks. Soft-book and cross-jurisdiction legs are flagged so you only act on truly takeable ones."
       rootRef={ref}
       footer={
         <div className="flex items-center gap-1.5 pt-0.5">
@@ -477,18 +512,19 @@ export default function AnimatedStrategies() {
 
   return (
     <section
-      id="whats-inside"
-      className="border-t border-line"
+      id="what-it-finds"
+      className="border-t border-line bg-bg-soft/50"
       aria-labelledby="whats-inside-heading"
     >
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
         <div className="mb-10">
-          <Eyebrow className="mb-2">See it in motion</Eyebrow>
+          <Eyebrow className="mb-2">More than arbitrage</Eyebrow>
           <SectionHeading id="whats-inside-heading" className="text-2xl sm:text-3xl">
-            What&apos;s inside &mdash; at a glance
+            Six ways to find your edge
           </SectionHeading>
           <p className="font-body text-sm text-ink-2 mt-2 max-w-2xl">
-            A quick look at how each strategy plays out, in miniature.
+            Whether you came from crypto or traditional finance, every edge below &mdash; across
+            prediction markets, crypto, and sports &mdash; is scored the same honest way.
           </p>
         </div>
 
