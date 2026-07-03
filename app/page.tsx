@@ -10,6 +10,7 @@ import EdgeChip, { type EdgeChipVariant } from '@/app/components/ui/EdgeChip';
 import RadarMark    from '@/app/components/ui/RadarMark';
 import RadarScope   from '@/app/components/ui/RadarScope';
 import BlipRow      from '@/app/components/ui/BlipRow';
+import AnimatedStrategies from '@/app/components/landing/AnimatedStrategies';
 import { getCryptoSpreadsData, calcSpreadSizing } from '@/lib/spread-compute';
 import { scaleToCapitalBasis, LANDING_CAPITAL_BASIS } from '@/lib/honest-display';
 import { isSaneKalshiMarket, isSanePolymarketLevel } from '@/lib/reward-gating';
@@ -540,6 +541,9 @@ export default function LandingPage() {
             </div>
           </div>
         </section>
+
+        {/* ── 2b. WHAT'S INSIDE — ANIMATED STRATEGIES ──────────────────────── */}
+        <AnimatedStrategies />
 
         {/* ── 3. HONEST ENGINE ─────────────────────────────────────────────── */}
         <section
