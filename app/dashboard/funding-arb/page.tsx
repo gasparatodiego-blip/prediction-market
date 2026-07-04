@@ -291,7 +291,7 @@ function InfoTooltip({ label, text }: { label: string; text: string }) {
     if (!btn) return;
     const r     = btn.getBoundingClientRect();
     const vw    = window.innerWidth;
-    const width = Math.min(280, vw - 24);
+    const width = Math.min(260, vw - 24);
     // Right-align to the trigger when it sits in the right half of the screen,
     // left-align otherwise; then clamp so the bubble stays ~12px inside both edges.
     const inRightHalf = r.left + r.width / 2 > vw / 2;
@@ -343,7 +343,7 @@ function InfoTooltip({ label, text }: { label: string; text: string }) {
         <span
           role="tooltip"
           className="fixed z-[60] p-2.5 rounded-lg font-body leading-relaxed shadow-card"
-          style={{ top: pos.top, left: pos.left, width: pos.width, maxWidth: 'calc(100vw - 24px)', fontSize: 11, background: '#0e1626', color: '#f5f7fa' }}
+          style={{ top: pos.top, left: pos.left, width: pos.width, maxWidth: 'min(260px, calc(100vw - 24px))', fontSize: 11, background: '#0e1626', color: '#f5f7fa' }}
         >
           {text}
         </span>
