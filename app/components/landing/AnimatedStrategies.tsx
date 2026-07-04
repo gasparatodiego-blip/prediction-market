@@ -571,36 +571,96 @@ function CarryCard({ reducedMotion }: { reducedMotion: boolean }) {
 
 type BookRowStatus = 'none' | 'placing' | 'resting';
 
-function BookRow({
-  price, size, tone, status,
+const ASK_LEVELS = [
+  { price: '65¢', sizeLabel: '4.2k', width: 82 },
+  { price: '64¢', sizeLabel: '2.6k', width: 46 },
+  { price: '63¢', sizeLabel: '1.5k', width: 22 }, // maker ask rests here
+] as const;
+
+const BID_LEVELS = [
+  { price: '61¢', sizeLabel: '3.1k', width: 58 }, // maker bid rests here
+  { price: '60¢', sizeLabel: '2.2k', width: 38 },
+  { price: '59¢', sizeLabel: '3.8k', width: 73 },
+] as const;
+
+function BookLevel({
+  price, sizeLabel, width, tone, isMaker, status, pulse,
 }: {
-  price: string; size: number; tone: 'ask' | 'bid'; status: BookRowStatus;
+  price: string; sizeLabel: string; width: number; tone: 'ask' | 'bid';
+  isMaker: boolean; status: BookRowStatus; pulse: boolean;
 }) {
-  const barColor = tone === 'ask' ? 'bg-coral/25' : 'bg-mint/25';
-  const baseTint = tone === 'ask' ? 'bg-coral-tint/50' : 'bg-mint-tint/50';
-  const yours = status !== 'none';
+  const isAsk = tone === 'ask';
+  const mine = isMaker && status !== 'none';
+  const rowBg = isAsk ? 'bg-[#fef2f2]' : 'bg-[#ecfdf5]';
+  const barBg = isAsk ? 'bg-[#ef4444]/20' : 'bg-[#10b981]/20';
+  const text = isAsk ? 'text-[#ef4444]' : 'text-[#10b981]';
+  const ring = isAsk
+    ? 'border-[#ef4444] shadow-[0_0_0_3px_rgba(239,68,68,0.15)]'
+    : 'border-[#10b981] shadow-[0_0_0_3px_rgba(16,185,129,0.15)]';
   return (
     <div
-      className={`relative flex items-center justify-between px-2 py-[3px] text-[10px] rounded-sm overflow-hidden transition-colors duration-300 ${
-        yours ? 'ring-1 ring-mint bg-mint-tint/70' : baseTint
+      className={`relative flex items-center justify-between px-2 py-[1.5px] text-[9.5px] leading-tight rounded-sm overflow-hidden border-2 transition-all duration-300 ${rowBg} ${
+        mine ? ring : 'border-transparent'
       }`}
     >
-      <span className={`absolute inset-y-0 left-0 ${barColor}`} style={{ width: `${size}%` }} aria-hidden />
-      <span className="relative font-body text-ink-2 font-medium">{price}</span>
-      <span
-        className={`relative font-body font-semibold text-[9px] uppercase tracking-wide ${
-          status === 'resting' ? 'text-mint-deep animate-pulse'
-          : status === 'placing' ? 'text-mint-deep'
-          : 'opacity-0'
-        }`}
-      >
-        {status === 'placing' ? 'placing…' : 'resting'}
+      <span className={`absolute inset-y-0 left-0 ${barBg}`} style={{ width: `${width}%` }} aria-hidden />
+      <span className={`relative font-body font-bold tabular-nums ${text}`}>{price}</span>
+      {mine && (
+        <span
+          className={`relative font-body font-extrabold text-[7.5px] uppercase tracking-wide ${text} ${
+            status === 'resting' && pulse ? 'animate-pulse' : ''
+          }`}
+        >
+          you
+        </span>
+      )}
+      <span className={`relative font-body text-[8.5px] ${mine ? `font-bold ${text}` : 'text-muted'}`}>
+        {mine ? 'your order' : sizeLabel}
       </span>
     </div>
   );
 }
 
-const REWARD_STEPS = [0.00, 0.04, 0.08, 0.12, 0.16, 0.20, 0.24];
+// Local cursor for this card only — deliberately not the shared AnimatedCursor
+// (that one is reused by the Prediction/Funding cards; swapping its look here
+// would change those too). Adds a brief scale-down "click" on top of the
+// shared ring-pulse pattern.
+function LiquidityCursor({
+  point, visible, clickKey,
+}: {
+  point: Point;
+  visible: boolean;
+  clickKey: number | null;
+}) {
+  const [clicking, setClicking] = useState(false);
+  useEffect(() => {
+    if (clickKey === null) return;
+    setClicking(true);
+    const t = setTimeout(() => setClicking(false), 160);
+    return () => clearTimeout(t);
+  }, [clickKey]);
+
+  return (
+    <div
+      className="absolute top-0 left-0 z-20 pointer-events-none"
+      style={{
+        transform: `translate(${point.x - 3}px, ${point.y - 3}px)`,
+        opacity: visible ? 1 : 0,
+        transition: 'transform 500ms ease, opacity 300ms ease',
+      }}
+      aria-hidden
+    >
+      <div style={{ transform: clicking ? 'scale(0.85)' : 'scale(1)', transition: 'transform 160ms ease-out' }}>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+          <path d="M5 3l14 8-6 1.5L10 20 5 3z" fill="#0f172a" stroke="#fff" strokeWidth="1.5" strokeLinejoin="round" />
+        </svg>
+      </div>
+      {clickKey !== null && <ClickRipple key={clickKey} />}
+    </div>
+  );
+}
+
+const REWARD_STEPS = [0.00, 0.18, 0.36, 0.54, 0.72, 0.90, 1.08, 1.24];
 
 type LiquidityState = {
   askStatus: BookRowStatus;
@@ -649,7 +709,7 @@ function useLiquidityAnimation(active: boolean): LiquidityState {
       });
     }
     runCycle();
-    const loopId = setInterval(runCycle, 7200);
+    const loopId = setInterval(runCycle, 7900);
     return () => {
       timers.forEach(clearTimeout);
       clearInterval(loopId);
@@ -671,7 +731,10 @@ function LiquidityRewardsCard({ reducedMotion }: { reducedMotion: boolean }) {
   const askRowRef = useRef<HTMLDivElement>(null);
   const bidRowRef = useRef<HTMLDivElement>(null);
   const { home, points } = useCursorPoints(frameRef, [askRowRef, bidRowRef]);
-  const cursorPoint = cursorVisible ? points[cursorTarget] : home;
+  // Cursor enters from the top-right corner (shared hook's `home` rests
+  // bottom-right for the other cards) — reuse its measured x, override y.
+  const homeTopRight: Point = { x: home.x, y: 14 };
+  const cursorPoint = cursorVisible ? points[cursorTarget] : homeTopRight;
 
   return (
     <CardShell
@@ -680,28 +743,67 @@ function LiquidityRewardsCard({ reducedMotion }: { reducedMotion: boolean }) {
       desc="Earn real maker rewards for providing liquidity on Polymarket and Kalshi. We show net estimated reward/day and flag any program rate we can't confirm."
       rootRef={ref}
     >
-      <div ref={frameRef} className="relative w-full h-full flex items-center gap-3 px-3">
-        <div className="flex-1 flex flex-col gap-[3px]">
-          <BookRow price="0.66" size={40} tone="ask" status="none" />
-          <BookRow price="0.64" size={60} tone="ask" status="none" />
-          <div ref={askRowRef}>
-            <BookRow price="0.63" size={50} tone="ask" status={askStatus} />
-          </div>
-          <p className="text-center text-[8.5px] text-muted py-[1px]">&mdash; spread &mdash;</p>
-          <div ref={bidRowRef}>
-            <BookRow price="0.61" size={55} tone="bid" status={bidStatus} />
-          </div>
-          <BookRow price="0.59" size={45} tone="bid" status="none" />
-          <BookRow price="0.57" size={35} tone="bid" status="none" />
-        </div>
-        <div className="flex flex-col items-center justify-center flex-shrink-0 w-[70px]">
-          <div className="font-display font-bold text-mint-deep text-lg text-center" style={popStyle}>
-            ${reward}
-          </div>
-          <p className="text-[8.5px] text-muted text-center mt-0.5 leading-tight">$ rewards earned</p>
+      <div ref={frameRef} className="relative w-full h-full flex flex-col justify-center gap-[1px] px-3 py-1">
+        <div className="flex flex-col gap-[1px]">
+          <p className="pl-11 font-body font-bold text-[7px] uppercase tracking-wide leading-tight text-[#ef4444]">
+            Sellers · asks
+          </p>
+          {ASK_LEVELS.map((lvl, i) => {
+            const isMakerRow = i === ASK_LEVELS.length - 1;
+            return (
+              <div key={lvl.price} ref={isMakerRow ? askRowRef : undefined}>
+                <BookLevel
+                  price={lvl.price}
+                  sizeLabel={lvl.sizeLabel}
+                  width={lvl.width}
+                  tone="ask"
+                  isMaker={isMakerRow}
+                  status={isMakerRow ? askStatus : 'none'}
+                  pulse={!reducedMotion}
+                />
+              </div>
+            );
+          })}
         </div>
 
-        {!reducedMotion && <AnimatedCursor point={cursorPoint} visible={cursorVisible} clickKey={clickKey} />}
+        <div className="relative flex items-center" aria-hidden>
+          <div className="flex-1 border-t border-dashed border-line" />
+          <span className="px-1.5 font-body text-[6.5px] leading-tight text-muted whitespace-nowrap">
+            mid 62¢ · place orders inside this gap
+          </span>
+          <div className="flex-1 border-t border-dashed border-line" />
+        </div>
+
+        <div className="flex flex-col gap-[1px]">
+          <p className="pl-11 font-body font-bold text-[7px] uppercase tracking-wide leading-tight text-[#10b981]">
+            Buyers · bids
+          </p>
+          {BID_LEVELS.map((lvl, i) => {
+            const isMakerRow = i === 0;
+            return (
+              <div key={lvl.price} ref={isMakerRow ? bidRowRef : undefined}>
+                <BookLevel
+                  price={lvl.price}
+                  sizeLabel={lvl.sizeLabel}
+                  width={lvl.width}
+                  tone="bid"
+                  isMaker={isMakerRow}
+                  status={isMakerRow ? bidStatus : 'none'}
+                  pulse={!reducedMotion}
+                />
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="flex items-baseline justify-center gap-1.5" style={popStyle}>
+          <span className="font-serif font-bold text-[#10b981] text-[15px] leading-none">
+            +${reward}
+          </span>
+          <span className="font-body text-[8.5px] leading-none text-muted">maker rewards</span>
+        </div>
+
+        {!reducedMotion && <LiquidityCursor point={cursorPoint} visible={cursorVisible} clickKey={clickKey} />}
       </div>
     </CardShell>
   );
