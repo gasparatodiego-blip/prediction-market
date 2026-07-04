@@ -406,12 +406,25 @@ const CAPACITY_TIP =
   'Invest more and you buy or sell at worse prices, until the slippage cancels out the funding ' +
   "you'd earn. Measured from the live order book — never a guess.";
 
+const TOO_THIN_TIP =
+  'The order book was measured, but right now it is too thin to absorb a meaningful position — ' +
+  'slippage would eat the funding at every size, so there is no safe amount to enter.';
+
 function CapacityRow({
   s, capital, leverage, redacted,
 }: { s: SpreadItem; capital: number; leverage: Leverage; redacted: boolean }) {
   const gc = s.greenCapacityUsd;
   const N0 = capital * leverage / 2;
   const hasCap = !redacted && gc != null && gc > 0;
+  // Measured-too-thin ($0 green): the depth fetcher ran (slipCurve present, both
+  // legs verified) and found no size clears the 30% slippage threshold. This is a
+  // real measurement — distinct from capacity being unmeasured (null / key-missing
+  // / oneLegUnverified). Both show no bar and no number, but say different things.
+  const measuredTooThin =
+    !redacted &&
+    gc === 0 &&
+    s.oneLegUnverified === false &&
+    Array.isArray(s.slipCurve) && s.slipCurve.length > 0;
   // Headroom = how much of the order-book green capacity your current position
   // leaves unused. Falls as capital approaches the depth limit → bar reddens.
   const headroom = hasCap ? Math.max(0, Math.min(100, (1 - N0 / (gc as number)) * 100)) : 0;
@@ -430,6 +443,11 @@ function CapacityRow({
           </Redacted>
         ) : hasCap ? (
           <span className="font-mono tabular-nums text-ink" style={{ fontSize: 12 }}>{fmtCapWords(gc)}</span>
+        ) : measuredTooThin ? (
+          <span className="inline-flex items-center gap-1 font-body" style={{ fontSize: 11, color: '#9aa5b3' }}>
+            too thin to size
+            <InfoTooltip label="Too thin to size — what it means" text={TOO_THIN_TIP} />
+          </span>
         ) : (
           <span className="font-body" style={{ fontSize: 11, color: '#9aa5b3' }}>not available yet</span>
         )}
