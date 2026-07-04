@@ -267,25 +267,54 @@ const TIER: Record<SpreadItem['status'], { label: string; color: string; accent:
 
 function InfoTooltip({ label, text }: { label: string; text: string }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLSpanElement>(null);
+  // Fixed (viewport-relative) placement, measured on open. This escapes the
+  // card's overflow-hidden AND the right screen edge — the previous absolute
+  // `left: 0` bubble overflowed the viewport on narrow screens (~360–390px).
+  const [pos, setPos]   = useState<{ top: number; left: number; width: number } | null>(null);
+  const wrapRef = useRef<HTMLSpanElement>(null);
+  const btnRef  = useRef<HTMLButtonElement>(null);
+
+  const place = useCallback(() => {
+    const btn = btnRef.current;
+    if (!btn) return;
+    const r     = btn.getBoundingClientRect();
+    const vw    = window.innerWidth;
+    const width = Math.min(280, vw - 24);
+    // Right-align to the trigger when it sits in the right half of the screen,
+    // left-align otherwise; then clamp so the bubble stays ~12px inside both edges.
+    const inRightHalf = r.left + r.width / 2 > vw / 2;
+    let left = inRightHalf ? r.right - width : r.left;
+    left = Math.max(12, Math.min(left, vw - width - 12));
+    setPos({ top: r.bottom + 6, left, width });
+  }, []);
+
   useEffect(() => {
     if (!open) return;
+    place();
     const onDoc = (e: Event) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
     };
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    const onKey     = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    // Scroll/resize would drift a fixed bubble away from its trigger → dismiss.
+    const onDismiss = () => setOpen(false);
     document.addEventListener('mousedown', onDoc);
     document.addEventListener('touchstart', onDoc);
     document.addEventListener('keydown', onKey);
+    window.addEventListener('scroll', onDismiss, true);
+    window.addEventListener('resize', onDismiss);
     return () => {
       document.removeEventListener('mousedown', onDoc);
       document.removeEventListener('touchstart', onDoc);
       document.removeEventListener('keydown', onKey);
+      window.removeEventListener('scroll', onDismiss, true);
+      window.removeEventListener('resize', onDismiss);
     };
-  }, [open]);
+  }, [open, place]);
+
   return (
-    <span ref={ref} className="relative inline-flex align-middle">
+    <span ref={wrapRef} className="relative inline-flex align-middle">
       <button
+        ref={btnRef}
         type="button"
         aria-label={label}
         aria-expanded={open}
@@ -298,11 +327,11 @@ function InfoTooltip({ label, text }: { label: string; text: string }) {
           style={{ width: 16, height: 16, fontSize: 10, border: '1px solid #e6eaef', color: '#9aa5b3' }}
         >i</span>
       </button>
-      {open && (
+      {open && pos && (
         <span
           role="tooltip"
-          className="absolute z-40 left-0 top-full mt-1.5 p-2.5 rounded-lg font-body leading-relaxed shadow-card"
-          style={{ width: 'min(258px, 78vw)', fontSize: 11, background: '#0e1626', color: '#f5f7fa' }}
+          className="fixed z-[60] p-2.5 rounded-lg font-body leading-relaxed shadow-card"
+          style={{ top: pos.top, left: pos.left, width: pos.width, maxWidth: 'calc(100vw - 24px)', fontSize: 11, background: '#0e1626', color: '#f5f7fa' }}
         >
           {text}
         </span>
