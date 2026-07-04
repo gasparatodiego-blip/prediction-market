@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef, Fragment } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo, Fragment } from 'react';
 import Link from 'next/link';
 import SectionHelp from '@/app/components/SectionHelp';
 import EdgeChip, { type EdgeChipVariant } from '@/app/components/ui/EdgeChip';
@@ -508,7 +508,97 @@ function SlipAwareCard({ s, capital, leverage }: { s: SpreadItem; capital: numbe
 
 const CARDS_DEFAULT = 6;
 
+const EXCHANGES_STORAGE_KEY = 'edgeradar.funding.exchanges';
+
 type OppView = 'cards' | 'list';
+
+// Display-only exchange filter: persists the selected venue set to localStorage.
+// `null` = never customized → treat every venue as selected (also the fallback
+// when storage is absent or malformed). Once the user toggles a chip we store an
+// explicit set. This is a view filter only — no funding/payback math is touched.
+function useExchangeFilter(venues: string[]) {
+  const [selected, setSelected] = useState<Set<string> | null>(null);
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(EXCHANGES_STORAGE_KEY);
+      if (raw) {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr) && arr.every(x => typeof x === 'string')) {
+          setSelected(new Set(arr));
+        }
+      }
+    } catch { /* fall back to all-selected */ }
+    setHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated || selected === null) return;
+    try {
+      localStorage.setItem(EXCHANGES_STORAGE_KEY, JSON.stringify(Array.from(selected)));
+    } catch { /* storage failure must never break the page */ }
+  }, [selected, hydrated]);
+
+  const isSelected = (v: string) => (selected === null ? true : selected.has(v));
+  const allOn      = venues.length > 0 && venues.every(isSelected);
+
+  const toggle = (v: string) =>
+    setSelected(prev => {
+      const base = prev === null ? new Set(venues) : new Set(prev);
+      if (base.has(v)) base.delete(v); else base.add(v);
+      return base;
+    });
+  const selectAll = () => setSelected(new Set(venues));
+  const clearAll  = () => setSelected(new Set());
+
+  return { isSelected, allOn, toggle, selectAll, clearAll };
+}
+
+function ExchangeFilterBar({
+  venues, isSelected, allOn, toggle, selectAll, clearAll,
+}: {
+  venues:     string[];
+  isSelected: (v: string) => boolean;
+  allOn:      boolean;
+  toggle:     (v: string) => void;
+  selectAll:  () => void;
+  clearAll:   () => void;
+}) {
+  return (
+    <div className="mb-4 px-4 py-3 rounded-card bg-surface shadow-card border border-line">
+      <div className="flex items-center justify-between mb-2">
+        <span className="font-body text-[11px] uppercase tracking-wide text-muted">
+          Your exchanges
+        </span>
+        <button
+          onClick={allOn ? clearAll : selectAll}
+          className="font-body text-[11px] text-mint hover:text-mint-deep transition-colors duration-100"
+        >
+          {allOn ? 'Clear all' : 'Select all'}
+        </button>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {venues.map(v => {
+          const on = isSelected(v);
+          return (
+            <button
+              key={v}
+              onClick={() => toggle(v)}
+              aria-pressed={on}
+              className="font-body text-[11px] px-2.5 py-1 rounded-pill border transition-colors duration-100"
+              style={on
+                ? { borderColor: '#059669', background: '#ecfdf5', color: '#059669' }
+                : { borderColor: '#e9edf3', background: '#ffffff', color: '#94a3b8' }}
+            >
+              {on ? '✓ ' : ''}{venueLabel(v)}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 function OpportunityCards({
   spreads, capital, leverage,
@@ -520,14 +610,34 @@ function OpportunityCards({
   const [showMore, setShowMore] = useState(false);
   const [view,     setView]     = useState<OppView>('cards');
 
-  // Sort by net $/day at user's sized position; falls back to green-cap sort if capital is 0
-  const userSize = capital * leverage / 2;
-  const sorted = [...spreads].sort((a, b) => {
-    const as = slipSortScoreAtSize(a, userSize), bs = slipSortScoreAtSize(b, userSize);
-    return as !== bs ? bs - as : (b.netApy30d ?? 0) - (a.netApy30d ?? 0);
+  // Venue universe derived dynamically from the current data so new exchanges
+  // appear automatically. Stable within a data snapshot.
+  const venues = useMemo(
+    () => Array.from(new Set(spreads.flatMap(s => [s.shortExchange, s.longExchange]))).sort(),
+    [spreads],
+  );
+  const filter = useExchangeFilter(venues);
+
+  // A pair needs accounts on BOTH venues to execute → visible only if both legs
+  // are in the selected set. Applied before the payback sort.
+  const exFiltered = spreads.filter(
+    s => filter.isSelected(s.shortExchange) && filter.isSelected(s.longExchange),
+  );
+
+  // Sort by fastest payback (breakevenDays) ascending → HARVEST on top,
+  // MARGINAL at the bottom. Redacted/unknown payback sinks last. Ties break by
+  // the public verdict tier (so HARVEST still floats when payback is redacted),
+  // then by net $/day at the user's sized position, descending.
+  const userSize   = capital * leverage / 2;
+  const statusRank = { HARVEST: 0, CAUTION: 1, MARGINAL: 2 } as const;
+  const sorted = [...exFiltered].sort((a, b) => {
+    const pa = a.breakevenDays ?? Infinity, pb = b.breakevenDays ?? Infinity;
+    if (pa !== pb) return pa - pb;
+    if (statusRank[a.status] !== statusRank[b.status]) return statusRank[a.status] - statusRank[b.status];
+    return slipSortScoreAtSize(b, userSize) - slipSortScoreAtSize(a, userSize);
   });
 
-  // Best spread per unique coin (post-sort → best green-capacity coin first)
+  // Best spread per unique coin (post-sort → best-payback pair per coin)
   const seenCoins = new Set<string>();
   const allItems: SpreadItem[] = [];
   for (const s of sorted) {
@@ -537,7 +647,8 @@ function OpportunityCards({
     }
   }
 
-  if (allItems.length === 0) return null;
+  // No spreads at all → nothing to render (keeps the filter bar off an empty page)
+  if (spreads.length === 0) return null;
 
   const visible   = showMore ? allItems : allItems.slice(0, CARDS_DEFAULT);
   const remaining = allItems.length - CARDS_DEFAULT;
@@ -545,10 +656,23 @@ function OpportunityCards({
 
   return (
     <div className="mb-5">
+      {/* Exchange filter bar — above the list */}
+      <ExchangeFilterBar
+        venues={venues}
+        isSelected={filter.isSelected}
+        allOn={filter.allOn}
+        toggle={filter.toggle}
+        selectAll={filter.selectAll}
+        clearAll={filter.clearAll}
+      />
+
       {/* View toggle + capacity explainer */}
       <div className="flex items-center justify-between mb-1">
         <span className="font-body text-[11px] text-muted uppercase tracking-wide">
           Top opportunities · best per asset
+          <span className="ml-2 text-muted/70 normal-case tracking-normal tabular-nums">
+            {allItems.length} shown
+          </span>
         </span>
         <div className="flex border border-line rounded-button overflow-hidden font-body text-[11px]">
           {(['cards', 'list'] as OppView[]).map(v => (
@@ -569,11 +693,17 @@ function OpportunityCards({
       <p className="font-body text-[11px] text-muted mb-3">
         Capacity = size you can enter before slippage eats &gt;30% of the yield.
         Most altcoin perp books are thin; green ranges are deliberately conservative.
-        Sorted by net $/day at green capacity.
+        Sorted by fastest payback — fewest days to recover fees first.
       </p>
 
+      {allItems.length === 0 && (
+        <div className="py-10 text-center font-body text-[12px] text-muted">
+          No pairs on your selected exchanges.
+        </div>
+      )}
+
       {/* Cards view — flat, no outer border */}
-      {view === 'cards' && (
+      {allItems.length > 0 && view === 'cards' && (
         <div className="grid gap-x-8 gap-y-0 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
           {visible.map(s => (
             <SlipAwareCard key={`${s.coin}-${s.shortExchange}-${s.longExchange}`} s={s} capital={capital} leverage={leverage} />
@@ -582,7 +712,7 @@ function OpportunityCards({
       )}
 
       {/* List view — hairline dividers, no outer border */}
-      {view === 'list' && (
+      {allItems.length > 0 && view === 'list' && (
         <div className="divide-y divide-line/15">
           {visible.map(s => {
             const tgHref  = `https://t.me/Gaspola_bot?start=fund_${s.coin}`;
