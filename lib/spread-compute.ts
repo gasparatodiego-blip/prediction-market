@@ -20,7 +20,8 @@ import {
   spreadStatus,
   VENUE_FEE_PCT,
 } from '@/lib/funding-math';
-import type { FuturesCoin, SpreadItem, SlipPoint, CryptoSpreadsData } from '@/lib/spread-types';
+import type { FuturesCoin, SpreadItem, SlipPoint, CryptoSpreadsData, RwaObservation } from '@/lib/spread-types';
+import { isRwaKey } from '@/lib/rwa';
 
 export type { FuturesCoin, SlipPoint, SpreadItem, SpreadsMeta, CryptoSpreadsData, Leverage } from '@/lib/spread-types';
 export { calcSpreadSizing } from '@/lib/spread-types';
@@ -68,6 +69,7 @@ export function computeSpreads(
 
   for (const [coin, list] of Object.entries(byExchange)) {
     if (list.length < 2) continue;
+    if (isRwaKey(coin)) continue;   // RWA commodities are a separate observation lane (see getCryptoSpreadsData → rwa)
     for (let i = 0; i < list.length; i++) {
       for (let j = i + 1; j < list.length; j++) {
         const A = list[i], B = list[j];
@@ -164,6 +166,7 @@ export function getCryptoSpreadsData(): CryptoSpreadsData {
       slipCurveMaxFillable?: number | null;
     }
     const uniLookup = new Map<string, UniEntry>();
+    const rwaRows: RwaObservation[] = [];
     try {
       const uniRaw     = JSON.parse(fs.readFileSync(UNI_FILE, 'utf8'));
       const fundingAge = Date.now() - (uniRaw.sources?.funding?.updatedAt ?? 0);
@@ -178,6 +181,32 @@ export function getCryptoSpreadsData(): CryptoSpreadsData {
           greenCapacityUsd?: number | null;
           slipCurveMaxFillable?: number | null;
         }[]) {
+          // RWA commodities (beta) — observation lane. Pass through per-leg funding + REAL
+          // book-depth (slipCurveMaxFillable). Never carries a cashable net/day.
+          if (opp.type === 'RWA') {
+            const o = opp as unknown as {
+              underlying?: string; label?: string; note?: string; slipCurveMaxFillable?: number | null;
+              legs?: { venue?: string; platform?: string; price?: number; intervalHours?: number; rate8h?: number; trailingRate?: number }[];
+            };
+            if (Array.isArray(o.legs) && o.legs.length >= 2) {
+              rwaRows.push({
+                underlying: String(o.underlying ?? ''),
+                label:      String(o.label ?? o.underlying ?? ''),
+                assetClass: 'commodity',
+                legs: o.legs.map(l => ({
+                  venue:         String(l.venue ?? ''),
+                  platform:      String(l.platform ?? l.venue ?? ''),
+                  fundingRate:   typeof l.price === 'number' ? l.price : 0,
+                  intervalHours: typeof l.intervalHours === 'number' ? l.intervalHours : 8,
+                  rate8h:        typeof l.rate8h === 'number' ? l.rate8h : 0,
+                  trailingRate:  typeof l.trailingRate === 'number' ? l.trailingRate : 0,
+                })),
+                bookDepthUsd: typeof o.slipCurveMaxFillable === 'number' ? o.slipCurveMaxFillable : null,
+                note:         String(o.note ?? 'beta · observing funding, not cashable yet'),
+              });
+            }
+            continue;
+          }
           if (opp.type !== 'FUNDING') continue;
           const parts = (opp.id ?? '').split('-');
           if (parts.length !== 4 || parts[0] !== 'funding') continue;
@@ -221,6 +250,7 @@ export function getCryptoSpreadsData(): CryptoSpreadsData {
       highFunding: raw.highFunding ?? [],
       cexArb:      raw.cexArb      ?? [],
       spreads,
+      rwa:         rwaRows,
       meta: {
         feePerLeg:    { cex: VENUE_FEE_PCT.cex, dex: VENUE_FEE_PCT.dex, gateio: VENUE_FEE_PCT.gateio, bitget: VENUE_FEE_PCT.bitget },
         legCount:     4,
@@ -239,6 +269,7 @@ export function getCryptoSpreadsData(): CryptoSpreadsData {
       highFunding: [],
       cexArb:      [],
       spreads:     [],
+      rwa:         [],
       meta:        null,
     };
   }

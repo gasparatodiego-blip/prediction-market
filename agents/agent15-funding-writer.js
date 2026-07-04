@@ -26,6 +26,7 @@
 
 const fs = require('fs');
 const { httpGet, httpPost } = require('../lib/httpGet');
+const { RWA_KEYS, RWA_VENUES, isRwaKey, rwaVenueSymbol, rwaLabel } = require('../lib/rwa');
 const { rlGet, rlPost } = require('../lib/rateLimitedFetch');
 const {
   annualize,
@@ -292,8 +293,11 @@ async function depthDydx(coin) {
 async function depthAster(coin) {
   // Aster is a perp DEX with a Binance-identical L2 book: size is already in BASE
   // units (coins), so no contract multiplier — parseFloat(qty) straight through,
-  // same as depthBinance. USDT is treated as USD.
-  const d = await get(`https://fapi.asterdex.com/fapi/v1/depth?symbol=${coin}USDT&limit=100`);
+  // same as depthBinance. USDT is treated as USD. RWA commodity keys resolve to the
+  // real Aster symbol (XAU_GOLD→XAUUSDT); crypto keeps `${coin}USDT`.
+  const sym = isRwaKey(coin) ? rwaVenueSymbol('aster', coin) : `${coin}USDT`;
+  if (!sym) return null;
+  const d = await get(`https://fapi.asterdex.com/fapi/v1/depth?symbol=${sym}&limit=100`);
   if (!Array.isArray(d?.bids) || !d.bids.length || !Array.isArray(d?.asks) || !d.asks.length) return null;
   const bids = d.bids.map(([p, q]) => [parseFloat(p), parseFloat(q)]);
   const asks = d.asks.map(([p, q]) => [parseFloat(p), parseFloat(q)]);
@@ -347,8 +351,11 @@ async function depthLighter(coin) {
 async function depthExtended(coin) {
   // Extended CLOB L2 via GET /info/markets/<name>/orderbook → data.{bid,ask} = [{ qty, price }],
   // qty in BASE units (coins), no multiplier. bid desc / ask asc (sorted defensively).
-  // Quote USD. Keys on the market NAME (derivable) — no id map.
-  const d    = await rlGetJson(`https://api.starknet.extended.exchange/api/v1/info/markets/${coin}-USD/orderbook`);
+  // Quote USD. RWA commodity keys resolve to the real Extended market (XAU_GOLD→XAU-USD);
+  // crypto keeps `${coin}-USD`.
+  const name = isRwaKey(coin) ? rwaVenueSymbol('extended', coin) : `${coin}-USD`;
+  if (!name) return null;
+  const d    = await rlGetJson(`https://api.starknet.extended.exchange/api/v1/info/markets/${name}/orderbook`);
   const book = d?.data;
   const bRaw = book?.bid, aRaw = book?.ask;
   if (!Array.isArray(bRaw) || !bRaw.length || !Array.isArray(aRaw) || !aRaw.length) return null;
@@ -669,7 +676,9 @@ async function fetchAsterHistory(coin, n) {
   // oldest-first → sort by fundingTime descending. Raw fraction → ×100 (%), kept
   // in the venue's own per-settlement unit (legAnalytics annualizes via the venue's
   // fundingIntervalHours), exactly like fetchBinanceHistory.
-  const d = await get(`https://fapi.asterdex.com/fapi/v1/fundingRate?symbol=${coin}USDT&limit=${n}`);
+  const sym = isRwaKey(coin) ? rwaVenueSymbol('aster', coin) : `${coin}USDT`;
+  if (!sym) return [];
+  const d = await get(`https://fapi.asterdex.com/fapi/v1/fundingRate?symbol=${sym}&limit=${n}`);
   if (!Array.isArray(d)) return [];
   return d
     .sort((a, b) => (b.fundingTime ?? 0) - (a.fundingTime ?? 0))
@@ -721,9 +730,11 @@ async function fetchExtendedHistory(coin, n) {
   // venue's own per-settlement unit (legAnalytics annualizes via fundingIntervalHours=1),
   // exactly like fetchDydxHistory (also hourly). Name-derivable — no id map; (n+4)h window
   // comfortably covers n hourly settlements.
+  const name = isRwaKey(coin) ? rwaVenueSymbol('extended', coin) : `${coin}-USD`;
+  if (!name) return [];
   const end   = Date.now();
   const start = end - (n + 4) * 3_600_000;
-  const d = await rlGetJson(`https://api.starknet.extended.exchange/api/v1/info/${coin}-USD/funding?startTime=${start}&endTime=${end}&limit=${n}`);
+  const d = await rlGetJson(`https://api.starknet.extended.exchange/api/v1/info/${name}/funding?startTime=${start}&endTime=${end}&limit=${n}`);
   const rows = d?.data;
   if (!Array.isArray(rows)) return [];
   return rows
@@ -992,6 +1003,7 @@ function crossExchangeSpread(futures, hCache) {
 
   for (const [coin, list] of Object.entries(byExchange)) {
     if (list.length < 2) continue;
+    if (isRwaKey(coin)) continue;   // RWA commodities handled by rwaObservations() (observation-only)
 
     for (let i = 0; i < list.length; i++) {
       for (let j = i + 1; j < list.length; j++) {
@@ -1165,18 +1177,74 @@ function crossExchangeSpread(futures, hCache) {
   return opps.sort((a, b) => b.annualizedROI - a.annualizedROI);
 }
 
+// ── RWA commodities (beta) — OBSERVATION lane ─────────────────────────────────
+// Commodities only (gold/silver/oil), Aster × Extended only. Deliberately NEVER
+// cashable: RWA funding is flat/near-zero on these oracle-tracking perps, so no honest
+// net/day exists yet. This emits per-leg funding + REAL book-depth capacity (from the
+// same depth walk, via enrichWithDepth on the rwa-* id) with NO net/day, NO green
+// Harvest — pure Signal/observation. Uses the SAME funding normalization + depth math as
+// every other venue; it just doesn't derive a tradeable spread.
+function rwaObservations(futures, hCache) {
+  const opps = [];
+  for (const key of RWA_KEYS) {
+    const legs = [];
+    for (const venue of RWA_VENUES) {
+      const data = (futures[venue] || {})[key];
+      if (!data || typeof data.fundingRate !== 'number' || !isFinite(data.fundingRate)) continue;
+      const intervalHours = data.fundingIntervalHours ?? 8;
+      const recent = ((hCache[venue] || {})[key] || []).slice(0, HISTORY_N);
+      const trailingRate = recent.length ? recent.reduce((s, r) => s + r, 0) / recent.length : data.fundingRate;
+      legs.push({
+        venue,
+        platform:      venueLabel(venue, true),
+        price:         +data.fundingRate.toFixed(6),        // native %/interval
+        intervalHours,
+        rate8h:        +(data.fundingRate * (8 / intervalHours)).toFixed(4),  // display %/8h
+        trailingRate:  +trailingRate.toFixed(6),
+        historyAvailable: recent.length > 0,
+      });
+    }
+    if (legs.length < 2) continue;   // need real cross-venue overlap
+    opps.push({
+      type:                 'RWA',
+      // rwa-<CANONICAL_KEY>-<venueA>-<venueB>: enrichWithDepth splits on '-' → parts[1]=key,
+      // parts[2]/[3]=venues; the canonical key has no hyphen so it stays one part.
+      id:                   `rwa-${key}-${legs.map(l => l.venue).sort().join('-')}`,
+      underlying:           key,
+      label:                rwaLabel(key),
+      assetClass:           'commodity',
+      question:             `${rwaLabel(key)} funding (beta)`,
+      legs,
+      observation:          true,
+      note:                 'beta · observing funding, not cashable yet',
+      // depth fields filled by enrichWithDepth (real book walk). greenCapacityUsd will be 0
+      // (no yield to amortise slippage against) — the honest book depth is slipCurveMaxFillable.
+      capacityUsd:          null,
+      greenCapacityUsd:     null,
+      slipCurveMaxFillable: null,
+      depthThin:            false,
+      depthNote:            null,
+      // NEVER a cashable number:
+      netROI:               null,
+      breakevenDays:        null,
+    });
+  }
+  return opps;
+}
+
 // ── Atomic type-preserving merge ──────────────────────────────────────────────
 
-const TYPE_RANK = { CASHABLE: 0, SPORTS: 1, FUNDING: 2, SIGNAL: 3 };
+const TYPE_RANK = { CASHABLE: 0, SPORTS: 1, FUNDING: 2, SIGNAL: 3, RWA: 4 };
 
-function mergeUnifiedFunding(allFundingOpps) {
+function mergeUnifiedFunding(allFundingOpps, rwaOpps = []) {
   let existing = { generatedAt: null, sources: {}, summary: {}, opportunities: [] };
   try {
     existing = JSON.parse(fs.readFileSync(UNIFIED_FILE, 'utf8'));
   } catch { /* file absent or corrupt — start fresh */ }
 
-  const kept   = (existing.opportunities || []).filter(o => o.type !== 'FUNDING');
-  const merged = [...kept, ...allFundingOpps];
+  // FUNDING and RWA are both fully replaced each cycle (never preserved stale).
+  const kept   = (existing.opportunities || []).filter(o => o.type !== 'FUNDING' && o.type !== 'RWA');
+  const merged = [...kept, ...allFundingOpps, ...rwaOpps];
 
   merged.sort((a, b) => {
     const ra = TYPE_RANK[a.type] ?? 9, rb = TYPE_RANK[b.type] ?? 9;
@@ -1207,6 +1275,7 @@ function mergeUnifiedFunding(allFundingOpps) {
       signal:         merged.filter(o => o.type === 'SIGNAL').length,
       sports:         merged.filter(o => o.type === 'SPORTS').length,
       funding:        allFundingOpps.length,
+      rwa:            rwaOpps.length,
       bestAnnualized,
     },
     opportunities: merged,
@@ -1307,7 +1376,15 @@ async function run() {
       console.log(`  ${o.id}: trailing:+${o.annualizedROI}%/yr${predNote}  cap:${o.capacityUsd != null ? '$'+Math.round(o.capacityUsd/1000)+'k' : 'null'}${greenMark}${maxMark}  ${o.status}${spikeMark}`);
     }
 
-    mergeUnifiedFunding(allOpps);
+    // RWA commodities (beta) — observation lane. Same depth walk (real book capacity),
+    // never cashable. Enriched separately from the confirmed-crypto set.
+    const rwaOpps = rwaObservations(data.futures || {}, historyCache || {});
+    if (rwaOpps.length > 0) {
+      await enrichWithDepth(rwaOpps);   // reuses the vwap book-walk via the rwa-* id
+      console.log(`[rwa] ${rwaOpps.length} commodity observations: ${rwaOpps.map(o => `${o.label} maxBook$${o.slipCurveMaxFillable != null ? Math.round(o.slipCurveMaxFillable/1000)+'k' : '?'}`).join(', ')}`);
+    }
+
+    mergeUnifiedFunding(allOpps, rwaOpps);
     beat();
 
   } catch (e) {

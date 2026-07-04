@@ -4,6 +4,8 @@
 // No `fs` or other Node-only imports here — this file gets bundled into the
 // client. The actual file-reading computation lives in lib/spread-compute.ts.
 
+export type AssetClass = 'crypto' | 'commodity' | 'stock' | 'index' | 'fx';
+
 export interface FuturesCoin {
   markPrice?:            number | null;
   fundingRate:           number;
@@ -12,6 +14,26 @@ export interface FuturesCoin {
   openInterest?:         number | null;
   openInterestUsd?:      number | null;
   vol24hUsd?:            number | null;
+  assetClass?:           AssetClass;   // absent ⇒ 'crypto' (only RWA rows set this)
+}
+
+// RWA commodities (beta) — OBSERVATION only. Per-leg funding + REAL book depth, NEVER a
+// cashable net/day (RWA funding is flat/near-zero on oracle-tracking perps). Separate lane
+// from SpreadItem so crypto cards/list/table are untouched.
+export interface RwaObservation {
+  underlying:   string;                // canonical key, e.g. 'XAU_GOLD'
+  label:        string;                // 'Gold' / 'Silver' / 'WTI Crude' / 'Brent Crude'
+  assetClass:   'commodity';
+  legs: {
+    venue:         string;
+    platform:      string;             // display label, e.g. 'Aster (DEX)'
+    fundingRate:   number;             // native %/interval
+    intervalHours: number;
+    rate8h:        number;             // display %/8h (comparable across venues)
+    trailingRate:  number;
+  }[];
+  bookDepthUsd: number | null;         // real max-fillable order-book depth (from the depth walk)
+  note:         string;                // 'beta · observing funding, not cashable yet'
 }
 
 export interface SlipPoint {
@@ -79,6 +101,7 @@ export interface CryptoSpreadsData {
   highFunding:  unknown[];
   cexArb:       unknown[];
   spreads:      SpreadItem[];
+  rwa:          RwaObservation[];   // commodities beta — observation-only, never cashable
   meta:         SpreadsMeta | null;
 }
 

@@ -8,6 +8,7 @@ import {
   type FuturesCoin,
   type SlipPoint,
   type SpreadItem,
+  type RwaObservation,
   type Leverage,
   calcSpreadSizing,
 } from '@/lib/spread-types';
@@ -45,6 +46,7 @@ interface ApiResponse {
   spot:         Record<string, Record<string, SpotCoin>>;
   spreads:      SpreadItem[];
   cexArb:       CexArbItem[];
+  rwa?:         RwaObservation[];
   meta:         Meta | null;
 }
 
@@ -1391,6 +1393,64 @@ function CexArbSection({ items }: { items: CexArbItem[] }) {
   );
 }
 
+// ── RWA · Commodities (beta) — OBSERVATION strip ──────────────────────────────
+// Gold/silver/oil across Aster + Extended. Shows each leg's real funding (%/8h) and
+// real order-book depth, but DELIBERATELY renders no cashable net/day: RWA funding is
+// flat/near-zero on these oracle-tracking perps, so no honest cashable spread exists yet.
+function fmtRwaDepth(n: number | null): string {
+  if (n == null || n <= 0) return '—';
+  return n >= 1000 ? `$${Math.round(n / 1000)}k` : `$${Math.round(n)}`;
+}
+
+function RwaCommoditiesStrip({ rows }: { rows: RwaObservation[] }) {
+  if (!rows || rows.length === 0) return null;
+  return (
+    <div className="mb-5 rounded-card border bg-surface" style={{ borderColor: '#e6eaef', boxShadow: '0 1px 2px rgba(14,22,38,.05)' }}>
+      <div className="px-4 py-2.5 flex items-center gap-2 border-b" style={{ borderColor: '#eef2f6' }}>
+        <span className="font-body uppercase tracking-wide" style={{ fontSize: 11, color: '#6b7787' }}>RWA · Commodities</span>
+        <span className="px-1.5 py-[1px] rounded-pill font-body uppercase" style={{ fontSize: 8.5, letterSpacing: '0.1em', background: '#eef6f2', color: '#0f766e' }}>beta</span>
+        <span className="ml-auto font-body" style={{ fontSize: 9.5, color: '#9aa5b3' }}>observing funding · not cashable yet</span>
+      </div>
+      <div>
+        {rows.map((r, i) => (
+          <div
+            key={r.underlying}
+            className="px-4 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-1"
+            style={{ borderTop: i ? '1px solid #f1f4f7' : 'none' }}
+          >
+            <span className="font-mono font-bold text-ink shrink-0" style={{ fontSize: 12, width: 96 }}>{r.label}</span>
+            <span className="font-mono tabular-nums inline-flex items-center gap-x-3 gap-y-0.5 flex-wrap min-w-0" style={{ fontSize: 11 }}>
+              {r.legs.map(l => (
+                <span key={l.venue} style={{ color: '#6b7787' }}>
+                  {l.platform}{' '}
+                  <span className="tabular-nums" style={{ color: l.rate8h >= 0 ? '#0d9c6e' : '#e11d48' }}>
+                    {l.rate8h >= 0 ? '+' : ''}{l.rate8h.toFixed(4)}%
+                  </span>
+                </span>
+              ))}
+              <span style={{ color: '#9aa5b3' }}>/8h</span>
+            </span>
+            <span className="ml-auto font-mono tabular-nums shrink-0" style={{ fontSize: 10.5, color: '#6b7787' }}>
+              book depth <span className="text-ink">{fmtRwaDepth(r.bookDepthUsd)}</span>
+            </span>
+            <span
+              className="px-1.5 py-[2px] border font-body uppercase tracking-widest shrink-0"
+              style={{ fontSize: 8.5, borderColor: '#e6eaef', color: '#9aa5b3' }}
+              title="beta · observing funding, not cashable yet"
+            >
+              Signal · observe
+            </span>
+          </div>
+        ))}
+      </div>
+      <div className="px-4 pb-2 pt-1 font-body" style={{ fontSize: 9, color: '#9aa5b3' }}>
+        Gold / silver / oil on Aster + Extended · real order-book depth. Funding on these oracle-tracking
+        perps is flat/near-zero, so there is no cashable net/day yet — this strip is observation only.
+      </div>
+    </div>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function CryptoPage() {
@@ -1625,6 +1685,9 @@ export default function CryptoPage() {
 
           {/* Top opportunity cards — 6 visible, "show more" reveals the rest */}
           <OpportunityCards spreads={filteredPairs} capital={capital} leverage={leverage} />
+
+          {/* RWA · Commodities (beta) — observation-only strip (gold/silver/oil) */}
+          <RwaCommoditiesStrip rows={data.rwa ?? []} />
 
           {/* ── Advanced / full data ──────────────────────────────────── */}
           <div className="border border-line rounded-card bg-surface shadow-card mb-5">

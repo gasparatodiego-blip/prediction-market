@@ -7,6 +7,7 @@ const WebSocket = require('ws');
 const { httpGet: _sharedGet, httpPost: _httpPost } = require('../lib/httpGet');
 const { rlGet: _rlGet, rlPost: _rlPost, isHostBackedOff } = require('../lib/rateLimitedFetch');
 const { atomicWriteJson } = require('../lib/atomicJsonWrite');
+const { rwaCanonicalFor } = require('../lib/rwa');
 const { annualize } = require('../lib/funding-math');
 
 // ── Load .env (pm2 doesn't auto-load project env files) ────────────────────
@@ -454,16 +455,20 @@ async function fetchAster() {
     }
 
     const r = {};
+    let rwaCount = 0;
     for (const t of premium) {
       const sym = t.symbol ?? '';
       if (!sym.endsWith('USDT')) continue;          // USDT-quoted perps only (USDT treated as USD)
       const coin = sym.slice(0, -4);
-      if (!PERP_COINS.has(coin)) continue;
+      // Crypto (PERP_COINS) OR a tracked RWA commodity (XAUUSDT→XAU_GOLD; SHIELD* rejected).
+      const rwaKey = rwaCanonicalFor('aster', sym);
+      if (!PERP_COINS.has(coin) && !rwaKey) continue;
       const raw    = parseFloat(t.lastFundingRate);
       const markPx = parseFloat(t.markPrice);
       if (!isFinite(raw)) continue;
       const intervalHours = intervalBySymbol[sym] ?? 8;
-      r[coin] = {
+      const key = rwaKey || coin;
+      r[key] = {
         markPrice:            isFinite(markPx) ? markPx : null,
         // Native %/interval + native intervalHours — mirrors Binance (8h) and HL/dYdX
         // (1h): annualize(rate, intervalHours) normalises to %/yr, and the /8h display
@@ -472,9 +477,12 @@ async function fetchAster() {
         fundingIntervalHours: intervalHours,         // 8h default; sub-8h symbols per /fundingInfo
         nextFundingTime:      parseInt(t.nextFundingTime ?? '0') || null,
         vol24hUsd:            volBySymbol[sym] ?? null,
+        // assetClass ONLY on RWA rows — crypto entries stay byte-identical (default crypto).
+        ...(rwaKey ? { assetClass: 'commodity' } : {}),
       };
+      if (rwaKey) rwaCount++;
     }
-    console.log(`[aster] ${Object.keys(r).length} markets`);
+    console.log(`[aster] ${Object.keys(r).length} markets (${rwaCount} RWA commodity)`);
     return r;
   } catch (e) {
     console.error('[aster] fetch error:', e.message);
@@ -735,12 +743,15 @@ async function fetchExtended() {
     const list = j?.data;
     if (!Array.isArray(list)) return {};
     const r = {};
+    let rwaCount = 0;
     for (const m of list) {
       if (m.type !== 'PERPETUAL' || m.status !== 'ACTIVE') continue;
       const name = m.name ?? '';
       if (!name.endsWith('-USD')) continue;
       const coin = name.slice(0, -4);
-      if (!PERP_COINS.has(coin)) continue;
+      // Crypto (PERP_COINS) OR a tracked RWA commodity (XAU-USD→XAU_GOLD).
+      const rwaKey = rwaCanonicalFor('extended', name);
+      if (!PERP_COINS.has(coin) && !rwaKey) continue;
       const st = m.marketStats || {};
       const fr = parseFloat(st.fundingRate);
       if (!isFinite(fr)) continue;
@@ -748,7 +759,8 @@ async function fetchExtended() {
       const oi   = parseFloat(st.openInterest);   // already USD
       const vol  = parseFloat(st.dailyVolume);    // already USD
       const nft  = Number(st.nextFundingRate);    // misnamed: next-funding TIMESTAMP (ms)
-      r[coin] = {
+      const key = rwaKey || coin;
+      r[key] = {
         markPrice:            isFinite(mark) && mark > 0 ? mark : null,
         // raw fraction/hr → %/hr (×100). Positive = longs pay shorts. Hourly settlement.
         fundingRate:          fr * 100,
@@ -756,9 +768,12 @@ async function fetchExtended() {
         openInterestUsd:      isFinite(oi) && oi > 0 ? oi : null,
         vol24hUsd:            isFinite(vol) && vol > 0 ? vol : null,
         nextFundingTime:      Number.isFinite(nft) && nft > 0 ? nft : null,
+        // assetClass ONLY on RWA rows — crypto entries stay byte-identical (default crypto).
+        ...(rwaKey ? { assetClass: 'commodity' } : {}),
       };
+      if (rwaKey) rwaCount++;
     }
-    console.log(`[extended] ${Object.keys(r).length} markets`);
+    console.log(`[extended] ${Object.keys(r).length} markets (${rwaCount} RWA commodity)`);
     return r;
   } catch (e) {
     console.error('[extended] fetch error:', e.message);
