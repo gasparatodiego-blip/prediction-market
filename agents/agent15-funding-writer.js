@@ -69,6 +69,8 @@ let multCache        = { okx: {}, gateio: {}, bitget: {} };
 let multFetchedAt    = 0;
 let edgexIdCache     = {};   // coin → edgeX numeric contractId (endpoints don't accept coin/name)
 let edgexIdFetchedAt = 0;
+let lighterIdCache   = {};   // coin → Lighter numeric market_id (endpoints reject coin/name)
+let lighterIdFetchedAt = 0;
 let backfillAttempted = new Set();  // venues we've already force-backfilled once (self-heal latch)
 let isRunning        = false;
 
@@ -157,6 +159,25 @@ async function refreshEdgexIdCache() {
     Object.assign(edgexIdCache, fresh);   // failed fetch keeps stale ids
     edgexIdFetchedAt = Date.now();
     console.log(`[funding-depth] edgeX contractIds ready: ${Object.keys(edgexIdCache).length} coins`);
+  }
+}
+
+// Lighter depth + funding-history endpoints key on the numeric market_id, NOT the
+// coin/symbol. Resolve coin → market_id from /orderBooks (symbol IS the coin) and
+// cache it, refreshed before the first history/depth fetch — same pattern as edgeX.
+async function refreshLighterIdCache() {
+  const ob = await rlGetJson('https://mainnet.zklighter.elliot.ai/api/v1/orderBooks');
+  const books = ob?.order_books;
+  if (!Array.isArray(books)) return;
+  const fresh = {};
+  for (const m of books) {
+    if (m.market_type !== 'perp' || m.status !== 'active') continue;
+    if (m.symbol != null && Number.isFinite(m.market_id)) fresh[m.symbol] = m.market_id;
+  }
+  if (Object.keys(fresh).length) {
+    Object.assign(lighterIdCache, fresh);   // failed fetch keeps stale ids
+    lighterIdFetchedAt = Date.now();
+    console.log(`[funding-depth] Lighter market_ids ready: ${Object.keys(lighterIdCache).length} coins`);
   }
 }
 
@@ -286,6 +307,29 @@ async function depthGrvt(coin) {
   return { bids, asks, mid: (bids[0][0] + asks[0][0]) / 2 };
 }
 
+async function depthLighter(coin) {
+  // Lighter CLOB L2 via GET /orderBookOrders → { asks, bids } as arrays of INDIVIDUAL
+  // orders { price, remaining_base_amount }. remaining_base_amount is BASE units (coins),
+  // no multiplier. Orders (not aggregated levels) are fine for vwapWalk — it sums
+  // price*qty per entry. bids desc / asks asc (sorted defensively). Quote USDC = USD.
+  // Keys on the numeric market_id (endpoints reject coin/name) — resolved via lighterIdCache.
+  const marketId = lighterIdCache[coin];
+  if (marketId == null) return null;
+  const d    = await rlGetJson(`https://mainnet.zklighter.elliot.ai/api/v1/orderBookOrders?market_id=${marketId}&limit=100`);
+  const aRaw = d?.asks, bRaw = d?.bids;
+  if (!Array.isArray(bRaw) || !bRaw.length || !Array.isArray(aRaw) || !aRaw.length) return null;
+  const bids = bRaw
+    .map(o => [parseFloat(o.price), parseFloat(o.remaining_base_amount)])
+    .filter(([p, q]) => isFinite(p) && p > 0 && isFinite(q) && q > 0)
+    .sort((a, b) => b[0] - a[0]);
+  const asks = aRaw
+    .map(o => [parseFloat(o.price), parseFloat(o.remaining_base_amount)])
+    .filter(([p, q]) => isFinite(p) && p > 0 && isFinite(q) && q > 0)
+    .sort((a, b) => a[0] - b[0]);
+  if (!bids.length || !asks.length) return null;
+  return { bids, asks, mid: (bids[0][0] + asks[0][0]) / 2 };
+}
+
 async function depthEdgex(coin) {
   // edgeX StarkEx CLOB L2 book: data[0].{asks,bids} = [{ price, size }], size already
   // in BASE units (coins) — same as Binance/Aster/Paradex, no contract multiplier.
@@ -333,6 +377,7 @@ const DEPTH_FETCHERS = {
   paradex:     depthParadex,
   edgex:       depthEdgex,
   grvt:        depthGrvt,
+  lighter:     depthLighter,
 };
 
 // Walk `levels` [[price, qty_coins], ...] to fill `targetUsd` of notional.
@@ -591,6 +636,27 @@ async function fetchGrvtHistory(coin, n) {
     .filter(v => isFinite(v));
 }
 
+async function fetchLighterHistory(coin, n) {
+  // Lighter settles funding HOURLY (top of each UTC hour). GET /fundings returns real
+  // settled per-hour rates whose `rate` field is ALREADY a PERCENT per hour (native %/hr,
+  // cross-validated: == /funding-rates' 8h-normalized value ×12.5). So NO conversion here
+  // — kept in the venue's own per-settlement unit (legAnalytics annualizes via
+  // fundingIntervalHours=1), exactly like fetchDydxHistory (also hourly). Needs numeric
+  // market_id + a time window; (n+4)h back comfortably covers n hourly settlements.
+  const marketId = lighterIdCache[coin];
+  if (marketId == null) return [];
+  const end   = Date.now();
+  const start = end - (n + 4) * 3_600_000;
+  const d = await rlGetJson(`https://mainnet.zklighter.elliot.ai/api/v1/fundings?market_id=${marketId}&resolution=1h&start_timestamp=${start}&end_timestamp=${end}&count_back=${n}`);
+  const rows = d?.fundings;
+  if (!Array.isArray(rows)) return [];
+  return rows
+    .sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0))
+    .map(e => parseFloat(e.rate))
+    .filter(v => isFinite(v))
+    .slice(0, n);
+}
+
 async function fetchEdgexHistory(coin, n) {
   // edgeX funding settles every 4h (fundingRateIntervalMin=240). getFundingRatePage
   // returns a DENSE snapshot stream where many rows share one settled `fundingTime`,
@@ -649,6 +715,7 @@ const HISTORY_FETCHERS = {
   paradex:     fetchParadexHistory,
   edgex:       fetchEdgexHistory,
   grvt:        fetchGrvtHistory,
+  lighter:     fetchLighterHistory,
 };
 
 // ── History cache management ──────────────────────────────────────────────────
@@ -816,7 +883,7 @@ function crossExchangeSpread(futures, hCache) {
   // Build byExchange: coin → [{ exchange, fr (predicted), intervalHours, isDex }]
   const byExchange = {};
   for (const [ex, coins] of Object.entries(futures)) {
-    const isDex = ex === 'hyperliquid' || ex === 'dydx' || ex === 'aster' || ex === 'paradex' || ex === 'edgex' || ex === 'grvt';
+    const isDex = ex === 'hyperliquid' || ex === 'dydx' || ex === 'aster' || ex === 'paradex' || ex === 'edgex' || ex === 'grvt' || ex === 'lighter';
     for (const [coin, data] of Object.entries(coins || {})) {
       const fr            = data?.fundingRate;
       const intervalHours = data?.fundingIntervalHours ?? 8;
@@ -1074,10 +1141,13 @@ async function run() {
       return;
     }
 
-    // edgeX depth + history endpoints key on numeric contractId (not coin), so the
-    // coin→contractId map MUST be ready before refreshHistoryCache/enrichWithDepth run.
+    // edgeX + Lighter depth/history endpoints key on a numeric id (not coin), so those
+    // id maps MUST be ready before refreshHistoryCache/enrichWithDepth run.
     if (Date.now() - edgexIdFetchedAt > MULT_REFRESH_MS || !Object.keys(edgexIdCache).length) {
       await refreshEdgexIdCache();
+    }
+    if (Date.now() - lighterIdFetchedAt > MULT_REFRESH_MS || !Object.keys(lighterIdCache).length) {
+      await refreshLighterIdCache();
     }
     if (!historyCache) loadHistoryCacheFromDisk();
     // Refresh settled history on the normal cadence. Plus a generic one-shot backfill:

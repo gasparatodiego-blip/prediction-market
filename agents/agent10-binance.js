@@ -633,6 +633,47 @@ async function fetchGrvt() {
   }
 }
 
+async function fetchLighter() {
+  // Lighter (zkLighter) — CLOB perp DEX, PUBLIC read-only REST (no auth for market data).
+  // Base confirmed 2026-07-04: https://mainnet.zklighter.elliot.ai. Routed through the
+  // shared per-host limiter (rlGetJson) from the start — fresh host, 429-proofed. One bulk
+  // /funding-rates call covers every market; agent15 keys depth/history on a numeric
+  // market_id map (like edgeX), but agent10 needs none — /funding-rates carries `symbol`.
+  //
+  // CRITICAL — funding UNIT: /funding-rates aggregates MANY venues (filter exchange==='lighter')
+  // and reports each on an 8h-NORMALIZED FRACTION basis (calibrated live: its Hyperliquid row
+  // 0.0001 == HL's real hourly 0.0000125 ×8; and its Lighter row ×12.5 == Lighter's own native
+  // hourly `fundings` history exactly). Lighter settles HOURLY, so native %/hr = raw / 8 * 100,
+  // stored with fundingIntervalHours=1. BTC 0.000096 → 0.0012 %/hr → 0.0096%/8h ≈ baseline.
+  // Reading raw as a native hourly fraction would 8× it into phantom arbs — do NOT.
+  try {
+    const j = await rlGetJson('https://mainnet.zklighter.elliot.ai/api/v1/funding-rates');
+    const rows = j?.funding_rates;
+    if (!Array.isArray(rows)) return {};
+    const r = {};
+    for (const row of rows) {
+      if (row.exchange !== 'lighter') continue;
+      const coin = row.symbol ?? '';
+      if (!PERP_COINS.has(coin)) continue;
+      const raw = parseFloat(row.rate);              // 8h-normalized fraction
+      if (!isFinite(raw)) continue;
+      r[coin] = {
+        markPrice:            null,                   // /funding-rates carries no mark/OI/vol
+        // 8h-normalized fraction → native %/hr (see header). Positive = longs pay shorts.
+        fundingRate:          raw / 8 * 100,
+        fundingIntervalHours: 1,                      // Lighter settles hourly (top of UTC hour)
+        openInterestUsd:      null,
+        vol24hUsd:            null,
+      };
+    }
+    console.log(`[lighter] ${Object.keys(r).length} markets`);
+    return r;
+  } catch (e) {
+    console.error('[lighter] fetch error:', e.message);
+    return {};
+  }
+}
+
 async function fetchFutures() {
   const [binF, bybitF, okxF, hlF] = await Promise.all([
 
@@ -698,8 +739,8 @@ async function fetchFutures() {
     fetchHyperliquid(),
   ]);
 
-  // Secondary parallel: Binance vol, dYdX, Gate.io perps, Bitget perps, Aster, Paradex, edgeX, Grvt
-  const [dydxF, binVol, gateF, bitF, asterF, paradexF, edgexF, grvtF] = await Promise.all([
+  // Secondary parallel: Binance vol, dYdX, Gate.io perps, Bitget perps, Aster, Paradex, edgeX, Grvt, Lighter
+  const [dydxF, binVol, gateF, bitF, asterF, paradexF, edgexF, grvtF, lighterF] = await Promise.all([
     fetchDydx(),
     fetchBinancePerpVol(),
     fetchGateIOPerps(),
@@ -708,6 +749,7 @@ async function fetchFutures() {
     fetchParadex(),
     fetchEdgex(),
     fetchGrvt(),
+    fetchLighter(),
   ]);
 
   // Merge Binance vol into rate data
@@ -724,6 +766,7 @@ async function fetchFutures() {
   if (Object.keys(paradexF).length > 0) out.paradex   = paradexF;
   if (Object.keys(edgexF).length > 0) out.edgex       = edgexF;
   if (Object.keys(grvtF).length > 0) out.grvt         = grvtF;
+  if (Object.keys(lighterF).length > 0) out.lighter   = lighterF;
   return out;
 }
 
