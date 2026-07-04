@@ -560,6 +560,60 @@ async function fetchEdgex() {
   }
 }
 
+async function fetchGrvt() {
+  // Grvt — hybrid CLOB perp DEX, PUBLIC market-data API (no auth/signature to READ:
+  // instruments, ticker, book, funding all confirmed unauthenticated 2026-07-04).
+  // JSON-RPC-style POST bodies. Keys on the instrument NAME (BTC_USDT_Perp), derivable
+  // from coin — NO numeric id map. Base: https://market-data.grvt.io/full/v1
+  //
+  // CRITICAL — funding UNIT: Grvt's funding_rate_8h_curr is ALREADY a PERCENT per 8h
+  // (e.g. BTC "0.01" = 0.01%/8h), NOT a raw fraction like every other venue. Calibrated
+  // live vs Binance (Grvt 0.01/0.0054/-0.0006 ≈ Binance 0.00927/0.00434/-0.00541 %/8h).
+  // So NO ×100 here — a fraction reading would 100× it into absurd 500-1000%/yr arbs.
+  try {
+    const instr = await postJson('market-data.grvt.io', '/full/v1/instruments',
+      JSON.stringify({ kind: ['PERPETUAL'], quote: ['USDT'], is_active: true }));
+    const list = instr?.result;
+    if (!Array.isArray(list)) return {};
+
+    // PERP_COINS ∩ USDT perps → { coin, instrument, intervalHours }. Read funding
+    // interval PER instrument from metadata (Grvt is 8h; verify, don't assume).
+    const wanted = [];
+    for (const it of list) {
+      const base = it.base ?? '';
+      if (it.quote !== 'USDT' || !PERP_COINS.has(base)) continue;
+      const ih = parseInt(it.funding_interval_hours ?? '8', 10);
+      wanted.push({ coin: base, instrument: it.instrument, intervalHours: isFinite(ih) && ih > 0 ? ih : 8 });
+    }
+
+    const r = {};
+    await Promise.all(wanted.map(async ({ coin, instrument, intervalHours }) => {
+      const q = await postJson('market-data.grvt.io', '/full/v1/ticker', JSON.stringify({ instrument }));
+      const t = q?.result;
+      if (!t) return;
+      const fr = parseFloat(t.funding_rate_8h_curr);
+      if (!isFinite(fr)) return;
+      const mark = parseFloat(t.mark_price);
+      const oi   = parseFloat(t.open_interest);
+      const vol  = parseFloat(t.buy_volume_24h_q) + parseFloat(t.sell_volume_24h_q);
+      r[coin] = {
+        markPrice:            isFinite(mark) ? mark : null,
+        // funding_rate_8h_curr is ALREADY %/8h (see header) — store as-is, NO ×100.
+        // Positive = longs pay shorts. intervalHours from instrument metadata (8h).
+        fundingRate:          fr,
+        fundingIntervalHours: intervalHours,
+        openInterestUsd:      isFinite(oi) && isFinite(mark) && oi > 0 && mark > 0 ? oi * mark : null,
+        vol24hUsd:            isFinite(vol) && vol > 0 ? vol : null,
+      };
+    }));
+    console.log(`[grvt] ${Object.keys(r).length} markets`);
+    return r;
+  } catch (e) {
+    console.error('[grvt] fetch error:', e.message);
+    return {};
+  }
+}
+
 async function fetchFutures() {
   const [binF, bybitF, okxF, hlF] = await Promise.all([
 
@@ -625,8 +679,8 @@ async function fetchFutures() {
     fetchHyperliquid(),
   ]);
 
-  // Secondary parallel: Binance vol, dYdX, Gate.io perps, Bitget perps, Aster, Paradex, edgeX
-  const [dydxF, binVol, gateF, bitF, asterF, paradexF, edgexF] = await Promise.all([
+  // Secondary parallel: Binance vol, dYdX, Gate.io perps, Bitget perps, Aster, Paradex, edgeX, Grvt
+  const [dydxF, binVol, gateF, bitF, asterF, paradexF, edgexF, grvtF] = await Promise.all([
     fetchDydx(),
     fetchBinancePerpVol(),
     fetchGateIOPerps(),
@@ -634,6 +688,7 @@ async function fetchFutures() {
     fetchAster(),
     fetchParadex(),
     fetchEdgex(),
+    fetchGrvt(),
   ]);
 
   // Merge Binance vol into rate data
@@ -649,6 +704,7 @@ async function fetchFutures() {
   if (Object.keys(asterF).length > 0) out.aster       = asterF;
   if (Object.keys(paradexF).length > 0) out.paradex   = paradexF;
   if (Object.keys(edgexF).length > 0) out.edgex       = edgexF;
+  if (Object.keys(grvtF).length > 0) out.grvt         = grvtF;
   return out;
 }
 

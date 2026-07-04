@@ -68,7 +68,7 @@ let multCache        = { okx: {}, gateio: {}, bitget: {} };
 let multFetchedAt    = 0;
 let edgexIdCache     = {};   // coin → edgeX numeric contractId (endpoints don't accept coin/name)
 let edgexIdFetchedAt = 0;
-let edgexHistoryBackfilled = false;  // one-shot latch: force one history refresh once edgeX ids land
+let backfillAttempted = new Set();  // venues we've already force-backfilled once (self-heal latch)
 let isRunning        = false;
 
 // ── HTTP helper ───────────────────────────────────────────────────────────────
@@ -252,6 +252,27 @@ async function depthAster(coin) {
   return { bids, asks, mid: (bids[0][0] + asks[0][0]) / 2 };
 }
 
+async function depthGrvt(coin) {
+  // Grvt CLOB L2 book via POST /book → result.{bids,asks} = [{ price, size, num_orders }],
+  // size already in BASE units (coins) — same [{price,size}] object shape as dYdX, no
+  // contract multiplier. bids desc / asks asc (sorted defensively). Quote USDT = USD.
+  // Keys on the instrument name (derivable) — no id map.
+  const d    = await post('https://market-data.grvt.io/full/v1/book', { instrument: `${coin}_USDT_Perp`, depth: 100 });
+  const book = d?.result;
+  const bRaw = book?.bids, aRaw = book?.asks;
+  if (!Array.isArray(bRaw) || !bRaw.length || !Array.isArray(aRaw) || !aRaw.length) return null;
+  const bids = bRaw
+    .map(l => [parseFloat(l.price), parseFloat(l.size)])
+    .filter(([p, q]) => isFinite(p) && p > 0 && isFinite(q) && q > 0)
+    .sort((a, b) => b[0] - a[0]);
+  const asks = aRaw
+    .map(l => [parseFloat(l.price), parseFloat(l.size)])
+    .filter(([p, q]) => isFinite(p) && p > 0 && isFinite(q) && q > 0)
+    .sort((a, b) => a[0] - b[0]);
+  if (!bids.length || !asks.length) return null;
+  return { bids, asks, mid: (bids[0][0] + asks[0][0]) / 2 };
+}
+
 async function depthEdgex(coin) {
   // edgeX StarkEx CLOB L2 book: data[0].{asks,bids} = [{ price, size }], size already
   // in BASE units (coins) — same as Binance/Aster/Paradex, no contract multiplier.
@@ -298,6 +319,7 @@ const DEPTH_FETCHERS = {
   aster:       depthAster,
   paradex:     depthParadex,
   edgex:       depthEdgex,
+  grvt:        depthGrvt,
 };
 
 // Walk `levels` [[price, qty_coins], ...] to fill `targetUsd` of notional.
@@ -540,6 +562,22 @@ async function fetchAsterHistory(coin, n) {
     .filter(v => isFinite(v));
 }
 
+async function fetchGrvtHistory(coin, n) {
+  // Grvt funding settles every 8h (funding_interval_hours=8). POST /funding returns
+  // REAL settled per-period rates (funding_time in ns, 8h apart) — sorted newest-first
+  // defensively. CRITICAL: funding_rate is ALREADY a PERCENT per 8h (calibrated vs
+  // Binance), so NO ×100 here — unlike every other venue's fetcher. Kept in the venue's
+  // own per-settlement unit (legAnalytics annualizes via fundingIntervalHours=8), like
+  // fetchBinanceHistory otherwise.
+  const d = await post('https://market-data.grvt.io/full/v1/funding', { instrument: `${coin}_USDT_Perp`, limit: n });
+  const rows = d?.result;
+  if (!Array.isArray(rows)) return [];
+  return rows
+    .sort((a, b) => Number(b.funding_time ?? 0) - Number(a.funding_time ?? 0))
+    .map(e => parseFloat(e.funding_rate))
+    .filter(v => isFinite(v));
+}
+
 async function fetchEdgexHistory(coin, n) {
   // edgeX funding settles every 4h (fundingRateIntervalMin=240). getFundingRatePage
   // returns a DENSE snapshot stream where many rows share one settled `fundingTime`,
@@ -597,6 +635,7 @@ const HISTORY_FETCHERS = {
   aster:       fetchAsterHistory,
   paradex:     fetchParadexHistory,
   edgex:       fetchEdgexHistory,
+  grvt:        fetchGrvtHistory,
 };
 
 // ── History cache management ──────────────────────────────────────────────────
@@ -764,7 +803,7 @@ function crossExchangeSpread(futures, hCache) {
   // Build byExchange: coin → [{ exchange, fr (predicted), intervalHours, isDex }]
   const byExchange = {};
   for (const [ex, coins] of Object.entries(futures)) {
-    const isDex = ex === 'hyperliquid' || ex === 'dydx' || ex === 'aster' || ex === 'paradex' || ex === 'edgex';
+    const isDex = ex === 'hyperliquid' || ex === 'dydx' || ex === 'aster' || ex === 'paradex' || ex === 'edgex' || ex === 'grvt';
     for (const [coin, data] of Object.entries(coins || {})) {
       const fr            = data?.fundingRate;
       const intervalHours = data?.fundingIntervalHours ?? 8;
@@ -1027,18 +1066,20 @@ async function run() {
     if (Date.now() - edgexIdFetchedAt > MULT_REFRESH_MS || !Object.keys(edgexIdCache).length) {
       await refreshEdgexIdCache();
     }
-    // Refresh settled history cache if stale (or on first run). Extra one-shot
-    // backfill: if the edgeX contractId map only landed AFTER the last history
-    // refresh (startup race — getMetaData can fail under restart load, so history
-    // refreshes once with an empty edgeX map and locks in historyFetchedAt), force
-    // a single refresh so edgeX legs don't sit at PARTIAL for a full 15-min cycle.
     if (!historyCache) loadHistoryCacheFromDisk();
-    const edgexNeedsBackfill = !edgexHistoryBackfilled
-      && Object.keys(edgexIdCache).length > 0
-      && historyCache && !Object.keys(historyCache.edgex || {}).length;
-    if (Date.now() - historyFetchedAt > HISTORY_REFRESH_MS || edgexNeedsBackfill) {
+    // Refresh settled history on the normal cadence. Plus a generic one-shot backfill:
+    // if a venue is live in `futures` and has a history fetcher but is missing from the
+    // history cache — because its data landed AFTER the last refresh (startup race:
+    // agent10 writes a venue's futures a beat after we refreshed, or a late contractId
+    // map) — force a single extra refresh so its legs don't sit at PARTIAL for a full
+    // 15-min cycle. Latched per-venue (backfillAttempted) so a genuinely dead history
+    // endpoint can't spin the refresh every 60s. Covers edgeX, Grvt, and any future venue.
+    const backfillVenues = Object.keys(data.futures || {}).filter(v =>
+      HISTORY_FETCHERS[v] && !backfillAttempted.has(v) &&
+      historyCache && !Object.keys(historyCache[v] || {}).length);
+    if (Date.now() - historyFetchedAt > HISTORY_REFRESH_MS || backfillVenues.length) {
+      for (const v of backfillVenues) backfillAttempted.add(v);
       await refreshHistoryCache(data.futures || {});
-      if (Object.keys((historyCache || {}).edgex || {}).length) edgexHistoryBackfilled = true;
     }
     // Refresh contract multipliers at the same cadence (needed for depth accuracy)
     if (Date.now() - multFetchedAt > MULT_REFRESH_MS) {
