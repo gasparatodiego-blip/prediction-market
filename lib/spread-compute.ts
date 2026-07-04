@@ -32,7 +32,7 @@ const UNI_FILE      = '/tmp/unified-opportunities.json';
 const UNI_STALE_MS  = 10 * 60_000;
 
 function isDex(exchange: string): boolean {
-  return exchange === 'hyperliquid' || exchange === 'dydx' || exchange === 'aster' || exchange === 'paradex' || exchange === 'edgex' || exchange === 'grvt' || exchange === 'lighter' || exchange === 'extended' || exchange === 'pacifica';
+  return exchange === 'hyperliquid' || exchange === 'dydx' || exchange === 'aster' || exchange === 'paradex' || exchange === 'edgex' || exchange === 'grvt' || exchange === 'lighter' || exchange === 'extended' || exchange === 'pacifica' || exchange === 'apex';
 }
 
 function liqUsd(data: FuturesCoin | undefined): number {

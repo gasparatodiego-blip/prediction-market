@@ -392,6 +392,26 @@ async function depthPacifica(coin) {
   return { bids, asks, mid: (bids[0][0] + asks[0][0]) / 2 };
 }
 
+async function depthApex(coin) {
+  // ApeX Omni CLOB L2 via GET /depth?symbol=<coin>USDT → data.{a,b} = [[price, size]],
+  // size in BASE units (coins), no multiplier. a=asks (asc), b=bids (desc), sorted
+  // defensively. Quote USDT = USD. Depth/ticker use the no-dash symbol (BTCUSDT).
+  const d    = await rlGetJson(`https://omni.apex.exchange/api/v3/depth?symbol=${coin}USDT`);
+  const book = d?.data;
+  const aRaw = book?.a, bRaw = book?.b;
+  if (!Array.isArray(bRaw) || !bRaw.length || !Array.isArray(aRaw) || !aRaw.length) return null;
+  const bids = bRaw
+    .map(([p, q]) => [parseFloat(p), parseFloat(q)])
+    .filter(([p, q]) => isFinite(p) && p > 0 && isFinite(q) && q > 0)
+    .sort((a, b) => b[0] - a[0]);
+  const asks = aRaw
+    .map(([p, q]) => [parseFloat(p), parseFloat(q)])
+    .filter(([p, q]) => isFinite(p) && p > 0 && isFinite(q) && q > 0)
+    .sort((a, b) => a[0] - b[0]);
+  if (!bids.length || !asks.length) return null;
+  return { bids, asks, mid: (bids[0][0] + asks[0][0]) / 2 };
+}
+
 async function depthEdgex(coin) {
   // edgeX StarkEx CLOB L2 book: data[0].{asks,bids} = [{ price, size }], size already
   // in BASE units (coins) — same as Binance/Aster/Paradex, no contract multiplier.
@@ -442,6 +462,7 @@ const DEPTH_FETCHERS = {
   lighter:     depthLighter,
   extended:    depthExtended,
   pacifica:    depthPacifica,
+  apex:        depthApex,
 };
 
 // Walk `levels` [[price, qty_coins], ...] to fill `targetUsd` of notional.
@@ -761,6 +782,22 @@ async function fetchPacificaHistory(coin, n) {
     .slice(0, n);
 }
 
+async function fetchApexHistory(coin, n) {
+  // ApeX Omni settles funding HOURLY. GET /history-funding returns the real settled 1-hour
+  // rates ({ rate, fundingTime }); `rate` is the SAME raw FRACTION per hour as ticker
+  // .fundingRate (cross-validated: current == history[0]). ×100 → %/hr, kept in the venue's
+  // own per-settlement unit (legAnalytics annualizes via fundingIntervalHours=1), exactly
+  // like fetchDydxHistory (also hourly). History endpoint uses the DASH symbol (BTC-USDT).
+  const d = await rlGetJson(`https://omni.apex.exchange/api/v3/history-funding?symbol=${coin}-USDT&limit=${n}`);
+  const rows = d?.data?.historyFunds;
+  if (!Array.isArray(rows)) return [];
+  return rows
+    .sort((a, b) => (b.fundingTime ?? 0) - (a.fundingTime ?? 0))
+    .map(e => parseFloat(e.rate) * 100)
+    .filter(v => isFinite(v))
+    .slice(0, n);
+}
+
 async function fetchEdgexHistory(coin, n) {
   // edgeX funding settles every 4h (fundingRateIntervalMin=240). getFundingRatePage
   // returns a DENSE snapshot stream where many rows share one settled `fundingTime`,
@@ -822,6 +859,7 @@ const HISTORY_FETCHERS = {
   lighter:     fetchLighterHistory,
   extended:    fetchExtendedHistory,
   pacifica:    fetchPacificaHistory,
+  apex:        fetchApexHistory,
 };
 
 // ── History cache management ──────────────────────────────────────────────────
@@ -989,7 +1027,7 @@ function crossExchangeSpread(futures, hCache) {
   // Build byExchange: coin → [{ exchange, fr (predicted), intervalHours, isDex }]
   const byExchange = {};
   for (const [ex, coins] of Object.entries(futures)) {
-    const isDex = ex === 'hyperliquid' || ex === 'dydx' || ex === 'aster' || ex === 'paradex' || ex === 'edgex' || ex === 'grvt' || ex === 'lighter' || ex === 'extended' || ex === 'pacifica';
+    const isDex = ex === 'hyperliquid' || ex === 'dydx' || ex === 'aster' || ex === 'paradex' || ex === 'edgex' || ex === 'grvt' || ex === 'lighter' || ex === 'extended' || ex === 'pacifica' || ex === 'apex';
     for (const [coin, data] of Object.entries(coins || {})) {
       const fr            = data?.fundingRate;
       const intervalHours = data?.fundingIntervalHours ?? 8;

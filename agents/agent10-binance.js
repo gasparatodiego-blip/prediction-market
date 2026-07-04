@@ -823,6 +823,58 @@ async function fetchPacifica() {
   }
 }
 
+async function fetchApex() {
+  // ApeX Omni (apex.exchange) — high-volume orderbook perp DEX, PUBLIC REST (symbols/
+  // ticker/depth/history-funding all confirmed unauthenticated 2026-07-05; real walkable
+  // L2 book at /depth). Routed through the shared per-host limiter (rlGetJson) from the
+  // start. Base: https://omni.apex.exchange/api/v3. Symbol forms differ per endpoint but
+  // are all derivable from coin: ticker/depth use "BTCUSDT" (no dash), history uses
+  // "BTC-USDT" (dash) — NO id map. No bulk ticker, so one /ticker call per symbol.
+  //
+  // Funding UNIT: ticker.fundingRate is a raw FRACTION per HOUR (BTC ~0.0000076 ≈ HL's
+  // hourly baseline; history fundingTime rows are 1h apart). So ×100 → %/hr, stored with
+  // fundingIntervalHours=1 (same as dYdX/HL/Extended/Pacifica). BTC → ~0.006%/8h ≈ baseline.
+  // `nextFundingTime` is an ISO-8601 string (not a number) → parse to ms for the countdown.
+  try {
+    const cfg = await rlGetJson('https://omni.apex.exchange/api/v3/symbols');
+    const perps = cfg?.data?.contractConfig?.perpetualContract;
+    if (!Array.isArray(perps)) return {};
+    // PERP_COINS ∩ USDT-settled perps (crypto only — stockContract is a separate list, excluded).
+    const wanted = [];
+    for (const p of perps) {
+      if (p.settleAssetId !== 'USDT' || p.enableTrade === false) continue;
+      const coin = p.baseTokenId ?? '';
+      if (PERP_COINS.has(coin)) wanted.push(coin);
+    }
+    const r = {};
+    await Promise.all(wanted.map(async (coin) => {
+      const q = await rlGetJson(`https://omni.apex.exchange/api/v3/ticker?symbol=${coin}USDT`);
+      const t = Array.isArray(q?.data) ? q.data[0] : null;
+      if (!t) return;
+      const fr = parseFloat(t.fundingRate);
+      if (!isFinite(fr)) return;
+      const mark  = parseFloat(t.markPrice);
+      const oi    = parseFloat(t.openInterest);   // base units → ×mark for USD
+      const vol   = parseFloat(t.turnover24h);    // already USD (quote volume)
+      const nftMs = Date.parse(t.nextFundingTime);  // ISO-8601 → ms
+      r[coin] = {
+        markPrice:            isFinite(mark) && mark > 0 ? mark : null,
+        // raw fraction/hr → %/hr (×100). Positive = longs pay shorts. Hourly settlement.
+        fundingRate:          fr * 100,
+        fundingIntervalHours: 1,
+        openInterestUsd:      isFinite(oi) && isFinite(mark) && oi > 0 && mark > 0 ? oi * mark : null,
+        vol24hUsd:            isFinite(vol) && vol > 0 ? vol : null,
+        nextFundingTime:      Number.isFinite(nftMs) && nftMs > 0 ? nftMs : null,
+      };
+    }));
+    console.log(`[apex] ${Object.keys(r).length} markets`);
+    return r;
+  } catch (e) {
+    console.error('[apex] fetch error:', e.message);
+    return {};
+  }
+}
+
 async function fetchFutures() {
   const [binF, bybitF, okxF, hlF] = await Promise.all([
 
@@ -888,8 +940,8 @@ async function fetchFutures() {
     fetchHyperliquid(),
   ]);
 
-  // Secondary parallel: Binance vol, dYdX, Gate.io perps, Bitget perps, Aster, Paradex, edgeX, Grvt, Lighter, Extended, Pacifica
-  const [dydxF, binVol, gateF, bitF, asterF, paradexF, edgexF, grvtF, lighterF, extendedF, pacificaF] = await Promise.all([
+  // Secondary parallel: Binance vol, dYdX, Gate.io perps, Bitget perps, Aster, Paradex, edgeX, Grvt, Lighter, Extended, Pacifica, ApeX
+  const [dydxF, binVol, gateF, bitF, asterF, paradexF, edgexF, grvtF, lighterF, extendedF, pacificaF, apexF] = await Promise.all([
     fetchDydx(),
     fetchBinancePerpVol(),
     fetchGateIOPerps(),
@@ -901,6 +953,7 @@ async function fetchFutures() {
     fetchLighter(),
     fetchExtended(),
     fetchPacifica(),
+    fetchApex(),
   ]);
 
   // Merge Binance vol into rate data
@@ -920,6 +973,7 @@ async function fetchFutures() {
   if (Object.keys(lighterF).length > 0) out.lighter   = lighterF;
   if (Object.keys(extendedF).length > 0) out.extended = extendedF;
   if (Object.keys(pacificaF).length > 0) out.pacifica = pacificaF;
+  if (Object.keys(apexF).length > 0) out.apex         = apexF;
   return out;
 }
 

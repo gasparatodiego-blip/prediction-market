@@ -24,6 +24,7 @@ const SLUG_MAP: Record<string, string> = {
   lighter:            'lighter',
   extended:           'extended',
   pacifica:           'pacifica',
+  apex:               'apex',
   gateio:             'gate-io',
   'gate.io':          'gate-io',
   'gate-io':          'gate-io',
