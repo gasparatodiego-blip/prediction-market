@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import PlatformLogo from '@/components/PlatformLogo';
 import { Redacted, RedactedPanel } from '@/app/components/ui/Redacted';
+import { venueFeePct } from '@/lib/funding-math';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -173,6 +174,13 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
   const netYrUsd = spread && spread.netApy30d   != null ? notionalPerLeg * spread.netApy30d / 100 : null;
   const dayUsd   = netYrUsd != null ? netYrUsd / 365 : null;
   const feesUsd  = spread && spread.totalFeesPct != null ? notionalPerLeg * spread.totalFeesPct / 100 : null;
+
+  // Per-side taker-fee decomposition of the round-trip fee. Round-trip = 4 taker
+  // fills (enter+exit on each venue); each fill = notionalPerLeg × that venue's
+  // taker %. DISPLAY ONLY — real per-venue rates, and 2×short + 2×long reconciles
+  // exactly to feesUsd above (totalFeesPct = (feeShort+feeLong)×2). No new math.
+  const shortLegFeeUsd = spread ? notionalPerLeg * venueFeePct(shortExchange) / 100 : null;
+  const longLegFeeUsd  = spread ? notionalPerLeg * venueFeePct(longExchange)  / 100 : null;
 
   // Exit threshold: fees × (365 / paybackDays) = APY at which breakeven = paybackDays.
   const effectiveThreshold = spread && spread.totalFeesPct != null
@@ -379,8 +387,8 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
                     b: <>Deposit <b style={{ color: '#0e1626' }}>{fmtUsd(notionalPerLeg)}</b> USDC/USDT margin per exchange. On each, open a perp position sized <b style={{ color: '#0e1626' }}>{qty != null ? `~${qtyLabel}` : '—'}</b> ({fmtUsd(notionalPerLeg)} notional) — SHORT on {venueLabel(shortExchange)}, LONG on {venueLabel(longExchange)}. You never hold {coin}; the two positions are price-neutral.</>,
                   },
                   {
-                    t: 'Open short + long together',
-                    b: <>SHORT <b style={{ color: '#0e1626' }}>{qtyLabel}</b> on {venueLabel(shortExchange)}, LONG the same on {venueLabel(longExchange)}. Use taker (market/IOC) so both fill now — limit orders can&apos;t guarantee a simultaneous fill.</>,
+                    t: 'Open short + long — taker orders only',
+                    b: <>SHORT <b style={{ color: '#0e1626' }}>{qtyLabel}</b> on {venueLabel(shortExchange)}, LONG the same on {venueLabel(longExchange)}. Use taker orders (market / IOC), not maker/limit — only a taker fills instantly, and both legs must fill together; an unfilled leg leaves you price-exposed. You pay the taker fee (included in the costs below).</>,
                   },
                   {
                     t: 'Minimize the gap between fills',
@@ -388,7 +396,35 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
                   },
                   {
                     t: 'Collect funding, watch the spread',
-                    b: <>Both legs settle funding {settleNote} into your margin. Round-trip fees of <b style={{ color: '#0e1626' }}>{feesUsd != null ? fmtUsd(feesUsd) : '—'}</b> clear in <b style={{ color: '#0e1626' }}>{formatPayback(spread.breakevenDays)}</b>. The rate is a run-rate, not locked — exit both legs (taker) when the spread compresses below ~{effectiveThreshold.toFixed(1)}%/yr or the short-side rate flips.</>,
+                    b: (
+                      <>
+                        Both legs settle funding {settleNote} into your margin.
+                        {/* Enter+exit taker-fee breakdown — 4 fills, sums to the real feesUsd */}
+                        <span className="block rounded-button" style={{ marginTop: 8, background: '#fafbfc', border: '1px solid #eef2f6', padding: '8px 10px' }}>
+                          <span className="block font-body uppercase tracking-wider" style={{ fontSize: 9, color: '#9aa5b3', marginBottom: 5 }}>
+                            Round-trip · 4 taker fills
+                          </span>
+                          {([
+                            [`Enter — short ${venueLabel(shortExchange)}`, shortLegFeeUsd],
+                            [`Enter — long ${venueLabel(longExchange)}`,   longLegFeeUsd],
+                            ['Exit — close short', shortLegFeeUsd],
+                            ['Exit — close long',  longLegFeeUsd],
+                          ] as const).map(([lbl, v], k) => (
+                            <span key={k} className="flex items-center justify-between gap-2" style={{ padding: '2px 0' }}>
+                              <span className="font-body min-w-0 truncate" style={{ fontSize: 10.5, color: '#6b7787' }}>{lbl}</span>
+                              <span className="font-mono tabular-nums shrink-0" style={{ fontSize: 10.5, color: '#0e1626' }}>{v != null ? fmtUsd(v) : '—'}</span>
+                            </span>
+                          ))}
+                          <span className="flex items-center justify-between gap-2" style={{ paddingTop: 6, marginTop: 4, borderTop: '1px solid #eef2f6' }}>
+                            <span className="font-body font-semibold" style={{ fontSize: 11, color: '#0e1626' }}>Round-trip fees</span>
+                            <span className="font-mono font-bold tabular-nums shrink-0" style={{ fontSize: 11, color: '#0e1626' }}>{feesUsd != null ? fmtUsd(feesUsd) : '—'}</span>
+                          </span>
+                        </span>
+                        <span className="block" style={{ marginTop: 6 }}>
+                          Taker fees on {fmtUsd(notionalPerLeg)} notional per leg; they clear in <b style={{ color: '#0e1626' }}>{formatPayback(spread.breakevenDays)}</b>. The rate is a run-rate, not locked — exit both legs (taker) when the spread compresses below ~{effectiveThreshold.toFixed(1)}%/yr or the short-side rate flips.
+                        </span>
+                      </>
+                    ),
                   },
                 ]).map((step, i, arr) => (
                   <div
