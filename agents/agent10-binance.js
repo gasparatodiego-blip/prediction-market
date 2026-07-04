@@ -172,7 +172,7 @@ function connectWS() {
 
 async function fetchBinanceREST() {
   const syms = ['BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','XRPUSDT','DOGEUSDT','AVAXUSDT','LINKUSDT'];
-  const data = await get(`https://api.binance.com/api/v3/ticker/24hr?symbols=${encodeURIComponent(JSON.stringify(syms))}`);
+  const data = await rlGetJson(`https://api.binance.com/api/v3/ticker/24hr?symbols=${encodeURIComponent(JSON.stringify(syms))}`);
   if (!Array.isArray(data)) return;
   const map = { BTCUSDT:'BTC', ETHUSDT:'ETH', SOLUSDT:'SOL', BNBUSDT:'BNB', XRPUSDT:'XRP', DOGEUSDT:'DOGE', AVAXUSDT:'AVAX', LINKUSDT:'LINK' };
   for (const t of data) {
@@ -196,7 +196,7 @@ async function fetchCoinbase() {
 }
 
 async function fetchOKX() {
-  const d = await get('https://www.okx.com/api/v5/market/tickers?instType=SPOT');
+  const d = await rlGetJson('https://www.okx.com/api/v5/market/tickers?instType=SPOT');
   if (!Array.isArray(d?.data)) return {};
   const want = {
     'BTC-USDT':'BTC','ETH-USDT':'ETH','SOL-USDT':'SOL','BNB-USDT':'BNB',
@@ -217,7 +217,7 @@ async function fetchBybit() {
   const map  = { BTCUSDT:'BTC', ETHUSDT:'ETH', SOLUSDT:'SOL', BNBUSDT:'BNB', XRPUSDT:'XRP', DOGEUSDT:'DOGE', AVAXUSDT:'AVAX', LINKUSDT:'LINK' };
   const r = {};
   await Promise.all(syms.map(async sym => {
-    const d = await get(`https://api.bybit.com/v5/market/tickers?category=spot&symbol=${sym}`);
+    const d = await rlGetJson(`https://api.bybit.com/v5/market/tickers?category=spot&symbol=${sym}`);
     const t = d?.result?.list?.[0];
     if (t) r[map[sym]] = { price: parseFloat(t.lastPrice), change24hPct: parseFloat(t.price24hPcnt) * 100, high24h: parseFloat(t.highPrice24h), low24h: parseFloat(t.lowPrice24h), volume: parseFloat(t.volume24h) };
   }));
@@ -245,7 +245,7 @@ async function fetchKraken() {
 }
 
 async function fetchGateIO() {
-  const d = await get('https://api.gateio.ws/api/v4/spot/tickers');
+  const d = await rlGetJson('https://api.gateio.ws/api/v4/spot/tickers');
   if (!Array.isArray(d)) return {};
   const want = {
     'BTC_USDT':'BTC','ETH_USDT':'ETH','SOL_USDT':'SOL','BNB_USDT':'BNB',
@@ -274,7 +274,7 @@ const BIN_PERP_MAP = {
 async function fetchBinancePerpVol() {
   const syms = [...PERP_COINS].map(c => `${c}USDT`);
   try {
-    const data = await get(`https://fapi.binance.com/fapi/v1/ticker/24hr?symbols=${encodeURIComponent(JSON.stringify(syms))}`);
+    const data = await rlGetJson(`https://fapi.binance.com/fapi/v1/ticker/24hr?symbols=${encodeURIComponent(JSON.stringify(syms))}`);
     if (!Array.isArray(data)) return {};
     const r = {};
     for (const t of data) {
@@ -350,7 +350,7 @@ async function fetchDydx() {
 
 async function fetchGateIOPerps() {
   try {
-    const data = await get('https://api.gateio.ws/api/v4/futures/usdt/tickers');
+    const data = await rlGetJson('https://api.gateio.ws/api/v4/futures/usdt/tickers');
     if (!Array.isArray(data)) return {};
     const r = {};
     for (const t of data) {
@@ -376,7 +376,7 @@ async function fetchGateIOPerps() {
 
 async function fetchBitget() {
   try {
-    const data = await get('https://api.bitget.com/api/v2/mix/market/tickers?productType=USDT-FUTURES');
+    const data = await rlGetJson('https://api.bitget.com/api/v2/mix/market/tickers?productType=USDT-FUTURES');
     if (!Array.isArray(data?.data)) return {};
     const r = {};
     for (const t of data.data) {
@@ -637,7 +637,7 @@ async function fetchFutures() {
   const [binF, bybitF, okxF, hlF] = await Promise.all([
 
     // Binance FAPI — premiumIndex returns ALL perps; filter by PERP_COINS
-    get('https://fapi.binance.com/fapi/v1/premiumIndex').then(data => {
+    rlGetJson('https://fapi.binance.com/fapi/v1/premiumIndex').then(data => {
       if (!Array.isArray(data)) return {};
       const r = {};
       for (const t of data) {
@@ -655,7 +655,7 @@ async function fetchFutures() {
     }).catch(() => ({})),
 
     // Bybit — single bulk call for all linear perps, filter by PERP_COINS
-    get('https://api.bybit.com/v5/market/tickers?category=linear').then(data => {
+    rlGetJson('https://api.bybit.com/v5/market/tickers?category=linear').then(data => {
       const list = data?.result?.list;
       if (!Array.isArray(list)) return {};
       const r = {};
@@ -679,7 +679,7 @@ async function fetchFutures() {
       const coins = [...PERP_COINS];
       const pairs = await Promise.all(
         coins.map(c =>
-          get(`https://www.okx.com/api/v5/public/funding-rate?instId=${c}-USDT-SWAP`)
+          rlGetJson(`https://www.okx.com/api/v5/public/funding-rate?instId=${c}-USDT-SWAP`)
             .then(d => [c, d?.data?.[0]])
             .catch(() => [c, null])
         )

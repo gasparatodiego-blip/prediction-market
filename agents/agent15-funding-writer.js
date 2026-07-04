@@ -109,9 +109,9 @@ function rlPostJson(url, body) {
 async function refreshMultiplierCache() {
   console.log('[funding-depth] refreshing contract multiplier caches…');
   const [okxInst, gateContracts, bitgetContracts] = await Promise.all([
-    get('https://www.okx.com/api/v5/public/instruments?instType=SWAP'),
-    get('https://api.gateio.ws/api/v4/futures/usdt/contracts'),
-    get('https://api.bitget.com/api/v2/mix/market/contracts?productType=usdt-futures'),
+    rlGetJson('https://www.okx.com/api/v5/public/instruments?instType=SWAP'),
+    rlGetJson('https://api.gateio.ws/api/v4/futures/usdt/contracts'),
+    rlGetJson('https://api.bitget.com/api/v2/mix/market/contracts?productType=usdt-futures'),
   ]);
 
   const fresh = { okx: {}, gateio: {}, bitget: {} };
@@ -166,7 +166,7 @@ async function refreshEdgexIdCache() {
 // Returns null on fetch failure.
 
 async function depthBinance(coin) {
-  const d = await get(`https://fapi.binance.com/fapi/v1/depth?symbol=${coin}USDT&limit=100`);
+  const d = await rlGetJson(`https://fapi.binance.com/fapi/v1/depth?symbol=${coin}USDT&limit=100`);
   if (!Array.isArray(d?.bids) || !d.bids.length || !Array.isArray(d?.asks) || !d.asks.length) return null;
   const bids = d.bids.map(([p, q]) => [parseFloat(p), parseFloat(q)]);
   const asks = d.asks.map(([p, q]) => [parseFloat(p), parseFloat(q)]);
@@ -174,7 +174,7 @@ async function depthBinance(coin) {
 }
 
 async function depthBybit(coin) {
-  const d = await get(`https://api.bybit.com/v5/market/orderbook?category=linear&symbol=${coin}USDT&limit=200`);
+  const d = await rlGetJson(`https://api.bybit.com/v5/market/orderbook?category=linear&symbol=${coin}USDT&limit=200`);
   const bRaw = d?.result?.b, aRaw = d?.result?.a;
   if (!Array.isArray(bRaw) || !bRaw.length || !Array.isArray(aRaw) || !aRaw.length) return null;
   const bids = bRaw.map(([p, q]) => [parseFloat(p), parseFloat(q)]);
@@ -183,7 +183,7 @@ async function depthBybit(coin) {
 }
 
 async function depthOkx(coin) {
-  const d    = await get(`https://www.okx.com/api/v5/market/books?instId=${coin}-USDT-SWAP&sz=100`);
+  const d    = await rlGetJson(`https://www.okx.com/api/v5/market/books?instId=${coin}-USDT-SWAP&sz=100`);
   const book = d?.data?.[0];
   if (!Array.isArray(book?.bids) || !book.bids.length || !Array.isArray(book?.asks) || !book.asks.length) return null;
   const mult = multCache.okx[coin] ?? 1;
@@ -193,7 +193,7 @@ async function depthOkx(coin) {
 }
 
 async function depthBitget(coin) {
-  const d    = await get(`https://api.bitget.com/api/v2/mix/market/orderbook?symbol=${coin}USDT&productType=usdt-futures&limit=100`);
+  const d    = await rlGetJson(`https://api.bitget.com/api/v2/mix/market/orderbook?symbol=${coin}USDT&productType=usdt-futures&limit=100`);
   const bRaw = d?.data?.bids, aRaw = d?.data?.asks;
   if (!Array.isArray(bRaw) || !bRaw.length || !Array.isArray(aRaw) || !aRaw.length) return null;
   const mult = multCache.bitget[coin] ?? 1;
@@ -203,7 +203,7 @@ async function depthBitget(coin) {
 }
 
 async function depthGateio(coin) {
-  const d = await get(`https://api.gateio.ws/api/v4/futures/usdt/order_book?contract=${coin}_USDT&limit=100`);
+  const d = await rlGetJson(`https://api.gateio.ws/api/v4/futures/usdt/order_book?contract=${coin}_USDT&limit=100`);
   if (!Array.isArray(d?.bids) || !d.bids.length || !Array.isArray(d?.asks) || !d.asks.length) return null;
   const mult = multCache.gateio[coin] ?? 1;
   const bids = d.bids.map(e => [parseFloat(e.p), Math.abs(parseFloat(e.s)) * mult]);
@@ -470,7 +470,7 @@ async function enrichWithDepth(opps) {
 
 async function fetchBinanceHistory(coin, n) {
   // Binance returns oldest-first → sort by time descending
-  const d = await get(`https://fapi.binance.com/fapi/v1/fundingRate?symbol=${coin}USDT&limit=${n}`);
+  const d = await rlGetJson(`https://fapi.binance.com/fapi/v1/fundingRate?symbol=${coin}USDT&limit=${n}`);
   if (!Array.isArray(d)) return [];
   return d
     .sort((a, b) => (b.fundingTime ?? 0) - (a.fundingTime ?? 0))
@@ -480,7 +480,7 @@ async function fetchBinanceHistory(coin, n) {
 
 async function fetchBybitHistory(coin, n) {
   // Bybit returns newest-first
-  const d = await get(`https://api.bybit.com/v5/market/funding/history?category=linear&symbol=${coin}USDT&limit=${n}`);
+  const d = await rlGetJson(`https://api.bybit.com/v5/market/funding/history?category=linear&symbol=${coin}USDT&limit=${n}`);
   const list = d?.result?.list;
   if (!Array.isArray(list)) return [];
   return list
@@ -491,7 +491,7 @@ async function fetchBybitHistory(coin, n) {
 
 async function fetchOkxHistory(coin, n) {
   // OKX returns newest-first; use realizedRate (settled), not fundingRate (predicted at that time)
-  const d = await get(`https://www.okx.com/api/v5/public/funding-rate-history?instId=${coin}-USDT-SWAP&limit=${n}`);
+  const d = await rlGetJson(`https://www.okx.com/api/v5/public/funding-rate-history?instId=${coin}-USDT-SWAP&limit=${n}`);
   if (!Array.isArray(d?.data)) return [];
   return d.data
     .sort((a, b) => Number(b.fundingTime ?? 0) - Number(a.fundingTime ?? 0))
@@ -501,7 +501,7 @@ async function fetchOkxHistory(coin, n) {
 
 async function fetchBitgetHistory(coin, n) {
   // Bitget returns newest-first
-  const d = await get(`https://api.bitget.com/api/v2/mix/market/history-fund-rate?symbol=${coin}USDT&productType=USDT-FUTURES&pageSize=${n}`);
+  const d = await rlGetJson(`https://api.bitget.com/api/v2/mix/market/history-fund-rate?symbol=${coin}USDT&productType=USDT-FUTURES&pageSize=${n}`);
   if (!Array.isArray(d?.data)) return [];
   return d.data
     .sort((a, b) => Number(b.fundingTime ?? 0) - Number(a.fundingTime ?? 0))
@@ -511,7 +511,7 @@ async function fetchBitgetHistory(coin, n) {
 
 async function fetchGateHistory(coin, n) {
   // Gate.io returns newest-first; sort by timestamp to be safe
-  const d = await get(`https://api.gateio.ws/api/v4/futures/usdt/funding_rate?contract=${coin}_USDT&limit=${n}`);
+  const d = await rlGetJson(`https://api.gateio.ws/api/v4/futures/usdt/funding_rate?contract=${coin}_USDT&limit=${n}`);
   if (!Array.isArray(d)) return [];
   return d
     .sort((a, b) => (b.t ?? 0) - (a.t ?? 0))
