@@ -26,6 +26,7 @@
 
 const fs = require('fs');
 const { httpGet, httpPost } = require('../lib/httpGet');
+const { rlGet, rlPost } = require('../lib/rateLimitedFetch');
 const {
   annualize,
   venueFeePct,
@@ -87,6 +88,18 @@ function post(url, body) {
   }).then(r => r.data).catch(() => null);
 }
 
+// Rate-limited variants for edgeX/Grvt per-symbol loops (metadata, depth, history) so
+// this process — like agent10 — never fans out a burst at those hosts and backs off on
+// 429/challenge. Same null-on-failure contract; a backed-off host is simply absent.
+const RL = { concurrency: 2, spacingMs: 120, timeoutMs: 12_000,
+  headers: { 'User-Agent': 'Mozilla/5.0 prediction-arb-scanner/1.0', 'Accept': 'application/json' } };
+function rlGetJson(url) {
+  return rlGet(url, RL).then(r => r.data).catch(() => null);
+}
+function rlPostJson(url, body) {
+  return rlPost(url, body, RL).then(r => r.data).catch(() => null);
+}
+
 // ── Contract multiplier cache ─────────────────────────────────────────────────
 // OKX books report qty in contracts (ctVal coins each).
 // Gate.io books report qty in contracts (quanto_multiplier coins each).
@@ -131,7 +144,7 @@ async function refreshMultiplierCache() {
 // multiplier cache. Must be populated BEFORE the first history/depth fetch.
 
 async function refreshEdgexIdCache() {
-  const meta = await get('https://pro.edgex.exchange/api/v1/public/meta/getMetaData');
+  const meta = await rlGetJson('https://pro.edgex.exchange/api/v1/public/meta/getMetaData');
   const contracts = meta?.data?.contractList;
   if (!Array.isArray(contracts)) return;
   const fresh = {};
@@ -257,7 +270,7 @@ async function depthGrvt(coin) {
   // size already in BASE units (coins) — same [{price,size}] object shape as dYdX, no
   // contract multiplier. bids desc / asks asc (sorted defensively). Quote USDT = USD.
   // Keys on the instrument name (derivable) — no id map.
-  const d    = await post('https://market-data.grvt.io/full/v1/book', { instrument: `${coin}_USDT_Perp`, depth: 100 });
+  const d    = await rlPostJson('https://market-data.grvt.io/full/v1/book', { instrument: `${coin}_USDT_Perp`, depth: 100 });
   const book = d?.result;
   const bRaw = book?.bids, aRaw = book?.asks;
   if (!Array.isArray(bRaw) || !bRaw.length || !Array.isArray(aRaw) || !aRaw.length) return null;
@@ -280,7 +293,7 @@ async function depthEdgex(coin) {
   // numeric contractId (endpoints reject coin/name) — resolved via edgexIdCache.
   const contractId = edgexIdCache[coin];
   if (!contractId) return null;
-  const d    = await get(`https://pro.edgex.exchange/api/v1/public/quote/getDepth?contractId=${contractId}&level=200`);
+  const d    = await rlGetJson(`https://pro.edgex.exchange/api/v1/public/quote/getDepth?contractId=${contractId}&level=200`);
   const book = Array.isArray(d?.data) ? d.data[0] : null;
   const aRaw = book?.asks, bRaw = book?.bids;
   if (!Array.isArray(aRaw) || !aRaw.length || !Array.isArray(bRaw) || !bRaw.length) return null;
@@ -569,7 +582,7 @@ async function fetchGrvtHistory(coin, n) {
   // Binance), so NO ×100 here — unlike every other venue's fetcher. Kept in the venue's
   // own per-settlement unit (legAnalytics annualizes via fundingIntervalHours=8), like
   // fetchBinanceHistory otherwise.
-  const d = await post('https://market-data.grvt.io/full/v1/funding', { instrument: `${coin}_USDT_Perp`, limit: n });
+  const d = await rlPostJson('https://market-data.grvt.io/full/v1/funding', { instrument: `${coin}_USDT_Perp`, limit: n });
   const rows = d?.result;
   if (!Array.isArray(rows)) return [];
   return rows
@@ -587,7 +600,7 @@ async function fetchEdgexHistory(coin, n) {
   // venues. Real published rates — never fabricated. Needs numeric contractId.
   const contractId = edgexIdCache[coin];
   if (!contractId) return [];
-  const d = await get(`https://pro.edgex.exchange/api/v1/public/funding/getFundingRatePage?contractId=${contractId}&size=500`);
+  const d = await rlGetJson(`https://pro.edgex.exchange/api/v1/public/funding/getFundingRatePage?contractId=${contractId}&size=500`);
   const rows = d?.data?.dataList;
   if (!Array.isArray(rows) || !rows.length) return [];
   const seen = new Set();

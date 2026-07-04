@@ -5,6 +5,7 @@ const fs    = require('fs');
 const path  = require('path');
 const WebSocket = require('ws');
 const { httpGet: _sharedGet, httpPost: _httpPost } = require('../lib/httpGet');
+const { rlGet: _rlGet, rlPost: _rlPost } = require('../lib/rateLimitedFetch');
 const { annualize } = require('../lib/funding-math');
 
 // ── Load .env (pm2 doesn't auto-load project env files) ────────────────────
@@ -71,6 +72,20 @@ function get(url) {
 function postJson(hostname, path, body) {
   return _httpPost(`https://${hostname}${path}`, body, { timeoutMs: 10_000, headers: { 'User-Agent': 'prediction-arb-scanner/1.0' } })
     .then(r => r.data).catch(() => null);
+}
+
+// Rate-limited variants for venues that need many per-symbol calls (edgeX, Grvt).
+// Route every call to that host through the shared per-host limiter (bounded
+// concurrency + spacing + 429/Cloudflare backoff) instead of a 20-wide fan-out.
+// Same null-on-failure contract as get()/postJson() — a backed-off host returns
+// null so the venue is simply absent this cycle (never fabricated).
+const RL = { concurrency: 2, spacingMs: 120, timeoutMs: 10_000,
+  headers: { 'User-Agent': 'Mozilla/5.0 prediction-arb-scanner/1.0', 'Accept': 'application/json' } };
+function rlGetJson(url) {
+  return _rlGet(url, RL).then(r => r.data).catch(() => null);
+}
+function rlPostJson(url, body) {
+  return _rlPost(url, body, RL).then(r => r.data).catch(() => null);
 }
 
 // ── Telegram alerts ───────────────────────────────────────────────────────────
@@ -514,7 +529,7 @@ async function fetchEdgex() {
   // NO bulk ticker (contractName/comma/repeat params all return []), so one getTicker
   // per contract. Base confirmed 2026-07-04: https://pro.edgex.exchange/api/v1
   try {
-    const meta = await get('https://pro.edgex.exchange/api/v1/public/meta/getMetaData');
+    const meta = await rlGetJson('https://pro.edgex.exchange/api/v1/public/meta/getMetaData');
     const contracts = meta?.data?.contractList;
     if (!Array.isArray(contracts)) return {};
 
@@ -532,7 +547,9 @@ async function fetchEdgex() {
 
     const r = {};
     await Promise.all(wanted.map(async ({ coin, contractId, intervalHours }) => {
-      const q = await get(`https://pro.edgex.exchange/api/v1/public/quote/getTicker?contractId=${contractId}`);
+      // 22 calls fan out here, but the shared per-host limiter serialises them to a
+      // small pool with spacing + 429 backoff, so edgeX's Cloudflare never trips.
+      const q = await rlGetJson(`https://pro.edgex.exchange/api/v1/public/quote/getTicker?contractId=${contractId}`);
       const t = Array.isArray(q?.data) ? q.data[0] : null;
       if (!t) return;
       const fr = parseFloat(t.fundingRate);
@@ -571,8 +588,8 @@ async function fetchGrvt() {
   // live vs Binance (Grvt 0.01/0.0054/-0.0006 ≈ Binance 0.00927/0.00434/-0.00541 %/8h).
   // So NO ×100 here — a fraction reading would 100× it into absurd 500-1000%/yr arbs.
   try {
-    const instr = await postJson('market-data.grvt.io', '/full/v1/instruments',
-      JSON.stringify({ kind: ['PERPETUAL'], quote: ['USDT'], is_active: true }));
+    const instr = await rlPostJson('https://market-data.grvt.io/full/v1/instruments',
+      { kind: ['PERPETUAL'], quote: ['USDT'], is_active: true });
     const list = instr?.result;
     if (!Array.isArray(list)) return {};
 
@@ -588,7 +605,9 @@ async function fetchGrvt() {
 
     const r = {};
     await Promise.all(wanted.map(async ({ coin, instrument, intervalHours }) => {
-      const q = await postJson('market-data.grvt.io', '/full/v1/ticker', JSON.stringify({ instrument }));
+      // Same shared per-host limiter as edgeX — the ~19-call loop is serialised to a
+      // small pool with spacing + 429 backoff instead of fanning out unbounded.
+      const q = await rlPostJson('https://market-data.grvt.io/full/v1/ticker', { instrument });
       const t = q?.result;
       if (!t) return;
       const fr = parseFloat(t.funding_rate_8h_curr);
