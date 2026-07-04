@@ -351,6 +351,27 @@ async function depthExtended(coin) {
   return { bids, asks, mid: (bids[0][0] + asks[0][0]) / 2 };
 }
 
+async function depthPacifica(coin) {
+  // Pacifica CLOB L2 via GET /book?symbol=<coin> → data.l = [ bids[], asks[] ], each level
+  // { p: price, a: amount, n }. amount is BASE units (coins), no multiplier. bids desc /
+  // asks asc (sorted defensively). Quote USDC = USD. Keys on the symbol (derivable) — no id map.
+  const d    = await rlGetJson(`https://api.pacifica.fi/api/v1/book?symbol=${coin}`);
+  const l    = d?.data?.l;
+  if (!Array.isArray(l) || l.length < 2) return null;
+  const bRaw = l[0], aRaw = l[1];
+  if (!Array.isArray(bRaw) || !bRaw.length || !Array.isArray(aRaw) || !aRaw.length) return null;
+  const bids = bRaw
+    .map(o => [parseFloat(o.p), parseFloat(o.a)])
+    .filter(([p, q]) => isFinite(p) && p > 0 && isFinite(q) && q > 0)
+    .sort((a, b) => b[0] - a[0]);
+  const asks = aRaw
+    .map(o => [parseFloat(o.p), parseFloat(o.a)])
+    .filter(([p, q]) => isFinite(p) && p > 0 && isFinite(q) && q > 0)
+    .sort((a, b) => a[0] - b[0]);
+  if (!bids.length || !asks.length) return null;
+  return { bids, asks, mid: (bids[0][0] + asks[0][0]) / 2 };
+}
+
 async function depthEdgex(coin) {
   // edgeX StarkEx CLOB L2 book: data[0].{asks,bids} = [{ price, size }], size already
   // in BASE units (coins) — same as Binance/Aster/Paradex, no contract multiplier.
@@ -400,6 +421,7 @@ const DEPTH_FETCHERS = {
   grvt:        depthGrvt,
   lighter:     depthLighter,
   extended:    depthExtended,
+  pacifica:    depthPacifica,
 };
 
 // Walk `levels` [[price, qty_coins], ...] to fill `targetUsd` of notional.
@@ -698,6 +720,23 @@ async function fetchExtendedHistory(coin, n) {
     .slice(0, n);
 }
 
+async function fetchPacificaHistory(coin, n) {
+  // Pacifica settles funding HOURLY. GET /funding_rate/history returns the real settled
+  // 1-hour rates ({ funding_rate, created_at }), whose `funding_rate` is the SAME raw
+  // FRACTION per hour as /info/prices `funding` (cross-validated: current == history[0]).
+  // ×100 → %/hr, kept in the venue's own per-settlement unit (legAnalytics annualizes via
+  // fundingIntervalHours=1), exactly like fetchDydxHistory (also hourly). Symbol-derivable
+  // — no id map; newest-first, capped at n.
+  const d = await rlGetJson(`https://api.pacifica.fi/api/v1/funding_rate/history?symbol=${coin}&limit=${n}`);
+  const rows = d?.data;
+  if (!Array.isArray(rows)) return [];
+  return rows
+    .sort((a, b) => (b.created_at ?? 0) - (a.created_at ?? 0))
+    .map(e => parseFloat(e.funding_rate) * 100)
+    .filter(v => isFinite(v))
+    .slice(0, n);
+}
+
 async function fetchEdgexHistory(coin, n) {
   // edgeX funding settles every 4h (fundingRateIntervalMin=240). getFundingRatePage
   // returns a DENSE snapshot stream where many rows share one settled `fundingTime`,
@@ -758,6 +797,7 @@ const HISTORY_FETCHERS = {
   grvt:        fetchGrvtHistory,
   lighter:     fetchLighterHistory,
   extended:    fetchExtendedHistory,
+  pacifica:    fetchPacificaHistory,
 };
 
 // ── History cache management ──────────────────────────────────────────────────
@@ -925,7 +965,7 @@ function crossExchangeSpread(futures, hCache) {
   // Build byExchange: coin → [{ exchange, fr (predicted), intervalHours, isDex }]
   const byExchange = {};
   for (const [ex, coins] of Object.entries(futures)) {
-    const isDex = ex === 'hyperliquid' || ex === 'dydx' || ex === 'aster' || ex === 'paradex' || ex === 'edgex' || ex === 'grvt' || ex === 'lighter' || ex === 'extended';
+    const isDex = ex === 'hyperliquid' || ex === 'dydx' || ex === 'aster' || ex === 'paradex' || ex === 'edgex' || ex === 'grvt' || ex === 'lighter' || ex === 'extended' || ex === 'pacifica';
     for (const [coin, data] of Object.entries(coins || {})) {
       const fr            = data?.fundingRate;
       const intervalHours = data?.fundingIntervalHours ?? 8;

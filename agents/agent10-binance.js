@@ -724,6 +724,48 @@ async function fetchExtended() {
   }
 }
 
+async function fetchPacifica() {
+  // Pacifica (pacifica.fi) — Solana CLOB perp DEX, PUBLIC REST (markets/funding/depth all
+  // confirmed unauthenticated 2026-07-05; real walkable L2 book at /book). Keys on the
+  // market SYMBOL (BTC, derivable from coin) — NO numeric id map. Routed through the shared
+  // per-host limiter (rlGetJson) from the start. One bulk /info/prices call covers every
+  // market. Base: https://api.pacifica.fi/api/v1
+  //
+  // Funding UNIT: `funding` is a raw FRACTION per HOUR (BTC 0.0000125 == HL's baseline hourly
+  // fraction; funding_rate history rows are 1h apart). So ×100 → %/hr, stored with
+  // fundingIntervalHours=1 (same as dYdX/HL/Extended). BTC → 0.01%/8h ≈ baseline. `next_funding`
+  // is a predicted RATE, not a timestamp — Pacifica exposes no next-funding time, so leave
+  // nextFundingTime null and the countdown falls back to the UTC-hourly boundary (path b).
+  try {
+    const j = await rlGetJson('https://api.pacifica.fi/api/v1/info/prices');
+    const list = j?.data;
+    if (!Array.isArray(list)) return {};
+    const r = {};
+    for (const m of list) {
+      const coin = m.symbol ?? '';
+      if (!PERP_COINS.has(coin)) continue;
+      const fr = parseFloat(m.funding);
+      if (!isFinite(fr)) continue;
+      const mark = parseFloat(m.mark);
+      const oiCoins = parseFloat(m.open_interest);   // base units → ×mark for USD
+      const vol     = parseFloat(m.volume_24h);      // already USD
+      r[coin] = {
+        markPrice:            isFinite(mark) && mark > 0 ? mark : null,
+        // raw fraction/hr → %/hr (×100). Positive = longs pay shorts. Hourly settlement.
+        fundingRate:          fr * 100,
+        fundingIntervalHours: 1,
+        openInterestUsd:      isFinite(oiCoins) && isFinite(mark) && oiCoins > 0 && mark > 0 ? oiCoins * mark : null,
+        vol24hUsd:            isFinite(vol) && vol > 0 ? vol : null,
+      };
+    }
+    console.log(`[pacifica] ${Object.keys(r).length} markets`);
+    return r;
+  } catch (e) {
+    console.error('[pacifica] fetch error:', e.message);
+    return {};
+  }
+}
+
 async function fetchFutures() {
   const [binF, bybitF, okxF, hlF] = await Promise.all([
 
@@ -789,8 +831,8 @@ async function fetchFutures() {
     fetchHyperliquid(),
   ]);
 
-  // Secondary parallel: Binance vol, dYdX, Gate.io perps, Bitget perps, Aster, Paradex, edgeX, Grvt, Lighter, Extended
-  const [dydxF, binVol, gateF, bitF, asterF, paradexF, edgexF, grvtF, lighterF, extendedF] = await Promise.all([
+  // Secondary parallel: Binance vol, dYdX, Gate.io perps, Bitget perps, Aster, Paradex, edgeX, Grvt, Lighter, Extended, Pacifica
+  const [dydxF, binVol, gateF, bitF, asterF, paradexF, edgexF, grvtF, lighterF, extendedF, pacificaF] = await Promise.all([
     fetchDydx(),
     fetchBinancePerpVol(),
     fetchGateIOPerps(),
@@ -801,6 +843,7 @@ async function fetchFutures() {
     fetchGrvt(),
     fetchLighter(),
     fetchExtended(),
+    fetchPacifica(),
   ]);
 
   // Merge Binance vol into rate data
@@ -819,6 +862,7 @@ async function fetchFutures() {
   if (Object.keys(grvtF).length > 0) out.grvt         = grvtF;
   if (Object.keys(lighterF).length > 0) out.lighter   = lighterF;
   if (Object.keys(extendedF).length > 0) out.extended = extendedF;
+  if (Object.keys(pacificaF).length > 0) out.pacifica = pacificaF;
   return out;
 }
 

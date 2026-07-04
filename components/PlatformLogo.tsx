@@ -23,6 +23,7 @@ const SLUG_MAP: Record<string, string> = {
   grvt:               'grvt',
   lighter:            'lighter',
   extended:           'extended',
+  pacifica:           'pacifica',
   gateio:             'gate-io',
   'gate.io':          'gate-io',
   'gate-io':          'gate-io',
