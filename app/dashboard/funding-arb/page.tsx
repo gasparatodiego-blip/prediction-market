@@ -74,6 +74,34 @@ function fmtCapWords(n: number | null): string {
   return `~$${n}`;
 }
 
+// Full max-executable figure with thousands separators (e.g. "~$45,320"). The
+// "~" signals it's an order-book estimate, not a promise. Used for the capacity
+// row value when there is real green capacity (case A).
+function fmtCapFull(n: number): string {
+  return `~$${Math.round(n).toLocaleString('en-US')}`;
+}
+
+// Three display cases for the capacity row, decided STRICTLY from real fields —
+// never a fabricated number. A: real green capacity (gc > 0). B: order book was
+// measured (both legs verified, slipCurve present) but no size clears the 30%
+// slippage threshold ($0 green) → "too thin". C: capacity was never measured
+// (null / key-missing / oneLegUnverified) → "not available yet". Shared by the
+// card row, the list cell, and the secondary sort so all three stay in lockstep.
+function capCase(s: SpreadItem): 'A' | 'B' | 'C' {
+  const gc = s.greenCapacityUsd;
+  if (gc != null && gc > 0) return 'A';
+  if (gc === 0 && s.oneLegUnverified === false &&
+      Array.isArray(s.slipCurve) && s.slipCurve.length > 0) return 'B';
+  return 'C';
+}
+
+// Sort weight for the secondary tie-break: scalable (A) above measured-thin (B)
+// above unmeasured (C). Higher wins.
+function capRank(s: SpreadItem): number {
+  const c = capCase(s);
+  return c === 'A' ? 2 : c === 'B' ? 1 : 0;
+}
+
 function fmtUsd(n: number): string {
   const abs  = Math.abs(n);
   const sign = n < 0 ? '-' : '';
@@ -443,9 +471,8 @@ function FlowStrip({ s }: { s: SpreadItem }) {
 // ── Redesign: plain-language capacity row ─────────────────────────────────────
 
 const CAPACITY_TIP =
-  'The largest amount the market can take right now without moving the price against you. ' +
-  'Invest more and you buy or sell at worse prices, until the slippage cancels out the funding ' +
-  "you'd earn. Measured from the live order book — never a guess.";
+  'The largest amount you can put in before slippage eats the yield. ' +
+  'Measured from the live order book — never a guess.';
 
 const TOO_THIN_TIP =
   'The order book was measured, but right now it is too thin to absorb a meaningful position — ' +
@@ -456,16 +483,9 @@ function CapacityRow({
 }: { s: SpreadItem; capital: number; leverage: Leverage; redacted: boolean }) {
   const gc = s.greenCapacityUsd;
   const N0 = capital * leverage / 2;
-  const hasCap = !redacted && gc != null && gc > 0;
-  // Measured-too-thin ($0 green): the depth fetcher ran (slipCurve present, both
-  // legs verified) and found no size clears the 30% slippage threshold. This is a
-  // real measurement — distinct from capacity being unmeasured (null / key-missing
-  // / oneLegUnverified). Both show no bar and no number, but say different things.
-  const measuredTooThin =
-    !redacted &&
-    gc === 0 &&
-    s.oneLegUnverified === false &&
-    Array.isArray(s.slipCurve) && s.slipCurve.length > 0;
+  const kase = redacted ? 'C' : capCase(s);
+  const hasCap = !redacted && kase === 'A';
+  const measuredTooThin = !redacted && kase === 'B';
   // Headroom = how much of the order-book green capacity your current position
   // leaves unused. Falls as capital approaches the depth limit → bar reddens.
   const headroom = hasCap ? Math.max(0, Math.min(100, (1 - N0 / (gc as number)) * 100)) : 0;
@@ -475,17 +495,17 @@ function CapacityRow({
     <div className="pt-2.5 mt-1" style={{ borderTop: '1px solid #eef2f6' }}>
       <div className="flex items-center justify-between gap-2">
         <span className="inline-flex items-center gap-1 font-body" style={{ fontSize: 11, color: '#6b7787' }}>
-          How much you can invest
-          <InfoTooltip label="How much you can invest — how it's measured" text={CAPACITY_TIP} />
+          Max before slippage
+          <InfoTooltip label="Max before slippage — how it's measured" text={CAPACITY_TIP} />
         </span>
         {redacted ? (
           <Redacted value={s.greenCapacityUsd}>
-            {v => <span className="font-mono tabular-nums text-ink" style={{ fontSize: 12 }}>{fmtCapWords(v)}</span>}
+            {v => <span className="font-mono tabular-nums text-ink" style={{ fontSize: 12 }}>{fmtCapFull(v)}</span>}
           </Redacted>
         ) : hasCap ? (
-          <span className="font-mono tabular-nums text-ink" style={{ fontSize: 12 }}>{fmtCapWords(gc)}</span>
+          <span className="font-mono tabular-nums text-ink" style={{ fontSize: 12 }}>{fmtCapFull(gc as number)}</span>
         ) : measuredTooThin ? (
-          <span className="inline-flex items-center gap-1 font-body" style={{ fontSize: 11, color: '#9aa5b3' }}>
+          <span className="inline-flex items-center gap-1 font-body" style={{ fontSize: 11, color: '#b45309' }}>
             too thin to size
             <InfoTooltip label="Too thin to size — what it means" text={TOO_THIN_TIP} />
           </span>
@@ -502,6 +522,11 @@ function CapacityRow({
             Put in more than this and your entry price gets worse — the extra cost starts eating your profit.
           </p>
         </>
+      )}
+      {measuredTooThin && (
+        <p className="mt-1.5 font-body leading-snug" style={{ fontSize: 10.5, color: '#9aa5b3' }}>
+          Order book too shallow right now — no size clears without heavy slippage.
+        </p>
       )}
     </div>
   );
@@ -650,12 +675,14 @@ function FundingList({ items, capital, leverage }: { items: SpreadItem[]; capita
               <Redacted value={s.breakevenDays}>{v => formatPayback(v)}</Redacted>
             </span>
 
-            {/* Capacity */}
+            {/* Max before slippage — same three cases as the card */}
             <span className="font-mono tabular-nums" style={{ fontSize: 10, color: '#6b7787' }}>
               {redacted ? (
-                <Redacted value={s.greenCapacityUsd}>{v => fmtCapWords(v)}</Redacted>
-              ) : (s.greenCapacityUsd != null && s.greenCapacityUsd > 0) ? (
-                fmtCapWords(s.greenCapacityUsd)
+                <Redacted value={s.greenCapacityUsd}>{v => fmtCapFull(v)}</Redacted>
+              ) : capCase(s) === 'A' ? (
+                fmtCapFull(s.greenCapacityUsd as number)
+              ) : capCase(s) === 'B' ? (
+                <span style={{ color: '#b45309' }}>too thin</span>
               ) : (
                 <span style={{ color: '#9aa5b3' }}>n/a</span>
               )}
@@ -801,12 +828,22 @@ function OpportunityCards({
     s => filter.isSelected(s.shortExchange) && filter.isSelected(s.longExchange),
   );
 
-  // Sort by fastest payback ascending; tie-break by public verdict tier, then by
-  // net $/day at the user's capital, descending. Redacted payback sinks last.
+  // Sort by fastest payback ascending (primary — never broken across tiers).
+  // Within EQUAL payback, break ties by capacity so scalable pairs rise above
+  // unscalable ones: capacityRank (real cap > measured-thin > unmeasured), then
+  // deeper green capacity first, then verdict tier, then net $/day descending.
+  // A faster-payback thin pair still outranks a slower-payback deep pair.
+  // Redacted payback sinks last; redacted capacity is uniform so it's a no-op.
   const statusRank = { HARVEST: 0, CAUTION: 1, MARGINAL: 2 } as const;
   const sorted = [...exFiltered].sort((a, b) => {
     const pa = a.breakevenDays ?? Infinity, pb = b.breakevenDays ?? Infinity;
     if (pa !== pb) return pa - pb;
+    const ra = capRank(a), rb = capRank(b);
+    if (ra !== rb) return rb - ra;
+    if (ra === 2) {
+      const ga = a.greenCapacityUsd ?? 0, gb = b.greenCapacityUsd ?? 0;
+      if (ga !== gb) return gb - ga;
+    }
     if (statusRank[a.status] !== statusRank[b.status]) return statusRank[a.status] - statusRank[b.status];
     const na = netDayForCapital(a, capital, leverage) ?? -Infinity;
     const nb = netDayForCapital(b, capital, leverage) ?? -Infinity;
