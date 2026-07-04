@@ -15,10 +15,11 @@
  *   4. Merge into /tmp/unified-opportunities.json atomically
  *      — PRESERVES type=CASHABLE/SIGNAL/SPORTS, REPLACES type=FUNDING
  *
- * Venues WITHOUT settled history (Hyperliquid 1h, dYdX 1h):
- *   trailingRate = predictedRate (best available estimate, clearly unverified)
- *   oneLegUnverified = true → verdict = 'PARTIAL — 1 leg unverified' → fullyConfirmed = false
- *   These are NOT shown as green/confirmed on any surface (headline, list, alerts).
+ * All 7 venues (Binance, Bybit, OKX, Bitget, Gate.io, Hyperliquid, dYdX) now have
+ * settled funding-history fetchers (HISTORY_FETCHERS). A leg only falls back to
+ * trailingRate = predictedRate (oneLegUnverified = true → verdict = 'PARTIAL —
+ * 1 leg unverified' → fullyConfirmed = false) when its history fetch actually
+ * comes back empty (API error/outage) — never as a hardcoded per-venue skip.
  *
  * Zero Claude calls. No trades. Read-only + math only.
  */
@@ -389,6 +390,23 @@ async function fetchHyperliquidHistory(coin, n) {
     .slice(0, n);
 }
 
+async function fetchDydxHistory(coin, n) {
+  // dYdX v4 indexer ticker format is "<ASSET>-USD" (mirrors agent10's fetchDydx(),
+  // which derives the internal symbol via `name.replace('-USD', '')`).
+  const d = await get(`https://indexer.dydx.trade/v4/historicalFunding/${coin}-USD?limit=${n}`);
+  const list = d?.historicalFunding;
+  if (!Array.isArray(list)) return [];
+  // rate is a raw fraction for dYdX's HOURLY settlement — same unit as the
+  // predicted `nextFundingRate` agent10's fetchDydx() stores (×100 → %/hr,
+  // intervalHours=1). No 8h normalization needed — see fetchHyperliquidHistory
+  // for why each venue's history stays in its own native per-settlement unit.
+  return list
+    .sort((a, b) => new Date(b.effectiveAt ?? 0).getTime() - new Date(a.effectiveAt ?? 0).getTime())
+    .map(e => parseFloat(e.rate) * 100)
+    .filter(v => isFinite(v))
+    .slice(0, n);
+}
+
 const HISTORY_FETCHERS = {
   binance:     fetchBinanceHistory,
   bybit:       fetchBybitHistory,
@@ -396,7 +414,7 @@ const HISTORY_FETCHERS = {
   bitget:      fetchBitgetHistory,
   gateio:      fetchGateHistory,
   hyperliquid: fetchHyperliquidHistory,
-  // dydx: no settled per-market history endpoint yet — handled in legAnalytics
+  dydx:        fetchDydxHistory,
 };
 
 // ── History cache management ──────────────────────────────────────────────────
