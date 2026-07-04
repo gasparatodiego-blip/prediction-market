@@ -242,12 +242,24 @@ function feesForCapital(s: SpreadItem, capital: number, leverage: Leverage): num
   const N0 = capital * leverage / 2;
   return N0 * s.totalFeesPct / 100;
 }
-// %/yr run-rate on capital, capped by the honest-engine APY_CAP. Demoted metric.
+// APR run-rate on capital, capped by the honest-engine APY_CAP. Demoted metric.
+// This IS simple annualization: pct === netDayForCapital × 365 / capital × 100.
 function runRatePct(s: SpreadItem, leverage: Leverage): { pct: number; capped: boolean } | null {
   if (s.netApy30d == null) return null;
   const raw = leverage * s.netApy30d / 2;
   return { pct: Math.min(raw, APY_CAP), capped: raw > APY_CAP };
 }
+
+// Demoted APR label for the annualized run-rate. Simple annualization only (no
+// compounding). Capped case reuses the honest-engine ceiling (APY_CAP) with the
+// run-rate caveat, relabeled APR — threshold stays 200, only the wording changes.
+function fmtAprLabel(rr: { pct: number; capped: boolean }): string {
+  if (rr.capped) return `>${APY_CAP}% APR · run-rate, not guaranteed`;
+  return `${rr.pct >= 0 ? '+' : ''}${rr.pct.toFixed(0)}% APR · run-rate`;
+}
+
+const APR_TIP =
+  "APR = today's net rate × 365, simple (no compounding). A run-rate snapshot — funding changes every 8h, so this is not guaranteed.";
 
 function fmtMoneyPlain(n: number): string {
   const abs = Math.abs(n), sign = n < 0 ? '-' : '';
@@ -555,7 +567,12 @@ function FundingCard({ s, capital, leverage }: { s: SpreadItem; capital: number;
           ) : (
             <>
               {fees != null && <div>fees {fmtMoneyPlain(fees)}</div>}
-              {rr && <div>{rr.pct >= 0 ? '+' : ''}{rr.pct.toFixed(0)}%/yr run-rate{rr.capped ? ' (capped)' : ''}</div>}
+              {rr && (
+                <div className="inline-flex items-center justify-end gap-0.5">
+                  <span>{fmtAprLabel(rr)}</span>
+                  <InfoTooltip label="APR — how it's calculated" text={APR_TIP} />
+                </div>
+              )}
             </>
           )}
         </div>
@@ -616,12 +633,15 @@ function FundingList({ items, capital, leverage }: { items: SpreadItem[]; capita
               <span className="font-body font-normal ml-1" style={{ fontSize: 10, color: '#9aa5b3' }}>/day</span>
             </span>
 
-            {/* %/yr run-rate — demoted */}
-            <span className="font-mono tabular-nums" style={{ fontSize: 10, color: '#9aa5b3' }}>
+            {/* APR run-rate — demoted */}
+            <span className="font-mono tabular-nums inline-flex items-center gap-0.5" style={{ fontSize: 10, color: '#9aa5b3' }}>
               {redacted ? (
                 <Redacted value={s.netApy30d}>{() => null}</Redacted>
               ) : rr ? (
-                `${rr.pct >= 0 ? '+' : ''}${rr.pct.toFixed(0)}%/yr${rr.capped ? ' (capped)' : ''}`
+                <>
+                  <span>{fmtAprLabel(rr)}</span>
+                  <InfoTooltip label="APR — how it's calculated" text={APR_TIP} />
+                </>
               ) : '—'}
             </span>
 
