@@ -66,6 +66,9 @@ let historyCache     = null;
 let historyFetchedAt = 0;
 let multCache        = { okx: {}, gateio: {}, bitget: {} };
 let multFetchedAt    = 0;
+let edgexIdCache     = {};   // coin → edgeX numeric contractId (endpoints don't accept coin/name)
+let edgexIdFetchedAt = 0;
+let edgexHistoryBackfilled = false;  // one-shot latch: force one history refresh once edgeX ids land
 let isRunning        = false;
 
 // ── HTTP helper ───────────────────────────────────────────────────────────────
@@ -119,6 +122,29 @@ async function refreshMultiplierCache() {
   multFetchedAt = Date.now();
   const total = Object.keys(multCache.okx).length + Object.keys(multCache.gateio).length + Object.keys(multCache.bitget).length;
   console.log(`[funding-depth] multipliers ready: ${total} coin-exchange pairs`);
+}
+
+// ── edgeX contractId cache ────────────────────────────────────────────────────
+// edgeX depth + funding-history endpoints key on the numeric contractId, NOT the
+// coin/name (contractName/comma/repeat params all return []). So resolve coin →
+// contractId from getMetaData and cache it, refreshed on the same cadence as the
+// multiplier cache. Must be populated BEFORE the first history/depth fetch.
+
+async function refreshEdgexIdCache() {
+  const meta = await get('https://pro.edgex.exchange/api/v1/public/meta/getMetaData');
+  const contracts = meta?.data?.contractList;
+  if (!Array.isArray(contracts)) return;
+  const fresh = {};
+  for (const c of contracts) {
+    const name = c.contractName ?? '';
+    if (!name.endsWith('USD') || c.enableTrade === false) continue;
+    if (c.contractId) fresh[name.slice(0, -3)] = c.contractId;
+  }
+  if (Object.keys(fresh).length) {
+    Object.assign(edgexIdCache, fresh);   // failed fetch keeps stale ids
+    edgexIdFetchedAt = Date.now();
+    console.log(`[funding-depth] edgeX contractIds ready: ${Object.keys(edgexIdCache).length} coins`);
+  }
 }
 
 // ── Per-exchange depth fetchers ───────────────────────────────────────────────
@@ -226,6 +252,29 @@ async function depthAster(coin) {
   return { bids, asks, mid: (bids[0][0] + asks[0][0]) / 2 };
 }
 
+async function depthEdgex(coin) {
+  // edgeX StarkEx CLOB L2 book: data[0].{asks,bids} = [{ price, size }], size already
+  // in BASE units (coins) — same as Binance/Aster/Paradex, no contract multiplier.
+  // asks ascending / bids descending (sorted defensively). Quote is USD. Needs the
+  // numeric contractId (endpoints reject coin/name) — resolved via edgexIdCache.
+  const contractId = edgexIdCache[coin];
+  if (!contractId) return null;
+  const d    = await get(`https://pro.edgex.exchange/api/v1/public/quote/getDepth?contractId=${contractId}&level=200`);
+  const book = Array.isArray(d?.data) ? d.data[0] : null;
+  const aRaw = book?.asks, bRaw = book?.bids;
+  if (!Array.isArray(aRaw) || !aRaw.length || !Array.isArray(bRaw) || !bRaw.length) return null;
+  const bids = bRaw
+    .map(l => [parseFloat(l.price), parseFloat(l.size)])
+    .filter(([p, q]) => isFinite(p) && p > 0 && isFinite(q) && q > 0)
+    .sort((a, b) => b[0] - a[0]);
+  const asks = aRaw
+    .map(l => [parseFloat(l.price), parseFloat(l.size)])
+    .filter(([p, q]) => isFinite(p) && p > 0 && isFinite(q) && q > 0)
+    .sort((a, b) => a[0] - b[0]);
+  if (!bids.length || !asks.length) return null;
+  return { bids, asks, mid: (bids[0][0] + asks[0][0]) / 2 };
+}
+
 async function depthParadex(coin) {
   // Paradex StarkNet CLOB L2 book: { bids: [[price, size]], asks: [[price, size]] }
   // — size is already in BASE units (coins), same as Binance/Aster, so no contract
@@ -248,6 +297,7 @@ const DEPTH_FETCHERS = {
   dydx:        depthDydx,
   aster:       depthAster,
   paradex:     depthParadex,
+  edgex:       depthEdgex,
 };
 
 // Walk `levels` [[price, qty_coins], ...] to fill `targetUsd` of notional.
@@ -490,6 +540,31 @@ async function fetchAsterHistory(coin, n) {
     .filter(v => isFinite(v));
 }
 
+async function fetchEdgexHistory(coin, n) {
+  // edgeX funding settles every 4h (fundingRateIntervalMin=240). getFundingRatePage
+  // returns a DENSE snapshot stream where many rows share one settled `fundingTime`,
+  // so dedupe by fundingTime → one realized rate per settled 4h period, newest-first,
+  // capped at n. Raw fraction → ×100 (%/4h), kept in the venue's own per-settlement
+  // unit (legAnalytics annualizes via fundingIntervalHours=4), exactly like the other
+  // venues. Real published rates — never fabricated. Needs numeric contractId.
+  const contractId = edgexIdCache[coin];
+  if (!contractId) return [];
+  const d = await get(`https://pro.edgex.exchange/api/v1/public/funding/getFundingRatePage?contractId=${contractId}&size=500`);
+  const rows = d?.data?.dataList;
+  if (!Array.isArray(rows) || !rows.length) return [];
+  const seen = new Set();
+  const out  = [];
+  for (const row of rows) {                 // API returns newest-first
+    const t = row.fundingTime;
+    if (seen.has(t)) continue;
+    seen.add(t);
+    const v = parseFloat(row.fundingRate);
+    if (isFinite(v)) out.push(v * 100);
+    if (out.length >= n) break;
+  }
+  return out;
+}
+
 async function fetchParadexHistory(coin, n) {
   // Paradex funding is CONTINUOUS (accrues ~every 5s), published as an 8h-normalized
   // rate in `funding_rate_8h` — there are no discrete 8h settlements like Binance's
@@ -521,6 +596,7 @@ const HISTORY_FETCHERS = {
   dydx:        fetchDydxHistory,
   aster:       fetchAsterHistory,
   paradex:     fetchParadexHistory,
+  edgex:       fetchEdgexHistory,
 };
 
 // ── History cache management ──────────────────────────────────────────────────
@@ -648,6 +724,7 @@ function cap(s) {
 function venueLabel(exchange, isDex) {
   if (exchange === 'dydx')        return 'dYdX (DEX)';
   if (exchange === 'hyperliquid') return 'Hyperliquid (DEX)';
+  if (exchange === 'edgex')       return 'edgeX (DEX)';
   if (exchange === 'gateio')      return 'Gate.io';
   if (exchange === 'bitget')      return 'Bitget';
   return isDex ? `${cap(exchange)} (DEX)` : cap(exchange);
@@ -687,7 +764,7 @@ function crossExchangeSpread(futures, hCache) {
   // Build byExchange: coin → [{ exchange, fr (predicted), intervalHours, isDex }]
   const byExchange = {};
   for (const [ex, coins] of Object.entries(futures)) {
-    const isDex = ex === 'hyperliquid' || ex === 'dydx' || ex === 'aster' || ex === 'paradex';
+    const isDex = ex === 'hyperliquid' || ex === 'dydx' || ex === 'aster' || ex === 'paradex' || ex === 'edgex';
     for (const [coin, data] of Object.entries(coins || {})) {
       const fr            = data?.fundingRate;
       const intervalHours = data?.fundingIntervalHours ?? 8;
@@ -945,10 +1022,23 @@ async function run() {
       return;
     }
 
-    // Refresh settled history cache if stale (or on first run)
+    // edgeX depth + history endpoints key on numeric contractId (not coin), so the
+    // coin→contractId map MUST be ready before refreshHistoryCache/enrichWithDepth run.
+    if (Date.now() - edgexIdFetchedAt > MULT_REFRESH_MS || !Object.keys(edgexIdCache).length) {
+      await refreshEdgexIdCache();
+    }
+    // Refresh settled history cache if stale (or on first run). Extra one-shot
+    // backfill: if the edgeX contractId map only landed AFTER the last history
+    // refresh (startup race — getMetaData can fail under restart load, so history
+    // refreshes once with an empty edgeX map and locks in historyFetchedAt), force
+    // a single refresh so edgeX legs don't sit at PARTIAL for a full 15-min cycle.
     if (!historyCache) loadHistoryCacheFromDisk();
-    if (Date.now() - historyFetchedAt > HISTORY_REFRESH_MS) {
+    const edgexNeedsBackfill = !edgexHistoryBackfilled
+      && Object.keys(edgexIdCache).length > 0
+      && historyCache && !Object.keys(historyCache.edgex || {}).length;
+    if (Date.now() - historyFetchedAt > HISTORY_REFRESH_MS || edgexNeedsBackfill) {
       await refreshHistoryCache(data.futures || {});
+      if (Object.keys((historyCache || {}).edgex || {}).length) edgexHistoryBackfilled = true;
     }
     // Refresh contract multipliers at the same cadence (needed for depth accuracy)
     if (Date.now() - multFetchedAt > MULT_REFRESH_MS) {

@@ -506,6 +506,60 @@ async function fetchParadex() {
   }
 }
 
+async function fetchEdgex() {
+  // edgeX — StarkEx CLOB perp DEX, PUBLIC REST (no auth/signature for market data).
+  // getMetaData → contractId↔contractName (BTCUSD…), per-contract fundingRateIntervalMin
+  // (240 = 4h — NOT 8h) and taker/maker fees. getTicker?contractId=<id> → fundingRate
+  // (per funding interval) / markPrice / openInterest / value (24h USD vol). There is
+  // NO bulk ticker (contractName/comma/repeat params all return []), so one getTicker
+  // per contract. Base confirmed 2026-07-04: https://pro.edgex.exchange/api/v1
+  try {
+    const meta = await get('https://pro.edgex.exchange/api/v1/public/meta/getMetaData');
+    const contracts = meta?.data?.contractList;
+    if (!Array.isArray(contracts)) return {};
+
+    // PERP_COINS ∩ tradable USD-quoted contracts → { coin, contractId, intervalHours }.
+    // Read the funding interval PER contract (do not assume 8h): 240min ⇒ 4h.
+    const wanted = [];
+    for (const c of contracts) {
+      const name = c.contractName ?? '';
+      if (!name.endsWith('USD') || c.enableTrade === false) continue;
+      const coin = name.slice(0, -3);
+      if (!PERP_COINS.has(coin)) continue;
+      const im = parseInt(c.fundingRateIntervalMin ?? '240', 10);
+      wanted.push({ coin, contractId: c.contractId, intervalHours: isFinite(im) && im > 0 ? im / 60 : 4 });
+    }
+
+    const r = {};
+    await Promise.all(wanted.map(async ({ coin, contractId, intervalHours }) => {
+      const q = await get(`https://pro.edgex.exchange/api/v1/public/quote/getTicker?contractId=${contractId}`);
+      const t = Array.isArray(q?.data) ? q.data[0] : null;
+      if (!t) return;
+      const fr = parseFloat(t.fundingRate);
+      if (!isFinite(fr)) return;
+      const mark = parseFloat(t.markPrice);
+      const oi   = parseFloat(t.openInterest);
+      const vol  = parseFloat(t.value);
+      r[coin] = {
+        markPrice:            isFinite(mark) ? mark : null,
+        // fundingRate is edgeX's per-INTERVAL (4h) rate as a fraction → ×100 = %/4h.
+        // Positive = longs pay shorts (same as Binance/HL). annualize(rate, intervalHours)
+        // and the %/8h display both scale via intervalHours (=4) — mirrors HL/dYdX (=1)
+        // and Paradex (=8). No pre-normalisation to 8h here; the engine handles it.
+        fundingRate:          fr * 100,
+        fundingIntervalHours: intervalHours,
+        openInterestUsd:      isFinite(oi) && isFinite(mark) && oi > 0 && mark > 0 ? oi * mark : null,
+        vol24hUsd:            isFinite(vol) && vol > 0 ? vol : null,
+      };
+    }));
+    console.log(`[edgex] ${Object.keys(r).length} markets`);
+    return r;
+  } catch (e) {
+    console.error('[edgex] fetch error:', e.message);
+    return {};
+  }
+}
+
 async function fetchFutures() {
   const [binF, bybitF, okxF, hlF] = await Promise.all([
 
@@ -571,14 +625,15 @@ async function fetchFutures() {
     fetchHyperliquid(),
   ]);
 
-  // Secondary parallel: Binance vol, dYdX, Gate.io perps, Bitget perps, Aster, Paradex
-  const [dydxF, binVol, gateF, bitF, asterF, paradexF] = await Promise.all([
+  // Secondary parallel: Binance vol, dYdX, Gate.io perps, Bitget perps, Aster, Paradex, edgeX
+  const [dydxF, binVol, gateF, bitF, asterF, paradexF, edgexF] = await Promise.all([
     fetchDydx(),
     fetchBinancePerpVol(),
     fetchGateIOPerps(),
     fetchBitget(),
     fetchAster(),
     fetchParadex(),
+    fetchEdgex(),
   ]);
 
   // Merge Binance vol into rate data
@@ -593,6 +648,7 @@ async function fetchFutures() {
   if (Object.keys(bitF).length  > 0) out.bitget       = bitF;
   if (Object.keys(asterF).length > 0) out.aster       = asterF;
   if (Object.keys(paradexF).length > 0) out.paradex   = paradexF;
+  if (Object.keys(edgexF).length > 0) out.edgex       = edgexF;
   return out;
 }
 

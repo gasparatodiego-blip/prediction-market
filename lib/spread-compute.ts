@@ -31,7 +31,7 @@ const UNI_FILE      = '/tmp/unified-opportunities.json';
 const UNI_STALE_MS  = 10 * 60_000;
 
 function isDex(exchange: string): boolean {
-  return exchange === 'hyperliquid' || exchange === 'dydx' || exchange === 'aster' || exchange === 'paradex';
+  return exchange === 'hyperliquid' || exchange === 'dydx' || exchange === 'aster' || exchange === 'paradex' || exchange === 'edgex';
 }
 
 function liqUsd(data: FuturesCoin | undefined): number {
