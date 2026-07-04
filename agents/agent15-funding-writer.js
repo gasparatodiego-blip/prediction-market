@@ -99,6 +99,19 @@ const RL = { concurrency: 2, spacingMs: 120, timeoutMs: 12_000,
 function rlGetJson(url) {
   return rlGet(url, RL).then(r => r.data).catch(() => null);
 }
+
+// edgeX host trips Cloudflare under load — use a more conservative profile (longer
+// spacing + backoff ceiling) and browser-like headers for every edgeX call here too,
+// matching agent10. Only the edgeX host uses this; other hosts keep the RL defaults.
+const EDGEX_RL = { concurrency: 2, spacingMs: 300, backoffCapMs: 120_000, timeoutMs: 12_000,
+  headers: {
+    'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    'Accept': 'application/json, text/plain, */*',
+    'Accept-Language': 'en-US,en;q=0.9',
+  } };
+function rlGetJsonEdgex(url) {
+  return rlGet(url, EDGEX_RL).then(r => r.data).catch(() => null);
+}
 function rlPostJson(url, body) {
   return rlPost(url, body, RL).then(r => r.data).catch(() => null);
 }
@@ -147,7 +160,7 @@ async function refreshMultiplierCache() {
 // multiplier cache. Must be populated BEFORE the first history/depth fetch.
 
 async function refreshEdgexIdCache() {
-  const meta = await rlGetJson('https://pro.edgex.exchange/api/v1/public/meta/getMetaData');
+  const meta = await rlGetJsonEdgex('https://pro.edgex.exchange/api/v1/public/meta/getMetaData');
   const contracts = meta?.data?.contractList;
   if (!Array.isArray(contracts)) return;
   const fresh = {};
@@ -379,7 +392,7 @@ async function depthEdgex(coin) {
   // numeric contractId (endpoints reject coin/name) — resolved via edgexIdCache.
   const contractId = edgexIdCache[coin];
   if (!contractId) return null;
-  const d    = await rlGetJson(`https://pro.edgex.exchange/api/v1/public/quote/getDepth?contractId=${contractId}&level=200`);
+  const d    = await rlGetJsonEdgex(`https://pro.edgex.exchange/api/v1/public/quote/getDepth?contractId=${contractId}&level=200`);
   const book = Array.isArray(d?.data) ? d.data[0] : null;
   const aRaw = book?.asks, bRaw = book?.bids;
   if (!Array.isArray(aRaw) || !aRaw.length || !Array.isArray(bRaw) || !bRaw.length) return null;
@@ -746,7 +759,7 @@ async function fetchEdgexHistory(coin, n) {
   // venues. Real published rates — never fabricated. Needs numeric contractId.
   const contractId = edgexIdCache[coin];
   if (!contractId) return [];
-  const d = await rlGetJson(`https://pro.edgex.exchange/api/v1/public/funding/getFundingRatePage?contractId=${contractId}&size=500`);
+  const d = await rlGetJsonEdgex(`https://pro.edgex.exchange/api/v1/public/funding/getFundingRatePage?contractId=${contractId}&size=500`);
   const rows = d?.data?.dataList;
   if (!Array.isArray(rows) || !rows.length) return [];
   const seen = new Set();

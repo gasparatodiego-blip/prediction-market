@@ -5,7 +5,7 @@ const fs    = require('fs');
 const path  = require('path');
 const WebSocket = require('ws');
 const { httpGet: _sharedGet, httpPost: _httpPost } = require('../lib/httpGet');
-const { rlGet: _rlGet, rlPost: _rlPost } = require('../lib/rateLimitedFetch');
+const { rlGet: _rlGet, rlPost: _rlPost, isHostBackedOff } = require('../lib/rateLimitedFetch');
 const { atomicWriteJson } = require('../lib/atomicJsonWrite');
 const { annualize } = require('../lib/funding-math');
 
@@ -84,6 +84,21 @@ const RL = { concurrency: 2, spacingMs: 120, timeoutMs: 10_000,
   headers: { 'User-Agent': 'Mozilla/5.0 prediction-arb-scanner/1.0', 'Accept': 'application/json' } };
 function rlGetJson(url) {
   return _rlGet(url, RL).then(r => r.data).catch(() => null);
+}
+
+// edgeX host trips a Cloudflare bot-challenge under load. Use a MORE CONSERVATIVE
+// per-host profile (longer spacing + a longer backoff ceiling) and browser-like headers
+// to reduce how often the challenge fires. Only the edgeX host uses this — global
+// defaults for other hosts are unchanged.
+const EDGEX_BASE = 'https://pro.edgex.exchange/api/v1';
+const EDGEX_RL = { concurrency: 2, spacingMs: 300, backoffCapMs: 120_000, timeoutMs: 10_000,
+  headers: {
+    'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    'Accept': 'application/json, text/plain, */*',
+    'Accept-Language': 'en-US,en;q=0.9',
+  } };
+function rlGetJsonEdgex(url) {
+  return _rlGet(url, EDGEX_RL).then(r => r.data).catch(() => null);
 }
 function rlPostJson(url, body) {
   return _rlPost(url, body, RL).then(r => r.data).catch(() => null);
@@ -524,53 +539,80 @@ async function fetchParadex() {
 
 async function fetchEdgex() {
   // edgeX — StarkEx CLOB perp DEX, PUBLIC REST (no auth/signature for market data).
-  // getMetaData → contractId↔contractName (BTCUSD…), per-contract fundingRateIntervalMin
-  // (240 = 4h — NOT 8h) and taker/maker fees. getTicker?contractId=<id> → fundingRate
-  // (per funding interval) / markPrice / openInterest / value (24h USD vol). There is
-  // NO bulk ticker (contractName/comma/repeat params all return []), so one getTicker
-  // per contract. Base confirmed 2026-07-04: https://pro.edgex.exchange/api/v1
+  // Base confirmed 2026-07-04: https://pro.edgex.exchange/api/v1
+  //
+  // Cloudflare-429 HARDENING: the per-symbol getTicker loop (22 calls/cycle) periodically
+  // trips edgeX's Cloudflare bot-challenge, which used to zero the venue. So funding+mark
+  // now come from ONE bulk call — getLatestFundingRate?contractId=<all ids> — which is
+  // low-volume and (with the conservative EDGEX_RL profile + browser headers) rarely
+  // challenged. Its fundingRate is IDENTICAL to the ticker's (verified 2026-07-05) so no
+  // value changes on a healthy cycle. The ticker loop is used ONLY to enrich OI/24h-vol,
+  // and is SKIPPED entirely when the host is in backoff — funding still flows from bulk,
+  // OI/vol are honestly absent that cycle (never fabricated).
   try {
-    const meta = await rlGetJson('https://pro.edgex.exchange/api/v1/public/meta/getMetaData');
+    const meta = await rlGetJsonEdgex(`${EDGEX_BASE}/public/meta/getMetaData`);
     const contracts = meta?.data?.contractList;
     if (!Array.isArray(contracts)) return {};
 
-    // PERP_COINS ∩ tradable USD-quoted contracts → { coin, contractId, intervalHours }.
+    // PERP_COINS ∩ tradable USD-quoted contracts → contractId → { coin, intervalHours }.
     // Read the funding interval PER contract (do not assume 8h): 240min ⇒ 4h.
-    const wanted = [];
+    const byId = {};
+    const ids  = [];
     for (const c of contracts) {
       const name = c.contractName ?? '';
       if (!name.endsWith('USD') || c.enableTrade === false) continue;
       const coin = name.slice(0, -3);
       if (!PERP_COINS.has(coin)) continue;
       const im = parseInt(c.fundingRateIntervalMin ?? '240', 10);
-      wanted.push({ coin, contractId: c.contractId, intervalHours: isFinite(im) && im > 0 ? im / 60 : 4 });
+      byId[c.contractId] = { coin, intervalHours: isFinite(im) && im > 0 ? im / 60 : 4 };
+      ids.push(c.contractId);
     }
+    if (!ids.length) return {};
+
+    // PRIMARY funding+mark: one bulk call (not a per-symbol fan-out).
+    const bulk = await rlGetJsonEdgex(`${EDGEX_BASE}/public/funding/getLatestFundingRate?contractId=${ids.join(',')}`);
+    const bulkRows = bulk?.data;
+    if (!Array.isArray(bulkRows)) return {};   // bulk unavailable this cycle → absent, never stale/fabricated
 
     const r = {};
-    await Promise.all(wanted.map(async ({ coin, contractId, intervalHours }) => {
-      // 22 calls fan out here, but the shared per-host limiter serialises them to a
-      // small pool with spacing + 429 backoff, so edgeX's Cloudflare never trips.
-      const q = await rlGetJson(`https://pro.edgex.exchange/api/v1/public/quote/getTicker?contractId=${contractId}`);
-      const t = Array.isArray(q?.data) ? q.data[0] : null;
-      if (!t) return;
-      const fr = parseFloat(t.fundingRate);
-      if (!isFinite(fr)) return;
-      const mark = parseFloat(t.markPrice);
-      const oi   = parseFloat(t.openInterest);
-      const vol  = parseFloat(t.value);
-      r[coin] = {
-        markPrice:            isFinite(mark) ? mark : null,
-        // fundingRate is edgeX's per-INTERVAL (4h) rate as a fraction → ×100 = %/4h.
-        // Positive = longs pay shorts (same as Binance/HL). annualize(rate, intervalHours)
-        // and the %/8h display both scale via intervalHours (=4) — mirrors HL/dYdX (=1)
-        // and Paradex (=8). No pre-normalisation to 8h here; the engine handles it.
+    for (const row of bulkRows) {
+      const info = byId[row.contractId];
+      if (!info) continue;
+      const fr = parseFloat(row.fundingRate);
+      if (!isFinite(fr)) continue;
+      const mark = parseFloat(row.markPrice);
+      r[info.coin] = {
+        markPrice:            isFinite(mark) && mark > 0 ? mark : null,
+        // per-INTERVAL (4h) fraction → ×100 = %/4h. Same value/unit as the ticker's
+        // fundingRate — bulk is just the fan-out-free source. Positive = longs pay shorts.
+        // annualize(rate, intervalHours) and the %/8h display both scale via intervalHours.
         fundingRate:          fr * 100,
-        fundingIntervalHours: intervalHours,
-        openInterestUsd:      isFinite(oi) && isFinite(mark) && oi > 0 && mark > 0 ? oi * mark : null,
-        vol24hUsd:            isFinite(vol) && vol > 0 ? vol : null,
+        fundingIntervalHours: info.intervalHours,
+        openInterestUsd:      null,   // enriched from the ticker loop below when reachable
+        vol24hUsd:            null,
       };
-    }));
-    console.log(`[edgex] ${Object.keys(r).length} markets`);
+    }
+
+    // Enrich OI / 24h-vol from the per-symbol ticker loop — ONLY when the host is not
+    // currently Cloudflare-challenged. If it is, skip the whole loop (don't hammer) and
+    // leave OI/vol null; funding is already populated from the bulk call above.
+    if (!isHostBackedOff(EDGEX_BASE)) {
+      await Promise.all(ids.map(async (contractId) => {
+        const coin = byId[contractId].coin;
+        if (!r[coin]) return;
+        const q = await rlGetJsonEdgex(`${EDGEX_BASE}/public/quote/getTicker?contractId=${contractId}`);
+        const t = Array.isArray(q?.data) ? q.data[0] : null;
+        if (!t) return;
+        const oi   = parseFloat(t.openInterest);
+        const vol  = parseFloat(t.value);
+        const mark = r[coin].markPrice;
+        if (isFinite(oi) && oi > 0 && mark) r[coin].openInterestUsd = oi * mark;
+        if (isFinite(vol) && vol > 0)       r[coin].vol24hUsd       = vol;
+      }));
+    }
+
+    const skipped = isHostBackedOff(EDGEX_BASE);
+    console.log(`[edgex] ${Object.keys(r).length} markets${skipped ? ' (bulk funding; ticker OI/vol skipped — host challenged)' : ''}`);
     return r;
   } catch (e) {
     console.error('[edgex] fetch error:', e.message);
