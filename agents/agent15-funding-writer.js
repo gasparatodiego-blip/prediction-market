@@ -24,7 +24,7 @@
  */
 
 const fs = require('fs');
-const { httpGet } = require('../lib/httpGet');
+const { httpGet, httpPost } = require('../lib/httpGet');
 const {
   annualize,
   venueFeePct,
@@ -71,6 +71,13 @@ let isRunning        = false;
 
 function get(url) {
   return httpGet(url, {
+    timeoutMs: 12_000,
+    headers: { 'User-Agent': 'Mozilla/5.0 prediction-arb-scanner/1.0', 'Accept': 'application/json' },
+  }).then(r => r.data).catch(() => null);
+}
+
+function post(url, body) {
+  return httpPost(url, body, {
     timeoutMs: 12_000,
     headers: { 'User-Agent': 'Mozilla/5.0 prediction-arb-scanner/1.0', 'Accept': 'application/json' },
   }).then(r => r.data).catch(() => null);
@@ -356,13 +363,40 @@ async function fetchGateHistory(coin, n) {
     .filter(v => isFinite(v));
 }
 
+async function fetchHyperliquidHistory(coin, n) {
+  // HL's fundingHistory endpoint takes a startTime window, not a `limit` — funding
+  // settles hourly, so (n + buffer) hours back comfortably covers n settlements
+  // even with a couple of gaps. legAnalytics() only reads historyRates.slice(0, n),
+  // so returning a few extra is harmless; we still cap explicitly for parity with
+  // the other fetchers' `limit=n` behavior.
+  const startTime = Date.now() - (n + 4) * 3_600_000;
+  const d = await post('https://api.hyperliquid.xyz/info', {
+    type: 'fundingHistory',
+    coin,
+    startTime,
+  });
+  if (!Array.isArray(d)) return [];
+  // fundingRate is a raw fraction for HL's HOURLY settlement — same unit as the
+  // predicted `ctx.funding` value agent10's fetchHyperliquid() stores (×100 → %/hr,
+  // intervalHours=1). No 8h normalization: each venue's history stays in its own
+  // native per-settlement unit, and annualize() scales it using that venue's own
+  // intervalHours (1 for HL) — mirrors exactly how fetchOkxHistory's realizedRate
+  // is annualized via OKX's own intervalHours.
+  return d
+    .sort((a, b) => (b.time ?? 0) - (a.time ?? 0))
+    .map(e => parseFloat(e.fundingRate) * 100)
+    .filter(v => isFinite(v))
+    .slice(0, n);
+}
+
 const HISTORY_FETCHERS = {
-  binance: fetchBinanceHistory,
-  bybit:   fetchBybitHistory,
-  okx:     fetchOkxHistory,
-  bitget:  fetchBitgetHistory,
-  gateio:  fetchGateHistory,
-  // hyperliquid, dydx: no settled per-market history endpoint — handled in legAnalytics
+  binance:     fetchBinanceHistory,
+  bybit:       fetchBybitHistory,
+  okx:         fetchOkxHistory,
+  bitget:      fetchBitgetHistory,
+  gateio:      fetchGateHistory,
+  hyperliquid: fetchHyperliquidHistory,
+  // dydx: no settled per-market history endpoint yet — handled in legAnalytics
 };
 
 // ── History cache management ──────────────────────────────────────────────────
