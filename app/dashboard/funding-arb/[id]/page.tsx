@@ -313,6 +313,16 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
             )}
           </div>
 
+          {/* ── DEPOSIT CALLOUT (educational — no sensitive numbers, shown to all tiers, ABOVE the gate) ── */}
+          <div className="rounded-card mb-4" style={{ background: '#effcf9', border: '1px solid rgba(15,118,110,0.25)', padding: '12px 14px' }}>
+            <div className="font-body font-semibold" style={{ fontSize: 12, color: '#0f766e' }}>
+              You deposit USD stablecoin — not the coin
+            </div>
+            <p className="font-body mt-1 leading-relaxed" style={{ fontSize: 11, color: '#0e1626' }}>
+              Fund each exchange with USDC / USDT as margin. You don&apos;t buy {coin} — you open two opposite perp positions (short + long) of equal size. Price moves cancel out; you keep the funding gap.
+            </p>
+          </div>
+
           {/* ── SIZING + HOW TO EXECUTE (gated) ────────────────────────────── */}
           {isRedacted ? (
             <RedactedPanel
@@ -365,8 +375,8 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
 
                 {([
                   {
-                    t: 'Size both legs equally',
-                    b: <>Split ${capital.toLocaleString()} into <b style={{ color: '#0e1626' }}>{fmtUsd(notionalPerLeg)}</b> per leg ({qtyLabel} each). Equal notional on both sides keeps the position market-neutral.</>,
+                    t: 'Fund both exchanges & size the legs',
+                    b: <>Deposit <b style={{ color: '#0e1626' }}>{fmtUsd(notionalPerLeg)}</b> USDC/USDT margin per exchange. On each, open a perp position sized <b style={{ color: '#0e1626' }}>{qty != null ? `~${qtyLabel}` : '—'}</b> ({fmtUsd(notionalPerLeg)} notional) — SHORT on {venueLabel(shortExchange)}, LONG on {venueLabel(longExchange)}. You never hold {coin}; the two positions are price-neutral.</>,
                   },
                   {
                     t: 'Open short + long together',

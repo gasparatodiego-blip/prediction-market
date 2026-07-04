@@ -1503,6 +1503,11 @@ export default function CryptoPage() {
               </div>
             </div>
 
+            {/* Capital = stablecoin margin, not coins — clarify perp/perp framing (all tiers) */}
+            <p className="font-body" style={{ fontSize: 11, color: '#9aa5b3', marginTop: -6 }}>
+              = USD stablecoin margin (USDC/USDT). You open perp positions — you don&apos;t buy the coin.
+            </p>
+
             {/* Secondary controls */}
             <div className="flex items-center gap-4 flex-wrap pt-2.5" style={{ borderTop: '1px solid #eef2f6' }}>
               <TypeFilterToggle value={typeFilter} onChange={setTypeFilter} />
