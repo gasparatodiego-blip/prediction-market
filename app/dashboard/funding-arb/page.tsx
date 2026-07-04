@@ -11,7 +11,7 @@ import {
   type Leverage,
   calcSpreadSizing,
 } from '@/lib/spread-types';
-import { APY_CAP } from '@/lib/honest-display';
+import { APY_CAP, isOverApyCap } from '@/lib/honest-display';
 import { Redacted } from '@/app/components/ui/Redacted';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -57,6 +57,10 @@ function fmtRate(fr: number, intervalHours?: number): string {
 }
 
 function fmtApy(n: number): string {
+  // Honest-engine: annualized figures are demoted run-rate and capped at APY_CAP.
+  // Above the cap show a ceiling, never a raw inflated number (see the table's
+  // run-rate footnote). Reuses the shared isOverApyCap/APY_CAP from honest-display.
+  if (isOverApyCap(n)) return `>${APY_CAP}%/yr`;
   return `${n >= 0 ? '+' : ''}${n.toFixed(1)}%/yr`;
 }
 
@@ -1153,8 +1157,10 @@ function SpreadTable({
                             <span className="text-muted">N/leg <span className="text-ink tabular-nums">{fmtUsd(sz.N)}</span></span>
                             <span className="text-muted">Fees <span className="text-ink tabular-nums">{fmtUsd(sz.feesUsd)}</span></span>
                             <span className="text-muted">Net 30d <span className={`tabular-nums ${sz.net30dUsd >= 0 ? 'text-mint-deep' : 'text-coral-ink'}`}>{fmtUsd(sz.net30dUsd)}</span></span>
-                            <span className="text-muted">Net/yr <span className={`tabular-nums ${sz.netYrUsd >= 0 ? 'text-mint-deep' : 'text-coral-ink'}`}>{fmtUsd(sz.netYrUsd)}</span></span>
-                            <span className="ml-auto text-muted">ROC <span className={`tabular-nums font-semibold ${sz.roc >= 0 ? 'text-mint-deep' : 'text-coral-ink'}`}>{sz.roc >= 0 ? '+' : ''}{sz.roc.toFixed(1)}%/yr</span></span>
+                            {/* Annualized $/yr — demoted run-rate; above APY_CAP the $/yr is an
+                                over-projection, so show the capped ceiling, never a raw inflated $. */}
+                            <span className="text-muted">Net/yr* <span className={`tabular-nums ${sz.netYrUsd >= 0 ? 'text-mint-deep' : 'text-coral-ink'}`}>{isOverApyCap(sz.roc) ? `>${APY_CAP}%/yr` : fmtUsd(sz.netYrUsd)}</span></span>
+                            <span className="ml-auto text-muted">ROC* <span className={`tabular-nums font-semibold ${sz.roc >= 0 ? 'text-mint-deep' : 'text-coral-ink'}`}>{fmtApy(sz.roc)}</span></span>
                           </div>
                         </td>
                       </tr>
@@ -1164,6 +1170,9 @@ function SpreadTable({
               })}
             </tbody>
           </table>
+          <div className="px-3 pt-1.5 font-body text-[9px] text-muted/70">
+            * Annualized figures (ROC %/yr, Net/yr) are run-rate, not guaranteed — annualized from current funding, which changes every 1h/8h; caps at &gt;{APY_CAP}%/yr.
+          </div>
           {spreads.some(s => s.hasDexLeg) && (
             <div className="px-3 pb-2 pt-1 font-body text-[9px] text-mint/70 space-y-0.5">
               {spreads.some(s => s.shortExchange === 'hyperliquid' || s.longExchange === 'hyperliquid') && (
