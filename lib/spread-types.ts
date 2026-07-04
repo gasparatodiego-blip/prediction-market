@@ -33,6 +33,12 @@ export interface SpreadItem {
   frLong:             number;
   intervalHoursShort: number;
   intervalHoursLong:  number;
+  // Real next-funding settlement timestamps (ms) captured from each venue's API,
+  // when available — public timing data, never redacted. Absent for venues whose
+  // fetcher carries no timestamp; the UI then falls back to a UTC-aligned boundary
+  // computed from intervalHours. Display-only (drives the per-leg countdown).
+  nextFundingTimeShort?: number;
+  nextFundingTimeLong?:  number;
   shortIsDex:         boolean;
   longIsDex:          boolean;
   hasDexLeg:          boolean;

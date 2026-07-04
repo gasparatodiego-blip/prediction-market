@@ -281,6 +281,74 @@ function fmtRate8h(rateNative: number, intervalHours: number | undefined): strin
   return `${v >= 0 ? '+' : ''}${v.toFixed(4)}%`;
 }
 
+// ── Per-leg next-funding countdown (display only) ──────────────────────────────
+// Each venue settles funding on its OWN cadence (HL/dYdX 1h, edgeX 4h, CEX/Paradex/
+// Aster/Grvt 8h), so each leg gets its own clock — never a shared "CEX vs DEX" clock.
+// Resolution order, most-honest first:
+//   (a) the venue's real next-funding timestamp captured from its API (accounts for
+//       any schedule offset), else
+//   (b) a UTC-day-aligned boundary computed from intervalHours — multiples of the
+//       interval measured from the UTC epoch land on 00:00-UTC-aligned boundaries for
+//       intervals that divide 24h (1/4/8), valid for the standard venues in this
+//       pipeline (approximation dated 2026-07-04), else
+//   (c) null → render nothing (unknown interval AND timestamp — never fabricate).
+function nextFundingAt(nextFundingTime: number | undefined, intervalHours: number | undefined, now: number): number | null {
+  if (typeof nextFundingTime === 'number' && nextFundingTime > now) return nextFundingTime;   // (a)
+  const iv = intervalHours && intervalHours > 0 ? intervalHours : null;
+  if (iv == null) return null;                                                                 // (c)
+  const ms = iv * 3_600_000;
+  return Math.ceil((now + 1) / ms) * ms;                                                       // (b)
+}
+
+function fmtCountdown(ms: number, withSeconds: boolean): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const p = (n: number) => String(n).padStart(2, '0');
+  return withSeconds ? `${p(h)}:${p(m)}:${p(s)}` : `${p(h)}:${p(m)}`;
+}
+
+// One 1s ticker per mounted countdown, cleared on unmount (no per-row timer leak).
+function useNowTick(intervalMs = 1000): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), intervalMs);
+    return () => clearInterval(id);
+  }, [intervalMs]);
+  return now;
+}
+
+// Shared by Cards + List + table. Renders nothing when the leg's cadence is unknown
+// (path c). Distinct from the global CEX/HL summary clock FundingCountdown({targetMs}).
+// prefers-reduced-motion: the digits still update (it's information, not decoration).
+function LegFundingCountdown({
+  nextFundingTime, intervalHours, withSeconds = true, size = 10, showCadence = true,
+}: {
+  nextFundingTime?: number;
+  intervalHours?:   number;
+  withSeconds?:     boolean;
+  size?:            number;
+  showCadence?:     boolean;
+}) {
+  const now    = useNowTick(1000);
+  const target = nextFundingAt(nextFundingTime, intervalHours, now);
+  if (target == null) return null;
+  return (
+    <span
+      className="inline-flex items-center gap-1 font-mono"
+      style={{ fontSize: size, color: '#0d9c6e' }}
+      title="Time to this venue's next funding settlement (its real cadence)"
+    >
+      <span aria-hidden style={{ opacity: 0.8 }}>⏱</span>
+      <span className="tabular-nums">{fmtCountdown(target - now, withSeconds)}</span>
+      {showCadence && intervalHours && intervalHours > 0 && (
+        <span style={{ color: '#9aa5b3' }}>· every {intervalHours}h</span>
+      )}
+    </span>
+  );
+}
+
 // Net $/day at the user's capital, rescaled linearly from the honest per-capital
 // netApy30d the engine already computed (same formula the List has always used,
 // so Cards and List agree). Returns null when the field is redacted (free tier).
@@ -454,6 +522,9 @@ function FlowStrip({ s }: { s: SpreadItem }) {
         <span className="font-mono tabular-nums mt-0.5" style={{ fontSize: 11, color: shortColor }}>
           {fmtRate8h(s.frShort, s.intervalHoursShort)}<span style={{ color: '#9aa5b3' }}> /8h</span>
         </span>
+        <span className="mt-0.5">
+          <LegFundingCountdown nextFundingTime={s.nextFundingTimeShort} intervalHours={s.intervalHoursShort} />
+        </span>
       </div>
 
       {/* Connector — gradient runs SHORT-color → LONG-color; arrow toward pay side */}
@@ -486,6 +557,9 @@ function FlowStrip({ s }: { s: SpreadItem }) {
         </span>
         <span className="font-mono tabular-nums mt-0.5" style={{ fontSize: 11, color: longColor }}>
           {fmtRate8h(s.frLong, s.intervalHoursLong)}<span style={{ color: '#9aa5b3' }}> /8h</span>
+        </span>
+        <span className="mt-0.5">
+          <LegFundingCountdown nextFundingTime={s.nextFundingTimeLong} intervalHours={s.intervalHoursLong} />
         </span>
       </div>
     </div>
@@ -663,11 +737,13 @@ function FundingList({ items, capital, leverage }: { items: SpreadItem[]; capita
           >
             <span className="font-mono font-bold text-ink tracking-tight shrink-0" style={{ fontSize: 13, width: 52 }}>{s.coin}</span>
 
-            {/* Flow, normalized to %/8h */}
-            <span className="font-mono tabular-nums inline-flex items-center gap-1.5 min-w-0" style={{ fontSize: 11 }}>
+            {/* Flow, normalized to %/8h — each leg carries its own next-funding clock */}
+            <span className="font-mono tabular-nums inline-flex items-center gap-1.5 min-w-0 flex-wrap" style={{ fontSize: 11 }}>
               <span style={{ color: '#0f766e' }}>{venueLabel(s.shortExchange)} {fmtRate8h(s.frShort, s.intervalHoursShort)}</span>
+              <LegFundingCountdown nextFundingTime={s.nextFundingTimeShort} intervalHours={s.intervalHoursShort} size={9.5} showCadence={false} />
               <span style={{ color: '#9aa5b3' }}>→</span>
               <span style={{ color: '#e11d48' }}>{venueLabel(s.longExchange)} {fmtRate8h(s.frLong, s.intervalHoursLong)}</span>
+              <LegFundingCountdown nextFundingTime={s.nextFundingTimeLong} intervalHours={s.intervalHoursLong} size={9.5} showCadence={false} />
               <span style={{ color: '#9aa5b3' }}>/8h</span>
             </span>
 
@@ -1096,11 +1172,13 @@ function SpreadTable({
                         <span className={`inline-flex items-center gap-1 ${s.shortIsDex ? 'text-mint' : 'text-ink-2'}`}><PlatformLogo platform={s.shortExchange} size={11} />{venueLabel(s.shortExchange)}</span>
                         <span className="text-line mx-1">·</span>
                         <span className={rateCls(s.frShort)}>{fmtRate(s.frShort, s.intervalHoursShort)}</span>
+                        <span className="ml-1.5"><LegFundingCountdown nextFundingTime={s.nextFundingTimeShort} intervalHours={s.intervalHoursShort} withSeconds={false} size={9} showCadence={false} /></span>
                       </td>
                       <td className="px-3 py-2.5 whitespace-nowrap">
                         <span className={`inline-flex items-center gap-1 ${s.longIsDex ? 'text-mint' : 'text-ink-2'}`}><PlatformLogo platform={s.longExchange} size={11} />{venueLabel(s.longExchange)}</span>
                         <span className="text-line mx-1">·</span>
                         <span className={rateCls(s.frLong)}>{fmtRate(s.frLong, s.intervalHoursLong)}</span>
+                        <span className="ml-1.5"><LegFundingCountdown nextFundingTime={s.nextFundingTimeLong} intervalHours={s.intervalHoursLong} withSeconds={false} size={9} showCadence={false} /></span>
                       </td>
                       <td className="px-3 py-2.5 tabular-nums">
                         {sz ? (

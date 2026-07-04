@@ -48,15 +48,19 @@ function liqTier(usd: number): string {
 export function computeSpreads(
   futures: Record<string, Record<string, FuturesCoin>>
 ): SpreadItem[] {
-  const byExchange: Record<string, { exchange: string; fr: number; intervalHours: number; dex: boolean }[]> = {};
+  const byExchange: Record<string, { exchange: string; fr: number; intervalHours: number; nextFundingTime?: number; dex: boolean }[]> = {};
 
   for (const [ex, coins] of Object.entries(futures)) {
     for (const [coin, data] of Object.entries(coins || {})) {
       const fr = data?.fundingRate;
       if (fr == null || typeof fr !== 'number' || !isFinite(fr)) continue;
       const intervalHours = data.fundingIntervalHours ?? 8;
+      // Carry the venue's real next-funding timestamp through when it captured one
+      // (display-only, for the per-leg countdown). Undefined stays undefined.
+      const nextFundingTime = typeof data.nextFundingTime === 'number' && data.nextFundingTime > 0
+        ? data.nextFundingTime : undefined;
       if (!byExchange[coin]) byExchange[coin] = [];
-      byExchange[coin].push({ exchange: ex, fr, intervalHours, dex: isDex(ex) });
+      byExchange[coin].push({ exchange: ex, fr, intervalHours, nextFundingTime, dex: isDex(ex) });
     }
   }
 
@@ -104,6 +108,8 @@ export function computeSpreads(
           frLong:             +longSide.fr.toFixed(6),
           intervalHoursShort: shortSide.intervalHours,
           intervalHoursLong:  longSide.intervalHours,
+          nextFundingTimeShort: shortSide.nextFundingTime,
+          nextFundingTimeLong:  longSide.nextFundingTime,
           shortIsDex:         shortSide.dex,
           longIsDex:          longSide.dex,
           hasDexLeg:          dexLeg,
