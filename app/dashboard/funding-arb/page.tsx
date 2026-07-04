@@ -217,6 +217,58 @@ function TypeFilterToggle({
   );
 }
 
+// ── Asset-class selector ──────────────────────────────────────────────────────
+// Display/routing only: partitions the already-computed rows into Crypto (data.spreads)
+// vs Commodities (data.rwa, observation-only). Stocks disabled — not ingested yet.
+type AssetClassView = 'crypto' | 'commodity';
+const ASSET_CLASS_STORAGE_KEY = 'edgeradar.funding.assetClass';
+
+function AssetClassToggle({ value, onChange }: { value: AssetClassView; onChange: (v: AssetClassView) => void }) {
+  const opts: { id: string; label: string; disabled?: boolean; hint?: string; whyDisabled?: string }[] = [
+    { id: 'crypto',    label: 'Crypto' },
+    { id: 'commodity', label: 'Commodities' },
+    {
+      id: 'stock', label: 'Stocks', disabled: true, hint: 'coming soon',
+      whyDisabled: 'Stock perpetuals are not ingested yet — they need market-hours gating. Coming soon.',
+    },
+  ];
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      <span className="font-body text-[11px] uppercase tracking-wide text-muted shrink-0">
+        Asset class
+      </span>
+      <div className="flex border border-line rounded-button overflow-hidden font-body text-[11px] divide-x divide-line">
+        {opts.map(opt => (
+          <button
+            key={opt.id}
+            disabled={!!opt.disabled}
+            onClick={() => !opt.disabled && onChange(opt.id as AssetClassView)}
+            title={opt.whyDisabled ?? undefined}
+            aria-disabled={!!opt.disabled}
+            className={`relative px-3 py-1 transition-colors duration-100 ${
+              value === opt.id
+                ? 'bg-mint-deep text-white'
+                : opt.disabled
+                  ? 'text-muted/30 cursor-not-allowed'
+                  : 'text-muted hover:text-ink-2'
+            }`}
+          >
+            {opt.label}
+            {opt.hint && (
+              <span className="ml-1 text-[7px] text-muted/40 align-middle">{opt.hint}</span>
+            )}
+          </button>
+        ))}
+      </div>
+      {value === 'commodity' && (
+        <span className="font-body text-[11px] text-muted">
+          Observation only — funding is flat/near-zero, not cashable yet
+        </span>
+      )}
+    </div>
+  );
+}
+
 // ── Countdown ─────────────────────────────────────────────────────────────────
 
 function nextFundingMs(futures: Record<string, Record<string, FuturesCoin>>): number | null {
@@ -1460,8 +1512,21 @@ export default function CryptoPage() {
   const [leverage,     setLeverage]     = useState<Leverage>(1);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [typeFilter,   setTypeFilter]   = useState<ArbType>('all');
+  const [assetView,    setAssetView]    = useState<AssetClassView>('crypto');
   const pendingHashScroll               = useRef(false);
   const rafHandle                       = useRef<number | null>(null);
+
+  // Restore persisted asset-class view (default 'crypto' — crypto view is byte-identical).
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(ASSET_CLASS_STORAGE_KEY);
+      if (raw === 'crypto' || raw === 'commodity') setAssetView(raw);
+    } catch { /* default crypto */ }
+  }, []);
+  const selectAssetView = useCallback((v: AssetClassView) => {
+    setAssetView(v);
+    try { localStorage.setItem(ASSET_CLASS_STORAGE_KEY, v); } catch { /* non-fatal */ }
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -1581,15 +1646,20 @@ export default function CryptoPage() {
           Funding arbitrage · market-neutral
         </div>
         <div className="mt-2 flex items-baseline gap-2 flex-wrap">
+          {/* Commodities are observation-only — no cashable "best net/day" exists, so dash it. */}
           <span className="font-mono font-bold tabular-nums leading-none" style={{ fontSize: 38, color: '#0f766e' }}>
-            {filteredPairs.length === 0
+            {assetView === 'commodity'
               ? '—'
-              : bestNetDay != null
-                ? `≈ ${fmtMoneyPlain(bestNetDay)}`
-                : <span className="align-middle"><Redacted value={filteredPairs[0].netApy30d}>{() => null}</Redacted></span>}
+              : filteredPairs.length === 0
+                ? '—'
+                : bestNetDay != null
+                  ? `≈ ${fmtMoneyPlain(bestNetDay)}`
+                  : <span className="align-middle"><Redacted value={filteredPairs[0].netApy30d}>{() => null}</Redacted></span>}
           </span>
           <span className="font-body" style={{ fontSize: 12, color: '#6b7787' }}>
-            best net / day on ${capital.toLocaleString()}
+            {assetView === 'commodity'
+              ? 'commodities · observing funding, not cashable yet'
+              : `best net / day on $${capital.toLocaleString()}`}
           </span>
         </div>
         <p className="mt-3 font-body leading-relaxed" style={{ fontSize: 12.5, color: '#334155', maxWidth: '52ch' }}>
@@ -1658,6 +1728,7 @@ export default function CryptoPage() {
 
             {/* Secondary controls */}
             <div className="flex items-center gap-4 flex-wrap pt-2.5" style={{ borderTop: '1px solid #eef2f6' }}>
+              <AssetClassToggle value={assetView} onChange={selectAssetView} />
               <TypeFilterToggle value={typeFilter} onChange={setTypeFilter} />
               <div className="flex items-center gap-2">
                 <span className="font-body uppercase" style={{ fontSize: 10, letterSpacing: '0.12em', color: '#6b7787' }}>Leverage</span>
@@ -1683,13 +1754,16 @@ export default function CryptoPage() {
             </div>
           </div>
 
-          {/* Top opportunity cards — 6 visible, "show more" reveals the rest */}
-          <OpportunityCards spreads={filteredPairs} capital={capital} leverage={leverage} />
+          {/* Crypto view → cards + advanced table; Commodities view → RWA observation strip */}
+          {assetView === 'crypto' && (
+            <OpportunityCards spreads={filteredPairs} capital={capital} leverage={leverage} />
+          )}
+          {assetView === 'commodity' && (
+            <RwaCommoditiesStrip rows={data.rwa ?? []} />
+          )}
 
-          {/* RWA · Commodities (beta) — observation-only strip (gold/silver/oil) */}
-          <RwaCommoditiesStrip rows={data.rwa ?? []} />
-
-          {/* ── Advanced / full data ──────────────────────────────────── */}
+          {/* ── Advanced / full data (crypto view only) ──────────────────── */}
+          {assetView === 'crypto' && (
           <div className="border border-line rounded-card bg-surface shadow-card mb-5">
             <button
               onClick={() => setShowAdvanced(v => !v)}
@@ -1827,6 +1901,7 @@ export default function CryptoPage() {
               </div>
             )}
           </div>
+          )}
         </>
       )}
     </div>
