@@ -635,8 +635,11 @@ function crossExchangeSpread(futures, hCache) {
 
         const totalFees  = roundTripFeeByVenue(shortSide.exchange, longSide.exchange);
         const net30d     = netApy30d(trailingGrossApy, totalFees);
-        const beDays     = breakevenDays(trailingGrossApy, totalFees);
-        const status     = spreadStatus(beDays);
+        // Honest-engine: payback recovers entry+exit fees from NET $/day (after
+        // fees), not gross. net30d and totalFees are both %/yr → basis-consistent.
+        // Non-positive net has no valid payback → null (renders "—", never cashable).
+        const beDays     = net30d > 0 ? breakevenDays(net30d, totalFees) : null;
+        const status     = beDays === null ? 'MARGINAL' : spreadStatus(beDays);
         const hasDexLeg  = shortSide.isDex || longSide.isDex;
 
         // Liquidity

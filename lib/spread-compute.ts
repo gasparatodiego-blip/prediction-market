@@ -79,8 +79,11 @@ export function computeSpreads(
         // Per-venue fees: HL=0.025%, dYdX=0.05%, CEX=0.04%
         const totalFees = roundTripFeeByVenue(shortSide.exchange, longSide.exchange);
         const net30d    = netApy30d(grossApy, totalFees);
-        const beDays    = breakevenDays(grossApy, totalFees);
-        const status    = spreadStatus(beDays);
+        // Honest-engine: payback recovers entry+exit fees from NET $/day (after
+        // fees), not gross. net30d and totalFees are both %/yr → basis-consistent.
+        // Non-positive net has no valid payback → null (renders "—", never cashable).
+        const beDays    = net30d > 0 ? breakevenDays(net30d, totalFees) : null;
+        const status    = beDays === null ? 'MARGINAL' : spreadStatus(beDays);
         const dexLeg    = shortSide.dex || longSide.dex;
 
         // Liquidity from the thinner leg
