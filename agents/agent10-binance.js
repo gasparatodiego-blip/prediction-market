@@ -451,6 +451,61 @@ async function fetchAster() {
   }
 }
 
+async function fetchParadex() {
+  // Paradex — StarkNet CLOB perp DEX, PUBLIC REST (no auth/signature for market
+  // data). NOT Binance-style: /markets → PERP list + funding_period_hours;
+  // /markets/summary?market=ALL → per-market mark_price/funding_rate/open_interest/
+  // volume_24h. funding_rate is Paradex's funding-PERIOD (8h) rate as a fraction —
+  // confirmed against /funding/data.funding_rate_8h and the ~0.01%/8h BTC baseline.
+  // Base confirmed 2026-07-04: https://api.prod.paradex.trade/v1
+  try {
+    const [markets, summary] = await Promise.all([
+      get('https://api.prod.paradex.trade/v1/markets'),
+      get('https://api.prod.paradex.trade/v1/markets/summary?market=ALL'),
+    ]);
+    const rows = summary?.results;
+    if (!Array.isArray(rows)) return {};
+
+    // symbol → funding period hours (default 8; only PERP markets). Mirrors Aster's
+    // per-symbol interval-override map built from /fundingInfo.
+    const periodBySymbol = {};
+    for (const m of markets?.results ?? []) {
+      if (m.asset_kind !== 'PERP') continue;
+      const h = parseInt(m.funding_period_hours ?? 8, 10);
+      if (m.symbol && isFinite(h) && h > 0) periodBySymbol[m.symbol] = h;
+    }
+
+    const r = {};
+    for (const row of rows) {
+      const sym = row.symbol ?? '';
+      if (!sym.endsWith('-USD-PERP')) continue;          // USD-quoted perps (USDC settle = USD)
+      const coin = sym.slice(0, -'-USD-PERP'.length);
+      if (!PERP_COINS.has(coin)) continue;
+      const fr   = parseFloat(row.funding_rate);
+      if (!isFinite(fr)) continue;
+      const mark = parseFloat(row.mark_price);
+      const oi   = parseFloat(row.open_interest);
+      const vol  = parseFloat(row.volume_24h);
+      const intervalHours = periodBySymbol[sym] ?? 8;
+      r[coin] = {
+        markPrice:            isFinite(mark) ? mark : null,
+        // funding_rate is the 8h-period rate as a fraction → ×100 = %/8h. Positive =
+        // longs pay shorts (same as Binance/HL). annualize(rate, intervalHours) then
+        // normalises to %/yr, mirroring every other venue.
+        fundingRate:          fr * 100,
+        fundingIntervalHours: intervalHours,
+        openInterestUsd:      isFinite(oi) && isFinite(mark) && oi > 0 && mark > 0 ? oi * mark : null,
+        vol24hUsd:            isFinite(vol) && vol > 0 ? vol : null,
+      };
+    }
+    console.log(`[paradex] ${Object.keys(r).length} markets`);
+    return r;
+  } catch (e) {
+    console.error('[paradex] fetch error:', e.message);
+    return {};
+  }
+}
+
 async function fetchFutures() {
   const [binF, bybitF, okxF, hlF] = await Promise.all([
 
@@ -516,13 +571,14 @@ async function fetchFutures() {
     fetchHyperliquid(),
   ]);
 
-  // Secondary parallel: Binance vol, dYdX, Gate.io perps, Bitget perps, Aster perps
-  const [dydxF, binVol, gateF, bitF, asterF] = await Promise.all([
+  // Secondary parallel: Binance vol, dYdX, Gate.io perps, Bitget perps, Aster, Paradex
+  const [dydxF, binVol, gateF, bitF, asterF, paradexF] = await Promise.all([
     fetchDydx(),
     fetchBinancePerpVol(),
     fetchGateIOPerps(),
     fetchBitget(),
     fetchAster(),
+    fetchParadex(),
   ]);
 
   // Merge Binance vol into rate data
@@ -536,6 +592,7 @@ async function fetchFutures() {
   if (Object.keys(gateF).length > 0) out.gateio       = gateF;
   if (Object.keys(bitF).length  > 0) out.bitget       = bitF;
   if (Object.keys(asterF).length > 0) out.aster       = asterF;
+  if (Object.keys(paradexF).length > 0) out.paradex   = paradexF;
   return out;
 }
 

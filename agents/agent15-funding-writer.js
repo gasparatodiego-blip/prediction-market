@@ -226,6 +226,18 @@ async function depthAster(coin) {
   return { bids, asks, mid: (bids[0][0] + asks[0][0]) / 2 };
 }
 
+async function depthParadex(coin) {
+  // Paradex StarkNet CLOB L2 book: { bids: [[price, size]], asks: [[price, size]] }
+  // — size is already in BASE units (coins), same as Binance/Aster, so no contract
+  // multiplier. bids descending / asks ascending per the API. Quote is USDC = USD,
+  // so price * size is USD notional straight through.
+  const d = await get(`https://api.prod.paradex.trade/v1/orderbook/${coin}-USD-PERP?depth=100`);
+  if (!Array.isArray(d?.bids) || !d.bids.length || !Array.isArray(d?.asks) || !d.asks.length) return null;
+  const bids = d.bids.map(([p, q]) => [parseFloat(p), parseFloat(q)]);
+  const asks = d.asks.map(([p, q]) => [parseFloat(p), parseFloat(q)]);
+  return { bids, asks, mid: (bids[0][0] + asks[0][0]) / 2 };
+}
+
 const DEPTH_FETCHERS = {
   binance:     depthBinance,
   bybit:       depthBybit,
@@ -235,6 +247,7 @@ const DEPTH_FETCHERS = {
   hyperliquid: depthHyperliquid,
   dydx:        depthDydx,
   aster:       depthAster,
+  paradex:     depthParadex,
 };
 
 // Walk `levels` [[price, qty_coins], ...] to fill `targetUsd` of notional.
@@ -477,6 +490,27 @@ async function fetchAsterHistory(coin, n) {
     .filter(v => isFinite(v));
 }
 
+async function fetchParadexHistory(coin, n) {
+  // Paradex funding is CONTINUOUS (accrues ~every 5s), published as an 8h-normalized
+  // rate in `funding_rate_8h` — there are no discrete 8h settlements like Binance's
+  // /fundingRate. So we pull the realized funding_rate_8h series (newest-first) and
+  // evenly downsample to n points across the returned window: the honest trailing
+  // analogue of the other venues' N settled rates. One call per coin, same as the
+  // others. Raw fraction → ×100 (%/8h), kept in the venue's own per-settlement unit
+  // (legAnalytics annualizes via fundingIntervalHours=8). Values are real published
+  // rates — never fabricated; a thin/flat series simply yields trailing ≈ current.
+  const d = await get(`https://api.prod.paradex.trade/v1/funding/data?market=${coin}-USD-PERP&page_size=1000`);
+  const rows = d?.results;
+  if (!Array.isArray(rows) || !rows.length) return [];
+  const step = Math.max(1, Math.floor(rows.length / n));
+  const out  = [];
+  for (let i = 0; i < rows.length && out.length < n; i += step) {
+    const v = parseFloat(rows[i].funding_rate_8h);
+    if (isFinite(v)) out.push(v * 100);
+  }
+  return out;
+}
+
 const HISTORY_FETCHERS = {
   binance:     fetchBinanceHistory,
   bybit:       fetchBybitHistory,
@@ -486,6 +520,7 @@ const HISTORY_FETCHERS = {
   hyperliquid: fetchHyperliquidHistory,
   dydx:        fetchDydxHistory,
   aster:       fetchAsterHistory,
+  paradex:     fetchParadexHistory,
 };
 
 // ── History cache management ──────────────────────────────────────────────────
@@ -652,7 +687,7 @@ function crossExchangeSpread(futures, hCache) {
   // Build byExchange: coin → [{ exchange, fr (predicted), intervalHours, isDex }]
   const byExchange = {};
   for (const [ex, coins] of Object.entries(futures)) {
-    const isDex = ex === 'hyperliquid' || ex === 'dydx' || ex === 'aster';
+    const isDex = ex === 'hyperliquid' || ex === 'dydx' || ex === 'aster' || ex === 'paradex';
     for (const [coin, data] of Object.entries(coins || {})) {
       const fr            = data?.fundingRate;
       const intervalHours = data?.fundingIntervalHours ?? 8;
