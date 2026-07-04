@@ -313,55 +313,85 @@ function InfoTooltip({ label, text }: { label: string; text: string }) {
 
 // ── Redesign: signature flow strip (static SVG — no motion) ────────────────────
 
+// Cash-flow direction of one leg from the funding-rate SIGN, not the trade side.
+// Perp funding convention (as the engine applies it): rate > 0 → longs pay shorts;
+// rate < 0 → shorts pay longs. The engine's net is annShort − annLong, so:
+//   · SHORT leg: positive rate → you COLLECT; negative rate → you PAY.
+//   · LONG  leg: negative rate → you COLLECT; positive rate → you PAY.
+//   · rate exactly 0 → neither ('flat').
+// This is display only — the net $/day it labels is computed elsewhere, unchanged.
+type LegFlow = 'collect' | 'pay' | 'flat';
+function legCashflow(side: 'short' | 'long', signedRate: number): LegFlow {
+  if (signedRate === 0) return 'flat';
+  const collects = side === 'short' ? signedRate > 0 : signedRate < 0;
+  return collects ? 'collect' : 'pay';
+}
+const FLOW_COLOR: Record<LegFlow, string> = { collect: '#0f766e', pay: '#e11d48', flat: '#9aa5b3' };
+const FLOW_WORD:  Record<LegFlow, string> = { collect: 'Collect', pay: 'Pay',     flat: 'Neutral' };
+
 function FlowStrip({ s }: { s: SpreadItem }) {
-  const gid = `flow-${s.coin}-${s.shortExchange}-${s.longExchange}`;
+  const gid        = `flow-${s.coin}-${s.shortExchange}-${s.longExchange}`;
+  const shortFlow  = legCashflow('short', s.frShort);
+  const longFlow   = legCashflow('long',  s.frLong);
+  const shortColor = FLOW_COLOR[shortFlow];
+  const longColor  = FLOW_COLOR[longFlow];
+
+  // Arrow points toward whichever leg actually PAYS funding. In a valid spread the
+  // engine shorts the higher-annualized leg, so at most one leg can pay; if neither
+  // pays, both legs collect → no directional arrow (nothing is being paid out).
+  const paySide: 'short' | 'long' | null =
+    shortFlow === 'pay' ? 'short' : longFlow === 'pay' ? 'long' : null;
+  const bothCollect = shortFlow === 'collect' && longFlow === 'collect';
+  const caption     = bothCollect ? 'both collect' : 'net spread';
+
   return (
     <div
       className="rounded-[10px] px-3 py-2.5 flex items-stretch gap-2"
       style={{ background: '#fbfcfd', border: '1px solid #eef2f6' }}
     >
-      {/* SHORT · COLLECT */}
+      {/* SHORT leg — word + color driven by rate sign, not the side */}
       <div className="flex flex-col justify-center min-w-0 shrink">
-        <span className="font-body uppercase" style={{ fontSize: 8.5, letterSpacing: '0.12em', color: '#0f766e' }}>
-          Short · Collect
+        <span className="font-body uppercase" style={{ fontSize: 8.5, letterSpacing: '0.12em', color: shortColor }}>
+          Short · {FLOW_WORD[shortFlow]}
         </span>
         <span className="inline-flex items-center gap-1 mt-1 min-w-0">
           <PlatformLogo platform={s.shortExchange} size={12} />
           <span className="font-mono font-bold text-ink truncate" style={{ fontSize: 12 }}>{venueLabel(s.shortExchange)}</span>
         </span>
-        <span className="font-mono tabular-nums mt-0.5" style={{ fontSize: 11, color: '#0f766e' }}>
+        <span className="font-mono tabular-nums mt-0.5" style={{ fontSize: 11, color: shortColor }}>
           {fmtRate8h(s.frShort, s.intervalHoursShort)}<span style={{ color: '#9aa5b3' }}> /8h</span>
         </span>
       </div>
 
-      {/* Connector */}
+      {/* Connector — gradient runs SHORT-color → LONG-color; arrow toward pay side */}
       <div className="flex-1 flex flex-col items-center justify-center" style={{ minWidth: 52 }}>
         <svg viewBox="0 0 100 16" preserveAspectRatio="none" className="w-full" height="16" aria-hidden>
           <defs>
             <linearGradient id={gid} x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%" stopColor="#14b8a6" />
-              <stop offset="100%" stopColor="#e11d48" />
+              <stop offset="0%" stopColor={shortColor} />
+              <stop offset="100%" stopColor={longColor} />
             </linearGradient>
           </defs>
           <line x1="4" y1="8" x2="88" y2="8" stroke={`url(#${gid})`} strokeWidth="1.5" />
           <circle cx="46" cy="8" r="2.4" fill="#0e1626" />
-          <path d="M88 8 L82 5 L82 11 Z" fill="#e11d48" />
+          {paySide === 'long'  && <path d="M88 8 L82 5 L82 11 Z" fill={longColor} />}
+          {paySide === 'short' && <path d="M4 8 L10 5 L10 11 Z"  fill={shortColor} />}
         </svg>
         <span className="font-body uppercase mt-1" style={{ fontSize: 7.5, letterSpacing: '0.14em', color: '#9aa5b3' }}>
-          net spread
+          {caption}
         </span>
       </div>
 
-      {/* LONG · PAY */}
+      {/* LONG leg — word + color driven by rate sign, not the side */}
       <div className="flex flex-col justify-center items-end text-right min-w-0 shrink">
-        <span className="font-body uppercase" style={{ fontSize: 8.5, letterSpacing: '0.12em', color: '#e11d48' }}>
-          Long · Pay
+        <span className="font-body uppercase" style={{ fontSize: 8.5, letterSpacing: '0.12em', color: longColor }}>
+          Long · {FLOW_WORD[longFlow]}
         </span>
         <span className="inline-flex flex-row-reverse items-center gap-1 mt-1 min-w-0">
           <PlatformLogo platform={s.longExchange} size={12} />
           <span className="font-mono font-bold text-ink truncate" style={{ fontSize: 12 }}>{venueLabel(s.longExchange)}</span>
         </span>
-        <span className="font-mono tabular-nums mt-0.5" style={{ fontSize: 11, color: '#e11d48' }}>
+        <span className="font-mono tabular-nums mt-0.5" style={{ fontSize: 11, color: longColor }}>
           {fmtRate8h(s.frLong, s.intervalHoursLong)}<span style={{ color: '#9aa5b3' }}> /8h</span>
         </span>
       </div>
