@@ -22,6 +22,7 @@ const SLUG_MAP: Record<string, string> = {
   edgex:              'edgex',
   grvt:               'grvt',
   lighter:            'lighter',
+  extended:           'extended',
   gateio:             'gate-io',
   'gate.io':          'gate-io',
   'gate-io':          'gate-io',

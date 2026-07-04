@@ -675,6 +675,55 @@ async function fetchLighter() {
   }
 }
 
+async function fetchExtended() {
+  // Extended (extended.exchange) — StarkNet CLOB perp DEX, PUBLIC REST (markets/funding/
+  // depth all confirmed unauthenticated 2026-07-04). Keys on the market NAME (BTC-USD,
+  // derivable from coin) — NO numeric id map. Routed through the shared per-host limiter
+  // (rlGetJson) from the start. One bulk /info/markets call covers every market.
+  // Base: https://api.starknet.extended.exchange/api/v1
+  //
+  // Funding UNIT: marketStats.fundingRate is a raw FRACTION per HOUR (BTC 0.000013 ≈ HL's
+  // 0.0000125/hr). Extended settles HOURLY (hourlyFundingRateCap; funding history rows 1h
+  // apart). So ×100 → %/hr, stored with fundingIntervalHours=1 (same as dYdX/HL). BTC →
+  // 0.0104%/8h ≈ baseline. Reading it as %/hr or 8h-normalized would mis-scale it.
+  // NOTE: marketStats.nextFundingRate is MISNAMED — its value is the next-funding TIMESTAMP
+  // (ms), captured into nextFundingTime for the per-leg countdown.
+  try {
+    const j = await rlGetJson('https://api.starknet.extended.exchange/api/v1/info/markets');
+    const list = j?.data;
+    if (!Array.isArray(list)) return {};
+    const r = {};
+    for (const m of list) {
+      if (m.type !== 'PERPETUAL' || m.status !== 'ACTIVE') continue;
+      const name = m.name ?? '';
+      if (!name.endsWith('-USD')) continue;
+      const coin = name.slice(0, -4);
+      if (!PERP_COINS.has(coin)) continue;
+      const st = m.marketStats || {};
+      const fr = parseFloat(st.fundingRate);
+      if (!isFinite(fr)) continue;
+      const mark = parseFloat(st.markPrice);
+      const oi   = parseFloat(st.openInterest);   // already USD
+      const vol  = parseFloat(st.dailyVolume);    // already USD
+      const nft  = Number(st.nextFundingRate);    // misnamed: next-funding TIMESTAMP (ms)
+      r[coin] = {
+        markPrice:            isFinite(mark) && mark > 0 ? mark : null,
+        // raw fraction/hr → %/hr (×100). Positive = longs pay shorts. Hourly settlement.
+        fundingRate:          fr * 100,
+        fundingIntervalHours: 1,
+        openInterestUsd:      isFinite(oi) && oi > 0 ? oi : null,
+        vol24hUsd:            isFinite(vol) && vol > 0 ? vol : null,
+        nextFundingTime:      Number.isFinite(nft) && nft > 0 ? nft : null,
+      };
+    }
+    console.log(`[extended] ${Object.keys(r).length} markets`);
+    return r;
+  } catch (e) {
+    console.error('[extended] fetch error:', e.message);
+    return {};
+  }
+}
+
 async function fetchFutures() {
   const [binF, bybitF, okxF, hlF] = await Promise.all([
 
@@ -740,8 +789,8 @@ async function fetchFutures() {
     fetchHyperliquid(),
   ]);
 
-  // Secondary parallel: Binance vol, dYdX, Gate.io perps, Bitget perps, Aster, Paradex, edgeX, Grvt, Lighter
-  const [dydxF, binVol, gateF, bitF, asterF, paradexF, edgexF, grvtF, lighterF] = await Promise.all([
+  // Secondary parallel: Binance vol, dYdX, Gate.io perps, Bitget perps, Aster, Paradex, edgeX, Grvt, Lighter, Extended
+  const [dydxF, binVol, gateF, bitF, asterF, paradexF, edgexF, grvtF, lighterF, extendedF] = await Promise.all([
     fetchDydx(),
     fetchBinancePerpVol(),
     fetchGateIOPerps(),
@@ -751,6 +800,7 @@ async function fetchFutures() {
     fetchEdgex(),
     fetchGrvt(),
     fetchLighter(),
+    fetchExtended(),
   ]);
 
   // Merge Binance vol into rate data
@@ -768,6 +818,7 @@ async function fetchFutures() {
   if (Object.keys(edgexF).length > 0) out.edgex       = edgexF;
   if (Object.keys(grvtF).length > 0) out.grvt         = grvtF;
   if (Object.keys(lighterF).length > 0) out.lighter   = lighterF;
+  if (Object.keys(extendedF).length > 0) out.extended = extendedF;
   return out;
 }
 

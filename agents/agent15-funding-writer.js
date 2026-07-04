@@ -331,6 +331,26 @@ async function depthLighter(coin) {
   return { bids, asks, mid: (bids[0][0] + asks[0][0]) / 2 };
 }
 
+async function depthExtended(coin) {
+  // Extended CLOB L2 via GET /info/markets/<name>/orderbook → data.{bid,ask} = [{ qty, price }],
+  // qty in BASE units (coins), no multiplier. bid desc / ask asc (sorted defensively).
+  // Quote USD. Keys on the market NAME (derivable) — no id map.
+  const d    = await rlGetJson(`https://api.starknet.extended.exchange/api/v1/info/markets/${coin}-USD/orderbook`);
+  const book = d?.data;
+  const bRaw = book?.bid, aRaw = book?.ask;
+  if (!Array.isArray(bRaw) || !bRaw.length || !Array.isArray(aRaw) || !aRaw.length) return null;
+  const bids = bRaw
+    .map(o => [parseFloat(o.price), parseFloat(o.qty)])
+    .filter(([p, q]) => isFinite(p) && p > 0 && isFinite(q) && q > 0)
+    .sort((a, b) => b[0] - a[0]);
+  const asks = aRaw
+    .map(o => [parseFloat(o.price), parseFloat(o.qty)])
+    .filter(([p, q]) => isFinite(p) && p > 0 && isFinite(q) && q > 0)
+    .sort((a, b) => a[0] - b[0]);
+  if (!bids.length || !asks.length) return null;
+  return { bids, asks, mid: (bids[0][0] + asks[0][0]) / 2 };
+}
+
 async function depthEdgex(coin) {
   // edgeX StarkEx CLOB L2 book: data[0].{asks,bids} = [{ price, size }], size already
   // in BASE units (coins) — same as Binance/Aster/Paradex, no contract multiplier.
@@ -379,6 +399,7 @@ const DEPTH_FETCHERS = {
   edgex:       depthEdgex,
   grvt:        depthGrvt,
   lighter:     depthLighter,
+  extended:    depthExtended,
 };
 
 // Walk `levels` [[price, qty_coins], ...] to fill `targetUsd` of notional.
@@ -658,6 +679,25 @@ async function fetchLighterHistory(coin, n) {
     .slice(0, n);
 }
 
+async function fetchExtendedHistory(coin, n) {
+  // Extended settles funding HOURLY. GET /info/<name>/funding returns the real settled
+  // 1-hour rates ({ f, T }), whose `f` is the SAME raw FRACTION per hour as marketStats
+  // .fundingRate (cross-validated: current == history[0]). ×100 → %/hr, kept in the
+  // venue's own per-settlement unit (legAnalytics annualizes via fundingIntervalHours=1),
+  // exactly like fetchDydxHistory (also hourly). Name-derivable — no id map; (n+4)h window
+  // comfortably covers n hourly settlements.
+  const end   = Date.now();
+  const start = end - (n + 4) * 3_600_000;
+  const d = await rlGetJson(`https://api.starknet.extended.exchange/api/v1/info/${coin}-USD/funding?startTime=${start}&endTime=${end}&limit=${n}`);
+  const rows = d?.data;
+  if (!Array.isArray(rows)) return [];
+  return rows
+    .sort((a, b) => (b.T ?? 0) - (a.T ?? 0))
+    .map(e => parseFloat(e.f) * 100)
+    .filter(v => isFinite(v))
+    .slice(0, n);
+}
+
 async function fetchEdgexHistory(coin, n) {
   // edgeX funding settles every 4h (fundingRateIntervalMin=240). getFundingRatePage
   // returns a DENSE snapshot stream where many rows share one settled `fundingTime`,
@@ -717,6 +757,7 @@ const HISTORY_FETCHERS = {
   edgex:       fetchEdgexHistory,
   grvt:        fetchGrvtHistory,
   lighter:     fetchLighterHistory,
+  extended:    fetchExtendedHistory,
 };
 
 // ── History cache management ──────────────────────────────────────────────────
@@ -884,7 +925,7 @@ function crossExchangeSpread(futures, hCache) {
   // Build byExchange: coin → [{ exchange, fr (predicted), intervalHours, isDex }]
   const byExchange = {};
   for (const [ex, coins] of Object.entries(futures)) {
-    const isDex = ex === 'hyperliquid' || ex === 'dydx' || ex === 'aster' || ex === 'paradex' || ex === 'edgex' || ex === 'grvt' || ex === 'lighter';
+    const isDex = ex === 'hyperliquid' || ex === 'dydx' || ex === 'aster' || ex === 'paradex' || ex === 'edgex' || ex === 'grvt' || ex === 'lighter' || ex === 'extended';
     for (const [coin, data] of Object.entries(coins || {})) {
       const fr            = data?.fundingRate;
       const intervalHours = data?.fundingIntervalHours ?? 8;

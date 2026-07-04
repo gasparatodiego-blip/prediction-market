@@ -1,5 +1,5 @@
 export declare const HOURS_PER_YEAR: number;
-export declare const VENUE_FEE_PCT: { cex: number; gateio: number; bitget: number; dex: number; dydx: number; aster: number; paradex: number; edgex: number; grvt: number; lighter: number };
+export declare const VENUE_FEE_PCT: { cex: number; gateio: number; bitget: number; dex: number; dydx: number; aster: number; paradex: number; edgex: number; grvt: number; lighter: number; extended: number };
 export declare function annualize(ratePerInterval: number, intervalHours: number): number;
 export declare function venueFeePct(exchange: string): number;
 export declare function roundTripFee(shortIsDex: boolean, longIsDex: boolean): number;
