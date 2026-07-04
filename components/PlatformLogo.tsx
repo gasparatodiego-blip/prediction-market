@@ -17,6 +17,7 @@ const SLUG_MAP: Record<string, string> = {
   okx:                'okx',
   hyperliquid:        'hyperliquid',
   dydx:               'dydx',
+  aster:              'aster',
   gateio:             'gate-io',
   'gate.io':          'gate-io',
   'gate-io':          'gate-io',

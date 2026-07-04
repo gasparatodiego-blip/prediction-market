@@ -391,6 +391,66 @@ async function fetchBitget() {
   }
 }
 
+async function fetchAster() {
+  // Aster perp DEX — Binance-identical public REST (no auth for market data).
+  // premiumIndex → per-symbol lastFundingRate/markPrice; fundingInfo → per-symbol
+  // interval overrides (default 8h; Binance-style venues return sub-8h entries here);
+  // ticker/24hr → USD volume for the liquidity tier. Base confirmed 2026-07-04:
+  // https://fapi.asterdex.com
+  try {
+    const [premium, fundingInfo, tickers] = await Promise.all([
+      get('https://fapi.asterdex.com/fapi/v1/premiumIndex'),
+      get('https://fapi.asterdex.com/fapi/v1/fundingInfo'),
+      get('https://fapi.asterdex.com/fapi/v1/ticker/24hr'),
+    ]);
+    if (!Array.isArray(premium)) return {};
+
+    // symbol → funding interval (hours). Absent ⇒ 8h default.
+    const intervalBySymbol = {};
+    if (Array.isArray(fundingInfo)) {
+      for (const f of fundingInfo) {
+        const h = parseInt(f.fundingIntervalHours ?? '8', 10);
+        if (f.symbol && isFinite(h) && h > 0) intervalBySymbol[f.symbol] = h;
+      }
+    }
+    // symbol → 24h quote (USD) volume for liquidity tiering
+    const volBySymbol = {};
+    if (Array.isArray(tickers)) {
+      for (const t of tickers) {
+        const q = parseFloat(t.quoteVolume ?? '0');
+        if (t.symbol && isFinite(q) && q > 0) volBySymbol[t.symbol] = q;
+      }
+    }
+
+    const r = {};
+    for (const t of premium) {
+      const sym = t.symbol ?? '';
+      if (!sym.endsWith('USDT')) continue;          // USDT-quoted perps only (USDT treated as USD)
+      const coin = sym.slice(0, -4);
+      if (!PERP_COINS.has(coin)) continue;
+      const raw    = parseFloat(t.lastFundingRate);
+      const markPx = parseFloat(t.markPrice);
+      if (!isFinite(raw)) continue;
+      const intervalHours = intervalBySymbol[sym] ?? 8;
+      r[coin] = {
+        markPrice:            isFinite(markPx) ? markPx : null,
+        // Native %/interval + native intervalHours — mirrors Binance (8h) and HL/dYdX
+        // (1h): annualize(rate, intervalHours) normalises to %/yr, and the /8h display
+        // scales by 8/intervalHours. Positive = longs pay shorts (same as Binance/HL).
+        fundingRate:          raw * 100,             // fraction → % per its own funding interval
+        fundingIntervalHours: intervalHours,         // 8h default; sub-8h symbols per /fundingInfo
+        nextFundingTime:      parseInt(t.nextFundingTime ?? '0') || null,
+        vol24hUsd:            volBySymbol[sym] ?? null,
+      };
+    }
+    console.log(`[aster] ${Object.keys(r).length} markets`);
+    return r;
+  } catch (e) {
+    console.error('[aster] fetch error:', e.message);
+    return {};
+  }
+}
+
 async function fetchFutures() {
   const [binF, bybitF, okxF, hlF] = await Promise.all([
 
@@ -456,12 +516,13 @@ async function fetchFutures() {
     fetchHyperliquid(),
   ]);
 
-  // Secondary parallel: Binance vol, dYdX, Gate.io perps, Bitget perps
-  const [dydxF, binVol, gateF, bitF] = await Promise.all([
+  // Secondary parallel: Binance vol, dYdX, Gate.io perps, Bitget perps, Aster perps
+  const [dydxF, binVol, gateF, bitF, asterF] = await Promise.all([
     fetchDydx(),
     fetchBinancePerpVol(),
     fetchGateIOPerps(),
     fetchBitget(),
+    fetchAster(),
   ]);
 
   // Merge Binance vol into rate data
@@ -474,6 +535,7 @@ async function fetchFutures() {
   if (Object.keys(dydxF).length > 0) out.dydx        = dydxF;
   if (Object.keys(gateF).length > 0) out.gateio       = gateF;
   if (Object.keys(bitF).length  > 0) out.bitget       = bitF;
+  if (Object.keys(asterF).length > 0) out.aster       = asterF;
   return out;
 }
 

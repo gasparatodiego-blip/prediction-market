@@ -1007,7 +1007,7 @@ function FeeNote({ meta }: { meta: Meta | null }) {
   if (!meta) return null;
   return (
     <p className="font-body text-[9px] text-muted mt-1.5 leading-relaxed">
-      Fee/leg: Binance/Bybit/OKX {meta.feePerLeg.cex}% · Gate.io 0.05% · Bitget 0.06% · Hyperliquid {meta.feePerLeg.dex}% · dYdX 0.05%.
+      Fee/leg: Binance/Bybit/OKX {meta.feePerLeg.cex}% · Gate.io 0.05% · Bitget 0.06% · Hyperliquid {meta.feePerLeg.dex}% · dYdX 0.05% · Aster 0.04%.
       Round-trip = 4 legs (open+close both sides). Net yield (30d) = gross APR × 30d − fees.
       MARGINAL = &gt;10d · CAUTION = &gt;5d · HARVEST = ≤5d.
       Green cap = largest size where entry+exit slippage (amortized over 14d) ≤ 30% of gross yield. $0 = no green range. Tier labels (DEEP ≥ $50M · OK ≥ $10M · THIN ≥ $1M) are OI-based.
@@ -1183,7 +1183,7 @@ function SpreadTable({
 
 function RateHeatmap({ futures }: { futures: Record<string, Record<string, FuturesCoin>> }) {
   const CEX_ORDER    = ['binance', 'bybit', 'okx'];
-  const DEX_ORDER    = ['hyperliquid', 'dydx'];
+  const DEX_ORDER    = ['hyperliquid', 'dydx', 'aster'];
   const allExchanges = [
     ...CEX_ORDER.filter(e => futures[e]),
     ...DEX_ORDER.filter(e => futures[e]),

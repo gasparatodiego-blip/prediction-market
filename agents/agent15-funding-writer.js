@@ -215,6 +215,17 @@ async function depthDydx(coin) {
   return { bids, asks, mid: (bids[0][0] + asks[0][0]) / 2 };
 }
 
+async function depthAster(coin) {
+  // Aster is a perp DEX with a Binance-identical L2 book: size is already in BASE
+  // units (coins), so no contract multiplier — parseFloat(qty) straight through,
+  // same as depthBinance. USDT is treated as USD.
+  const d = await get(`https://fapi.asterdex.com/fapi/v1/depth?symbol=${coin}USDT&limit=100`);
+  if (!Array.isArray(d?.bids) || !d.bids.length || !Array.isArray(d?.asks) || !d.asks.length) return null;
+  const bids = d.bids.map(([p, q]) => [parseFloat(p), parseFloat(q)]);
+  const asks = d.asks.map(([p, q]) => [parseFloat(p), parseFloat(q)]);
+  return { bids, asks, mid: (bids[0][0] + asks[0][0]) / 2 };
+}
+
 const DEPTH_FETCHERS = {
   binance:     depthBinance,
   bybit:       depthBybit,
@@ -223,6 +234,7 @@ const DEPTH_FETCHERS = {
   gateio:      depthGateio,
   hyperliquid: depthHyperliquid,
   dydx:        depthDydx,
+  aster:       depthAster,
 };
 
 // Walk `levels` [[price, qty_coins], ...] to fill `targetUsd` of notional.
@@ -452,6 +464,19 @@ async function fetchDydxHistory(coin, n) {
     .slice(0, n);
 }
 
+async function fetchAsterHistory(coin, n) {
+  // Aster is Binance-identical: /fapi/v1/fundingRate returns SETTLED rates
+  // oldest-first → sort by fundingTime descending. Raw fraction → ×100 (%), kept
+  // in the venue's own per-settlement unit (legAnalytics annualizes via the venue's
+  // fundingIntervalHours), exactly like fetchBinanceHistory.
+  const d = await get(`https://fapi.asterdex.com/fapi/v1/fundingRate?symbol=${coin}USDT&limit=${n}`);
+  if (!Array.isArray(d)) return [];
+  return d
+    .sort((a, b) => (b.fundingTime ?? 0) - (a.fundingTime ?? 0))
+    .map(e => parseFloat(e.fundingRate) * 100)
+    .filter(v => isFinite(v));
+}
+
 const HISTORY_FETCHERS = {
   binance:     fetchBinanceHistory,
   bybit:       fetchBybitHistory,
@@ -460,6 +485,7 @@ const HISTORY_FETCHERS = {
   gateio:      fetchGateHistory,
   hyperliquid: fetchHyperliquidHistory,
   dydx:        fetchDydxHistory,
+  aster:       fetchAsterHistory,
 };
 
 // ── History cache management ──────────────────────────────────────────────────
@@ -626,7 +652,7 @@ function crossExchangeSpread(futures, hCache) {
   // Build byExchange: coin → [{ exchange, fr (predicted), intervalHours, isDex }]
   const byExchange = {};
   for (const [ex, coins] of Object.entries(futures)) {
-    const isDex = ex === 'hyperliquid' || ex === 'dydx';
+    const isDex = ex === 'hyperliquid' || ex === 'dydx' || ex === 'aster';
     for (const [coin, data] of Object.entries(coins || {})) {
       const fr            = data?.fundingRate;
       const intervalHours = data?.fundingIntervalHours ?? 8;
