@@ -172,12 +172,57 @@ async function depthGateio(coin) {
   return { bids, asks, mid: (bids[0][0] + asks[0][0]) / 2 };
 }
 
+// Hyperliquid & dYdX are perps DEXes that report order-book size directly in
+// BASE units (coins) — exactly like Binance/Bybit, and UNLIKE OKX/Gate/Bitget
+// which report contracts and need a multiplier. So NO contract multiplier is
+// applied here: parseFloat(sz)/parseFloat(size) is already coin qty, and
+// vwapWalk's `price * qty` yields USD notional. Treating size as USD, or
+// applying a phantom multiplier, would mis-scale capacity by orders of
+// magnitude — verified against depthBinance, which likewise passes the raw
+// base-unit qty straight through with no multiplier.
+
+async function depthHyperliquid(coin) {
+  // POST l2Book → { levels: [ bids[], asks[] ] }, each level = { px, sz, n }.
+  const d = await post('https://api.hyperliquid.xyz/info', { type: 'l2Book', coin });
+  const levels = d?.levels;
+  if (!Array.isArray(levels) || levels.length < 2) return null;
+  const bids = (levels[0] || [])
+    .map(l => [parseFloat(l.px), parseFloat(l.sz)])
+    .filter(([p, q]) => isFinite(p) && p > 0 && isFinite(q) && q > 0)
+    .sort((a, b) => b[0] - a[0]);
+  const asks = (levels[1] || [])
+    .map(l => [parseFloat(l.px), parseFloat(l.sz)])
+    .filter(([p, q]) => isFinite(p) && p > 0 && isFinite(q) && q > 0)
+    .sort((a, b) => a[0] - b[0]);
+  if (!bids.length || !asks.length) return null;
+  return { bids, asks, mid: (bids[0][0] + asks[0][0]) / 2 };
+}
+
+async function depthDydx(coin) {
+  // GET v4 orderbook → { bids: [{price,size}], asks: [{price,size}] }; ticker "<SYM>-USD".
+  const d = await get(`https://indexer.dydx.trade/v4/orderbooks/perpetualMarket/${coin}-USD`);
+  const bidsRaw = d?.bids, asksRaw = d?.asks;
+  if (!Array.isArray(bidsRaw) || !bidsRaw.length || !Array.isArray(asksRaw) || !asksRaw.length) return null;
+  const bids = bidsRaw
+    .map(l => [parseFloat(l.price), parseFloat(l.size)])
+    .filter(([p, q]) => isFinite(p) && p > 0 && isFinite(q) && q > 0)
+    .sort((a, b) => b[0] - a[0]);
+  const asks = asksRaw
+    .map(l => [parseFloat(l.price), parseFloat(l.size)])
+    .filter(([p, q]) => isFinite(p) && p > 0 && isFinite(q) && q > 0)
+    .sort((a, b) => a[0] - b[0]);
+  if (!bids.length || !asks.length) return null;
+  return { bids, asks, mid: (bids[0][0] + asks[0][0]) / 2 };
+}
+
 const DEPTH_FETCHERS = {
-  binance: depthBinance,
-  bybit:   depthBybit,
-  okx:     depthOkx,
-  bitget:  depthBitget,
-  gateio:  depthGateio,
+  binance:     depthBinance,
+  bybit:       depthBybit,
+  okx:         depthOkx,
+  bitget:      depthBitget,
+  gateio:      depthGateio,
+  hyperliquid: depthHyperliquid,
+  dydx:        depthDydx,
 };
 
 // Walk `levels` [[price, qty_coins], ...] to fill `targetUsd` of notional.
