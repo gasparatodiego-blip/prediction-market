@@ -81,6 +81,25 @@ function fmtCapFull(n: number): string {
   return `~$${Math.round(n).toLocaleString('en-US')}`;
 }
 
+// Top rung of agent15's SIZE_LADDER ($500k). greenCapacityUsd is walked over that
+// discrete ladder, so a pair that reports exactly this value has simply cleared the
+// top rung — its true book depth is >= $500k and can be far larger. Mirror of the
+// SIZE_LADDER top in agents/agent15-funding-writer.js; keep in sync if the ladder grows.
+const SIZE_LADDER_TOP_RUNG = 500_000;
+
+// Compact floor label for the top rung, e.g. "$500k+".
+function fmtCapFloor(): string {
+  return `$${Math.round(SIZE_LADDER_TOP_RUNG / 1_000)}k+`;
+}
+
+// Honest capacity display. Below the ladder top rung the value is a real order-book
+// estimate → keep the "~$N" form. At/above the top rung the book is deeper than we
+// measure, so an exact "$500,000" would understate deep books — show a truthful
+// lower-bound floor ("$500k+", no "~": it's at least this much) instead.
+function fmtCapDisplay(n: number): string {
+  return n >= SIZE_LADDER_TOP_RUNG ? fmtCapFloor() : fmtCapFull(n);
+}
+
 // Three display cases for the capacity row, decided STRICTLY from real fields —
 // never a fabricated number. A: real green capacity (gc > 0). B: order book was
 // measured (both legs verified, slipCurve present) but no size clears the 30%
@@ -472,7 +491,8 @@ function FlowStrip({ s }: { s: SpreadItem }) {
 
 const CAPACITY_TIP =
   'The largest amount you can put in before slippage eats the yield. ' +
-  'Measured from the live order book — never a guess.';
+  'Measured from the live order book — never a guess.' +
+  ' Above $500k the book is deeper than we measure — shown as $500k+.';
 
 const TOO_THIN_TIP =
   'The order book was measured, but right now it is too thin to absorb a meaningful position — ' +
@@ -500,10 +520,10 @@ function CapacityRow({
         </span>
         {redacted ? (
           <Redacted value={s.greenCapacityUsd}>
-            {v => <span className="font-mono tabular-nums text-ink" style={{ fontSize: 12 }}>{fmtCapFull(v)}</span>}
+            {v => <span className="font-mono tabular-nums text-ink" style={{ fontSize: 12 }}>{fmtCapDisplay(v)}</span>}
           </Redacted>
         ) : hasCap ? (
-          <span className="font-mono tabular-nums text-ink" style={{ fontSize: 12 }}>{fmtCapFull(gc as number)}</span>
+          <span className="font-mono tabular-nums text-ink" style={{ fontSize: 12 }}>{fmtCapDisplay(gc as number)}</span>
         ) : measuredTooThin ? (
           <span className="inline-flex items-center gap-1 font-body" style={{ fontSize: 11, color: '#b45309' }}>
             too thin to size
@@ -678,9 +698,9 @@ function FundingList({ items, capital, leverage }: { items: SpreadItem[]; capita
             {/* Max before slippage — same three cases as the card */}
             <span className="font-mono tabular-nums" style={{ fontSize: 10, color: '#6b7787' }}>
               {redacted ? (
-                <Redacted value={s.greenCapacityUsd}>{v => fmtCapFull(v)}</Redacted>
+                <Redacted value={s.greenCapacityUsd}>{v => fmtCapDisplay(v)}</Redacted>
               ) : capCase(s) === 'A' ? (
-                fmtCapFull(s.greenCapacityUsd as number)
+                fmtCapDisplay(s.greenCapacityUsd as number)
               ) : capCase(s) === 'B' ? (
                 <span style={{ color: '#b45309' }}>too thin</span>
               ) : (
