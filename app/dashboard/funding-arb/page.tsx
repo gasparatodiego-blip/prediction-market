@@ -3,7 +3,6 @@
 import { useEffect, useState, useCallback, useRef, useMemo, Fragment } from 'react';
 import Link from 'next/link';
 import SectionHelp from '@/app/components/SectionHelp';
-import EdgeChip, { type EdgeChipVariant } from '@/app/components/ui/EdgeChip';
 import PlatformLogo from '@/components/PlatformLogo';
 import {
   type FuturesCoin,
@@ -13,7 +12,7 @@ import {
   calcSpreadSizing,
 } from '@/lib/spread-types';
 import { APY_CAP } from '@/lib/honest-display';
-import { Redacted, RedactedPanel } from '@/app/components/ui/Redacted';
+import { Redacted } from '@/app/components/ui/Redacted';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -50,12 +49,6 @@ interface ApiResponse {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-function chipVariant(s: SpreadItem): EdgeChipVariant {
-  if (s.oneLegUnverified) return 'signal';
-  if (s.thinFlag || s.depthThin) return 'speculative';
-  return 'cashable';
-}
 
 function fmtRate(fr: number, intervalHours?: number): string {
   const sign   = fr >= 0 ? '+' : '';
@@ -114,45 +107,6 @@ function venueLabel(exchange: string): string {
   return capFirst(exchange);
 }
 
-// ── Slip-curve helpers ────────────────────────────────────────────────────────
-
-function slipStateCls(state: 'GREEN' | 'YELLOW' | 'RED'): string {
-  if (state === 'GREEN')  return 'text-mint-deep';
-  if (state === 'YELLOW') return 'text-gold';
-  return 'text-coral-ink';
-}
-
-function fillablePoints(curve: SlipPoint[] | null): SlipPoint[] {
-  return (curve ?? []).filter(p => p.fillable);
-}
-
-function closestFillablePoint(curve: SlipPoint[] | null, targetSize: number): SlipPoint | null {
-  const pts = fillablePoints(curve);
-  if (!pts.length) return null;
-  if (targetSize <= 0) return pts[0];
-  let bestIdx = 0;
-  let bestDiff = Infinity;
-  for (let i = 0; i < pts.length; i++) {
-    const diff = Math.abs(pts[i].size - targetSize);
-    if (diff < bestDiff) { bestDiff = diff; bestIdx = i; }
-  }
-  return pts[bestIdx];
-}
-
-function slipSortScoreAtSize(s: SpreadItem, targetSize: number): number {
-  if (targetSize <= 0) return slipSortScore(s);
-  const pt = closestFillablePoint(s.slipCurve, targetSize);
-  return pt?.netDayUsd ?? -Infinity;
-}
-
-function slipSortScore(s: SpreadItem): number {
-  const pts = fillablePoints(s.slipCurve);
-  if (!pts.length || !(s.greenCapacityUsd ?? 0)) return -Infinity;
-  // sort key: net $/day at greenCapacityUsd
-  const pt = pts.find(p => p.size === s.greenCapacityUsd);
-  return pt?.netDayUsd ?? -Infinity;
-}
-
 // ── Sizing ────────────────────────────────────────────────────────────────────
 
 const LEVERAGE_OPTIONS: Leverage[] = [1, 2, 3, 5];
@@ -209,24 +163,6 @@ function TypeFilterToggle({
   );
 }
 
-// ── Funding settlement note ───────────────────────────────────────────────────
-
-function FundingSettlementNote({ s }: { s: SpreadItem }) {
-  const hasCex = !s.shortIsDex || !s.longIsDex;
-  const hasHl  = s.shortExchange === 'hyperliquid' || s.longExchange === 'hyperliquid';
-  const hasDydx = s.shortExchange === 'dydx'       || s.longExchange === 'dydx';
-  const parts: string[] = [];
-  if (hasCex)  parts.push('CEX legs settle every 8h in USDT');
-  if (hasHl)   parts.push('Hyperliquid settles hourly in USDC');
-  if (hasDydx) parts.push('dYdX settles hourly in USDC');
-  return (
-    <p className="font-body text-[11px] text-muted/60 leading-relaxed">
-      {parts.join(' · ')}.
-      {' '}Annualized run-rate above — actual receipt is per interval, varies each reset.
-    </p>
-  );
-}
-
 // ── Countdown ─────────────────────────────────────────────────────────────────
 
 function nextFundingMs(futures: Record<string, Record<string, FuturesCoin>>): number | null {
@@ -270,236 +206,375 @@ function FundingCountdown({ targetMs }: { targetMs: number | null }) {
   return <span className="tabular-nums">{text}</span>;
 }
 
-// ── Capital control ───────────────────────────────────────────────────────────
+// ── Redesign: shared display helpers ─────────────────────────────────────────
 
-function CapitalControl({
-  capital, leverage, setCapital, setLeverage,
-}: {
-  capital:    number;
-  leverage:   Leverage;
-  setCapital: (n: number) => void;
-  setLeverage:(n: Leverage) => void;
-}) {
+// Shared payback formatter — the ONLY copy, used on every surface. Under 24h →
+// "12h"; ≥24h → "2d 10h" (drops the hours when exact → "3d"); missing/null → "—".
+function formatPayback(days: number | null | undefined): string {
+  if (days == null || !isFinite(days)) return '—';
+  const h = Math.round(days * 24);
+  if (h < 24) return `${h}h`;
+  const d = Math.floor(h / 24), r = h % 24;
+  return r === 0 ? `${d}d` : `${d}d ${r}h`;
+}
+
+// Normalize any leg's native funding rate onto a common %/8h basis so CEX (8h)
+// and DEX (1h) rates are directly comparable. DISPLAY ONLY — never feeds math.
+function rate8h(rateNative: number, intervalHours: number | undefined): number {
+  const iv = intervalHours && intervalHours > 0 ? intervalHours : 8;
+  return rateNative * (8 / iv);
+}
+function fmtRate8h(rateNative: number, intervalHours: number | undefined): string {
+  const v = rate8h(rateNative, intervalHours);
+  return `${v >= 0 ? '+' : ''}${v.toFixed(4)}%`;
+}
+
+// Net $/day at the user's capital, rescaled linearly from the honest per-capital
+// netApy30d the engine already computed (same formula the List has always used,
+// so Cards and List agree). Returns null when the field is redacted (free tier).
+function netDayForCapital(s: SpreadItem, capital: number, leverage: Leverage): number | null {
+  if (s.netApy30d == null) return null;
+  const N0 = capital * leverage / 2;
+  return (N0 * s.netApy30d / 100) / 365;
+}
+function feesForCapital(s: SpreadItem, capital: number, leverage: Leverage): number | null {
+  if (s.totalFeesPct == null) return null;
+  const N0 = capital * leverage / 2;
+  return N0 * s.totalFeesPct / 100;
+}
+// %/yr run-rate on capital, capped by the honest-engine APY_CAP. Demoted metric.
+function runRatePct(s: SpreadItem, leverage: Leverage): { pct: number; capped: boolean } | null {
+  if (s.netApy30d == null) return null;
+  const raw = leverage * s.netApy30d / 2;
+  return { pct: Math.min(raw, APY_CAP), capped: raw > APY_CAP };
+}
+
+function fmtMoneyPlain(n: number): string {
+  const abs = Math.abs(n), sign = n < 0 ? '-' : '';
+  if (abs >= 1000) return `${sign}$${Math.round(abs).toLocaleString()}`;
+  if (abs < 0.005) return `${sign}<$0.01`;
+  return `${sign}$${abs.toFixed(2)}`;
+}
+
+// Tier visual system — payback-based verdict drives accent bar + label + payback.
+const TIER: Record<SpreadItem['status'], { label: string; color: string; accent: string }> = {
+  HARVEST:  { label: 'HARVEST',  color: '#0f766e', accent: '#0f766e' },
+  CAUTION:  { label: 'CAUTION',  color: '#b45309', accent: '#b45309' },
+  MARGINAL: { label: 'MARGINAL', color: '#9aa5b3', accent: '#cbd3dc' },
+};
+
+// ── Redesign: touch-friendly info tooltip ─────────────────────────────────────
+
+function InfoTooltip({ label, text }: { label: string; text: string }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: Event) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('touchstart', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('touchstart', onDoc);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
-      <span className="font-body text-[11px] uppercase tracking-wide text-muted shrink-0">
-        Your capital
-      </span>
-      <div className="flex items-center gap-1">
-        <span className="font-body text-[11px] text-muted">$</span>
-        <input
-          type="number" min={0} step={100} value={capital}
-          onChange={e => setCapital(Math.max(0, parseFloat(e.target.value) || 0))}
-          className="w-[4.5rem] px-1.5 py-0.5 font-mono text-[11px] bg-bg-soft border border-line text-ink rounded-sm focus:border-mint/50 focus:outline-none tabular-nums"
-        />
-      </div>
-      <div className="flex items-center gap-1">
-        {LEVERAGE_OPTIONS.map(lev => (
-          <button
-            key={lev}
-            onClick={() => setLeverage(lev)}
-            title={
-              lev === 1
-                ? '1× — no leverage. Each leg sized to your full capital. No liquidation risk from basis moves.'
-                : `${lev}× — both perp legs use ${lev}× margin. Each leg notional = capital × ${lev} / 2. Funding yield on capital is multiplied by ${lev}, but so is liquidation risk if the spot/perp basis moves against you. Not free yield.`
-            }
-            className={`px-1.5 py-0.5 font-mono text-[10px] border rounded-sm transition-colors duration-100 cursor-help ${
-              leverage === lev
-                ? 'bg-mint-deep text-white border-mint-deep'
-                : 'border-line text-muted hover:border-ink-2 hover:text-ink'
-            }`}
-          >
-            {lev}×
-          </button>
-        ))}
-      </div>
-      {leverage > 1 && (
-        <span className="font-body text-[11px] text-gold">
-          {leverage}× applies to both perp legs — liquidation risk if basis widens
+    <span ref={ref} className="relative inline-flex align-middle">
+      <button
+        type="button"
+        aria-label={label}
+        aria-expanded={open}
+        onClick={() => setOpen(o => !o)}
+        className="inline-flex items-center justify-center rounded-full focus:outline-none focus-visible:ring-1 focus-visible:ring-mint"
+        style={{ width: 36, height: 32, margin: '-8px -8px' }}
+      >
+        <span
+          className="inline-flex items-center justify-center rounded-full font-body leading-none"
+          style={{ width: 16, height: 16, fontSize: 10, border: '1px solid #e6eaef', color: '#9aa5b3' }}
+        >i</span>
+      </button>
+      {open && (
+        <span
+          role="tooltip"
+          className="absolute z-40 left-0 top-full mt-1.5 p-2.5 rounded-lg font-body leading-relaxed shadow-card"
+          style={{ width: 'min(258px, 78vw)', fontSize: 11, background: '#0e1626', color: '#f5f7fa' }}
+        >
+          {text}
         </span>
+      )}
+    </span>
+  );
+}
+
+// ── Redesign: signature flow strip (static SVG — no motion) ────────────────────
+
+function FlowStrip({ s }: { s: SpreadItem }) {
+  const gid = `flow-${s.coin}-${s.shortExchange}-${s.longExchange}`;
+  return (
+    <div
+      className="rounded-[10px] px-3 py-2.5 flex items-stretch gap-2"
+      style={{ background: '#fbfcfd', border: '1px solid #eef2f6' }}
+    >
+      {/* SHORT · COLLECT */}
+      <div className="flex flex-col justify-center min-w-0 shrink">
+        <span className="font-body uppercase" style={{ fontSize: 8.5, letterSpacing: '0.12em', color: '#0f766e' }}>
+          Short · Collect
+        </span>
+        <span className="inline-flex items-center gap-1 mt-1 min-w-0">
+          <PlatformLogo platform={s.shortExchange} size={12} />
+          <span className="font-mono font-bold text-ink truncate" style={{ fontSize: 12 }}>{venueLabel(s.shortExchange)}</span>
+        </span>
+        <span className="font-mono tabular-nums mt-0.5" style={{ fontSize: 11, color: '#0f766e' }}>
+          {fmtRate8h(s.frShort, s.intervalHoursShort)}<span style={{ color: '#9aa5b3' }}> /8h</span>
+        </span>
+      </div>
+
+      {/* Connector */}
+      <div className="flex-1 flex flex-col items-center justify-center" style={{ minWidth: 52 }}>
+        <svg viewBox="0 0 100 16" preserveAspectRatio="none" className="w-full" height="16" aria-hidden>
+          <defs>
+            <linearGradient id={gid} x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stopColor="#14b8a6" />
+              <stop offset="100%" stopColor="#e11d48" />
+            </linearGradient>
+          </defs>
+          <line x1="4" y1="8" x2="88" y2="8" stroke={`url(#${gid})`} strokeWidth="1.5" />
+          <circle cx="46" cy="8" r="2.4" fill="#0e1626" />
+          <path d="M88 8 L82 5 L82 11 Z" fill="#e11d48" />
+        </svg>
+        <span className="font-body uppercase mt-1" style={{ fontSize: 7.5, letterSpacing: '0.14em', color: '#9aa5b3' }}>
+          net spread
+        </span>
+      </div>
+
+      {/* LONG · PAY */}
+      <div className="flex flex-col justify-center items-end text-right min-w-0 shrink">
+        <span className="font-body uppercase" style={{ fontSize: 8.5, letterSpacing: '0.12em', color: '#e11d48' }}>
+          Long · Pay
+        </span>
+        <span className="inline-flex flex-row-reverse items-center gap-1 mt-1 min-w-0">
+          <PlatformLogo platform={s.longExchange} size={12} />
+          <span className="font-mono font-bold text-ink truncate" style={{ fontSize: 12 }}>{venueLabel(s.longExchange)}</span>
+        </span>
+        <span className="font-mono tabular-nums mt-0.5" style={{ fontSize: 11, color: '#e11d48' }}>
+          {fmtRate8h(s.frLong, s.intervalHoursLong)}<span style={{ color: '#9aa5b3' }}> /8h</span>
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ── Redesign: plain-language capacity row ─────────────────────────────────────
+
+const CAPACITY_TIP =
+  'The largest amount the market can take right now without moving the price against you. ' +
+  'Invest more and you buy or sell at worse prices, until the slippage cancels out the funding ' +
+  "you'd earn. Measured from the live order book — never a guess.";
+
+function CapacityRow({
+  s, capital, leverage, redacted,
+}: { s: SpreadItem; capital: number; leverage: Leverage; redacted: boolean }) {
+  const gc = s.greenCapacityUsd;
+  const N0 = capital * leverage / 2;
+  const hasCap = !redacted && gc != null && gc > 0;
+  // Headroom = how much of the order-book green capacity your current position
+  // leaves unused. Falls as capital approaches the depth limit → bar reddens.
+  const headroom = hasCap ? Math.max(0, Math.min(100, (1 - N0 / (gc as number)) * 100)) : 0;
+  const barColor = headroom >= 60 ? '#14b8a6' : headroom >= 30 ? '#b45309' : '#e11d48';
+
+  return (
+    <div className="pt-2.5 mt-1" style={{ borderTop: '1px solid #eef2f6' }}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="inline-flex items-center gap-1 font-body" style={{ fontSize: 11, color: '#6b7787' }}>
+          How much you can invest
+          <InfoTooltip label="How much you can invest — how it's measured" text={CAPACITY_TIP} />
+        </span>
+        {redacted ? (
+          <Redacted value={s.greenCapacityUsd}>
+            {v => <span className="font-mono tabular-nums text-ink" style={{ fontSize: 12 }}>{fmtCapWords(v)}</span>}
+          </Redacted>
+        ) : hasCap ? (
+          <span className="font-mono tabular-nums text-ink" style={{ fontSize: 12 }}>{fmtCapWords(gc)}</span>
+        ) : (
+          <span className="font-body" style={{ fontSize: 11, color: '#9aa5b3' }}>not available yet</span>
+        )}
+      </div>
+      {hasCap && (
+        <>
+          <div className="mt-1.5 w-full rounded-full overflow-hidden" style={{ height: 5, background: '#eef2f6' }}>
+            <div style={{ width: `${headroom}%`, height: '100%', background: barColor, borderRadius: 999 }} />
+          </div>
+          <p className="mt-1.5 font-body leading-snug" style={{ fontSize: 10.5, color: '#9aa5b3' }}>
+            Put in more than this and your entry price gets worse — the extra cost starts eating your profit.
+          </p>
+        </>
       )}
     </div>
   );
 }
 
-// ── Slip-aware card ───────────────────────────────────────────────────────────
+// ── Redesign: opportunity card ────────────────────────────────────────────────
 
-function SlipAwareCard({ s, capital, leverage }: { s: SpreadItem; capital: number; leverage: Leverage }) {
-  const pts      = fillablePoints(s.slipCurve);
-  const hasCurve = pts.length > 0;
-  const userN    = capital * leverage / 2;
-
-  const [inputStr, setInputStr] = useState(() => String(Math.round(userN)));
-
-  useEffect(() => {
-    setInputStr(String(Math.round(capital * leverage / 2)));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [capital, leverage, s.coin, s.shortExchange, s.longExchange]);
-
-  const typedSize = Math.max(0, parseFloat(inputStr) || 0);
-  const pt        = closestFillablePoint(s.slipCurve, typedSize);
-  const overCap   = typedSize > 0
-    && (s.greenCapacityUsd ?? 0) > 0
-    && typedSize > (s.greenCapacityUsd ?? 0);
-  const tgHref        = `https://t.me/Gaspola_bot?start=fund_${s.coin}`;
-  const hasDex        = s.shortExchange === 'hyperliquid' || s.longExchange === 'hyperliquid'
-                     || s.shortExchange === 'dydx'        || s.longExchange === 'dydx';
-  const resetLabel    = hasDex ? 'hourly' : 'every 8h';
+function FundingCard({ s, capital, leverage }: { s: SpreadItem; capital: number; leverage: Leverage }) {
+  const tier       = TIER[s.status];
+  const redacted   = s.netApy30d == null;
+  const netDay     = netDayForCapital(s, capital, leverage);
+  const fees       = feesForCapital(s, capital, leverage);
+  const rr         = runRatePct(s, leverage);
+  const detailHref = `/dashboard/funding-arb/${s.coin}-${s.shortExchange}-${s.longExchange}`;
 
   return (
-    <div className="py-5 border-b border-line/20 flex flex-col gap-3 last:border-b-0">
+    <div
+      className="relative rounded-card bg-surface overflow-hidden flex flex-col gap-3 p-4"
+      style={{ paddingLeft: 18, border: '1px solid #e6eaef', boxShadow: '0 1px 2px rgba(14,22,38,.05)' }}
+    >
+      <span aria-hidden style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, background: tier.accent }} />
 
-      {/* Signal chip row */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <EdgeChip variant={chipVariant(s)} />
-        {(s.thinFlag || s.depthThin) && (
-          <span className="font-body text-[11px] text-gold bg-gold-tint px-2 py-0.5 rounded-pill">
-            ⚠ thin depth
-          </span>
-        )}
-        {s.liquidityTier && !s.thinFlag && (
-          <span className="font-body text-[11px] text-muted">{s.liquidityTier}</span>
-        )}
-      </div>
-
-      {/* Coin + legs */}
-      <div>
-        <span className="font-display font-bold text-ink" style={{ fontSize: 16 }}>{s.coin}</span>
-        <div className="font-mono text-[11px] mt-1.5 leading-snug space-y-0.5">
-          <div>
-            <span className="text-coral-ink font-medium">↓ SHORT</span>
-            <span className="text-muted"> on </span>
-            <span className={`inline-flex items-center gap-1 ${s.shortIsDex ? 'text-mint-deep' : 'text-ink-2'}`}><PlatformLogo platform={s.shortExchange} size={11} />{venueLabel(s.shortExchange)}</span>
-            {s.shortIsDex && <span className="text-mint text-[9px] ml-1">DEX</span>}
-            <span className="text-muted/60 ml-2 text-[10px]">collect {fmtRate(s.frShort, s.intervalHoursShort)}</span>
-          </div>
-          <div>
-            <span className="text-mint-deep font-medium">↑ LONG</span>
-            <span className="text-muted"> on </span>
-            <span className={`inline-flex items-center gap-1 ${s.longIsDex ? 'text-mint-deep' : 'text-ink-2'}`}><PlatformLogo platform={s.longExchange} size={11} />{venueLabel(s.longExchange)}</span>
-            {s.longIsDex && <span className="text-mint text-[9px] ml-1">DEX</span>}
-            <span className="text-muted/60 ml-2 text-[10px]">pay {fmtRate(s.frLong, s.intervalHoursLong)}</span>
+      {/* Header */}
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="font-mono font-bold text-ink tracking-tight truncate" style={{ fontSize: 15 }}>{s.coin}</span>
+          <span className="font-body uppercase" style={{ fontSize: 9, letterSpacing: '0.14em', color: tier.color }}>{tier.label}</span>
+        </div>
+        <div className="text-right shrink-0">
+          <div className="font-body uppercase" style={{ fontSize: 8.5, letterSpacing: '0.12em', color: '#9aa5b3' }}>payback</div>
+          <div className="font-mono font-semibold tabular-nums" style={{ fontSize: 13, color: tier.color }}>
+            <Redacted value={s.breakevenDays}>{v => formatPayback(v)}</Redacted>
           </div>
         </div>
       </div>
 
-      <p className="font-body text-[12px] text-muted leading-relaxed">
-        Hold opposite positions on two exchanges and collect the funding-fee difference {resetLabel}.
-        Market-neutral — not a bet on {s.coin} price direction.
-      </p>
+      <FlowStrip s={s} />
 
-      {/* Slip-curve box */}
-      {hasCurve ? (
-        <div className="p-3 bg-bg-soft/60 rounded-[8px] flex flex-col gap-2">
-          {/* Position calculator */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-body text-[11px] text-muted shrink-0">$ Position</span>
-            <input
-              type="number"
-              min={0}
-              step={100}
-              value={inputStr}
-              onChange={e => setInputStr(e.target.value)}
-              onBlur={() => {
-                const v = Math.max(0, parseFloat(inputStr) || 0);
-                setInputStr(String(Math.round(v)));
-              }}
-              className="w-[5.5rem] px-1.5 py-0.5 font-body text-[11px] bg-surface border border-line text-ink rounded-sm focus:border-mint/50 focus:outline-none tabular-nums"
-            />
-            {pt && (
-              <span className={`font-mono text-[9px] font-semibold shrink-0 ${slipStateCls(pt.state)}`}>
-                {pt.state}
-              </span>
-            )}
-          </div>
-          {overCap && (
-            <div className="font-body text-[10px] text-gold">
-              ⚠ above book green capacity — slippage will exceed model
+      {/* Net row */}
+      <div className="flex items-end justify-between gap-2">
+        <div className="min-w-0">
+          {redacted ? (
+            <div className="font-mono font-bold" style={{ fontSize: 22 }}>
+              <Redacted value={s.netApy30d}>{() => null}</Redacted>
             </div>
+          ) : netDay != null ? (
+            <div
+              className={`font-mono font-bold tabular-nums leading-none ${s.oneLegUnverified ? 'text-muted' : 'text-ink'}`}
+              style={{ fontSize: 24 }}
+            >
+              {fmtMoneyPlain(netDay)}
+            </div>
+          ) : (
+            <div className="font-mono font-bold text-muted" style={{ fontSize: 24 }}>—</div>
           )}
-
-          {/* $/day — dominant value */}
-          {pt ? (
+          <div className="font-body mt-1" style={{ fontSize: 10, color: '#6b7787' }}>
+            net / day{s.oneLegUnverified && !redacted ? ' · 1 leg predicted, rate unconfirmed' : ''}
+          </div>
+        </div>
+        <div className="text-right font-mono tabular-nums shrink-0" style={{ fontSize: 10, color: '#9aa5b3' }}>
+          {redacted ? (
+            <Redacted value={s.totalFeesPct}>{() => null}</Redacted>
+          ) : (
             <>
-              <div className={`font-display font-bold tabular-nums leading-none ${
-                overCap ? 'text-gold'
-                : s.oneLegUnverified ? 'text-muted'
-                : pt.state === 'GREEN'  ? 'text-mint-deep'
-                : pt.state === 'YELLOW' ? 'text-gold'
-                : 'text-coral-ink'
-              }`} style={{ fontSize: 22 }}>
-                {overCap ? '~' : '≈'} <Redacted value={pt.netDayUsd}>{v => fmtDayUsd(v)}</Redacted>
-              </div>
-              {overCap && (
-                <div className="font-body text-[11px] text-gold/80">
-                  indicative — modeled at {fmtCapWords(pt.size)} (green cap)
-                </div>
-              )}
-              {s.oneLegUnverified && (
-                <div className="font-body text-[11px] text-muted">
-                  1 leg predicted — rate unconfirmed
-                </div>
-              )}
-              <div className="font-body text-[11px] text-ink-2">
-                incl. modeled entry/exit slippage (14d)
-              </div>
-              {/* Annualized % — demoted, capped, labeled */}
-              <div className="font-body text-[11px] text-muted">
-                {pt.size > 0 ? (
-                  <Redacted value={pt.netDayUsd}>
-                    {v => {
-                      const annualPct = v * 365 / pt.size * 100;
-                      return <>{fmtApy(Math.min(annualPct, APY_CAP))}{annualPct > APY_CAP && ' (capped)'}</>;
-                    }}
-                  </Redacted>
-                ) : null}
-                {' '}<span className="text-muted/70">est. %/yr — run-rate, not guaranteed</span>
-              </div>
-              {(s.greenCapacityUsd ?? 0) === 0 && (
-                <div className="font-body text-[11px] text-muted leading-snug">
-                  Thin book — all sizes above slippage threshold.
-                </div>
-              )}
+              {fees != null && <div>fees {fmtMoneyPlain(fees)}</div>}
+              {rr && <div>{rr.pct >= 0 ? '+' : ''}{rr.pct.toFixed(0)}%/yr run-rate{rr.capped ? ' (capped)' : ''}</div>}
             </>
-          ) : null}
-        </div>
-      ) : s.netApy30d == null ? (
-        <RedactedPanel label="Live position sizing & slippage curve are available on Pro" className="!py-4" />
-      ) : (
-        <div className="p-3 bg-bg-soft/60 rounded-[8px] font-body text-[12px] text-muted">
-          Depth data pending — check detail page for estimates
-        </div>
-      )}
-
-      {s.depthThin && s.depthNote && (
-        <p className="font-body text-[11px] text-gold leading-snug">{s.depthNote}</p>
-      )}
-
-      <FundingSettlementNote s={s} />
-
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        {s.greenCapacityUsd != null && (
-          <span className="font-body text-[12px] text-muted">
-            Green cap {fmtCapWords(s.greenCapacityUsd)}
-          </span>
-        )}
-        <div className="ml-auto flex items-center gap-1.5">
-          <Link
-            href={`/dashboard/funding-arb/${s.coin}-${s.shortExchange}-${s.longExchange}`}
-            className="font-body text-[11px] px-2.5 py-1 border border-line text-muted hover:border-ink-2 hover:text-ink-2 rounded-button transition-colors duration-100 whitespace-nowrap"
-          >
-            Execution guide →
-          </Link>
-          <a
-            href={tgHref}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="font-body text-[11px] px-2.5 py-1 border border-mint/25 text-mint hover:border-mint/50 hover:text-mint-deep rounded-button transition-colors duration-100 whitespace-nowrap"
-          >
-            ✈ Follow
-          </a>
+          )}
         </div>
       </div>
+
+      <CapacityRow s={s} capital={capital} leverage={leverage} redacted={redacted} />
+
+      {/* Footer */}
+      <div className="flex items-center justify-end pt-0.5">
+        <Link
+          href={detailHref}
+          className="font-body rounded-button transition-colors duration-100 hover:text-ink-2"
+          style={{ fontSize: 11, padding: '8px 12px', border: '1px solid #e6eaef', color: '#6b7787' }}
+        >
+          Execution guide →
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+// ── Redesign: opportunity list (same semantics as the cards) ──────────────────
+
+function FundingList({ items, capital, leverage }: { items: SpreadItem[]; capital: number; leverage: Leverage }) {
+  return (
+    <div className="rounded-card overflow-hidden bg-surface" style={{ border: '1px solid #e6eaef' }}>
+      {items.map((s, i) => {
+        const tier       = TIER[s.status];
+        const redacted   = s.netApy30d == null;
+        const netDay     = netDayForCapital(s, capital, leverage);
+        const rr         = runRatePct(s, leverage);
+        const detailHref = `/dashboard/funding-arb/${s.coin}-${s.shortExchange}-${s.longExchange}`;
+        return (
+          <div
+            key={`${s.coin}-${s.shortExchange}-${s.longExchange}`}
+            className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-3 py-2.5"
+            style={{ borderTop: i ? '1px solid #eef2f6' : 'none', borderLeft: `3px solid ${tier.accent}` }}
+          >
+            <span className="font-mono font-bold text-ink tracking-tight shrink-0" style={{ fontSize: 13, width: 52 }}>{s.coin}</span>
+
+            {/* Flow, normalized to %/8h */}
+            <span className="font-mono tabular-nums inline-flex items-center gap-1.5 min-w-0" style={{ fontSize: 11 }}>
+              <span style={{ color: '#0f766e' }}>{venueLabel(s.shortExchange)} {fmtRate8h(s.frShort, s.intervalHoursShort)}</span>
+              <span style={{ color: '#9aa5b3' }}>→</span>
+              <span style={{ color: '#e11d48' }}>{venueLabel(s.longExchange)} {fmtRate8h(s.frLong, s.intervalHoursLong)}</span>
+              <span style={{ color: '#9aa5b3' }}>/8h</span>
+            </span>
+
+            {/* Net / day */}
+            <span className="ml-auto font-mono tabular-nums font-bold" style={{ fontSize: 13 }}>
+              {redacted ? (
+                <Redacted value={s.netApy30d}>{() => null}</Redacted>
+              ) : netDay != null ? (
+                <span className={s.oneLegUnverified ? 'text-muted' : 'text-ink'}>{fmtMoneyPlain(netDay)}</span>
+              ) : (
+                <span className="text-muted">—</span>
+              )}
+              <span className="font-body font-normal ml-1" style={{ fontSize: 10, color: '#9aa5b3' }}>/day</span>
+            </span>
+
+            {/* %/yr run-rate — demoted */}
+            <span className="font-mono tabular-nums" style={{ fontSize: 10, color: '#9aa5b3' }}>
+              {redacted ? (
+                <Redacted value={s.netApy30d}>{() => null}</Redacted>
+              ) : rr ? (
+                `${rr.pct >= 0 ? '+' : ''}${rr.pct.toFixed(0)}%/yr${rr.capped ? ' (capped)' : ''}`
+              ) : '—'}
+            </span>
+
+            {/* Payback */}
+            <span className="font-mono font-semibold tabular-nums" style={{ fontSize: 11, color: tier.color }}>
+              <Redacted value={s.breakevenDays}>{v => formatPayback(v)}</Redacted>
+            </span>
+
+            {/* Capacity */}
+            <span className="font-mono tabular-nums" style={{ fontSize: 10, color: '#6b7787' }}>
+              {redacted ? (
+                <Redacted value={s.greenCapacityUsd}>{v => fmtCapWords(v)}</Redacted>
+              ) : (s.greenCapacityUsd != null && s.greenCapacityUsd > 0) ? (
+                fmtCapWords(s.greenCapacityUsd)
+              ) : (
+                <span style={{ color: '#9aa5b3' }}>n/a</span>
+              )}
+            </span>
+
+            <Link
+              href={detailHref}
+              aria-label={`Execution guide for ${s.coin}`}
+              className="font-body rounded-button hover:text-ink-2 transition-colors duration-100"
+              style={{ fontSize: 12, padding: '6px 8px', color: '#9aa5b3' }}
+            >
+              →
+            </Link>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -556,27 +631,27 @@ function useExchangeFilter(venues: string[]) {
 }
 
 function ExchangeFilterBar({
-  venues, isSelected, allOn, toggle, selectAll, clearAll,
+  venues, isSelected, toggle, selectAll, clearAll, selectedCount,
 }: {
-  venues:     string[];
-  isSelected: (v: string) => boolean;
-  allOn:      boolean;
-  toggle:     (v: string) => void;
-  selectAll:  () => void;
-  clearAll:   () => void;
+  venues:        string[];
+  isSelected:    (v: string) => boolean;
+  toggle:        (v: string) => void;
+  selectAll:     () => void;
+  clearAll:      () => void;
+  selectedCount: number;
 }) {
   return (
-    <div className="mb-4 px-4 py-3 rounded-card bg-surface shadow-card border border-line">
-      <div className="flex items-center justify-between mb-2">
-        <span className="font-body text-[11px] uppercase tracking-wide text-muted">
-          Your exchanges
+    <div className="rounded-card bg-surface p-3" style={{ border: '1px solid #e6eaef', boxShadow: '0 1px 2px rgba(14,22,38,.05)' }}>
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <span className="font-body uppercase" style={{ fontSize: 10, letterSpacing: '0.12em', color: '#6b7787' }}>
+          Exchanges you can trade
+          <span className="ml-2 font-mono tabular-nums" style={{ color: '#9aa5b3' }}>{selectedCount}/{venues.length}</span>
         </span>
-        <button
-          onClick={allOn ? clearAll : selectAll}
-          className="font-body text-[11px] text-mint hover:text-mint-deep transition-colors duration-100"
-        >
-          {allOn ? 'Clear all' : 'Select all'}
-        </button>
+        <div className="flex items-center gap-2 shrink-0 font-body" style={{ fontSize: 11 }}>
+          <button onClick={selectAll} style={{ color: '#0f766e' }} className="hover:opacity-80">Select all</button>
+          <span style={{ color: '#e6eaef' }}>·</span>
+          <button onClick={clearAll} style={{ color: '#9aa5b3' }} className="hover:opacity-80">Clear all</button>
+        </div>
       </div>
       <div className="flex flex-wrap gap-1.5">
         {venues.map(v => {
@@ -586,12 +661,17 @@ function ExchangeFilterBar({
               key={v}
               onClick={() => toggle(v)}
               aria-pressed={on}
-              className="font-body text-[11px] px-2.5 py-1 rounded-pill border transition-colors duration-100"
-              style={on
-                ? { borderColor: '#059669', background: '#ecfdf5', color: '#059669' }
-                : { borderColor: '#e9edf3', background: '#ffffff', color: '#94a3b8' }}
+              className="inline-flex items-center gap-1 font-body rounded-pill transition-colors duration-100"
+              style={{
+                fontSize: 11, minHeight: 36, padding: '0 10px',
+                ...(on
+                  ? { border: '1px solid #0f766e', background: '#effcf9', color: '#0f766e' }
+                  : { border: '1px solid #e6eaef', background: '#ffffff', color: '#9aa5b3' }),
+              }}
             >
-              {on ? '✓ ' : ''}{venueLabel(v)}
+              {on && <span aria-hidden>✓</span>}
+              <PlatformLogo platform={v} size={12} />
+              {venueLabel(v)}
             </button>
           );
         })}
@@ -619,209 +699,104 @@ function OpportunityCards({
   const filter = useExchangeFilter(venues);
 
   // A pair needs accounts on BOTH venues to execute → visible only if both legs
-  // are in the selected set. Applied before the payback sort.
+  // are in the selected set.
   const exFiltered = spreads.filter(
     s => filter.isSelected(s.shortExchange) && filter.isSelected(s.longExchange),
   );
 
-  // Sort by fastest payback (breakevenDays) ascending → HARVEST on top,
-  // MARGINAL at the bottom. Redacted/unknown payback sinks last. Ties break by
-  // the public verdict tier (so HARVEST still floats when payback is redacted),
-  // then by net $/day at the user's sized position, descending.
-  const userSize   = capital * leverage / 2;
+  // Sort by fastest payback ascending; tie-break by public verdict tier, then by
+  // net $/day at the user's capital, descending. Redacted payback sinks last.
   const statusRank = { HARVEST: 0, CAUTION: 1, MARGINAL: 2 } as const;
   const sorted = [...exFiltered].sort((a, b) => {
     const pa = a.breakevenDays ?? Infinity, pb = b.breakevenDays ?? Infinity;
     if (pa !== pb) return pa - pb;
     if (statusRank[a.status] !== statusRank[b.status]) return statusRank[a.status] - statusRank[b.status];
-    return slipSortScoreAtSize(b, userSize) - slipSortScoreAtSize(a, userSize);
+    const na = netDayForCapital(a, capital, leverage) ?? -Infinity;
+    const nb = netDayForCapital(b, capital, leverage) ?? -Infinity;
+    return nb - na;
   });
 
-  // Best spread per unique coin (post-sort → best-payback pair per coin)
+  // Best pair per unique coin (post-sort → best-payback pair per coin)
   const seenCoins = new Set<string>();
   const allItems: SpreadItem[] = [];
   for (const s of sorted) {
-    if (!seenCoins.has(s.coin)) {
-      seenCoins.add(s.coin);
-      allItems.push(s);
-    }
+    if (!seenCoins.has(s.coin)) { seenCoins.add(s.coin); allItems.push(s); }
   }
 
-  // No spreads at all → nothing to render (keeps the filter bar off an empty page)
   if (spreads.length === 0) return null;
 
-  const visible   = showMore ? allItems : allItems.slice(0, CARDS_DEFAULT);
-  const remaining = allItems.length - CARDS_DEFAULT;
-  const N0        = capital * leverage / 2;
+  const visible       = showMore ? allItems : allItems.slice(0, CARDS_DEFAULT);
+  const remaining     = allItems.length - CARDS_DEFAULT;
+  const selectedCount = venues.filter(filter.isSelected).length;
 
   return (
-    <div className="mb-5">
-      {/* Exchange filter bar — above the list */}
+    <div className="mb-6">
       <ExchangeFilterBar
         venues={venues}
         isSelected={filter.isSelected}
-        allOn={filter.allOn}
         toggle={filter.toggle}
         selectAll={filter.selectAll}
         clearAll={filter.clearAll}
+        selectedCount={selectedCount}
       />
 
-      {/* View toggle + capacity explainer */}
-      <div className="flex items-center justify-between mb-1">
-        <span className="font-body text-[11px] text-muted uppercase tracking-wide">
-          Top opportunities · best per asset
-          <span className="ml-2 text-muted/70 normal-case tracking-normal tabular-nums">
-            {allItems.length} shown
-          </span>
-        </span>
-        <div className="flex border border-line rounded-button overflow-hidden font-body text-[11px]">
+      {/* List header */}
+      <div className="flex items-center justify-between gap-2 mt-5 mb-2">
+        <div className="min-w-0">
+          <span className="font-body font-medium text-ink" style={{ fontSize: 12 }}>Top opportunities</span>
+          <span className="ml-1.5 font-mono tabular-nums" style={{ fontSize: 12, color: '#9aa5b3' }}>· {allItems.length}</span>
+          <span className="ml-2 font-body" style={{ fontSize: 11, color: '#9aa5b3' }}>fastest payback first</span>
+        </div>
+        <div className="flex rounded-button overflow-hidden shrink-0" style={{ border: '1px solid #e6eaef' }}>
           {(['cards', 'list'] as OppView[]).map(v => (
             <button
               key={v}
               onClick={() => setView(v)}
-              className={`px-3 py-1 capitalize transition-colors duration-100 ${
-                view === v
-                  ? 'bg-mint-deep text-white'
-                  : 'text-muted hover:text-ink-2'
-              }`}
+              className="px-3 py-1 font-body capitalize transition-colors duration-100"
+              style={view === v ? { fontSize: 11, background: '#0f766e', color: '#fff' } : { fontSize: 11, color: '#6b7787' }}
             >
               {v}
             </button>
           ))}
         </div>
       </div>
-      <p className="font-body text-[11px] text-muted mb-3">
-        Capacity = size you can enter before slippage eats &gt;30% of the yield.
-        Most altcoin perp books are thin; green ranges are deliberately conservative.
-        Sorted by fastest payback — fewest days to recover fees first.
-      </p>
+
+      {/* Legend */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-3 font-body" style={{ fontSize: 10 }}>
+        <span><span className="font-semibold" style={{ color: '#0f766e' }}>HARVEST</span> <span style={{ color: '#9aa5b3' }}>≤5d</span></span>
+        <span style={{ color: '#e6eaef' }}>·</span>
+        <span><span className="font-semibold" style={{ color: '#b45309' }}>CAUTION</span> <span style={{ color: '#9aa5b3' }}>5–10d</span></span>
+        <span style={{ color: '#e6eaef' }}>·</span>
+        <span><span className="font-semibold" style={{ color: '#9aa5b3' }}>MARGINAL</span> <span style={{ color: '#9aa5b3' }}>&gt;10d</span></span>
+        <span className="ml-auto font-mono" style={{ color: '#9aa5b3' }}>rates /8h</span>
+      </div>
 
       {allItems.length === 0 && (
-        <div className="py-10 text-center font-body text-[12px] text-muted">
-          No pairs on your selected exchanges.
+        <div className="py-12 text-center">
+          <p className="font-body text-ink-2" style={{ fontSize: 13 }}>No pairs on your selected exchanges.</p>
+          <p className="font-body mt-1" style={{ fontSize: 11, color: '#9aa5b3' }}>Add one back above.</p>
         </div>
       )}
 
-      {/* Cards view — flat, no outer border */}
       {allItems.length > 0 && view === 'cards' && (
-        <div className="grid gap-x-8 gap-y-0 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
           {visible.map(s => (
-            <SlipAwareCard key={`${s.coin}-${s.shortExchange}-${s.longExchange}`} s={s} capital={capital} leverage={leverage} />
+            <FundingCard key={`${s.coin}-${s.shortExchange}-${s.longExchange}`} s={s} capital={capital} leverage={leverage} />
           ))}
         </div>
       )}
 
-      {/* List view — hairline dividers, no outer border */}
       {allItems.length > 0 && view === 'list' && (
-        <div className="divide-y divide-line/15">
-          {visible.map(s => {
-            const tgHref  = `https://t.me/Gaspola_bot?start=fund_${s.coin}`;
-            return (
-              <div
-                key={`${s.coin}-${s.shortExchange}-${s.longExchange}`}
-                className="py-3 flex flex-wrap items-baseline gap-x-4 gap-y-1.5 hover:bg-bg-soft/50 transition-colors duration-100"
-              >
-                {/* Asset */}
-                <span className="font-display font-bold text-ink w-12 shrink-0" style={{ fontSize: 14 }}>
-                  {s.coin}
-                </span>
-
-                {/* Action */}
-                <span className="font-mono text-[11px] text-ink-2">
-                  <span className="text-coral-ink">↓ SHORT</span>
-                  <span className="text-muted"> on </span>
-                  <span className={`inline-flex items-center gap-1 ${s.shortIsDex ? 'text-mint-deep' : ''}`}><PlatformLogo platform={s.shortExchange} size={11} />{venueLabel(s.shortExchange)}</span>
-                  <span className="text-muted/40 mx-1.5">/</span>
-                  <span className="text-mint-deep">↑ LONG</span>
-                  <span className="text-muted"> on </span>
-                  <span className={`inline-flex items-center gap-1 ${s.longIsDex ? 'text-mint-deep' : ''}`}><PlatformLogo platform={s.longExchange} size={11} />{venueLabel(s.longExchange)}</span>
-                </span>
-
-                {/* $/day — dominant value */}
-                <span className="font-mono tabular-nums ml-auto sm:ml-0">
-                  {capital > 0 ? (
-                    <Redacted value={s.netApy30d}>
-                      {netApy30d => {
-                        const dayUsd  = (N0 * netApy30d / 100) / 365;
-                        const feesUsd = s.totalFeesPct != null ? N0 * s.totalFeesPct / 100 : null;
-                        return (
-                          <>
-                            <span className={`font-display font-bold ${s.oneLegUnverified ? 'text-muted' : 'text-mint-deep'}`} style={{ fontSize: 14 }}>
-                              ≈ {fmtDayUsd(dayUsd)}
-                            </span>
-                            {s.oneLegUnverified ? (
-                              <span className="font-body text-[11px] text-muted ml-2">
-                                1 leg predicted — rate unconfirmed
-                              </span>
-                            ) : (
-                              feesUsd !== null && feesUsd > 0 && (
-                                <span className="font-body text-[11px] text-muted ml-2">fees back in {s.breakevenDays}d</span>
-                              )
-                            )}
-                          </>
-                        );
-                      }}
-                    </Redacted>
-                  ) : (
-                    <span className="font-body text-[11px] text-muted">set capital above</span>
-                  )}
-                </span>
-
-                {/* Annualized % — demoted, capped */}
-                <span className="font-body text-[11px] text-muted tabular-nums">
-                  {capital > 0 ? (
-                    <Redacted value={s.netApy30d}>
-                      {netApy30d => {
-                        const rocPct = leverage * netApy30d / 2;
-                        return <>{fmtApy(Math.min(rocPct, APY_CAP))}{rocPct > APY_CAP ? ' (capped)' : ''} est. %/yr · run-rate, not guaranteed</>;
-                      }}
-                    </Redacted>
-                  ) : '—'}
-                </span>
-
-                {s.depthThin && s.depthNote && (
-                  <span className="font-body text-[11px] text-gold">{s.depthNote}</span>
-                )}
-
-                {/* Signal chip */}
-                <EdgeChip variant={chipVariant(s)} />
-
-                {/* Green capacity */}
-                {s.greenCapacityUsd != null && (
-                  <span className="font-body text-[11px] text-muted">
-                    green cap {fmtCapWords(s.greenCapacityUsd)}
-                  </span>
-                )}
-
-                {/* Guide + Follow */}
-                <Link
-                  href={`/dashboard/funding-arb/${s.coin}-${s.shortExchange}-${s.longExchange}`}
-                  className="font-body text-[11px] px-2.5 py-1 border border-line text-muted hover:border-ink-2 hover:text-ink-2 rounded-button transition-colors duration-100 whitespace-nowrap"
-                >
-                  Guide →
-                </Link>
-                <a
-                  href={tgHref}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="font-body text-[11px] px-2.5 py-1 border border-mint/25 text-mint hover:border-mint/50 hover:text-mint-deep rounded-button transition-colors duration-100 whitespace-nowrap"
-                >
-                  ✈ Follow
-                </a>
-              </div>
-            );
-          })}
-        </div>
+        <FundingList items={visible} capital={capital} leverage={leverage} />
       )}
 
       {remaining > 0 && (
         <button
           onClick={() => setShowMore(v => !v)}
-          className="mt-4 font-body text-sm text-mint hover:text-mint-deep transition-colors duration-100"
+          className="mt-4 font-body hover:opacity-80 transition-opacity duration-100"
+          style={{ fontSize: 12, color: '#0f766e' }}
         >
-          {showMore
-            ? 'Show fewer opportunities ↑'
-            : `Show ${remaining} more opportunities ↓`}
+          {showMore ? 'Show fewer ↑' : `Show ${remaining} more ↓`}
         </button>
       )}
     </div>
@@ -1263,43 +1238,66 @@ export default function CryptoPage() {
 
   const N0         = capital * leverage / 2;
 
+  // Hero headline: best net $/day across the current opportunity set at the
+  // user's capital (redaction-aware — null when the tier can't see the numbers).
+  const bestNetDay = filteredPairs.reduce<number | null>((best, s) => {
+    const nd = netDayForCapital(s, capital, leverage);
+    if (nd == null) return best;
+    return best == null || nd > best ? nd : best;
+  }, null);
+
   return (
     <div className="max-w-[1200px] mx-auto px-4 py-6">
 
-      {/* Header */}
-      <div className="mb-4 flex flex-wrap items-baseline gap-x-6 gap-y-1">
-        <div>
-          <h1 className="font-display font-semibold text-xl text-ink">
-            Funding Rate Monitor
-          </h1>
-          <p className="font-body text-sm text-muted mt-1">
-            Cross-exchange spread · Binance / Bybit / OKX / Gate.io / Bitget · Hyperliquid / dYdX
-          </p>
+      {/* TOP BAR */}
+      <div className="flex items-center justify-between gap-3 pb-3 mb-4" style={{ borderBottom: '1px solid #e6eaef' }}>
+        <div className="flex items-center gap-2 min-w-0">
+          <span aria-hidden className="shrink-0" style={{ width: 14, height: 14, borderRadius: 999, background: 'linear-gradient(135deg,#14b8a6,#0f766e)' }} />
+          <span className="font-semibold tracking-tight text-ink" style={{ fontSize: 15, fontFamily: 'Georgia, ui-serif, serif' }}>Edgeradar</span>
+          <span className="font-body" style={{ fontSize: 12, color: '#9aa5b3' }}>Funding</span>
         </div>
-        <div className="ml-auto flex items-center gap-3 shrink-0">
+        <div className="flex items-center gap-2 shrink-0">
           {isStale && (
-            <span className="font-body text-xs text-gold bg-gold-tint px-2 py-0.5 rounded-pill">
-              DATA {data?.staleMinutes}m OLD
+            <span className="font-body px-2 py-0.5 rounded-pill" style={{ fontSize: 10, color: '#b45309', background: '#fff8ef' }}>
+              data {data?.staleMinutes}m old
             </span>
           )}
           {data?.generatedAt && (
-            <span className="font-body text-xs text-muted tabular-nums">
+            <span className="font-mono tabular-nums" style={{ fontSize: 11, color: '#9aa5b3' }}>
               {new Date(data.generatedAt).toLocaleTimeString('en-GB', { hour12: false })}
             </span>
           )}
-          {!loading && !data?.ok && (
-            <span className="font-body text-xs text-coral-ink">agent10 not running</span>
-          )}
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-pill font-body font-medium" style={{ fontSize: 10, color: '#0f766e', background: '#effcf9' }}>
+            <span aria-hidden style={{ width: 6, height: 6, borderRadius: 999, background: '#14b8a6' }} />live
+          </span>
         </div>
+      </div>
+
+      {/* HERO */}
+      <div className="pb-5 mb-5" style={{ borderBottom: '1px solid #e6eaef' }}>
+        <div className="font-body uppercase" style={{ fontSize: 10, letterSpacing: '0.16em', color: '#9aa5b3' }}>
+          Funding arbitrage · market-neutral
+        </div>
+        <div className="mt-2 flex items-baseline gap-2 flex-wrap">
+          <span className="font-mono font-bold tabular-nums leading-none" style={{ fontSize: 38, color: '#0f766e' }}>
+            {filteredPairs.length === 0
+              ? '—'
+              : bestNetDay != null
+                ? `≈ ${fmtMoneyPlain(bestNetDay)}`
+                : <span className="align-middle"><Redacted value={filteredPairs[0].netApy30d}>{() => null}</Redacted></span>}
+          </span>
+          <span className="font-body" style={{ fontSize: 12, color: '#6b7787' }}>
+            best net / day on ${capital.toLocaleString()}
+          </span>
+        </div>
+        <p className="mt-3 font-body leading-relaxed" style={{ fontSize: 12.5, color: '#334155', maxWidth: '52ch' }}>
+          Short the exchange paying high funding, long the one paying low. You take no bet on price —
+          you keep the hourly funding gap. Rates are current estimates, not locked.
+        </p>
       </div>
 
       {/* How this works — collapsible, collapsed by default */}
       <SectionHelp section="funding" />
-
-      {/* Honest one-liner — rates are variable */}
-      <p className="font-body text-xs text-muted mb-5 mt-3">
-        Rates are variable and change hourly — these are current estimates, not locked.
-      </p>
 
       {loading ? (
         <div className="py-20 text-center font-body text-sm text-muted animate-pulse">
@@ -1314,17 +1312,68 @@ export default function CryptoPage() {
         </div>
       ) : (
         <>
-          {/* Strategy type filter */}
-          <div className="mb-3 px-4 py-2.5 rounded-card bg-surface shadow-card border border-line">
-            <TypeFilterToggle value={typeFilter} onChange={setTypeFilter} />
-          </div>
+          {/* CONTROLS — capital drives every card's net/day live */}
+          <div className="mb-5 rounded-card bg-surface p-3 flex flex-col gap-3" style={{ border: '1px solid #e6eaef', boxShadow: '0 1px 2px rgba(14,22,38,.05)' }}>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-body uppercase shrink-0" style={{ fontSize: 10, letterSpacing: '0.12em', color: '#6b7787' }}>Your capital</span>
+              <div className="inline-flex items-center rounded-button overflow-hidden" style={{ border: '1px solid #e6eaef' }}>
+                <span className="pl-2.5 pr-1 font-mono" style={{ fontSize: 13, color: '#9aa5b3' }}>$</span>
+                <input
+                  inputMode="numeric"
+                  aria-label="Capital in dollars"
+                  value={capital || ''}
+                  onChange={e => {
+                    const d = e.target.value.replace(/[^0-9]/g, '');
+                    setCapital(d ? Math.min(1_000_000_000, parseInt(d, 10)) : 0);
+                  }}
+                  className="w-24 py-2 pr-2 font-mono tabular-nums bg-transparent text-ink focus:outline-none"
+                  style={{ fontSize: 13 }}
+                />
+              </div>
+              <div className="flex items-center gap-1">
+                {[1000, 5000, 10000].map(v => (
+                  <button
+                    key={v}
+                    onClick={() => setCapital(v)}
+                    className="rounded-button transition-colors duration-100 font-mono"
+                    style={{
+                      fontSize: 11, padding: '7px 9px',
+                      ...(capital === v
+                        ? { border: '1px solid #0f766e', color: '#0f766e', background: '#effcf9' }
+                        : { border: '1px solid #e6eaef', color: '#6b7787' }),
+                    }}
+                  >
+                    {v / 1000}k
+                  </button>
+                ))}
+              </div>
+            </div>
 
-          {/* Capital selector */}
-          <div className="mb-5 px-4 py-2.5 rounded-card bg-surface shadow-card border border-line">
-            <CapitalControl
-              capital={capital} leverage={leverage}
-              setCapital={setCapital} setLeverage={setLeverage}
-            />
+            {/* Secondary controls */}
+            <div className="flex items-center gap-4 flex-wrap pt-2.5" style={{ borderTop: '1px solid #eef2f6' }}>
+              <TypeFilterToggle value={typeFilter} onChange={setTypeFilter} />
+              <div className="flex items-center gap-2">
+                <span className="font-body uppercase" style={{ fontSize: 10, letterSpacing: '0.12em', color: '#6b7787' }}>Leverage</span>
+                <div className="flex rounded-button overflow-hidden" style={{ border: '1px solid #e6eaef' }}>
+                  {LEVERAGE_OPTIONS.map(lev => (
+                    <button
+                      key={lev}
+                      onClick={() => setLeverage(lev)}
+                      title={lev === 1
+                        ? '1× — no leverage. Each leg sized to your full capital.'
+                        : `${lev}× — both perp legs use ${lev}× margin. Funding yield and liquidation risk both scale ${lev}×.`}
+                      className="px-2 py-1 font-mono cursor-help transition-colors duration-100"
+                      style={leverage === lev ? { fontSize: 11, background: '#0f766e', color: '#fff' } : { fontSize: 11, color: '#6b7787' }}
+                    >
+                      {lev}×
+                    </button>
+                  ))}
+                </div>
+                {leverage > 1 && (
+                  <span className="font-body" style={{ fontSize: 10, color: '#b45309' }}>liquidation risk if basis widens</span>
+                )}
+              </div>
+            </div>
           </div>
 
           {/* Top opportunity cards — 6 visible, "show more" reveals the rest */}
