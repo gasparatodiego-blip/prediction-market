@@ -6,6 +6,7 @@ const path  = require('path');
 const WebSocket = require('ws');
 const { httpGet: _sharedGet, httpPost: _httpPost } = require('../lib/httpGet');
 const { rlGet: _rlGet, rlPost: _rlPost } = require('../lib/rateLimitedFetch');
+const { atomicWriteJson } = require('../lib/atomicJsonWrite');
 const { annualize } = require('../lib/funding-math');
 
 // ── Load .env (pm2 doesn't auto-load project env files) ────────────────────
@@ -857,12 +858,14 @@ function updateInfoLag() {
 
 function writeOutput() {
   const exchanges = { binance: wsData, ...restData };
+  // Atomic write (temp + rename): concurrent readers (agent15, /api/crypto, …) never
+  // catch a half-written file. Same content as before (pretty JSON) — I/O path only.
   try {
-    fs.writeFileSync(OUT, JSON.stringify({
+    atomicWriteJson(OUT, {
       fetchedAt: Date.now(),
       exchanges, cexArb, infoLag,
       futures, basisTrades, highFunding,
-    }, null, 2));
+    }, { pretty: true });
   } catch {}
 
   const bPrices = {};

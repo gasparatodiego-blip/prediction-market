@@ -71,6 +71,7 @@ let edgexIdCache     = {};   // coin → edgeX numeric contractId (endpoints don
 let edgexIdFetchedAt = 0;
 let lighterIdCache   = {};   // coin → Lighter numeric market_id (endpoints reject coin/name)
 let lighterIdFetchedAt = 0;
+let lastGoodExchangeData = null;    // last successfully-parsed exchange-prices snapshot (safe-read fallback)
 let backfillAttempted = new Set();  // venues we've already force-backfilled once (self-heal latch)
 let isRunning        = false;
 
@@ -1124,6 +1125,29 @@ function mergeUnifiedFunding(allFundingOpps) {
 
 // ── Main loop ─────────────────────────────────────────────────────────────────
 
+// Safe read of exchange-prices.json. agent10 now writes it atomically, so partial
+// reads should never happen — but defense in depth: on a transient parse failure retry
+// once after a short delay, and if still failing reuse the last successfully-parsed
+// snapshot rather than crashing the cycle or fabricating/zeroing data. Never returns a
+// partial/garbage object; returns null only when there is no prior good snapshot.
+async function readExchangeData() {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const data = JSON.parse(fs.readFileSync(EXCHANGE_FILE, 'utf8'));
+      lastGoodExchangeData = data;   // remember last good; the age check below gates staleness
+      return data;
+    } catch {
+      if (attempt === 0) { await new Promise(r => setTimeout(r, 150)); continue; }
+      if (lastGoodExchangeData) {
+        console.log('[funding] exchange-prices unreadable this tick — reusing last good snapshot');
+        return lastGoodExchangeData;
+      }
+      console.log('[funding] exchange-prices unreadable and no prior snapshot — skip cycle');
+      return null;
+    }
+  }
+}
+
 async function run() {
   if (isRunning) return;
   isRunning = true;
@@ -1133,7 +1157,8 @@ async function run() {
       return;
     }
 
-    const data  = JSON.parse(fs.readFileSync(EXCHANGE_FILE, 'utf8'));
+    const data = await readExchangeData();
+    if (!data) return;                       // no readable data and no snapshot → skip cycle
     const ageMs = Date.now() - (data.fetchedAt || 0);
 
     if (ageMs > MAX_DATA_AGE) {
