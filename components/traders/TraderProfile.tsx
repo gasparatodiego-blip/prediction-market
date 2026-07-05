@@ -3,10 +3,10 @@
 import { useMemo, useState } from 'react';
 import { ArrowLeft, ExternalLink, AlertCircle, Cpu, User } from 'lucide-react';
 import { Redacted, RedactedPanel } from '@/app/components/ui/Redacted';
-import { ActorBadge, VerifiedTick, CopyButton } from './parts';
+import { ActorBadge, VerifiedTick, WinRate, CopyButton } from './parts';
 import {
-  fmtPnl, fmtVol, fmtPrice, fmtSize, fmtWallet, fmtAge, displayName,
-  pnlColor, wrColor, catBar, catText,
+  fmtPnl, fmtVol, fmtPrice, fmtSize, fmtAge, displayName,
+  pnlColor, catBar, catText,
   type LbEntry, type TraderProfile as Profile, type WindowKey,
 } from './format';
 
@@ -167,12 +167,7 @@ export default function TraderProfileView({
                 <Redacted value={entry.volumeUsdc}>{v => fmtVol(v)}</Redacted>
               </Stat>
               <Stat label="Win rate">
-                <span className={wrColor(entry.winRate)}>
-                  <Redacted value={entry.winRate}>{v => `${v.toFixed(0)}%`}</Redacted>
-                </span>
-                {entry.wilsonScore != null && (
-                  <span className="font-body text-[10px] text-muted ml-1">· w{entry.wilsonScore.toFixed(0)}</span>
-                )}
+                <WinRate winRate={entry.winRate} wilson={entry.wilsonScore} resolvedMarkets={entry.resolvedMarkets} />
               </Stat>
               <Stat label="Resolved mkts">
                 <span className="text-ink">{entry.resolvedMarkets.toLocaleString()}</span>

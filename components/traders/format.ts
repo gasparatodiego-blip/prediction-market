@@ -100,6 +100,18 @@ export interface TraderProfile {
   opsCounts:     OpsCounts | null;
 }
 
+// ── Sample-robustness ─────────────────────────────────────────────────────────
+// A wallet with too few resolved markets has a win rate that is noise, not skill
+// ("100% on 1 trade" is luck). Ranking uses wilsonScore (agent20's Wilson 95%
+// lower-bound, which already penalizes tiny samples); this flag is DISPLAY-ONLY
+// (muted win% + "⚠ low sample (N)" badge) and never mutates a stored value.
+// resolvedMarkets is a public/teaser field (not redacted), so this works on the
+// free tier too. Threshold is intentionally conservative.
+export const LOW_SAMPLE = 10; // resolvedMarkets < 10 → thin sample
+export function isLowSample(resolvedMarkets: number | null | undefined): boolean {
+  return (resolvedMarkets ?? 0) < LOW_SAMPLE;
+}
+
 // ── Formatters ──────────────────────────────────────────────────────────────
 
 export function fmtPnl(n: number | null | undefined): string {

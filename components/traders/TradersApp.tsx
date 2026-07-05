@@ -5,10 +5,10 @@ import Eyebrow        from '@/app/components/ui/Eyebrow';
 import SectionHeading from '@/app/components/ui/SectionHeading';
 import PlatformLogo   from '@/components/PlatformLogo';
 import { Redacted }   from '@/app/components/ui/Redacted';
-import { ActorBadge, VerifiedTick, LowSampleBadge, ConfidenceBar, CopyButton } from './parts';
+import { ActorBadge, VerifiedTick, WinRate, ConfidenceBar, CopyButton } from './parts';
 import TraderProfileView from './TraderProfile';
 import {
-  fmtPnl, fmtVol, fmtWallet, fmtUpdated, displayName, pnlColor, wrColor,
+  fmtPnl, fmtVol, fmtWallet, fmtUpdated, displayName, pnlColor, isLowSample,
   type LbData, type LbEntry, type TraderProfile,
 } from './format';
 
@@ -116,12 +116,26 @@ export default function TradersApp() {
 
   const rows = useMemo(() => {
     const list = (lbData?.categories?.[cat] ?? []).slice();
-    // Re-rank only when the values are present (paid). Free tier keeps the API's
-    // Wilson-ranked order (redacted values can't be sorted — never fabricate order).
     const key = rankBy === 'profit' ? 'pnlUsdc' : 'volumeUsdc';
-    if (list.some(e => e[key] != null)) {
-      list.sort((a, b) => (b[key] ?? -Infinity) - (a[key] ?? -Infinity));
-    }
+    const hasValues = list.some(e => e[key] != null);
+    // Ranking rules (honest-engine):
+    //  1. Thin-sample wallets (resolvedMarkets < 10) are FLOORED below proven
+    //     ones — a "100% on 1 trade" wallet can never top a real track record.
+    //     resolvedMarkets is a public field, so this holds on the free tier too.
+    //  2. Within a sample tier, sort by the chosen metric (pnl / volume) when
+    //     present, else keep the API's order (free tier can't sort null values —
+    //     never fabricate an order).
+    //  3. Tiebreak on wilsonScore DESC — the sample-robust skill metric. Raw
+    //     winRate is NEVER a sort key.
+    list.sort((a, b) => {
+      const aLow = isLowSample(a.resolvedMarkets), bLow = isLowSample(b.resolvedMarkets);
+      if (aLow !== bLow) return aLow ? 1 : -1;
+      if (hasValues) {
+        const d = (b[key] ?? -Infinity) - (a[key] ?? -Infinity);
+        if (d !== 0) return d;
+      }
+      return (b.wilsonScore ?? -Infinity) - (a.wilsonScore ?? -Infinity);
+    });
     return list;
   }, [lbData, cat, rankBy]);
 
@@ -340,7 +354,6 @@ function LeaderRow({ e, rank, onOpen, copying, atLimit, tier, maxSlots, onToggle
           {e.walletType === 'MM' && (
             <span className="font-body text-[9px] font-medium px-1.5 py-[2px] rounded-md border border-gold/40 text-gold bg-gold-tint uppercase tracking-wide">MM</span>
           )}
-          {e.lowSample && <LowSampleBadge />}
         </div>
         <div className="flex items-center gap-2 mt-0.5 font-body text-[10px] text-muted">
           <span>{fmtWallet(e.wallet)}</span>
@@ -349,13 +362,12 @@ function LeaderRow({ e, rank, onOpen, copying, atLimit, tier, maxSlots, onToggle
         </div>
       </div>
 
-      <div className="text-right shrink-0 w-24">
+      <div className="text-right shrink-0">
         <div className={`font-display font-bold text-base tabular-nums ${pnlColor(e.pnlUsdc)}`}>
           <Redacted value={e.pnlUsdc}>{v => fmtPnl(v)}</Redacted>
         </div>
-        <div className={`font-body text-[10px] tabular-nums ${wrColor(e.winRate)}`}>
-          <Redacted value={e.winRate}>{v => `${v.toFixed(0)}%`}</Redacted>
-          {e.wilsonScore != null && <span className="text-muted"> · w{e.wilsonScore.toFixed(0)}</span>}
+        <div className="flex justify-end mt-0.5 font-body text-[10px] tabular-nums">
+          <WinRate winRate={e.winRate} wilson={e.wilsonScore} resolvedMarkets={e.resolvedMarkets} />
         </div>
       </div>
 
@@ -381,7 +393,10 @@ function BotRow({ e, rank, onOpen, copying, atLimit, tier, maxSlots, onToggleCop
             <span className="font-body font-medium text-sm text-ink truncate">{displayName(e)}</span>
             <ActorBadge actor={e.actorType} />
           </div>
-          <div className="font-body text-[10px] text-muted mt-0.5">{fmtWallet(e.wallet)} · {e.resolvedMarkets} resolved</div>
+          <div className="flex items-center gap-2 mt-0.5 font-body text-[10px] text-muted">
+            <span>{fmtWallet(e.wallet)} · {e.resolvedMarkets} resolved</span>
+            <WinRate winRate={e.winRate} wilson={e.wilsonScore} resolvedMarkets={e.resolvedMarkets} />
+          </div>
         </div>
         <div className={`text-right shrink-0 w-20 font-display font-bold text-base tabular-nums ${pnlColor(e.pnlUsdc)}`}>
           <Redacted value={e.pnlUsdc}>{v => fmtPnl(v)}</Redacted>

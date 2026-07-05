@@ -2,8 +2,9 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Zap, Check, Lock, BadgeCheck } from 'lucide-react';
-import type { ActorType } from './format';
+import { Zap, Check, Lock, BadgeCheck, AlertTriangle } from 'lucide-react';
+import { Redacted } from '@/app/components/ui/Redacted';
+import { isLowSample, wrColor, type ActorType } from './format';
 
 // ── Actor-type badge ──────────────────────────────────────────────────────────
 // NEVER a bare "BOT". Always type + confidence, with the ⚡HFT tag when flagged.
@@ -45,13 +46,42 @@ export function VerifiedTick({ show }: { show?: boolean }) {
   return <BadgeCheck className="w-3.5 h-3.5 text-[#0c9d6e] shrink-0" strokeWidth={2.5} aria-label="verified" />;
 }
 
-export function LowSampleBadge() {
+export function LowSampleBadge({ n }: { n: number }) {
   return (
     <span
-      className="font-body text-[9px] font-medium px-1.5 py-[2px] rounded-md bg-gold-tint text-gold border border-gold/25 whitespace-nowrap"
-      title="Fewer than the minimum resolved markets — win rate not yet reliable"
+      className="inline-flex items-center gap-0.5 font-body text-[9px] font-medium px-1.5 py-[2px] rounded-md bg-gold-tint text-gold border border-gold/25 whitespace-nowrap"
+      title={`Only ${n} resolved market${n === 1 ? '' : 's'} — win rate is noise, not skill. Ranked by Wilson score, which discounts tiny samples.`}
     >
-      low sample
+      <AlertTriangle className="w-2.5 h-2.5" strokeWidth={2.5} />low sample ({n})
+    </span>
+  );
+}
+
+// Canonical win-rate renderer — used on the leaderboard row, profile hero, and
+// bots tab. ALWAYS shows the sample context: "<winRate>% · w<wilsonScore>" plus
+// a "⚠ low sample (N)" badge when thin. A bare "100%" is never shown. Win% is
+// muted for low-sample wallets so luck doesn't read as a headline stat. Redaction
+// intact: winRate null (free tier) → lock UI, never $0.
+export function WinRate({
+  winRate, wilson, resolvedMarkets,
+}: {
+  winRate:         number | null;
+  wilson:          number | null;
+  resolvedMarkets: number;
+}) {
+  const low = isLowSample(resolvedMarkets);
+  return (
+    <span className="inline-flex items-center gap-1.5 flex-wrap">
+      <span className={low ? 'text-muted' : wrColor(winRate)}>
+        <Redacted value={winRate}>{v => `${v.toFixed(0)}%`}</Redacted>
+        {/* wilsonScore is a 0–1 fraction (agent20 Wilson 95% lower bound); render
+            it as a percent — 0.9874 → "w99", NOT "w1". This is the sample-robust
+            skill metric the board is ranked by. */}
+        {wilson != null && (
+          <span className="font-body text-[11px] text-muted font-normal ml-1">· w{Math.round(wilson * 100)}</span>
+        )}
+      </span>
+      {low && <LowSampleBadge n={resolvedMarkets} />}
     </span>
   );
 }
