@@ -20,6 +20,7 @@ export type RouteKey =
   | 'lp'
   | 'sports-snapshot'
   | 'leaderboard'
+  | 'leaderboard-profile'
   | 'copy'
   | 'wallet'
   | 'poly-whales'
@@ -274,6 +275,25 @@ export const REDACTION_MAP: Record<RouteKey, string[]> = {
     'mmCategories{}[].volumeUsdc',
     'mmCategories{}[].wins',
     'mmCategories{}[].losses',
+  ],
+
+  // Per-trader profile (agent20 schema v2), served by
+  // app/api/leaderboard/profile/[address]/route.ts. Payload is { ok, profile }.
+  // Only DERIVED monetary/edge fields are nulled — structure (market titles,
+  // outcomes, sides, sizes/token counts, timestamps, ranks, resolvedMarkets,
+  // won/lost result, actorType, opsCounts) stays visible as teaser.
+  'leaderboard-profile': [
+    'profile.windows{}.pnlUsdc',
+    'profile.windows{}.volumeUsdc',
+    'profile.categories[].pnlUsdc',
+    'profile.categories[].winRate',
+    'profile.categories[].volumeUsdc',
+    'profile.positionsOpen[].avgPrice',
+    'profile.positionsOpen[].currentValue',
+    'profile.positionsOpen[].unrealizedPnl',
+    'profile.tradesClosed[].realizedPnl',
+    'profile.activityRecent[].price',
+    'profile.activityRecent[].usdcSize',
   ],
 
   copy: [

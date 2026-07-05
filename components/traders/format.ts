@@ -1,0 +1,190 @@
+// Shared types + pure formatters for the Top Traders dashboard.
+// Consumes agent20 schema v2 (/api/leaderboard + /api/leaderboard/profile/[addr]).
+//
+// HONEST-ENGINE: every monetary field is `number | null` — null means the server
+// redacted it for free/unauth (lib/paid-gating.ts). Render null via <Redacted>,
+// NEVER as $0. Formatters here return '—' for null; the components use <Redacted>
+// so null routes to the lock UI, not a fabricated number.
+
+export interface ActorType {
+  type:       'bot' | 'human';
+  confidence: number;      // 0–100
+  hft:        boolean;
+  signals:    string[];
+}
+
+export interface OpsCounts {
+  trades1h:    number | null;
+  trades24h:   number | null;
+  complete24h?: boolean;
+}
+
+// pnlUsdc/winRate/wilsonScore/volumeUsdc/wins/losses: null on free tier.
+export interface LbEntry {
+  wallet:          string;
+  name:            string;
+  pnlUsdc:         number | null;
+  winRate:         number | null;
+  wilsonScore:     number | null;
+  lowSample?:      boolean;
+  resolvedMarkets: number;
+  volumeUsdc:      number | null;
+  lastActive:      number;
+  wins:            number | null;
+  losses:          number | null;
+  twoSidedPct?:    number;
+  walletType?:     'MM' | 'DIRECTIONAL' | null;
+  actorType?:      ActorType | null;
+  opsCounts?:      OpsCounts | null;
+  hasProfile?:     boolean;
+  verified?:       boolean;   // only rendered when the API actually sets it
+}
+
+export interface LbData {
+  ok:               boolean;
+  stale:            boolean;
+  staleMinutes:     number | null;
+  updatedAt:        string | null;
+  windowDays:       number;
+  marketsScanned:   number;
+  totalWallets:     number;
+  minMarketsToRank: number;
+  categories:       Record<string, LbEntry[]>;
+  disclaimer?:      string;
+}
+
+// windows values are null until the leaderboard agent backfills per-window data.
+export type WindowKey = '1d' | '7d' | '30d' | 'all';
+export interface WindowStat { pnlUsdc: number | null; volumeUsdc: number | null; rank: number | null; }
+
+export interface ProfileCategory {
+  category:        string;
+  pnlUsdc:         number | null;
+  winRate:         number | null;
+  resolvedMarkets: number;
+  volumeUsdc:      number | null;
+}
+export interface OpenPosition {
+  marketTitle:   string | null;
+  outcome:       string | null;
+  size:          number | null;   // token count — not money, not redacted
+  avgPrice:      number | null;
+  currentValue:  number | null;
+  unrealizedPnl: number | null;   // UNREALIZED, gross
+}
+export interface ClosedTrade {
+  marketTitle: string | null;
+  outcome:     string | null;   // aggregate ledger doesn't pin the side → null
+  entryPrice:  number | null;   // not reconstructed → null (never invented)
+  exitPrice:   number | null;
+  result:      'won' | 'lost' | 'resolved';
+  realizedPnl: number | null;
+  timestamp:   number;
+}
+export interface ActivityItem {
+  side:        string | null;   // BUY / SELL
+  outcome:     string | null;
+  price:       number | null;
+  marketTitle: string | null;
+  usdcSize:    number | null;
+  timestamp:   number;
+}
+export interface TraderProfile {
+  enrichedAt:    number;
+  windows:       Record<WindowKey, WindowStat> | null;
+  categories:    ProfileCategory[];
+  positionsOpen: OpenPosition[];
+  tradesClosed:  ClosedTrade[];
+  activityRecent: ActivityItem[];
+  actorType:     ActorType | null;
+  opsCounts:     OpsCounts | null;
+}
+
+// ── Formatters ──────────────────────────────────────────────────────────────
+
+export function fmtPnl(n: number | null | undefined): string {
+  if (n == null) return '—';
+  const sign = n >= 0 ? '+' : '−';
+  const a = Math.abs(n);
+  if (a >= 1_000_000) return sign + '$' + (a / 1_000_000).toFixed(2) + 'M';
+  if (a >= 1_000)     return sign + '$' + (a / 1_000).toFixed(1) + 'k';
+  return sign + '$' + a.toFixed(2);
+}
+
+export function fmtVol(n: number | null | undefined): string {
+  if (n == null) return '—';
+  if (n >= 1_000_000) return '$' + (n / 1_000_000).toFixed(1) + 'M';
+  if (n >= 1_000)     return '$' + (n / 1_000).toFixed(0) + 'k';
+  return '$' + n.toFixed(0);
+}
+
+export function fmtPrice(n: number | null | undefined): string {
+  if (n == null) return '—';
+  return n.toFixed(3);
+}
+
+export function fmtSize(n: number | null | undefined): string {
+  if (n == null) return '—';
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(2) + 'M';
+  if (n >= 1_000)     return (n / 1_000).toFixed(1) + 'k';
+  return n.toFixed(1);
+}
+
+export function fmtWallet(addr: string): string {
+  if (!addr?.startsWith('0x')) return (addr ?? '').slice(0, 12);
+  return addr.slice(0, 6) + '…' + addr.slice(-4);
+}
+
+export function fmtAge(ts: number | null | undefined): string {
+  if (!ts) return '—';
+  const secs = Date.now() / 1000 - ts;
+  if (secs < 120)         return 'just now';
+  if (secs < 3600)        return Math.floor(secs / 60) + 'm ago';
+  if (secs < 86400)       return Math.floor(secs / 3600) + 'h ago';
+  if (secs < 86400 * 30)  return Math.floor(secs / 86400) + 'd ago';
+  if (secs < 86400 * 365) return Math.floor(secs / 86400 / 30) + 'mo ago';
+  return Math.floor(secs / 86400 / 365) + 'yr ago';
+}
+
+export function fmtUpdated(updatedAt: string | null | undefined): string {
+  if (!updatedAt) return '—';
+  const secs = (Date.now() - new Date(updatedAt).getTime()) / 1000;
+  if (secs < 60)    return `updated ${Math.max(0, Math.floor(secs))}s ago`;
+  if (secs < 3600)  return `updated ${Math.floor(secs / 60)}m ago`;
+  if (secs < 86400) return `updated ${Math.floor(secs / 3600)}h ago`;
+  return `updated ${Math.floor(secs / 86400)}d ago`;
+}
+
+export function displayName(e: { name?: string; wallet: string }): string {
+  return e.name && !e.name.startsWith('0x') ? e.name : fmtWallet(e.wallet);
+}
+
+export function pnlColor(n: number | null | undefined): string {
+  if (n == null) return 'text-muted';
+  return n >= 0 ? 'text-mint-deep' : 'text-coral-ink';
+}
+
+export function wrColor(r: number | null | undefined): string {
+  if (r == null) return 'text-muted';
+  if (r >= 60) return 'text-mint-deep';
+  if (r >= 50) return 'text-ink-2';
+  return 'text-coral-ink/70';
+}
+
+// Category → bar/text accent. Unknown categories fall back to neutral (never crash).
+export const CAT_BAR: Record<string, string> = {
+  Crypto:        'bg-coral-ink/55',
+  Sports:        'bg-violet/55',
+  Politics:      'bg-gold/55',
+  'Pop Culture': 'bg-mint/55',
+  World:         'bg-mint-deep/55',
+};
+export const CAT_TEXT: Record<string, string> = {
+  Crypto:        'text-coral-ink',
+  Sports:        'text-violet',
+  Politics:      'text-gold',
+  'Pop Culture': 'text-mint-deep',
+  World:         'text-mint-deep',
+};
+export function catBar(cat: string): string { return CAT_BAR[cat] ?? 'bg-muted/40'; }
+export function catText(cat: string): string { return CAT_TEXT[cat] ?? 'text-muted'; }
