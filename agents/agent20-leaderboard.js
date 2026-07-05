@@ -8,6 +8,7 @@
 
 const fs = require('fs');
 const https = require('https');
+const { rlGet } = require('../lib/rateLimitedFetch');  // per-host limiter — ALL new Polymarket calls route through this
 
 const LEADERBOARD_FILE  = '/tmp/leaderboard.json';
 const CACHE_FILE        = '/tmp/leaderboard-cache.json';
@@ -26,6 +27,32 @@ const WINDOW_DAYS       = 730;           // 2-year window (covers 2024 election,
 const MM_THRESHOLD_PCT  = 50;            // ≥50% two-sided markets → MM / NEUTRAL
 const CLASSIFY_TOP_N    = 300;           // wallet-centric classification for top-N by volume
 const CLASSIFY_STALE_DAYS = 7;          // re-classify wallet every 7 days
+
+// ── Top Traders enrichment (additive per-trader dataset, schemaVersion 2) ──────
+// Powers the Top Traders dashboard (leaderboard + profile + bots/HFT). Every field
+// is real API-derived; actorType is a clearly-labeled heuristic (never a hard fact).
+const LB_WINDOWS          = ['1d', '7d', '30d', 'all']; // lb-api leaderboard windows (confirmed public)
+// lb-api HARD-CAPS at 50 rows — `limit`>50 and `offset` are both ignored (verified). So
+// per-wallet `windows` populate ONLY for Polymarket's global top-50 by $ profit/volume in
+// that window; every other (skill-ranked, smaller-$) trader is honestly null, never inferred.
+const LB_WINDOW_LIMIT     = 50;
+const MAX_ENRICH_WALLETS  = 200;    // cap per-wallet API fan-out per scan (rate-limit + €50/mo budget discipline)
+const MAX_POSITIONS_OPEN  = 50;     // memory bound per trader
+const MAX_TRADES_CLOSED    = 100;   // memory bound per trader (spec: last ~100)
+const MAX_ACTIVITY_RECENT  = 20;    // spec: last ~20 raw trades
+const ACTIVITY_FETCH_LIMIT = 500;   // deep enough to cover 24h ops counts for active wallets
+const MAX_TITLE_CACHE      = 6000;  // opportunistic conditionId→title cache bound
+
+// actorType heuristic thresholds — INFERENCE ONLY, never certainty. Per Diego's Top
+// Traders spec; output is always { type, confidence, hft, signals[] }. A "bot" label
+// is a confidence score + the observable signals that fired, never a bare fact.
+const ACTOR_MIN_TRADES   = 10;    // below this: too little data → human / confidence 0
+const ACTOR_TPH_AVG      = 10;    // trades/hour avg → high-frequency signal
+const ACTOR_TPH_PEAK     = 30;    // trades in busiest hour → burst signal
+const ACTOR_SUBMIN_SHARE = 0.30;  // share of <60s inter-trade gaps → machine-timing signal
+const ACTOR_ACTIVE_HOURS = 20;    // distinct active UTC hours (of 24) → 24/7 / no-sleep signal
+const ACTOR_SHORT_SHARE  = 0.50;  // share of trades in ≤15min markets → short-market focus / HFT
+const ACTOR_BOT_CONF_MIN = 50;    // confidence ≥ this → labeled 'bot' (still with signals)
 
 // Wilson 95% lower bound for binary win rate — penalizes small samples so
 // a 16W/2L wallet outranks a 5W/0L one.  z=1.96 → 95% CI.
@@ -242,6 +269,10 @@ function computePnL(trades, winner) {
 // wallets: { address → { name, markets: [{ cid, category, pnl, vol, won, ts }] } }
 let processedCids = {};
 let wallets       = {};
+// Top Traders enrichment state (persisted in cache, bounded)
+let profiles      = {};    // addr → { windows, categories, positionsOpen, tradesClosed, activityRecent, actorType, opsCounts, enrichedAt }
+let cidTitles     = {};    // conditionId → market title (opportunistically filled from /positions + /activity)
+let lbWindowMaps  = null;  // window → { profit:{addr→{amount,rank}}, volume:{addr→{amount,rank}} } — refreshed per scan
 
 // A wallet can only ever appear on the leaderboard once it has at least
 // MIN_MARKETS_RANK resolved markets inside the WINDOW_DAYS window — this is
@@ -297,7 +328,9 @@ function loadCache() {
     const c = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8'));
     processedCids = c.processedCids || {};
     wallets       = c.wallets       || {};
-    console.log(`[LB] Cache: ${Object.keys(processedCids).length} cids, ${Object.keys(wallets).length} wallets`);
+    profiles      = c.profiles      || {};
+    cidTitles     = c.cidTitles     || {};
+    console.log(`[LB] Cache: ${Object.keys(processedCids).length} cids, ${Object.keys(wallets).length} wallets, ${Object.keys(profiles).length} profiles`);
   } catch {
     processedCids = {};
     wallets       = {};
@@ -331,7 +364,12 @@ function saveCache() {
   if (walletsEvicted > 0) {
     console.log(`[LB] wallets cache trimmed -${walletsEvicted} (${Object.keys(wallets).length} remain)`);
   }
-  atomicWrite(CACHE_FILE, { processedCids, wallets, savedAt: new Date().toISOString() });
+  // Bound the opportunistic title cache (string keys keep insertion order → keep newest)
+  const tKeys = Object.keys(cidTitles);
+  if (tKeys.length > MAX_TITLE_CACHE) cidTitles = Object.fromEntries(tKeys.slice(-Math.floor(MAX_TITLE_CACHE * 2 / 3)).map(k => [k, cidTitles[k]]));
+  // Drop profiles for wallets evicted from the cache (memory bound)
+  for (const a of Object.keys(profiles)) if (!wallets[a]) delete profiles[a];
+  atomicWrite(CACHE_FILE, { processedCids, wallets, profiles, cidTitles, savedAt: new Date().toISOString() });
 }
 
 // ── Wallet-centric MM classification for top-N by volume ─────────────────────
@@ -513,15 +551,39 @@ function writeOutput(tsOverride = null) {
   const { categories, mmCategories } = buildLeaderboard();
   const totalWallets = Object.values(wallets).filter(w => (w.markets || []).length >= MIN_MARKETS_RANK).length;
 
+  // Attach compact per-trader inference + ops to each list entry so the leaderboard
+  // renders bot/HFT badges without a join. Heavy per-trader data (positions, closed
+  // trades, activity, category breakdown, windows) lives once in the normalized
+  // `profiles` map below — keyed by wallet, never duplicated across category lists.
+  const attachInline = (list) => {
+    for (const e of list) {
+      const p = profiles[e.wallet];
+      e.actorType  = p ? p.actorType : null;   // HEURISTIC (type+confidence+signals), null until enriched
+      e.opsCounts  = p ? p.opsCounts : null;
+      e.hasProfile = !!p;
+    }
+  };
+  for (const l of Object.values(categories))   attachInline(l);
+  for (const l of Object.values(mmCategories)) attachInline(l);
+
+  // windows resolved at write time from the shared lb-api maps → reflect latest fetch.
+  const profilesOut = {};
+  for (const [addr, prof] of Object.entries(profiles)) {
+    profilesOut[addr] = { ...prof, windows: windowsForWallet(addr) };
+  }
+
   atomicWrite(LEADERBOARD_FILE, {
     updatedAt:      tsOverride ?? new Date().toISOString(),
+    schemaVersion:  2,                          // v2: adds per-trader `profiles` + inline actorType/opsCounts
+    pnlBasis:       'gross_platform_reported',  // honest-engine: public API exposes no fee/gas netting — never relabel as net
     windowDays:     WINDOW_DAYS,
     marketsScanned: Object.keys(processedCids).length,
     totalWallets,
     minMarketsToRank: MIN_MARKETS_RANK,
     categories,
     mmCategories,
-    disclaimer: 'Descriptive leaderboard from on-chain resolved markets. Past performance is not predictive. Not financial advice.',
+    profiles:       profilesOut,
+    disclaimer: 'Descriptive leaderboard from on-chain resolved markets. actorType is a labeled heuristic (inference, not fact). PnL is gross/platform-reported. Past performance is not predictive. Not financial advice.',
   });
 
   const allTop = categories.All;
@@ -530,6 +592,251 @@ function writeOutput(tsOverride = null) {
   } else {
     console.log(`[LB] Leaderboard updated — ${totalWallets} wallets (accumulating data…)`);
   }
+}
+
+// ══ Top Traders enrichment ════════════════════════════════════════════════════
+// All calls below go through rlGet (per-host limiter). Every value is real API data;
+// the ONLY inference is actorType, which is always type+confidence+signals.
+
+// rlGet returns { status, headers, data:parsedJSON }; unwrap to the JSON body.
+async function rlJson(url) {
+  const r = await rlGet(url);
+  if (!r || r.status !== 200) throw new Error(`HTTP ${r && r.status} ${url.slice(0, 64)}`);
+  return r.data;
+}
+
+// Fetch the global profit + volume leaderboards for every window ONCE per scan and
+// index them by wallet, so per-trader window stats are a map lookup (not a per-wallet
+// call). Wallets outside the top LB_WINDOW_LIMIT are simply absent → null (never inferred).
+async function fetchLeaderboardWindows() {
+  const maps = {};
+  for (const win of LB_WINDOWS) {
+    maps[win] = { profit: {}, volume: {} };
+    for (const metric of ['profit', 'volume']) {
+      try {
+        const list = await rlJson(`https://lb-api.polymarket.com/${metric}?window=${win}&limit=${LB_WINDOW_LIMIT}`);
+        if (Array.isArray(list)) list.forEach((e, i) => {
+          const a = (e.proxyWallet || '').toLowerCase();
+          if (a) maps[win][metric][a] = { amount: e.amount, rank: i + 1 };
+        });
+      } catch (e) { console.warn(`[LB] window ${metric}/${win} skipped: ${e.message}`); }
+    }
+  }
+  lbWindowMaps = maps;
+}
+
+// Per-wallet window stats from the shared maps. pnlUsdc/volumeUsdc are lb-api's own
+// platform-reported (gross) figures; rank is the profit-leaderboard position. Any window
+// where the wallet isn't in the global top-50 → null fields (do NOT infer). Most of our
+// Wilson-skill-ranked wallets are legitimately null here — they aren't $-whales.
+function windowsForWallet(addr) {
+  if (!lbWindowMaps) return null;
+  const a = addr.toLowerCase();
+  const out = {};
+  for (const win of LB_WINDOWS) {
+    const p = lbWindowMaps[win].profit[a];
+    const v = lbWindowMaps[win].volume[a];
+    out[win] = {
+      pnlUsdc:    p ? Math.round(p.amount * 100) / 100 : null,   // lb-api /profit (gross, platform-reported)
+      volumeUsdc: v ? Math.round(v.amount * 100) / 100 : null,   // lb-api /volume
+      rank:       p ? p.rank : null,                             // profit-leaderboard rank for this window
+    };
+  }
+  return out;
+}
+
+// Per-category P&L breakdown aggregated from the wallet's OWN resolved-market ledger
+// (real on-chain outcomes, already category-mapped by inferCategory). Only categories
+// with ≥1 resolved market appear. Real aggregation — no estimation.
+function computeWalletCategories(w) {
+  const byCat = {};
+  for (const m of (w.markets || [])) {
+    const c = m.category || 'World';
+    if (!byCat[c]) byCat[c] = { category: c, pnl: 0, vol: 0, wins: 0, n: 0 };
+    byCat[c].pnl += m.pnl || 0;
+    byCat[c].vol += m.vol || 0;
+    byCat[c].wins += m.won ? 1 : 0;
+    byCat[c].n++;
+  }
+  return Object.values(byCat)
+    .map(c => ({
+      category:        c.category,
+      pnlUsdc:         Math.round(c.pnl * 100) / 100,
+      winRate:         c.n ? Math.round(c.wins / c.n * 1000) / 10 : 0,
+      resolvedMarkets: c.n,
+      volumeUsdc:      Math.round(c.vol * 100) / 100,
+    }))
+    .sort((a, b) => b.pnlUsdc - a.pnlUsdc);
+}
+
+// HEURISTIC actor classification from OBSERVABLE signals only. Returns
+// { type:'bot'|'human', confidence:0-100, hft:bool, signals:string[] }. Never a bare
+// certainty: confidence + the reasons that fired. Thin data → human / confidence 0.
+function computeActorType(activity, w) {
+  const trades = (activity || [])
+    .filter(a => a && a.type === 'TRADE' && a.timestamp)
+    .sort((a, b) => a.timestamp - b.timestamp);
+
+  if (trades.length < ACTOR_MIN_TRADES) {
+    return { type: 'human', confidence: 0, hft: false,
+             signals: [`insufficient recent activity to classify (${trades.length} trades)`] };
+  }
+
+  const first = trades[0].timestamp, last = trades[trades.length - 1].timestamp;
+  const hoursSpan = Math.max((last - first) / 3600, 1 / 60);
+  const tphAvg = trades.length / hoursSpan;
+
+  const hourBuckets = {};             // absolute hour → count (for peak)
+  const hourOfDay   = new Array(24).fill(0);
+  for (const t of trades) {
+    hourBuckets[Math.floor(t.timestamp / 3600)] = (hourBuckets[Math.floor(t.timestamp / 3600)] || 0) + 1;
+    hourOfDay[new Date(t.timestamp * 1000).getUTCHours()]++;
+  }
+  const tphPeak     = Math.max(...Object.values(hourBuckets));
+  const activeHours = hourOfDay.filter(c => c > 0).length;
+
+  let sub = 0, gaps = 0;
+  for (let i = 1; i < trades.length; i++) {
+    const d = trades[i].timestamp - trades[i - 1].timestamp;
+    if (d >= 0) { gaps++; if (d < 60) sub++; }
+  }
+  const subShare = gaps ? sub / gaps : 0;
+
+  // short-market share via known durations (from our own processedCids metadata)
+  let withDur = 0, shortDur = 0;
+  for (const t of trades) {
+    const info = processedCids[t.conditionId];
+    if (info && info.durationMin != null) { withDur++; if (info.durationMin <= 15) shortDur++; }
+  }
+  const shortShare  = withDur ? shortDur / withDur : 0;
+  const twoSidedPct = w.twoSidedPct ?? 0;
+
+  const signals = [];
+  let confidence = 0;
+  if (tphAvg  >= ACTOR_TPH_AVG)   { confidence += 25; signals.push(`high frequency: ${tphAvg.toFixed(1)} trades/h avg`); }
+  if (tphPeak >= ACTOR_TPH_PEAK)  { confidence += 15; signals.push(`burst: ${tphPeak} trades in busiest hour`); }
+  if (subShare >= ACTOR_SUBMIN_SHARE) { confidence += 20; signals.push(`machine timing: ${Math.round(subShare * 100)}% of trades <60s apart`); }
+  if (activeHours >= ACTOR_ACTIVE_HOURS) { confidence += 20; signals.push(`24/7 activity: ${activeHours}/24 UTC hours active, no sleep gap`); }
+  if (withDur > 0 && shortShare >= ACTOR_SHORT_SHARE) { confidence += 20; signals.push(`short-market focus: ${Math.round(shortShare * 100)}% in ≤15min markets`); }
+  if (twoSidedPct >= MM_THRESHOLD_PCT) { confidence += 10; signals.push(`two-sided quoting: ${twoSidedPct}% of markets`); }
+  confidence = Math.min(100, confidence);
+
+  const hft  = withDur > 0 && shortShare >= ACTOR_SHORT_SHARE && tphAvg >= ACTOR_TPH_AVG;
+  const type = confidence >= ACTOR_BOT_CONF_MIN ? 'bot' : 'human';
+  if (signals.length === 0) signals.push('no automation signals detected');
+  return { type, confidence, hft, signals };
+}
+
+// Build one trader's full profile: positions (unrealized), closed trades (realized),
+// recent activity, ops counts, actorType. categories come from the ledger; windows are
+// merged at write time. Every network hit is try/caught → a failed field is null, never
+// fabricated, and never crashes the scan.
+async function enrichWallet(addr) {
+  const w = wallets[addr];
+  if (!w) return;
+  const prof = {
+    enrichedAt: Date.now(), windows: null, categories: computeWalletCategories(w),
+    positionsOpen: [], tradesClosed: [], activityRecent: [], actorType: null, opsCounts: null,
+  };
+
+  // /positions → live (unrealized) exposure only. cashPnl is unrealized, gross —
+  // labeled explicitly as unrealizedPnl and never mixed with realized P&L.
+  try {
+    const pos = await rlJson(`https://data-api.polymarket.com/positions?user=${addr}`);
+    if (Array.isArray(pos)) {
+      for (const p of pos) if (p.conditionId && p.title) cidTitles[p.conditionId] = p.title;
+      prof.positionsOpen = pos
+        .filter(p => p.redeemable === false && Math.abs(p.size || 0) > 0)  // still-live; excludes settled/redeemable
+        .slice(0, MAX_POSITIONS_OPEN)
+        .map(p => ({
+          marketTitle:   p.title ?? null,
+          outcome:       p.outcome ?? null,
+          size:          p.size ?? null,
+          avgPrice:      p.avgPrice ?? null,
+          currentValue:  p.currentValue ?? null,
+          unrealizedPnl: p.cashPnl ?? null,   // /positions.cashPnl — UNREALIZED, gross
+        }));
+    }
+  } catch (e) { console.warn(`[LB] positions ${addr.slice(0, 10)} skipped: ${e.message}`); }
+
+  // /activity → recent raw trades, ops counts, actorType inputs, and title cache
+  let activity = [];
+  try {
+    const a = await rlJson(`https://data-api.polymarket.com/activity?user=${addr}&limit=${ACTIVITY_FETCH_LIMIT}`);
+    if (Array.isArray(a)) activity = a;
+  } catch (e) { console.warn(`[LB] activity ${addr.slice(0, 10)} skipped: ${e.message}`); }
+  for (const a of activity) if (a.conditionId && a.title) cidTitles[a.conditionId] = a.title;
+
+  const now       = Math.floor(Date.now() / 1000);
+  const tradeActs = activity.filter(a => a && a.type === 'TRADE' && a.timestamp);
+  const oldest    = tradeActs.length ? Math.min(...tradeActs.map(a => a.timestamp)) : now;
+  prof.opsCounts = {
+    trades1h:  tradeActs.filter(a => a.timestamp > now - 3600).length,
+    trades24h: tradeActs.filter(a => a.timestamp > now - 86400).length,
+    // honest completeness flag: if the fetched window filled up AND is <24h deep, the
+    // 24h count is a floor (there may be older trades we didn't page) — never inflate.
+    complete24h: (now - oldest) >= 86400 || tradeActs.length < ACTIVITY_FETCH_LIMIT,
+  };
+
+  prof.activityRecent = tradeActs
+    .sort((a, b) => b.timestamp - a.timestamp)
+    .slice(0, MAX_ACTIVITY_RECENT)
+    .map(a => ({
+      side:        (a.side || '').toUpperCase() || null,
+      outcome:     a.outcome ?? null,
+      price:       a.price ?? null,
+      marketTitle: a.title ?? null,
+      usdcSize:    a.usdcSize ?? null,
+      timestamp:   a.timestamp,
+    }));
+
+  prof.actorType = computeActorType(activity, w);
+
+  // tradesClosed: realized outcomes from our OWN on-chain resolved ledger — this is the
+  // COMPLETE record; a partial /activity reconstruction would under-count older fills and
+  // report wrong realizedPnl (fabrication). entryPrice/exitPrice/outcome are not pinned at
+  // aggregate level → null (shown missing, never invented). Honest-engine.
+  prof.tradesClosed = (w.markets || [])
+    .filter(m => m.ts)
+    .sort((a, b) => (b.ts || 0) - (a.ts || 0))
+    .slice(0, MAX_TRADES_CLOSED)
+    .map(m => ({
+      marketTitle: cidTitles[m.cid] || (m.cid ? m.cid.slice(0, 10) + '…' : null),
+      outcome:     null,   // aggregate ledger doesn't pin which side the wallet held
+      entryPrice:  null,   // not reconstructed from aggregate — never fabricated
+      exitPrice:   null,
+      result:      m.pnl > 0 ? 'won' : (m.pnl < 0 ? 'lost' : 'resolved'),
+      realizedPnl: Math.round((m.pnl || 0) * 100) / 100,   // agent20 on-chain resolved P&L (gross)
+      timestamp:   m.ts,
+    }));
+
+  profiles[addr] = prof;
+}
+
+// Enrich the wallets that actually appear in the output (All directional first, then
+// All MM, then other categories), capped at MAX_ENRICH_WALLETS to respect rate limits
+// and the €50/mo budget. Profiles for wallets no longer in the top set are pruned.
+async function enrichTopWallets() {
+  const { categories, mmCategories } = buildLeaderboard();
+  const order = [], seen = new Set();
+  const lists = [categories.All, mmCategories.All,
+                 ...Object.entries(categories).filter(([c]) => c !== 'All').map(([, l]) => l)];
+  for (const list of lists) for (const e of (list || [])) {
+    if (!seen.has(e.wallet)) { seen.add(e.wallet); order.push(e.wallet); }
+  }
+  const targets = order.slice(0, MAX_ENRICH_WALLETS);
+  if (targets.length === 0) { console.log('[LB] Enrichment: no output wallets yet'); return; }
+
+  console.log(`[LB] Enriching ${targets.length} top-trader profiles (positions + activity + windows)…`);
+  let done = 0;
+  for (const addr of targets) {
+    try { await enrichWallet(addr); done++; }
+    catch (e) { console.warn(`[LB] enrich ${addr.slice(0, 10)} failed: ${e.message}`); }
+    if (done % 25 === 0) writeOutput();  // stream progress to the UI
+  }
+  const keep = new Set(targets);
+  for (const a of Object.keys(profiles)) if (!keep.has(a)) delete profiles[a];
+  console.log(`[LB] Enrichment done: ${done} profiles (${Object.keys(profiles).length} cached)`);
 }
 
 // ── Process one market ────────────────────────────────────────────────────────
@@ -637,6 +944,11 @@ async function scan() {
 
   // Wallet-centric MM classification for top-volume wallets
   await classifyTopWallets();
+
+  // Top Traders enrichment: refresh global leaderboard windows, then build honest
+  // per-trader profiles for the wallets that actually appear in the output.
+  await fetchLeaderboardWindows();
+  await enrichTopWallets();
 
   saveCache();
   writeOutput();
