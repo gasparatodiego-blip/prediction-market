@@ -34,13 +34,11 @@ const POLL_INTERVAL_MS  = 5 * 60_000;   // 5 min between full cycles
 const MAX_WALLETS       = 50;
 const TRADES_PER_POLL   = 20;
 const MAX_RECENT_ALERTS = 100;
-const MAX_TITLE_CACHE   = 500;
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const CHAT_ID   = process.env.TELEGRAM_CHAT_ID   || '';
 
 // ── Runtime state ─────────────────────────────────────────────────────────────
-const titleCache     = new Map();  // conditionId → question title
 let   walletLastSeen = {};         // wallet → highest trade timestamp seen
 let   recentAlerts   = [];
 
@@ -103,20 +101,6 @@ async function sendTelegram(html) {
   });
 }
 
-// ── Market title cache ────────────────────────────────────────────────────────
-async function getMarketTitle(conditionId) {
-  if (!conditionId) return '—';
-  if (titleCache.has(conditionId)) return titleCache.get(conditionId);
-  try {
-    const res   = await get(`https://gamma-api.polymarket.com/markets?conditionIds=${conditionId}`);
-    const m     = Array.isArray(res) ? res[0] : res;
-    const title = m?.question ?? m?.title ?? (conditionId.slice(0, 16) + '…');
-    if (titleCache.size >= MAX_TITLE_CACHE) titleCache.delete(titleCache.keys().next().value);
-    titleCache.set(conditionId, title);
-    return title;
-  } catch { return conditionId.slice(0, 16) + '…'; }
-}
-
 // ── Watchlist ─────────────────────────────────────────────────────────────────
 function loadWatchlist() {
   try {
@@ -174,7 +158,9 @@ async function pollWallet(entry, lbMap) {
 
   for (const trade of newTrades.slice(0, 5)) {  // cap at 5 per cycle per wallet
     const conditionId = trade.market ?? trade.conditionId ?? '';
-    const title       = conditionId ? await getMarketTitle(conditionId) : '—';
+    // data-api /trades carries the authoritative market title inline; the old gamma
+    // ?conditionIds= lookup silently ignored the filter and mislabeled every alert.
+    const title       = trade.title || (conditionId ? conditionId.slice(0, 16) + '…' : '—');
     const side        = (trade.side ?? '').toUpperCase();
     const price       = parseFloat(trade.price ?? 0);
     const size        = parseFloat(trade.size  ?? 0);
