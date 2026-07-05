@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { getToken } from 'next-auth/jwt';
 
 const cache = new Map<string, { count: number; reset: number }>();
 const WINDOW_MS   = 60_000;
@@ -13,15 +12,11 @@ function getIp(req: NextRequest): string {
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  if (pathname.startsWith('/dashboard')) {
-    const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
-    if (!token) {
-      const loginUrl = new URL('/auth/login', request.url);
-      loginUrl.searchParams.set('callbackUrl', pathname + request.nextUrl.search);
-      return NextResponse.redirect(loginUrl);
-    }
-    return NextResponse.next();
-  }
+  // Dashboard pages are intentionally public — the product rule is "never a login
+  // wall on the main dashboard." Premium monetary fields are paywalled by
+  // field-level redaction inside each API route (getIsPaid → redactForTier), and
+  // personal/account routes enforce their own server-side session check. No
+  // access-gating happens here.
 
   // Only rate-limit API routes that hit the filesystem
   if (!pathname.startsWith('/api/')) return NextResponse.next();
@@ -62,5 +57,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/api/:path*', '/dashboard/:path*'],
+  matcher: ['/api/:path*'],
 };
