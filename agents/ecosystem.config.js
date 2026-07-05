@@ -193,7 +193,11 @@ module.exports = {
       cwd:           '/root/prediction-market',
       restart_delay: 30000,
       max_restarts:  20,
-      max_memory_restart: '450M',
+      // Working set is genuinely ~370MB (163MB cache → 369MB RSS after JSON.parse;
+      // 631k market records across 5000 wallets, needed for per-cycle re-aggregation).
+      // 450M sat below the real working set and caused a pm2 restart loop. 600M gives
+      // runtime headroom while still catching a genuine runaway. Not a leak.
+      max_memory_restart: '600M',
       watch:         false,
       autorestart:   true,
       env:           { NODE_ENV: 'production', HOME: '/root' },
