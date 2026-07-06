@@ -54,6 +54,11 @@ data/fund-subscriptions.json
 data/copy-watchlist.json
 # monitor auto-restart circuit-breaker ledger — runtime state, self-heals
 data/monitor-restart-ledger.json
+# copy-trading runtime state — position snapshots, open/close events, paper positions
+# (all rewritten/appended at runtime, local data, never source-controlled)
+data/copy-events.json
+data/copy-position-state.json
+data/paper-positions.json
 # durable 14-day per-leg settled-funding history — grows organically at runtime, local data
 data/funding-history-14d.json
 data/funding-history-14d.json.tmp.*

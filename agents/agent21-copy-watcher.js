@@ -9,6 +9,7 @@ const fs   = require('fs');
 const https = require('https');
 const path  = require('path');
 const { httpGet: _sharedGet } = require('../lib/httpGet');
+const { categoryFromText } = require('../lib/category');
 
 // ── Load .env for Telegram creds (pm2 doesn't auto-load project env files) ───
 // Read every candidate file (don't stop at the first one that merely exists —
@@ -24,23 +25,35 @@ for (const envFile of ['.env.local', '.env']) {
 }
 
 // ── Config ────────────────────────────────────────────────────────────────────
-const WATCHLIST_FILE   = path.join(__dirname, '../data/copy-watchlist.json');
+const DATA_DIR         = path.join(__dirname, '../data');
+const WATCHLIST_FILE   = path.join(DATA_DIR, 'copy-watchlist.json');
 const STATE_FILE       = '/tmp/copy-watcher.json';
 const HB_FILE          = '/tmp/agent-heartbeats.json';
 const LEADERBOARD_FILE = '/tmp/leaderboard.json';
+// Durable copy-trading state (survives /tmp wipes + restarts; gitignored):
+const POSITION_STATE_FILE = path.join(DATA_DIR, 'copy-position-state.json');  // snapshot + watermark
+const COPY_EVENTS_FILE    = path.join(DATA_DIR, 'copy-events.json');          // append-merge open/close/adjust log
 
 const MAX_RPS           = 1.0;
 const POLL_INTERVAL_MS  = 5 * 60_000;   // 5 min between full cycles
 const MAX_WALLETS       = 50;
 const TRADES_PER_POLL   = 20;
 const MAX_RECENT_ALERTS = 100;
+const MAX_COPY_EVENTS   = 5000;   // ring cap on the durable event log (most-recent kept)
+const CLOSE_EPS         = 1.0;    // shares below this = position treated as flat (~0)
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const CHAT_ID   = process.env.TELEGRAM_CHAT_ID   || '';
 
 // ── Runtime state ─────────────────────────────────────────────────────────────
-let   walletLastSeen = {};         // wallet → highest trade timestamp seen
-let   recentAlerts   = [];
+let   walletLastSeen  = {};        // wallet → highest trade timestamp seen
+let   recentAlerts    = [];
+// Real position-state tracking (Phase 2): per-wallet net signed size per (cid|outcome),
+// accumulated from the SAME trades feed already polled. Persisted durably so a restart
+// resumes from the last snapshot + watermark and never double-fires an open/close.
+let   positionSnapshot = {};       // wallet → { 'cid|outcome': {cid,outcome,title,netSize,avgPrice,category,updatedAt} }
+let   copyEvents       = [];        // durable open/close/adjust log (most-recent first)
+const copyEventKeys    = new Set(); // dedup: `${wallet}|${cid}|${outcome}|${ts}|${action}`
 
 // ── Rate-limited HTTP GET ─────────────────────────────────────────────────────
 let queue = [], busy = false;
@@ -71,6 +84,114 @@ function atomicWrite(p, data) {
   const tmp = p + '.tmp.' + process.pid;
   fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
   fs.renameSync(tmp, p);
+}
+
+// ── Durable copy-trading state (snapshot + watermark + event log) ──────────────
+function loadDurableState() {
+  try {
+    const s = JSON.parse(fs.readFileSync(POSITION_STATE_FILE, 'utf8'));
+    if (s.walletLastSeen && typeof s.walletLastSeen === 'object') walletLastSeen = s.walletLastSeen;
+    if (s.positionSnapshot && typeof s.positionSnapshot === 'object') positionSnapshot = s.positionSnapshot;
+    console.log(`[CW] Restored state: ${Object.keys(walletLastSeen).length} watermarks, ` +
+                `${Object.values(positionSnapshot).reduce((n, w) => n + Object.keys(w).length, 0)} open positions`);
+  } catch { /* first run — start clean */ }
+  try {
+    const ev = JSON.parse(fs.readFileSync(COPY_EVENTS_FILE, 'utf8'));
+    if (Array.isArray(ev.events)) {
+      copyEvents = ev.events;
+      for (const e of copyEvents) copyEventKeys.add(`${e.wallet}|${e.cid}|${e.outcome}|${e.timestamp}|${e.action}`);
+      console.log(`[CW] Restored ${copyEvents.length} copy-events`);
+    }
+  } catch { /* first run */ }
+}
+
+function persistDurableState() {
+  try {
+    atomicWrite(POSITION_STATE_FILE, {
+      walletLastSeen, positionSnapshot, updatedAt: new Date().toISOString(),
+    });
+  } catch (e) { console.error('[CW] persist state err:', e.message); }
+  try {
+    // Keep most-recent MAX_COPY_EVENTS (copyEvents is unshift-ordered, newest first).
+    if (copyEvents.length > MAX_COPY_EVENTS) copyEvents = copyEvents.slice(0, MAX_COPY_EVENTS);
+    atomicWrite(COPY_EVENTS_FILE, { updatedAt: new Date().toISOString(), events: copyEvents });
+  } catch (e) { console.error('[CW] persist events err:', e.message); }
+}
+
+// Real OPEN/CLOSE/ADD/REDUCE tracking from the trades feed already polled.
+// Groups new trades by (cid|outcome|timestamp), nets signed size (BUY:+, SELL:−),
+// applies each net delta to the persisted per-wallet snapshot in chronological
+// order, and classifies the resulting transition. Best-effort over OBSERVED
+// trades only (the feed returns the last TRADES_PER_POLL) — never fabricated:
+// we record only transitions our own polling actually witnessed. Returns the
+// list of newly-emitted events (also merged into the durable copyEvents log).
+function trackPositions(wallet, traderName, newTrades) {
+  const emitted = [];
+  if (!positionSnapshot[wallet]) positionSnapshot[wallet] = {};
+  const snap = positionSnapshot[wallet];
+
+  // Aggregate signed size + volume-weighted price per (cid|outcome|ts) group.
+  const groups = new Map();
+  for (const t of newTrades) {
+    const cid     = t.conditionId ?? t.market ?? '';
+    const outcome = t.outcome ?? '—';
+    const ts      = t.timestamp ?? Math.floor(Date.now() / 1000);
+    const price   = parseFloat(t.price ?? 0);
+    const size    = parseFloat(t.size ?? 0);
+    if (!cid || !(size > 0)) continue;
+    const signed  = (t.side ?? '').toUpperCase() === 'SELL' ? -size : size;
+    const gkey    = `${cid}|${outcome}|${ts}`;
+    let g = groups.get(gkey);
+    if (!g) { g = { cid, outcome, ts, title: t.title || null, slug: t.slug || null, signed: 0, pxNum: 0, pxDen: 0 }; groups.set(gkey, g); }
+    g.signed += signed;
+    g.pxNum  += price * size;   // weight by absolute traded size
+    g.pxDen  += size;
+  }
+
+  // Apply groups oldest→newest so the running snapshot evolves correctly.
+  for (const g of [...groups.values()].sort((a, b) => a.ts - b.ts)) {
+    if (Math.abs(g.signed) < 1e-9) continue;              // net-zero churn, no state change
+    const key   = `${g.cid}|${g.outcome}`;
+    const prev  = snap[key]?.netSize ?? 0;
+    const next  = prev + g.signed;
+    const price = g.pxDen > 0 ? g.pxNum / g.pxDen : 0;
+    const category = categoryFromText(g.title, g.slug);   // real title/slug → 'other' if unmatched
+
+    let action;
+    if (prev <= CLOSE_EPS && next > CLOSE_EPS)      action = 'OPEN';
+    else if (next <= CLOSE_EPS && prev > CLOSE_EPS) action = 'CLOSE';
+    else if (next > prev)                            action = 'ADD';
+    else if (next < prev)                            action = 'REDUCE';
+    else continue;
+
+    // Update the snapshot (cost-basis avg only grows on OPEN/ADD; unchanged on REDUCE).
+    if (action === 'CLOSE') {
+      delete snap[key];
+    } else {
+      const prevAvg = snap[key]?.avgPrice ?? 0;
+      const avgPrice = (action === 'OPEN')
+        ? price
+        : (action === 'ADD' ? (prev * prevAvg + g.signed * price) / next : prevAvg);
+      snap[key] = { cid: g.cid, outcome: g.outcome, title: g.title, netSize: next, avgPrice, category, updatedAt: g.ts };
+    }
+
+    const dedupKey = `${wallet}|${g.cid}|${g.outcome}|${g.ts}|${action}`;
+    if (copyEventKeys.has(dedupKey)) continue;            // append-merge dedup
+    copyEventKeys.add(dedupKey);
+    const evt = {
+      wallet, name: traderName, cid: g.cid, market: g.title, outcome: g.outcome,
+      category, action, tradeSide: g.signed > 0 ? 'BUY' : 'SELL',
+      price: Math.round(price * 10000) / 10000,
+      size: Math.round(Math.abs(g.signed) * 100) / 100,   // shares delta
+      prevSize: Math.round(prev * 100) / 100,
+      netSize: Math.round(next * 100) / 100,
+      timestamp: g.ts,
+    };
+    copyEvents.unshift(evt);
+    emitted.push(evt);
+    console.log(`[CW] 📌 ${traderName}: ${action} ${g.outcome} ${evt.size}sh @ ${price.toFixed(3)} — ${(g.title || g.cid).slice(0, 40)}`);
+  }
+  return emitted;
 }
 
 // ── Heartbeat ─────────────────────────────────────────────────────────────────
@@ -156,6 +277,9 @@ async function pollWallet(entry, lbMap) {
   const category    = entry.category ?? lb.category ?? 'Unknown';
   const winRate     = lb.winRate ?? null;
 
+  // Phase 2 — real open/close tracking from ALL new trades (not just the alert cap).
+  trackPositions(wallet, traderName, newTrades);
+
   for (const trade of newTrades.slice(0, 5)) {  // cap at 5 per cycle per wallet
     const conditionId = trade.market ?? trade.conditionId ?? '';
     // data-api /trades carries the authoritative market title inline; the old gamma
@@ -222,12 +346,14 @@ async function scan() {
   }
 
   writeState(wallets);
-  console.log(`[CW] Done. Alerts in history: ${recentAlerts.length}`);
+  persistDurableState();   // snapshot + watermark + event log (atomic, restart-safe)
+  console.log(`[CW] Done. Alerts: ${recentAlerts.length}, copy-events: ${copyEvents.length}`);
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 console.log('[CW] Starting agent21-copy-watcher — read-only, zero Claude, zero keys');
 console.log(`[CW] Telegram: ${BOT_TOKEN ? 'configured' : 'NOT SET — alerts will log only'}`);
+loadDurableState();   // resume watermark + position snapshot + event log (no double-fire)
 writeState([]);
 
 setTimeout(async () => {
