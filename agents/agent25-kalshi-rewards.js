@@ -27,6 +27,8 @@
 const fs   = require('fs');
 const path = require('path');
 const https = require('https');
+const { categoryFromText } = require('../lib/category');
+const { writeCombinedSnapshot } = require('../lib/rewards-normalize');
 
 // ── Config ─────────────────────────────────────────────────────────────────
 const SCAN_INTERVAL_MS = 15 * 60_000;
@@ -282,6 +284,9 @@ async function scan() {
     const lastPrice  = mkt ? parseFloat(mkt.last_price_dollars ?? 0.5) : 0.5;
     const question   = mkt ? (mkt.title ?? prog.ticker) : prog.ticker;
     const mktStatus  = mkt ? (mkt.status ?? 'unknown') : 'unknown';
+    // Real Kalshi category tag first; keyword taxonomy fallback (honest 'other' when neither matches).
+    const category   = (mkt && mkt.category) ? mkt.category : categoryFromText(question);
+    const closeTime  = mkt ? (mkt.close_time ?? mkt.expiration_time ?? null) : null;
 
     // Score order book
     let bookScore = { Qbids: 0, Qasks: 0, mid: null, bestBid: null, bestAsk: null };
@@ -316,6 +321,8 @@ async function scan() {
     results.push({
       ticker:          prog.ticker,
       question,
+      category,
+      close_time:      closeTime,
       status:          mktStatus,
       pool_day:        prog.poolDay,
       total_period_usd: prog.totalUsd,
@@ -366,6 +373,13 @@ async function scan() {
   try {
     require('../lib/history-logger').appendSnapshot('rewards-kalshi', Date.now(), results);
   } catch (e) { console.log('[history] rewards-kalshi snapshot skipped:', e.message); }
+
+  // Rebuild the unified normalized snapshot (/tmp/liquidity-rewards.json). Reads both
+  // venues' on-disk files; idempotent + race-safe via atomic rename. Non-fatal.
+  try {
+    const nm = writeCombinedSnapshot();
+    console.log(`  [normalize] /tmp/liquidity-rewards.json: ${nm.totalMarkets} markets (poly ${nm.polymarket} + kalshi ${nm.kalshi}, ${nm.withRealPool} real pools)`);
+  } catch (e) { console.log('  [normalize] combined snapshot skipped:', e.message); }
 
   console.log(`  Written: ${OUTPUT_FILE} (${results.length} markets, ${elapsed}s)`);
 

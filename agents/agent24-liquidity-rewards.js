@@ -23,6 +23,8 @@
 const fs    = require('fs');
 const https = require('https');
 const { scoreBook, estimateCapitalLevelRange } = require('../lib/rewardScore');
+const { categoryFromText } = require('../lib/category');
+const { writeCombinedSnapshot } = require('../lib/rewards-normalize');
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const SCAN_INTERVAL_MS  = 15 * 60_000;
@@ -366,6 +368,7 @@ async function scan() {
 
     results.push({
       question:          m.question,
+      category:          categoryFromText(m.question),  // tags-first not available on Gamma market obj; keyword taxonomy (honest 'other' when unmatched)
       conditionId:       m.conditionId,
       rewardsDailyRate:  m.rewardsDailyRate,
       rewardsMaxSpread:  m.rewardsMaxSpread,
@@ -433,6 +436,14 @@ async function scan() {
   try {
     require('../lib/history-logger').appendSnapshot('rewards-poly', Date.now(), results);
   } catch (e) { console.log('[history] rewards-poly snapshot skipped:', e.message); }
+
+  // Rebuild the unified normalized snapshot (/tmp/liquidity-rewards.json) for the
+  // Liquidity Rewards tab + estimator. Reads both venues' on-disk files; idempotent
+  // and race-safe (atomic rename). Non-fatal.
+  try {
+    const nm = writeCombinedSnapshot();
+    console.log(`  [normalize] /tmp/liquidity-rewards.json: ${nm.totalMarkets} markets (poly ${nm.polymarket} + kalshi ${nm.kalshi}, ${nm.withRealPool} real pools)`);
+  } catch (e) { console.log('  [normalize] combined snapshot skipped:', e.message); }
 
   // ── Terminal output: top 5 markets with three capital levels ─────────────────
   const W = 130;
