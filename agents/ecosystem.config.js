@@ -197,7 +197,7 @@ module.exports = {
       // 631k market records across 5000 wallets, needed for per-cycle re-aggregation).
       // 450M sat below the real working set and caused a pm2 restart loop. 600M gives
       // runtime headroom while still catching a genuine runaway. Not a leak.
-      max_memory_restart: '600M',
+      max_memory_restart: '900M',
       watch:         false,
       autorestart:   true,
       env:           { NODE_ENV: 'production', HOME: '/root' },
