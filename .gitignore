@@ -52,6 +52,8 @@ data/kalshi-rewards.json
 # bot alert state — contains Telegram chat IDs (personal data)
 data/fund-subscriptions.json
 data/copy-watchlist.json
+# monitor auto-restart circuit-breaker ledger — runtime state, self-heals
+data/monitor-restart-ledger.json
 # sports arb scanner outputs — rewritten each scan, credit state is local
 data/sports/
 # runtime SQLite DB — written continuously by agent5-calculator, not source-controlled
