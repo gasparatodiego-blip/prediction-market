@@ -50,8 +50,19 @@ const MIN_LIQ_USD        = 500_000;
 const MAX_DATA_AGE       = 5 * 60_000;
 
 // Anti-spike / persistence
-const HISTORY_N          = 8;            // settled periods to average
+const HISTORY_N          = 8;            // settled periods to average (headline/confirm window — UNCHANGED)
 const HISTORY_REFRESH_MS = 15 * 60_000;  // refresh history cache every 15 min
+// Longer RETAINED window for a future "spread-persistence" indicator (how long a pair
+// has stayed profitable / how stable funding is). Points accumulate ORGANICALLY going
+// forward — only real settled rates ever appended, never interpolated/backfilled — so the
+// window fills over time (it will NOT be full on day one, and that's honest). Retention is
+// by settlement TIME, so it's per-venue-interval-agnostic: an 8h-settling CEX keeps ~6
+// points in 48h, an hourly DEX ~48. HISTORY_MAX_POINTS is a hard memory backstop sized for
+// the finest cadence (48h at the 15-min refresh = 192 snapshots → 200 with margin) so the
+// series can NEVER grow unbounded. On-disk size worst-case ≈ 15 venues × ~24 coins × ≤200
+// pts × ~35 B/pt ≈ 2.5 MB (realistically <1 MB — most series are 6–48 pts).
+const HISTORY_RETENTION_MS = 48 * 60 * 60_000;  // 48h rolling window (by settlement time)
+const HISTORY_MAX_POINTS   = 200;               // hard cap per (venue,coin) — memory backstop
 const SPIKE_MULT         = 3;            // |pred − median| > SPIKE_MULT × |median| → spike
 const SPIKE_ABS_FLOOR    = 0.01;         // %/interval — min deviation to flag (avoids near-zero noise)
 const SPIKE_ABS_MIN_RATE = 0.02;         // %/interval — min predicted rate magnitude to flag
@@ -595,8 +606,23 @@ async function enrichWithDepth(opps) {
 }
 
 // ── Venue history fetchers ────────────────────────────────────────────────────
-// Return array of settled funding rates in % (newest first), length ≤ n.
-// All raw API values are fractions → ×100 for consistency with exchange-prices.json.
+// Return array of settled points { t: settlement time (ms epoch), rate: % } (newest
+// first), length ≤ n. `rate` semantics are UNCHANGED (same native per-settlement unit as
+// before — all raw API fractions ×100, except Grvt/Lighter which are already %). `t` is the
+// real venue settlement timestamp, normalized to ms via toMs() — used only for append/dedup
+// and the 48h retention window, never for any displayed/annualized value.
+
+// Normalize a venue settlement timestamp (epoch s / ms / µs / ns, or an ISO string) to
+// epoch MILLISECONDS by magnitude. Funding settlements are recent (post-2020 ≈ 1.6e12 ms),
+// so magnitude alone disambiguates the unit unambiguously — no per-venue special-casing.
+function toMs(v) {
+  if (v == null) return NaN;
+  let n = (typeof v === 'string' && /[^\d.]/.test(v)) ? new Date(v).getTime() : Number(v);
+  if (!isFinite(n) || n <= 0) return NaN;
+  while (n >= 1e14) n /= 1000;   // ns → µs → ms
+  if (n < 1e11)     n *= 1000;   // s  → ms
+  return Math.round(n);
+}
 
 async function fetchBinanceHistory(coin, n) {
   // Binance returns oldest-first → sort by time descending
@@ -604,8 +630,8 @@ async function fetchBinanceHistory(coin, n) {
   if (!Array.isArray(d)) return [];
   return d
     .sort((a, b) => (b.fundingTime ?? 0) - (a.fundingTime ?? 0))
-    .map(e => parseFloat(e.fundingRate) * 100)
-    .filter(v => isFinite(v));
+    .map(e => ({ t: toMs(e.fundingTime), rate: parseFloat(e.fundingRate) * 100 }))
+    .filter(p => isFinite(p.rate) && isFinite(p.t));
 }
 
 async function fetchBybitHistory(coin, n) {
@@ -615,8 +641,8 @@ async function fetchBybitHistory(coin, n) {
   if (!Array.isArray(list)) return [];
   return list
     .sort((a, b) => Number(b.fundingRateTimestamp ?? 0) - Number(a.fundingRateTimestamp ?? 0))
-    .map(e => parseFloat(e.fundingRate) * 100)
-    .filter(v => isFinite(v));
+    .map(e => ({ t: toMs(e.fundingRateTimestamp), rate: parseFloat(e.fundingRate) * 100 }))
+    .filter(p => isFinite(p.rate) && isFinite(p.t));
 }
 
 async function fetchOkxHistory(coin, n) {
@@ -625,8 +651,8 @@ async function fetchOkxHistory(coin, n) {
   if (!Array.isArray(d?.data)) return [];
   return d.data
     .sort((a, b) => Number(b.fundingTime ?? 0) - Number(a.fundingTime ?? 0))
-    .map(e => parseFloat(e.realizedRate ?? e.fundingRate) * 100)
-    .filter(v => isFinite(v));
+    .map(e => ({ t: toMs(e.fundingTime), rate: parseFloat(e.realizedRate ?? e.fundingRate) * 100 }))
+    .filter(p => isFinite(p.rate) && isFinite(p.t));
 }
 
 async function fetchBitgetHistory(coin, n) {
@@ -635,8 +661,8 @@ async function fetchBitgetHistory(coin, n) {
   if (!Array.isArray(d?.data)) return [];
   return d.data
     .sort((a, b) => Number(b.fundingTime ?? 0) - Number(a.fundingTime ?? 0))
-    .map(e => parseFloat(e.fundingRate) * 100)
-    .filter(v => isFinite(v));
+    .map(e => ({ t: toMs(e.fundingTime), rate: parseFloat(e.fundingRate) * 100 }))
+    .filter(p => isFinite(p.rate) && isFinite(p.t));
 }
 
 async function fetchGateHistory(coin, n) {
@@ -645,8 +671,8 @@ async function fetchGateHistory(coin, n) {
   if (!Array.isArray(d)) return [];
   return d
     .sort((a, b) => (b.t ?? 0) - (a.t ?? 0))
-    .map(e => parseFloat(e.r) * 100)
-    .filter(v => isFinite(v));
+    .map(e => ({ t: toMs(e.t), rate: parseFloat(e.r) * 100 }))   // Gate `t` is epoch SECONDS
+    .filter(p => isFinite(p.rate) && isFinite(p.t));
 }
 
 async function fetchHyperliquidHistory(coin, n) {
@@ -670,8 +696,8 @@ async function fetchHyperliquidHistory(coin, n) {
   // is annualized via OKX's own intervalHours.
   return d
     .sort((a, b) => (b.time ?? 0) - (a.time ?? 0))
-    .map(e => parseFloat(e.fundingRate) * 100)
-    .filter(v => isFinite(v))
+    .map(e => ({ t: toMs(e.time), rate: parseFloat(e.fundingRate) * 100 }))
+    .filter(p => isFinite(p.rate) && isFinite(p.t))
     .slice(0, n);
 }
 
@@ -687,8 +713,8 @@ async function fetchDydxHistory(coin, n) {
   // for why each venue's history stays in its own native per-settlement unit.
   return list
     .sort((a, b) => new Date(b.effectiveAt ?? 0).getTime() - new Date(a.effectiveAt ?? 0).getTime())
-    .map(e => parseFloat(e.rate) * 100)
-    .filter(v => isFinite(v))
+    .map(e => ({ t: toMs(e.effectiveAt), rate: parseFloat(e.rate) * 100 }))   // effectiveAt is ISO
+    .filter(p => isFinite(p.rate) && isFinite(p.t))
     .slice(0, n);
 }
 
@@ -703,8 +729,8 @@ async function fetchAsterHistory(coin, n) {
   if (!Array.isArray(d)) return [];
   return d
     .sort((a, b) => (b.fundingTime ?? 0) - (a.fundingTime ?? 0))
-    .map(e => parseFloat(e.fundingRate) * 100)
-    .filter(v => isFinite(v));
+    .map(e => ({ t: toMs(e.fundingTime), rate: parseFloat(e.fundingRate) * 100 }))
+    .filter(p => isFinite(p.rate) && isFinite(p.t));
 }
 
 async function fetchGrvtHistory(coin, n) {
@@ -719,8 +745,8 @@ async function fetchGrvtHistory(coin, n) {
   if (!Array.isArray(rows)) return [];
   return rows
     .sort((a, b) => Number(b.funding_time ?? 0) - Number(a.funding_time ?? 0))
-    .map(e => parseFloat(e.funding_rate))
-    .filter(v => isFinite(v));
+    .map(e => ({ t: toMs(e.funding_time), rate: parseFloat(e.funding_rate) }))   // funding_time is NS; rate already %
+    .filter(p => isFinite(p.rate) && isFinite(p.t));
 }
 
 async function fetchLighterHistory(coin, n) {
@@ -739,8 +765,8 @@ async function fetchLighterHistory(coin, n) {
   if (!Array.isArray(rows)) return [];
   return rows
     .sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0))
-    .map(e => parseFloat(e.rate))
-    .filter(v => isFinite(v))
+    .map(e => ({ t: toMs(e.timestamp), rate: parseFloat(e.rate) }))   // timestamp is SECONDS; rate already %/hr
+    .filter(p => isFinite(p.rate) && isFinite(p.t))
     .slice(0, n);
 }
 
@@ -760,8 +786,8 @@ async function fetchExtendedHistory(coin, n) {
   if (!Array.isArray(rows)) return [];
   return rows
     .sort((a, b) => (b.T ?? 0) - (a.T ?? 0))
-    .map(e => parseFloat(e.f) * 100)
-    .filter(v => isFinite(v))
+    .map(e => ({ t: toMs(e.T), rate: parseFloat(e.f) * 100 }))
+    .filter(p => isFinite(p.rate) && isFinite(p.t))
     .slice(0, n);
 }
 
@@ -777,8 +803,8 @@ async function fetchPacificaHistory(coin, n) {
   if (!Array.isArray(rows)) return [];
   return rows
     .sort((a, b) => (b.created_at ?? 0) - (a.created_at ?? 0))
-    .map(e => parseFloat(e.funding_rate) * 100)
-    .filter(v => isFinite(v))
+    .map(e => ({ t: toMs(e.created_at), rate: parseFloat(e.funding_rate) * 100 }))
+    .filter(p => isFinite(p.rate) && isFinite(p.t))
     .slice(0, n);
 }
 
@@ -793,8 +819,8 @@ async function fetchApexHistory(coin, n) {
   if (!Array.isArray(rows)) return [];
   return rows
     .sort((a, b) => (b.fundingTime ?? 0) - (a.fundingTime ?? 0))
-    .map(e => parseFloat(e.rate) * 100)
-    .filter(v => isFinite(v))
+    .map(e => ({ t: toMs(e.fundingTime), rate: parseFloat(e.rate) * 100 }))
+    .filter(p => isFinite(p.rate) && isFinite(p.t))
     .slice(0, n);
 }
 
@@ -816,8 +842,9 @@ async function fetchEdgexHistory(coin, n) {
     const t = row.fundingTime;
     if (seen.has(t)) continue;
     seen.add(t);
-    const v = parseFloat(row.fundingRate);
-    if (isFinite(v)) out.push(v * 100);
+    const v  = parseFloat(row.fundingRate);
+    const ms = toMs(t);
+    if (isFinite(v) && isFinite(ms)) out.push({ t: ms, rate: v * 100 });
     if (out.length >= n) break;
   }
   return out;
@@ -838,8 +865,9 @@ async function fetchParadexHistory(coin, n) {
   const step = Math.max(1, Math.floor(rows.length / n));
   const out  = [];
   for (let i = 0; i < rows.length && out.length < n; i += step) {
-    const v = parseFloat(rows[i].funding_rate_8h);
-    if (isFinite(v)) out.push(v * 100);
+    const v  = parseFloat(rows[i].funding_rate_8h);
+    const ms = toMs(rows[i].created_at);
+    if (isFinite(v) && isFinite(ms)) out.push({ t: ms, rate: v * 100 });
   }
   return out;
 }
@@ -879,30 +907,73 @@ async function refreshHistoryCache(futures) {
   const fresh = {};
   await Promise.all(tasks.map(async ({ exchange, coin, fetcher }) => {
     try {
-      const rates = await fetcher(coin, HISTORY_N);
-      if (!rates.length) return;
+      const points = await fetcher(coin, HISTORY_N);   // [{ t, rate }] newest-first
+      if (!points.length) return;
       if (!fresh[exchange]) fresh[exchange] = {};
-      fresh[exchange][coin] = rates;
+      fresh[exchange][coin] = points;
     } catch { /* silent: old cache entry kept */ }
   }));
 
-  // Merge: new fetch overwrites; failed fetches keep old entry
+  // APPEND (not overwrite): merge fresh settled points onto the retained series, dedup by
+  // settlement timestamp, then trim to the 48h window + hard cap. Only REAL fetched
+  // settlements accumulate — never interpolated. Failed fetches keep the existing series
+  // (which still ages out points older than the window, and drops entirely once empty).
   let existing = {};
   try { existing = JSON.parse(fs.readFileSync(HISTORY_CACHE_FILE, 'utf8')).data || {}; } catch {}
 
-  for (const [exchange, coins] of Object.entries(fresh)) {
-    if (!existing[exchange]) existing[exchange] = {};
-    Object.assign(existing[exchange], coins);
+  const merged = {};
+  const venues = new Set([...Object.keys(existing), ...Object.keys(fresh)]);
+  for (const venue of venues) {
+    const exCoins = existing[venue] || {};
+    const frCoins = fresh[venue]    || {};
+    const coins   = new Set([...Object.keys(exCoins), ...Object.keys(frCoins)]);
+    for (const coin of coins) {
+      const series = mergeHistorySeries(exCoins[coin] || [], frCoins[coin] || []);
+      if (series.length) {
+        if (!merged[venue]) merged[venue] = {};
+        merged[venue][coin] = series;
+      }
+    }
   }
 
-  historyCache     = existing;
+  historyCache     = merged;
   historyFetchedAt = Date.now();
 
-  const total = Object.values(historyCache).reduce((s, v) => s + Object.keys(v).length, 0);
-  console.log(`[funding-hist] cache ready: ${total} coin-venue pairs (${tasks.length} fetched)`);
+  const pairs  = Object.values(historyCache).reduce((s, v) => s + Object.keys(v).length, 0);
+  const points = Object.values(historyCache).reduce((s, v) => s + Object.values(v).reduce((a, arr) => a + arr.length, 0), 0);
+  console.log(`[funding-hist] cache ready: ${pairs} coin-venue pairs, ${points} points (${tasks.length} fetched)`);
 
-  try { fs.writeFileSync(HISTORY_CACHE_FILE, JSON.stringify({ fetchedAt: historyFetchedAt, data: historyCache })); } catch {}
+  // Atomic write (tmp + rename): a concurrent reader never catches a half-written file.
+  try {
+    const tmpPath = HISTORY_CACHE_FILE + '.tmp.' + process.pid;
+    fs.writeFileSync(tmpPath, JSON.stringify({ fetchedAt: historyFetchedAt, data: historyCache }));
+    fs.renameSync(tmpPath, HISTORY_CACHE_FILE);
+  } catch {}
   return historyCache;
+}
+
+// Merge existing + fresh settled points into ONE newest-first { t, rate } series:
+// dedup by settlement timestamp (fresh wins a tie), drop anything older than the 48h
+// retention window, then hard-cap the count. Legacy flat-number cache entries (pre-migration)
+// carry no timestamp and are dropped here — the next fetch re-supplies those settlements WITH
+// timestamps, so the series rebuilds cleanly and nothing is fabricated.
+function mergeHistorySeries(existingPts, freshPts) {
+  const byT = new Map();
+  for (const p of existingPts) { const q = toTsPoint(p); if (q) byT.set(q.t, q); }
+  for (const p of freshPts)    { const q = toTsPoint(p); if (q) byT.set(q.t, q); }
+  const cutoff = Date.now() - HISTORY_RETENTION_MS;
+  return [...byT.values()]
+    .filter(p => p.t >= cutoff)
+    .sort((a, b) => b.t - a.t)         // newest-first (consumer contract)
+    .slice(0, HISTORY_MAX_POINTS);     // hard cap — memory backstop, never unbounded
+}
+
+// Accept only real timestamped points for retention; legacy numbers / malformed → null.
+function toTsPoint(p) {
+  if (p && typeof p === 'object' && isFinite(p.t) && isFinite(p.rate)) {
+    return { t: Math.round(p.t), rate: p.rate };
+  }
+  return null;
 }
 
 function loadHistoryCacheFromDisk() {
@@ -934,11 +1005,13 @@ function computeMedian(arr) {
  *   spike         — predicted deviates far from median (transient spike)
  *   confirmed     — recent settlements mostly agree with trailing direction
  *
- * @param {number}   predictedRate  — current ticker rate, %/interval
- * @param {number}   intervalHours
- * @param {number[]} historyRates   — settled rates newest-first, %
+ * @param {number} predictedRate  — current ticker rate, %/interval
+ * @param {number} intervalHours
+ * @param {Array<number|{t:number,rate:number}>} history — settled series, newest-first.
+ *        Accepts both the current { t, rate } points and legacy flat-number cache entries.
  */
-function legAnalytics(predictedRate, intervalHours, historyRates) {
+function legAnalytics(predictedRate, intervalHours, history) {
+  const historyRates = history.map(p => (typeof p === 'number' ? p : p?.rate)).filter(v => isFinite(v));
   if (!historyRates.length) {
     // No settled history (HL, dYdX, or fetch failed).
     // Treat hourly venues as confirmed unless the rate is extreme.
@@ -1230,7 +1303,10 @@ function rwaObservations(futures, hCache) {
       const data = (futures[venue] || {})[key];
       if (!data || typeof data.fundingRate !== 'number' || !isFinite(data.fundingRate)) continue;
       const intervalHours = data.fundingIntervalHours ?? 8;
-      const recent = ((hCache[venue] || {})[key] || []).slice(0, HISTORY_N);
+      const recent = ((hCache[venue] || {})[key] || [])
+        .slice(0, HISTORY_N)
+        .map(p => (typeof p === 'number' ? p : p?.rate))   // tolerate { t, rate } + legacy numbers
+        .filter(v => isFinite(v));
       const trailingRate = recent.length ? recent.reduce((s, r) => s + r, 0) / recent.length : data.fundingRate;
       legs.push({
         venue,
