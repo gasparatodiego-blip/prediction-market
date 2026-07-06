@@ -11,6 +11,12 @@ const path  = require('path');
 const { httpGet: _sharedGet } = require('../lib/httpGet');
 const { categoryFromText } = require('../lib/category');
 
+// Prisma (local Postgres) — read stored CopyConfigs for the paper engine. Guarded:
+// if the client/DB is unavailable the agent degrades to alert-only, never crashes.
+let prisma = null;
+try { prisma = new (require('@prisma/client').PrismaClient)(); }
+catch (e) { console.warn('[CW] Prisma unavailable — paper engine disabled:', e.message); }
+
 // ── Load .env for Telegram creds (pm2 doesn't auto-load project env files) ───
 // Read every candidate file (don't stop at the first one that merely exists —
 // .env.local exists but only carries ODDS_API_KEY; TELEGRAM_* live in .env).
@@ -33,6 +39,7 @@ const LEADERBOARD_FILE = '/tmp/leaderboard.json';
 // Durable copy-trading state (survives /tmp wipes + restarts; gitignored):
 const POSITION_STATE_FILE = path.join(DATA_DIR, 'copy-position-state.json');  // snapshot + watermark
 const COPY_EVENTS_FILE    = path.join(DATA_DIR, 'copy-events.json');          // append-merge open/close/adjust log
+const PAPER_POSITIONS_FILE = path.join(DATA_DIR, 'paper-positions.json');     // simulated positions + paper PnL
 
 const MAX_RPS           = 1.0;
 const POLL_INTERVAL_MS  = 5 * 60_000;   // 5 min between full cycles
@@ -54,6 +61,14 @@ let   recentAlerts    = [];
 let   positionSnapshot = {};       // wallet → { 'cid|outcome': {cid,outcome,title,netSize,avgPrice,category,updatedAt} }
 let   copyEvents       = [];        // durable open/close/adjust log (most-recent first)
 const copyEventKeys    = new Set(); // dedup: `${wallet}|${cid}|${outcome}|${ts}|${action}`
+// Paper engine (Phase 5): per-config simulated positions + realized/unrealized PnL,
+// driven by the copy-events above. lastPrice tracks the last OBSERVED executable
+// trade price per (cid|outcome) — a real fill price from the feed, used to mark
+// open positions and evaluate TP/SL. Never a midpoint, never fabricated.
+let   paperConfigs     = {};        // configKey → { ...config, positions, realizedPnl, closed, lastEventTs }
+let   lastPrice        = {};        // 'cid|outcome' → last real trade price seen
+const PAPER_DUST       = 0.5;       // sim shares below this = closed
+const MAX_PAPER_CLOSED = 50;        // recent closed sim trades kept per config
 
 // ── Rate-limited HTTP GET ─────────────────────────────────────────────────────
 let queue = [], busy = false;
@@ -116,6 +131,158 @@ function persistDurableState() {
     if (copyEvents.length > MAX_COPY_EVENTS) copyEvents = copyEvents.slice(0, MAX_COPY_EVENTS);
     atomicWrite(COPY_EVENTS_FILE, { updatedAt: new Date().toISOString(), events: copyEvents });
   } catch (e) { console.error('[CW] persist events err:', e.message); }
+}
+
+// ── Paper execution engine (Phase 5) ──────────────────────────────────────────
+// Consumes the copy-events log and, for each stored CopyConfig, maintains SIMULATED
+// positions + realized/unrealized paper PnL. Honest-engine: fills use the copied
+// trade's REAL executed price (a genuine executable fill from the feed, never a
+// midpoint); an out-of-range/absent price is skipped and logged, never fabricated.
+// Live execution stays OFF — this never places a real order.
+function loadPaperState() {
+  try {
+    const s = JSON.parse(fs.readFileSync(PAPER_POSITIONS_FILE, 'utf8'));
+    if (s.configs && typeof s.configs === 'object') paperConfigs = s.configs;
+    if (s.lastPrice && typeof s.lastPrice === 'object') lastPrice = s.lastPrice;
+    console.log(`[CW] Restored paper state: ${Object.keys(paperConfigs).length} configs`);
+  } catch { /* first run */ }
+}
+
+function persistPaperState() {
+  try {
+    atomicWrite(PAPER_POSITIONS_FILE, {
+      updatedAt: new Date().toISOString(),
+      liveExecution: false,   // explicit: paper only, AUTO_EXECUTE stays OFF
+      configs: paperConfigs,
+      lastPrice,
+    });
+  } catch (e) { console.error('[CW] persist paper err:', e.message); }
+}
+
+async function getCopyConfigs() {
+  if (!prisma) return [];
+  try { return await prisma.copyConfig.findMany(); }
+  catch (e) { console.warn('[CW] copyConfig read failed:', e.message); return []; }
+}
+
+// A copied fill is executable only if its price is a sane 0<p<1 outcome price and
+// size>0. Anything else is skipped (never fabricated into a fill).
+function isExecutable(price, size) {
+  return Number.isFinite(price) && price > 0 && price < 1 && Number.isFinite(size) && size > 0;
+}
+
+function runPaperEngine(configs) {
+  // Refresh last observed executable prices from the whole event log (real fills).
+  for (const e of copyEvents) {
+    if (isExecutable(e.price, e.size)) lastPrice[`${e.cid}|${e.outcome}`] = e.price;
+  }
+
+  const liveKeys = new Set();
+  for (const cfg of configs) {
+    const key = `${cfg.userId}|${cfg.walletAddr.toLowerCase()}`;
+    liveKeys.add(key);
+    const cats = Array.isArray(cfg.categories) ? cfg.categories : [];
+    const catSet = new Set(cats);
+    const pct = cfg.pctPerOrder > 0 ? cfg.pctPerOrder : 5;
+
+    let st = paperConfigs[key];
+    if (!st) st = paperConfigs[key] = { userId: cfg.userId, walletAddr: cfg.walletAddr,
+      positions: {}, realizedPnl: 0, closed: [], lastEventTs: 0 };
+    // keep config knobs fresh (user may have edited them)
+    st.categories = cats; st.pctPerOrder = pct; st.maxOpenPositions = cfg.maxOpenPositions;
+    st.exitMode = cfg.exitMode; st.tpPct = cfg.tpPct; st.slPct = cfg.slPct; st.walletAddr = cfg.walletAddr;
+
+    // Chronological, un-processed events for THIS watched wallet (watermark guard =
+    // ignore stale fills; also a hard no-double-process).
+    const wl = cfg.walletAddr.toLowerCase();
+    const evs = copyEvents
+      .filter(e => e.wallet && e.wallet.toLowerCase() === wl && (e.timestamp || 0) > st.lastEventTs)
+      .sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+
+    for (const e of evs) {
+      st.lastEventTs = Math.max(st.lastEventTs, e.timestamp || 0);
+      // category filter (empty = all)
+      if (catSet.size > 0 && !catSet.has(e.category || 'other')) continue;
+      // pre-flight price sanity — no fabricated fills
+      if (!isExecutable(e.price, e.size)) { console.log(`[CW][paper] skip non-executable ${e.action} ${(e.market||e.cid||'').slice(0,30)} p=${e.price}`); continue; }
+
+      const pkey = `${e.cid}|${e.outcome}`;
+      const pos  = st.positions[pkey];
+      const yourShares = e.size * pct / 100;   // mirror sizing: pct of their order
+
+      if (e.action === 'OPEN' || e.action === 'ADD') {
+        if (!pos) {
+          // maxOpen cap (only blocks NEW positions; adds to existing are fine)
+          if (Object.keys(st.positions).length >= (cfg.maxOpenPositions || 999)) {
+            console.log(`[CW][paper] maxOpen ${cfg.maxOpenPositions} reached — skip new ${(e.market||'').slice(0,30)}`);
+            continue;
+          }
+          st.positions[pkey] = { cid: e.cid, outcome: e.outcome, market: e.market,
+            category: e.category, shares: yourShares, entryAvg: e.price, openedAt: e.timestamp };
+        } else {
+          // ADD → weighted-average entry (no double-entry: same key updates in place)
+          const tot = pos.shares + yourShares;
+          pos.entryAvg = tot > 0 ? (pos.shares * pos.entryAvg + yourShares * e.price) / tot : e.price;
+          pos.shares = tot;
+        }
+      } else if ((e.action === 'REDUCE' || e.action === 'CLOSE') && st.exitMode === 'mirror' && pos) {
+        // Mirror exit: shrink our position by the same fraction they exited.
+        const frac = e.action === 'CLOSE' ? 1
+          : (e.prevSize > 0 ? Math.min(1, e.size / e.prevSize) : 1);
+        const out  = pos.shares * frac;
+        const pnl  = out * (e.price - pos.entryAvg);   // realized paper PnL (USDC)
+        st.realizedPnl += pnl;
+        pos.shares -= out;
+        st.closed.unshift({ market: pos.market, outcome: pos.outcome, category: pos.category,
+          shares: Math.round(out * 100) / 100, entryAvg: pos.entryAvg, exitPrice: e.price,
+          pnl: Math.round(pnl * 100) / 100, reason: e.action === 'CLOSE' ? 'mirror-close' : 'mirror-reduce',
+          closedAt: e.timestamp });
+        if (pos.shares <= PAPER_DUST) delete st.positions[pkey];
+      }
+      // exitMode 'tpsl' ignores the trader's REDUCE/CLOSE — own TP/SL handled below.
+    }
+
+    // TP/SL evaluation for 'tpsl' configs — mark at last real observed price.
+    if (st.exitMode === 'tpsl') {
+      for (const [pkey, pos] of Object.entries(st.positions)) {
+        const mark = lastPrice[pkey];
+        if (!Number.isFinite(mark) || pos.entryAvg <= 0) continue;   // can't mark → don't fabricate
+        const chg = (mark - pos.entryAvg) / pos.entryAvg;            // long the outcome token
+        const hitTp = cfg.tpPct != null && chg >=  cfg.tpPct / 100;
+        const hitSl = cfg.slPct != null && chg <= -cfg.slPct / 100;
+        if (hitTp || hitSl) {
+          const pnl = pos.shares * (mark - pos.entryAvg);
+          st.realizedPnl += pnl;
+          st.closed.unshift({ market: pos.market, outcome: pos.outcome, category: pos.category,
+            shares: Math.round(pos.shares * 100) / 100, entryAvg: pos.entryAvg, exitPrice: mark,
+            pnl: Math.round(pnl * 100) / 100, reason: hitTp ? 'take-profit' : 'stop-loss',
+            closedAt: Math.floor(Date.now() / 1000) });
+          delete st.positions[pkey];
+        }
+      }
+    }
+
+    // Recompute unrealized from marks (positions without a mark contribute nothing —
+    // shown as unmarked, never guessed).
+    let unreal = 0, marked = 0, total = 0;
+    for (const [pkey, pos] of Object.entries(st.positions)) {
+      total++;
+      const mark = lastPrice[pkey];
+      if (Number.isFinite(mark)) { unreal += pos.shares * (mark - pos.entryAvg); marked++; }
+    }
+    st.unrealizedPnl = marked > 0 ? Math.round(unreal * 100) / 100 : null;
+    st.openPositions = total;
+    st.markedPositions = marked;
+    st.realizedPnl = Math.round(st.realizedPnl * 100) / 100;
+    if (st.closed.length > MAX_PAPER_CLOSED) st.closed = st.closed.slice(0, MAX_PAPER_CLOSED);
+  }
+
+  // Drop paper state for configs the user deleted.
+  for (const k of Object.keys(paperConfigs)) if (!liveKeys.has(k)) delete paperConfigs[k];
+
+  persistPaperState();
+  const open = Object.values(paperConfigs).reduce((n, s) => n + Object.keys(s.positions).length, 0);
+  console.log(`[CW][paper] ${configs.length} configs · ${open} open sim positions`);
 }
 
 // Real OPEN/CLOSE/ADD/REDUCE tracking from the trades feed already polled.
@@ -245,7 +412,9 @@ function loadLeaderboardMap() {
 // ── Poll one wallet ───────────────────────────────────────────────────────────
 async function pollWallet(entry, lbMap) {
   const { wallet, name, alertsEnabled } = entry;
-  if (!alertsEnabled) return;
+  // NOTE: we poll + track positions for EVERY wallet in the set (incl. copy-config
+  // wallets with alerts off) so the paper engine sees their opens/closes. Only the
+  // Telegram alert emission below is gated on alertsEnabled.
 
   let trades;
   try {
@@ -279,6 +448,8 @@ async function pollWallet(entry, lbMap) {
 
   // Phase 2 — real open/close tracking from ALL new trades (not just the alert cap).
   trackPositions(wallet, traderName, newTrades);
+
+  if (!alertsEnabled) return;   // tracking done; skip Telegram for copy-only wallets
 
   for (const trade of newTrades.slice(0, 5)) {  // cap at 5 per cycle per wallet
     const conditionId = trade.market ?? trade.conditionId ?? '';
@@ -330,23 +501,36 @@ function writeState(wallets) {
 // ── Main scan loop ─────────────────────────────────────────────────────────────
 async function scan() {
   beat();
-  const wallets = loadWatchlist();
-  const lbMap   = loadLeaderboardMap();
+  const watchlist = loadWatchlist();
+  const lbMap     = loadLeaderboardMap();
+  const configs   = await getCopyConfigs();
+
+  // Poll set = watchlist ∪ CopyConfig wallets (deduped, case-insensitive). Config
+  // wallets are polled with alerts OFF — they exist only to feed the paper engine.
+  const byAddr = new Map();
+  for (const w of watchlist) byAddr.set((w.wallet || '').toLowerCase(), w);
+  for (const c of configs) {
+    const a = (c.walletAddr || '').toLowerCase();
+    if (a && !byAddr.has(a)) byAddr.set(a, { wallet: c.walletAddr, name: null, alertsEnabled: false, copyOnly: true });
+  }
+  const wallets = [...byAddr.values()].slice(0, MAX_WALLETS);
 
   if (wallets.length === 0) {
     writeState([]);
+    runPaperEngine(configs);   // no-op cleanup if configs exist without wallets
     return;
   }
 
   const active = wallets.filter(w => w.alertsEnabled);
-  console.log(`[CW] Polling ${active.length}/${wallets.length} wallets…`);
+  console.log(`[CW] Polling ${wallets.length} wallets (${active.length} alerting, ${configs.length} copy-configs)…`);
   for (const entry of wallets) {
     await pollWallet(entry, lbMap);
     beat();
   }
 
   writeState(wallets);
-  persistDurableState();   // snapshot + watermark + event log (atomic, restart-safe)
+  persistDurableState();       // snapshot + watermark + event log (atomic, restart-safe)
+  runPaperEngine(configs);     // drive simulated positions/PnL from the fresh events
   console.log(`[CW] Done. Alerts: ${recentAlerts.length}, copy-events: ${copyEvents.length}`);
 }
 
@@ -354,6 +538,7 @@ async function scan() {
 console.log('[CW] Starting agent21-copy-watcher — read-only, zero Claude, zero keys');
 console.log(`[CW] Telegram: ${BOT_TOKEN ? 'configured' : 'NOT SET — alerts will log only'}`);
 loadDurableState();   // resume watermark + position snapshot + event log (no double-fire)
+loadPaperState();     // resume simulated positions + paper PnL
 writeState([]);
 
 setTimeout(async () => {
