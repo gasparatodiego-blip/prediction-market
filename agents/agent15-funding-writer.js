@@ -70,6 +70,10 @@ const CONFIRM_LOOK       = 3;            // last N settlements to check directio
 const CONFIRM_MIN        = 2;            // need ≥ this many same-direction as trailing
 const HOURLY_SPIKE_ANN   = 115;          // %/yr — extreme threshold for hourly venues (no history)
 
+// A leg stays "verified" across a transient empty settled fetch only if the last
+// real settled value is fresher than SETTLED_FRESHNESS_MULT funding intervals.
+const SETTLED_FRESHNESS_MULT = 2;   // 2× the venue's own funding interval; raise for laxer, lower for stricter
+
 // Slip-curve sizing
 const SIZE_LADDER         = [500, 1_000, 2_500, 5_000, 10_000, 25_000, 50_000, 100_000, 250_000, 500_000];
 const SLIPPAGE_AMORT_DAYS = 14;          // amortize round-trip entry+exit cost over 14 days
@@ -77,6 +81,10 @@ const MULT_REFRESH_MS     = 15 * 60_000; // contract multiplier cache refresh ca
 
 let historyCache     = null;
 let historyFetchedAt = 0;
+// Last real settled rate ever seen per venue+symbol, so a single transient empty
+// settled-history fetch doesn't drop a leg's verified status. In-memory only — cold
+// on restart, re-warms as soon as one real fetch succeeds. Key: `${exchange}:${coin}`.
+const lastGoodSettled = new Map();   // key -> { rate, ts }
 let multCache        = { okx: {}, gateio: {}, bitget: {} };
 let multFetchedAt    = 0;
 let edgexIdCache     = {};   // coin → edgeX numeric contractId (endpoints don't accept coin/name)
@@ -911,6 +919,9 @@ async function refreshHistoryCache(futures) {
       if (!points.length) return;
       if (!fresh[exchange]) fresh[exchange] = {};
       fresh[exchange][coin] = points;
+      // Real settled value, freshly confirmed this refresh — remember it for the
+      // freshness-gated verification fallback (see isSettledStillFresh below).
+      lastGoodSettled.set(`${exchange}:${coin}`, { rate: points[0].rate, ts: Date.now() });
     } catch { /* silent: old cache entry kept */ }
   }));
 
@@ -990,6 +1001,17 @@ function loadHistoryCacheFromDisk() {
 }
 
 // ── Per-leg analytics ─────────────────────────────────────────────────────────
+
+// True if a real settled rate was seen for this venue+coin within
+// SETTLED_FRESHNESS_MULT funding intervals — used ONLY to keep a leg's verified
+// flag alive through a single transient empty settled-history fetch. Never used
+// to alter the displayed/trailing rate.
+function isSettledStillFresh(exchange, coin, intervalHours) {
+  const cached = lastGoodSettled.get(`${exchange}:${coin}`);
+  if (!cached) return false;
+  const limitMs = SETTLED_FRESHNESS_MULT * intervalHours * 3_600_000;
+  return (Date.now() - cached.ts) <= limitMs;
+}
 
 function computeMedian(arr) {
   if (!arr.length) return 0;
@@ -1150,7 +1172,12 @@ function crossExchangeSpread(futures, hCache) {
         // Spike / confirmation flags
         const spikeFlag        = analShort.spike || analLong.spike;
         const allConfirmed     = analShort.confirmed && analLong.confirmed;
-        const oneLegUnverified = !analShort.historyAvailable || !analLong.historyAvailable;
+        // A leg with no history THIS cycle still counts as verified if a real settled
+        // rate was seen recently enough (freshness-gated) — survives one transient
+        // empty fetch without fabricating or displaying anything different.
+        const shortUnverified  = !analShort.historyAvailable && !isSettledStillFresh(shortSide.exchange, coin, shortSide.intervalHours);
+        const longUnverified   = !analLong.historyAvailable  && !isSettledStillFresh(longSide.exchange,  coin, longSide.intervalHours);
+        const oneLegUnverified = shortUnverified || longUnverified;
         const fullyConfirmed   = allConfirmed && !oneLegUnverified && !spikeFlag;
 
         const totalFees  = roundTripFeeByVenue(shortSide.exchange, longSide.exchange);
