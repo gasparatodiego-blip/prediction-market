@@ -1,6 +1,17 @@
 module.exports = {
   apps: [
     {
+      name:          'agent27-news-guard',
+      script:        './agents/agent27-news-guard.js',
+      cwd:           '/root/prediction-market',
+      restart_delay: 30000,
+      max_restarts:  20,
+      max_memory_restart: '150M',   // small: RSS text + a per-market news cache
+      watch:         false,
+      autorestart:   true,
+      env:           { NODE_ENV: 'production', HOME: '/root' },
+    },
+    {
       name:          'agent26-landing-auditor',
       script:        './agents/agent26-landing-auditor.js',
       cwd:           '/root/prediction-market',
