@@ -707,9 +707,6 @@ function FundingCard({ s, capital, leverage }: { s: SpreadItem; capital: number;
         <div className="flex items-center flex-wrap gap-x-2 gap-y-1 min-w-0">
           <span className="font-mono font-bold text-ink tracking-tight truncate" style={{ fontSize: 15 }}>{s.coin}</span>
           <span className="font-body uppercase" style={{ fontSize: 9, letterSpacing: '0.14em', color: tier.color }}>{tier.label}</span>
-          {s.oneLegUnverified && (
-            <span className="font-body" style={{ fontSize: 9, color: '#b45309' }}>⚠ 1 leg non verificata</span>
-          )}
         </div>
         <div className="text-right shrink-0">
           <div className="font-body uppercase" style={{ fontSize: 8.5, letterSpacing: '0.12em', color: '#9aa5b3' }}>payback</div>
@@ -739,7 +736,7 @@ function FundingCard({ s, capital, leverage }: { s: SpreadItem; capital: number;
             <div className="font-mono font-bold text-muted" style={{ fontSize: 24 }}>—</div>
           )}
           <div className="font-body mt-1" style={{ fontSize: 10, color: '#6b7787' }}>
-            net / day{s.oneLegUnverified && !redacted ? ' · 1 leg predicted, rate unconfirmed' : ''}
+            net / day
           </div>
         </div>
         <div className="text-right font-mono tabular-nums shrink-0" style={{ fontSize: 10, color: '#9aa5b3' }}>

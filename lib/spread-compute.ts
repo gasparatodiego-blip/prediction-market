@@ -347,13 +347,15 @@ export function getCryptoSpreadsData(): CryptoSpreadsData {
       const oneLegUnverified = lu === undefined ? true : lu.oneLegUnverified;
 
       // Honest tiering: HARVEST is the most attractive label and must imply a cashable,
-      // both-legs-verified, real-depth opportunity. Downgrade to CAUTION (never hide) when a
-      // leg is unverified, the book is VERY THIN, or one leg contributes no funding (frShort/
-      // frLong === 0 → single-leg pseudo-spread). Classification ONLY — net/day, capacity, and
-      // fees are untouched; this just refuses to paint an unverified/thin pair as HARVEST.
+      // real-depth opportunity. Downgrade to CAUTION (never hide) when the book is VERY THIN
+      // or one leg contributes no funding (frShort/frLong === 0 → single-leg pseudo-spread).
+      // Classification ONLY — net/day, capacity, and fees are untouched; this just refuses to
+      // paint a thin/single-leg pair as HARVEST. A one-leg-unverified (predicted-rate) pair is
+      // intentionally NOT downgraded here — it ranks by payback like any other pair (owner
+      // decision); the oneLegUnverified field is preserved for downstream alert suppression.
       const veryThin  = s.liquidityTier === 'VERY THIN';
       const singleLeg = s.frShort === 0 || s.frLong === 0;
-      const status    = (s.status === 'HARVEST' && (oneLegUnverified || veryThin || singleLeg))
+      const status    = (s.status === 'HARVEST' && (veryThin || singleLeg))
         ? 'CAUTION' as const
         : s.status;
 
