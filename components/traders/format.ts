@@ -33,6 +33,10 @@ export interface LbEntry {
   wins:            number | null;
   losses:          number | null;
   twoSidedPct?:    number;
+  // Per-window ranking stats, keyed 1d/7d/30d/all. Absent today (agent20 serves
+  // all-time only); when backfilled, the window selector renders the extra options
+  // automatically (see availWindows in TradersApp). null/absent → window hidden.
+  windows?:        Partial<Record<WindowKey, WindowStat>> | null;
   walletType?:     'MM' | 'DIRECTIONAL' | null;
   actorType?:      ActorType | null;
   opsCounts?:      OpsCounts | null;

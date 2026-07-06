@@ -136,24 +136,19 @@ export default function TraderProfileView({
                 <div className={`font-display font-bold text-4xl tabular-nums leading-none ${pnlColor(heroPnl)}`}>
                   <Redacted value={heroPnl}>{v => fmtPnl(v)}</Redacted>
                 </div>
-                {availWindows.length > 0 && (
+                {/* Only windows with populated per-window data render; with a single
+                    available window the selector is omitted (no dead buttons). */}
+                {availWindows.length > 1 && (
                   <div className="flex gap-3 mt-3">
-                    {(['1d', '7d', '30d', 'all'] as WindowKey[]).map(k => {
-                      const on = availWindows.includes(k);
-                      const active = win === k;
-                      return (
-                        <button key={k} disabled={!on} onClick={() => setWin(k)}
-                          title={on ? undefined : 'Per-window data backfilling'}
-                          className={[
-                            'font-body text-[11px] pb-0.5 border-b-2 transition-colors',
-                            active ? 'text-ink border-[#0c9d6e]'
-                              : on ? 'text-muted border-transparent hover:text-ink-2'
-                                   : 'text-muted/40 border-transparent cursor-not-allowed',
-                          ].join(' ')}>
-                          {WINDOW_LABEL[k]}
-                        </button>
-                      );
-                    })}
+                    {availWindows.map(k => (
+                      <button key={k} onClick={() => setWin(k)}
+                        className={[
+                          'font-body text-[11px] pb-0.5 border-b-2 transition-colors',
+                          win === k ? 'text-ink border-[#0c9d6e]' : 'text-muted border-transparent hover:text-ink-2',
+                        ].join(' ')}>
+                        {WINDOW_LABEL[k]}
+                      </button>
+                    ))}
                   </div>
                 )}
               </div>

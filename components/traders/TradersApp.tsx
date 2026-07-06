@@ -9,11 +9,13 @@ import { ActorBadge, VerifiedTick, WinRate, ConfidenceBar, CopyButton } from './
 import TraderProfileView from './TraderProfile';
 import {
   fmtPnl, fmtVol, fmtWallet, fmtUpdated, displayName, pnlColor, isLowSample,
-  type LbData, type LbEntry, type TraderProfile,
+  type LbData, type LbEntry, type TraderProfile, type WindowKey,
 } from './format';
 
 type Tab = 'leaderboard' | 'bots';
 type RankBy = 'profit' | 'volume';
+
+const WINDOW_LABEL: Record<WindowKey, string> = { '1d': '1D', '7d': '7D', '30d': '30D', all: 'ALL' };
 
 const COPY_STORE = 'edgeradar.traders.copying';
 interface CopySlot { wallet: string; name: string; at: number; }
@@ -53,6 +55,7 @@ export default function TradersApp() {
   const [tab, setTab]         = useState<Tab>('leaderboard');
   const [cat, setCat]         = useState('All');
   const [rankBy, setRankBy]   = useState<RankBy>('profit');
+  const [win, setWin]         = useState<WindowKey>('all');
   const [lbData, setLbData]   = useState<LbData | null>(null);
   const [error, setError]     = useState('');
 
@@ -147,6 +150,19 @@ export default function TradersApp() {
         || (b.pnlUsdc ?? -Infinity) - (a.pnlUsdc ?? -Infinity));
   }, [lbData]);
 
+  // Window availability is DATA-DRIVEN, never a hardcoded list. A window renders
+  // only if some served entry carries populated per-window data for it. 'all'
+  // (all-time) is always present — the list itself IS the all-time ranking. Today
+  // entries carry no windows{}, so only ALL qualifies and the selector row is
+  // hidden entirely (no dead/disabled buttons). When agent20 backfills per-entry
+  // windows{}, the extra buttons appear automatically. Honest-engine: we never
+  // render all-time numbers under a 1D/7D/30D label.
+  const availWindows = useMemo<WindowKey[]>(() => {
+    const entries = Object.values(lbData?.categories ?? {}).flat();
+    return (['1d', '7d', '30d', 'all'] as WindowKey[])
+      .filter(k => k === 'all' || entries.some(e => e.windows?.[k] != null));
+  }, [lbData]);
+
   const warmingUp = !lbData || (!lbData.ok && !lbData.updatedAt);
   const atLimit   = copy.count >= maxSlots;
 
@@ -229,25 +245,23 @@ export default function TradersApp() {
                 </button>
               ))}
             </div>
-            {/* Window: the list carries only the agent's all-time resolved window.
-                1D/7D/30D are disabled until per-window data is backfilled — shown,
-                never faked (honest-engine). Populates automatically when available. */}
-            <div className="flex items-center gap-4">
-              <span className="font-body text-[10px] uppercase tracking-wide text-muted">Window</span>
-              {(['1d', '7d', '30d', 'all'] as const).map(w => {
-                const on = w === 'all';
-                return (
-                  <button key={w} disabled={!on}
-                    title={on ? undefined : 'Per-window ranking backfilling — showing all-time'}
+            {/* Window selector — only renders windows that actually have data (see
+                availWindows). With a single available window (today: all-time only)
+                the whole row is hidden, so users never see dead/disabled buttons. */}
+            {availWindows.length > 1 && (
+              <div className="flex items-center gap-4">
+                <span className="font-body text-[10px] uppercase tracking-wide text-muted">Window</span>
+                {availWindows.map(w => (
+                  <button key={w} onClick={() => setWin(w)}
                     className={[
-                      'font-body text-[11px] uppercase tracking-wide pb-0.5 border-b-2',
-                      on ? 'text-ink border-[#0c9d6e]' : 'text-muted/40 border-transparent cursor-not-allowed',
+                      'font-body text-[11px] uppercase tracking-wide pb-0.5 border-b-2 transition-colors',
+                      win === w ? 'text-ink border-[#0c9d6e]' : 'text-muted border-transparent hover:text-ink-2',
                     ].join(' ')}>
-                    {w}
+                    {WINDOW_LABEL[w]}
                   </button>
-                );
-              })}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Category chips — real API keys only */}
