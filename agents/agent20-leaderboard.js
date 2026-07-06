@@ -12,6 +12,9 @@ const { rlGet } = require('../lib/rateLimitedFetch');  // per-host limiter — A
 const { chain }        = require('stream-chain');
 const { parser }       = require('stream-json');
 const { streamObject } = require('stream-json/streamers/stream-object.js');
+const { disassembler } = require('stream-json/disassembler.js');
+const { stringer }     = require('stream-json/stringer.js');
+const { Readable }     = require('stream');
 
 // ── Crash-proof boot ─────────────────────────────────────────────────────────
 // Turn a hard unhandled death (which can leave pm2 with "Process not found")
@@ -130,9 +133,9 @@ async function migrateAddTwoSided() {
     }
     processedCids[cid].twoSidedChecked = true;
     done++;
-    if (done % 100 === 0) { saveCache(); writeOutput(); console.log(`[LB] Migration: ${done}/${toMigrate.length}`); }
+    if (done % 100 === 0) { await saveCache(); writeOutput(); console.log(`[LB] Migration: ${done}/${toMigrate.length}`); }
   }
-  saveCache();
+  await saveCache();
   writeOutput();
   console.log(`[LB] Migration complete: ${done} CIDs re-processed`);
 }
@@ -188,6 +191,30 @@ function atomicWrite(path, data) {
   const tmp = path + '.tmp.' + process.pid;
   fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
   fs.renameSync(tmp, path);
+}
+
+// Streamed atomic write for the large (~187MB) leaderboard cache. The old
+// JSON.stringify(data, null, 2) built a ~370MB transient string on top of the
+// ~440MB resident working set every saveCache() (every 20 markets mid-scan),
+// spiking RSS to ~950MB and triggering a kernel global-OOM SIGKILL. Disassembling
+// the object into a token stream and piping to disk keeps write-time RSS ~flat
+// (no full string materialized). Byte-content is identical JSON — no displayed
+// number changes; only whitespace differs (minified), which no consumer parses on.
+let _writeSeq = 0;
+function atomicWriteStreamed(path, data) {
+  return new Promise((resolve, reject) => {
+    const tmp = `${path}.tmp.${process.pid}.${_writeSeq++}`;
+    const ws  = fs.createWriteStream(tmp);
+    const pipe = chain([
+      Readable.from([data], { objectMode: true }),
+      disassembler(),
+      stringer(),
+      ws,
+    ]);
+    pipe.on('error', (e) => { try { fs.unlinkSync(tmp); } catch {} reject(e); });
+    ws.on('error',   (e) => { try { fs.unlinkSync(tmp); } catch {} reject(e); });
+    ws.on('finish',  () => { try { fs.renameSync(tmp, path); resolve(); } catch (e) { reject(e); } });
+  });
 }
 
 // ── Heartbeat ─────────────────────────────────────────────────────────────────
@@ -381,7 +408,7 @@ function loadCache() {
       wallets       = {};
       resolve();
     });
-    pipeline.on('end', () => {
+    pipeline.on('end', async () => {
       processedCids = loaded.processedCids;
       wallets       = loaded.wallets;
       profiles      = loaded.profiles;
@@ -393,14 +420,14 @@ function loadCache() {
         evictWallets();
         const after = Object.keys(wallets).length;
         console.log(`[LB] wallets cache trimmed ${before} -> ${after} on load`);
-        saveCache();
+        await saveCache();
       }
       resolve();
     });
   });
 }
 
-function saveCache() {
+async function saveCache() {
   // Trim old entries
   const cutoff = Date.now() / 1000 - WINDOW_DAYS * 86400;
   for (const [addr, w] of Object.entries(wallets)) {
@@ -422,7 +449,7 @@ function saveCache() {
   if (tKeys.length > MAX_TITLE_CACHE) cidTitles = Object.fromEntries(tKeys.slice(-Math.floor(MAX_TITLE_CACHE * 2 / 3)).map(k => [k, cidTitles[k]]));
   // Drop profiles for wallets evicted from the cache (memory bound)
   for (const a of Object.keys(profiles)) if (!wallets[a]) delete profiles[a];
-  atomicWrite(CACHE_FILE, { processedCids, wallets, profiles, cidTitles, savedAt: new Date().toISOString() });
+  await atomicWriteStreamed(CACHE_FILE, { processedCids, wallets, profiles, cidTitles, savedAt: new Date().toISOString() });
 }
 
 // ── Wallet-centric MM classification for top-N by volume ─────────────────────
@@ -472,7 +499,7 @@ async function classifyTopWallets() {
     done++;
   }
 
-  if (done > 0) { saveCache(); writeOutput(); }
+  if (done > 0) { await saveCache(); writeOutput(); }
   console.log(`[LB] Wallet classification done: ${done} classified`);
 }
 
@@ -1015,7 +1042,7 @@ async function processEventBatch(order, ascending, limit) {
     }
     processed++;
     // Save every 20 markets to avoid losing data on crash
-    if (processed % 20 === 0) { saveCache(); writeOutput(); }
+    if (processed % 20 === 0) { await saveCache(); writeOutput(); }
   }
 
   return toProcess.length;
@@ -1047,7 +1074,7 @@ async function scan() {
   await fetchLeaderboardWindows();
   await enrichTopWallets();
 
-  saveCache();
+  await saveCache();
   writeOutput();
   beat();
 
