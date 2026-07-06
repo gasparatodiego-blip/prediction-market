@@ -15,6 +15,7 @@ export type RouteKey =
   | 'carry'
   | 'liquidity-rewards'
   | 'liquidity-rewards-book'
+  | 'rewards-unified'
   | 'kalshi-rewards'
   | 'kalshi-rewards-book'
   | 'lp'
@@ -210,6 +211,22 @@ export const REDACTION_MAP: Record<RouteKey, string[]> = {
   'liquidity-rewards-book': [
     'yes',
     'no',
+  ],
+
+  // Unified normalized reward board (/tmp/liquidity-rewards.json). Redact the same
+  // executable/pool numbers as the per-venue routes so the estimator degrades to a
+  // calm "unlock" state on the free tier. Teasers kept: title, category, venue,
+  // hoursToResolution, twoSidedRequired, volatilityRisk, newsRisk, flags.
+  'rewards-unified': [
+    'markets[].midpoint',
+    'markets[].maxSpread',
+    'markets[].minSize',
+    'markets[].dailyPool',
+    'markets[].qualifyingLiquidity',
+    'markets[].bookDepthAtBand',
+    'markets[].volatilityStdev',
+    'markets[].lastPrice',
+    'markets[].bookSpread',
   ],
 
   'kalshi-rewards': [
