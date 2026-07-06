@@ -25,6 +25,7 @@
  */
 
 const fs = require('fs');
+const path = require('path');
 const { httpGet, httpPost } = require('../lib/httpGet');
 const { RWA_KEYS, RWA_VENUES, isRwaKey, rwaVenueSymbol, rwaLabel } = require('../lib/rwa');
 const { rlGet, rlPost } = require('../lib/rateLimitedFetch');
@@ -63,6 +64,20 @@ const HISTORY_REFRESH_MS = 15 * 60_000;  // refresh history cache every 15 min
 // pts × ~35 B/pt ≈ 2.5 MB (realistically <1 MB — most series are 6–48 pts).
 const HISTORY_RETENTION_MS = 48 * 60 * 60_000;  // 48h rolling window (by settlement time)
 const HISTORY_MAX_POINTS   = 200;               // hard cap per (venue,coin) — memory backstop
+
+// ── Persistent 14-day settled-funding history ─────────────────────────────────
+// The /tmp ring buffer above only holds ~48h and is wiped on reboot. This is an
+// APPEND-ONLY mirror on durable disk (repo data/ dir) so real "payback + profit-
+// duration" can later be computed per pair over a long horizon. It stores the SAME
+// real settled points the 48h buffer just merged — identical venue+coin key and
+// {t,rate} shape, identical dedup-by-timestamp merge. Never interpolated/backfilled;
+// points accumulate ORGANICALLY going forward (not full on day one — that's honest).
+// Retention by settlement TIME (interval-agnostic). On-disk worst-case ≈ 15 venues ×
+// ~24 coins × ≤500 pts × ~35 B/pt ≈ 6 MB; realistically far less. Gitignored (data/*.json).
+const PERSIST_HISTORY_FILE   = path.join(__dirname, '..', 'data', 'funding-history-14d.json');
+const PERSIST_RETENTION_DAYS = 14;
+const PERSIST_RETENTION_MS   = PERSIST_RETENTION_DAYS * 24 * 60 * 60_000;
+const PERSIST_MAX_POINTS     = 500;             // per (venue,coin) series hard cap (memory/disk bound)
 const SPIKE_MULT         = 3;            // |pred − median| > SPIKE_MULT × |median| → spike
 const SPIKE_ABS_FLOOR    = 0.01;         // %/interval — min deviation to flag (avoids near-zero noise)
 const SPIKE_ABS_MIN_RATE = 0.02;         // %/interval — min predicted rate magnitude to flag
@@ -960,6 +975,11 @@ async function refreshHistoryCache(futures) {
     fs.writeFileSync(tmpPath, JSON.stringify({ fetchedAt: historyFetchedAt, data: historyCache }));
     fs.renameSync(tmpPath, HISTORY_CACHE_FILE);
   } catch {}
+
+  // ALSO append the SAME real settled points to the durable 14-day store (survives reboot).
+  // Additive to the 48h buffer above — extends retention only, never a second convention.
+  appendPersistentHistory(merged);
+
   return historyCache;
 }
 
@@ -977,6 +997,54 @@ function mergeHistorySeries(existingPts, freshPts) {
     .filter(p => p.t >= cutoff)
     .sort((a, b) => b.t - a.t)         // newest-first (consumer contract)
     .slice(0, HISTORY_MAX_POINTS);     // hard cap — memory backstop, never unbounded
+}
+
+// Same merge as mergeHistorySeries but for the durable 14-day store: dedup by settlement
+// timestamp (fresh wins a tie), drop points older than the 14-day retention, then hard-cap.
+// Reuses toTsPoint so legacy/malformed points are rejected identically — no fabrication.
+function mergePersistSeries(existingPts, freshPts) {
+  const byT = new Map();
+  for (const p of existingPts) { const q = toTsPoint(p); if (q) byT.set(q.t, q); }
+  for (const p of freshPts)    { const q = toTsPoint(p); if (q) byT.set(q.t, q); }
+  const cutoff = Date.now() - PERSIST_RETENTION_MS;
+  return [...byT.values()]
+    .filter(p => p.t >= cutoff)
+    .sort((a, b) => b.t - a.t)          // newest-first (same consumer contract as the 48h buffer)
+    .slice(0, PERSIST_MAX_POINTS);      // hard cap — memory/disk backstop, never unbounded
+}
+
+// Append the freshly-merged real settled series onto the durable 14-day store on disk.
+// Append-only: reads what's on disk, merges each venue+coin series by timestamp (existing
+// points beyond the 48h window are preserved, new ones added), prunes to 14 days + caps,
+// then writes atomically (tmp + rename) so a concurrent reader never sees a half-written file.
+// Failures are swallowed — the durable store is best-effort and must never break the 48h path.
+function appendPersistentHistory(freshMerged) {
+  let existing = {};
+  try { existing = JSON.parse(fs.readFileSync(PERSIST_HISTORY_FILE, 'utf8')).data || {}; } catch {}
+
+  const out = {};
+  const venues = new Set([...Object.keys(existing), ...Object.keys(freshMerged)]);
+  for (const venue of venues) {
+    const exCoins = existing[venue]    || {};
+    const frCoins = freshMerged[venue] || {};
+    const coins   = new Set([...Object.keys(exCoins), ...Object.keys(frCoins)]);
+    for (const coin of coins) {
+      const series = mergePersistSeries(exCoins[coin] || [], frCoins[coin] || []);
+      if (series.length) {
+        if (!out[venue]) out[venue] = {};
+        out[venue][coin] = series;
+      }
+    }
+  }
+
+  try {
+    fs.mkdirSync(path.dirname(PERSIST_HISTORY_FILE), { recursive: true });
+    const tmpPath = PERSIST_HISTORY_FILE + '.tmp.' + process.pid;
+    fs.writeFileSync(tmpPath, JSON.stringify({ fetchedAt: Date.now(), data: out }));
+    fs.renameSync(tmpPath, PERSIST_HISTORY_FILE);
+    const pairs = Object.values(out).reduce((s, v) => s + Object.keys(v).length, 0);
+    console.log(`[funding-hist] 14d store: ${pairs} coin-venue pairs persisted (${PERSIST_RETENTION_DAYS}d retention)`);
+  } catch {}
 }
 
 // Accept only real timestamped points for retention; legacy numbers / malformed → null.
