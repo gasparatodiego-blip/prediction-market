@@ -698,7 +698,23 @@ async function fetchLighter() {
   // stored with fundingIntervalHours=1. BTC 0.000096 → 0.0012 %/hr → 0.0096%/8h ≈ baseline.
   // Reading raw as a native hourly fraction would 8× it into phantom arbs — do NOT.
   try {
-    const j = await rlGetJson('https://mainnet.zklighter.elliot.ai/api/v1/funding-rates');
+    // Funding rate from the aggregated /funding-rates feed (carries no price); mark
+    // price from /orderBookDetails (last_trade_price — best available mark proxy).
+    // OI/vol live there too but stay null on purpose: wiring them into liquidityUsd
+    // would change funding-arb capacity/tiers and needs Diego's sign-off first.
+    const [j, markMap] = await Promise.all([
+      rlGetJson('https://mainnet.zklighter.elliot.ai/api/v1/funding-rates'),
+      rlGetJson('https://mainnet.zklighter.elliot.ai/api/v1/orderBookDetails')
+        .then(d => {
+          const m = {};
+          for (const o of d?.order_book_details ?? []) {
+            const px = parseFloat(o.last_trade_price);
+            if (o.symbol && isFinite(px) && px > 0) m[o.symbol] = px;
+          }
+          return m;
+        })
+        .catch(() => ({})),
+    ]);
     const rows = j?.funding_rates;
     if (!Array.isArray(rows)) return {};
     const r = {};
@@ -709,7 +725,7 @@ async function fetchLighter() {
       const raw = parseFloat(row.rate);              // 8h-normalized fraction
       if (!isFinite(raw)) continue;
       r[coin] = {
-        markPrice:            null,                   // /funding-rates carries no mark/OI/vol
+        markPrice:            markMap[coin] ?? null,  // last_trade_price; null (missing) if absent
         // 8h-normalized fraction → native %/hr (see header). Positive = longs pay shorts.
         fundingRate:          raw / 8 * 100,
         fundingIntervalHours: 1,                      // Lighter settles hourly (top of UTC hour)
@@ -916,20 +932,37 @@ async function fetchFutures() {
       return r;
     }).catch(() => ({})),
 
-    // OKX USDT SWAP — parallel requests for PERP_COINS
+    // OKX USDT SWAP — per-coin funding-rate calls (that endpoint carries NO price),
+    // plus ONE bulk mark-price call so each entry gets a real markPrice. Without it
+    // OKX entries had no mark at all, so funding-arb qty sizing on the detail page
+    // fell back to the other leg — and OKX↔Lighter pairs (both null) showed "—".
     (async () => {
       const coins = [...PERP_COINS];
-      const pairs = await Promise.all(
-        coins.map(c =>
-          rlGetJson(`https://www.okx.com/api/v5/public/funding-rate?instId=${c}-USDT-SWAP`)
-            .then(d => [c, d?.data?.[0]])
-            .catch(() => [c, null])
-        )
-      );
+      const [pairs, markMap] = await Promise.all([
+        Promise.all(
+          coins.map(c =>
+            rlGetJson(`https://www.okx.com/api/v5/public/funding-rate?instId=${c}-USDT-SWAP`)
+              .then(d => [c, d?.data?.[0]])
+              .catch(() => [c, null])
+          )
+        ),
+        rlGetJson('https://www.okx.com/api/v5/public/mark-price?instType=SWAP')
+          .then(d => {
+            const m = {};
+            for (const row of d?.data ?? []) {
+              const mm = /^([A-Z0-9]+)-USDT-SWAP$/.exec(row.instId ?? '');
+              const px = parseFloat(row.markPx);
+              if (mm && isFinite(px) && px > 0) m[mm[1]] = px;
+            }
+            return m;
+          })
+          .catch(() => ({})),
+      ]);
       const r = {};
       for (const [coin, t] of pairs) {
         if (!t) continue;
         r[coin] = {
+          markPrice:            markMap[coin] ?? null,   // real mark; null (missing) if absent
           fundingRate:          parseFloat(t.fundingRate ?? '0') * 100,
           fundingIntervalHours: 8,
         };
