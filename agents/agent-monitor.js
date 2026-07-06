@@ -54,6 +54,10 @@ const MIN_STALE_MS = 5 * 60 * 1000;
 // confirmed to fire real false-positive "down" Telegram alerts for agent20/
 // 23/26, whose cadences (30/15/30 min) all exceeded it.
 const WATCHED_AGENTS_RAW = [
+  { pm2Name: 'agent2-fetcher',             hbKey: 'fetcher',                 cadenceMs: 1  * 60_000 }, // agent2-fetcher.js INTERVAL
+  { pm2Name: 'agent3-matcher-politics',    hbKey: 'matcher-politics',        cadenceMs: 30 * 60_000 }, // agent3 buildRunner interval (shared-matcher)
+  { pm2Name: 'agent4-matcher-other',       hbKey: 'matcher-other',           cadenceMs: 30 * 60_000 }, // agent4 buildRunner interval (shared-matcher)
+  { pm2Name: 'agent5-calculator',          hbKey: 'calculator',              cadenceMs: 45_000 },      // agent5-calculator.js INTERVAL (45s)
   { pm2Name: 'agent10-binance',            hbKey: 'agent10-binance',         cadenceMs: 1  * 60_000 }, // agent10-binance.js POLL_INTERVAL
   { pm2Name: 'agent15-funding-writer',     hbKey: 'agent15-funding',         cadenceMs: 1  * 60_000 }, // agent15-funding-writer.js INTERVAL_MS
   { pm2Name: 'agent18-mm-analyzer',        hbKey: null },
