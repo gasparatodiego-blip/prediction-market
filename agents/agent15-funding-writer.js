@@ -1493,6 +1493,13 @@ function mergeUnifiedFunding(allFundingOpps, rwaOpps = []) {
   const tmpPath = UNIFIED_FILE + '.tmp.' + process.pid;
   fs.writeFileSync(tmpPath, JSON.stringify(result, null, 2));
   fs.renameSync(tmpPath, UNIFIED_FILE);
+
+  // Parallel history sink (non-fatal): snapshot the per-pair FUNDING opportunity board
+  // exactly as just computed. Self-throttled to the section cadence inside the logger.
+  try {
+    require('../lib/history-logger').appendSnapshot('funding', Date.now(),
+      merged.filter(o => o && o.type === 'FUNDING'));
+  } catch (e) { console.log('[history] funding snapshot skipped:', e.message); }
 }
 
 // ── Main loop ─────────────────────────────────────────────────────────────────

@@ -581,6 +581,12 @@ async function scan() {
   };
   atomicWrite(OUTPUT_FILE, output);
 
+  // Parallel history sink (non-fatal): snapshot cashable sports arbs verbatim. Only fires
+  // when agent12 is actually running (not part of the default pm2 fleet at time of writing).
+  try {
+    require('../lib/history-logger').appendSnapshot('sports', Date.now(), opportunities || []);
+  } catch (e) { console.log('[history] sports snapshot skipped:', e.message); }
+
   credits.lastScan = new Date().toISOString();
   persistCredits();
 

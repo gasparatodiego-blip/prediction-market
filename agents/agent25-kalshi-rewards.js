@@ -361,6 +361,12 @@ async function scan() {
     markets: results,
   };
   atomicWrite(OUTPUT_FILE, output);
+
+  // Parallel history sink (non-fatal): snapshot Kalshi LIP reward markets as computed.
+  try {
+    require('../lib/history-logger').appendSnapshot('rewards-kalshi', Date.now(), results);
+  } catch (e) { console.log('[history] rewards-kalshi snapshot skipped:', e.message); }
+
   console.log(`  Written: ${OUTPUT_FILE} (${results.length} markets, ${elapsed}s)`);
 
   // 5. Print sample ──────────────────────────────────────────────────────────

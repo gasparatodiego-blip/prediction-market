@@ -258,6 +258,13 @@ async function reprice() {
   };
 
   writeAtomic(REPRICED_FILE, output);
+
+  // Parallel history sink (non-fatal): snapshot cashable + signal prediction-market arbs
+  // exactly as repriced (verbatim rows). An empty array is a valid recorded 0-state.
+  try {
+    require('../lib/history-logger').appendSnapshot('predarb', Date.now(), output.opportunities || []);
+  } catch (e) { console.log('[history] predarb snapshot skipped:', e.message); }
+
   beat();
   console.log(`[repricer] done: ${liveCashable.length} live-cashable, ${evaporated.length} evaporated, ${inactive.length} inactive, ${passedSignal.length} signal`);
 }

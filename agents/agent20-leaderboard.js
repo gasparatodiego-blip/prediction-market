@@ -1006,6 +1006,17 @@ async function scan() {
   saveCache();
   writeOutput();
   beat();
+
+  // Parallel history sink (non-fatal): snapshot the ranked bot/HFT wallets ONCE per
+  // COMPLETED scan (writeOutput also runs mid-scan for UI streaming — we log only here,
+  // at the final state). Reads back the just-written file so it logs exactly what shipped.
+  // Self-throttled to 6h inside the logger (leaderboard moves slowly).
+  try {
+    const lb = JSON.parse(fs.readFileSync(LEADERBOARD_FILE, 'utf8'));
+    require('../lib/history-logger').appendSnapshot('leaderboard', Date.now(), lb.bots || [],
+      { windowDays: lb.windowDays, totalWallets: lb.totalWallets, pnlBasis: lb.pnlBasis });
+  } catch (e) { console.log('[history] leaderboard snapshot skipped:', e.message); }
+
   console.log('[LB] Scan complete');
 }
 

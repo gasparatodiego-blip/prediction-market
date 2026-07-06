@@ -596,6 +596,11 @@ async function scan() {
     disclaimer: DISCLAIMER,
   });
 
+  // Parallel history sink (non-fatal): snapshot basis / cash-and-carry board as computed.
+  try {
+    require('../lib/history-logger').appendSnapshot('basis', Date.now(), opportunities);
+  } catch (e) { console.log('[history] basis snapshot skipped:', e.message); }
+
   console.log(
     `[basis] done in ${Date.now() - t0}ms — ` +
     `${opportunities.length} opportunities, ${backwardation.length} backwardation signals. ` +

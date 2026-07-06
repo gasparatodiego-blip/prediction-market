@@ -429,6 +429,11 @@ async function scan() {
 
   atomicWrite(OUTPUT_FILE, out);
 
+  // Parallel history sink (non-fatal): snapshot Polymarket LP reward markets as computed.
+  try {
+    require('../lib/history-logger').appendSnapshot('rewards-poly', Date.now(), results);
+  } catch (e) { console.log('[history] rewards-poly snapshot skipped:', e.message); }
+
   // ── Terminal output: top 5 markets with three capital levels ─────────────────
   const W = 130;
   const divider = '─'.repeat(W);
