@@ -28,6 +28,7 @@ export async function GET() {
       minMarketsToRank: raw.minMarketsToRank,
       categories:    raw.categories   ?? {},
       mmCategories:  raw.mmCategories ?? {},
+      bots:          raw.bots         ?? [],   // bot/HFT wallets (excluded from directional board) → Bots-HFT tab
       disclaimer:    raw.disclaimer,
     }, 'leaderboard', isPaid);
 

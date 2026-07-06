@@ -142,13 +142,10 @@ export default function TradersApp() {
     return list;
   }, [lbData, cat, rankBy]);
 
-  const bots = useMemo(() => {
-    const all = lbData?.categories?.['All'] ?? [];
-    return all
-      .filter(e => e.actorType?.type === 'bot')
-      .sort((a, b) => (b.actorType?.confidence ?? 0) - (a.actorType?.confidence ?? 0)
-        || (b.pnlUsdc ?? -Infinity) - (a.pnlUsdc ?? -Infinity));
-  }, [lbData]);
+  // Bots / HFT wallets now come from a dedicated server list — they are EXCLUDED from the
+  // directional `categories` (so tiny-P&L scrapers can't fill the skill board), and agent20
+  // emits them here already sorted by inference confidence → P&L.
+  const bots = useMemo(() => lbData?.bots ?? [], [lbData]);
 
   // Window availability is DATA-DRIVEN, never a hardcoded list. A window renders
   // only if some served entry carries populated per-window data for it. 'all'

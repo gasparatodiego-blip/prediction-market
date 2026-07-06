@@ -20,6 +20,13 @@ const MIN_MARKET_VOL    = 500;            // skip markets under $500 volume
 const MIN_MARKETS_RANK     = 20;  // raised from 5 — 5 binary markets is statistically meaningless
 const LOW_SAMPLE_THRESHOLD = 30;  // below this show a warning even if above the floor
 const TOP_N_PER_CAT        = 25;
+// A resolved market counts as a "win" only if realized P&L ≥ MIN_WIN_PNL ($). A +$0.01 MM/HFT
+// scrape is NOT a directional win — this kills the "100% · 300-0" wall by recomputing win rate
+// from stored per-market P&L (real recompute, never fabricated). Tunable.
+const MIN_WIN_PNL = 1.00;
+// The 300-market STORAGE cap (memory bound) stays; skill ranking uses resolvedTotal (true
+// uncapped resolution count) + realized P&L as tie-breakers so perfect records don't all
+// saturate the Wilson ceiling and tie.
 const MAX_TRADES_PER_MKT = 400;           // 8 pages of 50
 const MAX_CIDS_CACHED   = 1500;          // memory bound
 const MAX_WALLETS_CACHED = 5000;         // memory bound — mirrors MAX_CIDS_CACHED
@@ -54,6 +61,11 @@ const ACTOR_ACTIVE_HOURS = 20;    // distinct active UTC hours (of 24) → 24/7 
 const ACTOR_SHORT_SHARE  = 0.50;  // share of trades in ≤15min markets → short-market focus / HFT
 const ACTOR_BOT_CONF_MIN = 50;    // confidence ≥ this → labeled 'bot' (still with signals)
 
+// Honest "win": realized P&L on a resolved market must clear MIN_WIN_PNL. Recomputed from the
+// stored per-market pnl at build time (never fabricated) — near-zero MM/HFT scrapes and losses
+// both fail, so win rate reflects real directional edge, not spread capture.
+const isWin = (m) => (m.pnl || 0) >= MIN_WIN_PNL;
+
 // Wilson 95% lower bound for binary win rate — penalizes small samples so
 // a 16W/2L wallet outranks a 5W/0L one.  z=1.96 → 95% CI.
 function wilsonLower(wins, n) {
@@ -87,11 +99,16 @@ async function migrateAddTwoSided() {
       for (const [addr, d] of Object.entries(pnls)) {
         if (!wallets[addr]) wallets[addr] = { name: d.name, markets: [] };
         if (d.name && !wallets[addr].name) wallets[addr].name = d.name;
+        const beforeLen1 = wallets[addr].markets.length;
         wallets[addr].markets = wallets[addr].markets.filter(m => m.cid !== cid);
+        const isNewCid1 = wallets[addr].markets.length === beforeLen1;  // filter removed nothing → new resolution
         const rec = { cid, category: info.category, pnl: d.pnl, vol: d.vol, won: d.won, ts: d.lastTs };
         if (info.durationMin != null) rec.durationMin = info.durationMin;
         if (d.twoSided) rec.twoSided = true;
         wallets[addr].markets.push(rec);
+        // resolvedTotal: true uncapped count of distinct resolved markets — survives the 300-cap
+        // so a wallet with 4000 real resolutions tie-breaks above one with exactly 300.
+        if (isNewCid1) wallets[addr].resolvedTotal = (wallets[addr].resolvedTotal || 0) + 1;
         wallets[addr].lastSeen = Date.now();
       }
     }
@@ -301,9 +318,9 @@ function evictWallets() {
   const total = Object.keys(wallets).length;
   if (total <= MAX_WALLETS_CACHED) return 0;
 
-  const { categories, mmCategories } = buildLeaderboard();
+  const { categories, mmCategories, bots } = buildLeaderboard();
   const protectedAddrs = new Set();
-  for (const list of [...Object.values(categories), ...Object.values(mmCategories)]) {
+  for (const list of [...Object.values(categories), ...Object.values(mmCategories), bots]) {
     for (const e of list) protectedAddrs.add(e.wallet);
   }
 
@@ -435,7 +452,7 @@ function buildLeaderboard() {
     const recent = (w.markets || []).filter(m => !m.ts || m.ts > cutoff);
     if (recent.length < MIN_MARKETS_RANK) continue;
 
-    const wins       = recent.filter(m => m.won).length;
+    const wins       = recent.filter(isWin).length;
     const totalPnl   = recent.reduce((s, m) => s + m.pnl, 0);
     const totalVol   = recent.reduce((s, m) => s + m.vol, 0);
     const lastActive = Math.max(...recent.map(m => m.ts || 0));
@@ -458,6 +475,9 @@ function buildLeaderboard() {
       wilsonScore: Math.round(wilsonLower(wins, recent.length) * 10000) / 10000,
       lowSample:   recent.length < LOW_SAMPLE_THRESHOLD,
       resolvedMarkets: recent.length,
+      // True uncapped resolution count (survives the 300-store cap); null for wallets seen
+      // only before this counter existed — tie-break falls back to resolvedMarkets then.
+      resolvedTotal: w.resolvedTotal ?? null,
       volumeUsdc: Math.round(totalVol * 100) / 100,
       lastActive,
       wins,
@@ -473,7 +493,7 @@ function buildLeaderboard() {
     for (const cat of CATS.slice(1)) {
       const catMarkets = recent.filter(m => m.category === cat);
       if (catMarkets.length < MIN_MARKETS_RANK) continue;
-      const cWins     = catMarkets.filter(m => m.won).length;
+      const cWins     = catMarkets.filter(isWin).length;
       const cPnl      = catMarkets.reduce((s, m) => s + m.pnl, 0);
       const cVol      = catMarkets.reduce((s, m) => s + m.vol, 0);
       const cTwoSided = catMarkets.filter(m => m.twoSided).length;
@@ -496,7 +516,7 @@ function buildLeaderboard() {
     const fastMkts      = recent.filter(m => m.durationMin != null && m.durationMin > 5 && m.durationMin <= 15);
 
     if (ultraFastMkts.length >= MIN_MARKETS_RANK) {
-      const uWins     = ultraFastMkts.filter(m => m.won).length;
+      const uWins     = ultraFastMkts.filter(isWin).length;
       const uTwoSided = ultraFastMkts.filter(m => m.twoSided).length;
       categorized['Ultra-fast ≤5 min'].push({
         ...entry,
@@ -511,7 +531,7 @@ function buildLeaderboard() {
         twoSidedMkts: uTwoSided,
       });
     } else if (fastMkts.length >= MIN_MARKETS_RANK) {
-      const fWins     = fastMkts.filter(m => m.won).length;
+      const fWins     = fastMkts.filter(isWin).length;
       const fTwoSided = fastMkts.filter(m => m.twoSided).length;
       categorized['Fast 5–15 min'].push({
         ...entry,
@@ -531,10 +551,28 @@ function buildLeaderboard() {
   const categories   = {};
   const mmCategories = {};
 
+  // Bots / HFT / market-makers are excluded from the DIRECTIONAL (skill) board — they get the
+  // Bots-HFT tab instead. Without this, tiny-P&L scrapers with perfect capped records saturate
+  // the Wilson ceiling and fill the top. actorType comes from the enrichment profiles.
+  const isBotEntry = (e) => {
+    const at = profiles[e.wallet]?.actorType;
+    return at?.type === 'bot' || at?.hft === true;
+  };
+  const isDirectionalEntry = (e) => !isBotEntry(e) && e.walletType !== 'MM';
+
+  // Skill sort: Wilson DESC, then deterministic tie-breaks so perfect records don't tie at the
+  // ceiling — larger true sample (resolvedTotal, capped fallback) then realized P&L then wallet.
+  const skillSort = (a, b) =>
+    (b.wilsonScore - a.wilsonScore)
+    || ((b.resolvedTotal ?? b.resolvedMarkets) - (a.resolvedTotal ?? a.resolvedMarkets))
+    || (b.pnlUsdc - a.pnlUsdc)
+    || (a.wallet < b.wallet ? -1 : a.wallet > b.wallet ? 1 : 0);
+
   for (const cat of ALL) {
-    // Directional/All view: Wilson 95% CI sort
-    categories[cat] = [...categorized[cat]]
-      .sort((a, b) => b.wilsonScore - a.wilsonScore)
+    // Directional/All view: humans only, Wilson 95% CI + sample/P&L tie-breaks
+    categories[cat] = categorized[cat]
+      .filter(isDirectionalEntry)
+      .sort(skillSort)
       .slice(0, TOP_N_PER_CAT);
     // MM view: only MM wallets, sorted by twoSidedMkts (activity), then volumeUsdc
     // Wilson is wrong for MM — their win rate is ~50% by construction (spread capture).
@@ -544,11 +582,20 @@ function buildLeaderboard() {
       .slice(0, TOP_N_PER_CAT);
   }
 
-  return { categories, mmCategories };
+  // Bots / HFT tab: the wallets excluded from the directional board (bot- or HFT-classified),
+  // sorted by inference confidence then realized P&L. Kept in the dataset, just not skill-ranked.
+  const bots = categorized['All']
+    .filter(isBotEntry)
+    .sort((a, b) =>
+      ((profiles[b.wallet]?.actorType?.confidence ?? 0) - (profiles[a.wallet]?.actorType?.confidence ?? 0))
+      || (b.pnlUsdc - a.pnlUsdc))
+    .slice(0, TOP_N_PER_CAT);
+
+  return { categories, mmCategories, bots };
 }
 
 function writeOutput(tsOverride = null) {
-  const { categories, mmCategories } = buildLeaderboard();
+  const { categories, mmCategories, bots } = buildLeaderboard();
   const totalWallets = Object.values(wallets).filter(w => (w.markets || []).length >= MIN_MARKETS_RANK).length;
 
   // Attach compact per-trader inference + ops to each list entry so the leaderboard
@@ -565,6 +612,7 @@ function writeOutput(tsOverride = null) {
   };
   for (const l of Object.values(categories))   attachInline(l);
   for (const l of Object.values(mmCategories)) attachInline(l);
+  attachInline(bots);
 
   // windows resolved at write time from the shared lb-api maps → reflect latest fetch.
   const profilesOut = {};
@@ -582,6 +630,7 @@ function writeOutput(tsOverride = null) {
     minMarketsToRank: MIN_MARKETS_RANK,
     categories,
     mmCategories,
+    bots,            // bot/HFT wallets excluded from the directional board — feeds the Bots-HFT tab
     profiles:       profilesOut,
     disclaimer: 'Descriptive leaderboard from on-chain resolved markets. actorType is a labeled heuristic (inference, not fact). PnL is gross/platform-reported. Past performance is not predictive. Not financial advice.',
   });
@@ -655,7 +704,7 @@ function computeWalletCategories(w) {
     if (!byCat[c]) byCat[c] = { category: c, pnl: 0, vol: 0, wins: 0, n: 0 };
     byCat[c].pnl += m.pnl || 0;
     byCat[c].vol += m.vol || 0;
-    byCat[c].wins += m.won ? 1 : 0;
+    byCat[c].wins += isWin(m) ? 1 : 0;   // same MIN_WIN_PNL win definition as the board
     byCat[c].n++;
   }
   return Object.values(byCat)
@@ -817,9 +866,9 @@ async function enrichWallet(addr) {
 // All MM, then other categories), capped at MAX_ENRICH_WALLETS to respect rate limits
 // and the €50/mo budget. Profiles for wallets no longer in the top set are pruned.
 async function enrichTopWallets() {
-  const { categories, mmCategories } = buildLeaderboard();
+  const { categories, mmCategories, bots } = buildLeaderboard();
   const order = [], seen = new Set();
-  const lists = [categories.All, mmCategories.All,
+  const lists = [categories.All, mmCategories.All, bots,
                  ...Object.entries(categories).filter(([c]) => c !== 'All').map(([, l]) => l)];
   for (const list of lists) for (const e of (list || [])) {
     if (!seen.has(e.wallet)) { seen.add(e.wallet); order.push(e.wallet); }
@@ -851,11 +900,15 @@ async function processMarket(cid, winner, category, vol, durationMin) {
     if (d.name && !wallets[addr].name) wallets[addr].name = d.name;
     if (d.name && d.name !== addr) wallets[addr].name = d.name;
     // Dedup: remove stale record for same CID before adding fresh one
+    const beforeLen2 = wallets[addr].markets.length;
     wallets[addr].markets = wallets[addr].markets.filter(m => m.cid !== cid);
+    const isNewCid2 = wallets[addr].markets.length === beforeLen2;  // filter removed nothing → new resolution
     const rec = { cid, category, pnl: d.pnl, vol: d.vol, won: d.won, ts: d.lastTs };
     if (durationMin  != null) rec.durationMin = durationMin;
     if (d.twoSided)            rec.twoSided   = true;
     wallets[addr].markets.push(rec);
+    // resolvedTotal: true uncapped count of distinct resolved markets (survives the 300-cap).
+    if (isNewCid2) wallets[addr].resolvedTotal = (wallets[addr].resolvedTotal || 0) + 1;
     wallets[addr].lastSeen = Date.now();
   }
 

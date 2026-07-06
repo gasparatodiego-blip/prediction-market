@@ -54,6 +54,7 @@ export interface LbData {
   totalWallets:     number;
   minMarketsToRank: number;
   categories:       Record<string, LbEntry[]>;
+  bots?:            LbEntry[];   // bot/HFT wallets excluded from the directional board (Bots-HFT tab)
   disclaimer?:      string;
 }
 

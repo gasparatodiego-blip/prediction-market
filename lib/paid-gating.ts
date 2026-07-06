@@ -275,6 +275,12 @@ export const REDACTION_MAP: Record<RouteKey, string[]> = {
     'mmCategories{}[].volumeUsdc',
     'mmCategories{}[].wins',
     'mmCategories{}[].losses',
+    'bots[].pnlUsdc',
+    'bots[].winRate',
+    'bots[].wilsonScore',
+    'bots[].volumeUsdc',
+    'bots[].wins',
+    'bots[].losses',
   ],
 
   // Per-trader profile (agent20 schema v2), served by
