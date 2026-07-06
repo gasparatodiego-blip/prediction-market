@@ -27,6 +27,29 @@ model User {
   portfolio         Portfolio?
   alerts            Alert[]
   subscriptions     Subscription[]
+  copyConfigs       CopyConfig[]
+}
+
+// Copy-trading configuration — one row per (user, watched wallet). Paper-only:
+// `mode` is always 'paper' until live execution ships (AUTO_EXECUTE_ENABLED).
+// Slot limit (free=1 / pro=2) is enforced SERVER-SIDE by counting rows per user.
+model CopyConfig {
+  id               String   @id @default(cuid())
+  userId           String
+  walletAddr       String
+  categories       String[] @default([])          // selected category filters (real, data-derived)
+  pctPerOrder      Float    @default(5)            // % of each of the trader's orders to mirror (1–25)
+  maxOpenPositions Int      @default(5)            // cap on simultaneously-open mirrored positions
+  exitMode         String   @default("mirror")     // 'mirror' (exit with them) | 'tpsl' (own TP/SL)
+  tpPct            Float?                           // take-profit %, only for exitMode='tpsl'
+  slPct            Float?                           // stop-loss %,   only for exitMode='tpsl'
+  mode             String   @default("paper")       // 'paper' only for now; 'live' gated OFF
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, walletAddr])
 }
 
 model UserPreferences {
