@@ -191,15 +191,27 @@ module.exports = {
       name:          'agent20-leaderboard',
       script:        './agents/agent20-leaderboard.js',
       cwd:           '/root/prediction-market',
-      restart_delay: 30000,
-      max_restarts:  20,
-      // Working set is genuinely ~370MB (163MB cache → 369MB RSS after JSON.parse;
-      // 631k market records across 5000 wallets, needed for per-cycle re-aggregation).
-      // 450M sat below the real working set and caused a pm2 restart loop. 600M gives
-      // runtime headroom while still catching a genuine runaway. Not a leak.
-      max_memory_restart: '900M',
+      // Boot-crash-loop throttle: back off fast restarts instead of hammering.
+      restart_delay:             5000,
+      exp_backoff_restart_delay: 200,
+      max_restarts:              15,
+      min_uptime:                30000,
+      autorestart:               true,
+      // Memory ceiling — sized for a GLOBAL-OOM box (3.7GB total, ~0.5–1GB free,
+      // fleet ~1.1GB RSS). The prior death was a kernel global-OOM (SIGKILL →
+      // "Process not found"), not a clean pm2 cap hit, at ~780MB RSS during the
+      // one-shot JSON.parse of the 187MB cache. Fixes:
+      //   1) loadCache() now streams (stream-json) → boot peak 437MB, not 594–780MB.
+      //   2) max_memory_restart 750M: above the real working set (~440–550MB) so no
+      //      mid-scan restart loop, but well under the ~780MB global-OOM zone so pm2
+      //      soft-restarts BEFORE the kernel kills. Deliberately NOT raised to 1200M —
+      //      on this box ballooning agent20 would OOM-kill sibling agents.
+      //   3) --max-old-space-size=768: hard V8 backstop. Default (1955MB) let RSS run
+      //      past kernel-OOM so the kernel always won with a hard SIGKILL; capping V8
+      //      makes it throw+exit(1) cleanly (pm2-recoverable) if it ever spikes.
+      node_args:          '--max-old-space-size=768',
+      max_memory_restart: '750M',
       watch:         false,
-      autorestart:   true,
       env:           { NODE_ENV: 'production', HOME: '/root' },
     },
     {
