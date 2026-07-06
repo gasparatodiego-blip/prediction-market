@@ -21,7 +21,10 @@ interface SavedConfig {
   maxOpenPositions: number; exitMode: string; tpPct: number | null; slPct: number | null; mode: string;
 }
 
-const CAT_ORDER = ['Politics','Elections','Crypto','Sports','Economy','Financials','Business','Tech','Pop Culture','World','Weather','Health','other'];
+// Display-order hint only — NOT a filter. sortCats appends any category not
+// listed here (unknown index → sorted last), so every data-derived category the
+// trader actually holds still renders. Mirrors lib/category.js CATEGORY_ORDER.
+const CAT_ORDER = ['Politics','Elections','Mentions','Crypto','Sports','Economy','Financials','Business','Tech','Pop Culture','World','Weather','Health','other'];
 function sortCats(cats: string[]): string[] {
   return [...cats].sort((a, b) => {
     const ia = CAT_ORDER.indexOf(a), ib = CAT_ORDER.indexOf(b);
