@@ -197,6 +197,18 @@ function inferCategory(tags = []) {
   return 'World';
 }
 
+// Per-position category for OPEN positions, which carry NO event tags (the
+// data-api /positions item has none). Tokenize the REAL market title + slug and
+// run the SAME inferCategory() keyword logic used for the wallet-level rollup.
+// inferCategory's catch-all 'World' return means no keyword matched → honest
+// 'other' (never a guessed specific label). No fabrication: input is real text.
+function categoryFromText(...parts) {
+  const tokens = parts.filter(Boolean).join(' ').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+  if (!tokens.length) return 'other';
+  const cat = inferCategory(tokens);
+  return cat === 'World' ? 'other' : cat;
+}
+
 // ── Winner from outcomePrices ─────────────────────────────────────────────────
 function getWinner(market) {
   if (!market.outcomePrices || !market.outcomes) return null;
@@ -804,6 +816,10 @@ async function enrichWallet(addr) {
           avgPrice:      p.avgPrice ?? null,
           currentValue:  p.currentValue ?? null,
           unrealizedPnl: p.cashPnl ?? null,   // /positions.cashPnl — UNREALIZED, gross
+          // Additive copy-filter metadata (real fields only, never fabricated):
+          category:      categoryFromText(p.title, p.slug),          // inferCategory over real title/slug; 'other' if no keyword matches
+          cid:           p.conditionId ?? p.asset ?? null,           // real condition/market id; null if absent
+          side:          p.outcome ?? null,                          // held token/outcome (Yes/No); null if absent
         }));
     }
   } catch (e) { console.warn(`[LB] positions ${addr.slice(0, 10)} skipped: ${e.message}`); }
@@ -857,6 +873,10 @@ async function enrichWallet(addr) {
       result:      m.pnl > 0 ? 'won' : (m.pnl < 0 ? 'lost' : 'resolved'),
       realizedPnl: Math.round((m.pnl || 0) * 100) / 100,   // agent20 on-chain resolved P&L (gross)
       timestamp:   m.ts,
+      // Additive copy-filter metadata (real fields only, never fabricated):
+      category:    m.category || 'other',   // REAL event-tag-derived category from the ledger (inferCategory at process time); 'other' if unmapped
+      cid:         m.cid ?? null,            // real condition/market id from the ledger
+      side:        null,                     // aggregate ledger doesn't pin the held side — null, never invented
     }));
 
   profiles[addr] = prof;
