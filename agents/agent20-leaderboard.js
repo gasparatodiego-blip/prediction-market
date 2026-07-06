@@ -797,7 +797,7 @@ async function enrichWallet(addr) {
           currentValue:  p.currentValue ?? null,
           unrealizedPnl: p.cashPnl ?? null,   // /positions.cashPnl — UNREALIZED, gross
           // Additive copy-filter metadata (real fields only, never fabricated):
-          category:      categoryFromText(p.title, p.slug),          // inferCategory over real title/slug; 'other' if no keyword matches
+          category:      categoryFromText(p.title, p.slug, p.eventSlug),   // inferCategory over real title/slug/eventSlug; 'other' if no keyword matches
           cid:           p.conditionId ?? p.asset ?? null,           // real condition/market id; null if absent
           side:          p.outcome ?? null,                          // held token/outcome (Yes/No); null if absent
         }));
