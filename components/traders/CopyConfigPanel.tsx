@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { X, Check, Lock, Shield, Loader2 } from 'lucide-react';
 import { Redacted } from '@/app/components/ui/Redacted';
 import { AUTO_EXECUTE_ENABLED } from '@/lib/flags';
-import { fmtSize, catText, type OpenPosition, type ClosedTrade } from './format';
+import { fmtSize, fmtPnl, fmtWallet, pnlColor, catText, type OpenPosition, type ClosedTrade } from './format';
+import { WinRate } from './parts';
 
 // ── Copy-config panel ─────────────────────────────────────────────────────────
 // Opens from a trader's COPY button (leaderboard row + detail page). Wires to
@@ -29,11 +30,16 @@ function sortCats(cats: string[]): string[] {
 }
 
 export default function CopyConfigPanel({
-  wallet, name, tier, positionsOpen: preOpen, tradesClosed: preClosed, onClose, onSaved,
+  wallet, name, tier, pnlUsdc, winRate, wilsonScore, resolvedMarkets,
+  positionsOpen: preOpen, tradesClosed: preClosed, onClose, onSaved,
 }: {
   wallet:        string;
   name:          string;
   tier:          'free' | 'pro';
+  pnlUsdc?:        number | null;   // all-time resolved P&L (redacted → null for free)
+  winRate?:        number | null;
+  wilsonScore?:    number | null;
+  resolvedMarkets?: number;         // sample size
   positionsOpen?: OpenPosition[] | null;   // preloaded (detail page); else fetched
   tradesClosed?:  ClosedTrade[]  | null;
   onClose:       () => void;
@@ -194,18 +200,38 @@ export default function CopyConfigPanel({
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div className="relative w-full max-w-[460px] max-h-[90vh] overflow-y-auto rounded-card border border-line bg-surface shadow-card">
-        {/* Header */}
-        <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-3 border-b border-line bg-surface">
-          <div className="min-w-0">
-            <div className="font-body text-[10px] uppercase tracking-widest text-muted">Copia · paper</div>
-            <div className="font-display font-bold text-base text-ink truncate">{name}</div>
+        {/* Header — name, address, all-time resolved P&L, win rate + sample */}
+        <div className="sticky top-0 z-10 px-4 py-3 border-b border-line bg-surface">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <div className="font-body text-[10px] uppercase tracking-widest text-muted">Copia · paper</div>
+              <div className="font-display font-bold text-base text-ink truncate">{name}</div>
+              <div className="font-body text-[10px] text-muted tabular-nums mt-0.5">{fmtWallet(wallet)}</div>
+            </div>
+            <button onClick={onClose} className="shrink-0 p-1 rounded-button text-muted hover:text-ink hover:bg-bg-soft transition-colors" aria-label="Chiudi">
+              <X className="w-4 h-4" />
+            </button>
           </div>
-          <button onClick={onClose} className="shrink-0 p-1 rounded-button text-muted hover:text-ink hover:bg-bg-soft transition-colors" aria-label="Chiudi">
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-4 mt-2">
+            <div>
+              <div className="font-body text-[9px] uppercase tracking-wide text-muted">P&amp;L risolto</div>
+              <div className={`font-display font-bold text-sm tabular-nums leading-tight ${pnlColor(pnlUsdc)}`}>
+                <Redacted value={pnlUsdc}>{v => fmtPnl(v)}</Redacted>
+              </div>
+            </div>
+            <div className="min-w-0">
+              <div className="font-body text-[9px] uppercase tracking-wide text-muted">Win rate · campione</div>
+              <WinRate winRate={winRate ?? null} wilson={wilsonScore ?? null} resolvedMarkets={resolvedMarkets ?? 0} />
+            </div>
+          </div>
         </div>
 
         <div className="px-4 py-4 flex flex-col gap-5">
+          {/* Honest banner — past track record is not a guarantee */}
+          <div className="rounded-card border border-gold/25 bg-gold-tint/60 px-3 py-2 font-body text-[10px] text-ink-2 leading-relaxed">
+            Track record passato — non è una garanzia di risultati futuri.
+          </div>
+
           {/* Slot indicator */}
           <div className="flex items-center justify-between font-body text-[11px]">
             <span className="text-muted">Slot di copia</span>
@@ -245,7 +271,7 @@ export default function CopyConfigPanel({
           {/* % per order */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
-              <span className="font-body text-[10px] uppercase tracking-wide text-muted">% di ogni ordine</span>
+              <span className="font-body text-[10px] uppercase tracking-wide text-muted">% di ogni loro ordine</span>
               <span className="font-display font-bold text-sm text-mint-deep tabular-nums">{pct}%</span>
             </div>
             <input type="range" min={1} max={25} step={1} value={pct}
@@ -263,7 +289,7 @@ export default function CopyConfigPanel({
               <button onClick={() => setMaxOpen(m => Math.max(1, m - 1))}
                 className="w-7 h-7 rounded-button border border-line text-ink-2 hover:bg-bg-soft font-body">−</button>
               <span className="font-display font-bold text-sm text-ink tabular-nums w-6 text-center">{maxOpen}</span>
-              <button onClick={() => setMaxOpen(m => Math.min(50, m + 1))}
+              <button onClick={() => setMaxOpen(m => Math.min(8, m + 1))}
                 className="w-7 h-7 rounded-button border border-line text-ink-2 hover:bg-bg-soft font-body">+</button>
             </div>
           </div>
@@ -369,11 +395,11 @@ export default function CopyConfigPanel({
           {/* Mode: paper active / live locked */}
           <div className="flex gap-1.5">
             <div className="flex-1 flex items-center justify-center gap-1.5 font-body text-[11px] px-3 py-2 rounded-button border border-mint-deep/50 bg-mint-tint text-mint-deep font-medium">
-              <Check className="w-3 h-3" strokeWidth={3} />Paper attivo
+              <Check className="w-3 h-3" strokeWidth={3} />📄 Paper · attivo
             </div>
             <div className="flex-1 flex items-center justify-center gap-1.5 font-body text-[11px] px-3 py-2 rounded-button border border-line text-muted bg-bg-soft cursor-not-allowed"
                  title={AUTO_EXECUTE_ENABLED ? 'Live in arrivo' : 'Esecuzione live disattivata'}>
-              <Lock className="w-3 h-3" />Live · COMING SOON
+              <Lock className="w-3 h-3" />🔒 Live · COMING SOON
             </div>
           </div>
 

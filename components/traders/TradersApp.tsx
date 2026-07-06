@@ -346,6 +346,10 @@ export default function TradersApp() {
           wallet={panelTarget.entry.wallet}
           name={displayName(panelTarget.entry)}
           tier={tier}
+          pnlUsdc={panelTarget.entry.pnlUsdc}
+          winRate={panelTarget.entry.winRate}
+          wilsonScore={panelTarget.entry.wilsonScore}
+          resolvedMarkets={panelTarget.entry.resolvedMarkets}
           positionsOpen={panelTarget.profile?.positionsOpen}
           tradesClosed={panelTarget.profile?.tradesClosed}
           onClose={() => setPanelTarget(null)}

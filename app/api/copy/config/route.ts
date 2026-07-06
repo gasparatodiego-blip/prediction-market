@@ -15,7 +15,7 @@ const configSchema = z.object({
   walletAddr:       z.string().trim().regex(/^0x[a-fA-F0-9]{40}$/, 'invalid wallet address'),
   categories:       z.array(z.string()).max(20).default([]),
   pctPerOrder:      z.number().min(1).max(25),
-  maxOpenPositions: z.number().int().min(1).max(50),
+  maxOpenPositions: z.number().int().min(1).max(8),
   exitMode:         z.enum(['mirror', 'tpsl']),
   tpPct:            z.number().min(1).max(500).nullable().optional(),
   slPct:            z.number().min(1).max(100).nullable().optional(),
