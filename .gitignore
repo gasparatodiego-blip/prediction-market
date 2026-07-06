@@ -62,6 +62,9 @@ data/paper-positions.json
 # durable 14-day per-leg settled-funding history — grows organically at runtime, local data
 data/funding-history-14d.json
 data/funding-history-14d.json.tmp.*
+# unified 30-day per-section snapshot history (funding/basis/rewards/predarb/leaderboard/sports)
+# — grows organically at runtime, local data, never source-controlled
+data/history/
 # sports arb scanner outputs — rewritten each scan, credit state is local
 data/sports/
 # runtime SQLite DB — written continuously by agent5-calculator, not source-controlled
