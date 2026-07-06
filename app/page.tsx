@@ -12,7 +12,7 @@ import RadarScope   from '@/app/components/ui/RadarScope';
 import BlipRow      from '@/app/components/ui/BlipRow';
 import AnimatedStrategies from '@/app/components/landing/AnimatedStrategies';
 import { getCryptoSpreadsData, calcSpreadSizing } from '@/lib/spread-compute';
-import { scaleToCapitalBasis, LANDING_CAPITAL_BASIS } from '@/lib/honest-display';
+import { LANDING_CAPITAL_BASIS, isOverApyCap } from '@/lib/honest-display';
 import { isSaneKalshiMarket, isSanePolymarketLevel } from '@/lib/reward-gating';
 
 export const dynamic = 'force-dynamic';
@@ -259,11 +259,16 @@ function buildLiveRows(stats: ReturnType<typeof readLandingStats>): LiveRow[] {
   }
 
   if (rewards && rewards.grossRewardDayRaw > 0) {
-    // Same sane-market gate as the liquidity-rewards dashboard already excluded
-    // TRAP/burst/thin markets above, so this is a real, gated estimate — an
-    // explicit product call from Diego marks it cashable on the landing row
-    // even though the dashboard itself keeps the OBSERVED-model caveat.
-    const day1k = scaleToCapitalBasis(rewards.grossRewardDayRaw, rewards.capital, LANDING_CAPITAL_BASIS);
+    // Maker rewards are a CONDITIONAL incentive, NOT a cashable arb: earning
+    // them requires actively quoting in-book, competing with other LPs (your
+    // share dilutes as makers arrive), and the program's rate can change. So
+    // this is SIGNAL, never cashable — it carries no net $/day and is kept out
+    // of the $/day ranking (dayUsd1k: null) so it can't inflate "best net/day".
+    // Any rate shown runs through the shared honest-engine annualized treatment
+    // (isOverApyCap → ">200%/yr", demoted + run-rate qualifiers). The sane-market
+    // gate above already dropped TRAP/burst/thin levels, so the estimate is real
+    // — but real ≠ guaranteed. (Supersedes the earlier "mark cashable" call.)
+    const annualPct = rewards.dayYieldPct * 365; // dayYieldPct is %/day → %/yr
     rows.push({
       key: 'rewards', icon: '◈', tileColor: 'violet',
       name: (
@@ -271,14 +276,17 @@ function buildLiveRows(stats: ReturnType<typeof readLandingStats>): LiveRow[] {
           <PlatformLogo platform={rewards.platform} size={14} className="mr-1.5" />
           {rewards.platform} maker rewards{' '}
           <span className="text-muted font-normal text-[11px] ml-0.5">
-            — paid for providing liquidity
+            — liquidity incentive, not a locked arb
           </span>
         </>
       ),
-      chip: 'cashable', valueTone: 'up',
-      value: `+$${day1k.toFixed(2)}`,
-      unit:  'net/day per $1k',
-      dayUsd1k: day1k, fallbackScore: day1k,
+      sub: 'Rewards-program estimate · conditional: needs active quoting, competes with LPs',
+      chip: 'signal', valueTone: 'neutral',
+      value: isOverApyCap(annualPct) ? '>200%/yr' : `${Math.round(annualPct)}%/yr`,
+      unit:  'run-rate · not guaranteed',
+      // Conditional incentive → no fabricated net $/day and out of the day-rate
+      // ranking; sorts among the no-day-rate rows by its annualized run-rate.
+      dayUsd1k: null, fallbackScore: annualPct,
     });
   }
 
