@@ -1,7 +1,5 @@
 'use client';
 
-import { useState } from 'react';
-import Link from 'next/link';
 import { Zap, Check, Lock, BadgeCheck, AlertTriangle } from 'lucide-react';
 import { Redacted } from '@/app/components/ui/Redacted';
 import { isLowSample, wrColor, type ActorType } from './format';
@@ -107,38 +105,33 @@ export function ConfidenceBar({ pct }: { pct: number }) {
   );
 }
 
-// ── Copy slot button (tier gating) ────────────────────────────────────────────
-// Slot MANAGEMENT + persistence only. NO trade is executed here — real copy-
-// follow execution (wiring to agent21) is a SEPARATE, security-hardening-gated
-// commit. This button only reserves a local "signal-follow" slot and persists it.
+// ── Copy button ───────────────────────────────────────────────────────────────
+// Opens the copy-config panel (category/%/maxOpen/exit). NO trade is executed —
+// the panel persists a PAPER config server-side (/api/copy/config) with
+// server-enforced slot limits; live execution stays OFF. The button reflects
+// whether this trader already has a saved config ("Copying") and whether the
+// user is at their slot limit ("Slots full"), but every click opens the panel,
+// where slot limits and the Pro upgrade path are surfaced.
 
 export function CopyButton({
-  copying, atLimit, tier, maxSlots, onToggle, size = 'sm',
+  copying, atLimit, onToggle, size = 'sm',
 }: {
   copying:  boolean;
   atLimit:  boolean;   // slots full AND this trader is not one of them
-  tier:     'free' | 'pro';
-  maxSlots: number;
-  onToggle: () => void;
+  tier?:    'free' | 'pro';
+  maxSlots?: number;
+  onToggle: () => void;   // opens the config panel
   size?:    'sm' | 'lg';
 }) {
-  const [showUpgrade, setShowUpgrade] = useState(false);
   const pad = size === 'lg' ? 'px-3 py-1.5 text-[11px]' : 'px-2.5 py-1 text-[10px]';
-
-  function handle() {
-    if (!copying && atLimit) { setShowUpgrade(true); return; }
-    setShowUpgrade(false);
-    onToggle();
-  }
-
   const base = `inline-flex items-center gap-1 rounded-button border font-body font-medium uppercase tracking-wide transition-colors whitespace-nowrap ${pad}`;
 
   let cls: string, label: React.ReactNode;
   if (copying) {
-    cls = 'border-[#0c9d6e]/50 text-[#0c9d6e] bg-mint-tint hover:border-coral-ink/40 hover:text-coral-ink hover:bg-coral-tint';
+    cls = 'border-[#0c9d6e]/50 text-[#0c9d6e] bg-mint-tint hover:border-[#0c9d6e]/70';
     label = <><Check className="w-2.5 h-2.5" strokeWidth={3} />Copying</>;
   } else if (atLimit) {
-    cls = 'border-line text-muted bg-bg-soft cursor-pointer';
+    cls = 'border-line text-muted bg-bg-soft hover:border-gold/40 hover:text-gold';
     label = <><Lock className="w-2.5 h-2.5" />Slots full</>;
   } else {
     cls = 'border-line text-muted hover:border-[#0c9d6e]/45 hover:text-[#0c9d6e] hover:bg-mint-tint';
@@ -146,37 +139,8 @@ export function CopyButton({
   }
 
   return (
-    <span className="relative inline-flex">
-      <button type="button" onClick={(e) => { e.stopPropagation(); handle(); }} className={`${base} ${cls}`}>
-        {label}
-      </button>
-
-      {showUpgrade && (
-        <span
-          onClick={(e) => e.stopPropagation()}
-          className="absolute right-0 top-full mt-1.5 z-20 w-56 p-2.5 rounded-card border border-line bg-surface shadow-card text-left"
-        >
-          <span className="block font-body text-[10px] text-ink-2 leading-snug mb-1.5">
-            {tier === 'free'
-              ? `Free copies ${maxSlots} trader. Upgrade to Pro for 2 active copy slots.`
-              : `All ${maxSlots} copy slots are in use — remove one to add another.`}
-          </span>
-          {tier === 'free' && (
-            <Link
-              href="/dashboard/upgrade"
-              className="inline-block font-body text-[10px] font-medium text-[#0c9d6e] hover:text-mint-deep underline underline-offset-2"
-            >
-              Upgrade to Pro →
-            </Link>
-          )}
-          <button
-            onClick={() => setShowUpgrade(false)}
-            className="block mt-1.5 font-body text-[9px] text-muted hover:text-ink"
-          >
-            dismiss
-          </button>
-        </span>
-      )}
-    </span>
+    <button type="button" onClick={(e) => { e.stopPropagation(); onToggle(); }} className={`${base} ${cls}`}>
+      {label}
+    </button>
   );
 }

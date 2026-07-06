@@ -76,6 +76,9 @@ export interface OpenPosition {
   avgPrice:      number | null;
   currentValue:  number | null;
   unrealizedPnl: number | null;   // UNREALIZED, gross
+  category?:     string | null;   // real Polymarket-tag/keyword category ('other' if unmatched)
+  cid?:          string | null;   // real condition/market id
+  side?:         string | null;   // held outcome/side
 }
 export interface ClosedTrade {
   marketTitle: string | null;
@@ -85,6 +88,9 @@ export interface ClosedTrade {
   result:      'won' | 'lost' | 'resolved';
   realizedPnl: number | null;
   timestamp:   number;
+  category?:   string | null;   // real category from the on-chain ledger ('other' if unmapped)
+  cid?:        string | null;
+  side?:       string | null;
 }
 export interface ActivityItem {
   side:        string | null;   // BUY / SELL

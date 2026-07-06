@@ -7,6 +7,7 @@ import PlatformLogo   from '@/components/PlatformLogo';
 import { Redacted }   from '@/app/components/ui/Redacted';
 import { ActorBadge, VerifiedTick, WinRate, ConfidenceBar, CopyButton } from './parts';
 import TraderProfileView from './TraderProfile';
+import CopyConfigPanel from './CopyConfigPanel';
 import {
   fmtPnl, fmtVol, fmtWallet, fmtUpdated, displayName, pnlColor, isLowSample,
   type LbData, type LbEntry, type TraderProfile, type WindowKey,
@@ -17,38 +18,34 @@ type RankBy = 'profit' | 'volume';
 
 const WINDOW_LABEL: Record<WindowKey, string> = { '1d': '1D', '7d': '7D', '30d': '30D', all: 'ALL' };
 
-const COPY_STORE = 'edgeradar.traders.copying';
-interface CopySlot { wallet: string; name: string; at: number; }
+interface CopyConfigLite { walletAddr: string }
 
-// ── Copy-slot management (persistence + gating ONLY) ──────────────────────────
-// This reserves a local signal-follow slot and persists it to localStorage. It
-// executes NO trade. Real copy-follow execution (wiring to agent21) is a separate,
-// security-hardening-gated commit — see CopyButton in parts.tsx.
-function useCopySlots(maxSlots: number) {
-  const [slots, setSlots] = useState<CopySlot[]>([]);
+// ── Server-backed copy state ──────────────────────────────────────────────────
+// Slots + which wallets are being copied are now authoritative on the server
+// (Prisma CopyConfig, /api/copy/config). No localStorage: a config is real only
+// once it's persisted server-side (with server-enforced slot limits). Unauth →
+// 401 → empty/free view (no login wall on the page itself).
+function useServerCopy() {
+  const [configs, setConfigs] = useState<CopyConfigLite[]>([]);
+  const [slots, setSlots]     = useState<{ used: number; limit: number }>({ used: 0, limit: 1 });
 
-  useEffect(() => {
+  const reload = useCallback(async () => {
     try {
-      const raw = localStorage.getItem(COPY_STORE);
-      if (raw) setSlots(JSON.parse(raw));
-    } catch { /* corrupt store → start empty */ }
+      const r = await fetch('/api/copy/config');
+      if (r.status === 401) { setConfigs([]); return; }   // keep default free slots
+      const d = await r.json();
+      setConfigs(d.configs ?? []);
+      if (d.slots) setSlots(d.slots);
+    } catch { /* leave prior state */ }
   }, []);
 
-  const persist = useCallback((next: CopySlot[]) => {
-    setSlots(next);
-    try { localStorage.setItem(COPY_STORE, JSON.stringify(next)); } catch { /* quota — non-fatal */ }
-  }, []);
+  useEffect(() => { reload(); }, [reload]);
 
-  const isCopying = useCallback((w: string) => slots.some(s => s.wallet === w), [slots]);
+  const isCopying = useCallback(
+    (w: string) => configs.some(c => c.walletAddr.toLowerCase() === w.toLowerCase()),
+    [configs]);
 
-  const toggle = useCallback((wallet: string, name: string) => {
-    const has = slots.some(s => s.wallet === wallet);
-    if (has) { persist(slots.filter(s => s.wallet !== wallet)); return; }
-    if (slots.length >= maxSlots) return;   // guarded by CopyButton's atLimit UI
-    persist([...slots, { wallet, name, at: Date.now() }]);
-  }, [slots, maxSlots, persist]);
-
-  return { slots, isCopying, toggle, count: slots.length };
+  return { configs, slots, reload, isCopying, count: slots.used };
 }
 
 export default function TradersApp() {
@@ -60,14 +57,18 @@ export default function TradersApp() {
   const [error, setError]     = useState('');
 
   const [tier, setTier]       = useState<'free' | 'pro'>('free');
-  const maxSlots = tier === 'pro' ? 2 : 1;
-  const copy = useCopySlots(maxSlots);
+  const copy = useServerCopy();
+  const maxSlots = copy.slots.limit;
 
   // Profile routing
   const [selected, setSelected]       = useState<LbEntry | null>(null);
   const [profile, setProfile]         = useState<TraderProfile | null>(null);
   const [profLoading, setProfLoading] = useState(false);
   const [profError, setProfError]     = useState('');
+
+  // Copy-config panel target (opened from any COPY button).
+  const [panelTarget, setPanelTarget] = useState<{ entry: LbEntry; profile: TraderProfile | null } | null>(null);
+  const openPanel = useCallback((entry: LbEntry, prof: TraderProfile | null) => setPanelTarget({ entry, profile: prof }), []);
 
   const loadLb = useCallback(async () => {
     try {
@@ -221,7 +222,7 @@ export default function TradersApp() {
           atLimit={atLimit && !copy.isCopying(selected.wallet)}
           tier={tier}
           maxSlots={maxSlots}
-          onToggleCopy={() => copy.toggle(selected.wallet, displayName(selected))}
+          onToggleCopy={() => openPanel(selected, profile)}
         />
       )}
 
@@ -294,7 +295,7 @@ export default function TradersApp() {
                   copying={copy.isCopying(e.wallet)}
                   atLimit={atLimit && !copy.isCopying(e.wallet)}
                   tier={tier} maxSlots={maxSlots}
-                  onToggleCopy={() => copy.toggle(e.wallet, displayName(e))}
+                  onToggleCopy={() => openPanel(e, null)}
                 />
               ))}
             </div>
@@ -322,7 +323,7 @@ export default function TradersApp() {
                   copying={copy.isCopying(e.wallet)}
                   atLimit={atLimit && !copy.isCopying(e.wallet)}
                   tier={tier} maxSlots={maxSlots}
-                  onToggleCopy={() => copy.toggle(e.wallet, displayName(e))}
+                  onToggleCopy={() => openPanel(e, null)}
                 />
               ))}
             </div>
@@ -337,6 +338,19 @@ export default function TradersApp() {
           Actor type (human/bot) is a heuristic inference from observable trade timing, never a platform label.
           Copy slots reserve a signal-follow only — no trade is executed. Past performance ≠ future results. Not financial advice.
         </p>
+      )}
+
+      {/* ── Copy-config panel (opens from any COPY button) ─────────────────────── */}
+      {panelTarget && (
+        <CopyConfigPanel
+          wallet={panelTarget.entry.wallet}
+          name={displayName(panelTarget.entry)}
+          tier={tier}
+          positionsOpen={panelTarget.profile?.positionsOpen}
+          tradesClosed={panelTarget.profile?.tradesClosed}
+          onClose={() => setPanelTarget(null)}
+          onSaved={copy.reload}
+        />
       )}
     </div>
   );
