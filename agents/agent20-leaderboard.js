@@ -12,9 +12,7 @@ const { rlGet } = require('../lib/rateLimitedFetch');  // per-host limiter — A
 const { chain }        = require('stream-chain');
 const { parser }       = require('stream-json');
 const { streamObject } = require('stream-json/streamers/stream-object.js');
-const { disassembler } = require('stream-json/disassembler.js');
-const { stringer }     = require('stream-json/stringer.js');
-const { Readable }     = require('stream');
+const { once }         = require('events');
 
 // ── Crash-proof boot ─────────────────────────────────────────────────────────
 // Turn a hard unhandled death (which can leave pm2 with "Process not found")
@@ -193,28 +191,48 @@ function atomicWrite(path, data) {
   fs.renameSync(tmp, path);
 }
 
-// Streamed atomic write for the large (~187MB) leaderboard cache. The old
+// Bounded atomic write for the large (~187MB) leaderboard cache. The old
 // JSON.stringify(data, null, 2) built a ~370MB transient string on top of the
-// ~440MB resident working set every saveCache() (every 20 markets mid-scan),
-// spiking RSS to ~950MB and triggering a kernel global-OOM SIGKILL. Disassembling
-// the object into a token stream and piping to disk keeps write-time RSS ~flat
-// (no full string materialized). Byte-content is identical JSON — no displayed
-// number changes; only whitespace differs (minified), which no consumer parses on.
+// ~440MB+ resident working set every saveCache() (every N markets mid-scan),
+// spiking RSS to ~950MB and triggering a kernel global-OOM SIGKILL. A whole-object
+// stream-json disassembler was no better — fed one giant object it emits all tokens
+// at once with no effective backpressure, buffering ~as much as the string.
+//
+// Instead serialize the object ONE map-entry at a time: each value is JSON.stringify'd
+// individually (a single wallet is small, ≤300 markets) and written with real drain
+// backpressure, so write-time transient RSS is a few KB regardless of cache size.
+// Output is byte-valid JSON, identical values — only whitespace differs (minified),
+// which no consumer relies on. Async: every saveCache() call site awaits it.
 let _writeSeq = 0;
-function atomicWriteStreamed(path, data) {
-  return new Promise((resolve, reject) => {
-    const tmp = `${path}.tmp.${process.pid}.${_writeSeq++}`;
-    const ws  = fs.createWriteStream(tmp);
-    const pipe = chain([
-      Readable.from([data], { objectMode: true }),
-      disassembler(),
-      stringer(),
-      ws,
-    ]);
-    pipe.on('error', (e) => { try { fs.unlinkSync(tmp); } catch {} reject(e); });
-    ws.on('error',   (e) => { try { fs.unlinkSync(tmp); } catch {} reject(e); });
-    ws.on('finish',  () => { try { fs.renameSync(tmp, path); resolve(); } catch (e) { reject(e); } });
-  });
+async function writeJsonMap(ws, mapObj) {
+  let first = true;
+  for (const k of Object.keys(mapObj)) {
+    const chunk = (first ? '' : ',') + JSON.stringify(k) + ':' + JSON.stringify(mapObj[k]);
+    first = false;
+    if (!ws.write(chunk)) await once(ws, 'drain');
+  }
+}
+async function atomicWriteStreamed(path, data) {
+  const tmp = `${path}.tmp.${process.pid}.${_writeSeq++}`;
+  const ws  = fs.createWriteStream(tmp);
+  const w   = async (s) => { if (!ws.write(s)) await once(ws, 'drain'); };
+  try {
+    await w('{"processedCids":{');
+    await writeJsonMap(ws, data.processedCids || {});
+    await w('},"wallets":{');
+    await writeJsonMap(ws, data.wallets || {});
+    await w('},"profiles":{');
+    await writeJsonMap(ws, data.profiles || {});
+    await w('},"cidTitles":{');
+    await writeJsonMap(ws, data.cidTitles || {});
+    await w('},"savedAt":' + JSON.stringify(data.savedAt) + '}');
+    await new Promise((res, rej) => ws.end(err => err ? rej(err) : res()));
+    fs.renameSync(tmp, path);
+  } catch (e) {
+    try { ws.destroy(); } catch {}
+    try { fs.unlinkSync(tmp); } catch {}
+    throw e;
+  }
 }
 
 // ── Heartbeat ─────────────────────────────────────────────────────────────────
