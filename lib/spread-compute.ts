@@ -20,16 +20,122 @@ import {
   spreadStatus,
   VENUE_FEE_PCT,
 } from '@/lib/funding-math';
-import type { FuturesCoin, SpreadItem, SlipPoint, CryptoSpreadsData, RwaObservation } from '@/lib/spread-types';
+import type { FuturesCoin, SpreadItem, SlipPoint, CryptoSpreadsData, RwaObservation, Persistence } from '@/lib/spread-types';
 import { isRwaKey } from '@/lib/rwa';
 
-export type { FuturesCoin, SlipPoint, SpreadItem, SpreadsMeta, CryptoSpreadsData, Leverage } from '@/lib/spread-types';
+export type { FuturesCoin, SlipPoint, SpreadItem, SpreadsMeta, CryptoSpreadsData, Leverage, Persistence } from '@/lib/spread-types';
 export { calcSpreadSizing } from '@/lib/spread-types';
 
 const EXCHANGE_FILE = '/tmp/exchange-prices.json';
 const UNI_FILE      = '/tmp/unified-opportunities.json';
+const HISTORY_FILE  = '/tmp/funding-history-cache.json';   // agent15 48h ring buffer (real settled rates)
 // treat as missing if agent15 hasn't written within 10 min (runs every 60 s)
 const UNI_STALE_MS  = 10 * 60_000;
+
+// ── Spread-persistence (real 48h history) ─────────────────────────────────────
+// Reads agent15's ring buffer: data.<venue>.<coin> = [{ t, rate }, …] newest-first (t ms).
+// Everything here is derived ONLY from real accumulated settlements — no interpolation,
+// no assumed 48h; windowHours always equals the true available span. See Persistence type.
+type HistPoint  = { t: number; rate: number };
+type HistCache  = Record<string, Record<string, Array<HistPoint | number>>>;
+const MAX_SPARK   = 48;    // display cap for the sparkline/timeline (points), not a monetary knob
+const STABLE_CV   = 0.35;  // net-spread coeff-of-variation below this → "stabile" (task-sanctioned flag)
+
+function readHistory(): HistCache {
+  try { return JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8')).data || {}; }
+  catch { return {}; }
+}
+
+// Normalize a stored series to sorted-ascending { t, rate }. Legacy flat-number entries carry
+// no timestamp → unusable for time alignment, so they're dropped (the buffer re-seeds them
+// with timestamps within one refresh; see agent15 migration).
+function legSeries(hCache: HistCache, venue: string, coin: string): HistPoint[] {
+  const raw = (hCache[venue] || {})[coin] || [];
+  const pts: HistPoint[] = [];
+  for (const p of raw) {
+    if (typeof p === 'number') continue;
+    if (p && isFinite(p.t) && isFinite(p.rate)) pts.push({ t: p.t, rate: p.rate });
+  }
+  return pts.sort((a, b) => a.t - b.t);
+}
+
+function downsample<T>(arr: T[], max: number): T[] {
+  if (arr.length <= max) return arr;
+  const step = arr.length / max;
+  const out: T[] = [];
+  for (let i = 0; i < max; i++) out.push(arr[Math.floor(i * step)]);
+  out[out.length - 1] = arr[arr.length - 1];   // always keep the newest
+  return out;
+}
+
+// Per pair: align the two legs' real history and compute how long the FIXED position
+// (short shortEx / long longEx) has stayed profitable. Reuses the card's own net-funding
+// math — net(t) = annualize(shortRate, shortInt) − annualize(longRate, longInt), SIGNED —
+// so "profitable" means the position we display would have earned at that settlement.
+function computePersistence(
+  coin: string,
+  shortEx: string, shortInt: number,
+  longEx: string,  longInt: number,
+  hCache: HistCache,
+): Persistence | null {
+  const sHist = legSeries(hCache, shortEx, coin);
+  const lHist = legSeries(hCache, longEx,  coin);
+  if (sHist.length < 2 || lHist.length < 2) return null;
+
+  // Aligned window = where BOTH legs have real coverage (from the later of the two starts).
+  const start = Math.max(sHist[0].t, lHist[0].t);
+  const times = Array.from(new Set([...sHist, ...lHist].map(p => p.t)))
+    .filter(t => t >= start)
+    .sort((a, b) => a - b);
+  if (times.length < 2) return null;
+
+  // Forward-fill each leg's last settled rate at each event time. A funding rate is a step
+  // function that holds until the next settlement — using the most-recent settlement ≤ t is
+  // the leg's TRUE state, not interpolation.
+  const net: { t: number; v: number }[] = [];
+  let si = 0, li = 0;
+  for (const t of times) {
+    while (si + 1 < sHist.length && sHist[si + 1].t <= t) si++;
+    while (li + 1 < lHist.length && lHist[li + 1].t <= t) li++;
+    if (sHist[si].t > t || lHist[li].t > t) continue;   // no settlement yet on one leg
+    net.push({ t, v: annualize(sHist[si].rate, shortInt) - annualize(lHist[li].rate, longInt) });
+  }
+  if (net.length < 2) return null;
+
+  const newest = net[net.length - 1];
+  const oldest = net[0];
+  const windowHours = +((newest.t - oldest.t) / 3_600_000).toFixed(1);
+
+  // Contiguous profitable run ending at the newest sample, measured by TIME (handles mixed
+  // 1h/8h cadences). 0 if the newest settled spread is not profitable.
+  let hours = 0;
+  if (newest.v > 0) {
+    let boundaryT = newest.t;
+    for (let k = net.length - 1; k >= 0; k--) {
+      if (net[k].v > 0) boundaryT = net[k].t; else break;
+    }
+    hours = +((newest.t - boundaryT) / 3_600_000).toFixed(1);
+  }
+
+  // Stability: coefficient of variation of the net-spread series (honest magnitude-wobble read).
+  const vals = net.map(p => p.v);
+  const mean = vals.reduce((s, x) => s + x, 0) / vals.length;
+  const stdev = Math.sqrt(vals.reduce((s, x) => s + (x - mean) ** 2, 0) / vals.length);
+  const cvRaw = Math.abs(mean) > 1e-9 ? stdev / Math.abs(mean) : (stdev > 1e-9 ? 9.99 : 0);
+  const cv = Math.min(+cvRaw.toFixed(2), 9.99);
+  const stability: 'stabile' | 'variabile' = cv < STABLE_CV ? 'stabile' : 'variabile';
+
+  // Timeline bar (sign-only) + normalized spark SHAPE. Neither exposes the absolute %/yr edge
+  // (redacted premium) — only how long it was green and how much it wobbled.
+  const capped = downsample(net, MAX_SPARK);
+  const bar = capped.map(p => (p.v > 0 ? 1 : 0));
+  const lo = Math.min(...capped.map(p => p.v));
+  const hi = Math.max(...capped.map(p => p.v));
+  const range = hi - lo;
+  const spark = capped.map(p => (range > 1e-9 ? +(((p.v - lo) / range).toFixed(3)) : 0.5));
+
+  return { hours, windowHours, stability, cv, spark, bar };
+}
 
 function isDex(exchange: string): boolean {
   return exchange === 'hyperliquid' || exchange === 'dydx' || exchange === 'aster' || exchange === 'paradex' || exchange === 'edgex' || exchange === 'grvt' || exchange === 'lighter' || exchange === 'extended' || exchange === 'pacifica' || exchange === 'apex';
@@ -47,7 +153,8 @@ function liqTier(usd: number): string {
 }
 
 export function computeSpreads(
-  futures: Record<string, Record<string, FuturesCoin>>
+  futures: Record<string, Record<string, FuturesCoin>>,
+  history: HistCache = {},
 ): SpreadItem[] {
   const byExchange: Record<string, { exchange: string; fr: number; intervalHours: number; nextFundingTime?: number; dex: boolean }[]> = {};
 
@@ -81,6 +188,14 @@ export function computeSpreads(
 
         const shortSide = annA >= annB ? A : B;
         const longSide  = annA >= annB ? B : A;
+
+        // Past track record from real 48h history (null when not enough aligned points yet).
+        const persistence = computePersistence(
+          coin,
+          shortSide.exchange, shortSide.intervalHours,
+          longSide.exchange,  longSide.intervalHours,
+          history,
+        );
 
         // Per-venue fees: HL=0.025%, dYdX=0.05%, CEX=0.04%
         const totalFees = roundTripFeeByVenue(shortSide.exchange, longSide.exchange);
@@ -129,6 +244,7 @@ export function computeSpreads(
           slipCurve:            null,   // overwritten by UNI lookup
           greenCapacityUsd:     null,   // overwritten by UNI lookup
           slipCurveMaxFillable: null,   // overwritten by UNI lookup
+          persistence,
         });
       }
     }
@@ -225,7 +341,7 @@ export function getCryptoSpreadsData(): CryptoSpreadsData {
       // stale branch falls through: uniLookup stays empty → all keys missing → all demote
     } catch { /* missing/unreadable: uniLookup empty → all rows default oneLegUnverified: true */ }
 
-    const spreads = computeSpreads(raw.futures ?? {}).map(s => {
+    const spreads = computeSpreads(raw.futures ?? {}, readHistory()).map(s => {
       const key = `${s.coin}|${[s.shortExchange, s.longExchange].sort().join('|')}`;
       const lu  = uniLookup.get(key);
       return {

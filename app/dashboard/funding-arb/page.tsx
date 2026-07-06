@@ -10,6 +10,7 @@ import {
   type SpreadItem,
   type RwaObservation,
   type Leverage,
+  type Persistence,
   calcSpreadSizing,
 } from '@/lib/spread-types';
 import { APY_CAP, isOverApyCap } from '@/lib/honest-display';
@@ -687,6 +688,77 @@ function CapacityRow({
 
 // ── Redesign: opportunity card ────────────────────────────────────────────────
 
+// ── Persistenza spread ────────────────────────────────────────────────────────
+// PAST track record from the real 48h funding-history buffer. Non-monetary context —
+// visible on every tier. spark is a normalized shape and bar is sign-only, so no absolute
+// %/yr edge leaks here. Secondary to net/day by design (muted, compact).
+const P_MINT = '#0A9D6B';   // profittevole (mint-deep)
+const P_RED  = '#D5552F';   // non profittevole (coral-ink)
+
+function PersistenceSparkline({ spark }: { spark: number[] }) {
+  if (spark.length < 2) return null;
+  const W = 48, H = 14;
+  const pts = spark.map((v, i) => {
+    const x = (i / (spark.length - 1)) * W;
+    const y = H - 1 - v * (H - 2);   // v in [0,1] → shape only (normalized, no magnitude)
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  return (
+    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} aria-hidden style={{ display: 'block' }}>
+      <polyline points={pts} fill="none" stroke="#9aa5b3" strokeWidth={1} strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function SpreadPersistence({ p }: { p: Persistence | null }) {
+  return (
+    <div className="flex flex-col gap-1.5" style={{ paddingTop: 4, borderTop: '1px solid #eef1f4' }}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-body uppercase" style={{ fontSize: 8.5, letterSpacing: '0.12em', color: '#9aa5b3' }}>
+          Persistenza spread
+        </span>
+        {p && (
+          <span className="font-body" style={{ fontSize: 9, color: p.stability === 'stabile' ? P_MINT : '#9aa5b3' }}>
+            {p.stability === 'stabile' ? 'Stabile' : 'Variabile'}
+          </span>
+        )}
+      </div>
+
+      {p == null ? (
+        <div className="font-body" style={{ fontSize: 11, color: '#9aa5b3' }}>in raccolta dati…</div>
+      ) : (
+        <>
+          <div className="flex items-center justify-between gap-2">
+            <div className="font-mono tabular-nums truncate" style={{ fontSize: 12 }}>
+              {p.hours > 0 ? (
+                <span style={{ color: P_MINT, fontWeight: 600 }}>profittevole da {p.hours}h</span>
+              ) : (
+                <span style={{ color: P_RED }}>non profittevole ora</span>
+              )}
+              <span className="font-body" style={{ fontSize: 10, color: '#9aa5b3' }}> · finestra {p.windowHours}h</span>
+            </div>
+            <PersistenceSparkline spark={p.spark} />
+          </div>
+
+          {/* Timeline: green where net>0, red where ≤0. Newest on the right (ora ▸). */}
+          <div className="flex items-center gap-1">
+            <div className="flex-1 flex overflow-hidden rounded-full" style={{ height: 5, background: '#eef1f4' }}>
+              {p.bar.map((b, i) => (
+                <span key={i} style={{ flex: 1, background: b ? P_MINT : P_RED, opacity: b ? 0.9 : 0.75 }} />
+              ))}
+            </div>
+            <span className="font-body shrink-0" style={{ fontSize: 8, color: '#9aa5b3' }}>ora ▸</span>
+          </div>
+
+          <div className="font-body" style={{ fontSize: 9, color: '#9aa5b3', lineHeight: 1.3 }}>
+            Track record passato — il funding può invertirsi al prossimo settlement.
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function FundingCard({ s, capital, leverage }: { s: SpreadItem; capital: number; leverage: Leverage }) {
   const tier       = TIER[s.status];
   const redacted   = s.netApy30d == null;
@@ -757,6 +829,8 @@ function FundingCard({ s, capital, leverage }: { s: SpreadItem; capital: number;
       </div>
 
       <CapacityRow s={s} capital={capital} leverage={leverage} redacted={redacted} />
+
+      <SpreadPersistence p={s.persistence} />
 
       {/* Footer */}
       <div className="flex items-center justify-end pt-0.5">

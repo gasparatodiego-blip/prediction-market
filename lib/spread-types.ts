@@ -47,6 +47,22 @@ export interface SlipPoint {
   state:         'GREEN' | 'YELLOW' | 'RED';
 }
 
+// Spread-persistence: a PAST track record of how long this pair's net funding spread
+// has stayed profitable, computed from agent15's real 48h history ring buffer. Non-monetary
+// context — stays visible on free tier. `spark` is a NORMALIZED unitless shape (0..1) and
+// `bar` is sign-only (1 profitable / 0 not), so the absolute %/yr edge is NEVER exposed here
+// (that stays a premium reveal via grossApy/netApy30d). null = not enough real aligned
+// history yet ("in raccolta dati" — never a fabricated number). Window grows organically as
+// the buffer fills, so windowHours reflects the TRUE available span (short today, longer later).
+export interface Persistence {
+  hours:       number;                    // contiguous profitable hours back from the newest sample
+  windowHours: number;                    // true span of aligned history available right now
+  stability:   'stabile' | 'variabile';   // coeff-of-variation read of net-spread wobble
+  cv:          number;                     // coefficient of variation (transparency; 0 = flat)
+  spark:       number[];                   // normalized net-spread shape [0..1], oldest→newest
+  bar:         number[];                   // per-point profitable flag 1|0, oldest→newest
+}
+
 export interface SpreadItem {
   coin:               string;
   shortExchange:      string;
@@ -82,6 +98,7 @@ export interface SpreadItem {
   slipCurve:          SlipPoint[] | null;      // null when not yet computed
   greenCapacityUsd:   number | null;           // largest GREEN size (0 if none)
   slipCurveMaxFillable: number | null;         // largest fillable size (slider clamp)
+  persistence:        Persistence | null;      // past track record; null = still collecting real history
 }
 
 export interface SpreadsMeta {
