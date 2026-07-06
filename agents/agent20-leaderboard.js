@@ -9,6 +9,22 @@
 const fs = require('fs');
 const https = require('https');
 const { rlGet } = require('../lib/rateLimitedFetch');  // per-host limiter — ALL new Polymarket calls route through this
+const { chain }        = require('stream-chain');
+const { parser }       = require('stream-json');
+const { streamObject } = require('stream-json/streamers/stream-object.js');
+
+// ── Crash-proof boot ─────────────────────────────────────────────────────────
+// Turn a hard unhandled death (which can leave pm2 with "Process not found")
+// into a clean exit(1) that pm2 reliably auto-restarts. Log first so the cause
+// is never swallowed. Ops-only: does not touch any displayed number.
+process.on('unhandledRejection', (err) => {
+  console.error('[LB] FATAL unhandledRejection:', (err && err.stack) || err);
+  process.exit(1);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[LB] FATAL uncaughtException:', (err && err.stack) || err);
+  process.exit(1);
+});
 
 const LEADERBOARD_FILE  = '/tmp/leaderboard.json';
 const CACHE_FILE        = '/tmp/leaderboard-cache.json';
@@ -332,28 +348,56 @@ function evictWallets() {
   return evicted;
 }
 
+// Streaming cache load. The cache grew to ~187MB; the old one-shot
+// JSON.parse(readFileSync(..,'utf8')) held a ~374MB UTF-16 string AND the
+// parsed object simultaneously (~750MB transient) — this global-OOM-killed the
+// process at the exact peak. Streaming the top-level object emits each property
+// (processedCids/wallets/profiles/cidTitles) fully assembled with no giant
+// intermediate string and no double-hold, roughly halving peak RSS. Produces
+// byte-identical in-memory data — no displayed number changes.
 function loadCache() {
-  try {
-    const c = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8'));
-    processedCids = c.processedCids || {};
-    wallets       = c.wallets       || {};
-    profiles      = c.profiles      || {};
-    cidTitles     = c.cidTitles     || {};
-    console.log(`[LB] Cache: ${Object.keys(processedCids).length} cids, ${Object.keys(wallets).length} wallets, ${Object.keys(profiles).length} profiles`);
-  } catch {
-    processedCids = {};
-    wallets       = {};
-    console.log('[LB] No cache — cold start');
-    return;
-  }
+  return new Promise((resolve) => {
+    if (!fs.existsSync(CACHE_FILE)) {
+      processedCids = {};
+      wallets       = {};
+      console.log('[LB] No cache — cold start');
+      return resolve();
+    }
 
-  const before = Object.keys(wallets).length;
-  if (before > MAX_WALLETS_CACHED) {
-    evictWallets();
-    const after = Object.keys(wallets).length;
-    console.log(`[LB] wallets cache trimmed ${before} -> ${after} on load`);
-    saveCache();
-  }
+    const loaded = { processedCids: {}, wallets: {}, profiles: {}, cidTitles: {} };
+    const pipeline = chain([
+      fs.createReadStream(CACHE_FILE),
+      parser(),
+      streamObject(),   // emits { key, value } per top-level property
+    ]);
+
+    pipeline.on('data', ({ key, value }) => {
+      if (key in loaded) loaded[key] = value || {};
+      // savedAt and any unknown keys are ignored
+    });
+    pipeline.on('error', (e) => {
+      console.log('[LB] Cache stream parse error — cold start:', e.message);
+      processedCids = {};
+      wallets       = {};
+      resolve();
+    });
+    pipeline.on('end', () => {
+      processedCids = loaded.processedCids;
+      wallets       = loaded.wallets;
+      profiles      = loaded.profiles;
+      cidTitles     = loaded.cidTitles;
+      console.log(`[LB] Cache: ${Object.keys(processedCids).length} cids, ${Object.keys(wallets).length} wallets, ${Object.keys(profiles).length} profiles`);
+
+      const before = Object.keys(wallets).length;
+      if (before > MAX_WALLETS_CACHED) {
+        evictWallets();
+        const after = Object.keys(wallets).length;
+        console.log(`[LB] wallets cache trimmed ${before} -> ${after} on load`);
+        saveCache();
+      }
+      resolve();
+    });
+  });
 }
 
 function saveCache() {
@@ -1021,16 +1065,18 @@ async function scan() {
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
-loadCache();
-console.log('[LB] Starting agent20-leaderboard — read-only, zero Claude, 2 req/sec');
-// Preserve the on-disk updatedAt so the ticker keeps showing STALE/OFFLINE
-// while catching up — only flips to 'live' once a real scan writes a fresh timestamp.
-let _bootTs = null;
-try { _bootTs = JSON.parse(fs.readFileSync(LEADERBOARD_FILE, 'utf8')).updatedAt ?? null; } catch {}
-writeOutput(_bootTs); // emit cached data immediately so UI isn't blank
+(async () => {
+  await loadCache();   // streamed — see loadCache() for the OOM history
+  console.log('[LB] Starting agent20-leaderboard — read-only, zero Claude, 2 req/sec');
+  // Preserve the on-disk updatedAt so the ticker keeps showing STALE/OFFLINE
+  // while catching up — only flips to 'live' once a real scan writes a fresh timestamp.
+  let _bootTs = null;
+  try { _bootTs = JSON.parse(fs.readFileSync(LEADERBOARD_FILE, 'utf8')).updatedAt ?? null; } catch {}
+  writeOutput(_bootTs); // emit cached data immediately so UI isn't blank
 
-setTimeout(async () => {
-  await migrateAddTwoSided(); // one-time: backfill twoSided for pre-feature CIDs
-  await scan();
-  setInterval(scan, SCAN_INTERVAL_MS);
-}, 5_000);
+  setTimeout(async () => {
+    await migrateAddTwoSided(); // one-time: backfill twoSided for pre-feature CIDs
+    await scan();
+    setInterval(scan, SCAN_INTERVAL_MS);
+  }, 5_000);
+})();
