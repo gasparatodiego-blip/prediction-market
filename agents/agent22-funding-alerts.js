@@ -40,6 +40,20 @@ const ALERT_INTERVAL = 60_000;      // ms between alert scans
 const THROTTLE_MS    = 3_600_000;   // 1h min between alerts per (chat, asset)
 const REF_CAPITAL    = 1_000;       // $ for $/day headline in alerts
 
+// ── "Spread closed" alerts (threshold-based, NO watchlist) ──────────────────────
+// Fire ONE owner alert (TELEGRAM_CHAT_ID) when a pair that WAS a strong, cashable
+// HARVEST opportunity stops being profitable. This is POST-close detection — we detect
+// the real transition in the same funding data the dashboard uses, we do NOT forecast
+// funding flips. Hysteresis (0.50↔0.10 gap) + per-pair cooldown + per-cycle cap keep it
+// from flooding across the ~600 live pairs. Tunable:
+const NET_ALERT_FLOOR        = 0.50;              // $/day — at/above this (cashable HARVEST) = "strong"
+const NET_CLOSE_FLOOR        = 0.10;              // $/day — at/below this = "closed" (gap = anti-flip hysteresis)
+const CLOSE_COOLDOWN_MS      = 6 * 60 * 60_000;   // ≤ 1 spread-closed alert per pair per 6h
+const CLOSE_ALERTS_PER_CYCLE = 5;                 // cap msgs/cycle; overflow → one "+N more" summary
+const CLOSE_PRUNE_MS         = 48 * 60 * 60_000;  // drop pairs not seen for 48h (bounded state)
+const CLOSE_STATE_FILE       = path.join(__dirname, '../data/funding-alert-state.json');
+const ADMIN_CHAT             = process.env.TELEGRAM_CHAT_ID || null;  // owner chat; dormant if unset
+
 // ── Helpers ─────────────────────────────────────────────────────────────────
 function log(...a) { console.log('[A22]', ...a); }
 
@@ -421,9 +435,111 @@ async function scanPredictionAlerts(subs) {
   if (dirty) saveSubs(subs);
 }
 
+// ── "Spread closed" detection (threshold-based, no watchlist) ──────────────────
+function netDayUsd(netRoi) {
+  // Same yardstick as fmtDayUsd: net %/yr on N = REF_CAPITAL/2 → $/day. Real, proportional.
+  return (REF_CAPITAL / 2) * (Number(netRoi) || 0) / 100 / 365;
+}
+
+function pairKey(id) {
+  // Order-independent key so a short/long flip (which reorders the id) still maps to the
+  // SAME pair: "funding-ATOM-grvt-hyperliquid" → "ATOM|grvt|hyperliquid".
+  const p = (id || '').split('-');
+  if (p.length !== 4 || p[0] !== 'funding') return null;
+  return `${p[1]}|${[p[2], p[3]].sort().join('|')}`;
+}
+
+function loadCloseState() {
+  try { return JSON.parse(fs.readFileSync(CLOSE_STATE_FILE, 'utf8')); } catch { return {}; }
+}
+
+function saveCloseState(state) {
+  try {
+    const tmp = CLOSE_STATE_FILE + '.tmp.' + process.pid;   // atomic: tmp + rename
+    fs.writeFileSync(tmp, JSON.stringify(state));
+    fs.renameSync(tmp, CLOSE_STATE_FILE);
+  } catch (e) { log('close-state write error:', e.message); }
+}
+
+function buildSpreadClosedText(coin, shortV, longV, wasNet, nowNet) {
+  return [
+    `⚠️ <b>Spread chiuso: ${coin} ${shortV}/${longV}</b>`,
+    '',
+    `Era $${wasNet.toFixed(2)}/day (HARVEST), ora $${nowNet.toFixed(2)}/day.`,
+    `Il funding si è invertito/assottigliato. Rivedi o chiudi la posizione.`,
+    '',
+    `<i>Rilevato dopo la chiusura — non prevediamo i flip del funding, li rileviamo.</i>`,
+  ].join('\n');
+}
+
+// Detect strong→closed transitions on the real funding data and alert the owner chat.
+// wasProfitable is latched only at ≥ NET_ALERT_FLOOR (cashable HARVEST) and only cleared
+// at ≤ NET_CLOSE_FLOOR (or persistence.hours===0 when present) — the hysteresis gap kills
+// flip-flop near a single threshold. First cycle latches state without alerting (nothing
+// has a prior wasProfitable=true yet), so no baseline spam.
+async function runSpreadClosedScan(opps) {
+  if (!ADMIN_CHAT) return;   // no owner chat configured → feature dormant, never errors
+  const state = loadCloseState();
+  const now   = Date.now();
+  const closed = [];
+
+  for (const opp of opps) {
+    const key = pairKey(opp.id);
+    if (!key) continue;
+    const coin   = key.split('|')[0];
+    const netDay = netDayUsd(opp.netROI);
+    const cashable = opp.fullyConfirmed === true && opp.oneLegUnverified !== true && opp.liquidityTier !== 'VERY THIN';
+    const currentlyStrong = cashable && opp.status === 'HARVEST' && netDay >= NET_ALERT_FLOOR;
+    // persistence.hours===0 (newest net ≤ 0) honored if the field is ever present; the live,
+    // available trigger is net/day ≤ NET_CLOSE_FLOOR.
+    const persistenceClosed = opp.persistence && opp.persistence.hours === 0;
+    const currentlyClosed   = netDay <= NET_CLOSE_FLOOR || persistenceClosed;
+
+    const st = state[key] || { wasProfitable: false, lastNet: 0, lastAlertTs: 0, lastSeen: 0 };
+    st.lastSeen = now;
+
+    if (st.wasProfitable && currentlyClosed) {
+      // Real transition: a pair that was a strong HARVEST opp has closed.
+      if (now - st.lastAlertTs >= CLOSE_COOLDOWN_MS) {
+        const short = (opp.legs?.[0]?.platform || '').replace(/\s*\(DEX\)/, '') || '?';
+        const long  = (opp.legs?.[1]?.platform || '').replace(/\s*\(DEX\)/, '') || '?';
+        closed.push({ coin, short, long, wasNet: st.lastNet, nowNet: netDay });
+        st.lastAlertTs = now;
+      }
+      st.wasProfitable = false;   // cleared even if cooldown-skipped → won't re-fire until strong again
+    } else if (currentlyStrong) {
+      st.wasProfitable = true;
+      st.lastNet       = netDay;  // the "era $X" figure — always a real, cashable HARVEST net
+    }
+    // between the two floors: no state change (hysteresis)
+
+    state[key] = st;
+  }
+
+  // Prune pairs not seen for 48h so the state file can't grow forever.
+  for (const k of Object.keys(state)) {
+    if (now - (state[k].lastSeen || 0) > CLOSE_PRUNE_MS) delete state[k];
+  }
+  saveCloseState(state);
+
+  // Dispatch: cap per cycle, collapse the overflow into one honest summary line.
+  const send = closed.slice(0, CLOSE_ALERTS_PER_CYCLE);
+  for (const c of send) {
+    await sendMessage(ADMIN_CHAT, buildSpreadClosedText(c.coin, c.short, c.long, c.wasNet, c.nowNet));
+    log(`Spread-closed ${c.coin} ${c.short}/${c.long} was=$${c.wasNet.toFixed(2)} now=$${c.nowNet.toFixed(2)}`);
+  }
+  const extra = closed.length - send.length;
+  if (extra > 0) {
+    await sendMessage(ADMIN_CHAT, `⚠️ <b>+${extra} altri spread chiusi</b> in questo ciclo (limite anti-spam).`);
+    log(`Spread-closed summary +${extra} more`);
+  }
+}
+
 async function runAlertScan(subs) {
   const opps = loadFundingData();
   if (opps.length === 0) return;
+
+  await runSpreadClosedScan(opps).catch(e => log('spread-closed scan error:', e.message));
 
   const byAsset = bestPerCoin(opps);
   const now     = Date.now();
