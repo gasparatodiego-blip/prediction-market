@@ -776,9 +776,12 @@ function FundingCard({ s, capital, leverage }: { s: SpreadItem; capital: number;
 
       {/* Header */}
       <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-2 min-w-0">
+        <div className="flex items-center flex-wrap gap-x-2 gap-y-1 min-w-0">
           <span className="font-mono font-bold text-ink tracking-tight truncate" style={{ fontSize: 15 }}>{s.coin}</span>
           <span className="font-body uppercase" style={{ fontSize: 9, letterSpacing: '0.14em', color: tier.color }}>{tier.label}</span>
+          {s.oneLegUnverified && (
+            <span className="font-body" style={{ fontSize: 9, color: '#b45309' }}>⚠ 1 leg non verificata</span>
+          )}
         </div>
         <div className="text-right shrink-0">
           <div className="font-body uppercase" style={{ fontSize: 8.5, letterSpacing: '0.12em', color: '#9aa5b3' }}>payback</div>

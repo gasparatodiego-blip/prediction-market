@@ -344,9 +344,23 @@ export function getCryptoSpreadsData(): CryptoSpreadsData {
     const spreads = computeSpreads(raw.futures ?? {}, readHistory()).map(s => {
       const key = `${s.coin}|${[s.shortExchange, s.longExchange].sort().join('|')}`;
       const lu  = uniLookup.get(key);
+      const oneLegUnverified = lu === undefined ? true : lu.oneLegUnverified;
+
+      // Honest tiering: HARVEST is the most attractive label and must imply a cashable,
+      // both-legs-verified, real-depth opportunity. Downgrade to CAUTION (never hide) when a
+      // leg is unverified, the book is VERY THIN, or one leg contributes no funding (frShort/
+      // frLong === 0 → single-leg pseudo-spread). Classification ONLY — net/day, capacity, and
+      // fees are untouched; this just refuses to paint an unverified/thin pair as HARVEST.
+      const veryThin  = s.liquidityTier === 'VERY THIN';
+      const singleLeg = s.frShort === 0 || s.frLong === 0;
+      const status    = (s.status === 'HARVEST' && (oneLegUnverified || veryThin || singleLeg))
+        ? 'CAUTION' as const
+        : s.status;
+
       return {
         ...s,
-        oneLegUnverified:     lu === undefined ? true : lu.oneLegUnverified,
+        status,
+        oneLegUnverified,
         capacityUsd:          lu?.capacityUsd          !== undefined ? lu.capacityUsd          : s.capacityUsd,
         depthThin:            lu?.depthThin            !== undefined ? lu.depthThin            : false,
         depthNote:            lu?.depthNote            !== undefined ? lu.depthNote            : null,

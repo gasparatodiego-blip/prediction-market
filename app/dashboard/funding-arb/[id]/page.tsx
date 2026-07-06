@@ -39,6 +39,7 @@ interface SpreadItem {
   liquidityTier:      string | null;
   capacityUsd:        number | null;
   thinFlag:           boolean;
+  oneLegUnverified:   boolean;
   depthThin?:         boolean;
   depthNote?:         string | null;
   greenCapacityUsd:   number | null;
@@ -258,6 +259,9 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
               </span>
               {spread.thinFlag && (
                 <span className="font-body" style={{ fontSize: 9, color: '#b45309' }}>⚠ thin</span>
+              )}
+              {spread.oneLegUnverified && (
+                <span className="font-body" style={{ fontSize: 9, color: '#b45309' }}>⚠ 1 leg non verificata</span>
               )}
               <span className="font-body ml-auto" style={{ fontSize: 10, color: '#9aa5b3' }}>{caption}</span>
             </div>
