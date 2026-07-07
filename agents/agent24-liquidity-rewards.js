@@ -133,6 +133,10 @@ async function fetchRewardMarkets() {
 
       markets.push({
         conditionId:      m.conditionId,
+        // Polymarket deep-link needs the EVENT slug (…/event/<slug>), NOT the per-market
+        // slug (which carries a numeric suffix and 404s on /event/). Gamma nests it under
+        // events[0].slug. null when absent → the UI renders no link (never a broken URL).
+        slug:             (Array.isArray(m.events) && m.events[0] && m.events[0].slug) || null,
         question:         m.question,
         rewardsDailyRate: rate,
         rewardsMinSize:   minSize || 0,
@@ -370,6 +374,7 @@ async function scan() {
       question:          m.question,
       category:          categoryFromText(m.question),  // tags-first not available on Gamma market obj; keyword taxonomy (honest 'other' when unmatched)
       conditionId:       m.conditionId,
+      slug:              m.slug || null,          // real Gamma event slug, carried through for platform deep-link
       rewardsDailyRate:  m.rewardsDailyRate,
       rewardsMaxSpread:  m.rewardsMaxSpread,
       rewardsMinSize:    m.rewardsMinSize,
