@@ -14,6 +14,8 @@ import {
 } from '@/lib/spread-types';
 import { APY_CAP, isOverApyCap } from '@/lib/honest-display';
 import { Redacted } from '@/app/components/ui/Redacted';
+import { PlatformLink } from '@/app/components/ui/PlatformLink';
+import { venuePerpUrl } from '@/lib/platform-links';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -550,6 +552,9 @@ function FlowStrip({ s }: { s: SpreadItem }) {
   const longFlow   = legCashflow('long',  s.frLong);
   const shortColor = FLOW_COLOR[shortFlow];
   const longColor  = FLOW_COLOR[longFlow];
+  // Real perp deep-links per leg (null → no link; never fabricated).
+  const shortUrl   = venuePerpUrl(s.shortExchange, s.coin);
+  const longUrl    = venuePerpUrl(s.longExchange, s.coin);
 
   // Arrow points toward whichever leg actually PAYS funding. In a valid spread the
   // engine shorts the higher-annualized leg, so at most one leg can pay; if neither
@@ -572,6 +577,7 @@ function FlowStrip({ s }: { s: SpreadItem }) {
         <span className="inline-flex items-center gap-1 mt-1 min-w-0">
           <PlatformLogo platform={s.shortExchange} size={12} />
           <span className="font-mono font-bold text-ink truncate" style={{ fontSize: 12 }}>{venueLabel(s.shortExchange)}</span>
+          {shortUrl && <PlatformLink href={shortUrl} label={venueLabel(s.shortExchange)} compact className="shrink-0" />}
         </span>
         <span className="font-mono tabular-nums mt-0.5" style={{ fontSize: 11, color: shortColor }}>
           {fmtRate8h(s.frShort, s.intervalHoursShort)}<span style={{ color: '#9aa5b3' }}> /8h</span>
@@ -608,6 +614,7 @@ function FlowStrip({ s }: { s: SpreadItem }) {
         <span className="inline-flex flex-row-reverse items-center gap-1 mt-1 min-w-0">
           <PlatformLogo platform={s.longExchange} size={12} />
           <span className="font-mono font-bold text-ink truncate" style={{ fontSize: 12 }}>{venueLabel(s.longExchange)}</span>
+          {longUrl && <PlatformLink href={longUrl} label={venueLabel(s.longExchange)} compact className="shrink-0" />}
         </span>
         <span className="font-mono tabular-nums mt-0.5" style={{ fontSize: 11, color: longColor }}>
           {fmtRate8h(s.frLong, s.intervalHoursLong)}<span style={{ color: '#9aa5b3' }}> /8h</span>

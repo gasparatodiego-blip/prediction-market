@@ -4,6 +4,8 @@ import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import PlatformLogo from '@/components/PlatformLogo';
 import { Redacted, RedactedPanel } from '@/app/components/ui/Redacted';
+import { PlatformLink } from '@/app/components/ui/PlatformLink';
+import { venuePerpUrl } from '@/lib/platform-links';
 import { venueFeePct } from '@/lib/funding-math';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -280,6 +282,7 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
                   <span className="font-mono tabular-nums" style={{ fontSize: 11, color: FLOW_COLOR[flow] }}>
                     {fmtRate8h(fr, iv)}<span style={{ color: '#9aa5b3' }}>/8h</span>
                   </span>
+                  {(() => { const u = venuePerpUrl(ex, coin); return u ? <PlatformLink href={u} label={venueLabel(ex)} compact className="ml-0.5" /> : null; })()}
                 </div>
               ))}
             </div>
