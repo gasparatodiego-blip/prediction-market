@@ -1,5 +1,12 @@
-<!-- Lettermark fallback logo — see components/PlatformLogo.tsx for why -->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" width="20" height="20" role="img" aria-hidden="true">
-  <rect width="20" height="20" rx="4" fill="#1B1B3A"/>
-  <text x="10" y="14.5" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="#FFFFFF">P</text>
+<!-- Tasteful brand-colored lettermark (Polymarket indigo/blue). Original badge in the
+     venue's brand colors — NOT a traced official asset, per project logo policy. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" width="20" height="20" role="img" aria-label="Polymarket">
+  <defs>
+    <linearGradient id="pm-g" x1="0" y1="0" x2="20" y2="20" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#3B5BFF"/>
+      <stop offset="1" stop-color="#1B2E8C"/>
+    </linearGradient>
+  </defs>
+  <rect width="20" height="20" rx="5" fill="url(#pm-g)"/>
+  <path d="M6.4 5.2h4.1c2.1 0 3.6 1.3 3.6 3.3s-1.5 3.3-3.6 3.3H8.5v3H6.4V5.2Zm2.1 1.9v3.0h1.8c0.95 0 1.6-0.6 1.6-1.5s-0.65-1.5-1.6-1.5H8.5Z" fill="#FFFFFF"/>
 </svg>
