@@ -25,6 +25,10 @@ const https = require('https');
 const crypto = require('crypto');
 const { httpPost: _sharedPost } = require('../lib/httpGet');
 const { annualize, roundTripFeeByVenue, netApy30d } = require('../lib/funding-math');
+// Shared canonical detectors — the auditor verifies the invariant "no dead/expired
+// instrument reaches a served feed" using the SAME definition the producers exclude by.
+const { isDeadContract, buildPeerMarks } = require('../lib/contract-liveness');
+const { isExpired, parseInstrumentExpiryMs } = require('../lib/instrument-expiry');
 
 // ── Load .env for Telegram creds (pm2 doesn't auto-load project env files) ───
 // Same pattern as agents/agent21-copy-watcher.js — do NOT hardcode or commit
@@ -56,6 +60,10 @@ const STATE_FILE        = '/tmp/landing-auditor-state.json'; // this agent's own
 const EXCHANGE_FILE       = '/tmp/exchange-prices.json';
 const UNI_FILE            = '/tmp/unified-opportunities.json';
 const BASIS_FILE          = '/tmp/basis-opportunities.json';
+const HISTORY_CACHE_FILE  = '/tmp/funding-history-cache.json';   // agent15 settled ring buffer (rule d input)
+const PERP_SPOT_FILE      = '/tmp/perp-spot.json';               // agent28 served perp-spot feed
+const DASHBOARD_LOG       = '/root/.pm2/logs/dashboard-out.log'; // where filterSane() writes sanity-reject lines
+const SANITY_SPIKE_DELTA  = 25;   // new sanity-reject lines since last cycle beyond this ⇒ producer regression
 const SPORTS_FILE         = '/tmp/sports-odds.json';
 const ARB_FILE            = '/tmp/arbitrage-opportunities.json';
 const POLY_REWARDS_FILE   = '/root/prediction-market/data/liquidity-rewards.json';
@@ -483,6 +491,16 @@ function evaluateRow(row, hasApyCapLabel) {
     } else if (!TOL(num, expected.netAnnualized, 0.1, 0.02)) {
       violations.push(`DIVERGENCE: ${cls.asset} carry displayed +${num}%/yr vs recomputed +${expected.netAnnualized}%/yr`);
     }
+    // Expired-instrument guard: the carry sub-line renders "{exchange} · {contract}".
+    // If any token is a dated future whose expiry is past, the landing is showing a
+    // fabricated (expired) instrument — the exact BTC-25JUN class.
+    const now = Date.now();
+    for (const tok of String(row.subRaw || '').split(/[\s·|]+/)) {
+      const expMs = parseInstrumentExpiryMs(tok);
+      if (expMs != null && expMs <= now) {
+        violations.push(`EXPIRED INSTRUMENT ON LANDING: carry row references ${tok} (expired ${new Date(expMs).toISOString().slice(0, 10)}) — must never be displayed`);
+      }
+    }
     impliedApy = num;
   }
 
@@ -520,8 +538,92 @@ function evaluateRow(row, hasApyCapLabel) {
   return { cls, violations, impliedApy };
 }
 
+// ── Phantom-instrument class checks (Phase 4) ──────────────────────────────
+// These verify the invariant that NO expired/dead/cap-pinned instrument reaches a
+// SERVED feed (not just the landing HTML) — the last backstop if a producer guard
+// regresses. Read-only; uses the canonical shared detectors so "dead"/"expired" mean
+// exactly what the producers exclude by.
+function auditServedFeeds(opts = {}) {
+  const violations = [];
+  const now = Date.now();
+  const basisFile = opts.basisFile || BASIS_FILE;
+  const exFile    = opts.exchangeFile || EXCHANGE_FILE;
+  const ringFile  = opts.historyFile || HISTORY_CACHE_FILE;
+  const uniFile   = opts.uniFile || UNI_FILE;
+  const psFile    = opts.perpSpotFile || PERP_SPOT_FILE;
+
+  // (A) expired dated futures in the served basis feed
+  const basis = readJsonSafe(basisFile);
+  if (basis) {
+    for (const o of [...(basis.opportunities || []), ...(basis.backwardation || [])]) {
+      if (isExpired(o, now)) {
+        violations.push(`EXPIRED INSTRUMENT in served basis feed: ${o.contract || o.instrument || '?'} (expiry ${o.expiry || '?'}) — should be excluded before render`);
+      }
+    }
+  }
+
+  // Which (venue,coin) are dead RIGHT NOW, by the canonical definition.
+  const ex      = readJsonSafe(exFile);
+  const futures = (ex && ex.futures) || {};
+  const ring    = (readJsonSafe(ringFile) || {}).data || {};
+  const peer    = buildPeerMarks(futures);
+  const deadSet = new Set();
+  for (const [v, coins] of Object.entries(futures)) {
+    for (const [coin, d] of Object.entries(coins || {})) {
+      const res = isDeadContract(v, coin, d, ((ring[v] || {})[coin]) || [], { now, peerMarks: peer[coin] });
+      if (res.dead) deadSet.add(`${v}:${coin}`);
+    }
+  }
+
+  // (B) dead contracts leaking into the served funding feed (unified-opportunities FUNDING).
+  //     id shape: funding-<coin>-<shortEx>-<longEx> (coins/venues carry no dashes).
+  const uni = readJsonSafe(uniFile);
+  if (uni && Array.isArray(uni.opportunities)) {
+    for (const o of uni.opportunities) {
+      if (o.type !== 'FUNDING') continue;
+      const p = String(o.id || '').split('-');
+      if (p.length !== 4) continue;
+      const [, coin, shortEx, longEx] = p;
+      if (deadSet.has(`${shortEx}:${coin}`) || deadSet.has(`${longEx}:${coin}`)) {
+        violations.push(`DEAD CONTRACT in served funding feed: ${o.id} references a contract flagged dead/cap-pinned — should be excluded`);
+      }
+    }
+  }
+
+  // (B) dead contracts leaking into the served perp-spot feed.
+  const ps = readJsonSafe(psFile);
+  if (ps && Array.isArray(ps.rows)) {
+    for (const rrow of ps.rows) {
+      if (deadSet.has(`${rrow.shortVenue}:${rrow.coin}`)) {
+        violations.push(`DEAD CONTRACT in served perp-spot feed: ${rrow.shortVenue}:${rrow.coin} — should be excluded`);
+      }
+    }
+  }
+
+  return violations;
+}
+
+// Count sanity-reject lines the dashboard has logged (filterSane emits them). A spike
+// SINCE THE LAST CYCLE is a producer-regression signal: many rows suddenly failing the
+// render-time net. Returns { total, violations } given the previously-seen total.
+function auditSanityRejectSpike(prevSeen, logFile = DASHBOARD_LOG) {
+  let total = 0;
+  try {
+    const buf = fs.readFileSync(logFile, 'utf8');
+    total = (buf.match(/sanity-reject /g) || []).length;
+  } catch { return { total: prevSeen, violations: [] }; }  // log absent → no signal, don't fabricate
+  const violations = [];
+  const prev = Number.isFinite(prevSeen) ? prevSeen : total;   // first run: baseline, no alert
+  const delta = total - prev;
+  if (delta > SANITY_SPIKE_DELTA) {
+    violations.push(`SANITY-REJECT SPIKE: ${delta} new render-time rejections since last cycle (>${SANITY_SPIKE_DELTA}) — a producer is emitting phantom rows; check dashboard log`);
+  }
+  // On log rotation total < prev → treat as reset (baseline re-anchors, no alert).
+  return { total, violations };
+}
+
 // ── One audit cycle ───────────────────────────────────────────────────────
-async function runCycle() {
+async function runCycle(state) {
   const html = await fetchText(LANDING_URL);
   const hasApyCapLabel = html.includes(APY_CAP_LABEL);
   const rows = parseLandingRows(html);
@@ -532,8 +634,13 @@ async function runCycle() {
     allViolations.push(...violations);
   }
 
-  log(`cycle ok — ${rows.length} live row(s), ${allViolations.length} violation(s)`);
-  return allViolations;
+  // Phase 4: phantom-instrument class checks on the served feeds + sanity-reject spike.
+  allViolations.push(...auditServedFeeds());
+  const spike = auditSanityRejectSpike(state && state.sanityRejectSeen);
+  allViolations.push(...spike.violations);
+
+  log(`cycle ok — ${rows.length} live row(s), ${allViolations.length} violation(s), sanity-rejects seen=${spike.total}`);
+  return { violations: allViolations, sanityRejectSeen: spike.total };
 }
 
 function hashViolations(violations) {
@@ -569,7 +676,8 @@ async function main() {
 
   while (true) {
     try {
-      const violations = await runCycle();
+      const { violations, sanityRejectSeen } = await runCycle(state);
+      state = { ...state, sanityRejectSeen };   // carry the sanity-reject high-water mark for delta detection
       state = await maybeAlert(violations, state, { forceFirstSend: first });
       if (first) { state.firstCheckDone = true; first = false; }
       saveState(state);
@@ -590,4 +698,9 @@ async function main() {
   }
 }
 
-main().catch(e => { console.error('[A26] Fatal:', e); process.exit(1); });
+// Exported for unit testing the phantom-instrument checks in isolation.
+module.exports = { auditServedFeeds, auditSanityRejectSpike };
+
+if (require.main === module) {
+  main().catch(e => { console.error('[A26] Fatal:', e); process.exit(1); });
+}
