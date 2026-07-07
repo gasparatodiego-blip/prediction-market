@@ -221,7 +221,7 @@ function TypeFilterToggle({
       )}
       {value === 'spot_perp' && (
         <span className="font-body text-[11px] text-muted">
-          Hold spot, short its perp — collect the full funding rate (Ethena-style)
+          Hold spot, short its perp — collect the full funding rate
         </span>
       )}
     </div>
@@ -1519,7 +1519,7 @@ function RwaCommoditiesStrip({ rows }: { rows: RwaObservation[] }) {
   );
 }
 
-// ── Perp vs Spot (Ethena-style carry) ─────────────────────────────────────────
+// ── Perp vs Spot (delta-neutral carry) ────────────────────────────────────────
 // Hold spot, short the perp on the venue paying the most funding → collect the FULL
 // absolute funding rate (not a perp/perp spread). All $ figures on a row's `edge` are
 // quoted per $1,000 per-leg; we scale linearly to the user's capital. edge fields are
@@ -1565,9 +1565,9 @@ function PerpSpotExplainer() {
       <div className="p-4">
         <div className="font-semibold text-ink" style={{ fontSize: 15 }}>Earn the funding — without betting on price</div>
         <p className="mt-1.5 font-body leading-relaxed" style={{ fontSize: 12.5, color: '#334155', maxWidth: '58ch' }}>
-          When a perpetual&apos;s funding rate is positive, shorts get paid every settlement. Hold the
-          coin in <strong>spot</strong> and <strong>short</strong> the same coin&apos;s perp in equal size:
-          the two price moves cancel, and you keep the funding.
+          You buy the coin (<strong>spot</strong>) and <strong>short</strong> an equal amount on its
+          perpetual. Price moves cancel out — you keep the funding rate that long traders pay shorts,
+          collected every settlement.
         </p>
 
         {/* 3 steps */}
@@ -1587,12 +1587,6 @@ function PerpSpotExplainer() {
             </div>
           ))}
         </div>
-
-        {/* Ethena reference */}
-        <p className="mt-3 font-body" style={{ fontSize: 11.5, color: '#475569' }}>
-          This is the exact trade behind <strong>Ethena&apos;s USDe</strong> — the delta-neutral carry strategy
-          that grew to a multi-billion-dollar synthetic dollar.
-        </p>
 
         {/* Honest warning box */}
         <div className="mt-3 rounded-md p-2.5" style={{ border: '1px solid #f6e4c8', background: '#fff8ef' }}>
@@ -1994,7 +1988,7 @@ export default function CryptoPage() {
       {/* HERO */}
       <div className="pb-5 mb-5" style={{ borderBottom: '1px solid #e6eaef' }}>
         <div className="font-body uppercase" style={{ fontSize: 10, letterSpacing: '0.16em', color: '#9aa5b3' }}>
-          {isPerpSpot ? 'Perp vs Spot · Ethena-style carry' : 'Funding arbitrage · market-neutral'}
+          {isPerpSpot ? 'Perp vs Spot · delta-neutral carry' : 'Funding arbitrage · market-neutral'}
         </div>
         <div className="mt-2 flex items-baseline gap-2 flex-wrap">
           {/* Commodities are observation-only — no cashable "best net/day" exists, so dash it. */}

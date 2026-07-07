@@ -108,7 +108,7 @@ export interface SpreadsMeta {
   note:         string;
 }
 
-// ── Perp-vs-Spot (Ethena-style carry) ────────────────────────────────────────
+// ── Perp-vs-Spot (delta-neutral carry) ───────────────────────────────────────
 // One coin's best venue to SHORT the perp while holding SPOT, capturing the FULL
 // absolute funding rate. Raw inputs are public teaser; the derived `edge` (dollar
 // math) is redacted for the free tier — the page gates on edge.netPerDay1k == null.
@@ -162,7 +162,7 @@ export interface CryptoSpreadsData {
   cexArb:       unknown[];
   spreads:      SpreadItem[];
   rwa:          RwaObservation[];   // commodities beta — observation-only, never cashable
-  perpSpot:     PerpSpotRow[];      // Ethena-style carry: best short-perp + spot hedge per coin
+  perpSpot:     PerpSpotRow[];      // delta-neutral carry: best short-perp + spot hedge per coin
   perpSpotStale: boolean;           // source feed older than freshness window
   perpSpotRegime: PerpSpotRegime | null;  // live funding-regime banner context
   meta:         SpreadsMeta | null;
