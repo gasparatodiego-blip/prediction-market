@@ -45,6 +45,17 @@ const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const CHAT_ID   = process.env.TELEGRAM_CHAT_ID   || '';
 const AUTO_EXECUTE_ENABLED = process.env.AUTO_EXECUTE_ENABLED === 'true'; // guard is advisory unless this is on (it is not)
 
+// Telegram gating — TWO independent gates, BOTH must pass to send a push:
+//   1. TELEGRAM_ALERTS_ENABLED — the project-wide mute switch. Only agent26
+//      (landing auditor) + agent-monitor may bypass it; agent27 must NOT. When
+//      this is 'false', the news-guard sends ZERO Telegram (advisories still go
+//      to /tmp/news-guard.json and the in-app rewards news-risk badges).
+//   2. NEWS_GUARD_TELEGRAM_ENABLED — per-agent OPT-IN, default FALSE. Even when
+//      global alerts are ON, agent27 pushes Telegram ONLY if the user explicitly
+//      opts in with this flag. Unset/absent → treated as OFF → no Telegram.
+//   In-app news-risk badges + the advisory data file are unaffected by either.
+const NEWS_GUARD_TELEGRAM_ENABLED = process.env.NEWS_GUARD_TELEGRAM_ENABLED === 'true';
+
 // Prisma (local Postgres) — read stored RewardsPlacements so the guard reacts to the
 // choice each user made per market (withdraw / alert / off). Guarded: if the client or
 // DB is unavailable the guard degrades to book+news advisory only, never crashes.
@@ -70,7 +81,7 @@ const NEWS_TOP_N       = 30;                 // query news only for the top-N ma
 const NEWS_CACHE_MS    = 30 * 60_000;        // re-query a given market's news at most every 30 min
 const NEWS_RPS         = 1;                  // be gentle to Google News RSS
 const FETCH_TIMEOUT_MS = 12_000;
-const ALERT_COOLDOWN_MS = 3 * 3_600_000;     // same market alerts at most once / 3h
+const ALERT_COOLDOWN_MS = 6 * 3_600_000;     // per-market cooldown: same marketId re-alerts at most once / 6h (persisted in STATE_FILE so restarts don't re-fire)
 
 // News-spike heuristic thresholds (advisory signal, NOT a cashable number).
 // Documented + conservative; recent = articles in last RECENT_H hours, baseline =
@@ -108,12 +119,16 @@ function httpGetText(url, timeoutMs = FETCH_TIMEOUT_MS) {
 }
 
 function httpPost(url, body) { return _sharedPost(url, body, { timeoutMs: 15_000 }).then(r => r.data); }
+// Returns true only when a message was actually handed to Telegram, false when
+// suppressed by a gate / missing config. Callers log honestly off this result.
 async function sendTelegram(text) {
-  // Opt-in guard channel — respect the global mute switch.
-  if (process.env.TELEGRAM_ALERTS_ENABLED === 'false') { log('Telegram muted (TELEGRAM_ALERTS_ENABLED=false) — alert logged only'); return; }
-  if (!BOT_TOKEN || !CHAT_ID) { log('Telegram not configured — alert logged only:', text.slice(0, 160)); return; }
-  try { await httpPost(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, { chat_id: CHAT_ID, text, parse_mode: 'HTML', disable_web_page_preview: true }); }
-  catch (e) { log('sendTelegram error:', e.message); }
+  // Gate 1: respect the project-wide mute switch (agent27 is NOT on the bypass allowlist).
+  if (process.env.TELEGRAM_ALERTS_ENABLED === 'false') { log('Telegram muted (TELEGRAM_ALERTS_ENABLED=false) — advisory kept in data file only'); return false; }
+  // Gate 2: per-agent opt-in, default OFF. No opt-in → advisory stays in-app only.
+  if (!NEWS_GUARD_TELEGRAM_ENABLED) { log('Telegram send skipped — news-guard opt-in gate off (NEWS_GUARD_TELEGRAM_ENABLED not true); advisory kept in data file + in-app badges only'); return false; }
+  if (!BOT_TOKEN || !CHAT_ID) { log('Telegram not configured — alert logged only:', text.slice(0, 160)); return false; }
+  try { await httpPost(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, { chat_id: CHAT_ID, text, parse_mode: 'HTML', disable_web_page_preview: true }); return true; }
+  catch (e) { log('sendTelegram error:', e.message); return false; }
 }
 
 // ── Keyword extraction for a news query ────────────────────────────────────────
@@ -411,25 +426,24 @@ async function scan() {
 
   // Telegram: alert ONLY on genuine "something just happened" HIGH markets — a real
   // Google-News spike or a structural TRAP — not book-volatility-only highs (those are
-  // still surfaced as HIGH badges in the UI, but do not warrant a push). Deduped, 3h
+  // still surfaced as HIGH badges in the UI, but do not warrant a push). Deduped, 6h
   // cooldown. Calm (no alert) when none — the valid, common state.
   // Alert set = genuine "something just happened" HIGHs (real news spike / structural
   // TRAP) UNION any HIGH market where a user opted into 'withdraw' or 'alert' (their
-  // configured reaction fires). Deduped by marketId, 3h cooldown. Advisory only.
+  // configured reaction fires). Deduped by marketId (Map, at most once per cycle),
+  // 6h per-market cooldown persisted in STATE_FILE. Advisory only.
   const newsyHighs     = highs.filter(h => h.newsSignal === 'high' || (h.signals[0]?.note || '').includes('TRAP'));
   const placementHighs = highs.filter(h => h.userReaction && (h.userReaction.action === 'WITHDRAW_LIQUIDITY' || h.userReaction.action === 'ALERT_ONLY'));
   const alertMap = new Map();
   for (const h of [...newsyHighs, ...placementHighs]) alertMap.set(h.marketId, h);
   const alertable = [...alertMap.values()];
+  // Cooldown is checked here but only STAMPED on an actual send below, so a
+  // gate-suppressed "send" never burns the 6h window.
   const toAlert = [];
   for (const h of alertable) {
     const prev = state.alerted[h.marketId];
-    if (!prev || (now - prev) > ALERT_COOLDOWN_MS) { toAlert.push(h); state.alerted[h.marketId] = now; }
+    if (!prev || (now - prev) > ALERT_COOLDOWN_MS) toAlert.push(h);
   }
-  // prune stale alert/cooldown + cache entries
-  for (const k of Object.keys(state.alerted))  if (now - state.alerted[k]  > 24 * 3_600_000) delete state.alerted[k];
-  for (const k of Object.keys(state.newsCache)) if (now - state.newsCache[k].at > 6 * 3_600_000) delete state.newsCache[k];
-  atomicWrite(STATE_FILE, state);
 
   if (toAlert.length) {
     const lines = toAlert.slice(0, 8).map(h => {
@@ -440,11 +454,21 @@ async function scan() {
         : 'PROTECT: withdraw liquidity now';
       return `⚠️ <b>${(h.title || h.marketId).slice(0, 90)}</b> (${h.venue})\n   ${reaction} · ${h.signals.map(s => s.note).join(' | ')}`;
     });
-    await sendTelegram(
+    const sent = await sendTelegram(
       `🛡️ <b>News-guard: ${toAlert.length} market(s) at HIGH adverse risk</b>\n` +
       `Advisory only — live execution OFF, no orders placed.\n\n${lines.join('\n\n')}`);
-    log(`ALERT sent for ${toAlert.length} HIGH-risk market(s)`);
+    if (sent) {
+      for (const h of toAlert) state.alerted[h.marketId] = now;   // consume cooldown only on a real send
+      log(`ALERT sent for ${toAlert.length} HIGH-risk market(s)`);
+    } else {
+      log(`ALERT suppressed (Telegram gate off) — ${toAlert.length} HIGH-risk market(s) surfaced in /tmp/news-guard.json + in-app news-risk badges only`);
+    }
   }
+
+  // prune stale alert/cooldown + cache entries, then persist (after any send-stamp above)
+  for (const k of Object.keys(state.alerted))  if (now - state.alerted[k]  > 24 * 3_600_000) delete state.alerted[k];
+  for (const k of Object.keys(state.newsCache)) if (now - state.newsCache[k].at > 6 * 3_600_000) delete state.newsCache[k];
+  atomicWrite(STATE_FILE, state);
 
   // heartbeat
   try {
