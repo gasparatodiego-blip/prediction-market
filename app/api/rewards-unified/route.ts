@@ -3,7 +3,7 @@ import fs from 'fs';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { getIsPaid, redactForTier } from '@/lib/paid-gating';
-import { filterSane } from '@/lib/display-sanity';
+import { filterSane, enforceVerified } from '@/lib/display-sanity';
 
 export const dynamic = 'force-dynamic';
 
@@ -48,6 +48,9 @@ export async function GET() {
     // Render-time sanity net: drop any reward row with a negative pool/liquidity or a
     // price outside [0,1] (logged as sanity-reject; UI shows fewer rows, calmly).
     data.markets = filterSane('rewards', data.markets);
+    // Source-of-truth enforcement: drop pools the platform no longer pays, flag+demote
+    // unverifiable ones (e.g. Kalshi's derived pool), tag verified rows for the badge.
+    data.markets = enforceVerified('rewards', data.markets);
 
     const session = await getServerSession(authOptions);
     const isPaid  = await getIsPaid(session);

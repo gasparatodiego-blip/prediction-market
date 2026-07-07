@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { getIsPaid, redactForTier } from '@/lib/paid-gating';
 import { getCryptoSpreadsData } from '@/lib/spread-compute';
-import { filterSane } from '@/lib/display-sanity';
+import { filterSane, enforceVerified } from '@/lib/display-sanity';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,6 +18,11 @@ export async function GET() {
   const data = getCryptoSpreadsData();
   data.spreads = filterSane('funding', data.spreads);
   data.perpSpot = filterSane('perp-spot', data.perpSpot);
+
+  // Source-of-truth enforcement: drop rows the venue positively contradicts,
+  // flag+demote rows we couldn't re-read at source, tag verified rows for the badge.
+  data.spreads = enforceVerified('funding', data.spreads);
+  data.perpSpot = enforceVerified('perp-spot', data.perpSpot);
 
   const body = redactForTier(data, 'crypto', isPaid);
   return NextResponse.json(body);

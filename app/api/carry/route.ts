@@ -4,7 +4,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { getIsPaid, redactForTier } from '@/lib/paid-gating';
 import { isExpired } from '@/lib/instrument-expiry';
-import { filterSane } from '@/lib/display-sanity';
+import { filterSane, enforceVerified } from '@/lib/display-sanity';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,8 +51,10 @@ export async function GET() {
 
   // Layer: expired filter (Phase 2, specific log) then the render-time sanity net
   // (absurd/over-cap/missing-expiry money-field checks).
-  const opportunities = filterSane('basis', keepLive(data.opportunities, 'opportunity'), now);
-  const backwardation = filterSane('basis', keepLive(data.backwardation, 'backwardation'), now);
+  // Source-of-truth enforcement: drop venue-contradicted rows, flag+demote
+  // unreachable ones, tag verified rows for the badge.
+  const opportunities = enforceVerified('basis', filterSane('basis', keepLive(data.opportunities, 'opportunity'), now), now);
+  const backwardation = enforceVerified('basis', filterSane('basis', keepLive(data.backwardation, 'backwardation'), now), now);
 
   const body = redactForTier({
     agentStatus,
