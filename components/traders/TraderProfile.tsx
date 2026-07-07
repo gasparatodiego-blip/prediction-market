@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { ArrowLeft, ExternalLink, AlertCircle, Cpu, User } from 'lucide-react';
 import { Redacted, RedactedPanel } from '@/app/components/ui/Redacted';
+import { polymarketProfileUrl } from '@/lib/platform-links';
 import { ActorBadge, VerifiedTick, WinRate, CopyButton } from './parts';
 import {
   fmtPnl, fmtVol, fmtPrice, fmtSize, fmtAge, displayName,
@@ -107,10 +108,15 @@ export default function TraderProfileView({
           </div>
           <div className="flex items-center gap-2 mt-1.5">
             <span className="font-body text-[11px] text-muted break-all">{entry.wallet}</span>
-            <a href={`https://polymarket.com/profile/${entry.wallet}`} target="_blank" rel="noopener noreferrer"
-              className="text-muted hover:text-[#0c9d6e] transition-colors" title="View on Polymarket">
-              <ExternalLink className="w-3 h-3" />
-            </a>
+            {(() => {
+              const u = polymarketProfileUrl(entry.wallet);
+              return u ? (
+                <a href={u} target="_blank" rel="noopener noreferrer"
+                  className="text-muted hover:text-[#0c9d6e] transition-colors" title="View on Polymarket">
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              ) : null;
+            })()}
           </div>
         </div>
       </div>

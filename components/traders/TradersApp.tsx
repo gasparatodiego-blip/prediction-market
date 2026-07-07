@@ -5,6 +5,8 @@ import Eyebrow        from '@/app/components/ui/Eyebrow';
 import SectionHeading from '@/app/components/ui/SectionHeading';
 import PlatformLogo   from '@/components/PlatformLogo';
 import { Redacted }   from '@/app/components/ui/Redacted';
+import { PlatformLink } from '@/app/components/ui/PlatformLink';
+import { polymarketProfileUrl } from '@/lib/platform-links';
 import { ActorBadge, VerifiedTick, WinRate, ConfidenceBar, CopyButton } from './parts';
 import TraderProfileView from './TraderProfile';
 import CopyConfigPanel from './CopyConfigPanel';
@@ -386,6 +388,7 @@ function LeaderRow({ e, rank, onOpen, copying, atLimit, tier, maxSlots, onToggle
         </div>
         <div className="flex items-center gap-2 mt-0.5 font-body text-[10px] text-muted">
           <span>{fmtWallet(e.wallet)}</span>
+          {(() => { const u = polymarketProfileUrl(e.wallet); return u ? <PlatformLink href={u} label="Polymarket profile" compact /> : null; })()}
           <span>· {e.resolvedMarkets} resolved</span>
           <span className="hidden sm:inline">· vol <Redacted value={e.volumeUsdc}>{v => fmtVol(v)}</Redacted></span>
         </div>
@@ -424,6 +427,7 @@ function BotRow({ e, rank, onOpen, copying, atLimit, tier, maxSlots, onToggleCop
           </div>
           <div className="flex items-center gap-2 mt-0.5 font-body text-[10px] text-muted">
             <span>{fmtWallet(e.wallet)} · {e.resolvedMarkets} resolved</span>
+            {(() => { const u = polymarketProfileUrl(e.wallet); return u ? <PlatformLink href={u} label="Polymarket profile" compact /> : null; })()}
             <WinRate winRate={e.winRate} wilson={e.wilsonScore} resolvedMarkets={e.resolvedMarkets} />
           </div>
         </div>
