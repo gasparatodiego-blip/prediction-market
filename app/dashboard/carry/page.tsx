@@ -9,6 +9,8 @@ import BlipRow from '@/app/components/ui/BlipRow';
 import EdgeChip, { type EdgeChipVariant } from '@/app/components/ui/EdgeChip';
 import PlatformLogo from '@/components/PlatformLogo';
 import { Redacted } from '@/app/components/ui/Redacted';
+import { PlatformLink } from '@/app/components/ui/PlatformLink';
+import { venueFutureUrl } from '@/lib/platform-links';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 // Derived basis/annualized/capacity fields are null on free tier (server-side
@@ -192,7 +194,7 @@ function ContangoCard({ c }: { c: Contract }) {
       <BlipRow
         icon={coinEmoji(c.asset)}
         tileColor={tileColor}
-        name={<>{c.asset} — <PlatformLogo platform={c.exchange} size={12} className="mx-1" />{c.exchange} · {c.contract} · {c.daysToExpiry}d</>}
+        name={<>{c.asset} — <PlatformLogo platform={c.exchange} size={12} className="mx-1" />{c.exchange} · {c.contract} · {c.daysToExpiry}d{(() => { const u = venueFutureUrl(c.venueKey || c.exchange, c.contract); return u ? <PlatformLink href={u} label={c.exchange} compact className="ml-1.5 align-middle" /> : null; })()}</>}
         sub={<>spot ask {fmtPrice(spotPx)} · future bid {fmtPrice(futurePx)} · cap <Redacted value={c.capacityUsd}>{v => fmtK(v)}</Redacted></>}
         chip={variant}
         value={<Redacted value={c.netAnnualizedExecutable}>{v => fmtAnnualized(v)}</Redacted>}
@@ -260,7 +262,7 @@ function BackwardRow({ c }: { c: BackwardContract }) {
       <BlipRow
         icon={coinEmoji(c.asset)}
         tileColor="violet"
-        name={<>{c.asset} — <PlatformLogo platform={c.exchange} size={12} className="mx-1" />{c.exchange} · {c.contract} · {c.daysToExpiry}d</>}
+        name={<>{c.asset} — <PlatformLogo platform={c.exchange} size={12} className="mx-1" />{c.exchange} · {c.contract} · {c.daysToExpiry}d{(() => { const u = venueFutureUrl(c.exchange, c.contract); return u ? <PlatformLink href={u} label={c.exchange} compact className="ml-1.5 align-middle" /> : null; })()}</>}
         sub={`spot ${fmtPrice(c.spot)} · future ${fmtPrice(c.future)} · vol ${fmtK(c.vol24Usd)}`}
         chip="signal"
         value={<Redacted value={c.annualized}>{v => `${(v * 100).toFixed(2)}%`}</Redacted>}
