@@ -352,12 +352,13 @@ async function scan() {
     const fallbackMid = m.lastTradePrice
       || (m.bestBid && m.bestAsk ? (m.bestBid + m.bestAsk) / 2 : 0.5);
 
-    // Fetch BOTH CLOB token books — YES and NO are two INDEPENDENT order books
-    // (real bids AND asks each), NOT complements of one another. The reward pool is
-    // shared, but the competitor set a maker faces differs per token book, so the
-    // per-side reward math differs. 24h volatility is identical for both tokens
-    // (NO = 1 − YES ⇒ Var(NO) = Var(YES)), so we fetch it once and reuse it — saves
-    // an API call per market while staying exact. NO book only when tokenIdNo exists.
+    // Fetch BOTH CLOB token books LIVE — the YES token book and the NO token book —
+    // never synthesizing one from the other. Polymarket's fungibility keeps the two
+    // books near mirror-complements at the price level (YES bid p ≈ NO ask 1−p), but
+    // each side's REWARD band is centered on that token's own mid, so the in-band
+    // qualifying depth (and thus the per-side reward math) genuinely differs. 24h
+    // volatility is identical for both tokens (NO = 1 − YES ⇒ Var(NO) = Var(YES)), so
+    // we fetch it once and reuse it — exact, saves a call. NO book only when tokenIdNo.
     const [book, bookNo, vol] = await Promise.all([
       measureBookDepth(m.tokenId, m.rewardsMaxSpread, m.rewardsMinSize, fallbackMid),
       m.tokenIdNo
@@ -461,7 +462,7 @@ async function scan() {
         'Actual share depends on exact resting distance; competitors continuously re-quote.',
         'existing_depth_usd is a point-in-time CLOB snapshot (price×size, display only; not used for share math).',
         'Q_competitors is the quadratic-weighted score of all existing resting orders in the YES book.',
-        'sides.yes / sides.no carry each token\'s OWN independent CLOB book (real bids AND asks) — YES and NO are complementary but NOT identical; per-side reward math differs.',
+        'sides.yes / sides.no carry each token\'s OWN live CLOB book. YES + NO mids ≈ 100¢ (Polymarket fungibility keeps the books near mirror-complements), but each side\'s in-band reward depth — and thus the per-side reward math — genuinely differs.',
         `THIN_BOOK flag: typical dayYieldPct > ${SANITY_CAP_PCT}% — book is thin, real share will compress as MMs arrive.`,
         `BELOW_FLOOR flag: typical grossRewardDay < $${FLOOR_DAILY_USD} — minimum daily payout not met.`,
         'netRewardDay = grossRewardDay × (1 − 0) because Polymarket CLOB maker fee = 0% and Polygon gas ≈ $0. Platform fees on the reward disbursement are deterministically zero. Does NOT account for inventory/adverse-selection risk from fills — that is non-deterministic and not a fee.',

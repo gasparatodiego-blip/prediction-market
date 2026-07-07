@@ -678,7 +678,7 @@ function DualOrderBook({
               chosen={tradeSide === 'no'} userBid={userBid} userAsk={userAsk} />
           </div>
           <p className="font-body text-[9px] text-muted/60 px-1 pt-2 leading-relaxed">
-            Real executable prices from the {venue === 'polymarket' ? 'CLOB — two independent token books (YES ≠ 100¢−NO)' : 'Kalshi book — bids are real, asks are the contract complement'}.
+            Real executable prices from {venue === 'polymarket' ? 'each token’s own CLOB book (both fetched live; YES + NO mids ≈ 100¢, but each side’s in-band reward depth differs)' : 'the Kalshi book — bids are real, asks are the contract complement'}.
             The <span className="font-semibold">{tradeSide.toUpperCase()}</span> column is highlighted; your <span className="font-semibold">planned orders</span> (mid ± distance) show in bold there, never midpoint for fills.
           </p>
         </div>
