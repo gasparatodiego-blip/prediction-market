@@ -26,7 +26,7 @@ import { Redacted } from '@/app/components/ui/Redacted';
 import InfoTip from '@/app/components/ui/InfoTip';
 import { PlatformLink } from '@/app/components/ui/PlatformLink';
 import { polymarketMarketUrl, kalshiMarketUrl } from '@/lib/platform-links';
-import { estimateReward, type MarketSnapshot, type Venue } from '@/lib/rewards-estimate';
+import { estimateReward, type MarketSnapshot, type SideKey, type SideSnapshot, type Venue } from '@/lib/rewards-estimate';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type NewsRisk = 'low' | 'medium' | 'high' | 'unknown';
@@ -56,13 +56,19 @@ interface NormalizedMarket {
   scoringModel:        string;
   flags:               string[];
   tokenId:             string | null;
+  tokenIdNo?:          string | null;
+  sides?:              { yes: SideSnapshot | null; no: SideSnapshot | null } | null;
   newsRisk?:           NewsRisk;
   newsSignals?:        { source: string; note: string }[] | null;
   protect?:            { action: string; detail: string; liveExecution?: string } | null;
 }
 
 interface BookRow { price: number; size: number }   // price 0..1 fraction, size shares
-interface NormBook { bids: BookRow[]; asks: BookRow[]; lastTrade: number | null; hasBook: boolean; note: string | null }
+// asksComplement=true means the ask ladder is the CONTRACT COMPLEMENT of the other
+// side's bids (Kalshi returns bids only; asks are the real 100¢−bid identity), so the UI
+// can label it honestly. Polymarket books are real independent CLOBs → false.
+interface NormBook { bids: BookRow[]; asks: BookRow[]; lastTrade: number | null; hasBook: boolean; note: string | null; asksComplement: boolean }
+interface DualBook { yes: NormBook; no: NormBook }
 
 // ── Formatters ────────────────────────────────────────────────────────────────
 const fmtC   = (p: number) => `${(p * 100).toFixed(1)}¢`;
@@ -91,33 +97,38 @@ function toSnapshot(m: NormalizedMarket): MarketSnapshot {
     dailyPool: m.dailyPool, qualifyingLiquidity: m.qualifyingLiquidity,
     bookDepthAtBand: m.bookDepthAtBand, volatilityStdev: m.volatilityStdev,
     twoSidedRequired: m.twoSidedRequired,
+    sides: m.sides ?? null,   // per-side (YES/NO) books drive per-side estimates
   };
 }
 
-// ── Book normalization (executable prices only, both venues) ──────────────────
-// Polymarket: YES book comes as {bids,asks} in 0..1 already.
-// Kalshi: /orderbook returns { orderbook: { yes:[[cents,size]], no:[[cents,size]] } }.
-//   YES bids = orderbook.yes ; YES asks are the mirror of NO bids: a NO bid at q¢ is
-//   an offer to SELL YES at (100−q)¢. We never invent a level — only transform real ones.
-function normalizeBook(venue: Venue, raw: any): NormBook {
-  if (!raw) return { bids: [], asks: [], lastTrade: null, hasBook: false, note: null };
+const emptyBook = (note: string | null = null): NormBook =>
+  ({ bids: [], asks: [], lastTrade: null, hasBook: false, note, asksComplement: false });
+
+// ── Book normalization — BOTH sides, executable prices only ───────────────────
+// Polymarket: the /book route returns { yes:{bids,asks}, no:{bids,asks} } — two REAL
+//   independent CLOB token books (real bids AND asks each), in 0..1 already.
+// Kalshi: /orderbook returns bids only for both sides (yes_dollars, no_dollars). Each
+//   side's ASK ladder is the contract complement of the OTHER side's bids: a NO bid at
+//   $p is an offer to SELL YES at $(1−p), and vice-versa. That is the real Kalshi
+//   contract identity — we transform real levels, never synthesize one — and we flag it
+//   asksComplement:true so the UI labels those asks as complement-derived.
+function normalizeBooks(venue: Venue, raw: any): DualBook {
+  if (!raw) return { yes: emptyBook(), no: emptyBook() };
 
   if (venue === 'polymarket') {
-    const yes = raw.yes;
-    if (!yes) return { bids: [], asks: [], lastTrade: null, hasBook: false, note: raw.error ?? null };
-    const bids = (yes.bids ?? []).map((r: any) => ({ price: parseFloat(r.price), size: parseFloat(r.size) }))
-      .filter((r: BookRow) => r.price > 0 && r.size > 0).sort((a: BookRow, b: BookRow) => b.price - a.price);
-    const asks = (yes.asks ?? []).map((r: any) => ({ price: parseFloat(r.price), size: parseFloat(r.size) }))
-      .filter((r: BookRow) => r.price > 0 && r.size > 0).sort((a: BookRow, b: BookRow) => a.price - b.price);
-    const lastTrade = yes.last_trade_price != null ? parseFloat(yes.last_trade_price) : null;
-    return { bids, asks, lastTrade, hasBook: bids.length > 0 || asks.length > 0, note: null };
+    const one = (tok: any): NormBook => {
+      if (!tok) return emptyBook(raw.error ?? null);
+      const bids = (tok.bids ?? []).map((r: any) => ({ price: parseFloat(r.price), size: parseFloat(r.size) }))
+        .filter((r: BookRow) => r.price > 0 && r.size > 0).sort((a: BookRow, b: BookRow) => b.price - a.price);
+      const asks = (tok.asks ?? []).map((r: any) => ({ price: parseFloat(r.price), size: parseFloat(r.size) }))
+        .filter((r: BookRow) => r.price > 0 && r.size > 0).sort((a: BookRow, b: BookRow) => a.price - b.price);
+      const lastTrade = tok.last_trade_price != null ? parseFloat(tok.last_trade_price) : null;
+      return { bids, asks, lastTrade, hasBook: bids.length > 0 || asks.length > 0, note: null, asksComplement: false };
+    };
+    return { yes: one(raw.yes), no: one(raw.no) };
   }
 
-  // Kalshi. The live API returns `orderbook_fp` with { yes_dollars, no_dollars },
-  // each [priceDollarsString, sizeString] where price is already a 0..1 dollar value.
-  // (Older shape: `orderbook` with { yes, no } as [cents, size].) YES asks are the
-  // mirror of NO bids: a NO bid at $p is an offer to SELL YES at $(1−p). We only
-  // transform real levels — never synthesize one.
+  // Kalshi — resolve the two real bid stacks (dollars 0..1), then build each side.
   const fp = raw.orderbook_fp;
   const ob = raw.orderbook;
   let yesRaw: any[], noRaw: any[], scale: number;
@@ -126,14 +137,30 @@ function normalizeBook(venue: Venue, raw: any): NormBook {
   } else if (ob && (Array.isArray(ob.yes) || Array.isArray(ob.no))) {
     yesRaw = ob.yes ?? []; noRaw = ob.no ?? []; scale = 1 / 100;                // cents → dollars
   } else {
-    return { bids: [], asks: [], lastTrade: null, hasBook: false, note: raw.error ?? null };
+    return { yes: emptyBook(raw.error ?? null), no: emptyBook(raw.error ?? null) };
   }
-  const bids = yesRaw.map((r: any[]) => ({ price: Number(r[0]) * scale, size: Number(r[1]) }))
-    .filter((r: BookRow) => r.price > 0 && r.price < 1 && r.size > 0).sort((a: BookRow, b: BookRow) => b.price - a.price);
-  const asks = noRaw.map((r: any[]) => ({ price: 1 - Number(r[0]) * scale, size: Number(r[1]) }))
-    .filter((r: BookRow) => r.price > 0 && r.price < 1 && r.size > 0).sort((a: BookRow, b: BookRow) => a.price - b.price);
-  return { bids, asks, lastTrade: null, hasBook: bids.length > 0 || asks.length > 0, note: null };
+  const bidsOf = (rawLevels: any[]): BookRow[] => rawLevels
+    .map((r: any[]) => ({ price: Number(r[0]) * scale, size: Number(r[1]) }))
+    .filter((r: BookRow) => r.price > 0 && r.price < 1 && r.size > 0).sort((a, b) => b.price - a.price);
+  // asks for a side = complement of the OTHER side's bids
+  const asksFrom = (rawLevels: any[]): BookRow[] => rawLevels
+    .map((r: any[]) => ({ price: 1 - Number(r[0]) * scale, size: Number(r[1]) }))
+    .filter((r: BookRow) => r.price > 0 && r.price < 1 && r.size > 0).sort((a, b) => a.price - b.price);
+
+  const yesBids = bidsOf(yesRaw), yesAsks = asksFrom(noRaw);   // YES asks ← NO bids complement
+  const noBids  = bidsOf(noRaw),  noAsks  = asksFrom(yesRaw);  // NO asks  ← YES bids complement
+  return {
+    yes: { bids: yesBids, asks: yesAsks, lastTrade: null, hasBook: yesBids.length > 0 || yesAsks.length > 0, note: null, asksComplement: true },
+    no:  { bids: noBids,  asks: noAsks,  lastTrade: null, hasBook: noBids.length  > 0 || noAsks.length  > 0, note: null, asksComplement: true },
+  };
 }
+
+const midOf = (b: NormBook | null | undefined): number | null =>
+  b && b.bids[0] && b.asks[0] ? (b.bids[0].price + b.asks[0].price) / 2 : null;
+const spreadOf = (b: NormBook | null | undefined): number | null =>
+  b && b.bids[0] && b.asks[0] ? b.asks[0].price - b.bids[0].price : null;
+const depthOf = (b: NormBook | null | undefined): number =>
+  b ? [...b.bids, ...b.asks].reduce((s, r) => s + r.price * r.size, 0) : 0;
 
 // ── Persist placement config (auth to write; no login wall on view) ───────────
 interface PlacementConfig {
@@ -150,13 +177,14 @@ export default function MarketDetailPage() {
   const [mktErr, setMktErr]     = useState<string | null>(null);
   const [loading, setLoading]   = useState(true);
 
-  // live book
-  const [book, setBook]         = useState<NormBook | null>(null);
+  // live book (both sides)
+  const [books, setBooks]       = useState<DualBook | null>(null);
   const [bookAge, setBookAge]   = useState<Date | null>(null);
   const [bookErr, setBookErr]   = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval>>();
 
   // controls
+  const [tradeSide, setTradeSide] = useState<SideKey>('yes');   // which outcome token to make
   const [side, setSide]         = useState<SideMode>('both');
   const [qty, setQty]           = useState<number>(1000);
   const [dist, setDist]         = useState<number>(1.75);
@@ -223,9 +251,9 @@ export default function MarketDetailPage() {
         : `/api/kalshi-rewards/book?ticker=${encodeURIComponent(mkt.marketId)}`;
       const r = await fetch(url, { cache: 'no-store' });
       const d = await r.json();
-      const nb = normalizeBook(mkt.venue, d);
-      setBook(nb);
-      setBookErr(nb.hasBook ? null : (d?.error ?? null));
+      const nb = normalizeBooks(mkt.venue, d);
+      setBooks(nb);
+      setBookErr(nb.yes.hasBook || nb.no.hasBook ? null : (d?.error ?? null));
       setBookAge(new Date());
     } catch (e: any) { setBookErr(e?.message ?? 'book error'); }
   }, [mkt]);
@@ -237,23 +265,30 @@ export default function MarketDetailPage() {
     return () => clearInterval(pollRef.current);
   }, [mkt, fetchBook]);
 
-  // ── derived: live mid, estimate ──
-  const liveBestBid = book?.bids[0]?.price ?? null;
-  const liveBestAsk = book?.asks[0]?.price ?? null;
-  const liveMid = liveBestBid != null && liveBestAsk != null ? (liveBestBid + liveBestAsk) / 2 : null;
-  const mid = liveMid ?? mkt?.midpoint ?? null;
+  // ── derived: per-side live mids, chosen side, estimate ──
+  const yesBook = books?.yes ?? null;
+  const noBook  = books?.no  ?? null;
+  const chosenBook = tradeSide === 'yes' ? yesBook : noBook;
+
+  // per-side executable live mids, with the snapshot's per-side mid as fallback
+  const snapYesMid = mkt?.sides?.yes?.midpoint ?? mkt?.midpoint ?? null;
+  const snapNoMid  = mkt?.sides?.no?.midpoint ?? (mkt?.midpoint != null ? 1 - mkt.midpoint : null);
+  const yesMid = midOf(yesBook) ?? snapYesMid;
+  const noMid  = midOf(noBook)  ?? snapNoMid;
+  const mid = tradeSide === 'yes' ? yesMid : noMid;
 
   const twoSided = side === 'both';
-  const sides = twoSided ? 2 : 1;
-  const capital = qty * sides;   // qty is per-side; estimator capital is total working USD
+  const sidesN = twoSided ? 2 : 1;
+  const capital = qty * sidesN;   // qty is per-side; estimator capital is total working USD
   const distMax = mkt?.maxSpread ?? 10;
 
+  // estimate recomputes for the CHOSEN trading side (its own real book)
   const est = useMemo(() => {
     if (!mkt) return null;
-    return estimateReward({ venue: mkt.venue, capital, twoSided, distanceCents: dist, market: toSnapshot(mkt) });
-  }, [mkt, capital, twoSided, dist]);
+    return estimateReward({ venue: mkt.venue, capital, twoSided, distanceCents: dist, market: toSnapshot(mkt), side: tradeSide });
+  }, [mkt, capital, twoSided, dist, tradeSide]);
 
-  // user's planned order prices (mid ± distance)
+  // user's planned order prices in the CHOSEN side's book (mid ± distance)
   const userBid = mid != null && (side === 'both' || side === 'buy') ? Math.max(0.001, mid - dist / 100) : null;
   const userAsk = mid != null && (side === 'both' || side === 'sell') ? Math.min(0.999, mid + dist / 100) : null;
 
@@ -327,8 +362,16 @@ export default function MarketDetailPage() {
 
         {mkt && (
           <>
-            {/* ── B) Earnings block ── */}
-            <EarningsBlock est={est} isRedacted={isRedacted} flags={mkt.flags} />
+            {/* ── Trade YES / Trade NO toggle (prominent, top) ── */}
+            <TradeSideToggle
+              tradeSide={tradeSide} setTradeSide={setTradeSide}
+              yesMid={yesMid} noMid={noMid} isRedacted={isRedacted}
+              yesHasBook={yesBook?.hasBook ?? (mkt.sides?.yes?.hasBook !== false)}
+              noHasBook={noBook?.hasBook ?? (mkt.sides?.no?.hasBook !== false)}
+            />
+
+            {/* ── B) Earnings block (recomputes for chosen side) ── */}
+            <EarningsBlock est={est} isRedacted={isRedacted} flags={mkt.flags} tradeSide={tradeSide} />
 
             {/* ── C) Order controls ── */}
             <div className="rounded-card shadow-card bg-surface px-4 py-4 space-y-4">
@@ -346,8 +389,10 @@ export default function MarketDetailPage() {
                     </button>
                   ))}
                 </div>
-                {mkt.twoSidedRequired && side !== 'both' && (
-                  <p className="font-body text-[11px] text-coral-ink mt-1">At this price Polymarket requires both sides — a single side earns no rewards.</p>
+                {est?.twoSidedRequired && side !== 'both' && (
+                  <p className="font-body text-[11px] text-coral-ink mt-1">
+                    At this price the {tradeSide.toUpperCase()} side requires both bid and ask — a single side earns no rewards here.
+                  </p>
                 )}
               </div>
 
@@ -355,7 +400,7 @@ export default function MarketDetailPage() {
               <div>
                 <div className="flex items-center justify-between">
                   <span className="font-body text-[11px] uppercase tracking-wide text-muted">Size per side</span>
-                  <span className="font-body text-[11px] text-muted tabular-nums">total {fmtUsd(capital)} on {sides} side{sides === 1 ? '' : 's'}</span>
+                  <span className="font-body text-[11px] text-muted tabular-nums">total {fmtUsd(capital)} on {sidesN} side{sidesN === 1 ? '' : 's'}</span>
                 </div>
                 <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                   {[100, 500, 1000, 5000].map(c => (
@@ -388,12 +433,12 @@ export default function MarketDetailPage() {
               </div>
             </div>
 
-            {/* ── D) Live order book ── */}
-            <OrderBook
-              book={book} bookAge={bookAge} bookErr={bookErr} isRedacted={isRedacted}
-              mid={mid} liveSpread={liveBestBid != null && liveBestAsk != null ? liveBestAsk - liveBestBid : null}
-              maxSpread={mkt.maxSpread} userBid={userBid} userAsk={userAsk}
-              onRefresh={fetchBook} venue={mkt.venue}
+            {/* ── D) Live DUAL order book (YES | NO), chosen side highlighted ── */}
+            <DualOrderBook
+              yesBook={yesBook} noBook={noBook} tradeSide={tradeSide}
+              bookAge={bookAge} bookErr={bookErr} isRedacted={isRedacted}
+              yesMid={yesMid} noMid={noMid} maxSpread={mkt.maxSpread}
+              userBid={userBid} userAsk={userAsk} onRefresh={fetchBook} venue={mkt.venue}
             />
 
             {/* ── E) Fill-handling choice ── */}
@@ -473,8 +518,9 @@ export default function MarketDetailPage() {
 }
 
 // ── B) Earnings block ─────────────────────────────────────────────────────────
-function EarningsBlock({ est, isRedacted, flags = [] }: { est: ReturnType<typeof estimateReward> | null; isRedacted: boolean; flags?: string[] }) {
+function EarningsBlock({ est, isRedacted, flags = [], tradeSide }: { est: ReturnType<typeof estimateReward> | null; isRedacted: boolean; flags?: string[]; tradeSide: SideKey }) {
   const net = est?.netPerDay ?? null;
+  const sideUnavailable = !!est && est.usedSideBook && !est.sideBookAvailable;
   // Honest-engine: a flagged (TRAP/THIN_CAP/SHORT_BURST) market can post an inflated
   // net from a thin book — mute the headline and warn, rather than show green.
   const cautionFlag = flags.some(f => ['TRAP', 'THIN_CAP', 'SHORT_BURST'].includes(f));
@@ -485,7 +531,8 @@ function EarningsBlock({ est, isRedacted, flags = [] }: { est: ReturnType<typeof
         <div className="flex items-end justify-between gap-3 flex-wrap">
           <div>
             <p className="font-body text-[11px] uppercase tracking-wide text-muted flex items-center gap-1">
-              Net earnings · per day
+              Net earnings · per day ·
+              <span className={tradeSide === 'yes' ? 'text-mint-deep font-semibold' : 'text-coral-ink font-semibold'}>{tradeSide.toUpperCase()} side</span>
               <InfoTip label="How net earnings is computed" size={12}>
                 Net = your estimated share of the daily reward pool − the expected adverse-fill cost (what you lose when a resting order fills right as the price moves against you). Built from the real book depth and pool, never a midpoint fill. Annualized is a capped run-rate, not a guarantee.
               </InfoTip>
@@ -520,6 +567,11 @@ function EarningsBlock({ est, isRedacted, flags = [] }: { est: ReturnType<typeof
         {est?.belowMinPayout && (
           <p className="font-body text-[11px] text-muted mt-3">Below the $1/day minimum — this position likely pays nothing. Shown for completeness.</p>
         )}
+        {sideUnavailable && !isRedacted && (
+          <p className="font-body text-[11px] text-muted mt-3">
+            The {tradeSide.toUpperCase()} side&apos;s book is empty or unavailable right now — its earnings can&apos;t be computed and are shown as missing (never fabricated). Try the other side, or check back shortly.
+          </p>
+        )}
         {isRedacted && net == null && (
           <p className="font-body text-[11px] text-muted mt-3">Numbers are locked on the free plan — the estimate runs on real book/pool once unlocked. No fabricated values.</p>
         )}
@@ -542,31 +594,62 @@ function MiniBox({ label, value, sub }: { label: string; value: React.ReactNode;
   );
 }
 
-// ── D) Order book with the user's planned orders inline ───────────────────────
-function OrderBook({
-  book, bookAge, bookErr, isRedacted, mid, liveSpread, maxSpread, userBid, userAsk, onRefresh, venue,
+// ── Trade YES / Trade NO toggle (prominent) ───────────────────────────────────
+function TradeSideToggle({
+  tradeSide, setTradeSide, yesMid, noMid, isRedacted, yesHasBook, noHasBook,
 }: {
-  book: NormBook | null; bookAge: Date | null; bookErr: string | null; isRedacted: boolean;
-  mid: number | null; liveSpread: number | null; maxSpread: number | null;
+  tradeSide: SideKey; setTradeSide: (s: SideKey) => void;
+  yesMid: number | null; noMid: number | null; isRedacted: boolean;
+  yesHasBook: boolean; noHasBook: boolean;
+}) {
+  const Btn = ({ s, mid, has }: { s: SideKey; mid: number | null; has: boolean }) => {
+    const active = tradeSide === s;
+    const isYes  = s === 'yes';
+    const activeCls = isYes ? 'border-mint-deep bg-mint-tint text-mint-deep' : 'border-coral-ink bg-coral-tint text-coral-ink';
+    const idleCls   = 'border-line bg-surface text-muted hover:text-ink-2';
+    return (
+      <button onClick={() => setTradeSide(s)} aria-pressed={active}
+        className={`flex-1 rounded-button border px-4 py-3 text-left transition-colors ${active ? activeCls : idleCls}`}>
+        <span className="font-body font-semibold text-[13px] flex items-center gap-1.5">
+          {active && <span className={`w-1.5 h-1.5 rounded-full ${isYes ? 'bg-mint-deep' : 'bg-coral-ink'}`} />}
+          Trade {isYes ? 'YES' : 'NO'}
+        </span>
+        <span className="font-mono text-[16px] font-bold tabular-nums block mt-0.5">
+          {isRedacted ? '••¢' : mid != null ? fmtC(mid) : (has ? '—' : 'no book')}
+        </span>
+      </button>
+    );
+  };
+  return (
+    <div className="rounded-card shadow-card bg-surface px-4 py-3">
+      <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+        <p className="font-body font-medium text-sm text-ink-2">Which side do you want to make?</p>
+        <span className="font-body text-[10px] text-muted">YES + NO ≈ 100¢ · each has its own book</span>
+      </div>
+      <div className="flex gap-2">
+        <Btn s="yes" mid={yesMid} has={yesHasBook} />
+        <Btn s="no"  mid={noMid}  has={noHasBook} />
+      </div>
+    </div>
+  );
+}
+
+// ── D) DUAL order book (YES | NO), chosen side highlighted, planned orders inline ─
+function DualOrderBook({
+  yesBook, noBook, tradeSide, bookAge, bookErr, isRedacted, yesMid, noMid, maxSpread, userBid, userAsk, onRefresh, venue,
+}: {
+  yesBook: NormBook | null; noBook: NormBook | null; tradeSide: SideKey;
+  bookAge: Date | null; bookErr: string | null; isRedacted: boolean;
+  yesMid: number | null; noMid: number | null; maxSpread: number | null;
   userBid: number | null; userAsk: number | null; onRefresh: () => void; venue: Venue;
 }) {
-  const halfBand = maxSpread != null ? (maxSpread / 100) / 2 : null;
-  const asks = (book?.asks ?? []).slice(0, 12);
-  const bids = (book?.bids ?? []).slice(0, 12);
-  const maxSize = Math.max(1, ...asks.map(a => a.size), ...bids.map(b => b.size));
-
-  // Merge the user's planned SELL into the ask ladder (top→best) and BUY into bids.
-  const askRows = mergeUserRow(asks, userAsk, 'sell', 'asc');
-  const bidRows = mergeUserRow(bids, userBid, 'buy', 'desc');
-
-  const showBook = book?.hasBook;
-
+  const anyBook = (yesBook?.hasBook || noBook?.hasBook) ?? false;
   return (
     <div className="rounded-card shadow-card bg-surface overflow-hidden">
       <div className="flex items-center justify-between px-4 py-2.5 border-b border-line">
         <div className="flex items-center gap-2">
-          <span className="font-body font-medium text-sm text-ink-2">Live order book</span>
-          {bookAge && showBook && (
+          <span className="font-body font-medium text-sm text-ink-2">Live order book · YES / NO</span>
+          {bookAge && anyBook && (
             <span className="flex items-center gap-1 font-body text-[10px] text-mint-deep">
               <span className="w-1.5 h-1.5 rounded-full bg-mint-deep animate-pulse" /> updated {ago(bookAge.toISOString())} ago
             </span>
@@ -577,36 +660,83 @@ function OrderBook({
         </button>
       </div>
 
-      {!showBook ? (
+      {isRedacted ? (
         <div className="px-4 py-8 text-center">
-          <p className="font-body text-sm text-muted">
-            {isRedacted ? 'Live book available once the plan is unlocked.' : 'Book unavailable — data refreshing, try again shortly.'}
-          </p>
-          {bookErr && !isRedacted && <p className="font-body text-[10px] text-muted/60 mt-1">{bookErr}</p>}
+          <p className="font-body text-sm text-muted">Live book available once the plan is unlocked.</p>
+        </div>
+      ) : !anyBook ? (
+        <div className="px-4 py-8 text-center">
+          <p className="font-body text-sm text-muted">Book unavailable — data refreshing, try again shortly.</p>
+          {bookErr && <p className="font-body text-[10px] text-muted/60 mt-1">{bookErr}</p>}
         </div>
       ) : (
-        <div className="px-2 py-2">
-          {/* column headers */}
-          <div className="grid grid-cols-3 px-2 py-1 font-body text-[9px] uppercase text-muted/60">
-            <span>Price</span><span className="text-right">Size</span><span className="text-right">your order</span>
+        <div className="px-3 py-3">
+          <div className="flex gap-2 items-start">
+            <SideColumn side="yes" book={yesBook} mid={yesMid} maxSpread={maxSpread}
+              chosen={tradeSide === 'yes'} userBid={userBid} userAsk={userAsk} />
+            <SideColumn side="no" book={noBook} mid={noMid} maxSpread={maxSpread}
+              chosen={tradeSide === 'no'} userBid={userBid} userAsk={userAsk} />
           </div>
-          {/* asks (red, top) */}
-          <div className="flex flex-col-reverse">
-            {askRows.map((r, i) => <Ladder key={`a${i}`} row={r} maxSize={maxSize} mid={mid} halfBand={halfBand} kind="ask" />)}
-          </div>
-          {/* mid divider */}
-          <div className="flex items-center gap-3 px-2 py-1.5 my-1 bg-bg-soft/70 border-y border-line/60">
-            <span className="font-mono text-[12px] font-semibold text-ink tabular-nums">mid {mid != null ? fmtC(mid) : '—'}</span>
-            {liveSpread != null && <span className="font-mono text-[10px] text-muted">spread {fmtC(liveSpread)}</span>}
-            {book?.lastTrade != null && <span className="font-body text-[10px] text-muted/60 ml-auto">last {fmtC(book.lastTrade)}</span>}
-          </div>
-          {/* bids (green, bottom) */}
-          <div className="flex flex-col">
-            {bidRows.map((r, i) => <Ladder key={`b${i}`} row={r} maxSize={maxSize} mid={mid} halfBand={halfBand} kind="bid" />)}
-          </div>
-          <p className="font-body text-[9px] text-muted/60 px-2 pt-2">
-            Real executable prices from the {venue === 'polymarket' ? 'CLOB' : 'Kalshi'} book. Highlighted rows are your <span className="font-semibold">planned orders</span> (mid ± distance), not liquidity already resting.
+          <p className="font-body text-[9px] text-muted/60 px-1 pt-2 leading-relaxed">
+            Real executable prices from the {venue === 'polymarket' ? 'CLOB — two independent token books (YES ≠ 100¢−NO)' : 'Kalshi book — bids are real, asks are the contract complement'}.
+            The <span className="font-semibold">{tradeSide.toUpperCase()}</span> column is highlighted; your <span className="font-semibold">planned orders</span> (mid ± distance) show in bold there, never midpoint for fills.
           </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// One side's book column. Chosen side is full-opacity + tinted; the other is dimmed.
+function SideColumn({
+  side, book, mid, maxSpread, chosen, userBid, userAsk,
+}: {
+  side: SideKey; book: NormBook | null; mid: number | null; maxSpread: number | null;
+  chosen: boolean; userBid: number | null; userAsk: number | null;
+}) {
+  const isYes    = side === 'yes';
+  const asks     = (book?.asks ?? []).slice(0, 8);
+  const bids     = (book?.bids ?? []).slice(0, 8);
+  const maxSize  = Math.max(1, ...asks.map(a => a.size), ...bids.map(b => b.size));
+  const halfBand = maxSpread != null ? (maxSpread / 100) / 2 : null;
+  const spread   = spreadOf(book);
+  const depth    = depthOf(book);
+  // Planned orders render ONLY in the chosen side's column.
+  const askRows  = mergeUserRow(asks, chosen ? userAsk : null, 'sell', 'asc');
+  const bidRows  = mergeUserRow(bids, chosen ? userBid : null, 'buy', 'desc');
+  const hasBook  = book?.hasBook;
+  return (
+    <div className={`flex-1 min-w-0 rounded-button border overflow-hidden transition-opacity
+      ${chosen ? (isYes ? 'border-mint-deep/40' : 'border-coral-ink/40') : 'border-line opacity-50'}`}>
+      <div className={`px-2.5 py-1.5 border-b
+        ${chosen ? (isYes ? 'bg-mint-tint/60 border-mint-deep/20' : 'bg-coral-tint/60 border-coral-ink/20') : 'bg-bg-soft border-line'}`}>
+        <div className="flex items-center justify-between">
+          <span className={`font-body font-semibold text-[11px] ${isYes ? 'text-mint-deep' : 'text-coral-ink'}`}>
+            {isYes ? 'YES' : 'NO'}{chosen ? ' · trading' : ''}
+          </span>
+          <span className="font-mono text-[11px] text-ink-2 tabular-nums">{mid != null ? fmtC(mid) : '—'}</span>
+        </div>
+        <div className="flex items-center gap-2 font-body text-[9px] text-muted mt-0.5">
+          <span>spread {spread != null ? fmtC(spread) : '—'}</span>
+          <span>depth {depth > 0 ? fmtUsd(depth) : '—'}</span>
+        </div>
+      </div>
+      {!hasBook ? (
+        <div className="px-2 py-6 text-center"><p className="font-body text-[11px] text-muted">book unavailable</p></div>
+      ) : (
+        <div className="px-1.5 py-1.5">
+          <div className="flex flex-col-reverse">
+            {askRows.map((r, i) => <MiniLadder key={`a${i}`} row={r} maxSize={maxSize} mid={mid} halfBand={halfBand} kind="ask" />)}
+          </div>
+          <div className="px-1 py-1 my-0.5 bg-bg-soft/70 border-y border-line/60 text-center">
+            <span className="font-mono text-[10px] font-semibold text-ink tabular-nums">mid {mid != null ? fmtC(mid) : '—'}</span>
+          </div>
+          <div className="flex flex-col">
+            {bidRows.map((r, i) => <MiniLadder key={`b${i}`} row={r} maxSize={maxSize} mid={mid} halfBand={halfBand} kind="bid" />)}
+          </div>
+          {book?.asksComplement && (
+            <p className="font-body text-[8px] text-muted/70 px-1 pt-1 leading-tight">asks = 100¢ − opposite-side bid (complement-derived)</p>
+          )}
         </div>
       )}
     </div>
@@ -622,30 +752,28 @@ function mergeUserRow(levels: BookRow[], userPrice: number | null, kind: 'buy' |
   }
   return rows;
 }
-function Ladder({ row, maxSize, mid, halfBand, kind }: { row: LadderRow; maxSize: number; mid: number | null; halfBand: number | null; kind: 'ask' | 'bid' }) {
+function MiniLadder({ row, maxSize, mid, halfBand, kind }: { row: LadderRow; maxSize: number; mid: number | null; halfBand: number | null; kind: 'ask' | 'bid' }) {
   const isUser = !!row.user;
-  const inBandFlag = mid != null && halfBand != null ? Math.abs(row.price - mid) <= halfBand : false;
+  const inBand = mid != null && halfBand != null ? Math.abs(row.price - mid) <= halfBand : false;
   const barPct = maxSize > 0 ? (row.size / maxSize) * 100 : 0;
   const priceCls = kind === 'ask' ? 'text-coral-ink' : 'text-mint-deep';
-  const barCls = kind === 'ask' ? 'bg-coral-tint/60' : 'bg-mint-tint/60';
+  const barCls   = kind === 'ask' ? 'bg-coral-tint/60' : 'bg-mint-tint/60';
   if (isUser) {
     return (
-      <div className={`relative grid grid-cols-3 items-center text-[11px] font-mono px-2 py-[5px] rounded-sm my-[1px]
+      <div className={`relative grid grid-cols-2 items-center text-[10px] font-mono px-1.5 py-[3px] rounded-sm my-[1px]
         ${row.user === 'buy' ? 'bg-mint-tint ring-1 ring-mint-deep/50' : 'bg-coral-tint ring-1 ring-coral-ink/50'}`}>
         <span className={`tabular-nums font-bold ${row.user === 'buy' ? 'text-mint-deep' : 'text-coral-ink'}`}>{fmtC(row.price)}</span>
-        <span className="text-right" />
-        <span className={`text-right font-bold text-[10px] ${row.user === 'buy' ? 'text-mint-deep' : 'text-coral-ink'}`}>
+        <span className={`text-right font-bold text-[8px] ${row.user === 'buy' ? 'text-mint-deep' : 'text-coral-ink'}`}>
           {row.user === 'buy' ? 'your BUY' : 'your SELL'}
         </span>
       </div>
     );
   }
   return (
-    <div className="relative grid grid-cols-3 items-center text-[11px] font-mono px-2 py-[3px]">
+    <div className="relative grid grid-cols-2 items-center text-[10px] font-mono px-1.5 py-[2px]">
       <span className={`absolute inset-y-0 right-0 ${barCls}`} style={{ width: `${barPct}%`, pointerEvents: 'none' }} />
-      <span className={`relative tabular-nums ${priceCls} ${inBandFlag ? 'font-semibold' : 'opacity-70'}`}>{fmtC(row.price)}</span>
+      <span className={`relative tabular-nums ${priceCls} ${inBand ? 'font-semibold' : 'opacity-70'}`}>{fmtC(row.price)}</span>
       <span className="relative text-right text-muted tabular-nums">{fmtSh(row.size)}</span>
-      <span className="relative text-right text-muted/40 tabular-nums text-[9px]">{inBandFlag ? 'in band' : ''}</span>
     </div>
   );
 }

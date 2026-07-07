@@ -227,6 +227,18 @@ export const REDACTION_MAP: Record<RouteKey, string[]> = {
     'markets[].volatilityStdev',
     'markets[].lastPrice',
     'markets[].bookSpread',
+    // Per-side (YES/NO) book numbers are the same sensitive executable figures — redact
+    // both sides so the estimator degrades to the calm "unlock" state on the free tier.
+    'markets[].sides.yes.midpoint',
+    'markets[].sides.yes.qualifyingLiquidity',
+    'markets[].sides.yes.bookDepthAtBand',
+    'markets[].sides.yes.bookSpread',
+    'markets[].sides.yes.volatilityStdev',
+    'markets[].sides.no.midpoint',
+    'markets[].sides.no.qualifyingLiquidity',
+    'markets[].sides.no.bookDepthAtBand',
+    'markets[].sides.no.bookSpread',
+    'markets[].sides.no.volatilityStdev',
   ],
 
   'kalshi-rewards': [
