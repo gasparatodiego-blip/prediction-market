@@ -18,7 +18,18 @@ import StatCard from '@/app/components/ui/StatCard';
 import PlatformLogo from '@/components/PlatformLogo';
 import RewardsHero from '@/app/components/ui/RewardsHero';
 import { Redacted } from '@/app/components/ui/Redacted';
+import { PlatformLink } from '@/app/components/ui/PlatformLink';
+import { polymarketMarketUrl, kalshiMarketUrl } from '@/lib/platform-links';
 import { estimateReward, type MarketSnapshot, type Venue } from '@/lib/rewards-estimate';
+
+// Real platform deep-link for a reward market: Polymarket event (from slug) or
+// Kalshi market (from ticker). Returns null when the id needed is absent — the row
+// then renders no link (honest-engine: never a fabricated URL).
+function rewardMarketUrl(m: { venue: Venue; slug?: string | null; marketId: string }): string | null {
+  if (m.venue === 'polymarket') return polymarketMarketUrl(m.slug);
+  if (m.venue === 'kalshi')     return kalshiMarketUrl(m.marketId);
+  return null;
+}
 
 // ── Types (mirror /api/rewards-unified) ─────────────────────────────────────
 type NewsRisk = 'low' | 'medium' | 'high' | 'unknown';
@@ -26,6 +37,7 @@ type NewsRisk = 'low' | 'medium' | 'high' | 'unknown';
 interface NormalizedMarket {
   venue:               Venue;
   marketId:            string;
+  slug?:               string | null;   // Polymarket event slug (real Gamma field); null/absent → no platform link
   title:               string;
   category:            string;
   midpoint:            number | null;
@@ -276,7 +288,17 @@ function MarketCard({ m }: { m: NormalizedMarket }) {
   // green go-signal — the number stays visible (never fabricated), just visually muted.
   const cautionFlag = m.flags.some(f => ['TRAP', 'THIN_CAP', 'SHORT_BURST'].includes(f));
   const netTone = net == null ? 'text-ink' : cautionFlag ? 'text-muted' : net > 0 ? 'text-mint-deep' : 'text-coral-ink';
+  const platformUrl = rewardMarketUrl(m);
   return (
+    <div className="relative">
+    {platformUrl && (
+      <PlatformLink
+        href={platformUrl}
+        label={m.venue === 'polymarket' ? 'Polymarket' : 'Kalshi'}
+        compact
+        className="absolute top-2.5 right-2.5 z-20 bg-surface/95"
+      />
+    )}
     <Link
       href={href}
       className="group block w-full rounded-card shadow-card bg-surface overflow-hidden transition-shadow hover:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-mint-deep/50"
@@ -289,7 +311,7 @@ function MarketCard({ m }: { m: NormalizedMarket }) {
           <span className={`font-body text-[10px] px-1.5 py-[1px] rounded border ${m.twoSidedRequired ? 'text-gold border-gold/30 bg-gold-tint' : 'text-mint-deep border-mint-deep/25 bg-mint-tint'}`}>
             {m.twoSidedRequired ? 'two-sided req' : 'one-sided ok'}
           </span>
-          <ChevronRight size={18} className="ml-auto text-muted group-hover:text-ink-2 transition-colors shrink-0" aria-hidden />
+          <ChevronRight size={18} className={`ml-auto ${platformUrl ? 'mr-8' : ''} text-muted group-hover:text-ink-2 transition-colors shrink-0`} aria-hidden />
         </div>
 
         {/* Title — wraps, 2 lines max, ellipsis */}
@@ -325,6 +347,7 @@ function MarketCard({ m }: { m: NormalizedMarket }) {
         </div>
       </div>
     </Link>
+    </div>
   );
 }
 function Chip({ label, value }: { label: string; value: React.ReactNode }) {

@@ -24,6 +24,8 @@ import { ChevronLeft, RefreshCw } from 'lucide-react';
 import PlatformLogo from '@/components/PlatformLogo';
 import { Redacted } from '@/app/components/ui/Redacted';
 import InfoTip from '@/app/components/ui/InfoTip';
+import { PlatformLink } from '@/app/components/ui/PlatformLink';
+import { polymarketMarketUrl, kalshiMarketUrl } from '@/lib/platform-links';
 import { estimateReward, type MarketSnapshot, type Venue } from '@/lib/rewards-estimate';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -35,6 +37,7 @@ type NewsMode = 'withdraw' | 'alert' | 'off';
 interface NormalizedMarket {
   venue:               Venue;
   marketId:            string;
+  slug?:               string | null;
   title:               string;
   category:            string;
   midpoint:            number | null;
@@ -300,7 +303,11 @@ export default function MarketDetailPage() {
             <>
               <div className="flex items-start gap-2 mt-1.5">
                 <PlatformLogo platform={mkt.venue} size={18} className="mt-0.5" />
-                <h1 className="font-display font-bold text-ink text-[15px] sm:text-lg leading-snug">{mkt.title}</h1>
+                <h1 className="font-display font-bold text-ink text-[15px] sm:text-lg leading-snug flex-1 min-w-0">{mkt.title}</h1>
+                {(() => {
+                  const u = mkt.venue === 'polymarket' ? polymarketMarketUrl(mkt.slug) : mkt.venue === 'kalshi' ? kalshiMarketUrl(mkt.marketId) : null;
+                  return u ? <PlatformLink href={u} label={mkt.venue === 'polymarket' ? 'Polymarket' : 'Kalshi'} className="mt-0.5 shrink-0" /> : null;
+                })()}
               </div>
               <p className="font-body text-[11px] text-muted mt-1 flex flex-wrap gap-x-2 gap-y-0.5">
                 <span className="capitalize">{mkt.venue}</span>·<span>{mkt.category}</span>·
