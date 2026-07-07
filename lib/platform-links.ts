@@ -95,6 +95,28 @@ export function venuePerpUrl(venue: string | null | undefined, symbol: string | 
   return build(c.toUpperCase());
 }
 
+// ── Spot venues (Perp vs Spot / carry tab) ───────────────────────────────────
+// The carry trade buys spot on a major. Only venues whose spot URL scheme we could
+// verify are mapped; anything else → null so the leg renders no link, never a
+// fabricated one. venue = spot exchange key (lowercased); coin = bare ticker (BTC…).
+type SpotBuilder = (coin: string) => string;
+const SPOT: Record<string, SpotBuilder> = {
+  binance: c => `https://www.binance.com/en/trade/${c}_USDT?type=spot`,
+  okx:     c => `https://www.okx.com/trade-spot/${c.toLowerCase()}-usdt`,
+  bybit:   c => `https://www.bybit.com/en/trade/spot/${c}/USDT`,
+  gateio:  c => `https://www.gate.io/trade/${c}_USDT`,
+};
+
+export function venueSpotUrl(venue: string | null | undefined, symbol: string | null | undefined): string | null {
+  const v = clean(venue);
+  const c = clean(symbol);
+  if (!v || !c) return null;
+  const key = v.toLowerCase().replace(/[\s_-]/g, '');
+  const build = SPOT[key];
+  if (!build) return null;
+  return build(c.toUpperCase());
+}
+
 // ── Dated-future venues (Carry / Basis tab) ──────────────────────────────────
 // Basis rows carry venueKey + contract (the real exchange instrument id). Deribit,
 // OKX, and Binance delivery all take the contract id directly in the path.

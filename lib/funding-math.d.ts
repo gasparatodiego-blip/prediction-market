@@ -7,3 +7,33 @@ export declare function roundTripFeeByVenue(shortVenue: string, longVenue: strin
 export declare function netApy30d(grossApy: number, totalFeesPct: number): number;
 export declare function breakevenDays(grossApy: number, totalFeesPct: number): number;
 export declare function spreadStatus(beDays: number): 'HARVEST' | 'CAUTION' | 'MARGINAL';
+
+export declare const SPOT_FEE_PCT: { binance: number; okx: number; bybit: number; gateio: number };
+export declare const PERP_SPOT_ANNUAL_CAP: number;
+export declare function spotVenueFeePct(exchange: string): number;
+export declare function roundTripPerpSpotPct(shortVenue: string, spotVenue: string): number;
+export interface PerpSpotEstimate {
+  capitalPerLeg: number;
+  capitalNeeded: number;
+  fundingFractionPerDay: number;
+  grossPctPerDayNotional: number;
+  grossPerDay: number;
+  perpFeePct: number;
+  spotFeePct: number;
+  feesOneTimePct: number;
+  feesOneTime: number;
+  breakevenDays: number;
+  netPerDayAmortized30: number;
+  annualizedRunRatePct: number;
+  annualizedCapped: boolean;
+  netAnnualizedOnCapitalPct: number;
+  trailingPositiveSettlements: number;
+  flipRisk: boolean;
+}
+export declare function estimatePerpSpot(input: {
+  capitalPerLeg: number;
+  fundingPct8h: number;
+  shortVenue: string;
+  spotVenue: string;
+  trailingPositiveSettlements?: number;
+}): PerpSpotEstimate;

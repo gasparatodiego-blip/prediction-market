@@ -19,8 +19,9 @@ import {
   breakevenDays,
   spreadStatus,
   VENUE_FEE_PCT,
+  estimatePerpSpot,
 } from '@/lib/funding-math';
-import type { FuturesCoin, SpreadItem, SlipPoint, CryptoSpreadsData, RwaObservation, Persistence } from '@/lib/spread-types';
+import type { FuturesCoin, SpreadItem, SlipPoint, CryptoSpreadsData, RwaObservation, Persistence, PerpSpotRow } from '@/lib/spread-types';
 import { isRwaKey } from '@/lib/rwa';
 
 export type { FuturesCoin, SlipPoint, SpreadItem, SpreadsMeta, CryptoSpreadsData, Leverage, Persistence } from '@/lib/spread-types';
@@ -29,8 +30,69 @@ export { calcSpreadSizing } from '@/lib/spread-types';
 const EXCHANGE_FILE = '/tmp/exchange-prices.json';
 const UNI_FILE      = '/tmp/unified-opportunities.json';
 const HISTORY_FILE  = '/tmp/funding-history-cache.json';   // agent15 48h ring buffer (real settled rates)
+const PERP_SPOT_FILE = '/tmp/perp-spot.json';              // agent28 best-short-venue carry feed
 // treat as missing if agent15 hasn't written within 10 min (runs every 60 s)
 const UNI_STALE_MS  = 10 * 60_000;
+const PERP_SPOT_STALE_MS = 10 * 60_000;   // agent28 runs every 60 s → stale after 10 min
+
+// Reference capital ($1,000 per leg) at which perp-spot dollar figures are precomputed.
+// Every $ field scales linearly with capital, so the client multiplies by capital/1000.
+const PERP_SPOT_REF_CAPITAL = 1000;
+
+// Read agent28's perp-spot feed and attach honest per-$1k dollar math (estimatePerpSpot).
+// Raw inputs pass through as teaser; the `edge` object is what paid-gating redacts.
+// Missing/stale/unreadable → empty list + stale flag (shown calmly downstream).
+function readPerpSpot(): { rows: PerpSpotRow[]; stale: boolean } {
+  try {
+    const raw = JSON.parse(fs.readFileSync(PERP_SPOT_FILE, 'utf8'));
+    const updatedAt = typeof raw.updatedAt === 'number' ? raw.updatedAt : 0;
+    const stale = raw.stale === true || (Date.now() - updatedAt) > PERP_SPOT_STALE_MS;
+    const src: unknown[] = Array.isArray(raw.rows) ? raw.rows : [];
+    const rows: PerpSpotRow[] = src.map((r) => {
+      const row = r as Record<string, unknown>;
+      const coin        = String(row.coin ?? '');
+      const shortVenue  = String(row.shortVenue ?? '');
+      const spotVenue   = String(row.spotVenueSuggested ?? 'binance');
+      const fundingPct8h = typeof row.fundingPct8h === 'number' ? row.fundingPct8h : 0;
+      const trailing    = typeof row.trailingPositiveSettlements === 'number' ? row.trailingPositiveSettlements : 0;
+
+      const e = estimatePerpSpot({
+        capitalPerLeg: PERP_SPOT_REF_CAPITAL,
+        fundingPct8h,
+        shortVenue,
+        spotVenue,
+        trailingPositiveSettlements: trailing,
+      });
+
+      return {
+        coin,
+        shortVenue,
+        spotVenueSuggested:          spotVenue,
+        spotVenueVerified:           row.spotVenueVerified === true,
+        fundingRateNative:           typeof row.fundingRateNative === 'number' ? row.fundingRateNative : 0,
+        intervalH:                   typeof row.intervalH === 'number' ? row.intervalH : 8,
+        fundingPct8h,
+        trailingPositiveSettlements: trailing,
+        markPrice:                   typeof row.markPrice === 'number' ? row.markPrice : null,
+        vol24hUsd:                   typeof row.vol24hUsd === 'number' ? row.vol24hUsd : null,
+        edge: {
+          grossPerDay1k:             e.grossPerDay,
+          feesOneTime1k:             e.feesOneTime,
+          netPerDay1k:               e.netPerDayAmortized30,
+          breakevenDays:             isFinite(e.breakevenDays) ? e.breakevenDays : null,
+          annualizedRunRatePct:      e.annualizedRunRatePct,
+          netAnnualizedOnCapitalPct: e.netAnnualizedOnCapitalPct,
+          annualizedCapped:          e.annualizedCapped,
+          perpFeePct:                e.perpFeePct,
+          spotFeePct:                e.spotFeePct,
+        },
+      };
+    });
+    return { rows, stale };
+  } catch {
+    return { rows: [], stale: true };
+  }
+}
 
 // ── Spread-persistence (real 48h history) ─────────────────────────────────────
 // Reads agent15's ring buffer: data.<venue>.<coin> = [{ t, rate }, …] newest-first (t ms).
@@ -372,6 +434,8 @@ export function getCryptoSpreadsData(): CryptoSpreadsData {
       };
     });
 
+    const perpSpotFeed = readPerpSpot();
+
     return {
       ok:          true,
       generatedAt,
@@ -383,6 +447,8 @@ export function getCryptoSpreadsData(): CryptoSpreadsData {
       cexArb:      raw.cexArb      ?? [],
       spreads,
       rwa:         rwaRows,
+      perpSpot:      perpSpotFeed.rows,
+      perpSpotStale: perpSpotFeed.stale,
       meta: {
         feePerLeg:    { cex: VENUE_FEE_PCT.cex, dex: VENUE_FEE_PCT.dex, gateio: VENUE_FEE_PCT.gateio, bitget: VENUE_FEE_PCT.bitget },
         legCount:     4,
@@ -402,6 +468,8 @@ export function getCryptoSpreadsData(): CryptoSpreadsData {
       cexArb:      [],
       spreads:     [],
       rwa:         [],
+      perpSpot:      [],
+      perpSpotStale: true,
       meta:        null,
     };
   }

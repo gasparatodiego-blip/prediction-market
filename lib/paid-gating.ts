@@ -157,6 +157,15 @@ export const REDACTION_MAP: Record<RouteKey, string[]> = {
     'spreads[].slipCurve[].slipOverGross',
     'futures{}{}.openInterestUsd',
     'futures{}{}.openInterest',
+    // Perp-vs-spot carry: raw funding rate + trailing count stay as teaser (public
+    // reference); only the DERIVED dollar edge is gated. The UI locks the whole math
+    // block when edge.netPerDay1k is redacted (null) — calm unlock, no login wall.
+    'perpSpot[].edge.grossPerDay1k',
+    'perpSpot[].edge.feesOneTime1k',
+    'perpSpot[].edge.netPerDay1k',
+    'perpSpot[].edge.breakevenDays',
+    'perpSpot[].edge.annualizedRunRatePct',
+    'perpSpot[].edge.netAnnualizedOnCapitalPct',
   ],
 
   carry: [

@@ -15,7 +15,8 @@ import {
 import { APY_CAP, isOverApyCap } from '@/lib/honest-display';
 import { Redacted } from '@/app/components/ui/Redacted';
 import { PlatformLink } from '@/app/components/ui/PlatformLink';
-import { venuePerpUrl } from '@/lib/platform-links';
+import { venuePerpUrl, venueSpotUrl } from '@/lib/platform-links';
+import type { PerpSpotRow } from '@/lib/spread-types';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -49,6 +50,8 @@ interface ApiResponse {
   spreads:      SpreadItem[];
   cexArb:       CexArbItem[];
   rwa?:         RwaObservation[];
+  perpSpot?:    PerpSpotRow[];
+  perpSpotStale?: boolean;
   meta:         Meta | null;
 }
 
@@ -178,8 +181,8 @@ function TypeFilterToggle({
     { id: 'all',       label: 'All' },
     { id: 'perp_perp', label: 'Perp / Perp' },
     {
-      id: 'spot_perp', label: 'Spot / Perp', disabled: true, hint: 'coming soon',
-      whyDisabled: 'Spot / Perp (cash & carry) scanning is not yet live. Currently only Perp / Perp cross-exchange funding differential is computed. Spot / Perp will appear here once the backend agent starts producing basisTrades.',
+      id: 'spot_perp', label: 'Perp vs Spot',
+      hint: 'earn the funding',
     },
   ];
   return (
@@ -213,6 +216,11 @@ function TypeFilterToggle({
       {value === 'perp_perp' && (
         <span className="font-body text-[11px] text-muted">
           Short one perp, long another — collect the funding differential
+        </span>
+      )}
+      {value === 'spot_perp' && (
+        <span className="font-body text-[11px] text-muted">
+          Hold spot, short its perp — collect the full funding rate (Ethena-style)
         </span>
       )}
     </div>
@@ -1510,6 +1518,303 @@ function RwaCommoditiesStrip({ rows }: { rows: RwaObservation[] }) {
   );
 }
 
+// ── Perp vs Spot (Ethena-style carry) ─────────────────────────────────────────
+// Hold spot, short the perp on the venue paying the most funding → collect the FULL
+// absolute funding rate (not a perp/perp spread). All $ figures on a row's `edge` are
+// quoted per $1,000 per-leg; we scale linearly to the user's capital. edge fields are
+// null on the free tier (redacted) → <Redacted> shows the calm unlock, never a fake 0.
+
+// Net $/day at the user's capital-per-leg, or null when the derived edge is redacted.
+function perpSpotNetDay(row: PerpSpotRow, capitalPerLeg: number): number | null {
+  if (row.edge.netPerDay1k == null) return null;
+  return row.edge.netPerDay1k * (capitalPerLeg / 1000);
+}
+
+function PerpSpotExplainer() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="rounded-card bg-surface mb-4" style={{ border: '1px solid #e6eaef', boxShadow: '0 1px 2px rgba(14,22,38,.05)' }}>
+      <div className="p-4">
+        <div className="font-semibold text-ink" style={{ fontSize: 15 }}>Earn the funding — without betting on price</div>
+        <p className="mt-1.5 font-body leading-relaxed" style={{ fontSize: 12.5, color: '#334155', maxWidth: '58ch' }}>
+          When a perpetual&apos;s funding rate is positive, shorts get paid every settlement. Hold the
+          coin in <strong>spot</strong> and <strong>short</strong> the same coin&apos;s perp in equal size:
+          the two price moves cancel, and you keep the funding.
+        </p>
+
+        {/* 3 steps */}
+        <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+          {[
+            { n: '1', t: 'Buy spot', d: 'Buy the coin on a major spot venue with your capital.' },
+            { n: '2', t: 'Short the perp', d: 'Open an equal-size short on the perp paying the most funding.' },
+            { n: '3', t: 'Collect funding', d: 'Every settlement the shorts collect — price-neutral.' },
+          ].map(s => (
+            <div key={s.n} className="rounded-md p-2.5" style={{ border: '1px solid #eef2f6', background: '#fafcfd' }}>
+              <div className="flex items-center gap-1.5">
+                <span className="inline-flex items-center justify-center font-mono font-bold text-white shrink-0"
+                  style={{ width: 16, height: 16, borderRadius: 999, background: '#0f766e', fontSize: 10 }}>{s.n}</span>
+                <span className="font-body font-semibold text-ink" style={{ fontSize: 12 }}>{s.t}</span>
+              </div>
+              <p className="mt-1 font-body" style={{ fontSize: 11, color: '#6b7787', lineHeight: 1.45 }}>{s.d}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Ethena reference */}
+        <p className="mt-3 font-body" style={{ fontSize: 11.5, color: '#475569' }}>
+          This is the exact trade behind <strong>Ethena&apos;s USDe</strong> — the delta-neutral carry strategy
+          that grew to a multi-billion-dollar synthetic dollar.
+        </p>
+
+        {/* Honest warning box */}
+        <div className="mt-3 rounded-md p-2.5" style={{ border: '1px solid #f6e4c8', background: '#fff8ef' }}>
+          <div className="font-body font-semibold" style={{ fontSize: 11.5, color: '#b45309' }}>Before you trade</div>
+          <ul className="mt-1 space-y-0.5 font-body" style={{ fontSize: 11, color: '#8a5a12', lineHeight: 1.5 }}>
+            <li>• Funding can flip <strong>negative</strong> — then you <em>pay</em> instead of collect.</li>
+            <li>• Rates shown are <strong>current, not guaranteed</strong>. They change every settlement.</li>
+            <li>• The spot leg needs <strong>full capital</strong>; keep margin on the perp so it can&apos;t liquidate.</li>
+          </ul>
+        </div>
+
+        <button onClick={() => setOpen(v => !v)}
+          className="mt-2 font-body text-[11px] text-muted hover:text-ink-2 transition-colors">
+          {open ? 'Hide the fine print ↑' : 'How we compute net / day ↓'}
+        </button>
+        {open && (
+          <p className="mt-1.5 font-body" style={{ fontSize: 11, color: '#6b7787', lineHeight: 1.5, maxWidth: '58ch' }}>
+            Funding collected/day = position size × funding rate × settlements/day. Fees are paid <strong>once</strong>
+            {' '}(open + close both legs — real published taker rates), so <strong>net / day</strong> amortizes that fee
+            over a 30-day hold. Shorter holds earn less; longer holds recover more of the fee. Annualized is a capped
+            <em> run-rate</em>, not a promise.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PerpSpotCard({
+  row, capitalPerLeg, expanded, onToggle,
+}: { row: PerpSpotRow; capitalPerLeg: number; expanded: boolean; onToggle: () => void }) {
+  const k          = capitalPerLeg / 1000;
+  const netDay     = perpSpotNetDay(row, capitalPerLeg);
+  const perpUrl    = venuePerpUrl(row.shortVenue, row.coin);
+  const spotUrl    = venueSpotUrl(row.spotVenueSuggested, row.coin);
+  const heroColor  = netDay == null ? '#0f766e' : netDay > 0 ? '#0f766e' : '#e11d48';
+  const flipRisk   = row.trailingPositiveSettlements < 3;
+
+  return (
+    <div className="rounded-card bg-surface overflow-hidden" style={{ border: '1px solid #e6eaef', boxShadow: '0 1px 2px rgba(14,22,38,.05)' }}>
+      <button onClick={onToggle} className="w-full text-left p-3 hover:bg-bg-soft/40 transition-colors">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="font-mono font-bold text-ink" style={{ fontSize: 17 }}>{row.coin}</span>
+              {flipRisk && (
+                <span className="font-body px-1.5 py-[1px] rounded-pill shrink-0" style={{ fontSize: 9, color: '#b45309', background: '#fff8ef' }}>
+                  flip risk
+                </span>
+              )}
+              {!row.spotVenueVerified && (
+                <span className="font-body px-1.5 py-[1px] rounded-pill shrink-0" style={{ fontSize: 9, color: '#6b7787', background: '#f1f5f9' }}>
+                  verify spot listing
+                </span>
+              )}
+            </div>
+            <div className="mt-1 font-mono tabular-nums break-words" style={{ fontSize: 11, color: '#6b7787', lineHeight: 1.5 }}>
+              short perp <span className="text-ink-2 font-semibold">{venueLabel(row.shortVenue)}</span>
+              {' · '}buy spot <span className="text-ink-2 font-semibold">{venueLabel(row.spotVenueSuggested)}</span>
+              {' · '}funding <span style={{ color: '#0f766e' }}>+{row.fundingPct8h.toFixed(4)}%/8h</span>
+              {row.edge.breakevenDays != null && (
+                <>{' · '}breakeven {row.edge.breakevenDays.toFixed(1)}d</>
+              )}
+            </div>
+            <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
+              <span className="font-body px-1.5 py-[1px] rounded-pill" style={{ fontSize: 9.5, color: '#0f766e', background: '#effcf9' }}>
+                positive for {row.trailingPositiveSettlements} settlement{row.trailingPositiveSettlements === 1 ? '' : 's'}
+              </span>
+              {perpUrl && <PlatformLink href={perpUrl} label={`${venueLabel(row.shortVenue)} perp`} compact className="shrink-0" />}
+              {spotUrl && <PlatformLink href={spotUrl} label={`${venueLabel(row.spotVenueSuggested)} spot`} compact className="shrink-0" />}
+            </div>
+          </div>
+          <div className="text-right shrink-0">
+            <div className="font-mono font-bold tabular-nums leading-none" style={{ fontSize: 20, color: heroColor }}>
+              {netDay == null
+                ? <Redacted value={row.edge.netPerDay1k}>{() => null}</Redacted>
+                : `${netDay >= 0 ? '+' : ''}${fmtDayUsd(netDay).replace('/day', '')}`}
+            </div>
+            <div className="font-body mt-0.5" style={{ fontSize: 9.5, color: '#9aa5b3' }}>net / day</div>
+          </div>
+        </div>
+      </button>
+
+      {expanded && (
+        <div className="px-3 pb-3 pt-1 border-t" style={{ borderColor: '#eef2f6' }}>
+          <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 font-mono tabular-nums" style={{ fontSize: 11 }}>
+            <span className="text-muted">Funding collected / day</span>
+            <span className="text-right text-ink">
+              <Redacted value={row.edge.grossPerDay1k}>{v => fmtDayUsd(v * k)}</Redacted>
+            </span>
+
+            <span className="text-muted">One-time fees (both legs)</span>
+            <span className="text-right text-ink">
+              <Redacted value={row.edge.feesOneTime1k}>{v => fmtMoneyPlain(v * k)}</Redacted>
+            </span>
+
+            <span className="text-muted">Breakeven</span>
+            <span className="text-right text-ink">
+              <Redacted value={row.edge.breakevenDays}>{v => `${v.toFixed(1)} days`}</Redacted>
+            </span>
+
+            <span className="text-muted">Net / day (30d hold)</span>
+            <span className="text-right font-bold" style={{ color: heroColor }}>
+              <Redacted value={row.edge.netPerDay1k}>{v => fmtDayUsd(v * k)}</Redacted>
+            </span>
+
+            <span className="text-muted">Capital needed (spot + 1× margin)</span>
+            <span className="text-right text-ink">{fmtMoneyPlain(2 * capitalPerLeg)}</span>
+
+            <span className="text-muted">Annualized (run-rate, capped)</span>
+            <span className="text-right text-ink">
+              <Redacted value={row.edge.annualizedRunRatePct}>
+                {v => `${fmtApy(v)}${row.edge.annualizedCapped ? ' +' : ''}`}
+              </Redacted>
+            </span>
+
+            <span className="text-muted">Net ROI on capital / yr</span>
+            <span className="text-right text-ink">
+              <Redacted value={row.edge.netAnnualizedOnCapitalPct}>{v => fmtApy(v)}</Redacted>
+            </span>
+          </div>
+
+          <p className="mt-2.5 font-body" style={{ fontSize: 10.5, color: '#9aa5b3', lineHeight: 1.5 }}>
+            Fees are paid once; funding accrues every {row.intervalH}h. Net / day amortizes the fee over a
+            30-day hold — a shorter hold earns less, a longer hold recovers more of the fee. Perp taker
+            {' '}{row.edge.perpFeePct.toFixed(3)}% · spot taker {row.edge.spotFeePct.toFixed(3)}% (per leg, real published rates).
+            Annualized is a <em>run-rate</em>, not guaranteed — funding can flip negative.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PerpSpotView({
+  rows, stale, capitalPerLeg,
+}: { rows: PerpSpotRow[]; stale: boolean; capitalPerLeg: number }) {
+  const [selectedCoins, setSelectedCoins] = useState<Set<string> | null>(null); // null = all
+  const [minNetDay, setMinNetDay]         = useState(0);
+  const [openCoin, setOpenCoin]           = useState<string | null>(null);
+
+  const coins = useMemo(() => Array.from(new Set(rows.map(r => r.coin))).sort(), [rows]);
+
+  const visible = useMemo(() => {
+    const arr = rows
+      .filter(r => selectedCoins == null || selectedCoins.has(r.coin))
+      .filter(r => {
+        const nd = perpSpotNetDay(r, capitalPerLeg);
+        // Rows whose net/day is redacted (free tier) can't be $-filtered → always pass.
+        return nd == null || nd >= minNetDay;
+      });
+    // Sort by net/day when known; otherwise fall back to raw funding so ordering is stable.
+    return arr.sort((a, b) => {
+      const na = perpSpotNetDay(a, capitalPerLeg);
+      const nb = perpSpotNetDay(b, capitalPerLeg);
+      if (na != null && nb != null) return nb - na;
+      if (na != null) return -1;
+      if (nb != null) return 1;
+      return b.fundingPct8h - a.fundingPct8h;
+    });
+  }, [rows, selectedCoins, minNetDay, capitalPerLeg]);
+
+  return (
+    <div>
+      <PerpSpotExplainer />
+
+      {/* FILTERS */}
+      {rows.length > 0 && (
+        <div className="rounded-card bg-surface p-3 mb-4 flex flex-col gap-3" style={{ border: '1px solid #e6eaef' }}>
+          {/* coin chips */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="font-body uppercase shrink-0" style={{ fontSize: 10, letterSpacing: '0.12em', color: '#6b7787' }}>Coin</span>
+            <button
+              onClick={() => setSelectedCoins(null)}
+              className="rounded-pill px-2 py-0.5 font-mono transition-colors"
+              style={selectedCoins == null
+                ? { fontSize: 11, border: '1px solid #0f766e', color: '#0f766e', background: '#effcf9' }
+                : { fontSize: 11, border: '1px solid #e6eaef', color: '#6b7787' }}
+            >All</button>
+            {coins.map(c => {
+              const on = selectedCoins != null && selectedCoins.has(c);
+              return (
+                <button
+                  key={c}
+                  onClick={() => setSelectedCoins(prev => {
+                    const next = new Set(prev ?? []);
+                    if (next.has(c)) next.delete(c); else next.add(c);
+                    return next.size === 0 ? null : next;
+                  })}
+                  className="rounded-pill px-2 py-0.5 font-mono transition-colors"
+                  style={on
+                    ? { fontSize: 11, border: '1px solid #0f766e', color: '#0f766e', background: '#effcf9' }
+                    : { fontSize: 11, border: '1px solid #e6eaef', color: '#6b7787' }}
+                >{c}</button>
+              );
+            })}
+          </div>
+
+          {/* min net/day slider */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-body uppercase shrink-0" style={{ fontSize: 10, letterSpacing: '0.12em', color: '#6b7787' }}>Min net / day</span>
+            <input
+              type="range" min={0} max={20} step={0.5} value={minNetDay}
+              onChange={e => setMinNetDay(parseFloat(e.target.value))}
+              className="flex-1 min-w-[120px] accent-mint-deep"
+              aria-label="Minimum net dollars per day"
+            />
+            <span className="font-mono tabular-nums shrink-0" style={{ fontSize: 12, color: '#0f766e' }}>
+              ${minNetDay.toFixed(1)}/day
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Stale / empty states — shown calmly */}
+      {stale && rows.length > 0 && (
+        <div className="mb-3 font-body px-2.5 py-1.5 rounded-md" style={{ fontSize: 11, color: '#b45309', background: '#fff8ef', border: '1px solid #f6e4c8' }}>
+          Funding feed is a few minutes stale — rates refresh shortly.
+        </div>
+      )}
+
+      {rows.length === 0 ? (
+        <div className="py-16 text-center">
+          <div className="font-body text-ink" style={{ fontSize: 14 }}>No positive-funding coins right now</div>
+          <p className="mt-1.5 font-body mx-auto" style={{ fontSize: 12, color: '#6b7787', maxWidth: '42ch' }}>
+            Shorts only collect when funding is positive. When no venue is paying positive funding, there is
+            nothing to harvest — that&apos;s normal in calm markets. Check back after the next settlement.
+          </p>
+        </div>
+      ) : visible.length === 0 ? (
+        <div className="py-14 text-center font-body" style={{ fontSize: 12.5, color: '#6b7787' }}>
+          No opportunities match your filters. Lower the min net / day or clear the coin selection.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-2.5">
+          {visible.map(row => (
+            <PerpSpotCard
+              key={`${row.coin}-${row.shortVenue}`}
+              row={row}
+              capitalPerLeg={capitalPerLeg}
+              expanded={openCoin === row.coin}
+              onToggle={() => setOpenCoin(c => (c === row.coin ? null : row.coin))}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function CryptoPage() {
@@ -1620,6 +1925,16 @@ export default function CryptoPage() {
     return best == null || nd > best ? nd : best;
   }, null);
 
+  const isPerpSpot   = assetView === 'crypto' && typeFilter === 'spot_perp';
+  const perpSpotRows = data?.perpSpot ?? [];
+  const bestPerpSpotNet = perpSpotRows.reduce<number | null>((best, r) => {
+    const nd = perpSpotNetDay(r, capital);
+    if (nd == null) return best;
+    return best == null || nd > best ? nd : best;
+  }, null);
+  // free tier: edge redacted → show the lock instead of a number
+  const perpSpotAllRedacted = perpSpotRows.length > 0 && perpSpotRows.every(r => r.edge.netPerDay1k == null);
+
   return (
     <div className="max-w-[1200px] mx-auto px-4 py-6">
 
@@ -1650,28 +1965,39 @@ export default function CryptoPage() {
       {/* HERO */}
       <div className="pb-5 mb-5" style={{ borderBottom: '1px solid #e6eaef' }}>
         <div className="font-body uppercase" style={{ fontSize: 10, letterSpacing: '0.16em', color: '#9aa5b3' }}>
-          Funding arbitrage · market-neutral
+          {isPerpSpot ? 'Perp vs Spot · Ethena-style carry' : 'Funding arbitrage · market-neutral'}
         </div>
         <div className="mt-2 flex items-baseline gap-2 flex-wrap">
           {/* Commodities are observation-only — no cashable "best net/day" exists, so dash it. */}
           <span className="font-mono font-bold tabular-nums leading-none" style={{ fontSize: 38, color: '#0f766e' }}>
             {assetView === 'commodity'
               ? '—'
-              : filteredPairs.length === 0
-                ? '—'
-                : bestNetDay != null
-                  ? `≈ ${fmtMoneyPlain(bestNetDay)}`
-                  : <span className="align-middle"><Redacted value={filteredPairs[0].netApy30d}>{() => null}</Redacted></span>}
+              : isPerpSpot
+                ? (perpSpotRows.length === 0
+                    ? '—'
+                    : bestPerpSpotNet != null
+                      ? `≈ ${fmtMoneyPlain(bestPerpSpotNet)}`
+                      : perpSpotAllRedacted
+                        ? <span className="align-middle"><Redacted value={null}>{() => null}</Redacted></span>
+                        : '—')
+                : filteredPairs.length === 0
+                  ? '—'
+                  : bestNetDay != null
+                    ? `≈ ${fmtMoneyPlain(bestNetDay)}`
+                    : <span className="align-middle"><Redacted value={filteredPairs[0].netApy30d}>{() => null}</Redacted></span>}
           </span>
           <span className="font-body" style={{ fontSize: 12, color: '#6b7787' }}>
             {assetView === 'commodity'
               ? 'commodities · observing funding, not cashable yet'
-              : `best net / day on $${capital.toLocaleString()}`}
+              : isPerpSpot
+                ? `best net / day on $${capital.toLocaleString()} per leg`
+                : `best net / day on $${capital.toLocaleString()}`}
           </span>
         </div>
-        <p className="mt-3 font-body leading-relaxed" style={{ fontSize: 12.5, color: '#334155', maxWidth: '52ch' }}>
-          Short the exchange paying high funding, long the one paying low. You take no bet on price —
-          you keep the hourly funding gap. Rates are current estimates, not locked.
+        <p className="mt-3 font-body leading-relaxed" style={{ fontSize: 12.5, color: '#334155', maxWidth: '54ch' }}>
+          {isPerpSpot
+            ? 'Hold spot, short the same coin’s perp on the venue paying the most funding. Price moves cancel — you keep the full funding rate. Rates are current, not locked, and can flip negative.'
+            : 'Short the exchange paying high funding, long the one paying low. You take no bet on price — you keep the hourly funding gap. Rates are current estimates, not locked.'}
         </p>
       </div>
 
@@ -1694,7 +2020,7 @@ export default function CryptoPage() {
           {/* CONTROLS — capital drives every card's net/day live */}
           <div className="mb-5 rounded-card bg-surface p-3 flex flex-col gap-3" style={{ border: '1px solid #e6eaef', boxShadow: '0 1px 2px rgba(14,22,38,.05)' }}>
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-body uppercase shrink-0" style={{ fontSize: 10, letterSpacing: '0.12em', color: '#6b7787' }}>Your capital</span>
+              <span className="font-body uppercase shrink-0" style={{ fontSize: 10, letterSpacing: '0.12em', color: '#6b7787' }}>{typeFilter === 'spot_perp' ? 'Capital per leg' : 'Your capital'}</span>
               <div className="inline-flex items-center rounded-button overflow-hidden" style={{ border: '1px solid #e6eaef' }}>
                 <span className="pl-2.5 pr-1 font-mono" style={{ fontSize: 13, color: '#9aa5b3' }}>$</span>
                 <input
@@ -1710,7 +2036,7 @@ export default function CryptoPage() {
                 />
               </div>
               <div className="flex items-center gap-1">
-                {[1000, 5000, 10000].map(v => (
+                {(typeFilter === 'spot_perp' ? [500, 1000, 5000, 10000] : [1000, 5000, 10000]).map(v => (
                   <button
                     key={v}
                     onClick={() => setCapital(v)}
@@ -1722,21 +2048,29 @@ export default function CryptoPage() {
                         : { border: '1px solid #e6eaef', color: '#6b7787' }),
                     }}
                   >
-                    {v / 1000}k
+                    {v >= 1000 ? `${v / 1000}k` : `$${v}`}
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* Capital = stablecoin margin, not coins — clarify perp/perp framing (all tiers) */}
-            <p className="font-body" style={{ fontSize: 11, color: '#9aa5b3', marginTop: -6 }}>
-              = USD stablecoin margin (USDC/USDT). You open perp positions — you don&apos;t buy the coin.
-            </p>
+            {/* Framing note — perp/perp uses stablecoin margin; perp-spot buys real spot */}
+            {typeFilter === 'spot_perp' ? (
+              <p className="font-body" style={{ fontSize: 11, color: '#9aa5b3', marginTop: -6 }}>
+                = capital on EACH leg. You buy spot with one leg and post margin on the short perp with the
+                other, so total capital deployed is 2×.
+              </p>
+            ) : (
+              <p className="font-body" style={{ fontSize: 11, color: '#9aa5b3', marginTop: -6 }}>
+                = USD stablecoin margin (USDC/USDT). You open perp positions — you don&apos;t buy the coin.
+              </p>
+            )}
 
             {/* Secondary controls */}
             <div className="flex items-center gap-4 flex-wrap pt-2.5" style={{ borderTop: '1px solid #eef2f6' }}>
               <AssetClassToggle value={assetView} onChange={selectAssetView} />
               <TypeFilterToggle value={typeFilter} onChange={setTypeFilter} />
+              {typeFilter !== 'spot_perp' && (
               <div className="flex items-center gap-2">
                 <span className="font-body uppercase" style={{ fontSize: 10, letterSpacing: '0.12em', color: '#6b7787' }}>Leverage</span>
                 <div className="flex rounded-button overflow-hidden" style={{ border: '1px solid #e6eaef' }}>
@@ -1758,19 +2092,23 @@ export default function CryptoPage() {
                   <span className="font-body" style={{ fontSize: 10, color: '#b45309' }}>liquidation risk if basis widens</span>
                 )}
               </div>
+              )}
             </div>
           </div>
 
           {/* Crypto view → cards + advanced table; Commodities view → RWA observation strip */}
-          {assetView === 'crypto' && (
+          {assetView === 'crypto' && typeFilter === 'spot_perp' && (
+            <PerpSpotView rows={data.perpSpot ?? []} stale={!!data.perpSpotStale} capitalPerLeg={capital} />
+          )}
+          {assetView === 'crypto' && typeFilter !== 'spot_perp' && (
             <OpportunityCards spreads={filteredPairs} capital={capital} leverage={leverage} />
           )}
           {assetView === 'commodity' && (
             <RwaCommoditiesStrip rows={data.rwa ?? []} />
           )}
 
-          {/* ── Advanced / full data (crypto view only) ──────────────────── */}
-          {assetView === 'crypto' && (
+          {/* ── Advanced / full data (crypto perp/perp view only) ─────────── */}
+          {assetView === 'crypto' && typeFilter !== 'spot_perp' && (
           <div className="border border-line rounded-card bg-surface shadow-card mb-5">
             <button
               onClick={() => setShowAdvanced(v => !v)}

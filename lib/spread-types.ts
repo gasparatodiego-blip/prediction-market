@@ -108,6 +108,39 @@ export interface SpreadsMeta {
   note:         string;
 }
 
+// ── Perp-vs-Spot (Ethena-style carry) ────────────────────────────────────────
+// One coin's best venue to SHORT the perp while holding SPOT, capturing the FULL
+// absolute funding rate. Raw inputs are public teaser; the derived `edge` (dollar
+// math) is redacted for the free tier — the page gates on edge.netPerDay1k == null.
+export interface PerpSpotEdge {
+  // All $ figures are quoted PER $1,000 per-leg; the client scales linearly to the
+  // user's chosen capital. Redactable (→ null on free tier).
+  grossPerDay1k:             number | null;
+  feesOneTime1k:             number | null;
+  netPerDay1k:               number | null;   // 30-day-amortized
+  breakevenDays:             number | null;   // capital-invariant; null when never (≤0 funding)
+  annualizedRunRatePct:      number | null;   // capped run-rate, demoted
+  netAnnualizedOnCapitalPct: number | null;   // honest ROI on total (2×) capital
+  // Public context (not redacted): the fee schedule that produced the figures.
+  annualizedCapped:          boolean;
+  perpFeePct:                number;
+  spotFeePct:                number;
+}
+
+export interface PerpSpotRow {
+  coin:                        string;
+  shortVenue:                  string;
+  spotVenueSuggested:          string;
+  spotVenueVerified:           boolean;
+  fundingRateNative:           number;   // native %/interval (teaser)
+  intervalH:                   number;
+  fundingPct8h:                number;   // normalized %/8h (teaser)
+  trailingPositiveSettlements: number;   // real consecutive-positive count
+  markPrice:                   number | null;
+  vol24hUsd:                   number | null;
+  edge:                        PerpSpotEdge;
+}
+
 export interface CryptoSpreadsData {
   ok:           boolean;
   generatedAt:  number | null;
@@ -119,6 +152,8 @@ export interface CryptoSpreadsData {
   cexArb:       unknown[];
   spreads:      SpreadItem[];
   rwa:          RwaObservation[];   // commodities beta — observation-only, never cashable
+  perpSpot:     PerpSpotRow[];      // Ethena-style carry: best short-perp + spot hedge per coin
+  perpSpotStale: boolean;           // source feed older than freshness window
   meta:         SpreadsMeta | null;
 }
 
