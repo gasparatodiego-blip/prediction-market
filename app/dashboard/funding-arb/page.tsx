@@ -1615,6 +1615,77 @@ function PerpSpotExplainer() {
   );
 }
 
+// Numbered, plain-English playbook built from the row's REAL data. Spot leg goes
+// FIRST on purpose: opening the short before you hold the coin leaves you net-short
+// (directionally exposed) until the spot fill lands. Every $ / venue / interval is
+// interpolated from the row — no placeholders, no invented numbers.
+function PerpSpotHowTo({
+  row, capitalPerLeg, perpUrl, spotUrl,
+}: { row: PerpSpotRow; capitalPerLeg: number; perpUrl: string | null; spotUrl: string | null }) {
+  const cap        = fmtMoneyPlain(capitalPerLeg);
+  const spotName   = venueLabel(row.spotVenueSuggested);
+  const shortName  = venueLabel(row.shortVenue);
+  const beDays     = row.edge.breakevenDays;
+  const beText     = beDays != null
+    ? `Fees break even in ${beDays.toFixed(1)} days.`
+    : 'Fees break even once collected funding covers the round-trip cost.';
+
+  const steps = [
+    {
+      n: '1',
+      t: 'Buy spot',
+      leg: 'long leg',
+      body: <>On <strong>{spotName}</strong>, buy <strong>{cap}</strong> of {row.coin} on the
+        <strong> spot</strong> market (not futures). This is your <strong>long</strong> leg — do this
+        one <em>first</em>: opening the short before you hold the coin leaves you exposed to price.</>,
+      link: spotUrl && <PlatformLink href={spotUrl} label={`${spotName} spot`} compact className="shrink-0" />,
+    },
+    {
+      n: '2',
+      t: 'Short the perp',
+      leg: 'short leg',
+      body: <>On <strong>{shortName}</strong>, open a <strong>SHORT</strong> on {row.coin}-PERP for
+        <strong> {cap}</strong> at <strong>1× leverage</strong> (no liquidation risk at 1×). This is
+        your <strong>short</strong> leg — size it equal to the spot buy.</>,
+      link: perpUrl && <PlatformLink href={perpUrl} label={`${shortName} perp`} compact className="shrink-0" />,
+    },
+    {
+      n: '3',
+      t: 'Hold & collect',
+      leg: null as string | null,
+      body: <>You&apos;re now price-neutral. Funding is paid to your short every <strong>{row.intervalH}h</strong>.
+        {' '}{beText} Exit if funding flips negative — watch the <em>positive-for-N-settlements</em> chip on the card.</>,
+      link: null,
+    },
+  ];
+
+  return (
+    <div className="mt-3 rounded-md p-3" style={{ border: '1px solid #e6eaef', background: '#fafcfd' }}>
+      <div className="font-body font-semibold text-ink" style={{ fontSize: 12 }}>How to execute</div>
+      <ol className="mt-2 flex flex-col gap-2.5">
+        {steps.map(s => (
+          <li key={s.n} className="flex items-start gap-2.5">
+            <span className="inline-flex items-center justify-center font-mono font-bold text-white shrink-0 mt-[1px]"
+              style={{ width: 18, height: 18, borderRadius: 999, background: '#0f766e', fontSize: 10.5 }}>{s.n}</span>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="font-body font-semibold text-ink" style={{ fontSize: 12 }}>{s.t}</span>
+                {s.leg && (
+                  <span className="font-body px-1.5 py-[1px] rounded-pill shrink-0"
+                    style={{ fontSize: 9, color: '#0f766e', background: '#effcf9' }}>{s.leg}</span>
+                )}
+                {/* deep link is a distinct tap target from the card toggle */}
+                {s.link}
+              </div>
+              <p className="mt-0.5 font-body" style={{ fontSize: 11, color: '#475569', lineHeight: 1.5 }}>{s.body}</p>
+            </div>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
 function PerpSpotCard({
   row, capitalPerLeg, expanded, onToggle,
 }: { row: PerpSpotRow; capitalPerLeg: number; expanded: boolean; onToggle: () => void }) {
@@ -1715,6 +1786,8 @@ function PerpSpotCard({
             {' '}{row.edge.perpFeePct.toFixed(3)}% · spot taker {row.edge.spotFeePct.toFixed(3)}% (per leg, real published rates).
             Annualized is a <em>run-rate</em>, not guaranteed — funding can flip negative.
           </p>
+
+          <PerpSpotHowTo row={row} capitalPerLeg={capitalPerLeg} perpUrl={perpUrl} spotUrl={spotUrl} />
         </div>
       )}
     </div>
