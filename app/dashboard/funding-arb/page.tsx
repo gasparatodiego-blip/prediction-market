@@ -16,6 +16,7 @@ import { APY_CAP, isOverApyCap } from '@/lib/honest-display';
 import { Redacted } from '@/app/components/ui/Redacted';
 import { PlatformLink } from '@/app/components/ui/PlatformLink';
 import { venuePerpUrl, venueSpotUrl } from '@/lib/platform-links';
+import { AUTO_EXECUTE_ENABLED } from '@/lib/flags';
 import type { PerpSpotRow, PerpSpotRegime } from '@/lib/spread-types';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -1682,6 +1683,38 @@ function PerpSpotHowTo({
           </li>
         ))}
       </ol>
+
+      {/* Gated auto-execute placeholder — inert, never wired to a real order flow.
+          Live execution stays OFF (AUTO_EXECUTE_ENABLED=false): with the flag off we
+          render the muted "coming soon" lock; even with it on there is deliberately no
+          key-input surface here yet.
+          TODO(api-keys): exchange API-key custody + hardening (encrypted-at-rest key
+          storage, per-venue scopes, kill-switch) is a separate future milestone before
+          any two-leg placement can ship. Do NOT wire an order path off this block. */}
+      {!AUTO_EXECUTE_ENABLED && (
+        <div
+          aria-disabled
+          title="Auto-execute — coming soon, not yet available"
+          className="mt-2.5 rounded-md p-2.5 flex items-center gap-2.5 select-none"
+          style={{ border: '1px dashed #cfd6df', background: 'transparent', cursor: 'not-allowed', opacity: 0.85 }}
+        >
+          <span aria-hidden className="shrink-0" style={{ fontSize: 13, lineHeight: 1 }}>🔒</span>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="font-body font-semibold" style={{ fontSize: 11.5, color: '#6b7787' }}>
+                ⚡ Auto-execute via API
+              </span>
+              <span className="font-body uppercase tracking-widest"
+                style={{ fontSize: 8, padding: '1px 5px', borderRadius: 4, color: '#6b7787', background: '#f1f5f9', border: '1px solid #e6eaef' }}>
+                Coming soon
+              </span>
+            </div>
+            <p className="font-body mt-0.5" style={{ fontSize: 10.5, color: '#9aa5b3', lineHeight: 1.45 }}>
+              Connect your exchange API keys and Edgeradar will place both legs for you.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
