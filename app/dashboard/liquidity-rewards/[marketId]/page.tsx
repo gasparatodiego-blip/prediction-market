@@ -23,6 +23,7 @@ import { useParams } from 'next/navigation';
 import { ChevronLeft, RefreshCw } from 'lucide-react';
 import PlatformLogo from '@/components/PlatformLogo';
 import { Redacted } from '@/app/components/ui/Redacted';
+import InfoTip from '@/app/components/ui/InfoTip';
 import { estimateReward, type MarketSnapshot, type Venue } from '@/lib/rewards-estimate';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -473,7 +474,12 @@ function EarningsBlock({ est, isRedacted }: { est: ReturnType<typeof estimateRew
       <div className="px-4 py-4">
         <div className="flex items-end justify-between gap-3 flex-wrap">
           <div>
-            <p className="font-body text-[11px] uppercase tracking-wide text-muted">Net earnings · per day</p>
+            <p className="font-body text-[11px] uppercase tracking-wide text-muted flex items-center gap-1">
+              Net earnings · per day
+              <InfoTip label="How net earnings is computed" size={12}>
+                Net = your estimated share of the daily reward pool − the expected adverse-fill cost (what you lose when a resting order fills right as the price moves against you). Built from the real book depth and pool, never a midpoint fill. Annualized is a capped run-rate, not a guarantee.
+              </InfoTip>
+            </p>
             <p className={`font-mono font-bold leading-none mt-1 ${netTone}`} style={{ fontSize: 34 }}>
               <Redacted value={net}>{v => `${fmtUsd(v)}/day`}</Redacted>
             </p>

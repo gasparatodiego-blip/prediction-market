@@ -10,8 +10,9 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ChevronRight, Info } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 import Eyebrow from '@/app/components/ui/Eyebrow';
+import InfoTip from '@/app/components/ui/InfoTip';
 import SectionHeading from '@/app/components/ui/SectionHeading';
 import StatCard from '@/app/components/ui/StatCard';
 import PlatformLogo from '@/components/PlatformLogo';
@@ -226,24 +227,17 @@ function FilterBar({
             <option value={720}>30d+</option>
           </select>
         </div>
-        {/* News risk — with helptext/tooltip explaining what HIGH means */}
+        {/* News risk — interactive info popover explaining what HIGH means */}
         <div className="flex items-center gap-1.5">
           <label className="flex items-center gap-2 cursor-pointer">
             <input type="checkbox" checked={filters.hideHighNews} onChange={e => setFilters({ ...filters, hideHighNews: e.target.checked })} className="w-4 h-4 accent-coral-ink" />
             <span className="font-body text-[12px] text-ink-2">Hide high news-risk</span>
           </label>
-          <span
-            title="Hides markets the news-guard flags HIGH: a news or volatility spike is likely to move the price soon, so a resting order would probably get filled at a bad price (adverse selection)."
-            className="inline-flex items-center text-muted cursor-help"
-          >
-            <Info size={13} />
-          </span>
+          <InfoTip label="About hide high news-risk">
+            Hides markets where a news/volatility spike is likely to move the price — those are where a resting quote is most likely to get picked off (adverse selection).
+          </InfoTip>
         </div>
       </div>
-      {/* Helptext for the news filter — always visible, plain language */}
-      <p className="font-body text-[11px] text-muted leading-relaxed -mt-1">
-        <span className="text-ink-2 font-medium">Hide high news-risk</span> removes markets where a news/volatility spike is likely to move the price — those are the ones where a resting quote is most likely to get picked off.
-      </p>
       {/* Category chips */}
       {categories.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5">
