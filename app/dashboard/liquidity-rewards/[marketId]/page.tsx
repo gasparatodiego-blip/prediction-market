@@ -109,14 +109,24 @@ function normalizeBook(venue: Venue, raw: any): NormBook {
     return { bids, asks, lastTrade, hasBook: bids.length > 0 || asks.length > 0, note: null };
   }
 
-  // Kalshi
+  // Kalshi. The live API returns `orderbook_fp` with { yes_dollars, no_dollars },
+  // each [priceDollarsString, sizeString] where price is already a 0..1 dollar value.
+  // (Older shape: `orderbook` with { yes, no } as [cents, size].) YES asks are the
+  // mirror of NO bids: a NO bid at $p is an offer to SELL YES at $(1−p). We only
+  // transform real levels — never synthesize one.
+  const fp = raw.orderbook_fp;
   const ob = raw.orderbook;
-  if (!ob) return { bids: [], asks: [], lastTrade: null, hasBook: false, note: raw.error ?? null };
-  const yesRaw = Array.isArray(ob.yes) ? ob.yes : [];
-  const noRaw  = Array.isArray(ob.no)  ? ob.no  : [];
-  const bids = yesRaw.map((r: any[]) => ({ price: Number(r[0]) / 100, size: Number(r[1]) }))
-    .filter((r: BookRow) => r.price > 0 && r.size > 0).sort((a: BookRow, b: BookRow) => b.price - a.price);
-  const asks = noRaw.map((r: any[]) => ({ price: (100 - Number(r[0])) / 100, size: Number(r[1]) }))
+  let yesRaw: any[], noRaw: any[], scale: number;
+  if (fp && (Array.isArray(fp.yes_dollars) || Array.isArray(fp.no_dollars))) {
+    yesRaw = fp.yes_dollars ?? []; noRaw = fp.no_dollars ?? []; scale = 1;      // already dollars 0..1
+  } else if (ob && (Array.isArray(ob.yes) || Array.isArray(ob.no))) {
+    yesRaw = ob.yes ?? []; noRaw = ob.no ?? []; scale = 1 / 100;                // cents → dollars
+  } else {
+    return { bids: [], asks: [], lastTrade: null, hasBook: false, note: raw.error ?? null };
+  }
+  const bids = yesRaw.map((r: any[]) => ({ price: Number(r[0]) * scale, size: Number(r[1]) }))
+    .filter((r: BookRow) => r.price > 0 && r.price < 1 && r.size > 0).sort((a: BookRow, b: BookRow) => b.price - a.price);
+  const asks = noRaw.map((r: any[]) => ({ price: 1 - Number(r[0]) * scale, size: Number(r[1]) }))
     .filter((r: BookRow) => r.price > 0 && r.price < 1 && r.size > 0).sort((a: BookRow, b: BookRow) => a.price - b.price);
   return { bids, asks, lastTrade: null, hasBook: bids.length > 0 || asks.length > 0, note: null };
 }
