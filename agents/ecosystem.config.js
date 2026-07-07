@@ -1,6 +1,17 @@
 module.exports = {
   apps: [
     {
+      name:          'agent29-verifier',
+      script:        './agents/agent29-verifier.js',
+      cwd:           '/root/prediction-market',
+      restart_delay: 30000,
+      max_restarts:  20,
+      max_memory_restart: '160M',   // small: reads served feeds, bounded per-cycle venue calls
+      watch:         false,
+      autorestart:   true,
+      env:           { NODE_ENV: 'production', HOME: '/root' },
+    },
+    {
       name:          'agent28-perp-spot',
       script:        './agents/agent28-perp-spot.js',
       cwd:           '/root/prediction-market',
