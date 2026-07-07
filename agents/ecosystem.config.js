@@ -1,6 +1,17 @@
 module.exports = {
   apps: [
     {
+      name:          'agent28-perp-spot',
+      script:        './agents/agent28-perp-spot.js',
+      cwd:           '/root/prediction-market',
+      restart_delay: 30000,
+      max_restarts:  20,
+      max_memory_restart: '120M',   // tiny: reads 2 JSON files, writes 1, no network
+      watch:         false,
+      autorestart:   true,
+      env:           { NODE_ENV: 'production', HOME: '/root' },
+    },
+    {
       name:          'agent27-news-guard',
       script:        './agents/agent27-news-guard.js',
       cwd:           '/root/prediction-market',
