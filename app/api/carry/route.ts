@@ -3,6 +3,7 @@ import fs from 'fs';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { getIsPaid, redactForTier } from '@/lib/paid-gating';
+import { isExpired } from '@/lib/instrument-expiry';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,11 +35,27 @@ export async function GET() {
   const session = await getServerSession(authOptions);
   const isPaid  = await getIsPaid(session);
 
+  // Render-time expired-instrument guard (single source: lib/instrument-expiry).
+  // Defense in depth behind agent19's producer filter — an expired dated future must
+  // never reach a card. Log rejects so a producer regression is never silent.
+  const now = Date.now();
+  const keepLive = (rows: any[], label: string) =>
+    (rows ?? []).filter((r) => {
+      if (isExpired(r, now)) {
+        console.log(`[carry] excluded expired instrument ${label}: ${r?.contract ?? r?.instrument ?? '?'} (expiry ${r?.expiry ?? '?'})`);
+        return false;
+      }
+      return true;
+    });
+
+  const opportunities = keepLive(data.opportunities, 'opportunity');
+  const backwardation = keepLive(data.backwardation, 'backwardation');
+
   const body = redactForTier({
     agentStatus,
     updatedAt:     data.updatedAt,
-    opportunities: data.opportunities  ?? [],
-    backwardation: data.backwardation  ?? [],
+    opportunities,
+    backwardation,
     summary:       data.summary        ?? {},
     spot:          data.spot           ?? {},
     disclaimer:    data.disclaimer     ?? '',

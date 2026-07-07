@@ -14,6 +14,7 @@ import AnimatedStrategies from '@/app/components/landing/AnimatedStrategies';
 import { getCryptoSpreadsData, calcSpreadSizing } from '@/lib/spread-compute';
 import { LANDING_CAPITAL_BASIS, isOverApyCap } from '@/lib/honest-display';
 import { isSaneKalshiMarket, isSanePolymarketLevel } from '@/lib/reward-gating';
+import { isExpired } from '@/lib/instrument-expiry';
 
 export const dynamic = 'force-dynamic';
 
@@ -114,7 +115,10 @@ function readLandingStats(): {
       asset: string; exchange: string; contract: string;
       netAnnualizedExecutable?: number; netAnnualized?: number; coinMargined?: boolean;
     }>;
+    const nowMs = Date.now();
     const sorted = [...opps]
+      // Never surface an expired dated future (single source: lib/instrument-expiry).
+      .filter(o => !isExpired(o, nowMs))
       .filter(o => (o.netAnnualizedExecutable ?? o.netAnnualized ?? 0) > 0)
       .sort((a, b) => (b.netAnnualizedExecutable ?? b.netAnnualized ?? 0) - (a.netAnnualizedExecutable ?? a.netAnnualized ?? 0));
     if (sorted.length > 0) {

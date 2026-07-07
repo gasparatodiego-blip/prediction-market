@@ -128,6 +128,13 @@ function buildContract({ asset, exchange, venueKey, contract,
                           futureLast, futureBid, futureAsk,
                           expiryMs, vol24Usd, oiUsd }) {
   const now = Date.now();
+
+  // Filter 0 (honest-engine): an EXPIRED or unparseable-expiry dated future is a
+  // fabricated instrument — its "locked to expiry" return no longer exists. Exclude
+  // before any basis math. This also plugs the NaN hole: NaN < MIN_DAYS is false, so a
+  // bad expiryMs would otherwise slip past filter 1. Never roll onto an expired leg.
+  if (!Number.isFinite(expiryMs) || expiryMs <= now) return null;
+
   const daysToExpiry = (expiryMs - now) / 86_400_000;
 
   // Filter 1: daysToExpiry < MIN_DAYS
