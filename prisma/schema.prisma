@@ -28,6 +28,30 @@ model User {
   alerts            Alert[]
   subscriptions     Subscription[]
   copyConfigs       CopyConfig[]
+  rewardsPlacements RewardsPlacement[]
+}
+
+// Per-market liquidity-reward placement config — one row per (user, market).
+// Paper-only: `mode` is always 'paper' until live execution ships
+// (AUTO_EXECUTE_ENABLED=false). Read by agent27-news-guard to emit the advisory
+// reaction the user chose (withdraw / alert / off). Never places a real order.
+model RewardsPlacement {
+  id         String   @id @default(cuid())
+  userId     String
+  marketId   String                              // Polymarket conditionId or Kalshi ticker
+  venue      String                              // 'polymarket' | 'kalshi'
+  side       String   @default("both")           // 'both' | 'buy' | 'sell'
+  qtyPerSide Float    @default(1000)             // USD per side
+  distanceC  Float    @default(2)                // distance from mid, in cents
+  onFill     String   @default("requote")        // 'requote' | 'flatten'
+  newsMode   String   @default("withdraw")       // 'withdraw' | 'alert' | 'off'
+  mode       String   @default("paper")          // 'paper' only; live gated OFF
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, marketId])
 }
 
 // Copy-trading configuration — one row per (user, watched wallet). Paper-only:

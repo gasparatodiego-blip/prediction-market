@@ -45,6 +45,20 @@ const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const CHAT_ID   = process.env.TELEGRAM_CHAT_ID   || '';
 const AUTO_EXECUTE_ENABLED = process.env.AUTO_EXECUTE_ENABLED === 'true'; // guard is advisory unless this is on (it is not)
 
+// Prisma (local Postgres) — read stored RewardsPlacements so the guard reacts to the
+// choice each user made per market (withdraw / alert / off). Guarded: if the client or
+// DB is unavailable the guard degrades to book+news advisory only, never crashes.
+// .env is already loaded above, so DATABASE_URL is in process.env before construction.
+let prisma = null;
+try { prisma = new (require('@prisma/client').PrismaClient)(); }
+catch (e) { console.warn('[A27] Prisma unavailable — placement reactions disabled:', e.message); }
+
+async function getPlacements() {
+  if (!prisma) return [];
+  try { return await prisma.rewardsPlacement.findMany({ select: { marketId: true, newsMode: true } }); }
+  catch (e) { console.warn('[A27] placement read failed:', e.message); return []; }
+}
+
 // ── Config ────────────────────────────────────────────────────────────────────
 const SNAPSHOT_FILE   = '/tmp/liquidity-rewards.json';
 const OUT_FILE        = '/tmp/news-guard.json';
@@ -216,6 +230,19 @@ async function scan() {
 
   const markets = snap.markets;
 
+  // User placements → per-market chosen reaction (withdraw / alert / off). A single
+  // market may carry placements from several users; we aggregate counts and, when the
+  // market is HIGH, advise the strongest opted-in reaction (withdraw ≻ alert ≻ off).
+  const placements = await getPlacements();
+  const placementByMarket = {};
+  for (const p of placements) {
+    if (!p.marketId) continue;
+    const b = placementByMarket[p.marketId] || (placementByMarket[p.marketId] = { withdraw: 0, alert: 0, off: 0 });
+    if (p.newsMode === 'withdraw') b.withdraw++;
+    else if (p.newsMode === 'alert') b.alert++;
+    else b.off++;
+  }
+
   // Pick which markets get a (rate-limited, cached) news lookup: top by pool, deduped
   // by keyword so the same real-world event across venues isn't queried twice.
   const ranked = [...markets]
@@ -267,10 +294,41 @@ async function scan() {
         }
       : null;
 
+    // Placement-driven reaction: honour the user's per-market choice. On a HIGH
+    // (adverse) signal → 'withdraw' emits the advisory WITHDRAW action, 'alert' emits
+    // an alert only, 'off' does nothing. Below HIGH → monitoring only. Advisory always:
+    // live execution is OFF, so this is a recommendation + Telegram push, never an order.
+    const pb = placementByMarket[m.marketId] || null;
+    let userReaction = null;
+    if (pb && (pb.withdraw > 0 || pb.alert > 0)) {
+      if (newsRisk === 'high') {
+        if (pb.withdraw > 0) {
+          userReaction = {
+            mode: 'withdraw', action: 'WITHDRAW_LIQUIDITY', users: pb.withdraw,
+            detail: `User chose auto-withdraw on adverse news. Advisory: cancel both resting quotes now. If partially filled, ${exitAdvisory(m)}.`,
+            liveExecution: AUTO_EXECUTE_ENABLED ? 'ON' : 'OFF (advisory only)',
+          };
+        } else {
+          userReaction = {
+            mode: 'alert', action: 'ALERT_ONLY', users: pb.alert,
+            detail: 'User chose alert-only. Notifying — no automatic action taken.',
+            liveExecution: 'OFF (advisory only)',
+          };
+        }
+      } else {
+        userReaction = {
+          mode: pb.withdraw > 0 ? 'withdraw' : 'alert', action: 'MONITOR',
+          users: pb.withdraw + pb.alert, detail: 'Watching — risk not HIGH; no action advised yet.',
+          liveExecution: 'OFF (advisory only)',
+        };
+      }
+    }
+
     results.push({
       marketId: m.marketId, venue: m.venue, title: m.title,
       newsRisk, bookRisk: combineRisk(bs, null), newsSignal: ns ? ns.level : null,
       signals, protect,
+      placements: pb, userReaction,
     });
   }
 
@@ -284,6 +342,7 @@ async function scan() {
       newsQueried,
       highCount: highs.length,
       medCount: meds.length,
+      placementsTracked: placements.length,
       liveExecution: AUTO_EXECUTE_ENABLED ? 'ON' : 'OFF',
       sources: sourcesStatus,
       note: 'Advisory only — live execution OFF. PROTECT actions are recommendations, never real orders. ' +
@@ -296,7 +355,14 @@ async function scan() {
   // Google-News spike or a structural TRAP — not book-volatility-only highs (those are
   // still surfaced as HIGH badges in the UI, but do not warrant a push). Deduped, 3h
   // cooldown. Calm (no alert) when none — the valid, common state.
-  const alertable = highs.filter(h => h.newsSignal === 'high' || (h.signals[0]?.note || '').includes('TRAP'));
+  // Alert set = genuine "something just happened" HIGHs (real news spike / structural
+  // TRAP) UNION any HIGH market where a user opted into 'withdraw' or 'alert' (their
+  // configured reaction fires). Deduped by marketId, 3h cooldown. Advisory only.
+  const newsyHighs     = highs.filter(h => h.newsSignal === 'high' || (h.signals[0]?.note || '').includes('TRAP'));
+  const placementHighs = highs.filter(h => h.userReaction && (h.userReaction.action === 'WITHDRAW_LIQUIDITY' || h.userReaction.action === 'ALERT_ONLY'));
+  const alertMap = new Map();
+  for (const h of [...newsyHighs, ...placementHighs]) alertMap.set(h.marketId, h);
+  const alertable = [...alertMap.values()];
   const toAlert = [];
   for (const h of alertable) {
     const prev = state.alerted[h.marketId];
@@ -308,8 +374,14 @@ async function scan() {
   atomicWrite(STATE_FILE, state);
 
   if (toAlert.length) {
-    const lines = toAlert.slice(0, 8).map(h =>
-      `⚠️ <b>${(h.title || h.marketId).slice(0, 90)}</b> (${h.venue})\n   PROTECT: withdraw liquidity now · ${h.signals.map(s => s.note).join(' | ')}`);
+    const lines = toAlert.slice(0, 8).map(h => {
+      const reaction = h.userReaction?.action === 'WITHDRAW_LIQUIDITY'
+        ? `your choice: WITHDRAW liquidity now (${h.userReaction.users} placement${h.userReaction.users === 1 ? '' : 's'})`
+        : h.userReaction?.action === 'ALERT_ONLY'
+        ? `your choice: ALERT only — no auto action (${h.userReaction.users} placement${h.userReaction.users === 1 ? '' : 's'})`
+        : 'PROTECT: withdraw liquidity now';
+      return `⚠️ <b>${(h.title || h.marketId).slice(0, 90)}</b> (${h.venue})\n   ${reaction} · ${h.signals.map(s => s.note).join(' | ')}`;
+    });
     await sendTelegram(
       `🛡️ <b>News-guard: ${toAlert.length} market(s) at HIGH adverse risk</b>\n` +
       `Advisory only — live execution OFF, no orders placed.\n\n${lines.join('\n\n')}`);
