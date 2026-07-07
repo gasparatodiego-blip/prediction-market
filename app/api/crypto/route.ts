@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { getIsPaid, redactForTier } from '@/lib/paid-gating';
 import { getCryptoSpreadsData } from '@/lib/spread-compute';
+import { filterSane } from '@/lib/display-sanity';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,6 +12,13 @@ export type { FuturesCoin, SlipPoint, SpreadItem } from '@/lib/spread-compute';
 export async function GET() {
   const session = await getServerSession(authOptions);
   const isPaid  = await getIsPaid(session);
-  const body    = redactForTier(getCryptoSpreadsData(), 'crypto', isPaid);
+
+  // Render-time sanity net (before redaction so cap checks see real values). Drops any
+  // funding/perp-spot row with a null/NaN/absurd rate or an over-cap unlabeled annualized.
+  const data = getCryptoSpreadsData();
+  data.spreads = filterSane('funding', data.spreads);
+  data.perpSpot = filterSane('perp-spot', data.perpSpot);
+
+  const body = redactForTier(data, 'crypto', isPaid);
   return NextResponse.json(body);
 }

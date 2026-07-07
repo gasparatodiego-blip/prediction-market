@@ -4,6 +4,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { getIsPaid, redactForTier } from '@/lib/paid-gating';
 import { isExpired } from '@/lib/instrument-expiry';
+import { filterSane } from '@/lib/display-sanity';
 
 export const dynamic = 'force-dynamic';
 
@@ -48,8 +49,10 @@ export async function GET() {
       return true;
     });
 
-  const opportunities = keepLive(data.opportunities, 'opportunity');
-  const backwardation = keepLive(data.backwardation, 'backwardation');
+  // Layer: expired filter (Phase 2, specific log) then the render-time sanity net
+  // (absurd/over-cap/missing-expiry money-field checks).
+  const opportunities = filterSane('basis', keepLive(data.opportunities, 'opportunity'), now);
+  const backwardation = filterSane('basis', keepLive(data.backwardation, 'backwardation'), now);
 
   const body = redactForTier({
     agentStatus,

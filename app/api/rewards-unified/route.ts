@@ -3,6 +3,7 @@ import fs from 'fs';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { getIsPaid, redactForTier } from '@/lib/paid-gating';
+import { filterSane } from '@/lib/display-sanity';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,6 +45,9 @@ export async function GET() {
       : Infinity;
 
     data.markets = mergeNewsGuard(Array.isArray(data.markets) ? data.markets : []);
+    // Render-time sanity net: drop any reward row with a negative pool/liquidity or a
+    // price outside [0,1] (logged as sanity-reject; UI shows fewer rows, calmly).
+    data.markets = filterSane('rewards', data.markets);
 
     const session = await getServerSession(authOptions);
     const isPaid  = await getIsPaid(session);
