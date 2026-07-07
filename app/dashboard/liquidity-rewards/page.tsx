@@ -271,7 +271,11 @@ function MarketCard({ m }: { m: NormalizedMarket }) {
   const risk = (m.newsRisk ?? 'unknown') as NewsRisk;
   const poolKnown = m.dailyPool != null;
   const href = `/dashboard/liquidity-rewards/${encodeURIComponent(m.marketId)}`;
-  const netTone = net == null ? 'text-ink' : net > 0 ? 'text-mint-deep' : 'text-coral-ink';
+  // Honest-engine: a TRAP/THIN_CAP/SHORT_BURST market can show an inflated net from a
+  // thin book. Demote the hero color so a flagged, too-good number never reads as a
+  // green go-signal — the number stays visible (never fabricated), just visually muted.
+  const cautionFlag = m.flags.some(f => ['TRAP', 'THIN_CAP', 'SHORT_BURST'].includes(f));
+  const netTone = net == null ? 'text-ink' : cautionFlag ? 'text-muted' : net > 0 ? 'text-mint-deep' : 'text-coral-ink';
   return (
     <Link
       href={href}
@@ -299,7 +303,7 @@ function MarketCard({ m }: { m: NormalizedMarket }) {
         {/* Earnings hero — always readable, never truncated */}
         <div className="mt-3 flex items-end justify-between gap-3 flex-wrap">
           <div className="min-w-0">
-            <p className="font-body text-[10px] uppercase tracking-wide text-muted">Est. net / day · $1k two-sided</p>
+            <p className="font-body text-[10px] uppercase tracking-wide text-muted">Est. net / day · $1k two-sided{cautionFlag ? ' · flagged, verify' : ''}</p>
             <p className={`font-display font-bold leading-none mt-0.5 ${netTone}`} style={{ fontSize: 24 }}>
               {poolKnown
                 ? <Redacted value={net}>{v => `${fmtUsd(v)}/day`}</Redacted>

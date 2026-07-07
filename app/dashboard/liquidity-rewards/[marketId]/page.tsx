@@ -321,7 +321,7 @@ export default function MarketDetailPage() {
         {mkt && (
           <>
             {/* ── B) Earnings block ── */}
-            <EarningsBlock est={est} isRedacted={isRedacted} />
+            <EarningsBlock est={est} isRedacted={isRedacted} flags={mkt.flags} />
 
             {/* ── C) Order controls ── */}
             <div className="rounded-card shadow-card bg-surface px-4 py-4 space-y-4">
@@ -466,9 +466,12 @@ export default function MarketDetailPage() {
 }
 
 // ── B) Earnings block ─────────────────────────────────────────────────────────
-function EarningsBlock({ est, isRedacted }: { est: ReturnType<typeof estimateReward> | null; isRedacted: boolean }) {
+function EarningsBlock({ est, isRedacted, flags = [] }: { est: ReturnType<typeof estimateReward> | null; isRedacted: boolean; flags?: string[] }) {
   const net = est?.netPerDay ?? null;
-  const netTone = net == null ? 'text-muted' : net > 0 ? 'text-mint-deep' : 'text-coral-ink';
+  // Honest-engine: a flagged (TRAP/THIN_CAP/SHORT_BURST) market can post an inflated
+  // net from a thin book — mute the headline and warn, rather than show green.
+  const cautionFlag = flags.some(f => ['TRAP', 'THIN_CAP', 'SHORT_BURST'].includes(f));
+  const netTone = net == null ? 'text-muted' : cautionFlag ? 'text-ink-2' : net > 0 ? 'text-mint-deep' : 'text-coral-ink';
   return (
     <div className="rounded-card shadow-card bg-surface overflow-hidden">
       <div className="px-4 py-4">
@@ -499,6 +502,14 @@ function EarningsBlock({ est, isRedacted }: { est: ReturnType<typeof estimateRew
           <MiniBox label="Adverse cost" value={<span className="text-coral-ink"><Redacted value={est?.adverseSelectionCost ?? null}>{v => `−${fmtUsd(v)}`}</Redacted></span>} sub="adverse selection" />
         </div>
 
+        {cautionFlag && net != null && (
+          <div className="rounded-button bg-gold-tint border border-gold/25 px-3 py-2 mt-3">
+            <p className="font-body text-[11px] text-gold leading-relaxed">
+              <span className="font-semibold">Flagged: {flags.filter(f => ['TRAP', 'THIN_CAP', 'SHORT_BURST'].includes(f)).map(f => f.replace('_', ' ').toLowerCase()).join(', ')}.</span>{' '}
+              This book is thin or the price is extreme, so the estimate above is a run-rate you likely can&apos;t fill in size — treat it as a ceiling, not a promise.
+            </p>
+          </div>
+        )}
         {est?.belowMinPayout && (
           <p className="font-body text-[11px] text-muted mt-3">Below the $1/day minimum — this position likely pays nothing. Shown for completeness.</p>
         )}
