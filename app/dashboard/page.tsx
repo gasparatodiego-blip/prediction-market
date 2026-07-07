@@ -5,7 +5,7 @@ import SectionHelp from '@/app/components/SectionHelp';
 import Link from 'next/link';
 import {
   Crosshair, Coins, Trophy, Users,
-  ChevronDown, ArrowRight, GitMerge,
+  ChevronDown, ArrowRight, GitMerge, Gift,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import Eyebrow from '@/app/components/ui/Eyebrow';
@@ -56,6 +56,16 @@ const strategies: Strategy[] = [
     explanation:
       'Buy spot and simultaneously short a dated (quarterly) futures contract on the same exchange. At expiry the future delivers at spot price, so the gap (basis) you locked in at entry is your return — regardless of where the price goes. Risk: exchange counterparty risk over the hold period. Coin-margined contracts settle in the coin, not USDT — USD return is not fully locked.',
     link: '/dashboard/carry',
+  },
+  {
+    id: 'rewards',
+    Icon: Gift,
+    name: 'Liquidity Rewards',
+    platforms: ['Polymarket', 'Kalshi'],
+    summary: 'Earn daily by posting maker orders (Polymarket + Kalshi)',
+    explanation:
+      'Some venues pay daily rewards to market makers who post resting limit orders near the midpoint. You quote both sides within the reward band and collect a share of the daily pool proportional to your posted size and time-in-book. Returns are modest and depend on competition. Risk: your orders can fill (leaving you with a position), and rewards shrink as more makers crowd the same band. No orders are placed for you — this is a scanner.',
+    link: '/dashboard/liquidity-rewards',
   },
   {
     id: 'traders',
@@ -142,7 +152,7 @@ export default function DashboardPage() {
         {/* Header */}
         <div className="flex items-start justify-between gap-6 mb-8">
           <div>
-            <Eyebrow className="mb-2">5 strategies · live 24/7</Eyebrow>
+            <Eyebrow className="mb-2">6 strategies · live 24/7</Eyebrow>
             <SectionHeading className="text-2xl">
               Choose a strategy to explore
             </SectionHeading>
