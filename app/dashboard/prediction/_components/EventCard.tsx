@@ -7,6 +7,7 @@ import { useSession } from 'next-auth/react';
 import { Lock, ExternalLink, Copy, Check, KeyRound, ShieldAlert } from 'lucide-react';
 import PlatformLogo from '@/components/PlatformLogo';
 import { Redacted } from '@/app/components/ui/Redacted';
+import { PlatformLink } from '@/app/components/ui/PlatformLink';
 import { AUTO_EXECUTE_ENABLED } from '@/lib/flags';
 import type { EventBucket, EventPlatform, LockableEdge, MatchedOpportunity, Opportunity, Leg } from './types';
 import { platformLabel, formatCents, formatVolume, formatResolutionDate } from './format';
@@ -249,6 +250,7 @@ export function PlatformComparatorTable({ event }: { event: EventBucket }) {
                     <PlatformLogo platform={p.platform} size={13} />
                     <span className="font-body text-xs text-ink-2">{platformLabel(p.platform)}</span>
                     <TierBadge tier={p.tier} />
+                    {p.marketUrl && <PlatformLink href={p.marketUrl} label={platformLabel(p.platform)} compact />}
                   </div>
                   <div className="sm:hidden font-mono text-[10px] text-muted mt-0.5 tabular-nums">
                     vol {formatVolume(p)}
