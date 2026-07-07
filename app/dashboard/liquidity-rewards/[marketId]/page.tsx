@@ -10,7 +10,7 @@
 //   D) LIVE order book (real executable prices) with the user's planned orders inline
 //   E) fill-handling choice (requote | flatten)      → persisted
 //   F) news-guard choice   (withdraw | alert | off)  → persisted, wired to agent27 risk
-//   G) CTA "Simula piazzamento · paper" → POST /api/rewards/placement
+//   G) CTA "Simulate placement · paper" → POST /api/rewards/placement
 //
 // HONEST-ENGINE: executable book prices only (never midpoint for fills), net $/day
 // primary, annualized demoted+capped, no fabricated pools/PnL, no login wall on view,
@@ -267,9 +267,9 @@ export default function MarketDetailPage() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ marketId, venue: mkt.venue, ...cfg, mode: 'paper' }),
       });
-      if (r.status === 401) { setSaveState('local'); setSaveMsg('Salvato solo su questo dispositivo — accedi per sincronizzare e attivare la news-guard.'); return; }
+      if (r.status === 401) { setSaveState('local'); setSaveMsg('Saved on this device only — sign in to sync and enable the news-guard.'); return; }
       if (!r.ok) { const e = await r.json().catch(() => ({})); setSaveState('error'); setSaveMsg(e?.error ?? `HTTP ${r.status}`); return; }
-      setSaveState('saved'); setSaveMsg('Configurazione paper salvata. Advisory only — nessun ordine reale (live execution OFF).');
+      setSaveState('saved'); setSaveMsg('Paper config saved. Advisory only — no real order (live execution OFF).');
     } catch (e: any) { setSaveState('error'); setSaveMsg(e?.message ?? 'save error'); }
   }
 
@@ -324,13 +324,13 @@ export default function MarketDetailPage() {
 
             {/* ── C) Order controls ── */}
             <div className="rounded-card shadow-card bg-surface px-4 py-4 space-y-4">
-              <p className="font-body font-medium text-sm text-ink-2">Il tuo ordine</p>
+              <p className="font-body font-medium text-sm text-ink-2">Your order</p>
 
               {/* side */}
               <div>
-                <span className="font-body text-[11px] uppercase tracking-wide text-muted">Lato</span>
+                <span className="font-body text-[11px] uppercase tracking-wide text-muted">Side</span>
                 <div className="grid grid-cols-3 gap-1.5 mt-1.5">
-                  {([['both', 'Due lati'], ['buy', 'Solo compra'], ['sell', 'Solo vendi']] as [SideMode, string][]).map(([v, label]) => (
+                  {([['both', 'Both sides'], ['buy', 'Buy only'], ['sell', 'Sell only']] as [SideMode, string][]).map(([v, label]) => (
                     <button key={v} onClick={() => setSide(v)}
                       className={`font-body font-medium text-[12px] py-2 rounded-button border transition-colors
                         ${side === v ? 'border-mint-deep/45 bg-mint-tint text-mint-deep' : 'border-line bg-surface text-muted hover:text-ink-2'}`}>
@@ -339,15 +339,15 @@ export default function MarketDetailPage() {
                   ))}
                 </div>
                 {mkt.twoSidedRequired && side !== 'both' && (
-                  <p className="font-body text-[11px] text-coral-ink mt-1">A questo prezzo Polymarket richiede due lati — un solo lato non accumula reward.</p>
+                  <p className="font-body text-[11px] text-coral-ink mt-1">At this price Polymarket requires both sides — a single side earns no rewards.</p>
                 )}
               </div>
 
               {/* quantity per side */}
               <div>
                 <div className="flex items-center justify-between">
-                  <span className="font-body text-[11px] uppercase tracking-wide text-muted">Quantità per lato</span>
-                  <span className="font-body text-[11px] text-muted tabular-nums">totale {fmtUsd(capital)} su {sides} lat{sides === 1 ? 'o' : 'i'}</span>
+                  <span className="font-body text-[11px] uppercase tracking-wide text-muted">Size per side</span>
+                  <span className="font-body text-[11px] text-muted tabular-nums">total {fmtUsd(capital)} on {sides} side{sides === 1 ? '' : 's'}</span>
                 </div>
                 <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                   {[100, 500, 1000, 5000].map(c => (
@@ -365,17 +365,17 @@ export default function MarketDetailPage() {
               {/* distance */}
               <div>
                 <div className="flex items-center justify-between">
-                  <span className="font-body text-[11px] uppercase tracking-wide text-muted">Distanza dallo spread</span>
-                  <span className="font-body text-[12px] text-ink-2 tabular-nums">{dist.toFixed(2)}¢{mkt.maxSpread != null ? ` / ${mkt.maxSpread}¢ banda` : ''}</span>
+                  <span className="font-body text-[11px] uppercase tracking-wide text-muted">Distance from spread</span>
+                  <span className="font-body text-[12px] text-ink-2 tabular-nums">{dist.toFixed(2)}¢{mkt.maxSpread != null ? ` / ${mkt.maxSpread}¢ band` : ''}</span>
                 </div>
                 <input type="range" min={0.1} max={distMax} step={0.1} value={dist}
                   onChange={e => setDist(Number(e.target.value))} className="w-full accent-mint-deep mt-1.5" />
                 <div className="flex items-center justify-between font-body text-[10px] text-muted mt-0.5">
-                  <span>vicino = più reward, più fill</span>
-                  <span>lontano = più sicuro</span>
+                  <span>closer = more reward, more fills</span>
+                  <span>farther = safer</span>
                 </div>
                 {mkt.maxSpread == null && (
-                  <p className="font-body text-[10px] text-muted mt-1">Kalshi non pubblica una banda reward — la distanza qui incide solo sul rischio di fill.</p>
+                  <p className="font-body text-[10px] text-muted mt-1">Kalshi doesn&apos;t publish a reward band — distance here only affects fill risk.</p>
                 )}
               </div>
             </div>
@@ -390,18 +390,18 @@ export default function MarketDetailPage() {
 
             {/* ── E) Fill-handling choice ── */}
             <div className="rounded-card shadow-card bg-surface px-4 py-4 space-y-3">
-              <p className="font-body font-medium text-sm text-ink-2">Se un lato viene eseguito</p>
+              <p className="font-body font-medium text-sm text-ink-2">If one side gets filled</p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <ChoiceBtn active={onFill === 'requote'} onClick={() => setOnFill('requote')}
-                  title="↻ Ripiazza l'altro lato" desc="Rimetti subito il lato mancante per catturare lo spread all'uscita. Resti esposto direzionalmente finché non torni bilanciato." />
+                  title="↻ Re-quote other side" desc="Immediately re-post the missing side to capture the spread on the exit. You stay directionally exposed until you're balanced again." />
                 <ChoiceBtn active={onFill === 'flatten'} onClick={() => setOnFill('flatten')}
-                  title="✕ Chiudi subito" desc="Chiudi al miglior prezzo eseguibile del book: nessuna esposizione direzionale, ma rinunci allo spread." />
+                  title="✕ Close immediately" desc="Close at the best executable price on the book: no directional exposure, but you give up the spread." />
               </div>
               <p className="font-body text-[11px] text-muted leading-relaxed">
                 {onFill === 'requote'
-                  ? 'Scelto: ri-quoti l’altro lato — punti a incassare lo spread, restando esposto finché non sei di nuovo bilanciato.'
-                  : 'Scelto: chiudi subito al miglior prezzo del book — zero esposizione direzionale, spread non catturato.'}
-                {' '}In caso di news avversa la news-guard può comunque forzare la chiusura (vedi sotto).
+                  ? 'Chosen: re-quote the other side — you aim to capture the spread, staying exposed until you’re balanced again.'
+                  : 'Chosen: close immediately at the best price on the book — no directional exposure, spread not captured.'}
+                {' '}On adverse news the news-guard can still force a close (see below).
               </p>
             </div>
 
@@ -413,23 +413,23 @@ export default function MarketDetailPage() {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <ChoiceBtn active={newsMode === 'withdraw'} onClick={() => setNewsMode('withdraw')}
-                  title="🛡 Ritira liquidità" desc="Su news avversa, ritira automaticamente gli ordini; se già eseguiti, esci al miglior prezzo." />
+                  title="🛡 Withdraw liquidity" desc="On adverse news, automatically pull your orders; if already filled, exit at the best price." />
                 <ChoiceBtn active={newsMode === 'alert'} onClick={() => setNewsMode('alert')}
-                  title="🔔 Solo avvisa" desc="Avviso Telegram + in pagina, nessuna azione automatica: decidi tu." />
+                  title="🔔 Alert only" desc="Telegram + on-page alert, no automatic action: you decide." />
                 <ChoiceBtn active={newsMode === 'off'} onClick={() => setNewsMode('off')}
-                  title="⊘ Off" desc="Nessun monitoraggio news su questo mercato." />
+                  title="⊘ Off" desc="No news monitoring on this market." />
               </div>
               <p className="font-body text-[11px] text-muted leading-relaxed">
                 {newsMode === 'withdraw'
-                  ? 'Scelto: su segnale HIGH la news-guard consiglia di ritirare la liquidità e, se eseguito, uscire al miglior prezzo (advisory — live execution OFF).'
+                  ? 'Chosen: on a HIGH signal the news-guard advises withdrawing liquidity and, if filled, exiting at the best price (advisory — live execution OFF).'
                   : newsMode === 'alert'
-                  ? 'Scelto: ricevi solo un avviso su segnale avverso, senza azione automatica.'
-                  : 'Scelto: nessun monitoraggio. Attenzione: senza guard, un ordine a riposo può essere eseguito proprio mentre il prezzo si muove contro di te (adverse selection).'}
+                  ? 'Chosen: you only get an alert on an adverse signal, with no automatic action.'
+                  : 'Chosen: no monitoring. Caution: without the guard, a resting order can fill right as the price moves against you (adverse selection).'}
               </p>
               {mkt.protect && risk === 'high' && (
                 <div className="rounded-button bg-coral-tint border border-coral-ink/25 px-3 py-2">
                   <p className="font-body text-[11px] text-coral-ink leading-relaxed">
-                    <span className="font-semibold">Segnale HIGH ora.</span> {mkt.protect.detail}
+                    <span className="font-semibold">HIGH signal now.</span> {mkt.protect.detail}
                   </p>
                 </div>
               )}
@@ -439,10 +439,10 @@ export default function MarketDetailPage() {
             <div className="rounded-card shadow-card bg-surface px-4 py-4 space-y-2">
               <button onClick={savePlacement} disabled={saveState === 'saving'}
                 className="w-full font-body font-semibold text-[14px] py-3 rounded-button bg-mint-deep text-white hover:bg-mint-deep/90 disabled:opacity-60 transition-colors">
-                {saveState === 'saving' ? 'Salvataggio…' : 'Simula piazzamento · paper'}
+                {saveState === 'saving' ? 'Saving…' : 'Simulate placement · paper'}
               </button>
               <p className="font-body text-[11px] text-center text-muted">
-                Advisory only · live execution <span className="font-semibold text-ink-2">OFF</span> · nessun ordine reale viene inviato.
+                Advisory only · live execution <span className="font-semibold text-ink-2">OFF</span> · no real order is sent.
               </p>
               {saveMsg && (
                 <p className={`font-body text-[11px] text-center ${saveState === 'error' ? 'text-coral-ink' : saveState === 'saved' ? 'text-mint-deep' : 'text-muted'}`}>
@@ -473,31 +473,31 @@ function EarningsBlock({ est, isRedacted }: { est: ReturnType<typeof estimateRew
       <div className="px-4 py-4">
         <div className="flex items-end justify-between gap-3 flex-wrap">
           <div>
-            <p className="font-body text-[11px] uppercase tracking-wide text-muted">Guadagno netto · al giorno</p>
+            <p className="font-body text-[11px] uppercase tracking-wide text-muted">Net earnings · per day</p>
             <p className={`font-mono font-bold leading-none mt-1 ${netTone}`} style={{ fontSize: 34 }}>
               <Redacted value={net}>{v => `${fmtUsd(v)}/day`}</Redacted>
             </p>
           </div>
           <div className="text-right">
-            <p className="font-body text-[12px] text-ink-2 tabular-nums"><Redacted value={est?.dayYieldPct ?? null}>{v => `${v.toFixed(3)}%/giorno`}</Redacted></p>
+            <p className="font-body text-[12px] text-ink-2 tabular-nums"><Redacted value={est?.dayYieldPct ?? null}>{v => `${v.toFixed(3)}%/day`}</Redacted></p>
             <p className="font-body text-[11px] text-muted tabular-nums">
-              <Redacted value={est?.annualizedPct ?? null}>{v => `${est?.annualizedCapped ? '>' : ''}${v.toFixed(0)}%/anno`}</Redacted>
+              <Redacted value={est?.annualizedPct ?? null}>{v => `${est?.annualizedCapped ? '>' : ''}${v.toFixed(0)}%/yr`}</Redacted>
             </p>
             <p className="font-body text-[9px] text-muted/70">{est?.annualizedLabel ?? 'run-rate, not guaranteed'}</p>
           </div>
         </div>
 
         <div className="grid grid-cols-3 gap-2 mt-4">
-          <MiniBox label="Quota pool" value={<Redacted value={est?.shareOfPool ?? null}>{v => `${(v * 100).toFixed(2)}%`}</Redacted>} />
-          <MiniBox label="Prob. fill" value={<Redacted value={est?.fillProbability ?? null}>{v => `${(v * 100).toFixed(0)}%`}</Redacted>} sub="quanto spesso vieni preso" />
-          <MiniBox label="Costo adv." value={<span className="text-coral-ink"><Redacted value={est?.adverseSelectionCost ?? null}>{v => `−${fmtUsd(v)}`}</Redacted></span>} sub="selezione avversa" />
+          <MiniBox label="Pool share" value={<Redacted value={est?.shareOfPool ?? null}>{v => `${(v * 100).toFixed(2)}%`}</Redacted>} />
+          <MiniBox label="Fill prob." value={<Redacted value={est?.fillProbability ?? null}>{v => `${(v * 100).toFixed(0)}%`}</Redacted>} sub="how often you get picked off" />
+          <MiniBox label="Adverse cost" value={<span className="text-coral-ink"><Redacted value={est?.adverseSelectionCost ?? null}>{v => `−${fmtUsd(v)}`}</Redacted></span>} sub="adverse selection" />
         </div>
 
         {est?.belowMinPayout && (
-          <p className="font-body text-[11px] text-muted mt-3">Sotto il minimo di $1/giorno — questa posizione probabilmente non paga nulla. Mostrato per completezza.</p>
+          <p className="font-body text-[11px] text-muted mt-3">Below the $1/day minimum — this position likely pays nothing. Shown for completeness.</p>
         )}
         {isRedacted && net == null && (
-          <p className="font-body text-[11px] text-muted mt-3">I numeri sono bloccati nel piano free — la stima gira su book/pool reali una volta sbloccata. Nessun valore inventato.</p>
+          <p className="font-body text-[11px] text-muted mt-3">Numbers are locked on the free plan — the estimate runs on real book/pool once unlocked. No fabricated values.</p>
         )}
         {!isRedacted && est && est.reasons.length > 0 && (
           <ul className="mt-3 space-y-1">
@@ -541,7 +541,7 @@ function OrderBook({
     <div className="rounded-card shadow-card bg-surface overflow-hidden">
       <div className="flex items-center justify-between px-4 py-2.5 border-b border-line">
         <div className="flex items-center gap-2">
-          <span className="font-body font-medium text-sm text-ink-2">Order book live</span>
+          <span className="font-body font-medium text-sm text-ink-2">Live order book</span>
           {bookAge && showBook && (
             <span className="flex items-center gap-1 font-body text-[10px] text-mint-deep">
               <span className="w-1.5 h-1.5 rounded-full bg-mint-deep animate-pulse" /> updated {ago(bookAge.toISOString())} ago
@@ -556,7 +556,7 @@ function OrderBook({
       {!showBook ? (
         <div className="px-4 py-8 text-center">
           <p className="font-body text-sm text-muted">
-            {isRedacted ? 'Book live disponibile una volta sbloccato il piano.' : 'Book non disponibile — dati in aggiornamento, riprova tra poco.'}
+            {isRedacted ? 'Live book available once the plan is unlocked.' : 'Book unavailable — data refreshing, try again shortly.'}
           </p>
           {bookErr && !isRedacted && <p className="font-body text-[10px] text-muted/60 mt-1">{bookErr}</p>}
         </div>
@@ -564,7 +564,7 @@ function OrderBook({
         <div className="px-2 py-2">
           {/* column headers */}
           <div className="grid grid-cols-3 px-2 py-1 font-body text-[9px] uppercase text-muted/60">
-            <span>Prezzo</span><span className="text-right">Size</span><span className="text-right">il tuo ordine</span>
+            <span>Price</span><span className="text-right">Size</span><span className="text-right">your order</span>
           </div>
           {/* asks (red, top) */}
           <div className="flex flex-col-reverse">
@@ -581,7 +581,7 @@ function OrderBook({
             {bidRows.map((r, i) => <Ladder key={`b${i}`} row={r} maxSize={maxSize} mid={mid} halfBand={halfBand} kind="bid" />)}
           </div>
           <p className="font-body text-[9px] text-muted/60 px-2 pt-2">
-            Prezzi eseguibili reali dal book {venue === 'polymarket' ? 'CLOB' : 'Kalshi'}. Le righe evidenziate sono i <span className="font-semibold">tuoi ordini pianificati</span> (mid ± distanza), non liquidità già presente.
+            Real executable prices from the {venue === 'polymarket' ? 'CLOB' : 'Kalshi'} book. Highlighted rows are your <span className="font-semibold">planned orders</span> (mid ± distance), not liquidity already resting.
           </p>
         </div>
       )}
@@ -600,7 +600,7 @@ function mergeUserRow(levels: BookRow[], userPrice: number | null, kind: 'buy' |
 }
 function Ladder({ row, maxSize, mid, halfBand, kind }: { row: LadderRow; maxSize: number; mid: number | null; halfBand: number | null; kind: 'ask' | 'bid' }) {
   const isUser = !!row.user;
-  const inBand = mid != null && halfBand != null ? Math.abs(row.price - mid) <= halfBand : false;
+  const inBandFlag = mid != null && halfBand != null ? Math.abs(row.price - mid) <= halfBand : false;
   const barPct = maxSize > 0 ? (row.size / maxSize) * 100 : 0;
   const priceCls = kind === 'ask' ? 'text-coral-ink' : 'text-mint-deep';
   const barCls = kind === 'ask' ? 'bg-coral-tint/60' : 'bg-mint-tint/60';
@@ -611,7 +611,7 @@ function Ladder({ row, maxSize, mid, halfBand, kind }: { row: LadderRow; maxSize
         <span className={`tabular-nums font-bold ${row.user === 'buy' ? 'text-mint-deep' : 'text-coral-ink'}`}>{fmtC(row.price)}</span>
         <span className="text-right" />
         <span className={`text-right font-bold text-[10px] ${row.user === 'buy' ? 'text-mint-deep' : 'text-coral-ink'}`}>
-          {row.user === 'buy' ? 'il tuo BUY' : 'il tuo SELL'}
+          {row.user === 'buy' ? 'your BUY' : 'your SELL'}
         </span>
       </div>
     );
@@ -619,9 +619,9 @@ function Ladder({ row, maxSize, mid, halfBand, kind }: { row: LadderRow; maxSize
   return (
     <div className="relative grid grid-cols-3 items-center text-[11px] font-mono px-2 py-[3px]">
       <span className={`absolute inset-y-0 right-0 ${barCls}`} style={{ width: `${barPct}%`, pointerEvents: 'none' }} />
-      <span className={`relative tabular-nums ${priceCls} ${inBand ? 'font-semibold' : 'opacity-70'}`}>{fmtC(row.price)}</span>
+      <span className={`relative tabular-nums ${priceCls} ${inBandFlag ? 'font-semibold' : 'opacity-70'}`}>{fmtC(row.price)}</span>
       <span className="relative text-right text-muted tabular-nums">{fmtSh(row.size)}</span>
-      <span className="relative text-right text-muted/40 tabular-nums text-[9px]">{inBand ? 'in banda' : ''}</span>
+      <span className="relative text-right text-muted/40 tabular-nums text-[9px]">{inBandFlag ? 'in band' : ''}</span>
     </div>
   );
 }
@@ -639,10 +639,10 @@ function ChoiceBtn({ active, onClick, title, desc }: { active: boolean; onClick:
 }
 function NewsRiskPill({ risk }: { risk: NewsRisk }) {
   const map: Record<NewsRisk, { label: string; cls: string }> = {
-    high:    { label: 'rischio news · HIGH', cls: 'bg-coral-tint text-coral-ink border-coral-ink/25' },
-    medium:  { label: 'rischio news · med',  cls: 'bg-gold-tint text-gold border-gold/25' },
-    low:     { label: 'calmo',               cls: 'bg-mint-tint text-mint-deep border-mint-deep/20' },
-    unknown: { label: 'nessun segnale',      cls: 'bg-bg-soft text-muted border-line' },
+    high:    { label: 'news risk · HIGH', cls: 'bg-coral-tint text-coral-ink border-coral-ink/25' },
+    medium:  { label: 'news risk · med',  cls: 'bg-gold-tint text-gold border-gold/25' },
+    low:     { label: 'calm',             cls: 'bg-mint-tint text-mint-deep border-mint-deep/20' },
+    unknown: { label: 'no signal',        cls: 'bg-bg-soft text-muted border-line' },
   };
   const s = map[risk] ?? map.unknown;
   return <span className={`inline-flex items-center px-2 py-[2px] rounded-md font-body font-medium text-[10px] border ${s.cls}`}>{s.label}</span>;
