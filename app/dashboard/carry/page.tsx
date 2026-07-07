@@ -10,6 +10,7 @@ import EdgeChip, { type EdgeChipVariant } from '@/app/components/ui/EdgeChip';
 import PlatformLogo from '@/components/PlatformLogo';
 import { Redacted } from '@/app/components/ui/Redacted';
 import { PlatformLink } from '@/app/components/ui/PlatformLink';
+import { VerifyBadge } from '@/app/components/ui/VerifyBadge';
 import { venueFutureUrl } from '@/lib/platform-links';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -204,6 +205,8 @@ function ContangoCard({ c }: { c: Contract }) {
 
       {/* Detail panel */}
       <div className="px-4 pb-4 space-y-3">
+
+        <VerifyBadge v={(c as any).__verify} />
 
         {/* Invariant violation flag */}
         {invariantViolated && (

@@ -19,6 +19,7 @@ import PlatformLogo from '@/components/PlatformLogo';
 import RewardsHero from '@/app/components/ui/RewardsHero';
 import { Redacted } from '@/app/components/ui/Redacted';
 import { PlatformLink } from '@/app/components/ui/PlatformLink';
+import { VerifyBadge } from '@/app/components/ui/VerifyBadge';
 import { polymarketMarketUrl, kalshiMarketUrl } from '@/lib/platform-links';
 import { estimateReward, type MarketSnapshot, type SideSnapshot, type Venue } from '@/lib/rewards-estimate';
 
@@ -377,6 +378,7 @@ function MarketCard({ m, tradeSide }: { m: NormalizedMarket; tradeSide: TradeSid
                 ? <Redacted value={net}>{v => `${fmtUsd(v)}/day`}</Redacted>
                 : <span className="text-muted text-[14px] font-body">pool not published</span>}
             </p>
+            <VerifyBadge v={(m as any).__verify} />
           </div>
           <NewsBadge risk={risk} />
         </div>

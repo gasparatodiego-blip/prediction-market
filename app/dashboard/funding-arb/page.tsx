@@ -15,6 +15,7 @@ import {
 import { APY_CAP, isOverApyCap } from '@/lib/honest-display';
 import { Redacted } from '@/app/components/ui/Redacted';
 import { PlatformLink } from '@/app/components/ui/PlatformLink';
+import { VerifyBadge } from '@/app/components/ui/VerifyBadge';
 import { venuePerpUrl, venueSpotUrl } from '@/lib/platform-links';
 import { AUTO_EXECUTE_ENABLED } from '@/lib/flags';
 import type { PerpSpotRow, PerpSpotRegime } from '@/lib/spread-types';
@@ -755,6 +756,7 @@ function FundingCard({ s, capital, leverage }: { s: SpreadItem; capital: number;
           <div className="font-body mt-1" style={{ fontSize: 10, color: '#6b7787' }}>
             net / day
           </div>
+          <VerifyBadge v={(s as any).__verify} />
         </div>
         <div className="text-right font-mono tabular-nums shrink-0" style={{ fontSize: 10, color: '#9aa5b3' }}>
           {redacted ? (
@@ -1770,6 +1772,7 @@ function PerpSpotCard({
                 : `${netDay >= 0 ? '+' : ''}${fmtDayUsd(netDay).replace('/day', '')}`}
             </div>
             <div className="font-body mt-0.5" style={{ fontSize: 9.5, color: '#9aa5b3' }}>net / day</div>
+            <VerifyBadge v={(row as any).__verify} className="justify-end" />
           </div>
         </div>
       </button>
