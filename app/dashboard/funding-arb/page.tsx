@@ -16,7 +16,7 @@ import { APY_CAP, isOverApyCap } from '@/lib/honest-display';
 import { Redacted } from '@/app/components/ui/Redacted';
 import { PlatformLink } from '@/app/components/ui/PlatformLink';
 import { venuePerpUrl, venueSpotUrl } from '@/lib/platform-links';
-import type { PerpSpotRow } from '@/lib/spread-types';
+import type { PerpSpotRow, PerpSpotRegime } from '@/lib/spread-types';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -52,6 +52,7 @@ interface ApiResponse {
   rwa?:         RwaObservation[];
   perpSpot?:    PerpSpotRow[];
   perpSpotStale?: boolean;
+  perpSpotRegime?: PerpSpotRegime | null;
   meta:         Meta | null;
 }
 
@@ -1530,6 +1531,33 @@ function perpSpotNetDay(row: PerpSpotRow, capitalPerLeg: number): number | null 
   return row.edge.netPerDay1k * (capitalPerLeg / 1000);
 }
 
+function PerpSpotRegimeBanner({ regime }: { regime: PerpSpotRegime }) {
+  const hot = regime.state === 'HOT';
+  const color  = hot ? '#0f766e' : '#6b7787';
+  const bg     = hot ? '#effcf9' : '#f5f7fa';
+  const border = hot ? '#bfe9df' : '#e6eaef';
+  return (
+    <div className="rounded-card mb-4 p-3" style={{ background: bg, border: `1px solid ${border}` }}>
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="inline-flex items-center gap-1.5 font-body font-semibold rounded-pill px-2 py-0.5"
+          style={{ fontSize: 11, color: '#fff', background: color }}>
+          <span aria-hidden style={{ width: 6, height: 6, borderRadius: 999, background: '#fff', opacity: 0.9 }} />
+          {hot ? 'HOT' : 'CALM'}
+        </span>
+        <span className="font-body" style={{ fontSize: 12, color: '#334155' }}>
+          {hot
+            ? 'Most venues’ funding is above the 30-day fee hurdle — carry is workable now, though margins can be modest and can flip.'
+            : 'Even the best rates are near the fee hurdle — thin pickings; funding tends to spike in high-volatility periods.'}
+        </span>
+      </div>
+      <div className="mt-1.5 font-mono tabular-nums" style={{ fontSize: 10.5, color: '#6b7787' }}>
+        top-quartile funding {regime.medianTopQuartilePct8h.toFixed(4)}%/8h vs breakeven {regime.feeBreakevenPct8h.toFixed(4)}%/8h
+        {' · '}{regime.aboveBreakevenCount}/{regime.sampleCount} venues above the hurdle
+      </div>
+    </div>
+  );
+}
+
 function PerpSpotExplainer() {
   const [open, setOpen] = useState(false);
   return (
@@ -1700,8 +1728,8 @@ function PerpSpotCard({
 }
 
 function PerpSpotView({
-  rows, stale, capitalPerLeg,
-}: { rows: PerpSpotRow[]; stale: boolean; capitalPerLeg: number }) {
+  rows, stale, capitalPerLeg, regime,
+}: { rows: PerpSpotRow[]; stale: boolean; capitalPerLeg: number; regime: PerpSpotRegime | null }) {
   const [selectedCoins, setSelectedCoins] = useState<Set<string> | null>(null); // null = all
   const [minNetDay, setMinNetDay]         = useState(0);
   const [openCoin, setOpenCoin]           = useState<string | null>(null);
@@ -1729,6 +1757,7 @@ function PerpSpotView({
 
   return (
     <div>
+      {regime && <PerpSpotRegimeBanner regime={regime} />}
       <PerpSpotExplainer />
 
       {/* FILTERS */}
@@ -2098,7 +2127,7 @@ export default function CryptoPage() {
 
           {/* Crypto view → cards + advanced table; Commodities view → RWA observation strip */}
           {assetView === 'crypto' && typeFilter === 'spot_perp' && (
-            <PerpSpotView rows={data.perpSpot ?? []} stale={!!data.perpSpotStale} capitalPerLeg={capital} />
+            <PerpSpotView rows={data.perpSpot ?? []} stale={!!data.perpSpotStale} capitalPerLeg={capital} regime={data.perpSpotRegime ?? null} />
           )}
           {assetView === 'crypto' && typeFilter !== 'spot_perp' && (
             <OpportunityCards spreads={filteredPairs} capital={capital} leverage={leverage} />

@@ -141,6 +141,16 @@ export interface PerpSpotRow {
   edge:                        PerpSpotEdge;
 }
 
+// Funding-regime context computed live from real rates — never a hardcoded mood.
+export interface PerpSpotRegime {
+  state:                    'HOT' | 'CALM';
+  medianTopQuartilePct8h:   number;   // median of the top-quartile |funding| across venues (%/8h)
+  feeBreakevenPct8h:        number;   // %/8h needed to clear a typical round-trip fee over a 30d hold
+  sampleCount:              number;   // venue×coin observations behind the median
+  positiveCount:            number;   // how many are positive
+  aboveBreakevenCount:      number;   // how many positive rates clear the fee hurdle
+}
+
 export interface CryptoSpreadsData {
   ok:           boolean;
   generatedAt:  number | null;
@@ -154,6 +164,7 @@ export interface CryptoSpreadsData {
   rwa:          RwaObservation[];   // commodities beta — observation-only, never cashable
   perpSpot:     PerpSpotRow[];      // Ethena-style carry: best short-perp + spot hedge per coin
   perpSpotStale: boolean;           // source feed older than freshness window
+  perpSpotRegime: PerpSpotRegime | null;  // live funding-regime banner context
   meta:         SpreadsMeta | null;
 }
 

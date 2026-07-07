@@ -20,8 +20,10 @@ import {
   spreadStatus,
   VENUE_FEE_PCT,
   estimatePerpSpot,
+  venueFeePct,
+  spotVenueFeePct,
 } from '@/lib/funding-math';
-import type { FuturesCoin, SpreadItem, SlipPoint, CryptoSpreadsData, RwaObservation, Persistence, PerpSpotRow } from '@/lib/spread-types';
+import type { FuturesCoin, SpreadItem, SlipPoint, CryptoSpreadsData, RwaObservation, Persistence, PerpSpotRow, PerpSpotRegime } from '@/lib/spread-types';
 import { isRwaKey } from '@/lib/rwa';
 
 export type { FuturesCoin, SlipPoint, SpreadItem, SpreadsMeta, CryptoSpreadsData, Leverage, Persistence } from '@/lib/spread-types';
@@ -92,6 +94,53 @@ function readPerpSpot(): { rows: PerpSpotRow[]; stale: boolean } {
   } catch {
     return { rows: [], stale: true };
   }
+}
+
+// Live funding-regime banner: is funding HOT (best rates clear the fee hurdle) or CALM
+// (even the best rates are below it)? Real computation from current rates — no hardcoded
+// mood. Metric = median of the top-quartile |funding| across all venue×coin observations,
+// normalized to %/8h. Threshold = the %/8h needed to recover a typical perp-spot round-trip
+// fee over a 30-day hold (fee / (30d × 3 settlements/day)).
+function computePerpSpotRegime(futures: Record<string, Record<string, FuturesCoin>>): PerpSpotRegime | null {
+  const abs: number[] = [];
+  let positiveCount = 0;
+  for (const coins of Object.values(futures || {})) {
+    for (const [coin, d] of Object.entries(coins || {})) {
+      if (isRwaKey(coin)) continue;
+      const fr = (d as { fundingRate?: number })?.fundingRate;
+      const ih = (d as { fundingIntervalHours?: number })?.fundingIntervalHours;
+      if (typeof fr !== 'number' || !isFinite(fr)) continue;
+      const intervalH = typeof ih === 'number' && ih > 0 ? ih : 8;
+      const pct8h = fr * (8 / intervalH);   // normalize to %/8h (already ×100)
+      abs.push(Math.abs(pct8h));
+      if (pct8h > 0) positiveCount++;
+    }
+  }
+  if (abs.length === 0) return null;
+
+  // Typical perp-spot round-trip fee: cex perp (open+close) + binance spot (buy+sell).
+  const refRoundTripPct = venueFeePct('binance') * 2 + spotVenueFeePct('binance') * 2;
+  const feeBreakevenPct8h = refRoundTripPct / (30 * 3);   // recover over a 30-day hold
+
+  const sorted = abs.slice().sort((a, b) => b - a);           // desc
+  const qCount = Math.max(1, Math.ceil(sorted.length / 4));   // top quartile
+  const topQ   = sorted.slice(0, qCount);
+  const mid    = Math.floor(topQ.length / 2);
+  const medianTopQuartile = topQ.length % 2 === 1
+    ? topQ[mid]
+    : (topQ[mid - 1] + topQ[mid]) / 2;
+
+  // How many observations' magnitude clears the fee hurdle (context for the copy).
+  const aboveBk = abs.filter(v => v > feeBreakevenPct8h).length;
+
+  return {
+    state: medianTopQuartile > feeBreakevenPct8h ? 'HOT' : 'CALM',
+    medianTopQuartilePct8h: +medianTopQuartile.toFixed(5),
+    feeBreakevenPct8h:      +feeBreakevenPct8h.toFixed(5),
+    sampleCount:            abs.length,
+    positiveCount,
+    aboveBreakevenCount:    aboveBk,
+  };
 }
 
 // ── Spread-persistence (real 48h history) ─────────────────────────────────────
@@ -435,6 +484,7 @@ export function getCryptoSpreadsData(): CryptoSpreadsData {
     });
 
     const perpSpotFeed = readPerpSpot();
+    const perpSpotRegime = computePerpSpotRegime(raw.futures ?? {});
 
     return {
       ok:          true,
@@ -449,6 +499,7 @@ export function getCryptoSpreadsData(): CryptoSpreadsData {
       rwa:         rwaRows,
       perpSpot:      perpSpotFeed.rows,
       perpSpotStale: perpSpotFeed.stale,
+      perpSpotRegime,
       meta: {
         feePerLeg:    { cex: VENUE_FEE_PCT.cex, dex: VENUE_FEE_PCT.dex, gateio: VENUE_FEE_PCT.gateio, bitget: VENUE_FEE_PCT.bitget },
         legCount:     4,
@@ -470,6 +521,7 @@ export function getCryptoSpreadsData(): CryptoSpreadsData {
       rwa:         [],
       perpSpot:      [],
       perpSpotStale: true,
+      perpSpotRegime: null,
       meta:        null,
     };
   }
