@@ -55,7 +55,7 @@ catch (e) { console.warn('[A27] Prisma unavailable — placement reactions disab
 
 async function getPlacements() {
   if (!prisma) return [];
-  try { return await prisma.rewardsPlacement.findMany({ select: { marketId: true, newsMode: true } }); }
+  try { return await prisma.rewardsPlacement.findMany({ select: { marketId: true, newsMode: true, side: true, onFillYes: true, onFillNo: true } }); }
   catch (e) { console.warn('[A27] placement read failed:', e.message); return []; }
 }
 
@@ -216,6 +216,44 @@ function exitAdvisory(mkt) {
   return `exit at best executable price around mid ≈ ${mid.toFixed(3)} (verify live book before acting)`;
 }
 
+// ── Per-side FILL advisory ─────────────────────────────────────────────────────
+// When a resting quote gets filled, honour the side's chosen rule INDEPENDENTLY:
+//   'requote' → re-post the OPPOSITE side at its best executable level (stay exposed
+//               until balanced, keep capturing the spread)
+//   'close'   → flatten THIS side at the best executable book price (no exposure)
+// Advisory only — live execution OFF. This is distinct from the news-guard's forced
+// close, which always closes on adverse news regardless of the fill rule.
+function sideExit(mkt, side) {
+  const yesMid = mkt.midpoint;
+  if (yesMid == null) return `exit the ${side.toUpperCase()} position at the best executable book price (unlock/live book required for exact level)`;
+  const mid = side === 'yes' ? yesMid : (1 - yesMid);
+  const spr = mkt.bookSpread;
+  if (spr != null) {
+    const bestBid = Math.max(0.01, mid - spr / 2);
+    return `sell the ${side.toUpperCase()} position down to best bid ≈ ${bestBid.toFixed(3)} (approx from last snapshot — verify live book before acting)`;
+  }
+  return `exit the ${side.toUpperCase()} position at best price around mid ≈ ${mid.toFixed(3)} (verify live book before acting)`;
+}
+
+function fillAdvisory(mkt, side, rule) {
+  const other = side === 'yes' ? 'no' : 'yes';
+  const live = AUTO_EXECUTE_ENABLED ? 'ON' : 'OFF (advisory only)';
+  if (rule === 'close') {
+    return {
+      side, rule: 'close', action: 'CLOSE_POSITION',
+      detail: `Your ${side.toUpperCase()} order filled. Advisory: ${sideExit(mkt, side)} — no directional exposure, spread not captured.`,
+      liveExecution: live,
+    };
+  }
+  const otherMid = mkt.midpoint != null ? (other === 'yes' ? mkt.midpoint : 1 - mkt.midpoint) : null;
+  const at = otherMid != null ? ` at its best executable level (≈ ${otherMid.toFixed(3)} mid — verify live book)` : ' at its best executable level';
+  return {
+    side, rule: 'requote', action: 'REQUOTE_OTHER_SIDE',
+    detail: `Your ${side.toUpperCase()} order filled. Advisory: re-post the ${other.toUpperCase()} side${at} to keep capturing the spread; you stay directionally exposed until balanced.`,
+    liveExecution: live,
+  };
+}
+
 // ── Main scan ──────────────────────────────────────────────────────────────────
 async function scan() {
   const t0 = Date.now();
@@ -237,10 +275,16 @@ async function scan() {
   const placementByMarket = {};
   for (const p of placements) {
     if (!p.marketId) continue;
-    const b = placementByMarket[p.marketId] || (placementByMarket[p.marketId] = { withdraw: 0, alert: 0, off: 0 });
+    const b = placementByMarket[p.marketId] || (placementByMarket[p.marketId] = {
+      withdraw: 0, alert: 0, off: 0,
+      yesRequote: 0, yesClose: 0, noRequote: 0, noClose: 0,   // per-side fill-rule tallies
+    });
     if (p.newsMode === 'withdraw') b.withdraw++;
     else if (p.newsMode === 'alert') b.alert++;
     else b.off++;
+    // Per-side fill rule (default 'requote'). 'close' is the flatten choice.
+    if (p.onFillYes === 'close') b.yesClose++; else b.yesRequote++;
+    if (p.onFillNo  === 'close') b.noClose++;  else b.noRequote++;
   }
 
   // Pick which markets get a (rate-limited, cached) news lookup: top by pool, deduped
@@ -299,6 +343,20 @@ async function scan() {
     // an alert only, 'off' does nothing. Below HIGH → monitoring only. Advisory always:
     // live execution is OFF, so this is a recommendation + Telegram push, never an order.
     const pb = placementByMarket[m.marketId] || null;
+
+    // Per-side fill advisory — apply onFillYes on a YES fill, onFillNo on a NO fill.
+    // Rules are aggregated across this market's placements (majority per side, ties →
+    // 'requote' default). Advisory only; live execution OFF.
+    let fillAdvisoryBySide = null;
+    if (pb) {
+      const yesRule = pb.yesClose > pb.yesRequote ? 'close' : 'requote';
+      const noRule  = pb.noClose  > pb.noRequote  ? 'close' : 'requote';
+      fillAdvisoryBySide = {
+        yes: fillAdvisory(m, 'yes', yesRule),
+        no:  fillAdvisory(m, 'no',  noRule),
+      };
+    }
+
     let userReaction = null;
     if (pb && (pb.withdraw > 0 || pb.alert > 0)) {
       if (newsRisk === 'high') {
@@ -328,7 +386,7 @@ async function scan() {
       marketId: m.marketId, venue: m.venue, title: m.title,
       newsRisk, bookRisk: combineRisk(bs, null), newsSignal: ns ? ns.level : null,
       signals, protect,
-      placements: pb, userReaction,
+      placements: pb, userReaction, fillAdvisory: fillAdvisoryBySide,
     });
   }
 
@@ -398,13 +456,19 @@ async function scan() {
   log(`scan done in ${((Date.now() - t0) / 1000).toFixed(1)}s — scanned ${results.length}, news queried ${newsQueried}, HIGH ${highs.length}, MED ${meds.length}`);
 }
 
+// Exported for testing the advisory selection in isolation (does not touch the DB
+// or start the scan loop). The pm2 entry below only runs when invoked directly.
+module.exports = { fillAdvisory, sideExit, exitAdvisory };
+
 // ── Entry point ────────────────────────────────────────────────────────────────
-(async () => {
-  log(`news-guard online — advisory only, live execution ${AUTO_EXECUTE_ENABLED ? 'ON' : 'OFF'}. Sources: Google News RSS (free). X/Twitter + Google Trends: unavailable (no free/keyed access).`);
-  await sleep(STARTUP_DELAY_MS);
-  while (true) {
-    try { await scan(); }
-    catch (e) { log('cycle error (non-fatal):', e.message); }
-    await sleep(SCAN_INTERVAL_MS);
-  }
-})();
+if (require.main === module) {
+  (async () => {
+    log(`news-guard online — advisory only, live execution ${AUTO_EXECUTE_ENABLED ? 'ON' : 'OFF'}. Sources: Google News RSS (free). X/Twitter + Google Trends: unavailable (no free/keyed access).`);
+    await sleep(STARTUP_DELAY_MS);
+    while (true) {
+      try { await scan(); }
+      catch (e) { log('cycle error (non-fatal):', e.message); }
+      await sleep(SCAN_INTERVAL_MS);
+    }
+  })();
+}

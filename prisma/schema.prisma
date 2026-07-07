@@ -43,7 +43,14 @@ model RewardsPlacement {
   side       String   @default("both")           // 'both' | 'buy' | 'sell'
   qtyPerSide Float    @default(1000)             // USD per side
   distanceC  Float    @default(2)                // distance from mid, in cents
-  onFill     String   @default("requote")        // 'requote' | 'flatten'
+  // Per-side fill-handling rule. When quoting BOTH sides the user picks a rule
+  // independently for a YES fill vs a NO fill; single-sided placements set both to
+  // the same value. Values: 'requote' (re-post the opposite side) | 'close' (flatten
+  // at best executable book price). Legacy `onFill` retained one release for compat
+  // ('flatten' == 'close'); new writes populate onFillYes/onFillNo.
+  onFillYes  String   @default("requote")        // 'requote' | 'close' — rule on a YES-side fill
+  onFillNo   String   @default("requote")        // 'requote' | 'close' — rule on a NO-side fill
+  onFill     String   @default("requote")        // DEPRECATED legacy single field ('requote' | 'flatten')
   newsMode   String   @default("withdraw")       // 'withdraw' | 'alert' | 'off'
   mode       String   @default("paper")          // 'paper' only; live gated OFF
   createdAt  DateTime @default(now())

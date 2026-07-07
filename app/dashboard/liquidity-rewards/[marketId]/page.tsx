@@ -31,8 +31,12 @@ import { estimateReward, type MarketSnapshot, type SideKey, type SideSnapshot, t
 // ── Types ─────────────────────────────────────────────────────────────────────
 type NewsRisk = 'low' | 'medium' | 'high' | 'unknown';
 type SideMode = 'both' | 'buy' | 'sell';
-type OnFill   = 'requote' | 'flatten';
+type OnFill   = 'requote' | 'close';
 type NewsMode = 'withdraw' | 'alert' | 'off';
+
+// Legacy single onFill ('requote' | 'flatten') → per-side rule ('flatten' == 'close').
+const legacyToRule = (v: unknown): OnFill | null =>
+  v === 'requote' ? 'requote' : (v === 'close' || v === 'flatten') ? 'close' : null;
 
 interface NormalizedMarket {
   venue:               Venue;
@@ -164,7 +168,8 @@ const depthOf = (b: NormBook | null | undefined): number =>
 
 // ── Persist placement config (auth to write; no login wall on view) ───────────
 interface PlacementConfig {
-  side: SideMode; qtyPerSide: number; distanceC: number; onFill: OnFill; newsMode: NewsMode;
+  side: SideMode; qtyPerSide: number; distanceC: number;
+  onFillYes: OnFill; onFillNo: OnFill; newsMode: NewsMode;
 }
 const LS_KEY = (id: string) => `rewards-placement:${id}`;
 
@@ -188,7 +193,8 @@ export default function MarketDetailPage() {
   const [side, setSide]         = useState<SideMode>('both');
   const [qty, setQty]           = useState<number>(1000);
   const [dist, setDist]         = useState<number>(1.75);
-  const [onFill, setOnFill]     = useState<OnFill>('requote');
+  const [onFillYes, setOnFillYes] = useState<OnFill>('requote');
+  const [onFillNo,  setOnFillNo]  = useState<OnFill>('requote');
   const [newsMode, setNewsMode] = useState<NewsMode>('withdraw');
 
   // persistence
@@ -234,11 +240,16 @@ export default function MarketDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [marketId]);
 
-  function applyConfig(c: Partial<PlacementConfig>) {
+  function applyConfig(c: Partial<PlacementConfig> & { onFill?: unknown }) {
     if (c.side) setSide(c.side);
     if (typeof c.qtyPerSide === 'number') setQty(c.qtyPerSide);
     if (typeof c.distanceC === 'number') setDist(c.distanceC);
-    if (c.onFill) setOnFill(c.onFill);
+    // Per-side rules first; fall back to the legacy single `onFill` (maps to both).
+    const legacy = legacyToRule(c.onFill);
+    const y = legacyToRule(c.onFillYes) ?? legacy;
+    const n = legacyToRule(c.onFillNo)  ?? legacy;
+    if (y) setOnFillYes(y);
+    if (n) setOnFillNo(n);
     if (c.newsMode) setNewsMode(c.newsMode);
   }
 
@@ -298,7 +309,11 @@ export default function MarketDetailPage() {
   // ── save placement ──
   async function savePlacement() {
     if (!mkt) return;
-    const cfg: PlacementConfig = { side, qtyPerSide: qty, distanceC: dist, onFill, newsMode };
+    // Single-sided placements carry one rule → mirror it onto both fields so the
+    // persisted config is coherent (and legacy single-field compat holds).
+    const yesRule = side === 'both' ? onFillYes : (tradeSide === 'yes' ? onFillYes : onFillNo);
+    const noRule  = side === 'both' ? onFillNo  : (tradeSide === 'yes' ? onFillYes : onFillNo);
+    const cfg: PlacementConfig = { side, qtyPerSide: qty, distanceC: dist, onFillYes: yesRule, onFillNo: noRule, newsMode };
     try { localStorage.setItem(LS_KEY(marketId), JSON.stringify(cfg)); } catch { /* ignore */ }
     setSaveState('saving'); setSaveMsg('');
     try {
@@ -441,21 +456,34 @@ export default function MarketDetailPage() {
               userBid={userBid} userAsk={userAsk} onRefresh={fetchBook} venue={mkt.venue}
             />
 
-            {/* ── E) Fill-handling choice ── */}
-            <div className="rounded-card shadow-card bg-surface px-4 py-4 space-y-3">
-              <p className="font-body font-medium text-sm text-ink-2">If one side gets filled</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <ChoiceBtn active={onFill === 'requote'} onClick={() => setOnFill('requote')}
-                  title="↻ Re-quote other side" desc="Immediately re-post the missing side to capture the spread on the exit. You stay directionally exposed until you're balanced again." />
-                <ChoiceBtn active={onFill === 'flatten'} onClick={() => setOnFill('flatten')}
-                  title="✕ Close immediately" desc="Close at the best executable price on the book: no directional exposure, but you give up the spread." />
-              </div>
-              <p className="font-body text-[11px] text-muted leading-relaxed">
-                {onFill === 'requote'
-                  ? 'Chosen: re-quote the other side — you aim to capture the spread, staying exposed until you’re balanced again.'
-                  : 'Chosen: close immediately at the best price on the book — no directional exposure, spread not captured.'}
-                {' '}On adverse news the news-guard can still force a close (see below).
-              </p>
+            {/* ── E) Fill-handling choice — per-side when quoting both ── */}
+            <div className="rounded-card shadow-card bg-surface px-4 py-4 space-y-4">
+              {twoSided ? (
+                <>
+                  <p className="font-body font-medium text-sm text-ink-2">If one side gets filled</p>
+                  <FillRuleCard side="yes" value={onFillYes} onChange={setOnFillYes} />
+                  <FillRuleCard side="no"  value={onFillNo}  onChange={setOnFillNo} />
+                  <p className="font-body text-[11px] text-muted leading-relaxed">
+                    <span className="text-ink-2 font-medium">Chosen:</span>{' '}
+                    {fillSummary('yes', onFillYes)} · {fillSummary('no', onFillNo)}.
+                    {' '}On adverse news the news-guard can still force a close (see below). Advisory only — live execution OFF.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="font-body font-medium text-sm text-ink-2">If your order gets filled</p>
+                  <FillRuleCard
+                    side={tradeSide}
+                    value={tradeSide === 'yes' ? onFillYes : onFillNo}
+                    onChange={tradeSide === 'yes' ? setOnFillYes : setOnFillNo}
+                  />
+                  <p className="font-body text-[11px] text-muted leading-relaxed">
+                    <span className="text-ink-2 font-medium">Chosen:</span>{' '}
+                    {fillSummary(tradeSide, tradeSide === 'yes' ? onFillYes : onFillNo)}.
+                    {' '}On adverse news the news-guard can still force a close (see below). Advisory only — live execution OFF.
+                  </p>
+                </>
+              )}
             </div>
 
             {/* ── F) News-guard choice ── */}
@@ -779,6 +807,41 @@ function MiniLadder({ row, maxSize, mid, halfBand, kind }: { row: LadderRow; max
 }
 
 // ── shared bits ───────────────────────────────────────────────────────────────
+// Colored YES/NO badge (YES green, NO red) used by the per-side fill-rule cards.
+function SideBadge({ side }: { side: SideKey }) {
+  const cls = side === 'yes'
+    ? 'bg-mint-tint text-mint-deep border-mint-deep/25'
+    : 'bg-coral-tint text-coral-ink border-coral-ink/25';
+  return <span className={`inline-flex items-center px-1.5 py-[1px] rounded-md font-body font-semibold text-[10px] border ${cls}`}>{side.toUpperCase()}</span>;
+}
+
+// One-line composed summary of a side's chosen fill rule.
+function fillSummary(side: SideKey, rule: OnFill): string {
+  const other = side === 'yes' ? 'NO' : 'YES';
+  return rule === 'requote'
+    ? `${side.toUpperCase()} fill → re-quote the ${other} side`
+    : `${side.toUpperCase()} fill → close at best price`;
+}
+
+// Per-side fill-rule picker: a badge-labelled header + the two rule choices, with
+// the "re-quote" copy naming the actual opposite side.
+function FillRuleCard({ side, value, onChange }: { side: SideKey; value: OnFill; onChange: (v: OnFill) => void }) {
+  const other = side === 'yes' ? 'NO' : 'YES';
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <SideBadge side={side} />
+        <p className="font-body font-medium text-[13px] text-ink-2">If your {side.toUpperCase()} order gets filled</p>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <ChoiceBtn active={value === 'requote'} onClick={() => onChange('requote')}
+          title="↻ Re-quote other side" desc={`Immediately re-post the ${other} side to capture the spread on the exit. You stay directionally exposed until you're balanced again.`} />
+        <ChoiceBtn active={value === 'close'} onClick={() => onChange('close')}
+          title="✕ Close immediately" desc="Close at the best executable price on the book: no directional exposure, but you give up the spread." />
+      </div>
+    </div>
+  );
+}
 function ChoiceBtn({ active, onClick, title, desc }: { active: boolean; onClick: () => void; title: string; desc: string }) {
   return (
     <button onClick={onClick}
