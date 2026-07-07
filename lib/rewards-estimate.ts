@@ -48,6 +48,25 @@ export const KALSHI_NOMINAL_BAND  = 50;     // cents
 
 export type Venue = 'polymarket' | 'kalshi';
 
+// Which trading side (outcome token) the maker chooses to quote. A binary market has
+// a YES side and a NO side, each with its OWN order book (Polymarket: two independent
+// CLOB tokens; Kalshi: yes-bid vs no-bid stacks, asks complement-derived). YES + NO ≈
+// 100¢ — complementary but NOT identical, so each side yields a different estimate.
+export type SideKey = 'yes' | 'no';
+
+// Per-side estimator inputs, taken from that side's REAL book. Absent numbers are null
+// (never fabricated); hasBook=false means the side's book is empty/unavailable.
+export interface SideSnapshot {
+  midpoint:                 number | null;   // 0..1 — THIS side's mid
+  qualifyingLiquidity:      number | null;   // USD of existing qualifying makers on THIS side
+  bookDepthAtBand:          number | null;   // USD resting near the band on THIS side
+  bookSpread?:              number | null;
+  volatilityStdev?:         number | null;
+  twoSidedRequired?:        boolean;
+  hasBook?:                 boolean;
+  asksDerivedByComplement?: boolean;         // Kalshi: asks are the contract complement
+}
+
 export interface MarketSnapshot {
   venue:               Venue;
   midpoint:            number | null;   // 0..1
@@ -58,6 +77,10 @@ export interface MarketSnapshot {
   bookDepthAtBand:     number | null;   // USD resting near the band (fill-prob input)
   volatilityStdev?:    number | null;   // measured 24h price-fraction stdev (Polymarket)
   twoSidedRequired?:   boolean;         // true when mid∉[0.10,0.90]
+  // Per-side real books. When present and a `side` is chosen, the estimate is computed
+  // from THAT side's book (mid, qualifying liquidity, depth, vol). Absent → the estimate
+  // falls back to the top-level (single-book) numbers, unchanged.
+  sides?:              { yes: SideSnapshot | null; no: SideSnapshot | null } | null;
 }
 
 export interface EstimateInput {
@@ -66,6 +89,7 @@ export interface EstimateInput {
   twoSided:      boolean;
   distanceCents: number;   // distance from mid, in cents, where you rest your order
   market:        MarketSnapshot;
+  side?:         SideKey;  // 'yes' | 'no'; omit for legacy single-book behavior
 }
 
 export interface EstimateResult {
@@ -92,6 +116,10 @@ export interface EstimateResult {
   belowMinPayout:       boolean;
   twoSidedRequired:     boolean;
   reasons:              string[];        // why any field is null / notable caveats
+  // per-side provenance (honest labeling)
+  side:                 SideKey | null;  // which side this estimate was computed for
+  sideBookAvailable:    boolean;         // false when the chosen side's book is empty/absent
+  usedSideBook:         boolean;         // true when a real per-side book fed the math
 }
 
 const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
@@ -145,10 +173,47 @@ export function expectedAdverseMoveFor(
   return { move, source: 'conservative-default' };
 }
 
+// Resolve the effective single-book snapshot for the chosen side. The pool ($/day),
+// reward band (maxSpread) and minSize are market-level and carry through unchanged;
+// only the book-derived inputs (mid, qualifying liquidity, depth, vol, two-sided
+// requirement) are swapped to the chosen side's REAL book. When `side` is omitted or
+// the market carries no per-side books, the top-level snapshot is used as-is (legacy).
+function resolveSide(market: MarketSnapshot, side: SideKey | undefined): {
+  eff: MarketSnapshot; usedSideBook: boolean; sideBookAvailable: boolean;
+} {
+  const chosen = side && market.sides ? market.sides[side] : null;
+  if (!chosen) {
+    // No per-side data: fall back to top-level book. Available unless it too is empty.
+    return { eff: market, usedSideBook: false, sideBookAvailable: true };
+  }
+  const sideBookAvailable = chosen.hasBook !== false
+    && (chosen.qualifyingLiquidity != null || chosen.bookDepthAtBand != null || chosen.midpoint != null);
+  const eff: MarketSnapshot = {
+    ...market,
+    midpoint:            chosen.midpoint,
+    qualifyingLiquidity: chosen.qualifyingLiquidity,
+    bookDepthAtBand:     chosen.bookDepthAtBand,
+    volatilityStdev:     chosen.volatilityStdev ?? null,
+    twoSidedRequired:    chosen.twoSidedRequired
+      ?? (chosen.midpoint != null && (chosen.midpoint < 0.10 || chosen.midpoint > 0.90)),
+  };
+  return { eff, usedSideBook: true, sideBookAvailable };
+}
+
 export function estimateReward(input: EstimateInput): EstimateResult {
-  const { capital, twoSided, distanceCents, market } = input;
-  const { midpoint, maxSpread, dailyPool, qualifyingLiquidity, bookDepthAtBand } = market;
+  const { capital, twoSided, distanceCents } = input;
   const reasons: string[] = [];
+
+  // Pick the chosen side's real book (or fall back to the single top-level book).
+  const { eff: market, usedSideBook, sideBookAvailable } = resolveSide(input.market, input.side);
+  const side: SideKey | null = input.side ?? null;
+  if (side && input.market.sides && !usedSideBook) {
+    reasons.push(`no ${side.toUpperCase()}-side book in this snapshot — showing the market's single-book estimate`);
+  }
+  if (usedSideBook && !sideBookAvailable) {
+    reasons.push(`the ${side!.toUpperCase()} side's book is empty/unavailable right now — its numbers can't be computed (shown as missing, never fabricated)`);
+  }
+  const { midpoint, maxSpread, dailyPool, qualifyingLiquidity, bookDepthAtBand } = market;
 
   const twoSidedRequired = market.twoSidedRequired
     ?? (midpoint != null && (midpoint < 0.10 || midpoint > 0.90));
@@ -244,6 +309,9 @@ export function estimateReward(input: EstimateInput): EstimateResult {
     belowMinPayout,
     twoSidedRequired,
     reasons,
+    side,
+    sideBookAvailable,
+    usedSideBook,
   };
 }
 

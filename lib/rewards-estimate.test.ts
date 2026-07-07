@@ -138,5 +138,67 @@ const outerBand = estimateReward({ venue: 'polymarket', capital: 1000, twoSided:
 ok('closer to mid → higher share', nearMid.shareOfPool! > outerBand.shareOfPool!);
 ok('closer to mid → higher gross', nearMid.grossReward! > outerBand.grossReward!);
 
+// 8) PER-SIDE (YES/NO) FROM DISTINCT BOOKS -------------------------------------
+// Legacy call (no `side`) reports side null and did NOT use a per-side book.
+ok('legacy call → side null, usedSideBook false', twoS.side === null && twoS.usedSideBook === false);
+
+// Polymarket dual book: YES faces less competition than NO ⇒ higher share/net.
+const dualSided: MarketSnapshot = {
+  ...base,
+  sides: {
+    yes: { midpoint: 0.40, qualifyingLiquidity: 2000, bookDepthAtBand: 2000, volatilityStdev: 0.02, twoSidedRequired: false, hasBook: true },
+    no:  { midpoint: 0.60, qualifyingLiquidity: 8000, bookDepthAtBand: 8000, volatilityStdev: 0.02, twoSidedRequired: false, hasBook: true },
+  },
+};
+const yesEst = estimateReward({ venue: 'polymarket', capital: 1000, twoSided: true, distanceCents: 3, market: dualSided, side: 'yes' });
+const noEst  = estimateReward({ venue: 'polymarket', capital: 1000, twoSided: true, distanceCents: 3, market: dualSided, side: 'no'  });
+ok('YES uses its own book (usedSideBook, side=yes)', yesEst.usedSideBook === true && yesEst.side === 'yes' && yesEst.sideBookAvailable === true);
+ok('NO uses its own book (usedSideBook, side=no)',   noEst.usedSideBook  === true && noEst.side  === 'no');
+ok('YES vs NO produce DIFFERENT net/day (distinct books)', yesEst.netPerDay !== noEst.netPerDay);
+ok('YES (thinner competition) → higher share than NO', yesEst.shareOfPool! > noEst.shareOfPool!);
+ok('YES (thinner competition) → higher net than NO', yesEst.netPerDay! > noEst.netPerDay!);
+
+// Kalshi dual book with complement-derived asks — still per-side distinct.
+const kalshiDual: MarketSnapshot = {
+  ...base, venue: 'kalshi', maxSpread: null,
+  sides: {
+    yes: { midpoint: 0.30, qualifyingLiquidity: 500, bookDepthAtBand: 1200, asksDerivedByComplement: true, hasBook: true },
+    no:  { midpoint: 0.70, qualifyingLiquidity: 900, bookDepthAtBand: 1200, asksDerivedByComplement: true, hasBook: true },
+  },
+};
+const kYes = estimateReward({ venue: 'kalshi', capital: 1000, twoSided: true, distanceCents: 2, market: kalshiDual, side: 'yes' });
+const kNo  = estimateReward({ venue: 'kalshi', capital: 1000, twoSided: true, distanceCents: 2, market: kalshiDual, side: 'no'  });
+ok('Kalshi YES vs NO net differ (complement-derived asks handled)', kYes.netPerDay !== kNo.netPerDay);
+ok('Kalshi YES (thinner competition) → higher share', kYes.shareOfPool! > kNo.shareOfPool!);
+
+// Side chosen but that side requires two-sided (extreme mid) → single-sided scores 0.
+const extremeSides: MarketSnapshot = {
+  ...base,
+  sides: {
+    yes: { midpoint: 0.95, qualifyingLiquidity: 2000, bookDepthAtBand: 2000, twoSidedRequired: true, hasBook: true },
+    no:  { midpoint: 0.05, qualifyingLiquidity: 2000, bookDepthAtBand: 2000, twoSidedRequired: true, hasBook: true },
+  },
+};
+const yesSingleExtreme = estimateReward({ venue: 'polymarket', capital: 1000, twoSided: false, distanceCents: 3, market: extremeSides, side: 'yes' });
+ok('side YES single-sided at mid 0.95 → score 0 + two-sided required', yesSingleExtreme.score === 0 && yesSingleExtreme.twoSidedRequired === true);
+
+// One side's book empty → sideBookAvailable false, numbers withheld (never fabricated).
+const oneEmpty: MarketSnapshot = {
+  ...base,
+  sides: {
+    yes: { midpoint: 0.5, qualifyingLiquidity: 2000, bookDepthAtBand: 2000, hasBook: true },
+    no:  { midpoint: null, qualifyingLiquidity: null, bookDepthAtBand: null, hasBook: false },
+  },
+};
+const noEmpty = estimateReward({ venue: 'polymarket', capital: 1000, twoSided: true, distanceCents: 3, market: oneEmpty, side: 'no' });
+ok('empty NO side → sideBookAvailable false', noEmpty.sideBookAvailable === false);
+ok('empty NO side → shareOfPool null (qualifying liq missing)', noEmpty.shareOfPool === null);
+ok('empty NO side → netPerDay null (nothing fabricated)', noEmpty.netPerDay === null);
+ok('empty NO side → reason names the missing side', noEmpty.reasons.some(r => r.toLowerCase().includes('no side')));
+
+// Side requested but snapshot has no per-side books → graceful legacy fallback.
+const noSidesData = estimateReward({ venue: 'polymarket', capital: 1000, twoSided: true, distanceCents: 3, market: base, side: 'yes' });
+ok('side requested but no sides in snapshot → usedSideBook false, still computes', noSidesData.usedSideBook === false && noSidesData.netPerDay != null);
+
 console.log(`\n${failed === 0 ? 'PASS' : 'FAIL'}: ${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);
