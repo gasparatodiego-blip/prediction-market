@@ -352,8 +352,17 @@ async function scan() {
     const fallbackMid = m.lastTradePrice
       || (m.bestBid && m.bestAsk ? (m.bestBid + m.bestAsk) / 2 : 0.5);
 
-    const [book, vol] = await Promise.all([
+    // Fetch BOTH CLOB token books — YES and NO are two INDEPENDENT order books
+    // (real bids AND asks each), NOT complements of one another. The reward pool is
+    // shared, but the competitor set a maker faces differs per token book, so the
+    // per-side reward math differs. 24h volatility is identical for both tokens
+    // (NO = 1 − YES ⇒ Var(NO) = Var(YES)), so we fetch it once and reuse it — saves
+    // an API call per market while staying exact. NO book only when tokenIdNo exists.
+    const [book, bookNo, vol] = await Promise.all([
       measureBookDepth(m.tokenId, m.rewardsMaxSpread, m.rewardsMinSize, fallbackMid),
+      m.tokenIdNo
+        ? measureBookDepth(m.tokenIdNo, m.rewardsMaxSpread, m.rewardsMinSize, 1 - fallbackMid)
+        : Promise.resolve(null),
       measure24hVolatility(m.tokenId),
     ]);
 
@@ -362,6 +371,29 @@ async function scan() {
     const competitorQ      = { Qmin: book.Qmin, Qbids: book.Qbids, Qasks: book.Qasks, mid: book.mid };
     const levels           = computeLevels(m.rewardsDailyRate, competitorQ, m.rewardsMaxSpread, m.rewardsMinSize);
     const { gapClass, gapScore } = classifyGap(levels, volatilityRisk);
+
+    // Per-side estimator inputs (real, independent books). twoSidedRequired is
+    // evaluated on EACH side's own mid — Polymarket requires two-sided when a
+    // token's mid sits outside [0.10, 0.90]. emptyBook is surfaced truthfully so the
+    // UI can show "book unavailable" for a side rather than a fabricated number.
+    const sideYes = {
+      mid:                book.mid,
+      existing_depth_usd: book.existingDepthUsd,
+      bookSpread:         book.bookSpread,
+      emptyBook:          !!book.emptyBook,
+      twoSidedRequired:   book.mid != null && (book.mid < 0.10 || book.mid > 0.90),
+      volatilityStdev:    vol.stdev,
+      derivedByComplement: false,   // real CLOB book, real bids AND asks
+    };
+    const sideNo = bookNo ? {
+      mid:                bookNo.mid,
+      existing_depth_usd: bookNo.existingDepthUsd,
+      bookSpread:         bookNo.bookSpread,
+      emptyBook:          !!bookNo.emptyBook,
+      twoSidedRequired:   bookNo.mid != null && (bookNo.mid < 0.10 || bookNo.mid > 0.90),
+      volatilityStdev:    vol.stdev,   // Var(NO) = Var(1−YES) = Var(YES), exact
+      derivedByComplement: false,   // independent NO-token CLOB book, real bids AND asks
+    } : null;
 
     // OLD linear share for side-by-side comparison in console
     const linearShare500 = existingDepthUsd > 0 ? 500 / (500 + existingDepthUsd) : 1.0;
@@ -384,6 +416,9 @@ async function scan() {
       mid:               book.mid,
       bookSpread:        book.bookSpread,
       existing_depth_usd: existingDepthUsd,
+      // Per-side (YES/NO) real independent books — estimator inputs. Top-level fields
+      // above mirror the YES side for backward compatibility; `sides` carries both.
+      sides:             { yes: sideYes, no: sideNo },
       volatilityRisk,
       volatilityStdev:   vol.stdev,
       volatilityRange:   vol.range,
@@ -426,6 +461,7 @@ async function scan() {
         'Actual share depends on exact resting distance; competitors continuously re-quote.',
         'existing_depth_usd is a point-in-time CLOB snapshot (price×size, display only; not used for share math).',
         'Q_competitors is the quadratic-weighted score of all existing resting orders in the YES book.',
+        'sides.yes / sides.no carry each token\'s OWN independent CLOB book (real bids AND asks) — YES and NO are complementary but NOT identical; per-side reward math differs.',
         `THIN_BOOK flag: typical dayYieldPct > ${SANITY_CAP_PCT}% — book is thin, real share will compress as MMs arrive.`,
         `BELOW_FLOOR flag: typical grossRewardDay < $${FLOOR_DAILY_USD} — minimum daily payout not met.`,
         'netRewardDay = grossRewardDay × (1 − 0) because Polymarket CLOB maker fee = 0% and Polygon gas ≈ $0. Platform fees on the reward disbursement are deterministically zero. Does NOT account for inventory/adverse-selection risk from fills — that is non-deterministic and not a fee.',
