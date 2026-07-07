@@ -292,8 +292,11 @@ async function runCycle(state, opts = {}) {
 }
 
 // ── Mismatch alerting (deduped per row per 6h) ───────────────────────────────
-async function maybeAlert(mismatches, state) {
-  const now = Date.now();
+// Pure dedupe selector (exported for tests): returns the mismatches that should
+// alert NOW and mutates state.alerts with their fingerprint+timestamp. A row whose
+// (id, source-fingerprint) already alerted within ALERT_COOLDOWN_MS is suppressed.
+function selectFreshAlerts(mismatches, state, now) {
+  if (!state.alerts) state.alerts = {};
   const fresh = [];
   for (const m of mismatches) {
     const key = crypto.createHash('sha256').update(m.id + JSON.stringify(m.source || {})).digest('hex').slice(0, 16);
@@ -302,8 +305,12 @@ async function maybeAlert(mismatches, state) {
     state.alerts[m.id] = { key, at: now };
     fresh.push(m);
   }
-  // prune stale dedupe entries
-  for (const [id, v] of Object.entries(state.alerts)) if (now - v.at > 2 * ALERT_COOLDOWN_MS) delete state.alerts[id];
+  for (const [id, v] of Object.entries(state.alerts)) if (now - v.at > 2 * ALERT_COOLDOWN_MS) delete state.alerts[id]; // prune
+  return fresh;
+}
+
+async function maybeAlert(mismatches, state) {
+  const fresh = selectFreshAlerts(mismatches, state, Date.now());
   if (!fresh.length) return;
   const text = `⚠️ <b>Source-of-truth verification mismatch${fresh.length > 1 ? 'es' : ''}</b> (${fresh.length})\n\n` +
     fresh.map((m, i) => `${i + 1}. [${m.section}] <code>${m.id}</code>\n${JSON.stringify(m.source).slice(0, 240)}`).join('\n\n') +
@@ -335,7 +342,7 @@ async function main() {
 // Exported for the Phase-4 test harness (inject a synthetic mismatch, run one cycle).
 module.exports = {
   runCycle, buildFundingItems, buildPerpSpotItems, buildBasisItems, buildRewardsItems,
-  verifyFunding, verifyPerpSpot, verifyBasis, verifyRewards, selectRotating,
+  verifyFunding, verifyPerpSpot, verifyBasis, verifyRewards, selectRotating, selectFreshAlerts,
 };
 
 if (require.main === module) {
