@@ -20,7 +20,11 @@ import RewardsHero from '@/app/components/ui/RewardsHero';
 import { Redacted } from '@/app/components/ui/Redacted';
 import { PlatformLink } from '@/app/components/ui/PlatformLink';
 import { polymarketMarketUrl, kalshiMarketUrl } from '@/lib/platform-links';
-import { estimateReward, type MarketSnapshot, type Venue } from '@/lib/rewards-estimate';
+import { estimateReward, type MarketSnapshot, type SideSnapshot, type Venue } from '@/lib/rewards-estimate';
+
+// Trading-side selector for the list: 'both' = legacy single-book behavior; 'yes'/'no'
+// rank + estimate every card from that side's real book.
+type TradeSideFilter = 'both' | 'yes' | 'no';
 
 // Real platform deep-link for a reward market: Polymarket event (from slug) or
 // Kalshi market (from ticker). Returns null when the id needed is absent — the row
@@ -56,6 +60,8 @@ interface NormalizedMarket {
   scoringModel:        string;
   flags:               string[];
   tokenId:             string | null;
+  tokenIdNo?:          string | null;
+  sides?:              { yes: SideSnapshot | null; no: SideSnapshot | null } | null;
   // merged from news-guard
   newsRisk?:           NewsRisk;
   newsSignals?:        { source: string; note: string }[] | null;
@@ -109,13 +115,29 @@ function toSnapshot(m: NormalizedMarket): MarketSnapshot {
     bookDepthAtBand: m.bookDepthAtBand,
     volatilityStdev: m.volatilityStdev,
     twoSidedRequired: m.twoSidedRequired,
+    sides: m.sides ?? null,
   };
 }
 // typical placement used for list-card estimates: two-sided, mid-band distance, $1k.
-function typicalNet(m: NormalizedMarket): number | null {
+// side 'both' → legacy single-book estimate; 'yes'/'no' → that side's real book.
+function typicalNet(m: NormalizedMarket, side: TradeSideFilter): number | null {
   const dist = (m.maxSpread ?? 2) / 2;
-  const r = estimateReward({ venue: m.venue, capital: DEFAULT_CAPITAL, twoSided: true, distanceCents: dist, market: toSnapshot(m) });
+  const r = estimateReward({
+    venue: m.venue, capital: DEFAULT_CAPITAL, twoSided: true, distanceCents: dist,
+    market: toSnapshot(m), side: side === 'both' ? undefined : side,
+  });
   return r.netPerDay;
+}
+// The mid a card headlines depends on the selected side (YES=mid, NO=1−mid / sides.no).
+function sideMid(m: NormalizedMarket, side: TradeSideFilter): number | null {
+  if (side === 'yes') return m.sides?.yes?.midpoint ?? m.midpoint;
+  if (side === 'no')  return m.sides?.no?.midpoint ?? (m.midpoint != null ? 1 - m.midpoint : null);
+  return m.midpoint;
+}
+function sideDepth(m: NormalizedMarket, side: TradeSideFilter): number | null {
+  if (side === 'yes') return m.sides?.yes?.bookDepthAtBand ?? m.bookDepthAtBand;
+  if (side === 'no')  return m.sides?.no?.bookDepthAtBand ?? m.bookDepthAtBand;
+  return m.bookDepthAtBand;
 }
 
 // ── News-risk badge ──────────────────────────────────────────────────────────
@@ -179,6 +201,7 @@ interface Filters {
   minPool: number;
   maxHours: number | null;
   hideHighNews: boolean;
+  tradeSide: TradeSideFilter;
 }
 
 function FilterBar({
@@ -213,6 +236,25 @@ function FilterBar({
           <div className="flex items-center gap-1 p-1 rounded-pill bg-bg-soft border border-line">
             {venueBtn('all', 'All')}{venueBtn('polymarket', 'Polymarket')}{venueBtn('kalshi', 'Kalshi')}
           </div>
+        </div>
+        {/* Trading side — Both / Trade YES / Trade NO */}
+        <div className="flex items-center gap-2">
+          <span className="font-body text-[11px] uppercase tracking-wide text-muted">Trade side</span>
+          <div className="flex items-center gap-1 p-1 rounded-pill bg-bg-soft border border-line">
+            {([['both', 'Both'], ['yes', 'YES'], ['no', 'NO']] as [TradeSideFilter, string][]).map(([v, label]) => {
+              const active = filters.tradeSide === v;
+              const activeCls = v === 'yes' ? 'bg-mint-tint text-mint-deep' : v === 'no' ? 'bg-coral-tint text-coral-ink' : 'bg-surface text-ink shadow-sm';
+              return (
+                <button key={v} onClick={() => setFilters({ ...filters, tradeSide: v })}
+                  className={`font-body font-medium text-[13px] px-3 py-2 rounded-pill transition-colors ${active ? activeCls : 'text-muted hover:text-ink-2'}`}>
+                  {v === 'both' ? 'Both' : `Trade ${label}`}
+                </button>
+              );
+            })}
+          </div>
+          <InfoTip label="About trade side">
+            A binary market has a YES side and a NO side, each with its own order book (YES + NO ≈ 100¢, but not identical). &quot;Both&quot; shows the market&apos;s default estimate; &quot;Trade YES/NO&quot; ranks and estimates every card from that side&apos;s real book.
+          </InfoTip>
         </div>
         {/* Min pool */}
         <div className="flex items-center gap-2">
@@ -278,8 +320,12 @@ function FilterBar({
 }
 
 // ── Market card (vertical, mobile-first, tap-to-detail) ───────────────────────
-function MarketCard({ m }: { m: NormalizedMarket }) {
-  const net = typicalNet(m);
+function MarketCard({ m, tradeSide }: { m: NormalizedMarket; tradeSide: TradeSideFilter }) {
+  const net = typicalNet(m, tradeSide);
+  const cardMid = sideMid(m, tradeSide);
+  const cardDepth = sideDepth(m, tradeSide);
+  const sideLabel = tradeSide === 'both' ? 'two-sided' : `${tradeSide.toUpperCase()} side`;
+  const midDepthTag = tradeSide === 'both' ? '' : ` (${tradeSide.toUpperCase()})`;
   const risk = (m.newsRisk ?? 'unknown') as NewsRisk;
   const poolKnown = m.dailyPool != null;
   const href = `/dashboard/liquidity-rewards/${encodeURIComponent(m.marketId)}`;
@@ -325,7 +371,7 @@ function MarketCard({ m }: { m: NormalizedMarket }) {
         {/* Earnings hero — always readable, never truncated */}
         <div className="mt-3 flex items-end justify-between gap-3 flex-wrap">
           <div className="min-w-0">
-            <p className="font-body text-[10px] uppercase tracking-wide text-muted">Est. net / day · $1k two-sided{cautionFlag ? ' · flagged, verify' : ''}</p>
+            <p className="font-body text-[10px] uppercase tracking-wide text-muted">Est. net / day · $1k {sideLabel}{cautionFlag ? ' · flagged, verify' : ''}</p>
             <p className={`font-display font-bold leading-none mt-0.5 ${netTone}`} style={{ fontSize: 24 }}>
               {poolKnown
                 ? <Redacted value={net}>{v => `${fmtUsd(v)}/day`}</Redacted>
@@ -338,8 +384,8 @@ function MarketCard({ m }: { m: NormalizedMarket }) {
         {/* Stat grid — WRAPS on narrow screens, never a single wide row */}
         <div className="flex flex-wrap gap-1.5 mt-3">
           <Chip label="pool/day" value={poolKnown ? <Redacted value={m.dailyPool}>{v => `$${v.toFixed(0)}`}</Redacted> : '—'} />
-          <Chip label="mid" value={<Redacted value={m.midpoint}>{v => `${(v * 100).toFixed(1)}¢`}</Redacted>} />
-          <Chip label="depth" value={<Redacted value={m.bookDepthAtBand}>{v => fmtUsd(v)}</Redacted>} />
+          <Chip label={`mid${midDepthTag}`} value={<Redacted value={cardMid}>{v => `${(v * 100).toFixed(1)}¢`}</Redacted>} />
+          <Chip label={`depth${midDepthTag}`} value={<Redacted value={cardDepth}>{v => fmtUsd(v)}</Redacted>} />
           <Chip label="resolves" value={fmtHours(m.hoursToResolution)} />
           {m.flags.filter(f => ['TRAP', 'SHORT_BURST', 'ONE_SIDED', 'THIN_CAP'].includes(f)).map(f => (
             <span key={f} className="inline-flex items-center px-2 py-[3px] rounded-md font-body font-medium text-[10px] border bg-gold-tint text-gold border-gold/25">{f.replace('_', ' ').toLowerCase()}</span>
@@ -364,7 +410,7 @@ export default function LiquidityRewardsPage() {
   const [err, setErr] = useState<string | null>(null);
   const [lastFetch, setLastFetch] = useState<Date | null>(null);
   const [sortMode, setSortMode] = useState<'pool' | 'net'>('net');
-  const [filters, setFilters] = useState<Filters>({ venue: 'all', categories: new Set(), minPool: 0, maxHours: null, hideHighNews: false });
+  const [filters, setFilters] = useState<Filters>({ venue: 'all', categories: new Set(), minPool: 0, maxHours: null, hideHighNews: false, tradeSide: 'both' });
 
   async function poll() {
     try {
@@ -400,7 +446,7 @@ export default function LiquidityRewardsPage() {
     });
     out = [...out].sort((a, b) => {
       if (sortMode === 'pool') return (b.dailyPool ?? -1) - (a.dailyPool ?? -1);
-      return (typicalNet(b) ?? -1e9) - (typicalNet(a) ?? -1e9);
+      return (typicalNet(b, filters.tradeSide) ?? -1e9) - (typicalNet(a, filters.tradeSide) ?? -1e9);
     });
     return out;
   }, [markets, filters, sortMode]);
@@ -480,12 +526,12 @@ export default function LiquidityRewardsPage() {
                 {data === null ? 'Loading reward markets…' : 'No markets match these filters.'}
               </p>
               {data !== null && markets.length > 0 && (
-                <button onClick={() => setFilters({ venue: 'all', categories: new Set(), minPool: 0, maxHours: null, hideHighNews: false })}
+                <button onClick={() => setFilters({ venue: 'all', categories: new Set(), minPool: 0, maxHours: null, hideHighNews: false, tradeSide: 'both' })}
                   className="font-body text-[12px] text-mint-deep underline mt-2">reset filters</button>
               )}
             </div>
           ) : (
-            filtered.map(m => <MarketCard key={m.marketId} m={m} />)
+            filtered.map(m => <MarketCard key={m.marketId} m={m} tradeSide={filters.tradeSide} />)
           )}
         </div>
 
