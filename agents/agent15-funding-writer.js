@@ -29,6 +29,7 @@ const path = require('path');
 const { httpGet, httpPost } = require('../lib/httpGet');
 const { RWA_KEYS, RWA_VENUES, isRwaKey, rwaVenueSymbol, rwaLabel } = require('../lib/rwa');
 const { rlGet, rlPost } = require('../lib/rateLimitedFetch');
+const { isDeadContract, buildPeerMarks } = require('../lib/contract-liveness');
 const {
   annualize,
   venueFeePct,
@@ -1188,6 +1189,10 @@ function dexBridgeNote(shortVenue, longVenue) {
 
 function crossExchangeSpread(futures, hCache) {
   // Build byExchange: coin → [{ exchange, fr (predicted), intervalHours, isDex }]
+  // Dead/illiquid/cap-pinned contracts (edgeX TRX signature and friends) are excluded
+  // here so they never form a pair — logged once per cycle, never silently dropped.
+  const now       = Date.now();
+  const peerMarks = buildPeerMarks(futures);   // coin → [markPrice, …] across venues (rule c)
   const byExchange = {};
   for (const [ex, coins] of Object.entries(futures)) {
     const isDex = ex === 'hyperliquid' || ex === 'dydx' || ex === 'aster' || ex === 'paradex' || ex === 'edgex' || ex === 'grvt' || ex === 'lighter' || ex === 'extended' || ex === 'pacifica' || ex === 'apex';
@@ -1195,6 +1200,12 @@ function crossExchangeSpread(futures, hCache) {
       const fr            = data?.fundingRate;
       const intervalHours = data?.fundingIntervalHours ?? 8;
       if (fr == null || typeof fr !== 'number' || !isFinite(fr)) continue;
+      const hist = (hCache[ex] || {})[coin] || [];
+      const dead = isDeadContract(ex, coin, data, hist, { now, peerMarks: peerMarks[coin] });
+      if (dead.dead) {
+        console.log(`[funding] excluded ${ex}:${coin} dead-contract: ${dead.reason}`);
+        continue;
+      }
       if (!byExchange[coin]) byExchange[coin] = [];
       byExchange[coin].push({ exchange: ex, fr, intervalHours, isDex });
     }

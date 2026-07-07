@@ -33,6 +33,7 @@
 const fs   = require('fs');
 const path = require('path');
 const { isRwaKey } = require('../lib/rwa');
+const { isDeadContract, buildPeerMarks } = require('../lib/contract-liveness');
 let appendSnapshot = null;
 try { ({ appendSnapshot } = require('../lib/history-logger')); } catch { /* optional */ }
 
@@ -105,11 +106,22 @@ function computeRows(raw, persist) {
 
   // coin → best positive short candidate across all perp venues
   const best = {};   // coin → { shortVenue, fundingRateNative, intervalH, fundingPct8h, markPrice, vol24hUsd }
+  const now       = Date.now();
+  const peerMarks = buildPeerMarks(futures);   // coin → [markPrice, …] across venues (rule c)
   for (const [venue, coins] of Object.entries(futures)) {
     for (const [coin, d] of Object.entries(coins || {})) {
       if (isRwaKey(coin)) continue;                     // commodities handled elsewhere (observation-only)
       const fr = d && d.fundingRate;
       if (typeof fr !== 'number' || !isFinite(fr) || fr <= 0) continue;  // shorts only collect on POSITIVE funding
+      // Dead/illiquid/cap-pinned contract guard (shared with agent15). A positive cap-pin
+      // would otherwise render as a phantom perp-spot HARVEST card. Ring buffer = durable
+      // settled mirror. Excluded here, logged once per cycle — never silently dropped.
+      const hist = ((persist && persist.data && persist.data[venue]) || {})[coin] || [];
+      const dead = isDeadContract(venue, coin, d, hist, { now, peerMarks: peerMarks[coin] });
+      if (dead.dead) {
+        log(`excluded ${venue}:${coin} dead-contract: ${dead.reason}`);
+        continue;
+      }
       const intervalH  = typeof d.fundingIntervalHours === 'number' && d.fundingIntervalHours > 0 ? d.fundingIntervalHours : 8;
       const fundingPct8h = toPct8h(fr, intervalH);
       const prev = best[coin];
