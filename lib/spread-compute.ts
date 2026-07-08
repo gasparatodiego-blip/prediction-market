@@ -384,6 +384,29 @@ export function computeSpreads(
   return out.sort((a, b) => (b.netApy30d ?? 0) - (a.netApy30d ?? 0));
 }
 
+// Minimum confirmed net (%/yr, annualized) an RWA/commodity row must clear before the
+// Commodities lane is worth surfacing. Matches the honest-engine "modest net" bar — a
+// row below this (or with a null/unconfirmed net) is signal-only, never a shown edge.
+export const COMMODITY_EDGE_MIN_NET_APY = 3;
+
+// Derived visibility gate for the Commodities lane, computed from the REAL rwa rows
+// (call BEFORE redaction so netApy is the true value, not the free-tier null). True iff
+// at least one row is a genuine two-legged, both-confirmed, non-spike divergence carrying
+// a real positive net at or above COMMODITY_EDGE_MIN_NET_APY. A FLAT·no-edge or
+// UNCONFIRMED·still-settling row (netApy null / bothConfirmed false) can never qualify.
+// Never a hardcoded boolean — flips true on its own the moment a confirmed edge appears.
+export function computeCommoditiesHasEdge(rows: RwaObservation[]): boolean {
+  return rows.some(r => {
+    if (r.monolegOnly) return false;                 // single-leg pseudo-spread, not a carry
+    const d = r.divergence;
+    if (!d) return false;                            // no two-sided divergence at all
+    if (d.bothConfirmed !== true) return false;      // still settling / unconfirmed
+    if (d.spike === true) return false;              // NOISE · rate unstable
+    if (typeof d.netApy !== 'number' || !isFinite(d.netApy)) return false;  // null net → cannot qualify
+    return d.netApy >= COMMODITY_EDGE_MIN_NET_APY;   // real, modest-or-better confirmed net
+  });
+}
+
 /**
  * Reads /tmp/exchange-prices.json + /tmp/unified-opportunities.json and returns
  * the exact payload app/api/crypto/route.ts serves. Both the funding-arb dashboard
@@ -543,6 +566,7 @@ export function getCryptoSpreadsData(): CryptoSpreadsData {
       cexArb:      raw.cexArb      ?? [],
       spreads,
       rwa:         rwaRows,
+      commoditiesHasEdge: computeCommoditiesHasEdge(rwaRows),
       perpSpot:      perpSpotFeed.rows,
       perpSpotStale: perpSpotFeed.stale,
       perpSpotRegime,
@@ -566,6 +590,7 @@ export function getCryptoSpreadsData(): CryptoSpreadsData {
       cexArb:      [],
       spreads:     [],
       rwa:         [],
+      commoditiesHasEdge: false,
       perpSpot:      [],
       perpSpotStale: true,
       perpSpotRegime: null,

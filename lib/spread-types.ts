@@ -223,6 +223,7 @@ export interface CryptoSpreadsData {
   cexArb:       unknown[];
   spreads:      SpreadItem[];
   rwa:          RwaObservation[];   // commodities beta — observation-only, never cashable
+  commoditiesHasEdge: boolean;      // derived gate: ≥1 confirmed two-legged RWA net ≥ COMMODITY_EDGE_MIN_NET_APY → reveal the Commodities lane
   perpSpot:     PerpSpotRow[];      // delta-neutral carry: best short-perp + spot hedge per coin
   perpSpotStale: boolean;           // source feed older than freshness window
   perpSpotRegime: PerpSpotRegime | null;  // live funding-regime banner context
