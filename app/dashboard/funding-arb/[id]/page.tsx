@@ -98,12 +98,14 @@ function formatPayback(days: number | null | undefined): string {
   return r === 0 ? `${d}d` : `${d}d ${r}h`;
 }
 
-// Normalize any leg's native funding rate onto a common %/8h basis (CEX 8h vs
-// DEX 1h). DISPLAY ONLY — never feeds math. Mirror of the list page's fmtRate8h.
-function fmtRate8h(rateNative: number, intervalHours: number | undefined): string {
+// Native per-leg funding rate + its own interval suffix, so the rate basis matches
+// the leg's real cadence. DISPLAY ONLY — never feeds math. Mirror of the list page.
+function fmtRateVal(rateNative: number): string {
+  return `${rateNative >= 0 ? '+' : ''}${rateNative.toFixed(4)}%`;
+}
+function rateSuffix(intervalHours: number | undefined): string {
   const iv = intervalHours && intervalHours > 0 ? intervalHours : 8;
-  const v  = rateNative * (8 / iv);
-  return `${v >= 0 ? '+' : ''}${v.toFixed(4)}%`;
+  return `/${iv}h`;
 }
 
 // Honest capacity display — mirror of the list page. Below the $500k ladder top
@@ -198,9 +200,13 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
   const bothCollect = shortFlow === 'collect' && longFlow === 'collect';
   const caption     = bothCollect ? 'market-neutral · both collect' : 'market-neutral · net spread';
 
-  const settleNote = spread && (spread.intervalHoursShort === 1 || spread.intervalHoursLong === 1)
-    ? 'every 8h (hourly on the DEX leg)'
-    : 'every 8h';
+  const ivS = spread?.intervalHoursShort;
+  const ivL = spread?.intervalHoursLong;
+  const settleNote = !spread
+    ? 'each on its own cadence'
+    : ivS === ivL
+      ? `every ${ivS ?? 8}h`
+      : `every ${ivS ?? 8}h on the short leg, every ${ivL ?? 8}h on the long leg`;
 
   const qtyLabel = qty != null ? `${fmtQty(qty)} ${coin}` : '—';
 
@@ -280,7 +286,7 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
                   <PlatformLogo platform={ex} size={12} />
                   <span className="font-mono font-bold" style={{ fontSize: 11, color: '#0e1626' }}>{venueLabel(ex)}{isDex ? ' (DEX)' : ''}</span>
                   <span className="font-mono tabular-nums" style={{ fontSize: 11, color: FLOW_COLOR[flow] }}>
-                    {fmtRate8h(fr, iv)}<span style={{ color: '#9aa5b3' }}>/8h</span>
+                    {fmtRateVal(fr)}<span style={{ color: '#9aa5b3' }}>{rateSuffix(iv)}</span>
                   </span>
                   {(() => { const u = venuePerpUrl(ex, coin); return u ? <PlatformLink href={u} label={venueLabel(ex)} compact className="ml-0.5" /> : null; })()}
                 </div>
