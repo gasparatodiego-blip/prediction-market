@@ -20,7 +20,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { ChevronLeft, RefreshCw } from 'lucide-react';
+import { ChevronLeft, RefreshCw, X } from 'lucide-react';
 import PlatformLogo from '@/components/PlatformLogo';
 import { Redacted } from '@/app/components/ui/Redacted';
 import InfoTip from '@/app/components/ui/InfoTip';
@@ -173,6 +173,10 @@ interface PlacementConfig {
 }
 const LS_KEY = (id: string) => `rewards-placement:${id}`;
 
+// A manually-tapped leg: the real executable book price the user placed on.
+type LegState = { price: number } | null;
+type LegKind = 'buy' | 'sell';
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function MarketDetailPage() {
   const params = useParams();
@@ -193,6 +197,13 @@ export default function MarketDetailPage() {
   const [side, setSide]         = useState<SideMode>('both');
   const [qty, setQty]           = useState<number>(1000);
   const [dist, setDist]         = useState<number>(1.75);
+
+  // ── tap-to-place: two INDEPENDENT legs (buy + sell coexist, never overwrite) ──
+  // A leg is null until the user taps a real book level. A non-null leg is a MANUAL
+  // placement that detaches from the distance slider (Phase 3). Per-leg USD qty is
+  // independent. Tapping a level BELOW mid sets buy; ABOVE mid sets sell.
+  const [legs, setLegs]     = useState<{ buy: LegState; sell: LegState }>({ buy: null, sell: null });
+  const [legQty, setLegQty] = useState<{ buy: number; sell: number }>({ buy: 1000, sell: 1000 });
   const [onFillYes, setOnFillYes] = useState<OnFill>('requote');
   const [onFillNo,  setOnFillNo]  = useState<OnFill>('requote');
   const [newsMode, setNewsMode] = useState<NewsMode>('withdraw');
@@ -299,9 +310,28 @@ export default function MarketDetailPage() {
     return estimateReward({ venue: mkt.venue, capital, twoSided, distanceCents: dist, market: toSnapshot(mkt), side: tradeSide });
   }, [mkt, capital, twoSided, dist, tradeSide]);
 
-  // user's planned order prices in the CHOSEN side's book (mid ± distance)
-  const userBid = mid != null && (side === 'both' || side === 'buy') ? Math.max(0.001, mid - dist / 100) : null;
-  const userAsk = mid != null && (side === 'both' || side === 'sell') ? Math.min(0.999, mid + dist / 100) : null;
+  // Slider-derived planned prices in the CHOSEN side's book (mid ± distance). These are the
+  // DEFAULT quotes; a manually-tapped leg overrides its side (Phase 3 detach).
+  const sliderBid = mid != null && (side === 'both' || side === 'buy')  ? Math.max(0.001, mid - dist / 100) : null;
+  const sliderAsk = mid != null && (side === 'both' || side === 'sell') ? Math.min(0.999, mid + dist / 100) : null;
+  // Effective quote per side: the tapped price when a leg is manually placed, else the slider.
+  const userBid = legs.buy  ? legs.buy.price  : sliderBid;
+  const userAsk = legs.sell ? legs.sell.price : sliderAsk;
+
+  // ── tap-to-place handlers ──
+  // A tapped BELOW-mid level sets the buy leg; ABOVE-mid sets the sell leg. The two never
+  // overwrite each other. Seed a freshly-placed leg's qty from the current Size-per-side.
+  const placeLeg = useCallback((kind: LegKind, price: number) => {
+    setLegs(prev => (prev[kind]?.price === price ? prev : { ...prev, [kind]: { price } }));
+    setLegQty(prev => (legs[kind] ? prev : { ...prev, [kind]: qty }));
+  }, [legs, qty]);
+  const removeLeg = useCallback((kind: LegKind) => setLegs(prev => ({ ...prev, [kind]: null })), []);
+  // Side gate: switching to a single side clears the disallowed leg (buy/sell can't coexist there).
+  const changeSide = useCallback((v: SideMode) => {
+    setSide(v);
+    if (v === 'buy')  setLegs(prev => ({ ...prev, sell: null }));
+    if (v === 'sell') setLegs(prev => ({ ...prev, buy: null }));
+  }, []);
 
   // free-tier detection (snapshot numbers redacted → estimate degrades to unlock)
   const isRedacted = !!mkt && mkt.midpoint == null && mkt.dailyPool == null;
@@ -389,7 +419,7 @@ export default function MarketDetailPage() {
                 <span className="font-body text-[11px] uppercase tracking-wide text-muted">Side</span>
                 <div className="grid grid-cols-3 gap-1.5 mt-1.5">
                   {([['both', 'Both sides'], ['buy', 'Buy only'], ['sell', 'Sell only']] as [SideMode, string][]).map(([v, label]) => (
-                    <button key={v} onClick={() => setSide(v)}
+                    <button key={v} onClick={() => changeSide(v)}
                       className={`font-body font-medium text-[12px] py-2 rounded-button border transition-colors
                         ${side === v ? 'border-mint-deep/45 bg-mint-tint text-mint-deep' : 'border-line bg-surface text-muted hover:text-ink-2'}`}>
                       {label}
@@ -454,6 +484,14 @@ export default function MarketDetailPage() {
               bookAge={bookAge} bookErr={bookErr} isRedacted={isRedacted}
               yesMid={yesMid} noMid={noMid} maxSpread={mkt.maxSpread}
               userBid={userBid} userAsk={userAsk} onRefresh={fetchBook} venue={mkt.venue}
+              side={side} onTap={placeLeg}
+              buyManual={legs.buy != null} sellManual={legs.sell != null}
+            />
+
+            {/* ── Order tickets: one per active leg (independent buy + sell) ── */}
+            <LegTickets
+              legs={legs} legQty={legQty} setLegQty={setLegQty} removeLeg={removeLeg}
+              tradeSide={tradeSide} mid={mid} maxSpread={mkt.maxSpread}
             />
 
             {/* ── E) Fill-handling choice — per-side when quoting both ── */}
@@ -662,14 +700,75 @@ function TradeSideToggle({
   );
 }
 
+// ── Order tickets — one panel per active (tapped) leg. Buy and sell are INDEPENDENT:
+// both can be live at once; each has its own USD qty. A leg exists only after the user
+// taps a real book level, so every ticket is a manual placement at a real executable price.
+function LegTickets({
+  legs, legQty, setLegQty, removeLeg, tradeSide, mid, maxSpread,
+}: {
+  legs: { buy: LegState; sell: LegState }; legQty: { buy: number; sell: number };
+  setLegQty: React.Dispatch<React.SetStateAction<{ buy: number; sell: number }>>;
+  removeLeg: (kind: LegKind) => void; tradeSide: SideKey; mid: number | null; maxSpread: number | null;
+}) {
+  const active: LegKind[] = [];
+  if (legs.buy)  active.push('buy');
+  if (legs.sell) active.push('sell');
+  if (active.length === 0) return null;
+  const bothActive = legs.buy != null && legs.sell != null;
+  const total = (legs.buy ? legQty.buy : 0) + (legs.sell ? legQty.sell : 0);
+  return (
+    <div className="rounded-card shadow-card bg-surface px-4 py-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="font-body font-medium text-sm text-ink-2">Your tapped orders</p>
+        {bothActive && <span className="font-body text-[11px] text-muted tabular-nums">Total on 2 sides {fmtUsd(total)}</span>}
+      </div>
+      {active.map(kind => {
+        const leg    = legs[kind]!;
+        const q      = legQty[kind];
+        const shares = leg.price > 0 ? q / leg.price : 0;
+        const distC  = mid != null ? Math.abs(leg.price - mid) * 100 : null;
+        const half   = maxSpread != null ? maxSpread / 2 : null;
+        const closer = distC != null && half != null ? distC <= half : null;
+        const isBuy  = kind === 'buy';
+        return (
+          <div key={kind} className={`rounded-button border px-3 py-2.5 ${isBuy ? 'border-mint-deep/35 bg-mint-tint/40' : 'border-coral-ink/35 bg-coral-tint/40'}`}>
+            <div className="flex items-center justify-between gap-2">
+              <span className={`font-body font-semibold text-[13px] ${isBuy ? 'text-mint-deep' : 'text-coral-ink'}`}>
+                {isBuy ? 'BUY' : 'SELL'} {tradeSide.toUpperCase()} @ {fmtC(leg.price)}
+              </span>
+              <button onClick={() => removeLeg(kind)} className="text-muted hover:text-ink-2 shrink-0" title="remove this leg" aria-label={`remove ${kind} leg`}><X size={14} /></button>
+            </div>
+            <div className="flex items-center gap-2 mt-2 flex-wrap">
+              <span className="font-body text-[11px] uppercase tracking-wide text-muted">qty</span>
+              <button onClick={() => setLegQty(p => ({ ...p, [kind]: Math.max(250, p[kind] - 250) }))}
+                className="w-7 h-7 rounded-button border border-line text-ink-2 font-mono leading-none">−</button>
+              <span className="font-mono text-[13px] text-ink-2 tabular-nums w-24 text-center">{fmtUsd(q)}</span>
+              <button onClick={() => setLegQty(p => ({ ...p, [kind]: p[kind] + 250 }))}
+                className="w-7 h-7 rounded-button border border-line text-ink-2 font-mono leading-none">+</button>
+              <span className="font-body text-[11px] text-muted tabular-nums ml-auto">≈ {fmtSh(shares)} shares</span>
+            </div>
+            {closer != null && (
+              <p className="font-body text-[10px] text-muted mt-1.5">
+                {closer ? 'closer to mid · more reward, more fill risk' : 'farther from mid · safer, less reward'}
+              </p>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── D) DUAL order book (YES | NO), chosen side highlighted, planned orders inline ─
 function DualOrderBook({
   yesBook, noBook, tradeSide, bookAge, bookErr, isRedacted, yesMid, noMid, maxSpread, userBid, userAsk, onRefresh, venue,
+  side, onTap, buyManual, sellManual,
 }: {
   yesBook: NormBook | null; noBook: NormBook | null; tradeSide: SideKey;
   bookAge: Date | null; bookErr: string | null; isRedacted: boolean;
   yesMid: number | null; noMid: number | null; maxSpread: number | null;
   userBid: number | null; userAsk: number | null; onRefresh: () => void; venue: Venue;
+  side: SideMode; onTap: (kind: LegKind, price: number) => void; buyManual: boolean; sellManual: boolean;
 }) {
   const anyBook = (yesBook?.hasBook || noBook?.hasBook) ?? false;
   return (
@@ -701,9 +800,11 @@ function DualOrderBook({
         <div className="px-3 py-3">
           <div className="flex gap-2 items-start">
             <SideColumn side="yes" book={yesBook} mid={yesMid} maxSpread={maxSpread}
-              chosen={tradeSide === 'yes'} userBid={userBid} userAsk={userAsk} />
+              chosen={tradeSide === 'yes'} userBid={userBid} userAsk={userAsk}
+              orderSide={side} onTap={onTap} buyManual={buyManual} sellManual={sellManual} />
             <SideColumn side="no" book={noBook} mid={noMid} maxSpread={maxSpread}
-              chosen={tradeSide === 'no'} userBid={userBid} userAsk={userAsk} />
+              chosen={tradeSide === 'no'} userBid={userBid} userAsk={userAsk}
+              orderSide={side} onTap={onTap} buyManual={buyManual} sellManual={sellManual} />
           </div>
           <p className="font-body text-[9px] text-muted/60 px-1 pt-2 leading-relaxed">
             Real executable prices from {venue === 'polymarket' ? 'each token’s own CLOB book (both fetched live; YES + NO mids ≈ 100¢, but each side’s in-band reward depth differs)' : 'the Kalshi book — bids are real, asks are the contract complement'}.
@@ -717,10 +818,11 @@ function DualOrderBook({
 
 // One side's book column. Chosen side is full-opacity + tinted; the other is dimmed.
 function SideColumn({
-  side, book, mid, maxSpread, chosen, userBid, userAsk,
+  side, book, mid, maxSpread, chosen, userBid, userAsk, orderSide, onTap, buyManual, sellManual,
 }: {
   side: SideKey; book: NormBook | null; mid: number | null; maxSpread: number | null;
   chosen: boolean; userBid: number | null; userAsk: number | null;
+  orderSide: SideMode; onTap: (kind: LegKind, price: number) => void; buyManual: boolean; sellManual: boolean;
 }) {
   const isYes    = side === 'yes';
   const asks     = (book?.asks ?? []).slice(0, 8);
@@ -733,6 +835,10 @@ function SideColumn({
   const askRows  = mergeUserRow(asks, chosen ? userAsk : null, 'sell', 'asc');
   const bidRows  = mergeUserRow(bids, chosen ? userBid : null, 'buy', 'desc');
   const hasBook  = book?.hasBook;
+  // Tappable only in the CHOSEN column, and only for the leg kind the Side control allows:
+  // asks → SELL (allowed when Both/Sell only); bids → BUY (allowed when Both/Buy only).
+  const sellTappable = chosen && (orderSide === 'both' || orderSide === 'sell');
+  const buyTappable  = chosen && (orderSide === 'both' || orderSide === 'buy');
   return (
     <div className={`flex-1 min-w-0 rounded-button border overflow-hidden transition-opacity
       ${chosen ? (isYes ? 'border-mint-deep/40' : 'border-coral-ink/40') : 'border-line opacity-50'}`}>
@@ -754,13 +860,17 @@ function SideColumn({
       ) : (
         <div className="px-1.5 py-1.5">
           <div className="flex flex-col-reverse">
-            {askRows.map((r, i) => <MiniLadder key={`a${i}`} row={r} maxSize={maxSize} mid={mid} halfBand={halfBand} kind="ask" />)}
+            {askRows.map((r, i) => <MiniLadder key={`a${i}`} row={r} maxSize={maxSize} mid={mid} halfBand={halfBand} kind="ask"
+              tappable={sellTappable} dimmed={chosen && !sellTappable} manual={sellManual}
+              onTap={sellTappable ? (p) => onTap('sell', p) : undefined} />)}
           </div>
           <div className="px-1 py-1 my-0.5 bg-bg-soft/70 border-y border-line/60 text-center">
             <span className="font-mono text-[10px] font-semibold text-ink tabular-nums">mid {mid != null ? fmtC(mid) : '—'}</span>
           </div>
           <div className="flex flex-col">
-            {bidRows.map((r, i) => <MiniLadder key={`b${i}`} row={r} maxSize={maxSize} mid={mid} halfBand={halfBand} kind="bid" />)}
+            {bidRows.map((r, i) => <MiniLadder key={`b${i}`} row={r} maxSize={maxSize} mid={mid} halfBand={halfBand} kind="bid"
+              tappable={buyTappable} dimmed={chosen && !buyTappable} manual={buyManual}
+              onTap={buyTappable ? (p) => onTap('buy', p) : undefined} />)}
           </div>
           {book?.asksComplement && (
             <p className="font-body text-[8px] text-muted/70 px-1 pt-1 leading-tight">asks = 100¢ − opposite-side bid (complement-derived)</p>
@@ -780,25 +890,40 @@ function mergeUserRow(levels: BookRow[], userPrice: number | null, kind: 'buy' |
   }
   return rows;
 }
-function MiniLadder({ row, maxSize, mid, halfBand, kind }: { row: LadderRow; maxSize: number; mid: number | null; halfBand: number | null; kind: 'ask' | 'bid' }) {
+function MiniLadder({ row, maxSize, mid, halfBand, kind, tappable, dimmed, manual, onTap }: {
+  row: LadderRow; maxSize: number; mid: number | null; halfBand: number | null; kind: 'ask' | 'bid';
+  tappable?: boolean; dimmed?: boolean; manual?: boolean; onTap?: (price: number) => void;
+}) {
   const isUser = !!row.user;
   const inBand = mid != null && halfBand != null ? Math.abs(row.price - mid) <= halfBand : false;
   const barPct = maxSize > 0 ? (row.size / maxSize) * 100 : 0;
   const priceCls = kind === 'ask' ? 'text-coral-ink' : 'text-mint-deep';
   const barCls   = kind === 'ask' ? 'bg-coral-tint/60' : 'bg-mint-tint/60';
   if (isUser) {
+    // The synthetic "your BUY/SELL" marker row. When the leg was manually tapped it carries
+    // a small "manuale" tag (Phase 3) so it's clearly not the slider-derived quote.
     return (
       <div className={`relative grid grid-cols-2 items-center text-[10px] font-mono px-1.5 py-[3px] rounded-sm my-[1px]
         ${row.user === 'buy' ? 'bg-mint-tint ring-1 ring-mint-deep/50' : 'bg-coral-tint ring-1 ring-coral-ink/50'}`}>
         <span className={`tabular-nums font-bold ${row.user === 'buy' ? 'text-mint-deep' : 'text-coral-ink'}`}>{fmtC(row.price)}</span>
-        <span className={`text-right font-bold text-[8px] ${row.user === 'buy' ? 'text-mint-deep' : 'text-coral-ink'}`}>
+        <span className={`text-right font-bold text-[8px] flex items-center justify-end gap-1 ${row.user === 'buy' ? 'text-mint-deep' : 'text-coral-ink'}`}>
+          {manual && <span className="px-1 rounded-sm bg-surface/70 border border-current/30 uppercase tracking-wide text-[7px] font-semibold">manuale</span>}
           {row.user === 'buy' ? 'your BUY' : 'your SELL'}
         </span>
       </div>
     );
   }
+  // Real book level. Tappable rows place a leg at this exact executable price (never mid).
+  const clickable = tappable && !!onTap;
   return (
-    <div className="relative grid grid-cols-2 items-center text-[10px] font-mono px-1.5 py-[2px]">
+    <div
+      onClick={clickable ? () => onTap!(row.price) : undefined}
+      role={clickable ? 'button' : undefined}
+      title={clickable ? `Place ${kind === 'ask' ? 'SELL' : 'BUY'} at ${fmtC(row.price)}` : undefined}
+      className={`relative grid grid-cols-2 items-center text-[10px] font-mono px-1.5 py-[2px] rounded-sm
+        ${clickable ? 'cursor-pointer hover:bg-bg-soft active:bg-bg-soft/80' : ''}
+        ${dimmed ? 'opacity-30 pointer-events-none' : ''}`}
+    >
       <span className={`absolute inset-y-0 right-0 ${barCls}`} style={{ width: `${barPct}%`, pointerEvents: 'none' }} />
       <span className={`relative tabular-nums ${priceCls} ${inBand ? 'font-semibold' : 'opacity-70'}`}>{fmtC(row.price)}</span>
       <span className="relative text-right text-muted tabular-nums">{fmtSh(row.size)}</span>
