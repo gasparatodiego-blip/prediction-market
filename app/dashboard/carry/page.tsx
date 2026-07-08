@@ -1,59 +1,25 @@
 'use client';
 
 import { useEffect, useState, type ReactNode } from 'react';
+import Link from 'next/link';
 import { RefreshCw, TrendingDown } from 'lucide-react';
 import Eyebrow from '@/app/components/ui/Eyebrow';
 import SectionHeading from '@/app/components/ui/SectionHeading';
 import StatCard from '@/app/components/ui/StatCard';
 import BlipRow from '@/app/components/ui/BlipRow';
-import EdgeChip, { type EdgeChipVariant } from '@/app/components/ui/EdgeChip';
+import EdgeChip from '@/app/components/ui/EdgeChip';
 import PlatformLogo from '@/components/PlatformLogo';
 import { Redacted } from '@/app/components/ui/Redacted';
 import { PlatformLink } from '@/app/components/ui/PlatformLink';
 import { VerifyBadge } from '@/app/components/ui/VerifyBadge';
 import { venueFutureUrl } from '@/lib/platform-links';
+import { type Contract, chipVariant } from '@/lib/carry';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-// Derived basis/annualized/capacity fields are null on free tier (server-side
-// redaction, lib/paid-gating.ts). Raw spot/future/bid/ask prices, volume, and
-// descriptive fields stay real for everyone — see REDACTION_MAP.carry.
-
-interface Contract {
-  asset:                   string;
-  exchange:                string;
-  venueKey:                string;
-  contract:                string;
-  expiry:                  string;
-  daysToExpiry:            number;
-  spot:                    number;
-  future:                  number;
-  futureLast:              number | null;
-  spotBid:                 number | null;
-  spotAsk:                 number | null;
-  futureBid:               number | null;
-  futureAsk:               number | null;
-  indicativeBasisPct:      number | null;
-  executableBasisPct:      number | null;
-  basis:                   number | null;
-  grossAnnualized:         number | null;
-  grossAnnualizedExec:     number | null;
-  fee:                     number;
-  netAnnualizedIndicative: number | null;
-  netAnnualizedExecutable: number | null;
-  netAnnualized:           number | null;
-  vol24Usd:                number;
-  oiUsd:                   number | null;
-  capacityUsd:             number | null;
-  capacitySource:          'book' | 'proxy';
-  tier:                    string;
-  thinFlag:                boolean;
-  coinMargined:            boolean;
-  coinMarginedNote:        string | null;
-  bidSpreadPct:            number | null;
-  // prose headline embeds the exact netAnnualizedExecutable % — redacted
-  // together with the numeric fields (server-side, lib/paid-gating.ts)
-  verdict:                 string | null;
-}
+// Contract + the cashable/speculative verdict (chipVariant) live in lib/carry.ts
+// so the list and the operation page classify a row identically. Raw spot/future/
+// bid/ask prices, volume, fee, and descriptive fields stay real for everyone —
+// derived basis/annualized/capacity are null on free tier (REDACTION_MAP.carry).
 
 interface BackwardContract {
   asset:               string;
@@ -131,27 +97,6 @@ function coinEmoji(asset: string): string {
   if (asset === 'BNB') return '◆';
   if (asset === 'SOL') return '◎';
   return '○';
-}
-
-// Real executable book depth (within the fetcher's slip band) at/above this size is a
-// genuine fill guarantee → cashable. Below it, a book-depth row stays speculative.
-const CASHABLE_MIN_DEPTH_USD = 100_000;
-
-function chipVariant(c: Contract): EdgeChipVariant {
-  if (c.executableBasisPct == null) return 'signal'; // redacted — don't overclaim
-  if (c.executableBasisPct <= 0) return 'signal';
-  // Coin-margined return drifts with spot — never a clean locked-USD cashable.
-  if (c.coinMargined) return 'speculative';
-  // Honest liquidity gate. Capacity provenance decides which signal we trust:
-  //  • 'book'  → capacityUsd IS measured order-book depth we can fill into. A row is
-  //    cashable when that real depth clears the floor, REGARDLESS of 24h turnover
-  //    (turnover ≠ resting depth). A thin real book (< floor) stays speculative.
-  //  • 'proxy' → no real book-walk; the vol/OI turnover tier is the best liquidity
-  //    signal we have, so keep the existing thinFlag gate unchanged.
-  if (c.capacitySource === 'book') {
-    return (c.capacityUsd ?? 0) >= CASHABLE_MIN_DEPTH_USD ? 'cashable' : 'speculative';
-  }
-  return c.thinFlag ? 'speculative' : 'cashable';
 }
 
 // ── Skeletons ─────────────────────────────────────────────────────────────────
@@ -267,6 +212,17 @@ function ContangoCard({ c }: { c: Contract }) {
             {c.coinMarginedNote ? ` ${c.coinMarginedNote}` : ''}
           </div>
         )}
+
+        {/* Operation guide → — routes to the carry order page (funding-arb style) */}
+        <div className="flex items-center justify-end pt-0.5">
+          <Link
+            href={`/dashboard/carry/${c.venueKey}-${c.contract}`}
+            className="font-body rounded-button transition-colors duration-100 hover:text-ink-2"
+            style={{ fontSize: 11, padding: '8px 12px', border: '1px solid #e6eaef', color: '#6b7787' }}
+          >
+            Operation guide →
+          </Link>
+        </div>
       </div>
     </div>
   );

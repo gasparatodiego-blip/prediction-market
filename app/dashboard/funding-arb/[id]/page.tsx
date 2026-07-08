@@ -7,6 +7,7 @@ import { Redacted, RedactedPanel } from '@/app/components/ui/Redacted';
 import { PlatformLink } from '@/app/components/ui/PlatformLink';
 import { venuePerpUrl } from '@/lib/platform-links';
 import { venueFeePct } from '@/lib/funding-math';
+import { fmtMoney as fmtUsd, fmtQty, fmtCapDisplay, formatPayback } from '@/lib/order-format';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -74,30 +75,6 @@ function venueLabel(e: string): string {
   return e.charAt(0).toUpperCase() + e.slice(1).toLowerCase();
 }
 
-function fmtUsd(n: number): string {
-  const abs  = Math.abs(n);
-  const sign = n < 0 ? '-' : '';
-  if (abs >= 10_000) return `${sign}$${(abs / 1000).toFixed(1)}k`;
-  if (abs >= 100)    return `${sign}$${abs.toFixed(0)}`;
-  return `${sign}$${abs.toFixed(2)}`;
-}
-
-function fmtQty(n: number): string {
-  if (n >= 1_000) return n.toFixed(2);
-  if (n >= 1)     return n.toFixed(4);
-  return n.toFixed(6);
-}
-
-// Payback formatter — mirror of the list page's single copy. Under 24h → "12h";
-// ≥24h → "2d 10h" (drops hours when exact → "3d"); missing/null → "—".
-function formatPayback(days: number | null | undefined): string {
-  if (days == null || !isFinite(days)) return '—';
-  const h = Math.round(days * 24);
-  if (h < 24) return `${h}h`;
-  const d = Math.floor(h / 24), r = h % 24;
-  return r === 0 ? `${d}d` : `${d}d ${r}h`;
-}
-
 // Native per-leg funding rate + its own interval suffix, so the rate basis matches
 // the leg's real cadence. DISPLAY ONLY — never feeds math. Mirror of the list page.
 function fmtRateVal(rateNative: number): string {
@@ -106,15 +83,6 @@ function fmtRateVal(rateNative: number): string {
 function rateSuffix(intervalHours: number | undefined): string {
   const iv = intervalHours && intervalHours > 0 ? intervalHours : 8;
   return `/${iv}h`;
-}
-
-// Honest capacity display — mirror of the list page. Below the $500k ladder top
-// the value is a real order-book estimate → "~$N". At/above the top rung the
-// book is deeper than we measure → a truthful floor "$500k+".
-const SIZE_LADDER_TOP_RUNG = 500_000;
-function fmtCapDisplay(n: number): string {
-  if (n >= SIZE_LADDER_TOP_RUNG) return `$${Math.round(SIZE_LADDER_TOP_RUNG / 1_000)}k+`;
-  return `~$${Math.round(n).toLocaleString('en-US')}`;
 }
 
 // Cash-flow direction of one leg from the funding-rate SIGN (not the trade side).
