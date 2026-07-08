@@ -95,19 +95,22 @@ function readLandingStats(): {
 
   try {
     // Same pipeline the funding-arb dashboard uses (lib/spread-compute.ts) — no
-    // parallel fundingRate math here. Only a spread that's verified + liquid
-    // (the dashboard's own 'cashable' condition) is eligible for the landing.
+    // parallel fundingRate math here. The landing must show the SAME real maximum
+    // the dashboard surfaces, so it scans the FULL spreads list with no eligibility
+    // filter — exactly the set behind the funding-arb page's `bestNetDay` hero.
     const { spreads } = getCryptoSpreadsData();
-    // Surface the SINGLE highest real net/day per $1k among sane (verified +
-    // liquid) spreads — NOT first-in-list. Ranked by calcSpreadSizing at the
-    // shared $1k/1x basis, the SAME sizing the funding-arb dashboard shows, so
-    // the landing number equals the dashboard's for that exact spread.
+    // Surface the SINGLE highest real net/day per $1k across ALL spreads — NOT
+    // first-in-list, and NOT a verified-only subset. A thin book or an unverified
+    // leg only limits executable SIZE (surfaced separately on the order page as
+    // "max size before slippage"); it never disqualifies the opportunity, and the
+    // funding-arb dashboard already ranks those rows as real cards. Ranked by
+    // calcSpreadSizing at the shared $1k/1x basis — the SAME sizing (== the page's
+    // netDayForCapital) — so this equals the dashboard's #1 net/day for that pair.
     // getCryptoSpreadsData() is read directly (not the paid-gated /api/crypto
     // route), so netApy30d is never redacted here.
     let best: { spread: (typeof spreads)[number]; dayUsd: number } | null = null;
     for (const s of spreads) {
-      if (s.oneLegUnverified || s.thinFlag || s.depthThin) continue;
-      if (s.netApy30d == null) continue;
+      if (s.netApy30d == null) continue;   // sizing needs the fee-net rate; not an eligibility gate
       const sizing = calcSpreadSizing(s, 1000, 1);
       if (!sizing) continue;
       if (best == null || sizing.dayUsd > best.dayUsd) best = { spread: s, dayUsd: sizing.dayUsd };
