@@ -16,7 +16,7 @@ import PlatformLogo from '@/components/PlatformLogo';
 import { Redacted, RedactedPanel } from '@/app/components/ui/Redacted';
 import { PlatformLink } from '@/app/components/ui/PlatformLink';
 import { VerifyBadge } from '@/app/components/ui/VerifyBadge';
-import { venueFutureUrl } from '@/lib/platform-links';
+import { venueFutureUrl, venueSpotUrl } from '@/lib/platform-links';
 import { fmtCapDisplay } from '@/lib/order-format';
 import { type Contract, chipVariant, nonCashableReason } from '@/lib/carry';
 
@@ -79,6 +79,9 @@ export default function CarryOperationPage({ params }: { params: { id: string } 
   const spotPx   = c?.spotAsk  ?? c?.spot   ?? null;
   const futurePx = c?.futureBid ?? c?.future ?? null;
   const venueUrl = c ? venueFutureUrl(c.venueKey || c.exchange, c.contract) : null;
+  // Spot leg is bought on Binance for every venue (agent19-basis prices spot off
+  // Binance) — real spot URL for the buy leg.
+  const spotUrl = c ? venueSpotUrl('binance', c.asset) : null;
   // Cashable/speculative verdict + its honest reason — same SSOT as the list
   // (lib/carry). On free tier the edge is redacted → variant is 'signal'.
   const variant = c ? chipVariant(c) : 'signal';
@@ -131,7 +134,6 @@ export default function CarryOperationPage({ params }: { params: { id: string } 
                 <PlatformLogo platform={c.exchange} size={12} />
                 <span className="font-mono font-bold" style={{ fontSize: 11, color: '#0e1626' }}>{venueLabel(c.exchange)}</span>
                 <span className="font-mono tabular-nums" style={{ fontSize: 11, color: '#0e1626' }}>{futurePx != null ? fmtPrice(futurePx) : '—'}</span>
-                {venueUrl && <PlatformLink href={venueUrl} label={c.exchange} compact className="ml-0.5" />}
               </div>
             </div>
 
@@ -195,6 +197,24 @@ export default function CarryOperationPage({ params }: { params: { id: string } 
               <li>Hold both legs to expiry ({c.expiry}) — the future converges to spot and you keep the basis locked at entry.</li>
               {c.coinMargined && <li className="text-gold">This contract settles in {c.asset}, not USD — your USD return drifts with spot. Not a clean locked-USD yield.</li>}
             </ol>
+
+            {/* Automatic venue action buttons — open the REAL venue URL for each leg,
+                reusing the shared PlatformLink (non-compact = labeled button), the same
+                component the funding-arb / prediction order pages use. */}
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-3 pt-3" style={{ borderTop: '1px solid rgba(15,118,110,0.15)' }}>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="font-body" style={{ fontSize: 10, color: '#6b7787' }}>Buy spot on Binance</span>
+                {spotUrl
+                  ? <PlatformLink href={spotUrl} label={`Binance ${c.asset} spot`} />
+                  : <span className="font-body" style={{ fontSize: 10, color: '#9aa5b3' }}>link unavailable</span>}
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="font-body" style={{ fontSize: 10, color: '#6b7787' }}>Short {c.contract} on {venueLabel(c.exchange)}</span>
+                {venueUrl
+                  ? <PlatformLink href={venueUrl} label={`${venueLabel(c.exchange)} ${c.contract}`} />
+                  : <span className="font-body" style={{ fontSize: 10, color: '#9aa5b3' }}>link unavailable</span>}
+              </span>
+            </div>
           </div>
 
           {/* ── GATED VERDICT ────────────────────────────────────────────────── */}
