@@ -309,25 +309,47 @@ export default function FundingArbDetailPage({ params }: { params: { id: string 
                   <Redacted value={spread.breakevenDays}>{v => formatPayback(v)}</Redacted>
                 </span>
               </span>
-              <span style={{ color: '#cbd3dc' }}>·</span>
-              <span>
-                max{' '}
-                <span style={{ color: '#0e1626' }}>
-                  {spread.greenCapacityUsd == null
-                    ? (isRedacted
-                        ? <Redacted value={spread.greenCapacityUsd}>{() => null}</Redacted>
-                        : <span style={{ color: '#9aa5b3' }}>n/a</span>)
-                    : spread.greenCapacityUsd > 0
-                      ? fmtCapDisplay(spread.greenCapacityUsd)
-                      : <span style={{ color: '#b45309' }}>too thin</span>}
-                </span>
-              </span>
             </div>
 
             {data.staleMinutes != null && data.staleMinutes > 5 && (
               <div className="font-body mt-2" style={{ fontSize: 9, color: '#b45309' }}>
                 Data is {data.staleMinutes}m old — rates may have shifted.
               </div>
+            )}
+          </div>
+
+          {/* ── MAX EXECUTABLE SIZE ─────────────────────────────────────────────
+              The size limit belongs here, on the order page. Value is the real
+              slip-walked book depth (greenCapacityUsd): >0 = green capacity from
+              the live order book, 0 = book measured but too thin, null = book
+              unavailable for ≥1 leg. Never OI-based, never fabricated, never
+              $0-as-real — an unmeasured book shows an honest fallback, not a
+              number. Free tier: redacted together with the derived-edge set. */}
+          <div className="rounded-card mb-4" style={{ background: '#fff', border: '1px solid #e6eaef', padding: '12px 14px' }}>
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-body" style={{ fontSize: 11, color: '#6b7787' }}>
+                Max size before slippage on this pair
+              </span>
+              <span className="font-mono font-bold tabular-nums shrink-0" style={{ fontSize: 14 }}>
+                {isRedacted ? (
+                  <Redacted value={spread.greenCapacityUsd}>{() => null}</Redacted>
+                ) : spread.greenCapacityUsd == null ? (
+                  <span className="font-body font-normal" style={{ fontSize: 11, color: '#9aa5b3' }}>not available for this book</span>
+                ) : spread.greenCapacityUsd > 0 ? (
+                  <span style={{ color: '#0e1626' }}>{fmtCapDisplay(spread.greenCapacityUsd)}</span>
+                ) : (
+                  <span className="font-body font-normal" style={{ fontSize: 11, color: '#b45309' }}>too thin to size</span>
+                )}
+              </span>
+            </div>
+            {!isRedacted && (
+              <p className="font-body mt-1 leading-snug" style={{ fontSize: 10, color: '#9aa5b3' }}>
+                {spread.greenCapacityUsd == null
+                  ? 'The order book for this pair could not be measured right now — start with a small size and scale in.'
+                  : spread.greenCapacityUsd === 0
+                    ? 'The book was measured but is too thin to absorb size — slippage would eat the funding at every size.'
+                    : 'The largest amount you can put in before slippage eats the yield — walked from the live order book, never a guess.'}
+              </p>
             )}
           </div>
 
