@@ -90,6 +90,15 @@ const HOURLY_SPIKE_ANN   = 115;          // %/yr — extreme threshold for hourl
 // real settled value is fresher than SETTLED_FRESHNESS_MULT funding intervals.
 const SETTLED_FRESHNESS_MULT = 2;   // 2× the venue's own funding interval; raise for laxer, lower for stricter
 
+// Book-walk depth now runs over ALL emitted pairs (not just fullyConfirmed ones), so an
+// unverified-but-real pair still gets a slip-verified capacity instead of a coarse OI/vol
+// proxy. Fetches are de-duped per (coin,venue), so the real count is bounded by
+// coins×venues (~360 max today, ~224 in practice). MAX_DEPTH_BOOKS is a runaway backstop
+// only: if the universe ever grows past it, we walk the HIGHEST-ROI pairs' books first and
+// LOG the truncation (never a silent cap). Per-host request concurrency is already bounded
+// by the shared rate limiter (rlGetJson), so this is a total-count guard, not a throttle.
+const MAX_DEPTH_BOOKS = 320;
+
 // Slip-curve sizing
 const SIZE_LADDER         = [500, 1_000, 2_500, 5_000, 10_000, 25_000, 50_000, 100_000, 250_000, 500_000];
 const SLIPPAGE_AMORT_DAYS = 14;          // amortize round-trip entry+exit cost over 14 days
@@ -579,14 +588,23 @@ function computeSlipCurve(shortBook, longBook, grossApy) {
 // Enrich confirmed opps in place: compute slipCurve[], greenCapacityUsd,
 // slipCurveMaxFillable. capacityUsd = greenCapacityUsd (honest green-only capacity).
 async function enrichWithDepth(opps) {
-  const pairs = new Set();
-  for (const opp of opps) {
+  // Collect the unique (coin,venue) books to walk, adding them in DESCENDING pair-ROI
+  // order so that if the MAX_DEPTH_BOOKS backstop is ever hit, the most attractive
+  // pairs' books are fetched first (never a silent drop of the best opportunities).
+  const ranked = [...opps].sort((a, b) => (b.annualizedROI ?? 0) - (a.annualizedROI ?? 0));
+  const pairs  = new Set();
+  let requested = 0, capped = 0;
+  for (const opp of ranked) {
     const parts   = opp.id.split('-');
     const coin    = parts[1];
-    const shortEx = parts[2];
-    const longEx  = parts[3];
-    if (DEPTH_FETCHERS[shortEx]) pairs.add(`${coin}|${shortEx}`);
-    if (DEPTH_FETCHERS[longEx])  pairs.add(`${coin}|${longEx}`);
+    for (const ex of [parts[2], parts[3]]) {
+      if (!DEPTH_FETCHERS[ex]) continue;
+      const key = `${coin}|${ex}`;
+      if (pairs.has(key)) continue;
+      requested++;
+      if (pairs.size >= MAX_DEPTH_BOOKS) { capped++; continue; }
+      pairs.add(key);
+    }
   }
 
   const bookMap = {};
@@ -596,7 +614,8 @@ async function enrichWithDepth(opps) {
   }));
 
   const ok = Object.values(bookMap).filter(v => v !== null).length;
-  console.log(`[funding-depth] fetched ${pairs.size} pairs → ${ok} ok, ${pairs.size - ok} failed`);
+  console.log(`[funding-depth] fetched ${pairs.size} books → ${ok} ok, ${pairs.size - ok} failed`
+    + (capped ? ` · CAPPED: ${capped}/${requested} books skipped (MAX_DEPTH_BOOKS=${MAX_DEPTH_BOOKS}, walked top-ROI first)` : ''));
 
   for (const opp of opps) {
     const parts     = opp.id.split('-');
@@ -606,26 +625,38 @@ async function enrichWithDepth(opps) {
     const shortBook = bookMap[`${coin}|${shortEx}`] ?? null;
     const longBook  = bookMap[`${coin}|${longEx}`]  ?? null;
 
-    const grossApy  = opp.grossROI ?? opp.annualizedROI ?? 0;
-    const slipCurve = computeSlipCurve(shortBook, longBook, grossApy);
-
-    let slipCurveMaxFillable = null;
-    let greenCapacityUsd     = 0;
-    for (const pt of slipCurve) {
-      if (pt.fillable) slipCurveMaxFillable = pt.size;
-      if (pt.state === 'GREEN') greenCapacityUsd = pt.size;
+    // GUARD: a real slip-verified capacity requires BOTH legs' books. When either book
+    // is missing (venue has no depth fetcher, endpoint 403'd/timed out, or it was
+    // skipped by the cap) we CANNOT walk this pair — so we must NOT overwrite capacityUsd
+    // with a fabricated $0 green (that would read as "walked the book, found it thin").
+    // Instead we KEEP the OI/volume proxy capacityUsd that crossExchangeSpread already
+    // set, and mark greenCapacity unknown (null, not 0). This is the honest distinction
+    // between "walked → thin" and "could not walk → unknown".
+    if (shortBook && longBook) {
+      const grossApy  = opp.grossROI ?? opp.annualizedROI ?? 0;
+      const slipCurve = computeSlipCurve(shortBook, longBook, grossApy);
+      let slipCurveMaxFillable = null;
+      let greenCapacityUsd     = 0;
+      for (const pt of slipCurve) {
+        if (pt.fillable) slipCurveMaxFillable = pt.size;
+        if (pt.state === 'GREEN') greenCapacityUsd = pt.size;
+      }
+      opp.slipCurve            = slipCurve;
+      opp.greenCapacityUsd     = greenCapacityUsd;
+      opp.slipCurveMaxFillable = slipCurveMaxFillable;
+      opp.capacityUsd          = greenCapacityUsd;   // slip-verified supersedes the proxy
+      opp.depthThin            = greenCapacityUsd === 0;
+      opp.depthNote            = greenCapacityUsd === 0
+        ? 'THIN · slippage > 30% of yield at all sizes'
+        : null;
+    } else {
+      // Book unavailable for ≥1 leg → keep the proxy capacityUsd untouched, green unknown.
+      opp.slipCurve            = null;
+      opp.greenCapacityUsd     = null;
+      opp.slipCurveMaxFillable = null;
+      opp.depthThin            = false;   // not "thin" — we simply couldn't measure it
+      opp.depthNote            = 'depth unavailable — capacity is an OI/volume estimate';
     }
-
-    opp.slipCurve            = slipCurve;
-    opp.greenCapacityUsd     = greenCapacityUsd;
-    opp.slipCurveMaxFillable = slipCurveMaxFillable;
-    opp.capacityUsd          = greenCapacityUsd;
-    opp.depthThin            = greenCapacityUsd === 0;
-    opp.depthNote            = greenCapacityUsd === 0
-      ? (shortBook && longBook
-          ? 'THIN · slippage > 30% of yield at all sizes'
-          : 'THIN · depth unavailable')
-      : null;
   }
 }
 
@@ -1586,15 +1617,19 @@ async function run() {
 
     const allOpps = crossExchangeSpread(data.futures || {}, historyCache || {});
 
-    // Enrich confirmed opps with real order-book depth, cap capacityUsd, set depthThin
-    const confirmedOpps = allOpps.filter(o => o.fullyConfirmed);
-    if (confirmedOpps.length > 0) {
-      await enrichWithDepth(confirmedOpps);
+    // Enrich ALL emitted pairs with real order-book depth (not just fullyConfirmed
+    // ones): an unverified-but-real pair still gets a slip-verified capacity where its
+    // books are fetchable, instead of a coarse OI/vol proxy or nothing. enrichWithDepth
+    // de-dupes book fetches per (coin,venue) and only overwrites capacityUsd when BOTH
+    // legs' books were walked — otherwise the proxy is preserved.
+    if (allOpps.length > 0) {
+      await enrichWithDepth(allOpps);
     }
 
+    const confirmedOpps = allOpps.filter(o => o.fullyConfirmed);
     const spikedCount = allOpps.filter(o => o.spikeFlag || !o.allConfirmed).length;
-    const thinCount   = confirmedOpps.filter(o => o.depthThin).length;
-    console.log(`[funding] ${allOpps.length} pairs ≥${THRESHOLD_APY}%/yr — ${spikedCount} spike/unconfirmed — ${thinCount}/${confirmedOpps.length} confirmed THIN (green=$0):`);
+    const thinCount   = allOpps.filter(o => o.depthThin).length;
+    console.log(`[funding] ${allOpps.length} pairs ≥${THRESHOLD_APY}%/yr — ${spikedCount} spike/unconfirmed — ${confirmedOpps.length} fullyConfirmed — ${thinCount}/${allOpps.length} walked-THIN (green=$0):`);
     for (const o of allOpps.slice(0, 10)) {
       const spikeMark = (o.spikeFlag || !o.allConfirmed) ? ' ⚠SPIKE' : '';
       const predNote  = o.spikeFlag ? ` [pred:${o.predictedGrossApy}%]` : '';
