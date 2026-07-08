@@ -34,6 +34,10 @@ const fs   = require('fs');
 const path = require('path');
 const { isRwaKey } = require('../lib/rwa');
 const { isDeadContract, buildPeerMarks } = require('../lib/contract-liveness');
+// Real, SOURCED per-leg fee schedules + the single perp-spot money model. We reuse the
+// estimator's exact fee functions so the venue we CROWN here nets out identically to what
+// the request-time estimator (lib/spread-compute) later shows — one source of truth.
+const { venueFeePct, spotVenueFeePct, USDC_M_FEE_PCT } = require('../lib/funding-math');
 let appendSnapshot = null;
 try { ({ appendSnapshot } = require('../lib/history-logger')); } catch { /* optional */ }
 
@@ -44,11 +48,27 @@ const PERSIST_HISTORY    = path.join(__dirname, '..', 'data', 'funding-history-1
 const INTERVAL_MS        = 60_000;
 const MAX_SOURCE_AGE_MS  = 10 * 60_000;   // treat exchange-prices as usable within 10 min
 
-// Suggested spot venue priority. A coin's short leg can be on any perp venue, but the
-// spot leg should sit on a deep, liquid major. We suggest the first of these that we can
-// CONFIRM lists the coin (from the spot `exchanges` map agent10 already fetches); if none
-// confirm it, we still suggest Binance but flag spotVenueVerified=false ("verify listing").
+// Spot venue candidates. A coin's short leg can be on any perp venue, but the spot leg
+// should sit on a deep, liquid major with a SOURCED taker fee. Every venue here is in the
+// estimator's sourced SPOT_FEE_PCT table (binance/okx/bybit 0.10%, gateio 0.20%), so we
+// never auto-pick a venue whose spot fee we'd have to assume. Among those that CONFIRM a
+// listing (from the spot `exchanges` map agent10 already fetches) we pick the CHEAPEST
+// taker (ties broken by this order = liquidity preference). If none confirm it, we still
+// suggest Binance but flag spotVenueVerified=false ("verify listing").
 const SPOT_VENUE_PRIORITY = ['binance', 'okx', 'bybit', 'gateio'];
+
+// Perp venue NAMES with a REAL, SOURCED taker fee in lib/funding-math (venueFeePct's
+// explicit branches + the individually-sourced cex trio + the USDC-M schedule). A venue
+// NOT in this set falls through venueFeePct() to the generic cex ASSUMPTION (0.04%). The
+// honest engine forbids crowning a "best venue" on a fee we didn't source, so such venues
+// are excluded from the max-net auto-selection (they can still be shorted manually — we
+// just won't claim they're optimal on an assumed fee).
+const PERP_FEE_SOURCED = new Set([
+  'binance', 'bybit', 'okx',                                   // cex trio (VENUE_FEE_PCT.cex, each sourced)
+  'hyperliquid', 'dydx', 'aster', 'lighter', 'extended',       // explicit venueFeePct() branches
+  'pacifica', 'apex', 'paradex', 'edgex', 'grvt', 'gateio', 'bitget',
+  ...Object.keys(USDC_M_FEE_PCT),                              // USDC-margined perps (sourced schedule)
+]);
 
 function readJsonSafe(file) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; }
@@ -87,16 +107,25 @@ function trailingPositive(persist, venue, coin) {
   return n;
 }
 
-// Which major spot venue to suggest for `coin`. Prefer a CONFIRMED listing in the spot
-// map; fall back to Binance (suggested, unverified) so the row still renders honestly.
+// Which major spot venue to suggest for `coin`. Among sourced-fee venues that CONFIRM a
+// listing, pick the CHEAPEST taker (ties → SPOT_VENUE_PRIORITY order for liquidity); fall
+// back to Binance (suggested, unverified) so the row still renders honestly. Returns the
+// sourced spotFeePct alongside so the caller nets both legs on real fees.
 function suggestSpotVenue(spot, coin) {
-  for (const v of SPOT_VENUE_PRIORITY) {
+  const listed = SPOT_VENUE_PRIORITY.filter(v => {
     const listing = (spot && spot[v]) || {};
-    if (listing[coin] && typeof listing[coin].price === 'number') {
-      return { spotVenueSuggested: v, spotVenueVerified: true };
-    }
+    return listing[coin] && typeof listing[coin].price === 'number';
+  });
+  if (listed.length) {
+    listed.sort((a, b) => {
+      const fa = spotVenueFeePct(a), fb = spotVenueFeePct(b);
+      if (fa !== fb) return fa - fb;                                   // cheapest taker wins
+      return SPOT_VENUE_PRIORITY.indexOf(a) - SPOT_VENUE_PRIORITY.indexOf(b);
+    });
+    const v = listed[0];
+    return { spotVenueSuggested: v, spotVenueVerified: true, spotFeePct: spotVenueFeePct(v) };
   }
-  return { spotVenueSuggested: 'binance', spotVenueVerified: false };
+  return { spotVenueSuggested: 'binance', spotVenueVerified: false, spotFeePct: spotVenueFeePct('binance') };
 }
 
 function computeRows(raw, persist) {
@@ -104,8 +133,11 @@ function computeRows(raw, persist) {
   const spot    = (raw && raw.exchanges) || {};
   const sourceAt = typeof raw.fetchedAt === 'number' ? raw.fetchedAt : null;
 
-  // coin → best positive short candidate across all perp venues
-  const best = {};   // coin → { shortVenue, fundingRateNative, intervalH, fundingPct8h, markPrice, vol24hUsd }
+  // coin → array of QUALIFIED short-perp candidates (positive funding, guards passed,
+  // SOURCED fee). We collect all, then per coin pick the one that maximizes NET $/day after
+  // real fees — not the one with the highest raw funding. A slightly lower-funding venue on
+  // a zero/low taker fee can net more per day than a fee-heavy venue with a hair more funding.
+  const candidates = {};
   const now       = Date.now();
   const peerMarks = buildPeerMarks(futures);   // coin → [markPrice, …] across venues (rule c)
   for (const [venue, coins] of Object.entries(futures)) {
@@ -113,6 +145,12 @@ function computeRows(raw, persist) {
       if (isRwaKey(coin)) continue;                     // commodities handled elsewhere (observation-only)
       const fr = d && d.fundingRate;
       if (typeof fr !== 'number' || !isFinite(fr) || fr <= 0) continue;  // shorts only collect on POSITIVE funding
+      // Honest-engine: only auto-select venues whose taker fee is genuinely SOURCED. A venue
+      // absent from the sourced table would net out on an ASSUMED cex fee — never crown it.
+      if (!PERP_FEE_SOURCED.has(String(venue).toLowerCase())) {
+        log(`excluded ${venue}:${coin} fee-unknown (no sourced taker fee — not auto-selected)`);
+        continue;
+      }
       // Dead/illiquid/cap-pinned contract guard (shared with agent15). A positive cap-pin
       // would otherwise render as a phantom perp-spot HARVEST card. Ring buffer = durable
       // settled mirror. Excluded here, logged once per cycle — never silently dropped.
@@ -124,40 +162,76 @@ function computeRows(raw, persist) {
       }
       const intervalH  = typeof d.fundingIntervalHours === 'number' && d.fundingIntervalHours > 0 ? d.fundingIntervalHours : 8;
       const fundingPct8h = toPct8h(fr, intervalH);
-      const prev = best[coin];
-      if (!prev || fundingPct8h > prev.fundingPct8h) {
-        best[coin] = {
-          shortVenue:        venue,
-          fundingRateNative: fr,
-          intervalH,
-          fundingPct8h,
-          markPrice:         typeof d.markPrice === 'number' ? d.markPrice : null,
-          vol24hUsd:         typeof d.vol24hUsd === 'number' ? d.vol24hUsd : null,
-        };
-      }
+      (candidates[coin] || (candidates[coin] = [])).push({
+        shortVenue:        venue,
+        fundingRateNative: fr,
+        intervalH,
+        fundingPct8h,
+        perpFeePct:        venueFeePct(venue),                          // sourced short-leg taker %
+        markPrice:         typeof d.markPrice === 'number' ? d.markPrice : null,
+        vol24hUsd:         typeof d.vol24hUsd === 'number' ? d.vol24hUsd : null,
+      });
     }
   }
 
   const updatedAt = Date.now();
-  const rows = Object.entries(best).map(([coin, b]) => {
+  const rows = Object.entries(candidates).map(([coin, cands]) => {
+    // Spot leg is chosen independently (cheapest sourced taker that lists the coin); its fee
+    // is therefore the SAME across every perp candidate, so it never moves the perp argmax —
+    // but we fold it in so the recorded net matches the downstream estimator exactly.
     const spotSug = suggestSpotVenue(spot, coin);
+    const spotFeePct = spotSug.spotFeePct;
+
+    // Net $/day per $1k per-leg, mirroring estimatePerpSpot() EXACTLY:
+    //   grossPerDay − feesOneTime/30,  feesOneTime = (perpFee·2 + spotFee·2)% of capital.
+    // 3 settlements/day; the ·2 is open+close; /30 is the same 30-day amortization the
+    // estimator and the perp-vs-perp selection use. No new constant.
+    const REF = 1000;   // reference per-leg capital ($1k) — matches lib/spread-compute PERP_SPOT_REF_CAPITAL
+    const scored = cands.map(c => {
+      const grossPerDay   = REF * (c.fundingPct8h / 100) * 3;
+      const feesOneTime   = REF * (c.perpFeePct * 2 + spotFeePct * 2) / 100;
+      const netPerDay1kUsd = grossPerDay - feesOneTime / 30;
+      return { ...c, netPerDay1kUsd };
+    });
+    // MAX net/day wins; ties → higher raw funding, then venue name (deterministic).
+    scored.sort((a, b) =>
+      (b.netPerDay1kUsd - a.netPerDay1kUsd) ||
+      (b.fundingPct8h   - a.fundingPct8h)   ||
+      (a.shortVenue < b.shortVenue ? -1 : a.shortVenue > b.shortVenue ? 1 : 0)
+    );
+    const win    = scored[0];
+    const runner = scored[1] || null;
+
     return {
       coin,
-      shortVenue:                  b.shortVenue,
-      fundingRateNative:           +b.fundingRateNative.toFixed(6),   // native %/interval
-      intervalH:                   b.intervalH,
-      fundingPct8h:                +b.fundingPct8h.toFixed(6),        // normalized %/8h
-      trailingPositiveSettlements: trailingPositive(persist, b.shortVenue, coin),
+      shortVenue:                  win.shortVenue,
+      fundingRateNative:           +win.fundingRateNative.toFixed(6),   // native %/interval
+      intervalH:                   win.intervalH,
+      fundingPct8h:                +win.fundingPct8h.toFixed(6),        // normalized %/8h
+      trailingPositiveSettlements: trailingPositive(persist, win.shortVenue, coin),
       spotVenueSuggested:          spotSug.spotVenueSuggested,
       spotVenueVerified:           spotSug.spotVenueVerified,
-      markPrice:                   b.markPrice,
-      vol24hUsd:                   b.vol24hUsd,
+      markPrice:                   win.markPrice,
+      vol24hUsd:                   win.vol24hUsd,
+      // ── fee-aware (max-net) selection provenance (transparency; downstream ignores these) ──
+      selectionBasis:              'net-per-day',
+      perpFeePct:                  +win.perpFeePct.toFixed(4),          // sourced short-leg taker %
+      spotFeePct:                  +spotFeePct.toFixed(4),              // sourced spot-leg taker %
+      netPerDay1kUsd:              +win.netPerDay1kUsd.toFixed(4),      // $/day per $1k/leg (est-consistent)
+      runnerUp:                    runner ? {
+        shortVenue:     runner.shortVenue,
+        fundingPct8h:   +runner.fundingPct8h.toFixed(6),
+        perpFeePct:     +runner.perpFeePct.toFixed(4),
+        netPerDay1kUsd: +runner.netPerDay1kUsd.toFixed(4),
+      } : null,
       sourceAt,
       updatedAt,
     };
   });
 
-  rows.sort((a, b) => b.fundingPct8h - a.fundingPct8h);
+  // Net/day primary: serve highest-net first (ties → raw funding). The frontend re-sorts by
+  // net/day anyway; this keeps the feed's own order honest and net-first too.
+  rows.sort((a, b) => (b.netPerDay1kUsd - a.netPerDay1kUsd) || (b.fundingPct8h - a.fundingPct8h));
   return rows;
 }
 
@@ -193,7 +267,7 @@ function tick() {
     atomicWrite(HB_FILE, hb);
   } catch { /* non-fatal */ }
 
-  log(`wrote ${rows.length} coin(s)${stale ? ' (source STALE)' : ''}${rows.length ? ` — top ${rows[0].coin} +${rows[0].fundingPct8h.toFixed(4)}%/8h @ ${rows[0].shortVenue}` : ''}`);
+  log(`wrote ${rows.length} coin(s)${stale ? ' (source STALE)' : ''}${rows.length ? ` — top net ${rows[0].coin} $${rows[0].netPerDay1kUsd.toFixed(2)}/day/1k @ ${rows[0].shortVenue} (+${rows[0].fundingPct8h.toFixed(4)}%/8h)` : ''}`);
 }
 
 function log(msg) {
