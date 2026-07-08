@@ -377,14 +377,6 @@ export default function MarketDetailPage() {
 
         {mkt && (
           <>
-            {/* ── Trade YES / Trade NO toggle (prominent, top) ── */}
-            <TradeSideToggle
-              tradeSide={tradeSide} setTradeSide={setTradeSide}
-              yesMid={yesMid} noMid={noMid} isRedacted={isRedacted}
-              yesHasBook={yesBook?.hasBook ?? (mkt.sides?.yes?.hasBook !== false)}
-              noHasBook={noBook?.hasBook ?? (mkt.sides?.no?.hasBook !== false)}
-            />
-
             {/* ── B) Earnings block (recomputes for chosen side) ── */}
             <EarningsBlock est={est} isRedacted={isRedacted} flags={mkt.flags} tradeSide={tradeSide} />
 
@@ -447,6 +439,14 @@ export default function MarketDetailPage() {
                 )}
               </div>
             </div>
+
+            {/* ── Side selector — sits in the band directly above the book (moved from top) ── */}
+            <TradeSideToggle
+              tradeSide={tradeSide} setTradeSide={setTradeSide}
+              yesMid={yesMid} noMid={noMid} isRedacted={isRedacted}
+              yesHasBook={yesBook?.hasBook ?? (mkt.sides?.yes?.hasBook !== false)}
+              noHasBook={noBook?.hasBook ?? (mkt.sides?.no?.hasBook !== false)}
+            />
 
             {/* ── D) Live DUAL order book (YES | NO), chosen side highlighted ── */}
             <DualOrderBook
