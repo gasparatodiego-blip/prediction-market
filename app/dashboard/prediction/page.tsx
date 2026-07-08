@@ -344,7 +344,7 @@ export default function PredictionPage() {
               note={
                 (stats?.cashableCount ?? 0) === 0
                   ? `Checking again in ${nextCheckMin(freshness)}m`
-                  : `of ${stats?.totalCashableCandidates ?? stats?.cashableCount ?? 0} candidates assessed`
+                  : `of ${stats?.totalCashableCandidates ?? stats?.cashableCount ?? 0} cashable found at discovery`
               }
             />
             <StatCard
