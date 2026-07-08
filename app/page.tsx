@@ -12,8 +12,9 @@ import RadarScope   from '@/app/components/ui/RadarScope';
 import BlipRow      from '@/app/components/ui/BlipRow';
 import AnimatedStrategies from '@/app/components/landing/AnimatedStrategies';
 import { getCryptoSpreadsData, calcSpreadSizing } from '@/lib/spread-compute';
-import { LANDING_CAPITAL_BASIS, isOverApyCap } from '@/lib/honest-display';
-import { isSaneKalshiMarket, isSanePolymarketLevel } from '@/lib/reward-gating';
+import { LANDING_CAPITAL_BASIS } from '@/lib/honest-display';
+import { isSanePolymarketLevel } from '@/lib/reward-gating';
+import { estimateReward, type MarketSnapshot } from '@/lib/rewards-estimate';
 import { isExpired } from '@/lib/instrument-expiry';
 
 export const dynamic = 'force-dynamic';
@@ -48,7 +49,11 @@ interface FundingStat  { dayUsd1k: number; coin: string; shortExchange: string; 
 interface PredStat     { cashable: number; pairsChecked: number }
 interface BasisStat    { netAnnualized: number; asset: string; exchange: string; contract: string; coinMargined: boolean }
 interface SportsStat   { netMargin: number; homeTeam: string; awayTeam: string; sport: string }
-interface RewardsStat  { grossRewardDayRaw: number; dayYieldPct: number; capital: number; platform: string }
+// Median est net/day per $1k (after adverse-selection cost) across the current
+// sane reward-eligible markets for `platform`. medianDayUsd1k is null when no
+// eligible market produces a real positive estimate — the card then shows a
+// "see Rewards tab" signal with NO number (never a fabricated figure).
+interface RewardsStat  { medianDayUsd1k: number | null; eligibleCount: number; platform: string }
 
 interface LiveRow {
   key:        string;
@@ -57,7 +62,7 @@ interface LiveRow {
   name:       ReactNode;
   sub?:       ReactNode;
   chip:       EdgeChipVariant;
-  value:      string;
+  value:      ReactNode;
   unit:       string;
   valueTone:  'up' | 'neutral';
   // Net $/day this row is actually worth at the shared LANDING_CAPITAL_BASIS
@@ -160,52 +165,59 @@ function readLandingStats(): {
   } catch { /* file absent or stale */ }
 
   try {
-    // Capital tiers as actually keyed in the agent output (matches the
-    // liquidity-rewards dashboard's CAPITAL_OPTIONS). A market only qualifies
-    // at a tier if it passes the SAME sane-market gate the dashboard uses —
-    // TRAP / SHORT_BURST / THIN_CAP / BELOW_FLOOR / ONE_SIDED / WARN all disqualify.
-    const CAPITAL_TIERS = ['500', '5000', '50000'];
-    let bestReward: RewardsStat | null = null;
-
-    // Polymarket
-    const polyRaw  = JSON.parse(fs.readFileSync('/root/prediction-market/data/liquidity-rewards.json', 'utf8'));
-    const polyMkts = (polyRaw?.markets ?? []) as Array<{
-      levels: Record<string, { grossRewardDay?: number; dayYieldPct?: number; flags?: string[] }>;
+    // Maker-rewards headline = MEDIAN estimated net/day per $1k (AFTER
+    // adverse-selection cost) across the current sane Polymarket reward
+    // markets — a stable, representative figure, not a cherry-picked best.
+    //   • Source: /tmp/liquidity-rewards.json — the normalized snapshot
+    //     (lib/rewards-normalize.js) whose fields ARE lib/rewards-estimate.ts's
+    //     MarketSnapshot input (real book depth only, never OI/midpoint).
+    //   • Estimate: lib/rewards-estimate.ts at a standard $1k two-sided
+    //     placement resting mid-band — the SAME call the Rewards tab makes
+    //     (app/dashboard/liquidity-rewards/page.tsx typicalNet()).
+    //   • Sane gate: isSanePolymarketLevel (zero dashboard flags) — the SAME
+    //     gate the dashboard uses; TRAP/SHORT_BURST/THIN_CAP/etc. are excluded.
+    //   • Scope: Polymarket only. The card is a Polymarket-rewards card, and
+    //     Kalshi's flat pro-rata model produces run-rates that would read as
+    //     too-good-to-be-true on a public landing (honest-engine). A market
+    //     whose estimate nets <= 0 after adverse cost is not a reward
+    //     opportunity, so only real positive nets enter the median.
+    const norm    = JSON.parse(fs.readFileSync('/tmp/liquidity-rewards.json', 'utf8'));
+    const normMkts = (norm?.markets ?? []) as Array<MarketSnapshot & {
+      venue: string; flags?: string[];
     }>;
-    for (const m of polyMkts) {
-      for (const capStr of CAPITAL_TIERS) {
-        const lv = m.levels?.[capStr];
-        if (!lv || !lv.grossRewardDay) continue;
-        if (!isSanePolymarketLevel({ flags: lv.flags ?? [] })) continue;
-        const score = (lv.dayYieldPct ?? 0) * 365;
-        if (!bestReward || score > bestReward.dayYieldPct * 365) {
-          bestReward = { grossRewardDayRaw: lv.grossRewardDay, dayYieldPct: lv.dayYieldPct ?? 0, capital: +capStr, platform: 'Polymarket' };
-        }
-        break;
-      }
+    const nets: number[] = [];
+    for (const m of normMkts) {
+      if (m.venue !== 'polymarket') continue;
+      if (!isSanePolymarketLevel({ flags: m.flags ?? [] })) continue;
+      const snapshot: MarketSnapshot = {
+        venue:               'polymarket',
+        midpoint:            m.midpoint,
+        maxSpread:           m.maxSpread,
+        minSize:             m.minSize,
+        dailyPool:           m.dailyPool,
+        qualifyingLiquidity: m.qualifyingLiquidity,
+        bookDepthAtBand:     m.bookDepthAtBand,
+        volatilityStdev:     m.volatilityStdev ?? null,
+        twoSidedRequired:    m.twoSidedRequired,
+        sides:               m.sides ?? null,
+      };
+      const dist = (m.maxSpread ?? 2) / 2;   // rest mid-band, same as the Rewards tab
+      const r = estimateReward({
+        venue: 'polymarket', capital: LANDING_CAPITAL_BASIS, twoSided: true,
+        distanceCents: dist, market: snapshot,
+      });
+      if (r.netPerDay != null && r.netPerDay > 0) nets.push(r.netPerDay);
     }
-
-    // Kalshi
-    const kalshiRaw  = JSON.parse(fs.readFileSync('/root/prediction-market/data/kalshi-rewards.json', 'utf8'));
-    const kalshiMkts = (kalshiRaw?.markets ?? []) as Array<{
-      flags: { TRAP: boolean; SHORT_BURST: boolean; BELOW_FLOOR: boolean; THIN_CAP: boolean; ONE_SIDED: boolean };
-      last_price: number;
-      levels: Record<string, { aboveMin?: boolean; grossRewardDay?: number; dayYieldPct?: number }>;
-    }>;
-    for (const m of kalshiMkts) {
-      for (const capStr of CAPITAL_TIERS) {
-        const lv = m.levels?.[capStr];
-        if (!lv || !lv.grossRewardDay) continue;
-        if (!isSaneKalshiMarket(m, capStr)) continue;
-        const score = (lv.dayYieldPct ?? 0) * 365;
-        if (!bestReward || score > bestReward.dayYieldPct * 365) {
-          bestReward = { grossRewardDayRaw: lv.grossRewardDay, dayYieldPct: lv.dayYieldPct ?? 0, capital: +capStr, platform: 'Kalshi' };
-        }
-        break;
-      }
+    if (nets.length > 0) {
+      nets.sort((a, b) => a - b);
+      const n   = nets.length;
+      const med = n % 2 ? nets[(n - 1) / 2] : (nets[n / 2 - 1] + nets[n / 2]) / 2;
+      rewards = { medianDayUsd1k: Math.round(med * 100) / 100, eligibleCount: n, platform: 'Polymarket' };
+    } else {
+      // Sane gate/estimator left nothing real: keep the card as a signal with
+      // NO number (honest guard — never fabricate a median).
+      rewards = { medianDayUsd1k: null, eligibleCount: 0, platform: 'Polymarket' };
     }
-
-    rewards = bestReward;
   } catch { /* file absent */ }
 
   return { funding, prediction, basis, sports, rewards };
@@ -262,35 +274,42 @@ function buildLiveRows(stats: ReturnType<typeof readLandingStats>): LiveRow[] {
     });
   }
 
-  if (rewards && rewards.grossRewardDayRaw > 0) {
+  if (rewards) {
     // Maker rewards are a CONDITIONAL incentive, NOT a cashable arb: earning
     // them requires actively quoting in-book, competing with other LPs (your
     // share dilutes as makers arrive), and the program's rate can change. So
-    // this is SIGNAL, never cashable — it carries no net $/day and is kept out
-    // of the $/day ranking (dayUsd1k: null) so it can't inflate "best net/day".
-    // Any rate shown runs through the shared honest-engine annualized treatment
-    // (isOverApyCap → ">200%/yr", demoted + run-rate qualifiers). The sane-market
-    // gate above already dropped TRAP/burst/thin levels, so the estimate is real
-    // — but real ≠ guaranteed. (Supersedes the earlier "mark cashable" call.)
-    const annualPct = rewards.dayYieldPct * 365; // dayYieldPct is %/day → %/yr
+    // this is SIGNAL, never cashable — and although we now show a REAL median
+    // net/day per $1k (after adverse-selection cost, from lib/rewards-estimate.ts),
+    // it stays out of the cashable $/day ranking (dayUsd1k: null) so it can't
+    // inflate "best net/day". The headline is the primary honest metric ($/day),
+    // never an annualized run-rate. Honest guard: no eligible median → NO number.
+    const tip = 'Median estimated net/day per $1,000 across current reward markets, '
+      + 'after adverse-selection cost. Varies by market — see Rewards tab.';
+    const hasMedian = rewards.medianDayUsd1k != null;
     rows.push({
       key: 'rewards', icon: '◈', tileColor: 'violet',
       name: (
         <>
           <PlatformLogo platform={rewards.platform} size={14} className="mr-1.5" />
-          {rewards.platform} maker rewards{' '}
+          <span title={tip}>{rewards.platform} maker rewards</span>{' '}
           <span className="text-muted font-normal text-[11px] ml-0.5">
             — liquidity incentive, not a locked arb
           </span>
         </>
       ),
-      sub: 'Rewards-program estimate · conditional: needs active quoting, competes with LPs',
+      sub: hasMedian
+        ? `Median across ${rewards.eligibleCount} current ${rewards.platform} reward markets · after adverse-selection cost`
+        : 'Rewards-program signal · conditional: needs active quoting, competes with LPs',
       chip: 'signal', valueTone: 'neutral',
-      value: isOverApyCap(annualPct) ? '>200%/yr' : `${Math.round(annualPct)}%/yr`,
-      unit:  'run-rate · not guaranteed',
-      // Conditional incentive → no fabricated net $/day and out of the day-rate
-      // ranking; sorts among the no-day-rate rows by its annualized run-rate.
-      dayUsd1k: null, fallbackScore: annualPct,
+      value: hasMedian
+        ? `+$${rewards.medianDayUsd1k!.toFixed(2)}/day`
+        : (<span className="text-muted font-normal" style={{ fontSize: 12 }}>see Rewards tab</span>),
+      // Decorated unit (not the audited 'net/day per $1k' vocab token) — a
+      // conditional signal estimate, kept honest with an explicit "est" qualifier.
+      unit: hasMedian ? 'per $1k · est · not guaranteed' : '',
+      // Conditional incentive → out of the cashable day-rate ranking; sorts among
+      // the no-day-rate rows by its median net/day.
+      dayUsd1k: null, fallbackScore: rewards.medianDayUsd1k ?? 0,
     });
   }
 
