@@ -41,6 +41,12 @@ function fmtPrice(n: number): string {
 function venueLabel(e: string): string {
   return e.charAt(0).toUpperCase() + e.slice(1);
 }
+// Fee %: trim trailing zeros but keep enough precision for sub-0.1% legs
+// (0.0010 → "0.10%", 0.00055 → "0.055%", 0.00015 → "0.015%").
+function fmtFeePct(pct: number): string {
+  const v = pct * 100;
+  return `${v.toFixed(v < 0.1 ? 3 : 2)}%`;
+}
 
 export default function CarryOperationPage({ params }: { params: { id: string } }) {
   const id = decodeURIComponent(params.id);
@@ -135,7 +141,12 @@ export default function CarryOperationPage({ params }: { params: { id: string } 
               <span style={{ color: '#cbd3dc' }}>·</span>
               <span>net <span className="font-bold" style={{ color: '#0e1626' }}><Redacted value={c.netAnnualizedExecutable}>{v => fmtAnnualized(v)}</Redacted></span><span style={{ color: '#9aa5b3' }}>/yr</span></span>
               <span style={{ color: '#cbd3dc' }}>·</span>
-              <span>fee <span style={{ color: '#0e1626' }}>{(c.fee * 100).toFixed(3)}%</span> round-trip</span>
+              <span>
+                fee <span style={{ color: '#0e1626' }}>{(c.fee * 100).toFixed(3)}%</span> round-trip
+                {c.feeLegs && c.feeLegs.length > 0 && (
+                  <span style={{ color: '#9aa5b3' }}> ({c.feeLegs.map(l => `${l.label} ${fmtFeePct(l.pct)}`).join(' + ')})</span>
+                )}
+              </span>
             </div>
             <div className="mt-2"><VerifyBadge v={(c as any).__verify} /></div>
           </div>

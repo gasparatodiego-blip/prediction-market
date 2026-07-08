@@ -34,6 +34,18 @@ const FEES = {
   DERIBIT: 0.00150,  // spot on Binance 0.10% + Deribit futures 0.05%
 };
 
+// Per-leg breakdown of the round-trip taker fee above (display only — the UI shows
+// "0.155% round-trip (Binance spot 0.10% + Bybit taker 0.055%)"). Each list SUMS
+// EXACTLY to FEES[venueKey]; keep it in lockstep with FEES. Never re-summed into
+// math — FEES is the single number the basis calc subtracts.
+const FEE_LEGS = {
+  COINM:   [{ label: 'Binance spot',    pct: 0.0010 }, { label: 'COIN-M futures',  pct: 0.0005 }, { label: 'delivery', pct: 0.00015 }],
+  USDTM:   [{ label: 'Binance spot',    pct: 0.0010 }, { label: 'USDT-M futures',  pct: 0.0004 }],
+  BYBIT:   [{ label: 'Binance spot',    pct: 0.0010 }, { label: 'Bybit taker',     pct: 0.00055 }],
+  OKX:     [{ label: 'Binance spot',    pct: 0.0010 }, { label: 'OKX futures',     pct: 0.0005 }],
+  DERIBIT: [{ label: 'Binance spot',    pct: 0.0010 }, { label: 'Deribit futures', pct: 0.0005 }],
+};
+
 // Binance COIN-M: contract size in USD
 const COINM_CSZ = { BTC: 100, ETH: 10, SOL: 10, XRP: 10, BNB: 10 };
 
@@ -255,6 +267,7 @@ function buildContract({ asset, exchange, venueKey, contract,
     grossAnnualized:         round4(grossAnnualized),
     grossAnnualizedExec:     round4(grossAnnualizedExec),
     fee,
+    feeLegs:                 FEE_LEGS[venueKey] || null,   // per-leg breakdown; sums to fee
     netAnnualizedIndicative: round4(netAnnualizedIndicative),
     netAnnualizedExecutable: round4(netAnnualizedExecutable),
     netAnnualized:           round4(netAnnualizedExecutable), // headline = executable

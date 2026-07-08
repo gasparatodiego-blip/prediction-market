@@ -30,6 +30,8 @@ export interface Contract {
   netAnnualizedIndicative: number | null;
   netAnnualizedExecutable: number | null;
   netAnnualized:           number | null;
+  // Per-leg breakdown of the round-trip fee (sums to `fee`); display only, public.
+  feeLegs:                 { label: string; pct: number }[] | null;
   vol24Usd:                number;
   oiUsd:                   number | null;
   capacityUsd:             number | null;
