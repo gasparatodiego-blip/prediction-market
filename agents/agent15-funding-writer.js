@@ -533,6 +533,22 @@ function vwapWalk(levels, targetUsd) {
   return { fillable: remaining <= 0, vwap: totalCoins > 0 ? totalPaid / totalCoins : null };
 }
 
+// Executable order-book depth within `bps` of mid, on the LIMITING (thinner) side.
+// The honest-engine depth anchor (SKILL: "capacity anchored to real order-book depth,
+// e.g. 20bps — never OI"). A delta-neutral two-legged position must be able to both
+// ENTER and EXIT, so per book the usable depth is min(bid-side, ask-side) notional
+// inside the band. Returns null when the book is missing/one-sided (never fabricated).
+function depthWithinBps(book, bps) {
+  if (!book || !Array.isArray(book.bids) || !book.bids.length
+           || !Array.isArray(book.asks) || !book.asks.length || !(book.mid > 0)) return null;
+  const band = book.mid * (bps / 10_000);
+  let bidUsd = 0;
+  for (const [p, q] of book.bids) { if (p < book.mid - band) break; bidUsd += p * q; }  // bids desc
+  let askUsd = 0;
+  for (const [p, q] of book.asks) { if (p > book.mid + band) break; askUsd += p * q; }  // asks asc
+  return Math.min(bidUsd, askUsd);
+}
+
 // Compute slip curve for a pair. Each SIZE_LADDER point models:
 //   entry: sell N into shortBook.bids + buy N from longBook.asks
 //   exit:  buy N from shortBook.asks + sell N into longBook.bids   (N = size/2)
@@ -649,6 +665,12 @@ async function enrichWithDepth(opps) {
       opp.depthNote            = greenCapacityUsd === 0
         ? 'THIN · slippage > 30% of yield at all sizes'
         : null;
+      // Real 20bps two-legged executable depth (limiting leg) — the honest-engine depth
+      // anchor. Additive field: crypto rows keep using greenCapacityUsd/slipCurveMaxFillable,
+      // the RWA observation lane surfaces this as its book-depth reading (see run()).
+      const d20Short = depthWithinBps(shortBook, 20);
+      const d20Long  = depthWithinBps(longBook, 20);
+      opp.book20bpsUsd = (d20Short != null && d20Long != null) ? Math.round(Math.min(d20Short, d20Long)) : null;
     } else {
       // Book unavailable for ≥1 leg → keep the proxy capacityUsd untouched, green unknown.
       opp.slipCurve            = null;
@@ -656,6 +678,7 @@ async function enrichWithDepth(opps) {
       opp.slipCurveMaxFillable = null;
       opp.depthThin            = false;   // not "thin" — we simply couldn't measure it
       opp.depthNote            = 'depth unavailable — capacity is an OI/volume estimate';
+      opp.book20bpsUsd         = null;
     }
   }
 }
@@ -1701,19 +1724,25 @@ async function run() {
     // never cashable. Enriched separately from the confirmed-crypto set.
     const rwaOpps = rwaObservations(data.futures || {}, historyCache || {});
     if (rwaOpps.length > 0) {
-      await enrichWithDepth(rwaOpps);   // walks the book only to observe raw depth (slipCurveMaxFillable)
-      // Honest-engine invariant (Block #2 still open): this lane is Signal-only. The Aster
-      // commodity book depth is unproven, so capacity is NOT anchorable — force it to render
-      // UNAVAILABLE (null), never the walked $0 enrichWithDepth leaves behind, never a
-      // fabricated number. depthThin stays true; slipCurveMaxFillable is kept purely as a
-      // raw book-size OBSERVATION (surfaced as "book depth", not as deployable capacity).
+      await enrichWithDepth(rwaOpps);   // walks BOTH legs' real books (Aster + Extended)
+      // Block #2 CLOSED — Aster's commodity order book is PROVEN real and walkable (verified
+      // 2026-07-08: /fapi/v1/depth returns full 100-level books; XAU/XAG/WTI ≈ $0.8–1.4M within
+      // 20bps, Brent thinner). enrichWithDepth walked both legs, so we anchor an HONEST
+      // two-legged book depth = book20bpsUsd (the limiting leg's 20bps executable notional),
+      // and flag THIN when that limiting depth is below MIN_LIQ_USD. This is a real book-depth
+      // OBSERVATION, never deployable capacity: RWA funding stays flat/near-zero so there is no
+      // yield to size against (capacityUsd/greenCapacityUsd remain null — signal-only).
       for (const o of rwaOpps) {
-        o.capacityUsd      = null;
+        o.capacityUsd      = null;                         // observation lane — no cashable capacity (funding flat)
         o.greenCapacityUsd = null;
-        o.depthThin        = true;
-        o.depthNote        = 'capacity not anchorable — signal only (Aster commodity depth unproven)';
+        const d20 = typeof o.book20bpsUsd === 'number' ? o.book20bpsUsd : null;
+        o.bookDepthUsd     = d20;                          // real 20bps limiting-leg depth (honest headline)
+        o.depthThin        = d20 == null || d20 < MIN_LIQ_USD;
+        o.depthNote        = d20 == null
+          ? 'book depth unavailable this cycle'
+          : `book depth $${Math.round(d20 / 1000)}k within 20bps (min of Aster/Extended)${d20 < MIN_LIQ_USD ? ' · THIN' : ''}`;
       }
-      console.log(`[rwa] ${rwaOpps.length} commodity observations: ${rwaOpps.map(o => `${o.label} ${o.monolegOnly ? 'MONOLEG' : 'two-leg'} maxBook$${o.slipCurveMaxFillable != null ? Math.round(o.slipCurveMaxFillable/1000)+'k' : '?'}`).join(', ')}`);
+      console.log(`[rwa] ${rwaOpps.length} commodity observations: ${rwaOpps.map(o => `${o.label} ${o.monolegOnly ? 'MONOLEG' : 'two-leg'} depth20bps$${o.bookDepthUsd != null ? Math.round(o.bookDepthUsd/1000)+'k' : '?'}${o.depthThin ? '·THIN' : ''}`).join(', ')}`);
     }
 
     mergeUnifiedFunding(allOpps, rwaOpps);

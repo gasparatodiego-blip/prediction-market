@@ -427,10 +427,11 @@ export function getCryptoSpreadsData(): CryptoSpreadsData {
           slipCurveMaxFillable?: number | null;
         }[]) {
           // RWA commodities (beta) — observation lane. Pass through per-leg funding + REAL
-          // book-depth (slipCurveMaxFillable). Never carries a cashable net/day.
+          // two-legged 20bps book-depth (bookDepthUsd). Never carries a cashable net/day.
           if (opp.type === 'RWA') {
             const o = opp as unknown as {
-              underlying?: string; label?: string; note?: string; slipCurveMaxFillable?: number | null;
+              underlying?: string; label?: string; note?: string;
+              bookDepthUsd?: number | null; depthThin?: boolean; slipCurveMaxFillable?: number | null;
               monolegOnly?: boolean;
               legs?: { venue?: string; platform?: string; price?: number; intervalHours?: number; rate8h?: number; settledRate8h?: number; trailingRate?: number; spike?: boolean; confirmed?: boolean }[];
               divergence?: RwaObservation['divergence'];
@@ -459,7 +460,11 @@ export function getCryptoSpreadsData(): CryptoSpreadsData {
                 // the producer already nulls it, but never trust a two-sided figure here).
                 divergence:   o.monolegOnly === true ? null : (o.divergence ?? null),
                 monolegOnly:  o.monolegOnly === true,
-                bookDepthUsd: typeof o.slipCurveMaxFillable === 'number' ? o.slipCurveMaxFillable : null,
+                // Real 20bps two-legged executable depth (limiting leg). Fall back to the
+                // ladder max-fillable only if a pre-Block-#2 snapshot lacks it.
+                bookDepthUsd: typeof o.bookDepthUsd === 'number' ? o.bookDepthUsd
+                            : typeof o.slipCurveMaxFillable === 'number' ? o.slipCurveMaxFillable : null,
+                depthThin:    o.depthThin === true,
                 note:         String(o.note ?? 'beta · signal-only · not cashable yet'),
               });
             }

@@ -49,7 +49,8 @@ export interface RwaObservation {
     spike:           boolean;
     verdict:         string;           // 'BETA · variable' | 'FLAT · no edge' | 'NOISE · rate unstable' | 'UNCONFIRMED · still settling'
   } | null;
-  bookDepthUsd: number | null;         // raw max-fillable order-book depth OBSERVATION (never "capacity")
+  bookDepthUsd: number | null;         // real 20bps two-legged executable depth, limiting leg (min of Aster/Extended) — OBSERVATION, never "capacity"
+  depthThin:    boolean;               // true when the limiting-leg 20bps depth is below MIN_LIQ_USD
   // True when only ONE leg carries a real settled funding signal (the other trails a flat 0,
   // e.g. Aster Brent): the row is single-leg observation and shows NO two-sided divergence.
   monolegOnly:  boolean;

@@ -1571,8 +1571,13 @@ function RwaCommoditiesStrip({ rows }: { rows: RwaObservation[] }) {
               ))}
               <span style={{ color: '#9aa5b3' }}>/8h settled</span>
             </span>
-            <span className="ml-auto font-mono tabular-nums shrink-0" style={{ fontSize: 10.5, color: '#6b7787' }}>
+            <span className="ml-auto font-mono tabular-nums shrink-0" style={{ fontSize: 10.5, color: '#6b7787' }}
+              title="real two-legged 20bps executable depth (limiting leg, min of Aster/Extended) — observation, not deployable capacity">
               book depth <span className="text-ink">{fmtRwaDepth(r.bookDepthUsd)}</span>
+              <span style={{ color: '#9aa5b3' }}> 20bps</span>
+              {r.depthThin && r.bookDepthUsd != null && (
+                <span className="px-1 py-[1px] ml-1 border font-body uppercase tracking-wide" style={{ fontSize: 8, borderColor: '#f0d9a8', color: '#c99a2e' }}>thin</span>
+              )}
             </span>
             <span
               className="px-1.5 py-[2px] border font-body uppercase tracking-widest shrink-0"
@@ -1606,10 +1611,10 @@ function RwaCommoditiesStrip({ rows }: { rows: RwaObservation[] }) {
         })}
       </div>
       <div className="px-4 pb-2 pt-1 font-body" style={{ fontSize: 9, color: '#9aa5b3' }}>
-        Gold / silver / oil on Aster + Extended · real order-book depth. These perps settle intermittently
-        (Aster often prints 0 between settlements), so we headline each leg&apos;s real settled trailing rate
-        and show the two-legged trailing divergence — capped, fee-aware, beta. Never cashable yet: the Aster
-        leg&apos;s book depth is still unproven, so no honest capacity exists.
+        Gold / silver / oil on Aster + Extended. Each leg&apos;s headline is its REAL settled trailing rate
+        (the instantaneous rate often prints 0 between settlements). Book depth is the real two-legged 20bps
+        executable depth — walked live on both books, taking the limiting (thinner) leg. Still observation-only:
+        funding is flat/near-zero, so there is no cashable net/day to size against that depth.
       </div>
     </div>
   );
