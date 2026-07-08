@@ -852,6 +852,7 @@ function FundingList({ items, capital, leverage }: { items: SpreadItem[]; capita
             style={{ borderTop: i ? '1px solid #eef2f6' : 'none', borderLeft: `3px solid ${tier.accent}` }}
           >
             <span className="font-mono font-bold text-ink tracking-tight shrink-0" style={{ fontSize: 13, width: 52 }}>{s.coin}</span>
+            <DowngradeChip reason={s.downgradeReason} />
 
             {/* Flow, normalized to %/8h — each leg carries its own next-funding clock */}
             <span className="font-mono tabular-nums inline-flex items-center gap-1.5 min-w-0 flex-wrap" style={{ fontSize: 11 }}>
