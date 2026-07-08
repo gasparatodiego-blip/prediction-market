@@ -51,6 +51,15 @@ for (const envFile of ['.env.local', '.env']) {
 }
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const CHAT_ID   = process.env.TELEGRAM_CHAT_ID   || '';
+// Telegram gating (two independent switches, BOTH must allow a send):
+//   1. TELEGRAM_ALERTS_ENABLED — the project-wide mute. agent29 is NOT on the bypass
+//      allowlist (only agent26 + agent-monitor are), so this alone can silence it.
+//   2. VERIFY_TELEGRAM_ENABLED — per-agent OPT-IN, default FALSE. The verifier's
+//      primary surface is the in-app VerifyBadge + /tmp/verification-status.json (which
+//      drives serve-side enforceVerified drops) + the cycle log line — none of which
+//      need Telegram. Mismatch pushes are noisy (frequent-settlement drift, transient
+//      gamma pool toggles), so Telegram stays OFF unless a human explicitly opts in.
+const VERIFY_TELEGRAM_ENABLED = process.env.VERIFY_TELEGRAM_ENABLED === 'true';
 
 // ── Config ──────────────────────────────────────────────────────────────────
 const CYCLE_MS               = 3 * 60_000;   // tight cadence: catch phantoms before users act
@@ -90,6 +99,7 @@ function atomicWrite(file, obj) { const t = `${file}.tmp`; fs.writeFileSync(t, J
 function httpPost(url, body) { return _sharedPost(url, body, { timeoutMs: 15_000 }).then(r => r.data); }
 async function sendTelegram(text) {
   if (process.env.TELEGRAM_ALERTS_ENABLED === 'false') { log('alerts muted (TELEGRAM_ALERTS_ENABLED=false) — logged only:', text.slice(0, 160)); return; }
+  if (!VERIFY_TELEGRAM_ENABLED) { log('Telegram send skipped — verifier opt-in gate off (VERIFY_TELEGRAM_ENABLED not true); mismatch kept in verification-status.json + log only:', text.slice(0, 160)); return; }
   if (!BOT_TOKEN || !CHAT_ID) { log('Telegram not configured — logged only:', text.slice(0, 160)); return; }
   try { await httpPost(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, { chat_id: CHAT_ID, text, parse_mode: 'HTML' }); }
   catch (e) { log('sendTelegram error:', e.message); }
