@@ -339,10 +339,21 @@ function HonestyBlock() {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
+// Quick presets for the days-to-expiry filter. `days: null` = show all (no cap).
+const EXPIRY_PRESETS: { label: string; days: number | null }[] = [
+  { label: 'All',    days: null },
+  { label: '≤90d',   days: 90  },
+  { label: '≤180d',  days: 180 },
+  { label: '≤365d',  days: 365 },
+];
+
 export default function CarryPage() {
   const [data,    setData]    = useState<CarryData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState<string | null>(null);
+  // Days-to-expiry cap (null = show all). Client-side filter over the real
+  // daysToExpiry field already on each served row — never a fabricated date.
+  const [maxDays, setMaxDays] = useState<number | null>(null);
 
   async function load() {
     try {
@@ -367,13 +378,27 @@ export default function CarryPage() {
   const isStale    = data?.agentStatus === 'stale';
   const isOffline  = data?.agentStatus === 'offline';
 
-  const cleanOpps  = data?.opportunities.filter(c => !c.coinMargined) ?? [];
-  const coinOpps   = data?.opportunities.filter(c => c.coinMargined)  ?? [];
+  const allOpps    = data?.opportunities ?? [];
+  // Slider upper bound = the furthest real expiry in the served set (min 90 so the
+  // control is usable even when only near-dated contracts exist). Never invented.
+  const maxDaysInData = allOpps.length > 0
+    ? Math.max(90, ...allOpps.map(c => c.daysToExpiry).filter((d): d is number => typeof d === 'number'))
+    : 365;
+  // Real-field filter: a row with a numeric daysToExpiry within the cap survives.
+  // Rows missing the field are excluded honestly when a cap is set (never guessed).
+  const withinExpiry = (c: Contract) =>
+    maxDays == null ? true : (typeof c.daysToExpiry === 'number' && c.daysToExpiry <= maxDays);
+  const filteredOpps = allOpps.filter(withinExpiry);
 
-  // Best clean-USD executable return (for headline StatCard) — filter nulls
-  // (redacted, free tier) before Math.max, which would otherwise coerce a
-  // null to 0 and fabricate a "0%" best return if every row were redacted.
-  const cleanExecVals = cleanOpps.map(c => c.netAnnualizedExecutable).filter((v): v is number => v != null);
+  const cleanOpps  = filteredOpps.filter(c => !c.coinMargined);
+  const coinOpps   = filteredOpps.filter(c => c.coinMargined);
+
+  // Best clean-USD executable return (for headline StatCard) — over the FULL
+  // dataset, independent of the days-to-expiry view filter (it's a summary stat,
+  // not a view of the list). Filter nulls (redacted, free tier) before Math.max,
+  // which would otherwise coerce a null to 0 and fabricate a "0%" best return.
+  const cleanExecVals = allOpps.filter(c => !c.coinMargined)
+    .map(c => c.netAnnualizedExecutable).filter((v): v is number => v != null);
   const bestClean  = cleanExecVals.length > 0 ? Math.max(...cleanExecVals) : null;
   const bestOverall = data?.summary.bestNetAnnualized ?? null;
   const bestDisplay = bestClean ?? bestOverall;
@@ -487,6 +512,58 @@ export default function CarryPage() {
         </div>
       )}
 
+      {/* ── Days-to-expiry filter ───────────────────────────────────────────── */}
+      {data && allOpps.length > 0 && (
+        <div className="flex items-center gap-3 flex-wrap mb-6">
+          <span className="font-body uppercase shrink-0" style={{ fontSize: 10, letterSpacing: '0.12em', color: '#6b7787' }}>
+            Days to expiry
+          </span>
+          {/* Quick presets — segmented buttons matching the funding-arb capital control */}
+          <div className="flex items-center gap-1">
+            {EXPIRY_PRESETS.map(p => (
+              <button
+                key={p.label}
+                onClick={() => setMaxDays(p.days)}
+                className="rounded-button transition-colors duration-100 font-mono"
+                style={{
+                  fontSize: 11, padding: '7px 9px',
+                  ...(maxDays === p.days
+                    ? { border: '1px solid #0f766e', color: '#0f766e', background: '#effcf9' }
+                    : { border: '1px solid #e6eaef', color: '#6b7787' }),
+                }}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+          {/* Slider — caps at the furthest real expiry in the data; far right = All */}
+          <div className="flex items-center gap-2">
+            <input
+              type="range"
+              aria-label="Maximum days to expiry"
+              min={30}
+              max={maxDaysInData}
+              step={5}
+              value={maxDays ?? maxDaysInData}
+              onChange={e => {
+                const v = parseInt(e.target.value, 10);
+                setMaxDays(v >= maxDaysInData ? null : v);
+              }}
+              className="w-40 cursor-pointer"
+              style={{ accentColor: '#0f766e' }}
+            />
+            <span className="font-mono tabular-nums shrink-0" style={{ fontSize: 12, color: '#6b7787' }}>
+              {maxDays == null ? `≤${maxDaysInData}d` : `≤${maxDays}d`}
+            </span>
+          </div>
+          {/* Real count of contracts surviving the filter */}
+          <span className="font-mono tabular-nums shrink-0" style={{ fontSize: 12, color: '#9aa5b3' }}>
+            · {filteredOpps.length} contract{filteredOpps.length !== 1 ? 's' : ''}
+            {maxDays != null && filteredOpps.length !== allOpps.length ? ` of ${allOpps.length}` : ''}
+          </span>
+        </div>
+      )}
+
       {/* ── Loading ──────────────────────────────────────────────────────────── */}
       {loading && !data && (
         <div className="space-y-3">
@@ -500,9 +577,16 @@ export default function CarryPage() {
           <div className="flex items-center gap-2 mb-4">
             <EdgeChip variant="cashable" />
             <span className="font-body text-[12px] text-muted">
-              Contango — standard cash &amp; carry ({data.opportunities.length} contract{data.opportunities.length !== 1 ? 's' : ''})
+              Contango — standard cash &amp; carry ({filteredOpps.length} contract{filteredOpps.length !== 1 ? 's' : ''})
             </span>
           </div>
+
+          {/* All contracts filtered out by the days-to-expiry cap */}
+          {filteredOpps.length === 0 && (
+            <p className="font-body text-[12px] text-muted py-6 text-center">
+              No contracts expire within ≤{maxDays}d. Widen the days-to-expiry filter above.
+            </p>
+          )}
 
           {/* Clean USD first */}
           {cleanOpps.length > 0 && (
