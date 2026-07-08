@@ -89,6 +89,10 @@ export interface SpreadItem {
   totalFeesPct:       number | null;
   breakevenDays:      number | null;
   status:             'HARVEST' | 'CAUTION' | 'MARGINAL';
+  // Why an otherwise-HARVEST (short-payback) pair was demoted to CAUTION at the
+  // classification step. null = genuine CAUTION (payback-based) or not demoted.
+  // Display-only transparency signal — never changes net/day, capacity, or fees.
+  downgradeReason:    'thin-book' | 'one-sided' | null;
   liquidityTier:      string | null;
   capacityUsd:        number | null;          // = greenCapacityUsd when agent15 data fresh
   thinFlag:           boolean;                // OI-tier based (drives LiqChip ⚠, row dimming)

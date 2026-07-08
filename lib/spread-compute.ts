@@ -349,6 +349,7 @@ export function computeSpreads(
           totalFeesPct:       +totalFees.toFixed(3),
           breakevenDays:      beDays,
           status,
+          downgradeReason:    null,   // set later, once UNI-lookup guards are known
           liquidityTier:      tier,
           capacityUsd:        capUsd,
           thinFlag:             thin,
@@ -469,13 +470,18 @@ export function getCryptoSpreadsData(): CryptoSpreadsData {
       // decision); the oneLegUnverified field is preserved for downstream alert suppression.
       const veryThin  = s.liquidityTier === 'VERY THIN';
       const singleLeg = s.frShort === 0 || s.frLong === 0;
-      const status    = (s.status === 'HARVEST' && (veryThin || singleLeg))
-        ? 'CAUTION' as const
-        : s.status;
+      const downgraded = s.status === 'HARVEST' && (veryThin || singleLeg);
+      const status    = downgraded ? 'CAUTION' as const : s.status;
+      // Preserve WHY the demotion happened so the card can show a transparent
+      // reason chip (thin book vs one-sided) instead of a bare, contradictory
+      // "CAUTION" next to a short payback. VERY THIN wins when both apply.
+      const downgradeReason: 'thin-book' | 'one-sided' | null =
+        !downgraded ? null : veryThin ? 'thin-book' : 'one-sided';
 
       return {
         ...s,
         status,
+        downgradeReason,
         oneLegUnverified,
         capacityUsd:          lu?.capacityUsd          !== undefined ? lu.capacityUsd          : s.capacityUsd,
         depthThin:            lu?.depthThin            !== undefined ? lu.depthThin            : false,
