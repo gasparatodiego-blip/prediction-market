@@ -625,6 +625,32 @@ function auditSanityRejectSpike(prevSeen, logFile = DASHBOARD_LOG) {
   return { total, violations };
 }
 
+// Too-good-to-be-true scan over the SERVED rewards feed (read-only, detect + alert).
+// The estimator (lib/rewards-estimate.ts) now withholds unmeasured/absurd nets, but a
+// producer regression could still emit a level that PASSES the sane gate yet implies
+// an APR beyond the shared cap (e.g. the qualifyingLiquidity===0 → 100%-share class).
+// Anything sane-but-too-good is surfaced here so it alerts on Telegram instead of
+// reaching users silently. Never mutates data; never fabricates.
+function auditRewardsTooGood() {
+  const violations = [];
+  const scan = (file, venue, isSane) => {
+    const raw = readJsonSafe(file);
+    for (const m of raw?.markets ?? []) {
+      for (const [capStr, lv] of Object.entries(m.levels ?? {})) {
+        if (!lv || lv.dayYieldPct == null) continue;
+        if (!isSane(m, lv, capStr)) continue;                 // only flag rows that survive the gate
+        const impliedApr = lv.dayYieldPct * 365;
+        if (impliedApr > APY_CAP) {
+          violations.push(`REWARDS TOO-GOOD: ${venue} "${(m.title || m.slug || m.ticker || '?').slice(0, 40)}" @ $${capStr} passes the sane gate but implies ${impliedApr.toFixed(0)}%/yr (dayYield ${lv.dayYieldPct.toFixed(2)}%) — verify it's real, not an unmeasured-competitor 100%-share artifact`);
+        }
+      }
+    }
+  };
+  scan(POLY_REWARDS_FILE,   'Polymarket', (m, lv)         => isSanePolymarketLevel({ flags: lv.flags ?? [] }));
+  scan(KALSHI_REWARDS_FILE, 'Kalshi',     (m, lv, capStr) => isSaneKalshiMarket(m, capStr));
+  return violations;
+}
+
 // ── One audit cycle ───────────────────────────────────────────────────────
 async function runCycle(state) {
   const html = await fetchText(LANDING_URL);
@@ -639,6 +665,7 @@ async function runCycle(state) {
 
   // Phase 4: phantom-instrument class checks on the served feeds + sanity-reject spike.
   allViolations.push(...auditServedFeeds());
+  allViolations.push(...auditRewardsTooGood());
   const spike = auditSanityRejectSpike(state && state.sanityRejectSeen);
   allViolations.push(...spike.violations);
 

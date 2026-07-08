@@ -280,6 +280,27 @@ export function estimateReward(input: EstimateInput): EstimateResult {
     reasons.push('net withheld: adverse-selection cost unknown, so a net that ignores fill risk would overstate');
   }
 
+  // ── Too-good-to-be-true backstop (defense in depth; mirrors the funding/landing
+  // anti-spike guards) ────────────────────────────────────────────────────────
+  // Even with a measured competitor pool, two signals mean the passive-maker share
+  // assumption has broken down and the number is not credible:
+  //   (a) implied run-rate exceeds the shared APY cap → your size would dominate a
+  //       thin real book (e.g. $118/day per $1k = 4326%/yr on a ~$5k book), OR
+  //   (b) modeled gross/day exceeds the real resting book depth it competes against.
+  // Honest-engine: withhold gross/net (null) rather than publish a $/day we can't
+  // stand behind — the row stays visible as "measuring", never a fabricated figure.
+  if (netPerDay != null && capital > 0) {
+    const impliedAnnualPct = (netPerDay / capital) * 100 * 365;
+    const grossExceedsDepth = grossReward != null && bookDepthAtBand != null && grossReward > bookDepthAtBand;
+    if (impliedAnnualPct > ANNUALIZED_CAP_PCT || grossExceedsDepth) {
+      reasons.push(grossExceedsDepth
+        ? `modeled gross exceeds the real book depth ($${bookDepthAtBand!.toFixed(0)}) — not a credible passive-maker estimate; withheld`
+        : `implied run-rate ${impliedAnnualPct.toFixed(0)}%/yr exceeds the ${ANNUALIZED_CAP_PCT}% sanity cap — your size would dominate this thin market; net withheld as too-good-to-verify`);
+      grossReward = null;
+      netPerDay   = null;
+    }
+  }
+
   const belowMinPayout = grossReward != null && grossReward < MIN_PAYOUT_USD;
   if (belowMinPayout) reasons.push(`gross < $${MIN_PAYOUT_USD}/day — below the minimum daily payout; likely earns nothing`);
 
