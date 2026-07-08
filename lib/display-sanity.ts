@@ -279,8 +279,14 @@ export function enforceVerified<T>(section: SanitySection, rows: T[] | null | un
       // (no badge, no claim) so the stuck state clears; keep the honest "verifying…"
       // only for genuinely unconfirmed rows that legitimately await confirmation.
       const r = row as any;
-      const depthConfirmed = section === 'funding'
-        && r.oneLegUnverified === false && r.greenCapacityUsd != null;
+      // funding: real slip-walked green depth + both legs confirmed (dc35681).
+      // basis (cash & carry): capacity slip-walked from a REAL order book
+      // (capacitySource === 'book', e.g. Bybit) with a positive depth — the analog
+      // of greenCapacityUsd. Proxy-capacity rows (vol/OI estimate) are NOT book-
+      // confirmed and honestly keep "verifying…" until agent29 re-reads them.
+      const depthConfirmed =
+        (section === 'funding' && r.oneLegUnverified === false && r.greenCapacityUsd != null)
+        || (section === 'basis' && r.capacitySource === 'book' && r.capacityUsd != null && r.capacityUsd > 0);
       meta = depthConfirmed ? { status: 'confirmed' } : { status: 'verifying' };
     } else if (entry.status === 'mismatch') {
       console.log(`sanity-reject ${section} ${key}: source verification mismatch ${JSON.stringify(entry.source || {}).slice(0, 160)}`);
