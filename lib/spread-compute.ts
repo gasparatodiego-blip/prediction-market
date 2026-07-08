@@ -431,6 +431,7 @@ export function getCryptoSpreadsData(): CryptoSpreadsData {
           if (opp.type === 'RWA') {
             const o = opp as unknown as {
               underlying?: string; label?: string; note?: string; slipCurveMaxFillable?: number | null;
+              monolegOnly?: boolean;
               legs?: { venue?: string; platform?: string; price?: number; intervalHours?: number; rate8h?: number; settledRate8h?: number; trailingRate?: number; spike?: boolean; confirmed?: boolean }[];
               divergence?: RwaObservation['divergence'];
             };
@@ -454,9 +455,12 @@ export function getCryptoSpreadsData(): CryptoSpreadsData {
                 })),
                 // Real two-legged trailing divergence (beta). Pass through as-is; netApy is
                 // paid-gated downstream (lib/paid-gating.ts crypto: 'rwa[].divergence.netApy').
-                divergence:   o.divergence ?? null,
+                // Single-leg rows never carry a two-sided divergence (belt-and-suspenders:
+                // the producer already nulls it, but never trust a two-sided figure here).
+                divergence:   o.monolegOnly === true ? null : (o.divergence ?? null),
+                monolegOnly:  o.monolegOnly === true,
                 bookDepthUsd: typeof o.slipCurveMaxFillable === 'number' ? o.slipCurveMaxFillable : null,
-                note:         String(o.note ?? 'beta · observing funding, not cashable yet'),
+                note:         String(o.note ?? 'beta · signal-only · not cashable yet'),
               });
             }
             continue;

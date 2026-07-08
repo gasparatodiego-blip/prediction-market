@@ -1477,8 +1477,16 @@ function rwaObservations(futures, hCache) {
     // MAX_GROSS_APY, roundTripFeeByVenue, netApy30d) — NO new thresholds. Still strictly
     // OBSERVATION: even a sane net here is NOT cashable — the Aster commodity book depth
     // is still unproven (capacity blocker open), so netROI stays null and the row is beta.
+    // A leg carries a REAL funding SIGNAL only when its settled trailing rate is non-zero.
+    // Aster commodity perps that never actually settle (e.g. Brent/BZUSDT trails a flat 0
+    // across all history) provide NO funding signal — with only one real leg there is no
+    // honest two-sided divergence, so the row is single-leg observation and MUST NOT show
+    // any net/divergence figure that implies a two-sided edge (honest-engine).
+    const signalLegs  = built.filter(b => b.anal.trailingRate !== 0);
+    const monolegOnly = signalLegs.length < 2;
+
     let divergence = null;
-    if (built.length === 2) {
+    if (built.length === 2 && !monolegOnly) {
       const ann = built.map(b => ({ b, ann: annualize(b.anal.trailingRate, b.intervalHours) }));
       const [hi, lo]      = ann[0].ann >= ann[1].ann ? [ann[0], ann[1]] : [ann[1], ann[0]];
       const grossApyRaw   = Math.abs(hi.ann - lo.ann);
@@ -1514,8 +1522,11 @@ function rwaObservations(futures, hCache) {
       question:             `${rwaLabel(key)} funding (beta)`,
       legs,
       divergence,
+      monolegOnly,
       observation:          true,
-      note:                 'beta · observing funding, not cashable yet',
+      note:                 monolegOnly
+        ? 'beta · signal-only · 1 leg only — observing'
+        : 'beta · signal-only · not cashable yet',
       // depth fields filled by enrichWithDepth (real book walk). greenCapacityUsd will be 0
       // (no yield to amortise slippage against) — the honest book depth is slipCurveMaxFillable.
       capacityUsd:          null,
@@ -1690,8 +1701,19 @@ async function run() {
     // never cashable. Enriched separately from the confirmed-crypto set.
     const rwaOpps = rwaObservations(data.futures || {}, historyCache || {});
     if (rwaOpps.length > 0) {
-      await enrichWithDepth(rwaOpps);   // reuses the vwap book-walk via the rwa-* id
-      console.log(`[rwa] ${rwaOpps.length} commodity observations: ${rwaOpps.map(o => `${o.label} maxBook$${o.slipCurveMaxFillable != null ? Math.round(o.slipCurveMaxFillable/1000)+'k' : '?'}`).join(', ')}`);
+      await enrichWithDepth(rwaOpps);   // walks the book only to observe raw depth (slipCurveMaxFillable)
+      // Honest-engine invariant (Block #2 still open): this lane is Signal-only. The Aster
+      // commodity book depth is unproven, so capacity is NOT anchorable — force it to render
+      // UNAVAILABLE (null), never the walked $0 enrichWithDepth leaves behind, never a
+      // fabricated number. depthThin stays true; slipCurveMaxFillable is kept purely as a
+      // raw book-size OBSERVATION (surfaced as "book depth", not as deployable capacity).
+      for (const o of rwaOpps) {
+        o.capacityUsd      = null;
+        o.greenCapacityUsd = null;
+        o.depthThin        = true;
+        o.depthNote        = 'capacity not anchorable — signal only (Aster commodity depth unproven)';
+      }
+      console.log(`[rwa] ${rwaOpps.length} commodity observations: ${rwaOpps.map(o => `${o.label} ${o.monolegOnly ? 'MONOLEG' : 'two-leg'} maxBook$${o.slipCurveMaxFillable != null ? Math.round(o.slipCurveMaxFillable/1000)+'k' : '?'}`).join(', ')}`);
     }
 
     mergeUnifiedFunding(allOpps, rwaOpps);

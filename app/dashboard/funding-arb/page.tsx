@@ -1577,9 +1577,11 @@ function RwaCommoditiesStrip({ rows }: { rows: RwaObservation[] }) {
             <span
               className="px-1.5 py-[2px] border font-body uppercase tracking-widest shrink-0"
               style={{ fontSize: 8.5, borderColor: '#e6eaef', color: '#9aa5b3' }}
-              title="beta · observing funding, not cashable yet"
+              title={r.monolegOnly
+                ? 'only one leg has a real settled funding signal — single-leg observation, no two-sided edge'
+                : 'beta · signal-only · not cashable yet'}
             >
-              Signal · observe
+              {r.monolegOnly ? '1 leg only · observing' : 'Signal · observe'}
             </span>
             {d && (
               <span className="w-full font-mono tabular-nums inline-flex items-center gap-x-2 flex-wrap" style={{ fontSize: 10, color: '#9aa5b3' }}>

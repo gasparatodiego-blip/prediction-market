@@ -49,8 +49,11 @@ export interface RwaObservation {
     spike:           boolean;
     verdict:         string;           // 'BETA · variable' | 'FLAT · no edge' | 'NOISE · rate unstable' | 'UNCONFIRMED · still settling'
   } | null;
-  bookDepthUsd: number | null;         // real max-fillable order-book depth (from the depth walk)
-  note:         string;                // 'beta · observing funding, not cashable yet'
+  bookDepthUsd: number | null;         // raw max-fillable order-book depth OBSERVATION (never "capacity")
+  // True when only ONE leg carries a real settled funding signal (the other trails a flat 0,
+  // e.g. Aster Brent): the row is single-leg observation and shows NO two-sided divergence.
+  monolegOnly:  boolean;
+  note:         string;                // 'beta · signal-only · …'
 }
 
 export interface SlipPoint {
