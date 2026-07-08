@@ -44,6 +44,7 @@ interface Contract {
   vol24Usd:                number;
   oiUsd:                   number | null;
   capacityUsd:             number | null;
+  capacitySource:          'book' | 'proxy';
   tier:                    string;
   thinFlag:                boolean;
   coinMargined:            boolean;
@@ -132,11 +133,25 @@ function coinEmoji(asset: string): string {
   return '○';
 }
 
+// Real executable book depth (within the fetcher's slip band) at/above this size is a
+// genuine fill guarantee → cashable. Below it, a book-depth row stays speculative.
+const CASHABLE_MIN_DEPTH_USD = 100_000;
+
 function chipVariant(c: Contract): EdgeChipVariant {
   if (c.executableBasisPct == null) return 'signal'; // redacted — don't overclaim
   if (c.executableBasisPct <= 0) return 'signal';
-  if (c.thinFlag || c.coinMargined) return 'speculative';
-  return 'cashable';
+  // Coin-margined return drifts with spot — never a clean locked-USD cashable.
+  if (c.coinMargined) return 'speculative';
+  // Honest liquidity gate. Capacity provenance decides which signal we trust:
+  //  • 'book'  → capacityUsd IS measured order-book depth we can fill into. A row is
+  //    cashable when that real depth clears the floor, REGARDLESS of 24h turnover
+  //    (turnover ≠ resting depth). A thin real book (< floor) stays speculative.
+  //  • 'proxy' → no real book-walk; the vol/OI turnover tier is the best liquidity
+  //    signal we have, so keep the existing thinFlag gate unchanged.
+  if (c.capacitySource === 'book') {
+    return (c.capacityUsd ?? 0) >= CASHABLE_MIN_DEPTH_USD ? 'cashable' : 'speculative';
+  }
+  return c.thinFlag ? 'speculative' : 'cashable';
 }
 
 // ── Skeletons ─────────────────────────────────────────────────────────────────

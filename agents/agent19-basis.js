@@ -215,9 +215,14 @@ function buildContract({ asset, exchange, venueKey, contract,
   // (capacityUsdOverride, e.g. Bybit book-walk) — honest-engine: use it verbatim
   // (already MAX_CAP/asset-capped by the caller) instead of the vol/OI proxy. Venues
   // that don't pass it keep the existing vol/OI estimate unchanged (zero regression).
-  const cap = Number.isFinite(capacityUsdOverride)
+  const hasRealBookDepth = Number.isFinite(capacityUsdOverride);
+  const cap = hasRealBookDepth
     ? capacityUsdOverride
     : capacity(vol24Usd, oiUsd, asset);
+  // capacitySource — honest provenance of `cap`, so the cashable/speculative gate can
+  // key on real executability: 'book' = measured order-book depth within the slip band
+  // (directly fillable); 'proxy' = vol/OI estimate (liquidity inferred, not a real book).
+  const capacitySource = hasRealBookDepth ? 'book' : 'proxy';
   const expiryDate = new Date(expiryMs).toISOString().slice(0, 10);
 
   // Headline verdict uses executable (conservative) number
@@ -257,6 +262,7 @@ function buildContract({ asset, exchange, venueKey, contract,
     vol24Usd:                Math.round(vol24Usd),
     oiUsd:                   oiUsd ? Math.round(oiUsd) : null,
     capacityUsd:             cap,
+    capacitySource,
     tier:                    t,
     thinFlag:                t === 'THIN',
     coinMargined,
