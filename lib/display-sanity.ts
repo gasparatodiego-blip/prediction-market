@@ -211,7 +211,12 @@ const STATUS_FILE_STALE_MS = 15 * 60_000;
 // A per-row 'ok' older than this is no longer fresh enough to badge as verified.
 const ROW_VERIFY_FRESH_MS  = 10 * 60_000;
 
-export type VerifyStatus = 'ok' | 'verifying' | 'stale' | 'mismatch';
+// 'confirmed' = the number is backed by a real, slip-walked order-book depth
+// (agent15) with both funding legs confirmed, but the budget-capped source-verifier
+// (agent29) has not independently re-read it this cycle. We make NO verified claim
+// for it — the UI simply renders no badge — but we must not paint a permanent
+// "verifying…", which would misrepresent a stuck state as a transient one.
+export type VerifyStatus = 'ok' | 'verifying' | 'stale' | 'mismatch' | 'confirmed';
 export interface VerifyMeta { status: VerifyStatus; verifiedAt?: number; ageMs?: number; source?: any; }
 
 let _vsCache: { at: number; data: { rows: Record<string, any>; fresh: boolean } | null } | null = null;
@@ -266,7 +271,17 @@ export function enforceVerified<T>(section: SanitySection, rows: T[] | null | un
     const entry = vs && vs.fresh ? vs.rows[key] : null;
     let meta: VerifyMeta;
     if (!entry) {
-      meta = { status: 'verifying' };                                  // not yet checked / verifier down
+      // Fail-open. agent29 is budget-capped (free-tier rate limits) and re-reads only
+      // a head + rotating sample each cycle, so most rows never get an entry. A row
+      // whose capacity was slip-walked from a REAL order book and whose funding legs
+      // are both confirmed is NOT "awaiting a first check" — a permanent "verifying…"
+      // would falsely imply a pending re-read that will never come. Mark it 'confirmed'
+      // (no badge, no claim) so the stuck state clears; keep the honest "verifying…"
+      // only for genuinely unconfirmed rows that legitimately await confirmation.
+      const r = row as any;
+      const depthConfirmed = section === 'funding'
+        && r.oneLegUnverified === false && r.greenCapacityUsd != null;
+      meta = depthConfirmed ? { status: 'confirmed' } : { status: 'verifying' };
     } else if (entry.status === 'mismatch') {
       console.log(`sanity-reject ${section} ${key}: source verification mismatch ${JSON.stringify(entry.source || {}).slice(0, 160)}`);
       continue;                                                        // DROP — never render a contradicted value

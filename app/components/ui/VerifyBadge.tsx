@@ -11,8 +11,11 @@ import React from 'react';
 //   stale     → amber  "⚠ stale — source unreachable"
 //   verifying → muted  "verifying…"   (awaiting first / next source re-read)
 // 'mismatch' rows are dropped server-side and never reach the card.
+// 'confirmed' rows are backed by a real slip-walked order-book depth but were not
+//   independently re-read this cycle (budget-capped verifier): we make no claim and
+//   render NO badge, rather than a permanent, misleading "verifying…".
 
-export type VerifyMeta = { status?: 'ok' | 'verifying' | 'stale' | 'mismatch'; verifiedAt?: number; ageMs?: number } | null | undefined;
+export type VerifyMeta = { status?: 'ok' | 'verifying' | 'stale' | 'mismatch' | 'confirmed'; verifiedAt?: number; ageMs?: number } | null | undefined;
 
 function fmtAge(ms?: number): string {
   if (ms == null || !isFinite(ms) || ms < 0) return '';
@@ -26,6 +29,7 @@ function fmtAge(ms?: number): string {
 export function VerifyBadge({ v, className = '' }: { v: VerifyMeta; className?: string }) {
   const status = v?.status ?? 'verifying';
   if (status === 'mismatch') return null; // dropped upstream; defensive
+  if (status === 'confirmed') return null; // real slip-walked depth, no independent re-read pending — make no claim
 
   let color = '#6b7787';
   let text = 'verifying…';
