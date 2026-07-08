@@ -487,33 +487,6 @@ const TIER: Record<SpreadItem['status'], { label: string; color: string; accent:
   MARGINAL: { label: 'MARGINAL', color: '#9aa5b3', accent: '#cbd3dc' },
 };
 
-// Reason a short-payback pair was demoted HARVEST → CAUTION at classification.
-// Transparency-only: explains the bare "CAUTION" that would otherwise look
-// contradictory next to a fast payback. Nothing here alters any number.
-const DOWNGRADE_CHIP: Record<'thin-book' | 'one-sided', { label: string; tip: string }> = {
-  'thin-book': {
-    label: 'thin book',
-    tip: 'Short payback, but the order book is too thin to enter at size — capped, not a clean harvest.',
-  },
-  'one-sided': {
-    label: 'one-sided',
-    tip: "One leg has zero funding — the spread isn't a true two-sided carry.",
-  },
-};
-
-function DowngradeChip({ reason }: { reason: SpreadItem['downgradeReason'] }) {
-  if (!reason) return null;
-  const c = DOWNGRADE_CHIP[reason];
-  return (
-    <span
-      className="px-1 py-[1px] border border-gold/50 text-gold text-[8px] font-body uppercase tracking-wide whitespace-nowrap"
-      title={c.tip}
-    >
-      {c.label}
-    </span>
-  );
-}
-
 // ── Redesign: touch-friendly info tooltip ─────────────────────────────────────
 
 function InfoTooltip({ label, text }: { label: string; text: string }) {
@@ -776,8 +749,11 @@ function FundingCard({ s, capital, leverage }: { s: SpreadItem; capital: number;
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center flex-wrap gap-x-2 gap-y-1 min-w-0">
           <span className="font-mono font-bold text-ink tracking-tight truncate" style={{ fontSize: 15 }}>{s.coin}</span>
-          <span className="font-body uppercase" style={{ fontSize: 9, letterSpacing: '0.14em', color: tier.color }}>{tier.label}</span>
-          <DowngradeChip reason={s.downgradeReason} />
+          {/* Tier label is informational (HARVEST/MARGINAL). CAUTION is an alarm word —
+              suppressed on the card surface; the gold accent bar alone conveys the tier. */}
+          {s.status !== 'CAUTION' && (
+            <span className="font-body uppercase" style={{ fontSize: 9, letterSpacing: '0.14em', color: tier.color }}>{tier.label}</span>
+          )}
         </div>
         <div className="text-right shrink-0">
           <div className="font-body uppercase" style={{ fontSize: 8.5, letterSpacing: '0.12em', color: '#9aa5b3' }}>payback</div>
@@ -867,7 +843,6 @@ function FundingList({ items, capital, leverage }: { items: SpreadItem[]; capita
             style={{ borderTop: i ? '1px solid #eef2f6' : 'none', borderLeft: `3px solid ${tier.accent}` }}
           >
             <span className="font-mono font-bold text-ink tracking-tight shrink-0" style={{ fontSize: 13, width: 52 }}>{s.coin}</span>
-            <DowngradeChip reason={s.downgradeReason} />
 
             {/* Flow — each leg shows its NATIVE rate at its own /Xh cadence and carries
                 its own next-funding clock (no shared basis, no shared clock). */}
