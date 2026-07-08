@@ -236,8 +236,16 @@ export function estimateReward(input: EstimateInput): EstimateResult {
   // competitor denominator, derived once from real qualifying liquidity.
   let competitorTotal: number | null = null;
   let shareOfPool: number | null = null;
-  if (qualifyingLiquidity == null) {
-    reasons.push('qualifying liquidity unknown — pool share cannot be computed');
+  // Honest-engine: a ZERO qualifying-liquidity reading is UNMEASURED, not proof of
+  // "no competitors". Treating 0 as zero competition modeled a 100% pool share →
+  // net ≈ the ENTIRE daily pool on a thin book (the LA/Chicago weather-market bug:
+  // ~$1,479/day per $1k, 100% share of a real $1,491 pool on ~$3k depth). We only
+  // trust a competitor denominator we actually measured (> 0); otherwise the share
+  // — and therefore gross/net — is WITHHELD, never fabricated as 100%.
+  if (qualifyingLiquidity == null || qualifyingLiquidity <= 0) {
+    reasons.push(qualifyingLiquidity == null
+      ? 'qualifying liquidity unknown — pool share cannot be computed'
+      : 'qualifying liquidity reads zero — treated as unmeasured, not zero competition; share/net withheld');
   } else {
     competitorTotal = qualifyingLiquidity * REF_PROXIMITY * TIME_BASE;
     const denom = competitorTotal + score;
