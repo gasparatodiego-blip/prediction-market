@@ -741,23 +741,21 @@ function FundingCard({ s, capital, leverage }: { s: SpreadItem; capital: number;
   return (
     <div
       className="relative rounded-card bg-surface overflow-hidden flex flex-col gap-3 p-4"
-      style={{ paddingLeft: 18, border: '1px solid #e6eaef', boxShadow: '0 1px 2px rgba(14,22,38,.05)' }}
+      style={{ border: '1px solid #e6eaef', boxShadow: '0 1px 2px rgba(14,22,38,.05)' }}
     >
-      <span aria-hidden style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, background: tier.accent }} />
-
       {/* Header */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center flex-wrap gap-x-2 gap-y-1 min-w-0">
           <span className="font-mono font-bold text-ink tracking-tight truncate" style={{ fontSize: 15 }}>{s.coin}</span>
           {/* Tier label is informational (HARVEST/MARGINAL). CAUTION is an alarm word —
-              suppressed on the card surface; the gold accent bar alone conveys the tier. */}
+              suppressed on the card surface so nothing here reads as a warning. */}
           {s.status !== 'CAUTION' && (
             <span className="font-body uppercase" style={{ fontSize: 9, letterSpacing: '0.14em', color: tier.color }}>{tier.label}</span>
           )}
         </div>
         <div className="text-right shrink-0">
           <div className="font-body uppercase" style={{ fontSize: 8.5, letterSpacing: '0.12em', color: '#9aa5b3' }}>payback</div>
-          <div className="font-mono font-semibold tabular-nums" style={{ fontSize: 13, color: tier.color }}>
+          <div className="font-mono font-semibold tabular-nums" style={{ fontSize: 13, color: '#334155' }}>
             <Redacted value={s.breakevenDays}>{v => formatPayback(v)}</Redacted>
           </div>
         </div>
@@ -840,7 +838,7 @@ function FundingList({ items, capital, leverage }: { items: SpreadItem[]; capita
           <div
             key={`${s.coin}-${s.shortExchange}-${s.longExchange}`}
             className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-3 py-2.5"
-            style={{ borderTop: i ? '1px solid #eef2f6' : 'none', borderLeft: `3px solid ${tier.accent}` }}
+            style={{ borderTop: i ? '1px solid #eef2f6' : 'none' }}
           >
             <span className="font-mono font-bold text-ink tracking-tight shrink-0" style={{ fontSize: 13, width: 52 }}>{s.coin}</span>
 
@@ -879,7 +877,7 @@ function FundingList({ items, capital, leverage }: { items: SpreadItem[]; capita
             </span>
 
             {/* Payback */}
-            <span className="font-mono font-semibold tabular-nums" style={{ fontSize: 11, color: tier.color }}>
+            <span className="font-mono font-semibold tabular-nums" style={{ fontSize: 11, color: '#334155' }}>
               <Redacted value={s.breakevenDays}>{v => formatPayback(v)}</Redacted>
             </span>
 
@@ -1119,16 +1117,6 @@ function OpportunityCards({
             </button>
           ))}
         </div>
-      </div>
-
-      {/* Legend */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-3 font-body" style={{ fontSize: 10 }}>
-        <span><span className="font-semibold" style={{ color: '#0f766e' }}>HARVEST</span> <span style={{ color: '#9aa5b3' }}>≤5d</span></span>
-        <span style={{ color: '#e6eaef' }}>·</span>
-        <span><span className="font-semibold" style={{ color: '#b45309' }}>CAUTION</span> <span style={{ color: '#9aa5b3' }}>5–10d</span></span>
-        <span style={{ color: '#e6eaef' }}>·</span>
-        <span><span className="font-semibold" style={{ color: '#9aa5b3' }}>MARGINAL</span> <span style={{ color: '#9aa5b3' }}>&gt;10d</span></span>
-        <span className="ml-auto font-mono" style={{ color: '#9aa5b3' }}>rates per venue cadence</span>
       </div>
 
       {allItems.length === 0 && (
@@ -1932,15 +1920,16 @@ function PerpSpotCard({
   return (
     <div
       className="relative rounded-card bg-surface overflow-hidden flex flex-col gap-3 p-4"
-      style={{ paddingLeft: 18, border: '1px solid #e6eaef', boxShadow: '0 1px 2px rgba(14,22,38,.05)' }}
+      style={{ border: '1px solid #e6eaef', boxShadow: '0 1px 2px rgba(14,22,38,.05)' }}
     >
-      <span aria-hidden style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, background: tier.accent }} />
-
       {/* Header — coin + tier label + honest carry pills (left); payback (right) */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center flex-wrap gap-x-2 gap-y-1 min-w-0">
           <span className="font-mono font-bold text-ink tracking-tight truncate" style={{ fontSize: 15 }}>{row.coin}</span>
-          <span className="font-body uppercase" style={{ fontSize: 9, letterSpacing: '0.14em', color: tier.color }}>{tier.label}</span>
+          {/* CAUTION is an alarm word — suppressed so nothing reads as a warning. */}
+          {status !== 'CAUTION' && (
+            <span className="font-body uppercase" style={{ fontSize: 9, letterSpacing: '0.14em', color: tier.color }}>{tier.label}</span>
+          )}
           {flipRisk && (
             <span className="font-body px-1.5 py-[1px] rounded-pill shrink-0" style={{ fontSize: 9, color: '#b45309', background: '#fff8ef' }}>
               flip risk
@@ -1954,7 +1943,7 @@ function PerpSpotCard({
         </div>
         <div className="text-right shrink-0">
           <div className="font-body uppercase" style={{ fontSize: 8.5, letterSpacing: '0.12em', color: '#9aa5b3' }}>payback</div>
-          <div className="font-mono font-semibold tabular-nums" style={{ fontSize: 13, color: tier.color }}>
+          <div className="font-mono font-semibold tabular-nums" style={{ fontSize: 13, color: '#334155' }}>
             <Redacted value={row.edge.breakevenDays}>{v => formatPayback(v)}</Redacted>
           </div>
         </div>
@@ -2222,14 +2211,15 @@ function UsdcArbCard({ row, capitalPerLeg }: { row: UsdcArbRow; capitalPerLeg: n
 
   return (
     <div className="relative rounded-card bg-surface overflow-hidden flex flex-col gap-3 p-4"
-      style={{ paddingLeft: 18, border: '1px solid #e6eaef', boxShadow: '0 1px 2px rgba(14,22,38,.05)' }}>
-      <span aria-hidden style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, background: tier.accent }} />
-
+      style={{ border: '1px solid #e6eaef', boxShadow: '0 1px 2px rgba(14,22,38,.05)' }}>
       {/* Header */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center flex-wrap gap-x-2 gap-y-1 min-w-0">
           <span className="font-mono font-bold text-ink tracking-tight truncate" style={{ fontSize: 15 }}>{row.coin}</span>
-          <span className="font-body uppercase" style={{ fontSize: 9, letterSpacing: '0.14em', color: tier.color }}>{tier.label}</span>
+          {/* CAUTION is an alarm word — suppressed so nothing reads as a warning. */}
+          {status !== 'CAUTION' && (
+            <span className="font-body uppercase" style={{ fontSize: 9, letterSpacing: '0.14em', color: tier.color }}>{tier.label}</span>
+          )}
           <span className="font-body px-1.5 py-[1px] rounded-pill shrink-0" style={{ fontSize: 9, color: '#7c3aed', background: '#f5f3ff' }}>
             {row.comboLabel}{row.sameVenue ? ' · same venue' : ''}
           </span>
@@ -2241,7 +2231,7 @@ function UsdcArbCard({ row, capitalPerLeg }: { row: UsdcArbRow; capitalPerLeg: n
         </div>
         <div className="text-right shrink-0">
           <div className="font-body uppercase" style={{ fontSize: 8.5, letterSpacing: '0.12em', color: '#9aa5b3' }}>payback</div>
-          <div className="font-mono font-semibold tabular-nums" style={{ fontSize: 13, color: tier.color }}>
+          <div className="font-mono font-semibold tabular-nums" style={{ fontSize: 13, color: '#334155' }}>
             <Redacted value={row.edge.breakevenDays}>{v => formatPayback(v)}</Redacted>
           </div>
         </div>
