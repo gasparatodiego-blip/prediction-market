@@ -1749,10 +1749,28 @@ function PerpSpotCard({
                 </span>
               )}
             </div>
+            {/* Two explicit legs — each leg states its own direction, never inferred.
+                A perp-vs-spot carry is exactly one SHORT (the perp — the funding-collecting
+                leg) + one LONG (buy the coin on spot — no funding). Green pill = the leg that
+                collects; blue pill = the hedge/long leg that does NOT collect. Order mirrors
+                the explainer: buy spot first, then short the perp. Never two longs. */}
+            <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
+              <span className="inline-flex items-baseline gap-1 font-body px-1.5 py-[1px] rounded-pill"
+                style={{ fontSize: 9.5, color: '#0f766e', background: '#effcf9' }}>
+                <span className="font-semibold tracking-wide">SHORT</span>
+                <span style={{ color: '#9aa5b3' }}>·</span>
+                <span className="font-mono">{venueLabel(row.shortVenue)}</span>
+              </span>
+              <span className="inline-flex items-baseline gap-1 font-body px-1.5 py-[1px] rounded-pill"
+                style={{ fontSize: 9.5, color: '#3b5bdb', background: '#eef2ff' }}>
+                <span className="font-semibold tracking-wide">BUY SPOT</span>
+                <span style={{ color: '#9aa5b3' }}>·</span>
+                <span className="font-mono">{venueLabel(row.spotVenueSuggested)}</span>
+              </span>
+            </div>
             <div className="mt-1 font-mono tabular-nums break-words" style={{ fontSize: 11, color: '#6b7787', lineHeight: 1.5 }}>
-              short perp <span className="text-ink-2 font-semibold">{venueLabel(row.shortVenue)}</span>
-              {' · '}buy spot <span className="text-ink-2 font-semibold">{venueLabel(row.spotVenueSuggested)}</span>
-              {' · '}funding <span style={{ color: '#0f766e' }}>+{row.fundingPct8h.toFixed(4)}%/8h</span>
+              short leg collects funding <span style={{ color: '#0f766e' }}>+{row.fundingPct8h.toFixed(4)}%/8h</span>
+              {' · '}every {row.intervalH}h · spot leg pays no funding
               {row.edge.breakevenDays != null && (
                 <>{' · '}breakeven {row.edge.breakevenDays.toFixed(1)}d</>
               )}
