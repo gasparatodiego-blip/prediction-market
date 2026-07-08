@@ -467,6 +467,14 @@ export default function MarketDetailPage() {
                 {mkt.maxSpread == null && (
                   <p className="font-body text-[10px] text-muted mt-1">Kalshi doesn&apos;t publish a reward band — distance here only affects fill risk.</p>
                 )}
+                {(legs.buy || legs.sell) && (
+                  <p className="font-body text-[10px] text-gold mt-1.5">
+                    Manual placement active for {[legs.buy && 'BUY', legs.sell && 'SELL'].filter(Boolean).join(' + ')} — {legs.buy && legs.sell ? 'those sides are' : 'that side is'} detached from this slider.
+                    {' '}
+                    <button onClick={() => { if (legs.buy) removeLeg('buy'); if (legs.sell) removeLeg('sell'); }}
+                      className="underline underline-offset-2 hover:text-ink-2">reset to slider</button>
+                  </p>
+                )}
               </div>
             </div>
 
@@ -492,6 +500,7 @@ export default function MarketDetailPage() {
             <LegTickets
               legs={legs} legQty={legQty} setLegQty={setLegQty} removeLeg={removeLeg}
               tradeSide={tradeSide} mid={mid} maxSpread={mkt.maxSpread}
+              venue={mkt.venue} snapshot={toSnapshot(mkt)} isRedacted={isRedacted}
             />
 
             {/* ── E) Fill-handling choice — per-side when quoting both ── */}
@@ -704,11 +713,12 @@ function TradeSideToggle({
 // both can be live at once; each has its own USD qty. A leg exists only after the user
 // taps a real book level, so every ticket is a manual placement at a real executable price.
 function LegTickets({
-  legs, legQty, setLegQty, removeLeg, tradeSide, mid, maxSpread,
+  legs, legQty, setLegQty, removeLeg, tradeSide, mid, maxSpread, venue, snapshot, isRedacted,
 }: {
   legs: { buy: LegState; sell: LegState }; legQty: { buy: number; sell: number };
   setLegQty: React.Dispatch<React.SetStateAction<{ buy: number; sell: number }>>;
   removeLeg: (kind: LegKind) => void; tradeSide: SideKey; mid: number | null; maxSpread: number | null;
+  venue: Venue; snapshot: MarketSnapshot; isRedacted: boolean;
 }) {
   const active: LegKind[] = [];
   if (legs.buy)  active.push('buy');
@@ -730,11 +740,19 @@ function LegTickets({
         const half   = maxSpread != null ? maxSpread / 2 : null;
         const closer = distC != null && half != null ? distC <= half : null;
         const isBuy  = kind === 'buy';
+        // Honest-engine: recompute the reward from the REAL tapped price's proximity to mid
+        // via the SAME estimator the slider uses — NEVER a stale slider figure or a guess.
+        // If it can't produce a value (redacted / no mid / null result) → "reward n/d".
+        const est    = (!isRedacted && distC != null)
+          ? estimateReward({ venue, capital: q, twoSided: bothActive, distanceCents: distC, market: snapshot, side: tradeSide })
+          : null;
+        const reward = est?.netPerDay ?? null;
         return (
           <div key={kind} className={`rounded-button border px-3 py-2.5 ${isBuy ? 'border-mint-deep/35 bg-mint-tint/40' : 'border-coral-ink/35 bg-coral-tint/40'}`}>
             <div className="flex items-center justify-between gap-2">
-              <span className={`font-body font-semibold text-[13px] ${isBuy ? 'text-mint-deep' : 'text-coral-ink'}`}>
+              <span className={`font-body font-semibold text-[13px] flex items-center gap-1.5 ${isBuy ? 'text-mint-deep' : 'text-coral-ink'}`}>
                 {isBuy ? 'BUY' : 'SELL'} {tradeSide.toUpperCase()} @ {fmtC(leg.price)}
+                <span className="px-1 rounded-sm bg-surface/70 border border-current/30 uppercase tracking-wide text-[7px] font-semibold">manuale</span>
               </span>
               <button onClick={() => removeLeg(kind)} className="text-muted hover:text-ink-2 shrink-0" title="remove this leg" aria-label={`remove ${kind} leg`}><X size={14} /></button>
             </div>
@@ -747,8 +765,15 @@ function LegTickets({
                 className="w-7 h-7 rounded-button border border-line text-ink-2 font-mono leading-none">+</button>
               <span className="font-body text-[11px] text-muted tabular-nums ml-auto">≈ {fmtSh(shares)} shares</span>
             </div>
+            <div className="flex items-center justify-between gap-2 mt-1.5 flex-wrap">
+              <span className="font-body text-[11px] text-ink-2 tabular-nums">
+                est. reward {reward != null ? <span className={reward > 0 ? 'text-mint-deep font-medium' : 'text-coral-ink'}>{fmtUsd(reward)}/day</span> : <span className="text-muted">n/d</span>}
+                <span className="text-muted"> · from tapped price, not the slider</span>
+              </span>
+              <button onClick={() => removeLeg(kind)} className="font-body text-[10px] text-muted hover:text-ink-2 underline underline-offset-2">reset to slider</button>
+            </div>
             {closer != null && (
-              <p className="font-body text-[10px] text-muted mt-1.5">
+              <p className="font-body text-[10px] text-muted mt-1">
                 {closer ? 'closer to mid · more reward, more fill risk' : 'farther from mid · safer, less reward'}
               </p>
             )}
