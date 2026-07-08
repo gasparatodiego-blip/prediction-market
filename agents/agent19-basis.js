@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // agent19-basis.js — Cash-and-carry / basis scanner
-// Covers: Binance COIN-M, Binance USDT-M, OKX, Deribit for BTC/ETH/BNB.
+// Covers: Binance COIN-M, Binance USDT-M, Bybit USDT-M, OKX, Deribit for BTC/ETH/BNB.
 // Applies the 7 filters from Step-1 analysis. Zero Claude, read-only, free.
 // v2: executable prices (long spot @ spotAsk, short future @ futureBid).
 //     Indicative mid/last values preserved as indicativeBasisPct / netAnnualizedIndicative.
@@ -29,6 +29,7 @@ const MAX_CAP        = 500_000; // USD, any single opportunity
 const FEES = {
   COINM:   0.00165,  // spot 0.10% + COIN-M futures 0.05% + delivery 0.015%
   USDTM:   0.00140,  // spot 0.10% + USDT-M futures 0.04%
+  BYBIT:   0.00155,  // spot on Binance 0.10% + Bybit USDT-M linear futures taker 0.055%; delivery ~0
   OKX:     0.00150,  // spot 0.10% + OKX futures 0.05%
   DERIBIT: 0.00150,  // spot on Binance 0.10% + Deribit futures 0.05%
 };
@@ -43,7 +44,7 @@ const DISCLAIMER =
   'Early exit re-buys the future at an unknown price — locked return disappears. ' +
   'COIN-M (Binance), BTC-USD (OKX): P&L settles in the coin, not USDT. ' +
   'USD return drifts with spot — NOT a clean locked-USD return. ' +
-  'Only Binance USDT-M (BTCUSDT/ETHUSDT quarterly) gives a clean locked-USDT return. ' +
+  'Only USDT-M linear quarterlies (Binance & Bybit, BTCUSDT/ETHUSDT) give a clean locked-USDT return. ' +
   'Exchange / counterparty risk over the full hold period. Not financial advice.';
 
 // ── HTTP ───────────────────────────────────────────────────────────────────────
@@ -126,7 +127,7 @@ function capacity(vol24Usd, oiUsd, asset) {
 function buildContract({ asset, exchange, venueKey, contract,
                           spotMid, spotBid, spotAsk,
                           futureLast, futureBid, futureAsk,
-                          expiryMs, vol24Usd, oiUsd }) {
+                          expiryMs, vol24Usd, oiUsd, capacityUsdOverride }) {
   const now = Date.now();
 
   // Filter 0 (honest-engine): an EXPIRED or unparseable-expiry dated future is a
@@ -210,8 +211,13 @@ function buildContract({ asset, exchange, venueKey, contract,
       : `Coin-margined — P&L settles in ${asset}. USD return drifts with spot price; not a clean locked-USD return.`
     : null;
 
-  // Filter 7: capacity estimate
-  const cap = capacity(vol24Usd, oiUsd, asset);
+  // Filter 7: capacity estimate. A venue may pass a REAL order-book-depth capacity
+  // (capacityUsdOverride, e.g. Bybit book-walk) — honest-engine: use it verbatim
+  // (already MAX_CAP/asset-capped by the caller) instead of the vol/OI proxy. Venues
+  // that don't pass it keep the existing vol/OI estimate unchanged (zero regression).
+  const cap = Number.isFinite(capacityUsdOverride)
+    ? capacityUsdOverride
+    : capacity(vol24Usd, oiUsd, asset);
   const expiryDate = new Date(expiryMs).toISOString().slice(0, 10);
 
   // Headline verdict uses executable (conservative) number
@@ -439,6 +445,104 @@ async function fetchUSDTM(spot) {
   return results;
 }
 
+// ── Bybit (USDT-M linear dated) ─────────────────────────────────────────────
+//
+// Bybit v5 tickers (category=linear) returns perpetuals AND dated futures in one
+// payload. Dated futures carry a `-DDMMMYY` symbol suffix (BTCUSDT-25SEP26), a
+// non-empty deliveryTime (ms epoch), an empty fundingRate (no funding — pure
+// delivery basis, verified) and deliveryFeeRate 0. They settle in USDT — a clean
+// locked-USDT return, same class as Binance USDT-M (NOT coin-margined). bid1Price/
+// ask1Price are the executable book top; turnover24h is already USD volume; expiry
+// comes straight from deliveryTime, so no symbol-date parsing is needed.
+//
+// Honest-engine: capacity is REAL order-book depth only, NEVER OI. We short the
+// dated future, which fills into the BID side, so we book-walk each candidate's bid
+// ladder (v5 market/orderbook) and sum notional within a 0.5% slippage band. OI is
+// not passed at all (oiUsd:null) — it never touches capacity, tier, or display.
+
+// Order-book depth in USD: walk levels from the top, summing price×size while the
+// level price stays within `slipTol` of the best. Bybit levels are [price, size]
+// strings, size in base coin. Capped at MAX_CAP. Never uses OI.
+function bookDepthUsd(levels, slipTol) {
+  if (!Array.isArray(levels) || levels.length === 0) return 0;
+  const best = parseFloat(levels[0][0]);
+  if (!(best > 0)) return 0;
+  let usd = 0;
+  for (const lvl of levels) {
+    const price = parseFloat(lvl[0]);
+    const size  = parseFloat(lvl[1]);
+    if (!(price > 0) || !(size > 0)) continue;
+    if (Math.abs(best - price) / best > slipTol) break;   // beyond the slippage band
+    usd += price * size;
+    if (usd >= MAX_CAP) return MAX_CAP;
+  }
+  return Math.round(usd);
+}
+
+async function fetchBybit(spot) {
+  const res  = await get('https://api.bybit.com/v5/market/tickers?category=linear');
+  const list = res.data?.result?.list;
+  if (!Array.isArray(list)) return [];
+
+  const now = Date.now();
+
+  // Pre-filter dated BTC/ETH contracts that could qualify, so we only book-walk
+  // (one orderbook call each) the ones actually worth pricing.
+  const candidates = [];
+  for (const x of list) {
+    const sym = x.symbol || '';
+    const m   = sym.match(/^([A-Z]+)USDT-\d{2}[A-Z]{3}\d{2}$/);  // dated only; skips perps
+    if (!m) continue;
+    const asset = m[1];
+    if (!['BTC', 'ETH'].includes(asset)) continue;               // decision matrix (matches USDT-M)
+    if (!spot[asset]?.mid) continue;
+    const expiryMs = parseInt(x.deliveryTime || '0', 10);
+    if (!Number.isFinite(expiryMs) || expiryMs <= now) continue;
+    if ((expiryMs - now) / 86_400_000 < MIN_DAYS) continue;      // filter 1: too near (skip weeklies)
+    const vol24Usd = parseFloat(x.turnover24h || 0);             // already USD
+    if (vol24Usd < MIN_VOL_THIN) continue;                       // filter 2: VERY THIN never qualifies
+    candidates.push({ x, asset, sym, expiryMs, vol24Usd });
+  }
+
+  // Real order-book depth for capacity — one orderbook call per candidate, in parallel.
+  const bookRes = await Promise.allSettled(
+    candidates.map(c => get(`https://api.bybit.com/v5/market/orderbook?category=linear&symbol=${c.sym}&limit=50`))
+  );
+
+  const results = [];
+  for (let i = 0; i < candidates.length; i++) {
+    const { x, asset, sym, expiryMs, vol24Usd } = candidates[i];
+    const sp  = spot[asset];
+    const bid = parseFloat(x.bid1Price || 0);
+    const ask = parseFloat(x.ask1Price || 0);
+
+    // Short-the-future leg fills into the BID side → capacity = bid-side depth. Never OI.
+    const r    = bookRes[i];
+    const bids = (r.status === 'fulfilled' ? r.value.data?.result?.b : null) || [];
+    const capacityUsd = bookDepthUsd(bids, 0.005);
+    if (capacityUsd <= 0) continue;   // no real book depth → no honest capacity → skip
+
+    const c = buildContract({
+      asset,
+      exchange:  'Bybit USDT-M',
+      venueKey:  'BYBIT',
+      contract:  sym,
+      spotMid:   sp.mid,
+      spotBid:   sp.bid,
+      spotAsk:   sp.ask,
+      futureLast: parseFloat(x.markPrice || x.lastPrice || 0),
+      futureBid:  bid > 0 ? bid : null,
+      futureAsk:  ask > 0 ? ask : null,
+      expiryMs,
+      vol24Usd,
+      oiUsd:               null,          // never OI for Bybit
+      capacityUsdOverride: capacityUsd,   // REAL order-book depth (book-walk)
+    });
+    if (c) results.push(c);
+  }
+  return results;
+}
+
 // ── OKX ───────────────────────────────────────────────────────────────────────
 
 async function fetchOKX(spot) {
@@ -558,9 +662,10 @@ async function scan() {
   try { spot = await fetchSpot(); }
   catch (e) { console.error('[basis] spot fetch error:', e.message); return; }
 
-  const [coinm, usdtm, okx, deribit] = await Promise.allSettled([
+  const [coinm, usdtm, bybit, okx, deribit] = await Promise.allSettled([
     fetchCOINM(spot),
     fetchUSDTM(spot),
+    fetchBybit(spot),
     fetchOKX(spot),
     fetchDeribit(spot),
   ]);
@@ -568,6 +673,7 @@ async function scan() {
   const all = [
     ...(coinm.status === 'fulfilled'   ? coinm.value   : (console.warn('[basis] COINM:', coinm.reason?.message), [])),
     ...(usdtm.status === 'fulfilled'   ? usdtm.value   : (console.warn('[basis] USDTM:', usdtm.reason?.message), [])),
+    ...(bybit.status === 'fulfilled'   ? bybit.value   : (console.warn('[basis] Bybit:', bybit.reason?.message), [])),
     ...(okx.status === 'fulfilled'     ? okx.value     : (console.warn('[basis] OKX:', okx.reason?.message), [])),
     ...(deribit.status === 'fulfilled' ? deribit.value : (console.warn('[basis] Deribit:', deribit.reason?.message), [])),
   ];
