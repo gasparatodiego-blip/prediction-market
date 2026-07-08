@@ -1721,6 +1721,101 @@ function PerpSpotHowTo({
   );
 }
 
+// Perp-vs-spot two-leg box — SAME geometry as FlowStrip (the perp-vs-perp card),
+// with the correct carry semantics: the LEFT leg SHORTS the perp and COLLECTS the
+// funding; the RIGHT leg BUYS SPOT as the delta hedge and pays/collects NO funding.
+// Never two collect legs. Colors: mint = the collecting short; blue = the spot hedge.
+function PerpSpotFlow({ row, perpUrl, spotUrl }: { row: PerpSpotRow; perpUrl: string | null; spotUrl: string | null }) {
+  const gid        = `psflow-${row.coin}-${row.shortVenue}`;
+  const shortColor = '#0f766e';   // collects funding
+  const spotColor  = '#3b5bdb';   // hedge leg — the established BUY-SPOT accent
+  return (
+    <div
+      className="rounded-[10px] px-3 py-2.5 flex items-stretch gap-2"
+      style={{ background: '#fbfcfd', border: '1px solid #eef2f6' }}
+    >
+      {/* SHORT leg — the perp; collects the funding every settlement */}
+      <div className="flex flex-col justify-center min-w-0 shrink">
+        <span className="font-body uppercase" style={{ fontSize: 8.5, letterSpacing: '0.12em', color: shortColor }}>
+          Short · Collect
+        </span>
+        <span className="inline-flex items-center gap-1 mt-1 min-w-0">
+          <PlatformLogo platform={row.shortVenue} size={12} />
+          <span className="font-mono font-bold text-ink truncate" style={{ fontSize: 12 }}>{venueLabel(row.shortVenue)}</span>
+          {perpUrl && <PlatformLink href={perpUrl} label={`${venueLabel(row.shortVenue)} perp`} compact className="shrink-0" />}
+        </span>
+        <span className="font-mono tabular-nums mt-0.5" style={{ fontSize: 11, color: shortColor }}>
+          +{row.fundingPct8h.toFixed(4)}%<span style={{ color: '#9aa5b3' }}> /8h</span>
+        </span>
+        <span className="mt-0.5">
+          <LegFundingCountdown intervalHours={row.intervalH} />
+        </span>
+      </div>
+
+      {/* Connector — short-color → spot-color; no pay-arrow: nobody pays funding here
+          (the short collects, the spot leg is funding-neutral) */}
+      <div className="flex-1 flex flex-col items-center justify-center" style={{ minWidth: 52 }}>
+        <svg viewBox="0 0 100 16" preserveAspectRatio="none" className="w-full" height="16" aria-hidden>
+          <defs>
+            <linearGradient id={gid} x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stopColor={shortColor} />
+              <stop offset="100%" stopColor={spotColor} />
+            </linearGradient>
+          </defs>
+          <line x1="4" y1="8" x2="88" y2="8" stroke={`url(#${gid})`} strokeWidth="1.5" />
+          <circle cx="46" cy="8" r="2.4" fill="#0e1626" />
+        </svg>
+        <span className="font-body uppercase mt-1" style={{ fontSize: 7.5, letterSpacing: '0.14em', color: '#9aa5b3' }}>
+          delta-neutral
+        </span>
+      </div>
+
+      {/* BUY SPOT leg — the price hedge; pays no funding */}
+      <div className="flex flex-col justify-center items-end text-right min-w-0 shrink">
+        <span className="font-body uppercase" style={{ fontSize: 8.5, letterSpacing: '0.12em', color: spotColor }}>
+          Buy Spot · Hedge
+        </span>
+        <span className="inline-flex flex-row-reverse items-center gap-1 mt-1 min-w-0">
+          <PlatformLogo platform={row.spotVenueSuggested} size={12} />
+          <span className="font-mono font-bold text-ink truncate" style={{ fontSize: 12 }}>{venueLabel(row.spotVenueSuggested)}</span>
+          {spotUrl && <PlatformLink href={spotUrl} label={`${venueLabel(row.spotVenueSuggested)} spot`} compact className="shrink-0" />}
+        </span>
+        <span className="font-mono tabular-nums mt-0.5" style={{ fontSize: 11, color: '#9aa5b3' }}>
+          no funding
+        </span>
+        <span className="mt-0.5 font-body" style={{ fontSize: 9, color: '#9aa5b3' }}>
+          long hedge
+        </span>
+      </div>
+    </div>
+  );
+}
+
+const PERP_SPOT_CAP_TIP =
+  'The largest position you can enter before order-book slippage eats the funding. ' +
+  'For the carry lane the spot + perp book depth is not walked yet — there is no measured ' +
+  'green size, so check each venue’s book and size conservatively before entering.';
+
+// Capacity slot for the carry lane. Mirrors the perp-vs-perp CapacityRow's container +
+// label + caption, but renders its HONEST not-measured state: PerpSpotRow carries no
+// order-book depth walk, so we never fabricate a green size or headroom bar here.
+function PerpSpotCapacityRow() {
+  return (
+    <div className="pt-2.5 mt-1" style={{ borderTop: '1px solid #eef2f6' }}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="inline-flex items-center gap-1 font-body" style={{ fontSize: 11, color: '#6b7787' }}>
+          Max before slippage
+          <InfoTooltip label="Max before slippage — how it's measured" text={PERP_SPOT_CAP_TIP} />
+        </span>
+        <span className="font-body" style={{ fontSize: 11, color: '#9aa5b3' }}>not measured yet</span>
+      </div>
+      <p className="mt-1.5 font-body leading-snug" style={{ fontSize: 10.5, color: '#9aa5b3' }}>
+        Order-book depth for the carry legs isn’t walked yet — check each venue’s book and size conservatively.
+      </p>
+    </div>
+  );
+}
+
 function PerpSpotCard({
   row, capitalPerLeg, expanded, onToggle,
 }: { row: PerpSpotRow; capitalPerLeg: number; expanded: boolean; onToggle: () => void }) {
@@ -1730,73 +1825,112 @@ function PerpSpotCard({
   const spotUrl    = venueSpotUrl(row.spotVenueSuggested, row.coin);
   const heroColor  = netDay == null ? '#0f766e' : netDay > 0 ? '#0f766e' : '#e11d48';
   const flipRisk   = row.trailingPositiveSettlements < 3;
+  const redacted   = row.edge.netPerDay1k == null;
+
+  // Payback-derived tier — the SAME verdict function the perp-vs-perp cards use
+  // (funding-math spreadStatus): >10d or none → MARGINAL, >5d → CAUTION, else HARVEST.
+  // Drives the accent bar + label + payback color so the two lanes read as siblings.
+  // No new number: breakevenDays is the engine's own capital-invariant figure.
+  const beDays = row.edge.breakevenDays;
+  const status: SpreadItem['status'] =
+    beDays == null || !isFinite(beDays) || beDays > 10 ? 'MARGINAL' : beDays > 5 ? 'CAUTION' : 'HARVEST';
+  const tier = TIER[status];
+
+  const fees = row.edge.feesOneTime1k == null ? null : row.edge.feesOneTime1k * k;
+  const rr   = row.edge.annualizedRunRatePct == null
+    ? null
+    : { pct: row.edge.annualizedRunRatePct, capped: row.edge.annualizedCapped };
 
   return (
-    <div className="rounded-card bg-surface overflow-hidden" style={{ border: '1px solid #e6eaef', boxShadow: '0 1px 2px rgba(14,22,38,.05)' }}>
-      <button onClick={onToggle} className="w-full text-left p-3 hover:bg-bg-soft/40 transition-colors">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="font-mono font-bold text-ink" style={{ fontSize: 17 }}>{row.coin}</span>
-              {flipRisk && (
-                <span className="font-body px-1.5 py-[1px] rounded-pill shrink-0" style={{ fontSize: 9, color: '#b45309', background: '#fff8ef' }}>
-                  flip risk
-                </span>
-              )}
-              {!row.spotVenueVerified && (
-                <span className="font-body px-1.5 py-[1px] rounded-pill shrink-0" style={{ fontSize: 9, color: '#6b7787', background: '#f1f5f9' }}>
-                  verify spot listing
-                </span>
-              )}
-            </div>
-            {/* Two explicit legs — each leg states its own direction, never inferred.
-                A perp-vs-spot carry is exactly one SHORT (the perp — the funding-collecting
-                leg) + one LONG (buy the coin on spot — no funding). Green pill = the leg that
-                collects; blue pill = the hedge/long leg that does NOT collect. Order mirrors
-                the explainer: buy spot first, then short the perp. Never two longs. */}
-            <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
-              <span className="inline-flex items-baseline gap-1 font-body px-1.5 py-[1px] rounded-pill"
-                style={{ fontSize: 9.5, color: '#0f766e', background: '#effcf9' }}>
-                <span className="font-semibold tracking-wide">SHORT</span>
-                <span style={{ color: '#9aa5b3' }}>·</span>
-                <span className="font-mono">{venueLabel(row.shortVenue)}</span>
-              </span>
-              <span className="inline-flex items-baseline gap-1 font-body px-1.5 py-[1px] rounded-pill"
-                style={{ fontSize: 9.5, color: '#3b5bdb', background: '#eef2ff' }}>
-                <span className="font-semibold tracking-wide">BUY SPOT</span>
-                <span style={{ color: '#9aa5b3' }}>·</span>
-                <span className="font-mono">{venueLabel(row.spotVenueSuggested)}</span>
-              </span>
-            </div>
-            <div className="mt-1 font-mono tabular-nums break-words" style={{ fontSize: 11, color: '#6b7787', lineHeight: 1.5 }}>
-              short leg collects funding <span style={{ color: '#0f766e' }}>+{row.fundingPct8h.toFixed(4)}%/8h</span>
-              {' · '}every {row.intervalH}h · spot leg pays no funding
-              {row.edge.breakevenDays != null && (
-                <>{' · '}breakeven {row.edge.breakevenDays.toFixed(1)}d</>
-              )}
-            </div>
-            <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
-              <span className="font-body px-1.5 py-[1px] rounded-pill" style={{ fontSize: 9.5, color: '#0f766e', background: '#effcf9' }}>
-                positive for {row.trailingPositiveSettlements} settlement{row.trailingPositiveSettlements === 1 ? '' : 's'}
-              </span>
-              {perpUrl && <PlatformLink href={perpUrl} label={`${venueLabel(row.shortVenue)} perp`} compact className="shrink-0" />}
-              {spotUrl && <PlatformLink href={spotUrl} label={`${venueLabel(row.spotVenueSuggested)} spot`} compact className="shrink-0" />}
-            </div>
-          </div>
-          <div className="text-right shrink-0">
-            <div className="font-mono font-bold tabular-nums leading-none" style={{ fontSize: 20, color: heroColor }}>
-              {netDay == null
-                ? <Redacted value={row.edge.netPerDay1k}>{() => null}</Redacted>
-                : `${netDay >= 0 ? '+' : ''}${fmtDayUsd(netDay).replace('/day', '')}`}
-            </div>
-            <div className="font-body mt-0.5" style={{ fontSize: 9.5, color: '#9aa5b3' }}>net / day</div>
-            <VerifyBadge v={(row as any).__verify} className="justify-end" />
+    <div
+      className="relative rounded-card bg-surface overflow-hidden flex flex-col gap-3 p-4"
+      style={{ paddingLeft: 18, border: '1px solid #e6eaef', boxShadow: '0 1px 2px rgba(14,22,38,.05)' }}
+    >
+      <span aria-hidden style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, background: tier.accent }} />
+
+      {/* Header — coin + tier label + honest carry pills (left); payback (right) */}
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center flex-wrap gap-x-2 gap-y-1 min-w-0">
+          <span className="font-mono font-bold text-ink tracking-tight truncate" style={{ fontSize: 15 }}>{row.coin}</span>
+          <span className="font-body uppercase" style={{ fontSize: 9, letterSpacing: '0.14em', color: tier.color }}>{tier.label}</span>
+          {flipRisk && (
+            <span className="font-body px-1.5 py-[1px] rounded-pill shrink-0" style={{ fontSize: 9, color: '#b45309', background: '#fff8ef' }}>
+              flip risk
+            </span>
+          )}
+          {!row.spotVenueVerified && (
+            <span className="font-body px-1.5 py-[1px] rounded-pill shrink-0" style={{ fontSize: 9, color: '#6b7787', background: '#f1f5f9' }}>
+              verify spot listing
+            </span>
+          )}
+        </div>
+        <div className="text-right shrink-0">
+          <div className="font-body uppercase" style={{ fontSize: 8.5, letterSpacing: '0.12em', color: '#9aa5b3' }}>payback</div>
+          <div className="font-mono font-semibold tabular-nums" style={{ fontSize: 13, color: tier.color }}>
+            <Redacted value={row.edge.breakevenDays}>{v => formatPayback(v)}</Redacted>
           </div>
         </div>
-      </button>
+      </div>
+
+      <PerpSpotFlow row={row} perpUrl={perpUrl} spotUrl={spotUrl} />
+
+      {/* Honest track record — real consecutive-positive settlement count */}
+      <div className="-mt-1">
+        <span className="font-body px-1.5 py-[1px] rounded-pill" style={{ fontSize: 9.5, color: '#0f766e', background: '#effcf9' }}>
+          positive for {row.trailingPositiveSettlements} settlement{row.trailingPositiveSettlements === 1 ? '' : 's'}
+        </span>
+      </div>
+
+      {/* Net row */}
+      <div className="flex items-end justify-between gap-2">
+        <div className="min-w-0">
+          {redacted ? (
+            <div className="font-mono font-bold" style={{ fontSize: 22 }}>
+              <Redacted value={row.edge.netPerDay1k}>{() => null}</Redacted>
+            </div>
+          ) : netDay != null ? (
+            <div className="font-mono font-bold tabular-nums leading-none text-ink" style={{ fontSize: 24 }}>
+              {fmtMoneyPlain(netDay)}
+            </div>
+          ) : (
+            <div className="font-mono font-bold text-muted" style={{ fontSize: 24 }}>—</div>
+          )}
+          <div className="font-body mt-1" style={{ fontSize: 10, color: '#6b7787' }}>net / day</div>
+          <VerifyBadge v={(row as any).__verify} />
+        </div>
+        <div className="text-right font-mono tabular-nums shrink-0" style={{ fontSize: 10, color: '#9aa5b3' }}>
+          {redacted ? (
+            <Redacted value={row.edge.feesOneTime1k}>{() => null}</Redacted>
+          ) : (
+            <>
+              {fees != null && <div>fees {fmtMoneyPlain(fees)}</div>}
+              {rr && (
+                <div className="inline-flex items-center justify-end gap-0.5">
+                  <span>{fmtAprLabel(rr)}</span>
+                  <InfoTooltip label="APR — how it's calculated" text={APR_TIP} />
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+
+      <PerpSpotCapacityRow />
+
+      {/* Footer — execution-guide toggle, styled like the perp-vs-perp card's button */}
+      <div className="flex items-center justify-end pt-0.5">
+        <button
+          onClick={onToggle}
+          aria-expanded={expanded}
+          className="font-body rounded-button transition-colors duration-100 hover:text-ink-2"
+          style={{ fontSize: 11, padding: '8px 12px', border: '1px solid #e6eaef', color: '#6b7787' }}
+        >
+          {expanded ? 'Hide guide ↑' : 'Execution guide →'}
+        </button>
+      </div>
 
       {expanded && (
-        <div className="px-3 pb-3 pt-1 border-t" style={{ borderColor: '#eef2f6' }}>
+        <div className="pt-3 border-t" style={{ borderColor: '#eef2f6' }}>
           <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 font-mono tabular-nums" style={{ fontSize: 11 }}>
             <span className="text-muted">Funding collected / day</span>
             <span className="text-right text-ink">
