@@ -25,6 +25,11 @@ import {
 } from '@/lib/funding-math';
 import type { FuturesCoin, SpreadItem, SlipPoint, CryptoSpreadsData, RwaObservation, Persistence, PerpSpotRow, PerpSpotRegime, UsdcArbRow } from '@/lib/spread-types';
 import { isRwaKey } from '@/lib/rwa';
+// Shared dead/illiquid/cap-pinned contract guard — the SAME one agent15 applies when it
+// builds the producer feed. Applying it here keeps the serve path from re-manufacturing
+// phantom legs (e.g. edgeX dust/cap-pinned funding) that agent15 already excluded and
+// that display-sanity would otherwise reject at the 200%/yr cap every request.
+import { isDeadContract, buildPeerMarks } from '@/lib/contract-liveness';
 // USDC-margined divergence lane. Plain-JS SSOT shared with agent29-verifier so the
 // served rows and the independent re-read derive identically from the same snapshot.
 import { computeUsdcArb } from '@/lib/usdc-arb';
@@ -272,10 +277,19 @@ export function computeSpreads(
 ): SpreadItem[] {
   const byExchange: Record<string, { exchange: string; fr: number; intervalHours: number; nextFundingTime?: number; dex: boolean }[]> = {};
 
+  // Mirror agent15's producer-side guard: exclude dead/illiquid/cap-pinned legs (dust OI,
+  // frozen mark, funding pinned at cap, stalled clock) so they never form a phantom pair
+  // on the serve path. Silent here — computeSpreads runs per request, and agent15 already
+  // logs each exclusion once per cycle; display-sanity remains the last-line backstop.
+  const now       = Date.now();
+  const peerMarks = buildPeerMarks(futures);
+
   for (const [ex, coins] of Object.entries(futures)) {
     for (const [coin, data] of Object.entries(coins || {})) {
       const fr = data?.fundingRate;
       if (fr == null || typeof fr !== 'number' || !isFinite(fr)) continue;
+      const hist = history[ex]?.[coin] ?? [];
+      if (isDeadContract(ex, coin, data, hist, { now, peerMarks: peerMarks[coin] }).dead) continue;
       const intervalHours = data.fundingIntervalHours ?? 8;
       // Carry the venue's real next-funding timestamp through when it captured one
       // (display-only, for the per-leg countdown). Undefined stays undefined.
