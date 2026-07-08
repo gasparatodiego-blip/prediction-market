@@ -18,7 +18,7 @@ import { PlatformLink } from '@/app/components/ui/PlatformLink';
 import { VerifyBadge } from '@/app/components/ui/VerifyBadge';
 import { venuePerpUrl, venueSpotUrl } from '@/lib/platform-links';
 import { AUTO_EXECUTE_ENABLED } from '@/lib/flags';
-import type { PerpSpotRow, PerpSpotRegime } from '@/lib/spread-types';
+import type { PerpSpotRow, PerpSpotRegime, UsdcArbRow } from '@/lib/spread-types';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -55,6 +55,7 @@ interface ApiResponse {
   perpSpot?:    PerpSpotRow[];
   perpSpotStale?: boolean;
   perpSpotRegime?: PerpSpotRegime | null;
+  usdcArb?:     UsdcArbRow[];
   meta:         Meta | null;
 }
 
@@ -175,7 +176,7 @@ const LEVERAGE_OPTIONS: Leverage[] = [1, 2, 3, 5];
 
 // ── Arb-type filter ───────────────────────────────────────────────────────────
 
-type ArbType = 'all' | 'perp_perp' | 'spot_perp';
+type ArbType = 'all' | 'perp_perp' | 'spot_perp' | 'usdc';
 
 function TypeFilterToggle({
   value, onChange,
@@ -186,6 +187,10 @@ function TypeFilterToggle({
     {
       id: 'spot_perp', label: 'Perp vs Spot',
       hint: 'earn the funding',
+    },
+    {
+      id: 'usdc', label: 'USDC-margined',
+      hint: 'stablecoin-settled',
     },
   ];
   return (
@@ -224,6 +229,11 @@ function TypeFilterToggle({
       {value === 'spot_perp' && (
         <span className="font-body text-[11px] text-muted">
           Hold spot, short its perp — collect the full funding rate
+        </span>
+      )}
+      {value === 'usdc' && (
+        <span className="font-body text-[11px] text-muted">
+          Short/long the same coin&apos;s USDC-vs-USDT perps — collect the funding divergence
         </span>
       )}
     </div>
@@ -2122,6 +2132,158 @@ function PerpSpotView({
   );
 }
 
+// ── USDC-margined funding-divergence lane ─────────────────────────────────────
+// A SEPARATE, clearly-labeled surface (thin liquidity + de-peg risk) so it is never
+// confused with the main USDT crypto lane. net/day is primary; annualized is a
+// capped run-rate; every $ figure redacts on the free tier.
+function usdcBase(v: string): string { return v.replace(/-usdc$/, ''); }
+
+function UsdcLegChip({ venue, margin }: { venue: string; margin: 'USDC' | 'USDT' }) {
+  const isUsdc = margin === 'USDC';
+  return (
+    <span className="inline-flex items-center gap-1 min-w-0">
+      <PlatformLogo platform={usdcBase(venue)} size={12} />
+      <span className="font-mono font-bold text-ink truncate" style={{ fontSize: 12 }}>{venueLabel(usdcBase(venue))}</span>
+      <span className="font-body px-1 py-[1px] rounded-pill shrink-0" style={{
+        fontSize: 8.5, letterSpacing: '0.04em',
+        color: isUsdc ? '#7c3aed' : '#0f766e',
+        background: isUsdc ? '#f5f3ff' : '#effcf9',
+      }}>{margin}</span>
+    </span>
+  );
+}
+
+function UsdcArbCard({ row, capitalPerLeg }: { row: UsdcArbRow; capitalPerLeg: number }) {
+  const k        = capitalPerLeg / 1000;
+  const redacted = row.edge.netPerDay1k == null;
+  const netDay   = redacted ? null : (row.edge.netPerDay1k as number) * k;
+  const fees     = row.edge.feesOneTime1k == null ? null : row.edge.feesOneTime1k * k;
+  const beDays   = row.edge.breakevenDays;
+  const status: SpreadItem['status'] =
+    beDays == null || !isFinite(beDays) || beDays > 10 ? 'MARGINAL' : beDays > 5 ? 'CAUTION' : 'HARVEST';
+  const tier = TIER[status];
+  const shortUrl = venuePerpUrl(usdcBase(row.shortVenue), row.coin);
+  const longUrl  = venuePerpUrl(usdcBase(row.longVenue),  row.coin);
+
+  return (
+    <div className="relative rounded-card bg-surface overflow-hidden flex flex-col gap-3 p-4"
+      style={{ paddingLeft: 18, border: '1px solid #e6eaef', boxShadow: '0 1px 2px rgba(14,22,38,.05)' }}>
+      <span aria-hidden style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, background: tier.accent }} />
+
+      {/* Header */}
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center flex-wrap gap-x-2 gap-y-1 min-w-0">
+          <span className="font-mono font-bold text-ink tracking-tight truncate" style={{ fontSize: 15 }}>{row.coin}</span>
+          <span className="font-body uppercase" style={{ fontSize: 9, letterSpacing: '0.14em', color: tier.color }}>{tier.label}</span>
+          <span className="font-body px-1.5 py-[1px] rounded-pill shrink-0" style={{ fontSize: 9, color: '#7c3aed', background: '#f5f3ff' }}>
+            {row.comboLabel}{row.sameVenue ? ' · same venue' : ''}
+          </span>
+          {row.thin && (
+            <span className="font-body px-1.5 py-[1px] rounded-pill shrink-0" style={{ fontSize: 9, color: '#b45309', background: '#fff8ef' }}>
+              thin book
+            </span>
+          )}
+        </div>
+        <div className="text-right shrink-0">
+          <div className="font-body uppercase" style={{ fontSize: 8.5, letterSpacing: '0.12em', color: '#9aa5b3' }}>payback</div>
+          <div className="font-mono font-semibold tabular-nums" style={{ fontSize: 13, color: tier.color }}>
+            <Redacted value={row.edge.breakevenDays}>{v => formatPayback(v)}</Redacted>
+          </div>
+        </div>
+      </div>
+
+      {/* Flow: SHORT higher-funding leg → LONG lower-funding leg */}
+      <div className="flex items-center justify-between gap-2 rounded-card px-3 py-2.5" style={{ background: '#fafbfc', border: '1px solid #eef2f6' }}>
+        <div className="min-w-0">
+          <div className="font-body uppercase mb-0.5" style={{ fontSize: 8, letterSpacing: '0.12em', color: '#e11d48' }}>short</div>
+          <div className="flex items-center gap-1">
+            <UsdcLegChip venue={row.shortVenue} margin={row.shortMargin} />
+            {shortUrl && <PlatformLink href={shortUrl} label={`${venueLabel(usdcBase(row.shortVenue))} perp`} compact className="shrink-0" />}
+          </div>
+          <div className="font-mono tabular-nums mt-0.5" style={{ fontSize: 10, color: '#6b7787' }}>
+            {row.frShortPct8h > 0 ? '+' : ''}{row.frShortPct8h.toFixed(4)}%/8h · {row.liqTierShort ?? '—'}
+          </div>
+        </div>
+        <span aria-hidden className="shrink-0 font-mono" style={{ fontSize: 14, color: '#cbd3dc' }}>→</span>
+        <div className="min-w-0 text-right">
+          <div className="font-body uppercase mb-0.5" style={{ fontSize: 8, letterSpacing: '0.12em', color: '#0f766e' }}>long</div>
+          <div className="flex items-center gap-1 justify-end">
+            {longUrl && <PlatformLink href={longUrl} label={`${venueLabel(usdcBase(row.longVenue))} perp`} compact className="shrink-0" />}
+            <UsdcLegChip venue={row.longVenue} margin={row.longMargin} />
+          </div>
+          <div className="font-mono tabular-nums mt-0.5" style={{ fontSize: 10, color: '#6b7787' }}>
+            {row.frLongPct8h > 0 ? '+' : ''}{row.frLongPct8h.toFixed(4)}%/8h · {row.liqTierLong ?? '—'}
+          </div>
+        </div>
+      </div>
+
+      {/* Net row */}
+      <div className="flex items-end justify-between gap-2">
+        <div className="min-w-0">
+          {redacted ? (
+            <div className="font-mono font-bold" style={{ fontSize: 22 }}><Redacted value={row.edge.netPerDay1k}>{() => null}</Redacted></div>
+          ) : netDay != null ? (
+            <div className="font-mono font-bold tabular-nums leading-none text-ink" style={{ fontSize: 24 }}>{fmtMoneyPlain(netDay)}</div>
+          ) : (
+            <div className="font-mono font-bold text-muted" style={{ fontSize: 24 }}>—</div>
+          )}
+          <div className="font-body mt-1" style={{ fontSize: 10, color: '#6b7787' }}>net / day · on ${capitalPerLeg.toLocaleString()}/leg</div>
+          <VerifyBadge v={(row as any).__verify} />
+        </div>
+        <div className="text-right font-mono tabular-nums shrink-0" style={{ fontSize: 10, color: '#9aa5b3' }}>
+          {redacted ? (
+            <Redacted value={row.edge.feesOneTime1k}>{() => null}</Redacted>
+          ) : (
+            <>
+              {fees != null && <div>fees {fmtMoneyPlain(fees)}</div>}
+              {row.edge.annualizedRunRatePct != null && (
+                <div title="Run-rate on current funding — not guaranteed; funding can flip.">
+                  ≈ {row.edge.annualizedRunRatePct.toFixed(0)}%/yr{row.edge.annualizedCapped ? '+' : ''} run-rate
+                </div>
+              )}
+              <div>divergence {row.grossApyPct.toFixed(1)}%/yr</div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function UsdcArbView({ rows, capitalPerLeg }: { rows: UsdcArbRow[]; capitalPerLeg: number }) {
+  const visible = useMemo(
+    () => rows.slice().sort((a, b) => (b.edge.netPerDay1k ?? -1e9) - (a.edge.netPerDay1k ?? -1e9)),
+    [rows],
+  );
+  return (
+    <div>
+      {/* Lane label — de-peg risk disclosed up front, never confused with the main lane */}
+      <div className="rounded-card p-3 mb-4" style={{ background: '#faf9ff', border: '1px solid #ece9fe' }}>
+        <div className="font-body uppercase" style={{ fontSize: 9.5, letterSpacing: '0.14em', color: '#7c3aed' }}>
+          USDC-margined · stablecoin-settled · thin liquidity · de-peg risk
+        </div>
+        <p className="mt-1.5 font-body leading-snug" style={{ fontSize: 11, color: '#6b7787', maxWidth: '62ch' }}>
+          Separate USDC-settled perp contracts (majors only). Fees are the venues&apos; real sourced USDC-M taker
+          rates — never the USDT schedule. Net / day is after both legs&apos; fees; annualized is a capped run-rate.
+          USDC books are thinner than USDT and the USDC⁄USDT peg can move — size conservatively.
+        </p>
+      </div>
+
+      {visible.length === 0 ? (
+        <div className="py-14 text-center font-body text-sm text-muted">
+          No executable USDC-margined divergence right now — thin or cap-pinned contracts are dropped. Check back later.
+        </div>
+      ) : (
+        <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(320px,1fr))' }}>
+          {visible.map(r => (
+            <UsdcArbCard key={`${r.coin}-${r.shortVenue}-${r.longVenue}`} row={r} capitalPerLeg={capitalPerLeg} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function CryptoPage() {
@@ -2233,6 +2395,14 @@ export default function CryptoPage() {
   }, null);
 
   const isPerpSpot   = assetView === 'crypto' && typeFilter === 'spot_perp';
+  const isUsdc       = assetView === 'crypto' && typeFilter === 'usdc';
+  const usdcRows     = data?.usdcArb ?? [];
+  const bestUsdcNet  = usdcRows.reduce<number | null>((best, r) => {
+    const nd = r.edge.netPerDay1k == null ? null : r.edge.netPerDay1k * (capital / 1000);
+    if (nd == null) return best;
+    return best == null || nd > best ? nd : best;
+  }, null);
+  const usdcAllRedacted = usdcRows.length > 0 && usdcRows.every(r => r.edge.netPerDay1k == null);
   const perpSpotRows = data?.perpSpot ?? [];
   const bestPerpSpotNet = perpSpotRows.reduce<number | null>((best, r) => {
     const nd = perpSpotNetDay(r, capital);
@@ -2272,7 +2442,9 @@ export default function CryptoPage() {
       {/* HERO */}
       <div className="pb-5 mb-5" style={{ borderBottom: '1px solid #e6eaef' }}>
         <div className="font-body uppercase" style={{ fontSize: 10, letterSpacing: '0.16em', color: '#9aa5b3' }}>
-          {isPerpSpot ? 'Perp vs Spot · delta-neutral carry' : 'Funding arbitrage · market-neutral'}
+          {isPerpSpot ? 'Perp vs Spot · delta-neutral carry'
+            : isUsdc ? 'USDC-margined · funding divergence'
+            : 'Funding arbitrage · market-neutral'}
         </div>
         <div className="mt-2 flex items-baseline gap-2 flex-wrap">
           {/* Commodities are observation-only — no cashable "best net/day" exists, so dash it. */}
@@ -2287,16 +2459,24 @@ export default function CryptoPage() {
                       : perpSpotAllRedacted
                         ? <span className="align-middle"><Redacted value={null}>{() => null}</Redacted></span>
                         : '—')
-                : filteredPairs.length === 0
-                  ? '—'
-                  : bestNetDay != null
-                    ? `≈ ${fmtMoneyPlain(bestNetDay)}`
-                    : <span className="align-middle"><Redacted value={filteredPairs[0].netApy30d}>{() => null}</Redacted></span>}
+                : isUsdc
+                  ? (usdcRows.length === 0
+                      ? '—'
+                      : bestUsdcNet != null
+                        ? `≈ ${fmtMoneyPlain(bestUsdcNet)}`
+                        : usdcAllRedacted
+                          ? <span className="align-middle"><Redacted value={null}>{() => null}</Redacted></span>
+                          : '—')
+                  : filteredPairs.length === 0
+                    ? '—'
+                    : bestNetDay != null
+                      ? `≈ ${fmtMoneyPlain(bestNetDay)}`
+                      : <span className="align-middle"><Redacted value={filteredPairs[0].netApy30d}>{() => null}</Redacted></span>}
           </span>
           <span className="font-body" style={{ fontSize: 12, color: '#6b7787' }}>
             {assetView === 'commodity'
               ? 'commodities · observing funding, not cashable yet'
-              : isPerpSpot
+              : (isPerpSpot || isUsdc)
                 ? `best net / day on $${capital.toLocaleString()} per leg`
                 : `best net / day on $${capital.toLocaleString()}`}
           </span>
@@ -2304,7 +2484,9 @@ export default function CryptoPage() {
         <p className="mt-3 font-body leading-relaxed" style={{ fontSize: 12.5, color: '#334155', maxWidth: '54ch' }}>
           {isPerpSpot
             ? 'Hold spot, short the same coin’s perp on the venue paying the most funding. Price moves cancel — you keep the full funding rate. Rates are current, not locked, and can flip negative.'
-            : 'Short the exchange paying high funding, long the one paying low. You take no bet on price — you keep the hourly funding gap. Rates are current estimates, not locked.'}
+            : isUsdc
+              ? 'The same coin trades as a USDC-settled perp and a USDT-settled perp whose funding can diverge. Short the higher-funding leg, long the lower — price cancels, you keep the funding gap. USDC books are thinner and USDC-vs-USDT can de-peg.'
+              : 'Short the exchange paying high funding, long the one paying low. You take no bet on price — you keep the hourly funding gap. Rates are current estimates, not locked.'}
         </p>
       </div>
 
@@ -2327,7 +2509,7 @@ export default function CryptoPage() {
           {/* CONTROLS — capital drives every card's net/day live */}
           <div className="mb-5 rounded-card bg-surface p-3 flex flex-col gap-3" style={{ border: '1px solid #e6eaef', boxShadow: '0 1px 2px rgba(14,22,38,.05)' }}>
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-body uppercase shrink-0" style={{ fontSize: 10, letterSpacing: '0.12em', color: '#6b7787' }}>{typeFilter === 'spot_perp' ? 'Capital per leg' : 'Your capital'}</span>
+              <span className="font-body uppercase shrink-0" style={{ fontSize: 10, letterSpacing: '0.12em', color: '#6b7787' }}>{(typeFilter === 'spot_perp' || typeFilter === 'usdc') ? 'Capital per leg' : 'Your capital'}</span>
               <div className="inline-flex items-center rounded-button overflow-hidden" style={{ border: '1px solid #e6eaef' }}>
                 <span className="pl-2.5 pr-1 font-mono" style={{ fontSize: 13, color: '#9aa5b3' }}>$</span>
                 <input
@@ -2343,7 +2525,7 @@ export default function CryptoPage() {
                 />
               </div>
               <div className="flex items-center gap-1">
-                {(typeFilter === 'spot_perp' ? [500, 1000, 5000, 10000] : [1000, 5000, 10000]).map(v => (
+                {((typeFilter === 'spot_perp' || typeFilter === 'usdc') ? [500, 1000, 5000, 10000] : [1000, 5000, 10000]).map(v => (
                   <button
                     key={v}
                     onClick={() => setCapital(v)}
@@ -2367,6 +2549,11 @@ export default function CryptoPage() {
                 = capital on EACH leg. You buy spot with one leg and post margin on the short perp with the
                 other, so total capital deployed is 2×.
               </p>
+            ) : typeFilter === 'usdc' ? (
+              <p className="font-body" style={{ fontSize: 11, color: '#9aa5b3', marginTop: -6 }}>
+                = margin on EACH perp leg (one USDC-settled, one USDT-settled). Both legs are perps — you
+                don&apos;t buy the coin. Total capital deployed is 2×.
+              </p>
             ) : (
               <p className="font-body" style={{ fontSize: 11, color: '#9aa5b3', marginTop: -6 }}>
                 = USD stablecoin margin (USDC/USDT). You open perp positions — you don&apos;t buy the coin.
@@ -2377,7 +2564,7 @@ export default function CryptoPage() {
             <div className="flex items-center gap-4 flex-wrap pt-2.5" style={{ borderTop: '1px solid #eef2f6' }}>
               <AssetClassToggle value={assetView} onChange={selectAssetView} />
               <TypeFilterToggle value={typeFilter} onChange={setTypeFilter} />
-              {typeFilter !== 'spot_perp' && (
+              {(typeFilter === 'all' || typeFilter === 'perp_perp') && (
               <div className="flex items-center gap-2">
                 <span className="font-body uppercase" style={{ fontSize: 10, letterSpacing: '0.12em', color: '#6b7787' }}>Leverage</span>
                 <div className="flex rounded-button overflow-hidden" style={{ border: '1px solid #e6eaef' }}>
@@ -2407,7 +2594,10 @@ export default function CryptoPage() {
           {assetView === 'crypto' && typeFilter === 'spot_perp' && (
             <PerpSpotView rows={data.perpSpot ?? []} stale={!!data.perpSpotStale} capitalPerLeg={capital} regime={data.perpSpotRegime ?? null} />
           )}
-          {assetView === 'crypto' && typeFilter !== 'spot_perp' && (
+          {isUsdc && (
+            <UsdcArbView rows={usdcRows} capitalPerLeg={capital} />
+          )}
+          {assetView === 'crypto' && (typeFilter === 'all' || typeFilter === 'perp_perp') && (
             <OpportunityCards spreads={filteredPairs} capital={capital} leverage={leverage} />
           )}
           {assetView === 'commodity' && (
@@ -2415,7 +2605,7 @@ export default function CryptoPage() {
           )}
 
           {/* ── Advanced / full data (crypto perp/perp view only) ─────────── */}
-          {assetView === 'crypto' && typeFilter !== 'spot_perp' && (
+          {assetView === 'crypto' && (typeFilter === 'all' || typeFilter === 'perp_perp') && (
           <div className="border border-line rounded-card bg-surface shadow-card mb-5">
             <button
               onClick={() => setShowAdvanced(v => !v)}

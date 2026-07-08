@@ -23,8 +23,11 @@ import {
   venueFeePct,
   spotVenueFeePct,
 } from '@/lib/funding-math';
-import type { FuturesCoin, SpreadItem, SlipPoint, CryptoSpreadsData, RwaObservation, Persistence, PerpSpotRow, PerpSpotRegime } from '@/lib/spread-types';
+import type { FuturesCoin, SpreadItem, SlipPoint, CryptoSpreadsData, RwaObservation, Persistence, PerpSpotRow, PerpSpotRegime, UsdcArbRow } from '@/lib/spread-types';
 import { isRwaKey } from '@/lib/rwa';
+// USDC-margined divergence lane. Plain-JS SSOT shared with agent29-verifier so the
+// served rows and the independent re-read derive identically from the same snapshot.
+import { computeUsdcArb } from '@/lib/usdc-arb';
 
 export type { FuturesCoin, SlipPoint, SpreadItem, SpreadsMeta, CryptoSpreadsData, Leverage, Persistence } from '@/lib/spread-types';
 export { calcSpreadSizing } from '@/lib/spread-types';
@@ -486,6 +489,11 @@ export function getCryptoSpreadsData(): CryptoSpreadsData {
     const perpSpotFeed = readPerpSpot();
     const perpSpotRegime = computePerpSpotRegime(raw.futures ?? {});
 
+    // USDC-margined divergence lane (majors). Same guards + sourced fees; net/day primary.
+    // Non-silent: every guard exclusion is logged (the auditor watches this signal).
+    const usdc = computeUsdcArb(raw.futures ?? {}, raw.futuresUsdc ?? {}, readHistory(), Date.now());
+    for (const e of usdc.excluded) console.log(`usdc-arb-exclude ${e.venue}:${e.coin} — ${e.reason}`);
+
     return {
       ok:          true,
       generatedAt,
@@ -500,6 +508,7 @@ export function getCryptoSpreadsData(): CryptoSpreadsData {
       perpSpot:      perpSpotFeed.rows,
       perpSpotStale: perpSpotFeed.stale,
       perpSpotRegime,
+      usdcArb:       usdc.rows as UsdcArbRow[],
       meta: {
         feePerLeg:    { cex: VENUE_FEE_PCT.cex, dex: VENUE_FEE_PCT.dex, gateio: VENUE_FEE_PCT.gateio, bitget: VENUE_FEE_PCT.bitget },
         legCount:     4,
@@ -522,6 +531,7 @@ export function getCryptoSpreadsData(): CryptoSpreadsData {
       perpSpot:      [],
       perpSpotStale: true,
       perpSpotRegime: null,
+      usdcArb:       [],
       meta:        null,
     };
   }

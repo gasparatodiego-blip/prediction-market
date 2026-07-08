@@ -19,7 +19,7 @@ import { readFileSync } from 'fs';
 import { APY_CAP } from '@/lib/honest-display';
 import { isExpired, rowExpiryMs } from '@/lib/instrument-expiry';
 
-export type SanitySection = 'funding' | 'perp-spot' | 'basis' | 'rewards' | 'prediction';
+export type SanitySection = 'funding' | 'perp-spot' | 'usdc' | 'basis' | 'rewards' | 'prediction';
 
 export interface SanityResult {
   ok: boolean;
@@ -93,6 +93,29 @@ export function validateRow(section: SanitySection, row: any, now: number = Date
       return OK;
     }
 
+    case 'usdc': {
+      // USDC-margined divergence lane. Public teaser = both legs' real funding + the
+      // annualized divergence; the $ edge is redactable. Reject fabricated displays.
+      if (!row.coin || !row.shortVenue || !row.longVenue) return r('missing coin/leg venue');
+      if (!isNum(row.frShortPct8h) || !isNum(row.frLongPct8h)) return r('funding leg rate null/NaN');
+      for (const f of ['frShortPct8h', 'frLongPct8h'] as const) {
+        if (Math.abs(row[f]) > FUNDING_PCT_PER_INTERVAL_MAX)
+          return r(`${f} ${row[f]} exceeds plausible cap ${FUNDING_PCT_PER_INTERVAL_MAX}`);
+      }
+      if (isNum(row.grossApyPct) && Math.abs(row.grossApyPct) > APY_CAP + 0.5)
+        return r(`grossApyPct ${row.grossApyPct}%/yr exceeds display cap ${APY_CAP}`);
+      // Every row MUST have ≥1 USDC leg — a pure USDT↔USDT pair belongs to the main lane.
+      if (row.shortMargin !== 'USDC' && row.longMargin !== 'USDC') return r('no USDC leg (belongs to main lane)');
+      const e = row.edge;
+      if (e && typeof e === 'object') {
+        if (isBadNum(e.netPerDay1k) || isBadNum(e.grossPerDay1k)) return r('edge $/day null/NaN');
+        // Over-cap annualized only honest with the run-rate cap flag.
+        if (isNum(e.annualizedRunRatePct) && Math.abs(e.annualizedRunRatePct) > APY_CAP && e.annualizedCapped !== true)
+          return r(`annualizedRunRatePct ${e.annualizedRunRatePct}%/yr over cap without run-rate label`);
+      }
+      return OK;
+    }
+
     case 'basis': {
       // Expiry already checked universally above; here validate the money fields.
       const net = isNum(row.netAnnualizedExecutable) ? row.netAnnualizedExecutable
@@ -143,6 +166,7 @@ function rowId(section: SanitySection, row: any): string {
   switch (section) {
     case 'funding':   return `funding-${row?.coin}-${row?.shortExchange}-${row?.longExchange}`;
     case 'perp-spot': return `perp-spot-${row?.coin}-${row?.shortVenue}`;
+    case 'usdc':      return `usdc-${row?.coin}-${row?.shortVenue}-${row?.longVenue}`;
     case 'basis':     return `basis-${row?.asset}-${row?.exchange}-${row?.contract}`;
     case 'rewards':   return `rewards-${row?.marketId ?? row?.market ?? row?.id ?? '?'}`;
     case 'prediction':return `prediction-${row?.platform ?? '?'}-${row?.id ?? row?.marketId ?? '?'}`;
@@ -212,6 +236,15 @@ function verifyKey(section: SanitySection, row: any): string {
       return `funding-${row?.coin}-${venues.join('-')}`;
     }
     case 'perp-spot': return `perp-spot-${row?.coin}-${row?.shortVenue}`;
+    case 'usdc': {
+      // Order-independent on the (venue+margin) legs — computeUsdcArb fixes short=higher
+      // funding, but keep the key stable if the two legs ever swap roles across cycles.
+      const legs = [
+        `${row?.shortVenue}:${row?.shortMargin}`,
+        `${row?.longVenue}:${row?.longMargin}`,
+      ].sort();
+      return `usdc-${row?.coin}-${legs.join('-')}`;
+    }
     case 'basis':     return `basis-${row?.asset}-${row?.exchange}-${row?.contract}`;
     case 'rewards':   return `rewards-${row?.marketId ?? row?.market ?? row?.id ?? '?'}`;
     default:          return rowId(section, row);

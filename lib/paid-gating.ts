@@ -166,6 +166,15 @@ export const REDACTION_MAP: Record<RouteKey, string[]> = {
     'perpSpot[].edge.breakevenDays',
     'perpSpot[].edge.annualizedRunRatePct',
     'perpSpot[].edge.netAnnualizedOnCapitalPct',
+    // USDC-margined divergence lane: real funding + annualized divergence (grossApyPct)
+    // stay public teaser; the DERIVED dollar edge is gated (UI locks the math block when
+    // netPerDay1k is null — calm unlock, no login wall).
+    'usdcArb[].edge.grossPerDay1k',
+    'usdcArb[].edge.feesOneTime1k',
+    'usdcArb[].edge.netPerDay1k',
+    'usdcArb[].edge.breakevenDays',
+    'usdcArb[].edge.netApy30dPct',
+    'usdcArb[].edge.annualizedRunRatePct',
   ],
 
   carry: [

@@ -151,6 +151,42 @@ export interface PerpSpotRegime {
   aboveBreakevenCount:      number;   // how many positive rates clear the fee hurdle
 }
 
+// ── USDC-margined funding-divergence arb (majors only) ───────────────────────
+// SEPARATE lane from the main USDT crypto spreads. Each row shorts the higher-funding
+// leg / longs the lower-funding leg of the SAME coin, where ≥1 leg is a USDC-settled
+// perp. net $/day is primary; annualized is capped. De-peg risk is intrinsic and
+// disclosed in the UI. $ fields are per $1,000 per leg and redacted on the free tier.
+export interface UsdcArbEdge {
+  grossPerDay1k:        number | null;
+  feesOneTime1k:        number | null;
+  netPerDay1k:          number | null;   // 30-day-amortized, per $1k/leg
+  breakevenDays:        number | null;
+  netApy30dPct:         number | null;
+  annualizedRunRatePct: number | null;   // capped ±200%/yr, demoted
+  annualizedCapped:     boolean;
+  shortFeePct:          number;          // sourced USDC-M / USDT-M taker per leg
+  longFeePct:           number;
+}
+export interface UsdcArbRow {
+  coin:         string;
+  shortVenue:   string;
+  shortMargin:  'USDC' | 'USDT';
+  longVenue:    string;
+  longMargin:   'USDC' | 'USDT';
+  frShortPct8h: number;   // real funding, normalized %/8h (public teaser)
+  frLongPct8h:  number;
+  intervalH:    number;
+  grossApyPct:  number;   // annualized funding divergence (public)
+  sameVenue:    boolean;  // (a) same-venue cross-quote vs (b) cross-venue
+  comboLabel:   string;   // 'USDC↔USDT' | 'USDC↔USDC'
+  markShort:    number | null;
+  markLong:     number | null;
+  liqTierShort: string | null;
+  liqTierLong:  string | null;
+  thin:         boolean;
+  edge:         UsdcArbEdge;
+}
+
 export interface CryptoSpreadsData {
   ok:           boolean;
   generatedAt:  number | null;
@@ -165,6 +201,7 @@ export interface CryptoSpreadsData {
   perpSpot:     PerpSpotRow[];      // delta-neutral carry: best short-perp + spot hedge per coin
   perpSpotStale: boolean;           // source feed older than freshness window
   perpSpotRegime: PerpSpotRegime | null;  // live funding-regime banner context
+  usdcArb:      UsdcArbRow[];       // USDC-margined funding-divergence lane (majors, thin, de-peg risk)
   meta:         SpreadsMeta | null;
 }
 

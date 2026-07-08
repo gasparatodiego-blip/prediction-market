@@ -37,6 +37,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { httpPost: _sharedPost } = require('../lib/httpGet');
 const SV = require('../lib/source-verify');
+const { computeUsdcArb } = require('../lib/usdc-arb');   // reconstruct served USDC rows deterministically
 
 // ── Load .env (pm2 doesn't auto-load project env files) — same pattern as a26 ─
 for (const envFile of ['.env.local', '.env']) {
@@ -61,6 +62,7 @@ const ALERT_COOLDOWN_MS      = 6 * 3_600_000; // dedupe: same row-mismatch at mo
 const FUNDING_ABOVE_FOLD     = 25;
 const FUNDING_ROTATE         = 10;
 const PERPSPOT_ABOVE_FOLD    = 25;   // the whole perp-spot feed is ~25 rows
+const USDC_ABOVE_FOLD        = 8;    // USDC lane is majors-only (~4 rows) — verify all
 const BASIS_ABOVE_FOLD       = 12;
 const BASIS_ROTATE           = 6;
 const REWARDS_ABOVE_FOLD     = 15;
@@ -135,6 +137,26 @@ function buildPerpSpotItems() {
     coin: r.coin, shortVenue: r.shortVenue,
     servedPct8h: r.fundingPct8h, intervalH: r.intervalH, servedMark: r.markPrice,
     fresh: typeof r.sourceAt === 'number' && (Date.now() - r.sourceAt) < SV.STORED_FRESH_MS,
+  }));
+}
+
+// USDC-margined divergence lane: reconstruct the SERVED rows deterministically from
+// the same exchange-prices.json snapshot the serve path uses (computeUsdcArb is pure),
+// so the verification key matches what enforceVerified('usdc') looks up.
+function buildUsdcItems() {
+  const ex = readJsonSafe(EXCHANGE_FILE);
+  const exFresh = ex && typeof ex.fetchedAt === 'number' && (Date.now() - ex.fetchedAt) < SV.STORED_FRESH_MS;
+  const futures     = (ex && ex.futures)     || {};
+  const futuresUsdc = (ex && ex.futuresUsdc) || {};
+  // Match the serve path's history source (48h ring) so both derive the same row set.
+  const hist = (readJsonSafe('/tmp/funding-history-cache.json') || {}).data || {};
+  let rows = [];
+  try { rows = computeUsdcArb(futures, futuresUsdc, hist, Date.now()).rows; } catch { rows = []; }
+  return rows.map(r => ({
+    id: SV.usdcArbKey(r.coin, r.shortVenue, r.shortMargin, r.longVenue, r.longMargin),
+    section: 'usdc', coin: r.coin,
+    legs: [{ venue: r.shortVenue, margin: r.shortMargin }, { venue: r.longVenue, margin: r.longMargin }],
+    futures, futuresUsdc, exFresh,
   }));
 }
 
@@ -218,6 +240,32 @@ async function verifyPerpSpot(it, cache) {
   return { status: 'ok', source: { funding: fundingCmp.source, mark: priceCmp.source } };
 }
 
+async function verifyUsdc(it, cache) {
+  const results = [];
+  for (const { venue, margin } of it.legs) {
+    if (!SV.FUNDING_VENUES.has(venue)) { results.push({ status: 'unreachable', note: `no adapter for ${venue}` }); continue; }
+    const map    = margin === 'USDC' ? it.futuresUsdc : it.futures;
+    const stored = ((map[venue] || {})[it.coin]) || null;
+    if (!stored || typeof stored.fundingRate !== 'number') { results.push({ status: 'unreachable', note: `no stored rate ${venue}:${it.coin}` }); continue; }
+    if (!it.exFresh) { results.push({ status: 'unreachable', note: 'stored exchange-prices snapshot stale' }); continue; }
+    let live;
+    try { live = await SV.FUNDING_ADAPTERS[venue](it.coin, cache); }
+    catch (e) { results.push({ status: 'unreachable', note: `${venue} fetch failed: ${String(e.message).slice(0, 60)}` }); continue; }
+    if (!live) { results.push({ status: 'unreachable', note: `${venue} returned no rate` }); continue; }
+    const intervalH = typeof stored.fundingIntervalHours === 'number' && stored.fundingIntervalHours > 0 ? stored.fundingIntervalHours : (live.intervalHours || 8);
+    live.storedNextFundingTime = typeof stored.nextFundingTime === 'number' ? stored.nextFundingTime : null;
+    const cmp = SV.compareFunding(stored.fundingRate, live, intervalH);
+    results.push({ leg: `${venue}:${margin}`, ...cmp });
+  }
+  // Row status = worst leg (both funding legs must independently reconcile).
+  if (results.some(r => r.status === 'mismatch')) {
+    const bad = results.filter(r => r.status === 'mismatch');
+    return { status: 'mismatch', source: { legs: bad.map(b => ({ leg: b.leg, ...b.source })) } };
+  }
+  if (results.some(r => r.status === 'unreachable')) return { status: 'unreachable', source: { legs: results } };
+  return { status: 'ok', source: { legs: results.map(r => ({ leg: r.leg })) } };
+}
+
 async function verifyBasis(it) {
   if (!SV.BASIS_VENUES.has(it.venueKey)) return { status: 'unreachable', note: `no adapter for ${it.venueKey}` };
   if (!it.fresh) return { status: 'unreachable', note: 'stored basis snapshot stale' };
@@ -254,6 +302,7 @@ async function runCycle(state, opts = {}) {
   const funding = buildFundingItems();
   const fundingSel = selectRotating(state, 'funding', funding.items, FUNDING_ABOVE_FOLD, FUNDING_ROTATE);
   const perpItems  = buildPerpSpotItems().slice(0, PERPSPOT_ABOVE_FOLD);
+  const usdcItems  = buildUsdcItems().slice(0, USDC_ABOVE_FOLD);
   const basisSel   = selectRotating(state, 'basis', buildBasisItems(), BASIS_ABOVE_FOLD, BASIS_ROTATE);
   const rewardsSel = selectRotating(state, 'rewards', buildRewardsItems(), REWARDS_ABOVE_FOLD, REWARDS_ROTATE);
 
@@ -275,6 +324,7 @@ async function runCycle(state, opts = {}) {
   // Order: funding (highest phantom risk) → perp-spot → basis → rewards.
   for (const it of fundingSel.set) { if (budgetLeft() <= 2) break; record(it, await verifyFunding(it, cache)); }
   for (const it of perpItems)      { if (budgetLeft() <= 1) break; record(it, await verifyPerpSpot(it, cache)); }
+  for (const it of usdcItems)      { if (budgetLeft() <= 2) break; record(it, await verifyUsdc(it, cache)); }
   for (const it of basisSel.set)   { if (budgetLeft() <= 2) break; record(it, await verifyBasis(it)); }
   for (const it of rewardsSel.set) { if (budgetLeft() <= 1) break; record(it, await verifyRewards(it)); }
 

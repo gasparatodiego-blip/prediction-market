@@ -18,11 +18,13 @@ export async function GET() {
   const data = getCryptoSpreadsData();
   data.spreads = filterSane('funding', data.spreads);
   data.perpSpot = filterSane('perp-spot', data.perpSpot);
+  data.usdcArb = filterSane('usdc', data.usdcArb);
 
   // Source-of-truth enforcement: drop rows the venue positively contradicts,
   // flag+demote rows we couldn't re-read at source, tag verified rows for the badge.
   data.spreads = enforceVerified('funding', data.spreads);
   data.perpSpot = enforceVerified('perp-spot', data.perpSpot);
+  data.usdcArb = enforceVerified('usdc', data.usdcArb);
 
   const body = redactForTier(data, 'crypto', isPaid);
   return NextResponse.json(body);

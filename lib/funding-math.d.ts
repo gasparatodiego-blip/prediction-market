@@ -9,8 +9,10 @@ export declare function breakevenDays(grossApy: number, totalFeesPct: number): n
 export declare function spreadStatus(beDays: number): 'HARVEST' | 'CAUTION' | 'MARGINAL';
 
 export declare const SPOT_FEE_PCT: { binance: number; okx: number; bybit: number; gateio: number };
+export declare const USDC_M_FEE_PCT: { 'binance-usdc': number; 'bybit-usdc': number; 'bitget-usdc': number };
 export declare const PERP_SPOT_ANNUAL_CAP: number;
 export declare function spotVenueFeePct(exchange: string): number;
+export declare function usdcVenueFeePct(venue: string): number | null;
 export declare function roundTripPerpSpotPct(shortVenue: string, spotVenue: string): number;
 export interface PerpSpotEstimate {
   capitalPerLeg: number;
