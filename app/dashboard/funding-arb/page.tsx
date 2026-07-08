@@ -52,6 +52,7 @@ interface ApiResponse {
   spreads:      SpreadItem[];
   cexArb:       CexArbItem[];
   rwa?:         RwaObservation[];
+  commoditiesHasEdge?: boolean;   // server-derived gate: reveal the Commodities lane only when a confirmed edge exists
   perpSpot?:    PerpSpotRow[];
   perpSpotStale?: boolean;
   perpSpotRegime?: PerpSpotRegime | null;
@@ -246,10 +247,16 @@ function TypeFilterToggle({
 type AssetClassView = 'crypto' | 'commodity';
 const ASSET_CLASS_STORAGE_KEY = 'edgeradar.funding.assetClass';
 
-function AssetClassToggle({ value, onChange }: { value: AssetClassView; onChange: (v: AssetClassView) => void }) {
+function AssetClassToggle(
+  { value, onChange, showCommodities }:
+  { value: AssetClassView; onChange: (v: AssetClassView) => void; showCommodities: boolean },
+) {
+  // Commodities is a visibility-gated lane: it renders ONLY when the server reports a
+  // confirmed RWA edge (commoditiesHasEdge). While every RWA row is flat/unconfirmed the
+  // option is omitted entirely (not disabled) — nobody lands on an empty observation lane.
   const opts: { id: string; label: string; disabled?: boolean; hint?: string; whyDisabled?: string }[] = [
     { id: 'crypto',    label: 'Crypto' },
-    { id: 'commodity', label: 'Commodities' },
+    ...(showCommodities ? [{ id: 'commodity', label: 'Commodities' }] : []),
     {
       id: 'stock', label: 'Stocks', disabled: true, hint: 'coming soon',
       whyDisabled: 'Stock perpetuals are not ingested yet — they need market-hours gating. Coming soon.',
@@ -2374,6 +2381,18 @@ export default function CryptoPage() {
     try { localStorage.setItem(ASSET_CLASS_STORAGE_KEY, v); } catch { /* non-fatal */ }
   }, []);
 
+  // Server-derived visibility gate for the Commodities lane. Only reveal the option (and
+  // the lane) when a confirmed RWA edge exists — never a client hardcode.
+  const commoditiesHasEdge = data?.commoditiesHasEdge === true;
+  // Deep-link / saved-state guard: if we're on the (now-hidden) Commodities lane while the
+  // gate is closed, fall back to Crypto so nobody lands on a hidden empty lane. Transient
+  // (does NOT overwrite the persisted choice) so that the moment a confirmed edge reappears
+  // the user's saved Commodities preference is honored again on reload; mid-session the
+  // option simply reappears and this no-ops.
+  useEffect(() => {
+    if (assetView === 'commodity' && !commoditiesHasEdge) setAssetView('crypto');
+  }, [assetView, commoditiesHasEdge]);
+
   const load = useCallback(async () => {
     try {
       const res  = await fetch('/api/crypto', { cache: 'no-store' });
@@ -2627,7 +2646,7 @@ export default function CryptoPage() {
 
             {/* Secondary controls */}
             <div className="flex items-center gap-4 flex-wrap pt-2.5" style={{ borderTop: '1px solid #eef2f6' }}>
-              <AssetClassToggle value={assetView} onChange={selectAssetView} />
+              <AssetClassToggle value={assetView} onChange={selectAssetView} showCommodities={commoditiesHasEdge} />
               <TypeFilterToggle value={typeFilter} onChange={setTypeFilter} />
               {(typeFilter === 'all' || typeFilter === 'perp_perp') && (
               <div className="flex items-center gap-2">
