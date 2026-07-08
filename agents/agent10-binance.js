@@ -51,6 +51,7 @@ const DYDX_MIN_LIQ = 500_000;
 let wsData    = {};
 let restData  = {};
 let futures   = {};
+let futuresUsdc = {};   // USDC-M perps (majors) — separate venue map, never merged into `futures`
 let cexArb    = [];
 let basisTrades = [];
 let highFunding = [];
@@ -421,6 +422,124 @@ async function fetchBitget() {
     console.error('[bitget] error:', e.message);
     return {};
   }
+}
+
+// ── USDC-MARGINED (USDC-M) PERPS — MAJORS ONLY ─────────────────────────────────
+// SEPARATE contracts from the USDT-M perps (own funding rate, own fee schedule).
+// NEVER merged into the USDT venue map — written under a distinct `futuresUsdc`
+// key with margin:'USDC'. Majors only (BTC/ETH/SOL/XRP): USDC books are thin and
+// many alt USDC funding values are exchange-cap clamps, not organic — the dead/
+// cap-pin/thin guards drop those downstream, but majors keep this list clean and
+// side-step the 1000× symbol family (1000PEPE etc.) entirely. All three venues'
+// major contracts confirmed 8h funding interval live on 2026-07-08.
+const USDC_MAJORS = ['BTC', 'ETH', 'SOL', 'XRP'];
+
+// Binance USDC-M: symbols are <COIN>USDC on the SAME fapi as USDT-M. premiumIndex
+// carries funding + mark; a bulk 24hr ticker call adds quote volume for the thin guard.
+async function fetchBinanceUsdc() {
+  try {
+    const want = new Set(USDC_MAJORS.map(c => `${c}USDC`));
+    const [prem, vol] = await Promise.all([
+      rlGetJson('https://fapi.binance.com/fapi/v1/premiumIndex'),
+      rlGetJson(`https://fapi.binance.com/fapi/v1/ticker/24hr?symbols=${encodeURIComponent(JSON.stringify([...want]))}`),
+    ]);
+    if (!Array.isArray(prem)) return {};
+    const volBySym = {};
+    if (Array.isArray(vol)) for (const t of vol) volBySym[t.symbol] = parseFloat(t.quoteVolume ?? '0') || null;
+    const r = {};
+    for (const t of prem) {
+      if (!want.has(t.symbol)) continue;              // majors-only USDC contracts
+      const coin = t.symbol.slice(0, -4);             // strip 'USDC'
+      const fr   = parseFloat(t.lastFundingRate) * 100;
+      if (!isFinite(fr)) continue;
+      r[coin] = {
+        markPrice:            parseFloat(t.markPrice) || null,
+        fundingRate:          fr,
+        fundingIntervalHours: 8,
+        nextFundingTime:      parseInt(t.nextFundingTime ?? '0') || undefined,
+        vol24hUsd:            volBySym[t.symbol] ?? null,
+        margin:              'USDC',
+      };
+    }
+    console.log(`[binance-usdc] ${Object.keys(r).length} major USDC-M markets`);
+    return r;
+  } catch (e) {
+    console.error('[binance-usdc] error:', e.message);
+    return {};
+  }
+}
+
+// Bybit USDC-M: USDC Perpetuals are <COIN>PERP (settleCoin=USDC) on category=linear.
+async function fetchBybitUsdc() {
+  try {
+    const want = new Set(USDC_MAJORS.map(c => `${c}PERP`));
+    const data = await rlGetJson('https://api.bybit.com/v5/market/tickers?category=linear');
+    const list = data?.result?.list;
+    if (!Array.isArray(list)) return {};
+    const r = {};
+    for (const t of list) {
+      if (!want.has(t.symbol)) continue;              // BTCPERP/ETHPERP/SOLPERP/XRPPERP only
+      const coin = t.symbol.slice(0, -4);             // strip 'PERP'
+      const fr   = parseFloat(t.fundingRate ?? '0') * 100;
+      if (!isFinite(fr)) continue;
+      r[coin] = {
+        markPrice:            parseFloat(t.markPrice ?? t.lastPrice ?? '0') || null,
+        fundingRate:          fr,
+        fundingIntervalHours: 8,
+        openInterestUsd:      parseFloat(t.openInterestValue ?? '0') || null,
+        vol24hUsd:            parseFloat(t.turnover24h ?? '0') || null,
+        margin:              'USDC',
+      };
+    }
+    console.log(`[bybit-usdc] ${Object.keys(r).length} major USDC-M markets`);
+    return r;
+  } catch (e) {
+    console.error('[bybit-usdc] error:', e.message);
+    return {};
+  }
+}
+
+// Bitget USDC-M: productType=USDC-FUTURES, symbols <COIN>PERP.
+async function fetchBitgetUsdc() {
+  try {
+    const want = new Set(USDC_MAJORS.map(c => `${c}PERP`));
+    const data = await rlGetJson('https://api.bitget.com/api/v2/mix/market/tickers?productType=USDC-FUTURES');
+    if (!Array.isArray(data?.data)) return {};
+    const r = {};
+    for (const t of data.data) {
+      if (!want.has(t.symbol)) continue;
+      const coin   = t.symbol.slice(0, -4);           // strip 'PERP'
+      const fr     = parseFloat(t.fundingRate ?? '0') * 100;
+      if (!isFinite(fr)) continue;
+      const markPx = parseFloat(t.markPrice ?? '0');
+      const oi     = parseFloat(t.holdingAmount ?? '0');
+      r[coin] = {
+        markPrice:            markPx || null,
+        fundingRate:          fr,
+        fundingIntervalHours: 8,
+        openInterestUsd:      oi > 0 && markPx > 0 ? oi * markPx : null,
+        vol24hUsd:            parseFloat(t.usdtVolume ?? '0') || null,
+        margin:              'USDC',
+      };
+    }
+    console.log(`[bitget-usdc] ${Object.keys(r).length} major USDC-M markets`);
+    return r;
+  } catch (e) {
+    console.error('[bitget-usdc] error:', e.message);
+    return {};
+  }
+}
+
+// Assemble the USDC-M venue map (separate keys, never merged with USDT-M).
+async function fetchFuturesUsdc() {
+  const [bin, byb, bit] = await Promise.all([
+    fetchBinanceUsdc(), fetchBybitUsdc(), fetchBitgetUsdc(),
+  ]);
+  const out = {};
+  if (Object.keys(bin).length > 0) out['binance-usdc'] = bin;
+  if (Object.keys(byb).length > 0) out['bybit-usdc']   = byb;
+  if (Object.keys(bit).length > 0) out['bitget-usdc']  = bit;
+  return out;
 }
 
 async function fetchAster() {
@@ -1103,7 +1222,7 @@ function writeOutput() {
     atomicWriteJson(OUT, {
       fetchedAt: Date.now(),
       exchanges, cexArb, infoLag,
-      futures, basisTrades, highFunding,
+      futures, futuresUsdc, basisTrades, highFunding,
     }, { pretty: true });
   } catch {}
 
@@ -1126,6 +1245,7 @@ async function poll() {
   ]);
   restData    = { coinbase, okx, bybit, kraken, gateio };
   futures     = await fetchFutures();
+  futuresUsdc = await fetchFuturesUsdc();
 
   const allExchanges = { binance: wsData, ...restData };
   cexArb      = detectCexArb(allExchanges);
