@@ -219,7 +219,11 @@ export function AutoExecutePanel({ noEdgeYet = false }: { noEdgeYet?: boolean })
 // after, plus the reference-median row. Shared between the compact comparator
 // card and the event detail page so the arb-critical BEST tags and tiering
 // can never drift between the two views.
-export function PlatformComparatorTable({ event }: { event: EventBucket }) {
+// `side` filters the price columns to a single chosen side — 'yes' or 'no' shows
+// only that side (the "side-only book" view the order page uses), 'both' (default)
+// keeps the two-column compact-card layout byte-identical. When a side is chosen we
+// also surface the real per-venue fee column (fee comes from /api/prediction, public).
+export function PlatformComparatorTable({ event, side = 'both' }: { event: EventBucket; side?: 'both' | 'yes' | 'no' }) {
   const edge = event.lockableEdge;
   const bestYes = edge?.yesPlatform ?? null;
   const bestNo  = edge?.noPlatform  ?? null;
@@ -228,14 +232,20 @@ export function PlatformComparatorTable({ event }: { event: EventBucket }) {
   const reference   = event.platforms.filter(p => p.tier === 'reference');
   const rows = [...executable, ...reference];
 
+  const showYes = side !== 'no';
+  const showNo  = side !== 'yes';
+  const showFee = side !== 'both';
+  const fmtFee  = (f: number | undefined) => (typeof f === 'number' ? `${Math.round(f * 100)}%` : '—');
+
   return (
     <div className="overflow-x-auto -mx-1">
       <table className="w-full text-left border-collapse">
         <thead>
           <tr className="font-body text-[10.5px] text-muted uppercase tracking-wide">
             <th className="px-1 pb-1.5 font-medium">Platform</th>
-            <th className="px-1 pb-1.5 font-medium">Yes</th>
-            <th className="px-1 pb-1.5 font-medium">No</th>
+            {showYes && <th className="px-1 pb-1.5 font-medium">Yes</th>}
+            {showNo  && <th className="px-1 pb-1.5 font-medium">No</th>}
+            {showFee && <th className="px-1 pb-1.5 font-medium">Fee</th>}
             <th className="hidden sm:table-cell px-1 pb-1.5 font-medium text-right">Vol</th>
           </tr>
         </thead>
@@ -256,14 +266,21 @@ export function PlatformComparatorTable({ event }: { event: EventBucket }) {
                     vol {formatVolume(p)}
                   </div>
                 </td>
-                <td className={`px-1 py-1.5 font-mono text-xs tabular-nums ${isBestYes ? 'text-mint-deep font-semibold' : 'text-ink-2'}`}>
-                  <Redacted value={p.yesPrice}>{v => formatCents(v)}</Redacted>
-                  {isBestYes && <span className="ml-1.5 font-body font-bold text-[9px] text-mint-deep align-middle">BEST</span>}
-                </td>
-                <td className={`px-1 py-1.5 font-mono text-xs tabular-nums ${isBestNo ? 'text-mint-deep font-semibold' : 'text-ink-2'}`}>
-                  <Redacted value={p.noPrice}>{v => formatCents(v)}</Redacted>
-                  {isBestNo && <span className="ml-1.5 font-body font-bold text-[9px] text-mint-deep align-middle">BEST</span>}
-                </td>
+                {showYes && (
+                  <td className={`px-1 py-1.5 font-mono text-xs tabular-nums ${isBestYes ? 'text-mint-deep font-semibold' : 'text-ink-2'}`}>
+                    <Redacted value={p.yesPrice}>{v => formatCents(v)}</Redacted>
+                    {isBestYes && <span className="ml-1.5 font-body font-bold text-[9px] text-mint-deep align-middle">BEST</span>}
+                  </td>
+                )}
+                {showNo && (
+                  <td className={`px-1 py-1.5 font-mono text-xs tabular-nums ${isBestNo ? 'text-mint-deep font-semibold' : 'text-ink-2'}`}>
+                    <Redacted value={p.noPrice}>{v => formatCents(v)}</Redacted>
+                    {isBestNo && <span className="ml-1.5 font-body font-bold text-[9px] text-mint-deep align-middle">BEST</span>}
+                  </td>
+                )}
+                {showFee && (
+                  <td className="px-1 py-1.5 font-mono text-xs text-muted tabular-nums">{fmtFee(p.fee)}</td>
+                )}
                 <td className="hidden sm:table-cell px-1 py-1.5 font-mono text-xs text-muted text-right tabular-nums">{formatVolume(p)}</td>
               </tr>
             );
@@ -274,12 +291,17 @@ export function PlatformComparatorTable({ event }: { event: EventBucket }) {
                 Market median · reference only · not executable
               </span>
             </td>
-            <td className="px-1 py-1.5 font-mono text-xs text-muted tabular-nums">
-              <Redacted value={event.referenceMedian.yesPrice}>{v => formatCents(v)}</Redacted>
-            </td>
-            <td className="px-1 py-1.5 font-mono text-xs text-muted tabular-nums">
-              <Redacted value={event.referenceMedian.yesPrice}>{v => formatCents(1 - v)}</Redacted>
-            </td>
+            {showYes && (
+              <td className="px-1 py-1.5 font-mono text-xs text-muted tabular-nums">
+                <Redacted value={event.referenceMedian.yesPrice}>{v => formatCents(v)}</Redacted>
+              </td>
+            )}
+            {showNo && (
+              <td className="px-1 py-1.5 font-mono text-xs text-muted tabular-nums">
+                <Redacted value={event.referenceMedian.yesPrice}>{v => formatCents(1 - v)}</Redacted>
+              </td>
+            )}
+            {showFee && <td className="px-1 py-1.5 text-muted">—</td>}
             <td className="hidden sm:table-cell px-1 py-1.5 text-right text-muted">—</td>
           </tr>
         </tbody>

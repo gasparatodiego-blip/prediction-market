@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { Lock, ArrowLeft, ExternalLink, ShieldCheck } from 'lucide-react';
 import PlatformLogo from '@/components/PlatformLogo';
+import { Redacted } from '@/app/components/ui/Redacted';
+import { PlatformLink } from '@/app/components/ui/PlatformLink';
 import {
   PlatformComparatorTable,
   DeployCalculator,
@@ -11,7 +13,106 @@ import {
   findValidMatch,
 } from '../../_components/EventCard';
 import { platformLabel, formatCents, formatResolutionDate } from '../../_components/format';
-import type { ApiResponse, EventBucket, LockableEdge } from '../../_components/types';
+import type { ApiResponse, EventBucket, EventPlatform, LockableEdge } from '../../_components/types';
+
+// YES/NO side selector — same interaction + mint-deep active-pill styling shipped
+// on the funding-arb view toggle and the rewards side selector. Chooses which side
+// the book/price + placement routing below shows (the "side-only book" pattern).
+function SideToggle({ side, onChange }: { side: 'yes' | 'no'; onChange: (s: 'yes' | 'no') => void }) {
+  return (
+    <div className="inline-flex rounded-button border border-line overflow-hidden">
+      {(['yes', 'no'] as const).map(s => (
+        <button
+          key={s}
+          type="button"
+          onClick={() => onChange(s)}
+          className={`font-body font-medium text-xs px-3.5 py-1.5 transition-colors duration-100 ${
+            side === s ? 'bg-mint-deep text-white' : 'bg-surface text-ink-2 hover:text-ink'
+          }`}
+        >
+          {s.toUpperCase()}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// Side-only placement panel — the honest analog of funding-arb's tap-to-place order
+// page for a feed with NO per-side order book. The side selector filters the
+// comparator to one side (price + real per-venue fee); executable venues route to
+// their own order page (Edgeradar holds no keys/funds), reference venues (PredictIt,
+// fee-capped) are marked "reference only · not executable" with no placeable action.
+// No book ladder is fabricated: the prediction feed carries no depth (depthAvailable
+// is false for every leg), so we say so plainly rather than invent levels.
+function PlaceOrderPanel({ event }: { event: EventBucket }) {
+  const [side, setSide] = useState<'yes' | 'no'>('yes');
+  const executable = event.platforms.filter(p => p.tier === 'executable');
+  const reference  = event.platforms.filter(p => p.tier === 'reference');
+  const priceOf = (p: EventPlatform) => (side === 'yes' ? p.yesPrice : p.noPrice);
+  const SIDE = side.toUpperCase();
+
+  return (
+    <div className="rounded-card shadow-card bg-surface px-5 py-5 mb-2">
+      <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+        <h2 className="font-display font-bold text-base text-ink">Place an order</h2>
+        <SideToggle side={side} onChange={setSide} />
+      </div>
+
+      {/* Side-only comparator: only the chosen side's price + the real per-venue fee. */}
+      <PlatformComparatorTable event={event} side={side} />
+
+      {/* Per-venue routing — executable venues open their own order page for this side. */}
+      <div className="mt-4 space-y-2">
+        {executable.map(p => (
+          <div key={p.legId} className="flex items-center justify-between gap-2 px-3 py-2 rounded-button border border-line">
+            <span className="flex items-center gap-1.5 font-body text-xs text-ink-2 min-w-0 flex-wrap">
+              <PlatformLogo platform={p.platform} size={13} />
+              {platformLabel(p.platform)}
+              <span className="font-mono text-muted tabular-nums">
+                {SIDE} <Redacted value={priceOf(p)}>{v => formatCents(v)}</Redacted>
+                {typeof p.fee === 'number' && <> · fee {Math.round(p.fee * 100)}%</>}
+              </span>
+            </span>
+            {p.marketUrl ? (
+              <a
+                href={p.marketUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 font-body font-medium text-xs px-3 py-1.5 rounded-button border border-mint-deep/30 text-mint-deep hover:border-mint-deep transition-colors duration-150 shrink-0"
+              >
+                Place {SIDE} on {platformLabel(p.platform)}
+                <ExternalLink size={12} />
+              </a>
+            ) : (
+              <span className="font-body text-xs text-muted shrink-0">link unavailable</span>
+            )}
+          </div>
+        ))}
+
+        {reference.map(p => (
+          <div key={p.legId} className="flex items-center justify-between gap-2 px-3 py-2 rounded-button border border-line opacity-60">
+            <span className="flex items-center gap-1.5 font-body text-xs text-muted min-w-0">
+              <PlatformLogo platform={p.platform} size={13} />
+              {platformLabel(p.platform)} · reference only · not executable
+            </span>
+            {p.marketUrl && <PlatformLink href={p.marketUrl} label={platformLabel(p.platform)} compact />}
+          </div>
+        ))}
+
+        {executable.length === 0 && (
+          <p className="font-body text-xs text-muted">No executable venue is quoting this event right now.</p>
+        )}
+      </div>
+
+      {/* Honest book state — the feed has no per-side depth, so we never fabricate a ladder. */}
+      <p className="font-body text-[11px] text-muted mt-3 leading-relaxed">
+        Live order-book depth isn&apos;t available in the prediction feed — the price shown is each
+        venue&apos;s best {SIDE} quote, and placing opens that venue&apos;s own order page. Edgeradar holds
+        no keys or funds; you place the order yourself on the venue.
+      </p>
+    </div>
+  );
+}
 
 // ── Step label — mirrors the numbered-step styling used on the pairwise
 // opportunity detail page (app/dashboard/prediction/[id]/page.tsx) so both
@@ -199,6 +300,9 @@ function EventDetail({ event, valid }: { event: EventBucket; valid: ApiResponse[
         <h2 className="font-display font-bold text-base text-ink mb-3">Price comparator</h2>
         <PlatformComparatorTable event={event} />
       </div>
+
+      {/* Side-only order panel — YES/NO selector, per-venue fee + routing, honest book state */}
+      <PlaceOrderPanel event={event} />
 
       {/* Operational steps or calm no-edge explanation */}
       {hasLockableEdge && edge ? (
