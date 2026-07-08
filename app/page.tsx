@@ -49,11 +49,11 @@ interface FundingStat  { dayUsd1k: number; coin: string; shortExchange: string; 
 interface PredStat     { cashable: number; pairsChecked: number }
 interface BasisStat    { netAnnualized: number; asset: string; exchange: string; contract: string; coinMargined: boolean }
 interface SportsStat   { netMargin: number; homeTeam: string; awayTeam: string; sport: string }
-// Median est net/day per $1k (after adverse-selection cost) across the current
-// sane reward-eligible markets for `platform`. medianDayUsd1k is null when no
+// Highest est net/day per $1k (after adverse-selection cost) among the current
+// sane reward-eligible markets for `platform`. bestDayUsd1k is null when no
 // eligible market produces a real positive estimate — the card then shows a
 // "see Rewards tab" signal with NO number (never a fabricated figure).
-interface RewardsStat  { medianDayUsd1k: number | null; eligibleCount: number; platform: string }
+interface RewardsStat  { bestDayUsd1k: number | null; eligibleCount: number; platform: string }
 
 interface LiveRow {
   key:        string;
@@ -98,18 +98,27 @@ function readLandingStats(): {
     // parallel fundingRate math here. Only a spread that's verified + liquid
     // (the dashboard's own 'cashable' condition) is eligible for the landing.
     const { spreads } = getCryptoSpreadsData();
-    const sane = spreads.find(s => !s.oneLegUnverified && !s.thinFlag && !s.depthThin);
-    // This reads getCryptoSpreadsData() directly (not through the paid-gated
-    // /api/crypto route), so sane.netApy30d is never redacted here — the null
-    // check is just type hygiene after widening SpreadItem for the dashboard.
-    const sizing = sane ? calcSpreadSizing(sane, 1000, 1) : null;
-    if (sane && sizing && sane.netApy30d != null) {
+    // Surface the SINGLE highest real net/day per $1k among sane (verified +
+    // liquid) spreads — NOT first-in-list. Ranked by calcSpreadSizing at the
+    // shared $1k/1x basis, the SAME sizing the funding-arb dashboard shows, so
+    // the landing number equals the dashboard's for that exact spread.
+    // getCryptoSpreadsData() is read directly (not the paid-gated /api/crypto
+    // route), so netApy30d is never redacted here.
+    let best: { spread: (typeof spreads)[number]; dayUsd: number } | null = null;
+    for (const s of spreads) {
+      if (s.oneLegUnverified || s.thinFlag || s.depthThin) continue;
+      if (s.netApy30d == null) continue;
+      const sizing = calcSpreadSizing(s, 1000, 1);
+      if (!sizing) continue;
+      if (best == null || sizing.dayUsd > best.dayUsd) best = { spread: s, dayUsd: sizing.dayUsd };
+    }
+    if (best && best.dayUsd > 0) {
       funding = {
-        dayUsd1k:      Math.round(sizing.dayUsd * 100) / 100,
-        coin:          sane.coin,
-        shortExchange: sane.shortExchange,
-        longExchange:  sane.longExchange,
-        netApy30d:     sane.netApy30d,
+        dayUsd1k:      Math.round(best.dayUsd * 100) / 100,
+        coin:          best.spread.coin,
+        shortExchange: best.spread.shortExchange,
+        longExchange:  best.spread.longExchange,
+        netApy30d:     best.spread.netApy30d!,
       };
     }
   } catch { /* file absent */ }
@@ -165,9 +174,10 @@ function readLandingStats(): {
   } catch { /* file absent or stale */ }
 
   try {
-    // Maker-rewards headline = MEDIAN estimated net/day per $1k (AFTER
-    // adverse-selection cost) across the current sane Polymarket reward
-    // markets — a stable, representative figure, not a cherry-picked best.
+    // Maker-rewards headline = the SINGLE HIGHEST estimated net/day per $1k
+    // (AFTER adverse-selection cost) among the current sane Polymarket reward
+    // markets — the real max for this category, matching what the Rewards tab
+    // shows for that same market (never fabricated, still SIGNAL not cashable).
     //   • Source: /tmp/liquidity-rewards.json — the normalized snapshot
     //     (lib/rewards-normalize.js) whose fields ARE lib/rewards-estimate.ts's
     //     MarketSnapshot input (real book depth only, never OI/midpoint).
@@ -209,14 +219,15 @@ function readLandingStats(): {
       if (r.netPerDay != null && r.netPerDay > 0) nets.push(r.netPerDay);
     }
     if (nets.length > 0) {
-      nets.sort((a, b) => a - b);
-      const n   = nets.length;
-      const med = n % 2 ? nets[(n - 1) / 2] : (nets[n / 2 - 1] + nets[n / 2]) / 2;
-      rewards = { medianDayUsd1k: Math.round(med * 100) / 100, eligibleCount: n, platform: 'Polymarket' };
+      // Single HIGHEST est net/day per $1k among sane markets — the real max
+      // for this category, equal to the per-market number the Rewards tab shows
+      // for that market (not a median, never a fabricated figure).
+      const best = Math.max(...nets);
+      rewards = { bestDayUsd1k: Math.round(best * 100) / 100, eligibleCount: nets.length, platform: 'Polymarket' };
     } else {
       // Sane gate/estimator left nothing real: keep the card as a signal with
-      // NO number (honest guard — never fabricate a median).
-      rewards = { medianDayUsd1k: null, eligibleCount: 0, platform: 'Polymarket' };
+      // NO number (honest guard — never fabricate a figure).
+      rewards = { bestDayUsd1k: null, eligibleCount: 0, platform: 'Polymarket' };
     }
   } catch { /* file absent */ }
 
@@ -278,14 +289,14 @@ function buildLiveRows(stats: ReturnType<typeof readLandingStats>): LiveRow[] {
     // Maker rewards are a CONDITIONAL incentive, NOT a cashable arb: earning
     // them requires actively quoting in-book, competing with other LPs (your
     // share dilutes as makers arrive), and the program's rate can change. So
-    // this is SIGNAL, never cashable — and although we now show a REAL median
+    // this is SIGNAL, never cashable — and although we now show a REAL highest
     // net/day per $1k (after adverse-selection cost, from lib/rewards-estimate.ts),
     // it stays out of the cashable $/day ranking (dayUsd1k: null) so it can't
     // inflate "best net/day". The headline is the primary honest metric ($/day),
-    // never an annualized run-rate. Honest guard: no eligible median → NO number.
-    const tip = 'Median estimated net/day per $1,000 across current reward markets, '
+    // never an annualized run-rate. Honest guard: no eligible market → NO number.
+    const tip = 'Highest estimated net/day per $1,000 among current reward markets, '
       + 'after adverse-selection cost. Varies by market — see Rewards tab.';
-    const hasMedian = rewards.medianDayUsd1k != null;
+    const hasBest = rewards.bestDayUsd1k != null;
     rows.push({
       key: 'rewards', icon: '◈', tileColor: 'violet',
       name: (
@@ -297,19 +308,19 @@ function buildLiveRows(stats: ReturnType<typeof readLandingStats>): LiveRow[] {
           </span>
         </>
       ),
-      sub: hasMedian
-        ? `Median across ${rewards.eligibleCount} current ${rewards.platform} reward markets · after adverse-selection cost`
+      sub: hasBest
+        ? `Highest of ${rewards.eligibleCount} current ${rewards.platform} reward markets · after adverse-selection cost`
         : 'Rewards-program signal · conditional: needs active quoting, competes with LPs',
       chip: 'signal', valueTone: 'neutral',
-      value: hasMedian
-        ? `+$${rewards.medianDayUsd1k!.toFixed(2)}/day`
+      value: hasBest
+        ? `+$${rewards.bestDayUsd1k!.toFixed(2)}/day`
         : (<span className="text-muted font-normal" style={{ fontSize: 12 }}>see Rewards tab</span>),
       // Decorated unit (not the audited 'net/day per $1k' vocab token) — a
       // conditional signal estimate, kept honest with an explicit "est" qualifier.
-      unit: hasMedian ? 'per $1k · est · not guaranteed' : '',
+      unit: hasBest ? 'per $1k · est · not guaranteed' : '',
       // Conditional incentive → out of the cashable day-rate ranking; sorts among
-      // the no-day-rate rows by its median net/day.
-      dayUsd1k: null, fallbackScore: rewards.medianDayUsd1k ?? 0,
+      // the no-day-rate rows by its best net/day.
+      dayUsd1k: null, fallbackScore: rewards.bestDayUsd1k ?? 0,
     });
   }
 
