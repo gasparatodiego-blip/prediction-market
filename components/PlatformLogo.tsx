@@ -15,6 +15,8 @@ const SLUG_MAP: Record<string, string> = {
   'binance coin-m':   'binance',
   bybit:              'bybit',
   'bybit usdt-m':     'bybit',
+  kraken:             'kraken',
+  'kraken ff':        'kraken',
   okx:                'okx',
   hyperliquid:        'hyperliquid',
   dydx:               'dydx',

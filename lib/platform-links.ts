@@ -130,6 +130,8 @@ export function venueFutureUrl(venueKey: string | null | undefined, contract: st
     case 'okx':              return `https://www.okx.com/trade-futures/${c.toLowerCase()}`;
     case 'bybit':            // Bybit USDT-M linear delivery (BTCUSDT-25SEP26)
     case 'bybitusdtm':       return `https://www.bybit.com/trade/usdt/futures/${c.toUpperCase()}`;
+    case 'kraken':           // Kraken flexible-futures delivery (FF_XBTUSD_260925)
+    case 'krakenff':         return `https://futures.kraken.com/trade/futures/${c.toUpperCase()}`;
     case 'coinm':            // Binance COIN-M delivery (BTCUSD_261225)
     case 'usdtm':            // Binance USDT-M delivery (BTCUSDT_260925)
     case 'binancecoinm':
@@ -158,6 +160,7 @@ export function _platformLinksSelfTest(): void {
   eq(venueFutureUrl('DERIBIT', 'BTC-25JUN27'), 'https://www.deribit.com/futures/BTC-25JUN27', 'basis deribit');
   eq(venueFutureUrl('OKX', 'BTC-USD-261225'), 'https://www.okx.com/trade-futures/btc-usd-261225', 'basis okx');
   eq(venueFutureUrl('BYBIT', 'BTCUSDT-25SEP26'), 'https://www.bybit.com/trade/usdt/futures/BTCUSDT-25SEP26', 'basis bybit');
+  eq(venueFutureUrl('KRAKEN', 'FF_XBTUSD_260925'), 'https://futures.kraken.com/trade/futures/FF_XBTUSD_260925', 'basis kraken');
   eq(venueFutureUrl('COINM', 'BTCUSD_261225'), 'https://www.binance.com/en/delivery/BTCUSD_261225', 'basis binance coin-m');
   eq(venueFutureUrl('USDTM', 'BTCUSDT_260925'), 'https://www.binance.com/en/delivery/BTCUSDT_260925', 'basis binance usdt-m');
   eq(venueFutureUrl('bitmex', 'XBTUSD'), null, 'basis unknown venue → null');

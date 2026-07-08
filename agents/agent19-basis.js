@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // agent19-basis.js — Cash-and-carry / basis scanner
-// Covers: Binance COIN-M, Binance USDT-M, Bybit USDT-M, OKX, Deribit for BTC/ETH/BNB.
+// Covers: Binance COIN-M, Binance USDT-M, Bybit USDT-M, Kraken FF (flexible futures), OKX, Deribit for BTC/ETH/BNB.
 // Applies the 7 filters from Step-1 analysis. Zero Claude, read-only, free.
 // v2: executable prices (long spot @ spotAsk, short future @ futureBid).
 //     Indicative mid/last values preserved as indicativeBasisPct / netAnnualizedIndicative.
@@ -30,6 +30,7 @@ const FEES = {
   COINM:   0.00165,  // spot 0.10% + COIN-M futures 0.05% + delivery 0.015%
   USDTM:   0.00140,  // spot 0.10% + USDT-M futures 0.04%
   BYBIT:   0.00155,  // spot on Binance 0.10% + Bybit USDT-M linear futures taker 0.055%; delivery ~0
+  KRAKEN:  0.00150,  // spot on Binance 0.10% + Kraken Futures taker 0.05% (flexible futures); delivery ~0
   OKX:     0.00150,  // spot 0.10% + OKX futures 0.05%
   DERIBIT: 0.00150,  // spot on Binance 0.10% + Deribit futures 0.05%
 };
@@ -42,6 +43,7 @@ const FEE_LEGS = {
   COINM:   [{ label: 'Binance spot',    pct: 0.0010 }, { label: 'COIN-M futures',  pct: 0.0005 }, { label: 'delivery', pct: 0.00015 }],
   USDTM:   [{ label: 'Binance spot',    pct: 0.0010 }, { label: 'USDT-M futures',  pct: 0.0004 }],
   BYBIT:   [{ label: 'Binance spot',    pct: 0.0010 }, { label: 'Bybit taker',     pct: 0.00055 }],
+  KRAKEN:  [{ label: 'Binance spot',    pct: 0.0010 }, { label: 'Kraken taker',    pct: 0.0005 }],
   OKX:     [{ label: 'Binance spot',    pct: 0.0010 }, { label: 'OKX futures',     pct: 0.0005 }],
   DERIBIT: [{ label: 'Binance spot',    pct: 0.0010 }, { label: 'Deribit futures', pct: 0.0005 }],
 };
@@ -562,6 +564,101 @@ async function fetchBybit(spot) {
   return results;
 }
 
+// ── Kraken Futures (FF_ flexible futures — linear, USD-quoted, cash-settled) ────
+//
+// Kraken has two dated families: FI_ (futures_inverse, coin-settled, and currently
+// dead — no bid/ask, 0 vol) and FF_ (flexible_futures, linear USD-quoted, cash-
+// settled). Only FF_ is a clean locked-USD lane (the Bybit/USDT-M analog); FI_ is
+// SKIPPED entirely. Symbol: FF_XBTUSD_260925 → XBT=BTC, USD quote, YYMMDD expiry.
+// contractSize is 1 unit of the base coin, so price×size is USD notional directly.
+//
+// Honest-engine: capacity is REAL order-book depth only, NEVER OI. Shorting the
+// dated future fills into the BID side, so we book-walk the bid ladder within a
+// 0.5% band. CAUTION: Kraken's /orderbook returns bids in ASCENDING price order
+// (best/highest bid is LAST), so we sort descending before the walk — otherwise the
+// book-walk would anchor on a stale far-below-market bid. oiUsd is never passed.
+const KRAKEN_ASSET = { XBT: 'BTC', ETH: 'ETH' };
+
+async function fetchKraken(spot) {
+  const [instRes, tickRes] = await Promise.all([
+    get('https://futures.kraken.com/derivatives/api/v3/instruments'),
+    get('https://futures.kraken.com/derivatives/api/v3/tickers'),
+  ]);
+
+  // Allowlist: tradeable flexible_futures only (skips FI_ inverse, PF_/PI_ perps).
+  const tradeable = new Set();
+  for (const i of (instRes.data?.instruments || [])) {
+    if (i.type === 'flexible_futures' && i.tradeable) tradeable.add(String(i.symbol).toUpperCase());
+  }
+
+  const tickers = tickRes.data?.tickers || [];
+  const now = Date.now();
+
+  // Pre-filter dated FF_ BTC/ETH contracts worth pricing, then book-walk each.
+  const candidates = [];
+  for (const t of tickers) {
+    const sym = String(t.symbol || '').toUpperCase();
+    const m   = sym.match(/^FF_([A-Z]+)USD_(\d{6})$/);            // FF_ dated only
+    if (!m) continue;
+    if (!tradeable.has(sym)) continue;                            // tradeable flexible_futures only
+    const asset = KRAKEN_ASSET[m[1]];
+    if (!asset || !['BTC', 'ETH'].includes(asset)) continue;      // decision matrix (matches Bybit)
+    if (!spot[asset]?.mid) continue;
+
+    const ymd = m[2];
+    const expiry = new Date(Date.UTC(2000 + parseInt(ymd.slice(0, 2)), parseInt(ymd.slice(2, 4)) - 1, parseInt(ymd.slice(4, 6)), 16, 0, 0));
+    const expiryMs = expiry.getTime();
+    if (!Number.isFinite(expiryMs) || expiryMs <= now) continue;
+    if ((expiryMs - now) / 86_400_000 < MIN_DAYS) continue;       // filter 1: too near
+
+    const mark      = parseFloat(t.markPrice || 0);
+    const vol24Usd  = parseFloat(t.vol24h || 0) * mark;           // vol24h is in contracts (=coin); ×mark → USD
+    if (vol24Usd < MIN_VOL_THIN) continue;                        // filter 2: VERY THIN never qualifies
+    candidates.push({ t, asset, sym, expiryMs, vol24Usd, mark });
+  }
+
+  // Real order-book depth for capacity — one orderbook call per candidate, in parallel.
+  const bookRes = await Promise.allSettled(
+    candidates.map(c => get(`https://futures.kraken.com/derivatives/api/v3/orderbook?symbol=${c.sym}`))
+  );
+
+  const results = [];
+  for (let i = 0; i < candidates.length; i++) {
+    const { t, asset, sym, expiryMs, vol24Usd, mark } = candidates[i];
+    const sp  = spot[asset];
+    const bid = parseFloat(t.bid || 0);
+    const ask = parseFloat(t.ask || 0);
+
+    // Short-the-future leg fills into the BID side → capacity = bid-side depth. Kraken
+    // bids are ascending (best last), so sort descending so bookDepthUsd anchors on the
+    // real best bid. Levels are [price, size] with size in the base coin. Never OI.
+    const r = bookRes[i];
+    const rawBids = (r.status === 'fulfilled' ? r.value.data?.orderBook?.bids : null) || [];
+    const bids = rawBids.slice().sort((a, b) => b[0] - a[0]);
+    const capacityUsd = bookDepthUsd(bids, 0.005);
+    if (capacityUsd <= 0) continue;   // no real book depth → no honest capacity → skip
+
+    const c = buildContract({
+      asset,
+      exchange:  'Kraken FF',
+      venueKey:  'KRAKEN',
+      contract:  sym,
+      spotMid:   sp.mid,
+      spotBid:   sp.bid,
+      spotAsk:   sp.ask,
+      futureLast: mark > 0 ? mark : null,
+      futureBid:  bid > 0 ? bid : null,
+      futureAsk:  ask > 0 ? ask : null,
+      expiryMs,
+      vol24Usd,
+      oiUsd:               null,          // never OI for Kraken
+      capacityUsdOverride: capacityUsd,   // REAL order-book depth (book-walk)
+    });
+    if (c) results.push(c);
+  }
+  return results;
+}
+
 // ── OKX ───────────────────────────────────────────────────────────────────────
 
 async function fetchOKX(spot) {
@@ -681,10 +778,11 @@ async function scan() {
   try { spot = await fetchSpot(); }
   catch (e) { console.error('[basis] spot fetch error:', e.message); return; }
 
-  const [coinm, usdtm, bybit, okx, deribit] = await Promise.allSettled([
+  const [coinm, usdtm, bybit, kraken, okx, deribit] = await Promise.allSettled([
     fetchCOINM(spot),
     fetchUSDTM(spot),
     fetchBybit(spot),
+    fetchKraken(spot),
     fetchOKX(spot),
     fetchDeribit(spot),
   ]);
@@ -693,6 +791,7 @@ async function scan() {
     ...(coinm.status === 'fulfilled'   ? coinm.value   : (console.warn('[basis] COINM:', coinm.reason?.message), [])),
     ...(usdtm.status === 'fulfilled'   ? usdtm.value   : (console.warn('[basis] USDTM:', usdtm.reason?.message), [])),
     ...(bybit.status === 'fulfilled'   ? bybit.value   : (console.warn('[basis] Bybit:', bybit.reason?.message), [])),
+    ...(kraken.status === 'fulfilled'  ? kraken.value  : (console.warn('[basis] Kraken:', kraken.reason?.message), [])),
     ...(okx.status === 'fulfilled'     ? okx.value     : (console.warn('[basis] OKX:', okx.reason?.message), [])),
     ...(deribit.status === 'fulfilled' ? deribit.value : (console.warn('[basis] Deribit:', deribit.reason?.message), [])),
   ];
