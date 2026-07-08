@@ -94,6 +94,10 @@ export interface EventPlatform {
   marketUrl:      string | null;
   depthAvailable: boolean;
   legId:          string;
+  // Per-venue trading fee (fraction, e.g. 0.07 = 7%) from the route's PLATFORM_FEES
+  // table — public, never redacted. `executable` mirrors tier === 'executable'.
+  fee?:           number;
+  executable?:    boolean;
 }
 
 export interface ReferenceMedian {

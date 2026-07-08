@@ -275,8 +275,20 @@ export async function GET() {
     // Event-comparator buckets — additive, alongside the existing pairwise
     // `valid` array above (unchanged). Each bucket's platforms are already
     // tagged tier: "executable" | "reference" upstream (shared-matcher.js);
-    // passed through as-is, never recomputed here.
-    const events: any[] = raw.events ?? [];
+    // passed through as-is, never recomputed here. We only ATTACH the per-venue
+    // trading fee (from the same PLATFORM_FEES table the pairwise legs already
+    // use via feeFor) and an explicit `executable` flag mirrored from `tier`, so
+    // the UI can show a real per-venue fee and gate placeable treatment without
+    // re-deriving anything. No price/edge math is touched. `fee`/`executable`
+    // are public (not in the prediction paid-gating set), so this leaks nothing.
+    const events: any[] = (raw.events ?? []).map((ev: any) => ({
+      ...ev,
+      platforms: (ev.platforms ?? []).map((p: any) => ({
+        ...p,
+        fee:        feeFor(p.platform),
+        executable: p.tier === 'executable',
+      })),
+    }));
 
     const body = redactForTier({
       valid,
