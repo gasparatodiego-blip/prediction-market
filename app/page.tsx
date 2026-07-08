@@ -12,6 +12,7 @@ import RadarScope   from '@/app/components/ui/RadarScope';
 import BlipRow      from '@/app/components/ui/BlipRow';
 import AnimatedStrategies from '@/app/components/landing/AnimatedStrategies';
 import { getCryptoSpreadsData, calcSpreadSizing } from '@/lib/spread-compute';
+import { filterSane, enforceVerified } from '@/lib/display-sanity';
 import { LANDING_CAPITAL_BASIS } from '@/lib/honest-display';
 import { isSanePolymarketLevel } from '@/lib/reward-gating';
 import { estimateReward, type MarketSnapshot } from '@/lib/rewards-estimate';
@@ -94,20 +95,26 @@ function readLandingStats(): {
   } catch { /* file absent or stale */ }
 
   try {
-    // Same pipeline the funding-arb dashboard uses (lib/spread-compute.ts) — no
-    // parallel fundingRate math here. The landing must show the SAME real maximum
-    // the dashboard surfaces, so it scans the FULL spreads list with no eligibility
-    // filter — exactly the set behind the funding-arb page's `bestNetDay` hero.
-    const { spreads } = getCryptoSpreadsData();
-    // Surface the SINGLE highest real net/day per $1k across ALL spreads — NOT
-    // first-in-list, and NOT a verified-only subset. A thin book or an unverified
-    // leg only limits executable SIZE (surfaced separately on the order page as
-    // "max size before slippage"); it never disqualifies the opportunity, and the
-    // funding-arb dashboard already ranks those rows as real cards. Ranked by
-    // calcSpreadSizing at the shared $1k/1x basis — the SAME sizing (== the page's
-    // netDayForCapital) — so this equals the dashboard's #1 net/day for that pair.
-    // getCryptoSpreadsData() is read directly (not the paid-gated /api/crypto
-    // route), so netApy30d is never redacted here.
+    // Same pipeline the funding-arb dashboard uses (lib/spread-compute.ts). The
+    // landing must show the SAME real maximum the dashboard surfaces — so it scans
+    // the exact SAME list the funding-arb page renders. getCryptoSpreadsData() is
+    // read directly (not the paid-gated /api/crypto route), so netApy30d is never
+    // redacted here; but that means we must re-apply the /api/crypto route's own
+    // display-sanity backstop that the raw lib call skips. filterSane('funding')
+    // drops phantom rows (a per-leg rate over the plausible cap, or a grossApy above
+    // the 200%/yr display cap — the edgeX cap-pin spike class, e.g. TON aster/edgeX
+    // ~2300%/yr) and enforceVerified drops source-verifier mismatches — the identical
+    // anti-spike/dead-contract guard the funding-arb page applies. This is NOT the
+    // thin-book size filter: thin / one-leg-unverified pairs (sub-cap real
+    // opportunities like TRX $2.10) still pass and stay eligible for the max; a thin
+    // book only limits executable SIZE (surfaced separately on the order page).
+    const { spreads: rawSpreads } = getCryptoSpreadsData();
+    const spreads = enforceVerified('funding', filterSane('funding', rawSpreads));
+    // Surface the SINGLE highest real net/day per $1k across the sanity-passed
+    // spreads — NOT first-in-list. Ranked by calcSpreadSizing at the shared $1k/1x
+    // basis — the SAME sizing (== the page's netDayForCapital) — so this equals the
+    // dashboard's #1 net/day for that pair, and can never surface a row the
+    // funding-arb page itself rejects.
     let best: { spread: (typeof spreads)[number]; dayUsd: number } | null = null;
     for (const s of spreads) {
       if (s.netApy30d == null) continue;   // sizing needs the fee-net rate; not an eligibility gate
