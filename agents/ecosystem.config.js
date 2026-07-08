@@ -230,20 +230,24 @@ module.exports = {
       max_restarts:              15,
       min_uptime:                30000,
       autorestart:               true,
-      // Memory ceiling — sized for a GLOBAL-OOM box (3.7GB total, ~0.5–1GB free,
-      // fleet ~1.1GB RSS). The prior death was a kernel global-OOM (SIGKILL →
-      // "Process not found"), not a clean pm2 cap hit, at ~780MB RSS during the
-      // one-shot JSON.parse of the 187MB cache. Fixes:
-      //   1) loadCache() now streams (stream-json) → boot peak 437MB, not 594–780MB.
-      //   2) max_memory_restart 750M: above the real working set (~440–550MB) so no
-      //      mid-scan restart loop, but well under the ~780MB global-OOM zone so pm2
-      //      soft-restarts BEFORE the kernel kills. Deliberately NOT raised to 1200M —
-      //      on this box ballooning agent20 would OOM-kill sibling agents.
-      //   3) --max-old-space-size=768: hard V8 backstop. Default (1955MB) let RSS run
-      //      past kernel-OOM so the kernel always won with a hard SIGKILL; capping V8
-      //      makes it throw+exit(1) cleanly (pm2-recoverable) if it ever spikes.
-      node_args:          '--max-old-space-size=768',
-      max_memory_restart: '750M',
+      // Memory ceiling — sized for a GLOBAL-OOM box (3.7GB total, ~0.5–1GB free).
+      // loadCache() already STREAMS the 187MB cache (stream-json) and the boot
+      // installs uncaughtException/unhandledRejection handlers — so a clean throw
+      // is pm2-recoverable. The residual death was NOT recoverable: the enrichment
+      // scan peaked at ~766MB heap against a 768MB --max-old-space-size cap (see the
+      // Scavenge 765.9/777.6 MB GC-thrash, mutator util ~0.31), so a single extra
+      // allocation tripped "FATAL ERROR: JavaScript heap out of memory" — a V8 abort
+      // that NO handler can catch → hard SIGABRT → "Process not found". Fix:
+      //   1) --max-old-space-size=1536: real headroom so the scan peak (~766MB) never
+      //      touches the V8 cap and never FATAL-aborts. It is a BACKSTOP, not the
+      //      operating point — steady-state RSS is ~430MB.
+      //   2) max_memory_restart 1200M: pm2 SOFT cap. Sits above the true peak (~766MB)
+      //      so no mid-scan restart loop, and below the V8 backstop (1536MB) so a real
+      //      runaway is caught by pm2 as a clean recoverable restart BEFORE V8 aborts.
+      //      Peak/steady both sit far under 1200M, so siblings see no added pressure in
+      //      normal operation; the cap only bites a genuine leak.
+      node_args:          '--max-old-space-size=1536',
+      max_memory_restart: '1200M',
       watch:         false,
       env:           { NODE_ENV: 'production', HOME: '/root' },
     },
