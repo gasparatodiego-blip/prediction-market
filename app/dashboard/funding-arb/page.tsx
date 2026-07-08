@@ -763,7 +763,12 @@ function FundingCard({ s, capital, leverage }: { s: SpreadItem; capital: number;
             <Redacted value={s.totalFeesPct}>{() => null}</Redacted>
           ) : (
             <>
-              {fees != null && <div>fees {fmtMoneyPlain(fees)}</div>}
+              {fees != null && (
+                <div>
+                  fees {fmtMoneyPlain(fees)}
+                  <span style={{ color: '#b9c2cd' }} title="This coin's venue pair was chosen to maximize net $/day after both legs' real round-trip fees."> · best net</span>
+                </div>
+              )}
               {rr && (
                 <div className="inline-flex items-center justify-end gap-0.5">
                   <span>{fmtAprLabel(rr)}</span>
@@ -1024,12 +1029,30 @@ function OpportunityCards({
     return nb - na;
   });
 
-  // Best pair per unique coin (post-sort → best-payback pair per coin)
-  const seenCoins = new Set<string>();
-  const allItems: SpreadItem[] = [];
-  for (const s of sorted) {
-    if (!seenCoins.has(s.coin)) { seenCoins.add(s.coin); allItems.push(s); }
+  // Fee-aware per-coin selection: represent each coin by the pair with the highest
+  // NET $/day (funding spread minus BOTH legs' real round-trip fees), not the pair
+  // with the fastest fee-payback. netApy30d is the fee-net rate and $/day scales
+  // linearly from it, so max-netApy30d == max net $/day at any capital. This mirrors
+  // the perp-spot selection principle: pick for net carry after real fees, then show
+  // the payback tier as the risk signal (unchanged). The old min-payback pick tended
+  // to over-weight a 0-fee leg (fastest recovery) even when a slightly higher-fee
+  // venue delivered materially more net carry.
+  // Free tier redacts netApy30d → null; the API already serves pairs in netApy30d-desc
+  // order and this loop then keeps the first-seen (net-max) pair, so selection stays
+  // correct and tier-consistent without ever exposing the redacted number.
+  const bestByCoin = new Map<string, SpreadItem>();
+  for (const s of exFiltered) {
+    const cur = bestByCoin.get(s.coin);
+    if (!cur) { bestByCoin.set(s.coin, s); continue; }
+    if (s.netApy30d != null && cur.netApy30d != null && s.netApy30d > cur.netApy30d) {
+      bestByCoin.set(s.coin, s);
+    }
+    // Either side redacted (free tier) → keep the earlier pair; incoming order is net-desc.
   }
+  const pickedKey = (s: SpreadItem) => `${s.coin}-${s.shortExchange}-${s.longExchange}`;
+  const picked = new Set(Array.from(bestByCoin.values(), pickedKey));
+  // Display the selected pairs in the existing payback-first order (card ordering unchanged).
+  const allItems: SpreadItem[] = sorted.filter(s => picked.has(pickedKey(s)));
 
   if (spreads.length === 0) return null;
 
