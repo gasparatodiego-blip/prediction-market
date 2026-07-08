@@ -1545,7 +1545,14 @@ function RwaCommoditiesStrip({ rows }: { rows: RwaObservation[] }) {
         <span className="ml-auto font-body" style={{ fontSize: 9.5, color: '#9aa5b3' }}>observing funding · not cashable yet</span>
       </div>
       <div>
-        {rows.map((r, i) => (
+        {rows.map((r, i) => {
+          const d = r.divergence;
+          const plat = (v: string) => r.legs.find(l => l.venue === v)?.platform ?? v;
+          // net exists only for a sane, confirmed, non-spike spread ('BETA · variable').
+          // When it does but arrives null, that's the paid-tier redaction (calm unlock,
+          // no login wall) — distinct from FLAT/NOISE/UNCONFIRMED where no net exists.
+          const betaEdge = d != null && d.verdict.startsWith('BETA');
+          return (
           <div
             key={r.underlying}
             className="px-4 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-1"
@@ -1554,14 +1561,15 @@ function RwaCommoditiesStrip({ rows }: { rows: RwaObservation[] }) {
             <span className="font-mono font-bold text-ink shrink-0" style={{ fontSize: 12, width: 96 }}>{r.label}</span>
             <span className="font-mono tabular-nums inline-flex items-center gap-x-3 gap-y-0.5 flex-wrap min-w-0" style={{ fontSize: 11 }}>
               {r.legs.map(l => (
-                <span key={l.venue} style={{ color: '#6b7787' }}>
+                <span key={l.venue} style={{ color: '#6b7787' }} title={`instantaneous ${l.rate8h >= 0 ? '+' : ''}${l.rate8h.toFixed(4)}%/8h (often 0 between settlements) — headline is the real settled trailing rate`}>
                   {l.platform}{' '}
-                  <span className="tabular-nums" style={{ color: l.rate8h >= 0 ? '#0d9c6e' : '#e11d48' }}>
-                    {l.rate8h >= 0 ? '+' : ''}{l.rate8h.toFixed(4)}%
+                  <span className="tabular-nums" style={{ color: l.settledRate8h >= 0 ? '#0d9c6e' : '#e11d48' }}>
+                    {l.settledRate8h >= 0 ? '+' : ''}{l.settledRate8h.toFixed(4)}%
                   </span>
+                  {l.confirmed === false && <span style={{ color: '#c99a2e' }} title="no verified settled history yet"> ⚠</span>}
                 </span>
               ))}
-              <span style={{ color: '#9aa5b3' }}>/8h</span>
+              <span style={{ color: '#9aa5b3' }}>/8h settled</span>
             </span>
             <span className="ml-auto font-mono tabular-nums shrink-0" style={{ fontSize: 10.5, color: '#6b7787' }}>
               book depth <span className="text-ink">{fmtRwaDepth(r.bookDepthUsd)}</span>
@@ -1573,12 +1581,33 @@ function RwaCommoditiesStrip({ rows }: { rows: RwaObservation[] }) {
             >
               Signal · observe
             </span>
+            {d && (
+              <span className="w-full font-mono tabular-nums inline-flex items-center gap-x-2 flex-wrap" style={{ fontSize: 10, color: '#9aa5b3' }}>
+                <span style={{ color: '#6b7787' }}>trailing divergence</span>
+                <span>short <span className="text-ink">{plat(d.shortVenue)}</span> · long <span className="text-ink">{plat(d.longVenue)}</span></span>
+                <span style={{ color: '#6b7787' }}>{d.grossApyOverCap ? '>' : '~'}{d.grossApy.toFixed(1)}%/yr gross</span>
+                {betaEdge && (
+                  d.netApy != null
+                    ? <span style={{ color: '#0d9c6e' }}>net ~{d.netApy.toFixed(1)}%/yr</span>
+                    : <span title="fee-adjusted net — unlock (no login wall)" style={{ color: '#9aa5b3' }}>net · 🔒</span>
+                )}
+                <span
+                  className="px-1 py-[1px] border font-body uppercase tracking-wide"
+                  style={{ fontSize: 8, borderColor: '#e6eaef', color: d.verdict.startsWith('BETA') ? '#0f766e' : d.verdict.startsWith('NOISE') || d.verdict.startsWith('UNCONF') ? '#c99a2e' : '#9aa5b3' }}
+                >
+                  {d.verdict}
+                </span>
+              </span>
+            )}
           </div>
-        ))}
+          );
+        })}
       </div>
       <div className="px-4 pb-2 pt-1 font-body" style={{ fontSize: 9, color: '#9aa5b3' }}>
-        Gold / silver / oil on Aster + Extended · real order-book depth. Funding on these oracle-tracking
-        perps is flat/near-zero, so there is no cashable net/day yet — this strip is observation only.
+        Gold / silver / oil on Aster + Extended · real order-book depth. These perps settle intermittently
+        (Aster often prints 0 between settlements), so we headline each leg&apos;s real settled trailing rate
+        and show the two-legged trailing divergence — capped, fee-aware, beta. Never cashable yet: the Aster
+        leg&apos;s book depth is still unproven, so no honest capacity exists.
       </div>
     </div>
   );

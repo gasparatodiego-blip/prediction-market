@@ -1435,27 +1435,74 @@ function crossExchangeSpread(futures, hCache) {
 function rwaObservations(futures, hCache) {
   const opps = [];
   for (const key of RWA_KEYS) {
-    const legs = [];
+    // Per-leg analytics from REAL settled history. These commodity perps settle
+    // intermittently — Aster frequently publishes lastFundingRate=0 BETWEEN settlements
+    // (verified against its premiumIndex 2026-07-08) — so the instantaneous rate is an
+    // unreliable, often-zero headline. The SETTLED trailing average is the real funding
+    // signal (same basis the crypto lane headlines via legAnalytics). We keep the
+    // instantaneous rate too, clearly separated, but never let a between-settlement 0
+    // masquerade as "this venue pays nothing".
+    const built = [];
     for (const venue of RWA_VENUES) {
       const data = (futures[venue] || {})[key];
       if (!data || typeof data.fundingRate !== 'number' || !isFinite(data.fundingRate)) continue;
       const intervalHours = data.fundingIntervalHours ?? 8;
-      const recent = ((hCache[venue] || {})[key] || [])
-        .slice(0, HISTORY_N)
-        .map(p => (typeof p === 'number' ? p : p?.rate))   // tolerate { t, rate } + legacy numbers
-        .filter(v => isFinite(v));
-      const trailingRate = recent.length ? recent.reduce((s, r) => s + r, 0) / recent.length : data.fundingRate;
-      legs.push({
-        venue,
-        platform:      venueLabel(venue, true),
-        price:         +data.fundingRate.toFixed(6),        // native %/interval
-        intervalHours,
-        rate8h:        +(data.fundingRate * (8 / intervalHours)).toFixed(4),  // display %/8h
-        trailingRate:  +trailingRate.toFixed(6),
-        historyAvailable: recent.length > 0,
-      });
+      const history = (hCache[venue] || {})[key] || [];
+      const anal    = legAnalytics(data.fundingRate, intervalHours, history);
+      // A leg counts as settled-verified if it has history this cycle OR a recent settled
+      // print (survives one empty fetch without fabricating — same rule as the crypto lane).
+      const settledVerified = anal.historyAvailable || isSettledStillFresh(venue, key, intervalHours);
+      built.push({ venue, intervalHours, predicted: data.fundingRate, anal, settledVerified });
     }
-    if (legs.length < 2) continue;   // need real cross-venue overlap
+    if (built.length < 2) continue;   // need real cross-venue overlap
+
+    const legs = built.map(b => ({
+      venue:            b.venue,
+      platform:         venueLabel(b.venue, true),
+      price:            +b.predicted.toFixed(6),                                   // native %/interval (instantaneous)
+      intervalHours:    b.intervalHours,
+      rate8h:           +(b.predicted * (8 / b.intervalHours)).toFixed(4),         // instantaneous %/8h (between-settlement; kept for continuity)
+      settledRate8h:    +(b.anal.trailingRate * (8 / b.intervalHours)).toFixed(4), // REAL settled %/8h — the honest headline
+      trailingRate:     +b.anal.trailingRate.toFixed(6),
+      historyAvailable: b.anal.historyAvailable,
+      settledVerified:  b.settledVerified,
+      spike:            b.anal.spike,
+      confirmed:        b.anal.confirmed && b.settledVerified,
+    }));
+
+    // Two-legged TRAILING funding divergence — real, fee-aware, honest-gated. Now that
+    // BOTH legs carry a real settled rate (Aster's included, no longer a phantom 0), the
+    // divergence is genuinely two-legged. SHORT = higher trailing annualized (collect),
+    // LONG = lower. Reuses the crypto lane's helpers + existing caps (THRESHOLD_APY,
+    // MAX_GROSS_APY, roundTripFeeByVenue, netApy30d) — NO new thresholds. Still strictly
+    // OBSERVATION: even a sane net here is NOT cashable — the Aster commodity book depth
+    // is still unproven (capacity blocker open), so netROI stays null and the row is beta.
+    let divergence = null;
+    if (built.length === 2) {
+      const ann = built.map(b => ({ b, ann: annualize(b.anal.trailingRate, b.intervalHours) }));
+      const [hi, lo]      = ann[0].ann >= ann[1].ann ? [ann[0], ann[1]] : [ann[1], ann[0]];
+      const grossApyRaw   = Math.abs(hi.ann - lo.ann);
+      const totalFeesPct  = roundTripFeeByVenue(hi.b.venue, lo.b.venue);
+      const bothConfirmed = hi.b.anal.confirmed && hi.b.settledVerified && lo.b.anal.confirmed && lo.b.settledVerified;
+      const spike         = hi.b.anal.spike || lo.b.anal.spike;
+      let verdict, netApy = null;
+      if (grossApyRaw < THRESHOLD_APY)      verdict = 'FLAT · no edge';
+      else if (grossApyRaw > MAX_GROSS_APY) verdict = 'NOISE · rate unstable';       // catches the absurd (>200%/yr) commodity prints
+      else if (spike || !bothConfirmed)     verdict = 'UNCONFIRMED · still settling';
+      else { verdict = 'BETA · variable'; netApy = +netApy30d(grossApyRaw, totalFeesPct).toFixed(2); }
+      divergence = {
+        shortVenue:      hi.b.venue,
+        longVenue:       lo.b.venue,
+        grossApy:        +Math.min(grossApyRaw, MAX_GROSS_APY).toFixed(2),  // honest-engine: capped display
+        grossApyOverCap: grossApyRaw > MAX_GROSS_APY,
+        totalFeesPct:    +totalFeesPct.toFixed(3),
+        netApy,                                                             // null unless sane + confirmed + non-spike; never cashable
+        bothConfirmed,
+        spike,
+        verdict,
+      };
+    }
+
     opps.push({
       type:                 'RWA',
       // rwa-<CANONICAL_KEY>-<venueA>-<venueB>: enrichWithDepth splits on '-' → parts[1]=key,
@@ -1466,6 +1513,7 @@ function rwaObservations(futures, hCache) {
       assetClass:           'commodity',
       question:             `${rwaLabel(key)} funding (beta)`,
       legs,
+      divergence,
       observation:          true,
       note:                 'beta · observing funding, not cashable yet',
       // depth fields filled by enrichWithDepth (real book walk). greenCapacityUsd will be 0

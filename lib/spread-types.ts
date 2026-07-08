@@ -27,11 +27,28 @@ export interface RwaObservation {
   legs: {
     venue:         string;
     platform:      string;             // display label, e.g. 'Aster (DEX)'
-    fundingRate:   number;             // native %/interval
+    fundingRate:   number;             // native %/interval (instantaneous / between-settlement)
     intervalHours: number;
-    rate8h:        number;             // display %/8h (comparable across venues)
-    trailingRate:  number;
+    rate8h:        number;             // instantaneous %/8h (often 0 on Aster between settlements)
+    settledRate8h: number;             // REAL settled (trailing) %/8h — the honest headline
+    trailingRate:  number;             // native settled avg %/interval
+    spike?:        boolean;            // instantaneous rate deviates from the settled trend
+    confirmed?:    boolean;            // real settled history verifies this leg
   }[];
+  // Two-legged trailing funding divergence (beta, observation-only — NEVER cashable).
+  // grossApy is a public teaser (capped at 200%/yr, honest-engine); netApy is the derived
+  // fee-adjusted edge (paid-gated, null unless a sane confirmed non-spike spread exists).
+  divergence: {
+    shortVenue:      string;           // leg to short (higher settled funding)
+    longVenue:       string;           // leg to long (lower settled funding)
+    grossApy:        number;           // |Δ annualized settled|, capped 200%/yr
+    grossApyOverCap: boolean;          // raw exceeded the 200%/yr cap
+    totalFeesPct:    number;           // round-trip fees %/yr
+    netApy:          number | null;    // fee-adjusted; null when FLAT/NOISE/UNCONFIRMED
+    bothConfirmed:   boolean;
+    spike:           boolean;
+    verdict:         string;           // 'BETA · variable' | 'FLAT · no edge' | 'NOISE · rate unstable' | 'UNCONFIRMED · still settling'
+  } | null;
   bookDepthUsd: number | null;         // real max-fillable order-book depth (from the depth walk)
   note:         string;                // 'beta · observing funding, not cashable yet'
 }

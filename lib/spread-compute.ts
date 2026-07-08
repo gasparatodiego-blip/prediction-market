@@ -431,7 +431,8 @@ export function getCryptoSpreadsData(): CryptoSpreadsData {
           if (opp.type === 'RWA') {
             const o = opp as unknown as {
               underlying?: string; label?: string; note?: string; slipCurveMaxFillable?: number | null;
-              legs?: { venue?: string; platform?: string; price?: number; intervalHours?: number; rate8h?: number; trailingRate?: number }[];
+              legs?: { venue?: string; platform?: string; price?: number; intervalHours?: number; rate8h?: number; settledRate8h?: number; trailingRate?: number; spike?: boolean; confirmed?: boolean }[];
+              divergence?: RwaObservation['divergence'];
             };
             if (Array.isArray(o.legs) && o.legs.length >= 2) {
               rwaRows.push({
@@ -444,8 +445,16 @@ export function getCryptoSpreadsData(): CryptoSpreadsData {
                   fundingRate:   typeof l.price === 'number' ? l.price : 0,
                   intervalHours: typeof l.intervalHours === 'number' ? l.intervalHours : 8,
                   rate8h:        typeof l.rate8h === 'number' ? l.rate8h : 0,
+                  // Settled (trailing) %/8h is the honest headline; fall back to the
+                  // instantaneous rate only if a pre-settled snapshot lacks it.
+                  settledRate8h: typeof l.settledRate8h === 'number' ? l.settledRate8h : (typeof l.rate8h === 'number' ? l.rate8h : 0),
                   trailingRate:  typeof l.trailingRate === 'number' ? l.trailingRate : 0,
+                  spike:         l.spike === true,
+                  confirmed:     l.confirmed === true,
                 })),
+                // Real two-legged trailing divergence (beta). Pass through as-is; netApy is
+                // paid-gated downstream (lib/paid-gating.ts crypto: 'rwa[].divergence.netApy').
+                divergence:   o.divergence ?? null,
                 bookDepthUsd: typeof o.slipCurveMaxFillable === 'number' ? o.slipCurveMaxFillable : null,
                 note:         String(o.note ?? 'beta · observing funding, not cashable yet'),
               });

@@ -175,6 +175,10 @@ export const REDACTION_MAP: Record<RouteKey, string[]> = {
     'usdcArb[].edge.breakevenDays',
     'usdcArb[].edge.netApy30dPct',
     'usdcArb[].edge.annualizedRunRatePct',
+    // RWA commodities (beta) — raw per-leg funding + the capped gross divergence stay a
+    // public teaser (same as usdcArb grossApyPct); only the DERIVED fee-adjusted net is
+    // gated. Observation-only, never cashable.
+    'rwa[].divergence.netApy',
   ],
 
   carry: [
