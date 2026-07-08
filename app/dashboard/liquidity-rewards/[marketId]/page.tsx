@@ -195,15 +195,18 @@ export default function MarketDetailPage() {
   // controls
   const [tradeSide, setTradeSide] = useState<SideKey>('yes');   // which outcome token to make
   const [side, setSide]         = useState<SideMode>('both');
-  const [qty, setQty]           = useState<number>(1000);
-  const [dist, setDist]         = useState<number>(1.75);
+  // Default size aligns with the list's "typical net" preset: the list estimates at
+  // capital = $1000 TOTAL two-sided (DEFAULT_CAPITAL). Here qty is PER SIDE and
+  // capital = qty × sides, so $500/side × 2 = $1000 total — same basis as the list.
+  const [qty, setQty]           = useState<number>(500);
+  const [dist, setDist]         = useState<number>(1.75);   // pre-load placeholder; set from maxSpread on load
 
   // ── tap-to-place: two INDEPENDENT legs (buy + sell coexist, never overwrite) ──
   // A leg is null until the user taps a real book level. A non-null leg is a MANUAL
   // placement that detaches from the distance slider (Phase 3). Per-leg USD qty is
   // independent. Tapping a level BELOW mid sets buy; ABOVE mid sets sell.
   const [legs, setLegs]     = useState<{ buy: LegState; sell: LegState }>({ buy: null, sell: null });
-  const [legQty, setLegQty] = useState<{ buy: number; sell: number }>({ buy: 1000, sell: 1000 });
+  const [legQty, setLegQty] = useState<{ buy: number; sell: number }>({ buy: 500, sell: 500 });
   const [onFillYes, setOnFillYes] = useState<OnFill>('requote');
   const [onFillNo,  setOnFillNo]  = useState<OnFill>('requote');
   const [newsMode, setNewsMode] = useState<NewsMode>('withdraw');
@@ -224,7 +227,10 @@ export default function MarketDetailPage() {
         if (!alive) return;
         if (!m) { setMktErr('Market not found in the current snapshot.'); setLoading(false); return; }
         setMkt(m);
-        setDist(Number((((m.maxSpread ?? 4) / 2)).toFixed(2)));
+        // Match the list's typicalNet distance preset exactly: (maxSpread ?? 2) / 2
+        // (the list uses `?? 2`, not `?? 4`) so a null-maxSpread market — e.g. Kalshi —
+        // defaults to the same 1¢ band the list priced, not a different 2¢.
+        setDist(Number((((m.maxSpread ?? 2) / 2)).toFixed(2)));
         setLoading(false);
       } catch (e: any) { if (alive) { setMktErr(e?.message ?? 'load error'); setLoading(false); } }
     })();
