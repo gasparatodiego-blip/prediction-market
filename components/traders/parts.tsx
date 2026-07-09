@@ -2,7 +2,7 @@
 
 import { Zap, Check, Lock, BadgeCheck, AlertTriangle } from 'lucide-react';
 import { Redacted } from '@/app/components/ui/Redacted';
-import { isLowSample, wrColor, type ActorType } from './format';
+import { isLowSample, wrColor, freshness, fmtRelShort, type ActorType } from './format';
 
 // ── Actor-type badge ──────────────────────────────────────────────────────────
 // NEVER a bare "BOT". Always type + confidence, with the ⚡HFT tag when flagged.
@@ -80,6 +80,50 @@ export function WinRate({
         )}
       </span>
       {low && <LowSampleBadge n={resolvedMarkets} />}
+    </span>
+  );
+}
+
+// Two-level win-rate bar. SOLID (mint-deep) = Wilson 95% lower bound — the metric the
+// board is ranked by; LIGHT (mint tint) behind it = raw win rate. Wilson ≤ raw always
+// (it's a lower bound), so the solid sits inside the light. Redaction-safe: null inputs
+// (free tier) render a locked track, never a fabricated 0%. Low-sample wallets get a
+// gold track so a thin, noisy record doesn't read as a confident green bar.
+export function WinRateBar({
+  winRate, wilson, resolvedMarkets,
+}: {
+  winRate: number | null; wilson: number | null; resolvedMarkets: number;
+}) {
+  const locked = winRate == null || wilson == null;
+  const low    = isLowSample(resolvedMarkets);
+  const raw    = Math.max(0, Math.min(100, winRate ?? 0));
+  const floorPct = Math.max(0, Math.min(100, (wilson ?? 0) * 100));
+  const lightCls = low ? 'bg-gold/25' : 'bg-mint-deep/25';
+  const solidCls = low ? 'bg-gold/70' : 'bg-mint-deep';
+  return (
+    <div className="h-1.5 w-full rounded-full bg-bg-soft overflow-hidden relative" title={locked ? 'Unlock to see win rate' : `Wilson floor ${Math.round(floorPct)}% · raw ${Math.round(raw)}%`}>
+      {locked ? (
+        <div className="absolute inset-0 bg-line/60" />
+      ) : (
+        <>
+          <div className={`absolute inset-y-0 left-0 rounded-full ${lightCls}`} style={{ width: `${raw}%` }} />
+          <div className={`absolute inset-y-0 left-0 rounded-full ${solidCls}`} style={{ width: `${floorPct}%` }} />
+        </>
+      )}
+    </div>
+  );
+}
+
+// Last-trade freshness chip: colored dot + relative time ("12m ago" / "2d ago" /
+// "3w ago"). green = active today (<24h), amber = this week, slate = gone quiet (>7d).
+export function FreshnessChip({ lastActive }: { lastActive: number | null | undefined }) {
+  const f = freshness(lastActive);
+  if (!f) return null;
+  return (
+    <span className={`inline-flex items-center gap-1 font-body text-[10px] tabular-nums ${f.text}`}
+      title={f.tone === 'fresh' ? 'active in the last 24h' : f.tone === 'week' ? 'active this week' : 'quiet for over a week'}>
+      <span className={`w-1.5 h-1.5 rounded-full ${f.dot}`} />
+      {fmtRelShort(lastActive)}
     </span>
   );
 }

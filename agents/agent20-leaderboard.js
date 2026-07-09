@@ -537,6 +537,12 @@ function buildLeaderboard() {
     const totalPnl   = recent.reduce((s, m) => s + m.pnl, 0);
     const totalVol   = recent.reduce((s, m) => s + m.vol, 0);
     const lastActive = Math.max(...recent.map(m => m.ts || 0));
+    // Tenure floor ("since"): earliest resolved-market timestamp we've tracked for this
+    // wallet, from the SAME `recent` set as lastActive (zero extra fetch, free data). It is
+    // a LOWER BOUND on first activity — bounded by the 2-yr window — not a guaranteed
+    // account-inception date; the UI labels it as "earliest tracked", never fabricates one.
+    const firstTs    = recent.map(m => m.ts).filter(t => t && t > 0);
+    const firstActive = firstTs.length ? Math.min(...firstTs) : null;
 
     // MM classification: prefer wallet-level (from classifyTopWallets) if available;
     // fall back to per-market twoSided count which underestimates MM activity.
@@ -561,6 +567,7 @@ function buildLeaderboard() {
       resolvedTotal: w.resolvedTotal ?? null,
       volumeUsdc: Math.round(totalVol * 100) / 100,
       lastActive,
+      firstActive,   // earliest tracked trade ts (tenure floor, ≤2-yr window); null if none
       wins,
       losses:     recent.length - wins,
       twoSidedMkts,

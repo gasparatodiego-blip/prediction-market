@@ -7,11 +7,12 @@ import PlatformLogo   from '@/components/PlatformLogo';
 import { Redacted }   from '@/app/components/ui/Redacted';
 import { PlatformLink } from '@/app/components/ui/PlatformLink';
 import { polymarketProfileUrl } from '@/lib/platform-links';
-import { ActorBadge, VerifiedTick, WinRate, ConfidenceBar, CopyButton } from './parts';
+import { ActorBadge, VerifiedTick, WinRate, WinRateBar, FreshnessChip, LowSampleBadge, CategoryTag, ConfidenceBar, CopyButton } from './parts';
 import TraderProfileView from './TraderProfile';
 import CopyConfigPanel from './CopyConfigPanel';
 import {
-  fmtPnl, fmtVol, fmtWallet, fmtUpdated, displayName, pnlColor, isLowSample,
+  fmtPnl, fmtVol, fmtWallet, fmtUpdated, fmtSince, fmtPct1, returnOnVolumePct,
+  displayName, pnlColor, catText, isLowSample,
   type LbData, type LbEntry, type TraderProfile, type WindowKey,
 } from './format';
 
@@ -292,7 +293,7 @@ export default function TradersApp() {
           ) : (
             <div className="rounded-card border border-line bg-surface shadow-card overflow-hidden">
               {rows.map((e, i) => (
-                <LeaderRow key={e.wallet} e={e} rank={i + 1}
+                <LeaderRow key={e.wallet} e={e} rank={i + 1} cat={cat}
                   onOpen={() => openProfile(e)}
                   copying={copy.isCopying(e.wallet)}
                   atLimit={atLimit && !copy.isCopying(e.wallet)}
@@ -336,9 +337,14 @@ export default function TradersApp() {
       {/* Footer */}
       {!selected && (
         <p className="mt-6 font-body text-[11px] text-muted border-t border-line pt-4 leading-relaxed">
-          Rankings from on-chain resolved Polymarket markets. Gross P&amp;L as Polymarket-reported — not net of gas.
-          Actor type (human/bot) is a heuristic inference from observable trade timing, never a platform label.
-          Copy slots reserve a signal-follow only — no trade is executed. Past performance ≠ future results. Not financial advice.
+          Rankings from on-chain resolved Polymarket markets, ordered by the Wilson 95% lower-bound win rate (the
+          solid bar); the light bar behind it is the raw win rate. Profit, % gain and volume are from resolved
+          markets only; gross P&amp;L as Polymarket-reported, not net of gas. <span className="text-ink-2">% gain is
+          return on volume</span> (profit ÷ volume traded) — not an ROI on capital, which we can&apos;t source.
+          &ldquo;since&rdquo; is the earliest trade we&apos;ve tracked (≤2-yr window), a floor on tenure; last-trade
+          is the most recent fill. Traders with under 20 resolved markets are withheld. Actor type (human/bot) is a
+          heuristic inference from trade timing, never a platform label. Copy slots reserve a signal-follow only — no
+          trade is executed. Past performance ≠ future results. Not financial advice.
         </p>
       )}
 
@@ -369,37 +375,68 @@ interface RowProps {
   copying: boolean; atLimit: boolean; tier: 'free' | 'pro'; maxSlots: number; onToggleCopy: () => void;
 }
 
-function LeaderRow({ e, rank, onOpen, copying, atLimit, tier, maxSlots, onToggleCopy }: RowProps) {
+// Small labelled figure for the stat strip. value is pre-formatted (already '—' when
+// redacted/absent) — the strip never fabricates a number.
+function Stat({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <span className="inline-flex items-baseline gap-1 whitespace-nowrap">
+      <span className="font-body text-[9px] uppercase tracking-wide text-muted/70">{label}</span>
+      <span className="font-mono text-[11px] text-ink-2 tabular-nums">{children}</span>
+    </span>
+  );
+}
+
+function LeaderRow({ e, rank, cat, onOpen, copying, atLimit, tier, maxSlots, onToggleCopy }: RowProps & { cat: string }) {
+  const low     = isLowSample(e.resolvedMarkets);
+  const gainPct = returnOnVolumePct(e.pnlUsdc, e.volumeUsdc);   // profit ÷ volume (return on volume)
+  // Category chip reflects the current board slice this trader qualifies in (entries carry
+  // no per-trader category — we never invent one). Neutral chip on the "All" board.
+  const chipCat = cat && cat !== 'All' ? cat : null;
   return (
     <div onClick={onOpen}
-      className="flex items-center gap-3 px-4 py-3 border-b border-line last:border-b-0 hover:bg-bg-soft/40 cursor-pointer transition-colors">
-      <span className="font-body text-[11px] text-muted tabular-nums w-7 shrink-0 text-center">
+      className="flex items-center gap-3 px-4 py-3.5 border-b border-line last:border-b-0 hover:bg-bg-soft/40 cursor-pointer transition-colors">
+      <span className="font-body text-[12px] text-muted tabular-nums w-7 shrink-0 text-center">
         {rank <= 3 ? ['🥇', '🥈', '🥉'][rank - 1] : rank}
       </span>
 
       <div className="min-w-0 flex-1">
+        {/* line 1 — identity + freshness */}
         <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="font-body font-medium text-sm text-ink truncate">{displayName(e)}</span>
+          <span className="font-body font-semibold text-sm text-ink truncate">{displayName(e)}</span>
           <VerifiedTick show={e.verified} />
+          {chipCat && <CategoryTag label={chipCat} colorClass={catText(chipCat)} />}
           <ActorBadge actor={e.actorType} />
           {e.walletType === 'MM' && (
             <span className="font-body text-[9px] font-medium px-1.5 py-[2px] rounded-md border border-gold/40 text-gold bg-gold-tint uppercase tracking-wide">MM</span>
           )}
+          {low && <LowSampleBadge n={e.resolvedMarkets} />}
+          <span className="ml-auto pl-2"><FreshnessChip lastActive={e.lastActive} /></span>
         </div>
-        <div className="flex items-center gap-2 mt-0.5 font-body text-[10px] text-muted">
-          <span>{fmtWallet(e.wallet)}</span>
-          {(() => { const u = polymarketProfileUrl(e.wallet); return u ? <PlatformLink href={u} label="Polymarket profile" compact /> : null; })()}
-          <span>· {e.resolvedMarkets} resolved</span>
-          <span className="hidden sm:inline">· vol <Redacted value={e.volumeUsdc}>{v => fmtVol(v)}</Redacted></span>
+
+        {/* line 2 — two-level win-rate bar (Wilson solid · raw light) */}
+        <div className="mt-2 max-w-[340px]">
+          <WinRateBar winRate={e.winRate} wilson={e.wilsonScore} resolvedMarkets={e.resolvedMarkets} />
+        </div>
+
+        {/* line 3 — stat strip */}
+        <div className="flex items-center gap-x-3 gap-y-1 mt-1.5 flex-wrap">
+          <Stat label="floor"><Redacted value={e.wilsonScore}>{v => `${Math.round(v * 100)}%`}</Redacted></Stat>
+          <Stat label="raw"><Redacted value={e.winRate}>{v => `${v.toFixed(0)}%`}</Redacted></Stat>
+          <Stat label="resolved">{e.resolvedMarkets}</Stat>
+          <Stat label="vol"><Redacted value={e.volumeUsdc}>{v => fmtVol(v)}</Redacted></Stat>
+          <Stat label="since">{fmtSince(e.firstActive)}</Stat>
+          {(() => { const u = polymarketProfileUrl(e.wallet); return u ? <PlatformLink href={u} label="↗" compact /> : null; })()}
         </div>
       </div>
 
-      <div className="text-right shrink-0">
+      {/* right — profit + % gain (return on volume) */}
+      <div className="text-right shrink-0 w-[92px]">
         <div className={`font-display font-bold text-base tabular-nums ${pnlColor(e.pnlUsdc)}`}>
           <Redacted value={e.pnlUsdc}>{v => fmtPnl(v)}</Redacted>
         </div>
-        <div className="flex justify-end mt-0.5 font-body text-[10px] tabular-nums">
-          <WinRate winRate={e.winRate} wilson={e.wilsonScore} resolvedMarkets={e.resolvedMarkets} />
+        <div className="font-body text-[10px] text-muted tabular-nums mt-0.5"
+          title="return on volume = profit ÷ volume traded (not an ROI on capital)">
+          {gainPct != null ? `${fmtPct1(gainPct)} on vol` : <span className="text-muted/60">—</span>}
         </div>
       </div>
 

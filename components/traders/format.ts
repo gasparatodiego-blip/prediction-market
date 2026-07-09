@@ -30,6 +30,9 @@ export interface LbEntry {
   resolvedMarkets: number;
   volumeUsdc:      number | null;
   lastActive:      number;
+  // Tenure floor: earliest resolved-market ts we've tracked (≤2-yr window). A LOWER
+  // BOUND on first activity, not a guaranteed inception date. Absent on older scans → '—'.
+  firstActive?:    number | null;
   wins:            number | null;
   losses:          number | null;
   twoSidedPct?:    number;
@@ -167,6 +170,52 @@ export function fmtAge(ts: number | null | undefined): string {
   if (secs < 86400 * 30)  return Math.floor(secs / 86400) + 'd ago';
   if (secs < 86400 * 365) return Math.floor(secs / 86400 / 30) + 'mo ago';
   return Math.floor(secs / 86400 / 365) + 'yr ago';
+}
+
+// Compact relative age including a weeks tier ("12m ago" / "3h ago" / "2d ago" /
+// "3w ago" / "5mo ago" / "1y ago"). Used by the last-trade freshness chip.
+export function fmtRelShort(ts: number | null | undefined): string {
+  if (!ts) return '—';
+  const secs = Date.now() / 1000 - ts;
+  if (secs < 60)          return 'now';
+  if (secs < 3600)        return Math.floor(secs / 60) + 'm ago';
+  if (secs < 86400)       return Math.floor(secs / 3600) + 'h ago';
+  if (secs < 86400 * 7)   return Math.floor(secs / 86400) + 'd ago';
+  if (secs < 86400 * 28)  return Math.floor(secs / 86400 / 7) + 'w ago';
+  if (secs < 86400 * 365) return Math.floor(secs / 86400 / 30) + 'mo ago';
+  return Math.floor(secs / 86400 / 365) + 'y ago';
+}
+
+// Tenure "since" — compact month-year of the earliest tracked trade (e.g. "Mar '24").
+// firstActive is a lower bound (≤2-yr window), so it reads as "active since at least".
+export function fmtSince(ts: number | null | undefined): string {
+  if (!ts) return '—';
+  const d = new Date(ts * 1000);
+  const mon = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getUTCMonth()];
+  return `${mon} '${String(d.getUTCFullYear()).slice(-2)}`;
+}
+
+// "% gain" honest definition: NO capital-at-risk field exists, so this is profit ÷
+// volume traded — a RETURN ON VOLUME, explicitly NOT an ROI on capital. null when
+// either input is redacted/absent or volume is non-positive (never fabricated).
+export function returnOnVolumePct(pnl: number | null | undefined, vol: number | null | undefined): number | null {
+  if (pnl == null || vol == null || vol <= 0) return null;
+  return (pnl / vol) * 100;
+}
+export function fmtPct1(n: number | null | undefined): string {
+  if (n == null) return '—';
+  const sign = n >= 0 ? '+' : '−';
+  return sign + Math.abs(n).toFixed(1) + '%';
+}
+
+// Last-trade freshness bucket → tone + label. green <24h · amber ≤7d · slate >7d.
+export type Freshness = { tone: 'fresh' | 'week' | 'quiet'; dot: string; text: string };
+export function freshness(ts: number | null | undefined): Freshness | null {
+  if (!ts) return null;
+  const secs = Date.now() / 1000 - ts;
+  if (secs < 86400)     return { tone: 'fresh', dot: 'bg-mint-deep',  text: 'text-mint-deep' };
+  if (secs < 86400 * 7) return { tone: 'week',  dot: 'bg-gold',       text: 'text-gold' };
+  return { tone: 'quiet', dot: 'bg-muted', text: 'text-muted' };
 }
 
 export function fmtUpdated(updatedAt: string | null | undefined): string {
