@@ -216,7 +216,7 @@ const ROW_VERIFY_FRESH_MS  = 10 * 60_000;
 // (agent29) has not independently re-read it this cycle. We make NO verified claim
 // for it — the UI simply renders no badge — but we must not paint a permanent
 // "verifying…", which would misrepresent a stuck state as a transient one.
-export type VerifyStatus = 'ok' | 'verifying' | 'stale' | 'mismatch' | 'confirmed';
+export type VerifyStatus = 'ok' | 'verifying' | 'stale' | 'mismatch' | 'confirmed' | 'unreachable';
 export interface VerifyMeta { status: VerifyStatus; verifiedAt?: number; ageMs?: number; source?: any; }
 
 let _vsCache: { at: number; data: { rows: Record<string, any>; fresh: boolean } | null } | null = null;
@@ -287,12 +287,38 @@ export function enforceVerified<T>(section: SanitySection, rows: T[] | null | un
       const depthConfirmed =
         (section === 'funding' && r.oneLegUnverified === false && r.greenCapacityUsd != null)
         || (section === 'basis' && r.capacitySource === 'book' && r.capacityUsd != null && r.capacityUsd > 0);
-      meta = depthConfirmed ? { status: 'confirmed' } : { status: 'verifying' };
+      if (depthConfirmed) {
+        meta = { status: 'confirmed' };
+      } else if (section === 'rewards') {
+        // Rewards: agent29 re-reads only a head + rotating sample each cycle (free-tier
+        // budget), so most rows never get a status entry — they must NOT sit forever on a
+        // misleading "verifying…" that implies a pending re-read which will never arrive.
+        // Polymarket pools ARE an independently re-readable source field (Gamma
+        // clobRewards.rewardsDailyRate — the sampled rows reconcile EXACTLY, e.g.
+        // servedPool 4789 == sourcePool 4789), and the row's book depth is a REAL price×size
+        // measurement: an un-sampled Polymarket row makes no claim and renders NO badge
+        // ('confirmed'), exactly like a book-confirmed funding/basis row. Kalshi pools are
+        // DERIVED (totalUsd/periodDays) — no single-source re-read exists — so show the
+        // honest "no source-verify adapter" (unreachable): never a fabricated ✓, never an
+        // eternal "verifying…".
+        meta = (r.venue === 'polymarket' && r.dailyPool != null && r.bookDepthAtBand != null)
+          ? { status: 'confirmed' }
+          : { status: 'unreachable' };
+      } else {
+        meta = { status: 'verifying' };
+      }
     } else if (entry.status === 'mismatch') {
       console.log(`sanity-reject ${section} ${key}: source verification mismatch ${JSON.stringify(entry.source || {}).slice(0, 160)}`);
       continue;                                                        // DROP — never render a contradicted value
     } else if (entry.status === 'unreachable') {
-      meta = { status: 'stale', verifiedAt: entry.verifiedAt, ageMs: now - (entry.verifiedAt || now) };
+      // A source we DO have an adapter for was momentarily unreachable ⇒ 'stale' (amber).
+      // But a SAMPLED Kalshi rewards row reports 'unreachable' because its pool is DERIVED
+      // and has no single-source adapter at all — a structural "no adapter", not a transient
+      // outage — so show the honest "no source-verify adapter", matching the un-sampled
+      // Kalshi rows above (consistent; never an amber "stale" for a non-adapter section).
+      meta = (section === 'rewards' && (row as any).venue !== 'polymarket')
+        ? { status: 'unreachable', verifiedAt: entry.verifiedAt }
+        : { status: 'stale', verifiedAt: entry.verifiedAt, ageMs: now - (entry.verifiedAt || now) };
     } else if (entry.status === 'ok') {
       const age = now - (entry.verifiedAt || 0);
       meta = age < ROW_VERIFY_FRESH_MS
