@@ -84,6 +84,12 @@ function readPerpSpot(): { rows: PerpSpotRow[]; stale: boolean } {
         spotBid:                     typeof row.spotBid === 'number' ? row.spotBid : null,
         spotCapacityUsd:             typeof row.spotCapacityUsd === 'number' ? row.spotCapacityUsd : null,
         spotBookAt:                  typeof row.spotBookAt === 'number' ? row.spotBookAt : null,
+        perpShortDepthUsd:           typeof row.perpShortDepthUsd === 'number' ? row.perpShortDepthUsd : null,
+        perpDepthWalked:             row.perpDepthWalked === true,
+        perpBookAt:                  typeof row.perpBookAt === 'number' ? row.perpBookAt : null,
+        wholeTradeCapacityUsd:       typeof row.wholeTradeCapacityUsd === 'number' ? row.wholeTradeCapacityUsd : null,
+        capacityBind:                (['spot', 'perp', 'spot-only', 'perp-only', 'none'].includes(row.capacityBind as string)
+                                       ? row.capacityBind : 'none') as PerpSpotRow['capacityBind'],
         fundingRateNative:           typeof row.fundingRateNative === 'number' ? row.fundingRateNative : 0,
         intervalH:                   typeof row.intervalH === 'number' ? row.intervalH : 8,
         fundingPct8h,

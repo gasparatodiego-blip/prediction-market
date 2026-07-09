@@ -167,6 +167,17 @@ export interface PerpSpotRow {
   spotBid:                     number | null;
   spotCapacityUsd:             number | null;
   spotBookAt:                  number | null;
+  // Perp SHORT-leg book + whole-trade capacity. Shorting the perp SELLS into the bids, so
+  // perpShortDepthUsd is the 20bps bid-side resting depth (real book, never OI) of the
+  // crowned short venue. wholeTradeCapacityUsd is the true min(spot buy-depth, perp
+  // sell-depth) — the leg that binds first. Both null when the perp venue has no walkable
+  // public book (row stays honestly spot-bound, never fabricated). capacityBind names the
+  // binding leg: 'spot' | 'perp' (both walked), 'spot-only' | 'perp-only' (one walked), 'none'.
+  perpShortDepthUsd:           number | null;
+  perpDepthWalked:             boolean;
+  perpBookAt:                  number | null;
+  wholeTradeCapacityUsd:       number | null;
+  capacityBind:                'spot' | 'perp' | 'spot-only' | 'perp-only' | 'none';
   fundingRateNative:           number;   // native %/interval (teaser)
   intervalH:                   number;
   fundingPct8h:                number;   // normalized %/8h (teaser)

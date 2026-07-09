@@ -9,7 +9,10 @@
  * ABSOLUTE funding rate (shorts collect when funding is positive), NOT the
  * perp-vs-perp spread between two venues.
  *
- * NO new venue API calls. It reuses data already fetched by other agents:
+ * Reuses data already fetched by other agents for all funding/spot inputs. The ONE
+ * network call it makes itself is the SHORT-leg perp book walk (per crowned row) so the
+ * displayed capacity is the true whole-trade capacity = min(spot buy-depth, perp
+ * sell-depth) — real book-walked 20bps depth, never OI. Inputs it reuses:
  *   1. /tmp/exchange-prices.json  (agent10/agent15) → futures[venue][coin] current
  *      funding + interval + mark price + 24h volume, and exchanges[venue][coin] spot.
  *   2. data/funding-history-14d.json (agent15's durable settled mirror) → real
@@ -78,6 +81,118 @@ function atomicWrite(file, obj) {
   const tmp = `${file}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(obj));
   fs.renameSync(tmp, file);
+}
+
+// ── PERP short-leg book walk (whole-trade capacity = min of BOTH legs) ───────────
+// The spot (long) leg's 20bps buy-depth is already walked by agent10 (spotCapacityUsd).
+// To make the DISPLAYED capacity the true whole-trade capacity we must also walk the
+// PERP (short) leg's book: shorting the perp SELLS into the bids, so the short-leg
+// capacity is the USD resting depth within 20bps of best BID (real book, NEVER OI).
+// whole-trade capacity = min(spot buy-depth, perp sell-depth) — the leg that binds first.
+//
+// Only venues with a PROVEN free public book whose size is quoted in BASE COIN (so
+// price×size = USD with no contract multiplier) are walked here. Venues quoting size in
+// CONTRACTS (okx/gateio/bitget) or behind a numeric id-map (lighter/edgex), and any venue
+// whose book we can't cleanly read, are LEFT UNWALKED — their rows stay honestly
+// spot-bound (or null), never fabricated. This mirrors agent10's spot-book walk exactly.
+const PERP_BOOK_BAND_BPS = 20;
+const PERP_BOOK_TIMEOUT_MS = 6_000;
+
+// Walk the BID side (short = sell into bids): sum USD notional resting within BAND_BPS of
+// best bid. `bids` is a normalized [[price, size], …] descending, size in BASE COIN.
+function walkPerpBidDepthUsd(bids, bandBps = PERP_BOOK_BAND_BPS) {
+  if (!Array.isArray(bids) || !bids.length) return null;
+  const best = parseFloat(bids[0][0]);
+  if (!isFinite(best) || best <= 0) return null;
+  const lim = best * (1 - bandBps / 1e4);
+  let usd = 0;
+  for (const lvl of bids) {
+    const pr = parseFloat(lvl[0]), sz = parseFloat(lvl[1]);
+    if (!isFinite(pr) || !isFinite(sz)) continue;
+    if (pr < lim) break;                    // sorted descending — past the 20bps band
+    usd += pr * sz;
+  }
+  return usd > 0 ? Math.round(usd) : null;
+}
+
+// Per-venue perp-book fetch. Each entry returns a normalized descending BID array
+// [[price, size], …] (size in BASE COIN) or null. All endpoints are public/no-key and
+// were confirmed walkable + coin-denominated in Phase 0 (2026-07-09).
+const PERP_BOOK_VENUES = {
+  binance:     { url: c => `https://fapi.binance.com/fapi/v1/depth?symbol=${c}USDT&limit=50`,
+                 bids: d => d?.bids },
+  bybit:       { url: c => `https://api.bybit.com/v5/market/orderbook?category=linear&symbol=${c}USDT&limit=50`,
+                 bids: d => d?.result?.b },
+  apex:        { url: c => `https://omni.apex.exchange/api/v3/depth?symbol=${c}USDT&limit=50`,
+                 bids: d => d?.data?.b },
+  dydx:        { url: c => `https://indexer.dydx.trade/v4/orderbooks/perpetualMarket/${c}-USD`,
+                 bids: d => (Array.isArray(d?.bids) ? d.bids.map(o => [o.price, o.size]) : null) },
+  extended:    { url: c => `https://api.starknet.extended.exchange/api/v1/info/markets/${c}-USD/orderbook`,
+                 bids: d => (Array.isArray(d?.data?.bid) ? d.data.bid.map(o => [o.price, o.qty]) : null) },
+  hyperliquid: { method: 'POST', url: () => 'https://api.hyperliquid.xyz/info',
+                 body: c => ({ type: 'l2Book', coin: c }),
+                 bids: d => (Array.isArray(d?.levels?.[0]) ? d.levels[0].map(o => [o.px, o.sz]) : null) },
+  grvt:        { method: 'POST', url: () => 'https://market-data.grvt.io/full/v1/book',
+                 body: c => ({ instrument: `${c}_USDT_Perp`, depth: 50 }),
+                 bids: d => (Array.isArray(d?.result?.bids) ? d.result.bids.map(o => [o.price, o.size]) : null) },
+};
+
+async function fetchJson(url, opts) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), PERP_BOOK_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, { ...opts, signal: ctrl.signal });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch { return null; }
+  finally { clearTimeout(timer); }
+}
+
+// Walk the crowned short venue's perp bid book → USD depth within 20bps (real book, never
+// OI). Returns null when the venue has no walkable public book (honest: caller stays
+// spot-bound) or the fetch/parse fails / book is empty. Never fabricates.
+async function fetchPerpBidDepthUsd(venue, coin) {
+  const spec = PERP_BOOK_VENUES[String(venue).toLowerCase()];
+  if (!spec) return null;                                   // venue not walkable → honest null
+  const url = spec.url(coin);
+  const opts = spec.method === 'POST'
+    ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(spec.body(coin)) }
+    : undefined;
+  const d = await fetchJson(url, opts);
+  if (!d) return null;
+  const bids = spec.bids(d);
+  return walkPerpBidDepthUsd(bids);
+}
+
+// Enrich each computed row with the SHORT-leg perp book depth and the true whole-trade
+// capacity = min(spot buy-depth, perp sell-depth). Mutates rows in place. One fetch per
+// crowned row (~25/cycle), all public/no-key. Honest fallback when the perp isn't walkable.
+async function enrichPerpDepth(rows) {
+  await Promise.all(rows.map(async (row) => {
+    const spotCap = row.spotExecutable && typeof row.spotCapacityUsd === 'number' && row.spotCapacityUsd > 0
+      ? row.spotCapacityUsd : null;
+    const perpCap = await fetchPerpBidDepthUsd(row.shortVenue, row.coin);
+
+    row.perpShortDepthUsd = perpCap;                        // 20bps bid-side depth (short sells into bids)
+    row.perpDepthWalked   = perpCap != null;
+    row.perpBookAt        = perpCap != null ? Date.now() : null;
+
+    // whole-trade capacity = min of BOTH real book-walked legs; honest fallbacks otherwise.
+    if (spotCap != null && perpCap != null) {
+      row.wholeTradeCapacityUsd = Math.min(spotCap, perpCap);
+      row.capacityBind = spotCap <= perpCap ? 'spot' : 'perp';   // which leg binds first
+    } else if (spotCap != null) {
+      row.wholeTradeCapacityUsd = spotCap;                 // perp book unavailable → spot-bound (labeled)
+      row.capacityBind = 'spot-only';
+    } else if (perpCap != null) {
+      row.wholeTradeCapacityUsd = perpCap;                 // spot leg not book-walked → perp-bound (labeled)
+      row.capacityBind = 'perp-only';
+    } else {
+      row.wholeTradeCapacityUsd = null;                    // neither leg walked → not measured (never fabricated)
+      row.capacityBind = 'none';
+    }
+  }));
+  return rows;
 }
 
 // Normalize a native %/interval funding rate (already stored ×100, i.e. a PERCENT such
@@ -261,6 +376,16 @@ function computeRows(raw, persist) {
       spotBid:                     spotSug.spotBid,
       spotCapacityUsd:             spotSug.spotCapacityUsd,
       spotBookAt:                  spotSug.spotBookAt,
+      // Perp SHORT-leg book + whole-trade capacity. Filled by enrichPerpDepth() (async book
+      // walk) after this pure derivation; initialized null so the row shape is stable and the
+      // unit-tested pure path never depends on the network. wholeTradeCapacityUsd is the true
+      // min(spot buy-depth, perp sell-depth); perpShortDepthUsd is the short leg's 20bps bid
+      // depth (real book, never OI); both null when the perp venue has no walkable book.
+      perpShortDepthUsd:           null,
+      perpDepthWalked:             false,
+      perpBookAt:                  null,
+      wholeTradeCapacityUsd:       null,
+      capacityBind:                'none',
       markPrice:                   win.markPrice,
       vol24hUsd:                   win.vol24hUsd,
       // ── fee-aware (max-net) selection provenance (transparency; downstream ignores these) ──
@@ -285,7 +410,7 @@ function computeRows(raw, persist) {
   return rows;
 }
 
-function tick() {
+async function tick() {
   const raw = readJsonSafe(EXCHANGE_FILE);
   if (!raw) {
     log('no /tmp/exchange-prices.json yet — skipping');
@@ -297,6 +422,9 @@ function tick() {
 
   const persist = readJsonSafe(PERSIST_HISTORY);   // may be null → trailing counts default 0 (honest)
   const rows = computeRows(raw, persist);
+  // Walk the crowned short venue's perp bid book → whole-trade capacity = min(spot, perp).
+  // Network I/O isolated here (computeRows stays pure/testable); failures degrade honestly.
+  try { await enrichPerpDepth(rows); } catch (e) { log(`perp-depth enrich error: ${e.message}`); }
 
   atomicWrite(OUT_FILE, {
     updatedAt: Date.now(),
@@ -325,7 +453,7 @@ function log(msg) {
 }
 
 // Exported for unit testing the pure derivation in isolation.
-module.exports = { computeRows, toPct8h, trailingPositive, suggestSpotVenue };
+module.exports = { computeRows, toPct8h, trailingPositive, suggestSpotVenue, walkPerpBidDepthUsd, enrichPerpDepth, fetchPerpBidDepthUsd };
 
 if (require.main === module) {
   log('starting');

@@ -1876,17 +1876,46 @@ function PerpSpotFlow({ row, perpUrl, spotUrl }: { row: PerpSpotRow; perpUrl: st
 
 const PERP_SPOT_CAP_TIP =
   'The largest position you can enter before order-book slippage eats the funding. ' +
-  'The SPOT (long) leg is now walked from the real book — the figure is its 20bps resting ' +
-  'depth (never OI). The PERP (short) leg’s book isn’t walked yet, so it can bind first — ' +
-  'check the perp book and size conservatively.';
+  'BOTH legs are walked from their real books — the SPOT (long) leg’s 20bps buy-depth and ' +
+  'the PERP (short) leg’s 20bps sell-depth (into the bids). The figure is the min of the ' +
+  'two (never OI): the leg that binds first. When a venue’s perp book isn’t walkable we fall ' +
+  'back honestly to the spot leg (labeled) and never fabricate the perp depth.';
 
-// Capacity slot for the carry lane. The SPOT leg is now book-walked (agent10 real books),
-// so when spotCapacityUsd is present we show that measured buy-leg depth — honestly scoped
-// to the spot leg only (the perp leg isn't walked yet, so it may bind first). Otherwise we
-// keep the HONEST not-measured state and never fabricate a green size.
+// Capacity slot for the carry lane. The whole-trade capacity is the MIN of both real
+// book-walked legs — spot buy-depth (agent10) and perp sell-depth (agent28's short-leg book
+// walk). When both are walked we show that min and name the binding leg; when the perp book
+// isn't walkable we stay honestly spot-bound (labeled); otherwise we keep the HONEST
+// not-measured state and never fabricate a size.
 function PerpSpotCapacityRow({ row }: { row: PerpSpotRow }) {
   const spotCap = row.spotExecutable && row.spotCapacityUsd != null && row.spotCapacityUsd > 0
     ? row.spotCapacityUsd : null;
+  const perpCap = row.perpDepthWalked && row.perpShortDepthUsd != null && row.perpShortDepthUsd > 0
+    ? row.perpShortDepthUsd : null;
+  const whole   = row.wholeTradeCapacityUsd != null && row.wholeTradeCapacityUsd > 0
+    ? row.wholeTradeCapacityUsd : null;
+  const bothWalked = spotCap != null && perpCap != null;
+
+  // Short label appended after the dollar figure, and the explanatory sentence below.
+  let scope: string;
+  let note: string;
+  if (bothWalked) {
+    scope = 'whole trade';
+    note  = `Min of both real book-walked legs — spot buy-depth ${fmtCapDisplay(spotCap!)} on ${venueLabel(row.spotVenueSuggested)} ` +
+            `and perp sell-depth ${fmtCapDisplay(perpCap!)} on ${venueLabel(row.shortVenue)} (both 20bps, never OI). ` +
+            `The ${row.capacityBind === 'perp' ? 'perp (short)' : 'spot (long)'} leg binds first.`;
+  } else if (spotCap != null) {
+    scope = 'spot-bound';
+    note  = `Spot (long) leg walked from ${venueLabel(row.spotVenueSuggested)}’s real book — 20bps resting depth. ` +
+            `${venueLabel(row.shortVenue)}’s perp book isn’t walkable here, so it may bind first; size conservatively.`;
+  } else if (perpCap != null) {
+    scope = 'perp-bound';
+    note  = `Perp (short) leg walked from ${venueLabel(row.shortVenue)}’s real book — 20bps bid-side depth. ` +
+            `The spot (long) leg isn’t book-walked here, so it may bind first; size conservatively.`;
+  } else {
+    scope = '';
+    note  = 'Order-book depth for the carry legs isn’t walked yet — check each venue’s book and size conservatively.';
+  }
+
   return (
     <div className="pt-2.5 mt-1" style={{ borderTop: '1px solid #eef2f6' }}>
       <div className="flex items-center justify-between gap-2">
@@ -1894,18 +1923,16 @@ function PerpSpotCapacityRow({ row }: { row: PerpSpotRow }) {
           Max before slippage
           <InfoTooltip label="Max before slippage — how it's measured" text={PERP_SPOT_CAP_TIP} />
         </span>
-        {spotCap != null ? (
+        {whole != null ? (
           <span className="font-mono tabular-nums" style={{ fontSize: 11, color: '#0f766e' }}>
-            {fmtCapDisplay(spotCap)} <span className="font-body" style={{ color: '#9aa5b3' }}>spot leg</span>
+            {fmtCapDisplay(whole)} <span className="font-body" style={{ color: '#9aa5b3' }}>{scope}</span>
           </span>
         ) : (
           <span className="font-body" style={{ fontSize: 11, color: '#9aa5b3' }}>not measured yet</span>
         )}
       </div>
       <p className="mt-1.5 font-body leading-snug" style={{ fontSize: 10.5, color: '#9aa5b3' }}>
-        {spotCap != null
-          ? `Spot (long) leg walked from ${venueLabel(row.spotVenueSuggested)}’s real book — 20bps resting depth. The perp (short) leg isn’t walked yet and may bind first; size conservatively.`
-          : 'Order-book depth for the carry legs isn’t walked yet — check each venue’s book and size conservatively.'}
+        {note}
       </p>
     </div>
   );
