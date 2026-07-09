@@ -23,7 +23,7 @@ async function clobFetch(url: string, timeoutMs = 3_500): Promise<Response> {
   }
 }
 
-async function fetchBook(tokenId: string): Promise<{ bids: {price:string;size:string}[]; asks: {price:string;size:string}[] } | null> {
+async function fetchBook(tokenId: string): Promise<{ bids: {price:string;size:string}[]; asks: {price:string;size:string}[]; tick_size?: number | string; min_order_size?: number | string } | null> {
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const r = await clobFetch(`${CLOB_BASE}/book?token_id=${tokenId}`);
@@ -116,12 +116,24 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'CLOB fetch failed', tokenId }, { status: 502 });
   }
 
+  // Real per-market min price increment, straight from the same CLOB /book payload
+  // (Polymarket returns tick_size on the book response — e.g. "0.01" = 1¢, "0.001" = 0.1¢).
+  // NB: the CLOB serves tick_size as a STRING, so coerce before use. The UI clamps its order
+  // controls to this so it never offers a price the book rejects.
+  const parseTick = (v: number | string | undefined): number | null => {
+    if (v == null) return null;
+    const n = typeof v === 'number' ? v : parseFloat(v);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  };
+  const tickSize = parseTick(yesBook.tick_size) ?? parseTick(noBook?.tick_size);
+
   const payload = {
     conditionId,
     tokenId,
     tokenIdNo,
     yes: yesBook,
     no:  noBook,
+    tickSize,
     fetchedAt: new Date().toISOString(),
     source: 'Polymarket CLOB · read-only · no orders placed',
   };

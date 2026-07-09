@@ -190,6 +190,10 @@ export default function MarketDetailPage() {
   const [books, setBooks]       = useState<DualBook | null>(null);
   const [bookAge, setBookAge]   = useState<Date | null>(null);
   const [bookErr, setBookErr]   = useState<string | null>(null);
+  // Real per-market min price increment (fraction, e.g. 0.01 = 1¢). Polymarket returns it
+  // on the /book payload; Kalshi trades in whole cents (1¢). Order controls clamp to this so
+  // we never offer — or silently drop a click on — a price the book can't accept.
+  const [tickSize, setTickSize] = useState<number | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval>>();
 
   // controls
@@ -281,6 +285,12 @@ export default function MarketDetailPage() {
       const d = await r.json();
       const nb = normalizeBooks(mkt.venue, d);
       setBooks(nb);
+      // Real min tick: Polymarket serves it on the book payload; Kalshi is universally 1¢.
+      if (mkt.venue === 'polymarket') {
+        setTickSize(typeof d?.tickSize === 'number' && d.tickSize > 0 ? d.tickSize : null);
+      } else {
+        setTickSize(0.01);
+      }
       setBookErr(nb.yes.hasBook || nb.no.hasBook ? null : (d?.error ?? null));
       setBookAge(new Date());
     } catch (e: any) { setBookErr(e?.message ?? 'book error'); }
@@ -292,6 +302,15 @@ export default function MarketDetailPage() {
     pollRef.current = setInterval(fetchBook, mkt.venue === 'polymarket' ? 5_000 : 6_000);
     return () => clearInterval(pollRef.current);
   }, [mkt, fetchBook]);
+
+  // Once the real tick is known, snap the distance onto its grid (and never below one tick)
+  // so the slider readout matches the placeable price. Fires only when tickSize changes —
+  // repeat polls set the same value, so a user's later slider drag is never overridden.
+  useEffect(() => {
+    if (!tickSize) return;
+    const tc = tickSize * 100;
+    setDist(prev => Number(Math.max(tc, Math.round(prev / tc) * tc).toFixed(2)));
+  }, [tickSize]);
 
   // ── derived: per-side live mids, chosen side, estimate ──
   const yesBook = books?.yes ?? null;
@@ -316,10 +335,35 @@ export default function MarketDetailPage() {
     return estimateReward({ venue: mkt.venue, capital, twoSided, distanceCents: dist, market: toSnapshot(mkt), side: tradeSide });
   }, [mkt, capital, twoSided, dist, tradeSide]);
 
-  // Slider-derived planned prices in the CHOSEN side's book (mid ± distance). These are the
-  // DEFAULT quotes; a manually-tapped leg overrides its side (Phase 3 detach).
-  const sliderBid = mid != null && (side === 'both' || side === 'buy')  ? Math.max(0.001, mid - dist / 100) : null;
-  const sliderAsk = mid != null && (side === 'both' || side === 'sell') ? Math.min(0.999, mid + dist / 100) : null;
+  // Snap any price to the market's REAL min tick and keep it inside the placeable band
+  // [tick, 1−tick]. Without a known tick we fall back to the old 0.001 floor/ceiling.
+  // This guarantees every planned/placed price is one the book genuinely accepts.
+  const snapPrice = useCallback((p: number): number => {
+    if (tickSize && tickSize > 0) {
+      const snapped = Math.round(p / tickSize) * tickSize;
+      // avoid binary float dust (e.g. 0.30000000000000004) so it matches a real grid level
+      const clean = Math.round(snapped / tickSize) * tickSize;
+      return Math.min(1 - tickSize, Math.max(tickSize, Number(clean.toFixed(6))));
+    }
+    return Math.min(0.999, Math.max(0.001, p));
+  }, [tickSize]);
+
+  // Slider-derived planned prices in the CHOSEN side's book (mid ± distance), snapped to the
+  // real tick. These are the DEFAULT quotes; a manually-tapped leg overrides its side.
+  const sliderBid = mid != null && (side === 'both' || side === 'buy')  ? snapPrice(mid - dist / 100) : null;
+  const sliderAsk = mid != null && (side === 'both' || side === 'sell') ? snapPrice(mid + dist / 100) : null;
+  // Honest feedback: if the requested (pre-snap) price sat outside the placeable band, say so
+  // instead of silently moving it — never fabricate a fill at a price the book can't take.
+  const clampNote = (() => {
+    if (!tickSize) return null;
+    const rawBid = mid != null ? mid - dist / 100 : null;
+    const rawAsk = mid != null ? mid + dist / 100 : null;
+    if ((side === 'both' || side === 'buy')  && rawBid != null && rawBid < tickSize)
+      return `Your buy would fall below this market's ${fmtC(tickSize)} min tick — snapped up to ${fmtC(tickSize)}.`;
+    if ((side === 'both' || side === 'sell') && rawAsk != null && rawAsk > 1 - tickSize)
+      return `Your sell would exceed the ${fmtC(1 - tickSize)} max price — snapped down to ${fmtC(1 - tickSize)}.`;
+    return null;
+  })();
   // Effective quote per side: the tapped price when a leg is manually placed, else the slider.
   const userBid = legs.buy  ? legs.buy.price  : sliderBid;
   const userAsk = legs.sell ? legs.sell.price : sliderAsk;
@@ -464,12 +508,18 @@ export default function MarketDetailPage() {
                   <span className="font-body text-[11px] uppercase tracking-wide text-muted">Distance from spread</span>
                   <span className="font-body text-[12px] text-ink-2 tabular-nums">{dist.toFixed(2)}¢{mkt.maxSpread != null ? ` / ${mkt.maxSpread}¢ band` : ''}</span>
                 </div>
-                <input type="range" min={0.1} max={distMax} step={0.1} value={dist}
+                <input type="range" min={tickSize ? tickSize * 100 : 0.1} max={distMax} step={tickSize ? tickSize * 100 : 0.1} value={dist}
                   onChange={e => setDist(Number(e.target.value))} className="w-full accent-mint-deep mt-1.5" />
                 <div className="flex items-center justify-between font-body text-[10px] text-muted mt-0.5">
                   <span>closer = more reward, more fills</span>
                   <span>farther = safer</span>
                 </div>
+                {tickSize && (
+                  <p className="font-body text-[10px] text-muted mt-1">
+                    Min tick {fmtC(tickSize)} — {mkt.venue === 'polymarket' ? 'Polymarket' : 'Kalshi'} won&apos;t accept a finer price on this market; distances snap to the {fmtC(tickSize)} grid.
+                  </p>
+                )}
+                {clampNote && <p className="font-body text-[10px] text-coral-ink mt-1">{clampNote}</p>}
                 {mkt.maxSpread == null && (
                   <p className="font-body text-[10px] text-muted mt-1">Kalshi doesn&apos;t publish a reward band — distance here only affects fill risk.</p>
                 )}
@@ -931,14 +981,23 @@ function MiniLadder({ row, maxSize, mid, halfBand, kind, tappable, dimmed, manua
   const priceCls = kind === 'ask' ? 'text-coral-ink' : 'text-mint-deep';
   const barCls   = kind === 'ask' ? 'bg-coral-tint/60' : 'bg-mint-tint/60';
   if (isUser) {
-    // The synthetic "your BUY/SELL" marker row. When the leg was manually tapped it carries
-    // a small "manuale" tag (Phase 3) so it's clearly not the slider-derived quote.
+    // The synthetic "your BUY/SELL" marker row — the slider-planned quote at a real, snapped
+    // tick. It used to be a dead div: clicking it did nothing. Now it PLACES the maker order
+    // at this exact (already tick-snapped, book-acceptable) price — never a silent no-op.
+    const placeUser = onTap ? () => onTap(row.price) : undefined;
     return (
-      <div className={`relative grid grid-cols-2 items-center text-[10px] font-mono px-1.5 py-[3px] rounded-sm my-[1px]
+      <div
+        onClick={placeUser}
+        role={placeUser ? 'button' : undefined}
+        title={placeUser ? `Place ${row.user === 'buy' ? 'BUY' : 'SELL'} at ${fmtC(row.price)}` : undefined}
+        className={`relative grid grid-cols-2 items-center text-[10px] font-mono px-1.5 py-[3px] rounded-sm my-[1px]
+        ${placeUser ? 'cursor-pointer hover:brightness-95 active:brightness-90' : ''}
         ${row.user === 'buy' ? 'bg-mint-tint ring-1 ring-mint-deep/50' : 'bg-coral-tint ring-1 ring-coral-ink/50'}`}>
         <span className={`tabular-nums font-bold ${row.user === 'buy' ? 'text-mint-deep' : 'text-coral-ink'}`}>{fmtC(row.price)}</span>
         <span className={`text-right font-bold text-[8px] flex items-center justify-end gap-1 ${row.user === 'buy' ? 'text-mint-deep' : 'text-coral-ink'}`}>
-          {manual && <span className="px-1 rounded-sm bg-surface/70 border border-current/30 uppercase tracking-wide text-[7px] font-semibold">manuale</span>}
+          {manual
+            ? <span className="px-1 rounded-sm bg-surface/70 border border-current/30 uppercase tracking-wide text-[7px] font-semibold">manuale</span>
+            : placeUser && <span className="px-1 rounded-sm bg-surface/70 border border-current/30 uppercase tracking-wide text-[7px] font-semibold">tap to place</span>}
           {row.user === 'buy' ? 'your BUY' : 'your SELL'}
         </span>
       </div>
