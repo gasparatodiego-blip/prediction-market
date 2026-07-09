@@ -83,7 +83,8 @@ const PERP: Record<string, PerpBuilder> = {
   extended:    c => `https://app.extended.exchange/trade/${c}-USD`,
   lighter:     c => `https://app.lighter.xyz/trade/${c}`,
   edgex:       c => `https://pro.edgex.exchange/trade/${c}USD`, // contractName "{COIN}USD" (BTCUSD, BNBUSD…)
-  // grvt / pacifica: web route/symbol format unverifiable → intentionally omitted (null).
+  grvt:        c => `https://grvt.io/exchange/perpetual/${c}-USDT`, // user-verified from live market page (BTC-USDT, ETH-USDT…)
+  // pacifica: web route/symbol format unverifiable → intentionally omitted (null).
 };
 
 export function venuePerpUrl(venue: string | null | undefined, symbol: string | null | undefined): string | null {
@@ -171,6 +172,9 @@ export function _platformLinksSelfTest(): void {
   eq(venuePerpUrl('hyperliquid', 'SOL'), 'https://app.hyperliquid.xyz/trade/SOL', 'perp hyperliquid');
   eq(venuePerpUrl('edgex', 'BTC'), 'https://pro.edgex.exchange/trade/BTCUSD', 'perp edgex BTC');
   eq(venuePerpUrl('edgex', 'bnb'), 'https://pro.edgex.exchange/trade/BNBUSD', 'perp edgex BNB');
-  eq(venuePerpUrl('grvt', 'BTC'), null, 'perp unverified venue (grvt) → null');
+  eq(venuePerpUrl('grvt', 'BTC'), 'https://grvt.io/exchange/perpetual/BTC-USDT', 'perp grvt BTC');
+  eq(venuePerpUrl('grvt', 'eth'), 'https://grvt.io/exchange/perpetual/ETH-USDT', 'perp grvt ETH');
+  eq(venuePerpUrl('grvt', 'BNB'), 'https://grvt.io/exchange/perpetual/BNB-USDT', 'perp grvt BNB');
+  eq(venuePerpUrl('pacifica', 'BTC'), null, 'perp unverified venue (pacifica) → null');
   eq(venuePerpUrl('binance', ''), null, 'perp empty symbol → null');
 }
