@@ -4,6 +4,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { getIsPaid, redactForTier } from '@/lib/paid-gating';
 import { filterSane, enforceVerified } from '@/lib/display-sanity';
+import { applyGuardian } from '@/lib/guardian-suppress';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,6 +52,10 @@ export async function GET() {
     // Source-of-truth enforcement: drop pools the platform no longer pays, flag+demote
     // unverifiable ones (e.g. Kalshi's derived pool), tag verified rows for the badge.
     data.markets = enforceVerified('rewards', data.markets);
+    // Guardian (rules A–E): auto-suppress any reward row implying an over-cap/impossible
+    // APR, a false verifying badge, or a below-floor book. Display-only, never rewrites
+    // source; agent26 runs the same module for alerting.
+    data.markets = applyGuardian('rewards', data.markets).rows;
 
     const session = await getServerSession(authOptions);
     const isPaid  = await getIsPaid(session);

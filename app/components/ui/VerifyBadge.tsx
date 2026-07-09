@@ -15,7 +15,10 @@ import React from 'react';
 //   independently re-read this cycle (budget-capped verifier): we make no claim and
 //   render NO badge, rather than a permanent, misleading "verifying…".
 
-export type VerifyMeta = { status?: 'ok' | 'verifying' | 'stale' | 'mismatch' | 'confirmed'; verifiedAt?: number; ageMs?: number } | null | undefined;
+// 'unreachable' is set by the guardian (lib/guardian-suppress) for sections that have
+//   no source-verify adapter at all: an HONEST "no independent check available" — NOT a
+//   ✓, and NOT a suppression of the number itself.
+export type VerifyMeta = { status?: 'ok' | 'verifying' | 'stale' | 'mismatch' | 'confirmed' | 'unreachable'; verifiedAt?: number; ageMs?: number } | null | undefined;
 
 function fmtAge(ms?: number): string {
   if (ms == null || !isFinite(ms) || ms < 0) return '';
@@ -44,6 +47,10 @@ export function VerifyBadge({ v, className = '' }: { v: VerifyMeta; className?: 
     color = '#d29922';
     text = '⚠ stale — source unreachable';
     title = 'Could not re-read this value at the venue source — shown unverified';
+  } else if (status === 'unreachable') {
+    color = '#6b7787';
+    text = 'no source-verify adapter';
+    title = 'No independent source-verify adapter exists for this section — shown honestly unverified, not fabricated';
   }
 
   return (

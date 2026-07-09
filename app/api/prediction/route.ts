@@ -3,6 +3,7 @@ import fs from 'fs';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { getIsPaid, redactForTier } from '@/lib/paid-gating';
+import { applyGuardian } from '@/lib/guardian-suppress';
 
 export const dynamic = 'force-dynamic';
 
@@ -252,6 +253,13 @@ export async function GET() {
       if (a.type === 'cashable') return b.roi - a.roi;
       return b.spread - a.spread;  // divergence: sort by price gap desc
     });
+
+    // Guardian (rules A–E): auto-suppress impossible-ROI rows and tag the honest
+    // "unreachable" verify state (prediction has no source-verify adapter). Display-
+    // only, never rewrites source; runs after the sort so only outliers are demoted.
+    const guarded = applyGuardian('prediction', valid).rows;
+    valid.length = 0;
+    valid.push(...guarded);
 
     const cashable = valid.filter(o => o.type === 'cashable');
     const bestRoi  = cashable.length > 0 ? cashable[0].roi : null;

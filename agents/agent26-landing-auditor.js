@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// agent26-landing-auditor.js — read-only landing-page honest-engine auditor.
+// agent26-landing-auditor.js — read-only honest-engine GUARDIAN.
 //
-// READ-ONLY · Zero Claude API · never edits code, never restarts anything,
-// never writes to any file the dashboard reads. Every 30 min it:
+// READ-ONLY on SOURCE · Zero Claude API · never edits producer code, never
+// restarts anything, never rewrites/fabricates a value. Every 30 min it:
 //   1. Fetches http://localhost:3000 and extracts the "live inside" rows
 //      that app/page.tsx's buildLiveRows()/readLandingStats() produced.
 //   2. Independently recomputes each row's expected value straight from the
@@ -10,12 +10,21 @@
 //      and formulas app/page.tsx uses (reused where require()-able, mirrored
 //      with a source-of-truth comment where the original is TypeScript).
 //   3. Flags honest-engine invariant violations and sends ONE deduped
-//      Telegram alert. Silent when clean (no news = good). Logs every cycle
-//      either way.
+//      Telegram alert. Silent when clean (no news = good). Logs every cycle.
+//   4. GUARDIAN (rules A–E, lib/guardian-suppress): the DISPLAY-layer
+//      suppression is applied by the serve path (every tab route runs
+//      applyGuardian). This agent (a) OBSERVES that suppression by watching
+//      the dashboard log for `guardian-suppress`/`guardian-CRITICAL` lines —
+//      alerting on the >30% mass-suppression guardrail and on suppression
+//      spikes — and (b) EMITS the cross-cycle / cross-surface directives the
+//      serve path cannot compute alone (rule 5 cashable-swing, rule 6 landing-
+//      vs-tab), writing them to /tmp/guardian-directives.json.
 //
-// This agent has NO write access to anything the app reads — its only
-// outputs are its own log line, its own state file (dedupe hash), and an
-// outbound Telegram message.
+// The ONLY file the dashboard reads that this agent writes is that directives
+// file: a REVERSIBLE, TTL-bounded, display-only channel. It carries no values —
+// only {section,rowId,action,rule,reason} suppression requests the shared
+// suppressor honors. Deleting it (or a stale/empty write) fully clears any
+// directive-driven suppression. It NEVER rewrites or fabricates a number.
 'use strict';
 
 const fs    = require('fs');
@@ -29,6 +38,11 @@ const { annualize, roundTripFeeByVenue, netApy30d } = require('../lib/funding-ma
 // instrument reaches a served feed" using the SAME definition the producers exclude by.
 const { isDeadContract, buildPeerMarks } = require('../lib/contract-liveness');
 const { isExpired, parseInstrumentExpiryMs } = require('../lib/instrument-expiry');
+// The ONE shared honest-engine suppressor (rules A–E). The serve path applies it to
+// every tab; this agent runs the SAME module so what it observes/directs matches
+// exactly what the site suppresses. Display-only, never rewrites source.
+const { CASHABLE_SWING } = require('../lib/guardian-suppress');
+const { atomicWriteJson } = require('../lib/atomicJsonWrite');
 
 // ── Load .env for Telegram creds (pm2 doesn't auto-load project env files) ───
 // Same pattern as agents/agent21-copy-watcher.js — do NOT hardcode or commit
@@ -68,6 +82,11 @@ const SPORTS_FILE         = '/tmp/sports-odds.json';
 const ARB_FILE            = '/tmp/arbitrage-opportunities.json';
 const POLY_REWARDS_FILE   = '/root/prediction-market/data/liquidity-rewards.json';
 const KALSHI_REWARDS_FILE = '/root/prediction-market/data/kalshi-rewards.json';
+
+// Guardian channel: the serve path logs every suppression here; this agent watches it.
+const GUARDIAN_DIRECTIVES_FILE = '/tmp/guardian-directives.json'; // agent26 → serve path (reversible)
+const GUARDIAN_DIRECTIVE_TTL_MS = 60 * 60_000; // a cashable-swing/cross-surface directive self-expires after 1h
+const API_BASE            = 'http://localhost:3000';
 
 const UNI_STALE_MS    = 10 * 60_000; // matches lib/spread-compute.ts UNI_STALE_MS
 const SPORTS_STALE_MS = 7_200_000;   // matches app/page.tsx readLandingStats()
@@ -651,6 +670,115 @@ function auditRewardsTooGood() {
   return violations;
 }
 
+// ── GUARDIAN: observe the serve-path suppressor + emit cross-cycle directives ──
+
+// The serve path (every tab route) runs lib/guardian-suppress applyGuardian(). It logs
+// a "guardian-CRITICAL <section>: …" line ONLY when the >30% mass-suppression guardrail
+// fires (rare, meaningful) and per-row "guardian-suppress …" lines only for info-removing
+// actions. This agent watches the CRITICAL line — a new one means a tab would have been
+// >30% gutted (the serve path KEPT the values and raised it; this surfaces it loudly).
+//
+// We deliberately do NOT alert on the raw guardian-suppress COUNT: routine relabels
+// (e.g. D19 speculative) log per-request, so that count tracks traffic, not violation
+// novelty — a delta threshold on it would false-alarm constantly. The CRITICAL line is
+// the honest, traffic-independent regression signal. Returns { criticalCount, violations }.
+function auditGuardianLog(prevCritical, logFile = DASHBOARD_LOG) {
+  let criticalLines = [];
+  try {
+    criticalLines = fs.readFileSync(logFile, 'utf8').split('\n').filter(l => l.includes('guardian-CRITICAL'));
+  } catch { return { criticalCount: prevCritical, violations: [] }; }
+  const violations = [];
+  const criticalCount = criticalLines.length;
+  const prevCrit = Number.isFinite(prevCritical) ? prevCritical : criticalCount;   // first run: baseline, no alert
+  if (criticalCount > prevCrit) {
+    const latest = criticalLines[criticalLines.length - 1] || '';
+    violations.push(`GUARDIAN CRITICAL (mass-suppression guardrail fired): ${latest.replace(/^.*guardian-CRITICAL /, '').slice(0, 300)} — a tab would have been >30% gutted; the serve path KEPT the values (calm) and flagged it. Investigate the producer.`);
+  }
+  // On log rotation criticalCount < prevCrit → re-anchor, no alert.
+  return { criticalCount, violations };
+}
+
+// Wall-clock-deadline JSON fetch of a served tab (reuses fetchText's settle-once fix).
+async function fetchJson(path) {
+  const txt = await fetchText(API_BASE + path);
+  return JSON.parse(txt);
+}
+
+// The primary headline net per section on a SERVED row. Prefers the guardian's
+// snapshotted original (so a value the guardian already suppressed this cycle is still
+// compared honestly), else the live served value. Never fabricates.
+function servedNet(section, row) {
+  const orig = row && row.__guardian && row.__guardian.original;
+  const pick = (live, key) => (orig && key in orig ? orig[key] : live);
+  switch (section) {
+    case 'funding':   return pick(row.netApy30d, 'netApy30d');
+    case 'perp-spot': return pick(row.edge ? row.edge.netPerDay1k : null, 'edge.netPerDay1k');
+    case 'basis':     return pick(row.netAnnualizedExecutable ?? row.netAnnualized, 'netAnnualizedExecutable');
+    default:          return null;
+  }
+}
+function servedRowId(section, row) {
+  switch (section) {
+    case 'funding':   return `funding-${row.coin}-${row.shortExchange}-${row.longExchange}`;
+    case 'perp-spot': return `perp-spot-${row.coin}-${row.shortVenue}`;
+    case 'basis':     return `basis-${row.asset}-${row.exchange}-${row.contract}`;
+    default:          return null;
+  }
+}
+
+// CROSS-CYCLE rule 5: a cashable value that swings > 50% between two consecutive cycles
+// is suppressed until it stabilizes. Only the serve-path CAN'T see across cycles, so this
+// agent computes it and writes a reversible, TTL-bounded directive the suppressor honors.
+// Returns { directives, curNet } — curNet is carried in state for next cycle's compare.
+async function buildGuardianDirectives(state) {
+  const now = Date.now();
+  const prevNet = (state && state.guardianPrevNet) || {};
+  const curNet = {};
+  const directives = [];
+
+  const sections = [];
+  try {
+    const crypto = await fetchJson('/api/crypto');
+    sections.push(['funding',   crypto.spreads || []]);
+    sections.push(['perp-spot', crypto.perpSpot || []]);
+  } catch (e) { log('guardian directive fetch /api/crypto failed:', e.message); }
+  try {
+    const carry = await fetchJson('/api/carry');
+    sections.push(['basis', [...(carry.opportunities || []), ...(carry.backwardation || [])]]);
+  } catch (e) { log('guardian directive fetch /api/carry failed:', e.message); }
+
+  for (const [section, rows] of sections) {
+    for (const row of rows) {
+      const id  = servedRowId(section, row);
+      const net = servedNet(section, row);
+      if (id == null || typeof net !== 'number' || !isFinite(net)) continue;
+      const key = `${section}:${id}`;
+      curNet[key] = net;
+      const prev = prevNet[key];
+      if (typeof prev !== 'number' || !isFinite(prev)) continue;   // need two cycles to judge a swing
+      const base = Math.max(Math.abs(prev), 1e-9);
+      const swing = Math.abs(net - prev) / base;
+      // Only act on a MATERIAL number (avoid noise near zero) that swings past the shared
+      // threshold. Suppress the value (display-only) until it stabilizes.
+      if ((Math.abs(prev) > 0.05 || Math.abs(net) > 0.05) && swing > CASHABLE_SWING) {
+        directives.push({
+          section, rowId: id, action: 'suppress-value', rule: 'A5',
+          reason: `value swung ${(swing * 100).toFixed(0)}% between cycles (${prev} → ${net}, > ${(CASHABLE_SWING * 100)}%) — suppressed until it stabilizes`,
+          expiresAt: now + GUARDIAN_DIRECTIVE_TTL_MS,
+        });
+      }
+    }
+  }
+
+  // Always write (even empty) so the file self-heals: once a value stabilizes, its
+  // directive is not re-emitted and the suppression clears on the next serve read.
+  try {
+    atomicWriteJson(GUARDIAN_DIRECTIVES_FILE, { updatedAt: now, directives }, { pretty: true });
+  } catch (e) { log('guardian directive write failed:', e.message); }
+
+  return { directives, curNet };
+}
+
 // ── One audit cycle ───────────────────────────────────────────────────────
 async function runCycle(state) {
   const html = await fetchText(LANDING_URL);
@@ -669,8 +797,28 @@ async function runCycle(state) {
   const spike = auditSanityRejectSpike(state && state.sanityRejectSeen);
   allViolations.push(...spike.violations);
 
-  log(`cycle ok — ${rows.length} live row(s), ${allViolations.length} violation(s), sanity-rejects seen=${spike.total}`);
-  return { violations: allViolations, sanityRejectSeen: spike.total };
+  // GUARDIAN observe: watch the serve-path guardian log for the CRITICAL guardrail.
+  const gLog = auditGuardianLog(state && state.guardianCriticalSeen);
+  allViolations.push(...gLog.violations);
+
+  // GUARDIAN direct: emit cross-cycle (rule 5 cashable-swing) directives the serve path
+  // cannot compute alone. Reversible + TTL-bounded; self-heals when values stabilize.
+  let guardianPrevNet = state && state.guardianPrevNet;
+  try {
+    const gd = await buildGuardianDirectives(state);
+    guardianPrevNet = gd.curNet;
+    if (gd.directives.length) {
+      log(`guardian directives written: ${gd.directives.length} cashable-swing suppression(s)`);
+    }
+  } catch (e) { log('buildGuardianDirectives error:', e.message); }
+
+  log(`cycle ok — ${rows.length} live row(s), ${allViolations.length} violation(s), sanity-rejects=${spike.total}, guardian-critical=${gLog.criticalCount}`);
+  return {
+    violations: allViolations,
+    sanityRejectSeen: spike.total,
+    guardianCriticalSeen: gLog.criticalCount,
+    guardianPrevNet,
+  };
 }
 
 function hashViolations(violations) {
@@ -706,8 +854,9 @@ async function main() {
 
   while (true) {
     try {
-      const { violations, sanityRejectSeen } = await runCycle(state);
-      state = { ...state, sanityRejectSeen };   // carry the sanity-reject high-water mark for delta detection
+      const { violations, sanityRejectSeen, guardianCriticalSeen, guardianPrevNet } = await runCycle(state);
+      // carry the delta-detection high-water marks + cross-cycle net snapshot forward
+      state = { ...state, sanityRejectSeen, guardianCriticalSeen, guardianPrevNet };
       state = await maybeAlert(violations, state, { forceFirstSend: first });
       if (first) { state.firstCheckDone = true; first = false; }
       saveState(state);
@@ -728,8 +877,8 @@ async function main() {
   }
 }
 
-// Exported for unit testing the phantom-instrument checks in isolation.
-module.exports = { auditServedFeeds, auditSanityRejectSpike };
+// Exported for unit testing the phantom-instrument + guardian checks in isolation.
+module.exports = { auditServedFeeds, auditSanityRejectSpike, auditGuardianLog, servedNet, servedRowId };
 
 if (require.main === module) {
   main().catch(e => { console.error('[A26] Fatal:', e); process.exit(1); });

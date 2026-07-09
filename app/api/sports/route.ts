@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
+import { applyGuardian } from '@/lib/guardian-suppress';
 
 export const dynamic = 'force-dynamic';
 
@@ -56,6 +57,10 @@ export async function GET(): Promise<NextResponse<SportsResponse>> {
     const data = JSON.parse(raw);
     const age  = Date.now() - (data.fetchedAt ?? 0);
 
+    // Guardian (rules A–E): auto-suppress impossible/outlier margins, honest
+    // "unreachable" badge (sports has no source-verify adapter). Display-only.
+    const arbOpportunities = applyGuardian<SportsArb>('sports', data.arbOpportunities ?? []).rows;
+
     return NextResponse.json({
       ok:               true,
       isStale:          age > STALE_MS,
@@ -66,7 +71,7 @@ export async function GET(): Promise<NextResponse<SportsResponse>> {
       sportsChecked:    data.sportsChecked ?? [],
       totalEvents:      data.totalEvents ?? 0,
       totalArb:         data.totalArb ?? 0,
-      arbOpportunities: data.arbOpportunities ?? [],
+      arbOpportunities,
     });
   } catch {
     return NextResponse.json(empty);

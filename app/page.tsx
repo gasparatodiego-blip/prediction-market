@@ -13,6 +13,7 @@ import BlipRow      from '@/app/components/ui/BlipRow';
 import AnimatedStrategies from '@/app/components/landing/AnimatedStrategies';
 import { getCryptoSpreadsData, calcSpreadSizing } from '@/lib/spread-compute';
 import { filterSane, enforceVerified } from '@/lib/display-sanity';
+import { applyGuardian } from '@/lib/guardian-suppress';
 import { LANDING_CAPITAL_BASIS } from '@/lib/honest-display';
 import { isSanePolymarketLevel } from '@/lib/reward-gating';
 import { estimateReward, type MarketSnapshot } from '@/lib/rewards-estimate';
@@ -109,7 +110,10 @@ function readLandingStats(): {
     // opportunities like TRX $2.10) still pass and stay eligible for the max; a thin
     // book only limits executable SIZE (surfaced separately on the order page).
     const { spreads: rawSpreads } = getCryptoSpreadsData();
-    const spreads = enforceVerified('funding', filterSane('funding', rawSpreads));
+    // Guardian (rules A–E) runs last, same as the funding-arb tab, so the landing's
+    // headline max can never come from a row the tab itself would suppress.
+    const spreads = applyGuardian('funding',
+      enforceVerified('funding', filterSane('funding', rawSpreads))).rows;
     // Surface the SINGLE highest real net/day per $1k across the sanity-passed
     // spreads — NOT first-in-list. Ranked by calcSpreadSizing at the shared $1k/1x
     // basis — the SAME sizing (== the page's netDayForCapital) — so this equals the

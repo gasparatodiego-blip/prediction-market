@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth';
 import { getIsPaid, redactForTier } from '@/lib/paid-gating';
 import { getCryptoSpreadsData } from '@/lib/spread-compute';
 import { filterSane, enforceVerified } from '@/lib/display-sanity';
+import { applyGuardian } from '@/lib/guardian-suppress';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,6 +26,14 @@ export async function GET() {
   data.spreads = enforceVerified('funding', data.spreads);
   data.perpSpot = enforceVerified('perp-spot', data.perpSpot);
   data.usdcArb = enforceVerified('usdc', data.usdcArb);
+
+  // Guardian (rules A–E): the honest-engine auto-suppressor — hide/downgrade/relabel/
+  // redact any row that violates a too-good/consistency/verify/capacity/price rule.
+  // Display-only, never rewrites source; logs each action; runs before redaction so it
+  // sees real values (like filterSane). agent26 runs the SAME module for alerting.
+  data.spreads = applyGuardian('funding', data.spreads).rows;
+  data.perpSpot = applyGuardian('perp-spot', data.perpSpot).rows;
+  data.usdcArb = applyGuardian('usdc', data.usdcArb).rows;
 
   const body = redactForTier(data, 'crypto', isPaid);
   return NextResponse.json(body);

@@ -5,6 +5,7 @@ import { authOptions } from '@/lib/auth';
 import { getIsPaid, redactForTier } from '@/lib/paid-gating';
 import { isExpired } from '@/lib/instrument-expiry';
 import { filterSane, enforceVerified } from '@/lib/display-sanity';
+import { applyGuardian } from '@/lib/guardian-suppress';
 
 export const dynamic = 'force-dynamic';
 
@@ -53,8 +54,15 @@ export async function GET() {
   // (absurd/over-cap/missing-expiry money-field checks).
   // Source-of-truth enforcement: drop venue-contradicted rows, flag+demote
   // unreachable ones, tag verified rows for the badge.
-  const opportunities = enforceVerified('basis', filterSane('basis', keepLive(data.opportunities, 'opportunity'), now), now);
-  const backwardation = enforceVerified('basis', filterSane('basis', keepLive(data.backwardation, 'backwardation'), now), now);
+  // Guardian (rules A–E) is the last stage: auto-suppresses honest-engine violations
+  // (over-cap net, OI/proxy capacity, thin-book "cashable", false verifying badge, …).
+  // Display-only, never rewrites source; agent26 runs the same module for alerting.
+  const opportunities = applyGuardian('basis',
+    enforceVerified('basis', filterSane('basis', keepLive(data.opportunities, 'opportunity'), now), now),
+    { now }).rows;
+  const backwardation = applyGuardian('basis',
+    enforceVerified('basis', filterSane('basis', keepLive(data.backwardation, 'backwardation'), now), now),
+    { now }).rows;
 
   const body = redactForTier({
     agentStatus,
