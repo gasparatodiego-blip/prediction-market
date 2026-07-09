@@ -9,18 +9,32 @@ import { Lock } from 'lucide-react';
 
 interface RedactedProps<T> {
   /** Raw field straight from the API response — null/undefined means the
-   *  server redacted it (free tier). A present value is always real. */
+   *  server redacted it (free tier) OR, for a paid user, that the field is
+   *  genuinely not measured (see `isPaid`). A present value is always real. */
   value: T | null | undefined;
   /** Only invoked when value is non-null — safe to format/compute inside. */
   children: (value: T) => React.ReactNode;
   className?: string;
+  /** True for a PAID user. A paid user is never behind the paywall, so a
+   *  null/undefined value here is an HONEST "not measured" (e.g. capacity the
+   *  guardian suppressed because it was OI/proxy-derived, not a real book-walk)
+   *  — render `nullDisplay` ("—"), never the upgrade lock. Default false → the
+   *  free-tier lock, unchanged. */
+  isPaid?: boolean;
+  /** What a paid user sees when the value is genuinely null. Default "—". */
+  nullDisplay?: React.ReactNode;
 }
 
 /** Inline replacement for a single redacted number/string — blurred dots + lock,
- *  links to /dashboard/upgrade. Sized to sit inline with surrounding text. */
-export function Redacted<T>({ value, children, className = '' }: RedactedProps<T>) {
+ *  links to /dashboard/upgrade. Sized to sit inline with surrounding text.
+ *  For a paid user (`isPaid`), a null value is honest "not measured" → "—". */
+export function Redacted<T>({ value, children, className = '', isPaid = false, nullDisplay = '—' }: RedactedProps<T>) {
   if (value !== null && value !== undefined) {
     return <>{children(value)}</>;
+  }
+  // Paid user: not a paywall — the field is genuinely null/not-measured.
+  if (isPaid) {
+    return <span className={`text-muted ${className}`.trim()}>{nullDisplay}</span>;
   }
   return (
     <Link

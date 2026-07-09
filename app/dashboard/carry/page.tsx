@@ -55,6 +55,7 @@ interface CarryData {
   summary:       Summary;
   spot:          Record<string, number | null>;
   disclaimer:    string;
+  isPaid:        boolean;   // paid users are never behind the paywall — null gated fields show "—", not the lock
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -127,7 +128,7 @@ function RowSkeleton() {
 
 // ── Contango card ─────────────────────────────────────────────────────────────
 
-function ContangoCard({ c }: { c: Contract }) {
+function ContangoCard({ c, isPaid }: { c: Contract; isPaid: boolean }) {
   const variant    = chipVariant(c);
   const tileColor  = variant === 'cashable' ? 'mint' : 'gold';
 
@@ -143,8 +144,8 @@ function ContangoCard({ c }: { c: Contract }) {
   const chips: { label: string; value: ReactNode }[] = [
     { label: 'spot ask',   value: fmtPrice(spotPx) },
     { label: 'future bid', value: fmtPrice(futurePx) },
-    { label: 'exec basis', value: <Redacted value={c.executableBasisPct}>{v => `+${(v * 100).toFixed(2)}%`}</Redacted> },
-    { label: 'capacity',   value: <Redacted value={c.capacityUsd}>{v => fmtK(v)}</Redacted> },
+    { label: 'exec basis', value: <Redacted value={c.executableBasisPct} isPaid={isPaid}>{v => `+${(v * 100).toFixed(2)}%`}</Redacted> },
+    { label: 'capacity',   value: <Redacted value={c.capacityUsd} isPaid={isPaid}>{v => fmtK(v)}</Redacted> },
     { label: 'vol 24h',    value: fmtK(c.vol24Usd) },
     { label: 'exp',        value: c.expiry },
   ];
@@ -156,9 +157,9 @@ function ContangoCard({ c }: { c: Contract }) {
         icon={coinEmoji(c.asset)}
         tileColor={tileColor}
         name={<>{c.asset} — <PlatformLogo platform={c.exchange} size={12} className="mx-1" />{c.exchange} · {c.contract} · {c.daysToExpiry}d{(() => { const u = venueFutureUrl(c.venueKey || c.exchange, c.contract); return u ? <PlatformLink href={u} label={c.exchange} compact className="ml-1.5 align-middle" /> : null; })()}</>}
-        sub={<>spot ask {fmtPrice(spotPx)} · future bid {fmtPrice(futurePx)} · cap <Redacted value={c.capacityUsd}>{v => fmtK(v)}</Redacted></>}
+        sub={<>spot ask {fmtPrice(spotPx)} · future bid {fmtPrice(futurePx)} · cap <Redacted value={c.capacityUsd} isPaid={isPaid}>{v => fmtK(v)}</Redacted></>}
         chip={variant}
-        value={<Redacted value={c.netAnnualizedExecutable}>{v => fmtAnnualized(v)}</Redacted>}
+        value={<Redacted value={c.netAnnualizedExecutable} isPaid={isPaid}>{v => fmtAnnualized(v)}</Redacted>}
         unit="net/yr executable"
         valueTone={variant === 'cashable' ? 'up' : 'neutral'}
       />
@@ -172,7 +173,7 @@ function ContangoCard({ c }: { c: Contract }) {
         <div className="flex flex-wrap gap-x-2 gap-y-1 items-baseline">
           <span className="font-body text-[12px] text-muted">Real locked return</span>
           <span className="font-mono font-semibold text-[13px] text-ink-2">
-            <Redacted value={c.netAnnualizedExecutable}>
+            <Redacted value={c.netAnnualizedExecutable} isPaid={isPaid}>
               {v => `≈ +${(v * c.daysToExpiry / 365 * 100).toFixed(2)}% over ${c.daysToExpiry}d`}
             </Redacted>
           </span>
@@ -194,7 +195,7 @@ function ContangoCard({ c }: { c: Contract }) {
         <div className="flex flex-wrap gap-x-4 gap-y-1 items-center">
           <span className="font-body text-[12px] text-muted">
             Indicative mid:{' '}
-            <span className="text-ink-2"><Redacted value={c.netAnnualizedIndicative}>{v => fmtAnnualized(v)}</Redacted>/yr</span>
+            <span className="text-ink-2"><Redacted value={c.netAnnualizedIndicative} isPaid={isPaid}>{v => fmtAnnualized(v)}</Redacted>/yr</span>
             <span className="text-muted/60 ml-1 text-[11px]">(exec ≤ indicative ✓)</span>
           </span>
           {isCapped && (
@@ -217,7 +218,7 @@ function ContangoCard({ c }: { c: Contract }) {
 
         {/* Verdict */}
         <p className="font-body text-[12px] text-muted leading-relaxed">
-          <Redacted value={c.verdict}>{v => v}</Redacted>
+          <Redacted value={c.verdict} isPaid={isPaid}>{v => v}</Redacted>
         </p>
 
         {/* Coin-margined caveat — always shown when applicable */}
@@ -245,7 +246,7 @@ function ContangoCard({ c }: { c: Contract }) {
 
 // ── Backwardation row ─────────────────────────────────────────────────────────
 
-function BackwardRow({ c }: { c: BackwardContract }) {
+function BackwardRow({ c, isPaid }: { c: BackwardContract; isPaid: boolean }) {
   return (
     <div className="rounded-card shadow-card bg-surface overflow-hidden">
       <BlipRow
@@ -254,7 +255,7 @@ function BackwardRow({ c }: { c: BackwardContract }) {
         name={<>{c.asset} — <PlatformLogo platform={c.exchange} size={12} className="mx-1" />{c.exchange} · {c.contract} · {c.daysToExpiry}d{(() => { const u = venueFutureUrl(c.exchange, c.contract); return u ? <PlatformLink href={u} label={c.exchange} compact className="ml-1.5 align-middle" /> : null; })()}</>}
         sub={`spot ${fmtPrice(c.spot)} · future ${fmtPrice(c.future)} · vol ${fmtK(c.vol24Usd)}`}
         chip="signal"
-        value={<Redacted value={c.annualized}>{v => `${(v * 100).toFixed(2)}%`}</Redacted>}
+        value={<Redacted value={c.annualized} isPaid={isPaid}>{v => `${(v * 100).toFixed(2)}%`}</Redacted>}
         unit="backwardation basis"
         valueTone="neutral"
       />
@@ -348,6 +349,9 @@ export default function CarryPage() {
   const isRunning  = data?.agentStatus === 'running';
   const isStale    = data?.agentStatus === 'stale';
   const isOffline  = data?.agentStatus === 'offline';
+  // Paid tier (server-derived). Drives the render boundary: a paid user is never
+  // behind the paywall, so genuinely-null gated fields show honest "—" not the lock.
+  const isPaid     = data?.isPaid ?? false;
 
   const allOpps    = data?.opportunities ?? [];
   // Slider upper bound = the furthest real expiry in the served set (min 90 so the
@@ -566,7 +570,7 @@ export default function CarryPage() {
                 Clean USD return — USDT-M / Deribit cash-settled
               </p>
               {cleanOpps.map(c => (
-                <ContangoCard key={`${c.exchange}:${c.contract}`} c={c} />
+                <ContangoCard key={`${c.exchange}:${c.contract}`} c={c} isPaid={isPaid} />
               ))}
             </div>
           )}
@@ -584,7 +588,7 @@ export default function CarryPage() {
               </div>
               <div className="space-y-3">
                 {coinOpps.map(c => (
-                  <ContangoCard key={`${c.exchange}:${c.contract}`} c={c} />
+                  <ContangoCard key={`${c.exchange}:${c.contract}`} c={c} isPaid={isPaid} />
                 ))}
               </div>
             </div>
@@ -617,7 +621,7 @@ export default function CarryPage() {
           </p>
           <div className="space-y-3">
             {data.backwardation.map(c => (
-              <BackwardRow key={`${c.exchange}:${c.contract}`} c={c} />
+              <BackwardRow key={`${c.exchange}:${c.contract}`} c={c} isPaid={isPaid} />
             ))}
           </div>
         </section>

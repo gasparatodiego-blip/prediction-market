@@ -72,6 +72,11 @@ export async function GET() {
     summary:       data.summary        ?? {},
     spot:          data.spot           ?? {},
     disclaimer:    data.disclaimer     ?? '',
+    // Tier flag for the client render boundary: a paid user is never behind the
+    // paywall, so the UI must show honest "—" for genuinely-null gated fields
+    // (e.g. guardian-suppressed OI/proxy capacity) instead of the upgrade lock.
+    // Not a redacted field; no numbers change.
+    isPaid,
   }, 'carry', isPaid);
 
   // Guardian H (rules 31–33): backstop the redaction — null + CRITICAL any leaked

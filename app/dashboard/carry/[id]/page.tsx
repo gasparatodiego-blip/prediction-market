@@ -20,7 +20,7 @@ import { venueFutureUrl, venueSpotUrl } from '@/lib/platform-links';
 import { fmtCapDisplay, fmtMoney } from '@/lib/order-format';
 import { type Contract, chipVariant, nonCashableReason } from '@/lib/carry';
 
-interface CarryData { opportunities: Contract[]; updatedAt: string | null; }
+interface CarryData { opportunities: Contract[]; updatedAt: string | null; isPaid?: boolean; }
 
 // Capital presets for the operation-page size selector — mirrors the inline
 // preset-button + editable-input stepper used on the liquidity-rewards and
@@ -87,7 +87,12 @@ export default function CarryOperationPage({ params }: { params: { id: string } 
   }, [load]);
 
   const c = data?.opportunities?.find(o => o.venueKey === venueKey && o.contract === contract) ?? null;
-  const isRedacted = !!c && c.netAnnualizedExecutable == null;
+  // Paid tier (server-derived). A paid user is never behind the paywall, so gate on
+  // the real flag — NOT on "net is null", which falsely paywalls a pro user whenever
+  // the honest-engine guardian legitimately suppresses a field (e.g. OI/proxy capacity).
+  // Genuinely-null gated fields then show honest "—" (via isPaid on <Redacted>), not a lock.
+  const isPaid = data?.isPaid ?? false;
+  const isRedacted = !!c && !isPaid;
   const spotPx   = c?.spotAsk  ?? c?.spot   ?? null;
   const futurePx = c?.futureBid ?? c?.future ?? null;
   const venueUrl = c ? venueFutureUrl(c.venueKey || c.exchange, c.contract) : null;
@@ -228,14 +233,14 @@ export default function CarryOperationPage({ params }: { params: { id: string } 
 
             {/* One-line stat row: exec basis · net/yr · fee round-trip */}
             <div className="font-mono tabular-nums flex flex-wrap items-center gap-x-2 gap-y-1" style={{ fontSize: 12, color: '#6b7787' }}>
-              <span>exec basis <span className="font-bold" style={{ color: '#0e1626' }}><Redacted value={c.executableBasisPct}>{v => `+${(v * 100).toFixed(2)}%`}</Redacted></span></span>
+              <span>exec basis <span className="font-bold" style={{ color: '#0e1626' }}><Redacted value={c.executableBasisPct} isPaid={isPaid}>{v => `+${(v * 100).toFixed(2)}%`}</Redacted></span></span>
               <span style={{ color: '#cbd3dc' }}>·</span>
-              <span>net <span className="font-bold" style={{ color: '#0e1626' }}><Redacted value={c.netAnnualizedExecutable}>{v => fmtAnnualized(v)}</Redacted></span><span style={{ color: '#9aa5b3' }}>/yr</span></span>
+              <span>net <span className="font-bold" style={{ color: '#0e1626' }}><Redacted value={c.netAnnualizedExecutable} isPaid={isPaid}>{v => fmtAnnualized(v)}</Redacted></span><span style={{ color: '#9aa5b3' }}>/yr</span></span>
               <span style={{ color: '#cbd3dc' }}>·</span>
               {/* Real locked return over the actual hold — de-annualized (net × days/365 =
                   executableBasis − fee) so the annualized run-rate isn't read as the
                   short-period gain. Redacts with the net field on free tier. */}
-              <span>real <span className="font-bold" style={{ color: '#0e1626' }}><Redacted value={c.netAnnualizedExecutable}>{v => `≈ +${(v * c.daysToExpiry / 365 * 100).toFixed(2)}%`}</Redacted></span><span style={{ color: '#9aa5b3' }}> over {c.daysToExpiry}d</span></span>
+              <span>real <span className="font-bold" style={{ color: '#0e1626' }}><Redacted value={c.netAnnualizedExecutable} isPaid={isPaid}>{v => `≈ +${(v * c.daysToExpiry / 365 * 100).toFixed(2)}%`}</Redacted></span><span style={{ color: '#9aa5b3' }}> over {c.daysToExpiry}d</span></span>
               <span style={{ color: '#cbd3dc' }}>·</span>
               <span>
                 fee <span style={{ color: '#0e1626' }}>{(c.fee * 100).toFixed(3)}%</span> round-trip
@@ -317,7 +322,7 @@ export default function CarryOperationPage({ params }: { params: { id: string } 
           ) : (
             <div className="rounded-card mb-4" style={{ background: '#fff', border: '1px solid #e6eaef', padding: '12px 14px' }}>
               <p className="font-body leading-relaxed" style={{ fontSize: 12, color: '#6b7787' }}>
-                <Redacted value={c.verdict}>{v => v}</Redacted>
+                <Redacted value={c.verdict} isPaid={isPaid}>{v => v}</Redacted>
               </p>
               {c.coinMargined && (
                 <div className="mt-2 px-3 py-2 rounded-md font-body" style={{ fontSize: 12, color: '#b45309', background: '#fff8ef', border: '1px solid rgba(180,83,9,.25)' }}>
