@@ -82,7 +82,8 @@ const PERP: Record<string, PerpBuilder> = {
   aster:       c => `https://www.asterdex.com/en/futures/${c}USDT`,
   extended:    c => `https://app.extended.exchange/trade/${c}-USD`,
   lighter:     c => `https://app.lighter.xyz/trade/${c}`,
-  // edgex / grvt / pacifica: URL scheme unverified → intentionally omitted (null).
+  edgex:       c => `https://pro.edgex.exchange/trade/${c}USD`, // contractName "{COIN}USD" (BTCUSD, BNBUSD…)
+  // grvt / pacifica: web route/symbol format unverifiable → intentionally omitted (null).
 };
 
 export function venuePerpUrl(venue: string | null | undefined, symbol: string | null | undefined): string | null {
@@ -168,6 +169,8 @@ export function _platformLinksSelfTest(): void {
   eq(venuePerpUrl('binance', 'BTC'), 'https://www.binance.com/en/futures/BTCUSDT', 'perp binance');
   eq(venuePerpUrl('okx', 'eth'), 'https://www.okx.com/trade-swap/eth-usdt-swap', 'perp okx lowercases');
   eq(venuePerpUrl('hyperliquid', 'SOL'), 'https://app.hyperliquid.xyz/trade/SOL', 'perp hyperliquid');
-  eq(venuePerpUrl('edgex', 'BTC'), null, 'perp unverified venue → null');
+  eq(venuePerpUrl('edgex', 'BTC'), 'https://pro.edgex.exchange/trade/BTCUSD', 'perp edgex BTC');
+  eq(venuePerpUrl('edgex', 'bnb'), 'https://pro.edgex.exchange/trade/BNBUSD', 'perp edgex BNB');
+  eq(venuePerpUrl('grvt', 'BTC'), null, 'perp unverified venue (grvt) → null');
   eq(venuePerpUrl('binance', ''), null, 'perp empty symbol → null');
 }
