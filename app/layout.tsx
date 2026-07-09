@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono, Bricolage_Grotesque } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
+import ScrollToTop from "@/components/ScrollToTop";
 
 // ── Legacy terminal fonts (kept until pages are rebuilt) ──────────────────────
 const inter = Inter({
@@ -44,6 +45,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       className={`${inter.variable} ${jetbrainsMono.variable} ${bricolageDisplay.variable}`}
     >
       <body className="antialiased">
+        {/* Single global scroll-to-top on route change — covers every tab and
+            every detail page. Window-scroll reset (matches the real setup: the
+            document scrolls, not an inner container). */}
+        <ScrollToTop />
         <Providers>{children}</Providers>
       </body>
     </html>
