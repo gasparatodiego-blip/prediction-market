@@ -25,7 +25,7 @@ import PlatformLogo from '@/components/PlatformLogo';
 import { Redacted } from '@/app/components/ui/Redacted';
 import InfoTip from '@/app/components/ui/InfoTip';
 import { PlatformLink } from '@/app/components/ui/PlatformLink';
-import { polymarketMarketUrl, kalshiMarketUrl } from '@/lib/platform-links';
+import { polymarketMarketUrl, polymarketOutcomeUrl, kalshiMarketUrl } from '@/lib/platform-links';
 import { estimateReward, type MarketSnapshot, type SideKey, type SideSnapshot, type Venue } from '@/lib/rewards-estimate';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -42,6 +42,9 @@ interface NormalizedMarket {
   venue:               Venue;
   marketId:            string;
   slug?:               string | null;
+  marketSlug?:         string | null;   // per-outcome slug for multi-outcome deep-link
+  groupItemTitle?:     string | null;   // outcome label (e.g. "England")
+  negRisk?:            boolean;          // true → multi-outcome event
   title:               string;
   category:            string;
   midpoint:            number | null;
@@ -435,7 +438,12 @@ export default function MarketDetailPage() {
                 <PlatformLogo platform={mkt.venue} size={18} className="mt-0.5" />
                 <h1 className="font-display font-bold text-ink text-[15px] sm:text-lg leading-snug flex-1 min-w-0">{mkt.title}</h1>
                 {(() => {
-                  const u = mkt.venue === 'polymarket' ? polymarketMarketUrl(mkt.slug) : mkt.venue === 'kalshi' ? kalshiMarketUrl(mkt.marketId) : null;
+                  // Multi-outcome (negRisk) events → deep-link the exact outcome via the real
+                  // two-segment …/event/<eventSlug>/<marketSlug>; fall back to the plain event
+                  // link when that isn't constructible. Single-outcome markets are unchanged.
+                  const u = mkt.venue === 'polymarket'
+                    ? ((mkt.negRisk && mkt.marketSlug ? polymarketOutcomeUrl(mkt.slug, mkt.marketSlug) : null) ?? polymarketMarketUrl(mkt.slug))
+                    : mkt.venue === 'kalshi' ? kalshiMarketUrl(mkt.marketId) : null;
                   return u ? <PlatformLink href={u} label={mkt.venue === 'polymarket' ? 'Polymarket' : 'Kalshi'} className="mt-0.5 shrink-0" /> : null;
                 })()}
               </div>

@@ -134,9 +134,16 @@ async function fetchRewardMarkets() {
       markets.push({
         conditionId:      m.conditionId,
         // Polymarket deep-link needs the EVENT slug (…/event/<slug>), NOT the per-market
-        // slug (which carries a numeric suffix and 404s on /event/). Gamma nests it under
-        // events[0].slug. null when absent → the UI renders no link (never a broken URL).
+        // slug (which carries a numeric suffix and 404s on the SINGLE-segment /event/<slug>).
+        // Gamma nests the event slug under events[0].slug. null when absent → no link.
         slug:             (Array.isArray(m.events) && m.events[0] && m.events[0].slug) || null,
+        // Per-OUTCOME market slug (m.slug). On a multi-outcome (negRisk) event every outcome
+        // shares one event slug but has its own m.slug — the real two-segment page is
+        // …/event/<eventSlug>/<marketSlug>. Kept so the UI can deep-link the exact outcome
+        // (e.g. the England leg of world-cup-winner) instead of the parent event page.
+        marketSlug:       m.slug || null,
+        // Human outcome label (e.g. "England", "No Prison Time") for the multi-outcome hint.
+        groupItemTitle:   m.groupItemTitle || null,
         question:         m.question,
         rewardsDailyRate: rate,
         rewardsMinSize:   minSize || 0,
@@ -408,6 +415,8 @@ async function scan() {
       category:          categoryFromText(m.question),  // tags-first not available on Gamma market obj; keyword taxonomy (honest 'other' when unmatched)
       conditionId:       m.conditionId,
       slug:              m.slug || null,          // real Gamma event slug, carried through for platform deep-link
+      marketSlug:        m.marketSlug || null,    // per-outcome slug → two-segment multi-outcome deep-link
+      groupItemTitle:    m.groupItemTitle || null,// outcome label (e.g. "England")
       rewardsDailyRate:  m.rewardsDailyRate,
       rewardsMaxSpread:  m.rewardsMaxSpread,
       rewardsMinSize:    m.rewardsMinSize,

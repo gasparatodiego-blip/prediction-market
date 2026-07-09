@@ -20,7 +20,7 @@ import RewardsHero from '@/app/components/ui/RewardsHero';
 import { Redacted } from '@/app/components/ui/Redacted';
 import { PlatformLink } from '@/app/components/ui/PlatformLink';
 import { VerifyBadge } from '@/app/components/ui/VerifyBadge';
-import { polymarketMarketUrl, kalshiMarketUrl } from '@/lib/platform-links';
+import { polymarketMarketUrl, polymarketOutcomeUrl, kalshiMarketUrl } from '@/lib/platform-links';
 import { estimateReward, type MarketSnapshot, type SideSnapshot, type Venue } from '@/lib/rewards-estimate';
 
 // Trading-side selector for the list: 'both' = legacy single-book behavior; 'yes'/'no'
@@ -30,8 +30,17 @@ type TradeSideFilter = 'both' | 'yes' | 'no';
 // Real platform deep-link for a reward market: Polymarket event (from slug) or
 // Kalshi market (from ticker). Returns null when the id needed is absent — the row
 // then renders no link (honest-engine: never a fabricated URL).
-function rewardMarketUrl(m: { venue: Venue; slug?: string | null; marketId: string }): string | null {
-  if (m.venue === 'polymarket') return polymarketMarketUrl(m.slug);
+function rewardMarketUrl(m: { venue: Venue; slug?: string | null; marketSlug?: string | null; negRisk?: boolean; marketId: string }): string | null {
+  if (m.venue === 'polymarket') {
+    // Multi-outcome (negRisk) event → deep-link the exact outcome via the real two-segment
+    // …/event/<eventSlug>/<marketSlug>; falls back to the plain event link when that isn't
+    // constructible. Single-outcome markets keep the plain event link, unchanged.
+    if (m.negRisk && m.marketSlug) {
+      const outcome = polymarketOutcomeUrl(m.slug, m.marketSlug);
+      if (outcome) return outcome;
+    }
+    return polymarketMarketUrl(m.slug);
+  }
   if (m.venue === 'kalshi')     return kalshiMarketUrl(m.marketId);
   return null;
 }
@@ -43,6 +52,9 @@ interface NormalizedMarket {
   venue:               Venue;
   marketId:            string;
   slug?:               string | null;   // Polymarket event slug (real Gamma field); null/absent → no platform link
+  marketSlug?:         string | null;   // per-outcome slug for multi-outcome deep-link
+  groupItemTitle?:     string | null;   // outcome label (e.g. "England")
+  negRisk?:            boolean;          // true → multi-outcome event
   title:               string;
   category:            string;
   midpoint:            number | null;

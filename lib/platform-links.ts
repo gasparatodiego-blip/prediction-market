@@ -36,6 +36,28 @@ export function polymarketMarketUrl(slugOrId: string | null | undefined): string
   return `https://polymarket.com/event/${slug}`;
 }
 
+// Multi-outcome deep-link. On a negRisk event (e.g. world-cup-winner) every outcome
+// shares ONE event slug but has its own per-outcome market slug; Polymarket's real
+// addressable page is the two-segment …/event/<eventSlug>/<marketSlug>. Both parts must
+// be real human slugs (not hex ids) or we return null and the caller falls back to the
+// plain event link — we never fabricate a segment.
+export function polymarketOutcomeUrl(
+  eventSlug: string | null | undefined,
+  marketSlug: string | null | undefined,
+): string | null {
+  const evRaw = clean(eventSlug);
+  const mkRaw = clean(marketSlug);
+  if (!evRaw || !mkRaw) return null;
+  const strip = (s: string) => s.replace(/^https?:\/\/[^/]+\/(?:event|market)\//i, '').replace(/^\/+/, '');
+  const ev = strip(evRaw);
+  const mk = strip(mkRaw);
+  if (!ev || !mk || isHexId(ev) || isHexId(mk)) return null;
+  // A single-outcome market often carries marketSlug === eventSlug; the two-segment form
+  // is only meaningful when they differ. Same slug → let the caller use the plain link.
+  if (ev === mk) return null;
+  return `https://polymarket.com/event/${ev}/${mk}`;
+}
+
 // Polymarket trader profile. Address is an EVM 0x-address.
 export function polymarketProfileUrl(address: string | null | undefined): string | null {
   const s = clean(address);
@@ -152,6 +174,12 @@ export function _platformLinksSelfTest(): void {
   eq(polymarketMarketUrl('putin-out-before-2027'), 'https://polymarket.com/event/putin-out-before-2027', 'poly slug');
   eq(polymarketMarketUrl('0x6bd56627aa21311850825edb27e53434a0e17a4f782be0086bc07f71eee00d0d'), null, 'poly conditionId → null');
   eq(polymarketMarketUrl(''), null, 'poly empty → null');
+  // Multi-outcome per-outcome deep-link (two-segment event/<eventSlug>/<marketSlug>).
+  eq(polymarketOutcomeUrl('world-cup-winner', 'will-england-win-the-world-cup'),
+     'https://polymarket.com/event/world-cup-winner/will-england-win-the-world-cup', 'poly outcome url');
+  eq(polymarketOutcomeUrl('world-cup-winner', 'world-cup-winner'), null, 'poly outcome same slug → null');
+  eq(polymarketOutcomeUrl('world-cup-winner', null), null, 'poly outcome missing marketSlug → null');
+  eq(polymarketOutcomeUrl('world-cup-winner', '0xabcdef123456'), null, 'poly outcome hex marketSlug → null');
   eq(polymarketProfileUrl('0xeac77136cd77872e4a606367ff65b9c9f2e9953d'), 'https://polymarket.com/profile/0xeac77136cd77872e4a606367ff65b9c9f2e9953d', 'poly profile');
   eq(polymarketProfileUrl('not-an-address'), null, 'poly bad address → null');
   // Kalshi
