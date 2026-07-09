@@ -56,6 +56,7 @@ let cexArb    = [];
 let basisTrades = [];
 let highFunding = [];
 let infoLag   = {};
+let spotBooks = {};   // venue → coin → executable spot bid/ask + real book-walked depth (see fetchSpotBooks)
 let lastWrite = 0;
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
@@ -276,6 +277,82 @@ async function fetchGateIO() {
     r[coin] = { price: parseFloat(t.last), change24hPct: parseFloat(t.change_percentage??'0'), high24h: parseFloat(t.high_24h??'0'), low24h: parseFloat(t.low_24h??'0'), volume: parseFloat(t.base_volume??'0') };
   }
   return r;
+}
+
+// ── Per-venue EXECUTABLE spot book (bid/ask + real book-walked depth) ───────────
+// Prerequisite for cross-venue funding (long spot on the cheapest venue + short
+// perp on the highest-funding venue): a "buy spot on venue X" leg is only genuine
+// if we read venue X's REAL order book. Honest-engine: a venue's spot is exposed as
+// executable ONLY when its live book (bid/ask + depth) is read here — price-only
+// venues (Coinbase/Kraken) keep just `price` and are NOT executable. Capacity is
+// book-walked within a slip band (real resting depth), NEVER an OI heuristic. All
+// endpoints are public/no-key and routed through the shared per-host limiter.
+
+const SPOT_BOOK_BAND_BPS = 20;   // slip band for the book-walk depth (matches the two-legged 20bps model)
+
+// Walk one side of a book (array of [price, size, ...]) and sum USD notional resting
+// within BAND_BPS of best. `side` = 'ask' (buy-spot: lift ascending asks) or 'bid'
+// (sell-spot: hit descending bids). Returns real best price + depth USD (never OI).
+function walkSpotBookUsd(levels, side, bandBps = SPOT_BOOK_BAND_BPS) {
+  if (!Array.isArray(levels) || !levels.length) return { best: null, depthUsd: null };
+  const best = parseFloat(levels[0][0]);
+  if (!isFinite(best) || best <= 0) return { best: null, depthUsd: null };
+  const lim = side === 'ask' ? best * (1 + bandBps / 1e4) : best * (1 - bandBps / 1e4);
+  let usd = 0;
+  for (const lvl of levels) {
+    const pr = parseFloat(lvl[0]), sz = parseFloat(lvl[1]);
+    if (!isFinite(pr) || !isFinite(sz)) continue;
+    if (side === 'ask' && pr > lim) break;      // sorted ascending — past the band
+    if (side === 'bid' && pr < lim) break;      // sorted descending — past the band
+    usd += pr * sz;
+  }
+  return { best, depthUsd: Math.round(usd) };
+}
+
+// Venues with a clean free public SPOT order book (proven readable in Phase 0). Each:
+// symbol builder + endpoint + a parser to {bids, asks} arrays of [price, size].
+const SPOT_BOOK_VENUES = [
+  { venue: 'binance', sym: c => `${c}USDT`,  url: s => `https://api.binance.com/api/v3/depth?symbol=${s}&limit=50`,
+    parse: d => ({ bids: d?.bids, asks: d?.asks }) },
+  { venue: 'okx',     sym: c => `${c}-USDT`, url: s => `https://www.okx.com/api/v5/market/books?instId=${s}&sz=50`,
+    parse: d => ({ bids: d?.data?.[0]?.bids, asks: d?.data?.[0]?.asks }) },
+  { venue: 'bybit',   sym: c => `${c}USDT`,  url: s => `https://api.bybit.com/v5/market/orderbook?category=spot&symbol=${s}&limit=50`,
+    parse: d => ({ bids: d?.result?.b, asks: d?.result?.a }) },
+  { venue: 'gateio',  sym: c => `${c}_USDT`, url: s => `https://api.gateio.ws/api/v4/spot/order_book?currency_pair=${s}&limit=50`,
+    parse: d => ({ bids: d?.bids, asks: d?.asks }) },
+  { venue: 'bitget',  sym: c => `${c}USDT`,  url: s => `https://api.bitget.com/api/v2/spot/market/orderbook?symbol=${s}&limit=50`,
+    parse: d => ({ bids: d?.data?.bids, asks: d?.data?.asks }) },
+];
+
+// Fetch executable spot bid/ask + real book-walked depth for every readable venue ×
+// spot COIN. Missing/crossed books are skipped (absent, never fabricated). Throttled
+// per host by rlGetJson so the added ~40 calls/cycle stay within free rate limits.
+async function fetchSpotBooks() {
+  const out = {};   // venue → coin → { spotBid, spotAsk, spotMid, depth…, source, at }
+  await Promise.all(SPOT_BOOK_VENUES.flatMap(v =>
+    COINS.map(async coin => {
+      const d = await rlGetJson(v.url(v.sym(coin)));
+      if (!d) return;                                   // host down/backed-off → absent this cycle
+      const { bids, asks } = v.parse(d) || {};
+      if (!Array.isArray(bids) || !Array.isArray(asks) || !bids.length || !asks.length) return;
+      const bid = walkSpotBookUsd(bids, 'bid');
+      const ask = walkSpotBookUsd(asks, 'ask');
+      if (bid.best == null || ask.best == null) return;
+      if (ask.best < bid.best) return;                  // crossed/locked book — skip, don't fabricate
+      (out[v.venue] ??= {})[coin] = {
+        spotBid:         bid.best,
+        spotAsk:         ask.best,
+        spotMid:         (bid.best + ask.best) / 2,
+        spotBidDepthUsd: bid.depthUsd,                  // sell-spot depth within 20bps (real book)
+        spotAskDepthUsd: ask.depthUsd,                  // buy-spot capacity for the long leg (real book, never OI)
+        spotBookSource:  'book',
+        spotBookAt:      Date.now(),
+      };
+    })
+  ));
+  const venues = Object.keys(out);
+  console.log(`[spot-book] ${venues.length} venues executable: ${venues.map(v => `${v}(${Object.keys(out[v]).length})`).join(' ') || 'none'}`);
+  return out;
 }
 
 // ── Perpetual futures + funding rates ──────────────────────────────────────────
@@ -1215,7 +1292,22 @@ function updateInfoLag() {
 // ── File writer ────────────────────────────────────────────────────────────────
 
 function writeOutput() {
-  const exchanges = { binance: wsData, ...restData };
+  // Shallow-clone each venue map so the additive spot-book merge below never mutates
+  // the WS/REST source objects that detectors (detectCexArb/detectBasis) read.
+  const exchanges = {};
+  for (const [venue, coins] of Object.entries({ binance: wsData, ...restData })) {
+    exchanges[venue] = { ...coins };
+  }
+  // Additive: attach executable spot bid/ask + real book-walked depth per venue/coin.
+  // Only venues whose live book was read appear here — price-only venues keep just
+  // `price` (NOT executable). `price` and every existing field are left untouched, so
+  // no basis/funding/arb number changes; depth is book-walked, never OI.
+  for (const [venue, coins] of Object.entries(spotBooks)) {
+    if (!exchanges[venue]) exchanges[venue] = {};
+    for (const [coin, book] of Object.entries(coins)) {
+      exchanges[venue][coin] = { ...(exchanges[venue][coin] || {}), ...book };
+    }
+  }
   // Atomic write (temp + rename): concurrent readers (agent15, /api/crypto, …) never
   // catch a half-written file. Same content as before (pretty JSON) — I/O path only.
   try {
@@ -1240,10 +1332,11 @@ function writeOutput() {
 async function poll() {
   console.log('[multi-cex] REST poll — 6 CEX + 4 perp venues (Binance/Bybit/OKX/HL/dYdX)...');
   await fetchBinanceREST();
-  const [coinbase, okx, bybit, kraken, gateio] = await Promise.all([
-    fetchCoinbase(), fetchOKX(), fetchBybit(), fetchKraken(), fetchGateIO(),
+  const [coinbase, okx, bybit, kraken, gateio, spotBk] = await Promise.all([
+    fetchCoinbase(), fetchOKX(), fetchBybit(), fetchKraken(), fetchGateIO(), fetchSpotBooks(),
   ]);
   restData    = { coinbase, okx, bybit, kraken, gateio };
+  spotBooks   = spotBk;
   futures     = await fetchFutures();
   futuresUsdc = await fetchFuturesUsdc();
 
