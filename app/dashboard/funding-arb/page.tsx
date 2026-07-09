@@ -17,6 +17,7 @@ import { Redacted } from '@/app/components/ui/Redacted';
 import { PlatformLink } from '@/app/components/ui/PlatformLink';
 import { VerifyBadge } from '@/app/components/ui/VerifyBadge';
 import { venuePerpUrl, venueSpotUrl } from '@/lib/platform-links';
+import { cautionChipRemoved } from '@/lib/caution-chip';
 import { AUTO_EXECUTE_ENABLED } from '@/lib/flags';
 import type { PerpSpotRow, PerpSpotRegime, UsdcArbRow } from '@/lib/spread-types';
 
@@ -748,8 +749,10 @@ function FundingCard({ s, capital, leverage }: { s: SpreadItem; capital: number;
         <div className="flex items-center flex-wrap gap-x-2 gap-y-1 min-w-0">
           <span className="font-mono font-bold text-ink tracking-tight truncate" style={{ fontSize: 15 }}>{s.coin}</span>
           {/* Tier label is informational (HARVEST/MARGINAL). CAUTION is an alarm word —
-              suppressed on the card surface so nothing here reads as a warning. */}
-          {s.status !== 'CAUTION' && (
+              suppressed on the card surface so nothing here reads as a warning. The
+              guardian's K41/K43 removeCautionChip (via cautionChipRemoved) also drops a
+              contradictory alarm chip — display-only, verdict/tier value untouched. */}
+          {s.status !== 'CAUTION' && !cautionChipRemoved(s) && (
             <span className="font-body uppercase" style={{ fontSize: 9, letterSpacing: '0.14em', color: tier.color }}>{tier.label}</span>
           )}
         </div>
@@ -1972,8 +1975,9 @@ function PerpSpotCard({
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center flex-wrap gap-x-2 gap-y-1 min-w-0">
           <span className="font-mono font-bold text-ink tracking-tight truncate" style={{ fontSize: 15 }}>{row.coin}</span>
-          {/* CAUTION is an alarm word — suppressed so nothing reads as a warning. */}
-          {status !== 'CAUTION' && (
+          {/* CAUTION is an alarm word — suppressed so nothing reads as a warning; the
+              guardian's removeCautionChip (cautionChipRemoved) drops it too. Display-only. */}
+          {status !== 'CAUTION' && !cautionChipRemoved(row) && (
             <span className="font-body uppercase" style={{ fontSize: 9, letterSpacing: '0.14em', color: tier.color }}>{tier.label}</span>
           )}
           {flipRisk && (
@@ -2262,8 +2266,9 @@ function UsdcArbCard({ row, capitalPerLeg }: { row: UsdcArbRow; capitalPerLeg: n
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center flex-wrap gap-x-2 gap-y-1 min-w-0">
           <span className="font-mono font-bold text-ink tracking-tight truncate" style={{ fontSize: 15 }}>{row.coin}</span>
-          {/* CAUTION is an alarm word — suppressed so nothing reads as a warning. */}
-          {status !== 'CAUTION' && (
+          {/* CAUTION is an alarm word — suppressed so nothing reads as a warning; the
+              guardian's removeCautionChip (cautionChipRemoved) drops it too. Display-only. */}
+          {status !== 'CAUTION' && !cautionChipRemoved(row) && (
             <span className="font-body uppercase" style={{ fontSize: 9, letterSpacing: '0.14em', color: tier.color }}>{tier.label}</span>
           )}
           <span className="font-body px-1.5 py-[1px] rounded-pill shrink-0" style={{ fontSize: 9, color: '#7c3aed', background: '#f5f3ff' }}>

@@ -41,7 +41,7 @@ const { isExpired, parseInstrumentExpiryMs } = require('../lib/instrument-expiry
 // The ONE shared honest-engine suppressor (rules A–E). The serve path applies it to
 // every tab; this agent runs the SAME module so what it observes/directs matches
 // exactly what the site suppresses. Display-only, never rewrites source.
-const { CASHABLE_SWING } = require('../lib/guardian-suppress');
+const { CASHABLE_SWING, SPIKE_MULT, UNIT_SUSPECT_LO, UNIT_SUSPECT_HI, LABELS } = require('../lib/guardian-suppress');
 const { atomicWriteJson } = require('../lib/atomicJsonWrite');
 
 // ── Load .env for Telegram creds (pm2 doesn't auto-load project env files) ───
@@ -87,6 +87,18 @@ const KALSHI_REWARDS_FILE = '/root/prediction-market/data/kalshi-rewards.json';
 const GUARDIAN_DIRECTIVES_FILE = '/tmp/guardian-directives.json'; // agent26 → serve path (reversible)
 const GUARDIAN_DIRECTIVE_TTL_MS = 60 * 60_000; // a cashable-swing/cross-surface directive self-expires after 1h
 const API_BASE            = 'http://localhost:3000';
+
+// ── Phase 3 (rules L–N) — spike / system integrity ─────────────────────────────
+const PRODUCER_DOWN_MS  = 15 * 60_000; // M47 — a producer heartbeat older than this ⇒ down
+const PIPELINE_STALE_MS = 15 * 60_000; // M48 — freshest core feed older than this ⇒ pipeline stale
+const SERVED_STALE_MS   = 20 * 60_000; // M49 — a served-row timestamp older than this ⇒ demote (mirrors C12)
+// Core producer feeds whose freshness defines "the pipeline is up" (M48). Each is the
+// output of a specific agent; the newest of them is the pipeline's effective age.
+const CORE_FEEDS = [
+  { file: EXCHANGE_FILE, tsKey: 'timestamp',  label: 'exchange-prices (agent10/15)' },
+  { file: UNI_FILE,      tsKey: 'updatedAt',  label: 'unified-opportunities (agent15)' },
+  { file: BASIS_FILE,    tsKey: 'updatedAt',  label: 'basis (agent19)' },
+];
 
 const UNI_STALE_MS    = 10 * 60_000; // matches lib/spread-compute.ts UNI_STALE_MS
 const SPORTS_STALE_MS = 7_200_000;   // matches app/page.tsx readLandingStats()
@@ -726,6 +738,84 @@ function servedRowId(section, row) {
   }
 }
 
+// ── L44: funding-rate spike. Either leg's CURRENT funding > SPIKE_MULT× its own trailing
+// median AND not yet confirmed by >=2 recent settled history points ⇒ a brand-new,
+// unverified spike. Reads raw legs from exchange-prices + the agent15 settled ring buffer
+// (the SAME sources recomputeFunding uses). Read-only; returns a reason string or null.
+function fundingLegSpike(coin, shortEx, longEx) {
+  const ex   = readJsonSafe(EXCHANGE_FILE);
+  const ring = (readJsonSafe(HISTORY_CACHE_FILE) || {}).data || {};
+  const futures = (ex && ex.futures) || {};
+  for (const legRaw of [shortEx, longEx]) {
+    const leg = String(legRaw || '').toLowerCase();
+    const cur = futures[leg]?.[coin]?.fundingRate;
+    if (typeof cur !== 'number' || !isFinite(cur)) continue;
+    const rates = (((ring[leg] || {})[coin]) || [])
+      .map(p => (p && typeof p.rate === 'number' ? Math.abs(p.rate) : null))
+      .filter(r => r != null);
+    if (rates.length < 3) continue;                       // need a trailing baseline
+    const sorted = [...rates].sort((a, b) => a - b);
+    const trail  = sorted[Math.floor(sorted.length / 2)]; // median |rate|
+    if (!(trail > 1e-9)) continue;
+    if (Math.abs(cur) > SPIKE_MULT * trail) {
+      const confirmations = rates.filter(r => r > SPIKE_MULT * trail).length;
+      if (confirmations < 2) {
+        return `${leg} funding ${(cur * 100).toFixed(4)}% is > ${SPIKE_MULT}× its trailing median ${(trail * 100).toFixed(4)}% and unconfirmed (<2 settlements) — held until it stabilizes`;
+      }
+    }
+  }
+  return null;
+}
+
+// ── L46: suspect UNITS. Compare the served net APY to an independent recompute; a ratio
+// in [90,110] is the ×100 unit-error smell (%/8h shown as %/yr, wrong ×100). Suppress +
+// alert — never rewrite toward the "corrected" number. Returns a reason string or null.
+function fundingUnitSuspect(row, coin) {
+  const served = row && row.netApy30d;
+  if (typeof served !== 'number' || !isFinite(served)) return null;
+  const rec = recomputeFunding(String(row.shortExchange || ''), String(row.longExchange || ''), coin);
+  if (!rec || typeof rec.netApy30d !== 'number' || Math.abs(rec.netApy30d) < 1e-6) return null;
+  const ratio = Math.abs(served / rec.netApy30d);
+  if (ratio >= UNIT_SUSPECT_LO && ratio <= UNIT_SUSPECT_HI) {
+    return `served net ${served}%/yr is ~${ratio.toFixed(0)}× the independent recompute ${rec.netApy30d}%/yr — a ×100 unit error smell; suppressing units pending review`;
+  }
+  return null;
+}
+
+// ── M (rules 47–49): system integrity. Producer-down / pipeline-stale / served-timestamp
+// age. Read-only over heartbeats + core feed timestamps; PM2/agent-monitor already
+// RESTARTS — this only OBSERVES + surfaces so it reaches the alert + health report.
+function auditSystemIntegrity() {
+  const violations = [];
+  const now = Date.now();
+
+  // M47 — a producer heartbeat older than PRODUCER_DOWN_MS (agent-monitor restarts it;
+  // we surface it so the guardian's own view stays honest). hbKey-less agents are skipped.
+  const hb = readJsonSafe(HB_FILE) || {};
+  for (const [name, ts] of Object.entries(hb)) {
+    if (name === 'agent26-landing-auditor') continue;           // don't flag ourselves mid-cycle
+    if (typeof ts !== 'number') continue;
+    const age = now - ts;
+    if (age > PRODUCER_DOWN_MS) {
+      violations.push(`PRODUCER DOWN: "${name}" last beat ${Math.round(age / 60_000)} min ago (> ${PRODUCER_DOWN_MS / 60_000} min) — PM2/agent-monitor should auto-restart; verify it recovered`);
+    }
+  }
+
+  // M48 — pipeline freshness: the NEWEST core feed defines the pipeline age. If even the
+  // freshest is stale, the whole pipeline is stale → global "dati non aggiornati" banner
+  // (surfaced by the health report) + a violation here.
+  let freshest = null;
+  for (const f of CORE_FEEDS) {
+    const raw = readJsonSafe(f.file);
+    const ts  = raw && typeof raw[f.tsKey] === 'number' ? raw[f.tsKey] : null;
+    if (ts != null && (freshest == null || ts > freshest)) freshest = ts;
+  }
+  if (freshest != null && now - freshest > PIPELINE_STALE_MS) {
+    violations.push(`PIPELINE STALE: freshest core feed is ${Math.round((now - freshest) / 60_000)} min old (> ${PIPELINE_STALE_MS / 60_000} min) — global "dati non aggiornati" banner + downgrade expected`);
+  }
+  return violations;
+}
+
 // CROSS-CYCLE rule 5: a cashable value that swings > 50% between two consecutive cycles
 // is suppressed until it stabilizes. Only the serve-path CAN'T see across cycles, so this
 // agent computes it and writes a reversible, TTL-bounded directive the suppressor honors.
@@ -733,8 +823,19 @@ function servedRowId(section, row) {
 async function buildGuardianDirectives(state) {
   const now = Date.now();
   const prevNet = (state && state.guardianPrevNet) || {};
+  const prevIds = (state && state.guardianPrevIds) || {};
   const curNet = {};
-  const directives = [];
+  const curIds = {};
+  // One directive per section:rowId (readDirectives keeps the last write per key). Build a
+  // map so the strongest rule wins deterministically: L46 units > L44 spike > L45 quarantine
+  // > A5 swing (a unit error is the most misleading; a swing is the softest).
+  const byKey = new Map();
+  const RANK = { L46: 4, L44: 3, L45: 2, A5: 1 };
+  const put = (d) => {
+    const key = `${d.section}:${d.rowId}`;
+    const cur = byKey.get(key);
+    if (!cur || (RANK[d.rule] || 0) > (RANK[cur.rule] || 0)) byKey.set(key, d);
+  };
 
   const sections = [];
   try {
@@ -748,27 +849,59 @@ async function buildGuardianDirectives(state) {
   } catch (e) { log('guardian directive fetch /api/carry failed:', e.message); }
 
   for (const [section, rows] of sections) {
+    let top = { id: null, net: -Infinity };            // L45 — the section's current top opportunity
+    const seenIds = [];
     for (const row of rows) {
       const id  = servedRowId(section, row);
       const net = servedNet(section, row);
       if (id == null || typeof net !== 'number' || !isFinite(net)) continue;
       const key = `${section}:${id}`;
       curNet[key] = net;
+      seenIds.push(id);
+      if (net > top.net) top = { id, net };
+
+      // ── L44/L46 (funding only — raw legs + independent recompute available) ──
+      if (section === 'funding' && row.coin) {
+        const unit = fundingUnitSuspect(row, row.coin);
+        if (unit) {
+          put({ section, rowId: id, action: 'suppress-value', rule: 'L46',
+            label: LABELS.SUSPECT_UNIT, reason: unit, expiresAt: now + GUARDIAN_DIRECTIVE_TTL_MS });
+        }
+        const spike = fundingLegSpike(row.coin, row.shortExchange, row.longExchange);
+        if (spike) {
+          put({ section, rowId: id, action: 'suppress-value', rule: 'L44',
+            label: LABELS.QUARANTINE, reason: spike, expiresAt: now + GUARDIAN_DIRECTIVE_TTL_MS });
+        }
+      }
+
+      // ── A5 (cross-cycle swing) ──
       const prev = prevNet[key];
-      if (typeof prev !== 'number' || !isFinite(prev)) continue;   // need two cycles to judge a swing
-      const base = Math.max(Math.abs(prev), 1e-9);
-      const swing = Math.abs(net - prev) / base;
-      // Only act on a MATERIAL number (avoid noise near zero) that swings past the shared
-      // threshold. Suppress the value (display-only) until it stabilizes.
-      if ((Math.abs(prev) > 0.05 || Math.abs(net) > 0.05) && swing > CASHABLE_SWING) {
-        directives.push({
-          section, rowId: id, action: 'suppress-value', rule: 'A5',
-          reason: `value swung ${(swing * 100).toFixed(0)}% between cycles (${prev} → ${net}, > ${(CASHABLE_SWING * 100)}%) — suppressed until it stabilizes`,
-          expiresAt: now + GUARDIAN_DIRECTIVE_TTL_MS,
-        });
+      if (typeof prev === 'number' && isFinite(prev)) {
+        const base = Math.max(Math.abs(prev), 1e-9);
+        const swing = Math.abs(net - prev) / base;
+        if ((Math.abs(prev) > 0.05 || Math.abs(net) > 0.05) && swing > CASHABLE_SWING) {
+          put({ section, rowId: id, action: 'suppress-value', rule: 'A5',
+            reason: `value swung ${(swing * 100).toFixed(0)}% between cycles (${prev} → ${net}, > ${(CASHABLE_SWING * 100)}%) — suppressed until it stabilizes`,
+            expiresAt: now + GUARDIAN_DIRECTIVE_TTL_MS });
+        }
       }
     }
+    curIds[section] = seenIds;
+
+    // ── L45: the current TOP opportunity was ABSENT last cycle → quarantine until it
+    // stabilizes (it appeared from nowhere at #1 — the exact excluded→top-in-one-cycle
+    // smell). Only when we HAVE a previous cycle for this section (else every first cycle
+    // would quarantine its top). Self-heals: once it persists, it is no longer "new".
+    const prevSet = prevIds[section];
+    if (top.id != null && Array.isArray(prevSet) && prevSet.length && !prevSet.includes(top.id)) {
+      put({ section, rowId: top.id, action: 'suppress-value', rule: 'L45',
+        label: LABELS.QUARANTINE,
+        reason: `row jumped to the section's top opportunity in one cycle after being absent last cycle — quarantined until it stabilizes`,
+        expiresAt: now + GUARDIAN_DIRECTIVE_TTL_MS });
+    }
   }
+
+  const directives = Array.from(byKey.values());
 
   // Always write (even empty) so the file self-heals: once a value stabilizes, its
   // directive is not re-emitted and the suppression clears on the next serve read.
@@ -776,7 +909,7 @@ async function buildGuardianDirectives(state) {
     atomicWriteJson(GUARDIAN_DIRECTIVES_FILE, { updatedAt: now, directives }, { pretty: true });
   } catch (e) { log('guardian directive write failed:', e.message); }
 
-  return { directives, curNet };
+  return { directives, curNet, curIds };
 }
 
 // GUARDIAN rule H (31–33): paid-gating leak audit. This agent hits the tab APIs with NO
@@ -850,6 +983,10 @@ async function runCycle(state) {
   const spike = auditSanityRejectSpike(state && state.sanityRejectSeen);
   allViolations.push(...spike.violations);
 
+  // Phase 3 rules M47/M48/M49: system integrity — producer-down / pipeline-stale
+  // (PM2/agent-monitor RESTARTS; the guardian OBSERVES + surfaces so it reaches alerts).
+  allViolations.push(...auditSystemIntegrity());
+
   // GUARDIAN observe: watch the serve-path guardian log for the CRITICAL guardrail.
   const gLog = auditGuardianLog(state && state.guardianCriticalSeen);
   allViolations.push(...gLog.violations);
@@ -862,11 +999,14 @@ async function runCycle(state) {
   // GUARDIAN direct: emit cross-cycle (rule 5 cashable-swing) directives the serve path
   // cannot compute alone. Reversible + TTL-bounded; self-heals when values stabilize.
   let guardianPrevNet = state && state.guardianPrevNet;
+  let guardianPrevIds = state && state.guardianPrevIds;
   try {
     const gd = await buildGuardianDirectives(state);
     guardianPrevNet = gd.curNet;
+    guardianPrevIds = gd.curIds;
     if (gd.directives.length) {
-      log(`guardian directives written: ${gd.directives.length} cashable-swing suppression(s)`);
+      const byRule = gd.directives.reduce((m, d) => { m[d.rule] = (m[d.rule] || 0) + 1; return m; }, {});
+      log(`guardian directives written: ${gd.directives.length} suppression(s) ${JSON.stringify(byRule)}`);
     }
   } catch (e) { log('buildGuardianDirectives error:', e.message); }
 
@@ -876,6 +1016,7 @@ async function runCycle(state) {
     sanityRejectSeen: spike.total,
     guardianCriticalSeen: gLog.criticalCount,
     guardianPrevNet,
+    guardianPrevIds,
   };
 }
 
@@ -912,9 +1053,9 @@ async function main() {
 
   while (true) {
     try {
-      const { violations, sanityRejectSeen, guardianCriticalSeen, guardianPrevNet } = await runCycle(state);
-      // carry the delta-detection high-water marks + cross-cycle net snapshot forward
-      state = { ...state, sanityRejectSeen, guardianCriticalSeen, guardianPrevNet };
+      const { violations, sanityRejectSeen, guardianCriticalSeen, guardianPrevNet, guardianPrevIds } = await runCycle(state);
+      // carry the delta-detection high-water marks + cross-cycle net/id snapshots forward
+      state = { ...state, sanityRejectSeen, guardianCriticalSeen, guardianPrevNet, guardianPrevIds };
       state = await maybeAlert(violations, state, { forceFirstSend: first });
       if (first) { state.firstCheckDone = true; first = false; }
       saveState(state);
@@ -936,7 +1077,8 @@ async function main() {
 }
 
 // Exported for unit testing the phantom-instrument + guardian checks in isolation.
-module.exports = { auditServedFeeds, auditSanityRejectSpike, auditGuardianLog, servedNet, servedRowId, auditPaidGatingLeaks };
+module.exports = { auditServedFeeds, auditSanityRejectSpike, auditGuardianLog, servedNet, servedRowId, auditPaidGatingLeaks,
+  fundingLegSpike, fundingUnitSuspect, auditSystemIntegrity };
 
 if (require.main === module) {
   main().catch(e => { console.error('[A26] Fatal:', e); process.exit(1); });

@@ -124,6 +124,10 @@ export interface SpreadItem {
   greenCapacityUsd:   number | null;           // largest GREEN size (0 if none)
   slipCurveMaxFillable: number | null;         // largest fillable size (slider clamp)
   persistence:        Persistence | null;      // past track record; null = still collecting real history
+  // Display-only guardian meta attached by lib/guardian-suppress on the serve path (never
+  // written to source). Carries K41/K43 removeCautionChip so the CAUTION chip consumer
+  // (lib/caution-chip) can drop a contradictory alarm chip without touching any value.
+  __guardian?: { removeCautionChip?: boolean } & Record<string, unknown>;
 }
 
 export interface SpreadsMeta {

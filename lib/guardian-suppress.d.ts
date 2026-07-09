@@ -78,6 +78,8 @@ export interface GuardianCtx {
   // Phase 2 (rules F–K):
   emptyReason?: 'no-data' | 'redacted'; // J37/J38 — why the tab is empty (route knows isPaid)
   claimedCashable?: number;             // J39 — header's claimed cashable count to reconcile
+  // Phase 3 (rules L–N):
+  unclassified?: Set<string>;           // N50 — `${section}:${id}` rows the auditor flags unclassified ⇒ suppress
 }
 
 export interface GuardianResult<T> {
@@ -132,4 +134,7 @@ export declare const MIN_ROUNDTRIP_FEE_FRAC: number;
 export declare const RUN_RATE_APR_MIN: number;
 export declare const IMPOSSIBLE_BREAKEVEN: number;
 export declare const REFERENCE_ONLY_VENUES: string[];
+export declare const SPIKE_MULT: number;
+export declare const UNIT_SUSPECT_LO: number;
+export declare const UNIT_SUSPECT_HI: number;
 export declare const DIRECTIVES_FILE: string;
