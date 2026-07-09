@@ -166,6 +166,21 @@ function ContangoCard({ c }: { c: Contract }) {
       {/* Detail panel */}
       <div className="px-4 pb-4 space-y-3">
 
+        {/* Real locked return over the actual hold — de-annualized (net × days/365 =
+            executableBasis − fee). Keeps the annualized headline from being mistaken
+            for the short-period gain. Redacts with the net field on free tier. */}
+        <div className="flex flex-wrap gap-x-2 gap-y-1 items-baseline">
+          <span className="font-body text-[12px] text-muted">Real locked return</span>
+          <span className="font-mono font-semibold text-[13px] text-ink-2">
+            <Redacted value={c.netAnnualizedExecutable}>
+              {v => `≈ +${(v * c.daysToExpiry / 365 * 100).toFixed(2)}% over ${c.daysToExpiry}d`}
+            </Redacted>
+          </span>
+          <span className="font-body text-[11px] text-muted/70">
+            (the +%/yr above is an annualized run-rate — not earned over {c.daysToExpiry}d)
+          </span>
+        </div>
+
         <VerifyBadge v={(c as any).__verify} />
 
         {/* Invariant violation flag */}

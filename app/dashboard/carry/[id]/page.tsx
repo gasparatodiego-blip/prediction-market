@@ -143,6 +143,11 @@ export default function CarryOperationPage({ params }: { params: { id: string } 
               <span style={{ color: '#cbd3dc' }}>·</span>
               <span>net <span className="font-bold" style={{ color: '#0e1626' }}><Redacted value={c.netAnnualizedExecutable}>{v => fmtAnnualized(v)}</Redacted></span><span style={{ color: '#9aa5b3' }}>/yr</span></span>
               <span style={{ color: '#cbd3dc' }}>·</span>
+              {/* Real locked return over the actual hold — de-annualized (net × days/365 =
+                  executableBasis − fee) so the annualized run-rate isn't read as the
+                  short-period gain. Redacts with the net field on free tier. */}
+              <span>real <span className="font-bold" style={{ color: '#0e1626' }}><Redacted value={c.netAnnualizedExecutable}>{v => `≈ +${(v * c.daysToExpiry / 365 * 100).toFixed(2)}%`}</Redacted></span><span style={{ color: '#9aa5b3' }}> over {c.daysToExpiry}d</span></span>
+              <span style={{ color: '#cbd3dc' }}>·</span>
               <span>
                 fee <span style={{ color: '#0e1626' }}>{(c.fee * 100).toFixed(3)}%</span> round-trip
                 {c.feeLegs && c.feeLegs.length > 0 && (
