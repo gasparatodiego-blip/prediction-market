@@ -1856,11 +1856,18 @@ function PerpSpotFlow({ row, perpUrl, spotUrl }: { row: PerpSpotRow; perpUrl: st
           <span className="font-mono font-bold text-ink truncate" style={{ fontSize: 12 }}>{venueLabel(row.spotVenueSuggested)}</span>
           {spotUrl && <PlatformLink href={spotUrl} label={`${venueLabel(row.spotVenueSuggested)} spot`} compact className="shrink-0" />}
         </span>
-        <span className="font-mono tabular-nums mt-0.5" style={{ fontSize: 11, color: '#9aa5b3' }}>
-          no funding
-        </span>
+        {/* Executable buy price from the real book (cheapest venue), when available */}
+        {row.spotExecutable && row.spotAsk != null ? (
+          <span className="font-mono tabular-nums mt-0.5" style={{ fontSize: 11, color: spotColor }}>
+            buy @ ${row.spotAsk.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+          </span>
+        ) : (
+          <span className="font-mono tabular-nums mt-0.5" style={{ fontSize: 11, color: '#9aa5b3' }}>
+            no funding
+          </span>
+        )}
         <span className="mt-0.5 font-body" style={{ fontSize: 9, color: '#9aa5b3' }}>
-          long hedge
+          {row.spotExecutable ? 'executable · long hedge' : 'long hedge'}
         </span>
       </div>
     </div>
@@ -1869,13 +1876,17 @@ function PerpSpotFlow({ row, perpUrl, spotUrl }: { row: PerpSpotRow; perpUrl: st
 
 const PERP_SPOT_CAP_TIP =
   'The largest position you can enter before order-book slippage eats the funding. ' +
-  'For the carry lane the spot + perp book depth is not walked yet — there is no measured ' +
-  'green size, so check each venue’s book and size conservatively before entering.';
+  'The SPOT (long) leg is now walked from the real book — the figure is its 20bps resting ' +
+  'depth (never OI). The PERP (short) leg’s book isn’t walked yet, so it can bind first — ' +
+  'check the perp book and size conservatively.';
 
-// Capacity slot for the carry lane. Mirrors the perp-vs-perp CapacityRow's container +
-// label + caption, but renders its HONEST not-measured state: PerpSpotRow carries no
-// order-book depth walk, so we never fabricate a green size or headroom bar here.
-function PerpSpotCapacityRow() {
+// Capacity slot for the carry lane. The SPOT leg is now book-walked (agent10 real books),
+// so when spotCapacityUsd is present we show that measured buy-leg depth — honestly scoped
+// to the spot leg only (the perp leg isn't walked yet, so it may bind first). Otherwise we
+// keep the HONEST not-measured state and never fabricate a green size.
+function PerpSpotCapacityRow({ row }: { row: PerpSpotRow }) {
+  const spotCap = row.spotExecutable && row.spotCapacityUsd != null && row.spotCapacityUsd > 0
+    ? row.spotCapacityUsd : null;
   return (
     <div className="pt-2.5 mt-1" style={{ borderTop: '1px solid #eef2f6' }}>
       <div className="flex items-center justify-between gap-2">
@@ -1883,10 +1894,18 @@ function PerpSpotCapacityRow() {
           Max before slippage
           <InfoTooltip label="Max before slippage — how it's measured" text={PERP_SPOT_CAP_TIP} />
         </span>
-        <span className="font-body" style={{ fontSize: 11, color: '#9aa5b3' }}>not measured yet</span>
+        {spotCap != null ? (
+          <span className="font-mono tabular-nums" style={{ fontSize: 11, color: '#0f766e' }}>
+            {fmtCapDisplay(spotCap)} <span className="font-body" style={{ color: '#9aa5b3' }}>spot leg</span>
+          </span>
+        ) : (
+          <span className="font-body" style={{ fontSize: 11, color: '#9aa5b3' }}>not measured yet</span>
+        )}
       </div>
       <p className="mt-1.5 font-body leading-snug" style={{ fontSize: 10.5, color: '#9aa5b3' }}>
-        Order-book depth for the carry legs isn’t walked yet — check each venue’s book and size conservatively.
+        {spotCap != null
+          ? `Spot (long) leg walked from ${venueLabel(row.spotVenueSuggested)}’s real book — 20bps resting depth. The perp (short) leg isn’t walked yet and may bind first; size conservatively.`
+          : 'Order-book depth for the carry legs isn’t walked yet — check each venue’s book and size conservatively.'}
       </p>
     </div>
   );
@@ -1992,7 +2011,7 @@ function PerpSpotCard({
         </div>
       </div>
 
-      <PerpSpotCapacityRow />
+      <PerpSpotCapacityRow row={row} />
 
       {/* Footer — execution-guide toggle, styled like the perp-vs-perp card's button */}
       <div className="flex items-center justify-end pt-0.5">
