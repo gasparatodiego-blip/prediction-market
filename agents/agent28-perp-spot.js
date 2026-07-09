@@ -107,11 +107,54 @@ function trailingPositive(persist, venue, coin) {
   return n;
 }
 
-// Which major spot venue to suggest for `coin`. Among sourced-fee venues that CONFIRM a
-// listing, pick the CHEAPEST taker (ties → SPOT_VENUE_PRIORITY order for liquidity); fall
-// back to Binance (suggested, unverified) so the row still renders honestly. Returns the
-// sourced spotFeePct alongside so the caller nets both legs on real fees.
+// Which major spot venue to buy the long hedge on for `coin` — the "long spot on the
+// CHEAPEST venue" leg of the cross-venue carry. Two tiers, honest-engine:
+//
+//   1. EXECUTABLE (preferred): among sourced-fee venues that expose a REAL spot order
+//      book (agent10 writes spotBookSource:'book' with spotBid/spotAsk + 20bps book-walked
+//      depth), buy where the EFFECTIVE ask (executable ask × (1 + taker fee)) is cheapest.
+//      This is genuinely fillable, so spotExecutable=true and spotCapacityUsd is the real
+//      book-walked buy-leg depth (never OI). The crowned venue keeps a sourced spot fee, so
+//      the request-time estimator nets identically.
+//   2. FALLBACK (no book — e.g. an alt we don't fetch spot books for): keep the prior
+//      listing-based suggestion (cheapest sourced taker among price-listed venues), but
+//      flag spotExecutable=false and leave the executable spot fields null — never claim a
+//      verified fill or fabricate depth.
+//
+// spotVenueVerified retains its original meaning (a sourced-fee major lists the coin) so no
+// existing consumer regresses; spotExecutable is the NEW, stronger "real book read" signal.
 function suggestSpotVenue(spot, coin) {
+  const NULL_EXEC = { spotExecutable: false, spotAsk: null, spotBid: null, spotCapacityUsd: null, spotBookAt: null };
+
+  // Tier 1 — real executable books (cheapest fillable buy wins).
+  const book = [];
+  for (const v of SPOT_VENUE_PRIORITY) {
+    const e = (spot && spot[v] && spot[v][coin]) || null;
+    if (!e || e.spotBookSource !== 'book') continue;
+    const ask = Number(e.spotAsk);
+    if (!isFinite(ask) || ask <= 0) continue;
+    const fee = spotVenueFeePct(v);
+    book.push({
+      v, fee,
+      ask,
+      bid:    isFinite(Number(e.spotBid)) ? Number(e.spotBid) : null,
+      effBuy: ask * (1 + fee / 100),                                        // executable ask incl. taker
+      capUsd: isFinite(Number(e.spotAskDepthUsd)) ? Number(e.spotAskDepthUsd) : null,  // buy-leg 20bps book depth
+      at:     typeof e.spotBookAt === 'number' ? e.spotBookAt : null,
+    });
+  }
+  if (book.length) {
+    book.sort((a, b) =>
+      (a.effBuy - b.effBuy) ||                                             // cheapest EXECUTABLE buy wins
+      (SPOT_VENUE_PRIORITY.indexOf(a.v) - SPOT_VENUE_PRIORITY.indexOf(b.v)));
+    const w = book[0];
+    return {
+      spotVenueSuggested: w.v, spotVenueVerified: true, spotFeePct: w.fee,
+      spotExecutable: true, spotAsk: w.ask, spotBid: w.bid, spotCapacityUsd: w.capUsd, spotBookAt: w.at,
+    };
+  }
+
+  // Tier 2 — listing-based fallback (unchanged behavior; not executable).
   const listed = SPOT_VENUE_PRIORITY.filter(v => {
     const listing = (spot && spot[v]) || {};
     return listing[coin] && typeof listing[coin].price === 'number';
@@ -119,13 +162,13 @@ function suggestSpotVenue(spot, coin) {
   if (listed.length) {
     listed.sort((a, b) => {
       const fa = spotVenueFeePct(a), fb = spotVenueFeePct(b);
-      if (fa !== fb) return fa - fb;                                   // cheapest taker wins
+      if (fa !== fb) return fa - fb;                                       // cheapest taker wins
       return SPOT_VENUE_PRIORITY.indexOf(a) - SPOT_VENUE_PRIORITY.indexOf(b);
     });
     const v = listed[0];
-    return { spotVenueSuggested: v, spotVenueVerified: true, spotFeePct: spotVenueFeePct(v) };
+    return { spotVenueSuggested: v, spotVenueVerified: true, spotFeePct: spotVenueFeePct(v), ...NULL_EXEC };
   }
-  return { spotVenueSuggested: 'binance', spotVenueVerified: false, spotFeePct: spotVenueFeePct('binance') };
+  return { spotVenueSuggested: 'binance', spotVenueVerified: false, spotFeePct: spotVenueFeePct('binance'), ...NULL_EXEC };
 }
 
 function computeRows(raw, persist) {
@@ -211,6 +254,13 @@ function computeRows(raw, persist) {
       trailingPositiveSettlements: trailingPositive(persist, win.shortVenue, coin),
       spotVenueSuggested:          spotSug.spotVenueSuggested,
       spotVenueVerified:           spotSug.spotVenueVerified,
+      // Executable spot leg (cross-venue): real book bid/ask + book-walked buy capacity.
+      // null when no book was read (alt without a fetched spot book) — never fabricated.
+      spotExecutable:              spotSug.spotExecutable,
+      spotAsk:                     spotSug.spotAsk,
+      spotBid:                     spotSug.spotBid,
+      spotCapacityUsd:             spotSug.spotCapacityUsd,
+      spotBookAt:                  spotSug.spotBookAt,
       markPrice:                   win.markPrice,
       vol24hUsd:                   win.vol24hUsd,
       // ── fee-aware (max-net) selection provenance (transparency; downstream ignores these) ──

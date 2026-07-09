@@ -157,6 +157,16 @@ export interface PerpSpotRow {
   shortVenue:                  string;
   spotVenueSuggested:          string;
   spotVenueVerified:           boolean;
+  // Executable spot hedge leg (cross-venue), from agent10's real per-venue books. When
+  // spotExecutable, the long leg buys at spotAsk on spotVenueSuggested (cheapest effective
+  // ask across venues with a real book) and spotCapacityUsd is the 20bps book-walked buy
+  // depth (real resting depth, never OI). All null when no book was read (never fabricated).
+  // Public reference data (real prices/depth) — not redacted, like markPrice/funding.
+  spotExecutable:              boolean;
+  spotAsk:                     number | null;
+  spotBid:                     number | null;
+  spotCapacityUsd:             number | null;
+  spotBookAt:                  number | null;
   fundingRateNative:           number;   // native %/interval (teaser)
   intervalH:                   number;
   fundingPct8h:                number;   // normalized %/8h (teaser)
