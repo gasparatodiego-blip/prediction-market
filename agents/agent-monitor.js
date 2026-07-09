@@ -15,6 +15,7 @@
 
 const fs    = require('fs');
 const path  = require('path');
+const http  = require('http');
 const https = require('https');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
@@ -183,6 +184,91 @@ async function pm2Restart(name, presentInPm2) {
   return r;
 }
 
+// ── Rule 58/59: dashboard liveness + build integrity ────────────────────────
+// The dashboard is user-facing. PM2 "online" only means the node process is up — a
+// hung route or a corrupt build still answers 500 (or hangs) while PM2 reports online.
+// So we ACTIVELY probe HTTP: a non-200 (or unreachable) health endpoint means the site
+// is not serving. Rule 58 says auto-restart the dashboard on that (guarded by the SAME
+// circuit breaker so a genuinely-broken build can't loop). Rule 59: if .next/BUILD_ID is
+// missing/corrupt the build is gone — we ALERT (never blindly auto-rebuild from the
+// monitor; a rebuild belongs to the guarded build path so a failed build can't take the
+// last working one down). This is the "restart processes, never edit code" watchdog.
+const DASHBOARD_PROBE_URL = 'http://localhost:3000/api/health';
+const PROBE_TIMEOUT_MS    = 8_000;
+const BUILD_ID_FILE       = path.join(__dirname, '..', '.next', 'BUILD_ID');
+
+function httpStatus(url, timeoutMs = PROBE_TIMEOUT_MS) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (v) => { if (!settled) { settled = true; clearTimeout(t); try { req.destroy(); } catch {} resolve(v); } };
+    const lib = url.startsWith('https:') ? https : http;
+    const req = lib.get(url, (res) => { res.resume(); done({ ok: res.statusCode === 200, status: res.statusCode }); });
+    const t = setTimeout(() => done({ ok: false, status: null, error: 'timeout' }), timeoutMs);
+    req.on('error', (e) => done({ ok: false, status: null, error: e.message }));
+  });
+}
+
+// Returns { healthy, detail, restarted } and mutates the shared ledger/alert state.
+async function checkDashboardIntegrity(now, ledgerDirtyRef, alerted) {
+  // Rule 59 first — no build, no point probing HTTP.
+  let buildOk = true;
+  try { buildOk = fs.existsSync(BUILD_ID_FILE) && fs.statSync(BUILD_ID_FILE).size > 0; } catch { buildOk = false; }
+  if (!buildOk) {
+    const lastAlert = alertCooldown['dashboard-build'] ?? 0;
+    if (now - lastAlert > ALERT_COOLDOWN_MS) {
+      alertCooldown['dashboard-build'] = now;
+      alerted.push('dashboard-build');
+      console.error('[monitor] 🚨 .next/BUILD_ID missing/empty — dashboard build is gone or corrupt');
+      sendTelegram('🚨 <b>dashboard build corrupt</b> — .next/BUILD_ID missing/empty. NOT auto-rebuilding (a failed build must not replace the last working one). Run the guarded build: <code>scripts/guarded-build.sh</code>.');
+    }
+    return { healthy: false, detail: '.next/BUILD_ID missing', restarted: false };
+  }
+
+  // Rule 58 — HTTP liveness probe.
+  const probe = await httpStatus(DASHBOARD_PROBE_URL);
+  if (probe.ok) {
+    // Recovery bookkeeping for the HTTP breaker mirrors the heartbeat path.
+    const entry = ledger['dashboard'];
+    if (entry && (entry.attempts.length > 0 || entry.breakerOpen)) {
+      if (entry.healthySince == null) { entry.healthySince = now; ledgerDirtyRef.v = true; }
+      else if (now - entry.healthySince >= RECOVERY_COOLDOWN_MS) {
+        const wasOpen = entry.breakerOpen;
+        delete ledger['dashboard']; ledgerDirtyRef.v = true;
+        console.log('[monitor] ✅ dashboard HTTP recovered, breaker reset');
+        sendTelegram(`✅ <b>dashboard</b> HTTP recovered — 200 for ${Math.round(RECOVERY_COOLDOWN_MS / 60000)} min, auto-restart re-enabled${wasOpen ? ' (breaker was OPEN)' : ''}.`);
+      }
+    }
+    return { healthy: true, detail: 'HTTP 200', restarted: false };
+  }
+
+  const detail = `HTTP ${probe.status ?? probe.error ?? 'unreachable'}`;
+  const entry = ledgerEntry('dashboard');
+  entry.healthySince = null;
+  pruneAttempts(entry, now);
+  ledgerDirtyRef.v = true;
+  if (entry.breakerOpen) {
+    return { healthy: false, detail, restarted: false };
+  }
+  if (entry.attempts.length >= MAX_RESTARTS) {
+    entry.breakerOpen = true;
+    alerted.push('dashboard-http');
+    console.error(`[monitor] 🚨 dashboard HTTP crash-looping (${detail}) — breaker OPEN, auto-restart disabled`);
+    sendTelegram(`🚨 <b>dashboard</b> not serving (${detail}) after ${MAX_RESTARTS} restarts in ${Math.round(WINDOW_MS / 60000)} min — auto-restart <b>DISABLED</b>, manual intervention needed.`);
+    return { healthy: false, detail, restarted: false };
+  }
+  entry.attempts.push(now);
+  const n = entry.attempts.length;
+  try {
+    await pm2Restart('dashboard', true);
+    console.log(`[monitor] 🔄 dashboard not serving (${detail}) — auto-restarted (attempt ${n}/${MAX_RESTARTS})`);
+    sendTelegram(`🔄 <b>dashboard</b> not serving (${detail}) — auto-restarted (attempt ${n}/${MAX_RESTARTS}).`);
+  } catch (e) {
+    console.error(`[monitor] dashboard restart FAILED (attempt ${n}/${MAX_RESTARTS}): ${e.message}`);
+    sendTelegram(`⚠️ dashboard auto-restart FAILED (attempt ${n}/${MAX_RESTARTS})\n<code>${(e.message || '').slice(0, 200)}</code>`);
+  }
+  return { healthy: false, detail, restarted: true };
+}
+
 async function checkHealth() {
   const ts  = new Date().toISOString();
   const now = Date.now();
@@ -283,24 +369,39 @@ async function checkHealth() {
     }
   }
 
+  // Rule 58/59: active dashboard liveness + build-integrity probe (auto-restart on
+  // non-200, guarded by the same breaker; alert-only on a corrupt/missing build).
+  const ledgerDirtyRef = { v: ledgerDirty };
+  let dashboardHttp = null;
+  try {
+    dashboardHttp = await checkDashboardIntegrity(now, ledgerDirtyRef, alerted);
+  } catch (e) {
+    console.error('[monitor] dashboard integrity probe error:', e.message);
+  }
+  ledgerDirty = ledgerDirtyRef.v;
+
   if (ledgerDirty) atomicWriteJson(LEDGER_FILE, ledger);
 
-  const allHealthy = agentStatuses.every(a => a.healthy);
+  const allHealthy = agentStatuses.every(a => a.healthy) && (dashboardHttp ? dashboardHttp.healthy : true);
 
   // Write monitor status for /api/health
   writeJson(STATUS_OUT, {
     checkedAt:     ts,
     allHealthy,
     agentStatuses,
+    dashboardHttp,   // rule 58/59 — { healthy, detail, restarted }
   });
 
-  // Send Telegram alerts for unhealthy agents
-  if (alerted.length) {
-    const lines = alerted.map(name => {
+  // Send Telegram alerts for unhealthy agents. The dashboard HTTP/build probes
+  // (dashboard-http / dashboard-build) already sent their OWN detailed alert inside
+  // checkDashboardIntegrity — exclude them here so they don't double-fire.
+  const summaryAlerts = alerted.filter(name => agentStatuses.some(a => a.name === name));
+  if (summaryAlerts.length) {
+    const lines = summaryAlerts.map(name => {
       const s = agentStatuses.find(a => a.name === name);
       return `• <b>${name}</b>: ${s?.pm2status ?? 'unknown'}${s?.beatAgeSeconds ? ` (last beat ${Math.round(s.beatAgeSeconds / 60)}m ago)` : ''}`;
     });
-    sendTelegram(`🚨 <b>AGENT MONITOR ALERT</b>\n${alerted.length} agent(s) down:\n${lines.join('\n')}\n\nCheck: <code>pm2 list</code>`);
+    sendTelegram(`🚨 <b>AGENT MONITOR ALERT</b>\n${summaryAlerts.length} agent(s) down:\n${lines.join('\n')}\n\nCheck: <code>pm2 list</code>`);
   }
 
   const healthStr = agentStatuses.map(a => `${a.name}:${a.healthy ? '✓' : '✗'}`).join(' | ');

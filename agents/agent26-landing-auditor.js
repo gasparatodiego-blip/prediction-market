@@ -88,17 +88,10 @@ const GUARDIAN_DIRECTIVES_FILE = '/tmp/guardian-directives.json'; // agent26 →
 const GUARDIAN_DIRECTIVE_TTL_MS = 60 * 60_000; // a cashable-swing/cross-surface directive self-expires after 1h
 const API_BASE            = 'http://localhost:3000';
 
-// ── Phase 3 (rules L–N) — spike / system integrity ─────────────────────────────
-const PRODUCER_DOWN_MS  = 15 * 60_000; // M47 — a producer heartbeat older than this ⇒ down
-const PIPELINE_STALE_MS = 15 * 60_000; // M48 — freshest core feed older than this ⇒ pipeline stale
-const SERVED_STALE_MS   = 20 * 60_000; // M49 — a served-row timestamp older than this ⇒ demote (mirrors C12)
-// Core producer feeds whose freshness defines "the pipeline is up" (M48). Each is the
-// output of a specific agent; the newest of them is the pipeline's effective age.
-const CORE_FEEDS = [
-  { file: EXCHANGE_FILE, tsKey: 'timestamp',  label: 'exchange-prices (agent10/15)' },
-  { file: UNI_FILE,      tsKey: 'updatedAt',  label: 'unified-opportunities (agent15)' },
-  { file: BASIS_FILE,    tsKey: 'updatedAt',  label: 'basis (agent19)' },
-];
+// ── Phase 3 (rules L–N / M / robustness) — the guardian's robustness/uptime report.
+// M47/M48/M49 defer to it (and to agent-monitor's real-fleet view) rather than
+// re-scanning raw heartbeats — that avoids flagging stale beats from long-dead agents.
+const { getGuardianHealth } = require('../lib/guardian-health');
 
 const UNI_STALE_MS    = 10 * 60_000; // matches lib/spread-compute.ts UNI_STALE_MS
 const SPORTS_STALE_MS = 7_200_000;   // matches app/page.tsx readLandingStats()
@@ -782,36 +775,36 @@ function fundingUnitSuspect(row, coin) {
   return null;
 }
 
-// ── M (rules 47–49): system integrity. Producer-down / pipeline-stale / served-timestamp
-// age. Read-only over heartbeats + core feed timestamps; PM2/agent-monitor already
-// RESTARTS — this only OBSERVES + surfaces so it reaches the alert + health report.
+// ── M (rules 47–49) + robustness roll-up: system integrity via the guardian health
+// report. PM2/agent-monitor already RESTART producers, the dashboard, etc. — this only
+// OBSERVES the report and surfaces conditions a human should know about, deferring to
+// agent-monitor's REAL-fleet view (health.watchdog.unhealthyAgents) so it never flags
+// stale heartbeats from long-dead agents. Deduped by the existing 6h violation cooldown.
 function auditSystemIntegrity() {
   const violations = [];
-  const now = Date.now();
+  let health;
+  try { health = getGuardianHealth(); }
+  catch (e) { log('getGuardianHealth error:', e.message); return violations; }
 
-  // M47 — a producer heartbeat older than PRODUCER_DOWN_MS (agent-monitor restarts it;
-  // we surface it so the guardian's own view stays honest). hbKey-less agents are skipped.
-  const hb = readJsonSafe(HB_FILE) || {};
-  for (const [name, ts] of Object.entries(hb)) {
-    if (name === 'agent26-landing-auditor') continue;           // don't flag ourselves mid-cycle
-    if (typeof ts !== 'number') continue;
-    const age = now - ts;
-    if (age > PRODUCER_DOWN_MS) {
-      violations.push(`PRODUCER DOWN: "${name}" last beat ${Math.round(age / 60_000)} min ago (> ${PRODUCER_DOWN_MS / 60_000} min) — PM2/agent-monitor should auto-restart; verify it recovered`);
-    }
+  // M47 — producers the agent-monitor (real fleet) currently marks unhealthy.
+  if (health.watchdog.monitorFresh && Array.isArray(health.watchdog.unhealthyAgents) && health.watchdog.unhealthyAgents.length) {
+    violations.push(`PRODUCER(S) DOWN: agent-monitor reports ${health.watchdog.unhealthyAgents.join(', ')} unhealthy — PM2/agent-monitor auto-restarts; verify recovery`);
   }
-
-  // M48 — pipeline freshness: the NEWEST core feed defines the pipeline age. If even the
-  // freshest is stale, the whole pipeline is stale → global "dati non aggiornati" banner
-  // (surfaced by the health report) + a violation here.
-  let freshest = null;
-  for (const f of CORE_FEEDS) {
-    const raw = readJsonSafe(f.file);
-    const ts  = raw && typeof raw[f.tsKey] === 'number' ? raw[f.tsKey] : null;
-    if (ts != null && (freshest == null || ts > freshest)) freshest = ts;
+  // rule 58/59 — dashboard not serving / build gone.
+  const dh = health.watchdog.dashboardHttp;
+  if (dh && dh.healthy === false) {
+    violations.push(`DASHBOARD NOT SERVING: ${dh.detail}${dh.restarted ? ' (auto-restart triggered)' : ''} — site liveness probe failed`);
   }
-  if (freshest != null && now - freshest > PIPELINE_STALE_MS) {
-    violations.push(`PIPELINE STALE: freshest core feed is ${Math.round((now - freshest) / 60_000)} min old (> ${PIPELINE_STALE_MS / 60_000} min) — global "dati non aggiornati" banner + downgrade expected`);
+  if (health.build.buildIdPresent === false) {
+    violations.push('DASHBOARD BUILD MISSING: .next/BUILD_ID absent/empty — run scripts/guarded-build.sh (last working build should still serve)');
+  }
+  // M48 — pipeline stale ⇒ global "dati non aggiornati" banner expected.
+  if (health.pipeline.stale) {
+    violations.push(`PIPELINE STALE: freshest core feed ${health.pipeline.ageMin == null ? 'missing' : health.pipeline.ageMin + ' min old'} — global "dati non aggiornati" banner + downgrade expected`);
+  }
+  // rule 68 — a failed build held the deploy back (previous working build still serving).
+  if (health.build.deployHeldBack) {
+    violations.push('DEPLOY HELD BACK: last build FAILED — dashboard kept the previous working build (rule 68). Fix the build and re-run scripts/guarded-build.sh.');
   }
   return violations;
 }

@@ -18,6 +18,7 @@ import { PlatformLink } from '@/app/components/ui/PlatformLink';
 import { VerifyBadge } from '@/app/components/ui/VerifyBadge';
 import { venuePerpUrl, venueSpotUrl } from '@/lib/platform-links';
 import { cautionChipRemoved } from '@/lib/caution-chip';
+import { RowBoundary } from '@/app/components/ui/RowBoundary';
 import { AUTO_EXECUTE_ENABLED } from '@/lib/flags';
 import type { PerpSpotRow, PerpSpotRegime, UsdcArbRow } from '@/lib/spread-types';
 
@@ -1132,7 +1133,11 @@ function OpportunityCards({
       {allItems.length > 0 && view === 'cards' && (
         <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
           {visible.map(s => (
-            <FundingCard key={`${s.coin}-${s.shortExchange}-${s.longExchange}`} s={s} capital={capital} leverage={leverage} />
+            // Rule 55 — isolate each row: a single failing card shows a calm placeholder,
+            // the sibling cards still render (the tab never crashes as a whole).
+            <RowBoundary key={`${s.coin}-${s.shortExchange}-${s.longExchange}`}>
+              <FundingCard s={s} capital={capital} leverage={leverage} />
+            </RowBoundary>
           ))}
         </div>
       )}
@@ -2212,13 +2217,15 @@ function PerpSpotView({
       ) : (
         <div className="grid grid-cols-1 gap-2.5">
           {visible.map(row => (
-            <PerpSpotCard
-              key={`${row.coin}-${row.shortVenue}`}
-              row={row}
-              capitalPerLeg={capitalPerLeg}
-              expanded={openCoin === row.coin}
-              onToggle={() => setOpenCoin(c => (c === row.coin ? null : row.coin))}
-            />
+            // Rule 55 — one failing row shows a calm placeholder; siblings still render.
+            <RowBoundary key={`${row.coin}-${row.shortVenue}`}>
+              <PerpSpotCard
+                row={row}
+                capitalPerLeg={capitalPerLeg}
+                expanded={openCoin === row.coin}
+                onToggle={() => setOpenCoin(c => (c === row.coin ? null : row.coin))}
+              />
+            </RowBoundary>
           ))}
         </div>
       )}

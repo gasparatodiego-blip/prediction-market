@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
+import { getGuardianHealth } from '@/lib/guardian-health';
 
 const MONITOR_FILE  = '/tmp/monitor-status.json';
 const HB_FILE       = '/tmp/agent-heartbeats.json';
@@ -39,11 +40,17 @@ export async function GET() {
 
   const monitorAge = monitor?.checkedAt ? Math.round((now - new Date(monitor.checkedAt).getTime()) / 1000) : null;
 
+  // Guardian robustness/uptime report (rules 51–74): freshness banner, watchdog view,
+  // build integrity, guardian self-checks. Read-only; never throws on the serve path.
+  let guardian = null;
+  try { guardian = getGuardianHealth(now); } catch { guardian = null; }
+
   return NextResponse.json({
     ok:             monitor?.allHealthy ?? null,
     monitorAge,
     monitor:        monitor ?? null,
     heartbeats:     hbSummary,
+    guardian,
     serverTime:     new Date().toISOString(),
   });
 }
