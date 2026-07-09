@@ -626,7 +626,7 @@ export default function CarryPage() {
           <p>5. basis &lt; 0 → backwardation[], not opportunities[]</p>
           <p>6. COIN-M / OKX BTC-USD / ETH-USD labeled COIN-MARGINED; USD return drifts with spot</p>
           <p>7. capacity = min(vol×5%, OI×2%, $500k); BNB hard cap $50k</p>
-          <p className="pt-2 text-muted/70">Fees (round-trip taker): COIN-M 0.165% · USDT-M 0.140% · OKX 0.150% · Deribit 0.150%</p>
+          <p className="pt-2 text-muted/70">Fees (true 4-fill round-trip taker: spot open + future open + delivery + spot close): COIN-M 0.265% · USDT-M 0.240% · Bybit 0.255% · Kraken 0.250% · OKX 0.250% · Deribit 0.250%</p>
           <p className="text-muted/70">Universe: BTC (COIN-M + USDT-M + OKX + Deribit) · ETH (same) · BNB (COIN-M only)</p>
           <p className="text-muted/70">Excluded: SOL/XRP (no clean contract or decision-matrix rejected) · Bybit (dead ETH contract) · Hyperliquid/dYdX (perp DEX, no dated futures)</p>
         </div>

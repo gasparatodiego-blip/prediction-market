@@ -24,15 +24,24 @@ const CAP_VOL_F      = 0.05;    // capacity = 5% of vol24
 const CAP_OI_F       = 0.02;    // capacity = 2% of OI (take min)
 const MAX_CAP        = 500_000; // USD, any single opportunity
 
-// Round-trip taker fees: spot open (taker) + future open (taker) + delivery close (~free).
+// TRUE round-trip taker fees — the carry is a 4-FILL trip:
+//   1) spot open  (Binance taker ~0.10%)
+//   2) future open (venue taker)
+//   3) future close / delivery (~free)
+//   4) spot close  (Binance taker ~0.10%)   ← previously MISSING
+// The future cash-settles at index (USD for USDTM/Bybit/Kraken, in-coin for
+// COIN-M/OKX/Deribit inverse) — either way you finish holding the spot leg, so
+// realizing a USD basis return REQUIRES selling that spot (~0.10% Binance taker).
+// Omitting it understated fees by ~0.10% and over-stated net. Spot is bought AND
+// sold on Binance for every venue, so the close leg is a flat 0.0010 across the board.
 // bidSpreadPct is NOT subtracted here — it is already baked into the executable leg prices.
 const FEES = {
-  COINM:   0.00165,  // spot 0.10% + COIN-M futures 0.05% + delivery 0.015%
-  USDTM:   0.00140,  // spot 0.10% + USDT-M futures 0.04%
-  BYBIT:   0.00155,  // spot on Binance 0.10% + Bybit USDT-M linear futures taker 0.055%; delivery ~0
-  KRAKEN:  0.00150,  // spot on Binance 0.10% + Kraken Futures taker 0.05% (flexible futures); delivery ~0
-  OKX:     0.00150,  // spot 0.10% + OKX futures 0.05%
-  DERIBIT: 0.00150,  // spot on Binance 0.10% + Deribit futures 0.05%
+  COINM:   0.00265,  // spot open 0.10% + COIN-M futures 0.05% + delivery 0.015% + spot close 0.10%
+  USDTM:   0.00240,  // spot open 0.10% + USDT-M futures 0.04% + spot close 0.10%
+  BYBIT:   0.00255,  // spot open 0.10% + Bybit USDT-M linear futures taker 0.055% + spot close 0.10%; delivery ~0
+  KRAKEN:  0.00250,  // spot open 0.10% + Kraken Futures taker 0.05% (flexible futures) + spot close 0.10%; delivery ~0
+  OKX:     0.00250,  // spot open 0.10% + OKX futures 0.05% + spot close 0.10%
+  DERIBIT: 0.00250,  // spot open 0.10% + Deribit futures 0.05% + spot close 0.10%
 };
 
 // Per-leg breakdown of the round-trip taker fee above (display only — the UI shows
@@ -40,12 +49,12 @@ const FEES = {
 // EXACTLY to FEES[venueKey]; keep it in lockstep with FEES. Never re-summed into
 // math — FEES is the single number the basis calc subtracts.
 const FEE_LEGS = {
-  COINM:   [{ label: 'Binance spot',    pct: 0.0010 }, { label: 'COIN-M futures',  pct: 0.0005 }, { label: 'delivery', pct: 0.00015 }],
-  USDTM:   [{ label: 'Binance spot',    pct: 0.0010 }, { label: 'USDT-M futures',  pct: 0.0004 }],
-  BYBIT:   [{ label: 'Binance spot',    pct: 0.0010 }, { label: 'Bybit taker',     pct: 0.00055 }],
-  KRAKEN:  [{ label: 'Binance spot',    pct: 0.0010 }, { label: 'Kraken taker',    pct: 0.0005 }],
-  OKX:     [{ label: 'Binance spot',    pct: 0.0010 }, { label: 'OKX futures',     pct: 0.0005 }],
-  DERIBIT: [{ label: 'Binance spot',    pct: 0.0010 }, { label: 'Deribit futures', pct: 0.0005 }],
+  COINM:   [{ label: 'Binance spot open',  pct: 0.0010 }, { label: 'COIN-M futures',  pct: 0.0005 }, { label: 'delivery', pct: 0.00015 }, { label: 'Binance spot close', pct: 0.0010 }],
+  USDTM:   [{ label: 'Binance spot open',  pct: 0.0010 }, { label: 'USDT-M futures',  pct: 0.0004 }, { label: 'Binance spot close', pct: 0.0010 }],
+  BYBIT:   [{ label: 'Binance spot open',  pct: 0.0010 }, { label: 'Bybit taker',     pct: 0.00055 }, { label: 'Binance spot close', pct: 0.0010 }],
+  KRAKEN:  [{ label: 'Binance spot open',  pct: 0.0010 }, { label: 'Kraken taker',    pct: 0.0005 }, { label: 'Binance spot close', pct: 0.0010 }],
+  OKX:     [{ label: 'Binance spot open',  pct: 0.0010 }, { label: 'OKX futures',     pct: 0.0005 }, { label: 'Binance spot close', pct: 0.0010 }],
+  DERIBIT: [{ label: 'Binance spot open',  pct: 0.0010 }, { label: 'Deribit futures', pct: 0.0005 }, { label: 'Binance spot close', pct: 0.0010 }],
 };
 
 // Binance COIN-M: contract size in USD
