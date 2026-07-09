@@ -17,10 +17,20 @@ import { Redacted, RedactedPanel } from '@/app/components/ui/Redacted';
 import { PlatformLink } from '@/app/components/ui/PlatformLink';
 import { VerifyBadge } from '@/app/components/ui/VerifyBadge';
 import { venueFutureUrl, venueSpotUrl } from '@/lib/platform-links';
-import { fmtCapDisplay } from '@/lib/order-format';
+import { fmtCapDisplay, fmtMoney } from '@/lib/order-format';
 import { type Contract, chipVariant, nonCashableReason } from '@/lib/carry';
 
 interface CarryData { opportunities: Contract[]; updatedAt: string | null; }
+
+// Capital presets for the operation-page size selector — mirrors the inline
+// preset-button + editable-input stepper used on the liquidity-rewards and
+// funding-arb order pages. Default $10k.
+const CAPITAL_PRESETS = [1_000, 5_000, 10_000, 50_000];
+const DEFAULT_CAPITAL = 10_000;
+// Preset label: "$1k" / "$50k" (matches the rewards stepper's compact label).
+function presetLabel(v: number): string {
+  return v >= 1_000 ? `$${v / 1_000}k` : `$${v}`;
+}
 
 // Verdict chip palette — mirror of the EdgeChip colours used across the app.
 const VERDICT_CHIP: Record<string, { color: string; bg: string; border: string; label: string }> = {
@@ -59,6 +69,8 @@ export default function CarryOperationPage({ params }: { params: { id: string } 
 
   const [data, setData] = useState<CarryData | null>(null);
   const [loading, setLoading] = useState(true);
+  // User capital for the live fee/net-dollar figures (operation page only).
+  const [capital, setCapital] = useState(DEFAULT_CAPITAL);
 
   const load = useCallback(async () => {
     try {
@@ -106,6 +118,83 @@ export default function CarryOperationPage({ params }: { params: { id: string } 
         </div>
       ) : (
         <>
+          {/* ── CAPITAL SELECTOR + LIVE DOLLAR FIGURES (operation page only) ───────
+              Honest-engine: the net dollar gain multiplies capital by the REAL
+              PERIOD return (executableBasisPct − full 4-leg round-trip fee), NOT
+              the annualized %/yr. Fees in $ scale with the same real fee. On free
+              tier the underlying % is redacted (null) → the $ figures withhold too
+              (gated by isRedacted), never fabricated. */}
+          <div className="rounded-card mb-4" style={{ background: '#fff', border: '1px solid #e6eaef', padding: '14px 16px' }}>
+            <div className="font-body uppercase tracking-widest mb-2.5" style={{ fontSize: 9, color: '#9aa5b3' }}>Your capital</div>
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
+              {CAPITAL_PRESETS.map(v => (
+                <button
+                  key={v}
+                  onClick={() => setCapital(v)}
+                  className="font-body rounded-sm transition-colors duration-100"
+                  style={capital === v
+                    ? { minWidth: 44, padding: '7px 10px', fontSize: 12, background: '#0f766e', color: '#fff', border: '1px solid #0f766e' }
+                    : { minWidth: 44, padding: '7px 10px', fontSize: 12, background: '#fff', color: '#6b7787', border: '1px solid #e6eaef' }}
+                >
+                  {presetLabel(v)}
+                </button>
+              ))}
+              <div className="inline-flex items-center gap-1">
+                <span className="font-body" style={{ fontSize: 12, color: '#9aa5b3' }}>$</span>
+                <input
+                  type="number" min={0} step={1000} value={capital}
+                  onChange={e => setCapital(Math.max(0, parseFloat(e.target.value) || 0))}
+                  className="font-mono tabular-nums rounded-sm focus:outline-none"
+                  style={{ width: 100, padding: '7px 8px', fontSize: 12, border: '1px solid #e6eaef', color: '#0e1626' }}
+                />
+              </div>
+            </div>
+
+            {/* Over-capacity warning — honest: never fabricate depth. capacityUsd is
+                the real book-walked max size for book-sourced venues. */}
+            {c.capacityUsd != null && c.capacityUsd > 0 && capital > c.capacityUsd && (
+              <div className="mt-2.5 px-3 py-2 rounded-md font-body" style={{ fontSize: 11, color: '#b45309', background: '#fff8ef', border: '1px solid rgba(180,83,9,.25)' }}>
+                {fmtMoney(capital)} sopra la max size ({fmtCapDisplay(c.capacityUsd)}) — oltre rischi slippage: il book potrebbe non riempirsi a questo prezzo. Riduci e scala in.
+              </div>
+            )}
+
+            {/* Live dollar figures — recompute from selected capital */}
+            <div className="mt-3 pt-3" style={{ borderTop: '1px solid #eef2f6' }}>
+              {isRedacted ? (
+                <RedactedPanel label="The dollar fees and net gain are available on Pro" />
+              ) : (
+                <div className="flex flex-wrap gap-x-6 gap-y-2.5">
+                  {/* Gross gain (period, before fees) */}
+                  <div className="flex flex-col">
+                    <span className="font-body uppercase tracking-wide" style={{ fontSize: 8.5, color: '#9aa5b3' }}>Gross gain · {c.daysToExpiry}d</span>
+                    <span className="font-mono font-bold tabular-nums" style={{ fontSize: 15, color: '#0e1626' }}>
+                      {fmtMoney(capital * (c.executableBasisPct ?? 0))}
+                    </span>
+                  </div>
+                  {/* Total round-trip fees (4-leg) */}
+                  <div className="flex flex-col">
+                    <span className="font-body uppercase tracking-wide" style={{ fontSize: 8.5, color: '#9aa5b3' }}>Fees (round-trip)</span>
+                    <span className="font-mono font-bold tabular-nums" style={{ fontSize: 15, color: '#b45309' }}>
+                      −{fmtMoney(capital * c.fee)}
+                    </span>
+                  </div>
+                  {/* NET GAIN IN POCKET — real PERIOD return in dollars, not annualized */}
+                  <div className="flex flex-col">
+                    <span className="font-body uppercase tracking-wide" style={{ fontSize: 8.5, color: '#0f766e' }}>Netto in tasca · {c.daysToExpiry}d</span>
+                    <span className="font-mono font-bold tabular-nums" style={{ fontSize: 18, color: '#0f766e' }}>
+                      {fmtMoney(capital * ((c.executableBasisPct ?? 0) - c.fee))}
+                    </span>
+                  </div>
+                </div>
+              )}
+              {!isRedacted && (
+                <p className="font-body mt-2 leading-snug" style={{ fontSize: 9.5, color: '#9aa5b3' }}>
+                  Net = capital × (exec basis − fee) over {c.daysToExpiry}d — the real return locked only if held to expiry ({c.expiry}), not annualized and not guaranteed if closed early.
+                </p>
+              )}
+            </div>
+          </div>
+
           {/* ── SUMMARY STRIP ─────────────────────────────────────────────────── */}
           <div className="rounded-card mb-4" style={{ background: '#fff', border: '1px solid #e6eaef', padding: '14px 16px' }}>
             <div className="flex items-center flex-wrap gap-x-2.5 gap-y-1 mb-3">
