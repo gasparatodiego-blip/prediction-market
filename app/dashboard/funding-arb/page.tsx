@@ -8,7 +8,6 @@ import {
   type FuturesCoin,
   type SlipPoint,
   type SpreadItem,
-  type RwaObservation,
   type Leverage,
   calcSpreadSizing,
 } from '@/lib/spread-types';
@@ -53,8 +52,6 @@ interface ApiResponse {
   spot:         Record<string, Record<string, SpotCoin>>;
   spreads:      SpreadItem[];
   cexArb:       CexArbItem[];
-  rwa?:         RwaObservation[];
-  commoditiesHasEdge?: boolean;   // server-derived gate: reveal the Commodities lane only when a confirmed edge exists
   perpSpot?:    PerpSpotRow[];
   perpSpotStale?: boolean;
   perpSpotRegime?: PerpSpotRegime | null;
@@ -242,21 +239,16 @@ function TypeFilterToggle({
 }
 
 // ── Asset-class selector ──────────────────────────────────────────────────────
-// Display/routing only: partitions the already-computed rows into Crypto (data.spreads)
-// vs Commodities (data.rwa, observation-only). Stocks disabled — not ingested yet.
-type AssetClassView = 'crypto' | 'commodity';
+// Display/routing only. Crypto is the sole live lane; Stocks disabled — not ingested yet.
+type AssetClassView = 'crypto';
 const ASSET_CLASS_STORAGE_KEY = 'edgeradar.funding.assetClass';
 
 function AssetClassToggle(
-  { value, onChange, showCommodities }:
-  { value: AssetClassView; onChange: (v: AssetClassView) => void; showCommodities: boolean },
+  { value, onChange }:
+  { value: AssetClassView; onChange: (v: AssetClassView) => void },
 ) {
-  // Commodities is a visibility-gated lane: it renders ONLY when the server reports a
-  // confirmed RWA edge (commoditiesHasEdge). While every RWA row is flat/unconfirmed the
-  // option is omitted entirely (not disabled) — nobody lands on an empty observation lane.
   const opts: { id: string; label: string; disabled?: boolean; hint?: string; whyDisabled?: string }[] = [
     { id: 'crypto',    label: 'Crypto' },
-    ...(showCommodities ? [{ id: 'commodity', label: 'Commodities' }] : []),
     {
       id: 'stock', label: 'Stocks', disabled: true, hint: 'coming soon',
       whyDisabled: 'Stock perpetuals are not ingested yet — they need market-hours gating. Coming soon.',
@@ -290,11 +282,6 @@ function AssetClassToggle(
           </button>
         ))}
       </div>
-      {value === 'commodity' && (
-        <span className="font-body text-[11px] text-muted">
-          Observation only — funding is flat/near-zero, not cashable yet
-        </span>
-      )}
     </div>
   );
 }
@@ -1512,100 +1499,6 @@ function CexArbSection({ items }: { items: CexArbItem[] }) {
   );
 }
 
-// ── RWA · Commodities (beta) — OBSERVATION strip ──────────────────────────────
-// Gold/silver/oil across Aster + Extended. Shows each leg's real funding (%/8h) and
-// real order-book depth, but DELIBERATELY renders no cashable net/day: RWA funding is
-// flat/near-zero on these oracle-tracking perps, so no honest cashable spread exists yet.
-function fmtRwaDepth(n: number | null): string {
-  if (n == null || n <= 0) return '—';
-  return n >= 1000 ? `$${Math.round(n / 1000)}k` : `$${Math.round(n)}`;
-}
-
-function RwaCommoditiesStrip({ rows }: { rows: RwaObservation[] }) {
-  if (!rows || rows.length === 0) return null;
-  return (
-    <div className="mb-5 rounded-card border bg-surface" style={{ borderColor: '#e6eaef', boxShadow: '0 1px 2px rgba(14,22,38,.05)' }}>
-      <div className="px-4 py-2.5 flex items-center gap-2 border-b" style={{ borderColor: '#eef2f6' }}>
-        <span className="font-body uppercase tracking-wide" style={{ fontSize: 11, color: '#6b7787' }}>RWA · Commodities</span>
-        <span className="px-1.5 py-[1px] rounded-pill font-body uppercase" style={{ fontSize: 8.5, letterSpacing: '0.1em', background: '#eef6f2', color: '#0f766e' }}>beta</span>
-        <span className="ml-auto font-body" style={{ fontSize: 9.5, color: '#9aa5b3' }}>observing funding · not cashable yet</span>
-      </div>
-      <div>
-        {rows.map((r, i) => {
-          const d = r.divergence;
-          const plat = (v: string) => r.legs.find(l => l.venue === v)?.platform ?? v;
-          // net exists only for a sane, confirmed, non-spike spread ('BETA · variable').
-          // When it does but arrives null, that's the paid-tier redaction (calm unlock,
-          // no login wall) — distinct from FLAT/NOISE/UNCONFIRMED where no net exists.
-          const betaEdge = d != null && d.verdict.startsWith('BETA');
-          return (
-          <div
-            key={r.underlying}
-            className="px-4 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-1"
-            style={{ borderTop: i ? '1px solid #f1f4f7' : 'none' }}
-          >
-            <span className="font-mono font-bold text-ink shrink-0" style={{ fontSize: 12, width: 96 }}>{r.label}</span>
-            <span className="font-mono tabular-nums inline-flex items-center gap-x-3 gap-y-0.5 flex-wrap min-w-0" style={{ fontSize: 11 }}>
-              {r.legs.map(l => (
-                <span key={l.venue} style={{ color: '#6b7787' }} title={`instantaneous ${l.rate8h >= 0 ? '+' : ''}${l.rate8h.toFixed(4)}%/8h (often 0 between settlements) — headline is the real settled trailing rate`}>
-                  {l.platform}{' '}
-                  <span className="tabular-nums" style={{ color: l.settledRate8h >= 0 ? '#0d9c6e' : '#e11d48' }}>
-                    {l.settledRate8h >= 0 ? '+' : ''}{l.settledRate8h.toFixed(4)}%
-                  </span>
-                  {l.confirmed === false && <span style={{ color: '#c99a2e' }} title="no verified settled history yet"> ⚠</span>}
-                </span>
-              ))}
-              <span style={{ color: '#9aa5b3' }}>/8h settled</span>
-            </span>
-            <span className="ml-auto font-mono tabular-nums shrink-0" style={{ fontSize: 10.5, color: '#6b7787' }}
-              title="real two-legged 20bps executable depth (limiting leg, min of Aster/Extended) — observation, not deployable capacity">
-              book depth <span className="text-ink">{fmtRwaDepth(r.bookDepthUsd)}</span>
-              <span style={{ color: '#9aa5b3' }}> 20bps</span>
-              {r.depthThin && r.bookDepthUsd != null && (
-                <span className="px-1 py-[1px] ml-1 border font-body uppercase tracking-wide" style={{ fontSize: 8, borderColor: '#f0d9a8', color: '#c99a2e' }}>thin</span>
-              )}
-            </span>
-            <span
-              className="px-1.5 py-[2px] border font-body uppercase tracking-widest shrink-0"
-              style={{ fontSize: 8.5, borderColor: '#e6eaef', color: '#9aa5b3' }}
-              title={r.monolegOnly
-                ? 'only one leg has a real settled funding signal — single-leg observation, no two-sided edge'
-                : 'beta · signal-only · not cashable yet'}
-            >
-              {r.monolegOnly ? '1 leg only · observing' : 'Signal · observe'}
-            </span>
-            {d && (
-              <span className="w-full font-mono tabular-nums inline-flex items-center gap-x-2 flex-wrap" style={{ fontSize: 10, color: '#9aa5b3' }}>
-                <span style={{ color: '#6b7787' }}>trailing divergence</span>
-                <span>short <span className="text-ink">{plat(d.shortVenue)}</span> · long <span className="text-ink">{plat(d.longVenue)}</span></span>
-                <span style={{ color: '#6b7787' }}>{d.grossApyOverCap ? '>' : '~'}{d.grossApy.toFixed(1)}%/yr gross</span>
-                {betaEdge && (
-                  d.netApy != null
-                    ? <span style={{ color: '#0d9c6e' }}>net ~{d.netApy.toFixed(1)}%/yr</span>
-                    : <span title="fee-adjusted net — unlock (no login wall)" style={{ color: '#9aa5b3' }}>net · 🔒</span>
-                )}
-                <span
-                  className="px-1 py-[1px] border font-body uppercase tracking-wide"
-                  style={{ fontSize: 8, borderColor: '#e6eaef', color: d.verdict.startsWith('BETA') ? '#0f766e' : d.verdict.startsWith('NOISE') || d.verdict.startsWith('UNCONF') ? '#c99a2e' : '#9aa5b3' }}
-                >
-                  {d.verdict}
-                </span>
-              </span>
-            )}
-          </div>
-          );
-        })}
-      </div>
-      <div className="px-4 pb-2 pt-1 font-body" style={{ fontSize: 9, color: '#9aa5b3' }}>
-        Gold / silver / oil on Aster + Extended. Each leg&apos;s headline is its REAL settled trailing rate
-        (the instantaneous rate often prints 0 between settlements). Book depth is the real two-legged 20bps
-        executable depth — walked live on both books, taking the limiting (thinner) leg. Still observation-only:
-        funding is flat/near-zero, so there is no cashable net/day to size against that depth.
-      </div>
-    </div>
-  );
-}
-
 // ── Perp vs Spot (delta-neutral carry) ────────────────────────────────────────
 // Hold spot, short the perp on the venue paying the most funding → collect the FULL
 // absolute funding rate (not a perp/perp spread). All $ figures on a row's `edge` are
@@ -2400,29 +2293,17 @@ export default function CryptoPage() {
   const pendingHashScroll               = useRef(false);
   const rafHandle                       = useRef<number | null>(null);
 
-  // Restore persisted asset-class view (default 'crypto' — crypto view is byte-identical).
+  // Restore persisted asset-class view (default 'crypto' — the only live lane).
   useEffect(() => {
     try {
       const raw = localStorage.getItem(ASSET_CLASS_STORAGE_KEY);
-      if (raw === 'crypto' || raw === 'commodity') setAssetView(raw);
+      if (raw === 'crypto') setAssetView(raw);
     } catch { /* default crypto */ }
   }, []);
   const selectAssetView = useCallback((v: AssetClassView) => {
     setAssetView(v);
     try { localStorage.setItem(ASSET_CLASS_STORAGE_KEY, v); } catch { /* non-fatal */ }
   }, []);
-
-  // Server-derived visibility gate for the Commodities lane. Only reveal the option (and
-  // the lane) when a confirmed RWA edge exists — never a client hardcode.
-  const commoditiesHasEdge = data?.commoditiesHasEdge === true;
-  // Deep-link / saved-state guard: if we're on the (now-hidden) Commodities lane while the
-  // gate is closed, fall back to Crypto so nobody lands on a hidden empty lane. Transient
-  // (does NOT overwrite the persisted choice) so that the moment a confirmed edge reappears
-  // the user's saved Commodities preference is honored again on reload; mid-session the
-  // option simply reappears and this no-ops.
-  useEffect(() => {
-    if (assetView === 'commodity' && !commoditiesHasEdge) setAssetView('crypto');
-  }, [assetView, commoditiesHasEdge]);
 
   const load = useCallback(async () => {
     try {
@@ -2562,38 +2443,33 @@ export default function CryptoPage() {
             : 'Funding arbitrage · market-neutral'}
         </div>
         <div className="mt-2 flex items-baseline gap-2 flex-wrap">
-          {/* Commodities are observation-only — no cashable "best net/day" exists, so dash it. */}
           <span className="font-mono font-bold tabular-nums leading-none" style={{ fontSize: 38, color: '#0f766e' }}>
-            {assetView === 'commodity'
-              ? '—'
-              : isPerpSpot
-                ? (perpSpotRows.length === 0
+            {isPerpSpot
+              ? (perpSpotRows.length === 0
+                  ? '—'
+                  : bestPerpSpotNet != null
+                    ? `≈ ${fmtMoneyPlain(bestPerpSpotNet)}`
+                    : perpSpotAllRedacted
+                      ? <span className="align-middle"><Redacted value={null}>{() => null}</Redacted></span>
+                      : '—')
+              : isUsdc
+                ? (usdcRows.length === 0
                     ? '—'
-                    : bestPerpSpotNet != null
-                      ? `≈ ${fmtMoneyPlain(bestPerpSpotNet)}`
-                      : perpSpotAllRedacted
+                    : bestUsdcNet != null
+                      ? `≈ ${fmtMoneyPlain(bestUsdcNet)}`
+                      : usdcAllRedacted
                         ? <span className="align-middle"><Redacted value={null}>{() => null}</Redacted></span>
                         : '—')
-                : isUsdc
-                  ? (usdcRows.length === 0
-                      ? '—'
-                      : bestUsdcNet != null
-                        ? `≈ ${fmtMoneyPlain(bestUsdcNet)}`
-                        : usdcAllRedacted
-                          ? <span className="align-middle"><Redacted value={null}>{() => null}</Redacted></span>
-                          : '—')
-                  : filteredPairs.length === 0
-                    ? '—'
-                    : bestNetDay != null
-                      ? `≈ ${fmtMoneyPlain(bestNetDay)}`
-                      : <span className="align-middle"><Redacted value={filteredPairs[0].netApy30d}>{() => null}</Redacted></span>}
+                : filteredPairs.length === 0
+                  ? '—'
+                  : bestNetDay != null
+                    ? `≈ ${fmtMoneyPlain(bestNetDay)}`
+                    : <span className="align-middle"><Redacted value={filteredPairs[0].netApy30d}>{() => null}</Redacted></span>}
           </span>
           <span className="font-body" style={{ fontSize: 12, color: '#6b7787' }}>
-            {assetView === 'commodity'
-              ? 'commodities · observing funding, not cashable yet'
-              : (isPerpSpot || isUsdc)
-                ? `best net / day on $${capital.toLocaleString()} per leg`
-                : `best net / day on $${capital.toLocaleString()}`}
+            {(isPerpSpot || isUsdc)
+              ? `best net / day on $${capital.toLocaleString()} per leg`
+              : `best net / day on $${capital.toLocaleString()}`}
           </span>
         </div>
         <p className="mt-3 font-body leading-relaxed" style={{ fontSize: 12.5, color: '#334155', maxWidth: '54ch' }}>
@@ -2677,7 +2553,7 @@ export default function CryptoPage() {
 
             {/* Secondary controls */}
             <div className="flex items-center gap-4 flex-wrap pt-2.5" style={{ borderTop: '1px solid #eef2f6' }}>
-              <AssetClassToggle value={assetView} onChange={selectAssetView} showCommodities={commoditiesHasEdge} />
+              <AssetClassToggle value={assetView} onChange={selectAssetView} />
               <TypeFilterToggle value={typeFilter} onChange={setTypeFilter} />
               {(typeFilter === 'all' || typeFilter === 'perp_perp') && (
               <div className="flex items-center gap-2">
@@ -2705,7 +2581,6 @@ export default function CryptoPage() {
             </div>
           </div>
 
-          {/* Crypto view → cards + advanced table; Commodities view → RWA observation strip */}
           {assetView === 'crypto' && typeFilter === 'spot_perp' && (
             <PerpSpotView rows={data.perpSpot ?? []} stale={!!data.perpSpotStale} capitalPerLeg={capital} regime={data.perpSpotRegime ?? null} />
           )}
@@ -2714,9 +2589,6 @@ export default function CryptoPage() {
           )}
           {assetView === 'crypto' && (typeFilter === 'all' || typeFilter === 'perp_perp') && (
             <OpportunityCards spreads={filteredPairs} capital={capital} leverage={leverage} />
-          )}
-          {assetView === 'commodity' && (
-            <RwaCommoditiesStrip rows={data.rwa ?? []} />
           )}
 
           {/* ── Advanced / full data (crypto perp/perp view only) ─────────── */}
