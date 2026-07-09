@@ -19,6 +19,11 @@ export interface GuardianDecision {
   path?: string;
   set?: Record<string, unknown>;
   downgradeCashable?: boolean;
+  // Phase 2 (rules F–K) display-meta carriers:
+  runRate?: boolean;          // G28/G29 — annualized shown as a run-rate, not a promise
+  signalOnly?: boolean;       // K42 — reference/mid lane forced to signal-only
+  removeCautionChip?: boolean; // K41/K43 — drop the contradictory red alarm chip
+  severity?: 'hide' | 'value' | 'soft';
 }
 
 // Attached to a suppressed row's DISPLAY copy. The producer's source files are never
@@ -33,6 +38,10 @@ export interface GuardianMeta {
   downgradeCashable?: boolean;
   flag?: boolean;
   flags?: string[];
+  // Phase 2 (rules F–K):
+  runRate?: boolean;          // G28/G29 — attach "run-rate, not guaranteed" caveat
+  signalOnly?: boolean;       // K42 — reference/mid lane, never cashable
+  removeCautionChip?: boolean; // K41/K43 — contradictory alarm chip removed
 }
 
 export interface GuardianSuppression {
@@ -45,11 +54,16 @@ export interface GuardianSuppression {
 }
 
 export interface GuardianCritical {
-  type: 'mass-suppress';
-  section: GuardianSection;
+  type: 'mass-suppress' | 'paid-leak' | 'count-mismatch';
+  section: GuardianSection | 'paid-gating';
   wouldHide: number;
   total: number;
   reason: string;
+}
+
+export interface GuardianZeroState {
+  empty: boolean;
+  reason: 'no-data' | 'redacted';
 }
 
 export interface GuardianCtx {
@@ -61,13 +75,32 @@ export interface GuardianCtx {
   deadSet?: Set<string>;
   priceMedian?: number;
   categoryMedian?: number;
+  // Phase 2 (rules F–K):
+  emptyReason?: 'no-data' | 'redacted'; // J37/J38 — why the tab is empty (route knows isPaid)
+  claimedCashable?: number;             // J39 — header's claimed cashable count to reconcile
 }
 
 export interface GuardianResult<T> {
   rows: T[];
   suppressions: GuardianSuppression[];
+  critical: GuardianCritical | null;      // the mass-suppression guardrail (rule, backward-compatible)
+  zeroState?: GuardianZeroState | null;   // J37/J38 — calm zero-state hint
+  criticals?: GuardianCritical[];         // J39 (and future) rule-driven criticals
+}
+
+export interface GuardianRedactionResult {
+  leaks: string[];
   critical: GuardianCritical | null;
 }
+
+// H (rules 31–33): paid-gating leak backstop. Nulls any sensitive field (paid-gating
+// path grammar) that survived redaction on a free-tier payload; never fabricates. No-op
+// for paid. Mutates `payload` in place; returns the leaked paths + a CRITICAL if any.
+export declare function assertRedacted(
+  payload: unknown,
+  sensitivePaths: string[],
+  opts?: { log?: (msg: string) => void },
+): GuardianRedactionResult;
 
 export declare function applyGuardian<T>(
   section: GuardianSection,
@@ -95,4 +128,8 @@ export declare const MASS_SUPPRESS_MIN: number;
 export declare const STALE_MINUTES_MAX: number;
 export declare const CASHABLE_SWING: number;
 export declare const CROSS_SURFACE_TOL: number;
+export declare const MIN_ROUNDTRIP_FEE_FRAC: number;
+export declare const RUN_RATE_APR_MIN: number;
+export declare const IMPOSSIBLE_BREAKEVEN: number;
+export declare const REFERENCE_ONLY_VENUES: string[];
 export declare const DIRECTIVES_FILE: string;

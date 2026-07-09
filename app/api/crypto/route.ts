@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { getIsPaid, redactForTier } from '@/lib/paid-gating';
+import { getIsPaid, redactForTier, REDACTION_MAP } from '@/lib/paid-gating';
 import { getCryptoSpreadsData } from '@/lib/spread-compute';
 import { filterSane, enforceVerified } from '@/lib/display-sanity';
-import { applyGuardian } from '@/lib/guardian-suppress';
+import { applyGuardian, assertRedacted } from '@/lib/guardian-suppress';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,5 +36,8 @@ export async function GET() {
   data.usdcArb = applyGuardian('usdc', data.usdcArb).rows;
 
   const body = redactForTier(data, 'crypto', isPaid);
+  // Guardian H (rules 31–33): backstop the redaction — null + CRITICAL any derived-edge
+  // field that leaked to the free tier (display-only; never fabricates). No-op for paid.
+  if (!isPaid) assertRedacted(body, REDACTION_MAP['crypto'], { log: console.log });
   return NextResponse.json(body);
 }

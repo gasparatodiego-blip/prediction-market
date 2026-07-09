@@ -2,8 +2,8 @@ import { NextResponse } from 'next/server';
 import fs from 'fs';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { getIsPaid, redactForTier } from '@/lib/paid-gating';
-import { applyGuardian } from '@/lib/guardian-suppress';
+import { getIsPaid, redactForTier, REDACTION_MAP } from '@/lib/paid-gating';
+import { applyGuardian, assertRedacted } from '@/lib/guardian-suppress';
 
 export const dynamic = 'force-dynamic';
 
@@ -331,6 +331,10 @@ export async function GET() {
           : null,
       },
     }, 'prediction', isPaid);
+
+    // Guardian H (rules 31–33): backstop the redaction — null + CRITICAL any leaked
+    // derived-edge field on the free tier (display-only; never fabricates). No-op for paid.
+    if (!isPaid) assertRedacted(body, REDACTION_MAP['prediction'], { log: console.log });
 
     return NextResponse.json(body);
   } catch {

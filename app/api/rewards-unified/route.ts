@@ -2,9 +2,9 @@ import { NextResponse } from 'next/server';
 import fs from 'fs';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { getIsPaid, redactForTier } from '@/lib/paid-gating';
+import { getIsPaid, redactForTier, REDACTION_MAP } from '@/lib/paid-gating';
 import { filterSane, enforceVerified } from '@/lib/display-sanity';
-import { applyGuardian } from '@/lib/guardian-suppress';
+import { applyGuardian, assertRedacted } from '@/lib/guardian-suppress';
 
 export const dynamic = 'force-dynamic';
 
@@ -60,6 +60,10 @@ export async function GET() {
     const session = await getServerSession(authOptions);
     const isPaid  = await getIsPaid(session);
     const body    = redactForTier({ ...data, stale: age > STALE_MS }, 'rewards-unified', isPaid);
+
+    // Guardian H (rules 31–33): backstop the redaction — null + CRITICAL any leaked
+    // executable/pool field on the free tier (display-only; never fabricates). No-op for paid.
+    if (!isPaid) assertRedacted(body, REDACTION_MAP['rewards-unified'], { log: console.log });
 
     return NextResponse.json(body);
   } catch (e: any) {

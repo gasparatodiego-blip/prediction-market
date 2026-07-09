@@ -779,6 +779,59 @@ async function buildGuardianDirectives(state) {
   return { directives, curNet };
 }
 
+// GUARDIAN rule H (31–33): paid-gating leak audit. This agent hits the tab APIs with NO
+// session — i.e. exactly as a FREE-tier browser would — so every DERIVED-edge field the
+// paid-gating layer redacts (lib/paid-gating REDACTION_MAP) MUST come back null. Any
+// non-null derived value is a paid number leaking to free (a product leak). We DETECT +
+// alert here; the serve path's assertRedacted() does the actual display suppression. The
+// field list below mirrors the sensitive DERIVED fields in REDACTION_MAP (paid-gating.ts
+// is TypeScript — can't require() it from plain Node — so this is the same mirrored-with-a-
+// source-comment pattern the rest of this file uses; if REDACTION_MAP changes, update here).
+const PAID_LEAK_CHECKS = [
+  { path: '/api/crypto',          arrays: [
+      { at: 'spreads',  fields: ['grossApy', 'netApy30d', 'totalFeesPct', 'breakevenDays', 'capacityUsd'] },
+      { at: 'perpSpot', fields: ['edge.grossPerDay1k', 'edge.netPerDay1k', 'edge.annualizedRunRatePct', 'edge.breakevenDays'] },
+      { at: 'usdcArb',  fields: ['edge.grossPerDay1k', 'edge.netPerDay1k', 'edge.netApy30dPct'] },
+  ] },
+  { path: '/api/carry',           arrays: [
+      { at: 'opportunities', fields: ['netAnnualized', 'netAnnualizedExecutable', 'grossAnnualized', 'capacityUsd', 'verdict'] },
+      { at: 'backwardation', fields: ['netAnnualized', 'annualized', 'basis'] },
+  ] },
+  { path: '/api/rewards-unified', arrays: [
+      { at: 'markets', fields: ['dailyPool', 'qualifyingLiquidity', 'maxSpread', 'minSize'] },
+  ] },
+  { path: '/api/sports-snapshot', arrays: [
+      { at: 'opportunities', fields: ['roiPct', 'impliedSum'] },
+  ] },
+  { path: '/api/prediction',      arrays: [
+      { at: 'valid', fields: ['roi', 'spread', 'earnPer100', 'confidence'] },
+  ] },
+];
+function getDeep(obj, dotted) {
+  return dotted.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj);
+}
+async function auditPaidGatingLeaks() {
+  const violations = [];
+  for (const check of PAID_LEAK_CHECKS) {
+    let payload;
+    try { payload = await fetchJson(check.path); }
+    catch (e) { log(`paid-leak audit skip ${check.path}: ${e.message}`); continue; } // endpoint down ≠ leak
+    for (const spec of check.arrays) {
+      const rows = payload && Array.isArray(payload[spec.at]) ? payload[spec.at] : [];
+      for (const row of rows) {
+        for (const f of spec.fields) {
+          const v = getDeep(row, f);
+          if (v != null && v !== '') {
+            violations.push(`PAID-GATING LEAK: ${check.path} ${spec.at}[].${f} = ${JSON.stringify(v).slice(0, 40)} served NON-redacted to the free tier (no session) — a paid/derived value is leaking. Serve-path assertRedacted() should suppress it; fix the redaction map.`);
+            break; // one field per row is enough to flag the row
+          }
+        }
+      }
+    }
+  }
+  return violations;
+}
+
 // ── One audit cycle ───────────────────────────────────────────────────────
 async function runCycle(state) {
   const html = await fetchText(LANDING_URL);
@@ -800,6 +853,11 @@ async function runCycle(state) {
   // GUARDIAN observe: watch the serve-path guardian log for the CRITICAL guardrail.
   const gLog = auditGuardianLog(state && state.guardianCriticalSeen);
   allViolations.push(...gLog.violations);
+
+  // GUARDIAN rule H (31–33): fetch the tab APIs with NO session (free tier) and assert every
+  // redacted derived-edge field is null — any survivor is a paid value leaking to free.
+  try { allViolations.push(...await auditPaidGatingLeaks()); }
+  catch (e) { log('auditPaidGatingLeaks error:', e.message); }
 
   // GUARDIAN direct: emit cross-cycle (rule 5 cashable-swing) directives the serve path
   // cannot compute alone. Reversible + TTL-bounded; self-heals when values stabilize.
@@ -878,7 +936,7 @@ async function main() {
 }
 
 // Exported for unit testing the phantom-instrument + guardian checks in isolation.
-module.exports = { auditServedFeeds, auditSanityRejectSpike, auditGuardianLog, servedNet, servedRowId };
+module.exports = { auditServedFeeds, auditSanityRejectSpike, auditGuardianLog, servedNet, servedRowId, auditPaidGatingLeaks };
 
 if (require.main === module) {
   main().catch(e => { console.error('[A26] Fatal:', e); process.exit(1); });

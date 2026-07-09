@@ -3,7 +3,8 @@ import fs from 'fs';
 import path from 'path';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { getIsPaid, redactForTier } from '@/lib/paid-gating';
+import { getIsPaid, redactForTier, REDACTION_MAP } from '@/lib/paid-gating';
+import { assertRedacted } from '@/lib/guardian-suppress';
 
 export const dynamic = 'force-dynamic';
 
@@ -136,6 +137,10 @@ export async function GET(): Promise<NextResponse<SnapshotResponse>> {
       stale:      age > STALE_MS,
       ageMinutes: Number.isFinite(age) ? Math.floor(age / 60_000) : null,
     }, 'sports-snapshot', isPaid);
+
+    // Guardian H (rules 31–33): backstop the redaction — null + CRITICAL any leaked
+    // roi/odds field on the free tier (display-only; never fabricates). No-op for paid.
+    if (!isPaid) assertRedacted(body, REDACTION_MAP['sports-snapshot'], { log: console.log });
 
     return NextResponse.json(body);
   } catch {
