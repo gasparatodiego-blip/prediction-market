@@ -63,7 +63,7 @@ export interface WalletRecord {
   fillsCapped?: boolean;
 }
 
-export type PosStatus = 'open' | 'closed' | 'resolved';
+export type PosStatus = 'open' | 'closed' | 'resolved' | 'settled';
 
 export interface EnrichedPosition {
   key: string;
@@ -101,6 +101,7 @@ export interface TraderSummary {
   openCount: number;
   closedCount: number;
   resolvedCount: number;
+  settledCount: number;
   winRateRealized: number | null;
   realizedTrades: number;
 }
@@ -216,41 +217,70 @@ export function buildTraderAnalytics(rec: WalletRecord): TraderAnalytics {
     }
   }
 
-  // ── 3. CLOSED (sold-out) positions — reconstructed from fills only ──────────
-  // A line NOT in current /positions, with sells, and net ≈ 0 shares.
+  // ── 3. CLOSED (sold-out) & SETTLED (held-to-settlement) — from fills only ────
+  // Any line NOT in the current /positions snapshot is one of:
+  //   • CLOSED  — sold back out on the CLOB (has sells, net ≈ 0 shares). Realized
+  //               P&L is reconstructable from fills: proceeds − matched cost basis.
+  //   • SETTLED — still net-long yet absent from the live snapshot. Almost always a
+  //               buy-and-hold-to-settlement line (e.g. 5-min BTC Up/Down scalping):
+  //               the market already resolved and the shares were redeemed, so the
+  //               position dropped out of /positions. We KNOW the entry (shares, avg
+  //               price, cost basis) but NOT the settlement outcome from fills alone,
+  //               so realized P&L is HONESTLY withheld (null → "—"), never invented.
+  //               Without this branch a pure-buy wallet's fills aggregate to ZERO
+  //               positions — the "200 fills but 0 positions" contradiction.
   for (const ln of Array.from(lines.values())) {
     if (openAssets.has(ln.asset)) continue;              // still open/resolved → handled above
-    if (ln.sellShares < EPS) continue;                   // never sold → not a reconstructable close
+    if (ln.buyShares < EPS) continue;                    // no buys → nothing to reconstruct
     const net = ln.buyShares - ln.sellShares;
-    if (Math.abs(net) > Math.max(1, ln.buyShares * 0.02)) continue; // not flat → skip (partial, ambiguous)
-
+    const flatTol = Math.max(1, ln.buyShares * 0.02);
     const avgBuy = ln.buyShares > EPS ? ln.buyCost / ln.buyShares : null;
-    const avgSell = ln.sellShares > EPS ? ln.sellProceeds / ln.sellShares : null;
-    // matched cost basis for the shares actually sold
-    const matchedShares = Math.min(ln.buyShares, ln.sellShares);
-    const costBasis = avgBuy != null ? avgBuy * matchedShares : null;
-    const proceeds = ln.sellProceeds;
+    const category = catOf(ln.title);
     // Withhold P&L if the buy leg may be incomplete (capped window reached its edge).
     const incomplete = capped && ln.touchesOldest;
-    const pnl = (!incomplete && costBasis != null) ? (proceeds - costBasis) : null;
-    const category = catOf(ln.title);
 
-    positions.push({
-      key: ln.key, market: ln.title, slug: ln.slug, eventSlug: ln.eventSlug,
-      conditionId: ln.conditionId, asset: ln.asset, outcome: ln.outcome, status: 'closed',
-      shares: ln.sellShares, avgEntry: avgBuy, close: avgSell, closeLabel: 'exit (avg sell)',
-      costBasis, proceeds, pnl, pnlLabel: incomplete ? 'realized · basis incomplete' : 'realized',
-      realized: true,
-      roiPct: (pnl != null && costBasis) ? (pnl / costBasis) * 100 : null,
-      heldDays: Math.max(0, (ln.lastTs - ln.firstTs) / 86400),
-      nFills: ln.nFills, incompleteBasis: incomplete, category,
-      lastActivityTs: ln.lastTs,
-    });
-    if (pnl != null) realizedEvents.push({ t: ln.lastTs, pnl, category, won: pnl > 0 });
+    if (ln.sellShares >= EPS && Math.abs(net) <= flatTol) {
+      // CLOSED — sold out, net ≈ 0. Realized from fills.
+      const avgSell = ln.sellShares > EPS ? ln.sellProceeds / ln.sellShares : null;
+      const matchedShares = Math.min(ln.buyShares, ln.sellShares);
+      const costBasis = avgBuy != null ? avgBuy * matchedShares : null;
+      const proceeds = ln.sellProceeds;
+      const pnl = (!incomplete && costBasis != null) ? (proceeds - costBasis) : null;
+      positions.push({
+        key: ln.key, market: ln.title, slug: ln.slug, eventSlug: ln.eventSlug,
+        conditionId: ln.conditionId, asset: ln.asset, outcome: ln.outcome, status: 'closed',
+        shares: ln.sellShares, avgEntry: avgBuy, close: avgSell, closeLabel: 'exit (avg sell)',
+        costBasis, proceeds, pnl, pnlLabel: incomplete ? 'realized · basis incomplete' : 'realized',
+        realized: true,
+        roiPct: (pnl != null && costBasis) ? (pnl / costBasis) * 100 : null,
+        heldDays: Math.max(0, (ln.lastTs - ln.firstTs) / 86400),
+        nFills: ln.nFills, incompleteBasis: incomplete, category,
+        lastActivityTs: ln.lastTs,
+      });
+      if (pnl != null) realizedEvents.push({ t: ln.lastTs, pnl, category, won: pnl > 0 });
+    } else if (net > flatTol) {
+      // SETTLED — still net-long but gone from the live snapshot. Entry known,
+      // settlement outcome unknown → P&L withheld (honest), not fabricated.
+      const heldShares = net;
+      const costBasis = avgBuy != null ? avgBuy * heldShares : null;
+      positions.push({
+        key: ln.key, market: ln.title, slug: ln.slug, eventSlug: ln.eventSlug,
+        conditionId: ln.conditionId, asset: ln.asset, outcome: ln.outcome, status: 'settled',
+        shares: heldShares, avgEntry: avgBuy, close: null, closeLabel: 'settled (outcome n/a)',
+        costBasis, proceeds: null, pnl: null,
+        pnlLabel: 'held to settlement — outcome not in live data; P&L withheld',
+        realized: false, roiPct: null,
+        heldDays: Math.max(0, (ln.lastTs - ln.firstTs) / 86400),
+        nFills: ln.nFills, incompleteBasis: incomplete, category,
+        lastActivityTs: ln.lastTs,
+      });
+    }
+    // else: net < −flatTol (oversold beyond the kept window) → capped-window
+    // artifact, skip rather than guess.
   }
 
   // ── 4. Sort positions: open first, then resolved/closed by recency ──────────
-  const statusRank: Record<PosStatus, number> = { open: 0, resolved: 1, closed: 2 };
+  const statusRank: Record<PosStatus, number> = { open: 0, resolved: 1, settled: 2, closed: 3 };
   positions.sort((a, b) =>
     statusRank[a.status] - statusRank[b.status] ||
     (b.lastActivityTs ?? 0) - (a.lastActivityTs ?? 0));
@@ -289,6 +319,7 @@ export function buildTraderAnalytics(rec: WalletRecord): TraderAnalytics {
     openCount: openPositions.length,
     closedCount: positions.filter(p => p.status === 'closed').length,
     resolvedCount: positions.filter(p => p.status === 'resolved').length,
+    settledCount: positions.filter(p => p.status === 'settled').length,
     winRateRealized: realizedPositions.length ? (realizedWins / realizedPositions.length) * 100 : null,
     realizedTrades: realizedPositions.length,
   };

@@ -26,7 +26,7 @@ interface RawFill {
 interface Position {
   key: string; market: string | null; slug: string | null; eventSlug: string | null;
   conditionId: string | null; asset: string; outcome: string | null;
-  status: 'open' | 'closed' | 'resolved';
+  status: 'open' | 'closed' | 'resolved' | 'settled';
   shares: number | null; avgEntry: number | null; close: number | null; closeLabel: string;
   costBasis: number | null; proceeds: number | null; pnl: number | null; pnlLabel: string;
   realized: boolean; roiPct: number | null; heldDays: number | null; nFills: number;
@@ -34,7 +34,7 @@ interface Position {
 }
 interface Summary {
   realizedPnl: number | null; unrealizedPnl: number | null; costBasisOpen: number | null;
-  openCount: number; closedCount: number; resolvedCount: number;
+  openCount: number; closedCount: number; resolvedCount: number; settledCount: number;
   winRateRealized: number | null; realizedTrades: number;
 }
 interface FeedResp {
@@ -67,7 +67,7 @@ export default function TraderDetail({ address }: { address: string }) {
   const [data, setData]   = useState<FeedResp | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter]   = useState<'all' | 'open' | 'closed' | 'resolved'>('all');
+  const [filter, setFilter]   = useState<'all' | 'open' | 'closed' | 'resolved' | 'settled'>('all');
   const [tick, setTick] = useState(0);   // forces relative-time re-render
 
   const load = useCallback(async () => {
@@ -129,11 +129,13 @@ export default function TraderDetail({ address }: { address: string }) {
 
             {/* filters */}
             <div className="mt-6 flex items-center gap-1.5 flex-wrap">
-              {(['all', 'open', 'closed', 'resolved'] as const).map(f => {
+              {(['all', 'open', 'closed', 'resolved', 'settled'] as const).map(f => {
                 const n = f === 'all' ? positions.length
                   : f === 'open' ? data.summary.openCount
                   : f === 'closed' ? data.summary.closedCount
-                  : data.summary.resolvedCount;
+                  : f === 'resolved' ? data.summary.resolvedCount
+                  : data.summary.settledCount;
+                if (f === 'settled' && data.summary.settledCount === 0) return null;
                 return (
                   <button key={f} onClick={() => setFilter(f)}
                     className={`font-body text-[12px] px-2.5 py-1 rounded-md border transition-colors capitalize ${
@@ -149,7 +151,7 @@ export default function TraderDetail({ address }: { address: string }) {
             <div className="mt-3 rounded-xl border border-line bg-surface overflow-hidden">
               {shown.length === 0 ? (
                 <div className="px-4 py-8 text-center text-muted font-body text-sm">
-                  No {filter === 'all' ? '' : filter + ' '}positions in the current feed window.
+                  No {filter === 'all' ? '' : filter + ' '}positions reconstructable from the tracked fills.
                 </div>
               ) : shown.map(p => (
                 <PositionRow key={p.key} p={p} fills={data.fills} isPaid={isPaid} />
@@ -231,9 +233,9 @@ function SummaryStats({ s, isPaid }: { s: Summary; isPaid: boolean }) {
           {s.winRateRealized != null ? `${s.winRateRealized.toFixed(0)}%` : <span className="text-muted">—</span>}
         </span>
       </StatCard>
-      <StatCard label="Positions" hint={`${s.openCount} open · ${s.resolvedCount} resolved · ${s.closedCount} closed`}>
+      <StatCard label="Positions" hint={`${s.openCount} open · ${s.resolvedCount} resolved · ${s.closedCount} closed${s.settledCount ? ` · ${s.settledCount} settled` : ''}`}>
         <span className="font-display font-bold text-lg text-ink tabular-nums">
-          {s.openCount + s.resolvedCount + s.closedCount}
+          {s.openCount + s.resolvedCount + s.closedCount + s.settledCount}
         </span>
       </StatCard>
     </div>
@@ -314,6 +316,7 @@ const STATUS_STYLE: Record<Position['status'], string> = {
   open:     'border-brand/40 text-accent bg-brand/10',
   closed:   'border-line text-muted bg-bg-soft',
   resolved: 'border-mint-deep/40 text-mint-deep bg-mint-tint',
+  settled:  'border-gold/40 text-gold bg-gold-tint',
 };
 
 function PositionRow({ p, fills, isPaid }: { p: Position; fills: RawFill[]; isPaid: boolean }) {
@@ -348,7 +351,7 @@ function PositionRow({ p, fills, isPaid }: { p: Position; fills: RawFill[]; isPa
             <Redacted value={p.pnl} isPaid={isPaid}>{v => fmtPnl(v)}</Redacted>
           </div>
           <div className="font-body text-[9px] text-faint truncate" title={p.pnlLabel}>
-            {p.roiPct != null ? <span className="font-mono">{fmtPct1(p.roiPct)}</span> : ''} {p.realized ? 'realized' : 'unrealized'}
+            {p.roiPct != null ? <span className="font-mono">{fmtPct1(p.roiPct)}</span> : ''} {p.status === 'settled' ? 'settled · P&L n/a' : p.realized ? 'realized' : 'unrealized'}
           </div>
         </div>
       </div>

@@ -64,6 +64,7 @@ const RESYNC_INTERVAL_MS = 10 * 60_000;   // periodic full REST resync (refreshe
 const TRACKED_REFRESH_MS = 10 * 60_000;   // re-read the tracked wallet set from leaderboard.json
 const HEALTH_TICK_MS    = 5_000;          // health check + heartbeat cadence
 const WS_STALE_MS       = 45_000;         // no WS message for this long ⇒ unhealthy (firehose is constant)
+const WS_WATCHDOG_MS    = 90_000;         // silent-but-"connected" this long ⇒ dead half-open socket → force reconnect
 const WS_PING_MS        = 10_000;         // protocol ping cadence
 const WRITE_DEBOUNCE_MS = 3_000;          // coalesce file writes after a burst of tracked fills
 const MAX_TRACKED       = 400;            // safety cap on tracked wallets
@@ -87,6 +88,7 @@ let   wsConnected   = false;
 let   lastWsMsgAt   = 0;
 let   reconnectAttempts = 0;
 let   reconnectTimer = null;
+let   lastForceReconnectAt = 0;
 let   resyncing     = false;
 let   lastFullResyncAt = null;
 let   pingTimer     = null;
@@ -369,7 +371,25 @@ async function maybeAlertUnhealthy() {
   } catch (e) { log('telegram alert failed:', e.message); }
 }
 
+// Silent-but-open WS watchdog. The activity firehose is constant, so a socket
+// that still reads `wsConnected` yet has gone quiet for WS_WATCHDOG_MS is a dead
+// half-open connection: the 'close' event never fired, so the normal reconnect
+// path (ws.on('close')) can't run and feedHealthy() would sit false FOREVER —
+// the "re-syncing…/reconnecting" badge that never returns to healthy. Terminate
+// it to force a real 'close' → reconnect → resync, making unhealthy a TERMINATING
+// transient. During normal operation lastWsMsgAt is always < WS_STALE_MS, so this
+// never fires and never disturbs a healthy feed.
+function wsWatchdog() {
+  if (shuttingDown || !ws || !wsConnected) return;   // disconnected → 'close' path already reconnects
+  if (Date.now() - lastWsMsgAt < WS_WATCHDOG_MS) return;
+  if (Date.now() - lastForceReconnectAt < WS_WATCHDOG_MS) return; // don't thrash if terminate is slow
+  lastForceReconnectAt = Date.now();
+  log(`WS silent ${((Date.now() - lastWsMsgAt) / 1000).toFixed(0)}s while "connected" — forcing reconnect`);
+  try { (ws.terminate ? ws.terminate() : ws.close()); } catch (e) { log('watchdog terminate failed:', e.message); }
+}
+
 function healthTick() {
+  wsWatchdog();
   // heartbeat (monitor watches this key)
   let hb = {};
   try { hb = JSON.parse(fs.readFileSync(HB_FILE, 'utf8')); } catch {}
