@@ -271,5 +271,16 @@ module.exports = {
       autorestart:   true,
       env:           { NODE_ENV: 'production', HOME: '/root' },
     },
+    {
+      name:          'agent30-trader-feed',
+      script:        './agents/agent30-trader-feed.js',
+      cwd:           '/root/prediction-market',
+      restart_delay: 10000,
+      max_restarts:  20,
+      watch:         false,
+      autorestart:   true,
+      max_memory_restart: '400M',
+      env:           { NODE_ENV: 'production', HOME: '/root' },
+    },
   ],
 };

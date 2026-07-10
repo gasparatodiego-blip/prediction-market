@@ -74,6 +74,7 @@ const WATCHED_AGENTS_RAW = [
   { pm2Name: 'agent24-liquidity-rewards',  hbKey: null },
   { pm2Name: 'agent25-kalshi-rewards',     hbKey: null },
   { pm2Name: 'agent26-landing-auditor',    hbKey: 'agent26-landing-auditor', cadenceMs: 30 * 60_000 }, // agent26-landing-auditor.js SCAN_INTERVAL_MS
+  { pm2Name: 'agent30-trader-feed',        hbKey: 'agent30-trader-feed',     cadenceMs: 1  * 60_000 }, // agent30-trader-feed.js HEALTH_TICK_MS (beats every 5s)
   { pm2Name: 'dashboard',                  hbKey: null },
 ];
 
