@@ -4,6 +4,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { getIsPaid, redactForTier } from '@/lib/paid-gating';
 import { enrichClosedTradesEntryExit, WalletRecord } from '@/lib/trader-analytics';
+import { fetchWalletRecordOnDemand } from '@/lib/ondemand-fills';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,11 +37,28 @@ export async function GET(_req: NextRequest, { params }: { params: { address: st
     // realized P&L agent20 already reports). agent20's ledger can't pin per-fill
     // prices → the column would otherwise show "— → —" despite the data existing.
     // Never touches realizedPnl; unreconcilable/absent rows stay "—" (honest).
+    // Fast path: agent30 already tracks this wallet → use its live feed record.
+    let rec: WalletRecord | undefined;
     try {
       const feed = JSON.parse(fs.readFileSync(FEED_FILE, 'utf8'));
-      const rec: WalletRecord | undefined = feed.wallets?.[address];
-      if (rec) enrichClosedTradesEntryExit(profile.tradesClosed, rec);
-    } catch { /* feed absent/warming → leave entry/exit null (honest "—") */ }
+      rec = feed.wallets?.[address];
+      if (rec) {
+        enrichClosedTradesEntryExit(profile.tradesClosed, rec);
+        profile.entryExitSource = 'feed';
+      }
+    } catch { /* feed absent/warming → fall through to on-demand */ }
+
+    // Non-feed wallet (the leaderboard ranks thousands, agent30 tracks ~hundreds):
+    // reconstruct entry→exit on demand from the SAME keyless Data API, running the
+    // identical reconciliation guard. Cached per-wallet (60s) — no continuous poll.
+    // Rows that don't reconcile / have no fills stay "—" (honest); realizedPnl and
+    // win rate are never touched. Stamped with an "as of" time for the UI.
+    if (!rec && Array.isArray(profile.tradesClosed) && profile.tradesClosed.length > 0) {
+      const { rec: onDemand, asOf } = await fetchWalletRecordOnDemand(address);
+      if (onDemand) enrichClosedTradesEntryExit(profile.tradesClosed, onDemand);
+      profile.entryExitSource = 'ondemand';
+      profile.entryExitAsOf   = asOf;
+    }
 
     const session = await getServerSession(authOptions);
     const isPaid  = await getIsPaid(session);

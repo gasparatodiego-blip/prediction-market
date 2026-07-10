@@ -305,7 +305,11 @@ export default function TraderProfileView({
 
             {/* Closed trades */}
             {(move === 'all' || move === 'closed') && (
-              <MoveSection title={`Closed trades (${profile?.tradesClosed?.length ?? 0})`} note="realized · gross · newest first">
+              <MoveSection title={`Closed trades (${profile?.tradesClosed?.length ?? 0})`} note={`realized · gross · newest first${
+                profile?.entryExitSource === 'ondemand' && profile?.entryExitAsOf
+                  ? ` · entry→exit reconstructed on-demand, as of ${new Date(profile.entryExitAsOf).toLocaleTimeString()}`
+                  : ''
+              }`}>
                 {(profile?.tradesClosed?.length ?? 0) === 0 ? (
                   <Empty>No closed trades on record.</Empty>
                 ) : (
