@@ -282,5 +282,16 @@ module.exports = {
       max_memory_restart: '400M',
       env:           { NODE_ENV: 'production', HOME: '/root' },
     },
+    {
+      name:          'agent31-trader-auditor',
+      script:        './agents/agent31-trader-auditor.js',
+      cwd:           '/root/prediction-market',
+      restart_delay: 30000,
+      max_restarts:  20,
+      watch:         false,
+      autorestart:   true,
+      max_memory_restart: '200M',   // small: full-scan re-reads source per wallet, keeps only summaries
+      env:           { NODE_ENV: 'production', HOME: '/root' },
+    },
   ],
 };
