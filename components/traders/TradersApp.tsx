@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link           from 'next/link';
+import { useRouter }  from 'next/navigation';
 import { Activity }   from 'lucide-react';
 import Eyebrow        from '@/app/components/ui/Eyebrow';
 import SectionHeading from '@/app/components/ui/SectionHeading';
@@ -54,6 +55,7 @@ function useServerCopy() {
 }
 
 export default function TradersApp() {
+  const router                = useRouter();
   const [tab, setTab]         = useState<Tab>('leaderboard');
   const [cat, setCat]         = useState('All');
   const [rankBy, setRankBy]   = useState<RankBy>('profit');
@@ -104,15 +106,39 @@ export default function TradersApp() {
     setSelected(entry);
     setProfile(null);
     setProfError('');
+    setProfLoading(true);
+
     if (entry.hasProfile === false) {
       // agent20 hasn't built a heavy resolved-market profile for this wallet yet.
       // That is NOT the same as "no data" — agent30's live feed may still track it.
-      // Honest-engine: never dead-end a feed-present wallet; the error block links
-      // to the live trade feed, which itself honestly shows absence if truly empty.
-      setProfError('No resolved-market leaderboard profile for this wallet yet — open its live trade feed for real fills & positions.');
+      // Honest-engine: probe the live feed. If it has a REAL record (200/ok), open
+      // the live trade feed view DIRECTLY — no intermediate "open live trade feed"
+      // notice/second click. Only when the wallet is absent from BOTH the profile
+      // set AND the live feed do we show the honest empty-state (never redirect to a
+      // blank/fabricated feed). The feed route 404s (or 503s while warming up) for a
+      // truly-untracked wallet, which is the not-ok branch below.
+      try {
+        const r = await fetch(`/api/traders/feed/${entry.wallet.toLowerCase()}`, { cache: 'no-store' });
+        const d = await r.json().catch(() => null);
+        if (r.ok && d?.ok) {
+          // Feed genuinely has data → go straight to the live feed detail page.
+          // (Next navigation → global ScrollToTop lands the page at the top; baad0b8.)
+          // Return WITHOUT clearing profLoading so the drawer shows a loading state,
+          // not a null-profile flash, until the route unmounts this view.
+          router.push(`/dashboard/traders/${entry.wallet.toLowerCase()}`);
+          return;
+        }
+        // Absent from both the profile set and the live feed → honest empty-state.
+        setProfError('No resolved-market leaderboard profile and no live trade feed for this wallet yet — it may not be in the tracked set, or the next resync will pick it up.');
+      } catch {
+        // Couldn't reach the feed to decide client-side — fall back to the honest
+        // notice with its manual "Open live trade feed" link (harmless no-op fallback).
+        setProfError('No resolved-market leaderboard profile for this wallet yet — open its live trade feed for real fills & positions.');
+      }
+      setProfLoading(false);
       return;
     }
-    setProfLoading(true);
+
     try {
       const r = await fetch(`/api/leaderboard/profile/${entry.wallet.toLowerCase()}`);
       const d = await r.json();
