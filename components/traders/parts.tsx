@@ -84,6 +84,44 @@ export function WinRate({
   );
 }
 
+// Card win-rate LABEL — reads plainly as a win rate. The PRIMARY figure is the
+// Wilson 95% lower-bound FLOOR (`wilson`, the sample-robust metric the board is
+// ranked by), with the raw unadjusted win rate (`winRate`) as a secondary
+// "(… raw)" hint. Same two REAL numbers as the old "FLOOR __% · RAW __%" strip —
+// this is a LABEL change only: nothing is recomputed and the ranking metric is
+// unchanged. Honest: the headline is the conservative floor, NOT the raw, so the
+// label never implies the raw is the win rate. Redaction-safe (free tier → lock on
+// the floor, raw hint hidden — never a fabricated %); low-sample wallets are muted
+// so luck doesn't read as a headline. `lowSampleBadge` appends the ⚠ badge inline
+// (used on the Bots card, which has no other low-sample warning); the leaderboard
+// card omits it because its identity line already shows the badge.
+export function WinRateLabel({
+  winRate, wilson, resolvedMarkets, lowSampleBadge = false,
+}: {
+  winRate:         number | null;
+  wilson:          number | null;
+  resolvedMarkets: number;
+  lowSampleBadge?: boolean;
+}) {
+  const low = isLowSample(resolvedMarkets);
+  return (
+    <span className="inline-flex items-baseline gap-1 whitespace-nowrap"
+      title="win rate floor — Wilson 95% lower bound; raw is the unadjusted %">
+      <span className="font-body text-[9px] uppercase tracking-wide text-muted/70">win rate</span>
+      {/* Primary = Wilson floor (0–1 fraction → %), the ranked metric — NOT the raw. */}
+      <span className={`font-mono text-[11px] tabular-nums ${low ? 'text-muted' : 'text-ink-2'}`}>
+        <Redacted value={wilson}>{v => `${Math.round(v * 100)}%`}</Redacted>
+      </span>
+      {/* Secondary hint = raw unadjusted win rate. Shown only when unredacted (a
+          null raw is a free-tier redaction — omit the hint rather than lock twice). */}
+      {winRate != null && (
+        <span className="font-body text-[10px] text-muted/70 tabular-nums">({winRate.toFixed(0)}% raw)</span>
+      )}
+      {lowSampleBadge && low && <LowSampleBadge n={resolvedMarkets} />}
+    </span>
+  );
+}
+
 // Two-level win-rate bar. SOLID (mint-deep) = Wilson 95% lower bound — the metric the
 // board is ranked by; LIGHT (mint tint) behind it = raw win rate. Wilson ≤ raw always
 // (it's a lower bound), so the solid sits inside the light. Redaction-safe: null inputs

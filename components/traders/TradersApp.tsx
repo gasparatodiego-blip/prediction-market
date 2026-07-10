@@ -10,7 +10,7 @@ import PlatformLogo   from '@/components/PlatformLogo';
 import { Redacted }   from '@/app/components/ui/Redacted';
 import { PlatformLink } from '@/app/components/ui/PlatformLink';
 import { polymarketProfileUrl } from '@/lib/platform-links';
-import { ActorBadge, VerifiedTick, WinRate, WinRateBar, FreshnessChip, LowSampleBadge, CategoryTag, ConfidenceBar, CopyButton } from './parts';
+import { ActorBadge, VerifiedTick, WinRateBar, WinRateLabel, FreshnessChip, LowSampleBadge, CategoryTag, ConfidenceBar, CopyButton } from './parts';
 import TraderProfileView from './TraderProfile';
 import CopyConfigPanel from './CopyConfigPanel';
 import {
@@ -570,8 +570,10 @@ function LeaderRow({ e, rank, cat, onOpen, copying, atLimit, tier, maxSlots, onT
 
         {/* line 3 — stat strip */}
         <div className="flex items-center gap-x-3 gap-y-1 mt-1.5 flex-wrap">
-          <Stat label="floor"><Redacted value={e.wilsonScore}>{v => `${Math.round(v * 100)}%`}</Redacted></Stat>
-          <Stat label="raw"><Redacted value={e.winRate}>{v => `${v.toFixed(0)}%`}</Redacted></Stat>
+          {/* WIN RATE {floor}% ({raw}% raw) — floor = Wilson 95% lower bound (ranked
+              metric), raw = unadjusted %. Same two real numbers, label only. The
+              identity line already carries the low-sample badge, so omit it here. */}
+          <WinRateLabel winRate={e.winRate} wilson={e.wilsonScore} resolvedMarkets={e.resolvedMarkets} />
           <Stat label="resolved">{e.resolvedMarkets}</Stat>
           <Stat label="vol"><Redacted value={e.volumeUsdc}>{v => fmtVol(v)}</Redacted></Stat>
           <Stat label="since">{fmtSince(e.firstActive)}</Stat>
@@ -618,7 +620,7 @@ function BotRow({ e, rank, onOpen, copying, atLimit, tier, maxSlots, onToggleCop
             <span>{fmtWallet(e.wallet)} · {e.resolvedMarkets} resolved</span>
             <LiveFeedLink wallet={e.wallet} />
             {(() => { const u = polymarketProfileUrl(e.wallet); return u ? <PlatformLink href={u} label="Polymarket profile" compact /> : null; })()}
-            <WinRate winRate={e.winRate} wilson={e.wilsonScore} resolvedMarkets={e.resolvedMarkets} />
+            <WinRateLabel winRate={e.winRate} wilson={e.wilsonScore} resolvedMarkets={e.resolvedMarkets} lowSampleBadge />
           </div>
         </div>
         <div className="text-right shrink-0 w-20">
