@@ -22,6 +22,7 @@ export type RouteKey =
   | 'sports-snapshot'
   | 'leaderboard'
   | 'leaderboard-profile'
+  | 'trader-feed'
   | 'copy'
   | 'wallet'
   | 'poly-whales'
@@ -351,6 +352,26 @@ export const REDACTION_MAP: Record<RouteKey, string[]> = {
     'profile.tradesClosed[].realizedPnl',
     'profile.activityRecent[].price',
     'profile.activityRecent[].usdcSize',
+  ],
+
+  // Trader detail feed (agent30). Structure/activity stays visible as teaser —
+  // markets, sides, sizes, share counts, timestamps, statuses, held days,
+  // fill counts, feed health. The MONEY is paid: fill prices, position
+  // economics (avg entry, mark, cost basis, proceeds, realized/unrealized P&L),
+  // and the reconstructed realized-P&L equity curve.
+  'trader-feed': [
+    'fills[].price',
+    'positions[].avgEntry',
+    'positions[].close',
+    'positions[].costBasis',
+    'positions[].proceeds',
+    'positions[].pnl',
+    'positions[].roiPct',
+    'summary.realizedPnl',
+    'summary.unrealizedPnl',
+    'summary.costBasisOpen',
+    'equityCurve',
+    'categoryPnl',
   ],
 
   copy: [

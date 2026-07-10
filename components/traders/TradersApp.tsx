@@ -1,6 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link           from 'next/link';
+import { Activity }   from 'lucide-react';
 import Eyebrow        from '@/app/components/ui/Eyebrow';
 import SectionHeading from '@/app/components/ui/SectionHeading';
 import PlatformLogo   from '@/components/PlatformLogo';
@@ -386,6 +388,20 @@ function Stat({ label, children }: { label: string; children: React.ReactNode })
   );
 }
 
+// Deep-link into the live per-trader detail page (agent30 feed). Distinct tap
+// target with stopPropagation so it never triggers the row's profile panel.
+function LiveFeedLink({ wallet }: { wallet: string }) {
+  return (
+    <Link
+      href={`/dashboard/traders/${wallet.toLowerCase()}`}
+      onClick={(ev) => ev.stopPropagation()}
+      title="Open live trade feed"
+      className="inline-flex items-center gap-1 rounded-md border border-line bg-bg-soft px-1.5 py-[2px] text-[10px] font-body text-muted hover:text-mint-deep hover:border-mint-deep/40 transition-colors">
+      <Activity size={11} className="shrink-0" /> Live feed
+    </Link>
+  );
+}
+
 function LeaderRow({ e, rank, cat, onOpen, copying, atLimit, tier, maxSlots, onToggleCopy }: RowProps & { cat: string }) {
   const low     = isLowSample(e.resolvedMarkets);
   const gainPct = returnOnVolumePct(e.pnlUsdc, e.volumeUsdc);   // profit ÷ volume (return on volume)
@@ -425,6 +441,7 @@ function LeaderRow({ e, rank, cat, onOpen, copying, atLimit, tier, maxSlots, onT
           <Stat label="resolved">{e.resolvedMarkets}</Stat>
           <Stat label="vol"><Redacted value={e.volumeUsdc}>{v => fmtVol(v)}</Redacted></Stat>
           <Stat label="since">{fmtSince(e.firstActive)}</Stat>
+          <LiveFeedLink wallet={e.wallet} />
           {(() => { const u = polymarketProfileUrl(e.wallet); return u ? <PlatformLink href={u} label="↗" compact /> : null; })()}
         </div>
       </div>
@@ -464,6 +481,7 @@ function BotRow({ e, rank, onOpen, copying, atLimit, tier, maxSlots, onToggleCop
           </div>
           <div className="flex items-center gap-2 mt-0.5 font-body text-[10px] text-muted">
             <span>{fmtWallet(e.wallet)} · {e.resolvedMarkets} resolved</span>
+            <LiveFeedLink wallet={e.wallet} />
             {(() => { const u = polymarketProfileUrl(e.wallet); return u ? <PlatformLink href={u} label="Polymarket profile" compact /> : null; })()}
             <WinRate winRate={e.winRate} wilson={e.wilsonScore} resolvedMarkets={e.resolvedMarkets} />
           </div>

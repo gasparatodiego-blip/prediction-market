@@ -1,0 +1,299 @@
+// lib/trader-analytics.ts — honest per-trader P&L reconstruction from REAL fills.
+//
+// Consumes agent30's per-wallet record (raw Data-API fills + Polymarket /positions)
+// and derives everything the trader detail page shows. HONEST-ENGINE rules baked in:
+//
+//  * Open positions   → unrealized P&L marked to CURRENT mid (curPrice), always
+//                       LABELLED "unrealized · mark-to-mid". Never realized.
+//  * Resolved         → settle 100¢/0¢, NO exit price. P&L is settlement-realized.
+//  * Closed (sold)    → reconstructed from fills: realized = proceeds − cost basis,
+//                       avg entry = size-weighted buy price, ROI = P&L / cost basis.
+//  * Missing inputs   → null (render as "—"), NEVER invented.
+//  * Capped fills     → if a closed line touches the oldest kept fill and the fill
+//                       window is capped, its cost basis may be incomplete → P&L
+//                       is withheld (null) and flagged, rather than shown wrong.
+//
+// @ts-ignore — category.js is CommonJS (allowJs); named interop works in Next.
+import { categoryFromText } from '@/lib/category';
+
+export interface RawFill {
+  txHash: string | null;
+  asset: string;
+  conditionId: string | null;
+  side: string | null;            // BUY | SELL
+  price: number;
+  size: number;
+  timestamp: number;              // unix seconds
+  title: string | null;
+  slug: string | null;
+  eventSlug: string | null;
+  outcome: string | null;
+  outcomeIndex: number | null;
+}
+
+export interface RawPosition {
+  asset: string;
+  conditionId: string | null;
+  size: number | null;
+  avgPrice: number | null;
+  curPrice: number | null;
+  initialValue: number | null;
+  currentValue: number | null;
+  cashPnl: number | null;         // unrealized (mark-to-mid) for open; settled delta for resolved
+  percentPnl: number | null;
+  realizedPnl: number | null;
+  totalBought: number | null;
+  redeemable: boolean;
+  title: string | null;
+  slug: string | null;
+  eventSlug: string | null;
+  outcome: string | null;
+  outcomeIndex: number | null;
+  endDate: string | null;
+}
+
+export interface WalletRecord {
+  fills: RawFill[];
+  positions: RawPosition[];
+  firstFillTs: number | null;
+  lastFillTs: number | null;
+  fillsUpdatedAt: number | null;
+  positionsUpdatedAt: number | null;
+  fillsCount?: number;
+  fillsCapped?: boolean;
+}
+
+export type PosStatus = 'open' | 'closed' | 'resolved';
+
+export interface EnrichedPosition {
+  key: string;
+  market: string | null;
+  slug: string | null;
+  eventSlug: string | null;
+  conditionId: string | null;
+  asset: string;
+  outcome: string | null;
+  status: PosStatus;
+  shares: number | null;          // current shares held (open/resolved) or shares traded (closed)
+  avgEntry: number | null;        // size-weighted buy price (¢ as 0..1)
+  close: number | null;           // open→mark, closed→exit(sell), resolved→settle(0|1)
+  closeLabel: string;             // 'mark-to-mid' | 'exit (avg sell)' | 'settled 100¢/0¢'
+  costBasis: number | null;
+  proceeds: number | null;        // closed/resolved realized proceeds; null for open
+  pnl: number | null;
+  pnlLabel: string;               // honest label
+  realized: boolean;              // whether pnl is realized (vs unrealized)
+  roiPct: number | null;
+  heldDays: number | null;
+  nFills: number;
+  incompleteBasis: boolean;
+  category: string;
+  lastActivityTs: number | null;
+}
+
+export interface EquityPoint { t: number; cum: number }
+export interface CategoryPnl { category: string; realizedPnl: number; winRate: number | null; n: number }
+
+export interface TraderSummary {
+  realizedPnl: number | null;
+  unrealizedPnl: number | null;
+  costBasisOpen: number | null;
+  openCount: number;
+  closedCount: number;
+  resolvedCount: number;
+  winRateRealized: number | null;
+  realizedTrades: number;
+}
+
+export interface TraderAnalytics {
+  summary: TraderSummary;
+  positions: EnrichedPosition[];
+  equityCurve: EquityPoint[];
+  categoryPnl: CategoryPnl[];
+}
+
+const EPS = 1e-6;
+const clampP = (p: number) => Math.max(0, Math.min(1, p));
+function catOf(title: string | null): string {
+  try { return (categoryFromText(title || '') as string) || 'Other'; } catch { return 'Other'; }
+}
+
+// A position/market line is keyed by conditionId + outcome so a wallet holding
+// both sides is split correctly. asset (tokenId) is the tightest key when present.
+const lineKey = (asset: string | null, conditionId: string | null, outcomeIndex: number | null) =>
+  asset || `${conditionId || 'na'}:${outcomeIndex ?? 'na'}`;
+
+export function buildTraderAnalytics(rec: WalletRecord): TraderAnalytics {
+  const fills = Array.isArray(rec.fills) ? rec.fills.slice() : [];
+  const rawPositions = Array.isArray(rec.positions) ? rec.positions : [];
+  const capped = !!rec.fillsCapped;
+  // oldest kept fill timestamp — a closed line reaching this may be missing older buys.
+  const oldestTs = fills.length ? Math.min(...fills.map(f => f.timestamp)) : null;
+
+  const openAssets = new Set(rawPositions.map(p => p.asset));
+
+  // ── 1. Reconstruct per-line buy/sell aggregates from fills ──────────────────
+  interface Line {
+    key: string; asset: string; conditionId: string | null; outcomeIndex: number | null;
+    title: string | null; slug: string | null; eventSlug: string | null; outcome: string | null;
+    buyShares: number; buyCost: number; sellShares: number; sellProceeds: number;
+    firstTs: number; lastTs: number; nFills: number; touchesOldest: boolean;
+  }
+  const lines = new Map<string, Line>();
+  for (const f of fills) {
+    if (!f || !Number.isFinite(f.price) || !Number.isFinite(f.size)) continue;
+    const k = lineKey(f.asset, f.conditionId, f.outcomeIndex);
+    let ln = lines.get(k);
+    if (!ln) {
+      ln = {
+        key: k, asset: f.asset, conditionId: f.conditionId, outcomeIndex: f.outcomeIndex,
+        title: f.title, slug: f.slug, eventSlug: f.eventSlug, outcome: f.outcome,
+        buyShares: 0, buyCost: 0, sellShares: 0, sellProceeds: 0,
+        firstTs: f.timestamp, lastTs: f.timestamp, nFills: 0, touchesOldest: false,
+      };
+      lines.set(k, ln);
+    }
+    const p = clampP(f.price), sz = Math.abs(f.size);
+    if (f.side === 'SELL') { ln.sellShares += sz; ln.sellProceeds += p * sz; }
+    else { ln.buyShares += sz; ln.buyCost += p * sz; }        // default BUY
+    ln.firstTs = Math.min(ln.firstTs, f.timestamp);
+    ln.lastTs  = Math.max(ln.lastTs, f.timestamp);
+    ln.nFills++;
+    if (oldestTs != null && f.timestamp <= oldestTs + 1) ln.touchesOldest = true;
+  }
+
+  const positions: EnrichedPosition[] = [];
+  const realizedEvents: { t: number; pnl: number; category: string; won: boolean }[] = [];
+
+  // ── 2. OPEN / RESOLVED positions — authoritative from Polymarket /positions ──
+  for (const p of rawPositions) {
+    const ln = lines.get(lineKey(p.asset, p.conditionId, p.outcomeIndex));
+    const resolved = !!p.redeemable;   // redeemable ⇒ market resolved, awaiting/eligible redemption
+    const status: PosStatus = resolved ? 'resolved' : 'open';
+    const settle = resolved ? (p.curPrice != null ? Math.round(p.curPrice) : null) : null;
+    const heldDays = ln ? Math.max(0, (ln.lastTs - ln.firstTs) / 86400) : null;
+    const category = catOf(p.title);
+
+    if (resolved) {
+      // Settlement-realized: settle 100¢/0¢, NO exit price. P&L = settled value − cost.
+      const pnl = p.cashPnl;   // Polymarket's cashPnl on a redeemable = settled − cost (realized)
+      positions.push({
+        key: p.asset, market: p.title, slug: p.slug, eventSlug: p.eventSlug,
+        conditionId: p.conditionId, asset: p.asset, outcome: p.outcome, status,
+        shares: p.size, avgEntry: p.avgPrice, close: settle, closeLabel: 'settled 100¢/0¢',
+        costBasis: p.initialValue, proceeds: (settle != null && p.size != null) ? settle * p.size : null,
+        pnl, pnlLabel: 'realized · settled', realized: true,
+        roiPct: (pnl != null && p.initialValue) ? (pnl / p.initialValue) * 100 : null,
+        heldDays, nFills: ln ? ln.nFills : 0, incompleteBasis: false, category,
+        lastActivityTs: ln ? ln.lastTs : null,
+      });
+      if (pnl != null) {
+        // Settlement TIME for the equity curve. We don't get the exact on-chain
+        // settlement/elimination timestamp from /positions, and endDate is the
+        // market's nominal end which can be in the FUTURE (e.g. a negRisk team
+        // eliminated early — its YES settled to 0 now, but the tournament ends
+        // later). Plotting a realized loss at a future date would be a lie, so
+        // we use the line's REAL last-activity timestamp (a true, ≤-settlement
+        // trade time), clamping any endDate fallback to never exceed now.
+        const nowTs = Math.floor(Date.now() / 1000);
+        const endTs = p.endDate ? Math.floor(new Date(p.endDate + 'T00:00:00Z').getTime() / 1000) : null;
+        const t = (ln && ln.lastTs) ? ln.lastTs
+          : (endTs != null ? Math.min(endTs, nowTs) : (rec.lastFillTs || nowTs));
+        realizedEvents.push({ t, pnl, category, won: pnl > 0 });
+      }
+    } else {
+      // OPEN: unrealized, marked to current mid. Never counted as realized.
+      positions.push({
+        key: p.asset, market: p.title, slug: p.slug, eventSlug: p.eventSlug,
+        conditionId: p.conditionId, asset: p.asset, outcome: p.outcome, status,
+        shares: p.size, avgEntry: p.avgPrice, close: p.curPrice, closeLabel: 'mark-to-mid',
+        costBasis: p.initialValue, proceeds: null,
+        pnl: p.cashPnl, pnlLabel: 'unrealized · mark-to-mid', realized: false,
+        roiPct: p.percentPnl,
+        heldDays, nFills: ln ? ln.nFills : 0, incompleteBasis: false, category,
+        lastActivityTs: ln ? ln.lastTs : null,
+      });
+    }
+  }
+
+  // ── 3. CLOSED (sold-out) positions — reconstructed from fills only ──────────
+  // A line NOT in current /positions, with sells, and net ≈ 0 shares.
+  for (const ln of Array.from(lines.values())) {
+    if (openAssets.has(ln.asset)) continue;              // still open/resolved → handled above
+    if (ln.sellShares < EPS) continue;                   // never sold → not a reconstructable close
+    const net = ln.buyShares - ln.sellShares;
+    if (Math.abs(net) > Math.max(1, ln.buyShares * 0.02)) continue; // not flat → skip (partial, ambiguous)
+
+    const avgBuy = ln.buyShares > EPS ? ln.buyCost / ln.buyShares : null;
+    const avgSell = ln.sellShares > EPS ? ln.sellProceeds / ln.sellShares : null;
+    // matched cost basis for the shares actually sold
+    const matchedShares = Math.min(ln.buyShares, ln.sellShares);
+    const costBasis = avgBuy != null ? avgBuy * matchedShares : null;
+    const proceeds = ln.sellProceeds;
+    // Withhold P&L if the buy leg may be incomplete (capped window reached its edge).
+    const incomplete = capped && ln.touchesOldest;
+    const pnl = (!incomplete && costBasis != null) ? (proceeds - costBasis) : null;
+    const category = catOf(ln.title);
+
+    positions.push({
+      key: ln.key, market: ln.title, slug: ln.slug, eventSlug: ln.eventSlug,
+      conditionId: ln.conditionId, asset: ln.asset, outcome: ln.outcome, status: 'closed',
+      shares: ln.sellShares, avgEntry: avgBuy, close: avgSell, closeLabel: 'exit (avg sell)',
+      costBasis, proceeds, pnl, pnlLabel: incomplete ? 'realized · basis incomplete' : 'realized',
+      realized: true,
+      roiPct: (pnl != null && costBasis) ? (pnl / costBasis) * 100 : null,
+      heldDays: Math.max(0, (ln.lastTs - ln.firstTs) / 86400),
+      nFills: ln.nFills, incompleteBasis: incomplete, category,
+      lastActivityTs: ln.lastTs,
+    });
+    if (pnl != null) realizedEvents.push({ t: ln.lastTs, pnl, category, won: pnl > 0 });
+  }
+
+  // ── 4. Sort positions: open first, then resolved/closed by recency ──────────
+  const statusRank: Record<PosStatus, number> = { open: 0, resolved: 1, closed: 2 };
+  positions.sort((a, b) =>
+    statusRank[a.status] - statusRank[b.status] ||
+    (b.lastActivityTs ?? 0) - (a.lastActivityTs ?? 0));
+
+  // ── 5. Equity curve — cumulative REALIZED P&L over time ─────────────────────
+  realizedEvents.sort((a, b) => a.t - b.t);
+  let cum = 0;
+  const equityCurve: EquityPoint[] = [];
+  for (const e of realizedEvents) { cum += e.pnl; equityCurve.push({ t: e.t, cum: round2(cum) }); }
+
+  // ── 6. Category realized P&L + win% ─────────────────────────────────────────
+  const catMap = new Map<string, { pnl: number; wins: number; n: number }>();
+  for (const e of realizedEvents) {
+    const c = catMap.get(e.category) || { pnl: 0, wins: 0, n: 0 };
+    c.pnl += e.pnl; c.n++; if (e.won) c.wins++;
+    catMap.set(e.category, c);
+  }
+  const categoryPnl: CategoryPnl[] = Array.from(catMap.entries())
+    .map(([category, c]: [string, { pnl: number; wins: number; n: number }]) => ({ category, realizedPnl: round2(c.pnl), winRate: c.n ? (c.wins / c.n) * 100 : null, n: c.n }))
+    .sort((a, b) => b.realizedPnl - a.realizedPnl);
+
+  // ── 7. Summary ──────────────────────────────────────────────────────────────
+  const openPositions = positions.filter(p => p.status === 'open');
+  const realizedPositions = positions.filter(p => p.realized && p.pnl != null);
+  const realizedPnl = realizedEvents.length ? round2(realizedEvents.reduce((s, e) => s + e.pnl, 0)) : null;
+  const unrealizedPnl = openPositions.some(p => p.pnl != null)
+    ? round2(openPositions.reduce((s, p) => s + (p.pnl ?? 0), 0)) : null;
+  const costBasisOpen = openPositions.some(p => p.costBasis != null)
+    ? round2(openPositions.reduce((s, p) => s + (p.costBasis ?? 0), 0)) : null;
+  const realizedWins = realizedPositions.filter(p => (p.pnl ?? 0) > 0).length;
+
+  const summary: TraderSummary = {
+    realizedPnl,
+    unrealizedPnl,
+    costBasisOpen,
+    openCount: openPositions.length,
+    closedCount: positions.filter(p => p.status === 'closed').length,
+    resolvedCount: positions.filter(p => p.status === 'resolved').length,
+    winRateRealized: realizedPositions.length ? (realizedWins / realizedPositions.length) * 100 : null,
+    realizedTrades: realizedPositions.length,
+  };
+
+  return { summary, positions, equityCurve, categoryPnl };
+}
+
+function round2(n: number): number { return Math.round(n * 100) / 100; }
