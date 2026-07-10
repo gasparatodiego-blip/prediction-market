@@ -89,6 +89,10 @@ export interface EnrichedPosition {
   incompleteBasis: boolean;
   category: string;
   lastActivityTs: number | null;
+  // Real slug-derived market close (unix s) for OPEN timed markets → the detail
+  // page's live expiry countdown. null when the slug carries no epoch (non-timed
+  // market) → no countdown is shown (honest "no expiry"), never a fabricated one.
+  marketEndTs?: number | null;
 }
 
 export interface EquityPoint { t: number; cum: number }
@@ -213,6 +217,7 @@ export function buildTraderAnalytics(rec: WalletRecord): TraderAnalytics {
         roiPct: p.percentPnl,
         heldDays, nFills: ln ? ln.nFills : 0, incompleteBasis: false, category,
         lastActivityTs: ln ? ln.lastTs : null,
+        marketEndTs: marketEndTsFromSlug(p.slug),   // real slug epoch → live countdown; null for non-timed
       });
     }
   }

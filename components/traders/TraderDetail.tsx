@@ -31,6 +31,7 @@ interface Position {
   costBasis: number | null; proceeds: number | null; pnl: number | null; pnlLabel: string;
   realized: boolean; roiPct: number | null; heldDays: number | null; nFills: number;
   incompleteBasis: boolean; category: string; lastActivityTs: number | null;
+  marketEndTs?: number | null;   // real slug-derived close (unix s) for OPEN timed markets → live countdown
 }
 interface Summary {
   realizedPnl: number | null; unrealizedPnl: number | null; costBasisOpen: number | null;
@@ -50,6 +51,19 @@ interface FeedResp {
 }
 
 const POLL_MS = 15_000;
+const MID_POLL_MS = 7_000;   // light per-open-position mid poll (free public CLOB midpoint)
+
+// Live countdown to a timed market's close, e.g. "closes in 2m 14s". Returns null
+// once expired (caller then shows "awaiting settlement") — never a negative time.
+function fmtCountdown(sec: number): string | null {
+  if (sec <= 0) return null;
+  const d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600),
+        m = Math.floor((sec % 3600) / 60), s = sec % 60;
+  if (d > 0) return `${d}d ${h}h`;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+}
 
 function hhmmss(iso: string | null): string {
   if (!iso) return '—';
@@ -346,17 +360,102 @@ function PositionRow({ p, fills, isPaid }: { p: Position; fills: RawFill[]; isPa
           </div>
         </div>
 
-        <div className="text-right shrink-0 w-[110px]">
-          <div className={`font-display font-bold text-[15px] tabular-nums ${pnlColor(p.pnl)}`}>
-            <Redacted value={p.pnl} isPaid={isPaid}>{v => fmtPnl(v)}</Redacted>
-          </div>
-          <div className="font-body text-[9px] text-faint truncate" title={p.pnlLabel}>
-            {p.roiPct != null ? <span className="font-mono">{fmtPct1(p.roiPct)}</span> : ''} {p.status === 'settled' ? 'settled · P&L n/a' : p.realized ? 'realized' : 'unrealized'}
-          </div>
-        </div>
+        {p.status === 'open'
+          ? <LiveOpenPnl p={p} isPaid={isPaid} />
+          : (
+            <div className="text-right shrink-0 w-[110px]">
+              <div className={`font-display font-bold text-[15px] tabular-nums ${pnlColor(p.pnl)}`}>
+                <Redacted value={p.pnl} isPaid={isPaid}>{v => fmtPnl(v)}</Redacted>
+              </div>
+              <div className="font-body text-[9px] text-faint truncate" title={p.pnlLabel}>
+                {p.roiPct != null ? <span className="font-mono">{fmtPct1(p.roiPct)}</span> : ''} {p.status === 'settled' ? 'settled · P&L n/a' : p.realized ? 'realized' : 'unrealized'}
+              </div>
+            </div>
+          )}
       </div>
 
       {open && <PositionExpand p={p} posFills={posFills} url={url} isPaid={isPaid} />}
+    </div>
+  );
+}
+
+// ── Live OPEN position: real-time unrealized P&L + expiry countdown ───────────
+// ONLY open positions get this. HONEST-ENGINE: the number is recomputed as a pure
+// mark-to-mid — (live mid − avg entry) × shares — from Polymarket's FREE public
+// CLOB midpoint (proxied via /api/traders/mid), polled lightly every ~7s. It stays
+// labelled "unrealized · mark-to-mid · can resolve to zero" and is redaction-gated
+// exactly like the feed: when the value isn't visible (free tier) we don't poll and
+// the row keeps its locked teaser. If a mid can't be fetched we KEEP the last value
+// and mark it "stale" — never fabricate. When the countdown hits zero we stop
+// polling and show "awaiting settlement". Realized/closed/settled rows are untouched.
+function useLiveMid(token: string, active: boolean) {
+  const [mid, setMid]     = useState<number | null>(null);
+  const [stale, setStale] = useState(false);
+  useEffect(() => {
+    if (!active || !token) return;
+    let live = true;
+    const poll = async () => {
+      try {
+        const r = await fetch(`/api/traders/mid?token=${token}`, { cache: 'no-store' });
+        const d = await r.json();
+        if (!live) return;
+        if (d.ok && Number.isFinite(d.mid)) { setMid(d.mid); setStale(false); }
+        else setStale(true);          // keep last mid; mark stale honestly
+      } catch { if (live) setStale(true); }
+    };
+    poll();
+    const id = setInterval(poll, MID_POLL_MS);
+    return () => { live = false; clearInterval(id); };
+  }, [token, active]);
+  return { mid, stale };
+}
+
+function LiveOpenPnl({ p, isPaid }: { p: Position; isPaid: boolean }) {
+  // 1s tick drives the countdown (and re-evaluates expiry).
+  const [nowSec, setNowSec] = useState(() => Math.floor(Date.now() / 1000));
+  useEffect(() => {
+    const id = setInterval(() => setNowSec(Math.floor(Date.now() / 1000)), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const endTs     = p.marketEndTs ?? null;
+  const remaining = endTs != null ? endTs - nowSec : null;
+  const expired   = remaining != null && remaining <= 0;
+
+  // Poll the live mid only when the P&L is actually visible (paid) and the market
+  // hasn't closed — no continuous polling of expired rows or locked teasers.
+  const { mid, stale } = useLiveMid(p.asset, isPaid && !expired);
+
+  // Pure mark-to-mid recompute from the live mid; fall back to the feed's value
+  // until the first mid arrives so nothing flickers or fabricates.
+  const haveLive  = mid != null && p.avgEntry != null && p.shares != null;
+  const livePnl   = haveLive ? (mid! - p.avgEntry!) * p.shares! : p.pnl;
+  const costBasis = (p.avgEntry != null && p.shares != null) ? p.avgEntry * p.shares : p.costBasis;
+  const liveRoi   = (livePnl != null && costBasis != null && costBasis !== 0)
+    ? (livePnl / costBasis) * 100 : p.roiPct;
+
+  const label = expired
+    ? 'unrealized · mark-to-mid · awaiting settlement'
+    : `unrealized · mark-to-mid · can resolve to zero${stale ? ' · stale mid' : ''}`;
+
+  const countdown = endTs == null ? null : fmtCountdown(remaining!);
+
+  return (
+    <div className="text-right shrink-0 w-[124px]">
+      <div className={`font-display font-bold text-[15px] tabular-nums ${pnlColor(livePnl)}`}>
+        <Redacted value={livePnl} isPaid={isPaid}>{v => fmtPnl(v)}</Redacted>
+      </div>
+      <div className="font-body text-[9px] text-faint truncate" title={label}>
+        {liveRoi != null && <span className="font-mono">{fmtPct1(liveRoi)}</span>}{' '}
+        {isPaid && !expired && haveLive && !stale && (
+          <span className="inline-block w-1.5 h-1.5 rounded-full bg-mint-deep align-middle animate-pulse" title="live mark-to-mid" />
+        )}{' '}unrealized
+      </div>
+      {endTs != null && (
+        <div className={`mt-0.5 font-body text-[9px] tabular-nums ${expired ? 'text-gold' : 'text-muted'}`}>
+          {expired ? 'awaiting settlement' : <>closes in <span className="font-mono text-ink-2">{countdown}</span></>}
+        </div>
+      )}
     </div>
   );
 }
@@ -492,7 +591,9 @@ function HonestNote({ data }: { data: FeedResp }) {
     <div className="mt-5 rounded-xl border border-line bg-bg-soft/40 p-4 font-body text-[11px] text-muted leading-relaxed">
       <b className="text-ink-2">How this is built.</b> Every fill, price, and position here is a real on-chain
       Polymarket trade — live via the public CLOB activity WebSocket and re-synced from the keyless Data API
-      (no key, no paid tier). Open positions show <b>unrealized</b> P&amp;L marked to the current mid; resolved
+      (no key, no paid tier). Open positions show <b>unrealized</b> P&amp;L marked to the current mid — refreshed
+      live every ~7s from the public CLOB midpoint with a countdown to the market&apos;s real close (it can still
+      resolve to zero); if a mid can&apos;t be fetched the last value is kept and flagged stale, never faked; resolved
       positions settle at 100¢/0¢ with no exit price; closed positions show realized proceeds minus cost basis.
       Fills are kept to the most recent {data.fillsPerWallet ?? '—'} per wallet — older history lives on the
       trader&apos;s Polymarket profile. &ldquo;As of {hhmmss(data.updatedAt)}&rdquo; is the true last feed update
