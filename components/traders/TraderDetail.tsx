@@ -37,6 +37,7 @@ interface Summary {
   realizedPnl: number | null; unrealizedPnl: number | null; costBasisOpen: number | null;
   openCount: number; closedCount: number; resolvedCount: number; settledCount: number;
   winRateRealized: number | null; realizedTrades: number;
+  openObserved?: number; openTruncated?: boolean;   // true open total + whether the list is a top-by-value subset
 }
 interface FeedResp {
   ok: boolean; address: string; error?: string; isPaid?: boolean;
@@ -160,6 +161,17 @@ export default function TraderDetail({ address }: { address: string }) {
                 );
               })}
             </div>
+
+            {/* honest disclosure: open list is a top-by-value subset of a larger true total */}
+            {(filter === 'all' || filter === 'open')
+              && (data.summary.openTruncated || (data.summary.openObserved ?? 0) > data.summary.openCount) && (
+              <div className="mt-3 rounded-lg border border-gold/30 bg-gold-tint/60 px-3 py-2 font-body text-[11px] text-ink-2">
+                Showing top <b className="tabular-nums">{data.summary.openCount}</b> of{' '}
+                <b className="tabular-nums">{data.summary.openObserved}{data.summary.openTruncated ? '+' : ''}</b> open
+                positions by current value — this wallet holds many live markets (real, unsettled). Full set on its
+                Polymarket profile.
+              </div>
+            )}
 
             {/* positions */}
             <div className="mt-3 rounded-xl border border-line bg-surface overflow-hidden">

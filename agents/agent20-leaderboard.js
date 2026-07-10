@@ -9,6 +9,7 @@
 const fs = require('fs');
 const https = require('https');
 const { rlGet } = require('../lib/rateLimitedFetch');  // per-host limiter — ALL new Polymarket calls route through this
+const { fetchOpenPositions } = require('../lib/open-positions-fetch');  // complete OPEN set (default /positions under-counts)
 const { chain }        = require('stream-chain');
 const { parser }       = require('stream-json');
 const { streamObject } = require('stream-json/streamers/stream-object.js');
@@ -880,10 +881,19 @@ async function enrichWallet(addr) {
   // labeled explicitly as unrealizedPnl and never mixed with realized P&L.
   try {
     const pos = await rlJson(`https://data-api.polymarket.com/positions?user=${addr}`);
+    // Base fetch under-counts OPEN positions (data-api defaults: limit=100 +
+    // sizeThreshold~1). Pull the COMPLETE open set so the copy-panel mirror matches
+    // the detail feed. Falls back to the base open set if the complete fetch fails.
+    let openSrc = Array.isArray(pos)
+      ? pos.filter(p => p.redeemable === false && Math.abs(p.size || 0) > 0) : [];
+    try {
+      const { ok, open } = await fetchOpenPositions(rlJson, addr, { maxKeep: MAX_POSITIONS_OPEN });
+      if (ok) openSrc = open;   // complete, value-sorted, already ≤ MAX_POSITIONS_OPEN
+    } catch (e) { /* keep base open set — never drop open positions on a transient error */ }
     if (Array.isArray(pos)) {
       for (const p of pos) if (p.conditionId && p.title) cidTitles[p.conditionId] = p.title;
-      prof.positionsOpen = pos
-        .filter(p => p.redeemable === false && Math.abs(p.size || 0) > 0)  // still-live; excludes settled/redeemable
+      for (const p of openSrc) if (p.conditionId && p.title) cidTitles[p.conditionId] = p.title;
+      prof.positionsOpen = openSrc
         .slice(0, MAX_POSITIONS_OPEN)
         .map(p => ({
           marketTitle:   p.title ?? null,

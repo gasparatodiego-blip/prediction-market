@@ -39,6 +39,7 @@ const fs   = require('fs');
 const path = require('path');
 const WebSocket = require('ws');
 const { rlGet } = require('../lib/rateLimitedFetch');
+const { fetchOpenPositions } = require('../lib/open-positions-fetch');
 const { atomicWriteJson } = require('../lib/atomicJsonWrite');
 
 // ── .env (pm2 doesn't auto-load project env files) — only for optional Telegram
@@ -60,6 +61,7 @@ const OUT_FILE          = '/tmp/trader-feed.json';
 const HB_FILE           = '/tmp/agent-heartbeats.json';
 
 const FILLS_PER_WALLET  = 200;            // depth kept per wallet (full history → link out to Polymarket profile)
+const MAX_OPEN_KEEP     = 60;             // display/store cap on OPEN positions (true count disclosed via openObserved)
 const RESYNC_INTERVAL_MS = 10 * 60_000;   // periodic full REST resync (refreshes marks + catches anything)
 const TRACKED_REFRESH_MS = 10 * 60_000;   // re-read the tracked wallet set from leaderboard.json
 const HEALTH_TICK_MS    = 5_000;          // health check + heartbeat cadence
@@ -178,10 +180,46 @@ async function fetchTrades(addr) {
   const r = await rlGet(url, { timeoutMs: REQ_TIMEOUT_MS });
   return Array.isArray(r.data) ? r.data : [];
 }
+// Returns { positions, openObserved, openCapped }.
+//   • positions  — RESOLVED/redeemable rows from the base fetch (drives realized
+//                  settlement EXACTLY as before) PLUS the COMPLETE genuinely-open
+//                  set (capped to MAX_OPEN_KEEP by value for display/poll load).
+//   • openObserved — true number of open (redeemable=false, |size|>0) positions.
+//   • openCapped   — more open exist than we kept/scanned → UI discloses "X of Y".
+// The base default fetch is untouched, so redeemable/resolved (and thus realized
+// P&L) never change — we only ADD open positions the defaults silently dropped.
 async function fetchPositions(addr) {
-  const url = `${DATA_API}/positions?user=${addr}`;
-  const r = await rlGet(url, { timeoutMs: REQ_TIMEOUT_MS });
-  return Array.isArray(r.data) ? r.data : [];
+  const base = await rlGet(`${DATA_API}/positions?user=${addr}`, { timeoutMs: REQ_TIMEOUT_MS });
+  const baseArr = Array.isArray(base.data) ? base.data : [];
+
+  const getJson = async (url) => {
+    const r = await rlGet(url, { timeoutMs: REQ_TIMEOUT_MS });
+    return Array.isArray(r.data) ? r.data : [];
+  };
+  const { ok, open, openObserved, openScanCapped } =
+    await fetchOpenPositions(getJson, addr, { maxKeep: MAX_OPEN_KEEP });
+
+  let keptOpen, observed, capped;
+  if (ok) {
+    keptOpen = open;
+    observed = openObserved;
+    capped   = openScanCapped || openObserved > open.length;
+  } else {
+    // Complete-open fetch failed — degrade to the base fetch's open set rather
+    // than dropping open positions entirely (honest: never fewer than we can see).
+    keptOpen = baseArr.filter(p => p && !p.redeemable && Math.abs(Number(p.size) || 0) > 0);
+    observed = keptOpen.length;
+    capped   = false;
+  }
+
+  // Merge: complete open + resolved-from-base. No asset overlap (open=redeemable:false,
+  // resolved=redeemable:true) but dedupe defensively so a row can't appear twice.
+  const keptAssets = new Set(keptOpen.map(p => String(p.asset)));
+  const merged = keptOpen.slice();
+  for (const p of baseArr) {
+    if (p && p.redeemable && !keptAssets.has(String(p.asset))) merged.push(p);
+  }
+  return { positions: merged, openObserved: observed, openCapped: capped };
 }
 function normPosition(p) {
   if (!p || p.asset == null) return null;
@@ -218,8 +256,10 @@ async function resyncWallet(addr) {
     rec.fillsUpdatedAt = Date.now();
   } catch (e) { log(`resync trades ${addr.slice(0, 10)}… failed:`, e.message); }
   try {
-    const positions = await fetchPositions(addr);
+    const { positions, openObserved, openCapped } = await fetchPositions(addr);
     rec.positions = positions.map(normPosition).filter(Boolean);
+    rec.openObserved = openObserved;   // true open count (redeemable=false, |size|>0)
+    rec.openCapped = openCapped;       // more open than stored/scanned → UI discloses
     rec.positionsUpdatedAt = Date.now();
   } catch (e) { log(`resync positions ${addr.slice(0, 10)}… failed:`, e.message); }
 }
@@ -332,6 +372,8 @@ function buildFile() {
       positionsUpdatedAt: rec.positionsUpdatedAt,
       fillsCount:         rec.fills.length,
       fillsCapped:        rec.fills.length >= FILLS_PER_WALLET, // true ⇒ older fills exist only on Polymarket
+      openObserved:       rec.openObserved ?? null,             // true open count (may exceed stored positions)
+      openCapped:         !!rec.openCapped,                     // true ⇒ more open than we stored → disclose "X of Y"
     };
   }
   return {

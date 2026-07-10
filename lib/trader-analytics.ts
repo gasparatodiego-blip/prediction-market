@@ -61,6 +61,11 @@ export interface WalletRecord {
   positionsUpdatedAt: number | null;
   fillsCount?: number;
   fillsCapped?: boolean;
+  // True count of genuinely-OPEN positions observed (redeemable=false, |size|>0),
+  // which can exceed the stored/displayed subset for MM/scalper wallets. openCapped
+  // ⇒ even more open exist than we scanned. Both drive the "showing X of Y" note.
+  openObserved?: number | null;
+  openCapped?: boolean;
 }
 
 export type PosStatus = 'open' | 'closed' | 'resolved' | 'settled';
@@ -108,6 +113,10 @@ export interface TraderSummary {
   settledCount: number;
   winRateRealized: number | null;
   realizedTrades: number;
+  // openObserved = true open count from the source (≥ openCount, which is capped for
+  // display); openTruncated ⇒ the list is a top-by-value subset → UI shows "X of Y".
+  openObserved: number;
+  openTruncated: boolean;
 }
 
 export interface TraderAnalytics {
@@ -327,6 +336,11 @@ export function buildTraderAnalytics(rec: WalletRecord): TraderAnalytics {
     settledCount: positions.filter(p => p.status === 'settled').length,
     winRateRealized: realizedPositions.length ? (realizedWins / realizedPositions.length) * 100 : null,
     realizedTrades: realizedPositions.length,
+    // True open count: agent30's observed total (capture of ALL genuinely-open
+    // positions) when present; else the displayed count. Truncated when more open
+    // exist than we display — honest "showing X of Y", never a silent under-count.
+    openObserved: Math.max(openPositions.length, rec.openObserved ?? 0),
+    openTruncated: !!rec.openCapped || ((rec.openObserved ?? 0) > openPositions.length),
   };
 
   return { summary, positions, equityCurve, categoryPnl };
