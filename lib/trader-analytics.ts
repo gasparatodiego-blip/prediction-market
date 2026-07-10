@@ -328,3 +328,79 @@ export function buildTraderAnalytics(rec: WalletRecord): TraderAnalytics {
 }
 
 function round2(n: number): number { return Math.round(n * 100) / 100; }
+
+// ── Closed-trade entry→exit enrichment ────────────────────────────────────────
+// agent20's aggregate closed-trades ledger reports a REAL realized P&L per market
+// but no entry/exit price (the aggregate ledger doesn't pin per-fill prices), so
+// the profile's Entry→Exit column shows "— → —". agent30's per-fill feed for the
+// SAME wallet DOES have them. This joins the two, by conditionId, to surface:
+//   • entry = size-weighted BUY-fill price (real)
+//   • exit  = the settlement — 1.0 (100¢) if the outcome won, 0.0 (0¢) if it lost
+//            (that IS the real exit for a settled market) — or, for a line closed
+//            by SELLING back out, the size-weighted SELL price.
+// Duplicate fills (the same on-chain fill re-recorded by the live WS AND a resync,
+// stored at slightly different float precision) are deduped by txHash|asset|side|
+// size so held shares aren't doubled.
+// HONEST-ENGINE: a row is enriched ONLY when (exit−entry)×shares reconciles with
+// the realized P&L agent20 already reports (±max($1, 20%)). If the fills are absent
+// from agent30's capped window, or contradict the ledger P&L, entry/exit stay null
+// ("—") — never fabricated to force a match, and the realized P&L is never touched.
+export interface ClosedEntryExit { entryPrice: number | null; exitPrice: number | null; realizedPnl: number | null; result?: string | null; cid?: string | null }
+export function enrichClosedTradesEntryExit(
+  trades: ClosedEntryExit[] | null | undefined,
+  rec: WalletRecord | null | undefined,
+): { surfaced: number; unreconciled: number; noFills: number } {
+  const out = { surfaced: 0, unreconciled: 0, noFills: 0 };
+  if (!Array.isArray(trades) || trades.length === 0) return out;
+  const fills = Array.isArray(rec?.fills) ? rec!.fills : [];
+
+  // Dedup + aggregate buy/sell shares & cost per conditionId.
+  const seen = new Set<string>();
+  const agg = new Map<string, { bS: number; bC: number; sS: number; sP: number }>();
+  for (const f of fills) {
+    if (!f || !Number.isFinite(f.price) || !Number.isFinite(f.size)) continue;
+    const cid = f.conditionId; if (!cid) continue;
+    const sz = Math.abs(f.size);
+    if (f.txHash) {
+      const dk = `${f.txHash}|${f.asset}|${f.side}|${sz.toFixed(6)}`;
+      if (seen.has(dk)) continue;
+      seen.add(dk);
+    }
+    const p = clampP(f.price);
+    const a = agg.get(cid) ?? { bS: 0, bC: 0, sS: 0, sP: 0 };
+    if (f.side === 'SELL') { a.sS += sz; a.sP += p * sz; }
+    else { a.bS += sz; a.bC += p * sz; }   // default BUY
+    agg.set(cid, a);
+  }
+
+  const round4 = (n: number) => Math.round(n * 1e4) / 1e4;
+  for (const t of trades) {
+    if (!t || t.entryPrice != null || t.exitPrice != null) continue; // already sourced → leave
+    const a = t.cid ? agg.get(t.cid) : undefined;
+    if (!a || a.bS < EPS) { out.noFills++; continue; }               // no buy fills in window → honest "—"
+    const avgBuy = a.bC / a.bS;
+    const net = a.bS - a.sS;
+    const realized = typeof t.realizedPnl === 'number' ? t.realizedPnl : null;
+    const tol = realized != null ? Math.max(1.0, Math.abs(realized) * 0.20) : Infinity;
+    const hasSells = a.sS > Math.max(1, a.bS * 0.02);
+
+    if (hasSells) {
+      // Closed by selling back out → exit = size-weighted sell price.
+      const avgSell = a.sS > EPS ? a.sP / a.sS : null;
+      const matched = Math.min(a.bS, a.sS);
+      const recon = a.sP - avgBuy * matched;
+      if (avgSell != null && realized != null && Math.abs(recon - realized) <= tol) {
+        t.entryPrice = round4(avgBuy); t.exitPrice = round4(avgSell); out.surfaced++;
+      } else { out.unreconciled++; }
+    } else {
+      // Held to settlement → exit = 100¢/0¢ from the resolved outcome (agent20's result).
+      const exit = t.result === 'won' ? 1 : (t.result === 'lost' ? 0 : null);
+      if (exit == null) { out.unreconciled++; continue; }            // breakeven/ambiguous → honest "—"
+      const recon = (exit - avgBuy) * net;
+      if (realized != null && Math.abs(recon - realized) <= tol) {
+        t.entryPrice = round4(avgBuy); t.exitPrice = exit; out.surfaced++;
+      } else { out.unreconciled++; }
+    }
+  }
+  return out;
+}
