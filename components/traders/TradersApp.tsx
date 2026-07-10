@@ -20,7 +20,46 @@ import {
 } from './format';
 
 type Tab = 'leaderboard' | 'bots';
-type RankBy = 'profit' | 'volume';
+type RankBy = 'profit' | 'volume' | 'return';
+
+const RANK_LABEL: Record<RankBy, string> = { profit: 'profit', volume: 'volume', return: 'return %' };
+
+// The metric a given rank-by key ranks on, for a single entry. Reuses the EXACT
+// field shown on the card: return === returnOnVolumePct(pnl, vol) (the "+X% on vol"
+// figure). Returns null when the value is unavailable (e.g. vol ≤ 0) so the caller
+// floors it last — never a fabricated number. Profit/volume math is untouched.
+function rankMetric(e: LbEntry, rankBy: RankBy): number | null {
+  if (rankBy === 'return') return returnOnVolumePct(e.pnlUsdc, e.volumeUsdc);
+  return rankBy === 'volume' ? e.volumeUsdc : e.pnlUsdc;
+}
+
+// Shared ranking (honest-engine): thin-sample wallets floored below proven ones;
+// then sort by the chosen metric when any entry has it, else keep source order
+// (never fabricate an order); wilsonScore DESC tiebreak. null metric → sorts last.
+function sortByRank(list: LbEntry[], rankBy: RankBy): LbEntry[] {
+  const hasValues = list.some(e => rankMetric(e, rankBy) != null);
+  return list.sort((a, b) => {
+    const aLow = isLowSample(a.resolvedMarkets), bLow = isLowSample(b.resolvedMarkets);
+    if (aLow !== bLow) return aLow ? 1 : -1;
+    if (hasValues) {
+      const d = (rankMetric(b, rankBy) ?? -Infinity) - (rankMetric(a, rankBy) ?? -Infinity);
+      if (d !== 0) return d;
+    }
+    return (b.wilsonScore ?? -Infinity) - (a.wilsonScore ?? -Infinity);
+  });
+}
+
+// Minimum return-on-volume filter. Off at 0 (show everything, including entries
+// whose return is unavailable). Above 0, only entries with a real return ≥ min
+// survive — null/0-volume entries are hidden (they have no qualifying return),
+// never counted as passing.
+function filterByMinReturn(list: LbEntry[], minReturn: number): LbEntry[] {
+  if (minReturn <= 0) return list;
+  return list.filter(e => {
+    const r = returnOnVolumePct(e.pnlUsdc, e.volumeUsdc);
+    return r != null && r >= minReturn;
+  });
+}
 
 const WINDOW_LABEL: Record<WindowKey, string> = { '1d': '1D', '7d': '7D', '30d': '30D', all: 'ALL' };
 
@@ -59,6 +98,7 @@ export default function TradersApp() {
   const [tab, setTab]         = useState<Tab>('leaderboard');
   const [cat, setCat]         = useState('All');
   const [rankBy, setRankBy]   = useState<RankBy>('profit');
+  const [minReturn, setMinReturn] = useState(0);   // Return ≥ N% filter (0 = off, both tabs)
   const [win, setWin]         = useState<WindowKey>('all');
   const [lbData, setLbData]   = useState<LbData | null>(null);
   const [error, setError]     = useState('');
@@ -153,35 +193,23 @@ export default function TradersApp() {
 
   const categoryKeys = useMemo(() => Object.keys(lbData?.categories ?? {}), [lbData]);
 
+  // Ranking rules (honest-engine): see sortByRank — thin-sample floored, chosen
+  // metric (profit / volume / return-on-volume) DESC, wilsonScore DESC tiebreak.
+  // Then the Return ≥ N% threshold hides sub-threshold cards. Both compose on top
+  // of the category slice, so category + sort + filter stack correctly.
   const rows = useMemo(() => {
-    const list = (lbData?.categories?.[cat] ?? []).slice();
-    const key = rankBy === 'profit' ? 'pnlUsdc' : 'volumeUsdc';
-    const hasValues = list.some(e => e[key] != null);
-    // Ranking rules (honest-engine):
-    //  1. Thin-sample wallets (resolvedMarkets < 10) are FLOORED below proven
-    //     ones — a "100% on 1 trade" wallet can never top a real track record.
-    //     resolvedMarkets is a public field, so this holds on the free tier too.
-    //  2. Within a sample tier, sort by the chosen metric (pnl / volume) when
-    //     present, else keep the API's order (free tier can't sort null values —
-    //     never fabricate an order).
-    //  3. Tiebreak on wilsonScore DESC — the sample-robust skill metric. Raw
-    //     winRate is NEVER a sort key.
-    list.sort((a, b) => {
-      const aLow = isLowSample(a.resolvedMarkets), bLow = isLowSample(b.resolvedMarkets);
-      if (aLow !== bLow) return aLow ? 1 : -1;
-      if (hasValues) {
-        const d = (b[key] ?? -Infinity) - (a[key] ?? -Infinity);
-        if (d !== 0) return d;
-      }
-      return (b.wilsonScore ?? -Infinity) - (a.wilsonScore ?? -Infinity);
-    });
-    return list;
-  }, [lbData, cat, rankBy]);
+    const list = sortByRank((lbData?.categories?.[cat] ?? []).slice(), rankBy);
+    return filterByMinReturn(list, minReturn);
+  }, [lbData, cat, rankBy, minReturn]);
 
-  // Bots / HFT wallets now come from a dedicated server list — they are EXCLUDED from the
-  // directional `categories` (so tiny-P&L scrapers can't fill the skill board), and agent20
-  // emits them here already sorted by inference confidence → P&L.
-  const bots = useMemo(() => lbData?.bots ?? [], [lbData]);
+  // Bots / HFT wallets come from a dedicated server list — EXCLUDED from the
+  // directional `categories` (so tiny-P&L scrapers can't fill the skill board).
+  // The same rank-by + Return ≥ threshold apply here for a consistent UX.
+  const bots = useMemo(() => {
+    const list = sortByRank((lbData?.bots ?? []).slice(), rankBy);
+    return filterByMinReturn(list, minReturn);
+  }, [lbData, rankBy, minReturn]);
+  const botsTotal = lbData?.bots?.length ?? 0;
 
   // Window availability is DATA-DRIVEN, never a hardcoded list. A window renders
   // only if some served entry carries populated per-window data for it. 'all'
@@ -228,7 +256,7 @@ export default function TradersApp() {
               'px-4 py-2 font-body font-medium text-[11px] uppercase tracking-widest transition-colors relative',
               tab === t ? 'text-mint-deep' : 'text-muted hover:text-ink-2',
             ].join(' ')}>
-            {t === 'leaderboard' ? 'Leaderboard' : `Bots / HFT (${bots.length})`}
+            {t === 'leaderboard' ? 'Leaderboard' : `Bots / HFT (${botsTotal})`}
             {tab === t && <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-mint-deep rounded-full" />}
           </button>
         ))}
@@ -264,24 +292,14 @@ export default function TradersApp() {
       {/* ── Leaderboard tab ──────────────────────────────────────────────────── */}
       {!warmingUp && !selected && tab === 'leaderboard' && (
         <>
-          {/* Rank-by + window controls */}
-          <div className="flex items-center justify-between gap-4 flex-wrap mb-3">
-            <div className="flex items-center gap-4">
-              <span className="font-body text-[10px] uppercase tracking-wide text-muted">Rank by</span>
-              {(['profit', 'volume'] as RankBy[]).map(r => (
-                <button key={r} onClick={() => setRankBy(r)}
-                  className={[
-                    'font-body text-[11px] uppercase tracking-wide pb-0.5 border-b-2 transition-colors',
-                    rankBy === r ? 'text-ink border-[#0c9d6e]' : 'text-muted border-transparent hover:text-ink-2',
-                  ].join(' ')}>
-                  {r}
-                </button>
-              ))}
-            </div>
-            {/* Window selector — only renders windows that actually have data (see
-                availWindows). With a single available window (today: all-time only)
-                the whole row is hidden, so users never see dead/disabled buttons. */}
-            {availWindows.length > 1 && (
+          {/* Rank-by (profit / volume / return %) + Return ≥ threshold + window.
+              The window selector only renders windows that actually have data (see
+              availWindows). With a single available window (today: all-time only)
+              the whole selector is hidden, so users never see dead/disabled buttons. */}
+          <RankControls
+            rankBy={rankBy} setRankBy={setRankBy}
+            minReturn={minReturn} setMinReturn={setMinReturn}
+            right={availWindows.length > 1 ? (
               <div className="flex items-center gap-4">
                 <span className="font-body text-[10px] uppercase tracking-wide text-muted">Window</span>
                 {availWindows.map(w => (
@@ -294,8 +312,8 @@ export default function TradersApp() {
                   </button>
                 ))}
               </div>
-            )}
-          </div>
+            ) : null}
+          />
 
           {/* Category chips — real API keys only */}
           <div className="flex gap-1.5 mb-4 overflow-x-auto pb-1 scrollbar-none">
@@ -346,9 +364,17 @@ export default function TradersApp() {
               Flagged by trade frequency, 5m/15m-market share, timing regularity, and 24/7 activity — an inference with confidence, not a Polymarket label.
             </span>
           </div>
+          {/* Same rank-by (profit / volume / return %) + Return ≥ threshold as the
+              leaderboard, for a consistent UX. No window selector on this tab. */}
+          <RankControls
+            rankBy={rankBy} setRankBy={setRankBy}
+            minReturn={minReturn} setMinReturn={setMinReturn}
+          />
           {bots.length === 0 ? (
             <div className="rounded-card border border-line bg-surface shadow-card p-8 text-center font-body text-sm text-muted">
-              No wallets flagged as bots in the current dataset.
+              {botsTotal === 0
+                ? 'No wallets flagged as bots in the current dataset.'
+                : 'No bots match these filters.'}
             </div>
           ) : (
             <div className="rounded-card border border-line bg-surface shadow-card overflow-hidden">
@@ -396,6 +422,54 @@ export default function TradersApp() {
           onSaved={copy.reload}
         />
       )}
+    </div>
+  );
+}
+
+// ── Rank-by + Return ≥ threshold controls (shared by both tabs) ─────────────────
+// Rank by profit / volume / return-on-volume, plus a "Return ≥ N%" threshold that
+// hides sub-threshold cards. `right` is an optional slot (leaderboard window
+// selector). Look matches the existing rank-by / category chip tokens.
+function RankControls({
+  rankBy, setRankBy, minReturn, setMinReturn, right,
+}: {
+  rankBy: RankBy; setRankBy: (r: RankBy) => void;
+  minReturn: number; setMinReturn: (n: number) => void;
+  right?: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4 flex-wrap mb-3">
+      <div className="flex items-center gap-4">
+        <span className="font-body text-[10px] uppercase tracking-wide text-muted">Rank by</span>
+        {(['profit', 'volume', 'return'] as RankBy[]).map(r => (
+          <button key={r} onClick={() => setRankBy(r)}
+            title={r === 'return' ? 'return on volume = profit ÷ volume traded (not an ROI on capital)' : undefined}
+            className={[
+              'font-body text-[11px] uppercase tracking-wide pb-0.5 border-b-2 transition-colors',
+              rankBy === r ? 'text-ink border-[#0c9d6e]' : 'text-muted border-transparent hover:text-ink-2',
+            ].join(' ')}>
+            {RANK_LABEL[r]}
+          </button>
+        ))}
+        {/* Return ≥ N% threshold — 0 shows all (incl. entries with no return). */}
+        <span className="h-3.5 w-px bg-line shrink-0" aria-hidden />
+        <label className="flex items-center gap-1.5 whitespace-nowrap"
+          title="Show only cards whose return on volume (profit ÷ volume) is at least this %">
+          <span className="font-body text-[10px] uppercase tracking-wide text-muted">Return ≥</span>
+          <input
+            type="number" inputMode="decimal" min={0} step={1}
+            value={minReturn === 0 ? '' : minReturn}
+            placeholder="0"
+            onChange={e => {
+              const n = Number(e.target.value);
+              setMinReturn(Number.isFinite(n) && n > 0 ? n : 0);
+            }}
+            className="w-14 px-1.5 py-0.5 rounded-button border border-line bg-surface text-ink font-mono text-[11px] tabular-nums text-right focus:outline-none focus:border-mint-deep/50"
+          />
+          <span className="font-body text-[10px] text-muted">%</span>
+        </label>
+      </div>
+      {right}
     </div>
   );
 }
@@ -499,6 +573,7 @@ function LeaderRow({ e, rank, cat, onOpen, copying, atLimit, tier, maxSlots, onT
 function BotRow({ e, rank, onOpen, copying, atLimit, tier, maxSlots, onToggleCopy }: RowProps) {
   const conf = e.actorType?.confidence ?? 0;
   const signals = (e.actorType?.signals ?? []).slice(0, 3);
+  const gainPct = returnOnVolumePct(e.pnlUsdc, e.volumeUsdc);   // profit ÷ volume (return on volume) — same field as the leaderboard
   return (
     <div onClick={onOpen}
       className="px-4 py-3 border-b border-line last:border-b-0 hover:bg-bg-soft/40 cursor-pointer transition-colors">
@@ -516,8 +591,14 @@ function BotRow({ e, rank, onOpen, copying, atLimit, tier, maxSlots, onToggleCop
             <WinRate winRate={e.winRate} wilson={e.wilsonScore} resolvedMarkets={e.resolvedMarkets} />
           </div>
         </div>
-        <div className={`text-right shrink-0 w-20 font-display font-bold text-base tabular-nums ${pnlColor(e.pnlUsdc)}`}>
-          <Redacted value={e.pnlUsdc}>{v => fmtPnl(v)}</Redacted>
+        <div className="text-right shrink-0 w-20">
+          <div className={`font-display font-bold text-base tabular-nums ${pnlColor(e.pnlUsdc)}`}>
+            <Redacted value={e.pnlUsdc}>{v => fmtPnl(v)}</Redacted>
+          </div>
+          <div className="font-body text-[10px] text-muted tabular-nums mt-0.5"
+            title="return on volume = profit ÷ volume traded (not an ROI on capital)">
+            {gainPct != null ? `${fmtPct1(gainPct)} on vol` : <span className="text-muted/60">—</span>}
+          </div>
         </div>
         <div className="shrink-0" onClick={(ev) => ev.stopPropagation()}>
           <CopyButton copying={copying} atLimit={atLimit} tier={tier} maxSlots={maxSlots} onToggle={onToggleCopy} />
