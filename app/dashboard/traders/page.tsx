@@ -3,10 +3,17 @@
 // Public page (no login wall); premium monetary fields are redacted server-side
 // for free/unauth via lib/paid-gating.ts. Copy slots are signal-follow reservations
 // only — no trade executes here (that is a separate, hardening-gated commit).
+import { Suspense } from 'react';
 import TradersApp from '@/components/traders/TradersApp';
 
 export const dynamic = 'force-dynamic';
 
 export default function TradersPage() {
-  return <TradersApp />;
+  // Suspense boundary: TradersApp reads useSearchParams (origin section persisted in
+  // the URL so browser Back returns to the exact filtered section).
+  return (
+    <Suspense fallback={null}>
+      <TradersApp />
+    </Suspense>
+  );
 }

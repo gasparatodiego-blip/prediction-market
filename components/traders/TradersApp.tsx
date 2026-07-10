@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link           from 'next/link';
-import { useRouter }  from 'next/navigation';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { Activity }   from 'lucide-react';
 import Eyebrow        from '@/app/components/ui/Eyebrow';
 import SectionHeading from '@/app/components/ui/SectionHeading';
@@ -95,10 +95,24 @@ function useServerCopy() {
 
 export default function TradersApp() {
   const router                = useRouter();
-  const [tab, setTab]         = useState<Tab>('leaderboard');
-  const [cat, setCat]         = useState('All');
-  const [rankBy, setRankBy]   = useState<RankBy>('profit');
-  const [minReturn, setMinReturn] = useState(0);   // Return ≥ N% filter (0 = off, both tabs)
+  const pathname              = usePathname();
+  const searchParams          = useSearchParams();
+
+  // Origin section (tab / category / rank / return-filter) lives in the URL so the
+  // phone/browser BACK button from a /dashboard/traders/<address> detail page returns
+  // to the EXACT section the user came from — not the default "All traders" board.
+  // State is seeded from the query params on mount and mirrored back on change
+  // (router.replace, no new history entry) so back pops straight to the prior filters.
+  const [tab, setTab]         = useState<Tab>(() => (searchParams.get('tab') === 'bots' ? 'bots' : 'leaderboard'));
+  const [cat, setCat]         = useState(() => searchParams.get('cat') || 'All');
+  const [rankBy, setRankBy]   = useState<RankBy>(() => {
+    const r = searchParams.get('rank');
+    return r === 'volume' || r === 'return' ? r : 'profit';
+  });
+  const [minReturn, setMinReturn] = useState(() => {   // Return ≥ N% filter (0 = off, both tabs)
+    const n = Number(searchParams.get('minRet'));
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  });
   const [win, setWin]         = useState<WindowKey>('all');
   const [lbData, setLbData]   = useState<LbData | null>(null);
   const [error, setError]     = useState('');
@@ -116,6 +130,22 @@ export default function TradersApp() {
   // Copy-config panel target (opened from any COPY button).
   const [panelTarget, setPanelTarget] = useState<{ entry: LbEntry; profile: TraderProfile | null } | null>(null);
   const openPanel = useCallback((entry: LbEntry, prof: TraderProfile | null) => setPanelTarget({ entry, profile: prof }), []);
+
+  // Mirror the active section into the URL query (defaults omitted → clean URL) so
+  // the origin history entry carries the filter state. router.replace keeps ONE
+  // history entry (filter changes don't stack), and { scroll: false } so mirroring
+  // never fights ScrollToTop / scroll restoration (baad0b8). No data/number touched.
+  useEffect(() => {
+    const p = new URLSearchParams();
+    if (tab !== 'leaderboard') p.set('tab', tab);
+    if (cat !== 'All')         p.set('cat', cat);
+    if (rankBy !== 'profit')   p.set('rank', rankBy);
+    if (minReturn > 0)         p.set('minRet', String(minReturn));
+    const qs = p.toString();
+    if (qs !== searchParams.toString()) {
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    }
+  }, [tab, cat, rankBy, minReturn, pathname, router, searchParams]);
 
   const loadLb = useCallback(async () => {
     try {
