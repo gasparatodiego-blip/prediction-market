@@ -1,16 +1,33 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, ExternalLink, AlertCircle, Cpu, User, Activity } from 'lucide-react';
+import { ArrowLeft, ExternalLink, AlertCircle, Cpu, User, Activity, ChevronRight } from 'lucide-react';
 import { Redacted, RedactedPanel } from '@/app/components/ui/Redacted';
 import { polymarketProfileUrl } from '@/lib/platform-links';
 import { ActorBadge, VerifiedTick, WinRate, CopyButton } from './parts';
 import {
   fmtPnl, fmtVol, fmtPrice, fmtSize, fmtAge, displayName,
   pnlColor, catBar, catText,
-  type LbEntry, type TraderProfile as Profile, type WindowKey,
+  type LbEntry, type TraderProfile as Profile, type WindowKey, type ClosedTrade,
 } from './format';
+
+// ¢ price for the fill drawer (matches the prompt's "price (¢)"; null → redacted "—").
+function fmtCents(p: number | null | undefined): string {
+  if (p == null) return '—';
+  return (p * 100).toFixed(1) + '¢';
+}
+// Real time-to-expiry at a fill: how long before the market closed the trader acted.
+// null secToExpiry → the close couldn't be sourced → honest "expiry unavailable"
+// (never a fabricated countdown). Negative → the fill landed at/after close.
+function fmtToExpiry(sec: number | null | undefined): string {
+  if (sec == null) return 'expiry unavailable';
+  if (sec < 0) return 'after close';
+  const m = Math.floor(sec / 60), s = sec % 60;
+  if (m >= 60) { const h = Math.floor(m / 60); return `${h}h ${m % 60}m before close`; }
+  if (m > 0)   return `${m}m ${s}s before close`;
+  return `${s}s before close`;
+}
 
 const WINDOW_LABEL: Record<WindowKey, string> = { '1d': '1D', '7d': '7D', '30d': '30D', all: 'All' };
 
@@ -58,6 +75,12 @@ export default function TraderProfileView({
 }) {
   const [move, setMove] = useState<MoveFilter>('all');
   const [win, setWin]   = useState<WindowKey>('all');
+  const [openRows, setOpenRows] = useState<Set<number>>(() => new Set());
+  const toggleRow = (i: number) => setOpenRows(prev => {
+    const next = new Set(prev);
+    next.has(i) ? next.delete(i) : next.add(i);
+    return next;
+  });
 
   const actor = profile?.actorType ?? entry.actorType ?? null;
   const isBot = actor?.type === 'bot';
@@ -314,26 +337,51 @@ export default function TraderProfileView({
                   <Empty>No closed trades on record.</Empty>
                 ) : (
                   <Table cols={['Market', 'Result', 'Entry→Exit', 'Realized', 'Date']}>
-                    {profile!.tradesClosed.map((t, i) => (
-                      <tr key={i} className="border-b border-line/50 hover:bg-bg-soft/40">
-                        <Cell title={t.marketTitle}>{t.marketTitle ?? '—'}</Cell>
-                        <td className="px-2 py-1.5">
-                          <span className={[
-                            'font-body text-[10px] font-semibold px-1.5 py-0.5 rounded-md',
-                            t.result === 'won' ? 'bg-mint-tint text-mint-deep'
-                              : t.result === 'lost' ? 'bg-coral-tint text-coral-ink'
-                              : 'bg-bg-soft text-muted',
-                          ].join(' ')}>{t.result}</span>
-                        </td>
-                        <NumCell>{fmtPrice(t.entryPrice)}<span className="text-muted/50"> → </span>{fmtPrice(t.exitPrice)}</NumCell>
-                        <td className="px-2 py-1.5 text-right tabular-nums">
-                          <span className={`font-body text-[11px] font-semibold ${pnlColor(t.realizedPnl)}`}>
-                            <Redacted value={t.realizedPnl}>{v => fmtPnl(v)}</Redacted>
-                          </span>
-                        </td>
-                        <td className="px-2 py-1.5 text-right font-body text-[10px] text-muted whitespace-nowrap">{fmtAge(t.timestamp)}</td>
-                      </tr>
-                    ))}
+                    {profile!.tradesClosed.map((t, i) => {
+                      const expandable = (t.fills?.length ?? 0) > 0;
+                      const open = openRows.has(i);
+                      return (
+                        <Fragment key={i}>
+                          <tr
+                            onClick={expandable ? () => toggleRow(i) : undefined}
+                            className={[
+                              'border-b border-line/50',
+                              expandable ? 'cursor-pointer hover:bg-bg-soft/60' : 'hover:bg-bg-soft/40',
+                            ].join(' ')}>
+                            <td className="px-2 py-1.5 pl-4 font-body text-[11px] text-ink-2 max-w-[200px]" title={t.marketTitle ?? undefined}>
+                              <span className="flex items-center gap-1">
+                                {expandable
+                                  ? <ChevronRight className={`w-3 h-3 text-muted shrink-0 transition-transform ${open ? 'rotate-90' : ''}`} />
+                                  : <span className="w-3 shrink-0" />}
+                                <span className="truncate">{t.marketTitle ?? '—'}</span>
+                              </span>
+                            </td>
+                            <td className="px-2 py-1.5">
+                              <span className={[
+                                'font-body text-[10px] font-semibold px-1.5 py-0.5 rounded-md',
+                                t.result === 'won' ? 'bg-mint-tint text-mint-deep'
+                                  : t.result === 'lost' ? 'bg-coral-tint text-coral-ink'
+                                  : 'bg-bg-soft text-muted',
+                              ].join(' ')}>{t.result}</span>
+                            </td>
+                            <NumCell>{fmtPrice(t.entryPrice)}<span className="text-muted/50"> → </span>{fmtPrice(t.exitPrice)}</NumCell>
+                            <td className="px-2 py-1.5 text-right tabular-nums">
+                              <span className={`font-body text-[11px] font-semibold ${pnlColor(t.realizedPnl)}`}>
+                                <Redacted value={t.realizedPnl}>{v => fmtPnl(v)}</Redacted>
+                              </span>
+                            </td>
+                            <td className="px-2 py-1.5 text-right font-body text-[10px] text-muted whitespace-nowrap">{fmtAge(t.timestamp)}</td>
+                          </tr>
+                          {expandable && open && (
+                            <tr className="bg-bg-soft/30">
+                              <td colSpan={5} className="px-4 py-3">
+                                <FillDrawer trade={t} />
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
+                      );
+                    })}
                   </Table>
                 )}
               </MoveSection>
@@ -382,6 +430,56 @@ export default function TraderProfileView({
 }
 
 // ── Small building blocks ─────────────────────────────────────────────────────
+
+// Expandable drawer for one closed trade: the REAL per-fill breakdown that backs
+// this row's entry→exit + realized P&L. Each fill shows side, price (¢), shares,
+// USD notional (redacted for free tier), the fill time, and time-to-expiry — how
+// long before the market closed the trader entered. All values are real; the
+// market close comes from the slug (marketEndTs), null → "close time unavailable".
+function FillDrawer({ trade }: { trade: ClosedTrade }) {
+  const fills = trade.fills ?? [];
+  const endTs = trade.marketEndTs ?? null;
+  return (
+    <div className="rounded-md border border-line bg-surface">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-line/60 gap-2 flex-wrap">
+        <span className="font-body text-[10px] uppercase tracking-wide text-muted">Fill breakdown · {fills.length} {fills.length === 1 ? 'fill' : 'fills'}</span>
+        <span className="font-body text-[10px] text-muted">
+          {endTs != null ? `Market closed ${new Date(endTs * 1000).toLocaleString()}` : 'Market close time unavailable'}
+        </span>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[460px]">
+          <thead>
+            <tr className="border-b border-line/50">
+              {['Side', 'Price', 'Shares', 'USD', 'Time', 'To expiry'].map((c, i) => (
+                <th key={c} className={`px-2 py-1.5 font-body text-[10px] text-muted font-normal ${i === 0 ? 'text-left pl-3' : i >= 1 && i <= 3 ? 'text-right' : 'text-left'}`}>{c}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {fills.map((f, i) => {
+              const buy = (f.side ?? '').toUpperCase() === 'BUY';
+              return (
+                <tr key={i} className="border-b border-line/30 last:border-b-0">
+                  <td className="px-2 py-1.5 pl-3">
+                    <span className={`font-body text-[10px] font-semibold px-1.5 py-0.5 rounded-md ${buy ? 'bg-mint-tint text-mint-deep' : 'bg-coral-tint text-coral-ink'}`}>
+                      {(f.side ?? '—').toUpperCase()}
+                    </span>
+                  </td>
+                  <td className="px-2 py-1.5 text-right font-body text-[11px] text-ink-2 tabular-nums">{fmtCents(f.price)}</td>
+                  <td className="px-2 py-1.5 text-right font-body text-[11px] text-ink-2 tabular-nums">{fmtSize(f.size)}</td>
+                  <td className="px-2 py-1.5 text-right font-body text-[11px] text-ink-2 tabular-nums">$<Redacted value={f.usd}>{v => fmtSize(v)}</Redacted></td>
+                  <td className="px-2 py-1.5 font-body text-[10px] text-muted whitespace-nowrap">{new Date(f.timestamp * 1000).toLocaleTimeString()}</td>
+                  <td className="px-2 py-1.5 font-body text-[10px] text-muted whitespace-nowrap">{fmtToExpiry(f.secToExpiry)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
 
 function Stat({ label, children }: { label: string; children: React.ReactNode }) {
   return (

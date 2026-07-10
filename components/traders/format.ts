@@ -83,6 +83,17 @@ export interface OpenPosition {
   cid?:          string | null;   // real condition/market id
   side?:         string | null;   // held outcome/side
 }
+// One real fill inside the expandable closed-trade drawer. price/usd are null only
+// when redacted for the free tier (never invented); secToExpiry is null when the
+// market close couldn't be sourced → the drawer shows "expiry unavailable".
+export interface ClosedFill {
+  side:        string | null;   // BUY | SELL
+  price:       number | null;   // 0..1 (dollars per share)
+  size:        number;          // shares
+  usd:         number | null;   // dollar notional (price × size)
+  timestamp:   number;          // unix seconds
+  secToExpiry: number | null;   // marketEndTs − fill ts
+}
 export interface ClosedTrade {
   marketTitle: string | null;
   outcome:     string | null;   // aggregate ledger doesn't pin the side → null
@@ -94,6 +105,11 @@ export interface ClosedTrade {
   category?:   string | null;   // real category from the on-chain ledger ('other' if unmapped)
   cid?:        string | null;
   side?:       string | null;
+  // Per-fill drawer breakdown (real; absent when no fills could be joined for this
+  // row → the row stays non-expandable). marketEndTs is the real slug-derived close
+  // (unix s); null → "expiry unavailable" (never a fabricated countdown).
+  fills?:       ClosedFill[];
+  marketEndTs?: number | null;
 }
 export interface ActivityItem {
   side:        string | null;   // BUY / SELL

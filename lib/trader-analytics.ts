@@ -404,3 +404,88 @@ export function enrichClosedTradesEntryExit(
   }
   return out;
 }
+
+// One fill in the expandable closed-trade drawer. All values are REAL — sourced
+// from the same feed / Data-API fills that back the entry→exit reconciliation.
+// `price`/`usd` are null only when redacted for the free tier (never invented).
+export interface ClosedFill {
+  side:        string | null;    // BUY | SELL
+  price:       number | null;    // 0..1 (dollars per share)
+  size:        number;           // shares
+  usd:         number | null;    // price × size (dollar notional)
+  timestamp:   number;           // unix seconds
+  secToExpiry: number | null;    // marketEndTs − fill ts; null when market end is unknown
+}
+
+// Real market close time for Polymarket's short crypto Up/Down markets, derived
+// from the authoritative slug the fill already carries: e.g.
+//   "xrp-updown-5m-1783711500" → period start 1783711500 + 5m = 1783711800.
+// The trailing epoch is the period START (verified: it maps exactly to the market
+// title's ET window); end = start + the slug's own duration token (Nm / Nh / Nd).
+// Gamma purges these ephemeral markets within minutes, so the slug — not Gamma —
+// is the only durable real source. Returns null (→ honest "expiry unavailable")
+// for any slug that doesn't carry a duration+epoch (non-timed markets).
+export function marketEndTsFromSlug(slug: string | null | undefined): number | null {
+  if (!slug) return null;
+  const m = slug.match(/-(\d+)([mhd])-(\d+)$/);
+  if (!m) return null;
+  const n = parseInt(m[1], 10), start = parseInt(m[3], 10);
+  if (!Number.isFinite(n) || !Number.isFinite(start)) return null;
+  if (start < 1_000_000_000 || start > 4_000_000_000) return null; // plausible unix-seconds guard
+  const durSec = m[2] === 'm' ? n * 60 : m[2] === 'h' ? n * 3600 : n * 86_400;
+  return start + durSec;
+}
+
+// Attach the real per-fill breakdown (+ market close time) to each closed trade so
+// the UI can render an expandable drawer. Joins the SAME deduped fills used for the
+// entry→exit reconciliation by conditionId, sorted chronologically (entry → exit),
+// and computes time-to-expiry from the real fill ts vs the slug-derived close ts.
+// HONEST-ENGINE: only real fills are attached; a row with no matching fills gets
+// none (stays non-expandable), and marketEndTs is null (→ "expiry unavailable")
+// when the close can't be sourced. No number here feeds P&L / entry→exit — it is
+// a pure read-through of the fills that already justify those figures.
+export function attachClosedTradeFills(
+  trades: Array<ClosedEntryExit & { fills?: ClosedFill[]; marketEndTs?: number | null }> | null | undefined,
+  rec: WalletRecord | null | undefined,
+): void {
+  if (!Array.isArray(trades) || trades.length === 0) return;
+  const fills = Array.isArray(rec?.fills) ? rec!.fills : [];
+
+  const byCid    = new Map<string, RawFill[]>();
+  const slugByCid = new Map<string, string | null>();
+  const seen = new Set<string>();
+  for (const f of fills) {
+    const cid = f?.conditionId; if (!cid) continue;
+    if (!Number.isFinite(f.price) || !Number.isFinite(f.size)) continue;
+    const sz = Math.abs(f.size);
+    if (f.txHash) {
+      const dk = `${f.txHash}|${f.asset}|${f.side}|${sz.toFixed(6)}`;
+      if (seen.has(dk)) continue;                     // same dedup as enrich → drawer matches entry→exit
+      seen.add(dk);
+    }
+    let arr = byCid.get(cid); if (!arr) { arr = []; byCid.set(cid, arr); }
+    arr.push(f);
+    if (!slugByCid.has(cid)) slugByCid.set(cid, f.slug ?? null);
+  }
+
+  for (const t of trades) {
+    const cid = t.cid; if (!cid) continue;
+    const fs = byCid.get(cid); if (!fs || fs.length === 0) continue;
+    const endTs = marketEndTsFromSlug(slugByCid.get(cid) ?? null);
+    t.marketEndTs = endTs;
+    t.fills = fs
+      .slice()
+      .sort((a, b) => a.timestamp - b.timestamp)      // chronological: entry first
+      .map(f => {
+        const price = clampP(f.price), size = Math.abs(f.size);
+        return {
+          side:        f.side ?? null,
+          price,
+          size,
+          usd:         price * size,
+          timestamp:   f.timestamp,
+          secToExpiry: endTs != null ? endTs - f.timestamp : null,
+        };
+      });
+  }
+}

@@ -350,6 +350,7 @@ export const REDACTION_MAP: Record<RouteKey, string[]> = {
     'profile.positionsOpen[].currentValue',
     'profile.positionsOpen[].unrealizedPnl',
     'profile.tradesClosed[].realizedPnl',
+    'profile.tradesClosed[].fills[].usd',   // drawer dollar-notional is premium (like activityRecent.usdcSize)
     'profile.activityRecent[].price',
     'profile.activityRecent[].usdcSize',
   ],

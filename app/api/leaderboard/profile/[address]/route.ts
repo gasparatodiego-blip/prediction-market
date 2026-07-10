@@ -3,7 +3,7 @@ import fs from 'fs';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { getIsPaid, redactForTier } from '@/lib/paid-gating';
-import { enrichClosedTradesEntryExit, WalletRecord } from '@/lib/trader-analytics';
+import { enrichClosedTradesEntryExit, attachClosedTradeFills, WalletRecord } from '@/lib/trader-analytics';
 import { fetchWalletRecordOnDemand } from '@/lib/ondemand-fills';
 
 export const dynamic = 'force-dynamic';
@@ -44,6 +44,7 @@ export async function GET(_req: NextRequest, { params }: { params: { address: st
       rec = feed.wallets?.[address];
       if (rec) {
         enrichClosedTradesEntryExit(profile.tradesClosed, rec);
+        attachClosedTradeFills(profile.tradesClosed, rec);   // real per-fill drawer + time-to-expiry
         profile.entryExitSource = 'feed';
       }
     } catch { /* feed absent/warming → fall through to on-demand */ }
@@ -55,7 +56,10 @@ export async function GET(_req: NextRequest, { params }: { params: { address: st
     // win rate are never touched. Stamped with an "as of" time for the UI.
     if (!rec && Array.isArray(profile.tradesClosed) && profile.tradesClosed.length > 0) {
       const { rec: onDemand, asOf } = await fetchWalletRecordOnDemand(address);
-      if (onDemand) enrichClosedTradesEntryExit(profile.tradesClosed, onDemand);
+      if (onDemand) {
+        enrichClosedTradesEntryExit(profile.tradesClosed, onDemand);
+        attachClosedTradeFills(profile.tradesClosed, onDemand);   // reuse the SAME on-demand fills
+      }
       profile.entryExitSource = 'ondemand';
       profile.entryExitAsOf   = asOf;
     }
