@@ -41,7 +41,7 @@ interface Summary {
 }
 interface FeedResp {
   ok: boolean; address: string; error?: string; isPaid?: boolean;
-  updatedAt: string | null; feedHealthy: boolean; wsConnected: boolean; resyncing: boolean;
+  updatedAt: string | null; openAsOf?: string | null; feedHealthy: boolean; wsConnected: boolean; resyncing: boolean;
   lastWsMsgAt: string | null; lastFullResyncAt: string | null; stale: boolean;
   since: number | null; lastTradeTs: number | null; fillsCount: number; fillsCapped: boolean;
   fillsPerWallet: number | null;
@@ -168,7 +168,7 @@ export default function TraderDetail({ address }: { address: string }) {
               <div className="mt-3 rounded-lg border border-gold/30 bg-gold-tint/60 px-3 py-2 font-body text-[11px] text-ink-2">
                 Showing top <b className="tabular-nums">{data.summary.openCount}</b> of{' '}
                 <b className="tabular-nums">{data.summary.openObserved}{data.summary.openTruncated ? '+' : ''}</b> open
-                positions by current value — this wallet holds many live markets (real, unsettled). Full set on its
+                positions by current value — this wallet holds many live markets (real, unsettled){data.openAsOf ? <>, matched to source {hhmmss(data.openAsOf)}</> : ''}. Full set on its
                 Polymarket profile.
               </div>
             )}

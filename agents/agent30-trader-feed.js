@@ -39,7 +39,7 @@ const fs   = require('fs');
 const path = require('path');
 const WebSocket = require('ws');
 const { rlGet } = require('../lib/rateLimitedFetch');
-const { fetchOpenPositions } = require('../lib/open-positions-fetch');
+const { fetchOpenPositions, normPosition } = require('../lib/open-positions-fetch');
 const { atomicWriteJson } = require('../lib/atomicJsonWrite');
 
 // ── .env (pm2 doesn't auto-load project env files) — only for optional Telegram
@@ -220,30 +220,6 @@ async function fetchPositions(addr) {
     if (p && p.redeemable && !keptAssets.has(String(p.asset))) merged.push(p);
   }
   return { positions: merged, openObserved: observed, openCapped: capped };
-}
-function normPosition(p) {
-  if (!p || p.asset == null) return null;
-  const num = (x) => (x == null || !Number.isFinite(Number(x)) ? null : Number(x));
-  return {
-    asset:        String(p.asset),
-    conditionId:  p.conditionId || null,
-    size:         num(p.size),
-    avgPrice:     num(p.avgPrice),
-    curPrice:     num(p.curPrice),        // current mark (mid)
-    initialValue: num(p.initialValue),    // cost basis
-    currentValue: num(p.currentValue),    // mark-to-mid value
-    cashPnl:      num(p.cashPnl),         // UNREALIZED (mark-to-mid) — labelled as such at render
-    percentPnl:   num(p.percentPnl),
-    realizedPnl:  num(p.realizedPnl),     // realized on partial exits within this open position
-    totalBought:  num(p.totalBought),
-    redeemable:   !!p.redeemable,
-    title:        p.title || null,
-    slug:         p.slug || null,
-    eventSlug:    p.eventSlug || null,
-    outcome:      p.outcome ?? null,
-    outcomeIndex: (p.outcomeIndex != null) ? Number(p.outcomeIndex) : null,
-    endDate:      p.endDate || null,
-  };
 }
 
 // Resync one wallet (both endpoints). Never throws — logs + degrades.
