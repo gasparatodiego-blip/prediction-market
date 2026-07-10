@@ -105,7 +105,11 @@ export default function TradersApp() {
     setProfile(null);
     setProfError('');
     if (entry.hasProfile === false) {
-      setProfError('No detailed profile for this wallet yet — check back after the next scan.');
+      // agent20 hasn't built a heavy resolved-market profile for this wallet yet.
+      // That is NOT the same as "no data" — agent30's live feed may still track it.
+      // Honest-engine: never dead-end a feed-present wallet; the error block links
+      // to the live trade feed, which itself honestly shows absence if truly empty.
+      setProfError('No resolved-market leaderboard profile for this wallet yet — open its live trade feed for real fills & positions.');
       return;
     }
     setProfLoading(true);

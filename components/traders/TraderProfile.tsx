@@ -1,7 +1,8 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { ArrowLeft, ExternalLink, AlertCircle, Cpu, User } from 'lucide-react';
+import Link from 'next/link';
+import { ArrowLeft, ExternalLink, AlertCircle, Cpu, User, Activity } from 'lucide-react';
 import { Redacted, RedactedPanel } from '@/app/components/ui/Redacted';
 import { polymarketProfileUrl } from '@/lib/platform-links';
 import { ActorBadge, VerifiedTick, WinRate, CopyButton } from './parts';
@@ -128,7 +129,18 @@ export default function TraderProfileView({
       {!loading && error && (
         <div className="flex items-start gap-2 p-4 border border-line bg-bg-soft rounded-card">
           <AlertCircle className="w-3.5 h-3.5 text-muted shrink-0 mt-0.5" />
-          <span className="font-body text-[11px] text-muted">{error}</span>
+          <div className="min-w-0">
+            <span className="font-body text-[11px] text-muted">{error}</span>
+            {/* Honest-engine: the heavy leaderboard profile may be missing while a live
+                feed exists — never hide real data behind this empty-state. The live-feed
+                page renders real fills/positions, or its own honest absence notice. */}
+            <div className="mt-2">
+              <Link href={`/dashboard/traders/${entry.wallet.toLowerCase()}`}
+                className="inline-flex items-center gap-1.5 rounded-md border border-mint-deep/40 bg-mint-tint px-2 py-1 font-body text-[11px] font-medium text-mint-deep hover:border-mint-deep transition-colors">
+                <Activity className="w-3 h-3 shrink-0" /> Open live trade feed
+              </Link>
+            </div>
+          </div>
         </div>
       )}
 
