@@ -38,9 +38,12 @@
 const fs   = require('fs');
 const path = require('path');
 const WebSocket = require('ws');
-const { rlGet } = require('../lib/rateLimitedFetch');
+const { rlGet, isRateLimited, isHostBackedOff } = require('../lib/rateLimitedFetch');
 const { fetchOpenPositions, normPosition } = require('../lib/open-positions-fetch');
+const { collectTrackedWallets } = require('../lib/tracked-wallets');
 const { atomicWriteJson } = require('../lib/atomicJsonWrite');
+
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 // ── .env (pm2 doesn't auto-load project env files) — only for optional Telegram
 for (const envFile of ['.env.local', '.env']) {
@@ -69,8 +72,19 @@ const WS_STALE_MS       = 45_000;         // no WS message for this long ⇒ unh
 const WS_WATCHDOG_MS    = 90_000;         // silent-but-"connected" this long ⇒ dead half-open socket → force reconnect
 const WS_PING_MS        = 10_000;         // protocol ping cadence
 const WRITE_DEBOUNCE_MS = 3_000;          // coalesce file writes after a burst of tracked fills
-const MAX_TRACKED       = 400;            // safety cap on tracked wallets
+const MAX_TRACKED       = 1_000;          // hard runaway cap only — well above the real universe (~280); drops are LOGGED, never silent
 const REQ_TIMEOUT_MS    = 12_000;
+
+// Per-wallet fetch retry — rlGet FAST-FAILS every queued call while data-api is in a
+// Cloudflare/429 host-backoff (that's the limiter's by-design "caller retries later").
+// Without retry, a throttle burst mid-sweep left a whole block of wallets un-backfilled
+// (buildFile then OMITS empty wallets). Retry here WAITS OUT the backoff and re-issues,
+// so a throttled wallet ends the sweep populated instead of silently empty. Honest: a
+// wallet that still can't be fetched after all retries keeps its last-good and is
+// omitted (never a fabricated "0 fills") — never an empty stub overwriting real data.
+const FETCH_MAX_RETRY    = 5;
+const FETCH_RETRY_BASE_MS = 2_000;
+const FETCH_RETRY_CAP_MS  = 30_000;
 
 // Optional Telegram — muted by default like the other data agents; only fires
 // when the feed is UNHEALTHY for a sustained period (never on normal operation).
@@ -113,19 +127,20 @@ function refreshTracked() {
   let removed = 0;
   try {
     const raw = JSON.parse(fs.readFileSync(LEADERBOARD_FILE, 'utf8'));
-    const set = new Set();
-    for (const cat of Object.values(raw.categories || {})) {
-      for (const r of cat) if (r && r.wallet) set.add(String(r.wallet).toLowerCase());
-    }
-    for (const b of (raw.bots || [])) if (b && b.wallet) set.add(String(b.wallet).toLowerCase());
+    // Full tracked universe = categories + mmCategories + bots + profiles (shared SSOT).
+    // Previously this was categories+bots ONLY, which silently excluded the entire
+    // market-maker board (mmCategories) and every profiles-only wallet — ~100 wallets
+    // the dashboard links but the feed never backfilled (their trader pages 404'd).
+    const set = collectTrackedWallets(raw);
     // Guard: a transient empty/garbled leaderboard read must NOT prune the whole
     // tracked universe (which would blank the feed). Keep the current set instead.
     if (set.size === 0) {
       log('refreshTracked: leaderboard yielded 0 wallets — keeping current set');
       return { added, removed };
     }
+    let capDropped = 0;
     for (const addr of set) {
-      if (wallets.size >= MAX_TRACKED && !wallets.has(addr)) continue;
+      if (wallets.size >= MAX_TRACKED && !wallets.has(addr)) { capDropped++; continue; }
       if (!wallets.has(addr)) {
         wallets.set(addr, {
           fills: [], fillKeys: new Set(), positions: null,
@@ -142,7 +157,10 @@ function refreshTracked() {
       if (!set.has(addr)) { wallets.delete(addr); removed++; }
     }
     trackedRefreshedAt = Date.now();
-    log(`tracked set: ${wallets.size} wallets (+${added.length} new, -${removed} pruned) from leaderboard.json`);
+    // Honest-engine: never DROP tracked wallets silently. The cap is a runaway guard
+    // set far above the real universe; if it ever bites, say so loudly.
+    if (capDropped) log(`refreshTracked: WARNING — ${capDropped} wallet(s) exceed MAX_TRACKED=${MAX_TRACKED} and were NOT tracked`);
+    log(`tracked set: ${wallets.size} wallets (+${added.length} new, -${removed} pruned) from leaderboard.json [categories+mmCategories+bots+profiles]`);
   } catch (e) {
     log('refreshTracked: leaderboard.json unavailable —', e.message);
   }
@@ -193,10 +211,47 @@ function addFill(rec, f) {
 }
 
 // ── REST resync ───────────────────────────────────────────────────────────────
+// rlGet through the per-host limiter, but with RETRY on throttle: rlGet fast-fails
+// (a) with a 429/Cloudflare challenge, or (b) with "in backoff — call skipped" while
+// the host is already backed off. Both are transient; retrying (waiting the backoff
+// out first) is what turns a throttled wallet from "left empty" into "backfilled".
+async function rlGetRetry(url, opts = {}) {
+  let lastErr;
+  for (let attempt = 0; attempt <= FETCH_MAX_RETRY; attempt++) {
+    // Don't spend an attempt on a call we know will instantly fast-fail — wait out
+    // the active host backoff first (bounded so shutdown/hangs can't wedge us).
+    let waited = 0;
+    while (isHostBackedOff(url) && !shuttingDown && waited < FETCH_RETRY_CAP_MS) {
+      await sleep(1_000); waited += 1_000;
+    }
+    if (shuttingDown) throw new Error('shutting down');
+    try {
+      return await rlGet(url, { timeoutMs: REQ_TIMEOUT_MS, ...opts });
+    } catch (e) {
+      lastErr = e;
+      const throttled = isRateLimited(e) || /backoff|call skipped|rate-limit/i.test(String((e && e.message) || ''));
+      if (!throttled || attempt === FETCH_MAX_RETRY) throw e;
+      await sleep(Math.min(FETCH_RETRY_CAP_MS, FETCH_RETRY_BASE_MS * 2 ** attempt));
+    }
+  }
+  throw lastErr;
+}
+
+// Full-pagination fill fetch: page /trades by offset until we reach FILLS_PER_WALLET
+// or the source is exhausted. (At cap==page this is a single call; pagination keeps
+// it correct if FILLS_PER_WALLET is ever raised.) Throws on hard failure so the
+// caller keeps last-good instead of overwriting with a truncated/empty set.
 async function fetchTrades(addr) {
-  const url = `${DATA_API}/trades?user=${addr}&limit=${FILLS_PER_WALLET}`;
-  const r = await rlGet(url, { timeoutMs: REQ_TIMEOUT_MS });
-  return Array.isArray(r.data) ? r.data : [];
+  const PAGE = FILLS_PER_WALLET;
+  const out = [];
+  for (let offset = 0; out.length < FILLS_PER_WALLET; offset += PAGE) {
+    const url = `${DATA_API}/trades?user=${addr}&limit=${PAGE}&offset=${offset}`;
+    const r = await rlGetRetry(url);
+    const batch = Array.isArray(r.data) ? r.data : [];
+    out.push(...batch);
+    if (batch.length < PAGE) break;   // last page
+  }
+  return out.slice(0, FILLS_PER_WALLET);
 }
 // Returns { positions, openObserved, openCapped }.
 //   • positions  — RESOLVED/redeemable rows from the base fetch (drives realized
@@ -207,11 +262,11 @@ async function fetchTrades(addr) {
 // The base default fetch is untouched, so redeemable/resolved (and thus realized
 // P&L) never change — we only ADD open positions the defaults silently dropped.
 async function fetchPositions(addr) {
-  const base = await rlGet(`${DATA_API}/positions?user=${addr}`, { timeoutMs: REQ_TIMEOUT_MS });
+  const base = await rlGetRetry(`${DATA_API}/positions?user=${addr}`);
   const baseArr = Array.isArray(base.data) ? base.data : [];
 
   const getJson = async (url) => {
-    const r = await rlGet(url, { timeoutMs: REQ_TIMEOUT_MS });
+    const r = await rlGetRetry(url);
     return Array.isArray(r.data) ? r.data : [];
   };
   const { ok, open, openObserved, openScanCapped } =
