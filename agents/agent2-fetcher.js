@@ -4,6 +4,7 @@
 const fs   = require('fs');
 const https = require('https');
 const http  = require('http');
+const { httpGet } = require('../lib/httpGet');
 
 const OUT          = '/tmp/markets-raw.json';
 const ODDS_OUT     = '/tmp/odds-api-raw.json';
@@ -36,19 +37,16 @@ function beat(name) {
   fs.writeFileSync(HB_FILE, JSON.stringify(hb, null, 2));
 }
 
+// Resolve parsed JSON, or null on ANY failure (network error, non-JSON body,
+// or wall-clock timeout). Uses the shared lib/httpGet.js hard wall-clock
+// deadline instead of the old { timeout } + req.on('timeout') pattern, which
+// only fires on socket INACTIVITY and can hang forever when a server trickles
+// slow keep-alive chunks. The null-on-failure contract is preserved so callers
+// and the produced data shape are unchanged — httpGet rejects, we swallow it.
 function fetchJson(url) {
-  return new Promise((resolve) => {
-    const mod = url.startsWith('https') ? https : http;
-    const req = mod.get(url, { headers: { 'User-Agent': 'prediction-arb-scanner/1.0' }, timeout: 15000 }, res => {
-      let body = '';
-      res.on('data', d => body += d);
-      res.on('end', () => {
-        try { resolve(JSON.parse(body)); } catch { resolve(null); }
-      });
-    });
-    req.on('error', () => resolve(null));
-    req.on('timeout', () => { req.destroy(); resolve(null); });
-  });
+  return httpGet(url, { timeoutMs: 15000, headers: { 'User-Agent': 'prediction-arb-scanner/1.0' } })
+    .then(r => r.data)
+    .catch(() => null);
 }
 
 // Fetch one OddsAPI URL and return { data, remaining, used, status }
@@ -233,35 +231,83 @@ async function fetchPolymarketTagEvents(sportSlugs) {
   return [...byId.values()];
 }
 
+// Last-good value per source. When a source fails a cycle we reuse the previous
+// cycle's REAL value rather than fabricating or blanking it. Seeded from the
+// existing output file so a process restart mid-outage doesn't wipe good data.
+const lastGood = { kalshi: [], predictit: [], manifold: [], pmBase: [], polymarket: [] };
+try {
+  const prev = JSON.parse(fs.readFileSync(OUT, 'utf8'));
+  if (Array.isArray(prev.kalshi)    && prev.kalshi.length)    lastGood.kalshi    = prev.kalshi;
+  if (Array.isArray(prev.predictit) && prev.predictit.length) lastGood.predictit = prev.predictit;
+  if (Array.isArray(prev.manifold)  && prev.manifold.length)  lastGood.manifold  = prev.manifold;
+  if (Array.isArray(prev.polymarket) && prev.polymarket.length) {
+    lastGood.polymarket = prev.polymarket;
+    lastGood.pmBase     = prev.polymarket;
+  }
+} catch {}
+
+// Resolve one settled source: on a fulfilled non-empty array, adopt it as the
+// new last-good; on a rejection or empty/soft-failed result, log and reuse the
+// last-good value (never fabricated). This keeps every successful source's data
+// while ensuring one failing venue can't reject the batch and crash the process.
+function resolveSource(settled, key, label, extract) {
+  if (settled.status === 'rejected') {
+    console.log(`[fetcher] ${label}: fetch rejected (${settled.reason?.message || settled.reason}) — reusing last good (${lastGood[key].length})`);
+    return lastGood[key];
+  }
+  const arr = extract(settled.value);
+  if (Array.isArray(arr) && arr.length) { lastGood[key] = arr; return arr; }
+  console.log(`[fetcher] ${label}: no fresh data this cycle — reusing last good (${lastGood[key].length})`);
+  return lastGood[key];
+}
+
 async function fetchAll() {
   console.log('[fetcher] fetching all platforms...');
 
-  // Kalshi pagination + non-Kalshi fetches run concurrently
-  const [kalshiMarkets, piRaw, mfRaw, pmRaw] = await Promise.all([
+  // Each source runs concurrently but INDEPENDENTLY. Previously a single venue's
+  // rejection inside Promise.all escaped fetchAll(), crashed the process, and
+  // made PM2 restart agent2 hundreds of times. allSettled + per-source last-good
+  // fallback keeps every good source and never lets one failure kill the batch.
+  const [kaS, piS, mfS, pmS] = await Promise.allSettled([
     fetchKalshiPaginated(),
     fetchJson('https://www.predictit.org/api/marketdata/all/'),
     fetchJson('https://api.manifold.markets/v0/markets?limit=100&sort=last-bet-time&order=desc'),
     fetchJson('https://gamma-api.polymarket.com/markets?active=true&limit=200'),
   ]);
 
-  // Polymarket: merge volume-sorted base with tag-discovered sport events
-  const pmBase = Array.isArray(pmRaw) ? pmRaw : [];
+  const kalshiMarkets = resolveSource(kaS, 'kalshi',    'kalshi',          v => v);
+  const piMarkets     = resolveSource(piS, 'predictit', 'predictit',       v => v?.markets);
+  const mfMarkets     = resolveSource(mfS, 'manifold',  'manifold',        v => v);
+  const pmBase        = resolveSource(pmS, 'pmBase',    'polymarket-base', v => v);
+
+  // Polymarket: merge volume-sorted base with tag-discovered sport events.
+  // Tag discovery is best-effort — a failure here must not reject the cycle.
   const pmById = new Map(pmBase.map(m => [String(m.id || m.conditionId || ''), m]));
 
-  const sportSlugs = await discoverSportTagSlugs();
-  const tagMarkets = await fetchPolymarketTagEvents(sportSlugs);
-  let tagAdded = 0;
+  let sportSlugs = [], tagMarkets = [], tagAdded = 0;
+  try {
+    sportSlugs = await discoverSportTagSlugs();
+    tagMarkets = await fetchPolymarketTagEvents(sportSlugs);
+  } catch (e) {
+    console.log(`[fetcher] polymarket tag discovery failed (${e?.message || e}) — using base only`);
+  }
   for (const m of tagMarkets) {
     const id = String(m.id || m.conditionId || m.questionID || '');
     if (id && !pmById.has(id)) { pmById.set(id, m); tagAdded++; }
   }
-  const polymarketAll = [...pmById.values()];
+  let polymarketAll = [...pmById.values()];
+  if (polymarketAll.length) {
+    lastGood.polymarket = polymarketAll;
+  } else {
+    polymarketAll = lastGood.polymarket;
+    console.log(`[fetcher] polymarket: empty after merge — reusing last good (${polymarketAll.length})`);
+  }
   console.log(`[fetcher] polymarket: ${pmBase.length} base + ${tagAdded} tag-added (${sportSlugs.length} slugs) = ${polymarketAll.length} total`);
 
   const result = {
     fetchedAt: Date.now(),
-    predictit:  piRaw?.markets  ?? [],
-    manifold:   Array.isArray(mfRaw) ? mfRaw : [],
+    predictit:  piMarkets,
+    manifold:   mfMarkets,
     kalshi:     kalshiMarkets,
     polymarket: polymarketAll,
   };
@@ -272,12 +318,21 @@ async function fetchAll() {
   console.log(`[fetcher] saved — PI:${result.predictit.length} MF:${result.manifold.length} KA:${result.kalshi.length} PM:${result.polymarket.length}`);
 }
 
-fetchAll();
-setInterval(fetchAll, INTERVAL);
+// Guard the whole cycle: any unexpected throw (e.g. a failed disk write) is
+// logged and swallowed so the process survives and retries next interval,
+// instead of surfacing as an unhandled rejection that crashes agent2.
+async function runCycle() {
+  try { await fetchAll(); }
+  catch (e) { console.error('[fetcher] cycle error (skipped, retry next interval):', e?.message || e); }
+}
+
+runCycle();
+setInterval(runCycle, INTERVAL);
 // OddsAPI: only run when explicitly enabled (ODDS_API_LIVE=1) to protect monthly quota
 if (ODDS_API_LIVE) {
-  fetchOddsApi();
-  setInterval(fetchOddsApi, ODDS_INTERVAL);
+  const runOdds = () => fetchOddsApi().catch(e => console.error('[fetcher] odds-api cycle error (skipped):', e?.message || e));
+  runOdds();
+  setInterval(runOdds, ODDS_INTERVAL);
 } else {
   console.log('[fetcher] odds-api live fetch disabled (set ODDS_API_LIVE=1 to enable)');
 }
