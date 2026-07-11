@@ -50,6 +50,7 @@ const fs   = require('fs');
 const path = require('path');
 const { httpGet, httpPost } = require('../lib/httpGet');   // MANDATORY wall-clock-deadline helper
 const { atomicWriteJson }   = require('../lib/atomicJsonWrite');
+const { collectTrackedWallets } = require('../lib/tracked-wallets');
 
 // ── .env (pm2 doesn't auto-load project env files) — for Telegram creds ────────
 for (const envFile of ['.env.local', '.env']) {
@@ -128,19 +129,19 @@ function approxEq(a, b, absTol, relTol = 0) {
   return diff <= absTol || diff <= relTol * Math.max(Math.abs(a), Math.abs(b));
 }
 
-// ── Tracked wallet universe (identical construction to agent30.refreshTracked) ──
+// ── Tracked wallet universe (SHARED SSOT — byte-identical to agent30) ──────────
+// Uses lib/tracked-wallets so the auditor scans EXACTLY the universe agent30 serves:
+// categories + mmCategories + bots + profiles. (Previously categories+bots only, which
+// silently skipped the market-maker board + profiles-only wallets — the auditor could
+// not even see the ~100 wallets agent30 was omitting, so it never flagged them.)
 function loadTracked() {
-  const set = new Set();
   try {
     const raw = JSON.parse(fs.readFileSync(LEADERBOARD_FILE, 'utf8'));
-    for (const cat of Object.values(raw.categories || {})) {
-      for (const r of cat) if (r && r.wallet) set.add(String(r.wallet).toLowerCase());
-    }
-    for (const b of (raw.bots || [])) if (b && b.wallet) set.add(String(b.wallet).toLowerCase());
+    return Array.from(collectTrackedWallets(raw)).slice(0, MAX_TRACKED);
   } catch (e) {
     log('loadTracked: leaderboard.json unavailable —', e.message);
+    return [];
   }
-  return Array.from(set).slice(0, MAX_TRACKED);
 }
 
 // ── Feed (served side) — READ-ONLY ─────────────────────────────────────────────
@@ -485,26 +486,40 @@ async function sendTelegram(text) {
   } catch (e) { log('sendTelegram error:', e.message); }
 }
 
-// Reconcile this cycle's issues against persistent state; return the batch of
-// issues that are newly ALERTABLE (persisted ≥ MIN_PERSIST_CYCLES and outside
-// their re-alert cooldown). Prunes keys not seen this cycle.
+// Reconcile this cycle's issues against persistent state and decide whether to send
+// ONE compact summary. Per-key persistence tracking is retained purely as the
+// transient filter (an issue must be seen ≥ MIN_PERSIST_CYCLES before it counts),
+// but we NO LONGER emit one message per key — that produced a per-wallet flood
+// (dozens of lines/messages) that buried real alerts. Instead we return the full set
+// of `active` (persisted, alertable) issues this cycle and a single `send` decision:
+// send when the alert PICTURE changes (class breakdown differs) or a 6h cooldown has
+// elapsed — never the identical summary every 90s scan.
 function reconcileAlerts(state, issues, now) {
   const seen = new Set();
-  const toAlert = [];
+  const active = [];
   for (const iss of issues) {
     if (!iss.alertable) continue;
     seen.add(iss.key);
-    const prev = state.keys[iss.key] || { count: 0, firstSeen: now, lastAlertAt: 0 };
+    const prev = state.keys[iss.key] || { count: 0, firstSeen: now };
     prev.count = (prev.count || 0) + 1;
     prev.type = iss.type; prev.detail = iss.detail;
-    const persisted = prev.count >= MIN_PERSIST_CYCLES;
-    const cooledDown = now - (prev.lastAlertAt || 0) >= ALERT_COOLDOWN_MS;
-    if (persisted && cooledDown) { toAlert.push(iss); prev.lastAlertAt = now; }
     state.keys[iss.key] = prev;
+    if (prev.count >= MIN_PERSIST_CYCLES) active.push(iss);
   }
-  // Prune resolved keys (not observed this cycle).
+  // Prune resolved keys (not observed this cycle) so state can't grow unbounded and
+  // a cleared issue re-alerts fresh if it returns.
   for (const k of Object.keys(state.keys)) if (!seen.has(k)) delete state.keys[k];
-  return toAlert;
+
+  if (!active.length) { state.lastSummary = null; return { active, byClass: {}, send: false }; }
+
+  const byClass = {};
+  for (const i of active) byClass[i.type] = (byClass[i.type] || 0) + 1;
+  const sig = Object.keys(byClass).sort().map(t => `${t}:${byClass[t]}`).join(',');
+  const changed = sig !== (state.lastSummary && state.lastSummary.sig);
+  const cooled  = now - ((state.lastSummary && state.lastSummary.at) || 0) >= ALERT_COOLDOWN_MS;
+  const send = changed || cooled;
+  if (send) state.lastSummary = { sig, at: now };
+  return { active, byClass, send };
 }
 
 // ── Heartbeat ───────────────────────────────────────────────────────────────────
@@ -573,17 +588,25 @@ async function runCycle() {
     });
   }
 
-  // ── Alerts (debounced) ──
+  // ── Alerts — ONE compact summary per scan (no per-wallet flood) ──
+  // Full per-wallet detail always lands in OUT_FILE below; Telegram gets a digest:
+  // total count + breakdown by class + at most the top 3 examples + "…and N more".
   const state = loadState();
   const now = Date.now();
-  const toAlert = reconcileAlerts(state, allIssues, now);
-  if (toAlert.length) {
-    const lines = toAlert.slice(0, 20).map(i => `• <b>${i.type}</b>: ${i.detail}`);
-    const extra = toAlert.length > 20 ? `\n…and ${toAlert.length - 20} more` : '';
+  const { active, byClass, send } = reconcileAlerts(state, allIssues, now);
+  if (send && active.length) {
+    const classLine = Object.entries(byClass)
+      .sort((a, b) => b[1] - a[1])
+      .map(([type, n]) => `${n} ${type}`)
+      .join(', ');
+    const examples = active.slice(0, 3).map(i => `• ${i.detail}`);
+    const moreN = active.length - Math.min(3, active.length);
+    const moreLine = moreN > 0 ? `\n…and ${moreN} more (see /tmp/trader-audit.json)` : '';
     await sendTelegram(
-      `🚨 <b>trader-auditor</b> — ${toAlert.length} discrepanc${toAlert.length === 1 ? 'y' : 'ies'} vs re-read source:\n\n`
-      + lines.join('\n') + extra);
-    log(`ALERT sent — ${toAlert.length} issue(s)`);
+      `🚨 <b>trader-auditor</b> — ${active.length} discrepanc${active.length === 1 ? 'y' : 'ies'} vs re-read source\n`
+      + `<b>By class:</b> ${classLine}\n\n`
+      + examples.join('\n') + moreLine);
+    log(`ALERT sent — compact summary · ${active.length} issue(s) · ${classLine}`);
   }
   state.firstCheckDone = true;
   saveState(state);
@@ -595,7 +618,7 @@ async function runCycle() {
     apiCalls, throttleHits,
     counts,
     activeIssues: allIssues.filter(i => i.alertable).length,
-    alertedThisCycle: toAlert.length,
+    alertedThisCycle: send ? active.length : 0,
     costBasis: {                       // fleet cost-basis fidelity (diagnostic)
       unchurnedCompared: fleetUnchurned,
       mismatchedPositions: fleetCbMismatchPos,
@@ -612,7 +635,7 @@ async function runCycle() {
   const disc = counts.DISCREPANCY + counts['NEEDS-SYNC'];
   log(`cycle done — ${tracked.length} wallets · ${apiCalls} calls · ${(cycleMs / 1000).toFixed(0)}s · `
     + `429s=${throttleHits} · OK=${counts.OK} empty=${counts['SOURCE-EMPTY']} disc=${disc} skip=${counts.SKIP} · `
-    + `cbRate=${(cbRate * 100).toFixed(1)}%(n=${fleetUnchurned}) · alerts=${toAlert.length}`);
+    + `cbRate=${(cbRate * 100).toFixed(1)}%(n=${fleetUnchurned}) · alerts=${send ? active.length : 0}`);
   running = false;
 }
 
