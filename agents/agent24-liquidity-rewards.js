@@ -12,7 +12,7 @@
 //        Range: high = s=0.1¢ (near-mid floor, S≈0.91); low = s=0.8v (outer band, S=0.04).
 //        share = Q_user / (Q_user + Q_competitors)  — ESTIMATE.
 //   5. Classifies 24h mid-price volatility as LOW / MEDIUM / HIGH.
-//   6. Applies sanity cap (>5%/day typical gross → THIN BOOK flag) and
+//   6. Applies sanity cap (>2%/day typical gross → THIN BOOK flag) and
 //      floor (<$1/day typical gross → below-floor flag) PER CAPITAL LEVEL.
 //   7. Writes /root/prediction-market/data/liquidity-rewards.json.
 //   8. Prints formula verification + top 5 markets + gap sample + placement comparison.
