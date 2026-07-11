@@ -17,6 +17,30 @@ const LEADERBOARD_FILE = '/tmp/leaderboard.json';
 const FEED_FILE = '/tmp/trader-feed.json';
 const STALE_MS = 35 * 60_000; // 35 min (agent scans every 30 min)
 
+// A market that resolved within this window is "just settled". agent30's feed
+// mirror back-fills a freshly-closed market's fills on a delay, so right after
+// settlement the feed copy is momentarily missing (or holds only a partial slice
+// of) the buy fills → the reconciliation guard can't confirm entry→exit and
+// honestly withholds it ("—"). The public Data API is the un-mirrored source and
+// already carries those fills, so we re-reconcile just-settled "—" rows against a
+// live on-demand read. 6h matches the observed elevated-"—" window after settle.
+const RECENT_SETTLE_SEC = 6 * 3600;
+
+// Count closed rows that (a) settled recently enough that feed-mirror lag is the
+// plausible reason entry→exit is still "—", and (b) are genuinely unreconciled
+// (both prices null). Drives the on-demand freshness fallback below — it fires
+// ONLY when such a row exists, so steady-state profile loads never hit the Data API.
+function recentUnreconciledCount(trades: unknown): number {
+  if (!Array.isArray(trades)) return 0;
+  const cutoff = Date.now() / 1000 - RECENT_SETTLE_SEC;
+  let n = 0;
+  for (const t of trades) {
+    if (t && t.entryPrice == null && t.exitPrice == null
+      && typeof t.timestamp === 'number' && t.timestamp >= cutoff) n++;
+  }
+  return n;
+}
+
 export async function GET(_req: NextRequest, { params }: { params: { address: string } }) {
   const address = (params.address || '').toLowerCase();
 
@@ -48,6 +72,24 @@ export async function GET(_req: NextRequest, { params }: { params: { address: st
         profile.entryExitSource = 'feed';
       }
     } catch { /* feed absent/warming → fall through to on-demand */ }
+
+    // Just-settled rows can still read "—" on the feed path: agent30's mirror
+    // back-fills a freshly-closed market's fills on a delay (see RECENT_SETTLE_SEC).
+    // When such a recent row is still unreconciled, re-reconcile it against a LIVE
+    // Data-API read (the un-mirrored source) through the SAME guard — enrich skips
+    // already-sourced rows and attach only fills gaps, so surfaced rows are never
+    // disturbed. Rows that still don't reconcile (partial exits, or fill histories
+    // deeper than the on-demand page) stay "—" (honest). Gated on the count so a
+    // profile with no recent settlement never touches the Data API; cached 60s.
+    if (rec && recentUnreconciledCount(profile.tradesClosed) > 0) {
+      const { rec: fresh, asOf } = await fetchWalletRecordOnDemand(address);
+      if (fresh) {
+        enrichClosedTradesEntryExit(profile.tradesClosed, fresh);
+        attachClosedTradeFills(profile.tradesClosed, fresh);
+        profile.entryExitSource = 'feed+ondemand';
+        profile.entryExitAsOf   = asOf;
+      }
+    }
 
     // Non-feed wallet (the leaderboard ranks thousands, agent30 tracks ~hundreds):
     // reconstruct entry→exit on demand from the SAME keyless Data API, running the

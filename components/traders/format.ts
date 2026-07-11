@@ -129,10 +129,12 @@ export interface TraderProfile {
   actorType:     ActorType | null;
   opsCounts:     OpsCounts | null;
   // Entry→exit provenance: 'feed' = agent30's live per-fill feed; 'ondemand' =
-  // reconstructed from a keyless Data-API read at request time (non-feed wallets),
-  // stamped with entryExitAsOf (ms) so the UI can show "as of HH:MM:SS". Absent on
-  // older scans → treated as feed/unstamped.
-  entryExitSource?: 'feed' | 'ondemand' | null;
+  // reconstructed from a keyless Data-API read at request time (non-feed wallets);
+  // 'feed+ondemand' = feed-sourced, with just-settled rows the feed hadn't yet
+  // mirrored back-filled from a live Data-API read. On-demand cases are stamped with
+  // entryExitAsOf (ms) so the UI can show "as of HH:MM:SS". Absent on older scans →
+  // treated as feed/unstamped.
+  entryExitSource?: 'feed' | 'ondemand' | 'feed+ondemand' | null;
   entryExitAsOf?:   number | null;
 }
 
