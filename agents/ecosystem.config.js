@@ -1,6 +1,17 @@
 module.exports = {
   apps: [
     {
+      name:          'agent14-rebalancer',
+      script:        './agents/agent14-rebalancer.js',
+      cwd:           '/root/prediction-market',
+      restart_delay: 30000,
+      max_restarts:  20,
+      max_memory_restart: '150M',   // small: 5-coin Binance funding poll, writes 2 tiny JSON files
+      watch:         false,
+      autorestart:   true,
+      env:           { NODE_ENV: 'production', HOME: '/root' },
+    },
+    {
       name:          'agent29-verifier',
       script:        './agents/agent29-verifier.js',
       cwd:           '/root/prediction-market',
