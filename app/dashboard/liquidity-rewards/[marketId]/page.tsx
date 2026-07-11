@@ -180,6 +180,18 @@ const LS_KEY = (id: string) => `rewards-placement:${id}`;
 type LegState = { price: number } | null;
 type LegKind = 'buy' | 'sell';
 
+// The market's REAL venue page URL — the same honest, null-safe builders the header
+// uses (never a fabricated slug). Neither Polymarket nor Kalshi accepts a price/side/size
+// prefill in the URL, so this is the market page only; the caller states the exact
+// side+price+size to enter by hand. Returns null when no real page is constructible.
+function venueMarketUrl(m: { venue: Venue; slug?: string | null; marketSlug?: string | null; negRisk?: boolean; marketId: string }): string | null {
+  if (m.venue === 'polymarket') {
+    return (m.negRisk && m.marketSlug ? polymarketOutcomeUrl(m.slug, m.marketSlug) : null) ?? polymarketMarketUrl(m.slug);
+  }
+  if (m.venue === 'kalshi') return kalshiMarketUrl(m.marketId);
+  return null;
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function MarketDetailPage() {
   const params = useParams();
@@ -370,6 +382,9 @@ export default function MarketDetailPage() {
   // Effective quote per side: the tapped price when a leg is manually placed, else the slider.
   const userBid = legs.buy  ? legs.buy.price  : sliderBid;
   const userAsk = legs.sell ? legs.sell.price : sliderAsk;
+  // Real venue page for this market (null when not constructible). A tapped/placed leg is an
+  // in-app plan only (live execution OFF), so this is the honest bridge to actually placing it.
+  const venueUrl = mkt ? venueMarketUrl(mkt) : null;
 
   // ── tap-to-place handlers ──
   // A tapped BELOW-mid level sets the buy leg; ABOVE-mid sets the sell leg. The two never
@@ -441,9 +456,7 @@ export default function MarketDetailPage() {
                   // Multi-outcome (negRisk) events → deep-link the exact outcome via the real
                   // two-segment …/event/<eventSlug>/<marketSlug>; fall back to the plain event
                   // link when that isn't constructible. Single-outcome markets are unchanged.
-                  const u = mkt.venue === 'polymarket'
-                    ? ((mkt.negRisk && mkt.marketSlug ? polymarketOutcomeUrl(mkt.slug, mkt.marketSlug) : null) ?? polymarketMarketUrl(mkt.slug))
-                    : mkt.venue === 'kalshi' ? kalshiMarketUrl(mkt.marketId) : null;
+                  const u = venueMarketUrl(mkt);
                   return u ? <PlatformLink href={u} label={mkt.venue === 'polymarket' ? 'Polymarket' : 'Kalshi'} className="mt-0.5 shrink-0" /> : null;
                 })()}
               </div>
@@ -556,7 +569,7 @@ export default function MarketDetailPage() {
               bookAge={bookAge} bookErr={bookErr} isRedacted={isRedacted}
               yesMid={yesMid} noMid={noMid} maxSpread={mkt.maxSpread}
               userBid={userBid} userAsk={userAsk} onRefresh={fetchBook} venue={mkt.venue}
-              side={side} onTap={placeLeg}
+              side={side} onTap={placeLeg} venueUrl={venueUrl}
               buyManual={legs.buy != null} sellManual={legs.sell != null}
             />
 
@@ -565,6 +578,7 @@ export default function MarketDetailPage() {
               legs={legs} legQty={legQty} setLegQty={setLegQty} removeLeg={removeLeg}
               tradeSide={tradeSide} mid={mid} maxSpread={mkt.maxSpread}
               venue={mkt.venue} snapshot={toSnapshot(mkt)} isRedacted={isRedacted}
+              venueUrl={venueUrl}
             />
 
             {/* ── E) Fill-handling choice — per-side when quoting both ── */}
@@ -777,13 +791,14 @@ function TradeSideToggle({
 // both can be live at once; each has its own USD qty. A leg exists only after the user
 // taps a real book level, so every ticket is a manual placement at a real executable price.
 function LegTickets({
-  legs, legQty, setLegQty, removeLeg, tradeSide, mid, maxSpread, venue, snapshot, isRedacted,
+  legs, legQty, setLegQty, removeLeg, tradeSide, mid, maxSpread, venue, snapshot, isRedacted, venueUrl,
 }: {
   legs: { buy: LegState; sell: LegState }; legQty: { buy: number; sell: number };
   setLegQty: React.Dispatch<React.SetStateAction<{ buy: number; sell: number }>>;
   removeLeg: (kind: LegKind) => void; tradeSide: SideKey; mid: number | null; maxSpread: number | null;
-  venue: Venue; snapshot: MarketSnapshot; isRedacted: boolean;
+  venue: Venue; snapshot: MarketSnapshot; isRedacted: boolean; venueUrl: string | null;
 }) {
+  const venueLabel = venue === 'polymarket' ? 'Polymarket' : venue === 'kalshi' ? 'Kalshi' : venue;
   const active: LegKind[] = [];
   if (legs.buy)  active.push('buy');
   if (legs.sell) active.push('sell');
@@ -841,6 +856,20 @@ function LegTickets({
                 {closer ? 'closer to mid · more reward, more fill risk' : 'farther from mid · safer, less reward'}
               </p>
             )}
+            {/* Honest execution bridge: the plan lives in-app (live execution OFF); this opens the
+                REAL venue market page. Neither venue accepts a price/side/size URL prefill, so we
+                spell out exactly what to enter by hand rather than fabricate a prefilled link. */}
+            {venueUrl ? (
+              <div className="mt-2 pt-2 border-t border-current/15 flex items-center justify-between gap-2 flex-wrap">
+                <span className="font-body text-[10px] text-muted">
+                  Place on {venueLabel}: <span className="text-ink-2 font-medium tabular-nums">{isBuy ? 'BUY' : 'SELL'} {tradeSide.toUpperCase()} @ {fmtC(leg.price)} · {fmtUsd(q)}</span>
+                  <span className="text-muted"> — {venueLabel} can’t pre-fill; enter it there.</span>
+                </span>
+                <PlatformLink href={venueUrl} label={`Place on ${venueLabel}`} className="shrink-0" />
+              </div>
+            ) : (
+              <p className="font-body text-[10px] text-muted mt-2 pt-2 border-t border-current/15">No linkable {venueLabel} page for this market — place {isBuy ? 'BUY' : 'SELL'} {tradeSide.toUpperCase()} @ {fmtC(leg.price)} manually on the venue.</p>
+            )}
           </div>
         );
       })}
@@ -851,13 +880,13 @@ function LegTickets({
 // ── D) DUAL order book (YES | NO), chosen side highlighted, planned orders inline ─
 function DualOrderBook({
   yesBook, noBook, tradeSide, bookAge, bookErr, isRedacted, yesMid, noMid, maxSpread, userBid, userAsk, onRefresh, venue,
-  side, onTap, buyManual, sellManual,
+  side, onTap, venueUrl, buyManual, sellManual,
 }: {
   yesBook: NormBook | null; noBook: NormBook | null; tradeSide: SideKey;
   bookAge: Date | null; bookErr: string | null; isRedacted: boolean;
   yesMid: number | null; noMid: number | null; maxSpread: number | null;
   userBid: number | null; userAsk: number | null; onRefresh: () => void; venue: Venue;
-  side: SideMode; onTap: (kind: LegKind, price: number) => void; buyManual: boolean; sellManual: boolean;
+  side: SideMode; onTap: (kind: LegKind, price: number) => void; venueUrl: string | null; buyManual: boolean; sellManual: boolean;
 }) {
   const anyBook = (yesBook?.hasBook || noBook?.hasBook) ?? false;
   return (
@@ -890,10 +919,10 @@ function DualOrderBook({
           <div className="flex gap-2 items-start">
             <SideColumn side="yes" book={yesBook} mid={yesMid} maxSpread={maxSpread}
               chosen={tradeSide === 'yes'} userBid={userBid} userAsk={userAsk}
-              orderSide={side} onTap={onTap} buyManual={buyManual} sellManual={sellManual} />
+              orderSide={side} onTap={onTap} venueUrl={venueUrl} buyManual={buyManual} sellManual={sellManual} />
             <SideColumn side="no" book={noBook} mid={noMid} maxSpread={maxSpread}
               chosen={tradeSide === 'no'} userBid={userBid} userAsk={userAsk}
-              orderSide={side} onTap={onTap} buyManual={buyManual} sellManual={sellManual} />
+              orderSide={side} onTap={onTap} venueUrl={venueUrl} buyManual={buyManual} sellManual={sellManual} />
           </div>
           <p className="font-body text-[9px] text-muted/60 px-1 pt-2 leading-relaxed">
             Real executable prices from {venue === 'polymarket' ? 'each token’s own CLOB book (both fetched live; YES + NO mids ≈ 100¢, but each side’s in-band reward depth differs)' : 'the Kalshi book — bids are real, asks are the contract complement'}.
@@ -907,11 +936,11 @@ function DualOrderBook({
 
 // One side's book column. Chosen side is full-opacity + tinted; the other is dimmed.
 function SideColumn({
-  side, book, mid, maxSpread, chosen, userBid, userAsk, orderSide, onTap, buyManual, sellManual,
+  side, book, mid, maxSpread, chosen, userBid, userAsk, orderSide, onTap, venueUrl, buyManual, sellManual,
 }: {
   side: SideKey; book: NormBook | null; mid: number | null; maxSpread: number | null;
   chosen: boolean; userBid: number | null; userAsk: number | null;
-  orderSide: SideMode; onTap: (kind: LegKind, price: number) => void; buyManual: boolean; sellManual: boolean;
+  orderSide: SideMode; onTap: (kind: LegKind, price: number) => void; venueUrl: string | null; buyManual: boolean; sellManual: boolean;
 }) {
   const isYes    = side === 'yes';
   const asks     = (book?.asks ?? []).slice(0, 8);
@@ -950,7 +979,7 @@ function SideColumn({
         <div className="px-1.5 py-1.5">
           <div className="flex flex-col-reverse">
             {askRows.map((r, i) => <MiniLadder key={`a${i}`} row={r} maxSize={maxSize} mid={mid} halfBand={halfBand} kind="ask"
-              tappable={sellTappable} dimmed={chosen && !sellTappable} manual={sellManual}
+              tappable={sellTappable} dimmed={chosen && !sellTappable} manual={sellManual} venueUrl={venueUrl}
               onTap={sellTappable ? (p) => onTap('sell', p) : undefined} />)}
           </div>
           <div className="px-1 py-1 my-0.5 bg-bg-soft/70 border-y border-line/60 text-center">
@@ -958,7 +987,7 @@ function SideColumn({
           </div>
           <div className="flex flex-col">
             {bidRows.map((r, i) => <MiniLadder key={`b${i}`} row={r} maxSize={maxSize} mid={mid} halfBand={halfBand} kind="bid"
-              tappable={buyTappable} dimmed={chosen && !buyTappable} manual={buyManual}
+              tappable={buyTappable} dimmed={chosen && !buyTappable} manual={buyManual} venueUrl={venueUrl}
               onTap={buyTappable ? (p) => onTap('buy', p) : undefined} />)}
           </div>
           {book?.asksComplement && (
@@ -979,9 +1008,9 @@ function mergeUserRow(levels: BookRow[], userPrice: number | null, kind: 'buy' |
   }
   return rows;
 }
-function MiniLadder({ row, maxSize, mid, halfBand, kind, tappable, dimmed, manual, onTap }: {
+function MiniLadder({ row, maxSize, mid, halfBand, kind, tappable, dimmed, manual, venueUrl, onTap }: {
   row: LadderRow; maxSize: number; mid: number | null; halfBand: number | null; kind: 'ask' | 'bid';
-  tappable?: boolean; dimmed?: boolean; manual?: boolean; onTap?: (price: number) => void;
+  tappable?: boolean; dimmed?: boolean; manual?: boolean; venueUrl?: string | null; onTap?: (price: number) => void;
 }) {
   const isUser = !!row.user;
   const inBand = mid != null && halfBand != null ? Math.abs(row.price - mid) <= halfBand : false;
@@ -990,21 +1019,29 @@ function MiniLadder({ row, maxSize, mid, halfBand, kind, tappable, dimmed, manua
   const barCls   = kind === 'ask' ? 'bg-coral-tint/60' : 'bg-mint-tint/60';
   if (isUser) {
     // The synthetic "your BUY/SELL" marker row — the slider-planned quote at a real, snapped
-    // tick. It used to be a dead div: clicking it did nothing. Now it PLACES the maker order
-    // at this exact (already tick-snapped, book-acceptable) price — never a silent no-op.
-    const placeUser = onTap ? () => onTap(row.price) : undefined;
+    // tick. Two live states, never a dead tap:
+    //   • not-yet-placed  → tap PLACES the in-app maker leg at this exact tick-snapped price.
+    //   • already MANUALE → re-placing at the same price is a no-op (setLegs short-circuits),
+    //     so instead the tap OPENS the real venue market page to actually execute it. Live
+    //     execution is OFF in-app, so the venue is the honest place to submit the order. The
+    //     venue can't pre-fill price/side/size — the LegTickets panel states them to enter.
+    const placeUser = !manual && onTap ? () => onTap(row.price) : undefined;
+    const goVenue   = manual && venueUrl ? () => window.open(venueUrl, '_blank', 'noopener,noreferrer') : undefined;
+    const act       = placeUser ?? goVenue;
+    const sideLabel = row.user === 'buy' ? 'BUY' : 'SELL';
     return (
       <div
-        onClick={placeUser}
-        role={placeUser ? 'button' : undefined}
-        title={placeUser ? `Place ${row.user === 'buy' ? 'BUY' : 'SELL'} at ${fmtC(row.price)}` : undefined}
+        onClick={act}
+        role={act ? 'button' : undefined}
+        title={placeUser ? `Place ${sideLabel} at ${fmtC(row.price)}`
+              : goVenue  ? `Open the venue to place ${sideLabel} at ${fmtC(row.price)}` : undefined}
         className={`relative grid grid-cols-2 items-center text-[10px] font-mono px-1.5 py-[3px] rounded-sm my-[1px]
-        ${placeUser ? 'cursor-pointer hover:brightness-95 active:brightness-90' : ''}
+        ${act ? 'cursor-pointer hover:brightness-95 active:brightness-90' : ''}
         ${row.user === 'buy' ? 'bg-mint-tint ring-1 ring-mint-deep/50' : 'bg-coral-tint ring-1 ring-coral-ink/50'}`}>
         <span className={`tabular-nums font-bold ${row.user === 'buy' ? 'text-mint-deep' : 'text-coral-ink'}`}>{fmtC(row.price)}</span>
         <span className={`text-right font-bold text-[8px] flex items-center justify-end gap-1 ${row.user === 'buy' ? 'text-mint-deep' : 'text-coral-ink'}`}>
           {manual
-            ? <span className="px-1 rounded-sm bg-surface/70 border border-current/30 uppercase tracking-wide text-[7px] font-semibold">manuale</span>
+            ? <span className="px-1 rounded-sm bg-surface/70 border border-current/30 uppercase tracking-wide text-[7px] font-semibold">{goVenue ? 'place ↗' : 'manual'}</span>
             : placeUser && <span className="px-1 rounded-sm bg-surface/70 border border-current/30 uppercase tracking-wide text-[7px] font-semibold">tap to place</span>}
           {row.user === 'buy' ? 'your BUY' : 'your SELL'}
         </span>
