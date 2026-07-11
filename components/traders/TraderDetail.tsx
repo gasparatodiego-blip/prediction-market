@@ -360,9 +360,16 @@ function PositionRow({ p, fills, isPaid }: { p: Position; fills: RawFill[]; isPa
 
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="font-body font-semibold text-[13px] text-ink truncate max-w-[280px]">{p.market || '—'}</span>
+            {/* Full market title (wrap up to two lines) — never truncate the market to
+                an unidentifiable stub; knowing the exact market/expiry matters most on
+                OPEN positions. Full name also on hover via title attr. */}
+            <span className="font-body font-semibold text-[13px] text-ink line-clamp-2 break-words min-w-0" title={p.market || undefined}>{p.market || '—'}</span>
             <span className={`font-body text-[9px] font-medium px-1.5 py-[1px] rounded uppercase tracking-wide border ${STATUS_STYLE[p.status]}`}>{p.status}</span>
             {p.outcome && <span className={`font-body text-[10px] px-1.5 py-[1px] rounded bg-bg-soft ${catText(p.category)}`}>{p.outcome}</span>}
+            {/* Per-row deep-link to the exact Polymarket market/outcome. Same honest
+                builder as the drawer footer (positionUrl → per-outcome, then event);
+                renders nothing when no real URL resolves — never a dead link. */}
+            {url && <PlatformLink href={url} label="Polymarket market" compact className="ml-0.5" />}
           </div>
           <div className="mt-1 flex items-center gap-x-3 gap-y-0.5 flex-wrap font-body text-[10.5px] text-muted">
             <span>avg <b className="font-mono text-ink-2"><Redacted value={p.avgEntry} isPaid={isPaid}>{v => v.toFixed(3)}</Redacted></b> · {p.nFills} {p.nFills === 1 ? 'fill' : 'fills'}</span>
