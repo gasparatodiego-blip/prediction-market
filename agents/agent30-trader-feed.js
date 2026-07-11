@@ -103,8 +103,14 @@ let   shuttingDown  = false;
 const log = (...a) => console.log('[agent30]', ...a);
 
 // ── Tracked wallet set (union of leaderboard category rows + bots) ────────────
+// Returns { added, removed }: `added` is the list of addresses NEWLY tracked this
+// call (the caller onboards them with a targeted resync), `removed` the count of
+// wallets pruned because they left the leaderboard. Pruning keeps served == tracked
+// and bounds memory; new-address return lets us populate additions immediately
+// instead of waiting for the next periodic sweep.
 function refreshTracked() {
-  let added = 0;
+  const added = [];
+  let removed = 0;
   try {
     const raw = JSON.parse(fs.readFileSync(LEADERBOARD_FILE, 'utf8'));
     const set = new Set();
@@ -112,6 +118,12 @@ function refreshTracked() {
       for (const r of cat) if (r && r.wallet) set.add(String(r.wallet).toLowerCase());
     }
     for (const b of (raw.bots || [])) if (b && b.wallet) set.add(String(b.wallet).toLowerCase());
+    // Guard: a transient empty/garbled leaderboard read must NOT prune the whole
+    // tracked universe (which would blank the feed). Keep the current set instead.
+    if (set.size === 0) {
+      log('refreshTracked: leaderboard yielded 0 wallets — keeping current set');
+      return { added, removed };
+    }
     for (const addr of set) {
       if (wallets.size >= MAX_TRACKED && !wallets.has(addr)) continue;
       if (!wallets.has(addr)) {
@@ -120,15 +132,21 @@ function refreshTracked() {
           fillsUpdatedAt: null, positionsUpdatedAt: null,
           firstFillTs: null, lastFillTs: null,
         });
-        added++;
+        added.push(addr);
       }
     }
+    // Prune wallets that dropped out of the leaderboard so the served set tracks the
+    // real universe (no stale ghosts, bounded growth). The WS handler and resync both
+    // guard on wallets.get(addr), so a delete is safe even mid-sweep.
+    for (const addr of Array.from(wallets.keys())) {
+      if (!set.has(addr)) { wallets.delete(addr); removed++; }
+    }
     trackedRefreshedAt = Date.now();
-    log(`tracked set: ${wallets.size} wallets (+${added} new) from leaderboard.json`);
+    log(`tracked set: ${wallets.size} wallets (+${added.length} new, -${removed} pruned) from leaderboard.json`);
   } catch (e) {
     log('refreshTracked: leaderboard.json unavailable —', e.message);
   }
-  return added;
+  return { added, removed };
 }
 
 // ── Fill normalisation + dedup ────────────────────────────────────────────────
@@ -424,8 +442,8 @@ function healthTick() {
   markDirty();
 
   if (Date.now() - trackedRefreshedAt > TRACKED_REFRESH_MS) {
-    const added = refreshTracked();
-    if (added > 0) fullResync('new-tracked-wallets').catch(() => {});
+    const { added } = refreshTracked();
+    if (added.length) fullResync('new-tracked-wallets').catch(() => {});
   }
 }
 
