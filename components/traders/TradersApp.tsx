@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link           from 'next/link';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { Activity }   from 'lucide-react';
@@ -131,21 +131,53 @@ export default function TradersApp() {
   const [panelTarget, setPanelTarget] = useState<{ entry: LbEntry; profile: TraderProfile | null } | null>(null);
   const openPanel = useCallback((entry: LbEntry, prof: TraderProfile | null) => setPanelTarget({ entry, profile: prof }), []);
 
-  // Mirror the active section into the URL query (defaults omitted → clean URL) so
-  // the origin history entry carries the filter state. router.replace keeps ONE
-  // history entry (filter changes don't stack), and { scroll: false } so mirroring
-  // never fights ScrollToTop / scroll restoration (baad0b8). No data/number touched.
-  useEffect(() => {
+  // Canonical query string for the current section. `sel` (the open inline-profile
+  // wallet) is threaded through in a STABLE position so every writer produces the
+  // exact same string — mirror-replace, open-push and back-sync never fight over
+  // ordering. Filter defaults are omitted for a clean URL.
+  const sectionQuery = useCallback((sel?: string | null) => {
     const p = new URLSearchParams();
     if (tab !== 'leaderboard') p.set('tab', tab);
     if (cat !== 'All')         p.set('cat', cat);
     if (rankBy !== 'profit')   p.set('rank', rankBy);
     if (minReturn > 0)         p.set('minRet', String(minReturn));
-    const qs = p.toString();
+    if (sel)                   p.set('sel', sel);
+    return p.toString();
+  }, [tab, cat, rankBy, minReturn]);
+
+  // Mirror the active section into the URL query so the origin history entry carries
+  // the filter state (838386e). router.replace keeps ONE history entry (filter changes
+  // don't stack), { scroll: false } so mirroring never fights ScrollToTop / scroll
+  // restoration (baad0b8). We PRESERVE any live `sel` param so a filter re-sync never
+  // silently drops the open-profile marker. No data/number touched.
+  useEffect(() => {
+    const qs = sectionQuery(searchParams.get('sel'));
     if (qs !== searchParams.toString()) {
       router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
     }
-  }, [tab, cat, rankBy, minReturn, pathname, router, searchParams]);
+  }, [sectionQuery, pathname, router, searchParams]);
+
+  // Opening an inline trader profile (TraderProfileView, rendered in place at the SAME
+  // /dashboard/traders URL) must PUSH a history entry — otherwise the phone/browser BACK
+  // button pops the whole traders-list entry and dumps the user on the landing page
+  // instead of the list. We encode the open profile as ?sel=<wallet> (filters preserved)
+  // so back removes it → the list re-shows with its 838386e filters, and a second back
+  // goes to wherever the user came from. Route-based detail pages (feed-only wallets and
+  // the "Live feed" Link) already push their own entry and are untouched.
+  const pushSel = useCallback((wallet: string) => {
+    router.push(`${pathname}?${sectionQuery(wallet)}`, { scroll: false });
+  }, [router, pathname, sectionQuery]);
+
+  // Back-sync: when the `sel` param is REMOVED by a navigation (phone/browser BACK, or
+  // the in-page ← back button calling router.back()), close the inline drawer so the
+  // list re-shows. Guarded by the previous value so it fires only on a genuine removal —
+  // never on the transient render between setSelected() and the ?sel push during open.
+  const prevSel = useRef<string | null>(null);
+  useEffect(() => {
+    const sel = searchParams.get('sel');
+    if (prevSel.current && !sel && selected) setSelected(null);
+    prevSel.current = sel;
+  }, [searchParams, selected]);
 
   const loadLb = useCallback(async () => {
     try {
@@ -199,16 +231,23 @@ export default function TradersApp() {
           return;
         }
         // Absent from both the profile set and the live feed → honest empty-state.
+        // Still an INLINE view (drawer over the list) → push its history entry so BACK
+        // returns to the list, not the landing.
+        pushSel(entry.wallet.toLowerCase());
         setProfError('No resolved-market leaderboard profile and no live trade feed for this wallet yet — it may not be in the tracked set, or the next resync will pick it up.');
       } catch {
         // Couldn't reach the feed to decide client-side — fall back to the honest
         // notice with its manual "Open live trade feed" link (harmless no-op fallback).
+        pushSel(entry.wallet.toLowerCase());
         setProfError('No resolved-market leaderboard profile for this wallet yet — open its live trade feed for real fills & positions.');
       }
       setProfLoading(false);
       return;
     }
 
+    // Inline resolved-market profile → push its ?sel history entry so the phone/browser
+    // BACK button returns to the Traders list (with 838386e filters), not the landing.
+    pushSel(entry.wallet.toLowerCase());
     try {
       const r = await fetch(`/api/leaderboard/profile/${entry.wallet.toLowerCase()}`);
       const d = await r.json();
@@ -278,19 +317,22 @@ export default function TradersApp() {
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-0 border-b border-line mb-4">
-        {(['leaderboard', 'bots'] as Tab[]).map(t => (
-          <button key={t} onClick={() => { setTab(t); setSelected(null); }}
-            className={[
-              'px-4 py-2 font-body font-medium text-[11px] uppercase tracking-widest transition-colors relative',
-              tab === t ? 'text-mint-deep' : 'text-muted hover:text-ink-2',
-            ].join(' ')}>
-            {t === 'leaderboard' ? 'Leaderboard' : `Bots / HFT (${botsTotal})`}
-            {tab === t && <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-mint-deep rounded-full" />}
-          </button>
-        ))}
-      </div>
+      {/* Tabs — hidden while an inline profile is open (the profile has its own ← back;
+          this also avoids a tab-switch racing the ?sel back-sync). */}
+      {!selected && (
+        <div className="flex gap-0 border-b border-line mb-4">
+          {(['leaderboard', 'bots'] as Tab[]).map(t => (
+            <button key={t} onClick={() => setTab(t)}
+              className={[
+                'px-4 py-2 font-body font-medium text-[11px] uppercase tracking-widest transition-colors relative',
+                tab === t ? 'text-mint-deep' : 'text-muted hover:text-ink-2',
+              ].join(' ')}>
+              {t === 'leaderboard' ? 'Leaderboard' : `Bots / HFT (${botsTotal})`}
+              {tab === t && <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-mint-deep rounded-full" />}
+            </button>
+          ))}
+        </div>
+      )}
 
       {error && (
         <div className="mb-3 px-3 py-2 border border-coral-ink/30 bg-coral-tint rounded-card font-body text-[11px] text-coral-ink">{error}</div>
@@ -310,7 +352,7 @@ export default function TradersApp() {
           profile={profile}
           loading={profLoading}
           error={profError}
-          onBack={() => setSelected(null)}
+          onBack={() => router.back()}
           copying={copy.isCopying(selected.wallet)}
           atLimit={atLimit && !copy.isCopying(selected.wallet)}
           tier={tier}
