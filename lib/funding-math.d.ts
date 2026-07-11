@@ -39,3 +39,27 @@ export declare function estimatePerpSpot(input: {
   spotVenue: string;
   trailingPositiveSettlements?: number;
 }): PerpSpotEstimate;
+
+export interface PerpSpotLeverage {
+  leverageable: boolean;
+  requestedLeverage: number;
+  effectiveLeverage: number;
+  venueMaxLeverage: number | null;
+  capped: boolean;
+  spotNotional: number;
+  perpNotional: number;
+  perpMargin: number;
+  equity: number;
+  netPerDay: number;                 // passed through — NEVER scaled by leverage
+  returnOnEquityPctPerYr: number;    // capped at 200; net/day ÷ equity
+  annualizedCapped: boolean;
+  maintenanceMarginPct: number | null;
+  adverseMovePct: number | null;     // isolated-perp liquidation buffer; null at ≤1× or unknown maint
+}
+export declare function perpSpotLeverage(input: {
+  netPerDay: number;
+  capitalPerLeg: number;
+  leverage: number;
+  maxLeverage: number | null;
+  maintenanceMarginPct: number | null;
+}): PerpSpotLeverage;
