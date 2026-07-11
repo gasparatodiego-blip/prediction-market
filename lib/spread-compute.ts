@@ -94,6 +94,11 @@ function readPerpSpot(): { rows: PerpSpotRow[]; stale: boolean } {
         intervalH:                   typeof row.intervalH === 'number' ? row.intervalH : 8,
         fundingPct8h,
         trailingPositiveSettlements: trailing,
+        // Real short-perp leverage cap + maintenance margin (public reference data — not
+        // redacted). null when the venue exposes no free public cap → non-leverageable ("—").
+        maxLeverage:                 typeof row.maxLeverage === 'number' ? row.maxLeverage : null,
+        maintenanceMarginPct:        typeof row.maintenanceMarginPct === 'number' ? row.maintenanceMarginPct : null,
+        leverageSource:              typeof row.leverageSource === 'string' ? row.leverageSource : null,
         markPrice:                   typeof row.markPrice === 'number' ? row.markPrice : null,
         vol24hUsd:                   typeof row.vol24hUsd === 'number' ? row.vol24hUsd : null,
         edge: {

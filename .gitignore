@@ -61,6 +61,8 @@ data/copy-position-state.json
 data/paper-positions.json
 # durable 14-day per-leg settled-funding history — grows organically at runtime, local data
 data/funding-history-14d.json
+# real per-(perp venue, asset) max-leverage + maintenance-margin cache — refetched at runtime
+data/leverage-caps.json
 data/funding-history-14d.json.tmp.*
 # unified 30-day per-section snapshot history (funding/basis/rewards/predarb/leaderboard/sports)
 # — grows organically at runtime, local data, never source-controlled

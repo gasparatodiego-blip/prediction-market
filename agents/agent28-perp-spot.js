@@ -41,6 +41,9 @@ const { isDeadContract, buildPeerMarks } = require('../lib/contract-liveness');
 // estimator's exact fee functions so the venue we CROWN here nets out identically to what
 // the request-time estimator (lib/spread-compute) later shows — one source of truth.
 const { venueFeePct, spotVenueFeePct, USDC_M_FEE_PCT } = require('../lib/funding-math');
+// Real per-(perp venue, asset) max leverage + maintenance margin (free public sources, or
+// honest null). Refreshed on a throttled cadence; each crowned row is stamped from the cache.
+const leverageCaps = require('../lib/leverage-caps');
 let appendSnapshot = null;
 try { ({ appendSnapshot } = require('../lib/history-logger')); } catch { /* optional */ }
 
@@ -386,6 +389,12 @@ function computeRows(raw, persist) {
       perpBookAt:                  null,
       wholeTradeCapacityUsd:       null,
       capacityBind:                'none',
+      // Real short-perp leverage cap + maintenance margin (stamped by enrichLeverageCaps()
+      // after the pure derivation). null when the venue exposes no free public cap (honest
+      // "—", never a guessed max) → the row is non-leverageable downstream (effective 1×).
+      maxLeverage:                 null,
+      maintenanceMarginPct:        null,
+      leverageSource:              null,
       markPrice:                   win.markPrice,
       vol24hUsd:                   win.vol24hUsd,
       // ── fee-aware (max-net) selection provenance (transparency; downstream ignores these) ──
@@ -410,6 +419,28 @@ function computeRows(raw, persist) {
   return rows;
 }
 
+// Stamp each crowned row with its SHORT venue's real max leverage + maintenance margin from
+// lib/leverage-caps (throttled bulk refresh, then per-row cache lookup). Mutates rows in
+// place. Honest: a venue/coin with no free public cap stays null → "leverage —" downstream,
+// never a fabricated number. Failures degrade to the prior cache (or nulls); never fatal.
+async function enrichLeverageCaps(rows) {
+  if (!rows.length) return rows;
+  const venues = rows.map(r => r.shortVenue);
+  let cache = leverageCaps.readCache();
+  try {
+    cache = await leverageCaps.refreshCaps(venues, { log });
+  } catch (e) {
+    log(`leverage-caps refresh error: ${e && e.message}`);   // keep prior cache
+  }
+  for (const row of rows) {
+    const cap = leverageCaps.getCap(cache, row.shortVenue, row.coin);
+    row.maxLeverage          = cap.maxLeverage;
+    row.maintenanceMarginPct = cap.maintenanceMarginPct;
+    row.leverageSource       = cap.source;
+  }
+  return rows;
+}
+
 async function tick() {
   const raw = readJsonSafe(EXCHANGE_FILE);
   if (!raw) {
@@ -425,6 +456,8 @@ async function tick() {
   // Walk the crowned short venue's perp bid book → whole-trade capacity = min(spot, perp).
   // Network I/O isolated here (computeRows stays pure/testable); failures degrade honestly.
   try { await enrichPerpDepth(rows); } catch (e) { log(`perp-depth enrich error: ${e.message}`); }
+  // Stamp real max-leverage + maintenance margin per crowned row (throttled bulk refresh).
+  try { await enrichLeverageCaps(rows); } catch (e) { log(`leverage-caps enrich error: ${e.message}`); }
 
   atomicWrite(OUT_FILE, {
     updatedAt: Date.now(),
@@ -453,7 +486,7 @@ function log(msg) {
 }
 
 // Exported for unit testing the pure derivation in isolation.
-module.exports = { computeRows, toPct8h, trailingPositive, suggestSpotVenue, walkPerpBidDepthUsd, enrichPerpDepth, fetchPerpBidDepthUsd };
+module.exports = { computeRows, toPct8h, trailingPositive, suggestSpotVenue, walkPerpBidDepthUsd, enrichPerpDepth, fetchPerpBidDepthUsd, enrichLeverageCaps };
 
 if (require.main === module) {
   log('starting');

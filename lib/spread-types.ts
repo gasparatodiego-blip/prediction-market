@@ -186,6 +186,14 @@ export interface PerpSpotRow {
   intervalH:                   number;
   fundingPct8h:                number;   // normalized %/8h (teaser)
   trailingPositiveSettlements: number;   // real consecutive-positive count
+  // Real short-perp leverage cap + tier-1 maintenance margin from the venue's free public
+  // endpoint (lib/leverage-caps). maxLeverage null ⇒ venue exposes no public cap ⇒ the row is
+  // NOT leverageable (effective 1×, shown as "leverage —") — never a fabricated cap. Public
+  // reference data (like markPrice) — NOT redacted on the free tier. Leverage applies to the
+  // SHORT PERP MARGIN leg only: it frees perp margin, it NEVER multiplies net $/day.
+  maxLeverage:                 number | null;
+  maintenanceMarginPct:        number | null;
+  leverageSource:              string | null;
   markPrice:                   number | null;
   vol24hUsd:                   number | null;
   edge:                        PerpSpotEdge;
