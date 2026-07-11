@@ -63,7 +63,7 @@ const HB_FILE           = '/tmp/agent-heartbeats.json';
 const FILLS_PER_WALLET  = 200;            // depth kept per wallet (full history → link out to Polymarket profile)
 const MAX_OPEN_KEEP     = 60;             // display/store cap on OPEN positions (true count disclosed via openObserved)
 const RESYNC_INTERVAL_MS = 10 * 60_000;   // periodic full REST resync (refreshes marks + catches anything)
-const TRACKED_REFRESH_MS = 10 * 60_000;   // re-read the tracked wallet set from leaderboard.json
+const TRACKED_REFRESH_MS = 2 * 60_000;    // re-read tracked set often; new wallets onboard immediately (targeted resync), well under the auditor's ~3min persist window
 const HEALTH_TICK_MS    = 5_000;          // health check + heartbeat cadence
 const WS_STALE_MS       = 45_000;         // no WS message for this long ⇒ unhealthy (firehose is constant)
 const WS_WATCHDOG_MS    = 90_000;         // silent-but-"connected" this long ⇒ dead half-open socket → force reconnect
@@ -280,6 +280,28 @@ async function fullResync(reason) {
   log(`fullResync DONE (${reason}) — ${done} wallets in ${((Date.now() - t0) / 1000).toFixed(0)}s`);
 }
 
+// Populate newly-tracked wallets IMMEDIATELY via a targeted per-wallet resync,
+// INDEPENDENT of any in-flight full sweep. This closes the onboarding gap that
+// omitted brand-new leaderboard wallets from the served feed: fullResync() self-
+// skips when one is already running (the common case — periodic/reconnect sweeps
+// take ~2min), and a running sweep snapshots wallets.keys() at its start, so a
+// wallet added mid-sweep waited for the NEXT periodic before it was ever fetched.
+// resyncWallet() goes through rlGet, so these queue politely behind the per-host
+// limiter (429-backoff + retry) and never fabricate: a wallet we can't fetch stays
+// empty and is OMITTED by buildFile (honest "not-yet-backfilled"), never served as
+// a false "0 positions".
+async function onboardWallets(addrs) {
+  if (!addrs.length) return;
+  log(`onboarding ${addrs.length} new tracked wallet(s) via targeted resync`);
+  for (const addr of addrs) {
+    if (shuttingDown) break;
+    if (!wallets.has(addr)) continue;   // pruned again before we got to it
+    await resyncWallet(addr);
+    markDirty();
+  }
+  writeNow();
+}
+
 // ── WebSocket (live wallet-attributed fills) ──────────────────────────────────
 function connectWs() {
   if (shuttingDown) return;
@@ -443,7 +465,7 @@ function healthTick() {
 
   if (Date.now() - trackedRefreshedAt > TRACKED_REFRESH_MS) {
     const { added } = refreshTracked();
-    if (added.length) fullResync('new-tracked-wallets').catch(() => {});
+    if (added.length) onboardWallets(added).catch(e => log('onboard error:', e.message));
   }
 }
 
