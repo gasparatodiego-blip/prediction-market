@@ -1912,32 +1912,39 @@ function PerpSpotLeverageControl({
         <LiquidationRiskIcon lev={lev} coin={row.coin} shortVenue={row.shortVenue} />
       </div>
 
-      {/* preset chips */}
+      {/* preset chips — presets above the venue max are shown disabled/muted (never selectable),
+          so the control only ever offers leverage the venue actually supports. */}
       <div className="mt-2 flex items-center gap-1.5 flex-wrap">
         {LEVERAGE_PRESETS.map(p => {
+          const overCap = p > cap;
           const on = leverage === p;
           return (
             <button
               key={p}
-              onClick={() => setLeverage(p)}
+              disabled={overCap}
+              onClick={overCap ? undefined : () => setLeverage(p)}
               className="rounded-pill px-2 py-0.5 font-mono transition-colors"
-              style={on
-                ? { fontSize: 11, border: '1px solid #0f766e', color: '#0f766e', background: '#effcf9' }
-                : { fontSize: 11, border: '1px solid #e6eaef', color: '#6b7787' }}
+              style={overCap
+                ? { fontSize: 11, border: '1px solid #eef2f6', color: '#c4ccd6', background: '#f7f9fb', cursor: 'not-allowed' }
+                : on
+                  ? { fontSize: 11, border: '1px solid #0f766e', color: '#0f766e', background: '#effcf9' }
+                  : { fontSize: 11, border: '1px solid #e6eaef', color: '#6b7787' }}
+              title={overCap ? `Above ${venueLabel(row.shortVenue)} ${row.coin} venue max (${cap % 1 ? cap.toFixed(1) : cap}×)` : undefined}
             >{p}×</button>
           );
         })}
       </div>
 
-      {/* slider 1–125 */}
+      {/* slider — clamped to the row's REAL venue max so leverage the venue can't support is
+          never reachable (the value is also clamped defensively so it can't exceed the cap). */}
       <div className="mt-2 flex items-center gap-2">
         <input
-          type="range" min={1} max={125} step={1} value={leverage}
+          type="range" min={1} max={cap} step={1} value={Math.min(leverage, cap)}
           onChange={e => setLeverage(parseInt(e.target.value, 10))}
           className="flex-1 min-w-[120px] accent-mint-deep"
           aria-label={`Leverage for ${row.coin} short perp`}
         />
-        <span className="font-mono tabular-nums shrink-0" style={{ fontSize: 12, color: '#0f766e' }}>{leverage}×</span>
+        <span className="font-mono tabular-nums shrink-0" style={{ fontSize: 12, color: '#0f766e' }}>{Math.min(leverage, cap)}×</span>
       </div>
 
       {/* capped note — informational, calm (not an alarm) */}
