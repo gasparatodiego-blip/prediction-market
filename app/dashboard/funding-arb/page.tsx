@@ -12,6 +12,7 @@ import {
   calcSpreadSizing,
 } from '@/lib/spread-types';
 import { APY_CAP, isOverApyCap } from '@/lib/honest-display';
+import { perpSpotLeverage, type PerpSpotLeverage } from '@/lib/funding-math';
 import { Redacted } from '@/app/components/ui/Redacted';
 import { PlatformLink } from '@/app/components/ui/PlatformLink';
 import { VerifyBadge } from '@/app/components/ui/VerifyBadge';
@@ -1839,6 +1840,134 @@ function PerpSpotCapacityRow({ row }: { row: PerpSpotRow }) {
   );
 }
 
+// ── Leverage (short-perp margin leg only) ─────────────────────────────────────
+// Honest-engine: leverage frees the perp MARGIN — it never multiplies net $/day. The
+// return-on-equity ceiling is ~2× (equity shrinks from spot+full-margin to just spot).
+// Real per-venue caps only; a row with no published cap is not leverageable ("—").
+const LEVERAGE_PRESETS = [1, 5, 10, 25, 50, 125];
+const PERP_SPOT_MIN_LEV_KEY = 'edgeradar:perpspot:min-achievable-leverage';
+
+// ROE %/yr label honoring the honest-engine cap (demoted run-rate). `lev` is already clamped
+// at APY_CAP; the flag tells us to show the ceiling form instead of the exact clamped number.
+function fmtRoeLabel(lev: PerpSpotLeverage): string {
+  return lev.annualizedCapped ? `>${APY_CAP}%/yr` : fmtApy(lev.returnOnEquityPctPerYr);
+}
+
+// Isolated-perp liquidation-risk marker. Shows ONLY above 1× (at 1× the perp can't be
+// liquidated). Colored by how much adverse move the perp margin can absorb: red <1%,
+// amber <3%, muted otherwise. Calm, informational — never an alarm banner.
+function LiquidationRiskIcon({ lev, coin, shortVenue }: { lev: PerpSpotLeverage; coin: string; shortVenue: string }) {
+  if (!(lev.effectiveLeverage > 1) || lev.adverseMovePct == null) return null;
+  const buf   = lev.adverseMovePct;
+  const color = buf < 1 ? '#e11d48' : buf < 3 ? '#b45309' : '#9aa5b3';
+  const tip =
+    `At ${lev.effectiveLeverage.toFixed(lev.effectiveLeverage % 1 ? 1 : 0)}× the isolated ${venueLabel(shortVenue)} ${coin} ` +
+    `perp leg liquidates on roughly a ${buf.toFixed(1)}% adverse move ` +
+    `(maintenance margin ${lev.maintenanceMarginPct != null ? lev.maintenanceMarginPct.toFixed(2) + '%' : 'n/a'}). ` +
+    `Your delta-neutral spot leg gains on that same move and offsets the P&L — but those gains sit in a ` +
+    `SEPARATE account and do NOT top up an isolated perp's margin. Use cross-margin or actively manage the ` +
+    `position so the perp can't be liquidated at the worst moment.`;
+  return (
+    <span className="inline-flex items-center gap-1 shrink-0">
+      <InfoTooltip label={`Liquidation risk at ${lev.effectiveLeverage}×`} text={tip} />
+      <span aria-hidden style={{ fontSize: 12, color, lineHeight: 1 }}>⚠</span>
+      <span className="font-mono tabular-nums" style={{ fontSize: 10, color }}>{buf.toFixed(1)}% to liq</span>
+    </span>
+  );
+}
+
+// Per-card leverage control: preset chips + slider (1–125), clamped to the row's REAL venue
+// cap. Rows without a published cap render a calm "leverage —" and no control (never a fake
+// cap). Shows equity deployed, perp margin, ROE/yr (capped), and the liquidation-risk marker.
+function PerpSpotLeverageControl({
+  row, lev, leverage, setLeverage, redacted,
+}: {
+  row: PerpSpotRow; lev: PerpSpotLeverage;
+  leverage: number; setLeverage: (n: number) => void; redacted: boolean;
+}) {
+  // No real published cap → honestly non-leverageable. Calm line, no control, no fake max.
+  if (!lev.leverageable || row.maxLeverage == null) {
+    return (
+      <div className="pt-2.5 mt-1 flex items-center justify-between gap-2" style={{ borderTop: '1px solid #eef2f6' }}>
+        <span className="inline-flex items-center gap-1 font-body" style={{ fontSize: 11, color: '#6b7787' }}>
+          Leverage
+          <InfoTooltip label="Leverage — not available" text={`${venueLabel(row.shortVenue)} doesn’t publish a per-asset max leverage on a free endpoint, so we don’t model one here (we never show a guessed cap). Size the short perp at full margin (1×) — no liquidation risk.`} />
+        </span>
+        <span className="font-mono" style={{ fontSize: 11, color: '#9aa5b3' }}>— · 1× full margin</span>
+      </div>
+    );
+  }
+
+  const cap = row.maxLeverage;
+  return (
+    <div className="pt-2.5 mt-1" style={{ borderTop: '1px solid #eef2f6' }}>
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <span className="inline-flex items-center gap-1 font-body" style={{ fontSize: 11, color: '#6b7787' }}>
+          Leverage <span className="font-mono" style={{ color: '#0f766e' }}>{lev.effectiveLeverage % 1 ? lev.effectiveLeverage.toFixed(1) : lev.effectiveLeverage}×</span>
+          <InfoTooltip
+            label="Leverage — perp margin only"
+            text={`Leverage applies to the SHORT PERP MARGIN LEG ONLY. It frees perp margin so you deploy less equity — it does NOT increase net $/day (that stays fixed). Return-on-equity rises at most ~2× as the perp margin approaches zero. Venue max for ${venueLabel(row.shortVenue)} ${row.coin}: ${cap}× (${row.leverageSource ?? 'sourced'}).`}
+          />
+        </span>
+        <LiquidationRiskIcon lev={lev} coin={row.coin} shortVenue={row.shortVenue} />
+      </div>
+
+      {/* preset chips */}
+      <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+        {LEVERAGE_PRESETS.map(p => {
+          const on = leverage === p;
+          return (
+            <button
+              key={p}
+              onClick={() => setLeverage(p)}
+              className="rounded-pill px-2 py-0.5 font-mono transition-colors"
+              style={on
+                ? { fontSize: 11, border: '1px solid #0f766e', color: '#0f766e', background: '#effcf9' }
+                : { fontSize: 11, border: '1px solid #e6eaef', color: '#6b7787' }}
+            >{p}×</button>
+          );
+        })}
+      </div>
+
+      {/* slider 1–125 */}
+      <div className="mt-2 flex items-center gap-2">
+        <input
+          type="range" min={1} max={125} step={1} value={leverage}
+          onChange={e => setLeverage(parseInt(e.target.value, 10))}
+          className="flex-1 min-w-[120px] accent-mint-deep"
+          aria-label={`Leverage for ${row.coin} short perp`}
+        />
+        <span className="font-mono tabular-nums shrink-0" style={{ fontSize: 12, color: '#0f766e' }}>{leverage}×</span>
+      </div>
+
+      {/* capped note — informational, calm (not an alarm) */}
+      {lev.capped && (
+        <div className="mt-1.5 font-body" style={{ fontSize: 10.5, color: '#b45309' }}>
+          capped · venue max {cap % 1 ? cap.toFixed(1) : cap}× on {venueLabel(row.shortVenue)}
+        </div>
+      )}
+
+      {/* live equity / margin / ROE */}
+      <div className="mt-2.5 grid grid-cols-3 gap-2">
+        <div>
+          <div className="font-body" style={{ fontSize: 9.5, color: '#9aa5b3' }}>equity deployed</div>
+          <div className="font-mono tabular-nums text-ink" style={{ fontSize: 12 }}>{fmtMoneyPlain(lev.equity)}</div>
+        </div>
+        <div>
+          <div className="font-body" style={{ fontSize: 9.5, color: '#9aa5b3' }}>perp margin</div>
+          <div className="font-mono tabular-nums text-ink" style={{ fontSize: 12 }}>{fmtMoneyPlain(lev.perpMargin)}</div>
+        </div>
+        <div>
+          <div className="font-body" style={{ fontSize: 9.5, color: '#9aa5b3' }}>ROE / yr</div>
+          <div className="font-mono tabular-nums" style={{ fontSize: 12, color: '#0f766e' }}>
+            {redacted ? <Redacted value={row.edge.netAnnualizedOnCapitalPct}>{() => null}</Redacted> : fmtRoeLabel(lev)}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PerpSpotCard({
   row, capitalPerLeg, expanded, onToggle,
 }: { row: PerpSpotRow; capitalPerLeg: number; expanded: boolean; onToggle: () => void }) {
@@ -1849,6 +1978,19 @@ function PerpSpotCard({
   const heroColor  = netDay == null ? '#0f766e' : netDay > 0 ? '#0f766e' : '#e11d48';
   const flipRisk   = row.trailingPositiveSettlements < 3;
   const redacted   = row.edge.netPerDay1k == null;
+
+  // Leverage on the SHORT PERP MARGIN leg only (default 1×). Honest math is the shared SSOT
+  // (funding-math perpSpotLeverage): net $/day is passed through untouched; only equity/ROE
+  // and the liquidation buffer move. netDay may be null (redacted) → 0 for the ratio; the
+  // $ ROE stays redacted while equity/margin (public) still render.
+  const [leverage, setLeverage] = useState(1);
+  const lev = perpSpotLeverage({
+    netPerDay:            netDay ?? 0,
+    capitalPerLeg,
+    leverage,
+    maxLeverage:          row.maxLeverage,
+    maintenanceMarginPct: row.maintenanceMarginPct,
+  });
 
   // Payback-derived tier — the SAME verdict function the perp-vs-perp cards use
   // (funding-math spreadStatus): >10d or none → MARGINAL, >5d → CAUTION, else HARVEST.
@@ -1940,6 +2082,8 @@ function PerpSpotCard({
         </div>
       </div>
 
+      <PerpSpotLeverageControl row={row} lev={lev} leverage={leverage} setLeverage={setLeverage} redacted={redacted} />
+
       <PerpSpotCapacityRow row={row} />
 
       {/* Footer — execution-guide toggle, styled like the perp-vs-perp card's button */}
@@ -1977,19 +2121,22 @@ function PerpSpotCard({
               <Redacted value={row.edge.netPerDay1k}>{v => fmtDayUsd(v * k)}</Redacted>
             </span>
 
-            <span className="text-muted">Capital needed (spot + 1× margin)</span>
-            <span className="text-right text-ink">{fmtMoneyPlain(2 * capitalPerLeg)}</span>
+            <span className="text-muted">Equity deployed (spot + perp margin at {lev.effectiveLeverage % 1 ? lev.effectiveLeverage.toFixed(1) : lev.effectiveLeverage}×)</span>
+            <span className="text-right text-ink">{fmtMoneyPlain(lev.equity)}</span>
 
-            <span className="text-muted">Annualized (run-rate, capped)</span>
+            <span className="text-muted">Perp margin ({lev.effectiveLeverage % 1 ? lev.effectiveLeverage.toFixed(1) : lev.effectiveLeverage}×)</span>
+            <span className="text-right text-ink">{fmtMoneyPlain(lev.perpMargin)}</span>
+
+            <span className="text-muted">Annualized funding (run-rate, capped)</span>
             <span className="text-right text-ink">
               <Redacted value={row.edge.annualizedRunRatePct}>
                 {v => `${fmtApy(v)}${row.edge.annualizedCapped ? ' +' : ''}`}
               </Redacted>
             </span>
 
-            <span className="text-muted">Net ROI on capital / yr</span>
+            <span className="text-muted">Return on equity / yr (at {lev.effectiveLeverage % 1 ? lev.effectiveLeverage.toFixed(1) : lev.effectiveLeverage}×)</span>
             <span className="text-right text-ink">
-              <Redacted value={row.edge.netAnnualizedOnCapitalPct}>{v => fmtApy(v)}</Redacted>
+              {redacted ? <Redacted value={row.edge.netAnnualizedOnCapitalPct}>{() => null}</Redacted> : fmtRoeLabel(lev)}
             </span>
           </div>
 
@@ -2012,13 +2159,28 @@ function PerpSpotView({
 }: { rows: PerpSpotRow[]; stale: boolean; capitalPerLeg: number; regime: PerpSpotRegime | null }) {
   const [selectedCoins, setSelectedCoins] = useState<Set<string> | null>(null); // null = all
   const [minNetDay, setMinNetDay]         = useState(0);
+  const [minLev, setMinLev]               = useState(1);   // page filter: min ACHIEVABLE venue leverage
   const [openCoin, setOpenCoin]           = useState<string | null>(null);
+
+  // Persist the min-achievable-leverage filter like the other funding-arb filters.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(PERP_SPOT_MIN_LEV_KEY);
+      if (raw != null) { const n = parseInt(raw, 10); if (isFinite(n) && n >= 1) setMinLev(Math.min(125, n)); }
+    } catch { /* non-fatal */ }
+  }, []);
+  useEffect(() => {
+    try { localStorage.setItem(PERP_SPOT_MIN_LEV_KEY, String(minLev)); } catch { /* non-fatal */ }
+  }, [minLev]);
 
   const coins = useMemo(() => Array.from(new Set(rows.map(r => r.coin))).sort(), [rows]);
 
   const visible = useMemo(() => {
     const arr = rows
       .filter(r => selectedCoins == null || selectedCoins.has(r.coin))
+      // Max-achievable-leverage filter: keep rows whose REAL venue+asset cap ≥ selected. Above
+      // 1×, rows with no published cap (null) are excluded — we never treat "unknown" as "high".
+      .filter(r => minLev <= 1 || (r.maxLeverage != null && r.maxLeverage >= minLev))
       .filter(r => {
         const nd = perpSpotNetDay(r, capitalPerLeg);
         // Rows whose net/day is redacted (free tier) can't be $-filtered → always pass.
@@ -2033,7 +2195,7 @@ function PerpSpotView({
       if (nb != null) return 1;
       return b.fundingPct8h - a.fundingPct8h;
     });
-  }, [rows, selectedCoins, minNetDay, capitalPerLeg]);
+  }, [rows, selectedCoins, minNetDay, minLev, capitalPerLeg]);
 
   return (
     <div>
@@ -2085,6 +2247,21 @@ function PerpSpotView({
               ${minNetDay.toFixed(1)}/day
             </span>
           </div>
+
+          {/* min achievable leverage — real per-venue caps; excludes rows with no published cap above 1× */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="inline-flex items-center gap-1 font-body uppercase shrink-0" style={{ fontSize: 10, letterSpacing: '0.12em', color: '#6b7787' }}>
+              Min achievable leverage
+              <InfoTooltip label="Min achievable leverage" text="Show only coins whose SHORT-perp venue publishes a real max leverage at or above this for the asset. Leverage frees perp margin only (return-on-equity ceiling ~2×) — it never multiplies net $/day. Coins whose venue publishes no per-asset cap are hidden above 1× (we never count “unknown” as high leverage)." />
+            </span>
+            <input
+              type="range" min={1} max={125} step={1} value={minLev}
+              onChange={e => setMinLev(parseInt(e.target.value, 10))}
+              className="flex-1 min-w-[120px] accent-mint-deep"
+              aria-label="Minimum achievable venue leverage"
+            />
+            <span className="font-mono tabular-nums shrink-0" style={{ fontSize: 12, color: '#0f766e' }}>≥ {minLev}×</span>
+          </div>
         </div>
       )}
 
@@ -2105,7 +2282,7 @@ function PerpSpotView({
         </div>
       ) : visible.length === 0 ? (
         <div className="py-14 text-center font-body" style={{ fontSize: 12.5, color: '#6b7787' }}>
-          No opportunities match your filters. Lower the min net / day or clear the coin selection.
+          No opportunities match your filters. Lower the min net / day or min achievable leverage, or clear the coin selection.
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-2.5">
