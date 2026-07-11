@@ -360,10 +360,20 @@ function round2(n: number): number { return Math.round(n * 100) / 100; }
 // Duplicate fills (the same on-chain fill re-recorded by the live WS AND a resync,
 // stored at slightly different float precision) are deduped by txHash|asset|side|
 // size so held shares aren't doubled.
-// HONEST-ENGINE: a row is enriched ONLY when (exit−entry)×shares reconciles with
-// the realized P&L agent20 already reports (±max($1, 20%)). If the fills are absent
-// from agent30's capped window, or contradict the ledger P&L, entry/exit stay null
-// ("—") — never fabricated to force a match, and the realized P&L is never touched.
+// HONEST-ENGINE: entry/exit are enriched only from REAL fills and the REAL settlement —
+// never fabricated, and realized P&L is never touched. Two honest surfacing paths:
+//   • EXACT reconcile — (exit−entry)×shares matches the realized P&L agent20 reports
+//     (±max($1, 20%)). Required for lines CLOSED BY SELLING, where the exit price is
+//     INFERRED from sell fills and an incomplete window would produce a wrong exit.
+//   • HELD-TO-SETTLEMENT subset — the exit is a HARD FACT (100¢ won / 0¢ lost), not
+//     inferred, and entry is the real size-weighted BUY price. agent30's capped fill
+//     window can miss earlier buys of a just-settled position, so the observed fills
+//     UNDERSHOOT the ledger P&L. Surface when they are directionally consistent (same
+//     sign), do not overstate the ledger, AND cover ≥ ENTRY_EXIT_MIN_COVERAGE of the
+//     realized P&L — a sliver that explains too little of the true position stays "—".
+// Fills that are absent, contradict the ledger, or fall below the coverage floor stay
+// "— → —" (never forced to a match). ENTRY_EXIT_MIN_COVERAGE approved by Diego.
+const ENTRY_EXIT_MIN_COVERAGE = 0.50;   // held-to-settlement: min |recon|/|realized| to surface
 export interface ClosedEntryExit { entryPrice: number | null; exitPrice: number | null; realizedPnl: number | null; result?: string | null; cid?: string | null }
 export function enrichClosedTradesEntryExit(
   trades: ClosedEntryExit[] | null | undefined,
@@ -413,11 +423,23 @@ export function enrichClosedTradesEntryExit(
       } else { out.unreconciled++; }
     } else {
       // Held to settlement → exit = 100¢/0¢ from the resolved outcome (agent20's result).
+      // The exit is a hard fact, so we don't need EXACT P&L reconciliation: the capped
+      // fill window often misses earlier buys, making the observed P&L a consistent
+      // UNDERSHOOT of the ledger. Surface when (a) it exactly reconciles, or (b) the
+      // observed fills are same-sign, don't overstate the ledger, and cover ≥ the floor
+      // of the realized P&L. Below the floor / opposite-sign / overstating → honest "—".
       const exit = t.result === 'won' ? 1 : (t.result === 'lost' ? 0 : null);
       if (exit == null) { out.unreconciled++; continue; }            // breakeven/ambiguous → honest "—"
       const recon = (exit - avgBuy) * net;
-      if (realized != null && Math.abs(recon - realized) <= tol) {
-        t.entryPrice = round4(avgBuy); t.exitPrice = exit; out.surfaced++;
+      if (realized != null) {
+        const exactOk     = Math.abs(recon - realized) <= tol;
+        const sameSign    = (recon >= 0) === (realized >= 0);
+        const noOverstate = Math.abs(recon) <= Math.abs(realized) + tol;
+        const coverage    = Math.abs(realized) > EPS ? Math.abs(recon) / Math.abs(realized) : 0;
+        const subsetOk    = sameSign && noOverstate && coverage >= ENTRY_EXIT_MIN_COVERAGE;
+        if (exactOk || subsetOk) {
+          t.entryPrice = round4(avgBuy); t.exitPrice = exit; out.surfaced++;
+        } else { out.unreconciled++; }
       } else { out.unreconciled++; }
     }
   }

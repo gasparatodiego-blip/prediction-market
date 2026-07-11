@@ -306,10 +306,10 @@ export default function TraderProfileView({
                 {(profile?.positionsOpen?.length ?? 0) === 0 ? (
                   <Empty>No open positions.</Empty>
                 ) : (
-                  <Table cols={['Market', 'Outcome', 'Size', 'Entry', 'Value', 'Unrealized']}>
+                  <Table stickyFirst cols={['Market', 'Outcome', 'Size', 'Entry', 'Value', 'Unrealized']}>
                     {profile!.positionsOpen.map((p, i) => (
                       <tr key={i} className="border-b border-line/50 hover:bg-bg-soft/40">
-                        <Cell title={p.marketTitle}>{p.marketTitle ?? '—'}</Cell>
+                        <Cell sticky title={p.marketTitle}>{p.marketTitle ?? '—'}</Cell>
                         <OutcomeCell outcome={p.outcome} />
                         <NumCell>{fmtSize(p.size)}</NumCell>
                         <NumCell>$<Redacted value={p.avgPrice}>{v => fmtPrice(v)}</Redacted></NumCell>
@@ -329,60 +329,94 @@ export default function TraderProfileView({
             {/* Closed trades */}
             {(move === 'all' || move === 'closed') && (
               <MoveSection title={`Closed trades (${profile?.tradesClosed?.length ?? 0})`} note={`realized · gross · newest first${
-                profile?.entryExitSource === 'ondemand' && profile?.entryExitAsOf
+                (profile?.entryExitSource === 'ondemand' || profile?.entryExitSource === 'feed+ondemand') && profile?.entryExitAsOf
                   ? ` · entry→exit reconstructed on-demand, as of ${new Date(profile.entryExitAsOf).toLocaleTimeString()}`
                   : ''
               }`}>
                 {(profile?.tradesClosed?.length ?? 0) === 0 ? (
                   <Empty>No closed trades on record.</Empty>
                 ) : (
-                  <Table cols={['Market', 'Result', 'Entry→Exit', 'Realized', 'Date']}>
-                    {profile!.tradesClosed.map((t, i) => {
-                      const expandable = (t.fills?.length ?? 0) > 0;
-                      const open = openRows.has(i);
-                      return (
-                        <Fragment key={i}>
-                          <tr
-                            onClick={expandable ? () => toggleRow(i) : undefined}
-                            className={[
-                              'border-b border-line/50',
-                              expandable ? 'cursor-pointer hover:bg-bg-soft/60' : 'hover:bg-bg-soft/40',
-                            ].join(' ')}>
-                            <td className="px-2 py-1.5 pl-4 font-body text-[11px] text-ink-2 max-w-[200px]" title={t.marketTitle ?? undefined}>
-                              <span className="flex items-center gap-1">
+                  <>
+                    {/* sm+ : table. Hidden on mobile, where a 5-column table forced a
+                        horizontal scroll that clipped the market title off the left edge. */}
+                    <div className="hidden sm:block">
+                      <Table stickyFirst cols={['Market', 'Result', 'Entry→Exit', 'Realized', 'Date']}>
+                        {profile!.tradesClosed.map((t, i) => {
+                          const expandable = (t.fills?.length ?? 0) > 0;
+                          const open = openRows.has(i);
+                          return (
+                            <Fragment key={i}>
+                              <tr
+                                onClick={expandable ? () => toggleRow(i) : undefined}
+                                className={[
+                                  'border-b border-line/50',
+                                  expandable ? 'cursor-pointer hover:bg-bg-soft/60' : 'hover:bg-bg-soft/40',
+                                ].join(' ')}>
+                                <td className="px-2 py-1.5 pl-4 font-body text-[11px] text-ink-2 max-w-[200px] align-top sticky left-0 bg-surface z-10" title={t.marketTitle ?? undefined}>
+                                  <span className="flex items-start gap-1">
+                                    {expandable
+                                      ? <ChevronRight className={`w-3 h-3 mt-0.5 text-muted shrink-0 transition-transform ${open ? 'rotate-90' : ''}`} />
+                                      : <span className="w-3 shrink-0" />}
+                                    <span className="line-clamp-2 break-words">{t.marketTitle ?? '—'}</span>
+                                  </span>
+                                </td>
+                                <td className="px-2 py-1.5"><ResultBadge result={t.result} /></td>
+                                <NumCell><EntryExit t={t} /></NumCell>
+                                <td className="px-2 py-1.5 text-right tabular-nums">
+                                  <span className={`font-body text-[11px] font-semibold ${pnlColor(t.realizedPnl)}`}>
+                                    <Redacted value={t.realizedPnl}>{v => fmtPnl(v)}</Redacted>
+                                  </span>
+                                </td>
+                                <td className="px-2 py-1.5 text-right font-body text-[10px] text-muted whitespace-nowrap">{fmtAge(t.timestamp)}</td>
+                              </tr>
+                              {expandable && open && (
+                                <tr className="bg-bg-soft/30">
+                                  <td colSpan={5} className="px-4 py-3">
+                                    <FillDrawer trade={t} />
+                                  </td>
+                                </tr>
+                              )}
+                            </Fragment>
+                          );
+                        })}
+                      </Table>
+                    </div>
+
+                    {/* mobile : stacked cards. The full market title gets its own
+                        full-width line (wraps freely, never clipped), then a metrics row. */}
+                    <div className="sm:hidden divide-y divide-line/50">
+                      {profile!.tradesClosed.map((t, i) => {
+                        const expandable = (t.fills?.length ?? 0) > 0;
+                        const open = openRows.has(i);
+                        return (
+                          <div key={i}>
+                            <div
+                              onClick={expandable ? () => toggleRow(i) : undefined}
+                              className={`px-4 py-2.5 ${expandable ? 'cursor-pointer hover:bg-bg-soft/60' : ''}`}>
+                              <div className="flex items-start gap-1.5">
                                 {expandable
-                                  ? <ChevronRight className={`w-3 h-3 text-muted shrink-0 transition-transform ${open ? 'rotate-90' : ''}`} />
-                                  : <span className="w-3 shrink-0" />}
-                                <span className="truncate">{t.marketTitle ?? '—'}</span>
-                              </span>
-                            </td>
-                            <td className="px-2 py-1.5">
-                              <span className={[
-                                'font-body text-[10px] font-semibold px-1.5 py-0.5 rounded-md',
-                                t.result === 'won' ? 'bg-mint-tint text-mint-deep'
-                                  : t.result === 'lost' ? 'bg-coral-tint text-coral-ink'
-                                  : 'bg-bg-soft text-muted',
-                              ].join(' ')}>{t.result}</span>
-                            </td>
-                            <NumCell>{fmtPrice(t.entryPrice)}<span className="text-muted/50"> → </span>{fmtPrice(t.exitPrice)}</NumCell>
-                            <td className="px-2 py-1.5 text-right tabular-nums">
-                              <span className={`font-body text-[11px] font-semibold ${pnlColor(t.realizedPnl)}`}>
-                                <Redacted value={t.realizedPnl}>{v => fmtPnl(v)}</Redacted>
-                              </span>
-                            </td>
-                            <td className="px-2 py-1.5 text-right font-body text-[10px] text-muted whitespace-nowrap">{fmtAge(t.timestamp)}</td>
-                          </tr>
-                          {expandable && open && (
-                            <tr className="bg-bg-soft/30">
-                              <td colSpan={5} className="px-4 py-3">
-                                <FillDrawer trade={t} />
-                              </td>
-                            </tr>
-                          )}
-                        </Fragment>
-                      );
-                    })}
-                  </Table>
+                                  ? <ChevronRight className={`w-3.5 h-3.5 mt-0.5 text-muted shrink-0 transition-transform ${open ? 'rotate-90' : ''}`} />
+                                  : <span className="w-3.5 shrink-0" />}
+                                <span className="font-body text-[12px] text-ink-2 break-words leading-snug min-w-0">{t.marketTitle ?? '—'}</span>
+                              </div>
+                              <div className="mt-1.5 flex items-center gap-x-3 gap-y-1 flex-wrap pl-5 font-body text-[11px]">
+                                <ResultBadge result={t.result} />
+                                <span className="text-[10px] uppercase tracking-wide text-muted/70">entry→exit</span>
+                                <span className="text-[11px] text-ink-2 tabular-nums"><EntryExit t={t} /></span>
+                                <span className={`font-semibold tabular-nums ${pnlColor(t.realizedPnl)}`}>
+                                  <Redacted value={t.realizedPnl}>{v => fmtPnl(v)}</Redacted>
+                                </span>
+                                <span className="ml-auto text-[10px] text-muted whitespace-nowrap">{fmtAge(t.timestamp)}</span>
+                              </div>
+                            </div>
+                            {expandable && open && (
+                              <div className="bg-bg-soft/30 px-4 py-3"><FillDrawer trade={t} /></div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
                 )}
               </MoveSection>
             )}
@@ -502,14 +536,23 @@ function MoveSection({ title, note, children }: { title: string; note: string; c
   );
 }
 
-function Table({ cols, children }: { cols: string[]; children: React.ReactNode }) {
+// stickyFirst pins column 0 to the left edge so a wide table scrolling
+// horizontally on mobile never clips the identifier column off-screen. Only pass
+// it when column 0 is the Market title (open/closed), not for tables whose first
+// column is a short badge (recent activity → "Side") — a sticky header with a
+// non-sticky body cell would visibly misalign during scroll.
+function Table({ cols, children, stickyFirst }: { cols: string[]; children: React.ReactNode; stickyFirst?: boolean }) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[520px]">
         <thead>
           <tr className="border-b border-line/60">
+            {/* No bg on the sticky header cell: the global `th { background: var(--surface) }`
+                rule (globals.css) already paints every header cell opaque, so column 0 must
+                inherit it too — overriding with bg-surface (the lighter --er-surface) would
+                make only this cell mismatch the rest of the header bar. */}
             {cols.map((c, i) => (
-              <th key={c} className={`px-2 py-2 font-body text-[10px] text-muted font-normal ${i === 0 ? 'text-left pl-4' : i >= 2 ? 'text-right' : 'text-left'}`}>{c}</th>
+              <th key={c} className={`px-2 py-2 font-body text-[10px] text-muted font-normal ${i === 0 ? `text-left pl-4${stickyFirst ? ' sticky left-0 z-20' : ''}` : i >= 2 ? 'text-right' : 'text-left'}`}>{c}</th>
             ))}
           </tr>
         </thead>
@@ -519,8 +562,15 @@ function Table({ cols, children }: { cols: string[]; children: React.ReactNode }
   );
 }
 
-function Cell({ title, children }: { title?: string | null; children: React.ReactNode }) {
-  return <td className="px-2 py-1.5 pl-4 font-body text-[11px] text-ink-2 max-w-[200px] truncate" title={title ?? undefined}>{children}</td>;
+// Market/identifier cell. Wraps to two lines (line-clamp on an inner span — never
+// on the <td>, which would break table-cell layout) instead of hard-truncating,
+// and can pin to the left edge (sticky) so horizontal scroll never eats the title.
+function Cell({ title, children, sticky }: { title?: string | null; children: React.ReactNode; sticky?: boolean }) {
+  return (
+    <td className={`px-2 py-1.5 pl-4 font-body text-[11px] text-ink-2 max-w-[200px] align-top${sticky ? ' sticky left-0 bg-surface z-10' : ''}`} title={title ?? undefined}>
+      <span className="line-clamp-2 break-words">{children}</span>
+    </td>
+  );
 }
 function NumCell({ children }: { children: React.ReactNode }) {
   return <td className="px-2 py-1.5 text-right font-body text-[11px] text-ink-2 tabular-nums">{children}</td>;
@@ -537,4 +587,30 @@ function OutcomeCell({ outcome }: { outcome: string | null }) {
 }
 function Empty({ children }: { children: React.ReactNode }) {
   return <div className="px-4 py-6 text-center font-body text-[11px] text-muted">{children}</div>;
+}
+
+// ── Shared closed-trade cell renderers (used by BOTH the sm+ table and the mobile
+// card list, so the two layouts never drift) ─────────────────────────────────────
+function ResultBadge({ result }: { result: string | null }) {
+  return (
+    <span className={[
+      'font-body text-[10px] font-semibold px-1.5 py-0.5 rounded-md',
+      result === 'won' ? 'bg-mint-tint text-mint-deep'
+        : result === 'lost' ? 'bg-coral-tint text-coral-ink'
+        : 'bg-bg-soft text-muted',
+    ].join(' ')}>{result}</span>
+  );
+}
+// Entry→Exit prices — or a self-explanatory "— → —" when the observed fills could
+// not be reconciled with the realized P&L. HONEST-ENGINE: never invented; the title
+// spells out WHY so a withheld pair reads as a deliberate integrity guard, not a bug.
+function EntryExit({ t }: { t: ClosedTrade }) {
+  const withheld = t.entryPrice == null && t.exitPrice == null;
+  return (
+    <span className="font-mono" title={withheld
+      ? 'Entry/exit withheld — the observed fills don’t reconcile with the realized P&L (fill history may be incomplete). Never invented.'
+      : undefined}>
+      {fmtPrice(t.entryPrice)}<span className="text-muted/50"> → </span>{fmtPrice(t.exitPrice)}
+    </span>
+  );
 }
