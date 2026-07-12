@@ -27,6 +27,7 @@ export type RouteKey =
   | 'wallet'
   | 'poly-whales'
   | 'user-history'
+  | 'paper-book'
   // Headline / teaser feeds — these synthesize a single best derived-edge number
   // per category (or the raw unified opp array). Gated so a direct GET can't read
   // the edge the dashboard detail routes already redact.
@@ -481,6 +482,46 @@ export const REDACTION_MAP: Record<RouteKey, string[]> = {
     'opportunities[].slipCurve',
     'opportunities[].verdict',
     'summary.bestAnnualized',
+  ],
+
+  // /api/paper-book — unified forward-paper book (agent32 store). Structure/teaser
+  // stays visible: strategy names, chips, venue/pair labels, statuses, counts,
+  // freshness, executable prices (public exchange quotes), sizing/capacity. Only the
+  // DERIVED EDGE is gated — every paper P&L (headline + THIN + per-strategy + per-
+  // position value), funding accrued, basis edge, ROI/annualized run-rate, fees, the
+  // equity-curve values, the copy sleeve P&L, and the liquidity est run-rate. Redaction
+  // is a real null (honest-engine) — the free payload carries NO edge number to blur.
+  'paper-book': [
+    'headline.executablePnlUsd',
+    'headline.thinPnlUsd',
+    'equityCurve[].netUsd',
+    'strategies[].execPnlUsd',
+    'strategies[].thinPnlUsd',
+    'strategies[].positions[].value',
+    'strategies[].positions[].cumFundingUsd',
+    'strategies[].positions[].entry.estNetPerDayAtEntry',
+    'strategies[].positions[].entry.estNetRoiAtEntry',
+    'strategies[].positions[].entry.estAnnualizedAtEntry',
+    'strategies[].positions[].entry.netAnnualizedAtEntry',
+    'strategies[].positions[].entry.liveRoiAtEntry',
+    'strategies[].positions[].entry.entryBasisPct',
+    'strategies[].positions[].entry.feesUsd',
+    'strategies[].positions[].lastMark.netUsd',
+    'strategies[].positions[].lastMark.unrealizedUsd',
+    'strategies[].positions[].lastMark.cumFundingUsd',
+    'strategies[].positions[].lastMark.currentBasisPct',
+    'strategies[].positions[].lastMark.liveRoi',
+    'strategies[].positions[].marks[].netUsd',
+    'strategies[].positions[].marks[].unrealizedUsd',
+    'strategies[].positions[].marks[].cumFundingUsd',
+    'strategies[].positions[].marks[].currentBasisPct',
+    'strategies[].positions[].marks[].liveRoi',
+    'copy.pnlUsd',
+    'copy.sleeves[].realizedUsd',
+    'copy.sleeves[].unrealizedUsd',
+    'copy.sleeves[].deployedUsd',
+    'liquidity.realizedUsd',
+    'liquidity.estRunRate.bestNetPerDay1k',
   ],
 
   // /api/liquidity — MM/LP position economics. Raw prices + volume stay as reference;
