@@ -274,7 +274,30 @@ async function checkDashboardIntegrity(now, ledgerDirtyRef, alerted) {
 async function checkHealth() {
   const ts  = new Date().toISOString();
   const now = Date.now();
-  const hb  = readJson(HB_FILE) ?? {};
+
+  // Fail-safe read of the shared heartbeat file. HB_FILE is a single JSON blob
+  // written non-atomically by ~15 agents (truncate-then-write, no lock), so a
+  // reader can catch it mid-write and get a partial/empty parse. If we treated
+  // that as "every agent's heartbeat is missing", one bad read would mass-restart
+  // the whole fleet (the 18:22 incident). So: if the file EXISTS with bytes on
+  // disk but does not parse into a non-empty object, this is a transient bad read
+  // — skip the cycle and restart NOTHING. A genuinely missing/empty (size 0) file
+  // keeps the prior behavior. (Fix (a) only; the atomic-WRITE fix is a later commit.)
+  const hbParsed = readJson(HB_FILE);
+  const hbValid  = hbParsed !== null && typeof hbParsed === 'object'
+                   && !Array.isArray(hbParsed) && Object.keys(hbParsed).length > 0;
+  if (!hbValid) {
+    let hbSize = 0;
+    try { hbSize = fs.statSync(HB_FILE).size; } catch { hbSize = 0; }
+    if (hbSize > 0) {
+      // File has bytes on disk but parsed empty/unparseable → partial read.
+      // Skip staleness evaluation entirely; restart nothing this cycle.
+      console.warn(`[monitor] ${ts} | heartbeat file unreadable this cycle (${hbSize}B on disk, parsed empty/invalid) — SKIP, restarting nothing`);
+      return;
+    }
+    // hbSize === 0 (missing or truly empty): fall through with existing behavior.
+  }
+  const hb = hbValid ? hbParsed : {};
 
   const pm2list = await getPm2List();
   const pm2map  = {};
