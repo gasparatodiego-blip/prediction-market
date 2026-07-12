@@ -15,6 +15,7 @@ const NAV_LINKS = [
   { href: '/dashboard/liquidity-rewards', label: 'Rewards'    },
   { href: '/dashboard/traders',           label: 'Traders'    },
   { href: '/dashboard/portfolio',         label: 'Portfolio'  },
+  { href: '/dashboard/paper',             label: 'Paper'      },
 ];
 
 export default function EdgeradarHeader() {
