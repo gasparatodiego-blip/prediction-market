@@ -2,6 +2,7 @@
 'use strict';
 
 const fs    = require('fs');
+const { atomicWriteJson } = require('../lib/atomicJsonWrite');
 const { httpGet: _sharedGet } = require('../lib/httpGet');
 
 const OUT      = '/tmp/weather-markets.json';
@@ -29,7 +30,7 @@ function beat() {
   let hb = {};
   try { hb = JSON.parse(fs.readFileSync(HB_FILE, 'utf8')); } catch {}
   hb['agent13-weather'] = Date.now();
-  try { fs.writeFileSync(HB_FILE, JSON.stringify(hb, null, 2)); } catch {}
+  try { atomicWriteJson(HB_FILE, hb, { pretty: true }); } catch {}
 }
 
 function get(url) {

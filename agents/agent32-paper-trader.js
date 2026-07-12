@@ -82,7 +82,7 @@ function beat() {
   let hb = {};
   try { hb = JSON.parse(fs.readFileSync(HB_FILE, 'utf8')); } catch {}
   hb[HB_KEY] = Date.now();
-  try { fs.writeFileSync(HB_FILE, JSON.stringify(hb, null, 2)); } catch {}
+  try { atomicWriteJson(HB_FILE, hb, { pretty: true }); } catch {}
 }
 async function sendTelegram(text) {
   if (process.env.TELEGRAM_ALERTS_ENABLED === 'false') return;   // fleet-wide mute

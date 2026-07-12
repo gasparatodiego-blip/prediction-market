@@ -2,6 +2,7 @@
 'use strict';
 
 const fs    = require('fs');
+const { atomicWriteJson } = require('../lib/atomicJsonWrite');
 const { httpGet: _sharedGet, httpPost: _httpPost } = require('../lib/httpGet');
 
 const OUT      = '/tmp/dex-prices.json';
@@ -12,7 +13,7 @@ function beat() {
   let hb = {};
   try { hb = JSON.parse(fs.readFileSync(HB_FILE, 'utf8')); } catch {}
   hb['agent11-dex'] = Date.now();
-  try { fs.writeFileSync(HB_FILE, JSON.stringify(hb, null, 2)); } catch {}
+  try { atomicWriteJson(HB_FILE, hb, { pretty: true }); } catch {}
 }
 
 function get(url) {

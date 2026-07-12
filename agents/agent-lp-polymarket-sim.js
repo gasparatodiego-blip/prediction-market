@@ -2,6 +2,7 @@
 'use strict';
 
 const fs = require('fs');
+const { atomicWriteJson } = require('../lib/atomicJsonWrite');
 const path = require('path');
 const https = require('https');
 
@@ -50,7 +51,7 @@ function beat() {
     let hb = {};
     try { hb = JSON.parse(fs.readFileSync(HB_FILE, 'utf8')); } catch {}
     hb['agent-lp-poly-sim'] = Date.now();
-    fs.writeFileSync(HB_FILE, JSON.stringify(hb, null, 2));
+    atomicWriteJson(HB_FILE, hb, { pretty: true });
 }
 
 function sendTelegram(text) {

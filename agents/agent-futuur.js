@@ -2,6 +2,7 @@
 'use strict';
 
 const fs    = require('fs');
+const { atomicWriteJson } = require('../lib/atomicJsonWrite');
 const https = require('https');
 
 const OUT_FILE    = '/tmp/futuur-raw.json';
@@ -16,7 +17,7 @@ function beat() {
   let hb = {};
   try { hb = JSON.parse(fs.readFileSync(HB_FILE, 'utf8')); } catch {}
   hb['agent-futuur'] = Date.now();
-  try { fs.writeFileSync(HB_FILE, JSON.stringify(hb, null, 2)); } catch {}
+  try { atomicWriteJson(HB_FILE, hb, { pretty: true }); } catch {}
 }
 
 function get(url) {

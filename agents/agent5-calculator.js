@@ -2,6 +2,7 @@
 'use strict';
 
 const fs       = require('fs');
+const { atomicWriteJson } = require('../lib/atomicJsonWrite');
 const path     = require('path');
 
 // Fee rates mirror lib/fees.ts — update both if rates change
@@ -109,7 +110,7 @@ function beat(name) {
   let hb = {};
   try { hb = JSON.parse(fs.readFileSync(HB_FILE, 'utf8')); } catch {}
   hb[name] = Date.now();
-  fs.writeFileSync(HB_FILE, JSON.stringify(hb, null, 2));
+  atomicWriteJson(HB_FILE, hb, { pretty: true });
 }
 
 // Lazy-load better-sqlite3 so the agent still runs if the package is missing

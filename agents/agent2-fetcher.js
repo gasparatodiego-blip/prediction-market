@@ -2,6 +2,7 @@
 'use strict';
 
 const fs   = require('fs');
+const { atomicWriteJson } = require('../lib/atomicJsonWrite');
 const https = require('https');
 const http  = require('http');
 const { httpGet } = require('../lib/httpGet');
@@ -34,7 +35,7 @@ function beat(name) {
   let hb = {};
   try { hb = JSON.parse(fs.readFileSync(HB_FILE, 'utf8')); } catch {}
   hb[name] = Date.now();
-  fs.writeFileSync(HB_FILE, JSON.stringify(hb, null, 2));
+  atomicWriteJson(HB_FILE, hb, { pretty: true });
 }
 
 // Resolve parsed JSON, or null on ANY failure (network error, non-JSON body,
