@@ -305,5 +305,16 @@ module.exports = {
       max_memory_restart: '200M',   // small: full-scan re-reads source per wallet, keeps only summaries
       env:           { NODE_ENV: 'production', HOME: '/root' },
     },
+    {
+      name:          'agent32-paper-trader',
+      script:        './agents/agent32-paper-trader.js',
+      cwd:           '/root/prediction-market',
+      restart_delay: 30000,
+      max_restarts:  20,
+      watch:         false,
+      autorestart:   true,
+      max_memory_restart: '160M',   // small: reads a few engine JSON files, marks a paper book, writes 1
+      env:           { NODE_ENV: 'production', HOME: '/root' },
+    },
   ],
 };
