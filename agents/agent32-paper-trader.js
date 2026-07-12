@@ -29,8 +29,9 @@
 
 const fs   = require('fs');
 const path = require('path');
-const { httpPost }        = require('../lib/httpGet');
-const { atomicWriteJson } = require('../lib/atomicJsonWrite');
+const { httpPost }          = require('../lib/httpGet');
+const { atomicWriteJson }   = require('../lib/atomicJsonWrite');
+const { assemblePaperBook } = require('../lib/paper-book-assemble');
 
 // ── .env (pm2 doesn't auto-load project env files) ───────────────────────────
 for (const envFile of ['.env.local', '.env']) {
@@ -63,6 +64,12 @@ const SRC = {
 
 const HB_FILE = '/tmp/agent-heartbeats.json';
 const HB_KEY  = 'agent32-paper-trader';
+
+// Public URL of the unified paper-book dashboard page (Phase 3 deep-link in the
+// daily report). Uses the app's canonical base (NEXTAUTH_URL — the same origin
+// app/layout.tsx uses for metadataBase); PAPER_BOOK_URL overrides it wholesale.
+const PAPER_BOOK_URL = process.env.PAPER_BOOK_URL
+  || `${(process.env.NEXTAUTH_URL || 'http://localhost:3000').replace(/\/+$/, '')}/dashboard/paper`;
 
 const NOTIONAL_USD     = 1000;            // $1000 per opportunity
 const SIM_DAYS         = 7;               // mark-to-market horizon
@@ -546,56 +553,36 @@ function markAll(store) {
 
 function fmtUsd(n) { return n == null ? '—' : `${n >= 0 ? '+' : ''}$${n.toFixed(2)}`; }
 function fmtK(n) { return `$${Math.round(n / 1000)}k`; }
-// A position is "not executable at size" (THIN) when its own verdict says so — the
-// same honest-engine flag the live product uses to demote a row off the headline.
-const THIN_VERDICT = /thin|not executable/i;
+// THIN "not executable at size" detection now lives in lib/paper-book-assemble
+// (THIN_VERDICT there) — the single flag both this report and the dashboard use.
 
 function dailySummary(store) {
-  const byCat = {};
-  let totalOpen = 0, totalNotional = 0;
-  for (const t of store.trades) {
-    const c = t.category;
-    byCat[c] = byCat[c] ||
-      { open: 0, matured: 0, execAgg: 0, execHas: false, execOpen: 0, execNotional: 0, thinAgg: 0, thinHas: false, thinOpen: 0 };
-    if (t.status === 'open') byCat[c].open++; else if (t.status === 'matured') byCat[c].matured++;
-    const m = t.lastMark || {};
-    let v = m.netUsd != null ? m.netUsd : (m.unrealizedUsd != null ? m.unrealizedUsd : null);
-    if (v == null) continue;                                  // unmarked → "—", never summed
-    if (t.status === 'open') { totalOpen++; totalNotional += Number(t.entry && t.entry.notionalUsd) || 0; }
-    // Within-capacity clamp: a paper P&L can never exceed the real book depth it was
-    // sized into (structural guard; a no-op today since |P&L| ≪ capacityUsd everywhere).
-    const cap = Number(t.entry && t.entry.capacityUsd);
-    if (cap > 0 && Math.abs(v) > cap) v = Math.sign(v) * cap;
-    // THIN "not executable at size" rows are kept but held OFF the headline — reported
-    // on their own line, never merged into it and never silently dropped.
-    if (THIN_VERDICT.test(String((t.entry && t.entry.verdict) || ''))) {
-      byCat[c].thinAgg += v; byCat[c].thinHas = true; if (t.status === 'open') byCat[c].thinOpen++;
-    } else {
-      byCat[c].execAgg += v; byCat[c].execHas = true;
-      if (t.status === 'open') { byCat[c].execOpen++; byCat[c].execNotional += Number(t.entry && t.entry.notionalUsd) || 0; }
-    }
-  }
-  let copyOpen = 0, copyAgg = 0, copyHas = false;
-  for (const s of store.copySleeves) {
-    copyOpen += (s.lastMark && s.lastMark.openPositions) || 0;
-    const r = s.realizedUsd || 0; const u = (s.lastMark && s.lastMark.unrealizedUsd) || 0;
-    copyAgg += r + u; if (s.realizedUsd != null) copyHas = true;
-  }
+  // ONE aggregation — lib/paper-book-assemble is the SSOT the dashboard also uses,
+  // so the Telegram numbers and the page numbers can never diverge. The per-category
+  // math (executable headline, THIN separated, within-capacity clamp, copy realized+
+  // unrealized, ticket/notional framing) is byte-identical to the prior inline version;
+  // only the SHAPE moved into the shared module. Never changes a number.
+  const book = assemblePaperBook(store, { nowMs: nowMs() });
+  const h = book.headline;
   const lines = [];
-  lines.push(`📄 <b>Paper book</b> · day ${Math.max(0, Math.floor((nowMs() - new Date(store.entryAsOf).getTime()) / DAY_MS))}/${store.simDays}`);
+  lines.push(`📄 <b>Paper book</b> · day ${book.meta.dayIndex}/${store.simDays}`);
   // Honest scale: these are N independent $1,000-ticket sims, not one $1,000 book — so
-  // the P&L is on ~totalNotional of paper capital, never a "% on $1000" headline.
-  lines.push(`<i>${totalOpen} independent $${NOTIONAL_USD.toLocaleString()} tickets · ~${fmtK(totalNotional)} paper notional</i>`);
+  // the P&L is on ~notional of paper capital, never a "% on $1000" headline. This is the
+  // all-open framing (exec + THIN), identical to before.
+  lines.push(`<i>${h.openTicketCountAll} independent $${NOTIONAL_USD.toLocaleString()} tickets · ~${fmtK(h.openNotionalUsdAll)} paper notional</i>`);
   const label = { 'perp-spot-funding': 'Perp-spot (net$/day)', 'cross-venue-funding': 'Cross-venue (net$/day)', 'basis': 'Basis (net ann.)', 'prediction-arb': 'Prediction (ROI+unlock)' };
-  for (const [c, v] of Object.entries(byCat)) {
-    let line = `• ${label[c] || c}: ${v.execOpen} exec (${fmtK(v.execNotional)}) — paper P&L ${v.execHas ? fmtUsd(v.execAgg) : '—'}`;
-    if (v.thinOpen) line += `\n   ↳ ${fmtUsd(v.thinAgg)} on ${v.thinOpen} not-executable-at-size (excluded from headline)`;
+  for (const s of book.strategies) {
+    let line = `• ${label[s.key] || s.key}: ${s.execOpen} exec (${fmtK(s.execNotionalUsd)}) — paper P&L ${s.execPnlUsd != null ? fmtUsd(s.execPnlUsd) : '—'}`;
+    if (s.thinOpen) line += `\n   ↳ ${fmtUsd(s.thinPnlUsd)} on ${s.thinOpen} not-executable-at-size (excluded from headline)`;
     lines.push(line);
   }
-  lines.push(`• Copy mirror: ${store.copySleeves.length} sleeve(s), ${copyOpen} open legs — paper P&L ${copyHas ? fmtUsd(copyAgg) : '—'}`);
+  lines.push(`• Copy mirror: ${book.copy.sleeveCount} sleeve(s), ${book.copy.openLegs} open legs — paper P&L ${book.copy.pnlUsd != null ? fmtUsd(book.copy.pnlUsd) : '—'}`);
   lines.push(`• Liquidity rewards: — (excluded, forward reward not deterministic)`);
   const settled = store.trades.filter(t => t.status === 'settled' || t.status === 'matured');
   if (settled.length) lines.push(`• Matured/settled: ${settled.length}`);
+  // Phase 3 — one deep-link to the full unified breakdown page. Link line ONLY; no
+  // number, category math, THIN-separation, routing, or mute gate is touched.
+  lines.push(`📊 Full breakdown: ${PAPER_BOOK_URL}`);
   lines.push(`<i>real marks only · executable headline · as-of ${store.updatedAt}</i>`);
   return lines.join('\n');
 }
