@@ -24,6 +24,12 @@ for (const envFile of ['.env.local', '.env']) {
 
 const execFileAsync  = promisify(execFile);
 
+// Reuse agent22's EXACT plan→isPaid rule (added in 538c3d1) — do NOT fork a second
+// definition. agent22 is require-safe: its poll/alert loops only run when it is the
+// main module (if (require.main === module) main()), so requiring it here has no side
+// effects beyond exposing the shared helper.
+const { planIsPaid } = require('./agent22-funding-alerts');
+
 const db = new Pool({ connectionString: process.env.DATABASE_URL || 'postgresql://predmarket:PredMarket2024!@localhost:5432/predmarket' });
 
 function createMailTransport() {
@@ -764,7 +770,7 @@ async function run() {
   const accNote = accuracyStats.accuracy7d !== null ? ` | 7d accuracy: ${accuracyStats.accuracy7d}%` : '';
   try {
     const { rows: users } = await db.query(
-      `SELECT u.id, u.email, u.name, u."telegramChatId", u.plan,
+      `SELECT u.id, u.email, u.name, u."telegramChatId", u.plan, u."planExpiresAt",
               p."minRoi", p."minConfidence", p."alertTypes", p."platforms", p."alertsEnabled", p."emailAlerts"
        FROM "User" u
        JOIN "UserPreferences" p ON p."userId" = u.id
@@ -775,7 +781,11 @@ async function run() {
          )`
     );
     for (const user of users) {
-      const { id: userId, email, name, telegramChatId, plan, minRoi, minConfidence, alertTypes, platforms, emailAlerts } = user;
+      const { id: userId, email, name, telegramChatId, plan, planExpiresAt, minRoi, minConfidence, alertTypes, platforms, emailAlerts } = user;
+      // Same rule as agent22 (538c3d1): profit_share always paid; pro paid until
+      // planExpiresAt; everything else (free / unknown / missing / expired) → unpaid.
+      // Fail-closed — a null/absent plan yields false, so edge is never leaked by default.
+      const isPaid = planIsPaid(plan, planExpiresAt);
       const userAlerts = opportunities.filter(o => {
         if (o.confidence < (minConfidence ?? 80)) return false;
         if (o.urgency !== 'high') return false;
@@ -790,13 +800,24 @@ async function run() {
       });
       if (!userAlerts.length) continue;
 
-      // Telegram alert
+      // Telegram alert. PAID users get the full body (net profit $, confidence %, entry
+      // prices, and the AI's "what to do"/"action" prose, which can embed prices).
+      // FREE/unpaid users get only non-edge context (market, venues, direction, risk word,
+      // expiry) plus a locked line — every derived-edge field is OMITTED, never faked.
       if (telegramChatId) {
-        const lines = userAlerts.map(o =>
-          `<b>${o.rank}. ${o.title}</b>\n${o.description}\n` +
-          (o.platform_a && o.platform_b ? `${o.platform_a} ${o.price_a}¢ → ${o.platform_b} ${o.price_b}¢\n` : '') +
-          `Net profit on $1000: <b>$${o.net_profit ?? '?'}</b> | Conf: ${o.confidence}%\n` +
-          `Action: ${o.action}\nRisk: ${o.risk} | Expires: ${o.expiry_hours ? o.expiry_hours + 'h' : 'open'}`
+        const lines = userAlerts.map(o => isPaid
+          ? (
+              `<b>${o.rank}. ${o.title}</b>\n${o.description}\n` +
+              (o.platform_a && o.platform_b ? `${o.platform_a} ${o.price_a}¢ → ${o.platform_b} ${o.price_b}¢\n` : '') +
+              `Net profit on $1000: <b>$${o.net_profit ?? '?'}</b> | Conf: ${o.confidence}%\n` +
+              `Action: ${o.action}\nRisk: ${o.risk} | Expires: ${o.expiry_hours ? o.expiry_hours + 'h' : 'open'}`
+            )
+          : (
+              `<b>${o.rank}. ${o.title}</b>\n` +
+              (o.platform_a && o.platform_b ? `${o.platform_a} → ${o.platform_b}\n` : '') +
+              `🔒 Upgrade to see net profit & confidence\n` +
+              `Risk: ${o.risk} | Expires: ${o.expiry_hours ? o.expiry_hours + 'h' : 'open'}`
+            )
         ).join('\n\n');
         sendTelegramTo(telegramChatId, `🧠 AI MASTER — ${userAlerts.length} alert${userAlerts.length > 1 ? 's' : ''}\nFNG: ${fngValue} (${fngLabel})${accNote}\n\n${lines}`);
       }
