@@ -77,6 +77,61 @@ async function sendMessage(chatId, text) {
   }
 }
 
+// ── Paid-plan lookup (per-follower edge gating) ───────────────────────────────
+// Signal alerts show the DERIVED EDGE (net $/day, gross %/yr, breakeven, ROI) only to
+// followers whose Telegram chat is linked to a paid account. Everyone else — free plan
+// or an unlinked chat — gets the market/venue/direction plus a locked upgrade line, and
+// the real numbers are never composed into their message. Mirrors lib/paid-gating.ts
+// (getIsPaid) and agent-master.js's pg access. Fail-closed: any DB miss/error → not paid
+// (never leak edge to an unknown follower).
+let _pgPool = null;
+function pgPool() {
+  if (_pgPool) return _pgPool;
+  try {
+    const { Pool } = require('pg');
+    _pgPool = new Pool({
+      connectionString: process.env.DATABASE_URL || 'postgresql://predmarket:PredMarket2024!@localhost:5432/predmarket',
+      max: 2,
+    });
+  } catch (e) {
+    log('pg init error:', e.message);
+    _pgPool = null;
+  }
+  return _pgPool;
+}
+
+// Same rule as lib/paid-gating.ts isPlanCurrentlyPaid: profit_share always paid;
+// pro paid until planExpiresAt (a missing expiry on an existing pro row is not an expiry).
+function planIsPaid(plan, planExpiresAt) {
+  if (plan === 'profit_share') return true;
+  if (plan === 'pro') return planExpiresAt ? new Date(planExpiresAt) > new Date() : true;
+  return false;
+}
+
+const PAID_TTL_MS = 5 * 60_000;
+const _paidCache  = new Map();   // chatId → { paid, at }
+
+async function isChatPaid(chatId) {
+  const cached = _paidCache.get(chatId);
+  if (cached && Date.now() - cached.at < PAID_TTL_MS) return cached.paid;
+
+  let paid = false;
+  const pool = pgPool();
+  if (pool) {
+    try {
+      const { rows } = await pool.query(
+        'SELECT plan, "planExpiresAt" FROM "User" WHERE "telegramChatId" = $1 LIMIT 1',
+        [String(chatId)],
+      );
+      if (rows[0]) paid = planIsPaid(rows[0].plan, rows[0].planExpiresAt);
+    } catch (e) {
+      log('isChatPaid query error:', e.message);   // fail-closed: paid stays false
+    }
+  }
+  _paidCache.set(chatId, { paid, at: Date.now() });
+  return paid;
+}
+
 // ── Subscription store ───────────────────────────────────────────────────────
 function loadSubs() {
   try {
@@ -303,37 +358,57 @@ function statusEmoji(status) {
   return '⚪';
 }
 
-function buildStatusAlertText(opp, prevStatus) {
+function buildStatusAlertText(opp, prevStatus, isPaid) {
   const coin   = opp.coin;
   const short  = (opp.legs[0]?.platform || '').replace(/\s*\(DEX\)/, '');
   const long   = (opp.legs[1]?.platform || '').replace(/\s*\(DEX\)/, '');
-  const day    = fmtDayUsd(opp.netROI);
   const status = opp.status;
-  const beDays = typeof opp.breakevenDays === 'number' ? opp.breakevenDays.toFixed(1) : '?';
 
-  return [
+  // Non-edge signal (state transition + venues + direction) is shown to everyone.
+  // Free/unlinked followers get a locked line in place of the derived-edge numbers —
+  // the real net $/day, breakeven and gross %/yr are never composed into their message.
+  const head = [
     `${statusEmoji(status)} <b>${coin} Funding</b> — ${prevStatus} → ${status}`,
     '',
     `↓ SHORT ${short} / ↑ LONG ${long}`,
-    `≈ ${day} on $${REF_CAPITAL.toLocaleString()} ref capital · breakeven ${beDays}d`,
-    '',
-    `Gross spread: ${(opp.annualizedROI || opp.grossROI || 0).toFixed(1)}%/yr`,
+  ];
+
+  const edge = isPaid
+    ? [
+        `≈ ${fmtDayUsd(opp.netROI)} on $${REF_CAPITAL.toLocaleString()} ref capital · breakeven ${
+          typeof opp.breakevenDays === 'number' ? opp.breakevenDays.toFixed(1) : '?'}d`,
+        '',
+        `Gross spread: ${(opp.annualizedROI || opp.grossROI || 0).toFixed(1)}%/yr`,
+      ]
+    : [
+        `🔒 Upgrade to see net $/day, breakeven & gross spread.`,
+      ];
+
+  return [
+    ...head,
+    ...edge,
     `<i>Rates change hourly — estimate only, not a promise.</i>`,
     '',
     `/unfollow ${coin} · /list`,
   ].join('\n');
 }
 
-function buildExitAlertText(opp, threshold) {
+function buildExitAlertText(opp, threshold, isPaid) {
   const coin  = opp.coin;
-  const gross = (opp.annualizedROI || opp.grossROI || 0).toFixed(1);
   const short = (opp.legs[0]?.platform || '').replace(/\s*\(DEX\)/, '');
   const long  = (opp.legs[1]?.platform || '').replace(/\s*\(DEX\)/, '');
+
+  // The threshold is the follower's OWN input (not derived edge) — always shown.
+  // The live gross spread IS derived edge — shown to paid only; free/unlinked get a
+  // locked line and the number is never composed into their message.
+  const trigger = isPaid
+    ? `Gross spread is now <b>${(opp.annualizedROI || opp.grossROI || 0).toFixed(1)}%/yr</b> — below your exit threshold of ${threshold.toFixed(1)}%/yr.`
+    : `The ${coin} gross spread has dropped below your exit threshold of ${threshold.toFixed(1)}%/yr.\n🔒 Upgrade to see the live gross spread & net $/day.`;
 
   return [
     `⚠️ <b>${coin} exit alert</b>`,
     '',
-    `Gross spread is now <b>${gross}%/yr</b> — below your exit threshold of ${threshold.toFixed(1)}%/yr.`,
+    trigger,
     `↓ SHORT ${short} / ↑ LONG ${long}`,
     '',
     `Consider closing both legs simultaneously to avoid leg risk.`,
@@ -358,7 +433,7 @@ function loadPredictionData() {
   } catch { return []; }
 }
 
-function buildPredAlertText(opp) {
+function buildPredAlertText(opp, isPaid) {
   const detectedAt = new Date().toUTCString().replace(/:\d\d GMT$/, ' UTC');
   const q          = (opp.question || opp.title || '').slice(0, 100);
   const low        = opp.lowMarket  || {};
@@ -372,13 +447,20 @@ function buildPredAlertText(opp) {
   const lowUrl     = low.url  || null;
   const highUrl    = high.url || null;
 
+  // Paid: full detection prices + estimated ROI. Free/unlinked: platforms + sides +
+  // time-to-resolution (non-edge) with a locked line — the ¢ prices and % ROI are
+  // never composed into their message.
+  const detectionLine = isPaid
+    ? `At detection: <b>${lowPlat}</b> YES ${yesPrice}¢ / <b>${highPlat}</b> NO ${noPrice}¢ → est. <b>+${roi}%</b> net${days ? `  ·  ${days}` : ''}`
+    : `<b>${lowPlat}</b> YES / <b>${highPlat}</b> NO${days ? `  ·  ${days}` : ''}\n🔒 Upgrade to see entry prices & estimated ROI.`;
+
   const lines = [
     `🔔 <b>Prediction arb detected — ${detectedAt}</b>`,
     `<i>Prices move fast. Verify live before acting.</i>`,
     ``,
     `<b>${q}</b>`,
     ``,
-    `At detection: <b>${lowPlat}</b> YES ${yesPrice}¢ / <b>${highPlat}</b> NO ${noPrice}¢ → est. <b>+${roi}%</b> net${days ? `  ·  ${days}` : ''}`,
+    detectionLine,
     `<i>These prices are from the detection moment and may already have moved.</i>`,
     ``,
     `Open both markets and confirm the spread still exists before trading — short-dated and sports markets often close within minutes.`,
@@ -420,8 +502,9 @@ async function scanPredictionAlerts(subs) {
     const newOpps = opps.filter(o => !prevSet.has(o.id));
 
     if (newOpps.length > 0 && now - sub.lastAlertAt >= THROTTLE_MS) {
-      const best = newOpps.sort((a, b) => b.roi - a.roi)[0];
-      const text = buildPredAlertText(best);
+      const best   = newOpps.sort((a, b) => b.roi - a.roi)[0];
+      const isPaid = await isChatPaid(sub.chatId);
+      const text   = buildPredAlertText(best, isPaid);
       await sendMessage(sub.chatId, text);
       log(`Pred alert chatId=${sub.chatId} new=${newOpps.length} opp="${(best.question || best.title || '').slice(0, 40)}"`);
       sub.lastAlertAt = now;
@@ -563,7 +646,8 @@ async function runAlertScan(subs) {
     // ── Status-change alert ───────────────────────────────────────────────────
     if (sub.lastStatus !== currentStatus) {
       if (now - sub.lastAlertAt >= THROTTLE_MS) {
-        const text = buildStatusAlertText(opp, sub.lastStatus);
+        const isPaid = await isChatPaid(sub.chatId);
+        const text   = buildStatusAlertText(opp, sub.lastStatus, isPaid);
         await sendMessage(sub.chatId, text);
         log(`Status alert chatId=${sub.chatId} asset=${sub.asset} ${sub.lastStatus}→${currentStatus}`);
         sub.lastAlertAt = now;
@@ -575,7 +659,8 @@ async function runAlertScan(subs) {
     // ── Exit threshold alert ──────────────────────────────────────────────────
     if (sub.exitThreshold != null && !sub.exitAlertSent) {
       if (currentGross < sub.exitThreshold && now - sub.lastAlertAt >= THROTTLE_MS) {
-        const text = buildExitAlertText(opp, sub.exitThreshold);
+        const isPaid = await isChatPaid(sub.chatId);
+        const text   = buildExitAlertText(opp, sub.exitThreshold, isPaid);
         await sendMessage(sub.chatId, text);
         log(`Exit alert chatId=${sub.chatId} asset=${sub.asset} gross=${currentGross.toFixed(1)} threshold=${sub.exitThreshold}`);
         sub.exitAlertSent = true;
@@ -619,4 +704,14 @@ async function main() {
   await pollLoop(subs);
 }
 
-main();
+// Exported for the paid-gating verification harness; the poll/alert loops only run
+// when this file is executed directly (pm2), never on require().
+module.exports = {
+  buildStatusAlertText,
+  buildExitAlertText,
+  buildPredAlertText,
+  planIsPaid,
+  isChatPaid,
+};
+
+if (require.main === module) main();
