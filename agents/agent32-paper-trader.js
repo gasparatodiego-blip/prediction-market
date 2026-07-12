@@ -72,6 +72,20 @@ const DAY_MS           = 24 * 60 * 60_000;
 const log   = (...a) => console.log('[agent32]', ...a);
 const nowMs = () => Date.now();
 const iso   = (ms) => new Date(ms).toISOString();
+
+// Europe/Rome wall-clock parts (DST-safe via the IANA tz database — CET in
+// winter, CEST in summer). Used ONLY to decide WHEN the daily report fires;
+// never touches any paper-trade value. Correct regardless of the server TZ
+// (currently UTC), and survives the CET/CEST switch without a hardcoded offset.
+const _romeFmt = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Europe/Rome', year: 'numeric', month: '2-digit', day: '2-digit',
+  hour: '2-digit', minute: '2-digit', hour12: false,
+});
+function romeParts(ms) {
+  const p = {};
+  for (const part of _romeFmt.formatToParts(new Date(ms))) p[part.type] = part.value;
+  return { day: `${p.year}-${p.month}-${p.day}`, hour: (+p.hour) % 24, minute: +p.minute };
+}
 const round = (n, d = 2) => (n == null || !isFinite(n) ? null : Number(n.toFixed(d)));
 
 // ── io helpers ───────────────────────────────────────────────────────────────
@@ -477,7 +491,7 @@ function buildSnapshot() {
       'basis': bs.dropped,
       'prediction-arb': pr.dropped,
     },
-    lastTelegramDay: null,
+    lastDailyReportRomeDay: null,
   };
 }
 
@@ -546,21 +560,53 @@ async function runCycle() {
   }
   markAll(store);
 
-  // one compact Telegram summary per calendar day
-  const today = iso(nowMs()).slice(0, 10);
-  if (store.lastTelegramDay !== today) {
-    await sendTelegram(dailySummary(store));
-    store.lastTelegramDay = today;
-  }
+  // NOTE: the daily Telegram summary is NOT sent here. It fires on its own
+  // 22:00 Europe/Rome schedule (see sendDailyReport + the scheduler in main),
+  // decoupled from this 6-hourly mark loop so it lands at the wall-clock time.
   atomicWriteJson(STORE_FILE, store, { pretty: true });
   log(`cycle done · trades=${store.trades.length} copySleeves=${store.copySleeves.length} updatedAt=${store.updatedAt}`);
 }
+
+// Send the compact daily summary, once per Rome calendar day. Re-reads the store
+// immediately before persisting the dedup key so it never clobbers a mark cycle's
+// numbers that may have landed during the awaited send. Routing + mute gate are
+// entirely inside sendTelegram (single admin CHAT_ID; TELEGRAM_ALERTS_ENABLED) —
+// untouched here.
+async function sendDailyReport(romeDay) {
+  const store = readJsonSafe(STORE_FILE);
+  if (!store || !Array.isArray(store.trades)) return;   // nothing frozen yet
+  await sendTelegram(dailySummary(store));
+  const latest = readJsonSafe(STORE_FILE) || store;
+  latest.lastDailyReportRomeDay = romeDay;
+  atomicWriteJson(STORE_FILE, latest, { pretty: true });
+  log(`daily report sent for Rome day ${romeDay}`);
+}
+
+let _reportInFlight = false;
 
 async function main() {
   beat();
   setInterval(beat, 5_000);
   await runCycle();
   setInterval(() => runCycle().catch(e => log('cycle error:', e.message)), MARK_INTERVAL_MS);
+
+  // Daily Telegram report at 22:00 Europe/Rome (DST-safe). Poll the Rome wall
+  // clock each minute and fire once when it is at/after 22:00 and not yet sent
+  // for this Rome day. The `>= 22` gate gives catch-up if the process was down
+  // at 22:00 sharp; the per-Rome-day dedup key prevents a second send. This is
+  // decoupled from the 6-hourly mark loop so the report lands at 22:00 local,
+  // not at a mark tick.
+  setInterval(async () => {
+    if (_reportInFlight) return;
+    const r = romeParts(nowMs());
+    if (r.hour < 22) return;
+    const store = readJsonSafe(STORE_FILE);
+    if (store && store.lastDailyReportRomeDay === r.day) return;  // already sent today
+    _reportInFlight = true;
+    try { await sendDailyReport(r.day); }
+    catch (e) { log('daily report error:', e.message); }
+    finally { _reportInFlight = false; }
+  }, 60_000);
 }
 
 if (require.main === module) {
