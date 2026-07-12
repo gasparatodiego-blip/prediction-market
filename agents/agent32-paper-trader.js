@@ -107,25 +107,50 @@ async function sendTelegram(text) {
   } catch (e) { log('sendTelegram error:', e.message); }
 }
 
+// hours → ms; null for a missing/invalid interval so accrual falls back to raw-sum.
+function hoursToMs(h) { const n = Number(h); return n > 0 ? n * 3600_000 : null; }
+
 // ── settled-funding accrual (REAL only) ──────────────────────────────────────
-// Sum the SETTLED funding rates (fractions) a venue/coin posted in (sinceT, untilT].
-// Merges the durable 14d mirror and the 48h cache, dedups by settlement timestamp.
+// Accrue the SETTLED funding a venue/coin posted in (sinceT, untilT], as a fraction
+// of notional. Merges the durable 14d mirror and the 48h cache, dedups by timestamp.
+//
+// A stored point is a SAMPLE of the venue's funding rate, and the venue's own
+// `rate` is expressed PER SETTLEMENT INTERVAL (e.g. an 8h rate). Some venues log
+// that same 8h rate every ~2min (Paradex), so raw-summing every point overcounts
+// the true accrual ~ (interval / sample-spacing)× — up to ~240×. We instead weight
+// each sample by the real time it represents — the gap to the previous stored
+// sample — divided by the venue's true settlement interval (`intervalMs`, from the
+// leg's reported intervalH — real venue data, not a magic divisor), capped at one
+// full settlement per sample so a data gap can never pay more than one interval.
+// For a once-per-settlement venue the gap ≈ interval, so every weight is 1 and the
+// result equals the legacy raw sum EXACTLY (Paradex is the only over-sampled case).
+// When intervalMs is unknown we fall back to weight 1 (legacy raw sum).
 // Never touches predicted/current ticker rates. Returns { sumRate, points, lastT }.
-function accrueSettled(venueKey, coin, sinceT, untilT) {
+function accrueSettled(venueKey, coin, sinceT, untilT, intervalMs) {
   const series = [];
   for (const f of [SRC.fundHist14d, SRC.fundHistCache]) {
     const j = readJsonSafe(f);
     const arr = j && j.data && j.data[venueKey] && j.data[venueKey][coin];
     if (Array.isArray(arr)) series.push(...arr);
   }
-  const seen = new Set();
-  let sumRate = 0, points = 0, lastT = sinceT;
+  // dedup by settlement timestamp, then sort ASCENDING so Δt = gap to the prior sample.
+  const byT = new Map();
   for (const p of series) {
     if (!p || typeof p.t !== 'number' || typeof p.rate !== 'number') continue;
+    if (!byT.has(p.t)) byT.set(p.t, p.rate);
+  }
+  const pts = [...byT.entries()].map(([t, rate]) => ({ t, rate })).sort((a, b) => a.t - b.t);
+  const iv = Number(intervalMs) > 0 ? Number(intervalMs) : null;   // ms; null → legacy raw sum
+  let sumRate = 0, points = 0, lastT = sinceT;
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i];
     if (p.t <= sinceT || p.t > untilT) continue;
-    if (seen.has(p.t)) continue;
-    seen.add(p.t);
-    sumRate += p.rate; points += 1;
+    let weight = 1;
+    if (iv) {
+      const prevT = i > 0 ? pts[i - 1].t : (p.t - iv);   // no predecessor → assume one interval
+      weight = Math.min((p.t - prevT) / iv, 1);           // ≤ 1 settlement per sample
+    }
+    sumRate += p.rate * weight; points += 1;
     if (p.t > lastT) lastT = p.t;
   }
   return { sumRate, points, lastT };
@@ -177,6 +202,7 @@ function entryPerpSpot() {
         notionalUsd: round(size), sizedDownFrom: size < NOTIONAL_USD ? NOTIONAL_USD : null,
         capacityUsd: round(cap), feesUsd: round(feesUsd, 4),
         fundingVenue: String(r.shortVenue).toLowerCase(), coin: r.coin,
+        intervalH: r.intervalH ?? null,   // venue funding interval — weights settled accrual by Δt/interval
         estNetPerDayAtEntry: round(r.netPerDay1kUsd, 4),
         trailingPositiveSettlements: r.trailingPositiveSettlements ?? null,
       },
@@ -340,7 +366,7 @@ function entryCopySleeves(entryTs) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function markPerpSpot(t, until) {
-  const { sumRate, points, lastT } = accrueSettled(t.entry.fundingVenue, t.entry.coin, t.fundingCursorT, until);
+  const { sumRate, points, lastT } = accrueSettled(t.entry.fundingVenue, t.entry.coin, t.fundingCursorT, until, hoursToMs(t.entry.intervalH));
   // SHORT perp collects funding when settled rate > 0.
   const add = sumRate * t.entry.notionalUsd;
   t.cumFundingUsd += add;
@@ -355,8 +381,8 @@ function markPerpSpot(t, until) {
 
 function markCrossVenue(t, until) {
   const [s, l] = t.entry.legs;
-  const shortAcc = accrueSettled(s.venue, t.entry.coin, t.fundingCursorT, until);
-  const longAcc  = accrueSettled(l.venue, t.entry.coin, t.fundingCursorT, until);
+  const shortAcc = accrueSettled(s.venue, t.entry.coin, t.fundingCursorT, until, hoursToMs(s.intervalH));
+  const longAcc  = accrueSettled(l.venue, t.entry.coin, t.fundingCursorT, until, hoursToMs(l.intervalH));
   // net funding = collect on short leg (+) − pay on long leg (−), settled only.
   const add = (shortAcc.sumRate - longAcc.sumRate) * t.entry.notionalUsd;
   t.cumFundingUsd += add;
@@ -475,7 +501,7 @@ function buildSnapshot() {
   const copySleeves = entryCopySleeves(entryTs);
   const trades = [...ps.trades, ...xv.trades, ...bs.trades, ...pr.trades];
   return {
-    version: 1,
+    version: 2,   // funding accrued by Δt/interval weighting (see accrueSettled / migrateFundingAccrualV2)
     createdAt: iso(entryTs), updatedAt: iso(entryTs),
     entryAsOf: iso(entryTs), simDays: SIM_DAYS, simEndsAt: iso(entryTs + SIM_DAYS * DAY_MS),
     notionalUsd: NOTIONAL_USD,
@@ -550,6 +576,28 @@ function dailySummary(store) {
   return lines.join('\n');
 }
 
+// One-time correction (v1→v2): earlier marks accrued settled funding by RAW-SUMMING
+// every stored history point, which ~240x-overcounts venues that log their funding
+// rate far more often than they settle (Paradex: 8h rate sampled every ~2min), baking
+// ~$1,200 of phantom funding into each such position's cumFundingUsd. accrueSettled
+// now weights each sample by Δt/interval, but the corrupt total is already banked, so
+// re-drive every funding position from its entry anchor to recompute cleanly. Lossless:
+// all history since today's entry is still inside the 48h cache. Idempotent (version gate).
+function migrateFundingAccrualV2(store) {
+  if (!store || (store.version || 0) >= 2) return 0;
+  let reset = 0;
+  for (const t of store.trades) {
+    if (t.category !== 'perp-spot-funding' && t.category !== 'cross-venue-funding') continue;
+    const anchor = Date.parse(t.entry && t.entry.asOf);
+    if (!Number.isFinite(anchor)) continue;   // no usable anchor → leave as-is, never guess
+    t.fundingCursorT = anchor;
+    t.cumFundingUsd = 0;
+    reset++;
+  }
+  store.version = 2;
+  return reset;
+}
+
 async function runCycle() {
   beat();
   let store = readJsonSafe(STORE_FILE);
@@ -558,6 +606,8 @@ async function runCycle() {
     log(`snapshot frozen: ${store.trades.length} trades + ${store.copySleeves.length} copy sleeves`);
     atomicWriteJson(STORE_FILE, store, { pretty: true });
   }
+  const reAccrued = migrateFundingAccrualV2(store);
+  if (reAccrued) log(`funding-accrual v2 migration: re-accruing ${reAccrued} funding position(s) from entry anchor (Δt/interval weighting)`);
   markAll(store);
 
   // NOTE: the daily Telegram summary is NOT sent here. It fires on its own
