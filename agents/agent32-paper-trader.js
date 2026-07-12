@@ -545,16 +545,35 @@ function markAll(store) {
 }
 
 function fmtUsd(n) { return n == null ? '—' : `${n >= 0 ? '+' : ''}$${n.toFixed(2)}`; }
+function fmtK(n) { return `$${Math.round(n / 1000)}k`; }
+// A position is "not executable at size" (THIN) when its own verdict says so — the
+// same honest-engine flag the live product uses to demote a row off the headline.
+const THIN_VERDICT = /thin|not executable/i;
 
 function dailySummary(store) {
   const byCat = {};
+  let totalOpen = 0, totalNotional = 0;
   for (const t of store.trades) {
     const c = t.category;
-    byCat[c] = byCat[c] || { open: 0, matured: 0, agg: 0, has: false };
+    byCat[c] = byCat[c] ||
+      { open: 0, matured: 0, execAgg: 0, execHas: false, execOpen: 0, execNotional: 0, thinAgg: 0, thinHas: false, thinOpen: 0 };
     if (t.status === 'open') byCat[c].open++; else if (t.status === 'matured') byCat[c].matured++;
     const m = t.lastMark || {};
-    const v = m.netUsd != null ? m.netUsd : (m.unrealizedUsd != null ? m.unrealizedUsd : null);
-    if (v != null) { byCat[c].agg += v; byCat[c].has = true; }
+    let v = m.netUsd != null ? m.netUsd : (m.unrealizedUsd != null ? m.unrealizedUsd : null);
+    if (v == null) continue;                                  // unmarked → "—", never summed
+    if (t.status === 'open') { totalOpen++; totalNotional += Number(t.entry && t.entry.notionalUsd) || 0; }
+    // Within-capacity clamp: a paper P&L can never exceed the real book depth it was
+    // sized into (structural guard; a no-op today since |P&L| ≪ capacityUsd everywhere).
+    const cap = Number(t.entry && t.entry.capacityUsd);
+    if (cap > 0 && Math.abs(v) > cap) v = Math.sign(v) * cap;
+    // THIN "not executable at size" rows are kept but held OFF the headline — reported
+    // on their own line, never merged into it and never silently dropped.
+    if (THIN_VERDICT.test(String((t.entry && t.entry.verdict) || ''))) {
+      byCat[c].thinAgg += v; byCat[c].thinHas = true; if (t.status === 'open') byCat[c].thinOpen++;
+    } else {
+      byCat[c].execAgg += v; byCat[c].execHas = true;
+      if (t.status === 'open') { byCat[c].execOpen++; byCat[c].execNotional += Number(t.entry && t.entry.notionalUsd) || 0; }
+    }
   }
   let copyOpen = 0, copyAgg = 0, copyHas = false;
   for (const s of store.copySleeves) {
@@ -564,15 +583,20 @@ function dailySummary(store) {
   }
   const lines = [];
   lines.push(`📄 <b>Paper book</b> · day ${Math.max(0, Math.floor((nowMs() - new Date(store.entryAsOf).getTime()) / DAY_MS))}/${store.simDays}`);
+  // Honest scale: these are N independent $1,000-ticket sims, not one $1,000 book — so
+  // the P&L is on ~totalNotional of paper capital, never a "% on $1000" headline.
+  lines.push(`<i>${totalOpen} independent $${NOTIONAL_USD.toLocaleString()} tickets · ~${fmtK(totalNotional)} paper notional</i>`);
   const label = { 'perp-spot-funding': 'Perp-spot (net$/day)', 'cross-venue-funding': 'Cross-venue (net$/day)', 'basis': 'Basis (net ann.)', 'prediction-arb': 'Prediction (ROI+unlock)' };
   for (const [c, v] of Object.entries(byCat)) {
-    lines.push(`• ${label[c] || c}: ${v.open} open — paper P&L ${v.has ? fmtUsd(v.agg) : '—'}`);
+    let line = `• ${label[c] || c}: ${v.execOpen} exec (${fmtK(v.execNotional)}) — paper P&L ${v.execHas ? fmtUsd(v.execAgg) : '—'}`;
+    if (v.thinOpen) line += `\n   ↳ ${fmtUsd(v.thinAgg)} on ${v.thinOpen} not-executable-at-size (excluded from headline)`;
+    lines.push(line);
   }
   lines.push(`• Copy mirror: ${store.copySleeves.length} sleeve(s), ${copyOpen} open legs — paper P&L ${copyHas ? fmtUsd(copyAgg) : '—'}`);
   lines.push(`• Liquidity rewards: — (excluded, forward reward not deterministic)`);
   const settled = store.trades.filter(t => t.status === 'settled' || t.status === 'matured');
   if (settled.length) lines.push(`• Matured/settled: ${settled.length}`);
-  lines.push(`<i>real marks only · as-of ${store.updatedAt}</i>`);
+  lines.push(`<i>real marks only · executable headline · as-of ${store.updatedAt}</i>`);
   return lines.join('\n');
 }
 
@@ -667,4 +691,4 @@ if (require.main === module) {
   main().catch((e) => { log('fatal:', e && e.message); process.exit(1); });
 }
 
-module.exports = { buildSnapshot, markAll, accrueSettled, entryPerpSpot, entryCrossVenue, entryBasis, entryPrediction };
+module.exports = { buildSnapshot, markAll, accrueSettled, entryPerpSpot, entryCrossVenue, entryBasis, entryPrediction, dailySummary, migrateFundingAccrualV2 };
