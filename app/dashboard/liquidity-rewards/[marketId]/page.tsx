@@ -1000,11 +1000,20 @@ function SideColumn({
 }
 
 interface LadderRow extends BookRow { user?: 'buy' | 'sell' }
+// Fold the user's placed/planned leg INTO the book. When the leg price coincides with a real
+// executable level (the case every time you tap a level), annotate THAT row in place — no
+// duplicate. Only when the price sits between real levels (a slider-planned quote) do we add a
+// standalone marker; that marker is honest (size 0, clearly "your order", never a fake book level).
 function mergeUserRow(levels: BookRow[], userPrice: number | null, kind: 'buy' | 'sell', order: 'asc' | 'desc'): LadderRow[] {
   const rows: LadderRow[] = levels.map(l => ({ ...l }));
   if (userPrice != null) {
-    rows.push({ price: userPrice, size: 0, user: kind });
-    rows.sort((a, b) => order === 'asc' ? a.price - b.price : b.price - a.price);
+    const existing = rows.find(r => r.price === userPrice);
+    if (existing) {
+      existing.user = kind;                                 // mark the real level, keep its real size
+    } else {
+      rows.push({ price: userPrice, size: 0, user: kind }); // planned quote between levels → own marker
+      rows.sort((a, b) => order === 'asc' ? a.price - b.price : b.price - a.price);
+    }
   }
   return rows;
 }
@@ -1012,56 +1021,57 @@ function MiniLadder({ row, maxSize, mid, halfBand, kind, tappable, dimmed, manua
   row: LadderRow; maxSize: number; mid: number | null; halfBand: number | null; kind: 'ask' | 'bid';
   tappable?: boolean; dimmed?: boolean; manual?: boolean; venueUrl?: string | null; onTap?: (price: number) => void;
 }) {
-  const isUser = !!row.user;
-  const inBand = mid != null && halfBand != null ? Math.abs(row.price - mid) <= halfBand : false;
-  const barPct = maxSize > 0 ? (row.size / maxSize) * 100 : 0;
-  const priceCls = kind === 'ask' ? 'text-coral-ink' : 'text-mint-deep';
-  const barCls   = kind === 'ask' ? 'bg-coral-tint/60' : 'bg-mint-tint/60';
-  if (isUser) {
-    // The synthetic "your BUY/SELL" marker row — the slider-planned quote at a real, snapped
-    // tick. Two live states, never a dead tap:
-    //   • not-yet-placed  → tap PLACES the in-app maker leg at this exact tick-snapped price.
-    //   • already MANUALE → re-placing at the same price is a no-op (setLegs short-circuits),
-    //     so instead the tap OPENS the real venue market page to actually execute it. Live
-    //     execution is OFF in-app, so the venue is the honest place to submit the order. The
-    //     venue can't pre-fill price/side/size — the LegTickets panel states them to enter.
-    const placeUser = !manual && onTap ? () => onTap(row.price) : undefined;
-    const goVenue   = manual && venueUrl ? () => window.open(venueUrl, '_blank', 'noopener,noreferrer') : undefined;
-    const act       = placeUser ?? goVenue;
-    const sideLabel = row.user === 'buy' ? 'BUY' : 'SELL';
-    return (
-      <div
-        onClick={act}
-        role={act ? 'button' : undefined}
-        title={placeUser ? `Place ${sideLabel} at ${fmtC(row.price)}`
-              : goVenue  ? `Open the venue to place ${sideLabel} at ${fmtC(row.price)}` : undefined}
-        className={`relative grid grid-cols-2 items-center text-[10px] font-mono px-1.5 py-[3px] rounded-sm my-[1px]
-        ${act ? 'cursor-pointer hover:brightness-95 active:brightness-90' : ''}
-        ${row.user === 'buy' ? 'bg-mint-tint ring-1 ring-mint-deep/50' : 'bg-coral-tint ring-1 ring-coral-ink/50'}`}>
-        <span className={`tabular-nums font-bold ${row.user === 'buy' ? 'text-mint-deep' : 'text-coral-ink'}`}>{fmtC(row.price)}</span>
-        <span className={`text-right font-bold text-[8px] flex items-center justify-end gap-1 ${row.user === 'buy' ? 'text-mint-deep' : 'text-coral-ink'}`}>
-          {manual
-            ? <span className="px-1 rounded-sm bg-surface/70 border border-current/30 uppercase tracking-wide text-[7px] font-semibold">{goVenue ? 'place ↗' : 'manual'}</span>
-            : placeUser && <span className="px-1 rounded-sm bg-surface/70 border border-current/30 uppercase tracking-wide text-[7px] font-semibold">tap to place</span>}
-          {row.user === 'buy' ? 'your BUY' : 'your SELL'}
-        </span>
-      </div>
-    );
-  }
-  // Real book level. Tappable rows place a leg at this exact executable price (never mid).
-  const clickable = tappable && !!onTap;
+  // A row may be a plain real level, OR the user's leg living ON a real level (annotated by
+  // mergeUserRow — no duplicate), OR a between-levels planned marker (size 0). One code path.
+  const isUser    = !!row.user;
+  const inBand    = mid != null && halfBand != null ? Math.abs(row.price - mid) <= halfBand : false;
+  const barPct    = maxSize > 0 ? (row.size / maxSize) * 100 : 0;
+  const priceCls  = kind === 'ask' ? 'text-coral-ink' : 'text-mint-deep';
+  const barCls    = kind === 'ask' ? 'bg-coral-tint/60' : 'bg-mint-tint/60';
+  const sideLabel = row.user === 'buy' ? 'BUY' : 'SELL';
+
+  // Tap-to-place lives ON the real book rows (and on a between-levels planned marker):
+  //   • any real level that isn't yet your leg → tap PLACES / MOVES the maker leg to that exact
+  //     executable price (never mid). This is what lets a second tap relocate the marker instead
+  //     of stacking a new row.
+  //   • your placed leg (manual) → re-tap OPENS the real venue page — in-app execution is OFF,
+  //     so the venue is the honest place to submit. Same behavior as commit 0b61d4e.
+  const placeHere = tappable && onTap ? () => onTap(row.price) : undefined;
+  const goVenue   = venueUrl ? () => window.open(venueUrl, '_blank', 'noopener,noreferrer') : undefined;
+  const act       = isUser ? (manual ? goVenue : placeHere) : placeHere;
+  const clickable = !!act;
+  const title = isUser
+    ? (manual ? (goVenue ? `Open the venue to place ${sideLabel} at ${fmtC(row.price)}` : undefined)
+              : (placeHere ? `Place ${sideLabel} at ${fmtC(row.price)}` : undefined))
+    : (clickable ? `Place ${kind === 'ask' ? 'SELL' : 'BUY'} at ${fmtC(row.price)}` : undefined);
+
   return (
     <div
-      onClick={clickable ? () => onTap!(row.price) : undefined}
+      onClick={act}
       role={clickable ? 'button' : undefined}
-      title={clickable ? `Place ${kind === 'ask' ? 'SELL' : 'BUY'} at ${fmtC(row.price)}` : undefined}
-      className={`relative grid grid-cols-2 items-center text-[10px] font-mono px-1.5 py-[2px] rounded-sm
-        ${clickable ? 'cursor-pointer hover:bg-bg-soft active:bg-bg-soft/80' : ''}
-        ${dimmed ? 'opacity-30 pointer-events-none' : ''}`}
+      title={title}
+      className={`relative grid grid-cols-2 items-center text-[10px] font-mono px-1.5 rounded-sm
+        ${isUser ? 'py-[3px] my-[1px]' : 'py-[2px]'}
+        ${clickable ? (isUser ? 'cursor-pointer hover:brightness-95 active:brightness-90' : 'cursor-pointer hover:bg-bg-soft active:bg-bg-soft/80') : ''}
+        ${isUser
+          ? (row.user === 'buy' ? 'bg-mint-tint ring-1 ring-mint-deep/50' : 'bg-coral-tint ring-1 ring-coral-ink/50')
+          : (dimmed ? 'opacity-30 pointer-events-none' : '')}`}
     >
-      <span className={`absolute inset-y-0 right-0 ${barCls}`} style={{ width: `${barPct}%`, pointerEvents: 'none' }} />
-      <span className={`relative tabular-nums ${priceCls} ${inBand ? 'font-semibold' : 'opacity-70'}`}>{fmtC(row.price)}</span>
-      <span className="relative text-right text-muted tabular-nums">{fmtSh(row.size)}</span>
+      {/* size-depth bar — real levels only; a highlighted user leg uses its tint instead */}
+      {!isUser && <span className={`absolute inset-y-0 right-0 ${barCls}`} style={{ width: `${barPct}%`, pointerEvents: 'none' }} />}
+      <span className={`relative tabular-nums ${isUser
+        ? `font-bold ${row.user === 'buy' ? 'text-mint-deep' : 'text-coral-ink'}`
+        : `${priceCls} ${inBand ? 'font-semibold' : 'opacity-70'}`}`}>{fmtC(row.price)}</span>
+      {isUser ? (
+        <span className={`relative text-right font-bold text-[8px] flex items-center justify-end gap-1 ${row.user === 'buy' ? 'text-mint-deep' : 'text-coral-ink'}`}>
+          {manual
+            ? <span className="px-1 rounded-sm bg-surface/70 border border-current/30 uppercase tracking-wide text-[7px] font-semibold">{goVenue ? 'place ↗' : 'manual'}</span>
+            : placeHere && <span className="px-1 rounded-sm bg-surface/70 border border-current/30 uppercase tracking-wide text-[7px] font-semibold">tap to place</span>}
+          {row.user === 'buy' ? 'your BUY' : 'your SELL'}
+        </span>
+      ) : (
+        <span className="relative text-right text-muted tabular-nums">{fmtSh(row.size)}</span>
+      )}
     </div>
   );
 }
