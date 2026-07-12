@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
+import { getIsPaid, redactForTier } from '@/lib/paid-gating';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,7 +20,16 @@ export async function GET() {
       confidence: o.confidence,
       urgency: o.urgency,
     }));
-    return NextResponse.json({ opportunities, updatedAt: raw.updatedAt ?? null });
+    // Free users: null roi / expected_return / confidence server-side. Keep the
+    // title/type/platform/urgency teaser.
+    const session = await getServerSession(authOptions);
+    const isPaid  = await getIsPaid(session);
+    const body    = redactForTier(
+      { opportunities, updatedAt: raw.updatedAt ?? null },
+      'opportunities',
+      isPaid,
+    );
+    return NextResponse.json(body);
   } catch {
     return NextResponse.json({ opportunities: [], updatedAt: null });
   }

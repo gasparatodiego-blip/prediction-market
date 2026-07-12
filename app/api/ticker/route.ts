@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
+import { getIsPaid, redactForTier } from '@/lib/paid-gating';
 
 export const dynamic = 'force-dynamic';
 
@@ -332,8 +335,17 @@ export async function GET() {
     ? Math.floor((Date.now() - generatedAt) / 60_000)
     : null;
 
-  return NextResponse.json(
+  // Free users: null the per-category headline (bestNetPct) and any note that embeds
+  // derived money. Server-side redaction — the real figure never enters the payload.
+  const session = await getServerSession(authOptions);
+  const isPaid  = await getIsPaid(session);
+  const body    = redactForTier(
     { ok: opps.length > 0, generatedAt, staleMinutes, categories },
-    { headers: { 'Cache-Control': 'no-store, must-revalidate' } },
+    'ticker',
+    isPaid,
   );
+
+  return NextResponse.json(body, {
+    headers: { 'Cache-Control': 'no-store, must-revalidate' },
+  });
 }

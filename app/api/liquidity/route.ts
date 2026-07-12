@@ -1,5 +1,10 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
+import { getIsPaid, redactForTier } from '@/lib/paid-gating';
+
+export const dynamic = 'force-dynamic';
 
 const FILE = '/tmp/liquidity-positions.json';
 
@@ -50,11 +55,17 @@ export async function GET(): Promise<NextResponse<LpResponse>> {
   const now     = Date.now();
   const updated = data?.updatedAt ?? null;
 
-  return NextResponse.json({
+  // Free users: null derived APY / fees / P&L / notional exposure server-side.
+  // Raw entry/current prices and volume stay visible as public reference.
+  const session = await getServerSession(authOptions);
+  const isPaid  = await getIsPaid(session);
+  const body    = redactForTier<LpResponse>({
     updatedAt:       updated,
     positions:       data?.positions ?? [],
     topMarketsForLp: data?.topMarketsForLp ?? [],
     summary:         data?.summary ?? { totalPositions: 0, needsRebalance: 0, totalNotional: 0, totalNetPnl: 0 },
     dataAge:         updated ? now - updated : 9999999,
-  });
+  }, 'liquidity', isPaid);
+
+  return NextResponse.json(body);
 }

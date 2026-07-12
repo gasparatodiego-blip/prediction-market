@@ -26,7 +26,15 @@ export type RouteKey =
   | 'copy'
   | 'wallet'
   | 'poly-whales'
-  | 'user-history';
+  | 'user-history'
+  // Headline / teaser feeds — these synthesize a single best derived-edge number
+  // per category (or the raw unified opp array). Gated so a direct GET can't read
+  // the edge the dashboard detail routes already redact.
+  | 'ticker'
+  | 'opps-preview'
+  | 'opportunities'
+  | 'unified-opportunities'
+  | 'liquidity';
 
 function isPlanCurrentlyPaid(plan: string, planExpiresAt: Date | null, now = new Date()): boolean {
   if (plan === 'profit_share') return true;
@@ -428,6 +436,64 @@ export const REDACTION_MAP: Record<RouteKey, string[]> = {
     'currentOpps[].net_profit',
     'currentOpps[].confidence',
     'currentStats.bestRoi',
+  ],
+
+  // /api/ticker — the per-category headline (bestNetPct = net $/day, ROI, %/yr, %/day).
+  // note[] embeds derived money for the rewards ("$X/day est") and traders ("+$PnL")
+  // cards, so it is nulled too (honest: the field goes missing, never a fabricated
+  // teaser). Non-edge stays: label, unit, status, count, href, displayKind, platforms.
+  ticker: [
+    'categories[].bestNetPct',
+    'categories[].note',
+  ],
+
+  // /api/opps-preview — netPct is the derived edge; note carries the verdict prose,
+  // which embeds the same % (like carry.verdict), so null both. Keep type/label/venue/unit.
+  'opps-preview': [
+    'items[].netPct',
+    'items[].note',
+  ],
+
+  // /api/opportunities — top-4 discovery teaser. Keep title/type/platforms/urgency.
+  opportunities: [
+    'opportunities[].roi',
+    'opportunities[].expected_return',
+    'opportunities[].confidence',
+  ],
+
+  // /api/unified-opportunities — the raw unified opp array (every derived-edge field)
+  // plus summary.bestAnnualized. Keep structure/teaser: type, id, question, legs
+  // (venue names), dates, tier/flags, notes-of-state. verdict embeds the % → null it.
+  'unified-opportunities': [
+    'opportunities[].annualizedROI',
+    'opportunities[].netROI',
+    'opportunities[].grossROI',
+    'opportunities[].predictedGrossApy',
+    'opportunities[].spread',
+    'opportunities[].confidence',
+    'opportunities[].totalFeesPct',
+    'opportunities[].breakevenDays',
+    'opportunities[].capacityUsd',
+    'opportunities[].greenCapacityUsd',
+    'opportunities[].slipCurveMaxFillable',
+    'opportunities[].book20bpsUsd',
+    'opportunities[].oiUsd',
+    'opportunities[].slipCurve',
+    'opportunities[].verdict',
+    'summary.bestAnnualized',
+  ],
+
+  // /api/liquidity — MM/LP position economics. Raw prices + volume stay as reference;
+  // the derived APY / fees / P&L / notional exposure are gated.
+  liquidity: [
+    'positions[].lpApy',
+    'positions[].feesEarned',
+    'positions[].netPnl',
+    'positions[].il',
+    'positions[].notionalUSD',
+    'topMarketsForLp[].lpApyEstimate',
+    'summary.totalNetPnl',
+    'summary.totalNotional',
   ],
 };
 

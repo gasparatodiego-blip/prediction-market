@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
+import { getIsPaid, redactForTier } from '@/lib/paid-gating';
 
 export const dynamic = 'force-dynamic';
 
@@ -68,8 +71,17 @@ export async function GET() {
 
   items.sort((a, b) => b.netPct - a.netPct);
 
-  return NextResponse.json(
+  // Free users: null netPct (derived edge) and note (verdict prose embeds the %),
+  // server-side, before serialization. Order is computed on real values first.
+  const session = await getServerSession(authOptions);
+  const isPaid  = await getIsPaid(session);
+  const body    = redactForTier(
     { items, total: items.length, generatedAt: Date.now() },
-    { headers: { 'Cache-Control': 'no-store, must-revalidate' } },
+    'opps-preview',
+    isPaid,
   );
+
+  return NextResponse.json(body, {
+    headers: { 'Cache-Control': 'no-store, must-revalidate' },
+  });
 }
