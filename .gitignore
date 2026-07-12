@@ -59,6 +59,9 @@ data/monitor-restart-ledger.json
 data/copy-events.json
 data/copy-position-state.json
 data/paper-positions.json
+# agent32 forward paper-trading book — entries + daily marks, rewritten at runtime, local data
+data/paper-trades.json
+data/paper-trades.json.tmp.*
 # durable 14-day per-leg settled-funding history — grows organically at runtime, local data
 data/funding-history-14d.json
 # real per-(perp venue, asset) max-leverage + maintenance-margin cache — refetched at runtime
