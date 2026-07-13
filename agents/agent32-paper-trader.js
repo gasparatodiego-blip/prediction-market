@@ -214,7 +214,13 @@ function entryPerpSpot() {
           { venue: r.spotVenueSuggested, side: 'LONG spot', price: round(r.spotAsk, 6) },
         ],
         notionalUsd: round(size), sizedDownFrom: size < NOTIONAL_USD ? NOTIONAL_USD : null,
-        capacityUsd: round(cap), feesUsd: round(feesUsd, 4),
+        capacityUsd: round(cap),
+        // capacityUsd is agent28's REAL book-walked 20bps whole-trade depth (never OI; null
+        // when a leg has no walkable book → already dropped above, so cap here is always a
+        // real walk). capacityBind names which leg binds. Record provenance so no depth
+        // number ever ships without a book/proxy attribution (honest-engine).
+        capacitySource: `book-20bps-walk (${r.capacityBind || 'both-legs'})`,
+        feesUsd: round(feesUsd, 4),
         fundingVenue: String(r.shortVenue).toLowerCase(), coin: r.coin,
         intervalH: r.intervalH ?? null,   // venue funding interval — weights settled accrual by Δt/interval
         estNetPerDayAtEntry: round(r.netPerDay1kUsd, 4),
@@ -244,9 +250,14 @@ function entryCrossVenue() {
     if (shortLeg.trailingRate == null || longLeg.trailingRate == null) {
       dropped.push({ id: o.id, why: 'no settled trailing rate' }); continue;
     }
-    const cap  = Number(o.capacityUsd) || 0;
+    // Capacity provenance (honest-engine): agent15 sets capacityUsd = greenCapacityUsd ONLY
+    // when it slip-verified a real 20bps book walk; when the book was unwalkable/capped it
+    // keeps an OI/volume PROXY (greenCapacityUsd === null), which the honest engine does NOT
+    // accept as real depth. Never size a cashable $1000 ticket against a proxy — drop it.
+    const realDepth = o.greenCapacityUsd != null;
+    const cap  = realDepth ? (Number(o.capacityUsd) || 0) : 0;
     const size = Math.min(NOTIONAL_USD, cap);
-    if (size <= 0) { dropped.push({ id: o.id, why: 'zero capacity' }); continue; }
+    if (size <= 0) { dropped.push({ id: o.id, why: realDepth ? 'zero capacity' : 'no real book-depth (OI/volume proxy only)' }); continue; }
     const feesUsd = size * (Number(o.totalFeesPct) || 0) / 100;
     trades.push({
       id: `xv-${o.id}`,
@@ -261,7 +272,10 @@ function entryCrossVenue() {
           { venue: ids.longVenue,  side: 'LONG',  settledRate: round(longLeg.trailingRate, 6),  intervalH: longLeg.intervalHours ?? null },
         ],
         coin: ids.coin, notionalUsd: round(size), sizedDownFrom: size < NOTIONAL_USD ? NOTIONAL_USD : null,
-        capacityUsd: round(cap), feesUsd: round(feesUsd, 4),
+        capacityUsd: round(cap),
+        // entered ⇒ greenCapacityUsd > 0, so cap is a real green-verified 20bps book walk.
+        capacitySource: o.depthThin ? 'book-20bps-walk (THIN green=0)' : 'book-20bps-walk (green-verified)',
+        feesUsd: round(feesUsd, 4),
         estNetRoiAtEntry: round(o.netROI, 3), estAnnualizedAtEntry: round(o.annualizedROI, 2),
         verdict: o.verdict || null,
       },
@@ -515,7 +529,7 @@ function buildSnapshot() {
   const copySleeves = entryCopySleeves(entryTs);
   const trades = [...ps.trades, ...xv.trades, ...bs.trades, ...pr.trades];
   return {
-    version: 3,   // funding accrued by Δt/interval weighting, rate ÷100 percent→fraction (see accrueSettled / migrateFundingUnitV3)
+    version: 4,   // + capacitySource on funding entries (real book walk or "—"); see migrateCapacitySourceV4
     createdAt: iso(entryTs), updatedAt: iso(entryTs),
     entryAsOf: iso(entryTs), simDays: SIM_DAYS, simEndsAt: iso(entryTs + SIM_DAYS * DAY_MS),
     notionalUsd: NOTIONAL_USD,
@@ -642,6 +656,44 @@ function migrateFundingUnitV3(store) {
   return reset;
 }
 
+// One-time backfill (v3→v4): the two funding ENTRY builders historically wrote capacityUsd
+// with NO capacitySource (only basis recorded provenance), so every frozen funding position
+// carried a depth number — up to $500k — with no book/proxy attribution (honest-engine P2:
+// "a half-million-dollar depth claim with no source"). We cannot re-derive each position's
+// entry-time provenance (the old code never stored it), so we re-verify each pair against the
+// CURRENT upstream book walk: a pair still slip-verified now (agent15 greenCapacityUsd non-null
+// / agent28 wholeTradeCapacityUsd non-null) gets a real 'book-20bps-walk (re-verified)' source
+// and keeps its capacity; a pair no longer listed, or backed only by an OI/volume proxy, cannot
+// be book-verified — so BOTH capacityUsd and capacitySource render "—" (never invent a source,
+// never assert a stale/unverifiable depth). Capacity feeds only the within-notional clamp, so
+// blanking it to "—" changes no P&L. basis already carries capacitySource → untouched.
+// Idempotent (version gate). Going forward, entry records capacitySource at entry so this is
+// a one-time cleanup of the pre-existing frozen book.
+function migrateCapacitySourceV4(store) {
+  if (!store || (store.version || 0) >= 4) return { labeled: 0, blanked: 0 };
+  const uni = readJsonSafe(SRC.unified);
+  const ps  = readJsonSafe(SRC.perpSpot);
+  const oppById = new Map(((uni && uni.opportunities) || []).map(o => [o.id, o]));
+  const rowById = new Map(((ps && ps.rows) || []).map(r => [`ps-${r.coin}-${r.shortVenue}`, r]));
+  let labeled = 0, blanked = 0;
+  for (const t of store.trades) {
+    if (t.category !== 'perp-spot-funding' && t.category !== 'cross-venue-funding') continue;
+    if (!t.entry || t.entry.capacitySource != null) continue;   // already labelled → skip
+    let src = null;
+    if (t.category === 'cross-venue-funding') {
+      const o = oppById.get(t.id.replace(/^xv-/, ''));
+      if (o && o.greenCapacityUsd != null) src = 'book-20bps-walk (re-verified)';   // slip-verified now
+    } else {
+      const r = rowById.get(t.id);
+      if (r && r.wholeTradeCapacityUsd != null) src = `book-20bps-walk (${r.capacityBind || 'both-legs'}, re-verified)`;
+    }
+    if (src) { t.entry.capacitySource = src; labeled++; }
+    else { t.entry.capacityUsd = '—'; t.entry.capacitySource = '—'; blanked++; }   // unverifiable → honest "—", never invented
+  }
+  store.version = 4;
+  return { labeled, blanked };
+}
+
 async function runCycle() {
   beat();
   let store = readJsonSafe(STORE_FILE);
@@ -654,6 +706,8 @@ async function runCycle() {
   if (reAccrued) log(`funding-accrual v2 migration: re-accruing ${reAccrued} funding position(s) from entry anchor (Δt/interval weighting)`);
   const unitFixed = migrateFundingUnitV3(store);
   if (unitFixed) log(`funding-unit v3 migration: re-accruing ${unitFixed} funding position(s) from entry anchor after percent→fraction fix (kills 100× inflation)`);
+  const capSrc = migrateCapacitySourceV4(store);
+  if (capSrc.labeled || capSrc.blanked) log(`capacity-source v4 migration: ${capSrc.labeled} funding position(s) re-verified book-walk, ${capSrc.blanked} unverifiable → capacity "—" (no invented source)`);
   markAll(store);
 
   // NOTE: the daily Telegram summary is NOT sent here. It fires on its own
@@ -713,4 +767,4 @@ if (require.main === module) {
   main().catch((e) => { log('fatal:', e && e.message); process.exit(1); });
 }
 
-module.exports = { buildSnapshot, markAll, accrueSettled, entryPerpSpot, entryCrossVenue, entryBasis, entryPrediction, dailySummary, migrateFundingAccrualV2, migrateFundingUnitV3 };
+module.exports = { buildSnapshot, markAll, accrueSettled, entryPerpSpot, entryCrossVenue, entryBasis, entryPrediction, dailySummary, migrateFundingAccrualV2, migrateFundingUnitV3, migrateCapacitySourceV4 };
