@@ -45,6 +45,8 @@ export interface SnapshotOpportunity {
   numBookmakers:      number;
   lastUpdated:        string;
   settlement?:        Settlement;
+  sharpReference?:    SharpReference | null;
+  edgeVsSharp?:       EdgeVsSharp;
 }
 
 export interface SnapshotFlaggedArb extends SnapshotOpportunity {
@@ -68,6 +70,39 @@ export interface ScannedEventLeg {
   odd:          number | null;
 }
 
+// Sharp reference (Pinnacle) + edge-vs-sharp, persisted per event by agent12
+// (commit 8749e84). GATED for free tier (commit 4bc8121): raw[].odd, overround,
+// marginPct, noVig[].fairProb, noVig[].fairOdds, edgeVsSharp.edgePct/rawEdgePct/
+// softOdd/fairOdds/reason → null. Structure, book names, status, outcome names,
+// sharpReference.present stay visible as teaser.
+export interface SharpRawLeg  { outcome: string; odd: number | null; }
+export interface SharpNoVigLeg { outcome: string; fairProb: number | null; fairOdds: number | null; }
+export interface SharpReference {
+  present:    boolean;
+  book?:      string;                 // 'pinnacle'
+  reason?:    string;                 // when !present: 'pinnacle_not_quoted' | 'devig_failed'
+  raw:        SharpRawLeg[]  | null;   // .odd null on free tier
+  overround:  number | null;
+  marginPct:  number | null;
+  noVig:      SharpNoVigLeg[] | null;  // fairProb/fairOdds null on free tier
+}
+export type EdgeVsSharpStatus =
+  | 'signal' | 'none' | 'no_sharp_reference' | 'no_comparable_outcome' | 'suppressed_outlier';
+export interface EdgeVsSharp {
+  status:               EdgeVsSharpStatus;
+  edgePct:              number | null;   // gated
+  outcome?:             string;
+  softBook?:            string;
+  softBookId?:          string;
+  softClass?:           'exchange' | 'unverified' | 'sharp';
+  softOdd?:             number | null;   // gated
+  fairOdds?:            number | null;   // gated
+  cashable?:            boolean;
+  reason?:              string | null;   // suppressed_outlier reason — GATED (embeds raw %)
+  rawEdgePct?:          number | null;   // gated
+  excludedNearCertain?: number;
+}
+
 export interface ScannedEvent {
   sport:           string;
   sportLabel:      string;
@@ -82,6 +117,8 @@ export interface ScannedEvent {
   settlement?:     Settlement;
   cashable?:       boolean;
   execReasons?:    string[];
+  sharpReference?: SharpReference | null;
+  edgeVsSharp?:    EdgeVsSharp;
 }
 
 export interface SportScanEntry {
@@ -99,6 +136,7 @@ export interface SnapshotResponse {
   ok:               boolean;
   missing:          boolean;
   stale:            boolean;
+  isPaid:           boolean;
   ageMinutes:       number | null;
   lastUpdated:      string | null;
   creditsRemaining: number | null;
@@ -114,7 +152,7 @@ export interface SnapshotResponse {
 }
 
 const EMPTY: SnapshotResponse = {
-  ok: false, missing: true, stale: true, ageMinutes: null,
+  ok: false, missing: true, stale: true, isPaid: false, ageMinutes: null,
   lastUpdated: null, creditsRemaining: null, creditsUsed: null,
   scanMode: 'snapshot', regions: [], sportsScanned: [],
   opportunities: [], flaggedArbs: [], quarantine: [], scannedEvents: [], summary: null,
@@ -123,7 +161,7 @@ const EMPTY: SnapshotResponse = {
 export async function GET(): Promise<NextResponse<SnapshotResponse>> {
   try {
     const raw  = fs.readFileSync(FILE, 'utf-8');
-    const data = JSON.parse(raw) as Omit<SnapshotResponse, 'ok' | 'missing' | 'stale' | 'ageMinutes'>;
+    const data = JSON.parse(raw) as Omit<SnapshotResponse, 'ok' | 'missing' | 'stale' | 'isPaid' | 'ageMinutes'>;
     const age  = data.lastUpdated
       ? Date.now() - new Date(data.lastUpdated).getTime()
       : Infinity;
@@ -135,6 +173,7 @@ export async function GET(): Promise<NextResponse<SnapshotResponse>> {
       ok:         true,
       missing:    false,
       stale:      age > STALE_MS,
+      isPaid,
       ageMinutes: Number.isFinite(age) ? Math.floor(age / 60_000) : null,
     }, 'sports-snapshot', isPaid);
 
