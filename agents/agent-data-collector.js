@@ -127,8 +127,55 @@ async function fetchPolymarket() {
       if (items.length < 100) break;
     }
 
-    // Tag-based sport event discovery
     const byId = new Map(base.map(m => [String(m.id || m.conditionId || ''), m]));
+
+    // ── Native Polymarket categories ──────────────────────────────────────────
+    // The /events endpoint carries Polymarket's REAL tag taxonomy
+    // ({id,label,slug}: Politics, Crypto, Sports, Tech, Culture, Finance, …);
+    // the /markets endpoint does not. We harvest those tags from every event we
+    // touch and attach a tags:[{label,slug}] array to each stored market so it
+    // can be grouped by Polymarket's OWN categories instead of collapsing to a
+    // single "other" bucket. Honest passthrough: no tag is inferred — a market we
+    // never see tagged keeps an empty array (→ 'other' downstream, never faked).
+    const tagsById = new Map();
+    const eventSlugById = new Map();
+    const cleanTags = ev => (ev.tags || [])
+      .filter(t => t && t.label && t.slug)
+      .map(t => ({ label: String(t.label), slug: String(t.slug).toLowerCase() }));
+    const harvest = ev => {
+      const tags = cleanTags(ev);
+      // The parent EVENT slug is the real Polymarket page — a grouped market's own
+      // per-outcome slug 404s on /event/. Capture it so the category view links honestly.
+      const evSlug = ev && ev.slug ? String(ev.slug) : null;
+      for (const m of (ev.markets || [])) {
+        const id = String(m.id || m.conditionId || m.questionID || '');
+        if (!id) continue;
+        if (tags.length) tagsById.set(id, tags);
+        if (evSlug && !eventSlugById.has(id)) eventSlugById.set(id, evSlug);
+      }
+    };
+
+    // Volume-ordered event sweep across the FULL taxonomy — top-volume events
+    // span every native category, not just the sport-keyword subset. Adds the
+    // top markets per category and harvests their native tags.
+    let volAdded = 0;
+    for (let offset = 0; offset < 1200; offset += 100) {
+      const data = await get(`https://gamma-api.polymarket.com/events?active=true&closed=false&limit=100&offset=${offset}&order=volume24hr&ascending=false`);
+      const events = Array.isArray(data) ? data : [];
+      if (!events.length) break;
+      for (const ev of events) {
+        harvest(ev);
+        for (const m of (ev.markets || [])) {
+          const id = String(m.id || m.conditionId || m.questionID || '');
+          if (id && !byId.has(id)) { byId.set(id, m); volAdded++; }
+        }
+      }
+      if (events.length < 100) break;
+      await new Promise(r => setTimeout(r, 100));
+    }
+
+    // Tag-based sport event discovery (existing sport logic preserved) — now also
+    // harvests native tags for the markets it adds.
     const slugs = await _pmSportSlugs();
     let tagAdded = 0;
     for (const slug of slugs) {
@@ -138,6 +185,7 @@ async function fetchPolymarket() {
         const events = Array.isArray(data) ? data : [];
         if (!events.length) break;
         for (const ev of events) {
+          harvest(ev);
           for (const m of (ev.markets || [])) {
             const id = String(m.id || m.conditionId || m.questionID || '');
             if (id && !byId.has(id)) { byId.set(id, m); tagAdded++; }
@@ -149,9 +197,19 @@ async function fetchPolymarket() {
       }
     }
 
-    const results = [...byId.values()];
-    write('/tmp/polymarket-raw.json', { fetchedAt: Date.now(), total: results.length, base: base.length, tagAdded, active: results.filter(m => m.active).length, markets: results });
-    console.log(`[polymarket] ${base.length} base + ${tagAdded} tag-added (${slugs.length} slugs) = ${results.length} total`);
+    // Attach native category tags + parent event slug (honest — a market never seen
+    // tagged keeps []; eventSlug falls back to any nested events[0].slug already on
+    // the base market, else null, so the API can build the real /event/ URL).
+    const results = [...byId.values()].map(m => {
+      const id = String(m.id || m.conditionId || m.questionID || '');
+      const tags = tagsById.get(id) || (Array.isArray(m.tags) ? m.tags : []);
+      const eventSlug = eventSlugById.get(id)
+        || (m.events && m.events[0] && m.events[0].slug) || null;
+      return { ...m, tags, eventSlug };
+    });
+    const tagged = results.filter(m => (m.tags || []).length).length;
+    write('/tmp/polymarket-raw.json', { fetchedAt: Date.now(), total: results.length, base: base.length, volAdded, tagAdded, tagged, active: results.filter(m => m.active).length, markets: results });
+    console.log(`[polymarket] ${base.length} base + ${volAdded} vol + ${tagAdded} sport = ${results.length} total, ${tagged} native-tagged`);
   } catch (e) { console.error('[polymarket] error:', e.message); }
 }
 
