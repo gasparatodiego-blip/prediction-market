@@ -45,14 +45,25 @@ const fmtAge = (mins: number | null | undefined): string => {
 const fmtWhen = (iso: string | null | undefined): string =>
   !iso ? '—' : new Date(iso).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
+// Parent sport category from the REAL `sport` key prefix (soccer_usa_mls →
+// Soccer, basketball_wnba → Basketball, …). No brand logos invented — emoji
+// only, with a neutral fallback for any unmapped sport.
+type SportCat = { key: string; label: string; emoji: string };
+const SPORT_CATS: { key: string; label: string; emoji: string; pfx: string }[] = [
+  { key: 'soccer',           label: 'Soccer',        emoji: '⚽', pfx: 'soccer' },
+  { key: 'basketball',       label: 'Basketball',    emoji: '🏀', pfx: 'basketball' },
+  { key: 'tennis',           label: 'Tennis',        emoji: '🎾', pfx: 'tennis' },
+  { key: 'baseball',         label: 'Baseball',      emoji: '⚾', pfx: 'baseball' },
+  { key: 'americanfootball', label: 'Am. Football',  emoji: '🏈', pfx: 'americanfootball' },
+  { key: 'icehockey',        label: 'Ice Hockey',    emoji: '🏒', pfx: 'icehockey' },
+];
+const OTHER_CAT: SportCat = { key: 'other', label: 'Other', emoji: '🏆' };
+function sportCat(sport: string): SportCat {
+  const m = SPORT_CATS.find(c => (sport ?? '').startsWith(c.pfx));
+  return m ? { key: m.key, label: m.label, emoji: m.emoji } : OTHER_CAT;
+}
 function leagueEmoji(sport: string): string {
-  if (sport.startsWith('soccer'))           return '⚽';
-  if (sport.startsWith('basketball'))       return '🏀';
-  if (sport.startsWith('americanfootball')) return '🏈';
-  if (sport.startsWith('icehockey'))        return '🏒';
-  if (sport.startsWith('baseball'))         return '⚾';
-  if (sport.startsWith('tennis'))           return '🎾';
-  return '🏆';
+  return sportCat(sport).emoji;
 }
 
 // ── lettermark placeholder (no real brand SVGs on the site — honest stand-in) ─
@@ -109,6 +120,22 @@ function KindChip({ tier }: { tier: Tier }) {
   if (tier === 'cashable') return <EdgeChip variant="cashable" />;
   if (tier === 'arb_soft') return <ArbSoftChip />;
   return <EdgeChip variant="signal" />;
+}
+
+// ── scrollable sport filter pill (active = dark filled, inactive = outlined) ──
+function FilterPill({ emoji, label, count, active, onClick }: { emoji?: string; label: string; count: number; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`whitespace-nowrap shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full font-body text-[12px] font-medium transition-colors ${
+        active ? 'bg-ink text-white' : 'bg-surface text-ink-2 border border-line hover:border-ink/30'
+      }`}
+    >
+      {emoji && <span className="text-[13px]" aria-hidden>{emoji}</span>}
+      {label}
+      <span className={`tabular-nums ${active ? 'text-white/70' : 'text-muted'}`}>{count}</span>
+    </button>
+  );
 }
 
 // ── labelled stat (paper style) ──────────────────────────────────────────────
@@ -362,6 +389,7 @@ export default function SportsPage() {
   const [data, setData] = useState<SnapshotResponse | null>(null);
   const [err, setErr]   = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [sportFilter, setSportFilter] = useState<string>('all');
 
   const load = useCallback(async () => {
     try {
@@ -415,6 +443,29 @@ export default function SportsPage() {
   const topCashable = useMemo(() => events.find(e => tierOf(e) === 'cashable'), [events]);
   const topArbSoft = useMemo(() => events.find(e => tierOf(e) === 'arb_soft'), [events]);
   const topSignal = useMemo(() => events.find(e => e.edgeVsSharp?.status === 'signal'), [events]);
+
+  // Group the ALREADY-sorted `events` by parent sport category (order within
+  // each category is inherited: cashable → arb_soft → signal → edge desc).
+  // Category order: those containing a real arb (cashable/arb_soft) first, then
+  // by event count desc. Purely a display regroup — no event/number is changed.
+  const categories = useMemo(() => {
+    const map = new Map<string, { cat: SportCat; evs: ScannedEvent[] }>();
+    for (const ev of events) {
+      const c = sportCat(ev.sport);
+      if (!map.has(c.key)) map.set(c.key, { cat: c, evs: [] });
+      map.get(c.key)!.evs.push(ev);
+    }
+    return Array.from(map.values()).sort((a, b) => {
+      const aArb = a.evs.some(e => isArbTier(tierOf(e))) ? 1 : 0;
+      const bArb = b.evs.some(e => isArbTier(tierOf(e))) ? 1 : 0;
+      if (aArb !== bArb) return bArb - aArb;         // categories with real arbs first
+      return b.evs.length - a.evs.length;            // then by event count
+    });
+  }, [events]);
+
+  const visibleCategories = sportFilter === 'all'
+    ? categories
+    : categories.filter(c => c.cat.key === sportFilter);
 
   return (
     <main className="max-w-[470px] mx-auto px-4 pb-24 pt-5 font-body">
@@ -504,16 +555,35 @@ export default function SportsPage() {
             </div>
           </div>
 
-          {/* event list */}
-          <div className="space-y-2">
-            {events.map(ev => {
-              const key = `${ev.sport}:${ev.eventName}:${ev.commenceTime}`;
-              return (
-                <EventRow key={key} ev={ev} isPaid={isPaid}
-                  open={expanded === key} onToggle={() => setExpanded(expanded === key ? null : key)} />
-              );
-            })}
+          {/* sport filter pills — horizontal scroll */}
+          <div className="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4 mb-4 [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none' }}>
+            <FilterPill label="All" count={events.length} active={sportFilter === 'all'} onClick={() => setSportFilter('all')} />
+            {categories.map(({ cat, evs }) => (
+              <FilterPill key={cat.key} emoji={cat.emoji} label={cat.label} count={evs.length}
+                active={sportFilter === cat.key} onClick={() => setSportFilter(cat.key)} />
+            ))}
           </div>
+
+          {/* grouped by sport category */}
+          {visibleCategories.map(({ cat, evs }) => (
+            <section key={cat.key} className="mb-5">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-[14px]" aria-hidden>{cat.emoji}</span>
+                <h2 className="font-display font-semibold text-ink text-[13px] tracking-tight">{cat.label}</h2>
+                <span className="font-body text-[11px] text-muted">{evs.length}</span>
+                <span className="flex-1 h-px bg-line ml-1" aria-hidden />
+              </div>
+              <div className="space-y-2">
+                {evs.map(ev => {
+                  const key = `${ev.sport}:${ev.eventName}:${ev.commenceTime}`;
+                  return (
+                    <EventRow key={key} ev={ev} isPaid={isPaid}
+                      open={expanded === key} onToggle={() => setExpanded(expanded === key ? null : key)} />
+                  );
+                })}
+              </div>
+            </section>
+          ))}
 
           {/* footer honesty */}
           <p className="font-body text-[10px] text-muted mt-5 leading-snug text-center">
