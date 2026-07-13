@@ -75,6 +75,9 @@ const NOTIONAL_USD     = 1000;            // $1000 per opportunity
 const SIM_DAYS         = 7;               // mark-to-market horizon
 const MARK_INTERVAL_MS = 6 * 60 * 60_000; // mark 4×/day; Telegram once/day
 const DAY_MS           = 24 * 60 * 60_000;
+// ── honest exit thresholds (open→manage→close) ──────────────────────────────
+const CLOSE_CARRY_STREAK_N = 2;  // consecutive below-floor SETTLED intervals before closing a funding position
+const SOURCE_GONE_STREAK_N = 2;  // consecutive "—" (source-gone) marks before force-closing at last known
 
 const log   = (...a) => console.log('[agent32]', ...a);
 const nowMs = () => Date.now();
@@ -394,20 +397,27 @@ function entryCopySleeves(entryTs) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function markPerpSpot(t, until) {
+  const sinceT = t.fundingCursorT;
   const { sumRate, points, lastT } = accrueSettled(t.entry.fundingVenue, t.entry.coin, t.fundingCursorT, until, hoursToMs(t.entry.intervalH));
   // SHORT perp collects funding when settled rate > 0.
   const add = sumRate * t.entry.notionalUsd;
   t.cumFundingUsd += add;
   t.fundingCursorT = lastT;
   const netUsd = t.cumFundingUsd - (t.entry.feesUsd || 0);
+  // Trailing net/day over the settled window just measured — SAME accrueSettled source the
+  // entry gate used, no new rate. null when no new settled interval arrived (don't judge carry).
+  const spanDays = (lastT - sinceT) / DAY_MS;
+  const trailingNetPerDay = (points && spanDays > 0) ? round(add / spanDays, 4) : null;
   return {
     asOf: iso(until), realFundingPointsAdded: points,
     cumFundingUsd: round(t.cumFundingUsd, 4), netUsd: round(netUsd, 4),
+    trailingNetPerDay,
     note: points ? null : 'no new settled funding since last mark',
   };
 }
 
 function markCrossVenue(t, until) {
+  const sinceT = t.fundingCursorT;
   const [s, l] = t.entry.legs;
   const shortAcc = accrueSettled(s.venue, t.entry.coin, t.fundingCursorT, until, hoursToMs(s.intervalH));
   const longAcc  = accrueSettled(l.venue, t.entry.coin, t.fundingCursorT, until, hoursToMs(l.intervalH));
@@ -417,9 +427,14 @@ function markCrossVenue(t, until) {
   t.fundingCursorT = Math.max(shortAcc.lastT, longAcc.lastT);
   const pts = shortAcc.points + longAcc.points;
   const netUsd = t.cumFundingUsd - (t.entry.feesUsd || 0);
+  // Trailing net/day over the settled window just measured — SAME accrueSettled source the
+  // entry gate used, no new rate. null when no new settled interval arrived (don't judge carry).
+  const spanDays = (t.fundingCursorT - sinceT) / DAY_MS;
+  const trailingNetPerDay = (pts && spanDays > 0) ? round(add / spanDays, 4) : null;
   return {
     asOf: iso(until), realFundingPointsAdded: pts,
     cumFundingUsd: round(t.cumFundingUsd, 4), netUsd: round(netUsd, 4),
+    trailingNetPerDay,
     note: pts ? null : 'no new settled funding since last mark',
   };
 }
@@ -549,6 +564,94 @@ function buildSnapshot() {
   };
 }
 
+// ── honest exit evaluation (open→manage→close) ───────────────────────────────
+// A funding position closes once its trailing SETTLED net/day has sat at/below the fee-aware
+// floor for CLOSE_CARRY_STREAK_N consecutive settled intervals — a single noisy mark can't
+// trigger it, and the streak resets the moment carry recovers above the floor. A mark with no
+// new settled interval (trailingNetPerDay == null) neither advances nor resets the streak.
+function stepCarryStreak(prevStreak, trailingNetPerDay, dailyCarryCost) {
+  if (trailingNetPerDay == null) return { streak: prevStreak || 0, close: false };
+  const below = trailingNetPerDay <= dailyCarryCost;
+  const streak = below ? (prevStreak || 0) + 1 : 0;
+  return { streak, close: streak >= CLOSE_CARRY_STREAK_N };
+}
+
+// The last real (non-null) mark value a position printed — used ONLY to close a source-gone
+// position at its LAST KNOWN price (never invented; always labelled source_gone).
+function lastKnownMarkValue(t) {
+  const ms = Array.isArray(t.marks) ? t.marks : [];
+  for (let i = ms.length - 1; i >= 0; i--) {
+    const m = ms[i];
+    const v = m && (m.netUsd != null ? m.netUsd : (m.unrealizedUsd != null ? m.unrealizedUsd : null));
+    if (v != null) return v;
+  }
+  return null;
+}
+
+// Freeze a position as closed: realized P&L is ALWAYS the real accrued value (funding:
+// cumFunding − fees; basis: converged basis; prediction: last real resolved mark) — never
+// projected, never rounded up. Once closed, markAll's `active` filter never marks it again
+// (no re-mark, no re-open, no roll — the book stays day-0 fixed).
+function closeTrade(t, until, reason, realizedUsd, extra) {
+  t.status = 'closed';
+  t.realizedUsd = realizedUsd == null ? null : round(realizedUsd, 4);
+  t.exit = Object.assign({ asOf: iso(until), reason }, extra || {});
+}
+
+// Evaluate exit rules for one open position at this mark. Returns true if it CLOSED this cycle.
+function evaluateExit(t, mark, until) {
+  // FUNDING — close when trailing settled carry ≤ fee-aware floor for N consecutive intervals.
+  if (t.category === 'perp-spot-funding' || t.category === 'cross-venue-funding') {
+    if (mark && !mark.error) {
+      const dailyCarryCost = (Number(t.entry.feesUsd) || 0) / SIM_DAYS;   // amortise real round-trip fee over horizon
+      const step = stepCarryStreak(t.negCarryStreak || 0, mark.trailingNetPerDay, dailyCarryCost);
+      t.negCarryStreak = step.streak;
+      if (step.close) {
+        closeTrade(t, until, 'carry<=fees', (t.cumFundingUsd || 0) - (t.entry.feesUsd || 0),
+          { markPx: mark.netUsd ?? null, trailingNetPerDay: mark.trailingNetPerDay });
+        return true;
+      }
+    }
+  // BASIS — close at unlock (contract expiry): the future settles to spot, so realise the
+  // FULL convergence value entryBasis × notional − fees (honest at expiry). A pair that leaves
+  // the book BEFORE expiry can't be asserted converged → handled by the source-gone stop below.
+  } else if (t.category === 'basis') {
+    const exp = Date.parse(t.entry && t.entry.expiry);
+    if (Number.isFinite(exp) && until >= exp) {
+      const realized = (Number(t.entry.entryBasisPct) || 0) * (Number(t.entry.notionalUsd) || 0) - (Number(t.entry.feesUsd) || 0);
+      closeTrade(t, until, 'unlock', realized, { markPx: 0 });   // basis converged to 0 at expiry
+      return true;
+    }
+  // PREDICTION-ARB — close at real resolution; realise the last real mark, never a projection.
+  } else if (t.category === 'prediction-arb') {
+    const res = Date.parse(t.entry && t.entry.unlockDate);
+    if (Number.isFinite(res) && until >= res) {
+      const lastU = lastKnownMarkValue(t);
+      closeTrade(t, until, 'resolved', lastU,
+        { markPx: lastU, note: lastU == null ? 'resolved with no live mark — realized "—"' : null });
+      return true;
+    }
+  }
+
+  // OPTIONAL STOP — a real mark that resolved to "—" (source gone) for N consecutive cycles →
+  // force close at LAST KNOWN price (never invented, always labelled). Covers basis/prediction
+  // pairs that vanish from the book pre-unlock; funding marks are never null so it never fires there.
+  const markVal = mark && !mark.error
+    ? (mark.netUsd != null ? mark.netUsd : (mark.unrealizedUsd != null ? mark.unrealizedUsd : null))
+    : undefined;
+  if (markVal === null) {
+    t.sourceGoneStreak = (t.sourceGoneStreak || 0) + 1;
+    if (t.sourceGoneStreak >= SOURCE_GONE_STREAK_N) {
+      const lastKnown = lastKnownMarkValue(t);
+      closeTrade(t, until, 'source_gone', lastKnown, { markPx: lastKnown, note: 'source gone — closed at last known mark' });
+      return true;
+    }
+  } else if (markVal !== undefined) {
+    t.sourceGoneStreak = 0;   // real value present → reset the source-gone streak
+  }
+  return false;
+}
+
 function markAll(store) {
   const until = nowMs();
   const active = t => t.status === 'open';
@@ -561,6 +664,9 @@ function markAll(store) {
       else if (t.category === 'prediction-arb') mark = markPrediction(t, until);
     } catch (e) { mark = { asOf: iso(until), error: e.message, note: 'mark error — value withheld' }; }
     if (mark) { t.marks.push(mark); t.lastMark = mark; }
+    // Honest exit: manage → close. A closed position is frozen (realized) and skipped by the
+    // `active` filter next cycle — never re-marked, never matured on top of a close.
+    if (evaluateExit(t, mark, until)) continue;
     if (until >= new Date(store.simEndsAt).getTime()) t.status = 'matured';
   }
   for (const s of store.copySleeves.filter(active)) {
@@ -599,8 +705,10 @@ function dailySummary(store) {
   }
   lines.push(`• Copy mirror: ${book.copy.sleeveCount} sleeve(s), ${book.copy.openLegs} open legs — paper P&L ${book.copy.pnlUsd != null ? fmtUsd(book.copy.pnlUsd) : '—'}`);
   lines.push(`• Liquidity rewards: — (excluded, forward reward not deterministic)`);
-  const settled = store.trades.filter(t => t.status === 'settled' || t.status === 'matured');
-  if (settled.length) lines.push(`• Matured/settled: ${settled.length}`);
+  // Closed/matured → REALIZED total, kept SEPARATE from the open unrealized headline above
+  // (a closed position leaves the open P&L and books its frozen realized value here).
+  const closedN = (h.closedCount || 0) + (h.maturedCount || 0);
+  if (closedN) lines.push(`• Closed/matured: ${closedN} — realized ${h.closedRealizedUsd != null ? fmtUsd(h.closedRealizedUsd) : '—'} (separate from open unrealized)`);
   // Phase 3 — one deep-link to the full unified breakdown page. Link line ONLY; no
   // number, category math, THIN-separation, routing, or mute gate is touched.
   lines.push(`📊 Full breakdown: ${PAPER_BOOK_URL}`);
@@ -767,4 +875,4 @@ if (require.main === module) {
   main().catch((e) => { log('fatal:', e && e.message); process.exit(1); });
 }
 
-module.exports = { buildSnapshot, markAll, accrueSettled, entryPerpSpot, entryCrossVenue, entryBasis, entryPrediction, dailySummary, migrateFundingAccrualV2, migrateFundingUnitV3, migrateCapacitySourceV4 };
+module.exports = { buildSnapshot, markAll, accrueSettled, entryPerpSpot, entryCrossVenue, entryBasis, entryPrediction, dailySummary, migrateFundingAccrualV2, migrateFundingUnitV3, migrateCapacitySourceV4, stepCarryStreak, evaluateExit, closeTrade, lastKnownMarkValue, CLOSE_CARRY_STREAK_N, SOURCE_GONE_STREAK_N };
