@@ -28,6 +28,9 @@ import type {
 // ── format helpers (null → "—", never fabricated) ───────────────────────────
 const fmtEdge = (n: number | null | undefined): string =>
   n == null || !isFinite(n) ? '—' : `${n >= 0 ? '+' : '−'}${Math.abs(n).toFixed(2)}%`;
+// arbProfitPct is a FRACTION (0.02 = 2%), unlike edgePct which is already a percent.
+const fmtGuar = (frac: number | null | undefined): string =>
+  frac == null || !isFinite(frac) ? '—' : `+${(frac * 100).toFixed(2)}%`;
 const fmtOdd = (n: number | null | undefined): string =>
   n == null || !isFinite(n) ? '—' : n.toFixed(2);
 const fmtProb = (n: number | null | undefined): string =>
@@ -115,6 +118,8 @@ function EventDetail({ ev, isPaid }: { ev: ScannedEvent; isPaid: boolean }) {
   const sr: SharpReference | null | undefined = ev.sharpReference;
   const e = ev.edgeVsSharp;
   const view = edgeView(e);
+  const isCashable = ev.kind === 'cashable';
+  const arbLegs = ev.arbLegs ?? [];
   const outcomes = ev.bestLegs.map(l => l.outcome);
   const dash = <span className="text-muted">—</span>;
 
@@ -122,10 +127,51 @@ function EventDetail({ ev, isPaid }: { ev: ScannedEvent; isPaid: boolean }) {
     <div className="px-4 pb-4 pt-1 border-t border-line/70 bg-bg-soft/30">
       {/* status line */}
       <div className="flex items-center gap-2 my-3 flex-wrap">
-        <EdgeChip variant="signal" />
-        <Tag text={view.label} tone={view.tone} />
+        <EdgeChip variant={isCashable ? 'cashable' : 'signal'} />
+        {isCashable
+          ? <Tag text="locked-in arb" tone="mint" />
+          : <Tag text={view.label} tone={view.tone} />}
         {ev.settlement?.crossSettlementRisk && <Tag text="settlement risk" tone="coral" />}
       </div>
+
+      {/* CASHABLE — true arbitrage (arbSum < 1). Covering legs + guaranteed profit. */}
+      {isCashable && (
+        <div className="rounded-lg border border-mint-deep/30 bg-mint-tint/30 px-3 py-3 mb-3">
+          <div className="flex items-baseline justify-between mb-2">
+            <p className="font-body text-[10px] uppercase tracking-widest text-mint-deep">Locked-in arbitrage</p>
+            <p className="font-display font-bold text-mint-deep text-[18px] tabular-nums">
+              <Redacted value={ev.arbProfitPct} isPaid={isPaid}>{v => fmtGuar(v as number)}</Redacted>
+              <span className="font-body text-[10px] font-medium text-muted ml-1">guaranteed</span>
+            </p>
+          </div>
+          {/* covering legs table */}
+          <div className="rounded-md overflow-hidden border border-mint-deep/20 bg-surface/70">
+            <div className="grid grid-cols-[1.2fr_1.3fr_0.9fr_0.9fr] gap-1 px-2.5 py-1.5 bg-mint-tint/50 font-body text-[9px] uppercase tracking-wide text-mint-deep">
+              <span>Outcome</span><span>Book</span><span className="text-right">Odds</span><span className="text-right">Stake</span>
+            </div>
+            {arbLegs.map(l => (
+              <div key={l.outcome} className="grid grid-cols-[1.2fr_1.3fr_0.9fr_0.9fr] gap-1 px-2.5 py-2 items-center border-t border-line/50">
+                <span className="font-body text-[11px] text-ink truncate">{l.outcome}</span>
+                <span className="font-body text-[11px] text-ink-2 flex items-center gap-1.5 min-w-0">
+                  <Lettermark name={l.bookmaker} /><span className="truncate">{l.bookmaker}</span>
+                </span>
+                <span className="text-right font-body text-[11px] tabular-nums text-ink font-semibold">
+                  <Redacted value={l.odd} isPaid={isPaid}>{v => fmtOdd(v as number)}</Redacted>
+                </span>
+                <span className="text-right font-body text-[11px] tabular-nums text-ink-2">
+                  <Redacted value={l.stakePct} isPaid={isPaid}>{v => `${(v as number).toFixed(1)}%`}</Redacted>
+                </span>
+              </div>
+            ))}
+          </div>
+          <p className="font-body text-[10px] text-muted mt-2 leading-snug">
+            Σ implied prob <Redacted value={ev.impliedSum} isPaid={isPaid}>{v => <b className="text-mint-deep">{(v as number).toFixed(4)}</b>}</Redacted> &lt; 1 at snapshot — a guaranteed profit whatever the result, stakes split for equal payout.
+          </p>
+          <p className="font-body text-[10px] text-coral-ink mt-1.5 leading-snug">
+            <b>Arb indicative — verify before placing.</b> Odds move in seconds, books limit/void winning arbs, and a leg can fail. Not a guarantee of execution.
+          </p>
+        </div>
+      )}
 
       {sr?.present ? (
         <>
@@ -229,18 +275,26 @@ function EventDetail({ ev, isPaid }: { ev: ScannedEvent; isPaid: boolean }) {
 // Event row
 // ══════════════════════════════════════════════════════════════════════════════
 function EventRow({ ev, isPaid, open, onToggle }: { ev: ScannedEvent; isPaid: boolean; open: boolean; onToggle: () => void }) {
+  const isCashable = ev.kind === 'cashable';
   const view = edgeView(ev.edgeVsSharp);
-  const muted = view.status !== 'signal';
+  const muted = !isCashable && view.status !== 'signal';
   return (
-    <div className={`rounded-card bg-surface shadow-card overflow-hidden ${muted ? 'opacity-[0.92]' : ''}`}>
+    <div className={`rounded-card bg-surface shadow-card overflow-hidden ${isCashable ? 'ring-1 ring-mint-deep/30' : ''} ${muted ? 'opacity-[0.92]' : ''}`}>
       <button onClick={onToggle} className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-bg-soft/40 transition-colors">
         <span className="text-[15px] shrink-0" aria-hidden>{leagueEmoji(ev.sport)}</span>
         <span className="flex-1 min-w-0">
-          <span className="font-display font-semibold text-ink text-[14px] truncate block">{ev.eventName}</span>
+          <span className="flex items-center gap-2 mb-1">
+            <span className="font-display font-semibold text-ink text-[14px] truncate">{ev.eventName}</span>
+            <EdgeChip variant={isCashable ? 'cashable' : 'signal'} />
+          </span>
           <span className="font-body text-[11px] text-muted">{ev.sportLabel} · {fmtWhen(ev.commenceTime)}</span>
         </span>
         <span className="text-right shrink-0">
-          {view.hasNumber ? (
+          {isCashable ? (
+            <span className="block font-body text-[15px] font-semibold tabular-nums text-mint-deep">
+              <Redacted value={ev.arbProfitPct} isPaid={isPaid}>{v => fmtGuar(v as number)}</Redacted>
+            </span>
+          ) : view.hasNumber ? (
             <span className="block font-body text-[15px] font-semibold tabular-nums text-violet">
               <Redacted value={ev.edgeVsSharp?.edgePct} isPaid={isPaid}>{v => fmtEdge(v as number)}</Redacted>
             </span>
@@ -248,7 +302,7 @@ function EventRow({ ev, isPaid, open, onToggle }: { ev: ScannedEvent; isPaid: bo
             <span className="block font-body text-[11px] text-muted">{view.label}</span>
           )}
           <span className="block font-body text-[9.5px] text-muted uppercase tracking-wide">
-            {view.status === 'signal' ? 'vs sharp fair' : ev.sharpReference?.present ? 'sharp quoted' : 'no sharp ref'}
+            {isCashable ? 'guaranteed arb' : view.status === 'signal' ? 'vs sharp fair' : ev.sharpReference?.present ? 'sharp quoted' : 'no sharp ref'}
           </span>
         </span>
         <ChevronRight className={`w-4 h-4 text-muted shrink-0 transition-transform ${open ? 'rotate-90' : ''}`} />
@@ -282,24 +336,29 @@ export default function SportsPage() {
   const events = useMemo(() => {
     const evs = [...(data?.scannedEvents ?? [])];
     const rank = (ev: ScannedEvent) => {
+      if (ev.kind === 'cashable') return -1;        // real arbs pinned on top
       const st = ev.edgeVsSharp?.status;
       if (st === 'signal') return 0;
       if (st === 'suppressed_outlier') return 3;
       if (ev.sharpReference?.present) return 1;
       return 2; // no_sharp_reference
     };
+    // within a tier: cashable by profit desc, signal by edge desc, else soonest.
+    const sortVal = (ev: ScannedEvent) =>
+      ev.kind === 'cashable' ? (ev.arbProfitPct ?? 0) * 100 : (ev.edgeVsSharp?.edgePct ?? null);
     return evs.sort((a, b) => {
       const ra = rank(a), rb = rank(b);
       if (ra !== rb) return ra - rb;
-      const ea = a.edgeVsSharp?.edgePct, eb = b.edgeVsSharp?.edgePct;
-      if (ea != null && eb != null && ea !== eb) return eb - ea;
+      const va = sortVal(a), vb = sortVal(b);
+      if (va != null && vb != null && va !== vb) return vb - va;
       return new Date(a.commenceTime).getTime() - new Date(b.commenceTime).getTime();
     });
   }, [data]);
 
   const counts = useMemo(() => {
-    const c = { signal: 0, sharp: 0, noSharp: 0, suppressed: 0 };
+    const c = { cashable: 0, signal: 0, sharp: 0, noSharp: 0, suppressed: 0 };
     for (const ev of data?.scannedEvents ?? []) {
+      if (ev.kind === 'cashable') c.cashable++;
       const st = ev.edgeVsSharp?.status;
       if (st === 'signal') c.signal++;
       if (st === 'suppressed_outlier') c.suppressed++;
@@ -308,7 +367,8 @@ export default function SportsPage() {
     return c;
   }, [data]);
 
-  // Top surfaced edge (paid sees the number; free sees a locked hero).
+  // Top cashable arb (if any), else top edge. Paid sees the number; free a lock.
+  const topCashable = useMemo(() => events.find(e => e.kind === 'cashable'), [events]);
   const topSignal = useMemo(() => events.find(e => e.edgeVsSharp?.status === 'signal'), [events]);
 
   return (
@@ -319,7 +379,7 @@ export default function SportsPage() {
         <EdgeChip variant="signal" />
       </div>
       <p className="font-body text-[12px] text-muted mb-5">
-        Signal intelligence · <span className="text-violet font-medium">indicative, not click-guaranteed</span>
+        <span className="text-mint-deep font-medium">Cashable</span> = real locked-in arb · <span className="text-violet font-medium">Signal</span> = value vs Pinnacle
         {data && <> · {data.stale ? 'stale' : `updated ${fmtAge(data.ageMinutes)}`}</>}
       </p>
 
@@ -338,31 +398,43 @@ export default function SportsPage() {
 
       {data && !data.missing && (data.scannedEvents?.length ?? 0) > 0 && (
         <>
-          {/* hero — top sharp edge or calm state */}
+          {/* hero — cashable arb (if any), else top sharp edge, else calm state */}
           <div className="rounded-card bg-surface shadow-card px-5 py-5 mb-3">
-            <p className="font-body text-[11px] uppercase tracking-wide text-muted mb-2">Top edge vs Pinnacle sharp fair</p>
-            {topSignal ? (
+            {topCashable ? (
               <>
-                <div className="flex items-baseline gap-2.5">
-                  <span className="font-display font-bold leading-none tracking-tight tabular-nums text-violet" style={{ fontSize: 40 }}>
-                    <Redacted value={topSignal.edgeVsSharp?.edgePct} isPaid={isPaid}>{v => fmtEdge(v as number)}</Redacted>
-                  </span>
+                <div className="flex items-center gap-2 mb-2">
+                  <p className="font-body text-[11px] uppercase tracking-wide text-muted">Best locked-in arbitrage</p>
+                  <EdgeChip variant="cashable" />
                 </div>
+                <span className="font-display font-bold leading-none tracking-tight tabular-nums text-mint-deep" style={{ fontSize: 40 }}>
+                  <Redacted value={topCashable.arbProfitPct} isPaid={isPaid}>{v => fmtGuar(v as number)}</Redacted>
+                </span>
+                <p className="font-body text-[12px] text-ink-2 mt-2.5 leading-snug">
+                  {topCashable.eventName} · guaranteed profit across {topCashable.arbLegs?.length ?? '—'} legs · <span className="text-coral-ink">indicative, verify before placing</span>
+                </p>
+              </>
+            ) : topSignal ? (
+              <>
+                <p className="font-body text-[11px] uppercase tracking-wide text-muted mb-2">Top edge vs Pinnacle sharp fair</p>
+                <span className="font-display font-bold leading-none tracking-tight tabular-nums text-violet" style={{ fontSize: 40 }}>
+                  <Redacted value={topSignal.edgeVsSharp?.edgePct} isPaid={isPaid}>{v => fmtEdge(v as number)}</Redacted>
+                </span>
                 <p className="font-body text-[12px] text-ink-2 mt-2.5 leading-snug">
                   {topSignal.eventName} · {topSignal.edgeVsSharp?.outcome} @ {topSignal.edgeVsSharp?.softBook} · <span className="text-muted">Signal, not cashable</span>
                 </p>
               </>
             ) : (
               <>
-                <span className="font-display font-bold leading-none tracking-tight text-ink-2" style={{ fontSize: 30 }}>No sharp edge right now</span>
-                <p className="font-body text-[12px] text-ink-2 mt-2.5 leading-snug">A calm, valid state — soft books are at or inside Pinnacle's fair line. Nothing to signal.</p>
+                <p className="font-body text-[11px] uppercase tracking-wide text-muted mb-2">Sports arbitrage &amp; sharp edge</p>
+                <span className="font-display font-bold leading-none tracking-tight text-ink-2" style={{ fontSize: 26 }}>No cashable arb right now</span>
+                <p className="font-body text-[12px] text-ink-2 mt-2.5 leading-snug">A calm, valid state — 0 cashable arbs is the correct, expected result almost always. Soft books sit at or inside Pinnacle's fair line.</p>
               </>
             )}
             {/* summary strip */}
             <div className="grid grid-cols-4 gap-2 mt-4">
               <Stat label="Events">{data.summary?.totalEvents ?? data.scannedEvents.length}</Stat>
+              <Stat label="Cashable">{counts.cashable}</Stat>
               <Stat label="Signal">{counts.signal}</Stat>
-              <Stat label="Sharp ref">{counts.sharp}</Stat>
               <Stat label="No sharp">{counts.noSharp}</Stat>
             </div>
           </div>
@@ -380,8 +452,8 @@ export default function SportsPage() {
 
           {/* footer honesty */}
           <p className="font-body text-[10px] text-muted mt-5 leading-snug text-center">
-            Pinnacle = sharp anchor (de-vigged fair line) · every other book = Signal, never cashable · suppressed outliers shown, never hidden · unknown = "—", never fabricated · zero edges is a calm state.
-            {!isPaid && <> Edge &amp; odds are null on the free tier — <a href="/dashboard/upgrade" className="text-violet">upgrade →</a></>}
+            Cashable = a real locked-in arb (Σ 1/odds &lt; 1 across ≥2 books, guarded) · Signal = value vs Pinnacle's de-vigged fair line (single-leg, not guaranteed) · suppressed outliers shown, never hidden · unknown = "—", never fabricated · 0 cashable is calm &amp; expected.
+            {!isPaid && <> Edge, odds &amp; arb stakes are null on the free tier — <a href="/dashboard/upgrade" className="text-violet">upgrade →</a></>}
           </p>
           {!isPaid && (
             <p className="font-body text-[10px] text-muted mt-2 leading-snug text-center inline-flex items-center gap-1 justify-center w-full">
