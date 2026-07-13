@@ -47,6 +47,10 @@ export interface SnapshotOpportunity {
   settlement?:        Settlement;
   sharpReference?:    SharpReference | null;
   edgeVsSharp?:       EdgeVsSharp;
+  kind?:              EventKind;
+  arbProfitPct?:      number | null;
+  arbLegs?:           ArbLeg[] | null;
+  arbReason?:         string | null;
 }
 
 export interface SnapshotFlaggedArb extends SnapshotOpportunity {
@@ -86,6 +90,18 @@ export interface SharpReference {
   marginPct:  number | null;
   noVig:      SharpNoVigLeg[] | null;  // fairProb/fairOdds null on free tier
 }
+// True arbitrage (arbSum < 1) per event, computed by agent12. kind is public;
+// arbProfitPct + arbLegs[].odd/stakePct are GATED for free tier (fail-closed).
+export type EventKind = 'cashable' | 'signal';
+export interface ArbLeg {
+  outcome:     string;
+  bookmaker:   string;
+  bookmakerId: string;
+  region:      string;
+  odd:         number | null;   // gated
+  stakePct:    number | null;   // gated
+}
+
 export type EdgeVsSharpStatus =
   | 'signal' | 'none' | 'no_sharp_reference' | 'no_comparable_outcome' | 'suppressed_outlier';
 export interface EdgeVsSharp {
@@ -119,6 +135,10 @@ export interface ScannedEvent {
   execReasons?:    string[];
   sharpReference?: SharpReference | null;
   edgeVsSharp?:    EdgeVsSharp;
+  kind?:           EventKind;          // 'cashable' (real arbSum<1 arb) | 'signal'
+  arbProfitPct?:   number | null;      // guaranteed profit fraction (1−arbSum) — gated
+  arbLegs?:        ArbLeg[] | null;    // covering legs — cashable only; odd/stakePct gated
+  arbReason?:      string | null;      // why a would-be arb is not cashable (enum, public)
 }
 
 export interface SportScanEntry {

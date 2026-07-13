@@ -367,6 +367,21 @@ export const REDACTION_MAP: Record<RouteKey, string[]> = {
     'scannedEvents[].edgeVsSharp.softOdd',
     'scannedEvents[].edgeVsSharp.fairOdds',
     'scannedEvents[].edgeVsSharp.reason',
+    // True-arb (agent12): gate the guaranteed-profit number + the covering legs'
+    // odds/stakes. kind (cashable/signal), arbReason (enum), and arbLegs book
+    // names/outcomes stay public — same teaser convention as edgeVsSharp.
+    'opportunities[].arbProfitPct',
+    'opportunities[].arbLegs[].odd',
+    'opportunities[].arbLegs[].stakePct',
+    'flaggedArbs[].arbProfitPct',
+    'flaggedArbs[].arbLegs[].odd',
+    'flaggedArbs[].arbLegs[].stakePct',
+    'quarantine[].arbProfitPct',
+    'quarantine[].arbLegs[].odd',
+    'quarantine[].arbLegs[].stakePct',
+    'scannedEvents[].arbProfitPct',
+    'scannedEvents[].arbLegs[].odd',
+    'scannedEvents[].arbLegs[].stakePct',
   ],
 
   leaderboard: [

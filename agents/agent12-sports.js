@@ -51,6 +51,14 @@ const SHARP_EDGE_MAX_PLAUSIBLE = 0.10; // best-soft leg beating Pinnacle no-vig 
 const SHARP_NEAR_CERTAIN_HI    = 0.97; // no-vig fair prob above this → near-certain favorite; edge% is numerically unstable → exclude outcome
 const SHARP_NEAR_CERTAIN_LO    = 0.03; // no-vig fair prob below this → longshot; same instability → exclude outcome
 
+// ── True-arbitrage guards ─────────────────────────────────────────────────────
+// A CASHABLE arb = best odds per outcome across DIFFERENT books such that
+// Σ(1/bestOdds) < 1 − buffer → guaranteed profit regardless of result. Approved
+// by Diego for this task. Honest by construction: buffer absorbs fee/slippage/
+// odds-move, implausible profit is suppressed, single-book "arbs" rejected.
+const ARB_SAFETY_BUFFER        = 0.01; // require arbSum < 0.99, not just <1 — fee/slippage/odds-move headroom
+const ARB_MAX_PLAUSIBLE_PROFIT = 0.05; // guaranteed profit (1−arbSum) > 5% on a liquid market → stale/erroneous line → downgrade to signal
+
 // Each /odds call costs 1 credit PER region requested. With 3 regions, cost = 3 per sport.
 const CREDITS_PER_SPORT = REGIONS.length;
 
@@ -428,6 +436,39 @@ function buildEdgeVsSharp(outcomeMap, names, sharpRef, outlierIds) {
   };
 }
 
+// ── True arbitrage (arbSum < 1) — cashable vs signal ─────────────────────────
+// A REAL locked-in arb: best odds per outcome (outlier-cleaned) across DIFFERENT
+// books with Σ(1/bestOdds) < 1 − ARB_SAFETY_BUFFER → guaranteed profit whatever
+// the result. Everything else stays 'signal' (the value/+EV-vs-Pinnacle signal).
+// Honest gates: implausible profit → downgrade; near-certain leg → downgrade;
+// single-book combination is impossible (a book's own vig makes Σ1/odds ≥ 1) →
+// reject; incomplete coverage → signal. arbLegs only populated when cashable.
+// arbSum is the raw impliedClean (already the outlier-cleaned Σ1/bestOdds).
+function buildArb(names, legsClean, arbSum) {
+  const NONE = (reason) => ({ kind: 'signal', arbProfitPct: null, arbLegs: null, arbReason: reason });
+
+  if (!legsClean || legsClean.some(l => !l) || !(arbSum > 0)) return NONE('incomplete_coverage');
+  // Not an arb (the overwhelmingly common case, incl. razor-thin within-buffer).
+  if (arbSum >= 1 - ARB_SAFETY_BUFFER) return NONE(null);
+
+  const profit = 1 - arbSum;                       // guaranteed profit fraction (task convention)
+  if (profit > ARB_MAX_PLAUSIBLE_PROFIT) return NONE('suppressed_implausible_arb');
+  // Same-book "arb" is impossible — a single book's overround makes Σ1/odds ≥ 1.
+  if (new Set(legsClean.map(l => l.bookmakerId)).size < 2) return NONE('single_book_not_arb');
+  // A near-certain leg (implied prob > 0.97) makes the "arb" fragile (void/push) — exclude.
+  if (legsClean.some(l => (1 / l.price) > SHARP_NEAR_CERTAIN_HI)) return NONE('near_certain_leg');
+
+  const arbLegs = names.map((n, i) => ({
+    outcome:     n,
+    bookmaker:   legsClean[i].bookmaker,
+    bookmakerId: legsClean[i].bookmakerId,
+    region:      BOOKMAKER_REGION[legsClean[i].bookmakerId] ?? 'unknown',
+    odd:         legsClean[i].price,
+    stakePct:    round2(((1 / legsClean[i].price) / arbSum) * 100),  // equal-payout stake split
+  }));
+  return { kind: 'cashable', arbProfitPct: round4(profit), arbLegs, arbReason: null };
+}
+
 function computeArb(ev, sportKey) {
   const bookmakers = ev.bookmakers ?? [];
 
@@ -482,6 +523,11 @@ function computeArb(ev, sportKey) {
   const hasAllClean = !legsClean.some(l => !l);
   const impliedClean = hasAllClean ? legsClean.reduce((s, l) => s + 1 / l.price, 0) : null;
 
+  // True arbitrage: cashable iff Σ(1/bestOdds) < 1 − buffer across ≥2 books (guarded).
+  const arb = hasAllClean
+    ? buildArb(names, legsClean, impliedClean)
+    : { kind: 'signal', arbProfitPct: null, arbLegs: null, arbReason: 'incomplete_coverage' };
+
   // Build scan entry for browsable list (every event passing the books gate)
   const eventType  = names.length === 2 ? '2way' : '3way';
   const settlement = deriveSettlement(sportKey, eventType, ev.commence_time);
@@ -504,6 +550,10 @@ function computeArb(ev, sportKey) {
     outliersRemoved,
     sharpReference,   // Pinnacle raw + no-vig fair line (null if Pinnacle not quoted)
     edgeVsSharp,      // best soft leg vs sharp fair (Signal-only; guarded/suppressed)
+    kind:         arb.kind,          // 'cashable' (real arbSum<1 arb) | 'signal' (value vs sharp)
+    arbProfitPct: arb.arbProfitPct,  // guaranteed profit fraction (1−arbSum) — cashable only, else null
+    arbLegs:      arb.arbLegs,        // covering legs (book+odds+stake per outcome) — cashable only
+    arbReason:    arb.arbReason,      // why a would-be arb is not cashable (enum, no numbers)
     settlement,
     cashable:    false,
     execReasons: [],
@@ -548,6 +598,10 @@ function computeArb(ev, sportKey) {
     numBookmakers:   bookmakers.length,
     sharpReference,   // Pinnacle raw + no-vig fair line (null if Pinnacle not quoted)
     edgeVsSharp,      // best soft leg vs sharp fair (Signal-only; guarded/suppressed)
+    kind:            arb.kind,          // 'cashable' (real arbSum<1 arb) | 'signal'
+    arbProfitPct:    arb.arbProfitPct,  // guaranteed profit fraction (1−arbSum) — cashable only
+    arbLegs:         arb.arbLegs,        // covering legs — cashable only
+    arbReason:       arb.arbReason,      // why not cashable (enum, no numbers)
     lastUpdated:     new Date().toISOString(),
     settlement,
   };
