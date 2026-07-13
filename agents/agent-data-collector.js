@@ -64,6 +64,10 @@ async function fetchKalshi() {
           all.push({
             ticker:          m.ticker,
             title:           ev.title || '',
+            // REAL Kalshi category lives on the EVENT, not the market object
+            // (the /markets endpoint returns category:null). Honest passthrough —
+            // unmatched/absent stays 'other', never force-assigned.
+            category:        ev.category || 'other',
             yes_bid_dollars: m.yes_bid_dollars,
             yes_ask_dollars: m.yes_ask_dollars,
           });
