@@ -81,10 +81,10 @@ const strategies: Strategy[] = [
     id: 'sports',
     Icon: Trophy,
     name: 'Sports Arb',
-    platforms: ['EU Books'],
+    platforms: ['EU·UK·US Books'],
     summary: 'Cross-bookmaker surebet scanner — outlier-filtered, credit-safe snapshot',
     explanation:
-      'When bookmakers disagree on odds for the same match, backing every outcome across different books locks in a profit regardless of result. Phase A: periodic snapshot scanner (EU h2h, on-demand run). Opportunities survive a 4-book minimum gate, a median outlier filter that removes suspiciously generous prices, and a 6% ROI plausibility cap. Preview only — no orders placed.',
+      'When bookmakers disagree on odds for the same match, backing every outcome across different books locks in a profit regardless of result. Phase A: periodic snapshot scanner (EU·UK·US h2h, on-demand run). Opportunities survive a 4-book minimum gate, a median outlier filter that removes suspiciously generous prices, and a 6% ROI plausibility cap. Preview only — no orders placed.',
     link: '/dashboard/sports',
   },
 ];
@@ -190,7 +190,7 @@ export default function DashboardPage() {
                             key={p}
                             className="inline-flex items-center gap-1 font-body text-[11px] px-2 py-0.5 rounded-pill border border-line bg-bg-soft text-muted"
                           >
-                            {p !== 'EU Books' && <PlatformLogo platform={p} size={11} />}
+                            {p !== 'EU·UK·US Books' && <PlatformLogo platform={p} size={11} />}
                             {p}
                           </span>
                         ))}
@@ -232,7 +232,7 @@ export default function DashboardPage() {
                               : 'border-line bg-bg-soft text-muted'
                           }`}
                         >
-                          {p !== 'EU Books' && <PlatformLogo platform={p} size={11} />}
+                          {p !== 'EU·UK·US Books' && <PlatformLogo platform={p} size={11} />}
                           {p}
                         </span>
                       ))}
@@ -261,7 +261,7 @@ export default function DashboardPage() {
                     key={p}
                     className="inline-flex items-center gap-1 font-body text-[11px] px-2 py-0.5 border border-line bg-bg-soft rounded-pill text-muted"
                   >
-                    {p !== 'EU Books' && <PlatformLogo platform={p} size={11} />}
+                    {p !== 'EU·UK·US Books' && <PlatformLogo platform={p} size={11} />}
                     {p}
                   </span>
                 ))}
