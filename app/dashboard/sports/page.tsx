@@ -164,6 +164,51 @@ function edgeView(e: EdgeVsSharp | undefined): EdgeView {
 const findLeg = <T extends { outcome: string }>(arr: T[] | null | undefined, outcome: string): T | undefined =>
   (arr ?? []).find(l => l.outcome === outcome);
 
+// ── Suggested placement — one honest "Bet {outcome} @ {odds} on {book}" line
+// per leg, reusing the already-visible outcome/book plus the (gated) odds. Arb
+// tiers list every covering leg (with the paid-only stake split); signal lists
+// the single value leg. No actionable leg (none / no-sharp / suppressed / no
+// comparable) → nothing rendered — never an invented bet. Purely additive: the
+// bottom "Signal only — indicative" caveat still covers the whole block.
+function PlacementHint({ ev, isPaid }: { ev: ScannedEvent; isPaid: boolean }) {
+  const tier = tierOf(ev);
+  const e = ev.edgeVsSharp;
+  const arbLegs = ev.arbLegs ?? [];
+  type HintLine = { outcome: string; book: string; odd: number | null; stakePct: number | null };
+  let lines: HintLine[] = [];
+  if (isArbTier(tier) && arbLegs.length) {
+    // cashable / arb_soft → the legs to cover (odds + stake both gated)
+    lines = arbLegs.map(l => ({ outcome: l.outcome, book: l.bookmaker, odd: l.odd, stakePct: l.stakePct }));
+  } else if (e?.status === 'signal' && e.outcome && e.softBook) {
+    // signal → the single value leg vs Pinnacle fair (softOdd gated)
+    lines = [{ outcome: e.outcome, book: e.softBook, odd: e.softOdd ?? null, stakePct: null }];
+  }
+  if (!lines.length) return null; // no actionable leg → no fabricated bet
+  const num = tierNumClass(tier);
+  return (
+    <div className="rounded-lg bg-bg-soft/60 px-3 py-2.5 mt-3">
+      <p className="font-body text-[10px] uppercase tracking-wide text-muted mb-1.5">Suggested placement</p>
+      <div className="space-y-1">
+        {lines.map((l, i) => (
+          <p key={`${l.outcome}-${i}`} className="font-body text-[11.5px] text-ink leading-snug">
+            Bet <b>{l.outcome || '—'}</b> @{' '}
+            <span className={`tabular-nums font-semibold ${num}`}>
+              <Redacted value={l.odd} isPaid={isPaid}>{v => fmtOdd(v as number)}</Redacted>
+            </span>{' '}
+            on <b>{l.book || '—'}</b>
+            {/* stake split is a paid-only field (null on free tier) — never fabricated */}
+            {l.stakePct != null && (
+              <span className="text-muted"> · stake{' '}
+                <Redacted value={l.stakePct} isPaid={isPaid}>{v => `${(v as number).toFixed(1)}%`}</Redacted>
+              </span>
+            )}
+          </p>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // Expanded event detail — per-outcome sharp table + honest caveat
 // ══════════════════════════════════════════════════════════════════════════════
@@ -320,6 +365,10 @@ function EventDetail({ ev, isPaid }: { ev: ScannedEvent; isPaid: boolean }) {
           </p>
         </div>
       )}
+
+      {/* Suggested placement — tier-aware, near the best-edge data. Reuses the
+          already-visible outcome/book/odds; no bet line on no-sharp/suppressed. */}
+      <PlacementHint ev={ev} isPaid={isPaid} />
 
       {view.status === 'suppressed_outlier' && (
         <div className="rounded-lg bg-coral-tint/40 px-3 py-2.5 mt-3">
