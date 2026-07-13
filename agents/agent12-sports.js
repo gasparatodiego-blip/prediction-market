@@ -42,6 +42,15 @@ const OUTLIER_PCT         = 0.25;  // book's implied prob deviating > this from 
 const MAX_PLAUSIBLE_ROI   = 0.06;  // h2h arb > 6% net → almost certainly a data error → quarantine
 const CREDIT_SAFETY_FLOOR = 30;    // stop scanning if remaining credits would drop to this
 
+// ── Sharp-reference edge guards ───────────────────────────────────────────────
+// Pinnacle is the only sharp/verified book (EXEC_SHARP_BOOKS). These thresholds
+// gate the Signal-only "edge vs sharp no-vig fair" metric so no absurd number
+// ships. Approved by Diego for this task; not tunable magic — each has a stated
+// honest-engine rationale below.
+const SHARP_EDGE_MAX_PLAUSIBLE = 0.10; // best-soft leg beating Pinnacle no-vig fair by >10% is a stale/erroneous line, not real value → suppress
+const SHARP_NEAR_CERTAIN_HI    = 0.97; // no-vig fair prob above this → near-certain favorite; edge% is numerically unstable → exclude outcome
+const SHARP_NEAR_CERTAIN_LO    = 0.03; // no-vig fair prob below this → longshot; same instability → exclude outcome
+
 // Each /odds call costs 1 credit PER region requested. With 3 regions, cost = 3 per sport.
 const CREDITS_PER_SPORT = REGIONS.length;
 
@@ -251,6 +260,8 @@ const BASE_URL = 'https://api.the-odds-api.com/v4';
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+const round4 = x => Math.round(x * 10000) / 10000;
+const round2 = x => Math.round(x * 100) / 100;
 
 function atomicWrite(file, obj) {
   const tmp = `${file}.tmp.${process.pid}`;
@@ -312,6 +323,111 @@ function httpGet(url, timeoutMs = 20_000) {
 //   { type: 'quarantine', record, reason }  — implausibly high ROI
 //   { type: 'real', record }
 
+// ── Sharp reference (Pinnacle) — de-vig + persist ─────────────────────────────
+// Proportional (multiplicative) de-vig: strip Pinnacle's overround so each
+// outcome's implied prob sums to 1, giving a no-vig "fair" line. This is the
+// sharp anchor used to judge whether a soft-book price is genuine value. Never
+// fabricated: if Pinnacle does not quote EVERY outcome, sharpReference is null.
+function buildSharpReference(outcomeMap, names) {
+  const rawByOutcome = {};
+  for (const name of names) {
+    const pin = (outcomeMap[name] ?? []).find(e => EXEC_SHARP_BOOKS.has(e.bookmakerId));
+    if (!pin || !(pin.price > 1)) {
+      return { present: false, reason: 'pinnacle_not_quoted', book: 'pinnacle', raw: null, noVig: null };
+    }
+    rawByOutcome[name] = pin.price;
+  }
+  const impl = {};
+  let overround = 0;
+  for (const name of names) { impl[name] = 1 / rawByOutcome[name]; overround += impl[name]; }
+  if (!(overround > 0)) {
+    return { present: false, reason: 'devig_failed', book: 'pinnacle', raw: null, noVig: null };
+  }
+  return {
+    present:   true,
+    book:      'pinnacle',
+    raw:       names.map(n => ({ outcome: n, odd: rawByOutcome[n] })),
+    overround: round4(overround),
+    marginPct: round2((overround - 1) * 100),
+    noVig:     names.map(n => ({
+      outcome:  n,
+      fairProb: round4(impl[n] / overround),
+      fairOdds: round4(overround / impl[n]),
+    })),
+  };
+}
+
+// ── Edge vs sharp — best soft-book leg vs Pinnacle no-vig fair (Signal-only) ────
+// Soft/exchange books are NEVER cashable (honest-engine): this quantifies how far
+// the best non-sharp price beats the sharp fair line. Guards: near-certain lines
+// excluded (unstable edge); implausible edges suppressed as stale/erroneous.
+function buildEdgeVsSharp(outcomeMap, names, sharpRef, outlierIds) {
+  if (!sharpRef.present) return { status: 'no_sharp_reference', edgePct: null };
+
+  const fairByName = {};
+  for (const f of sharpRef.noVig) fairByName[f.outcome] = f;
+
+  let best = null;             // {outcome, softBook, softBookId, softClass, softOdd, fairOdds, edge}
+  let excludedNearCertain = 0;
+  for (const name of names) {
+    const fair = fairByName[name];
+    if (!fair) continue;
+    if (fair.fairProb > SHARP_NEAR_CERTAIN_HI || fair.fairProb < SHARP_NEAR_CERTAIN_LO) {
+      excludedNearCertain++;
+      continue;
+    }
+    // Best soft (non-sharp) leg for this outcome, outliers removed.
+    const soft = (outcomeMap[name] ?? [])
+      .filter(e => !EXEC_SHARP_BOOKS.has(e.bookmakerId) && !outlierIds.has(e.bookmakerId));
+    if (!soft.length) continue;
+    const bestSoft = soft.reduce((b, e) => e.price > b.price ? e : b);
+    const edge = bestSoft.price / fair.fairOdds - 1;
+    if (!best || edge > best.edge) {
+      best = {
+        outcome:    name,
+        softBook:   bestSoft.bookmaker,
+        softBookId: bestSoft.bookmakerId,
+        softClass:  classifyBookmaker(bestSoft.bookmakerId),  // 'exchange' | 'unverified'
+        softOdd:    bestSoft.price,
+        fairOdds:   fair.fairOdds,
+        edge,
+      };
+    }
+  }
+
+  if (!best) return { status: 'no_comparable_outcome', edgePct: null, excludedNearCertain };
+
+  // Guardian: a soft book beating the sharp fair line by an implausible margin is
+  // a stale/erroneous quote, not real value → suppress the number, keep the audit.
+  if (best.edge > SHARP_EDGE_MAX_PLAUSIBLE) {
+    return {
+      status:     'suppressed_outlier',
+      reason:     `edge_${round2(best.edge * 100)}pct_exceeds_${round2(SHARP_EDGE_MAX_PLAUSIBLE * 100)}pct_sane_max`,
+      edgePct:    null,                        // suppressed — never surfaced as a real edge
+      rawEdgePct: round2(best.edge * 100),     // retained for audit, explicitly labeled raw
+      outcome:    best.outcome,
+      softBook:   best.softBook,
+      cashable:   false,
+      excludedNearCertain,
+    };
+  }
+
+  // Within sane range. Positive → a real Signal edge (soft leg NOT cashable);
+  // non-positive → calm "no edge" state.
+  return {
+    status:     best.edge > 0 ? 'signal' : 'none',
+    edgePct:    round2(best.edge * 100),
+    outcome:    best.outcome,
+    softBook:   best.softBook,
+    softBookId: best.softBookId,
+    softClass:  best.softClass,
+    softOdd:    best.softOdd,
+    fairOdds:   best.fairOdds,
+    cashable:   false,                         // soft/exchange leg — Signal only
+    excludedNearCertain,
+  };
+}
+
 function computeArb(ev, sportKey) {
   const bookmakers = ev.bookmakers ?? [];
 
@@ -355,6 +471,12 @@ function computeArb(ev, sportKey) {
   }
   const outliersRemoved = outlierIds.size > 0;
 
+  // Sharp reference (Pinnacle) + edge-vs-sharp — persisted for EVERY event, even
+  // when Pinnacle is never the best (highest) leg. Sharp = the validity anchor;
+  // soft edges are Signal-only. Both are ADDED alongside bestLegs, never replace it.
+  const sharpReference = buildSharpReference(outcomeMap, names);
+  const edgeVsSharp    = buildEdgeVsSharp(outcomeMap, names, sharpReference, outlierIds);
+
   // Best legs with outliers removed — used for both scan entry and clean arb check
   const legsClean = names.map(n => bestFrom(n, outlierIds));
   const hasAllClean = !legsClean.some(l => !l);
@@ -380,6 +502,8 @@ function computeArb(ev, sportKey) {
     impliedSum:      Math.round(impliedClean * 10000) / 10000,
     marginPct:       Math.round((impliedClean - 1) * 10000) / 100,
     outliersRemoved,
+    sharpReference,   // Pinnacle raw + no-vig fair line (null if Pinnacle not quoted)
+    edgeVsSharp,      // best soft leg vs sharp fair (Signal-only; guarded/suppressed)
     settlement,
     cashable:    false,
     execReasons: [],
@@ -422,6 +546,8 @@ function computeArb(ev, sportKey) {
     outliersRemoved,
     crossJurisdiction,
     numBookmakers:   bookmakers.length,
+    sharpReference,   // Pinnacle raw + no-vig fair line (null if Pinnacle not quoted)
+    edgeVsSharp,      // best soft leg vs sharp fair (Signal-only; guarded/suppressed)
     lastUpdated:     new Date().toISOString(),
     settlement,
   };
