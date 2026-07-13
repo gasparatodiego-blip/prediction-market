@@ -118,8 +118,15 @@ async function sendTelegram(text) {
 function hoursToMs(h) { const n = Number(h); return n > 0 ? n * 3600_000 : null; }
 
 // ── settled-funding accrual (REAL only) ──────────────────────────────────────
-// Accrue the SETTLED funding a venue/coin posted in (sinceT, untilT], as a fraction
+// Accrue the SETTLED funding a venue/coin posted in (sinceT, untilT], as a FRACTION
 // of notional. Merges the durable 14d mirror and the 48h cache, dedups by timestamp.
+//
+// UNIT: the funding-history `rate` field is PERCENT per settlement interval for EVERY
+// venue — agent15-funding-writer.js normalizes each fetcher to % (×100 on raw-fraction
+// venues; Grvt/Lighter are already %; see its L690). Callers here (markPerpSpot /
+// markCrossVenue) multiply sumRate straight by notional, i.e. they expect a FRACTION,
+// so we divide each sampled rate by 100 ONCE, at this single accrual point — the fix
+// for the 100× paper-P&L inflation. No per-venue branching: no venue stores a fraction.
 //
 // A stored point is a SAMPLE of the venue's funding rate, and the venue's own
 // `rate` is expressed PER SETTLEMENT INTERVAL (e.g. an 8h rate). Some venues log
@@ -157,7 +164,7 @@ function accrueSettled(venueKey, coin, sinceT, untilT, intervalMs) {
       const prevT = i > 0 ? pts[i - 1].t : (p.t - iv);   // no predecessor → assume one interval
       weight = Math.min((p.t - prevT) / iv, 1);           // ≤ 1 settlement per sample
     }
-    sumRate += p.rate * weight; points += 1;
+    sumRate += (p.rate / 100) * weight; points += 1;   // rate is PERCENT/interval → ÷100 to a fraction (single accrual point)
     if (p.t > lastT) lastT = p.t;
   }
   return { sumRate, points, lastT };
@@ -508,7 +515,7 @@ function buildSnapshot() {
   const copySleeves = entryCopySleeves(entryTs);
   const trades = [...ps.trades, ...xv.trades, ...bs.trades, ...pr.trades];
   return {
-    version: 2,   // funding accrued by Δt/interval weighting (see accrueSettled / migrateFundingAccrualV2)
+    version: 3,   // funding accrued by Δt/interval weighting, rate ÷100 percent→fraction (see accrueSettled / migrateFundingUnitV3)
     createdAt: iso(entryTs), updatedAt: iso(entryTs),
     entryAsOf: iso(entryTs), simDays: SIM_DAYS, simEndsAt: iso(entryTs + SIM_DAYS * DAY_MS),
     notionalUsd: NOTIONAL_USD,
@@ -609,6 +616,32 @@ function migrateFundingAccrualV2(store) {
   return reset;
 }
 
+// One-time correction (v2→v3): every prior mark accrued the venue funding-history
+// `rate` as a FRACTION, but agent15 writes that rate in PERCENT per settlement interval
+// (fetchers ×100; Grvt/Lighter already %), so every funding position's cumFundingUsd was
+// inflated EXACTLY 100× — fabricating a +$1,595 executable headline whose honest value
+// is ≈ −$364. accrueSettled now ÷100s at the single accrual point; re-drive every funding
+// position from its entry anchor so the banked 100× total is recomputed cleanly, and drop
+// the inflated marks so the equity curve carries no 100× points (markAll re-accrues one
+// clean point right after). Lossless: all history since today's entry is inside the 14d
+// mirror + 48h cache. Basis/copy never accrue funding → untouched. Idempotent (version gate).
+function migrateFundingUnitV3(store) {
+  if (!store || (store.version || 0) >= 3) return 0;
+  let reset = 0;
+  for (const t of store.trades) {
+    if (t.category !== 'perp-spot-funding' && t.category !== 'cross-venue-funding') continue;
+    const anchor = Date.parse(t.entry && t.entry.asOf);
+    if (!Number.isFinite(anchor)) continue;   // no usable anchor → leave as-is, never guess
+    t.fundingCursorT = anchor;
+    t.cumFundingUsd = 0;
+    t.marks = [];              // drop inflated marks; markAll re-accrues one clean point
+    delete t.lastMark;         // no stale 100× mark until re-accrual runs
+    reset++;
+  }
+  store.version = 3;
+  return reset;
+}
+
 async function runCycle() {
   beat();
   let store = readJsonSafe(STORE_FILE);
@@ -619,6 +652,8 @@ async function runCycle() {
   }
   const reAccrued = migrateFundingAccrualV2(store);
   if (reAccrued) log(`funding-accrual v2 migration: re-accruing ${reAccrued} funding position(s) from entry anchor (Δt/interval weighting)`);
+  const unitFixed = migrateFundingUnitV3(store);
+  if (unitFixed) log(`funding-unit v3 migration: re-accruing ${unitFixed} funding position(s) from entry anchor after percent→fraction fix (kills 100× inflation)`);
   markAll(store);
 
   // NOTE: the daily Telegram summary is NOT sent here. It fires on its own
@@ -678,4 +713,4 @@ if (require.main === module) {
   main().catch((e) => { log('fatal:', e && e.message); process.exit(1); });
 }
 
-module.exports = { buildSnapshot, markAll, accrueSettled, entryPerpSpot, entryCrossVenue, entryBasis, entryPrediction, dailySummary, migrateFundingAccrualV2 };
+module.exports = { buildSnapshot, markAll, accrueSettled, entryPerpSpot, entryCrossVenue, entryBasis, entryPrediction, dailySummary, migrateFundingAccrualV2, migrateFundingUnitV3 };
