@@ -86,6 +86,31 @@ function Tag({ text, tone }: { text: string; tone: 'mint' | 'violet' | 'coral' |
   );
 }
 
+// ── three-tier kind → chip / color / label (honest reliability split) ────────
+// cashable  = real arb WITH a Pinnacle covering leg  → strong green (most reliable)
+// arb_soft  = real arb, all soft books (no sharp leg) → amber (real but fragile)
+// signal    = value vs Pinnacle fair, arbSum ≥ 1      → blue/violet
+type Tier = 'cashable' | 'arb_soft' | 'signal';
+const tierOf = (ev: ScannedEvent): Tier =>
+  ev.kind === 'cashable' ? 'cashable' : ev.kind === 'arb_soft' ? 'arb_soft' : 'signal';
+const isArbTier = (t: Tier) => t === 'cashable' || t === 'arb_soft';
+// number color per arb tier (mint for cashable, gold for arb_soft)
+const tierNumClass = (t: Tier) => (t === 'cashable' ? 'text-mint-deep' : t === 'arb_soft' ? 'text-gold' : 'text-violet');
+
+// Arb-soft chip mirrors EdgeChip's shape (no EdgeChip variant exists for it).
+function ArbSoftChip() {
+  return (
+    <span className="inline-flex items-center gap-1.5 px-2 py-[3px] rounded-md font-body font-semibold text-[9.5px] tracking-wide uppercase bg-gold-tint text-gold">
+      <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-gold" aria-hidden />ARB · SOFT
+    </span>
+  );
+}
+function KindChip({ tier }: { tier: Tier }) {
+  if (tier === 'cashable') return <EdgeChip variant="cashable" />;
+  if (tier === 'arb_soft') return <ArbSoftChip />;
+  return <EdgeChip variant="signal" />;
+}
+
 // ── labelled stat (paper style) ──────────────────────────────────────────────
 function Stat({ label, children, demoted }: { label: string; children: React.ReactNode; demoted?: string }) {
   return (
@@ -118,54 +143,70 @@ function EventDetail({ ev, isPaid }: { ev: ScannedEvent; isPaid: boolean }) {
   const sr: SharpReference | null | undefined = ev.sharpReference;
   const e = ev.edgeVsSharp;
   const view = edgeView(e);
-  const isCashable = ev.kind === 'cashable';
+  const tier = tierOf(ev);
+  const isCashable = tier === 'cashable';
+  const isArb = isArbTier(tier);
   const arbLegs = ev.arbLegs ?? [];
   const outcomes = ev.bestLegs.map(l => l.outcome);
   const dash = <span className="text-muted">—</span>;
+
+  // tier-specific styling for the arb block
+  const ac = isCashable
+    ? { border: 'border-mint-deep/30', bg: 'bg-mint-tint/30', head: 'text-mint-deep', tblBorder: 'border-mint-deep/20', tblHead: 'bg-mint-tint/50 text-mint-deep', num: 'text-mint-deep', title: 'Locked-in arbitrage' }
+    : { border: 'border-gold/40', bg: 'bg-gold-tint/40', head: 'text-gold', tblBorder: 'border-gold/25', tblHead: 'bg-gold-tint/60 text-gold', num: 'text-gold', title: 'Soft-book arbitrage' };
 
   return (
     <div className="px-4 pb-4 pt-1 border-t border-line/70 bg-bg-soft/30">
       {/* status line */}
       <div className="flex items-center gap-2 my-3 flex-wrap">
-        <EdgeChip variant={isCashable ? 'cashable' : 'signal'} />
-        {isCashable
-          ? <Tag text="locked-in arb" tone="mint" />
-          : <Tag text={view.label} tone={view.tone} />}
+        <KindChip tier={tier} />
+        {isCashable && <Tag text="Pinnacle leg" tone="mint" />}
+        {tier === 'arb_soft' && <Tag text="no sharp leg" tone="gold" />}
+        {tier === 'signal' && <Tag text={view.label} tone={view.tone} />}
         {ev.settlement?.crossSettlementRisk && <Tag text="settlement risk" tone="coral" />}
       </div>
 
-      {/* CASHABLE — true arbitrage (arbSum < 1). Covering legs + guaranteed profit. */}
-      {isCashable && (
-        <div className="rounded-lg border border-mint-deep/30 bg-mint-tint/30 px-3 py-3 mb-3">
+      {/* CASHABLE / ARB_SOFT — true arbitrage (arbSum < 1). Covering legs + guaranteed profit. */}
+      {isArb && (
+        <div className={`rounded-lg border ${ac.border} ${ac.bg} px-3 py-3 mb-3`}>
           <div className="flex items-baseline justify-between mb-2">
-            <p className="font-body text-[10px] uppercase tracking-widest text-mint-deep">Locked-in arbitrage</p>
-            <p className="font-display font-bold text-mint-deep text-[18px] tabular-nums">
+            <p className={`font-body text-[10px] uppercase tracking-widest ${ac.head}`}>{ac.title}</p>
+            <p className={`font-display font-bold ${ac.num} text-[18px] tabular-nums`}>
               <Redacted value={ev.arbProfitPct} isPaid={isPaid}>{v => fmtGuar(v as number)}</Redacted>
               <span className="font-body text-[10px] font-medium text-muted ml-1">guaranteed</span>
             </p>
           </div>
+          {tier === 'arb_soft' && (
+            <p className="font-body text-[10.5px] text-gold mt-0.5 mb-2 leading-snug">
+              <b>Soft-book arb — no sharp (Pinnacle) leg.</b> Mathematically an arb, but higher execution risk: soft books limit/ban arb winners and move lines fast. Less reliable than a Pinnacle-anchored arb.
+            </p>
+          )}
           {/* covering legs table */}
-          <div className="rounded-md overflow-hidden border border-mint-deep/20 bg-surface/70">
-            <div className="grid grid-cols-[1.2fr_1.3fr_0.9fr_0.9fr] gap-1 px-2.5 py-1.5 bg-mint-tint/50 font-body text-[9px] uppercase tracking-wide text-mint-deep">
+          <div className={`rounded-md overflow-hidden border ${ac.tblBorder} bg-surface/70`}>
+            <div className={`grid grid-cols-[1.2fr_1.3fr_0.9fr_0.9fr] gap-1 px-2.5 py-1.5 ${ac.tblHead} font-body text-[9px] uppercase tracking-wide`}>
               <span>Outcome</span><span>Book</span><span className="text-right">Odds</span><span className="text-right">Stake</span>
             </div>
-            {arbLegs.map(l => (
-              <div key={l.outcome} className="grid grid-cols-[1.2fr_1.3fr_0.9fr_0.9fr] gap-1 px-2.5 py-2 items-center border-t border-line/50">
-                <span className="font-body text-[11px] text-ink truncate">{l.outcome}</span>
-                <span className="font-body text-[11px] text-ink-2 flex items-center gap-1.5 min-w-0">
-                  <Lettermark name={l.bookmaker} /><span className="truncate">{l.bookmaker}</span>
-                </span>
-                <span className="text-right font-body text-[11px] tabular-nums text-ink font-semibold">
-                  <Redacted value={l.odd} isPaid={isPaid}>{v => fmtOdd(v as number)}</Redacted>
-                </span>
-                <span className="text-right font-body text-[11px] tabular-nums text-ink-2">
-                  <Redacted value={l.stakePct} isPaid={isPaid}>{v => `${(v as number).toFixed(1)}%`}</Redacted>
-                </span>
-              </div>
-            ))}
+            {arbLegs.map(l => {
+              const isSharpLeg = l.bookmakerId === 'pinnacle';
+              return (
+                <div key={l.outcome} className={`grid grid-cols-[1.2fr_1.3fr_0.9fr_0.9fr] gap-1 px-2.5 py-2 items-center border-t border-line/50 ${isSharpLeg ? 'bg-mint-tint/40' : ''}`}>
+                  <span className="font-body text-[11px] text-ink truncate">{l.outcome}</span>
+                  <span className="font-body text-[11px] text-ink-2 flex items-center gap-1.5 min-w-0">
+                    <Lettermark name={l.bookmaker} /><span className="truncate">{l.bookmaker}</span>
+                    {isSharpLeg && <span className="font-body text-[8.5px] font-bold text-mint-deep uppercase tracking-wide shrink-0">sharp ◆</span>}
+                  </span>
+                  <span className="text-right font-body text-[11px] tabular-nums text-ink font-semibold">
+                    <Redacted value={l.odd} isPaid={isPaid}>{v => fmtOdd(v as number)}</Redacted>
+                  </span>
+                  <span className="text-right font-body text-[11px] tabular-nums text-ink-2">
+                    <Redacted value={l.stakePct} isPaid={isPaid}>{v => `${(v as number).toFixed(1)}%`}</Redacted>
+                  </span>
+                </div>
+              );
+            })}
           </div>
           <p className="font-body text-[10px] text-muted mt-2 leading-snug">
-            Σ implied prob <Redacted value={ev.impliedSum} isPaid={isPaid}>{v => <b className="text-mint-deep">{(v as number).toFixed(4)}</b>}</Redacted> &lt; 1 at snapshot — a guaranteed profit whatever the result, stakes split for equal payout.
+            Σ implied prob <Redacted value={ev.impliedSum} isPaid={isPaid}>{v => <b className={ac.num}>{(v as number).toFixed(4)}</b>}</Redacted> &lt; 1 at snapshot — a guaranteed profit whatever the result, stakes split for equal payout.
           </p>
           <p className="font-body text-[10px] text-coral-ink mt-1.5 leading-snug">
             <b>Arb indicative — verify before placing.</b> Odds move in seconds, books limit/void winning arbs, and a leg can fail. Not a guarantee of execution.
@@ -275,23 +316,25 @@ function EventDetail({ ev, isPaid }: { ev: ScannedEvent; isPaid: boolean }) {
 // Event row
 // ══════════════════════════════════════════════════════════════════════════════
 function EventRow({ ev, isPaid, open, onToggle }: { ev: ScannedEvent; isPaid: boolean; open: boolean; onToggle: () => void }) {
-  const isCashable = ev.kind === 'cashable';
+  const tier = tierOf(ev);
+  const isArb = isArbTier(tier);
   const view = edgeView(ev.edgeVsSharp);
-  const muted = !isCashable && view.status !== 'signal';
+  const muted = !isArb && view.status !== 'signal';
+  const ring = tier === 'cashable' ? 'ring-1 ring-mint-deep/30' : tier === 'arb_soft' ? 'ring-1 ring-gold/40' : '';
   return (
-    <div className={`rounded-card bg-surface shadow-card overflow-hidden ${isCashable ? 'ring-1 ring-mint-deep/30' : ''} ${muted ? 'opacity-[0.92]' : ''}`}>
+    <div className={`rounded-card bg-surface shadow-card overflow-hidden ${ring} ${muted ? 'opacity-[0.92]' : ''}`}>
       <button onClick={onToggle} className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-bg-soft/40 transition-colors">
         <span className="text-[15px] shrink-0" aria-hidden>{leagueEmoji(ev.sport)}</span>
         <span className="flex-1 min-w-0">
           <span className="flex items-center gap-2 mb-1">
             <span className="font-display font-semibold text-ink text-[14px] truncate">{ev.eventName}</span>
-            <EdgeChip variant={isCashable ? 'cashable' : 'signal'} />
+            <KindChip tier={tier} />
           </span>
           <span className="font-body text-[11px] text-muted">{ev.sportLabel} · {fmtWhen(ev.commenceTime)}</span>
         </span>
         <span className="text-right shrink-0">
-          {isCashable ? (
-            <span className="block font-body text-[15px] font-semibold tabular-nums text-mint-deep">
+          {isArb ? (
+            <span className={`block font-body text-[15px] font-semibold tabular-nums ${tierNumClass(tier)}`}>
               <Redacted value={ev.arbProfitPct} isPaid={isPaid}>{v => fmtGuar(v as number)}</Redacted>
             </span>
           ) : view.hasNumber ? (
@@ -302,7 +345,7 @@ function EventRow({ ev, isPaid, open, onToggle }: { ev: ScannedEvent; isPaid: bo
             <span className="block font-body text-[11px] text-muted">{view.label}</span>
           )}
           <span className="block font-body text-[9.5px] text-muted uppercase tracking-wide">
-            {isCashable ? 'guaranteed arb' : view.status === 'signal' ? 'vs sharp fair' : ev.sharpReference?.present ? 'sharp quoted' : 'no sharp ref'}
+            {tier === 'cashable' ? 'guaranteed arb' : tier === 'arb_soft' ? 'soft-book arb' : view.status === 'signal' ? 'vs sharp fair' : ev.sharpReference?.present ? 'sharp quoted' : 'no sharp ref'}
           </span>
         </span>
         <ChevronRight className={`w-4 h-4 text-muted shrink-0 transition-transform ${open ? 'rotate-90' : ''}`} />
@@ -331,21 +374,22 @@ export default function SportsPage() {
 
   const isPaid = data?.isPaid ?? false;
 
-  // Sort: signal edges first (by edge desc when visible), then sharp-quoted,
-  // then no-sharp / suppressed. Within a tier, soonest kick-off first.
+  // Sort: cashable → arb_soft → signal → sharp-quoted → no-sharp/suppressed.
+  // Within a tier: arbs by profit desc, signals by edge desc, else soonest.
   const events = useMemo(() => {
     const evs = [...(data?.scannedEvents ?? [])];
     const rank = (ev: ScannedEvent) => {
-      if (ev.kind === 'cashable') return -1;        // real arbs pinned on top
+      const t = tierOf(ev);
+      if (t === 'cashable') return -2;              // Pinnacle-anchored arb — top
+      if (t === 'arb_soft') return -1;              // soft-only arb — second
       const st = ev.edgeVsSharp?.status;
       if (st === 'signal') return 0;
       if (st === 'suppressed_outlier') return 3;
       if (ev.sharpReference?.present) return 1;
       return 2; // no_sharp_reference
     };
-    // within a tier: cashable by profit desc, signal by edge desc, else soonest.
     const sortVal = (ev: ScannedEvent) =>
-      ev.kind === 'cashable' ? (ev.arbProfitPct ?? 0) * 100 : (ev.edgeVsSharp?.edgePct ?? null);
+      isArbTier(tierOf(ev)) ? (ev.arbProfitPct ?? 0) * 100 : (ev.edgeVsSharp?.edgePct ?? null);
     return evs.sort((a, b) => {
       const ra = rank(a), rb = rank(b);
       if (ra !== rb) return ra - rb;
@@ -356,19 +400,20 @@ export default function SportsPage() {
   }, [data]);
 
   const counts = useMemo(() => {
-    const c = { cashable: 0, signal: 0, sharp: 0, noSharp: 0, suppressed: 0 };
+    const c = { cashable: 0, arbSoft: 0, signal: 0, sharp: 0, noSharp: 0 };
     for (const ev of data?.scannedEvents ?? []) {
-      if (ev.kind === 'cashable') c.cashable++;
-      const st = ev.edgeVsSharp?.status;
-      if (st === 'signal') c.signal++;
-      if (st === 'suppressed_outlier') c.suppressed++;
+      const t = tierOf(ev);
+      if (t === 'cashable') c.cashable++;
+      else if (t === 'arb_soft') c.arbSoft++;
+      if (ev.edgeVsSharp?.status === 'signal') c.signal++;
       if (ev.sharpReference?.present) c.sharp++; else c.noSharp++;
     }
     return c;
   }, [data]);
 
-  // Top cashable arb (if any), else top edge. Paid sees the number; free a lock.
-  const topCashable = useMemo(() => events.find(e => e.kind === 'cashable'), [events]);
+  // Hero priority: cashable → arb_soft → top edge. Paid sees the number; free a lock.
+  const topCashable = useMemo(() => events.find(e => tierOf(e) === 'cashable'), [events]);
+  const topArbSoft = useMemo(() => events.find(e => tierOf(e) === 'arb_soft'), [events]);
   const topSignal = useMemo(() => events.find(e => e.edgeVsSharp?.status === 'signal'), [events]);
 
   return (
@@ -378,10 +423,17 @@ export default function SportsPage() {
         <h1 className="font-display font-bold text-ink text-[22px] tracking-tight">Edgeradar · Sports</h1>
         <EdgeChip variant="signal" />
       </div>
-      <p className="font-body text-[12px] text-muted mb-5">
-        <span className="text-mint-deep font-medium">Cashable</span> = real locked-in arb · <span className="text-violet font-medium">Signal</span> = value vs Pinnacle
+      <p className="font-body text-[12px] text-muted mb-3">
+        Three tiers by reliability
         {data && <> · {data.stale ? 'stale' : `updated ${fmtAge(data.ageMinutes)}`}</>}
       </p>
+
+      {/* tier legend */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mb-5">
+        <span className="inline-flex items-center gap-1.5"><EdgeChip variant="cashable" /><span className="font-body text-[10px] text-muted">arb w/ Pinnacle leg</span></span>
+        <span className="inline-flex items-center gap-1.5"><ArbSoftChip /><span className="font-body text-[10px] text-muted">soft-only arb · fragile</span></span>
+        <span className="inline-flex items-center gap-1.5"><EdgeChip variant="signal" /><span className="font-body text-[10px] text-muted">value vs Pinnacle</span></span>
+      </div>
 
       {err && (
         <div className="rounded-card bg-surface shadow-card px-5 py-6 text-center">
@@ -413,6 +465,19 @@ export default function SportsPage() {
                   {topCashable.eventName} · guaranteed profit across {topCashable.arbLegs?.length ?? '—'} legs · <span className="text-coral-ink">indicative, verify before placing</span>
                 </p>
               </>
+            ) : topArbSoft ? (
+              <>
+                <div className="flex items-center gap-2 mb-2">
+                  <p className="font-body text-[11px] uppercase tracking-wide text-muted">Best soft-book arbitrage</p>
+                  <ArbSoftChip />
+                </div>
+                <span className="font-display font-bold leading-none tracking-tight tabular-nums text-gold" style={{ fontSize: 40 }}>
+                  <Redacted value={topArbSoft.arbProfitPct} isPaid={isPaid}>{v => fmtGuar(v as number)}</Redacted>
+                </span>
+                <p className="font-body text-[12px] text-ink-2 mt-2.5 leading-snug">
+                  {topArbSoft.eventName} · all-soft arb, no sharp leg · <span className="text-gold">higher execution risk</span> · <span className="text-coral-ink">verify before placing</span>
+                </p>
+              </>
             ) : topSignal ? (
               <>
                 <p className="font-body text-[11px] uppercase tracking-wide text-muted mb-2">Top edge vs Pinnacle sharp fair</p>
@@ -426,14 +491,14 @@ export default function SportsPage() {
             ) : (
               <>
                 <p className="font-body text-[11px] uppercase tracking-wide text-muted mb-2">Sports arbitrage &amp; sharp edge</p>
-                <span className="font-display font-bold leading-none tracking-tight text-ink-2" style={{ fontSize: 26 }}>No cashable arb right now</span>
-                <p className="font-body text-[12px] text-ink-2 mt-2.5 leading-snug">A calm, valid state — 0 cashable arbs is the correct, expected result almost always. Soft books sit at or inside Pinnacle's fair line.</p>
+                <span className="font-display font-bold leading-none tracking-tight text-ink-2" style={{ fontSize: 26 }}>No arb right now</span>
+                <p className="font-body text-[12px] text-ink-2 mt-2.5 leading-snug">A calm, valid state — 0 cashable and 0 soft-book arbs is the correct, expected result almost always. Books sit at or inside Pinnacle's fair line.</p>
               </>
             )}
             {/* summary strip */}
             <div className="grid grid-cols-4 gap-2 mt-4">
-              <Stat label="Events">{data.summary?.totalEvents ?? data.scannedEvents.length}</Stat>
               <Stat label="Cashable">{counts.cashable}</Stat>
+              <Stat label="Arb soft">{counts.arbSoft}</Stat>
               <Stat label="Signal">{counts.signal}</Stat>
               <Stat label="No sharp">{counts.noSharp}</Stat>
             </div>
@@ -452,8 +517,8 @@ export default function SportsPage() {
 
           {/* footer honesty */}
           <p className="font-body text-[10px] text-muted mt-5 leading-snug text-center">
-            Cashable = a real locked-in arb (Σ 1/odds &lt; 1 across ≥2 books, guarded) · Signal = value vs Pinnacle's de-vigged fair line (single-leg, not guaranteed) · suppressed outliers shown, never hidden · unknown = "—", never fabricated · 0 cashable is calm &amp; expected.
-            {!isPaid && <> Edge, odds &amp; arb stakes are null on the free tier — <a href="/dashboard/upgrade" className="text-violet">upgrade →</a></>}
+            All three from the same arb math (Σ 1/odds &lt; 1 across ≥2 books, guarded): <b className="text-mint-deep">Cashable</b> has a Pinnacle leg (sharp, high limits); <b className="text-gold">Arb soft</b> is all-soft (real but fragile — limits/bans/line-moves); <b className="text-violet">Signal</b> is value vs Pinnacle's fair line (arbSum ≥ 1, single-leg, not guaranteed). Suppressed outliers shown, never hidden · unknown = "—" · 0 cashable/arb-soft is calm &amp; expected.
+            {!isPaid && <> Profit %, odds &amp; stakes are null on the free tier — <a href="/dashboard/upgrade" className="text-violet">upgrade →</a></>}
           </p>
           {!isPaid && (
             <p className="font-body text-[10px] text-muted mt-2 leading-snug text-center inline-flex items-center gap-1 justify-center w-full">

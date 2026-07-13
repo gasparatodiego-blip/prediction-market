@@ -92,7 +92,7 @@ export interface SharpReference {
 }
 // True arbitrage (arbSum < 1) per event, computed by agent12. kind is public;
 // arbProfitPct + arbLegs[].odd/stakePct are GATED for free tier (fail-closed).
-export type EventKind = 'cashable' | 'signal';
+export type EventKind = 'cashable' | 'arb_soft' | 'signal';
 export interface ArbLeg {
   outcome:     string;
   bookmaker:   string;

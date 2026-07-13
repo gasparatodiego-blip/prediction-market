@@ -436,10 +436,12 @@ function buildEdgeVsSharp(outcomeMap, names, sharpRef, outlierIds) {
   };
 }
 
-// ── True arbitrage (arbSum < 1) — cashable vs signal ─────────────────────────
+// ── True arbitrage (arbSum < 1) — cashable / arb_soft / signal ───────────────
 // A REAL locked-in arb: best odds per outcome (outlier-cleaned) across DIFFERENT
 // books with Σ(1/bestOdds) < 1 − ARB_SAFETY_BUFFER → guaranteed profit whatever
-// the result. Everything else stays 'signal' (the value/+EV-vs-Pinnacle signal).
+// the result. Real arbs split by reliability: a Pinnacle covering leg → 'cashable'
+// (sharp, high limits); all-soft covering legs → 'arb_soft' (real but fragile).
+// Everything else stays 'signal' (the value/+EV-vs-Pinnacle signal).
 // Honest gates: implausible profit → downgrade; near-certain leg → downgrade;
 // single-book combination is impossible (a book's own vig makes Σ1/odds ≥ 1) →
 // reject; incomplete coverage → signal. arbLegs only populated when cashable.
@@ -466,7 +468,16 @@ function buildArb(names, legsClean, arbSum) {
     odd:         legsClean[i].price,
     stakePct:    round2(((1 / legsClean[i].price) / arbSum) * 100),  // equal-payout stake split
   }));
-  return { kind: 'cashable', arbProfitPct: round4(profit), arbLegs, arbReason: null };
+  // Tier split (same arb math): a covering leg on the sharp book (Pinnacle) makes
+  // it 'cashable' (high limits, no arb-winner bans); an all-soft-book arb is real
+  // but fragile (limits/bans/line-moves) → 'arb_soft'. Never fabricated.
+  const hasSharpLeg = legsClean.some(l => EXEC_SHARP_BOOKS.has(l.bookmakerId));
+  return {
+    kind:         hasSharpLeg ? 'cashable' : 'arb_soft',
+    arbProfitPct: round4(profit),
+    arbLegs,
+    arbReason:    null,
+  };
 }
 
 function computeArb(ev, sportKey) {
