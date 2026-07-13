@@ -16,7 +16,16 @@ const NAV_LINKS = [
   { href: '/dashboard/traders',           label: 'Traders'    },
   { href: '/dashboard/portfolio',         label: 'Portfolio'  },
   { href: '/dashboard/paper',             label: 'Paper'      },
+  { href: '/how-it-works',                label: 'Guide'      },
 ];
+
+// Ask the mounted OnboardingModal (in the dashboard layout) to reopen. Decoupled
+// via a window event so the header need not own the modal's state.
+function openOnboarding() {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('edgeradar:open-onboarding'));
+  }
+}
 
 export default function EdgeradarHeader() {
   const pathname  = usePathname();
@@ -67,6 +76,17 @@ export default function EdgeradarHeader() {
         <div className="ml-auto flex items-center gap-3 shrink-0">
           <RadarScope size={26} />
           <span className="font-body text-[11px] text-muted hidden sm:block">Live</span>
+
+          {/* Reopen the welcome / guide tour — always available, never nags */}
+          <button
+            type="button"
+            onClick={openOnboarding}
+            aria-label="Open the Edgeradar guide"
+            title="Guide"
+            className="hidden md:flex items-center justify-center w-7 h-7 rounded-full border border-line text-muted hover:text-ink-2 hover:border-mint/40 font-body text-[13px] font-semibold transition-colors duration-100"
+          >
+            ?
+          </button>
 
           {session?.user && (
             <Link
