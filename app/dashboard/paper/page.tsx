@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { ChevronRight, X, Lock } from 'lucide-react';
 import EdgeChip from '@/app/components/ui/EdgeChip';
+import InfoDot from '@/app/components/ui/InfoDot';
 import { Redacted } from '@/app/components/ui/Redacted';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -129,7 +130,7 @@ function StoredArea({ points, locked, height = 56 }: { points: { x: number; y: n
 }
 
 // ── small labelled stat ──────────────────────────────────────────────────────
-function Stat({ label, children, demoted }: { label: string; children: React.ReactNode; demoted?: string }) {
+function Stat({ label, children, demoted }: { label: React.ReactNode; children: React.ReactNode; demoted?: string }) {
   return (
     <div className="rounded-lg bg-bg-soft/60 px-3 py-2.5">
       <p className="font-body text-[10px] uppercase tracking-wide text-muted mb-1">{label}</p>
@@ -206,7 +207,7 @@ function PositionModal({ pos, isPaid, onClose }: { pos: Position; isPaid: boolea
           <Section title="Sizing & capacity">
             <Stat label="Ticket notional">{e.notionalUsd != null ? fmtUsdPlain(e.notionalUsd, 0) : dash}</Stat>
             <Stat label="Sized down from">{e.sizedDownFrom != null ? fmtUsdPlain(e.sizedDownFrom, 0) : dash}</Stat>
-            <Stat label="Capacity (real book)">{e.capacityUsd != null ? fmtK(e.capacityUsd) : dash}</Stat>
+            <Stat label={<>Capacity (real book) <InfoDot term="capacity" size={11} /></>}>{e.capacityUsd != null ? fmtK(e.capacityUsd) : dash}</Stat>
             <Stat label="Capacity source">{e.capacitySource || dash}</Stat>
           </Section>
 
@@ -214,7 +215,7 @@ function PositionModal({ pos, isPaid, onClose }: { pos: Position; isPaid: boolea
           <Section title="Entry">
             <Stat label="Entered">{fmtWhen(e.asOf)}</Stat>
             <Stat label="Verdict">{e.verdict || dash}</Stat>
-            <Stat label="Est net/day @ entry">
+            <Stat label={<>Est net/day @ entry <InfoDot term="net_per_day" size={11} /></>}>
               <Redacted value={e.estNetPerDayAtEntry} isPaid={isPaid}>{v => fmtUsd(v as number, 4)}</Redacted>
             </Stat>
             <Stat label="Fees (one-time)">
@@ -226,7 +227,7 @@ function PositionModal({ pos, isPaid, onClose }: { pos: Position; isPaid: boolea
               </Stat>
             ) : null}
             {e.netAnnualizedAtEntry != null && (
-              <Stat label="Net annualized @ entry" demoted="run-rate, not guaranteed">
+              <Stat label={<>Net annualized @ entry <InfoDot term="run_rate" size={11} /></>} demoted="run-rate, not guaranteed">
                 <Redacted value={e.netAnnualizedAtEntry} isPaid={isPaid}>{v => fmtAnn(v as number).text}</Redacted>
               </Stat>
             )}
@@ -245,10 +246,10 @@ function PositionModal({ pos, isPaid, onClose }: { pos: Position; isPaid: boolea
 
           {/* P&L split — unrealized ≠ realized */}
           <Section title="P&L split (unrealized ≠ realized)">
-            <Stat label="Unrealized" demoted="marked at real live/settled data">
+            <Stat label={<>Unrealized <InfoDot term="unrealized" size={11} /></>} demoted="marked at real live/settled data">
               <Redacted value={lm.unrealizedUsd ?? (lm.netUsd != null ? lm.netUsd : null)} isPaid={isPaid}>{v => fmtUsd(v as number)}</Redacted>
             </Stat>
-            <Stat label="Realized" demoted={open ? 'nothing realized while open' : undefined}>
+            <Stat label={<>Realized <InfoDot term="realized" size={11} /></>} demoted={open ? 'nothing realized while open' : undefined}>
               {open ? dash : <Redacted value={pos.value} isPaid={isPaid}>{v => fmtUsd(v as number)}</Redacted>}
             </Stat>
           </Section>
@@ -314,7 +315,7 @@ function StrategyBlock({ s, isPaid, onOpenPos }: { s: Strategy; isPaid: boolean;
             <Redacted value={s.execPnlUsd} isPaid={isPaid}>{v => fmtUsd(v as number)}</Redacted>
           </span>
         </Stat>
-        <Stat label="THIN (excluded)" demoted={s.thinOpen ? `${s.thinOpen} not-exec-at-size` : 'none'}>
+        <Stat label={<>THIN (excluded) <InfoDot term="thin" size={11} /></>} demoted={s.thinOpen ? `${s.thinOpen} not-exec-at-size` : 'none'}>
           {s.thinOpen ? (
             <span className={pnlColor(s.thinPnlUsd)}><Redacted value={s.thinPnlUsd} isPaid={isPaid}>{v => fmtUsd(v as number)}</Redacted></span>
           ) : <span className="text-muted">—</span>}
@@ -501,7 +502,7 @@ export default function PaperBookPage() {
                 <div className="grid grid-cols-2 gap-2 mt-3">
                   <Stat label="Realized / accrued" demoted="no orders placed">—</Stat>
                   <Stat label="Forward reward" demoted="not deterministic">—</Stat>
-                  <Stat label={data.liquidity.estRunRate?.label || 'est net/day per $1k'} demoted="run-rate, not guaranteed">
+                  <Stat label={<>{data.liquidity.estRunRate?.label || 'est net/day per $1k'} <InfoDot term="run_rate" size={11} /></>} demoted="run-rate, not guaranteed">
                     <Redacted value={data.liquidity.estRunRate?.bestNetPerDay1k} isPaid={isPaid}>{v => `$${(v as number).toFixed(2)}/day`}</Redacted>
                   </Stat>
                   <Stat label="Sanity gate">2%/day thin-book</Stat>
@@ -516,6 +517,7 @@ export default function PaperBookPage() {
                 <div className="flex items-center gap-2 mb-1.5">
                   <span className="font-display font-semibold text-ink text-[14px]">{data.signalOnly.label}</span>
                   <EdgeChip variant="signal" />
+                  <InfoDot term="signal_only_venue" />
                 </div>
                 <p className="font-body text-[11px] text-ink-2 leading-snug">{data.signalOnly.venues.join(' · ')}</p>
                 <p className="font-body text-[10.5px] text-muted mt-1.5 leading-snug">{data.signalOnly.note}</p>

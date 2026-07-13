@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { ChevronRight, Lock } from 'lucide-react';
 import EdgeChip from '@/app/components/ui/EdgeChip';
+import InfoDot from '@/app/components/ui/InfoDot';
 import { Redacted } from '@/app/components/ui/Redacted';
 import type {
   SnapshotResponse,
@@ -139,7 +140,7 @@ function FilterPill({ emoji, label, count, active, onClick }: { emoji?: string; 
 }
 
 // ── labelled stat (paper style) ──────────────────────────────────────────────
-function Stat({ label, children, demoted }: { label: string; children: React.ReactNode; demoted?: string }) {
+function Stat({ label, children, demoted }: { label: React.ReactNode; children: React.ReactNode; demoted?: string }) {
   return (
     <div className="rounded-lg bg-bg-soft/60 px-3 py-2.5">
       <p className="font-body text-[10px] uppercase tracking-wide text-muted mb-1">{label}</p>
@@ -187,6 +188,7 @@ function EventDetail({ ev, isPaid }: { ev: ScannedEvent; isPaid: boolean }) {
       {/* status line */}
       <div className="flex items-center gap-2 my-3 flex-wrap">
         <KindChip tier={tier} />
+        <InfoDot term={tier} />
         {isCashable && <Tag text="Pinnacle leg" tone="mint" />}
         {tier === 'arb_soft' && <Tag text="no sharp leg" tone="gold" />}
         {tier === 'signal' && <Tag text={view.label} tone={view.tone} />}
@@ -252,7 +254,7 @@ function EventDetail({ ev, isPaid }: { ev: ScannedEvent; isPaid: boolean }) {
             <div className="grid grid-cols-[1.3fr_1fr_1fr_1.4fr] gap-1 px-2.5 py-1.5 bg-bg-soft/70 font-body text-[9px] uppercase tracking-wide text-muted">
               <span>Outcome</span>
               <span className="text-right">Pinnacle ◆</span>
-              <span className="text-right">No-vig fair</span>
+              <span className="text-right inline-flex items-center justify-end gap-0.5">No-vig fair <InfoDot term="no_vig_fair" size={11} /></span>
               <span className="text-right">Best book</span>
             </div>
             {outcomes.map((oc) => {
@@ -293,8 +295,8 @@ function EventDetail({ ev, isPaid }: { ev: ScannedEvent; isPaid: boolean }) {
 
           {/* sharp meta + best-edge detail */}
           <div className="grid grid-cols-2 gap-2 mt-3">
-            <Stat label="Sharp book" demoted="only verified/sharp reference">Pinnacle</Stat>
-            <Stat label="Pinnacle vig" demoted="overround stripped for fair line">
+            <Stat label={<>Sharp book <InfoDot term="sharp_book" size={11} /></>} demoted="only verified/sharp reference">Pinnacle</Stat>
+            <Stat label={<>Pinnacle vig <InfoDot term="vig" size={11} /></>} demoted="overround stripped for fair line">
               <Redacted value={sr.marginPct} isPaid={isPaid}>{v => `${(v as number).toFixed(2)}%`}</Redacted>
             </Stat>
             {view.status === 'signal' && (
