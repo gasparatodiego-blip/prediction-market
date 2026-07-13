@@ -13,13 +13,14 @@ import { polymarketProfileUrl } from '@/lib/platform-links';
 import { ActorBadge, VerifiedTick, WinRateBar, WinRateLabel, FreshnessChip, LowSampleBadge, CategoryTag, ConfidenceBar, CopyButton } from './parts';
 import TraderProfileView from './TraderProfile';
 import CopyConfigPanel from './CopyConfigPanel';
+import MarketsTab from './MarketsTab';
 import {
   fmtPnl, fmtVol, fmtWallet, fmtUpdated, fmtSince, fmtPct1, returnOnVolumePct,
   displayName, pnlColor, catText, isLowSample,
   type LbData, type LbEntry, type TraderProfile, type WindowKey,
 } from './format';
 
-type Tab = 'leaderboard' | 'bots';
+type Tab = 'leaderboard' | 'bots' | 'markets';
 type RankBy = 'profit' | 'volume' | 'return';
 
 const RANK_LABEL: Record<RankBy, string> = { profit: 'profit', volume: 'volume', return: 'return %' };
@@ -103,7 +104,10 @@ export default function TradersApp() {
   // to the EXACT section the user came from — not the default "All traders" board.
   // State is seeded from the query params on mount and mirrored back on change
   // (router.replace, no new history entry) so back pops straight to the prior filters.
-  const [tab, setTab]         = useState<Tab>(() => (searchParams.get('tab') === 'bots' ? 'bots' : 'leaderboard'));
+  const [tab, setTab]         = useState<Tab>(() => {
+    const t = searchParams.get('tab');
+    return t === 'bots' || t === 'markets' ? t : 'leaderboard';
+  });
   const [cat, setCat]         = useState(() => searchParams.get('cat') || 'All');
   const [rankBy, setRankBy]   = useState<RankBy>(() => {
     const r = searchParams.get('rank');
@@ -321,13 +325,13 @@ export default function TradersApp() {
           this also avoids a tab-switch racing the ?sel back-sync). */}
       {!selected && (
         <div className="flex gap-0 border-b border-line mb-4">
-          {(['leaderboard', 'bots'] as Tab[]).map(t => (
+          {(['leaderboard', 'bots', 'markets'] as Tab[]).map(t => (
             <button key={t} onClick={() => setTab(t)}
               className={[
                 'px-4 py-2 font-body font-medium text-[11px] uppercase tracking-widest transition-colors relative',
                 tab === t ? 'text-mint-deep' : 'text-muted hover:text-ink-2',
               ].join(' ')}>
-              {t === 'leaderboard' ? 'Leaderboard' : `Bots / HFT (${botsTotal})`}
+              {t === 'leaderboard' ? 'Leaderboard' : t === 'bots' ? `Bots / HFT (${botsTotal})` : 'Markets'}
               {tab === t && <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-mint-deep rounded-full" />}
             </button>
           ))}
@@ -338,12 +342,18 @@ export default function TradersApp() {
         <div className="mb-3 px-3 py-2 border border-coral-ink/30 bg-coral-tint rounded-card font-body text-[11px] text-coral-ink">{error}</div>
       )}
 
-      {warmingUp && (
+      {warmingUp && tab !== 'markets' && (
         <div className="rounded-card border border-line bg-surface shadow-card p-8 text-center">
           <div className="font-body font-medium text-sm text-ink-2 mb-1">Agent warming up — scanning resolved markets…</div>
           <div className="font-body text-[11px] text-muted">First data in ~2–3 min.</div>
         </div>
       )}
+
+      {/* ── Markets tab (Polymarket live markets by native category) ──────────────
+          Independent of the leaderboard agent — self-fetches /api/poly-markets, so it
+          renders even while the leaderboard is warming up. Public market prices,
+          market-implied probability, indicative — no edge/ROI, no gating. */}
+      {!selected && tab === 'markets' && <MarketsTab />}
 
       {/* ── Profile view ─────────────────────────────────────────────────────── */}
       {!warmingUp && selected && (
@@ -465,7 +475,7 @@ export default function TradersApp() {
       )}
 
       {/* Footer */}
-      {!selected && (
+      {!selected && tab !== 'markets' && (
         <p className="mt-6 font-body text-[11px] text-muted border-t border-line pt-4 leading-relaxed">
           Rankings from on-chain resolved Polymarket markets, ordered by the Wilson 95% lower-bound win rate (the
           solid bar); the light bar behind it is the raw win rate. Profit, % gain and volume are from resolved

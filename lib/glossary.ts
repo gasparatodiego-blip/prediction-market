@@ -84,6 +84,16 @@ export const GLOSSARY = {
     short:
       'A venue treated as reference only, not executable for a cashable claim. Its prices inform Signal but never count toward a guaranteed arb.',
   },
+  market_implied: {
+    title: 'Market-implied probability',
+    short:
+      "The market's own live price read as a probability — the CLOB bid/ask mid (or last trade). It is what the crowd is trading at right now, NOT our forecast and NOT an edge we computed.",
+  },
+  indicative: {
+    title: 'Indicative',
+    short:
+      'Shown for reference only. A live market price that moves continuously — not a locked quote, not a guarantee, and not a number we derive an edge from.',
+  },
 } satisfies Record<string, GlossaryEntry>;
 
 export type GlossaryTerm = keyof typeof GLOSSARY;
