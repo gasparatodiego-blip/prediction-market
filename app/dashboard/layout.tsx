@@ -1,5 +1,6 @@
 import EdgeradarHeader from '@/app/components/EdgeradarHeader';
 import GlobalFreshnessBanner from '@/app/components/GlobalFreshnessBanner';
+import OnboardingModal from '@/app/components/OnboardingModal';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -15,6 +16,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <GlobalFreshnessBanner />
       <EdgeradarHeader />
       {children}
+      <OnboardingModal />
     </div>
   );
 }
