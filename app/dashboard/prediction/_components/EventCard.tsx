@@ -12,6 +12,75 @@ import { AUTO_EXECUTE_ENABLED } from '@/lib/flags';
 import type { EventBucket, EventPlatform, LockableEdge, MatchedOpportunity, Opportunity, Leg } from './types';
 import { platformLabel, formatCents, formatVolume, formatResolutionDate } from './format';
 
+// ── ARB edge badge (honest-engine) ─────────────────────────────────────────────
+// A prominent badge lights up ONLY when a REAL executable lockable edge exists.
+// The edge % is NOT recomputed here — it is the matcher's already-fee-adjusted
+// matchedOpportunity.roi (agent5-calculator, the SSOT). This function only DECIDES
+// whether that real edge is prominent-worthy, applying honest guards:
+//   • lockableEdge/mo must exist (null on free tier → no badge, calm state);
+//   • ROI must be positive (cleared the fee/executable threshold);
+//   • BOTH named legs must be EXECUTABLE venues in this bucket (REF/median venues
+//     — PredictIt/Manifold/Futuur — and the market median can NEVER form an edge);
+//   • neither leg near 0¢/100¢ (edge there is liquidity/rounding noise);
+//   • an implausibly wide edge (>PLAUSIBLE_MAX_PCT) is flagged "check", not shiny.
+const NEAR_ZERO_PRICE   = 0.03;   // 3¢  (yes/no prices are fractions 0–1)
+const NEAR_ONE_PRICE    = 0.97;   // 97¢
+const PLAUSIBLE_MAX_PCT = 8;      // >8% net on a liquid two-venue lock → likely stale/mismatch
+
+export interface ArbBadge {
+  edgePct:     number;   // real net-of-fee guaranteed total ROI % (mo.roi)
+  implausible: boolean;  // > PLAUSIBLE_MAX_PCT → show muted "check", never a shiny badge
+  yesPlatform: string; yesPrice: number;
+  noPlatform:  string; noPrice:  number;
+}
+
+export function arbBadge(event: EventBucket): ArbBadge | null {
+  const edge = event.lockableEdge;
+  const mo   = edge?.matchedOpportunity ?? null;
+  if (!edge || !mo) return null;                       // no edge (or gated null on free) → no badge
+  if (mo.roi == null || mo.roi <= 0) return null;      // must clear the executable/fee threshold
+  // EXEC-only enforcement: both legs must be executable venues in THIS bucket.
+  const yp = event.platforms.find(p => p.platform === edge.yesPlatform && p.tier === 'executable');
+  const np = event.platforms.find(p => p.platform === edge.noPlatform  && p.tier === 'executable');
+  if (!yp || !np) return null;                         // a leg is reference-only → never a lockable arb
+  // near-0/near-100¢ legs → edge is noise, not a real arb
+  if (edge.yesPrice < NEAR_ZERO_PRICE || edge.yesPrice > NEAR_ONE_PRICE) return null;
+  if (edge.noPrice  < NEAR_ZERO_PRICE || edge.noPrice  > NEAR_ONE_PRICE) return null;
+  return {
+    edgePct: mo.roi,
+    implausible: mo.roi > PLAUSIBLE_MAX_PCT,
+    yesPlatform: edge.yesPlatform, yesPrice: edge.yesPrice,
+    noPlatform:  edge.noPlatform,  noPrice:  edge.noPrice,
+  };
+}
+
+// Rank for the comparator sort — real arb (3) > wide "check" (2) > raw-edge (1) > none (0).
+export function arbRank(event: EventBucket): number {
+  const b = arbBadge(event);
+  if (b && !b.implausible) return 3;
+  if (b) return 2;
+  return event.lockableEdge?.matchedOpportunity ? 1 : 0;
+}
+
+function ArbBadgeBar({ badge }: { badge: ArbBadge }) {
+  if (badge.implausible) {
+    return (
+      <div className="mb-3 rounded-lg bg-gold-tint border border-gold/30 px-3 py-2 flex items-center gap-x-2 gap-y-0.5 flex-wrap">
+        <span className="font-body font-semibold text-gold text-[12px] tabular-nums">Check — unusually wide (+{badge.edgePct.toFixed(1)}%)</span>
+        <span className="font-body text-[10.5px] text-gold/80">a &gt;{PLAUSIBLE_MAX_PCT}% two-venue lock is often stale/mismatched — verify both legs before trusting it</span>
+      </div>
+    );
+  }
+  return (
+    <div className="mb-3 rounded-lg bg-mint-tint border border-mint-deep/30 px-3 py-2 flex items-center gap-x-2.5 gap-y-0.5 flex-wrap">
+      <span className="font-display font-bold text-mint-deep text-[15px] tabular-nums leading-none">ARB +{badge.edgePct.toFixed(1)}%</span>
+      <span className="font-body text-[11px] text-mint-deep/85 tabular-nums">
+        Lock: buy YES @ {platformLabel(badge.yesPlatform)} {formatCents(badge.yesPrice)} + NO @ {platformLabel(badge.noPlatform)} {formatCents(badge.noPrice)}
+      </span>
+    </div>
+  );
+}
+
 // Correlates a bucket's lockableEdge to the matching pairwise entry in `valid`
 // (by platform pair + roi/spread, the only fields both shapes carry) so the
 // calculator can read real capacityUsd/depth. attachMatchedOpportunity()
@@ -476,6 +545,7 @@ export default function EventCard({ event, valid }: { event: EventBucket; valid:
   const edge = event.lockableEdge;
   const mo   = edge?.matchedOpportunity ?? null;
   const validMatch = edge && mo ? findValidMatch(edge, valid) : null;
+  const badge = arbBadge(event);   // non-null ONLY on a real EXEC-only lockable edge (gated → null on free)
 
   const href = `/dashboard/prediction/event/${encodeURIComponent(event.eventKey)}`;
   const goToDetail = () => router.push(href);
@@ -494,6 +564,9 @@ export default function EventCard({ event, valid }: { event: EventBucket; valid:
       }}
       className="rounded-card shadow-card bg-surface px-5 py-5 cursor-pointer hover:shadow-[0_2px_8px_rgba(11,26,21,.09)] transition-shadow duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-mint/50"
     >
+      {/* ARB badge — only on a real EXEC-only lockable edge above the fee threshold */}
+      {badge && <ArbBadgeBar badge={badge} />}
+
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
         <div className="flex items-center gap-2 min-w-0">

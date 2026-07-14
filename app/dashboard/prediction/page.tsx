@@ -7,7 +7,7 @@ import SectionHeading from '@/app/components/ui/SectionHeading';
 import StatCard from '@/app/components/ui/StatCard';
 import EdgeChip, { type EdgeChipVariant } from '@/app/components/ui/EdgeChip';
 import { Redacted } from '@/app/components/ui/Redacted';
-import EventCard from './_components/EventCard';
+import EventCard, { arbRank, arbBadge } from './_components/EventCard';
 import { platformLabel, formatCents, formatResolutionDate } from './_components/format';
 import type { Freshness, Opportunity, EventBucket, ApiResponse, Leg } from './_components/types';
 
@@ -198,13 +198,17 @@ const INITIAL_EVENTS_SHOWN = 12;
 // Lockable-edge-first, highest-ROI-first — the comparator leads with the events
 // that actually have an executable pair, same ordering rule as the existing
 // pairwise list below.
+// Events WITH a live ARB badge surface to the TOP (real arb 3 > wide "check" 2 >
+// raw-edge 1 > none 0 — the SAME guarded logic the card badge uses, so ordering
+// and badge can never disagree), then by real edge % desc. On the free tier every
+// lockableEdge is gated null → arbRank 0 for all → order is unchanged (honest).
 function sortEvents(events: EventBucket[]): EventBucket[] {
   return [...events].sort((a, b) => {
-    const aScore = a.lockableEdge?.matchedOpportunity ? 2 : a.lockableEdge ? 1 : 0;
-    const bScore = b.lockableEdge?.matchedOpportunity ? 2 : b.lockableEdge ? 1 : 0;
-    if (aScore !== bScore) return bScore - aScore;
-    if (aScore === 2) return b.lockableEdge!.matchedOpportunity!.roi - a.lockableEdge!.matchedOpportunity!.roi;
-    return 0;
+    const ar = arbRank(a), br = arbRank(b);
+    if (ar !== br) return br - ar;
+    const ae = arbBadge(a)?.edgePct ?? a.lockableEdge?.matchedOpportunity?.roi ?? -Infinity;
+    const be = arbBadge(b)?.edgePct ?? b.lockableEdge?.matchedOpportunity?.roi ?? -Infinity;
+    return be - ae;
   });
 }
 
