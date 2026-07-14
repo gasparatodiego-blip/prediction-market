@@ -313,29 +313,34 @@ function RewardRow({ m, tradeSide, open, onToggle }: { m: NormalizedMarket; trad
 
   return (
     <div className="border-b border-line">
-      <button onClick={onToggle} className="w-full grid grid-cols-[auto_1fr_auto_auto] items-center gap-3 px-3 py-2.5 text-left hover:bg-bg-soft/60 transition-colors">
+      {/* Fixed-width net/day column (104px mobile / 150px sm+) so a long withheld note
+          wraps INSIDE it and can never crush the title cell. items-start keeps a
+          2-line title top-aligned with the value. */}
+      <button onClick={onToggle} className="w-full grid grid-cols-[auto_minmax(0,1fr)_104px_auto] sm:grid-cols-[auto_minmax(0,1fr)_150px_auto] items-start gap-2.5 sm:gap-3 px-3 py-2.5 text-left hover:bg-bg-soft/60 transition-colors">
         <span className="w-8 h-8 rounded-[9px] bg-bg-soft border border-line grid place-items-center shrink-0">
           <PlatformLogo platform={m.venue} size={16} />
         </span>
+        {/* Title wraps to 2 lines (never truncated to 1-2 chars); LIVE + verify status
+            sit on their OWN line below, so the status note can't overlap the title. */}
         <span className="min-w-0">
-          <span className="flex items-center gap-1.5 flex-wrap">
-            <span className="font-body text-[12.5px] font-medium text-ink truncate max-w-[260px]">{m.title}</span>
+          <span className="font-body text-[12.5px] font-medium text-ink leading-snug line-clamp-2 break-words">{m.title}</span>
+          <span className="flex items-center gap-1.5 flex-wrap mt-1">
             <span className="font-body text-[8.5px] uppercase tracking-wide text-mint-deep border border-mint-deep/30 bg-mint-tint rounded px-1">LIVE</span>
             {cautionFlag && <span className="font-body text-[8.5px] uppercase tracking-wide text-gold border border-gold/40 rounded px-1">flagged</span>}
             <VerifyBadge v={(m as any).__verify} />
           </span>
-          <span className="font-body text-[10px] text-muted truncate block">
+          <span className="font-body text-[10px] text-muted block mt-0.5 break-words">
             {m.category}
             {` · ${m.twoSidedRequired ? 'two-sided req' : 'one-sided ok'}`}
             {` · resolves ${fmtHours(m.hoursToResolution)}`}
             {risk === 'high' ? ' · news HIGH' : ''}
           </span>
         </span>
-        <span className="text-right tabular-nums shrink-0">
-          <span className="block font-display leading-none">{headline}</span>
+        <span className="text-right tabular-nums min-w-0">
+          <span className="block font-display leading-tight break-words">{headline}</span>
           <span className="block font-body text-[8.5px] uppercase tracking-wide text-muted mt-0.5">est net/day · $1k {sideLabel} · not guaranteed</span>
         </span>
-        <ChevronRight className={`w-3.5 h-3.5 text-muted shrink-0 transition-transform ${open ? 'rotate-90' : ''}`} />
+        <ChevronRight className={`w-3.5 h-3.5 text-muted shrink-0 mt-0.5 transition-transform ${open ? 'rotate-90' : ''}`} />
       </button>
 
       {open && (
@@ -616,7 +621,7 @@ export default function LiquidityRewardsPage() {
         </div>
 
         {/* Column header */}
-        <div className="grid grid-cols-[auto_1fr_auto_auto] gap-3 px-3 pt-1 pb-1.5 text-[9px] uppercase tracking-wider text-muted border-b border-line">
+        <div className="grid grid-cols-[auto_minmax(0,1fr)_104px_auto] sm:grid-cols-[auto_minmax(0,1fr)_150px_auto] gap-2.5 sm:gap-3 px-3 pt-1 pb-1.5 text-[9px] uppercase tracking-wider text-muted border-b border-line">
           <span className="w-8" aria-hidden />
           <span>Market</span>
           <span className="text-right">Est net/day · $1k</span>
