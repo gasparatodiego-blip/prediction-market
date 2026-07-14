@@ -21,9 +21,18 @@ import {
 } from './format';
 
 type Tab = 'leaderboard' | 'bots' | 'markets';
-type RankBy = 'profit' | 'volume' | 'return';
+type RankBy = 'profit' | 'volume' | 'return' | 'win' | 'wilson' | 'recent';
 
-const RANK_LABEL: Record<RankBy, string> = { profit: 'profit', volume: 'volume', return: 'return %' };
+const RANK_LABEL: Record<RankBy, string> = { profit: 'profit', volume: 'volume', return: 'return %', win: 'win rate', wilson: 'consistency', recent: 'recent' };
+// Sort chips, in display order. Every key ranks on a REAL list-level field (see
+// rankMetric) — no fabricated sort. Tooltips flag the honest caveats.
+const RANK_ORDER: RankBy[] = ['profit', 'return', 'win', 'wilson', 'volume', 'recent'];
+const RANK_TITLE: Partial<Record<RankBy, string>> = {
+  return: 'return on volume = profit ÷ volume traded (not an ROI on capital)',
+  win:    'raw win rate — % of resolved markets won (thin-sample wallets are floored below proven ones)',
+  wilson: 'consistency = Wilson 95% lower bound of win rate — sample-robust, the board default tiebreak',
+  recent: 'most recently active first (last on-chain trade) — a public field, works on every tier',
+};
 
 // The metric a given rank-by key ranks on, for a single entry. Reuses the EXACT
 // field shown on the card: return === returnOnVolumePct(pnl, vol) (the "+X% on vol"
@@ -31,6 +40,9 @@ const RANK_LABEL: Record<RankBy, string> = { profit: 'profit', volume: 'volume',
 // floors it last — never a fabricated number. Profit/volume math is untouched.
 function rankMetric(e: LbEntry, rankBy: RankBy): number | null {
   if (rankBy === 'return') return returnOnVolumePct(e.pnlUsdc, e.volumeUsdc);
+  if (rankBy === 'win')    return e.winRate;      // raw win % — null (gated) on free tier
+  if (rankBy === 'wilson') return e.wilsonScore;  // Wilson 95% lower bound — null (gated) on free tier
+  if (rankBy === 'recent') return e.lastActive;   // last-trade ts — public, sorts on every tier
   return rankBy === 'volume' ? e.volumeUsdc : e.pnlUsdc;
 }
 
@@ -60,6 +72,21 @@ function filterByMinReturn(list: LbEntry[], minReturn: number): LbEntry[] {
     const r = returnOnVolumePct(e.pnlUsdc, e.volumeUsdc);
     return r != null && r >= minReturn;
   });
+}
+
+// Human-only filter (heuristic — actorType is an inference, never a Polymarket
+// label). Keeps entries NOT flagged 'bot'; an entry with no actorType is unknown,
+// not a bot, so it stays. actorType is public → works on every tier.
+function filterByHuman(list: LbEntry[], on: boolean): LbEntry[] {
+  if (!on) return list;
+  return list.filter(e => e.actorType?.type !== 'bot');
+}
+
+// Minimum resolved-markets filter — hides thin-sample wallets below the threshold.
+// resolvedMarkets is a public count (not gated), so this works on every tier.
+function filterByMinResolved(list: LbEntry[], min: number): LbEntry[] {
+  if (min <= 0) return list;
+  return list.filter(e => (e.resolvedMarkets ?? 0) >= min);
 }
 
 const WINDOW_LABEL: Record<WindowKey, string> = { '1d': '1D', '7d': '7D', '30d': '30D', all: 'ALL' };
@@ -111,10 +138,15 @@ export default function TradersApp() {
   const [cat, setCat]         = useState(() => searchParams.get('cat') || 'All');
   const [rankBy, setRankBy]   = useState<RankBy>(() => {
     const r = searchParams.get('rank');
-    return r === 'volume' || r === 'return' ? r : 'profit';
+    return (['volume', 'return', 'win', 'wilson', 'recent'] as string[]).includes(r ?? '') ? (r as RankBy) : 'profit';
   });
   const [minReturn, setMinReturn] = useState(() => {   // Return ≥ N% filter (0 = off, both tabs)
     const n = Number(searchParams.get('minRet'));
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  });
+  const [humanOnly, setHumanOnly] = useState(() => searchParams.get('human') === '1');  // heuristic human-only (leaderboard)
+  const [minResolved, setMinResolved] = useState(() => {   // Min resolved-markets filter (0 = off, both tabs)
+    const n = Number(searchParams.get('minRes'));
     return Number.isFinite(n) && n > 0 ? n : 0;
   });
   const [win, setWin]         = useState<WindowKey>('all');
@@ -145,9 +177,11 @@ export default function TradersApp() {
     if (cat !== 'All')         p.set('cat', cat);
     if (rankBy !== 'profit')   p.set('rank', rankBy);
     if (minReturn > 0)         p.set('minRet', String(minReturn));
+    if (humanOnly)             p.set('human', '1');
+    if (minResolved > 0)       p.set('minRes', String(minResolved));
     if (sel)                   p.set('sel', sel);
     return p.toString();
-  }, [tab, cat, rankBy, minReturn]);
+  }, [tab, cat, rankBy, minReturn, humanOnly, minResolved]);
 
   // Mirror the active section into the URL query so the origin history entry carries
   // the filter state (838386e). router.replace keeps ONE history entry (filter changes
@@ -272,16 +306,18 @@ export default function TradersApp() {
   // of the category slice, so category + sort + filter stack correctly.
   const rows = useMemo(() => {
     const list = sortByRank((lbData?.categories?.[cat] ?? []).slice(), rankBy);
-    return filterByMinReturn(list, minReturn);
-  }, [lbData, cat, rankBy, minReturn]);
+    // Return ≥, then heuristic human-only, then min-resolved — all real fields.
+    return filterByMinResolved(filterByHuman(filterByMinReturn(list, minReturn), humanOnly), minResolved);
+  }, [lbData, cat, rankBy, minReturn, humanOnly, minResolved]);
 
   // Bots / HFT wallets come from a dedicated server list — EXCLUDED from the
   // directional `categories` (so tiny-P&L scrapers can't fill the skill board).
-  // The same rank-by + Return ≥ threshold apply here for a consistent UX.
+  // The same rank-by + Return ≥ threshold apply here for a consistent UX. Human-only
+  // is intentionally NOT applied here (this tab IS the bot list — its toggle is hidden).
   const bots = useMemo(() => {
     const list = sortByRank((lbData?.bots ?? []).slice(), rankBy);
-    return filterByMinReturn(list, minReturn);
-  }, [lbData, rankBy, minReturn]);
+    return filterByMinResolved(filterByMinReturn(list, minReturn), minResolved);
+  }, [lbData, rankBy, minReturn, minResolved]);
   const botsTotal = lbData?.bots?.length ?? 0;
 
   // Window availability is DATA-DRIVEN, never a hardcoded list. A window renders
@@ -381,6 +417,9 @@ export default function TradersApp() {
           <RankControls
             rankBy={rankBy} setRankBy={setRankBy}
             minReturn={minReturn} setMinReturn={setMinReturn}
+            humanOnly={humanOnly} setHumanOnly={setHumanOnly}
+            minResolved={minResolved} setMinResolved={setMinResolved}
+            showHuman
             right={availWindows.length > 1 ? (
               <div className="flex items-center gap-4">
                 <span className="font-body text-[10px] uppercase tracking-wide text-muted">Window</span>
@@ -451,6 +490,8 @@ export default function TradersApp() {
           <RankControls
             rankBy={rankBy} setRankBy={setRankBy}
             minReturn={minReturn} setMinReturn={setMinReturn}
+            humanOnly={humanOnly} setHumanOnly={setHumanOnly}
+            minResolved={minResolved} setMinResolved={setMinResolved}
           />
           {bots.length === 0 ? (
             <div className="rounded-card border border-line bg-surface shadow-card p-8 text-center font-body text-sm text-muted">
@@ -513,19 +554,23 @@ export default function TradersApp() {
 // hides sub-threshold cards. `right` is an optional slot (leaderboard window
 // selector). Look matches the existing rank-by / category chip tokens.
 function RankControls({
-  rankBy, setRankBy, minReturn, setMinReturn, right,
+  rankBy, setRankBy, minReturn, setMinReturn,
+  humanOnly, setHumanOnly, minResolved, setMinResolved, showHuman = false, right,
 }: {
   rankBy: RankBy; setRankBy: (r: RankBy) => void;
   minReturn: number; setMinReturn: (n: number) => void;
+  humanOnly: boolean; setHumanOnly: (b: boolean) => void;
+  minResolved: number; setMinResolved: (n: number) => void;
+  showHuman?: boolean;
   right?: React.ReactNode;
 }) {
   return (
     <div className="flex items-center justify-between gap-4 flex-wrap mb-3">
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-4 flex-wrap">
         <span className="font-body text-[10px] uppercase tracking-wide text-muted">Rank by</span>
-        {(['profit', 'volume', 'return'] as RankBy[]).map(r => (
+        {RANK_ORDER.map(r => (
           <button key={r} onClick={() => setRankBy(r)}
-            title={r === 'return' ? 'return on volume = profit ÷ volume traded (not an ROI on capital)' : undefined}
+            title={RANK_TITLE[r]}
             className={[
               'font-body text-[11px] uppercase tracking-wide pb-0.5 border-b-2 transition-colors',
               rankBy === r ? 'text-ink border-[#0c9d6e]' : 'text-muted border-transparent hover:text-ink-2',
@@ -550,6 +595,32 @@ function RankControls({
           />
           <span className="font-body text-[10px] text-muted">%</span>
         </label>
+        {/* Min resolved-markets — hides thin-sample wallets (public count, every tier). */}
+        <label className="flex items-center gap-1.5 whitespace-nowrap"
+          title="Show only wallets with at least this many resolved markets (a public count — filters out thin, noisy samples)">
+          <span className="font-body text-[10px] uppercase tracking-wide text-muted">Resolved ≥</span>
+          <input
+            type="number" inputMode="numeric" min={0} step={5}
+            value={minResolved === 0 ? '' : minResolved}
+            placeholder="0"
+            onChange={e => {
+              const n = Number(e.target.value);
+              setMinResolved(Number.isFinite(n) && n > 0 ? Math.floor(n) : 0);
+            }}
+            className="w-14 px-1.5 py-0.5 rounded-button border border-line bg-surface text-ink font-mono text-[11px] tabular-nums text-right focus:outline-none focus:border-mint-deep/50"
+          />
+        </label>
+        {/* Human-only (heuristic) — leaderboard only; hidden on the bots tab. */}
+        {showHuman && (
+          <button onClick={() => setHumanOnly(!humanOnly)}
+            title="Show only wallets NOT heuristically flagged as bots (an inference from trade frequency/timing — not a Polymarket label)"
+            className={[
+              'font-body text-[11px] uppercase tracking-wide px-2 py-0.5 rounded-button border transition-colors',
+              humanOnly ? 'text-[#0c9d6e] border-[#0c9d6e]/50 bg-mint-tint' : 'text-muted border-line hover:text-ink-2',
+            ].join(' ')}>
+            Human only
+          </button>
+        )}
       </div>
       {right}
     </div>

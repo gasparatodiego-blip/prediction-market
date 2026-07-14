@@ -114,6 +114,29 @@ export default function TraderProfileView({
     return Math.max(1, ...c.map(x => Math.abs(x.pnlUsdc ?? 0)));
   }, [profile]);
 
+  // Derived from REAL closed trades — honest, never fabricated:
+  //  • current streak: leading run of the same decisive result (won/lost), newest
+  //    first. `result` is a public field → works on every tier.
+  //  • max drawdown: largest peak-to-trough drop of the CUMULATIVE realized-P&L curve
+  //    (pnlSeries). realizedPnl is gated → free tier gets an empty series → null → the
+  //    Redacted lock, never a fabricated 0.
+  const streak = useMemo(() => {
+    const t = (profile?.tradesClosed ?? [])
+      .filter(x => x.result === 'won' || x.result === 'lost')
+      .slice().sort((a, b) => b.timestamp - a.timestamp);
+    if (!t.length) return null;
+    const won = t[0].result === 'won';
+    let n = 0;
+    for (const x of t) { if ((x.result === 'won') === won) n++; else break; }
+    return { won, n };
+  }, [profile]);
+  const maxDrawdown = useMemo<number | null>(() => {
+    if (pnlSeries.length < 1) return null;
+    let cum = 0, peak = 0, dd = 0;
+    for (const r of pnlSeries) { cum += r; if (cum > peak) peak = cum; if (peak - cum > dd) dd = peak - cum; }
+    return dd;
+  }, [pnlSeries]);
+
   return (
     <div className="space-y-5">
       {/* Back */}
@@ -213,6 +236,26 @@ export default function TraderProfileView({
                   {walletKind === 'Algorithmic' ? <Cpu className="w-3 h-3" /> : <User className="w-3 h-3" />}
                   {walletKind}
                 </span>
+              </Stat>
+            </div>
+
+            {/* Derived stats from real closed-trade data — missing → "—", never fabricated. */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-4 pt-4 border-t border-line">
+              <Stat label="Current streak">
+                {streak ? (
+                  <span className={streak.won ? 'text-mint-deep' : 'text-coral-ink'}>{streak.won ? 'W' : 'L'}{streak.n}</span>
+                ) : <span className="text-muted">—</span>}
+              </Stat>
+              <Stat label="Max drawdown">
+                <Redacted value={maxDrawdown}>{v => (v as number) > 0
+                  ? <span className="text-coral-ink">−{fmtVol(v)}</span>
+                  : <span className="text-ink-2">{fmtVol(0)}</span>}</Redacted>
+              </Stat>
+              <Stat label="Since">
+                {entry.firstActive ? <span className="text-ink-2">{fmtAge(entry.firstActive)}</span> : <span className="text-muted">—</span>}
+              </Stat>
+              <Stat label="Avg hold">
+                <span className="text-muted" title="Not available — the leaderboard agent doesn't store per-trade entry timestamps, so a hold duration would be fabricated.">—</span>
               </Stat>
             </div>
           </div>
