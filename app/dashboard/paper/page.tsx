@@ -18,21 +18,24 @@ import { Redacted } from '@/app/components/ui/Redacted';
 
 // ── types (loose — the API is the source of truth) ──────────────────────────
 interface Mark { asOf: string; netUsd?: number | null; unrealizedUsd?: number | null; cumFundingUsd?: number | null; currentBasisPct?: number | null; liveRoi?: number | null; note?: string | null; [k: string]: unknown }
+interface ExitInfo { asOf?: string | null; reason?: string | null; markPx?: number | null; trailingNetPerDay?: number | null; [k: string]: unknown }
 interface Position {
   id: string; category: string; label: string; status: string; metricKind: string;
   thin: boolean; value: number | null;
+  exit: ExitInfo | null; realizedUsd: number | null;
   entry: Record<string, any> | null; lastMark: Record<string, any> | null; marks: Mark[];
   contractKey: string | null; fundingCursorT: number | null; cumFundingUsd: number | null;
 }
 interface Strategy {
   key: string; label: string; metric: string | null; chip: string;
-  open: number; matured: number; execOpen: number; execNotionalUsd: number | null;
-  execPnlUsd: number | null; thinOpen: number; thinPnlUsd: number | null; positions: Position[];
+  open: number; matured: number; closed: number; execOpen: number; execNotionalUsd: number | null;
+  execPnlUsd: number | null; thinOpen: number; thinPnlUsd: number | null;
+  realizedPnlUsd: number | null; positions: Position[];
 }
 interface PaperBook {
   ok: boolean; simulated: boolean; isPaid: boolean;
   meta: { entryAsOf: string | null; updatedAt: string | null; simDays: number | null; dayIndex: number; notionalUsd: number | null };
-  headline: { executablePnlUsd: number | null; executablePnlHas: boolean; thinPnlUsd: number | null; thinOpen: number; ticketCount: number; ticketSizeUsd: number | null; totalNotionalUsd: number | null; openTicketCountAll: number; openNotionalUsdAll: number | null };
+  headline: { executablePnlUsd: number | null; executablePnlHas: boolean; thinPnlUsd: number | null; thinOpen: number; ticketCount: number; ticketSizeUsd: number | null; totalNotionalUsd: number | null; openTicketCountAll: number; openNotionalUsdAll: number | null; closedRealizedUsd: number | null; closedCount: number; maturedCount: number };
   equityCurve: { asOf: string; netUsd: number | null }[];
   strategies: Strategy[];
   copy: { sleeveCount: number; openLegs: number; pnlUsd: number | null; sleeves: any[] };
@@ -147,6 +150,7 @@ function PositionModal({ pos, isPaid, onClose }: { pos: Position; isPaid: boolea
   const [showRaw, setShowRaw] = useState(false);
   const e = pos.entry || {};
   const lm = pos.lastMark || {};
+  const x = pos.exit || {};
   const legs: any[] = Array.isArray(e.legs) ? e.legs : [];
   const open = pos.status === 'open';
   const dash = <span className="text-muted">—</span>;
@@ -249,17 +253,17 @@ function PositionModal({ pos, isPaid, onClose }: { pos: Position; isPaid: boolea
             <Stat label={<>Unrealized <InfoDot term="unrealized" size={11} /></>} demoted="marked at real live/settled data">
               <Redacted value={lm.unrealizedUsd ?? (lm.netUsd != null ? lm.netUsd : null)} isPaid={isPaid}>{v => fmtUsd(v as number)}</Redacted>
             </Stat>
-            <Stat label={<>Realized <InfoDot term="realized" size={11} /></>} demoted={open ? 'nothing realized while open' : undefined}>
-              {open ? dash : <Redacted value={pos.value} isPaid={isPaid}>{v => fmtUsd(v as number)}</Redacted>}
+            <Stat label={<>Realized <InfoDot term="realized" size={11} /></>} demoted={open ? 'nothing realized while open' : 'frozen at close'}>
+              {open ? dash : <Redacted value={pos.realizedUsd} isPaid={isPaid}>{v => fmtUsd(v as number)}</Redacted>}
             </Stat>
           </Section>
 
-          {/* Exit / close (all "—" while open) */}
+          {/* Exit / close — real stored close data once closed, "—" while open */}
           <Section title="Exit · close">
-            <Stat label="Exit price">{dash}</Stat>
-            <Stat label="Closed at">{dash}</Stat>
+            <Stat label="Exit mark">{open ? dash : <Redacted value={x.markPx} isPaid={isPaid}>{v => fmtUsd(v as number)}</Redacted>}</Stat>
+            <Stat label="Closed at">{open ? dash : fmtWhen(x.asOf)}</Stat>
+            <Stat label="Close reason">{open ? dash : (x.reason || dash)}</Stat>
             <Stat label="Unlock / expiry">{e.expiry || e.unlockDate || dash}</Stat>
-            <Stat label="Days to expiry">{e.daysToExpiry ?? dash}</Stat>
           </Section>
 
           {/* Flags & integrity */}
@@ -358,6 +362,163 @@ function StrategyBlock({ s, isPaid, onOpenPos }: { s: Strategy; isPaid: boolean;
   );
 }
 
+// ── Balance frame — honest account framing around the headline. The book is N
+// INDEPENDENT $1,000 tickets, NOT one starting bankroll, so we never invent a
+// single "starting balance": we state the notional scale, then net P&L split
+// into realized (closed) + unrealized (open), then an account-value line whose
+// arithmetic is shown in full. Realized and unrealized are NEVER merged.
+// Notional + ticket counts are public; the $ P&L are server-gated (locked/"—"
+// on free tier → account value can't be formed, shown locked, never fabricated).
+function BalanceFrame({ h, isPaid }: { h: PaperBook['headline']; isPaid: boolean }) {
+  const notional = h.totalNotionalUsd;
+  const realized = h.closedRealizedUsd;       // closed book (gated → null on free)
+  const unreal   = h.executablePnlUsd;         // open exec book (gated → null on free)
+  // account value = notional + realized + unrealized — only formable when both P&L
+  // legs are present (paid). Any null leg → null (locked), never a partial guess.
+  const acct = (notional != null && realized != null && unreal != null)
+    ? notional + realized + unreal : null;
+  const acctPct = (acct != null && notional) ? ((acct - notional) / notional) * 100 : null;
+  const Row = ({ label, children, sign }: { label: string; children: React.ReactNode; sign?: string }) => (
+    <div className="flex items-baseline justify-between gap-3 py-1">
+      <span className="font-body text-[11.5px] text-ink-2">{sign && <span className="text-muted mr-1">{sign}</span>}{label}</span>
+      <span className="font-body text-[12px] tabular-nums">{children}</span>
+    </div>
+  );
+  return (
+    <div className="rounded-card bg-surface shadow-card px-5 py-4 mb-3">
+      <p className="font-body text-[11px] uppercase tracking-wide text-muted mb-2">Account frame · paper</p>
+      {/* notional scale — public */}
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="font-body text-[12px] text-ink-2">Total notional <span className="text-muted">(scale)</span></span>
+        <span className="font-display font-semibold text-ink text-[18px] tabular-nums">{fmtK(notional)}</span>
+      </div>
+      <p className="font-body text-[10.5px] text-muted mt-0.5 leading-snug">
+        ~{h.ticketCount} independent ${h.ticketSizeUsd?.toLocaleString()} tickets · <span className="text-muted">not one ${h.ticketSizeUsd?.toLocaleString()} book</span>
+      </p>
+
+      {/* net P&L split — realized (closed) SEPARATE from unrealized (open) */}
+      <div className="mt-3 pt-3 border-t border-line/70">
+        <Row label={`Realized · closed (${h.closedCount})`} sign="+">
+          <span className={pnlColor(realized)}><Redacted value={realized} isPaid={isPaid}>{v => fmtUsd(v as number)}</Redacted></span>
+        </Row>
+        <Row label={`Unrealized · open exec (${h.ticketCount})`} sign="+">
+          <span className={pnlColor(unreal)}><Redacted value={unreal} isPaid={isPaid}>{v => fmtUsd(v as number)}</Redacted></span>
+        </Row>
+        {h.thinOpen ? (
+          <p className="font-body text-[10px] text-muted mt-0.5 leading-snug">
+            THIN <Redacted value={h.thinPnlUsd} isPaid={isPaid}>{v => fmtUsd(v as number)}</Redacted> ({h.thinOpen} not-exec-at-size) is shown separately — not in this line.
+          </p>
+        ) : null}
+      </div>
+
+      {/* account value = notional + realized + unrealized, arithmetic stated */}
+      <div className="mt-3 pt-3 border-t border-line/70 flex items-baseline justify-between gap-3">
+        <span className="font-body text-[12px] text-ink">Account value <span className="text-muted">= notional + realized + unrealized</span></span>
+        <span className={`font-display font-semibold text-[18px] tabular-nums ${acct == null ? 'text-muted' : 'text-ink'}`}>
+          <Redacted value={acct} isPaid={isPaid}>{v => fmtUsdPlain(v as number, 2)}</Redacted>
+          {acctPct != null && isPaid && <span className={`ml-1.5 text-[12px] ${pnlColor(acctPct)}`}>{fmtPct(acctPct)}</span>}
+        </span>
+      </div>
+      {isPaid && acct != null && notional != null && realized != null && unreal != null && (
+        <p className="font-body text-[10px] text-muted mt-1 leading-snug tabular-nums">
+          {fmtUsdPlain(notional, 0)} + ({fmtUsd(realized)}) + ({fmtUsd(unreal)}) = {fmtUsdPlain(acct, 2)}. Realized is booked from now-closed tickets; unrealized marks the {h.ticketCount} open exec tickets.
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ── Closed / matured section — 229 closed positions exist in the store but were
+// never surfaced. Real stored data only: realizedUsd frozen at close, exit reason,
+// closedAt. REALIZED is its own labelled column — never merged with open unrealized.
+// Counts + reason labels are public; $ figures are server-gated. Losses shown calmly.
+const CLOSE_REASONS: { key: string; label: string }[] = [
+  { key: 'carry<=fees', label: 'Carry ≤ fees' },
+  { key: 'source_gone', label: 'Source gone' },
+  { key: 'unlock',      label: 'Unlocked / expiry' },
+  { key: 'resolved',    label: 'Resolved' },
+];
+function ClosedSection({ strategies, headline, isPaid, onOpenPos }: {
+  strategies: Strategy[]; headline: PaperBook['headline']; isPaid: boolean; onOpenPos: (p: Position) => void;
+}) {
+  const closed = strategies.flatMap(s => s.positions.filter(p => p.status === 'closed' || p.status === 'matured'));
+  if (closed.length === 0) return null;
+  // reason counts — public (counts, not edge). Canonical four always shown (0 if
+  // absent); any other reason that appears is appended so nothing is hidden.
+  const counts = new Map<string, number>();
+  for (const p of closed) { const r = String(p.exit?.reason ?? 'unknown'); counts.set(r, (counts.get(r) ?? 0) + 1); }
+  const shown = new Set(CLOSE_REASONS.map(r => r.key));
+  const extraReasons = Array.from(counts.keys()).filter(k => !shown.has(k)).map(k => ({ key: k, label: k }));
+  const reasonRows = [...CLOSE_REASONS, ...extraReasons];
+  const sorted = [...closed].sort((a, b) => Date.parse(b.exit?.asOf ?? '') - Date.parse(a.exit?.asOf ?? ''));
+  const CAP = 40;
+
+  return (
+    <div className="rounded-card bg-surface shadow-card overflow-hidden">
+      <div className="px-4 py-3.5 border-b border-line/70">
+        <div className="flex items-center gap-3">
+          <span className="flex-1 min-w-0">
+            <span className="flex items-center gap-2 mb-1">
+              <span className="font-display font-semibold text-ink text-[14px]">Closed / matured</span>
+              <PaperTag text={`${headline.closedCount} closed`} tone="violet" />
+            </span>
+            <span className="font-body text-[11px] text-muted">Realized book · frozen at close · separate from open unrealized</span>
+          </span>
+          <span className="text-right shrink-0">
+            <span className={`block font-body text-[15px] font-semibold tabular-nums ${pnlColor(headline.closedRealizedUsd)}`}>
+              <Redacted value={headline.closedRealizedUsd} isPaid={isPaid}>{v => fmtUsd(v as number)}</Redacted>
+            </span>
+            <span className="block font-body text-[10px] text-muted uppercase tracking-wide">realized</span>
+          </span>
+        </div>
+        {/* reason breakdown — counts public */}
+        <div className="grid grid-cols-2 gap-1.5 mt-3">
+          {reasonRows.map(r => (
+            <div key={r.key} className="flex items-baseline justify-between gap-2 rounded-lg bg-bg-soft/60 px-2.5 py-1.5">
+              <span className="font-body text-[11px] text-ink-2 truncate">{r.label}</span>
+              <span className="font-body text-[12px] tabular-nums text-ink font-semibold">{counts.get(r.key) ?? 0}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* closed rows — REALIZED labelled column, calm losses, entry → exit mark */}
+      <div className="px-4 py-3">
+        <div className="flex items-center justify-between mb-2">
+          <span className="font-body text-[10px] uppercase tracking-widest text-muted">Closed positions ({closed.length})</span>
+          <span className="font-body text-[10px] text-muted uppercase tracking-wide">realized · reason · closed</span>
+        </div>
+        <div className="space-y-1.5">
+          {sorted.slice(0, CAP).map(p => (
+            <button key={p.id} onClick={() => onOpenPos(p)}
+              className="w-full flex items-center gap-2 rounded-lg bg-surface px-3 py-2 text-left hover:bg-violet-tint/25 transition-colors border border-line/50">
+              <span className="flex-1 min-w-0">
+                <span className="font-body text-[12px] text-ink truncate block">{p.label}</span>
+                <span className="font-body text-[10px] text-muted">
+                  {p.exit?.reason ?? '—'} · closed {fmtWhen(p.exit?.asOf)}
+                </span>
+              </span>
+              <span className="text-right shrink-0">
+                <span className={`block font-body text-[12px] tabular-nums ${pnlColor(p.realizedUsd)}`}>
+                  <Redacted value={p.realizedUsd} isPaid={isPaid}>{v => fmtUsd(v as number)}</Redacted>
+                </span>
+                <span className="block font-body text-[9px] text-muted uppercase tracking-wide">realized</span>
+              </span>
+              <ChevronRight className="w-4 h-4 text-muted shrink-0" />
+            </button>
+          ))}
+          {closed.length > CAP && (
+            <p className="font-body text-[10px] text-muted px-1 pt-1">
+              +{closed.length - CAP} more closed (showing latest {CAP} by close time) · full realized total ${' '}
+              <Redacted value={headline.closedRealizedUsd} isPaid={isPaid}>{v => fmtUsd(v as number).replace('$', '')}</Redacted> above.
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // L1 — unified page
 // ══════════════════════════════════════════════════════════════════════════════
@@ -436,6 +597,9 @@ export default function PaperBookPage() {
             </div>
           </div>
 
+          {/* account frame — notional scale + net P&L split (realized ≠ unrealized) */}
+          {h && <BalanceFrame h={h} isPaid={isPaid} />}
+
           {/* strategy rows */}
           <div className="space-y-2">
             {data.strategies.map(s => {
@@ -462,6 +626,9 @@ export default function PaperBookPage() {
                 </div>
               );
             })}
+
+            {/* closed / matured — realized book, surfaced below the open strategies */}
+            {h && <ClosedSection strategies={data.strategies} headline={h} isPaid={isPaid} onOpenPos={setModalPos} />}
 
             {/* copy mirror row */}
             {data.copy.sleeveCount > 0 && (
