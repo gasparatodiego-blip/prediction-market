@@ -2,14 +2,21 @@ import { NextResponse } from 'next/server';
 
 export async function GET() {
     try {
-        const response = await fetch('https://api.elections.kalshi.com/trade-api/v2/markets?limit=50&status=open');
+        // Kalshi's real category lives on the EVENT (the /markets endpoint returns
+        // category:null), so read events with nested markets and carry ev.category
+        // down to each market. Honest passthrough — absent category stays 'other'.
+        const response = await fetch('https://api.elections.kalshi.com/trade-api/v2/events?limit=50&status=open&with_nested_markets=true');
         const data = await response.json();
-        
-        const markets = (data.markets || []).map((m: any) => ({
+
+        const flat = (data.events || []).flatMap((ev: any) =>
+            (ev.markets || []).map((m: any) => ({ ...m, _category: ev.category, _eventTitle: ev.title })),
+        );
+
+        const markets = flat.map((m: any) => ({
             id: m.ticker,
-            title: m.title || m.subtitle || 'Unknown',
+            title: m.title || m.yes_sub_title || m._eventTitle || 'Unknown',
             platform: 'Kalshi',
-            category: 'Politics',
+            category: m._category || 'other',
             yesPrice: (() => {
                 const ask = parseFloat(m.yes_ask_dollars || '0');
                 const bid = parseFloat(m.yes_bid_dollars || '0');
