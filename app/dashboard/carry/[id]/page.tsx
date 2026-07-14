@@ -22,6 +22,13 @@ import { type Contract, chipVariant, nonCashableReason } from '@/lib/carry';
 
 interface CarryData { opportunities: Contract[]; updatedAt: string | null; isPaid?: boolean; }
 
+// SAFETY GATE — automated order placement is NOT built yet. While this is false the
+// "Execute automatically" button only opens a prepare/confirm modal: it shows what
+// WOULD be placed, requests NO API keys, and sends NO order. Any real-execution code
+// added later must live behind `if (EXECUTION_ENABLED)` and stays inert until the
+// separate security-hardening project flips this on. Do NOT set true without it.
+const EXECUTION_ENABLED = false;
+
 // Capital presets for the operation-page size selector — mirrors the inline
 // preset-button + editable-input stepper used on the liquidity-rewards and
 // funding-arb order pages. Default $10k.
@@ -71,6 +78,9 @@ export default function CarryOperationPage({ params }: { params: { id: string } 
   const [loading, setLoading] = useState(true);
   // User capital for the live fee/net-dollar figures (operation page only).
   const [capital, setCapital] = useState(DEFAULT_CAPITAL);
+  // Execute button → prepare/confirm modal (no live trading; see EXECUTION_ENABLED).
+  const [showExecModal, setShowExecModal] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -104,6 +114,37 @@ export default function CarryOperationPage({ params }: { params: { id: string } 
   const variant = c ? chipVariant(c) : 'signal';
   const reason  = c ? nonCashableReason(c) : null;
   const vchip   = VERDICT_CHIP[variant] ?? VERDICT_CHIP.signal;
+
+  // Redaction-aware display strings for the step guide + execute modal. Real data
+  // only — a free-tier-redacted (null) or genuinely-missing field renders "—",
+  // never a fabricated figure (honest-engine). Basis/net/capacity are gated fields.
+  const basisStr = c?.executableBasisPct != null ? `+${(c.executableBasisPct * 100).toFixed(2)}%` : '—';
+  const netStr   = c?.netAnnualizedExecutable != null ? fmtAnnualized(c.netAnnualizedExecutable) : '—';
+  const capStr   = c?.capacityUsd != null && c.capacityUsd > 0 ? fmtCapDisplay(c.capacityUsd) : '—';
+
+  // Numbered execution steps, built from THIS opportunity's real fields.
+  const steps = c ? [
+    { tag: 'SPOT',  title: 'Buy the spot',         body: `Buy ${c.asset} at spot on Binance${spotPx != null ? ` (~${fmtPrice(spotPx)})` : ''}, up to ~${capStr}.` },
+    { tag: 'SHORT', title: 'Open the short',        body: `Short ${c.contract} on ${venueLabel(c.exchange)}${futurePx != null ? ` (~${fmtPrice(futurePx)})` : ''}, same size — this locks ${basisStr} basis.` },
+    { tag: 'HOLD',  title: 'Hold to expiry',        body: `Keep both legs to ${c.expiry} (${c.daysToExpiry}d); the two prices move to offset each other.` },
+    { tag: 'CASH',  title: 'Collect at settlement', body: `The future converges to spot and cash-settles — you keep ~${netStr}/yr net-of-fee.` },
+  ] : [];
+
+  // Copy the two legs as plain text for manual placement. PREPARE-MODE ONLY: no API
+  // keys, no order submission. The real-execution path is gated off (EXECUTION_ENABLED)
+  // and inert here — it will be built in the later security-hardening project.
+  const copyOrderDetails = () => {
+    if (!c) return;
+    const lines = [
+      `Cash & carry — ${c.asset}`,
+      `1) BUY SPOT: ${c.asset} on Binance${spotPx != null ? ` @ ${fmtPrice(spotPx)}` : ''}`,
+      `2) SHORT:    ${c.contract} on ${venueLabel(c.exchange)}${futurePx != null ? ` @ ${fmtPrice(futurePx)}` : ''}`,
+      `Same size · basis ${basisStr} · net ${netStr}/yr · hold to ${c.expiry} (${c.daysToExpiry}d)`,
+    ];
+    if (EXECUTION_ENABLED) { /* real automated placement — added later, behind the gate; inert now */ }
+    try { navigator.clipboard?.writeText(lines.join('\n')); setCopied(true); setTimeout(() => setCopied(false), 1500); }
+    catch { /* clipboard unavailable — no-op */ }
+  };
 
   return (
     <div className="max-w-[720px] mx-auto px-4 py-6">
@@ -287,19 +328,45 @@ export default function CarryOperationPage({ params }: { params: { id: string } 
             )}
           </div>
 
-          {/* ── HOW TO EXECUTE (educational, all tiers) ──────────────────────── */}
-          <div className="rounded-card mb-4" style={{ background: '#effcf9', border: '1px solid rgba(15,118,110,0.25)', padding: '12px 14px' }}>
-            <div className="font-body font-semibold" style={{ fontSize: 12, color: '#0f766e' }}>Lock the basis: buy spot, short the dated future</div>
-            <ol className="font-body mt-1.5 leading-relaxed list-decimal ml-4 space-y-0.5" style={{ fontSize: 11, color: '#0e1626' }}>
-              <li>Buy {c.asset} spot on Binance at {spotPx != null ? fmtPrice(spotPx) : 'the ask'}.</li>
-              <li>Short the {c.contract} dated future on {venueLabel(c.exchange)} at {futurePx != null ? fmtPrice(futurePx) : 'the bid'} (equal notional).</li>
-              <li>Hold both legs to expiry ({c.expiry}) — the future converges to spot and you keep the basis locked at entry.</li>
-              {c.coinMargined && <li className="text-gold">This contract settles in {c.asset}, not USD — your USD return drifts with spot. Not a clean locked-USD yield.</li>}
+          {/* ── STEP-BY-STEP EXECUTION GUIDE (educational, all tiers) ──────────
+              Replaces the old one-line how-to. A numbered vertical stepper built
+              from THIS opportunity's real data; redacted/missing fields → "—". */}
+          <div className="rounded-card mb-4" style={{ background: '#effcf9', border: '1px solid rgba(15,118,110,0.25)', padding: '14px 16px' }}>
+            <div className="font-body font-semibold mb-3" style={{ fontSize: 12, color: '#0f766e' }}>Lock the basis: buy spot, short the dated future</div>
+
+            <ol className="space-y-3">
+              {steps.map((s, i) => (
+                <li key={s.tag} className="flex gap-3">
+                  <div className="flex flex-col items-center shrink-0">
+                    <span className="grid place-items-center rounded-full font-mono font-bold" style={{ width: 22, height: 22, fontSize: 11, color: '#fff', background: '#0f766e' }}>{i + 1}</span>
+                    {i < steps.length - 1 && <span style={{ width: 1, flex: 1, minHeight: 12, marginTop: 2, background: 'rgba(15,118,110,0.25)' }} />}
+                  </div>
+                  <div className="pb-0.5">
+                    <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                      <span className="font-body font-semibold" style={{ fontSize: 11.5, color: '#0e1626' }}>{s.title}</span>
+                      <span className="font-body uppercase tracking-wider" style={{ fontSize: 8, padding: '1.5px 5px', borderRadius: 3, color: '#0f766e', background: '#d7f0ea', border: '1px solid rgba(15,118,110,0.2)' }}>{s.tag}</span>
+                    </div>
+                    <p className="font-body leading-relaxed" style={{ fontSize: 11, color: '#40505f' }}>{s.body}</p>
+                  </div>
+                </li>
+              ))}
             </ol>
 
-            {/* Automatic venue action buttons — open the REAL venue URL for each leg,
-                reusing the shared PlatformLink (non-compact = labeled button), the same
-                component the funding-arb / prediction order pages use. */}
+            {/* Payoff highlight + honest caveat */}
+            <div className="mt-3.5 pt-3.5" style={{ borderTop: '1px solid rgba(15,118,110,0.15)' }}>
+              <div className="rounded-md" style={{ background: '#d7f0ea', border: '1px solid rgba(15,118,110,0.2)', padding: '8px 12px' }}>
+                <span className="font-body font-semibold" style={{ fontSize: 12, color: '#0f766e' }}>
+                  Locked {netStr}/yr if held to {c.expiry} — deterministic
+                </span>
+              </div>
+              <p className="font-body mt-2 leading-relaxed" style={{ fontSize: 10, color: '#9aa5b3' }}>
+                Run-rate, not guaranteed if you exit early. Both legs are placed together and held; capacity ~{capStr} from order-book depth.
+                {c.coinMargined ? ` This contract settles in ${c.asset}, not USD — your USD return drifts with spot, so it is not a clean locked-USD yield.` : ''} Not financial advice.
+              </p>
+            </div>
+
+            {/* Manual venue action buttons — open the REAL venue URL for each leg
+                (shared PlatformLink, same component as the funding-arb order page). */}
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-3 pt-3" style={{ borderTop: '1px solid rgba(15,118,110,0.15)' }}>
               <span className="inline-flex items-center gap-1.5">
                 <span className="font-body" style={{ fontSize: 10, color: '#6b7787' }}>Buy spot on Binance</span>
@@ -313,6 +380,21 @@ export default function CarryOperationPage({ params }: { params: { id: string } 
                   ? <PlatformLink href={venueUrl} label={`${venueLabel(c.exchange)} ${c.contract}`} />
                   : <span className="font-body" style={{ fontSize: 10, color: '#9aa5b3' }}>link unavailable</span>}
               </span>
+            </div>
+
+            {/* Execute button — SAFE prepare-mode. Opens a confirm modal only; places
+                no order and requests no API keys while EXECUTION_ENABLED is false. */}
+            <div className="mt-3.5 pt-3.5" style={{ borderTop: '1px solid rgba(15,118,110,0.15)' }}>
+              <button
+                onClick={() => setShowExecModal(true)}
+                className="w-full font-body font-semibold rounded-button transition-colors duration-100"
+                style={{ padding: '10px 16px', fontSize: 12.5, color: '#fff', background: '#0f766e', border: '1px solid #0f766e' }}
+              >
+                Execute automatically
+              </button>
+              <p className="font-body text-center mt-1.5" style={{ fontSize: 9, color: '#9aa5b3' }}>
+                Prepare mode — opens a confirmation, places no orders and requests no API keys.
+              </p>
             </div>
           </div>
 
@@ -336,6 +418,66 @@ export default function CarryOperationPage({ params }: { params: { id: string } 
           {data?.updatedAt && (
             <div className="font-body text-center" style={{ fontSize: 9, color: '#9aa5b3' }}>
               Snapshot {new Date(data.updatedAt).toLocaleTimeString('en-GB')} · refreshes every 30s
+            </div>
+          )}
+
+          {/* ── EXECUTE — PREPARE/CONFIRM MODAL (no live trading) ───────────────
+              Shows exactly what WOULD be placed, states execution is not enabled,
+              offers copy + a venue deep-link. No API key requested, no order sent —
+              the live path is gated behind EXECUTION_ENABLED (false) and inert. */}
+          {showExecModal && (
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center px-4"
+              style={{ background: 'rgba(14,22,38,0.35)' }}
+              onClick={() => setShowExecModal(false)}
+              role="dialog" aria-modal="true"
+            >
+              <div
+                className="rounded-card w-full max-w-[440px]"
+                style={{ background: '#fff', border: '1px solid #e6eaef', boxShadow: '0 12px 40px rgba(14,22,38,0.18)' }}
+                onClick={e => e.stopPropagation()}
+              >
+                <div style={{ padding: '16px 18px' }}>
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="font-body font-semibold" style={{ fontSize: 13, color: '#0e1626' }}>Confirm cash &amp; carry — prepare</span>
+                    <button onClick={() => setShowExecModal(false)} className="font-body" style={{ fontSize: 18, lineHeight: 1, color: '#9aa5b3' }} aria-label="Close">×</button>
+                  </div>
+
+                  {/* (a) exactly what WOULD be placed */}
+                  <div className="rounded-md mb-3" style={{ background: '#fbfcfd', border: '1px solid #eef2f6', padding: '10px 12px' }}>
+                    <div className="font-body uppercase tracking-wider mb-2" style={{ fontSize: 8.5, color: '#9aa5b3' }}>What would be placed</div>
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <span className="font-body uppercase tracking-wider shrink-0" style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, color: '#0f766e', background: '#d7f0ea' }}>BUY SPOT</span>
+                      <span className="font-mono" style={{ fontSize: 11, color: '#0e1626' }}>Buy {c.asset} spot on Binance{spotPx != null ? ` @ ${fmtPrice(spotPx)}` : ''}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-body uppercase tracking-wider shrink-0" style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, color: '#e11d48', background: '#fdeef1' }}>SHORT</span>
+                      <span className="font-mono" style={{ fontSize: 11, color: '#0e1626' }}>Short {c.contract} on {venueLabel(c.exchange)}{futurePx != null ? ` @ ${fmtPrice(futurePx)}` : ''}</span>
+                    </div>
+                    <div className="font-body mt-2" style={{ fontSize: 10, color: '#6b7787' }}>Same size, at {basisStr} basis · net {netStr}/yr held to {c.expiry}.</div>
+                  </div>
+
+                  {/* (b) execution-not-enabled notice */}
+                  <div className="rounded-md mb-3" style={{ background: '#fff8ef', border: '1px solid rgba(180,83,9,0.25)', padding: '10px 12px' }}>
+                    <p className="font-body leading-relaxed" style={{ fontSize: 11, color: '#b45309' }}>
+                      Execution not yet enabled — automated placement is coming after security hardening. For now, place these two legs manually on {venueLabel(c.exchange)}.
+                    </p>
+                  </div>
+
+                  {/* (c) copy + venue deep-link — no order fires, no API key */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={copyOrderDetails}
+                      className="font-body font-semibold rounded-button transition-colors duration-100"
+                      style={{ padding: '8px 12px', fontSize: 11, color: '#fff', background: '#0f766e', border: '1px solid #0f766e' }}
+                    >
+                      {copied ? 'Copied ✓' : 'Copy order details'}
+                    </button>
+                    {venueUrl && <PlatformLink href={venueUrl} label={`Open ${venueLabel(c.exchange)}`} />}
+                    <button onClick={() => setShowExecModal(false)} className="font-body ml-auto transition-colors duration-100 hover:text-ink" style={{ fontSize: 11, color: '#6b7787' }}>Close</button>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
         </>
