@@ -1,18 +1,15 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import Link from 'next/link';
 import { ChevronRight, Landmark, Trophy, Bitcoin, TrendingUp, CloudSun, Search, ShieldCheck, Send, Copy, Check } from 'lucide-react';
 import Eyebrow from '@/app/components/ui/Eyebrow';
 import SectionHeading from '@/app/components/ui/SectionHeading';
 import StatCard from '@/app/components/ui/StatCard';
-import BlipRow from '@/app/components/ui/BlipRow';
 import EdgeChip, { type EdgeChipVariant } from '@/app/components/ui/EdgeChip';
 import { Redacted } from '@/app/components/ui/Redacted';
-import PlatformLogo from '@/components/PlatformLogo';
 import EventCard from './_components/EventCard';
 import { platformLabel, formatCents, formatResolutionDate } from './_components/format';
-import type { Freshness, Opportunity, EventBucket, ApiResponse } from './_components/types';
+import type { Freshness, Opportunity, EventBucket, ApiResponse, Leg } from './_components/types';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -63,32 +60,6 @@ function nextCheckMin(freshness: Freshness | null): number {
   return Math.max(1, Math.round((freshness.nextDiscoveryAt - Date.now()) / 60_000));
 }
 
-// ── Countdown ─────────────────────────────────────────────────────────────────
-
-function Countdown({ expiresAt }: { expiresAt: number | null }) {
-  const [text, setText] = useState<string>('');
-
-  useEffect(() => {
-    if (!expiresAt) { setText(''); return; }
-    const update = () => {
-      const ms = expiresAt - Date.now();
-      if (ms <= 0) { setText('EXPIRED'); return; }
-      const d = Math.floor(ms / 86_400_000);
-      const h = Math.floor((ms % 86_400_000) / 3_600_000);
-      const m = Math.floor((ms % 3_600_000) / 60_000);
-      const s = Math.floor((ms % 60_000) / 1_000);
-      const p = (n: number) => String(n).padStart(2, '0');
-      setText(`${p(d)}:${p(h)}:${p(m)}:${p(s)}`);
-    };
-    update();
-    const t = setInterval(update, 1_000);
-    return () => clearInterval(t);
-  }, [expiresAt]);
-
-  if (!expiresAt) return <span className="font-body text-[11px] text-muted">no expiry</span>;
-  return <span className="font-body text-[11px] tabular-nums text-ink-2">{text}</span>;
-}
-
 // ── Loading skeleton ──────────────────────────────────────────────────────────
 
 function CardSkeleton() {
@@ -113,53 +84,110 @@ function RowSkeleton() {
   );
 }
 
-// ── Opportunity row ───────────────────────────────────────────────────────────
+// ── Filter-rich opportunity list (new pattern: pills · sort · expandable rows) ──
+// Every sort/filter ranks on a REAL served field. Volume is NOT a per-pair field
+// → that sort is omitted. Derived $ (roi/spread/prob/capacity) stay <Redacted> on
+// the free tier. Prediction arb is ONE-TIME → total ROI + unlock date, never $/day.
+type PredSort = 'edge' | 'unlock' | 'capacity';
+const PRED_SORT_LABEL: Record<PredSort, string> = { edge: 'edge / ROI', unlock: 'unlock (soonest)', capacity: 'capacity' };
+const PRED_SORT_TITLE: Record<PredSort, string> = {
+  edge:     'total ROI (cashable) / spread (signal) — one-time, gated on free tier',
+  unlock:   'days to resolution — soonest first (public field)',
+  capacity: 'executable size estimate — gated on free tier',
+};
+function predSortVal(o: Opportunity, k: PredSort): number | null {
+  if (k === 'unlock')   return o.daysToResolution ?? null;
+  if (k === 'capacity') return o.capacityUsd ?? null;
+  return o.type === 'cashable' ? (o.roi ?? null) : (o.spread ?? null); // edge
+}
+// near-zero flag — either leg's implied prob <3% or >97% (edge is liquidity/rounding
+// noise). probability is gated on free → flag only surfaces for paid.
+function nearZero(o: Opportunity): boolean {
+  return [o.lowMarket.probability, o.highMarket.probability]
+    .filter((p): p is number => p != null).some(p => p < 3 || p > 97);
+}
 
-function OppRow({ opp }: { opp: Opportunity }) {
-  const variant  = chipVariant(opp);
-  const note     = reasonNote(opp);
-  const expiry   = opp.lowMarket.expiresAt ?? opp.highMarket.expiresAt ?? null;
-
-  const tileColor = variant === 'cashable' ? 'mint'
-    : variant === 'speculative'            ? 'gold'
-    : 'violet';
-
+function Pill({ active, onClick, children, title }: { active: boolean; onClick: () => void; children: React.ReactNode; title?: string }) {
   return (
-    <Link
-      href={`/dashboard/prediction/${encodeURIComponent(opp.id)}`}
-      className="block rounded-card shadow-card bg-surface hover:shadow-[0_2px_8px_rgba(11,26,21,.09)] transition-shadow duration-150"
-    >
-      <BlipRow
-        icon={<CategoryIcon category={opp.category} />}
-        tileColor={tileColor}
-        name={opp.question}
-        sub={
-          <>
-            <PlatformLogo platform={opp.lowMarket.platform} size={11} className="mr-0.5" />
-            {platformLabel(opp.lowMarket.platform)} ×{' '}
-            <PlatformLogo platform={opp.highMarket.platform} size={11} className="mx-0.5" />
-            {platformLabel(opp.highMarket.platform)} · conf{' '}
-            <Redacted value={opp.confidence}>{v => `${Math.round(v * 100)}%`}</Redacted>
-            {note && <> · {note}</>}
-          </>
-        }
-        chip={variant}
-        value={<Redacted value={opp.spread}>{v => `${v.toFixed(1)}%`}</Redacted>}
-        unit={
-          opp.earnPer100 != null && opp.type === 'cashable'
-            ? `$${opp.earnPer100.toFixed(2)} per $100`
-            : 'spread'
-        }
-        valueTone={opp.type === 'cashable' ? 'up' : 'neutral'}
-      />
-      {/* Expiry row — only shown when data exists */}
-      {expiry && (
-        <div className="px-4 pb-3 flex items-center gap-2">
-          <span className="font-body text-[11px] text-muted uppercase tracking-wide">expires</span>
-          <Countdown expiresAt={expiry} />
+    <button onClick={onClick} title={title}
+      className={['font-body text-[11px] px-2.5 py-1 rounded-button border whitespace-nowrap transition-colors',
+        active ? 'text-mint-deep border-mint-deep/50 bg-mint-tint' : 'text-muted border-line bg-surface hover:text-ink-2'].join(' ')}>
+      {children}
+    </button>
+  );
+}
+function DCell({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-lg bg-bg-soft border border-line px-2.5 py-2">
+      <p className="font-body text-[9px] uppercase tracking-wide text-muted mb-0.5">{label}</p>
+      <p className="font-body text-[12px] text-ink-2 tabular-nums leading-tight">{children}</p>
+    </div>
+  );
+}
+
+function OppRowExpandable({ opp, open, onToggle }: { opp: Opportunity; open: boolean; onToggle: () => void }) {
+  const variant  = chipVariant(opp);
+  const cashable = opp.type === 'cashable';
+  const nz       = nearZero(opp);
+  const edge     = cashable ? opp.roi : opp.spread;
+  const dash     = <span className="text-muted">—</span>;
+  const legP = (l: Leg): number | null => l.probability;   // implied YES % (gated)
+  return (
+    <div className="border-b border-line">
+      <button onClick={onToggle} className="w-full grid grid-cols-[auto_1fr_auto_auto] items-center gap-3 px-3 py-2.5 text-left hover:bg-bg-soft/60 transition-colors">
+        <span className="w-8 h-8 rounded-[9px] bg-bg-soft border border-line grid place-items-center shrink-0"><CategoryIcon category={opp.category} size={15} /></span>
+        <span className="min-w-0">
+          <span className="flex items-center gap-1.5 flex-wrap">
+            <span className="font-body text-[12.5px] font-medium text-ink truncate max-w-[240px]">{opp.question}</span>
+            <EdgeChip variant={variant} />
+            {nz && <span className="font-body text-[8.5px] uppercase tracking-wide text-gold border border-gold/40 rounded px-1">near-zero</span>}
+          </span>
+          <span className="font-body text-[10px] text-muted truncate block">
+            {platformLabel(opp.lowMarket.platform)} × {platformLabel(opp.highMarket.platform)}
+            {opp.resolutionDate ? ` · unlock ${formatResolutionDate(opp.resolutionDate)}` : opp.daysToResolution != null ? ` · ${opp.daysToResolution}d to resolve` : ''}
+          </span>
+        </span>
+        <span className="text-right tabular-nums shrink-0">
+          <span className={`block font-body text-[13px] font-semibold ${cashable ? 'text-mint-deep' : 'text-violet'}`}>
+            <Redacted value={edge}>{v => `${cashable ? '+' : ''}${(v as number).toFixed(cashable ? 2 : 1)}%`}</Redacted>
+          </span>
+          <span className="block font-body text-[8.5px] uppercase tracking-wide text-muted">{cashable ? 'total ROI · one-time' : 'spread · signal'}</span>
+        </span>
+        <ChevronRight className={`w-3.5 h-3.5 text-muted shrink-0 transition-transform ${open ? 'rotate-90' : ''}`} />
+      </button>
+      {open && (
+        <div className="px-3 pb-3 pt-0.5 bg-bg-soft/40">
+          {!cashable && (
+            <div className="rounded-lg bg-violet-tint/60 border border-violet/20 px-3 py-1.5 mb-1.5">
+              <p className="font-body text-[11px] text-violet leading-snug">Indicative, not cashable — {reasonNote(opp) ?? 'signal only'}. Never counted as a locked return.</p>
+            </div>
+          )}
+          {nz && (
+            <div className="rounded-lg bg-gold-tint border border-gold/25 px-3 py-1.5 mb-1.5">
+              <p className="font-body text-[11px] text-gold leading-snug">Near-zero price (a leg &lt;3% or &gt;97%) — the edge here is largely liquidity/rounding noise.</p>
+            </div>
+          )}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+            <DCell label={`Leg 1 · ${platformLabel(opp.lowMarket.platform)}`}>YES <Redacted value={legP(opp.lowMarket)}>{v => `${(v as number).toFixed(0)}%`}</Redacted></DCell>
+            <DCell label={`Leg 2 · ${platformLabel(opp.highMarket.platform)}`}>YES <Redacted value={legP(opp.highMarket)}>{v => `${(v as number).toFixed(0)}%`}</Redacted></DCell>
+            <DCell label={cashable ? 'Total ROI (one-time)' : 'Spread (signal)'}><span className={cashable ? 'text-mint-deep' : 'text-violet'}><Redacted value={edge}>{v => `${cashable ? '+' : ''}${(v as number).toFixed(2)}%`}</Redacted></span></DCell>
+            <DCell label="Unlock / resolves">{opp.resolutionDate ? formatResolutionDate(opp.resolutionDate) : dash}{opp.daysToResolution != null && <span className="text-muted"> · {opp.daysToResolution}d</span>}</DCell>
+            <DCell label="Confidence"><Redacted value={opp.confidence}>{v => `${Math.round((v as number) * 100)}%`}</Redacted></DCell>
+            <DCell label="Volume">{dash}<span className="text-muted"> · not stored</span></DCell>
+            <DCell label="Capacity"><Redacted value={opp.capacityUsd}>{v => `$${Math.round(v as number).toLocaleString()}`}</Redacted><span className="text-muted"> · exec size</span></DCell>
+            <DCell label="Label">{cashable ? 'Cashable' : 'Signal-only'}</DCell>
+          </div>
+          <div className="rounded-lg bg-surface border border-line px-3 py-2 mt-1.5">
+            <p className="font-body text-[9px] uppercase tracking-wide text-muted mb-1">How it resolves</p>
+            <p className="font-body text-[11.5px] text-ink-2 leading-snug">
+              {cashable
+                ? <>Buy YES on <b>{platformLabel(opp.lowMarket.platform)}</b>, buy NO on <b>{platformLabel(opp.highMarket.platform)}</b>. Settles <b>once</b> at resolution ({opp.resolutionDate ? formatResolutionDate(opp.resolutionDate) : 'date —'}) → total ROI <Redacted value={opp.roi}>{v => `+${(v as number).toFixed(2)}%`}</Redacted>, one-time (not a per-day yield).</>
+                : <>{reasonNote(opp) ?? 'Divergence only'}. {opp.settlementType === 'one_time' ? 'Would settle once at resolution' : 'Settlement —'} — shown as an indicative signal, never a cashable claim.</>}
+            </p>
+          </div>
         </div>
       )}
-    </Link>
+    </div>
   );
 }
 
@@ -187,6 +215,16 @@ export default function PredictionPage() {
   const [showAllEvents, setShowAllEvents] = useState(false);
   const [copiedSignal, setCopiedSignal] = useState(false);
 
+  // filter/sort state for the pairwise list — initialized from URL, mirrored back.
+  const qp0 = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
+  const [sortKey, setSortKey] = useState<PredSort>((['unlock', 'capacity'].includes(qp0.get('sort') ?? '') ? qp0.get('sort') : 'edge') as PredSort);
+  const [typeF,  setTypeF]    = useState(qp0.get('type') ?? '');   // '' | 'cashable' | 'signal'
+  const [venueF, setVenueF]   = useState(qp0.get('venue') ?? '');
+  const [catF,   setCatF]     = useState(qp0.get('cat') ?? '');
+  const [resWin, setResWin]   = useState<number | null>(() => { const n = Number(qp0.get('res')); return Number.isFinite(n) && n > 0 ? n : null; });
+  const [minRoi, setMinRoi]   = useState(() => { const n = Number(qp0.get('minRoi')); return Number.isFinite(n) && n > 0 ? n : 0; });
+  const [openId, setOpenId]   = useState<string | null>(null);
+
   const loadData = useCallback(async () => {
     try {
       const res  = await fetch('/api/prediction');
@@ -213,6 +251,48 @@ export default function PredictionPage() {
   const isStale   = freshness?.repriceStale || freshness?.discoveryStale;
 
   const sortedEvents = useMemo(() => sortEvents(events), [events]);
+
+  // mirror filter state → URL (replaceState, no history spam)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const p = new URLSearchParams();
+    if (sortKey !== 'edge') p.set('sort', sortKey);
+    if (typeF)  p.set('type', typeF);
+    if (venueF) p.set('venue', venueF);
+    if (catF)   p.set('cat', catF);
+    if (resWin) p.set('res', String(resWin));
+    if (minRoi > 0) p.set('minRoi', String(minRoi));
+    const qs = p.toString();
+    window.history.replaceState(null, '', qs ? `?${qs}` : window.location.pathname);
+  }, [sortKey, typeF, venueF, catF, resWin, minRoi]);
+
+  // real facets present in the served pairs (never a hardcoded menu)
+  const venues = useMemo(() => Array.from(new Set(opps.flatMap(o => [o.lowMarket.platform, o.highMarket.platform]))).sort(), [opps]);
+  const cats   = useMemo(() => Array.from(new Set(opps.map(o => o.category).filter(c => c && c !== 'unknown'))).sort(), [opps]);
+
+  // filtered + sorted pairwise list. Gated-field filters (minRoi) only EXCLUDE
+  // visible (paid) rows — free tier can't hide behind data it can't see (honest).
+  const shownOpps = useMemo(() => {
+    const list = opps.filter(o => {
+      if (typeF && o.type !== typeF) return false;
+      if (venueF && o.lowMarket.platform !== venueF && o.highMarket.platform !== venueF) return false;
+      if (catF && o.category !== catF) return false;
+      if (resWin != null && (o.daysToResolution == null || o.daysToResolution > resWin)) return false;
+      if (minRoi > 0 && o.type === 'cashable' && o.roi != null && o.roi < minRoi) return false; // visible-only
+      return true;
+    });
+    const asc = sortKey === 'unlock';
+    return list.slice().sort((a, b) => {
+      const av = predSortVal(a, sortKey), bv = predSortVal(b, sortKey);
+      if (av == null && bv == null) { /* fall through to cashable-first */ }
+      else if (av == null) return 1;
+      else if (bv == null) return -1;
+      else { const d = asc ? av - bv : bv - av; if (d !== 0) return d; }
+      return a.type !== b.type ? (a.type === 'cashable' ? -1 : 1) : 0; // tiebreak: cashable first
+    });
+  }, [opps, typeF, venueF, catF, resWin, minRoi, sortKey]);
+  const filtersActive = !!(typeF || venueF || catF || resWin || minRoi);
+  const resetFilters = () => { setTypeF(''); setVenueF(''); setCatF(''); setResWin(null); setMinRoi(0); };
 
   // Best available signal to copy — leads with a matched event edge (has real
   // ROI + resolution date), falls back to the top pairwise cashable pair.
@@ -416,7 +496,7 @@ export default function PredictionPage() {
       {/* ── Opportunity list ─────────────────────────────────────────────────── */}
       <SectionHeading as="h2" className="text-lg mb-1">Pairwise opportunities</SectionHeading>
       <p className="font-body text-sm text-muted mb-4">
-        Flat list of every confirmed pair, including ones that don't fit an event bucket above.
+        Every confirmed pair. <b className="text-mint-deep">Cashable</b> = both legs on real-money books (Polymarket / Kalshi). <b className="text-violet">Signal</b> = mid-price / play-money venue — indicative, never cashable. One-time payout → total ROI + unlock date, never $/day.
       </p>
       {loading ? (
         <div className="space-y-3">
@@ -446,39 +526,67 @@ export default function PredictionPage() {
         </div>
       ) : (
         <>
-          {/* Cashable arb section */}
-          {opps.some(o => o.type === 'cashable') && (
-            <div className="mb-6">
-              <div className="flex items-center gap-2 mb-3">
-                <EdgeChip variant="cashable" />
-                <span className="font-body text-[12px] text-muted">
-                  {opps.filter(o => o.type === 'cashable').length} confirmed executable — both legs verified, confidence ≥ 85%, capacity ≥ $50
-                </span>
-              </div>
-              <div className="space-y-3">
-                {opps.filter(o => o.type === 'cashable').map(opp => (
-                  <OppRow key={opp.id} opp={opp} />
-                ))}
-              </div>
+          {/* Sort pills (only sorts with real data — volume omitted, no per-pair field) */}
+          <div className="flex items-center gap-3 flex-wrap mb-2">
+            <span className="font-body text-[10px] uppercase tracking-wide text-muted">Sort</span>
+            {(Object.keys(PRED_SORT_LABEL) as PredSort[]).map(k => (
+              <button key={k} onClick={() => setSortKey(k)} title={PRED_SORT_TITLE[k]}
+                className={['font-body text-[11px] uppercase tracking-wide pb-0.5 border-b-2 transition-colors', sortKey === k ? 'text-ink border-[#0c9d6e]' : 'text-muted border-transparent hover:text-ink-2'].join(' ')}>
+                {PRED_SORT_LABEL[k]}
+              </button>
+            ))}
+          </div>
+
+          {/* Type + venue pills */}
+          <div className="flex items-center gap-1.5 flex-wrap mb-2">
+            <Pill active={!typeF} onClick={() => setTypeF('')}>All</Pill>
+            <Pill active={typeF === 'cashable'} onClick={() => setTypeF(typeF === 'cashable' ? '' : 'cashable')} title="Cashable — both legs on real-money books">Cashable</Pill>
+            <Pill active={typeF === 'signal'} onClick={() => setTypeF(typeF === 'signal' ? '' : 'signal')} title="Signal-only — mid-price / play-money, never cashable">Signal</Pill>
+            <span className="h-3.5 w-px bg-line shrink-0" aria-hidden />
+            <Pill active={!venueF} onClick={() => setVenueF('')}>All venues</Pill>
+            {venues.map(v => <Pill key={v} active={venueF === v} onClick={() => setVenueF(venueF === v ? '' : v)}>{platformLabel(v)}</Pill>)}
+          </div>
+
+          {/* Category pills (only when real categories exist) */}
+          {cats.length > 0 && (
+            <div className="flex items-center gap-1.5 flex-wrap mb-2">
+              <Pill active={!catF} onClick={() => setCatF('')}>All categories</Pill>
+              {cats.map(c => <Pill key={c} active={catF === c} onClick={() => setCatF(catF === c ? '' : c)}>{c}</Pill>)}
             </div>
           )}
 
-          {/* Signal / paper section */}
-          {opps.some(o => o.type === 'signal') && (
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <EdgeChip variant="signal" />
-                <span className="font-body text-[12px] text-muted">
-                  {opps.filter(o => o.type === 'signal').length} signal{opps.filter(o => o.type === 'signal').length !== 1 ? 's' : ''} — divergence detected, not yet executable
-                </span>
-              </div>
-              <div className="space-y-3">
-                {opps.filter(o => o.type === 'signal').map(opp => (
-                  <OppRow key={opp.id} opp={opp} />
-                ))}
-              </div>
-            </div>
-          )}
+          {/* Resolution timeframe + Min ROI */}
+          <div className="flex items-center gap-3 flex-wrap mb-3">
+            <span className="font-body text-[10px] uppercase tracking-wide text-muted">Resolving</span>
+            {[7, 30, 90].map(dd => <Pill key={dd} active={resWin === dd} onClick={() => setResWin(resWin === dd ? null : dd)} title={`Resolving within ${dd} days`}>≤{dd}d</Pill>)}
+            <span className="h-3.5 w-px bg-line shrink-0" aria-hidden />
+            <label className="flex items-center gap-1.5 whitespace-nowrap" title="Min total ROI % on cashable pairs (gated field — filters visible/paid rows)">
+              <span className="font-body text-[10px] uppercase tracking-wide text-muted">ROI ≥</span>
+              <input type="number" inputMode="decimal" min={0} step={0.5} value={minRoi === 0 ? '' : minRoi} placeholder="0"
+                onChange={e => { const n = Number(e.target.value); setMinRoi(Number.isFinite(n) && n > 0 ? n : 0); }}
+                className="w-14 px-1.5 py-0.5 rounded-button border border-line bg-surface text-ink font-mono text-[11px] tabular-nums text-right focus:outline-none focus:border-mint-deep/50" />
+              <span className="font-body text-[10px] text-muted">%</span>
+            </label>
+            {filtersActive && <button onClick={resetFilters} className="font-body text-[10px] uppercase tracking-wide text-muted hover:text-coral-ink transition-colors">Reset</button>}
+            <span className="ml-auto font-body text-[10px] text-muted tabular-nums">{shownOpps.length} of {opps.length}</span>
+          </div>
+
+          {/* Column header */}
+          <div className="grid grid-cols-[auto_1fr_auto_auto] gap-3 px-3 py-1.5 text-[9px] uppercase tracking-wider text-muted border-b border-line">
+            <span className="w-8" aria-hidden />
+            <span>Market</span>
+            <span className="text-right">Edge</span>
+            <span className="w-3.5" aria-hidden />
+          </div>
+
+          {/* Rows */}
+          <div className="rounded-b-lg overflow-hidden bg-surface border-x border-b border-line shadow-card">
+            {shownOpps.length === 0 ? (
+              <p className="font-body text-[12px] text-muted text-center py-8">No pairs match these filters. <button onClick={resetFilters} className="text-mint-deep">Reset</button></p>
+            ) : shownOpps.map(opp => (
+              <OppRowExpandable key={opp.id} opp={opp} open={openId === opp.id} onToggle={() => setOpenId(openId === opp.id ? null : opp.id)} />
+            ))}
+          </div>
         </>
       )}
 
