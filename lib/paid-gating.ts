@@ -555,10 +555,19 @@ export const REDACTION_MAP: Record<RouteKey, string[]> = {
   'paper-book': [
     'headline.executablePnlUsd',
     'headline.thinPnlUsd',
+    // Closed/matured REALIZED book — a $ figure, gated like every other derived P&L.
+    // (closedCount / maturedCount stay public — counts, not edge.)
+    'headline.closedRealizedUsd',
     'equityCurve[].netUsd',
     'strategies[].execPnlUsd',
     'strategies[].thinPnlUsd',
+    'strategies[].realizedPnlUsd',   // per-category closed realized $ — gated
     'strategies[].positions[].value',
+    // Per-position closed realized + its exit mark — gated $ figures (exit.reason /
+    // exit.asOf stay public: they are labels/timestamps, not edge).
+    'strategies[].positions[].realizedUsd',
+    'strategies[].positions[].exit.markPx',
+    'strategies[].positions[].exit.trailingNetPerDay',
     'strategies[].positions[].cumFundingUsd',
     'strategies[].positions[].entry.estNetPerDayAtEntry',
     'strategies[].positions[].entry.estNetRoiAtEntry',
