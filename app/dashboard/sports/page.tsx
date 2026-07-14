@@ -339,7 +339,7 @@ function EventDetail({ ev, isPaid }: { ev: ScannedEvent; isPaid: boolean }) {
           </div>
 
           {/* sharp meta + best-edge detail */}
-          <div className="grid grid-cols-2 gap-2 mt-3">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mt-3">
             <Stat label={<>Sharp book <InfoDot term="sharp_book" size={11} /></>} demoted="only verified/sharp reference">Pinnacle</Stat>
             <Stat label={<>Pinnacle vig <InfoDot term="vig" size={11} /></>} demoted="overround stripped for fair line">
               <Redacted value={sr.marginPct} isPaid={isPaid}>{v => `${(v as number).toFixed(2)}%`}</Redacted>
@@ -519,7 +519,7 @@ export default function SportsPage() {
     : categories.filter(c => c.cat.key === sportFilter);
 
   return (
-    <main className="max-w-[470px] mx-auto px-4 pb-24 pt-5 font-body">
+    <main className="dash-container px-4 pb-24 pt-5 font-body">
       {/* header */}
       <div className="flex items-center justify-between mb-1">
         <h1 className="font-display font-bold text-ink text-[22px] tracking-tight">Edgeradar · Sports</h1>
@@ -607,7 +607,7 @@ export default function SportsPage() {
           </div>
 
           {/* sport filter pills — horizontal scroll */}
-          <div className="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4 mb-4 [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none' }}>
+          <div className="flex gap-2 overflow-x-auto md:flex-wrap md:overflow-x-visible pb-1 -mx-4 px-4 mb-4 [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none' }}>
             <FilterPill label="All" count={events.length} active={sportFilter === 'all'} onClick={() => setSportFilter('all')} />
             {categories.map(({ cat, evs }) => (
               <FilterPill key={cat.key} emoji={cat.emoji} label={cat.label} count={evs.length}
@@ -624,7 +624,7 @@ export default function SportsPage() {
                 <span className="font-body text-[11px] text-muted">{evs.length}</span>
                 <span className="flex-1 h-px bg-line ml-1" aria-hidden />
               </div>
-              <div className="space-y-2">
+              <div className="space-y-2 lg:grid lg:grid-cols-2 lg:gap-2 lg:space-y-0 lg:items-start">
                 {evs.map(ev => {
                   const key = `${ev.sport}:${ev.eventName}:${ev.commenceTime}`;
                   return (

@@ -263,7 +263,7 @@ function TradeRow({ p, isPaid, open, onToggle }: { p: Position; isPaid: boolean;
             ))}
           </div>
           {/* entry + tail (open vs closed differ) */}
-          <div className="grid grid-cols-2 gap-1.5">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-1.5">
             <DetailCell label="Entry time">{fmtWhen(p.entry?.asOf)}</DetailCell>
             <DetailCell label="Entry level">{lvl.text}{lvl.note !== 'entry price' && <span className="text-muted"> · {lvl.note}</span>}</DetailCell>
             <DetailCell label="Size (ticket)">{p.entry?.notionalUsd != null ? fmtUsdPlain(p.entry.notionalUsd, 0) : dash}</DetailCell>
@@ -345,7 +345,7 @@ export default function PaperBookPage() {
 
   return (
     <main className="min-h-screen bg-bg text-ink font-body">
-      <div className="max-w-[480px] mx-auto px-4 pb-24 pt-5">
+      <div className="dash-container px-4 pb-24 pt-5">
         {/* header */}
         <div className="flex items-center justify-between mb-1">
           <h1 className="font-bold text-ink text-[21px] tracking-tight">Paper desk</h1>
@@ -377,7 +377,7 @@ export default function PaperBookPage() {
             </div>
 
             {/* filter chips */}
-            <div className="flex gap-1.5 mb-2 overflow-x-auto pb-0.5">
+            <div className="flex gap-1.5 mb-2 overflow-x-auto md:flex-wrap md:overflow-x-visible pb-0.5">
               {FILTERS.map(f => (
                 <button key={f.key} onClick={() => setFilter(f.key)}
                   className={`text-[11px] px-2.5 py-1 rounded-full border whitespace-nowrap transition-colors ${filter === f.key ? 'bg-violet-tint border-violet/40 text-violet' : 'bg-surface border-line text-ink-2 hover:text-ink'}`}>
