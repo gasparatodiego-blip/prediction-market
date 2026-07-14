@@ -1,16 +1,27 @@
 'use client';
 
-// Liquidity Rewards — mobile-first, dual-venue (Polymarket + Kalshi).
-// Explainer → filters → a VERTICAL, tappable market card per row. Every number is
-// wired to the live unified snapshot (/api/rewards-unified ← /tmp/liquidity-rewards.json)
-// and lib/rewards-estimate.ts. Tapping a card opens the per-market detail page
-// (/dashboard/liquidity-rewards/[marketId]) with the live order book + controls.
-// Honest-engine: net $/day primary, annualized capped + demoted, executable book
-// depth only, adverse-selection subtracted, no fabricated pools, no login wall.
+// Liquidity Rewards — professional light, filter-rich board (matches the
+// sports / paper / traders / carry / prediction redesign pattern).
+// Every number is wired to the live unified snapshot (/api/rewards-unified ←
+// /tmp/liquidity-rewards.json) and lib/rewards-estimate.ts (the honest SSOT).
+//
+// HONEST-ENGINE (all reused, never re-derived here):
+//   • The forward reward is NOT deterministic → it is shown ONLY as the
+//     adverse-fill-subtracted `est net/day`, always labeled an estimate, never a
+//     guaranteed/realized P&L. There is no per-market realized-accrued field →
+//     that row is OMITTED (never fabricated).
+//   • estimateReward WITHHOLDS net (null) when the run-rate exceeds the 200%/yr
+//     sanity cap or modeled gross exceeds the real book depth — a thin-book
+//     inflated rate renders MUTED "suppressed — implausible rate", never a shiny
+//     number (this is the gate that killed the fake 1479$/day 100%-share bug).
+//   • qualifyingLiquidity===0 is treated as UNMEASURED, not "no competitors" —
+//     net is withheld with that honest note, never a fabricated 100%-share figure.
+//   • Free tier: the server nulls every executable field → <Redacted> lock; the
+//     estimator degrades to the calm "unlock" state. Public fields stay visible.
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, ExternalLink } from 'lucide-react';
 import Eyebrow from '@/app/components/ui/Eyebrow';
 import InfoTip from '@/app/components/ui/InfoTip';
 import SectionHeading from '@/app/components/ui/SectionHeading';
@@ -21,7 +32,7 @@ import { Redacted } from '@/app/components/ui/Redacted';
 import { PlatformLink } from '@/app/components/ui/PlatformLink';
 import { VerifyBadge } from '@/app/components/ui/VerifyBadge';
 import { polymarketMarketUrl, polymarketOutcomeUrl, kalshiMarketUrl } from '@/lib/platform-links';
-import { estimateReward, type MarketSnapshot, type SideSnapshot, type Venue } from '@/lib/rewards-estimate';
+import { estimateReward, type MarketSnapshot, type SideSnapshot, type Venue, type EstimateResult } from '@/lib/rewards-estimate';
 
 // Trading-side selector for the list: 'both' = legacy single-book behavior; 'yes'/'no'
 // rank + estimate every card from that side's real book.
@@ -32,9 +43,6 @@ type TradeSideFilter = 'both' | 'yes' | 'no';
 // then renders no link (honest-engine: never a fabricated URL).
 function rewardMarketUrl(m: { venue: Venue; slug?: string | null; marketSlug?: string | null; negRisk?: boolean; marketId: string }): string | null {
   if (m.venue === 'polymarket') {
-    // Multi-outcome (negRisk) event → deep-link the exact outcome via the real two-segment
-    // …/event/<eventSlug>/<marketSlug>; falls back to the plain event link when that isn't
-    // constructible. Single-outcome markets keep the plain event link, unchanged.
     if (m.negRisk && m.marketSlug) {
       const outcome = polymarketOutcomeUrl(m.slug, m.marketSlug);
       if (outcome) return outcome;
@@ -51,10 +59,10 @@ type NewsRisk = 'low' | 'medium' | 'high' | 'unknown';
 interface NormalizedMarket {
   venue:               Venue;
   marketId:            string;
-  slug?:               string | null;   // Polymarket event slug (real Gamma field); null/absent → no platform link
-  marketSlug?:         string | null;   // per-outcome slug for multi-outcome deep-link
-  groupItemTitle?:     string | null;   // outcome label (e.g. "England")
-  negRisk?:            boolean;          // true → multi-outcome event
+  slug?:               string | null;
+  marketSlug?:         string | null;
+  groupItemTitle?:     string | null;
+  negRisk?:            boolean;
   title:               string;
   category:            string;
   midpoint:            number | null;
@@ -75,7 +83,6 @@ interface NormalizedMarket {
   tokenId:             string | null;
   tokenIdNo?:          string | null;
   sides?:              { yes: SideSnapshot | null; no: SideSnapshot | null } | null;
-  // merged from news-guard
   newsRisk?:           NewsRisk;
   newsSignals?:        { source: string; note: string }[] | null;
   protect?:            { action: string; detail: string } | null;
@@ -131,15 +138,19 @@ function toSnapshot(m: NormalizedMarket): MarketSnapshot {
     sides: m.sides ?? null,
   };
 }
-// typical placement used for list-card estimates: two-sided, mid-band distance, $1k.
-// side 'both' → legacy single-book estimate; 'yes'/'no' → that side's real book.
-function typicalNet(m: NormalizedMarket, side: TradeSideFilter): number | null {
+// Full honest estimate for a card, from the chosen side's REAL book. This is the
+// SSOT — every headline/detail number below reads off this result, nothing is
+// recomputed. `netPerDay` is null when the lib withheld it (unmeasured / pool
+// unknown / too-good-to-verify) — the UI shows that state honestly, never a value.
+function fullEst(m: NormalizedMarket, side: TradeSideFilter): EstimateResult {
   const dist = (m.maxSpread ?? 2) / 2;
-  const r = estimateReward({
+  return estimateReward({
     venue: m.venue, capital: DEFAULT_CAPITAL, twoSided: true, distanceCents: dist,
     market: toSnapshot(m), side: side === 'both' ? undefined : side,
   });
-  return r.netPerDay;
+}
+function typicalNet(m: NormalizedMarket, side: TradeSideFilter): number | null {
+  return fullEst(m, side).netPerDay;
 }
 // The mid a card headlines depends on the selected side (YES=mid, NO=1−mid / sides.no).
 function sideMid(m: NormalizedMarket, side: TradeSideFilter): number | null {
@@ -151,6 +162,30 @@ function sideDepth(m: NormalizedMarket, side: TradeSideFilter): number | null {
   if (side === 'yes') return m.sides?.yes?.bookDepthAtBand ?? m.bookDepthAtBand;
   if (side === 'no')  return m.sides?.no?.bookDepthAtBand ?? m.bookDepthAtBand;
   return m.bookDepthAtBand;
+}
+function sideQual(m: NormalizedMarket, side: TradeSideFilter): number | null {
+  if (side === 'yes') return m.sides?.yes?.qualifyingLiquidity ?? m.qualifyingLiquidity;
+  if (side === 'no')  return m.sides?.no?.qualifyingLiquidity ?? m.qualifyingLiquidity;
+  return m.qualifyingLiquidity;
+}
+// Free tier nulls every executable field; if ANY is present we're on the paid tier
+// and a null estimate is an honest "withheld", not a paywall lock.
+function isRevealed(m: NormalizedMarket): boolean {
+  return m.midpoint != null || m.dailyPool != null || m.qualifyingLiquidity != null || m.bookDepthAtBand != null;
+}
+// Why a revealed (paid-tier) net came back null — classify the estimator's own
+// reasons into a short honest note. The too-good/thin-book cases read as a MUTED
+// "suppressed" state, never a number.
+function withheldNote(est: EstimateResult): { text: string; suppressed: boolean } {
+  const r = est.reasons.join(' ');
+  if (/sanity cap|dominate this thin|exceeds the real book depth/i.test(r)) return { text: 'suppressed — implausible rate (thin book)', suppressed: true };
+  if (/qualifying liquidity reads zero/i.test(r))                           return { text: 'withheld — competition unmeasured', suppressed: false };
+  if (/qualifying liquidity unknown/i.test(r))                             return { text: 'withheld — competition unknown', suppressed: false };
+  if (/pool unknown/i.test(r))                                             return { text: 'pool not published', suppressed: false };
+  if (/book depth unknown/i.test(r))                                       return { text: 'withheld — book depth unknown', suppressed: false };
+  if (/adverse-selection cost unknown/i.test(r))                           return { text: 'withheld — risk unquantified', suppressed: false };
+  if (/single-sided order scores 0/i.test(r))                             return { text: 'two-sided required here', suppressed: false };
+  return { text: 'not computable', suppressed: false };
 }
 
 // ── News-risk badge ──────────────────────────────────────────────────────────
@@ -196,9 +231,9 @@ function Explainer() {
           </div>
           <div className="rounded-button bg-coral-tint/50 border border-coral-ink/20 px-4 py-3">
             <p className="font-body text-[12px] text-coral-ink leading-relaxed">
-              <span className="font-semibold">Not free money.</span> When your resting order actually gets filled, it&apos;s usually because the
-              price is about to move against you (adverse selection). Naive reward calculators read 3–5× too high because they ignore this.
-              Every net number below <span className="font-medium">already subtracts the expected adverse-fill cost</span> — that&apos;s why it&apos;s the number that matters.
+              <span className="font-semibold">Not free money, and not guaranteed.</span> When your resting order gets filled it&apos;s usually because the
+              price is about to move against you (adverse selection). Every <span className="font-medium">est net/day</span> below already subtracts the expected adverse-fill cost —
+              but it is a forward <span className="font-medium">estimate</span>, never a realized or locked return. Your actual pool share depends on who else is quoting.
             </p>
           </div>
         </div>
@@ -207,224 +242,195 @@ function Explainer() {
   );
 }
 
-// ── Filter bar ───────────────────────────────────────────────────────────────
-interface Filters {
-  venue: 'all' | 'polymarket' | 'kalshi';
-  categories: Set<string>;
-  minPool: number;
-  maxHours: number | null;
-  hideHighNews: boolean;
-  tradeSide: TradeSideFilter;
+// ── Filter/sort primitives (match the prediction/carry redesign) ──────────────
+type SortKey = 'net' | 'pool' | 'qualifying' | 'capacity' | 'resolves';
+const SORT_LABEL: Record<SortKey, string> = {
+  net: 'est net/day', pool: 'pool/day', qualifying: 'qualifying liq', capacity: 'capacity', resolves: 'resolves soonest',
+};
+const SORT_TITLE: Record<SortKey, string> = {
+  net:        'adverse-adjusted estimate, $1k — the honest primary (gated on free tier)',
+  pool:       'the real program reward pool $/day (gated on free tier)',
+  qualifying: 'existing qualifying maker liquidity — your competition (gated on free tier)',
+  capacity:   'executable book depth at the reward band, price×size (gated on free tier)',
+  resolves:   'hours to resolution — soonest first (public field)',
+};
+function sortVal(m: NormalizedMarket, k: SortKey, side: TradeSideFilter): number | null {
+  if (k === 'pool')       return m.dailyPool ?? null;
+  if (k === 'qualifying') return sideQual(m, side);
+  if (k === 'capacity')   return sideDepth(m, side);
+  if (k === 'resolves')   return m.hoursToResolution ?? null;
+  return typicalNet(m, side); // net
 }
 
-function FilterBar({
-  filters, setFilters, categories, maxPoolBound,
-}: {
-  filters: Filters;
-  setFilters: (f: Filters) => void;
-  categories: string[];
-  maxPoolBound: number;
-}) {
-  const venueBtn = (v: Filters['venue'], label: string) => (
-    <button
-      key={v}
-      onClick={() => setFilters({ ...filters, venue: v })}
-      className={`inline-flex items-center gap-1.5 font-body font-medium text-[13px] px-3.5 py-2 rounded-pill transition-colors
-        ${filters.venue === v ? 'bg-surface shadow-sm text-ink' : 'text-muted hover:text-ink-2'}`}
-    >
-      {v !== 'all' && <PlatformLogo platform={v} size={14} />}{label}
+function Pill({ active, onClick, children, title }: { active: boolean; onClick: () => void; children: React.ReactNode; title?: string }) {
+  return (
+    <button onClick={onClick} title={title}
+      className={['font-body text-[11px] px-2.5 py-1 rounded-button border whitespace-nowrap transition-colors',
+        active ? 'text-mint-deep border-mint-deep/50 bg-mint-tint' : 'text-muted border-line bg-surface hover:text-ink-2'].join(' ')}>
+      {children}
     </button>
   );
-  const toggleCat = (c: string) => {
-    const next = new Set(filters.categories);
-    if (next.has(c)) next.delete(c); else next.add(c);
-    setFilters({ ...filters, categories: next });
-  };
+}
+function DCell({ label, children, note }: { label: string; children: React.ReactNode; note?: string }) {
   return (
-    <div className="rounded-card shadow-card bg-surface px-4 sm:px-5 py-4 space-y-4">
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
-        {/* Venue */}
-        <div className="flex items-center gap-2">
-          <span className="font-body text-[11px] uppercase tracking-wide text-muted">Venue</span>
-          <div className="flex items-center gap-1 p-1 rounded-pill bg-bg-soft border border-line">
-            {venueBtn('all', 'All')}{venueBtn('polymarket', 'Polymarket')}{venueBtn('kalshi', 'Kalshi')}
-          </div>
-        </div>
-        {/* Trading side — Both / Trade YES / Trade NO */}
-        <div className="flex items-center gap-2">
-          <span className="font-body text-[11px] uppercase tracking-wide text-muted">Trade side</span>
-          <div className="flex items-center gap-1 p-1 rounded-pill bg-bg-soft border border-line">
-            {([['both', 'Both'], ['yes', 'YES'], ['no', 'NO']] as [TradeSideFilter, string][]).map(([v, label]) => {
-              const active = filters.tradeSide === v;
-              const activeCls = v === 'yes' ? 'bg-mint-tint text-mint-deep' : v === 'no' ? 'bg-coral-tint text-coral-ink' : 'bg-surface text-ink shadow-sm';
-              return (
-                <button key={v} onClick={() => setFilters({ ...filters, tradeSide: v })}
-                  className={`font-body font-medium text-[13px] px-3 py-2 rounded-pill transition-colors ${active ? activeCls : 'text-muted hover:text-ink-2'}`}>
-                  {v === 'both' ? 'Both' : `Trade ${label}`}
-                </button>
-              );
-            })}
-          </div>
-          <InfoTip label="About trade side">
-            A binary market has a YES side and a NO side, each with its own order book (YES + NO ≈ 100¢, but not identical). &quot;Both&quot; shows the market&apos;s default estimate; &quot;Trade YES/NO&quot; ranks and estimates every card from that side&apos;s real book.
-          </InfoTip>
-        </div>
-        {/* Min pool */}
-        <div className="flex items-center gap-2">
-          <span className="font-body text-[11px] uppercase tracking-wide text-muted">Min pool</span>
-          <input
-            type="range" min={0} max={maxPoolBound} step={10} value={filters.minPool}
-            onChange={e => setFilters({ ...filters, minPool: Number(e.target.value) })}
-            className="w-28 sm:w-32 accent-mint-deep"
-          />
-          <span className="font-body text-[12px] text-ink-2 tabular-nums w-16">${filters.minPool.toLocaleString()}/day</span>
-        </div>
-        {/* Hours to resolution */}
-        <div className="flex items-center gap-2">
-          <span className="font-body text-[11px] uppercase tracking-wide text-muted">Resolves in ≥</span>
-          <select
-            value={filters.maxHours ?? 0}
-            onChange={e => setFilters({ ...filters, maxHours: Number(e.target.value) || null })}
-            className="font-body text-[12px] text-ink-2 bg-bg-soft border border-line rounded-button px-2 py-1.5"
-          >
-            <option value={0}>any</option>
-            <option value={24}>24h+</option>
-            <option value={72}>3d+</option>
-            <option value={168}>7d+</option>
-            <option value={720}>30d+</option>
-          </select>
-        </div>
-        {/* News risk — interactive info popover explaining what HIGH means */}
-        <div className="flex items-center gap-1.5">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" checked={filters.hideHighNews} onChange={e => setFilters({ ...filters, hideHighNews: e.target.checked })} className="w-4 h-4 accent-coral-ink" />
-            <span className="font-body text-[12px] text-ink-2">Hide high news-risk</span>
-          </label>
-          <InfoTip label="About hide high news-risk">
-            Hides markets where a news/volatility spike is likely to move the price — those are where a resting quote is most likely to get picked off (adverse selection).
-          </InfoTip>
-        </div>
-      </div>
-      {/* Category chips */}
-      {categories.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="font-body text-[11px] uppercase tracking-wide text-muted mr-1">Category</span>
-          {categories.map(c => {
-            const active = filters.categories.has(c);
-            return (
-              <button
-                key={c}
-                onClick={() => toggleCat(c)}
-                className={`font-body text-[12px] px-3 py-1.5 rounded-pill border transition-colors
-                  ${active ? 'bg-mint-tint text-mint-deep border-mint-deep/30'
-                           : 'bg-surface text-muted border-line hover:text-ink-2'} ${!active && filters.categories.size > 0 ? 'opacity-60' : ''}`}
-              >
-                {c}
-              </button>
-            );
-          })}
-          {filters.categories.size > 0 && (
-            <button onClick={() => setFilters({ ...filters, categories: new Set() })} className="font-body text-[12px] text-muted underline ml-1">clear</button>
+    <div className="rounded-lg bg-bg-soft border border-line px-2.5 py-2">
+      <p className="font-body text-[9px] uppercase tracking-wide text-muted mb-0.5">{label}</p>
+      <p className="font-body text-[12px] text-ink-2 tabular-nums leading-tight">{children}</p>
+      {note && <p className="font-body text-[9px] text-muted/80 leading-tight mt-0.5">{note}</p>}
+    </div>
+  );
+}
+
+// ── Expandable reward row ─────────────────────────────────────────────────────
+function RewardRow({ m, tradeSide, open, onToggle }: { m: NormalizedMarket; tradeSide: TradeSideFilter; open: boolean; onToggle: () => void }) {
+  const est       = fullEst(m, tradeSide);
+  const net       = est.netPerDay;
+  const revealed  = isRevealed(m);
+  const wh        = withheldNote(est);
+  const cardMid   = sideMid(m, tradeSide);
+  const cardDepth = sideDepth(m, tradeSide);
+  const cardQual  = sideQual(m, tradeSide);
+  const risk      = (m.newsRisk ?? 'unknown') as NewsRisk;
+  const sideLabel = tradeSide === 'both' ? 'two-sided' : `${tradeSide.toUpperCase()} side`;
+  const cautionFlag = m.flags.some(f => ['TRAP', 'THIN_CAP', 'SHORT_BURST'].includes(f));
+  const platformUrl = rewardMarketUrl(m);
+  const dash = <span className="text-muted">—</span>;
+  const dashNote = (t: string) => <>{dash}<span className="text-muted"> · {t}</span></>;
+
+  // Headline tone: green if a real positive net; muted when withheld/suppressed/flagged.
+  const netTone = net == null ? 'text-muted' : cautionFlag ? 'text-muted' : net > 0 ? 'text-mint-deep' : 'text-coral-ink';
+
+  // Headline value — three honest states:
+  //   • revealed + net present → the estimate (muted if flagged)
+  //   • revealed + net null    → the honest withheld/suppressed note (never a lock)
+  //   • not revealed (free)    → <Redacted> paywall lock
+  const headline =
+    revealed && net == null
+      ? <span className={`font-body ${wh.suppressed ? 'text-gold' : 'text-muted'}`} style={{ fontSize: 13 }}>{wh.text}</span>
+      : <span className={`font-display font-bold ${netTone}`} style={{ fontSize: 18 }}>
+          <Redacted value={net}>{v => `${fmtUsd(v)}/day`}</Redacted>
+        </span>;
+
+  return (
+    <div className="border-b border-line">
+      <button onClick={onToggle} className="w-full grid grid-cols-[auto_1fr_auto_auto] items-center gap-3 px-3 py-2.5 text-left hover:bg-bg-soft/60 transition-colors">
+        <span className="w-8 h-8 rounded-[9px] bg-bg-soft border border-line grid place-items-center shrink-0">
+          <PlatformLogo platform={m.venue} size={16} />
+        </span>
+        <span className="min-w-0">
+          <span className="flex items-center gap-1.5 flex-wrap">
+            <span className="font-body text-[12.5px] font-medium text-ink truncate max-w-[260px]">{m.title}</span>
+            <span className="font-body text-[8.5px] uppercase tracking-wide text-mint-deep border border-mint-deep/30 bg-mint-tint rounded px-1">LIVE</span>
+            {cautionFlag && <span className="font-body text-[8.5px] uppercase tracking-wide text-gold border border-gold/40 rounded px-1">flagged</span>}
+            <VerifyBadge v={(m as any).__verify} />
+          </span>
+          <span className="font-body text-[10px] text-muted truncate block">
+            {m.category}
+            {` · ${m.twoSidedRequired ? 'two-sided req' : 'one-sided ok'}`}
+            {` · resolves ${fmtHours(m.hoursToResolution)}`}
+            {risk === 'high' ? ' · news HIGH' : ''}
+          </span>
+        </span>
+        <span className="text-right tabular-nums shrink-0">
+          <span className="block font-display leading-none">{headline}</span>
+          <span className="block font-body text-[8.5px] uppercase tracking-wide text-muted mt-0.5">est net/day · $1k {sideLabel} · not guaranteed</span>
+        </span>
+        <ChevronRight className={`w-3.5 h-3.5 text-muted shrink-0 transition-transform ${open ? 'rotate-90' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="px-3 pb-3 pt-0.5 bg-bg-soft/40">
+          {/* Honest banner for the withheld/suppressed case */}
+          {revealed && net == null && (
+            <div className={`rounded-lg px-3 py-1.5 mb-1.5 border ${wh.suppressed ? 'bg-gold-tint border-gold/25' : 'bg-bg-soft border-line'}`}>
+              <p className={`font-body text-[11px] leading-snug ${wh.suppressed ? 'text-gold' : 'text-muted'}`}>
+                {wh.suppressed
+                  ? 'Est net/day suppressed — the implied run-rate exceeds the 200%/yr sanity cap or modeled gross exceeds the real book depth. On a thin book your own size would dominate; a number here would overstate. Shown withheld, never fabricated.'
+                  : `Est net/day withheld — ${wh.text.replace(/^withheld — /, '')}. Not computed from data we can stand behind (never fabricated).`}
+              </p>
+            </div>
           )}
+          {cautionFlag && net != null && (
+            <div className="rounded-lg bg-gold-tint border border-gold/25 px-3 py-1.5 mb-1.5">
+              <p className="font-body text-[11px] text-gold leading-snug">Thin-book flag ({m.flags.filter(f => ['TRAP','THIN_CAP','SHORT_BURST'].includes(f)).join(', ').toLowerCase()}) — the estimate is muted, not a green go-signal. Verify book depth before deploying.</p>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+            <DCell label="Venue">{m.venue === 'polymarket' ? 'Polymarket' : 'Kalshi'}</DCell>
+            <DCell label="Pool / day" note={m.scoringModel?.includes('kalshi') ? 'Kalshi LIP · derived' : 'real program pool'}>
+              <Redacted value={m.dailyPool}>{v => `$${(v as number).toFixed(0)}`}</Redacted>
+            </DCell>
+            <DCell label="Est net/day · $1k" note="current · estimate, not guaranteed">
+              {revealed && net == null
+                ? <span className={wh.suppressed ? 'text-gold' : 'text-muted'}>{wh.text}</span>
+                : <span className={netTone}><Redacted value={net}>{v => `${fmtUsd(v as number)}/day`}</Redacted></span>}
+            </DCell>
+            <DCell label="Annualized" note={est.annualizedLabel}>
+              {est.annualizedPct == null
+                ? dash
+                : <Redacted value={est.annualizedPct}>{v => `${(v as number).toFixed(0)}%/yr${est.annualizedCapped ? '+' : ''}`}</Redacted>}
+            </DCell>
+            <DCell label="Forward reward">{dashNote('not projected (not deterministic)')}</DCell>
+            <DCell label="Qualifying liq" note={cardQual === 0 ? 'reads 0 — unmeasured, not "no competition"' : 'your competition'}>
+              {cardQual === 0 ? dashNote('unmeasured') : <Redacted value={cardQual}>{v => fmtUsd(v as number)}</Redacted>}
+            </DCell>
+            <DCell label="Capacity" note="executable depth · price×size">
+              <Redacted value={cardDepth}>{v => fmtUsd(v as number)}</Redacted>
+            </DCell>
+            <DCell label="Spread band">
+              <Redacted value={m.maxSpread}>{v => `${(v as number).toFixed(1)}¢`}</Redacted>
+            </DCell>
+            <DCell label="Min size">
+              <Redacted value={m.minSize}>{v => `$${(v as number).toFixed(0)}`}</Redacted>
+            </DCell>
+            <DCell label={`Mid${tradeSide === 'both' ? '' : ` · ${tradeSide.toUpperCase()}`}`}>
+              <Redacted value={cardMid}>{v => `${((v as number) * 100).toFixed(1)}¢`}</Redacted>
+            </DCell>
+            <DCell label="Resolves">{fmtHours(m.hoursToResolution)}</DCell>
+            <DCell label="Scoring">{m.scoringModel?.includes('quadratic') ? 'quadratic CLOB' : m.scoringModel?.includes('kalshi') ? 'Kalshi LIP' : (m.scoringModel || '—')}</DCell>
+          </div>
+
+          {/* Flags + news + live-book link */}
+          <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
+            <NewsBadge risk={risk} />
+            {m.flags.filter(f => ['TRAP', 'SHORT_BURST', 'ONE_SIDED', 'THIN_CAP'].includes(f)).map(f => (
+              <span key={f} className="inline-flex items-center px-2 py-[3px] rounded-md font-body font-medium text-[10px] border bg-gold-tint text-gold border-gold/25">{f.replace('_', ' ').toLowerCase()}</span>
+            ))}
+            <span className="ml-auto flex items-center gap-3">
+              <Link href={`/dashboard/liquidity-rewards/${encodeURIComponent(m.marketId)}`}
+                className="inline-flex items-center gap-1 font-body text-[11px] text-mint-deep hover:text-mint transition-colors">
+                Open live order book <ChevronRight size={13} />
+              </Link>
+              {platformUrl && (
+                <PlatformLink href={platformUrl} label={m.venue === 'polymarket' ? 'Polymarket' : 'Kalshi'} compact />
+              )}
+            </span>
+          </div>
         </div>
       )}
     </div>
-  );
-}
-
-// ── Market card (vertical, mobile-first, tap-to-detail) ───────────────────────
-function MarketCard({ m, tradeSide }: { m: NormalizedMarket; tradeSide: TradeSideFilter }) {
-  const net = typicalNet(m, tradeSide);
-  const cardMid = sideMid(m, tradeSide);
-  const cardDepth = sideDepth(m, tradeSide);
-  const sideLabel = tradeSide === 'both' ? 'two-sided' : `${tradeSide.toUpperCase()} side`;
-  const midDepthTag = tradeSide === 'both' ? '' : ` (${tradeSide.toUpperCase()})`;
-  const risk = (m.newsRisk ?? 'unknown') as NewsRisk;
-  const poolKnown = m.dailyPool != null;
-  const href = `/dashboard/liquidity-rewards/${encodeURIComponent(m.marketId)}`;
-  // Honest-engine: a TRAP/THIN_CAP/SHORT_BURST market can show an inflated net from a
-  // thin book. Demote the hero color so a flagged, too-good number never reads as a
-  // green go-signal — the number stays visible (never fabricated), just visually muted.
-  const cautionFlag = m.flags.some(f => ['TRAP', 'THIN_CAP', 'SHORT_BURST'].includes(f));
-  const netTone = net == null ? 'text-ink' : cautionFlag ? 'text-muted' : net > 0 ? 'text-mint-deep' : 'text-coral-ink';
-  const platformUrl = rewardMarketUrl(m);
-  return (
-    <div className="relative">
-    {platformUrl && (
-      <PlatformLink
-        href={platformUrl}
-        label={m.venue === 'polymarket' ? 'Polymarket' : 'Kalshi'}
-        compact
-        className="absolute top-2.5 right-2.5 z-20 bg-surface/95"
-      />
-    )}
-    <Link
-      href={href}
-      className="group block w-full rounded-card shadow-card bg-surface overflow-hidden transition-shadow hover:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-mint-deep/50"
-    >
-      <div className="px-4 py-3.5">
-        {/* Top line: venue + category + side badge + chevron */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <PlatformLogo platform={m.venue} size={16} />
-          <span className="font-body text-[11px] text-muted">{m.category}</span>
-          <span className={`font-body text-[10px] px-1.5 py-[1px] rounded border ${m.twoSidedRequired ? 'text-gold border-gold/30 bg-gold-tint' : 'text-mint-deep border-mint-deep/25 bg-mint-tint'}`}>
-            {m.twoSidedRequired ? 'two-sided req' : 'one-sided ok'}
-          </span>
-          <ChevronRight size={18} className={`ml-auto ${platformUrl ? 'mr-8' : ''} text-muted group-hover:text-ink-2 transition-colors shrink-0`} aria-hidden />
-        </div>
-
-        {/* Title — wraps, 2 lines max, ellipsis */}
-        <p
-          className="font-body font-medium text-[14px] text-ink leading-snug mt-1.5"
-          style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
-        >
-          {m.title}
-        </p>
-
-        {/* Earnings hero — always readable, never truncated */}
-        <div className="mt-3 flex items-end justify-between gap-3 flex-wrap">
-          <div className="min-w-0">
-            <p className="font-body text-[10px] uppercase tracking-wide text-muted">Est. net / day · $1k {sideLabel}{cautionFlag ? ' · flagged, verify' : ''}</p>
-            <p className={`font-display font-bold leading-none mt-0.5 ${netTone}`} style={{ fontSize: 24 }}>
-              {poolKnown
-                ? <Redacted value={net}>{v => `${fmtUsd(v)}/day`}</Redacted>
-                : <span className="text-muted text-[14px] font-body">pool not published</span>}
-            </p>
-            <VerifyBadge v={(m as any).__verify} />
-          </div>
-          <NewsBadge risk={risk} />
-        </div>
-
-        {/* Stat grid — WRAPS on narrow screens, never a single wide row */}
-        <div className="flex flex-wrap gap-1.5 mt-3">
-          <Chip label="pool/day" value={poolKnown ? <Redacted value={m.dailyPool}>{v => `$${v.toFixed(0)}`}</Redacted> : '—'} />
-          <Chip label={`mid${midDepthTag}`} value={<Redacted value={cardMid}>{v => `${(v * 100).toFixed(1)}¢`}</Redacted>} />
-          <Chip label={`depth${midDepthTag}`} value={<Redacted value={cardDepth}>{v => fmtUsd(v)}</Redacted>} />
-          <Chip label="resolves" value={fmtHours(m.hoursToResolution)} />
-          {m.flags.filter(f => ['TRAP', 'SHORT_BURST', 'ONE_SIDED', 'THIN_CAP'].includes(f)).map(f => (
-            <span key={f} className="inline-flex items-center px-2 py-[3px] rounded-md font-body font-medium text-[10px] border bg-gold-tint text-gold border-gold/25">{f.replace('_', ' ').toLowerCase()}</span>
-          ))}
-        </div>
-      </div>
-    </Link>
-    </div>
-  );
-}
-function Chip({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <span className="inline-flex items-center gap-1 font-body text-[11px] px-2 py-[3px] rounded-md bg-bg-soft border border-line">
-      <span className="text-muted">{label}</span><span className="text-ink-2 font-medium tabular-nums">{value}</span>
-    </span>
   );
 }
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 export default function LiquidityRewardsPage() {
-  const [data, setData] = useState<UnifiedResponse | null>(null);
-  const [err, setErr] = useState<string | null>(null);
+  const [data, setData]           = useState<UnifiedResponse | null>(null);
+  const [err, setErr]             = useState<string | null>(null);
   const [lastFetch, setLastFetch] = useState<Date | null>(null);
-  const [sortMode, setSortMode] = useState<'pool' | 'net'>('net');
-  const [filters, setFilters] = useState<Filters>({ venue: 'all', categories: new Set(), minPool: 0, maxHours: null, hideHighNews: false, tradeSide: 'both' });
+
+  // filter/sort state — initialized from URL, mirrored back (client-side, no history spam)
+  const qp0 = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
+  const [sortKey, setSortKey]   = useState<SortKey>((['pool', 'qualifying', 'capacity', 'resolves'].includes(qp0.get('sort') ?? '') ? qp0.get('sort') : 'net') as SortKey);
+  const [venueF, setVenueF]     = useState<'' | 'polymarket' | 'kalshi'>((['polymarket', 'kalshi'].includes(qp0.get('venue') ?? '') ? qp0.get('venue') : '') as any);
+  const [catF, setCatF]         = useState(qp0.get('cat') ?? '');
+  const [tradeSide, setTradeSide] = useState<TradeSideFilter>((['yes', 'no'].includes(qp0.get('side') ?? '') ? qp0.get('side') : 'both') as TradeSideFilter);
+  const [qualOnly, setQualOnly] = useState(qp0.get('qual') === '1');
+  const [minRate, setMinRate]   = useState(() => { const n = Number(qp0.get('minRate')); return Number.isFinite(n) && n > 0 ? n : 0; });
+  const [minPool, setMinPool]   = useState(() => { const n = Number(qp0.get('minPool')); return Number.isFinite(n) && n > 0 ? n : 0; });
+  const [resMinH, setResMinH]   = useState<number | null>(() => { const n = Number(qp0.get('res')); return Number.isFinite(n) && n > 0 ? n : null; });
+  const [hideNews, setHideNews] = useState(qp0.get('news') === '0');
+  const [openId, setOpenId]     = useState<string | null>(null);
 
   async function poll() {
     try {
@@ -437,43 +443,69 @@ export default function LiquidityRewardsPage() {
   useEffect(() => { poll(); const id = setInterval(poll, POLL_MS); return () => clearInterval(id); }, []);
 
   const markets = data?.markets ?? [];
-  const meta = data?.meta;
+  const meta    = data?.meta;
   const isStale = data?.stale ?? true;
+
+  // mirror filter state → URL
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const p = new URLSearchParams();
+    if (sortKey !== 'net') p.set('sort', sortKey);
+    if (venueF)  p.set('venue', venueF);
+    if (catF)    p.set('cat', catF);
+    if (tradeSide !== 'both') p.set('side', tradeSide);
+    if (qualOnly) p.set('qual', '1');
+    if (minRate > 0) p.set('minRate', String(minRate));
+    if (minPool > 0) p.set('minPool', String(minPool));
+    if (resMinH) p.set('res', String(resMinH));
+    if (hideNews) p.set('news', '0');
+    const qs = p.toString();
+    window.history.replaceState(null, '', qs ? `?${qs}` : window.location.pathname);
+  }, [sortKey, venueF, catF, tradeSide, qualOnly, minRate, minPool, resMinH, hideNews]);
 
   const categories = useMemo(
     () => Array.from(new Set(markets.map(m => m.category))).filter(Boolean).sort(),
     [markets],
   );
-  const maxPoolBound = useMemo(() => {
-    const pools = markets.map(m => m.dailyPool ?? 0);
-    return Math.max(100, Math.ceil(Math.max(0, ...pools) / 100) * 100);
-  }, [markets]);
 
   const filtered = useMemo(() => {
-    let out = markets.filter(m => {
-      if (filters.venue !== 'all' && m.venue !== filters.venue) return false;
-      if (filters.categories.size > 0 && !filters.categories.has(m.category)) return false;
-      if (m.dailyPool != null && m.dailyPool < filters.minPool) return false;
-      if (filters.maxHours && (m.hoursToResolution == null || m.hoursToResolution < filters.maxHours)) return false;
-      if (filters.hideHighNews && m.newsRisk === 'high') return false;
+    const out = markets.filter(m => {
+      if (venueF && m.venue !== venueF) return false;
+      if (catF && m.category !== catF) return false;
+      if (qualOnly && !((sideQual(m, tradeSide) ?? 0) > 0)) return false;         // real competition data only
+      if (minPool > 0 && m.dailyPool != null && m.dailyPool < minPool) return false;
+      if (resMinH != null && (m.hoursToResolution == null || m.hoursToResolution < resMinH)) return false;
+      if (hideNews && m.newsRisk === 'high') return false;
+      // Min rate is a gated field → it only EXCLUDES visible (paid) rows; a free-tier
+      // user can never be filtered out by data they can't see (honest).
+      if (minRate > 0) { const n = typicalNet(m, tradeSide); if (n != null && n < minRate) return false; }
       return true;
     });
-    out = [...out].sort((a, b) => {
-      if (sortMode === 'pool') return (b.dailyPool ?? -1) - (a.dailyPool ?? -1);
-      return (typicalNet(b, filters.tradeSide) ?? -1e9) - (typicalNet(a, filters.tradeSide) ?? -1e9);
+    return out.slice().sort((a, b) => {
+      const asc = sortKey === 'resolves';
+      const av = sortVal(a, sortKey, tradeSide), bv = sortVal(b, sortKey, tradeSide);
+      if (av == null && bv == null) return 0;
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      return asc ? av - bv : bv - av;
     });
-    return out;
-  }, [markets, filters, sortMode]);
+  }, [markets, venueF, catF, qualOnly, minPool, resMinH, hideNews, minRate, sortKey, tradeSide]);
 
+  // Hero: best est net/day (Redacted-gated) + counts from public meta.
+  const bestNet = useMemo(() => {
+    const nets = markets.map(m => typicalNet(m, tradeSide)).filter((v): v is number => v != null);
+    return nets.length ? Math.max(...nets) : null;
+  }, [markets, tradeSide]);
+  const qualifyingCount = useMemo(() => markets.filter(m => (sideQual(m, tradeSide) ?? 0) > 0).length, [markets, tradeSide]);
   const highNews = markets.filter(m => m.newsRisk === 'high').length;
-  const poolVals = markets.map(m => m.dailyPool).filter((v): v is number => v != null);
-  const totalPool = markets.length > 0 && poolVals.length === 0 ? null : poolVals.reduce((s, v) => s + v, 0);
+
+  const filtersActive = !!(venueF || catF || tradeSide !== 'both' || qualOnly || minRate || minPool || resMinH || hideNews);
+  const resetFilters = () => { setVenueF(''); setCatF(''); setTradeSide('both'); setQualOnly(false); setMinRate(0); setMinPool(0); setResMinH(null); setHideNews(false); };
 
   return (
     <div className="min-h-screen" style={{ background: 'radial-gradient(circle at 50% -10%, rgba(15,190,130,.05), transparent 60%), #F5F8F6' }}>
-      <div className="max-w-4xl mx-auto px-4 py-6 sm:py-8 space-y-6">
+      <div className="max-w-[1100px] mx-auto px-4 py-6 sm:py-8 space-y-6">
 
-        {/* Hero */}
         <RewardsHero />
 
         {/* Header */}
@@ -485,7 +517,7 @@ export default function LiquidityRewardsPage() {
               Get paid to post limit orders
             </SectionHeading>
             <p className="font-body text-sm text-muted mt-1">
-              Real reward pools from Polymarket &amp; Kalshi. Net $/day after the adverse-fill cost — the number that actually matters. Tap a market to open its live order book.
+              Real reward pools from Polymarket &amp; Kalshi. <b className="text-ink-2">Est net/day</b> subtracts the expected adverse-fill cost — a forward estimate, never a locked return. Filter, sort, tap a row for the honest breakdown.
             </p>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
@@ -507,52 +539,110 @@ export default function LiquidityRewardsPage() {
 
         <Explainer />
 
-        {/* Summary */}
+        {/* Hero stats — only data-backed elements */}
         {meta && (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <StatCard label="Reward markets" value={String(meta.totalMarkets)} note={`${meta.polymarket} Polymarket · ${meta.kalshi} Kalshi`} />
             <StatCard label="Real pools" value={String(meta.withRealPool)} demoted={meta.poolUnknown > 0 ? `${meta.poolUnknown} pool unknown` : 'all pools known'} />
-            <StatCard label="Total pool / day" value={<Redacted value={totalPool}>{v => `$${Math.round(v).toLocaleString()}`}</Redacted>} demoted="real pool — est. share not included" />
-            <StatCard label="High news-risk" value={String(highNews)} note="guard advises withdraw" demoted="advisory · live exec OFF" />
+            <StatCard
+              label="Best est net/day · $1k"
+              value={<Redacted value={bestNet}>{v => `${fmtUsd(v as number)}/day`}</Redacted>}
+              demoted="estimate, not guaranteed"
+            />
+            <StatCard label="Qualifying pools" value={String(qualifyingCount)} note="measured competition" demoted={highNews > 0 ? `${highNews} high news-risk` : 'live exec OFF'} />
           </div>
         )}
 
-        <FilterBar filters={filters} setFilters={setFilters} categories={categories} maxPoolBound={maxPoolBound} />
-
-        {/* List controls */}
+        {/* Sort pills */}
         <div className="flex items-center gap-3 flex-wrap">
-          <p className="font-body text-[11px] uppercase tracking-wide text-muted">{filtered.length} market{filtered.length === 1 ? '' : 's'}</p>
-          <div className="ml-auto flex items-center gap-1 p-1 rounded-pill bg-bg-soft border border-line">
-            {(['net', 'pool'] as const).map(mode => (
-              <button key={mode} onClick={() => setSortMode(mode)}
-                className={`font-body font-medium text-[11px] px-3 py-1.5 rounded-pill transition-colors ${sortMode === mode ? 'bg-surface shadow-sm text-ink' : 'text-muted'}`}>
-                {mode === 'net' ? 'est. net/day' : 'pool/day'}
-              </button>
-            ))}
-          </div>
+          <span className="font-body text-[10px] uppercase tracking-wide text-muted">Sort</span>
+          {(Object.keys(SORT_LABEL) as SortKey[]).map(k => (
+            <button key={k} onClick={() => setSortKey(k)} title={SORT_TITLE[k]}
+              className={['font-body text-[11px] uppercase tracking-wide pb-0.5 border-b-2 transition-colors', sortKey === k ? 'text-ink border-[#0c9d6e]' : 'text-muted border-transparent hover:text-ink-2'].join(' ')}>
+              {SORT_LABEL[k]}
+            </button>
+          ))}
         </div>
 
-        {/* Card list — single column, vertical cards */}
-        <div className="space-y-2.5">
-          {filtered.length === 0 ? (
-            <div className="rounded-card shadow-card bg-surface px-5 py-10 text-center">
-              <p className="font-body text-sm text-muted">
-                {data === null ? 'Loading reward markets…' : 'No markets match these filters.'}
-              </p>
-              {data !== null && markets.length > 0 && (
-                <button onClick={() => setFilters({ venue: 'all', categories: new Set(), minPool: 0, maxHours: null, hideHighNews: false, tradeSide: 'both' })}
-                  className="font-body text-[12px] text-mint-deep underline mt-2">reset filters</button>
-              )}
+        {/* Venue + trade-side pills */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <Pill active={!venueF} onClick={() => setVenueF('')}>All venues</Pill>
+          <Pill active={venueF === 'polymarket'} onClick={() => setVenueF(venueF === 'polymarket' ? '' : 'polymarket')}>Polymarket</Pill>
+          <Pill active={venueF === 'kalshi'} onClick={() => setVenueF(venueF === 'kalshi' ? '' : 'kalshi')}>Kalshi</Pill>
+          <span className="h-3.5 w-px bg-line shrink-0" aria-hidden />
+          {([['both', 'Both'], ['yes', 'Trade YES'], ['no', 'Trade NO']] as [TradeSideFilter, string][]).map(([v, label]) => (
+            <Pill key={v} active={tradeSide === v} onClick={() => setTradeSide(v)}
+              title="Each binary side has its own book (YES + NO ≈ 100¢). Ranks/estimates every row from that side's real book.">{label}</Pill>
+          ))}
+          <span className="h-3.5 w-px bg-line shrink-0" aria-hidden />
+          <Pill active={qualOnly} onClick={() => setQualOnly(v => !v)} title="Only markets with measured qualifying liquidity (real competition data)">qualifying only</Pill>
+          <label className="flex items-center gap-1.5 cursor-pointer ml-1" title="Hide markets where a news/volatility spike makes a resting quote most likely to get picked off">
+            <input type="checkbox" checked={hideNews} onChange={e => setHideNews(e.target.checked)} className="w-3.5 h-3.5 accent-coral-ink" />
+            <span className="font-body text-[11px] text-muted">hide high news-risk</span>
+          </label>
+        </div>
+
+        {/* Category pills */}
+        {categories.length > 0 && (
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <Pill active={!catF} onClick={() => setCatF('')}>All categories</Pill>
+            {categories.map(c => <Pill key={c} active={catF === c} onClick={() => setCatF(catF === c ? '' : c)}>{c}</Pill>)}
+          </div>
+        )}
+
+        {/* Range inputs + reset */}
+        <div className="flex items-center gap-3 flex-wrap">
+          <label className="flex items-center gap-1.5 whitespace-nowrap" title="Min est net/day $1k (gated field — filters visible/paid rows only)">
+            <span className="font-body text-[10px] uppercase tracking-wide text-muted">Net/day ≥</span>
+            <span className="font-body text-[10px] text-muted">$</span>
+            <input type="number" inputMode="decimal" min={0} step={0.5} value={minRate === 0 ? '' : minRate} placeholder="0"
+              onChange={e => { const n = Number(e.target.value); setMinRate(Number.isFinite(n) && n > 0 ? n : 0); }}
+              className="w-16 px-1.5 py-0.5 rounded-button border border-line bg-surface text-ink font-mono text-[11px] tabular-nums text-right focus:outline-none focus:border-mint-deep/50" />
+          </label>
+          <label className="flex items-center gap-1.5 whitespace-nowrap" title="Min real reward pool $/day (gated field — filters visible/paid rows only)">
+            <span className="font-body text-[10px] uppercase tracking-wide text-muted">Pool ≥</span>
+            <span className="font-body text-[10px] text-muted">$</span>
+            <input type="number" inputMode="decimal" min={0} step={10} value={minPool === 0 ? '' : minPool} placeholder="0"
+              onChange={e => { const n = Number(e.target.value); setMinPool(Number.isFinite(n) && n > 0 ? n : 0); }}
+              className="w-16 px-1.5 py-0.5 rounded-button border border-line bg-surface text-ink font-mono text-[11px] tabular-nums text-right focus:outline-none focus:border-mint-deep/50" />
+          </label>
+          <span className="h-3.5 w-px bg-line shrink-0" aria-hidden />
+          <span className="font-body text-[10px] uppercase tracking-wide text-muted">Resolves in ≥</span>
+          {[[24, '24h'], [72, '3d'], [168, '7d'], [720, '30d']].map(([h, lbl]) => (
+            <Pill key={h} active={resMinH === h} onClick={() => setResMinH(resMinH === h ? null : (h as number))} title={`At least ${lbl} to resolution`}>{lbl as string}+</Pill>
+          ))}
+          {filtersActive && <button onClick={resetFilters} className="font-body text-[10px] uppercase tracking-wide text-muted hover:text-coral-ink transition-colors">Reset</button>}
+          <span className="ml-auto font-body text-[10px] text-muted tabular-nums">{filtered.length} of {markets.length}</span>
+        </div>
+
+        {/* Column header */}
+        <div className="grid grid-cols-[auto_1fr_auto_auto] gap-3 px-3 pt-1 pb-1.5 text-[9px] uppercase tracking-wider text-muted border-b border-line">
+          <span className="w-8" aria-hidden />
+          <span>Market</span>
+          <span className="text-right">Est net/day · $1k</span>
+          <span className="w-3.5" aria-hidden />
+        </div>
+
+        {/* Rows */}
+        <div className="-mt-4 rounded-b-lg overflow-hidden bg-surface border-x border-b border-line shadow-card">
+          {data === null ? (
+            <p className="font-body text-[12px] text-muted text-center py-10">Loading reward markets…</p>
+          ) : filtered.length === 0 ? (
+            <div className="text-center py-10">
+              <p className="font-body text-sm text-muted">No markets match these filters.</p>
+              {markets.length > 0 && <button onClick={resetFilters} className="font-body text-[12px] text-mint-deep underline mt-2">reset filters</button>}
             </div>
           ) : (
-            filtered.map(m => <MarketCard key={m.marketId} m={m} tradeSide={filters.tradeSide} />)
+            filtered.map(m => (
+              <RewardRow key={m.marketId} m={m} tradeSide={tradeSide} open={openId === m.marketId} onToggle={() => setOpenId(openId === m.marketId ? null : m.marketId)} />
+            ))
           )}
         </div>
 
         {/* Footer */}
-        <div className="pt-4 border-t border-line space-y-1">
+        <div className="pt-2 border-t border-line space-y-1">
           <p className="font-body text-[11px] text-muted/60 leading-relaxed">
-            Estimates only, from live order-book depth (executable prices, never midpoint for fills). Net subtracts expected adverse-fill cost.
+            Estimates only, from live order-book depth (executable prices, never midpoint for fills). Net subtracts expected adverse-fill cost and is <b>capped/withheld</b> when the run-rate exceeds the 200%/yr sanity cap or modeled gross exceeds real book depth — never a fabricated figure.
             Polymarket uses its quadratic CLOB scoring; Kalshi&apos;s LIP formula is not public — its share is an observed flat pro-rata inference. Not financial advice.
           </p>
           <p className="font-body text-[11px] text-muted/60">Read-only. No orders placed. Live execution OFF. No login required.</p>
