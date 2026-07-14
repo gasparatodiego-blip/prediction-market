@@ -329,7 +329,7 @@ export default function PredictionPage() {
   }, [topSignalText]);
 
   return (
-    <div className="max-w-[1400px] mx-auto px-4 py-8">
+    <div className="dash-container px-4 py-8">
 
       {/* ── Header ──────────────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-end justify-between gap-4 mb-6">

@@ -145,7 +145,7 @@ export default function DashboardPage() {
 
   return (
     <div>
-      <div className="max-w-7xl mx-auto px-4 py-10">
+      <div className="dash-container px-4 py-10">
 
         <SectionHelp section="overview" />
 
@@ -301,7 +301,7 @@ export default function DashboardPage() {
 
       {/* Disclaimer band */}
       <div className="border-t border-line mt-12">
-        <div className="max-w-7xl mx-auto px-4 py-5 flex flex-col sm:flex-row items-center justify-center gap-4 text-center">
+        <div className="dash-container px-4 py-5 flex flex-col sm:flex-row items-center justify-center gap-4 text-center">
           <p className="font-body text-xs text-muted">
             Net-of-fee estimates only · Markets carry risk · Always verify before trading · Not financial advice.
           </p>

@@ -406,7 +406,7 @@ export default function CarryPage() {
   const resetFilters = () => { setAsset(''); setExch(''); setExpiry(''); setExecOnly(false); setCapMin(false); setUsdOnly(false); setHideBack(false); setMinNet(0); setMaxDays(null); setMinVol(0); };
 
   return (
-    <div className="max-w-[900px] mx-auto px-4 py-8 font-body">
+    <div className="dash-container px-4 py-8 font-body">
       {/* Header */}
       <div className="flex flex-wrap items-end justify-between gap-4 mb-5">
         <div>

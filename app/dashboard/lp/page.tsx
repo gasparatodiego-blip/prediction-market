@@ -232,7 +232,7 @@ export default function LPDashboard() {
 
   return (
     <div className="min-h-screen" style={{ background: 'radial-gradient(circle at 50% -10%, rgba(15,190,130,.05), transparent 60%), #F5F8F6' }}>
-      <div className="max-w-[1100px] mx-auto px-4 py-6 sm:py-8 space-y-6">
+      <div className="dash-container px-4 py-6 sm:py-8 space-y-6">
 
         {/* Header */}
         <div className="flex flex-wrap items-end justify-between gap-4">

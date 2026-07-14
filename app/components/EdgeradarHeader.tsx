@@ -32,7 +32,7 @@ export default function EdgeradarHeader() {
 
   return (
     <header className="sticky top-0 z-50 bg-surface border-b border-line">
-      <div className="max-w-[1600px] mx-auto px-4 flex items-center h-12 gap-6">
+      <div className="dash-container px-4 flex items-center h-12 gap-6">
 
         {/* Logo */}
         <Link href="/dashboard" className="flex items-center gap-2 shrink-0">

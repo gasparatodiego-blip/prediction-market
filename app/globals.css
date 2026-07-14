@@ -121,6 +121,19 @@ h1, h2, h3 {
 .text-green-400 { color: var(--profit) !important; }
 .text-red-400   { color: var(--loss)   !important; }
 
+/* ── Shared app-shell content container ──────────────────────────────────────
+   SINGLE SOURCE OF TRUTH for the desktop content width on Edgeradar app-shell
+   pages (those under app/dashboard/layout.tsx + the EdgeradarHeader). Pages
+   apply `dash-container` instead of hardcoding their own max-w-[Npx], so the
+   cap is changed in exactly one place and header + content stay aligned on the
+   same 1280px (max-w-7xl) token. Per-page px/py stay per-page. Prose routes
+   (e.g. /how-it-works) intentionally opt out and keep their narrow reading cap. */
+@layer components {
+  .dash-container {
+    @apply mx-auto w-full max-w-7xl;
+  }
+}
+
 /* ── Focus & selection ───────────────────────────────────────────────────── */
 :focus-visible {
   outline: 1px solid var(--er-mint);
