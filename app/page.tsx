@@ -2,15 +2,12 @@ import fs from 'fs';
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import PlatformLogo from '@/components/PlatformLogo';
-import EdgeradarNav from '@/app/components/EdgeradarNav';
-import Pill         from '@/app/components/ui/Pill';
-import Eyebrow      from '@/app/components/ui/Eyebrow';
-import SectionHeading from '@/app/components/ui/SectionHeading';
 import { type EdgeChipVariant } from '@/app/components/ui/EdgeChip';
 import RadarMark    from '@/app/components/ui/RadarMark';
-import RadarScope   from '@/app/components/ui/RadarScope';
-import BlipRow      from '@/app/components/ui/BlipRow';
-import AnimatedStrategies from '@/app/components/landing/AnimatedStrategies';
+import skin from './landing-skin.module.css';
+import { HeroField, CyclingCard } from '@/app/components/landing/LiveField';
+import { tierColor } from '@/app/components/landing/tier-color';
+import { Instrument_Serif, Manrope, IBM_Plex_Mono } from 'next/font/google';
 import { getCryptoSpreadsData, calcSpreadSizing } from '@/lib/spread-compute';
 import { filterSane, enforceVerified } from '@/lib/display-sanity';
 import { applyGuardian } from '@/lib/guardian-suppress';
@@ -21,30 +18,42 @@ import { isExpired } from '@/lib/instrument-expiry';
 
 export const dynamic = 'force-dynamic';
 
-// ── Button-link class strings (same tokens as Button component) ────────────
-const BTN_BASE =
-  'inline-flex items-center justify-center font-body font-medium rounded-button ' +
-  'transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 ' +
-  'focus-visible:ring-mint/50 select-none';
-const BTN_PRIMARY_LG = 'bg-mint-deep text-white shadow-card hover:bg-mint px-6 py-3 text-base gap-2';
-const BTN_GHOST_LG   = 'border border-line text-ink-2 hover:border-mint hover:text-mint-deep px-6 py-3 text-base gap-2';
-const BTN_PRIMARY_MD = 'bg-mint-deep text-white shadow-card hover:bg-mint px-4 py-2 text-sm gap-1.5';
+// ── Landing re-skin fonts — "The live field" ─────────────────────────────────
+// Page-scoped; applied only on the landing root via CSS variables, so no shared
+// component is edited. Display = Instrument Serif (private-bank serif — the
+// deliberate risk); body = Manrope; data/readouts = IBM Plex Mono.
+const instrument = Instrument_Serif({
+  subsets: ['latin'], weight: '400', style: ['normal', 'italic'],
+  display: 'swap', variable: '--font-instrument',
+});
+const manrope = Manrope({
+  subsets: ['latin'], weight: ['300', '400', '500'],
+  display: 'swap', variable: '--font-manrope',
+});
+const plexMono = IBM_Plex_Mono({
+  subsets: ['latin'], weight: ['400', '500'],
+  display: 'swap', variable: '--font-plex-mono',
+});
 
-// ── Honest engine data ─────────────────────────────────────────────────────
-const HONEST_ENGINE = [
-  {
-    title: 'Executable prices only',
-    desc:  "Every spread uses live bid/ask from real CLOBs. No midpoints, no indicative quotes. If an executable price isn't available, the opportunity disappears.",
-  },
-  {
-    title: 'Fees already subtracted',
-    desc:  "All numbers are net of trading, withdrawal, and protocol fees. The headline figure is what you'd actually pocket — not what the model thinks you could earn.",
-  },
-  {
-    title: 'Zero means zero',
-    desc:  "When nothing is confirmed cashable, we show zero and say so. We don't fill the screen with speculative signals just to look busy.",
-  },
-] as const;
+// ── Scan scope (hero headline) ───────────────────────────────────────────────
+// Real, measured count of markets Edgeradar fetches: predictit + manifold +
+// kalshi + polymarket in /tmp/markets-raw.json summed to 84,276–84,458 across
+// reads on 2026-07-14. That file is 88MB (~1.2s to parse) — far too heavy to
+// read on every force-dynamic request — so this is a conservative rounded-DOWN
+// constant of the real scanning scope. NOT fabricated, NOT inflated, NOT a
+// volatile financial readout. The one number that MUST be live — the count of
+// surviving opportunities — is liveRows.length, bound in the hero below.
+const SCANNED_SCOPE = '~84,000';
+
+const NUM_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve'];
+function numberWord(n: number): string {
+  return n >= 0 && n < NUM_WORDS.length ? NUM_WORDS[n] : String(n);
+}
+// Chip variant → exact honest label (same strings as EdgeChip). Preserved verbatim.
+const TIER_LABEL: Record<string, string> = {
+  cashable: 'CASHABLE', signal: 'SIGNAL', copy_trader: 'SIGNAL',
+  speculative: 'SPECULATIVE', paper: 'PAPER', trap: 'TRAP',
+};
 
 // ── Server-side stats ──────────────────────────────────────────────────────
 interface FundingStat  { dayUsd1k: number; coin: string; shortExchange: string; longExchange: string; netApy30d: number }
@@ -394,198 +403,181 @@ function buildLiveRows(stats: ReturnType<typeof readLandingStats>): LiveRow[] {
   return rows;
 }
 
+// ── One opportunity face (server-rendered; the cycling card toggles between
+// these). Every field here is buildLiveRows() output — same props, untouched. ──
+function CardFace({ row }: { row: LiveRow }) {
+  const c = tierColor(row.chip);
+  const label = TIER_LABEL[row.chip] ?? String(row.chip).toUpperCase();
+  return (
+    <div className={skin.cardFace}>
+      <div className={skin.cardTopRow}>
+        <span className={skin.chip} style={{ background: `${c}1f`, color: c }}>
+          <span className={skin.chipDot} style={{ background: c }} />
+          {label}
+        </span>
+      </div>
+      <div className={skin.cardName}>{row.name}</div>
+      {row.sub && <div className={skin.cardVenues}>{row.sub}</div>}
+      <div className={skin.cardValue} style={{ color: c, textShadow: `0 0 24px ${c}66` }}>
+        {row.value}
+      </div>
+      {row.unit && <div className={skin.cardUnit}>{row.unit}</div>}
+    </div>
+  );
+}
+
 // ── Page ───────────────────────────────────────────────────────────────────
 export default function LandingPage() {
   const stats = readLandingStats();
   const liveRows = buildLiveRows(stats);
+  // The one number that must be live: how many opportunities survived fee
+  // adjustment tonight. Drives the copy, the field glow count, and the card.
+  const count = liveRows.length;
+  const tiers = liveRows.map(r => r.chip);
 
   return (
-    <div className="min-h-screen">
-      <EdgeradarNav />
+    <div className={`${instrument.variable} ${manrope.variable} ${plexMono.variable} ${skin.root}`}>
+
+      {/* ── Nav ──────────────────────────────────────────────────────────── */}
+      <header className={skin.nav}>
+        <div className={skin.navRow}>
+          <Link href="/" className={skin.brand} aria-label="Edgeradar home">
+            <RadarMark size={22} />
+            <span className={skin.brandName}>Edgeradar</span>
+          </Link>
+          <span className={skin.navSpacer} />
+          <Link href="/auth/login" className={`${skin.navGhost} ${skin.hideSm}`}>Sign in</Link>
+          <Link href="/auth/register" className={skin.btnFill} style={{ height: 38, padding: '0 18px' }}>
+            Start free
+          </Link>
+        </div>
+      </header>
 
       <main>
 
-        {/* ── 1. HERO ───────────────────────────────────────────────────────── */}
-        <section
-          className="max-w-6xl mx-auto px-4 sm:px-6 pt-16 pb-20 sm:pt-24 sm:pb-28"
-          aria-labelledby="hero-heading"
-        >
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-20 items-center">
+        {/* ── 1. HERO — the live field ──────────────────────────────────────── */}
+        <section className={skin.hero} aria-labelledby="hero-heading">
+          <HeroField count={count} tiers={tiers} />
+          <div className={skin.vignette} aria-hidden />
 
-            {/* Left col */}
-            <div className="space-y-6 lg:max-w-xl">
-              <SectionHeading
-                id="hero-heading"
-                as="h1"
-                className="text-4xl sm:text-5xl leading-[1.1]"
-              >
-                Every edge on your radar —{' '}
-                <span className="text-mint-deep bg-mint-tint px-1.5 rounded">honestly.</span>
-              </SectionHeading>
+          <div className={`${skin.heroInner} ${skin.rise}`}>
 
-              <p className="font-body text-base text-ink-2 leading-relaxed max-w-[46ch]">
-                Edgeradar scans prediction markets, crypto exchanges and sportsbooks for real,
-                fee-adjusted edges — and shows you only the ones you can actually act on. It
-                tracks funding spreads, carry, liquidity rewards and the traders actually worth
-                following, and shows zero when there's nothing real.
+            {/* Copy */}
+            <div className={skin.copy}>
+              <span className={skin.eyebrow}>
+                <span className={skin.eyebrowDot} aria-hidden />Scanning · Live
+              </span>
+
+              <h1 id="hero-heading" className={skin.h1}>
+                {SCANNED_SCOPE} markets.<br />
+                <span className={skin.dim}>Almost all of them</span><br />
+                <span className={skin.it}>are worth nothing.</span>
+              </h1>
+
+              <p className={skin.sub}>
+                {count > 0 ? (
+                  <>
+                    We measure every one, subtract every fee, and light up only the handful
+                    that survive. Tonight that&apos;s <span className={skin.count}>{numberWord(count)}</span>.
+                  </>
+                ) : (
+                  <>
+                    We measure every one, subtract every fee, and light up only the handful
+                    that survive. Tonight <span className={skin.count}>nothing</span> does — and
+                    we show you exactly that.
+                  </>
+                )}
               </p>
 
-              <div className="flex flex-wrap gap-3 pt-1">
-                <Link
-                  href="/auth/register"
-                  className={`${BTN_BASE} ${BTN_PRIMARY_LG}`}
-                >
-                  Start free
-                </Link>
-                <a
-                  href="#what-it-finds"
-                  className={`${BTN_BASE} ${BTN_GHOST_LG}`}
-                >
-                  See what it finds
+              <div className={skin.ctaRow}>
+                <Link href="/auth/register" className={skin.btnFill}>Start free</Link>
+                <a href="#tonight" className={skin.btnGlass}>
+                  {count > 0 ? `See tonight's ${numberWord(count)}` : 'See the empty field'}
                 </a>
               </div>
 
-              {/* Capability strip */}
-              <div className="flex flex-wrap gap-2 pt-1" role="list" aria-label="Edge types covered">
-                {['Arbitrage', 'Funding', 'Cash & carry', 'Liquidity rewards', 'Top traders', 'Sports'].map(cap => (
-                  <span key={cap} role="listitem">
-                    <Pill>{cap}</Pill>
-                  </span>
-                ))}
+              <div className={skin.tierRow}>
+                <span className={skin.tier}>
+                  <span className={skin.tierDot} style={{ background: '#2DD4A0' }} aria-hidden />
+                  <span className={skin.tierName}>Cashable</span>
+                  <span className={skin.tierSub}>locked profit</span>
+                </span>
+                <span className={skin.tier}>
+                  <span className={skin.tierDot} style={{ background: '#F0A93B' }} aria-hidden />
+                  <span className={skin.tierName}>Arb soft</span>
+                  <span className={skin.tierSub}>real, fragile</span>
+                </span>
+                <span className={skin.tier}>
+                  <span className={skin.tierDot} style={{ background: '#8B93F8' }} aria-hidden />
+                  <span className={skin.tierName}>Signal</span>
+                  <span className={skin.tierSub}>value, not locked</span>
+                </span>
               </div>
             </div>
 
-            {/* Right col — live demo card */}
-            <div className="w-full max-w-sm mx-auto lg:max-w-none">
-              <div className="bg-surface rounded-panel shadow-card border border-line overflow-hidden">
-
-                {/* Card header */}
-                <div className="px-4 py-3 border-b border-line flex items-center gap-2">
-                  <RadarMark size={18} />
-                  <span className="font-body font-semibold text-sm text-ink">Here&apos;s what&apos;s live inside</span>
-                </div>
-
-                {/* Radar visual */}
-                <div className="flex justify-center items-center py-8 bg-bg-soft/40">
-                  <RadarScope
-                    size={170}
-                    blips={[
-                      { top: '32%', left: '68%', color: 'mint'   },
-                      { top: '62%', left: '28%', color: 'violet' },
-                      { top: '72%', left: '62%', color: 'gold'   },
-                    ]}
-                  />
-                </div>
-
-                {/* Blip rows — real opportunities only */}
-                <div className="divide-y divide-line">
-                  {liveRows.length > 0 ? (
-                    liveRows.map(row => (
-                      <BlipRow
-                        key={row.key}
-                        icon={row.icon}
-                        tileColor={row.tileColor}
-                        name={row.name}
-                        sub={row.sub}
-                        chip={row.chip}
-                        value={row.value}
-                        unit={row.unit}
-                        valueTone={row.valueTone}
-                      />
-                    ))
-                  ) : (
-                    <BlipRow
-                      icon="◎"
-                      tileColor="mint"
-                      name="Scanning markets"
-                      sub="checking all sources now"
-                      chip="signal"
-                      value="—"
-                      unit="no edge confirmed yet"
-                    />
-                  )}
-                </div>
-
-              </div>
-            </div>
+            {/* Live card — cycles the real opportunities from buildLiveRows() */}
+            <CyclingCard
+              tiers={tiers}
+              caption="Every figure fee-adjusted and capacity-checked. We never touch your funds."
+            >
+              {liveRows.map(row => <CardFace key={row.key} row={row} />)}
+            </CyclingCard>
 
           </div>
         </section>
 
-        {/* ── 2. SIX WAYS — ANIMATED STRATEGIES ────────────────────────────── */}
-        <AnimatedStrategies />
+        {/* ── 2. THE HONEST CUT — illustrative spike vs fee-adjusted ─────────── */}
+        <section className={skin.cut} aria-label="How a raw spike looks versus fee-adjusted">
+          <div className={skin.cutInner}>
+            <span className={skin.illTag}>▚ Illustrative — how a spike looks raw vs fee-adjusted, not a live quote</span>
+            <div className={skin.cutGrid}>
 
-        {/* ── 3. HONEST ENGINE ─────────────────────────────────────────────── */}
-        <section
-          id="why-honest"
-          className="border-t border-line"
-          aria-labelledby="honest-heading"
-        >
-          <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
-            <div className="mb-10">
-              <Eyebrow className="mb-2">The honest engine</Eyebrow>
-              <SectionHeading id="honest-heading" className="text-2xl sm:text-3xl">
-                You see what we see — nothing more
-              </SectionHeading>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {HONEST_ENGINE.map(card => (
-                <div
-                  key={card.title}
-                  className="bg-surface rounded-card shadow-card border border-line p-6 flex flex-col gap-4"
-                >
-                  <div
-                    className="w-8 h-8 rounded-[10px] bg-mint-tint flex items-center justify-center flex-shrink-0"
-                    aria-hidden
-                  >
-                    <span className="text-mint-deep font-body font-bold text-sm">✓</span>
-                  </div>
-                  <div>
-                    <h3 className="font-display font-semibold text-[15px] text-ink mb-1.5 leading-snug">
-                      {card.title}
-                    </h3>
-                    <p className="font-body text-[13px] text-ink-2 leading-relaxed">
-                      {card.desc}
-                    </p>
-                  </div>
+              <div className={skin.dead}>
+                <div className={skin.cutLabel}>What a bot marketplace shows you</div>
+                <div className={`${skin.cutBig} ${skin.cutBigDead}`}>1,914%</div>
+                <div className={skin.cutRows}>
+                  <div className={skin.cutRow}><span className={skin.cutKey}>7-day APR</span><span className={`${skin.cutVal} ${skin.cutValDead}`}>1,596%</span></div>
+                  <div className={skin.cutRow}><span className={skin.cutKey}>30-day APR</span><span className={`${skin.cutVal} ${skin.cutValDead}`}>669%</span></div>
+                  <div className={skin.cutRow}><span className={skin.cutKey}>Next funding</span><span className={`${skin.cutVal} ${skin.cutValDead}`}>−0.024% flipped</span></div>
+                  <div className={skin.cutRow}><span className={skin.cutKey}>Depth at $10k</span><span className={`${skin.cutVal} ${skin.cutValDead}`}>not there</span></div>
                 </div>
-              ))}
+                <p className={skin.cutFoot}>The decay is the tell. It&apos;s a spike, annualised.</p>
+              </div>
+
+              <div className={skin.cutDivider} aria-hidden />
+
+              <div className={skin.alive}>
+                <div className={skin.cutLabel}>What Edgeradar shows you</div>
+                <div className={`${skin.cutBig} ${skin.cutBigAlive}`}>+9.1%</div>
+                <div className={skin.cutRows}>
+                  <div className={skin.cutRow}><span className={skin.cutKey}>Funding</span><span className={skin.cutVal}>trailing settled</span></div>
+                  <div className={skin.cutRow}><span className={skin.cutKey}>Fees</span><span className={skin.cutVal}>round-trip, subtracted</span></div>
+                  <div className={skin.cutRow}><span className={skin.cutKey}>Capacity</span><span className={skin.cutVal}>real order-book depth</span></div>
+                  <div className={skin.cutRow}><span className={skin.cutKey}>Over 200%/yr</span><span className={skin.cutVal}>capped, flagged</span></div>
+                </div>
+                <p className={`${skin.cutFoot} ${skin.cutFootAlive}`}>Boring. Executable. Yours.</p>
+              </div>
+
             </div>
           </div>
         </section>
 
-        {/* ── 4. FINAL CTA ──────────────────────────────────────────────────── */}
-        <section className="border-t border-line" aria-labelledby="cta-heading">
-          <div className="max-w-6xl mx-auto px-4 sm:px-6 py-20 sm:py-28 text-center">
-            <SectionHeading
-              id="cta-heading"
-              centered
-              className="text-2xl sm:text-3xl mb-8"
-            >
-              Put every edge on your radar.
-            </SectionHeading>
-            <Link
-              href="/auth/register"
-              className={`${BTN_BASE} ${BTN_PRIMARY_MD} !px-8 !py-3.5 !text-base`}
-            >
-              Start free
-            </Link>
-          </div>
+        {/* ── 3. CTA ────────────────────────────────────────────────────────── */}
+        <section className={skin.ctaSection} aria-labelledby="cta-heading">
+          <h2 id="cta-heading" className={skin.ctaTitle}>Put every edge on your radar.</h2>
+          <Link href="/auth/register" className={skin.btnFill}>Start free</Link>
         </section>
 
       </main>
 
       {/* ── FOOTER ────────────────────────────────────────────────────────── */}
-      <footer className="border-t border-line">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
+      <footer className={skin.footer}>
+        <div className={skin.footRow}>
+          <Link href="/" className={skin.brand} aria-label="Edgeradar home">
             <RadarMark size={16} />
-            <span className="font-display font-bold text-ink text-[15px]">Edgeradar</span>
-          </div>
-          <p className="font-body text-[12px] text-muted text-center sm:text-right">
-            Edgeradar — the honest edge radar · prediction markets &amp; crypto
-          </p>
+            <span className={skin.brandName} style={{ fontSize: 16 }}>Edgeradar</span>
+          </Link>
+          <p className={skin.footText}>The honest edge radar · prediction markets &amp; crypto · not financial advice</p>
         </div>
       </footer>
 
