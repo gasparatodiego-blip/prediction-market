@@ -94,6 +94,26 @@ export const GLOSSARY = {
     short:
       'Shown for reference only. A live market price that moves continuously — not a locked quote, not a guarantee, and not a number we derive an edge from.',
   },
+  margin: {
+    title: 'Margin',
+    short:
+      "The collateral you put up to open a leveraged position. It backs the trade — if the trade moves against you, it's drawn from your margin.",
+  },
+  usdt_margined: {
+    title: 'USDT-M (USDT-margined)',
+    short:
+      "Contract collateralized and settled in USDT (a dollar-stablecoin). Like betting in dollars: your margin and P&L are in stable value, so it's simple and predictable. Preferred for clean cash & carry — we label these Cashable.",
+  },
+  coin_margined: {
+    title: 'COIN-M (coin-margined)',
+    short:
+      "Contract collateralized and settled in the coin itself (e.g. BTC for BTC futures). Like betting in Bitcoin: if the coin's price falls, your collateral's value falls too. These are inverse contracts with non-linear P&L — more complex and riskier, so we label them Speculative.",
+  },
+  inverse_contract: {
+    title: 'Inverse contract',
+    short:
+      "A futures contract quoted and settled in the base coin instead of dollars. The payoff isn't linear in price — the same price move doesn't produce a proportional P&L, which makes it harder to size and hedge cleanly.",
+  },
 } satisfies Record<string, GlossaryEntry>;
 
 export type GlossaryTerm = keyof typeof GLOSSARY;
@@ -114,4 +134,8 @@ export const GLOSSARY_ORDER: GlossaryTerm[] = [
   'thin',
   'near_zero_price',
   'signal_only_venue',
+  'margin',
+  'usdt_margined',
+  'coin_margined',
+  'inverse_contract',
 ];

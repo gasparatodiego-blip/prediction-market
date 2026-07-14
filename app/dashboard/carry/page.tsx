@@ -7,6 +7,7 @@ import SectionHeading from '@/app/components/ui/SectionHeading';
 import StatCard from '@/app/components/ui/StatCard';
 import EdgeChip from '@/app/components/ui/EdgeChip';
 import { Redacted } from '@/app/components/ui/Redacted';
+import InfoDot from '@/app/components/ui/InfoDot';
 import { type Contract, chipVariant } from '@/lib/carry';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -171,7 +172,12 @@ function ContractRow({ c, isPaid, open, onToggle }: { c: Contract; isPaid: boole
         <span className="min-w-0">
           <span className="flex items-center gap-1.5 flex-wrap">
             <span className="font-body text-[12.5px] font-medium text-ink">{c.asset}</span>
-            <span className="font-body text-[9px] uppercase tracking-wide px-1 rounded border border-line text-muted bg-surface">{c.coinMargined ? 'coin-margin' : 'USD-margin'}</span>
+            <span className="inline-flex items-center gap-0.5">
+              <span className="font-body text-[9px] uppercase tracking-wide px-1 rounded border border-line text-muted bg-surface">{c.coinMargined ? 'coin-margin' : 'USD-margin'}</span>
+              {/* educational only — reads from the shared glossary; never changes the tier.
+                  InfoTip stops click propagation itself, so the dot never toggles the row. */}
+              <InfoDot term={c.coinMargined ? 'coin_margined' : 'usdt_margined'} size={11} />
+            </span>
             <EdgeChip variant={chip} />
           </span>
           <span className="font-body text-[10px] text-muted truncate block">{c.exchange} · {expiryLabel(c.expiry)} · {c.daysToExpiry}d</span>
@@ -191,7 +197,12 @@ function ContractRow({ c, isPaid, open, onToggle }: { c: Contract; isPaid: boole
             <DetailCell label="Raw basis"><Redacted value={c.executableBasisPct ?? c.basis} isPaid={isPaid}>{v => fmtBasis(v as number)}</Redacted></DetailCell>
             <DetailCell label="Net %/yr (exec.)"><span className={netColor(c.netAnnualizedExecutable)}><Redacted value={c.netAnnualizedExecutable} isPaid={isPaid}>{v => fmtAnnualized(v as number)}</Redacted></span></DetailCell>
             <DetailCell label="Days to expiry">{c.daysToExpiry}d · {c.expiry}</DetailCell>
-            <DetailCell label="Margin type">{c.coinMargined ? 'Coin (inverse)' : 'USD (clean)'}</DetailCell>
+            <DetailCell label="Margin type">
+              <span className="inline-flex items-center gap-1">
+                {c.coinMargined ? 'Coin (inverse)' : 'USD (clean)'}
+                <InfoDot term={c.coinMargined ? 'coin_margined' : 'usdt_margined'} size={11} />
+              </span>
+            </DetailCell>
             <DetailCell label="24h volume">{fmtK(c.vol24Usd)}</DetailCell>
             <DetailCell label="Capacity">
               <Redacted value={c.capacityUsd} isPaid={isPaid}>{v => fmtK(v as number)}</Redacted>
@@ -409,6 +420,21 @@ export default function CarryPage() {
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
           </button>
         </div>
+      </div>
+
+      {/* Beginner intro — the two margin types at a glance. Additive/educational,
+          reads its term definitions from the shared glossary (lib/glossary.ts). */}
+      <div className="mb-5 px-3.5 py-2.5 rounded-card border border-line bg-bg-soft/60">
+        <p className="font-body text-[11.5px] text-muted leading-relaxed">
+          <span className="text-ink-2 font-medium">Two contract types.</span>{' '}
+          <span className="text-ink-2 font-medium">USDT-margined</span>
+          <InfoDot term="usdt_margined" size={11} className="mx-0.5" />
+          (collateral in dollars — simple, predictable, labeled <span className="text-mint-deep font-medium">Cashable</span>) and{' '}
+          <span className="text-ink-2 font-medium">coin-margined / inverse</span>
+          <InfoDot term="coin_margined" size={11} className="mx-0.5" />
+          (collateral in the coin itself — riskier, non-linear, labeled <span className="text-gold font-medium">Speculative</span>).
+          Filter <span className="text-ink-2 font-medium">“USD-margin only”</span> to see just the clean ones.
+        </p>
       </div>
 
       {/* Banners */}
