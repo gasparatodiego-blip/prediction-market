@@ -525,7 +525,7 @@ async function classifyTopWallets() {
 // ── Rank wallets per category ─────────────────────────────────────────────────
 function buildLeaderboard() {
   const cutoff = Date.now() / 1000 - WINDOW_DAYS * 86400;
-  const CATS  = ['All', 'Politics', 'Sports', 'Crypto', 'Pop Culture', 'World'];
+  const CATS  = ['All', 'Politics', 'Sports', 'Esports', 'Crypto', 'Pop Culture', 'World', 'Geopolitics', 'Weather', 'Mentions'];
   const DCATS = ['Ultra-fast ≤5 min', 'Fast 5–15 min'];
   const ALL   = [...CATS, ...DCATS];
   const categorized = Object.fromEntries(ALL.map(c => [c, []]));
@@ -679,6 +679,18 @@ function buildLeaderboard() {
       ((profiles[b.wallet]?.actorType?.confidence ?? 0) - (profiles[a.wallet]?.actorType?.confidence ?? 0))
       || (b.pnlUsdc - a.pnlUsdc))
     .slice(0, TOP_N_PER_CAT);
+
+  // HONEST ENGINE: a topic tab must have real traders behind it. Drop any topic
+  // category (CATS.slice(1) — excludes 'All' and the structural DCATS speed
+  // buckets) that is empty in BOTH the directional and MM boards, so widening the
+  // CATS list never surfaces a phantom — Esports/Geopolitics/Weather/Mentions only
+  // appear once real classified traders exist.
+  for (const cat of CATS.slice(1)) {
+    if (!(categories[cat]?.length) && !(mmCategories[cat]?.length)) {
+      delete categories[cat];
+      delete mmCategories[cat];
+    }
+  }
 
   return { categories, mmCategories, bots };
 }
