@@ -4,6 +4,7 @@ import Link from 'next/link';
 import PlatformLogo from '@/components/PlatformLogo';
 import EdgeradarNav from '@/app/components/EdgeradarNav';
 import Pill         from '@/app/components/ui/Pill';
+import Eyebrow      from '@/app/components/ui/Eyebrow';
 import SectionHeading from '@/app/components/ui/SectionHeading';
 import { type EdgeChipVariant } from '@/app/components/ui/EdgeChip';
 import RadarMark    from '@/app/components/ui/RadarMark';
@@ -17,28 +18,8 @@ import { LANDING_CAPITAL_BASIS } from '@/lib/honest-display';
 import { isSanePolymarketLevel } from '@/lib/reward-gating';
 import { estimateReward, type MarketSnapshot } from '@/lib/rewards-estimate';
 import { isExpired } from '@/lib/instrument-expiry';
-import { Archivo, IBM_Plex_Sans, IBM_Plex_Mono } from 'next/font/google';
-import skin from './landing-skin.module.css';
 
 export const dynamic = 'force-dynamic';
-
-// ── Landing re-skin fonts — "Bench instrument / calibrated readout" ──────────
-// Loaded here (page-scoped) and applied only on the landing root via CSS
-// variables, so shared components re-typeset in-context without any edit to
-// them. Display = engineered grotesque (also the numeric readouts); body =
-// engineering-doc humanist; mono = engraved instrument labels.
-const archivo = Archivo({
-  subsets: ['latin'], weight: ['400', '500', '600', '700'],
-  display: 'swap', variable: '--font-archivo',
-});
-const plexSans = IBM_Plex_Sans({
-  subsets: ['latin'], weight: ['400', '500', '600'],
-  display: 'swap', variable: '--font-plex-sans',
-});
-const plexMono = IBM_Plex_Mono({
-  subsets: ['latin'], weight: ['400', '500'],
-  display: 'swap', variable: '--font-plex-mono',
-});
 
 // ── Button-link class strings (same tokens as Button component) ────────────
 const BTN_BASE =
@@ -419,11 +400,8 @@ export default function LandingPage() {
   const liveRows = buildLiveRows(stats);
 
   return (
-    <div
-      className={`min-h-screen ${archivo.variable} ${plexSans.variable} ${plexMono.variable} ${skin.chassis}`}
-    >
+    <div className="min-h-screen">
       <EdgeradarNav />
-      <div className={skin.rail} aria-hidden />
 
       <main>
 
@@ -436,9 +414,6 @@ export default function LandingPage() {
 
             {/* Left col */}
             <div className="space-y-6 lg:max-w-xl">
-              <p className={skin.engrave}>
-                <span className={skin.tick}>│</span>Fee-adjusted edge scanner
-              </p>
               <SectionHeading
                 id="hero-heading"
                 as="h1"
@@ -480,22 +455,8 @@ export default function LandingPage() {
               </div>
             </div>
 
-            {/* Right col — live readout, framed in a calibration bezel */}
+            {/* Right col — live demo card */}
             <div className="w-full max-w-sm mx-auto lg:max-w-none">
-              <div className={skin.bezel}>
-                <span className={`${skin.reg} ${skin.regTL}`} aria-hidden />
-                <span className={`${skin.reg} ${skin.regTR}`} aria-hidden />
-                <span className={`${skin.reg} ${skin.regBL}`} aria-hidden />
-                <span className={`${skin.reg} ${skin.regBR}`} aria-hidden />
-                <div className={skin.sweep} aria-hidden />
-
-                {/* Bezel faceplate — engraved range label + calibration scale */}
-                <div className={skin.bezelHead}>
-                  <span className={skin.bezelLabel}>Live readout · net of fees</span>
-                  <span className={skin.bezelScale} aria-hidden />
-                  <span className={skin.bezelLamp} aria-hidden />
-                </div>
-
               <div className="bg-surface rounded-panel shadow-card border border-line overflow-hidden">
 
                 {/* Card header */}
@@ -546,14 +507,10 @@ export default function LandingPage() {
                 </div>
 
               </div>
-              </div>
             </div>
 
           </div>
         </section>
-
-        {/* Calibration divider — a measured scale, not a decorative rule. */}
-        <hr className={skin.tickRule} aria-hidden />
 
         {/* ── 2. SIX WAYS — ANIMATED STRATEGIES ────────────────────────────── */}
         <AnimatedStrategies />
@@ -566,9 +523,7 @@ export default function LandingPage() {
         >
           <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
             <div className="mb-10">
-              <p className={`${skin.engrave} mb-2`}>
-                <span className={skin.tick}>│</span>The honest engine
-              </p>
+              <Eyebrow className="mb-2">The honest engine</Eyebrow>
               <SectionHeading id="honest-heading" className="text-2xl sm:text-3xl">
                 You see what we see — nothing more
               </SectionHeading>
@@ -578,7 +533,7 @@ export default function LandingPage() {
               {HONEST_ENGINE.map(card => (
                 <div
                   key={card.title}
-                  className={`${skin.panel} p-6 flex flex-col gap-4`}
+                  className="bg-surface rounded-card shadow-card border border-line p-6 flex flex-col gap-4"
                 >
                   <div
                     className="w-8 h-8 rounded-[10px] bg-mint-tint flex items-center justify-center flex-shrink-0"
@@ -603,9 +558,6 @@ export default function LandingPage() {
         {/* ── 4. FINAL CTA ──────────────────────────────────────────────────── */}
         <section className="border-t border-line" aria-labelledby="cta-heading">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 py-20 sm:py-28 text-center">
-            <p className={`${skin.engrave} mb-3 flex items-center justify-center`}>
-              <span className={skin.tick}>│</span>Calibrated · net of fees · zero when there&apos;s nothing
-            </p>
             <SectionHeading
               id="cta-heading"
               centered
@@ -624,15 +576,14 @@ export default function LandingPage() {
 
       </main>
 
-      {/* ── FOOTER — graphite instrument band ─────────────────────────────── */}
-      <footer className={skin.band}>
-        <div className={skin.bandTick} aria-hidden />
+      {/* ── FOOTER ────────────────────────────────────────────────────────── */}
+      <footer className="border-t border-line">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <RadarMark size={16} />
-            <span className="font-display font-bold text-[#EAF1EF] text-[15px]">Edgeradar</span>
+            <span className="font-display font-bold text-ink text-[15px]">Edgeradar</span>
           </div>
-          <p className="font-body text-[12px] text-[#93A6A2] text-center sm:text-right">
+          <p className="font-body text-[12px] text-muted text-center sm:text-right">
             Edgeradar — the honest edge radar · prediction markets &amp; crypto
           </p>
         </div>
