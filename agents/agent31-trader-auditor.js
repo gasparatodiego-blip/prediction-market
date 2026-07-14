@@ -115,8 +115,16 @@ const SYS_CB_THRESHOLD  = 0.15;       // > this fraction mismatched ⇒ systemat
 // Telegram — GUARDIAN: bypasses the TELEGRAM_ALERTS_ENABLED mute switch exactly
 // like agent26 / agent-monitor (gated only on creds presence). This is a
 // watchdog; it must be able to shout even when the fleet is muted.
+//
+// TEST OVERRIDE: the paper-trader test needs EVERY sender muted except
+// agent32 + agent-monitor. Because this guardian ignores the global switch, it
+// gets its OWN per-agent mute: set TRADER_AUDITOR_TELEGRAM_MUTED=true in .env
+// and it sends ZERO Telegram while still scanning + writing /tmp/trader-audit.json.
+// To re-enable after the test: remove that line (or set it to false) and
+// `pm2 restart agent31-trader-auditor`.
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const CHAT_ID   = process.env.TELEGRAM_CHAT_ID   || '';
+const TELEGRAM_MUTED = /^(1|true|yes)$/i.test(process.env.TRADER_AUDITOR_TELEGRAM_MUTED || '');
 
 const log = (...a) => console.log('[agent31]', ...a);
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -479,6 +487,7 @@ function saveState(state) {
 }
 
 async function sendTelegram(text) {
+  if (TELEGRAM_MUTED) { log('Telegram MUTED (TRADER_AUDITOR_TELEGRAM_MUTED=true) — alert logged only:', text.slice(0, 200)); return; }
   if (!BOT_TOKEN || !CHAT_ID) { log('Telegram not configured — alert logged only:', text.slice(0, 200)); return; }
   try {
     await httpPost(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`,
