@@ -131,10 +131,17 @@ export default function LandingD() {
   const way = WAYS[wi];
   const nextWay = WAYS[(wi + 1) % WAYS.length];
   const wayRef = useRef<any>(null);
+  const tabsRef = useRef<any>(null);
   const goWay = (n: any) => {
     setWi((n + WAYS.length) % WAYS.length);
     requestAnimationFrame(() => sixRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
   };
+  useEffect(() => {
+    const c = tabsRef.current;
+    const el = c?.children?.[wi];
+    if (!c || !el) return;
+    c.scrollTo({ left: el.offsetLeft - (c.clientWidth - el.clientWidth) / 2, behavior: "smooth" });
+  }, [wi]);
   useEffect(() => {
     const el = heroRef.current;
     if (!el) return;
@@ -375,7 +382,7 @@ export default function LandingD() {
             Six different ways a price can be wrong. One at a time, in plain words.
           </p>
 
-          <div className="waytabs">
+          <div className="waytabs" ref={tabsRef}>
             {WAYS.map((w, k) => {
               const on = k === wi;
               return (
