@@ -14,7 +14,7 @@ const EDGES = [
   { c: P.mint, k: "LOCKED", cat: "Funding arbitrage", g: "funding arbitrage", n: "TRX funding spread", v: "+$0.99", u: "a day, per $1,000" },
   { c: P.mint, k: "LOCKED", cat: "Cash & carry", g: "cash & carry", n: "BTC carry", v: "+3.9%", u: "a year, locked at entry" },
   { c: P.violet, k: "LIKELY", cat: "Liquidity rewards", g: "liquidity rewards", n: "Polymarket maker rewards", v: "+$5.31", u: "a day, per $1,000" },
-  { c: P.violet, k: "LIKELY", cat: "Top traders", g: "top traders", n: "0xc4f2 · 71% hit rate", v: "+$8.10", u: "a day, settled on-chain" },
+  { c: P.violet, k: "LIKELY", cat: "Top traders", g: "top traders", n: "0xc4f2 · 68% hit rate", v: "+$8.10", u: "a day, settled on-chain" },
   { c: P.amber, k: "REAL", cat: "Sports", g: "sports", n: "Lakers / Celtics", v: "+3.4%", u: "against the sharp price" },
   { c: P.mint, k: "LOCKED", cat: "Prediction market", g: "prediction markets", n: "Powell out by June", v: "+1.9¢", u: "a contract" },
   { c: P.mint, k: "LOCKED", cat: "Funding arbitrage", g: "funding arbitrage", n: "ETH funding spread", v: "+$1.24", u: "a day, per $1,000" },
@@ -45,7 +45,7 @@ const WAYS = [
   },
   {
     id: "maker", t: "Maker rewards", c: P.violet,
-    p: "Polymarket is a prediction market, and an empty order book is useless to it. So it runs a rewards programme: leave real buy and sell orders on the book, and it pays you a slice of a daily pot for being there.",
+    p: "Polymarket is a prediction market, and an empty order book is useless to it. So it runs a rewards program: leave real buy and sell orders on the book, and it pays you a slice of a daily pot for being there.",
     p2: "You post a bid at $60 and an ask at $62. You are not predicting anything — you are the shop, quoting both sides. The pot is $18,000 a day, and your slice depends on how tight and how large your quotes are.",
     p3: "We count only rewards that actually accrued, from real resting orders. A book with no genuine competition on it is ignored: it would make the number look far better than it is.",
   },
@@ -481,7 +481,7 @@ const SCENES = {
     r1: ["Paid on Polymarket", "$60"],
     r2: ["Paid on Kalshi", "$35"],
     sum: ["Total you paid", "$95"],
-    pay: ["One of the two pays", "$100"],
+    pay: ["One of them pays", "$100"],
     fin: ["$100 − $95", "+$5"],
     note: "That gap is the spread — your profit",
   },
@@ -825,7 +825,7 @@ function TraderScene({ c }: any) {
         <path d="M18 208 L38 202 L58 205 L78 194 L98 197 L118 186 L138 181"
           stroke={c} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"
           strokeDasharray="150" style={{ animation: `t-draw ${L}` }} />
-        <text x="18" y="214" style={{ fontFamily: DISP, fontSize: 7, fill: P.faint }}>settled equity</text>
+        <text x="18" y="214" style={{ fontFamily: DISP, fontSize: 7, fill: P.faint }}>SETTLED EQUITY</text>
 
         <text x="182" y="196" textAnchor="end" style={{ fontFamily: DISP, fontSize: 7.5, fontWeight: 600, fill: P.muted }}>win rate 68%</text>
         <rect x="146" y="200" width="36" height="5" rx="2.5" fill={P.ink + "12"} />
