@@ -267,7 +267,9 @@ export default function LandingD() {
         .six { padding: 48px 0 0; scroll-margin-top: 12px; }
 
         @media (max-width: 699px) {
+          html { scroll-snap-type: y mandatory; scroll-padding-top: 56px; }
           .hero { min-height: calc(100vh - 66px); min-height: calc(100dvh - 66px); align-content: start; }
+          .hero, .six, .cta { scroll-snap-align: start; }
         }
         .waysub { display: none; }
         .waybody2 { display: none; }
@@ -425,7 +427,7 @@ export default function LandingD() {
           </div>
         </section>
 
-        <section style={{ padding: "clamp(56px, 10vw, 88px) 0 72px", textAlign: "center" }}>
+        <section className="cta" style={{ padding: "clamp(56px, 10vw, 88px) 0 72px", textAlign: "center" }}>
           <span style={{ background: P.mint, color: "#fff", padding: "17px 40px", borderRadius: 999,
             fontWeight: 600, fontSize: "clamp(15px, 4vw, 17px)", cursor: "pointer", display: "inline-block" }}>
             Start your free trial
