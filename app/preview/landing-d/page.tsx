@@ -257,7 +257,7 @@ export default function LandingD() {
                font-size: clamp(11.5px, 3.1vw, 13px); padding: 7px clamp(10px, 2.8vw, 16px);
                transition: background .35s cubic-bezier(.2,.8,.2,1), color .35s; }
 
-        .six { padding: 18px 0 0; scroll-margin-top: 8px; }
+        .six { padding: 18px 0 0; scroll-margin-top: 8px; padding-top: 26px; }
         .waysub { display: none; }
         .waybody2 { display: none; }
         .waynote { display: none; }
@@ -306,16 +306,17 @@ export default function LandingD() {
         background: P.ground + "F2", backdropFilter: "blur(10px)",
         borderBottom: `1px solid ${P.ink}0F` }}>
         <div className="wrap" style={{ display: "flex", alignItems: "center",
-          justifyContent: atSix ? "flex-end" : "space-between", gap: 12, height: 52 }}>
+          justifyContent: atSix ? "flex-end" : "space-between", gap: 12, height: 56 }}>
           {!atSix && (
             <div className="d clip" style={{ fontSize: "clamp(11.5px, 3.3vw, 17px)", fontWeight: 700, flex: 1, minWidth: 0 }}>
               Live edges in <span key={word} className="swap" style={{ color: P.mint }}>{word}</span>
             </div>
           )}
           <div style={{ display: "flex", alignItems: "center", gap: 9, flexShrink: 0 }}>
-            {!atSix && <span className="m livec" style={{ fontSize: 10.5, color: P.faint, whiteSpace: "nowrap" }}>{list.length} live</span>}
-            <span style={{ background: P.mint, color: "#fff", padding: "7px 14px", borderRadius: 999,
-              fontWeight: 600, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" }}>Free trial</span>
+            {!atSix && <span className="m livec" style={{ fontSize: 10.5, color: P.faint, whiteSpace: "nowrap", flexShrink: 0 }}>{list.length} live</span>}
+            <span style={{ background: P.mint, color: "#fff", padding: "8px 16px", borderRadius: 999,
+              fontWeight: 600, fontSize: 12.5, cursor: "pointer", whiteSpace: "nowrap",
+              flexShrink: 0, pointerEvents: "auto" }}>Free trial</span>
           </div>
         </div>
       </div>
