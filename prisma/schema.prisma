@@ -15,6 +15,7 @@ model User {
   telegramChatId      String?
   alertPrefs          Json?
   name                String?
+  role                String    @default("user")   // 'user' | 'admin'
   plan                String    @default("free")
   planExpiresAt       DateTime?
   profitShareBalance  Float     @default(0)
