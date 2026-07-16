@@ -261,7 +261,7 @@ export default function LandingD() {
         .waysub { display: none; }
         .waybody2 { display: none; }
         .waynote { display: none; }
-        .illu { max-height: 44svh; }
+        .illu { max-height: 44dvh; }
         .waytabs { display: flex; flex-wrap: nowrap; justify-content: flex-start; gap: 6px; margin: 12px 0;
                    overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
                    padding-bottom: 2px; scroll-snap-type: x proximity; }
@@ -275,8 +275,8 @@ export default function LandingD() {
 
         /* phone only: each section owns exactly one screen */
         @media (max-width: 699px) {
-          .hero { min-height: calc(100vh - 66px); min-height: calc(100svh - 66px); }
-          .six  { min-height: calc(100vh - 66px); min-height: calc(100svh - 66px); }
+          .hero { min-height: calc(100vh - 66px); min-height: calc(100dvh - 66px); }
+          .six  { min-height: calc(100vh - 66px); min-height: calc(100dvh - 66px); }
         }
         @media (min-width: 440px) { .ctaS { display: none } .ctaL { display: inline } }
         @media (min-width: 520px) { .livec { display: inline } }
@@ -419,7 +419,7 @@ export default function LandingD() {
           </div>
         </section>
 
-        <section style={{ padding: "clamp(52px, 9vw, 80px) 0 66px", textAlign: "center" }}>
+        <section style={{ padding: "clamp(64px, 12vw, 96px) 0 80px", textAlign: "center" }}>
           <span style={{ background: P.mint, color: "#fff", padding: "17px 40px", borderRadius: 999,
             fontWeight: 600, fontSize: "clamp(15px, 4vw, 17px)", cursor: "pointer", display: "inline-block" }}>
             Start your free trial
