@@ -264,23 +264,23 @@ export default function LandingD() {
                font-size: clamp(11.5px, 3.1vw, 13px); padding: 7px clamp(10px, 2.8vw, 16px);
                transition: background .35s cubic-bezier(.2,.8,.2,1), color .35s; }
 
-        .six { padding: 16px 0 0; scroll-margin-top: 12px; }
+        .six { padding: 26px 0 12px; scroll-margin-top: 12px; }
 
         @media (max-width: 699px) {
-          html { scroll-snap-type: y mandatory; scroll-padding-top: 56px; }
+          html { scroll-snap-type: y proximity; scroll-padding-top: 56px; }
           .hero { min-height: calc(100vh - 66px); min-height: calc(100dvh - 66px); align-content: start; }
           .hero, .six, .cta { scroll-snap-align: start; }
         }
         .waysub { display: none; }
         .waybody2 { display: none; }
         .waynote { display: none; }
-        .illu { max-height: 312px; }
+        .illu { max-height: 340px; }
         .waytabs { display: flex; flex-wrap: nowrap; justify-content: flex-start; gap: 6px; margin: 12px 0;
                    overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
                    padding-bottom: 2px; scroll-snap-type: x proximity; }
         .waytabs::-webkit-scrollbar { display: none; }
         .waytabs .tab { flex: 0 0 auto; scroll-snap-align: center; }
-        .waynext { display: none; }
+        .waynext { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
         .way-in { animation: swap .32s ease both; }
         .way { display: grid; grid-template-columns: 1fr; gap: 18px; align-items: start;
                background: ${P.surface}; border-radius: 22px; padding: clamp(14px, 3.4vw, 26px);
