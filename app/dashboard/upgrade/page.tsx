@@ -1,6 +1,4 @@
 'use client';
-import { useState } from 'react';
-import { useSession } from 'next-auth/react';
 
 const PLANS = [
   {
@@ -36,8 +34,8 @@ const PLANS = [
       'Full portfolio tracker',
       'Priority support',
     ],
-    cta:    'Upgrade to Pro',
-    ctaFn:  'pro',
+    cta:    'Contact Us',
+    ctaFn:  'contact',
   },
   {
     key:         'profit_share',
@@ -58,30 +56,16 @@ const PLANS = [
   },
 ];
 
+// Every paid plan is arranged by hand: there is no self-serve checkout, because
+// there is no payment integration behind it (Stripe is not wired, and POST
+// /api/subscription is closed). Pro used to POST a plan change straight to the
+// API, which granted it for free — so the button charged €15 and delivered
+// nothing it could bill for. Both paid cards now open the same mailto the Profit
+// Share card always used. The subject follows the plan so a Pro enquiry does not
+// arrive labelled "Profit Share Plan".
 export default function UpgradePage() {
-  const { data: session } = useSession();
-  const [loading, setLoading] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
-  const [error,   setError]   = useState<string | null>(null);
-
-  async function upgrade(plan: string) {
-    if (plan === 'contact') {
-      window.open('mailto:gasparatodiego@gmail.com?subject=Profit Share Plan', '_blank');
-      return;
-    }
-    if (!session) { window.location.href = '/auth/login'; return; }
-    setLoading(plan);
-    setError(null);
-    try {
-      const res  = await fetch('/api/subscription', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ plan }) });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? 'Failed');
-      setSuccess(plan);
-    } catch (e: any) {
-      setError(e.message);
-    } finally {
-      setLoading(null);
-    }
+  function contact(planName: string) {
+    window.open(`mailto:gasparatodiego@gmail.com?subject=${planName} Plan`, '_blank');
   }
 
   return (
@@ -91,9 +75,6 @@ export default function UpgradePage() {
           <h1 className="font-display font-bold text-3xl text-ink mb-3">Choose Your Plan</h1>
           <p className="font-body text-muted">Unlock the full power of AI-driven prediction market arbitrage</p>
         </div>
-
-        {error   && <div className="mb-6 p-3 rounded-card bg-coral-tint border border-coral-ink/30 text-coral-ink font-body text-sm text-center">{error}</div>}
-        {success && <div className="mb-6 p-3 rounded-card bg-mint-tint border border-mint-deep/30 text-mint-deep font-body text-sm text-center">Plan upgraded successfully! Refresh the page to see changes.</div>}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {PLANS.map(plan => (
@@ -119,14 +100,13 @@ export default function UpgradePage() {
               </ul>
               {plan.ctaFn ? (
                 <button
-                  onClick={() => upgrade(plan.ctaFn!)}
-                  disabled={loading === plan.ctaFn || success === plan.ctaFn}
+                  onClick={() => contact(plan.name)}
                   className={`w-full py-2.5 rounded-button font-body font-semibold text-sm transition-colors
                     ${plan.key === 'pro'
-                      ? 'bg-violet hover:bg-violet/90 text-white disabled:opacity-50'
-                      : 'bg-violet/70 hover:bg-violet/60 text-white disabled:opacity-50'}`}
+                      ? 'bg-violet hover:bg-violet/90 text-white'
+                      : 'bg-violet/70 hover:bg-violet/60 text-white'}`}
                 >
-                  {loading === plan.ctaFn ? 'Processing…' : success === plan.ctaFn ? '✓ Upgraded' : plan.cta}
+                  {plan.cta}
                 </button>
               ) : (
                 <div className="w-full py-2.5 rounded-button font-body font-semibold text-sm text-center bg-bg-soft text-muted">
