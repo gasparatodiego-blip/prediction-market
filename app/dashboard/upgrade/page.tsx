@@ -118,7 +118,7 @@ export default function UpgradePage() {
         </div>
 
         <p className="text-center font-body text-muted text-xs mt-8">
-          For Pro: pay via bank transfer or crypto — contact us after clicking Upgrade.<br />
+          Paid plans are arranged by hand: get in touch and we&apos;ll set up payment by bank transfer or crypto.<br />
           Not financial advice. Always verify opportunities before trading.
         </p>
       </div>
