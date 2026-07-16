@@ -247,8 +247,8 @@ export default function LandingD() {
         .ctaL { display: none }
         .livec { display: none }
 
-        .hero { padding: 10px 0 0; display: grid; grid-template-columns: 1fr; gap: 16px;
-                align-items: center; align-content: start; }
+        .hero { padding: 14px 0 0; display: grid; grid-template-columns: 1fr; gap: 18px;
+                align-items: center; }
         .hero-list { order: 2; }
         .hero-copy { order: 1; }
 
@@ -257,11 +257,11 @@ export default function LandingD() {
                font-size: clamp(11.5px, 3.1vw, 13px); padding: 7px clamp(10px, 2.8vw, 16px);
                transition: background .35s cubic-bezier(.2,.8,.2,1), color .35s; }
 
-        .six { padding: 18px 0 0; scroll-margin-top: 8px; padding-top: 26px; }
+        .six { padding: 48px 0 0; scroll-margin-top: 12px; }
         .waysub { display: none; }
         .waybody2 { display: none; }
         .waynote { display: none; }
-        .illu { max-height: 44dvh; }
+        .illu { max-height: 380px; }
         .waytabs { display: flex; flex-wrap: nowrap; justify-content: flex-start; gap: 6px; margin: 12px 0;
                    overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
                    padding-bottom: 2px; scroll-snap-type: x proximity; }
@@ -273,11 +273,6 @@ export default function LandingD() {
                background: ${P.surface}; border-radius: 22px; padding: clamp(18px, 4vw, 26px);
                box-shadow: 0 8px 26px -14px rgba(45,36,24,0.2); }
 
-        /* phone only: each section owns exactly one screen */
-        @media (max-width: 699px) {
-          .hero { min-height: calc(100vh - 66px); min-height: calc(100dvh - 66px); }
-          .six  { min-height: calc(100vh - 66px); min-height: calc(100dvh - 66px); }
-        }
         @media (min-width: 440px) { .ctaS { display: none } .ctaL { display: inline } }
         @media (min-width: 520px) { .livec { display: inline } }
 
@@ -419,7 +414,7 @@ export default function LandingD() {
           </div>
         </section>
 
-        <section style={{ padding: "clamp(64px, 12vw, 96px) 0 80px", textAlign: "center" }}>
+        <section style={{ padding: "clamp(56px, 10vw, 88px) 0 72px", textAlign: "center" }}>
           <span style={{ background: P.mint, color: "#fff", padding: "17px 40px", borderRadius: 999,
             fontWeight: 600, fontSize: "clamp(15px, 4vw, 17px)", cursor: "pointer", display: "inline-block" }}>
             Start your free trial
