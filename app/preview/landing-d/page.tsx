@@ -657,15 +657,15 @@ function BookScene({ c }: any) {
 
       {BIDS.map((b, i) => row(b, 144 + i * 10, GRN, i === 0, "a-p1"))}
 
-      <g style={{ ...fb, animation: `m-fin ${L}` }}>
+      <g>
         <rect x="8" y="184" width="184" height="42" rx="11" fill={P.surface} stroke={P.ink + "14"} />
         <text x="18" y="196" style={{ fontFamily: DISP, fontSize: 7, fontWeight: 700, fill: P.faint, letterSpacing: ".04em" }}>
           POLYMARKET PAYS FOR LIQUIDITY
         </text>
         <text x="18" y="208" style={{ fontFamily: DISP, fontSize: 8.5, fontWeight: 500, fill: P.muted }}>Pot, per day</text>
-        <text x="182" y="208" textAnchor="end" style={{ fontFamily: MONO, fontSize: 9.5, fill: P.ink }}>$18,000</text>
+        <text x="182" y="208" textAnchor="end" style={{ fontFamily: MONO, fontSize: 9.5, fill: P.ink, animation: `a-sum ${L}` }}>$18,000</text>
         <text x="18" y="221" style={{ fontFamily: DISP, fontSize: 9.5, fontWeight: 700, fill: P.ink }}>Your share, 0.03%</text>
-        <text x="182" y="222" textAnchor="end" style={{ fontFamily: MONO, fontSize: 15, fill: c }}>+$5</text>
+        <text x="182" y="222" textAnchor="end" style={{ ...fb, fontFamily: MONO, fontSize: 15, fill: c, animation: `m-fin ${L}` }}>+$5</text>
       </g>
 
       <g style={{ ...fb, animation: `a-note ${L}` }}>
@@ -725,7 +725,7 @@ function CarryScene({ c }: any) {
         {card(104, B.der, "JUNE", "$104", "SELL", "FILLED", "a-fb", "a-rb", "2")}
       </g>
 
-      <g style={{ animation: `c-gap ${L}` }}>
+      <g>
         <rect x="8" y="110" width="184" height="80" rx="11" fill={P.surface} stroke={P.ink + "14"} />
         <text x="18" y="126" style={{ fontFamily: DISP, fontSize: 8.5, fontWeight: 700, fill: P.faint, letterSpacing: ".08em" }}>DAYS TO EXPIRY</text>
 
@@ -753,10 +753,8 @@ function CarryScene({ c }: any) {
         <circle cx="0" cy="0" r="3.5" fill={B.der.c} stroke="#FFF" strokeWidth="1.2" style={{ animation: `c-dot ${L}` }} />
       </g>
 
-      <g style={{ ...fb, animation: `a-fin ${L}` }}>
-        <text x="18" y="211" style={{ fontFamily: DISP, fontSize: 10.5, fontWeight: 700, fill: P.ink }}>Locked on day 1</text>
-        <text x="182" y="213" textAnchor="end" style={{ fontFamily: MONO, fontSize: 18, fill: c }}>+$4</text>
-      </g>
+      <text x="18" y="211" style={{ fontFamily: DISP, fontSize: 10.5, fontWeight: 700, fill: P.ink }}>Locked on day 1</text>
+      <text x="182" y="213" textAnchor="end" style={{ ...fb, fontFamily: MONO, fontSize: 18, fill: c, animation: `a-fin ${L}` }}>+$4</text>
       <g style={{ ...fb, animation: `a-note ${L}` }}>
         <rect x="14" y="222" width="172" height="20" rx="10" fill={c} />
         <text x="100" y="235.5" textAnchor="middle" style={{ fontFamily: DISP, fontSize: 9, fontWeight: 700, fill: "#FFF" }}>
@@ -891,25 +889,24 @@ function Scene({ id, c }: any) {
       </g>
 
       <rect x="8" y="110" width="184" height="134" rx="12" fill={P.surface} stroke={P.ink + "14"} />
-      <g style={{ animation: `a-p1 ${L}` }}>
-        <text x="18" y={s.hideR2 ? 143 : 127} style={{ ...lab, fontWeight: s.hideR2 ? 700 : 500, fill: s.hideR2 ? P.ink : P.muted }}>{s.r1[0]}</text>
-        <text x="182" y={s.hideR2 ? 143 : 127} textAnchor="end" style={{ ...val, fontSize: s.hideR2 ? 13.5 : 12.5 }}>{s.r1[1]}</text>
-      </g>
+      <text x="18" y={s.hideR2 ? 143 : 127} style={{ ...lab, fontWeight: s.hideR2 ? 700 : 500, fill: s.hideR2 ? P.ink : P.muted }}>{s.r1[0]}</text>
+      <text x="182" y={s.hideR2 ? 143 : 127} textAnchor="end" style={{ ...val, fontSize: s.hideR2 ? 13.5 : 12.5, animation: `a-p1 ${L}` }}>{s.r1[1]}</text>
+
       {!s.hideR2 && (
-        <g style={{ animation: `a-p2 ${L}` }}>
+        <g>
           <text x="18" y="143" style={lab}>{s.r2[0]}</text>
-          <text x="182" y="143" textAnchor="end" style={val}>{s.r2[1]}</text>
+          <text x="182" y="143" textAnchor="end" style={{ ...val, animation: `a-p2 ${L}` }}>{s.r2[1]}</text>
         </g>
       )}
       {s.sum && (
-        <g style={{ animation: `a-sum ${L}` }}>
+        <g>
           <line x1="18" y1="151" x2="182" y2="151" stroke={P.ink + "16"} />
           <text x="18" y="167" style={{ ...lab, fontWeight: 700, fill: P.ink }}>{s.sum[0]}</text>
-          <text x="182" y="167" textAnchor="end" style={{ ...val, fontSize: 13.5 }}>{s.sum[1]}</text>
+          <text x="182" y="167" textAnchor="end" style={{ ...val, fontSize: 13.5, animation: `a-sum ${L}` }}>{s.sum[1]}</text>
         </g>
       )}
       {s.bar ? (
-        <g style={{ animation: `a-pay ${L}` }}>
+        <g>
           <text x="18" y="182" style={lab}>{s.bar[0]}</text>
           <text x="182" y="182" textAnchor="end" style={{ fontFamily: MONO, fontSize: 10, fill: P.faint }}>{s.bar[1]}</text>
           <rect x="18" y="186" width="164" height="4" rx="2" fill={P.ink + "12"} />
@@ -917,16 +914,15 @@ function Scene({ id, c }: any) {
             style={{ transformBox: "fill-box", transformOrigin: "left", animation: `a-bar ${L}` } as React.CSSProperties} />
         </g>
       ) : (
-        <g style={{ animation: `a-pay ${L}` }}>
+        <g>
           <text x="18" y="185" style={lab}>{s.pay[0]}</text>
-          <text x="182" y="185" textAnchor="end" style={{ ...val, fontSize: 13.5, fill: c }}>{s.pay[1]}</text>
+          <text x="182" y="185" textAnchor="end" style={{ ...val, fontSize: 13.5, fill: c, animation: `a-pay ${L}` }}>{s.pay[1]}</text>
         </g>
       )}
-      <g style={{ ...fb, animation: `a-fin ${L}` }}>
-        <line x1="18" y1="193" x2="182" y2="193" stroke={P.ink + "16"} />
-        <text x="18" y="211" style={{ fontFamily: DISP, fontSize: 10.5, fontWeight: 700, fill: P.ink }}>{s.fin[0]}</text>
-        <text x="182" y="213" textAnchor="end" style={{ fontFamily: MONO, fontSize: 20, fill: c }}>{s.fin[1]}</text>
-      </g>
+      <line x1="18" y1="193" x2="182" y2="193" stroke={P.ink + "16"} />
+      <text x="18" y="211" style={{ fontFamily: DISP, fontSize: 10.5, fontWeight: 700, fill: P.ink }}>{s.fin[0]}</text>
+      <text x="182" y="213" textAnchor="end" style={{ ...fb, fontFamily: MONO, fontSize: 20, fill: c, animation: `a-fin ${L}` }}>{s.fin[1]}</text>
+
       <g style={{ ...fb, animation: `a-note ${L}` }}>
         <rect x="14" y="220" width="172" height="20" rx="10" fill={c} />
         <text x="100" y="233.5" textAnchor="middle" style={{ fontFamily: DISP, fontSize: 9, fontWeight: 700, fill: "#FFF" }}>{s.note}</text>
