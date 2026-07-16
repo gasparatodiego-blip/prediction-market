@@ -239,7 +239,8 @@ export default function LandingD() {
         .ctaS { display: inline }
         .ctaL { display: none }
         @media (min-width: 440px) { .ctaS { display: none } .ctaL { display: inline } }
-        .hero { padding: 10px 0 0; display: grid; grid-template-columns: 1fr; gap: 16px; align-items: center; }
+        .hero { padding: 10px 0 0; display: grid; grid-template-columns: 1fr; gap: 16px; align-items: center;
+                align-content: start; min-height: calc(100vh - 66px); min-height: calc(100svh - 66px); }
         .hero-list { order: 2; }
         .hero-copy { order: 1; }
         .waytabs { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: 26px 0 16px; }
@@ -269,12 +270,12 @@ export default function LandingD() {
           .waynext { display: none; }
         }
         @media (min-width: 860px) {
-          .hero { gap: 34px; padding: 44px 0 0; }
+          .hero { gap: 34px; padding: 44px 0 0; min-height: 0; align-content: center; }
           .nav { padding: 24px 0; }
         }
       `}</style>
 
-      <div className="s" style={{ position: "sticky", top: 0, zIndex: 40, pointerEvents: "none",
+      <div className="s" style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 40, pointerEvents: "none",
         transform: stuck ? "none" : "translateY(-110%)", opacity: stuck ? 1 : 0,
         transition: "transform .35s cubic-bezier(.2,.8,.2,1), opacity .25s",
         background: P.ground + "F2", backdropFilter: "blur(10px)",
