@@ -149,7 +149,7 @@ export default function LandingD() {
     io.observe(el);
     const onScroll = () => {
       const r = sixRef.current?.getBoundingClientRect();
-      setAtSix(!!r && r.top <= 62);
+      setAtSix(!!r && r.top <= 140);
     };
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
