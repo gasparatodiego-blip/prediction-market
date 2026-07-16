@@ -69,7 +69,7 @@ function useHover() {
   const [h, setH] = useState(false);
   useEffect(() => {
     const q = window.matchMedia("(hover: hover) and (pointer: fine)");
-    const f = (e) => setH(e.matches);
+    const f = (e: any) => setH(e.matches);
     setH(q.matches);
     q.addEventListener("change", f);
     return () => q.removeEventListener("change", f);
@@ -81,7 +81,7 @@ function useNarrow() {
   const [n, setN] = useState(false);
   useEffect(() => {
     const q = window.matchMedia("(max-width: 859px)");
-    const f = (e) => setN(e.matches);
+    const f = (e: any) => setN(e.matches);
     setN(q.matches);
     q.addEventListener("change", f);
     return () => q.removeEventListener("change", f);
@@ -99,7 +99,7 @@ export default function LandingD() {
   const [i, setI] = useState(0);
   const [hold, setHold] = useState(false);
   const [pause, setPause] = useState(false);
-  const pauseRef = useRef(null);
+  const pauseRef = useRef<any>(null);
 
   useEffect(() => {
     if (hold || pause) return;
@@ -110,7 +110,7 @@ export default function LandingD() {
   useEffect(() => () => clearTimeout(pauseRef.current), []);
 
   // clic su una tab: salta a quella categoria, resta fermo 3s, poi riprende il giro
-  const jump = (cat) => {
+  const jump = (cat: any) => {
     const idx = EDGES.findIndex((e) => e.cat === cat);
     if (idx < 0) return;
     setI(idx);
@@ -123,15 +123,15 @@ export default function LandingD() {
   const word = cur ? cur.g : "everything";
   const activeCat = cur ? cur.cat : null;
 
-  const heroRef = useRef(null);
+  const heroRef = useRef<any>(null);
   const [stuck, setStuck] = useState(false);
   const [atSix, setAtSix] = useState(false);
-  const sixRef = useRef(null);
+  const sixRef = useRef<any>(null);
   const [wi, setWi] = useState(0);
   const way = WAYS[wi];
   const nextWay = WAYS[(wi + 1) % WAYS.length];
-  const wayRef = useRef(null);
-  const goWay = (n) => {
+  const wayRef = useRef<any>(null);
+  const goWay = (n: any) => {
     setWi((n + WAYS.length) % WAYS.length);
     requestAnimationFrame(() => wayRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
   };
@@ -323,7 +323,7 @@ export default function LandingD() {
               })}
             </div>
             <List edges={list} row={ROW} nar={nar} hov={hov} i={i} setI={setI} setHold={setHold}
-              onPick={(n) => {
+              onPick={(n: any) => {
                 setI(n);
                 setPause(true);
                 clearTimeout(pauseRef.current);
@@ -413,7 +413,7 @@ export default function LandingD() {
 const MONO = "'DM Mono', ui-monospace, monospace";
 const DISP = "'Gabarito', system-ui, sans-serif";
 const L = "20s linear infinite";
-const fb = { transformBox: "fill-box", transformOrigin: "center" };
+const fb: React.CSSProperties = { transformBox: "fill-box", transformOrigin: "center" };
 
 const B = {
   poly: { n: "Polymarket",  c: "#1652F0" },
@@ -551,12 +551,12 @@ const SCENES = {
 const RED = "#D8483C";
 const GRN = "#0FA968";
 
-function Chips({ list, c }) {
-  const col = (k) => (k === "ink" ? P.ink : k === "c" ? c : k);
+function Chips({ list, c }: any) {
+  const col = (k: any) => (k === "ink" ? P.ink : k === "c" ? c : k);
   const anims = ["a-c1", "a-c2", "a-c3", "a-c4", "a-c5"];
   return (
     <g>
-      {list.map(([txt, k], n) => {
+      {list.map(([txt, k]: any, n: any) => {
         const w = Math.min(178, txt.length * 5.15 + 22);
         return (
           <g key={n} style={{ ...fb, animation: `${anims[n]} ${L}` }}>
@@ -570,7 +570,7 @@ function Chips({ list, c }) {
   );
 }
 
-const Pointer = ({ an = "a-cur" }) => (
+const Pointer = ({ an = "a-cur" }: any) => (
   <g style={{ animation: `${an} ${L}` }}>
     <g style={{ ...fb, animation: `a-press ${L}` }}>
       <path d="M0 0 L0 15 L4.1 11.4 L6.8 17.2 L9.7 15.9 L6.9 10.3 L12 10 Z"
@@ -584,8 +584,8 @@ const ASKS = [["65¢", "1,240", 1240], ["64¢", "890", 890], ["63¢", "640", 640
 const BIDS = [["60¢", "420", 420], ["59¢", "780", 780], ["58¢", "1,050", 1050], ["57¢", "1,600", 1600]];
 const MAXD = 1700;
 
-function BookScene({ c }) {
-  const row = ([p, sz, d], y, col, mine, an) => (
+function BookScene({ c }: any) {
+  const row = ([p, sz, d]: any, y: any, col: any, mine: any, an: any) => (
     <g key={p + y}>
       <rect x={182 - (8 + (d / MAXD) * 120)} y={y - 7} width={8 + (d / MAXD) * 120} height="9" rx="2" fill={col + "1C"} />
       <text x="18" y={y} style={{ fontFamily: MONO, fontSize: 8.5, fill: col }}>{p}</text>
@@ -652,8 +652,8 @@ function BookScene({ c }) {
 }
 
 /* ---- Cash & carry: i trenta giorni ---- */
-function CarryScene({ c }) {
-  const card = (x, b, side, price, btn, done, fl, ring, step) => (
+function CarryScene({ c }: any) {
+  const card = (x: any, b: any, side: any, price: any, btn: any, done: any, fl: any, ring: any, step: any) => (
     <g>
       <rect x={x} y="58" width="88" height="46" rx="11" fill={P.surface} stroke={P.ink + "14"} />
       <circle cx={x + 11} cy="68" r="3.5" fill={b.c} />
@@ -672,7 +672,7 @@ function CarryScene({ c }) {
       <circle cx={x + 44} cy="97" r="9" fill="none" stroke={c} strokeWidth="2.5" style={{ ...fb, animation: `${ring} ${L}` }} />
     </g>
   );
-  const day = (t, an) => (
+  const day = (t: any, an: any) => (
     <text x="162" y="145" textAnchor="middle"
       style={{ fontFamily: DISP, fontSize: 17, fontWeight: 700, fill: P.ink, animation: `${an} ${L}` }}>{t}</text>
   );
@@ -746,7 +746,7 @@ const LB = [
   ["5", "0x0e52…b3", "+$4,870", "57%"],
 ];
 
-function TraderScene({ c }) {
+function TraderScene({ c }: any) {
   return (
     <g>
       <text x="100" y="19" textAnchor="middle" style={{ fontFamily: DISP, fontSize: 9.5, fontWeight: 600, fill: P.muted }}>
@@ -765,7 +765,7 @@ function TraderScene({ c }) {
       <text x="140" y="70" textAnchor="end" style={{ fontFamily: DISP, fontSize: 7, fontWeight: 700, fill: P.faint, letterSpacing: ".1em" }}>SETTLED P&amp;L</text>
       <text x="182" y="70" textAnchor="end" style={{ fontFamily: DISP, fontSize: 7, fontWeight: 700, fill: P.faint, letterSpacing: ".1em" }}>WIN</text>
 
-      {LB.map(([r, w, pnl, win], i) => {
+      {LB.map(([r, w, pnl, win]: any, i: any) => {
         const y = 84 + i * 16;
         return (
           <g key={r}>
@@ -794,7 +794,7 @@ function TraderScene({ c }) {
         <text x="182" y="196" textAnchor="end" style={{ fontFamily: DISP, fontSize: 7.5, fontWeight: 600, fill: P.muted }}>win rate 68%</text>
         <rect x="146" y="200" width="36" height="5" rx="2.5" fill={P.ink + "12"} />
         <rect x="146" y="200" width="24.5" height="5" rx="2.5" fill={c}
-          style={{ transformBox: "fill-box", transformOrigin: "left", animation: `t-win ${L}` }} />
+          style={{ transformBox: "fill-box", transformOrigin: "left", animation: `t-win ${L}` } as React.CSSProperties} />
         <text x="182" y="215" textAnchor="end" style={{ fontFamily: MONO, fontSize: 15, fill: GRN }}>+$9,310</text>
       </g>
 
@@ -810,14 +810,14 @@ function TraderScene({ c }) {
   );
 }
 
-function Scene({ id, c }) {
-  const s = SCENES[id];
-  const col = (k) => (k === "ink" ? P.ink : k === "c" ? c : k);
+function Scene({ id, c }: any) {
+  const s = (SCENES as any)[id];
+  const col = (k: any) => (k === "ink" ? P.ink : k === "c" ? c : k);
   const lab = { fontFamily: DISP, fontSize: 9.5, fontWeight: 500, fill: P.muted };
   const val = { fontFamily: MONO, fontSize: 12.5, fill: P.ink };
   const anims = ["a-c1", "a-c2", "a-c3", "a-c4", "a-c5"];
 
-  const chip = ([txt, k], n) => {
+  const chip = ([txt, k]: any, n: any) => {
     const w = Math.min(178, txt.length * 5.15 + 22);
     return (
       <g key={n} style={{ ...fb, animation: `${anims[n]} ${L}` }}>
@@ -828,7 +828,7 @@ function Scene({ id, c }) {
     );
   };
 
-  const card = (d, x, fl, ring, step) => (
+  const card = (d: any, x: any, fl: any, ring: any, step: any) => (
     <g>
       <rect x={x} y="58" width="88" height="46" rx="11" fill={P.surface} stroke={P.ink + "14"} />
       <circle cx={x + 11} cy="68" r="3.5" fill={d.b.c} />
@@ -883,7 +883,7 @@ function Scene({ id, c }) {
           <text x="182" y="182" textAnchor="end" style={{ fontFamily: MONO, fontSize: 10, fill: P.faint }}>{s.bar[1]}</text>
           <rect x="18" y="186" width="164" height="4" rx="2" fill={P.ink + "12"} />
           <rect x="18" y="186" width="164" height="4" rx="2" fill={c}
-            style={{ transformBox: "fill-box", transformOrigin: "left", animation: `a-bar ${L}` }} />
+            style={{ transformBox: "fill-box", transformOrigin: "left", animation: `a-bar ${L}` } as React.CSSProperties} />
         </g>
       ) : (
         <g style={{ animation: `a-pay ${L}` }}>
@@ -906,7 +906,7 @@ function Scene({ id, c }) {
   );
 }
 
-function Il({ id, c }) {
+function Il({ id, c }: any) {
   return (
     <div style={{ background: P.ground, borderRadius: 14, border: `1px solid ${P.ink}0F`,
       overflow: "hidden", minWidth: 0, aspectRatio: "200 / 248" }}>
@@ -922,7 +922,7 @@ function Il({ id, c }) {
 
 /* ---------- lista ---------- */
 
-function List({ edges, row, nar, hov, i, setI, setHold, onPick }) {
+function List({ edges, row, nar, hov, i, setI, setHold, onPick }: any) {
   const shell = { background: P.surface, borderRadius: 22, overflow: "hidden", minWidth: 0,
     boxShadow: "0 24px 60px -22px rgba(45,36,24,0.3)" };
 
@@ -941,7 +941,7 @@ function List({ edges, row, nar, hov, i, setI, setHold, onPick }) {
     <div onMouseEnter={() => hov && setHold(true)} onMouseLeave={() => hov && setHold(false)} style={shell}>
       <div style={{ height: row * view, overflow: "hidden", transition: "height .4s cubic-bezier(.2,.8,.2,1)" }}>
         <div style={{ transform: `translateY(${-off * row}px)`, transition: "transform .55s cubic-bezier(.2,.8,.2,1)" }}>
-          {edges.map((e, n) => {
+          {edges.map((e: any, n: any) => {
             const on = n === i;
             return (
               <div key={e.n} className="row" onMouseEnter={() => hov && setI(n)} onClick={() => onPick(n)}
@@ -974,7 +974,7 @@ function List({ edges, row, nar, hov, i, setI, setHold, onPick }) {
         alignItems: "center", gap: 10, background: P.ground + "80" }}>
         <span className="m" style={{ fontSize: 10, color: P.faint, whiteSpace: "nowrap" }}>{edges.length} live · 12s ago</span>
         <div style={{ display: "flex", gap: 3, flexShrink: 0 }}>
-          {edges.map((_, n) => <span key={n} style={{ width: 4, height: 4, borderRadius: 2,
+          {edges.map((_: any, n: any) => <span key={n} style={{ width: 4, height: 4, borderRadius: 2,
             background: n === i ? cur.c : P.ink + "1A", transition: "background .3s" }} />)}
         </div>
       </div>
