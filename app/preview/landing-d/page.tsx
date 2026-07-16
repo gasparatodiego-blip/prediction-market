@@ -150,12 +150,13 @@ export default function LandingD() {
   }, []);
 
   return (
-    <div style={{ background: P.ground, minHeight: "100vh", color: P.ink }}>
+    <div className="edg" style={{ background: P.ground, minHeight: "100vh", color: P.ink }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Gabarito:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500&family=DM+Mono:wght@400;500&display=swap');
         * { box-sizing: border-box; margin: 0; padding: 0; }
         html, body { overflow-x: clip; }
         .s { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+        .edg h1, .edg h2, .edg h3, .edg h4, .edg p, .edg li, .edg span, .edg button { color: inherit; }
         .d { font-family: 'Gabarito', system-ui, sans-serif; letter-spacing: -.02em; }
         .m { font-family: 'DM Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
         @keyframes sweep { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }
