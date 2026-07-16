@@ -92,7 +92,7 @@ function useNarrow() {
 export default function LandingD() {
   const nar = useNarrow();
   const hov = useHover();
-  const ROW = nar ? 80 : 68;
+  const ROW = nar ? 62 : 68;
 
   const list = EDGES;
 
@@ -235,11 +235,11 @@ export default function LandingD() {
         @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important } }
 
         .wrap { max-width: 940px; margin: 0 auto; padding: 0 clamp(16px, 4.5vw, 32px); }
-        .nav { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 24px 0; flex-wrap: nowrap; }
+        .nav { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 14px 0; flex-wrap: nowrap; }
         .ctaS { display: inline }
         .ctaL { display: none }
         @media (min-width: 440px) { .ctaS { display: none } .ctaL { display: inline } }
-        .hero { padding: 30px 0 0; display: grid; grid-template-columns: 1fr; gap: 30px; align-items: center; }
+        .hero { padding: 10px 0 0; display: grid; grid-template-columns: 1fr; gap: 16px; align-items: center; }
         .hero-list { order: 2; }
         .hero-copy { order: 1; }
         .waytabs { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: 26px 0 16px; }
@@ -254,9 +254,9 @@ export default function LandingD() {
         .val { white-space: nowrap; flex-shrink: 0; }
 
         /* tab: sempre tutte visibili, nessuno scroll orizzontale */
-        .tabs { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 0 12px; }
+        .tabs { display: flex; flex-wrap: wrap; gap: 5px; padding: 0 0 9px; }
         .tab { border-radius: 999px; cursor: pointer; white-space: nowrap;
-               font-size: clamp(11.5px, 3.1vw, 13px); padding: 9px clamp(10px, 2.8vw, 16px);
+               font-size: clamp(11.5px, 3.1vw, 13px); padding: 7px clamp(10px, 2.8vw, 16px);
                transition: background .35s cubic-bezier(.2,.8,.2,1), color .35s; }
 
         .way { display: grid; grid-template-columns: 1fr; gap: 18px; align-items: start;
@@ -269,7 +269,8 @@ export default function LandingD() {
           .waynext { display: none; }
         }
         @media (min-width: 860px) {
-          .hero { gap: 34px; padding: 48px 0 0; }
+          .hero { gap: 34px; padding: 44px 0 0; }
+          .nav { padding: 24px 0; }
         }
       `}</style>
 
@@ -323,7 +324,7 @@ export default function LandingD() {
                 );
               })}
             </div>
-            <List edges={list} row={ROW} nar={nar} hov={hov} i={i} setI={setI} setHold={setHold}
+            <List edges={list} row={ROW} view={nar ? 4 : VIEW} nar={nar} hov={hov} i={i} setI={setI} setHold={setHold}
               onPick={(n: any) => {
                 setI(n);
                 setPause(true);
@@ -333,11 +334,11 @@ export default function LandingD() {
           </div>
 
           <div className="hero-copy" style={{ minWidth: 0 }}>
-            <h1 ref={heroRef} className="d" style={{ fontSize: "clamp(34px, 8.4vw, 50px)", fontWeight: 700, lineHeight: 1.12 }}>
+            <h1 ref={heroRef} className="d" style={{ fontSize: "clamp(29px, 7.6vw, 50px)", fontWeight: 700, lineHeight: 1.08 }}>
               Live edges in<br />
               <span key={word} className="swap" style={{ color: P.mint }}>{word}.</span>
             </h1>
-            <p style={{ fontSize: "clamp(15px, 4vw, 17px)", color: P.muted, marginTop: 14, lineHeight: 1.55, maxWidth: 620 }}>
+            <p style={{ fontSize: "clamp(13.5px, 3.7vw, 17px)", color: P.muted, marginTop: 9, lineHeight: 1.5, maxWidth: 620 }}>
               One list:
               <span style={{ color: P.ink, fontWeight: 600 }}> what to buy, where, and what it pays a day.</span>{" "}
               Updated while you watch.
@@ -923,7 +924,7 @@ function Il({ id, c }: any) {
 
 /* ---------- lista ---------- */
 
-function List({ edges, row, nar, hov, i, setI, setHold, onPick }: any) {
+function List({ edges, row, view: viewMax, nar, hov, i, setI, setHold, onPick }: any) {
   const shell = { background: P.surface, borderRadius: 22, overflow: "hidden", minWidth: 0,
     boxShadow: "0 24px 60px -22px rgba(45,36,24,0.3)" };
 
@@ -934,7 +935,7 @@ function List({ edges, row, nar, hov, i, setI, setHold, onPick }: any) {
     </div>
   );
 
-  const view = Math.min(VIEW, edges.length);
+  const view = Math.min(viewMax, edges.length);
   const off = Math.min(Math.max(0, i - 2), Math.max(0, edges.length - view));
   const cur = edges[Math.min(i, edges.length - 1)];
 
