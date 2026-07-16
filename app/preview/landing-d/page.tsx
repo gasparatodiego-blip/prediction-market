@@ -133,7 +133,7 @@ export default function LandingD() {
   const wayRef = useRef<any>(null);
   const goWay = (n: any) => {
     setWi((n + WAYS.length) % WAYS.length);
-    requestAnimationFrame(() => wayRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    requestAnimationFrame(() => sixRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
   };
   useEffect(() => {
     const el = heroRef.current;
@@ -257,7 +257,7 @@ export default function LandingD() {
                font-size: clamp(11.5px, 3.1vw, 13px); padding: 7px clamp(10px, 2.8vw, 16px);
                transition: background .35s cubic-bezier(.2,.8,.2,1), color .35s; }
 
-        .six { padding: 18px 0 0; }
+        .six { padding: 18px 0 0; scroll-margin-top: 8px; }
         .waysub { display: none; }
         .waybody2 { display: none; }
         .waynote { display: none; }
@@ -268,7 +268,7 @@ export default function LandingD() {
         .waytabs::-webkit-scrollbar { display: none; }
         .waytabs .tab { flex: 0 0 auto; scroll-snap-align: center; }
         .waynext { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
-        .way-in { animation: swap .32s ease both; scroll-margin-top: 62px; }
+        .way-in { animation: swap .32s ease both; }
         .way { display: grid; grid-template-columns: 1fr; gap: 18px; align-items: start;
                background: ${P.surface}; border-radius: 22px; padding: clamp(18px, 4vw, 26px);
                box-shadow: 0 8px 26px -14px rgba(45,36,24,0.2); }
