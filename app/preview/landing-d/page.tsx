@@ -234,44 +234,69 @@ export default function LandingD() {
 
         @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important } }
 
+        /* ---------- layout: phone first, then tablet, then desktop ---------- */
         .wrap { max-width: 940px; margin: 0 auto; padding: 0 clamp(16px, 4.5vw, 32px); }
-        .nav { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 14px 0; flex-wrap: nowrap; }
-        .ctaS { display: inline }
-        .ctaL { display: none }
-        @media (min-width: 440px) { .ctaS { display: none } .ctaL { display: inline } }
-        .hero { padding: 10px 0 0; display: grid; grid-template-columns: 1fr; gap: 16px; align-items: center;
-                align-content: start; min-height: calc(100vh - 66px); min-height: calc(100svh - 66px); }
-        .hero-list { order: 2; }
-        .hero-copy { order: 1; }
-        .waytabs { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: 26px 0 16px; }
-        .way-in { animation: swap .32s ease both; scroll-margin-top: 62px; }
-        .waynote { display: none; }
-        .waynext { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
+        .clip { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .val { white-space: nowrap; flex-shrink: 0; }
         .foot { flex-wrap: wrap; gap: 8px 16px; }
         .row { padding-left: clamp(14px, 3.6vw, 22px); padding-right: clamp(14px, 3.6vw, 22px); }
-        .clip { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .livec { display: none }
-        @media (min-width: 520px) { .livec { display: inline } }
-        .val { white-space: nowrap; flex-shrink: 0; }
 
-        /* tab: sempre tutte visibili, nessuno scroll orizzontale */
+        .nav { display: flex; justify-content: space-between; align-items: center; gap: 10px;
+               padding: 14px 0; flex-wrap: nowrap; }
+        .ctaS { display: inline }
+        .ctaL { display: none }
+        .livec { display: none }
+
+        .hero { padding: 10px 0 0; display: grid; grid-template-columns: 1fr; gap: 16px;
+                align-items: center; align-content: start; }
+        .hero-list { order: 2; }
+        .hero-copy { order: 1; }
+
         .tabs { display: flex; flex-wrap: wrap; gap: 5px; padding: 0 0 9px; }
         .tab { border-radius: 999px; cursor: pointer; white-space: nowrap;
                font-size: clamp(11.5px, 3.1vw, 13px); padding: 7px clamp(10px, 2.8vw, 16px);
                transition: background .35s cubic-bezier(.2,.8,.2,1), color .35s; }
 
+        .six { padding: 18px 0 0; }
+        .waysub { display: none; }
+        .waybody2 { display: none; }
+        .waynote { display: none; }
+        .illu { max-height: 44svh; }
+        .waytabs { display: flex; flex-wrap: nowrap; justify-content: flex-start; gap: 6px; margin: 12px 0;
+                   overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+                   padding-bottom: 2px; scroll-snap-type: x proximity; }
+        .waytabs::-webkit-scrollbar { display: none; }
+        .waytabs .tab { flex: 0 0 auto; scroll-snap-align: center; }
+        .waynext { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
+        .way-in { animation: swap .32s ease both; scroll-margin-top: 62px; }
         .way { display: grid; grid-template-columns: 1fr; gap: 18px; align-items: start;
                background: ${P.surface}; border-radius: 22px; padding: clamp(18px, 4vw, 26px);
                box-shadow: 0 8px 26px -14px rgba(45,36,24,0.2); }
 
-        @media (min-width: 700px) {
-          .way { grid-template-columns: 1fr 330px; gap: 26px; min-height: 320px; }
-          .waynote { display: block; }
-          .waynext { display: none; }
+        /* phone only: each section owns exactly one screen */
+        @media (max-width: 699px) {
+          .hero { min-height: calc(100vh - 66px); min-height: calc(100svh - 66px); }
+          .six  { min-height: calc(100vh - 66px); min-height: calc(100svh - 66px); }
         }
+        @media (min-width: 440px) { .ctaS { display: none } .ctaL { display: inline } }
+        @media (min-width: 520px) { .livec { display: inline } }
+
+        /* tablet and up: long copy returns, tabs wrap, no forced full screens */
+        @media (min-width: 700px) {
+          .nav { padding: 20px 0; }
+          .hero { padding: 28px 0 0; gap: 24px; align-content: center; }
+          .six { padding: clamp(52px, 9vw, 80px) 0 0; }
+          .way { grid-template-columns: 1fr 330px; gap: 26px; min-height: 320px; }
+          .waynote, .waysub, .waybody2 { display: block; }
+          .waynext { display: none; }
+          .illu { max-height: none; }
+          .waytabs { flex-wrap: wrap; justify-content: center; overflow-x: visible; margin: 26px 0 16px; }
+        }
+
+        /* desktop */
         @media (min-width: 860px) {
-          .hero { gap: 34px; padding: 44px 0 0; min-height: 0; align-content: center; }
           .nav { padding: 24px 0; }
+          .hero { gap: 34px; padding: 44px 0 0; }
         }
       `}</style>
 
@@ -347,9 +372,9 @@ export default function LandingD() {
           </div>
         </section>
 
-        <section ref={sixRef} style={{ padding: "clamp(52px, 9vw, 80px) 0 0" }}>
-          <h2 className="d" style={{ fontSize: "clamp(26px, 6.4vw, 30px)", fontWeight: 700, textAlign: "center" }}>Six places we look.</h2>
-          <p style={{ fontSize: "clamp(14px, 3.6vw, 15px)", color: P.muted, textAlign: "center", marginTop: 10,
+        <section ref={sixRef} className="six">
+          <h2 className="d" style={{ fontSize: "clamp(22px, 5.6vw, 30px)", fontWeight: 700, textAlign: "center" }}>Six places we look.</h2>
+          <p className="waysub" style={{ fontSize: "clamp(14px, 3.6vw, 15px)", color: P.muted, textAlign: "center", marginTop: 10,
             lineHeight: 1.55, maxWidth: 440, marginLeft: "auto", marginRight: "auto" }}>
             Six different ways a price can be wrong. One at a time, in plain words.
           </p>
@@ -374,7 +399,7 @@ export default function LandingD() {
                 <div className="d" style={{ fontSize: "clamp(19px, 4.6vw, 21px)", fontWeight: 700 }}>{way.t}</div>
               </div>
               <p style={{ fontSize: "clamp(13.5px, 3.5vw, 14.5px)", color: P.muted, lineHeight: 1.65, marginTop: 10 }}>{way.p}</p>
-              {way.p2 && <p style={{ fontSize: "clamp(13.5px, 3.5vw, 14.5px)", color: P.muted, lineHeight: 1.65, marginTop: 12 }}>{way.p2}</p>}
+              {way.p2 && <p className="waybody2" style={{ fontSize: "clamp(13.5px, 3.5vw, 14.5px)", color: P.muted, lineHeight: 1.65, marginTop: 12 }}>{way.p2}</p>}
               {way.p3 && <p className="waynote" style={{ fontSize: "clamp(12.5px, 3.3vw, 13.5px)", color: P.faint, lineHeight: 1.6, marginTop: 12,
                 borderLeft: `2px solid ${way.c}44`, paddingLeft: 11 }}>{way.p3}</p>}
             </div>
@@ -911,8 +936,8 @@ function Scene({ id, c }: any) {
 
 function Il({ id, c }: any) {
   return (
-    <div style={{ background: P.ground, borderRadius: 14, border: `1px solid ${P.ink}0F`,
-      overflow: "hidden", minWidth: 0, aspectRatio: "200 / 248" }}>
+    <div className="illu" style={{ background: P.ground, borderRadius: 14, border: `1px solid ${P.ink}0F`,
+      overflow: "hidden", minWidth: 0, aspectRatio: "200 / 248", margin: "0 auto" }}>
       <svg viewBox="0 0 200 248" width="100%" height="100%" style={{ display: "block" }}>
         {id === "maker" ? <BookScene c={c} />
           : id === "carry" ? <CarryScene c={c} />
