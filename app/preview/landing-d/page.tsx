@@ -338,9 +338,9 @@ export default function LandingD() {
               <span key={word} className="swap" style={{ color: P.mint }}>{word}.</span>
             </h1>
             <p style={{ fontSize: "clamp(15px, 4vw, 17px)", color: P.muted, marginTop: 14, lineHeight: 1.55, maxWidth: 620 }}>
-              Same thing, two prices.
-              <span style={{ color: P.ink, fontWeight: 600 }}> Buy both, keep the difference.</span>{" "}
-              Crypto, prediction markets, sportsbooks — every open gap, in dollars a day.
+              One list:
+              <span style={{ color: P.ink, fontWeight: 600 }}> what to buy, where, and what it pays a day.</span>{" "}
+              Updated while you watch.
             </p>
           </div>
         </section>
