@@ -265,6 +265,10 @@ export default function LandingD() {
                transition: background .35s cubic-bezier(.2,.8,.2,1), color .35s; }
 
         .six { padding: 48px 0 0; scroll-margin-top: 12px; }
+
+        @media (max-width: 699px) {
+          .hero { min-height: calc(100vh - 66px); min-height: calc(100dvh - 66px); align-content: start; }
+        }
         .waysub { display: none; }
         .waybody2 { display: none; }
         .waynote { display: none; }
