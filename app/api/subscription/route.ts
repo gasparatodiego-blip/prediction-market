@@ -1,12 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { z } from 'zod';
+import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getUser } from '@/lib/auth';
-import { getPlanLimits, PLAN_PRICES } from '@/lib/plans';
-
-const upgradeSchema = z.object({
-  plan: z.enum(['free', 'pro', 'profit_share']),
-});
+import { getPlanLimits } from '@/lib/plans';
 
 export async function GET() {
   const user = await getUser();
@@ -32,29 +27,23 @@ export async function GET() {
   });
 }
 
-export async function POST(req: NextRequest) {
-  const user = await getUser();
-  if (!user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  const body   = await req.json().catch(() => ({}));
-  const parsed = upgradeSchema.safeParse(body);
-  if (!parsed.success) return NextResponse.json({ error: 'Invalid plan' }, { status: 400 });
-
-  const { plan } = parsed.data;
-  const price    = PLAN_PRICES[plan];
-
-  const expiresAt = plan === 'pro'
-    ? new Date(Date.now() + 30 * 24 * 3600 * 1000)
-    : null;
-
-  await prisma.user.update({
-    where: { id: user.id },
-    data:  { plan, planExpiresAt: expiresAt },
-  });
-
-  await prisma.subscription.create({
-    data: { userId: user.id, plan, price, expiresAt, status: 'active' },
-  });
-
-  return NextResponse.json({ ok: true, plan, expiresAt });
+// Plan changes are CLOSED at this endpoint.
+//
+// This route used to take `plan` from the request body and write it straight to
+// User.plan with a 30-day window — no payment check, because there is no payment
+// integration to check against (Stripe is not wired; User.stripeSubscriptionId is
+// an unused column). That let any authenticated caller grant themselves 'pro' for
+// free, so it was a hole, not a feature with a missing check.
+//
+// It stays closed until a real payment source of truth exists, at which point the
+// plan must be written from that provider's verified webhook — never from a value
+// the client supplies. Deliberately no admin bypass, env override, or trusted-email
+// list here: each of those is the same hole with a longer key.
+//
+// 403 (not a silent no-op) so a blocked attempt is visible to the caller and in logs.
+export async function POST() {
+  return NextResponse.json(
+    { error: 'Plan changes are not available at this endpoint.' },
+    { status: 403 },
+  );
 }
