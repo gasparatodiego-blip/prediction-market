@@ -272,6 +272,7 @@ export default function LandingD() {
           .hero, .six, .cta { scroll-snap-align: start; }
         }
         .waysub { display: none; }
+        .waybody1 { display: none; }
         .waybody2 { display: none; }
         .waynote { display: none; }
         .illu { max-height: 300px; }
@@ -295,7 +296,7 @@ export default function LandingD() {
           .hero { padding: 28px 0 0; gap: 24px; align-content: center; }
           .six { padding: clamp(52px, 9vw, 80px) 0 0; }
           .way { grid-template-columns: 1fr 330px; gap: 26px; min-height: 320px; }
-          .waynote, .waysub, .waybody2 { display: block; }
+          .waynote, .waysub, .waybody1, .waybody2 { display: block; }
           .waynext { display: none; }
           .illu { max-height: none; }
           .waytabs { flex-wrap: wrap; justify-content: center; overflow-x: visible; margin: 26px 0 16px; }
@@ -407,7 +408,7 @@ export default function LandingD() {
                 <span style={{ width: 7, height: 7, borderRadius: 4, background: way.c, flexShrink: 0 }} />
                 <div className="d" style={{ fontSize: "clamp(19px, 4.6vw, 21px)", fontWeight: 700 }}>{way.t}</div>
               </div>
-              <p style={{ fontSize: "clamp(13.5px, 3.5vw, 14.5px)", color: P.muted, lineHeight: 1.65, marginTop: 10 }}>{way.p}</p>
+              <p className="waybody1" style={{ fontSize: "clamp(13.5px, 3.5vw, 14.5px)", color: P.muted, lineHeight: 1.65, marginTop: 10 }}>{way.p}</p>
               {way.p2 && <p className="waybody2" style={{ fontSize: "clamp(13.5px, 3.5vw, 14.5px)", color: P.muted, lineHeight: 1.65, marginTop: 12 }}>{way.p2}</p>}
               {way.p3 && <p className="waynote" style={{ fontSize: "clamp(12.5px, 3.3vw, 13.5px)", color: P.faint, lineHeight: 1.6, marginTop: 12,
                 borderLeft: `2px solid ${way.c}44`, paddingLeft: 11 }}>{way.p3}</p>}
