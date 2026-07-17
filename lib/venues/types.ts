@@ -24,14 +24,30 @@
 
 export type TriState = true | false | 'unknown'
 
-/** Which credential fields a venue needs. Drives the UI form — do not hardcode a shape. */
+/** Which ENCRYPTED credential fields a venue needs. Drives the UI form. */
 export type CredField = 'apiKey' | 'secret' | 'passphrase'
 
+/**
+ * NON-SECRET identifier fields a venue needs (a public address, an id). These are
+ * NOT encrypted and NOT credentials — they are stored in plaintext columns and are
+ * required to build a verification query (e.g. dYdX needs the owner address +
+ * authenticatorId to read the on-chain authenticator). Kept separate from CredField
+ * on purpose: a plaintext identifier must never be handled as if it were a secret,
+ * and a secret must never leak into a plaintext column.
+ */
+export type PlainField = 'accountAddress' | 'accountId' | 'subaccountNumber'
+
 export interface VenueCreds {
-  apiKey: string
+  /** Absent for venues with no api key (e.g. dYdX). */
+  apiKey?: string
+  /** The signing secret. For dYdX this is the authenticator private key. */
   secret: string
-  /** OKX only. Nullable in ExchangeKey.passphraseEnc for exactly this reason. */
+  /** OKX/Bitget only. Nullable in ExchangeKey.passphraseEnc for exactly this reason. */
   passphrase?: string | null
+  // Non-secret identifiers (dYdX). Plaintext by design.
+  accountAddress?: string | null
+  accountId?: string | null
+  subaccountNumber?: number | null
 }
 
 export interface VerifyResult {
@@ -65,8 +81,10 @@ export interface Position {
 export interface VenueAdapter {
   id: string
   label: string
-  /** binance/bybit/gateio: apiKey+secret. okx: +passphrase. */
+  /** binance/bybit: apiKey+secret. okx/bitget: +passphrase. dYdX: just secret. */
   requiredFields(): CredField[]
+  /** Non-secret plaintext identifiers this venue needs (default none). */
+  requiredPlainFields?(): PlainField[]
   verifyKey(creds: VenueCreds): Promise<VerifyResult>
   getBalance(creds: VenueCreds): Promise<{ balances: Balance[]; error?: string }>
   getPositions(creds: VenueCreds): Promise<{ positions: Position[]; error?: string }>

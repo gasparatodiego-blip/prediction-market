@@ -3,6 +3,8 @@ import { binance, MAINNET_ONLY as BINANCE_MAINNET_ONLY } from './binance'
 import { bybit, MAINNET_ONLY as BYBIT_MAINNET_ONLY } from './bybit'
 import { okx, MAINNET_ONLY as OKX_MAINNET_ONLY } from './okx'
 import { gateio, MAINNET_ONLY as GATEIO_MAINNET_ONLY } from './gateio'
+import { bitget, MAINNET_ONLY as BITGET_MAINNET_ONLY } from './bitget'
+import { dydx, MAINNET_ONLY as DYDX_MAINNET_ONLY } from './dydx'
 
 /**
  * The venue registry.
@@ -71,6 +73,27 @@ export const VENUES: VenueRegistration[] = [
       'established by the docs, so the guard is verified on mainnet only.',
   },
   {
+    adapter: bitget,
+    guardVerifiable: true,
+    liveVerified: false,
+    mainnetOnly: BITGET_MAINNET_ONLY,
+    note:
+      'Withdrawal permission is reported by GET /api/v2/spot/account/info: the ' +
+      '`authorities` array contains "wwow" (wallet withdrawl) iff the key can ' +
+      'withdraw. Verified with a real mainnet key only.',
+  },
+  {
+    adapter: dydx,
+    guardVerifiable: true,
+    liveVerified: false,
+    mainnetOnly: DYDX_MAINNET_ONLY,
+    note:
+      'Trade-only via a dYdX Chain authenticator (permissioned key). Withdrawal ' +
+      'exclusion is verified ON-CHAIN: the authenticator’s MessageFilter must ' +
+      'whitelist only clob order messages. Connect the authenticator private key, ' +
+      'your dydx1 address, and the authenticator id.',
+  },
+  {
     adapter: gateio,
     // The finding, not a TODO.
     guardVerifiable: false,
@@ -81,6 +104,10 @@ export const VENUES: VenueRegistration[] = [
       'withdraw, so we cannot verify a key is trade-only. We do not store keys we ' +
       'cannot check. This will not change until Gate.io ships such an endpoint.',
   },
+  // KRAKEN is deliberately ABSENT — no registry entry, no key slot. Kraken exposes
+  // NO API endpoint that returns a key's permissions (permissions are visible only in
+  // the web UI), so the withdrawal guard cannot exist. Fail-closed rule: cannot
+  // determine → refuse. Same reason as Gate.io; Kraken simply never gets an adapter.
 ]
 
 export function getVenue(id: string): VenueRegistration | undefined {
