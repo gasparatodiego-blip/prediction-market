@@ -36,9 +36,15 @@ model User {
 // Exchange API credentials. Storage layer only — no venue client, no signing, no
 // order path reads this yet (AUTO_EXECUTE_ENABLED=false).
 //
+// Envelope encryption. Each ROW carries its own random 32-byte DEK. The DEK
+// encrypts the credential fields; the master (KEK) encrypts only the DEK. So
+// rotating the master re-wraps `dekEnc` and never touches the field ciphertext —
+// see lib/key-custody.ts rotateRow().
+//
 // Every credential column holds AES-256-GCM ciphertext produced by
-// lib/key-custody.ts. NOTHING here is plaintext, including apiKeyEnc: the api key
-// identifies the account and is a secret, not a "public part".
+// lib/key-custody.ts under this row's DEK. NOTHING here is plaintext, including
+// apiKeyEnc: the api key identifies the account and is a secret, not a
+// "public part".
 //
 // passphraseEnc is nullable because it is a per-venue fact, not an optional
 // preference — OKX requires one, Binance has no such concept. A non-null column
@@ -55,9 +61,16 @@ model ExchangeKey {
   userId        String
   venue         String                              // 'binance' | 'okx' | 'bybit' | ...
   label         String                              // user-facing name for this key
-  apiKeyEnc     String                              // AES-256-GCM: iv:authTag:ciphertext (base64)
-  apiSecretEnc  String                              // AES-256-GCM: iv:authTag:ciphertext (base64)
-  passphraseEnc String?                             // AES-256-GCM; null for venues with no passphrase
+  apiKeyEnc     String                              // AES-256-GCM under dek: iv:authTag:ciphertext (base64)
+  apiSecretEnc  String                              // AES-256-GCM under dek: iv:authTag:ciphertext (base64)
+  passphraseEnc String?                             // AES-256-GCM under dek; null for venues with no passphrase
+  // This row's data key, wrapped under the KEK named by kekVersion.
+  dekEnc        String
+  // Which master wrapped dekEnc. Not decoration: without it a half-finished
+  // rotation is undetectable, and a row that FAILED to rotate is
+  // indistinguishable from one that never needed to. It is also what makes
+  // rotation resumable — the state lives here, in the data, not in the script.
+  kekVersion    Int       @default(1)
   createdAt     DateTime  @default(now())
   lastUsedAt    DateTime?                           // set when a signing path first reads it (not yet built)
   revokedAt     DateTime?                           // non-null = retired; row is retained for audit
