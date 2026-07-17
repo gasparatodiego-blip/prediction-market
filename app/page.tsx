@@ -1,586 +1,1038 @@
-import fs from 'fs';
-import type { ReactNode } from 'react';
-import Link from 'next/link';
-import PlatformLogo from '@/components/PlatformLogo';
-import { type EdgeChipVariant } from '@/app/components/ui/EdgeChip';
-import RadarMark    from '@/app/components/ui/RadarMark';
-import skin from './landing-skin.module.css';
-import { HeroField, CyclingCard } from '@/app/components/landing/LiveField';
-import { tierColor } from '@/app/components/landing/tier-color';
-import { Instrument_Serif, Manrope, IBM_Plex_Mono } from 'next/font/google';
-import { getCryptoSpreadsData, calcSpreadSizing } from '@/lib/spread-compute';
-import { filterSane, enforceVerified } from '@/lib/display-sanity';
-import { applyGuardian } from '@/lib/guardian-suppress';
-import { LANDING_CAPITAL_BASIS } from '@/lib/honest-display';
-import { isSanePolymarketLevel } from '@/lib/reward-gating';
-import { estimateReward, type MarketSnapshot } from '@/lib/rewards-estimate';
-import { isExpired } from '@/lib/instrument-expiry';
+"use client";
 
-export const dynamic = 'force-dynamic';
+import React, { useState, useEffect, useRef } from "react";
 
-// ── Landing re-skin fonts — "The live field" ─────────────────────────────────
-// Page-scoped; applied only on the landing root via CSS variables, so no shared
-// component is edited. Display = Instrument Serif (private-bank serif — the
-// deliberate risk); body = Manrope; data/readouts = IBM Plex Mono.
-const instrument = Instrument_Serif({
-  subsets: ['latin'], weight: '400', style: ['normal', 'italic'],
-  display: 'swap', variable: '--font-instrument',
-});
-const manrope = Manrope({
-  subsets: ['latin'], weight: ['300', '400', '500'],
-  display: 'swap', variable: '--font-manrope',
-});
-const plexMono = IBM_Plex_Mono({
-  subsets: ['latin'], weight: ['400', '500'],
-  display: 'swap', variable: '--font-plex-mono',
-});
-
-// ── Scan scope (hero headline) ───────────────────────────────────────────────
-// Real, measured count of markets Edgeradar fetches: predictit + manifold +
-// kalshi + polymarket in /tmp/markets-raw.json summed to 84,276–84,458 across
-// reads on 2026-07-14. That file is 88MB (~1.2s to parse) — far too heavy to
-// read on every force-dynamic request — so this is a conservative rounded-DOWN
-// constant of the real scanning scope. NOT fabricated, NOT inflated, NOT a
-// volatile financial readout. The one number that MUST be live — the count of
-// surviving opportunities — is liveRows.length, bound in the hero below.
-const SCANNED_SCOPE = '~84,000';
-
-const NUM_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve'];
-function numberWord(n: number): string {
-  return n >= 0 && n < NUM_WORDS.length ? NUM_WORDS[n] : String(n);
-}
-// Chip variant → exact honest label (same strings as EdgeChip). Preserved verbatim.
-const TIER_LABEL: Record<string, string> = {
-  cashable: 'CASHABLE', signal: 'SIGNAL', copy_trader: 'SIGNAL',
-  speculative: 'SPECULATIVE', paper: 'PAPER', trap: 'TRAP',
+const P = {
+  ground: "#FFF9F0", surface: "#FFFFFF", ink: "#2D2418", muted: "#8A7A62",
+  faint: "#B5A88F", mint: "#0FA968", amber: "#E0952E", violet: "#7B6FE8",
 };
 
-// ── Server-side stats ──────────────────────────────────────────────────────
-interface FundingStat  { dayUsd1k: number; coin: string; shortExchange: string; longExchange: string; netApy30d: number }
-interface PredStat     { cashable: number; pairsChecked: number }
-interface BasisStat    { netAnnualized: number; asset: string; exchange: string; contract: string; coinMargined: boolean }
-interface SportsStat   { netMargin: number; homeTeam: string; awayTeam: string; sport: string }
-// Highest est net/day per $1k (after adverse-selection cost) among the current
-// sane reward-eligible markets for `platform`. bestDayUsd1k is null when no
-// eligible market produces a real positive estimate — the card then shows a
-// "see Rewards tab" signal with NO number (never a fabricated figure).
-interface RewardsStat  { bestDayUsd1k: number | null; eligibleCount: number; platform: string }
+const CATS = ["Prediction market", "Funding arbitrage", "Cash & carry", "Liquidity rewards", "Top traders", "Sports"];
 
-interface LiveRow {
-  key:        string;
-  icon:       string;
-  tileColor:  'mint' | 'violet' | 'gold';
-  name:       ReactNode;
-  sub?:       ReactNode;
-  chip:       EdgeChipVariant;
-  value:      ReactNode;
-  unit:       string;
-  valueTone:  'up' | 'neutral';
-  // Net $/day this row is actually worth at the shared LANDING_CAPITAL_BASIS
-  // ($1k). Only set when that's a genuine, non-fabricated number — a
-  // continuously-accruing rate (funding, rewards, carry) has one; a one-off
-  // matched-bet arb (sports) or an opportunity count (prediction) does not,
-  // and we never invent a day-rate for those. Rows with a real $/day sort
-  // above rows without one; each bucket is then ordered by its own metric.
-  dayUsd1k:   number | null;
-  fallbackScore: number;
+const EDGES = [
+  { c: P.mint, k: "LOCKED", cat: "Prediction market", g: "prediction markets", n: "Fed cuts in March", v: "+2.8¢", u: "a contract" },
+  { c: P.mint, k: "LOCKED", cat: "Funding arbitrage", g: "funding arbitrage", n: "TRX funding spread", v: "+$0.99", u: "a day, per $1,000" },
+  { c: P.mint, k: "LOCKED", cat: "Cash & carry", g: "cash & carry", n: "BTC carry", v: "+3.9%", u: "a year, locked at entry" },
+  { c: P.violet, k: "LIKELY", cat: "Liquidity rewards", g: "liquidity rewards", n: "Polymarket maker rewards", v: "+$5.31", u: "a day, per $1,000" },
+  { c: P.violet, k: "LIKELY", cat: "Top traders", g: "top traders", n: "0xc4f2 · 68% hit rate", v: "+$8.10", u: "a day, settled on-chain" },
+  { c: P.amber, k: "REAL", cat: "Sports", g: "sports", n: "Lakers / Celtics", v: "+3.4%", u: "against the sharp price" },
+  { c: P.mint, k: "LOCKED", cat: "Prediction market", g: "prediction markets", n: "Powell out by June", v: "+1.9¢", u: "a contract" },
+  { c: P.mint, k: "LOCKED", cat: "Funding arbitrage", g: "funding arbitrage", n: "ETH funding spread", v: "+$1.24", u: "a day, per $1,000" },
+  { c: P.mint, k: "LOCKED", cat: "Cash & carry", g: "cash & carry", n: "ETH carry, Jun-26", v: "+4.4%", u: "a year, locked at entry" },
+  { c: P.violet, k: "LIKELY", cat: "Liquidity rewards", g: "liquidity rewards", n: "Kalshi maker rewards", v: "+$2.40", u: "a day, per $1,000" },
+  { c: P.violet, k: "LIKELY", cat: "Top traders", g: "top traders", n: "0x9ab1 · 64% hit rate", v: "+$3.55", u: "a day, settled on-chain" },
+  { c: P.violet, k: "LIKELY", cat: "Sports", g: "sports", n: "St. Louis / Sporting", v: "+7.4%", u: "against the sharp price" },
+];
+
+const WAYS = [
+  {
+    id: "pred", t: "Prediction arbitrage", c: P.mint,
+    p: "The same question is listed on two exchanges, and they disagree. A $100 YES contract costs $60 on one, and the $100 NO costs $35 on the other.",
+    p2: "One of the two has to win. So the pair pays out $100 no matter how it lands — and you paid $95 for it. The $5 is yours the moment both orders fill.",
+    p3: "We only count a price you could actually hit: the live bid and ask, sized to the depth that is really on the book. If the second leg cannot fill, it is not an edge, and we will not show it as one.",
+  },
+  {
+    id: "fund", t: "Funding spread", c: P.mint,
+    p: "A perpetual is a bet on a price that never expires. To keep it glued to the real price, the exchange makes one side pay the other every eight hours. That payment is called funding.",
+    p2: "Today Binance pays people who are long. OKX charges people who are short. Be long on Binance and short on OKX, same size: you own nothing, the price can do what it likes, and the two payments still land.",
+    p3: "We use funding that has actually settled over the last periods, never the predicted rate. A rate that pays today can flip tomorrow, so we show it as dollars a day and never as a yearly promise.",
+  },
+  {
+    id: "carry", t: "Cash & carry", c: P.mint,
+    p: "Bitcoin has a price today, and a separate price for June. The June one is usually higher — people pay a little extra to get it later.",
+    p2: "Buy the coin today at $100 and sell the June contract at $104. On expiry day the two prices are the same by definition, so the $4 is yours. Nothing to predict: it is arithmetic and a calendar.",
+    p3: "The $4 is locked the moment both legs fill, but it arrives slowly, over the days left to expiry. We show it as dollars a day, not as a headline percentage.",
+  },
+  {
+    id: "maker", t: "Maker rewards", c: P.violet,
+    p: "Polymarket is a prediction market, and an empty order book is useless to it. So it runs a rewards program: leave real buy and sell orders on the book, and it pays you a slice of a daily pot for being there.",
+    p2: "You post a bid at $60 and an ask at $62. You are not predicting anything — you are the shop, quoting both sides. The pot is $18,000 a day, and your slice depends on how tight and how large your quotes are.",
+    p3: "We count only rewards that actually accrued, from real resting orders. A book with no genuine competition on it is ignored: it would make the number look far better than it is.",
+  },
+  {
+    id: "trader", t: "Top traders", c: P.violet,
+    p: "Every Polymarket trade is public. So is the wallet behind it, and so is what that wallet has actually made once its bets settled.",
+    p2: "We rank five thousand of them on settled profit. Follow one and mirror its fills, or just watch what it does and make up your own mind.",
+    p3: "The ranking uses realized profit only. An open position is hope, not performance, and it stays out of the headline number.",
+  },
+  {
+    id: "sport", t: "Sports", c: P.amber,
+    p: "Forty-four bookmakers price the same match, and they do not all price it well. One of them, Pinnacle, is the one the rest of them follow.",
+    p2: "When Book 31 drifts out to 2.18 on a bet the sharp price says is worth 2.11, the same wager pays you more for exactly the same risk. That difference is the edge.",
+    p3: "We compare against the live sharp price and count only odds you can actually get on. An offer that vanishes the moment you click is not an edge.",
+  },
+];
+
+const VIEW = 5;
+
+function useHover() {
+  const [h, setH] = useState(false);
+  useEffect(() => {
+    const q = window.matchMedia("(hover: hover) and (pointer: fine)");
+    const f = (e: any) => setH(e.matches);
+    setH(q.matches);
+    q.addEventListener("change", f);
+    return () => q.removeEventListener("change", f);
+  }, []);
+  return h;
 }
 
-function readLandingStats(): {
-  funding: FundingStat | null; prediction: PredStat | null;
-  basis: BasisStat | null; sports: SportsStat | null; rewards: RewardsStat | null;
-} {
-  let funding: FundingStat | null    = null;
-  let prediction: PredStat | null    = null;
-  let basis: BasisStat | null        = null;
-  let sports: SportsStat | null      = null;
-  let rewards: RewardsStat | null    = null;
-
-  try {
-    const raw  = JSON.parse(fs.readFileSync('/tmp/arbitrage-opportunities.json', 'utf8'));
-    const s    = raw?.stats ?? {};
-    const cash = s.confirmedCashable ?? 0;
-    const tot  = cash + (s.rejectedNotSameEvent ?? 0) + (s.pendingVerification ?? 0);
-    prediction = { cashable: cash, pairsChecked: tot };
-  } catch { /* file absent or stale */ }
-
-  try {
-    // Same pipeline the funding-arb dashboard uses (lib/spread-compute.ts). The
-    // landing must show the SAME real maximum the dashboard surfaces — so it scans
-    // the exact SAME list the funding-arb page renders. getCryptoSpreadsData() is
-    // read directly (not the paid-gated /api/crypto route), so netApy30d is never
-    // redacted here; but that means we must re-apply the /api/crypto route's own
-    // display-sanity backstop that the raw lib call skips. filterSane('funding')
-    // drops phantom rows (a per-leg rate over the plausible cap, or a grossApy above
-    // the 200%/yr display cap — the edgeX cap-pin spike class, e.g. TON aster/edgeX
-    // ~2300%/yr) and enforceVerified drops source-verifier mismatches — the identical
-    // anti-spike/dead-contract guard the funding-arb page applies. This is NOT the
-    // thin-book size filter: thin / one-leg-unverified pairs (sub-cap real
-    // opportunities like TRX $2.10) still pass and stay eligible for the max; a thin
-    // book only limits executable SIZE (surfaced separately on the order page).
-    const { spreads: rawSpreads } = getCryptoSpreadsData();
-    // Guardian (rules A–E) runs last, same as the funding-arb tab, so the landing's
-    // headline max can never come from a row the tab itself would suppress.
-    const spreads = applyGuardian('funding',
-      enforceVerified('funding', filterSane('funding', rawSpreads))).rows;
-    // Surface the SINGLE highest real net/day per $1k across the sanity-passed
-    // spreads — NOT first-in-list. Ranked by calcSpreadSizing at the shared $1k/1x
-    // basis — the SAME sizing (== the page's netDayForCapital) — so this equals the
-    // dashboard's #1 net/day for that pair, and can never surface a row the
-    // funding-arb page itself rejects.
-    let best: { spread: (typeof spreads)[number]; dayUsd: number } | null = null;
-    for (const s of spreads) {
-      if (s.netApy30d == null) continue;   // sizing needs the fee-net rate; not an eligibility gate
-      const sizing = calcSpreadSizing(s, 1000, 1);
-      if (!sizing) continue;
-      if (best == null || sizing.dayUsd > best.dayUsd) best = { spread: s, dayUsd: sizing.dayUsd };
-    }
-    if (best && best.dayUsd > 0) {
-      funding = {
-        dayUsd1k:      Math.round(best.dayUsd * 100) / 100,
-        coin:          best.spread.coin,
-        shortExchange: best.spread.shortExchange,
-        longExchange:  best.spread.longExchange,
-        netApy30d:     best.spread.netApy30d!,
-      };
-    }
-  } catch { /* file absent */ }
-
-  try {
-    const raw  = JSON.parse(fs.readFileSync('/tmp/basis-opportunities.json', 'utf8'));
-    const opps = (raw?.opportunities ?? []) as Array<{
-      asset: string; exchange: string; contract: string;
-      netAnnualizedExecutable?: number; netAnnualized?: number; coinMargined?: boolean;
-    }>;
-    const nowMs = Date.now();
-    const sorted = [...opps]
-      // Never surface an expired dated future (single source: lib/instrument-expiry).
-      .filter(o => !isExpired(o, nowMs))
-      .filter(o => (o.netAnnualizedExecutable ?? o.netAnnualized ?? 0) > 0)
-      .sort((a, b) => (b.netAnnualizedExecutable ?? b.netAnnualized ?? 0) - (a.netAnnualizedExecutable ?? a.netAnnualized ?? 0));
-    if (sorted.length > 0) {
-      const top = sorted[0];
-      basis = {
-        // netAnnualizedExecutable/netAnnualized are fractions (0.0363 = 3.63%/yr,
-        // see verdict field in /tmp/basis-opportunities.json) — *100 before rounding
-        // to 1 decimal, same conversion app/dashboard/carry/page.tsx's fmtAnnualized() uses.
-        netAnnualized: Math.round((top.netAnnualizedExecutable ?? top.netAnnualized ?? 0) * 1000) / 10,
-        asset:         top.asset,
-        exchange:      top.exchange,
-        contract:      top.contract,
-        coinMargined:  top.coinMargined ?? false,
-      };
-    }
-  } catch { /* file absent */ }
-
-  try {
-    const raw = JSON.parse(fs.readFileSync('/tmp/sports-odds.json', 'utf8'));
-    // Only use data fresh within 2 hours
-    const ageMs = Date.now() - (typeof raw.fetchedAt === 'number' ? raw.fetchedAt : 0);
-    if (ageMs < 7_200_000) {
-      const arbs = (raw?.arbOpportunities ?? []) as Array<{
-        homeTeam: string; awayTeam: string; sport: string;
-        netMargin: number; grossMargin: number; isStale?: boolean;
-      }>;
-      const valid = arbs
-        .filter(a => !a.isStale && (a.netMargin ?? a.grossMargin ?? 0) > 0)
-        .sort((a, b) => (b.netMargin ?? 0) - (a.netMargin ?? 0));
-      if (valid.length > 0) {
-        sports = {
-          netMargin: valid[0].netMargin ?? valid[0].grossMargin,
-          homeTeam:  valid[0].homeTeam,
-          awayTeam:  valid[0].awayTeam,
-          sport:     valid[0].sport,
-        };
-      }
-    }
-  } catch { /* file absent or stale */ }
-
-  try {
-    // Maker-rewards headline = the SINGLE HIGHEST estimated net/day per $1k
-    // (AFTER adverse-selection cost) among the current sane Polymarket reward
-    // markets — the real max for this category, matching what the Rewards tab
-    // shows for that same market (never fabricated, still SIGNAL not cashable).
-    //   • Source: /tmp/liquidity-rewards.json — the normalized snapshot
-    //     (lib/rewards-normalize.js) whose fields ARE lib/rewards-estimate.ts's
-    //     MarketSnapshot input (real book depth only, never OI/midpoint).
-    //   • Estimate: lib/rewards-estimate.ts at a standard $1k two-sided
-    //     placement resting mid-band — the SAME call the Rewards tab makes
-    //     (app/dashboard/liquidity-rewards/page.tsx typicalNet()).
-    //   • Sane gate: isSanePolymarketLevel (zero dashboard flags) — the SAME
-    //     gate the dashboard uses; TRAP/SHORT_BURST/THIN_CAP/etc. are excluded.
-    //   • Scope: Polymarket only. The card is a Polymarket-rewards card, and
-    //     Kalshi's flat pro-rata model produces run-rates that would read as
-    //     too-good-to-be-true on a public landing (honest-engine). A market
-    //     whose estimate nets <= 0 after adverse cost is not a reward
-    //     opportunity, so only real positive nets enter the median.
-    const norm    = JSON.parse(fs.readFileSync('/tmp/liquidity-rewards.json', 'utf8'));
-    const normMkts = (norm?.markets ?? []) as Array<MarketSnapshot & {
-      venue: string; flags?: string[];
-    }>;
-    const nets: number[] = [];
-    for (const m of normMkts) {
-      if (m.venue !== 'polymarket') continue;
-      if (!isSanePolymarketLevel({ flags: m.flags ?? [] })) continue;
-      const snapshot: MarketSnapshot = {
-        venue:               'polymarket',
-        midpoint:            m.midpoint,
-        maxSpread:           m.maxSpread,
-        minSize:             m.minSize,
-        dailyPool:           m.dailyPool,
-        qualifyingLiquidity: m.qualifyingLiquidity,
-        bookDepthAtBand:     m.bookDepthAtBand,
-        volatilityStdev:     m.volatilityStdev ?? null,
-        twoSidedRequired:    m.twoSidedRequired,
-        sides:               m.sides ?? null,
-      };
-      const dist = (m.maxSpread ?? 2) / 2;   // rest mid-band, same as the Rewards tab
-      const r = estimateReward({
-        venue: 'polymarket', capital: LANDING_CAPITAL_BASIS, twoSided: true,
-        distanceCents: dist, market: snapshot,
-      });
-      if (r.netPerDay != null && r.netPerDay > 0) nets.push(r.netPerDay);
-    }
-    if (nets.length > 0) {
-      // Single HIGHEST est net/day per $1k among sane markets — the real max
-      // for this category, equal to the per-market number the Rewards tab shows
-      // for that market (not a median, never a fabricated figure).
-      const best = Math.max(...nets);
-      rewards = { bestDayUsd1k: Math.round(best * 100) / 100, eligibleCount: nets.length, platform: 'Polymarket' };
-    } else {
-      // Sane gate/estimator left nothing real: keep the card as a signal with
-      // NO number (honest guard — never fabricate a figure).
-      rewards = { bestDayUsd1k: null, eligibleCount: 0, platform: 'Polymarket' };
-    }
-  } catch { /* file absent */ }
-
-  return { funding, prediction, basis, sports, rewards };
+function useNarrow() {
+  const [n, setN] = useState(false);
+  useEffect(() => {
+    const q = window.matchMedia("(max-width: 859px)");
+    const f = (e: any) => setN(e.matches);
+    setN(q.matches);
+    q.addEventListener("change", f);
+    return () => q.removeEventListener("change", f);
+  }, []);
+  return n;
 }
 
-function capFirst(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
+export default function LandingD() {
+  const nar = useNarrow();
+  const hov = useHover();
+  const ROW = nar ? 62 : 68;
 
-// ── Live card rows ─────────────────────────────────────────────────────────
-function buildLiveRows(stats: ReturnType<typeof readLandingStats>): LiveRow[] {
-  const { funding, prediction, basis, sports, rewards } = stats;
-  const rows: LiveRow[] = [];
+  const list = EDGES;
 
-  if (funding && funding.dayUsd1k > 0) {
-    const icon = funding.coin === 'BTC' ? '₿' : funding.coin === 'ETH' ? 'Ξ' : funding.coin[0];
-    rows.push({
-      key: 'funding', icon, tileColor: 'mint',
-      name: (
-        <>
-          {funding.coin} funding spread{' '}
-          <span className="text-muted font-normal text-[11px] ml-0.5">
-            — fee gap between exchanges you capture
-          </span>
-        </>
-      ),
-      sub: (
-        <>
-          short <PlatformLogo platform={funding.shortExchange} size={12} className="mx-1" />
-          {capFirst(funding.shortExchange)} · long <PlatformLogo platform={funding.longExchange} size={12} className="mx-1" />
-          {capFirst(funding.longExchange)}
-        </>
-      ),
-      chip: 'cashable', valueTone: 'up',
-      value: `+$${funding.dayUsd1k.toFixed(2)}`,
-      unit:  'net/day per $1k',
-      dayUsd1k: funding.dayUsd1k, fallbackScore: funding.dayUsd1k,
-    });
-  }
+  const [i, setI] = useState(0);
+  const [hold, setHold] = useState(false);
+  const [pause, setPause] = useState(false);
+  const pauseRef = useRef<any>(null);
 
-  if (sports && sports.netMargin > 0) {
-    const icon = sports.sport.includes('basketball') ? '🏀' : sports.sport.includes('football') ? '🏈' : '⚽';
-    rows.push({
-      key: 'sports', icon, tileColor: 'mint',
-      name: 'Cross-book arb',
-      sub:  `${sports.homeTeam} vs ${sports.awayTeam}`.slice(0, 34),
-      chip: 'cashable', valueTone: 'up',
-      value: `+${sports.netMargin.toFixed(1)}%`,
-      unit:  'confirmed margin',
-      // A matched-bet margin is a one-off locked profit, not a recurring
-      // rate — no genuine $/day exists without a fabricated settlement-time
-      // assumption, so this stays out of the $/day ranking (see LiveRow.dayUsd1k).
-      dayUsd1k: null, fallbackScore: sports.netMargin,
-    });
-  }
+  useEffect(() => {
+    if (hold || pause) return;
+    const t = setInterval(() => setI((p) => (p + 1) % list.length), 2200);
+    return () => clearInterval(t);
+  }, [hold, pause, list.length]);
 
-  if (rewards) {
-    // Maker rewards are a CONDITIONAL incentive, NOT a cashable arb: earning
-    // them requires actively quoting in-book, competing with other LPs (your
-    // share dilutes as makers arrive), and the program's rate can change. So
-    // this is SIGNAL, never cashable — and although we now show a REAL highest
-    // net/day per $1k (after adverse-selection cost, from lib/rewards-estimate.ts),
-    // it stays out of the cashable $/day ranking (dayUsd1k: null) so it can't
-    // inflate "best net/day". The headline is the primary honest metric ($/day),
-    // never an annualized run-rate. Honest guard: no eligible market → NO number.
-    const tip = 'Highest estimated net/day per $1,000 among current reward markets, '
-      + 'after adverse-selection cost. Varies by market — see Rewards tab.';
-    const hasBest = rewards.bestDayUsd1k != null;
-    rows.push({
-      key: 'rewards', icon: '◈', tileColor: 'violet',
-      name: (
-        <>
-          <PlatformLogo platform={rewards.platform} size={14} className="mr-1.5" />
-          <span title={tip}>{rewards.platform} maker rewards</span>{' '}
-          <span className="text-muted font-normal text-[11px] ml-0.5">
-            — liquidity incentive, not a locked arb
-          </span>
-        </>
-      ),
-      sub: hasBest
-        ? `Highest of ${rewards.eligibleCount} current ${rewards.platform} reward markets · after adverse-selection cost`
-        : 'Rewards-program signal · conditional: needs active quoting, competes with LPs',
-      chip: 'signal', valueTone: 'neutral',
-      value: hasBest
-        ? `+$${rewards.bestDayUsd1k!.toFixed(2)}/day`
-        : (<span className="text-muted font-normal" style={{ fontSize: 12 }}>see Rewards tab</span>),
-      // Decorated unit (not the audited 'net/day per $1k' vocab token) — a
-      // conditional signal estimate, kept honest with an explicit "est" qualifier.
-      unit: hasBest ? 'per $1k · est · not guaranteed' : '',
-      // Conditional incentive → out of the cashable day-rate ranking; sorts among
-      // the no-day-rate rows by its best net/day.
-      dayUsd1k: null, fallbackScore: rewards.bestDayUsd1k ?? 0,
-    });
-  }
+  useEffect(() => () => clearTimeout(pauseRef.current), []);
 
-  if (basis && basis.netAnnualized > 0) {
-    // Same $1k basis as funding/rewards, re-expressed from the already-computed
-    // annualized rate (fee-adjusted, executable) — a unit conversion, not a new
-    // number. Display stays %/yr (existing convention for this row); this is
-    // sort-only.
-    const day1k = LANDING_CAPITAL_BASIS * (basis.netAnnualized / 100) / 365;
-    rows.push({
-      key: 'carry', icon: '◉', tileColor: 'gold',
-      name: (
-        <>
-          {basis.asset} carry{' '}
-          <span className="text-muted font-normal text-[11px] ml-0.5">
-            — gap between spot and futures price
-          </span>
-        </>
-      ),
-      sub: (
-        <>
-          <PlatformLogo platform={basis.exchange} size={12} className="mr-1" />
-          {basis.exchange} · {basis.contract}
-        </>
-      ),
-      chip: 'cashable', valueTone: 'up',
-      value: `+${basis.netAnnualized}%/yr`,
-      unit:  basis.coinMargined ? 'basis · coin-margined' : 'executable basis',
-      dayUsd1k: day1k, fallbackScore: day1k,
-    });
-  }
+  // clic su una tab: salta a quella categoria, resta fermo 3s, poi riprende il giro
+  const jump = (cat: any) => {
+    const idx = EDGES.findIndex((e) => e.cat === cat);
+    if (idx < 0) return;
+    setI(idx);
+    setPause(true);
+    clearTimeout(pauseRef.current);
+    pauseRef.current = setTimeout(() => setPause(false), 2000);
+  };
 
-  if (prediction && prediction.cashable > 0) {
-    rows.push({
-      key: 'prediction', icon: '◎', tileColor: 'mint',
-      name: 'Prediction arb',
-      sub:  `${prediction.pairsChecked} pairs checked`,
-      chip: 'cashable', valueTone: 'up',
-      value: String(prediction.cashable),
-      unit:  'cashable right now',
-      // A count of opportunities, not a dollar amount — no $/day exists here either.
-      dayUsd1k: null, fallbackScore: prediction.cashable,
-    });
-  }
+  const cur = list[Math.min(i, list.length - 1)];
+  const word = cur ? cur.g : "everything";
+  const activeCat = cur ? cur.cat : null;
 
-  // Net $/day (per $1k) is the primary, comparable metric — rows with a
-  // genuine one rank first, highest first. Rows with no real day-rate
-  // (one-off event arbs, opportunity counts) rank after, by their own
-  // native metric. No cap: every row that reached this point already
-  // passed its own honest gate above, so all of them render.
-  rows.sort((a, b) => {
-    if (a.dayUsd1k !== null && b.dayUsd1k !== null) return b.dayUsd1k - a.dayUsd1k;
-    if (a.dayUsd1k !== null) return -1;
-    if (b.dayUsd1k !== null) return 1;
-    return b.fallbackScore - a.fallbackScore;
-  });
-  return rows;
-}
+  const heroRef = useRef<any>(null);
+  const [stuck, setStuck] = useState(false);
+  const [atSix, setAtSix] = useState(false);
+  const sixRef = useRef<any>(null);
+  const [wi, setWi] = useState(0);
+  const way = WAYS[wi];
+  const nextWay = WAYS[(wi + 1) % WAYS.length];
+  const wayRef = useRef<any>(null);
+  const tabsRef = useRef<any>(null);
+  const goWay = (n: any) => {
+    setWi((n + WAYS.length) % WAYS.length);
+    requestAnimationFrame(() => sixRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  };
+  useEffect(() => {
+    const c = tabsRef.current;
+    const el = c?.children?.[wi];
+    if (!c || !el) return;
+    c.scrollTo({ left: el.offsetLeft - (c.clientWidth - el.clientWidth) / 2, behavior: "smooth" });
+  }, [wi]);
+  useEffect(() => {
+    const el = heroRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver(([en]) => setStuck(!en.isIntersecting), { threshold: 0 });
+    io.observe(el);
+    const onScroll = () => {
+      const r = sixRef.current?.getBoundingClientRect();
+      setAtSix(!!r && r.top <= 140);
+    };
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => { io.disconnect(); window.removeEventListener("scroll", onScroll); };
+  }, []);
 
-// ── One opportunity face (server-rendered; the cycling card toggles between
-// these). Every field here is buildLiveRows() output — same props, untouched. ──
-function CardFace({ row }: { row: LiveRow }) {
-  const c = tierColor(row.chip);
-  const label = TIER_LABEL[row.chip] ?? String(row.chip).toUpperCase();
   return (
-    <div className={skin.cardFace}>
-      <div className={skin.cardTopRow}>
-        <span className={skin.chip} style={{ background: `${c}1f`, color: c }}>
-          <span className={skin.chipDot} style={{ background: c }} />
-          {label}
-        </span>
+    <div className="edg" style={{ background: P.ground, minHeight: "100vh", color: P.ink }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Gabarito:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500&family=DM+Mono:wght@400;500&display=swap');
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body { overflow-x: clip; }
+        .s { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+        .edg h1, .edg h2, .edg h3, .edg h4, .edg p, .edg li, .edg span, .edg button { color: inherit; }
+        .d { font-family: 'Gabarito', system-ui, sans-serif; letter-spacing: -.02em; }
+        .m { font-family: 'DM Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+        @keyframes sweep { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }
+        @keyframes swap { from { opacity: 0; transform: translateY(.3em) } to { opacity: 1; transform: none } }
+        .swap { display: inline-block; animation: swap .42s cubic-bezier(.2,.8,.2,1); }
+
+        @keyframes il-cur {
+          0%   { transform: translate(100px, 160px); opacity: 0 }
+          6%   { opacity: 1 }
+          22%, 34% { transform: translate(40px, 66px) }
+          50%, 62% { transform: translate(136px, 66px) }
+          80%, 94% { transform: translate(92px, 138px); opacity: 1 }
+          100% { transform: translate(92px, 138px); opacity: 0 }
+        }
+        /* una cosa alla volta: ogni evento entra quando il precedente si è fermato */
+        @keyframes a-cards { 0%, 18% { opacity: 0; transform: translateY(5px) } 22%, 100% { opacity: 1; transform: none } }
+        @keyframes a-c1 { 0%, 1% { opacity: 0; transform: scale(.85) } 4%, 14% { opacity: 1; transform: none } 17%, 100% { opacity: 0; transform: none } }
+        @keyframes a-c2 { 0%, 23% { opacity: 0; transform: scale(.85) } 26%, 36% { opacity: 1; transform: none } 39%, 100% { opacity: 0; transform: none } }
+        @keyframes a-c3 { 0%, 40% { opacity: 0; transform: scale(.85) } 43%, 53% { opacity: 1; transform: none } 56%, 100% { opacity: 0; transform: none } }
+        @keyframes a-c4 { 0%, 57% { opacity: 0; transform: scale(.85) } 60%, 70% { opacity: 1; transform: none } 73%, 100% { opacity: 0; transform: none } }
+        @keyframes a-c5 { 0%, 74% { opacity: 0; transform: scale(.85) } 77%, 97% { opacity: 1; transform: none } 100% { opacity: 0; transform: none } }
+        @keyframes a-cur {
+          0%, 26% { transform: translate(100px, 130px); opacity: 0 }
+          28% { opacity: 1 }
+          31%, 35% { transform: translate(46px, 91px); opacity: 1 }
+          45%, 49% { transform: translate(142px, 91px); opacity: 1 }
+          56% { transform: translate(193px, 108px); opacity: 1 }
+          60%, 100% { transform: translate(193px, 108px); opacity: 0 }
+        }
+        @keyframes a-press { 0%, 32% { transform: scale(1) } 34% { transform: scale(.78) } 37%, 46% { transform: scale(1) } 48% { transform: scale(.78) } 51%, 100% { transform: scale(1) } }
+        @keyframes a-ra { 0%, 32% { opacity: 0; transform: scale(.3) } 34% { opacity: .5 } 41%, 100% { opacity: 0; transform: scale(1.9) } }
+        @keyframes a-rb { 0%, 46% { opacity: 0; transform: scale(.3) } 48% { opacity: .5 } 55%, 100% { opacity: 0; transform: scale(1.9) } }
+        @keyframes a-fa { 0%, 34% { opacity: 0 } 37%, 97% { opacity: 1 } 100% { opacity: 0 } }
+        @keyframes a-fb { 0%, 48% { opacity: 0 } 51%, 97% { opacity: 1 } 100% { opacity: 0 } }
+        @keyframes a-p1 { 0%, 38% { opacity: 0; transform: translateY(4px) } 41%, 97% { opacity: 1; transform: none } 100% { opacity: 0 } }
+        @keyframes a-p2 { 0%, 52% { opacity: 0; transform: translateY(4px) } 55%, 97% { opacity: 1; transform: none } 100% { opacity: 0 } }
+        @keyframes a-sum { 0%, 60% { opacity: 0; transform: translateY(4px) } 63%, 97% { opacity: 1; transform: none } 100% { opacity: 0 } }
+        @keyframes a-pay { 0%, 66% { opacity: 0; transform: translateY(4px) } 69%, 97% { opacity: 1; transform: none } 100% { opacity: 0 } }
+        @keyframes a-bar { 0%, 69% { transform: scaleX(0) } 94%, 100% { transform: scaleX(1) } }
+        @keyframes a-fin { 0%, 78% { opacity: 0; transform: scale(.92) } 81%, 97% { opacity: 1; transform: none } 100% { opacity: 0 } }
+        @keyframes a-note {
+          0%, 85% { opacity: 0; transform: scale(.3) }
+          88% { opacity: 1 }
+          92%, 99% { opacity: 1; transform: scale(1) }
+          100% { opacity: 0; transform: scale(1) }
+        }
+
+        @keyframes m-fin { 0%, 62% { opacity: 0; transform: scale(.94) } 66%, 97% { opacity: 1; transform: none } 100% { opacity: 0 } }
+        @keyframes b-cur {
+          0%, 26% { transform: translate(100px, 196px); opacity: 0 }
+          28% { opacity: 1 }
+          31%, 35% { transform: translate(96px, 138px); opacity: 1 }
+          45%, 49% { transform: translate(96px, 106px); opacity: 1 }
+          56% { transform: translate(193px, 62px); opacity: 1 }
+          60%, 100% { transform: translate(193px, 62px); opacity: 0 }
+        }
+
+        @keyframes c-gap { 0%, 56% { opacity: 0 } 60%, 100% { opacity: 1 } }
+        @keyframes c-dot { 0%, 61% { transform: translate(20px, 146px); opacity: 0 } 63% { opacity: 1 } 80%, 100% { transform: translate(182px, 168px); opacity: 1 } }
+        @keyframes c-d1 { 0%, 61% { opacity: 0 } 63%, 66% { opacity: 1 } 68%, 100% { opacity: 0 } }
+        @keyframes c-d2 { 0%, 67% { opacity: 0 } 69%, 71% { opacity: 1 } 73%, 100% { opacity: 0 } }
+        @keyframes c-d3 { 0%, 72% { opacity: 0 } 74%, 76% { opacity: 1 } 78%, 100% { opacity: 0 } }
+        @keyframes c-d4 { 0%, 77% { opacity: 0 } 80%, 100% { opacity: 1 } }
+
+        @keyframes t-cur {
+          0%, 20% { transform: translate(100px, 176px); opacity: 0 }
+          23% { opacity: 1 }
+          28%, 38% { transform: translate(60px, 74px); opacity: 1 }
+          46%, 100% { transform: translate(60px, 90px); opacity: 1 }
+        }
+        @keyframes t-row1 { 0%, 26% { opacity: 0 } 29%, 40% { opacity: 1 } 44%, 100% { opacity: 0 } }
+        @keyframes t-row2 { 0%, 45% { opacity: 0 } 49%, 100% { opacity: 1 } }
+        @keyframes t-draw { 0%, 56% { stroke-dashoffset: 150 } 76%, 100% { stroke-dashoffset: 0 } }
+        @keyframes t-win { 0%, 58% { transform: scaleX(0) } 78%, 100% { transform: scaleX(1) } }
+
+        @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important } }
+
+        /* ---------- layout: phone first, then tablet, then desktop ---------- */
+        .wrap { max-width: 940px; margin: 0 auto; padding: 0 clamp(16px, 4.5vw, 32px); }
+        .clip { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .val { white-space: nowrap; flex-shrink: 0; }
+        .foot { flex-wrap: wrap; gap: 8px 16px; }
+        .row { padding-left: clamp(14px, 3.6vw, 22px); padding-right: clamp(14px, 3.6vw, 22px); }
+
+        .nav { display: flex; justify-content: space-between; align-items: center; gap: 10px;
+               padding: 14px 0; flex-wrap: nowrap; }
+        .ctaS { display: inline }
+        .ctaL { display: none }
+        .livec { display: none }
+
+        .hero { padding: 14px 0 0; display: grid; grid-template-columns: 1fr; gap: 18px;
+                align-items: center; }
+        .hero-list { order: 2; }
+        .hero-copy { order: 1; }
+
+        .tabs { display: flex; flex-wrap: wrap; gap: 5px; padding: 0 0 9px; }
+        .tab { border-radius: 999px; cursor: pointer; white-space: nowrap;
+               font-size: clamp(11.5px, 3.1vw, 13px); padding: 7px clamp(10px, 2.8vw, 16px);
+               transition: background .35s cubic-bezier(.2,.8,.2,1), color .35s; }
+
+        .six { padding: 16px 0 12px; scroll-margin-top: 12px; }
+
+        @media (max-width: 699px) {
+          html { scroll-snap-type: y proximity; scroll-padding-top: 56px; }
+          .hero { min-height: calc(100vh - 66px); min-height: calc(100dvh - 66px); align-content: start; }
+          .hero, .six, .cta { scroll-snap-align: start; }
+        }
+        .waysub { display: none; }
+        .waybody1 { display: none; }
+        .waybody2 { display: none; }
+        .waynote { display: none; }
+        .illu { max-height: 300px; }
+        .waytabs { display: flex; flex-wrap: nowrap; justify-content: flex-start; gap: 6px; margin: 12px 0;
+                   overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+                   padding-bottom: 2px; scroll-snap-type: x proximity; }
+        .waytabs::-webkit-scrollbar { display: none; }
+        .waytabs .tab { flex: 0 0 auto; scroll-snap-align: center; }
+        .waynext { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
+        .way-in { animation: swap .32s ease both; }
+        .way { display: grid; grid-template-columns: 1fr; gap: 14px; align-items: start;
+               background: ${P.surface}; border-radius: 22px; padding: clamp(14px, 3.4vw, 26px);
+               box-shadow: 0 8px 26px -14px rgba(45,36,24,0.2); }
+
+        @media (min-width: 440px) { .ctaS { display: none } .ctaL { display: inline } }
+        @media (min-width: 520px) { .livec { display: inline } }
+
+        /* tablet and up: long copy returns, tabs wrap, no forced full screens */
+        @media (min-width: 700px) {
+          .nav { padding: 20px 0; }
+          .hero { padding: 28px 0 0; gap: 24px; align-content: center; }
+          .six { padding: clamp(52px, 9vw, 80px) 0 0; }
+          .way { grid-template-columns: 1fr 330px; gap: 26px; min-height: 320px; }
+          .waynote, .waysub, .waybody1, .waybody2 { display: block; }
+          .waynext { display: none; }
+          .illu { max-height: none; }
+          .waytabs { flex-wrap: wrap; justify-content: center; overflow-x: visible; margin: 26px 0 16px; }
+        }
+
+        /* desktop */
+        @media (min-width: 860px) {
+          .nav { padding: 24px 0; }
+          .hero { gap: 34px; padding: 44px 0 0; }
+        }
+      `}</style>
+
+      <div className="s" style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 40, pointerEvents: "none",
+        transform: stuck ? "none" : "translateY(-110%)", opacity: stuck ? 1 : 0,
+        transition: "transform .35s cubic-bezier(.2,.8,.2,1), opacity .25s",
+        background: P.ground + "F2", backdropFilter: "blur(10px)",
+        borderBottom: `1px solid ${P.ink}0F` }}>
+        <div className="wrap" style={{ display: "flex", alignItems: "center",
+          justifyContent: atSix ? "flex-end" : "space-between", gap: 12, height: 56 }}>
+          {!atSix && (
+            <div className="d clip" style={{ fontSize: "clamp(11.5px, 3.3vw, 17px)", fontWeight: 700, flex: 1, minWidth: 0 }}>
+              Live edges in <span key={word} className="swap" style={{ color: P.mint }}>{word}</span>
+            </div>
+          )}
+          <div style={{ display: "flex", alignItems: "center", gap: 9, flexShrink: 0 }}>
+            {!atSix && <span className="m livec" style={{ fontSize: 10.5, color: P.faint, whiteSpace: "nowrap", flexShrink: 0 }}>{list.length} live</span>}
+            <span style={{ background: P.mint, color: "#fff", padding: "8px 16px", borderRadius: 999,
+              fontWeight: 600, fontSize: 12.5, cursor: "pointer", whiteSpace: "nowrap",
+              flexShrink: 0, pointerEvents: "auto" }}>Free trial</span>
+          </div>
+        </div>
       </div>
-      <div className={skin.cardName}>{row.name}</div>
-      {row.sub && <div className={skin.cardVenues}>{row.sub}</div>}
-      <div className={skin.cardValue} style={{ color: c, textShadow: `0 0 24px ${c}66` }}>
-        {row.value}
+
+      <div className="s wrap">
+
+        <nav className="nav">
+          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+            <Mark />
+            <span className="d" style={{ fontSize: "clamp(19px, 5vw, 28px)", fontWeight: 700, letterSpacing: "-.03em", whiteSpace: "nowrap" }}>Edgeradar</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+            <span style={{ color: P.muted, fontSize: 13.5, cursor: "pointer", padding: "9px 2px", whiteSpace: "nowrap", flexShrink: 0 }}>Sign in</span>
+            <span style={{ background: P.mint, color: "#fff", padding: "10px 15px", borderRadius: 999,
+              fontWeight: 600, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>
+              <span className="ctaL">Free 7-day trial</span><span className="ctaS">Free trial</span>
+            </span>
+          </div>
+        </nav>
+
+        <section className="hero">
+
+          <div className="hero-list" style={{ minWidth: 0 }}>
+            <div className="tabs">
+              {CATS.map((c) => {
+                const on = c === activeCat;
+                return (
+                  <span key={c} className="tab" onClick={() => jump(c)}
+                    style={{ background: on ? P.mint : P.surface, color: on ? "#fff" : P.muted,
+                      fontWeight: on ? 600 : 500,
+                      boxShadow: on ? "none" : "0 2px 10px -5px rgba(45,36,24,0.2)" }}>{c}</span>
+                );
+              })}
+            </div>
+            <List edges={list} row={ROW} view={nar ? 4 : VIEW} nar={nar} hov={hov} i={i} setI={setI} setHold={setHold}
+              onPick={(n: any) => {
+                setI(n);
+                setPause(true);
+                clearTimeout(pauseRef.current);
+                pauseRef.current = setTimeout(() => setPause(false), 2000);
+              }} />
+          </div>
+
+          <div className="hero-copy" style={{ minWidth: 0 }}>
+            <h1 ref={heroRef} className="d" style={{ fontSize: "clamp(29px, 7.6vw, 50px)", fontWeight: 700, lineHeight: 1.08 }}>
+              Live edges in<br />
+              <span key={word} className="swap" style={{ color: P.mint }}>{word}.</span>
+            </h1>
+            <p style={{ fontSize: "clamp(13.5px, 3.7vw, 17px)", color: P.muted, marginTop: 9, lineHeight: 1.5, maxWidth: 620 }}>
+              One list:
+              <span style={{ color: P.ink, fontWeight: 600 }}> what to buy, where, and what it pays a day.</span>{" "}
+              Updated while you watch.
+            </p>
+          </div>
+        </section>
+
+        <section ref={sixRef} className="six">
+          <h2 className="d" style={{ fontSize: "clamp(22px, 5.6vw, 30px)", fontWeight: 700, textAlign: "center" }}>Six places we look.</h2>
+          <p className="waysub" style={{ fontSize: "clamp(14px, 3.6vw, 15px)", color: P.muted, textAlign: "center", marginTop: 10,
+            lineHeight: 1.55, maxWidth: 440, marginLeft: "auto", marginRight: "auto" }}>
+            Six different ways a price can be wrong. One at a time, in plain words.
+          </p>
+
+          <div className="waytabs" ref={tabsRef}>
+            {WAYS.map((w, k) => {
+              const on = k === wi;
+              return (
+                <button key={w.id} className="tab" onClick={() => setWi(k)}
+                  style={{ border: `1px solid ${on ? w.c : P.ink + "18"}`, background: on ? w.c : "transparent",
+                    color: on ? "#fff" : P.muted, fontWeight: on ? 600 : 500, cursor: "pointer" }}>
+                  {w.t}
+                </button>
+              );
+            })}
+          </div>
+
+          <div ref={wayRef} className="way way-in" key={way.id}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                <span style={{ width: 7, height: 7, borderRadius: 4, background: way.c, flexShrink: 0 }} />
+                <div className="d" style={{ fontSize: "clamp(19px, 4.6vw, 21px)", fontWeight: 700 }}>{way.t}</div>
+              </div>
+              <p className="waybody1" style={{ fontSize: "clamp(13.5px, 3.5vw, 14.5px)", color: P.muted, lineHeight: 1.65, marginTop: 10 }}>{way.p}</p>
+              {way.p2 && <p className="waybody2" style={{ fontSize: "clamp(13.5px, 3.5vw, 14.5px)", color: P.muted, lineHeight: 1.65, marginTop: 12 }}>{way.p2}</p>}
+              {way.p3 && <p className="waynote" style={{ fontSize: "clamp(12.5px, 3.3vw, 13.5px)", color: P.faint, lineHeight: 1.6, marginTop: 12,
+                borderLeft: `2px solid ${way.c}44`, paddingLeft: 11 }}>{way.p3}</p>}
+            </div>
+            <Il id={way.id} c={way.c} />
+          </div>
+
+          <div className="waynext">
+            <button className="tab" onClick={() => goWay(wi - 1)}
+              style={{ border: `1px solid ${P.ink}18`, background: "transparent", color: P.muted, cursor: "pointer",
+                flexShrink: 0, padding: "10px 14px" }}>←</button>
+            <button className="tab" onClick={() => goWay(wi + 1)}
+              style={{ border: `1px solid ${nextWay.c}`, background: nextWay.c, color: "#fff", cursor: "pointer",
+                fontWeight: 600, flex: 1, minWidth: 0, textAlign: "center" }}>
+              Next · {nextWay.t} →
+            </button>
+          </div>
+        </section>
+
+        <section className="cta" style={{ padding: "clamp(56px, 10vw, 88px) 0 72px", textAlign: "center" }}>
+          <span style={{ background: P.mint, color: "#fff", padding: "17px 40px", borderRadius: 999,
+            fontWeight: 600, fontSize: "clamp(15px, 4vw, 17px)", cursor: "pointer", display: "inline-block" }}>
+            Start your free trial
+          </span>
+          <div style={{ fontSize: 13, color: P.faint, marginTop: 14 }}>Seven days. Cancel whenever.</div>
+        </section>
+
+        <footer className="foot" style={{ borderTop: `1px solid ${P.ink}10`, padding: "22px 0 46px", display: "flex",
+          justifyContent: "space-between", fontSize: 13, color: P.muted }}>
+          <span>We never touch your funds.</span>
+          <span className="m" style={{ fontSize: 12, color: P.faint }}>EU · UK · US</span>
+        </footer>
       </div>
-      {row.unit && <div className={skin.cardUnit}>{row.unit}</div>}
     </div>
   );
 }
 
-// ── Page ───────────────────────────────────────────────────────────────────
-export default function LandingPage() {
-  const stats = readLandingStats();
-  const liveRows = buildLiveRows(stats);
-  // The one number that must be live: how many opportunities survived fee
-  // adjustment tonight. Drives the copy, the field glow count, and the card.
-  const count = liveRows.length;
-  const tiers = liveRows.map(r => r.chip);
+/* ---------- illustrazioni: stesso racconto per tutte e sei ---------- */
+
+const MONO = "'DM Mono', ui-monospace, monospace";
+const DISP = "'Gabarito', system-ui, sans-serif";
+const L = "20s linear infinite";
+const fb: React.CSSProperties = { transformBox: "fill-box", transformOrigin: "center" };
+
+const B = {
+  poly: { n: "Polymarket",  c: "#1652F0" },
+  kal:  { n: "Kalshi",      c: "#00A88F" },
+  bin:  { n: "Binance",     c: "#D9A21B" },
+  okx:  { n: "OKX",         c: "#3C3C3C" },
+  der:  { n: "Deribit",     c: "#0F7B8A" },
+  pin:  { n: "Pinnacle",    c: "#3C3C3C" },
+  bk:   { n: "Book 31",     c: "#E0952E" },
+  wal:  { n: "0xc4f2…9b",   c: "#7B6FE8" },
+};
+
+const SCENES = {
+  pred: {
+    title: "“Will the Fed cut in March?”",
+    chips: [
+      ["Same question, two exchanges", "ink"],
+      ["Buy YES on Polymarket · $60", B.poly.c],
+      ["Buy NO on Kalshi · $35", B.kal.c],
+      ["One of them has to win", "ink"],
+      ["Now add it up", "c"],
+    ],
+    cards: [
+      { b: B.poly, side: "YES", price: "$60", btn: "BUY", done: "FILLED" },
+      { b: B.kal, side: "NO", price: "$35", btn: "BUY", done: "FILLED" },
+    ],
+    r1: ["Paid on Polymarket", "$60"],
+    r2: ["Paid on Kalshi", "$35"],
+    sum: ["Total you paid", "$95"],
+    pay: ["One of them pays", "$100"],
+    fin: ["$100 − $95", "+$5"],
+    note: "That gap is the spread — your profit",
+  },
+  fund: {
+    title: "Ethereum perpetual · $10k each side",
+    chips: [
+      ["One coin, two venues", "ink"],
+      ["Long $10k on Binance", B.bin.c],
+      ["Short $10k on OKX", B.okx.c],
+      ["Long + short = you are flat", "ink"],
+      ["The funding still lands", "c"],
+    ],
+    cards: [
+      { b: B.bin, side: "LONG", price: "$10k", btn: "OPEN", done: "LIVE" },
+      { b: B.okx, side: "SHORT", price: "$10k", btn: "OPEN", done: "LIVE" },
+    ],
+    r1: ["You are flat", "$0"],
+    hideR2: true,
+    bar: ["Next funding", "every 8h"],
+    fin: ["Net funding, per day", "+$5"],
+    note: "Funding is the spread — your profit",
+  },
+  carry: {
+    title: "Bitcoin · spot vs the June future",
+    chips: [
+      ["One asset, two dates", "ink"],
+      ["Buy the spot on Binance · $100", B.bin.c],
+      ["Sell the June future · $104", B.der.c],
+      ["At expiry the two have to meet", "ink"],
+      ["Now add it up", "c"],
+    ],
+    cards: [
+      { b: B.bin, side: "SPOT", price: "$100", btn: "BUY", done: "FILLED" },
+      { b: B.der, side: "JUNE", price: "$104", btn: "SELL", done: "FILLED" },
+    ],
+    r1: ["Bought the spot", "$100"],
+    r2: ["Sold the future", "$104"],
+    sum: ["Gap between the two", "$4"],
+    pay: ["Gap left at expiry", "$0"],
+    fin: ["$104 − $100", "+$4"],
+    note: "That gap is the basis — it is your profit",
+  },
+  maker: {
+    title: "Polymarket · liquidity rewards",
+    chips: [
+      ["Polymarket pays for liquidity", "ink"],
+      ["Leave a bid at $60", B.poly.c],
+      ["Leave an ask at $62", B.poly.c],
+      ["It pays out $18,000 a day", "ink"],
+      ["Take your share", "c"],
+    ],
+    cards: [
+      { b: B.poly, side: "BID", price: "$60", btn: "POST", done: "RESTING" },
+      { b: B.poly, side: "ASK", price: "$62", btn: "POST", done: "RESTING" },
+    ],
+    r1: ["Your bid, resting", "$60"],
+    r2: ["Your ask, resting", "$62"],
+    sum: ["Paid out to makers, per day", "$18,000"],
+    pay: ["Your share of the tight quotes", "0.03%"],
+    fin: ["$18,000 × 0.03%", "+$5"],
+    note: "The exchange pays you to be there — that is your profit",
+  },
+  trader: {
+    title: "0xc4f2…9b · Polymarket leaderboard",
+    chips: [
+      ["Five thousand wallets, ranked", "ink"],
+      ["Follow the wallet · 340 trades", B.wal.c],
+      ["Mirror the fill it just took", B.poly.c],
+      ["Only what settled is counted", "ink"],
+      ["Now add it up", "c"],
+    ],
+    cards: [
+      { b: B.wal, side: "RANK 1", price: "340", btn: "FOLLOW", done: "FOLLOWING" },
+      { b: B.poly, side: "YES", price: "$60", btn: "MIRROR", done: "FILLED" },
+    ],
+    r1: ["Trades that settled", "340"],
+    r2: ["Of those, won", "241"],
+    sum: ["Hit rate, on settled only", "71%"],
+    pay: ["Still open and hopeful", "$0"],
+    fin: ["Realized, per $1,000", "+$8"],
+    note: "We rank on what settled — never on open hope",
+  },
+  sport: {
+    title: "Lakers / Celtics · moneyline",
+    chips: [
+      ["Forty-four books, one game", "ink"],
+      ["The sharp price · 2.11", "ink"],
+      ["Book 31 has drifted · 2.18", B.bk.c],
+      ["Same bet, better price", "ink"],
+      ["Now add it up", "c"],
+    ],
+    cards: [
+      { b: B.pin, side: "SHARP", price: "2.11", btn: "CHECK", done: "CHECKED" },
+      { b: B.bk, side: "HOME", price: "2.18", btn: "BET", done: "PLACED" },
+    ],
+    r1: ["The sharp price says", "2.11"],
+    r2: ["Book 31 pays", "2.18"],
+    sum: ["Sharp price returns", "$100"],
+    pay: ["Book 31 returns", "$103"],
+    fin: ["$103 − $100", "+$3"],
+    note: "That drift is the edge — your profit",
+  },
+};
+
+const RED = "#D8483C";
+const GRN = "#0FA968";
+
+function Chips({ list, c }: any) {
+  const col = (k: any) => (k === "ink" ? P.ink : k === "c" ? c : k);
+  const anims = ["a-c1", "a-c2", "a-c3", "a-c4", "a-c5"];
+  return (
+    <g>
+      {list.map(([txt, k]: any, n: any) => {
+        const w = Math.min(178, txt.length * 5.15 + 22);
+        return (
+          <g key={n} style={{ ...fb, animation: `${anims[n]} ${L}` }}>
+            <rect x={100 - w / 2} y="32" width={w} height="20" rx="10" fill={col(k) + "1E"} />
+            <text x="100" y="46" textAnchor="middle"
+              style={{ fontFamily: DISP, fontSize: 10.5, fontWeight: 700, fill: col(k) }}>{txt}</text>
+          </g>
+        );
+      })}
+    </g>
+  );
+}
+
+const Pointer = ({ an = "a-cur" }: any) => (
+  <g style={{ animation: `${an} ${L}` }}>
+    <g style={{ ...fb, animation: `a-press ${L}` }}>
+      <path d="M0 0 L0 15 L4.1 11.4 L6.8 17.2 L9.7 15.9 L6.9 10.3 L12 10 Z"
+        transform="scale(.58)" fill={P.ink} stroke="#FFF" strokeWidth="1.3" strokeLinejoin="round" />
+    </g>
+  </g>
+);
+
+/* ---- Maker rewards: order book ---- */
+const ASKS = [["65¢", "1,240", 1240], ["64¢", "890", 890], ["63¢", "640", 640], ["62¢", "310", 310]];
+const BIDS = [["60¢", "420", 420], ["59¢", "780", 780], ["58¢", "1,050", 1050], ["57¢", "1,600", 1600]];
+const MAXD = 1700;
+
+function BookScene({ c }: any) {
+  const row = ([p, sz, d]: any, y: any, col: any, mine: any, an: any) => (
+    <g key={p + y}>
+      <rect x={182 - (8 + (d / MAXD) * 120)} y={y - 7} width={8 + (d / MAXD) * 120} height="9" rx="2" fill={col + "1C"} />
+      <text x="18" y={y} style={{ fontFamily: MONO, fontSize: 8.5, fill: col }}>{p}</text>
+      <text x="182" y={y} textAnchor="end" style={{ fontFamily: MONO, fontSize: 8, fill: P.muted }}>{sz}</text>
+      {mine && (
+        <g style={{ animation: `${an} ${L}` }}>
+          <rect x="13" y={y - 8} width="174" height="11" rx="3" fill={P.surface} />
+          <rect x="13" y={y - 8} width="174" height="11" rx="3" fill={c + "1A"} stroke={c} strokeWidth="1.2" />
+          <text x="18" y={y} style={{ fontFamily: MONO, fontSize: 8.5, fill: c }}>{p}</text>
+          <text x="182" y={y} textAnchor="end" style={{ fontFamily: DISP, fontSize: 6.8, fontWeight: 700, fill: c }}>YOUR LIMIT · 500</text>
+        </g>
+      )}
+    </g>
+  );
+  return (
+    <g>
+      <text x="100" y="19" textAnchor="middle" style={{ fontFamily: DISP, fontSize: 9.5, fontWeight: 600, fill: P.muted }}>
+        Polymarket · the order book
+      </text>
+      <Chips c={c} list={[
+        ["A book needs both sides", "ink"],
+        ["Limit BUY 500 at 60¢", c],
+        ["Limit SELL 500 at 62¢", c],
+        ["They trade against you", "ink"],
+        ["Take your share", "c"],
+      ]} />
+
+      <rect x="8" y="58" width="184" height="122" rx="11" fill={P.surface} stroke={P.ink + "14"} />
+      <text x="18" y="70" style={{ fontFamily: DISP, fontSize: 7, fontWeight: 700, fill: P.faint, letterSpacing: ".1em" }}>PRICE</text>
+      <text x="182" y="70" textAnchor="end" style={{ fontFamily: DISP, fontSize: 7, fontWeight: 700, fill: P.faint, letterSpacing: ".1em" }}>SIZE</text>
+
+      {ASKS.map((a, i) => row(a, 82 + i * 10, RED, i === 3, "a-p2"))}
+
+      <line x1="13" y1="118" x2="187" y2="118" stroke={P.ink + "12"} />
+      <text x="18" y="128" style={{ fontFamily: DISP, fontSize: 7.5, fontWeight: 700, fill: P.muted, letterSpacing: ".08em" }}>SPREAD</text>
+      <text x="182" y="128" textAnchor="end" style={{ fontFamily: MONO, fontSize: 9.5, fill: P.ink }}>2¢</text>
+      <line x1="13" y1="134" x2="187" y2="134" stroke={P.ink + "12"} />
+
+      {BIDS.map((b, i) => row(b, 144 + i * 10, GRN, i === 0, "a-p1"))}
+
+      <g>
+        <rect x="8" y="184" width="184" height="42" rx="11" fill={P.surface} stroke={P.ink + "14"} />
+        <text x="18" y="196" style={{ fontFamily: DISP, fontSize: 7, fontWeight: 700, fill: P.faint, letterSpacing: ".04em" }}>
+          POLYMARKET PAYS FOR LIQUIDITY
+        </text>
+        <text x="18" y="208" style={{ fontFamily: DISP, fontSize: 8.5, fontWeight: 500, fill: P.muted }}>Pot, per day</text>
+        <text x="182" y="208" textAnchor="end" style={{ fontFamily: MONO, fontSize: 9.5, fill: P.ink, animation: `a-sum ${L}` }}>$18,000</text>
+        <text x="18" y="221" style={{ fontFamily: DISP, fontSize: 9.5, fontWeight: 700, fill: P.ink }}>Your share, 0.03%</text>
+        <text x="182" y="222" textAnchor="end" style={{ ...fb, fontFamily: MONO, fontSize: 15, fill: c, animation: `m-fin ${L}` }}>+$5</text>
+      </g>
+
+      <g style={{ ...fb, animation: `a-note ${L}` }}>
+        <rect x="14" y="230" width="172" height="16" rx="8" fill={c} />
+        <text x="100" y="241.5" textAnchor="middle" style={{ fontFamily: DISP, fontSize: 8.5, fontWeight: 700, fill: "#FFF" }}>
+          They pay you to keep the shop open
+        </text>
+      </g>
+
+      <circle cx="100" cy="144" r="11" fill="none" stroke={c} strokeWidth="2.5" style={{ ...fb, animation: `a-ra ${L}` }} />
+      <circle cx="100" cy="112" r="11" fill="none" stroke={c} strokeWidth="2.5" style={{ ...fb, animation: `a-rb ${L}` }} />
+      <Pointer an="b-cur" />
+    </g>
+  );
+}
+
+/* ---- Cash & carry: i trenta giorni ---- */
+function CarryScene({ c }: any) {
+  const card = (x: any, b: any, side: any, price: any, btn: any, done: any, fl: any, ring: any, step: any) => (
+    <g>
+      <rect x={x} y="58" width="88" height="46" rx="11" fill={P.surface} stroke={P.ink + "14"} />
+      <circle cx={x + 11} cy="68" r="3.5" fill={b.c} />
+      <text x={x + 18} y="71" style={{ fontFamily: DISP, fontSize: 8, fontWeight: 600, fill: P.muted }}>{b.n}</text>
+      <circle cx={x + 78} cy="67.5" r="6.5" fill={P.ink + "0D"} />
+      <text x={x + 78} y="70.5" textAnchor="middle" style={{ fontFamily: DISP, fontSize: 8, fontWeight: 700, fill: P.muted }}>{step}</text>
+      <text x={x + 10} y="88" style={{ fontFamily: DISP, fontSize: 11.5, fontWeight: 700, fill: c }}>{side}</text>
+      <text x={x + 78} y="88" textAnchor="end" style={{ fontFamily: MONO, fontSize: 10.5, fill: P.ink }}>{price}</text>
+      <rect x={x + 10} y="92" width="68" height="10" rx="5" fill={P.ink + "0A"} />
+      <text x={x + 44} y="99.5" textAnchor="middle" style={{ fontFamily: DISP, fontSize: 7, fontWeight: 700, fill: P.faint }}>{btn}</text>
+      <g style={{ animation: `${fl} ${L}` }}>
+        <rect x={x} y="58" width="88" height="46" rx="11" fill={c + "10"} stroke={c} strokeWidth="2" />
+        <rect x={x + 10} y="92" width="68" height="10" rx="5" fill={c} />
+        <text x={x + 44} y="99.5" textAnchor="middle" style={{ fontFamily: DISP, fontSize: 7, fontWeight: 700, fill: "#FFF" }}>{done}</text>
+      </g>
+      <circle cx={x + 44} cy="97" r="9" fill="none" stroke={c} strokeWidth="2.5" style={{ ...fb, animation: `${ring} ${L}` }} />
+    </g>
+  );
+  const day = (t: any, an: any) => (
+    <text x="162" y="145" textAnchor="middle"
+      style={{ fontFamily: DISP, fontSize: 17, fontWeight: 700, fill: P.ink, animation: `${an} ${L}` }}>{t}</text>
+  );
+  return (
+    <g>
+      <text x="100" y="19" textAnchor="middle" style={{ fontFamily: DISP, fontSize: 9.5, fontWeight: 600, fill: P.muted }}>
+        Bitcoin · today vs the June future
+      </text>
+      <Chips c={c} list={[
+        ["One asset, two dates", "ink"],
+        ["Buy the spot · $100", B.bin.c],
+        ["Sell the June future · $104", B.der.c],
+        ["Thirty days go by", "ink"],
+        ["They meet. Keep the gap.", "c"],
+      ]} />
+
+      <g style={{ animation: `a-cards ${L}` }}>
+        {card(8, B.bin, "SPOT", "$100", "BUY", "FILLED", "a-fa", "a-ra", "1")}
+        {card(104, B.der, "JUNE", "$104", "SELL", "FILLED", "a-fb", "a-rb", "2")}
+      </g>
+
+      <g>
+        <rect x="8" y="110" width="184" height="80" rx="11" fill={P.surface} stroke={P.ink + "14"} />
+        <text x="18" y="126" style={{ fontFamily: DISP, fontSize: 8.5, fontWeight: 700, fill: P.faint, letterSpacing: ".08em" }}>DAYS TO EXPIRY</text>
+
+        <rect x="140" y="116" width="44" height="36" rx="7" fill={P.surface} stroke={P.ink + "1A"} />
+        <path d="M140 123 a7 7 0 0 1 7 -7 h30 a7 7 0 0 1 7 7 v3 h-44 z" fill={B.der.c} />
+        <text x="162" y="124" textAnchor="middle" style={{ fontFamily: DISP, fontSize: 5.5, fontWeight: 700, fill: "#FFF", letterSpacing: ".12em" }}>JUNE</text>
+        <text x="162" y="151" textAnchor="middle" style={{ fontFamily: DISP, fontSize: 5.5, fontWeight: 600, fill: P.faint, letterSpacing: ".06em" }}>DAY</text>
+
+        <line x1="20" y1="168" x2="182" y2="168" stroke={GRN} strokeWidth="1.8" />
+        <text x="20" y="180" style={{ fontFamily: DISP, fontSize: 7.5, fill: P.muted }}>spot $100</text>
+        <line x1="20" y1="146" x2="182" y2="168" stroke={B.der.c} strokeWidth="1.8" strokeDasharray="3 3" />
+        <text x="24" y="142" style={{ fontFamily: DISP, fontSize: 7.5, fill: B.der.c }}>June future $104</text>
+
+        <line x1="20" y1="146" x2="20" y2="168" stroke={c} strokeWidth="1.4" />
+        <circle cx="20" cy="146" r="2" fill={c} />
+        <circle cx="20" cy="168" r="2" fill={c} />
+        <text x="26" y="160" style={{ fontFamily: MONO, fontSize: 9, fill: c }}>$4</text>
+        <text x="182" y="180" textAnchor="end" style={{ fontFamily: DISP, fontSize: 7.5, fill: P.muted }}>expiry · gap $0</text>
+
+        {day("Day 1", "c-d1")}
+        {day("Day 10", "c-d2")}
+        {day("Day 20", "c-d3")}
+        {day("Day 30", "c-d4")}
+
+        <circle cx="0" cy="0" r="3.5" fill={B.der.c} stroke="#FFF" strokeWidth="1.2" style={{ animation: `c-dot ${L}` }} />
+      </g>
+
+      <text x="18" y="211" style={{ fontFamily: DISP, fontSize: 10.5, fontWeight: 700, fill: P.ink }}>Locked on day 1</text>
+      <text x="182" y="213" textAnchor="end" style={{ ...fb, fontFamily: MONO, fontSize: 18, fill: c, animation: `a-fin ${L}` }}>+$4</text>
+      <g style={{ ...fb, animation: `a-note ${L}` }}>
+        <rect x="14" y="222" width="172" height="20" rx="10" fill={c} />
+        <text x="100" y="235.5" textAnchor="middle" style={{ fontFamily: DISP, fontSize: 9, fontWeight: 700, fill: "#FFF" }}>
+          You predicted nothing. You waited.
+        </text>
+      </g>
+      <Pointer />
+    </g>
+  );
+}
+
+/* ---- Top traders: la classifica ---- */
+const LB = [
+  ["1", "0x7a1c…4e", "+$12,480", "71%"],
+  ["2", "0xc4f2…9b", "+$9,310", "68%"],
+  ["3", "0x33be…07", "+$7,940", "64%"],
+  ["4", "0xd1a8…5c", "+$6,120", "59%"],
+  ["5", "0x0e52…b3", "+$4,870", "57%"],
+];
+
+function TraderScene({ c }: any) {
+  return (
+    <g>
+      <text x="100" y="19" textAnchor="middle" style={{ fontFamily: DISP, fontSize: 9.5, fontWeight: 600, fill: P.muted }}>
+        Five thousand wallets · ranked on settled profit
+      </text>
+      <Chips c={c} list={[
+        ["Everyone is ranked", "ink"],
+        ["Scroll the leaderboard", "ink"],
+        ["Stop on one of them", c],
+        ["See what actually settled", "ink"],
+        ["Copy it, or just watch", "c"],
+      ]} />
+
+      <rect x="8" y="58" width="184" height="102" rx="11" fill={P.surface} stroke={P.ink + "14"} />
+      <text x="18" y="70" style={{ fontFamily: DISP, fontSize: 7, fontWeight: 700, fill: P.faint, letterSpacing: ".1em" }}>WALLET</text>
+      <text x="140" y="70" textAnchor="end" style={{ fontFamily: DISP, fontSize: 7, fontWeight: 700, fill: P.faint, letterSpacing: ".1em" }}>SETTLED P&amp;L</text>
+      <text x="182" y="70" textAnchor="end" style={{ fontFamily: DISP, fontSize: 7, fontWeight: 700, fill: P.faint, letterSpacing: ".1em" }}>WIN</text>
+
+      {LB.map(([r, w, pnl, win]: any, i: any) => {
+        const y = 84 + i * 16;
+        return (
+          <g key={r}>
+            {i < 2 && (
+              <rect x="13" y={y - 10} width="174" height="14" rx="4" fill={c + "14"} stroke={c} strokeWidth="1.1"
+                style={{ animation: `${i === 0 ? "t-row1" : "t-row2"} ${L}` }} />
+            )}
+            <text x="18" y={y} style={{ fontFamily: DISP, fontSize: 8, fontWeight: 700, fill: P.faint }}>{r}</text>
+            <text x="28" y={y} style={{ fontFamily: MONO, fontSize: 8.5, fill: P.ink }}>{w}</text>
+            <text x="140" y={y} textAnchor="end" style={{ fontFamily: MONO, fontSize: 9, fill: GRN }}>{pnl}</text>
+            <text x="182" y={y} textAnchor="end" style={{ fontFamily: MONO, fontSize: 8.5, fill: P.muted }}>{win}</text>
+          </g>
+        );
+      })}
+
+      <g style={{ animation: `t-row2 ${L}` }}>
+        <rect x="8" y="166" width="184" height="52" rx="11" fill={P.surface} stroke={c} strokeWidth="1.3" />
+        <text x="18" y="180" style={{ fontFamily: MONO, fontSize: 9, fill: P.ink }}>0xc4f2…9b</text>
+        <text x="182" y="180" textAnchor="end" style={{ fontFamily: DISP, fontSize: 7.5, fontWeight: 600, fill: P.muted }}>340 settled trades</text>
+
+        <path d="M18 208 L38 202 L58 205 L78 194 L98 197 L118 186 L138 181"
+          stroke={c} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"
+          strokeDasharray="150" style={{ animation: `t-draw ${L}` }} />
+        <text x="18" y="214" style={{ fontFamily: DISP, fontSize: 7, fill: P.faint }}>SETTLED EQUITY</text>
+
+        <text x="182" y="196" textAnchor="end" style={{ fontFamily: DISP, fontSize: 7.5, fontWeight: 600, fill: P.muted }}>win rate 68%</text>
+        <rect x="146" y="200" width="36" height="5" rx="2.5" fill={P.ink + "12"} />
+        <rect x="146" y="200" width="24.5" height="5" rx="2.5" fill={c}
+          style={{ transformBox: "fill-box", transformOrigin: "left", animation: `t-win ${L}` } as React.CSSProperties} />
+        <text x="182" y="215" textAnchor="end" style={{ fontFamily: MONO, fontSize: 15, fill: GRN }}>+$9,310</text>
+      </g>
+
+      <g style={{ ...fb, animation: `a-note ${L}` }}>
+        <rect x="14" y="224" width="172" height="18" rx="9" fill={c} />
+        <text x="100" y="236.5" textAnchor="middle" style={{ fontFamily: DISP, fontSize: 8.5, fontWeight: 700, fill: "#FFF" }}>
+          Ranked on what settled, not on hope
+        </text>
+      </g>
+
+      <Pointer an="t-cur" />
+    </g>
+  );
+}
+
+function Scene({ id, c }: any) {
+  const s = (SCENES as any)[id];
+  const col = (k: any) => (k === "ink" ? P.ink : k === "c" ? c : k);
+  const lab = { fontFamily: DISP, fontSize: 9.5, fontWeight: 500, fill: P.muted };
+  const val = { fontFamily: MONO, fontSize: 12.5, fill: P.ink };
+  const anims = ["a-c1", "a-c2", "a-c3", "a-c4", "a-c5"];
+
+  const chip = ([txt, k]: any, n: any) => {
+    const w = Math.min(178, txt.length * 5.15 + 22);
+    return (
+      <g key={n} style={{ ...fb, animation: `${anims[n]} ${L}` }}>
+        <rect x={100 - w / 2} y="32" width={w} height="20" rx="10" fill={col(k) + "1E"} />
+        <text x="100" y="46" textAnchor="middle"
+          style={{ fontFamily: DISP, fontSize: 10.5, fontWeight: 700, fill: col(k) }}>{txt}</text>
+      </g>
+    );
+  };
+
+  const card = (d: any, x: any, fl: any, ring: any, step: any) => (
+    <g>
+      <rect x={x} y="58" width="88" height="46" rx="11" fill={P.surface} stroke={P.ink + "14"} />
+      <circle cx={x + 11} cy="68" r="3.5" fill={d.b.c} />
+      <text x={x + 18} y="71" style={{ fontFamily: DISP, fontSize: 8, fontWeight: 600, fill: P.muted }}>{d.b.n}</text>
+      <circle cx={x + 78} cy="67.5" r="6.5" fill={P.ink + "0D"} />
+      <text x={x + 78} y="70.5" textAnchor="middle" style={{ fontFamily: DISP, fontSize: 8, fontWeight: 700, fill: P.muted }}>{step}</text>
+      <text x={x + 10} y="88" style={{ fontFamily: DISP, fontSize: 11.5, fontWeight: 700, fill: c }}>{d.side}</text>
+      <text x={x + 78} y="88" textAnchor="end" style={{ fontFamily: MONO, fontSize: 10.5, fill: P.ink }}>{d.price}</text>
+      <rect x={x + 10} y="92" width="68" height="10" rx="5" fill={P.ink + "0A"} />
+      <text x={x + 44} y="99.5" textAnchor="middle" style={{ fontFamily: DISP, fontSize: 7, fontWeight: 700, fill: P.faint }}>{d.btn}</text>
+      <g style={{ animation: `${fl} ${L}` }}>
+        <rect x={x} y="58" width="88" height="46" rx="11" fill={c + "10"} stroke={c} strokeWidth="2" />
+        <rect x={x + 10} y="92" width="68" height="10" rx="5" fill={c} />
+        <text x={x + 44} y="99.5" textAnchor="middle" style={{ fontFamily: DISP, fontSize: 7, fontWeight: 700, fill: "#FFF" }}>{d.done}</text>
+      </g>
+      <circle cx={x + 44} cy="97" r="9" fill="none" stroke={c} strokeWidth="2.5" style={{ ...fb, animation: `${ring} ${L}` }} />
+    </g>
+  );
 
   return (
-    <div className={`${instrument.variable} ${manrope.variable} ${plexMono.variable} ${skin.root}`}>
+    <g>
+      <text x="100" y="19" textAnchor="middle" style={{ fontFamily: DISP, fontSize: 9.5, fontWeight: 600, fill: P.muted }}>{s.title}</text>
 
-      {/* ── Nav ──────────────────────────────────────────────────────────── */}
-      <header className={skin.nav}>
-        <div className={skin.navRow}>
-          <Link href="/" className={skin.brand} aria-label="Edgeradar home">
-            <RadarMark size={22} />
-            <span className={skin.brandName}>Edgeradar</span>
-          </Link>
-          <span className={skin.navSpacer} />
-          <Link href="/auth/login" className={`${skin.navGhost} ${skin.hideSm}`}>Sign in</Link>
-          <Link href="/auth/register" className={skin.btnFill} style={{ height: 38, padding: '0 18px' }}>
-            Start free
-          </Link>
-        </div>
-      </header>
+      {s.chips.map(chip)}
 
-      <main>
+      <g style={{ animation: `a-cards ${L}` }}>
+        {card(s.cards[0], 8, "a-fa", "a-ra", "1")}
+        {card(s.cards[1], 104, "a-fb", "a-rb", "2")}
+      </g>
 
-        {/* ── 1. HERO — the live field ──────────────────────────────────────── */}
-        <section className={skin.hero} aria-labelledby="hero-heading">
-          <HeroField count={count} tiers={tiers} />
-          <div className={skin.vignette} aria-hidden />
+      <rect x="8" y="110" width="184" height="134" rx="12" fill={P.surface} stroke={P.ink + "14"} />
+      <text x="18" y={s.hideR2 ? 143 : 127} style={{ ...lab, fontWeight: s.hideR2 ? 700 : 500, fill: s.hideR2 ? P.ink : P.muted }}>{s.r1[0]}</text>
+      <text x="182" y={s.hideR2 ? 143 : 127} textAnchor="end" style={{ ...val, fontSize: s.hideR2 ? 13.5 : 12.5, animation: `a-p1 ${L}` }}>{s.r1[1]}</text>
 
-          <div className={`${skin.heroInner} ${skin.rise}`}>
+      {!s.hideR2 && (
+        <g>
+          <text x="18" y="143" style={lab}>{s.r2[0]}</text>
+          <text x="182" y="143" textAnchor="end" style={{ ...val, animation: `a-p2 ${L}` }}>{s.r2[1]}</text>
+        </g>
+      )}
+      {s.sum && (
+        <g>
+          <line x1="18" y1="151" x2="182" y2="151" stroke={P.ink + "16"} />
+          <text x="18" y="167" style={{ ...lab, fontWeight: 700, fill: P.ink }}>{s.sum[0]}</text>
+          <text x="182" y="167" textAnchor="end" style={{ ...val, fontSize: 13.5, animation: `a-sum ${L}` }}>{s.sum[1]}</text>
+        </g>
+      )}
+      {s.bar ? (
+        <g>
+          <text x="18" y="182" style={lab}>{s.bar[0]}</text>
+          <text x="182" y="182" textAnchor="end" style={{ fontFamily: MONO, fontSize: 10, fill: P.faint }}>{s.bar[1]}</text>
+          <rect x="18" y="186" width="164" height="4" rx="2" fill={P.ink + "12"} />
+          <rect x="18" y="186" width="164" height="4" rx="2" fill={c}
+            style={{ transformBox: "fill-box", transformOrigin: "left", animation: `a-bar ${L}` } as React.CSSProperties} />
+        </g>
+      ) : (
+        <g>
+          <text x="18" y="185" style={lab}>{s.pay[0]}</text>
+          <text x="182" y="185" textAnchor="end" style={{ ...val, fontSize: 13.5, fill: c, animation: `a-pay ${L}` }}>{s.pay[1]}</text>
+        </g>
+      )}
+      <line x1="18" y1="193" x2="182" y2="193" stroke={P.ink + "16"} />
+      <text x="18" y="211" style={{ fontFamily: DISP, fontSize: 10.5, fontWeight: 700, fill: P.ink }}>{s.fin[0]}</text>
+      <text x="182" y="213" textAnchor="end" style={{ ...fb, fontFamily: MONO, fontSize: 20, fill: c, animation: `a-fin ${L}` }}>{s.fin[1]}</text>
 
-            {/* Copy */}
-            <div className={skin.copy}>
-              <span className={skin.eyebrow}>
-                <span className={skin.eyebrowDot} aria-hidden />Scanning · Live
-              </span>
+      <g style={{ ...fb, animation: `a-note ${L}` }}>
+        <rect x="14" y="220" width="172" height="20" rx="10" fill={c} />
+        <text x="100" y="233.5" textAnchor="middle" style={{ fontFamily: DISP, fontSize: 9, fontWeight: 700, fill: "#FFF" }}>{s.note}</text>
+      </g>
 
-              <h1 id="hero-heading" className={skin.h1}>
-                {SCANNED_SCOPE} markets.<br />
-                <span className={skin.dim}>Almost all of them</span><br />
-                <span className={skin.it}>are worth nothing.</span>
-              </h1>
+      <Pointer />
+    </g>
+  );
+}
 
-              <p className={skin.sub}>
-                {count > 0 ? (
-                  <>
-                    We measure every one, subtract every fee, and light up only the handful
-                    that survive. Tonight that&apos;s <span className={skin.count}>{numberWord(count)}</span>.
-                  </>
-                ) : (
-                  <>
-                    We measure every one, subtract every fee, and light up only the handful
-                    that survive. Tonight <span className={skin.count}>nothing</span> does — and
-                    we show you exactly that.
-                  </>
-                )}
-              </p>
-
-              <div className={skin.ctaRow}>
-                <Link href="/auth/register" className={skin.btnFill}>Start free</Link>
-                <a href="#tonight" className={skin.btnGlass}>
-                  {count > 0 ? `See tonight's ${numberWord(count)}` : 'See the empty field'}
-                </a>
-              </div>
-
-              <div className={skin.tierRow}>
-                <span className={skin.tier}>
-                  <span className={skin.tierDot} style={{ background: '#2DD4A0' }} aria-hidden />
-                  <span className={skin.tierName}>Cashable</span>
-                  <span className={skin.tierSub}>locked profit</span>
-                </span>
-                <span className={skin.tier}>
-                  <span className={skin.tierDot} style={{ background: '#F0A93B' }} aria-hidden />
-                  <span className={skin.tierName}>Arb soft</span>
-                  <span className={skin.tierSub}>real, fragile</span>
-                </span>
-                <span className={skin.tier}>
-                  <span className={skin.tierDot} style={{ background: '#8B93F8' }} aria-hidden />
-                  <span className={skin.tierName}>Signal</span>
-                  <span className={skin.tierSub}>value, not locked</span>
-                </span>
-              </div>
-            </div>
-
-            {/* Live card — cycles the real opportunities from buildLiveRows() */}
-            <CyclingCard
-              tiers={tiers}
-              caption="Every figure fee-adjusted and capacity-checked. We never touch your funds."
-            >
-              {liveRows.map(row => <CardFace key={row.key} row={row} />)}
-            </CyclingCard>
-
-          </div>
-        </section>
-
-        {/* ── 2. THE HONEST CUT — illustrative spike vs fee-adjusted ─────────── */}
-        <section className={skin.cut} aria-label="How a raw spike looks versus fee-adjusted">
-          <div className={skin.cutInner}>
-            <span className={skin.illTag}>▚ Illustrative — how a spike looks raw vs fee-adjusted, not a live quote</span>
-            <div className={skin.cutGrid}>
-
-              <div className={skin.dead}>
-                <div className={skin.cutLabel}>What a bot marketplace shows you</div>
-                <div className={`${skin.cutBig} ${skin.cutBigDead}`}>1,914%</div>
-                <div className={skin.cutRows}>
-                  <div className={skin.cutRow}><span className={skin.cutKey}>7-day APR</span><span className={`${skin.cutVal} ${skin.cutValDead}`}>1,596%</span></div>
-                  <div className={skin.cutRow}><span className={skin.cutKey}>30-day APR</span><span className={`${skin.cutVal} ${skin.cutValDead}`}>669%</span></div>
-                  <div className={skin.cutRow}><span className={skin.cutKey}>Next funding</span><span className={`${skin.cutVal} ${skin.cutValDead}`}>−0.024% flipped</span></div>
-                  <div className={skin.cutRow}><span className={skin.cutKey}>Depth at $10k</span><span className={`${skin.cutVal} ${skin.cutValDead}`}>not there</span></div>
-                </div>
-                <p className={skin.cutFoot}>The decay is the tell. It&apos;s a spike, annualised.</p>
-              </div>
-
-              <div className={skin.cutDivider} aria-hidden />
-
-              <div className={skin.alive}>
-                <div className={skin.cutLabel}>What Edgeradar shows you</div>
-                <div className={`${skin.cutBig} ${skin.cutBigAlive}`}>+9.1%</div>
-                <div className={skin.cutRows}>
-                  <div className={skin.cutRow}><span className={skin.cutKey}>Funding</span><span className={skin.cutVal}>trailing settled</span></div>
-                  <div className={skin.cutRow}><span className={skin.cutKey}>Fees</span><span className={skin.cutVal}>round-trip, subtracted</span></div>
-                  <div className={skin.cutRow}><span className={skin.cutKey}>Capacity</span><span className={skin.cutVal}>real order-book depth</span></div>
-                  <div className={skin.cutRow}><span className={skin.cutKey}>Over 200%/yr</span><span className={skin.cutVal}>capped, flagged</span></div>
-                </div>
-                <p className={`${skin.cutFoot} ${skin.cutFootAlive}`}>Boring. Executable. Yours.</p>
-              </div>
-
-            </div>
-          </div>
-        </section>
-
-        {/* ── 3. CTA ────────────────────────────────────────────────────────── */}
-        <section className={skin.ctaSection} aria-labelledby="cta-heading">
-          <h2 id="cta-heading" className={skin.ctaTitle}>Put every edge on your radar.</h2>
-          <Link href="/auth/register" className={skin.btnFill}>Start free</Link>
-        </section>
-
-      </main>
-
-      {/* ── FOOTER ────────────────────────────────────────────────────────── */}
-      <footer className={skin.footer}>
-        <div className={skin.footRow}>
-          <Link href="/" className={skin.brand} aria-label="Edgeradar home">
-            <RadarMark size={16} />
-            <span className={skin.brandName} style={{ fontSize: 16 }}>Edgeradar</span>
-          </Link>
-          <p className={skin.footText}>The honest edge radar · prediction markets &amp; crypto · not financial advice</p>
-        </div>
-      </footer>
-
+function Il({ id, c }: any) {
+  return (
+    <div className="illu" style={{ background: P.ground, borderRadius: 14, border: `1px solid ${P.ink}0F`,
+      overflow: "hidden", minWidth: 0, aspectRatio: "200 / 248", margin: "0 auto" }}>
+      <svg viewBox="0 0 200 248" width="100%" height="100%" style={{ display: "block" }}>
+        {id === "maker" ? <BookScene c={c} />
+          : id === "carry" ? <CarryScene c={c} />
+          : id === "trader" ? <TraderScene c={c} />
+          : <Scene id={id} c={c} />}
+      </svg>
     </div>
+  );
+}
+
+/* ---------- lista ---------- */
+
+function List({ edges, row, view: viewMax, nar, hov, i, setI, setHold, onPick }: any) {
+  const shell = { background: P.surface, borderRadius: 22, overflow: "hidden", minWidth: 0,
+    boxShadow: "0 24px 60px -22px rgba(45,36,24,0.3)" };
+
+  if (!edges.length) return (
+    <div style={{ ...shell, padding: "48px 26px", textAlign: "center" }}>
+      <div className="d" style={{ fontSize: 19, fontWeight: 600, color: P.faint }}>Nothing on the board clears fees right now.</div>
+      <div style={{ fontSize: 13, color: P.faint, marginTop: 8 }}>Still scanning. We&apos;ll light up the moment one does.</div>
+    </div>
+  );
+
+  const view = Math.min(viewMax, edges.length);
+  const off = Math.min(Math.max(0, i - 2), Math.max(0, edges.length - view));
+  const cur = edges[Math.min(i, edges.length - 1)];
+
+  return (
+    <div onMouseEnter={() => hov && setHold(true)} onMouseLeave={() => hov && setHold(false)} style={shell}>
+      <div style={{ height: row * view, overflow: "hidden", transition: "height .4s cubic-bezier(.2,.8,.2,1)" }}>
+        <div style={{ transform: `translateY(${-off * row}px)`, transition: "transform .55s cubic-bezier(.2,.8,.2,1)" }}>
+          {edges.map((e: any, n: any) => {
+            const on = n === i;
+            return (
+              <div key={e.n} className="row" onMouseEnter={() => hov && setI(n)} onClick={() => onPick(n)}
+                style={{ height: row, display: "flex", alignItems: "center", gap: 12,
+                  cursor: "pointer", background: on ? e.c + "0D" : "transparent",
+                  borderLeft: `3px solid ${on ? e.c : "transparent"}`, borderBottom: `1px solid ${P.ink}0A`,
+                  transition: "background .35s, border-color .35s" }}>
+                <span style={{ width: 7, height: 7, borderRadius: 4, background: e.c, flexShrink: 0,
+                  opacity: on ? 1 : .4, transition: "opacity .35s" }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="d clip" style={{ fontSize: on ? (nar ? 16 : 15) : (nar ? 14.5 : 13.5), fontWeight: 600,
+                    color: on ? P.ink : P.muted, transition: "font-size .35s, color .35s" }}>{e.n}</div>
+                  <div style={{ marginTop: 3, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", rowGap: 2 }}>
+                    <span className="m" style={{ fontSize: 9, fontWeight: 500, letterSpacing: ".06em", flexShrink: 0,
+                      padding: "2px 6px", borderRadius: 4, transition: "color .35s, background .35s",
+                      color: on ? e.c : P.faint, background: on ? e.c + "16" : P.ink + "08" }}>{e.k}</span>
+                    <span style={{ fontSize: nar ? 12 : 11, fontWeight: 500, color: on ? P.muted : P.faint,
+                      transition: "color .35s" }}>{e.g}</span>
+                    {on && <span style={{ fontSize: nar ? 11.5 : 10.5, color: P.faint }}>· {e.u}</span>}
+                  </div>
+                </div>
+                <span className="m val" style={{ fontSize: on ? (nar ? 22 : 25) : 16, color: on ? e.c : P.faint,
+                  transition: "font-size .35s, color .35s" }}>{e.v}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <div className="row" style={{ paddingTop: 11, paddingBottom: 11, display: "flex", justifyContent: "space-between",
+        alignItems: "center", gap: 10, background: P.ground + "80" }}>
+        <span className="m" style={{ fontSize: 10, color: P.faint, whiteSpace: "nowrap" }}>{edges.length} live · 12s ago</span>
+        <div style={{ display: "flex", gap: 3, flexShrink: 0 }}>
+          {edges.map((_: any, n: any) => <span key={n} style={{ width: 4, height: 4, borderRadius: 2,
+            background: n === i ? cur.c : P.ink + "1A", transition: "background .3s" }} />)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Mark() {
+  return (
+    <svg width="38" height="38" viewBox="0 0 38 38" style={{ flexShrink: 0 }}>
+      <defs>
+        <linearGradient id="sw" x1="19" y1="19" x2="36" y2="19" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stopColor={P.mint} stopOpacity=".38" />
+          <stop offset="1" stopColor={P.mint} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <circle cx="19" cy="19" r="17" fill="none" stroke={P.mint} strokeWidth="1.6" opacity=".22" />
+      <circle cx="19" cy="19" r="11.5" fill="none" stroke={P.mint} strokeWidth="1.6" opacity=".38" />
+      <circle cx="19" cy="19" r="6" fill="none" stroke={P.mint} strokeWidth="1.6" opacity=".55" />
+      <g style={{ animation: "sweep 3.4s linear infinite", transformOrigin: "19px 19px" }}>
+        <path d="M19 19 L36 19 A17 17 0 0 0 27.5 4.3 Z" fill="url(#sw)" />
+        <line x1="19" y1="19" x2="36" y2="19" stroke={P.mint} strokeWidth="1.4" opacity=".75" />
+        <circle cx="26.5" cy="11.5" r="4.6" fill={P.mint} />
+      </g>
+    </svg>
   );
 }
