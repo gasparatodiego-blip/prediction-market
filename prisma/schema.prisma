@@ -87,6 +87,9 @@ model ExchangeKey {
   // (that was the objection to a permissions column when nothing read one).
   permissionsAtVerify String[] @default([])
   verifiedAt          DateTime?
+  // When the user acknowledged the withdrawal disclosure for a non-'refuse' venue
+  // (accept_and_disclose / read_only). NULL for 'refuse' venues, which have no disclosure.
+  acknowledgedAt      DateTime?
   createdAt     DateTime  @default(now())
   lastUsedAt    DateTime?                           // set when a signing path first reads it (not yet built)
   revokedAt     DateTime?                           // non-null = retired; row is retained for audit
