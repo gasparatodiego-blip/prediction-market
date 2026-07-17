@@ -25,9 +25,15 @@ export const dynamic = 'force-dynamic'
 const connectSchema = z.object({
   venue: z.string().trim().min(1).max(32),
   label: z.string().trim().min(1).max(64),
-  apiKey: z.string().trim().min(1).max(256),
+  // apiKey is OPTIONAL: dYdX authenticates with a private key + non-secret
+  // identifiers and has no api key. Per-venue requiredFields() enforces presence.
+  apiKey: z.string().trim().min(1).max(256).optional(),
   secret: z.string().trim().min(1).max(256),
   passphrase: z.string().trim().min(1).max(256).optional(),
+  // Non-secret identifiers (dYdX). Plaintext by design; validated per venue below.
+  accountAddress: z.string().trim().min(1).max(128).optional(),
+  accountId: z.string().trim().min(1).max(64).optional(),
+  subaccountNumber: z.number().int().min(0).max(2_000_000_000).optional(),
 })
 
 function last4(s: string): string {
@@ -41,7 +47,8 @@ function last4(s: string): string {
  * return null rather than guessing — an undecryptable row is a real condition, not a
  * blank.
  */
-function deriveLast4(r: { apiKeyEnc: string; dekEnc: string; kekVersion: number }): string | null {
+function deriveLast4(r: { apiKeyEnc: string | null; dekEnc: string; kekVersion: number }): string | null {
+  if (!r.apiKeyEnc) return null // venues with no api key (dYdX) have no last4
   try {
     const dek = unwrapDek(r.dekEnc, r.kekVersion)
     try {
@@ -77,6 +84,10 @@ export async function GET() {
       apiKeyEnc: true,
       dekEnc: true,
       kekVersion: true,
+      // Non-secret identifiers — safe to return (a public address, an id).
+      accountAddress: true,
+      accountId: true,
+      subaccountNumber: true,
     },
   })
 
@@ -94,11 +105,16 @@ export async function GET() {
       // characters of an api key is still a fragment of a secret, and this codebase's
       // rule is that nothing is stored in plaintext — not even "just the public part".
       last4: deriveLast4(r),
+      // Non-secret identifiers ARE returned — they are public, not credentials.
+      accountAddress: r.accountAddress,
+      accountId: r.accountId,
+      subaccountNumber: r.subaccountNumber,
     })),
     venues: VENUES.map((v) => ({
       id: v.adapter.id,
       label: v.adapter.label,
       requiredFields: v.adapter.requiredFields(),
+      requiredPlainFields: v.adapter.requiredPlainFields ? v.adapter.requiredPlainFields() : [],
       guardVerifiable: v.guardVerifiable,
       liveVerified: v.liveVerified,
       mainnetOnly: v.mainnetOnly,
@@ -150,11 +166,24 @@ export async function POST(req: NextRequest) {
   }
 
   // requiredFields drives validation, so OKX's passphrase is enforced without
-  // Binance being forced to invent one.
+  // Binance being forced to invent one, and dYdX is not forced to invent an api key.
   const required = reg.adapter.requiredFields()
-  if (required.indexOf('passphrase') !== -1 && !d.passphrase) {
+  const missing = required.filter((f) => !d[f])
+  if (missing.length > 0) {
     return NextResponse.json(
-      { error: `${reg.adapter.label} requires a passphrase.` },
+      { error: `${reg.adapter.label} requires: ${missing.join(', ')}.` },
+      { status: 400 },
+    )
+  }
+
+  // Non-secret identifiers (dYdX) enforced the same way, from a separate list.
+  const requiredPlain = reg.adapter.requiredPlainFields ? reg.adapter.requiredPlainFields() : []
+  const missingPlain = requiredPlain.filter(
+    (f) => f !== 'subaccountNumber' && (d[f] === undefined || d[f] === null || d[f] === ''),
+  )
+  if (missingPlain.length > 0) {
+    return NextResponse.json(
+      { error: `${reg.adapter.label} requires: ${missingPlain.join(', ')}.` },
       { status: 400 },
     )
   }
@@ -163,6 +192,9 @@ export async function POST(req: NextRequest) {
     apiKey: d.apiKey,
     secret: d.secret,
     passphrase: d.passphrase ?? null,
+    accountAddress: d.accountAddress ?? null,
+    accountId: d.accountId ?? null,
+    subaccountNumber: d.subaccountNumber ?? null,
   }
 
   // Verify against the REAL venue before anything touches the database.
@@ -186,9 +218,14 @@ export async function POST(req: NextRequest) {
         userId,
         venue: reg.adapter.id,
         label: d.label,
-        apiKeyEnc: encryptField(d.apiKey, dek),
+        // Null for venues with no api key (dYdX). Never encrypt an empty string.
+        apiKeyEnc: d.apiKey ? encryptField(d.apiKey, dek) : null,
         apiSecretEnc: encryptField(d.secret, dek),
         passphraseEnc: d.passphrase ? encryptField(d.passphrase, dek) : null,
+        // Non-secret identifiers, stored PLAINTEXT by design.
+        accountAddress: d.accountAddress ?? null,
+        accountId: d.accountId ?? null,
+        subaccountNumber: d.subaccountNumber ?? null,
         dekEnc: wrapDek(dek, 1),
         kekVersion: 1,
         permissionsAtVerify: verdict.permissions,
@@ -204,7 +241,7 @@ export async function POST(req: NextRequest) {
         label: created.label,
         permissionsAtVerify: created.permissionsAtVerify,
         verifiedAt: created.verifiedAt,
-        last4: last4(d.apiKey),
+        last4: d.apiKey ? last4(d.apiKey) : null,
       },
       { status: 201 },
     )

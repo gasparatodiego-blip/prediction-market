@@ -8,11 +8,13 @@ const inputClass = 'w-full px-3 py-2 rounded-button bg-surface border border-lin
 const cardClass  = 'rounded-card border border-line bg-surface p-5 space-y-4 shadow-card';
 
 type CredField = 'apiKey' | 'secret' | 'passphrase';
+type PlainField = 'accountAddress' | 'accountId' | 'subaccountNumber';
 
 interface Venue {
   id: string;
   label: string;
   requiredFields: CredField[];
+  requiredPlainFields: PlainField[];
   guardVerifiable: boolean;
   liveVerified: boolean;
   mainnetOnly: boolean;
@@ -34,6 +36,14 @@ const FIELD_LABEL: Record<CredField, string> = {
   apiKey: 'API key',
   secret: 'API secret',
   passphrase: 'Passphrase',
+};
+
+// Non-secret identifiers are rendered as PLAIN text inputs (not password) because
+// they are public — a bech32 address, an id — and not credentials.
+const PLAIN_FIELD_LABEL: Record<PlainField, string> = {
+  accountAddress: 'Account address (dydx1…)',
+  accountId: 'Authenticator id',
+  subaccountNumber: 'Subaccount number (default 0)',
 };
 
 /**
@@ -88,8 +98,12 @@ export default function KeysClient() {
   async function connect(v: Venue) {
     setBusy(true); setError(''); setOkMsg('');
     try {
-      const body: Record<string, string> = { venue: v.id, label: form.label || `${v.label} key` };
+      const body: Record<string, string | number> = { venue: v.id, label: form.label || `${v.label} key` };
       for (const f of v.requiredFields) body[f] = form[f] || '';
+      for (const f of v.requiredPlainFields || []) {
+        if (!form[f]) continue;
+        body[f] = f === 'subaccountNumber' ? Number(form[f]) : form[f];
+      }
       const r = await fetch('/api/keys', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -234,6 +248,19 @@ export default function KeysClient() {
                     type="password"
                     autoComplete="off"
                     placeholder={FIELD_LABEL[f]}
+                    value={form[f] || ''}
+                    onChange={(e) => setForm({ ...form, [f]: e.target.value })}
+                  />
+                ))}
+                {/* Non-secret identifiers (dYdX): PLAIN text inputs, not password —
+                    a public address / id is not a credential. */}
+                {(v.requiredPlainFields || []).map((f) => (
+                  <input
+                    key={f}
+                    className={inputClass}
+                    type="text"
+                    autoComplete="off"
+                    placeholder={PLAIN_FIELD_LABEL[f]}
                     value={form[f] || ''}
                     onChange={(e) => setForm({ ...form, [f]: e.target.value })}
                   />
