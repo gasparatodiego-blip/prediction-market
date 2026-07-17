@@ -10,15 +10,25 @@ const cardClass  = 'rounded-card border border-line bg-surface p-5 space-y-4 sha
 type CredField = 'apiKey' | 'secret' | 'passphrase';
 type PlainField = 'accountAddress' | 'accountId' | 'subaccountNumber';
 
+interface VenueDisclosure {
+  state: 'withdrawal_unknown' | 'withdrawal_capable' | 'read_only';
+  body: string;
+  ack: string;
+  addressWhitelistUrl?: string;
+  ipWhitelistUrl?: string;
+  whitelistReadable: boolean;
+}
+
 interface Venue {
   id: string;
   label: string;
   requiredFields: CredField[];
   requiredPlainFields: PlainField[];
-  guardVerifiable: boolean;
+  withdrawalPolicy: 'refuse' | 'accept_and_disclose' | 'read_only';
   liveVerified: boolean;
   mainnetOnly: boolean;
   note: string;
+  disclosure: VenueDisclosure | null;
 }
 
 interface KeyRow {
@@ -73,25 +83,43 @@ const VENUE_HINT: Record<string, string> = {
 };
 
 /**
- * Three states, and they are NOT interchangeable:
- *   UNSUPPORTED  — the venue cannot ever be verified (gate.io). Permanent.
+ * Connection states (UNSUPPORTED is gone — no venue is permanently unsupported now; the
+ * withdrawal POLICY, not a guard flag, decides how a venue is handled):
  *   NOT VERIFIED — the adapter has never been run against the real venue. Pending.
  *   NO KEY / CONNECTED — normal states once a venue is live-verified.
- * Collapsing UNSUPPORTED into NOT VERIFIED would imply gate.io is merely awaiting a
- * key it will never get.
  */
-function venueState(v: Venue, keys: KeyRow[]): 'UNSUPPORTED' | 'NOT VERIFIED' | 'NO KEY' | 'CONNECTED' {
-  if (!v.guardVerifiable) return 'UNSUPPORTED';
+function venueState(v: Venue, keys: KeyRow[]): 'NOT VERIFIED' | 'NO KEY' | 'CONNECTED' {
   if (!v.liveVerified) return 'NOT VERIFIED';
   return keys.some((k) => k.venue === v.id && !k.revokedAt) ? 'CONNECTED' : 'NO KEY';
 }
 
 const STATE_CLASS: Record<string, string> = {
-  UNSUPPORTED:   'bg-line/40 text-muted',
   'NOT VERIFIED': 'bg-line/40 text-muted',
   'NO KEY':      'bg-line/40 text-muted',
   CONNECTED:     'bg-mint-tint text-mint-deep',
 };
+
+// The disclosure headline shown per non-refuse venue — its own chip, distinct from the
+// connection state. Never implies WE block anything.
+const DISCLOSURE_LABEL: Record<VenueDisclosure['state'], string> = {
+  withdrawal_unknown: 'WITHDRAWAL PERMISSION UNKNOWN',
+  withdrawal_capable: 'CAN WITHDRAW — DISCLOSED',
+  read_only: 'READ-ONLY',
+};
+const DISCLOSURE_CLASS: Record<VenueDisclosure['state'], string> = {
+  withdrawal_unknown: 'bg-amber-100 text-amber-800',
+  withdrawal_capable: 'bg-amber-100 text-amber-800',
+  read_only: 'bg-mint-tint text-mint-deep',
+};
+
+// Gate.io alone lets us MEASURE the IP whitelist. Render the marker permissionsAtVerify
+// carries. Everything else says "cannot verify" — never "enabled" for an unread state.
+function ipWhitelistLine(perms: string[]): string | null {
+  if (perms.includes('ip-whitelist:includes-server')) return 'IP whitelist: set, and includes our server ✓ (read from the venue)';
+  if (perms.includes('ip-whitelist:excludes-server')) return 'IP whitelist: set, but does NOT include our server ✗ (read from the venue)';
+  if (perms.includes('ip-whitelist:none')) return 'IP whitelist: not set (read from the venue) — anyone with the key can use it from any IP';
+  return null;
+}
 
 export default function KeysClient() {
   const { status } = useSession();
@@ -107,6 +135,7 @@ export default function KeysClient() {
 
   const [openVenue, setOpenVenue] = useState<string | null>(null);
   const [form, setForm]   = useState<Record<string, string>>({});
+  const [ack, setAck]     = useState(false); // disclosure acknowledgement, reset per venue
   const [busy, setBusy]   = useState(false);
   const [error, setError] = useState('');
   const [okMsg, setOkMsg] = useState('');
@@ -124,12 +153,14 @@ export default function KeysClient() {
   async function connect(v: Venue) {
     setBusy(true); setError(''); setOkMsg('');
     try {
-      const body: Record<string, string | number> = { venue: v.id, label: form.label || `${v.label} key` };
+      const body: Record<string, string | number | boolean> = { venue: v.id, label: form.label || `${v.label} key` };
       for (const f of v.requiredFields) body[f] = form[f] || '';
       for (const f of v.requiredPlainFields || []) {
         if (!form[f]) continue;
         body[f] = f === 'subaccountNumber' ? Number(form[f]) : form[f];
       }
+      // The disclosure acknowledgement, for non-refuse venues. The server re-checks it.
+      if (v.disclosure) body.acknowledged = ack;
       const r = await fetch('/api/keys', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -184,11 +215,14 @@ export default function KeysClient() {
           Before you connect
         </p>
         <p className="font-body text-sm text-ink">
-          Withdrawal-enabled keys are refused. Create a trade-only key.
+          Edgeradar never places orders. What we store depends on the venue.
         </p>
         <p className="font-body text-xs text-muted">
-          We check with the exchange whether a key can withdraw, and we refuse to store it if it can —
-          or if the exchange will not tell us. Nothing is stored until that check passes.
+          For most venues we verify the key cannot withdraw and refuse it otherwise. For a few, we
+          cannot verify that — the key may be able to move funds, or the credential is read-only.
+          Those are stored only after you read the disclosure and acknowledge it. Edgeradar cannot
+          prevent a withdrawal — the venue enforces key permissions, and the real protection (your
+          own withdrawal-address and IP whitelists at the venue) is yours to set.
         </p>
       </div>
 
@@ -215,9 +249,16 @@ export default function KeysClient() {
                 <p className="font-display font-bold text-lg text-ink">{v.label}</p>
                 <p className="font-body text-xs text-muted mt-0.5">{v.note}</p>
               </div>
-              <span className={`shrink-0 px-2 py-1 rounded-button font-body text-xs font-semibold ${STATE_CLASS[state]}`}>
-                {state}
-              </span>
+              <div className="shrink-0 flex flex-col items-end gap-1">
+                <span className={`px-2 py-1 rounded-button font-body text-xs font-semibold ${STATE_CLASS[state]}`}>
+                  {state}
+                </span>
+                {v.disclosure && (
+                  <span className={`px-2 py-0.5 rounded-button font-body text-[10px] font-bold tracking-wide ${DISCLOSURE_CLASS[v.disclosure.state]}`}>
+                    {DISCLOSURE_LABEL[v.disclosure.state]}
+                  </span>
+                )}
+              </div>
             </div>
 
             {mine.length > 0 && (
@@ -233,6 +274,10 @@ export default function KeysClient() {
                           ? `Revoked ${new Date(k.revokedAt).toLocaleDateString()}`
                           : `Permissions at last check${k.verifiedAt ? ` (${new Date(k.verifiedAt).toLocaleDateString()})` : ''}: ${k.permissionsAtVerify.join(', ') || 'none reported'}`}
                       </p>
+                      {/* Gate.io: the MEASURED IP-whitelist state, read from the venue. */}
+                      {!k.revokedAt && ipWhitelistLine(k.permissionsAtVerify) && (
+                        <p className="font-body text-[11px] text-muted mt-0.5">{ipWhitelistLine(k.permissionsAtVerify)}</p>
+                      )}
                     </div>
                     {!k.revokedAt && (
                       <button
@@ -250,7 +295,7 @@ export default function KeysClient() {
 
             {canConnect && openVenue !== v.id && (
               <button
-                onClick={() => { setOpenVenue(v.id); setForm({}); setError(''); setOkMsg(''); }}
+                onClick={() => { setOpenVenue(v.id); setForm({}); setAck(false); setError(''); setOkMsg(''); }}
                 className="px-3 py-2 rounded-button bg-mint text-white font-body text-sm font-semibold"
               >
                 Connect a key
@@ -259,6 +304,32 @@ export default function KeysClient() {
 
             {canConnect && openVenue === v.id && (
               <div className="space-y-3 border-t border-line pt-4">
+                {/* DISCLOSURE — shown before the fields for non-refuse venues. Never implies
+                    WE block a withdrawal; states plainly what the credential can do. */}
+                {v.disclosure && (
+                  <div className="rounded-card border border-amber-200 bg-amber-50 p-3 space-y-2">
+                    <p className={`inline-block px-2 py-0.5 rounded-button font-body text-[10px] font-bold tracking-wide ${DISCLOSURE_CLASS[v.disclosure.state]}`}>
+                      {DISCLOSURE_LABEL[v.disclosure.state]}
+                    </p>
+                    <p className="font-body text-xs text-ink leading-relaxed">{v.disclosure.body}</p>
+                    {(v.disclosure.addressWhitelistUrl || v.disclosure.ipWhitelistUrl) && (
+                      <p className="font-body text-[11px] text-muted leading-relaxed">
+                        The real protection is set at {v.label}:{' '}
+                        {v.disclosure.addressWhitelistUrl && (
+                          <a href={v.disclosure.addressWhitelistUrl} target="_blank" rel="noopener noreferrer" className="underline text-mint-deep">whitelist your withdrawal addresses</a>
+                        )}
+                        {v.disclosure.addressWhitelistUrl && v.disclosure.ipWhitelistUrl && ' · '}
+                        {v.disclosure.ipWhitelistUrl && (
+                          <a href={v.disclosure.ipWhitelistUrl} target="_blank" rel="noopener noreferrer" className="underline text-mint-deep">restrict the key to our server IP 167.233.63.218</a>
+                        )}
+                        {'. '}
+                        {v.disclosure.whitelistReadable
+                          ? 'Where the venue lets us read the whitelist, the card shows its state after you connect.'
+                          : 'We cannot read these settings back — the card cannot confirm they are enabled.'}
+                      </p>
+                    )}
+                  </div>
+                )}
                 <input
                   className={inputClass}
                   placeholder="Label (e.g. main account)"
@@ -296,16 +367,29 @@ export default function KeysClient() {
                     onChange={(e) => setForm({ ...form, [f]: e.target.value })}
                   />
                 ))}
+                {/* Explicit, per-venue acknowledgement — specific text, not a generic dialog.
+                    Required before a non-refuse credential can be stored. */}
+                {v.disclosure && (
+                  <label className="flex items-start gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={ack}
+                      onChange={(e) => setAck(e.target.checked)}
+                      className="mt-0.5 shrink-0"
+                    />
+                    <span className="font-body text-xs text-ink leading-relaxed">{v.disclosure.ack}</span>
+                  </label>
+                )}
                 <div className="flex gap-2">
                   <button
                     onClick={() => connect(v)}
-                    disabled={busy}
+                    disabled={busy || (!!v.disclosure && !ack)}
                     className="px-3 py-2 rounded-button bg-mint text-white font-body text-sm font-semibold disabled:opacity-50"
                   >
                     {busy ? 'Verifying…' : 'Verify and connect'}
                   </button>
                   <button
-                    onClick={() => { setOpenVenue(null); setForm({}); }}
+                    onClick={() => { setOpenVenue(null); setForm({}); setAck(false); }}
                     className="px-3 py-2 rounded-button border border-line font-body text-sm text-ink"
                   >
                     Cancel
