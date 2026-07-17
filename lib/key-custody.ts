@@ -6,76 +6,191 @@ import {
 } from 'crypto'
 
 /**
- * Encryption at rest for exchange API credentials.
+ * Envelope encryption at rest for exchange API credentials.
  *
- * AES-256-GCM. Fresh random 12-byte IV per record, so encrypting the same
- * plaintext twice never yields the same ciphertext. The GCM auth tag makes
- * decrypt fail closed: a wrong master key, a flipped byte, or a truncated
- * record throws rather than returning a partial or a guess.
+ *   plaintext --[ DEK, per row ]--> field ciphertext   (apiKeyEnc, apiSecretEnc, ...)
+ *   DEK       --[ KEK, global  ]--> dekEnc             (+ kekVersion says which KEK)
  *
- * The master key is read ONCE at module import from KEY_CUSTODY_MASTER and must
- * be exactly 32 bytes, base64. If it is absent or the wrong length this module
- * throws at import — loudly, at boot, before anything can call it.
+ * Each ROW gets its own random 32-byte DEK. The DEK encrypts the fields; the
+ * master (KEK) encrypts only the DEK. Rotating the master therefore re-wraps a
+ * single small dekEnc per row and NEVER touches the field ciphertext. That is
+ * the entire point: the previous master-direct design meant rotation had to
+ * decrypt and re-encrypt every credential in one pass, which is a rotation
+ * nobody would ever run.
  *
- * There is deliberately NO fallback: no default key, no key derived from another
- * secret, no plaintext passthrough. A silent fallback would mean credentials
- * sitting readable in the database while every log line still says "encrypted",
- * which is the exact failure this module exists to prevent. Failing to boot is
- * the correct outcome.
+ * There is deliberately no master-direct field encryption in this module any
+ * more. A helper that encrypts a field straight under the KEK would produce rows
+ * with no DEK — rows rotation would skip and that would silently break the first
+ * time an old KEK was retired.
+ *
+ * KEK registry, so a rotation can read v1 while writing v2 in one process:
+ *
+ *   KEY_CUSTODY_MASTER      -> version 1
+ *   KEY_CUSTODY_MASTER_V<n> -> version n   (n >= 2)
+ *
+ * Version 1 is required and validated at import. If it is absent or not 32
+ * bytes, this module throws at import — loudly, at boot, before anything can
+ * call it. No default, no derived value, no plaintext passthrough: a silent
+ * fallback would mean credentials sitting readable in the database while every
+ * log line still said "encrypted".
+ *
+ * Fails closed everywhere. A wrong key, a tampered auth tag, a truncated record,
+ * or a kekVersion naming a KEK we do not hold all throw. Nothing returns a
+ * partial or a guess.
  */
 
 const ALGORITHM = 'aes-256-gcm'
 const KEY_BYTES = 32
 const IV_BYTES = 12
 const AUTH_TAG_BYTES = 16
+const DEK_BYTES = 32
 
-function loadMasterKey(): Buffer {
-  const raw = process.env.KEY_CUSTODY_MASTER
+const PRIMARY_ENV = 'KEY_CUSTODY_MASTER'
+const VERSIONED_ENV = /^KEY_CUSTODY_MASTER_V(\d+)$/
 
-  if (!raw || raw.trim() === '') {
+function parseKekMaterial(raw: string, envName: string): Buffer {
+  // Buffer.from(x, 'base64') silently drops invalid characters rather than
+  // throwing, so the LENGTH check below is what actually holds. Do not remove it
+  // in favour of a try/catch — there is nothing to catch.
+  const key = Buffer.from(raw.trim(), 'base64')
+  if (key.length !== KEY_BYTES) {
     throw new Error(
-      'KEY_CUSTODY_MASTER is not set. Exchange key custody cannot start without it. ' +
+      `${envName} must decode to exactly ${KEY_BYTES} bytes, got ${key.length}. ` +
+        'Expected 32 random bytes, base64-encoded.',
+    )
+  }
+  return key
+}
+
+/** version -> KEK material. Built once, at import. */
+function loadKekRegistry(): Map<number, Buffer> {
+  const registry = new Map<number, Buffer>()
+
+  const primary = process.env[PRIMARY_ENV]
+  if (!primary || primary.trim() === '') {
+    throw new Error(
+      `${PRIMARY_ENV} is not set. Exchange key custody cannot start without it. ` +
         'Generate one with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'base64\'))" ' +
         'and set it in .env. There is no fallback by design.',
     )
   }
+  registry.set(1, parseKekMaterial(primary, PRIMARY_ENV))
 
-  let key: Buffer
-  try {
-    key = Buffer.from(raw.trim(), 'base64')
-  } catch {
-    throw new Error('KEY_CUSTODY_MASTER is not valid base64.')
+  for (const [envName, raw] of Object.entries(process.env)) {
+    const match = envName.match(VERSIONED_ENV)
+    if (!match || !raw || raw.trim() === '') continue
+
+    const version = Number(match[1])
+    if (version === 1) {
+      throw new Error(
+        `${envName} is ambiguous: version 1 is always ${PRIMARY_ENV}. ` +
+          'Remove it, or use version 2+ for a new master.',
+      )
+    }
+    registry.set(version, parseKekMaterial(raw, envName))
   }
 
-  // Buffer.from with base64 silently drops invalid characters rather than
-  // throwing, so length is the check that actually holds.
-  if (key.length !== KEY_BYTES) {
+  return registry
+}
+
+const KEK_REGISTRY = loadKekRegistry()
+
+function kekFor(version: number): Buffer {
+  const key = KEK_REGISTRY.get(version)
+  if (!key) {
+    const held = Array.from(KEK_REGISTRY.keys()).sort((a, b) => a - b).join(', ')
     throw new Error(
-      `KEY_CUSTODY_MASTER must decode to exactly ${KEY_BYTES} bytes, got ${key.length}. ` +
-        'Expected 32 random bytes, base64-encoded.',
+      `No KEK held for kekVersion ${version}. Versions available: [${held}]. ` +
+        `Set ${version === 1 ? PRIMARY_ENV : `KEY_CUSTODY_MASTER_V${version}`} to read these rows. ` +
+        'Refusing to guess.',
     )
   }
-
   return key
 }
 
-const MASTER_KEY = loadMasterKey()
+/** KEK versions this process can currently unwrap with. */
+export function availableKekVersions(): number[] {
+  return Array.from(KEK_REGISTRY.keys()).sort((a, b) => a - b)
+}
+
+// ---------------------------------------------------------------------------
+// DEK lifecycle
+// ---------------------------------------------------------------------------
+
+/** A fresh random data key. One per row, never reused across rows. */
+export function newDek(): Buffer {
+  return randomBytes(DEK_BYTES)
+}
 
 /**
- * Encrypt a credential for storage. Returns `iv:authTag:ciphertext`, each part
- * base64. Safe to write straight into a single String column.
+ * Wrap a DEK under a KEK for storage in ExchangeKey.dekEnc.
+ *
+ * kekVersion is bound in as GCM additional authenticated data, so the stored
+ * version tag is tamper-evident: editing the kekVersion column without actually
+ * re-wrapping makes unwrap fail closed rather than silently mis-report which
+ * master protects the row.
  */
-export function encrypt(plaintext: string): string {
+export function wrapDek(dek: Buffer, version = 1): string {
+  if (!Buffer.isBuffer(dek) || dek.length !== DEK_BYTES) {
+    throw new TypeError(`wrapDek expects a ${DEK_BYTES}-byte Buffer`)
+  }
+
+  const kek = kekFor(version)
+  const iv = randomBytes(IV_BYTES)
+  const cipher = createCipheriv(ALGORITHM, kek, iv)
+  cipher.setAAD(Buffer.from(String(version), 'utf8'))
+
+  const wrapped = Buffer.concat([cipher.update(dek), cipher.final()])
+  const authTag = cipher.getAuthTag()
+
+  return [
+    iv.toString('base64'),
+    authTag.toString('base64'),
+    wrapped.toString('base64'),
+  ].join(':')
+}
+
+/** Recover a DEK from dekEnc. Throws if the KEK is wrong, absent, or the record is bad. */
+export function unwrapDek(dekEnc: string, version: number): Buffer {
+  const { iv, authTag, payload } = splitRecord(dekEnc, 'unwrapDek')
+  const kek = kekFor(version)
+
+  const decipher = createDecipheriv(ALGORITHM, kek, iv)
+  decipher.setAAD(Buffer.from(String(version), 'utf8'))
+  decipher.setAuthTag(authTag)
+
+  let dek: Buffer
+  try {
+    dek = Buffer.concat([decipher.update(payload), decipher.final()])
+  } catch {
+    throw new Error(
+      `unwrapDek: authentication failed for kekVersion ${version} — wrong master key, ` +
+        'tampered record, or corrupted dekEnc',
+    )
+  }
+
+  if (dek.length !== DEK_BYTES) {
+    throw new Error(`unwrapDek: recovered key is ${dek.length} bytes, expected ${DEK_BYTES}`)
+  }
+  return dek
+}
+
+// ---------------------------------------------------------------------------
+// Field encryption, under a row's DEK
+// ---------------------------------------------------------------------------
+
+/** Encrypt one credential field under this row's DEK. Fresh IV per field, per call. */
+export function encryptField(plaintext: string, dek: Buffer): string {
   if (typeof plaintext !== 'string') {
-    throw new TypeError('encrypt expects a string')
+    throw new TypeError('encryptField expects a string')
+  }
+  if (!Buffer.isBuffer(dek) || dek.length !== DEK_BYTES) {
+    throw new TypeError(`encryptField expects a ${DEK_BYTES}-byte DEK`)
   }
 
   const iv = randomBytes(IV_BYTES)
-  const cipher = createCipheriv(ALGORITHM, MASTER_KEY, iv)
-  const ciphertext = Buffer.concat([
-    cipher.update(plaintext, 'utf8'),
-    cipher.final(),
-  ])
+  const cipher = createCipheriv(ALGORITHM, dek, iv)
+  const ciphertext = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()])
   const authTag = cipher.getAuthTag()
 
   return [
@@ -85,57 +200,123 @@ export function encrypt(plaintext: string): string {
   ].join(':')
 }
 
+/** Decrypt one credential field. Throws on a wrong DEK, a tampered tag, or a truncated record. */
+export function decryptField(ciphertext: string, dek: Buffer): string {
+  if (!Buffer.isBuffer(dek) || dek.length !== DEK_BYTES) {
+    throw new TypeError(`decryptField expects a ${DEK_BYTES}-byte DEK`)
+  }
+
+  const { iv, authTag, payload } = splitRecord(ciphertext, 'decryptField')
+  const decipher = createDecipheriv(ALGORITHM, dek, iv)
+  decipher.setAuthTag(authTag)
+
+  try {
+    return Buffer.concat([decipher.update(payload), decipher.final()]).toString('utf8')
+  } catch {
+    // Deliberately identical for every failure mode, so a caller cannot
+    // distinguish "wrong key" from "tampered" and use this as an oracle.
+    throw new Error(
+      'decryptField: authentication failed — wrong data key, tampered record, or corrupted ciphertext',
+    )
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Rotation
+// ---------------------------------------------------------------------------
+
 /**
- * Decrypt a stored credential. Throws on anything it cannot fully authenticate:
- * malformed record, wrong master key, tampered ciphertext or auth tag. Never
- * returns a partial result.
+ * The ONLY part of a row rotation reads. Typed this narrowly on purpose: a full
+ * ExchangeKey row satisfies it structurally, but rotateRow() cannot touch
+ * apiSecretEnc because it is never handed it. That is a structural guarantee,
+ * not a promise in a comment.
  */
-export function decrypt(record: string): string {
+export interface RotatableRow {
+  dekEnc: string
+  kekVersion: number
+}
+
+/**
+ * Re-wrap a row's DEK from one KEK to another.
+ *
+ * Takes VERSIONS, not key material: the KEK bytes are resolved inside this
+ * module and never enter a caller's variable, so no script can accidentally log
+ * them.
+ *
+ * Does NOT decrypt any credential field. It cannot — the fields are not part of
+ * RotatableRow. The field ciphertext stays byte-identical across a rotation,
+ * which is the whole reason the envelope exists.
+ */
+export function rotateRow(
+  row: RotatableRow,
+  oldKekVersion: number,
+  newKekVersion: number,
+): { dekEnc: string; kekVersion: number } {
+  if (oldKekVersion === newKekVersion) {
+    throw new Error(
+      `rotateRow: old and new kekVersion are both ${newKekVersion} — that is a no-op, not a rotation.`,
+    )
+  }
+
+  // Two versions pointing at identical material would "rotate" green while
+  // changing nothing. Catch it here rather than let it look like success.
+  if (kekFor(oldKekVersion).equals(kekFor(newKekVersion))) {
+    throw new Error(
+      `rotateRow: kekVersion ${oldKekVersion} and ${newKekVersion} hold IDENTICAL key material. ` +
+        'Rotating between them would report success while changing nothing.',
+    )
+  }
+
+  if (row.kekVersion !== oldKekVersion) {
+    throw new Error(
+      `rotateRow: row is at kekVersion ${row.kekVersion}, expected ${oldKekVersion}. Refusing to guess.`,
+    )
+  }
+
+  const dek = unwrapDek(row.dekEnc, oldKekVersion)
+  try {
+    return { dekEnc: wrapDek(dek, newKekVersion), kekVersion: newKekVersion }
+  } finally {
+    // Best-effort: don't leave the plaintext DEK lying in a heap buffer.
+    dek.fill(0)
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Shared
+// ---------------------------------------------------------------------------
+
+function splitRecord(
+  record: string,
+  fn: string,
+): { iv: Buffer; authTag: Buffer; payload: Buffer } {
   if (typeof record !== 'string' || record === '') {
-    throw new Error('decrypt: record must be a non-empty string')
+    throw new Error(`${fn}: record must be a non-empty string`)
   }
 
   const parts = record.split(':')
   if (parts.length !== 3) {
     throw new Error(
-      `decrypt: malformed record, expected 3 colon-separated parts, got ${parts.length}`,
+      `${fn}: malformed record, expected 3 colon-separated parts, got ${parts.length}`,
     )
   }
 
-  const [ivB64, authTagB64, ciphertextB64] = parts
-  const iv = Buffer.from(ivB64, 'base64')
-  const authTag = Buffer.from(authTagB64, 'base64')
-  const ciphertext = Buffer.from(ciphertextB64, 'base64')
+  const iv = Buffer.from(parts[0], 'base64')
+  const authTag = Buffer.from(parts[1], 'base64')
+  const payload = Buffer.from(parts[2], 'base64')
 
   if (iv.length !== IV_BYTES) {
-    throw new Error(`decrypt: bad IV length ${iv.length}, expected ${IV_BYTES}`)
+    throw new Error(`${fn}: bad IV length ${iv.length}, expected ${IV_BYTES}`)
   }
   if (authTag.length !== AUTH_TAG_BYTES) {
-    throw new Error(
-      `decrypt: bad auth tag length ${authTag.length}, expected ${AUTH_TAG_BYTES}`,
-    )
+    throw new Error(`${fn}: bad auth tag length ${authTag.length}, expected ${AUTH_TAG_BYTES}`)
   }
-
-  const decipher = createDecipheriv(ALGORITHM, MASTER_KEY, iv)
-  decipher.setAuthTag(authTag)
-
-  try {
-    return Buffer.concat([
-      decipher.update(ciphertext),
-      decipher.final(),
-    ]).toString('utf8')
-  } catch {
-    // decipher.final() throws when the auth tag does not verify. Rewritten to a
-    // stable message so callers cannot distinguish "wrong key" from "tampered".
-    throw new Error(
-      'decrypt: authentication failed — wrong master key, tampered record, or corrupted ciphertext',
-    )
-  }
+  return { iv, authTag, payload }
 }
 
 /**
- * Constant-time equality for two decrypted secrets. Exposed so future callers
- * comparing credentials do not reach for `===` and leak timing.
+ * Constant-time equality for two decrypted secrets. Exposed so callers comparing
+ * credentials do not reach for `===` and leak timing.
  */
 export function secretsEqual(a: string, b: string): boolean {
   const bufA = Buffer.from(a, 'utf8')
