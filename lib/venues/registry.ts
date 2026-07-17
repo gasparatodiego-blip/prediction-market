@@ -2,9 +2,42 @@ import { VenueAdapter } from './types'
 import { binance, MAINNET_ONLY as BINANCE_MAINNET_ONLY } from './binance'
 import { bybit, MAINNET_ONLY as BYBIT_MAINNET_ONLY } from './bybit'
 import { okx, MAINNET_ONLY as OKX_MAINNET_ONLY } from './okx'
-import { gateio, MAINNET_ONLY as GATEIO_MAINNET_ONLY } from './gateio'
 import { bitget, MAINNET_ONLY as BITGET_MAINNET_ONLY } from './bitget'
 import { dydx, MAINNET_ONLY as DYDX_MAINNET_ONLY } from './dydx'
+
+/**
+ * GATE.IO — PERMANENTLY UNSUPPORTED, and its adapter file is deliberately GONE.
+ *
+ * lib/venues/gateio.ts was DELETED on 2026-07-17. It was dead code on the credential
+ * path: a verifyKey() that could only ever return canWithdraw:'unknown' (→ refuse),
+ * plus getBalance/getPositions that no stored key could ever reach — because NO Gate.io
+ * API endpoint reports whether the calling key can withdraw. A guard we cannot verify is
+ * not a guard, it is a claim; carrying signing code for it on the credential path was
+ * the worst place to keep it.
+ *
+ * The registration below is KEPT ON PURPOSE (not silently dropped): the absence of a
+ * venue is not self-documenting, its REFUSAL is. POST /api/keys short-circuits on
+ * guardVerifiable:false and returns `note` with code VENUE_UNSUPPORTED — the adapter's
+ * methods are NEVER reached, which is why the stub below throws instead of implementing
+ * anything: a throw makes any future violation of that invariant loud. Do NOT re-add an
+ * adapter file. This will not change until Gate.io ships a key-permissions endpoint.
+ * Same permanent-refusal reason as Kraken (see the comment at the end of VENUES).
+ */
+const gateioUnsupported: VenueAdapter = {
+  id: 'gateio',
+  label: 'Gate.io',
+  // No key slot is offered; a permanently-unsupported venue collects no fields.
+  requiredFields: () => [],
+  verifyKey: () => {
+    throw new Error('gateio is permanently unsupported (guardVerifiable:false); verifyKey must never be called')
+  },
+  getBalance: () => {
+    throw new Error('gateio is permanently unsupported (guardVerifiable:false); getBalance must never be called')
+  },
+  getPositions: () => {
+    throw new Error('gateio is permanently unsupported (guardVerifiable:false); getPositions must never be called')
+  },
+}
 
 /**
  * The venue registry.
@@ -94,11 +127,12 @@ export const VENUES: VenueRegistration[] = [
       'your dydx1 address, and the authenticator id.',
   },
   {
-    adapter: gateio,
-    // The finding, not a TODO.
+    // Adapter file deleted; this is the documented refusal, not a live adapter. See the
+    // gateioUnsupported comment above. guardVerifiable:false is THE finding, not a TODO.
+    adapter: gateioUnsupported,
     guardVerifiable: false,
     liveVerified: false,
-    mainnetOnly: GATEIO_MAINNET_ONLY,
+    mainnetOnly: true,
     note:
       'Not supported. No Gate.io API endpoint reports whether the calling key can ' +
       'withdraw, so we cannot verify a key is trade-only. We do not store keys we ' +
