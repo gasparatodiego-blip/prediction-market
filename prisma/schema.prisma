@@ -61,9 +61,17 @@ model ExchangeKey {
   userId        String
   venue         String                              // 'binance' | 'okx' | 'bybit' | ...
   label         String                              // user-facing name for this key
-  apiKeyEnc     String                              // AES-256-GCM under dek: iv:authTag:ciphertext (base64)
-  apiSecretEnc  String                              // AES-256-GCM under dek: iv:authTag:ciphertext (base64)
+  apiKeyEnc     String?                             // AES-256-GCM under dek; NULL for venues with no api key (e.g. dYdX, which authenticates with an authenticator private key only)
+  apiSecretEnc  String                              // AES-256-GCM under dek: iv:authTag:ciphertext (base64). For dYdX this is the authenticator PRIVATE KEY.
   passphraseEnc String?                             // AES-256-GCM under dek; null for venues with no passphrase
+  // NON-SECRET identifiers, stored in PLAINTEXT by design. These are public
+  // identifiers (a bech32 address, an integer id) — not credentials — and must be
+  // readable to build a verification query. They are deliberately NOT encrypted and
+  // deliberately NOT crammed into apiKeyEnc/passphraseEnc, whose meaning is
+  // "encrypted secret". Only dYdX populates these today.
+  accountAddress   String?                          // e.g. dYdX bech32 'dydx1...' owner address
+  accountId        String?                          // e.g. dYdX authenticatorId (the on-chain authenticator record id)
+  subaccountNumber Int?                             // e.g. dYdX subaccount number (default 0)
   // This row's data key, wrapped under the KEK named by kekVersion.
   dekEnc        String
   // Which master wrapped dekEnc. Not decoration: without it a half-finished
