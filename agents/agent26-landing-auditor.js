@@ -1,14 +1,22 @@
 #!/usr/bin/env node
 // agent26-landing-auditor.js — read-only honest-engine GUARDIAN.
 //
+// NOTE ON THE NAME: this agent no longer audits the landing page. The rule that
+// did was removed on 2026-07-17 — every landing check compared a displayed value
+// against a recompute from source, and the marketing landing that now serves /
+// is a static page of hand-written literals with no source to recompute against.
+// The check was undefined, not failing, so it was deleted rather than repaired.
+// What remains audits the SERVED FEEDS and the fleet, not any one page. The
+// filename is kept so the pm2 process id and its history stay stable.
+//
 // READ-ONLY on SOURCE · Zero Claude API · never edits producer code, never
 // restarts anything, never rewrites/fabricates a value. Every 30 min it:
-//   1. Fetches http://localhost:3000 and extracts the "live inside" rows
-//      that app/page.tsx's buildLiveRows()/readLandingStats() produced.
-//   2. Independently recomputes each row's expected value straight from the
-//      same /tmp + data/*.json source files, using the same gating rules
-//      and formulas app/page.tsx uses (reused where require()-able, mirrored
-//      with a source-of-truth comment where the original is TypeScript).
+//   1. Verifies no expired/dead/cap-pinned instrument reached a served feed, and
+//      re-derives reward APRs from /tmp + data/*.json to catch sane-but-too-good
+//      rows — using the same gating rules the producers exclude by (reused where
+//      require()-able, mirrored with a source-of-truth comment where TypeScript).
+//   2. Watches the free-tier tab APIs for paid/derived values leaking unredacted,
+//      and the fleet for producer-down / pipeline-stale / build-held-back.
 //   3. Flags honest-engine invariant violations and sends ONE deduped
 //      Telegram alert. Silent when clean (no news = good). Logs every cycle.
 //   4. GUARDIAN (rules A–E, lib/guardian-suppress): the DISPLAY-layer
@@ -63,7 +71,6 @@ const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const CHAT_ID   = process.env.TELEGRAM_CHAT_ID   || '';
 
 // ── Config ────────────────────────────────────────────────────────────────
-const LANDING_URL       = 'http://localhost:3000/';
 const SCAN_INTERVAL_MS  = 30 * 60_000;
 const STARTUP_DELAY_MS  = 10_000;
 const FETCH_TIMEOUT_MS  = 15_000;
@@ -106,14 +113,6 @@ function log(...a) { console.log('[A26]', new Date().toISOString(), ...a); }
 // verbatim below; if the source file changes, this block must change too.
 
 const APY_CAP       = 200; // lib/honest-display.ts APY_CAP
-const APY_CAP_LABEL = '>200%/yr · run-rate, not guaranteed'; // lib/honest-display.ts APY_CAP_LABEL
-const LANDING_CAPITAL_BASIS = 1000; // lib/honest-display.ts LANDING_CAPITAL_BASIS
-
-function scaleToCapitalBasis(amountAtCapital, fromCapital, toCapital = LANDING_CAPITAL_BASIS) { // lib/honest-display.ts scaleToCapitalBasis
-  if (fromCapital <= 0) return 0;
-  return amountAtCapital * (toCapital / fromCapital);
-}
-
 function kIsWarn(m) { // lib/reward-gating.ts kIsWarn
   if (m.flags.TRAP) return false;
   const p = m.last_price;
@@ -212,96 +211,6 @@ function saveState(state) {
   try { fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2)); } catch (e) { log('saveState error:', e.message); }
 }
 
-// ── Parse the landing page's "live inside" rows out of the rendered HTML ────
-// No data-testid/data-attributes exist on BlipRow (app/components/ui/BlipRow.tsx),
-// so this anchors on the row UNIT strings, which are a small fixed vocabulary
-// hardcoded in app/page.tsx's buildLiveRows() (one of: 'net/day per $1k',
-// 'confirmed margin', 'basis · coin-margined', 'executable basis',
-// 'cashable right now'). The value div always immediately precedes its unit
-// div in BlipRow's markup, and the chip (CASHABLE/SIGNAL) always immediately
-// precedes the row's sub-text — so anchoring on (value, unit) pairs and
-// walking backward to the nearest chip is robust to className/markup churn.
-const UNIT_VOCAB = [
-  'net/day per $1k',
-  'confirmed margin',
-  'basis · coin-margined',
-  'executable basis',
-  'cashable right now',
-];
-
-function parseLandingRows(html) {
-  // Only look at the actual rendered DOM, not the RSC flight-data <script>
-  // blob Next.js appends after it (which re-serializes the same row text as
-  // escaped JSON strings and would otherwise double-match every anchor).
-  const scriptIdx = html.indexOf('<script>self.__next_f.push');
-  const domOnly   = scriptIdx > -1 ? html.slice(0, scriptIdx) : html;
-
-  const headerMarker = 'live inside';
-  const footerMarker = 'More than arbitrage';
-  const startIdx = domOnly.indexOf(headerMarker);
-  const endIdx   = domOnly.indexOf(footerMarker);
-  if (startIdx === -1 || endIdx === -1) {
-    throw new Error('landing page structure not found (header/footer markers missing) — page markup may have changed');
-  }
-  const segment = domOnly.slice(startIdx + headerMarker.length, endIdx);
-
-  if (segment.includes('no edge confirmed yet')) return []; // empty-state placeholder, not a violation
-
-  const tokens = segment
-    .replace(/<[^>]+>/g, '\n')
-    .replace(/&#x27;/g, "'")
-    .split('\n')
-    .map(t => t.trim())
-    .filter(Boolean);
-
-  const rows = [];
-  let searchFrom = 0;
-  for (let i = 0; i < tokens.length; i++) {
-    if (!UNIT_VOCAB.includes(tokens[i])) continue;
-    const unitIdx  = i;
-    const valueIdx = unitIdx - 1;
-    if (valueIdx < searchFrom) continue;
-    const value = tokens[valueIdx];
-
-    let chipIdx = -1;
-    for (let j = valueIdx - 1; j >= searchFrom; j--) {
-      if (tokens[j] === 'CASHABLE' || tokens[j] === 'SIGNAL') { chipIdx = j; break; }
-    }
-    if (chipIdx === -1) { searchFrom = unitIdx + 1; continue; } // malformed row, skip rather than misattribute
-
-    const nameRaw = tokens.slice(searchFrom, chipIdx).join(' ');
-    const subRaw  = tokens.slice(chipIdx + 1, valueIdx).join(' ');
-    const chip    = tokens[chipIdx] === 'CASHABLE' ? 'cashable' : 'signal';
-
-    rows.push({ nameRaw, subRaw, chip, value, unit: tokens[unitIdx] });
-    searchFrom = unitIdx + 1;
-  }
-  return rows;
-}
-
-function classifyRow(row) {
-  if (/funding spread/.test(row.nameRaw)) {
-    const m = /(\S+)\s+funding spread/.exec(row.nameRaw);
-    return { key: 'funding', coin: m ? m[1] : null };
-  }
-  if (/maker rewards/.test(row.nameRaw)) {
-    const platform = /Polymarket/.test(row.nameRaw) ? 'Polymarket' : /Kalshi/.test(row.nameRaw) ? 'Kalshi' : null;
-    return { key: 'rewards', platform };
-  }
-  if (/carry/.test(row.nameRaw)) {
-    const m = /(\S+)\s+carry/.exec(row.nameRaw);
-    return { key: 'carry', asset: m ? m[1] : null };
-  }
-  if (/Cross-book arb/.test(row.nameRaw)) return { key: 'sports' };
-  if (/Prediction arb/.test(row.nameRaw)) return { key: 'prediction' };
-  return { key: 'unknown' };
-}
-
-function parseNumber(str) {
-  const m = /(-?[\d.]+)/.exec(String(str).replace(/,/g, ''));
-  return m ? parseFloat(m[1]) : NaN;
-}
-
 // ── Independent recompute: funding ───────────────────────────────────────────
 function recomputeFunding(shortExchangeGuess, longExchangeGuess, coin) {
   const raw = readJsonSafe(EXCHANGE_FILE);
@@ -349,220 +258,6 @@ function recomputeFunding(shortExchangeGuess, longExchangeGuess, coin) {
   }
 
   return { dayUsd1k, netApy30d: net30d, expectedSane: !oneLegUnverified && !thinFlag && !depthThin };
-}
-
-// ── Independent recompute: rewards (mirrors readLandingStats()'s Poly+Kalshi loop) ─
-function recomputeRewards() {
-  const CAPITAL_TIERS = ['500', '5000', '50000'];
-  let best = null;
-
-  const polyRaw = readJsonSafe(POLY_REWARDS_FILE);
-  for (const m of polyRaw?.markets ?? []) {
-    for (const capStr of CAPITAL_TIERS) {
-      const lv = m.levels?.[capStr];
-      if (!lv || !lv.grossRewardDay) continue;
-      if (!isSanePolymarketLevel({ flags: lv.flags ?? [] })) continue;
-      const score = (lv.dayYieldPct ?? 0) * 365;
-      if (!best || score > best.score) best = { platform: 'Polymarket', grossRewardDay: lv.grossRewardDay, capital: +capStr, dayYieldPct: lv.dayYieldPct ?? 0, score };
-      break;
-    }
-  }
-
-  const kalshiRaw = readJsonSafe(KALSHI_REWARDS_FILE);
-  for (const m of kalshiRaw?.markets ?? []) {
-    for (const capStr of CAPITAL_TIERS) {
-      const lv = m.levels?.[capStr];
-      if (!lv || !lv.grossRewardDay) continue;
-      if (!isSaneKalshiMarket(m, capStr)) continue;
-      const score = (lv.dayYieldPct ?? 0) * 365;
-      if (!best || score > best.score) best = { platform: 'Kalshi', grossRewardDay: lv.grossRewardDay, capital: +capStr, dayYieldPct: lv.dayYieldPct ?? 0, score };
-      break;
-    }
-  }
-  if (!best) return null;
-  return { platform: best.platform, day1k: scaleToCapitalBasis(best.grossRewardDay, best.capital, LANDING_CAPITAL_BASIS), dayYieldPct: best.dayYieldPct };
-}
-
-// GATE INTEGRITY (user-scoped to rewards only): does the specific level that
-// produces the DISPLAYED $/day figure pass the platform's own sane-market gate?
-function findDisplayedRewardGateStatus(platform, displayedDay1k) {
-  const CAPITAL_TIERS = ['500', '5000', '50000'];
-  if (platform === 'Polymarket') {
-    const raw = readJsonSafe(POLY_REWARDS_FILE);
-    for (const m of raw?.markets ?? []) {
-      for (const capStr of CAPITAL_TIERS) {
-        const lv = m.levels?.[capStr];
-        if (!lv || !lv.grossRewardDay) continue;
-        const day1k = scaleToCapitalBasis(lv.grossRewardDay, +capStr, LANDING_CAPITAL_BASIS);
-        if (Math.abs(day1k - displayedDay1k) < Math.max(0.01, displayedDay1k * 0.02)) {
-          return { found: true, sane: isSanePolymarketLevel({ flags: lv.flags ?? [] }) };
-        }
-      }
-    }
-  } else if (platform === 'Kalshi') {
-    const raw = readJsonSafe(KALSHI_REWARDS_FILE);
-    for (const m of raw?.markets ?? []) {
-      for (const capStr of CAPITAL_TIERS) {
-        const lv = m.levels?.[capStr];
-        if (!lv || !lv.grossRewardDay) continue;
-        const day1k = scaleToCapitalBasis(lv.grossRewardDay, +capStr, LANDING_CAPITAL_BASIS);
-        if (Math.abs(day1k - displayedDay1k) < Math.max(0.01, displayedDay1k * 0.02)) {
-          return { found: true, sane: isSaneKalshiMarket(m, capStr) };
-        }
-      }
-    }
-  }
-  return { found: false, sane: null };
-}
-
-// ── Independent recompute: basis / sports / prediction ───────────────────────
-// These files already carry the final computed number (agent19/agent-fetcher
-// own that math); the landing page's job is only selection, so the parallel
-// path here re-derives the SAME selection rule from the SAME data.
-function recomputeBasis() {
-  const raw = readJsonSafe(BASIS_FILE);
-  const opps = raw?.opportunities ?? [];
-  const sorted = [...opps]
-    .filter(o => (o.netAnnualizedExecutable ?? o.netAnnualized ?? 0) > 0)
-    .sort((a, b) => (b.netAnnualizedExecutable ?? b.netAnnualized ?? 0) - (a.netAnnualizedExecutable ?? a.netAnnualized ?? 0));
-  if (!sorted.length) return null;
-  const top = sorted[0];
-  // netAnnualizedExecutable/netAnnualized are fractions (0.0363 = 3.63%/yr) —
-  // *100 before rounding. Mirrors app/page.tsx's readLandingStats() basis block.
-  return { asset: top.asset, netAnnualized: Math.round((top.netAnnualizedExecutable ?? top.netAnnualized ?? 0) * 1000) / 10 };
-}
-
-function recomputeSports() {
-  const raw = readJsonSafe(SPORTS_FILE);
-  if (!raw) return null;
-  if (Date.now() - (typeof raw.fetchedAt === 'number' ? raw.fetchedAt : 0) >= SPORTS_STALE_MS) return null;
-  const valid = (raw.arbOpportunities ?? [])
-    .filter(a => !a.isStale && (a.netMargin ?? a.grossMargin ?? 0) > 0)
-    .sort((a, b) => (b.netMargin ?? 0) - (a.netMargin ?? 0));
-  if (!valid.length) return null;
-  return { netMargin: valid[0].netMargin ?? valid[0].grossMargin };
-}
-
-function recomputePrediction() {
-  const raw = readJsonSafe(ARB_FILE);
-  const s = raw?.stats ?? {};
-  const cash = s.confirmedCashable ?? 0;
-  const tot  = cash + (s.rejectedNotSameEvent ?? 0) + (s.pendingVerification ?? 0);
-  return { cashable: cash, pairsChecked: tot };
-}
-
-// ── Evaluate one displayed row against its independent recompute ────────────
-const TOL = (a, b, absTol, relTol) => Math.abs(a - b) <= Math.max(absTol, Math.abs(b) * relTol);
-
-function evaluateRow(row, hasApyCapLabel) {
-  const violations = [];
-  const cls = classifyRow(row);
-  const rawVal = row.value;
-
-  if (/NaN|undefined|Infinity/i.test(rawVal) || /NaN|undefined|Infinity/i.test(row.unit)) {
-    violations.push(`MISSING/FABRICATED: "${row.nameRaw}" shows "${rawVal}" — non-finite value rendered`);
-    return { cls, violations, impliedApy: null };
-  }
-
-  const num = parseNumber(rawVal);
-  if (Number.isNaN(num)) {
-    violations.push(`MISSING/FABRICATED: "${row.nameRaw}" value "${rawVal}" is not parseable as a number`);
-    return { cls, violations, impliedApy: null };
-  }
-
-  let impliedApy = null; // only rows expressing a $/day-per-$1k or %/yr rate get the daily/annual checks
-
-  if (cls.key === 'funding' && cls.coin) {
-    const m = /short (\S+)\s*·\s*long (\S+)/.exec(row.subRaw) || /short (\S+).*long (\S+)/.exec(row.subRaw);
-    if (!m) {
-      violations.push(`MISSING/FABRICATED: funding row "${row.nameRaw}" — could not parse short/long exchanges from "${row.subRaw}"`);
-    } else {
-      const expected = recomputeFunding(m[1], m[2], cls.coin);
-      if (!expected) {
-        violations.push(`MISSING/FABRICATED: funding row shows ${cls.coin} ${m[1]}/${m[2]} at $${num}/day but no matching entry found in ${EXCHANGE_FILE}`);
-      } else {
-        if (!TOL(num, expected.dayUsd1k, 0.02, 0.02)) {
-          violations.push(`DIVERGENCE: funding ${cls.coin} displayed $${num}/day vs recomputed $${expected.dayUsd1k}/day (independent path from ${EXCHANGE_FILE})`);
-        }
-        // NOTE: the landing intentionally headlines the true net/day max across the
-        // FULL shared spreads list — the same rows the funding-arb dashboard ranks —
-        // which INCLUDES thin-book / one-leg-unverified pairs. A thin book only limits
-        // executable SIZE (surfaced separately on the order page); it does NOT
-        // disqualify the opportunity. So thin/unverified is no longer a landing
-        // violation. The value-match check above stays the real anti-fabrication guard.
-      }
-    }
-    impliedApy = num * 36.5; // $/day per $1k → %/yr (num/1000 * 365 * 100)
-  }
-
-  if (cls.key === 'rewards' && cls.platform) {
-    const expected = recomputeRewards();
-    if (!expected || expected.platform !== cls.platform) {
-      violations.push(`MISSING/FABRICATED: rewards row shows ${cls.platform} $${num}/day but independent recompute found no matching sane candidate`);
-    } else if (!TOL(num, expected.day1k, 0.02, 0.02)) {
-      violations.push(`DIVERGENCE: ${cls.platform} rewards displayed $${num}/day vs recomputed $${expected.day1k.toFixed(2)}/day`);
-    }
-    const gate = findDisplayedRewardGateStatus(cls.platform, num);
-    if (gate.found && gate.sane === false) {
-      violations.push(`GATE INTEGRITY: displayed ${cls.platform} reward $${num}/day matches a market that FAILS the sane-market gate (TRAP/SHORT_BURST/THIN_CAP/BELOW_FLOOR/ONE_SIDED/flags) — should have been excluded`);
-    } else if (!gate.found) {
-      violations.push(`MISSING/FABRICATED: displayed ${cls.platform} reward $${num}/day has no matching level in the source rewards file`);
-    }
-    impliedApy = num * 36.5;
-  }
-
-  if (cls.key === 'carry' && cls.asset) {
-    const expected = recomputeBasis();
-    if (!expected || expected.asset !== cls.asset) {
-      violations.push(`MISSING/FABRICATED: carry row shows ${cls.asset} +${num}%/yr but independent recompute found no matching top candidate`);
-    } else if (!TOL(num, expected.netAnnualized, 0.1, 0.02)) {
-      violations.push(`DIVERGENCE: ${cls.asset} carry displayed +${num}%/yr vs recomputed +${expected.netAnnualized}%/yr`);
-    }
-    // Expired-instrument guard: the carry sub-line renders "{exchange} · {contract}".
-    // If any token is a dated future whose expiry is past, the landing is showing a
-    // fabricated (expired) instrument — the exact BTC-25JUN class.
-    const now = Date.now();
-    for (const tok of String(row.subRaw || '').split(/[\s·|]+/)) {
-      const expMs = parseInstrumentExpiryMs(tok);
-      if (expMs != null && expMs <= now) {
-        violations.push(`EXPIRED INSTRUMENT ON LANDING: carry row references ${tok} (expired ${new Date(expMs).toISOString().slice(0, 10)}) — must never be displayed`);
-      }
-    }
-    impliedApy = num;
-  }
-
-  if (cls.key === 'sports') {
-    const expected = recomputeSports();
-    if (!expected) {
-      violations.push(`MISSING/FABRICATED: sports row shows +${num}% but independent recompute found no fresh valid arb`);
-    } else if (!TOL(num, expected.netMargin, 0.1, 0.02)) {
-      violations.push(`DIVERGENCE: sports margin displayed +${num}% vs recomputed +${expected.netMargin}%`);
-    }
-    // netMargin is a one-time per-event margin, not a daily/annual rate — excluded from impliedApy checks.
-  }
-
-  if (cls.key === 'prediction') {
-    const expected = recomputePrediction();
-    if (!expected || expected.cashable !== num) {
-      violations.push(`DIVERGENCE: prediction arb count displayed ${num} vs recomputed ${expected ? expected.cashable : 'null'} from ${ARB_FILE}`);
-    }
-    // a count, not a rate — excluded from impliedApy checks.
-  }
-
-  if (impliedApy != null) {
-    const impliedDailyPct = impliedApy / 365;
-    if (impliedDailyPct > 10) {
-      violations.push(`HARD IMPOSSIBLE: "${row.nameRaw}" implies ${impliedDailyPct.toFixed(1)}%/day (~${impliedApy.toFixed(0)}%/yr) — regardless of chip/label this is not real`);
-    }
-    if (row.chip === 'cashable' && impliedApy > APY_CAP) {
-      violations.push(`CASHABLE-TOO-GOOD: "${row.nameRaw}" is marked cashable but implies ${impliedApy.toFixed(0)}%/yr — too good to be true, verify it's real`);
-    }
-    if (row.chip !== 'cashable' && impliedApy > APY_CAP && !hasApyCapLabel) {
-      violations.push(`LABEL RULE: "${row.nameRaw}" is non-cashable and implies ${impliedApy.toFixed(0)}%/yr without the "${APY_CAP_LABEL}" label`);
-    }
-  }
-
-  return { cls, violations, impliedApy };
 }
 
 // ── Phantom-instrument class checks (Phase 4) ──────────────────────────────
@@ -1006,16 +701,6 @@ async function runCycle(state) {
     return r.ok ? r.value : null;
   };
 
-  // The landing rule: compare each displayed row against an independent recompute.
-  await step('landing-rows', async () => {
-    const html = await fetchText(LANDING_URL);
-    const hasApyCapLabel = html.includes(APY_CAP_LABEL);
-    const rows = parseLandingRows(html);
-    const violations = [];
-    for (const row of rows) violations.push(...evaluateRow(row, hasApyCapLabel).violations);
-    return { violations, rows: rows.length };
-  });
-
   // Phase 4: phantom-instrument class checks on the served feeds + sanity-reject spike.
   await step('served-feeds', () => ({ violations: auditServedFeeds() }));
   await step('rewards-too-good', () => ({ violations: auditRewardsTooGood() }));
@@ -1087,7 +772,7 @@ async function maybeAlert(violations, state, { forceFirstSend = false } = {}) {
 
 async function main() {
   log('agent26-landing-auditor starting — read-only, zero Claude API');
-  log(`  Landing URL: ${LANDING_URL}`);
+  log(`  Served-feed API base: ${API_BASE}`);
   log(`  Interval: ${SCAN_INTERVAL_MS / 60_000} min · alert dedupe window: ${ALERT_COOLDOWN_MS / 3_600_000}h`);
 
   await new Promise(r => setTimeout(r, STARTUP_DELAY_MS));
