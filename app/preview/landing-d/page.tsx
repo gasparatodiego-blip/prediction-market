@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
+import Link from "next/link";
 
 const P = {
   ground: "#FFF9F0", surface: "#FFFFFF", ink: "#2D2418", muted: "#8A7A62",
@@ -323,9 +324,9 @@ export default function LandingD() {
           )}
           <div style={{ display: "flex", alignItems: "center", gap: 9, flexShrink: 0 }}>
             {!atSix && <span className="m livec" style={{ fontSize: 10.5, color: P.faint, whiteSpace: "nowrap", flexShrink: 0 }}>{list.length} live</span>}
-            <span style={{ background: P.mint, color: "#fff", padding: "8px 16px", borderRadius: 999,
+            <Link href="/auth/register" style={{ background: P.mint, color: "#fff", padding: "8px 16px", borderRadius: 999,
               fontWeight: 600, fontSize: 12.5, cursor: "pointer", whiteSpace: "nowrap",
-              flexShrink: 0, pointerEvents: "auto" }}>Free trial</span>
+              flexShrink: 0, pointerEvents: "auto", textDecoration: "none" }}>Free trial</Link>
           </div>
         </div>
       </div>
@@ -338,11 +339,11 @@ export default function LandingD() {
             <span className="d" style={{ fontSize: "clamp(19px, 5vw, 28px)", fontWeight: 700, letterSpacing: "-.03em", whiteSpace: "nowrap" }}>Edgeradar</span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-            <span style={{ color: P.muted, fontSize: 13.5, cursor: "pointer", padding: "9px 2px", whiteSpace: "nowrap", flexShrink: 0 }}>Sign in</span>
-            <span style={{ background: P.mint, color: "#fff", padding: "10px 15px", borderRadius: 999,
-              fontWeight: 600, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>
+            <Link href="/auth/login" style={{ color: P.muted, fontSize: 13.5, cursor: "pointer", padding: "9px 2px", whiteSpace: "nowrap", flexShrink: 0, textDecoration: "none" }}>Sign in</Link>
+            <Link href="/auth/register" style={{ background: P.mint, color: "#fff", padding: "10px 15px", borderRadius: 999,
+              fontWeight: 600, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0, textDecoration: "none" }}>
               <span className="ctaL">Free 7-day trial</span><span className="ctaS">Free trial</span>
-            </span>
+            </Link>
           </div>
         </nav>
 
@@ -429,10 +430,10 @@ export default function LandingD() {
         </section>
 
         <section className="cta" style={{ padding: "clamp(56px, 10vw, 88px) 0 72px", textAlign: "center" }}>
-          <span style={{ background: P.mint, color: "#fff", padding: "17px 40px", borderRadius: 999,
-            fontWeight: 600, fontSize: "clamp(15px, 4vw, 17px)", cursor: "pointer", display: "inline-block" }}>
+          <Link href="/auth/register" style={{ background: P.mint, color: "#fff", padding: "17px 40px", borderRadius: 999,
+            fontWeight: 600, fontSize: "clamp(15px, 4vw, 17px)", cursor: "pointer", display: "inline-block", textDecoration: "none" }}>
             Start your free trial
-          </span>
+          </Link>
           <div style={{ fontSize: 13, color: P.faint, marginTop: 14 }}>Seven days. Cancel whenever.</div>
         </section>
 
