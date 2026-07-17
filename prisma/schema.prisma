@@ -30,6 +30,41 @@ model User {
   subscriptions     Subscription[]
   copyConfigs       CopyConfig[]
   rewardsPlacements RewardsPlacement[]
+  exchangeKeys      ExchangeKey[]
+}
+
+// Exchange API credentials. Storage layer only — no venue client, no signing, no
+// order path reads this yet (AUTO_EXECUTE_ENABLED=false).
+//
+// Every credential column holds AES-256-GCM ciphertext produced by
+// lib/key-custody.ts. NOTHING here is plaintext, including apiKeyEnc: the api key
+// identifies the account and is a secret, not a "public part".
+//
+// passphraseEnc is nullable because it is a per-venue fact, not an optional
+// preference — OKX requires one, Binance has no such concept. A non-null column
+// would force a fabricated value for venues that do not issue one.
+//
+// Revocation is `revokedAt`, never a DELETE: a key that once had account access
+// must stay auditable after it is retired.
+//
+// Deliberately absent: any permissions/scopes column. We do not yet read scopes
+// back from the venue, and a column asserting a scope we never verified would be
+// a fabricated field.
+model ExchangeKey {
+  id            String    @id @default(cuid())
+  userId        String
+  venue         String                              // 'binance' | 'okx' | 'bybit' | ...
+  label         String                              // user-facing name for this key
+  apiKeyEnc     String                              // AES-256-GCM: iv:authTag:ciphertext (base64)
+  apiSecretEnc  String                              // AES-256-GCM: iv:authTag:ciphertext (base64)
+  passphraseEnc String?                             // AES-256-GCM; null for venues with no passphrase
+  createdAt     DateTime  @default(now())
+  lastUsedAt    DateTime?                           // set when a signing path first reads it (not yet built)
+  revokedAt     DateTime?                           // non-null = retired; row is retained for audit
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 // Per-market liquidity-reward placement config — one row per (user, market).
