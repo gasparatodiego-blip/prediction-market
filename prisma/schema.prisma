@@ -71,6 +71,14 @@ model ExchangeKey {
   // indistinguishable from one that never needed to. It is also what makes
   // rotation resumable — the state lives here, in the data, not in the script.
   kekVersion    Int       @default(1)
+  // What the venue reported AT VERIFICATION TIME — not necessarily what is true now.
+  // Named ...AtVerify, and always displayed next to verifiedAt, because a user can
+  // change a key's permissions at the venue after connecting it. Rendering these as
+  // "current permissions" would be a claim we have not rechecked. Storing them at all
+  // is only honest because we now genuinely read them from the venue before storing
+  // (that was the objection to a permissions column when nothing read one).
+  permissionsAtVerify String[] @default([])
+  verifiedAt          DateTime?
   createdAt     DateTime  @default(now())
   lastUsedAt    DateTime?                           // set when a signing path first reads it (not yet built)
   revokedAt     DateTime?                           // non-null = retired; row is retained for audit
