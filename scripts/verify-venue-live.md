@@ -129,6 +129,35 @@ only — the signing/auth/list network path is unproven.
 
 Only when 1–5 pass end-to-end against the live venue may you flip `liveVerified` for paradex.
 
+## Accept-and-disclose and read-only venues (the seven added under the withdrawal policy)
+
+These do NOT use the 'refuse' guard. `withdrawalPolicy` is declared per venue in the
+registry. NOTHING here blocks a withdrawal — the venue enforces key permissions; we choose
+which endpoints to call (never a withdraw/transfer/send one) and DISCLOSE what the stored
+credential can do. The user acknowledges the disclosure before any non-refuse key is stored.
+All seven are `liveVerified:false` — POST /api/keys 409s until D1.
+
+- **Gate.io** (accept_and_disclose, HMAC-SHA512). No permission endpoint → permissionsAtVerify
+  carries `withdrawal-permission:UNQUERYABLE`, never 'false'. D1: connect a real key; verify
+  GET /account/detail authenticates and that `ip_whitelist` is read and reported (set our
+  server IP 167.233.63.218 at Gate.io and confirm the card shows includes-server).
+- **Kraken** (accept_and_disclose, HMAC-SHA512 + nonce, POST). No permission endpoint →
+  UNQUERYABLE. D1: connect a real key; verify POST /0/private/Balance authenticates (the
+  nonce/body signing is D1-unverified until then).
+- **Aster** (accept_and_disclose, HMAC-SHA256). D1: verify GET /fapi/v4/account returns
+  account-level canWithdraw and it is recorded as `account-canWithdraw:*` (NOT the key's own
+  scope); confirm the key alone cannot withdraw (needs the wallet EIP-712 signature).
+- **Lighter** (accept_and_disclose). D1: KEY-MATCH IS UNPROVEN until Lighter Schnorr pubkey
+  derivation is available — verify a real signer key’s derived pubkey is the one at the given
+  api_key_index, and that withdrawals are owner-address-locked. canWithdraw:true (owner-locked).
+- **Extended / edgeX / ApeX Omni** (read_only). We store ONLY read credentials; the fund-moving
+  L2/zk key is never collected. D1: verify the read auth (X-Api-Key for Extended; HMAC for
+  edgeX/ApeX) authenticates a balance/positions read, and that permissionsAtVerify is
+  `read-only`. canWithdraw:false by construction.
+
+For a non-refuse venue, flip `liveVerified` only after the read authenticates live AND the
+disclosure/permissionsAtVerify are confirmed accurate against the real account.
+
 ## The exact line to flip
 
 Only after steps 1–5 pass for that venue. In `lib/venues/registry.ts`, find the venue's
@@ -137,7 +166,7 @@ entry and change **one** field:
 ```diff
    {
      adapter: bybit,
-     guardVerifiable: true,
+     withdrawalPolicy: 'refuse',
 -    liveVerified: false,
 +    liveVerified: true,
      mainnetOnly: BYBIT_MAINNET_ONLY,

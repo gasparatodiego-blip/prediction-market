@@ -4,7 +4,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import prisma from '@/lib/prisma'
 import { getVenue, canAcceptKeys, VENUES } from '@/lib/venues/registry'
-import { decideStorage, VenueCreds } from '@/lib/venues/types'
+import { decideDisclosedStorage, VenueCreds } from '@/lib/venues/types'
 import { newDek, wrapDek, unwrapDek, encryptField, decryptField } from '@/lib/key-custody'
 
 export const dynamic = 'force-dynamic'
@@ -34,6 +34,9 @@ const connectSchema = z.object({
   accountAddress: z.string().trim().min(1).max(128).optional(),
   accountId: z.string().trim().min(1).max(64).optional(),
   subaccountNumber: z.number().int().min(0).max(2_000_000_000).optional(),
+  // Explicit disclosure acknowledgement. Required before storing any non-refuse credential
+  // (accept_and_disclose or read_only). Never used by the six refuse venues.
+  acknowledged: z.boolean().optional(),
 })
 
 function last4(s: string): string {
@@ -115,10 +118,12 @@ export async function GET() {
       label: v.adapter.label,
       requiredFields: v.adapter.requiredFields(),
       requiredPlainFields: v.adapter.requiredPlainFields ? v.adapter.requiredPlainFields() : [],
-      guardVerifiable: v.guardVerifiable,
+      withdrawalPolicy: v.withdrawalPolicy,
       liveVerified: v.liveVerified,
       mainnetOnly: v.mainnetOnly,
       note: v.note,
+      // Disclosure shown before the user pastes (non-refuse policies only).
+      disclosure: v.disclosure ?? null,
     })),
   })
 }
@@ -146,12 +151,6 @@ export async function POST(req: NextRequest) {
   const reg = getVenue(d.venue)
   if (!reg) {
     return NextResponse.json({ error: `Unknown venue: ${d.venue}` }, { status: 400 })
-  }
-
-  // A venue whose guard can never be verified is refused permanently, with a
-  // different message than one merely awaiting verification. Do not merge these.
-  if (!reg.guardVerifiable) {
-    return NextResponse.json({ error: reg.note, code: 'VENUE_UNSUPPORTED' }, { status: 409 })
   }
 
   if (!canAcceptKeys(reg)) {
@@ -197,9 +196,24 @@ export async function POST(req: NextRequest) {
     subaccountNumber: d.subaccountNumber ?? null,
   }
 
+  // DISCLOSURE ACKNOWLEDGEMENT — required before storing any non-refuse credential
+  // (accept_and_disclose or read_only). The six 'refuse' venues never take this path.
+  const acknowledged = d.acknowledged === true
+  if (reg.withdrawalPolicy !== 'refuse' && !acknowledged) {
+    return NextResponse.json(
+      {
+        error: 'You must acknowledge the disclosure for this venue before connecting.',
+        code: 'ACKNOWLEDGEMENT_REQUIRED',
+      },
+      { status: 400 },
+    )
+  }
+
   // Verify against the REAL venue before anything touches the database.
   const verdict = await reg.adapter.verifyKey(creds)
-  const decision = decideStorage(verdict)
+  // Policy-aware: 'refuse' stores only on canWithdraw===false (unchanged); the disclosed
+  // policies store an AUTHENTIC credential (v.ok) and disclose rather than gate on withdraw.
+  const decision = decideDisclosedStorage(verdict, reg.withdrawalPolicy)
 
   if (!decision.store) {
     // Nothing was written. The reason is from a fixed vocabulary and never contains
@@ -210,7 +224,6 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  // Only now, having been told plainly the key cannot withdraw, do we store it.
   const dek = newDek()
   try {
     const created = await prisma.exchangeKey.create({
@@ -228,8 +241,12 @@ export async function POST(req: NextRequest) {
         subaccountNumber: d.subaccountNumber ?? null,
         dekEnc: wrapDek(dek, 1),
         kekVersion: 1,
+        // The TRUTH the venue reported at verify time — includes the UNQUERYABLE marker for
+        // Gate.io/Kraken. Never a fabricated 'false'.
         permissionsAtVerify: verdict.permissions,
         verifiedAt: new Date(),
+        // Timestamp the disclosure acknowledgement on the row (non-refuse policies only).
+        acknowledgedAt: reg.withdrawalPolicy !== 'refuse' && acknowledged ? new Date() : null,
       },
       select: { id: true, venue: true, label: true, permissionsAtVerify: true, verifiedAt: true },
     })

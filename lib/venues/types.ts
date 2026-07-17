@@ -150,3 +150,56 @@ export function decideStorage(v: VerifyResult): StorageDecision {
   }
   return { store: true, reason: 'Verified: the venue reports withdrawals are disabled.' }
 }
+
+/**
+ * Per-venue withdrawal policy, DECLARED in the registry — never inferred at the call
+ * site. It changes only what we do with the tri-state, never the tri-state itself.
+ *
+ *   'refuse'              — store ONLY on an explicit parsed canWithdraw === false.
+ *                           The original guard. Unchanged. The six live venues.
+ *   'accept_and_disclose' — the venue's key can move funds, or we cannot check whether
+ *                           it can. Store the AUTHENTIC key anyway, and record the TRUTH
+ *                           in permissionsAtVerify (what the venue reported, or the
+ *                           explicit UNQUERYABLE marker). The user must acknowledge first.
+ *   'read_only'           — we deliberately hold ONLY credentials that can READ the
+ *                           account; the venue's fund-moving key is a separate secret we
+ *                           never collect. Store the authentic read credential; the user
+ *                           acknowledges it is stored. Never claimed to be a withdrawal
+ *                           block — it is simply not the fund-moving key.
+ */
+export type WithdrawalPolicy = 'refuse' | 'accept_and_disclose' | 'read_only'
+
+/**
+ * The explicit marker written into permissionsAtVerify when a venue exposes NO endpoint
+ * to read the calling key's withdrawal permission (Gate.io, Kraken). It is the honest
+ * alternative to writing 'false' for a permission we never read. Rendered by the UI as
+ * "withdrawal permission UNKNOWN — this venue does not let us check", never as "no
+ * withdrawal".
+ */
+export const PERMISSION_UNQUERYABLE = 'withdrawal-permission:UNQUERYABLE'
+
+/**
+ * Policy-aware storage choke point. 'refuse' defers to decideStorage() UNCHANGED — the
+ * six existing venues cannot be weakened by this path. For the disclosed policies, we
+ * still require an AUTHENTIC key (v.ok) — an invalid/garbage credential is never stored —
+ * but canWithdraw does NOT gate storage: the disclosure and the user's acknowledgement do.
+ * The acknowledgement itself is enforced by the API route, not here.
+ */
+export function decideDisclosedStorage(v: VerifyResult, policy: WithdrawalPolicy): StorageDecision {
+  if (policy === 'refuse') return decideStorage(v)
+  if (!v.ok) {
+    return {
+      store: false,
+      reason:
+        v.error ||
+        'Could not verify this credential against the venue. Nothing was stored. Please try again.',
+    }
+  }
+  return {
+    store: true,
+    reason:
+      policy === 'read_only'
+        ? 'Verified: a read-only credential for this venue.'
+        : 'Verified: the credential is authentic. Its withdrawal capability is disclosed, not blocked.',
+  }
+}
