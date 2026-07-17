@@ -46,6 +46,32 @@ const PLAIN_FIELD_LABEL: Record<PlainField, string> = {
   subaccountNumber: 'Subaccount number (default 0)',
 };
 
+// Per-venue overrides. A generic "API secret" / "Account address (dydx1…)" is WRONG and
+// dangerous for a venue whose secret is a raw private key: the copy must make it
+// impossible to paste the WALLET key by mistake. Fall back to the generic label above.
+const VENUE_FIELD_LABEL: Record<string, Partial<Record<CredField, string>>> = {
+  paradex: { secret: 'Paradex Subkey private key (0x…)' },
+};
+const VENUE_PLAIN_LABEL: Record<string, Partial<Record<PlainField, string>>> = {
+  paradex: { accountAddress: 'Paradex account address (0x…)' },
+};
+function fieldLabel(venueId: string, f: CredField): string {
+  return VENUE_FIELD_LABEL[venueId]?.[f] ?? FIELD_LABEL[f];
+}
+function plainLabel(venueId: string, f: PlainField): string {
+  return VENUE_PLAIN_LABEL[venueId]?.[f] ?? PLAIN_FIELD_LABEL[f];
+}
+
+// A per-venue safety note shown above the credential fields. For any venue whose secret
+// is a delegated PRIVATE KEY, this must say plainly: this is the delegated trading key,
+// NOT your wallet key — and we must never ask for the wallet key.
+const VENUE_HINT: Record<string, string> = {
+  paradex:
+    'Paste your Paradex Subkey — the delegated trading key that CANNOT withdraw or transfer. ' +
+    'Create it in Paradex under Key Management → Subkeys. This is NOT your wallet private key ' +
+    'and NOT your main account key; never paste either of those.',
+};
+
 /**
  * Three states, and they are NOT interchangeable:
  *   UNSUPPORTED  — the venue cannot ever be verified (gate.io). Permanent.
@@ -239,6 +265,11 @@ export default function KeysClient() {
                   value={form.label || ''}
                   onChange={(e) => setForm({ ...form, label: e.target.value })}
                 />
+                {/* Per-venue safety note — for venues whose secret is a delegated private
+                    key, spells out that it is NOT the wallet key. */}
+                {VENUE_HINT[v.id] && (
+                  <p className="font-body text-xs text-muted leading-relaxed">{VENUE_HINT[v.id]}</p>
+                )}
                 {/* Fields come from the adapter's requiredFields() — picking OKX reveals
                     the passphrase field, and Binance is never asked for one. */}
                 {v.requiredFields.map((f) => (
@@ -247,12 +278,12 @@ export default function KeysClient() {
                     className={inputClass}
                     type="password"
                     autoComplete="off"
-                    placeholder={FIELD_LABEL[f]}
+                    placeholder={fieldLabel(v.id, f)}
                     value={form[f] || ''}
                     onChange={(e) => setForm({ ...form, [f]: e.target.value })}
                   />
                 ))}
-                {/* Non-secret identifiers (dYdX): PLAIN text inputs, not password —
+                {/* Non-secret identifiers (dYdX, Paradex): PLAIN text inputs, not password —
                     a public address / id is not a credential. */}
                 {(v.requiredPlainFields || []).map((f) => (
                   <input
@@ -260,7 +291,7 @@ export default function KeysClient() {
                     className={inputClass}
                     type="text"
                     autoComplete="off"
-                    placeholder={PLAIN_FIELD_LABEL[f]}
+                    placeholder={plainLabel(v.id, f)}
                     value={form[f] || ''}
                     onChange={(e) => setForm({ ...form, [f]: e.target.value })}
                   />

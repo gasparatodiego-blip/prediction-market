@@ -30,6 +30,7 @@ Do not reuse an existing key. Do not paste a key into any file, commit, or chat.
 | OKX | `GET /api/v5/account/config` → `perm` contains `withdraw` | **Treat as mainnet-only.** Demo trading exists (`x-simulated-trading: 1`) and account/config is not a named exclusion, but the docs do **not** establish whether `perm` is populated in demo. A demo `perm` that came back empty would make a withdraw-enabled key look clean. Do not verify the guard in demo. |
 | Bitget | `GET /api/v2/spot/account/info` → `authorities` array contains `"wwow"` (wallet withdrawl) iff the key can withdraw | **Mainnet only.** Needs a real key with a passphrase. A trade-only key's `authorities` will hold trade codes (`stow`/`stor`, `coow`/`cpow`) but NOT `wwow`. Note `wtow`/`wtor` = internal transfer, which is NOT withdrawal — do not conflate. |
 | dYdX v4 | On-chain `GET {lcd}/dydxprotocol/accountplus/authenticators/{address}` → the authenticator's `MessageFilter` whitelists only clob order messages | **Mainnet (public chain).** Verified over public REST — no key needed to *read* the chain, but you need a real authenticator to test end-to-end. |
+| Paradex | Authenticated `GET /account/keys/subkeys` → the pasted key's derived Stark pubkey must appear with `state: "active"`. Trade-only is STRUCTURAL (a subkey "Cannot Withdraw funds from the account" — docs.paradex.trade/api/general-information/api-authentication), proven by MEMBERSHIP. | **Mainnet only.** ⚠️ **SIGNING IS UNVERIFIED until this runs.** Unlike dYdX (a public read), Paradex's guard needs a StarkNet-signed `POST /auth`. The SNIP-12 auth typed-data in `paradex.ts` is implemented from the SDK shape but has NEVER been run against the venue — until a real subkey authenticates and is accepted here, the signing is unit-tested on parse ONLY. Any signing error fails closed (auth fails → refuse), so it is safe, just non-functional until proven. |
 | Gate.io | **none** | **Never verifiable.** No Gate.io endpoint returns the calling key's permissions. `guardVerifiable: false`. Do not flip it. |
 | Kraken | **none** | **Never verifiable.** Kraken exposes NO API endpoint that returns a key's permissions (visible only in the web UI). No adapter exists; do not add one. |
 
@@ -106,6 +107,27 @@ dYdX is not a paste-an-API-key flow. To get a testable trade-only credential:
 4. `verifyKey` will read the authenticator on-chain and confirm the message filter is clob-only. If the
    filter permits any fund-moving message, or the pasted key's pubkey doesn't match the on-chain
    SignatureVerification config, it REFUSES.
+
+## Paradex — D1: prove the StarkNet signing before flipping (it is UNVERIFIED)
+
+Paradex is the first non-HMAC venue and its `POST /auth` StarkNet SNIP-12 signing has NEVER
+run against the live venue. Until D1 passes, `verifyKey` is unit-tested on the membership PARSE
+only — the signing/auth/list network path is unproven.
+
+1. In Paradex → **Key Management → Subkeys**, create a Subkey; copy its **private key** (shown once)
+   and note your **main account address** (`0x…`).
+2. Connect: the **Subkey private key** as the secret, the **main account address** as accountAddress.
+   Never the wallet key, never the main account key.
+3. `verifyKey` must: derive the Stark pubkey → `POST /auth/{pubkey}` (StarkNet-signed) → succeed →
+   `GET /account/keys/subkeys` → find the pubkey `state: "active"` → ACCEPT (canWithdraw:false).
+   If auth returns no `jwt_token`, the signing (SNIP-12 typed-data, chain id, `/auth/{pubkey}` path,
+   `[r,s]` header) is wrong — FIX THE ADAPTER, do not flip the flag. A wrong signature fails closed.
+4. Control that the guard fires on membership: connect the **main account key** (not a subkey) — it
+   must REFUSE ("not an active subkey"). Connect a **revoked** subkey — it must REFUSE.
+5. Confirm `getBalance`/`getPositions` read against `/balance` and `/positions` with the in-memory JWT,
+   and that NO JWT is ever written to the DB or disk.
+
+Only when 1–5 pass end-to-end against the live venue may you flip `liveVerified` for paradex.
 
 ## The exact line to flip
 

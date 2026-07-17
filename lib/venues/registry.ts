@@ -4,6 +4,7 @@ import { bybit, MAINNET_ONLY as BYBIT_MAINNET_ONLY } from './bybit'
 import { okx, MAINNET_ONLY as OKX_MAINNET_ONLY } from './okx'
 import { bitget, MAINNET_ONLY as BITGET_MAINNET_ONLY } from './bitget'
 import { dydx, MAINNET_ONLY as DYDX_MAINNET_ONLY } from './dydx'
+import { paradex, MAINNET_ONLY as PARADEX_MAINNET_ONLY } from './paradex'
 
 /**
  * GATE.IO — PERMANENTLY UNSUPPORTED, and its adapter file is deliberately GONE.
@@ -125,6 +126,17 @@ export const VENUES: VenueRegistration[] = [
       'exclusion is verified ON-CHAIN: the authenticator’s MessageFilter must ' +
       'whitelist only clob order messages. Connect the authenticator private key, ' +
       'your dydx1 address, and the authenticator id.',
+  },
+  {
+    adapter: paradex,
+    guardVerifiable: true,
+    liveVerified: false,
+    mainnetOnly: PARADEX_MAINNET_ONLY,
+    note:
+      'Trade-only via a Paradex Subkey (a registered StarkNet keypair that, per Paradex ' +
+      'docs, cannot withdraw or transfer). Trade-only is proven by MEMBERSHIP: the pasted ' +
+      'key must be an active subkey on the account. Connect the SUBKEY private key and your ' +
+      'main account address — never your wallet key or main account key.',
   },
   {
     // Adapter file deleted; this is the documented refusal, not a live adapter. See the
