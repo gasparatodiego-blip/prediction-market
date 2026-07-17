@@ -958,58 +958,109 @@ async function auditPaidGatingLeaks() {
   return violations;
 }
 
+// ── Audit isolation ───────────────────────────────────────────────────────
+// Every audit runs inside runAudit(). A throw is caught, counted, logged and
+// surfaced as a violation — the remaining audits still run. One audit failing
+// degrades to "that audit did not run"; it must never again take the cycle
+// down with it. On 2026-07-14 a landing-markup change made parseLandingRows()
+// throw on the first line of runCycle(), and every other audit — including the
+// free-tier paid-leak check — silently stopped running for 2.6 days.
+//
+// The catch is deliberately NOT silent: a swallowed error would be worse than
+// the crash, because the crash was at least visible. Each failure logs a loud
+// line carrying its consecutive-failure count and emits a violation, so a
+// persistently broken audit reaches Telegram instead of decaying into silence.
+async function runAudit(name, streaks, fn) {
+  try {
+    const value = await fn();
+    if (streaks[name]) {
+      log(`AUDIT RECOVERED: ${name} — ran clean after ${streaks[name]} failing cycle(s)`);
+      delete streaks[name];
+    }
+    return { name, ok: true, value };
+  } catch (e) {
+    const n = (streaks[name] = (streaks[name] || 0) + 1);
+    log(`AUDIT FAILED: ${name} — ${e.message} (failing for ${n} consecutive cycle(s); the other audits still ran)`);
+    return {
+      name, ok: false,
+      violations: [`AUDIT DID NOT RUN: "${name}" has failed ${n} consecutive cycle(s) — ${e.message}. Its invariants are UNCHECKED until this is fixed.`],
+    };
+  }
+}
+
 // ── One audit cycle ───────────────────────────────────────────────────────
 async function runCycle(state) {
-  const html = await fetchText(LANDING_URL);
-  const hasApyCapLabel = html.includes(APY_CAP_LABEL);
-  const rows = parseLandingRows(html);
-
+  const streaks = { ...((state && state.auditFailStreaks) || {}) };
   const allViolations = [];
-  for (const row of rows) {
-    const { violations } = evaluateRow(row, hasApyCapLabel);
-    allViolations.push(...violations);
-  }
+  const ran = [], failed = [], counts = {};
+
+  // Each audit fn returns { violations, ...extras }. Returns null when the audit
+  // threw — callers then carry the previous cycle's high-water marks forward
+  // rather than resetting them (a reset would fake a delta on the next cycle).
+  const step = async (name, fn) => {
+    const r = await runAudit(name, streaks, fn);
+    const v = r.ok ? (r.value.violations || []) : r.violations;
+    allViolations.push(...v);
+    if (v.length) counts[name] = v.length;
+    (r.ok ? ran : failed).push(name);
+    return r.ok ? r.value : null;
+  };
+
+  // The landing rule: compare each displayed row against an independent recompute.
+  await step('landing-rows', async () => {
+    const html = await fetchText(LANDING_URL);
+    const hasApyCapLabel = html.includes(APY_CAP_LABEL);
+    const rows = parseLandingRows(html);
+    const violations = [];
+    for (const row of rows) violations.push(...evaluateRow(row, hasApyCapLabel).violations);
+    return { violations, rows: rows.length };
+  });
 
   // Phase 4: phantom-instrument class checks on the served feeds + sanity-reject spike.
-  allViolations.push(...auditServedFeeds());
-  allViolations.push(...auditRewardsTooGood());
-  const spike = auditSanityRejectSpike(state && state.sanityRejectSeen);
-  allViolations.push(...spike.violations);
+  await step('served-feeds', () => ({ violations: auditServedFeeds() }));
+  await step('rewards-too-good', () => ({ violations: auditRewardsTooGood() }));
+  const spike = await step('sanity-reject-spike', () => auditSanityRejectSpike(state && state.sanityRejectSeen));
 
   // Phase 3 rules M47/M48/M49: system integrity — producer-down / pipeline-stale
   // (PM2/agent-monitor RESTARTS; the guardian OBSERVES + surfaces so it reaches alerts).
-  allViolations.push(...auditSystemIntegrity());
+  await step('system-integrity', () => ({ violations: auditSystemIntegrity() }));
 
   // GUARDIAN observe: watch the serve-path guardian log for the CRITICAL guardrail.
-  const gLog = auditGuardianLog(state && state.guardianCriticalSeen);
-  allViolations.push(...gLog.violations);
+  const gLog = await step('guardian-log', () => auditGuardianLog(state && state.guardianCriticalSeen));
 
   // GUARDIAN rule H (31–33): fetch the tab APIs with NO session (free tier) and assert every
   // redacted derived-edge field is null — any survivor is a paid value leaking to free.
-  try { allViolations.push(...await auditPaidGatingLeaks()); }
-  catch (e) { log('auditPaidGatingLeaks error:', e.message); }
+  await step('paid-gating-leaks', async () => ({ violations: await auditPaidGatingLeaks() }));
 
   // GUARDIAN direct: emit cross-cycle (rule 5 cashable-swing) directives the serve path
   // cannot compute alone. Reversible + TTL-bounded; self-heals when values stabilize.
-  let guardianPrevNet = state && state.guardianPrevNet;
-  let guardianPrevIds = state && state.guardianPrevIds;
-  try {
-    const gd = await buildGuardianDirectives(state);
-    guardianPrevNet = gd.curNet;
-    guardianPrevIds = gd.curIds;
-    if (gd.directives.length) {
-      const byRule = gd.directives.reduce((m, d) => { m[d.rule] = (m[d.rule] || 0) + 1; return m; }, {});
-      log(`guardian directives written: ${gd.directives.length} suppression(s) ${JSON.stringify(byRule)}`);
+  const gd = await step('guardian-directives', async () => {
+    const g = await buildGuardianDirectives(state);
+    if (g.directives.length) {
+      const byRule = g.directives.reduce((m, d) => { m[d.rule] = (m[d.rule] || 0) + 1; return m; }, {});
+      log(`guardian directives written: ${g.directives.length} suppression(s) ${JSON.stringify(byRule)}`);
     }
-  } catch (e) { log('buildGuardianDirectives error:', e.message); }
+    return { violations: [], curNet: g.curNet, curIds: g.curIds };
+  });
 
-  log(`cycle ok — ${rows.length} live row(s), ${allViolations.length} violation(s), sanity-rejects=${spike.total}, guardian-critical=${gLog.criticalCount}`);
+  const sanityRejectSeen     = spike ? spike.total          : (state && state.sanityRejectSeen);
+  const guardianCriticalSeen = gLog  ? gLog.criticalCount   : (state && state.guardianCriticalSeen);
+  const guardianPrevNet      = gd    ? gd.curNet            : (state && state.guardianPrevNet);
+  const guardianPrevIds      = gd    ? gd.curIds            : (state && state.guardianPrevIds);
+
+  const total   = ran.length + failed.length;
+  const breakdown = Object.entries(counts).map(([k, v]) => `${k}:${v}`).join(' ');
+  log(`cycle ${failed.length ? 'DEGRADED' : 'ok'} — ${ran.length}/${total} audits ran` +
+      `${failed.length ? `, FAILED: ${failed.join(', ')}` : ''}, ${allViolations.length} violation(s)` +
+      `${breakdown ? ` [${breakdown}]` : ''}, sanity-rejects=${sanityRejectSeen}, guardian-critical=${guardianCriticalSeen}`);
+
   return {
     violations: allViolations,
-    sanityRejectSeen: spike.total,
-    guardianCriticalSeen: gLog.criticalCount,
+    sanityRejectSeen,
+    guardianCriticalSeen,
     guardianPrevNet,
     guardianPrevIds,
+    auditFailStreaks: streaks,
   };
 }
 
@@ -1046,9 +1097,10 @@ async function main() {
 
   while (true) {
     try {
-      const { violations, sanityRejectSeen, guardianCriticalSeen, guardianPrevNet, guardianPrevIds } = await runCycle(state);
+      const { violations, sanityRejectSeen, guardianCriticalSeen, guardianPrevNet, guardianPrevIds, auditFailStreaks } = await runCycle(state);
       // carry the delta-detection high-water marks + cross-cycle net/id snapshots forward
-      state = { ...state, sanityRejectSeen, guardianCriticalSeen, guardianPrevNet, guardianPrevIds };
+      // (auditFailStreaks too, so "audit X has been failing for N cycles" survives a restart)
+      state = { ...state, sanityRejectSeen, guardianCriticalSeen, guardianPrevNet, guardianPrevIds, auditFailStreaks };
       state = await maybeAlert(violations, state, { forceFirstSend: first });
       if (first) { state.firstCheckDone = true; first = false; }
       saveState(state);
