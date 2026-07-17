@@ -12,6 +12,7 @@
     "@anthropic-ai/sdk": "^0.100.1",
     "@polymarket/clob-client": "^5.8.1",
     "@prisma/client": "^5.22.0",
+    "@scure/starknet": "^2.2.0",
     "@types/bcryptjs": "^2.4.6",
     "@types/better-sqlite3": "^7.6.13",
     "@types/nodemailer": "^8.0.0",
