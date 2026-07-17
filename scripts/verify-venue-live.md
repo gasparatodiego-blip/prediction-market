@@ -28,7 +28,10 @@ Do not reuse an existing key. Do not paste a key into any file, commit, or chat.
 | Binance | `GET /sapi/v1/account/apiRestrictions` → `enableWithdrawals` | **NO — mainnet only.** Binance docs, verbatim: *Q: "Can I use the /sapi endpoints on the Spot Test Network?" A: "No, only the /api endpoints are available on the Spot Test Network"*. There is no testnet path to this endpoint. |
 | Bybit | `GET /v5/user/query-api` → `permissions.Wallet` contains `"Withdraw"` | Yes — `api-testnet.bybit.com`. Create the testnet key at testnet.bybit.com **outside Demo Trading mode** (Demo and Testnet are different environments at Bybit). |
 | OKX | `GET /api/v5/account/config` → `perm` contains `withdraw` | **Treat as mainnet-only.** Demo trading exists (`x-simulated-trading: 1`) and account/config is not a named exclusion, but the docs do **not** establish whether `perm` is populated in demo. A demo `perm` that came back empty would make a withdraw-enabled key look clean. Do not verify the guard in demo. |
+| Bitget | `GET /api/v2/spot/account/info` → `authorities` array contains `"wwow"` (wallet withdrawl) iff the key can withdraw | **Mainnet only.** Needs a real key with a passphrase. A trade-only key's `authorities` will hold trade codes (`stow`/`stor`, `coow`/`cpow`) but NOT `wwow`. Note `wtow`/`wtor` = internal transfer, which is NOT withdrawal — do not conflate. |
+| dYdX v4 | On-chain `GET {lcd}/dydxprotocol/accountplus/authenticators/{address}` → the authenticator's `MessageFilter` whitelists only clob order messages | **Mainnet (public chain).** Verified over public REST — no key needed to *read* the chain, but you need a real authenticator to test end-to-end. |
 | Gate.io | **none** | **Never verifiable.** No Gate.io endpoint returns the calling key's permissions. `guardVerifiable: false`. Do not flip it. |
+| Kraken | **none** | **Never verifiable.** Kraken exposes NO API endpoint that returns a key's permissions (visible only in the web UI). No adapter exists; do not add one. |
 
 ## The procedure, per venue
 
@@ -91,6 +94,18 @@ Correct key/secret, wrong passphrase. **Expect:** `canWithdraw: "unknown"` and
 key's permissions."*
 
 ---
+
+## dYdX v4 — how to build a trade-only authenticator to test with
+
+dYdX is not a paste-an-API-key flow. To get a testable trade-only credential:
+1. In the dYdX front-end (or via the SDK), create an **authenticator** composed as
+   `AllOf(SignatureVerification(traderPubKey), MessageFilter("/dydxprotocol.clob.MsgPlaceOrder,/dydxprotocol.clob.MsgCancelOrder"))`.
+   The MessageFilter MUST NOT include any `/dydxprotocol.sending.*` or `/cosmos.bank.*` message.
+2. Note the returned **authenticatorId** and your **dydx1… address**.
+3. Connect: authenticator private key (as the secret), the address, the authenticatorId, subaccount 0.
+4. `verifyKey` will read the authenticator on-chain and confirm the message filter is clob-only. If the
+   filter permits any fund-moving message, or the pasted key's pubkey doesn't match the on-chain
+   SignatureVerification config, it REFUSES.
 
 ## The exact line to flip
 
