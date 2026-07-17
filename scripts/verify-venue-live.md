@@ -1,0 +1,128 @@
+# Verifying a venue adapter against the live exchange
+
+Every venue in `lib/venues/registry.ts` is `liveVerified: false`. **No live key has ever
+been run against any of these adapters.** Until a human runs this procedure and sees it
+pass, `POST /api/keys` returns 409 and no key can be stored for that venue.
+
+This file is the procedure. It is deliberately manual: flipping `liveVerified` is a claim
+that a person watched a real key behave correctly. There is no UI, no API route, and no
+env var that can flip it, and none should ever be added.
+
+---
+
+## Before you start
+
+Create a **NEW** key at the venue:
+
+- **Trade-only. Withdrawals OFF.**
+- IP-allowlist it to this server if the venue supports it (Binance `ipRestrict`,
+  Bybit `ips`, OKX `ip`).
+- **Revoke it at the venue when you are done.** Even a trade-only key is a live credential.
+
+Do not reuse an existing key. Do not paste a key into any file, commit, or chat.
+
+## Which venues can be verified where
+
+| Venue | Guard endpoint | Testnet? |
+|---|---|---|
+| Binance | `GET /sapi/v1/account/apiRestrictions` → `enableWithdrawals` | **NO — mainnet only.** Binance docs, verbatim: *Q: "Can I use the /sapi endpoints on the Spot Test Network?" A: "No, only the /api endpoints are available on the Spot Test Network"*. There is no testnet path to this endpoint. |
+| Bybit | `GET /v5/user/query-api` → `permissions.Wallet` contains `"Withdraw"` | Yes — `api-testnet.bybit.com`. Create the testnet key at testnet.bybit.com **outside Demo Trading mode** (Demo and Testnet are different environments at Bybit). |
+| OKX | `GET /api/v5/account/config` → `perm` contains `withdraw` | **Treat as mainnet-only.** Demo trading exists (`x-simulated-trading: 1`) and account/config is not a named exclusion, but the docs do **not** establish whether `perm` is populated in demo. A demo `perm` that came back empty would make a withdraw-enabled key look clean. Do not verify the guard in demo. |
+| Gate.io | **none** | **Never verifiable.** No Gate.io endpoint returns the calling key's permissions. `guardVerifiable: false`. Do not flip it. |
+
+## The procedure, per venue
+
+Run from `/root/prediction-market`. Pass creds by env so they never reach shell history
+or a file. (Note the leading space — with `HISTCONTROL=ignorespace` it keeps the line out
+of history.)
+
+### 1. Trade-only key → must ACCEPT
+
+```bash
+ VENUE=bybit API_KEY='...' API_SECRET='...' PASSPHRASE='' node -e '
+   const { getVenue } = require("./dist/lib/venues/registry");
+   const v = getVenue(process.env.VENUE);
+   v.adapter.verifyKey({
+     apiKey: process.env.API_KEY,
+     secret: process.env.API_SECRET,
+     passphrase: process.env.PASSPHRASE || null,
+   }).then(r => console.log(JSON.stringify({
+     ok: r.ok, canWithdraw: r.canWithdraw, canTrade: r.canTrade,
+     permissions: r.permissions, error: r.error,
+   }, null, 2)));
+ '
+```
+
+**Expect:** `ok: true`, `canWithdraw: false`, `canTrade: true`, permissions listed.
+If `canWithdraw` is `"unknown"`, **STOP** — the parse does not match what the venue
+actually returns. Fix the adapter; do not flip the flag.
+
+### 2. Balance and positions → must READ
+
+Same shape, calling `v.adapter.getBalance(creds)` and `v.adapter.getPositions(creds)`.
+**Expect:** real numbers, no error. An empty account is a valid result — an `error` is not.
+
+### 3. Withdrawal-enabled key → must REFUSE (this is the important one)
+
+Temporarily enable withdrawals on the key at the venue, re-run step 1.
+
+**Expect:** `canWithdraw: true`. Then via the API, expect **400** and this body:
+
+> This key has WITHDRAWALS ENABLED, so it was refused and nothing was stored. Create a
+> new key with withdrawals disabled (trade-only) and connect that instead.
+
+Then prove it never landed:
+
+```bash
+psql "$DATABASE_URL" -c 'SELECT count(*) FROM "ExchangeKey";'
+```
+
+**Disable withdrawals again immediately afterwards, then revoke the key.**
+
+### 4. Garbage key → must refuse cleanly
+
+Random strings for key/secret. **Expect:** `ok: false`, `canWithdraw: "unknown"`, a short
+error from the fixed vocabulary, **no stack trace**, no row.
+
+### 5. OKX only — wrong passphrase → must be a clear message, not a 500
+
+Correct key/secret, wrong passphrase. **Expect:** `canWithdraw: "unknown"` and
+*"OKX rejected this key. Check the API key, the passphrase, the IP allowlist, and the
+key's permissions."*
+
+---
+
+## The exact line to flip
+
+Only after steps 1–5 pass for that venue. In `lib/venues/registry.ts`, find the venue's
+entry and change **one** field:
+
+```diff
+   {
+     adapter: bybit,
+     guardVerifiable: true,
+-    liveVerified: false,
++    liveVerified: true,
+     mainnetOnly: BYBIT_MAINNET_ONLY,
+```
+
+Flip **one venue at a time**, and only the venue you actually tested. Then:
+
+```bash
+bash scripts/guarded-build.sh     # serialises builds (rule 67); no restart on failure (rule 68)
+```
+
+Commit with what you measured, not what you expect:
+
+```bash
+git commit -am "chore(venues): bybit liveVerified — trade-only accepted, withdraw-enabled refused, verified <DATE>"
+```
+
+## Never
+
+- Never flip `guardVerifiable` for gate.io. It is a fact about Gate's API, not a TODO.
+- Never flip `liveVerified` because the code "looks right" or the unit tests pass. The 20
+  fail-closed assertions and the positive control prove the DECISION; they say nothing
+  about whether the signing, the base URL, or the live response shape are right.
+- Never paste a key into a file, a commit, an issue, or a chat.
+- Never leave withdrawals enabled on a key after step 3.
