@@ -4,6 +4,10 @@
 // No `fs` or other Node-only imports here — this file gets bundled into the
 // client. The actual file-reading computation lives in lib/spread-compute.ts.
 
+// Type-only import — erased at compile time, so no runtime dependency and no `fs`
+// is pulled into the client bundle by the funding-arb page importing these types.
+import type { LegOrderDryRun } from './funding-leg-order';
+
 export type AssetClass = 'crypto' | 'commodity' | 'stock' | 'index' | 'fx';
 
 export interface FuturesCoin {
@@ -128,6 +132,11 @@ export interface SpreadItem {
   // written to source). Carries K41/K43 removeCautionChip so the CAUTION chip consumer
   // (lib/caution-chip) can drop a contradictory alarm chip without touching any value.
   __guardian?: { removeCautionChip?: boolean } & Record<string, unknown>;
+  // Execution-order DRY-RUN attached on the serve path by lib/funding-leg-order: which leg
+  // would be placed FIRST and the measured depth evidence behind it. Display-only — it
+  // places nothing. Absent when the row was never ranked; unusable (with a reason) when
+  // either leg's depth was missing or stale.
+  legOrder?: LegOrderDryRun;
 }
 
 export interface SpreadsMeta {

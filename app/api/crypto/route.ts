@@ -5,6 +5,7 @@ import { getIsPaid, redactForTier, REDACTION_MAP } from '@/lib/paid-gating';
 import { getCryptoSpreadsData } from '@/lib/spread-compute';
 import { filterSane, enforceVerified } from '@/lib/display-sanity';
 import { applyGuardian, assertRedacted } from '@/lib/guardian-suppress';
+import { dryRunLegOrder } from '@/lib/funding-leg-order';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,5 +40,17 @@ export async function GET() {
   // Guardian H (rules 31–33): backstop the redaction — null + CRITICAL any derived-edge
   // field that leaked to the free tier (display-only; never fabricates). No-op for paid.
   if (!isPaid) assertRedacted(body, REDACTION_MAP['crypto'], { log: console.log });
+
+  // Execution-order DRY-RUN. Attached AFTER redaction so it cannot interfere with the
+  // gating path. Measurement of PUBLIC order-book depth (which leg is harder to fill and
+  // by how much) — not a derived edge, so it is not tier-gated. Computed here, server-side,
+  // because the ladders live in a local sidecar that must never ship to the browser.
+  // Reads a JSON file and ranks: it places nothing and touches no credential.
+  if (Array.isArray(body?.spreads)) {
+    const now = Date.now();
+    for (const r of body.spreads) {
+      r.legOrder = dryRunLegOrder(r.coin, r.shortExchange, r.longExchange, now);
+    }
+  }
   return NextResponse.json(body);
 }
