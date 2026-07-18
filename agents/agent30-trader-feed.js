@@ -466,9 +466,64 @@ function buildFile() {
   };
 }
 
+// Stream-serialise `obj` to fd, BYTE-IDENTICAL to JSON.stringify(obj) (no whitespace),
+// but never materialising the full ~44MB string: the giant `wallets` map is emitted one
+// wallet at a time (each ≤~0.2MB, GC'd immediately), so the built object and a full string
+// copy are never both resident. Every other value is small and stringified normally.
+// Identity holds because default JSON.stringify(obj) = '{' + join(',', `${JSON.stringify(k)}:${JSON.stringify(v)}`)
+// + '}' over own-enumerable keys in insertion order, omitting undefined-valued keys — which
+// is exactly what this emits. Wallet keys are 0x-hex (non-array-index) so insertion order is
+// preserved identically by Object.keys and by JSON.stringify.
+function writeJsonStreamed(fd, obj) {
+  fs.writeSync(fd, '{');
+  let first = true;
+  for (const k of Object.keys(obj)) {
+    const v = obj[k];
+    if (v === undefined) continue;                       // JSON.stringify omits undefined-valued keys
+    const prefix = (first ? '' : ',') + JSON.stringify(k) + ':';
+    first = false;
+    if (k === 'wallets' && v && typeof v === 'object') {
+      fs.writeSync(fd, prefix + '{');
+      let wfirst = true;
+      for (const addr of Object.keys(v)) {
+        const wv = v[addr];
+        if (wv === undefined) continue;
+        fs.writeSync(fd, (wfirst ? '' : ',') + JSON.stringify(addr) + ':' + JSON.stringify(wv));
+        wfirst = false;
+      }
+      fs.writeSync(fd, '}');
+    } else {
+      fs.writeSync(fd, prefix + JSON.stringify(v));
+    }
+  }
+  fs.writeSync(fd, '}');
+}
+
+// Atomic streamed write — same tmp→fsync→rename(2) contract as lib/atomicJsonWrite (readers
+// never see a partial file), but the content is streamed per-wallet so the full JSON string
+// is never resident. Only the write mechanism changes; the bytes are identical.
+function atomicWriteJsonStreamed(targetPath, obj) {
+  const dir  = path.dirname(targetPath);
+  const base = path.basename(targetPath);
+  const tmp  = path.join(dir, `${base}.tmp.${process.pid}.${Date.now()}`);
+  let fd;
+  try {
+    fd = fs.openSync(tmp, 'w');
+    writeJsonStreamed(fd, obj);
+    fs.fsyncSync(fd);                 // flush to disk before the rename
+    fs.closeSync(fd);
+    fd = undefined;
+    fs.renameSync(tmp, targetPath);   // atomic replace — readers never see a partial file
+  } catch (e) {
+    if (fd !== undefined) { try { fs.closeSync(fd); } catch {} }
+    try { fs.unlinkSync(tmp); } catch {}   // never leave an orphan temp file behind
+    throw e;
+  }
+}
+
 function writeNow() {
   dirty = false;
-  try { atomicWriteJson(OUT_FILE, buildFile()); }
+  try { atomicWriteJsonStreamed(OUT_FILE, buildFile()); }
   catch (e) { log('write failed:', e.message); }
 }
 
