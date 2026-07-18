@@ -1,56 +1,31 @@
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
-import { getIsPaid, redactForTier, REDACTION_MAP } from '@/lib/paid-gating';
-import { getCryptoSpreadsData } from '@/lib/spread-compute';
-import { filterSane, enforceVerified } from '@/lib/display-sanity';
-import { applyGuardian, assertRedacted } from '@/lib/guardian-suppress';
-import { dryRunLegOrder } from '@/lib/funding-leg-order';
+import { buildCryptoBody, DETAIL_FIELDS } from '@/lib/crypto-payload';
 
 export const dynamic = 'force-dynamic';
 
 export type { FuturesCoin, SlipPoint, SpreadItem } from '@/lib/spread-compute';
 
+/**
+ * LIST payload. The full body is built by the shared pipeline (including redaction and the
+ * redaction backstop), then the heavy per-row detail fields are stripped — the client
+ * downloads 1678 rows but renders at most 25 (6 on first paint), so shipping their detail
+ * is pure waste. /api/crypto/detail serves those fields for the rows actually rendered.
+ *
+ * Slimming happens strictly AFTER assertRedacted, so gating still runs against the full
+ * shape (REDACTION_MAP covers spreads[].slipCurve[].*) and cannot be hollowed out here.
+ */
 export async function GET() {
-  const session = await getServerSession(authOptions);
-  const isPaid  = await getIsPaid(session);
+  const { body } = await buildCryptoBody();
 
-  // Render-time sanity net (before redaction so cap checks see real values). Drops any
-  // funding/perp-spot row with a null/NaN/absurd rate or an over-cap unlabeled annualized.
-  const data = getCryptoSpreadsData();
-  data.spreads = filterSane('funding', data.spreads);
-  data.perpSpot = filterSane('perp-spot', data.perpSpot);
-  data.usdcArb = filterSane('usdc', data.usdcArb);
-
-  // Source-of-truth enforcement: drop rows the venue positively contradicts,
-  // flag+demote rows we couldn't re-read at source, tag verified rows for the badge.
-  data.spreads = enforceVerified('funding', data.spreads);
-  data.perpSpot = enforceVerified('perp-spot', data.perpSpot);
-  data.usdcArb = enforceVerified('usdc', data.usdcArb);
-
-  // Guardian (rules A–E): the honest-engine auto-suppressor — hide/downgrade/relabel/
-  // redact any row that violates a too-good/consistency/verify/capacity/price rule.
-  // Display-only, never rewrites source; logs each action; runs before redaction so it
-  // sees real values (like filterSane). agent26 runs the SAME module for alerting.
-  data.spreads = applyGuardian('funding', data.spreads).rows;
-  data.perpSpot = applyGuardian('perp-spot', data.perpSpot).rows;
-  data.usdcArb = applyGuardian('usdc', data.usdcArb).rows;
-
-  const body = redactForTier(data, 'crypto', isPaid);
-  // Guardian H (rules 31–33): backstop the redaction — null + CRITICAL any derived-edge
-  // field that leaked to the free tier (display-only; never fabricates). No-op for paid.
-  if (!isPaid) assertRedacted(body, REDACTION_MAP['crypto'], { log: console.log });
-
-  // Execution-order DRY-RUN. Attached AFTER redaction so it cannot interfere with the
-  // gating path. Measurement of PUBLIC order-book depth (which leg is harder to fill and
-  // by how much) — not a derived edge, so it is not tier-gated. Computed here, server-side,
-  // because the ladders live in a local sidecar that must never ship to the browser.
-  // Reads a JSON file and ranks: it places nothing and touches no credential.
   if (Array.isArray(body?.spreads)) {
-    const now = Date.now();
     for (const r of body.spreads) {
-      r.legOrder = dryRunLegOrder(r.coin, r.shortExchange, r.longExchange, now);
+      // capCase()/capRank() — which drive the SORT, hence which rows render — need only
+      // "is slipCurve present and non-empty". Ship the count so ordering is bit-identical
+      // to the pre-split payload without shipping the curve.
+      r.slipCurveN = Array.isArray(r.slipCurve) ? r.slipCurve.length : 0;
+      for (const f of DETAIL_FIELDS) delete r[f];
     }
   }
+
   return NextResponse.json(body);
 }

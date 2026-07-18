@@ -123,8 +123,11 @@ function fmtCapDisplay(n: number): string {
 function capCase(s: SpreadItem): 'A' | 'B' | 'C' {
   const gc = s.greenCapacityUsd;
   if (gc != null && gc > 0) return 'A';
-  if (gc === 0 && s.oneLegUnverified === false &&
-      Array.isArray(s.slipCurve) && s.slipCurve.length > 0) return 'B';
+  // slipCurve is detail-loaded now; the list carries slipCurveN (its length), so this
+  // presence test — and therefore the SORT, and therefore which rows render — is identical
+  // to before the payload split. Falls back to the array once detail has merged in.
+  const curveLen = (s as any).slipCurveN ?? (Array.isArray(s.slipCurve) ? s.slipCurve.length : 0);
+  if (gc === 0 && s.oneLegUnverified === false && curveLen > 0) return 'B';
   return 'C';
 }
 
@@ -727,6 +730,31 @@ function CapacityRow({
 // Fail-closed — if either leg's depth was missing or stale the whole ordering is
 // unusable and says so, rather than showing a confident rank we cannot justify.
 
+/** Stable per-row identity — must match rowKey() in lib/crypto-payload.ts. */
+const detailKey = (s: SpreadItem) => `${s.coin}|${s.shortExchange}|${s.longExchange}`;
+
+/**
+ * Fetches the heavy per-row detail for the rows currently on screen, in ONE batched call.
+ * The list payload no longer carries these fields; at most 25 rows are ever rendered, so
+ * this replaces ~1653 rows of unrenderable detail with one small request.
+ * Failure is calm and non-fatal: the cards keep their list-level fields and the
+ * detail-backed sections show their own empty state rather than an error.
+ */
+function useRowDetail(keys: string[]): Record<string, Partial<SpreadItem>> {
+  const [detail, setDetail] = useState<Record<string, Partial<SpreadItem>>>({});
+  const sig = keys.join(',');
+  useEffect(() => {
+    if (!sig) return;
+    let cancelled = false;
+    fetch(`/api/crypto/detail?keys=${encodeURIComponent(sig)}`)
+      .then(r => (r.ok ? r.json() : { detail: {} }))
+      .then(j => { if (!cancelled) setDetail(prev => ({ ...prev, ...(j.detail || {}) })); })
+      .catch(() => { /* keep whatever we have; never surface a throw to the card */ });
+    return () => { cancelled = true; };
+  }, [sig]);
+  return detail;
+}
+
 /** Any value we could not measure renders as an em dash — never a fabricated number. */
 const dash = (v: number | null | undefined, fmt: (n: number) => string) =>
   v == null || !Number.isFinite(v) ? '—' : fmt(v);
@@ -1154,9 +1182,17 @@ function OpportunityCards({
   // Display the selected pairs in the existing payback-first order (card ordering unchanged).
   const allItems: SpreadItem[] = sorted.filter(s => picked.has(pickedKey(s)));
 
+  // Heavy per-row fields (slipCurve, legOrder, persistence, __guardian, __verify) are no
+  // longer in the list payload — fetch them for the rows actually on screen. Declared
+  // before the early return below so the hook order stays unconditional.
+  const shown      = showMore ? allItems : allItems.slice(0, CARDS_DEFAULT);
+  const detail     = useRowDetail(shown.map(detailKey));
+
   if (spreads.length === 0) return null;
 
-  const visible       = showMore ? allItems : allItems.slice(0, CARDS_DEFAULT);
+  // Merge detail over the list row. Until it arrives the card renders its list-level fields
+  // and the detail-backed parts show their own calm empty state — never a fabricated value.
+  const visible       = shown.map(s => { const d = detail[detailKey(s)]; return d ? { ...s, ...d } : s; });
   const remaining     = allItems.length - CARDS_DEFAULT;
   const selectedCount = venues.filter(filter.isSelected).length;
 
