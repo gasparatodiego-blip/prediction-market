@@ -253,13 +253,21 @@ module.exports = {
       //   1) --max-old-space-size=1536: real headroom so the scan peak (~766MB) never
       //      touches the V8 cap and never FATAL-aborts. It is a BACKSTOP, not the
       //      operating point — steady-state RSS is ~430MB.
-      //   2) max_memory_restart 1200M: pm2 SOFT cap. Sits above the true peak (~766MB)
-      //      so no mid-scan restart loop, and below the V8 backstop (1536MB) so a real
-      //      runaway is caught by pm2 as a clean recoverable restart BEFORE V8 aborts.
-      //      Peak/steady both sit far under 1200M, so siblings see no added pressure in
-      //      normal operation; the cap only bites a genuine leak.
+      //   2) max_memory_restart 1000M: pm2 SOFT cap. Sits above the true peak and below
+      //      the V8 backstop (1536MB) so a real runaway is caught by pm2 as a clean
+      //      recoverable restart BEFORE V8 aborts.
+      //      Lowered 1200M→1000M 2026-07-18 to trip ~200MB earlier on a regression. The
+      //      ~766MB above is HEAP during the Jul-6 FATAL under the OLD 768MB cap, where
+      //      V8 was GC-thrashing at its limit — not the RSS pm2 measures under this cap.
+      //      Measured RSS under the current config: VmHWM 652.8MiB — the kernel's
+      //      high-water across ~146 scans of one 3.05-day process lifetime — and 559MB
+      //      on a freshly 2s-sampled scan. 1000M leaves ~53% headroom over that worst
+      //      case, so a healthy scan cannot trip it; the cap only bites a genuine leak.
+      //      NOTE: a lower cap would be a FALSE win — the Jul-11 deaths were kernel
+      //      global-OOM SIGKILLs at 405–615MB RSS, below any ceiling in this range; no
+      //      pm2 soft cap can pre-empt a global OOM.
       node_args:          '--max-old-space-size=1536',
-      max_memory_restart: '1200M',
+      max_memory_restart: '1000M',
       watch:         false,
       env:           { NODE_ENV: 'production', HOME: '/root' },
     },
