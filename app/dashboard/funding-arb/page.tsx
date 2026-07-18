@@ -18,6 +18,8 @@ import { PlatformLink } from '@/app/components/ui/PlatformLink';
 import { VerifyBadge } from '@/app/components/ui/VerifyBadge';
 import { venuePerpUrl, venueSpotUrl } from '@/lib/platform-links';
 import { cautionChipRemoved } from '@/lib/caution-chip';
+// Type-only — erased at compile time, so funding-leg-order's `fs` never reaches the bundle.
+import type { LegOrderDryRun } from '@/lib/funding-leg-order';
 import { RowBoundary } from '@/app/components/ui/RowBoundary';
 import { AUTO_EXECUTE_ENABLED } from '@/lib/flags';
 import type { PerpSpotRow, PerpSpotRegime, UsdcArbRow } from '@/lib/spread-types';
@@ -759,12 +761,13 @@ function useRowDetail(keys: string[]): Record<string, Partial<SpreadItem>> {
 const dash = (v: number | null | undefined, fmt: (n: number) => string) =>
   v == null || !Number.isFinite(v) ? '—' : fmt(v);
 
-function LegOrderPanel({ s }: { s: SpreadItem }) {
-  const d = s.legOrder;
+/** Shared by all three strategy modes (Perp/Perp, Perp-vs-Spot, USDC-margined) so the
+ *  dry-run reads identically everywhere — same evidence, same calm UNKNOWN. */
+function LegOrderPanel({ d, coin }: { d?: LegOrderDryRun | null; coin: string }) {
   if (!d) return null;
 
   const sizeLabel = d.qty != null
-    ? `$${d.notionalUsd.toLocaleString('en-US')} · ${d.qty.toFixed(4)} ${s.coin}`
+    ? `$${d.notionalUsd.toLocaleString('en-US')} · ${d.qty.toFixed(4)} ${coin}`
     : `$${d.notionalUsd.toLocaleString('en-US')}`;
 
   return (
@@ -908,7 +911,7 @@ function FundingCard({ s, capital, leverage }: { s: SpreadItem; capital: number;
 
       <CapacityRow s={s} capital={capital} leverage={leverage} redacted={redacted} />
 
-      <LegOrderPanel s={s} />
+      <LegOrderPanel d={s.legOrder} coin={s.coin} />
 
       {/* Footer */}
       <div className="flex items-center justify-end pt-0.5">
@@ -2220,6 +2223,10 @@ function PerpSpotCard({
         >
           {expanded ? 'Hide guide ↑' : 'Execution guide →'}
         </button>
+      </div>
+
+      <div className="mt-2.5">
+        <LegOrderPanel d={row.legOrder} coin={row.coin} />
       </div>
 
       {expanded && (

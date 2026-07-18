@@ -164,3 +164,69 @@ export function dryRunLegOrder(
     ladderAgeMs: ages.length ? Math.max(...ages) : null,
   }
 }
+
+// ── Perp-vs-Spot (delta-neutral carry) ───────────────────────────────────────
+//
+// The lane's two legs are NOT symmetric in what we have persisted:
+//   PERP leg  — shortVenue's perp book IS in the sidecar (agent15 persists it).
+//   SPOT  leg — NO spot ladder is persisted anywhere. agent10 walks the spot book to
+//               produce spotCapacityUsd, but keeps only that scalar (agent28 line 90);
+//               /tmp/perp-spot.json carries spotBid/spotAsk/spotBookAt and no levels.
+//
+// The sidecar DOES hold `COIN|binance` — but its own note says "perp order-book ladders".
+// That is binance's PERP book, a different instrument from binance SPOT. Ranking the spot
+// leg against it would be a fabricated ladder, so the spot leg is passed no ladder at all
+// and comes back UNKNOWN. The perp leg still reports real, measured evidence; the ordering
+// as a whole is unusable, which is the honest answer until the spot ladder is persisted.
+export function dryRunPerpSpotLegOrder(
+  coin: string,
+  perpVenue: string,
+  spotVenue: string | null,
+  now: number = Date.now(),
+  maxAgeMs: number = DEFAULT_LADDER_MAX_AGE_MS,
+): LegOrderDryRun {
+  if (!coin || !perpVenue) return unusable('row is missing a coin or a perp venue')
+
+  const sidecar = readSidecar()
+  if (!sidecar) return unusable('no persisted depth available (sidecar unreadable)')
+
+  const perpKey = `${coin}|${perpVenue}`
+  const pBook = sidecar.books[perpKey]
+  if (!pBook) return unusable(`no persisted depth for ${coin} on ${perpVenue}`)
+
+  const mid = pBook.mid
+  if (!Number.isFinite(mid) || mid <= 0) return unusable(`no usable mid for ${perpKey}`)
+  const qty = DRY_RUN_NOTIONAL_USD / mid
+
+  // Short the perp → SELL into its bids. Buy the spot hedge → would cross the spot asks,
+  // which we have not persisted, so: no ladder → stale → UNKNOWN (never the perp book).
+  const legs = [
+    legFromLadder(`${perpVenue} · sell perp`, 'sell', toTimestamped(pBook, 'sell'), now, maxAgeMs),
+    legFromLadder(`${spotVenue ?? 'spot'} · buy spot`, 'buy', null, now, maxAgeMs),
+  ]
+
+  const r = rankLegs(legs, qty)
+  // Name the specific gap so the refusal is actionable — but derive it from the ACTUAL
+  // ranking outcome, never from the assumption that the perp leg ranked. A stale perp
+  // ladder makes that leg UNKNOWN too, and reporting it as "measured" would be a lie.
+  const perpMeasured = r.legs[0]?.outcome !== 'unknown'
+  const spotName = spotVenue ?? 'the spot venue'
+  const reason = r.usable
+    ? r.reason
+    : perpMeasured
+      ? `spot depth is not persisted for ${spotName} — perp leg measured, spot leg not`
+      : `no usable depth: ${perpVenue}'s ladder is stale, and spot depth is not persisted for ${spotName}`
+
+  return {
+    notionalUsd: DRY_RUN_NOTIONAL_USD,
+    qty: r6(qty),
+    qtyFrom: perpKey,
+    usable: r.usable,
+    executableAtSize: r.executableAtSize,
+    reason,
+    firstLegId: r.usable && r.order && r.order.length ? r.order[0].id : null,
+    ties: r.ties,
+    legs: r.legs.map(project),
+    ladderAgeMs: Number.isFinite(pBook.fetchedAt) ? now - pBook.fetchedAt : null,
+  }
+}

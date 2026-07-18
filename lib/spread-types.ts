@@ -175,6 +175,10 @@ export interface PerpSpotRow {
   // ask across venues with a real book) and spotCapacityUsd is the 20bps book-walked buy
   // depth (real resting depth, never OI). All null when no book was read (never fabricated).
   // Public reference data (real prices/depth) — not redacted, like markPrice/funding.
+  // Execution-order DRY-RUN attached on the serve path by lib/funding-leg-order. The perp
+  // leg ranks on real persisted depth; the spot leg has no persisted ladder, so the
+  // ordering is UNKNOWN-honest rather than ranked. Never fabricated.
+  legOrder?:                   LegOrderDryRun;
   spotExecutable:              boolean;
   spotAsk:                     number | null;
   spotBid:                     number | null;

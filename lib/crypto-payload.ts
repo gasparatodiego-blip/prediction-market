@@ -11,7 +11,7 @@ import { getIsPaid, redactForTier, REDACTION_MAP } from '@/lib/paid-gating';
 import { getCryptoSpreadsData } from '@/lib/spread-compute';
 import { filterSane, enforceVerified } from '@/lib/display-sanity';
 import { applyGuardian, assertRedacted } from '@/lib/guardian-suppress';
-import { dryRunLegOrder } from '@/lib/funding-leg-order';
+import { dryRunLegOrder, dryRunPerpSpotLegOrder } from '@/lib/funding-leg-order';
 
 /** Heavy per-row fields the LIST does not need. Moved to the detail route and fetched only
  *  for the ≤25 rows the card view can actually render (6 on first paint).
@@ -58,10 +58,18 @@ export async function buildCryptoBody(): Promise<{ body: any; isPaid: boolean }>
   // Execution-order dry-run — attached after redaction so it cannot interfere with gating.
   // Measurement of PUBLIC order-book depth, not a derived edge, so it is not tier-gated.
   // It reads a local JSON sidecar and ranks: it places nothing and touches no credential.
+  const now = Date.now();
   if (Array.isArray(body?.spreads)) {
-    const now = Date.now();
     for (const r of body.spreads) {
       r.legOrder = dryRunLegOrder(r.coin, r.shortExchange, r.longExchange, now);
+    }
+  }
+  // The Perp-vs-Spot lane gets the same dry-run. It is small (25 rows), so unlike
+  // `spreads` it ships inline on the list payload — the list route only strips
+  // DETAIL_FIELDS from `spreads`.
+  if (Array.isArray(body?.perpSpot)) {
+    for (const r of body.perpSpot) {
+      r.legOrder = dryRunPerpSpotLegOrder(r.coin, r.shortVenue, r.spotVenueSuggested, now);
     }
   }
 
