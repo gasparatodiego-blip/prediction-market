@@ -233,3 +233,56 @@ export function rankLegs(legs: LegBook[], size: number): RankResult {
     legs: evaluated,
   }
 }
+
+// ── Stale-by-timestamp bridge ──────────────────────────────────────────────────
+//
+// rankLegs is pure and clockless: it treats `leg.stale === true` as UNKNOWN but cannot
+// itself decide freshness. Persisted depth (e.g. agent15's /tmp/funding-books.json) carries
+// the timestamp of the fetch it came from. This bridge turns such a timestamped, compact
+// [price, qty] ladder into a rankLegs LegBook, deciding staleness against a threshold — while
+// keeping rankLegs pure (the CALLER supplies `now`; no clock crosses into the ranker).
+//
+// FAIL-CLOSED: a missing/non-finite/future timestamp, or a ladder older than maxAgeMs, marks
+// the leg stale → the leg is UNKNOWN → the whole ranking is unusable. A stale ladder is worse
+// than none, because it looks usable; this is the guard that stops it being trusted.
+
+/**
+ * Default max age (ms) of a persisted ladder before it is too stale to rank on. agent15
+ * refreshes depth every ~60 s cycle, so a fresh ladder is < ~90 s old; older than this it has
+ * missed ~5 cycles (agent stalled or depth fetches failing) and is not execution-grade.
+ */
+export const DEFAULT_LADDER_MAX_AGE_MS = 5 * 60_000
+
+/** A persisted depth ladder: compact [price, qty] tuples (best-first for its side) plus the
+ *  epoch-ms timestamp of the fetch they came from. Matches the on-disk sidecar shape. */
+export interface TimestampedLadder {
+  fetchedAt: number
+  levels: [number, number][]
+}
+
+/**
+ * Build a rankLegs LegBook from a persisted timestamped ladder. PURE — the caller supplies
+ * `now` (no clock here, so rankLegs stays testable without a network).
+ *
+ *   side 'buy'  → pass the ASK ladder (ascending)
+ *   side 'sell' → pass the BID ladder (descending)
+ *
+ * Marks the leg `stale: true` (→ UNKNOWN in rankLegs) when the ladder is missing/malformed,
+ * its timestamp is absent/non-finite/in the future, or it is older than maxAgeMs. The tuple
+ * levels are mapped to {price, qty} BookLevels; per-level validity is still rankLegs' job.
+ */
+export function legFromLadder(
+  id: string,
+  side: 'buy' | 'sell',
+  ladder: TimestampedLadder | null | undefined,
+  now: number,
+  maxAgeMs: number = DEFAULT_LADDER_MAX_AGE_MS,
+): LegBook {
+  if (!ladder || !Array.isArray(ladder.levels) || !Number.isFinite(ladder.fetchedAt)) {
+    return { id, side, ladder: [], stale: true }
+  }
+  const age = now - ladder.fetchedAt
+  const stale = !Number.isFinite(age) || age < 0 || age > maxAgeMs
+  const levels: BookLevel[] = ladder.levels.map(([price, qty]) => ({ price, qty }))
+  return { id, side, ladder: levels, stale }
+}
