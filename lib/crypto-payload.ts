@@ -11,7 +11,7 @@ import { getIsPaid, redactForTier, REDACTION_MAP } from '@/lib/paid-gating';
 import { getCryptoSpreadsData } from '@/lib/spread-compute';
 import { filterSane, enforceVerified } from '@/lib/display-sanity';
 import { applyGuardian, assertRedacted } from '@/lib/guardian-suppress';
-import { dryRunLegOrder, dryRunPerpSpotLegOrder } from '@/lib/funding-leg-order';
+import { dryRunLegOrder, dryRunPerpSpotLegOrder, dryRunUsdcLegOrder } from '@/lib/funding-leg-order';
 
 /** Heavy per-row fields the LIST does not need. Moved to the detail route and fetched only
  *  for the ≤25 rows the card view can actually render (6 on first paint).
@@ -64,12 +64,17 @@ export async function buildCryptoBody(): Promise<{ body: any; isPaid: boolean }>
       r.legOrder = dryRunLegOrder(r.coin, r.shortExchange, r.longExchange, now);
     }
   }
-  // The Perp-vs-Spot lane gets the same dry-run. It is small (25 rows), so unlike
-  // `spreads` it ships inline on the list payload — the list route only strips
-  // DETAIL_FIELDS from `spreads`.
+  // The other two strategy lanes on this tab get the same dry-run. Both are small (25 and
+  // 4 rows), so unlike `spreads` they ship it inline on the list payload — the list route
+  // only strips DETAIL_FIELDS from `spreads`.
   if (Array.isArray(body?.perpSpot)) {
     for (const r of body.perpSpot) {
       r.legOrder = dryRunPerpSpotLegOrder(r.coin, r.shortVenue, r.spotVenueSuggested, now);
+    }
+  }
+  if (Array.isArray(body?.usdcArb)) {
+    for (const r of body.usdcArb) {
+      r.legOrder = dryRunUsdcLegOrder(r.coin, r.shortVenue, r.shortMargin, r.longVenue, r.longMargin, now);
     }
   }
 

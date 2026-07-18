@@ -230,3 +230,81 @@ export function dryRunPerpSpotLegOrder(
     ladderAgeMs: Number.isFinite(pBook.fetchedAt) ? now - pBook.fetchedAt : null,
   }
 }
+
+// ── USDC-margined divergence ─────────────────────────────────────────────────
+//
+// Mixed-margin lane: a USDC-margined leg against either another USDC-margined leg or a
+// USDT-margined one. agent15's sidecar holds ONLY USDT-margined perp books, so:
+//   USDT leg → real persisted ladder (keyed COIN|venue), real evidence.
+//   USDC leg → nothing persisted. `bitget-usdc` is a DIFFERENT INSTRUMENT from `bitget`
+//              with its own book; silently falling back to the USDT sibling would fabricate
+//              depth for a contract we never read. So it is passed no ladder → UNKNOWN.
+//
+// Consequence today: every row is unusable, because every row has at least one USDC leg.
+// The USDT leg's evidence is still real and still shown.
+export function dryRunUsdcLegOrder(
+  coin: string,
+  shortVenue: string,
+  shortMargin: string,
+  longVenue: string,
+  longMargin: string,
+  now: number = Date.now(),
+  maxAgeMs: number = DEFAULT_LADDER_MAX_AGE_MS,
+): LegOrderDryRun {
+  if (!coin || !shortVenue || !longVenue) return unusable('row is missing a coin or a venue')
+
+  const sidecar = readSidecar()
+  if (!sidecar) return unusable('no persisted depth available (sidecar unreadable)')
+
+  // A leg is measurable only when it is USDT-margined AND its book is in the sidecar.
+  // USDC-margined legs are never looked up — there is no USDC book to look up.
+  const resolve = (venue: string, margin: string): SidecarLadder | null =>
+    margin === 'USDT' ? (sidecar.books[`${coin}|${venue}`] ?? null) : null
+
+  const sBook = resolve(shortVenue, shortMargin)
+  const lBook = resolve(longVenue, longMargin)
+
+  // Size off whichever leg gave us a real venue mid; with neither, the notional stands
+  // alone and qty stays null rather than being guessed off a mark price.
+  const midFrom = sBook && Number.isFinite(sBook.mid) && sBook.mid > 0
+    ? { book: sBook, key: `${coin}|${shortVenue}` }
+    : lBook && Number.isFinite(lBook.mid) && lBook.mid > 0
+      ? { book: lBook, key: `${coin}|${longVenue}` }
+      : null
+
+  const legs = [
+    legFromLadder(`${shortVenue} · sell`, 'sell', toTimestamped(sBook ?? undefined, 'sell'), now, maxAgeMs),
+    legFromLadder(`${longVenue} · buy`,   'buy',  toTimestamped(lBook ?? undefined, 'buy'),  now, maxAgeMs),
+  ]
+
+  const qty = midFrom ? DRY_RUN_NOTIONAL_USD / midFrom.book.mid : null
+  const r = rankLegs(legs, qty ?? 0)
+  const ages = [sBook?.fetchedAt, lBook?.fetchedAt]
+    .filter((t): t is number => Number.isFinite(t as number))
+    .map(t => now - t)
+
+  // Explain each leg we could not measure, keyed off the ACTUAL ranking outcome rather
+  // than off book presence — a USDT ladder that is present but stale is still unmeasured,
+  // and must be named as such instead of being silently treated as fine.
+  const why = (venue: string, margin: string, book: SidecarLadder | null) =>
+    margin !== 'USDT' ? `${venue} (USDC-margined — no book persisted)`
+      : !book          ? `${venue} (no persisted ladder)`
+      :                  `${venue} (ladder too stale to rank)`
+  const unmeasured = [
+    r.legs[0]?.outcome === 'unknown' ? why(shortVenue, shortMargin, sBook) : null,
+    r.legs[1]?.outcome === 'unknown' ? why(longVenue, longMargin, lBook) : null,
+  ].filter(Boolean)
+
+  return {
+    notionalUsd: DRY_RUN_NOTIONAL_USD,
+    qty: r6(qty),
+    qtyFrom: midFrom ? midFrom.key : null,
+    usable: r.usable,
+    executableAtSize: r.executableAtSize,
+    reason: r.usable ? r.reason : `no persisted depth for ${unmeasured.join(' and ')}`,
+    firstLegId: r.usable && r.order && r.order.length ? r.order[0].id : null,
+    ties: r.ties,
+    legs: r.legs.map(project),
+    ladderAgeMs: ages.length ? Math.max(...ages) : null,
+  }
+}

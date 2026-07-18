@@ -2550,6 +2550,10 @@ function UsdcArbCard({ row, capitalPerLeg }: { row: UsdcArbRow; capitalPerLeg: n
           )}
         </div>
       </div>
+
+      <div className="mt-2.5">
+        <LegOrderPanel d={row.legOrder} coin={row.coin} />
+      </div>
     </div>
   );
 }

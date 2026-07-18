@@ -256,6 +256,9 @@ export interface UsdcArbRow {
   liqTierLong:  string | null;
   thin:         boolean;
   edge:         UsdcArbEdge;
+  // Execution-order DRY-RUN. USDC-margined books are not persisted by any writer, so a
+  // USDC leg is always UNKNOWN; a USDT leg ranks on its real ladder. See funding-leg-order.
+  legOrder?:    LegOrderDryRun;
 }
 
 export interface CryptoSpreadsData {
