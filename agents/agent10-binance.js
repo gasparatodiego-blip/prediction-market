@@ -26,6 +26,9 @@ for (const envFile of ['.env.local', '.env']) {
 const OUT            = '/tmp/exchange-prices.json';
 const HIST_FILE      = '/tmp/exchange-history.json';
 const SPOT_BOOKS_FILE = '/tmp/spot-books.json';
+// agent28's perp-vs-spot opportunity set — READ-ONLY here, purely to learn which coins
+// currently need a spot hedge book walked (see spotCoinUniverse).
+const PERP_SPOT_FILE  = '/tmp/perp-spot.json';
 // Persist only the top N levels per side — mirrors agent15's LADDER_CAP so both sidecars
 // carry the same depth budget (venues already return ≤50 here).
 const SPOT_LADDER_CAP = 50;
@@ -344,16 +347,62 @@ function toSpotLadder(levels, cap = SPOT_LADDER_CAP) {
   return out;
 }
 
+// Which coins to walk spot books for.
+//
+// DATA-DRIVEN, not a hardcoded list: the perp-vs-spot lane's own opportunity set
+// (/tmp/perp-spot.json, written by agent28) names exactly the coins that surface on
+// screen and therefore need a spot leg to rank. Walking that union means no dead coins
+// and no coin silently missing its hedge book.
+//
+// UNION with the static COINS so this can only ever ADD coverage — a missing, empty or
+// unparseable opportunity file degrades to exactly today's 8-coin behavior, never less.
+// Capped, and truncation is logged (never a silent drop).
+//
+// Note the lag: agent28 picks its spot venue from the books agent10 walked last cycle,
+// and agent10 now takes its coin set from agent28's last output. That is a converging
+// feedback loop (a new coin ranks one cycle later), not a deadlock — neither side blocks
+// on the other, and both fall back to their own defaults when the other is absent.
+const MAX_SPOT_COINS = 40;
+
+function spotCoinUniverse() {
+  const base = new Set(COINS);
+  let fromOpps = 0;
+  try {
+    const raw = JSON.parse(fs.readFileSync(PERP_SPOT_FILE, 'utf8'));
+    for (const r of (raw && raw.rows) || []) {
+      const c = typeof r.coin === 'string' ? r.coin.toUpperCase() : null;
+      // Sanity-gate the token: this is an external file, not a trusted constant.
+      if (!c || !/^[A-Z0-9]{2,15}$/.test(c) || base.has(c)) continue;
+      base.add(c);
+      fromOpps++;
+    }
+  } catch {
+    // absent/corrupt → static COINS only (fail-safe, never fewer than before)
+  }
+  let coins = [...base];
+  if (coins.length > MAX_SPOT_COINS) {
+    // Static COINS first so the baseline set is never the part that gets dropped.
+    const staticFirst = [...COINS, ...coins.filter(c => !COINS.includes(c))];
+    const dropped = staticFirst.slice(MAX_SPOT_COINS);
+    coins = staticFirst.slice(0, MAX_SPOT_COINS);
+    console.log(`[spot-book] CAPPED at MAX_SPOT_COINS=${MAX_SPOT_COINS} — skipped ${dropped.length}: ${dropped.join(',')}`);
+  }
+  console.log(`[spot-book] coin universe: ${coins.length} (${COINS.length} static + ${fromOpps} from live perp-spot opportunities)`);
+  return coins;
+}
+
 // Fetch executable spot bid/ask + real book-walked depth for every readable venue ×
 // spot COIN. Missing/crossed books are skipped (absent, never fabricated). Throttled
-// per host by rlGetJson so the added ~40 calls/cycle stay within free rate limits.
+// per host by rlGetJson (concurrency 2, 120ms spacing, 429 backoff) so the widened
+// per-cycle call count stays within free rate limits.
 async function fetchSpotBooks() {
   const out = {};   // venue → coin → { spotBid, spotAsk, spotMid, depth…, source, at }
   // Walkable ladders for the SAME books, keyed "COIN|venue" to match the perp sidecar.
   // Persisted, never re-fetched: these are the exact levels walkSpotBookUsd just walked.
   const ladders = {};
+  const spotCoins = spotCoinUniverse();
   await Promise.all(SPOT_BOOK_VENUES.flatMap(v =>
-    COINS.map(async coin => {
+    spotCoins.map(async coin => {
       const d = await rlGetJson(v.url(v.sym(coin)));
       if (!d) return;                                   // host down/backed-off → absent this cycle
       const { bids, asks } = v.parse(d) || {};
