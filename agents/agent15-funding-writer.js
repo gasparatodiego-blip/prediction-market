@@ -265,8 +265,13 @@ async function refreshLighterIdCache() {
 async function depthBinance(coin) {
   const d = await rlGetJson(`https://fapi.binance.com/fapi/v1/depth?symbol=${coin}USDT&limit=100`);
   if (!Array.isArray(d?.bids) || !d.bids.length || !Array.isArray(d?.asks) || !d.asks.length) return null;
-  const bids = d.bids.map(([p, q]) => [parseFloat(p), parseFloat(q)]);
-  const asks = d.asks.map(([p, q]) => [parseFloat(p), parseFloat(q)]);
+  const bids = d.bids
+    .map(([p, q]) => [parseFloat(p), parseFloat(q)])
+    .filter(([p, q]) => isFinite(p) && p > 0 && isFinite(q) && q > 0);
+  const asks = d.asks
+    .map(([p, q]) => [parseFloat(p), parseFloat(q)])
+    .filter(([p, q]) => isFinite(p) && p > 0 && isFinite(q) && q > 0);
+  if (!bids.length || !asks.length) return null;
   return { bids, asks, mid: (bids[0][0] + asks[0][0]) / 2 };
 }
 
@@ -274,8 +279,13 @@ async function depthBybit(coin) {
   const d = await rlGetJson(`https://api.bybit.com/v5/market/orderbook?category=linear&symbol=${coin}USDT&limit=200`);
   const bRaw = d?.result?.b, aRaw = d?.result?.a;
   if (!Array.isArray(bRaw) || !bRaw.length || !Array.isArray(aRaw) || !aRaw.length) return null;
-  const bids = bRaw.map(([p, q]) => [parseFloat(p), parseFloat(q)]);
-  const asks = aRaw.map(([p, q]) => [parseFloat(p), parseFloat(q)]);
+  const bids = bRaw
+    .map(([p, q]) => [parseFloat(p), parseFloat(q)])
+    .filter(([p, q]) => isFinite(p) && p > 0 && isFinite(q) && q > 0);
+  const asks = aRaw
+    .map(([p, q]) => [parseFloat(p), parseFloat(q)])
+    .filter(([p, q]) => isFinite(p) && p > 0 && isFinite(q) && q > 0);
+  if (!bids.length || !asks.length) return null;
   return { bids, asks, mid: (bids[0][0] + asks[0][0]) / 2 };
 }
 
@@ -284,8 +294,13 @@ async function depthOkx(coin) {
   const book = d?.data?.[0];
   if (!Array.isArray(book?.bids) || !book.bids.length || !Array.isArray(book?.asks) || !book.asks.length) return null;
   const mult = multCache.okx[coin] ?? 1;
-  const bids = book.bids.map(([p, q]) => [parseFloat(p), parseFloat(q) * mult]);
-  const asks = book.asks.map(([p, q]) => [parseFloat(p), parseFloat(q) * mult]);
+  const bids = book.bids
+    .map(([p, q]) => [parseFloat(p), parseFloat(q) * mult])
+    .filter(([p, q]) => isFinite(p) && p > 0 && isFinite(q) && q > 0);
+  const asks = book.asks
+    .map(([p, q]) => [parseFloat(p), parseFloat(q) * mult])
+    .filter(([p, q]) => isFinite(p) && p > 0 && isFinite(q) && q > 0);
+  if (!bids.length || !asks.length) return null;
   return { bids, asks, mid: (bids[0][0] + asks[0][0]) / 2 };
 }
 
@@ -294,8 +309,13 @@ async function depthBitget(coin) {
   const bRaw = d?.data?.bids, aRaw = d?.data?.asks;
   if (!Array.isArray(bRaw) || !bRaw.length || !Array.isArray(aRaw) || !aRaw.length) return null;
   const mult = multCache.bitget[coin] ?? 1;
-  const bids = bRaw.map(([p, q]) => [parseFloat(p), parseFloat(q) * mult]);
-  const asks = aRaw.map(([p, q]) => [parseFloat(p), parseFloat(q) * mult]);
+  const bids = bRaw
+    .map(([p, q]) => [parseFloat(p), parseFloat(q) * mult])
+    .filter(([p, q]) => isFinite(p) && p > 0 && isFinite(q) && q > 0);
+  const asks = aRaw
+    .map(([p, q]) => [parseFloat(p), parseFloat(q) * mult])
+    .filter(([p, q]) => isFinite(p) && p > 0 && isFinite(q) && q > 0);
+  if (!bids.length || !asks.length) return null;
   return { bids, asks, mid: (bids[0][0] + asks[0][0]) / 2 };
 }
 
@@ -303,8 +323,21 @@ async function depthGateio(coin) {
   const d = await rlGetJson(`https://api.gateio.ws/api/v4/futures/usdt/order_book?contract=${coin}_USDT&limit=100`);
   if (!Array.isArray(d?.bids) || !d.bids.length || !Array.isArray(d?.asks) || !d.asks.length) return null;
   const mult = multCache.gateio[coin] ?? 1;
-  const bids = d.bids.map(e => [parseFloat(e.p), Math.abs(parseFloat(e.s)) * mult]);
-  const asks = d.asks.map(e => [parseFloat(e.p), Math.abs(parseFloat(e.s)) * mult]);
+  // Gate.io ships size-0 PLACEHOLDER levels inside an otherwise real book (verified against
+  // the live endpoint: TRX/ETH/PEPE return {"s":0,"p":"..."} entries, sometimes at index 0).
+  // rankLegs treats any zero-size level as an unreadable hole and voids the whole leg, so a
+  // book with $49k–$970k of genuine depth was ranking UNKNOWN. Dropping a size-0 level is
+  // information-preserving — it contributes exactly 0 to any walk and 0 to VWAP — so this
+  // recovers real depth without inventing any. Same filter the 8 CLOB fetchers already use.
+  const bids = d.bids
+    .map(e => [parseFloat(e.p), Math.abs(parseFloat(e.s)) * mult])
+    .filter(([p, q]) => isFinite(p) && p > 0 && isFinite(q) && q > 0);
+  const asks = d.asks
+    .map(e => [parseFloat(e.p), Math.abs(parseFloat(e.s)) * mult])
+    .filter(([p, q]) => isFinite(p) && p > 0 && isFinite(q) && q > 0);
+  // Re-check AFTER filtering: the raw-length guard above passes an all-placeholder book,
+  // and mid would then read bids[0][0] off an empty array (TypeError, not a bad number).
+  if (!bids.length || !asks.length) return null;
   return { bids, asks, mid: (bids[0][0] + asks[0][0]) / 2 };
 }
 
@@ -360,8 +393,13 @@ async function depthAster(coin) {
   if (!sym) return null;
   const d = await get(`https://fapi.asterdex.com/fapi/v1/depth?symbol=${sym}&limit=100`);
   if (!Array.isArray(d?.bids) || !d.bids.length || !Array.isArray(d?.asks) || !d.asks.length) return null;
-  const bids = d.bids.map(([p, q]) => [parseFloat(p), parseFloat(q)]);
-  const asks = d.asks.map(([p, q]) => [parseFloat(p), parseFloat(q)]);
+  const bids = d.bids
+    .map(([p, q]) => [parseFloat(p), parseFloat(q)])
+    .filter(([p, q]) => isFinite(p) && p > 0 && isFinite(q) && q > 0);
+  const asks = d.asks
+    .map(([p, q]) => [parseFloat(p), parseFloat(q)])
+    .filter(([p, q]) => isFinite(p) && p > 0 && isFinite(q) && q > 0);
+  if (!bids.length || !asks.length) return null;
   return { bids, asks, mid: (bids[0][0] + asks[0][0]) / 2 };
 }
 
@@ -503,8 +541,13 @@ async function depthParadex(coin) {
   // so price * size is USD notional straight through.
   const d = await get(`https://api.prod.paradex.trade/v1/orderbook/${coin}-USD-PERP?depth=100`);
   if (!Array.isArray(d?.bids) || !d.bids.length || !Array.isArray(d?.asks) || !d.asks.length) return null;
-  const bids = d.bids.map(([p, q]) => [parseFloat(p), parseFloat(q)]);
-  const asks = d.asks.map(([p, q]) => [parseFloat(p), parseFloat(q)]);
+  const bids = d.bids
+    .map(([p, q]) => [parseFloat(p), parseFloat(q)])
+    .filter(([p, q]) => isFinite(p) && p > 0 && isFinite(q) && q > 0);
+  const asks = d.asks
+    .map(([p, q]) => [parseFloat(p), parseFloat(q)])
+    .filter(([p, q]) => isFinite(p) && p > 0 && isFinite(q) && q > 0);
+  if (!bids.length || !asks.length) return null;
   return { bids, asks, mid: (bids[0][0] + asks[0][0]) / 2 };
 }
 
