@@ -102,14 +102,19 @@ const HOURLY_SPIKE_ANN   = 115;          // %/yr — extreme threshold for hourl
 // real settled value is fresher than SETTLED_FRESHNESS_MULT funding intervals.
 const SETTLED_FRESHNESS_MULT = 2;   // 2× the venue's own funding interval; raise for laxer, lower for stricter
 
-// Book-walk depth now runs over ALL emitted pairs (not just fullyConfirmed ones), so an
+// Book-walk depth runs over ALL emitted pairs (not just fullyConfirmed ones) PLUS the
+// serve-path pairs below THRESHOLD_APY that computeSpreads still renders, so an
 // unverified-but-real pair still gets a slip-verified capacity instead of a coarse OI/vol
 // proxy. Fetches are de-duped per (coin,venue), so the real count is bounded by
-// coins×venues (~360 max today, ~224 in practice). MAX_DEPTH_BOOKS is a runaway backstop
-// only: if the universe ever grows past it, we walk the HIGHEST-ROI pairs' books first and
-// LOG the truncation (never a silent cap). Per-host request concurrency is already bounded
-// by the shared rate limiter (rlGetJson), so this is a total-count guard, not a throttle.
-const MAX_DEPTH_BOOKS = 320;
+// coins×venues (~360 max today, ~303 in practice since the serve-path set was added —
+// up from ~224 when only the ≥THRESHOLD_APY alert set was walked). MAX_DEPTH_BOOKS is a
+// runaway backstop only: if the universe ever grows past it, we walk the HIGHEST-ROI
+// pairs' books first and LOG the truncation (never a silent cap). Raised 320→400 with the
+// serve-path widening so a normal cycle is never truncated — at 320 the ~303 real set sat
+// one venue listing away from silently dropping rows. Per-host request concurrency is
+// already bounded by the shared rate limiter (rlGetJson: concurrency 2, 120ms spacing;
+// edgeX 300ms), so this is a total-count guard, not a throttle.
+const MAX_DEPTH_BOOKS = 400;
 
 // Slip-curve sizing
 const SIZE_LADDER         = [500, 1_000, 2_500, 5_000, 10_000, 25_000, 50_000, 100_000, 250_000, 500_000];
@@ -615,7 +620,7 @@ function computeSlipCurve(shortBook, longBook, grossApy) {
 
 // Enrich confirmed opps in place: compute slipCurve[], greenCapacityUsd,
 // slipCurveMaxFillable. capacityUsd = greenCapacityUsd (honest green-only capacity).
-async function enrichWithDepth(opps, bookSink = null) {
+async function enrichWithDepth(opps, bookSink = null, extraPairs = null) {
   // Collect the unique (coin,venue) books to walk, adding them in DESCENDING pair-ROI
   // order so that if the MAX_DEPTH_BOOKS backstop is ever hit, the most attractive
   // pairs' books are fetched first (never a silent drop of the best opportunities).
@@ -635,6 +640,24 @@ async function enrichWithDepth(opps, bookSink = null) {
     }
   }
 
+  // Serve-path pairs that did NOT clear THRESHOLD_APY but are still rendered by
+  // computeSpreads, so the funding tab asks for their execution order. Added AFTER the
+  // ROI-ranked set: if MAX_DEPTH_BOOKS is ever hit, these drop before any real opportunity
+  // does. A venue with no fetcher, or a book that fails, stays fail-closed exactly as
+  // before — this widens WHICH books are attempted, never what is inferred from a miss.
+  let extra = 0;
+  if (extraPairs) {
+    for (const key of extraPairs) {
+      const [, ex] = key.split('|');
+      if (!DEPTH_FETCHERS[ex]) continue;
+      if (pairs.has(key)) continue;
+      requested++;
+      if (pairs.size >= MAX_DEPTH_BOOKS) { capped++; continue; }
+      pairs.add(key);
+      extra++;
+    }
+  }
+
   const bookMap = {};
   await Promise.all([...pairs].map(async key => {
     const [coin, exchange] = key.split('|');
@@ -642,7 +665,7 @@ async function enrichWithDepth(opps, bookSink = null) {
   }));
 
   const ok = Object.values(bookMap).filter(v => v !== null).length;
-  console.log(`[funding-depth] fetched ${pairs.size} books → ${ok} ok, ${pairs.size - ok} failed`
+  console.log(`[funding-depth] fetched ${pairs.size} books (${extra} serve-path below alert floor) → ${ok} ok, ${pairs.size - ok} failed`
     + (capped ? ` · CAPPED: ${capped}/${requested} books skipped (MAX_DEPTH_BOOKS=${MAX_DEPTH_BOOKS}, walked top-ROI first)` : ''));
 
   // Persist the walkable ladders we JUST fetched (no extra venue call) into the caller's sink.
@@ -1297,9 +1320,25 @@ function crossExchangeSpread(futures, hCache) {
 
   const opps = [];
 
+  // Depth universe for the SERVE path, decoupled from THRESHOLD_APY below.
+  //
+  // THRESHOLD_APY is this agent's ALERTING floor — what it considers worth emitting as an
+  // opportunity. It is NOT what the funding tab needs depth for: lib/spread-compute.ts
+  // (computeSpreads) serves EVERY venue pair with no APY floor, so rows below 3%/yr still
+  // reach the UI and still ask for an execution-order dry-run. Deriving the depth-fetch set
+  // from the emitted opps left those rows with no persisted ladder → a permanent
+  // "no persisted depth" state for coins whose books are live and fetchable.
+  //
+  // This set mirrors computeSpreads' emit criteria EXACTLY (finite fr, not dead, coin on
+  // ≥2 venues, non-RWA) so the fetch set is bounded by the pairs that actually surface as
+  // opportunities — never a blind walk of every coin on every venue.
+  const depthPairs = new Set();
+
   for (const [coin, list] of Object.entries(byExchange)) {
     if (list.length < 2) continue;
     if (isRwaKey(coin)) continue;   // RWA commodities handled by rwaObservations() (observation-only)
+
+    for (const leg of list) depthPairs.add(`${coin}|${leg.exchange}`);
 
     for (let i = 0; i < list.length; i++) {
       for (let j = i + 1; j < list.length; j++) {
@@ -1475,7 +1514,9 @@ function crossExchangeSpread(futures, hCache) {
     }
   }
 
-  return opps.sort((a, b) => b.annualizedROI - a.annualizedROI);
+  // `opps` is the alert set (≥THRESHOLD_APY); `depthPairs` is the wider serve-path universe.
+  opps.sort((a, b) => b.annualizedROI - a.annualizedROI);
+  return { opps, depthPairs };
 }
 
 // ── RWA commodities (beta) — OBSERVATION lane ─────────────────────────────────
@@ -1727,7 +1768,7 @@ async function run() {
       await refreshMultiplierCache();
     }
 
-    const allOpps = crossExchangeSpread(data.futures || {}, historyCache || {});
+    const { opps: allOpps, depthPairs } = crossExchangeSpread(data.futures || {}, historyCache || {});
 
     // Sink for the walkable ladders enrichWithDepth fetches this cycle (funding + RWA books
     // both land here), written once to the sidecar below. No extra venue call — same books.
@@ -1738,8 +1779,8 @@ async function run() {
     // books are fetchable, instead of a coarse OI/vol proxy or nothing. enrichWithDepth
     // de-dupes book fetches per (coin,venue) and only overwrites capacityUsd when BOTH
     // legs' books were walked — otherwise the proxy is preserved.
-    if (allOpps.length > 0) {
-      await enrichWithDepth(allOpps, fundingBooks);
+    if (allOpps.length > 0 || depthPairs.size > 0) {
+      await enrichWithDepth(allOpps, fundingBooks, depthPairs);
     }
 
     const confirmedOpps = allOpps.filter(o => o.fullyConfirmed);

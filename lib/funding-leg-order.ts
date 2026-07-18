@@ -129,7 +129,12 @@ export function dryRunLegOrder(
   const lBook = sidecar.books[longKey]
 
   const missing = [!sBook && shortKey, !lBook && longKey].filter(Boolean)
-  if (missing.length) return unusable(`no persisted depth for ${missing.join(' and ')}`)
+  // Read naturally: the sidecar key is "COIN|venue"; users see "COIN on venue". Venue ids
+  // stay verbatim (no title-casing — it would render "Edgex"/"Gateio" for edgeX/Gate.io).
+  if (missing.length) {
+    const shown = missing.map(k => String(k).replace('|', ' on ')).join(' and ')
+    return unusable(`no persisted depth for ${shown}`)
+  }
 
   // Size in coins, from a REAL venue mid — never a guess. Derived from the short leg's mid.
   const mid = sBook.mid
