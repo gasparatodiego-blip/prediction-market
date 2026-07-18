@@ -25,6 +25,10 @@ for (const envFile of ['.env.local', '.env']) {
 
 const OUT            = '/tmp/exchange-prices.json';
 const HIST_FILE      = '/tmp/exchange-history.json';
+const SPOT_BOOKS_FILE = '/tmp/spot-books.json';
+// Persist only the top N levels per side — mirrors agent15's LADDER_CAP so both sidecars
+// carry the same depth budget (venues already return ≤50 here).
+const SPOT_LADDER_CAP = 50;
 const BINANCE_COMPAT = '/tmp/binance-prices.json';
 const HB_FILE        = '/tmp/agent-heartbeats.json';
 const ALERT_FILE     = '/tmp/funding-alert.json';
@@ -324,11 +328,30 @@ const SPOT_BOOK_VENUES = [
     parse: d => ({ bids: d?.data?.bids, asks: d?.data?.asks }) },
 ];
 
+// Normalize a raw venue level array into the sidecar ladder shape: numeric [price, qty],
+// best-first, capped. Zero/non-finite qty or price levels are DROPPED — same qty>0
+// discipline the perp fetchers use, so a zero-placeholder level can never be misread as
+// walkable depth downstream.
+function toSpotLadder(levels, cap = SPOT_LADDER_CAP) {
+  const out = [];
+  if (!Array.isArray(levels)) return out;
+  for (const lvl of levels) {
+    if (out.length >= cap) break;
+    const p = parseFloat(lvl[0]), q = parseFloat(lvl[1]);
+    if (!isFinite(p) || p <= 0 || !isFinite(q) || q <= 0) continue;
+    out.push([p, q]);
+  }
+  return out;
+}
+
 // Fetch executable spot bid/ask + real book-walked depth for every readable venue ×
 // spot COIN. Missing/crossed books are skipped (absent, never fabricated). Throttled
 // per host by rlGetJson so the added ~40 calls/cycle stay within free rate limits.
 async function fetchSpotBooks() {
   const out = {};   // venue → coin → { spotBid, spotAsk, spotMid, depth…, source, at }
+  // Walkable ladders for the SAME books, keyed "COIN|venue" to match the perp sidecar.
+  // Persisted, never re-fetched: these are the exact levels walkSpotBookUsd just walked.
+  const ladders = {};
   await Promise.all(SPOT_BOOK_VENUES.flatMap(v =>
     COINS.map(async coin => {
       const d = await rlGetJson(v.url(v.sym(coin)));
@@ -348,10 +371,39 @@ async function fetchSpotBooks() {
         spotBookSource:  'book',
         spotBookAt:      Date.now(),
       };
+      // Same book, kept walkable. `mid` mirrors spotMid so a downstream ranker can size in
+      // coins off a REAL venue mid rather than a guess.
+      const bidL = toSpotLadder(bids), askL = toSpotLadder(asks);
+      if (bidL.length && askL.length) {
+        ladders[`${coin}|${v.venue}`] = {
+          fetchedAt: Date.now(),
+          mid:       (bid.best + ask.best) / 2,
+          bids:      bidL,
+          asks:      askL,
+        };
+      }
     })
   ));
   const venues = Object.keys(out);
   console.log(`[spot-book] ${venues.length} venues executable: ${venues.map(v => `${v}(${Object.keys(out[v]).length})`).join(' ') || 'none'}`);
+
+  // Sidecar: the walkable SPOT ladders for this cycle, atomic (tmp→fsync→rename). Additive
+  // — nothing that reads spotBooks is touched, and agent15's perp sidecar is a SEPARATE
+  // file it owns exclusively (writing into it here would race its per-cycle rewrite).
+  // `generatedAt`/`fetchedAt` let leg-order.legFromLadder fail closed on stale depth.
+  // Fully rewritten every cycle (never appended → no growth).
+  try {
+    atomicWriteJson(SPOT_BOOKS_FILE, {
+      generatedAt: Date.now(),
+      cap:         SPOT_LADDER_CAP,
+      staleMs:     5 * 60_000,   // advisory: matches leg-order DEFAULT_LADDER_MAX_AGE_MS
+      note:        'Capped per-(coin,venue) SPOT order-book ladders [price,qty] (bids desc, asks asc), size in base coin. Already fetched for the 20bps spot walk — persisted, not re-fetched.',
+      books:       ladders,
+    }, { pretty: false });
+    console.log(`[spot-books] wrote ${Object.keys(ladders).length} spot ladders (cap ${SPOT_LADDER_CAP}/side) → ${SPOT_BOOKS_FILE}`);
+  } catch (e) {
+    console.error('[spot-books] sidecar write failed:', e.message);
+  }
   return out;
 }
 

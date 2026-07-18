@@ -24,6 +24,9 @@ import {
 // Overridable so the UNKNOWN/fail-closed path can be exercised against a doctored copy
 // of the sidecar without touching the live one. Production never sets this.
 const BOOKS_FILE = process.env.FUNDING_BOOKS_FILE || '/tmp/funding-books.json'
+// agent10's SPOT ladder sidecar — same shape, separate file because agent15 rewrites the
+// perp sidecar wholesale every cycle and the two writers must not race.
+const SPOT_BOOKS_FILE = process.env.SPOT_BOOKS_FILE || '/tmp/spot-books.json'
 
 /** Notional the dry-run is computed at. Slippage without its size is meaningless, so this
  *  is surfaced in the payload and rendered next to every result. */
@@ -76,19 +79,33 @@ const project = (l: LegDifficulty): LegEvidence => ({
 })
 
 let _cache: { mtimeMs: number; sidecar: Sidecar } | null = null
+let _spotCache: { mtimeMs: number; sidecar: Sidecar } | null = null
 
-/** Reads the sidecar, memoized on mtime so repeated rows in one request parse it once. */
-function readSidecar(): Sidecar | null {
+/** Reads a sidecar, memoized on mtime so repeated rows in one request parse it once. */
+function readSidecarFile(file: string, cache: { mtimeMs: number; sidecar: Sidecar } | null):
+  { sidecar: Sidecar | null; cache: { mtimeMs: number; sidecar: Sidecar } | null } {
   try {
-    const st = fs.statSync(BOOKS_FILE)
-    if (_cache && _cache.mtimeMs === st.mtimeMs) return _cache.sidecar
-    const sidecar = JSON.parse(fs.readFileSync(BOOKS_FILE, 'utf8')) as Sidecar
-    if (!sidecar || typeof sidecar.books !== 'object' || sidecar.books === null) return null
-    _cache = { mtimeMs: st.mtimeMs, sidecar }
-    return sidecar
+    const st = fs.statSync(file)
+    if (cache && cache.mtimeMs === st.mtimeMs) return { sidecar: cache.sidecar, cache }
+    const sidecar = JSON.parse(fs.readFileSync(file, 'utf8')) as Sidecar
+    if (!sidecar || typeof sidecar.books !== 'object' || sidecar.books === null) return { sidecar: null, cache }
+    return { sidecar, cache: { mtimeMs: st.mtimeMs, sidecar } }
   } catch {
-    return null   // no sidecar → every row is unusable, stated as such
+    return { sidecar: null, cache }   // no sidecar → every row is unusable, stated as such
   }
+}
+
+function readSidecar(): Sidecar | null {
+  const r = readSidecarFile(BOOKS_FILE, _cache)
+  _cache = r.cache
+  return r.sidecar
+}
+
+/** agent10's spot ladders. Absent → the spot leg stays UNKNOWN, exactly as before. */
+function readSpotSidecar(): Sidecar | null {
+  const r = readSidecarFile(SPOT_BOOKS_FILE, _spotCache)
+  _spotCache = r.cache
+  return r.sidecar
 }
 
 const unusable = (reason: string, legs: LegEvidence[] = []): LegOrderDryRun => ({
@@ -198,24 +215,33 @@ export function dryRunPerpSpotLegOrder(
   if (!Number.isFinite(mid) || mid <= 0) return unusable(`no usable mid for ${perpKey}`)
   const qty = DRY_RUN_NOTIONAL_USD / mid
 
-  // Short the perp → SELL into its bids. Buy the spot hedge → would cross the spot asks,
-  // which we have not persisted, so: no ladder → stale → UNKNOWN (never the perp book).
+  // Short the perp → SELL into its bids. Buy the spot hedge → cross the SPOT asks, from
+  // agent10's spot sidecar. Strictly the spot book for that venue: the perp sidecar's
+  // `COIN|binance` is binance's PERP book, a different instrument, and is never
+  // substituted here. No spot ladder → no ladder passed → UNKNOWN, exactly as before.
+  const spotSidecar = readSpotSidecar()
+  const sBook = spotVenue ? spotSidecar?.books[`${coin}|${spotVenue}`] : undefined
+
   const legs = [
     legFromLadder(`${perpVenue} · sell perp`, 'sell', toTimestamped(pBook, 'sell'), now, maxAgeMs),
-    legFromLadder(`${spotVenue ?? 'spot'} · buy spot`, 'buy', null, now, maxAgeMs),
+    legFromLadder(`${spotVenue ?? 'spot'} · buy spot`, 'buy', toTimestamped(sBook, 'buy'), now, maxAgeMs),
   ]
 
   const r = rankLegs(legs, qty)
   // Name the specific gap so the refusal is actionable — but derive it from the ACTUAL
-  // ranking outcome, never from the assumption that the perp leg ranked. A stale perp
-  // ladder makes that leg UNKNOWN too, and reporting it as "measured" would be a lie.
-  const perpMeasured = r.legs[0]?.outcome !== 'unknown'
+  // ranking outcome, never from the assumption that a leg ranked. A stale ladder makes its
+  // leg UNKNOWN too, and reporting it as "measured" would be a lie.
+  const perpUnknown = r.legs[0]?.outcome === 'unknown'
+  const spotUnknown = r.legs[1]?.outcome === 'unknown'
   const spotName = spotVenue ?? 'the spot venue'
+  // Name the COIN too: the venue is usually covered and it is this coin's spot book that
+  // is not walked, which "no spot depth for binance" would misstate as a dead venue.
+  const spotWhy = !sBook ? `no persisted spot depth for ${coin} on ${spotName}` : `${spotName}'s spot ladder for ${coin} is too stale to rank`
   const reason = r.usable
     ? r.reason
-    : perpMeasured
-      ? `spot depth is not persisted for ${spotName} — perp leg measured, spot leg not`
-      : `no usable depth: ${perpVenue}'s ladder is stale, and spot depth is not persisted for ${spotName}`
+    : perpUnknown && spotUnknown ? `no usable depth: ${perpVenue}'s perp ladder is stale, and ${spotWhy}`
+      : perpUnknown             ? `${perpVenue}'s perp ladder is too stale to rank`
+      :                           spotWhy
 
   return {
     notionalUsd: DRY_RUN_NOTIONAL_USD,
@@ -227,7 +253,14 @@ export function dryRunPerpSpotLegOrder(
     firstLegId: r.usable && r.order && r.order.length ? r.order[0].id : null,
     ties: r.ties,
     legs: r.legs.map(project),
-    ladderAgeMs: Number.isFinite(pBook.fetchedAt) ? now - pBook.fetchedAt : null,
+    // Oldest of the ladders actually used — the perp book alone when no spot ladder was
+    // found, both once the spot sidecar covers this venue.
+    ladderAgeMs: (() => {
+      const ages = [pBook.fetchedAt, sBook?.fetchedAt]
+        .filter((t): t is number => Number.isFinite(t as number))
+        .map(t => now - t)
+      return ages.length ? Math.max(...ages) : null
+    })(),
   }
 }
 
