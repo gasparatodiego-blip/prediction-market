@@ -44,6 +44,17 @@ const EXCHANGE_FILE      = '/tmp/exchange-prices.json';
 const UNIFIED_FILE       = '/tmp/unified-opportunities.json';
 const HISTORY_CACHE_FILE = '/tmp/funding-history-cache.json';
 const HB_FILE            = '/tmp/agent-heartbeats.json';
+// Sidecar: the real per-(coin,venue) order-book ladders that enrichWithDepth already fetches
+// and today discards after collapsing them to book20bpsUsd/slipCurve. Persisted so a SEPARATE
+// read-only run can rank funding legs (lib/leg-order.rankLegs) on real depth — no extra venue
+// call. A SIDECAR (not a key in UNIFIED_FILE) on purpose: unified-opportunities.json has a
+// second writer (matcher-v2) that would drop an unknown top-level key, and 11 consumers parse
+// it every read — keeping ~400 KB of ladders out of that hot path. Written by agent15 alone.
+const FUNDING_BOOKS_FILE = '/tmp/funding-books.json';
+// Persist only the top LADDER_CAP levels per side. Venues return ≤100–200; the honest 20bps
+// executable band sits well inside 50, so 50 covers a realistic walk while halving payload.
+// A size needing >50 levels ranks IMPOSSIBLE in rankLegs — the safe, conservative outcome.
+const LADDER_CAP         = 50;
 const INTERVAL_MS        = 60_000;
 
 // Spread filter
@@ -604,7 +615,7 @@ function computeSlipCurve(shortBook, longBook, grossApy) {
 
 // Enrich confirmed opps in place: compute slipCurve[], greenCapacityUsd,
 // slipCurveMaxFillable. capacityUsd = greenCapacityUsd (honest green-only capacity).
-async function enrichWithDepth(opps) {
+async function enrichWithDepth(opps, bookSink = null) {
   // Collect the unique (coin,venue) books to walk, adding them in DESCENDING pair-ROI
   // order so that if the MAX_DEPTH_BOOKS backstop is ever hit, the most attractive
   // pairs' books are fetched first (never a silent drop of the best opportunities).
@@ -633,6 +644,24 @@ async function enrichWithDepth(opps) {
   const ok = Object.values(bookMap).filter(v => v !== null).length;
   console.log(`[funding-depth] fetched ${pairs.size} books → ${ok} ok, ${pairs.size - ok} failed`
     + (capped ? ` · CAPPED: ${capped}/${requested} books skipped (MAX_DEPTH_BOOKS=${MAX_DEPTH_BOOKS}, walked top-ROI first)` : ''));
+
+  // Persist the walkable ladders we JUST fetched (no extra venue call) into the caller's sink.
+  // Every book carries `fetchedAt` — the timestamp of THIS fetch — so a stale ladder is
+  // detectable downstream (leg-order.legFromLadder). Top LADDER_CAP levels per side, in the
+  // native fetched order agent15 already walks (bids desc, asks asc). RWA books ride along in
+  // the same sink via the second enrichWithDepth call; the sink is written once per cycle.
+  if (bookSink) {
+    const fetchedAt = Date.now();
+    for (const [key, book] of Object.entries(bookMap)) {
+      if (!book || !Array.isArray(book.bids) || !Array.isArray(book.asks) || !(book.mid > 0)) continue;
+      bookSink[key] = {
+        fetchedAt,
+        mid:  book.mid,
+        bids: book.bids.slice(0, LADDER_CAP),
+        asks: book.asks.slice(0, LADDER_CAP),
+      };
+    }
+  }
 
   for (const opp of opps) {
     const parts     = opp.id.split('-');
@@ -1700,13 +1729,17 @@ async function run() {
 
     const allOpps = crossExchangeSpread(data.futures || {}, historyCache || {});
 
+    // Sink for the walkable ladders enrichWithDepth fetches this cycle (funding + RWA books
+    // both land here), written once to the sidecar below. No extra venue call — same books.
+    const fundingBooks = {};
+
     // Enrich ALL emitted pairs with real order-book depth (not just fullyConfirmed
     // ones): an unverified-but-real pair still gets a slip-verified capacity where its
     // books are fetchable, instead of a coarse OI/vol proxy or nothing. enrichWithDepth
     // de-dupes book fetches per (coin,venue) and only overwrites capacityUsd when BOTH
     // legs' books were walked — otherwise the proxy is preserved.
     if (allOpps.length > 0) {
-      await enrichWithDepth(allOpps);
+      await enrichWithDepth(allOpps, fundingBooks);
     }
 
     const confirmedOpps = allOpps.filter(o => o.fullyConfirmed);
@@ -1725,7 +1758,7 @@ async function run() {
     // never cashable. Enriched separately from the confirmed-crypto set.
     const rwaOpps = rwaObservations(data.futures || {}, historyCache || {});
     if (rwaOpps.length > 0) {
-      await enrichWithDepth(rwaOpps);   // walks BOTH legs' real books (Aster + Extended)
+      await enrichWithDepth(rwaOpps, fundingBooks);   // walks BOTH legs' real books (Aster + Extended)
       // Block #2 CLOSED — Aster's commodity order book is PROVEN real and walkable (verified
       // 2026-07-08: /fapi/v1/depth returns full 100-level books; XAU/XAG/WTI ≈ $0.8–1.4M within
       // 20bps, Brent thinner). enrichWithDepth walked both legs, so we anchor an HONEST
@@ -1747,6 +1780,24 @@ async function run() {
     }
 
     mergeUnifiedFunding(allOpps, rwaOpps);
+
+    // Sidecar: the real capped ladders for this cycle, atomic (tmp→fsync→rename). Additive —
+    // no consumer of unified-opportunities.json is touched. `generatedAt` and each book's
+    // `fetchedAt` let a downstream ranker fail closed on stale depth (leg-order.legFromLadder,
+    // DEFAULT_LADDER_MAX_AGE_MS). Fully rewritten every cycle (never appended → no growth).
+    try {
+      atomicWriteJson(FUNDING_BOOKS_FILE, {
+        generatedAt: Date.now(),
+        cap:         LADDER_CAP,
+        staleMs:     5 * 60_000,   // advisory: matches leg-order DEFAULT_LADDER_MAX_AGE_MS
+        note:        'Capped per-(coin,venue) perp order-book ladders [price,qty] (bids desc, asks asc), coins in qty. Real depth already fetched for slipCurve/book20bpsUsd — persisted, not re-fetched.',
+        books:       fundingBooks,
+      }, { pretty: false });
+      console.log(`[funding-books] wrote ${Object.keys(fundingBooks).length} ladders (cap ${LADDER_CAP}/side) → ${FUNDING_BOOKS_FILE}`);
+    } catch (e) {
+      console.error('[funding-books] sidecar write failed:', e.message);
+    }
+
     beat();
 
   } catch (e) {
