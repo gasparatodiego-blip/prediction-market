@@ -29,6 +29,7 @@ const SPOT_BOOKS_FILE = '/tmp/spot-books.json';
 // agent28's perp-vs-spot opportunity set — READ-ONLY here, purely to learn which coins
 // currently need a spot hedge book walked (see spotCoinUniverse).
 const PERP_SPOT_FILE  = '/tmp/perp-spot.json';
+const USDC_BOOKS_FILE = '/tmp/usdc-books.json';
 // Persist only the top N levels per side — mirrors agent15's LADDER_CAP so both sidecars
 // carry the same depth budget (venues already return ≤50 here).
 const SPOT_LADDER_CAP = 50;
@@ -345,6 +346,67 @@ function toSpotLadder(levels, cap = SPOT_LADDER_CAP) {
     out.push([p, q]);
   }
   return out;
+}
+
+// USDC-SETTLED perp order books. The USDC contract is a DIFFERENT INSTRUMENT from the
+// venue's USDT perp, with its own book — hence its own walker and its own sidecar; the
+// USDT book is never substituted for it.
+//
+// Each venue's USDC book is reachable on the SAME public depth path it already serves the
+// USDT perp from, with the USDC-settled symbol (verified live: bids desc, asks asc,
+// uncrossed, 100–200 levels on all three). No new integration, no credential, no private
+// endpoint — public market data only, every call through rlGet.
+const USDC_BOOK_VENUES = [
+  { venue: 'binance-usdc', sym: c => `${c}USDC`, url: s => `https://fapi.binance.com/fapi/v1/depth?symbol=${s}&limit=100`,
+    parse: d => ({ bids: d?.bids, asks: d?.asks }) },
+  { venue: 'bybit-usdc',   sym: c => `${c}PERP`, url: s => `https://api.bybit.com/v5/market/orderbook?category=linear&symbol=${s}&limit=200`,
+    parse: d => ({ bids: d?.result?.b, asks: d?.result?.a }) },
+  { venue: 'bitget-usdc',  sym: c => `${c}PERP`, url: s => `https://api.bitget.com/api/v2/mix/market/orderbook?symbol=${s}&productType=USDC-FUTURES&limit=100`,
+    parse: d => ({ bids: d?.data?.bids, asks: d?.data?.asks }) },
+];
+
+// Walk + persist the USDC-settled books for exactly the coins that have a USDC contract
+// this cycle (derived from the futuresUsdc feed we just built — never a hardcoded list and
+// never the whole coin universe). A venue that returns no usable book is simply absent:
+// its leg stays UNKNOWN downstream rather than being backed by a fabricated ladder.
+async function fetchUsdcBooks(usdcFeed) {
+  const coins = [...new Set(Object.values(usdcFeed || {}).flatMap(m => Object.keys(m || {})))];
+  if (!coins.length) {
+    console.log('[usdc-book] no USDC contracts in feed this cycle — nothing to walk');
+    return;
+  }
+  const ladders = {};
+  await Promise.all(USDC_BOOK_VENUES.flatMap(v =>
+    coins.map(async coin => {
+      const d = await rlGetJson(v.url(v.sym(coin)));
+      if (!d) return;                                   // host down/backed-off → absent this cycle
+      const { bids, asks } = v.parse(d) || {};
+      const bidL = toSpotLadder(bids), askL = toSpotLadder(asks);
+      if (!bidL.length || !askL.length) return;         // no usable book → absent, never fabricated
+      if (askL[0][0] < bidL[0][0]) return;              // crossed/locked — skip, don't fabricate
+      ladders[`${coin}|${v.venue}`] = {
+        fetchedAt: Date.now(),
+        mid:       (bidL[0][0] + askL[0][0]) / 2,
+        bids:      bidL,
+        asks:      askL,
+      };
+    })
+  ));
+  const byVenue = {};
+  for (const k of Object.keys(ladders)) { const v = k.split('|')[1]; byVenue[v] = (byVenue[v] || 0) + 1; }
+  console.log(`[usdc-book] ${coins.length} coins × ${USDC_BOOK_VENUES.length} venues → ${Object.entries(byVenue).map(([v, n]) => `${v}(${n})`).join(' ') || 'none'}`);
+  try {
+    atomicWriteJson(USDC_BOOKS_FILE, {
+      generatedAt: Date.now(),
+      cap:         SPOT_LADDER_CAP,
+      staleMs:     5 * 60_000,   // advisory: matches leg-order DEFAULT_LADDER_MAX_AGE_MS
+      note:        'Capped per-(coin,venue) USDC-SETTLED perp order-book ladders [price,qty] (bids desc, asks asc), size in base coin. Separate instrument from the venue USDT perp — never interchangeable.',
+      books:       ladders,
+    }, { pretty: false });
+    console.log(`[usdc-books] wrote ${Object.keys(ladders).length} USDC ladders (cap ${SPOT_LADDER_CAP}/side) → ${USDC_BOOKS_FILE}`);
+  } catch (e) {
+    console.error('[usdc-books] sidecar write failed:', e.message);
+  }
 }
 
 // Which coins to walk spot books for.
@@ -1440,6 +1502,9 @@ async function poll() {
   spotBooks   = spotBk;
   futures     = await fetchFutures();
   futuresUsdc = await fetchFuturesUsdc();
+  // Walk the USDC-settled books for whatever contracts that feed just reported. Failures
+  // are absent, never fabricated, and never block the cycle.
+  try { await fetchUsdcBooks(futuresUsdc); } catch (e) { console.error('[usdc-book] walk failed:', e.message); }
 
   const allExchanges = { binance: wsData, ...restData };
   cexArb      = detectCexArb(allExchanges);

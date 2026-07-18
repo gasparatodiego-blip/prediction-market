@@ -27,6 +27,9 @@ const BOOKS_FILE = process.env.FUNDING_BOOKS_FILE || '/tmp/funding-books.json'
 // agent10's SPOT ladder sidecar — same shape, separate file because agent15 rewrites the
 // perp sidecar wholesale every cycle and the two writers must not race.
 const SPOT_BOOKS_FILE = process.env.SPOT_BOOKS_FILE || '/tmp/spot-books.json'
+// agent10's USDC-SETTLED perp ladders. Separate instrument from the venue's USDT perp and
+// therefore a separate sidecar — the two are never interchangeable.
+const USDC_BOOKS_FILE = process.env.USDC_BOOKS_FILE || '/tmp/usdc-books.json'
 
 /** Notional the dry-run is computed at. Slippage without its size is meaningless, so this
  *  is surfaced in the payload and rendered next to every result. */
@@ -80,6 +83,7 @@ const project = (l: LegDifficulty): LegEvidence => ({
 
 let _cache: { mtimeMs: number; sidecar: Sidecar } | null = null
 let _spotCache: { mtimeMs: number; sidecar: Sidecar } | null = null
+let _usdcCache: { mtimeMs: number; sidecar: Sidecar } | null = null
 
 /** Reads a sidecar, memoized on mtime so repeated rows in one request parse it once. */
 function readSidecarFile(file: string, cache: { mtimeMs: number; sidecar: Sidecar } | null):
@@ -105,6 +109,13 @@ function readSidecar(): Sidecar | null {
 function readSpotSidecar(): Sidecar | null {
   const r = readSidecarFile(SPOT_BOOKS_FILE, _spotCache)
   _spotCache = r.cache
+  return r.sidecar
+}
+
+/** agent10's USDC-settled ladders. Absent → the USDC leg stays UNKNOWN, as before. */
+function readUsdcSidecar(): Sidecar | null {
+  const r = readSidecarFile(USDC_BOOKS_FILE, _usdcCache)
+  _usdcCache = r.cache
   return r.sidecar
 }
 
@@ -267,14 +278,13 @@ export function dryRunPerpSpotLegOrder(
 // ── USDC-margined divergence ─────────────────────────────────────────────────
 //
 // Mixed-margin lane: a USDC-margined leg against either another USDC-margined leg or a
-// USDT-margined one. agent15's sidecar holds ONLY USDT-margined perp books, so:
-//   USDT leg → real persisted ladder (keyed COIN|venue), real evidence.
-//   USDC leg → nothing persisted. `bitget-usdc` is a DIFFERENT INSTRUMENT from `bitget`
-//              with its own book; silently falling back to the USDT sibling would fabricate
-//              depth for a contract we never read. So it is passed no ladder → UNKNOWN.
+// USDT-margined one. Each leg is resolved against the sidecar for ITS OWN instrument:
+//   USDT leg → agent15's perp books   (/tmp/funding-books.json)
+//   USDC leg → agent10's USDC books   (/tmp/usdc-books.json)
 //
-// Consequence today: every row is unusable, because every row has at least one USDC leg.
-// The USDT leg's evidence is still real and still shown.
+// The two are never crossed. `bitget-usdc` is a DIFFERENT INSTRUMENT from `bitget` with its
+// own order book; substituting the USDT sibling would attribute depth we never read. A
+// venue with no reachable USDC book simply has no entry → that leg stays UNKNOWN.
 export function dryRunUsdcLegOrder(
   coin: string,
   shortVenue: string,
@@ -289,10 +299,14 @@ export function dryRunUsdcLegOrder(
   const sidecar = readSidecar()
   if (!sidecar) return unusable('no persisted depth available (sidecar unreadable)')
 
-  // A leg is measurable only when it is USDT-margined AND its book is in the sidecar.
-  // USDC-margined legs are never looked up — there is no USDC book to look up.
+  // Each leg is resolved against the sidecar for ITS OWN instrument: a USDT-margined leg
+  // from agent15's perp books, a USDC-settled leg from agent10's USDC books. The two are
+  // never crossed — `bitget-usdc` is a different contract from `bitget`, and substituting
+  // one for the other would attribute depth we never read.
   const resolve = (venue: string, margin: string): SidecarLadder | null =>
-    margin === 'USDT' ? (sidecar.books[`${coin}|${venue}`] ?? null) : null
+    margin === 'USDT'
+      ? (sidecar.books[`${coin}|${venue}`] ?? null)
+      : (readUsdcSidecar()?.books[`${coin}|${venue}`] ?? null)
 
   const sBook = resolve(shortVenue, shortMargin)
   const lBook = resolve(longVenue, longMargin)
@@ -319,10 +333,8 @@ export function dryRunUsdcLegOrder(
   // Explain each leg we could not measure, keyed off the ACTUAL ranking outcome rather
   // than off book presence — a USDT ladder that is present but stale is still unmeasured,
   // and must be named as such instead of being silently treated as fine.
-  const why = (venue: string, margin: string, book: SidecarLadder | null) =>
-    margin !== 'USDT' ? `${venue} (USDC-margined — no book persisted)`
-      : !book          ? `${venue} (no persisted ladder)`
-      :                  `${venue} (ladder too stale to rank)`
+  const why = (venue: string, _margin: string, book: SidecarLadder | null) =>
+    !book ? `${venue} (no persisted ladder)` : `${venue} (ladder too stale to rank)`
   const unmeasured = [
     r.legs[0]?.outcome === 'unknown' ? why(shortVenue, shortMargin, sBook) : null,
     r.legs[1]?.outcome === 'unknown' ? why(longVenue, longMargin, lBook) : null,
