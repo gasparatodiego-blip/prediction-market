@@ -560,8 +560,12 @@ async function depthEdgex(coin) {
   // asks ascending / bids descending (sorted defensively). Quote is USD. Needs the
   // numeric contractId (endpoints reject coin/name) — resolved via edgexIdCache.
   //
-  // SHALLOW by design: level=EDGEX_DEPTH_LEVEL (50), not 200. LADDER_CAP already truncates
-  // the persisted ladder to 50/side, so the other 150 levels were fetched and thrown away.
+  // SHALLOW by design: level=EDGEX_DEPTH_LEVEL (15), not 200. edgeX's depth `level` is an
+  // ENUM, not a count — only 15 and 200 are accepted. 20/50/100 return INVALID_DEPTH_LEVEL
+  // with HTTP 200, which parses to an empty book and is indistinguishable from a dead venue;
+  // that is exactly how a level=50 typo silently zeroed every edgeX read (Jul 19 outage), with
+  // no 429 logged because there was no challenge. 15 sits inside LADDER_CAP (50/side), so
+  // nothing persisted is truncated.
   // Called ONLY from refreshEdgexDepthSlice — edgeX is deliberately absent from
   // DEPTH_FETCHERS so the general fan-out can never burst this host again.
   const contractId = edgexIdCache[coin];
