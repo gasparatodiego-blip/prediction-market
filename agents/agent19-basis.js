@@ -110,6 +110,47 @@ const DISCLAIMER =
 // ── HTTP ───────────────────────────────────────────────────────────────────────
 function get(url, ms = 14_000) { return _sharedGet(url, { timeoutMs: ms }); }
 
+// ── Per-venue fetch status ────────────────────────────────────────────────────
+//
+// A venue whose endpoint times out used to vanish from the board with nothing but a
+// console.warn to stderr: the persisted output carried no marker, so a consumer could
+// not tell "this venue had no qualifying contracts" from "this venue did not answer".
+// Binance dapi (COIN-M) is the worst offender — 54 timeouts in the error log against
+// USDTM 30 / OKX 24 / Deribit 20 / Kraken 2 — and each one silently zeroed EVERY
+// coin-margined row for that cycle (BNB disappearing and reappearing).
+//
+// VENUE_STATUS records what actually happened per venue per cycle and is persisted
+// with the board, so a drop is visible in the data instead of only in a log nobody
+// reads. Reset at the top of every scan.
+let VENUE_STATUS = {};
+function resetVenueStatus() { VENUE_STATUS = {}; }
+function setVenueStatus(venue, status, extra = {}) {
+  VENUE_STATUS[venue] = { status, ...extra };
+}
+
+// Bounded retry for a single endpoint. Small and backed off so a retry can never turn
+// into a storm against a venue that is already struggling.
+const ENDPOINT_ATTEMPTS   = 3;
+const ENDPOINT_BACKOFF_MS = 500;
+
+/**
+ * GET with bounded retry. Returns a tagged outcome rather than throwing, so the caller
+ * can distinguish "the venue answered" from "the venue never answered" and record it.
+ */
+async function getRetry(url, attempts = ENDPOINT_ATTEMPTS) {
+  let lastErr = null;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      const res = await get(url);
+      return { ok: true, res, attempts: attempt };
+    } catch (e) {
+      lastErr = e;
+      if (attempt < attempts) await sleep(ENDPOINT_BACKOFF_MS * attempt);
+    }
+  }
+  return { ok: false, attempts, error: String(lastErr?.message ?? lastErr).slice(0, 140) };
+}
+
 function atomicWrite(path, obj) {
   const tmp = path + '.tmp.' + process.pid;
   fs.writeFileSync(tmp, JSON.stringify(obj, null, 2));
@@ -630,12 +671,58 @@ async function fetchDeribitSpotBooks(spot, books = {}) {
 // ── Binance COIN-M ────────────────────────────────────────────────────────────
 
 async function fetchCOINM(spot, books = {}) {
-  // Fetch 24hr ticker (volume/lastPrice) and bookTicker (bid/ask) in parallel
-  const [res, btRes] = await Promise.all([
-    get('https://dapi.binance.com/dapi/v1/ticker/24hr'),
-    get('https://dapi.binance.com/dapi/v1/ticker/bookTicker'),
+  // Fetch 24hr ticker (volume/lastPrice) and bookTicker (bid/ask) in parallel.
+  //
+  // These were a bare Promise.all: either endpoint timing out rejected the pair, threw
+  // out of fetchCOINM, and the caller substituted [] — so one transient 14s timeout
+  // silently removed EVERY coin-margined row for that cycle. Now each endpoint retries
+  // independently (allSettled, so a slow one cannot cancel a healthy one) and the
+  // outcome is recorded either way.
+  //
+  // Deliberately NOT last-good rows: a carry row is a claim about EXECUTABLE prices,
+  // and replaying last cycle's futureBid as though it were fillable would break the
+  // engine's core invariant. When dapi does not answer, the honest output is an
+  // explicit TIMEOUT status the UI can surface — not stale quotes dressed as live ones.
+  const [tick, book] = await Promise.allSettled([
+    getRetry('https://dapi.binance.com/dapi/v1/ticker/24hr'),
+    getRetry('https://dapi.binance.com/dapi/v1/ticker/bookTicker'),
   ]);
-  if (res.status !== 200 || !Array.isArray(res.data)) return [];
+  const tickR = tick.status === 'fulfilled' ? tick.value : { ok: false, attempts: 0, error: String(tick.reason?.message ?? tick.reason).slice(0, 140) };
+  const bookR = book.status === 'fulfilled' ? book.value : { ok: false, attempts: 0, error: String(book.reason?.message ?? book.reason).slice(0, 140) };
+
+  const res   = tickR.ok ? tickR.res : null;
+  const btRes = bookR.ok ? bookR.res : null;
+  const attempts = { ticker24h: tickR.attempts, bookTicker: bookR.attempts };
+
+  if (!res || res.status !== 200 || !Array.isArray(res.data)) {
+    setVenueStatus('COINM', 'TIMEOUT', {
+      endpoint: 'dapi/v1/ticker/24hr',
+      attempts,
+      error: tickR.error ?? `HTTP ${res?.status ?? '?'} / non-array body`,
+      note: 'Binance dapi did not answer after retries — ALL coin-margined rows are absent '
+          + 'this cycle. Absence is the endpoint failing, not the contracts disappearing. '
+          + 'No stale prices served in their place.',
+    });
+    console.warn(`[basis] COINM: ticker/24hr unavailable after ${tickR.attempts} attempts — `
+               + `0 coin-margined rows this cycle (status persisted as TIMEOUT)`);
+    return [];
+  }
+  if (!btRes || !Array.isArray(btRes.data)) {
+    // 24hr answered but bid/ask did not. buildContract requires real bid AND ask, so
+    // every row would be dropped anyway — say so explicitly rather than emit nothing.
+    setVenueStatus('COINM', 'TIMEOUT', {
+      endpoint: 'dapi/v1/ticker/bookTicker',
+      attempts,
+      error: bookR.error ?? 'non-array body',
+      note: 'Volume answered but executable bid/ask did not. Rows need real bid/ask, and '
+          + 'no midpoint fallback is permitted, so the set is empty this cycle.',
+    });
+    console.warn(`[basis] COINM: bookTicker unavailable after ${bookR.attempts} attempts — 0 rows`);
+    return [];
+  }
+  if (tickR.attempts > 1 || bookR.attempts > 1) {
+    console.log(`[basis] COINM: recovered on retry (ticker24h x${tickR.attempts}, bookTicker x${bookR.attempts})`);
+  }
 
   // Build bid/ask map from bookTicker
   const btMap = {};
@@ -712,6 +799,15 @@ async function fetchCOINM(spot, books = {}) {
     });
     if (c) results.push(c);
   }
+  // Endpoint answered. `rows` is what survived the real filters (depth, profitability,
+  // expiry) — distinct from the venue being unreachable, which is the whole point of
+  // recording this separately.
+  setVenueStatus('COINM', 'OK', {
+    attempts,
+    retried: attempts.ticker24h > 1 || attempts.bookTicker > 1,
+    candidates: candidates.length,
+    rows: results.length,
+  });
   return results;
 }
 
@@ -1172,6 +1268,7 @@ async function scan() {
   // writes into it; nothing re-fetches. This is the SAME depth capacity is measured from,
   // so the dry-run and the capacity number can never disagree.
   const books = {};
+  resetVenueStatus();   // per-cycle venue reachability, persisted with the board
 
   const [coinm, usdtm, bybit, kraken, okx, deribit, spotBooks, dbtSpotBooks] = await Promise.allSettled([
     fetchCOINM(spot, books),
@@ -1209,6 +1306,12 @@ async function scan() {
   atomicWrite(OUTPUT_FILE, {
     updatedAt:    new Date().toISOString(),
     agentVersion: 'agent19-basis v2',
+    // Per-venue reachability THIS cycle. A venue with status TIMEOUT contributed zero
+    // rows because its endpoint did not answer — not because it had no qualifying
+    // contracts. Without this the two are indistinguishable downstream, which is how
+    // the dapi flakiness stayed invisible: coin-margined rows vanished and returned
+    // with nothing in the data to explain it.
+    venueStatus: VENUE_STATUS,
     // Header price strip. Only assets that ACTUALLY PRODUCED a row this cycle appear —
     // a price with no reachable contract is an orphan that implies a tradeable row the
     // engine filtered out (the old hardcoded BTC/ETH/BNB/SOL list did exactly that:
@@ -1273,4 +1376,8 @@ if (require.main === module) {
   main().catch(e => { console.error('[agent19] fatal:', e); process.exit(1); });
 }
 
-module.exports = { fetchDeribitSpotBooks, walkSpotCandidate, buildContract, tier };
+module.exports = {
+  fetchDeribitSpotBooks, walkSpotCandidate, buildContract, tier,
+  fetchCOINM, getRetry,
+  getVenueStatus: () => VENUE_STATUS,
+};
