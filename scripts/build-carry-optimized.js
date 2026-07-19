@@ -57,8 +57,13 @@ if (target) {
             + `(${target.daysToExpiry}d, ${target.venueCount} venues) ===`);
   for (const [i, o] of target.options.entries()) {
     console.log(`\n${i === 0 ? '>> BEST' : '   #' + (i + 1)}  ${o.venue}  ${o.contract}`);
+    // Single-venue rows carry no comparable indicative (they price off a different spot
+    // book), so the invariant is N/A there rather than violated.
+    const inv = o.indicativeBasisPct == null
+      ? 'n/a — ' + (o.invariantNote || 'no comparable indicative')
+      : (o.executableBasisPct <= o.indicativeBasisPct ? 'OK' : 'VIOLATED');
     console.log(`   exec basis   ${pc(o.executableBasisPct)}  (indicative ${pc(o.indicativeBasisPct)}, `
-              + `invariant exec<=indic ${o.executableBasisPct <= o.indicativeBasisPct ? 'OK' : 'VIOLATED'})`);
+              + `invariant exec<=indic ${inv})`);
     console.log(`   prices       spotAsk ${o.spotAsk} / futureBid ${o.futureBid}   [${o.priceBasis}]`);
     console.log(`   fees         ${pc(o.feePct, 3)} total | verified ${o.feeVerified} `
               + `| official fraction ${o.feeOfficialFraction == null ? '—' : (o.feeOfficialFraction * 100).toFixed(0) + '%'}`);

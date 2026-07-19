@@ -423,6 +423,74 @@ async function fetchSpotBooks(spot, books = {}) {
   return books;
 }
 
+/**
+ * Deribit-NATIVE spot ask ladders, keyed DERIBIT_SPOT|ASSET.
+ *
+ * Why this exists separately from fetchSpotBooks: the carry engine prices every
+ * two-venue route with Binance spot, but Deribit lists spot alongside its dated
+ * futures, so a SINGLE-VENUE carry (both legs, one account) is possible there and
+ * costs ~5x less in fees. That route could not be ranked without a walked ladder for
+ * Deribit's own spot book — this is that walk.
+ *
+ * Deribit lists several quote currencies per coin (USDC/USDT/USDE) whose books differ
+ * by two orders of magnitude, so we walk every one and keep the DEEPEST within the
+ * slippage band — the pair a carry would actually use. Losing pairs are discarded, not
+ * blended: capacity must trace to one real book.
+ *
+ * Quote-currency caveat: these pairs are quoted in USDC/USDT, not USD. The quote is
+ * recorded so a reader can judge the stablecoin leg instead of assuming 1.0000.
+ *
+ * A failed fetch leaves the key absent → the single-venue route reports capacity
+ * UNKNOWN, never a guess.
+ */
+async function fetchDeribitSpotBooks(spot, books = {}) {
+  const assets = Object.keys(spot).filter(a => spot[a]?.mid > 0);
+  const now = Date.now();
+
+  await Promise.allSettled(assets.map(async (asset) => {
+    // Discover the venue's own spot pairs rather than hardcoding a quote currency.
+    const listed = await get(`https://www.deribit.com/api/v2/public/get_instruments?currency=${asset}&kind=spot`);
+    const names = (listed?.data?.result ?? [])
+      .filter(i => i && i.is_active !== false && typeof i.instrument_name === 'string')
+      .map(i => i.instrument_name);
+    if (names.length === 0) return;
+
+    const walked = await Promise.allSettled(
+      names.map(n => get(`https://www.deribit.com/api/v2/public/get_order_book?instrument_name=${n}&depth=1000`))
+    );
+
+    let best = null;
+    for (let i = 0; i < names.length; i++) {
+      const r = walked[i];
+      if (r.status !== 'fulfilled') continue;
+      // Buy-spot leg → ASK ladder, ascending (cheapest first). Deribit spot sizes are
+      // already in base coin, same as Binance.
+      const ladder = normalizeLadder(r.value?.data?.result?.asks, USD_BY_PRICE_SIZE, { desc: false });
+      if (ladder.length === 0) continue;
+      const depthUsd = ladderDepthUsd(ladder, SLIP_TOL, asset);
+      if (!(depthUsd > 0)) continue;
+      if (!best || depthUsd > best.depthUsd) {
+        best = { instrument: names[i], quote: names[i].split('_')[1] ?? null, ladder, depthUsd };
+      }
+    }
+    if (!best) return;
+
+    books[`DERIBIT_SPOT|${asset}`] = {
+      fetchedAt:  now,
+      side:       'buy',
+      top:        best.ladder[0][0],
+      asks:       best.ladder,
+      instrument: best.instrument,
+      quote:      best.quote,
+      depthUsd:   best.depthUsd,
+      note:       'Deribit-native spot ask ladder for the single-venue carry. Deepest of the venue\'s spot '
+                + 'pairs for this coin within the slippage band; quoted in the recorded stablecoin, not USD.',
+    };
+  }));
+
+  return books;
+}
+
 // ── Binance COIN-M ────────────────────────────────────────────────────────────
 
 async function fetchCOINM(spot, books = {}) {
@@ -965,7 +1033,7 @@ async function scan() {
   // so the dry-run and the capacity number can never disagree.
   const books = {};
 
-  const [coinm, usdtm, bybit, kraken, okx, deribit, spotBooks] = await Promise.allSettled([
+  const [coinm, usdtm, bybit, kraken, okx, deribit, spotBooks, dbtSpotBooks] = await Promise.allSettled([
     fetchCOINM(spot, books),
     fetchUSDTM(spot, books),
     fetchBybit(spot, books),
@@ -973,8 +1041,11 @@ async function scan() {
     fetchOKX(spot, books),
     fetchDeribit(spot, books),
     fetchSpotBooks(spot, books),
+    fetchDeribitSpotBooks(spot, books),
   ]);
   if (spotBooks.status === 'rejected') console.warn('[basis] spot books:', spotBooks.reason?.message);
+  // Sidecar-only ladder: feeds the single-venue carry route. Never blocks the board.
+  if (dbtSpotBooks.status === 'rejected') console.warn('[basis] deribit spot books:', dbtSpotBooks.reason?.message);
 
   const all = [
     ...(coinm.status === 'fulfilled'   ? coinm.value   : (console.warn('[basis] COINM:', coinm.reason?.message), [])),
@@ -1025,7 +1096,7 @@ async function scan() {
       generatedAt: new Date().toISOString(),
       cap:         LADDER_CAP,
       staleMs:     BOOK_STALE_MS,
-      note:        'Capped walkable ladders [price, qty] for the basis carry. qty is NORMALIZED TO BASE COIN for every venue (Deribit USD amounts and OKX/COIN-M contract sizes converted), so both legs share one unit and rankLegs can walk them against a single size. Future keys VENUE|CONTRACT carry `bids` (short-the-future side, descending); spot keys SPOT|ASSET carry `asks` (long-spot side, ascending). Same depth capacityUsd was measured from — not a second fetch.',
+      note:        'Capped walkable ladders [price, qty] for the basis carry. qty is NORMALIZED TO BASE COIN for every venue (Deribit USD amounts and OKX/COIN-M contract sizes converted), so both legs share one unit and rankLegs can walk them against a single size. Future keys VENUE|CONTRACT carry `bids` (short-the-future side, descending); spot keys SPOT|ASSET carry `asks` (long-spot side, ascending) and price the Binance two-venue route. DERIBIT_SPOT|ASSET keys carry Deribit-native spot `asks` for the SINGLE-VENUE carry route, tagged with the `instrument` and stablecoin `quote` they were walked from. Same depth capacityUsd was measured from — not a second fetch.',
       books,
     }, { pretty: false });
     console.log(`[basis-books] wrote ${Object.keys(books).length} ladders (cap ${LADDER_CAP}/side) → ${BOOKS_FILE}`);
