@@ -13,6 +13,10 @@ const { atomicWriteJson } = require('../lib/atomicJsonWrite');
 // Shared quote-asset classifier (CC-2c) — same allowlist the UI badges from, so the
 // selection guard and the badge can never disagree about what counts as fiat-backed.
 const { classifyQuoteAsset } = require('../lib/quote-risk');
+// Short-spot borrow cost — the leg a REVERSE (backwardation) carry needs and a forward
+// carry does not. Populated once per cycle; empty means UNKNOWN, never zero.
+const { BAPI_URL, SOURCE: BORROW_SOURCE, parseBorrowRates, priceReverseCarry } = require('../lib/borrow-cost');
+let BORROW_RATES = {};
 
 // ── CONFIG ─────────────────────────────────────────────────────────────────────
 const REFRESH_MS    = 5 * 60_000;
@@ -403,13 +407,36 @@ function buildContract({ asset, exchange, venueKey, contract,
     // but a signal on a book too thin to act on is still noise.
     const backCap = Number.isFinite(capacityUsdOverride) ? capacityUsdOverride : null;
     if (!(backCap >= MIN_CAPACITY_USD)) return null;
+    // REVERSE cash & carry pricing. Backwardation is only a tradeable edge if you can
+    // sell spot you do not own, which means BORROWING it — and that borrow accrues for
+    // the whole hold. Quoting the basis without it would overstate the return, so the
+    // cost is priced here and the row is only ever called cashable when it clears.
+    const reverse = priceReverseCarry({
+      executableBasisPct,
+      daysToExpiry,
+      feePct: fee,
+      borrow: BORROW_RATES[asset] ?? null,
+    });
     return {
       type:               'backwardation',
+      direction:          'backwardation',   // UI arrow: down
+      directionArrow:     '↓',
       asset,
       exchange,
       contract,
       expiry:             new Date(expiryMs).toISOString().slice(0, 10),
       daysToExpiry:       Math.round(daysToExpiry),
+      // Real walked depth — the same min-legs number the forward carry reports. Was
+      // previously computed for the gate but never carried onto the row.
+      capacityUsd:        backCap,
+      capacitySource:     'book',
+      // Reverse-carry economics, net of the short-spot borrow cost.
+      reverse: {
+        ...reverse,
+        borrowAsset:      asset,
+        borrowSource:     BORROW_RATES[asset] ? BORROW_SOURCE.provenance : null,
+        borrowSourceNote: BORROW_RATES[asset] ? BORROW_SOURCE.note : null,
+      },
       // Book-mid prices (used for indicative)
       spot:               round2(spotMid),
       future:             round2(futureMidBook),
@@ -486,6 +513,8 @@ function buildContract({ asset, exchange, venueKey, contract,
 
   return {
     type:                    'contango',
+    direction:               'contango',   // UI arrow: up. Buy spot, short future.
+    directionArrow:          '↑',
     asset,
     exchange,
     venueKey,
@@ -1397,6 +1426,23 @@ async function scan() {
   // so the dry-run and the capacity number can never disagree.
   const books = {};
   resetVenueStatus();   // per-cycle venue reachability, persisted with the board
+
+  // Short-spot borrow rates for REVERSE (backwardation) carry. Fetched through the same
+  // resilient helper so a timeout is retried and recorded rather than silently leaving
+  // every reverse row unpriced. On failure BORROW_RATES stays empty, which the pricer
+  // reads as UNKNOWN — never as a free borrow.
+  {
+    const bf = await fetchVenueEndpoints('BORROW', [{ label: 'bapi/margin/vip', url: BAPI_URL }]);
+    BORROW_RATES = bf.ok ? parseBorrowRates(bf.res['bapi/margin/vip'].data) : {};
+    setVenueStatus('BORROW', bf.ok ? 'OK' : 'TIMEOUT', {
+      attempts: bf.attempts,
+      retried: bf.retried,
+      assets: Object.keys(BORROW_RATES).length,
+      provenance: BORROW_SOURCE.provenance,
+      note: bf.ok ? BORROW_SOURCE.note
+                  : 'Borrow rates unavailable — reverse rows show no net, only the raw basis.',
+    });
+  }
 
   const [coinm, usdtm, bybit, kraken, okx, deribit, spotBooks, dbtSpotBooks] = await Promise.allSettled([
     fetchCOINM(spot, books),
