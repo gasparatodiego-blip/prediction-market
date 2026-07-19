@@ -4,7 +4,7 @@ import { useState } from 'react';
 import SectionHelp from '@/app/components/SectionHelp';
 import Link from 'next/link';
 import {
-  Crosshair, Coins, Trophy, Users,
+  Crosshair, Trophy, Users,
   ChevronDown, ArrowRight, GitMerge, Gift,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -27,16 +27,6 @@ interface Strategy {
 }
 
 const strategies: Strategy[] = [
-  {
-    id: 'crypto',
-    Icon: Coins,
-    name: 'Funding Arb',
-    platforms: ['Binance', 'Bybit', 'OKX'],
-    summary: 'Funding rates and spot-futures arbitrage',
-    explanation:
-      "On perpetual futures, traders pay each other a funding rate. You hold spot plus an offsetting short future (delta-neutral), so you're not exposed to price — you just collect the funding. Realistic returns are modest in calm markets (~5–11%/yr) and higher when funding spikes. Risk: funding can flip; use 1× leverage to avoid liquidation.",
-    link: '/dashboard/funding-arb',
-  },
   {
     id: 'prediction',
     Icon: Crosshair,
@@ -99,7 +89,7 @@ const stats = [
 const generalFaqs = [
   {
     q: 'Which strategy should I start with?',
-    a: 'For the steadiest, lowest-stress option, Crypto & Funding (delta-neutral, 1× leverage) is the classic starting point. Cash & Carry locks in a basis at entry and holds to expiry — lower variance, no rate-flip risk. Prediction-market and sports arbitrage have clearer "locked" edges but need fast execution and account access.',
+    a: 'For the steadiest, lowest-stress option, Cash & Carry locks in a basis at entry and holds to expiry — lower variance, nothing to predict. Prediction-market and sports arbitrage have clearer "locked" edges but need fast execution and account access. Liquidity Rewards pays for posting quotes rather than for calling a direction.',
   },
   {
     q: 'Is the profit guaranteed?',
@@ -139,7 +129,7 @@ function AccordionItem({ q, a }: { q: string; a: string }) {
 }
 
 export default function DashboardPage() {
-  const [selectedId, setSelectedId] = useState('crypto');
+  const [selectedId, setSelectedId] = useState('prediction');
   const selected     = strategies.find(s => s.id === selectedId) ?? strategies[0];
   const SelectedIcon = selected.Icon;
 
@@ -152,7 +142,7 @@ export default function DashboardPage() {
         {/* Header */}
         <div className="flex items-start justify-between gap-6 mb-8">
           <div>
-            <Eyebrow className="mb-2">6 strategies · live 24/7</Eyebrow>
+            <Eyebrow className="mb-2">{strategies.length} strategies · live 24/7</Eyebrow>
             <SectionHeading className="text-2xl">
               Choose a strategy to explore
             </SectionHeading>
