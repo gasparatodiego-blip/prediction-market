@@ -35,7 +35,7 @@ export interface Contract {
   vol24Usd:                number;
   oiUsd:                   number | null;
   capacityUsd:             number | null;
-  capacitySource:          'book' | 'proxy';
+  capacitySource:          'book' | 'unknown';
   tier:                    string;
   thinFlag:                boolean;
   coinMargined:            boolean;
@@ -52,11 +52,12 @@ export interface Contract {
 export const CASHABLE_MIN_DEPTH_USD = 100_000;
 
 // Honest liquidity gate. Capacity provenance decides which signal we trust:
-//  • 'book'  → capacityUsd IS measured order-book depth we can fill into. A row is
+//  • 'book'    → capacityUsd IS measured order-book depth we can fill into. A row is
 //    cashable when that real depth clears the floor, REGARDLESS of 24h turnover
 //    (turnover ≠ resting depth). A thin real book (< floor) stays speculative.
-//  • 'proxy' → no real book-walk; the vol/OI turnover tier is the best liquidity
-//    signal we have, so keep the turnover thinFlag gate.
+//  • 'unknown' → the book was unreadable this cycle, so there is NO measured depth.
+//    Never cashable: 24h turnover is not resting depth, and inferring fillability
+//    from it is exactly the vol/OI proxy the engine no longer makes.
 // Coin-margined return drifts with spot — never a clean locked-USD cashable.
 export function chipVariant(c: Contract): EdgeChipVariant {
   if (c.executableBasisPct == null) return 'signal'; // redacted — don't overclaim
@@ -65,7 +66,7 @@ export function chipVariant(c: Contract): EdgeChipVariant {
   if (c.capacitySource === 'book') {
     return (c.capacityUsd ?? 0) >= CASHABLE_MIN_DEPTH_USD ? 'cashable' : 'speculative';
   }
-  return c.thinFlag ? 'speculative' : 'cashable';
+  return 'speculative';
 }
 
 // Human-readable reason a row is NOT cashable — used by the operation page to show
@@ -78,5 +79,5 @@ export function nonCashableReason(c: Contract): string | null {
   if (c.capacitySource === 'book') {
     return 'The measured order-book depth for this contract is below the cashable threshold — a fill at meaningful size would move the basis. Size down and scale in.';
   }
-  return 'Liquidity here is inferred from 24h volume / open interest, not a live order-book walk, and is below the deep tier — the shown capacity may not fill without slippage. Treat as a signal, not a locked fill.';
+  return 'We could not read this contract\'s order book this cycle, so there is no measured depth — capacity shows "—". Liquidity is never inferred from 24h volume or open interest here: turnover is not resting depth. Treat as a signal, not a locked fill.';
 }

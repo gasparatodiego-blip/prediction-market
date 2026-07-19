@@ -5,10 +5,11 @@
 // (@/lib/order-format) + PlatformLink + Redacted, so the two order pages format
 // money, capacity and links identically. No new visual style.
 //
-// Honest-engine: MAX SIZE before slippage is the real book-walked capacity for
-// book-sourced venues (capacitySource === 'book', e.g. Bybit) — never OI. For
-// proxy venues it is honestly labeled a vol/OI estimate. coinMargined rows keep
-// their "USD return drifts with spot" caveat; free-tier redaction is preserved.
+// Honest-engine: MAX SIZE before slippage is the real book-walked capacity —
+// every venue is book-walked now, never OI. A contract whose book was unreadable
+// has capacitySource 'unknown' and shows "—" rather than an inferred number.
+// coinMargined rows keep their "USD return drifts with spot" caveat; free-tier
+// redaction is preserved.
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
@@ -323,7 +324,7 @@ export default function CarryOperationPage({ params }: { params: { id: string } 
               <p className="font-body mt-1 leading-snug" style={{ fontSize: 10, color: '#9aa5b3' }}>
                 {c.capacitySource === 'book'
                   ? 'Walked from the live order book (real resting depth), never OI — start here and scale in.'
-                  : 'Estimate from 24h volume / open interest — verify real book depth on-exchange before sizing up.'}
+                  : 'No measured depth this cycle — capacity is not shown rather than inferred from volume or OI.'}
               </p>
             )}
           </div>
