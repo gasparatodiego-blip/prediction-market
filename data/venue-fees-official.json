@@ -1,0 +1,266 @@
+{
+  "generatedAt": "2026-07-19T12:40:36.120Z",
+  "method": "Unauthenticated documented public endpoints only, fetched through lib/rateLimitedFetch.",
+  "baseTierNote": "These are BASE-TIER / public defaults — the honest worst case. A real account at a volume tier, or with maker rebates or fee-token discounts, pays less. Never present as the user's actual fee.",
+  "unknownPolicy": "A venue that gates its fee schedule behind auth is recorded UNKNOWN with the verbatim API rejection as evidence. No blog figures, no docs scrapes, no remembered numbers.",
+  "venues": {
+    "DERIBIT": {
+      "venue": "Deribit",
+      "feesPublic": true,
+      "datedFutures": {
+        "status": "OK",
+        "perInstrument": {
+          "BTC-25JUN27": {
+            "status": "OK",
+            "makerFee": 0,
+            "takerFee": 0.0005,
+            "blockTradeFee": 0.00025,
+            "contractSize": 10,
+            "settlementCurrency": "BTC",
+            "instrumentType": "reversed",
+            "source": "https://www.deribit.com/api/v2/public/get_instrument?instrument_name=BTC-25JUN27"
+          },
+          "BTC-26MAR27": {
+            "status": "OK",
+            "makerFee": 0,
+            "takerFee": 0.0005,
+            "blockTradeFee": 0.00025,
+            "contractSize": 10,
+            "settlementCurrency": "BTC",
+            "instrumentType": "reversed",
+            "source": "https://www.deribit.com/api/v2/public/get_instrument?instrument_name=BTC-26MAR27"
+          },
+          "BTC-25DEC26": {
+            "status": "OK",
+            "makerFee": 0,
+            "takerFee": 0.0005,
+            "blockTradeFee": 0.00025,
+            "contractSize": 10,
+            "settlementCurrency": "BTC",
+            "instrumentType": "reversed",
+            "source": "https://www.deribit.com/api/v2/public/get_instrument?instrument_name=BTC-25DEC26"
+          },
+          "ETH-25JUN27": {
+            "status": "OK",
+            "makerFee": 0,
+            "takerFee": 0.0005,
+            "blockTradeFee": 0.00025,
+            "contractSize": 1,
+            "settlementCurrency": "ETH",
+            "instrumentType": "reversed",
+            "source": "https://www.deribit.com/api/v2/public/get_instrument?instrument_name=ETH-25JUN27"
+          },
+          "ETH-26MAR27": {
+            "status": "OK",
+            "makerFee": 0,
+            "takerFee": 0.0005,
+            "blockTradeFee": 0.00025,
+            "contractSize": 1,
+            "settlementCurrency": "ETH",
+            "instrumentType": "reversed",
+            "source": "https://www.deribit.com/api/v2/public/get_instrument?instrument_name=ETH-26MAR27"
+          },
+          "BTC-25SEP26": {
+            "status": "OK",
+            "makerFee": 0,
+            "takerFee": 0.0005,
+            "blockTradeFee": 0.00025,
+            "contractSize": 10,
+            "settlementCurrency": "BTC",
+            "instrumentType": "reversed",
+            "source": "https://www.deribit.com/api/v2/public/get_instrument?instrument_name=BTC-25SEP26"
+          },
+          "ETH-25DEC26": {
+            "status": "OK",
+            "makerFee": 0,
+            "takerFee": 0.0005,
+            "blockTradeFee": 0.00025,
+            "contractSize": 1,
+            "settlementCurrency": "ETH",
+            "instrumentType": "reversed",
+            "source": "https://www.deribit.com/api/v2/public/get_instrument?instrument_name=ETH-25DEC26"
+          },
+          "BTC-28AUG26": {
+            "status": "OK",
+            "makerFee": 0,
+            "takerFee": 0.0005,
+            "blockTradeFee": 0.00025,
+            "contractSize": 10,
+            "settlementCurrency": "BTC",
+            "instrumentType": "reversed",
+            "source": "https://www.deribit.com/api/v2/public/get_instrument?instrument_name=BTC-28AUG26"
+          }
+        },
+        "source": "https://www.deribit.com/api/v2/public/get_instrument",
+        "note": "maker_commission/taker_commission are per-instrument and public. Inverse (coin-settled) contracts."
+      },
+      "spot": {
+        "status": "OK",
+        "instrument": "BTC_USDT",
+        "makerFee": 0,
+        "takerFee": 0,
+        "source": "https://www.deribit.com/api/v2/public/get_instrument?instrument_name=BTC_USDT",
+        "note": "API reports 0 taker on this spot pair. Recorded exactly as returned; Deribit has run zero-fee spot periods. Verify before sizing on it."
+      },
+      "hasSpotMarket": true,
+      "singleVenueCarry": "POSSIBLE",
+      "singleVenueNote": "Deribit lists BTC_USDC/BTC_USDT/BTC_USDE spot alongside dated futures, so spot+future can sit in one account. Spot depth is far thinner than Binance; the live engine prices the spot leg on Binance instead."
+    },
+    "BYBIT": {
+      "venue": "Bybit",
+      "feesPublic": false,
+      "datedFutures": {
+        "status": "UNKNOWN",
+        "makerFee": null,
+        "takerFee": null,
+        "reason": "AUTH_REQUIRED",
+        "authEvidence": "{\"retCode\":10001,\"retMsg\":\"Request parameter error: apiKey is missing\",\"result\":{},\"retExtInfo\":{},\"time\":1784464835356}",
+        "authEndpoint": "https://api.bybit.com/v5/account/fee-rate",
+        "publiclyAvailable": "deliveryFeeRate only",
+        "perInstrument": {
+          "BTCUSDT-25JUN27": {
+            "status": "PARTIAL",
+            "deliveryFeeRate": 0,
+            "makerFee": null,
+            "takerFee": null,
+            "reason": "MAKER_TAKER_AUTH_GATED",
+            "settleCoin": "USDT",
+            "source": "https://api.bybit.com/v5/market/instruments-info?category=linear&symbol=BTCUSDT-25JUN27"
+          },
+          "BTCUSDT-26MAR27": {
+            "status": "PARTIAL",
+            "deliveryFeeRate": 0,
+            "makerFee": null,
+            "takerFee": null,
+            "reason": "MAKER_TAKER_AUTH_GATED",
+            "settleCoin": "USDT",
+            "source": "https://api.bybit.com/v5/market/instruments-info?category=linear&symbol=BTCUSDT-26MAR27"
+          },
+          "BTCUSDT-25DEC26": {
+            "status": "PARTIAL",
+            "deliveryFeeRate": 0,
+            "makerFee": null,
+            "takerFee": null,
+            "reason": "MAKER_TAKER_AUTH_GATED",
+            "settleCoin": "USDT",
+            "source": "https://api.bybit.com/v5/market/instruments-info?category=linear&symbol=BTCUSDT-25DEC26"
+          },
+          "ETHUSDT-25JUN27": {
+            "status": "PARTIAL",
+            "deliveryFeeRate": 0,
+            "makerFee": null,
+            "takerFee": null,
+            "reason": "MAKER_TAKER_AUTH_GATED",
+            "settleCoin": "USDT",
+            "source": "https://api.bybit.com/v5/market/instruments-info?category=linear&symbol=ETHUSDT-25JUN27"
+          },
+          "BTCUSDT-25SEP26": {
+            "status": "PARTIAL",
+            "deliveryFeeRate": 0,
+            "makerFee": null,
+            "takerFee": null,
+            "reason": "MAKER_TAKER_AUTH_GATED",
+            "settleCoin": "USDT",
+            "source": "https://api.bybit.com/v5/market/instruments-info?category=linear&symbol=BTCUSDT-25SEP26"
+          },
+          "ETHUSDT-25DEC26": {
+            "status": "PARTIAL",
+            "deliveryFeeRate": 0,
+            "makerFee": null,
+            "takerFee": null,
+            "reason": "MAKER_TAKER_AUTH_GATED",
+            "settleCoin": "USDT",
+            "source": "https://api.bybit.com/v5/market/instruments-info?category=linear&symbol=ETHUSDT-25DEC26"
+          }
+        },
+        "source": "https://api.bybit.com/v5/market/instruments-info?category=linear"
+      },
+      "spot": {
+        "status": "UNKNOWN",
+        "reason": "AUTH_REQUIRED",
+        "makerFee": null,
+        "takerFee": null
+      },
+      "hasSpotMarket": true,
+      "singleVenueCarry": "POSSIBLE",
+      "singleVenueNote": "Bybit lists spot and linear dated futures under one unified account."
+    },
+    "OKX": {
+      "venue": "OKX",
+      "feesPublic": false,
+      "datedFutures": {
+        "status": "UNKNOWN",
+        "makerFee": null,
+        "takerFee": null,
+        "reason": "AUTH_REQUIRED",
+        "authEvidence": "{\"msg\":\"Request header OK-ACCESS-KEY can not be empty.\",\"code\":\"50103\"}",
+        "authEndpoint": "https://www.okx.com/api/v5/account/trade-fee",
+        "publiclyAvailable": "contract specs only (no fee fields)",
+        "specSample": {
+          "instId": "BTC-USD-260724",
+          "ctVal": "100",
+          "ctType": "inverse"
+        },
+        "source": "https://www.okx.com/api/v5/public/instruments?instType=FUTURES&uly=BTC-USD"
+      },
+      "spot": {
+        "status": "UNKNOWN",
+        "reason": "AUTH_REQUIRED",
+        "makerFee": null,
+        "takerFee": null
+      },
+      "hasSpotMarket": true,
+      "singleVenueCarry": "POSSIBLE",
+      "singleVenueNote": "OKX lists SPOT BTC-USDT and inverse dated futures in one account."
+    },
+    "BINANCE": {
+      "venue": "Binance",
+      "feesPublic": false,
+      "datedFutures": {
+        "status": "UNKNOWN",
+        "makerFee": null,
+        "takerFee": null,
+        "reason": "AUTH_REQUIRED",
+        "authEvidence": "{\"code\":-2014,\"msg\":\"API-key format invalid.\"}",
+        "authEndpoint": "https://api.binance.com/sapi/v1/asset/tradeFee",
+        "publiclyAvailable": "exchangeInfo symbol filters only (no fee fields)",
+        "source": "https://api.binance.com/api/v3/exchangeInfo"
+      },
+      "spot": {
+        "status": "UNKNOWN",
+        "reason": "AUTH_REQUIRED",
+        "makerFee": null,
+        "takerFee": null
+      },
+      "hasSpotMarket": true,
+      "singleVenueCarry": "POSSIBLE",
+      "singleVenueNote": "Binance lists spot plus USDT-M and COIN-M quarterly futures. Spot and futures are separate wallets but the same account."
+    }
+  },
+  "summary": {
+    "DERIBIT": {
+      "feesPublic": true,
+      "datedFuturesFeeStatus": "OK",
+      "hasSpotMarket": true,
+      "singleVenueCarry": "POSSIBLE"
+    },
+    "BYBIT": {
+      "feesPublic": false,
+      "datedFuturesFeeStatus": "UNKNOWN",
+      "hasSpotMarket": true,
+      "singleVenueCarry": "POSSIBLE"
+    },
+    "OKX": {
+      "feesPublic": false,
+      "datedFuturesFeeStatus": "UNKNOWN",
+      "hasSpotMarket": true,
+      "singleVenueCarry": "POSSIBLE"
+    },
+    "BINANCE": {
+      "feesPublic": false,
+      "datedFuturesFeeStatus": "UNKNOWN",
+      "hasSpotMarket": true,
+      "singleVenueCarry": "POSSIBLE"
+    }
+  }
+}
