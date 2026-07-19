@@ -101,6 +101,14 @@ const generalFaqs = [
   },
 ];
 
+// Offset (in 6-col tracks) → the literal Tailwind class that centres a short
+// final grid row. Keyed by leftover-tracks/2; only 1 and 2 can occur with a
+// 3-per-row layout, i.e. a final row of two cards or of one.
+const LG_COL_START: Record<number, string> = {
+  1: 'lg:col-start-2',
+  2: 'lg:col-start-3',
+};
+
 const RADAR_BLIPS: Blip[] = [
   { top: '30%', left: '65%', color: 'mint'   },
   { top: '60%', left: '25%', color: 'violet' },
@@ -151,16 +159,30 @@ export default function DashboardPage() {
         </div>
 
         {/* Strategy cards — master */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {strategies.map((s) => {
+        {/* 6-col track at lg so an odd card count still reads intentional: rows of
+            three, then a centered final row. On md the trailing card spans both
+            columns instead of sitting orphaned; on mobile it is a plain stack. */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+          {strategies.map((s, idx) => {
             const CardIcon   = s.Icon;
             const isSelected = s.id === selectedId;
+
+            const perRow    = 3;
+            const lastRowN  = strategies.length % perRow;               // cards in the final lg row
+            const firstLast = strategies.length - (lastRowN || perRow); // index that starts it
+            const spanCls = [
+              'lg:col-span-2',
+              idx === strategies.length - 1 && strategies.length % 2 === 1 ? 'md:col-span-2' : '',
+              // centre a short final row by offsetting its first card.
+              // Literal classes only — Tailwind's scanner cannot see interpolated ones.
+              lastRowN > 0 && idx === firstLast ? LG_COL_START[perRow - lastRowN] ?? '' : '',
+            ].filter(Boolean).join(' ');
 
             if (s.comingSoon) {
               return (
                 <div
                   key={s.id}
-                  className="p-5 rounded-card bg-surface border border-line opacity-40 cursor-not-allowed"
+                  className={`p-5 rounded-card bg-surface border border-line opacity-40 cursor-not-allowed ${spanCls}`}
                 >
                   <div className="flex items-start gap-3">
                     <div className="mt-0.5 shrink-0">
@@ -198,6 +220,7 @@ export default function DashboardPage() {
                 className={[
                   'p-5 rounded-card text-left w-full h-full transition-all duration-150 cursor-pointer',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mint/50',
+                  spanCls,
                   isSelected
                     ? 'bg-surface border-2 border-mint-deep shadow-card'
                     : 'bg-surface border border-line shadow-card hover:border-mint/40 hover:shadow-[0_2px_12px_rgba(15,190,130,.08)]',
