@@ -101,8 +101,11 @@ function rlGetJson(url) {
 // per-host profile (longer spacing + a longer backoff ceiling) and browser-like headers
 // to reduce how often the challenge fires. Only the edgeX host uses this — global
 // defaults for other hosts are unchanged.
+// The ceiling (~10 req/60s) is per-IP and therefore SHARED with agent15, whose limiter
+// state this process cannot see. concurrency 1 + 1s spacing keeps this process's share of
+// that budget to a trickle. Networking profile only — no venue value changes.
 const EDGEX_BASE = 'https://pro.edgex.exchange/api/v1';
-const EDGEX_RL = { concurrency: 2, spacingMs: 300, backoffCapMs: 120_000, timeoutMs: 10_000,
+const EDGEX_RL = { concurrency: 1, spacingMs: 1_000, backoffCapMs: 120_000, timeoutMs: 10_000,
   headers: {
     'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
     'Accept': 'application/json, text/plain, */*',
@@ -111,6 +114,9 @@ const EDGEX_RL = { concurrency: 2, spacingMs: 300, backoffCapMs: 120_000, timeou
 function rlGetJsonEdgex(url) {
   return _rlGet(url, EDGEX_RL).then(r => r.data).catch(() => null);
 }
+// edgeX OI/vol ticker enrichment is walked as a rotating slice — see fetchEdgex.
+const EDGEX_TICKER_BATCH = 2;
+let edgexTickerCursor = 0;
 function rlPostJson(url, body) {
   return _rlPost(url, body, RL).then(r => r.data).catch(() => null);
 }
@@ -963,19 +969,33 @@ async function fetchEdgex() {
     // Enrich OI / 24h-vol from the per-symbol ticker loop — ONLY when the host is not
     // currently Cloudflare-challenged. If it is, skip the whole loop (don't hammer) and
     // leave OI/vol null; funding is already populated from the bulk call above.
+    //
+    // ROTATING SLICE, not the full 22: this loop alone was 22 req/60s at a host whose real
+    // ceiling is ~10 req/60s SHARED with agent15's depth+history reads — which is why it
+    // (and everything else on this host) sat permanently challenged. EDGEX_TICKER_BATCH
+    // coins per cycle re-reads a given coin every ~11 min. OI and 24h-vol are slow-moving
+    // and already nullable here, so a coin not in this cycle's slice keeps whatever the
+    // caller already had and is otherwise honestly null — the same outcome as the
+    // skipped-when-challenged path that has always existed. Nothing is carried forward as
+    // fresh, and nothing is fabricated.
     if (!isHostBackedOff(EDGEX_BASE)) {
-      await Promise.all(ids.map(async (contractId) => {
+      const slice = [];
+      for (let i = 0; i < Math.min(EDGEX_TICKER_BATCH, ids.length); i++) {
+        slice.push(ids[(edgexTickerCursor + i) % ids.length]);
+      }
+      edgexTickerCursor = (edgexTickerCursor + slice.length) % ids.length;
+      for (const contractId of slice) {   // sequential — never a fan-out at this host
         const coin = byId[contractId].coin;
-        if (!r[coin]) return;
+        if (!r[coin]) continue;
         const q = await rlGetJsonEdgex(`${EDGEX_BASE}/public/quote/getTicker?contractId=${contractId}`);
         const t = Array.isArray(q?.data) ? q.data[0] : null;
-        if (!t) return;
+        if (!t) continue;
         const oi   = parseFloat(t.openInterest);
         const vol  = parseFloat(t.value);
         const mark = r[coin].markPrice;
         if (isFinite(oi) && oi > 0 && mark) r[coin].openInterestUsd = oi * mark;
         if (isFinite(vol) && vol > 0)       r[coin].vol24hUsd       = vol;
-      }));
+      }
     }
 
     const skipped = isHostBackedOff(EDGEX_BASE);

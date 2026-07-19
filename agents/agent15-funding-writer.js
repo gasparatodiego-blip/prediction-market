@@ -57,6 +57,24 @@ const FUNDING_BOOKS_FILE = '/tmp/funding-books.json';
 const LADDER_CAP         = 50;
 const INTERVAL_MS        = 60_000;
 
+// ── edgeX slow lane ───────────────────────────────────────────────────────────
+// edgeX sits behind Cloudflare with a real ceiling around ~10 requests per 60s window,
+// SHARED across processes (the limiter in lib/rateLimitedFetch.js keeps per-process state,
+// so agent10's backoff is invisible here and vice-versa). The old behaviour asked for all
+// ~20 live edgeX coins inside enrichWithDepth's Promise.all every 60s, on top of agent10's
+// 22-call ticker loop: the host stayed permanently challenged (exp oscillating 1↔2), every
+// depth read failed, and the sidecar carried 0 edgeX ladders.
+//
+// So edgeX is walked on its OWN lane instead of the fan-out: a small rotating slice, one
+// request at a time, well under the ceiling. edgeX funding settles every 4h, and these
+// ladders feed exactly one consumer — the execution-order dry-run, which asks which leg is
+// HARDER to fill (a book-shape question, not a price question). A few-minute-old book
+// answers that honestly; past EDGEX_BOOK_MAX_AGE_MS it does not, and the leg goes UNKNOWN.
+const EDGEX_DEPTH_BATCH       = 4;            // coins per cycle → ⌈20/4⌉ = 5 cycles ≈ 5 min full rotation
+const EDGEX_DEPTH_LEVEL       = 50;           // top-50/side — exactly LADDER_CAP, so nothing persisted is lost
+const EDGEX_HISTORY_BATCH     = 3;            // coins per 15-min history refresh (4h settlements — rotation loses nothing)
+const EDGEX_BOOK_MAX_AGE_MS   = 10 * 60_000;  // must exceed the ~6-min worst-case rotation; mirrors the funding-lane window
+
 // Spread filter
 const THRESHOLD_APY      = 3.0;           // min trailing gross %/yr to emit
 const MAX_GROSS_APY      = 200;           // sanity cap on trailing
@@ -131,6 +149,13 @@ let multCache        = { okx: {}, gateio: {}, bitget: {} };
 let multFetchedAt    = 0;
 let edgexIdCache     = {};   // coin → edgeX numeric contractId (endpoints don't accept coin/name)
 let edgexIdFetchedAt = 0;
+// edgeX slow-lane state. The book cache carries each ladder's REAL fetch time and is never
+// restamped: only 4 coins are re-read per cycle, so the other ~16 are served from here with
+// the timestamp of the fetch that actually happened. That is what lets a downstream reader
+// age them out honestly instead of trusting a cycle-wide "generatedAt".
+const edgexBookCache = new Map();   // coin → { fetchedAt, mid, bids, asks }
+let edgexDepthCursor   = 0;         // rotation cursor into the live edgeX coin list
+let edgexHistoryCursor = 0;
 let lighterIdCache   = {};   // coin → Lighter numeric market_id (endpoints reject coin/name)
 let lighterIdFetchedAt = 0;
 let lastGoodExchangeData = null;    // last successfully-parsed exchange-prices snapshot (safe-read fallback)
@@ -165,7 +190,11 @@ function rlGetJson(url) {
 // edgeX host trips Cloudflare under load — use a more conservative profile (longer
 // spacing + backoff ceiling) and browser-like headers for every edgeX call here too,
 // matching agent10. Only the edgeX host uses this; other hosts keep the RL defaults.
-const EDGEX_RL = { concurrency: 2, spacingMs: 300, backoffCapMs: 120_000, timeoutMs: 12_000,
+// concurrency 1 + 1s spacing: at the shared ~10 req/60s ceiling, ANY parallelism at this
+// host is a burst. One-at-a-time also means the 22-call history Promise.all below drains as
+// a ~22s trickle rather than a 3.3 req/s spike. Purely a networking profile — it changes no
+// funding, depth, or capacity value.
+const EDGEX_RL = { concurrency: 1, spacingMs: 1_000, backoffCapMs: 120_000, timeoutMs: 12_000,
   headers: {
     'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
     'Accept': 'application/json, text/plain, */*',
@@ -516,9 +545,14 @@ async function depthEdgex(coin) {
   // in BASE units (coins) — same as Binance/Aster/Paradex, no contract multiplier.
   // asks ascending / bids descending (sorted defensively). Quote is USD. Needs the
   // numeric contractId (endpoints reject coin/name) — resolved via edgexIdCache.
+  //
+  // SHALLOW by design: level=EDGEX_DEPTH_LEVEL (50), not 200. LADDER_CAP already truncates
+  // the persisted ladder to 50/side, so the other 150 levels were fetched and thrown away.
+  // Called ONLY from refreshEdgexDepthSlice — edgeX is deliberately absent from
+  // DEPTH_FETCHERS so the general fan-out can never burst this host again.
   const contractId = edgexIdCache[coin];
   if (!contractId) return null;
-  const d    = await rlGetJsonEdgex(`https://pro.edgex.exchange/api/v1/public/quote/getDepth?contractId=${contractId}&level=200`);
+  const d    = await rlGetJsonEdgex(`https://pro.edgex.exchange/api/v1/public/quote/getDepth?contractId=${contractId}&level=${EDGEX_DEPTH_LEVEL}`);
   const book = Array.isArray(d?.data) ? d.data[0] : null;
   const aRaw = book?.asks, bRaw = book?.bids;
   if (!Array.isArray(aRaw) || !aRaw.length || !Array.isArray(bRaw) || !bRaw.length) return null;
@@ -561,13 +595,53 @@ const DEPTH_FETCHERS = {
   dydx:        depthDydx,
   aster:       depthAster,
   paradex:     depthParadex,
-  edgex:       depthEdgex,
+  // edgex: DELIBERATELY ABSENT — see refreshEdgexDepthSlice. Membership in this map is what
+  // enrols a venue in enrichWithDepth's unbounded Promise.all; for edgeX that was a 20-wide
+  // burst every 60s at a host with a ~10 req/60s ceiling. Leaving it out is the guarantee
+  // that the heavy walk cannot come back by accident. edgeX depth is still real and still
+  // walked — on its own rotating lane, into the sidecar.
   grvt:        depthGrvt,
   lighter:     depthLighter,
   extended:    depthExtended,
   pacifica:    depthPacifica,
   apex:        depthApex,
 };
+
+// ── edgeX depth slow lane ─────────────────────────────────────────────────────
+// Walk EDGEX_DEPTH_BATCH edgeX coins per cycle, SEQUENTIALLY, rotating through the live
+// funding set so every coin is refreshed roughly every 5 minutes. Returns nothing — it
+// maintains edgexBookCache, which the caller merges into the sidecar.
+//
+// FAIL-CLOSED: a failed read leaves the previously cached ladder untouched WITH ITS ORIGINAL
+// fetchedAt, so it keeps ageing and drops out at EDGEX_BOOK_MAX_AGE_MS. A failed read never
+// refreshes a timestamp, never substitutes another coin's or another venue's book, and never
+// invents a level. edgeX simply goes absent → UNKNOWN downstream.
+async function refreshEdgexDepthSlice(coins) {
+  const live = [...new Set(coins)].sort();   // stable order → the cursor rotation is deterministic
+  if (!live.length) { edgexBookCache.clear(); return; }
+
+  const slice = [];
+  for (let i = 0; i < Math.min(EDGEX_DEPTH_BATCH, live.length); i++) {
+    slice.push(live[(edgexDepthCursor + i) % live.length]);
+  }
+  edgexDepthCursor = (edgexDepthCursor + slice.length) % live.length;
+
+  let ok = 0;
+  for (const coin of slice) {          // sequential on purpose — never a fan-out at this host
+    const book = await depthEdgex(coin);
+    if (!book) continue;
+    edgexBookCache.set(coin, { fetchedAt: Date.now(), mid: book.mid, bids: book.bids, asks: book.asks });
+    ok++;
+  }
+
+  // Evict ladders past the window, and coins that dropped out of the live funding set.
+  const liveSet = new Set(live);
+  for (const [coin, b] of edgexBookCache) {
+    if (!liveSet.has(coin) || Date.now() - b.fetchedAt > EDGEX_BOOK_MAX_AGE_MS) edgexBookCache.delete(coin);
+  }
+
+  console.log(`[funding-depth] edgeX slow lane: walked ${slice.length}/${live.length} (${slice.join(',')}) → ${ok} ok · cache ${edgexBookCache.size}/${live.length} fresh`);
+}
 
 // Walk `levels` [[price, qty_coins], ...] to fill `targetUsd` of notional.
 // Returns { fillable, vwap } — vwap is null if nothing filled.
@@ -1073,7 +1147,19 @@ async function refreshHistoryCache(futures) {
   for (const [exchange, coins] of Object.entries(futures)) {
     const fetcher = HISTORY_FETCHERS[exchange];
     if (!fetcher) continue;
-    for (const coin of Object.keys(coins || {})) {
+    let names = Object.keys(coins || {});
+    // edgeX shares the ~10 req/60s Cloudflare ceiling with agent10 and with the depth slow
+    // lane, so its 22-coin history fan-out is rotated too: EDGEX_HISTORY_BATCH coins per
+    // 15-min refresh ⇒ a given coin re-reads every ~110 min. edgeX settles every 4h and the
+    // merge below APPENDS (never overwrites), so an unrefreshed coin keeps its real settled
+    // series and simply ages out of the 48h window on schedule — no gap is interpolated.
+    if (exchange === 'edgex' && names.length > EDGEX_HISTORY_BATCH) {
+      const sorted = names.sort();
+      names = [];
+      for (let i = 0; i < EDGEX_HISTORY_BATCH; i++) names.push(sorted[(edgexHistoryCursor + i) % sorted.length]);
+      edgexHistoryCursor = (edgexHistoryCursor + EDGEX_HISTORY_BATCH) % sorted.length;
+    }
+    for (const coin of names) {
       tasks.push({ exchange, coin, fetcher });
     }
   }
@@ -1802,9 +1888,11 @@ async function run() {
     const backfillVenues = Object.keys(data.futures || {}).filter(v =>
       HISTORY_FETCHERS[v] && !backfillAttempted.has(v) &&
       historyCache && !Object.keys(historyCache[v] || {}).length);
+    let historyRefreshedThisCycle = false;
     if (Date.now() - historyFetchedAt > HISTORY_REFRESH_MS || backfillVenues.length) {
       for (const v of backfillVenues) backfillAttempted.add(v);
       await refreshHistoryCache(data.futures || {});
+      historyRefreshedThisCycle = true;
     }
     // Refresh contract multipliers at the same cadence (needed for depth accuracy)
     if (Date.now() - multFetchedAt > MULT_REFRESH_MS) {
@@ -1863,6 +1951,39 @@ async function run() {
       console.log(`[rwa] ${rwaOpps.length} commodity observations: ${rwaOpps.map(o => `${o.label} ${o.monolegOnly ? 'MONOLEG' : 'two-leg'} depth20bps$${o.bookDepthUsd != null ? Math.round(o.bookDepthUsd/1000)+'k' : '?'}${o.depthThin ? '·THIN' : ''}`).join(', ')}`);
     }
 
+    // edgeX slow lane — its own low-cadence rotating slice, NOT the fan-out above (edgeX is
+    // absent from DEPTH_FETCHERS). Driven by depthPairs, i.e. the coins the funding tab
+    // actually renders a row for, never the full 189-coin edgeX universe.
+    //
+    // Skipped on a history-refresh cycle: that cycle already spends EDGEX_HISTORY_BATCH + 1
+    // requests at this host, and the point of the lane is that no single 60s window goes
+    // near the ceiling. A skipped pass costs one rotation step (~1 min), well inside
+    // EDGEX_BOOK_MAX_AGE_MS.
+    const edgexWanted = [...depthPairs].filter(k => k.endsWith('|edgex')).map(k => k.split('|')[0]);
+    if (historyRefreshedThisCycle) {
+      console.log(`[funding-depth] edgeX slow lane: pass skipped (history refresh already spent this cycle's edgeX budget) · cache ${edgexBookCache.size}/${edgexWanted.length}`);
+    } else {
+      await refreshEdgexDepthSlice(edgexWanted);
+    }
+
+    // Merge the cached edgeX ladders into the sidecar, each carrying the REAL time it was
+    // fetched — never restamped to this cycle. A ladder past the window is dropped here
+    // rather than persisted, so the sidecar never ships depth that is already too old to
+    // rank on. Sidecar-only on purpose: capacity/slipCurve keep their same-cycle measurement
+    // contract, so no capacity number is ever computed from a book minutes old.
+    let edgexPersisted = 0;
+    for (const [coin, b] of edgexBookCache) {
+      if (Date.now() - b.fetchedAt > EDGEX_BOOK_MAX_AGE_MS) continue;
+      fundingBooks[`${coin}|edgex`] = {
+        fetchedAt: b.fetchedAt,
+        mid:       b.mid,
+        bids:      b.bids.slice(0, LADDER_CAP),
+        asks:      b.asks.slice(0, LADDER_CAP),
+      };
+      edgexPersisted++;
+    }
+    if (edgexPersisted) console.log(`[funding-books] edgeX: ${edgexPersisted} ladder(s) from the slow lane (real fetch times, max age ${EDGEX_BOOK_MAX_AGE_MS / 60_000}m)`);
+
     mergeUnifiedFunding(allOpps, rwaOpps);
 
     // Sidecar: the real capped ladders for this cycle, atomic (tmp→fsync→rename). Additive —
@@ -1874,6 +1995,11 @@ async function run() {
         generatedAt: Date.now(),
         cap:         LADDER_CAP,
         staleMs:     5 * 60_000,   // advisory: matches leg-order DEFAULT_LADDER_MAX_AGE_MS
+        // edgeX alone is walked on a rotating slow lane (Cloudflare ceiling), so its ladders
+        // refresh every ~5 min instead of every cycle. Advisory mirror of
+        // EDGEX_FUNDING_LADDER_MAX_AGE_MS in lib/funding-leg-order.ts — which applies it to
+        // the cross-venue FUNDING lane only; perp-vs-spot and USDC keep the 5-min default.
+        edgexStaleMs: EDGEX_BOOK_MAX_AGE_MS,
         note:        'Capped per-(coin,venue) perp order-book ladders [price,qty] (bids desc, asks asc), coins in qty. Real depth already fetched for slipCurve/book20bpsUsd — persisted, not re-fetched.',
         books:       fundingBooks,
       }, { pretty: false });
