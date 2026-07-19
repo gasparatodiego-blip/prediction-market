@@ -1,0 +1,205 @@
+{
+  "generatedAt": "2026-07-19T12:28:55.814Z",
+  "source": "deribit public /api/v2/public/get_delivery_prices",
+  "method": "DERIBIT_DELIVERY_PRICE — daily published delivery price per index; dated futures cash-settle to it at 08:00 UTC on expiry.",
+  "fallback": "None applied. Where a settlement is unavailable the contract is marked UNKNOWN and EXCLUDED — never inferred.",
+  "unsupported": "Deribit publishes btc_usd/eth_usd only. Other coins -> UNSUPPORTED_INDEX.",
+  "recordsFetched": {
+    "BTC": 100,
+    "ETH": 100
+  },
+  "settlements": {
+    "BTC|2026-07-31": {
+      "coin": "BTC",
+      "expiry": "2026-07-31",
+      "settlement": null,
+      "status": "UNKNOWN",
+      "reason": "NOT_YET_EXPIRED",
+      "detail": "Expiry 2026-07-31 is in the future as of 2026-07-19T12:28:55.814Z. No settlement exists to source."
+    },
+    "ETH|2026-07-31": {
+      "coin": "ETH",
+      "expiry": "2026-07-31",
+      "settlement": null,
+      "status": "UNKNOWN",
+      "reason": "NOT_YET_EXPIRED",
+      "detail": "Expiry 2026-07-31 is in the future as of 2026-07-19T12:28:55.814Z. No settlement exists to source."
+    },
+    "BNB|2026-07-31": {
+      "coin": "BNB",
+      "expiry": "2026-07-31",
+      "settlement": null,
+      "status": "UNKNOWN",
+      "reason": "NOT_YET_EXPIRED",
+      "detail": "Expiry 2026-07-31 is in the future as of 2026-07-19T12:28:55.814Z. No settlement exists to source."
+    },
+    "SOL|2026-07-31": {
+      "coin": "SOL",
+      "expiry": "2026-07-31",
+      "settlement": null,
+      "status": "UNKNOWN",
+      "reason": "NOT_YET_EXPIRED",
+      "detail": "Expiry 2026-07-31 is in the future as of 2026-07-19T12:28:55.814Z. No settlement exists to source."
+    },
+    "BTC|2026-08-28": {
+      "coin": "BTC",
+      "expiry": "2026-08-28",
+      "settlement": null,
+      "status": "UNKNOWN",
+      "reason": "NOT_YET_EXPIRED",
+      "detail": "Expiry 2026-08-28 is in the future as of 2026-07-19T12:28:55.814Z. No settlement exists to source."
+    },
+    "ETH|2026-08-28": {
+      "coin": "ETH",
+      "expiry": "2026-08-28",
+      "settlement": null,
+      "status": "UNKNOWN",
+      "reason": "NOT_YET_EXPIRED",
+      "detail": "Expiry 2026-08-28 is in the future as of 2026-07-19T12:28:55.814Z. No settlement exists to source."
+    },
+    "BNB|2026-08-28": {
+      "coin": "BNB",
+      "expiry": "2026-08-28",
+      "settlement": null,
+      "status": "UNKNOWN",
+      "reason": "NOT_YET_EXPIRED",
+      "detail": "Expiry 2026-08-28 is in the future as of 2026-07-19T12:28:55.814Z. No settlement exists to source."
+    },
+    "SOL|2026-08-28": {
+      "coin": "SOL",
+      "expiry": "2026-08-28",
+      "settlement": null,
+      "status": "UNKNOWN",
+      "reason": "NOT_YET_EXPIRED",
+      "detail": "Expiry 2026-08-28 is in the future as of 2026-07-19T12:28:55.814Z. No settlement exists to source."
+    },
+    "BTC|2026-09-25": {
+      "coin": "BTC",
+      "expiry": "2026-09-25",
+      "settlement": null,
+      "status": "UNKNOWN",
+      "reason": "NOT_YET_EXPIRED",
+      "detail": "Expiry 2026-09-25 is in the future as of 2026-07-19T12:28:55.814Z. No settlement exists to source."
+    },
+    "ETH|2026-09-25": {
+      "coin": "ETH",
+      "expiry": "2026-09-25",
+      "settlement": null,
+      "status": "UNKNOWN",
+      "reason": "NOT_YET_EXPIRED",
+      "detail": "Expiry 2026-09-25 is in the future as of 2026-07-19T12:28:55.814Z. No settlement exists to source."
+    },
+    "BNB|2026-09-25": {
+      "coin": "BNB",
+      "expiry": "2026-09-25",
+      "settlement": null,
+      "status": "UNKNOWN",
+      "reason": "NOT_YET_EXPIRED",
+      "detail": "Expiry 2026-09-25 is in the future as of 2026-07-19T12:28:55.814Z. No settlement exists to source."
+    },
+    "SOL|2026-09-25": {
+      "coin": "SOL",
+      "expiry": "2026-09-25",
+      "settlement": null,
+      "status": "UNKNOWN",
+      "reason": "NOT_YET_EXPIRED",
+      "detail": "Expiry 2026-09-25 is in the future as of 2026-07-19T12:28:55.814Z. No settlement exists to source."
+    },
+    "BTC|2026-12-25": {
+      "coin": "BTC",
+      "expiry": "2026-12-25",
+      "settlement": null,
+      "status": "UNKNOWN",
+      "reason": "NOT_YET_EXPIRED",
+      "detail": "Expiry 2026-12-25 is in the future as of 2026-07-19T12:28:55.814Z. No settlement exists to source."
+    },
+    "ETH|2026-12-25": {
+      "coin": "ETH",
+      "expiry": "2026-12-25",
+      "settlement": null,
+      "status": "UNKNOWN",
+      "reason": "NOT_YET_EXPIRED",
+      "detail": "Expiry 2026-12-25 is in the future as of 2026-07-19T12:28:55.814Z. No settlement exists to source."
+    },
+    "BNB|2026-12-25": {
+      "coin": "BNB",
+      "expiry": "2026-12-25",
+      "settlement": null,
+      "status": "UNKNOWN",
+      "reason": "NOT_YET_EXPIRED",
+      "detail": "Expiry 2026-12-25 is in the future as of 2026-07-19T12:28:55.814Z. No settlement exists to source."
+    },
+    "SOL|2026-12-25": {
+      "coin": "SOL",
+      "expiry": "2026-12-25",
+      "settlement": null,
+      "status": "UNKNOWN",
+      "reason": "NOT_YET_EXPIRED",
+      "detail": "Expiry 2026-12-25 is in the future as of 2026-07-19T12:28:55.814Z. No settlement exists to source."
+    },
+    "BTC|2027-03-26": {
+      "coin": "BTC",
+      "expiry": "2027-03-26",
+      "settlement": null,
+      "status": "UNKNOWN",
+      "reason": "NOT_YET_EXPIRED",
+      "detail": "Expiry 2027-03-26 is in the future as of 2026-07-19T12:28:55.814Z. No settlement exists to source."
+    },
+    "ETH|2027-03-26": {
+      "coin": "ETH",
+      "expiry": "2027-03-26",
+      "settlement": null,
+      "status": "UNKNOWN",
+      "reason": "NOT_YET_EXPIRED",
+      "detail": "Expiry 2027-03-26 is in the future as of 2026-07-19T12:28:55.814Z. No settlement exists to source."
+    },
+    "BNB|2027-03-26": {
+      "coin": "BNB",
+      "expiry": "2027-03-26",
+      "settlement": null,
+      "status": "UNKNOWN",
+      "reason": "NOT_YET_EXPIRED",
+      "detail": "Expiry 2027-03-26 is in the future as of 2026-07-19T12:28:55.814Z. No settlement exists to source."
+    },
+    "SOL|2027-03-26": {
+      "coin": "SOL",
+      "expiry": "2027-03-26",
+      "settlement": null,
+      "status": "UNKNOWN",
+      "reason": "NOT_YET_EXPIRED",
+      "detail": "Expiry 2027-03-26 is in the future as of 2026-07-19T12:28:55.814Z. No settlement exists to source."
+    },
+    "BTC|2027-06-25": {
+      "coin": "BTC",
+      "expiry": "2027-06-25",
+      "settlement": null,
+      "status": "UNKNOWN",
+      "reason": "NOT_YET_EXPIRED",
+      "detail": "Expiry 2027-06-25 is in the future as of 2026-07-19T12:28:55.814Z. No settlement exists to source."
+    },
+    "ETH|2027-06-25": {
+      "coin": "ETH",
+      "expiry": "2027-06-25",
+      "settlement": null,
+      "status": "UNKNOWN",
+      "reason": "NOT_YET_EXPIRED",
+      "detail": "Expiry 2027-06-25 is in the future as of 2026-07-19T12:28:55.814Z. No settlement exists to source."
+    },
+    "BNB|2027-06-25": {
+      "coin": "BNB",
+      "expiry": "2027-06-25",
+      "settlement": null,
+      "status": "UNKNOWN",
+      "reason": "NOT_YET_EXPIRED",
+      "detail": "Expiry 2027-06-25 is in the future as of 2026-07-19T12:28:55.814Z. No settlement exists to source."
+    },
+    "SOL|2027-06-25": {
+      "coin": "SOL",
+      "expiry": "2027-06-25",
+      "settlement": null,
+      "status": "UNKNOWN",
+      "reason": "NOT_YET_EXPIRED",
+      "detail": "Expiry 2027-06-25 is in the future as of 2026-07-19T12:28:55.814Z. No settlement exists to source."
+    }
+  }
+}
