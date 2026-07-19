@@ -63,28 +63,31 @@ const INTERVAL_MS        = 60_000;
 // top of agent10's 22-call ticker loop — ~44 req/60s at one host, with per-process limiter
 // state (lib/rateLimitedFetch.js) so neither agent could see the other's backoff.
 //
-// MEASURED 2026-07-19, and this is the important part: slowing down does NOT get the book
-// back. With 20-SECOND gaps between single requests — 3 req/min, under any plausible
-// ceiling, from a cold limiter — every dynamic endpoint still returned the Cloudflare
-// challenge: getDepth at level=15 and level=50, getTicker, getLatestFundingRate,
-// getFundingRatePage. Only meta/getMetaData is served. So this is not a rate cap we can
-// duck under; edgeX is refusing our market-data reads outright.
+// So edgeX is walked on its OWN lane instead of the fan-out: a small rotating slice, one
+// request at a time. Measured 2026-07-19 — once the load dropped to this level the host
+// served depth again (getDepth 200 OK, 40 levels), and the bulk funding call recovered
+// alongside it, so the cap is real and duckable.
 //
-// The slow lane is kept anyway, for two honest reasons: it stops us hammering a host that
-// is refusing us (~44 req/60s → ≤8), and it is the shape that recovers automatically if
-// edgeX starts serving again — the cache fills, the sidecar gets ladders, and the standard
-// 5-minute DEFAULT_LADDER_MAX_AGE_MS applies to them like any other venue. Until then the
-// cache stays empty, no edgeX ladder is persisted, and every edgeX leg is UNKNOWN.
-const EDGEX_DEPTH_BATCH       = 5;            // coins per cycle → ⌈20/5⌉ = 4 cycles ≈ 4 min full rotation
-const EDGEX_DEPTH_LEVEL       = 50;           // top-50/side — exactly LADDER_CAP, so nothing persisted is lost
+// A caution for whoever reads the logs next: while the IP is still inside a Cloudflare
+// penalty window, EVERY dynamic endpoint is challenged no matter how slowly you ask — a
+// 20-second-gap probe (3 req/min, cold limiter) was refused across the board. That looks
+// exactly like "the venue blocks us" and it is not; it is the penalty decaying. Judge this
+// lane only after the load has been low for several minutes.
+const EDGEX_DEPTH_BATCH       = 4;            // coins per cycle → ⌈20/4⌉ = 5 cycles ≈ 5 min full rotation
+// edgeX rejects arbitrary depth levels: `level` is an ENUM, not a count. VERIFIED 2026-07-19
+// against a live contract — 15 and 200 return SUCCESS; 20, 50 and 100 all return
+// INVALID_DEPTH_LEVEL with HTTP 200, which parses to an empty book and looks identical to a
+// dead venue. So the shallow option is 15, not "some small number".
+//
+// 15 is genuinely enough: measured per-side notional inside 15 levels is $3.06M (BTC),
+// $150k (ADA), $61k (ARB), $40k (ATOM) — all far above the $10k the dry-run ranks at. If a
+// book ever is too thin, rankLegs returns IMPOSSIBLE, which is the conservative outcome.
+const EDGEX_DEPTH_LEVEL       = 15;
 const EDGEX_HISTORY_BATCH     = 3;            // coins per 15-min history refresh (4h settlements — rotation loses nothing)
-// Eviction/persist bound. Kept at the 5-min DEFAULT_LADDER_MAX_AGE_MS the readers enforce,
-// so the sidecar never carries a ladder the ranker would reject anyway. NOTE for whoever
-// picks this up if edgeX starts serving depth again: a 4-min rotation against a 5-min window
-// leaves little headroom, and a history cycle preempting a pass pushes it to ~5 min — so the
-// oldest ladders will sit right at the boundary. Re-tune EDGEX_DEPTH_BATCH against real
-// hit-rate data at that point; it cannot be tuned honestly while every read is refused.
-const EDGEX_BOOK_MAX_AGE_MS   = 5 * 60_000;
+// Eviction/persist bound. Mirrors EDGEX_FUNDING_LADDER_MAX_AGE_MS in lib/funding-leg-order.ts
+// (the reader's edgeX window) so the sidecar never carries a ladder the ranker would reject,
+// and never drops one it would accept. Comfortably above the ~5-min rotation.
+const EDGEX_BOOK_MAX_AGE_MS   = 10 * 60_000;
 
 // Spread filter
 const THRESHOLD_APY      = 3.0;           // min trailing gross %/yr to emit

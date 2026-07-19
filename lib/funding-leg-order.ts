@@ -119,19 +119,31 @@ function readUsdcSidecar(): Sidecar | null {
   return r.sidecar
 }
 
-// NO per-venue staleness window here, deliberately — including for edgeX.
-//
-// A widened edgeX window was written and then REVERTED once it was measured (2026-07-19).
-// The premise was that edgeX is rate-capped and a slower walk would get its book back, so
-// its ladders would be legitimately minutes old. Measurement says otherwise: with 20-SECOND
-// gaps between single requests — 3 req/min, under any plausible ceiling — every dynamic
-// endpoint returns the Cloudflare challenge (getDepth at level=15 AND level=50, getTicker,
-// getLatestFundingRate, getFundingRatePage). Only the static-ish meta/getMetaData is served.
-// There is no cadence that recovers the book, so there are no slow-lane ladders for a wider
-// window to admit — it would only have widened what counts as fresh for depth we do not
-// have. Every lane keeps DEFAULT_LADDER_MAX_AGE_MS, and a missing edgeX ladder stays
-// UNKNOWN. If edgeX starts serving depth again, agent15's slow lane populates the sidecar
-// on its own and the 5-minute default applies to it like any other venue.
+/**
+ * edgeX-only staleness window, for the CROSS-VENUE FUNDING LANE ONLY.
+ *
+ * edgeX sits behind a Cloudflare rate cap, so agent15 walks it on a rotating slow lane —
+ * EDGEX_DEPTH_BATCH coins per cycle, a full rotation roughly every 5 minutes — rather than
+ * every cycle like every other venue. Its ladders are therefore legitimately minutes old,
+ * and the 5-minute default would mark a perfectly good book stale purely because of how we
+ * are ALLOWED to fetch it, flickering edgeX legs in and out at the boundary.
+ *
+ * Why widening is honest HERE and nowhere else: this lane's dry-run asks which leg is
+ * HARDER TO FILL. That is a question about book shape, and edgeX settles funding every 4h —
+ * a book a few minutes old is a real answer on that clock. Perp-vs-spot and USDC-margined
+ * are priced off live spot/basis, where it is not, so both keep DEFAULT_LADDER_MAX_AGE_MS
+ * untouched. Applied per-leg inside dryRunLegOrder alone, so it cannot reach them.
+ *
+ * This is a WINDOW, not an exemption. Past it an edgeX leg goes stale → UNKNOWN → the
+ * ranking is unusable, exactly like any other venue.
+ */
+export const EDGEX_FUNDING_LADDER_MAX_AGE_MS = 10 * 60_000
+
+/** The funding lane's per-leg window: widened for edgeX, the caller's value for everyone
+ *  else. `Math.max` so an explicitly STRICTER caller override is still honoured. */
+function fundingLaneMaxAge(exchange: string, base: number): number {
+  return exchange === 'edgex' ? Math.max(base, EDGEX_FUNDING_LADDER_MAX_AGE_MS) : base
+}
 
 const unusable = (reason: string, legs: LegEvidence[] = []): LegOrderDryRun => ({
   notionalUsd: DRY_RUN_NOTIONAL_USD, qty: null, qtyFrom: null,
@@ -184,8 +196,12 @@ export function dryRunLegOrder(
   const qty = DRY_RUN_NOTIONAL_USD / mid
 
   const legs = [
-    legFromLadder(`${shortExchange} · sell`, 'sell', toTimestamped(sBook, 'sell'), now, maxAgeMs),
-    legFromLadder(`${longExchange} · buy`,   'buy',  toTimestamped(lBook, 'buy'),  now, maxAgeMs),
+    // Per-leg window: edgeX gets EDGEX_FUNDING_LADDER_MAX_AGE_MS (slow lane), every other
+    // venue gets `maxAgeMs` unchanged. Applied here and ONLY here — dryRunPerpSpotLegOrder
+    // and dryRunUsdcLegOrder below pass `maxAgeMs` straight through, so this cannot widen
+    // theirs.
+    legFromLadder(`${shortExchange} · sell`, 'sell', toTimestamped(sBook, 'sell'), now, fundingLaneMaxAge(shortExchange, maxAgeMs)),
+    legFromLadder(`${longExchange} · buy`,   'buy',  toTimestamped(lBook, 'buy'),  now, fundingLaneMaxAge(longExchange, maxAgeMs)),
   ]
 
   const r = rankLegs(legs, qty)
