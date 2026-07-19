@@ -1,0 +1,152 @@
+{
+  "kind": "venue-maker-fees",
+  "generatedAt": "2026-07-19T07:59:39.452Z",
+  "method": "public unauthenticated REST only; BASE tier; no VIP/volume/promo assumptions",
+  "honesty": "a venue whose schedule is not exposed on a public endpoint is UNAVAILABLE — never guessed, never assumed zero, never back-filled from a docs page",
+  "results": [
+    {
+      "venue": "gateio",
+      "market": "perp",
+      "url": "https://api.gateio.ws/api/v4/futures/usdt/contracts",
+      "status": 200,
+      "available": true,
+      "makerPct": -0.01,
+      "takerPct": 0.075,
+      "field": "maker_fee_rate/taker_fee_rate",
+      "sample": "BTC_USDT",
+      "note": null
+    },
+    {
+      "venue": "gateio",
+      "market": "spot",
+      "url": "https://api.gateio.ws/api/v4/spot/currency_pairs",
+      "status": 200,
+      "available": false,
+      "makerPct": null,
+      "takerPct": 0.2,
+      "field": "maker_fee/fee",
+      "sample": "BTC_USDT",
+      "note": "endpoint returns a taker fee but NO maker field"
+    },
+    {
+      "venue": "bitget",
+      "market": "perp",
+      "url": "https://api.bitget.com/api/v2/mix/market/contracts?productType=usdt-futures",
+      "status": 200,
+      "available": true,
+      "makerPct": 0.02,
+      "takerPct": 0.06,
+      "field": "makerFeeRate/takerFeeRate",
+      "sample": "BTCUSDT",
+      "note": null
+    },
+    {
+      "venue": "bitget",
+      "market": "spot",
+      "url": "https://api.bitget.com/api/v2/spot/public/symbols",
+      "status": 200,
+      "available": true,
+      "makerPct": 0.2,
+      "takerPct": 0.2,
+      "field": "makerFeeRate/takerFeeRate",
+      "sample": "BTCUSDT",
+      "note": null
+    },
+    {
+      "venue": "binance",
+      "market": "spot",
+      "url": "https://api.binance.com/api/v3/exchangeInfo?symbol=BTCUSDT",
+      "status": 200,
+      "available": false,
+      "makerPct": null,
+      "takerPct": null,
+      "field": null,
+      "sample": null,
+      "note": "HTTP 200 but the response carries NO fee fields — schedule is not on this public endpoint"
+    },
+    {
+      "venue": "binance",
+      "market": "perp",
+      "url": "https://fapi.binance.com/fapi/v1/exchangeInfo",
+      "status": 200,
+      "available": false,
+      "makerPct": null,
+      "takerPct": null,
+      "field": null,
+      "sample": null,
+      "note": "HTTP 200 but the response carries NO fee fields — schedule is not on this public endpoint"
+    },
+    {
+      "venue": "bybit",
+      "market": "spot",
+      "url": "https://api.bybit.com/v5/market/instruments-info?category=spot&symbol=BTCUSDT",
+      "status": 200,
+      "available": false,
+      "makerPct": null,
+      "takerPct": null,
+      "field": null,
+      "sample": null,
+      "note": "HTTP 200 but the response carries NO fee fields — schedule is not on this public endpoint"
+    },
+    {
+      "venue": "bybit",
+      "market": "perp",
+      "url": "https://api.bybit.com/v5/market/instruments-info?category=linear&symbol=BTCUSDT",
+      "status": 200,
+      "available": false,
+      "makerPct": null,
+      "takerPct": null,
+      "field": null,
+      "sample": null,
+      "note": "HTTP 200 but the response carries NO fee fields — schedule is not on this public endpoint"
+    },
+    {
+      "venue": "okx",
+      "market": "spot",
+      "url": "https://www.okx.com/api/v5/public/instruments?instType=SPOT&instId=BTC-USDT",
+      "status": 200,
+      "available": false,
+      "makerPct": null,
+      "takerPct": null,
+      "field": null,
+      "sample": null,
+      "note": "HTTP 200 but the response carries NO fee fields — schedule is not on this public endpoint"
+    },
+    {
+      "venue": "okx",
+      "market": "perp",
+      "url": "https://www.okx.com/api/v5/public/instruments?instType=SWAP&instId=BTC-USDT-SWAP",
+      "status": 200,
+      "available": false,
+      "makerPct": null,
+      "takerPct": null,
+      "field": null,
+      "sample": null,
+      "note": "HTTP 200 but the response carries NO fee fields — schedule is not on this public endpoint"
+    },
+    {
+      "venue": "dydx",
+      "market": "perp",
+      "url": "https://dydx-rest.publicnode.com/dydxprotocol/v4/feetiers/perpetual_fee_params",
+      "status": 200,
+      "available": true,
+      "makerPct": 0.01,
+      "takerPct": 0.05,
+      "field": "tiers[base].maker_fee_ppm/taker_fee_ppm",
+      "sample": "tier 1",
+      "note": null
+    },
+    {
+      "venue": "dydx",
+      "market": "perp-crosscheck",
+      "url": "https://dydx-ops-rest.kingnodes.com/dydxprotocol/v4/feetiers/perpetual_fee_params",
+      "status": 200,
+      "available": true,
+      "makerPct": 0.01,
+      "takerPct": 0.05,
+      "field": "tiers[base].maker_fee_ppm/taker_fee_ppm",
+      "sample": "tier 1",
+      "note": null
+    }
+  ]
+}
