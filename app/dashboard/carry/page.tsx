@@ -9,6 +9,7 @@ import EdgeChip from '@/app/components/ui/EdgeChip';
 import { Redacted } from '@/app/components/ui/Redacted';
 import InfoDot from '@/app/components/ui/InfoDot';
 import { type Contract, chipVariant } from '@/lib/carry';
+import { APY_CAP, APY_CAP_LABEL } from '@/lib/honest-display';
 import LegOrderPanel from '@/app/components/LegOrderPanel';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -23,9 +24,10 @@ import LegOrderPanel from '@/app/components/LegOrderPanel';
 //     expiry, days, volume, margin-type, structure, counts. Gated-field filters
 //     only EXCLUDE a row when the field is actually visible (paid) — on the free
 //     tier they can't hide rows behind data you can't see (honest degrade).
-//   • net %/yr = run-rate to expiry, net-of-fee, capped at 200%/yr — never a
-//     guarantee. capacity = order-book/turnover estimate. Backwardation (negative
-//     carry) is shown honestly, never silently dropped (a user toggle hides it).
+//   • net %/yr = run-rate to expiry, net-of-fee, capped + labeled via the SHARED
+//     lib/honest-display APY_CAP — never a guarantee. capacity = real walked
+//     order-book depth (never vol/OI). Backwardation (negative carry) is shown
+//     honestly, never silently dropped (a user toggle hides it).
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -67,12 +69,20 @@ interface CarryData {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-const APY_CAP = 2.0; // 200%/yr cap (honest-engine — never show >200%/yr as a guarantee)
+// APY_CAP/APY_CAP_LABEL come from lib/honest-display — the ONE ceiling every surface
+// caps and labels against. This page used to carry its own `const APY_CAP = 2.0`, which
+// could silently drift from the shared rule. Note the unit: the shared constant is in
+// PERCENT (200) while these fields are fractions (2.0 === 200%/yr), so it is converted
+// here rather than compared across units.
+const APY_CAP_FRAC = APY_CAP / 100;
 function capApy(n: number): { display: number; capped: boolean } {
-  return n > APY_CAP ? { display: APY_CAP, capped: true } : { display: n, capped: false };
+  return n > APY_CAP_FRAC ? { display: APY_CAP_FRAC, capped: true } : { display: n, capped: false };
 }
 function fmtAnnualized(n: number, prefix = '+'): string {
-  const { display } = capApy(n);
+  const { display, capped } = capApy(n);
+  // Above the ceiling we print the ceiling as a BOUND (">200%"), never a precise-looking
+  // figure — the exact number is a run-rate artifact, not something we stand behind.
+  if (capped) return `>${APY_CAP}%`;
   const sign = display >= 0 ? prefix : '';
   return `${sign}${(display * 100).toFixed(2)}%`;
 }
@@ -116,7 +126,7 @@ const SORT_TITLE: Record<SortKey, string> = {
   basis:    'executable spot↔future basis % — gated on free tier',
   days:     'days to expiry — soonest first (public field)',
   volume:   '24h futures volume (public field)',
-  capacity: 'order-book / turnover capacity estimate — gated on free tier',
+  capacity: 'measured order-book depth within 0.5% of best bid — gated on free tier',
 };
 function sortVal(c: Contract, k: SortKey): number | null {
   if (k === 'net')      return c.netAnnualizedExecutable;
@@ -187,7 +197,7 @@ function ContractRow({ c, isPaid, open, onToggle }: { c: Contract; isPaid: boole
           <span className={`block font-body text-[13px] font-semibold ${netColor(c.netAnnualizedExecutable)}`}>
             <Redacted value={c.netAnnualizedExecutable} isPaid={isPaid}>{v => fmtAnnualized(v as number)}</Redacted>
           </span>
-          <span className="block font-body text-[8.5px] uppercase tracking-wide text-muted">net · run-rate{capped ? ' · capped' : ''}</span>
+          <span className="block font-body text-[8.5px] uppercase tracking-wide text-muted">{capped ? APY_CAP_LABEL : 'net · run-rate'}</span>
         </span>
         <ChevronRight className={`w-3.5 h-3.5 text-muted shrink-0 transition-transform ${open ? 'rotate-90' : ''}`} />
       </button>
@@ -286,7 +296,7 @@ function BackRow({ c, isPaid, open, onToggle }: { c: BackwardContract; isPaid: b
 const DISCLOSURES = [
   { label: 'Locked only at expiry.', body: 'The basis return is fixed at entry IF you hold the spot + futures position until contract expiry on the same exchange. Closing early re-buys the future at an unknown price — the locked return disappears.' },
   { label: 'USDT-M only = clean USD.', body: 'Only USDT-settled quarterlies lock a clean USD P&L. COIN-M / OKX BTC-USD / ETH-USD settle in the coin: if the coin falls 10% your USD return shrinks ~10% even though the basis held.' },
-  { label: 'Capacity is an estimate.', body: 'Capacity = min(5% of 24h vol, 2% of OI, $500k). A rough execution bound — actual fill at size may move the basis. BNB is hard-capped at $50k.' },
+  { label: 'Capacity is measured depth.', body: 'Capacity is the real order-book depth we walked on the short-future side, within 0.5% of the best bid, hard-capped at $500k ($50k for BNB). It is never inferred from 24h volume or open interest — turnover is not resting depth. If the book could not be read, capacity shows "—" rather than a guess.' },
   { label: 'Annualized ≠ guaranteed.', body: "Net %/yr is a run-rate to expiry, net-of-fee, capped at 200%/yr — today's contango snapshot, not a long-run yield. It compresses toward funding in calm markets." },
   { label: 'Not financial advice.', body: 'Exchange / counterparty risk over the full hold. Read-only scanner — no orders placed. Verify all numbers on-exchange before trading.' },
 ];

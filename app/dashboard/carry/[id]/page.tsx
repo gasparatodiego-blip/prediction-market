@@ -13,6 +13,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
+import { APY_CAP, APY_CAP_LABEL } from '@/lib/honest-display';
 import PlatformLogo from '@/components/PlatformLogo';
 import { Redacted, RedactedPanel } from '@/app/components/ui/Redacted';
 import { PlatformLink } from '@/app/components/ui/PlatformLink';
@@ -47,11 +48,20 @@ const VERDICT_CHIP: Record<string, { color: string; bg: string; border: string; 
   signal:      { color: '#6b7787', bg: '#f1f4f7', border: '#cbd3dc',                label: 'SIGNAL' },
 };
 
-const APY_CAP = 2.0;
+// APY_CAP/APY_CAP_LABEL come from lib/honest-display — the ONE ceiling every surface caps
+// and labels against (this page carried its own `const APY_CAP = 2.0` duplicate). The
+// shared constant is in PERCENT (200); these fields are fractions (2.0 === 200%/yr).
+const APY_CAP_FRAC = APY_CAP / 100;
 function fmtAnnualized(n: number): string {
-  const capped = n > APY_CAP;
-  const v = capped ? APY_CAP : n;
-  return `${v >= 0 ? '+' : ''}${(v * 100).toFixed(2)}%${capped ? ' †' : ''}`;
+  // Over the ceiling, print it as a BOUND and say what that means. The old code appended a
+  // bare "†" whose footnote did not exist anywhere on the page — a mark with no explanation
+  // is worse than no mark, so the shared label is rendered beside the figure instead.
+  if (n > APY_CAP_FRAC) return `>${APY_CAP}%`;
+  return `${n >= 0 ? '+' : ''}${(n * 100).toFixed(2)}%`;
+}
+/** True when the figure hit the shared ceiling — callers render APY_CAP_LABEL next to it. */
+function isApyCapped(n: number | null | undefined): boolean {
+  return n != null && Number.isFinite(n) && n > APY_CAP_FRAC;
 }
 function fmtPrice(n: number): string {
   return `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -278,6 +288,11 @@ export default function CarryOperationPage({ params }: { params: { id: string } 
               <span>exec basis <span className="font-bold" style={{ color: '#0e1626' }}><Redacted value={c.executableBasisPct} isPaid={isPaid}>{v => `+${(v * 100).toFixed(2)}%`}</Redacted></span></span>
               <span style={{ color: '#cbd3dc' }}>·</span>
               <span>net <span className="font-bold" style={{ color: '#0e1626' }}><Redacted value={c.netAnnualizedExecutable} isPaid={isPaid}>{v => fmtAnnualized(v)}</Redacted></span><span style={{ color: '#9aa5b3' }}>/yr</span></span>
+              {/* Over the shared ceiling the figure is a bound, so say what the bound means
+                  right next to it — the number alone would read as a yield we stand behind. */}
+              {!isRedacted && isApyCapped(c.netAnnualizedExecutable) && (
+                <span className="font-body" style={{ fontSize: 10, color: '#b45309' }}>{APY_CAP_LABEL}</span>
+              )}
               <span style={{ color: '#cbd3dc' }}>·</span>
               {/* Real locked return over the actual hold — de-annualized (net × days/365 =
                   executableBasis − fee) so the annualized run-rate isn't read as the
