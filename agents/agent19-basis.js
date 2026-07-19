@@ -34,8 +34,13 @@ const LADDER_CAP    = 200;
 const BOOK_STALE_MS = 15 * 60_000; // a ladder older than this is stale → dry-run UNKNOWN
 
 const MIN_DAYS       = 20;      // filter 1: too-near-expiry
-const MIN_VOL_STRICT = 500_000; // USD — DEEP/OK tier
-const MIN_VOL_THIN   = 100_000; // USD — THIN tier (flag, don't exclude)
+const MIN_VOL_STRICT = 500_000; // USD — DEEP/OK tier LABEL only (never a gate)
+const MIN_VOL_THIN   = 100_000; // USD — THIN tier LABEL only (never a gate)
+// INCLUSION GATE: real walkable order-book depth inside the slip band. Turnover is not
+// fillable size, so volume no longer decides inclusion — this does. A contract below
+// this, or whose book we could not read (UNKNOWN), is dropped rather than shown as
+// something you could size into.
+const MIN_CAPACITY_USD = 5_000;
 const BNB_MAX_CAP    = 50_000;  // filter: BNB capacity hard cap
 const MAX_CAP        = 500_000; // USD, any single opportunity
 const SLIP_TOL       = 0.005;   // 0.5% band the capacity walk stays inside
@@ -263,7 +268,11 @@ function buildContract({ asset, exchange, venueKey, contract,
 
   // Backwardation signal (filter 5) — determined from executable basis
   if (executableBasisPct < 0) {
-    if (vol24Usd < MIN_VOL_THIN) return null;
+    // Same real-depth gate as the carry path, so one rule decides visibility
+    // everywhere. This is a SIGNAL row (negative carry — not a cash & carry trade),
+    // but a signal on a book too thin to act on is still noise.
+    const backCap = Number.isFinite(capacityUsdOverride) ? capacityUsdOverride : null;
+    if (!(backCap >= MIN_CAPACITY_USD)) return null;
     return {
       type:               'backwardation',
       asset,
@@ -291,9 +300,30 @@ function buildContract({ asset, exchange, venueKey, contract,
     };
   }
 
-  // Filter 2: volume threshold (VERY THIN → exclude from C&C)
+  // Filter 2: REAL EXECUTABLE DEPTH — not 24h volume.
+  //
+  // This gate used to be `tier(vol24Usd) === 'VERY THIN' → drop`, i.e. turnover below
+  // $100k excluded the contract outright. That is the wrong question: turnover is not
+  // size you can fill. It hid contracts with genuinely deep resting books (BNB dated
+  // futures at ~$39k turnover; Bybit DOGEUSDT-28AUG26 at $57k turnover but $275k of
+  // walkable depth) while saying nothing about whether a fill was actually possible.
+  //
+  // The gate is now the measured bid-side depth inside the slip band — the same number
+  // capacity is reported from, so what we filter on and what we show can never diverge.
+  // vol24Usd remains on the row as INFORMATIONAL context (and still drives the `tier`
+  // label, which is a turnover statement) but no longer decides inclusion.
+  //
+  // Fail-closed: an unreadable book is capacity UNKNOWN, and UNKNOWN is not >= the
+  // threshold, so it is dropped rather than shown as a sizeable opportunity. Logged, so
+  // the drop is never silent.
+  const capUsd = Number.isFinite(capacityUsdOverride) ? capacityUsdOverride : null;
+  if (!(capUsd >= MIN_CAPACITY_USD)) {
+    console.log(`[basis] drop ${exchange} ${contract}: real book depth `
+      + `${capUsd == null ? 'UNKNOWN' : '$' + Math.round(capUsd).toLocaleString()} `
+      + `< $${MIN_CAPACITY_USD.toLocaleString()} (vol24 $${Math.round(vol24Usd).toLocaleString()} — informational only)`);
+    return null;
+  }
   const t = tier(vol24Usd, oiUsd);
-  if (t === 'VERY THIN') return null;
 
   // Filter 3: net annualized must be > 0 — checked on EXECUTABLE basis (conservative)
   if (netAnnualizedExecutable <= 0) return null;
@@ -805,8 +835,11 @@ async function fetchBybit(spot, books = {}) {
     const expiryMs = parseInt(x.deliveryTime || '0', 10);
     if (!Number.isFinite(expiryMs) || expiryMs <= now) continue;
     if ((expiryMs - now) / 86_400_000 < MIN_DAYS) continue;      // filter 1: too near (skip weeklies)
-    const vol24Usd = parseFloat(x.turnover24h || 0);             // already USD
-    if (vol24Usd < MIN_VOL_THIN) continue;                       // filter 2: VERY THIN never qualifies
+    const vol24Usd = parseFloat(x.turnover24h || 0);             // already USD — informational
+    // No volume gate here: capacity is measured AFTER this point, so screening on
+    // turnover would drop deep-book contracts before their depth was ever walked
+    // (Bybit DOGEUSDT-28AUG26: $57k turnover, $275k real depth). Filter 2 in
+    // computeContract now gates on the walked depth instead.
     candidates.push({ x, asset, sym, expiryMs, vol24Usd });
   }
 
@@ -897,8 +930,9 @@ async function fetchKraken(spot, books = {}) {
     if ((expiryMs - now) / 86_400_000 < MIN_DAYS) continue;       // filter 1: too near
 
     const mark      = parseFloat(t.markPrice || 0);
-    const vol24Usd  = parseFloat(t.vol24h || 0) * mark;           // vol24h is in contracts (=coin); ×mark → USD
-    if (vol24Usd < MIN_VOL_THIN) continue;                        // filter 2: VERY THIN never qualifies
+    const vol24Usd  = parseFloat(t.vol24h || 0) * mark;           // contracts (=coin) × mark → USD; informational
+    // No volume gate here — see the matching note on the Bybit path. Depth is walked
+    // after this, and Filter 2 in computeContract gates on that measured depth.
     candidates.push({ t, asset, sym, expiryMs, vol24Usd, mark });
   }
 
@@ -1213,4 +1247,4 @@ if (require.main === module) {
   main().catch(e => { console.error('[agent19] fatal:', e); process.exit(1); });
 }
 
-module.exports = { fetchDeribitSpotBooks, walkSpotCandidate };
+module.exports = { fetchDeribitSpotBooks, walkSpotCandidate, buildContract, tier };
