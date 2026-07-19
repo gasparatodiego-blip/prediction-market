@@ -1,3 +1,6 @@
+// Type-only — erased at compile time, so basis-leg-order's `fs` never reaches the bundle.
+import type { BasisLegOrderDryRun } from './basis-leg-order';
+
 // carry.ts — shared types + verdict logic for the cash-and-carry list and the
 // carry order (operation) page, so both classify a contract identically (single
 // source of truth for the cashable/speculative verdict — honest-engine).
@@ -44,6 +47,10 @@ export interface Contract {
   // prose headline embeds the exact netAnnualizedExecutable % — redacted
   // together with the numeric fields (server-side, lib/paid-gating.ts)
   verdict:                 string | null;
+  // Execution-order DRY-RUN attached on the serve path by lib/basis-leg-order: which of
+  // the two legs (buy spot / sell future) is hardest on real persisted depth, so it would
+  // be placed first. Read-only evidence; absent when the server did not attach one.
+  legOrder?:               BasisLegOrderDryRun | null;
 }
 
 // Real executable book depth (within the fetcher's slip band) at/above this size

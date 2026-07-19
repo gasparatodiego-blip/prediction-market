@@ -9,6 +9,7 @@ import EdgeChip from '@/app/components/ui/EdgeChip';
 import { Redacted } from '@/app/components/ui/Redacted';
 import InfoDot from '@/app/components/ui/InfoDot';
 import { type Contract, chipVariant } from '@/lib/carry';
+import LegOrderPanel from '@/app/components/LegOrderPanel';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Cash & Carry (Spot + Dated Futures Basis) — filter-rich, light-theme desk view
@@ -225,6 +226,13 @@ function ContractRow({ c, isPaid, open, onToggle }: { c: Contract; isPaid: boole
             {c.verdict != null && (
               <p className="font-body text-[10.5px] text-muted mt-1"><Redacted value={c.verdict} isPaid={isPaid}>{v => v as string}</Redacted></p>
             )}
+          </div>
+
+          {/* Execution-order dry-run — which leg to place FIRST, on real persisted depth.
+              Read-only: nothing is submitted. Renders null when the server attached no
+              dry-run, and states its own refusal calmly when depth was unmeasurable. */}
+          <div className="mt-1.5">
+            <LegOrderPanel d={c.legOrder} unit={c.asset} />
           </div>
         </div>
       )}

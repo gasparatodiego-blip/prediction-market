@@ -6,6 +6,7 @@ import { getIsPaid, redactForTier, REDACTION_MAP } from '@/lib/paid-gating';
 import { isExpired } from '@/lib/instrument-expiry';
 import { filterSane, enforceVerified } from '@/lib/display-sanity';
 import { applyGuardian, assertRedacted } from '@/lib/guardian-suppress';
+import { dryRunBasisLegOrder } from '@/lib/basis-leg-order';
 
 export const dynamic = 'force-dynamic';
 
@@ -64,10 +65,21 @@ export async function GET() {
     enforceVerified('basis', filterSane('basis', keepLive(data.backwardation, 'backwardation'), now), now),
     { now }).rows;
 
+  // Execution-order DRY-RUN (read-only). Reads agent19's persisted ladders — the SAME
+  // depth capacityUsd was measured from — and asks lib/leg-order which leg is hardest,
+  // so it would be placed first. Buy the spot and miss the short future and you are long
+  // naked crypto; hardest-first is what prevents that. Placed AFTER the guardian so a
+  // suppressed row is never ranked. Places nothing, submits nothing, reads no credential.
+  // Fails closed: no/stale ladder → usable:false with the reason, never a guessed order.
+  const withDryRun = opportunities.map((o: any) => ({
+    ...o,
+    legOrder: dryRunBasisLegOrder(o.asset, o.venueKey, o.contract, now),
+  }));
+
   const body = redactForTier({
     agentStatus,
     updatedAt:     data.updatedAt,
-    opportunities,
+    opportunities: withDryRun,
     backwardation,
     summary:       data.summary        ?? {},
     spot:          data.spot           ?? {},
