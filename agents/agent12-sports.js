@@ -6,8 +6,15 @@
 // ONE snapshot scan per invocation, then exits.  Run manually:
 //   node agents/agent12-sports.js
 //
-// DO NOT add to PM2 autostart — each run costs credits from the 500/month budget.
-// ODDS_API_KEY must be set in .env.local — never hardcoded here.
+// VENDOR: odds-api.net (Starter, 50,000 credits/month, HARD CAP — cannot overspend).
+// Auth is the X-API-Key HEADER; the ?apiKey= query param returns "Missing credentials".
+// ODDS_API_NET_KEY must be set in .env.local — never hardcoded here.
+// NOTE: ODDS_API_KEY is a DIFFERENT vendor (the-odds-api.com) and is no longer read here.
+//
+// Cost shape differs fundamentally from the-odds-api: that vendor returned every event
+// for a sport in ONE call; odds-api.net has no bulk-per-sport odds endpoint, so odds are
+// fetched PER EVENT. Cycle cost is therefore ~(1 per sport + 1 per eligible event), which
+// is what SCAN_INTERVAL_MIN below is sized against. Read-only: no bet is ever placed.
 
 const fs    = require('fs');
 const path  = require('path');
@@ -24,23 +31,22 @@ if (fs.existsSync(_envLocal)) {
 }
 
 // ── Config ────────────────────────────────────────────────────────────────────
-const REGIONS          = ['eu', 'uk', 'us'];
-const MARKETS          = ['h2h'];
-const ODDS_FORMAT      = 'decimal';
-// Season-dependent — revisit when seasons change (EPL/Serie A/La Liga return ~Aug;
-// NFL/NHL/NBA return Sep–Oct; Champions League returns Sep).
-const SPORTS_ALLOWLIST = [
-  'soccer_fifa_world_cup',  // LIVE Jun–Jul 2026: group stage + knockouts, many books per match
-  'baseball_mlb',           // in season
-  'basketball_wnba',        // in season
-  'tennis_atp',             // grass/Wimbledon window — kept so active weeks are not missed
-  'tennis_wta',             // same
-  'soccer_usa_mls',         // in season — kept; intersection skips if not yet active
-];
+// ALL sports offered by /sports are scanned — no allowlist. The vendor's sport
+// vocabulary is coarse ('soccer', 'baseball', …), so the previous league-level
+// allowlist has no equivalent and is intentionally gone: wide coverage by design.
+const MARKET_TYPES     = ['moneyline', 'moneyline 3w'];  // `types` filter values (verified against the live API)
+const PERIOD_MATCH     = '(full time)';  // `periods` filter is NOT accepted by the API (returns 0 rows) → filtered client-side off market_key
+const ODDS_SNAPSHOT_LIMIT = 10_000;      // = /limits odds_snapshot_limit_max → one page per event, no cursor paging (verified)
+// EEA/EU licensing codes as returned by /coverage country_codes — used to classify a
+// bookmaker's jurisdiction for the cross-jurisdiction executability gate.
+const EU_CODES = new Set([
+  'AT','BE','BG','CY','CZ','DE','DK','EE','ES','FI','FR','GR','HR','HU','IE','IT',
+  'LT','LU','LV','MT','NL','PL','PT','RO','SE','SI','SK','NO','IS','CH',
+]);
 const MIN_BOOKMAKERS      = 4;     // event ignored if fewer books quote it
 const OUTLIER_PCT         = 0.25;  // book's implied prob deviating > this from median → outlier
 const MAX_PLAUSIBLE_ROI   = 0.06;  // h2h arb > 6% net → almost certainly a data error → quarantine
-const CREDIT_SAFETY_FLOOR = 30;    // stop scanning if remaining credits would drop to this
+const CREDIT_SAFETY_FLOOR = 2000;  // reserve on the 50,000/mo plan (~4%) — stop scanning before breaching it
 
 // ── Sharp-reference edge guards ───────────────────────────────────────────────
 // Pinnacle is the only sharp/verified book (EXEC_SHARP_BOOKS). These thresholds
@@ -59,8 +65,14 @@ const SHARP_NEAR_CERTAIN_LO    = 0.03; // no-vig fair prob below this → longsh
 const ARB_SAFETY_BUFFER        = 0.01; // require arbSum < 0.99, not just <1 — fee/slippage/odds-move headroom
 const ARB_MAX_PLAUSIBLE_PROFIT = 0.05; // guaranteed profit (1−arbSum) > 5% on a liquid market → stale/erroneous line → downgrade to signal
 
-// Each /odds call costs 1 credit PER region requested. With 3 regions, cost = 3 per sport.
-const CREDITS_PER_SPORT = REGIONS.length;
+// Rate limit: plan allows 60 req/min. Space calls ≥1100ms so a full cycle can never
+// trip 429 even with zero jitter (54 req/min worst case).
+const RATE_LIMIT_MS = 1100;
+
+// Fixed scan interval, sized in Phase 2 against the MEASURED per-cycle cost so that
+// projected monthly consumption stays under ~80% of the 50,000 hard cap. See
+// data/sports/credits.json for the running measurement this was derived from.
+const SCAN_INTERVAL_MIN = Number(process.env.SPORTS_SCAN_INTERVAL_MIN || 150);
 
 // ── Bookmaker → jurisdiction lookup (best-effort static map from OddsAPI docs) ─
 // 'us' = US-licensed books; 'eu' = EU-licensed; 'uk' = UK-licensed (UKGC)
@@ -192,7 +204,7 @@ function getExecReasons(record) {
   return reasons;
 }
 
-// Sport labels used in scannedEvents summary (matches SPORTS_ALLOWLIST keys)
+// Sport labels used in scannedEvents summary (odds-api.net coarse sport vocabulary)
 const SPORT_LABEL_MAP = {
   soccer_fifa_world_cup: 'World Cup',
   baseball_mlb:          'MLB',
@@ -211,7 +223,25 @@ function sportLabelFor(key) {
 // Use Jun 28 as conservative cutoff to catch any late group games and all knockouts.
 const WC_KNOCKOUT_START = new Date('2026-06-28T00:00:00Z');
 
-function deriveSettlement(sport, type, commenceTime) {
+function deriveSettlement(sport, type, commenceTime, league) {
+  // odds-api.net's sport vocabulary is coarse ('soccer'), so the league string from the
+  // event list is what distinguishes a World Cup knockout from a league fixture. Without
+  // this the knockout cross-settlement warning would silently disappear on the new vendor.
+  const lg = (league || '').toLowerCase();
+  if (sport === 'soccer' && lg.includes('world cup')) {
+    return deriveSettlement('soccer_fifa_world_cup', type, commenceTime);
+  }
+  if (sport === 'soccer')            return deriveSettlement('soccer_generic_league', type, commenceTime);
+  if (sport === 'baseball')          return deriveSettlement('baseball_mlb', type, commenceTime);
+  if (sport === 'basketball')        return deriveSettlement('basketball_wnba', type, commenceTime);
+  if (sport === 'tennis')            return deriveSettlement('tennis_atp', type, commenceTime);
+
+  if (sport === 'soccer_generic_league') {
+    return {
+      basis: 'Regulation 90 min (incl. injury time). Draw is a separate outcome. Extra time / penalties do NOT count.',
+      isKnockout: false, basisAmbiguous: false, crossSettlementRisk: false,
+    };
+  }
   if (sport === 'soccer_fifa_world_cup') {
     const isKnockout = new Date(commenceTime) >= WC_KNOCKOUT_START;
     if (isKnockout) {
@@ -259,12 +289,13 @@ const OUTPUT_FILE  = path.join(DATA_DIR, 'opportunities.json');
 const CREDITS_FILE = path.join(DATA_DIR, 'credits.json');
 
 // ── Validate API key ──────────────────────────────────────────────────────────
-const ODDS_API_KEY = process.env.ODDS_API_KEY;
-if (!ODDS_API_KEY) {
-  console.error('[sports] FATAL: ODDS_API_KEY not set — add it to .env.local and re-run');
+const ODDS_API_NET_KEY = process.env.ODDS_API_NET_KEY;
+if (!ODDS_API_NET_KEY) {
+  console.error('[sports] FATAL: ODDS_API_NET_KEY not set — add it to .env.local and re-run');
+  console.error('[sports]        (ODDS_API_KEY is the-odds-api.com — a different vendor — and will not work here)');
   process.exit(1);
 }
-const BASE_URL = 'https://api.the-odds-api.com/v4';
+const BASE_URL = 'https://api.odds-api.net/v1';
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -283,29 +314,46 @@ try { credits = JSON.parse(fs.readFileSync(CREDITS_FILE, 'utf8')); } catch {}
 
 function persistCredits() { atomicWrite(CREDITS_FILE, credits); }
 
-function updateCreditsFromHeaders(headers) {
-  const r = headers['x-requests-remaining'];
-  const u = headers['x-requests-used'];
-  const l = headers['x-requests-last'];
-  if (r != null) credits.remaining  = parseInt(r, 10);
-  if (u != null) credits.used       = parseInt(u, 10);
-  if (l != null) credits.lastHeader = l;
-  credits.lastChecked = new Date().toISOString();
-  persistCredits();
+// odds-api.net sends NO per-response credit headers (verified: no x-credits-*/x-requests-*
+// on any 200). The only source of truth is the /usage endpoint, which itself costs 1 credit.
+// It is also LAGGED — the counter settles in batches, so a single before/after delta around
+// one call is meaningless. Only whole-cycle deltas (many calls) are trustworthy, which is
+// exactly how SCAN_INTERVAL_MIN was derived.
+async function refreshCreditsFromUsage() {
+  try {
+    const r = await apiGet('/usage');
+    if (r.status === 200 && r.data && r.data.api_credits_limit != null) {
+      credits.used        = r.data.api_credits_used;
+      credits.limit       = r.data.api_credits_limit;
+      credits.remaining   = r.data.api_credits_limit - r.data.api_credits_used;
+      credits.periodEnd   = r.data.period_end_utc;
+      credits.lastChecked = new Date().toISOString();
+      persistCredits();
+      return credits.remaining;
+    }
+    console.error(`[sports] /usage HTTP ${r.status}:`, JSON.stringify(r.data).slice(0, 160));
+  } catch (e) {
+    console.error('[sports] /usage error:', e.message);
+  }
+  return null;
 }
 
 function floorReached() {
   return credits.remaining != null && credits.remaining <= CREDIT_SAFETY_FLOOR;
 }
 
-// ── HTTP (captures headers for credit tracking) ───────────────────────────────
+// ── HTTP ──────────────────────────────────────────────────────────────────────
 function httpGet(url, timeoutMs = 20_000) {
   return new Promise((resolve, reject) => {
     let settled = false;
     const settle = (fn, val) => { if (!settled) { settled = true; fn(val); } };
     const timer  = setTimeout(() => { req.destroy(); settle(reject, new Error('timeout')); }, timeoutMs);
     const req    = https.get(url, {
-      headers: { 'User-Agent': 'arb-scanner/1.0', 'Accept': 'application/json' },
+      headers: {
+        'User-Agent': 'arb-scanner/1.0',
+        'Accept':     'application/json',
+        'X-API-Key':  ODDS_API_NET_KEY,   // odds-api.net auth — header only, NOT ?apiKey=
+      },
     }, res => {
       const chunks = [];
       res.on('data', c => chunks.push(c));
@@ -321,6 +369,93 @@ function httpGet(url, timeoutMs = 20_000) {
     });
     req.on('error', e => { clearTimeout(timer); settle(reject, e); });
   });
+}
+
+// ── Rate-limited API GET (plan cap: 60 req/min) ───────────────────────────────
+let _lastCallAt = 0;
+let _creditsSpentThisRun = 0;   // every billable call this process made — counted locally,
+                                // independent of the lagged /usage counter
+async function apiGet(pathAndQuery, params) {
+  const wait = RATE_LIMIT_MS - (Date.now() - _lastCallAt);
+  if (wait > 0) await sleep(wait);
+  _lastCallAt = Date.now();
+
+  let url = `${BASE_URL}${pathAndQuery}`;
+  if (params) {
+    const qs = new URLSearchParams(params).toString();
+    url += (url.includes('?') ? '&' : '?') + qs;
+  }
+  _creditsSpentThisRun++;
+  return httpGet(url);
+}
+
+// ── odds-api.net → legacy shape adapter ───────────────────────────────────────
+// odds-api.net returns a FLAT row per (bookmaker × market_key), e.g.
+//   { bookmaker:'pinnacle', bet_type:'moneyline 3w',
+//     market_key:'moneyline 3w/home (full time)', odds:2.3, is_available:true }
+// the-odds-api returned NESTED bookmakers[].markets[].outcomes[]. Rather than rewrite
+// the arb/tiering logic against a new shape (and risk the honest-engine), we rebuild the
+// legacy nested shape here so computeArb() and every downstream guard run UNCHANGED.
+//
+// Two correctness rules, both load-bearing:
+//  1. A 2-way 'moneyline' and a 3-way 'moneyline 3w' are DIFFERENT markets (the 2-way on a
+//     draw-capable sport is draw-no-bet). Mixing them fabricates arbs. We pick exactly one
+//     market type per event — 3w when present, else 2-way — and never merge.
+//  2. Only '(full time)' rows are used. Period variants ('1st half', …) are separate markets
+//     and mixing them would also fabricate arbs.
+function netRowsToLegacyEvent(rows, meta) {
+  const ft = rows.filter(r =>
+    r && r.is_available && typeof r.odds === 'number' && r.odds > 1 &&
+    typeof r.market_key === 'string' && r.market_key.includes(PERIOD_MATCH)
+  );
+  if (ft.length === 0) return null;
+
+  // Rule 1 — exclusive market type
+  const has3w = ft.some(r => r.bet_type === 'moneyline 3w');
+  const chosenType = has3w ? 'moneyline 3w' : 'moneyline';
+  const chosen = ft.filter(r => r.bet_type === chosenType);
+  if (chosen.length === 0) return null;
+
+  // 'moneyline 3w/home (full time)' → 'home'
+  const sideOf = mk => {
+    const m = /\/([a-z0-9 ]+?)\s*\(/i.exec(mk);
+    return m ? m[1].trim().toLowerCase() : null;
+  };
+  // Outcome NAMES must be the real team names so the UI and eventName stay honest.
+  const nameFor = side =>
+    side === 'home' ? meta.home_team :
+    side === 'away' ? meta.away_team :
+    side === 'draw' ? 'Draw' : null;
+
+  const byBook = new Map();
+  for (const r of chosen) {
+    const name = nameFor(sideOf(r.market_key));
+    if (!name) continue;                       // unknown side → dropped, never guessed
+    if (!byBook.has(r.bookmaker)) byBook.set(r.bookmaker, new Map());
+    const m = byBook.get(r.bookmaker);
+    // Same book quoting the same side twice → keep the best (highest) price.
+    if (!m.has(name) || r.odds > m.get(name)) m.set(name, r.odds);
+  }
+
+  const bookmakers = [];
+  for (const [bid, outcomes] of byBook) {
+    bookmakers.push({
+      key:   bid,
+      title: bid,   // vendor exposes no display title; id is shown verbatim rather than invented
+      markets: [{
+        key: 'h2h',
+        outcomes: [...outcomes].map(([name, price]) => ({ name, price })),
+      }],
+    });
+  }
+
+  return {
+    home_team:     meta.home_team,
+    away_team:     meta.away_team,
+    commence_time: meta.commence_time,
+    league:        meta.league,
+    bookmakers,
+  };
 }
 
 // ── Arb computation (one event) ───────────────────────────────────────────────
@@ -541,7 +676,7 @@ function computeArb(ev, sportKey) {
 
   // Build scan entry for browsable list (every event passing the books gate)
   const eventType  = names.length === 2 ? '2way' : '3way';
-  const settlement = deriveSettlement(sportKey, eventType, ev.commence_time);
+  const settlement = deriveSettlement(sportKey, eventType, ev.commence_time, ev.league);
   const scanEntry  = hasAllClean ? {
     sport:        sportKey,
     sportLabel:   sportLabelFor(sportKey),
@@ -648,31 +783,51 @@ async function scan() {
     process.exit(0);
   }
 
+  // Real credits-before, read from /usage (costs 1 credit). This is the anchor for the
+  // whole-cycle delta that sizes SCAN_INTERVAL_MIN.
+  await refreshCreditsFromUsage();
   const creditsBefore = credits.remaining;
-  console.log(`[sports] === snapshot scan start | credits before: ${creditsBefore ?? 'unknown'} | regions: ${REGIONS.join(',')} | cost per sport: ${CREDITS_PER_SPORT} ===`);
+  const usedBefore    = credits.used;
+  console.log(`[sports] === snapshot scan start | credits used: ${usedBefore ?? '?'} / ${credits.limit ?? '?'} | remaining: ${creditsBefore ?? 'unknown'} | interval: ${SCAN_INTERVAL_MIN}min ===`);
 
-  // Step 1: GET /sports — FREE (0 credits consumed)
-  let activeSportKeys = new Set();
+  // Step 1: GET /sports — ALL sports, no allowlist (1 credit)
+  let targetSports = [];
   try {
-    const r = await httpGet(`${BASE_URL}/sports?apiKey=${ODDS_API_KEY}&all=false`);
-    if (r.status === 200 && Array.isArray(r.data)) {
-      for (const s of r.data) if (s.active) activeSportKeys.add(s.key);
-      console.log(`[sports] /sports: ${activeSportKeys.size} active sports (0 credits consumed)`);
+    const r = await apiGet('/sports');
+    if (r.status === 200 && Array.isArray(r.data?.items)) {
+      targetSports = r.data.items;
+      console.log(`[sports] /sports: ${targetSports.length} sports — ${targetSports.join(', ')}`);
     } else {
       console.error(`[sports] /sports HTTP ${r.status}:`, JSON.stringify(r.data).slice(0, 200));
     }
   } catch (e) {
     console.error('[sports] /sports error:', e.message);
   }
-
-  const targetSports = SPORTS_ALLOWLIST.filter(k => activeSportKeys.has(k));
   if (targetSports.length === 0) {
-    console.log('[sports] no allowlisted sports are currently active — exiting with empty result');
-  } else {
-    console.log(`[sports] target: ${targetSports.join(', ')}`);
+    console.log('[sports] no sports returned — exiting with empty result');
   }
 
-  // Step 2: GET /odds per sport (each call costs CREDITS_PER_SPORT credits = 1 per region requested)
+  // Step 1b: GET /coverage (1 credit) — real per-bookmaker jurisdiction, replacing the
+  // static the-odds-api map. Books absent from coverage stay 'unknown' (never guessed).
+  try {
+    const r = await apiGet('/coverage');
+    if (r.status === 200 && Array.isArray(r.data?.bookmakers)) {
+      for (const b of r.data.bookmakers) {
+        const codes = new Set(b.country_codes || []);
+        let region = 'unknown';
+        if (codes.has('UK') || codes.has('GB'))      region = 'uk';
+        else if ([...codes].some(c => EU_CODES.has(c))) region = 'eu';
+        else if (codes.has('US'))                    region = 'us';
+        else if (codes.has('AU') || codes.has('NZ')) region = 'au';
+        BOOKMAKER_REGION[b.bookmaker] = region;
+      }
+      console.log(`[sports] /coverage: ${r.data.bookmakers.length} bookmakers mapped to jurisdictions`);
+    }
+  } catch (e) {
+    console.error('[sports] /coverage error:', e.message);
+  }
+
+  // Step 2: per sport → event list (1 credit), then one odds snapshot per eligible event (1 credit each)
   const opportunities      = [];   // genuinely cashable: every leg on the sharp allowlist
   const flaggedArbs        = [];   // real arb but not cashable (unverified/exchange/cross-juris leg)
   const quarantine         = [];
@@ -683,45 +838,76 @@ async function scan() {
   let   noArbCount         = 0;
   let   falsePositives     = 0;
 
+  let creditFloorHit = false;
+
   for (const sportKey of targetSports) {
-    // Credit guard: check BEFORE spending — account for full multi-region cost
-    if (credits.remaining != null && (credits.remaining - CREDITS_PER_SPORT) <= CREDIT_SAFETY_FLOOR) {
-      console.warn(
-        `[sports] CREDIT FLOOR — stopping before next request would breach floor` +
-        ` (remaining: ${credits.remaining}, cost: ${CREDITS_PER_SPORT}, floor: ${CREDIT_SAFETY_FLOOR})`
-      );
-      break;
-    }
+    if (creditFloorHit) break;
 
-    const url = [
-      `${BASE_URL}/sports/${sportKey}/odds/`,
-      `?apiKey=${ODDS_API_KEY}`,
-      `&regions=${REGIONS.join(',')}`,
-      `&markets=${MARKETS.join(',')}`,
-      `&oddsFormat=${ODDS_FORMAT}`,
-    ].join('');
-
-    let events = [];
+    // Step 2a: event list for this sport (1 credit)
+    let eventList = [];
     try {
-      const r = await httpGet(url);
-      updateCreditsFromHeaders(r.headers);  // always update from headers
-
-      if (r.status === 200 && Array.isArray(r.data)) {
-        events = r.data;
-        sportsScanned.push(sportKey);
-        console.log(
-          `[sports] ${sportKey}: ${events.length} events` +
-          ` | remaining: ${credits.remaining ?? '?'}` +
-          ` | used: ${credits.used ?? '?'}`
-        );
+      const r = await apiGet('/events', { sport: sportKey, limit: 200 });
+      if (r.status === 200 && Array.isArray(r.data?.items)) {
+        eventList = r.data.items;
       } else {
-        console.error(`[sports] ${sportKey} HTTP ${r.status}:`, JSON.stringify(r.data).slice(0, 200));
+        console.error(`[sports] /events ${sportKey} HTTP ${r.status}:`, JSON.stringify(r.data).slice(0, 200));
+        continue;
       }
     } catch (e) {
-      console.error(`[sports] ${sportKey} error:`, e.message);
+      console.error(`[sports] /events ${sportKey} error:`, e.message);
+      continue;
     }
 
-    for (const ev of events) {
+    // Books gate applied BEFORE spending a credit on the event's odds — the vendor
+    // publishes bookmaker_count on the event list, so thin events cost nothing.
+    const eligible = eventList.filter(e => (e.bookmaker_count ?? 0) >= MIN_BOOKMAKERS);
+    tooFewBooks += eventList.length - eligible.length;
+    console.log(`[sports] ${sportKey}: ${eventList.length} events, ${eligible.length} with >=${MIN_BOOKMAKERS} books`);
+    if (eligible.length > 0) sportsScanned.push(sportKey);
+
+    // Step 2b: one odds snapshot per eligible event (1 credit each)
+    for (const meta of eligible) {
+      // Credit guard: check BEFORE spending
+      if (credits.remaining != null && (credits.remaining - _creditsSpentThisRun - 1) <= CREDIT_SAFETY_FLOOR) {
+        console.warn(
+          `[sports] CREDIT FLOOR — stopping before next request would breach floor` +
+          ` (remaining: ~${credits.remaining - _creditsSpentThisRun}, floor: ${CREDIT_SAFETY_FLOOR})`
+        );
+        creditFloorHit = true;
+        break;
+      }
+
+      let rows = [];
+      try {
+        const r = await apiGet(`/events/${meta.event_id}/odds/snapshot`, {
+          types: MARKET_TYPES.join(','),
+          limit: ODDS_SNAPSHOT_LIMIT,
+        });
+        if (r.status === 200 && Array.isArray(r.data?.items)) {
+          rows = r.data.items;
+          // limit == odds_snapshot_limit_max, so a non-null cursor means the event genuinely
+          // exceeded the cap. Say so rather than silently scanning a partial book.
+          if (r.data.next_cursor) {
+            console.warn(`[sports]   event ${meta.event_id}: truncated at ${ODDS_SNAPSHOT_LIMIT} rows (next_cursor present) — partial book`);
+          }
+        } else {
+          console.error(`[sports]   event ${meta.event_id} HTTP ${r.status}:`, JSON.stringify(r.data).slice(0, 160));
+          continue;
+        }
+      } catch (e) {
+        console.error(`[sports]   event ${meta.event_id} error:`, e.message);
+        continue;
+      }
+
+      const ev = netRowsToLegacyEvent(rows, {
+        home_team:     meta.home_team,
+        away_team:     meta.away_team,
+        // vendor gives unix seconds; downstream (deriveSettlement, UI) expects ISO
+        commence_time: meta.start_time ? new Date(meta.start_time * 1000).toISOString() : null,
+        league:        meta.league,
+      });
+      if (!ev) { noArbCount++; continue; }
+
       for (const bk of ev.bookmakers ?? []) {
         if (bk.key) observedBookmakerIds.add(bk.key);
       }
@@ -736,8 +922,6 @@ async function scan() {
         case 'no_arb':         noArbCount++;                    break;
       }
     }
-
-    await sleep(300);  // small pause between sport requests
   }
 
   opportunities.sort((a, b) => b.roiPct - a.roiPct);
@@ -756,13 +940,36 @@ async function scan() {
     totalEvents: scannedEvents.length,
   };
 
+  // Real credits-after, read from /usage. The delta over this WHOLE cycle (many calls) is
+  // the trustworthy per-cycle cost — single-call deltas are meaningless (lagged counter).
+  await refreshCreditsFromUsage();
+  const cycleCostMeasured = (usedBefore != null && credits.used != null)
+    ? credits.used - usedBefore : null;
+
+  // Persist the running cost measurement so consumption is observable over time.
+  credits.lastCycle = {
+    at:               new Date().toISOString(),
+    usedBefore,
+    usedAfter:        credits.used,
+    measuredCost:     cycleCostMeasured,   // whole-cycle delta from /usage (authoritative)
+    countedCalls:     _creditsSpentThisRun, // calls this process made (local count, no lag)
+    intervalMin:      SCAN_INTERVAL_MIN,
+    projectedMonthly: cycleCostMeasured != null
+      ? Math.round(cycleCostMeasured * (43200 / SCAN_INTERVAL_MIN)) : null,
+  };
+  credits.history = [...(credits.history || []), credits.lastCycle].slice(-200);
+
   // Write output atomically
   const output = {
     lastUpdated:      new Date().toISOString(),
     creditsRemaining: credits.remaining,
     creditsUsed:      credits.used,
+    creditsLimit:     credits.limit,
+    cycleCost:        cycleCostMeasured,
+    scanIntervalMin:  SCAN_INTERVAL_MIN,
     scanMode:         'snapshot',
-    regions:          REGIONS,
+    vendor:           'odds-api.net',
+    marketTypes:      MARKET_TYPES,
     sportsScanned,
     opportunities,    // cashable only: passed executability classifier
     flaggedArbs,      // real arb math but blocked by unverified/exchange/cross-juris legs
@@ -781,15 +988,14 @@ async function scan() {
   credits.lastScan = new Date().toISOString();
   persistCredits();
 
-  // Console summary (honest)
-  const creditsSpent = creditsBefore != null && credits.remaining != null
-    ? creditsBefore - credits.remaining : null;
-
   console.log('\n[sports] === SCAN COMPLETE ===');
   console.log(`  Sports scanned:          ${sportsScanned.length}  (${sportsScanned.join(', ') || 'none'})`);
-  console.log(`  Credits before scan:     ${creditsBefore ?? 'unknown'}`);
-  console.log(`  Credits remaining:       ${credits.remaining ?? 'unknown'}`);
-  console.log(`  Credits spent this run:  ${creditsSpent ?? 'unknown'}`);
+  console.log(`  Credits used before:     ${usedBefore ?? 'unknown'}`);
+  console.log(`  Credits used after:      ${credits.used ?? 'unknown'}`);
+  console.log(`  MEASURED cycle cost:     ${cycleCostMeasured ?? 'unknown'}  (whole-cycle /usage delta)`);
+  console.log(`  Calls this process made: ${_creditsSpentThisRun}  (local count)`);
+  console.log(`  Credits remaining:       ${credits.remaining ?? 'unknown'} / ${credits.limit ?? '?'}`);
+  console.log(`  Interval:                ${SCAN_INTERVAL_MIN} min → projected ${credits.lastCycle.projectedMonthly ?? '?'} credits/month`);
   console.log(`  Cashable arb opps:       ${opportunities.length}  (passed executability classifier)`);
   console.log(`  Flagged (not cashable):  ${flaggedArbs.length}  (unverified/exchange/cross-juris legs)`);
   console.log(`  Quarantined (bad data):  ${quarantine.length}`);
