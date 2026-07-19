@@ -9,6 +9,7 @@
 
 const fs    = require('fs');
 const { httpGet: _sharedGet } = require('../lib/httpGet');
+const { atomicWriteJson } = require('../lib/atomicJsonWrite');
 
 // ── CONFIG ─────────────────────────────────────────────────────────────────────
 const REFRESH_MS    = 5 * 60_000;
@@ -16,13 +17,25 @@ const STARTUP_DELAY = 10_000;
 const OUTPUT_FILE   = '/tmp/basis-opportunities.json';
 const SPOT_FILE     = '/tmp/exchange-prices.json';
 
+// Sidecar: the real per-(venue,contract) order-book ladders the capacity walk already
+// fetches. Persisted — never re-fetched — so a reader (the execution-order dry-run) can
+// rank the two legs on the SAME depth capacity was measured from. A sidecar, not a key in
+// OUTPUT_FILE, so the hot /api/carry read never pays for ~200 KB of ladders.
+const BOOKS_FILE    = '/tmp/basis-books.json';
+// Levels/side persisted. MUST be deep enough to cover the whole 0.5% slip band, because
+// capacity is walked from the PERSISTED ladder — the invariant being that every claimed
+// dollar of capacity is backed by a level we actually stored and can show. At 60 the band
+// was truncated on deep books (COIN-M BTCUSD_260925 measured $401,300 vs a true $500,000),
+// which understates capacity and makes it depend on an arbitrary persistence cap.
+const LADDER_CAP    = 200;
+const BOOK_STALE_MS = 15 * 60_000; // a ladder older than this is stale → dry-run UNKNOWN
+
 const MIN_DAYS       = 20;      // filter 1: too-near-expiry
 const MIN_VOL_STRICT = 500_000; // USD — DEEP/OK tier
 const MIN_VOL_THIN   = 100_000; // USD — THIN tier (flag, don't exclude)
 const BNB_MAX_CAP    = 50_000;  // filter: BNB capacity hard cap
-const CAP_VOL_F      = 0.05;    // capacity = 5% of vol24
-const CAP_OI_F       = 0.02;    // capacity = 2% of OI (take min)
 const MAX_CAP        = 500_000; // USD, any single opportunity
+const SLIP_TOL       = 0.005;   // 0.5% band the capacity walk stays inside
 
 // TRUE round-trip taker fees — the carry is a 4-FILL trip:
 //   1) spot open  (Binance taker ~0.10%)
@@ -130,12 +143,68 @@ function tier(vol24Usd, oiUsd) {
   return 'VERY THIN';
 }
 
-function capacity(vol24Usd, oiUsd, asset) {
-  const fromVol = vol24Usd * CAP_VOL_F;
-  const fromOI  = oiUsd  ? oiUsd * CAP_OI_F : fromVol;
-  let cap = Math.min(fromVol, fromOI, MAX_CAP);
-  if (asset === 'BNB') cap = Math.min(cap, BNB_MAX_CAP);
-  return Math.round(cap);
+// ── Ladders: normalize → walk → capacity ───────────────────────────────────────
+//
+// HONEST-ENGINE: capacity is REAL order-book depth, for EVERY venue. There is no
+// vol/OI proxy any more — a contract whose bid ladder we could not read has capacity
+// UNKNOWN (null), never an inferred number. OI never touches capacity.
+//
+// Venues quote size in three different units, MEASURED from their live books:
+//   Binance USDT-M / Bybit / Kraken FF → size is base coin        → usd = price*size
+//   Deribit                            → amount is USD notional   → usd = amount
+//   OKX (ctVal 100 USD) / Binance COIN-M (CSZ 100/10) → contracts → usd = size*csz
+// rankLegs walks BOTH legs against ONE shared size, so every ladder is normalized to
+// the SAME unit — base coin (qty = usd/price). That is also what makes the spot leg
+// and the future leg directly comparable.
+//
+// `toUsd(price,size)` converts one raw level to USD notional; everything downstream
+// is unit-free.
+const USD_BY_PRICE_SIZE = (price, size) => price * size;          // size in base coin
+const USD_DIRECT        = (_price, size) => size;                 // size already USD (Deribit)
+const usdByContract     = csz => (_price, size) => size * csz;    // size in contracts
+
+/**
+ * Normalize a raw venue ladder to capped `[price, coinQty]` levels, best-first.
+ * Drops non-positive/non-finite levels (rankLegs treats a zero-qty level as UNKNOWN,
+ * so a bad level must never reach the sidecar). `desc` sorts bids high→low.
+ * Returns [] if nothing survives — the caller then reports capacity UNKNOWN.
+ */
+function normalizeLadder(levels, toUsd, { desc = true } = {}) {
+  if (!Array.isArray(levels) || levels.length === 0) return [];
+  const out = [];
+  for (const lvl of levels) {
+    if (!Array.isArray(lvl)) continue;
+    const price = parseFloat(lvl[0]);
+    const size  = parseFloat(lvl[1]);
+    if (!Number.isFinite(price) || price <= 0) continue;
+    if (!Number.isFinite(size)  || size  <= 0) continue;
+    const usd = toUsd(price, size);
+    if (!Number.isFinite(usd) || usd <= 0) continue;
+    const qty = usd / price;                       // → base coin, the shared unit
+    if (!Number.isFinite(qty) || qty <= 0) continue;
+    out.push([price, qty]);
+  }
+  out.sort((a, b) => (desc ? b[0] - a[0] : a[0] - b[0]));
+  return out.slice(0, LADDER_CAP);
+}
+
+/**
+ * USD depth of a normalized ladder within `slipTol` of the best price. This is the
+ * ONLY source of capacity now. Capped at MAX_CAP (and BNB_MAX_CAP for BNB) —
+ * capping DOWNWARD is conservative, never inflating.
+ */
+function ladderDepthUsd(ladder, slipTol, asset) {
+  if (!Array.isArray(ladder) || ladder.length === 0) return 0;
+  const best = ladder[0][0];
+  if (!(best > 0)) return 0;
+  let usd = 0;
+  for (const [price, qty] of ladder) {
+    if (Math.abs(best - price) / best > slipTol) break;   // beyond the slippage band
+    usd += price * qty;
+    if (usd >= MAX_CAP) { usd = MAX_CAP; break; }
+  }
+  if (asset === 'BNB') usd = Math.min(usd, BNB_MAX_CAP);
+  return Math.round(usd);
 }
 
 // ── Contract builder ───────────────────────────────────────────────────────────
@@ -234,18 +303,17 @@ function buildContract({ asset, exchange, venueKey, contract,
       : `Coin-margined — P&L settles in ${asset}. USD return drifts with spot price; not a clean locked-USD return.`
     : null;
 
-  // Filter 7: capacity estimate. A venue may pass a REAL order-book-depth capacity
-  // (capacityUsdOverride, e.g. Bybit book-walk) — honest-engine: use it verbatim
-  // (already MAX_CAP/asset-capped by the caller) instead of the vol/OI proxy. Venues
-  // that don't pass it keep the existing vol/OI estimate unchanged (zero regression).
-  const hasRealBookDepth = Number.isFinite(capacityUsdOverride);
-  const cap = hasRealBookDepth
-    ? capacityUsdOverride
-    : capacity(vol24Usd, oiUsd, asset);
-  // capacitySource — honest provenance of `cap`, so the cashable/speculative gate can
-  // key on real executability: 'book' = measured order-book depth within the slip band
-  // (directly fillable); 'proxy' = vol/OI estimate (liquidity inferred, not a real book).
-  const capacitySource = hasRealBookDepth ? 'book' : 'proxy';
+  // Filter 7: capacity. HONEST-ENGINE — capacity is REAL order-book depth ONLY, for
+  // every venue. `capacityUsdOverride` is the measured bid-side depth within the slip
+  // band (already MAX_CAP/asset-capped by the caller). There is NO vol/OI proxy: a
+  // contract whose book we could not read reports capacity UNKNOWN (null) and says so.
+  // Never infer depth from volume or open interest — OI is not size you can fill.
+  const hasRealBookDepth = Number.isFinite(capacityUsdOverride) && capacityUsdOverride > 0;
+  const cap = hasRealBookDepth ? capacityUsdOverride : null;
+  // capacitySource — honest provenance of `cap`: 'book' = measured order-book depth
+  // within the slip band (directly fillable); 'unknown' = no readable book, cap is null
+  // and the UI renders "—". 'proxy' no longer exists.
+  const capacitySource = hasRealBookDepth ? 'book' : 'unknown';
   const expiryDate = new Date(expiryMs).toISOString().slice(0, 10);
 
   // Headline verdict uses executable (conservative) number
@@ -330,9 +398,34 @@ async function fetchSpot() {
   }
 }
 
+/**
+ * Spot ASK ladders for the LONG-SPOT leg of the carry — the side we cross to buy.
+ * Binance spot is the assumed spot venue for every row (FEE_LEGS charges "Binance spot
+ * open/close" across the board), so the dry-run's buy leg must be measured there too.
+ * Sizes are already in base coin. One key per asset — shared by every venue's row.
+ * A failed fetch simply leaves the key absent → that leg is UNKNOWN, never guessed.
+ */
+async function fetchSpotBooks(spot, books = {}) {
+  const assets = Object.keys(spot).filter(a => spot[a]?.mid > 0);
+  const res = await Promise.allSettled(
+    assets.map(a => get(`https://api.binance.com/api/v3/depth?symbol=${a}USDT&limit=500`))
+  );
+  const now = Date.now();
+  for (let i = 0; i < assets.length; i++) {
+    const r = res[i];
+    if (r.status !== 'fulfilled') continue;
+    const rawAsks = r.value.data?.asks;
+    // Buy side → ASK ladder, ascending (cheapest first).
+    const ladder = normalizeLadder(rawAsks, USD_BY_PRICE_SIZE, { desc: false });
+    if (ladder.length === 0) continue;
+    books[`SPOT|${assets[i]}`] = { fetchedAt: now, side: 'buy', top: ladder[0][0], asks: ladder };
+  }
+  return books;
+}
+
 // ── Binance COIN-M ────────────────────────────────────────────────────────────
 
-async function fetchCOINM(spot) {
+async function fetchCOINM(spot, books = {}) {
   // Fetch 24hr ticker (volume/lastPrice) and bookTicker (bid/ask) in parallel
   const [res, btRes] = await Promise.all([
     get('https://dapi.binance.com/dapi/v1/ticker/24hr'),
@@ -363,23 +456,39 @@ async function fetchCOINM(spot) {
     }
   }
 
-  const results = [];
+  // Pre-filter to contracts worth pricing, so we only book-walk those (one depth call each).
+  const candidates = [];
   for (const x of dated) {
     const parsed = parseBinanceSym(x.symbol, false);
     if (!parsed) continue;
     const { asset, expiry } = parsed;
-
-    const sp = spot[asset];
-    if (!sp?.mid) continue;
-
+    if (!spot[asset]?.mid) continue;
     // Filter: only BTC, ETH, BNB, SOL per decision matrix
     if (!['BTC', 'ETH', 'BNB', 'SOL'].includes(asset)) continue;
+    candidates.push({ x, asset, expiry });
+  }
+
+  // REAL order-book depth for capacity — the short-future leg fills into the BID side.
+  // COIN-M sizes are in CONTRACTS worth COINM_CSZ USD each (BTC 100, others 10), so the
+  // USD conversion is size*csz, NOT price*size. Never OI.
+  const bookRes = await Promise.allSettled(
+    candidates.map(c => get(`https://dapi.binance.com/dapi/v1/depth?symbol=${c.x.symbol}&limit=500`))
+  );
+
+  const results = [];
+  for (let i = 0; i < candidates.length; i++) {
+    const { x, asset, expiry } = candidates[i];
+    const sp = spot[asset];
 
     const csz      = COINM_CSZ[asset] ?? 10;
     const vol24Usd = parseFloat(x.volume || 0) * csz;
     const oiContr  = oiMap[x.symbol] ?? 0;
-    const oiUsd    = oiContr * csz;
+    const oiUsd    = oiContr * csz;   // tier/display only — NEVER capacity
     const bt       = btMap[x.symbol];
+
+    const r = bookRes[i];
+    const rawBids = (r.status === 'fulfilled' ? r.value.data?.bids : null) || [];
+    const capacityUsd = walkFutureBids(rawBids, usdByContract(csz), asset, books, `COINM|${x.symbol}`, Date.now());
 
     const c = buildContract({
       asset,
@@ -395,6 +504,7 @@ async function fetchCOINM(spot) {
       expiryMs:   expiry.getTime(),
       vol24Usd,
       oiUsd,
+      capacityUsdOverride: capacityUsd,   // REAL order-book depth (book-walk)
     });
     if (c) results.push(c);
   }
@@ -403,7 +513,7 @@ async function fetchCOINM(spot) {
 
 // ── Binance USDT-M ────────────────────────────────────────────────────────────
 
-async function fetchUSDTM(spot) {
+async function fetchUSDTM(spot, books = {}) {
   // Fetch 24hr ticker (volume/lastPrice) and bookTicker (bid/ask) in parallel
   const [res, btRes] = await Promise.all([
     get('https://fapi.binance.com/fapi/v1/ticker/24hr'),
@@ -439,21 +549,37 @@ async function fetchUSDTM(spot) {
     }
   }
 
-  const results = [];
+  // Pre-filter to contracts worth pricing, then book-walk only those.
+  const candidates = [];
   for (const x of dated) {
     const parsed = parseBinanceSym(x.symbol, true);
     if (!parsed) continue;
     const { asset, expiry } = parsed;
-
     // Only BTC, ETH per decision matrix
     if (!['BTC', 'ETH'].includes(asset)) continue;
+    if (!spot[asset]?.mid) continue;
+    candidates.push({ x, asset, expiry });
+  }
+
+  // REAL order-book depth for capacity — short-future fills into the BID side. USDT-M
+  // linear sizes are already in the base coin, so usd = price*size. Never OI.
+  const bookRes = await Promise.allSettled(
+    candidates.map(c => get(`https://fapi.binance.com/fapi/v1/depth?symbol=${c.x.symbol}&limit=500`))
+  );
+
+  const results = [];
+  for (let i = 0; i < candidates.length; i++) {
+    const { x, asset, expiry } = candidates[i];
     const sp = spot[asset];
-    if (!sp?.mid) continue;
 
     // quoteVolume for USDT-M is in USDT (USD)
     const vol24Usd = parseFloat(x.quoteVolume || 0);
-    const oiUsd    = oiMap[x.symbol] ?? null;
+    const oiUsd    = oiMap[x.symbol] ?? null;   // tier/display only — NEVER capacity
     const bt       = btMap[x.symbol];
+
+    const r = bookRes[i];
+    const rawBids = (r.status === 'fulfilled' ? r.value.data?.bids : null) || [];
+    const capacityUsd = walkFutureBids(rawBids, USD_BY_PRICE_SIZE, asset, books, `USDTM|${x.symbol}`, Date.now());
 
     const c = buildContract({
       asset,
@@ -469,6 +595,7 @@ async function fetchUSDTM(spot) {
       expiryMs:   expiry.getTime(),
       vol24Usd,
       oiUsd,
+      capacityUsdOverride: capacityUsd,   // REAL order-book depth (book-walk)
     });
     if (c) results.push(c);
   }
@@ -490,26 +617,22 @@ async function fetchUSDTM(spot) {
 // ladder (v5 market/orderbook) and sum notional within a 0.5% slippage band. OI is
 // not passed at all (oiUsd:null) — it never touches capacity, tier, or display.
 
-// Order-book depth in USD: walk levels from the top, summing price×size while the
-// level price stays within `slipTol` of the best. Bybit levels are [price, size]
-// strings, size in base coin. Capped at MAX_CAP. Never uses OI.
-function bookDepthUsd(levels, slipTol) {
-  if (!Array.isArray(levels) || levels.length === 0) return 0;
-  const best = parseFloat(levels[0][0]);
-  if (!(best > 0)) return 0;
-  let usd = 0;
-  for (const lvl of levels) {
-    const price = parseFloat(lvl[0]);
-    const size  = parseFloat(lvl[1]);
-    if (!(price > 0) || !(size > 0)) continue;
-    if (Math.abs(best - price) / best > slipTol) break;   // beyond the slippage band
-    usd += price * size;
-    if (usd >= MAX_CAP) return MAX_CAP;
-  }
-  return Math.round(usd);
+/**
+ * Measure one future's short-side capacity AND persist the ladder that measured it.
+ * Shorting the dated future fills into the BID side, so the bid ladder is both the
+ * capacity source and the dry-run's sell leg — one walk, one truth, no second fetch.
+ * Returns null when the book is unreadable → caller reports capacity UNKNOWN.
+ */
+function walkFutureBids(rawBids, toUsd, asset, sink, key, fetchedAt) {
+  const ladder = normalizeLadder(rawBids, toUsd, { desc: true });
+  if (ladder.length === 0) return null;
+  const capacityUsd = ladderDepthUsd(ladder, SLIP_TOL, asset);
+  if (capacityUsd <= 0) return null;
+  sink[key] = { fetchedAt, side: 'sell', top: ladder[0][0], bids: ladder };
+  return capacityUsd;
 }
 
-async function fetchBybit(spot) {
+async function fetchBybit(spot, books = {}) {
   const res  = await get('https://api.bybit.com/v5/market/tickers?category=linear');
   const list = res.data?.result?.list;
   if (!Array.isArray(list)) return [];
@@ -547,10 +670,10 @@ async function fetchBybit(spot) {
     const ask = parseFloat(x.ask1Price || 0);
 
     // Short-the-future leg fills into the BID side → capacity = bid-side depth. Never OI.
+    // Bybit sizes are base coin. The walked ladder is persisted for the dry-run.
     const r    = bookRes[i];
     const bids = (r.status === 'fulfilled' ? r.value.data?.result?.b : null) || [];
-    const capacityUsd = bookDepthUsd(bids, 0.005);
-    if (capacityUsd <= 0) continue;   // no real book depth → no honest capacity → skip
+    const capacityUsd = walkFutureBids(bids, USD_BY_PRICE_SIZE, asset, books, `BYBIT|${sym}`, Date.now());
 
     const c = buildContract({
       asset,
@@ -588,7 +711,7 @@ async function fetchBybit(spot) {
 // book-walk would anchor on a stale far-below-market bid. oiUsd is never passed.
 const KRAKEN_ASSET = { XBT: 'BTC', ETH: 'ETH' };
 
-async function fetchKraken(spot) {
+async function fetchKraken(spot, books = {}) {
   const [instRes, tickRes] = await Promise.all([
     get('https://futures.kraken.com/derivatives/api/v3/instruments'),
     get('https://futures.kraken.com/derivatives/api/v3/tickers'),
@@ -639,13 +762,12 @@ async function fetchKraken(spot) {
     const ask = parseFloat(t.ask || 0);
 
     // Short-the-future leg fills into the BID side → capacity = bid-side depth. Kraken
-    // bids are ascending (best last), so sort descending so bookDepthUsd anchors on the
-    // real best bid. Levels are [price, size] with size in the base coin. Never OI.
+    // bids come ASCENDING (best/highest last); normalizeLadder re-sorts descending so the
+    // walk anchors on the real best bid, not a stale far-below-market one. Levels are
+    // [price, size] with size in the base coin. Never OI.
     const r = bookRes[i];
     const rawBids = (r.status === 'fulfilled' ? r.value.data?.orderBook?.bids : null) || [];
-    const bids = rawBids.slice().sort((a, b) => b[0] - a[0]);
-    const capacityUsd = bookDepthUsd(bids, 0.005);
-    if (capacityUsd <= 0) continue;   // no real book depth → no honest capacity → skip
+    const capacityUsd = walkFutureBids(rawBids, USD_BY_PRICE_SIZE, asset, books, `KRAKEN|${sym}`, Date.now());
 
     const c = buildContract({
       asset,
@@ -670,15 +792,28 @@ async function fetchKraken(spot) {
 
 // ── OKX ───────────────────────────────────────────────────────────────────────
 
-async function fetchOKX(spot) {
-  // tickers payload includes last, bidPx, askPx — no extra bookTicker call needed
-  const [tickRes, oiBtc, oiEth] = await Promise.all([
+async function fetchOKX(spot, books = {}) {
+  // tickers payload includes last, bidPx, askPx — no extra bookTicker call needed.
+  // instruments gives ctVal, the USD value of ONE contract — REQUIRED to turn book size
+  // (which OKX quotes in contracts) into USD. It differs per asset (BTC-USD 100, ETH-USD
+  // 10, both ctValCcy=USD), so it is read from the venue, never hardcoded.
+  const [tickRes, instRes, oiBtc, oiEth] = await Promise.all([
     get('https://www.okx.com/api/v5/market/tickers?instType=FUTURES'),
+    get('https://www.okx.com/api/v5/public/instruments?instType=FUTURES'),
     get('https://www.okx.com/api/v5/public/open-interest?instType=FUTURES&uly=BTC-USD'),
     get('https://www.okx.com/api/v5/public/open-interest?instType=FUTURES&uly=ETH-USD'),
   ]);
 
-  // Build OI map (oiCcy = in coin, multiply by spot mid for USD)
+  // ctVal map — only USD-denominated contracts (ctValCcy 'USD') get a conversion. A
+  // contract we cannot size in USD is left out of the map → capacity UNKNOWN, never guessed.
+  const ctValMap = {};
+  for (const x of (instRes.data?.data || [])) {
+    const ctVal  = parseFloat(x.ctVal || 0);
+    const ctMult = parseFloat(x.ctMult || 1);
+    if (x.ctValCcy === 'USD' && ctVal > 0 && ctMult > 0) ctValMap[x.instId] = ctVal * ctMult;
+  }
+
+  // Build OI map (oiCcy = in coin, multiply by spot mid for USD) — tier/display only.
   const oiMap = {};
   for (const [oiData, asset] of [[oiBtc, 'BTC'], [oiEth, 'ETH']]) {
     for (const x of (oiData.data?.data || [])) {
@@ -687,26 +822,45 @@ async function fetchOKX(spot) {
     }
   }
 
-  const results = [];
+  // Pre-filter to contracts worth pricing, then book-walk only those.
+  const candidates = [];
   for (const x of (tickRes.data?.data || [])) {
     const instId = x.instId;
     // Filter 4: exclude _UM and XPERP contracts
     if (instId.includes('_UM') || instId.includes('XPERP')) continue;
-
     const parsed = parseOKXSym(instId);
     if (!parsed) continue;
     const { asset, expiry } = parsed;
-
     // Decision matrix: BTC and ETH only for OKX
     if (!['BTC', 'ETH'].includes(asset)) continue;
+    if (!spot[asset]?.mid) continue;
+    candidates.push({ x, instId, asset, expiry });
+  }
+
+  // REAL order-book depth for capacity — short-future fills into the BID side. sz is in
+  // CONTRACTS, so usd = sz*ctVal. Never OI.
+  const bookRes = await Promise.allSettled(
+    candidates.map(c => get(`https://www.okx.com/api/v5/market/books?instId=${c.instId}&sz=400`))
+  );
+
+  const results = [];
+  for (let i = 0; i < candidates.length; i++) {
+    const { x, instId, asset, expiry } = candidates[i];
     const sp = spot[asset];
-    if (!sp?.mid) continue;
 
     // vol24Ccy is in the coin (BTC/ETH) — convert to USD using mid
     const vol24Usd = parseFloat(x.volCcy24h || 0) * sp.mid;
-    const oiUsd    = oiMap[instId] ?? null;
+    const oiUsd    = oiMap[instId] ?? null;   // tier/display only — NEVER capacity
     const bid      = parseFloat(x.bidPx || 0);
     const ask      = parseFloat(x.askPx || 0);
+
+    const ctVal   = ctValMap[instId];
+    const r       = bookRes[i];
+    const rawBids = (r.status === 'fulfilled' ? r.value.data?.data?.[0]?.bids : null) || [];
+    // No ctVal → we cannot honestly convert contracts to USD → capacity UNKNOWN.
+    const capacityUsd = ctVal
+      ? walkFutureBids(rawBids, usdByContract(ctVal), asset, books, `OKX|${instId}`, Date.now())
+      : null;
 
     const c = buildContract({
       asset,
@@ -722,6 +876,7 @@ async function fetchOKX(spot) {
       expiryMs:  expiry.getTime(),
       vol24Usd,
       oiUsd,
+      capacityUsdOverride: capacityUsd,   // REAL order-book depth (book-walk)
     });
     if (c) results.push(c);
   }
@@ -730,49 +885,67 @@ async function fetchOKX(spot) {
 
 // ── Deribit ───────────────────────────────────────────────────────────────────
 
-async function fetchDeribit(spot) {
+async function fetchDeribit(spot, books = {}) {
   // book_summary includes mark_price, last, bid_price, ask_price — no extra call needed
   const [btcRes, ethRes] = await Promise.all([
     get('https://www.deribit.com/api/v2/public/get_book_summary_by_currency?currency=BTC&kind=future'),
     get('https://www.deribit.com/api/v2/public/get_book_summary_by_currency?currency=ETH&kind=future'),
   ]);
 
-  const results = [];
+  // Pre-filter to contracts worth pricing, then book-walk only those.
+  const candidates = [];
   for (const [data, asset] of [[btcRes.data?.result, 'BTC'], [ethRes.data?.result, 'ETH']]) {
     if (!Array.isArray(data)) continue;
-    const sp = spot[asset];
-    if (!sp?.mid) continue;
-
+    if (!spot[asset]?.mid) continue;
     for (const x of data) {
       const name = x.instrument_name;
       if (name.includes('PERPETUAL')) continue;
-
       const parsed = parseDeribitSym(name);
       if (!parsed || parsed.asset !== asset) continue;
-
-      const bid      = parseFloat(x.bid_price || 0);
-      const ask      = parseFloat(x.ask_price || 0);
-      // vol24_usd and open_interest are in USD for Deribit futures
-      const vol24Usd = parseFloat(x.volume_usd || 0);
-      const oiUsd    = parseFloat(x.open_interest || 0);
-
-      const c = buildContract({
-        asset,
-        exchange:  'Deribit',
-        venueKey:  'DERIBIT',
-        contract:  name,
-        spotMid:    sp.mid,
-        spotBid:    sp.bid,
-        spotAsk:    sp.ask,
-        futureLast: parseFloat(x.mark_price || x.last || 0),
-        futureBid:  bid > 0 ? bid : null,
-        futureAsk:  ask > 0 ? ask : null,
-        expiryMs:  parsed.expiry.getTime(),
-        vol24Usd,
-        oiUsd,
-      });
-      if (c) results.push(c);
+      candidates.push({ x, name, asset, expiry: parsed.expiry });
     }
+  }
+
+  // REAL order-book depth for capacity — short-future fills into the BID side. Deribit
+  // futures quote `amount` in USD NOTIONAL already (measured: [64977.5, 5100.0] is $5,100,
+  // not 5,100 BTC), so usd = amount directly — price*size would overstate by ~65,000x.
+  // Never OI.
+  const bookRes = await Promise.allSettled(
+    candidates.map(c => get(`https://www.deribit.com/api/v2/public/get_order_book?instrument_name=${c.name}&depth=1000`))
+  );
+
+  const results = [];
+  for (let i = 0; i < candidates.length; i++) {
+    const { x, name, asset, expiry } = candidates[i];
+    const sp = spot[asset];
+
+    const bid      = parseFloat(x.bid_price || 0);
+    const ask      = parseFloat(x.ask_price || 0);
+    // vol24_usd and open_interest are in USD for Deribit futures
+    const vol24Usd = parseFloat(x.volume_usd || 0);
+    const oiUsd    = parseFloat(x.open_interest || 0);   // tier/display only — NEVER capacity
+
+    const r       = bookRes[i];
+    const rawBids = (r.status === 'fulfilled' ? r.value.data?.result?.bids : null) || [];
+    const capacityUsd = walkFutureBids(rawBids, USD_DIRECT, asset, books, `DERIBIT|${name}`, Date.now());
+
+    const c = buildContract({
+      asset,
+      exchange:  'Deribit',
+      venueKey:  'DERIBIT',
+      contract:  name,
+      spotMid:    sp.mid,
+      spotBid:    sp.bid,
+      spotAsk:    sp.ask,
+      futureLast: parseFloat(x.mark_price || x.last || 0),
+      futureBid:  bid > 0 ? bid : null,
+      futureAsk:  ask > 0 ? ask : null,
+      expiryMs:  expiry.getTime(),
+      vol24Usd,
+      oiUsd,
+      capacityUsdOverride: capacityUsd,   // REAL order-book depth (book-walk)
+    });
+    if (c) results.push(c);
   }
   return results;
 }
@@ -787,14 +960,21 @@ async function scan() {
   try { spot = await fetchSpot(); }
   catch (e) { console.error('[basis] spot fetch error:', e.message); return; }
 
-  const [coinm, usdtm, bybit, kraken, okx, deribit] = await Promise.allSettled([
-    fetchCOINM(spot),
-    fetchUSDTM(spot),
-    fetchBybit(spot),
-    fetchKraken(spot),
-    fetchOKX(spot),
-    fetchDeribit(spot),
+  // Sink for the walkable ladders each venue fetch walks for capacity. Every fetcher
+  // writes into it; nothing re-fetches. This is the SAME depth capacity is measured from,
+  // so the dry-run and the capacity number can never disagree.
+  const books = {};
+
+  const [coinm, usdtm, bybit, kraken, okx, deribit, spotBooks] = await Promise.allSettled([
+    fetchCOINM(spot, books),
+    fetchUSDTM(spot, books),
+    fetchBybit(spot, books),
+    fetchKraken(spot, books),
+    fetchOKX(spot, books),
+    fetchDeribit(spot, books),
+    fetchSpotBooks(spot, books),
   ]);
+  if (spotBooks.status === 'rejected') console.warn('[basis] spot books:', spotBooks.reason?.message);
 
   const all = [
     ...(coinm.status === 'fulfilled'   ? coinm.value   : (console.warn('[basis] COINM:', coinm.reason?.message), [])),
@@ -835,6 +1015,21 @@ async function scan() {
     },
     disclaimer: DISCLAIMER,
   });
+
+  // Sidecar: the real capped ladders walked THIS cycle, atomic (tmp→fsync→rename). Each
+  // carries `fetchedAt` — the real time of ITS fetch — so a reader can refuse a stale
+  // ladder instead of ranking on it. Never re-fetched, never restamped. Non-fatal: a
+  // failed sidecar write must not cost us the opportunities file.
+  try {
+    atomicWriteJson(BOOKS_FILE, {
+      generatedAt: new Date().toISOString(),
+      cap:         LADDER_CAP,
+      staleMs:     BOOK_STALE_MS,
+      note:        'Capped walkable ladders [price, qty] for the basis carry. qty is NORMALIZED TO BASE COIN for every venue (Deribit USD amounts and OKX/COIN-M contract sizes converted), so both legs share one unit and rankLegs can walk them against a single size. Future keys VENUE|CONTRACT carry `bids` (short-the-future side, descending); spot keys SPOT|ASSET carry `asks` (long-spot side, ascending). Same depth capacityUsd was measured from — not a second fetch.',
+      books,
+    }, { pretty: false });
+    console.log(`[basis-books] wrote ${Object.keys(books).length} ladders (cap ${LADDER_CAP}/side) → ${BOOKS_FILE}`);
+  } catch (e) { console.warn('[basis-books] sidecar write failed:', e.message); }
 
   // Parallel history sink (non-fatal): snapshot basis / cash-and-carry board as computed.
   try {
