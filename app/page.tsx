@@ -8,17 +8,15 @@ const P = {
   faint: "#B5A88F", mint: "#0FA968", amber: "#E0952E", violet: "#7B6FE8",
 };
 
-const CATS = ["Prediction market", "Funding arbitrage", "Cash & carry", "Liquidity rewards", "Top traders", "Sports"];
+const CATS = ["Prediction market", "Cash & carry", "Liquidity rewards", "Top traders", "Sports"];
 
 const EDGES = [
   { c: P.mint, k: "LOCKED", cat: "Prediction market", g: "prediction markets", n: "Fed cuts in March", v: "+2.8¢", u: "a contract" },
-  { c: P.mint, k: "LOCKED", cat: "Funding arbitrage", g: "funding arbitrage", n: "TRX funding spread", v: "+$0.99", u: "a day, per $1,000" },
   { c: P.mint, k: "LOCKED", cat: "Cash & carry", g: "cash & carry", n: "BTC carry", v: "+3.9%", u: "a year, locked at entry" },
   { c: P.violet, k: "LIKELY", cat: "Liquidity rewards", g: "liquidity rewards", n: "Polymarket maker rewards", v: "+$5.31", u: "a day, per $1,000" },
   { c: P.violet, k: "LIKELY", cat: "Top traders", g: "top traders", n: "0xc4f2 · 68% hit rate", v: "+$8.10", u: "a day, settled on-chain" },
   { c: P.amber, k: "REAL", cat: "Sports", g: "sports", n: "Lakers / Celtics", v: "+3.4%", u: "against the sharp price" },
   { c: P.mint, k: "LOCKED", cat: "Prediction market", g: "prediction markets", n: "Powell out by June", v: "+1.9¢", u: "a contract" },
-  { c: P.mint, k: "LOCKED", cat: "Funding arbitrage", g: "funding arbitrage", n: "ETH funding spread", v: "+$1.24", u: "a day, per $1,000" },
   { c: P.mint, k: "LOCKED", cat: "Cash & carry", g: "cash & carry", n: "ETH carry, Jun-26", v: "+4.4%", u: "a year, locked at entry" },
   { c: P.violet, k: "LIKELY", cat: "Liquidity rewards", g: "liquidity rewards", n: "Kalshi maker rewards", v: "+$2.40", u: "a day, per $1,000" },
   { c: P.violet, k: "LIKELY", cat: "Top traders", g: "top traders", n: "0x9ab1 · 64% hit rate", v: "+$3.55", u: "a day, settled on-chain" },
@@ -31,12 +29,6 @@ const WAYS = [
     p: "The same question is listed on two exchanges, and they disagree. A $100 YES contract costs $60 on one, and the $100 NO costs $35 on the other.",
     p2: "One of the two has to win. So the pair pays out $100 no matter how it lands — and you paid $95 for it. The $5 is yours the moment both orders fill.",
     p3: "We only count a price you could actually hit: the live bid and ask, sized to the depth that is really on the book. If the second leg cannot fill, it is not an edge, and we will not show it as one.",
-  },
-  {
-    id: "fund", t: "Funding spread", c: P.mint,
-    p: "A perpetual is a bet on a price that never expires. To keep it glued to the real price, the exchange makes one side pay the other every eight hours. That payment is called funding.",
-    p2: "Today Binance pays people who are long. OKX charges people who are short. Be long on Binance and short on OKX, same size: you own nothing, the price can do what it likes, and the two payments still land.",
-    p3: "We use funding that has actually settled over the last periods, never the predicted rate. A rate that pays today can flip tomorrow, so we show it as dollars a day and never as a yearly promise.",
   },
   {
     id: "carry", t: "Cash & carry", c: P.mint,
@@ -384,10 +376,10 @@ export default function LandingD() {
         </section>
 
         <section ref={sixRef} className="six">
-          <h2 className="d" style={{ fontSize: "clamp(22px, 5.6vw, 30px)", fontWeight: 700, textAlign: "center" }}>Six places we look.</h2>
+          <h2 className="d" style={{ fontSize: "clamp(22px, 5.6vw, 30px)", fontWeight: 700, textAlign: "center" }}>Five places we look.</h2>
           <p className="waysub" style={{ fontSize: "clamp(14px, 3.6vw, 15px)", color: P.muted, textAlign: "center", marginTop: 10,
             lineHeight: 1.55, maxWidth: 440, marginLeft: "auto", marginRight: "auto" }}>
-            Six different ways a price can be wrong. One at a time, in plain words.
+            Five different ways a price can be wrong. One at a time, in plain words.
           </p>
 
           <div className="waytabs" ref={tabsRef}>
@@ -485,25 +477,6 @@ const SCENES = {
     pay: ["One of them pays", "$100"],
     fin: ["$100 − $95", "+$5"],
     note: "That gap is the spread — your profit",
-  },
-  fund: {
-    title: "Ethereum perpetual · $10k each side",
-    chips: [
-      ["One coin, two venues", "ink"],
-      ["Long $10k on Binance", B.bin.c],
-      ["Short $10k on OKX", B.okx.c],
-      ["Long + short = you are flat", "ink"],
-      ["The funding still lands", "c"],
-    ],
-    cards: [
-      { b: B.bin, side: "LONG", price: "$10k", btn: "OPEN", done: "LIVE" },
-      { b: B.okx, side: "SHORT", price: "$10k", btn: "OPEN", done: "LIVE" },
-    ],
-    r1: ["You are flat", "$0"],
-    hideR2: true,
-    bar: ["Next funding", "every 8h"],
-    fin: ["Net funding, per day", "+$5"],
-    note: "Funding is the spread — your profit",
   },
   sport: {
     title: "Lakers / Celtics · moneyline",
