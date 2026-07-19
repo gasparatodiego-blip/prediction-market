@@ -69,10 +69,24 @@ const ARB_MAX_PLAUSIBLE_PROFIT = 0.05; // guaranteed profit (1−arbSum) > 5% on
 // trip 429 even with zero jitter (54 req/min worst case).
 const RATE_LIMIT_MS = 1100;
 
-// Fixed scan interval, sized in Phase 2 against the MEASURED per-cycle cost so that
-// projected monthly consumption stays under ~80% of the 50,000 hard cap. See
-// data/sports/credits.json for the running measurement this was derived from.
-const SCAN_INTERVAL_MIN = Number(process.env.SPORTS_SCAN_INTERVAL_MIN || 150);
+// Fixed scan interval, sized against a MEASURED full cycle — not an estimate.
+//
+// Measured 2026-07-19: one full scan of all 10 sports / 115 events cost 128 credits
+// (/usage delta 115 -> 243; local call count 129, agreeing within the 1 credit the
+// /usage read itself costs). Cost shape = 1 (/sports) + 1 (/coverage) + 1 per sport
+// event list + 1 per eligible event.
+//
+//   128 credits/cycle over a 31-day period (44,640 min):
+//     120 min -> 47,616/mo = 95.2% of cap   (no headroom — rejected)
+//     180 min -> 31,744/mo = 63.5% of cap   (chosen)
+//     240 min -> 23,808/mo = 47.6% of cap
+//
+// 180 min is chosen over the 143-min arithmetic floor for two reasons: it divides 24h
+// so it expresses cleanly in cron, and the event census is seasonal — soccer alone is
+// 56 events now and roughly triples when the European leagues return in August. The
+// adaptive per-cycle budget above absorbs that surge; this interval keeps it from
+// being needed in the first place.
+const SCAN_INTERVAL_MIN = Number(process.env.SPORTS_SCAN_INTERVAL_MIN || 180);
 
 // ── Bookmaker → jurisdiction lookup (best-effort static map from OddsAPI docs) ─
 // 'us' = US-licensed books; 'eu' = EU-licensed; 'uk' = UK-licensed (UKGC)
@@ -328,6 +342,7 @@ async function refreshCreditsFromUsage() {
       credits.remaining   = r.data.api_credits_limit - r.data.api_credits_used;
       credits.periodEnd   = r.data.period_end_utc;
       credits.lastChecked = new Date().toISOString();
+      delete credits.lastHeader;  // vestigial the-odds-api response-header field; this vendor sends none
       persistCredits();
       return credits.remaining;
     }
@@ -726,10 +741,19 @@ function computeArb(ev, sportKey) {
     region:      BOOKMAKER_REGION[l.bookmakerId] ?? 'unknown',
   }));
 
-  // crossJurisdiction: true when any leg is US-only and another is EU/UK
-  const hasUs     = legs.some(l => l.region === 'us');
-  const hasEuOrUk = legs.some(l => l.region === 'eu' || l.region === 'uk');
-  const crossJurisdiction = hasUs && hasEuOrUk;
+  // crossJurisdiction: legs sit in more than one distinct jurisdiction, so no single
+  // bettor can realistically hold all of them.
+  //
+  // The old rule was `hasUs && hasEuOrUk`, which only knew us/eu/uk. On odds-api.net the
+  // book population is largely AU/NZ (and /coverage reports pinnacle as US-only), so that
+  // rule would pass an AU+US pair as same-jurisdiction and silently drop a real
+  // accessibility warning. Generalised to "more than one distinct KNOWN region": strictly
+  // more conservative — it can only ever flag more, never invent profit. 'unknown' is
+  // excluded from the count so an unmapped book cannot manufacture a false warning.
+  const knownRegions = new Set(
+    legs.map(l => l.region).filter(r => r && r !== 'unknown')
+  );
+  const crossJurisdiction = knownRegions.size > 1;
 
   const record = {
     sport:           sportKey,
@@ -773,7 +797,15 @@ function computeArb(ev, sportKey) {
 async function scan() {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 
-  // Monthly budget floor guard — exits before ANY HTTP call (including free /sports)
+  // Real credits-before, read from /usage (costs 1 credit). This is the anchor for the
+  // whole-cycle delta that sizes SCAN_INTERVAL_MIN.
+  //
+  // This MUST precede the floor guard: credits.json may hold state from a previous vendor
+  // or a previous billing period, and gating on stale numbers would either skip a scan
+  // that has budget or run one that does not. /usage is the only source of truth.
+  await refreshCreditsFromUsage();
+
+  // Monthly budget floor guard — exits before any further billable call
   if (floorReached()) {
     console.log(
       `[sports] MONTHLY FLOOR — scan skipped` +
@@ -782,13 +814,25 @@ async function scan() {
     );
     process.exit(0);
   }
-
-  // Real credits-before, read from /usage (costs 1 credit). This is the anchor for the
-  // whole-cycle delta that sizes SCAN_INTERVAL_MIN.
-  await refreshCreditsFromUsage();
   const creditsBefore = credits.remaining;
   const usedBefore    = credits.used;
   console.log(`[sports] === snapshot scan start | credits used: ${usedBefore ?? '?'} / ${credits.limit ?? '?'} | remaining: ${creditsBefore ?? 'unknown'} | interval: ${SCAN_INTERVAL_MIN}min ===`);
+
+  // ── Adaptive per-cycle budget ───────────────────────────────────────────────
+  // A FIXED interval sized against today's event count is not safe on its own: the
+  // event census is seasonal (soccer alone triples when the European leagues return in
+  // August), so a cycle that costs ~N today can cost ~3N later and breach the hard cap
+  // mid-period. Rather than trust a static number, each cycle is allowed at most an even
+  // share of what is actually left in the billing period. Truncation is LOGGED, never
+  // silent — a partial scan must not read as full coverage.
+  let cycleBudget = Infinity;
+  if (credits.remaining != null && credits.periodEnd) {
+    const msLeft        = new Date(credits.periodEnd).getTime() - Date.now();
+    const cyclesLeft    = Math.max(1, Math.ceil(msLeft / (SCAN_INTERVAL_MIN * 60_000)));
+    cycleBudget         = Math.floor((credits.remaining - CREDIT_SAFETY_FLOOR) / cyclesLeft);
+    console.log(`[sports] budget: ${credits.remaining - CREDIT_SAFETY_FLOOR} spendable / ${cyclesLeft} cycles left in period → ${cycleBudget} credits this cycle`);
+  }
+  let budgetTruncated = 0;
 
   // Step 1: GET /sports — ALL sports, no allowlist (1 credit)
   let targetSports = [];
@@ -875,6 +919,11 @@ async function scan() {
         );
         creditFloorHit = true;
         break;
+      }
+      // Per-cycle budget guard — keeps a seasonal event surge from breaching the cap
+      if (_creditsSpentThisRun + 1 > cycleBudget) {
+        budgetTruncated++;
+        continue;   // counted and reported below, never silently dropped
       }
 
       let rows = [];
@@ -967,6 +1016,8 @@ async function scan() {
     creditsLimit:     credits.limit,
     cycleCost:        cycleCostMeasured,
     scanIntervalMin:  SCAN_INTERVAL_MIN,
+    coverageComplete: budgetTruncated === 0,
+    eventsSkippedForBudget: budgetTruncated,
     scanMode:         'snapshot',
     vendor:           'odds-api.net',
     marketTypes:      MARKET_TYPES,
@@ -996,6 +1047,12 @@ async function scan() {
   console.log(`  Calls this process made: ${_creditsSpentThisRun}  (local count)`);
   console.log(`  Credits remaining:       ${credits.remaining ?? 'unknown'} / ${credits.limit ?? '?'}`);
   console.log(`  Interval:                ${SCAN_INTERVAL_MIN} min → projected ${credits.lastCycle.projectedMonthly ?? '?'} credits/month`);
+  if (budgetTruncated > 0) {
+    console.warn(
+      `  [honest] COVERAGE INCOMPLETE: ${budgetTruncated} eligible event(s) skipped by the` +
+      ` per-cycle credit budget (${cycleBudget}) — this scan is NOT full coverage.`
+    );
+  }
   console.log(`  Cashable arb opps:       ${opportunities.length}  (passed executability classifier)`);
   console.log(`  Flagged (not cashable):  ${flaggedArbs.length}  (unverified/exchange/cross-juris legs)`);
   console.log(`  Quarantined (bad data):  ${quarantine.length}`);
