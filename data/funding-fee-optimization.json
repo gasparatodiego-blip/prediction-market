@@ -1,0 +1,809 @@
+{
+  "kind": "funding-fee-maker-venue-optimization",
+  "generatedAt": "2026-07-19T07:45:26.230Z",
+  "readOnly": true,
+  "notionalPer1k": 1000,
+  "premiseCheck": {
+    "note": "The 10.95%/yr perp default appears as 0.01%/8h, 0.00125%/1h and 0.005%/4h — all identical annualized. Verified directly from the settled series, not assumed."
+  },
+  "feeTable": {
+    "taker": {
+      "binance": 0.04,
+      "bybit": 0.04,
+      "okx": 0.04,
+      "gateio": 0.05,
+      "bitget": 0.06,
+      "hyperliquid": 0.025,
+      "dydx": 0.05,
+      "aster": 0.04,
+      "paradex": 0.02,
+      "edgex": 0.038,
+      "grvt": 0.045,
+      "lighter": 0,
+      "extended": 0.025,
+      "pacifica": 0.04,
+      "apex": 0.05
+    },
+    "maker": {
+      "hyperliquid": 0,
+      "aster": 0,
+      "paradex": 0,
+      "edgex": 0.018,
+      "grvt": -0.0001,
+      "lighter": 0,
+      "extended": 0,
+      "pacifica": 0.015,
+      "apex": 0.02,
+      "binance": null,
+      "bybit": null,
+      "okx": null,
+      "gateio": null,
+      "bitget": null,
+      "dydx": null
+    },
+    "makerGapVenues": [
+      "binance",
+      "bybit",
+      "okx",
+      "gateio",
+      "bitget",
+      "dydx"
+    ],
+    "makerGapNote": "These venues have NO documented maker rate in lib/funding-math.js. They are EXCLUDED from maker scenarios rather than assigned an invented rate."
+  },
+  "universe": {
+    "spreadInstances": 8131,
+    "instancesDroppedNoAccrual": 0,
+    "withPositiveDailyNet": 5351,
+    "withZeroOrNegativeDailyNet": 2780,
+    "zeroOrNegPct": 34.2,
+    "makerDataComplete": 2544
+  },
+  "breakevenDistribution": {
+    "taker": {
+      "n": 5365,
+      "median": 8.071,
+      "under4d": 1057,
+      "under1d": 91
+    },
+    "makerMixed": {
+      "n": 4717,
+      "median": 4.534,
+      "under4d": 2105,
+      "under1d": 533
+    },
+    "makerBoth": {
+      "n": 1708,
+      "median": 0,
+      "under4d": 1467,
+      "under1d": 985
+    }
+  },
+  "beatsSurvival": {
+    "taker": 302,
+    "makerMixed": 803,
+    "makerBoth": 968,
+    "ofTotal": 8131
+  },
+  "survival": {
+    "medianDays": 0.367,
+    "p90Days": 2.663,
+    "maxDays": 12.441,
+    "fillRisk": [
+      {
+        "windowHours": 0.25,
+        "instancesDyingWithin": 319,
+        "pct": 3.9
+      },
+      {
+        "windowHours": 1,
+        "instancesDyingWithin": 1073,
+        "pct": 13.2
+      },
+      {
+        "windowHours": 4,
+        "instancesDyingWithin": 2532,
+        "pct": 31.1
+      },
+      {
+        "windowHours": 24,
+        "instancesDyingWithin": 5987,
+        "pct": 73.6
+      }
+    ]
+  },
+  "oraclePnlPer1k": {
+    "taker": {
+      "instances": 8131,
+      "netUsdPer1k": -9574.35,
+      "winners": 302,
+      "losers": 7829
+    },
+    "makerBoth": {
+      "instances": 2544,
+      "netUsdPer1k": -70.23,
+      "winners": 1046,
+      "losers": 1325
+    }
+  },
+  "oracleSameSubset": {
+    "instances": 2544,
+    "takerNetUsdPer1k": -2473.28,
+    "makerNetUsdPer1k": -70.23,
+    "feeSavingUsd": 2403.05,
+    "takerWinners": 71,
+    "makerWinners": 1046,
+    "grossFundingOnlyUsd": 393.22,
+    "instancesWithNegativeGrossFunding": 842,
+    "pctNegativeGrossFunding": 33.1
+  },
+  "zeroMakerFeeCeiling": {
+    "instances": 1352,
+    "netUsdPer1k_atZeroFees": 192.21,
+    "winners": 859,
+    "losers": 243,
+    "medianSurvivalDays": 0.241,
+    "dyingWithin1h": 259,
+    "dyingWithin4h": 580,
+    "note": "Requires FOUR maker fills (open+close on both legs) with zero taker fallback. Instances dying within 1h/4h are the ones where that is least plausible."
+  },
+  "top20Pairs": [
+    {
+      "pair": "SUI|hyperliquid|grvt",
+      "coin": "SUI",
+      "shortVenue": "hyperliquid",
+      "longVenue": "grvt",
+      "instances": 1,
+      "medianSurvivalDays": 0.312,
+      "dailyNetUsdPer1k": 0.01444,
+      "feePctTaker": 0.14,
+      "feePctMakerBoth": -0.0002,
+      "beTakerDays": 96.97,
+      "beMakerDays": -0.14,
+      "takerBeatsSurvival": false,
+      "makerBeatsSurvival": true
+    },
+    {
+      "pair": "ETH|lighter|grvt",
+      "coin": "ETH",
+      "shortVenue": "lighter",
+      "longVenue": "grvt",
+      "instances": 3,
+      "medianSurvivalDays": 0.284,
+      "dailyNetUsdPer1k": 0.01742,
+      "feePctTaker": 0.09,
+      "feePctMakerBoth": -0.0002,
+      "beTakerDays": 51.66,
+      "beMakerDays": -0.11,
+      "takerBeatsSurvival": false,
+      "makerBeatsSurvival": true
+    },
+    {
+      "pair": "AVAX|grvt|lighter",
+      "coin": "AVAX",
+      "shortVenue": "grvt",
+      "longVenue": "lighter",
+      "instances": 10,
+      "medianSurvivalDays": 0.167,
+      "dailyNetUsdPer1k": 0.02547,
+      "feePctTaker": 0.09,
+      "feePctMakerBoth": -0.0002,
+      "beTakerDays": 35.34,
+      "beMakerDays": -0.08,
+      "takerBeatsSurvival": false,
+      "makerBeatsSurvival": true
+    },
+    {
+      "pair": "XRP|hyperliquid|grvt",
+      "coin": "XRP",
+      "shortVenue": "hyperliquid",
+      "longVenue": "grvt",
+      "instances": 3,
+      "medianSurvivalDays": 0.7,
+      "dailyNetUsdPer1k": 0.0324,
+      "feePctTaker": 0.14,
+      "feePctMakerBoth": -0.0002,
+      "beTakerDays": 43.21,
+      "beMakerDays": -0.06,
+      "takerBeatsSurvival": false,
+      "makerBeatsSurvival": true
+    },
+    {
+      "pair": "ADA|grvt|lighter",
+      "coin": "ADA",
+      "shortVenue": "grvt",
+      "longVenue": "lighter",
+      "instances": 9,
+      "medianSurvivalDays": 0.278,
+      "dailyNetUsdPer1k": 0.04348,
+      "feePctTaker": 0.09,
+      "feePctMakerBoth": -0.0002,
+      "beTakerDays": 20.7,
+      "beMakerDays": -0.05,
+      "takerBeatsSurvival": false,
+      "makerBeatsSurvival": true
+    },
+    {
+      "pair": "ATOM|hyperliquid|grvt",
+      "coin": "ATOM",
+      "shortVenue": "hyperliquid",
+      "longVenue": "grvt",
+      "instances": 3,
+      "medianSurvivalDays": 0.087,
+      "dailyNetUsdPer1k": 0.05251,
+      "feePctTaker": 0.14,
+      "feePctMakerBoth": -0.0002,
+      "beTakerDays": 26.66,
+      "beMakerDays": -0.04,
+      "takerBeatsSurvival": false,
+      "makerBeatsSurvival": true
+    },
+    {
+      "pair": "BNB|extended|grvt",
+      "coin": "BNB",
+      "shortVenue": "extended",
+      "longVenue": "grvt",
+      "instances": 3,
+      "medianSurvivalDays": 0.783,
+      "dailyNetUsdPer1k": 0.06518,
+      "feePctTaker": 0.14,
+      "feePctMakerBoth": -0.0002,
+      "beTakerDays": 21.48,
+      "beMakerDays": -0.03,
+      "takerBeatsSurvival": false,
+      "makerBeatsSurvival": true
+    },
+    {
+      "pair": "BNB|aster|grvt",
+      "coin": "BNB",
+      "shortVenue": "aster",
+      "longVenue": "grvt",
+      "instances": 2,
+      "medianSurvivalDays": 1.447,
+      "dailyNetUsdPer1k": 0.07961,
+      "feePctTaker": 0.16999999999999998,
+      "feePctMakerBoth": -0.0002,
+      "beTakerDays": 21.35,
+      "beMakerDays": -0.03,
+      "takerBeatsSurvival": false,
+      "makerBeatsSurvival": true
+    },
+    {
+      "pair": "LTC|lighter|grvt",
+      "coin": "LTC",
+      "shortVenue": "lighter",
+      "longVenue": "grvt",
+      "instances": 3,
+      "medianSurvivalDays": 0.316,
+      "dailyNetUsdPer1k": 0.06955,
+      "feePctTaker": 0.09,
+      "feePctMakerBoth": -0.0002,
+      "beTakerDays": 12.94,
+      "beMakerDays": -0.03,
+      "takerBeatsSurvival": false,
+      "makerBeatsSurvival": true
+    },
+    {
+      "pair": "LTC|aster|grvt",
+      "coin": "LTC",
+      "shortVenue": "aster",
+      "longVenue": "grvt",
+      "instances": 1,
+      "medianSurvivalDays": 0.798,
+      "dailyNetUsdPer1k": 0.06769,
+      "feePctTaker": 0.16999999999999998,
+      "feePctMakerBoth": -0.0002,
+      "beTakerDays": 25.12,
+      "beMakerDays": -0.03,
+      "takerBeatsSurvival": false,
+      "makerBeatsSurvival": true
+    },
+    {
+      "pair": "WIF|lighter|grvt",
+      "coin": "WIF",
+      "shortVenue": "lighter",
+      "longVenue": "grvt",
+      "instances": 1,
+      "medianSurvivalDays": 1.155,
+      "dailyNetUsdPer1k": 0.06145,
+      "feePctTaker": 0.09,
+      "feePctMakerBoth": -0.0002,
+      "beTakerDays": 14.65,
+      "beMakerDays": -0.03,
+      "takerBeatsSurvival": false,
+      "makerBeatsSurvival": true
+    },
+    {
+      "pair": "DOGE|grvt|extended",
+      "coin": "DOGE",
+      "shortVenue": "grvt",
+      "longVenue": "extended",
+      "instances": 3,
+      "medianSurvivalDays": 0.4,
+      "dailyNetUsdPer1k": 0.06808,
+      "feePctTaker": 0.14,
+      "feePctMakerBoth": -0.0002,
+      "beTakerDays": 20.56,
+      "beMakerDays": -0.03,
+      "takerBeatsSurvival": false,
+      "makerBeatsSurvival": true
+    },
+    {
+      "pair": "LTC|grvt|hyperliquid",
+      "coin": "LTC",
+      "shortVenue": "grvt",
+      "longVenue": "hyperliquid",
+      "instances": 1,
+      "medianSurvivalDays": 0.4,
+      "dailyNetUsdPer1k": 0.062,
+      "feePctTaker": 0.14,
+      "feePctMakerBoth": -0.0002,
+      "beTakerDays": 22.58,
+      "beMakerDays": -0.03,
+      "takerBeatsSurvival": false,
+      "makerBeatsSurvival": true
+    },
+    {
+      "pair": "LTC|grvt|extended",
+      "coin": "LTC",
+      "shortVenue": "grvt",
+      "longVenue": "extended",
+      "instances": 4,
+      "medianSurvivalDays": 0.319,
+      "dailyNetUsdPer1k": 0.05983,
+      "feePctTaker": 0.14,
+      "feePctMakerBoth": -0.0002,
+      "beTakerDays": 23.4,
+      "beMakerDays": -0.03,
+      "takerBeatsSurvival": false,
+      "makerBeatsSurvival": true
+    },
+    {
+      "pair": "XRP|lighter|grvt",
+      "coin": "XRP",
+      "shortVenue": "lighter",
+      "longVenue": "grvt",
+      "instances": 4,
+      "medianSurvivalDays": 0.653,
+      "dailyNetUsdPer1k": 0.12455,
+      "feePctTaker": 0.09,
+      "feePctMakerBoth": -0.0002,
+      "beTakerDays": 7.23,
+      "beMakerDays": -0.02,
+      "takerBeatsSurvival": false,
+      "makerBeatsSurvival": true
+    },
+    {
+      "pair": "LTC|hyperliquid|grvt",
+      "coin": "LTC",
+      "shortVenue": "hyperliquid",
+      "longVenue": "grvt",
+      "instances": 3,
+      "medianSurvivalDays": 0.316,
+      "dailyNetUsdPer1k": 0.09018,
+      "feePctTaker": 0.14,
+      "feePctMakerBoth": -0.0002,
+      "beTakerDays": 15.52,
+      "beMakerDays": -0.02,
+      "takerBeatsSurvival": false,
+      "makerBeatsSurvival": true
+    },
+    {
+      "pair": "ETH|hyperliquid|grvt",
+      "coin": "ETH",
+      "shortVenue": "hyperliquid",
+      "longVenue": "grvt",
+      "instances": 1,
+      "medianSurvivalDays": 2.334,
+      "dailyNetUsdPer1k": 0.08528,
+      "feePctTaker": 0.14,
+      "feePctMakerBoth": -0.0002,
+      "beTakerDays": 16.42,
+      "beMakerDays": -0.02,
+      "takerBeatsSurvival": false,
+      "makerBeatsSurvival": true
+    },
+    {
+      "pair": "NEAR|grvt|lighter",
+      "coin": "NEAR",
+      "shortVenue": "grvt",
+      "longVenue": "lighter",
+      "instances": 2,
+      "medianSurvivalDays": 0.576,
+      "dailyNetUsdPer1k": 0.11918,
+      "feePctTaker": 0.09,
+      "feePctMakerBoth": -0.0002,
+      "beTakerDays": 7.55,
+      "beMakerDays": -0.02,
+      "takerBeatsSurvival": false,
+      "makerBeatsSurvival": true
+    },
+    {
+      "pair": "DOGE|grvt|aster",
+      "coin": "DOGE",
+      "shortVenue": "grvt",
+      "longVenue": "aster",
+      "instances": 3,
+      "medianSurvivalDays": 2.33,
+      "dailyNetUsdPer1k": 0.12065,
+      "feePctTaker": 0.16999999999999998,
+      "feePctMakerBoth": -0.0002,
+      "beTakerDays": 14.09,
+      "beMakerDays": -0.02,
+      "takerBeatsSurvival": false,
+      "makerBeatsSurvival": true
+    },
+    {
+      "pair": "BTC|grvt|lighter",
+      "coin": "BTC",
+      "shortVenue": "grvt",
+      "longVenue": "lighter",
+      "instances": 14,
+      "medianSurvivalDays": 0.233,
+      "dailyNetUsdPer1k": 0.12066,
+      "feePctTaker": 0.09,
+      "feePctMakerBoth": -0.0002,
+      "beTakerDays": 7.46,
+      "beMakerDays": -0.02,
+      "takerBeatsSurvival": false,
+      "makerBeatsSurvival": true
+    }
+  ],
+  "feeVsFundingCorrelation": {
+    "pearson": -0.0304,
+    "n": 1510,
+    "interpretation": "positive => higher-fee venues also carry higher funding (a trade-off); ~0 => fee and funding are unrelated, so cheap+high-funding is available; negative => cheap venues also pay more (best of both)"
+  },
+  "winnersUnderMaker": [
+    {
+      "key": "ADA|lighter|aster",
+      "survivalDays": 0.1001,
+      "beMakerBoth": 0,
+      "dailyNetUsd": 0.84922,
+      "pnlMakerBoth": 0.085
+    },
+    {
+      "key": "ADA|lighter|aster",
+      "survivalDays": 0.0889,
+      "beMakerBoth": 0,
+      "dailyNetUsd": 0.36,
+      "pnlMakerBoth": 0.032
+    },
+    {
+      "key": "ADA|lighter|aster",
+      "survivalDays": 0.3662,
+      "beMakerBoth": 0,
+      "dailyNetUsd": 0.15944,
+      "pnlMakerBoth": 0.0584
+    },
+    {
+      "key": "ADA|lighter|aster",
+      "survivalDays": 0.2879,
+      "beMakerBoth": 0,
+      "dailyNetUsd": 0.12504,
+      "pnlMakerBoth": 0.036
+    },
+    {
+      "key": "ADA|lighter|aster",
+      "survivalDays": 0.9222,
+      "beMakerBoth": 0,
+      "dailyNetUsd": 0.42241,
+      "pnlMakerBoth": 0.3896
+    },
+    {
+      "key": "ADA|lighter|hyperliquid",
+      "survivalDays": 0.4556,
+      "beMakerBoth": 0,
+      "dailyNetUsd": 0.24581,
+      "pnlMakerBoth": 0.112
+    },
+    {
+      "key": "ADA|lighter|hyperliquid",
+      "survivalDays": 1.2418,
+      "beMakerBoth": 0,
+      "dailyNetUsd": 0.35371,
+      "pnlMakerBoth": 0.4392
+    },
+    {
+      "key": "ADA|lighter|hyperliquid",
+      "survivalDays": 0.8247,
+      "beMakerBoth": 0,
+      "dailyNetUsd": 0.22596,
+      "pnlMakerBoth": 0.1863
+    },
+    {
+      "key": "ADA|lighter|hyperliquid",
+      "survivalDays": 2.9442,
+      "beMakerBoth": 0,
+      "dailyNetUsd": 0.85591,
+      "pnlMakerBoth": 2.52
+    },
+    {
+      "key": "ADA|lighter|hyperliquid",
+      "survivalDays": 0.9889,
+      "beMakerBoth": 0,
+      "dailyNetUsd": 0.23101,
+      "pnlMakerBoth": 0.2284
+    },
+    {
+      "key": "ADA|lighter|hyperliquid",
+      "survivalDays": 0.8556,
+      "beMakerBoth": 0,
+      "dailyNetUsd": 0.48557,
+      "pnlMakerBoth": 0.4154
+    },
+    {
+      "key": "ADA|lighter|hyperliquid",
+      "survivalDays": 2.0729,
+      "beMakerBoth": 0,
+      "dailyNetUsd": 0.64689,
+      "pnlMakerBoth": 1.3409
+    },
+    {
+      "key": "ADA|lighter|grvt",
+      "survivalDays": 0.4556,
+      "beMakerBoth": -0.007,
+      "dailyNetUsd": 0.30067,
+      "pnlMakerBoth": 0.139
+    },
+    {
+      "key": "ADA|lighter|grvt",
+      "survivalDays": 0.3217,
+      "beMakerBoth": -0.107,
+      "dailyNetUsd": 0.01865,
+      "pnlMakerBoth": 0.008
+    },
+    {
+      "key": "ADA|lighter|grvt",
+      "survivalDays": 0.3328,
+      "beMakerBoth": -0.055,
+      "dailyNetUsd": 0.03606,
+      "pnlMakerBoth": 0.014
+    },
+    {
+      "key": "ADA|lighter|grvt",
+      "survivalDays": 2.1135,
+      "beMakerBoth": -0.003,
+      "dailyNetUsd": 0.67046,
+      "pnlMakerBoth": 1.419
+    },
+    {
+      "key": "ADA|lighter|grvt",
+      "survivalDays": 0.7667,
+      "beMakerBoth": -0.008,
+      "dailyNetUsd": 0.25565,
+      "pnlMakerBoth": 0.198
+    },
+    {
+      "key": "ADA|lighter|grvt",
+      "survivalDays": 1.0778,
+      "beMakerBoth": -0.007,
+      "dailyNetUsd": 0.27835,
+      "pnlMakerBoth": 0.302
+    },
+    {
+      "key": "ADA|lighter|extended",
+      "survivalDays": 0.4556,
+      "beMakerBoth": 0,
+      "dailyNetUsd": 0.23484,
+      "pnlMakerBoth": 0.107
+    },
+    {
+      "key": "ADA|lighter|extended",
+      "survivalDays": 0.3328,
+      "beMakerBoth": 0,
+      "dailyNetUsd": 0.02404,
+      "pnlMakerBoth": 0.008
+    },
+    {
+      "key": "ADA|lighter|extended",
+      "survivalDays": 2.4887,
+      "beMakerBoth": 0,
+      "dailyNetUsd": 1.1484,
+      "pnlMakerBoth": 2.858
+    },
+    {
+      "key": "ADA|lighter|extended",
+      "survivalDays": 0.8111,
+      "beMakerBoth": 0,
+      "dailyNetUsd": 0.49561,
+      "pnlMakerBoth": 0.402
+    },
+    {
+      "key": "ADA|lighter|extended",
+      "survivalDays": 0.3667,
+      "beMakerBoth": 0,
+      "dailyNetUsd": 0.11999,
+      "pnlMakerBoth": 0.044
+    },
+    {
+      "key": "ADA|lighter|extended",
+      "survivalDays": 1.0778,
+      "beMakerBoth": 0,
+      "dailyNetUsd": 0.3832,
+      "pnlMakerBoth": 0.413
+    },
+    {
+      "key": "OP|grvt|hyperliquid",
+      "survivalDays": 2.4565,
+      "beMakerBoth": -0.003,
+      "dailyNetUsd": 0.68907,
+      "pnlMakerBoth": 1.6947
+    },
+    {
+      "key": "OP|grvt|hyperliquid",
+      "survivalDays": 5.6989,
+      "beMakerBoth": -0.004,
+      "dailyNetUsd": 0.48356,
+      "pnlMakerBoth": 2.7577
+    },
+    {
+      "key": "OP|grvt|hyperliquid",
+      "survivalDays": 3.4412,
+      "beMakerBoth": -0.002,
+      "dailyNetUsd": 0.84194,
+      "pnlMakerBoth": 2.8993
+    },
+    {
+      "key": "OP|lighter|hyperliquid",
+      "survivalDays": 2.4565,
+      "beMakerBoth": 0,
+      "dailyNetUsd": 0.68744,
+      "pnlMakerBoth": 1.6887
+    },
+    {
+      "key": "OP|lighter|hyperliquid",
+      "survivalDays": 5.6989,
+      "beMakerBoth": 0,
+      "dailyNetUsd": 0.45355,
+      "pnlMakerBoth": 2.5847
+    },
+    {
+      "key": "OP|lighter|hyperliquid",
+      "survivalDays": 3.4412,
+      "beMakerBoth": 0,
+      "dailyNetUsd": 0.87769,
+      "pnlMakerBoth": 3.0203
+    },
+    {
+      "key": "AVAX|lighter|extended",
+      "survivalDays": 0.0444,
+      "beMakerBoth": 0,
+      "dailyNetUsd": 0.40506,
+      "pnlMakerBoth": 0.018
+    },
+    {
+      "key": "AVAX|lighter|extended",
+      "survivalDays": 0.0556,
+      "beMakerBoth": 0,
+      "dailyNetUsd": 0.39597,
+      "pnlMakerBoth": 0.022
+    },
+    {
+      "key": "AVAX|lighter|extended",
+      "survivalDays": 1.7333,
+      "beMakerBoth": 0,
+      "dailyNetUsd": 0.79268,
+      "pnlMakerBoth": 1.374
+    },
+    {
+      "key": "AVAX|lighter|extended",
+      "survivalDays": 0.5715,
+      "beMakerBoth": 0,
+      "dailyNetUsd": 0.16277,
+      "pnlMakerBoth": 0.093
+    },
+    {
+      "key": "AVAX|lighter|extended",
+      "survivalDays": 0.775,
+      "beMakerBoth": 0,
+      "dailyNetUsd": 0.46192,
+      "pnlMakerBoth": 0.358
+    },
+    {
+      "key": "AVAX|hyperliquid|extended",
+      "survivalDays": 0.0444,
+      "beMakerBoth": 0,
+      "dailyNetUsd": 0.66385,
+      "pnlMakerBoth": 0.0295
+    },
+    {
+      "key": "AVAX|hyperliquid|extended",
+      "survivalDays": 0.0556,
+      "beMakerBoth": 0,
+      "dailyNetUsd": 0.49497,
+      "pnlMakerBoth": 0.0275
+    },
+    {
+      "key": "AVAX|hyperliquid|extended",
+      "survivalDays": 1.7778,
+      "beMakerBoth": 0,
+      "dailyNetUsd": 0.78225,
+      "pnlMakerBoth": 1.3907
+    },
+    {
+      "key": "AVAX|hyperliquid|extended",
+      "survivalDays": 0.4083,
+      "beMakerBoth": 0,
+      "dailyNetUsd": 0.14319,
+      "pnlMakerBoth": 0.0585
+    },
+    {
+      "key": "AVAX|hyperliquid|extended",
+      "survivalDays": 0.775,
+      "beMakerBoth": 0,
+      "dailyNetUsd": 0.52901,
+      "pnlMakerBoth": 0.41
+    },
+    {
+      "key": "AVAX|apex|extended",
+      "survivalDays": 1.7778,
+      "beMakerBoth": 0.506,
+      "dailyNetUsd": 0.79086,
+      "pnlMakerBoth": 1.006
+    },
+    {
+      "key": "AVAX|apex|extended",
+      "survivalDays": 0.8084,
+      "beMakerBoth": 0.765,
+      "dailyNetUsd": 0.52266,
+      "pnlMakerBoth": 0.0225
+    },
+    {
+      "key": "NEAR|hyperliquid|lighter",
+      "survivalDays": 0.5001,
+      "beMakerBoth": 0,
+      "dailyNetUsd": 0.33969,
+      "pnlMakerBoth": 0.1699
+    },
+    {
+      "key": "NEAR|hyperliquid|lighter",
+      "survivalDays": 0.2773,
+      "beMakerBoth": 0,
+      "dailyNetUsd": 0.05308,
+      "pnlMakerBoth": 0.0147
+    },
+    {
+      "key": "NEAR|hyperliquid|lighter",
+      "survivalDays": 0.0778,
+      "beMakerBoth": 0,
+      "dailyNetUsd": 0.05785,
+      "pnlMakerBoth": 0.0045
+    },
+    {
+      "key": "NEAR|hyperliquid|lighter",
+      "survivalDays": 0.3222,
+      "beMakerBoth": 0,
+      "dailyNetUsd": 0.05741,
+      "pnlMakerBoth": 0.0185
+    },
+    {
+      "key": "NEAR|hyperliquid|lighter",
+      "survivalDays": 0.9889,
+      "beMakerBoth": 0,
+      "dailyNetUsd": 0.2075,
+      "pnlMakerBoth": 0.2052
+    },
+    {
+      "key": "NEAR|hyperliquid|lighter",
+      "survivalDays": 0.0778,
+      "beMakerBoth": 0,
+      "dailyNetUsd": 0.01286,
+      "pnlMakerBoth": 0.001
+    },
+    {
+      "key": "BNB|extended|grvt",
+      "survivalDays": 0.7827,
+      "beMakerBoth": -0.011,
+      "dailyNetUsd": 0.1827,
+      "pnlMakerBoth": 0.145
+    },
+    {
+      "key": "BNB|extended|grvt",
+      "survivalDays": 0.7762,
+      "beMakerBoth": -0.009,
+      "dailyNetUsd": 0.21644,
+      "pnlMakerBoth": 0.17
+    }
+  ]
+}
