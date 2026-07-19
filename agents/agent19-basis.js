@@ -151,6 +151,79 @@ async function getRetry(url, attempts = ENDPOINT_ATTEMPTS) {
   return { ok: false, attempts, error: String(lastErr?.message ?? lastErr).slice(0, 140) };
 }
 
+/**
+ * Fetch a venue's endpoint set resiliently, and record what happened.
+ *
+ * Every fetcher used a bare `Promise.all` over its endpoints, so ONE endpoint hitting
+ * the 14s wall-clock deadline rejected the whole batch, threw out of the fetcher, and
+ * the caller substituted [] — silently removing that venue's ENTIRE row set for the
+ * cycle. Measured wall-clock timeouts in the error log: COINM 54, USDTM 26, OKX 24,
+ * Deribit 19, Kraken 1. This is one bug class across every venue, not a dapi quirk.
+ *
+ * Behaviour:
+ *   - each endpoint retries independently (bounded, backed off)
+ *   - allSettled, so a slow endpoint cannot cancel a healthy sibling
+ *   - endpoints marked `required: false` may fail WITHOUT killing the venue. OKX's
+ *     open-interest calls are display/tier only and never touch capacity, so losing
+ *     them must not zero the board — the old code let exactly that happen.
+ *   - the outcome is written to VENUE_STATUS either way, so an absent venue is
+ *     attributable in the persisted data instead of only in a stderr log
+ *
+ * Never returns stale data: on permanent failure the caller emits no rows and the
+ * status says why. A carry row is a claim about EXECUTABLE prices, so replaying a
+ * previous cycle's quotes as though they were fillable is not an option.
+ *
+ * @param {string} venueKey  key recorded in venueStatus
+ * @param {Array<{label:string,url:string,required?:boolean}>} endpoints
+ * @returns {{ok:boolean, res?:Object, attempts:Object, retried?:boolean, degraded?:string[]}}
+ */
+async function fetchVenueEndpoints(venueKey, endpoints) {
+  const settled = await Promise.allSettled(endpoints.map(e => getRetry(e.url)));
+
+  const res = {}, attempts = {}, degraded = [];
+  let hardFail = null;
+
+  for (let i = 0; i < endpoints.length; i++) {
+    const e = endpoints[i];
+    const s = settled[i];
+    const r = s.status === 'fulfilled'
+      ? s.value
+      : { ok: false, attempts: 0, error: String(s.reason?.message ?? s.reason).slice(0, 140) };
+
+    attempts[e.label] = r.attempts;
+    if (r.ok) { res[e.label] = r.res; continue; }
+
+    if (e.required === false) { degraded.push(e.label); continue; }
+    if (!hardFail) hardFail = { label: e.label, error: r.error };
+  }
+
+  if (hardFail) {
+    setVenueStatus(venueKey, 'TIMEOUT', {
+      endpoint: hardFail.label,
+      attempts,
+      error: hardFail.error,
+      degraded: degraded.length ? degraded : undefined,
+      note: `${venueKey} did not answer after retries — ALL of this venue's rows are absent `
+          + 'this cycle. Absence is the endpoint failing, not the contracts disappearing. '
+          + 'No stale prices served in their place.',
+    });
+    console.warn(`[basis] ${venueKey}: ${hardFail.label} unavailable after `
+               + `${attempts[hardFail.label]} attempts — 0 rows this cycle (status persisted as TIMEOUT)`);
+    return { ok: false, attempts, degraded };
+  }
+
+  const retried = Object.values(attempts).some(a => a > 1);
+  if (retried) {
+    console.log(`[basis] ${venueKey}: recovered on retry (`
+              + Object.entries(attempts).map(([k, v]) => `${k} x${v}`).join(', ') + ')');
+  }
+  if (degraded.length) {
+    console.warn(`[basis] ${venueKey}: optional endpoint(s) unavailable: ${degraded.join(', ')} `
+               + '— rows still produced (these do not affect capacity or pricing)');
+  }
+  return { ok: true, res, attempts, retried, degraded };
+}
+
 function atomicWrite(path, obj) {
   const tmp = path + '.tmp.' + process.pid;
   fs.writeFileSync(tmp, JSON.stringify(obj, null, 2));
@@ -683,45 +756,19 @@ async function fetchCOINM(spot, books = {}) {
   // and replaying last cycle's futureBid as though it were fillable would break the
   // engine's core invariant. When dapi does not answer, the honest output is an
   // explicit TIMEOUT status the UI can surface — not stale quotes dressed as live ones.
-  const [tick, book] = await Promise.allSettled([
-    getRetry('https://dapi.binance.com/dapi/v1/ticker/24hr'),
-    getRetry('https://dapi.binance.com/dapi/v1/ticker/bookTicker'),
+  const f = await fetchVenueEndpoints('COINM', [
+    { label: 'ticker/24hr',       url: 'https://dapi.binance.com/dapi/v1/ticker/24hr' },
+    { label: 'ticker/bookTicker', url: 'https://dapi.binance.com/dapi/v1/ticker/bookTicker' },
   ]);
-  const tickR = tick.status === 'fulfilled' ? tick.value : { ok: false, attempts: 0, error: String(tick.reason?.message ?? tick.reason).slice(0, 140) };
-  const bookR = book.status === 'fulfilled' ? book.value : { ok: false, attempts: 0, error: String(book.reason?.message ?? book.reason).slice(0, 140) };
-
-  const res   = tickR.ok ? tickR.res : null;
-  const btRes = bookR.ok ? bookR.res : null;
-  const attempts = { ticker24h: tickR.attempts, bookTicker: bookR.attempts };
-
-  if (!res || res.status !== 200 || !Array.isArray(res.data)) {
-    setVenueStatus('COINM', 'TIMEOUT', {
-      endpoint: 'dapi/v1/ticker/24hr',
-      attempts,
-      error: tickR.error ?? `HTTP ${res?.status ?? '?'} / non-array body`,
-      note: 'Binance dapi did not answer after retries — ALL coin-margined rows are absent '
-          + 'this cycle. Absence is the endpoint failing, not the contracts disappearing. '
-          + 'No stale prices served in their place.',
-    });
-    console.warn(`[basis] COINM: ticker/24hr unavailable after ${tickR.attempts} attempts — `
-               + `0 coin-margined rows this cycle (status persisted as TIMEOUT)`);
+  if (!f.ok) return [];
+  const res   = f.res['ticker/24hr'];
+  const btRes = f.res['ticker/bookTicker'];
+  const attempts = f.attempts;
+  if (res.status !== 200 || !Array.isArray(res.data)) {
+    setVenueStatus('COINM', 'TIMEOUT', { endpoint: 'ticker/24hr', attempts,
+      error: `HTTP ${res.status} / non-array body`,
+      note: 'Endpoint answered but the body was unusable — no rows, and no fabricated substitute.' });
     return [];
-  }
-  if (!btRes || !Array.isArray(btRes.data)) {
-    // 24hr answered but bid/ask did not. buildContract requires real bid AND ask, so
-    // every row would be dropped anyway — say so explicitly rather than emit nothing.
-    setVenueStatus('COINM', 'TIMEOUT', {
-      endpoint: 'dapi/v1/ticker/bookTicker',
-      attempts,
-      error: bookR.error ?? 'non-array body',
-      note: 'Volume answered but executable bid/ask did not. Rows need real bid/ask, and '
-          + 'no midpoint fallback is permitted, so the set is empty this cycle.',
-    });
-    console.warn(`[basis] COINM: bookTicker unavailable after ${bookR.attempts} attempts — 0 rows`);
-    return [];
-  }
-  if (tickR.attempts > 1 || bookR.attempts > 1) {
-    console.log(`[basis] COINM: recovered on retry (ticker24h x${tickR.attempts}, bookTicker x${bookR.attempts})`);
   }
 
   // Build bid/ask map from bookTicker
@@ -804,7 +851,7 @@ async function fetchCOINM(spot, books = {}) {
   // recording this separately.
   setVenueStatus('COINM', 'OK', {
     attempts,
-    retried: attempts.ticker24h > 1 || attempts.bookTicker > 1,
+    retried: f.retried,        // from the helper — never re-derived from key names
     candidates: candidates.length,
     rows: results.length,
   });
@@ -815,11 +862,19 @@ async function fetchCOINM(spot, books = {}) {
 
 async function fetchUSDTM(spot, books = {}) {
   // Fetch 24hr ticker (volume/lastPrice) and bookTicker (bid/ask) in parallel
-  const [res, btRes] = await Promise.all([
-    get('https://fapi.binance.com/fapi/v1/ticker/24hr'),
-    get('https://fapi.binance.com/fapi/v1/ticker/bookTicker'),
+  const f = await fetchVenueEndpoints('USDTM', [
+    { label: 'ticker/24hr',       url: 'https://fapi.binance.com/fapi/v1/ticker/24hr' },
+    { label: 'ticker/bookTicker', url: 'https://fapi.binance.com/fapi/v1/ticker/bookTicker' },
   ]);
-  if (res.status !== 200 || !Array.isArray(res.data)) return [];
+  if (!f.ok) return [];
+  const res   = f.res['ticker/24hr'];
+  const btRes = f.res['ticker/bookTicker'];
+  if (res.status !== 200 || !Array.isArray(res.data)) {
+    setVenueStatus('USDTM', 'TIMEOUT', { endpoint: 'ticker/24hr', attempts: f.attempts,
+      error: `HTTP ${res.status} / non-array body`,
+      note: 'Endpoint answered but the body was unusable — no rows, and no fabricated substitute.' });
+    return [];
+  }
 
   const btMap = {};
   for (const x of (Array.isArray(btRes.data) ? btRes.data : [])) {
@@ -899,6 +954,16 @@ async function fetchUSDTM(spot, books = {}) {
     });
     if (c) results.push(c);
   }
+  // Endpoint(s) answered. `rows` is what survived the real filters (depth,
+  // profitability, expiry) — kept distinct from the venue being unreachable, which is
+  // exactly the difference this status exists to record.
+  setVenueStatus('USDTM', 'OK', {
+    attempts: f.attempts,
+    retried: f.retried,
+    degraded: f.degraded && f.degraded.length ? f.degraded : undefined,
+    candidates: candidates.length,
+    rows: results.length,
+  });
   return results;
 }
 
@@ -933,7 +998,11 @@ function walkFutureBids(rawBids, toUsd, asset, sink, key, fetchedAt) {
 }
 
 async function fetchBybit(spot, books = {}) {
-  const res  = await get('https://api.bybit.com/v5/market/tickers?category=linear');
+  const f = await fetchVenueEndpoints('BYBIT', [
+    { label: 'market/tickers', url: 'https://api.bybit.com/v5/market/tickers?category=linear' },
+  ]);
+  if (!f.ok) return [];
+  const res = f.res['market/tickers'];
   const list = res.data?.result?.list;
   if (!Array.isArray(list)) return [];
 
@@ -996,6 +1065,16 @@ async function fetchBybit(spot, books = {}) {
     });
     if (c) results.push(c);
   }
+  // Endpoint(s) answered. `rows` is what survived the real filters (depth,
+  // profitability, expiry) — kept distinct from the venue being unreachable, which is
+  // exactly the difference this status exists to record.
+  setVenueStatus('BYBIT', 'OK', {
+    attempts: f.attempts,
+    retried: f.retried,
+    degraded: f.degraded && f.degraded.length ? f.degraded : undefined,
+    candidates: candidates.length,
+    rows: results.length,
+  });
   return results;
 }
 
@@ -1015,10 +1094,13 @@ async function fetchBybit(spot, books = {}) {
 const KRAKEN_ASSET = { XBT: 'BTC', ETH: 'ETH' };
 
 async function fetchKraken(spot, books = {}) {
-  const [instRes, tickRes] = await Promise.all([
-    get('https://futures.kraken.com/derivatives/api/v3/instruments'),
-    get('https://futures.kraken.com/derivatives/api/v3/tickers'),
+  const f = await fetchVenueEndpoints('KRAKEN', [
+    { label: 'v3/instruments', url: 'https://futures.kraken.com/derivatives/api/v3/instruments' },
+    { label: 'v3/tickers',     url: 'https://futures.kraken.com/derivatives/api/v3/tickers' },
   ]);
+  if (!f.ok) return [];
+  const instRes = f.res['v3/instruments'];
+  const tickRes = f.res['v3/tickers'];
 
   // Allowlist: tradeable flexible_futures only (skips FI_ inverse, PF_/PI_ perps).
   const tradeable = new Set();
@@ -1091,6 +1173,16 @@ async function fetchKraken(spot, books = {}) {
     });
     if (c) results.push(c);
   }
+  // Endpoint(s) answered. `rows` is what survived the real filters (depth,
+  // profitability, expiry) — kept distinct from the venue being unreachable, which is
+  // exactly the difference this status exists to record.
+  setVenueStatus('KRAKEN', 'OK', {
+    attempts: f.attempts,
+    retried: f.retried,
+    degraded: f.degraded && f.degraded.length ? f.degraded : undefined,
+    candidates: candidates.length,
+    rows: results.length,
+  });
   return results;
 }
 
@@ -1101,12 +1193,23 @@ async function fetchOKX(spot, books = {}) {
   // instruments gives ctVal, the USD value of ONE contract — REQUIRED to turn book size
   // (which OKX quotes in contracts) into USD. It differs per asset (BTC-USD 100, ETH-USD
   // 10, both ctValCcy=USD), so it is read from the venue, never hardcoded.
-  const [tickRes, instRes, oiBtc, oiEth] = await Promise.all([
-    get('https://www.okx.com/api/v5/market/tickers?instType=FUTURES'),
-    get('https://www.okx.com/api/v5/public/instruments?instType=FUTURES'),
-    get('https://www.okx.com/api/v5/public/open-interest?instType=FUTURES&uly=BTC-USD'),
-    get('https://www.okx.com/api/v5/public/open-interest?instType=FUTURES&uly=ETH-USD'),
+  // Four endpoints under one bare Promise.all meant OKX had the widest exposure of any
+  // venue: any one of them timing out zeroed the whole board. The two open-interest
+  // calls are tier/display only and NEVER touch capacity, so they are marked optional —
+  // losing them degrades a label, not the ability to price a carry.
+  const f = await fetchVenueEndpoints('OKX', [
+    { label: 'market/tickers',     url: 'https://www.okx.com/api/v5/market/tickers?instType=FUTURES' },
+    { label: 'public/instruments', url: 'https://www.okx.com/api/v5/public/instruments?instType=FUTURES' },
+    { label: 'open-interest/BTC',  url: 'https://www.okx.com/api/v5/public/open-interest?instType=FUTURES&uly=BTC-USD', required: false },
+    { label: 'open-interest/ETH',  url: 'https://www.okx.com/api/v5/public/open-interest?instType=FUTURES&uly=ETH-USD', required: false },
   ]);
+  if (!f.ok) return [];
+  const [tickRes, instRes, oiBtc, oiEth] = [
+    f.res['market/tickers'],
+    f.res['public/instruments'],
+    f.res['open-interest/BTC'] ?? { data: {} },
+    f.res['open-interest/ETH'] ?? { data: {} },
+  ];
 
   // ctVal map — only USD-denominated contracts (ctValCcy 'USD') get a conversion. A
   // contract we cannot size in USD is left out of the map → capacity UNKNOWN, never guessed.
@@ -1184,6 +1287,16 @@ async function fetchOKX(spot, books = {}) {
     });
     if (c) results.push(c);
   }
+  // Endpoint(s) answered. `rows` is what survived the real filters (depth,
+  // profitability, expiry) — kept distinct from the venue being unreachable, which is
+  // exactly the difference this status exists to record.
+  setVenueStatus('OKX', 'OK', {
+    attempts: f.attempts,
+    retried: f.retried,
+    degraded: f.degraded && f.degraded.length ? f.degraded : undefined,
+    candidates: candidates.length,
+    rows: results.length,
+  });
   return results;
 }
 
@@ -1191,10 +1304,15 @@ async function fetchOKX(spot, books = {}) {
 
 async function fetchDeribit(spot, books = {}) {
   // book_summary includes mark_price, last, bid_price, ask_price — no extra call needed
-  const [btcRes, ethRes] = await Promise.all([
-    get('https://www.deribit.com/api/v2/public/get_book_summary_by_currency?currency=BTC&kind=future'),
-    get('https://www.deribit.com/api/v2/public/get_book_summary_by_currency?currency=ETH&kind=future'),
+  const f = await fetchVenueEndpoints('DERIBIT', [
+    { label: 'book_summary/BTC', url: 'https://www.deribit.com/api/v2/public/get_book_summary_by_currency?currency=BTC&kind=future' },
+    { label: 'book_summary/ETH', url: 'https://www.deribit.com/api/v2/public/get_book_summary_by_currency?currency=ETH&kind=future' },
   ]);
+  if (!f.ok) return [];
+  const [btcRes, ethRes] = [
+    f.res['book_summary/BTC'],
+    f.res['book_summary/ETH'],
+  ];
 
   // Pre-filter to contracts worth pricing, then book-walk only those.
   const candidates = [];
@@ -1251,6 +1369,16 @@ async function fetchDeribit(spot, books = {}) {
     });
     if (c) results.push(c);
   }
+  // Endpoint(s) answered. `rows` is what survived the real filters (depth,
+  // profitability, expiry) — kept distinct from the venue being unreachable, which is
+  // exactly the difference this status exists to record.
+  setVenueStatus('DERIBIT', 'OK', {
+    attempts: f.attempts,
+    retried: f.retried,
+    degraded: f.degraded && f.degraded.length ? f.degraded : undefined,
+    candidates: candidates.length,
+    rows: results.length,
+  });
   return results;
 }
 
@@ -1378,6 +1506,7 @@ if (require.main === module) {
 
 module.exports = {
   fetchDeribitSpotBooks, walkSpotCandidate, buildContract, tier,
-  fetchCOINM, getRetry,
+  fetchCOINM, fetchUSDTM, fetchBybit, fetchKraken, fetchOKX, fetchDeribit,
+  getRetry, fetchVenueEndpoints,
   getVenueStatus: () => VENUE_STATUS,
 };

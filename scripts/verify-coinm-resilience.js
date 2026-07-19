@@ -125,7 +125,7 @@ async function scenario(title, opts) {
   const s2 = await scenario('SCENARIO 2 — dapi ticker/24hr TIMES OUT (the reported bug)',
     { failing: new Set(['ticker/24hr']) });
   const oldZeroed = s2.old.rows === 0;
-  const newExplicit = s2.st?.status === 'TIMEOUT' && s2.st?.attempts?.ticker24h === 3;
+  const newExplicit = s2.st?.status === 'TIMEOUT' && s2.st?.attempts?.['ticker/24hr'] === 3;
   console.log(`  OLD silently zeroed COIN-M: ${oldZeroed ? 'YES (bug reproduced)' : 'no'}`);
   console.log(`  NEW retried then marked TIMEOUT (not silent): ${newExplicit ? 'YES' : 'NO'}`);
   console.log(`  VERDICT: ${oldZeroed && newExplicit ? 'PASS — absence is now explicit and attributable' : 'FAIL'}`);
@@ -134,7 +134,7 @@ async function scenario(title, opts) {
   const s3 = await scenario('SCENARIO 3 — ticker/24hr times out ONCE, then answers (retry recovers)',
     { flaky: { name: 'ticker/24hr', times: 1 } });
   const recovered = s3.st?.status === 'OK' && s3.rows.length > 0 && s3.st?.retried === true;
-  console.log(`  VERDICT: ${recovered ? `PASS — recovered on attempt ${s3.st.attempts.ticker24h}, ${s3.rows.length} rows, no silent drop` : 'FAIL'}`);
+  console.log(`  VERDICT: ${recovered ? `PASS — recovered on attempt ${s3.st.attempts['ticker/24hr']}, ${s3.rows.length} rows, no silent drop` : 'FAIL'}`);
 
   // 4 — bookTicker down: distinct endpoint, and no midpoint fallback is permitted
   const s4 = await scenario('SCENARIO 4 — dapi bookTicker TIMES OUT (no bid/ask)',
