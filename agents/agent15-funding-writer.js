@@ -58,22 +58,33 @@ const LADDER_CAP         = 50;
 const INTERVAL_MS        = 60_000;
 
 // ── edgeX slow lane ───────────────────────────────────────────────────────────
-// edgeX sits behind Cloudflare with a real ceiling around ~10 requests per 60s window,
-// SHARED across processes (the limiter in lib/rateLimitedFetch.js keeps per-process state,
-// so agent10's backoff is invisible here and vice-versa). The old behaviour asked for all
-// ~20 live edgeX coins inside enrichWithDepth's Promise.all every 60s, on top of agent10's
-// 22-call ticker loop: the host stayed permanently challenged (exp oscillating 1↔2), every
-// depth read failed, and the sidecar carried 0 edgeX ladders.
+// edgeX sits behind Cloudflare. The old behaviour asked for all ~20 live edgeX coins inside
+// enrichWithDepth's Promise.all every 60s, plus a 22-call history fan-out every 15 min, on
+// top of agent10's 22-call ticker loop — ~44 req/60s at one host, with per-process limiter
+// state (lib/rateLimitedFetch.js) so neither agent could see the other's backoff.
 //
-// So edgeX is walked on its OWN lane instead of the fan-out: a small rotating slice, one
-// request at a time, well under the ceiling. edgeX funding settles every 4h, and these
-// ladders feed exactly one consumer — the execution-order dry-run, which asks which leg is
-// HARDER to fill (a book-shape question, not a price question). A few-minute-old book
-// answers that honestly; past EDGEX_BOOK_MAX_AGE_MS it does not, and the leg goes UNKNOWN.
-const EDGEX_DEPTH_BATCH       = 4;            // coins per cycle → ⌈20/4⌉ = 5 cycles ≈ 5 min full rotation
+// MEASURED 2026-07-19, and this is the important part: slowing down does NOT get the book
+// back. With 20-SECOND gaps between single requests — 3 req/min, under any plausible
+// ceiling, from a cold limiter — every dynamic endpoint still returned the Cloudflare
+// challenge: getDepth at level=15 and level=50, getTicker, getLatestFundingRate,
+// getFundingRatePage. Only meta/getMetaData is served. So this is not a rate cap we can
+// duck under; edgeX is refusing our market-data reads outright.
+//
+// The slow lane is kept anyway, for two honest reasons: it stops us hammering a host that
+// is refusing us (~44 req/60s → ≤8), and it is the shape that recovers automatically if
+// edgeX starts serving again — the cache fills, the sidecar gets ladders, and the standard
+// 5-minute DEFAULT_LADDER_MAX_AGE_MS applies to them like any other venue. Until then the
+// cache stays empty, no edgeX ladder is persisted, and every edgeX leg is UNKNOWN.
+const EDGEX_DEPTH_BATCH       = 5;            // coins per cycle → ⌈20/5⌉ = 4 cycles ≈ 4 min full rotation
 const EDGEX_DEPTH_LEVEL       = 50;           // top-50/side — exactly LADDER_CAP, so nothing persisted is lost
 const EDGEX_HISTORY_BATCH     = 3;            // coins per 15-min history refresh (4h settlements — rotation loses nothing)
-const EDGEX_BOOK_MAX_AGE_MS   = 10 * 60_000;  // must exceed the ~6-min worst-case rotation; mirrors the funding-lane window
+// Eviction/persist bound. Kept at the 5-min DEFAULT_LADDER_MAX_AGE_MS the readers enforce,
+// so the sidecar never carries a ladder the ranker would reject anyway. NOTE for whoever
+// picks this up if edgeX starts serving depth again: a 4-min rotation against a 5-min window
+// leaves little headroom, and a history cycle preempting a pass pushes it to ~5 min — so the
+// oldest ladders will sit right at the boundary. Re-tune EDGEX_DEPTH_BATCH against real
+// hit-rate data at that point; it cannot be tuned honestly while every read is refused.
+const EDGEX_BOOK_MAX_AGE_MS   = 5 * 60_000;
 
 // Spread filter
 const THRESHOLD_APY      = 3.0;           // min trailing gross %/yr to emit
@@ -1995,11 +2006,6 @@ async function run() {
         generatedAt: Date.now(),
         cap:         LADDER_CAP,
         staleMs:     5 * 60_000,   // advisory: matches leg-order DEFAULT_LADDER_MAX_AGE_MS
-        // edgeX alone is walked on a rotating slow lane (Cloudflare ceiling), so its ladders
-        // refresh every ~5 min instead of every cycle. Advisory mirror of
-        // EDGEX_FUNDING_LADDER_MAX_AGE_MS in lib/funding-leg-order.ts — which applies it to
-        // the cross-venue FUNDING lane only; perp-vs-spot and USDC keep the 5-min default.
-        edgexStaleMs: EDGEX_BOOK_MAX_AGE_MS,
         note:        'Capped per-(coin,venue) perp order-book ladders [price,qty] (bids desc, asks asc), coins in qty. Real depth already fetched for slipCurve/book20bpsUsd — persisted, not re-fetched.',
         books:       fundingBooks,
       }, { pretty: false });
