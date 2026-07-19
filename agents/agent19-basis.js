@@ -10,6 +10,9 @@
 const fs    = require('fs');
 const { httpGet: _sharedGet } = require('../lib/httpGet');
 const { atomicWriteJson } = require('../lib/atomicJsonWrite');
+// Shared quote-asset classifier (CC-2c) — same allowlist the UI badges from, so the
+// selection guard and the badge can never disagree about what counts as fiat-backed.
+const { classifyQuoteAsset } = require('../lib/quote-risk');
 
 // ── CONFIG ─────────────────────────────────────────────────────────────────────
 const REFRESH_MS    = 5 * 60_000;
@@ -448,6 +451,50 @@ async function fetchSpotBooks(spot, books = {}) {
  * A failed fetch leaves the key absent → the single-venue route reports capacity
  * UNKNOWN, never a guess.
  */
+// Bounded retry for a single spot candidate. Kept small and backed off so a retry storm
+// can never push Deribit past its rate limit: at most 3 attempts per pair, and pairs per
+// coin are few (BTC has 3).
+const CANDIDATE_ATTEMPTS   = 3;
+const CANDIDATE_BACKOFF_MS = 400;
+
+/**
+ * Walk one Deribit spot pair, retrying a FAILED FETCH a bounded number of times.
+ *
+ * Returns a tagged outcome rather than throwing, so the caller can tell the three cases
+ * apart — this distinction is the whole fix:
+ *   OK            — real depth measured
+ *   EMPTY_BOOK    — real answer: the book has no usable levels
+ *   NO_DEPTH      — real answer: nothing inside the slippage band
+ *   FETCH_FAILED  — we do NOT know this pair's depth (timeout/network), after retries
+ *
+ * Only FETCH_FAILED is "unknown". Losing to a pair that returned EMPTY_BOOK/NO_DEPTH is
+ * a genuine depth comparison; losing to one that never answered is fetch luck.
+ */
+async function walkSpotCandidate(name, asset) {
+  const quote = name.split('_')[1] ?? null;
+  let lastErr = null;
+
+  for (let attempt = 1; attempt <= CANDIDATE_ATTEMPTS; attempt++) {
+    try {
+      const r = await get(`https://www.deribit.com/api/v2/public/get_order_book?instrument_name=${name}&depth=1000`);
+      // Buy-spot leg → ASK ladder, ascending (cheapest first). Deribit spot sizes are
+      // already in base coin, same as Binance.
+      const ladder = normalizeLadder(r?.data?.result?.asks, USD_BY_PRICE_SIZE, { desc: false });
+      if (ladder.length === 0) return { instrument: name, quote, status: 'EMPTY_BOOK', attempts: attempt };
+      const depthUsd = ladderDepthUsd(ladder, SLIP_TOL, asset);
+      if (!(depthUsd > 0))     return { instrument: name, quote, status: 'NO_DEPTH',   attempts: attempt };
+      return { instrument: name, quote, status: 'OK', ladder, depthUsd, attempts: attempt };
+    } catch (e) {
+      lastErr = e;
+      if (attempt < CANDIDATE_ATTEMPTS) await sleep(CANDIDATE_BACKOFF_MS * attempt);
+    }
+  }
+  return {
+    instrument: name, quote, status: 'FETCH_FAILED',
+    attempts: CANDIDATE_ATTEMPTS, error: String(lastErr?.message ?? lastErr).slice(0, 120),
+  };
+}
+
 async function fetchDeribitSpotBooks(spot, books = {}) {
   const assets = Object.keys(spot).filter(a => spot[a]?.mid > 0);
   const now = Date.now();
@@ -460,25 +507,52 @@ async function fetchDeribitSpotBooks(spot, books = {}) {
       .map(i => i.instrument_name);
     if (names.length === 0) return;
 
-    const walked = await Promise.allSettled(
-      names.map(n => get(`https://www.deribit.com/api/v2/public/get_order_book?instrument_name=${n}&depth=1000`))
-    );
+    const results = await Promise.all(names.map(n => walkSpotCandidate(n, asset)));
+    const measured = results.filter(r => r.status === 'OK');
+    // Only a FAILED FETCH means "we do not know". EMPTY_BOOK / NO_DEPTH are real
+    // measurements saying the pair is genuinely unusable — being beaten by those is
+    // correct, and must not trigger the guard below.
+    const unknown  = results.filter(r => r.status === 'FETCH_FAILED');
 
-    let best = null;
-    for (let i = 0; i < names.length; i++) {
-      const r = walked[i];
-      if (r.status !== 'fulfilled') continue;
-      // Buy-spot leg → ASK ladder, ascending (cheapest first). Deribit spot sizes are
-      // already in base coin, same as Binance.
-      const ladder = normalizeLadder(r.value?.data?.result?.asks, USD_BY_PRICE_SIZE, { desc: false });
-      if (ladder.length === 0) continue;
-      const depthUsd = ladderDepthUsd(ladder, SLIP_TOL, asset);
-      if (!(depthUsd > 0)) continue;
-      if (!best || depthUsd > best.depthUsd) {
-        best = { instrument: names[i], quote: names[i].split('_')[1] ?? null, ladder, depthUsd };
+    const audit = results.map(r => ({
+      instrument: r.instrument, quote: r.quote, status: r.status,
+      depthUsd: r.depthUsd ?? null, attempts: r.attempts,
+    }));
+
+    if (measured.length === 0) {
+      console.warn(`[deribit-spot] ${asset}: no candidate measurable (${results.map(r => r.instrument + '=' + r.status).join(', ')}) — key omitted, capacity UNKNOWN`);
+      return;
+    }
+
+    const best = measured.reduce((a, b) => (b.depthUsd > a.depthUsd ? b : a));
+
+    // ── Risk-downgrade guard ────────────────────────────────────────────────
+    // The winner is only the deepest pair we could READ. If a candidate's fetch
+    // failed, its true depth is unknown — it may well have been deeper. Letting that
+    // silently promote a pair with a worse quote-risk tier is how a 14s network
+    // timeout flips the recommended route from a fiat-backed dollar to a synthetic
+    // one. When the survivor is NOT fiat-backed and some unmeasured candidate IS,
+    // we refuse to publish rather than recommend the riskier quote on incomplete
+    // data. Fail-closed: the key is omitted, the single-venue route reports capacity
+    // UNKNOWN and simply does not rank this cycle. Nothing is fabricated, and no
+    // depth is ever invented for the pair we could not read.
+    const bestTier = classifyQuoteAsset(best.quote).quoteRiskTier;
+    if (bestTier !== 'fiat_backed') {
+      const unknownFiat = unknown.filter(r => classifyQuoteAsset(r.quote).quoteRiskTier === 'fiat_backed');
+      if (unknownFiat.length > 0) {
+        console.warn(
+          `[deribit-spot] ${asset}: REFUSING ${best.instrument} (${bestTier}) — `
+          + `fiat-backed candidate(s) ${unknownFiat.map(r => r.instrument).join(', ')} unmeasured after `
+          + `${CANDIDATE_ATTEMPTS} attempts. Not promoting a synthetic quote on incomplete data; capacity UNKNOWN this cycle.`
+        );
+        return;
       }
     }
-    if (!best) return;
+
+    if (unknown.length > 0) {
+      console.warn(`[deribit-spot] ${asset}: selected ${best.instrument} with ${unknown.length} candidate(s) unmeasured `
+                 + `(${unknown.map(r => r.instrument).join(', ')}) — winner is ${bestTier}, so no risk downgrade.`);
+    }
 
     books[`DERIBIT_SPOT|${asset}`] = {
       fetchedAt:  now,
@@ -488,8 +562,14 @@ async function fetchDeribitSpotBooks(spot, books = {}) {
       instrument: best.instrument,
       quote:      best.quote,
       depthUsd:   best.depthUsd,
+      // Selection audit — which pairs were considered and what happened to each. A
+      // skipped candidate is never silent again.
+      candidates:         audit,
+      selectionComplete:  unknown.length === 0,
       note:       'Deribit-native spot ask ladder for the single-venue carry. Deepest of the venue\'s spot '
-                + 'pairs for this coin within the slippage band; quoted in the recorded stablecoin, not USD.',
+                + 'pairs for this coin within the slippage band; quoted in the recorded stablecoin, not USD. '
+                + '`candidates` records every pair considered and its outcome; selectionComplete=false means '
+                + 'at least one candidate could not be read this cycle.',
     };
   }));
 
@@ -1126,4 +1206,11 @@ async function main() {
   setInterval(scan, REFRESH_MS);
 }
 
-main().catch(e => { console.error('[agent19] fatal:', e); process.exit(1); });
+// Only self-start when run as the process entry (pm2 does exactly that). Guarding this
+// lets the spot-pair selection be exercised directly by a test harness instead of
+// against a re-implementation of it, which is how the silent-skip bug survived review.
+if (require.main === module) {
+  main().catch(e => { console.error('[agent19] fatal:', e); process.exit(1); });
+}
+
+module.exports = { fetchDeribitSpotBooks, walkSpotCandidate };
