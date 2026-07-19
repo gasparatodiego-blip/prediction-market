@@ -17,6 +17,10 @@ const { classifyQuoteAsset } = require('../lib/quote-risk');
 // carry does not. Populated once per cycle; empty means UNKNOWN, never zero.
 const { BAPI_URL, SOURCE: BORROW_SOURCE, parseBorrowRates, priceReverseCarry } = require('../lib/borrow-cost');
 let BORROW_RATES = {};
+// Roll signal (next-expiry projection) + the shared APY_CAP parser, so the cap has one
+// source of truth across the agent and the carry engine.
+const { attachRollSignals } = require('../lib/roll-signal');
+const { loadApyCap } = require('../lib/carry-optimize');
 
 // ── CONFIG ─────────────────────────────────────────────────────────────────────
 const REFRESH_MS    = 5 * 60_000;
@@ -1470,6 +1474,13 @@ async function scan() {
   const opportunities = all
     .filter(c => c && c.type === 'contango')
     .sort((a, b) => b.netAnnualized - a.netAnnualized);
+
+  // ROLL signal: what rolling into the NEXT expiry on the same venue+asset would add
+  // over holding this one once. Uses the real basis of both legs — a row with no
+  // further expiry gets available:false and the UI shows "—", never an extrapolation.
+  // APY_CAP comes from lib/honest-display.ts via the existing shared parser — never
+  // re-declared here (0bce799 removed a local duplicate; this must not add another).
+  attachRollSignals(opportunities, loadApyCap().APY_CAP);
 
   const backwardation = all
     .filter(c => c && c.type === 'backwardation')
