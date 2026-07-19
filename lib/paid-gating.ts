@@ -209,6 +209,23 @@ export const REDACTION_MAP: Record<RouteKey, string[]> = {
     'opportunities[].verdict',
     'opportunities[].bidSpreadPct',
     'opportunities[].oiUsd',
+    // Carry-optimization overlay (CC-2/2b/2c). The same derived edge as above, reached
+    // by a different path — gate it identically, or the venue comparison becomes a
+    // paywall bypass for the very numbers the row itself locks.
+    // Deliberately NOT gated: quoteAsset / quoteRiskTier / quoteRiskFlagged /
+    // quoteRiskLabel / quoteRiskReason / spotInstrument / capacitySource / feeVerified.
+    // Those are RISK DISCLOSURES and venue facts, not edge — a free user must still see
+    // that the recommended route buys a synthetic dollar.
+    'opportunities[].carryOpt.riskFreeDeltaPct',
+    'opportunities[].carryOpt.optCapacityUsd',
+    'opportunities[].carryOpt.feePct',
+    'opportunities[].carryOpt.feeOfficialFraction',
+    'opportunities[].carryOpt.feeLegs',
+    'opportunities[].venueCompare.options[].executableBasisPct',
+    'opportunities[].venueCompare.options[].netAnnualizedPct',
+    'opportunities[].venueCompare.options[].riskFreeDeltaPct',
+    'opportunities[].venueCompare.options[].capacityUsd',
+    'opportunities[].venueCompare.options[].feePct',
     // backwardation[] items have a different (simpler) shape than
     // opportunities[] — confirmed against live /tmp/basis-opportunities.json:
     // { indicativeBasisPct, executableBasisPct, basis, annualized, ... }.

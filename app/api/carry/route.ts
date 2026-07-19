@@ -76,10 +76,97 @@ export async function GET() {
     legOrder: dryRunBasisLegOrder(o.asset, o.venueKey, o.contract, now),
   }));
 
+  // ── Carry OPTIMIZATION overlay (CC-2/2b/2c), computed live from the same /tmp feeds
+  // this route already serves plus data/venue-fees-official.json — not a stale artifact.
+  // Attaches per row: structured quote-asset risk tier, the signed risk-free delta,
+  // min(legs) capacity, fee provenance, and the ranked venue comparison for that
+  // coin+expiry group. Labelling and comparison only — it never rewrites the row's own
+  // basis/net/capacity, which stay exactly as agent19 measured them.
+  // Fails soft: if the engine cannot build, rows render without the overlay rather than
+  // taking the tab down, and nothing is fabricated in its place.
+  const optimized: Record<string, any> = {};
+  const groups: Record<string, any> = {};
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { buildOptimized } = require('@/lib/carry-optimize');
+    const doc = buildOptimized();
+    for (const g of doc.opportunities ?? []) {
+      // The best-ranked route is what the card recommends, and it is not always the
+      // row's own venue — for ETH it is the Deribit single-venue route, which buys spot
+      // against USDe. That quote risk therefore belongs on the card face, not buried in
+      // a collapsed drawer the user may never open.
+      const bestOpt = (g.options ?? [])[0] ?? null;
+      groups[g.key] = {
+        key:        g.key,
+        bestVenue:  g.best?.venue ?? null,
+        bestWhy:    g.best?.why ?? null,
+        venueCount: g.venueCount ?? 0,
+        bestRouteType:       bestOpt?.routeType ?? null,
+        bestSpotInstrument:  bestOpt?.spotInstrument ?? null,
+        bestQuoteAsset:      bestOpt?.quoteAsset ?? null,
+        bestQuoteRiskTier:   bestOpt?.quoteRiskTier ?? null,
+        bestQuoteRiskFlagged: bestOpt?.quoteRiskFlagged ?? null,
+        bestQuoteRiskLabel:  bestOpt?.quoteRiskLabel ?? null,
+        bestQuoteRiskReason: bestOpt?.quoteRiskReason ?? null,
+        options: (g.options ?? []).map((o: any) => ({
+          venue:               o.venue,
+          contract:            o.contract,
+          routeType:           o.routeType,
+          executableBasisPct:  o.executableBasisPct,
+          netAnnualizedPct:    o.netAnnualizedPct,
+          netAnnualizedCapped: o.netAnnualizedCapped,
+          riskFreeDeltaPct:    o.riskFreeDeltaPct,
+          beatsRiskFree:       o.beatsRiskFree,
+          capacityUsd:         o.capacityUsd,
+          capacitySource:      o.capacitySource,
+          capacityBoundBy:     o.capacityBoundBy ?? null,
+          feePct:              o.feePct,
+          feeVerified:         o.feeVerified,
+          quoteAsset:          o.quoteAsset ?? null,
+          quoteRiskTier:       o.quoteRiskTier ?? null,
+          quoteRiskFlagged:    o.quoteRiskFlagged ?? null,
+          quoteRiskLabel:      o.quoteRiskLabel ?? null,
+          spotInstrument:      o.spotInstrument ?? null,
+        })),
+      };
+      for (const o of g.options ?? []) {
+        // Key the per-row overlay to agent19's own two-venue rows; single-venue routes
+        // have no agent19 counterpart and surface only inside the venue comparison.
+        if (o.routeType !== 'TWO_VENUE') continue;
+        optimized[`${o.venueKey}|${o.contract}`] = {
+          groupKey:            g.key,
+          quoteAsset:          o.quoteAsset ?? null,
+          quoteRiskTier:       o.quoteRiskTier ?? null,
+          quoteRiskFlagged:    o.quoteRiskFlagged ?? null,
+          quoteRiskLabel:      o.quoteRiskLabel ?? null,
+          quoteRiskReason:     o.quoteRiskReason ?? null,
+          spotInstrument:      o.spotInstrument ?? null,
+          riskFreePct:         o.riskFreePct ?? null,
+          riskFreeDeltaPct:    o.riskFreeDeltaPct ?? null,
+          beatsRiskFree:       o.beatsRiskFree ?? null,
+          optCapacityUsd:      o.capacityUsd ?? null,
+          optCapacitySource:   o.capacitySource ?? null,
+          feePct:              o.feePct ?? null,
+          feeVerified:         o.feeVerified ?? null,
+          feeOfficialFraction: o.feeOfficialFraction ?? null,
+          feeLegs:             o.feeLegs ?? null,
+          isBestVenue:         g.best?.venue === o.venue,
+        };
+      }
+    }
+  } catch (e: any) {
+    console.warn('[carry] optimization overlay unavailable:', e?.message);
+  }
+
+  const withOptimized = withDryRun.map((o: any) => {
+    const opt = optimized[`${o.venueKey}|${o.contract}`] ?? null;
+    return { ...o, carryOpt: opt, venueCompare: opt ? groups[opt.groupKey] ?? null : null };
+  });
+
   const body = redactForTier({
     agentStatus,
     updatedAt:     data.updatedAt,
-    opportunities: withDryRun,
+    opportunities: withOptimized,
     backwardation,
     summary:       data.summary        ?? {},
     spot:          data.spot           ?? {},

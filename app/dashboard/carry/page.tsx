@@ -172,10 +172,51 @@ function DetailCell({ label, children }: { label: string; children: ReactNode })
   );
 }
 
+// ── Quote-asset risk badge ────────────────────────────────────────────────────
+// Reuses the row's existing inline-pill shape and the shared tint tokens; no new
+// styles. fiat_backed reads clean, synthetic/unknown carry a visible warning tint.
+// Renders nothing when the engine attached no classification — never a guessed tier.
+const QUOTE_TIER_CLS: Record<string, string> = {
+  fiat_backed: 'border-line text-muted bg-surface',
+  synthetic:   'border-gold/40 text-gold bg-gold-tint',
+  unknown:     'border-gold/40 text-gold bg-gold-tint',
+};
+function QuoteRiskBadge({ opt, compact = false }: { opt: Contract['carryOpt']; compact?: boolean }) {
+  if (!opt?.quoteRiskTier || !opt.quoteAsset) return null;
+  const cls = QUOTE_TIER_CLS[opt.quoteRiskTier] ?? QUOTE_TIER_CLS.unknown;
+  return (
+    <span
+      title={opt.quoteRiskReason ?? `${opt.quoteAsset}: fiat-backed quote asset`}
+      className={`font-body text-[9px] uppercase tracking-wide px-1 rounded border ${cls}`}
+    >
+      {opt.quoteAsset}{compact ? '' : ` · ${opt.quoteRiskFlagged ? opt.quoteRiskLabel ?? 'flagged' : 'fiat-backed'}`}
+      {opt.quoteRiskFlagged ? ' ⚠' : ' ✓'}
+    </span>
+  );
+}
+
+// Signed delta vs the risk-free rate. Negative is the common case here and is shown
+// in full, coloured red — never hidden, never clamped to zero.
+function RiskFreeDelta({ opt }: { opt: Contract['carryOpt'] }) {
+  if (opt?.riskFreeDeltaPct == null) return <span className="text-muted">—</span>;
+  const d = opt.riskFreeDeltaPct;
+  return (
+    <span className={d > 0 ? 'text-mint-deep' : d < 0 ? 'text-coral-ink' : 'text-ink-2'}>
+      {d >= 0 ? '+' : '−'}{Math.abs(d).toFixed(2)}%
+      <span className="text-muted"> vs {opt.riskFreePct ?? 4}% rf</span>
+    </span>
+  );
+}
+
 function ContractRow({ c, isPaid, open, onToggle }: { c: Contract; isPaid: boolean; open: boolean; onToggle: () => void }) {
   const dash = <span className="text-muted">—</span>;
   const chip = chipVariant(c);
   const capped = (c.netAnnualizedExecutable != null && capApy(c.netAnnualizedExecutable).capped);
+  // Nested drawer inside the already-expanded detail panel — same toggle pattern as
+  // the row itself, so no new interaction model.
+  const [cmpOpen, setCmpOpen] = useState(false);
+  const opt = c.carryOpt ?? null;
+  const cmp = c.venueCompare ?? null;
   return (
     <div className="border-b border-line">
       <button onClick={onToggle} className="w-full grid grid-cols-[auto_1fr_auto_auto] items-center gap-3 px-3 py-2.5 text-left hover:bg-bg-soft/60 transition-colors">
@@ -190,6 +231,21 @@ function ContractRow({ c, isPaid, open, onToggle }: { c: Contract; isPaid: boole
               <InfoDot term={c.coinMargined ? 'coin_margined' : 'usdt_margined'} size={11} />
             </span>
             <EdgeChip variant={chip} />
+            <QuoteRiskBadge opt={opt} compact />
+            {opt?.isBestVenue && (
+              <span className="font-body text-[9px] uppercase tracking-wide px-1 rounded border border-mint-deep/40 text-mint-deep bg-mint-tint">best venue</span>
+            )}
+            {/* The best-ranked route can be a DIFFERENT venue than this row, with a
+                different quote asset. If that recommended route carries quote risk, it
+                shows here — never only behind the drawer. */}
+            {cmp?.bestQuoteRiskFlagged && !opt?.quoteRiskFlagged && (
+              <span
+                title={cmp.bestQuoteRiskReason ?? undefined}
+                className="font-body text-[9px] uppercase tracking-wide px-1 rounded border border-gold/40 text-gold bg-gold-tint"
+              >
+                best: {cmp.bestQuoteAsset} ⚠
+              </span>
+            )}
           </span>
           <span className="font-body text-[10px] text-muted truncate block">{c.exchange} · {expiryLabel(c.expiry)} · {c.daysToExpiry}d</span>
         </span>
@@ -221,7 +277,130 @@ function ContractRow({ c, isPaid, open, onToggle }: { c: Contract; isPaid: boole
             </DetailCell>
             <DetailCell label="Structure">Contango</DetailCell>
             <DetailCell label="Settlement">deterministic @ expiry</DetailCell>
+            {/* Engine overlay cells — each renders "—" when the engine attached nothing. */}
+            <DetailCell label="vs risk-free"><RiskFreeDelta opt={opt} /></DetailCell>
+            <DetailCell label="Capacity · min(legs)">
+              {/* capacitySource is NOT gated, so it distinguishes a paywall lock from a
+                  genuinely unmeasurable book. Calling a redacted value "no walkable
+                  ladder" would misattribute the lock as missing data. */}
+              {opt?.optCapacityUsd != null ? (
+                <><Redacted value={opt.optCapacityUsd} isPaid={isPaid}>{v => fmtK(v as number)}</Redacted><span className="text-muted"> · book depth</span></>
+              ) : opt?.optCapacitySource === 'book' ? (
+                <Redacted value={null} isPaid={isPaid}>{() => <>{dash}</>}</Redacted>
+              ) : (
+                <>{dash}<span className="text-muted"> · {opt?.optCapacitySource === 'STALE' ? 'ladder stale' : 'no walkable ladder'}</span></>
+              )}
+            </DetailCell>
+            <DetailCell label="Fee · base tier">
+              {opt?.feePct != null
+                ? (<>{(opt.feePct * 100).toFixed(3)}%<span className="text-muted"> · {opt.feeVerified ? 'official' : 'partly unverified'}</span></>)
+                : dash}
+            </DetailCell>
+            <DetailCell label="Quote asset">
+              {opt?.quoteAsset
+                ? (<span className="inline-flex items-center gap-1">{opt.spotInstrument ?? opt.quoteAsset}<QuoteRiskBadge opt={opt} compact /></span>)
+                : dash}
+            </DetailCell>
           </div>
+
+          {/* Synthetic / unrecognized quote assets state WHY, in full. USDe is kept and
+              ranked on its real depth — labelled, never hidden or down-ranked. */}
+          {(() => {
+            // Prefer this row's own flagged quote; otherwise surface the recommended
+            // route's, naming which venue it applies to so the two are never conflated.
+            const own = opt?.quoteRiskFlagged && opt.quoteRiskReason
+              ? { label: opt.quoteRiskLabel, reason: opt.quoteRiskReason, who: `${c.exchange} route`, asset: opt.quoteAsset, inst: opt.spotInstrument }
+              : null;
+            const best = !own && cmp?.bestQuoteRiskFlagged && cmp.bestQuoteRiskReason
+              ? { label: cmp.bestQuoteRiskLabel, reason: cmp.bestQuoteRiskReason, who: `best-ranked route · ${cmp.bestVenue}`, asset: cmp.bestQuoteAsset, inst: cmp.bestSpotInstrument }
+              : null;
+            const r = own ?? best;
+            if (!r) return null;
+            return (
+              <div className="rounded-lg bg-gold-tint border border-gold/30 px-3 py-2 mt-1.5">
+                <p className="font-body text-[9px] uppercase tracking-wide text-gold mb-0.5">
+                  Quote-asset risk · {r.label ?? 'flagged'} · {r.who}
+                </p>
+                <p className="font-body text-[11px] text-ink-2 leading-snug">
+                  {r.inst && <>Spot leg buys <b>{r.inst}</b>. </>}{r.reason}
+                </p>
+              </div>
+            );
+          })()}
+
+          {/* Ranked venue comparison — same expand affordance as the row above it. */}
+          {cmp && cmp.options.length > 0 && (
+            <div className="mt-1.5 rounded-lg bg-surface border border-line overflow-hidden">
+              <button
+                onClick={(e) => { e.stopPropagation(); setCmpOpen(v => !v); }}
+                className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left hover:bg-bg-soft/60 transition-colors"
+              >
+                <span className="min-w-0">
+                  <span className="font-body text-[9px] uppercase tracking-wide text-muted block">Compare {cmp.venueCount} venue{cmp.venueCount === 1 ? '' : 's'}</span>
+                  <span className="font-body text-[11px] text-ink-2 truncate block">
+                    Best: <b>{cmp.bestVenue ?? '—'}</b>
+                  </span>
+                </span>
+                <ChevronRight className={`w-3.5 h-3.5 text-muted shrink-0 transition-transform ${cmpOpen ? 'rotate-90' : ''}`} />
+              </button>
+              {cmpOpen && (
+                <div className="px-2 pb-2">
+                  {/* Wide table scrolls inside its own container so the page never does. */}
+                  <div className="overflow-x-auto -mx-2 px-2">
+                    <table className="w-full min-w-[460px] border-collapse">
+                      <thead>
+                        <tr className="text-left">
+                          {['Venue', 'Basis', 'Net %/yr', 'vs rf', 'Capacity', 'Fee'].map(h => (
+                            <th key={h} className="font-body text-[8.5px] uppercase tracking-wide text-muted font-medium py-1 pr-2 whitespace-nowrap">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {cmp.options.map((o, i) => (
+                          <tr key={`${o.venue}:${o.contract}`} className="border-t border-line align-top">
+                            <td className="py-1.5 pr-2">
+                              <span className="font-body text-[11px] text-ink flex items-center gap-1 flex-wrap">
+                                {i === 0 && <span className="text-mint-deep">★</span>}
+                                {o.venue}
+                                {o.quoteRiskFlagged && (
+                                  <span title={o.quoteRiskLabel ?? 'flagged quote asset'} className="font-body text-[8.5px] uppercase px-1 rounded border border-gold/40 text-gold bg-gold-tint whitespace-nowrap">
+                                    {o.quoteAsset} ⚠
+                                  </span>
+                                )}
+                              </span>
+                              <span className="font-body text-[9px] text-muted block">{o.routeType === 'SINGLE_VENUE' ? 'single-venue' : 'two-venue'}</span>
+                            </td>
+                            <td className="py-1.5 pr-2 font-body text-[11px] text-ink-2 tabular-nums whitespace-nowrap">
+                              {o.executableBasisPct != null ? fmtBasis(o.executableBasisPct) : dash}
+                            </td>
+                            <td className={`py-1.5 pr-2 font-body text-[11px] tabular-nums whitespace-nowrap ${netColor(o.netAnnualizedPct)}`}>
+                              <Redacted value={o.netAnnualizedPct} isPaid={isPaid}>{v => `${(v as number).toFixed(2)}%`}</Redacted>
+                            </td>
+                            <td className={`py-1.5 pr-2 font-body text-[11px] tabular-nums whitespace-nowrap ${o.riskFreeDeltaPct == null ? 'text-muted' : o.riskFreeDeltaPct > 0 ? 'text-mint-deep' : 'text-coral-ink'}`}>
+                              {o.riskFreeDeltaPct == null ? '—' : `${o.riskFreeDeltaPct >= 0 ? '+' : '−'}${Math.abs(o.riskFreeDeltaPct).toFixed(2)}%`}
+                            </td>
+                            <td className="py-1.5 pr-2 font-body text-[11px] text-ink-2 tabular-nums whitespace-nowrap">
+                              {o.capacityUsd != null
+                                ? <Redacted value={o.capacityUsd} isPaid={isPaid}>{v => fmtK(v as number)}</Redacted>
+                                : dash}
+                            </td>
+                            <td className="py-1.5 pr-2 font-body text-[11px] text-ink-2 tabular-nums whitespace-nowrap">
+                              {o.feePct != null ? `${(o.feePct * 100).toFixed(3)}%` : dash}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="font-body text-[9.5px] text-muted leading-snug mt-1.5">
+                    Base-tier fees — your rate may be lower. Only Deribit publishes fees on a public
+                    endpoint; other venues are auth-gated, so cross-venue fee ranking is directional.
+                    Capacity is walked order-book depth, min of both legs — never open interest.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* how to execute — reuses real fields; gated numbers stay locked */}
           <div className="rounded-lg bg-surface border border-line px-3 py-2 mt-1.5">

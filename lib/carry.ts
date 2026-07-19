@@ -51,6 +51,71 @@ export interface Contract {
   // the two legs (buy spot / sell future) is hardest on real persisted depth, so it would
   // be placed first. Read-only evidence; absent when the server did not attach one.
   legOrder?:               BasisLegOrderDryRun | null;
+  // Carry-optimization overlay (CC-2/2b/2c), attached on the serve path by /api/carry
+  // from lib/carry-optimize. Labelling + comparison only: it never rewrites this row's
+  // own basis/net/capacity. Absent when the engine could not build.
+  carryOpt?:               CarryOptOverlay | null;
+  venueCompare?:           VenueCompare | null;
+}
+
+/** Structured quote-asset risk + risk-free/fee context for one served row. */
+export interface CarryOptOverlay {
+  groupKey:            string;
+  quoteAsset:          string | null;
+  quoteRiskTier:       'fiat_backed' | 'synthetic' | 'unknown' | null;
+  quoteRiskFlagged:    boolean | null;
+  quoteRiskLabel:      string | null;
+  quoteRiskReason:     string | null;
+  spotInstrument:      string | null;
+  riskFreePct:         number | null;
+  /** netAnnualized − risk-free, in %/yr. Negative is real and is shown, not hidden. */
+  riskFreeDeltaPct:    number | null;
+  beatsRiskFree:       boolean | null;
+  /** min(future leg, spot leg) from walked book depth; null when unmeasurable. */
+  optCapacityUsd:      number | null;
+  optCapacitySource:   string | null;
+  feePct:              number | null;
+  /** true only when EVERY fee leg came from an official public endpoint. */
+  feeVerified:         boolean | null;
+  feeOfficialFraction: number | null;
+  feeLegs:             { label: string; venue: string; pct: number; provenance: string }[] | null;
+  isBestVenue:         boolean | null;
+}
+
+/** Ranked venue alternatives for one coin+expiry opportunity. */
+export interface VenueCompare {
+  key:        string;
+  bestVenue:  string | null;
+  bestWhy:    string | null;
+  venueCount: number;
+  /** Quote-asset risk of the BEST-RANKED route — which may not be this row's own venue. */
+  bestRouteType:        string | null;
+  bestSpotInstrument:   string | null;
+  bestQuoteAsset:       string | null;
+  bestQuoteRiskTier:    string | null;
+  bestQuoteRiskFlagged: boolean | null;
+  bestQuoteRiskLabel:   string | null;
+  bestQuoteRiskReason:  string | null;
+  options: {
+    venue:               string;
+    contract:            string;
+    routeType:           string;
+    executableBasisPct:  number | null;
+    netAnnualizedPct:    number | null;
+    netAnnualizedCapped: boolean | null;
+    riskFreeDeltaPct:    number | null;
+    beatsRiskFree:       boolean | null;
+    capacityUsd:         number | null;
+    capacitySource:      string | null;
+    capacityBoundBy:     string | null;
+    feePct:              number | null;
+    feeVerified:         boolean | null;
+    quoteAsset:          string | null;
+    quoteRiskTier:       string | null;
+    quoteRiskFlagged:    boolean | null;
+    quoteRiskLabel:      string | null;
+    spotInstrument:      string | null;
+  }[];
 }
 
 // Real executable book depth (within the fetcher's slip band) at/above this size
