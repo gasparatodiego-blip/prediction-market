@@ -81,6 +81,22 @@ const FEE_LEGS = {
 // Binance COIN-M: contract size in USD
 const COINM_CSZ = { BTC: 100, ETH: 10, SOL: 10, XRP: 10, BNB: 10 };
 
+// Assets the carry engine prices. One list, used for the spot leg, the spot ladders and
+// the header strip, so a coin can never appear in one and not the others (the old
+// BNB "price with no row" orphan came from three separate hardcoded lists).
+//
+// Every entry is VERIFIED to have BOTH a real dated future on a covered venue AND a real
+// Binance spot pair — the two legs a carry needs:
+//   BTC/ETH  — Deribit, OKX, Bybit, Binance COIN-M + USDT-M
+//   BNB/SOL  — Binance COIN-M quarterlies
+//   XRP      — Binance COIN-M quarterlies + Bybit linear dated
+//   DOGE     — Bybit linear dated
+//   XAUT     — Bybit linear dated (Tether Gold); spot XAUTUSDT is the same token, so
+//              this is genuine gold carry, not a token-vs-index proxy
+// MNT is deliberately absent: Bybit lists MNT dated futures but there is no Binance
+// spot pair, so the long-spot leg cannot be priced and we will not fake one.
+const CARRY_ASSETS = ['BTC', 'ETH', 'BNB', 'SOL', 'XRP', 'DOGE', 'XAUT'];
+
 const MONTH_IDX = { JAN:0,FEB:1,MAR:2,APR:3,MAY:4,JUN:5,JUL:6,AUG:7,SEP:8,OCT:9,NOV:10,DEC:11 };
 
 const DISCLAIMER =
@@ -406,7 +422,12 @@ function round4(n) { return Math.round(n * 10000) / 10000; }
 
 async function fetchSpot() {
   try {
-    const syms = encodeURIComponent('["BTCUSDT","ETHUSDT","BNBUSDT","SOLUSDT","XRPUSDT"]');
+    // Spot legs for every carry asset. The asset key is the Binance base symbol, so the
+    // pair is always `${asset}USDT` — no override map needed, including for gold, where
+    // we deliberately use XAUT (Tether Gold) rather than a gold-index underlying: the
+    // Bybit XAUTUSDT-* dated futures settle against the SAME token we buy spot, so the
+    // basis is real carry rather than a cross-instrument token premium.
+    const syms = encodeURIComponent(JSON.stringify(CARRY_ASSETS.map(a => `${a}USDT`)));
     const res  = await get(`https://api.binance.com/api/v3/ticker/bookTicker?symbols=${syms}`);
     const out  = {};
     for (const { symbol, bidPrice, askPrice } of (res.data || [])) {
@@ -647,7 +668,7 @@ async function fetchCOINM(spot, books = {}) {
     const { asset, expiry } = parsed;
     if (!spot[asset]?.mid) continue;
     // Filter: only BTC, ETH, BNB, SOL per decision matrix
-    if (!['BTC', 'ETH', 'BNB', 'SOL'].includes(asset)) continue;
+    if (!CARRY_ASSETS.includes(asset)) continue;
     candidates.push({ x, asset, expiry });
   }
 
@@ -830,7 +851,7 @@ async function fetchBybit(spot, books = {}) {
     const m   = sym.match(/^([A-Z]+)USDT-\d{2}[A-Z]{3}\d{2}$/);  // dated only; skips perps
     if (!m) continue;
     const asset = m[1];
-    if (!['BTC', 'ETH'].includes(asset)) continue;               // decision matrix (matches USDT-M)
+    if (!CARRY_ASSETS.includes(asset)) continue;                 // shared carry-asset list
     if (!spot[asset]?.mid) continue;
     const expiryMs = parseInt(x.deliveryTime || '0', 10);
     if (!Number.isFinite(expiryMs) || expiryMs <= now) continue;
@@ -1188,12 +1209,17 @@ async function scan() {
   atomicWrite(OUTPUT_FILE, {
     updatedAt:    new Date().toISOString(),
     agentVersion: 'agent19-basis v2',
-    spot: {
-      BTC: spot.BTC?.mid ?? null,
-      ETH: spot.ETH?.mid ?? null,
-      BNB: spot.BNB?.mid ?? null,
-      SOL: spot.SOL?.mid ?? null,
-    },
+    // Header price strip. Only assets that ACTUALLY PRODUCED a row this cycle appear —
+    // a price with no reachable contract is an orphan that implies a tradeable row the
+    // engine filtered out (the old hardcoded BTC/ETH/BNB/SOL list did exactly that:
+    // BNB showed $568 for weeks while every BNB contract was dropped by the volume
+    // gate, and XRP was fetched but never displayed). Derived, never hardcoded.
+    spot: Object.fromEntries(
+      CARRY_ASSETS
+        .filter(a => spot[a]?.mid > 0
+          && (opportunities.some(o => o.asset === a) || backwardation.some(o => o.asset === a)))
+        .map(a => [a, spot[a].mid])
+    ),
     opportunities,
     backwardation,
     summary: {
