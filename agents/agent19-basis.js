@@ -418,7 +418,12 @@ async function fetchSpotBooks(spot, books = {}) {
     // Buy side → ASK ladder, ascending (cheapest first).
     const ladder = normalizeLadder(rawAsks, USD_BY_PRICE_SIZE, { desc: false });
     if (ladder.length === 0) continue;
-    books[`SPOT|${assets[i]}`] = { fetchedAt: now, side: 'buy', top: ladder[0][0], asks: ladder };
+    // `instrument`/`quote` record the symbol actually fetched, so the carry engine can
+    // classify the quote asset's risk from real data rather than assuming a quote.
+    books[`SPOT|${assets[i]}`] = {
+      fetchedAt: now, side: 'buy', top: ladder[0][0], asks: ladder,
+      instrument: `${assets[i]}USDT`, quote: 'USDT',
+    };
   }
   return books;
 }

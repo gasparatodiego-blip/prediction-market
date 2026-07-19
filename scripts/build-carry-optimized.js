@@ -81,6 +81,9 @@ if (target) {
     console.log(`   tier         ${o.tier}${o.thinFlag && o.tier !== 'THIN' ? ' (thin)' : ''}`
               + `${o.coinMargined ? ' | ' + o.coinMarginedNote : ''}`);
     console.log(`   route        ${o.routeType}`);
+    console.log(`   quote asset  ${o.quoteAsset ?? '—'} [${o.quoteRiskTier}]`
+              + `${o.quoteRiskFlagged ? '  ⚠ ' + o.quoteRiskLabel : '  (unflagged)'}`);
+    if (o.quoteRiskReason) console.log(`                ${o.quoteRiskReason}`);
     const sv = o.singleVenueAlternative;
     if (sv) {
       console.log(`   single-venue ${sv.available} | fee ${sv.feePct == null ? 'UNKNOWN' : pc(sv.feePct, 3)} `
