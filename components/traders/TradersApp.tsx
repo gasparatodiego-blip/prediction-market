@@ -337,7 +337,8 @@ export default function TradersApp() {
   const atLimit   = copy.count >= maxSlots;
 
   return (
-    <div className="max-w-[1100px] mx-auto px-4 py-8">
+    // .dsskin: appearance only — the leaderboard keeps its list, columns and sorting.
+    <div className="dsskin max-w-[1100px] mx-auto px-4 py-8">
       {/* Header */}
       <div className="mb-5 flex items-start justify-between gap-4 flex-wrap">
         <div>
