@@ -72,7 +72,6 @@ const KALSHI_SERIES = {
 
 const ODDS_API = 'https://api.odds-api.net/v1';
 const KALSHI   = 'https://api.elections.kalshi.com/trade-api/v2';
-const KALSHI_PROXY = process.env.KALSHI_PROXY || '5.78.225.39';
 const GAMMA    = 'https://gamma-api.polymarket.com';
 const CLOB     = 'https://clob.polymarket.com';
 
@@ -287,16 +286,13 @@ async function captureOddsApiBooks(ev, ts) {
 // ── SOURCE 2: Kalshi (free) ───────────────────────────────────────────────────
 // Field names MUST be the *_dollars / *_fp family. The legacy yes_bid/yes_ask fields
 // return null on every market now, which reads as "no liquidity" and is simply wrong.
-let kalshiUseProxy = null;   // resolved once, then logged
-
-async function kalshiProbe() {
-  if (kalshiUseProxy !== null) return kalshiUseProxy;
-  // The documented proxy is preferred; direct is the proven-working fallback and geo is
-  // not blocking us from this host. Whichever answers, we record which one served.
-  const viaProxy = await getJson(`http://${KALSHI_PROXY}/trade-api/v2/exchange/status`, {}, 6000);
-  kalshiUseProxy = !!viaProxy.ok;
-  log(kalshiUseProxy ? 'kalshi: using proxy' : `kalshi: proxy ${KALSHI_PROXY} unreachable → DIRECT (flagged)`);
-  return kalshiUseProxy;
+// Transport is DIRECT for both halves of the Kalshi read. The former US path-gateway
+// only ever exposed /kalshi/markets — it had no orderbook route at all, so the depth
+// ladders that max-stake is computed from could never have come through it. Direct
+// access is verified working from this host, so there is nothing to fall back to and
+// nothing to probe.
+function logKalshiTransport() {
+  log('kalshi: direct transport (list + orderbook)');
 }
 
 function parseKalshiBook(fp) {
@@ -354,7 +350,7 @@ async function captureKalshi(ev, ts, marketPool) {
       open_interest: m.open_interest_fp ?? null,
       // A live CLOB pull is fresh by construction: the response IS the book right now.
       source_ts: new Date(ts).toISOString(), age_sec: 0, is_live: true,
-      access: kalshiUseProxy ? 'proxy' : 'direct',
+      access: 'direct',
     });
     await sleep(120);
   }
@@ -525,7 +521,6 @@ async function cycle() {
     }
   }
 
-  await kalshiProbe();
 
   const allRows = [];
 
@@ -588,6 +583,7 @@ async function cycle() {
 async function main() {
   if (!ODDS_KEY) { console.error('[agent33] FATAL: ODDS_API_NET_KEY not found'); process.exit(1); }
   log(`starting — cycle ${CYCLE_MS / 1000}s, discovery ${DISCOVERY_MS / 1000}s, snapshot ${SNAPSHOT_MS / 1000}s, maxAge ${MAX_AGE_SEC}s`);
+  logKalshiTransport();
   fs.mkdirSync(RAW_DIR, { recursive: true });
 
   // AGENT33_CYCLES=n runs a bounded number of cycles and exits — used by the verify
