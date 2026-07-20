@@ -67,7 +67,11 @@ const money = (n: number, dp = 2) =>
 const compact = (n: number) =>
   n >= 1_000_000 ? `$${(n / 1_000_000).toFixed(2)}M` : n >= 1_000 ? `$${(n / 1_000).toFixed(0)}k` : `$${n.toFixed(0)}`;
 
-export default function CarryPositionCalculator({ id }: { id: string }) {
+// `embedded` renders the same calculator inline inside a list row instead of as a full
+// page: it drops the back link and the full-viewport wrapper. The math, fetch, fees,
+// risk-free comparison and armed-only auto-execute state are IDENTICAL — nothing about
+// the numbers changes with the flag.
+export default function CarryPositionCalculator({ id, embedded = false }: { id: string; embedded?: boolean }) {
   const [data, setData] = useState<Payload | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [capital, setCapital] = useState(DEFAULT_CAPITAL);
@@ -130,9 +134,9 @@ export default function CarryPositionCalculator({ id }: { id: string }) {
 
   if (err) {
     return (
-      <div className="carrydetail">
+      <div className={`carrydetail${embedded ? ' is-embedded' : ''}`}>
         <div className="cd-shell">
-          <Link href="/dashboard/carry" className="cd-back">‹ back to basis</Link>
+          {!embedded && <Link href="/dashboard/carry" className="cd-back">‹ back to basis</Link>}
           <EmptyState prefix="cd" title="Position unavailable" sub={err} />
         </div>
       </div>
@@ -140,10 +144,10 @@ export default function CarryPositionCalculator({ id }: { id: string }) {
   }
 
   return (
-    <div className="carrydetail">
+    <div className={`carrydetail${embedded ? ' is-embedded' : ''}`}>
       <div className="cd-shell">
 
-        <Link href="/dashboard/carry" className="cd-back">‹ back to basis</Link>
+        {!embedded && <Link href="/dashboard/carry" className="cd-back">‹ back to basis</Link>}
 
         {!card && <EmptyState prefix="cd" sub="Loading position…" />}
 

@@ -547,6 +547,58 @@ h1, h2, h3 {
   .cashcarry .cc-bar-fill { transition: none; }
 }
 
+/* ── Cash & Carry filterable LIST surface ─────────────────────────────────────
+   Classic desk layout: a stacked filter panel (venue/asset chips, sliders,
+   checkboxes) over compact rows. All colour reads from the ds --cc-* tokens, so
+   the surface flips day/night with the rest of the app — no new palette. */
+.cc-filterbar {
+  display: flex; flex-direction: column; gap: 12px;
+  margin: 4px 0 12px; padding: 12px;
+  border: 1px solid var(--cc-border); border-radius: 10px; background: var(--cc-panel);
+}
+.cc-fgroup { display: flex; flex-direction: column; gap: 6px; }
+.cc-flabel { font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--cc-muted); }
+.cc-chips  { display: flex; flex-wrap: wrap; gap: 6px; }
+.cc-fchip {
+  font-size: 10.5px; font-weight: 600; letter-spacing: .02em;
+  padding: 4px 9px; border-radius: 999px; cursor: pointer; font-family: inherit;
+  color: var(--cc-muted); background: transparent; border: 1px solid var(--cc-border);
+  transition: color .15s, border-color .15s, background .15s;
+}
+.cc-fchip:hover { color: var(--cc-text); }
+.cc-fchip.is-on { color: var(--cc-green); border-color: rgba(47,226,154,.45); background: rgba(47,226,154,.08); }
+.cc-slider { display: flex; flex-direction: column; gap: 4px; }
+.cc-slider-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.cc-slider-val { font-size: 10.5px; color: var(--cc-text); font-variant-numeric: tabular-nums; }
+.cc-frange { width: 100%; accent-color: var(--cc-spot); }
+.cc-checks { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+.cc-check { display: inline-flex; align-items: center; gap: 6px; font-size: 10.5px; color: var(--cc-muted); cursor: pointer; }
+.cc-check input { accent-color: var(--cc-green); cursor: pointer; }
+.cc-check.is-on { color: var(--cc-text); }
+.cc-count { margin: 0 2px 8px; font-size: 10px; color: var(--cc-muted); font-variant-numeric: tabular-nums; }
+
+.cc-list { display: flex; flex-direction: column; }
+.cc-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  width: 100%; text-align: left; padding: 11px 6px; font-family: inherit;
+  border: none; border-bottom: 1px solid var(--cc-border); background: transparent; color: inherit; cursor: pointer;
+  transition: background .12s;
+}
+.cc-row:hover, .cc-row.is-open { background: var(--cc-panel); }
+.cc-row-l { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.cc-row-title { font-size: 12px; font-weight: 600; color: var(--cc-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cc-row-sub { font-family: var(--font-mono), ui-monospace, monospace; font-size: 10px; color: var(--cc-muted); font-variant-numeric: tabular-nums; }
+.cc-row-r { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex: none; }
+.cc-row-net { font-size: 14px; font-weight: 700; color: var(--cc-green); font-variant-numeric: tabular-nums; line-height: 1.1; }
+.cc-row-apy { font-size: 10px; color: var(--cc-muted); font-variant-numeric: tabular-nums; }
+.cc-row-apy.is-amber { color: var(--cc-amber); }
+.cc-expand { padding: 4px 2px 12px; border-bottom: 1px solid var(--cc-border); }
+
+/* Calculator embedded inside a list row: drop the full-viewport wrapper so it sits
+   inline. Identical math; presentation only. */
+.carrydetail.is-embedded { min-height: 0; padding: 0; background: transparent; }
+.carrydetail.is-embedded .cd-shell { max-width: none; }
+
 /* ── Cash & carry position calculator (detail) ───────────────────────────────
    Scoped under .carrydetail; the global `h1,h2,h3 { color: var(--ink) }` rule
    would otherwise repaint this dark panel with the light theme's ink. */
