@@ -12,6 +12,7 @@ const NAV_LINKS = [
   { href: '/dashboard/funding-arb',       label: 'Funding'    },
   { href: '/dashboard/carry',             label: 'Carry'      },
   { href: '/dashboard/sports',            label: 'Sports'     },
+  { href: '/dashboard/sport-arb',         label: 'Sport Arb'  },
   { href: '/dashboard/liquidity-rewards', label: 'Rewards'    },
   { href: '/dashboard/traders',           label: 'Traders'    },
   { href: '/dashboard/portfolio',         label: 'Portfolio'  },
