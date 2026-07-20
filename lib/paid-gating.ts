@@ -35,7 +35,8 @@ export type RouteKey =
   | 'opps-preview'
   | 'opportunities'
   | 'unified-opportunities'
-  | 'liquidity';
+  | 'liquidity'
+  | 'sport-arb';
 
 function isPlanCurrentlyPaid(plan: string, planExpiresAt: Date | null, now = new Date()): boolean {
   if (plan === 'profit_share') return true;
@@ -622,6 +623,16 @@ export const REDACTION_MAP: Record<RouteKey, string[]> = {
     'topMarketsForLp[].lpApyEstimate',
     'summary.totalNetPnl',
     'summary.totalNotional',
+  ],
+
+  // Live sports cross-venue crossings. The raw venue prices are public reference data
+  // (anyone can read a Kalshi book), so they stay visible as the teaser. Only the DERIVED
+  // edge is gated: the post-fee return, the euro profit, and the executable size.
+  // bindingLeg/jurisdiction stay — they are labels, not edge.
+  'sport-arb': [
+    'crossings[].netPct',
+    'crossings[].netProfitEur',
+    'crossings[].maxStakeEur',
   ],
 };
 
