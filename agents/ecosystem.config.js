@@ -324,5 +324,19 @@ module.exports = {
       max_memory_restart: '160M',   // small: reads a few engine JSON files, marks a paper book, writes 1
       env:           { NODE_ENV: 'production', HOME: '/root' },
     },
+    {
+      name:          'agent33-sport-recorder',
+      script:        './agents/agent33-sport-recorder.js',
+      cwd:           '/root/prediction-market',
+      restart_delay: 30000,
+      max_restarts:  20,
+      watch:         false,
+      autorestart:   true,
+      // Streams rows straight to JSONL and keeps only the current cycle's rows plus a
+      // small per-sport market pool in memory — nothing accumulates across cycles. 450M
+      // matches agent30's ceiling: ample headroom on the 4GB box, well below OOM-cascade.
+      max_memory_restart: '450M',
+      env:           { NODE_ENV: 'production', HOME: '/root' },
+    },
   ],
 };
