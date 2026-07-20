@@ -344,7 +344,8 @@ export default function PaperBookPage() {
   const shown = filtered.slice(0, CAP);
 
   return (
-    <main className="min-h-screen bg-bg text-ink font-body">
+    // .dsskin: appearance only — every table, column and binding below is unchanged.
+    <main className="dsskin min-h-screen bg-bg text-ink font-body">
       <div className="dash-container px-4 pb-24 pt-5">
         {/* header */}
         <div className="flex items-center justify-between mb-1">
