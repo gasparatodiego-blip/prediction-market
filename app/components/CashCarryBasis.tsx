@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Redacted } from './ui/Redacted';
+import { Card, ScoreboardHeader, LegBox, ProgressBar, MetricValue, Chip, RiskFreeChip, EmptyState } from './ds';
 
 /**
  * Cash & Carry (basis) tab.
@@ -140,23 +141,19 @@ export default function CashCarryBasis() {
 
         {/* ── body ───────────────────────────────────────────────── */}
         {err && (
-          <div className="cc-empty">
-            <p className="cc-empty-title">Basis feed unavailable</p>
-            <p className="cc-empty-sub">{err}</p>
-          </div>
+          <EmptyState prefix="cc" title="Basis feed unavailable" sub={err} />
         )}
 
         {!err && !data && (
-          <div className="cc-empty">
-            <p className="cc-empty-sub">Loading basis book…</p>
-          </div>
+          <EmptyState prefix="cc" sub="Loading basis book…" />
         )}
 
         {!err && data && cards.length === 0 && (
-          <div className="cc-empty">
-            <p className="cc-empty-title">No basis rows right now</p>
-            <p className="cc-empty-sub">The carry scanner found nothing that clears fees.</p>
-          </div>
+          <EmptyState
+            prefix="cc"
+            title="No basis rows right now"
+            sub="The carry scanner found nothing that clears fees."
+          />
         )}
 
         {!err && data && cards.map((c) => {
@@ -168,50 +165,56 @@ export default function CashCarryBasis() {
 
           return (
             <Link key={c.id} href={`/dashboard/carry/${encodeURIComponent(c.id.replace('|', '-'))}`} className="cc-card-link">
-            <article className="cc-card">
+            <Card prefix="cc">
 
-              <div className="cc-card-head">
-                <span className="cc-ident">
-                  {c.asset ?? '—'} <span className="cc-dot">·</span> {c.venue ?? '—'}{' '}
-                  <span className="cc-dot">·</span> exp {c.expiryDate ?? '—'}
-                </span>
-                <span className={`cc-dte ${nearExpiry ? 'is-near' : ''}`}>
-                  {c.daysToExpiry == null ? '—' : `${c.daysToExpiry}d to settle`}
-                </span>
-              </div>
+              <ScoreboardHeader
+                prefix="cc"
+                left={
+                  <span className="cc-ident">
+                    {c.asset ?? '—'} <span className="cc-dot">·</span> {c.venue ?? '—'}{' '}
+                    <span className="cc-dot">·</span> exp {c.expiryDate ?? '—'}
+                  </span>
+                }
+                right={
+                  <span className={`cc-dte ${nearExpiry ? 'is-near' : ''}`}>
+                    {c.daysToExpiry == null ? '—' : `${c.daysToExpiry}d to settle`}
+                  </span>
+                }
+              />
 
               <div className="cc-legs">
-                <div className="cc-leg is-spot">
-                  <span className="cc-leg-label">BUY spot</span>
-                  <span className="cc-leg-price">
-                    {c.spotAsk == null ? '—' : fmtPrice(c.spotAsk)}
-                  </span>
-                  <span className="cc-leg-tag">ask</span>
-                </div>
+                <LegBox
+                  prefix="cc"
+                  accent="spot"
+                  slots={[
+                    { cls: 'label', text: 'BUY spot' },
+                    { cls: 'price', text: c.spotAsk == null ? '—' : fmtPrice(c.spotAsk) },
+                    { cls: 'tag',   text: 'ask' },
+                  ]}
+                />
 
-                <div className="cc-leg is-future">
-                  <span className="cc-leg-label">SHORT fut</span>
-                  <span className="cc-leg-price">
-                    {c.futureBid == null ? '—' : fmtPrice(c.futureBid)}
-                  </span>
-                  <span className="cc-leg-tag">bid</span>
-                </div>
+                <LegBox
+                  prefix="cc"
+                  accent="future"
+                  slots={[
+                    { cls: 'label', text: 'SHORT fut' },
+                    { cls: 'price', text: c.futureBid == null ? '—' : fmtPrice(c.futureBid) },
+                    { cls: 'tag',   text: 'bid' },
+                  ]}
+                />
 
-                <div className="cc-net">
-                  <span className="cc-net-val">
+                <MetricValue
+                  prefix="cc"
+                  value={
                     <Redacted value={c.netUsdPerDay} isPaid={isPaid}>
                       {(v) => <>${Number(v).toFixed(2)}</>}
                     </Redacted>
-                  </span>
-                  <span className="cc-net-cap">
-                    net · per day / ${c.capitalBasisUsd.toLocaleString()}
-                  </span>
-                </div>
+                  }
+                  caption={<>net · per day / ${c.capitalBasisUsd.toLocaleString()}</>}
+                />
               </div>
 
-              <div className="cc-bar" aria-hidden>
-                <div className={`cc-bar-fill ${maturing ? 'is-maturing' : ''}`} style={{ width: `${pct}%` }} />
-              </div>
+              <ProgressBar prefix="cc" pct={pct} mode="fill" active={maturing} />
               <p className="cc-bar-cap">
                 {c.tenorDays == null
                   ? 'converges at expiry · elapsed unknown (contract not in recorded history)'
@@ -245,19 +248,13 @@ export default function CashCarryBasis() {
               </div>
 
               <div className="cc-foot">
-                <span className="cc-chip">hold to expiry</span>
-                <span className="cc-chip">{backward ? 'backwardation' : 'contango'}</span>
-                <span className="cc-chip">
-                  {c.annualizedLabel ?? 'run-rate, not guaranteed'}
-                </span>
-                {c.belowRiskFree && (
-                  <span className="cc-chip is-amber">&lt; risk-free {riskFree}%</span>
-                )}
-                {c.coinMargined && (
-                  <span className="cc-chip">coin-settled · USD return not locked</span>
-                )}
+                <Chip prefix="cc">hold to expiry</Chip>
+                <Chip prefix="cc">{backward ? 'backwardation' : 'contango'}</Chip>
+                <Chip prefix="cc">{c.annualizedLabel ?? 'run-rate, not guaranteed'}</Chip>
+                {c.belowRiskFree && <RiskFreeChip prefix="cc" riskFreePct={riskFree} />}
+                {c.coinMargined && <Chip prefix="cc">coin-settled · USD return not locked</Chip>}
               </div>
-            </article>
+            </Card>
             </Link>
           );
         })}

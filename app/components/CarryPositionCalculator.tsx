@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Redacted } from './ui/Redacted';
+import { CardSection, LegBox, MetricValue, ArmToggle, EmptyState } from './ds';
 
 /**
  * Cash & carry position calculator — "if I enter now, exactly how much do I net?"
@@ -132,10 +133,7 @@ export default function CarryPositionCalculator({ id }: { id: string }) {
       <div className="carrydetail">
         <div className="cd-shell">
           <Link href="/dashboard/carry" className="cd-back">‹ back to basis</Link>
-          <div className="cd-empty">
-            <p className="cd-empty-title">Position unavailable</p>
-            <p className="cd-empty-sub">{err}</p>
-          </div>
+          <EmptyState prefix="cd" title="Position unavailable" sub={err} />
         </div>
       </div>
     );
@@ -147,7 +145,7 @@ export default function CarryPositionCalculator({ id }: { id: string }) {
 
         <Link href="/dashboard/carry" className="cd-back">‹ back to basis</Link>
 
-        {!card && <div className="cd-empty"><p className="cd-empty-sub">Loading position…</p></div>}
+        {!card && <EmptyState prefix="cd" sub="Loading position…" />}
 
         {card && (
           <>
@@ -162,20 +160,28 @@ export default function CarryPositionCalculator({ id }: { id: string }) {
 
             {/* 2. legs */}
             <div className="cd-legs">
-              <div className="cd-leg is-spot">
-                <span className="cd-leg-label">BUY spot</span>
-                <span className="cd-leg-price">{card.spotAsk == null ? '—' : money(card.spotAsk, 2)}</span>
-                <span className="cd-leg-tag">ask</span>
-              </div>
-              <div className="cd-leg is-future">
-                <span className="cd-leg-label">SHORT fut</span>
-                <span className="cd-leg-price">{card.futureBid == null ? '—' : money(card.futureBid, 2)}</span>
-                <span className="cd-leg-tag">bid</span>
-              </div>
+              <LegBox
+                prefix="cd"
+                accent="spot"
+                slots={[
+                  { cls: 'label', text: 'BUY spot' },
+                  { cls: 'price', text: card.spotAsk == null ? '—' : money(card.spotAsk, 2) },
+                  { cls: 'tag',   text: 'ask' },
+                ]}
+              />
+              <LegBox
+                prefix="cd"
+                accent="future"
+                slots={[
+                  { cls: 'label', text: 'SHORT fut' },
+                  { cls: 'price', text: card.futureBid == null ? '—' : money(card.futureBid, 2) },
+                  { cls: 'tag',   text: 'bid' },
+                ]}
+              />
             </div>
 
             {/* 3. capital */}
-            <section className="cd-card">
+            <CardSection prefix="cd">
               <div className="cd-cap-row">
                 <label className="cd-label" htmlFor="cd-capital">CAPITAL</label>
                 <span className="cd-cap-max">
@@ -219,10 +225,10 @@ export default function CarryPositionCalculator({ id }: { id: string }) {
                   </button>
                 ))}
               </div>
-            </section>
+            </CardSection>
 
             {/* 4. breakdown */}
-            <section className="cd-card">
+            <CardSection prefix="cd">
               <div className="cd-brk-row">
                 <span>gross basis{card.executableBasisPct != null ? ` (+${card.executableBasisPct.toFixed(2)}%)` : ''}</span>
                 <strong className="cd-green">
@@ -260,29 +266,30 @@ export default function CarryPositionCalculator({ id }: { id: string }) {
               {card.feeModel?.isAssumption && (
                 <p className="cd-warn">{card.feeModel.note}</p>
               )}
-            </section>
+            </CardSection>
 
             {/* 5. net */}
-            <section className="cd-card is-net">
-              <span className="cd-net-label">NET IF YOU ENTER NOW · held to expiry</span>
-              <div className="cd-net-row">
-                <span className="cd-net-val">
-                  <Redacted value={calc?.net} isPaid={isPaid}>{(v) => <>+${money(Number(v))}</>}</Redacted>
-                </span>
-                <div className="cd-net-side">
-                  <span className="cd-net-sub">
-                    <Redacted value={calc?.netPerDay} isPaid={isPaid}>{(v) => <>${money(Number(v))}</>}</Redacted> / day
-                  </span>
-                  <span className={`cd-net-sub ${card.belowRiskFree ? 'cd-amber' : ''}`}>
-                    <Redacted value={calc?.netApy} isPaid={isPaid}>{(v) => <>{Number(v).toFixed(2)}%/yr</>}</Redacted>
-                  </span>
-                </div>
-              </div>
+            <CardSection prefix="cd" className="is-net">
+              <MetricValue
+                prefix="cd"
+                caption="NET IF YOU ENTER NOW · held to expiry"
+                value={<Redacted value={calc?.net} isPaid={isPaid}>{(v) => <>+${money(Number(v))}</>}</Redacted>}
+                side={
+                  <>
+                    <span className="cd-net-sub">
+                      <Redacted value={calc?.netPerDay} isPaid={isPaid}>{(v) => <>${money(Number(v))}</>}</Redacted> / day
+                    </span>
+                    <span className={`cd-net-sub ${card.belowRiskFree ? 'cd-amber' : ''}`}>
+                      <Redacted value={calc?.netApy} isPaid={isPaid}>{(v) => <>{Number(v).toFixed(2)}%/yr</>}</Redacted>
+                    </span>
+                  </>
+                }
+              />
               <span className="cd-net-cap">{card.annualizedLabel ?? 'run-rate, not guaranteed'}</span>
-            </section>
+            </CardSection>
 
             {/* 6. risk-free comparison */}
-            <section className="cd-card">
+            <CardSection prefix="cd">
               <span className="cd-label">SAME {days ?? '—'} DAYS, SAME ${money(cappedCapital, 0)}</span>
               <div className="cd-brk-row">
                 <span>this carry, net</span>
@@ -300,19 +307,17 @@ export default function CarryPositionCalculator({ id }: { id: string }) {
                   </Redacted>
                 </strong>
               </div>
-            </section>
+            </CardSection>
 
             {/* 7. auto-execute — armed visual state only */}
-            <section className="cd-card">
-              <button
-                type="button"
-                className={`cd-arm ${armed ? 'is-armed' : ''}`}
-                onClick={() => setArmed((a) => !a)}
-                aria-pressed={armed}
-              >
-                <span className={`cd-arm-dot ${armed ? 'is-armed' : ''}`} aria-hidden />
-                {armed ? 'AUTO-EXECUTE ARMED' : 'AUTO-EXECUTE OFF'}
-              </button>
+            <CardSection prefix="cd">
+              <ArmToggle
+                prefix="cd"
+                armed={armed}
+                onToggle={() => setArmed((a) => !a)}
+                onLabel="AUTO-EXECUTE ARMED"
+                offLabel="AUTO-EXECUTE OFF"
+              />
 
               {armed && (
                 <div className="cd-arm-body">
@@ -341,7 +346,7 @@ export default function CarryPositionCalculator({ id }: { id: string }) {
                   </p>
                 </div>
               )}
-            </section>
+            </CardSection>
           </>
         )}
       </div>
