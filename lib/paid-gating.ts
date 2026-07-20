@@ -200,6 +200,7 @@ export const REDACTION_MAP: Record<RouteKey, string[]> = {
     'basisCards[].netUsdPerDay',
     'basisCards[].annualizedPct',
     'basisCards[].capacityUsd',
+    'basisCards[].feeUsd',
     'basisCards[].feeModel.legs',
     'basisCards[].feeModel.totalPct',
     'basisCards[].executableBasisPct',

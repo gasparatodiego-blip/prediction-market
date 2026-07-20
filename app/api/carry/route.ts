@@ -218,6 +218,16 @@ export async function GET() {
         }
       : null;
 
+    // Round-trip fee IN DOLLARS at the stated $CARRY_CAPITAL_BASIS, for the compact list
+    // row. Computed the SAME way the position calculator computes its fee total — sum of
+    // the KNOWN per-leg rates × capital, with any unknown-rate leg EXCLUDED (never treated
+    // as zero, which would understate the fee). At the same capital the two agree exactly;
+    // the calculator just scales this linearly to the user's chosen size. No new fee table.
+    const feeUsd = feeModel && feeModel.legs
+      ? CARRY_CAPITAL_BASIS * feeModel.legs.reduce(
+          (a: number, l: any) => a + (typeof l.pct === 'number' ? l.pct / 100 : 0), 0)
+      : null;
+
     return {
       id:                  `${o.venueKey}|${o.contract}`,
       asset:               o.asset ?? null,
@@ -245,6 +255,10 @@ export async function GET() {
       direction:           o.direction ?? o.type ?? null,
       coinMargined:        o.coinMargined === true,
       feeModel,
+      // Fee in $ for the row subline (redacted for free tier below). isAssumption stays a
+      // teaser flag so the row can mark an estimated rate even when the number is blurred.
+      feeUsd,
+      feeIsAssumption:     feeModel ? feeModel.isAssumption : null,
     };
   });
 
