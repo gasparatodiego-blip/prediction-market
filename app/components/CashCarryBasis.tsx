@@ -1,29 +1,40 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import Link from 'next/link';
+import { useEffect, useMemo, useState } from 'react';
 import { Redacted } from './ui/Redacted';
-import { Card, ScoreboardHeader, LegBox, ProgressBar, MetricValue, Chip, RiskFreeChip, EmptyState } from './ds';
+import { EmptyState } from './ds';
+import CarryPositionCalculator from './CarryPositionCalculator';
+import { APY_CAP, APY_CAP_LABEL, isOverApyCap } from '@/lib/honest-display';
+// Pure, node-tested filter/sort/derive logic — shared verbatim so the list the user
+// sees and any measurement of the filter behaviour cannot diverge (see lib/carry-filter.js).
+import { deriveOptions, defaultState, applyFilters, sortRows } from '@/lib/carry-filter';
 
 /**
- * Cash & Carry (basis) tab.
+ * Cash & Carry (basis) tab — FILTERABLE LIST.
  *
- * Buy spot, short the dated future, hold to expiry, capture the basis.
+ * Classic desk surface: a stacked filter panel (venue/asset chips, sliders, checkboxes)
+ * over compact rows. Each row shows the round-trip fee IN DOLLARS inline; tapping a row
+ * expands the EXISTING position calculator (CarryPositionCalculator, embedded) — the same
+ * fetch + fee math + risk-free comparison + armed-only auto-execute, never a second path.
  *
- * HONEST-ENGINE, on the face of the card:
- *  - PRIMARY metric is net $/day at a stated $1,000 basis. Annualized is demoted to the
- *    data row, capped and labelled "run-rate, not guaranteed" — because at the measured
- *    ceiling of ~4.1%/yr, leading with the percentage dresses up $0.11/day as something
- *    it is not.
- *  - Annualized below the 4%/yr risk-free reference renders AMBER with a "< risk-free"
- *    chip. 35 of 37 live rows are below it. The tab says so instead of letting a green
- *    number imply edge that a T-bill would beat.
- *  - Prices shown are the EXECUTABLE legs (spot ask / future bid), never mid.
- *  - Capacity is real order-book depth with its binding leg named; unknown depth is "—".
- *  - This is a SIGNAL surface. There is no auto-fire here and no order path: execution is
- *    the user's call, and holding to expiry is a multi-month commitment.
+ * HONEST-ENGINE, unchanged from the card surface:
+ *  - net $/day is the primary $ figure, at the stated $1,000 basis.
+ *  - annualized is demoted, rendered AMBER below the risk-free reference, and capped +
+ *    labelled above 200%/yr via lib/honest-display.
+ *  - prices are the executable legs (spot ask / future bid), never mid.
+ *  - capacity is real order-book depth; unknown is "—", never fabricated.
+ *  - fees shown in $ from the real fee model, marked "~" where the venue rate is estimated.
+ *  - derived fields (net/annualized/capacity/fee/basis) are redacted for the free tier;
+ *    raw spot/future prices stay as teaser.
+ *  - filters run on the real API fields; a row missing a field is excluded from that
+ *    filter, never fabricated.
  */
 
+interface FeeLeg { label: string | null; pct: number | null }
+interface FeeModel {
+  legs: FeeLeg[] | null; totalPct: number | null; verified: boolean;
+  isAssumption: boolean; source: string; note: string;
+}
 interface BasisCard {
   id: string;
   asset: string | null;
@@ -32,13 +43,10 @@ interface BasisCard {
   expiryDate: string | null;
   daysToExpiry: number | null;
   tenorDays: number | null;
-  elapsedDays: number | null;
-  convergenceFraction: number | null;
   spotAsk: number | null;
   futureBid: number | null;
   executableBasisPct: number | null;
   annualizedPct: number | null;
-  annualizedCapped: boolean | null;
   annualizedLabel: string | null;
   belowRiskFree: boolean | null;
   riskFreePct: number;
@@ -48,8 +56,10 @@ interface BasisCard {
   bindingLeg: string | null;
   direction: string | null;
   coinMargined: boolean;
+  feeModel: FeeModel | null;
+  feeUsd: number | null;
+  feeIsAssumption: boolean | null;
 }
-
 interface CarryMeta {
   riskFreePct: number;
   capitalBasisUsd: number;
@@ -58,7 +68,6 @@ interface CarryMeta {
   convergenceObserved: boolean;
   convergenceNote: string;
 }
-
 interface Payload {
   agentStatus: string;
   updatedAt: string | null;
@@ -67,18 +76,31 @@ interface Payload {
   isPaid?: boolean;
 }
 
+interface FilterState {
+  assets: string[];
+  venues: string[];
+  directions: string[];
+  minAnnualized: number;
+  minCapacity: number;
+  maxDays: number;          // Infinity = no cap (slider sits at the data max)
+  expiring30: boolean;
+  aboveRiskFreeOnly: boolean;
+  sortByLowestFee: boolean;
+}
+
 const fmtUsd = (n: number) =>
   n >= 1_000_000 ? `$${(n / 1_000_000).toFixed(2)}M`
   : n >= 1_000   ? `$${(n / 1_000).toFixed(0)}k`
   : `$${n.toFixed(0)}`;
 
-const fmtPrice = (n: number) =>
-  n >= 1000 ? n.toLocaleString(undefined, { maximumFractionDigits: 0 })
-            : n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+const toggle = (arr: string[], v: string) =>
+  arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v];
 
 export default function CashCarryBasis() {
   const [data, setData] = useState<Payload | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [filters, setFilters] = useState<FilterState>(() => defaultState({}) as FilterState);
 
   useEffect(() => {
     let alive = true;
@@ -87,8 +109,7 @@ export default function CashCarryBasis() {
         const r = await fetch('/api/carry', { cache: 'no-store' });
         const j = await r.json();
         if (!alive) return;
-        setData(j);
-        setErr(null);
+        setData(j); setErr(null);
       } catch (e: any) {
         if (alive) setErr(e?.message ?? 'fetch failed');
       }
@@ -100,8 +121,17 @@ export default function CashCarryBasis() {
 
   const meta = data?.carryMeta;
   const isPaid = data?.isPaid ?? false;
-  const cards = data?.basisCards ?? [];
+  const cards: BasisCard[] = data?.basisCards ?? [];
   const riskFree = meta?.riskFreePct ?? 4.0;
+
+  const opts = useMemo(() => deriveOptions(cards), [cards]);
+  const visible: BasisCard[] = useMemo(
+    () => sortRows(applyFilters(cards, filters, riskFree), filters),
+    [cards, filters, riskFree],
+  );
+
+  const set = (patch: Partial<FilterState>) => setFilters((f) => ({ ...f, ...patch }));
+  const maxDaysVal = Number.isFinite(filters.maxDays) ? filters.maxDays : opts.dteMax;
 
   return (
     <div className="cashcarry">
@@ -113,9 +143,7 @@ export default function CashCarryBasis() {
             <span className="cc-title-dim">Edgeradar /</span> cash &amp; carry
             <span className="cc-title-accent"> · basis</span>
           </h1>
-          <p className="cc-sub">
-            buy spot, short the dated future, hold to expiry — capture the basis
-          </p>
+          <p className="cc-sub">buy spot, short the dated future, hold to expiry — capture the basis</p>
         </header>
 
         {/* ── signal banner (NOT auto-fire) ──────────────────────── */}
@@ -126,138 +154,180 @@ export default function CashCarryBasis() {
           {meta && (
             <span className={`cc-ceiling ${meta.bestBeatsRiskFree === false ? 'is-amber' : ''}`}>
               ceiling{' '}
-              <Redacted value={meta.bestApyPct} isPaid={isPaid}>
-                {(v) => <>{Number(v).toFixed(2)}%/yr</>}
-              </Redacted>
+              <Redacted value={meta.bestApyPct} isPaid={isPaid}>{(v) => <>{Number(v).toFixed(2)}%/yr</>}</Redacted>
               {meta.bestBeatsRiskFree === false ? ` < risk-free ${riskFree}%` : ` vs risk-free ${riskFree}%`}
             </span>
           )}
         </div>
 
         {/* ── persistent honest note ─────────────────────────────── */}
-        {meta && !meta.convergenceObserved && (
-          <p className="cc-note">{meta.convergenceNote}</p>
-        )}
+        {meta && !meta.convergenceObserved && <p className="cc-note">{meta.convergenceNote}</p>}
 
-        {/* ── body ───────────────────────────────────────────────── */}
-        {err && (
-          <EmptyState prefix="cc" title="Basis feed unavailable" sub={err} />
-        )}
-
-        {!err && !data && (
-          <EmptyState prefix="cc" sub="Loading basis book…" />
-        )}
-
+        {/* ── states ─────────────────────────────────────────────── */}
+        {err && <EmptyState prefix="cc" title="Basis feed unavailable" sub={err} />}
+        {!err && !data && <EmptyState prefix="cc" sub="Loading basis book…" />}
         {!err && data && cards.length === 0 && (
-          <EmptyState
-            prefix="cc"
-            title="No basis rows right now"
-            sub="The carry scanner found nothing that clears fees."
-          />
+          <EmptyState prefix="cc" title="No basis rows right now" sub="The carry scanner found nothing that clears fees." />
         )}
 
-        {!err && data && cards.map((c) => {
-          const frac = c.convergenceFraction ?? 0;
-          const pct = Math.max(0, Math.min(100, frac * 100));
-          const nearExpiry = c.daysToExpiry != null && c.daysToExpiry <= 10;
-          const maturing = pct >= 50;
-          const backward = (c.direction ?? '').toLowerCase().includes('backward');
-
-          return (
-            <Link key={c.id} href={`/dashboard/carry/${encodeURIComponent(c.id.replace('|', '-'))}`} className="cc-card-link">
-            <Card prefix="cc">
-
-              <ScoreboardHeader
-                prefix="cc"
-                left={
-                  <span className="cc-ident">
-                    {c.asset ?? '—'} <span className="cc-dot">·</span> {c.venue ?? '—'}{' '}
-                    <span className="cc-dot">·</span> exp {c.expiryDate ?? '—'}
-                  </span>
-                }
-                right={
-                  <span className={`cc-dte ${nearExpiry ? 'is-near' : ''}`}>
-                    {c.daysToExpiry == null ? '—' : `${c.daysToExpiry}d to settle`}
-                  </span>
-                }
-              />
-
-              <div className="cc-legs">
-                <LegBox
-                  prefix="cc"
-                  accent="spot"
-                  slots={[
-                    { cls: 'label', text: 'BUY spot' },
-                    { cls: 'price', text: c.spotAsk == null ? '—' : fmtPrice(c.spotAsk) },
-                    { cls: 'tag',   text: 'ask' },
-                  ]}
-                />
-
-                <LegBox
-                  prefix="cc"
-                  accent="future"
-                  slots={[
-                    { cls: 'label', text: 'SHORT fut' },
-                    { cls: 'price', text: c.futureBid == null ? '—' : fmtPrice(c.futureBid) },
-                    { cls: 'tag',   text: 'bid' },
-                  ]}
-                />
-
-                <MetricValue
-                  prefix="cc"
-                  value={
-                    <Redacted value={c.netUsdPerDay} isPaid={isPaid}>
-                      {(v) => <>${Number(v).toFixed(2)}</>}
-                    </Redacted>
-                  }
-                  caption={<>net · per day / ${c.capitalBasisUsd.toLocaleString()}</>}
-                />
+        {/* ── filter bar + list ──────────────────────────────────── */}
+        {!err && data && cards.length > 0 && (
+          <>
+            <div className="cc-filterbar">
+              {/* ASSET */}
+              <div className="cc-fgroup">
+                <span className="cc-flabel">Asset</span>
+                <div className="cc-chips">
+                  {opts.assets.map((a: string) => (
+                    <button key={a} type="button"
+                      className={`cc-fchip ${filters.assets.includes(a) ? 'is-on' : ''}`}
+                      onClick={() => set({ assets: toggle(filters.assets, a) })}>{a}</button>
+                  ))}
+                </div>
               </div>
 
-              <ProgressBar prefix="cc" pct={pct} mode="fill" active={maturing} />
-              <p className="cc-bar-cap">
-                {c.tenorDays == null
-                  ? 'converges at expiry · elapsed unknown (contract not in recorded history)'
-                  : `converges at expiry · ${c.elapsedDays}/${c.tenorDays}d elapsed since first observed`}
-              </p>
-
-              <div className="cc-figs">
-                <span>
-                  executable basis{' '}
-                  <Redacted value={c.executableBasisPct} isPaid={isPaid}>
-                    {(v) => <strong>{Number(v) >= 0 ? '+' : ''}{Number(v).toFixed(2)}%</strong>}
-                  </Redacted>
-                </span>
-                <span>
-                  annualized{' '}
-                  <Redacted value={c.annualizedPct} isPaid={isPaid}>
-                    {(v) => (
-                      <strong className={c.belowRiskFree ? 'cc-amber' : ''}>
-                        {Number(v).toFixed(2)}%/yr
-                      </strong>
-                    )}
-                  </Redacted>
-                </span>
-                <span>
-                  capacity{' '}
-                  <Redacted value={c.capacityUsd} isPaid={isPaid}>
-                    {(v) => <strong>{fmtUsd(Number(v))}</strong>}
-                  </Redacted>
-                  {c.bindingLeg && <span className="cc-dim"> · {c.bindingLeg} binds</span>}
-                </span>
+              {/* VENUE */}
+              <div className="cc-fgroup">
+                <span className="cc-flabel">Venue</span>
+                <div className="cc-chips">
+                  {opts.venues.map((v: string) => (
+                    <button key={v} type="button"
+                      className={`cc-fchip ${filters.venues.includes(v) ? 'is-on' : ''}`}
+                      onClick={() => set({ venues: toggle(filters.venues, v) })}>{v}</button>
+                  ))}
+                </div>
               </div>
 
-              <div className="cc-foot">
-                <Chip prefix="cc">hold to expiry</Chip>
-                <Chip prefix="cc">{backward ? 'backwardation' : 'contango'}</Chip>
-                <Chip prefix="cc">{c.annualizedLabel ?? 'run-rate, not guaranteed'}</Chip>
-                {c.belowRiskFree && <RiskFreeChip prefix="cc" riskFreePct={riskFree} />}
-                {c.coinMargined && <Chip prefix="cc">coin-settled · USD return not locked</Chip>}
+              {/* DIRECTION */}
+              <div className="cc-fgroup">
+                <span className="cc-flabel">Direction</span>
+                <div className="cc-chips">
+                  {opts.directions.map((d: string) => (
+                    <button key={d} type="button"
+                      className={`cc-fchip ${filters.directions.includes(d) ? 'is-on' : ''}`}
+                      onClick={() => set({ directions: toggle(filters.directions, d) })}>{d}</button>
+                  ))}
+                  {opts.directions.length === 0 && <span className="cc-slider-val">—</span>}
+                </div>
               </div>
-            </Card>
-            </Link>
-          );
-        })}
+
+              {/* MIN ANNUALIZED */}
+              <div className="cc-fgroup cc-slider">
+                <div className="cc-slider-head">
+                  <span className="cc-flabel">Min annualized</span>
+                  <span className="cc-slider-val">≥ {filters.minAnnualized.toFixed(1)}%/yr</span>
+                </div>
+                <input className="cc-frange" type="range" min={0} max={Math.max(opts.annMax, 0.1)} step={0.1}
+                  value={filters.minAnnualized}
+                  onChange={(e) => set({ minAnnualized: Number(e.target.value) })} aria-label="minimum annualized" />
+              </div>
+
+              {/* MIN CAPACITY */}
+              <div className="cc-fgroup cc-slider">
+                <div className="cc-slider-head">
+                  <span className="cc-flabel">Min capacity (book depth)</span>
+                  <span className="cc-slider-val">≥ {filters.minCapacity > 0 ? fmtUsd(filters.minCapacity) : '$0'}</span>
+                </div>
+                <input className="cc-frange" type="range" min={0} max={Math.max(opts.capMax, 1)} step={Math.max(1, Math.round(opts.capMax / 100))}
+                  value={filters.minCapacity}
+                  onChange={(e) => set({ minCapacity: Number(e.target.value) })} aria-label="minimum capacity" />
+              </div>
+
+              {/* MAX DAYS TO EXPIRY */}
+              <div className="cc-fgroup cc-slider">
+                <div className="cc-slider-head">
+                  <span className="cc-flabel">Max days to expiry</span>
+                  <span className="cc-slider-val">≤ {maxDaysVal}d</span>
+                </div>
+                <input className="cc-frange" type="range" min={opts.dteMin} max={Math.max(opts.dteMax, opts.dteMin + 1)} step={1}
+                  value={maxDaysVal}
+                  onChange={(e) => set({ maxDays: Number(e.target.value) })} aria-label="maximum days to expiry" />
+              </div>
+
+              {/* CHECKBOXES */}
+              <div className="cc-checks">
+                <label className={`cc-check ${filters.expiring30 ? 'is-on' : ''}`}>
+                  <input type="checkbox" checked={filters.expiring30}
+                    onChange={(e) => set({ expiring30: e.target.checked })} />
+                  Expiring ≤30d
+                </label>
+                <label className={`cc-check ${filters.aboveRiskFreeOnly ? 'is-on' : ''}`}>
+                  <input type="checkbox" checked={filters.aboveRiskFreeOnly}
+                    onChange={(e) => set({ aboveRiskFreeOnly: e.target.checked })} />
+                  Above risk-free only
+                </label>
+                <label className={`cc-check ${filters.sortByLowestFee ? 'is-on' : ''}`}>
+                  <input type="checkbox" checked={filters.sortByLowestFee}
+                    onChange={(e) => set({ sortByLowestFee: e.target.checked })} />
+                  Sort by lowest fee
+                </label>
+              </div>
+            </div>
+
+            <p className="cc-count">
+              {visible.length} of {cards.length} rows · sorted by {filters.sortByLowestFee ? 'lowest fee' : 'net $/day'}
+            </p>
+
+            {visible.length === 0 ? (
+              <EmptyState prefix="cc" title="No basis rows match these filters." sub="Loosen a filter to see more." />
+            ) : (
+              <div className="cc-list">
+                {visible.map((c) => {
+                  const isOpen = expandedId === c.id;
+                  return (
+                    <div key={c.id}>
+                      <div
+                        className={`cc-row ${isOpen ? 'is-open' : ''}`}
+                        role="button"
+                        tabIndex={0}
+                        aria-expanded={isOpen}
+                        onClick={() => setExpandedId(isOpen ? null : c.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpandedId(isOpen ? null : c.id); }
+                        }}
+                      >
+                        <span className="cc-row-l">
+                          <span className="cc-row-title">
+                            {c.asset ?? '—'} · {c.venue ?? '—'} · exp {c.expiryDate ?? '—'}
+                          </span>
+                          <span className="cc-row-sub">
+                            basis{' '}
+                            <Redacted value={c.executableBasisPct} isPaid={isPaid}>
+                              {(v) => <>{Number(v) >= 0 ? '+' : ''}{Number(v).toFixed(2)}%</>}
+                            </Redacted>
+                            {' · '}fee {c.feeIsAssumption ? '~' : ''}
+                            <Redacted value={c.feeUsd} isPaid={isPaid}>{(v) => <>${Number(v).toFixed(2)}</>}</Redacted>
+                            {' · '}{c.daysToExpiry ?? '—'}d
+                            {' · '}cap{' '}
+                            <Redacted value={c.capacityUsd} isPaid={isPaid}>{(v) => <>{fmtUsd(Number(v))}</>}</Redacted>
+                          </span>
+                        </span>
+                        <span className="cc-row-r">
+                          <span className="cc-row-net">
+                            <Redacted value={c.netUsdPerDay} isPaid={isPaid}>{(v) => <>${Number(v).toFixed(2)}/day</>}</Redacted>
+                          </span>
+                          <span className={`cc-row-apy ${c.belowRiskFree ? 'is-amber' : ''}`}>
+                            <Redacted value={c.annualizedPct} isPaid={isPaid}>
+                              {(v) => isOverApyCap(Number(v))
+                                ? <span title={APY_CAP_LABEL}>&gt;{APY_CAP}%/yr</span>
+                                : <>{Number(v).toFixed(2)}%/yr</>}
+                            </Redacted>
+                          </span>
+                        </span>
+                      </div>
+
+                      {isOpen && (
+                        <div className="cc-expand">
+                          <CarryPositionCalculator id={c.id.replace('|', '-')} embedded />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </>
+        )}
       </div>
     </div>
   );
