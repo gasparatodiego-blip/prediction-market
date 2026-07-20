@@ -745,6 +745,13 @@ h1, h2, h3 {
 [data-theme="night"] .text-black           { color: var(--ds-text) !important; }
 [data-theme="night"] .hover\:text-ink:hover { color: var(--ds-text) !important; }
 
+/* Secondary ink (card subtitles / detail copy / FAQ answers on the ds surfaces)
+   routes through the subtitle token in BOTH themes — day = --ds-sub #4A5560,
+   night = --ds-sub #AEB7C2 (lifted). Scoped to .dsskin, not [data-theme="night"],
+   because native text-ink-2 (#33433D) is dark-on-dark on the night panel — the
+   landing's own subtitles were still reading the un-themed value. */
+.dsskin .text-ink-2 { color: var(--ds-sub) !important; }
+
 /* borders / dividers / rings */
 [data-theme="night"] .border-line          { border-color: var(--ds-border) !important; }
 [data-theme="night"] .divide-line > * + *  { border-color: var(--ds-border) !important; }
