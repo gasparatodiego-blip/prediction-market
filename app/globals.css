@@ -473,3 +473,159 @@ h1, h2, h3 {
 @media (prefers-reduced-motion: reduce) {
   .cashcarry .cc-bar-fill { transition: none; }
 }
+
+/* ── Cash & carry position calculator (detail) ───────────────────────────────
+   Scoped under .carrydetail; the global `h1,h2,h3 { color: var(--ink) }` rule
+   would otherwise repaint this dark panel with the light theme's ink. */
+.carrydetail {
+  --cd-bg:     #0A0D10;
+  --cd-panel:  #171D24;
+  --cd-border: #232B34;
+  --cd-text:   #E8ECF1;
+  --cd-muted:  #69737E;
+  --cd-green:  #2FE29A;
+  --cd-amber:  #F2B02E;
+  --cd-spot:   #5B9DFF;
+  --cd-future: #4FD1C5;
+  --cd-danger: #FF5A5F;
+
+  background: var(--cd-bg);
+  color: var(--cd-text);
+  font-family: var(--font-body), Inter, system-ui, sans-serif;
+  min-height: 100vh;
+  padding: 16px 14px 48px;
+}
+.carrydetail h1, .carrydetail h2, .carrydetail h3 { color: inherit; }
+
+.cd-shell { max-width: 460px; margin: 0 auto; }
+
+.cd-back {
+  display: inline-block; margin-bottom: 14px;
+  font-size: 11px; color: var(--cd-muted); text-decoration: none;
+  transition: color .18s;
+}
+.cd-back:hover { color: var(--cd-text); }
+
+.cd-head { margin-bottom: 12px; }
+.cd-title {
+  font-family: var(--font-display), 'Bricolage Grotesque', system-ui, sans-serif;
+  font-size: 19px; font-weight: 600; letter-spacing: -.01em; margin: 0; line-height: 1.2;
+}
+.cd-dot { color: var(--cd-muted); font-weight: 400; }
+.cd-meta { margin: 5px 0 0; font-size: 11px; color: var(--cd-muted); }
+
+.cd-legs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 11px; }
+.cd-leg {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 9px 10px; border-radius: 9px;
+  background: var(--cd-panel); border: 1px solid var(--cd-border);
+}
+.cd-leg.is-spot   { border-left: 2px solid var(--cd-spot); }
+.cd-leg.is-future { border-left: 2px solid var(--cd-future); }
+.cd-leg-label { font-size: 9px; letter-spacing: .07em; text-transform: uppercase; color: var(--cd-muted); }
+.cd-leg-price { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.cd-leg.is-spot   .cd-leg-price { color: var(--cd-spot); }
+.cd-leg.is-future .cd-leg-price { color: var(--cd-future); }
+.cd-leg-tag { font-size: 8.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--cd-muted); }
+
+.cd-card {
+  background: var(--cd-panel); border: 1px solid var(--cd-border);
+  border-radius: 11px; padding: 12px; margin-bottom: 11px;
+}
+.cd-card.is-net { background: rgba(47,226,154,.07); border-color: rgba(47,226,154,.28); }
+
+.cd-label { font-size: 9px; letter-spacing: .08em; text-transform: uppercase; color: var(--cd-muted); }
+.cd-cap-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.cd-cap-max { font-size: 9.5px; color: var(--cd-muted); font-variant-numeric: tabular-nums; }
+
+.cd-input {
+  width: 100%; box-sizing: border-box;
+  background: rgba(255,255,255,.03); border: 1px solid var(--cd-border);
+  border-radius: 8px; padding: 9px 10px;
+  color: var(--cd-text); font-size: 18px; font-weight: 600;
+  font-variant-numeric: tabular-nums; font-family: inherit;
+}
+.cd-input:focus { outline: none; border-color: var(--cd-spot); }
+.cd-range { width: 100%; margin: 10px 0 8px; accent-color: var(--cd-spot); }
+
+.cd-presets { display: flex; gap: 6px; flex-wrap: wrap; }
+.cd-preset {
+  flex: 1 1 auto; cursor: pointer;
+  background: rgba(255,255,255,.03); border: 1px solid var(--cd-border);
+  border-radius: 7px; padding: 6px 4px;
+  color: var(--cd-muted); font-size: 10.5px; font-weight: 600; font-family: inherit;
+  transition: color .18s, border-color .18s;
+}
+.cd-preset:hover  { color: var(--cd-text); }
+.cd-preset.is-on  { color: var(--cd-spot); border-color: rgba(91,157,255,.5); background: rgba(91,157,255,.09); }
+
+.cd-brk-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 5px 0; font-size: 11.5px; color: var(--cd-muted);
+}
+.cd-brk-row strong { font-weight: 600; font-variant-numeric: tabular-nums; color: var(--cd-text); }
+.cd-brk-row.is-total { border-top: 1px solid var(--cd-border); margin-top: 5px; padding-top: 9px; }
+.cd-brk-row.is-total.is-amber { border-top-color: rgba(242,176,46,.35); }
+.cd-green  { color: var(--cd-green) !important; }
+.cd-danger { color: var(--cd-danger) !important; }
+.cd-amber  { color: var(--cd-amber) !important; }
+
+.cd-warn {
+  margin: 8px 0 0; padding-top: 8px; border-top: 1px dashed var(--cd-border);
+  font-size: 9.5px; line-height: 1.5; color: var(--cd-muted);
+}
+
+.cd-net-label { font-size: 9px; letter-spacing: .08em; text-transform: uppercase; color: var(--cd-muted); }
+.cd-net-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; margin-top: 6px; }
+.cd-net-val { font-size: 27px; font-weight: 700; color: var(--cd-green); font-variant-numeric: tabular-nums; line-height: 1.05; }
+.cd-net-side { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.cd-net-sub { font-size: 11px; color: var(--cd-muted); font-variant-numeric: tabular-nums; }
+.cd-net-cap { display: block; margin-top: 7px; font-size: 8.5px; letter-spacing: .04em; text-transform: uppercase; color: var(--cd-muted); }
+
+.cd-arm {
+  width: 100%; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  background: transparent; border: 1px solid var(--cd-border); border-radius: 8px;
+  padding: 9px; color: var(--cd-muted); font-family: inherit;
+  font-size: 10px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;
+  transition: color .18s, border-color .18s, background .18s;
+}
+.cd-arm:hover { color: var(--cd-text); }
+.cd-arm.is-armed { color: var(--cd-green); border-color: rgba(47,226,154,.45); background: rgba(47,226,154,.07); }
+.cd-arm-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--cd-muted); }
+.cd-arm-dot.is-armed { background: var(--cd-green); box-shadow: 0 0 6px rgba(47,226,154,.8); }
+
+.cd-arm-body { margin-top: 10px; }
+.cd-roll {
+  width: 100%; cursor: pointer; font-family: inherit;
+  background: rgba(255,255,255,.03); border: 1px solid var(--cd-border); border-radius: 7px;
+  padding: 7px; color: var(--cd-muted); font-size: 10px; letter-spacing: .04em; text-transform: uppercase;
+}
+.cd-roll.is-on { color: var(--cd-future); border-color: rgba(79,209,197,.45); }
+
+.cd-caveat { margin: 9px 0 0; font-size: 10px; line-height: 1.55; color: var(--cd-amber); }
+.cd-caveat.cd-dim { color: var(--cd-muted); font-size: 9px; }
+
+.cd-connect {
+  width: 100%; margin-top: 9px; padding: 10px;
+  border-radius: 8px; border: 1px solid var(--cd-border);
+  background: rgba(255,255,255,.03); color: var(--cd-muted);
+  font-family: inherit; font-size: 11px; font-weight: 600;
+  cursor: not-allowed; opacity: .75;
+}
+
+.cd-empty {
+  border: 1px solid var(--cd-border); border-radius: 11px;
+  background: var(--cd-panel); padding: 26px 18px; text-align: center;
+}
+.cd-empty-title { margin: 0; font-size: 13px; color: var(--cd-text); }
+.cd-empty-sub   { margin: 6px 0 0; font-size: 11px; color: var(--cd-muted); }
+
+@media (prefers-reduced-motion: reduce) {
+  .carrydetail .cd-back, .carrydetail .cd-arm, .carrydetail .cd-preset { transition: none; }
+}
+
+/* Basis card → position calculator link. The card keeps its own styling; the anchor is
+   a transparent block wrapper so the whole card is the tap target on mobile. */
+.cashcarry .cc-card-link { display: block; text-decoration: none; color: inherit; }
+.cashcarry .cc-card-link:hover .cc-card { border-color: #33404d; }
