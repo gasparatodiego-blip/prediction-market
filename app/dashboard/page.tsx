@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import SectionHelp from '@/app/components/SectionHelp';
 import Link from 'next/link';
 import {
   Crosshair, Trophy, Users,
@@ -146,8 +145,6 @@ export default function DashboardPage() {
     // only. No markup, table, column or data binding below changes — see globals.css.
     <div className="dsskin">
       <div className="dash-container px-4 py-10">
-
-        <SectionHelp section="overview" />
 
         {/* Header */}
         <div className="flex items-start justify-between gap-6 mb-8">
