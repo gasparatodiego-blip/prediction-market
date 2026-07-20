@@ -193,6 +193,16 @@ export const REDACTION_MAP: Record<RouteKey, string[]> = {
   ],
 
   carry: [
+    // Card projection for /dashboard/carry. Same derived edge as the rows below, reached
+    // by a different shape — gate it identically or the card surface becomes a paywall
+    // bypass for the numbers the row already locks. Public teaser stays: asset, venue,
+    // expiry, days-to-expiry, spot ask, future bid, convergence progress.
+    'basisCards[].netUsdPerDay',
+    'basisCards[].annualizedPct',
+    'basisCards[].capacityUsd',
+    'basisCards[].executableBasisPct',
+    'basisCards[].indicativeBasisPct',
+    'carryMeta.bestApyPct',
     // Raw spot/future/bid/ask prices are public reference quotes — teaser.
     // Only the derived basis/annualized/capacity numbers are sensitive.
     'opportunities[].indicativeBasisPct',

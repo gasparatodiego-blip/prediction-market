@@ -146,6 +146,9 @@ export async function GET() {
           beatsRiskFree:       o.beatsRiskFree ?? null,
           optCapacityUsd:      o.capacityUsd ?? null,
           optCapacitySource:   o.capacitySource ?? null,
+          optCapacityBoundBy:  o.capacityBoundBy ?? null,
+          netAnnualizedCapped: o.netAnnualizedCapped ?? null,
+          netAnnualizedLabel:  o.netAnnualizedLabel ?? null,
           feePct:              o.feePct ?? null,
           feeVerified:         o.feeVerified ?? null,
           feeOfficialFraction: o.feeOfficialFraction ?? null,
@@ -163,9 +166,85 @@ export async function GET() {
     return { ...o, carryOpt: opt, venueCompare: opt ? groups[opt.groupKey] ?? null : null };
   });
 
+  // ── Card projection for /dashboard/carry ────────────────────────────────────
+  // A presentation shape only. Every number is carried through from what agent19
+  // measured or lib/carry-optimize derived; the only new values are net $/day (a
+  // restatement of the agent's net annualized at a stated capital basis) and the
+  // convergence fraction. Nothing here recomputes basis, the APY cap, or the binding leg.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { netUsdPerDay, convergence, isBelowRiskFree, RISK_FREE_PCT, CARRY_CAPITAL_BASIS } = require('@/lib/carry-display');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { firstSeenMap } = require('@/lib/carry-first-seen');
+  const firstSeen = firstSeenMap();
+
+  const basisCards = withOptimized.map((o: any) => {
+    const opt = o.carryOpt ?? null;
+    // net annualized arrives as a FRACTION from agent19 (0.0406 = 4.06%/yr).
+    const netFrac = typeof o.netAnnualizedExecutable === 'number' ? o.netAnnualizedExecutable : null;
+    const annualizedPct = netFrac == null ? null : netFrac * 100;
+    // Capacity: prefer carry-optimize's min(legs) with its binding leg; fall back to
+    // agent19's own measured figure, which is the futures book only — labelled as such
+    // so the card never implies a min() that was not computed.
+    const optCap  = opt?.optCapacityUsd ?? null;
+    const useOpt  = optCap != null;
+    const capacityUsd = useOpt ? optCap : (o.capacityUsd ?? null);
+    const bindingLeg  = useOpt
+      ? (opt?.optCapacityBoundBy ?? null)
+      : (o.capacityUsd != null ? 'futures leg (spot depth unmeasured)' : null);
+    const tenorDays = firstSeen[o.contract] ?? null;
+    const conv = convergence(tenorDays, o.daysToExpiry);
+
+    return {
+      id:                  `${o.venueKey}|${o.contract}`,
+      asset:               o.asset ?? null,
+      venue:               o.exchange ?? null,
+      contract:            o.contract ?? null,
+      expiryDate:          o.expiry ?? null,
+      daysToExpiry:        typeof o.daysToExpiry === 'number' ? o.daysToExpiry : null,
+      tenorDays:           conv?.tenorDays ?? null,
+      elapsedDays:         conv?.elapsedDays ?? null,
+      convergenceFraction: conv?.fraction ?? null,
+      // Executable legs — what you would actually pay/receive, never mid.
+      spotAsk:             typeof o.spotAsk === 'number' ? o.spotAsk : null,
+      futureBid:           typeof o.futureBid === 'number' ? o.futureBid : null,
+      executableBasisPct:  typeof o.executableBasisPct === 'number' ? o.executableBasisPct * 100 : null,
+      indicativeBasisPct:  typeof o.indicativeBasisPct === 'number' ? o.indicativeBasisPct * 100 : null,
+      annualizedPct,
+      annualizedCapped:    opt?.netAnnualizedCapped ?? null,
+      annualizedLabel:     opt?.netAnnualizedLabel ?? null,
+      belowRiskFree:       annualizedPct == null ? null : isBelowRiskFree(annualizedPct),
+      riskFreePct:         RISK_FREE_PCT,
+      netUsdPerDay:        netUsdPerDay(netFrac),
+      capitalBasisUsd:     CARRY_CAPITAL_BASIS,
+      capacityUsd,
+      bindingLeg,
+      direction:           o.direction ?? o.type ?? null,
+      coinMargined:        o.coinMargined === true,
+    };
+  });
+
+  const bestApyPct = basisCards.reduce(
+    (m: number | null, c: any) => (c.annualizedPct != null && (m == null || c.annualizedPct > m) ? c.annualizedPct : m),
+    null as number | null,
+  );
+
   const body = redactForTier({
     agentStatus,
     updatedAt:     data.updatedAt,
+    basisCards,
+    carryMeta: {
+      riskFreePct:     RISK_FREE_PCT,
+      capitalBasisUsd: CARRY_CAPITAL_BASIS,
+      bestApyPct,
+      bestBeatsRiskFree: bestApyPct == null ? null : bestApyPct > RISK_FREE_PCT,
+      // Convergence has not been observed yet: the earliest contract in the book settles
+      // after 2026-07-31, so every figure here is modelled from executable bid/ask rather
+      // than a realized settlement. Stated on the card surface, not buried.
+      convergenceObserved: false,
+      convergenceNote:
+        'convergence not yet observed — first contract settles after 31 Jul 2026. ' +
+        'figures modeled from executable bid/ask, not realized settlement.',
+    },
     opportunities: withOptimized,
     backwardation,
     summary:       data.summary        ?? {},
