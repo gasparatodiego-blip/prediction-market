@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   Crosshair, Trophy, Users,
   ChevronDown, ChevronRight, ArrowRight, GitMerge, Gift,
@@ -148,8 +149,10 @@ function AccordionItem({ q, a }: { q: string; a: string }) {
 
 export default function DashboardPage() {
   // Accordion: the card body toggles its own HOW IT WORKS panel open/closed.
-  // null = all collapsed (default). The arrow and the in-panel button navigate.
+  // null = all collapsed (default). Once expanded, tapping anywhere on the card
+  // navigates to the strategy page; the arrow stays the collapse/expand toggle.
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const router = useRouter();
 
   return (
     // .dsskin re-points the light semantic utilities onto the ds palette for this page
@@ -176,6 +179,10 @@ export default function DashboardPage() {
           {strategies.map((s, idx) => {
             const CardIcon   = s.Icon;
             const isExpanded = s.id === expandedId;
+            // One shared behaviour for every card: the arrow always toggles;
+            // once expanded, a tap anywhere on the card opens the strategy page.
+            const toggle   = () => setExpandedId(prev => (prev === s.id ? null : s.id));
+            const openPage = () => router.push(s.link);
 
             const perRow    = 3;
             const lastRowN  = strategies.length % perRow;               // cards in the final lg row
@@ -229,18 +236,19 @@ export default function DashboardPage() {
               // Same tokens/borders as before — only the interaction is new.
               <div
                 key={s.id}
+                onClick={isExpanded ? openPage : undefined}
                 className={[
                   'p-5 rounded-card w-full h-full transition-all duration-150',
                   spanCls,
                   isExpanded
-                    ? 'bg-surface border-2 border-mint-deep shadow-card'
+                    ? 'bg-surface border-2 border-mint-deep shadow-card cursor-pointer'
                     : 'bg-surface border border-line shadow-card hover:border-mint/40 hover:shadow-[0_2px_12px_rgba(15,190,130,.08)]',
                 ].join(' ')}
               >
                 <div className="flex items-start gap-2">
                   <button
                     type="button"
-                    onClick={() => setExpandedId(prev => (prev === s.id ? null : s.id))}
+                    onClick={() => { if (!isExpanded) toggle(); }}
                     aria-expanded={isExpanded}
                     className="flex items-start gap-3 flex-1 min-w-0 text-left cursor-pointer rounded-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mint/50"
                   >
@@ -269,13 +277,15 @@ export default function DashboardPage() {
                       </div>
                     </div>
                   </button>
-                  <Link
-                    href={s.link}
-                    aria-label={`Open ${s.name}`}
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); toggle(); }}
+                    aria-expanded={isExpanded}
+                    aria-label={isExpanded ? `Collapse ${s.name}` : `Expand ${s.name}`}
                     className="shrink-0 -mr-1 -mt-1 p-1 rounded-button text-muted hover:text-mint-deep transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mint/50"
                   >
                     <ChevronRight className="w-5 h-5" />
-                  </Link>
+                  </button>
                 </div>
 
                 {isExpanded && (
@@ -283,6 +293,7 @@ export default function DashboardPage() {
                     <p className="font-body text-xs text-ink-2 leading-relaxed">{s.howItWorks}</p>
                     <Link
                       href={s.link}
+                      onClick={(e) => e.stopPropagation()}
                       className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-mint-deep text-white font-body font-medium text-sm rounded-button hover:bg-mint transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mint/50"
                     >
                       Open {s.name}
