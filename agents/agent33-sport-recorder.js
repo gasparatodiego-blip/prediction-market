@@ -35,6 +35,12 @@ const zlib = require('zlib');
 
 const { atomicWriteJson } = require('../lib/atomicJsonWrite');
 const { httpGet }         = require('../lib/httpGet');
+// Fee model, staleness rule and crossing detection live in ONE place so the recorder and
+// the dashboard API can never disagree about what a number means.
+const {
+  EXCHANGES, EXCHANGE_COMMISSION, POLY_TAKER, POLY_FEE_NOTE,
+  MAX_AGE_SEC, SHORT_LIVED_SEC, netCost, legCapacity, detectArbs,
+} = require('../lib/sport-arb-math');
 
 // ── paths ─────────────────────────────────────────────────────────────────────
 const ROOT          = path.join(__dirname, '..');
@@ -49,17 +55,9 @@ const HB_KEY        = 'agent33-sport-recorder';
 const CYCLE_MS        = 45_000;    // free sources (Kalshi/Polymarket) every cycle
 const DISCOVERY_MS    = 180_000;   // odds-api catalog: 1 credit/pass, all sports in one call
 const SNAPSHOT_MS     = 120_000;   // per-event odds-api book snapshot cadence
-const MAX_AGE_SEC     = 90;        // a leg older than this is NOT live → phantom
-const SHORT_LIVED_SEC = 30;        // crossings shorter than this get an execution-speed tag
 const DISK_CEILING_MB = 2048;      // gzip old days above this
 const GZIP_AFTER_DAYS = 2;
-const EXCHANGES       = new Set(['betfair', 'betdaq', 'smarkets', 'matchbook']);
-
-// Fees. Exchange commission applies to net winnings; prediction venues charge on cost.
-const EXCHANGE_COMMISSION = 0.02;                       // betfair et al, 2% on winnings
-const kalshiFee   = p => 0.07 * p * (1 - p);            // Kalshi published taker fee
-const POLY_TAKER  = 0.01;                               // ASSUMPTION — see POLY_FEE_NOTE
-const POLY_FEE_NOTE = 'polymarket takerBaseFee=1000 in gamma, units undocumented; 1% assumed';
+// MAX_AGE_SEC / SHORT_LIVED_SEC / EXCHANGES / fee model all come from lib/sport-arb-math.
 
 // Kalshi single-game series we know carry moneyline markets, keyed by odds-api sport.
 const KALSHI_SERIES = {
@@ -445,114 +443,9 @@ async function capturePolymarket(ev, ts, index) {
 
 const eventKey = ev => `${ev.sport}|${normTeam(ev.away)}@${normTeam(ev.home)}`;
 
-// ── DERIVED LAYER: arb math ───────────────────────────────────────────────────
-// Cost of covering one outcome for $1 of payout, net of that venue's fee.
-function netCost(row) {
-  if (row.source_type === 'prediction') {
-    if (row.price == null) return null;
-    if (row.source === 'kalshi')     return row.price + kalshiFee(row.price);
-    if (row.source === 'polymarket') return row.price * (1 + POLY_TAKER);
-    return row.price;
-  }
-  if (row.odds == null || row.odds <= 1) return null;
-  const eff = EXCHANGES.has(row.source) ? 1 + (row.odds - 1) * (1 - EXCHANGE_COMMISSION) : row.odds;
-  return 1 / eff;
-}
-
-// Executable size for this leg, expressed as the payout it can absorb, or null when the
-// venue publishes no depth (fixed-odds books never do). null propagates to "size
-// unverifiable" — we never substitute open interest or a heuristic for real depth.
-function legCapacity(row) {
-  if (row.source === 'kalshi' || row.source === 'polymarket') {
-    return row.best_ask_size != null ? Number(row.best_ask_size) : null;
-  }
-  const back = row.depth_levels && row.depth_levels.back;
-  if (back && back[0] && back[0][1] != null) return Number(back[0][1]);
-  return null;
-}
-
-function detectArbs(rows, ts) {
-  const byEvent = new Map();
-  for (const r of rows) {
-    if (!byEvent.has(r.event_key)) byEvent.set(r.event_key, []);
-    byEvent.get(r.event_key).push(r);
-  }
-  const real = [], phantom = [];
-
-  for (const [key, evRows] of byEvent) {
-    // Only ever pair like-for-like markets. Even with the capture-side filters, this
-    // structural check makes a spread-vs-moneyline pairing impossible by construction.
-    const ml   = evRows.filter(r => r.market === 'moneyline');
-    const home = ml.filter(r => r.outcome === 'home' && netCost(r) != null);
-    const away = ml.filter(r => r.outcome === 'away' && netCost(r) != null);
-    if (!home.length || !away.length) continue;
-
-    for (const h of home) for (const a of away) {
-      if (h.source === a.source) continue;              // cross-venue only
-      const ch = netCost(h), ca = netCost(a);
-      const net = ch + ca;
-      if (!(net < 1)) continue;
-
-      const gross = (h.price ?? (h.odds ? 1 / h.odds : null)) + (a.price ?? (a.odds ? 1 / a.odds : null));
-      const maxAge = Math.max(h.age_sec ?? 1e9, a.age_sec ?? 1e9);
-      const stale  = !(h.is_live && a.is_live);
-
-      // Max stake = walkable depth on the THINNER leg only. Each leg must fund its own
-      // share of the book (share = its net cost / arbSum), so total stake is bounded by
-      // min over legs of capacity/share. Any missing depth → unverifiable, never invented.
-      const capH = legCapacity(h), capA = legCapacity(a);
-      let maxStake = null, bindingLeg = null, sizeUnverifiable = true;
-      if (capH != null && capA != null) {
-        const totH = capH / (ch / net), totA = capA / (ca / net);
-        maxStake = +Math.min(totH, totA).toFixed(2);
-        bindingLeg = totH <= totA ? h.source : a.source;
-        sizeUnverifiable = false;
-      }
-
-      const rec = {
-        ts, event_key: key, sport: h.sport, league: h.league, home: h.home, away: h.away,
-        legs: [
-          { outcome: 'home', source: h.source, source_type: h.source_type, team: h.team,
-            odds: h.odds, price: h.price, netCost: +ch.toFixed(5), age_sec: h.age_sec, is_live: h.is_live,
-            capacity: capH },
-          { outcome: 'away', source: a.source, source_type: a.source_type, team: a.team,
-            odds: a.odds, price: a.price, netCost: +ca.toFixed(5), age_sec: a.age_sec, is_live: a.is_live,
-            capacity: capA },
-        ],
-        grossArbSum: gross != null ? +gross.toFixed(5) : null,
-        netArbSum:   +net.toFixed(5),
-        netProfitPct: +(((1 - net) / net) * 100).toFixed(4),
-        maxStake, bindingLeg, sizeUnverifiable,
-        maxLegAgeSec: maxAge,
-        jurisdiction: jurisdictionTag(h, a),
-        feeModel: { exchangeCommissionPct: EXCHANGE_COMMISSION * 100, kalshi: '0.07*P*(1-P)',
-                    polymarket: POLY_TAKER, polymarketNote: POLY_FEE_NOTE },
-      };
-
-      if (stale) {
-        rec.phantomReason = `stale leg: max age ${maxAge}s > ${MAX_AGE_SEC}s (live-vs-stale, NOT cashable)`;
-        phantom.push(rec);
-      } else {
-        real.push(rec);
-      }
-    }
-  }
-  return { real, phantom };
-}
-
-// Jurisdiction is a TAG, never a filter — an arb we cannot personally take is still a
-// real market fact worth recording.
-function jurisdictionTag(h, a) {
-  const tags = [];
-  for (const r of [h, a]) {
-    if (r.source === 'kalshi')     tags.push('kalshi:us-cftc');
-    if (r.source === 'polymarket') tags.push(r.accepting_orders === false ? 'polymarket:close-only' : 'polymarket:openable');
-    if (EXCHANGES.has(r.source))   tags.push(`${r.source}:exchange-uk-au-eu`);
-    if (r.source_type === 'book')  tags.push(`${r.source}:sportsbook-ban-risk`);
-  }
-  const openableBoth = !tags.some(t => t.includes('close-only'));
-  return { tags, openableBoth };
-}
+// ── DERIVED LAYER ─────────────────────────────────────────────────────────────
+// netCost / legCapacity / detectArbs are imported from lib/sport-arb-math (the SSOT
+// shared with app/api/sport-arb/live/route.ts) — see the require at the top of this file.
 
 // ── crossing persistence tracking ─────────────────────────────────────────────
 // A crossing that exists for one poll is not the same object as one that holds. We key
