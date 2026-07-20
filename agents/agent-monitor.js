@@ -76,12 +76,28 @@ const WATCHED_AGENTS_RAW = [
   { pm2Name: 'agent26-landing-auditor',    hbKey: 'agent26-landing-auditor', cadenceMs: 30 * 60_000 }, // agent26-landing-auditor.js SCAN_INTERVAL_MS
   { pm2Name: 'agent30-trader-feed',        hbKey: 'agent30-trader-feed',     cadenceMs: 1  * 60_000 }, // agent30-trader-feed.js HEALTH_TICK_MS (beats every 5s)
   { pm2Name: 'agent31-trader-auditor',     hbKey: 'agent31-trader-auditor',  cadenceMs: 90_000 },      // agent31-trader-auditor.js SCAN_INTERVAL_MS (beats every 5s)
+  // agent33 beats once per cycle from agent33-sport-recorder.js:576 — after the raw dump
+  // and derived layer, unconditionally. Only odds-api BOOK SNAPSHOTS pause on the credit
+  // cap; the cycle, the free Kalshi/Polymarket capture and this beat never do, so the
+  // heartbeat stays reliable even with the metered source fully exhausted.
+  // staleMsOverride: the derived 2.5x rule would give the 5-min MIN_STALE_MS floor here.
+  // 10 min is deliberately looser — it tolerates ~13 missed 45s cycles before alerting,
+  // which keeps a transient venue hiccup or a long Polymarket book walk from paging us,
+  // while still catching a real death inside one monitor interval of the 10-min mark.
+  { pm2Name: 'agent33-sport-recorder',     hbKey: 'agent33-sport-recorder',  cadenceMs: 45_000, staleMsOverride: 10 * 60_000 },
   { pm2Name: 'dashboard',                  hbKey: null },
 ];
 
+// staleMsOverride lets an entry state a threshold directly when the derived 2.5x rule
+// (or the MIN_STALE_MS floor) is not the right shape for that agent, WITHOUT having to
+// misstate its cadenceMs — cadence stays the real cycle time, which is what the threshold
+// table prints. Entries without the field derive exactly as before, so adding it changes
+// no existing agent's threshold.
 const WATCHED_AGENTS = WATCHED_AGENTS_RAW.map(a => ({
   ...a,
-  staleMs: a.hbKey != null ? Math.max(2.5 * a.cadenceMs, MIN_STALE_MS) : null,
+  staleMs: a.hbKey != null
+    ? (a.staleMsOverride ?? Math.max(2.5 * a.cadenceMs, MIN_STALE_MS))
+    : null,
 }));
 
 function logThresholdTable() {
