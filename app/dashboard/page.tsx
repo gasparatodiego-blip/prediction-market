@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import {
   Crosshair, Trophy, Users,
-  ChevronDown, ArrowRight, GitMerge, Gift,
+  ChevronDown, ChevronRight, ArrowRight, GitMerge, Gift,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import Eyebrow from '@/app/components/ui/Eyebrow';
@@ -21,6 +21,7 @@ interface Strategy {
   platforms: string[];
   summary: string;
   explanation: string;
+  howItWorks: string;
   link: string;
   comingSoon?: boolean;
 }
@@ -34,6 +35,8 @@ const strategies: Strategy[] = [
     summary: 'Arbitrage on political, sports & current events',
     explanation:
       'When the same event (e.g. an election result) is priced differently on Polymarket, Kalshi and PredictIt, you buy the cheaper side and hedge the other. If the combined cost is below the guaranteed payout, the difference is your edge — no matter who wins. Risk: prices can move before both legs fill, and fees eat thin spreads.',
+    howItWorks:
+      'The same event is listed on more than one venue, and their prices do not always agree. When the total cost to cover every outcome across venues is less than the fixed payout, that gap is locked the moment both legs fill — who actually wins no longer matters. Edgeradar surfaces those gaps net of fees; you place the orders.',
     link: '/dashboard/prediction',
   },
   {
@@ -44,6 +47,8 @@ const strategies: Strategy[] = [
     summary: 'Locked basis return via spot + dated futures',
     explanation:
       'Buy spot and simultaneously short a dated (quarterly) futures contract on the same exchange. At expiry the future delivers at spot price, so the gap (basis) you locked in at entry is your return — regardless of where the price goes. Risk: exchange counterparty risk over the hold period. Coin-margined contracts settle in the coin, not USDT — USD return is not fully locked.',
+    howItWorks:
+      'Buy the asset spot and short a dated futures contract on it at the same time. At expiry the future settles into spot, so the basis you captured at entry becomes your return regardless of which way the price moved. Nothing to predict — the edge is fixed at entry and realised on the calendar.',
     link: '/dashboard/carry',
   },
   {
@@ -54,6 +59,8 @@ const strategies: Strategy[] = [
     summary: 'Earn daily by posting maker orders (Polymarket + Kalshi)',
     explanation:
       'Some venues pay daily rewards to market makers who post resting limit orders near the midpoint. You quote both sides within the reward band and collect a share of the daily pool proportional to your posted size and time-in-book. Returns are modest and depend on competition. Risk: your orders can fill (leaving you with a position), and rewards shrink as more makers crowd the same band. No orders are placed for you — this is a scanner.',
+    howItWorks:
+      'Some venues pay a daily pool to market makers who post resting orders near the midpoint. You quote both sides inside the reward band and earn a share of that pool for the size you post and the time it stays on the book. It pays for providing liquidity, not for calling a direction — and Edgeradar only counts rewards that actually accrued.',
     link: '/dashboard/liquidity-rewards',
   },
   {
@@ -64,6 +71,8 @@ const strategies: Strategy[] = [
     summary: 'Leaderboard + follow + alerts — one place, read-only, zero keys',
     explanation:
       'Browse the Polymarket realized P&L leaderboard by category (Politics, Sports, Crypto, Pop Culture, World), follow any wallet, and get Telegram alerts when followed traders make new trades. No private keys collected at any step. Auto-copy execution is locked pending security hardening (step 2 of 3). Past P&L ≠ future results. Not financial advice.',
+    howItWorks:
+      'Every Polymarket trade, the wallet behind it, and what that wallet has actually made once its positions settled are all public. Edgeradar ranks wallets on realised profit, lets you follow any of them, and alerts you when they trade. It is read-only: no keys are taken and nothing is executed for you.',
     link: '/dashboard/traders',
   },
   {
@@ -74,6 +83,8 @@ const strategies: Strategy[] = [
     summary: 'Cross-bookmaker surebet scanner — outlier-filtered, credit-safe snapshot',
     explanation:
       'When bookmakers disagree on odds for the same match, backing every outcome across different books locks in a profit regardless of result. Phase A: periodic snapshot scanner (EU·UK·US h2h, on-demand run). Opportunities survive a 4-book minimum gate, a median outlier filter that removes suspiciously generous prices, and a 6% ROI plausibility cap. Preview only — no orders placed.',
+    howItWorks:
+      'Bookmakers price the same match differently. Backing every outcome across the books that offer the best price on each side locks a return no matter who wins. Edgeradar compares live prices, filters out suspiciously generous outliers, and shows only spreads that clear a plausibility gate — you place the bets.',
     link: '/dashboard/sports',
   },
 ];
@@ -136,9 +147,9 @@ function AccordionItem({ q, a }: { q: string; a: string }) {
 }
 
 export default function DashboardPage() {
-  const [selectedId, setSelectedId] = useState('prediction');
-  const selected     = strategies.find(s => s.id === selectedId) ?? strategies[0];
-  const SelectedIcon = selected.Icon;
+  // Accordion: the card body toggles its own HOW IT WORKS panel open/closed.
+  // null = all collapsed (default). The arrow and the in-panel button navigate.
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   return (
     // .dsskin re-points the light semantic utilities onto the ds palette for this page
@@ -164,7 +175,7 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
           {strategies.map((s, idx) => {
             const CardIcon   = s.Icon;
-            const isSelected = s.id === selectedId;
+            const isExpanded = s.id === expandedId;
 
             const perRow    = 3;
             const lastRowN  = strategies.length % perRow;               // cards in the final lg row
@@ -213,82 +224,75 @@ export default function DashboardPage() {
             }
 
             return (
-              <button
+              // Accordion card: the body button toggles HOW IT WORKS; the arrow
+              // (top-right) and the in-panel button both open the strategy page.
+              // Same tokens/borders as before — only the interaction is new.
+              <div
                 key={s.id}
-                onClick={() => setSelectedId(s.id)}
                 className={[
-                  'p-5 rounded-card text-left w-full h-full transition-all duration-150 cursor-pointer',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mint/50',
+                  'p-5 rounded-card w-full h-full transition-all duration-150',
                   spanCls,
-                  isSelected
+                  isExpanded
                     ? 'bg-surface border-2 border-mint-deep shadow-card'
                     : 'bg-surface border border-line shadow-card hover:border-mint/40 hover:shadow-[0_2px_12px_rgba(15,190,130,.08)]',
                 ].join(' ')}
               >
-                <div className="flex items-start gap-3">
-                  <div className={`mt-0.5 shrink-0 ${isSelected ? 'text-mint-deep' : 'text-muted'}`}>
-                    <CardIcon className="w-5 h-5" />
-                  </div>
-                  <div className="min-w-0">
-                    <h3 className={`font-body font-semibold text-sm ${isSelected ? 'text-mint-deep' : 'text-ink'}`}>
-                      {s.name}
-                    </h3>
-                    <p className="font-body text-xs text-ink-2 mt-1 leading-relaxed">{s.summary}</p>
-                    <div className="flex flex-wrap gap-1 mt-3">
-                      {s.platforms.map(p => (
-                        <span
-                          key={p}
-                          className={`inline-flex items-center gap-1 font-body text-[11px] px-2 py-0.5 rounded-pill border ${
-                            isSelected
-                              ? 'border-mint/30 bg-mint-tint text-mint-deep'
-                              : 'border-line bg-bg-soft text-muted'
-                          }`}
-                        >
-                          {p !== 'EU·UK·US Books' && <PlatformLogo platform={p} size={11} />}
-                          {p}
-                        </span>
-                      ))}
+                <div className="flex items-start gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setExpandedId(prev => (prev === s.id ? null : s.id))}
+                    aria-expanded={isExpanded}
+                    className="flex items-start gap-3 flex-1 min-w-0 text-left cursor-pointer rounded-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mint/50"
+                  >
+                    <div className={`mt-0.5 shrink-0 ${isExpanded ? 'text-mint-deep' : 'text-muted'}`}>
+                      <CardIcon className="w-5 h-5" />
                     </div>
-                  </div>
+                    <div className="min-w-0">
+                      <h3 className={`font-body font-semibold text-sm ${isExpanded ? 'text-mint-deep' : 'text-ink'}`}>
+                        {s.name}
+                      </h3>
+                      <p className="font-body text-xs text-ink-2 mt-1 leading-relaxed">{s.summary}</p>
+                      <div className="flex flex-wrap gap-1 mt-3">
+                        {s.platforms.map(p => (
+                          <span
+                            key={p}
+                            className={`inline-flex items-center gap-1 font-body text-[11px] px-2 py-0.5 rounded-pill border ${
+                              isExpanded
+                                ? 'border-mint/30 bg-mint-tint text-mint-deep'
+                                : 'border-line bg-bg-soft text-muted'
+                            }`}
+                          >
+                            {p !== 'EU·UK·US Books' && <PlatformLogo platform={p} size={11} />}
+                            {p}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </button>
+                  <Link
+                    href={s.link}
+                    aria-label={`Open ${s.name}`}
+                    className="shrink-0 -mr-1 -mt-1 p-1 rounded-button text-muted hover:text-mint-deep transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mint/50"
+                  >
+                    <ChevronRight className="w-5 h-5" />
+                  </Link>
                 </div>
-              </button>
+
+                {isExpanded && (
+                  <div className="mt-4 pt-4 border-t border-line">
+                    <p className="font-body text-xs text-ink-2 leading-relaxed">{s.howItWorks}</p>
+                    <Link
+                      href={s.link}
+                      className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-mint-deep text-white font-body font-medium text-sm rounded-button hover:bg-mint transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mint/50"
+                    >
+                      Open {s.name}
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </Link>
+                  </div>
+                )}
+              </div>
             );
           })}
-        </div>
-
-        {/* Detail panel */}
-        <div className="mt-5 rounded-panel bg-surface border border-line shadow-card">
-          <div key={selectedId} className="p-6 flex flex-col sm:flex-row sm:items-start gap-6">
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-3">
-                <SelectedIcon className="w-5 h-5 text-mint-deep shrink-0" />
-                <span className="font-body font-semibold text-sm text-ink">{selected.name}</span>
-              </div>
-              <p className="font-body text-sm text-ink-2 leading-relaxed">
-                {selected.explanation}
-              </p>
-              <div className="flex flex-wrap gap-1.5 mt-4">
-                {selected.platforms.map(p => (
-                  <span
-                    key={p}
-                    className="inline-flex items-center gap-1 font-body text-[11px] px-2 py-0.5 border border-line bg-bg-soft rounded-pill text-muted"
-                  >
-                    {p !== 'EU·UK·US Books' && <PlatformLogo platform={p} size={11} />}
-                    {p}
-                  </span>
-                ))}
-              </div>
-            </div>
-            <div className="shrink-0">
-              <Link
-                href={selected.link}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-mint-deep text-white font-body font-medium text-sm rounded-button hover:bg-mint transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mint/50"
-              >
-                Open {selected.name}
-                <ArrowRight className="w-3.5 h-3.5" />
-              </Link>
-            </div>
-          </div>
         </div>
 
         {/* Stats bar */}
