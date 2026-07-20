@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { Redacted } from './ui/Redacted';
 
 /**
@@ -166,7 +167,8 @@ export default function CashCarryBasis() {
           const backward = (c.direction ?? '').toLowerCase().includes('backward');
 
           return (
-            <article key={c.id} className="cc-card">
+            <Link key={c.id} href={`/dashboard/carry/${encodeURIComponent(c.id.replace('|', '-'))}`} className="cc-card-link">
+            <article className="cc-card">
 
               <div className="cc-card-head">
                 <span className="cc-ident">
@@ -256,6 +258,7 @@ export default function CashCarryBasis() {
                 )}
               </div>
             </article>
+            </Link>
           );
         })}
       </div>
