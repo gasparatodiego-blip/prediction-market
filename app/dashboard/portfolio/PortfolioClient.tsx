@@ -178,7 +178,9 @@ export default function PortfolioClient() {
   ];
 
   return (
-    <main className="text-ink">
+    // .dsskin: appearance only — positions table and columns unchanged. The auth gate
+    // above (307 -> /auth/login) is pre-existing and deliberately kept.
+    <main className="dsskin text-ink">
       <div className="max-w-5xl mx-auto px-4 md:px-6 py-6 space-y-4">
         <SectionHelp section="portfolio" />
         <div className="flex items-center justify-end">
