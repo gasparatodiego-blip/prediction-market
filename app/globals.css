@@ -234,3 +234,129 @@ h1, h2, h3 {
     transition: none !important;
   }
 }
+
+/* ── Live sport arbitrage tab ────────────────────────────────────────────────
+   Scoped entirely under .sportarb. The global `h1,h2,h3 { color: var(--ink) }`
+   rule above would otherwise repaint this dark panel's headings with the light
+   theme's ink, so colour is explicitly re-inherited inside the wrapper. */
+.sportarb {
+  --sa-bg:      #0A0D10;
+  --sa-panel:   #171D24;
+  --sa-border:  #232B34;
+  --sa-text:    #E8ECF1;
+  --sa-muted:   #69737E;
+  --sa-live:    #2FE29A;
+  --sa-amber:   #F2B02E;
+  --sa-exch:    #5B9DFF;
+  --sa-pred:    #A78BFA;
+
+  background: var(--sa-bg);
+  color: var(--sa-text);
+  font-family: var(--font-body), Inter, system-ui, sans-serif;
+  min-height: 100vh;
+  padding: 20px 14px 48px;
+}
+.sportarb h1, .sportarb h2, .sportarb h3 { color: inherit; }
+
+.sportarb-shell { max-width: 460px; margin: 0 auto; }
+
+.sa-head { margin-bottom: 18px; }
+.sa-head-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.sa-title {
+  font-family: var(--font-display), 'Bricolage Grotesque', system-ui, sans-serif;
+  font-size: 17px; font-weight: 600; letter-spacing: -0.01em; line-height: 1.2; margin: 0;
+}
+.sa-title-dim  { color: var(--sa-muted); font-weight: 500; }
+.sa-title-live { color: var(--sa-live); }
+
+.sa-arm {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 9px; border-radius: 6px; cursor: pointer;
+  background: transparent; border: 1px solid var(--sa-border);
+  color: var(--sa-muted);
+  font-size: 9.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+  transition: color .18s, border-color .18s, background .18s;
+}
+.sa-arm:hover { color: var(--sa-text); }
+.sa-arm.is-armed { color: var(--sa-live); border-color: rgba(47,226,154,.45); background: rgba(47,226,154,.07); }
+.sa-arm-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--sa-muted); }
+.sa-arm-dot.is-armed { background: var(--sa-live); box-shadow: 0 0 6px rgba(47,226,154,.8); }
+
+.sa-scanline { margin: 9px 0 0; font-size: 11px; color: var(--sa-muted); font-variant-numeric: tabular-nums; }
+.sa-sep { opacity: .5; }
+
+.sa-card {
+  background: var(--sa-panel); border: 1px solid var(--sa-border);
+  border-radius: 12px; padding: 13px 13px 11px; margin-bottom: 11px;
+}
+.sa-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sa-card-head-l { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.sa-pulse {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--sa-live); flex: none;
+  animation: sa-pulse 1.6s ease-in-out infinite;
+}
+@keyframes sa-pulse {
+  0%, 100% { opacity: 1;   box-shadow: 0 0 0 0 rgba(47,226,154,.55); }
+  50%      { opacity: .55; box-shadow: 0 0 0 5px rgba(47,226,154,0); }
+}
+.sa-league { font-size: 10.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--sa-text); }
+.sa-clock  { font-size: 10.5px; color: var(--sa-muted); font-variant-numeric: tabular-nums; }
+.sa-window { font-size: 10.5px; color: var(--sa-muted); font-variant-numeric: tabular-nums; flex: none; }
+.sa-window.is-urgent { color: var(--sa-amber); font-weight: 600; }
+
+.sa-match {
+  font-family: var(--font-display), 'Bricolage Grotesque', system-ui, sans-serif;
+  font-size: 15px; font-weight: 600; letter-spacing: -.01em; margin: 9px 0 11px; line-height: 1.25;
+}
+
+.sa-legs { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: stretch; }
+.sa-leg {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 8px 9px; border-radius: 8px; min-width: 0;
+  background: rgba(255,255,255,.02); border: 1px solid var(--sa-border);
+}
+.sa-leg.is-exch { border-left: 2px solid var(--sa-exch); }
+.sa-leg.is-pred { border-left: 2px solid var(--sa-pred); }
+.sa-leg-venue { font-size: 9px; letter-spacing: .07em; text-transform: uppercase; color: var(--sa-muted); }
+.sa-leg-side  { font-size: 11px; color: var(--sa-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sa-leg-price { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.sa-leg.is-exch .sa-leg-price { color: var(--sa-exch); }
+.sa-leg.is-pred .sa-leg-price { color: var(--sa-pred); }
+
+.sa-net { display: flex; flex-direction: column; justify-content: center; align-items: flex-end; padding-left: 4px; }
+.sa-net-val { font-size: 21px; font-weight: 700; color: var(--sa-live); font-variant-numeric: tabular-nums; line-height: 1.1; }
+.sa-net-cap { font-size: 8.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--sa-muted); margin-top: 2px; }
+
+.sa-bar { height: 3px; border-radius: 2px; background: rgba(255,255,255,.06); margin: 11px 0 9px; overflow: hidden; }
+.sa-bar-fill { height: 100%; background: var(--sa-live); border-radius: 2px; transition: width 1s linear; }
+.sa-bar-fill.is-dying { background: var(--sa-amber); }
+
+.sa-figs { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 11px; color: var(--sa-muted); }
+.sa-figs strong { color: var(--sa-text); font-weight: 600; font-variant-numeric: tabular-nums; }
+.sa-figs .sa-green { color: var(--sa-live); }
+.sa-dim { opacity: .75; }
+
+.sa-foot { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--sa-border); }
+.sa-chip {
+  font-size: 9px; letter-spacing: .05em; text-transform: uppercase;
+  padding: 3px 7px; border-radius: 5px; color: var(--sa-muted);
+  background: rgba(255,255,255,.03); border: 1px solid var(--sa-border);
+}
+.sa-fire { margin-left: auto; font-size: 9px; letter-spacing: .06em; text-transform: uppercase; color: var(--sa-muted); }
+.sa-fire.is-armed  { color: var(--sa-live); }
+.sa-fire.is-firing { color: var(--sa-amber); font-weight: 700; }
+
+.sa-empty {
+  border: 1px solid var(--sa-border); border-radius: 12px;
+  background: var(--sa-panel); padding: 26px 18px; text-align: center;
+}
+.sa-empty-title { margin: 0; font-size: 13px; color: var(--sa-text); }
+.sa-empty-sub   { margin: 6px 0 0; font-size: 11px; color: var(--sa-muted); }
+
+.sa-note { margin: 14px 0 0; font-size: 10px; line-height: 1.5; color: var(--sa-muted); }
+.sa-note-dim { opacity: .7; }
+
+@media (prefers-reduced-motion: reduce) {
+  .sportarb .sa-pulse { animation: none; }
+  .sportarb .sa-bar-fill { transition: none; }
+}
