@@ -20,8 +20,9 @@ import { CardSection, LegBox, ArmToggle, EmptyState } from './ds';
  *  - Fees are itemised per leg and flagged as a base-tier estimate: no venue in the
  *    official table publishes dated-futures taker fees without auth, so these are
  *    unverified against the user's actual tier and the screen says so.
- *  - The risk-free comparison is mandatory and never hidden. Most rows lose to a T-bill,
- *    and the amber "below risk-free" difference is the honest headline when they do.
+ *  - The screen shows ONLY the carry's own result (net after fees, net $/day, annualized
+ *    run-rate). The risk-free comparison was removed by owner product decision — the
+ *    annualized figure renders in neutral colour and is not judged against a T-bill here.
  *  - AUTO-EXECUTE is an armed VISUAL state only. There is no order path, no account
  *    linking, and no credential is read anywhere in this file.
  */
@@ -68,9 +69,9 @@ const compact = (n: number) =>
   n >= 1_000_000 ? `$${(n / 1_000_000).toFixed(2)}M` : n >= 1_000 ? `$${(n / 1_000).toFixed(0)}k` : `$${n.toFixed(0)}`;
 
 // `embedded` renders the same calculator inline inside a list row instead of as a full
-// page: it drops the back link and the full-viewport wrapper. The math, fetch, fees,
-// risk-free comparison and armed-only auto-execute state are IDENTICAL — nothing about
-// the numbers changes with the flag.
+// page: it drops the back link and the full-viewport wrapper. The math, fetch, fees and
+// armed-only auto-execute state are IDENTICAL — nothing about the numbers changes with
+// the flag.
 export default function CarryPositionCalculator({ id, embedded = false }: { id: string; embedded?: boolean }) {
   const [data, setData] = useState<Payload | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -130,8 +131,6 @@ export default function CarryPositionCalculator({ id, embedded = false }: { id: 
 
     return { gross, feeRows, totalFees, anyUnknown, net, netPerDay, netApy, riskFreeGain, diff };
   }, [card, cappedCapital, days, riskFree]);
-
-  const beats = calc ? calc.diff > 0 : null;
 
   if (err) {
     return (
@@ -243,7 +242,7 @@ export default function CarryPositionCalculator({ id, embedded = false }: { id: 
                   <span className="cd-answer-sub">
                     <Redacted value={calc?.netPerDay} isPaid={isPaid}>{(v) => <>${money(Number(v))}</>}</Redacted> / day
                   </span>
-                  <span className={`cd-answer-sub ${card.belowRiskFree ? 'cd-amber' : ''}`}>
+                  <span className="cd-answer-sub">
                     <Redacted value={calc?.netApy} isPaid={isPaid}>{(v) => <>{Number(v).toFixed(2)}%/yr</>}</Redacted>
                   </span>
                 </span>
@@ -252,22 +251,6 @@ export default function CarryPositionCalculator({ id, embedded = false }: { id: 
                 on ${money(cappedCapital, 0)} · net of all fees · {card.annualizedLabel ?? 'run-rate, not guaranteed'}
               </span>
             </CardSection>
-
-            {/* 5. risk-free verdict — one plain-language sentence */}
-            {calc ? (
-              <div className={`cd-verdict ${beats === false ? 'is-amber' : ''}`}>
-                {beats === false ? (
-                  <>A risk-free {riskFree}% account would make <strong>${money(calc.riskFreeGain)}</strong> — <strong>${money(Math.abs(calc.diff))}</strong> more than this carry, with no lock-up.</>
-                ) : (
-                  <>This beats a risk-free {riskFree}% account by <strong>${money(calc.diff)}</strong> over {days} days.</>
-                )}
-              </div>
-            ) : (
-              <div className="cd-verdict">
-                Versus a risk-free {riskFree}%/yr account over {days ?? '—'} days:{' '}
-                <Redacted value={null} isPaid={isPaid}>{(v) => <>${money(Number(v))}</>}</Redacted>
-              </div>
-            )}
 
             {/* 6. fee breakdown — collapsed accordion, fees in $ */}
             <CardSection prefix="cd">
@@ -350,9 +333,6 @@ export default function CarryPositionCalculator({ id, embedded = false }: { id: 
                   </button>
 
                   <p className="cd-caveat">
-                    {card.belowRiskFree
-                      ? `This carry nets less than ${riskFree}%/yr risk-free. `
-                      : ''}
                     Capital is locked for {days ?? '—'} days until settlement and the basis is
                     thin — size against the book depth above, not the slider maximum.
                   </p>

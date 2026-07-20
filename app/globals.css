@@ -766,15 +766,6 @@ h1, h2, h3 {
 .cd-answer-sub.cd-amber { color: var(--cd-amber); }
 .cd-answer-cap { display: block; margin-top: 10px; font-size: 9px; letter-spacing: .03em; text-transform: uppercase; color: var(--cd-muted); }
 
-.cd-verdict {
-  margin: 0 0 11px; padding: 11px 13px;
-  border: 1px solid var(--cd-border); border-radius: 10px; background: var(--cd-panel);
-  font-size: 12px; line-height: 1.5; color: var(--cd-text);
-}
-.cd-verdict strong { font-weight: 700; color: var(--cd-green); font-variant-numeric: tabular-nums; }
-.cd-verdict.is-amber { border-color: rgba(242,176,46,.4); background: rgba(242,176,46,.06); }
-.cd-verdict.is-amber strong { color: var(--cd-amber); }
-
 .cd-acc-head {
   width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px;
   padding: 0; background: transparent; border: none; cursor: pointer;
