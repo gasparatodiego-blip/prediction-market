@@ -49,6 +49,59 @@
   --font-body: var(--font-sans);
 }
 
+/* ── ds palette as day/night CSS custom properties ───────────────────────────
+   Single source of truth for the design-system surface colours. Every ds
+   surface (the native ds/ tabs via --sa-/--cc-/--cd-, the .dsskin list tabs,
+   and the landing page's inline P palette) now reads these tokens, so one
+   `data-theme` attribute on <html> flips the entire app.
+
+   NIGHT values are the previously-shipped dark hex — with the low-contrast text
+   deliberately LIFTED (subtitle #69737E → #AEB7C2, muted → #8A94A0, headings
+   → #EDF1F6) and the base lifted off pure black (#0A0D10 → #0B0F14) to cut
+   glare. DAY is a cool-grey light palette, legible on white, with the accents
+   darkened where the night hue would fail contrast on a light surface.
+
+   Default (no attribute) resolves to DAY so a cookie-less first paint is light. */
+:root[data-theme="day"],
+:root:not([data-theme]) {
+  --ds-bg:         #F6F8FA;
+  --ds-panel:      #FFFFFF;
+  --ds-panelHover: #F0F3F6;
+  --ds-border:     #E2E7EC;
+  --ds-text:       #141A21;
+  --ds-sub:        #4A5560;
+  --ds-mute:       #6B7580;
+  --ds-accent:     #0F9E6E;
+  --ds-danger:     #D5443F;
+  --ds-amber:      #B8791A;
+  --ds-blue:       #2563C9;
+  --ds-violet:     #6B5FD0;
+  --ds-teal:       #0E8C82;
+  /* subtle inset fills — dark-alpha so they read on a light panel */
+  --ds-fill:       rgba(0,0,0,.02);
+  --ds-fill-2:     rgba(0,0,0,.035);
+  --ds-track:      rgba(0,0,0,.07);
+}
+:root[data-theme="night"] {
+  --ds-bg:         #0B0F14;
+  --ds-panel:      #171D24;
+  --ds-panelHover: #33404D;
+  --ds-border:     #232B34;
+  --ds-text:       #EDF1F6;
+  --ds-sub:        #AEB7C2;
+  --ds-mute:       #8A94A0;
+  --ds-accent:     #2FE29A;
+  --ds-danger:     #FF5A5F;
+  --ds-amber:      #F2B02E;
+  --ds-blue:       #5B9DFF;
+  --ds-violet:     #A78BFA;
+  --ds-teal:       #4FD1C5;
+  /* white-alpha fills as originally shipped for the dark surface */
+  --ds-fill:       rgba(255,255,255,.02);
+  --ds-fill-2:     rgba(255,255,255,.03);
+  --ds-track:      rgba(255,255,255,.06);
+}
+
 /* ── App base shell ──────────────────────────────────────────────────────────
    Light Edgeradar background. Terminal pages will look off until rebuilt —
    that is expected and handled in later phases. */
@@ -64,6 +117,16 @@ body {
   font-family: var(--font-body), Inter, system-ui, sans-serif;
   font-size: 13px;
   -webkit-font-smoothing: antialiased;
+}
+
+/* Night mode lifts the base shell off the light Edgeradar background so no light
+   gap shows behind the themed surfaces. Day keeps the native light shell above. */
+html[data-theme="night"] { background: var(--ds-bg); }
+html[data-theme="night"] body {
+  background:
+    radial-gradient(circle at 50% -10%, rgba(47,226,154,.05), transparent 60%),
+    var(--ds-bg);
+  color: var(--ds-text);
 }
 
 /* Tabular figures for mono font so numbers align in columns */
