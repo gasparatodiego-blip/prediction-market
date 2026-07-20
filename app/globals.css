@@ -303,15 +303,15 @@ h1, h2, h3 {
    rule above would otherwise repaint this dark panel's headings with the light
    theme's ink, so colour is explicitly re-inherited inside the wrapper. */
 .sportarb {
-  --sa-bg:      #0A0D10;
-  --sa-panel:   #171D24;
-  --sa-border:  #232B34;
-  --sa-text:    #E8ECF1;
-  --sa-muted:   #69737E;
-  --sa-live:    #2FE29A;
-  --sa-amber:   #F2B02E;
-  --sa-exch:    #5B9DFF;
-  --sa-pred:    #A78BFA;
+  --sa-bg:      var(--ds-bg);
+  --sa-panel:   var(--ds-panel);
+  --sa-border:  var(--ds-border);
+  --sa-text:    var(--ds-text);
+  --sa-muted:   var(--ds-sub);
+  --sa-live:    var(--ds-accent);
+  --sa-amber:   var(--ds-amber);
+  --sa-exch:    var(--ds-blue);
+  --sa-pred:    var(--ds-violet);
 
   background: var(--sa-bg);
   color: var(--sa-text);
@@ -376,7 +376,7 @@ h1, h2, h3 {
 .sa-leg {
   display: flex; flex-direction: column; gap: 2px;
   padding: 8px 9px; border-radius: 8px; min-width: 0;
-  background: rgba(255,255,255,.02); border: 1px solid var(--sa-border);
+  background: var(--ds-fill); border: 1px solid var(--sa-border);
 }
 .sa-leg.is-exch { border-left: 2px solid var(--sa-exch); }
 .sa-leg.is-pred { border-left: 2px solid var(--sa-pred); }
@@ -390,7 +390,7 @@ h1, h2, h3 {
 .sa-net-val { font-size: 21px; font-weight: 700; color: var(--sa-live); font-variant-numeric: tabular-nums; line-height: 1.1; }
 .sa-net-cap { font-size: 8.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--sa-muted); margin-top: 2px; }
 
-.sa-bar { height: 3px; border-radius: 2px; background: rgba(255,255,255,.06); margin: 11px 0 9px; overflow: hidden; }
+.sa-bar { height: 3px; border-radius: 2px; background: var(--ds-track); margin: 11px 0 9px; overflow: hidden; }
 .sa-bar-fill { height: 100%; background: var(--sa-live); border-radius: 2px; transition: width 1s linear; }
 .sa-bar-fill.is-dying { background: var(--sa-amber); }
 
@@ -403,7 +403,7 @@ h1, h2, h3 {
 .sa-chip {
   font-size: 9px; letter-spacing: .05em; text-transform: uppercase;
   padding: 3px 7px; border-radius: 5px; color: var(--sa-muted);
-  background: rgba(255,255,255,.03); border: 1px solid var(--sa-border);
+  background: var(--ds-fill-2); border: 1px solid var(--sa-border);
 }
 .sa-fire { margin-left: auto; font-size: 9px; letter-spacing: .06em; text-transform: uppercase; color: var(--sa-muted); }
 .sa-fire.is-armed  { color: var(--sa-live); }
@@ -432,15 +432,15 @@ h1, h2, h3 {
    global class selectors, so only the TOKEN block needs to name the extra wrapper. No CSS
    is duplicated for the Rewards tab. */
 .cashcarry, .rewards, .prediction {
-  --cc-bg:     #0A0D10;
-  --cc-panel:  #171D24;
-  --cc-border: #232B34;
-  --cc-text:   #E8ECF1;
-  --cc-muted:  #69737E;
-  --cc-green:  #2FE29A;
-  --cc-amber:  #F2B02E;
-  --cc-spot:   #5B9DFF;
-  --cc-future: #4FD1C5;
+  --cc-bg:     var(--ds-bg);
+  --cc-panel:  var(--ds-panel);
+  --cc-border: var(--ds-border);
+  --cc-text:   var(--ds-text);
+  --cc-muted:  var(--ds-sub);
+  --cc-green:  var(--ds-accent);
+  --cc-amber:  var(--ds-amber);
+  --cc-spot:   var(--ds-blue);
+  --cc-future: var(--ds-teal);
 
   background: var(--cc-bg);
   color: var(--cc-text);
@@ -457,7 +457,7 @@ h1, h2, h3 {
 
 /* Prediction: quarantine card (>15% net auto-review) and the danger accent. */
 .prediction .cc-card.is-quarantine { border-color: rgba(255,90,95,.55); background: rgba(255,90,95,.05); }
-.cc-chip.is-danger { color: #FF5A5F; border-color: rgba(255,90,95,.45); background: rgba(255,90,95,.08); }
+.cc-chip.is-danger { color: var(--ds-danger); border-color: rgba(255,90,95,.45); background: rgba(255,90,95,.08); }
 
 .cc-head { margin-bottom: 14px; }
 .cc-title {
@@ -479,7 +479,7 @@ h1, h2, h3 {
 .cc-ceiling {
   font-size: 9.5px; letter-spacing: .04em; text-transform: uppercase;
   padding: 3px 7px; border-radius: 5px; color: var(--cc-muted);
-  background: rgba(255,255,255,.03); border: 1px solid var(--cc-border);
+  background: var(--ds-fill-2); border: 1px solid var(--cc-border);
   font-variant-numeric: tabular-nums;
 }
 .cc-ceiling.is-amber { color: var(--cc-amber); border-color: rgba(242,176,46,.4); }
@@ -504,7 +504,7 @@ h1, h2, h3 {
 .cc-leg {
   display: flex; flex-direction: column; gap: 2px;
   padding: 8px 9px; border-radius: 8px; min-width: 0;
-  background: rgba(255,255,255,.02); border: 1px solid var(--cc-border);
+  background: var(--ds-fill); border: 1px solid var(--cc-border);
 }
 .cc-leg.is-spot   { border-left: 2px solid var(--cc-spot); }
 .cc-leg.is-future { border-left: 2px solid var(--cc-future); }
@@ -518,7 +518,7 @@ h1, h2, h3 {
 .cc-net-val { font-size: 20px; font-weight: 700; color: var(--cc-green); font-variant-numeric: tabular-nums; line-height: 1.1; }
 .cc-net-cap { font-size: 8px; letter-spacing: .04em; text-transform: uppercase; color: var(--cc-muted); margin-top: 3px; text-align: right; }
 
-.cc-bar { height: 3px; border-radius: 2px; background: rgba(255,255,255,.06); margin: 11px 0 5px; overflow: hidden; }
+.cc-bar { height: 3px; border-radius: 2px; background: var(--ds-track); margin: 11px 0 5px; overflow: hidden; }
 .cc-bar-fill { height: 100%; background: var(--cc-spot); border-radius: 2px; transition: width .6s ease; }
 .cc-bar-fill.is-maturing { background: var(--cc-green); }
 .cc-bar-cap { margin: 0 0 9px; font-size: 9px; color: var(--cc-muted); font-variant-numeric: tabular-nums; }
@@ -532,7 +532,7 @@ h1, h2, h3 {
 .cc-chip {
   font-size: 9px; letter-spacing: .04em; text-transform: uppercase;
   padding: 3px 7px; border-radius: 5px; color: var(--cc-muted);
-  background: rgba(255,255,255,.03); border: 1px solid var(--cc-border);
+  background: var(--ds-fill-2); border: 1px solid var(--cc-border);
 }
 .cc-chip.is-amber { color: var(--cc-amber); border-color: rgba(242,176,46,.4); background: rgba(242,176,46,.07); }
 
@@ -551,16 +551,16 @@ h1, h2, h3 {
    Scoped under .carrydetail; the global `h1,h2,h3 { color: var(--ink) }` rule
    would otherwise repaint this dark panel with the light theme's ink. */
 .carrydetail {
-  --cd-bg:     #0A0D10;
-  --cd-panel:  #171D24;
-  --cd-border: #232B34;
-  --cd-text:   #E8ECF1;
-  --cd-muted:  #69737E;
-  --cd-green:  #2FE29A;
-  --cd-amber:  #F2B02E;
-  --cd-spot:   #5B9DFF;
-  --cd-future: #4FD1C5;
-  --cd-danger: #FF5A5F;
+  --cd-bg:     var(--ds-bg);
+  --cd-panel:  var(--ds-panel);
+  --cd-border: var(--ds-border);
+  --cd-text:   var(--ds-text);
+  --cd-muted:  var(--ds-sub);
+  --cd-green:  var(--ds-accent);
+  --cd-amber:  var(--ds-amber);
+  --cd-spot:   var(--ds-blue);
+  --cd-future: var(--ds-teal);
+  --cd-danger: var(--ds-danger);
 
   background: var(--cd-bg);
   color: var(--cd-text);
@@ -613,7 +613,7 @@ h1, h2, h3 {
 
 .cd-input {
   width: 100%; box-sizing: border-box;
-  background: rgba(255,255,255,.03); border: 1px solid var(--cd-border);
+  background: var(--ds-fill-2); border: 1px solid var(--cd-border);
   border-radius: 8px; padding: 9px 10px;
   color: var(--cd-text); font-size: 18px; font-weight: 600;
   font-variant-numeric: tabular-nums; font-family: inherit;
@@ -624,7 +624,7 @@ h1, h2, h3 {
 .cd-presets { display: flex; gap: 6px; flex-wrap: wrap; }
 .cd-preset {
   flex: 1 1 auto; cursor: pointer;
-  background: rgba(255,255,255,.03); border: 1px solid var(--cd-border);
+  background: var(--ds-fill-2); border: 1px solid var(--cd-border);
   border-radius: 7px; padding: 6px 4px;
   color: var(--cd-muted); font-size: 10.5px; font-weight: 600; font-family: inherit;
   transition: color .18s, border-color .18s;
@@ -671,7 +671,7 @@ h1, h2, h3 {
 .cd-arm-body { margin-top: 10px; }
 .cd-roll {
   width: 100%; cursor: pointer; font-family: inherit;
-  background: rgba(255,255,255,.03); border: 1px solid var(--cd-border); border-radius: 7px;
+  background: var(--ds-fill-2); border: 1px solid var(--cd-border); border-radius: 7px;
   padding: 7px; color: var(--cd-muted); font-size: 10px; letter-spacing: .04em; text-transform: uppercase;
 }
 .cd-roll.is-on { color: var(--cd-future); border-color: rgba(79,209,197,.45); }
@@ -682,7 +682,7 @@ h1, h2, h3 {
 .cd-connect {
   width: 100%; margin-top: 9px; padding: 10px;
   border-radius: 8px; border: 1px solid var(--cd-border);
-  background: rgba(255,255,255,.03); color: var(--cd-muted);
+  background: var(--ds-fill-2); color: var(--cd-muted);
   font-family: inherit; font-size: 11px; font-weight: 600;
   cursor: not-allowed; opacity: .75;
 }
@@ -701,7 +701,7 @@ h1, h2, h3 {
 /* Basis card → position calculator link. The card keeps its own styling; the anchor is
    a transparent block wrapper so the whole card is the tap target on mobile. */
 .cashcarry .cc-card-link { display: block; text-decoration: none; color: inherit; }
-.cashcarry .cc-card-link:hover .cc-card { border-color: #33404d; }
+.cashcarry .cc-card-link:hover .cc-card { border-color: var(--ds-panelHover); }
 
 /* ── ds dark skin for the list/dashboard tabs ────────────────────────────────
    Overview, Portfolio, Traders and Paper keep their existing markup, tables,
@@ -717,52 +717,60 @@ h1, h2, h3 {
    tailwind.config.ts untouched.
 
    !important is required: these override same-specificity utility classes. */
+/* The .dsskin wrapper's own surface follows the theme: light in day, dark in
+   night. The Tailwind-utility overrides below no longer hang off .dsskin — they
+   are scoped to [data-theme="night"] so they fire ONLY in night and apply
+   app-wide (the shared header + these list tabs alike, so the chrome flips with
+   the content instead of floating light over a dark surface). In day there is no
+   override, so the native light Tailwind palette shows through. All values read
+   from the --ds-* tokens, so night == the previously-shipped dark hex with the
+   low-contrast text lifted (text-muted now resolves to --ds-sub #AEB7C2). */
 .dsskin {
-  background: #0A0D10;
-  color: #E8ECF1;
+  background: var(--ds-bg);
+  color: var(--ds-text);
   min-height: 100vh;
   font-family: var(--font-body), Inter, system-ui, sans-serif;
 }
 .dsskin h1, .dsskin h2, .dsskin h3, .dsskin h4 { color: inherit; }
 
 /* surfaces */
-.dsskin .bg-surface           { background-color: #171D24 !important; }
-.dsskin .bg-white             { background-color: #171D24 !important; }
-.dsskin .bg-line              { background-color: #232B34 !important; }
-.dsskin .bg-base              { background-color: #0A0D10 !important; }
+[data-theme="night"] .bg-surface           { background-color: var(--ds-panel) !important; }
+[data-theme="night"] .bg-white             { background-color: var(--ds-panel) !important; }
+[data-theme="night"] .bg-line              { background-color: var(--ds-border) !important; }
+[data-theme="night"] .bg-base              { background-color: var(--ds-bg) !important; }
 
 /* text */
-.dsskin .text-ink             { color: #E8ECF1 !important; }
-.dsskin .text-muted           { color: #69737E !important; }
-.dsskin .text-black           { color: #E8ECF1 !important; }
-.dsskin .hover\:text-ink:hover { color: #E8ECF1 !important; }
+[data-theme="night"] .text-ink             { color: var(--ds-text) !important; }
+[data-theme="night"] .text-muted           { color: var(--ds-sub) !important; }
+[data-theme="night"] .text-black           { color: var(--ds-text) !important; }
+[data-theme="night"] .hover\:text-ink:hover { color: var(--ds-text) !important; }
 
 /* borders / dividers / rings */
-.dsskin .border-line          { border-color: #232B34 !important; }
-.dsskin .divide-line > * + *  { border-color: #232B34 !important; }
-.dsskin .ring-line            { --tw-ring-color: #232B34 !important; }
+[data-theme="night"] .border-line          { border-color: var(--ds-border) !important; }
+[data-theme="night"] .divide-line > * + *  { border-color: var(--ds-border) !important; }
+[data-theme="night"] .ring-line            { --tw-ring-color: var(--ds-border) !important; }
 
 /* accents — mapped onto the ds palette so the whole app reads as one system */
-.dsskin .text-mint,
-.dsskin .text-mint-deep       { color: #2FE29A !important; }
-.dsskin .border-mint,
-.dsskin .border-mint-deep     { border-color: rgba(47,226,154,.45) !important; }
-.dsskin .bg-mint,
-.dsskin .bg-mint-deep         { background-color: #2FE29A !important; color: #0A0D10 !important; }
-.dsskin .bg-mint-tint         { background-color: rgba(47,226,154,.10) !important; }
-.dsskin .ring-mint            { --tw-ring-color: rgba(47,226,154,.45) !important; }
-.dsskin .hover\:bg-mint:hover { background-color: rgba(47,226,154,.15) !important; }
+[data-theme="night"] .text-mint,
+[data-theme="night"] .text-mint-deep       { color: var(--ds-accent) !important; }
+[data-theme="night"] .border-mint,
+[data-theme="night"] .border-mint-deep     { border-color: rgba(47,226,154,.45) !important; }
+[data-theme="night"] .bg-mint,
+[data-theme="night"] .bg-mint-deep         { background-color: var(--ds-accent) !important; color: var(--ds-bg) !important; }
+[data-theme="night"] .bg-mint-tint         { background-color: rgba(47,226,154,.10) !important; }
+[data-theme="night"] .ring-mint            { --tw-ring-color: rgba(47,226,154,.45) !important; }
+[data-theme="night"] .hover\:bg-mint:hover { background-color: rgba(47,226,154,.15) !important; }
 
-.dsskin .text-gold            { color: #F2B02E !important; }
-.dsskin .border-gold          { border-color: rgba(242,176,46,.45) !important; }
-.dsskin .bg-gold-tint         { background-color: rgba(242,176,46,.10) !important; }
+[data-theme="night"] .text-gold            { color: var(--ds-amber) !important; }
+[data-theme="night"] .border-gold          { border-color: rgba(242,176,46,.45) !important; }
+[data-theme="night"] .bg-gold-tint         { background-color: rgba(242,176,46,.10) !important; }
 
-.dsskin .text-coral-ink       { color: #FF5A5F !important; }
-.dsskin .bg-coral-tint        { background-color: rgba(255,90,95,.10) !important; }
+[data-theme="night"] .text-coral-ink       { color: var(--ds-danger) !important; }
+[data-theme="night"] .bg-coral-tint        { background-color: rgba(255,90,95,.10) !important; }
 
-.dsskin .text-violet          { color: #A78BFA !important; }
-.dsskin .border-violet        { border-color: rgba(167,139,250,.45) !important; }
-.dsskin .bg-violet-tint       { background-color: rgba(167,139,250,.10) !important; }
+[data-theme="night"] .text-violet          { color: var(--ds-violet) !important; }
+[data-theme="night"] .border-violet        { border-color: rgba(167,139,250,.45) !important; }
+[data-theme="night"] .bg-violet-tint       { background-color: rgba(167,139,250,.10) !important; }
 
 /* numbers read as data, not prose */
 .dsskin .tabular-nums, .dsskin [class*="tabular"] { font-variant-numeric: tabular-nums; }
