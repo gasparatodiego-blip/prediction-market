@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Redacted } from './ui/Redacted';
+import { Card, ScoreboardHeader, LegBox, ProgressBar, MetricValue, Chip, ArmToggle, EmptyState } from './ds';
 
 /**
  * Live sport arbitrage tab.
@@ -117,16 +118,14 @@ export default function SportArbLive() {
               <span className="sa-title-live"> · live</span>
             </h1>
 
-            <button
-              type="button"
-              onClick={() => setArmed((a) => !a)}
-              className={`sa-arm ${armed ? 'is-armed' : ''}`}
+            <ArmToggle
+              prefix="sa"
+              armed={armed}
+              onToggle={() => setArmed((a) => !a)}
+              onLabel="AUTO-FIRE ARMED"
+              offLabel="AUTO-FIRE OFF"
               title="connect account to enable real fills"
-              aria-pressed={armed}
-            >
-              <span className={`sa-arm-dot ${armed ? 'is-armed' : ''}`} aria-hidden />
-              {armed ? 'AUTO-FIRE ARMED' : 'AUTO-FIRE OFF'}
-            </button>
+            />
           </div>
 
           <p className="sa-scanline">
@@ -140,26 +139,19 @@ export default function SportArbLive() {
 
         {/* ── body ───────────────────────────────────────────────── */}
         {err && (
-          <div className="sa-empty">
-            <p className="sa-empty-title">Live feed unavailable</p>
-            <p className="sa-empty-sub">{err}</p>
-          </div>
+          <EmptyState prefix="sa" title="Live feed unavailable" sub={err} />
         )}
 
         {!err && data && counts.crossings === 0 && (
-          <div className="sa-empty">
-            <p className="sa-empty-title">
-              No live crossing right now — scanning {counts.liveGames} live game
-              {counts.liveGames === 1 ? '' : 's'}.
-            </p>
-            <p className="sa-empty-sub">Stale-leg traps are filtered out.</p>
-          </div>
+          <EmptyState
+            prefix="sa"
+            title={<>No live crossing right now — scanning {counts.liveGames} live game{counts.liveGames === 1 ? '' : 's'}.</>}
+            sub="Stale-leg traps are filtered out."
+          />
         )}
 
         {!err && !data && (
-          <div className="sa-empty">
-            <p className="sa-empty-sub">Loading live book…</p>
-          </div>
+          <EmptyState prefix="sa" sub="Loading live book…" />
         )}
 
         {!err && data && data.crossings.map((c) => {
@@ -170,48 +162,52 @@ export default function SportArbLive() {
           const urgent = left < 12;
 
           return (
-            <article key={c.id} className="sa-card">
+            <Card key={c.id} prefix="sa">
 
-              <div className="sa-card-head">
-                <div className="sa-card-head-l">
-                  <span className="sa-pulse" aria-hidden />
-                  <span className="sa-league">{c.league}</span>
-                  <span className="sa-clock">{c.clock ?? '—'}</span>
-                </div>
-                <span className={`sa-window ${urgent ? 'is-urgent' : ''}`}>
-                  {c.windowSecs == null ? '—' : `${left}s window`}
-                </span>
-              </div>
+              <ScoreboardHeader
+                prefix="sa"
+                left={
+                  <div className="sa-card-head-l">
+                    <span className="sa-pulse" aria-hidden />
+                    <span className="sa-league">{c.league}</span>
+                    <span className="sa-clock">{c.clock ?? '—'}</span>
+                  </div>
+                }
+                right={
+                  <span className={`sa-window ${urgent ? 'is-urgent' : ''}`}>
+                    {c.windowSecs == null ? '—' : `${left}s window`}
+                  </span>
+                }
+              />
 
               <h2 className="sa-match">{c.match}</h2>
 
               <div className="sa-legs">
                 {[c.legA, c.legB].map((leg, i) => (
-                  <div key={i} className={`sa-leg ${leg.type === 'exch' ? 'is-exch' : 'is-pred'}`}>
-                    <span className="sa-leg-venue">{leg.venue}</span>
-                    <span className="sa-leg-side">{leg.side}</span>
-                    <span className="sa-leg-price">
-                      {leg.price == null ? '—' : leg.price}
-                    </span>
-                  </div>
+                  <LegBox
+                    key={i}
+                    prefix="sa"
+                    accent={leg.type === 'exch' ? 'exch' : 'pred'}
+                    slots={[
+                      { cls: 'venue', text: leg.venue },
+                      { cls: 'side',  text: leg.side },
+                      { cls: 'price', text: leg.price == null ? '—' : leg.price },
+                    ]}
+                  />
                 ))}
 
-                <div className="sa-net">
-                  <span className="sa-net-val">
+                <MetricValue
+                  prefix="sa"
+                  value={
                     <Redacted value={c.netPct} isPaid={isPaid}>
                       {(v) => <>+{Number(v).toFixed(2)}%</>}
                     </Redacted>
-                  </span>
-                  <span className="sa-net-cap">net · post-fee</span>
-                </div>
-              </div>
-
-              <div className="sa-bar" aria-hidden>
-                <div
-                  className={`sa-bar-fill ${dying ? 'is-dying' : ''}`}
-                  style={{ width: `${pct}%` }}
+                  }
+                  caption="net · post-fee"
                 />
               </div>
+
+              <ProgressBar prefix="sa" pct={pct} mode="drain" active={dying} />
 
               <div className="sa-figs">
                 <span>
@@ -230,15 +226,13 @@ export default function SportArbLive() {
               </div>
 
               <div className="sa-foot">
-                <span className="sa-chip">{c.jurisdictionTag}</span>
-                <span className="sa-chip">
-                  {c.executable ? 'executable bid/ask' : 'size unverifiable'}
-                </span>
+                <Chip prefix="sa">{c.jurisdictionTag}</Chip>
+                <Chip prefix="sa">{c.executable ? 'executable bid/ask' : 'size unverifiable'}</Chip>
                 <span className={`sa-fire ${armed ? (dying ? 'is-firing' : 'is-armed') : ''}`}>
                   {armed ? (dying ? '⚡ FIRING' : 'auto-fill armed') : 'arm to fill'}
                 </span>
               </div>
-            </article>
+            </Card>
           );
         })}
 
