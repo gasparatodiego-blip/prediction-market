@@ -179,6 +179,7 @@ module.exports = {
       cwd:           '/root/prediction-market',
       restart_delay: 15000,
       max_restarts:  20,
+      max_memory_restart: '500M',   // self-recycle above ~360-390MB normal footprint, below OOM-cascade territory
       watch:         false,
       env:           { NODE_ENV: 'production', HOME: '/root' },
     },
