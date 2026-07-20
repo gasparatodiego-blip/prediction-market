@@ -639,3 +639,71 @@ h1, h2, h3 {
    a transparent block wrapper so the whole card is the tap target on mobile. */
 .cashcarry .cc-card-link { display: block; text-decoration: none; color: inherit; }
 .cashcarry .cc-card-link:hover .cc-card { border-color: #33404d; }
+
+/* ── ds dark skin for the list/dashboard tabs ────────────────────────────────
+   Overview, Portfolio, Traders and Paper keep their existing markup, tables,
+   columns and data bindings exactly as they are. Only their appearance moves onto
+   the ds line, by re-pointing the light semantic utilities to the ds palette INSIDE
+   a wrapper.
+
+   Why scoped CSS instead of rewriting ~225 className attributes across 1,900 lines:
+   the utilities compile to literal hex from tailwind.config.ts, so a variable remap
+   cannot reach them, and editing the config would repaint the landing page, Sports
+   and every other light surface — out of scope. Overriding here changes zero markup,
+   which makes "structure preserved" provable rather than merely asserted, and leaves
+   tailwind.config.ts untouched.
+
+   !important is required: these override same-specificity utility classes. */
+.dsskin {
+  background: #0A0D10;
+  color: #E8ECF1;
+  min-height: 100vh;
+  font-family: var(--font-body), Inter, system-ui, sans-serif;
+}
+.dsskin h1, .dsskin h2, .dsskin h3, .dsskin h4 { color: inherit; }
+
+/* surfaces */
+.dsskin .bg-surface           { background-color: #171D24 !important; }
+.dsskin .bg-white             { background-color: #171D24 !important; }
+.dsskin .bg-line              { background-color: #232B34 !important; }
+.dsskin .bg-base              { background-color: #0A0D10 !important; }
+
+/* text */
+.dsskin .text-ink             { color: #E8ECF1 !important; }
+.dsskin .text-muted           { color: #69737E !important; }
+.dsskin .text-black           { color: #E8ECF1 !important; }
+.dsskin .hover\:text-ink:hover { color: #E8ECF1 !important; }
+
+/* borders / dividers / rings */
+.dsskin .border-line          { border-color: #232B34 !important; }
+.dsskin .divide-line > * + *  { border-color: #232B34 !important; }
+.dsskin .ring-line            { --tw-ring-color: #232B34 !important; }
+
+/* accents — mapped onto the ds palette so the whole app reads as one system */
+.dsskin .text-mint,
+.dsskin .text-mint-deep       { color: #2FE29A !important; }
+.dsskin .border-mint,
+.dsskin .border-mint-deep     { border-color: rgba(47,226,154,.45) !important; }
+.dsskin .bg-mint,
+.dsskin .bg-mint-deep         { background-color: #2FE29A !important; color: #0A0D10 !important; }
+.dsskin .bg-mint-tint         { background-color: rgba(47,226,154,.10) !important; }
+.dsskin .ring-mint            { --tw-ring-color: rgba(47,226,154,.45) !important; }
+.dsskin .hover\:bg-mint:hover { background-color: rgba(47,226,154,.15) !important; }
+
+.dsskin .text-gold            { color: #F2B02E !important; }
+.dsskin .border-gold          { border-color: rgba(242,176,46,.45) !important; }
+.dsskin .bg-gold-tint         { background-color: rgba(242,176,46,.10) !important; }
+
+.dsskin .text-coral-ink       { color: #FF5A5F !important; }
+.dsskin .bg-coral-tint        { background-color: rgba(255,90,95,.10) !important; }
+
+.dsskin .text-violet          { color: #A78BFA !important; }
+.dsskin .border-violet        { border-color: rgba(167,139,250,.45) !important; }
+.dsskin .bg-violet-tint       { background-color: rgba(167,139,250,.10) !important; }
+
+/* numbers read as data, not prose */
+.dsskin .tabular-nums, .dsskin [class*="tabular"] { font-variant-numeric: tabular-nums; }
+
+@media (prefers-reduced-motion: reduce) {
+  .dsskin * { transition: none !important; }
+}

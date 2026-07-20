@@ -142,7 +142,9 @@ export default function DashboardPage() {
   const SelectedIcon = selected.Icon;
 
   return (
-    <div>
+    // .dsskin re-points the light semantic utilities onto the ds palette for this page
+    // only. No markup, table, column or data binding below changes — see globals.css.
+    <div className="dsskin">
       <div className="dash-container px-4 py-10">
 
         <SectionHelp section="overview" />
