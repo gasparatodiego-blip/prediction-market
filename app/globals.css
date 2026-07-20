@@ -365,7 +365,10 @@ h1, h2, h3 {
    Scoped under .cashcarry. The global `h1,h2,h3 { color: var(--ink) }` rule would
    otherwise repaint this dark panel's headings with the light theme's ink, so
    colour is explicitly re-inherited inside the wrapper. */
-.cashcarry {
+/* .rewards reuses the carry card language wholesale: the .cc-* component rules below are
+   global class selectors, so only the TOKEN block needs to name the extra wrapper. No CSS
+   is duplicated for the Rewards tab. */
+.cashcarry, .rewards {
   --cc-bg:     #0A0D10;
   --cc-panel:  #171D24;
   --cc-border: #232B34;
@@ -382,9 +385,11 @@ h1, h2, h3 {
   min-height: 100vh;
   padding: 20px 14px 48px;
 }
-.cashcarry h1, .cashcarry h2, .cashcarry h3 { color: inherit; }
+.cashcarry h1, .cashcarry h2, .cashcarry h3,
+.rewards h1, .rewards h2, .rewards h3 { color: inherit; }
 
 .cc-shell { max-width: 460px; margin: 0 auto; }
+.rewards .cc-shell { max-width: 460px; margin: 0 auto; }
 
 .cc-head { margin-bottom: 14px; }
 .cc-title {
