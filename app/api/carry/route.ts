@@ -194,6 +194,30 @@ export async function GET() {
     const tenorDays = firstSeen[o.contract] ?? null;
     const conv = convergence(tenorDays, o.daysToExpiry);
 
+    // Fee model for the position calculator. The legs are agent19's per-venue round-trip
+    // rates — real, itemised, and already the basis of its net figure, so the calculator
+    // scales the SAME fees rather than inventing a table.
+    //
+    // They are NOT independently verified: data/venue-fees-official.json records Bybit,
+    // OKX and Binance as UNKNOWN because those venues gate their schedules behind auth,
+    // and its own policy refuses to substitute blog or docs figures. carryOpt.feeVerified
+    // is currently false on every served row. So isAssumption is true here for a measured
+    // reason, and the UI must tell the user to check their own tier.
+    const feeLegs = Array.isArray(o.feeLegs) ? o.feeLegs : null;
+    const feeVerified = opt?.feeVerified === true;
+    const feeModel = feeLegs
+      ? {
+          legs: feeLegs.map((l: any) => ({ label: l.label ?? null, pct: typeof l.pct === 'number' ? l.pct * 100 : null })),
+          totalPct: typeof o.fee === 'number' ? o.fee * 100 : null,
+          verified: feeVerified,
+          isAssumption: !feeVerified,
+          source: feeVerified ? 'venue-fees-official' : 'agent19 round-trip model (base tier)',
+          note: feeVerified
+            ? 'verified against the official venue fee table'
+            : 'base-tier estimate — verify against your own fee tier before sizing',
+        }
+      : null;
+
     return {
       id:                  `${o.venueKey}|${o.contract}`,
       asset:               o.asset ?? null,
@@ -220,6 +244,7 @@ export async function GET() {
       bindingLeg,
       direction:           o.direction ?? o.type ?? null,
       coinMargined:        o.coinMargined === true,
+      feeModel,
     };
   });
 
