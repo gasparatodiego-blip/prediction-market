@@ -368,7 +368,7 @@ h1, h2, h3 {
 /* .rewards reuses the carry card language wholesale: the .cc-* component rules below are
    global class selectors, so only the TOKEN block needs to name the extra wrapper. No CSS
    is duplicated for the Rewards tab. */
-.cashcarry, .rewards {
+.cashcarry, .rewards, .prediction {
   --cc-bg:     #0A0D10;
   --cc-panel:  #171D24;
   --cc-border: #232B34;
@@ -386,10 +386,15 @@ h1, h2, h3 {
   padding: 20px 14px 48px;
 }
 .cashcarry h1, .cashcarry h2, .cashcarry h3,
-.rewards h1, .rewards h2, .rewards h3 { color: inherit; }
+.rewards h1, .rewards h2, .rewards h3,
+.prediction h1, .prediction h2, .prediction h3 { color: inherit; }
 
 .cc-shell { max-width: 460px; margin: 0 auto; }
-.rewards .cc-shell { max-width: 460px; margin: 0 auto; }
+.rewards .cc-shell, .prediction .cc-shell { max-width: 460px; margin: 0 auto; }
+
+/* Prediction: quarantine card (>15% net auto-review) and the danger accent. */
+.prediction .cc-card.is-quarantine { border-color: rgba(255,90,95,.55); background: rgba(255,90,95,.05); }
+.cc-chip.is-danger { color: #FF5A5F; border-color: rgba(255,90,95,.45); background: rgba(255,90,95,.08); }
 
 .cc-head { margin-bottom: 14px; }
 .cc-title {
