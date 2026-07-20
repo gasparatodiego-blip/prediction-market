@@ -750,6 +750,40 @@ h1, h2, h3 {
   .carrydetail .cd-back, .carrydetail .cd-arm, .carrydetail .cd-preset { transition: none; }
 }
 
+/* ── Position calculator readability hierarchy ────────────────────────────────
+   THE ANSWER: a single dominant green-bordered card with the net figure big; the
+   verdict as one plain sentence; the fee breakdown collapsed into an accordion.
+   All colour from the ds --cd-* tokens (day/night). Presentation only. */
+.carrydetail .cd-card.is-answer {
+  background: rgba(47,226,154,.06);
+  border: 1.5px solid rgba(47,226,154,.5);
+}
+.cd-answer-label { font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--cd-muted); }
+.cd-answer-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-top: 8px; }
+.cd-answer-net { font-size: 40px; font-weight: 700; letter-spacing: -.02em; line-height: 1; color: var(--cd-green); font-variant-numeric: tabular-nums; }
+.cd-answer-side { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; padding-bottom: 3px; }
+.cd-answer-sub { font-size: 12px; color: var(--cd-muted); font-variant-numeric: tabular-nums; }
+.cd-answer-sub.cd-amber { color: var(--cd-amber); }
+.cd-answer-cap { display: block; margin-top: 10px; font-size: 9px; letter-spacing: .03em; text-transform: uppercase; color: var(--cd-muted); }
+
+.cd-verdict {
+  margin: 0 0 11px; padding: 11px 13px;
+  border: 1px solid var(--cd-border); border-radius: 10px; background: var(--cd-panel);
+  font-size: 12px; line-height: 1.5; color: var(--cd-text);
+}
+.cd-verdict strong { font-weight: 700; color: var(--cd-green); font-variant-numeric: tabular-nums; }
+.cd-verdict.is-amber { border-color: rgba(242,176,46,.4); background: rgba(242,176,46,.06); }
+.cd-verdict.is-amber strong { color: var(--cd-amber); }
+
+.cd-acc-head {
+  width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 0; background: transparent; border: none; cursor: pointer;
+  font-family: inherit; font-size: 11px; color: var(--cd-text);
+}
+.cd-acc-title { font-weight: 600; }
+.cd-acc-caret { color: var(--cd-muted); font-size: 10px; }
+.cd-acc-body { margin-top: 10px; }
+
 /* Basis card → position calculator link. The card keeps its own styling; the anchor is
    a transparent block wrapper so the whole card is the tap target on mobile. */
 .cashcarry .cc-card-link { display: block; text-decoration: none; color: inherit; }

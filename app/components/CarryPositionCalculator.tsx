@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Redacted } from './ui/Redacted';
-import { CardSection, LegBox, MetricValue, ArmToggle, EmptyState } from './ds';
+import { CardSection, LegBox, ArmToggle, EmptyState } from './ds';
 
 /**
  * Cash & carry position calculator — "if I enter now, exactly how much do I net?"
@@ -77,6 +77,7 @@ export default function CarryPositionCalculator({ id, embedded = false }: { id: 
   const [capital, setCapital] = useState(DEFAULT_CAPITAL);
   const [armed, setArmed] = useState(false);
   const [autoRoll, setAutoRoll] = useState(false);
+  const [feeOpen, setFeeOpen] = useState(false);   // fee breakdown collapsed by default
 
   useEffect(() => {
     let alive = true;
@@ -153,16 +154,16 @@ export default function CarryPositionCalculator({ id, embedded = false }: { id: 
 
         {card && (
           <>
-            {/* 1. identity */}
+            {/* 1. position header */}
             <header className="cd-head">
               <h1 className="cd-title">{card.asset ?? '—'} <span className="cd-dot">·</span> {card.venue ?? '—'}</h1>
               <p className="cd-meta">
                 exp {card.expiryDate ?? '—'} <span className="cd-dot">·</span>{' '}
-                {days ?? '—'}d to settle <span className="cd-dot">·</span> {card.direction ?? '—'}
+                {days ?? '—'}d to expiry <span className="cd-dot">·</span> {card.direction ?? '—'}
               </p>
             </header>
 
-            {/* 2. legs */}
+            {/* 2. legs — buy spot / short future, side by side */}
             <div className="cd-legs">
               <LegBox
                 prefix="cd"
@@ -184,10 +185,10 @@ export default function CarryPositionCalculator({ id, embedded = false }: { id: 
               />
             </div>
 
-            {/* 3. capital */}
+            {/* 3. capital input */}
             <CardSection prefix="cd">
               <div className="cd-cap-row">
-                <label className="cd-label" htmlFor="cd-capital">CAPITAL</label>
+                <label className="cd-label" htmlFor="cd-capital">How much do you want to deploy?</label>
                 <span className="cd-cap-max">
                   max {capacity == null ? '—' : compact(capacity)}
                   {card.bindingLeg ? ` · ${card.bindingLeg}` : ''} · book depth
@@ -231,86 +232,99 @@ export default function CarryPositionCalculator({ id, embedded = false }: { id: 
               </div>
             </CardSection>
 
-            {/* 4. breakdown */}
-            <CardSection prefix="cd">
-              <div className="cd-brk-row">
-                <span>gross basis{card.executableBasisPct != null ? ` (+${card.executableBasisPct.toFixed(2)}%)` : ''}</span>
-                <strong className="cd-green">
-                  <Redacted value={calc?.gross} isPaid={isPaid}>{(v) => <>+${money(Number(v))}</>}</Redacted>
-                </strong>
+            {/* 4. THE ANSWER — dominant, alone in its own green card */}
+            <CardSection prefix="cd" className="is-answer">
+              <span className="cd-answer-label">IF YOU ENTER NOW, HELD TO EXPIRY</span>
+              <div className="cd-answer-row">
+                <span className="cd-answer-net">
+                  <Redacted value={calc?.net} isPaid={isPaid}>{(v) => <>+${money(Number(v))}</>}</Redacted>
+                </span>
+                <span className="cd-answer-side">
+                  <span className="cd-answer-sub">
+                    <Redacted value={calc?.netPerDay} isPaid={isPaid}>{(v) => <>${money(Number(v))}</>}</Redacted> / day
+                  </span>
+                  <span className={`cd-answer-sub ${card.belowRiskFree ? 'cd-amber' : ''}`}>
+                    <Redacted value={calc?.netApy} isPaid={isPaid}>{(v) => <>{Number(v).toFixed(2)}%/yr</>}</Redacted>
+                  </span>
+                </span>
               </div>
-
-              {(calc?.feeRows ?? []).map((f, i) => (
-                <div className="cd-brk-row is-fee" key={i}>
-                  <span>{f.label}{f.pct != null ? ` (${f.pct.toFixed(3)}%)` : ' (—)'}</span>
-                  <strong className="cd-danger">
-                    {f.usd == null ? '—' : <>−${money(f.usd)}</>}
-                  </strong>
-                </div>
-              ))}
-              {!calc?.feeRows?.length && (
-                <div className="cd-brk-row is-fee">
-                  <span>fees</span>
-                  <strong className="cd-danger">
-                    <Redacted value={null} isPaid={isPaid}>{() => <>—</>}</Redacted>
-                  </strong>
-                </div>
-              )}
-
-              <div className="cd-brk-row is-total">
-                <span>total fees{card.feeModel?.totalPct != null ? ` (${card.feeModel.totalPct.toFixed(3)}%)` : ''}</span>
-                <strong className="cd-danger">
-                  <Redacted value={calc?.totalFees} isPaid={isPaid}>{(v) => <>−${money(Number(v))}</>}</Redacted>
-                </strong>
-              </div>
-
-              {calc?.anyUnknown && (
-                <p className="cd-warn">one or more legs has no published rate — excluded from net, shown as “—”</p>
-              )}
-              {card.feeModel?.isAssumption && (
-                <p className="cd-warn">{card.feeModel.note}</p>
-              )}
+              <span className="cd-answer-cap">
+                on ${money(cappedCapital, 0)} · net of all fees · {card.annualizedLabel ?? 'run-rate, not guaranteed'}
+              </span>
             </CardSection>
 
-            {/* 5. net */}
-            <CardSection prefix="cd" className="is-net">
-              <MetricValue
-                prefix="cd"
-                caption="NET IF YOU ENTER NOW · held to expiry"
-                value={<Redacted value={calc?.net} isPaid={isPaid}>{(v) => <>+${money(Number(v))}</>}</Redacted>}
-                side={
-                  <>
-                    <span className="cd-net-sub">
-                      <Redacted value={calc?.netPerDay} isPaid={isPaid}>{(v) => <>${money(Number(v))}</>}</Redacted> / day
-                    </span>
-                    <span className={`cd-net-sub ${card.belowRiskFree ? 'cd-amber' : ''}`}>
-                      <Redacted value={calc?.netApy} isPaid={isPaid}>{(v) => <>{Number(v).toFixed(2)}%/yr</>}</Redacted>
-                    </span>
-                  </>
-                }
-              />
-              <span className="cd-net-cap">{card.annualizedLabel ?? 'run-rate, not guaranteed'}</span>
-            </CardSection>
+            {/* 5. risk-free verdict — one plain-language sentence */}
+            {calc ? (
+              <div className={`cd-verdict ${beats === false ? 'is-amber' : ''}`}>
+                {beats === false ? (
+                  <>A risk-free {riskFree}% account would make <strong>${money(calc.riskFreeGain)}</strong> — <strong>${money(Math.abs(calc.diff))}</strong> more than this carry, with no lock-up.</>
+                ) : (
+                  <>This beats a risk-free {riskFree}% account by <strong>${money(calc.diff)}</strong> over {days} days.</>
+                )}
+              </div>
+            ) : (
+              <div className="cd-verdict">
+                Versus a risk-free {riskFree}%/yr account over {days ?? '—'} days:{' '}
+                <Redacted value={null} isPaid={isPaid}>{(v) => <>${money(Number(v))}</>}</Redacted>
+              </div>
+            )}
 
-            {/* 6. risk-free comparison */}
+            {/* 6. fee breakdown — collapsed accordion, fees in $ */}
             <CardSection prefix="cd">
-              <span className="cd-label">SAME {days ?? '—'} DAYS, SAME ${money(cappedCapital, 0)}</span>
-              <div className="cd-brk-row">
-                <span>this carry, net</span>
-                <strong><Redacted value={calc?.net} isPaid={isPaid}>{(v) => <>${money(Number(v))}</>}</Redacted></strong>
-              </div>
-              <div className="cd-brk-row">
-                <span>risk-free @ {riskFree}%/yr</span>
-                <strong><Redacted value={calc?.riskFreeGain} isPaid={isPaid}>{(v) => <>${money(Number(v))}</>}</Redacted></strong>
-              </div>
-              <div className={`cd-brk-row is-total ${beats === false ? 'is-amber' : ''}`}>
-                <span>{beats === false ? 'below risk-free' : 'difference'}</span>
-                <strong className={beats === false ? 'cd-amber' : 'cd-green'}>
-                  <Redacted value={calc?.diff} isPaid={isPaid}>
-                    {(v) => <>{Number(v) >= 0 ? '+' : '−'}${money(Math.abs(Number(v)))}</>}
-                  </Redacted>
-                </strong>
-              </div>
+              <button
+                type="button"
+                className="cd-acc-head"
+                onClick={() => setFeeOpen((o) => !o)}
+                aria-expanded={feeOpen}
+              >
+                <span className="cd-acc-title">
+                  Fee breakdown · total{' '}
+                  <Redacted value={calc?.totalFees} isPaid={isPaid}>{(v) => <>${money(Number(v))}</>}</Redacted>
+                </span>
+                <span className="cd-acc-caret" aria-hidden>{feeOpen ? '▾' : '▸'}</span>
+              </button>
+
+              {feeOpen && (
+                <div className="cd-acc-body">
+                  <div className="cd-brk-row">
+                    <span>gross basis{card.executableBasisPct != null ? ` (+${card.executableBasisPct.toFixed(2)}%)` : ''}</span>
+                    <strong className="cd-green">
+                      <Redacted value={calc?.gross} isPaid={isPaid}>{(v) => <>+${money(Number(v))}</>}</Redacted>
+                    </strong>
+                  </div>
+
+                  {(calc?.feeRows ?? []).filter((f) => f.usd !== 0).map((f, i) => (
+                    <div className="cd-brk-row is-fee" key={i}>
+                      <span>{f.label}{f.pct != null ? ` (${f.pct.toFixed(3)}%)` : ' (—)'}</span>
+                      <strong className="cd-danger">
+                        {f.usd == null ? '—' : <>−${money(f.usd)}</>}
+                      </strong>
+                    </div>
+                  ))}
+                  {!calc?.feeRows?.length && (
+                    <div className="cd-brk-row is-fee">
+                      <span>fees</span>
+                      <strong className="cd-danger">
+                        <Redacted value={null} isPaid={isPaid}>{() => <>—</>}</Redacted>
+                      </strong>
+                    </div>
+                  )}
+
+                  <div className="cd-brk-row is-total">
+                    <span>total fees{card.feeModel?.totalPct != null ? ` (${card.feeModel.totalPct.toFixed(3)}%)` : ''}</span>
+                    <strong className="cd-danger">
+                      <Redacted value={calc?.totalFees} isPaid={isPaid}>{(v) => <>−${money(Number(v))}</>}</Redacted>
+                    </strong>
+                  </div>
+
+                  {calc?.anyUnknown && (
+                    <p className="cd-warn">one or more legs has no published rate — excluded from net, shown as “—”</p>
+                  )}
+                  {card.feeModel?.isAssumption && (
+                    <p className="cd-warn">{card.feeModel.note}</p>
+                  )}
+                </div>
+              )}
             </CardSection>
 
             {/* 7. auto-execute — armed visual state only */}
@@ -322,6 +336,7 @@ export default function CarryPositionCalculator({ id, embedded = false }: { id: 
                 onLabel="AUTO-EXECUTE ARMED"
                 offLabel="AUTO-EXECUTE OFF"
               />
+              <p className="cd-caveat cd-dim">connect an account to enable — execution stays your call</p>
 
               {armed && (
                 <div className="cd-arm-body">
