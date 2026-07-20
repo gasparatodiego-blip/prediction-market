@@ -738,6 +738,10 @@ h1, h2, h3 {
 [data-theme="night"] .bg-white             { background-color: var(--ds-panel) !important; }
 [data-theme="night"] .bg-line              { background-color: var(--ds-border) !important; }
 [data-theme="night"] .bg-base              { background-color: var(--ds-bg) !important; }
+/* soft inset fill (the venue chips on the strategy cards, and other recessed
+   boxes) — was left light in night, so light-on-light chip labels went
+   unreadable. Recede it to the base so the themed label reads on a dark chip. */
+[data-theme="night"] .bg-bg-soft           { background-color: var(--ds-bg) !important; }
 
 /* text */
 [data-theme="night"] .text-ink             { color: var(--ds-text) !important; }
