@@ -6,12 +6,17 @@ import { useSession } from 'next-auth/react';
 import RadarMark from './ui/RadarMark';
 import RadarScope from './ui/RadarScope';
 
+// Retired from the nav (UI only — routes redirect, agents/APIs untouched):
+//   'Funding' /dashboard/funding-arb — backtest-archived lane. agent10/15/18/19 and
+//     /api/crypto keep running; the ticker and other readers still consume them.
+//   'Sports'  /dashboard/sports      — superseded by 'Sport Arb'; /api/sports-snapshot stays live.
+// Both routes redirect via next.config.mjs, so old bookmarks and the links the ticker
+// API still emits land somewhere real instead of 404ing. Reversible: the page sources
+// are untouched, so restoring is a nav line + removing the redirect.
 const NAV_LINKS = [
   { href: '/dashboard',                   label: 'Overview'   },
   { href: '/dashboard/prediction',        label: 'Prediction' },
-  { href: '/dashboard/funding-arb',       label: 'Funding'    },
   { href: '/dashboard/carry',             label: 'Carry'      },
-  { href: '/dashboard/sports',            label: 'Sports'     },
   { href: '/dashboard/sport-arb',         label: 'Sport Arb'  },
   { href: '/dashboard/liquidity-rewards', label: 'Rewards'    },
   { href: '/dashboard/traders',           label: 'Traders'    },
