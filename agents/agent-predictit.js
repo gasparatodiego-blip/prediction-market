@@ -10,11 +10,14 @@ const OUT_FILE    = '/tmp/predictit-raw.json';
 const HB_FILE     = '/tmp/agent-heartbeats.json';
 const INTERVAL_MS = 5 * 60 * 1000;
 
-// Primary: direct PredictIt public API
-// Fallback: USA proxy (if direct is geo-blocked)
+// Direct PredictIt public API — the only endpoint.
+//
+// A US path-gateway used to sit behind this as a geo-blocked fallback, but that gateway
+// stopped serving /predictit/markets (404) and is being decommissioned, so it could not
+// have rescued a single fetch. Rather than keep a fallback that silently fails, the agent
+// now depends on the direct endpoint alone and says so loudly when it fails.
 const ENDPOINTS = [
   'https://www.predictit.org/api/marketdata/all/',
-  'http://5.78.225.39:5000/predictit/markets',
 ];
 
 function beat() {
@@ -52,14 +55,16 @@ async function run() {
     const data = await get(url);
     if (!data) { console.warn(`[predictit] ${url} → null`); continue; }
 
-    // Direct API returns { markets: [...] }
-    // Proxy returns same shape or raw array
+    // Direct API returns { markets: [...] }; the bare-array branch is kept as cheap
+    // tolerance in case the upstream shape ever changes.
     const raw = Array.isArray(data) ? data : (data.markets ?? []);
     if (raw.length) { markets = raw; source = url; break; }
   }
 
   if (!markets.length) {
-    console.error('[predictit] no data from any endpoint');
+    // No fallback exists by design — say plainly that the single direct source failed,
+    // so an outage reads as an outage instead of a quiet empty file.
+    console.error(`[predictit] DIRECT endpoint failed (${ENDPOINTS[0]}) — no fallback configured; writing empty file`);
     // Write empty but valid file so route.ts doesn't break
     fs.writeFileSync(OUT_FILE, JSON.stringify({ fetchedAt: Date.now(), total: 0, markets: [], source: 'none' }, null, 2));
     return;
