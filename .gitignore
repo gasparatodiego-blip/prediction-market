@@ -89,3 +89,10 @@ public/latest-opportunities.json
 *.save
 *.orig
 *.bak
+# agent33 sport recorder — raw per-source price books + derived arb/phantom streams.
+# Append-only, grows continuously at runtime (gzipped after 2 days); this is the local
+# evidence record that scripts/sport-arb-replay.js replays, never source-controlled.
+data/sport-raw/
+data/sport-arb-history.jsonl
+data/sport-arb-phantoms.jsonl
+data/sport-recorder-state.json
