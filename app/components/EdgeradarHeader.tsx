@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import RadarMark from './ui/RadarMark';
 import RadarScope from './ui/RadarScope';
+import ThemeToggle from './ThemeToggle';
 
 // Retired from the nav (UI only — routes redirect, agents/APIs untouched):
 //   'Funding' /dashboard/funding-arb — backtest-archived lane. agent10/15/18/19 and
@@ -72,6 +73,7 @@ export default function EdgeradarHeader() {
 
         {/* Live motif */}
         <div className="ml-auto flex items-center gap-3 shrink-0">
+          <ThemeToggle />
           <RadarScope size={26} />
           <span className="font-body text-[11px] text-muted hidden sm:block">Live</span>
 
