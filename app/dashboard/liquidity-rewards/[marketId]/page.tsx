@@ -493,6 +493,25 @@ export default function MarketDetailPage() {
     if (v === 'sell') setLegs(prev => ({ ...prev, buy: null }));
   }, []);
 
+  // ── tap-to-place in BOTH directions, no pre-selection needed ──────────────────
+  // Any book level in EITHER column is directly tappable: a bid (green) plans a BUY, an ask
+  // (red) plans a SELL — at that exact executable price. The tap itself selects the token, so
+  // the user never has to press Trade YES / Trade NO first. SIMULATION ONLY — this only sets a
+  // local planned marker; no order path is invoked. (legs live on the CHOSEN token's book, so
+  // switching token resets them — a stale price from the other book must never render here.)
+  const tapPlace = useCallback((columnSide: SideKey, kind: LegKind, price: number) => {
+    if (columnSide !== tradeSide) {
+      setTradeSide(columnSide);
+      setLegs(kind === 'buy' ? { buy: { price }, sell: null } : { buy: null, sell: { price } });
+      setLegQty({ buy: qty, sell: qty });
+      setSide('both');   // allow both directions to be tapped/scored on the new token
+      return;
+    }
+    // Same token: widen the Side mode if it excluded this direction, then place/move the leg.
+    setSide(prev => (kind === 'buy' && prev === 'sell') ? 'both' : (kind === 'sell' && prev === 'buy') ? 'both' : prev);
+    placeLeg(kind, price);
+  }, [tradeSide, qty, placeLeg]);
+
   // free-tier detection — tier-driven, straight from the server-evaluated isPaid on the
   // /api/rewards-unified payload. (The old "midpoint==null && dailyPool==null" heuristic no
   // longer works: dailyPool is now a PUBLIC teaser, so it's non-null even for free.) A paid
@@ -700,14 +719,14 @@ export default function MarketDetailPage() {
                 ladder (≈5 levels/side around the mid) with tap-to-place and a "show full
                 depth" toggle. HONEST-ENGINE: only real book levels, never a fabricated one.
                 ══════════════════════════════════════════════════════════════════════════ */}
-            <div className="space-y-4 pt-1">
+            <div className="space-y-1.5 scroll-mt-28">
               {/* ── (c) Live DUAL order book (YES | NO), windowed, with tap-to-place ── */}
               <DualOrderBook
                 yesBook={yesBook} noBook={noBook} tradeSide={tradeSide}
                 bookAge={bookAge} bookErr={bookErr} isRedacted={isRedacted}
                 yesMid={yesMid} noMid={noMid} maxSpread={mkt.maxSpread}
                 userBid={userBid} userAsk={userAsk} onRefresh={fetchBook} venue={mkt.venue}
-                side={side} onTap={placeLeg} venueUrl={venueUrl}
+                onTap={tapPlace} venueUrl={venueUrl}
                 buyManual={legs.buy != null} sellManual={legs.sell != null}
               />
 
@@ -1176,50 +1195,49 @@ function DualOrderBook({
   );
   return (
     <div className="rounded-card shadow-card bg-surface overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-line">
-        <div className="flex items-center gap-2">
-          <span className="font-body font-medium text-sm text-ink-2">Live order book · YES / NO</span>
+      <div className="flex items-center justify-between px-3 py-1.5 border-b border-line">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="font-body font-medium text-[12px] text-ink-2 whitespace-nowrap">Order book · YES / NO</span>
           {bookAge && anyBook && (
-            <span className="flex items-center gap-1 font-body text-[10px] text-mint-deep">
-              <span className="w-1.5 h-1.5 rounded-full bg-mint-deep animate-pulse" /> updated {ago(bookAge.toISOString())} ago
+            <span className="flex items-center gap-1 font-body text-[10px] text-mint-deep whitespace-nowrap">
+              <span className="w-1.5 h-1.5 rounded-full bg-mint-deep animate-pulse" /> {ago(bookAge.toISOString())}
             </span>
           )}
         </div>
-        <button onClick={onRefresh} className="inline-flex items-center gap-1 font-body text-[11px] text-muted hover:text-ink-2">
+        <button onClick={onRefresh} className="inline-flex items-center gap-1 font-body text-[11px] text-muted hover:text-ink-2 shrink-0">
           <RefreshCw size={12} /> refresh
         </button>
       </div>
 
       {isRedacted ? (
-        <div className="px-4 py-8 text-center">
-          <p className="font-body text-sm text-muted">Live book available once the plan is unlocked.</p>
+        <div className="px-4 py-6 text-center">
+          <p className="font-body text-[13px] text-muted">Live book available once the plan is unlocked.</p>
         </div>
       ) : !anyBook ? (
-        <div className="px-4 py-8 text-center">
-          <p className="font-body text-sm text-muted">Book unavailable — data refreshing, try again shortly.</p>
+        <div className="px-4 py-6 text-center">
+          <p className="font-body text-[13px] text-muted">Book unavailable — data refreshing, try again shortly.</p>
           {bookErr && <p className="font-body text-[10px] text-muted mt-1">{bookErr}</p>}
         </div>
       ) : (
-        <div className="px-3 py-3">
-          <div className="flex gap-2 items-start">
+        <div className="px-1.5 py-1.5">
+          <div className="flex gap-1.5 items-start">
             <SideColumn side="yes" book={yesBook} mid={yesMid} maxSpread={maxSpread}
               chosen={tradeSide === 'yes'} userBid={userBid} userAsk={userAsk}
-              orderSide={side} onTap={onTap} venueUrl={venueUrl} buyManual={buyManual} sellManual={sellManual}
+              onTap={onTap} venueUrl={venueUrl} buyManual={buyManual} sellManual={sellManual}
               windowN={WINDOW_N} showFull={showFull} />
             <SideColumn side="no" book={noBook} mid={noMid} maxSpread={maxSpread}
               chosen={tradeSide === 'no'} userBid={userBid} userAsk={userAsk}
-              orderSide={side} onTap={onTap} venueUrl={venueUrl} buyManual={buyManual} sellManual={sellManual}
+              onTap={onTap} venueUrl={venueUrl} buyManual={buyManual} sellManual={sellManual}
               windowN={WINDOW_N} showFull={showFull} />
           </div>
           {hasMore && (
             <button onClick={() => setShowFull(v => !v)}
-              className="mt-2 w-full inline-flex items-center justify-center gap-1 font-body text-[11px] text-muted hover:text-ink-2 py-2 rounded-button border border-line hover:bg-bg-soft transition-colors">
+              className="mt-1 w-full inline-flex items-center justify-center gap-1 font-body text-[11px] text-muted hover:text-ink-2 py-1.5 rounded-button border border-line hover:bg-bg-soft transition-colors">
               {showFull ? `▲ hide far levels — back to ${WINDOW_N} per side` : `▼ show full depth — all levels`}
             </button>
           )}
-          <p className="font-body text-[9px] text-muted px-1 pt-2 leading-relaxed">
-            Real executable prices from {venue === 'polymarket' ? 'each token’s own CLOB book (both fetched live; YES + NO mids ≈ 100¢, but each side’s in-band reward depth differs)' : 'the Kalshi book — bids are real, asks are the contract complement'}.
-            The <span className="font-semibold">{tradeSide.toUpperCase()}</span> column is highlighted; your <span className="font-semibold">planned orders</span> (mid ± distance) show in bold there, never midpoint for fills.
+          <p className="font-body text-[9px] text-muted px-1 pt-0.5 leading-snug">
+            Tap a <span className="font-semibold text-mint-deep">bid</span> to plan a BUY, an <span className="font-semibold text-coral-ink">ask</span> to plan a SELL — the tap picks the side; no order is placed.{venue === 'polymarket' ? '' : ' Asks are the contract complement.'}
           </p>
         </div>
       )}
@@ -1227,13 +1245,14 @@ function DualOrderBook({
   );
 }
 
-// One side's book column. Chosen side is full-opacity + tinted; the other is dimmed.
+// One side's book column. Chosen side is full-opacity + tinted; the other is lightly dimmed but
+// STILL fully tappable — tapping any of its levels selects that token and plans the order there.
 function SideColumn({
-  side, book, mid, maxSpread, chosen, userBid, userAsk, orderSide, onTap, venueUrl, buyManual, sellManual, windowN, showFull,
+  side, book, mid, maxSpread, chosen, userBid, userAsk, onTap, venueUrl, buyManual, sellManual, windowN, showFull,
 }: {
   side: SideKey; book: NormBook | null; mid: number | null; maxSpread: number | null;
   chosen: boolean; userBid: number | null; userAsk: number | null;
-  orderSide: SideMode; onTap: (kind: LegKind, price: number) => void; venueUrl: string | null; buyManual: boolean; sellManual: boolean;
+  onTap: (columnSide: SideKey, kind: LegKind, price: number) => void; venueUrl: string | null; buyManual: boolean; sellManual: boolean;
   windowN: number; showFull: boolean;
 }) {
   const isYes    = side === 'yes';
@@ -1254,43 +1273,45 @@ function SideColumn({
   const askRows  = mergeUserRow(asks, chosen ? userAsk : null, 'sell', 'asc');
   const bidRows  = mergeUserRow(bids, chosen ? userBid : null, 'buy', 'desc');
   const hasBook  = book?.hasBook;
-  // Tappable only in the CHOSEN column, and only for the leg kind the Side control allows:
-  // asks → SELL (allowed when Both/Sell only); bids → BUY (allowed when Both/Buy only).
-  const sellTappable = chosen && (orderSide === 'both' || orderSide === 'sell');
-  const buyTappable  = chosen && (orderSide === 'both' || orderSide === 'buy');
+  // Tap-to-place in BOTH directions, in EITHER column, with no pre-selection: every ask is a
+  // SELL target and every bid is a BUY target. The onTap handler switches to this column's token
+  // when it isn't the chosen one, so the tap alone picks the side. (SIMULATION ONLY.)
+  const sellTappable = true;
+  const buyTappable  = true;
   return (
     <div className={`flex-1 min-w-0 rounded-button border overflow-hidden transition-opacity
-      ${chosen ? (isYes ? 'border-mint-deep/40' : 'border-coral-ink/40') : 'border-line opacity-50'}`}>
-      <div className={`px-2.5 py-1.5 border-b
+      ${chosen ? (isYes ? 'border-mint-deep/40' : 'border-coral-ink/40') : 'border-line opacity-70'}`}>
+      <div className={`px-2 py-1 border-b
         ${chosen ? (isYes ? 'bg-mint-tint/60 border-mint-deep/20' : 'bg-coral-tint/60 border-coral-ink/20') : 'bg-bg-soft border-line'}`}>
-        <div className="flex items-center justify-between">
-          <span className={`font-body font-semibold text-[11px] ${isYes ? 'text-mint-deep' : 'text-coral-ink'}`}>
+        <div className="flex items-center justify-between gap-1">
+          <span className={`font-body font-semibold text-[11px] whitespace-nowrap ${isYes ? 'text-mint-deep' : 'text-coral-ink'}`}>
             {isYes ? 'YES' : 'NO'}{chosen ? ' · trading' : ''}
           </span>
           <span className="font-mono text-[11px] text-ink-2 tabular-nums">{mid != null ? fmtC(mid) : '—'}</span>
         </div>
-        <div className="flex items-center gap-2 font-body text-[9px] text-muted mt-0.5">
-          <span>spread {spread != null ? fmtC(spread) : '—'}</span>
-          <span>depth {depth > 0 ? fmtUsd(depth) : '—'}</span>
+        <div className="flex items-center gap-2 font-body text-[8px] text-muted -mt-0.5">
+          <span className="whitespace-nowrap">spread {spread != null ? fmtC(spread) : '—'}</span>
+          <span className="whitespace-nowrap">depth {depth > 0 ? fmtUsd(depth) : '—'}</span>
         </div>
       </div>
       {!hasBook ? (
-        <div className="px-2 py-6 text-center"><p className="font-body text-[11px] text-muted">book unavailable</p></div>
+        <div className="px-2 py-5 text-center"><p className="font-body text-[11px] text-muted">book unavailable</p></div>
       ) : (
-        <div className="px-1.5 py-1.5">
+        <div className="px-1 py-1">
           <div className="flex flex-col-reverse">
             {askRows.map((r, i) => <MiniLadder key={`a${i}`} row={r} maxSize={maxSize} mid={mid} halfBand={halfBand} kind="ask"
-              tappable={sellTappable} dimmed={chosen && !sellTappable} manual={sellManual} venueUrl={venueUrl}
-              onTap={sellTappable ? (p) => onTap('sell', p) : undefined} />)}
+              tappable={sellTappable} dimmed={false} manual={sellManual} venueUrl={venueUrl}
+              onTap={sellTappable ? (p) => onTap(side, 'sell', p) : undefined} />)}
           </div>
-          <div className="flex items-center justify-center gap-2 px-1 py-1.5 my-1 bg-bg-soft border-y border-line text-center">
-            <span className="font-mono text-[10px] font-semibold text-ink tabular-nums whitespace-nowrap">mid {mid != null ? fmtC(mid) : '—'}</span>
-            {spread != null && <span className="font-body text-[9px] text-muted tabular-nums whitespace-nowrap">· spread {fmtC(spread)}</span>}
+          {/* thin ask/bid separator — the mid price already shows in the column header + trade
+              toggle, so this stays a compact rule (no redundant second mid readout). */}
+          <div className="flex items-center justify-center gap-1 my-0.5 py-[1px] bg-bg-soft border-y border-line text-center">
+            <span className="font-mono text-[9px] font-semibold text-ink tabular-nums whitespace-nowrap">mid {mid != null ? fmtC(mid) : '—'}</span>
           </div>
           <div className="flex flex-col">
             {bidRows.map((r, i) => <MiniLadder key={`b${i}`} row={r} maxSize={maxSize} mid={mid} halfBand={halfBand} kind="bid"
-              tappable={buyTappable} dimmed={chosen && !buyTappable} manual={buyManual} venueUrl={venueUrl}
-              onTap={buyTappable ? (p) => onTap('buy', p) : undefined} />)}
+              tappable={buyTappable} dimmed={false} manual={buyManual} venueUrl={venueUrl}
+              onTap={buyTappable ? (p) => onTap(side, 'buy', p) : undefined} />)}
           </div>
           {book?.asksComplement && (
             <p className="font-body text-[9px] text-muted px-1 pt-1.5 leading-tight">asks = 100¢ − opposite-side bid (complement-derived)</p>
@@ -1360,7 +1381,7 @@ function MiniLadder({ row, maxSize, mid, halfBand, kind, tappable, dimmed, manua
       onClick={act}
       role={clickable ? 'button' : undefined}
       title={title}
-      className={`relative flex flex-col justify-center ${rowMinH} px-2 my-[1px] rounded-sm overflow-hidden
+      className={`relative flex flex-col justify-center ${rowMinH} px-2 rounded-sm overflow-hidden
         ${clickable ? 'cursor-pointer hover:bg-bg-soft active:bg-bg-soft/80' : ''}
         ${isUser
           ? `ring-1 ring-inset ${row.user === 'buy' ? 'ring-mint-deep bg-mint-tint' : 'ring-coral-ink bg-coral-tint'}`
