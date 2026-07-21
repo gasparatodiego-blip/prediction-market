@@ -428,15 +428,20 @@ export default function RewardsUnified() {
                           </span>
                           <span className="cc-row-title">{m.groupItemTitle || m.title}</span>
                           <span className="cc-row-sub">
+                            {/* pool $/day is a PUBLIC teaser (owner freemium split) — always the real
+                                number for every tier; null ⇒ genuine "—", never a paywall lock. */}
                             pool{' '}
-                            <Redacted value={row.poolDayUsd} isPaid={isPaid}>{(v) => <>${Number(v).toFixed(0)}/day</>}</Redacted>
+                            <Redacted value={row.poolDayUsd} isPaid>{(v) => <>${Number(v).toFixed(0)}/day</>}</Redacted>
                             {' · '}depth{' '}
-                            {/* A non-priceable (unknown) row has NO number to unlock, so it shows "—"
-                                to every tier — never a Pro-teaser lock stacked on a missing value. */}
-                            <Redacted value={row.capacityUsd} isPaid={isPaid || row.unknown}>{(v) => <>{fmtDepth(Number(v))}</>}</Redacted>
-                            {!row.unknown && row.share > 0 && (
-                              <> · your share <span className="rw-nowrap">{(row.share * 100).toFixed(1)}%</span></>
-                            )}
+                            {/* depth $ is LOCKED. Pass the REAL tier so free → 🔒 unlock, while a paid
+                                user with a genuinely non-priceable row still gets a calm "—". */}
+                            <Redacted value={row.capacityUsd} isPaid={isPaid}>{(v) => <>{fmtDepth(Number(v))}</>}</Redacted>
+                            {/* your share % is LOCKED — always shown so free sees a 🔒, paid sees the
+                                real % (or "—" when the row is genuinely non-priceable / zero share). */}
+                            {' · '}your share{' '}
+                            <Redacted value={row.unknown || row.share <= 0 ? null : row.share} isPaid={isPaid}>
+                              {(v) => <span className="rw-nowrap">{(Number(v) * 100).toFixed(1)}%</span>}
+                            </Redacted>
                           </span>
                           {/* idle-capital note — calm, not an error */}
                           {!row.unknown && row.idle > 0 && (
@@ -444,11 +449,13 @@ export default function RewardsUnified() {
                               ${row.deployed.toFixed(0)} deployed · <span className="rw-nowrap">${row.idle.toFixed(0)} idle</span> (book full)
                             </span>
                           )}
-                          {/* SATURATION BAR — measured / observed; hidden/locked when unavailable */}
+                          {/* SATURATION BAR — PUBLIC teaser (owner freemium split): the qualitative
+                              saturated/open status shows for every tier. isPaid forced so a genuinely
+                              unmeasured bar reads "competition · not measured", never a paywall lock. */}
                           <span className="rw-satwrap">
                             <Redacted
                               value={row.saturation}
-                              isPaid={isPaid || row.unknown}
+                              isPaid
                               nullDisplay={<span className="rw-dim">competition · not measured</span>}
                             >
                               {(sat) => {
@@ -474,9 +481,11 @@ export default function RewardsUnified() {
                                 annualized run-rate line was removed (it dwarfed the honest
                                 daily figure). "—" when pool/depth are missing OR (Kalshi) the
                                 book is one-sided / non-executable, with the reason on hover. */}
+                            {/* est net $/day is the LOCKED headline. Real tier: free → 🔒 unlock;
+                                paid → the number, or a calm "—" (with reason) when non-priceable. */}
                             <Redacted
                               value={row.unknown ? null : row.netUsdPerDay}
-                              isPaid={isPaid || row.unknown}
+                              isPaid={isPaid}
                               nullDisplay={<span title={row.nonExecReason ?? 'no reward pool or in-band depth from the feed'}>—</span>}
                             >
                               {(v) => <>${Number(v).toFixed(2)}/day</>}
@@ -546,7 +555,7 @@ export default function RewardsUnified() {
 function RewardYieldBreakdown({ row, balance, isPaid }: { row: Row; balance: number; isPaid: boolean }) {
   const hasCap = Number.isFinite(row.space);   // a real venue cap → idle capital can occur
   const rowset: Array<[string, React.ReactNode]> = [
-    ['reward pool',              <Redacted key="p" value={row.poolDayUsd} isPaid={isPaid}>{(v) => <>${Number(v).toFixed(0)}/day</>}</Redacted>],
+    ['reward pool',              <Redacted key="p" value={row.poolDayUsd} isPaid>{(v) => <>${Number(v).toFixed(0)}/day</>}</Redacted>],
     [row.venue === 'polymarket' ? 'in-band depth already there · both sides (Q)' : 'in-band depth already there (Q)',
       <Redacted key="q" value={row.capacityUsd} isPaid={isPaid}>{(v) => <>{fmtDepth(Number(v))}</>}</Redacted>],
   ];

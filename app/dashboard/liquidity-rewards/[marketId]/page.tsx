@@ -219,6 +219,9 @@ export default function MarketDetailPage() {
   const [mkt, setMkt]           = useState<NormalizedMarket | null>(null);
   const [mktErr, setMktErr]     = useState<string | null>(null);
   const [loading, setLoading]   = useState(true);
+  // Server-evaluated tier, straight from the /api/rewards-unified payload (lib/paid-gating).
+  // Drives the whole cockpit/book lock: paid → full numbers, free/anon → calm unlock state.
+  const [isPaid, setIsPaid]     = useState(false);
 
   // live book (both sides)
   const [books, setBooks]       = useState<DualBook | null>(null);
@@ -268,6 +271,7 @@ export default function MarketDetailPage() {
         const m = (d.markets as NormalizedMarket[]).find(x => x.marketId === marketId);
         if (!alive) return;
         if (!m) { setMktErr('Market not found in the current snapshot.'); setLoading(false); return; }
+        setIsPaid(!!d.isPaid);
         setMkt(m);
         // Match the list's typicalNet distance preset exactly: (maxSpread ?? 2) / 2
         // (the list uses `?? 2`, not `?? 4`) so a null-maxSpread market — e.g. Kalshi —
@@ -489,8 +493,12 @@ export default function MarketDetailPage() {
     if (v === 'sell') setLegs(prev => ({ ...prev, buy: null }));
   }, []);
 
-  // free-tier detection (snapshot numbers redacted → estimate degrades to unlock)
-  const isRedacted = !!mkt && mkt.midpoint == null && mkt.dailyPool == null;
+  // free-tier detection — tier-driven, straight from the server-evaluated isPaid on the
+  // /api/rewards-unified payload. (The old "midpoint==null && dailyPool==null" heuristic no
+  // longer works: dailyPool is now a PUBLIC teaser, so it's non-null even for free.) A paid
+  // user is never behind the paywall → isRedacted false; a genuinely non-priceable market for
+  // a paid user degrades honestly via the resolved / side-unavailable / "—" paths, not "unlock".
+  const isRedacted = !isPaid;
 
   // ── save placement ──
   async function savePlacement() {
@@ -557,7 +565,9 @@ export default function MarketDetailPage() {
               <p className="font-body text-[11px] text-muted mt-1 flex flex-wrap gap-x-2 gap-y-0.5">
                 <span className="capitalize">{mkt.venue}</span>·<span>{mkt.category}</span>·
                 <span>mid <Redacted value={mid}>{v => fmtC(v)}</Redacted></span>·
-                <span>pool <Redacted value={mkt.dailyPool}>{v => `${fmtUsd(v)}/day`}</Redacted></span>·
+                {/* pool $/day is a PUBLIC teaser (owner freemium split) — isPaid forced so it's the
+                    real number for every tier, and a null pool reads "—" rather than a paywall lock. */}
+                <span>pool <Redacted value={mkt.dailyPool} isPaid>{v => `${fmtUsd(v)}/day`}</Redacted></span>·
                 {isResolvedMarket(mkt)
                   ? <span className="text-coral-ink font-semibold">resolved</span>
                   : <span>resolves {fmtHours(mkt.hoursToResolution)}</span>}
@@ -855,13 +865,13 @@ function RewardHero({
             <p className={`font-mono font-bold leading-none mt-1 tabular-nums whitespace-nowrap ${showNumber ? 'text-mint-deep' : 'text-muted'}`} style={{ fontSize: 34 }}>
               {stale
                 ? '— '
-                : <Redacted value={daily}>{v => `${fmtUsd(v)}/day`}</Redacted>}
+                : <Redacted value={daily} isPaid={!isRedacted}>{v => `${fmtUsd(v)}/day`}</Redacted>}
               {stale && <span className="font-body text-[11px] align-middle text-gold"> STALE</span>}
             </p>
           </div>
           <div className="text-right min-w-0">
             <p className="font-body text-[12px] text-ink-2 tabular-nums whitespace-nowrap">
-              your share <Redacted value={score && !isRedacted ? score.share : null}>{v => `${(v * 100).toFixed(2)}%`}</Redacted>
+              your share <Redacted value={score && !isRedacted ? score.share : null} isPaid={!isRedacted}>{v => `${(v * 100).toFixed(2)}%`}</Redacted>
             </p>
             <p className="font-body text-[10px] text-ink-2 tabular-nums whitespace-nowrap">
               bid score {score ? fmtUsd(score.yesScore) : '—'} · ask score {score ? fmtUsd(score.noScore) : '—'}
@@ -949,19 +959,19 @@ function EarningsBlock({ est, isRedacted, flags = [], tradeSide }: { est: Return
               </InfoTip>
             </p>
             <p className={`font-mono font-bold leading-none mt-1 ${netTone}`} style={{ fontSize: 34 }}>
-              <Redacted value={net}>{v => `${fmtUsd(v)}/day`}</Redacted>
+              <Redacted value={net} isPaid={!isRedacted}>{v => `${fmtUsd(v)}/day`}</Redacted>
             </p>
           </div>
           <div className="text-right">
-            <p className="font-body text-[12px] text-ink-2 tabular-nums"><Redacted value={est?.dayYieldPct ?? null}>{v => `${v.toFixed(3)}%/day`}</Redacted></p>
+            <p className="font-body text-[12px] text-ink-2 tabular-nums"><Redacted value={est?.dayYieldPct ?? null} isPaid={!isRedacted}>{v => `${v.toFixed(3)}%/day`}</Redacted></p>
             <p className="font-body text-[9px] text-muted">net of expected adverse-fill cost</p>
           </div>
         </div>
 
         <div className="grid grid-cols-3 gap-2 mt-4">
-          <MiniBox label="Pool share" value={<Redacted value={est?.shareOfPool ?? null}>{v => `${(v * 100).toFixed(2)}%`}</Redacted>} />
-          <MiniBox label="Fill prob." value={<Redacted value={est?.fillProbability ?? null}>{v => `${(v * 100).toFixed(0)}%`}</Redacted>} sub="how often you get picked off" />
-          <MiniBox label="Adverse cost" value={<span className="text-coral-ink"><Redacted value={est?.adverseSelectionCost ?? null}>{v => `−${fmtUsd(v)}`}</Redacted></span>} sub="adverse selection" />
+          <MiniBox label="Pool share" value={<Redacted value={est?.shareOfPool ?? null} isPaid={!isRedacted}>{v => `${(v * 100).toFixed(2)}%`}</Redacted>} />
+          <MiniBox label="Fill prob." value={<Redacted value={est?.fillProbability ?? null} isPaid={!isRedacted}>{v => `${(v * 100).toFixed(0)}%`}</Redacted>} sub="how often you get picked off" />
+          <MiniBox label="Adverse cost" value={<span className="text-coral-ink"><Redacted value={est?.adverseSelectionCost ?? null} isPaid={!isRedacted}>{v => `−${fmtUsd(v)}`}</Redacted></span>} sub="adverse selection" />
         </div>
 
         {cautionFlag && net != null && (
