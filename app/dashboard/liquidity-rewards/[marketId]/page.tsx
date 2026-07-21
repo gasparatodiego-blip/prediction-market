@@ -22,7 +22,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { ChevronLeft, RefreshCw, X } from 'lucide-react';
+import { ChevronLeft, RefreshCw, X, AlertTriangle } from 'lucide-react';
 import PlatformLogo from '@/components/PlatformLogo';
 import { Redacted } from '@/app/components/ui/Redacted';
 import InfoTip from '@/app/components/ui/InfoTip';
@@ -966,56 +966,82 @@ function EarningsBlock({ est, isRedacted, flags = [], tradeSide }: { est: Return
   // net from a thin book — mute the headline and warn, rather than show green.
   const cautionFlag = flags.some(f => ['TRAP', 'THIN_CAP', 'SHORT_BURST'].includes(f));
   const netTone = net == null ? 'text-muted' : cautionFlag ? 'text-ink-2' : net > 0 ? 'text-mint-deep' : 'text-coral-ink';
+  // Honest-engine backstop (defined in lib/rewards-estimate): when the modeled net implies a
+  // run-rate above the 200%/yr sanity cap, or the gross exceeds the real book depth, the engine
+  // NULLS net and pushes a "withheld" reason. Detect that reason PRESENTATIONALLY (never recompute,
+  // never reveal the number) so we can render a DISTINCT amber-dashed panel — not the paywall
+  // padlock, which stays reserved for the free/paid entitlement lock.
+  const withheldReason = est?.reasons.find(r =>
+    r.includes('too-good-to-verify') || r.includes('not a credible passive-maker estimate; withheld')) ?? null;
+  const isWithheld = !isRedacted && withheldReason != null && net == null;
+  const otherReasons = est ? est.reasons.filter(r => r !== withheldReason) : [];
   return (
     <div className="rounded-card shadow-card bg-surface overflow-hidden">
-      <div className="px-4 py-4">
-        <div className="flex items-end justify-between gap-3 flex-wrap">
-          <div>
-            <p className="font-body text-[11px] uppercase tracking-wide text-muted flex items-center gap-1">
-              Net earnings · per day ·
+      <div className="px-2.5 py-2">
+        <div className="flex items-end justify-between gap-2 flex-wrap">
+          <div className="min-w-0">
+            <p className="font-body text-[10px] uppercase tracking-wide text-muted flex items-center gap-1">
+              Net earnings · / day ·
               <span className={tradeSide === 'yes' ? 'text-mint-deep font-semibold' : 'text-coral-ink font-semibold'}>{tradeSide.toUpperCase()} side</span>
               <InfoTip label="How net earnings is computed" size={12}>
                 Net = your estimated share of the daily reward pool − the expected adverse-fill cost (what you lose when a resting order fills right as the price moves against you). Built from the real book depth and pool, never a midpoint fill. This is the NET view; the gross ticket above matches the list.
               </InfoTip>
             </p>
-            <p className={`font-mono font-bold leading-none mt-1 ${netTone}`} style={{ fontSize: 34 }}>
-              <Redacted value={net} isPaid={!isRedacted}>{v => `${fmtUsd(v)}/day`}</Redacted>
-            </p>
+            {!isWithheld && (
+              <p className={`font-mono font-bold leading-none mt-0.5 ${netTone}`} style={{ fontSize: 28 }}>
+                <Redacted value={net} isPaid={!isRedacted}>{v => `${fmtUsd(v)}/day`}</Redacted>
+              </p>
+            )}
           </div>
-          <div className="text-right">
-            <p className="font-body text-[12px] text-ink-2 tabular-nums"><Redacted value={est?.dayYieldPct ?? null} isPaid={!isRedacted}>{v => `${v.toFixed(3)}%/day`}</Redacted></p>
-            <p className="font-body text-[9px] text-muted">net of expected adverse-fill cost</p>
-          </div>
+          {!isWithheld && (
+            <div className="text-right">
+              <p className="font-body text-[12px] text-ink-2 tabular-nums"><Redacted value={est?.dayYieldPct ?? null} isPaid={!isRedacted}>{v => `${v.toFixed(3)}%/day`}</Redacted></p>
+              <p className="font-body text-[9px] text-muted">net of expected adverse-fill cost</p>
+            </div>
+          )}
         </div>
 
-        <div className="grid grid-cols-3 gap-2 mt-4">
+        {/* HONEST-ENGINE withheld state — visually DISTINCT from the paywall padlock: an amber
+            dashed panel, a warning triangle (never a lock), and the engine's verbatim reason.
+            The number itself stays withheld (absent), never fabricated. */}
+        {isWithheld && (
+          <div className="mt-1.5 rounded-button border border-dashed border-gold/70 bg-gold-tint/40 px-2.5 py-2">
+            <p className="font-body text-[11px] font-semibold text-gold flex items-center gap-1.5">
+              <AlertTriangle size={13} className="shrink-0" strokeWidth={2.4} />
+              Withheld — too good to verify
+            </p>
+            <p className="font-body text-[10px] text-gold leading-snug mt-0.5">{withheldReason}</p>
+          </div>
+        )}
+
+        <div className="grid grid-cols-3 gap-1.5 mt-1.5">
           <MiniBox label="Pool share" value={<Redacted value={est?.shareOfPool ?? null} isPaid={!isRedacted}>{v => `${(v * 100).toFixed(2)}%`}</Redacted>} />
-          <MiniBox label="Fill prob." value={<Redacted value={est?.fillProbability ?? null} isPaid={!isRedacted}>{v => `${(v * 100).toFixed(0)}%`}</Redacted>} sub="how often you get picked off" />
+          <MiniBox label="Fill prob." value={<Redacted value={est?.fillProbability ?? null} isPaid={!isRedacted}>{v => `${(v * 100).toFixed(0)}%`}</Redacted>} sub="how often picked off" />
           <MiniBox label="Adverse cost" value={<span className="text-coral-ink"><Redacted value={est?.adverseSelectionCost ?? null} isPaid={!isRedacted}>{v => `−${fmtUsd(v)}`}</Redacted></span>} sub="adverse selection" />
         </div>
 
         {cautionFlag && net != null && (
-          <div className="rounded-button bg-gold-tint border border-gold/25 px-3 py-2 mt-3">
-            <p className="font-body text-[11px] text-gold leading-relaxed">
+          <div className="rounded-button bg-gold-tint border border-gold/25 px-2.5 py-1.5 mt-2">
+            <p className="font-body text-[10px] text-gold leading-snug">
               <span className="font-semibold">Flagged: {flags.filter(f => ['TRAP', 'THIN_CAP', 'SHORT_BURST'].includes(f)).map(f => f.replace('_', ' ').toLowerCase()).join(', ')}.</span>{' '}
               This book is thin or the price is extreme, so the estimate above is a run-rate you likely can&apos;t fill in size — treat it as a ceiling, not a promise.
             </p>
           </div>
         )}
         {est?.belowMinPayout && (
-          <p className="font-body text-[11px] text-muted mt-3">Below the $1/day minimum — this position likely pays nothing. Shown for completeness.</p>
+          <p className="font-body text-[10px] text-muted mt-2">Below the $1/day minimum — this position likely pays nothing. Shown for completeness.</p>
         )}
         {sideUnavailable && !isRedacted && (
-          <p className="font-body text-[11px] text-muted mt-3">
+          <p className="font-body text-[10px] text-muted mt-2 leading-snug">
             The {tradeSide.toUpperCase()} side&apos;s book is empty or unavailable right now — its earnings can&apos;t be computed and are shown as missing (never fabricated). Try the other side, or check back shortly.
           </p>
         )}
         {isRedacted && net == null && (
-          <p className="font-body text-[11px] text-muted mt-3">Numbers are locked on the free plan — the estimate runs on real book/pool once unlocked. No fabricated values.</p>
+          <p className="font-body text-[10px] text-muted mt-2 leading-snug">Numbers are locked on the free plan — the estimate runs on real book/pool once unlocked. No fabricated values.</p>
         )}
-        {!isRedacted && est && est.reasons.length > 0 && (
-          <ul className="mt-3 space-y-1">
-            {est.reasons.map((r, i) => <li key={i} className="font-body text-[10px] text-muted leading-snug">· {r}</li>)}
+        {!isRedacted && otherReasons.length > 0 && (
+          <ul className="mt-2 space-y-0.5">
+            {otherReasons.map((r, i) => <li key={i} className="font-body text-[10px] text-muted leading-snug">· {r}</li>)}
           </ul>
         )}
       </div>
