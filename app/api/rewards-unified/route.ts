@@ -59,7 +59,11 @@ export async function GET() {
 
     const session = await getServerSession(authOptions);
     const isPaid  = await getIsPaid(session);
-    const body    = redactForTier({ ...data, stale: age > STALE_MS }, 'rewards-unified', isPaid);
+    // Stamp the server-evaluated tier into the payload so the client can tell a LOCKED null
+    // (free → 🔒) from a genuinely-not-measured null (paid → "—"). This flag is a presentation
+    // hint only: the sensitive VALUES are already physically absent for free (redactForTier
+    // nulled them below), so a client that forged isPaid:true would still see no hidden number.
+    const body    = redactForTier({ ...data, isPaid, stale: age > STALE_MS }, 'rewards-unified', isPaid);
 
     // Guardian H (rules 31–33): backstop the redaction — null + CRITICAL any leaked
     // executable/pool field on the free tier (display-only; never fabricates). No-op for paid.
