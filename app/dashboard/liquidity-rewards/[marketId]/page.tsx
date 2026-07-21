@@ -189,16 +189,29 @@ interface PlacementConfig {
 }
 const LS_KEY = (id: string) => `rewards-placement:${id}`;
 
-// A manually-tapped leg: the real executable book price the user placed on.
-type LegState = { price: number } | null;
 type LegKind = 'buy' | 'sell';
-// FOUR fully independent legs, keyed by book (token) + side. Each is placed/removed on its OWN
-// book+side by tapping — no tap ever touches another leg, and all four can coexist.
+// MULTI-LEVEL laddering: each of the four book+side channels (yes-buy / yes-sell / no-buy /
+// no-sell) holds a SET of independent price levels. Tapping a level adds a marker there; tapping
+// a placed level removes just that one. Any number of distinct levels can coexist per channel,
+// and all four channels are independent — a tap never touches another book, side, or level.
 type BookKey = SideKey;                 // 'yes' | 'no'
 type LegId = 'yes-buy' | 'yes-sell' | 'no-buy' | 'no-sell';
 const LEG_IDS: LegId[] = ['yes-buy', 'yes-sell', 'no-buy', 'no-sell'];
 const legId = (book: BookKey, kind: LegKind): LegId => `${book}-${kind}` as LegId;
-const EMPTY_LEGS: Record<LegId, LegState> = { 'yes-buy': null, 'yes-sell': null, 'no-buy': null, 'no-sell': null };
+type LegBook = Record<LegId, number[]>;   // sorted-on-render price levels per channel
+const EMPTY_LEG_BOOK: LegBook = { 'yes-buy': [], 'yes-sell': [], 'no-buy': [], 'no-sell': [] };
+// nearest placed level to a mid (the cockpit's single-quote preview representative); null if none.
+const nearestLevel = (arr: number[], mid: number | null): number | null =>
+  arr.length === 0 ? null : mid == null ? arr[0]
+    : arr.reduce((best, p) => Math.abs(p - mid) < Math.abs(best - mid) ? p : best);
+
+// ── PER-LEVEL fill rule — every PLACED level owns one "if this fills, what do I do?" preference,
+// keyed by book:side:price (the same identity the leg is placed under). SIMULATION PREFERENCE
+// ONLY — advisory, never a real order and never automated execution. Default: BUY→re-quote the
+// offsetting side (capture spread), SELL→close immediately (flatten). The user can change any one.
+type FillRuleMap = Record<string, OnFill>;   // key = `${book}:${kind}:${price}`
+const fillKey = (book: BookKey, kind: LegKind, price: number): string => `${book}:${kind}:${price}`;
+const defaultFillRule = (kind: LegKind): OnFill => kind === 'buy' ? 'requote' : 'close';
 
 // The market's REAL venue page URL — the same honest, null-safe builders the header
 // uses (never a fabricated slug). Neither Polymarket nor Kalshi accepts a price/side/size
@@ -261,11 +274,15 @@ export default function MarketDetailPage() {
   const [qty, setQty]           = useState<number>(500);
   const [dist, setDist]         = useState<number>(1.75);   // pre-load placeholder; set from maxSpread on load
 
-  // ── tap-to-place: FOUR fully independent legs (yes-buy / yes-sell / no-buy / no-sell) ──
-  // Each leg is null until the user taps a real book level on THAT book+side. Tapping toggles
-  // ONLY that leg (set / move / clear) — no other leg is ever touched, on any book. All four
-  // coexist. Leg size uses the global "Size per side" control (qty).
-  const [legMap, setLegMap] = useState<Record<LegId, LegState>>(EMPTY_LEGS);
+  // ── tap-to-place: MULTI-LEVEL ladders on four independent channels (yes-buy / yes-sell /
+  // no-buy / no-sell). Each channel holds a SET of price levels; tapping an empty level ADDS a
+  // marker, tapping a placed level REMOVES just that one. Any number of levels per channel coexist
+  // and every level is independent. Leg size uses the global "Size per side" control (qty).
+  const [legBook, setLegBook] = useState<LegBook>(EMPTY_LEG_BOOK);
+  // PER-LEVEL fill rule — one entry per placed level (key = book:side:price). Kept in sync with
+  // legBook by a reconcile effect below: a newly-placed level is seeded its default, a removed
+  // level drops its rule. Simulation preference only — never a real order / automated execution.
+  const [fillRules, setFillRules] = useState<FillRuleMap>({});
   const [onFillYes, setOnFillYes] = useState<OnFill>('requote');
   const [onFillNo,  setOnFillNo]  = useState<OnFill>('requote');
   const [newsMode, setNewsMode] = useState<NewsMode>('withdraw');
@@ -459,10 +476,13 @@ export default function MarketDetailPage() {
   // Cockpit (reward hero / net earnings / sim) works on the CHOSEN token's two legs, exactly as
   // before: the tapped price when that leg is placed, else the slider default. Reading the chosen
   // book's legs out of the 4-leg map keeps those reward surfaces unchanged.
-  const chosenBuyLeg  = legMap[legId(tradeSide, 'buy')];
-  const chosenSellLeg = legMap[legId(tradeSide, 'sell')];
-  const userBid = chosenBuyLeg  ? chosenBuyLeg.price  : sliderBid;
-  const userAsk = chosenSellLeg ? chosenSellLeg.price : sliderAsk;
+  // The cockpit shows a single-quote preview per side: the nearest-to-mid placed level on the
+  // chosen token (best representative of a ladder), else the slider default. The FULL multi-level
+  // truth lives in the book markers + the aggregated live explainer + the legs summary.
+  const chosenBuys  = legBook[legId(tradeSide, 'buy')];
+  const chosenSells = legBook[legId(tradeSide, 'sell')];
+  const userBid = nearestLevel(chosenBuys,  mid) ?? sliderBid;
+  const userAsk = nearestLevel(chosenSells, mid) ?? sliderAsk;
   // Real venue page for this market (null when not constructible). A tapped/placed leg is an
   // in-app plan only (live execution OFF), so this is the honest bridge to actually placing it.
   const venueUrl = mkt ? venueMarketUrl(mkt) : null;
@@ -493,56 +513,57 @@ export default function MarketDetailPage() {
     });
   }, [mkt, mid, buyActive, sellActive, userBid, userAsk, buySize, sellSize, competitorDepthUsd]);
 
-  // ── LIVE YIELD EXPLAINER — reads the FOUR-leg map and tells the truth per the REAL rule.
-  // It reuses the EXISTING estimate (computeRewardScore for $/day, estimateReward for the withheld
-  // flag) — never a new formula. The existing single-book estimate can only price legs that sit on
-  // ONE book; a cross-book mix (any YES leg + any NO leg) is not something that math was built for,
-  // so we show a conservative "can't verify" rather than fabricate. Withheld markets stay withheld.
+  // ── LIVE YIELD EXPLAINER — AGGREGATES across all placed levels and tells the truth per the REAL
+  // rule. It reuses the EXISTING estimate: computeRewardScore sums each side's in-band, proximity-
+  // weighted level contributions (its sideScore loops the leg array — out-of-band levels score 0),
+  // so passing ALL in-band levels of one book is the existing per-level sum, not a new formula. A
+  // cross-book mix (any YES leg + any NO leg) is not something that single-book math was built for,
+  // so we keep "— · can't verify" rather than fabricate. Withheld markets stay withheld.
   const yieldLine = useMemo<{ tone: 'mint' | 'amber' | 'muted'; text: string } | null>(() => {
     if (!mkt) return null;
-    const yb = legMap['yes-buy'], ys = legMap['yes-sell'], nb = legMap['no-buy'], ns = legMap['no-sell'];
-    const yesN = (yb ? 1 : 0) + (ys ? 1 : 0);
-    const noN  = (nb ? 1 : 0) + (ns ? 1 : 0);
-    if (yesN + noN === 0)
+    const yesLevels = [...legBook['yes-buy'], ...legBook['yes-sell']];
+    const noLevels  = [...legBook['no-buy'],  ...legBook['no-sell']];
+    if (yesLevels.length + noLevels.length === 0)
       return { tone: 'muted', text: bandRadiusC != null ? `place inside the ±${bandRadiusC.toFixed(2)}¢ band to earn` : 'place a resting quote to earn' };
-    if (yesN > 0 && noN > 0)
+    if (yesLevels.length > 0 && noLevels.length > 0)
       return { tone: 'muted', text: '— · can’t verify this cross-book combination' };
-    // All legs are on ONE book → the existing single-book estimate applies.
-    const book: SideKey = yesN > 0 ? 'yes' : 'no';
+    // All levels are on ONE book → the existing single-book estimate applies to the whole ladder.
+    const book: SideKey = yesLevels.length > 0 ? 'yes' : 'no';
     const bmid = book === 'yes' ? yesMid : noMid;
     if (bmid == null) return { tone: 'muted', text: '— · can’t verify (book mid unavailable)' };
-    const buy  = book === 'yes' ? yb : nb;
-    const sell = book === 'yes' ? ys : ns;
+    const buys  = book === 'yes' ? legBook['yes-buy']  : legBook['no-buy'];
+    const sells = book === 'yes' ? legBook['yes-sell'] : legBook['no-sell'];
     const bandKnown = bandRadiusC != null;
-    const inBandP   = (p: number | null) => p != null && (bandKnown ? Math.abs(p - bmid) * 100 <= bandRadiusC! : true);
-    const bidElig = !!buy  && inBandP(buy.price);
-    const askElig = !!sell && inBandP(sell.price);
+    const inBand    = (p: number) => bandKnown ? Math.abs(p - bmid) * 100 <= bandRadiusC! : true;
+    const bidIn = buys.filter(inBand);      // in-band BUY levels (the ones that earn)
+    const askIn = sells.filter(inBand);     // in-band SELL levels
     if (mkt.venue === 'polymarket' && !bandKnown) return { tone: 'muted', text: 'reward zone unavailable for this market' };
-    if (!bidElig && !askElig)
+    if (bidIn.length === 0 && askIn.length === 0)
       return { tone: 'muted', text: bandKnown ? `place inside the ±${bandRadiusC!.toFixed(2)}¢ band to earn` : 'place a resting quote to earn' };
-    // planned size vs the REAL min_incentive_size (shares): planned shares = USD / price
-    const belowMin = cfgMinSize != null && (
-      (bidElig && buy  && (qty / buy.price)  < cfgMinSize) ||
-      (askElig && sell && (qty / sell.price) < cfgMinSize));
-    if (belowMin) return { tone: 'amber', text: `below min ${fmtSh(cfgMinSize!)} sh — won't earn` };
+    // Any in-band level below the REAL min_incentive_size (shares = qty/price) earns nothing.
+    const belowMin = cfgMinSize != null && [...bidIn, ...askIn].some(p => (qty / p) < cfgMinSize);
+    if (belowMin) return { tone: 'amber', text: `below min ${fmtSh(cfgMinSize!)} sh — some levels won't earn` };
     // Withheld flag for the PLACED book (reuse estimateReward; the chosen book already has `est`).
     const bookEst = book === tradeSide ? est
       : estimateReward({ venue: mkt.venue, capital, twoSided, distanceCents: dist, market: toSnapshot(mkt), side: book });
     const withheld = bookEst?.reasons?.some(r =>
       r.includes('too-good-to-verify') || r.includes('not a credible passive-maker estimate; withheld')) ?? false;
     if (withheld) return { tone: 'amber', text: 'yield withheld — too good to verify (see net earnings)' };
-    // $/day for the actual placed legs — reuse computeRewardScore (the SSOT), explicit legs only.
-    const bidLegs: LevelAlloc[] = bidElig && buy  ? [{ priceCents: buy.price  * 100, sizeUsd: qty }] : [];
-    const askLegs: LevelAlloc[] = askElig && sell ? [{ priceCents: sell.price * 100, sizeUsd: qty }] : [];
+    // Aggregate $/day — ONE computeRewardScore call over ALL in-band levels of this book (its
+    // sideScore sums the per-level contributions). Never a hand-rolled aggregate.
+    const bidLegs: LevelAlloc[] = bidIn.map(p => ({ priceCents: p * 100, sizeUsd: qty }));
+    const askLegs: LevelAlloc[] = askIn.map(p => ({ priceCents: p * 100, sizeUsd: qty }));
     const placed = computeRewardScore({ venue: mkt.venue, midCents: bmid * 100, maxSpreadC: mkt.maxSpread ?? 50,
       pool: mkt.dailyPool, competitorDepthUsd, yes: bidLegs, no: askLegs });
     const z = placed?.dailyUsd != null ? fmtUsd(placed.dailyUsd) : null;
-    const oneSided = (bidElig ? 1 : 0) + (askElig ? 1 : 0) === 1;
+    const lvls = bidIn.length + askIn.length;
+    const nText = `${lvls} level${lvls === 1 ? '' : 's'} earning`;
+    const oneSided = (bidIn.length > 0 ? 1 : 0) + (askIn.length > 0 ? 1 : 0) === 1;
     const twoReq = bmid < 0.10 || bmid > 0.90;   // this book's own two-sided-required rule
     if (oneSided && twoReq) return { tone: 'amber', text: '$0 — this market needs BOTH sides to score' };
-    if (oneSided) return { tone: 'amber', text: z ? `one-sided · ⅓ credit (~${z}/day) — add the other side for full` : 'one-sided · ⅓ credit — add the other side for full' };
-    return { tone: 'mint', text: z ? `two-sided · full credit (~${z}/day)` : 'two-sided · full credit' };
-  }, [mkt, legMap, yesMid, noMid, bandRadiusC, cfgMinSize, qty, est, tradeSide, capital, twoSided, dist, competitorDepthUsd]);
+    if (oneSided) return { tone: 'amber', text: z ? `one-sided · ⅓ credit (~${z}/day, ${nText}) — add the other side for full` : 'one-sided · ⅓ credit — add the other side for full' };
+    return { tone: 'mint', text: z ? `two-sided · full credit (~${z}/day, ${nText})` : 'two-sided · full credit' };
+  }, [mkt, legBook, yesMid, noMid, bandRadiusC, cfgMinSize, qty, est, tradeSide, capital, twoSided, dist, competitorDepthUsd]);
 
   // Staleness guard — snapshot age from the server fetchedAt. Older than STALE_BOOK_MS ⇒ the
   // estimate is NOT actionable and must not read as a fresh number on stale data.
@@ -572,28 +593,52 @@ export default function MarketDetailPage() {
     setSimMsg(r.message);
   }, [execPlan]);
 
-  // ── FOUR-INDEPENDENT-LEG tap handler ──────────────────────────────────────────
-  // A tap toggles EXACTLY the tapped book+side leg and NEVER touches any other leg on any book:
-  //   • empty level               → set the marker there
-  //   • the currently-marked level → clear it
-  //   • a different level          → move it
-  // A bid row = that book's BUY leg; an ask row = that book's SELL leg. The Both / Buy only /
-  // Sell only selector is a NON-forcing convenience FILTER: it can block a NEW placement of the
-  // disallowed direction, but it never creates a counterpart and never blocks clearing an existing
-  // leg. SIMULATION ONLY — this sets a local planned marker; no order path is invoked.
-  const removeLegId = useCallback((id: LegId) => setLegMap(prev => ({ ...prev, [id]: null })), []);
+  // ── MULTI-LEVEL tap handler ────────────────────────────────────────────────────
+  // A tap toggles EXACTLY the tapped book+side+price level and NEVER touches any other level, side,
+  // or book:
+  //   • empty level  → ADD a marker there (multiple levels per channel coexist)
+  //   • placed level → REMOVE just that one
+  // A bid row = a BUY leg on that book; an ask row = a SELL leg. The Both / Buy only / Sell only
+  // selector is a NON-forcing FILTER: it can block a NEW placement of the disallowed direction, but
+  // it never creates a counterpart and never blocks removing an existing level. SIMULATION ONLY.
+  const removeLegAt = useCallback((id: LegId, price: number) =>
+    setLegBook(prev => ({ ...prev, [id]: prev[id].filter(p => p !== price) })), []);
+  const clearChannel = useCallback((id: LegId) => setLegBook(prev => ({ ...prev, [id]: [] })), []);
   const tapPlace = useCallback((book: BookKey, kind: LegKind, price: number) => {
     const id = legId(book, kind);
-    setLegMap(prev => {
-      const cur = prev[id];
-      if (cur && cur.price === price) return { ...prev, [id]: null };   // re-tap marked level → clear (always allowed)
+    setLegBook(prev => {
+      const arr = prev[id];
+      if (arr.includes(price)) return { ...prev, [id]: arr.filter(p => p !== price) };  // remove this level (always allowed)
       if (side === 'buy'  && kind !== 'buy')  return prev;              // mode filter: block a NEW disallowed placement
       if (side === 'sell' && kind !== 'sell') return prev;
-      return { ...prev, [id]: { price } };                             // set / move — this leg only
+      return { ...prev, [id]: [...arr, price] };                       // add this level — this channel only
     });
   }, [side]);
-  // Mode selector is a pure FILTER now — it never creates or clears a leg.
+  // Mode selector is a pure FILTER now — it never creates or clears a level.
   const changeSide = useCallback((v: SideMode) => setSide(v), []);
+
+  // ── PER-LEVEL fill-rule reconcile ──────────────────────────────────────────────
+  // Keep fillRules 1:1 with the placed levels no matter HOW legBook changed (tap add/remove, reset,
+  // clear-channel). Every current level keeps its chosen rule (or is seeded its default on first
+  // placement: BUY→re-quote, SELL→close); any rule whose level is gone is dropped. Returns the
+  // previous object unchanged when nothing differs, so this never loops. Advisory preference only.
+  useEffect(() => {
+    setFillRules(prev => {
+      const next: FillRuleMap = {};
+      for (const id of LEG_IDS) {
+        const [book, kind] = id.split('-') as [BookKey, LegKind];
+        for (const price of legBook[id]) {
+          const k = fillKey(book, kind, price);
+          next[k] = prev[k] ?? defaultFillRule(kind);
+        }
+      }
+      const pk = Object.keys(prev);
+      const same = pk.length === Object.keys(next).length && pk.every(k => prev[k] === next[k]);
+      return same ? prev : next;
+    });
+  }, [legBook]);
+  const setFillRuleFor = useCallback((key: string, rule: OnFill) =>
+    setFillRules(prev => (prev[key] === rule ? prev : { ...prev, [key]: rule })), []);
 
   // free-tier detection — tier-driven, straight from the server-evaluated isPaid on the
   // /api/rewards-unified payload. (The old "midpoint==null && dailyPool==null" heuristic no
@@ -693,7 +738,7 @@ export default function MarketDetailPage() {
       {/* Sections carry scroll-mt (= the LIVE measured header height, --sticky-h) so an in-page jump
           or the browser restoring scroll never parks a heading UNDER the opaque sticky header —
           whatever its current height (title 1–2 lines · meta 1–2 lines). */}
-      <div className="max-w-3xl mx-auto px-4 py-2 space-y-1.5 [&>section]:scroll-mt-[var(--sticky-h)] [&_section]:scroll-mt-[var(--sticky-h)]">
+      <div className="max-w-3xl mx-auto px-4 py-2 space-y-1 [&>section]:scroll-mt-[var(--sticky-h)] [&_section]:scroll-mt-[var(--sticky-h)]">
         {loading && !mkt && <p className="font-body text-sm text-muted">Loading market…</p>}
 
         {/* ── Resolved market → calm, honest state; no live ticket, no fabricated ROI ── */}
@@ -709,7 +754,7 @@ export default function MarketDetailPage() {
                 Tight spacing so the whole payoff + its controls fit ~one mobile viewport
                 before the order book begins. (Pure layout/IA — no reward math touched.)
                 ══════════════════════════════════════════════════════════════════════════ */}
-            <div className="space-y-1.5 scroll-mt-[var(--sticky-h)]">
+            <div className="space-y-1 scroll-mt-[var(--sticky-h)]">
               {/* ── (2) REWARD hero — big gross $/day FIRST, share + min-side + disclaimer ── */}
               <RewardHero score={scoreEst} pool={mkt.dailyPool} isRedacted={isRedacted}
                 stale={bookStale} bookAgeMs={bookAgeMs} />
@@ -784,15 +829,15 @@ export default function MarketDetailPage() {
                   {mkt.maxSpread == null && (
                     <p className="font-body text-[10px] text-muted mt-0.5 truncate">Kalshi doesn&apos;t publish a reward band — distance here only affects fill risk.</p>
                   )}
-                  {(chosenBuyLeg || chosenSellLeg) && (
+                  {(chosenBuys.length > 0 || chosenSells.length > 0) && (
                     <details className="mt-0.5">
                       <summary className="list-none cursor-pointer font-body text-[10px] text-gold flex items-center gap-1">
-                        <span className="whitespace-nowrap">{tradeSide.toUpperCase()} tapped: {[chosenBuyLeg && 'BUY', chosenSellLeg && 'SELL'].filter(Boolean).join(' + ')}</span>
-                        <button onClick={(e) => { e.preventDefault(); removeLegId(legId(tradeSide, 'buy')); removeLegId(legId(tradeSide, 'sell')); }}
+                        <span className="whitespace-nowrap">{tradeSide.toUpperCase()} tapped: {[chosenBuys.length && `${chosenBuys.length} BUY`, chosenSells.length && `${chosenSells.length} SELL`].filter(Boolean).join(' + ')}</span>
+                        <button onClick={(e) => { e.preventDefault(); clearChannel(legId(tradeSide, 'buy')); clearChannel(legId(tradeSide, 'sell')); }}
                           className="underline underline-offset-2 hover:text-ink-2 shrink-0">reset</button>
                       </summary>
                       <p className="font-body text-[10px] text-gold leading-snug mt-0.5">
-                        This {tradeSide.toUpperCase()} preview uses your tapped price{chosenBuyLeg && chosenSellLeg ? 's' : ''} instead of the slider quote. Reset to return to the slider default.
+                        This {tradeSide.toUpperCase()} preview uses the nearest tapped level instead of the slider quote. The full ladder scores in the live line + legs summary. Reset clears this side&apos;s levels.
                       </p>
                     </details>
                   )}
@@ -808,26 +853,26 @@ export default function MarketDetailPage() {
                 ladder (≈5 levels/side around the mid) with tap-to-place and a "show full
                 depth" toggle. HONEST-ENGINE: only real book levels, never a fabricated one.
                 ══════════════════════════════════════════════════════════════════════════ */}
-            <div className="space-y-1.5 scroll-mt-[var(--sticky-h)]">
+            <div className="space-y-1 scroll-mt-[var(--sticky-h)]">
               {/* ── (b0) Reward-rule banner — this market's REAL Polymarket incentive config ── */}
               <RewardRuleBanner venue={mkt.venue} maxSpread={cfgMaxSpread} minSize={cfgMinSize}
                 mid={ruleMid} twoSidedRequired={ruleTwoSidedRequired} isRedacted={isRedacted} />
 
-              {/* ── (c) Live DUAL order book (YES | NO), windowed. Each column renders ONLY its
-                     own two independent legs (yes-buy/yes-sell or no-buy/no-sell); a tap toggles
-                     exactly that leg — no counterpart, no cross-book side effect. ── */}
+              {/* ── (c) Live DUAL order book (YES | NO), windowed. Each column renders ALL of its
+                     own placed levels (multi-level ladders on yes-buy/yes-sell or no-buy/no-sell);
+                     a tap adds/removes exactly one level — no counterpart, no cross-book effect. ── */}
               <DualOrderBook
                 yesBook={yesBook} noBook={noBook} tradeSide={tradeSide}
                 bookAge={bookAge} bookErr={bookErr} isRedacted={isRedacted}
                 yesMid={yesMid} noMid={noMid} maxSpread={mkt.maxSpread}
-                legMap={legMap} onRefresh={fetchBook} venue={mkt.venue}
+                legBook={legBook} onRefresh={fetchBook} venue={mkt.venue}
                 onTap={tapPlace} orderSide={side}
               />
 
               {/* ── (c2) Live yield explainer — picks the honest reason from the REAL rule + the
                      EXISTING computed estimate (never recomputes; withheld stays withheld) ── */}
               {!isRedacted && yieldLine && (
-                <div className={`rounded-card shadow-card bg-surface px-2.5 py-1 border-l-[3px]
+                <div className={`rounded-card shadow-card bg-surface px-2.5 py-0.5 border-l-[3px]
                   ${yieldLine.tone === 'mint' ? 'border-mint-deep' : yieldLine.tone === 'amber' ? 'border-gold' : 'border-line'}`}>
                   <p className={`font-body text-[11px] leading-snug tabular-nums
                     ${yieldLine.tone === 'mint' ? 'text-mint-deep' : yieldLine.tone === 'amber' ? 'text-gold' : 'text-muted'}`}>
@@ -836,35 +881,27 @@ export default function MarketDetailPage() {
                 </div>
               )}
 
-              {/* Your planned legs — compact chips for all four independent legs, each removable */}
-              <PlannedLegs legMap={legMap} qty={qty} yesMid={yesMid} noMid={noMid}
-                removeLegId={removeLegId} venue={mkt.venue} venueUrl={venueUrl} isRedacted={isRedacted} />
+              {/* Your planned legs — grouped by book+side: level count, prices, earning count ── */}
+              <PlannedLegs legBook={legBook} qty={qty} yesMid={yesMid} noMid={noMid} bandRadiusC={bandRadiusC}
+                removeLegAt={removeLegAt} venue={mkt.venue} venueUrl={venueUrl} isRedacted={isRedacted} />
 
               {/* ── (f) Net earnings (Pro) + sanity note ── */}
               <EarningsBlock est={est} isRedacted={isRedacted} flags={mkt.flags} tradeSide={tradeSide} />
 
-            {/* ── E) Post-fill strategy — user-tappable segmented toggle, per-side when both ── */}
-            <div className="rounded-card shadow-card bg-surface px-2.5 py-2 space-y-1.5">
-              <p className="font-body font-medium text-[12px] text-ink-2">{twoSided ? 'If one side gets filled' : 'If your order gets filled'}</p>
-              {twoSided ? (
-                <>
-                  <FillRuleCard side="yes" value={onFillYes} onChange={setOnFillYes} />
-                  <FillRuleCard side="no"  value={onFillNo}  onChange={setOnFillNo} />
-                </>
-              ) : (
-                <FillRuleCard
-                  side={tradeSide}
-                  value={tradeSide === 'yes' ? onFillYes : onFillNo}
-                  onChange={tradeSide === 'yes' ? setOnFillYes : setOnFillNo}
-                />
-              )}
+            {/* ── E) Post-fill strategy — ONE re-quote/close choice PER PLACED LEVEL (you can ladder
+                   many markers per book+side, so each level gets its own rule). Simulation preference
+                   only; never a real order, never automated execution. ── */}
+            <div className="rounded-card shadow-card bg-surface px-2.5 py-1.5 space-y-1.5">
+              <p className="font-body font-medium text-[12px] text-ink-2">If a level gets filled</p>
+              <PerLevelFillRules legBook={legBook} fillRules={fillRules} bandRadiusC={bandRadiusC}
+                yesMid={yesMid} noMid={noMid} onChange={setFillRuleFor} />
               <p className="font-body text-[10px] text-muted leading-snug">
-                Simulation preference only — on adverse news the news-guard can still force a close (below). Advisory · no automated execution.
+                Simulation preference only · per level. On adverse news the news-guard can still force a close. Advisory — no automated execution (Arm execution OFF).
               </p>
             </div>
 
             {/* ── F) News-guard choice ── */}
-            <div className="rounded-card shadow-card bg-surface px-2.5 py-2 space-y-1.5">
+            <div className="rounded-card shadow-card bg-surface px-2.5 py-1.5 space-y-1">
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <p className="font-body font-medium text-[12px] text-ink-2">News-guard</p>
                 <NewsRiskPill risk={risk} />
@@ -894,7 +931,7 @@ export default function MarketDetailPage() {
             </div>
 
             {/* ── G) CTA ── */}
-            <div className="rounded-card shadow-card bg-surface px-2.5 py-2 space-y-1">
+            <div className="rounded-card shadow-card bg-surface px-2.5 py-1.5 space-y-1">
               <button onClick={savePlacement} disabled={saveState === 'saving'}
                 className="w-full min-h-[44px] font-body font-semibold text-[14px] py-2 rounded-button bg-mint-deep text-white hover:bg-mint-deep/90 disabled:opacity-60 transition-colors">
                 {saveState === 'saving' ? 'Saving…' : 'Simulate placement · paper'}
@@ -1200,47 +1237,65 @@ function TradeSideToggle({
   );
 }
 
-// ── Your planned legs — compact chips for ALL FOUR independent legs (yes-buy / yes-sell / no-buy /
-// no-sell). Each chip shows SIDE · BOOK @ price · size and is removable (×). Simulation only: these
-// are in-app markers, no order is placed. Honest bridge to the venue stays a single line.
-function PlannedLegs({ legMap, qty, yesMid, noMid, removeLegId, venue, venueUrl, isRedacted }: {
-  legMap: Record<LegId, LegState>; qty: number; yesMid: number | null; noMid: number | null;
-  removeLegId: (id: LegId) => void; venue: Venue; venueUrl: string | null; isRedacted: boolean;
+// ── Your planned legs — GROUPED by book+side (yes-buy / yes-sell / no-buy / no-sell). Each active
+// channel shows its level count, per-level price chips (removable ×), and how many are currently
+// earning (in-band). Simulation only: in-app markers, no order placed. Stays compact even with
+// several levels — chips wrap and the block scrolls rather than ballooning the page.
+function PlannedLegs({ legBook, qty, yesMid, noMid, bandRadiusC, removeLegAt, venue, venueUrl, isRedacted }: {
+  legBook: LegBook; qty: number; yesMid: number | null; noMid: number | null; bandRadiusC: number | null;
+  removeLegAt: (id: LegId, price: number) => void; venue: Venue; venueUrl: string | null; isRedacted: boolean;
 }) {
   if (isRedacted) return null;
-  const items = LEG_IDS.filter(id => legMap[id]).map(id => {
-    const [book, kind] = id.split('-') as [BookKey, LegKind];
-    return { id, book, kind, price: legMap[id]!.price };
-  });
-  if (items.length === 0) return null;
+  const CHANNELS: { id: LegId; kind: LegKind; book: BookKey; label: string }[] = [
+    { id: 'yes-buy',  kind: 'buy',  book: 'yes', label: 'BUY YES' },
+    { id: 'yes-sell', kind: 'sell', book: 'yes', label: 'SELL YES' },
+    { id: 'no-buy',   kind: 'buy',  book: 'no',  label: 'BUY NO' },
+    { id: 'no-sell',  kind: 'sell', book: 'no',  label: 'SELL NO' },
+  ];
+  const active = CHANNELS
+    .map(c => ({ ...c, mid: c.book === 'yes' ? yesMid : noMid, prices: [...legBook[c.id]].sort((a, b) => b - a) }))
+    .filter(c => c.prices.length > 0);
+  if (active.length === 0) return null;
+  const totalLevels = active.reduce((a, c) => a + c.prices.length, 0);
   const venueLabel = venue === 'polymarket' ? 'Polymarket' : venue === 'kalshi' ? 'Kalshi' : venue;
-  const total = items.length * qty;
+  const earns = (mid: number | null, p: number) => bandRadiusC == null || (mid != null && Math.abs(p - mid) * 100 <= bandRadiusC);
   return (
-    <div className="rounded-card shadow-card bg-surface px-2.5 py-2 space-y-1.5">
+    <div className="rounded-card shadow-card bg-surface px-2.5 py-1.5 space-y-1">
       <div className="flex items-center justify-between gap-2">
-        <p className="font-body font-medium text-[12px] text-ink-2">Your planned legs <span className="text-muted font-normal">({items.length})</span></p>
-        <span className="font-body text-[10px] text-muted tabular-nums whitespace-nowrap">total {fmtUsd(total)}</span>
+        <p className="font-body font-medium text-[12px] text-ink-2">Your planned legs <span className="text-muted font-normal">({totalLevels})</span>
+          <span className="text-muted font-normal tabular-nums"> · total {fmtUsd(totalLevels * qty)} · no order placed · sim only</span></p>
       </div>
-      <div className="flex flex-wrap gap-1.5">
-        {items.map(it => {
-          const isBuy = it.kind === 'buy';
-          const cls = isBuy ? 'border-mint-deep/40 bg-mint-tint text-mint-deep' : 'border-coral-ink/40 bg-coral-tint text-coral-ink';
+      {/* grouped per side; capped height so many levels scroll instead of ballooning the page */}
+      <div className="space-y-0.5 max-h-20 overflow-y-auto">
+        {active.map(c => {
+          const isBuy = c.kind === 'buy';
+          const earnCount = c.prices.filter(p => earns(c.mid, p)).length;
+          const tone = isBuy ? 'text-mint-deep' : 'text-coral-ink';
+          const chipCls = isBuy ? 'border-mint-deep/40 bg-mint-tint' : 'border-coral-ink/40 bg-coral-tint';
           return (
-            <span key={it.id} className={`inline-flex items-center gap-1.5 min-h-[32px] rounded-button border pl-2 pr-1 py-0.5 ${cls}`}>
-              <span className="font-body font-semibold text-[11px] tabular-nums whitespace-nowrap">
-                {isBuy ? 'BUY' : 'SELL'} {it.book.toUpperCase()} @ {fmtC(it.price)}
+            <div key={c.id} className="flex items-center gap-1.5 flex-wrap">
+              <span className={`font-body font-semibold text-[10px] uppercase tracking-wide whitespace-nowrap ${tone}`}>
+                {c.label} · {c.prices.length} lvl{c.prices.length === 1 ? '' : 's'} · {earnCount} earning
               </span>
-              <span className="font-body text-[10px] text-ink-2 tabular-nums whitespace-nowrap">{fmtUsd(qty)}</span>
-              <button onClick={() => removeLegId(it.id)} aria-label={`remove ${it.id}`} title="remove this leg"
-                className="w-6 h-6 inline-flex items-center justify-center rounded-button hover:bg-surface/60 shrink-0"><X size={12} /></button>
-            </span>
+              {c.prices.map(p => {
+                const ok = earns(c.mid, p);
+                return (
+                  <span key={p} className={`inline-flex items-center gap-0.5 min-h-[26px] rounded-button border pl-1.5 pr-0.5 py-0 tabular-nums ${ok ? chipCls : 'border-line bg-bg-soft'}`}>
+                    <span className={`font-mono text-[11px] whitespace-nowrap ${ok ? tone : 'text-muted'}`}>{fmtC(p)}</span>
+                    {!ok && <span className="font-body text-[8px] text-muted whitespace-nowrap">no rwd</span>}
+                    <button onClick={() => removeLegAt(c.id, p)} aria-label={`remove ${c.id} ${fmtC(p)}`} title="remove this level"
+                      className="w-6 h-6 inline-flex items-center justify-center rounded-button hover:bg-surface/60 shrink-0"><X size={11} /></button>
+                  </span>
+                );
+              })}
+            </div>
           );
         })}
       </div>
-      <p className="font-body text-[10px] text-muted leading-snug">
-        No order placed · simulation only. {venueUrl
-          ? <>Place each by hand on <PlatformLink href={venueUrl} label={venueLabel} className="align-baseline" /> — no prefill.</>
-          : <>Enter each manually on {venueLabel} — no linkable page.</>}
+      <p className="font-body text-[10px] text-muted leading-snug truncate">
+        {venueUrl
+          ? <>Place each level by hand on <PlatformLink href={venueUrl} label={venueLabel} className="align-baseline" /> — no prefill.</>
+          : <>Enter each level manually on {venueLabel} — no linkable page.</>}
       </p>
     </div>
   );
@@ -1306,13 +1361,13 @@ function RewardRuleBanner({ venue, maxSpread, minSize, mid, twoSidedRequired, is
 
 // ── D) DUAL order book (YES | NO), chosen side highlighted, planned orders inline ─
 function DualOrderBook({
-  yesBook, noBook, tradeSide, bookAge, bookErr, isRedacted, yesMid, noMid, maxSpread, legMap, onRefresh, venue,
+  yesBook, noBook, tradeSide, bookAge, bookErr, isRedacted, yesMid, noMid, maxSpread, legBook, onRefresh, venue,
   onTap, orderSide,
 }: {
   yesBook: NormBook | null; noBook: NormBook | null; tradeSide: SideKey;
   bookAge: Date | null; bookErr: string | null; isRedacted: boolean;
   yesMid: number | null; noMid: number | null; maxSpread: number | null;
-  legMap: Record<LegId, LegState>; onRefresh: () => void; venue: Venue;
+  legBook: LegBook; onRefresh: () => void; venue: Venue;
   onTap: (columnSide: SideKey, kind: LegKind, price: number) => void;
   orderSide: SideMode;
 }) {
@@ -1358,10 +1413,10 @@ function DualOrderBook({
         <div className="px-1.5 py-1.5">
           <div className="flex gap-1.5 items-start">
             <SideColumn side="yes" book={yesBook} mid={yesMid} maxSpread={maxSpread}
-              chosen={tradeSide === 'yes'} bidLeg={legMap['yes-buy']?.price ?? null} askLeg={legMap['yes-sell']?.price ?? null}
+              chosen={tradeSide === 'yes'} bidLegs={legBook['yes-buy']} askLegs={legBook['yes-sell']}
               onTap={onTap} windowN={WINDOW_N} showFull={showFull} orderSide={orderSide} />
             <SideColumn side="no" book={noBook} mid={noMid} maxSpread={maxSpread}
-              chosen={tradeSide === 'no'} bidLeg={legMap['no-buy']?.price ?? null} askLeg={legMap['no-sell']?.price ?? null}
+              chosen={tradeSide === 'no'} bidLegs={legBook['no-buy']} askLegs={legBook['no-sell']}
               onTap={onTap} windowN={WINDOW_N} showFull={showFull} orderSide={orderSide} />
           </div>
           {hasMore && (
@@ -1372,16 +1427,15 @@ function DualOrderBook({
           )}
           <p className="font-body text-[9px] text-muted px-1 pt-0.5 leading-snug">
             {bandRadiusC != null
-              ? <><span className="font-semibold text-mint-deep">✓ green rows</span> = reward-eligible (within ±{bandRadiusC.toFixed(2)}¢ of mid); rows outside earn no reward. </>
+              ? <><span className="font-semibold text-mint-deep">✓ green</span> = earns (±{bandRadiusC.toFixed(2)}¢ of mid); outside = no reward. </>
               : venue === 'kalshi'
-                ? <>Kalshi pays flat pro-rata — every resting quote across the book earns (no eligible-spread band). </>
-                : <>Reward zone unavailable for this market. </>}
+                ? <>Kalshi flat pro-rata — all resting quotes earn. </>
+                : <>Reward zone unavailable. </>}
             {orderSide === 'both'
-              ? <>Tap a <span className="font-semibold text-mint-deep">bid</span> = BUY, an <span className="font-semibold text-coral-ink">ask</span> = SELL.</>
+              ? <>Tap a <span className="font-semibold text-mint-deep">bid</span>=BUY / <span className="font-semibold text-coral-ink">ask</span>=SELL — multiple levels per side; re-tap removes. No order placed.</>
               : orderSide === 'buy'
-                ? <><span className="font-semibold text-mint-deep">Buy-only</span> — only bids place a marker.</>
-                : <><span className="font-semibold text-coral-ink">Sell-only</span> — only asks place a marker.</>}
-            {' '}The tap picks the side; no order is placed.{venue === 'polymarket' ? '' : ' Asks are the contract complement.'}
+                ? <><span className="font-semibold text-mint-deep">Buy-only</span> — only bids place; re-tap removes. No order placed.</>
+                : <><span className="font-semibold text-coral-ink">Sell-only</span> — only asks place; re-tap removes. No order placed.</>}
           </p>
         </div>
       )}
@@ -1393,10 +1447,10 @@ function DualOrderBook({
 // the other column renders its own. Tapping a level toggles exactly this book+side leg — no
 // counterpart, no cross-book effect. Chosen side is emphasised; the other is lightly dimmed.
 function SideColumn({
-  side, book, mid, maxSpread, chosen, bidLeg, askLeg, onTap, windowN, showFull, orderSide,
+  side, book, mid, maxSpread, chosen, bidLegs, askLegs, onTap, windowN, showFull, orderSide,
 }: {
   side: SideKey; book: NormBook | null; mid: number | null; maxSpread: number | null;
-  chosen: boolean; bidLeg: number | null; askLeg: number | null;
+  chosen: boolean; bidLegs: number[]; askLegs: number[];
   onTap: (columnSide: SideKey, kind: LegKind, price: number) => void;
   windowN: number; showFull: boolean; orderSide: SideMode;
 }) {
@@ -1414,10 +1468,11 @@ function SideColumn({
   const halfBand = maxSpread != null ? (maxSpread / 100) / 2 : null;
   const spread   = spreadOf(book);
   const depth    = depthOf(book);   // FULL real book depth — never windowed (honest capacity)
-  // This column renders EXACTLY its own two legs — the SELL (ask) leg and the BUY (bid) leg — never
-  // a slider fallback and never the other column's legs. A leg exists only where explicitly tapped.
-  const askRows  = mergeUserRow(asks, askLeg, 'sell', 'asc');
-  const bidRows  = mergeUserRow(bids, bidLeg, 'buy', 'desc');
+  // This column renders EXACTLY its own placed levels — ALL its SELL (ask) legs and ALL its BUY
+  // (bid) legs — never a slider fallback and never the other column's legs. Multiple levels per
+  // side coexist; a level exists only where explicitly tapped.
+  const askRows  = mergeUserRows(asks, askLegs, 'sell', 'asc');
+  const bidRows  = mergeUserRows(bids, bidLegs, 'buy', 'desc');
   const hasBook  = book?.hasBook;
   // MODE-AWARE tappability (filter for NEW placement): bids place a BUY (Both / Buy only), asks a
   // SELL (Both / Sell only). A disallowed direction's EMPTY rows are non-interactive + hinted; a
@@ -1471,21 +1526,19 @@ function SideColumn({
 }
 
 interface LadderRow extends BookRow { user?: 'buy' | 'sell' }
-// Fold the user's placed/planned leg INTO the book. When the leg price coincides with a real
-// executable level (the case every time you tap a level), annotate THAT row in place — no
-// duplicate. Only when the price sits between real levels (a slider-planned quote) do we add a
-// standalone marker; that marker is honest (size 0, clearly "your order", never a fake book level).
-function mergeUserRow(levels: BookRow[], userPrice: number | null, kind: 'buy' | 'sell', order: 'asc' | 'desc'): LadderRow[] {
+// Fold the user's placed levels INTO the book. For EACH placed price: when it coincides with a real
+// executable level (the case every time you tap a level), annotate THAT row in place — no duplicate.
+// If a placed price no longer matches a visible level (the level moved off-book), add a standalone
+// marker (size 0, clearly "your order", never a fabricated book level). Multiple levels supported.
+function mergeUserRows(levels: BookRow[], userPrices: number[], kind: 'buy' | 'sell', order: 'asc' | 'desc'): LadderRow[] {
   const rows: LadderRow[] = levels.map(l => ({ ...l }));
-  if (userPrice != null) {
-    const existing = rows.find(r => r.price === userPrice);
-    if (existing) {
-      existing.user = kind;                                 // mark the real level, keep its real size
-    } else {
-      rows.push({ price: userPrice, size: 0, user: kind }); // planned quote between levels → own marker
-      rows.sort((a, b) => order === 'asc' ? a.price - b.price : b.price - a.price);
-    }
+  let added = false;
+  for (const p of userPrices) {
+    const existing = rows.find(r => r.price === p);
+    if (existing) existing.user = kind;                      // mark the real level, keep its real size
+    else { rows.push({ price: p, size: 0, user: kind }); added = true; }  // off-book placed level → own marker
   }
+  if (added) rows.sort((a, b) => order === 'asc' ? a.price - b.price : b.price - a.price);
   return rows;
 }
 function MiniLadder({ row, maxSize, mid, halfBand, kind, tappable, hint, onTap }: {
@@ -1564,7 +1617,7 @@ function MiniLadder({ row, maxSize, mid, halfBand, kind, tappable, hint, onTap }
 
       {/* line 2 — the placed / tap-to-place affordance on its OWN row (never over the numbers) */}
       {isUser && (
-        <div className={`relative flex items-center justify-between gap-1 mt-1 leading-none ${userTone}`}>
+        <div className={`relative flex items-center justify-between gap-1 mt-0.5 leading-none ${userTone}`}>
           <span className="px-1 py-[1px] rounded-sm bg-surface border border-current/40 uppercase tracking-wide text-[7px] font-semibold whitespace-nowrap">{placedLbl}</span>
           <span className="font-body text-[8px] font-semibold whitespace-nowrap">your {sideLabel}</span>
         </div>
@@ -1574,7 +1627,7 @@ function MiniLadder({ row, maxSize, mid, halfBand, kind, tappable, hint, onTap }
 }
 
 // ── shared bits ───────────────────────────────────────────────────────────────
-// Colored YES/NO badge (YES green, NO red) used by the per-side fill-rule cards.
+// Colored YES/NO badge (YES green, NO red) used by the per-level fill-rule rows.
 function SideBadge({ side }: { side: SideKey }) {
   const cls = side === 'yes'
     ? 'bg-mint-tint text-mint-deep border-mint-deep/25'
@@ -1582,32 +1635,84 @@ function SideBadge({ side }: { side: SideKey }) {
   return <span className={`inline-flex items-center px-1.5 py-[1px] rounded-md font-body font-semibold text-[10px] border ${cls}`}>{side.toUpperCase()}</span>;
 }
 
-// Per-side post-fill strategy — a user-tappable SEGMENTED toggle (re-quote | close) with a
-// one-line description of the SELECTED option below. Selection persists in the page's
-// onFillYes/onFillNo state (simulation preference only — never enables automated execution).
-function FillRuleCard({ side, value, onChange }: { side: SideKey; value: OnFill; onChange: (v: OnFill) => void }) {
-  const other = side === 'yes' ? 'NO' : 'YES';
-  const opts: [OnFill, string][] = [['requote', '↻ Re-quote other side'], ['close', '✕ Close immediately']];
+// ── PER-LEVEL post-fill rules — one re-quote/close choice for EVERY placed level (you can ladder
+// many markers per book+side, so each level owns its own rule). Grouped by book+side; scrolls when
+// many levels are placed so the section stays compact and never balloons the page. Empty state when
+// nothing is placed. SIMULATION PREFERENCE ONLY — advisory, no real order / automated execution.
+function PerLevelFillRules({ legBook, fillRules, bandRadiusC, yesMid, noMid, onChange }: {
+  legBook: LegBook; fillRules: FillRuleMap; bandRadiusC: number | null;
+  yesMid: number | null; noMid: number | null; onChange: (key: string, rule: OnFill) => void;
+}) {
+  const CHANNELS: { id: LegId; kind: LegKind; book: BookKey; label: string }[] = [
+    { id: 'yes-buy',  kind: 'buy',  book: 'yes', label: 'BUY YES' },
+    { id: 'yes-sell', kind: 'sell', book: 'yes', label: 'SELL YES' },
+    { id: 'no-buy',   kind: 'buy',  book: 'no',  label: 'BUY NO' },
+    { id: 'no-sell',  kind: 'sell', book: 'no',  label: 'SELL NO' },
+  ];
+  const active = CHANNELS
+    .map(c => ({ ...c, mid: c.book === 'yes' ? yesMid : noMid, prices: [...legBook[c.id]].sort((a, b) => b - a) }))
+    .filter(c => c.prices.length > 0);
+  if (active.length === 0) {
+    return (
+      <p className="font-body text-[11px] text-muted leading-snug py-1">
+        Place levels on the book above to set fill rules.
+      </p>
+    );
+  }
+  // Reward-eligible = inside the REAL band (or Kalshi's flat pro-rata → always). Never fabricated.
+  const earns = (mid: number | null, p: number) => bandRadiusC == null || (mid != null && Math.abs(p - mid) * 100 <= bandRadiusC);
   return (
-    <div className="space-y-1">
-      <div className="flex items-center gap-1.5">
-        <SideBadge side={side} />
-        <span className="font-body text-[11px] text-ink-2">on {side.toUpperCase()} fill</span>
-        <span className="font-body text-[10px] text-muted leading-snug flex-1 min-w-0">
-          {value === 'requote'
-            ? `→ re-post the ${other} side, capture the spread (stay exposed until balanced)`
-            : '→ close at best price (no exposure, give up the spread)'}
-        </span>
+    // capped height → many levels scroll instead of ballooning the page past its budget
+    <div className="space-y-2 max-h-[19rem] overflow-y-auto pr-0.5">
+      {active.map(c => (
+        <div key={c.id} className="space-y-1.5">
+          <p className="font-body font-semibold text-[10px] uppercase tracking-wide text-muted">
+            {c.label} · {c.prices.length} lvl{c.prices.length === 1 ? '' : 's'}
+          </p>
+          {c.prices.map(p => {
+            const key = fillKey(c.book, c.kind, p);
+            return (
+              <LevelFillRow key={key} book={c.book} kind={c.kind} price={p} earns={earns(c.mid, p)}
+                rule={fillRules[key] ?? defaultFillRule(c.kind)} onChange={r => onChange(key, r)} />
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// One placed level's row: "SIDE BOOK @ price" + earns/no-reward chip, a two-option segmented control
+// (re-quote other side | close immediately), and a one-line description of the SELECTED option.
+// Selection is a simulation preference only — it never places or cancels a real order.
+function LevelFillRow({ book, kind, price, earns, rule, onChange }: {
+  book: BookKey; kind: LegKind; price: number; earns: boolean; rule: OnFill; onChange: (r: OnFill) => void;
+}) {
+  const opts: [OnFill, string][] = [['requote', '↻ Re-quote other side'], ['close', '✕ Close immediately']];
+  const tone = kind === 'buy' ? 'text-mint-deep' : 'text-coral-ink';
+  const desc = rule === 'requote'
+    ? '→ re-post the offsetting quote to capture the spread (stay exposed until balanced)'
+    : '→ close at best price (no exposure, give up the spread)';
+  return (
+    <div className="rounded-button border border-line bg-bg-soft/40 px-2 py-1.5 space-y-1">
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <span className={`font-body font-semibold text-[10px] uppercase tracking-wide whitespace-nowrap ${tone}`}>{kind}</span>
+        <SideBadge side={book} />
+        <span className="font-mono text-[11px] text-ink-2 tabular-nums whitespace-nowrap">@ {fmtC(price)}</span>
+        {earns
+          ? <span className="font-body text-[8px] font-bold text-mint-deep whitespace-nowrap" title="reward-eligible — earns">✓ earns</span>
+          : <span className="font-body text-[8px] text-muted whitespace-nowrap" title="outside reward band — no reward">no reward</span>}
       </div>
-      <div className="grid grid-cols-2 gap-1.5" role="tablist" aria-label={`post-fill strategy for ${side.toUpperCase()}`}>
+      <div className="grid grid-cols-2 gap-1.5" role="tablist" aria-label={`post-fill for ${kind} ${book.toUpperCase()} at ${fmtC(price)}`}>
         {opts.map(([v, label]) => (
-          <button key={v} onClick={() => onChange(v)} role="tab" aria-selected={value === v}
-            className={`min-h-[44px] font-body font-medium text-[12px] px-2 py-2 rounded-button border transition-colors
-              ${value === v ? 'border-mint-deep/45 bg-mint-tint text-mint-deep' : 'border-line bg-surface text-muted hover:text-ink-2'}`}>
+          <button key={v} onClick={() => onChange(v)} role="tab" aria-selected={rule === v}
+            className={`min-h-[44px] min-w-0 font-body font-medium text-[11px] px-1.5 py-1.5 rounded-button border transition-colors truncate
+              ${rule === v ? 'border-mint-deep/45 bg-mint-tint text-mint-deep' : 'border-line bg-surface text-muted hover:text-ink-2'}`}>
             {label}
           </button>
         ))}
       </div>
+      <p className="font-body text-[9px] text-muted leading-snug">{desc}</p>
     </div>
   );
 }
