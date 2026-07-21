@@ -397,13 +397,22 @@ export default function RewardsUnified() {
                         </span>
                         <span className="cc-row-r">
                           <span className="cc-row-net">
-                            <Redacted value={row.unknown ? null : row.netUsdPerDay} isPaid={isPaid}>
+                            {/* "—" ONLY when pool/depth are genuinely missing (unknown). A known
+                                depth always yields a finite number here at any balance; a high APY
+                                is shown as a ">cap" LABEL below, never collapsed to "—". */}
+                            <Redacted
+                              value={row.unknown ? null : row.netUsdPerDay}
+                              isPaid={isPaid}
+                              nullDisplay={<span title="no reward pool or in-band depth from the feed">—</span>}
+                            >
                               {(v) => <>${Number(v).toFixed(2)}/day</>}
                             </Redacted>
                           </span>
                           <span className="cc-row-apy">
                             <Redacted value={row.unknown ? null : row.apr} isPaid={isPaid} nullDisplay={<></>}>
-                              {(v) => row.aprCapped ? <span title={APY_CAP_LABEL}>&gt;{APY_CAP}%/yr</span> : <>{Number(v).toFixed(0)}%/yr</>}
+                              {(v) => row.aprCapped
+                                ? <span className="rw-apy-gate" title={APY_CAP_LABEL}>&gt;{APY_CAP}%/yr</span>
+                                : <>{Number(v).toFixed(0)}%/yr</>}
                             </Redacted>
                           </span>
                         </span>

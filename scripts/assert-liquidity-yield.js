@@ -79,5 +79,17 @@ function assert(cond, label) {
   assert(Math.abs(r.apyRaw - apyOnDeployed) < 1e-6 && r.idle > 99000, 'APY on deployed capital, not total balance');
 }
 
+// INVARIANT: a KNOWN depth must yield a finite number at EVERY balance — unknown must
+// never flip true when pool+Q are real (the "—" is for missing data only, never a gate).
+{
+  const pool = 288, Q = 344539;   // Lula: real pool + real in-band depth
+  let ok = true;
+  for (const bal of [1, 1000, 10000, 100000, 500000, 5_000_000]) {
+    const r = computeLiquidityYield({ poolPerDay: pool, cap: null, qualifyingLiquidity: Q, balance: bal });
+    if (r.unknown || !Number.isFinite(r.dailyUsd) || !Number.isFinite(r.apyRaw)) { ok = false; break; }
+  }
+  assert(ok, 'known depth → finite dailyUsd & unknown:false at every balance (Lula 288/344539)');
+}
+
 console.log(failures === 0 ? '\nALL ASSERTIONS PASS' : `\n${failures} ASSERTION(S) FAILED`);
 process.exit(failures === 0 ? 0 : 1);

@@ -62,5 +62,18 @@ export function computeLiquidityYield(input: LiquidityYieldInput): LiquidityYiel
   const dailyUsd = pool * share;
   const apyRaw   = deployed > 0 ? (dailyUsd * 365 / deployed) * 100 : 0;
 
-  return { space, deployed, idle, share, dailyUsd, apyRaw, unknown: false };
+  // Invariant: with a known pool + Q, the outputs MUST be finite at any balance. `unknown`
+  // is reserved strictly for missing inputs — it never flips on magnitude — so the caller's
+  // "—" can only ever mean "no data", never a NaN or a silent high-value gate. The finite
+  // fallbacks are defensive (unreachable for finite inputs) and keep a real row showing a
+  // number rather than degrading to "—".
+  return {
+    space,
+    deployed,
+    idle,
+    share:    Number.isFinite(share)    ? share    : 0,
+    dailyUsd: Number.isFinite(dailyUsd) ? dailyUsd : 0,
+    apyRaw:   Number.isFinite(apyRaw)   ? apyRaw   : 0,
+    unknown:  false,
+  };
 }

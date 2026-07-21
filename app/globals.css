@@ -686,6 +686,9 @@ h1, h2, h3 {
 }
 .rewards .rw-bal-chip.is-on { color: var(--cc-green); border-color: rgba(47,226,154,.45); background: rgba(47,226,154,.08); }
 
+/* APY-cap gate label: a flag (transient rate), never a hidden "—" */
+.rewards .rw-apy-gate { color: var(--cc-amber); cursor: help; }
+
 /* idle-capital note (calm amber, not an error) + nowrap numerics */
 .rewards .rw-idle { font-size: 10px; color: var(--cc-amber); font-variant-numeric: tabular-nums; margin-top: 2px; }
 .rewards .rw-nowrap { white-space: nowrap; font-variant-numeric: tabular-nums; }
