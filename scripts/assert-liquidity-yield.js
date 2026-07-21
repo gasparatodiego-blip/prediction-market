@@ -71,6 +71,28 @@ function assert(cond, label) {
   approx(r.dailyUsd, wantDaily, 0.1, 'dailyUsd ≈ 61.5 (diluted, NOT 84)');
 }
 
+// TWO-SIDED DILUTION (Polymarket): supplying the opposite side's in-band depth GROWS the
+// competitor denominator, so the share DROPS on a skewed book — and the shown competitorDepth
+// equals the denominator the share uses (near + opposite), so "depth" is display-consistent.
+{
+  // Yamal real fields: pool 155, near (YES) depth 1328, far (NO) depth 3790, balance $1,000.
+  const oneSided = computeLiquidityYield({ poolPerDay: 155, cap: null, qualifyingLiquidity: 1328, balance: 1000 });
+  const twoSided = computeLiquidityYield({ poolPerDay: 155, cap: null, qualifyingLiquidity: 1328, qualifyingLiquidityOpposite: 3790, balance: 1000 });
+  console.log('Yamal TWO-SIDED (pool 155, near 1328, far 3790, balance 1000):');
+  approx(oneSided.share, 1000 / (1328 + 1000), 1e-4, 'one-sided share ≈ 0.4295 (old, overstated)');
+  approx(twoSided.share, 1000 / (1328 + 3790 + 1000), 1e-4, 'two-sided share ≈ 0.1634 (honest, lower)');
+  assert(twoSided.share < oneSided.share, 'two-sided share is STRICTLY lower than one-sided on a skewed book');
+  approx(twoSided.competitorDepth, 5118, 0.01, 'competitorDepth = near + far = 5118 (what "depth" displays)');
+  approx(twoSided.dailyUsd, 155 * (1000 / 6118), 0.01, 'dailyUsd tracks the two-sided share ($25.3, not $66.6)');
+}
+
+// Opposite side ABSENT ⇒ reduces EXACTLY to the one-sided model (Kalshi flat pro-rata unchanged).
+{
+  const noOpp   = computeLiquidityYield({ poolPerDay: 100, cap: null, qualifyingLiquidity: 594, balance: 1000 });
+  const nullOpp = computeLiquidityYield({ poolPerDay: 100, cap: null, qualifyingLiquidity: 594, qualifyingLiquidityOpposite: null, balance: 1000 });
+  assert(noOpp.share === nullOpp.share && noOpp.competitorDepth === 594, 'no/null opposite side → one-sided model byte-for-byte (competitorDepth = near)');
+}
+
 // APY is on DEPLOYED capital, not total balance: idle capital must not dilute the APY.
 {
   const cap = 626, Q = 526;                 // space = 100

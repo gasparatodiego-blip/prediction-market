@@ -18,12 +18,16 @@ import { deriveOptions, defaultState, applyFilters, sortRows, saturationView } f
  * (pool × filled%, i.e. the whole-book share as if you owned the book) — that path is gone.
  *
  * HONEST-ENGINE
- *  - $/day = poolDay × deployed/(Q + deployed); deploying more shrinks your marginal share.
+ *  - $/day = poolDay × deployed/(competitorDepth + deployed); deploying more shrinks your share.
+ *  - competitorDepth is the qualifying liquidity you really compete with. Polymarket rewards are
+ *    two-sided (Qmin), so it is BOTH sides' in-band depth (Qnear + Qopp) — a thin near side no
+ *    longer reads as domination. Kalshi is one-sided (Qopp absent → near side only). See
+ *    lib/liquidity-yield.ts for the derivation. The depth shown on the card IS competitorDepth,
+ *    so "depth $X · share Y%" is always internally consistent.
  *  - Deployment caps at remaining book space (cap − Q); the rest is idle, shown calmly.
- *  - APY is on DEPLOYED capital; capped + labelled ">200%/yr" via lib/honest-display.
- *  - Real fields only: pool = rewardsDailyRate, cap = in-band book depth (capacityUsd),
- *    Q = cap × filled where filled = the live-book reference share (1 − saturation).
+ *  - Real fields only: pool = rewardsDailyRate, near/far depth = per-side in-band book depth.
  *    Polymarket = measured (quadratic CLOB); Kalshi = observed (inferred flat pro-rata).
+ *  - Net $/day is the sole headline; the annualized line was removed from the cards.
  *  - Missing pool / qualifying liquidity ⇒ "—", never fabricated. Free tier redacts to lock.
  */
 
@@ -43,6 +47,7 @@ interface RewardScore {
   refShare: number | null;        // reference maker's live-book pool share = 1 − saturation
   refCapital: number;
 }
+interface SideBook { bookDepthAtBand: number | null }
 interface Market {
   venue: 'polymarket' | 'kalshi';
   marketId: string;
@@ -50,7 +55,10 @@ interface Market {
   groupItemTitle?: string | null;
   category?: string | null;
   dailyPool: number | null;
-  bookDepthAtBand: number | null;
+  bookDepthAtBand: number | null;   // near-side (== sides.yes) in-band qualifying depth
+  // Per-side in-band depth. Polymarket exposes both; the opposite (NO) side feeds the honest
+  // two-sided dilution. Redacted to null on the free tier (compute degrades to the lock state).
+  sides?: { yes?: SideBook | null; no?: SideBook | null } | null;
   flags?: string[] | null;
   rewardScore?: RewardScore | null;
 }
@@ -65,7 +73,8 @@ interface Base {
   poolDayUsd: number | null;      // real reward pool $/day
   cap: number | null;             // real in-band book depth
   filled: number | null;          // live-book reference share (= 1 − saturation)
-  qualifyingLiquidity: number | null; // cap × filled
+  qualifyingLiquidity: number | null; // near-side in-band depth (Q)
+  oppDepth: number | null;        // opposite-side in-band depth (Polymarket two-sided; else null)
   saturation: number | null;      // 1 − filled (bar value)
   measured: boolean;
   isTrap: boolean;
@@ -97,6 +106,14 @@ interface FilterState {
 const fmtUsd = (n: number) =>
   n >= 1_000_000 ? `$${(n / 1_000_000).toFixed(2)}M`
   : n >= 1_000   ? `$${(n / 1_000).toFixed(0)}k`
+  : `$${n.toFixed(0)}`;
+
+// Depth formatter — keeps ONE decimal in the $k range (trailing .0 dropped) so the shown
+// "depth $X" stays consistent with the Q used in the share calc. fmtUsd rounds $1,328 → "$1k",
+// which makes a 16% share look like a math error; fmtDepth shows "$1.3k".
+const fmtDepth = (n: number) =>
+  n >= 1_000_000 ? `$${(n / 1_000_000).toFixed(2)}M`
+  : n >= 1_000   ? `$${(n / 1_000).toFixed(1).replace(/\.0$/, '')}k`
   : `$${n.toFixed(0)}`;
 
 const toggle = (arr: string[], v: string) =>
@@ -135,8 +152,11 @@ export default function RewardsUnified() {
     return ms.map((m) => {
       const rs = m.rewardScore ?? null;
       const flags = (m.flags ?? []).filter(Boolean);
-      const depth = m.bookDepthAtBand;         // REAL in-band qualifying liquidity (Q)
+      const depth = m.bookDepthAtBand;         // REAL near-side in-band qualifying liquidity (Q)
       const filled = rs?.refShare ?? null;     // reference maker's live-book share → bar only
+      // Opposite-side in-band depth — ONLY for Polymarket, whose reward is a two-sided Qmin. Kalshi
+      // is an observed flat pro-rata split (one-sided model), so it never gets the opposite side.
+      const oppDepth = m.venue === 'polymarket' ? (m.sides?.no?.bookDepthAtBand ?? null) : null;
       return {
         m, flags,
         category:     m.category ?? null,
@@ -144,7 +164,8 @@ export default function RewardsUnified() {
         poolDayUsd:   rs?.poolDay ?? m.dailyPool ?? null,
         cap:          null,                    // Polymarket exposes no reward cap → unbounded space
         filled,
-        qualifyingLiquidity: depth,            // Q = the real in-band depth (never fabricated)
+        qualifyingLiquidity: depth,            // near-side Q = real in-band depth (never fabricated)
+        oppDepth,                              // far-side in-band depth (two-sided dilution)
         saturation:   filled != null ? 1 - filled : null,
         measured:     rs?.source === 'measured-clob-quadratic',
         isTrap:       flags.some((f) => /^TRAP$/i.test(f)),
@@ -155,7 +176,8 @@ export default function RewardsUnified() {
   // Balance-DRIVEN yield: recomputed live as the slider moves.
   const enriched: Row[] = useMemo(() => base.map((b) => {
     const y = computeLiquidityYield({
-      poolPerDay: b.poolDayUsd, cap: b.cap, qualifyingLiquidity: b.qualifyingLiquidity, balance,
+      poolPerDay: b.poolDayUsd, cap: b.cap, qualifyingLiquidity: b.qualifyingLiquidity,
+      qualifyingLiquidityOpposite: b.oppDepth, balance,
     });
     // apr stays computed — the min-APR list FILTER (lib/rewards-filter) reads it — but it is
     // no longer rendered on the cards; net $/day is the sole headline metric.
@@ -164,7 +186,9 @@ export default function RewardsUnified() {
       ...b,
       netUsdPerDay: y.unknown ? null : y.dailyUsd,
       apr,
-      capacityUsd:  b.qualifyingLiquidity,   // in-band depth (Q) — capacity filter field
+      // The depth we SHOW is the depth the share dilutes against (both sides on Polymarket),
+      // so "depth $X · share Y%" is internally consistent. Also the min-capacity filter field.
+      capacityUsd:  y.unknown ? null : y.competitorDepth,
       deployed:     y.deployed,
       idle:         y.idle,
       space:        y.space,
@@ -360,7 +384,7 @@ export default function RewardsUnified() {
                             pool{' '}
                             <Redacted value={row.poolDayUsd} isPaid={isPaid}>{(v) => <>${Number(v).toFixed(0)}/day</>}</Redacted>
                             {' · '}depth{' '}
-                            <Redacted value={row.capacityUsd} isPaid={isPaid}>{(v) => <>{fmtUsd(Number(v))}</>}</Redacted>
+                            <Redacted value={row.capacityUsd} isPaid={isPaid}>{(v) => <>{fmtDepth(Number(v))}</>}</Redacted>
                             {!row.unknown && row.share > 0 && (
                               <> · your share <span className="rw-nowrap">{(row.share * 100).toFixed(1)}%</span></>
                             )}
@@ -425,12 +449,15 @@ export default function RewardsUnified() {
 
             <p className="cc-note">
               Your $/day is what you would earn deploying your balance NOW: you take share
-              deployed/(existing qualifying liquidity + deployed) of the pool — adding capital
-              shrinks your own share. Depth is the real in-band qualifying liquidity (Polymarket
-              exposes no reward cap, so the whole balance deploys); if a venue ever caps qualifying
-              liquidity, capital beyond the room left is shown idle. Polymarket depth/competition is
-              measured from the live CLOB; Kalshi is an observed flat pro-rata split. Point-in-time
-              snapshot; competitors re-quote; not a promised yield.
+              deployed/(qualifying liquidity + deployed) of the pool — adding capital shrinks your
+              own share. Polymarket rewards are TWO-SIDED (you must quote both sides), so your share
+              dilutes against the in-band qualifying liquidity on BOTH sides — the depth shown is
+              that two-sided total, which is why a thin near side beside a thick far side no longer
+              reads as domination. Polymarket exposes no reward cap, so the whole balance deploys; if
+              a venue ever caps qualifying liquidity, capital beyond the room left is shown idle.
+              Polymarket depth/competition is measured from the live CLOB; Kalshi is an observed
+              one-sided flat pro-rata split. Point-in-time snapshot; competitors re-quote; adverse
+              selection is a separate cost; not a promised yield.
             </p>
           </>
         )}
@@ -447,7 +474,8 @@ function RewardYieldBreakdown({ row, balance, isPaid }: { row: Row; balance: num
   const hasCap = Number.isFinite(row.space);   // a real venue cap → idle capital can occur
   const rowset: Array<[string, React.ReactNode]> = [
     ['reward pool',              <Redacted key="p" value={row.poolDayUsd} isPaid={isPaid}>{(v) => <>${Number(v).toFixed(0)}/day</>}</Redacted>],
-    ['in-band depth already there (Q)', <Redacted key="q" value={row.qualifyingLiquidity} isPaid={isPaid}>{(v) => <>{fmtUsd(Number(v))}</>}</Redacted>],
+    [row.venue === 'polymarket' ? 'in-band depth already there · both sides (Q)' : 'in-band depth already there (Q)',
+      <Redacted key="q" value={row.capacityUsd} isPaid={isPaid}>{(v) => <>{fmtDepth(Number(v))}</>}</Redacted>],
   ];
   return (
     <div className="rw-calc">
