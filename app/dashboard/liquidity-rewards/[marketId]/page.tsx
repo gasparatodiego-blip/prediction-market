@@ -463,6 +463,34 @@ export default function MarketDetailPage() {
     });
   }, [mkt, mid, buyActive, sellActive, userBid, userAsk, buySize, sellSize, competitorDepthUsd]);
 
+  // ── LIVE YIELD EXPLAINER — pick the honest message from the REAL rule + the EXISTING estimate.
+  // Never recomputes a yield: the $/day shown is computeRewardScore's dailyUsd (the hero number).
+  // A withheld market defers to the withheld state — never a fabricated yield.
+  const yieldLine = useMemo<{ tone: 'mint' | 'amber' | 'muted'; text: string } | null>(() => {
+    if (!mkt || mid == null) return null;
+    const withheld = est?.reasons?.some(r =>
+      r.includes('too-good-to-verify') || r.includes('not a credible passive-maker estimate; withheld')) ?? false;
+    const bandKnown = bandRadiusC != null;
+    const eligible  = (p: number | null) => p != null && bandKnown && Math.abs(p - mid) * 100 <= bandRadiusC!;
+    // Kalshi has no incentive-spread band (flat pro-rata) → any resting quote is eligible.
+    const bidElig = buyActive  && userBid != null && (bandKnown ? eligible(userBid) : true);
+    const askElig = sellActive && userAsk != null && (bandKnown ? eligible(userAsk) : true);
+    if (mkt.venue === 'polymarket' && !bandKnown) return { tone: 'muted', text: 'reward zone unavailable for this market' };
+    if (!bidElig && !askElig)
+      return { tone: 'muted', text: bandKnown ? `place inside the ±${bandRadiusC!.toFixed(2)}¢ band to earn` : 'place a resting quote to earn' };
+    // planned size vs the REAL min_incentive_size (shares): planned shares = USD / price
+    const belowMin = cfgMinSize != null && (
+      (bidElig && userBid != null && (buySize  / userBid) < cfgMinSize) ||
+      (askElig && userAsk != null && (sellSize / userAsk) < cfgMinSize));
+    if (belowMin) return { tone: 'amber', text: `below min ${fmtSh(cfgMinSize!)} sh — won't earn` };
+    if (withheld) return { tone: 'amber', text: 'yield withheld — too good to verify (see net earnings)' };
+    const oneSided = (bidElig ? 1 : 0) + (askElig ? 1 : 0) === 1;
+    const z = scoreEst?.dailyUsd != null ? fmtUsd(scoreEst.dailyUsd) : null;
+    if (oneSided && ruleTwoSidedRequired) return { tone: 'amber', text: '$0 — this market needs BOTH sides to score' };
+    if (oneSided) return { tone: 'amber', text: z ? `one-sided · ⅓ credit (~${z}/day) — add the other side for full` : 'one-sided · ⅓ credit — add the other side for full' };
+    return { tone: 'mint', text: z ? `two-sided · full credit (~${z}/day)` : 'two-sided · full credit' };
+  }, [mkt, mid, est, scoreEst, bandRadiusC, buyActive, sellActive, userBid, userAsk, buySize, sellSize, cfgMinSize, ruleTwoSidedRequired]);
+
   // Staleness guard — snapshot age from the server fetchedAt. Older than STALE_BOOK_MS ⇒ the
   // estimate is NOT actionable and must not read as a fresh number on stale data.
   const bookAgeMs = bookFetchedAt != null ? nowMs - bookFetchedAt : null;
@@ -748,6 +776,18 @@ export default function MarketDetailPage() {
                 onTap={tapPlace} venueUrl={venueUrl} orderSide={side}
                 buyManual={legs.buy != null} sellManual={legs.sell != null}
               />
+
+              {/* ── (c2) Live yield explainer — picks the honest reason from the REAL rule + the
+                     EXISTING computed estimate (never recomputes; withheld stays withheld) ── */}
+              {!isRedacted && yieldLine && (
+                <div className={`rounded-card shadow-card bg-surface px-2.5 py-1 border-l-[3px]
+                  ${yieldLine.tone === 'mint' ? 'border-mint-deep' : yieldLine.tone === 'amber' ? 'border-gold' : 'border-line'}`}>
+                  <p className={`font-body text-[11px] leading-snug tabular-nums
+                    ${yieldLine.tone === 'mint' ? 'text-mint-deep' : yieldLine.tone === 'amber' ? 'text-gold' : 'text-muted'}`}>
+                    {yieldLine.text}
+                  </p>
+                </div>
+              )}
 
               {/* Order tickets: one per active (tapped) leg — sits with the book it came from */}
               <LegTickets
