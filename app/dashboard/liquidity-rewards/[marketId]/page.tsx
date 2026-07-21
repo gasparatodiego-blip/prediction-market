@@ -506,24 +506,26 @@ export default function MarketDetailPage() {
     if (v === 'sell') setLegs(prev => ({ ...prev, buy: null }));
   }, []);
 
-  // ── tap-to-place in BOTH directions, no pre-selection needed ──────────────────
-  // Any book level in EITHER column is directly tappable: a bid (green) plans a BUY, an ask
-  // (red) plans a SELL — at that exact executable price. The tap itself selects the token, so
-  // the user never has to press Trade YES / Trade NO first. SIMULATION ONLY — this only sets a
-  // local planned marker; no order path is invoked. (legs live on the CHOSEN token's book, so
-  // switching token resets them — a stale price from the other book must never render here.)
+  // ── MODE-AWARE tap-to-place ───────────────────────────────────────────────────
+  // The Both / Buy only / Sell only selector GOVERNS placement. A bid plans a BUY, an ask plans a
+  // SELL, at that exact executable price; the tap itself selects the token (no Trade YES/NO first).
+  //   • Both      → the pair coexists; tapping a side places/moves that side's marker.
+  //   • Buy only  → only bids place a BUY; taps on ask rows are ignored (never force-add a SELL).
+  //   • Sell only → only asks place a SELL; taps on bid rows are ignored.
+  // SIMULATION ONLY — this sets a local planned marker; no order path is invoked.
   const tapPlace = useCallback((columnSide: SideKey, kind: LegKind, price: number) => {
+    if (side === 'buy'  && kind !== 'buy')  return;   // single-sided: ignore the disallowed direction
+    if (side === 'sell' && kind !== 'sell') return;
     if (columnSide !== tradeSide) {
+      // Switching token: legs live on the chosen token's book, so reset to just this leg (a stale
+      // price from the other book must never render here). Keep the user's Side mode — no widening.
       setTradeSide(columnSide);
       setLegs(kind === 'buy' ? { buy: { price }, sell: null } : { buy: null, sell: { price } });
       setLegQty({ buy: qty, sell: qty });
-      setSide('both');   // allow both directions to be tapped/scored on the new token
       return;
     }
-    // Same token: widen the Side mode if it excluded this direction, then place/move the leg.
-    setSide(prev => (kind === 'buy' && prev === 'sell') ? 'both' : (kind === 'sell' && prev === 'buy') ? 'both' : prev);
-    placeLeg(kind, price);
-  }, [tradeSide, qty, placeLeg]);
+    placeLeg(kind, price);   // same token: place/move this side's marker (Both keeps the pair)
+  }, [side, tradeSide, qty, placeLeg]);
 
   // free-tier detection — tier-driven, straight from the server-evaluated isPaid on the
   // /api/rewards-unified payload. (The old "midpoint==null && dailyPool==null" heuristic no
@@ -743,7 +745,7 @@ export default function MarketDetailPage() {
                 bookAge={bookAge} bookErr={bookErr} isRedacted={isRedacted}
                 yesMid={yesMid} noMid={noMid} maxSpread={mkt.maxSpread}
                 userBid={userBid} userAsk={userAsk} onRefresh={fetchBook} venue={mkt.venue}
-                onTap={tapPlace} venueUrl={venueUrl}
+                onTap={tapPlace} venueUrl={venueUrl} orderSide={side}
                 buyManual={legs.buy != null} sellManual={legs.sell != null}
               />
 
@@ -1319,11 +1321,11 @@ function DualOrderBook({
             <SideColumn side="yes" book={yesBook} mid={yesMid} maxSpread={maxSpread}
               chosen={tradeSide === 'yes'} userBid={userBid} userAsk={userAsk}
               onTap={onTap} venueUrl={venueUrl} buyManual={buyManual} sellManual={sellManual}
-              windowN={WINDOW_N} showFull={showFull} />
+              windowN={WINDOW_N} showFull={showFull} orderSide={orderSide} />
             <SideColumn side="no" book={noBook} mid={noMid} maxSpread={maxSpread}
               chosen={tradeSide === 'no'} userBid={userBid} userAsk={userAsk}
               onTap={onTap} venueUrl={venueUrl} buyManual={buyManual} sellManual={sellManual}
-              windowN={WINDOW_N} showFull={showFull} />
+              windowN={WINDOW_N} showFull={showFull} orderSide={orderSide} />
           </div>
           {hasMore && (
             <button onClick={() => setShowFull(v => !v)}
@@ -1332,7 +1334,17 @@ function DualOrderBook({
             </button>
           )}
           <p className="font-body text-[9px] text-muted px-1 pt-0.5 leading-snug">
-            Tap a <span className="font-semibold text-mint-deep">bid</span> to plan a BUY, an <span className="font-semibold text-coral-ink">ask</span> to plan a SELL — the tap picks the side; no order is placed.{venue === 'polymarket' ? '' : ' Asks are the contract complement.'}
+            {bandRadiusC != null
+              ? <><span className="font-semibold text-mint-deep">✓ green rows</span> = reward-eligible (within ±{bandRadiusC.toFixed(2)}¢ of mid); rows outside earn no reward. </>
+              : venue === 'kalshi'
+                ? <>Kalshi pays flat pro-rata — every resting quote across the book earns (no eligible-spread band). </>
+                : <>Reward zone unavailable for this market. </>}
+            {orderSide === 'both'
+              ? <>Tap a <span className="font-semibold text-mint-deep">bid</span> = BUY, an <span className="font-semibold text-coral-ink">ask</span> = SELL.</>
+              : orderSide === 'buy'
+                ? <><span className="font-semibold text-mint-deep">Buy-only</span> — only bids place a marker.</>
+                : <><span className="font-semibold text-coral-ink">Sell-only</span> — only asks place a marker.</>}
+            {' '}The tap picks the side; no order is placed.{venue === 'polymarket' ? '' : ' Asks are the contract complement.'}
           </p>
         </div>
       )}
@@ -1343,12 +1355,12 @@ function DualOrderBook({
 // One side's book column. Chosen side is full-opacity + tinted; the other is lightly dimmed but
 // STILL fully tappable — tapping any of its levels selects that token and plans the order there.
 function SideColumn({
-  side, book, mid, maxSpread, chosen, userBid, userAsk, onTap, venueUrl, buyManual, sellManual, windowN, showFull,
+  side, book, mid, maxSpread, chosen, userBid, userAsk, onTap, venueUrl, buyManual, sellManual, windowN, showFull, orderSide,
 }: {
   side: SideKey; book: NormBook | null; mid: number | null; maxSpread: number | null;
   chosen: boolean; userBid: number | null; userAsk: number | null;
   onTap: (columnSide: SideKey, kind: LegKind, price: number) => void; venueUrl: string | null; buyManual: boolean; sellManual: boolean;
-  windowN: number; showFull: boolean;
+  windowN: number; showFull: boolean; orderSide: SideMode;
 }) {
   const isYes    = side === 'yes';
   // Levels are already sorted best-first (asks ascending, bids descending), so the ones nearest
@@ -1368,11 +1380,13 @@ function SideColumn({
   const askRows  = mergeUserRow(asks, chosen ? userAsk : null, 'sell', 'asc');
   const bidRows  = mergeUserRow(bids, chosen ? userBid : null, 'buy', 'desc');
   const hasBook  = book?.hasBook;
-  // Tap-to-place in BOTH directions, in EITHER column, with no pre-selection: every ask is a
-  // SELL target and every bid is a BUY target. The onTap handler switches to this column's token
-  // when it isn't the chosen one, so the tap alone picks the side. (SIMULATION ONLY.)
-  const sellTappable = true;
-  const buyTappable  = true;
+  // MODE-AWARE tappability: the Side selector governs which direction a tap can place. Bids place a
+  // BUY (allowed in Both / Buy only); asks place a SELL (allowed in Both / Sell only). A disallowed
+  // direction's rows are non-interactive + gently hinted, never force-adding the counterpart.
+  const buyTappable  = orderSide === 'both' || orderSide === 'buy';
+  const sellTappable = orderSide === 'both' || orderSide === 'sell';
+  const sellHint = !sellTappable ? 'Sell disabled in Buy-only mode' : undefined;
+  const buyHint  = !buyTappable  ? 'Buy disabled in Sell-only mode' : undefined;
   return (
     <div className={`flex-1 min-w-0 rounded-button border overflow-hidden transition-opacity
       ${chosen ? (isYes ? 'border-mint-deep/40' : 'border-coral-ink/40') : 'border-line opacity-70'}`}>
@@ -1395,7 +1409,7 @@ function SideColumn({
         <div className="px-1 py-1">
           <div className="flex flex-col-reverse">
             {askRows.map((r, i) => <MiniLadder key={`a${i}`} row={r} maxSize={maxSize} mid={mid} halfBand={halfBand} kind="ask"
-              tappable={sellTappable} dimmed={false} manual={sellManual} venueUrl={venueUrl}
+              tappable={sellTappable} dimmed={!sellTappable} hint={sellHint} manual={sellManual} venueUrl={venueUrl}
               onTap={sellTappable ? (p) => onTap(side, 'sell', p) : undefined} />)}
           </div>
           {/* thin ask/bid separator — the mid price already shows in the column header + trade
@@ -1405,7 +1419,7 @@ function SideColumn({
           </div>
           <div className="flex flex-col">
             {bidRows.map((r, i) => <MiniLadder key={`b${i}`} row={r} maxSize={maxSize} mid={mid} halfBand={halfBand} kind="bid"
-              tappable={buyTappable} dimmed={false} manual={buyManual} venueUrl={venueUrl}
+              tappable={buyTappable} dimmed={!buyTappable} hint={buyHint} manual={buyManual} venueUrl={venueUrl}
               onTap={buyTappable ? (p) => onTap(side, 'buy', p) : undefined} />)}
           </div>
           {book?.asksComplement && (
@@ -1435,14 +1449,17 @@ function mergeUserRow(levels: BookRow[], userPrice: number | null, kind: 'buy' |
   }
   return rows;
 }
-function MiniLadder({ row, maxSize, mid, halfBand, kind, tappable, dimmed, manual, venueUrl, onTap }: {
+function MiniLadder({ row, maxSize, mid, halfBand, kind, tappable, dimmed, hint, manual, venueUrl, onTap }: {
   row: LadderRow; maxSize: number; mid: number | null; halfBand: number | null; kind: 'ask' | 'bid';
-  tappable?: boolean; dimmed?: boolean; manual?: boolean; venueUrl?: string | null; onTap?: (price: number) => void;
+  tappable?: boolean; dimmed?: boolean; hint?: string; manual?: boolean; venueUrl?: string | null; onTap?: (price: number) => void;
 }) {
   // A row may be a plain real level, OR the user's leg living ON a real level (annotated by
   // mergeUserRow — no duplicate), OR a between-levels planned marker (size 0). One code path.
   const isUser    = !!row.user;
-  const inBand    = mid != null && halfBand != null ? Math.abs(row.price - mid) <= halfBand : false;
+  // Reward-eligible band membership from the REAL rewardsMaxSpread half-band (never fabricated).
+  // bandKnown=false (Kalshi / missing config) ⇒ no band shading at all.
+  const bandKnown = mid != null && halfBand != null;
+  const inBand    = bandKnown ? Math.abs(row.price - mid!) <= halfBand! : false;
   const barPct    = maxSize > 0 ? (row.size / maxSize) * 100 : 0;
   const priceCls  = kind === 'ask' ? 'text-coral-ink' : 'text-mint-deep';
   // Depth bar is a real COLORED background fill (green for bids, red for asks), not a grey block —
@@ -1463,24 +1480,30 @@ function MiniLadder({ row, maxSize, mid, halfBand, kind, tappable, dimmed, manua
   const title = isUser
     ? (manual ? (goVenue ? `Open the venue to place ${sideLabel} at ${fmtC(row.price)}` : undefined)
               : (placeHere ? `Place ${sideLabel} at ${fmtC(row.price)}` : undefined))
-    : (clickable ? `Place ${kind === 'ask' ? 'SELL' : 'BUY'} at ${fmtC(row.price)}` : undefined);
+    : (clickable ? `Place ${kind === 'ask' ? 'SELL' : 'BUY'} at ${fmtC(row.price)}` : hint);
 
   // A tappable ladder row is a full-width touch target (≥44px); static rows stay compact so the
   // book keeps its density. The tap/placed affordance NEVER shares a line with the numbers.
   const rowMinH   = clickable ? 'min-h-[44px]' : 'min-h-[26px]';
   const userTone  = row.user === 'buy' ? 'text-mint-deep' : 'text-coral-ink';
   const placedLbl = isUser ? (manual ? (goVenue ? 'placed ↗' : 'placed') : 'tap to place') : null;
+  // Reward-eligible band overlay: eligible real levels get a subtle green tint + left rule (a subtle
+  // tint that keeps the price/size text fully readable); the ✓/· tag on line 1 names it. User rows
+  // keep their own ring, so they get no band tint. bandKnown=false ⇒ no shading at all.
+  const bandCls = (!isUser && bandKnown)
+    ? (inBand ? 'border-l-2 border-mint-deep/50 bg-mint-tint/20' : 'border-l-2 border-transparent')
+    : '';
 
   return (
     <div
       onClick={act}
       role={clickable ? 'button' : undefined}
       title={title}
-      className={`relative flex flex-col justify-center ${rowMinH} px-2 rounded-sm overflow-hidden
+      className={`relative flex flex-col justify-center ${rowMinH} px-2 rounded-sm overflow-hidden ${bandCls}
         ${clickable ? 'cursor-pointer hover:bg-bg-soft active:bg-bg-soft/80' : ''}
         ${isUser
           ? `ring-1 ring-inset ${row.user === 'buy' ? 'ring-mint-deep bg-mint-tint' : 'ring-coral-ink bg-coral-tint'}`
-          : (dimmed ? 'opacity-40 pointer-events-none' : '')}`}
+          : (dimmed ? 'opacity-50 pointer-events-none' : '')}`}
     >
       {/* colored depth bar — sized to the level's real size, sitting BEHIND the text */}
       {row.size > 0 && (
@@ -1488,12 +1511,17 @@ function MiniLadder({ row, maxSize, mid, halfBand, kind, tappable, dimmed, manua
           style={{ width: `${Math.max(2, barPct)}%`, background: barColor }} />
       )}
 
-      {/* line 1 — price (left) · size (right). tabular-nums + nowrap ⇒ they can never collide. */}
-      <div className="relative grid grid-cols-2 items-center gap-2 font-mono text-[11px] leading-none">
+      {/* line 1 — price (left) · [✓ earns / · no reward] · size (right). tabular-nums + nowrap. */}
+      <div className="relative grid grid-cols-[1fr_auto] items-center gap-2 font-mono text-[11px] leading-none">
         <span className={`tabular-nums whitespace-nowrap ${isUser
           ? `font-bold ${userTone}`
           : `${priceCls} ${inBand ? 'font-semibold' : ''}`}`}>{fmtC(row.price)}</span>
-        <span className="tabular-nums whitespace-nowrap text-right text-ink-2">{row.size > 0 ? fmtSh(row.size) : '—'}</span>
+        <span className="flex items-center justify-end gap-1 whitespace-nowrap">
+          {!isUser && bandKnown && (inBand
+            ? <span className="font-body text-[8px] font-bold text-mint-deep" title="reward-eligible — earns">✓</span>
+            : <span className="font-body text-[9px] text-muted/60" title="outside reward band — no reward">·</span>)}
+          <span className="tabular-nums text-right text-ink-2">{row.size > 0 ? fmtSh(row.size) : '—'}</span>
+        </span>
       </div>
 
       {/* line 2 — the placed / tap-to-place affordance on its OWN row (never over the numbers) */}
