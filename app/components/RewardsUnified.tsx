@@ -59,6 +59,12 @@ interface Market {
   // Per-side in-band depth. Polymarket exposes both; the opposite (NO) side feeds the honest
   // two-sided dilution. Redacted to null on the free tier (compute degrades to the lock state).
   sides?: { yes?: SideBook | null; no?: SideBook | null } | null;
+  // Kalshi EXECUTABILITY inputs. qualifyingLiquidity here is the LIMITING (thinner) side in USD:
+  // it is 0 exactly when a side of the book is empty (one-sided). bookSpread is non-null only when
+  // BOTH best_bid and best_ask are real executable prices (never mid-derived). Both are redacted to
+  // null on the free tier (→ lock, unchanged). Used ONLY to guard Kalshi rows; Polymarket ignores.
+  qualifyingLiquidity?: number | null;
+  bookSpread?: number | null;
   flags?: string[] | null;
   rewardScore?: RewardScore | null;
 }
@@ -78,6 +84,10 @@ interface Base {
   saturation: number | null;      // 1 − filled (bar value)
   measured: boolean;
   isTrap: boolean;
+  // Kalshi only: reason the row is not priceable (one-sided / non-executable book). When set, the
+  // row renders "—" with this reason instead of a fabricated $/day. null on Polymarket + valid rows.
+  nonExecReason: string | null;
+  grossKalshi: boolean;           // Kalshi executable row → show the calm "gross" qualifier
 }
 /** Base + the balance-driven yield the list/filters/row read. */
 interface Row extends Base {
@@ -119,6 +129,8 @@ const fmtDepth = (n: number) =>
 const toggle = (arr: string[], v: string) =>
   arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v];
 
+const fin = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
+
 export default function RewardsUnified() {
   const [data, setData] = useState<Payload | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -157,6 +169,26 @@ export default function RewardsUnified() {
       // Opposite-side in-band depth — ONLY for Polymarket, whose reward is a two-sided Qmin. Kalshi
       // is an observed flat pro-rata split (one-sided model), so it never gets the opposite side.
       const oppDepth = m.venue === 'polymarket' ? (m.sides?.no?.bookDepthAtBand ?? null) : null;
+
+      // ── Kalshi EXECUTABLE-DEPTH GUARD ──────────────────────────────────────────────────────
+      // Kalshi's flat pro-rata dilutes against BOTH sides summed (bookDepthAtBand = bothUsd). But
+      // that number is only honest when the book is genuinely two-sided & executable. When a side
+      // is empty (limiting qualifyingLiquidity ≤ 0) OR the best bid/ask is missing so the price was
+      // mid-derived (bookSpread null), the "share" collapses to spurious dominance ($1k "owning"
+      // ~88% of a $139 one-sided book → thousands/day). That is exactly the non-executable-depth /
+      // "too good to be true" violation, so the row renders "—" with a reason instead of a number.
+      // Guard fires ONLY when the real fields are present (paid tier); on the free tier they are
+      // redacted to null → guard skipped → the row degrades to the normal lock (unchanged).
+      const isKalshi   = m.venue === 'kalshi';
+      const limitingUsd = m.qualifyingLiquidity;   // feed LIMITING (thinner) side, USD
+      let nonExecReason: string | null = null;
+      if (isKalshi && fin(limitingUsd)) {
+        if (limitingUsd <= 0)          nonExecReason = 'one-sided book · no executable two-sided depth';
+        else if (m.bookSpread == null) nonExecReason = 'no executable bid/ask · price would be mid-derived';
+      }
+      // null Q ⇒ the lib returns unknown ⇒ the row renders "—". Polymarket path is untouched.
+      const execQ = nonExecReason ? null : depth;
+
       return {
         m, flags,
         category:     m.category ?? null,
@@ -164,11 +196,13 @@ export default function RewardsUnified() {
         poolDayUsd:   rs?.poolDay ?? m.dailyPool ?? null,
         cap:          null,                    // Polymarket exposes no reward cap → unbounded space
         filled,
-        qualifyingLiquidity: depth,            // near-side Q = real in-band depth (never fabricated)
+        qualifyingLiquidity: execQ,            // near-side Q (Kalshi: nulled when non-executable)
         oppDepth,                              // far-side in-band depth (two-sided dilution)
         saturation:   filled != null ? 1 - filled : null,
         measured:     rs?.source === 'measured-clob-quadratic',
         isTrap:       flags.some((f) => /^TRAP$/i.test(f)),
+        nonExecReason,
+        grossKalshi:  isKalshi,                // executable Kalshi rows show the calm "gross" tag
       };
     });
   }, [data]);
@@ -423,16 +457,29 @@ export default function RewardsUnified() {
                           <span className="cc-row-net">
                             {/* Net $/day is the sole headline metric on these cards — the
                                 annualized run-rate line was removed (it dwarfed the honest
-                                daily figure). "—" ONLY when pool/depth are genuinely missing
-                                (unknown); a known depth always yields a finite number here. */}
+                                daily figure). "—" when pool/depth are missing OR (Kalshi) the
+                                book is one-sided / non-executable, with the reason on hover. */}
                             <Redacted
                               value={row.unknown ? null : row.netUsdPerDay}
                               isPaid={isPaid}
-                              nullDisplay={<span title="no reward pool or in-band depth from the feed">—</span>}
+                              nullDisplay={<span title={row.nonExecReason ?? 'no reward pool or in-band depth from the feed'}>—</span>}
                             >
                               {(v) => <>${Number(v).toFixed(2)}/day</>}
                             </Redacted>
                           </span>
+                          {/* Kalshi gross qualifier — replaces the removed APY line. Calm, once.
+                              The feed prices full qualifying size at best bid/ask; Kalshi's real
+                              score also applies distance-from-mid weighting, an uptime requirement
+                              and a target-size gate the free feed does not capture, so this $/day
+                              is GROSS of them. Polymarket rows never render this. */}
+                          {row.grossKalshi && !row.unknown && (
+                            <span
+                              className="cc-row-gross"
+                              title="gross reward from full qualifying size at best bid/ask — before Kalshi's distance-from-mid weighting, uptime requirement and target-size gate (not captured by the free feed)"
+                            >
+                              gross · before uptime/distance scoring
+                            </span>
+                          )}
                         </span>
                       </div>
 

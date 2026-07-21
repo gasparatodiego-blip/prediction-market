@@ -93,6 +93,30 @@ function assert(cond, label) {
   assert(noOpp.share === nullOpp.share && noOpp.competitorDepth === 594, 'no/null opposite side → one-sided model byte-for-byte (competitorDepth = near)');
 }
 
+// KALSHI flat pro-rata (observed). Kalshi's LIP reward = yourScore / totalScore × pool, and
+// totalScore pools BOTH sides of the market — so the honest single-deployment share is
+// deployed/(bothSidesDepth + deployed). The normalizer pre-sums both sides into bookDepthAtBand,
+// and Kalshi passes NO opposite side (Qopp absent) → competitorDepth = that both-sides depth. This
+// is a distinct venue mechanic from Polymarket's Qmin, but reduces to the same one-sided lib call.
+{
+  // Austin 74.99° real fields: pool $2482.208/day, both-sides depth $3766.02, balance $1,000.
+  const r = computeLiquidityYield({ poolPerDay: 2482.208, cap: null, qualifyingLiquidity: 3766.02, balance: 1000 });
+  console.log('Kalshi FLAT PRO-RATA (pool 2482.208, both-sides depth 3766.02, balance 1000):');
+  approx(r.share, 1000 / (3766.02 + 1000), 1e-4, 'share ≈ 0.2098 (both-sides pro-rata)');
+  approx(r.dailyUsd, 2482.208 * (1000 / 4766.02), 0.01, 'dailyUsd ≈ $520.8/day (gross, pre-uptime/distance)');
+  approx(r.competitorDepth, 3766.02, 0.01, 'competitorDepth = both-sides depth (what "depth" displays)');
+  assert(r.unknown === false, 'a real two-sided Kalshi book is priceable (unknown:false)');
+}
+
+// KALSHI one-sided / non-executable book → the caller nulls Q (executable-depth guard) → the lib
+// must return unknown ⇒ the row renders "—", never the spurious dominance number (e.g. $1k
+// "owning" 88% of a $139 one-sided book → thousands/day). The guard lives in the caller; the lib's
+// contract is only that a null qualifying depth ⇒ unknown, which this pins.
+{
+  const r = computeLiquidityYield({ poolPerDay: 2482.208, cap: null, qualifyingLiquidity: null, balance: 1000 });
+  assert(r.unknown === true && r.dailyUsd === 0, 'Kalshi one-sided (Q nulled by guard) → unknown:true → renders "—"');
+}
+
 // APY is on DEPLOYED capital, not total balance: idle capital must not dilute the APY.
 {
   const cap = 626, Q = 526;                 // space = 100

@@ -592,6 +592,8 @@ h1, h2, h3 {
 .cc-row-net { font-size: 14px; font-weight: 700; color: var(--cc-green); font-variant-numeric: tabular-nums; line-height: 1.1; }
 .cc-row-apy { font-size: 10px; color: var(--cc-muted); font-variant-numeric: tabular-nums; }
 .cc-row-apy.is-amber { color: var(--cc-amber); }
+/* Kalshi gross qualifier — calm, muted, one line under the $/day (replaces the removed APY line). */
+.cc-row-gross { font-size: 9px; color: var(--cc-muted); opacity: .8; letter-spacing: .01em; cursor: help; text-align: right; max-width: 168px; }
 .cc-expand { padding: 4px 2px 12px; border-bottom: 1px solid var(--cc-border); }
 
 /* ── Liquidity-rewards list extras (saturation bar + share calculator) ────────
