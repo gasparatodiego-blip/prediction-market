@@ -493,33 +493,56 @@ export default function MarketDetailPage() {
     });
   }, [mkt, mid, buyActive, sellActive, userBid, userAsk, buySize, sellSize, competitorDepthUsd]);
 
-  // ── LIVE YIELD EXPLAINER — pick the honest message from the REAL rule + the EXISTING estimate.
-  // Never recomputes a yield: the $/day shown is computeRewardScore's dailyUsd (the hero number).
-  // A withheld market defers to the withheld state — never a fabricated yield.
+  // ── LIVE YIELD EXPLAINER — reads the FOUR-leg map and tells the truth per the REAL rule.
+  // It reuses the EXISTING estimate (computeRewardScore for $/day, estimateReward for the withheld
+  // flag) — never a new formula. The existing single-book estimate can only price legs that sit on
+  // ONE book; a cross-book mix (any YES leg + any NO leg) is not something that math was built for,
+  // so we show a conservative "can't verify" rather than fabricate. Withheld markets stay withheld.
   const yieldLine = useMemo<{ tone: 'mint' | 'amber' | 'muted'; text: string } | null>(() => {
-    if (!mkt || mid == null) return null;
-    const withheld = est?.reasons?.some(r =>
-      r.includes('too-good-to-verify') || r.includes('not a credible passive-maker estimate; withheld')) ?? false;
+    if (!mkt) return null;
+    const yb = legMap['yes-buy'], ys = legMap['yes-sell'], nb = legMap['no-buy'], ns = legMap['no-sell'];
+    const yesN = (yb ? 1 : 0) + (ys ? 1 : 0);
+    const noN  = (nb ? 1 : 0) + (ns ? 1 : 0);
+    if (yesN + noN === 0)
+      return { tone: 'muted', text: bandRadiusC != null ? `place inside the ±${bandRadiusC.toFixed(2)}¢ band to earn` : 'place a resting quote to earn' };
+    if (yesN > 0 && noN > 0)
+      return { tone: 'muted', text: '— · can’t verify this cross-book combination' };
+    // All legs are on ONE book → the existing single-book estimate applies.
+    const book: SideKey = yesN > 0 ? 'yes' : 'no';
+    const bmid = book === 'yes' ? yesMid : noMid;
+    if (bmid == null) return { tone: 'muted', text: '— · can’t verify (book mid unavailable)' };
+    const buy  = book === 'yes' ? yb : nb;
+    const sell = book === 'yes' ? ys : ns;
     const bandKnown = bandRadiusC != null;
-    const eligible  = (p: number | null) => p != null && bandKnown && Math.abs(p - mid) * 100 <= bandRadiusC!;
-    // Kalshi has no incentive-spread band (flat pro-rata) → any resting quote is eligible.
-    const bidElig = buyActive  && userBid != null && (bandKnown ? eligible(userBid) : true);
-    const askElig = sellActive && userAsk != null && (bandKnown ? eligible(userAsk) : true);
+    const inBandP   = (p: number | null) => p != null && (bandKnown ? Math.abs(p - bmid) * 100 <= bandRadiusC! : true);
+    const bidElig = !!buy  && inBandP(buy.price);
+    const askElig = !!sell && inBandP(sell.price);
     if (mkt.venue === 'polymarket' && !bandKnown) return { tone: 'muted', text: 'reward zone unavailable for this market' };
     if (!bidElig && !askElig)
       return { tone: 'muted', text: bandKnown ? `place inside the ±${bandRadiusC!.toFixed(2)}¢ band to earn` : 'place a resting quote to earn' };
     // planned size vs the REAL min_incentive_size (shares): planned shares = USD / price
     const belowMin = cfgMinSize != null && (
-      (bidElig && userBid != null && (buySize  / userBid) < cfgMinSize) ||
-      (askElig && userAsk != null && (sellSize / userAsk) < cfgMinSize));
+      (bidElig && buy  && (qty / buy.price)  < cfgMinSize) ||
+      (askElig && sell && (qty / sell.price) < cfgMinSize));
     if (belowMin) return { tone: 'amber', text: `below min ${fmtSh(cfgMinSize!)} sh — won't earn` };
+    // Withheld flag for the PLACED book (reuse estimateReward; the chosen book already has `est`).
+    const bookEst = book === tradeSide ? est
+      : estimateReward({ venue: mkt.venue, capital, twoSided, distanceCents: dist, market: toSnapshot(mkt), side: book });
+    const withheld = bookEst?.reasons?.some(r =>
+      r.includes('too-good-to-verify') || r.includes('not a credible passive-maker estimate; withheld')) ?? false;
     if (withheld) return { tone: 'amber', text: 'yield withheld — too good to verify (see net earnings)' };
+    // $/day for the actual placed legs — reuse computeRewardScore (the SSOT), explicit legs only.
+    const bidLegs: LevelAlloc[] = bidElig && buy  ? [{ priceCents: buy.price  * 100, sizeUsd: qty }] : [];
+    const askLegs: LevelAlloc[] = askElig && sell ? [{ priceCents: sell.price * 100, sizeUsd: qty }] : [];
+    const placed = computeRewardScore({ venue: mkt.venue, midCents: bmid * 100, maxSpreadC: mkt.maxSpread ?? 50,
+      pool: mkt.dailyPool, competitorDepthUsd, yes: bidLegs, no: askLegs });
+    const z = placed?.dailyUsd != null ? fmtUsd(placed.dailyUsd) : null;
     const oneSided = (bidElig ? 1 : 0) + (askElig ? 1 : 0) === 1;
-    const z = scoreEst?.dailyUsd != null ? fmtUsd(scoreEst.dailyUsd) : null;
-    if (oneSided && ruleTwoSidedRequired) return { tone: 'amber', text: '$0 — this market needs BOTH sides to score' };
+    const twoReq = bmid < 0.10 || bmid > 0.90;   // this book's own two-sided-required rule
+    if (oneSided && twoReq) return { tone: 'amber', text: '$0 — this market needs BOTH sides to score' };
     if (oneSided) return { tone: 'amber', text: z ? `one-sided · ⅓ credit (~${z}/day) — add the other side for full` : 'one-sided · ⅓ credit — add the other side for full' };
     return { tone: 'mint', text: z ? `two-sided · full credit (~${z}/day)` : 'two-sided · full credit' };
-  }, [mkt, mid, est, scoreEst, bandRadiusC, buyActive, sellActive, userBid, userAsk, buySize, sellSize, cfgMinSize, ruleTwoSidedRequired]);
+  }, [mkt, legMap, yesMid, noMid, bandRadiusC, cfgMinSize, qty, est, tradeSide, capital, twoSided, dist, competitorDepthUsd]);
 
   // Staleness guard — snapshot age from the server fetchedAt. Older than STALE_BOOK_MS ⇒ the
   // estimate is NOT actionable and must not read as a fresh number on stale data.
