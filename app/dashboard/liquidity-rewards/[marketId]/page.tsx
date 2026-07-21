@@ -513,8 +513,10 @@ export default function MarketDetailPage() {
 
   return (
     <div className="min-h-screen" style={{ background: 'radial-gradient(circle at 50% -10%, rgba(15,190,130,.05), transparent 60%), #F5F8F6' }}>
-      {/* ── A) Sticky header ── */}
-      <div className="sticky top-0 z-20 backdrop-blur bg-surface/85 border-b border-line">
+      {/* ── A) Sticky header — FULLY OPAQUE so scrolled content never bleeds through it.
+             Solid surface (this is a light page — surface is #FFFFFF, the honest equivalent of a
+             solid dark bar), a bottom border, a shadow for separation, and z-30 above all content. ── */}
+      <div className="sticky top-0 z-30 bg-surface border-b border-line shadow-card">
         <div className="max-w-3xl mx-auto px-4 py-2.5">
           <Link href="/dashboard/liquidity-rewards" className="inline-flex items-center gap-1 font-body text-[12px] text-muted hover:text-ink-2">
             <ChevronLeft size={15} /> Rewards
@@ -545,18 +547,47 @@ export default function MarketDetailPage() {
         </div>
       </div>
 
-      <div className="max-w-3xl mx-auto px-4 py-5 space-y-5">
+      {/* Sections carry scroll-mt so an in-page jump (or the browser restoring scroll) never
+          parks a heading UNDER the opaque sticky header. */}
+      <div className="max-w-3xl mx-auto px-4 py-5 space-y-5 [&>section]:scroll-mt-24">
         {loading && !mkt && <p className="font-body text-sm text-muted">Loading market…</p>}
 
         {mkt && (
           <>
-            {/* ── B) Earnings block (recomputes for chosen side) ── */}
-            <ScoreTicket score={scoreEst} pool={mkt.dailyPool} isRedacted={isRedacted}
-              stale={bookStale} bookAgeMs={bookAgeMs} plan={execPlan} venue={mkt.venue} />
-            <EarningsBlock est={est} isRedacted={isRedacted} flags={mkt.flags} tradeSide={tradeSide} />
+            {/* ── (b) Which side to make — choose the outcome + see its live mid FIRST ── */}
+            <section>
+              <TradeSideToggle
+                tradeSide={tradeSide} setTradeSide={setTradeSide}
+                yesMid={yesMid} noMid={noMid} isRedacted={isRedacted}
+                yesHasBook={yesBook?.hasBook ?? (mkt.sides?.yes?.hasBook !== false)}
+                noHasBook={noBook?.hasBook ?? (mkt.sides?.no?.hasBook !== false)}
+              />
+            </section>
 
-            {/* ── C) Order controls ── */}
-            <div className="rounded-card shadow-card bg-surface px-4 py-4 space-y-4">
+            {/* ── (c) Live DUAL order book (YES | NO) with tap-to-place ── */}
+            <section>
+              <DualOrderBook
+                yesBook={yesBook} noBook={noBook} tradeSide={tradeSide}
+                bookAge={bookAge} bookErr={bookErr} isRedacted={isRedacted}
+                yesMid={yesMid} noMid={noMid} maxSpread={mkt.maxSpread}
+                userBid={userBid} userAsk={userAsk} onRefresh={fetchBook} venue={mkt.venue}
+                side={side} onTap={placeLeg} venueUrl={venueUrl}
+                buyManual={legs.buy != null} sellManual={legs.sell != null}
+              />
+            </section>
+
+            {/* Order tickets: one per active (tapped) leg — sits with the book it came from */}
+            <section>
+              <LegTickets
+                legs={legs} legQty={legQty} setLegQty={setLegQty} removeLeg={removeLeg}
+                tradeSide={tradeSide} mid={mid} maxSpread={mkt.maxSpread}
+                venue={mkt.venue} snapshot={toSnapshot(mkt)} isRedacted={isRedacted}
+                venueUrl={venueUrl}
+              />
+            </section>
+
+            {/* ── (d) Your order — set size + distance AFTER choosing side and seeing the book ── */}
+            <section className="rounded-card shadow-card bg-surface px-4 py-4 space-y-4">
               <p className="font-body font-medium text-sm text-ink-2">Your order</p>
 
               {/* side */}
@@ -627,33 +658,18 @@ export default function MarketDetailPage() {
                   </p>
                 )}
               </div>
-            </div>
+            </section>
 
-            {/* ── Side selector — sits in the band directly above the book (moved from top) ── */}
-            <TradeSideToggle
-              tradeSide={tradeSide} setTradeSide={setTradeSide}
-              yesMid={yesMid} noMid={noMid} isRedacted={isRedacted}
-              yesHasBook={yesBook?.hasBook ?? (mkt.sides?.yes?.hasBook !== false)}
-              noHasBook={noBook?.hasBook ?? (mkt.sides?.no?.hasBook !== false)}
-            />
+            {/* ── (e) Reward · gross per day + Run simulation + (disabled) Arm execution ── */}
+            <section>
+              <ScoreTicket score={scoreEst} pool={mkt.dailyPool} isRedacted={isRedacted}
+                stale={bookStale} bookAgeMs={bookAgeMs} plan={execPlan} venue={mkt.venue} />
+            </section>
 
-            {/* ── D) Live DUAL order book (YES | NO), chosen side highlighted ── */}
-            <DualOrderBook
-              yesBook={yesBook} noBook={noBook} tradeSide={tradeSide}
-              bookAge={bookAge} bookErr={bookErr} isRedacted={isRedacted}
-              yesMid={yesMid} noMid={noMid} maxSpread={mkt.maxSpread}
-              userBid={userBid} userAsk={userAsk} onRefresh={fetchBook} venue={mkt.venue}
-              side={side} onTap={placeLeg} venueUrl={venueUrl}
-              buyManual={legs.buy != null} sellManual={legs.sell != null}
-            />
-
-            {/* ── Order tickets: one per active leg (independent buy + sell) ── */}
-            <LegTickets
-              legs={legs} legQty={legQty} setLegQty={setLegQty} removeLeg={removeLeg}
-              tradeSide={tradeSide} mid={mid} maxSpread={mkt.maxSpread}
-              venue={mkt.venue} snapshot={toSnapshot(mkt)} isRedacted={isRedacted}
-              venueUrl={venueUrl}
-            />
+            {/* ── (f) Net earnings (Pro) + sanity note ── */}
+            <section>
+              <EarningsBlock est={est} isRedacted={isRedacted} flags={mkt.flags} tradeSide={tradeSide} />
+            </section>
 
             {/* ── E) Fill-handling choice — per-side when quoting both ── */}
             <div className="rounded-card shadow-card bg-surface px-4 py-4 space-y-4">
@@ -732,7 +748,7 @@ export default function MarketDetailPage() {
             </div>
 
             {/* Footer */}
-            <p className="font-body text-[11px] text-muted/60 leading-relaxed pt-2 border-t border-line">
+            <p className="font-body text-[11px] text-muted leading-relaxed pt-2 border-t border-line">
               Order book from live {mkt.venue === 'polymarket' ? 'Polymarket CLOB' : 'Kalshi'} data (executable prices, never midpoint for fills).
               The gross reward ticket uses the same two-sided model as the list; the net view subtracts expected adverse-fill cost. No annualized figure.
               Read-only, no orders placed, live execution OFF, no login required to view.
@@ -793,10 +809,10 @@ function ScoreTicket({
             <p className="font-body text-[12px] text-ink-2 tabular-nums">
               your share <Redacted value={score && !isRedacted ? score.share : null}>{v => `${(v * 100).toFixed(2)}%`}</Redacted>
             </p>
-            <p className="font-body text-[10px] text-muted tabular-nums">
+            <p className="font-body text-[10px] text-ink-2 tabular-nums">
               bid score {score ? fmtUsd(score.yesScore) : '—'} · ask score {score ? fmtUsd(score.noScore) : '—'}
             </p>
-            <p className="font-body text-[10px] text-muted/70">min-side {score ? fmtUsd(score.minSideScore) : '—'}</p>
+            <p className="font-body text-[10px] text-muted tabular-nums">min-side {score ? fmtUsd(score.minSideScore) : '—'}</p>
           </div>
         </div>
 
@@ -824,7 +840,7 @@ function ScoreTicket({
         )}
 
         {/* One calm qualifier — replaces any annualized line */}
-        <p className="font-body text-[10px] text-muted/70 mt-3">
+        <p className="font-body text-[10px] text-muted mt-3">
           gross · before inventory/adverse-selection cost · simulation only
         </p>
 
@@ -871,7 +887,7 @@ function EarningsBlock({ est, isRedacted, flags = [], tradeSide }: { est: Return
           </div>
           <div className="text-right">
             <p className="font-body text-[12px] text-ink-2 tabular-nums"><Redacted value={est?.dayYieldPct ?? null}>{v => `${v.toFixed(3)}%/day`}</Redacted></p>
-            <p className="font-body text-[9px] text-muted/70">net of expected adverse-fill cost</p>
+            <p className="font-body text-[9px] text-muted">net of expected adverse-fill cost</p>
           </div>
         </div>
 
@@ -902,7 +918,7 @@ function EarningsBlock({ est, isRedacted, flags = [], tradeSide }: { est: Return
         )}
         {!isRedacted && est && est.reasons.length > 0 && (
           <ul className="mt-3 space-y-1">
-            {est.reasons.map((r, i) => <li key={i} className="font-body text-[10px] text-muted/80 leading-snug">· {r}</li>)}
+            {est.reasons.map((r, i) => <li key={i} className="font-body text-[10px] text-muted leading-snug">· {r}</li>)}
           </ul>
         )}
       </div>
@@ -914,7 +930,7 @@ function MiniBox({ label, value, sub }: { label: string; value: React.ReactNode;
     <div className="rounded-button bg-bg-soft border border-line px-3 py-2.5">
       <p className="font-body text-[10px] uppercase tracking-wide text-muted">{label}</p>
       <p className="font-body text-[15px] font-semibold text-ink tabular-nums mt-0.5">{value}</p>
-      {sub && <p className="font-body text-[9px] text-muted/70 mt-0.5 leading-tight">{sub}</p>}
+      {sub && <p className="font-body text-[9px] text-muted mt-0.5 leading-tight">{sub}</p>}
     </div>
   );
 }
@@ -1003,7 +1019,7 @@ function LegTickets({
             <div className="flex items-center justify-between gap-2">
               <span className={`font-body font-semibold text-[13px] flex items-center gap-1.5 ${isBuy ? 'text-mint-deep' : 'text-coral-ink'}`}>
                 {isBuy ? 'BUY' : 'SELL'} {tradeSide.toUpperCase()} @ {fmtC(leg.price)}
-                <span className="px-1 rounded-sm bg-surface/70 border border-current/30 uppercase tracking-wide text-[7px] font-semibold">manuale</span>
+                <span className="px-1 rounded-sm bg-surface border border-current/30 uppercase tracking-wide text-[7px] font-semibold">manual</span>
               </span>
               <button onClick={() => removeLeg(kind)} className="text-muted hover:text-ink-2 shrink-0" title="remove this leg" aria-label={`remove ${kind} leg`}><X size={14} /></button>
             </div>
@@ -1084,7 +1100,7 @@ function DualOrderBook({
       ) : !anyBook ? (
         <div className="px-4 py-8 text-center">
           <p className="font-body text-sm text-muted">Book unavailable — data refreshing, try again shortly.</p>
-          {bookErr && <p className="font-body text-[10px] text-muted/60 mt-1">{bookErr}</p>}
+          {bookErr && <p className="font-body text-[10px] text-muted mt-1">{bookErr}</p>}
         </div>
       ) : (
         <div className="px-3 py-3">
@@ -1096,7 +1112,7 @@ function DualOrderBook({
               chosen={tradeSide === 'no'} userBid={userBid} userAsk={userAsk}
               orderSide={side} onTap={onTap} venueUrl={venueUrl} buyManual={buyManual} sellManual={sellManual} />
           </div>
-          <p className="font-body text-[9px] text-muted/60 px-1 pt-2 leading-relaxed">
+          <p className="font-body text-[9px] text-muted px-1 pt-2 leading-relaxed">
             Real executable prices from {venue === 'polymarket' ? 'each token’s own CLOB book (both fetched live; YES + NO mids ≈ 100¢, but each side’s in-band reward depth differs)' : 'the Kalshi book — bids are real, asks are the contract complement'}.
             The <span className="font-semibold">{tradeSide.toUpperCase()}</span> column is highlighted; your <span className="font-semibold">planned orders</span> (mid ± distance) show in bold there, never midpoint for fills.
           </p>
@@ -1154,8 +1170,9 @@ function SideColumn({
               tappable={sellTappable} dimmed={chosen && !sellTappable} manual={sellManual} venueUrl={venueUrl}
               onTap={sellTappable ? (p) => onTap('sell', p) : undefined} />)}
           </div>
-          <div className="px-1 py-1 my-0.5 bg-bg-soft/70 border-y border-line/60 text-center">
-            <span className="font-mono text-[10px] font-semibold text-ink tabular-nums">mid {mid != null ? fmtC(mid) : '—'}</span>
+          <div className="flex items-center justify-center gap-2 px-1 py-1.5 my-1 bg-bg-soft border-y border-line text-center">
+            <span className="font-mono text-[10px] font-semibold text-ink tabular-nums whitespace-nowrap">mid {mid != null ? fmtC(mid) : '—'}</span>
+            {spread != null && <span className="font-body text-[9px] text-muted tabular-nums whitespace-nowrap">· spread {fmtC(spread)}</span>}
           </div>
           <div className="flex flex-col">
             {bidRows.map((r, i) => <MiniLadder key={`b${i}`} row={r} maxSize={maxSize} mid={mid} halfBand={halfBand} kind="bid"
@@ -1163,7 +1180,7 @@ function SideColumn({
               onTap={buyTappable ? (p) => onTap('buy', p) : undefined} />)}
           </div>
           {book?.asksComplement && (
-            <p className="font-body text-[8px] text-muted/70 px-1 pt-1 leading-tight">asks = 100¢ − opposite-side bid (complement-derived)</p>
+            <p className="font-body text-[9px] text-muted px-1 pt-1.5 leading-tight">asks = 100¢ − opposite-side bid (complement-derived)</p>
           )}
         </div>
       )}
@@ -1199,7 +1216,9 @@ function MiniLadder({ row, maxSize, mid, halfBand, kind, tappable, dimmed, manua
   const inBand    = mid != null && halfBand != null ? Math.abs(row.price - mid) <= halfBand : false;
   const barPct    = maxSize > 0 ? (row.size / maxSize) * 100 : 0;
   const priceCls  = kind === 'ask' ? 'text-coral-ink' : 'text-mint-deep';
-  const barCls    = kind === 'ask' ? 'bg-coral-tint/60' : 'bg-mint-tint/60';
+  // Depth bar is a real COLORED background fill (green for bids, red for asks), not a grey block —
+  // rgba so it tints the row behind the text without ever hiding the price/size numbers.
+  const barColor  = kind === 'ask' ? 'rgba(213,85,47,0.18)' : 'rgba(10,157,107,0.16)';
   const sideLabel = row.user === 'buy' ? 'BUY' : 'SELL';
 
   // Tap-to-place lives ON the real book rows (and on a between-levels planned marker):
@@ -1217,32 +1236,43 @@ function MiniLadder({ row, maxSize, mid, halfBand, kind, tappable, dimmed, manua
               : (placeHere ? `Place ${sideLabel} at ${fmtC(row.price)}` : undefined))
     : (clickable ? `Place ${kind === 'ask' ? 'SELL' : 'BUY'} at ${fmtC(row.price)}` : undefined);
 
+  // A tappable ladder row is a full-width touch target (≥44px); static rows stay compact so the
+  // book keeps its density. The tap/placed affordance NEVER shares a line with the numbers.
+  const rowMinH   = clickable ? 'min-h-[44px]' : 'min-h-[26px]';
+  const userTone  = row.user === 'buy' ? 'text-mint-deep' : 'text-coral-ink';
+  const placedLbl = isUser ? (manual ? (goVenue ? 'placed ↗' : 'placed') : 'tap to place') : null;
+
   return (
     <div
       onClick={act}
       role={clickable ? 'button' : undefined}
       title={title}
-      className={`relative grid grid-cols-2 items-center text-[10px] font-mono px-1.5 rounded-sm
-        ${isUser ? 'py-[3px] my-[1px]' : 'py-[2px]'}
-        ${clickable ? (isUser ? 'cursor-pointer hover:brightness-95 active:brightness-90' : 'cursor-pointer hover:bg-bg-soft active:bg-bg-soft/80') : ''}
+      className={`relative flex flex-col justify-center ${rowMinH} px-2 my-[1px] rounded-sm overflow-hidden
+        ${clickable ? 'cursor-pointer hover:bg-bg-soft active:bg-bg-soft/80' : ''}
         ${isUser
-          ? (row.user === 'buy' ? 'bg-mint-tint ring-1 ring-mint-deep/50' : 'bg-coral-tint ring-1 ring-coral-ink/50')
-          : (dimmed ? 'opacity-30 pointer-events-none' : '')}`}
+          ? `ring-1 ring-inset ${row.user === 'buy' ? 'ring-mint-deep bg-mint-tint' : 'ring-coral-ink bg-coral-tint'}`
+          : (dimmed ? 'opacity-40 pointer-events-none' : '')}`}
     >
-      {/* size-depth bar — real levels only; a highlighted user leg uses its tint instead */}
-      {!isUser && <span className={`absolute inset-y-0 right-0 ${barCls}`} style={{ width: `${barPct}%`, pointerEvents: 'none' }} />}
-      <span className={`relative tabular-nums ${isUser
-        ? `font-bold ${row.user === 'buy' ? 'text-mint-deep' : 'text-coral-ink'}`
-        : `${priceCls} ${inBand ? 'font-semibold' : 'opacity-70'}`}`}>{fmtC(row.price)}</span>
-      {isUser ? (
-        <span className={`relative text-right font-bold text-[8px] flex items-center justify-end gap-1 ${row.user === 'buy' ? 'text-mint-deep' : 'text-coral-ink'}`}>
-          {manual
-            ? <span className="px-1 rounded-sm bg-surface/70 border border-current/30 uppercase tracking-wide text-[7px] font-semibold">{goVenue ? 'place ↗' : 'manual'}</span>
-            : placeHere && <span className="px-1 rounded-sm bg-surface/70 border border-current/30 uppercase tracking-wide text-[7px] font-semibold">tap to place</span>}
-          {row.user === 'buy' ? 'your BUY' : 'your SELL'}
-        </span>
-      ) : (
-        <span className="relative text-right text-muted tabular-nums">{fmtSh(row.size)}</span>
+      {/* colored depth bar — sized to the level's real size, sitting BEHIND the text */}
+      {row.size > 0 && (
+        <span className="absolute inset-y-0 right-0 pointer-events-none"
+          style={{ width: `${Math.max(2, barPct)}%`, background: barColor }} />
+      )}
+
+      {/* line 1 — price (left) · size (right). tabular-nums + nowrap ⇒ they can never collide. */}
+      <div className="relative grid grid-cols-2 items-center gap-2 font-mono text-[11px] leading-none">
+        <span className={`tabular-nums whitespace-nowrap ${isUser
+          ? `font-bold ${userTone}`
+          : `${priceCls} ${inBand ? 'font-semibold' : ''}`}`}>{fmtC(row.price)}</span>
+        <span className="tabular-nums whitespace-nowrap text-right text-ink-2">{row.size > 0 ? fmtSh(row.size) : '—'}</span>
+      </div>
+
+      {/* line 2 — the placed / tap-to-place affordance on its OWN row (never over the numbers) */}
+      {isUser && (
+        <div className={`relative flex items-center justify-between gap-1 mt-1 leading-none ${userTone}`}>
+          <span className="px-1 py-[1px] rounded-sm bg-surface border border-current/40 uppercase tracking-wide text-[7px] font-semibold whitespace-nowrap">{placedLbl}</span>
+          <span className="font-body text-[8px] font-semibold whitespace-nowrap">your {sideLabel}</span>
+        </div>
       )}
     </div>
   );
