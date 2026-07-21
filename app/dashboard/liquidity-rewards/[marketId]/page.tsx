@@ -543,17 +543,21 @@ export default function MarketDetailPage() {
              Solid surface (this is a light page — surface is #FFFFFF, the honest equivalent of a
              solid dark bar), a bottom border, a shadow for separation, and z-30 above all content. ── */}
       <div className="sticky top-0 z-30 bg-surface border-b border-line shadow-card">
-        <div className="max-w-3xl mx-auto px-4 py-2.5">
+        <div className="max-w-3xl mx-auto px-4 py-2">
           <Link href="/dashboard/liquidity-rewards" className="inline-flex items-center gap-1 font-body text-[12px] text-muted hover:text-ink-2">
             <ChevronLeft size={15} /> Rewards
           </Link>
           {mkt ? (
             <>
-              <div className="flex items-start gap-2 mt-1.5">
-                <PlatformLogo platform={mkt.venue} size={18} className="mt-0.5" />
-                {/* Compact: clamp a long title to 2 lines so the mini-header stays small; the full
-                    title is still reachable (native tooltip + the venue deep-link beside it). */}
-                <h1 title={mkt.title} className="font-display font-bold text-ink text-[15px] sm:text-lg leading-snug flex-1 min-w-0 line-clamp-2">{mkt.title}</h1>
+              <div className="flex items-start gap-2 mt-1">
+                <PlatformLogo platform={mkt.venue} size={18} className="mt-0.5 shrink-0" />
+                {/* Clean 2-line clamp: line-clamp-2 gives -webkit-line-clamp:2 + ellipsis; the
+                    explicit max-height (2 line-boxes at leading-snug 1.375) guarantees no third
+                    line ever peeks and no glyph is clipped mid-height when scrolled. Full title
+                    stays reachable via the native tooltip + the venue deep-link beside it. */}
+                <h1 title={mkt.title}
+                    className="font-display font-bold text-ink text-[14px] sm:text-lg leading-snug flex-1 min-w-0 break-words line-clamp-2"
+                    style={{ maxHeight: 'calc(1.375em * 2)' }}>{mkt.title}</h1>
                 {(() => {
                   // Multi-outcome (negRisk) events → deep-link the exact outcome via the real
                   // two-segment …/event/<eventSlug>/<marketSlug>; fall back to the plain event
@@ -580,8 +584,8 @@ export default function MarketDetailPage() {
       </div>
 
       {/* Sections carry scroll-mt so an in-page jump (or the browser restoring scroll) never
-          parks a heading UNDER the opaque sticky header. */}
-      <div className="max-w-3xl mx-auto px-4 py-5 space-y-5 [&>section]:scroll-mt-24">
+          parks a heading UNDER the opaque sticky header (which is ~2 title lines tall). */}
+      <div className="max-w-3xl mx-auto px-4 py-2 space-y-1.5 [&>section]:scroll-mt-28 [&_section]:scroll-mt-28">
         {loading && !mkt && <p className="font-body text-sm text-muted">Loading market…</p>}
 
         {/* ── Resolved market → calm, honest state; no live ticket, no fabricated ROI ── */}
