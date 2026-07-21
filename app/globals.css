@@ -576,6 +576,19 @@ h1, h2, h3 {
 .cc-check input { accent-color: var(--cc-green); cursor: pointer; }
 .cc-check.is-on { color: var(--cc-text); }
 .cc-count { margin: 0 2px 8px; font-size: 10px; color: var(--cc-muted); font-variant-numeric: tabular-nums; }
+/* results bar with right-aligned $/day sort arrows */
+.cc-count-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.cc-count-text { min-width: 0; }
+.cc-sortdir { display: inline-flex; gap: 4px; flex-shrink: 0; }
+.cc-sortbtn {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 44px; min-height: 44px; padding: 0; font-size: 12px; line-height: 1;
+  color: var(--cc-muted); background: transparent; border: 1px solid var(--cc-border);
+  border-radius: 8px; cursor: pointer; font-family: inherit;
+  transition: color .15s, border-color .15s, background .15s;
+}
+.cc-sortbtn:hover { color: var(--cc-text); }
+.cc-sortbtn.is-on { color: var(--cc-green); border-color: rgba(47,226,154,.45); background: rgba(47,226,154,.08); }
 
 .cc-list { display: flex; flex-direction: column; }
 .cc-row {

@@ -122,6 +122,7 @@ interface FilterState {
   minCapacity: number;
   hideTrap: boolean;
   sortByPool: boolean;
+  sortDir: 'asc' | 'desc';
 }
 
 const fmtUsd = (n: number) =>
@@ -395,9 +396,26 @@ export default function RewardsUnified() {
               </div>
             </div>
 
-            <p className="cc-count">
-              {visible.length} of {base.length} rows · your ${balance.toLocaleString()} · sorted by {filters.sortByPool ? 'reward pool' : '$/day'}
-            </p>
+            <div className="cc-count cc-count-row">
+              <span className="cc-count-text">
+                {visible.length} of {base.length} rows · your ${balance.toLocaleString()} · sorted by {filters.sortByPool
+                  ? 'reward pool high→low'
+                  : `$/day ${filters.sortDir === 'asc' ? 'low→high' : 'high→low'}`}
+              </span>
+              {/* $/day sort direction — presentational only; reuses the engine's netUsdPerDay.
+                  Tapping an arrow selects $/day sort in that direction (overrides reward-pool
+                  sort); withheld/"—" rows stay pinned last in both directions (see sortRows). */}
+              <span className="cc-sortdir" role="group" aria-label="sort by net $/day direction">
+                <button type="button" title="Sort $/day ascending (low → high)" aria-label="sort $/day ascending"
+                  className={`cc-sortbtn ${!filters.sortByPool && filters.sortDir === 'asc' ? 'is-on' : ''}`}
+                  aria-pressed={!filters.sortByPool && filters.sortDir === 'asc'}
+                  onClick={() => set({ sortByPool: false, sortDir: 'asc' })}>▲</button>
+                <button type="button" title="Sort $/day descending (high → low)" aria-label="sort $/day descending"
+                  className={`cc-sortbtn ${!filters.sortByPool && filters.sortDir === 'desc' ? 'is-on' : ''}`}
+                  aria-pressed={!filters.sortByPool && filters.sortDir === 'desc'}
+                  onClick={() => set({ sortByPool: false, sortDir: 'desc' })}>▼</button>
+              </span>
+            </div>
 
             {visible.length === 0 ? (
               <EmptyState prefix="cc" title="No reward markets match these filters." sub="Loosen a filter to see more." />
