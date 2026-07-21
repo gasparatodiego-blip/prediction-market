@@ -4,46 +4,44 @@ import { useEffect, useMemo, useState } from 'react';
 import { Redacted } from './ui/Redacted';
 import { EmptyState } from './ds';
 import { APY_CAP, APY_CAP_LABEL } from '@/lib/honest-display';
-// REAL reward-share math (published Polymarket quadratic + Kalshi observed flat pro-rata).
-// The saturation bar + calculator now derive from the MEASURED competitor score agent24
-// scored from the live CLOB book — not the simplified lib/rewards-estimate model.
-import { quadraticUserShare, flatUserShare } from '@/lib/rewardScore';
+import { computeLiquidityYield } from '@/lib/liquidity-yield';
 // Pure, node-verifiable filter/sort/derive — shared VERBATIM so the list the user sees and
 // any measurement of the filter behaviour cannot diverge (see lib/rewards-filter.js).
 import { deriveOptions, defaultState, applyFilters, sortRows, saturationView } from '@/lib/rewards-filter';
 
 /**
- * Liquidity rewards — FILTERABLE LIST on the REAL measured reward path.
+ * Liquidity rewards — BALANCE-DRIVEN yield list.
  *
- * A stacked filter bar over compact rows, each carrying a pool-competition (saturation)
- * bar; tapping a row expands a share→reward calculator. Saturation and expected reward
- * come from lib/rewardScore (the SAME published formula agent24 runs against the live
- * book), via the rewardScore block lib/rewards-normalize attaches per row — NOT the
- * hardcoded lib/rewards-estimate model.
+ * A sticky balance control drives every row: each $/day is computed from the user's own
+ * balance via lib/liquidity-yield (deploy min(balance, book space), dilute share against the
+ * qualifying liquidity already there). This replaces the old inflated aggregate number
+ * (pool × filled%, i.e. the whole-book share as if you owned the book) — that path is gone.
  *
  * HONEST-ENGINE
- *  - Polymarket = MEASURED: saturation = 1 − userShare, userShare = Q_user/(Q_comp+Q_user)
- *    with Q_comp the REAL quadratic score recovered from the live CLOB book and Q_user
- *    scored by the published S(v,s)=((v−s)/v)² for the user's chosen size/distance. Expected
- *    reward = poolDay × userShare. No REF_PROXIMITY/TIME_BASE/sizeFactor anywhere.
- *  - Kalshi = OBSERVED: real pool_day + real in-band depth, but the flat pro-rata split is
- *    an inferred model (Kalshi publishes no band/formula) — labelled "observed split".
- *  - Reward $/day is GROSS from the pool (0% maker fee). Adverse selection is a separate
- *    trading cost, disclosed, not folded in. APR demoted, capped ">200%/yr".
- *  - Point-in-time snapshot: competitors re-quote continuously; excludes your uptime.
- *  - Missing real inputs → "—", never fabricated. Derived fields redact to the free lock.
+ *  - $/day = poolDay × deployed/(Q + deployed); deploying more shrinks your marginal share.
+ *  - Deployment caps at remaining book space (cap − Q); the rest is idle, shown calmly.
+ *  - APY is on DEPLOYED capital; capped + labelled ">200%/yr" via lib/honest-display.
+ *  - Real fields only: pool = rewardsDailyRate, cap = in-band book depth (capacityUsd),
+ *    Q = cap × filled where filled = the live-book reference share (1 − saturation).
+ *    Polymarket = measured (quadratic CLOB); Kalshi = observed (inferred flat pro-rata).
+ *  - Missing pool / qualifying liquidity ⇒ "—", never fabricated. Free tier redacts to lock.
  */
 
+const BAL_MIN = 1;
+const BAL_MAX = 500_000;
+const BAL_DEFAULT = 1_000;
+const BAL_CHIPS = [100, 1_000, 10_000, 100_000];
+
+// log-scale slider ↔ dollars (0..1000 slider units span $1..$500k)
+const balToPos = (b: number) => Math.round((Math.log(Math.max(BAL_MIN, b)) / Math.log(BAL_MAX)) * 1000);
+const posToBal = (p: number) => Math.min(BAL_MAX, Math.max(BAL_MIN, Math.round(Math.exp((p / 1000) * Math.log(BAL_MAX)))));
+
 interface RewardScore {
-  source: string;                 // 'measured-clob-quadratic' | 'observed-flat-prorata'
+  source: string;
   model: 'polymarket' | 'kalshi';
   poolDay: number | null;
-  mid: number | null;
-  maxSpreadCents: number | null;  // full reward band (Polymarket); null for Kalshi
-  minSize: number | null;
-  competitorQ: number | null;     // real Q_min (poly) or limiting qualifying shares (kalshi)
+  refShare: number | null;        // reference maker's live-book pool share = 1 − saturation
   refCapital: number;
-  refShare: number | null;        // reference $refCapital maker's pool share
 }
 interface Market {
   venue: 'polymarket' | 'kalshi';
@@ -53,27 +51,37 @@ interface Market {
   category?: string | null;
   dailyPool: number | null;
   bookDepthAtBand: number | null;
-  hoursToResolution: number | null;
   flags?: string[] | null;
   rewardScore?: RewardScore | null;
 }
 interface Payload { meta: any; markets: Market[]; stale: boolean; isPaid?: boolean }
 
-/** Enriched row = the market + the REAL-path numbers the list/filters/bar read. */
-interface Row {
+/** Balance-independent base derived from the payload (recomputed only when data changes). */
+interface Base {
   m: Market;
-  rs: RewardScore | null;
   flags: string[];
   category: string | null;
   venue: 'polymarket' | 'kalshi';
-  poolDayUsd: number | null;
-  netUsdPerDay: number | null;   // GROSS reward/day at refCapital (0% maker fee)
-  apr: number | null;            // annualized, capped
-  aprCapped: boolean;
-  capacityUsd: number | null;
-  saturation: number | null;     // 0..1, 1 − refShare (measured/observed; null = unmeasured)
-  measured: boolean;             // true = Polymarket live-book; false = Kalshi observed
+  poolDayUsd: number | null;      // real reward pool $/day
+  cap: number | null;             // real in-band book depth
+  filled: number | null;          // live-book reference share (= 1 − saturation)
+  qualifyingLiquidity: number | null; // cap × filled
+  saturation: number | null;      // 1 − filled (bar value)
+  measured: boolean;
   isTrap: boolean;
+}
+/** Base + the balance-driven yield the list/filters/row read. */
+interface Row extends Base {
+  poolDayUsd: number | null;
+  netUsdPerDay: number | null;    // dailyUsd (primary) — sort key reused by rewards-filter
+  apr: number | null;             // annualized on DEPLOYED, capped
+  aprCapped: boolean;
+  capacityUsd: number | null;     // = cap (filter field name)
+  deployed: number;
+  idle: number;
+  space: number;
+  share: number;
+  unknown: boolean;
 }
 
 interface FilterState {
@@ -95,25 +103,11 @@ const fmtUsd = (n: number) =>
 const toggle = (arr: string[], v: string) =>
   arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v];
 
-/** Reward $/day → annualized %, capped at the honest-engine ceiling. */
-function annualize(netPerDay: number | null, capital: number): { apr: number | null; capped: boolean } {
-  if (netPerDay == null || capital <= 0) return { apr: null, capped: false };
-  const raw = (netPerDay / capital) * 100 * 365;
-  return { apr: Math.min(raw, APY_CAP), capped: raw > APY_CAP };
-}
-
-/** userShare at a chosen size (+ distance for Polymarket) via the REAL rewardScore path. */
-function userShareFor(rs: RewardScore, sizeUsd: number, distanceCents: number): number | null {
-  if (rs.model === 'polymarket') {
-    return quadraticUserShare(rs.competitorQ, rs.mid, rs.maxSpreadCents, rs.minSize, sizeUsd, distanceCents);
-  }
-  return flatUserShare(rs.competitorQ, rs.mid, sizeUsd);   // Kalshi observed (distance N/A)
-}
-
 export default function RewardsUnified() {
   const [data, setData] = useState<Payload | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [balance, setBalance] = useState<number>(BAL_DEFAULT);
   const [filters, setFilters] = useState<FilterState>(() => defaultState() as FilterState);
 
   useEffect(() => {
@@ -135,32 +129,49 @@ export default function RewardsUnified() {
 
   const isPaid = data?.isPaid ?? false;
 
-  // Enrich from the REAL rewardScore block: saturation, gross reward/day, APR — measured
-  // (Polymarket) or observed (Kalshi). No hardcoded competition model.
-  const enriched: Row[] = useMemo(() => {
+  // Balance-INDEPENDENT base: real fields only. filled = reference live-book share; cap = book
+  // depth; Q = cap × filled. Any missing → the row yields "—" (never fabricated).
+  const base: Base[] = useMemo(() => {
     const ms = data?.markets ?? [];
     return ms.map((m) => {
       const rs = m.rewardScore ?? null;
       const flags = (m.flags ?? []).filter(Boolean);
-      const refShare = rs?.refShare ?? null;
-      const poolDay = rs?.poolDay ?? m.dailyPool ?? null;
-      const net = (poolDay != null && refShare != null) ? poolDay * refShare : null;
-      const { apr, capped } = annualize(net, rs?.refCapital ?? 1000);
+      const depth = m.bookDepthAtBand;         // REAL in-band qualifying liquidity (Q)
+      const filled = rs?.refShare ?? null;     // reference maker's live-book share → bar only
       return {
-        m, rs, flags,
+        m, flags,
         category:     m.category ?? null,
         venue:        m.venue,
-        poolDayUsd:   poolDay,
-        netUsdPerDay: net,
-        apr,
-        aprCapped:    capped,
-        capacityUsd:  m.bookDepthAtBand,
-        saturation:   refShare != null ? 1 - refShare : null,
+        poolDayUsd:   rs?.poolDay ?? m.dailyPool ?? null,
+        cap:          null,                    // Polymarket exposes no reward cap → unbounded space
+        filled,
+        qualifyingLiquidity: depth,            // Q = the real in-band depth (never fabricated)
+        saturation:   filled != null ? 1 - filled : null,
         measured:     rs?.source === 'measured-clob-quadratic',
         isTrap:       flags.some((f) => /^TRAP$/i.test(f)),
       };
     });
   }, [data]);
+
+  // Balance-DRIVEN yield: recomputed live as the slider moves.
+  const enriched: Row[] = useMemo(() => base.map((b) => {
+    const y = computeLiquidityYield({
+      poolPerDay: b.poolDayUsd, cap: b.cap, qualifyingLiquidity: b.qualifyingLiquidity, balance,
+    });
+    const apr = y.unknown ? null : Math.min(y.apyRaw, APY_CAP);
+    return {
+      ...b,
+      netUsdPerDay: y.unknown ? null : y.dailyUsd,
+      apr,
+      aprCapped:    !y.unknown && y.apyRaw > APY_CAP,
+      capacityUsd:  b.qualifyingLiquidity,   // in-band depth (Q) — capacity filter field
+      deployed:     y.deployed,
+      idle:         y.idle,
+      space:        y.space,
+      share:        y.unknown ? 0 : y.share,
+      unknown:      y.unknown,
+    };
+  }), [base, balance]);
 
   const opts = useMemo(() => deriveOptions(enriched), [enriched]);
   const visible: Row[] = useMemo(
@@ -169,6 +180,7 @@ export default function RewardsUnified() {
   );
 
   const set = (patch: Partial<FilterState>) => setFilters((f) => ({ ...f, ...patch }));
+  const clampBal = (v: number) => Math.min(BAL_MAX, Math.max(BAL_MIN, Math.round(v || 0)));
 
   return (
     <div className="rewards">
@@ -180,17 +192,46 @@ export default function RewardsUnified() {
             <span className="cc-title-accent"> · maker</span>
           </h1>
           <p className="cc-sub">
-            quote both sides inside the reward band — earn the pool share, from the live order book
+            your real $/day for the balance you deploy — diluted by the qualifying liquidity already in the book
           </p>
         </header>
 
+        {/* ── STICKY BALANCE CONTROL ─────────────────────────────── */}
+        <div className="rw-balbar">
+          <div className="rw-bal-head">
+            <span className="rw-bal-lbl">Your balance</span>
+            <div className="rw-bal-inputwrap">
+              <span className="rw-bal-dollar">$</span>
+              <input
+                className="rw-bal-input" type="number" min={BAL_MIN} max={BAL_MAX} step={100}
+                value={balance}
+                onChange={(e) => setBalance(clampBal(Number(e.target.value)))}
+                aria-label="your balance in dollars"
+              />
+            </div>
+          </div>
+          <input
+            className="rw-bal-range" type="range" min={0} max={1000} step={1}
+            value={balToPos(balance)}
+            onChange={(e) => setBalance(posToBal(Number(e.target.value)))}
+            aria-label="balance slider"
+          />
+          <div className="rw-bal-chips">
+            {BAL_CHIPS.map((c) => (
+              <button key={c} type="button"
+                className={`rw-bal-chip ${balance === c ? 'is-on' : ''}`}
+                onClick={() => setBalance(c)}>{fmtUsd(c)}</button>
+            ))}
+          </div>
+        </div>
+
         {err && <EmptyState prefix="cc" title="Rewards feed unavailable" sub={err} />}
         {!err && !data && <EmptyState prefix="cc" sub="Loading reward markets…" />}
-        {!err && data && enriched.length === 0 && (
+        {!err && data && base.length === 0 && (
           <EmptyState prefix="cc" title="No reward markets clear the sanity gate right now" />
         )}
 
-        {!err && data && enriched.length > 0 && (
+        {!err && data && base.length > 0 && (
           <>
             <div className="cc-filterbar">
               {/* CATEGORY */}
@@ -284,7 +325,7 @@ export default function RewardsUnified() {
             </div>
 
             <p className="cc-count">
-              {visible.length} of {enriched.length} rows · sorted by {filters.sortByPool ? 'reward pool' : 'reward $/day'}
+              {visible.length} of {base.length} rows · your ${balance.toLocaleString()} · sorted by {filters.sortByPool ? 'reward pool' : '$/day'}
             </p>
 
             {visible.length === 0 ? (
@@ -318,13 +359,18 @@ export default function RewardsUnified() {
                           <span className="cc-row-sub">
                             pool{' '}
                             <Redacted value={row.poolDayUsd} isPaid={isPaid}>{(v) => <>${Number(v).toFixed(0)}/day</>}</Redacted>
-                            {' · '}APR{' '}
-                            <Redacted value={row.apr} isPaid={isPaid}>
-                              {(v) => row.aprCapped ? <span title={APY_CAP_LABEL}>&gt;{APY_CAP}%</span> : <>{Number(v).toFixed(0)}%</>}
-                            </Redacted>
-                            {' · '}cap{' '}
+                            {' · '}depth{' '}
                             <Redacted value={row.capacityUsd} isPaid={isPaid}>{(v) => <>{fmtUsd(Number(v))}</>}</Redacted>
+                            {!row.unknown && row.share > 0 && (
+                              <> · your share <span className="rw-nowrap">{(row.share * 100).toFixed(1)}%</span></>
+                            )}
                           </span>
+                          {/* idle-capital note — calm, not an error */}
+                          {!row.unknown && row.idle > 0 && (
+                            <span className="rw-idle">
+                              ${row.deployed.toFixed(0)} deployed · <span className="rw-nowrap">${row.idle.toFixed(0)} idle</span> (book full)
+                            </span>
+                          )}
                           {/* SATURATION BAR — measured / observed; hidden/locked when unavailable */}
                           <span className="rw-satwrap">
                             <Redacted
@@ -351,10 +397,12 @@ export default function RewardsUnified() {
                         </span>
                         <span className="cc-row-r">
                           <span className="cc-row-net">
-                            <Redacted value={row.netUsdPerDay} isPaid={isPaid}>{(v) => <>${Number(v).toFixed(2)}/day</>}</Redacted>
+                            <Redacted value={row.unknown ? null : row.netUsdPerDay} isPaid={isPaid}>
+                              {(v) => <>${Number(v).toFixed(2)}/day</>}
+                            </Redacted>
                           </span>
                           <span className="cc-row-apy">
-                            <Redacted value={row.apr} isPaid={isPaid}>
+                            <Redacted value={row.unknown ? null : row.apr} isPaid={isPaid} nullDisplay={<></>}>
                               {(v) => row.aprCapped ? <span title={APY_CAP_LABEL}>&gt;{APY_CAP}%/yr</span> : <>{Number(v).toFixed(0)}%/yr</>}
                             </Redacted>
                           </span>
@@ -363,7 +411,7 @@ export default function RewardsUnified() {
 
                       {isOpen && (
                         <div className="cc-expand">
-                          <RewardShareCalc row={row} isPaid={isPaid} />
+                          <RewardYieldBreakdown row={row} balance={balance} isPaid={isPaid} />
                         </div>
                       )}
                     </div>
@@ -373,11 +421,15 @@ export default function RewardsUnified() {
             )}
 
             <p className="cc-note">
-              Reward $/day is the GROSS pool share (0% maker fee), from the live order book —
-              Polymarket via its published quadratic formula (measured), Kalshi via an observed
-              flat pro-rata split (inferred). It is a point-in-time snapshot: competitors re-quote
-              continuously, it excludes your own uptime, and adverse selection is a separate cost of
-              being filled. Pools can be re-weighted or end — these are not promised yields.
+              Your $/day is what you would earn deploying your balance NOW: you take share
+              deployed/(existing qualifying liquidity + deployed) of the pool — adding capital
+              shrinks your own share. APY is on deployed capital, capped at {APY_CAP}%/yr; a thin
+              book showing &gt;{APY_CAP}%/yr is a transient, not-sustainable rate. Depth is the real
+              in-band qualifying liquidity (Polymarket exposes no reward cap, so the whole balance
+              deploys); if a venue ever caps qualifying liquidity, capital beyond the room left is
+              shown idle. Polymarket depth/competition is measured from the live CLOB; Kalshi is an
+              observed flat pro-rata split. Point-in-time snapshot; competitors re-quote; not a
+              promised yield.
             </p>
           </>
         )}
@@ -387,98 +439,47 @@ export default function RewardsUnified() {
 }
 
 /**
- * Row-expand share → reward calculator, on the REAL rewardScore path. Your size (and, for
- * Polymarket, your distance from mid) are inputs to the published quadratic S(v,s); expected
- * reward = poolDay × userShare. Kalshi uses the observed flat pro-rata split (no band).
+ * Row-expand breakdown — the same lib/liquidity-yield numbers, itemised, at the current
+ * global balance. No second math path; nothing the row doesn't already compute.
  */
-function RewardShareCalc({ row, isPaid }: { row: Row; isPaid: boolean }) {
-  const rs = row.rs;
-  const cap = row.capacityUsd;
-  const maxShare = cap != null && cap > 0 ? Math.floor(cap) : 100_000;
-  const isPoly = rs?.model === 'polymarket';
-  const band = rs?.maxSpreadCents ?? null;               // full band (cents)
-  const typicalDist = band != null ? band / 4 : 0;       // agent24 "typical" placement
-
-  const [share, setShare] = useState<number>(Math.min(1000, maxShare));
-  const [dist, setDist] = useState<number>(typicalDist);
-
-  const clampShare = (v: number) => Math.max(1, Math.min(maxShare, Math.round(v)));
-
-  const userShare = rs ? userShareFor(rs, share, isPoly ? dist : 0) : null;
-  const rewardPerDay = (rs?.poolDay != null && userShare != null) ? rs.poolDay * userShare : null;
-  const satNow = userShare != null ? saturationView(1 - userShare) : null;
-
+function RewardYieldBreakdown({ row, balance, isPaid }: { row: Row; balance: number; isPaid: boolean }) {
+  const hasCap = Number.isFinite(row.space);   // a real venue cap → idle capital can occur
+  const rowset: Array<[string, React.ReactNode]> = [
+    ['reward pool',              <Redacted key="p" value={row.poolDayUsd} isPaid={isPaid}>{(v) => <>${Number(v).toFixed(0)}/day</>}</Redacted>],
+    ['in-band depth already there (Q)', <Redacted key="q" value={row.qualifyingLiquidity} isPaid={isPaid}>{(v) => <>{fmtUsd(Number(v))}</>}</Redacted>],
+  ];
   return (
     <div className="rw-calc">
-      {/* POOL COMPETITION */}
       <div className="rw-calc-block">
         <span className="rw-calc-h">
-          Pool competition
+          Your ${balance.toLocaleString()} in this book
           <span className={`rw-src ${row.measured ? 'is-measured' : 'is-observed'}`}>
             {row.measured ? 'measured · live book' : 'observed split'}
           </span>
         </span>
-        <span className="rw-satwrap rw-satwrap-lg">
-          <Redacted value={rs?.refShare ?? null} isPaid={isPaid} nullDisplay={<span className="rw-dim">not measured from this feed</span>}>
-            {() => {
-              const v = satNow;
-              if (!v) return null;
-              return (
-                <>
-                  <span className="rw-satbar-track"><span className={`rw-satbar-fill is-${v.band}`} style={{ width: `${v.pct}%` }} /></span>
-                  <span className={`rw-sat-label is-${v.band}`}>{Math.round(v.pct)}% of the reward pool is already claimed by other makers</span>
-                </>
-              );
-            }}
-          </Redacted>
-        </span>
-      </div>
-
-      {/* YOUR QUALIFYING SHARE → reward */}
-      <div className="rw-calc-block">
-        <span className="rw-calc-h">Your qualifying share</span>
-        <div className="rw-calc-row">
-          <div className="rw-calc-field">
-            <span className="rw-calc-lbl">deploy ($, clamped to capacity)</span>
-            <input
-              className="rw-calc-input" type="number" min={1} max={maxShare} step={100}
-              value={share}
-              onChange={(e) => setShare(clampShare(Number(e.target.value)))}
-              aria-label="your qualifying share in dollars"
-            />
-            <span className="rw-calc-cap">
-              max{' '}
-              <Redacted value={cap} isPaid={isPaid}>{(v) => <>{fmtUsd(Number(v))}</>}</Redacted>
-              {' '}· book depth at band
-            </span>
-          </div>
-          <div className="rw-calc-out">
-            <span className="rw-calc-out-val">
-              <Redacted value={rewardPerDay} isPaid={isPaid}>{(v) => <>${Number(v).toFixed(2)}</>}</Redacted>
-            </span>
-            <span className="rw-calc-out-cap">gross reward · per day</span>
-          </div>
+        <div className="rw-brk">
+          {rowset.map(([k, v]) => (
+            <div className="rw-brk-item" key={k}><span className="rw-brk-k">{k}</span><span className="rw-brk-v">{v}</span></div>
+          ))}
         </div>
-
-        {/* Polymarket: distance from mid is a real input to the quadratic score */}
-        {isPoly && band != null && (
-          <div className="rw-calc-dist">
-            <div className="cc-slider-head">
-              <span className="rw-calc-lbl">distance from mid (¢) · closer scores higher</span>
-              <span className="cc-slider-val">{dist.toFixed(2)}¢ / band {band}¢</span>
-            </div>
-            <input className="cc-frange" type="range" min={0} max={band / 2} step={0.05}
-              value={dist} onChange={(e) => setDist(Number(e.target.value))} aria-label="distance from mid in cents" />
-          </div>
-        )}
-
+        <div className="rw-brk rw-brk-strong">
+          <div className="rw-brk-item"><span className="rw-brk-k">you deploy</span>
+            <span className="rw-brk-v"><Redacted value={row.unknown ? null : row.deployed} isPaid={isPaid}>{(v) => <>${Number(v).toFixed(0)}</>}</Redacted></span></div>
+          {hasCap && row.idle > 0 && (
+            <div className="rw-brk-item"><span className="rw-brk-k">idle (book full)</span>
+              <span className="rw-brk-v rw-idle-v"><Redacted value={row.unknown ? null : row.idle} isPaid={isPaid}>{(v) => <>${Number(v).toFixed(0)}</>}</Redacted></span></div>
+          )}
+          <div className="rw-brk-item"><span className="rw-brk-k">your pool share</span>
+            <span className="rw-brk-v"><Redacted value={row.unknown ? null : row.share} isPaid={isPaid}>{(v) => <>{(Number(v) * 100).toFixed(1)}%</>}</Redacted></span></div>
+          <div className="rw-brk-item"><span className="rw-brk-k">your reward</span>
+            <span className="rw-brk-v rw-brk-primary"><Redacted value={row.unknown ? null : row.netUsdPerDay} isPaid={isPaid}>{(v) => <>${Number(v).toFixed(2)}/day</>}</Redacted></span></div>
+          <div className="rw-brk-item"><span className="rw-brk-k">APY on deployed</span>
+            <span className="rw-brk-v"><Redacted value={row.unknown ? null : row.apr} isPaid={isPaid} nullDisplay={<>—</>}>
+              {(v) => row.aprCapped ? <span title={APY_CAP_LABEL}>&gt;{APY_CAP}%/yr</span> : <>{Number(v).toFixed(0)}%/yr</>}</Redacted></span></div>
+        </div>
         <div className="rw-calc-meta">
-          <span>
-            pool{' '}
-            <Redacted value={rs?.poolDay ?? row.poolDayUsd} isPaid={isPaid}>{(v) => <strong>${Number(v).toFixed(0)}/day</strong>}</Redacted>
-          </span>
           <span className="rw-dim">
-            gross of adverse selection · point-in-time snapshot · excludes your uptime
+            share = deployed/(Q + deployed) · point-in-time · adverse selection is a separate cost
             {row.measured ? '' : ' · split inferred (observed)'}
           </span>
           {row.isTrap && <span className="rw-trap">⚠ trap market</span>}
