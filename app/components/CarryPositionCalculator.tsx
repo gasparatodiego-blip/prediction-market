@@ -157,8 +157,13 @@ export default function CarryPositionCalculator({ id, embedded = false }: { id: 
             <header className="cd-head">
               <h1 className="cd-title">{card.asset ?? '—'} <span className="cd-dot">·</span> {card.venue ?? '—'}</h1>
               <p className="cd-meta">
-                exp {card.expiryDate ?? '—'} <span className="cd-dot">·</span>{' '}
-                {days ?? '—'}d to expiry <span className="cd-dot">·</span> {card.direction ?? '—'}
+                <span className="cd-expchip">
+                  <span className="cd-expchip-days">{days ?? '—'}d</span>
+                  <span className="cd-expchip-label">to expiry</span>
+                </span>
+                <span className="cd-exp-date">exp {card.expiryDate ?? '—'}</span>
+                <span className="cd-dot">·</span>
+                <span className="cd-exp-dir">{card.direction ?? '—'}</span>
               </p>
             </header>
 
