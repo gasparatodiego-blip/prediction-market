@@ -12,10 +12,12 @@
 //   F) news-guard choice   (withdraw | alert | off)  → persisted, wired to agent27 risk
 //   G) CTA "Simulate placement · paper" → POST /api/rewards/placement
 //
-// HONEST-ENGINE: executable book prices only (never midpoint for fills), net $/day
-// primary, annualized demoted+capped, no fabricated pools/PnL, no login wall on view,
-// live execution OFF everywhere (advisory only). Book/pool numbers are server-redacted
-// on the free tier — the page degrades to a calm "unlock" state, never a fake number.
+// HONEST-ENGINE: executable book prices only (never midpoint for fills); GROSS $/day is the
+// primary ticket metric via the shared two-sided model (lib/reward-score → lib/liquidity-yield),
+// so it can never disagree with the list; NO annualized figure anywhere; no fabricated pools/PnL;
+// no login wall on view; live execution OFF everywhere (EXECUTION_ENABLED=false, simulation only —
+// no keys, no order path). Book/pool numbers are server-redacted on the free tier — the page
+// degrades to a calm "unlock" state, never a fake number.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
@@ -27,6 +29,17 @@ import InfoTip from '@/app/components/ui/InfoTip';
 import { PlatformLink } from '@/app/components/ui/PlatformLink';
 import { polymarketMarketUrl, polymarketOutcomeUrl, kalshiMarketUrl } from '@/lib/platform-links';
 import { estimateReward, type MarketSnapshot, type SideKey, type SideSnapshot, type Venue } from '@/lib/rewards-estimate';
+// Two-sided scoring SSOT — the SAME model the list view ships (reuses lib/liquidity-yield), so the
+// ticket and the list can never disagree for the same market/capital. See scripts/assert-reward-score.js.
+import { computeRewardScore, type LevelAlloc } from '@/lib/reward-score';
+// Execution-ready scaffold — SIMULATION ONLY. EXECUTION_ENABLED is a hard compile-time false; the
+// only adapter placed no order. NO key/credential path is imported anywhere reachable from here.
+import { EXECUTION_ENABLED, type ExecutionPlan } from '@/lib/execution/types';
+import { activeAdapter } from '@/lib/execution/simulation-adapter';
+
+// Book snapshot older than this ⇒ estimate is marked STALE and not actionable (no fresh-looking
+// number on stale data). Poll is ~4s, so this tolerates a couple of missed polls before flagging.
+const STALE_BOOK_MS = 15_000;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type NewsRisk = 'low' | 'medium' | 'high' | 'unknown';
@@ -204,6 +217,10 @@ export default function MarketDetailPage() {
   // live book (both sides)
   const [books, setBooks]       = useState<DualBook | null>(null);
   const [bookAge, setBookAge]   = useState<Date | null>(null);
+  // Server-stamped book fetch time (accounts for the route's 2s cache) — the true snapshot age
+  // used by the staleness guard, more accurate than client receipt time.
+  const [bookFetchedAt, setBookFetchedAt] = useState<number | null>(null);
+  const [nowMs, setNowMs]       = useState<number>(() => Date.now());
   const [bookErr, setBookErr]   = useState<string | null>(null);
   // Real per-market min price increment (fraction, e.g. 0.01 = 1¢). Polymarket returns it
   // on the /book payload; Kalshi trades in whole cents (1¢). Order controls clamp to this so
@@ -308,15 +325,26 @@ export default function MarketDetailPage() {
       }
       setBookErr(nb.yes.hasBook || nb.no.hasBook ? null : (d?.error ?? null));
       setBookAge(new Date());
+      // Prefer the server's fetchedAt (true snapshot time) for the staleness guard; fall back to
+      // client receipt time. Only advance freshness when the book actually has data.
+      const serverTs = typeof d?.fetchedAt === 'string' ? Date.parse(d.fetchedAt) : NaN;
+      if (nb.yes.hasBook || nb.no.hasBook) setBookFetchedAt(Number.isFinite(serverTs) ? serverTs : Date.now());
     } catch (e: any) { setBookErr(e?.message ?? 'book error'); }
   }, [mkt]);
 
   useEffect(() => {
     if (!mkt) return;
     fetchBook();
-    pollRef.current = setInterval(fetchBook, mkt.venue === 'polymarket' ? 5_000 : 6_000);
+    // ~4s live poll (task spec). The route adds a short server cache so this never hammers a venue.
+    pollRef.current = setInterval(fetchBook, 4_000);
     return () => clearInterval(pollRef.current);
   }, [mkt, fetchBook]);
+
+  // Tick a clock so the staleness guard re-evaluates even if polling stalls (tab hidden / error).
+  useEffect(() => {
+    const t = setInterval(() => setNowMs(Date.now()), 2_000);
+    return () => clearInterval(t);
+  }, []);
 
   // Once the real tick is known, snap the distance onto its grid (and never below one tick)
   // so the slider readout matches the placeable price. Fires only when tickSize changes —
@@ -385,6 +413,50 @@ export default function MarketDetailPage() {
   // Real venue page for this market (null when not constructible). A tapped/placed leg is an
   // in-app plan only (live execution OFF), so this is the honest bridge to actually placing it.
   const venueUrl = mkt ? venueMarketUrl(mkt) : null;
+
+  // ── TWO-SIDED REWARD SCORE (primary detail metric; agrees with the list SSOT) ──────────────
+  // competitorDepthUsd is the SAME both-sides depth the list dilutes against — poly: near + far;
+  // kalshi: bookDepthAtBand (already both sides). Feeding it here is what makes the ticket == list.
+  const competitorDepthUsd = useMemo<number | null>(() => {
+    if (!mkt) return null;
+    const near = mkt.bookDepthAtBand;
+    if (typeof near !== 'number' || !Number.isFinite(near)) return null;
+    return mkt.venue === 'polymarket' ? near + (mkt.sides?.no?.bookDepthAtBand ?? 0) : near;
+  }, [mkt]);
+
+  const buyActive  = side === 'both' || side === 'buy';    // a bid leg (one reward direction)
+  const sellActive = side === 'both' || side === 'sell';   // an ask leg (the other direction)
+  const buySize    = legs.buy  ? legQty.buy  : qty;
+  const sellSize   = legs.sell ? legQty.sell : qty;
+
+  // Score the exact placed orders. bid ⇒ one reward-side, ask ⇒ the other; two-sided = both present.
+  const scoreEst = useMemo(() => {
+    if (!mkt || mid == null) return null;
+    const bidLegs:  LevelAlloc[] = buyActive  && userBid != null ? [{ priceCents: userBid  * 100, sizeUsd: buySize  }] : [];
+    const askLegs:  LevelAlloc[] = sellActive && userAsk != null ? [{ priceCents: userAsk * 100, sizeUsd: sellSize }] : [];
+    return computeRewardScore({
+      venue: mkt.venue, midCents: mid * 100, maxSpreadC: mkt.maxSpread ?? 50,
+      pool: mkt.dailyPool, competitorDepthUsd, yes: bidLegs, no: askLegs,
+    });
+  }, [mkt, mid, buyActive, sellActive, userBid, userAsk, buySize, sellSize, competitorDepthUsd]);
+
+  // Staleness guard — snapshot age from the server fetchedAt. Older than STALE_BOOK_MS ⇒ the
+  // estimate is NOT actionable and must not read as a fresh number on stale data.
+  const bookAgeMs = bookFetchedAt != null ? nowMs - bookFetchedAt : null;
+  const bookStale = bookAgeMs == null || bookAgeMs > STALE_BOOK_MS;
+
+  // ExecutionPlan — the EXACT structured object real execution would consume later. Emitted here
+  // for the (disabled) arm button; SIMULATION ONLY, no order path is reachable. Ask ⇒ complement
+  // bid (Polymarket/Kalshi identity: a YES ask == a NO bid), so every leg is a bid on its token.
+  const execPlan = useMemo<ExecutionPlan | null>(() => {
+    if (!mkt || mid == null) return null;
+    const other = tradeSide === 'yes' ? 'no' : 'yes';
+    const legsOut: ExecutionPlan['legs'] = [];
+    if (buyActive  && userBid != null) legsOut.push({ side: tradeSide, priceCents: Math.round(userBid * 100), sizeUsd: buySize });
+    if (sellActive && userAsk != null) legsOut.push({ side: other,     priceCents: Math.round((1 - userAsk) * 100), sizeUsd: sellSize });
+    if (!legsOut.length) return null;
+    return { venue: mkt.venue, marketId: mkt.marketId, legs: legsOut, distanceFromMid: dist, createdAtIso: new Date().toISOString() };
+  }, [mkt, mid, tradeSide, buyActive, sellActive, userBid, userAsk, buySize, sellSize, dist]);
 
   // ── tap-to-place handlers ──
   // A tapped BELOW-mid level sets the buy leg; ABOVE-mid sets the sell leg. The two never
@@ -479,6 +551,8 @@ export default function MarketDetailPage() {
         {mkt && (
           <>
             {/* ── B) Earnings block (recomputes for chosen side) ── */}
+            <ScoreTicket score={scoreEst} pool={mkt.dailyPool} isRedacted={isRedacted}
+              stale={bookStale} bookAgeMs={bookAgeMs} plan={execPlan} venue={mkt.venue} />
             <EarningsBlock est={est} isRedacted={isRedacted} flags={mkt.flags} tradeSide={tradeSide} />
 
             {/* ── C) Order controls ── */}
@@ -660,11 +734,112 @@ export default function MarketDetailPage() {
             {/* Footer */}
             <p className="font-body text-[11px] text-muted/60 leading-relaxed pt-2 border-t border-line">
               Order book from live {mkt.venue === 'polymarket' ? 'Polymarket CLOB' : 'Kalshi'} data (executable prices, never midpoint for fills).
-              Estimates subtract expected adverse-fill cost; annualized is a demoted, capped run-rate, not a guarantee.
+              The gross reward ticket uses the same two-sided model as the list; the net view subtracts expected adverse-fill cost. No annualized figure.
               Read-only, no orders placed, live execution OFF, no login required to view.
             </p>
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ── B0) Reward-score ticket ────────────────────────────────────────────────────
+// PRIMARY earnings metric, computed by the SAME two-sided model as the list (lib/reward-score →
+// lib/liquidity-yield). GROSS $/day only (no annualized), your share, per-side score, the ÷3
+// one-sided penalty, a single calm gross qualifier, and a DISABLED "arm execution" button. When
+// the book snapshot is stale, the number is muted and marked not-actionable.
+function ScoreTicket({
+  score, pool, isRedacted, stale, bookAgeMs, plan, venue,
+}: {
+  score: ReturnType<typeof computeRewardScore> | null;
+  pool: number | null;
+  isRedacted: boolean;
+  stale: boolean;
+  bookAgeMs: number | null;
+  plan: ExecutionPlan | null;
+  venue: Venue;
+}) {
+  const [simMsg, setSimMsg] = useState<string | null>(null);
+  const daily = score?.dailyUsd ?? null;
+  const showNumber = daily != null && !stale;   // never a fresh-looking number on stale data
+  const ageS = bookAgeMs != null ? Math.round(bookAgeMs / 1000) : null;
+
+  async function runSim() {
+    if (!plan) { setSimMsg('No in-band legs to simulate.'); return; }
+    const r = await activeAdapter.submit(plan);   // SimulationAdapter — places no order
+    setSimMsg(r.message);
+  }
+
+  return (
+    <div className="rounded-card shadow-card bg-surface overflow-hidden">
+      <div className="px-4 py-4">
+        <div className="flex items-end justify-between gap-3 flex-wrap">
+          <div>
+            <p className="font-body text-[11px] uppercase tracking-wide text-muted flex items-center gap-1">
+              Reward · gross per day
+              <InfoTip label="How this is scored" size={12}>
+                Your quadratic distance-from-mid score against the in-band qualifying depth on both sides — the SAME model the list uses, so this equals the list&apos;s $/day when you place the same capital balanced at the mid. Gross of inventory/adverse-selection cost. Simulation only.
+              </InfoTip>
+            </p>
+            <p className={`font-mono font-bold leading-none mt-1 ${showNumber ? 'text-mint-deep' : 'text-muted'}`} style={{ fontSize: 34 }}>
+              {stale
+                ? '— '
+                : <Redacted value={daily}>{v => `${fmtUsd(v)}/day`}</Redacted>}
+              {stale && <span className="font-body text-[11px] align-middle text-gold">STALE</span>}
+            </p>
+          </div>
+          <div className="text-right">
+            <p className="font-body text-[12px] text-ink-2 tabular-nums">
+              your share <Redacted value={score && !isRedacted ? score.share : null}>{v => `${(v * 100).toFixed(2)}%`}</Redacted>
+            </p>
+            <p className="font-body text-[10px] text-muted tabular-nums">
+              bid score {score ? fmtUsd(score.yesScore) : '—'} · ask score {score ? fmtUsd(score.noScore) : '—'}
+            </p>
+            <p className="font-body text-[10px] text-muted/70">min-side {score ? fmtUsd(score.minSideScore) : '—'}</p>
+          </div>
+        </div>
+
+        {/* ÷3 penalty / two-sided-required — Polymarket one-sided placements */}
+        {score?.penaltyApplied && !stale && (
+          <div className="rounded-button bg-gold-tint border border-gold/25 px-3 py-2 mt-3">
+            <p className="font-body text-[11px] text-gold leading-relaxed">
+              <span className="font-semibold">One-sided ÷3 penalty.</span> You&apos;re quoting a single side; Polymarket credits one-sided liquidity at a third. Quote BOTH sides to remove it and maximize your share.
+            </p>
+          </div>
+        )}
+        {score?.twoSidedRequiredUnmet && !stale && (
+          <div className="rounded-button bg-coral-tint border border-coral-ink/25 px-3 py-2 mt-3">
+            <p className="font-body text-[11px] text-coral-ink leading-relaxed">
+              <span className="font-semibold">Two-sided required.</span> The mid is outside 10¢–90¢, where one-sided liquidity earns nothing. This placement scores $0 until you quote both sides.
+            </p>
+          </div>
+        )}
+
+        {/* Staleness note */}
+        {stale && (
+          <p className="font-body text-[11px] text-gold mt-3">
+            Book snapshot {ageS != null ? `${ageS}s old` : 'unavailable'} — estimate not actionable. Waiting for a fresh book…
+          </p>
+        )}
+
+        {/* One calm qualifier — replaces any annualized line */}
+        <p className="font-body text-[10px] text-muted/70 mt-3">
+          gross · before inventory/adverse-selection cost · simulation only
+        </p>
+
+        {/* Execution scaffold — DISABLED. EXECUTION_ENABLED is a hard false in this build. */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3">
+          <button onClick={runSim} disabled={!plan || stale}
+            className="font-body text-[12px] py-2 rounded-button border border-line text-ink-2 hover:bg-line/40 disabled:opacity-50 transition-colors">
+            Run simulation
+          </button>
+          <button disabled aria-disabled title="execution not enabled — simulation only"
+            className="font-body text-[12px] py-2 rounded-button border border-line text-muted opacity-60 cursor-not-allowed">
+            {EXECUTION_ENABLED ? 'Arm execution' : 'Arm execution — not enabled (simulation only)'}
+          </button>
+        </div>
+        {simMsg && <p className="font-body text-[11px] text-muted mt-2">{simMsg}</p>}
       </div>
     </div>
   );
@@ -687,7 +862,7 @@ function EarningsBlock({ est, isRedacted, flags = [], tradeSide }: { est: Return
               Net earnings · per day ·
               <span className={tradeSide === 'yes' ? 'text-mint-deep font-semibold' : 'text-coral-ink font-semibold'}>{tradeSide.toUpperCase()} side</span>
               <InfoTip label="How net earnings is computed" size={12}>
-                Net = your estimated share of the daily reward pool − the expected adverse-fill cost (what you lose when a resting order fills right as the price moves against you). Built from the real book depth and pool, never a midpoint fill. Annualized is a capped run-rate, not a guarantee.
+                Net = your estimated share of the daily reward pool − the expected adverse-fill cost (what you lose when a resting order fills right as the price moves against you). Built from the real book depth and pool, never a midpoint fill. This is the NET view; the gross ticket above matches the list.
               </InfoTip>
             </p>
             <p className={`font-mono font-bold leading-none mt-1 ${netTone}`} style={{ fontSize: 34 }}>
@@ -696,10 +871,7 @@ function EarningsBlock({ est, isRedacted, flags = [], tradeSide }: { est: Return
           </div>
           <div className="text-right">
             <p className="font-body text-[12px] text-ink-2 tabular-nums"><Redacted value={est?.dayYieldPct ?? null}>{v => `${v.toFixed(3)}%/day`}</Redacted></p>
-            <p className="font-body text-[11px] text-muted tabular-nums">
-              <Redacted value={est?.annualizedPct ?? null}>{v => `${est?.annualizedCapped ? '>' : ''}${v.toFixed(0)}%/yr`}</Redacted>
-            </p>
-            <p className="font-body text-[9px] text-muted/70">{est?.annualizedLabel ?? 'run-rate, not guaranteed'}</p>
+            <p className="font-body text-[9px] text-muted/70">net of expected adverse-fill cost</p>
           </div>
         </div>
 
