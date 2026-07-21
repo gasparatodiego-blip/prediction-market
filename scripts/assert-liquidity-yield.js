@@ -117,6 +117,26 @@ function assert(cond, label) {
   assert(r.unknown === true && r.dailyUsd === 0, 'Kalshi one-sided (Q nulled by guard) → unknown:true → renders "—"');
 }
 
+// DEPTH ≤ 0 ⇒ NON-PRICEABLE. An empty book (competitorDepth 0) must NOT read as 100% share /
+// full pool. Both venues: unknown:true ⇒ the caller renders "—", never a fabricated $/day.
+{
+  // Real Dec-31 poly row: pool $30/day, near depth 0, far depth 0 → competitorDepth 0.
+  const r = computeLiquidityYield({ poolPerDay: 30, cap: null, qualifyingLiquidity: 0, qualifyingLiquidityOpposite: 0, balance: 1000 });
+  console.log('Depth 0 (Dec-31 poly: pool 30, near 0, far 0):');
+  assert(r.unknown === true && r.dailyUsd === 0 && r.share === 0, 'competitorDepth 0 → unknown:true, no $/day, no 100% share (renders "—")');
+}
+// Near side empty but far side REAL ⇒ still priceable (dilutes against the far side, small share —
+// NOT 100%). Only a genuinely empty BOTH-sides book is withheld.
+{
+  const r = computeLiquidityYield({ poolPerDay: 100, cap: null, qualifyingLiquidity: 0, qualifyingLiquidityOpposite: 5000, balance: 1000 });
+  assert(r.unknown === false && Math.abs(r.share - 1000 / 6000) < 1e-9, 'near 0 + far 5000 → priceable, share 1000/6000 (not 100%)');
+}
+// A thin-but-REAL book stays priceable ($50 depth is not "empty").
+{
+  const r = computeLiquidityYield({ poolPerDay: 100, cap: null, qualifyingLiquidity: 50, balance: 1000 });
+  assert(r.unknown === false && r.competitorDepth === 50, 'thin $50 book stays priceable (unknown false)');
+}
+
 // APY is on DEPLOYED capital, not total balance: idle capital must not dilute the APY.
 {
   const cap = 626, Q = 526;                 // space = 100

@@ -79,7 +79,17 @@ export function computeLiquidityYield(input: LiquidityYieldInput): LiquidityYiel
   //   • Qopp absent/null (one-sided venue, e.g. Kalshi) → Qopp = 0 → reduces to Qnear exactly,
   //     the prior model, byte-for-byte.
   const Qopp            = fin(input.qualifyingLiquidityOpposite) ? Math.max(0, input.qualifyingLiquidityOpposite) : 0;
-  const competitorDepth = Q + Qopp;
+  const competitorDepth = Math.max(0, Q) + Qopp;
+
+  // NON-PRICEABLE: no in-band executable depth on EITHER side (competitorDepth ≤ 0). Without a
+  // book to dilute against, share = deployed/(0 + deployed) = 100% — it would hand the user the
+  // ENTIRE pool off an empty book. That is a too-good-to-be-true fabrication, not an opportunity,
+  // so the row is withheld (unknown ⇒ caller renders "—"), exactly like a missing pool/Q. This
+  // makes BOTH venues consistent: an empty two-sided Polymarket book is treated like the Kalshi
+  // one-sided/empty-book guard. A thin-but-REAL book (competitorDepth > 0, e.g. $50) stays priceable.
+  if (!(competitorDepth > 0)) {
+    return { space: 0, deployed: 0, idle: balance, competitorDepth: 0, share: 0, dailyUsd: 0, apyRaw: 0, unknown: true };
+  }
 
   // No cap known ⇒ unbounded room: the whole balance deploys and dilutes (idle 0). A cap,
   // when real, limits deployment to (cap − Q) and the remainder is idle. Deployment room is a

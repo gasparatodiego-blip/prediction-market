@@ -418,7 +418,9 @@ export default function RewardsUnified() {
                             pool{' '}
                             <Redacted value={row.poolDayUsd} isPaid={isPaid}>{(v) => <>${Number(v).toFixed(0)}/day</>}</Redacted>
                             {' · '}depth{' '}
-                            <Redacted value={row.capacityUsd} isPaid={isPaid}>{(v) => <>{fmtDepth(Number(v))}</>}</Redacted>
+                            {/* A non-priceable (unknown) row has NO number to unlock, so it shows "—"
+                                to every tier — never a Pro-teaser lock stacked on a missing value. */}
+                            <Redacted value={row.capacityUsd} isPaid={isPaid || row.unknown}>{(v) => <>{fmtDepth(Number(v))}</>}</Redacted>
                             {!row.unknown && row.share > 0 && (
                               <> · your share <span className="rw-nowrap">{(row.share * 100).toFixed(1)}%</span></>
                             )}
@@ -433,7 +435,7 @@ export default function RewardsUnified() {
                           <span className="rw-satwrap">
                             <Redacted
                               value={row.saturation}
-                              isPaid={isPaid}
+                              isPaid={isPaid || row.unknown}
                               nullDisplay={<span className="rw-dim">competition · not measured</span>}
                             >
                               {(sat) => {
@@ -461,7 +463,7 @@ export default function RewardsUnified() {
                                 book is one-sided / non-executable, with the reason on hover. */}
                             <Redacted
                               value={row.unknown ? null : row.netUsdPerDay}
-                              isPaid={isPaid}
+                              isPaid={isPaid || row.unknown}
                               nullDisplay={<span title={row.nonExecReason ?? 'no reward pool or in-band depth from the feed'}>—</span>}
                             >
                               {(v) => <>${Number(v).toFixed(2)}/day</>}
