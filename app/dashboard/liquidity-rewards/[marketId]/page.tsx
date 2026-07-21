@@ -382,6 +382,19 @@ export default function MarketDetailPage() {
   const capital = qty * sidesN;   // qty is per-side; estimator capital is total working USD
   const distMax = mkt?.maxSpread ?? 10;
 
+  // ── REWARD RULE — the market's REAL Polymarket incentive config (never fabricated) ──────────
+  // maxSpread = rewardsMaxSpread (full reward band, ¢); the per-side eligible RADIUS is maxSpread/2
+  // — the SAME half-band the book already uses (halfBand) and agent24's scoring v. minSize =
+  // rewardsMinSize (shares). A genuinely-absent value stays null → the UI renders "—", never a
+  // default. Kalshi carries no incentive-spread band (flat pro-rata), so cfgMaxSpread is null there.
+  const cfgMaxSpread = mkt?.maxSpread ?? null;
+  const cfgMinSize   = mkt?.minSize ?? null;
+  const bandRadiusC  = cfgMaxSpread != null ? cfgMaxSpread / 2 : null;
+  // Rule keys off the MARKET midpoint (YES token). Two-sided REQUIRED when mid ∉ [0.10, 0.90]
+  // (Polymarket's own rule); null mid → rule unknown (never assumed).
+  const ruleMid = yesMid;
+  const ruleTwoSidedRequired = ruleMid != null ? (ruleMid < 0.10 || ruleMid > 0.90) : null;
+
   // estimate recomputes for the CHOSEN trading side (its own real book)
   const est = useMemo(() => {
     if (!mkt) return null;
@@ -720,6 +733,10 @@ export default function MarketDetailPage() {
                 depth" toggle. HONEST-ENGINE: only real book levels, never a fabricated one.
                 ══════════════════════════════════════════════════════════════════════════ */}
             <div className="space-y-1.5 scroll-mt-28">
+              {/* ── (b0) Reward-rule banner — this market's REAL Polymarket incentive config ── */}
+              <RewardRuleBanner venue={mkt.venue} maxSpread={cfgMaxSpread} minSize={cfgMinSize}
+                mid={ruleMid} twoSidedRequired={ruleTwoSidedRequired} isRedacted={isRedacted} />
+
               {/* ── (c) Live DUAL order book (YES | NO), windowed, with tap-to-place ── */}
               <DualOrderBook
                 yesBook={yesBook} noBook={noBook} tradeSide={tradeSide}
@@ -1188,17 +1205,79 @@ function LegTickets({
   );
 }
 
+// ── Reward-rule banner — the market's REAL Polymarket incentive config, surfaced so even an
+// inexperienced maker sees the rule at a glance. Every value is the real config (maxSpread =
+// rewardsMaxSpread, minSize = rewardsMinSize, mid); a null renders "—" + an honest "unavailable"
+// note — never a fabricated band, size, or rule. Kalshi (no incentive-spread config) gets its own
+// honest flat-pro-rata note rather than a Polymarket rule it doesn't follow.
+function RewardRuleBanner({ venue, maxSpread, minSize, mid, twoSidedRequired, isRedacted }: {
+  venue: Venue; maxSpread: number | null; minSize: number | null; mid: number | null;
+  twoSidedRequired: boolean | null; isRedacted: boolean;
+}) {
+  if (isRedacted) {
+    return (
+      <div className="rounded-card shadow-card bg-surface px-2.5 py-2">
+        <p className="font-body text-[11px] text-muted">Reward rules — unlock to see this market&apos;s eligible band, min size &amp; mid.</p>
+      </div>
+    );
+  }
+  if (venue !== 'polymarket') {
+    // Kalshi — carries no Polymarket incentive config; state the real flat-pro-rata rule honestly.
+    return (
+      <div className="rounded-card shadow-card bg-surface px-2.5 py-2 space-y-0.5">
+        <p className="font-body text-[11px] font-semibold text-mint-deep">Kalshi · flat pro-rata — every resting quote earns</p>
+        <p className="font-body text-[10px] text-muted tabular-nums">
+          no eligible-spread band · min <span className="text-ink-2">{minSize != null ? `${fmtSh(minSize)} sh` : '—'}</span> · mid <span className="text-ink-2">{mid != null ? fmtC(mid) : '—'}</span>
+        </p>
+      </div>
+    );
+  }
+  const bandR   = maxSpread != null ? maxSpread / 2 : null;
+  const anyNull = maxSpread == null || minSize == null || mid == null;
+  return (
+    <div className="rounded-card shadow-card bg-surface px-2.5 py-1.5 space-y-0.5">
+      {/* rule chip — from the REAL config: no band (maxSpread null) or no mid ⇒ we DON'T assert a
+          rule (never fabricated); otherwise the midpoint vs Polymarket's [0.10, 0.90] two-sided rule. */}
+      {maxSpread == null || mid == null ? (
+        <p className="font-body text-[11px] text-muted">Reward rules unavailable — {maxSpread == null ? 'no eligible band for this market' : 'midpoint unknown'}.</p>
+      ) : twoSidedRequired ? (
+        <div className="inline-flex items-center gap-1.5 rounded-button bg-gold-tint border border-gold/30 px-2 py-0.5">
+          <AlertTriangle size={12} className="text-gold shrink-0" strokeWidth={2.4} />
+          <span className="font-body text-[11px] font-semibold text-gold">Two-sided REQUIRED — one-sided earns $0 here</span>
+        </div>
+      ) : (
+        <div className="inline-flex items-center gap-1.5 rounded-button bg-mint-tint border border-mint-deep/25 px-2 py-0.5">
+          <span className="font-body text-[11px] font-semibold text-mint-deep">One-sided OK at ⅓ · both sides for full reward</span>
+        </div>
+      )}
+      {/* stats line — real band radius / min size / mid, "—" wherever a value is genuinely null */}
+      <p className="font-body text-[10px] text-muted tabular-nums">
+        eligible band <span className="text-ink-2">±{bandR != null ? bandR.toFixed(2) : '—'}¢</span> of mid
+        {' · '}min <span className="text-ink-2">{minSize != null ? `${fmtSh(minSize)} sh` : '—'}</span>
+        {' · '}mid <span className="text-ink-2">{mid != null ? fmtC(mid) : '—'}</span>
+      </p>
+      {/* band already covered by the chip's "unavailable" copy when null; this note covers a
+          partial config (band known, min size genuinely missing) — never fabricated. */}
+      {anyNull && maxSpread != null && mid != null && <p className="font-body text-[9px] text-muted">min size unavailable for this market</p>}
+    </div>
+  );
+}
+
 // ── D) DUAL order book (YES | NO), chosen side highlighted, planned orders inline ─
 function DualOrderBook({
   yesBook, noBook, tradeSide, bookAge, bookErr, isRedacted, yesMid, noMid, maxSpread, userBid, userAsk, onRefresh, venue,
-  onTap, venueUrl, buyManual, sellManual,
+  onTap, venueUrl, buyManual, sellManual, orderSide,
 }: {
   yesBook: NormBook | null; noBook: NormBook | null; tradeSide: SideKey;
   bookAge: Date | null; bookErr: string | null; isRedacted: boolean;
   yesMid: number | null; noMid: number | null; maxSpread: number | null;
   userBid: number | null; userAsk: number | null; onRefresh: () => void; venue: Venue;
   onTap: (columnSide: SideKey, kind: LegKind, price: number) => void; venueUrl: string | null; buyManual: boolean; sellManual: boolean;
+  orderSide: SideMode;
 }) {
+  // Per-side eligible band RADIUS (¢) from the REAL rewardsMaxSpread — the same half-band the rows
+  // shade with. Null (Kalshi / missing config) → no shaded band; the legend says so honestly.
+  const bandRadiusC = maxSpread != null ? maxSpread / 2 : null;
   const anyBook = (yesBook?.hasBook || noBook?.hasBook) ?? false;
   // Window the ladder to the actionable levels around the mid: N per side per column, collapsed
   // by default so both columns + the mid divider fit ~one viewport. HONEST-ENGINE: no level is
