@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Redacted } from './ui/Redacted';
 import { EmptyState } from './ds';
-import { APY_CAP, APY_CAP_LABEL } from '@/lib/honest-display';
+import { APY_CAP } from '@/lib/honest-display';
 import { computeLiquidityYield } from '@/lib/liquidity-yield';
 // Pure, node-verifiable filter/sort/derive — shared VERBATIM so the list the user sees and
 // any measurement of the filter behaviour cannot diverge (see lib/rewards-filter.js).
@@ -74,8 +74,7 @@ interface Base {
 interface Row extends Base {
   poolDayUsd: number | null;
   netUsdPerDay: number | null;    // dailyUsd (primary) — sort key reused by rewards-filter
-  apr: number | null;             // annualized on DEPLOYED, capped
-  aprCapped: boolean;
+  apr: number | null;             // annualized on DEPLOYED, capped — filter-only (not rendered)
   capacityUsd: number | null;     // = cap (filter field name)
   deployed: number;
   idle: number;
@@ -158,12 +157,13 @@ export default function RewardsUnified() {
     const y = computeLiquidityYield({
       poolPerDay: b.poolDayUsd, cap: b.cap, qualifyingLiquidity: b.qualifyingLiquidity, balance,
     });
+    // apr stays computed — the min-APR list FILTER (lib/rewards-filter) reads it — but it is
+    // no longer rendered on the cards; net $/day is the sole headline metric.
     const apr = y.unknown ? null : Math.min(y.apyRaw, APY_CAP);
     return {
       ...b,
       netUsdPerDay: y.unknown ? null : y.dailyUsd,
       apr,
-      aprCapped:    !y.unknown && y.apyRaw > APY_CAP,
       capacityUsd:  b.qualifyingLiquidity,   // in-band depth (Q) — capacity filter field
       deployed:     y.deployed,
       idle:         y.idle,
@@ -397,22 +397,16 @@ export default function RewardsUnified() {
                         </span>
                         <span className="cc-row-r">
                           <span className="cc-row-net">
-                            {/* "—" ONLY when pool/depth are genuinely missing (unknown). A known
-                                depth always yields a finite number here at any balance; a high APY
-                                is shown as a ">cap" LABEL below, never collapsed to "—". */}
+                            {/* Net $/day is the sole headline metric on these cards — the
+                                annualized run-rate line was removed (it dwarfed the honest
+                                daily figure). "—" ONLY when pool/depth are genuinely missing
+                                (unknown); a known depth always yields a finite number here. */}
                             <Redacted
                               value={row.unknown ? null : row.netUsdPerDay}
                               isPaid={isPaid}
                               nullDisplay={<span title="no reward pool or in-band depth from the feed">—</span>}
                             >
                               {(v) => <>${Number(v).toFixed(2)}/day</>}
-                            </Redacted>
-                          </span>
-                          <span className="cc-row-apy">
-                            <Redacted value={row.unknown ? null : row.apr} isPaid={isPaid} nullDisplay={<></>}>
-                              {(v) => row.aprCapped
-                                ? <span className="rw-apy-gate" title={APY_CAP_LABEL}>&gt;{APY_CAP}%/yr</span>
-                                : <>{Number(v).toFixed(0)}%/yr</>}
                             </Redacted>
                           </span>
                         </span>
@@ -432,13 +426,11 @@ export default function RewardsUnified() {
             <p className="cc-note">
               Your $/day is what you would earn deploying your balance NOW: you take share
               deployed/(existing qualifying liquidity + deployed) of the pool — adding capital
-              shrinks your own share. APY is on deployed capital, capped at {APY_CAP}%/yr; a thin
-              book showing &gt;{APY_CAP}%/yr is a transient, not-sustainable rate. Depth is the real
-              in-band qualifying liquidity (Polymarket exposes no reward cap, so the whole balance
-              deploys); if a venue ever caps qualifying liquidity, capital beyond the room left is
-              shown idle. Polymarket depth/competition is measured from the live CLOB; Kalshi is an
-              observed flat pro-rata split. Point-in-time snapshot; competitors re-quote; not a
-              promised yield.
+              shrinks your own share. Depth is the real in-band qualifying liquidity (Polymarket
+              exposes no reward cap, so the whole balance deploys); if a venue ever caps qualifying
+              liquidity, capital beyond the room left is shown idle. Polymarket depth/competition is
+              measured from the live CLOB; Kalshi is an observed flat pro-rata split. Point-in-time
+              snapshot; competitors re-quote; not a promised yield.
             </p>
           </>
         )}
@@ -482,9 +474,6 @@ function RewardYieldBreakdown({ row, balance, isPaid }: { row: Row; balance: num
             <span className="rw-brk-v"><Redacted value={row.unknown ? null : row.share} isPaid={isPaid}>{(v) => <>{(Number(v) * 100).toFixed(1)}%</>}</Redacted></span></div>
           <div className="rw-brk-item"><span className="rw-brk-k">your reward</span>
             <span className="rw-brk-v rw-brk-primary"><Redacted value={row.unknown ? null : row.netUsdPerDay} isPaid={isPaid}>{(v) => <>${Number(v).toFixed(2)}/day</>}</Redacted></span></div>
-          <div className="rw-brk-item"><span className="rw-brk-k">APY on deployed</span>
-            <span className="rw-brk-v"><Redacted value={row.unknown ? null : row.apr} isPaid={isPaid} nullDisplay={<>—</>}>
-              {(v) => row.aprCapped ? <span title={APY_CAP_LABEL}>&gt;{APY_CAP}%/yr</span> : <>{Number(v).toFixed(0)}%/yr</>}</Redacted></span></div>
         </div>
         <div className="rw-calc-meta">
           <span className="rw-dim">
