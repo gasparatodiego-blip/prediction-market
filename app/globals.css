@@ -594,6 +594,59 @@ h1, h2, h3 {
 .cc-row-apy.is-amber { color: var(--cc-amber); }
 .cc-expand { padding: 4px 2px 12px; border-bottom: 1px solid var(--cc-border); }
 
+/* ── Liquidity-rewards list extras (saturation bar + share calculator) ────────
+   Scoped to .rewards; reuses the cc-* tokens so it themes in day AND night. */
+.rewards .cc-fgroup.is-disabled { opacity: .5; }
+.rewards .rw-dim { color: var(--cc-muted); }
+
+.rewards .rw-row-top { display: flex; align-items: center; gap: 6px; margin-bottom: 1px; }
+.rewards .rw-venue { font-size: 9.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--cc-muted); }
+.rewards .rw-cat {
+  font-size: 9.5px; padding: 1px 6px; border-radius: 999px;
+  color: var(--cc-text); border: 1px solid var(--cc-border); background: var(--cc-panel);
+}
+.rewards .rw-trap {
+  font-size: 9.5px; font-weight: 700; padding: 1px 6px; border-radius: 999px;
+  color: var(--cc-amber); border: 1px solid rgba(240,180,60,.45); background: rgba(240,180,60,.08);
+}
+
+/* saturation (pool competition) bar */
+.rewards .rw-satwrap { display: flex; align-items: center; gap: 7px; margin-top: 4px; min-height: 12px; }
+.rewards .rw-satwrap-lg { margin-top: 6px; }
+.rewards .rw-satbar-track {
+  position: relative; flex: 1; max-width: 160px; height: 5px; border-radius: 999px;
+  background: var(--cc-border); overflow: hidden;
+}
+.rewards .rw-satwrap-lg .rw-satbar-track { max-width: none; height: 7px; }
+.rewards .rw-satbar-fill { position: absolute; inset: 0 auto 0 0; height: 100%; border-radius: 999px; }
+.rewards .rw-satbar-fill.is-green { background: var(--cc-green); }
+.rewards .rw-satbar-fill.is-amber { background: var(--cc-amber); }
+.rewards .rw-satbar-fill.is-red   { background: var(--ds-danger); }
+.rewards .rw-sat-label { font-size: 9.5px; color: var(--cc-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rewards .rw-sat-label.is-green { color: var(--cc-green); }
+.rewards .rw-sat-label.is-amber { color: var(--cc-amber); }
+.rewards .rw-sat-label.is-red   { color: var(--ds-danger); }
+
+/* share → reward calculator (row expand) */
+.rewards .rw-calc { display: flex; flex-direction: column; gap: 14px; padding: 12px 12px 6px; }
+.rewards .rw-calc-block { display: flex; flex-direction: column; gap: 6px; }
+.rewards .rw-calc-h { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: var(--cc-muted); font-weight: 600; }
+.rewards .rw-calc-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+.rewards .rw-calc-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.rewards .rw-calc-lbl { font-size: 10px; color: var(--cc-muted); }
+.rewards .rw-calc-input {
+  width: 140px; max-width: 100%; padding: 7px 9px; border-radius: 8px;
+  background: var(--cc-panel); border: 1px solid var(--cc-border); color: var(--cc-text);
+  font-family: var(--font-mono), ui-monospace, monospace; font-size: 14px; font-variant-numeric: tabular-nums;
+}
+.rewards .rw-calc-input:focus { outline: none; border-color: var(--cc-spot); }
+.rewards .rw-calc-cap { font-size: 9.5px; color: var(--cc-muted); }
+.rewards .rw-calc-out { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex: none; }
+.rewards .rw-calc-out-val { font-size: 20px; font-weight: 700; color: var(--cc-green); font-variant-numeric: tabular-nums; line-height: 1.1; }
+.rewards .rw-calc-out-cap { font-size: 9.5px; color: var(--cc-muted); }
+.rewards .rw-calc-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; font-size: 10px; color: var(--cc-muted); }
+.rewards .rw-calc-meta strong { color: var(--cc-text); font-variant-numeric: tabular-nums; }
+
 /* Calculator embedded inside a list row: drop the full-viewport wrapper so it sits
    inline. Identical math; presentation only. */
 .carrydetail.is-embedded { min-height: 0; padding: 0; background: transparent; }
