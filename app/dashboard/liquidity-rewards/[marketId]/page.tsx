@@ -597,7 +597,7 @@ export default function MarketDetailPage() {
                 Tight spacing so the whole payoff + its controls fit ~one mobile viewport
                 before the order book begins. (Pure layout/IA — no reward math touched.)
                 ══════════════════════════════════════════════════════════════════════════ */}
-            <div className="space-y-2.5">
+            <div className="space-y-1.5 scroll-mt-28">
               {/* ── (2) REWARD hero — big gross $/day FIRST, share + min-side + disclaimer ── */}
               <RewardHero score={scoreEst} pool={mkt.dailyPool} isRedacted={isRedacted}
                 stale={bookStale} bookAgeMs={bookAgeMs} />
@@ -611,14 +611,14 @@ export default function MarketDetailPage() {
               />
 
               {/* ── (4)(5)(6) Side mode · size per side · distance — compact control stack ── */}
-              <div className="rounded-card shadow-card bg-surface px-4 py-3 space-y-3">
+              <div className="rounded-card shadow-card bg-surface px-2.5 py-2 space-y-1.5">
                 {/* (4) side mode — 3-up segmented */}
                 <div>
-                  <span className="font-body text-[11px] uppercase tracking-wide text-muted">Side</span>
-                  <div className="grid grid-cols-3 gap-1.5 mt-1">
+                  <span className="font-body text-[10px] uppercase tracking-wide text-muted">Side</span>
+                  <div className="grid grid-cols-3 gap-1.5 mt-0.5">
                     {([['both', 'Both'], ['buy', 'Buy only'], ['sell', 'Sell only']] as [SideMode, string][]).map(([v, label]) => (
                       <button key={v} onClick={() => changeSide(v)}
-                        className={`min-w-0 font-body font-medium text-[12px] py-2 rounded-button border transition-colors
+                        className={`min-w-0 font-body font-medium text-[12px] py-1.5 rounded-button border transition-colors
                           ${side === v ? 'border-mint-deep/45 bg-mint-tint text-mint-deep' : 'border-line bg-surface text-muted hover:text-ink-2'}`}>
                         {label}
                       </button>
@@ -634,26 +634,27 @@ export default function MarketDetailPage() {
                 {/* (5) size per side — presets + input, total hint on the label row */}
                 <div>
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-body text-[11px] uppercase tracking-wide text-muted">Size per side</span>
-                    <span className="font-body text-[11px] text-muted tabular-nums whitespace-nowrap">total {fmtUsd(capital)} on {sidesN} side{sidesN === 1 ? '' : 's'}</span>
+                    <span className="font-body text-[10px] uppercase tracking-wide text-muted">Size per side</span>
+                    <span className="font-body text-[10px] text-muted tabular-nums whitespace-nowrap">total {fmtUsd(capital)} on {sidesN} side{sidesN === 1 ? '' : 's'}</span>
                   </div>
-                  <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                  <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                     {[100, 500, 1000, 5000].map(c => (
                       <button key={c} onClick={() => setQty(c)}
-                        className={`font-body font-medium text-[12px] px-3 py-1.5 rounded-button border transition-colors tabular-nums
+                        className={`font-body font-medium text-[12px] px-3 py-1 rounded-button border transition-colors tabular-nums
                           ${qty === c ? 'border-mint-deep/45 bg-mint-tint text-mint-deep' : 'border-line bg-surface text-muted hover:text-ink-2'}`}>
                         ${c >= 1000 ? `${c / 1000}k` : c}
                       </button>
                     ))}
                     <input type="number" min={1} value={qty} onChange={e => setQty(Math.max(1, Number(e.target.value) || 0))}
-                      className="w-20 font-body text-[12px] text-ink-2 bg-bg-soft border border-line rounded-button px-2 py-1.5 tabular-nums" />
+                      className="w-20 font-body text-[12px] text-ink-2 bg-bg-soft border border-line rounded-button px-2 py-1 tabular-nums" />
                   </div>
                 </div>
 
-                {/* (6) distance from spread — band value on the label row, note collapsed to one line */}
+                {/* (6) distance from spread — band value on the label row; verbose notes are
+                    single lines / expand-on-tap so the control stack stays short. */}
                 <div>
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-body text-[11px] uppercase tracking-wide text-muted">Distance from spread</span>
+                    <span className="font-body text-[10px] uppercase tracking-wide text-muted">Distance from spread</span>
                     <span className="font-body text-[12px] text-ink-2 tabular-nums whitespace-nowrap">{dist.toFixed(2)}¢{mkt.maxSpread != null ? ` / ${mkt.maxSpread}¢ band` : ''}</span>
                   </div>
                   <input type="range" min={tickSize ? tickSize * 100 : 0.1} max={distMax} step={tickSize ? tickSize * 100 : 0.1} value={dist}
@@ -663,21 +664,25 @@ export default function MarketDetailPage() {
                     <span>farther = safer</span>
                   </div>
                   {tickSize && (
-                    <p className="font-body text-[10px] text-muted mt-1">
+                    <p className="font-body text-[10px] text-muted mt-0.5 truncate">
                       Min tick {fmtC(tickSize)} — snaps to grid ({mkt.venue === 'polymarket' ? 'Polymarket' : 'Kalshi'} won&apos;t accept a finer price).
                     </p>
                   )}
-                  {clampNote && <p className="font-body text-[10px] text-coral-ink mt-1">{clampNote}</p>}
+                  {clampNote && <p className="font-body text-[10px] text-coral-ink mt-0.5">{clampNote}</p>}
                   {mkt.maxSpread == null && (
-                    <p className="font-body text-[10px] text-muted mt-1">Kalshi doesn&apos;t publish a reward band — distance here only affects fill risk.</p>
+                    <p className="font-body text-[10px] text-muted mt-0.5 truncate">Kalshi doesn&apos;t publish a reward band — distance here only affects fill risk.</p>
                   )}
                   {(legs.buy || legs.sell) && (
-                    <p className="font-body text-[10px] text-gold mt-1">
-                      Manual placement active for {[legs.buy && 'BUY', legs.sell && 'SELL'].filter(Boolean).join(' + ')} — {legs.buy && legs.sell ? 'those sides are' : 'that side is'} detached from this slider.
-                      {' '}
-                      <button onClick={() => { if (legs.buy) removeLeg('buy'); if (legs.sell) removeLeg('sell'); }}
-                        className="underline underline-offset-2 hover:text-ink-2">reset to slider</button>
-                    </p>
+                    <details className="mt-0.5">
+                      <summary className="list-none cursor-pointer font-body text-[10px] text-gold flex items-center gap-1">
+                        <span className="whitespace-nowrap">Manual placement active for {[legs.buy && 'BUY', legs.sell && 'SELL'].filter(Boolean).join(' + ')}</span>
+                        <button onClick={(e) => { e.preventDefault(); if (legs.buy) removeLeg('buy'); if (legs.sell) removeLeg('sell'); }}
+                          className="underline underline-offset-2 hover:text-ink-2 shrink-0">reset</button>
+                      </summary>
+                      <p className="font-body text-[10px] text-gold leading-snug mt-0.5">
+                        {legs.buy && legs.sell ? 'Those sides are' : 'That side is'} detached from this slider — the tapped book price is used instead. Reset to return to the slider quote.
+                      </p>
+                    </details>
                   )}
                 </div>
               </div>
@@ -757,7 +762,7 @@ export default function MarketDetailPage() {
                 <ChoiceBtn active={newsMode === 'off'} onClick={() => setNewsMode('off')}
                   title="⊘ Off" desc="No news monitoring on this market." />
               </div>
-              <p className="font-body text-[11px] text-muted leading-relaxed">
+              <p className="font-body text-[10px] text-muted leading-snug">
                 {newsMode === 'withdraw'
                   ? 'Chosen: on a HIGH signal the news-guard advises withdrawing liquidity and, if filled, exiting at the best price (advisory — live execution OFF).'
                   : newsMode === 'alert'
@@ -774,12 +779,12 @@ export default function MarketDetailPage() {
             </div>
 
             {/* ── G) CTA ── */}
-            <div className="rounded-card shadow-card bg-surface px-4 py-4 space-y-2">
+            <div className="rounded-card shadow-card bg-surface px-2.5 py-2 space-y-1">
               <button onClick={savePlacement} disabled={saveState === 'saving'}
-                className="w-full font-body font-semibold text-[14px] py-3 rounded-button bg-mint-deep text-white hover:bg-mint-deep/90 disabled:opacity-60 transition-colors">
+                className="w-full min-h-[44px] font-body font-semibold text-[14px] py-2 rounded-button bg-mint-deep text-white hover:bg-mint-deep/90 disabled:opacity-60 transition-colors">
                 {saveState === 'saving' ? 'Saving…' : 'Simulate placement · paper'}
               </button>
-              <p className="font-body text-[11px] text-center text-muted">
+              <p className="font-body text-[10px] text-center text-muted">
                 Advisory only · live execution <span className="font-semibold text-ink-2">OFF</span> · no real order is sent.
               </p>
               {saveMsg && (
@@ -790,7 +795,7 @@ export default function MarketDetailPage() {
             </div>
 
             {/* Footer */}
-            <p className="font-body text-[11px] text-muted leading-relaxed pt-2 border-t border-line">
+            <p className="font-body text-[10px] text-muted leading-snug pt-2 border-t border-line">
               Order book from live {mkt.venue === 'polymarket' ? 'Polymarket CLOB' : 'Kalshi'} data (executable prices, never midpoint for fills).
               The gross reward ticket uses the same two-sided model as the list; the net view subtracts expected adverse-fill cost. No annualized figure.
               Read-only, no orders placed, live execution OFF, no login required to view.
@@ -853,60 +858,63 @@ function RewardHero({
 
   return (
     <div className="rounded-card shadow-card bg-surface overflow-hidden">
-      <div className="px-4 py-3.5">
-        <div className="flex items-end justify-between gap-3 flex-wrap">
+      <div className="px-2.5 py-2">
+        <div className="flex items-end justify-between gap-2 flex-wrap">
           <div className="min-w-0">
-            <p className="font-body text-[11px] uppercase tracking-wide text-muted flex items-center gap-1">
-              Reward · gross per day
+            <p className="font-body text-[10px] uppercase tracking-wide text-muted flex items-center gap-1">
+              Reward · gross / day
               <InfoTip label="How this is scored" size={12}>
                 Your quadratic distance-from-mid score against the in-band qualifying depth on both sides — the SAME model the list uses, so this equals the list&apos;s $/day when you place the same capital balanced at the mid. Gross of inventory/adverse-selection cost. Simulation only.
               </InfoTip>
             </p>
-            <p className={`font-mono font-bold leading-none mt-1 tabular-nums whitespace-nowrap ${showNumber ? 'text-mint-deep' : 'text-muted'}`} style={{ fontSize: 34 }}>
+            <p className={`font-mono font-bold leading-none mt-0.5 tabular-nums whitespace-nowrap ${showNumber ? 'text-mint-deep' : 'text-muted'}`} style={{ fontSize: 28 }}>
               {stale
                 ? '— '
                 : <Redacted value={daily} isPaid={!isRedacted}>{v => `${fmtUsd(v)}/day`}</Redacted>}
-              {stale && <span className="font-body text-[11px] align-middle text-gold"> STALE</span>}
+              {stale && <span className="font-body text-[10px] align-middle text-gold"> STALE</span>}
             </p>
-          </div>
-          <div className="text-right min-w-0">
-            <p className="font-body text-[12px] text-ink-2 tabular-nums whitespace-nowrap">
-              your share <Redacted value={score && !isRedacted ? score.share : null} isPaid={!isRedacted}>{v => `${(v * 100).toFixed(2)}%`}</Redacted>
-            </p>
-            <p className="font-body text-[10px] text-ink-2 tabular-nums whitespace-nowrap">
-              bid score {score ? fmtUsd(score.yesScore) : '—'} · ask score {score ? fmtUsd(score.noScore) : '—'}
-            </p>
-            <p className="font-body text-[10px] text-muted tabular-nums whitespace-nowrap">min-side {score ? fmtUsd(score.minSideScore) : '—'}</p>
           </div>
         </div>
 
-        {/* ÷3 penalty / two-sided-required — Polymarket one-sided placements */}
+        {/* One wrapping muted line — share · per-side scores · min-side · the gross/sim qualifier
+            (merged from the old right-hand stack + the standalone disclaimer to save height). */}
+        <p className="font-body text-[10px] text-muted mt-1 leading-snug tabular-nums">
+          share <span className="text-ink-2"><Redacted value={score && !isRedacted ? score.share : null} isPaid={!isRedacted}>{v => `${(v * 100).toFixed(2)}%`}</Redacted></span>
+          {' · '}bid {score ? fmtUsd(score.yesScore) : '—'} · ask {score ? fmtUsd(score.noScore) : '—'}
+          {' · '}min-side {score ? fmtUsd(score.minSideScore) : '—'}
+          {' · '}gross, pre-cost · sim only
+        </p>
+
+        {/* ÷3 penalty / two-sided-required — compact chip, full copy expands on tap (no info lost) */}
         {score?.penaltyApplied && !stale && (
-          <div className="rounded-button bg-gold-tint border border-gold/25 px-3 py-2 mt-3">
-            <p className="font-body text-[11px] text-gold leading-relaxed">
-              <span className="font-semibold">One-sided ÷3 penalty.</span> You&apos;re quoting a single side; Polymarket credits one-sided liquidity at a third. Quote BOTH sides to remove it and maximize your share.
+          <details className="mt-1.5">
+            <summary className="list-none cursor-pointer rounded-button bg-gold-tint border border-gold/25 px-2 py-1 flex items-center gap-1.5">
+              <span className="font-body text-[10px] font-semibold text-gold whitespace-nowrap">One-sided ÷3 penalty</span>
+              <span className="font-body text-[9px] text-gold/70 truncate">— quote both sides to remove · tap</span>
+            </summary>
+            <p className="font-body text-[10px] text-gold leading-snug px-2 pt-1">
+              You&apos;re quoting a single side; Polymarket credits one-sided liquidity at a third. Quote BOTH sides to remove it and maximize your share.
             </p>
-          </div>
+          </details>
         )}
         {score?.twoSidedRequiredUnmet && !stale && (
-          <div className="rounded-button bg-coral-tint border border-coral-ink/25 px-3 py-2 mt-3">
-            <p className="font-body text-[11px] text-coral-ink leading-relaxed">
-              <span className="font-semibold">Two-sided required.</span> The mid is outside 10¢–90¢, where one-sided liquidity earns nothing. This placement scores $0 until you quote both sides.
+          <details className="mt-1.5">
+            <summary className="list-none cursor-pointer rounded-button bg-coral-tint border border-coral-ink/25 px-2 py-1 flex items-center gap-1.5">
+              <span className="font-body text-[10px] font-semibold text-coral-ink whitespace-nowrap">Two-sided required — scores $0</span>
+              <span className="font-body text-[9px] text-coral-ink/70 truncate">tap for why</span>
+            </summary>
+            <p className="font-body text-[10px] text-coral-ink leading-snug px-2 pt-1">
+              The mid is outside 10¢–90¢, where one-sided liquidity earns nothing. This placement scores $0 until you quote both sides.
             </p>
-          </div>
+          </details>
         )}
 
         {/* Staleness note */}
         {stale && (
-          <p className="font-body text-[11px] text-gold mt-2">
+          <p className="font-body text-[10px] text-gold mt-1.5">
             Book snapshot {ageS != null ? `${ageS}s old` : 'unavailable'} — estimate not actionable. Waiting for a fresh book…
           </p>
         )}
-
-        {/* One calm qualifier — replaces any annualized line */}
-        <p className="font-body text-[10px] text-muted mt-2">
-          gross · before inventory/adverse-selection cost · simulation only
-        </p>
       </div>
     </div>
   );
@@ -922,18 +930,17 @@ function SimActions({
   plan: ExecutionPlan | null; stale: boolean; onRun: () => void; simMsg: string | null;
 }) {
   return (
-    <div className="rounded-card shadow-card bg-surface px-4 py-3 space-y-2">
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-        <button onClick={onRun} disabled={!plan || stale}
-          className="min-h-[44px] font-body font-semibold text-[13px] py-2.5 rounded-button bg-mint-deep text-white hover:bg-mint-deep/90 disabled:opacity-50 transition-colors">
-          Run simulation
-        </button>
-        <button disabled aria-disabled title="execution not enabled — simulation only"
-          className="min-h-[44px] font-body text-[12px] py-2.5 rounded-button border border-line text-muted opacity-60 cursor-not-allowed">
-          {EXECUTION_ENABLED ? 'Arm execution' : 'Arm execution — not enabled (simulation only)'}
-        </button>
-      </div>
-      {simMsg && <p className="font-body text-[11px] text-muted">{simMsg}</p>}
+    <div className="rounded-card shadow-card bg-surface px-2.5 py-2 space-y-1">
+      <button onClick={onRun} disabled={!plan || stale}
+        className="w-full min-h-[44px] font-body font-semibold text-[13px] py-2 rounded-button bg-mint-deep text-white hover:bg-mint-deep/90 disabled:opacity-50 transition-colors">
+        Run simulation
+      </button>
+      {/* Execution scaffold is a hard compile-time false — keep the verbatim "not enabled" copy as
+          a tight muted line directly under the button (no separate big disabled button). */}
+      <p className="font-body text-[10px] text-muted leading-snug">
+        {EXECUTION_ENABLED ? 'Arm execution' : 'Arm execution — not enabled (simulation only)'}
+        {simMsg ? <> · <span className="text-ink-2">{simMsg}</span></> : null}
+      </p>
     </div>
   );
 }
@@ -1004,10 +1011,10 @@ function EarningsBlock({ est, isRedacted, flags = [], tradeSide }: { est: Return
 }
 function MiniBox({ label, value, sub }: { label: string; value: React.ReactNode; sub?: string }) {
   return (
-    <div className="rounded-button bg-bg-soft border border-line px-3 py-2.5">
-      <p className="font-body text-[10px] uppercase tracking-wide text-muted">{label}</p>
-      <p className="font-body text-[15px] font-semibold text-ink tabular-nums mt-0.5">{value}</p>
-      {sub && <p className="font-body text-[9px] text-muted mt-0.5 leading-tight">{sub}</p>}
+    <div className="rounded-button bg-bg-soft border border-line px-2 py-1.5 min-w-0">
+      <p className="font-body text-[9px] uppercase tracking-wide text-muted truncate">{label}</p>
+      <p className="font-body text-[13px] font-semibold text-ink tabular-nums mt-0.5 whitespace-nowrap">{value}</p>
+      {sub && <p className="font-body text-[8px] text-muted mt-0.5 leading-tight truncate">{sub}</p>}
     </div>
   );
 }
@@ -1027,22 +1034,22 @@ function TradeSideToggle({
     const idleCls   = 'border-line bg-surface text-muted hover:text-ink-2';
     return (
       <button onClick={() => setTradeSide(s)} aria-pressed={active}
-        className={`flex-1 rounded-button border px-4 py-3 text-left transition-colors ${active ? activeCls : idleCls}`}>
-        <span className="font-body font-semibold text-[13px] flex items-center gap-1.5">
+        className={`flex-1 min-h-[44px] rounded-button border px-3 py-2 text-left transition-colors ${active ? activeCls : idleCls}`}>
+        <span className="font-body font-semibold text-[12px] flex items-center gap-1.5">
           {active && <span className={`w-1.5 h-1.5 rounded-full ${isYes ? 'bg-mint-deep' : 'bg-coral-ink'}`} />}
           Trade {isYes ? 'YES' : 'NO'}
         </span>
-        <span className="font-mono text-[16px] font-bold tabular-nums block mt-0.5">
+        <span className="font-mono text-[15px] font-bold tabular-nums block mt-0.5">
           {isRedacted ? '••¢' : mid != null ? fmtC(mid) : (has ? '—' : 'no book')}
         </span>
       </button>
     );
   };
   return (
-    <div className="rounded-card shadow-card bg-surface px-4 py-3">
-      <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
-        <p className="font-body font-medium text-sm text-ink-2">Which side do you want to make?</p>
-        <span className="font-body text-[10px] text-muted">YES + NO ≈ 100¢ · each has its own book</span>
+    <div className="rounded-card shadow-card bg-surface px-2.5 py-2.5">
+      <div className="flex items-center justify-between mb-1.5 gap-2 flex-wrap">
+        <p className="font-body font-medium text-[13px] text-ink-2">Which side do you want to make?</p>
+        <span className="font-body text-[10px] text-muted">YES + NO ≈ 100¢ · own book each</span>
       </div>
       <div className="flex gap-2">
         <Btn s="yes" mid={yesMid} has={yesHasBook} />
@@ -1145,13 +1152,13 @@ function LegTickets({
 // ── D) DUAL order book (YES | NO), chosen side highlighted, planned orders inline ─
 function DualOrderBook({
   yesBook, noBook, tradeSide, bookAge, bookErr, isRedacted, yesMid, noMid, maxSpread, userBid, userAsk, onRefresh, venue,
-  side, onTap, venueUrl, buyManual, sellManual,
+  onTap, venueUrl, buyManual, sellManual,
 }: {
   yesBook: NormBook | null; noBook: NormBook | null; tradeSide: SideKey;
   bookAge: Date | null; bookErr: string | null; isRedacted: boolean;
   yesMid: number | null; noMid: number | null; maxSpread: number | null;
   userBid: number | null; userAsk: number | null; onRefresh: () => void; venue: Venue;
-  side: SideMode; onTap: (kind: LegKind, price: number) => void; venueUrl: string | null; buyManual: boolean; sellManual: boolean;
+  onTap: (columnSide: SideKey, kind: LegKind, price: number) => void; venueUrl: string | null; buyManual: boolean; sellManual: boolean;
 }) {
   const anyBook = (yesBook?.hasBook || noBook?.hasBook) ?? false;
   // Window the ladder to the actionable levels around the mid: N per side per column, collapsed
@@ -1419,10 +1426,10 @@ function FillRuleCard({ side, value, onChange }: { side: SideKey; value: OnFill;
 function ChoiceBtn({ active, onClick, title, desc }: { active: boolean; onClick: () => void; title: string; desc: string }) {
   return (
     <button onClick={onClick}
-      className={`text-left rounded-button border px-3 py-2.5 transition-colors
+      className={`text-left rounded-button border px-2.5 py-1.5 min-h-[44px] transition-colors
         ${active ? 'border-mint-deep/45 bg-mint-tint' : 'border-line bg-surface hover:border-muted/50'}`}>
-      <p className={`font-body font-medium text-[13px] ${active ? 'text-mint-deep' : 'text-ink-2'}`}>{title}</p>
-      <p className="font-body text-[11px] text-muted leading-snug mt-0.5">{desc}</p>
+      <p className={`font-body font-medium text-[12px] ${active ? 'text-mint-deep' : 'text-ink-2'}`}>{title}</p>
+      <p className="font-body text-[10px] text-muted leading-snug mt-0.5">{desc}</p>
     </button>
   );
 }
