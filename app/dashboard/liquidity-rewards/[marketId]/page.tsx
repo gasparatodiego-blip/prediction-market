@@ -205,6 +205,12 @@ function venueMarketUrl(m: { venue: Venue; slug?: string | null; marketSlug?: st
   return null;
 }
 
+// Honest-engine: a market whose resolution time is in the PAST is settled — it can never pay
+// active LP rewards, so it must not be offered as a live ticket. Read the REAL feed field only;
+// a missing (null) hoursToResolution is NOT treated as resolved (we never fabricate a time).
+const isResolvedMarket = (m: { hoursToResolution: number | null } | null | undefined): boolean =>
+  !!m && typeof m.hoursToResolution === 'number' && Number.isFinite(m.hoursToResolution) && m.hoursToResolution <= 0;
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function MarketDetailPage() {
   const params = useParams();
@@ -498,6 +504,8 @@ export default function MarketDetailPage() {
   }
 
   const risk = (mkt?.newsRisk ?? 'unknown') as NewsRisk;
+  // Settled market opened directly → render a calm "resolved" state, never a live ticket.
+  const resolved = isResolvedMarket(mkt);
 
   // ── render ──
   if (mktErr) {
@@ -538,7 +546,9 @@ export default function MarketDetailPage() {
                 <span className="capitalize">{mkt.venue}</span>·<span>{mkt.category}</span>·
                 <span>mid <Redacted value={mid}>{v => fmtC(v)}</Redacted></span>·
                 <span>pool <Redacted value={mkt.dailyPool}>{v => `${fmtUsd(v)}/day`}</Redacted></span>·
-                <span>resolves {fmtHours(mkt.hoursToResolution)}</span>
+                {isResolvedMarket(mkt)
+                  ? <span className="text-coral-ink font-semibold">resolved</span>
+                  : <span>resolves {fmtHours(mkt.hoursToResolution)}</span>}
               </p>
             </>
           ) : (
@@ -552,7 +562,13 @@ export default function MarketDetailPage() {
       <div className="max-w-3xl mx-auto px-4 py-5 space-y-5 [&>section]:scroll-mt-24">
         {loading && !mkt && <p className="font-body text-sm text-muted">Loading market…</p>}
 
-        {mkt && (
+        {/* ── Resolved market → calm, honest state; no live ticket, no fabricated ROI ── */}
+        {mkt && resolved && (
+          <ResolvedNotice title={mkt.groupItemTitle || mkt.title} venue={mkt.venue}
+            venueUrl={venueMarketUrl(mkt)} hoursPast={mkt.hoursToResolution} />
+        )}
+
+        {mkt && !resolved && (
           <>
             {/* ── (b) Which side to make — choose the outcome + see its live mid FIRST ── */}
             <section>
@@ -757,6 +773,35 @@ export default function MarketDetailPage() {
         )}
       </div>
     </div>
+  );
+}
+
+// ── Resolved-market notice — a settled market opened directly. Calm, honest, NO live ticket
+// and NO fabricated ROI: the reward pool is over, so we say so and offer the venue link only.
+function ResolvedNotice({
+  title, venue, venueUrl, hoursPast,
+}: { title: string; venue: Venue; venueUrl: string | null; hoursPast: number | null }) {
+  const venueLabel = venue === 'polymarket' ? 'Polymarket' : venue === 'kalshi' ? 'Kalshi' : venue;
+  const daysPast = typeof hoursPast === 'number' && Number.isFinite(hoursPast) ? Math.round(Math.abs(hoursPast) / 24) : null;
+  return (
+    <section className="rounded-card shadow-card bg-surface px-5 py-6 text-center space-y-3">
+      <div className="inline-flex items-center gap-2 rounded-pill bg-coral-tint border border-coral-ink/25 px-3 py-1">
+        <span className="w-2 h-2 rounded-full bg-coral-ink" />
+        <span className="font-body font-semibold text-[12px] text-coral-ink uppercase tracking-wide">Market resolved</span>
+      </div>
+      <h2 className="font-display font-bold text-ink text-lg leading-snug max-w-xl mx-auto">{title}</h2>
+      <p className="font-body text-[13px] text-ink-2 leading-relaxed max-w-md mx-auto">
+        This market has already resolved{daysPast != null ? ` (about ${daysPast} day${daysPast === 1 ? '' : 's'} ago)` : ''}, so there are
+        no active liquidity rewards to earn here. It&apos;s shown for reference only — no ticket, no estimate.
+      </p>
+      <div className="flex items-center justify-center gap-3 pt-1 flex-wrap">
+        <Link href="/dashboard/liquidity-rewards"
+          className="font-body font-medium text-[13px] px-4 py-2.5 rounded-button border border-line text-ink-2 hover:bg-bg-soft transition-colors">
+          ← Back to active rewards
+        </Link>
+        {venueUrl && <PlatformLink href={venueUrl} label={`View on ${venueLabel}`} />}
+      </div>
+    </section>
   );
 }
 

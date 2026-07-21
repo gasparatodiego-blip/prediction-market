@@ -66,9 +66,19 @@ interface Market {
   // null on the free tier (→ lock, unchanged). Used ONLY to guard Kalshi rows; Polymarket ignores.
   qualifyingLiquidity?: number | null;
   bookSpread?: number | null;
+  // Hours until the market resolves (real feed field, from lib/rewards-normalize). <= 0 means it
+  // has ALREADY resolved → no active rewards. null when the feed didn't carry a resolution time.
+  hoursToResolution?: number | null;
   flags?: string[] | null;
   rewardScore?: RewardScore | null;
 }
+
+// Honest-engine: a settled market (resolution time in the past) can never pay active LP rewards,
+// so it must not appear as an actionable row. Read the REAL feed field only — a missing (null)
+// hoursToResolution is NOT treated as resolved (we never fabricate a resolution time; those rows
+// are left in place, matching the detail page's isResolvedMarket guard).
+const isResolved = (m: Market): boolean =>
+  typeof m.hoursToResolution === 'number' && Number.isFinite(m.hoursToResolution) && m.hoursToResolution <= 0;
 interface Payload { meta: any; markets: Market[]; stale: boolean; isPaid?: boolean }
 
 /** Balance-independent base derived from the payload (recomputed only when data changes). */
@@ -161,7 +171,9 @@ export default function RewardsUnified() {
   // Balance-INDEPENDENT base: real fields only. filled = reference live-book share; cap = book
   // depth; Q = cap × filled. Any missing → the row yields "—" (never fabricated).
   const base: Base[] = useMemo(() => {
-    const ms = data?.markets ?? [];
+    // Drop already-resolved markets before any yield math — a settled pool is not an opportunity.
+    // Rows with no resolution time in the feed are kept as-is (never fabricated as resolved).
+    const ms = (data?.markets ?? []).filter((m) => !isResolved(m));
     return ms.map((m) => {
       const rs = m.rewardScore ?? null;
       const flags = (m.flags ?? []).filter(Boolean);
