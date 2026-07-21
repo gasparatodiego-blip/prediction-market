@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { Redacted } from './ui/Redacted';
 import { EmptyState } from './ds';
 import { APY_CAP } from '@/lib/honest-display';
@@ -488,6 +489,17 @@ export default function RewardsUnified() {
                       {isOpen && (
                         <div className="cc-expand">
                           <RewardYieldBreakdown row={row} balance={balance} isPaid={isPaid} />
+                          {/* Into the interactive order-book detail page for THIS exact market.
+                              marketId is the raw feed id (Polymarket conditionId / Kalshi ticker) —
+                              the same key the detail route resolves against /api/rewards-unified. */}
+                          <Link
+                            href={`/dashboard/liquidity-rewards/${encodeURIComponent(m.marketId)}`}
+                            prefetch={false}
+                            className="rw-open-book"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            Open order book →
+                          </Link>
                         </div>
                       )}
                     </div>

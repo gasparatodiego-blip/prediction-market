@@ -595,6 +595,14 @@ h1, h2, h3 {
 /* Kalshi gross qualifier — calm, muted, one line under the $/day (replaces the removed APY line). */
 .cc-row-gross { font-size: 9px; color: var(--cc-muted); opacity: .8; letter-spacing: .01em; cursor: help; text-align: right; max-width: 168px; }
 .cc-expand { padding: 4px 2px 12px; border-bottom: 1px solid var(--cc-border); }
+/* Explicit affordance from the expanded card into the interactive order-book detail page. */
+.rw-open-book {
+  display: inline-flex; align-items: center; gap: 4px; margin: 8px 2px 2px;
+  font-size: 12px; font-weight: 600; color: var(--cc-green);
+  padding: 6px 12px; border: 1px solid var(--cc-green); border-radius: 8px;
+  transition: background .12s, color .12s;
+}
+.rw-open-book:hover { background: var(--cc-green); color: #fff; }
 
 /* ── Liquidity-rewards list extras (saturation bar + share calculator) ────────
    Scoped to .rewards; reuses the cc-* tokens so it themes in day AND night. */
