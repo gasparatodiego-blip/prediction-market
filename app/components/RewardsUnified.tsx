@@ -3,72 +3,76 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Redacted } from './ui/Redacted';
 import { EmptyState } from './ds';
-import { estimateReward, type MarketSnapshot, type Venue } from '@/lib/rewards-estimate';
-import { scaleToCapitalBasis } from '@/lib/honest-display';
-// Pure, node-verifiable filter/sort/derive logic — shared VERBATIM so the list the user
-// sees and any measurement of the filter behaviour cannot diverge (see lib/rewards-filter.js).
+import { APY_CAP, APY_CAP_LABEL } from '@/lib/honest-display';
+// REAL reward-share math (published Polymarket quadratic + Kalshi observed flat pro-rata).
+// The saturation bar + calculator now derive from the MEASURED competitor score agent24
+// scored from the live CLOB book — not the simplified lib/rewards-estimate model.
+import { quadraticUserShare, flatUserShare } from '@/lib/rewardScore';
+// Pure, node-verifiable filter/sort/derive — shared VERBATIM so the list the user sees and
+// any measurement of the filter behaviour cannot diverge (see lib/rewards-filter.js).
 import { deriveOptions, defaultState, applyFilters, sortRows, saturationView } from '@/lib/rewards-filter';
 
 /**
- * Liquidity rewards — FILTERABLE LIST (mirrors the Cash & Carry list surface).
+ * Liquidity rewards — FILTERABLE LIST on the REAL measured reward path.
  *
- * A stacked filter panel (category/venue chips, sliders, hide-TRAP checkbox) over compact
- * rows. Each row carries a pool-competition (saturation) bar; tapping a row expands a
- * share→reward calculator. Every $ figure comes from lib/rewards-estimate (the SSOT this
- * lane already used) — this component never re-derives a number.
+ * A stacked filter bar over compact rows, each carrying a pool-competition (saturation)
+ * bar; tapping a row expands a share→reward calculator. Saturation and expected reward
+ * come from lib/rewardScore (the SAME published formula agent24 runs against the live
+ * book), via the rewardScore block lib/rewards-normalize attaches per row — NOT the
+ * hardcoded lib/rewards-estimate model.
  *
  * HONEST-ENGINE
- *  - PRIMARY figure is net $/day at a $1,000 basis, straight from estimateReward (already
- *    net of adverse selection; WITHHELD as null when the implied run-rate breaches 200%/yr).
- *  - APR is DEMOTED to the sub line, capped at 200% and labelled ">200%/yr" by the SSOT.
- *  - Capacity is real book depth at the reward band; unknown renders "—", never fabricated.
- *  - SATURATION is DERIVED, not fabricated: saturation = 1 - shareOfPool for a reference
- *    $1k maker, i.e. the fraction of the pool existing makers already hold. It needs the
- *    (redacted) qualifyingLiquidity, so it is null when unmeasured AND automatically null
- *    on the free tier — the bar hides/locks rather than inventing a value.
- *  - Risk flags are the feed's OWN flags (TRAP, THIN_CAP, SHORT_BURST, ONE_SIDED, …); the
- *    hide-TRAP filter is a user choice, default OFF — flags are shown, not hidden.
- *  - Derived fields (net/APR/capacity/saturation) redact to the free-tier lock via Redacted.
+ *  - Polymarket = MEASURED: saturation = 1 − userShare, userShare = Q_user/(Q_comp+Q_user)
+ *    with Q_comp the REAL quadratic score recovered from the live CLOB book and Q_user
+ *    scored by the published S(v,s)=((v−s)/v)² for the user's chosen size/distance. Expected
+ *    reward = poolDay × userShare. No REF_PROXIMITY/TIME_BASE/sizeFactor anywhere.
+ *  - Kalshi = OBSERVED: real pool_day + real in-band depth, but the flat pro-rata split is
+ *    an inferred model (Kalshi publishes no band/formula) — labelled "observed split".
+ *  - Reward $/day is GROSS from the pool (0% maker fee). Adverse selection is a separate
+ *    trading cost, disclosed, not folded in. APR demoted, capped ">200%/yr".
+ *  - Point-in-time snapshot: competitors re-quote continuously; excludes your uptime.
+ *  - Missing real inputs → "—", never fabricated. Derived fields redact to the free lock.
  */
 
-const CAPITAL_BASIS = 1000;
-
-interface Side { midpoint: number | null; qualifyingLiquidity: number | null; bookDepthAtBand: number | null; bookSpread: number | null; volatilityStdev: number | null }
+interface RewardScore {
+  source: string;                 // 'measured-clob-quadratic' | 'observed-flat-prorata'
+  model: 'polymarket' | 'kalshi';
+  poolDay: number | null;
+  mid: number | null;
+  maxSpreadCents: number | null;  // full reward band (Polymarket); null for Kalshi
+  minSize: number | null;
+  competitorQ: number | null;     // real Q_min (poly) or limiting qualifying shares (kalshi)
+  refCapital: number;
+  refShare: number | null;        // reference $refCapital maker's pool share
+}
 interface Market {
-  venue: Venue;
+  venue: 'polymarket' | 'kalshi';
   marketId: string;
   title: string;
   groupItemTitle?: string | null;
   category?: string | null;
-  midpoint: number | null;
-  maxSpread: number | null;
-  minSize: number | null;
   dailyPool: number | null;
-  qualifyingLiquidity: number | null;
   bookDepthAtBand: number | null;
-  volatilityStdev: number | null;
-  bookSpread: number | null;
   hoursToResolution: number | null;
-  volatilityRisk?: string | null;
-  twoSidedRequired?: boolean;
   flags?: string[] | null;
-  sides?: { yes?: Side; no?: Side } | null;
+  rewardScore?: RewardScore | null;
 }
 interface Payload { meta: any; markets: Market[]; stale: boolean; isPaid?: boolean }
 
-/** Enriched row = the market + the SSOT-derived numbers the list/filters read. */
+/** Enriched row = the market + the REAL-path numbers the list/filters/bar read. */
 interface Row {
   m: Market;
+  rs: RewardScore | null;
   flags: string[];
   category: string | null;
-  venue: Venue;
+  venue: 'polymarket' | 'kalshi';
   poolDayUsd: number | null;
-  netUsdPerDay: number | null;
-  apr: number | null;            // capped 200% by the SSOT
+  netUsdPerDay: number | null;   // GROSS reward/day at refCapital (0% maker fee)
+  apr: number | null;            // annualized, capped
   aprCapped: boolean;
-  aprLabel: string;
   capacityUsd: number | null;
-  saturation: number | null;     // 0..1, DERIVED (null when unmeasured / free tier)
+  saturation: number | null;     // 0..1, 1 − refShare (measured/observed; null = unmeasured)
+  measured: boolean;             // true = Polymarket live-book; false = Kalshi observed
   isTrap: boolean;
 }
 
@@ -76,7 +80,7 @@ interface FilterState {
   categories: string[];
   venues: string[];
   minPool: number;
-  maxSaturationPct: number;   // 100 = off
+  maxSaturationPct: number;
   minApr: number;
   minCapacity: number;
   hideTrap: boolean;
@@ -91,23 +95,20 @@ const fmtUsd = (n: number) =>
 const toggle = (arr: string[], v: string) =>
   arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v];
 
-/** Snapshot + distance convention identical to the previous card surface, so the estimator
- *  is fed the same inputs it always was — only the presentation around it changed. */
-function toSnapshot(m: Market): MarketSnapshot {
-  return {
-    venue:               m.venue,
-    midpoint:            m.midpoint,
-    maxSpread:           m.maxSpread,
-    minSize:             m.minSize,
-    dailyPool:           m.dailyPool,
-    qualifyingLiquidity: m.qualifyingLiquidity,
-    bookDepthAtBand:     m.bookDepthAtBand,
-    volatilityStdev:     m.volatilityStdev,
-    twoSidedRequired:    m.twoSidedRequired,
-    sides:               (m.sides as any) ?? null,
-  };
+/** Reward $/day → annualized %, capped at the honest-engine ceiling. */
+function annualize(netPerDay: number | null, capital: number): { apr: number | null; capped: boolean } {
+  if (netPerDay == null || capital <= 0) return { apr: null, capped: false };
+  const raw = (netPerDay / capital) * 100 * 365;
+  return { apr: Math.min(raw, APY_CAP), capped: raw > APY_CAP };
 }
-const distOf = (m: Market) => (m.maxSpread ?? 2) / 2;
+
+/** userShare at a chosen size (+ distance for Polymarket) via the REAL rewardScore path. */
+function userShareFor(rs: RewardScore, sizeUsd: number, distanceCents: number): number | null {
+  if (rs.model === 'polymarket') {
+    return quadraticUserShare(rs.competitorQ, rs.mid, rs.maxSpreadCents, rs.minSize, sizeUsd, distanceCents);
+  }
+  return flatUserShare(rs.competitorQ, rs.mid, sizeUsd);   // Kalshi observed (distance N/A)
+}
 
 export default function RewardsUnified() {
   const [data, setData] = useState<Payload | null>(null);
@@ -134,25 +135,28 @@ export default function RewardsUnified() {
 
   const isPaid = data?.isPaid ?? false;
 
-  // Enrich once through the SSOT: net $/day, APR (capped), capacity, and DERIVED saturation.
+  // Enrich from the REAL rewardScore block: saturation, gross reward/day, APR — measured
+  // (Polymarket) or observed (Kalshi). No hardcoded competition model.
   const enriched: Row[] = useMemo(() => {
     const ms = data?.markets ?? [];
     return ms.map((m) => {
-      const est = estimateReward({ venue: m.venue, capital: CAPITAL_BASIS, twoSided: true, distanceCents: distOf(m), market: toSnapshot(m) });
+      const rs = m.rewardScore ?? null;
       const flags = (m.flags ?? []).filter(Boolean);
+      const refShare = rs?.refShare ?? null;
+      const poolDay = rs?.poolDay ?? m.dailyPool ?? null;
+      const net = (poolDay != null && refShare != null) ? poolDay * refShare : null;
+      const { apr, capped } = annualize(net, rs?.refCapital ?? 1000);
       return {
-        m,
-        flags,
+        m, rs, flags,
         category:     m.category ?? null,
         venue:        m.venue,
-        poolDayUsd:   m.dailyPool,
-        netUsdPerDay: est.netPerDay,
-        apr:          est.annualizedPct,
-        aprCapped:    est.annualizedCapped,
-        aprLabel:     est.annualizedLabel,
+        poolDayUsd:   poolDay,
+        netUsdPerDay: net,
+        apr,
+        aprCapped:    capped,
         capacityUsd:  m.bookDepthAtBand,
-        // saturation = 1 - reference $1k maker's share of the pool (existing makers' share).
-        saturation:   est.shareOfPool != null ? 1 - est.shareOfPool : null,
+        saturation:   refShare != null ? 1 - refShare : null,
+        measured:     rs?.source === 'measured-clob-quadratic',
         isTrap:       flags.some((f) => /^TRAP$/i.test(f)),
       };
     });
@@ -176,7 +180,7 @@ export default function RewardsUnified() {
             <span className="cc-title-accent"> · maker</span>
           </h1>
           <p className="cc-sub">
-            quote both sides inside the reward band — earn the pool share, net of adverse selection
+            quote both sides inside the reward band — earn the pool share, from the live order book
           </p>
         </header>
 
@@ -225,7 +229,7 @@ export default function RewardsUnified() {
                   onChange={(e) => set({ minPool: Number(e.target.value) })} aria-label="minimum reward pool" />
               </div>
 
-              {/* MAX POOL COMPETITION (saturation) — derived; disabled if the feed exposes none */}
+              {/* MAX POOL COMPETITION (saturation) */}
               <div className={`cc-fgroup cc-slider ${opts.hasSaturation ? '' : 'is-disabled'}`}>
                 <div className="cc-slider-head">
                   <span className="cc-flabel">Max pool competition</span>
@@ -280,7 +284,7 @@ export default function RewardsUnified() {
             </div>
 
             <p className="cc-count">
-              {visible.length} of {enriched.length} rows · sorted by {filters.sortByPool ? 'reward pool' : 'net $/day'}
+              {visible.length} of {enriched.length} rows · sorted by {filters.sortByPool ? 'reward pool' : 'reward $/day'}
             </p>
 
             {visible.length === 0 ? (
@@ -291,7 +295,6 @@ export default function RewardsUnified() {
                   const { m } = row;
                   const id = `${m.venue}-${m.marketId}`;
                   const isOpen = expandedId === id;
-                  const satv = saturationView(row.saturation);
                   return (
                     <div key={id}>
                       <div
@@ -306,6 +309,9 @@ export default function RewardsUnified() {
                           <span className="rw-row-top">
                             <span className="rw-venue">{m.venue}</span>
                             <span className="rw-cat">{row.category ?? '—'}</span>
+                            <span className={`rw-src ${row.measured ? 'is-measured' : 'is-observed'}`}>
+                              {row.measured ? 'measured · live book' : 'observed split'}
+                            </span>
                             {row.isTrap && <span className="rw-trap">⚠ TRAP</span>}
                           </span>
                           <span className="cc-row-title">{m.groupItemTitle || m.title}</span>
@@ -314,12 +320,12 @@ export default function RewardsUnified() {
                             <Redacted value={row.poolDayUsd} isPaid={isPaid}>{(v) => <>${Number(v).toFixed(0)}/day</>}</Redacted>
                             {' · '}APR{' '}
                             <Redacted value={row.apr} isPaid={isPaid}>
-                              {(v) => row.aprCapped ? <span title={row.aprLabel}>&gt;200%</span> : <>{Number(v).toFixed(0)}%</>}
+                              {(v) => row.aprCapped ? <span title={APY_CAP_LABEL}>&gt;{APY_CAP}%</span> : <>{Number(v).toFixed(0)}%</>}
                             </Redacted>
                             {' · '}cap{' '}
                             <Redacted value={row.capacityUsd} isPaid={isPaid}>{(v) => <>{fmtUsd(Number(v))}</>}</Redacted>
                           </span>
-                          {/* SATURATION BAR — derived; hidden/locked when unavailable */}
+                          {/* SATURATION BAR — measured / observed; hidden/locked when unavailable */}
                           <span className="rw-satwrap">
                             <Redacted
                               value={row.saturation}
@@ -331,7 +337,9 @@ export default function RewardsUnified() {
                                 if (!v) return null;
                                 return (
                                   <>
-                                    <span className="rw-satbar-track" title="derived: existing makers' share vs a $1k maker">
+                                    <span className="rw-satbar-track" title={row.measured
+                                      ? 'measured: existing makers’ quadratic pool share from the live CLOB book'
+                                      : 'observed: existing makers’ share under Kalshi’s inferred flat pro-rata split'}>
                                       <span className={`rw-satbar-fill is-${v.band}`} style={{ width: `${v.pct}%` }} />
                                     </span>
                                     <span className={`rw-sat-label is-${v.band}`}>{Math.round(v.pct)}% {v.label}</span>
@@ -347,7 +355,7 @@ export default function RewardsUnified() {
                           </span>
                           <span className="cc-row-apy">
                             <Redacted value={row.apr} isPaid={isPaid}>
-                              {(v) => row.aprCapped ? <span title={row.aprLabel}>&gt;200%/yr</span> : <>{Number(v).toFixed(0)}%/yr</>}
+                              {(v) => row.aprCapped ? <span title={APY_CAP_LABEL}>&gt;{APY_CAP}%/yr</span> : <>{Number(v).toFixed(0)}%/yr</>}
                             </Redacted>
                           </span>
                         </span>
@@ -355,7 +363,7 @@ export default function RewardsUnified() {
 
                       {isOpen && (
                         <div className="cc-expand">
-                          <RewardShareCalc row={row} satv={satv} isPaid={isPaid} />
+                          <RewardShareCalc row={row} isPaid={isPaid} />
                         </div>
                       )}
                     </div>
@@ -365,9 +373,11 @@ export default function RewardsUnified() {
             )}
 
             <p className="cc-note">
-              Net is after estimated adverse selection, at ${CAPITAL_BASIS.toLocaleString()} deployed. Pool competition is
-              derived from existing qualifying liquidity vs a reference $1k maker. A reward pool can be re-weighted or end
-              at any time — these are not promised yields.
+              Reward $/day is the GROSS pool share (0% maker fee), from the live order book —
+              Polymarket via its published quadratic formula (measured), Kalshi via an observed
+              flat pro-rata split (inferred). It is a point-in-time snapshot: competitors re-quote
+              continuously, it excludes your own uptime, and adverse selection is a separate cost of
+              being filled. Pools can be re-weighted or end — these are not promised yields.
             </p>
           </>
         )}
@@ -377,31 +387,41 @@ export default function RewardsUnified() {
 }
 
 /**
- * Row-expand share → reward calculator. Reuses the SSOT: the row's net $/day is per
- * $1,000, and reward scales linearly with deployed share (scaleToCapitalBasis) — no
- * second math path. Share is clamped to the market's real capacity (book depth at band).
+ * Row-expand share → reward calculator, on the REAL rewardScore path. Your size (and, for
+ * Polymarket, your distance from mid) are inputs to the published quadratic S(v,s); expected
+ * reward = poolDay × userShare. Kalshi uses the observed flat pro-rata split (no band).
  */
-function RewardShareCalc({ row, satv, isPaid }: {
-  row: Row;
-  satv: ReturnType<typeof saturationView>;
-  isPaid: boolean;
-}) {
+function RewardShareCalc({ row, isPaid }: { row: Row; isPaid: boolean }) {
+  const rs = row.rs;
   const cap = row.capacityUsd;
   const maxShare = cap != null && cap > 0 ? Math.floor(cap) : 100_000;
+  const isPoly = rs?.model === 'polymarket';
+  const band = rs?.maxSpreadCents ?? null;               // full band (cents)
+  const typicalDist = band != null ? band / 4 : 0;       // agent24 "typical" placement
+
   const [share, setShare] = useState<number>(Math.min(1000, maxShare));
+  const [dist, setDist] = useState<number>(typicalDist);
 
   const clampShare = (v: number) => Math.max(1, Math.min(maxShare, Math.round(v)));
-  const rewardPerDay = row.netUsdPerDay != null ? scaleToCapitalBasis(row.netUsdPerDay, CAPITAL_BASIS, share) : null;
+
+  const userShare = rs ? userShareFor(rs, share, isPoly ? dist : 0) : null;
+  const rewardPerDay = (rs?.poolDay != null && userShare != null) ? rs.poolDay * userShare : null;
+  const satNow = userShare != null ? saturationView(1 - userShare) : null;
 
   return (
     <div className="rw-calc">
       {/* POOL COMPETITION */}
       <div className="rw-calc-block">
-        <span className="rw-calc-h">Pool competition</span>
+        <span className="rw-calc-h">
+          Pool competition
+          <span className={`rw-src ${row.measured ? 'is-measured' : 'is-observed'}`}>
+            {row.measured ? 'measured · live book' : 'observed split'}
+          </span>
+        </span>
         <span className="rw-satwrap rw-satwrap-lg">
-          <Redacted value={row.saturation} isPaid={isPaid} nullDisplay={<span className="rw-dim">not measured from this feed</span>}>
-            {(sat) => {
-              const v = saturationView(Number(sat));
+          <Redacted value={rs?.refShare ?? null} isPaid={isPaid} nullDisplay={<span className="rw-dim">not measured from this feed</span>}>
+            {() => {
+              const v = satNow;
               if (!v) return null;
               return (
                 <>
@@ -436,15 +456,31 @@ function RewardShareCalc({ row, satv, isPaid }: {
             <span className="rw-calc-out-val">
               <Redacted value={rewardPerDay} isPaid={isPaid}>{(v) => <>${Number(v).toFixed(2)}</>}</Redacted>
             </span>
-            <span className="rw-calc-out-cap">your reward · per day</span>
+            <span className="rw-calc-out-cap">gross reward · per day</span>
           </div>
         </div>
+
+        {/* Polymarket: distance from mid is a real input to the quadratic score */}
+        {isPoly && band != null && (
+          <div className="rw-calc-dist">
+            <div className="cc-slider-head">
+              <span className="rw-calc-lbl">distance from mid (¢) · closer scores higher</span>
+              <span className="cc-slider-val">{dist.toFixed(2)}¢ / band {band}¢</span>
+            </div>
+            <input className="cc-frange" type="range" min={0} max={band / 2} step={0.05}
+              value={dist} onChange={(e) => setDist(Number(e.target.value))} aria-label="distance from mid in cents" />
+          </div>
+        )}
+
         <div className="rw-calc-meta">
           <span>
             pool{' '}
-            <Redacted value={row.poolDayUsd} isPaid={isPaid}>{(v) => <strong>${Number(v).toFixed(0)}/day</strong>}</Redacted>
+            <Redacted value={rs?.poolDay ?? row.poolDayUsd} isPaid={isPaid}>{(v) => <strong>${Number(v).toFixed(0)}/day</strong>}</Redacted>
           </span>
-          <span className="rw-dim">net of adverse selection · run-rate, not guaranteed</span>
+          <span className="rw-dim">
+            gross of adverse selection · point-in-time snapshot · excludes your uptime
+            {row.measured ? '' : ' · split inferred (observed)'}
+          </span>
           {row.isTrap && <span className="rw-trap">⚠ trap market</span>}
         </div>
       </div>

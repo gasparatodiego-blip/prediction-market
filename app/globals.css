@@ -609,6 +609,15 @@ h1, h2, h3 {
   font-size: 9.5px; font-weight: 700; padding: 1px 6px; border-radius: 999px;
   color: var(--cc-amber); border: 1px solid rgba(240,180,60,.45); background: rgba(240,180,60,.08);
 }
+/* provenance chip: measured (live book) vs observed (inferred split) */
+.rewards .rw-src {
+  font-size: 9px; text-transform: uppercase; letter-spacing: .03em; font-weight: 600;
+  padding: 1px 6px; border-radius: 999px; border: 1px solid var(--cc-border);
+}
+.rewards .rw-src.is-measured { color: var(--cc-green); border-color: rgba(47,226,154,.40); background: rgba(47,226,154,.07); }
+.rewards .rw-src.is-observed { color: var(--cc-muted); }
+.rewards .rw-calc-h .rw-src { margin-left: 8px; }
+.rewards .rw-calc-dist { display: flex; flex-direction: column; gap: 4px; margin-top: 2px; }
 
 /* saturation (pool competition) bar */
 .rewards .rw-satwrap { display: flex; align-items: center; gap: 7px; margin-top: 4px; min-height: 12px; }

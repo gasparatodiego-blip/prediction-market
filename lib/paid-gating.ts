@@ -302,6 +302,14 @@ export const REDACTION_MAP: Record<RouteKey, string[]> = {
     'markets[].sides.no.bookDepthAtBand',
     'markets[].sides.no.bookSpread',
     'markets[].sides.no.volatilityStdev',
+    // Measured/observed reward-share block: same sensitive executable figures (real
+    // competitor score, pool $, reference pool share) → redact so the saturation bar +
+    // calculator degrade to the "unlock" lock. source/model/vCents/minSize/refCapital
+    // are non-sensitive labels/params and stay as teaser.
+    'markets[].rewardScore.poolDay',
+    'markets[].rewardScore.mid',
+    'markets[].rewardScore.competitorQ',
+    'markets[].rewardScore.refShare',
   ],
 
   'kalshi-rewards': [
