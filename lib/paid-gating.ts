@@ -276,15 +276,20 @@ export const REDACTION_MAP: Record<RouteKey, string[]> = {
     'no',
   ],
 
-  // Unified normalized reward board (/tmp/liquidity-rewards.json). Redact the same
-  // executable/pool numbers as the per-venue routes so the estimator degrades to a
-  // calm "unlock" state on the free tier. Teasers kept: title, category, venue,
-  // hoursToResolution, twoSidedRequired, volatilityRisk, newsRisk, flags.
+  // Unified normalized reward board (/tmp/liquidity-rewards.json). Redact the DERIVED,
+  // personal, competitive figures so the estimator degrades to a calm "unlock" state on
+  // the free tier. Teasers kept (owner-decided freemium split): title, category, venue,
+  // hoursToResolution, twoSidedRequired, volatilityRisk, newsRisk, flags — AND the market's
+  // published reward pool $/day (dailyPool / rewardScore.poolDay) plus the qualitative
+  // saturated/open status bar (rewardScore.refShare = existing makers' pool share). Those
+  // three are the free teaser hook; the personal edge (your est $/day, your share %, book
+  // depth $, and the live order book) stays locked. `dailyPool` alone can never fabricate a
+  // number: lib/liquidity-yield returns unknown whenever qualifyingLiquidity (depth) is null,
+  // which it always is on the free tier — so no est/share leaks through the public pool.
   'rewards-unified': [
     'markets[].midpoint',
     'markets[].maxSpread',
     'markets[].minSize',
-    'markets[].dailyPool',
     'markets[].qualifyingLiquidity',
     'markets[].bookDepthAtBand',
     'markets[].volatilityStdev',
@@ -302,14 +307,13 @@ export const REDACTION_MAP: Record<RouteKey, string[]> = {
     'markets[].sides.no.bookDepthAtBand',
     'markets[].sides.no.bookSpread',
     'markets[].sides.no.volatilityStdev',
-    // Measured/observed reward-share block: same sensitive executable figures (real
-    // competitor score, pool $, reference pool share) → redact so the saturation bar +
-    // calculator degrade to the "unlock" lock. source/model/vCents/minSize/refCapital
-    // are non-sensitive labels/params and stay as teaser.
-    'markets[].rewardScore.poolDay',
+    // Measured/observed reward-share block. The EXECUTABLE competitive intel stays locked:
+    // the reference mid and the raw competitor qualifying depth. Deliberately PUBLIC (owner
+    // freemium split): rewardScore.poolDay (the market's published reward pool $/day) and
+    // rewardScore.refShare (existing makers' pool share → the qualitative saturated/open
+    // status bar). source/model/vCents/minSize/refCapital are non-sensitive labels/params.
     'markets[].rewardScore.mid',
     'markets[].rewardScore.competitorQ',
-    'markets[].rewardScore.refShare',
   ],
 
   'kalshi-rewards': [
