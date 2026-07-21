@@ -741,43 +741,33 @@ export default function MarketDetailPage() {
               {/* ── (f) Net earnings (Pro) + sanity note ── */}
               <EarningsBlock est={est} isRedacted={isRedacted} flags={mkt.flags} tradeSide={tradeSide} />
 
-            {/* ── E) Fill-handling choice — per-side when quoting both ── */}
-            <div className="rounded-card shadow-card bg-surface px-4 py-4 space-y-4">
+            {/* ── E) Post-fill strategy — user-tappable segmented toggle, per-side when both ── */}
+            <div className="rounded-card shadow-card bg-surface px-2.5 py-2 space-y-1.5">
+              <p className="font-body font-medium text-[12px] text-ink-2">{twoSided ? 'If one side gets filled' : 'If your order gets filled'}</p>
               {twoSided ? (
                 <>
-                  <p className="font-body font-medium text-sm text-ink-2">If one side gets filled</p>
                   <FillRuleCard side="yes" value={onFillYes} onChange={setOnFillYes} />
                   <FillRuleCard side="no"  value={onFillNo}  onChange={setOnFillNo} />
-                  <p className="font-body text-[11px] text-muted leading-relaxed">
-                    <span className="text-ink-2 font-medium">Chosen:</span>{' '}
-                    {fillSummary('yes', onFillYes)} · {fillSummary('no', onFillNo)}.
-                    {' '}On adverse news the news-guard can still force a close (see below). Advisory only — live execution OFF.
-                  </p>
                 </>
               ) : (
-                <>
-                  <p className="font-body font-medium text-sm text-ink-2">If your order gets filled</p>
-                  <FillRuleCard
-                    side={tradeSide}
-                    value={tradeSide === 'yes' ? onFillYes : onFillNo}
-                    onChange={tradeSide === 'yes' ? setOnFillYes : setOnFillNo}
-                  />
-                  <p className="font-body text-[11px] text-muted leading-relaxed">
-                    <span className="text-ink-2 font-medium">Chosen:</span>{' '}
-                    {fillSummary(tradeSide, tradeSide === 'yes' ? onFillYes : onFillNo)}.
-                    {' '}On adverse news the news-guard can still force a close (see below). Advisory only — live execution OFF.
-                  </p>
-                </>
+                <FillRuleCard
+                  side={tradeSide}
+                  value={tradeSide === 'yes' ? onFillYes : onFillNo}
+                  onChange={tradeSide === 'yes' ? setOnFillYes : setOnFillNo}
+                />
               )}
+              <p className="font-body text-[10px] text-muted leading-snug">
+                Simulation preference only — on adverse news the news-guard can still force a close (below). Advisory · no automated execution.
+              </p>
             </div>
 
             {/* ── F) News-guard choice ── */}
-            <div className="rounded-card shadow-card bg-surface px-4 py-4 space-y-3">
+            <div className="rounded-card shadow-card bg-surface px-2.5 py-2 space-y-1.5">
               <div className="flex items-center justify-between gap-2 flex-wrap">
-                <p className="font-body font-medium text-sm text-ink-2">News-guard</p>
+                <p className="font-body font-medium text-[12px] text-ink-2">News-guard</p>
                 <NewsRiskPill risk={risk} />
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
                 <ChoiceBtn active={newsMode === 'withdraw'} onClick={() => setNewsMode('withdraw')}
                   title="🛡 Withdraw liquidity" desc="On adverse news, automatically pull your orders; if already filled, exit at the best price." />
                 <ChoiceBtn active={newsMode === 'alert'} onClick={() => setNewsMode('alert')}
@@ -1421,29 +1411,31 @@ function SideBadge({ side }: { side: SideKey }) {
   return <span className={`inline-flex items-center px-1.5 py-[1px] rounded-md font-body font-semibold text-[10px] border ${cls}`}>{side.toUpperCase()}</span>;
 }
 
-// One-line composed summary of a side's chosen fill rule.
-function fillSummary(side: SideKey, rule: OnFill): string {
-  const other = side === 'yes' ? 'NO' : 'YES';
-  return rule === 'requote'
-    ? `${side.toUpperCase()} fill → re-quote the ${other} side`
-    : `${side.toUpperCase()} fill → close at best price`;
-}
-
-// Per-side fill-rule picker: a badge-labelled header + the two rule choices, with
-// the "re-quote" copy naming the actual opposite side.
+// Per-side post-fill strategy — a user-tappable SEGMENTED toggle (re-quote | close) with a
+// one-line description of the SELECTED option below. Selection persists in the page's
+// onFillYes/onFillNo state (simulation preference only — never enables automated execution).
 function FillRuleCard({ side, value, onChange }: { side: SideKey; value: OnFill; onChange: (v: OnFill) => void }) {
   const other = side === 'yes' ? 'NO' : 'YES';
+  const opts: [OnFill, string][] = [['requote', '↻ Re-quote other side'], ['close', '✕ Close immediately']];
   return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-2">
+    <div className="space-y-1">
+      <div className="flex items-center gap-1.5">
         <SideBadge side={side} />
-        <p className="font-body font-medium text-[13px] text-ink-2">If your {side.toUpperCase()} order gets filled</p>
+        <span className="font-body text-[11px] text-ink-2">on {side.toUpperCase()} fill</span>
+        <span className="font-body text-[10px] text-muted leading-snug flex-1 min-w-0">
+          {value === 'requote'
+            ? `→ re-post the ${other} side, capture the spread (stay exposed until balanced)`
+            : '→ close at best price (no exposure, give up the spread)'}
+        </span>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-        <ChoiceBtn active={value === 'requote'} onClick={() => onChange('requote')}
-          title="↻ Re-quote other side" desc={`Immediately re-post the ${other} side to capture the spread on the exit. You stay directionally exposed until you're balanced again.`} />
-        <ChoiceBtn active={value === 'close'} onClick={() => onChange('close')}
-          title="✕ Close immediately" desc="Close at the best executable price on the book: no directional exposure, but you give up the spread." />
+      <div className="grid grid-cols-2 gap-1.5" role="tablist" aria-label={`post-fill strategy for ${side.toUpperCase()}`}>
+        {opts.map(([v, label]) => (
+          <button key={v} onClick={() => onChange(v)} role="tab" aria-selected={value === v}
+            className={`min-h-[44px] font-body font-medium text-[12px] px-2 py-2 rounded-button border transition-colors
+              ${value === v ? 'border-mint-deep/45 bg-mint-tint text-mint-deep' : 'border-line bg-surface text-muted hover:text-ink-2'}`}>
+            {label}
+          </button>
+        ))}
       </div>
     </div>
   );
