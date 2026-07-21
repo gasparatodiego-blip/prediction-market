@@ -41,6 +41,11 @@ import { activeAdapter } from '@/lib/execution/simulation-adapter';
 // number on stale data). Poll is ~4s, so this tolerates a couple of missed polls before flagging.
 const STALE_BOOK_MS = 15_000;
 
+// Height (px) of the GLOBAL Edgeradar nav bar (app/dashboard/layout.tsx: sticky top-0 z-50, h-12).
+// This page renders inside that layout, so its own sticky header must pin BELOW the global bar
+// (top-12) and every scroll target must offset by this too, or content parks behind the nav.
+const GLOBAL_BAR_H = 48;   // = Tailwind h-12 / top-12
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 type NewsRisk = 'low' | 'medium' | 'high' | 'unknown';
 type SideMode = 'both' | 'buy' | 'sell';
@@ -688,13 +693,18 @@ export default function MarketDetailPage() {
     <div className="min-h-screen"
       style={{
         background: 'radial-gradient(circle at 50% -10%, rgba(15,190,130,.05), transparent 60%), #F5F8F6',
-        // +8px breathing room over the measured header so a scrolled section top clears the bar.
-        '--sticky-h': `${headerH + 8}px`,
+        // Scroll-margin must clear BOTH sticky bars: the global Edgeradar nav (h-12 = 48px, z-50,
+        // in app/dashboard/layout.tsx) AND this page's own header (headerH), plus +8px breathing
+        // room. Missing the 48px global term parked section tops behind the nav on in-page jumps.
+        '--sticky-h': `${GLOBAL_BAR_H + headerH + 8}px`,
       } as CSSProperties}>
       {/* ── A) Sticky header — FULLY OPAQUE so scrolled content never bleeds through it.
              Solid surface (this is a light page — surface is #FFFFFF, the honest equivalent of a
-             solid dark bar), a bottom border, a shadow for separation, and z-30 above all content. ── */}
-      <div ref={headerRef} className="sticky top-0 z-30 bg-surface border-b border-line shadow-card">
+             solid dark bar), a bottom border, a shadow for separation. Pins at top-12 (48px) —
+             i.e. directly BELOW the global Edgeradar nav bar (sticky top-0 z-50 in the dashboard
+             layout) — so the back-link + title are never occluded by it. z-30 sits under the
+             global bar's z-50, which is correct now they no longer overlap. ── */}
+      <div ref={headerRef} className="sticky top-12 z-30 bg-surface border-b border-line shadow-card">
         <div className="max-w-3xl mx-auto px-4 py-2">
           <Link href="/dashboard/liquidity-rewards" className="inline-flex items-center gap-1 font-body text-[12px] text-muted hover:text-ink-2">
             <ChevronLeft size={15} /> Rewards
