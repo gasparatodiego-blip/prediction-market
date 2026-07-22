@@ -59,8 +59,11 @@ for (const [env, pl, ks] of [
 }
 ok(decide({ NEWS_GUARD_ARMED: 'true' }, withdraw).gates.wouldExecute === false, 'arm alone → wouldExecute false (no verified key)');
 ok(decide({}, withdraw, { liveVerified: true }).gates.wouldExecute === false, 'key alone → wouldExecute false (not armed)');
-ok(decide({ NEWS_GUARD_ARMED: 'true' }, withdraw, { liveVerified: true }).gates.wouldExecute === true, 'all gates → wouldExecute true…');
-ok(resolveCancelAdapter('polymarket', { armed: true, liveVerified: true }).kind === 'shadow', '…but the only adapter is shadow → cannot execute');
+ok(decide({ NEWS_GUARD_ARMED: 'true' }, withdraw, { liveVerified: true }).gates.wouldExecute === true, 'all gates → wouldExecute true (computed intent — still not execution)');
+// A live adapter is now REGISTERED, so armed+verified selects it — but decideAction never sets
+// executed true (proven in the matrix above) and the live adapter has its own belts (dry-run, throwing
+// creds, address-only signer). Selection ≠ execution.
+ok(decide({ NEWS_GUARD_ARMED: 'true' }, withdraw, { liveVerified: true }).executed === false, 'even with all gates + live adapter registered, executed stays false');
 ok(decide({}, { ...withdraw, newsMode: 'alert' }).decision === 'alert-only', 'alert mode never withdraws');
 ok(decide({}, { ...withdraw, newsMode: 'off' }).decision === 'off', 'off mode never withdraws');
 ok(decide({ NEWS_GUARD_KILL: 'true' }, withdraw).decision === 'suppressed', 'kill switch suppresses');
@@ -98,4 +101,49 @@ ok(f3.frozenStreak >= 2 && f3.state === REGIME.CALM && f3.severity === 'low', 'f
 const scrubbed = _scrub({ apiSecret: 'x', a: { passphrase: 'y', token: 'z', ok: 1 } });
 ok(scrubbed.apiSecret === '[redacted]' && scrubbed.a.passphrase === '[redacted]' && scrubbed.a.token === '[redacted]' && scrubbed.a.ok === 1, 'secrets scrubbed, non-secrets kept');
 
-console.log(`news-guard selfcheck: ${checks} assertions passed — action path is disarmed (executed=false in every combination).`);
+// ── 6. Live Polymarket cancel adapter: gates, dry-run belt, no fund-moving surface ──
+const { createCancelOnlyAdapter, ALLOWED_OPS } = require('../lib/venues/polymarket-clob/adapter');
+const { redact, scrubString } = require('../lib/venues/polymarket-clob/redact');
+
+// (a) ARMED=false → live adapter is NEVER selected, even with a verified key + registered adapter.
+ok(resolveCancelAdapter('polymarket', { armed: false, liveVerified: true }).kind === 'shadow', 'ARMED=false → shadow (live never selected)');
+// (b) ARMED=true but liveVerified=false → shadow.
+ok(resolveCancelAdapter('polymarket', { armed: true, liveVerified: false }).kind === 'shadow', 'armed but unverified → shadow');
+// unknown venue (no registered live adapter) → shadow.
+ok(resolveCancelAdapter('kalshi', { armed: true, liveVerified: true }).kind === 'shadow', 'no live adapter for venue → shadow');
+// (c) BOTH gates true → the live adapter is selectable (the capability is owned).
+ok(resolveCancelAdapter('polymarket', { armed: true, liveVerified: true }).kind === 'live', 'armed+verified → live adapter selectable');
+
+// (d) No adapter method can open exposure or move funds — assert on the EXPORTED surface.
+const surfaceAdapter = createCancelOnlyAdapter({ dryRun: true, credsProvider: () => { throw new Error('unused'); } });
+const BANNED = ['placeOrder','postOrder','createOrder','submit','closePosition','openPosition','transfer','withdraw','send','approve','redeem','sign','signOrder','deriveApiKey','createApiKey','deleteApiKey'];
+ok(BANNED.every(m => typeof surfaceAdapter[m] !== 'function'), 'no fund-moving / exposure-opening method exists on the adapter');
+const callable = Object.keys(surfaceAdapter).filter(k => typeof surfaceAdapter[k] === 'function');
+ok(callable.every(m => ALLOWED_OPS.includes(m)), 'adapter callable surface ⊆ ALLOWED_OPS (cancel/list/health only)');
+// exitFilledLeg is alert-only — it can never place a closing order.
+ok(typeof surfaceAdapter.exitFilledLeg === 'function' && typeof surfaceAdapter.placeOrder !== 'function', 'filled-leg path is alert-only (no placement)');
+
+// (e) redaction: field-name AND inline-value AND private-key-hex scrubbing.
+ok(redact({ apiSecret: 's', passphrase: 'p', poly_api_key: 'k', ok: 2 }).apiSecret === '[redacted]', 'redact scrubs secret field names');
+ok(scrubString('x 0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef y').includes('[redacted-64hex]'), 'redact scrubs inline 0x-64hex private keys');
+
+// (f) DRY-RUN BELT: all gates satisfied AND dry-run on → a mutating call makes ZERO network calls and
+//     NEVER loads credentials (the credsProvider throws if touched). Async, so it closes the run.
+process.env.PM_ADAPTER_DRYRUN = 'true';
+const liveDry = resolveCancelAdapter('polymarket', { armed: true, liveVerified: true });
+ok(liveDry.kind === 'live' && liveDry.dryRun === true, 'all gates + PM_ADAPTER_DRYRUN → live adapter in dry-run');
+// The registered disarmed factory wires a THROWING creds provider; dry-run must not reach it.
+Promise.resolve()
+  .then(async () => {
+    const c1 = await liveDry.cancelResting({ marketId: '0xabc', orders: [{ side: 'yes' }] });
+    ok(c1.dryRun === true && c1.sent === false, 'dry-run cancelResting: synthetic success, sent=false, no network');
+    const c2 = await liveDry.cancelOrder('0xdeadbeef');
+    ok(c2.dryRun === true && c2.sent === false, 'dry-run cancelOrder: synthetic success, sent=false, no network');
+    const c3 = await liveDry.exitFilledLeg({ side: 'yes', size: 100 });
+    ok(c3.alertOnly === true && c3.sent === false, 'exitFilledLeg is alert-only, sends no order');
+  })
+  .then(() => {
+    delete process.env.PM_ADAPTER_DRYRUN;
+    console.log(`news-guard selfcheck: ${checks} assertions passed — action path is disarmed (executed=false in every combination; live adapter selectable only under armed+verified, and even then dry-run/creds/signer belts block any send).`);
+  })
+  .catch((e) => { console.error('selfcheck FAILED:', e.message); process.exit(1); });

@@ -44,11 +44,27 @@ const { appendShadowRecord }  = require('../lib/news-guard/shadow-log');
 // is the intended, explicit, human step.
 const NG = loadNewsGuardConfig();
 
-// There is NO Polymarket/Kalshi trading key in custody (lib/key-custody stores only CEX perp
-// credentials, and every venue adapter is read-only + liveVerified:false). So for the prediction
-// venues the guard acts on, liveVerified is false BY CONSTRUCTION — never send an order through an
-// unverified adapter. This is the third independent gate on execution.
-function keyStateFor(/* venue */) { return { liveVerified: false }; }
+// The keyLiveVerified gate (the third of the four). Polymarket now has a live cancel-only adapter and
+// a verification path (scripts/polymarket-verify-live.ts), so its liveVerified is a REAL fact read
+// from the DB — true only after a human derived + verified a key (verifiedAt set, not revoked), never
+// hardcoded. Every OTHER venue stays false by construction (no live adapter, no verification path).
+function keyStateFor(venue, pmVerified) {
+  return { liveVerified: venue === 'polymarket' ? pmVerified === true : false };
+}
+
+// Read the honest liveVerified fact for Polymarket once per scan (mirrors credentials.ts
+// getPolymarketLiveVerified without importing the TS module into this plain-node agent). Degrades to
+// false — the safe value — on any DB error or missing client.
+async function getPolymarketVerified() {
+  if (!prisma) return false;
+  try {
+    const row = await prisma.exchangeKey.findFirst({
+      where: { venue: 'polymarket', revokedAt: null, verifiedAt: { not: null } },
+      select: { id: true },
+    });
+    return row != null;
+  } catch { return false; }
+}
 
 const BOOK_HIST_MAX = 24;   // rolling window per market (~4h at the 10-min scan cadence)
 
@@ -479,6 +495,9 @@ async function scan() {
   // cooldown + hourly cap) are consumed on a real 'withdraw' decision even in shadow, so arming
   // later behaves exactly as the shadow log predicts.
   state.actionHourly = state.actionHourly.filter(t => now - t < 3_600_000);   // prune to last hour
+  // The real keyLiveVerified fact for Polymarket, read once per scan (false everywhere until a human
+  // derives + verifies a key). Still gated by NG.armed=false downstream → shadow regardless.
+  const pmVerified = await getPolymarketVerified();
   let shadowWritten = 0, shadowActs = 0, shadowSuppressed = 0;
   for (const p of placements) {
     if (!p.marketId) continue;
@@ -490,7 +509,7 @@ async function scan() {
     };
     const { record, consumesActionSlot } = decideAction({
       signal: sm.signal, market: sm.market, placement: p,
-      config: NG, keyState: keyStateFor(sm.market.venue), rails, now,
+      config: NG, keyState: keyStateFor(sm.market.venue, pmVerified), rails, now,
     });
     const r = appendShadowRecord(record);
     if (r.written) shadowWritten++;
