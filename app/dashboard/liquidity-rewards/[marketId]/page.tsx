@@ -84,9 +84,16 @@ interface NormalizedMarket {
   tokenIdNo?:          string | null;
   sides?:              { yes: SideSnapshot | null; no: SideSnapshot | null } | null;
   newsRisk?:           NewsRisk;
+  severity?:           NewsRisk;
+  newsSource?:         string | null;   // 'book' | 'news' | 'book+news' | 'none'
   newsSignals?:        { source: string; note: string }[] | null;
+  newsEvidence?:       { summary: string | null; sourceCount: number | null } | null;
   protect?:            { action: string; detail: string; liveExecution?: string } | null;
 }
+
+// The news-guard's execution posture, read from the agent's OWN written meta (never env). Drives
+// the panel's truth banner so it can't claim a different arming state than the process runs under.
+interface NewsGuardMeta { present: boolean; armed: boolean; killSwitch: boolean; executionMode: string; generatedAt: string | null }
 
 interface BookRow { price: number; size: number }   // price 0..1 fraction, size shares
 // asksComplement=true means the ask ladder is the CONTRACT COMPLEMENT of the other
@@ -247,6 +254,8 @@ export default function MarketDetailPage() {
   // Server-evaluated tier, straight from the /api/rewards-unified payload (lib/paid-gating).
   // Drives the whole cockpit/book lock: paid → full numbers, free/anon → calm unlock state.
   const [isPaid, setIsPaid]     = useState(false);
+  // News-guard execution posture (armed/shadow), from the /api/rewards-unified payload.
+  const [newsGuard, setNewsGuard] = useState<NewsGuardMeta | null>(null);
 
   // live book (both sides)
   const [books, setBooks]       = useState<DualBook | null>(null);
@@ -308,6 +317,7 @@ export default function MarketDetailPage() {
         if (!alive) return;
         if (!m) { setMktErr('Market not found in the current snapshot.'); setLoading(false); return; }
         setIsPaid(!!d.isPaid);
+        setNewsGuard(d.newsGuard ?? null);
         setMkt(m);
         // Match the list's typicalNet distance preset exactly: (maxSpread ?? 2) / 2
         // (the list uses `?? 2`, not `?? 4`) so a null-maxSpread market — e.g. Kalshi —
@@ -914,19 +924,40 @@ export default function MarketDetailPage() {
             <div className="rounded-card shadow-card bg-surface px-2.5 py-1.5 space-y-1">
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <p className="font-body font-medium text-[12px] text-ink-2">News-guard</p>
-                <NewsRiskPill risk={risk} />
+                <NewsRiskPill risk={risk} evidence={mkt.newsEvidence ?? null} />
               </div>
+              {/* Real derived evidence for the current severity — measured fields only, "—" when unknown. */}
+              <p className="font-body text-[10px] text-muted leading-snug">
+                {mkt.newsEvidence?.summary
+                  ? <>Signal: <span className="text-ink-2">{mkt.newsEvidence.summary}</span>{mkt.newsSource ? ` · ${mkt.newsSource}` : ''}</>
+                  : risk === 'unknown'
+                  ? 'Signal: — (no reading yet for this market)'
+                  : 'Signal: calm — no book move or news spike detected.'}
+              </p>
+
+              {/* DISARMED-REALITY BANNER — the panel states what the running process actually does. */}
+              <div className="rounded-button bg-bg-soft border border-line px-3 py-2">
+                <p className="font-body text-[11px] text-ink-2 leading-relaxed">
+                  <span className="font-semibold">Monitoring is live and advisory.</span>{' '}
+                  {newsGuard?.armed
+                    ? 'Automatic execution is ARMED for opted-in markets.'
+                    : 'Automatic execution is OFF (disarmed) — no orders are pulled automatically. Your choice below is recorded and the guard logs the action it would take, but sends nothing.'}
+                </p>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
                 <ChoiceBtn active={newsMode === 'withdraw'} onClick={() => setNewsMode('withdraw')}
-                  title="🛡 Withdraw liquidity" desc="On adverse news, automatically pull your orders; if already filled, exit at the best price." />
+                  title="🛡 Withdraw liquidity" desc="When armed, pull your orders on a HIGH signal; if filled, exit per each leg’s rule. Today: logged only, not executed." />
                 <ChoiceBtn active={newsMode === 'alert'} onClick={() => setNewsMode('alert')}
-                  title="🔔 Alert only" desc="Telegram + on-page alert, no automatic action: you decide." />
+                  title="🔔 Alert only" desc="Telegram + on-page alert, never an automatic action — you decide." />
                 <ChoiceBtn active={newsMode === 'off'} onClick={() => setNewsMode('off')}
                   title="⊘ Off" desc="No news monitoring on this market." />
               </div>
               <p className="font-body text-[10px] text-muted leading-snug">
                 {newsMode === 'withdraw'
-                  ? 'Chosen: on a HIGH signal the news-guard advises withdrawing liquidity and, if filled, exiting at the best price (advisory — live execution OFF).'
+                  ? (newsGuard?.armed
+                      ? 'Chosen: on a HIGH signal the guard withdraws liquidity and, if filled, exits per each leg’s rule.'
+                      : 'Chosen: on a HIGH signal the guard would withdraw liquidity and exit per each leg’s rule — but execution is disarmed, so it only records the decision (no order sent).')
                   : newsMode === 'alert'
                   ? 'Chosen: you only get an alert on an adverse signal, with no automatic action.'
                   : 'Chosen: no monitoring. Caution: without the guard, a resting order can fill right as the price moves against you (adverse selection).'}
@@ -1736,13 +1767,17 @@ function ChoiceBtn({ active, onClick, title, desc }: { active: boolean; onClick:
     </button>
   );
 }
-function NewsRiskPill({ risk }: { risk: NewsRisk }) {
+// The severity chip reflects the REAL derived value (book-primary policy in agent27). 'medium' is
+// no longer decorative — it means the book detector fired on measured dynamics; 'high' means book
+// AND corroborating news; 'unknown' shows "—" (no reading), never a fabricated risk level.
+function NewsRiskPill({ risk, evidence }: { risk: NewsRisk; evidence?: { summary: string | null } | null }) {
   const map: Record<NewsRisk, { label: string; cls: string }> = {
-    high:    { label: 'news risk · HIGH', cls: 'bg-coral-tint text-coral-ink border-coral-ink/25' },
-    medium:  { label: 'news risk · med',  cls: 'bg-gold-tint text-gold border-gold/25' },
-    low:     { label: 'calm',             cls: 'bg-mint-tint text-mint-deep border-mint-deep/20' },
-    unknown: { label: 'no signal',        cls: 'bg-bg-soft text-muted border-line' },
+    high:    { label: 'HIGH',     cls: 'bg-coral-tint text-coral-ink border-coral-ink/25' },
+    medium:  { label: 'elevated', cls: 'bg-gold-tint text-gold border-gold/25' },
+    low:     { label: 'calm',     cls: 'bg-mint-tint text-mint-deep border-mint-deep/20' },
+    unknown: { label: '—',        cls: 'bg-bg-soft text-muted border-line' },
   };
   const s = map[risk] ?? map.unknown;
-  return <span className={`inline-flex items-center px-2 py-[2px] rounded-md font-body font-medium text-[10px] border ${s.cls}`}>{s.label}</span>;
+  const title = evidence?.summary ? `signal: ${evidence.summary}` : undefined;
+  return <span title={title} className={`inline-flex items-center px-2 py-[2px] rounded-md font-body font-medium text-[10px] border ${s.cls}`}>{s.label}</span>;
 }

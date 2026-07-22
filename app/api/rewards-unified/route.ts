@@ -13,9 +13,10 @@ const FILE       = '/tmp/liquidity-rewards.json';
 const GUARD_FILE = '/tmp/news-guard.json';       // written by agent27-news-guard (optional)
 const STALE_MS   = 35 * 60_000;                  // agents scan every 15 min
 
-// Merge the news-guard's per-market risk level + advisory PROTECT action, keyed by
-// marketId. Absent/stale guard → newsRisk 'unknown' (calm), never fabricated.
-function mergeNewsGuard(markets: any[]): any[] {
+// Merge the news-guard's per-market severity + measured evidence + advisory PROTECT action, keyed
+// by marketId. Absent/stale guard → severity 'unknown' (—), never fabricated. Returns the per-market
+// merge AND the guard's execution posture (armed/shadow) so the UI states the truth, not intent.
+function mergeNewsGuard(markets: any[]): { markets: any[]; guardMeta: any } {
   let guard: any = null;
   try { guard = JSON.parse(fs.readFileSync(GUARD_FILE, 'utf-8')); } catch { /* optional */ }
   const byId: Record<string, any> = {};
@@ -25,16 +26,30 @@ function mergeNewsGuard(markets: any[]): any[] {
   const guardStale = guard?.meta?.generatedAt
     ? Date.now() - new Date(guard.meta.generatedAt).getTime() > STALE_MS
     : true;
-  return markets.map(m => {
+  // Execution posture — read from the agent's OWN written meta (not env), so the UI can never claim
+  // a different arming state than the process runs under. Stale/absent guard ⇒ report unknown, and
+  // default armed:false (the safe default) so the panel never implies live execution when it can't tell.
+  const guardMeta = {
+    present: !!guard && !guardStale,
+    armed: guard?.meta?.armed === true && !guardStale,
+    killSwitch: guard?.meta?.killSwitch === true,
+    executionMode: guardStale ? 'unknown' : (guard?.meta?.executionMode ?? 'shadow'),
+    generatedAt: guard?.meta?.generatedAt ?? null,
+  };
+  const merged = markets.map(m => {
     const g = byId[m.marketId];
-    if (!g || guardStale) return { ...m, newsRisk: 'unknown', newsSignals: null, protect: null };
+    if (!g || guardStale) return { ...m, newsRisk: 'unknown', severity: 'unknown', newsSignals: null, newsEvidence: null, protect: null };
     return {
       ...m,
-      newsRisk:    g.newsRisk ?? 'unknown',
-      newsSignals: g.signals ?? null,
-      protect:     g.protect ?? null,
+      newsRisk:     g.severity ?? g.newsRisk ?? 'unknown',
+      severity:     g.severity ?? g.newsRisk ?? 'unknown',
+      newsSource:   g.source ?? null,
+      newsSignals:  g.signals ?? null,
+      newsEvidence: g.evidence ? { summary: g.evidence.summary ?? null, sourceCount: g.evidence.sourceCount ?? null } : null,
+      protect:      g.protect ?? null,
     };
   });
+  return { markets: merged, guardMeta };
 }
 
 export async function GET() {
@@ -45,7 +60,9 @@ export async function GET() {
       ? Date.now() - new Date(data.meta.generatedAt).getTime()
       : Infinity;
 
-    data.markets = mergeNewsGuard(Array.isArray(data.markets) ? data.markets : []);
+    const merged = mergeNewsGuard(Array.isArray(data.markets) ? data.markets : []);
+    data.markets = merged.markets;
+    data.newsGuard = merged.guardMeta;   // execution posture for the UI's news-guard panel
     // Render-time sanity net: drop any reward row with a negative pool/liquidity or a
     // price outside [0,1] (logged as sanity-reject; UI shows fewer rows, calmly).
     data.markets = filterSane('rewards', data.markets);
