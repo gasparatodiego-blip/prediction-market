@@ -13,6 +13,7 @@ import { ArrowLeft, RefreshCw, Activity, AlertTriangle, ChevronDown, ChevronRigh
 import { Redacted } from '@/app/components/ui/Redacted';
 import { PlatformLink } from '@/app/components/ui/PlatformLink';
 import { polymarketProfileUrl, polymarketMarketUrl, polymarketOutcomeUrl } from '@/lib/platform-links';
+import CopyPositionsPanel from './CopyPositionsPanel';
 import {
   fmtPnl, fmtWallet, fmtRelShort, fmtSince, fmtPct1, fmtSize, pnlColor, catText,
 } from './format';
@@ -183,6 +184,9 @@ export default function TraderDetail({ address }: { address: string }) {
                 <PositionRow key={p.key} p={p} fills={data.fills} isPaid={isPaid} />
               ))}
             </div>
+
+            {/* Copy-trading: engine-owned copied positions + isolated manual lane */}
+            <CopyPositionsPanel address={address} />
 
             <HonestNote data={data} />
           </>
