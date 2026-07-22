@@ -15,6 +15,7 @@ const { loadNewsGuardConfig } = require('../lib/news-guard/config');
 const { decideAction } = require('../lib/news-guard/action');
 const { resolveCancelAdapter } = require('../lib/news-guard/cancel-adapter');
 const { _scrub } = require('../lib/news-guard/shadow-log');
+const { stepRegime, REGIME } = require('../lib/news-guard/regime');
 
 const NOW = 1_753_000_000_000;
 let checks = 0;
@@ -66,6 +67,32 @@ ok(decide({ NEWS_GUARD_KILL: 'true' }, withdraw).decision === 'suppressed', 'kil
 
 // ── 4. Idempotency rails ──
 ok(decide({}, withdraw, { liveVerified: false }) && decideAction({ signal: sigHigh, market, placement: withdraw, config: loadNewsGuardConfig({}), keyState: { liveVerified: false }, rails: { cooldownActive: true, hourlyCapReached: false }, now: NOW }).record.decision === 'suppressed', 'cooldown suppresses');
+
+// ── 4b. Regime state machine: hysteresis, halt-first, evidence, no-manufactured-high ──
+const P = { exitStreak: 2 };
+const step = (prev, severity, extra = {}) => stepRegime({ prev, severity, source: extra.source ?? 'book', summary: extra.summary ?? 's', sample: extra.sample ?? { mid: 0.5, spread: 0.01 }, resolved: extra.resolved ?? false, now: extra.now ?? NOW, params: P });
+// medium instant → ELEVATED, and a transition is recorded with its measured cause
+const r1 = step(null, 'medium', { summary: 'spread 4× baseline' });
+ok(r1.state === REGIME.ELEVATED && r1.severity === 'medium', 'medium → ELEVATED');
+ok(r1.transition && r1.transition.to === 'elevated' && r1.transition.evidence.summary === 'spread 4× baseline', 'transition records measured evidence');
+// hysteresis: one calm snapshot HOLDS elevated (cool-off), a second drops to calm
+const r2 = step(r1, 'low');
+ok(r2.state === REGIME.ELEVATED && r2.cooling === true, 'one calm snapshot holds ELEVATED (cool-off)');
+const r3 = step(r2, 'low');
+ok(r3.state === REGIME.CALM && r3.severity === 'low', 'second calm snapshot drops to CALM');
+// held state keeps citing the evidence that set it (no fabricated re-evidence during hold)
+ok(r2.evidence.summary === 'spread 4× baseline', 'held state keeps the original measured evidence');
+// EVENT only from a genuine instantaneous high (book+news) — never manufactured from book alone
+ok(step(null, 'high', { source: 'book+news' }).state === REGIME.EVENT, 'high → EVENT');
+ok(step(null, 'medium').state !== REGIME.EVENT, 'book-alone medium never becomes EVENT');
+// HALT is resolved-only (frozen price is telemetry, never a halt) → severity unknown ('—')
+ok(step(null, 'low', { resolved: true }).state === REGIME.HALTED, 'resolved → HALTED');
+ok(step(null, 'low', { resolved: true }).severity === 'unknown', 'HALTED severity is unknown (—)');
+const frozenSample = { mid: 0.5, spread: 0.01 };
+const f1 = step(null, 'low', { sample: frozenSample });
+const f2 = step(f1, 'low', { sample: frozenSample });
+const f3 = step(f2, 'low', { sample: frozenSample });
+ok(f3.frozenStreak >= 2 && f3.state === REGIME.CALM && f3.severity === 'low', 'frozen price does NOT halt — stays CALM, streak is telemetry only');
 
 // ── 5. Secret scrub ──
 const scrubbed = _scrub({ apiSecret: 'x', a: { passphrase: 'y', token: 'z', ok: 1 } });

@@ -14,6 +14,8 @@
 const fs = require('fs');
 const path = require('path');
 const { detectBookMove, THRESHOLDS } = require('../lib/news-guard/book-detector');
+const { buildSignal } = require('../lib/news-guard/signal');
+const { stepRegime, isElevatedState, PARAMS } = require('../lib/news-guard/regime');
 
 const HIST = path.join(__dirname, '..', 'data', 'history');
 const BOOK_HIST_MAX = 24;   // must match agent27
@@ -82,6 +84,55 @@ function replaySection(section) {
   return { section, snapshots: snaps.length, markets: series.size, marketsWithHistory, steps, fires };
 }
 
+// ── AFTER: the same walk, layered with the persisted, hysteretic regime state machine ───────────
+// For each market we walk the series keeping a regime state (starting null) and, at each step, run
+// the SAME detectBookMove → buildSignal, then step the regime. News is null in replay (we have no
+// historical Google-News feed), so severity never reaches 'high' from book+news → EVENT cannot fire
+// historically. The measurable difference is therefore on the ELEVATED (book-only 'medium') firing
+// count, the frozen-feed HALTs, and the FLAPPING rate — reported honestly below.
+function replaySectionRegime(section) {
+  const snaps = readDaySnaps(section);
+  const series = buildSeries(section, snaps);
+  let steps = 0;
+  let rawFires = 0, rawToggles = 0;             // "before": stateless detector fired / oscillations
+  let entriesElevated = 0, entriesEvent = 0;    // "after": transitions INTO elevated / event (firings)
+  let regimeToggles = 0, frozenSteps = 0;       // "after": elevated↔not oscillations / book-unchanged (telemetry)
+  for (const [, { samples }] of series) {
+    samples.sort((a, b) => a.t - b.t);
+    let regime = null, prevFired = false, prevElevated = false;
+    for (let i = 0; i < samples.length; i++) {
+      const hist = samples.slice(Math.max(0, i - BOOK_HIST_MAX), i);
+      if (hist.length < THRESHOLDS.MIN_SAMPLES) continue;
+      steps++;
+      const cur = samples[i];
+      const book = detectBookMove(cur, hist);
+      const sig = buildSignal({ marketId: 'x', book, news: null, ts: cur.t });
+
+      // BEFORE metrics (stateless)
+      if (book.fired) rawFires++;
+      if (book.fired !== prevFired) rawToggles++;
+      prevFired = book.fired;
+
+      // AFTER metrics (regime state machine)
+      const next = stepRegime({
+        prev: regime, severity: sig.severity, source: sig.source,
+        summary: sig.evidence.summary, sample: { mid: cur.mid, spread: cur.spread },
+        resolved: false, now: cur.t,
+      });
+      if (next.transition && isElevatedState(next.transition.to) && !isElevatedState(next.transition.from)) {
+        entriesElevated++;
+        if (next.transition.to === 'event') entriesEvent++;
+      }
+      const nowElevated = isElevatedState(next.state);
+      if (nowElevated !== prevElevated) regimeToggles++;
+      prevElevated = nowElevated;
+      if (next.frozenStreak >= 3) frozenSteps++;   // telemetry only — NOT a halt (see regime.js header)
+      regime = next;
+    }
+  }
+  return { section, steps, rawFires, rawToggles, entriesElevated, entriesEvent, regimeToggles, frozenSteps };
+}
+
 function main() {
   console.log(`\n=== news-guard book-detector REPLAY (last ${DAYS} days) ===`);
   console.log('thresholds:', JSON.stringify(THRESHOLDS));
@@ -105,9 +156,28 @@ function main() {
     }
     if (r.fires.length > sample.length) console.log(`     … and ${r.fires.length - sample.length} more`);
   }
-  console.log(`\n=== TOTAL: ${totalFires} firings over ${totalSteps} evaluated market-steps ===`);
+  console.log(`\n=== BEFORE (stateless detector): ${totalFires} firings over ${totalSteps} evaluated market-steps ===`);
   console.log('by trigger type:', JSON.stringify(byTrigger));
-  console.log('(depth-collapse/band-emptied cannot fire in replay — per-side depth is not persisted in history; live agent has it for Polymarket.)\n');
+  console.log('(depth-collapse/band-emptied cannot fire in replay — per-side depth is not persisted in history; live agent has it for Polymarket.)');
+
+  // ── AFTER: regime state machine (hysteresis; HALT is resolved-only, NOT frozen — see below) ──
+  console.log(`\n=== AFTER (regime machine: EXIT_STREAK=${PARAMS.EXIT_STREAK}) ===`);
+  let aFires = 0, aToggles = 0, aEnter = 0, aEvent = 0, aRegToggles = 0, aFrozen = 0, aSteps = 0;
+  for (const section of ['rewards-poly', 'rewards-kalshi']) {
+    const g = replaySectionRegime(section);
+    aFires += g.rawFires; aToggles += g.rawToggles; aEnter += g.entriesElevated; aEvent += g.entriesEvent;
+    aRegToggles += g.regimeToggles; aFrozen += g.frozenSteps; aSteps += g.steps;
+    console.log(`\n[${section}] steps=${g.steps}`);
+    console.log(`   BEFORE: fired ${g.rawFires} times · flapping (fired↔calm toggles) ${g.rawToggles}`);
+    console.log(`   AFTER : entered ELEVATED/EVENT ${g.entriesElevated} times (of which EVENT/high ${g.entriesEvent}) · flapping (regime toggles) ${g.regimeToggles}`);
+  }
+  const pct = (a, b) => b > 0 ? `${(100 * (b - a) / b).toFixed(1)}% fewer` : 'n/a';
+  console.log(`\n=== SIDE BY SIDE (${aSteps} steps) ===`);
+  console.log(`  firings:  BEFORE ${aFires}  →  AFTER ${aEnter}   (${pct(aEnter, aFires)})`);
+  console.log(`  flapping: BEFORE ${aToggles}  →  AFTER ${aRegToggles}   (${pct(aRegToggles, aToggles)})`);
+  console.log(`  would-withdraw (EVENT/high): BEFORE 0  →  AFTER ${aEvent}   (book+news 'high' needs live news — 0 in a book-only historical replay, both sides)`);
+  console.log(`  est. reward forgone: $0 BEFORE and AFTER — withdraws are 'high'-gated and no 'high' fires without historical news; the machine changes the WATCH signal + flapping, not withdraws.`);
+  console.log(`  frozen-price HALT: REJECTED (measured). ${aFrozen}/${aSteps} steps (${(100*aFrozen/aSteps).toFixed(0)}%) show a book unchanged ≥3 snapshots — that is normal quiet, not a dead feed, and frozen data cannot fire the detector anyway. Halting on it would relabel correct 'calm' as '—' for the majority of markets. HALT is resolved-only.\n`);
 }
 
 main();
