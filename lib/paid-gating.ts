@@ -15,6 +15,7 @@ export type RouteKey =
   | 'carry'
   | 'liquidity-rewards'
   | 'liquidity-rewards-book'
+  | 'rewards-legs'
   | 'rewards-unified'
   | 'kalshi-rewards'
   | 'kalshi-rewards-book'
@@ -275,6 +276,14 @@ export const REDACTION_MAP: Record<RouteKey, string[]> = {
     'yes',
     'no',
   ],
+
+  // A user's OWN saved reward legs (their placed levels + follow/pinned prefs). This
+  // is the owner's input config, not a competitive derived edge, so nothing is
+  // redacted here — the tier-gated reward/drift $ figures live in the live-band /
+  // drift feeds, not on this config route. Cross-user exposure is prevented upstream
+  // by userId-scoped queries, never by redaction. Present so this route goes through
+  // the same entitlement path as the rest of the paid surface.
+  'rewards-legs': [],
 
   // Unified normalized reward board (/tmp/liquidity-rewards.json). Redact the DERIVED,
   // personal, competitive figures so the estimator degrades to a calm "unlock" state on

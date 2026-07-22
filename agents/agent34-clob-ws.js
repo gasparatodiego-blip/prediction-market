@@ -45,6 +45,13 @@ const UA = 'edgeradar-agent34-clob-ws/1.0 (read-only)';
 
 const log = (...a) => console.log(new Date().toISOString(), '[agent34]', ...a);
 
+// Lazy Prisma — legs are persisted user data (RewardsLeg). If the client/DB isn't
+// available the agent still serves the watchlist; leg markets are simply not unioned
+// in. We read only DISTINCT marketIds here — never leg prices/contents — and never log them.
+let prisma = null;
+try { prisma = new (require('@prisma/client').PrismaClient)(); } catch { /* watchlist-only */ }
+const resolvedTokens = new Map(); // conditionId -> { tokenId, tokenIdNo } (CLOB-resolved, cached)
+
 function readJsonSafe(file) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; }
 }
@@ -78,6 +85,46 @@ function collectDesiredMarkets() {
     if (out.size >= SUBSCRIPTION_CAP) break;
   }
   return out;
+}
+
+// Resolve YES/NO token ids for a conditionId via the CLOB (cached). Needed for
+// leg-only markets that aren't in the reward-eligible watchlist file.
+async function resolveTokens(conditionId) {
+  if (resolvedTokens.has(conditionId)) return resolvedTokens.get(conditionId);
+  try {
+    const r = await httpGet(`${CLOB_BASE}/markets/${conditionId}`, { timeoutMs: 6_000, headers: { 'User-Agent': UA, Accept: 'application/json' } });
+    const tokens = r && r.status === 200 && Array.isArray(r.data.tokens) ? r.data.tokens : [];
+    const yes = tokens.find(t => t.outcome === 'Yes');
+    const no = tokens.find(t => t.outcome === 'No');
+    const rec = { tokenId: yes ? String(yes.token_id) : null, tokenIdNo: no ? String(no.token_id) : null };
+    if (rec.tokenId) resolvedTokens.set(conditionId, rec);
+    return rec;
+  } catch { return { tokenId: null, tokenIdNo: null }; }
+}
+
+// Union in markets where ANY user has a persisted leg (Phase 2). We read only the
+// DISTINCT (marketId, venue) — never any leg's price/side/contents. Mutates `into`.
+async function unionLegMarkets(into) {
+  if (!prisma) return;
+  let rows = [];
+  try {
+    rows = await prisma.rewardsLeg.findMany({ where: { venue: 'polymarket' }, distinct: ['marketId'], select: { marketId: true } });
+  } catch (e) { log('leg-market query failed (watchlist-only this cycle):', e.message); return; }
+  for (const { marketId } of rows) {
+    if (into.has(marketId)) continue;            // already covered by the watchlist
+    if (into.size >= SUBSCRIPTION_CAP) break;     // stay bounded — never subscribe to everything
+    const t = await resolveTokens(marketId);
+    if (!t.tokenId) continue;                      // unresolvable → skip, never fabricate a token
+    into.set(marketId, {
+      conditionId: marketId,
+      tokenId: t.tokenId,
+      tokenIdNo: t.tokenIdNo,
+      minSize: 1,          // unknown for off-watchlist markets → conservative; band stays null
+      maxSpread: null,     // no reward-band config known → band null (mid/drift still tracked)
+      title: '',
+      fromLeg: true,
+    });
+  }
 }
 
 const store = new LiveBookStore();
@@ -117,8 +164,9 @@ async function resnapshotAll(reason) {
 }
 
 // Reconcile subscriptions to the current desired set. Adds/drops on the live socket.
-function reconcileSubscriptions() {
+async function reconcileSubscriptions() {
   desired = collectDesiredMarkets();
+  await unionLegMarkets(desired);   // Phase 2: + markets where a user has legs
   const nextAssets = new Map();
   for (const meta of desired.values()) {
     nextAssets.set(meta.tokenId, { conditionId: meta.conditionId, side: 'yes', meta });
@@ -208,18 +256,23 @@ async function tick() {
 async function main() {
   log('starting — LIVE CLOB books for liquidity-rewards (read-only, €0)');
   await new Promise(r => setTimeout(r, STARTUP_DELAY_MS));
-  reconcileSubscriptions();
+  await reconcileSubscriptions();
   client.connect();
   client.subscribe([...assetToMarket.keys()]);
   await resnapshotAll('startup'); // seed immediately via REST so we're useful before the first ws snapshot
 
-  setInterval(() => { try { reconcileSubscriptions(); } catch (e) { log('reconcile failed:', e.message); } }, REFRESH_MARKETS_MS);
+  setInterval(() => { reconcileSubscriptions().catch(e => log('reconcile failed:', e.message)); }, REFRESH_MARKETS_MS);
   setInterval(() => { tick().catch(e => log('tick failed:', e.message)); }, WRITE_INTERVAL_MS);
   log(`up: ${desired.size} markets / ${assetToMarket.size} assets subscribed`);
 }
 
-process.on('SIGTERM', () => { try { client.close(); } catch { /* ignore */ } process.exit(0); });
-process.on('SIGINT', () => { try { client.close(); } catch { /* ignore */ } process.exit(0); });
+function shutdown() {
+  try { client.close(); } catch { /* ignore */ }
+  if (prisma) { prisma.$disconnect().catch(() => {}); }
+  process.exit(0);
+}
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
 
 if (require.main === module) main().catch(e => { log('fatal:', e.message); process.exit(1); });
 

@@ -30,6 +30,7 @@ model User {
   subscriptions     Subscription[]
   copyConfigs       CopyConfig[]
   rewardsPlacements RewardsPlacement[]
+  rewardsLegs       RewardsLeg[]
   exchangeKeys      ExchangeKey[]
 }
 
@@ -127,6 +128,36 @@ model RewardsPlacement {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, marketId])
+}
+
+// One resting/planned liquidity-reward LEG — a single price level on one book side,
+// keyed to match the client LegBook + fillRules (book:kind:price). Persisting these
+// (they were client-only React state) lets agent34 track per-leg drift across
+// sessions and write DriftSignal shadow records even when the page is closed.
+//
+// USER DATA: strictly scoped by userId (never exposed cross-user; @@unique includes
+// userId), redacted for tier by the API like the rest of the paid surface, and its
+// contents are never logged. Advisory/paper only — a leg is where a quote SHOULD sit;
+// no order is ever placed from it (AUTO_EXECUTE_ENABLED=false, cancel-only adapter).
+model RewardsLeg {
+  id        String   @id @default(cuid())
+  userId    String
+  marketId  String                              // Polymarket conditionId or Kalshi ticker
+  venue     String                              // 'polymarket' | 'kalshi'
+  book      String                              // 'yes' | 'no'
+  kind      String                              // 'buy' | 'sell'
+  price     Float                               // the placed price level (0..1)
+  mode      String   @default("follow")         // 'follow' (target = mid∓offset, tracks live) | 'pinned' (target = price)
+  offsetC   Float    @default(0)                // signed distance-to-mid in cents at placement: (price - mid)*100
+  onFill    String   @default("requote")        // per-level fill rule: 'requote' | 'close' (mirrors fillRules)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, marketId, book, kind, price])
+  @@index([userId, marketId])
+  @@index([marketId])
 }
 
 // Copy-trading configuration — one row per (user, watched wallet). Paper-only:

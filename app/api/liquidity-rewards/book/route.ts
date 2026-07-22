@@ -7,7 +7,44 @@ import { getIsPaid, redactForTier } from '@/lib/paid-gating';
 export const dynamic = 'force-dynamic';
 
 const DATA_FILE = '/root/prediction-market/data/liquidity-rewards.json';
+const LIVE_FILE = '/tmp/clob-live-books.json';
 const CLOB_BASE = 'https://clob.polymarket.com';
+
+// agent34 writes the live-book snapshot every ~3s. If the file is older than this
+// the WS agent is down/wedged → we are on the coarse 15-min REST path and say so.
+// (Operational liveness threshold, derived from the 3s write cadence — NOT a
+// return/edge figure. Flagged for Diego's sign-off.)
+const LIVE_FILE_STALE_MS = 20_000;
+
+type FeedState = 'live' | 'stale' | 'rest-fallback';
+
+// Read agent34's live band for this market. Returns an honest feed state:
+//   'live'         — WS book fresh; band centered on the dust-filtered ADJUSTED mid
+//   'stale'        — market present but its book is stale → treat as REST-coarse
+//   'rest-fallback'— no live file / agent down / market not covered → REST only
+function readLiveBand(conditionId: string): {
+  feedState: FeedState; feedAgeMs: number | null; adjustedMid: number | null;
+  plainMid: number | null; bandRadiusC: number | null; midAdjVsPlainC: number | null;
+} {
+  const off = { feedState: 'rest-fallback' as FeedState, feedAgeMs: null, adjustedMid: null, plainMid: null, bandRadiusC: null, midAdjVsPlainC: null };
+  try {
+    const live = JSON.parse(fs.readFileSync(LIVE_FILE, 'utf-8'));
+    const fileAge = Date.now() - new Date(live.generatedAt).getTime();
+    if (!(fileAge >= 0) || fileAge > LIVE_FILE_STALE_MS) return off; // agent down → REST fallback
+    const m = live.markets?.[conditionId];
+    if (!m) return off;                                              // market not subscribed → REST fallback
+    return {
+      feedState: m.live ? 'live' : 'stale',
+      feedAgeMs: typeof m.ageMs === 'number' ? m.ageMs : fileAge,
+      adjustedMid: m.mid ?? null,
+      plainMid: m.plainMid ?? null,
+      bandRadiusC: m.bandRadiusC ?? null,
+      midAdjVsPlainC: m.midAdjVsPlainC ?? null,
+    };
+  } catch {
+    return off; // no file yet / parse error → honest REST fallback
+  }
+}
 
 // 2-second in-memory cache keyed by conditionId to absorb repeat/simultaneous opens
 const bookCache = new Map<string, { data: object; ts: number }>();
@@ -127,6 +164,11 @@ export async function GET(req: NextRequest) {
   };
   const tickSize = parseTick(yesBook.tick_size) ?? parseTick(noBook?.tick_size);
 
+  // Live band from agent34's WS feed (honest: labelled live / stale / rest-fallback).
+  // The ladders above stay REST (on-demand depth); the band CENTER upgrades to the
+  // live dust-filtered adjusted mid when the feed is fresh. Reward math unchanged.
+  const live = readLiveBand(conditionId);
+
   const payload = {
     conditionId,
     tokenId,
@@ -134,8 +176,11 @@ export async function GET(req: NextRequest) {
     yes: yesBook,
     no:  noBook,
     tickSize,
+    live,   // { feedState, feedAgeMs, adjustedMid, plainMid, bandRadiusC, midAdjVsPlainC }
     fetchedAt: new Date().toISOString(),
-    source: 'Polymarket CLOB · read-only · no orders placed',
+    source: live.feedState === 'live'
+      ? 'Polymarket CLOB · live WS band + REST depth · read-only · no orders placed'
+      : 'Polymarket CLOB · REST (WS feed unavailable — coarse) · read-only · no orders placed',
   };
   bookCache.set(conditionId, { data: payload, ts: Date.now() });
   return NextResponse.json(redactForTier(payload, 'liquidity-rewards-book', isPaid));
