@@ -32,6 +32,7 @@ model User {
   rewardsPlacements RewardsPlacement[]
   rewardsLegs       RewardsLeg[]
   exchangeKeys      ExchangeKey[]
+  manualPositions   ManualPosition[]
 }
 
 // Exchange API credentials. Storage layer only — no venue client, no signing, no
@@ -185,6 +186,61 @@ model CopyConfig {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, walletAddr])
+}
+
+// ── Manual-position lane — PHYSICALLY SEPARATE from the copy engine ─────────────
+// The copy engine (agent21-copy-watcher) owns SIMULATED positions in JSON stores
+// (data/paper-positions.json, data/copy-events.json). Manual positions live here,
+// in their OWN Postgres table, in their OWN key namespace (cuid). agent21 never
+// queries `prisma.manualPosition` and never touches this table — the isolation is
+// by storage identity, not a flag it filters on and could re-include by mistake.
+// `source` is redundant with that separation (defense in depth, never the only guard).
+// traderId is context only ("added from this trader's page") — NOT a copy link.
+model ManualPosition {
+  id         String   @id @default(cuid())
+  userId     String
+  traderId   String                                  // wallet whose page it was added from — context only, never a copy link
+  market     String                                  // market title / question
+  conditionId String?                                // Polymarket conditionId when known (else null → "—")
+  outcome    String   @default("—")
+  side       String                                  // 'BUY' | 'SELL'
+  entryPrice Float                                   // 0<p<1 executable outcome price
+  size       Float                                   // shares
+  source     String   @default("manual")            // defense-in-depth tag, redundant with table separation
+  status     String   @default("open")              // 'open' | 'closed'
+  closedPct  Float    @default(0)                    // cumulative % closed via manual override (0–100)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, traderId])
+}
+
+// ── Copy-position close override ledger — engine-owned coordination ────────────
+// A user "Chiudi parziale/tutto" request on a COPY-ENGINE (paper) position. The API
+// only INSERTS a pending row; agent21 reads pending rows each cycle, applies the
+// close to its in-memory paper position (it is the sole writer of paper-positions.json),
+// logs it with origin 'user_override', and marks the row applied/already_closed.
+// Race-safe: if the position is already flat by the time the engine applies it, the
+// override no-ops and is marked 'already_closed' (never an error, never a double-close).
+model CopyCloseOverride {
+  id          String   @id @default(cuid())
+  userId      String
+  positionId  String                                 // `${userId}|${walletAddr}::${cid}|${outcome}`
+  walletAddr  String
+  cid         String
+  outcome     String
+  closePercent Int                                   // 1–100 (100 = full close)
+  status      String   @default("pending")          // 'pending' | 'applied' | 'already_closed' | 'error'
+  origin      String   @default("user_override")    // audit origin tag
+  resultNote  String?                                // engine-written outcome detail
+  createdAt   DateTime @default(now())
+  appliedAt   DateTime?
+
+  @@index([status])
+  @@index([userId])
 }
 
 model UserPreferences {
