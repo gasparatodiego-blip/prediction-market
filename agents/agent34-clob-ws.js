@@ -28,9 +28,14 @@ const { ClobWsClient } = require('../lib/clob-ws/client');
 const { LiveBookStore } = require('../lib/clob-ws/live-book');
 const { httpGet } = require('../lib/httpGet');
 const { adjustedMid, parseOrders } = require('../lib/rewardScore');
+const { decideDrift } = require('../lib/rewards-drift');
+const { loadNewsGuardConfig } = require('../lib/news-guard/config');
+const { appendDriftShadowRecord } = require('../lib/news-guard/shadow-log');
+const { estRewardForgone } = require('../lib/news-guard/action');
 
 // ── config ──
 const WATCHLIST_FILE = '/root/prediction-market/data/liquidity-rewards.json'; // agent24 output
+const NORMALIZED_FILE = '/tmp/liquidity-rewards.json';                        // normalized (carries rewardScore)
 const OUT_FILE       = '/tmp/clob-live-books.json';
 const HB_FILE        = '/tmp/agent-heartbeats.json';
 const CLOB_BASE      = 'https://clob.polymarket.com';
@@ -133,6 +138,17 @@ let desired = new Map();            // conditionId -> meta
 let assetToMarket = new Map();      // assetId -> { conditionId, side:'yes'|'no', meta }
 const lastResnapshotAt = new Map(); // assetId -> ts (throttle REST)
 let reconnects = 0, watchdogReconnects = 0, restSnapshots = 0, droppedForCap = 0;
+let driftSignals = 0;
+
+// ── drift-advisory state (Phase 4). Legs are persisted user data; we track per-leg
+// time-in/out-of-band and emit SHADOW DriftSignals through the news-guard rails. ──
+let ngConfig = { armed: false, killSwitch: false, cooldownMs: 6 * 3_600_000, maxPerHour: 20 };
+let legsByMarket = new Map();      // conditionId -> [RewardsLeg rows]
+let placementByKey = new Map();    // `${userId}:${marketId}` -> placement (for est $/day)
+let rewardScoreByMarket = new Map(); // marketId -> rewardScore object (from normalized snapshot)
+const driftTime = new Map();       // leg.id -> { lastTs, inBandMs, outBandMs, prevInBand }
+const driftCooldown = new Map();   // leg.id -> ts of last emitted signal
+let driftHourly = [];              // timestamps of emitted signals in the last hour
 
 client.on('close', () => { reconnects++; });
 client.on('watchdog-reconnect', () => { watchdogReconnects++; });
@@ -167,6 +183,7 @@ async function resnapshotAll(reason) {
 async function reconcileSubscriptions() {
   desired = collectDesiredMarkets();
   await unionLegMarkets(desired);   // Phase 2: + markets where a user has legs
+  await loadDriftInputs();          // Phase 4: refresh legs/placements/rewardScore/rails
   const nextAssets = new Map();
   for (const meta of desired.values()) {
     nextAssets.set(meta.tokenId, { conditionId: meta.conditionId, side: 'yes', meta });
@@ -246,10 +263,79 @@ function buildSnapshot() {
   };
 }
 
+// Refresh the drift inputs: persisted legs (user data — full rows needed here to
+// compute band position, but contents are NEVER logged), the user's placement (for
+// est $/day), the market rewardScore (from the normalized snapshot), and the live
+// news-guard rail config. Called on the slow reconcile cadence, not every tick.
+async function loadDriftInputs() {
+  ngConfig = loadNewsGuardConfig(process.env);
+  // rewardScore per market from the normalized snapshot.
+  rewardScoreByMarket = new Map();
+  const snap = readJsonSafe(NORMALIZED_FILE);
+  for (const m of (snap && snap.markets) || []) {
+    if (m.marketId && m.rewardScore) rewardScoreByMarket.set(m.marketId, m.rewardScore);
+  }
+  if (!prisma) { legsByMarket = new Map(); placementByKey = new Map(); return; }
+  try {
+    const legs = await prisma.rewardsLeg.findMany({ where: { venue: 'polymarket' } });
+    const byMarket = new Map();
+    for (const l of legs) {
+      if (!byMarket.has(l.marketId)) byMarket.set(l.marketId, []);
+      byMarket.get(l.marketId).push(l);
+    }
+    legsByMarket = byMarket;
+    const pls = await prisma.rewardsPlacement.findMany({ where: { venue: 'polymarket' } });
+    placementByKey = new Map(pls.map(p => [`${p.userId}:${p.marketId}`, p]));
+  } catch (e) {
+    log('drift-input load failed (drift paused this cycle):', e.message);
+    legsByMarket = new Map(); placementByKey = new Map();
+  }
+}
+
+// Evaluate drift for every persisted leg against the live book. Emits SHADOW records
+// only; can never execute. Respects kill-switch, cooldown, hourly cap, structural gate.
+function runDrift(snapshot, now) {
+  if (legsByMarket.size === 0) return;
+  driftHourly = driftHourly.filter(t => now - t < 3_600_000);
+  for (const [marketId, legs] of legsByMarket) {
+    const mk = snapshot.markets[marketId];
+    if (!mk) continue;                                    // not subscribed → cannot judge
+    const feedState = mk.live ? 'live' : 'stale';
+    const oneSided = !mk.yes || mk.yes.bestBid == null || mk.yes.bestAsk == null;
+    const rewardScore = rewardScoreByMarket.get(marketId) || null;
+    for (const leg of legs) {
+      // est $/day for THIS user's placement (from rewardScore only; null when absent).
+      const placement = placementByKey.get(`${leg.userId}:${marketId}`) || null;
+      const forg = (rewardScore && placement)
+        ? estRewardForgone({ rewardScore }, placement, ngConfig.cooldownMs)
+        : null;
+      const market = {
+        mid: mk.mid, maxSpread: mk.maxSpread, feedState, oneSided,
+        estDailyUsd: forg ? forg.estDailyUsd : null,
+      };
+      const rails = {
+        cooldownActive: driftCooldown.get(leg.id) != null && (now - driftCooldown.get(leg.id)) < ngConfig.cooldownMs,
+        hourlyCapReached: driftHourly.length >= ngConfig.maxPerHour,
+      };
+      const out = decideDrift({ leg, market, timeState: driftTime.get(leg.id), config: ngConfig, rails, now });
+      driftTime.set(leg.id, out.timeState);
+      if (out.record && out.record.decision === 'drift') {
+        appendDriftShadowRecord(out.record);   // scrubbed + appended to the drift shadow dataset
+        driftSignals++;
+        if (out.consumesSlot) { driftCooldown.set(leg.id, now); driftHourly.push(now); }
+      }
+    }
+  }
+}
+
 async function tick() {
   // Heal any book that lost its snapshot (delta-without-seed).
   for (const id of store.resnapshotNeeded()) await resnapshotAsset(id, 'gap');
-  try { atomicWrite(OUT_FILE, buildSnapshot()); } catch (e) { log('write failed:', e.message); }
+  const now = Date.now();
+  const snapshot = buildSnapshot();
+  try { runDrift(snapshot, now); } catch (e) { log('drift eval failed:', e.message); }
+  snapshot.feed.driftSignals = driftSignals;
+  try { atomicWrite(OUT_FILE, snapshot); } catch (e) { log('write failed:', e.message); }
   heartbeat();
 }
 

@@ -16,6 +16,9 @@ const { decideAction } = require('../lib/news-guard/action');
 const { resolveCancelAdapter } = require('../lib/news-guard/cancel-adapter');
 const { _scrub } = require('../lib/news-guard/shadow-log');
 const { stepRegime, REGIME } = require('../lib/news-guard/regime');
+const { LiveBookStore } = require('../lib/clob-ws/live-book');
+const { legTarget, legStatus, offsetExceedsBand } = require('../lib/rewards-live-band');
+const { decideDrift } = require('../lib/rewards-drift');
 
 const NOW = 1_753_000_000_000;
 let checks = 0;
@@ -202,6 +205,67 @@ ok(h.breakerOpen === false && h.consecutiveFailures === 0, 'a success closes the
 // (f) provider registry: env enable/disable + FAILURE ISOLATION (one throwing provider never rejects collect)
 ok(providerEnabled({ id: 'x', envFlag: 'NG_X', defaultEnabled: true }, { NG_X: 'false' }) === false, 'env=false disables a default-on provider');
 ok(providerEnabled({ id: 'x', envFlag: 'NG_X', defaultEnabled: false }, { NG_X: 'true' }) === true, 'env=true enables a default-off provider');
+
+// ── 8. LIVE BAND FEED + DRIFT ADVISORY (agent34) — the honest-engine invariants ──
+// (1) a STALE live book is NEVER reported as live.
+{
+  const store = new LiveBookStore();
+  const T = NOW;
+  store.applySnapshot('asset1', { bids: [{ price: '0.50', size: '500' }], asks: [{ price: '0.52', size: '500' }], tick_size: '0.01' }, T);
+  ok(store.freshness('asset1', 30_000, T + 1_000).live === true, 'fresh seeded book → live');
+  ok(store.freshness('asset1', 30_000, T + 60_000).live === false && store.freshness('asset1', 30_000, T + 60_000).reason === 'stale', 'a stale book (age > window) is NEVER reported as live');
+  ok(store.freshness('neverSeen', 30_000, T).live === false && store.freshness('neverSeen', 30_000, T).reason === 'no-snapshot', 'an unseeded book is not live');
+  // a price_change delta with no prior snapshot must flag resnapshot, not fabricate a book
+  const r = store.ingest({ event_type: 'price_change', price_changes: [{ asset_id: 'gapAsset', price: '0.5', size: '100', side: 'BUY' }] }, T);
+  ok(r.needsResnapshot === true && store.getBook('gapAsset') === null, 'delta-without-snapshot flags resnapshot and serves no book');
+}
+
+// (2) a drift event can NEVER execute (advisory), armed or not.
+{
+  const maxSpread = 4; // radius 2c
+  const outLeg = { id: 'L1', userId: 'u', marketId: 'M', venue: 'polymarket', book: 'yes', kind: 'sell', price: 0.60, mode: 'follow', offsetC: 0 };
+  const mkt = { mid: 0.50, maxSpread, feedState: 'live', oneSided: false, estDailyUsd: null }; // 10c out → fires
+  const rails = { cooldownActive: false, hourlyCapReached: false };
+  const armedCfg = loadNewsGuardConfig({ NEWS_GUARD_ARMED: 'true' });
+  const d = decideDrift({ leg: outLeg, market: mkt, timeState: null, config: armedCfg, rails, now: NOW });
+  ok(d.record && d.record.decision === 'drift', 'a leg a full half-band out fires a DriftSignal');
+  ok(d.record.executed === false && d.record.mode === 'shadow', 'drift is advisory: executed=false, mode=shadow even with NEWS_GUARD_ARMED=true');
+  // structural gate: a one-sided-by-construction market produces NO drift signal
+  const oneSided = decideDrift({ leg: outLeg, market: { ...mkt, oneSided: true }, timeState: null, config: armedCfg, rails, now: NOW });
+  ok(oneSided.record && oneSided.record.decision === 'calm', 'structural one-sided market → calm, no drift noise (respects the structural-baseline gate)');
+  // kill switch suppresses
+  const killed = decideDrift({ leg: outLeg, market: mkt, timeState: null, config: loadNewsGuardConfig({ NEWS_GUARD_KILL: 'true' }), rails, now: NOW });
+  ok(killed.record.decision === 'suppressed', 'kill switch suppresses drift');
+  // a non-live feed never accrues a drift event off data we cannot see
+  const stale = decideDrift({ leg: outLeg, market: { ...mkt, feedState: 'stale' }, timeState: null, config: armedCfg, rails, now: NOW });
+  ok(stale.record === null, 'stale/REST-fallback feed emits no drift event (only a LIVE book judges band position)');
+}
+
+// (3) a PINNED leg never produces a follow target (it keeps its literal price).
+{
+  ok(legTarget({ mode: 'pinned', price: 0.55, offsetC: -3 }, 0.90) === 0.55, 'pinned target = literal price, ignores mid');
+  const follow = legTarget({ mode: 'follow', price: 0.55, offsetC: -3 }, 0.90);
+  ok(follow != null && follow !== 0.55 && Math.abs(follow - 0.87) < 1e-9, 'follow target tracks mid (mid − offset), differs from the literal price');
+  const st = legStatus({ book: 'yes', kind: 'buy', price: 0.55, mode: 'pinned', offsetC: -3 }, 0.90, 4, NOW);
+  ok(st.targetPrice === 0.55 && st.driftC === 0, 'pinned legStatus: target=price, drift=0 (never a follow target)');
+}
+
+// (4) an offset BEYOND the band radius is FLAGGED (neverEarns), not silently accepted.
+{
+  ok(offsetExceedsBand(5, 4) === true, 'offset 5c beyond radius 2c → exceeds band (flagged)');
+  ok(offsetExceedsBand(1, 4) === false, 'offset 1c within radius 2c → within band');
+  ok(offsetExceedsBand(5, null) === null, 'unknown band → null verdict (never a fabricated flag)');
+  const far = legStatus({ book: 'yes', kind: 'sell', price: 0.7, mode: 'follow', offsetC: 9 }, 0.60, 4, NOW);
+  ok(far.neverEarns === true, 'a follow leg with offset > radius reports neverEarns (UI states it plainly)');
+}
+
+// (5) the cancel-only adapter STILL cannot place an order (feature adds no execution path).
+{
+  const { createCancelOnlyAdapter, ALLOWED_OPS: OPS } = require('../lib/venues/polymarket-clob/adapter');
+  const a = createCancelOnlyAdapter({ dryRun: true, credsProvider: () => { throw new Error('unused'); } });
+  ok(typeof a.placeOrder !== 'function' && typeof a.postOrder !== 'function', 'live-band/drift feature adds NO placement method to the adapter');
+  ok(Object.keys(a).filter(k => typeof a[k] === 'function').every(m => OPS.includes(m)), 'adapter surface still ⊆ ALLOWED_OPS after the feature');
+}
 
 // (g) DRY-RUN BELT: all gates satisfied AND dry-run on → a mutating call makes ZERO network calls and
 //     NEVER loads credentials (the credsProvider throws if touched). Async, so it closes the run.
