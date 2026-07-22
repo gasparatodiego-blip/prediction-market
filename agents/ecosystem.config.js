@@ -339,5 +339,20 @@ module.exports = {
       max_memory_restart: '450M',
       env:           { NODE_ENV: 'production', HOME: '/root' },
     },
+    {
+      name:          'agent34-clob-ws',
+      script:        './agents/agent34-clob-ws.js',
+      cwd:           '/root/prediction-market',
+      restart_delay: 15000,
+      max_restarts:  20,
+      // Small + bounded: one WS connection, ≤120 subscribed assets, in-memory books
+      // only (measured ~a few KB/subscription — see /tmp/clob-live-books.json memory{}).
+      // Own process for FAILURE ISOLATION: a dead socket must never stall agent27 or
+      // the dashboard. autorestart so a hard socket death self-heals.
+      max_memory_restart: '200M',
+      watch:         false,
+      autorestart:   true,
+      env:           { NODE_ENV: 'production', HOME: '/root' },
+    },
   ],
 };
