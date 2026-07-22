@@ -104,3 +104,6 @@ data/polymarket-clob-audit.jsonl
 data/polymarket-maker-audit.jsonl
 data/requote-economics-raw.json
 data/maker-*.jsonl
+
+# Polymarket fee SSOT cache (runtime, per-market base_fee; not source)
+data/polymarket-fee-cache.json
