@@ -8,7 +8,7 @@ import { assertRedacted } from '@/lib/guardian-suppress';
 // SSOT shared with agents/agent33-sport-recorder.js — one fee model, one staleness rule.
 // If this route computed its own math the dashboard could contradict the recorded file.
 const {
-  MAX_AGE_SEC, EXCHANGES, POLY_FEE_NOTE, detectArbs,
+  MAX_AGE_SEC, EXCHANGES, detectArbs,
 } = require('@/lib/sport-arb-math');
 
 export const dynamic = 'force-dynamic';
@@ -208,8 +208,9 @@ export async function GET() {
       feeModel: {
         exchangeCommissionPct: 2,
         kalshiTaker: '0.07*P*(1-P)',
-        polymarketTaker: 0.01,
-        polymarketNote: POLY_FEE_NOTE,
+        // Real per-market Polymarket taker fee from the live SSOT (lib/polymarket-fees.js):
+        // (base_fee/20000)*(1-P), read from GET /fee-rate. No flat rate — "—" when base_fee is unknown.
+        polymarketTaker: 'live per-market (base_fee/20000)*(1-P) — SSOT; "—" when unknown',
       },
       maxAgeSec: MAX_AGE_SEC,
       disclaimer:
