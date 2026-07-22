@@ -328,18 +328,17 @@ async function scan() {
     const depthYes = m.sides && m.sides.yes ? m.sides.yes.bookDepthAtBand : null;
     const depthNo  = m.sides && m.sides.no  ? m.sides.no.bookDepthAtBand  : null;
     const depthMin = (typeof depthYes === 'number' && typeof depthNo === 'number') ? Math.min(depthYes, depthNo) : null;
-    const cur = { mid: m.midpoint, spread: m.bookSpread, depthMin, bandDepth: m.bookDepthAtBand };
+    // Upstream structural one-sidedness ("near-certain outcome, one side empty"). Carried as a book
+    // SAMPLE field — the detector owns the structural-trap trigger AND its baseline gate now, so a
+    // book that is one-sided BY CONSTRUCTION can only elevate when it CHANGES from its own baseline,
+    // never as its permanent state (was the systematic false positive when folded in unconditionally).
+    const trap = Array.isArray(m.flags) && m.flags.includes('TRAP');
+    const cur = { mid: m.midpoint, spread: m.bookSpread, depthMin, bandDepth: m.bookDepthAtBand, trap };
     const hist = Array.isArray(state.bookHist[m.marketId]) ? state.bookHist[m.marketId] : [];
     const book = detectBookMove(cur, hist);
-    // Fold the upstream structural TRAP flag (one side near-empty) in as a book trigger — it is a
-    // measured one-sided condition, and book alone still caps at 'medium' by policy.
-    if (Array.isArray(m.flags) && m.flags.includes('TRAP')) {
-      book.triggers.push({ type: 'structural-trap', note: 'near-certain outcome, one side empty (upstream flag)' });
-      book.fired = true;
-      if (book.severity === 'low') book.severity = 'medium';
-    }
-    // Advance the rolling history AFTER detecting (so the current point never baselines itself).
-    if (cur.mid != null || cur.spread != null || cur.bandDepth != null) {
+    // Advance the rolling history AFTER detecting (so the current point never baselines itself). The
+    // trap state is recorded here so future baselines can tell a permanent one-sided book from a new one.
+    if (cur.mid != null || cur.spread != null || cur.bandDepth != null || cur.trap) {
       state.bookHist[m.marketId] = [...hist, { t: now, ...cur }].slice(-BOOK_HIST_MAX);
     }
 

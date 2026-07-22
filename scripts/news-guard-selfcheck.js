@@ -29,6 +29,21 @@ const bookCalm = detectBookMove({ mid: 0.50, spread: 0.002, depthMin: 5000, band
 ok(!bookCalm.fired && bookCalm.severity === 'low', 'calm book does not fire');
 ok(detectBookMove({ mid: 0.62 }, hist.slice(0, 3)).reason === 'insufficient-history', 'too little history → no fire');
 
+// ── 1b. Structural-trap: fires ONLY when one-sidedness is a CHANGE, never the permanent state ──
+const calmSample = { mid: 0.50, spread: 0.002, depthMin: 5000, bandDepth: 20000 };
+// (a) permanently one-sided (trap across the whole baseline) → NOT an event → does not fire
+const permTrapHist = Array.from({ length: 10 }, (_, i) => ({ t: NOW - (10 - i) * 600_000, ...calmSample, trap: true }));
+ok(!detectBookMove({ ...calmSample, trap: true }, permTrapHist).fired, 'permanently one-sided book (trap all baseline) → calm, does not fire');
+// (b) genuine transition: two-sided baseline, now one-sided → fires structural-trap at medium
+const twoSidedHist = Array.from({ length: 10 }, (_, i) => ({ t: NOW - (10 - i) * 600_000, ...calmSample, trap: false }));
+const trapFire = detectBookMove({ ...calmSample, trap: true }, twoSidedHist);
+ok(trapFire.fired && trapFire.severity === 'medium' && trapFire.triggers.some(t => t.type === 'structural-trap'), 'newly one-sided vs two-sided baseline → structural-trap fires (medium)');
+// (c) cannot baseline the trap state (history lacks known trap flags) → never invent a baseline → no fire
+const noTrapInfoHist = Array.from({ length: 10 }, (_, i) => ({ t: NOW - (10 - i) * 600_000, ...calmSample }));
+ok(!detectBookMove({ ...calmSample, trap: true }, noTrapInfoHist).triggers.some(t => t.type === 'structural-trap'), 'unknown baseline trap state → structural-trap suppressed (honest)');
+// (d) a genuinely one-sided transition still caps at medium (needs news to reach high) — invariant preserved
+ok(buildSignal({ marketId: 'M', book: trapFire, news: { level: 'low' }, ts: NOW }).severity === 'medium', 'structural-trap alone still caps at medium');
+
 // ── 2. Severity policy: book→medium, book+news→high, news-alone→low ──
 const S = (b, n) => buildSignal({ marketId: 'M', book: b, news: n, ts: NOW }).severity;
 ok(S(bookFire, { level: 'low' }) === 'medium', 'book alone → medium');

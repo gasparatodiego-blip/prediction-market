@@ -50,14 +50,19 @@ function buildSeries(section, snaps) {
       let spread = null;
       if (typeof r.bookSpread === 'number') spread = r.bookSpread;                       // poly
       else if (typeof r.bestBid === 'number' && typeof r.bestAsk === 'number') spread = r.bestAsk - r.bestBid; // kalshi
+      // Upstream one-sided "trap" flag, persisted per snapshot (history stores flags as an object).
+      const flags = r.flags;
+      const trap = flags && typeof flags === 'object' && !Array.isArray(flags) ? !!flags.TRAP
+                 : (Array.isArray(flags) ? flags.includes('TRAP') : false);
       const sample = {
         t: snap.t,
         mid: typeof r.mid === 'number' ? r.mid : null,
         spread: typeof spread === 'number' && isFinite(spread) ? spread : null,
         depthMin: null,                        // per-side depth is not persisted in history → can't fire honestly
         bandDepth: typeof r.existingLiquidityUsd === 'number' ? r.existingLiquidityUsd : null,
+        trap,
       };
-      if (sample.mid == null && sample.spread == null && sample.bandDepth == null) continue;
+      if (sample.mid == null && sample.spread == null && sample.bandDepth == null && !sample.trap) continue;
       if (!series.has(id)) series.set(id, { title: r.title || id, venue: r.venue || section, samples: [] });
       series.get(id).samples.push(sample);
     }
@@ -70,18 +75,32 @@ function replaySection(section) {
   const series = buildSeries(section, snaps);
   const fires = [];
   let steps = 0, marketsWithHistory = 0;
+  // Structural-trap BEFORE vs AFTER the baseline gate.
+  //   BEFORE = the old unconditional fold-in: EVERY snapshot carrying the trap flag fired 'medium'.
+  //   AFTER  = the baseline-gated detector: fires only when one-sidedness is a CHANGE from baseline.
+  let trapSamplesBefore = 0, trapFiresAfter = 0;
+  const trapMarketsBefore = new Set(), trapMarketsAfter = new Set();
   for (const [id, { title, venue, samples }] of series) {
     samples.sort((a, b) => a.t - b.t);
     if (samples.length > THRESHOLDS.MIN_SAMPLES) marketsWithHistory++;
     for (let i = 0; i < samples.length; i++) {
+      if (samples[i].trap) { trapSamplesBefore++; trapMarketsBefore.add(id); }   // old fold-in ignored history length
       const hist = samples.slice(Math.max(0, i - BOOK_HIST_MAX), i);   // prior window, capped like the agent
       if (hist.length < THRESHOLDS.MIN_SAMPLES) continue;
       steps++;
       const res = detectBookMove(samples[i], hist);
+      if (res.triggers.some(t => t.type === 'structural-trap')) { trapFiresAfter++; trapMarketsAfter.add(id); }
       if (res.fired) fires.push({ id, title, venue, t: samples[i].t, iso: new Date(samples[i].t).toISOString(), triggers: res.triggers });
     }
   }
-  return { section, snapshots: snaps.length, markets: series.size, marketsWithHistory, steps, fires };
+  return {
+    section, snapshots: snaps.length, markets: series.size, marketsWithHistory, steps, fires,
+    trap: {
+      samplesBefore: trapSamplesBefore, firesAfter: trapFiresAfter,
+      marketsBefore: trapMarketsBefore.size, marketsAfter: trapMarketsAfter.size,
+      marketsFlippedCalm: trapMarketsBefore.size - trapMarketsAfter.size,
+    },
+  };
 }
 
 // ── AFTER: the same walk, layered with the persisted, hysteretic regime state machine ───────────
@@ -138,13 +157,16 @@ function main() {
   console.log('thresholds:', JSON.stringify(THRESHOLDS));
   const byTrigger = {};
   let totalFires = 0, totalSteps = 0;
+  const trapAgg = { samplesBefore: 0, firesAfter: 0, marketsBefore: 0, marketsAfter: 0, marketsFlippedCalm: 0 };
   for (const section of ['rewards-poly', 'rewards-kalshi']) {
     const r = replaySection(section);
     totalFires += r.fires.length; totalSteps += r.steps;
+    for (const k of Object.keys(trapAgg)) trapAgg[k] += r.trap[k];
     for (const f of r.fires) for (const t of f.triggers) byTrigger[t.type] = (byTrigger[t.type] || 0) + 1;
     const distinct = new Set(r.fires.map(f => f.id)).size;
     console.log(`\n[${section}] snapshots=${r.snapshots} markets=${r.markets} (with≥${THRESHOLDS.MIN_SAMPLES} history=${r.marketsWithHistory})`);
     console.log(`   detector evaluated ${r.steps} market-steps → FIRED ${r.fires.length} times across ${distinct} distinct markets`);
+    console.log(`   structural-trap: BEFORE ${r.trap.marketsBefore} markets permanently one-sided (folded in every cycle) → AFTER ${r.trap.marketsAfter} fire on a real transition · ${r.trap.marketsFlippedCalm} flip to CALM`);
     const sample = r.fires.slice(0, EV_LIMIT);
     for (const f of sample) {
       const ev = f.triggers.map(t => {
@@ -159,6 +181,13 @@ function main() {
   console.log(`\n=== BEFORE (stateless detector): ${totalFires} firings over ${totalSteps} evaluated market-steps ===`);
   console.log('by trigger type:', JSON.stringify(byTrigger));
   console.log('(depth-collapse/band-emptied cannot fire in replay — per-side depth is not persisted in history; live agent has it for Polymarket.)');
+
+  // ── STRUCTURAL-TRAP: the systematic false positive, before vs after the baseline gate ──────────
+  const tPct = trapAgg.marketsBefore > 0 ? (100 * trapAgg.marketsFlippedCalm / trapAgg.marketsBefore).toFixed(1) : '0.0';
+  console.log(`\n=== STRUCTURAL-TRAP (one-side-empty) — baseline gate ===`);
+  console.log(`  BEFORE (unconditional fold-in): ${trapAgg.samplesBefore} trap-snapshots across ${trapAgg.marketsBefore} distinct markets each forced 'medium'.`);
+  console.log(`  AFTER  (change-gated): ${trapAgg.firesAfter} firings across ${trapAgg.marketsAfter} markets — only genuine two-sided→one-sided transitions.`);
+  console.log(`  → ${trapAgg.marketsFlippedCalm} of ${trapAgg.marketsBefore} permanently-one-sided markets flip to CALM (${tPct}%). A permanently one-sided book is its own baseline, not an event.`);
 
   // ── AFTER: regime state machine (hysteresis; HALT is resolved-only, NOT frozen — see below) ──
   console.log(`\n=== AFTER (regime machine: EXIT_STREAK=${PARAMS.EXIT_STREAK}) ===`);
