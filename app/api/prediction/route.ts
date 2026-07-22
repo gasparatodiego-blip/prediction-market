@@ -7,9 +7,17 @@ import { applyGuardian, assertRedacted } from '@/lib/guardian-suppress';
 
 export const dynamic = 'force-dynamic';
 
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { getBaseFeeBps, takerFeeFractionFromBps } = require('@/lib/polymarket-fees');
+
+// Coarse per-platform fee used ONLY for the eligibility gate + non-executable/event buckets. The old
+// `polymarket: 0.00` ("0% trading fee") was an honest-engine violation: it made displayed ROI look
+// BETTER than reality on fee-bearing Polymarket markets. Under CLOB v2 there is NO flat rate — the real
+// Polymarket taker fee is PER-MARKET and PRICE-SCALED, applied on the cashable legs below via the live
+// SSOT (realLegFee). This table no longer carries a fabricated Polymarket number.
 const PLATFORM_FEES: Record<string, number> = {
   kalshi:     0.07,  // variable curve; display only — detail page uses real formula
-  polymarket: 0.00,  // 0% trading fee (as of 2024)
+  polymarket: 0.00,  // gate/bucket fallback ONLY — real per-market taker fee applied per-leg (realLegFee)
   predictit:  0.15,
   manifold:   0.00,
   oddsapi:    0.00,
@@ -131,8 +139,10 @@ export async function GET() {
 
     const allOpps: any[] = raw.opportunities ?? [];
 
-    // Market count from markets-raw.json (best-effort)
+    // Market count from markets-raw.json (best-effort) + build the Polymarket id → CLOB token map so we
+    // can read the REAL per-market taker fee for each Polymarket leg from the live SSOT.
     let marketsTracked = 0;
+    const pmTokenById: Record<string, string> = {};
     try {
       const mraw = JSON.parse(fs.readFileSync('/tmp/markets-raw.json', 'utf8'));
       marketsTracked =
@@ -140,7 +150,30 @@ export async function GET() {
         (mraw.manifold?.length   ?? 0) +
         (mraw.kalshi?.length     ?? 0) +
         (mraw.polymarket?.length ?? 0);
+      for (const m of (mraw.polymarket ?? [])) {
+        try { const t = JSON.parse(m.clobTokenIds || '[]')[0]; if (t) pmTokenById[String(m.id)] = String(t); } catch {}
+      }
     } catch {}
+
+    // Pre-fetch the live base_fee for every Polymarket leg token (SSOT-cached; null on failure → "—").
+    const polyTokens = new Set<string>();
+    for (const o of allOpps) for (const leg of [o.lowMarket, o.highMarket]) {
+      if (leg && String(leg.platform).toLowerCase() === 'polymarket') { const t = pmTokenById[String(leg.id)]; if (t) polyTokens.add(t); }
+    }
+    const baseFeeByToken: Record<string, number | null> = {};
+    await Promise.all(Array.from(polyTokens).map(async (t) => { baseFeeByToken[t] = await getBaseFeeBps(t); }));
+
+    // REAL displayed fee per leg. Polymarket → live per-market taker fraction = (base_fee/20000)·(1−p) at
+    // the leg's execution price; null (→ UI "—") when base_fee/token is unknown, NEVER a fabricated 0.
+    // Non-Polymarket legs keep their existing coarse display fee.
+    const realLegFee = (leg: any): number | null => {
+      if (!leg) return null;
+      if (String(leg.platform).toLowerCase() !== 'polymarket') return feeFor(leg.platform);
+      const tok = pmTokenById[String(leg.id)];
+      const price = typeof leg.yesAsk === 'number' ? leg.yesAsk
+        : (typeof leg.probability === 'number' ? leg.probability / 100 : null);
+      return takerFeeFractionFromBps(tok ? baseFeeByToken[tok] : null, price);
+    };
 
     const seen  = new Set<string>();
     const valid: any[] = [];
@@ -203,7 +236,7 @@ export async function GET() {
           probability: low.probability,
           url:         low.url,
           urlVerified: low.urlVerified  ?? false,
-          fee:         fA,
+          fee:         realLegFee(low),
           expiresAt:   low.expiresAt   ?? null,
           yesBid:      typeof low.yesBid  === 'number' ? low.yesBid  : null,
           yesAsk:      typeof low.yesAsk  === 'number' ? low.yesAsk  : null,
@@ -218,7 +251,7 @@ export async function GET() {
           probability: high.probability,
           url:         high.url,
           urlVerified: high.urlVerified ?? false,
-          fee:         fB,
+          fee:         realLegFee(high),
           expiresAt:   high.expiresAt  ?? null,
           yesBid:      typeof high.yesBid === 'number' ? high.yesBid : null,
           yesAsk:      typeof high.yesAsk === 'number' ? high.yesAsk : null,
