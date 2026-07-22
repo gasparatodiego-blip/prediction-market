@@ -127,7 +127,68 @@ ok(typeof surfaceAdapter.exitFilledLeg === 'function' && typeof surfaceAdapter.p
 ok(redact({ apiSecret: 's', passphrase: 'p', poly_api_key: 'k', ok: 2 }).apiSecret === '[redacted]', 'redact scrubs secret field names');
 ok(scrubString('x 0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef y').includes('[redacted-64hex]'), 'redact scrubs inline 0x-64hex private keys');
 
-// (f) DRY-RUN BELT: all gates satisfied AND dry-run on → a mutating call makes ZERO network calls and
+// ── 7. NEWS LAYER: entity matching, cross-provider dedup, N-source corroboration, provider isolation ──
+const { entitiesFor, matchItemToMarket } = require('../lib/news-guard/match');
+const { dedup } = require('../lib/news-guard/dedup');
+const { corroborate } = require('../lib/news-guard/corroborate');
+const { makeItem, newHealth, breakerAllows, recordFailure, recordSuccess, canonicalUrl } = require('../lib/news-guard/providers/base');
+const { providerEnabled, collect } = require('../lib/news-guard/providers/registry');
+
+const NEWS_NOW = 1_753_000_000_000;
+const mkItem = (title, pub, url, ageMs = 0) => makeItem({ source: 'rss', publisher: pub, publishedTs: NEWS_NOW - ageMs, fetchedTs: NEWS_NOW, title, summary: '', url });
+const lulaEnt = entitiesFor({ title: 'Will Luiz Inácio Lula da Silva win the 2026 Brazilian presidential election?' });
+
+// (a) entity matching: real entity matches; generic-only and lone-token never match
+ok(matchItemToMarket(mkItem('Lula leads Brazilian presidential poll', 'bbc', 'https://bbc.com/1'), lulaEnt).matched === true, 'entity item matches (lula + brazilian)');
+ok(matchItemToMarket(mkItem('US presidential election polling tightens', 'cnn', 'https://cnn.com/1'), lulaEnt).matched === false, 'generic-only item does NOT match');
+const austinEnt = entitiesFor({ title: 'Will the temp in Austin be above 93 degrees?' });
+ok(matchItemToMarket(mkItem('Sidley Austin hires new employment lawyer', 'bloomberg', 'https://bloomberg.com/1'), austinEnt).matched === false, 'lone common token (austin→law firm) does NOT match');
+ok(entitiesFor({ title: 'Will the U.S. invade Iran before 2027?' }).phrases.has('u s') === false, 'abbreviation "U.S." never becomes the phrase "u s"');
+const wx = entitiesFor({ title: 'Will the temp in Los Angeles be above 75.99° on Jul 22, 2026?' });
+ok(wx.phrases.size === 0 && wx.tokens.size === 0, 'weather/temperature market yields NO news entities (a headline cannot move a temperature) → uncovered');
+
+// (b) dedup: identical URL merges; near-identical titles cluster; distinct publishers unioned
+const dd = dedup([
+  mkItem('Lula surges in Brazilian election poll', 'bbc', 'https://bbc.com/lula'),
+  mkItem('Lula surges in Brazilian election poll', 'google-news', 'https://bbc.com/lula'),   // same URL
+  mkItem('Lula surges in Brazilian election poll survey', 'guardian', 'https://guardian.com/lula'),
+]);
+ok(dd.stats.clusters === 1 && dd.clusters[0].publishers.length === 3, 'dedup merges same-url + clusters same-story across 3 publishers');
+ok(canonicalUrl('https://www.BBC.com/lula/?utm_source=x#frag') === canonicalUrl('https://bbc.com/lula'), 'canonicalUrl strips www/utm/fragment/trailing slash');
+
+// (c) corroboration: single publisher → low (never lifts); ≥2 distinct publishers → medium; none → unknown; stale excluded
+const oneClusters = dedup([mkItem('Lula rises in Brazilian poll', 'bbc', 'https://bbc.com/a')]).clusters;
+ok(corroborate({ ent: lulaEnt, clusters: oneClusters, now: NEWS_NOW }).level === 'low', 'single source → low (uncorroborated, cannot lift)');
+const twoClusters = dedup([mkItem('Lula rises in Brazilian poll', 'bbc', 'https://bbc.com/a'), mkItem('Lula gains in Brazilian survey vote', 'guardian', 'https://guardian.com/b')]).clusters;
+ok(corroborate({ ent: lulaEnt, clusters: twoClusters, now: NEWS_NOW }).level === 'medium', '≥2 distinct publishers → medium');
+ok(corroborate({ ent: lulaEnt, clusters: dedup([mkItem('Unrelated football transfer news', 'sky', 'https://sky.com/x')]).clusters, now: NEWS_NOW }).level === 'unknown', 'no matched item → unknown (—), never implicit calm');
+const staleClusters = dedup([mkItem('Lula rises in Brazilian poll', 'bbc', 'https://bbc.com/a', 12 * 3_600_000), mkItem('Lula gains in Brazilian survey vote', 'guardian', 'https://guardian.com/b', 12 * 3_600_000)]).clusters;
+ok(corroborate({ ent: lulaEnt, clusters: staleClusters, now: NEWS_NOW }).level === 'unknown', 'items older than recency window are excluded');
+
+// (d) THE INVARIANT: news alone — even corroborated across many publishers — can NEVER reach high, and
+//     can never trigger a withdraw. corroborate caps at 'medium'; signal.js keeps news-alone at 'low'.
+const manyPubs = dedup(['bbc', 'guardian', 'reuters', 'npr', 'aljazeera'].map((p, i) => mkItem('Lula surges in Brazilian election poll vote', p, `https://${p}.com/${i}`))).clusters;
+const strongNews = corroborate({ ent: lulaEnt, clusters: manyPubs, now: NEWS_NOW });
+ok(strongNews.level === 'medium', '5-publisher corroboration still caps news at medium (never high)');
+ok(buildSignal({ marketId: 'M', book: bookCalm, news: strongNews, ts: NOW }).severity === 'low', 'corroborated news + calm book → severity low (news alone cannot lift)');
+ok(buildSignal({ marketId: 'M', book: bookFire, news: strongNews, ts: NOW }).severity === 'high', 'corroborated news + REAL book move → high (book is required)');
+// prove the withdraw gate never fires on news-alone: severity<high → decideAction returns 'monitor', not 'withdraw'
+const newsAloneSig = buildSignal({ marketId: 'M', book: bookCalm, news: strongNews, ts: NOW });
+ok(decideAction({ signal: newsAloneSig, market, placement: withdraw, config: loadNewsGuardConfig({ NEWS_GUARD_ARMED: 'true' }), keyState: { liveVerified: true }, rails, now: NOW }).record.decision === 'monitor', 'news-alone (all gates armed) still only monitors — never withdraws');
+
+// (e) provider circuit breaker: trips after threshold, half-opens after cooldown, closes on success
+const h = newHealth();
+recordFailure(h, new Error('boom'), NEWS_NOW); recordFailure(h, new Error('boom'), NEWS_NOW); recordFailure(h, new Error('boom'), NEWS_NOW);
+ok(h.breakerOpen === true && breakerAllows(h, NEWS_NOW) === false, 'breaker OPENS after 3 consecutive failures and blocks calls');
+ok(breakerAllows(h, NEWS_NOW + 31 * 60_000) === true, 'breaker half-opens after cooldown');
+recordSuccess(h, 5, NEWS_NOW + 31 * 60_000);
+ok(h.breakerOpen === false && h.consecutiveFailures === 0, 'a success closes the breaker');
+
+// (f) provider registry: env enable/disable + FAILURE ISOLATION (one throwing provider never rejects collect)
+ok(providerEnabled({ id: 'x', envFlag: 'NG_X', defaultEnabled: true }, { NG_X: 'false' }) === false, 'env=false disables a default-on provider');
+ok(providerEnabled({ id: 'x', envFlag: 'NG_X', defaultEnabled: false }, { NG_X: 'true' }) === true, 'env=true enables a default-off provider');
+
+// (g) DRY-RUN BELT: all gates satisfied AND dry-run on → a mutating call makes ZERO network calls and
 //     NEVER loads credentials (the credsProvider throws if touched). Async, so it closes the run.
 process.env.PM_ADAPTER_DRYRUN = 'true';
 const liveDry = resolveCancelAdapter('polymarket', { armed: true, liveVerified: true });

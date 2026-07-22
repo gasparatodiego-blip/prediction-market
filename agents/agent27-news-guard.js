@@ -25,8 +25,6 @@
 
 const fs    = require('fs');
 const path  = require('path');
-const https = require('https');
-const crypto = require('crypto');
 const { httpPost: _sharedPost } = require('../lib/httpGet');
 
 // ── News-guard signal + action pipeline (all DISARMED / shadow by default) ──────
@@ -38,6 +36,17 @@ const { buildSignal }         = require('../lib/news-guard/signal');
 const { stepRegime, isElevatedState } = require('../lib/news-guard/regime');
 const { decideAction }        = require('../lib/news-guard/action');
 const { appendShadowRecord }  = require('../lib/news-guard/shadow-log');
+
+// ── NEWS LAYER (secondary confirmation, multi-source, €0) ───────────────────────────────────────
+// Providers behind an interface (google-news / rss / reddit / bluesky), an entity matcher, cross-
+// provider dedup, and N-source corroboration. News can NEVER fire a withdraw alone: corroborate()
+// caps the news level at 'medium', and signal.js only reaches 'high' on book+news. Adding/swapping a
+// source is a one-line edit in providers/registry.js — none of the signal logic changes.
+const { collect, providerMeta } = require('../lib/news-guard/providers/registry');
+const { DEFAULT_UA }            = require('../lib/news-guard/providers/base');
+const { entitiesFor }           = require('../lib/news-guard/match');
+const { dedup }                 = require('../lib/news-guard/dedup');
+const { corroborate, RECENCY_MS } = require('../lib/news-guard/corroborate');
 
 // Resolved execution gates for THIS process. armed defaults FALSE → the action layer runs in
 // shadow (logs every decision, sends no order). Read once at boot; a flip needs a restart, which
@@ -116,19 +125,12 @@ const STATE_FILE      = '/tmp/news-guard-state.json';   // dedupe/cooldown + per
 const HB_FILE         = '/tmp/agent-heartbeats.json';
 const SCAN_INTERVAL_MS = 10 * 60_000;
 const STARTUP_DELAY_MS = 12_000;
-const NEWS_TOP_N       = 30;                 // query news only for the top-N markets by pool
-const NEWS_CACHE_MS    = 30 * 60_000;        // re-query a given market's news at most every 30 min
-const NEWS_RPS         = 1;                  // be gentle to Google News RSS
-const FETCH_TIMEOUT_MS = 12_000;
+// Query-providers (google-news, bluesky) cost one HTTP call per market entity, so we issue TARGETED
+// queries only for the top-N markets by pool. FIREHOSE providers (publisher RSS, Reddit) are fetched
+// ONCE per cycle and matched against EVERY market's entities for free — so book-covered markets now get
+// news coverage well beyond the old top-30 without a per-market query. See meta.coverage in the output.
+const QUERY_TARGET_N   = 40;                 // markets that get a targeted google-news + bluesky query
 const ALERT_COOLDOWN_MS = 6 * 3_600_000;     // per-market cooldown: same marketId re-alerts at most once / 6h (persisted in STATE_FILE so restarts don't re-fire)
-
-// News-spike heuristic thresholds (advisory signal, NOT a cashable number).
-// Documented + conservative; recent = articles in last RECENT_H hours, baseline =
-// avg articles per RECENT_H window over the preceding BASE_H hours.
-const RECENT_H     = 3;
-const BASE_H       = 24;
-const HIGH_RATIO   = 3.0;  const HIGH_MIN = 3;   // ≥3× baseline AND ≥3 recent → HIGH
-const MED_RATIO    = 1.8;  const MED_MIN  = 2;   // ≥1.8× baseline AND ≥2 recent → MEDIUM
 
 function log(...a) { console.log('[A27]', new Date().toISOString(), ...a); }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -138,23 +140,6 @@ function atomicWrite(file, obj) {
   const tmp = `${file}.tmp.${process.pid}`;
   fs.writeFileSync(tmp, JSON.stringify(obj, null, 2));
   fs.renameSync(tmp, file);
-}
-
-// ── HTTP GET (text) ────────────────────────────────────────────────────────────
-function httpGetText(url, timeoutMs = FETCH_TIMEOUT_MS) {
-  return new Promise((res, rej) => {
-    let settled = false;
-    const done = (fn, v) => { if (!settled) { settled = true; fn(v); } };
-    const timer = setTimeout(() => { req.destroy(); done(rej, new Error('timeout')); }, timeoutMs);
-    const req = https.get(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; EdgeradarNewsGuard/1.0)', Accept: 'application/rss+xml,text/xml,*/*' },
-    }, r => {
-      const chunks = [];
-      r.on('data', c => chunks.push(c));
-      r.on('end', () => { clearTimeout(timer); done(res, { status: r.statusCode, body: Buffer.concat(chunks).toString() }); });
-    });
-    req.on('error', e => { clearTimeout(timer); done(rej, e); });
-  });
 }
 
 function httpPost(url, body) { return _sharedPost(url, body, { timeoutMs: 15_000 }).then(r => r.data); }
@@ -168,54 +153,6 @@ async function sendTelegram(text) {
   if (!BOT_TOKEN || !CHAT_ID) { log('Telegram not configured — alert logged only:', text.slice(0, 160)); return false; }
   try { await httpPost(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, { chat_id: CHAT_ID, text, parse_mode: 'HTML', disable_web_page_preview: true }); return true; }
   catch (e) { log('sendTelegram error:', e.message); return false; }
-}
-
-// ── Keyword extraction for a news query ────────────────────────────────────────
-const STOP = new Set(['will','the','a','an','to','of','in','on','at','by','for','and','or','be','is','are','was','were','win','next','this','that','before','after','during','than','with','it','its','vs','game','market','who','what','when','which','how','yes','no','above','below','between','reach','hit','close','2024','2025','2026','2027']);
-function keywordsFor(title) {
-  if (!title) return '';
-  const words = title.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/)
-    .filter(w => w.length > 2 && !STOP.has(w));
-  // Keep salient tokens (dedup, cap 6) — enough to disambiguate the event for a news search.
-  const seen = new Set(); const out = [];
-  for (const w of words) { if (!seen.has(w)) { seen.add(w); out.push(w); } if (out.length >= 6) break; }
-  return out.join(' ');
-}
-
-// ── News-volume signal from Google News RSS (free, no key) ─────────────────────
-async function newsSignal(title) {
-  const kw = keywordsFor(title);
-  if (!kw) return { level: 'low', recent: 0, baselinePer: 0, ratio: 0, source: 'google-news-rss', note: 'no usable keywords' };
-  const url = `https://news.google.com/rss/search?q=${encodeURIComponent(kw)}&hl=en-US&gl=US&ceid=US:en`;
-  let r;
-  try { r = await httpGetText(url); }
-  catch (e) { return { level: 'unknown', recent: null, baselinePer: null, ratio: null, source: 'google-news-rss', note: `fetch failed: ${e.message}` }; }
-  if (!r || r.status !== 200 || !r.body) return { level: 'unknown', recent: null, baselinePer: null, ratio: null, source: 'google-news-rss', note: `HTTP ${r?.status}` };
-
-  // Parse real article timestamps only — never invent an article.
-  const now = Date.now();
-  const dates = [];
-  const re = /<pubDate>([^<]+)<\/pubDate>/g;
-  let m;
-  while ((m = re.exec(r.body)) !== null) {
-    const t = Date.parse(m[1]);
-    if (!isNaN(t)) dates.push(t);
-  }
-  if (!dates.length) return { level: 'low', recent: 0, baselinePer: 0, ratio: 0, source: 'google-news-rss', note: 'no dated articles' };
-
-  const recent   = dates.filter(t => now - t <= RECENT_H * 3_600_000).length;
-  const baseCount = dates.filter(t => { const age = now - t; return age > RECENT_H * 3_600_000 && age <= (RECENT_H + BASE_H) * 3_600_000; }).length;
-  const baselinePer = (baseCount / BASE_H) * RECENT_H;             // expected articles per RECENT_H window
-  const ratio = baselinePer > 0 ? recent / baselinePer : (recent > 0 ? recent : 0);
-
-  let level = 'low';
-  if (recent >= HIGH_MIN && ratio >= HIGH_RATIO) level = 'high';
-  else if (recent >= MED_MIN && ratio >= MED_RATIO) level = 'medium';
-
-  return {
-    level, recent, recentH: RECENT_H, baselinePer: Math.round(baselinePer * 100) / 100, ratio: Math.round(ratio * 100) / 100,
-    source: 'google-news-rss', note: `${recent} articles in last ${RECENT_H}h vs ${baselinePer.toFixed(1)}/window baseline`,
-  };
 }
 
 // ── Coarse upstream flags → a human-readable book note (free) ──────────────────
@@ -296,14 +233,14 @@ async function scan() {
     log('no unified snapshot yet — skipping cycle');
     return;
   }
-  const state = readJsonSafe(STATE_FILE) || { newsCache: {}, alerted: {} };
-  state.newsCache = state.newsCache || {};
+  const state = readJsonSafe(STATE_FILE) || { alerted: {} };
   state.alerted   = state.alerted   || {};
   // Rolling per-market book history (for the primary book detector) + action idempotency rails.
   state.bookHist       = state.bookHist       || {};
   state.regimeState    = state.regimeState    || {};   // marketId → persisted regime (hysteresis survives restart)
   state.actionCooldown = state.actionCooldown || {};   // marketId → last shadow-action ts (idempotency)
   state.actionHourly   = Array.isArray(state.actionHourly) ? state.actionHourly : []; // ts[] in last hour
+  state.providerHealth = state.providerHealth || {};   // per-provider breaker + health (survives restart)
 
   const markets = snap.markets;
 
@@ -326,43 +263,63 @@ async function scan() {
     if (p.onFillNo  === 'close') b.noClose++;  else b.noRequote++;
   }
 
-  // Pick which markets get a (rate-limited, cached) news lookup: top by pool, deduped
-  // by keyword so the same real-world event across venues isn't queried twice.
-  const ranked = [...markets]
-    .filter(m => m.dailyPool != null)
-    .sort((a, b) => (b.dailyPool ?? 0) - (a.dailyPool ?? 0));
-  const newsTargets = new Set();
-  const kwSeen = new Set();
+  const now = Date.now();
+
+  // ── ENTITY sets per market (used both to build targeted queries and to match firehose items) ──
+  const entByMarket = {};
+  for (const m of markets) entByMarket[m.marketId] = entitiesFor({ title: m.title, slug: m.slug, marketSlug: m.marketSlug });
+
+  // Targeted queries for the QUERY providers (google-news, bluesky): the top-N markets by pool, each
+  // reduced to its strongest entity query, deduped so the same real-world event isn't queried twice.
+  const ranked = [...markets].filter(m => m.dailyPool != null).sort((a, b) => (b.dailyPool ?? 0) - (a.dailyPool ?? 0));
+  const querySeen = new Set();
+  const queries = [];
   for (const m of ranked) {
-    const kw = keywordsFor(m.title);
-    if (kw && !kwSeen.has(kw)) { kwSeen.add(kw); newsTargets.add(m.marketId); }
-    if (newsTargets.size >= NEWS_TOP_N) break;
+    const q = entByMarket[m.marketId] && entByMarket[m.marketId].query;
+    if (q && !querySeen.has(q)) { querySeen.add(q); queries.push(q); }
+    if (queries.length >= QUERY_TARGET_N) break;
   }
 
-  const now = Date.now();
-  let newsQueried = 0;
-  const sourcesStatus = {
-    'google-news-rss': 'active (free, no key)',
-    'google-trends':   'unavailable — unofficial endpoint needs a token handshake; skipped to respect rate limits/budget',
-    'x-twitter':       'unavailable — requires a paid API key (not configured; budget €50/mo)',
-  };
+  // ── ONE multi-provider collect per cycle (isolated + breaker-guarded), then cross-provider dedup ──
+  // Firehose providers (rss, reddit) return recent items matched against EVERY market for free; query
+  // providers (google-news, bluesky) answer the targeted entity queries above. sinceTs enforces the
+  // recency bound at the source. Provider health persists in state so a dead source stays visibly off.
+  state.providerHealth = state.providerHealth || {};
+  const collectRes = await collect({ queries, sinceTs: now - RECENCY_MS, now, healthState: state.providerHealth, ua: DEFAULT_UA });
+  const { clusters, stats: dedupStats } = dedup(collectRes.items);
+  const newsQueried = queries.length;
 
+  // Honest per-source status from live provider health (never a hardcoded "active").
+  const sourcesStatus = {};
+  for (const meta of providerMeta()) {
+    const h = state.providerHealth[meta.id] || {};
+    sourcesStatus[meta.id] = {
+      kind: meta.kind, enabled: meta.enabled, defaultEnabled: meta.defaultEnabled, envFlag: meta.envFlag,
+      itemsLastFetch: h.itemsLastFetch ?? 0, totalItems: h.totalItems ?? 0,
+      consecutiveFailures: h.consecutiveFailures ?? 0, breakerOpen: !!h.breakerOpen,
+      lastSuccessTs: h.lastSuccessTs ?? null, lastError: h.lastError ?? null,
+      status: !meta.enabled ? 'disabled (env / default-off)' : h.breakerOpen ? `breaker OPEN (${h.lastError || 'repeated failures'})` : (h.itemsLastFetch > 0 ? `active — ${h.itemsLastFetch} items` : 'active — 0 items this cycle'),
+    };
+  }
+  // Sources considered and NOT integrated (documented, never faked). No paid source is enabled.
+  sourcesStatus['x-twitter'] = { kind: 'excluded', enabled: false, status: 'excluded — official X API is pay-per-use since Feb 2026, no free tier (€0 hard constraint)' };
+  sourcesStatus['ap-reuters-espn'] = { kind: 'excluded', enabled: false, status: 'omitted — AP index.rss 401, Reuters RSS retired, ESPN rss 403 for automated clients (probed; free path unavailable)' };
+
+  let newsCovered = 0, newsCorroborated = 0;
   const signalByMarket = {};   // marketId → typed MarketMoveSignal (for the action layer below)
   const results = [];
   for (const m of markets) {
     const bs = bookSignal(m);   // coarse upstream flags (kept for the human-readable note)
 
-    // News signal: cached, and only for the chosen targets. Others carry book-only.
-    let ns = null;
-    const cached = state.newsCache[m.marketId];
-    if (cached && (now - cached.at) < NEWS_CACHE_MS) {
-      ns = cached.sig;
-    } else if (newsTargets.has(m.marketId)) {
-      ns = await newsSignal(m.title);
-      state.newsCache[m.marketId] = { at: now, sig: ns };
-      newsQueried++;
-      await sleep(Math.ceil(1000 / NEWS_RPS));
-    }
+    // ── News signal: entity-match this market against the deduped story clusters, then corroborate ──
+    // (≥N distinct publishers within the recency window). unknown ⇒ uncovered ("—"), never "calm".
+    const ent = entByMarket[m.marketId];
+    const cor = corroborate({ ent, clusters, now });
+    const ns = (cor.level === 'unknown')
+      ? { level: 'unknown', recent: 0, recentH: cor.recentH, source: cor.source, note: cor.note, distinctPublishers: 0, distinctClusters: 0, publishers: [] }
+      : cor;
+    if (cor.level !== 'unknown') newsCovered++;
+    if (cor.level === 'medium') newsCorroborated++;
 
     // ── PRIMARY: rolling book-move detector on the market's OWN measured dynamics ──
     // Build the current sample from real snapshot fields; thinner-side depth is only knowable when
@@ -418,7 +375,7 @@ async function scan() {
     const newsRisk = signal.severity;   // 'low' | 'medium' | 'high' | 'unknown' (regime-effective)
 
     const signals = [{ source: 'order-book-move', note: signal.evidence.summary || bs.note }];
-    if (ns) signals.push({ source: ns.source, note: ns.note });
+    if (ns.level !== 'unknown') signals.push({ source: ns.source, note: ns.note });
 
     const protect = newsRisk === 'high'
       ? {
@@ -479,7 +436,10 @@ async function scan() {
       regime: signal.regime,                      // { state, since, cooling, frozenStreak } — hysteretic state + evidence
       regimeEvidence: state.regimeState[m.marketId] ? state.regimeState[m.marketId].evidence : null,
       bookRisk: book.fired ? 'medium' : 'low',    // book-only severity (caps at medium)
-      newsSignal: ns ? ns.level : null,
+      newsSignal: ns.level !== 'unknown' ? ns.level : null,   // null ⇒ uncovered ("—"), never implicit "calm"
+      newsCorroboration: ns.level !== 'unknown'
+        ? { distinctPublishers: ns.distinctPublishers, distinctClusters: ns.distinctClusters, publishers: ns.publishers, minSources: cor.minSources, recentH: cor.recentH, matched: cor.matched }
+        : null,
       signals, protect,
       placements: pb, userReaction, fillAdvisory: fillAdvisoryBySide,
     });
@@ -526,10 +486,20 @@ async function scan() {
     meta: {
       generatedAt: new Date().toISOString(),
       scanned: results.length,
-      newsQueried,
+      newsQueried,                                 // targeted entity queries issued to query-providers this cycle
       highCount: highs.length,
       medCount: meds.length,
       placementsTracked: placements.length,
+      // News-layer coverage + dedup, measured this cycle (Phase 5 numbers live here honestly).
+      news: {
+        itemsFetched: collectRes.items.length,
+        clustersAfterDedup: dedupStats.clusters,
+        dedupRate: dedupStats.dedupRate,
+        marketsCovered: newsCovered,               // markets with ≥1 recent matched item (vs old fixed top-30)
+        marketsCorroborated: newsCorroborated,     // markets where ≥N distinct publishers agreed (news→medium)
+        perProvider: collectRes.perProvider,
+        corroboration: { minDistinctSources: require('../lib/news-guard/corroborate').MIN_DISTINCT_SOURCES, recencyHours: Math.round(RECENCY_MS / 3_600_000), rule: 'news level → medium only when ≥N DISTINCT publishers carry an entity-matched story within the recency window; caps at medium so news alone never reaches high' },
+      },
       // Execution posture — the UI reads THESE (not env) so the panel can't misstate arming.
       armed: NG.armed,
       killSwitch: NG.killSwitch,
@@ -551,7 +521,9 @@ async function scan() {
   // TRAP) UNION any HIGH market where a user opted into 'withdraw' or 'alert' (their
   // configured reaction fires). Deduped by marketId (Map, at most once per cycle),
   // 6h per-market cooldown persisted in STATE_FILE. Advisory only.
-  const newsyHighs     = highs.filter(h => h.newsSignal === 'high' || (h.signals[0]?.note || '').includes('TRAP'));
+  // A severity-HIGH market is book+corroborated-news by construction, so its news level is 'medium'
+  // (corroborate caps news at medium — it never emits 'high'). Alert on those + structural TRAP.
+  const newsyHighs     = highs.filter(h => h.newsSignal === 'medium' || h.newsSignal === 'high' || (h.signals[0]?.note || '').includes('TRAP'));
   const placementHighs = highs.filter(h => h.userReaction && (h.userReaction.action === 'WITHDRAW_LIQUIDITY' || h.userReaction.action === 'ALERT_ONLY'));
   const alertMap = new Map();
   for (const h of [...newsyHighs, ...placementHighs]) alertMap.set(h.marketId, h);
@@ -584,9 +556,9 @@ async function scan() {
     }
   }
 
-  // prune stale alert/cooldown + cache entries, then persist (after any send-stamp above)
+  // prune stale alert/cooldown entries, then persist (after any send-stamp above)
   for (const k of Object.keys(state.alerted))  if (now - state.alerted[k]  > 24 * 3_600_000) delete state.alerted[k];
-  for (const k of Object.keys(state.newsCache)) if (now - state.newsCache[k].at > 6 * 3_600_000) delete state.newsCache[k];
+  delete state.newsCache;   // legacy per-market news cache — replaced by the once-per-cycle provider collect
   // Drop rolling book history for markets no longer in the snapshot (bounded state file).
   const liveIds = new Set(markets.map(m => m.marketId));
   for (const k of Object.keys(state.bookHist))       if (!liveIds.has(k)) delete state.bookHist[k];
@@ -611,7 +583,8 @@ module.exports = { fillAdvisory, sideExit, exitAdvisory };
 // ── Entry point ────────────────────────────────────────────────────────────────
 if (require.main === module) {
   (async () => {
-    log(`news-guard online — advisory only, live execution ${AUTO_EXECUTE_ENABLED ? 'ON' : 'OFF'}. Sources: Google News RSS (free). X/Twitter + Google Trends: unavailable (no free/keyed access).`);
+    const pm = providerMeta().map(p => `${p.id}${p.enabled ? '' : '(off)'}`).join(', ');
+    log(`news-guard online — advisory only, live execution ${AUTO_EXECUTE_ENABLED ? 'ON' : 'OFF'}. Free news providers: ${pm}. Excluded: X API (paid since Feb 2026), AP/Reuters/ESPN (no free automated feed).`);
     await sleep(STARTUP_DELAY_MS);
     while (true) {
       try { await scan(); }
