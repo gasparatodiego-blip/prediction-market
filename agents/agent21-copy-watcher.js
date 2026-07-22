@@ -41,6 +41,9 @@ const LEADERBOARD_FILE = '/tmp/leaderboard.json';
 const POSITION_STATE_FILE = path.join(DATA_DIR, 'copy-position-state.json');  // snapshot + watermark
 const COPY_EVENTS_FILE    = path.join(DATA_DIR, 'copy-events.json');          // append-merge open/close/adjust log
 const PAPER_POSITIONS_FILE = path.join(DATA_DIR, 'paper-positions.json');     // simulated positions + paper PnL
+// Append-only audit of every paper-position close, tagged by origin (engine_auto |
+// user_override). Additive Phase-2 surface — never read by the core loop. (gitignored)
+const COPY_CLOSE_AUDIT_FILE = path.join(DATA_DIR, 'copy-close-audit.jsonl');
 
 const MAX_RPS           = 1.0;
 const POLL_INTERVAL_MS  = 5 * 60_000;   // 5 min between full cycles
@@ -237,7 +240,10 @@ function runPaperEngine(configs) {
         st.closed.unshift({ market: pos.market, outcome: pos.outcome, category: pos.category,
           shares: Math.round(out * 100) / 100, entryAvg: pos.entryAvg, exitPrice: e.price,
           pnl: Math.round(pnl * 100) / 100, reason: e.action === 'CLOSE' ? 'mirror-close' : 'mirror-reduce',
-          closedAt: e.timestamp });
+          origin: 'engine_auto', closedAt: e.timestamp });
+        auditClose({ origin: 'engine_auto', action: e.action === 'CLOSE' ? 'mirror-close' : 'mirror-reduce',
+          positionId: `${key}::${pkey}`, sharesClosed: Math.round(out * 100) / 100, exitPrice: e.price,
+          pnl: Math.round(pnl * 100) / 100, cid: e.cid, outcome: e.outcome, userId: cfg.userId });
         if (pos.shares <= PAPER_DUST) delete st.positions[pkey];
       }
       // exitMode 'tpsl' ignores the trader's REDUCE/CLOSE — own TP/SL handled below.
@@ -257,7 +263,10 @@ function runPaperEngine(configs) {
           st.closed.unshift({ market: pos.market, outcome: pos.outcome, category: pos.category,
             shares: Math.round(pos.shares * 100) / 100, entryAvg: pos.entryAvg, exitPrice: mark,
             pnl: Math.round(pnl * 100) / 100, reason: hitTp ? 'take-profit' : 'stop-loss',
-            closedAt: Math.floor(Date.now() / 1000) });
+            origin: 'engine_auto', closedAt: Math.floor(Date.now() / 1000) });
+          auditClose({ origin: 'engine_auto', action: hitTp ? 'take-profit' : 'stop-loss',
+            positionId: `${key}::${pkey}`, sharesClosed: Math.round(pos.shares * 100) / 100, exitPrice: mark,
+            pnl: Math.round(pnl * 100) / 100, cid: pos.cid, outcome: pos.outcome, userId: cfg.userId });
           delete st.positions[pkey];
         }
       }
@@ -284,6 +293,87 @@ function runPaperEngine(configs) {
   persistPaperState();
   const open = Object.values(paperConfigs).reduce((n, s) => n + Object.keys(s.positions).length, 0);
   console.log(`[CW][paper] ${configs.length} configs · ${open} open sim positions`);
+}
+
+// ── Close audit (append-only, origin-tagged) ───────────────────────────────────
+// One JSONL line per close on a paper (copy-engine) position. origin distinguishes
+// an engine-driven exit (mirror/tpsl) from a user manual override. Best-effort:
+// a write failure is logged and never blocks the engine (and never fabricates).
+function auditClose(rec) {
+  try {
+    fs.appendFileSync(COPY_CLOSE_AUDIT_FILE, JSON.stringify({ ...rec, at: new Date().toISOString() }) + '\n');
+  } catch (e) { console.error('[CW] close-audit err:', e.message); }
+}
+
+// ── Manual close-override apply step (Phase 2 — ADDITIVE, runs after runPaperEngine) ──
+// Reads PENDING CopyCloseOverride rows and applies each to THIS engine's in-memory paper
+// position (agent21 is the sole writer of paper-positions.json). Origin is 'user_override'.
+// Race-safe by construction: this runs AFTER runPaperEngine, so if the engine already
+// auto-closed the position this cycle, the override finds it flat and no-ops cleanly,
+// marking the row 'already_closed' — never an error, never a double-close. After a partial
+// close the remaining shares stay a normal paper position under full engine management
+// (no re-arm). Degrades silently if Prisma is unavailable (like the rest of the engine).
+async function markOverride(id, status, note) {
+  if (!prisma) return;
+  try {
+    await prisma.copyCloseOverride.update({
+      where: { id }, data: { status, resultNote: (note || '').slice(0, 300), appliedAt: new Date() },
+    });
+  } catch (e) { console.warn('[CW] override mark failed:', e.message); }
+}
+
+async function applyManualCloseOverrides() {
+  if (!prisma) return;
+  let pending = [];
+  try {
+    pending = await prisma.copyCloseOverride.findMany({ where: { status: 'pending' }, orderBy: { createdAt: 'asc' } });
+  } catch (e) { console.warn('[CW] override read failed:', e.message); return; }
+  if (!pending.length) return;
+
+  let applied = 0, noop = 0;
+  for (const ov of pending) {
+    const key  = `${ov.userId}|${(ov.walletAddr || '').toLowerCase()}`;
+    const pkey = `${ov.cid}|${ov.outcome}`;
+    const st   = paperConfigs[key];
+    const pos  = st && st.positions ? st.positions[pkey] : null;
+
+    // Already flat / auto-closed / never opened → clean no-op (race handling).
+    if (!st || !pos || !(pos.shares > PAPER_DUST)) {
+      noop++;
+      auditClose({ origin: 'user_override', action: 'noop', reason: 'already_closed', positionId: ov.positionId,
+        closePercent: ov.closePercent, cid: ov.cid, outcome: ov.outcome, userId: ov.userId });
+      await markOverride(ov.id, 'already_closed', pos ? 'position already flat' : 'position not found (already closed or never opened)');
+      continue;
+    }
+
+    const pct  = Math.min(100, Math.max(1, ov.closePercent));
+    const out  = pos.shares * pct / 100;
+    const mark = lastPrice[pkey];
+    // Honest marking: realize at the last REAL observed price; if unmarked, realize 0 PnL
+    // at entry rather than fabricate an exit price. exitPrice is null when unmarked.
+    const marked = Number.isFinite(mark);
+    const pnl    = marked ? out * (mark - pos.entryAvg) : 0;
+    const before = pos.shares;
+    st.realizedPnl = Math.round((st.realizedPnl + pnl) * 100) / 100;
+    pos.shares -= out;
+    const fully = pos.shares <= PAPER_DUST;
+
+    st.closed.unshift({ market: pos.market, outcome: pos.outcome, category: pos.category,
+      shares: Math.round(out * 100) / 100, entryAvg: pos.entryAvg, exitPrice: marked ? mark : null,
+      pnl: Math.round(pnl * 100) / 100, reason: (pct >= 100 || fully) ? 'user-close' : 'user-partial',
+      origin: 'user_override', closedAt: Math.floor(Date.now() / 1000) });
+    if (fully) delete st.positions[pkey];
+
+    auditClose({ origin: 'user_override', action: fully ? 'full-close' : 'partial-close', positionId: ov.positionId,
+      closePercent: pct, sharesClosed: Math.round(out * 100) / 100, sharesBefore: Math.round(before * 100) / 100,
+      sharesAfter: Math.round(Math.max(0, pos.shares) * 100) / 100, exitPrice: marked ? mark : null,
+      pnl: Math.round(pnl * 100) / 100, cid: ov.cid, outcome: ov.outcome, userId: ov.userId });
+    await markOverride(ov.id, 'applied',
+      `closed ${pct}% (${out.toFixed(2)} sh)${fully ? ' — fully closed' : ` — ${pos.shares.toFixed(2)} sh remain`}`);
+    applied++;
+  }
+
+  if (applied || noop) { persistPaperState(); console.log(`[CW][override] applied ${applied}, no-op ${noop}`); }
 }
 
 // Real OPEN/CLOSE/ADD/REDUCE tracking from the trades feed already polled.
@@ -519,6 +609,7 @@ async function scan() {
   if (wallets.length === 0) {
     writeState([]);
     runPaperEngine(configs);   // no-op cleanup if configs exist without wallets
+    await applyManualCloseOverrides();   // additive: still honor user overrides with no wallets
     return;
   }
 
@@ -532,17 +623,39 @@ async function scan() {
   writeState(wallets);
   persistDurableState();       // snapshot + watermark + event log (atomic, restart-safe)
   runPaperEngine(configs);     // drive simulated positions/PnL from the fresh events
+  await applyManualCloseOverrides();   // additive checked step: apply user close-overrides AFTER auto-close (race-safe)
   console.log(`[CW] Done. Alerts: ${recentAlerts.length}, copy-events: ${copyEvents.length}`);
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
-console.log('[CW] Starting agent21-copy-watcher — read-only, zero Claude, zero keys');
-console.log(`[CW] Telegram: ${BOT_TOKEN ? 'configured' : 'NOT SET — alerts will log only'}`);
-loadDurableState();   // resume watermark + position snapshot + event log (no double-fire)
-loadPaperState();     // resume simulated positions + paper PnL
-writeState([]);
+// Guarded so the file can be `require()`d for tracing/tests WITHOUT booting the agent
+// (pm2 runs it as the main module → boots exactly as before; a require() does not).
+// This is additive: the scan loop and its cadence are unchanged when run by pm2.
+function boot() {
+  console.log('[CW] Starting agent21-copy-watcher — read-only, zero Claude, zero keys');
+  console.log(`[CW] Telegram: ${BOT_TOKEN ? 'configured' : 'NOT SET — alerts will log only'}`);
+  loadDurableState();   // resume watermark + position snapshot + event log (no double-fire)
+  loadPaperState();     // resume simulated positions + paper PnL
+  writeState([]);
 
-setTimeout(async () => {
-  await scan();
-  setInterval(scan, POLL_INTERVAL_MS);
-}, 3_000);
+  setTimeout(async () => {
+    await scan();
+    setInterval(scan, POLL_INTERVAL_MS);
+  }, 3_000);
+}
+
+if (require.main === module) boot();
+
+// Test/trace hooks — do NOT change runtime behavior when run by pm2 (boot() above is
+// the only production entry). Exposed so Phase-5 verification can exercise the REAL
+// applyManualCloseOverrides code path against a seeded in-memory paper position.
+module.exports = {
+  applyManualCloseOverrides,
+  _test: {
+    setPaperConfigs: (c) => { paperConfigs = c; },
+    getPaperConfigs: () => paperConfigs,
+    setLastPrice:    (p) => { lastPrice = p; },
+    setPrisma:       (p) => { prisma = p; },
+    persistPaperState,
+  },
+};

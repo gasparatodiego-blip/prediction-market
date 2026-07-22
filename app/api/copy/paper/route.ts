@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
+import prisma from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,6 +25,16 @@ export async function GET() {
   }
 
   const age  = Date.now() - new Date(raw.updatedAt ?? 0).getTime();
+
+  // Overlay any PENDING user close-overrides so the UI reflects a queued close
+  // immediately (before the engine applies it on its next cycle). Best-effort — a DB
+  // hiccup never blocks the read; positions just show without the pending flag.
+  const pendingByPos = new Map<string, number>();
+  try {
+    const pend = await prisma.copyCloseOverride.findMany({ where: { userId, status: 'pending' } });
+    for (const o of pend) pendingByPos.set(o.positionId, Math.max(pendingByPos.get(o.positionId) ?? 0, o.closePercent));
+  } catch { /* overlay is best-effort */ }
+
   const mine = Object.values(raw.configs ?? {})
     .filter((c: any) => c.userId === userId)
     .map((c: any) => ({
@@ -35,11 +46,20 @@ export async function GET() {
       unrealizedPnl:  c.unrealizedPnl ?? null,   // null = not markable (never guessed)
       openPositions:  c.openPositions ?? Object.keys(c.positions ?? {}).length,
       markedPositions: c.markedPositions ?? 0,
-      positions: Object.values(c.positions ?? {}).map((p: any) => ({
-        market: p.market, outcome: p.outcome, category: p.category,
-        shares: Math.round((p.shares ?? 0) * 100) / 100,
-        entryAvg: p.entryAvg, openedAt: p.openedAt,
-      })),
+      positions: Object.values(c.positions ?? {}).map((p: any) => {
+        // Stable positionId the manual-close override endpoint consumes.
+        const id = `${c.userId}|${(c.walletAddr ?? '').toLowerCase()}::${p.cid}|${p.outcome}`;
+        const pendingClosePct = pendingByPos.get(id) ?? null;
+        return {
+          id, cid: p.cid ?? null,
+          market: p.market, outcome: p.outcome, category: p.category,
+          shares: Math.round((p.shares ?? 0) * 100) / 100,
+          entryAvg: p.entryAvg, openedAt: p.openedAt,
+          origin: 'copy_auto',                         // engine-owned lane tag (mirror of the manual lane's source)
+          pendingClosePct,                             // 1–100 if a manual close is queued, else null
+          updatedAt: raw.updatedAt ?? null,            // per-row live-sync timestamp
+        };
+      }),
       closed: (c.closed ?? []).slice(0, 20),
     }));
 

@@ -107,3 +107,7 @@ data/maker-*.jsonl
 
 # Polymarket fee SSOT cache (runtime, per-market base_fee; not source)
 data/polymarket-fee-cache.json
+
+# Phase-2 append-only close audit (origin-tagged), runtime state
+data/copy-close-audit.jsonl
+data/copy-close-audit.jsonl.*
