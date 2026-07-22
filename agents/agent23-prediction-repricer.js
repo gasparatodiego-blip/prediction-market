@@ -22,6 +22,10 @@ const path  = require('path');
 const { httpGet: _sharedGet } = require('../lib/httpGet');
 
 const { PLATFORM_FEES, computeArbROI } = require('../lib/arb-math');
+// Live per-market Polymarket taker fee (SSOT). The re-pricer already fetches each leg's live book, so
+// it is the honest place to attach the real fee: it resolves the Polymarket leg's token and reads
+// base_fee. When base_fee is unknown the row is fee-unknown → "—", never a flattered net.
+const { getBaseFeeBps, BASE_FEE_TO_RATE_DIVISOR } = require('../lib/polymarket-fees');
 // Shared order-book ladder extraction + capacity walk — same source matcher-v2 (Tier 1
 // discovery) uses, so live-refreshed capacity here can never diverge from discovery math.
 const { laddersFromKalshiBook, laddersFromPmBook, computeCapacity, ladderToWireFormat } = require('../lib/depth');
@@ -157,6 +161,7 @@ async function reprice() {
   const liveCashable = [];
   const evaporated   = [];
   const inactive     = [];
+  const feeUnknown   = [];   // arb exists but a required live taker fee could not be read → render "—"
 
   for (const opp of cashableOpps) {
     const low  = opp.lowMarket;
@@ -174,12 +179,33 @@ async function reprice() {
       continue;
     }
 
-    // Recompute ROI with shared function (identical to matcher-v2 Stage 2 math)
+    // Real per-market Polymarket taker fee: resolve the Polymarket leg's token and read live base_fee.
+    // polyFeeRate = base_fee/20000 (SSOT divisor), or null when unknown → computeArbROI returns
+    // feeUnknown and the row renders "—" (never a net computed from an assumed fee).
+    const pmLeg = low.platform === 'polymarket' ? low : high.platform === 'polymarket' ? high : null;
+    let polyFeeRate = null;
+    if (pmLeg) {
+      const pmTok = pmClobTokenId(pmLeg, rawPmById);
+      const bps = pmTok ? await getBaseFeeBps(pmTok) : null;
+      polyFeeRate = bps == null ? null : bps / BASE_FEE_TO_RATE_DIVISOR;
+    }
+
+    // Recompute ROI with shared function (identical to matcher-v2 Stage 2 math) — now NET of the real,
+    // price-scaled taker fee on both legs (Kalshi 0.07·p·(1−p); Polymarket base_fee/20000·p·(1−p)).
     const liveResult = computeArbROI({
       yesAsk_A: lowQ.yesAsk,  yesBid_A: lowQ.yesBid  ?? 0,
       yesAsk_B: highQ.yesAsk, yesBid_B: highQ.yesBid ?? 0,
       platformA: low.platform, platformB: high.platform,
+      polyFeeRate,
     });
+
+    // Fee-unknown: a real crossing exists but the live taker fee could not be read → "—", not cashable.
+    if (liveResult && liveResult.feeUnknown) {
+      feeUnknown.push({ id: opp.id, title: opp.title, status: 'fee-unknown',
+        reason: 'Polymarket base_fee unavailable (GET /fee-rate) — net edge cannot be confirmed',
+        discovery_roi: opp.roi, live_gross: liveResult.gross });
+      continue;
+    }
 
     // Evaporated: spread closed or above suspicious ceiling
     if (!liveResult || liveResult.net <= 0 || liveResult.net > SUSPICIOUS_ROI) {
@@ -248,10 +274,12 @@ async function reprice() {
     events:         discovery.events ?? [],
     evaporated,
     inactive,
+    feeUnknown,
     stats: {
       live_cashable:      liveCashable.length,
       evaporated:         evaporated.length,
       inactive:           inactive.length,
+      fee_unknown:        feeUnknown.length,
       signal:             passedSignal.length,
       total_repriced:     cashableOpps.length,
       discovery_cashable: cashableOpps.length,

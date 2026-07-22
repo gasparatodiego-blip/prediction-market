@@ -1,5 +1,10 @@
+// NOTE: the 'Polymarket': 0.02 flat "winnings" fee was removed — it is unverified and does not exist
+// under CLOB v2 (fees are taker-only, per-market, applied at match time; see lib/polymarket-fees.js).
+// The real Polymarket taker fee is applied at the executable-price layer (lib/arb-math.js), not as a
+// flat winnings fraction here. Kept 0 rather than deleting the key so callers reading the map still
+// resolve a number (0), never undefined.
 export const PLATFORM_FEES: Record<string, number> = {
-    'Polymarket': 0.02,
+    'Polymarket': 0.00,
     'Kalshi': 0.07,
     'PredictIt': 0.10,
     'Manifold': 0.00

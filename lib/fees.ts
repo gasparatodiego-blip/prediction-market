@@ -1,6 +1,11 @@
 export const PLATFORM_FEES: Record<string, { winFee: number; withdrawFee: number; label: string }> = {
   kalshi:       { winFee: 0.07,  withdrawFee: 0,    label: 'Kalshi (7% on winnings)' },
-  polymarket:   { winFee: 0.02,  withdrawFee: 0,    label: 'Polymarket (2% on winnings)' },
+  // Polymarket charges NO winnings/settlement fee. The old 0.02 "2% on winnings" was unverified and does
+  // not exist under CLOB v2 (fees are taker-only, applied at match time — see lib/polymarket-fees.js).
+  // Inventing a cost is as dishonest as inventing a gain, so it is removed, not kept as a "buffer".
+  // The real per-market TAKER fee is applied at the executable-price layer (arb-math / prediction API),
+  // not here — this table is a win/settlement-fee model, which Polymarket has none of.
+  polymarket:   { winFee: 0,     withdrawFee: 0,    label: 'Polymarket (no settlement fee; taker fee applies at trade)' },
   manifold:     { winFee: 0,     withdrawFee: 0,    label: 'Manifold (free, play money)' },
   metaculus:    { winFee: 0,     withdrawFee: 0,    label: 'Metaculus (free, play money)' },
   predictit:    { winFee: 0.10,  withdrawFee: 0.05, label: 'PredictIt (10% win + 5% withdrawal)' },
