@@ -225,6 +225,24 @@ type FillRuleMap = Record<string, OnFill>;   // key = `${book}:${kind}:${price}`
 const fillKey = (book: BookKey, kind: LegKind, price: number): string => `${book}:${kind}:${price}`;
 const defaultFillRule = (kind: LegKind): OnFill => kind === 'buy' ? 'requote' : 'close';
 
+// ── PER-LEG follow/pinned preference (same key shape as fillRules). 'follow' keeps the leg a fixed
+// offset from mid (tracks it live); 'pinned' keeps the literal price. offsetC = signed (price-mid)*100
+// captured at placement. SIMULATION PREFERENCE ONLY — advisory, never an order.
+type LegMode = 'follow' | 'pinned';
+interface LegPref { mode: LegMode; offsetC: number }
+type LegPrefMap = Record<string, LegPref>;
+const seedOffsetC = (price: number, mid: number | null): number =>
+  mid == null ? 0 : Math.round((price - mid) * 100 * 1000) / 1000;
+// live band block from /api/liquidity-rewards/book (agent34 WS feed), honest freshness.
+interface LiveBand {
+  feedState: 'live' | 'stale' | 'rest-fallback';
+  feedAgeMs: number | null;
+  adjustedMid: number | null;
+  plainMid: number | null;
+  bandRadiusC: number | null;
+  midAdjVsPlainC: number | null;
+}
+
 // The market's REAL venue page URL — the same honest, null-safe builders the header
 // uses (never a fabricated slug). Neither Polymarket nor Kalshi accepts a price/side/size
 // prefill in the URL, so this is the market page only; the caller states the exact
@@ -301,6 +319,17 @@ export default function MarketDetailPage() {
   const [onFillNo,  setOnFillNo]  = useState<OnFill>('requote');
   const [newsMode, setNewsMode] = useState<NewsMode>('withdraw');
 
+  // ── PER-LEG follow/pinned preference — one entry per placed level (key = book:side:price),
+  // reconciled 1:1 with legBook like fillRules. 'follow' → target tracks mid at the SAME offset it
+  // was placed at; 'pinned' → target stays at the literal price. offsetC is the signed distance
+  // to mid (cents) captured at placement. Advisory only — never an order.
+  const [legPrefs, setLegPrefs] = useState<LegPrefMap>({});
+  // ── live band feed (agent34 WS) surfaced by the book route: feedState live|stale|rest-fallback,
+  // the dust-filtered adjusted mid, band radius, and the plain-vs-adjusted divergence. Honest: when
+  // not 'live' the UI says tracking is coarse and falls back to the REST book mid.
+  const [liveBand, setLiveBand] = useState<LiveBand | null>(null);
+  const [legsSaveState, setLegsSaveState] = useState<'idle' | 'saving' | 'saved' | 'local' | 'error'>('idle');
+
   // persistence
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'local' | 'error'>('idle');
   const [saveMsg, setSaveMsg]     = useState<string>('');
@@ -362,6 +391,57 @@ export default function MarketDetailPage() {
     if (c.newsMode) setNewsMode(c.newsMode);
   }
 
+  // ── persisted LEGS: load this user's legs for the market once (rebuild legBook + fillRules +
+  // legPrefs from the server), then save on change (debounced). 401 = not signed in → legs stay on
+  // this device only (honest: no cross-session tracking without an account). ──
+  const legsLoaded = useRef(false);
+  useEffect(() => {
+    legsLoaded.current = false;
+    (async () => {
+      try {
+        const r = await fetch(`/api/rewards/legs?marketId=${encodeURIComponent(marketId)}`, { cache: 'no-store' });
+        if (r.ok) {
+          const d = await r.json();
+          const rows = (d?.legs ?? []) as Array<{ book: BookKey; kind: LegKind; price: number; mode: LegMode; offsetC: number; onFill: OnFill }>;
+          if (rows.length) {
+            const lb: LegBook = { 'yes-buy': [], 'yes-sell': [], 'no-buy': [], 'no-sell': [] };
+            const fr: FillRuleMap = {}; const lp: LegPrefMap = {};
+            for (const row of rows) {
+              lb[legId(row.book, row.kind)].push(row.price);
+              const k = fillKey(row.book, row.kind, row.price);
+              fr[k] = row.onFill; lp[k] = { mode: row.mode, offsetC: row.offsetC };
+            }
+            setLegBook(lb); setFillRules(fr); setLegPrefs(lp);
+          }
+        }
+      } catch { /* offline / anon → device-local legs only */ }
+      legsLoaded.current = true;
+    })();
+  }, [marketId]);
+
+  useEffect(() => {
+    if (!legsLoaded.current || !mkt) return;   // don't save before the initial load resolves
+    const t = setTimeout(async () => {
+      const legs: Array<{ book: BookKey; kind: LegKind; price: number; mode: LegMode; offsetC: number; onFill: OnFill }> = [];
+      for (const id of LEG_IDS) {
+        const [book, kind] = id.split('-') as [BookKey, LegKind];
+        for (const price of legBook[id]) {
+          const k = fillKey(book, kind, price);
+          legs.push({ book, kind, price, mode: legPrefs[k]?.mode ?? 'follow', offsetC: legPrefs[k]?.offsetC ?? 0, onFill: fillRules[k] ?? defaultFillRule(kind) });
+        }
+      }
+      setLegsSaveState('saving');
+      try {
+        const r = await fetch('/api/rewards/legs', {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ marketId, venue: mkt.venue, legs }),
+        });
+        setLegsSaveState(r.status === 401 ? 'local' : r.ok ? 'saved' : 'error');
+      } catch { setLegsSaveState('error'); }
+    }, 800);
+    return () => clearTimeout(t);
+  }, [legBook, fillRules, legPrefs, mkt, marketId]);
+
   // ── live book fetch ──
   const fetchBook = useCallback(async () => {
     if (!mkt) return;
@@ -373,6 +453,8 @@ export default function MarketDetailPage() {
       const d = await r.json();
       const nb = normalizeBooks(mkt.venue, d);
       setBooks(nb);
+      // Live band (Polymarket only; agent34 WS feed). Honest freshness: live | stale | rest-fallback.
+      setLiveBand(mkt.venue === 'polymarket' && d?.live ? (d.live as LiveBand) : null);
       // Real min tick: Polymarket serves it on the book payload; Kalshi is universally 1¢.
       if (mkt.venue === 'polymarket') {
         setTickSize(typeof d?.tickSize === 'number' && d.tickSize > 0 ? d.tickSize : null);
@@ -434,6 +516,14 @@ export default function MarketDetailPage() {
   const yesMid = midOf(yesBook) ?? snapYesMid;
   const noMid  = midOf(noBook)  ?? snapNoMid;
   const mid = tradeSide === 'yes' ? yesMid : noMid;
+
+  // Live-aware band-center mids: when the agent34 WS feed is LIVE, center on the dust-filtered
+  // ADJUSTED mid (what actually scores rewards); else fall back to the REST book mid. The NO mid
+  // mirrors the YES adjusted mid (complement) when live. These drive the per-leg follow targets.
+  const feedLive = liveBand?.feedState === 'live' && liveBand.adjustedMid != null;
+  const liveYesMid = feedLive ? liveBand!.adjustedMid : yesMid;
+  const liveNoMid  = feedLive && liveBand!.adjustedMid != null ? 1 - liveBand!.adjustedMid! : noMid;
+  useEffect(() => { yesMidRef.current = liveYesMid; noMidRef.current = liveNoMid; }, [liveYesMid, liveNoMid]);
 
   const twoSided = side === 'both';
   const sidesN = twoSided ? 2 : 1;
@@ -654,6 +744,36 @@ export default function MarketDetailPage() {
   }, [legBook]);
   const setFillRuleFor = useCallback((key: string, rule: OnFill) =>
     setFillRules(prev => (prev[key] === rule ? prev : { ...prev, [key]: rule })), []);
+
+  // Latest per-book band-center mids (live adjusted when the WS feed is live, else the REST book mid),
+  // held in refs so the legPrefs reconcile can SEED a new leg's offset from the mid AT PLACEMENT
+  // without re-running (and resetting existing offsets) every time the mid ticks.
+  const yesMidRef = useRef<number | null>(null);
+  const noMidRef  = useRef<number | null>(null);
+
+  // ── PER-LEG follow/pinned reconcile ── keep legPrefs 1:1 with placed levels, exactly like
+  // fillRules: a newly-placed level is seeded { follow, offset = its distance to mid now }; a removed
+  // level drops its pref; existing prefs are preserved. Returns prev unchanged when nothing differs.
+  useEffect(() => {
+    setLegPrefs(prev => {
+      const next: LegPrefMap = {};
+      for (const id of LEG_IDS) {
+        const [book, kind] = id.split('-') as [BookKey, LegKind];
+        for (const price of legBook[id]) {
+          const k = fillKey(book, kind, price);
+          const midNow = book === 'yes' ? yesMidRef.current : noMidRef.current;
+          next[k] = prev[k] ?? { mode: 'follow', offsetC: seedOffsetC(price, midNow) };
+        }
+      }
+      const pk = Object.keys(prev);
+      const same = pk.length === Object.keys(next).length && pk.every(k => prev[k]?.mode === next[k]?.mode && prev[k]?.offsetC === next[k]?.offsetC);
+      return same ? prev : next;
+    });
+  }, [legBook]);
+  const setLegModeFor = useCallback((key: string, mode: LegMode) =>
+    setLegPrefs(prev => (prev[key]?.mode === mode ? prev : { ...prev, [key]: { mode, offsetC: prev[key]?.offsetC ?? 0 } })), []);
+  const setLegOffsetFor = useCallback((key: string, offsetC: number) =>
+    setLegPrefs(prev => (prev[key]?.offsetC === offsetC ? prev : { ...prev, [key]: { mode: prev[key]?.mode ?? 'follow', offsetC } })), []);
 
   // free-tier detection — tier-driven, straight from the server-evaluated isPaid on the
   // /api/rewards-unified payload. (The old "midpoint==null && dailyPool==null" heuristic no
@@ -908,13 +1028,23 @@ export default function MarketDetailPage() {
               {/* ── (f) Net earnings (Pro) + sanity note ── */}
               <EarningsBlock est={est} isRedacted={isRedacted} flags={mkt.flags} tradeSide={tradeSide} />
 
+            {/* ── Live band tracking status — feed state, age, legs earning, adjusted-mid divergence ── */}
+            {mkt.venue === 'polymarket' && (
+              <LiveBandBar legBook={legBook} legPrefs={legPrefs} yesMid={liveYesMid} noMid={liveNoMid}
+                bandRadiusC={bandRadiusC} live={liveBand} legsSaveState={legsSaveState} />
+            )}
+
             {/* ── E) Post-fill strategy — ONE re-quote/close choice PER PLACED LEVEL (you can ladder
                    many markers per book+side, so each level gets its own rule). Simulation preference
                    only; never a real order, never automated execution. ── */}
             <div className="rounded-card shadow-card bg-surface px-2.5 py-1.5 space-y-1.5">
               <p className="font-body font-medium text-[12px] text-ink-2">If a level gets filled</p>
               <PerLevelFillRules legBook={legBook} fillRules={fillRules} bandRadiusC={bandRadiusC}
-                yesMid={yesMid} noMid={noMid} onChange={setFillRuleFor} />
+                yesMid={liveYesMid} noMid={liveNoMid} onChange={setFillRuleFor}
+                legPrefs={legPrefs} onMode={setLegModeFor} onOffset={setLegOffsetFor} feedLive={feedLive} />
+              <p className="font-body text-[10px] text-muted leading-snug">
+                <span className="text-mint-deep">follows</span> = target tracks the live mid at a fixed offset; <span className="text-ink-2">pinned</span> = stays at its price. Target vs your resting price is shown as drift; a target beyond the band can never earn. Advisory — you re-quote by hand.
+              </p>
               <p className="font-body text-[10px] text-muted leading-snug">
                 Simulation preference only · per level. On adverse news the news-guard can still force a close. Advisory — no automated execution (Arm execution OFF).
               </p>
@@ -1668,6 +1798,53 @@ function MiniLadder({ row, maxSize, mid, halfBand, kind, tappable, hint, onTap }
 }
 
 // ── shared bits ───────────────────────────────────────────────────────────────
+// ── Live band tracking status strip: feed state (live vs coarse REST fallback), last-update age,
+// how many placed legs are earning right now, and the adjusted-vs-plain mid divergence. Honest:
+// on anything but a fresh live feed it says plainly that band position may be out of date. ──
+function LiveBandBar({ legBook, legPrefs, yesMid, noMid, bandRadiusC, live, legsSaveState }: {
+  legBook: LegBook; legPrefs: LegPrefMap; yesMid: number | null; noMid: number | null;
+  bandRadiusC: number | null; live: LiveBand | null; legsSaveState: 'idle' | 'saving' | 'saved' | 'local' | 'error';
+}) {
+  const inBand = (mid: number | null, p: number) => bandRadiusC == null || (mid != null && Math.abs(p - mid) * 100 <= bandRadiusC);
+  let total = 0, earning = 0;
+  for (const id of LEG_IDS) {
+    const [book] = id.split('-') as [BookKey, LegKind];
+    const mid = book === 'yes' ? yesMid : noMid;
+    for (const p of legBook[id]) { total++; if (inBand(mid, p)) earning++; }
+  }
+  const feedState = live?.feedState ?? 'rest-fallback';
+  const isLive = feedState === 'live';
+  const ageS = live?.feedAgeMs != null ? Math.round(live.feedAgeMs / 1000) : null;
+  const pill = isLive
+    ? { cls: 'bg-mint-tint text-mint-deep border-mint-deep/25', txt: '● LIVE' }
+    : feedState === 'stale'
+    ? { cls: 'bg-gold-tint text-gold border-gold/25', txt: '◐ STALE' }
+    : { cls: 'bg-bg-soft text-muted border-line', txt: '○ REST' };
+  const divergeC = live?.midAdjVsPlainC ?? null;
+  return (
+    <div className="rounded-card shadow-card bg-surface px-2.5 py-1.5 space-y-1">
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <span className={`inline-flex items-center px-1.5 py-[1px] rounded-md font-body font-semibold text-[10px] border ${pill.cls}`}>{pill.txt}</span>
+        <span className="font-body text-[11px] text-ink-2 tabular-nums">{earning}/{total} legs earning</span>
+        {ageS != null && <span className="font-body text-[10px] text-muted tabular-nums whitespace-nowrap">· updated {ageS < 1 ? '<1' : ageS}s ago</span>}
+        {legsSaveState === 'saved' && <span className="font-body text-[9px] text-mint-deep whitespace-nowrap">· synced</span>}
+        {legsSaveState === 'local' && <span className="font-body text-[9px] text-gold whitespace-nowrap">· this device only (sign in to sync)</span>}
+        {legsSaveState === 'saving' && <span className="font-body text-[9px] text-muted whitespace-nowrap">· saving…</span>}
+      </div>
+      {isLive && divergeC != null && Math.abs(divergeC) >= 0.1 && (
+        <p className="font-body text-[9px] text-muted leading-snug tabular-nums">
+          Band centered on the reward (dust-filtered) mid — {divergeC >= 0 ? '+' : ''}{divergeC.toFixed(1)}¢ vs the raw book mid.
+        </p>
+      )}
+      {!isLive && (
+        <p className="font-body text-[9px] text-gold leading-snug">
+          Live feed unavailable — tracking is coarse (15-min REST); band position may be out of date.
+        </p>
+      )}
+    </div>
+  );
+}
+
 // Colored YES/NO badge (YES green, NO red) used by the per-level fill-rule rows.
 function SideBadge({ side }: { side: SideKey }) {
   const cls = side === 'yes'
@@ -1680,9 +1857,10 @@ function SideBadge({ side }: { side: SideKey }) {
 // many markers per book+side, so each level owns its own rule). Grouped by book+side; scrolls when
 // many levels are placed so the section stays compact and never balloons the page. Empty state when
 // nothing is placed. SIMULATION PREFERENCE ONLY — advisory, no real order / automated execution.
-function PerLevelFillRules({ legBook, fillRules, bandRadiusC, yesMid, noMid, onChange }: {
+function PerLevelFillRules({ legBook, fillRules, bandRadiusC, yesMid, noMid, onChange, legPrefs, onMode, onOffset, feedLive }: {
   legBook: LegBook; fillRules: FillRuleMap; bandRadiusC: number | null;
   yesMid: number | null; noMid: number | null; onChange: (key: string, rule: OnFill) => void;
+  legPrefs: LegPrefMap; onMode: (key: string, mode: LegMode) => void; onOffset: (key: string, offsetC: number) => void; feedLive: boolean;
 }) {
   const CHANNELS: { id: LegId; kind: LegKind; book: BookKey; label: string }[] = [
     { id: 'yes-buy',  kind: 'buy',  book: 'yes', label: 'BUY YES' },
@@ -1714,7 +1892,10 @@ function PerLevelFillRules({ legBook, fillRules, bandRadiusC, yesMid, noMid, onC
             const key = fillKey(c.book, c.kind, p);
             return (
               <LevelFillRow key={key} book={c.book} kind={c.kind} price={p} earns={earns(c.mid, p)}
-                rule={fillRules[key] ?? defaultFillRule(c.kind)} onChange={r => onChange(key, r)} />
+                rule={fillRules[key] ?? defaultFillRule(c.kind)} onChange={r => onChange(key, r)}
+                mid={c.mid} bandRadiusC={bandRadiusC} feedLive={feedLive}
+                pref={legPrefs[key] ?? { mode: 'follow', offsetC: 0 }}
+                onMode={m => onMode(key, m)} onOffset={o => onOffset(key, o)} />
             );
           })}
         </div>
@@ -1726,24 +1907,78 @@ function PerLevelFillRules({ legBook, fillRules, bandRadiusC, yesMid, noMid, onC
 // One placed level's row: "SIDE BOOK @ price" + earns/no-reward chip, a two-option segmented control
 // (re-quote other side | close immediately), and a one-line description of the SELECTED option.
 // Selection is a simulation preference only — it never places or cancels a real order.
-function LevelFillRow({ book, kind, price, earns, rule, onChange }: {
+function LevelFillRow({ book, kind, price, earns, rule, onChange, mid, bandRadiusC, feedLive, pref, onMode, onOffset }: {
   book: BookKey; kind: LegKind; price: number; earns: boolean; rule: OnFill; onChange: (r: OnFill) => void;
+  mid: number | null; bandRadiusC: number | null; feedLive: boolean;
+  pref: LegPref; onMode: (m: LegMode) => void; onOffset: (o: number) => void;
 }) {
   const opts: [OnFill, string][] = [['requote', '↻ Re-quote other side'], ['close', '✕ Close immediately']];
   const tone = kind === 'buy' ? 'text-mint-deep' : 'text-coral-ink';
   const desc = rule === 'requote'
     ? '→ re-post the offsetting quote to capture the spread (stay exposed until balanced)'
     : '→ close at best price (no exposure, give up the spread)';
+
+  // Live target/drift (pure, mirrors lib/rewards-live-band). Honest nulls when mid unknown.
+  const target = pref.mode === 'pinned' ? price : (mid != null ? mid + pref.offsetC / 100 : null);
+  const driftC = target != null ? Math.round((price - target) * 100 * 100) / 100 : null;
+  const neverEarns = bandRadiusC == null ? false
+    : pref.mode === 'follow' ? Math.abs(pref.offsetC) > bandRadiusC + 1e-9
+    : !earns; // pinned outside band never earns
+  const rad = bandRadiusC ?? 5;
+  const modeChip = pref.mode === 'pinned'
+    ? <span className="font-body text-[8px] text-ink-2 whitespace-nowrap">📌 pinned</span>
+    : <span className="font-body text-[8px] text-mint-deep whitespace-nowrap">↕ follows {pref.offsetC >= 0 ? '+' : ''}{pref.offsetC.toFixed(1)}¢</span>;
+
   return (
     <div className="rounded-button border border-line bg-bg-soft/40 px-2 py-1.5 space-y-1">
       <div className="flex items-center gap-1.5 flex-wrap">
         <span className={`font-body font-semibold text-[10px] uppercase tracking-wide whitespace-nowrap ${tone}`}>{kind}</span>
         <SideBadge side={book} />
         <span className="font-mono text-[11px] text-ink-2 tabular-nums whitespace-nowrap">@ {fmtC(price)}</span>
+        {modeChip}
         {earns
           ? <span className="font-body text-[8px] font-bold text-mint-deep whitespace-nowrap" title="reward-eligible — earns">✓ earns</span>
-          : <span className="font-body text-[8px] text-muted whitespace-nowrap" title="outside reward band — no reward">no reward</span>}
+          : <span className="font-body text-[8px] text-coral-ink whitespace-nowrap" title="outside reward band — no reward">out · $0</span>}
       </div>
+
+      {/* Live target vs your resting price + drift (advisory — you re-quote by hand). */}
+      <div className="flex items-center gap-2 flex-wrap font-mono text-[10px] tabular-nums">
+        <span className="text-muted whitespace-nowrap">target <span className="text-ink-2">{target != null ? fmtC(target) : '—'}</span></span>
+        <span className="text-muted whitespace-nowrap">rest <span className="text-ink-2">{fmtC(price)}</span></span>
+        <span className={`whitespace-nowrap ${driftC == null ? 'text-muted' : Math.abs(driftC) >= rad ? 'text-coral-ink' : 'text-muted'}`}>
+          drift {driftC == null ? '—' : `${driftC >= 0 ? '+' : ''}${driftC.toFixed(1)}¢`}
+        </span>
+        {!feedLive && <span className="font-body text-[8px] text-gold whitespace-nowrap">· coarse (REST)</span>}
+      </div>
+
+      {/* Follow / pinned — target tracks mid, or stays put. */}
+      <div className="grid grid-cols-2 gap-1.5" role="tablist" aria-label={`tracking for ${kind} ${book.toUpperCase()} at ${fmtC(price)}`}>
+        {([['follow', '↕ Follow mid'], ['pinned', '📌 Stay put']] as [LegMode, string][]).map(([v, label]) => (
+          <button key={v} onClick={() => onMode(v)} role="tab" aria-selected={pref.mode === v}
+            className={`min-h-[44px] min-w-0 font-body font-medium text-[11px] px-1.5 py-1.5 rounded-button border transition-colors truncate
+              ${pref.mode === v ? 'border-mint-deep/45 bg-mint-tint text-mint-deep' : 'border-line bg-surface text-muted hover:text-ink-2'}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Distance slider, bounded by the REAL band radius. Follow mode only. */}
+      {pref.mode === 'follow' && bandRadiusC != null && (
+        <div className="space-y-0.5">
+          <input type="range" min={-rad} max={rad} step={0.1} value={Math.max(-rad, Math.min(rad, pref.offsetC))}
+            onChange={e => onOffset(Math.round(parseFloat(e.target.value) * 10) / 10)}
+            aria-label="offset from mid in cents" className="w-full accent-mint-deep" />
+          <p className="font-body text-[8px] text-muted leading-snug">
+            offset {pref.offsetC >= 0 ? '+' : ''}{pref.offsetC.toFixed(1)}¢ from mid · band ±{bandRadiusC.toFixed(2)}¢
+          </p>
+        </div>
+      )}
+      {neverEarns && (
+        <p className="font-body text-[9px] text-coral-ink leading-snug">
+          Offset is beyond the ±{(bandRadiusC ?? 0).toFixed(2)}¢ band — this leg will never earn.
+        </p>
+      )}
+
       <div className="grid grid-cols-2 gap-1.5" role="tablist" aria-label={`post-fill for ${kind} ${book.toUpperCase()} at ${fmtC(price)}`}>
         {opts.map(([v, label]) => (
           <button key={v} onClick={() => onChange(v)} role="tab" aria-selected={rule === v}
