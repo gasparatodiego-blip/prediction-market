@@ -99,3 +99,8 @@ data/sport-recorder-state.json
 data/news-guard-shadow.jsonl
 data/news-guard-book-history.json
 data/polymarket-clob-audit.jsonl
+
+# maker runtime logs / measurement artifacts (like news-guard-shadow)
+data/polymarket-maker-audit.jsonl
+data/requote-economics-raw.json
+data/maker-*.jsonl
