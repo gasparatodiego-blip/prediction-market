@@ -354,5 +354,22 @@ module.exports = {
       autorestart:   true,
       env:           { NODE_ENV: 'production', HOME: '/root' },
     },
+    {
+      name:          'agent35-maker',
+      script:        './agents/agent35-maker.js',
+      cwd:           '/root/prediction-market',
+      restart_delay: 15000,
+      max_restarts:  20,
+      // The automated liquidity-reward MAKER engine. FIRST component that can place orders — so it runs
+      // behind the staged MAKER_MODE ladder and defaults to 'off' (venue writes unreachable). Its own
+      // process for failure isolation. It reads agent34's live books + the operator's RewardsLeg config,
+      // computes quotes off the ADJUSTED mid, runs every risk rail, and (in paper) logs what it WOULD
+      // post. Live modes require a separate reviewed change to wire the custody signer — off/paper cannot
+      // reach a venue write. Default env pins MAKER_MODE=off; advancing a stage is an explicit human edit.
+      max_memory_restart: '250M',
+      watch:         false,
+      autorestart:   true,
+      env:           { NODE_ENV: 'production', HOME: '/root', MAKER_MODE: 'off' },
+    },
   ],
 };

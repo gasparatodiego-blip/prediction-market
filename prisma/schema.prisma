@@ -150,6 +150,11 @@ model RewardsLeg {
   mode      String   @default("follow")         // 'follow' (target = mid∓offset, tracks live) | 'pinned' (target = price)
   offsetC   Float    @default(0)                // signed distance-to-mid in cents at placement: (price - mid)*100
   onFill    String   @default("requote")        // per-level fill rule: 'requote' | 'close' (mirrors fillRules)
+  // Per-leg maker controls (agent35-maker). Independently enable/disable each channel/level and set its
+  // size; null size → the engine default. Additive to the SAME leg model (not a parallel one) so the
+  // drift advisory and the maker quote against one shared per-leg config.
+  enabled    Boolean @default(true)             // is this leg quoted by the maker engine?
+  sizeShares Float?                              // per-leg order size in shares; null → engine default
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
