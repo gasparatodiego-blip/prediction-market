@@ -38,6 +38,33 @@ Two independent belts on top of the mode:
 - While armed the key lives **only inside the ethers `Wallet` instance** in the engine process's heap,
   for exactly as long as `MAKER_MODE` is a live stage. `off`/`paper` never call the signer provider.
 
+## ⚠️ CLOB v2 migration — HARD BLOCKER before any live placement
+
+Polymarket migrated to **CLOB v2 on 2026-04-28** (verified on-chain + docs). This build is **paper-safe
+but NOT live-ready** until the SDK is migrated:
+
+- **SDK:** our pinned `@polymarket/clob-client@5.8.1` is the **v1** client (no releases after Mar 2026).
+  It signs orders against the **deprecated v1 exchange `0x4bFb41…`** with EIP-712 domain version `"1"`.
+  **v2 production rejects v1 orders.** v2 support is a *separate* package **`@polymarket/clob-client-v2`
+  (≥1.0.0, current 1.1.0)**. The maker adapter **fails closed** on the placement path while the v2 SDK is
+  absent (asserted in the selfcheck) — so even a fully-armed live-min cannot sign a doomed v1 order.
+- **Contracts (Polygon 137, on-chain verified):** CTFExchangeV2 `0xE111180000d2663C0091e4f400237545B87B996B`,
+  NegRiskCtfExchangeV2 `0xe2222d279d744050d28e00520010520000310F59`.
+- **Collateral:** **pUSD `0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB`** (6 dec), replacing USDC.e
+  `0x2791Bca…`. Onramp USDC/USDC.e → pUSD; approve the **v2** contracts.
+- **Order struct (v2):** no `feeRateBps`/`nonce`/`taker`/`expiration`; adds `timestamp`/`metadata`/`builder`.
+- **Fees:** **taker-only, protocol-determined at match time; makers pay 0.** Do **not** hardcode a fee or a
+  category rate. Read `GET /fee-rate?token_id=<id>` live (`base_fee`, bps) — values are per-market and
+  currently inconsistent with the doc tables (one of our own reward tokens returns `base_fee:1000`), so
+  trust the live value + the on-chain `fee`/`FeeCharged`, not the docs table. The adapter no longer sends
+  `feeRateBps` — it lets the client resolve the authoritative value.
+- **Fills:** we read via the CLOB REST/WS API (`listOpenOrders`/`getPositions`), so the redesigned v2
+  `OrderFilled` on-chain event does **not** affect us (we never decode on-chain logs).
+
+**Migration checklist before live-min:** `npm i @polymarket/clob-client-v2`, point the adapter's dynamic
+import + signer/domain at v2, fund + approve **pUSD** on the v2 contracts, then re-run `maker-selfcheck`
+(the v2 guard flips to allow) and a deep post-only order.
+
 ## Before the first `live-min` order — wallet prerequisites
 
 A brand-new wallet that only derived L2 API creds **cannot place an order.** Before live-min:

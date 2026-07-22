@@ -60,16 +60,26 @@ async function noWriteProof() {
   const dp = await dry.postOrder({ tokenId: '0xabc', side: 'BUY', price: 0.5, size: 100, tickSize: 0.01 });
   ok(dp.sent === false, 'live+dry-run postOrder makes NO venue write');
 
-  // A live adapter with THROWING providers (this build's live wiring) cannot obtain a key → cannot sign.
+  // A live adapter with THROWING providers (this build's live wiring). It fails CLOSED — but in this
+  // build the OUTER belt is the CLOB-v2 guard: with the v1 SDK installed, postOrder refuses before it
+  // ever reaches liveClient()/the provider. (Were the v2 SDK present, the inner throwing-provider belt
+  // would then block it.) Either way: no order is signed, no key obtained.
   const thrower = async () => { throw new Error('provider not wired'); };
   const live = createMakerAdapter({ mode: 'live-min', credsProvider: thrower, signerProvider: thrower, liveMinCapUsd: 25 });
   ok(live.canWrite === true, 'live-min with providers → canWrite=true (capability owned)…');
   const lp = await live.postOrder({ tokenId: '0xabc', side: 'BUY', price: 0.5, size: 10, tickSize: 0.01 });
-  ok(lp.ok === false && lp.error && /not wired/i.test(lp.error), '…but the throwing provider means NO order can be signed (fails closed, no key obtained)');
+  ok(lp.ok === false && lp.sent === false, '…but a live placement fails CLOSED (v2-SDK guard outer belt; throwing provider inner belt) — no order signed');
 
   // ── 8. live-min HARD per-order notional cap trips BEFORE any network/creds are touched ──
   const capped = await live.postOrder({ tokenId: '0xabc', side: 'BUY', price: 0.5, size: 1000, tickSize: 0.01 }); // $500 » $25
   ok(capped.sent === false && /live-min hard cap/i.test(capped.reason || ''), 'live-min hard cap rejects an over-cap order before touching creds');
+
+  // ── 8b. CLOB v2 fail-closed: on the v1 SDK, a live placement refuses BEFORE any network/key (never
+  //     signs a deprecated v1 order the v2 venue would reject). Providers that would succeed are never
+  //     reached — the v2 guard fires first. ──
+  const okProviders = createMakerAdapter({ mode: 'live', credsProvider: async () => ({ creds: { key: 'k', secret: 's', passphrase: 'p' }, address: '0x' + '1'.repeat(40) }), signerProvider: async () => ({ privateKey: '0x' + '1'.repeat(64), address: '0x' + '1'.repeat(40) }) });
+  const v1reject = await okProviders.postOrder({ tokenId: '0xabc', side: 'BUY', price: 0.5, size: 10, tickSize: 0.01 });
+  ok(v1reject.sent === false && /v1 SDK|CLOB v2|clob-client-v2/i.test(v1reject.reason || ''), 'live placement on the v1 SDK FAILS CLOSED (refuses to sign a deprecated v1 order; migrate to clob-client-v2 first)');
 
   // ── 9. off/paper/live all REJECT an off-tick price defensively (never post an unsnapped price) ──
   const offTick = await createMakerAdapter({ mode: 'paper' }).postOrder({ tokenId: '0xabc', side: 'BUY', price: 0.5237, size: 100, tickSize: 0.01 });
