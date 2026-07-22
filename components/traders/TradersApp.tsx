@@ -89,6 +89,52 @@ function filterByMinResolved(list: LbEntry[], min: number): LbEntry[] {
   return list.filter(e => (e.resolvedMarkets ?? 0) >= min);
 }
 
+// ── Combined performance + activity filter (AND logic, honest-engine) ──────────
+// Each constraint is a [min,max] range or a boolean. A trader is EXCLUDED by a range
+// only when that range is ACTIVELY constraining (min>floor or max<ceil) AND its field
+// is null/"—" for that trader — never silently dropped when the filter is off. No
+// fabricated stats: only REAL agent20 list fields (winRate, wilsonScore, volumeUsdc,
+// returnOnVolume, lastActive, verified). Sharpe / max-drawdown / avg-hold are NOT
+// list-level fields (profile-only) and are deliberately absent here rather than faked.
+interface CombinedFilters {
+  winMin: number; winMax: number;          // win rate %   [0,100]
+  wilMin: number; wilMax: number;          // Wilson score [0,1]
+  roiMin: number; roiMax: number;          // return-on-volume % [-100,100]
+  volMin: number; volMax: number;          // volume $ [0,∞] (volMax=0 means no upper bound)
+  verifiedOnly: boolean;
+  active24h: boolean;
+}
+const FILTERS_OFF: CombinedFilters = {
+  winMin: 0, winMax: 100, wilMin: 0, wilMax: 1, roiMin: -100, roiMax: 100,
+  volMin: 0, volMax: 0, verifiedOnly: false, active24h: false,
+};
+function filtersActive(f: CombinedFilters): boolean {
+  return f.winMin > 0 || f.winMax < 100 || f.wilMin > 0 || f.wilMax < 1
+    || f.roiMin > -100 || f.roiMax < 100 || f.volMin > 0 || f.volMax > 0
+    || f.verifiedOnly || f.active24h;
+}
+// A range excludes a trader iff the range is active AND (value is null OR out of range).
+function rangeReject(value: number | null | undefined, min: number, max: number, floor: number, ceil: number): boolean {
+  const active = min > floor || max < ceil;
+  if (!active) return false;                 // filter off → never excludes, never "—"-drops
+  if (value == null) return true;            // actively constrained + unmeasurable → excluded ("—")
+  return value < min || value > max;
+}
+function filterCombined(list: LbEntry[], f: CombinedFilters): LbEntry[] {
+  if (!filtersActive(f)) return list;
+  const dayAgo = Math.floor(Date.now() / 1000) - 86_400;
+  return list.filter(e => {
+    if (rangeReject(e.winRate, f.winMin, f.winMax, 0, 100)) return false;
+    if (rangeReject(e.wilsonScore, f.wilMin, f.wilMax, 0, 1)) return false;
+    if (rangeReject(returnOnVolumePct(e.pnlUsdc, e.volumeUsdc), f.roiMin, f.roiMax, -100, 100)) return false;
+    // volume: volMax=0 → no upper bound; treat ceil as +∞ so only the min side constrains.
+    if (rangeReject(e.volumeUsdc, f.volMin, f.volMax > 0 ? f.volMax : Number.POSITIVE_INFINITY, 0, Number.POSITIVE_INFINITY)) return false;
+    if (f.verifiedOnly && !(e as any).verified) return false;
+    if (f.active24h && !((e.lastActive ?? 0) >= dayAgo)) return false;
+    return true;
+  });
+}
+
 const WINDOW_LABEL: Record<WindowKey, string> = { '1d': '1D', '7d': '7D', '30d': '30D', all: 'ALL' };
 
 interface CopyConfigLite { walletAddr: string }
@@ -150,6 +196,9 @@ export default function TradersApp() {
     return Number.isFinite(n) && n > 0 ? n : 0;
   });
   const [win, setWin]         = useState<WindowKey>('all');
+  // Combined performance + activity filters (AND logic). Off by default; a collapsible bar.
+  const [combined, setCombined]   = useState<CombinedFilters>(FILTERS_OFF);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [lbData, setLbData]   = useState<LbData | null>(null);
   const [error, setError]     = useState('');
 
@@ -306,9 +355,12 @@ export default function TradersApp() {
   // of the category slice, so category + sort + filter stack correctly.
   const rows = useMemo(() => {
     const list = sortByRank((lbData?.categories?.[cat] ?? []).slice(), rankBy);
-    // Return ≥, then heuristic human-only, then min-resolved — all real fields.
-    return filterByMinResolved(filterByHuman(filterByMinReturn(list, minReturn), humanOnly), minResolved);
-  }, [lbData, cat, rankBy, minReturn, humanOnly, minResolved]);
+    // Return ≥, then heuristic human-only, then min-resolved, then the combined
+    // performance+activity bar — all AND-composed on REAL fields (honest-engine).
+    return filterCombined(
+      filterByMinResolved(filterByHuman(filterByMinReturn(list, minReturn), humanOnly), minResolved),
+      combined);
+  }, [lbData, cat, rankBy, minReturn, humanOnly, minResolved, combined]);
 
   // Bots / HFT wallets come from a dedicated server list — EXCLUDED from the
   // directional `categories` (so tiny-P&L scrapers can't fill the skill board).
@@ -316,8 +368,8 @@ export default function TradersApp() {
   // is intentionally NOT applied here (this tab IS the bot list — its toggle is hidden).
   const bots = useMemo(() => {
     const list = sortByRank((lbData?.bots ?? []).slice(), rankBy);
-    return filterByMinResolved(filterByMinReturn(list, minReturn), minResolved);
-  }, [lbData, rankBy, minReturn, minResolved]);
+    return filterCombined(filterByMinResolved(filterByMinReturn(list, minReturn), minResolved), combined);
+  }, [lbData, rankBy, minReturn, minResolved, combined]);
   const botsTotal = lbData?.bots?.length ?? 0;
 
   // Window availability is DATA-DRIVEN, never a hardcoded list. A window renders
@@ -457,6 +509,12 @@ export default function TradersApp() {
               );
             })}
           </div>
+
+          {/* Combined performance + activity filter bar (AND logic, real fields only) */}
+          <AdvancedFilterBar
+            open={showAdvanced} onToggle={() => setShowAdvanced(s => !s)}
+            f={combined} setF={setCombined}
+          />
 
           {rows.length === 0 ? (
             <div className="rounded-card border border-line bg-surface shadow-card p-8 text-center font-body text-sm text-muted">
@@ -643,6 +701,79 @@ function Stat({ label, children }: { label: string; children: React.ReactNode })
       <span className="font-body text-[9px] uppercase tracking-wide text-muted/70">{label}</span>
       <span className="font-mono text-[11px] text-ink-2 tabular-nums">{children}</span>
     </span>
+  );
+}
+
+// ── Combined performance + activity filter bar ─────────────────────────────────
+// Real agent20 fields only (AND-composed). Sharpe / max-drawdown / avg-hold are shown
+// as "—  profile-only" (disabled) because agent20 does NOT compute them at list level —
+// honest-engine: never a filter that would fabricate or empty the list on missing data.
+function AdvancedFilterBar({
+  open, onToggle, f, setF,
+}: { open: boolean; onToggle: () => void; f: CombinedFilters; setF: (u: CombinedFilters) => void }) {
+  const active = filtersActive(f);
+  const num = (v: string) => (v === '' ? NaN : Number(v));
+  return (
+    <div className="mb-4 rounded-card border border-line bg-surface shadow-card overflow-hidden">
+      <button onClick={onToggle} className="w-full min-h-[44px] px-4 flex items-center justify-between gap-2">
+        <span className="font-body text-[12px] font-medium text-ink-2">
+          Filters — performance + activity {active && <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded-pill bg-mint-tint text-mint-deep">active</span>}
+        </span>
+        <span className="font-body text-[11px] text-muted">{open ? 'hide ▲' : 'show ▼'}</span>
+      </button>
+      {open && (
+        <div className="px-4 pb-4 pt-1 border-t border-line grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
+          {/* Performance */}
+          <RangeRow label="Win rate %" unit="%" min={f.winMin} max={f.winMax} lo={0} hi={100}
+            onMin={v => setF({ ...f, winMin: Number.isFinite(num(v)) ? Math.max(0, num(v)) : 0 })}
+            onMax={v => setF({ ...f, winMax: Number.isFinite(num(v)) ? Math.min(100, num(v)) : 100 })} />
+          <RangeRow label="Wilson score" min={f.wilMin} max={f.wilMax} lo={0} hi={1} step={0.01}
+            onMin={v => setF({ ...f, wilMin: Number.isFinite(num(v)) ? Math.max(0, num(v)) : 0 })}
+            onMax={v => setF({ ...f, wilMax: Number.isFinite(num(v)) ? Math.min(1, num(v)) : 1 })} />
+          <RangeRow label="Return on volume %" unit="%" min={f.roiMin} max={f.roiMax} lo={-100} hi={100}
+            onMin={v => setF({ ...f, roiMin: Number.isFinite(num(v)) ? num(v) : -100 })}
+            onMax={v => setF({ ...f, roiMax: Number.isFinite(num(v)) ? num(v) : 100 })} />
+          {/* Activity */}
+          <RangeRow label="Volume $ (min)" min={f.volMin} max={f.volMax} lo={0} hi={0} singleMin
+            onMin={v => setF({ ...f, volMin: Number.isFinite(num(v)) ? Math.max(0, num(v)) : 0 })}
+            onMax={() => {}} />
+          <div className="flex items-center gap-4 flex-wrap">
+            <label className="inline-flex items-center gap-2 font-body text-[12px] text-ink-2 min-h-[44px]">
+              <input type="checkbox" checked={f.verifiedOnly} onChange={e => setF({ ...f, verifiedOnly: e.target.checked })} style={{ accentColor: '#0c9d6e' }} />
+              Verified only
+            </label>
+            <label className="inline-flex items-center gap-2 font-body text-[12px] text-ink-2 min-h-[44px]">
+              <input type="checkbox" checked={f.active24h} onChange={e => setF({ ...f, active24h: e.target.checked })} style={{ accentColor: '#0c9d6e' }} />
+              Active in last 24h
+            </label>
+          </div>
+          {/* Honest "not available at list level" */}
+          <div className="sm:col-span-2 flex items-center gap-3 flex-wrap pt-1 border-t border-line/60">
+            <span className="font-body text-[10px] text-muted">Sharpe, max drawdown, avg hold: <span className="text-faint">—  profile-only (no list-level series; not filtered here rather than faked)</span></span>
+            {active && (
+              <button onClick={() => setF(FILTERS_OFF)} className="ml-auto font-body text-[11px] text-mint-deep hover:underline">reset filters</button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RangeRow({ label, unit, min, max, lo, hi, step, singleMin, onMin, onMax }: {
+  label: string; unit?: string; min: number; max: number; lo: number; hi: number; step?: number;
+  singleMin?: boolean; onMin: (v: string) => void; onMax: (v: string) => void;
+}) {
+  const box = 'w-20 min-w-0 min-h-[36px] rounded-lg border border-line bg-bg/40 px-2 font-mono text-[12px] text-ink tabular-nums';
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      <span className="font-body text-[11px] text-muted w-32 shrink-0">{label}</span>
+      <input type="number" defaultValue={min !== lo ? String(min) : ''} placeholder={`min${unit ?? ''}`} step={step} onChange={e => onMin(e.target.value)} className={box} />
+      {!singleMin && (<>
+        <span className="text-faint">–</span>
+        <input type="number" defaultValue={max !== hi ? String(max) : ''} placeholder={`max${unit ?? ''}`} step={step} onChange={e => onMax(e.target.value)} className={box} />
+      </>)}
+    </div>
   );
 }
 
