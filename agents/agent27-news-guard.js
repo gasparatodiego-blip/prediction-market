@@ -29,6 +29,28 @@ const https = require('https');
 const crypto = require('crypto');
 const { httpPost: _sharedPost } = require('../lib/httpGet');
 
+// ── News-guard signal + action pipeline (all DISARMED / shadow by default) ──────
+// Pure, framework-free modules shared with the replay tool so the agent and the audit dataset
+// run identical logic. None of these talk to a venue.
+const { loadNewsGuardConfig } = require('../lib/news-guard/config');
+const { detectBookMove }      = require('../lib/news-guard/book-detector');
+const { buildSignal }         = require('../lib/news-guard/signal');
+const { decideAction }        = require('../lib/news-guard/action');
+const { appendShadowRecord }  = require('../lib/news-guard/shadow-log');
+
+// Resolved execution gates for THIS process. armed defaults FALSE → the action layer runs in
+// shadow (logs every decision, sends no order). Read once at boot; a flip needs a restart, which
+// is the intended, explicit, human step.
+const NG = loadNewsGuardConfig();
+
+// There is NO Polymarket/Kalshi trading key in custody (lib/key-custody stores only CEX perp
+// credentials, and every venue adapter is read-only + liveVerified:false). So for the prediction
+// venues the guard acts on, liveVerified is false BY CONSTRUCTION — never send an order through an
+// unverified adapter. This is the third independent gate on execution.
+function keyStateFor(/* venue */) { return { liveVerified: false }; }
+
+const BOOK_HIST_MAX = 24;   // rolling window per market (~4h at the 10-min scan cadence)
+
 // ── Load .env for Telegram creds (pm2 doesn't auto-load project env files) ────
 // Same read-only pattern as agent26; never hardcode/commit the token.
 for (const envFile of ['.env.local', '.env']) {
@@ -66,7 +88,7 @@ catch (e) { console.warn('[A27] Prisma unavailable — placement reactions disab
 
 async function getPlacements() {
   if (!prisma) return [];
-  try { return await prisma.rewardsPlacement.findMany({ select: { marketId: true, newsMode: true, side: true, onFillYes: true, onFillNo: true } }); }
+  try { return await prisma.rewardsPlacement.findMany({ select: { userId: true, marketId: true, newsMode: true, side: true, qtyPerSide: true, onFillYes: true, onFillNo: true } }); }
   catch (e) { console.warn('[A27] placement read failed:', e.message); return []; }
 }
 
@@ -174,15 +196,15 @@ async function newsSignal(title) {
   else if (recent >= MED_MIN && ratio >= MED_RATIO) level = 'medium';
 
   return {
-    level, recent, baselinePer: Math.round(baselinePer * 100) / 100, ratio: Math.round(ratio * 100) / 100,
+    level, recent, recentH: RECENT_H, baselinePer: Math.round(baselinePer * 100) / 100, ratio: Math.round(ratio * 100) / 100,
     source: 'google-news-rss', note: `${recent} articles in last ${RECENT_H}h vs ${baselinePer.toFixed(1)}/window baseline`,
   };
 }
 
-// ── Book signal from already-ingested volatility/flags (free) ──────────────────
-// Returns structured components; the HIGH escalation lives in combineRisk() so that
-// static high volatility alone (e.g. near-expiry) reads MEDIUM, and a "withdraw now"
-// HIGH is reserved for genuine imminent-move signals (TRAP / news spike / corroborated).
+// ── Coarse upstream flags → a human-readable book note (free) ──────────────────
+// This is NOT the severity source anymore — the rolling book detector (lib/news-guard/book-
+// detector.js) + the severity policy (lib/news-guard/signal.js) decide severity. This function
+// only produces a friendly note from the upstream volatility/TRAP flags for display fallback.
 function bookSignal(mkt) {
   const flags = Array.isArray(mkt.flags) ? mkt.flags : [];
   const vr = (mkt.volatilityRisk || '').toUpperCase();
@@ -197,26 +219,6 @@ function bookSignal(mkt) {
   return { trap, volHigh: vr === 'HIGH', volMed: vr === 'MEDIUM', shortBurst: flags.includes('SHORT_BURST'), hoursToResolution: nearResolveH, note: notes.join('; ') || 'book calm' };
 }
 
-const RANK = { low: 0, medium: 1, high: 2, unknown: 0 };
-function worse(a, b) { return RANK[b] > RANK[a] ? b : a; }
-
-// Combine real book components + news signal into an advisory low/med/high.
-// MEDIUM = elevated, watch. HIGH = withdraw now — reserved for imminent-move signals.
-function combineRisk(bs, ns) {
-  const newsLvl = ns && ns.level !== 'unknown' ? ns.level : 'low';
-  let level = 'low';
-  // Elevations (MEDIUM):
-  if (bs.volHigh || bs.volMed) level = worse(level, 'medium');
-  if (bs.shortBurst) level = worse(level, 'medium');
-  if (bs.hoursToResolution != null && bs.hoursToResolution <= 12) level = worse(level, 'medium');
-  if (newsLvl === 'medium') level = worse(level, 'medium');
-  // Escalations (HIGH — genuine imminent-move):
-  if (bs.trap) level = 'high';                                             // structural adverse trap
-  if (newsLvl === 'high') level = 'high';                                  // real breaking-news spike
-  if (bs.volHigh && (newsLvl === 'medium' || (bs.hoursToResolution != null && bs.hoursToResolution <= 6)))
-    level = 'high';                                                        // high vol corroborated by news / imminent resolution
-  return level;
-}
 
 // ── Best-price exit advisory (approx from last snapshot; live exec OFF) ─────────
 function exitAdvisory(mkt) {
@@ -280,6 +282,10 @@ async function scan() {
   const state = readJsonSafe(STATE_FILE) || { newsCache: {}, alerted: {} };
   state.newsCache = state.newsCache || {};
   state.alerted   = state.alerted   || {};
+  // Rolling per-market book history (for the primary book detector) + action idempotency rails.
+  state.bookHist       = state.bookHist       || {};
+  state.actionCooldown = state.actionCooldown || {};   // marketId → last shadow-action ts (idempotency)
+  state.actionHourly   = Array.isArray(state.actionHourly) ? state.actionHourly : []; // ts[] in last hour
 
   const markets = snap.markets;
 
@@ -323,9 +329,10 @@ async function scan() {
     'x-twitter':       'unavailable — requires a paid API key (not configured; budget €50/mo)',
   };
 
+  const signalByMarket = {};   // marketId → typed MarketMoveSignal (for the action layer below)
   const results = [];
   for (const m of markets) {
-    const bs = bookSignal(m);
+    const bs = bookSignal(m);   // coarse upstream flags (kept for the human-readable note)
 
     // News signal: cached, and only for the chosen targets. Others carry book-only.
     let ns = null;
@@ -339,17 +346,41 @@ async function scan() {
       await sleep(Math.ceil(1000 / NEWS_RPS));
     }
 
-    const signals = [{ source: 'order-book-volatility', note: bs.note }];
-    if (ns) signals.push({ source: ns.source, note: ns.note });
+    // ── PRIMARY: rolling book-move detector on the market's OWN measured dynamics ──
+    // Build the current sample from real snapshot fields; thinner-side depth is only knowable when
+    // the venue splits sides (Polymarket) — Kalshi carries a combined depth, so depthMin stays null
+    // there (one-sided-collapse simply can't fire, never fabricated).
+    const depthYes = m.sides && m.sides.yes ? m.sides.yes.bookDepthAtBand : null;
+    const depthNo  = m.sides && m.sides.no  ? m.sides.no.bookDepthAtBand  : null;
+    const depthMin = (typeof depthYes === 'number' && typeof depthNo === 'number') ? Math.min(depthYes, depthNo) : null;
+    const cur = { mid: m.midpoint, spread: m.bookSpread, depthMin, bandDepth: m.bookDepthAtBand };
+    const hist = Array.isArray(state.bookHist[m.marketId]) ? state.bookHist[m.marketId] : [];
+    const book = detectBookMove(cur, hist);
+    // Fold the upstream structural TRAP flag (one side near-empty) in as a book trigger — it is a
+    // measured one-sided condition, and book alone still caps at 'medium' by policy.
+    if (Array.isArray(m.flags) && m.flags.includes('TRAP')) {
+      book.triggers.push({ type: 'structural-trap', note: 'near-certain outcome, one side empty (upstream flag)' });
+      book.fired = true;
+      if (book.severity === 'low') book.severity = 'medium';
+    }
+    // Advance the rolling history AFTER detecting (so the current point never baselines itself).
+    if (cur.mid != null || cur.spread != null || cur.bandDepth != null) {
+      state.bookHist[m.marketId] = [...hist, { t: now, ...cur }].slice(-BOOK_HIST_MAX);
+    }
 
-    // Overall = combined book + news signal (HIGH reserved for imminent-move).
-    const newsRisk = combineRisk(bs, ns);
+    // ── Combine per the book-primary severity policy (signal.js) ──
+    const signal = buildSignal({ marketId: m.marketId, book, news: ns, ts: now });
+    signalByMarket[m.marketId] = { signal, market: m };
+    const newsRisk = signal.severity;   // 'low' | 'medium' | 'high' | 'unknown'
+
+    const signals = [{ source: 'order-book-move', note: signal.evidence.summary || bs.note }];
+    if (ns) signals.push({ source: ns.source, note: ns.note });
 
     const protect = newsRisk === 'high'
       ? {
           action: 'WITHDRAW_LIQUIDITY',
-          detail: `Adverse signal on "${(m.title || '').slice(0, 80)}". Advisory: cancel both resting quotes now. If partially filled, ${exitAdvisory(m)}.`,
-          liveExecution: AUTO_EXECUTE_ENABLED ? 'ON' : 'OFF (advisory only)',
+          detail: `Adverse signal on "${(m.title || '').slice(0, 80)}" (${signal.source}: ${signal.evidence.summary}). Advisory: monitoring is live; automatic execution is OFF (disarmed).`,
+          liveExecution: 'OFF (disarmed — shadow only)',
         }
       : null;
 
@@ -399,7 +430,10 @@ async function scan() {
 
     results.push({
       marketId: m.marketId, venue: m.venue, title: m.title,
-      newsRisk, bookRisk: combineRisk(bs, null), newsSignal: ns ? ns.level : null,
+      newsRisk,                                   // = signal.severity (book-primary policy)
+      severity: signal.severity, source: signal.source, evidence: signal.evidence,
+      bookRisk: book.fired ? 'medium' : 'low',    // book-only severity (caps at medium)
+      newsSignal: ns ? ns.level : null,
       signals, protect,
       placements: pb, userReaction, fillAdvisory: fillAdvisoryBySide,
     });
@@ -407,6 +441,37 @@ async function scan() {
 
   const highs = results.filter(r => r.newsRisk === 'high');
   const meds  = results.filter(r => r.newsRisk === 'medium');
+
+  // ── ACTION LAYER (DISARMED / SHADOW) ──────────────────────────────────────────
+  // For each placement on a market whose signal is HIGH, decide the withdraw action and record it.
+  // ARMED=false → mode is always 'shadow': the decision is fully built and logged, but ZERO venue
+  // network calls happen (the only cancel adapter is the shadow one). Idempotency rails (per-market
+  // cooldown + hourly cap) are consumed on a real 'withdraw' decision even in shadow, so arming
+  // later behaves exactly as the shadow log predicts.
+  state.actionHourly = state.actionHourly.filter(t => now - t < 3_600_000);   // prune to last hour
+  let shadowWritten = 0, shadowActs = 0, shadowSuppressed = 0;
+  for (const p of placements) {
+    if (!p.marketId) continue;
+    const sm = signalByMarket[p.marketId];
+    if (!sm || sm.signal.severity !== 'high') continue;   // only actionable (HIGH) signals are logged
+    const rails = {
+      cooldownActive: state.actionCooldown[p.marketId] != null && (now - state.actionCooldown[p.marketId]) < NG.cooldownMs,
+      hourlyCapReached: state.actionHourly.length >= NG.maxPerHour,
+    };
+    const { record, consumesActionSlot } = decideAction({
+      signal: sm.signal, market: sm.market, placement: p,
+      config: NG, keyState: keyStateFor(sm.market.venue), rails, now,
+    });
+    const r = appendShadowRecord(record);
+    if (r.written) shadowWritten++;
+    if (record.decision === 'withdraw') shadowActs++;
+    if (record.decision === 'suppressed') shadowSuppressed++;
+    if (consumesActionSlot) {   // burn the idempotency slot (shadow behaves like the real thing)
+      state.actionCooldown[p.marketId] = now;
+      state.actionHourly.push(now);
+    }
+  }
+  if (shadowWritten) log(`shadow: wrote ${shadowWritten} decision record(s) — ${shadowActs} withdraw, ${shadowSuppressed} suppressed (armed=${NG.armed}, kill=${NG.killSwitch}); no venue calls`);
 
   atomicWrite(OUT_FILE, {
     meta: {
@@ -416,10 +481,15 @@ async function scan() {
       highCount: highs.length,
       medCount: meds.length,
       placementsTracked: placements.length,
-      liveExecution: AUTO_EXECUTE_ENABLED ? 'ON' : 'OFF',
+      // Execution posture — the UI reads THESE (not env) so the panel can't misstate arming.
+      armed: NG.armed,
+      killSwitch: NG.killSwitch,
+      executionMode: NG.armed && !NG.killSwitch ? 'armed' : 'shadow',
+      liveExecution: 'OFF (disarmed — shadow only)',
+      shadow: { written: shadowWritten, withdraw: shadowActs, suppressed: shadowSuppressed },
       sources: sourcesStatus,
-      note: 'Advisory only — live execution OFF. PROTECT actions are recommendations, never real orders. ' +
-            'News-risk = worst of real book volatility/flags and Google News RSS article-volume spike. No fabricated events.',
+      severityPolicy: 'book-primary: book alone→medium; book+news→high; news alone→low (advisory). Every severity traces to measured evidence.',
+      note: 'Monitoring is live and advisory. Automatic execution is DISARMED (NEWS_GUARD_ARMED=false): every decision is logged to data/news-guard-shadow.jsonl, no order is ever sent. No fabricated events.',
     },
     markets: results,
   });
@@ -468,6 +538,10 @@ async function scan() {
   // prune stale alert/cooldown + cache entries, then persist (after any send-stamp above)
   for (const k of Object.keys(state.alerted))  if (now - state.alerted[k]  > 24 * 3_600_000) delete state.alerted[k];
   for (const k of Object.keys(state.newsCache)) if (now - state.newsCache[k].at > 6 * 3_600_000) delete state.newsCache[k];
+  // Drop rolling book history for markets no longer in the snapshot (bounded state file).
+  const liveIds = new Set(markets.map(m => m.marketId));
+  for (const k of Object.keys(state.bookHist))       if (!liveIds.has(k)) delete state.bookHist[k];
+  for (const k of Object.keys(state.actionCooldown)) if (now - state.actionCooldown[k] > 24 * 3_600_000) delete state.actionCooldown[k];
   atomicWrite(STATE_FILE, state);
 
   // heartbeat

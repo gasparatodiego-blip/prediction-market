@@ -96,3 +96,5 @@ data/sport-raw/
 data/sport-arb-history.jsonl
 data/sport-arb-phantoms.jsonl
 data/sport-recorder-state.json
+data/news-guard-shadow.jsonl
+data/news-guard-book-history.json
