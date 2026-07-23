@@ -644,19 +644,24 @@ For confidence: factor in liquidity, time to resolution, similarity score, AND h
 async function callClaude(contextText, historyText) {
   const prompt = `${SYSTEM_PROMPT}\n\nMARKET DATA:${historyText}\n${contextText}\n\nReturn top 5 opportunities as JSON array:`;
 
+  const t0 = Date.now();
   try {
     const { stdout, stderr } = await execFileAsync(
       'claude',
       ['-p', prompt, '--model', MODEL],
-      { timeout: 120_000, env: { ...process.env, HOME: '/root' } }
+      // Real production calls take 227-296s under load (measured); a 120s timeout killed every call.
+      { timeout: 420_000, env: { ...process.env, HOME: '/root' } }
     );
+    console.log(`[master] claude returned in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
     if (stderr?.toLowerCase().includes('error')) console.error('[master] claude stderr:', stderr.slice(0, 300));
     const text  = stdout.trim();
     const match = text.match(/\[[\s\S]*\]/);
     if (!match) { console.error('[master] no JSON array, snippet:', text.slice(0, 200)); return null; }
     return JSON.parse(match[0]);
   } catch (err) {
-    console.error('[master] claude call failed:', err.message);
+    const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+    // Enriched failure logging: a timeout SIGTERM sets err.killed; distinguish it from a non-zero exit.
+    console.error(`[master] claude call failed after ${elapsed}s | killed@timeout=${!!err.killed} code=${err.code} signal=${err.signal}: ${err.message}`);
     return null;
   }
 }
