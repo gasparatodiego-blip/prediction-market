@@ -37,6 +37,31 @@ const https = require('https');
 const { httpGet } = require('../lib/httpGet');
 const bv    = require('../lib/book-velocity');
 
+// ── Load .env for Telegram creds (pm2 doesn't auto-load project env files) ────
+// Same read-only pattern as agent26/agent27; never hardcode/commit the token.
+for (const envFile of ['.env.local', '.env']) {
+  try {
+    const envPath = path.join(__dirname, '..', envFile);
+    for (const line of fs.readFileSync(envPath, 'utf8').split('\n')) {
+      const m = line.match(/^([A-Z0-9_]+)="?([^"]*?)"?\s*$/);
+      if (m && !process.env[m[1]]) process.env[m[1]] = m[2];
+    }
+  } catch { /* try next */ }
+}
+
+const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
+const CHAT_ID   = process.env.TELEGRAM_CHAT_ID   || '';
+
+// Telegram gating — TWO gates, both must pass:
+//   1. TELEGRAM_ALERTS_ENABLED — the PROJECT-WIDE mute switch. agent36 is NOT a
+//      guardian and is NOT on the bypass allowlist, so it honours it. When this is
+//      'false' the detector still polls, still detects, and still appends every row
+//      to data/book-velocity.jsonl — it just sends nothing.
+//   2. BOOK_VELOCITY_TELEGRAM_MUTED — a dedicated per-agent mute (mirrors
+//      agent31's TRADER_AUDITOR_TELEGRAM_MUTED) so this one detector can be
+//      silenced without muting the whole fleet. Default false (active).
+const TELEGRAM_MUTED = process.env.BOOK_VELOCITY_TELEGRAM_MUTED === 'true';
+
 // ── files ────────────────────────────────────────────────────────────────────
 const POLY_REWARDS   = path.join(__dirname, '..', 'data', 'liquidity-rewards.json'); // agent24 — READ ONLY
 const KALSHI_REWARDS = path.join(__dirname, '..', 'data', 'kalshi-rewards.json');    // agent25 — READ ONLY
@@ -61,6 +86,16 @@ const KALSHI_BASE    = 'https://api.elections.kalshi.com/trade-api/v2';
 const POLL_MS          = 10_000;
 const WATCHLIST_MS     = 5 * 60_000;   // re-read agent24/agent25 output for adds/drops
 const STARTUP_DELAY_MS = 5_000;
+
+// ── alerting ─────────────────────────────────────────────────────────────────
+// Per-market cooldown. DERIVED from the observed clustering of detections at the
+// shipped threshold (nv>=10) over the 75.3h corpus: consecutive detections on the
+// SAME market are gapped p25=90s, p50=225s, p75=405s, p90=810s, p95=1125s.
+// Suppression by candidate window: 5min 63.2%, 10min 84.2%, 15min 90.9%,
+// 20min 95.4%, 30min 98.3%. 15 minutes is the knee — it absorbs the ~90% of repeats
+// that are the same episode still unfolding (p90 gap is 810s = 13.5min, just inside
+// it), without swallowing a genuinely separate second episode later in the hour.
+const COOLDOWN_MS = 15 * 60_000;
 
 // ── memory bounds ────────────────────────────────────────────────────────────
 // We need horizon (60s) + hold (180s) + slack. At 10s that is 24 samples; we keep
@@ -198,16 +233,84 @@ async function pollKalshi(list, t) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ALERTING
+// ─────────────────────────────────────────────────────────────────────────────
+function httpPostTelegram(text) {
+  return httpPostJson(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`,
+    { chat_id: CHAT_ID, text, parse_mode: 'HTML', disable_web_page_preview: true }, 15_000);
+}
+
+/**
+ * Returns true ONLY when a message was actually handed to Telegram.
+ * `transport` is injectable so the verification harness can drive this exact
+ * function — gates included — without touching the network.
+ */
+async function sendTelegram(text, transport = httpPostTelegram) {
+  // Gate 1: the project-wide mute switch. agent36 is not a guardian, so it obeys.
+  // Re-read from process.env on every call (not cached at import) so the switch is
+  // authoritative at send time.
+  if (process.env.TELEGRAM_ALERTS_ENABLED === 'false') {
+    log('Telegram muted (TELEGRAM_ALERTS_ENABLED=false) — detection logged to data/book-velocity.jsonl only');
+    return false;
+  }
+  // Gate 2: per-agent mute, so this detector can be isolated without muting the fleet.
+  if (process.env.BOOK_VELOCITY_TELEGRAM_MUTED === 'true') {
+    log('Telegram muted (BOOK_VELOCITY_TELEGRAM_MUTED=true) — detection logged only');
+    return false;
+  }
+  if (!BOT_TOKEN || !CHAT_ID) { log('Telegram not configured — detection logged only'); return false; }
+  try { await transport(text); return true; }
+  catch (e) { log('sendTelegram error:', e.message); return false; }
+}
+
+const usd = v => (v >= 1000 ? `$${(v / 1000).toFixed(1)}k` : `$${Math.round(v)}`);
+const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+/**
+ * Terse and honest: venue, market, executable prices before and after, the depth
+ * behind them, and the elapsed time. No cause, no "news detected", no adjectives
+ * about why. A thin-book market is LABELLED, never silently suppressed.
+ */
+function formatAlert(row) {
+  const dir = row.direction > 0 ? '▲' : '▼';
+  const secs = Math.round(row.elapsedMs / 1000);
+  const held = Math.round((row.holdElapsedMs || 0) / 1000);
+  const lines = [
+    `${dir} <b>BOOK VELOCITY</b> — ${esc(row.venue)}`,
+    `<b>${esc(String(row.title).slice(0, 110))}</b>`,
+    '',
+    `before  bid ${row.bid0.toFixed(3)} × ${usd(row.bid0 * row.bidSz0)}   ask ${row.ask0.toFixed(3)} × ${usd(row.ask0 * row.askSz0)}`,
+    `after   bid ${row.bid1.toFixed(3)} × ${usd(row.bid1 * row.bidSz1)}   ask ${row.ask1.toFixed(3)} × ${usd(row.ask1 * row.askSz1)}`,
+    '',
+    `move ${row.moveCents > 0 ? '+' : ''}${row.moveCents.toFixed(1)}c on the executable ${row.direction > 0 ? 'ask' : 'bid'} in ${secs}s`,
+    `depth run over ${usd(row.depthUsd0)} (reward min size $${row.minSize})`,
+    `normalised velocity ${row.nv.toFixed(1)}  ·  held ${(row.retention * 100).toFixed(0)}% of the move after ${held}s`,
+  ];
+  if (row.thinBook) {
+    lines.push('', '⚠ THIN BOOK — this market carries the reward-program thin-book flag; price here is less meaningful.');
+  }
+  lines.push('', '<i>This is movement, not a cause. It cannot tell informed trading from a large uninformed order.</i>');
+  return lines.join('\n');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // MAIN LOOP
 // ─────────────────────────────────────────────────────────────────────────────
 const series  = new Map();   // key -> [{t,bid,ask,bidSz,askSz}] ring, ascending
 const pending = new Map();   // key -> [{pair, market}] awaiting the hold window
+let cooldown  = {};          // key -> ts of last SENT alert (persisted across restarts)
 let watchlist = { poly: [], kalshi: [] };
-let stats = { cycles: 0, detections: 0, persistent: 0, reverting: 0, unknown: 0, errors: 0 };
+let stats = { cycles: 0, detections: 0, alerts: 0, suppressed: 0, reverting: 0, unknown: 0, errors: 0 };
 
-function loadState() { /* no persistent state yet — stats are in-memory only */ }
+function loadState() {
+  const s = readJsonSafe(STATE_FILE);
+  if (s && s.cooldown && typeof s.cooldown === 'object') cooldown = s.cooldown;
+}
 function saveState() {
-  try { atomicWrite(STATE_FILE, { updatedAt: Date.now(), stats }); } catch { /* best effort */ }
+  // Prune cooldown entries older than the window so the map cannot grow unbounded.
+  const cut = Date.now() - COOLDOWN_MS * 4;
+  for (const k of Object.keys(cooldown)) if (cooldown[k] < cut) delete cooldown[k];
+  try { atomicWrite(STATE_FILE, { updatedAt: Date.now(), cooldown, stats }); } catch { /* best effort */ }
 }
 
 function appendRow(row) {
@@ -237,19 +340,23 @@ function anchorFor(arr, nowT) {
 }
 
 /**
- * Turn one resolved detection into an append-only log row.
+ * Turn one resolved detection into a log row and, if it qualifies, one alert.
  *
- * Every detection is recorded regardless of how it classified — the log is the
- * complete record of what the detector saw, not a filtered highlight reel.
+ * This is the WHOLE alert path — the mute gates and the per-market cooldown both
+ * live here — so the verification harness drives this exact function rather than a
+ * re-implementation of it. Every detection is appended to the log regardless of
+ * whether it alerts; muting silences Telegram, never the record.
  *
  * @param {{market:object,key:string,pair:object,cls:object,now:number,
- *          deps?:{append?:Function,stats?:object}}} ctx
+ *          deps?:{cooldown?:object,append?:Function,send?:Function,stats?:object}}} ctx
  */
 async function resolveDetection(ctx) {
-  const { market: m, pair, cls, now } = ctx;
+  const { market: m, key, pair, cls, now } = ctx;
   const d = ctx.deps || {};
-  const append = d.append || appendRow;
-  const st     = d.stats  || stats;
+  const cd     = d.cooldown || cooldown;
+  const append = d.append   || appendRow;
+  const send   = d.send     || sendTelegram;
+  const st     = d.stats    || stats;
 
   const row = {
     ts: now,
@@ -265,14 +372,33 @@ async function resolveDetection(ctx) {
     moveCents: pair.moveCents, direction: pair.direction,
     depthWeight: pair.depthWeight, nv: pair.nv,
     state: cls.state, retention: cls.retention, pxHold: cls.pxHold, holdElapsedMs: cls.holdElapsedMs,
+    alerted: false, alertSuppressed: null,
   };
 
-  // Only a PERSISTENT move is adverse selection. A move that snapped back is noise
-  // a maker profits from — still recorded, and marked as such.
-  if (cls.state === 'PERSISTENT') st.persistent++;
-  else if (cls.state === 'REVERTING') st.reverting++;
-  else st.unknown++;
+  // Only a PERSISTENT move is adverse selection. Reverting moves are noise a maker
+  // profits from — recorded, never pushed.
+  if (cls.state !== 'PERSISTENT') {
+    if (cls.state === 'REVERTING') st.reverting++; else st.unknown++;
+    row.alertSuppressed = 'not-persistent';
+    append(row);
+    return row;
+  }
 
+  const last = cd[key] || 0;
+  if (now - last < COOLDOWN_MS) {
+    row.alertSuppressed = 'cooldown';
+    st.suppressed++;
+    append(row);
+    return row;
+  }
+
+  // Reserve the cooldown slot BEFORE awaiting the network, so a slow send can never
+  // let a second detection slip through the window. Released again if nothing was sent.
+  cd[key] = now;
+  const sent = await send(formatAlert(row));
+  row.alerted = sent;
+  if (!sent) { row.alertSuppressed = 'muted'; cd[key] = last; }
+  else st.alerts++;
   append(row);
   return row;
 }
@@ -329,7 +455,7 @@ async function cycle() {
     saveState();
     const mem = process.memoryUsage();
     log(`cycles=${stats.cycles} markets=${series.size} detections=${stats.detections} ` +
-        `persistent=${stats.persistent} reverting=${stats.reverting} ` +
+        `alerts=${stats.alerts} suppressed=${stats.suppressed} reverting=${stats.reverting} ` +
         `unknown=${stats.unknown} errors=${stats.errors} rss=${(mem.rss / 1048576).toFixed(0)}MB`);
   }
 }
@@ -337,7 +463,10 @@ async function cycle() {
 async function main() {
   log('starting — read-only book velocity detector; 2 free keyless requests per cycle; zero Claude calls');
   log(`thresholds: horizon=${bv.DEFAULTS.horizonMs / 1000}s hold=${bv.DEFAULTS.holdMs / 1000}s ` +
-      `nv>=${bv.DEFAULTS.nvThreshold} minMove=${bv.DEFAULTS.minMoveCents}c retentionMin=${bv.DEFAULTS.retentionMin}`);
+      `nv>=${bv.DEFAULTS.nvThreshold} minMove=${bv.DEFAULTS.minMoveCents}c retentionMin=${bv.DEFAULTS.retentionMin} ` +
+      `cooldown=${COOLDOWN_MS / 60000}min`);
+  log(`telegram: global switch TELEGRAM_ALERTS_ENABLED=${process.env.TELEGRAM_ALERTS_ENABLED || '(unset)'} ` +
+      `· per-agent BOOK_VELOCITY_TELEGRAM_MUTED=${TELEGRAM_MUTED}`);
   loadState();
   await new Promise(r => setTimeout(r, STARTUP_DELAY_MS));
 
@@ -361,4 +490,4 @@ process.on('SIGINT',  () => { saveState(); process.exit(0); });
 
 if (require.main === module) main().catch(e => { log('fatal:', e.stack || e.message); process.exit(1); });
 
-module.exports = { buildWatchlist, bestFromLadder, resolveDetection };
+module.exports = { buildWatchlist, formatAlert, bestFromLadder, sendTelegram, resolveDetection, COOLDOWN_MS };
