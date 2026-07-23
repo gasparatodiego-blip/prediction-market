@@ -11,6 +11,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.100.1",
     "@polymarket/clob-client": "^5.8.1",
+    "@polymarket/clob-client-v2": "^1.1.0",
     "@prisma/client": "^5.22.0",
     "@scure/starknet": "^2.2.0",
     "@types/bcryptjs": "^2.4.6",
