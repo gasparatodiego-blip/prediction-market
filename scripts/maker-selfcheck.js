@@ -32,13 +32,29 @@ const NOW = 1_753_000_000_000;
 }
 
 // ── 2. MAKER adapter: banned surface, ALLOWED_OPS only ──
-const { createMakerAdapter, ALLOWED_OPS, LIVE_MIN_DEFAULT_CAP_USD, _internal } = require('../lib/venues/polymarket-clob-maker/adapter');
+const { createMakerAdapter, ALLOWED_OPS, LIVE_MIN_DEFAULT_CAP_USD, evaluatePlacementGate, v2SdkStatus, _internal } = require('../lib/venues/polymarket-clob-maker/adapter');
 {
   const m = createMakerAdapter({ mode: 'paper' });
   const BANNED = ['transfer', 'withdraw', 'approve', 'redeem', 'deposit', 'send', 'deriveApiKey', 'createApiKey', 'closePosition', 'openPosition'];
   ok(BANNED.every(x => typeof m[x] !== 'function'), 'maker adapter exposes NO transfer/withdraw/approve/redeem/deposit method');
   ok(Object.keys(m).filter(k => typeof m[k] === 'function').every(x => ALLOWED_OPS.includes(x)), 'maker callable surface ⊆ ALLOWED_OPS (post/cancel/list/positions/health/close)');
   ok(typeof m.postOrder === 'function', 'maker adapter DOES expose postOrder (it is the placement component)');
+}
+
+// ── 2c. RE-POINTED FAIL-CLOSED PLACEMENT GATE: each blocker fires independently, BEFORE any network/key ──
+// After the CLOB v2 migration the "v2 SDK absent" refusal is gone (the SDK is installed); it is REPLACED
+// by the funding/approval gate. These are pure (no adapter, no network) proofs that every gate names the
+// specific blocker that tripped, in priority order SDK → mode → dry-run → funding.
+{
+  const goodSdk = { present: true, major: 1, version: '1.1.0' };
+  const s = v2SdkStatus();
+  ok(s.present === true && s.major >= 1, `v2 SDK installed & major ≥ 1 (${s.version}) — migration prerequisite satisfied, no longer a blocker`);
+  ok(evaluatePlacementGate({ mode: 'live', dryRun: false, fundingApproved: true, sdk: { present: false } }).gate === 'v2-sdk-missing', 'gate 1: v2 SDK absent → refuse (v2-sdk-missing) — mirror of the fail-closed rule for any new placement path');
+  ok(evaluatePlacementGate({ mode: 'live', dryRun: false, fundingApproved: true, sdk: { present: true, major: 0, version: '0.2.7' } }).gate === 'v2-sdk-major', 'gate 1b: v2 SDK major < 1 → refuse (v2-sdk-major)');
+  ok(evaluatePlacementGate({ mode: 'paper', dryRun: false, fundingApproved: true, sdk: goodSdk }).gate === 'maker-mode', 'gate 2: MAKER_MODE not live → refuse (maker-mode)');
+  ok(evaluatePlacementGate({ mode: 'live', dryRun: true, fundingApproved: true, sdk: goodSdk }).gate === 'dry-run', 'gate 3: dry-run belt set → refuse (dry-run)');
+  ok(evaluatePlacementGate({ mode: 'live', dryRun: false, fundingApproved: false, sdk: goodSdk }).gate === 'funding-approval', 'gate 4: pUSD funding / v2 approvals not attested → refuse (funding-approval) — the honest replacement for the removed v2-absence gate');
+  ok(evaluatePlacementGate({ mode: 'live', dryRun: false, fundingApproved: true, sdk: goodSdk }).allow === true, 'gate: allows ONLY when SDK ok + live + not dry-run + funding attested — capability, still behind the throwing-provider belt');
 }
 
 // ── 3. MAKER_MODE=off / paper / dry-run → NO venue write reachable (async, closes the run) ──
@@ -60,26 +76,27 @@ async function noWriteProof() {
   const dp = await dry.postOrder({ tokenId: '0xabc', side: 'BUY', price: 0.5, size: 100, tickSize: 0.01 });
   ok(dp.sent === false, 'live+dry-run postOrder makes NO venue write');
 
-  // A live adapter with THROWING providers (this build's live wiring). It fails CLOSED — but in this
-  // build the OUTER belt is the CLOB-v2 guard: with the v1 SDK installed, postOrder refuses before it
-  // ever reaches liveClient()/the provider. (Were the v2 SDK present, the inner throwing-provider belt
-  // would then block it.) Either way: no order is signed, no key obtained.
+  // A live adapter with THROWING providers (this build's live wiring). Post-migration the OUTER belt is
+  // the re-pointed placement gate: with pUSD funding + v2 approvals NOT attested (agent35 never sets
+  // fundingApproved), postOrder refuses at the funding-approval gate BEFORE liveClient()/the provider —
+  // no network, no key. (The throwing-provider belt is proven independently below.)
   const thrower = async () => { throw new Error('provider not wired'); };
   const live = createMakerAdapter({ mode: 'live-min', credsProvider: thrower, signerProvider: thrower, liveMinCapUsd: 25 });
   ok(live.canWrite === true, 'live-min with providers → canWrite=true (capability owned)…');
   const lp = await live.postOrder({ tokenId: '0xabc', side: 'BUY', price: 0.5, size: 10, tickSize: 0.01 });
-  ok(lp.ok === false && lp.sent === false, '…but a live placement fails CLOSED (v2-SDK guard outer belt; throwing provider inner belt) — no order signed');
+  ok(lp.ok === false && lp.sent === false && lp.gate === 'funding-approval', '…but a live placement fails CLOSED at the funding/approval gate (pUSD + v2 approvals unattested) — no order signed, no network, no key');
 
-  // ── 8. live-min HARD per-order notional cap trips BEFORE any network/creds are touched ──
+  // ── 8. live-min HARD per-order notional cap trips BEFORE the placement gate / any network/creds ──
   const capped = await live.postOrder({ tokenId: '0xabc', side: 'BUY', price: 0.5, size: 1000, tickSize: 0.01 }); // $500 » $25
   ok(capped.sent === false && /live-min hard cap/i.test(capped.reason || ''), 'live-min hard cap rejects an over-cap order before touching creds');
 
-  // ── 8b. CLOB v2 fail-closed: on the v1 SDK, a live placement refuses BEFORE any network/key (never
-  //     signs a deprecated v1 order the v2 venue would reject). Providers that would succeed are never
-  //     reached — the v2 guard fires first. ──
-  const okProviders = createMakerAdapter({ mode: 'live', credsProvider: async () => ({ creds: { key: 'k', secret: 's', passphrase: 'p' }, address: '0x' + '1'.repeat(40) }), signerProvider: async () => ({ privateKey: '0x' + '1'.repeat(64), address: '0x' + '1'.repeat(40) }) });
-  const v1reject = await okProviders.postOrder({ tokenId: '0xabc', side: 'BUY', price: 0.5, size: 10, tickSize: 0.01 });
-  ok(v1reject.sent === false && /v1 SDK|CLOB v2|clob-client-v2/i.test(v1reject.reason || ''), 'live placement on the v1 SDK FAILS CLOSED (refuses to sign a deprecated v1 order; migrate to clob-client-v2 first)');
+  // ── 8b. The throwing-provider belt is INDEPENDENT of the funding gate. Even if funding were attested
+  //     (a TEST-only fundingApproved:true — agent35 never sets it, so the deployed engine still trips the
+  //     funding gate above), this build's live wiring cannot obtain a key: liveClient() calls the (throwing)
+  //     credsProvider on its FIRST line, before any network call or client construction. No order signed. ──
+  const fundedButUnwired = createMakerAdapter({ mode: 'live-min', fundingApproved: true, credsProvider: thrower, signerProvider: thrower, liveMinCapUsd: 25 });
+  const fbp = await fundedButUnwired.postOrder({ tokenId: '0xabc', side: 'BUY', price: 0.5, size: 10, tickSize: 0.01 });
+  ok(fbp.ok === false && /provider not wired/i.test(String((fbp.error && fbp.error.message) || fbp.error || '')), 'even with funding attested, the throwing-provider belt fails a live placement closed (no key, no order) — independent gate');
 
   // ── 9. off/paper/live all REJECT an off-tick price defensively (never post an unsnapped price) ──
   const offTick = await createMakerAdapter({ mode: 'paper' }).postOrder({ tokenId: '0xabc', side: 'BUY', price: 0.5237, size: 100, tickSize: 0.01 });

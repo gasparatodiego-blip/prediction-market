@@ -38,21 +38,32 @@ Two independent belts on top of the mode:
 - While armed the key lives **only inside the ethers `Wallet` instance** in the engine process's heap,
   for exactly as long as `MAKER_MODE` is a live stage. `off`/`paper` never call the signer provider.
 
-## ⚠️ CLOB v2 migration — HARD BLOCKER before any live placement
+## ⚠️ CLOB v2 — SDK MIGRATED; the live blocker is now FUNDING + APPROVALS
 
-Polymarket migrated to **CLOB v2 on 2026-04-28** (verified on-chain + docs). This build is **paper-safe
-but NOT live-ready** until the SDK is migrated:
+Polymarket migrated to **CLOB v2 on 2026-04-28** (verified on-chain + docs). The SDK migration is **DONE**
+(see the four `feat/chore(polymarket)` commits): the placement path now signs v2. This build is still
+**paper-safe and NOT live-ready** — but the blocker is no longer the SDK; it is that nothing is funded or
+approved, and the fail-closed gate now says exactly that.
 
-- **SDK:** our pinned `@polymarket/clob-client@5.8.1` is the **v1** client (no releases after Mar 2026).
-  It signs orders against the **deprecated v1 exchange `0x4bFb41…`** with EIP-712 domain version `"1"`.
-  **v2 production rejects v1 orders.** v2 support is a *separate* package **`@polymarket/clob-client-v2`
-  (≥1.0.0, current 1.1.0)**. The maker adapter **fails closed** on the placement path while the v2 SDK is
-  absent (asserted in the selfcheck) — so even a fully-armed live-min cannot sign a doomed v1 order.
-- **Contracts (Polygon 137, on-chain verified):** CTFExchangeV2 `0xE111180000d2663C0091e4f400237545B87B996B`,
-  NegRiskCtfExchangeV2 `0xe2222d279d744050d28e00520010520000310F59`.
+- **SDK (migrated):** the signing path imports **`@polymarket/clob-client-v2`** (installed **1.1.0**).
+  The v2 client owns the contracts/collateral/domain internally and resolves the order version from
+  `GET /version` (default **2**) → signs **CTFExchangeV2 / NegRiskCtfExchangeV2** with EIP-712 domain
+  name `"Polymarket CTF Exchange"`, version **`"2"`**, using the SDK's own v2 order builder (we never
+  hand-construct the struct). The old `@polymarket/clob-client@5.8.1` (v1) stays installed **only** for
+  the cancel-only adapter + derive-creds; it never touches this placement path.
+- **Re-pointed fail-closed gate (`evaluatePlacementGate`, adapter.js):** refuses — before any network
+  call or key load, naming the gate — if the v2 SDK is missing/wrong-major, `MAKER_MODE` is not live,
+  dry-run is set, **or `MAKER_FUNDING_APPROVED` is not attested** (pUSD funded + ERC-20/ERC-1155 approvals
+  granted to the v2 contracts). The funding gate is the honest replacement for the old "v2 SDK absent"
+  refusal. Asserted independently in the selfcheck.
+- **Contracts (PRIMARY SOURCE — v2 SDK `getContractConfig(137)`):** CTFExchangeV2 `0xE111180000d2663C0091e4f400237545B87B996B`,
+  NegRiskCtfExchangeV2 `0xe2222d279d744050d28e00520010520000310F59`. (The SDK also exposes an `exchangeV3`; the
+  v2 client only escalates to it if `/version` returns 3 — today it is 2.)
 - **Collateral:** **pUSD `0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB`** (6 dec), replacing USDC.e
   `0x2791Bca…`. Onramp USDC/USDC.e → pUSD; approve the **v2** contracts.
-- **Order struct (v2):** no `feeRateBps`/`nonce`/`taker`/`expiration`; adds `timestamp`/`metadata`/`builder`.
+- **Order struct (v2, from the SDK's `NewOrderV2`):** drops `feeRateBps` and `nonce`, adds
+  `timestamp`/`metadata`/`builder`. It **keeps** `taker` and `expiration` on the wire (correcting the
+  earlier note that claimed they were dropped). There is **no fee field** in the v2 order struct.
 - **Fees:** **taker-only, protocol-determined at match time; makers pay 0.** Do **not** hardcode a fee or a
   category rate. Read `GET /fee-rate?token_id=<id>` live (`base_fee`, bps) — values are per-market and
   currently inconsistent with the doc tables (one of our own reward tokens returns `base_fee:1000`), so
@@ -61,9 +72,12 @@ but NOT live-ready** until the SDK is migrated:
 - **Fills:** we read via the CLOB REST/WS API (`listOpenOrders`/`getPositions`), so the redesigned v2
   `OrderFilled` on-chain event does **not** affect us (we never decode on-chain logs).
 
-**Migration checklist before live-min:** `npm i @polymarket/clob-client-v2`, point the adapter's dynamic
-import + signer/domain at v2, fund + approve **pUSD** on the v2 contracts, then re-run `maker-selfcheck`
-(the v2 guard flips to allow) and a deep post-only order.
+**Remaining steps before live-min (all Diego's on-chain, signature-gated — OUT OF SCOPE of the SDK migration):**
+`npm i @polymarket/clob-client-v2` ✅ done · point the adapter import/constructor/arg-order + re-point the
+guard at v2 ✅ done · **fund pUSD** on the wallet ⬜ · **approve** ERC-20 (pUSD→exchange) + ERC-1155 (CTF→the
+three exchange contracts) ⬜ · attest via `MAKER_FUNDING_APPROVED` (wire `fundingApproved` into the armed
+adapter build) ⬜ · wire the real `makerProviders` in place of the throwing providers ⬜ · then a deep
+post-only order you immediately cancel. Until the ⬜ steps are done the funding-approval gate refuses.
 
 ## Before the first `live-min` order — wallet prerequisites
 
