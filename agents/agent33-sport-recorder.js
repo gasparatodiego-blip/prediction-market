@@ -39,7 +39,7 @@ const { httpGet }         = require('../lib/httpGet');
 // the dashboard API can never disagree about what a number means.
 const {
   EXCHANGES, EXCHANGE_COMMISSION, POLY_TAKER, POLY_FEE_NOTE,
-  MAX_AGE_SEC, SHORT_LIVED_SEC, netCost, legCapacity, detectArbs,
+  MAX_AGE_SEC, SHORT_LIVED_SEC, netCost, legCapacity, detectArbs, isDrawName,
 } = require('../lib/sport-arb-math');
 
 // ── paths ─────────────────────────────────────────────────────────────────────
@@ -334,14 +334,18 @@ async function captureKalshi(ev, ts, marketPool) {
       log(`kalshi: PARSE-FAIL orderbook_fp missing for ${m.ticker}`);
       continue;
     }
-    // Which side of the game is this ticker? Kalshi runs one market per outcome.
-    const sub = m.yes_sub_title || m.title || '';
-    const isHome = teamMatch(sub, ev.home) >= teamMatch(sub, ev.away);
+    // Which side of the game is this ticker? Kalshi runs one market per outcome. On a
+    // three-way sport the draw contract ("Tie") matches NEITHER team, so the old
+    // `teamMatch(sub,home) >= teamMatch(sub,away)` (0 >= 0) mislabeled it 'home' and it
+    // then paired against a real away leg to fabricate a ~40% "arb". Label draws honestly.
+    const sub  = m.yes_sub_title || m.title || '';
+    const draw = isDrawName(sub);
+    const isHome = !draw && teamMatch(sub, ev.home) >= teamMatch(sub, ev.away);
     rows.push({
       ts, event_key: eventKey(ev), event_id: ev.event_id, sport: ev.sport, league: ev.league,
       home: ev.home, away: ev.away,
       source: 'kalshi', source_type: 'prediction', market: 'moneyline', venue_ticker: m.ticker,
-      outcome: isHome ? 'home' : 'away', team: sub || null,
+      outcome: draw ? 'draw' : (isHome ? 'home' : 'away'), team: sub || null,
       odds: book.yesAsk ? +(1 / book.yesAsk).toFixed(4) : null,
       price: book.yesAsk,                       // cost per $1 payout = implied probability
       best_bid: book.bestYesBid, best_ask: book.yesAsk,
