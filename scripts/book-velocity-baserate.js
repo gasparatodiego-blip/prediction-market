@@ -32,6 +32,11 @@ const path = require('path');
 const HIST = path.join(__dirname, '..', 'data', 'history');
 const MOVE_BUCKETS = [1, 2, 3, 5, 8, 10, 15, 20, 30];
 
+// The real tracked set agent36 polls, as reported by the agent at startup:
+// every reward market agent24 and agent25 emit with a known qualifying size.
+const TRACKED_POLY   = 120;
+const TRACKED_KALSHI = 200;
+
 const num = v => { const n = Number(v); return Number.isFinite(n) ? n : null; };
 
 function dayFiles(section) {
@@ -86,7 +91,7 @@ function polyQuote(r) {
   return { bid, ask, minSize };
 }
 
-function analyse(label, section, extract) {
+function analyse(label, section, extract, tracked) {
   const { byMarket, snaps } = collect(section, extract);
   let tmin = Infinity, tmax = 0, rows = 0;
   for (const m of byMarket.values()) {
@@ -122,13 +127,13 @@ function analyse(label, section, extract) {
   const nonzero = moves.filter(x => x > 0);
   console.log(`pairs with a sign-consistent executable move: ${nonzero.length} (${(nonzero.length / moves.length * 100).toFixed(1)}%)`);
 
-  console.log(`\n  |move| >= M      pairs    per market per day    across 260 markets/day`);
+  console.log(`\n  |move| >= M      pairs    per market per day    across ${tracked} tracked/day`);
   const out = [];
   for (const M of MOVE_BUCKETS) {
     const n = moves.filter(x => x >= M).length;
     const perMktDay = n / days / byMarket.size;
     out.push({ M, n, perMktDay });
-    console.log(`  ${String(M).padStart(3)}c   ${String(n).padStart(12)}   ${perMktDay.toFixed(4).padStart(18)}   ${(perMktDay * 260).toFixed(1).padStart(21)}`);
+    console.log(`  ${String(M).padStart(3)}c   ${String(n).padStart(12)}   ${perMktDay.toFixed(4).padStart(18)}   ${(perMktDay * tracked).toFixed(1).padStart(21)}`);
   }
   return { label, days, markets: byMarket.size, buckets: out };
 }
@@ -140,16 +145,17 @@ console.log('UPPER BOUND ONLY. ~30-min cadence, so every 60s move is counted but
 console.log('slow 30-minute drifts that a 60s detector would never see. No depth in this');
 console.log('corpus, so no normalised velocity is computed or claimed.');
 
-const k = analyse('KALSHI reward markets — REAL bestBid/bestAsk', 'rewards-kalshi', kalshiQuote);
-const p = analyse('POLYMARKET reward markets — quotes reconstructed as mid ∓ bookSpread/2', 'rewards-poly', polyQuote);
+const k = analyse('KALSHI reward markets — REAL bestBid/bestAsk', 'rewards-kalshi', kalshiQuote, TRACKED_KALSHI);
+const p = analyse('POLYMARKET reward markets — quotes reconstructed as mid ∓ bookSpread/2', 'rewards-poly', polyQuote, TRACKED_POLY);
 
 console.log(`\n${'='.repeat(76)}`);
 console.log('COMBINED CEILING across the tracked set (Kalshi + Polymarket)');
 console.log('='.repeat(76));
+console.log(`  tracked set: ${TRACKED_POLY} polymarket + ${TRACKED_KALSHI} kalshi = ${TRACKED_POLY + TRACKED_KALSHI} markets`);
 console.log('  |move| >= M     upper-bound alerts/day over the whole tracked set');
 for (let i = 0; i < MOVE_BUCKETS.length; i++) {
   const kb = k.buckets[i], pb = p.buckets[i];
-  const total = kb.perMktDay * 200 + pb.perMktDay * 60;   // 200 Kalshi + 60 Poly tracked
-  console.log(`  ${String(MOVE_BUCKETS[i]).padStart(3)}c   ${total.toFixed(1).padStart(12)}   (kalshi ${(kb.perMktDay * 200).toFixed(1)} + poly ${(pb.perMktDay * 60).toFixed(1)})`);
+  const total = kb.perMktDay * TRACKED_KALSHI + pb.perMktDay * TRACKED_POLY;
+  console.log(`  ${String(MOVE_BUCKETS[i]).padStart(3)}c   ${total.toFixed(1).padStart(12)}   (kalshi ${(kb.perMktDay * TRACKED_KALSHI).toFixed(1)} + poly ${(pb.perMktDay * TRACKED_POLY).toFixed(1)})`);
 }
 console.log('');
