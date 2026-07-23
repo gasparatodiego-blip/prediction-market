@@ -21,9 +21,13 @@ const http      = require('http');
 const path      = require('path');
 const Anthropic = require('@anthropic-ai/sdk');
 
-// Shared fee constants — single source of truth used by both matcher-v2 and agent23-prediction-repricer.
-// Import here so the two tiers can never have divergent fee math.
-const { PLATFORM_FEES: _PLATFORM_FEES } = require('../lib/arb-math');
+// Shared fee constants + arb math — single source of truth used by both matcher-v2 and agent23. Import
+// computeArbROI so the discovery ranking is NET of the REAL price-scaled taker fee (Kalshi 0.07·p·(1−p);
+// Polymarket base_fee/20000·p·(1−p)), identical to the live re-pricer — never the old flat-fee shape.
+const { computeArbROI } = require('../lib/arb-math');
+// Live per-market Polymarket taker fee (the SSOT). Read via the CACHE with a bounded bulk pre-fetch of the
+// distinct executable-candidate tokens BEFORE ranking (~135/cycle, cold; ~0 warm) — never a per-row fetch.
+const { getBaseFeeBps, BASE_FEE_TO_RATE_DIVISOR } = require('../lib/polymarket-fees');
 // Shared order-book ladder + capacity walk — same reason: matcher-v2 (discovery) and
 // agent23 (live re-pricer) must compute capacity identically.
 const { computeCapacity } = require('../lib/depth');
@@ -99,8 +103,8 @@ const ARB_BAND_HIGH      = 8.0;  // netROI% upper bound for plausible-band prior
 
 // ── Platform metadata ─────────────────────────────────────────────────────────
 
-// Imported from lib/arb-math.js — do NOT duplicate here.
-const PLATFORM_FEES = _PLATFORM_FEES;
+// (The flat lib/arb-math PLATFORM_FEES table is no longer used here — discovery ranking now nets the REAL
+// price-scaled taker fee via computeArbROI + the live Polymarket SSOT. See arbPrefilter / the fee prefetch.)
 // realBook = true means the platform exposes executable bid/ask (CLOB or best-bid/ask).
 // Cashable arb requires realBook=true on BOTH legs.
 // PredictIt: realMoney but realBook=false → signal-only. Reasons: 10% profit fee + 5%
@@ -754,9 +758,10 @@ function candidatePairing(markets) {
 // Correct arb: cost = yesAsk_A + (1 - yesBid_B); profit = 1 - cost; ROI = profit/cost.
 // We try both directions and take the cheaper one.
 
-function arbPrefilter(candidates, markets) {
+function arbPrefilter(candidates, markets, polyFeeRateByToken = new Map()) {
   const survivors   = [];
   const quarantined = [];
+  let feeUnknownDropped = 0;
 
   for (const c of candidates) {
     const a = markets[c.ai], b = markets[c.bi];
@@ -807,35 +812,35 @@ function arbPrefilter(candidates, markets) {
     if ((a.yesAsk - a.yesBid) > MAX_SPREAD_WIDTH) continue;
     if ((b.yesAsk - b.yesBid) > MAX_SPREAD_WIDTH) continue;
 
-    // Try both directions; pick the cheaper one
-    const dir1Cost = a.yesAsk + (1 - b.yesBid); // buy YES on A, buy NO on B
-    const dir2Cost = b.yesAsk + (1 - a.yesBid); // buy YES on B, buy NO on A
-    const [bestCost, bestDir] = dir1Cost <= dir2Cost
-      ? [dir1Cost, 1] : [dir2Cost, 2];
-
-    const grossProfit = 1 - bestCost;
-    if (grossProfit <= 0) continue; // not an arb at these prices
-
-    const grossROI = (grossProfit / bestCost) * 100;
-
-    // Fee-aware net ROI (win fees applied to both platforms)
-    const feeA  = PLATFORM_FEES[a.platform] || 0;
-    const feeB  = PLATFORM_FEES[b.platform] || 0;
-    const netROI = grossROI * (1 - feeA - feeB);
-    if (netROI <= 0) continue;
+    // Net-of-REAL-fee ROI via the shared SSOT math (identical to agent23's live re-pricer): both legs pay
+    // a price-scaled TAKER fee — Kalshi 0.07·p·(1−p), Polymarket base_fee/20000·p·(1−p) from the live SSOT
+    // (pre-fetched into polyFeeRateByToken; null → net UNKNOWN). Replaces the old flat grossROI·(1−feeA−feeB)
+    // that fee'd Polymarket at a fabricated 0.
+    const polyFeeRate =
+        a.platform === 'polymarket' ? (polyFeeRateByToken.get(String(a.clobTokenId)) ?? null)
+      : b.platform === 'polymarket' ? (polyFeeRateByToken.get(String(b.clobTokenId)) ?? null)
+      : null;
+    const r = computeArbROI({
+      yesAsk_A: a.yesAsk, yesBid_A: a.yesBid,
+      yesAsk_B: b.yesAsk, yesBid_B: b.yesBid,
+      platformA: a.platform, platformB: b.platform,
+      polyFeeRate,
+    });
+    if (!r) continue;                       // no positive-gross arb, or real fees erase the edge
+    if (r.feeUnknown) { feeUnknownDropped++; continue; } // Polymarket base_fee unknown → don't rank a guessed net (agent23 re-prices from discovery when /fee-rate recovers)
 
     const entry = {
       ...c, a, b,
       spread:   Math.abs(a.probability - b.probability),
-      gross:    +grossROI.toFixed(2),
-      net:      +netROI.toFixed(2),
-      bestCost: +bestCost.toFixed(4),
-      bestDir,
+      gross:    r.gross,
+      net:      r.net,
+      bestCost: r.bestCost,
+      bestDir:  r.bestDir,
       type: 'cashable',
     };
 
     // Sanity quarantine: real executable arbs are typically 1-8%
-    if (netROI > SUSPICIOUS_ROI) {
+    if (r.net > SUSPICIOUS_ROI) {
       quarantined.push(entry);
       continue;
     }
@@ -874,7 +879,7 @@ function arbPrefilter(candidates, markets) {
 
   const nc = dedupedSurvivors.filter(s => s.type === 'cashable').length;
   const ns = dedupedSurvivors.filter(s => s.type === 'signal').length;
-  console.log(`[v2] Stage 2: ${candidates.length} candidates → ${dedupedSurvivors.length} survivors (${nc} cashable, ${ns} signal), ${quarantined.length} quarantined (netROI>${SUSPICIOUS_ROI}%), ${dedupDropped} deduped`);
+  console.log(`[v2] Stage 2: ${candidates.length} candidates → ${dedupedSurvivors.length} survivors (${nc} cashable, ${ns} signal), ${quarantined.length} quarantined (netROI>${SUSPICIOUS_ROI}%), ${dedupDropped} deduped, ${feeUnknownDropped} fee-unknown dropped`);
   return { survivors: dedupedSurvivors, quarantined };
 }
 
@@ -1736,8 +1741,31 @@ async function main() {
   // Stage 1
   const { candidates } = candidatePairing(markets);
 
+  // ── Fee SSOT pre-fetch (bounded, cache-first) ──────────────────────────────────
+  // Collect the DISTINCT Polymarket tokens among EXECUTABLE candidates only (both legs real-book — the
+  // only pairs that reach the fee step), then read base_fee for each via the SSOT cache in ONE bulk batch
+  // before ranking. Never a per-row live fetch in the arbPrefilter loop. Measured ~135 distinct tokens/
+  // cycle (cold); ~0 when warm (6h TTL, cache shared with agent23). base_fee/20000 = the price-scaled rate.
+  const feeTokens = new Set();
+  for (const c of candidates) {
+    const a = markets[c.ai], b = markets[c.bi];
+    if (!a.realBook || !b.realBook) continue;
+    if (a.platform === 'polymarket' && a.clobTokenId) feeTokens.add(String(a.clobTokenId));
+    if (b.platform === 'polymarket' && b.clobTokenId) feeTokens.add(String(b.clobTokenId));
+  }
+  const polyFeeRateByToken = new Map();
+  let feeLiveFetches = 0;
+  await Promise.all(Array.from(feeTokens).map(async (tok) => {
+    const before = Date.now();
+    const bps = await getBaseFeeBps(tok);
+    if (Date.now() - before > 50) feeLiveFetches++; // a cache hit is sub-ms; a live GET is not — rough live-fetch counter
+    polyFeeRateByToken.set(tok, bps == null ? null : bps / BASE_FEE_TO_RATE_DIVISOR);
+  }));
+  const feeKnown = Array.from(polyFeeRateByToken.values()).filter(v => v != null).length;
+  console.log(`[v2] Fee SSOT prefetch: ${feeTokens.size} distinct Polymarket tokens (${feeKnown} known, ~${feeLiveFetches} live /fee-rate GETs, rest cached)`);
+
   // Stage 2
-  const { survivors, quarantined } = arbPrefilter(candidates, markets);
+  const { survivors, quarantined } = arbPrefilter(candidates, markets, polyFeeRateByToken);
 
   // Create a single Anthropic client shared by stages 3a and 3c
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
