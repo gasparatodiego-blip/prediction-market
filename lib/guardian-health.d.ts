@@ -4,7 +4,7 @@ export interface GuardianDashboardHttp { healthy: boolean; detail: string; resta
 export interface GuardianHealthReport {
   ok:       boolean;               // nothing needs a human right now
   degraded: boolean;               // calm degradation active (stale/partial data, site up)
-  banner:   string | null;         // global "dati non aggiornati" banner (rule 48/62)
+  banner:   string | null;         // global "Data may be stale" banner (rule 48/62)
   pipeline: { ageMin: number | null; stale: boolean };
   feeds:    GuardianFeedHealth[];
   watchdog: {

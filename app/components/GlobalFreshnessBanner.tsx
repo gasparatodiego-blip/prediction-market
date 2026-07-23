@@ -1,8 +1,8 @@
 'use client';
 
 // GlobalFreshnessBanner — rules 48/62: when the WHOLE pipeline is stale (the freshest
-// core feed is older than the freshness threshold), show ONE calm, global "dati non
-// aggiornati" banner so nothing on the page reads as freshly-true when it isn't. It is
+// core feed is older than the freshness threshold), show ONE calm, global "Data may be
+// stale" banner so nothing on the page reads as freshly-true when it isn't. It is
 // display-only: it never blocks or hides the content below — the tabs still render their
 // last-good data (calm degradation), the banner just tells the user it may be old.
 //
@@ -43,8 +43,8 @@ export default function GlobalFreshnessBanner() {
       style={{ background: '#fdf6ec', borderBottom: '1px solid rgba(180,83,9,0.25)', color: '#b45309', fontSize: 12, padding: '6px 12px' }}
       role="status"
     >
-      {banner} — alcune sezioni potrebbero mostrare valori più vecchi del solito
-      {ageMin != null ? ` (aggiornato ${ageMin} min fa)` : ''}.
+      {banner} — some sections may show values older than usual
+      {ageMin != null ? ` (updated ${ageMin} min ago)` : ''}.
     </div>
   );
 }
