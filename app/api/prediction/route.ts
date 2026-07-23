@@ -65,6 +65,10 @@ function feeFor(platform: string): number {
   return PLATFORM_FEES[platform?.toLowerCase()] ?? 0;
 }
 
+// Leg ids are `pm-<n>`; the markets-raw id→token map is keyed by the raw `<n>`. Normalize on lookup so a
+// Polymarket leg actually resolves its CLOB token (without this the SSOT fee always fell back to "—").
+const pmKey = (id: any): string => String(id ?? '').replace(/^pm-/, '');
+
 // Minimum executable $ size for cashable label.
 // Pairs below this threshold pass structural checks but are reclassified to signal.
 const CASHABLE_MIN_SIZE_USD    = 50;
@@ -156,9 +160,14 @@ export async function GET() {
     } catch {}
 
     // Pre-fetch the live base_fee for every Polymarket leg token (SSOT-cached; null on failure → "—").
+    // Covers BOTH the pairwise opp legs AND the event-bucket legs, so the bucket's displayed fee matches
+    // the row / what agent23 charges downstream — a single bounded batch, never a per-row live fetch.
     const polyTokens = new Set<string>();
     for (const o of allOpps) for (const leg of [o.lowMarket, o.highMarket]) {
-      if (leg && String(leg.platform).toLowerCase() === 'polymarket') { const t = pmTokenById[String(leg.id)]; if (t) polyTokens.add(t); }
+      if (leg && String(leg.platform).toLowerCase() === 'polymarket') { const t = pmTokenById[pmKey(leg.id)]; if (t) polyTokens.add(t); }
+    }
+    for (const ev of (raw.events ?? [])) for (const p of (ev.platforms ?? [])) {
+      if (p && String(p.platform).toLowerCase() === 'polymarket') { const t = pmTokenById[pmKey(p.legId)]; if (t) polyTokens.add(t); }
     }
     const baseFeeByToken: Record<string, number | null> = {};
     await Promise.all(Array.from(polyTokens).map(async (t) => { baseFeeByToken[t] = await getBaseFeeBps(t); }));
@@ -169,9 +178,20 @@ export async function GET() {
     const realLegFee = (leg: any): number | null => {
       if (!leg) return null;
       if (String(leg.platform).toLowerCase() !== 'polymarket') return feeFor(leg.platform);
-      const tok = pmTokenById[String(leg.id)];
+      const tok = pmTokenById[pmKey(leg.id)];
       const price = typeof leg.yesAsk === 'number' ? leg.yesAsk
         : (typeof leg.probability === 'number' ? leg.probability / 100 : null);
+      return takerFeeFractionFromBps(tok ? baseFeeByToken[tok] : null, price);
+    };
+
+    // Same SSOT fee for an EVENT-BUCKET leg (keyed by legId + its yesPrice). Polymarket → live per-market
+    // taker fraction (base_fee/20000)·(1−p); null (→ UI omits the fee) when unknown, NEVER a fabricated 0.
+    // Non-Polymarket keeps the coarse coefficient — identical treatment to the pairwise row above.
+    const bucketLegFee = (p: any): number | null => {
+      if (!p) return null;
+      if (String(p.platform).toLowerCase() !== 'polymarket') return feeFor(p.platform);
+      const tok = pmTokenById[pmKey(p.legId)];
+      const price = typeof p.yesPrice === 'number' ? p.yesPrice : null;
       return takerFeeFractionFromBps(tok ? baseFeeByToken[tok] : null, price);
     };
 
@@ -316,17 +336,18 @@ export async function GET() {
     // Event-comparator buckets — additive, alongside the existing pairwise
     // `valid` array above (unchanged). Each bucket's platforms are already
     // tagged tier: "executable" | "reference" upstream (shared-matcher.js);
-    // passed through as-is, never recomputed here. We only ATTACH the per-venue
-    // trading fee (from the same PLATFORM_FEES table the pairwise legs already
-    // use via feeFor) and an explicit `executable` flag mirrored from `tier`, so
-    // the UI can show a real per-venue fee and gate placeable treatment without
-    // re-deriving anything. No price/edge math is touched. `fee`/`executable`
-    // are public (not in the prediction paid-gating set), so this leaks nothing.
+    // passed through as-is, never recomputed here. We ATTACH the per-venue
+    // trading fee — for Polymarket the REAL live per-market taker fee from the
+    // SSOT (bucketLegFee, same source as the pairwise row and agent23's downstream
+    // charge), so a user never sees 0% in the bucket and the real fee on the row;
+    // null (→ UI omits it) when unknown, never a fabricated 0 — and an explicit
+    // `executable` flag mirrored from `tier`. No price/edge math is touched.
+    // `fee`/`executable` are public (not in the prediction paid-gating set).
     const events: any[] = (raw.events ?? []).map((ev: any) => ({
       ...ev,
       platforms: (ev.platforms ?? []).map((p: any) => ({
         ...p,
-        fee:        feeFor(p.platform),
+        fee:        bucketLegFee(p),
         executable: p.tier === 'executable',
       })),
     }));

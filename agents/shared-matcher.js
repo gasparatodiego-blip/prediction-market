@@ -12,10 +12,16 @@ const { atomicWriteJson } = require('../lib/atomicJsonWrite');
 const BATCH_SIZE = 20;
 
 // ── Deterministic matching config ──────────────────
-// Fees mirror agent5-calculator.js PLATFORM_FEES — keep both in sync if rates change.
+// Coarse coefficients for the >15% netROI QUARANTINE threshold only (bestNetRoi). Polymarket carries NO
+// flat winnings fee under CLOB v2 — the real per-market taker fee is the SSOT (lib/polymarket-fees.js),
+// applied live/price-scaled downstream (agent5 served path + agent23 re-pricer). The old fabricated 0.02
+// is removed. This threshold is deliberately computed FEE-FREE for Polymarket: a live per-pair /fee-rate
+// fetch inside this quarantine loop (run continuously by the pm2 matchers agent3/4/7 over the full market
+// universe) would hammer the CLOB, and fee-free is the CONSERVATIVE direction — it raises netROI, so an
+// implausibly-high pair is MORE likely to be quarantined, never less.
 const PLATFORM_FEES = {
   kalshi:     0.07,
-  polymarket: 0.02,
+  polymarket: 0.00, // no flat winnings fee under v2 — real taker fee via the SSOT downstream (was fabricated 0.02)
   predictit:  0.10 + 0.05,
   manifold:   0.00,
   oddsapi:    0.00,
