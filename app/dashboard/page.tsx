@@ -33,7 +33,7 @@ const strategies: Strategy[] = [
     Icon: Crosshair,
     name: 'Prediction Markets',
     platforms: ['Polymarket', 'Kalshi', 'PredictIt'],
-    summary: 'Arbitrage on political, sports & current events',
+    summary: 'One event, two venues, two prices',
     explanation:
       'When the same event (e.g. an election result) is priced differently on Polymarket, Kalshi and PredictIt, you buy the cheaper side and hedge the other. If the combined cost is below the guaranteed payout, the difference is your edge — no matter who wins. Risk: prices can move before both legs fill, and fees eat thin spreads.',
     howItWorks:
@@ -45,7 +45,7 @@ const strategies: Strategy[] = [
     Icon: GitMerge,
     name: 'Cash & Carry',
     platforms: ['Binance', 'OKX', 'Deribit'],
-    summary: 'Locked basis return via spot + dated futures',
+    summary: 'Buy spot, short the future, hold to expiry',
     explanation:
       'Buy spot and simultaneously short a dated (quarterly) futures contract on the same exchange. At expiry the future delivers at spot price, so the gap (basis) you locked in at entry is your return — regardless of where the price goes. Risk: exchange counterparty risk over the hold period. Coin-margined contracts settle in the coin, not USDT — USD return is not fully locked.',
     howItWorks:
@@ -57,7 +57,7 @@ const strategies: Strategy[] = [
     Icon: Gift,
     name: 'Liquidity Rewards',
     platforms: ['Polymarket', 'Kalshi'],
-    summary: 'Earn daily by posting maker orders (Polymarket + Kalshi)',
+    summary: 'Get paid daily to quote both sides of the book',
     explanation:
       'Some venues pay daily rewards to market makers who post resting limit orders near the midpoint. You quote both sides within the reward band and collect a share of the daily pool proportional to your posted size and time-in-book. Returns are modest and depend on competition. Risk: your orders can fill (leaving you with a position), and rewards shrink as more makers crowd the same band. No orders are placed for you — this is a scanner.',
     howItWorks:
@@ -69,7 +69,7 @@ const strategies: Strategy[] = [
     Icon: Users,
     name: 'Traders Hub',
     platforms: ['Polymarket'],
-    summary: 'Leaderboard + follow + alerts — one place, read-only, zero keys',
+    summary: 'Follow the wallets that win — read-only, no keys',
     explanation:
       'Browse the Polymarket realized P&L leaderboard by category (Politics, Sports, Crypto, Pop Culture, World), follow any wallet, and get Telegram alerts when followed traders make new trades. No private keys collected at any step. Auto-copy execution is locked pending security hardening (step 2 of 3). Past P&L ≠ future results. Not financial advice.',
     howItWorks:
@@ -81,7 +81,7 @@ const strategies: Strategy[] = [
     Icon: Trophy,
     name: 'Sports Arb',
     platforms: ['EU·UK·US Books'],
-    summary: 'Cross-bookmaker surebet scanner — outlier-filtered, credit-safe snapshot',
+    summary: 'When books disagree on a match, back every side',
     explanation:
       'When bookmakers disagree on odds for the same match, backing every outcome across different books locks in a profit regardless of result. Phase A: periodic snapshot scanner (EU·UK·US h2h, on-demand run). Opportunities survive a 4-book minimum gate, a median outlier filter that removes suspiciously generous prices, and a 6% ROI plausibility cap. Preview only — no orders placed.',
     howItWorks:
