@@ -466,6 +466,35 @@ function trackPersistence(real, ts) {
   for (const [k, v] of openCrossings) if (!seen.has(k) && ts - v.last > 5 * 60_000) openCrossings.delete(k);
 }
 
+// ── frozen-quote detection (cross-poll) ────────────────────────────────────────
+// odds-api's Starter plan freezes fixed-odds books at kickoff: their source_ts stops
+// advancing while the line is still served is_available:true. Age alone cannot catch this —
+// a frozen quote reads only ~80s old for the poll right after it last moved (which is how
+// 80–88s book legs produced 25–30% phantom arbs). So we remember each book leg's last
+// source_ts and, when it has NOT advanced since the previous poll, mark the row frozen. The
+// SSOT's isLegLive() then treats a frozen leg as never-live regardless of computed age.
+// Prediction legs (Kalshi/Polymarket) are live CLOB pulls and are never frozen-tracked.
+const lastSourceTs = new Map();   // `${source}|${event_key}|${outcome}` → last source_ts seen
+function annotateFrozen(rows, batchTs) {
+  const present = new Set();
+  for (const r of rows) {
+    if (r.source_type !== 'book' && r.source_type !== 'exchange') continue;
+    if (r.source_ts == null) continue;
+    const k = `${r.source}|${r.event_key}|${r.outcome}`;
+    present.add(k);
+    const prev = lastSourceTs.get(k);
+    // Seen before AND unchanged → the vendor has not re-quoted since our last poll → frozen.
+    if (prev !== undefined && prev === r.source_ts) r.frozen = true;
+    lastSourceTs.set(k, r.source_ts);
+  }
+  // Bounded memory: keep only keys seen this batch once the map grows large (games end and
+  // their books stop appearing, so their keys are safe to drop — matches the recorder's own
+  // event pruning). Never let this map grow unbounded across 24/7 operation.
+  if (lastSourceTs.size > 20_000) {
+    for (const k of lastSourceTs.keys()) if (!present.has(k)) lastSourceTs.delete(k);
+  }
+}
+
 // ── logging / heartbeat ───────────────────────────────────────────────────────
 function log(msg) { console.log(`[agent33] ${new Date().toISOString()} ${msg}`); }
 function beat() {
@@ -560,10 +589,13 @@ async function cycle() {
     }
   }
 
-  // 3. RAW DUMP FIRST — this must land even if the derived layer throws.
+  // 3. RAW DUMP FIRST — this must land even if the derived layer throws. Raw is captured
+  //    exactly as observed; the frozen annotation below is derived and applied only after.
   const wrote = appendRaw(allRows);
 
-  // 4. derived arb layer
+  // 4. derived arb layer. Mark books whose source_ts has not advanced since the last poll as
+  //    frozen (cross-poll) so the SSOT drops them from cashable, then run the shared detector.
+  annotateFrozen(allRows, ts);
   let real = [], phantom = [];
   try {
     const out = detectArbs(allRows, ts);
