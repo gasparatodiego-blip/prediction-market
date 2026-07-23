@@ -2,7 +2,7 @@
 
 // CopyPositionsPanel — two clearly-separated lanes on a trader's profile:
 //   1. COPIED positions (engine-owned, agent21 paper engine) — with an always-available
-//      manual override: "Chiudi parziale…" (percent slider) + "Chiudi tutto". The remaining
+//      manual override: "Partial close…" (percent slider) + "Close all". The remaining
 //      size stays engine-managed after a partial close (no re-arm).
 //   2. MANUAL positions (dashed, visually distinct) — a lane the copy engine NEVER reads or
 //      touches (physically separate table). Add / partial-close / remove here are independent.
@@ -145,7 +145,7 @@ function CopiedRow({ p, busy, onClose }: { p: CopiedPos; busy: boolean; onClose:
       {showSlider ? (
         <div className="mt-2 rounded-lg border border-line bg-bg/40 px-3 py-2">
           <div className="flex items-center justify-between font-body text-[11px] text-muted">
-            <span>Chiudi parziale</span>
+            <span>Partial close</span>
             <span className="font-mono tabular-nums text-ink">{pct}%</span>
           </div>
           <input type="range" min={1} max={99} value={pct} onChange={e => setPct(Number(e.target.value))}
@@ -154,22 +154,22 @@ function CopiedRow({ p, busy, onClose }: { p: CopiedPos; busy: boolean; onClose:
             <button disabled={busy} onClick={() => { onClose(p.id, pct); setShowSlider(false); }}
               className="min-h-[44px] flex-1 rounded-lg font-body text-[13px] font-semibold text-white disabled:opacity-50"
               style={{ background: ACCENT }}>
-              {busy ? '…' : `Chiudi ${pct}%`}
+              {busy ? '…' : `Close ${pct}%`}
             </button>
             <button onClick={() => setShowSlider(false)}
-              className="min-h-[44px] px-3 rounded-lg font-body text-[13px] text-muted border border-line">Annulla</button>
+              className="min-h-[44px] px-3 rounded-lg font-body text-[13px] text-muted border border-line">Cancel</button>
           </div>
         </div>
       ) : (
         <div className="mt-2 flex items-center gap-2">
           <button disabled={busy} onClick={() => setShowSlider(true)}
             className="min-h-[44px] flex-1 rounded-lg font-body text-[12px] font-medium text-ink border border-line hover:bg-bg/50 disabled:opacity-50">
-            Chiudi parziale…
+            Partial close…
           </button>
           <button disabled={busy} onClick={() => onClose(p.id, 100)}
             className="min-h-[44px] flex-1 rounded-lg font-body text-[12px] font-semibold text-white disabled:opacity-50"
             style={{ background: ACCENT }}>
-            {busy ? '…' : 'Chiudi tutto'}
+            {busy ? '…' : 'Close all'}
           </button>
         </div>
       )}
@@ -231,7 +231,7 @@ function ManualBlock({ address, manual, manualAuth, onChanged }: {
           <p className="font-body text-[11px] text-muted mt-0.5">Your own entries. This lane is <span className="text-ink font-medium">never read or touched by the copy engine</span> — separate storage.</p>
         </div>
         <button onClick={() => setAdding(a => !a)} className="shrink-0 min-h-[44px] px-3 rounded-lg font-body text-[12px] font-medium border border-line text-ink hover:bg-bg/50">
-          + Aggiungi posizione manuale
+          + Add manual position
         </button>
       </div>
 
@@ -255,7 +255,7 @@ function ManualBlock({ address, manual, manualAuth, onChanged }: {
                 className="min-h-[44px] rounded-lg border border-line bg-bg/40 px-3 font-body text-[13px] text-ink tabular-nums min-w-0" />
               <div className="sm:col-span-2 flex items-center gap-2">
                 <button disabled={busy} onClick={add} className="min-h-[44px] flex-1 rounded-lg font-body text-[13px] font-semibold text-white disabled:opacity-50" style={{ background: ACCENT }}>
-                  {busy ? '…' : 'Aggiungi'}
+                  {busy ? '…' : 'Add'}
                 </button>
                 {err && <span className="font-body text-[11px] text-red-500">{err}</span>}
               </div>
@@ -283,9 +283,9 @@ function ManualBlock({ address, manual, manualAuth, onChanged }: {
                     </div>
                     <div className="mt-2 flex items-center gap-2">
                       <button disabled={busy || m.status === 'closed'} onClick={() => closeManual(m.id, 50)}
-                        className="min-h-[44px] flex-1 rounded-lg font-body text-[12px] text-ink border border-line hover:bg-bg/50 disabled:opacity-40">Chiudi 50%</button>
+                        className="min-h-[44px] flex-1 rounded-lg font-body text-[12px] text-ink border border-line hover:bg-bg/50 disabled:opacity-40">Close 50%</button>
                       <button disabled={busy || m.status === 'closed'} onClick={() => closeManual(m.id, 100)}
-                        className="min-h-[44px] flex-1 rounded-lg font-body text-[12px] font-semibold text-white disabled:opacity-40" style={{ background: ACCENT }}>Chiudi tutto</button>
+                        className="min-h-[44px] flex-1 rounded-lg font-body text-[12px] font-semibold text-white disabled:opacity-40" style={{ background: ACCENT }}>Close all</button>
                       <button disabled={busy} onClick={() => removeManual(m.id)}
                         className="min-h-[44px] px-3 rounded-lg font-body text-[12px] text-muted border border-line" aria-label="remove">✕</button>
                     </div>
