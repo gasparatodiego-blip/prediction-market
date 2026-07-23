@@ -40,6 +40,7 @@ const { httpGet }         = require('../lib/httpGet');
 const {
   EXCHANGES, EXCHANGE_COMMISSION, POLY_TAKER, POLY_FEE_NOTE,
   MAX_AGE_SEC, SHORT_LIVED_SEC, netCost, legCapacity, detectArbs, isDrawName,
+  dateFromKalshiTicker, dateFromPolySlug,
 } = require('../lib/sport-arb-math');
 
 // ── paths ─────────────────────────────────────────────────────────────────────
@@ -260,7 +261,9 @@ async function captureOddsApiBooks(ev, ts) {
     const srcTs = o.source_ts ?? null;
     const age   = srcTs ? Math.round((Date.now() - Date.parse(srcTs)) / 1000) : null;
     rows.push({
-      ts, event_key: eventKey(ev), event_id: ev.event_id, sport: ev.sport, league: ev.league,
+      ts, event_key: datedKey(ev, dateOfStart(ev.start_time)), event_id: ev.event_id,
+      commence_time: ev.start_time ?? null,   // seconds; game-date source for book/exchange legs
+      sport: ev.sport, league: ev.league,
       home: ev.home, away: ev.away,
       source: o.bookmaker,
       source_type: EXCHANGES.has(o.bookmaker) ? 'exchange' : 'book',
@@ -342,7 +345,8 @@ async function captureKalshi(ev, ts, marketPool) {
     const draw = isDrawName(sub);
     const isHome = !draw && teamMatch(sub, ev.home) >= teamMatch(sub, ev.away);
     rows.push({
-      ts, event_key: eventKey(ev), event_id: ev.event_id, sport: ev.sport, league: ev.league,
+      ts, event_key: datedKey(ev, dateFromKalshiTicker(m.ticker)), event_id: ev.event_id,
+      sport: ev.sport, league: ev.league,
       home: ev.home, away: ev.away,
       source: 'kalshi', source_type: 'prediction', market: 'moneyline', venue_ticker: m.ticker,
       outcome: draw ? 'draw' : (isHome ? 'home' : 'away'), team: sub || null,
@@ -422,7 +426,8 @@ async function capturePolymarket(ev, ts, index) {
       const bestAsk = asks.length ? Math.min(...asks.map(x => x[0])) : null;
       const isHome  = teamMatch(outcomes[i], ev.home) >= teamMatch(outcomes[i], ev.away);
       rows.push({
-        ts, event_key: eventKey(ev), event_id: ev.event_id, sport: ev.sport, league: ev.league,
+        ts, event_key: datedKey(ev, dateFromPolySlug(hit.slug)), event_id: ev.event_id,
+        sport: ev.sport, league: ev.league,
         home: ev.home, away: ev.away,
         source: 'polymarket', source_type: 'prediction', market: 'moneyline', venue_ticker: hit.slug ?? null,
         outcome: isHome ? 'home' : 'away', team: outcomes[i],
@@ -442,6 +447,12 @@ async function capturePolymarket(ev, ts, index) {
 }
 
 const eventKey = ev => `${ev.sport}|${normTeam(ev.away)}@${normTeam(ev.home)}`;
+// DATE-AWARE event identity: append the leg's resolved game date so the SAME matchup on
+// different days no longer collapses to one key (which paired legs from different games).
+// Kalshi/Polymarket dates come from the native ticker; books/exchanges from commence_time
+// (ev.start_time, seconds) as a best-effort UTC date. Unresolvable → 'nodate'.
+const dateOfStart = s => (typeof s === 'number' ? new Date(s * 1000).toISOString().slice(0, 10) : null);
+const datedKey = (ev, date) => `${eventKey(ev)}|${date || 'nodate'}`;
 
 // ── DERIVED LAYER ─────────────────────────────────────────────────────────────
 // netCost / legCapacity / detectArbs are imported from lib/sport-arb-math (the SSOT
