@@ -15,9 +15,42 @@
 //   • the one-sided ÷3 penalty is surfaced; prices are snapped to tick; live-min hard cap holds.
 
 const assert = require('assert');
+const fs = require('fs');
+const os = require('os');
+const pathMod = require('path');
 let checks = 0;
 const ok = (c, m) => { assert(c, m); checks++; };
 const NOW = 1_753_000_000_000;
+
+// ── temp-fixture plumbing for the execution-safety layer (kill switch / limits / audit) ──
+// All safety state lives in files; the selfcheck points each module at throwaway temp files (never the
+// real data/ files) via dependency injection, so it proves the fail-closed behaviour deterministically.
+const KS = require('../lib/safety/kill-switch');
+const RL = require('../lib/safety/risk-limits');
+const EA = require('../lib/safety/execution-audit');
+const TMP_DIR = fs.mkdtempSync(pathMod.join(os.tmpdir(), 'maker-safety-'));
+let _tmpCounter = 0;
+const tmpFile = (name) => pathMod.join(TMP_DIR, `${name}-${process.pid}-${_tmpCounter++}`);
+// A permissive safety bag: all gates pass, intent/outcome go to a fresh temp trail. Used to prove the
+// EXISTING v2 gates + the throwing-provider belt still fire once the new safety gates are satisfied.
+function permissiveSafety() {
+  const auditFile = tmpFile('audit.jsonl');
+  return {
+    checkKill: () => ({ killed: false, gate: null, scope: null }),
+    evaluateForOrder: () => ({ venueAllowed: true, limits: { allow: true }, clampEvents: [] }),
+    recordIntent: (i) => EA.recordIntent(i, { auditFile }),
+    recordOutcome: (o) => EA.recordOutcome(o, { auditFile }),
+    deriveIdempotencyKey: EA.deriveIdempotencyKey,
+    setUserKill: () => {},
+    _auditFile: auditFile,
+  };
+}
+// A spy provider pair: records whether a key was ever requested (i.e. decryption was reached), then throws.
+function spyProviders() {
+  const s = { called: false };
+  const p = async () => { s.called = true; throw new Error('provider not wired'); };
+  return { s, credsProvider: p, signerProvider: p };
+}
 
 // ── 1. CANCEL-ONLY adapter is UNCHANGED and still cannot place ──
 {
@@ -81,7 +114,9 @@ async function noWriteProof() {
   // fundingApproved), postOrder refuses at the funding-approval gate BEFORE liveClient()/the provider —
   // no network, no key. (The throwing-provider belt is proven independently below.)
   const thrower = async () => { throw new Error('provider not wired'); };
-  const live = createMakerAdapter({ mode: 'live-min', credsProvider: thrower, signerProvider: thrower, liveMinCapUsd: 25 });
+  // Inject a PERMISSIVE safety bag so the new kill/venue/limit gates pass and the chain still reaches the
+  // existing funding-approval gate — proving the v2-migration gates are intact under the new safety layer.
+  const live = createMakerAdapter({ mode: 'live-min', credsProvider: thrower, signerProvider: thrower, liveMinCapUsd: 25, safety: permissiveSafety() });
   ok(live.canWrite === true, 'live-min with providers → canWrite=true (capability owned)…');
   const lp = await live.postOrder({ tokenId: '0xabc', side: 'BUY', price: 0.5, size: 10, tickSize: 0.01 });
   ok(lp.ok === false && lp.sent === false && lp.gate === 'funding-approval', '…but a live placement fails CLOSED at the funding/approval gate (pUSD + v2 approvals unattested) — no order signed, no network, no key');
@@ -94,7 +129,7 @@ async function noWriteProof() {
   //     (a TEST-only fundingApproved:true — agent35 never sets it, so the deployed engine still trips the
   //     funding gate above), this build's live wiring cannot obtain a key: liveClient() calls the (throwing)
   //     credsProvider on its FIRST line, before any network call or client construction. No order signed. ──
-  const fundedButUnwired = createMakerAdapter({ mode: 'live-min', fundingApproved: true, credsProvider: thrower, signerProvider: thrower, liveMinCapUsd: 25 });
+  const fundedButUnwired = createMakerAdapter({ mode: 'live-min', fundingApproved: true, credsProvider: thrower, signerProvider: thrower, liveMinCapUsd: 25, safety: permissiveSafety() });
   const fbp = await fundedButUnwired.postOrder({ tokenId: '0xabc', side: 'BUY', price: 0.5, size: 10, tickSize: 0.01 });
   ok(fbp.ok === false && /provider not wired/i.test(String((fbp.error && fbp.error.message) || fbp.error || '')), 'even with funding attested, the throwing-provider belt fails a live placement closed (no key, no order) — independent gate');
 
@@ -103,6 +138,76 @@ async function noWriteProof() {
   ok(offTick.ok === false && /not a valid multiple of tick/i.test(offTick.reason || ''), 'an off-tick price is rejected (defense in depth), never posted');
   ok(_internal.priceOnTick(0.52, 0.01) === true && _internal.priceOnTick(0.523, 0.01) === false, 'priceOnTick: 0.52 valid on 0.01, 0.523 invalid');
   ok(_internal.priceOnTick(0.523, 0.001) === true && _internal.priceOnTick(0.0025, 0.0025) === true, 'priceOnTick handles 0.001 and 0.0025 ticks (not just powers of ten)');
+
+  // ── 11. EXECUTION-SAFETY GATES WIRED INTO postOrder (adapter-level, before key decryption) ──
+  // 11a. a GLOBAL kill blocks placement at the kill gate, BEFORE any key decryption (provider untouched).
+  {
+    const { s, credsProvider, signerProvider } = spyProviders();
+    const auditFile = tmpFile('killed.jsonl');
+    const killedSafety = {
+      checkKill: () => ({ killed: true, gate: 'kill-global', reason: 'GLOBAL kill active' }),
+      evaluateForOrder: () => ({ venueAllowed: true, limits: { allow: true }, clampEvents: [] }),
+      recordIntent: (i) => EA.recordIntent(i, { auditFile }), recordOutcome: () => {},
+      deriveIdempotencyKey: EA.deriveIdempotencyKey, setUserKill: () => {},
+    };
+    const a = createMakerAdapter({ mode: 'live-min', fundingApproved: true, credsProvider, signerProvider, safety: killedSafety });
+    const r = await a.postOrder({ tokenId: '0xabc', side: 'BUY', price: 0.5, size: 10, tickSize: 0.01 });
+    ok(r.ok === false && r.gate === 'kill-global', 'adapter: a GLOBAL kill blocks placement at the kill gate (kill-global)');
+    ok(s.called === false, 'adapter: a KILLED placement is refused BEFORE key decryption — the signer/creds provider is NEVER called');
+    ok(!fs.existsSync(auditFile), 'adapter: a killed placement records NO intent (refused before intent-before-send)');
+  }
+
+  // 11b. per-user kill (durable, real kill-switch on a temp file) blocks ONLY the killed user.
+  {
+    const killFile = tmpFile('peruser.json');
+    KS.setUserKill({ userId: 'victim', by: 'selfcheck' }, { stateFile: killFile, auditFile: tmpFile('pu-audit.jsonl') });
+    const mkSafety = (auditFile) => ({
+      checkKill: ({ userId }) => KS.checkKill({ userId }, { stateFile: killFile }),
+      evaluateForOrder: () => ({ venueAllowed: true, limits: { allow: true }, clampEvents: [] }),
+      recordIntent: (i) => EA.recordIntent(i, { auditFile }), recordOutcome: (o) => EA.recordOutcome(o, { auditFile }),
+      deriveIdempotencyKey: EA.deriveIdempotencyKey, setUserKill: () => {},
+    });
+    const v = spyProviders();
+    const aVictim = createMakerAdapter({ mode: 'live-min', fundingApproved: true, credsProvider: v.credsProvider, signerProvider: v.signerProvider, safety: mkSafety(tmpFile('v.jsonl')) });
+    const rv = await aVictim.postOrder({ tokenId: '0xabc', side: 'BUY', price: 0.5, size: 10, tickSize: 0.01, userId: 'victim' });
+    ok(rv.gate === 'kill-user' && v.s.called === false, 'adapter: a per-user kill blocks the killed user (kill-user), before key decryption');
+    const b = spyProviders();
+    const aOther = createMakerAdapter({ mode: 'live-min', fundingApproved: true, credsProvider: b.credsProvider, signerProvider: b.signerProvider, safety: mkSafety(tmpFile('o.jsonl')) });
+    const ro = await aOther.postOrder({ tokenId: '0xabc', side: 'BUY', price: 0.5, size: 10, tickSize: 0.01, userId: 'bystander' });
+    ok(ro.gate !== 'kill-user' && ro.sent === true && b.s.called === true, 'adapter: a DIFFERENT user is NOT blocked by another user\'s kill (reaches the provider)');
+  }
+
+  // 11c. INTENT-before-send survives a throwing venue call; the same idempotency key never places twice.
+  {
+    const auditFile = tmpFile('exec.jsonl');
+    const safe = permissiveSafety();
+    safe.recordIntent = (i) => EA.recordIntent(i, { auditFile });
+    safe.recordOutcome = (o) => EA.recordOutcome(o, { auditFile });
+    const { credsProvider, signerProvider } = spyProviders();
+    const a = createMakerAdapter({ mode: 'live-min', fundingApproved: true, credsProvider, signerProvider, safety: safe });
+    const spec = { tokenId: '0xabc', side: 'BUY', price: 0.5, size: 10, tickSize: 0.01, idempotencyKey: 'retry-key', userId: 'u' };
+    const first = await a.postOrder(spec);
+    ok(first.sent === true && first.ok === false, 'adapter: a live placement whose provider throws is ambiguous (sent=true, ok=false)');
+    ok(EA.hasIntent('retry-key', { auditFile }) === true, 'adapter: an INTENT row exists EVEN THOUGH the venue call threw (evidence written before send)');
+    const retry = await a.postOrder(spec);
+    ok(retry.sent === false && retry.gate === 'idempotent-duplicate', 'adapter: the SAME idempotency key on retry is REFUSED — never places twice (ambiguous-timeout retry)');
+    ok(EA.queryByUser({ userId: 'u' }, { auditFile }).filter(r => r.kind === 'intent' && r.idempotencyKey === 'retry-key').length === 1, 'adapter: exactly ONE intent row for the retried key (idempotent)');
+  }
+
+  // 11d. unreadable kill state fails CLOSED at the adapter (default reader points at a corrupt temp file).
+  {
+    const corrupt = tmpFile('corrupt.json'); fs.writeFileSync(corrupt, '{not json');
+    const { s, credsProvider, signerProvider } = spyProviders();
+    const failClosedSafety = {
+      checkKill: ({ userId }) => KS.checkKill({ userId }, { stateFile: corrupt }),
+      evaluateForOrder: () => ({ venueAllowed: true, limits: { allow: true }, clampEvents: [] }),
+      recordIntent: () => ({ recorded: true, duplicate: false }), recordOutcome: () => {},
+      deriveIdempotencyKey: EA.deriveIdempotencyKey, setUserKill: () => {},
+    };
+    const a = createMakerAdapter({ mode: 'live-min', fundingApproved: true, credsProvider, signerProvider, safety: failClosedSafety });
+    const r = await a.postOrder({ tokenId: '0xabc', side: 'BUY', price: 0.5, size: 10, tickSize: 0.01 });
+    ok(r.ok === false && r.gate === 'kill-switch-unreadable' && s.called === false, 'adapter: an UNREADABLE kill state fails CLOSED (kill-switch-unreadable), before key decryption');
+  }
 
   finish();
 }
@@ -181,6 +286,67 @@ const { reconcile } = require('../lib/maker/reconcile');
   ok(r.toPlace.length === 1 && r.toPlace[0].side === 'SELL' && r.toPlace[0].price === 0.51, 'desired quote absent from venue → PLACE (never assume a post succeeded)');
   ok(r.toCancel.length === 1 && r.toCancel[0].orderId === 'o2', 'venue order not desired → CANCEL (trust the venue)');
   ok(r.partialFills.length === 1 && r.partialFills[0].filledShares === 120, 'partial fill detected on the matched order');
+}
+
+// ── 10. EXECUTION-SAFETY MODULES (kill switch / risk limits / audit trail), pure + temp-file ──
+{
+  // 10a. KILL SWITCH: durable, global+user scopes, global wins, fail-closed on unreadable, audited.
+  const killFile = tmpFile('kill.json');
+  const killAudit = tmpFile('kill-audit.jsonl');
+  const kdeps = { stateFile: killFile, auditFile: killAudit };
+  ok(KS.checkKill({ userId: 'u1' }, kdeps).killed === false, 'kill: an ABSENT state file → NOT killed (permitted; absent ≠ unreadable)');
+  KS.setUserKill({ userId: 'u1', reason: 'test', by: 'sc' }, kdeps);
+  ok(KS.checkKill({ userId: 'u1' }, kdeps).gate === 'kill-user', 'kill: a per-user kill blocks that user (kill-user)');
+  ok(KS.checkKill({ userId: 'u2' }, kdeps).killed === false, 'kill: a per-user kill does NOT block a different user');
+  KS.setGlobalKill({ reason: 'halt', by: 'sc' }, kdeps);
+  ok(KS.checkKill({ userId: 'u2' }, kdeps).gate === 'kill-global', 'kill: a GLOBAL kill blocks every user (global always wins)');
+  KS.clearGlobalKill({ by: 'sc' }, kdeps);
+  ok(KS.checkKill({ userId: 'u2' }, kdeps).killed === false, 'kill: clearing the global kill un-blocks unaffected users');
+  ok(KS.checkKill({ userId: 'u1' }, kdeps).killed === true, 'kill: the per-user kill survives a global clear (independent scope)');
+  ok(KS.checkKill({ userId: 'u1' }, { stateFile: killFile }).killed === true, 'kill: state is DURABLE — a fresh read (simulated post-restart) still sees the kill');
+  const corrupt = tmpFile('corrupt.json'); fs.writeFileSync(corrupt, '{not json');
+  const fc = KS.checkKill({ userId: 'u1' }, { stateFile: corrupt });
+  ok(fc.killed === true && fc.gate === 'kill-switch-unreadable', 'kill: an UNREADABLE state fails CLOSED (kill-switch-unreadable), never defaults to permitted');
+  ok(fs.existsSync(killAudit) && /"event":"kill"/.test(fs.readFileSync(killAudit, 'utf8')), 'kill: every set/clear is AUDITED (who/when/scope/reason)');
+
+  // 10b. RISK LIMITS: hard-ceiling clamp, each limit boundary, missing fails closed, venue allowlist.
+  const limitsFile = tmpFile('limits.json');
+  fs.writeFileSync(limitsFile, JSON.stringify({
+    global: { maxOrderNotionalUsd: 25, maxOpenNotionalUsd: 500, maxOrdersPerWindow: 30, windowMs: 60000, maxDailyLossUsd: 50, venues: ['polymarket'] },
+    users: { hot: { maxOrderNotionalUsd: 99999 } }, // deliberately ABOVE the hard ceiling (100)
+  }));
+  const res = RL.resolveLimits({ userId: 'std' }, { configFile: limitsFile });
+  ok(res.ok && res.limits.maxOrderNotionalUsd === 25, 'limits: a stored value within the ceiling stands (25)');
+  const hot = RL.resolveLimits({ userId: 'hot' }, { configFile: limitsFile });
+  ok(hot.limits.maxOrderNotionalUsd === RL.HARD_CEILINGS.maxOrderNotionalUsd && hot.clampEvents.some(c => c.field === 'maxOrderNotionalUsd'), 'limits: a stored config ABOVE the hard ceiling is CLAMPED to the ceiling + the clamp is audited');
+  const okUsage = { openNotionalUsd: 0, ordersInWindow: 0, realisedDailyPnlUsd: 0 };
+  ok(RL.evaluateLimits({ order: { notionalUsd: 10 }, usage: okUsage, limits: res.limits }).allow === true, 'limits: an order within every limit is allowed');
+  ok(RL.evaluateLimits({ order: { notionalUsd: 25.01 }, usage: okUsage, limits: res.limits }).gate === 'max-order-notional', 'limits: per-order notional trips at its boundary (max-order-notional)');
+  ok(RL.evaluateLimits({ order: { notionalUsd: 20 }, usage: { openNotionalUsd: 490, ordersInWindow: 0, realisedDailyPnlUsd: 0 }, limits: res.limits }).gate === 'max-open-notional', 'limits: open-exposure cap trips at its boundary (max-open-notional)');
+  ok(RL.evaluateLimits({ order: { notionalUsd: 10 }, usage: { openNotionalUsd: 0, ordersInWindow: 30, realisedDailyPnlUsd: 0 }, limits: res.limits }).gate === 'rate-limit', 'limits: orders-per-window rate limit trips at its boundary (rate-limit)');
+  const dl = RL.evaluateLimits({ order: { notionalUsd: 10 }, usage: { openNotionalUsd: 0, ordersInWindow: 0, realisedDailyPnlUsd: -50 }, limits: res.limits });
+  ok(dl.gate === 'daily-loss' && dl.autoKill === true, 'limits: realised daily-loss trips at its boundary AND flags an automatic kill (daily-loss, autoKill)');
+  ok(RL.evaluateLimits({ order: { notionalUsd: null }, usage: okUsage, limits: res.limits }).gate === 'unverified-size', 'limits: an unverifiable order size is refused (unverified-size — capacity "—" = no order)');
+  const missing = { ...res.limits, maxOrderNotionalUsd: null };
+  ok(RL.evaluateLimits({ order: { notionalUsd: 10 }, usage: okUsage, limits: missing }).allow === false, 'limits: a MISSING limit fails CLOSED (missing ≠ unlimited)');
+  ok(RL.isVenueAllowed({ venue: 'polymarket', limits: res.limits }) === true && RL.isVenueAllowed({ venue: 'kalshi', limits: res.limits }) === false, 'limits: the venue allowlist permits only enabled venues');
+  ok(RL.isVenueAllowed({ venue: 'polymarket', limits: { venues: [] } }) === false, 'limits: an empty/absent venue allowlist permits NO venue (fail closed)');
+  const badCfg = tmpFile('badcfg.json'); fs.writeFileSync(badCfg, 'not json');
+  ok(RL.resolveLimits({ userId: 'x' }, { configFile: badCfg }).ok === false, 'limits: an unreadable config → resolveLimits not-ok (caller fails closed)');
+
+  // 10c. AUDIT TRAIL: intent-before-send, idempotency dedup, per-user query, redaction.
+  const auditFile = tmpFile('exec-audit.jsonl');
+  const adeps = { auditFile };
+  const intent = { idempotencyKey: 'k1', userId: 'u', venue: 'polymarket', market: 'm', side: 'BUY', price: 0.5, size: 10, notionalUsd: 5 };
+  ok(EA.recordIntent(intent, adeps).recorded === true, 'audit: the first intent for a key is recorded');
+  const r2 = EA.recordIntent(intent, adeps);
+  ok(r2.recorded === false && r2.duplicate === true, 'audit: the SAME idempotency key is a DUPLICATE — never recorded/placed twice');
+  ok(EA.hasIntent('k1', adeps) === true && EA.hasIntent('nope', adeps) === false, 'audit: hasIntent finds a recorded key, not an absent one');
+  EA.recordOutcome({ idempotencyKey: 'k1', userId: 'u', venue: 'polymarket', ok: false, error: 'x' }, adeps);
+  const rows = EA.queryByUser({ userId: 'u' }, adeps);
+  ok(rows.filter(x => x.kind === 'intent').length === 1 && rows.filter(x => x.kind === 'outcome').length === 1, 'audit: the trail is queryable per user (1 intent + 1 outcome for k1)');
+  EA.recordIntent({ idempotencyKey: 'k2', userId: 'u', venue: 'polymarket', decision: { note: '0x' + 'a'.repeat(64) } }, adeps);
+  ok(!fs.readFileSync(auditFile, 'utf8').includes('a'.repeat(64)), 'audit: a private-key-shaped inline value is REDACTED out of the trail');
 }
 
 noWriteProof();

@@ -35,6 +35,9 @@ const { scoreOrder } = require('../lib/rewardScore');
 const { loadNewsGuardConfig } = require('../lib/news-guard/config');
 const { createMakerAdapter } = require('../lib/venues/polymarket-clob-maker/adapter');
 const { appendMakerAudit } = require('../lib/venues/polymarket-clob-maker/audit');
+const { checkKill, cancelAllOnKill } = require('../lib/safety/kill-switch');
+
+const OPERATOR_USER = process.env.MAKER_OPERATOR_USER || 'operator';
 
 const LIVE_BOOKS_FILE = '/tmp/clob-live-books.json';        // agent34 (adjusted mid + live/stale)
 const WATCHLIST_FILE  = '/root/prediction-market/data/liquidity-rewards.json'; // band config + rewardsDailyRate
@@ -155,6 +158,16 @@ async function tick(cfg, adapter) {
   const marketsOut = {};
   let totalRequotes = 0, totalWouldPost = 0, railsTrippedCount = 0;
 
+  // ── DURABLE kill switch (fail-closed) — checked EVERY tick, so a kill set one second ago halts the
+  //    engine on the very next cycle. When killed we (a) force the rails to halt-all/cancel-all, and
+  //    (b) attempt a cancel-all through the (shadow, in this disarmed build) adapter cancel path —
+  //    REUSING the existing cancelMarketOrders, never a new venue write. Env MAKER_KILL still applies. ──
+  const durableKill = checkKill({ userId: OPERATOR_USER });
+  const effCfg = durableKill.killed ? { ...cfg, killSwitch: true } : cfg;
+  if (durableKill.killed && adapter && typeof adapter.cancelMarketOrders === 'function') {
+    try { await cancelAllOnKill({ adapter, marketIds: [...legsByMarket.keys()] }); } catch (e) { log('cancel-on-kill failed:', e.message); }
+  }
+
   for (const [marketId, legs] of legsByMarket) {
     // conditionIds are 0x+64hex — the SAME shape as a private key, so the shared redactor blanks them in
     // the audit (safe over-redaction). A conditionId is PUBLIC, so we log a redaction-surviving ref
@@ -181,7 +194,7 @@ async function tick(cfg, adapter) {
         newsSeverity: newsByMarket.get(marketId) || null,
         marketNotionalUsd: 0, positionUsd: 0,
       },
-      config: cfg,
+      config: effCfg,
     });
     if (rails.trips.length) railsTrippedCount += rails.trips.length;
 
@@ -243,7 +256,8 @@ async function tick(cfg, adapter) {
 
   const state = {
     generatedAt: new Date(now).toISOString(),
-    mode: cfg.mode, dryRun: cfg.dryRun, canWrite: cfg.canWrite, killSwitch: cfg.killSwitch,
+    mode: cfg.mode, dryRun: cfg.dryRun, canWrite: cfg.canWrite, killSwitch: effCfg.killSwitch,
+    durableKill: { killed: durableKill.killed, scope: durableKill.scope, reason: durableKill.reason || null },
     source: 'agent35-maker · paper pipeline · quotes from ADJUSTED mid · no orders placed (MAKER_MODE=' + cfg.mode + ')',
     config: { liveMinMarket: cfg.liveMinMarket, liveMinCapUsd: cfg.liveMinCapUsd, requote: cfg.requote, rails: cfg.rails },
     summary: { markets: Object.keys(marketsOut).length, totalWouldPost, totalRequotes, railsTrippedCount },
