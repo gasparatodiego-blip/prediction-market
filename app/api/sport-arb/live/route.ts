@@ -24,7 +24,12 @@ function isRenderableReal(rec: any): boolean {
   const legs = Array.isArray(rec.legs) ? rec.legs : [];
   if (!legs.length) return false;
   if (legs.some((l: any) => isDrawLeg(l))) return false;
-  return legs.every((l: any) => isLegLive(l));
+  if (!legs.every((l: any) => isLegLive(l))) return false;
+  // Both legs must resolve to the SAME game date. Pre-fix rows carry no game_date and cross-game
+  // rows carry mismatched ones — either way they are not same-game verifiable, so they never render.
+  const dates = legs.map((l: any) => l.game_date);
+  if (dates.some((d: any) => d == null) || new Set(dates).size !== 1) return false;
+  return true;
 }
 
 export const dynamic = 'force-dynamic';
