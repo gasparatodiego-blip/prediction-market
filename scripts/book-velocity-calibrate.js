@@ -35,6 +35,9 @@ const HOLD_CANDIDATES = [60_000, 120_000, 180_000, 300_000, 600_000];
 const NV_CANDIDATES = [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10, 15, 20];
 /** Consecutive detections on one market closer than this collapse into ONE episode. */
 const EPISODE_GAP_MS = 10 * 60_000;
+/** The real tracked set agent36 polls (120 polymarket + 200 kalshi reward markets),
+ *  used to project a per-market rate measured on a corpus onto the deployment set. */
+const TRACKED = 320;
 /** Per-market alert cooldown used in the fire-rate simulation. */
 const COOLDOWN_MS = Number(process.env.COOLDOWN_MIN || 15) * 60_000;
 
@@ -161,7 +164,7 @@ function main() {
   const table = [];
   console.log(`\n── threshold → ALERT fire rate (train, ${(trainDays * 24).toFixed(1)}h, ${byMarket.size} markets) ──`);
   console.log(`  simulates the live path: detect → hold ${bv.DEFAULTS.holdMs / 1000}s → alert only if PERSISTENT → per-market cooldown ${COOLDOWN_MS / 60000}min`);
-  console.log(`  nv_thr   detections   PERSIST   REVERT   UNK   %persist   alerts   alerts/day/mkt   →260 mkt alerts/day`);
+  console.log(`  nv_thr   detections   PERSIST   REVERT   UNK   %persist   alerts   alerts/day/mkt   →deploy alerts/day`);
   for (const thr of NV_CANDIDATES) {
     const fired = train.filter(x => bv.isDetection(x.p, { nvThreshold: thr }));
     const byM = new Map();
@@ -189,7 +192,7 @@ function main() {
     const cls = per + rev;
     const perDayPerMkt = alerts / trainDays / byMarket.size;
     table.push({ thr, detections: fired.length, per, rev, unk, alerts, perDayPerMkt });
-    console.log(`  ${String(thr).padStart(5)}   ${String(fired.length).padStart(10)}   ${String(per).padStart(7)}   ${String(rev).padStart(6)}   ${String(unk).padStart(3)}   ${(cls ? (per / cls * 100).toFixed(1) : '—').padStart(7)}%   ${String(alerts).padStart(6)}   ${perDayPerMkt.toFixed(4).padStart(13)}   ${(perDayPerMkt * 260).toFixed(1).padStart(18)}`);
+    console.log(`  ${String(thr).padStart(5)}   ${String(fired.length).padStart(10)}   ${String(per).padStart(7)}   ${String(rev).padStart(6)}   ${String(unk).padStart(3)}   ${(cls ? (per / cls * 100).toFixed(1) : '—').padStart(7)}%   ${String(alerts).padStart(6)}   ${perDayPerMkt.toFixed(4).padStart(13)}   ${(perDayPerMkt * TRACKED).toFixed(1).padStart(18)}`);
   }
 
   // ── DETECTION CLUSTERING → COOLDOWN ───────────────────────────────────────
@@ -259,12 +262,12 @@ function main() {
         lastAlert = x.p.t1; alerts++;
       }
     }
-    const rate = alerts / holdDays / byMarket.size * 260;
+    const rate = alerts / holdDays / byMarket.size * TRACKED;
     const trainRow = table.find(r => r.thr === thrPick);
     console.log(`\n── HOLDOUT VERIFICATION (last ${((1 - split) * 100).toFixed(0)}% of the window, ${holdDays.toFixed(2)}d) ──`);
     console.log(`  detections=${fired.length}  persistent=${per}  reverting=${rev}  alerts after cooldown=${alerts}`);
-    console.log(`  holdout implied rate @260 markets: ${rate.toFixed(1)} alerts/day`);
-    if (trainRow) console.log(`  train predicted:                   ${(trainRow.perDayPerMkt * 260).toFixed(1)} alerts/day`);
+    console.log(`  holdout implied rate @${TRACKED} markets: ${rate.toFixed(1)} alerts/day`);
+    if (trainRow) console.log(`  train predicted:                   ${(trainRow.perDayPerMkt * TRACKED).toFixed(1)} alerts/day`);
   }
   console.log('');
 }

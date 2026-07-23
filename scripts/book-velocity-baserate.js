@@ -22,8 +22,15 @@
  *   It computes NO normalised velocity and claims none — there is no at-touch depth
  *   in this corpus and none is invented.
  *
+ * HELD-OUT VALIDATION
+ *   With --split f the corpus is cut chronologically: the rate is computed on the
+ *   first f of the window and then re-measured on the remaining slice, which the
+ *   threshold never saw. Because the fire-rate projection is derived from this
+ *   ceiling, this is the out-of-sample test of the number the threshold was chosen
+ *   against, on the population the detector actually runs on.
+ *
  * Read-only. Zero network calls, zero Claude calls.
- * Usage: node scripts/book-velocity-baserate.js
+ * Usage: node scripts/book-velocity-baserate.js [--split 0.7]
  */
 
 const fs = require('fs');
@@ -91,6 +98,11 @@ function polyQuote(r) {
   return { bid, ask, minSize };
 }
 
+const SPLIT = (() => {
+  const i = process.argv.indexOf('--split');
+  return i > -1 ? Number(process.argv[i + 1]) : null;
+})();
+
 function analyse(label, section, extract, tracked) {
   const { byMarket, snaps } = collect(section, extract);
   let tmin = Infinity, tmax = 0, rows = 0;
@@ -102,7 +114,8 @@ function analyse(label, section, extract, tracked) {
 
   // Sign-consistent executable move between consecutive snapshots — the SAME
   // definition lib/book-velocity.js uses (both sides must move the same way).
-  const moves = [];
+  const cut = SPLIT ? tmin + (tmax - tmin) * SPLIT : Infinity;
+  const moves = [], movesTrain = [], movesHold = [];
   let gapsSkipped = 0;
   for (const m of byMarket.values()) {
     for (let i = 1; i < m.rows.length; i++) {
@@ -114,6 +127,7 @@ function analyse(label, section, extract, tracked) {
       if (dBid > 0 && dAsk > 0) mv = Math.min(dBid, dAsk);
       else if (dBid < 0 && dAsk < 0) mv = -Math.min(-dBid, -dAsk);
       moves.push(Math.abs(mv));
+      (b.t <= cut ? movesTrain : movesHold).push(Math.abs(mv));
     }
   }
 
@@ -134,6 +148,16 @@ function analyse(label, section, extract, tracked) {
     const perMktDay = n / days / byMarket.size;
     out.push({ M, n, perMktDay });
     console.log(`  ${String(M).padStart(3)}c   ${String(n).padStart(12)}   ${perMktDay.toFixed(4).padStart(18)}   ${(perMktDay * tracked).toFixed(1).padStart(21)}`);
+  }
+  if (SPLIT && movesHold.length) {
+    const trainDays = (cut - tmin) / 86_400_000, holdDays = (tmax - cut) / 86_400_000;
+    console.log(`\n  HELD-OUT (last ${((1 - SPLIT) * 100).toFixed(0)}% of the window, ${holdDays.toFixed(1)}d, never seen by the threshold)`);
+    console.log(`  |move| >= M    train ${tracked}/day    holdout ${tracked}/day    ratio`);
+    for (const M of MOVE_BUCKETS) {
+      const tr = movesTrain.filter(x => x >= M).length / trainDays / byMarket.size * tracked;
+      const ho = movesHold.filter(x => x >= M).length / holdDays / byMarket.size * tracked;
+      console.log(`  ${String(M).padStart(3)}c   ${tr.toFixed(1).padStart(14)}   ${ho.toFixed(1).padStart(17)}   ${(tr > 0 ? (ho / tr).toFixed(2) : '—').padStart(6)}x`);
+    }
   }
   return { label, days, markets: byMarket.size, buckets: out };
 }
