@@ -6,6 +6,9 @@ import { Redacted } from './ui/Redacted';
 import { EmptyState } from './ds';
 import { APY_CAP } from '@/lib/honest-display';
 import { computeLiquidityYield } from '@/lib/liquidity-yield';
+// The 2%/day sane-reward gate — the SINGLE implementation (was wired only to the paper book). Surfacing it
+// here makes a thin / over-cap reward row read as a flagged run-rate, never a clean cashable $/day.
+import { REWARD_SANITY_CAP_PCT, isSanePolymarketLevel } from '@/lib/reward-gating';
 // Pure, node-verifiable filter/sort/derive — shared VERBATIM so the list the user sees and
 // any measurement of the filter behaviour cannot diverge (see lib/rewards-filter.js).
 import { deriveOptions, defaultState, applyFilters, sortRows, saturationView } from '@/lib/rewards-filter';
@@ -99,6 +102,8 @@ interface Base {
   // row renders "—" with this reason instead of a fabricated $/day. null on Polymarket + valid rows.
   nonExecReason: string | null;
   grossKalshi: boolean;           // Kalshi executable row → show the calm "gross" qualifier
+  belowGate: boolean;             // fails the 2%/day sane-reward gate (reward-gating) → flagged, not clean
+  thin: boolean;                  // carries a THIN_CAP / "THIN BOOK" flag specifically
 }
 /** Base + the balance-driven yield the list/filters/row read. */
 interface Row extends Base {
@@ -203,6 +208,13 @@ export default function RewardsUnified() {
       // null Q ⇒ the lib returns unknown ⇒ the row renders "—". Polymarket path is untouched.
       const execQ = nonExecReason ? null : depth;
 
+      // ── 2%/day SANE-REWARD GATE, wired here from the single reward-gating implementation. A row that
+      //    carries any gate flag (THIN_CAP/"THIN BOOK", below-floor, one-sided, …) does NOT pass, so it is
+      //    surfaced as flagged rather than presented as a clean cashable $/day. `thin` is the specific
+      //    dayYield > REWARD_SANITY_CAP_PCT case. ──
+      const passesSaneGate = isSanePolymarketLevel({ flags });   // flags.length === 0, venue-agnostic on the string[]
+      const thin = flags.some((f) => /THIN/i.test(f));
+
       return {
         m, flags,
         category:     m.category ?? null,
@@ -217,6 +229,8 @@ export default function RewardsUnified() {
         isTrap:       flags.some((f) => /^TRAP$/i.test(f)),
         nonExecReason,
         grossKalshi:  isKalshi,                // executable Kalshi rows show the calm "gross" tag
+        belowGate:    !passesSaneGate,
+        thin,
       };
     });
   }, [data]);
@@ -443,6 +457,16 @@ export default function RewardsUnified() {
                               {row.measured ? 'measured · live book' : 'observed split'}
                             </span>
                             {row.isTrap && <span className="rw-trap">⚠ TRAP</span>}
+                            {/* 2%/day sane-reward gate (reward-gating), now wired to the list: a thin/flagged
+                                row reads as a run-rate, never a clean cashable $/day. */}
+                            {!row.isTrap && row.thin && (
+                              <span className="rw-trap" title={`thin book — reference yield exceeds ${REWARD_SANITY_CAP_PCT}%/day; your share compresses as makers arrive`}>
+                                ⚠ thin book
+                              </span>
+                            )}
+                            {!row.isTrap && !row.thin && row.belowGate && (
+                              <span className="rw-trap" title="below the sane-reward gate (below-floor / one-sided / short-burst)">⚠ flagged</span>
+                            )}
                           </span>
                           <span className="cc-row-title">{m.groupItemTitle || m.title}</span>
                           <span className="cc-row-sub">
