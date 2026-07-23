@@ -5,10 +5,12 @@ const fs       = require('fs');
 const { atomicWriteJson } = require('../lib/atomicJsonWrite');
 const path     = require('path');
 
-// Fee rates mirror lib/fees.ts — update both if rates change
+// Non-Polymarket coarse fee coefficients. Polymarket is NOT taken from here — under CLOB v2 there is no
+// flat winnings fee; the real per-market taker fee is read LIVE from the SSOT (lib/polymarket-fees.js)
+// and applied price-scaled per leg in legFeeFraction(). The old fabricated flat 0.02 is gone.
 const PLATFORM_FEES = {
   kalshi:     0.07,
-  polymarket: 0.02,
+  polymarket: 0.00, // SSOT-applied per-leg (legFeeFraction); this 0 is never used for a Polymarket leg
   predictit:  0.10 + 0.05, // win fee + withdrawal fee
   manifold:   0.00,
   oddsapi:    0.00,
@@ -18,6 +20,43 @@ const PLATFORM_FEES = {
 // matcher-v2.js and agent23-prediction-repricer.js already use, so the
 // cashable determination here can never diverge from the live re-pricer's math.
 const { computeArbROI: computeExecutableArbROI, EXECUTABLE_PLATFORMS } = require('../lib/arb-math');
+// Live per-market Polymarket taker fee — the SINGLE SOURCE OF TRUTH (lib/polymarket-fees.js). Replaces
+// the fabricated flat 0.02. base_fee is read live per token (cached 6h) and price-scaled per leg; null
+// when unknown → the row is DROPPED (never served with a guessed fee). See legFeeFraction()/prefetch below.
+const { getBaseFeeBps, takerFeeFractionFromBps, BASE_FEE_TO_RATE_DIVISOR } = require('../lib/polymarket-fees');
+
+// pm-<n> leg id → CLOB token, from markets-raw (leg ids are pm-prefixed; markets-raw ids are raw numbers).
+function buildPmTokenById(raw) {
+  const map = {};
+  for (const m of (raw && raw.polymarket) || []) {
+    try { const t = JSON.parse(m.clobTokenIds || '[]')[0]; if (t) map[String(m.id)] = String(t); } catch { /* skip */ }
+  }
+  return map;
+}
+const pmKey = (id) => String(id == null ? '' : id).replace(/^pm-/, '');
+
+// The live SSOT taker-fee FRACTION for one leg at its execution price. Polymarket → (base_fee/20000)·(1−p)
+// from the pre-fetched cache; null when base_fee/token is unknown (→ caller DROPS the row, never a guess).
+// Non-Polymarket legs keep their published coarse coefficient from PLATFORM_FEES.
+function legFeeFraction(leg, pmTokenById, baseFeeByToken) {
+  const platform = String(leg.platform || '').toLowerCase();
+  if (platform !== 'polymarket') return PLATFORM_FEES[platform] ?? 0;
+  const tok = pmTokenById[pmKey(leg.id)];
+  const price = (typeof leg.yesAsk === 'number' && leg.yesAsk > 0 && leg.yesAsk < 1)
+    ? leg.yesAsk : (typeof leg.probability === 'number' ? leg.probability / 100 : null);
+  return takerFeeFractionFromBps(tok ? baseFeeByToken[tok] : null, price); // null when unknown → drop row
+}
+
+// The live Polymarket base_fee/20000 rate for whichever leg is Polymarket (feeds computeExecutableArbROI's
+// polyFeeRate so the cashable check is net of the REAL fee too), or null when unknown.
+function polyFeeRateFor(a, b, pmTokenById, baseFeeByToken) {
+  const pmLeg = String(a.platform).toLowerCase() === 'polymarket' ? a
+    : String(b.platform).toLowerCase() === 'polymarket' ? b : null;
+  if (!pmLeg) return null;
+  const tok = pmTokenById[pmKey(pmLeg.id)];
+  const bf = tok ? baseFeeByToken[tok] : null;
+  return bf == null ? null : bf / BASE_FEE_TO_RATE_DIVISOR;
+}
 // Event-level comparator buckets (additive to the pairwise arb output below) —
 // same entity/proposition/office/year signals the same-event gate already
 // computes, reused as a grouping key. See shared-matcher.js for the full
@@ -90,9 +129,10 @@ function attachMatchedOpportunity(edge, predMarketOpps) {
 // differently to pair still shows up side by side. Returns [] (never throws,
 // never blocks the pairwise output above) when markets-raw.json is missing or
 // stale — same 5-min staleness bar the matcher agents apply to the same file.
-function buildEvents(predMarketOpps) {
+function buildEvents(predMarketOpps, preParsedRaw) {
   try {
-    const raw = JSON.parse(fs.readFileSync(RAW_MARKETS_FILE, 'utf8'));
+    const raw = preParsedRaw || JSON.parse(fs.readFileSync(RAW_MARKETS_FILE, 'utf8'));
+    if (!raw) return [];
     const age = Date.now() - (raw.fetchedAt || 0);
     if (age > EVENTS_MAX_AGE_MS) return [];
     const allMarkets = extractAllMarkets(raw);
@@ -276,7 +316,7 @@ function calcOddsApiArb() {
   ];
 }
 
-function calcArb(matches) {
+function calcArb(matches, pmTokenById, baseFeeByToken) {
   const results = [];
   for (const m of matches) {
     const a = m.marketA;
@@ -291,8 +331,11 @@ function calcArb(matches) {
     const roi  = spread > 0 && spread < 100 ? (spread / (100 - spread)) * 100 : 0;
     if (roi > 80 || roi <= 0) continue;
 
-    const feeA   = PLATFORM_FEES[low.platform]  || 0;
-    const feeB   = PLATFORM_FEES[high.platform] || 0;
+    const feeA   = legFeeFraction(low, pmTokenById, baseFeeByToken);
+    const feeB   = legFeeFraction(high, pmTokenById, baseFeeByToken);
+    // Honest-engine: a Polymarket leg whose live base_fee is unknown yields a null fee. NEVER serve a
+    // netRoi computed from a guessed fee — DROP the row (agent23 still re-prices the pair from discovery).
+    if (feeA == null || feeB == null) continue;
     const netRoi = roi * (1 - feeA - feeB);
     if (netRoi <= 0) continue;
 
@@ -312,6 +355,7 @@ function calcArb(matches) {
           yesAsk_A: a.yesAsk, yesBid_A: a.yesBid,
           yesAsk_B: b.yesAsk, yesBid_B: b.yesBid,
           platformA: a.platform, platformB: b.platform,
+          polyFeeRate: polyFeeRateFor(a, b, pmTokenById, baseFeeByToken), // real live fee; null → feeUnknown
         })
       : null;
     const cashable = bothExecutable && executableArb !== null;
@@ -342,7 +386,7 @@ function calcArb(matches) {
   return results.sort((a, b) => b.roi - a.roi);
 }
 
-function run() {
+async function run() {
   let allMatches = [];
 
   for (const { path: p, category } of MATCH_FILES) {
@@ -356,17 +400,31 @@ function run() {
     } catch {}
   }
 
-  const predMarketOpps = calcArb(allMatches);
+  // Parse markets-raw ONCE (reused for the fee token-map AND the event buckets — never parse the 96MB
+  // file twice per cycle). Then bulk pre-fetch the live base_fee for every distinct Polymarket leg token
+  // in the AI-matched set (SSOT-cached, 6h TTL): a single bounded batch keyed to the matched pairs
+  // (dozens), NEVER a per-row live fetch inside calcArb.
+  let raw = null;
+  try { raw = JSON.parse(fs.readFileSync(RAW_MARKETS_FILE, 'utf8')); } catch { /* map empty → poly rows drop honestly */ }
+  const pmTokenById = buildPmTokenById(raw);
+  const polyTokens = new Set();
+  for (const m of allMatches) for (const leg of [m.marketA, m.marketB]) {
+    if (leg && String(leg.platform).toLowerCase() === 'polymarket') { const t = pmTokenById[pmKey(leg.id)]; if (t) polyTokens.add(t); }
+  }
+  const baseFeeByToken = {};
+  await Promise.all([...polyTokens].map(async (t) => { baseFeeByToken[t] = await getBaseFeeBps(t); }));
+
+  const predMarketOpps = calcArb(allMatches, pmTokenById, baseFeeByToken);
   const oddsApiOpps    = calcOddsApiArb();
   // Merge: prediction market opps first (AI-matched), then cross-bookmaker sports arb
   const opportunities  = [...predMarketOpps, ...oddsApiOpps].slice(0, 30);
-  console.log(`[calculator] ${allMatches.length} matches → ${predMarketOpps.length} pred-market opps + ${oddsApiOpps.length} bookmaker opps = ${opportunities.length} total`);
+  console.log(`[calculator] ${allMatches.length} matches → ${predMarketOpps.length} pred-market opps + ${oddsApiOpps.length} bookmaker opps = ${opportunities.length} total (poly fee tokens prefetched: ${polyTokens.size})`);
 
   // Additive event-comparator buckets — built from the FULL pairwise list
   // (predMarketOpps, before the slice(0,30) cap above) so a lockable edge can
   // still find its matching opportunity even if that opportunity didn't make
   // the top-30 cut. Never alters `opportunities` itself.
-  const events = buildEvents(predMarketOpps);
+  const events = buildEvents(predMarketOpps, raw);
   console.log(`[calculator] ${events.length} event buckets (${events.filter(e => e.lockableEdge).length} with a lockable edge)`);
 
   fs.writeFileSync(OUT_FILE, JSON.stringify({
@@ -384,5 +442,5 @@ function run() {
   beat('calculator');
 }
 
-run();
-setInterval(run, INTERVAL);
+run().catch(e => console.error('[calculator] run error:', e.message));
+setInterval(() => { run().catch(e => console.error('[calculator] run error:', e.message)); }, INTERVAL);
