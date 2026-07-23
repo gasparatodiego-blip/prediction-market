@@ -8,8 +8,24 @@ import { assertRedacted } from '@/lib/guardian-suppress';
 // SSOT shared with agents/agent33-sport-recorder.js — one fee model, one staleness rule.
 // If this route computed its own math the dashboard could contradict the recorded file.
 const {
-  MAX_AGE_SEC, EXCHANGES, detectArbs,
+  MAX_AGE_SEC, EXCHANGES, detectArbs, isLegLive, isDrawLeg, THREE_WAY_SPORTS,
 } = require('@/lib/sport-arb-math');
+
+/**
+ * Self-defending guard so no fabricated-margin row from the history file (past OR future)
+ * ever renders. Re-validates each recorded crossing against the CORRECTED SSOT logic rather
+ * than trusting the row's stored is_live:
+ *   - three-way / draw-leg rows (soccer summed as two-way) are dropped;
+ *   - any leg not live under the per-venue gate (frozen or over-age book) drops the row.
+ * Genuinely-live prediction crossings (Kalshi/Polymarket, age 0) pass unchanged.
+ */
+function isRenderableReal(rec: any): boolean {
+  if (THREE_WAY_SPORTS.has(rec.sport)) return false;
+  const legs = Array.isArray(rec.legs) ? rec.legs : [];
+  if (!legs.length) return false;
+  if (legs.some((l: any) => isDrawLeg(l))) return false;
+  return legs.every((l: any) => isLegLive(l));
+}
 
 export const dynamic = 'force-dynamic';
 
@@ -164,7 +180,9 @@ export async function GET() {
   // ── primary: agent33's recorded live crossings ────────────────────────────
   const arbRows = tailJsonl(ARB_FILE);
   const liveRecs = arbRows.filter(
-    (r) => now - (r.ts ?? 0) <= LIVE_WINDOW_MS && (r.legs ?? []).every((l: any) => l.is_live)
+    // Re-validate against the corrected SSOT (not the row's stored is_live) so pre-fix
+    // fabricated rows — three-way sums and frozen/over-age book legs — never render.
+    (r) => now - (r.ts ?? 0) <= LIVE_WINDOW_MS && isRenderableReal(r)
   );
 
   const phantomRows = tailJsonl(PHANTOM_FILE);
