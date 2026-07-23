@@ -359,7 +359,7 @@ export default function PaperBookPage() {
         {err && (
           <div className="rounded-card bg-surface border border-line shadow-card px-5 py-6 text-center">
             <p className="text-[13px] text-ink-2">{err}</p>
-            <p className="text-[11px] text-muted mt-1">The paper book freezes its first snapshot on the next agent32 cycle.</p>
+            <p className="text-[11px] text-muted mt-1">The paper book freezes its first snapshot on the next sim cycle.</p>
           </div>
         )}
 
