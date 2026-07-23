@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Redacted } from './ui/Redacted';
 import { EmptyState } from './ds';
-import { APY_CAP } from '@/lib/honest-display';
+import { APY_CAP, APY_CAP_LABEL } from '@/lib/honest-display';
 import { computeLiquidityYield } from '@/lib/liquidity-yield';
 // The 2%/day sane-reward gate — the SINGLE implementation (was wired only to the paper book). Surfacing it
 // here makes a thin / over-cap reward row read as a flagged run-rate, never a clean cashable $/day.
@@ -110,6 +110,8 @@ interface Row extends Base {
   poolDayUsd: number | null;
   netUsdPerDay: number | null;    // dailyUsd (primary) — sort key reused by rewards-filter
   apr: number | null;             // annualized on DEPLOYED, capped — filter-only (not rendered)
+  apyRaw: number | null;          // annualized on DEPLOYED, UNCAPPED — drives the run-rate cap label
+  apyCapped: boolean;             // apyRaw > APY_CAP → render ">200%/yr · run-rate, not guaranteed"
   capacityUsd: number | null;     // = cap (filter field name)
   deployed: number;
   idle: number;
@@ -248,6 +250,8 @@ export default function RewardsUnified() {
       ...b,
       netUsdPerDay: y.unknown ? null : y.dailyUsd,
       apr,
+      apyRaw:       y.unknown ? null : y.apyRaw,
+      apyCapped:    !y.unknown && y.apyRaw > APY_CAP,
       // The depth we SHOW is the depth the share dilutes against (both sides on Polymarket),
       // so "depth $X · share Y%" is internally consistent. Also the min-capacity filter field.
       capacityUsd:  y.unknown ? null : y.competitorDepth,
@@ -532,6 +536,20 @@ export default function RewardsUnified() {
                             >
                               {(v) => <>${Number(v).toFixed(2)}/day</>}
                             </Redacted>
+                            {/* ANNUALIZED CAP LABEL — restored on the cards (paid tier too). The displayed
+                                $/day is unchanged; when its annualized run-rate on deployed capital exceeds the
+                                APY_CAP, the honest ">200%/yr · run-rate, not guaranteed" caveat renders beside
+                                it. Free tier has no depth ⇒ unknown ⇒ no label (the $/day is 🔒). */}
+                            {!row.unknown && row.apyCapped && (
+                              <span className="cc-row-runrate" title="annualized on the capital you deploy — a run-rate that compresses as makers arrive, not a guaranteed return">
+                                {APY_CAP_LABEL}
+                              </span>
+                            )}
+                            {!row.unknown && !row.apyCapped && row.apyRaw != null && row.apyRaw > 50 && (
+                              <span className="cc-row-runrate" title="annualized on the capital you deploy — a run-rate, not a guaranteed return">
+                                run-rate, not guaranteed
+                              </span>
+                            )}
                           </span>
                           {/* Kalshi gross qualifier — replaces the removed APY line. Calm, once.
                               The feed prices full qualifying size at best bid/ask; Kalshi's real
