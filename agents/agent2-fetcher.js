@@ -313,7 +313,12 @@ async function fetchAll() {
     polymarket: polymarketAll,
   };
 
-  fs.writeFileSync(OUT, JSON.stringify(result, null, 2));
+  // ATOMIC write (tmp + fsync + rename): markets-raw.json is a 96MB file rewritten every cycle while
+  // agent5-calculator, /api/prediction and matcher-v2 read it concurrently. A plain writeFileSync
+  // truncates-then-writes, so a reader can catch a half-written file → JSON.parse throws mid-file (seen:
+  // "Expected double-quoted property name at position …"). That torn read now also drops the live
+  // Polymarket fee-SSOT token lookups, so serialize the write. Same helper already used for HB_FILE.
+  atomicWriteJson(OUT, result, { pretty: true });
   beat('fetcher');
 
   console.log(`[fetcher] saved — PI:${result.predictit.length} MF:${result.manifold.length} KA:${result.kalshi.length} PM:${result.polymarket.length}`);
