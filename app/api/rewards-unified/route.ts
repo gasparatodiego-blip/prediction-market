@@ -5,6 +5,11 @@ import { authOptions } from '@/lib/auth';
 import { getIsPaid, redactForTier, REDACTION_MAP } from '@/lib/paid-gating';
 import { filterSane, enforceVerified } from '@/lib/display-sanity';
 import { applyGuardian, assertRedacted } from '@/lib/guardian-suppress';
+import { computeLiquidityYield } from '@/lib/liquidity-yield';
+
+// Reference balance the guardian evaluates at — the SAME default the list first shows (RewardsUnified
+// BAL_DEFAULT). The stamped day-yield is what a paid user sees at that balance.
+const GUARDIAN_REF_BAL = 1000;
 
 export const dynamic = 'force-dynamic';
 
@@ -69,10 +74,27 @@ export async function GET() {
     // Source-of-truth enforcement: drop pools the platform no longer pays, flag+demote
     // unverifiable ones (e.g. Kalshi's derived pool), tag verified rows for the badge.
     data.markets = enforceVerified('rewards', data.markets);
-    // Guardian (rules A–E): auto-suppress any reward row implying an over-cap/impossible
-    // APR, a false verifying badge, or a below-floor book. Display-only, never rewrites
-    // source; agent26 runs the same module for alerting.
+    // Stamp the guardian's APR input (dayYieldPct) from the REAL displayed estimator
+    // (lib/liquidity-yield computeLiquidityYield) at the $1k reference — the SAME math the list renders.
+    // Previously the guardian's rewards rule read dayYieldPct, which the feed never carried, so it was
+    // inert. This is EPHEMERAL: server-only, deleted before the response (never reaches any tier). It is
+    // the guardian's input, NOT a displayed value — the displayed $/day is unchanged (client-computed).
+    for (const m of data.markets) {
+      const y = computeLiquidityYield({
+        poolPerDay: m.dailyPool,
+        cap: null,                                    // Polymarket exposes no reward cap; Kalshi one-sided
+        qualifyingLiquidity: m.bookDepthAtBand,
+        qualifyingLiquidityOpposite: m.venue === 'polymarket' ? (m.sides?.no?.bookDepthAtBand ?? null) : null,
+        balance: GUARDIAN_REF_BAL,
+      });
+      if (!y.unknown) m.dayYieldPct = (y.dailyUsd / GUARDIAN_REF_BAL) * 100; // daily %; guardian ×365 → %/yr
+    }
+    // Guardian (rules A–E): a reward row over the 200%/yr cap is RELABELLED "run-rate, not guaranteed"
+    // (value kept — the arithmetic is correct), never blanked or hidden. Display-only; agent26 audits
+    // rewards independently via auditRewardsTooGood.
     data.markets = applyGuardian('rewards', data.markets).rows;
+    // Remove the ephemeral guardian input — it must never reach the client or the free tier.
+    for (const m of data.markets) delete m.dayYieldPct;
 
     const session = await getServerSession(authOptions);
     const isPaid  = await getIsPaid(session);
