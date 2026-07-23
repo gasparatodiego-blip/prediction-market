@@ -122,3 +122,7 @@ data/safety-risk-limits.json.tmp.*
 data/execution-audit.jsonl
 # append-only fill-truth ledger — confirmed venue fills/closes feeding open-exposure + realised-daily-loss
 data/safety-fills.jsonl
+
+# agent36-book-velocity — append-only detection log (single-writer, agent36 owns it)
+data/book-velocity.jsonl
+data/book-velocity.jsonl.*

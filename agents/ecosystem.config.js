@@ -371,5 +371,30 @@ module.exports = {
       autorestart:   true,
       env:           { NODE_ENV: 'production', HOME: '/root', MAKER_MODE: 'off' },
     },
+    {
+      name:          'agent36-book-velocity',
+      script:        './agents/agent36-book-velocity.js',
+      cwd:           '/root/prediction-market',
+      restart_delay: 15000,
+      max_restarts:  20,
+      // MEMORY CAP JUSTIFICATION (4GB box, ~82% used, no other agent capped below this
+      // without reason — this one is genuinely small and must stay small):
+      //   • Retained state is a bounded ring of 40 book snapshots x ~260 markets x 5
+      //     numbers ≈ 52k numbers ≈ well under 1MB. Nothing accumulates across cycles:
+      //     the ring is spliced to RING every push and series for markets that leave
+      //     the watchlist are deleted each cycle.
+      //   • The only large transient is the Polymarket batch /books response —
+      //     MEASURED at 473KB of JSON for all 120 tokens, a few MB once parsed, freed
+      //     each cycle. Kalshi's batch is smaller.
+      //   • Node baseline RSS for this shape of agent is ~45-55MB (agent34, same
+      //     library surface, sits at 55.7MB).
+      // 200M therefore leaves ~3.5x headroom over the expected working set while still
+      // being a hard stop well below the level that could contribute to an OOM cascade
+      // on this box. Matches agent34-clob-ws, the closest comparable process.
+      max_memory_restart: '200M',
+      watch:         false,
+      autorestart:   true,
+      env:           { NODE_ENV: 'production', HOME: '/root' },
+    },
   ],
 };
