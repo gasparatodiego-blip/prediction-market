@@ -111,3 +111,12 @@ data/polymarket-fee-cache.json
 # Phase-2 append-only close audit (origin-tagged), runtime state
 data/copy-close-audit.jsonl
 data/copy-close-audit.jsonl.*
+
+# execution-safety runtime state — durable kill-switch toggle, risk-limit config overrides, and the
+# append-only order audit trail. Local runtime data, never source-controlled (may name userIds).
+data/safety-kill-switch.json
+data/safety-kill-switch.json.tmp.*
+data/safety-kill-audit.jsonl
+data/safety-risk-limits.json
+data/safety-risk-limits.json.tmp.*
+data/execution-audit.jsonl
