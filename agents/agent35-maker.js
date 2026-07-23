@@ -36,6 +36,9 @@ const { loadNewsGuardConfig } = require('../lib/news-guard/config');
 const { createMakerAdapter } = require('../lib/venues/polymarket-clob-maker/adapter');
 const { appendMakerAudit } = require('../lib/venues/polymarket-clob-maker/audit');
 const { checkKill, cancelAllOnKill } = require('../lib/safety/kill-switch');
+const { queryByUser } = require('../lib/safety/execution-audit');
+const { sentOrdersFromAudit } = require('../lib/safety/usage');
+const { reconcileOnce, RECONCILE_INTERVAL_MS } = require('../lib/safety/reconcile-fills');
 
 const OPERATOR_USER = process.env.MAKER_OPERATOR_USER || 'operator';
 
@@ -104,6 +107,7 @@ async function getRestBook(tokenId) {
 
 // per-leg re-quote memory: legKey -> { lastTarget, lastRequoteAt }
 const requoteState = new Map();
+let lastReconcileAt = 0; // throttle for the periodic fill reconciliation (see tick)
 // per-leg static-baseline vs follow accumulators (for the paper reward-vs-baseline report)
 const rewardAccum = new Map(); // legKey -> { followScoreMs, staticScoreMs, staticInitPrice, lastTs }
 
@@ -166,6 +170,22 @@ async function tick(cfg, adapter) {
   const effCfg = durableKill.killed ? { ...cfg, killSwitch: true } : cfg;
   if (durableKill.killed && adapter && typeof adapter.cancelMarketOrders === 'function') {
     try { await cancelAllOnKill({ adapter, marketIds: [...legsByMarket.keys()] }); } catch (e) { log('cancel-on-kill failed:', e.message); }
+  }
+
+  // ── Periodic FILL RECONCILIATION — resolves the operator's sent orders against VENUE TRUTH into the fill
+  //    ledger (feeds openNotionalUsd / realisedDailyPnlUsd). Throttled to once per RECONCILE_INTERVAL_MS
+  //    (default 60s), independent of the 3s quote tick. In THIS disarmed build the adapter's reads are
+  //    shadow (canWrite=false → no network), so it reaches no venue and records nothing — wired, proven by
+  //    the selfcheck, and dormant until arming. READ-ONLY: it never places or cancels. ──
+  if (adapter && typeof adapter.listOpenOrders === 'function' && now - lastReconcileAt >= RECONCILE_INTERVAL_MS) {
+    lastReconcileAt = now;
+    try {
+      const sentOrders = sentOrdersFromAudit(queryByUser({ userId: OPERATOR_USER, fromTs: 0, toTs: now }));
+      if (sentOrders.length) {
+        const rc = await reconcileOnce({ userId: OPERATOR_USER, sentOrders, adapter, now });
+        if (rc.fills || rc.nofills) log(`reconcile: +${rc.fills} fills, +${rc.nofills} no-fills, ${rc.stillUnknown} unknown`);
+      }
+    } catch (e) { log('reconcile failed (non-fatal):', e.message); }
   }
 
   for (const [marketId, legs] of legsByMarket) {

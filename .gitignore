@@ -120,3 +120,5 @@ data/safety-kill-audit.jsonl
 data/safety-risk-limits.json
 data/safety-risk-limits.json.tmp.*
 data/execution-audit.jsonl
+# append-only fill-truth ledger — confirmed venue fills/closes feeding open-exposure + realised-daily-loss
+data/safety-fills.jsonl

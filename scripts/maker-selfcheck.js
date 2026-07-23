@@ -28,6 +28,9 @@ const NOW = 1_753_000_000_000;
 const KS = require('../lib/safety/kill-switch');
 const RL = require('../lib/safety/risk-limits');
 const EA = require('../lib/safety/execution-audit');
+const F  = require('../lib/safety/fills');
+const RF = require('../lib/safety/reconcile-fills');
+const { readUsage, sentOrdersFromAudit } = require('../lib/safety/usage');
 const TMP_DIR = fs.mkdtempSync(pathMod.join(os.tmpdir(), 'maker-safety-'));
 let _tmpCounter = 0;
 const tmpFile = (name) => pathMod.join(TMP_DIR, `${name}-${process.pid}-${_tmpCounter++}`);
@@ -349,7 +352,126 @@ const { reconcile } = require('../lib/maker/reconcile');
   ok(!fs.readFileSync(auditFile, 'utf8').includes('a'.repeat(64)), 'audit: a private-key-shaped inline value is REDACTED out of the trail');
 }
 
-noWriteProof();
+// ── 12. FILL TRACKING + OPEN EXPOSURE + REALISED DAILY LOSS + the two now-ARMED limits ──
+// Proves the gap the task closes: openNotionalUsd / realisedDailyPnlUsd are now REAL (sourced from the
+// venue-truth fill ledger), so maxOpenNotionalUsd and maxDailyLossUsd can arm — while every proof stays on
+// temp fixtures and the deployed engine remains disarmed.
+{
+  const NOWMS = Date.now();
+  const DAY = F.UTC_DAY_MS;
+  const dayStart = F.utcDayStart(NOWMS);
+
+  // 12a. A PARTIAL fill counts as PARTIAL, not full. Order was 500 sh; the venue confirmed 120 filled.
+  const fp = tmpFile('fills-partial.jsonl');
+  F.recordFill({ userId: 'op', venue: 'polymarket', tokenId: 'T', side: 'BUY', filledSize: 120, filledPrice: 0.50, feeUsd: 0, idempotencyKey: 'k1', source: 'sc', ts: dayStart + 1000 }, { fillsFile: fp });
+  const expPartial = F.computeExposure({ userId: 'op', now: NOWMS, sentOrders: [{ idempotencyKey: 'k1', notionalUsd: 250, ts: dayStart + 900 }] }, { fillsFile: fp });
+  ok(expPartial.ok && Math.abs(expPartial.openNotionalUsd - 60) < 1e-6, 'fills: a PARTIAL fill (120/500) counts at its partial notional ($60), never rounded up to the full order ($250)');
+
+  // 12b. An UNKNOWN sent order (ledger never saw it) does NOT reduce exposure — counted at full notional,
+  //      never assumed unfilled (the dangerous direction).
+  const expUnknown = F.computeExposure({ userId: 'op', now: NOWMS, sentOrders: [{ idempotencyKey: 'k1', notionalUsd: 250, ts: dayStart + 900 }, { idempotencyKey: 'GHOST', notionalUsd: 250, ts: dayStart + 900 }] }, { fillsFile: fp });
+  ok(expUnknown.ok && Math.abs(expUnknown.openNotionalUsd - 310) < 1e-6 && expUnknown.unknowns.some(u => u.idempotencyKey === 'GHOST'), 'fills: an UNKNOWN sent order adds full notional ($250) — never treated as zero (understating exposure is the dangerous direction)');
+  ok(F.computeExposure({ userId: 'op', now: NOWMS, sentOrders: [{ idempotencyKey: 'GHOST2' /* notionalUsd missing */ }] }, { fillsFile: fp }).ok === false, 'fills: an unknown order whose notional cannot even be bounded → FAIL CLOSED (ok:false)');
+
+  // 12c. Exposure from a REAL book (executable bid/ask) matches a hand-checked figure FIELD BY FIELD.
+  const fb = tmpFile('fills-book.jsonl');
+  F.recordFill({ userId: 'op', venue: 'polymarket', tokenId: 'T', side: 'BUY', filledSize: 200, filledPrice: 0.45, feeUsd: 0, idempotencyKey: 'b1', source: 'sc', ts: dayStart + 1000 }, { fillsFile: fb });
+  const marked = F.computeExposure({ userId: 'op', now: NOWMS, marks: { T: { price: 0.50, ts: NOWMS } } }, { fillsFile: fb });
+  const pos = marked.positions[0];
+  ok(marked.ok && pos.shares === 200 && pos.entryNotionalUsd === 90 && pos.markPrice === 0.50 && pos.markValueUsd === 100 && pos.exposureUsd === 100 && pos.markSource === 'executable-book',
+    'fills: exposure marked to EXECUTABLE book (bid/ask) matches hand-checked position field-by-field (200 sh, entry $90, mark 0.50, value $100, exposure max($90,$100)=$100)');
+
+  // 12d. A position whose book CANNOT be read is treated at LEAST at its entry notional (never mid, never 0).
+  const floored = F.computeExposure({ userId: 'op', now: NOWMS, marks: null }, { fillsFile: fb });
+  ok(floored.ok && floored.positions[0].exposureUsd === 90 && floored.positions[0].markSource === 'entry-notional-floor' && floored.openNotionalUsd === 90, 'fills: an unreadable book floors the position at its ENTRY notional ($90) — never understated to zero/mid');
+  // and a STALE mark is treated as unreadable → same floor.
+  const stale = F.computeExposure({ userId: 'op', now: NOWMS, marks: { T: { price: 0.99, ts: NOWMS - 10 * 60_000 } }, markFreshMs: 60_000 }, { fillsFile: fb });
+  ok(stale.positions[0].markSource === 'entry-notional-floor', 'fills: a STALE executable mark is treated as unreadable → entry-notional floor (never a stale valuation)');
+
+  // 12e. REALISED loss EXCLUDES unrealised moves. Open 100@0.60; mark falls to 0.30; NO close → realised 0.
+  const fr = tmpFile('fills-realised.jsonl');
+  F.recordFill({ userId: 'op', venue: 'polymarket', tokenId: 'U', side: 'BUY', filledSize: 100, filledPrice: 0.60, feeUsd: 0, idempotencyKey: 'r1', source: 'sc', ts: dayStart + 1000 }, { fillsFile: fr });
+  ok(F.computeRealisedDailyPnl({ userId: 'op', now: NOWMS }, { fillsFile: fr }).realisedPnlUsd === 0, 'fills: an OPEN position that dropped in value contributes ZERO realised loss (unrealised ≠ realised)');
+  // now CLOSE it at 0.40 → realised (0.40-0.60)*100 = -20; fees included when present.
+  F.recordFill({ userId: 'op', venue: 'polymarket', tokenId: 'U', side: 'SELL', filledSize: 100, filledPrice: 0.40, feeUsd: 0, idempotencyKey: 'r2', source: 'sc', ts: dayStart + 2000 }, { fillsFile: fr });
+  ok(Math.abs(F.computeRealisedDailyPnl({ userId: 'op', now: NOWMS }, { fillsFile: fr }).realisedPnlUsd + 20) < 1e-6, 'fills: a CLOSED position books its realised P&L (−$20); realised only, from actual proceeds − cost');
+
+  // 12f. UTC day boundary: yesterday's realised loss is NOT counted today (accumulation resets at UTC midnight)…
+  const fy = tmpFile('fills-yday.jsonl');
+  F.recordFill({ userId: 'op', venue: 'polymarket', tokenId: 'Y', side: 'BUY', filledSize: 10, filledPrice: 0.5, idempotencyKey: 'y1', source: 'sc', ts: dayStart - DAY + 10 }, { fillsFile: fy });
+  F.recordFill({ userId: 'op', venue: 'polymarket', tokenId: 'Y', side: 'SELL', filledSize: 10, filledPrice: 0.1, idempotencyKey: 'y2', source: 'sc', ts: dayStart - DAY + 20 }, { fillsFile: fy });
+  const yday = F.computeRealisedDailyPnl({ userId: 'op', now: NOWMS }, { fillsFile: fy });
+  ok(yday.realisedPnlUsd === 0 && yday.dayStartUtc === dayStart, 'fills: the daily-loss window is the UTC calendar day — yesterday\'s realised loss is excluded from today');
+
+  // 12g. The RECONCILER: partial→partial, gone+no-trades→no-fill, venue-unreachable→UNKNOWN (never fabricate).
+  const sent = [{ idempotencyKey: 'rk', orderId: 'oX', tokenId: 'T', side: 'BUY', price: 0.5, size: 500, notionalUsd: 250, userId: 'op', venue: 'polymarket' }];
+  ok(RF.planReconcile({ userId: 'op', sentOrders: sent, ledgerRows: [], venueReachable: true, venueOrders: [{ id: 'oX', asset_id: 'T', side: 'BUY', price: '0.5', original_size: '500', size_matched: '120' }] }).toRecord[0].filledSize === 120, 'reconcile: a resting order with size_matched=120 records a PARTIAL fill of 120 (not 500)');
+  ok(RF.planReconcile({ userId: 'op', sentOrders: sent, ledgerRows: [{ kind: 'fill', idempotencyKey: 'rk', filledSize: 120 }], venueReachable: true, venueOrders: [{ id: 'oX', asset_id: 'T', side: 'BUY', price: '0.5', original_size: '500', size_matched: '200' }] }).toRecord[0].filledSize === 80, 'reconcile: partial fills accumulate incrementally (already 120, now 200 → records the 80 delta, never double-counts)');
+  ok(RF.planReconcile({ userId: 'op', sentOrders: sent, ledgerRows: [], venueReachable: false }).stillUnknown.length === 1 && RF.planReconcile({ userId: 'op', sentOrders: sent, ledgerRows: [], venueReachable: false }).toRecord.length === 0, 'reconcile: an UNREACHABLE venue leaves the order UNKNOWN and records NOTHING (never fabricates a fill)');
+  ok(RF.planReconcile({ userId: 'op', sentOrders: sent, ledgerRows: [], venueReachable: true, venueOrders: [], venueFills: null }).stillUnknown.length === 1, 'reconcile: an order that vanished with NO /trades cross-check stays UNKNOWN (never assumed filled AND never fabricated)');
+
+  // 12h. usage.readUsage sources the REAL numbers from audit + fill ledger, fail-closed on unreadable.
+  const uAudit = tmpFile('usage-audit.jsonl');
+  const uFills = tmpFile('usage-fills.jsonl');
+  // no fills yet + empty audit → exposure 0, realised 0 (ARMED default — absent ≠ null)
+  const u0 = readUsage({ userId: 'op', now: NOWMS }, { auditFile: uAudit, fillsFile: uFills });
+  ok(u0.openNotionalUsd === 0 && u0.realisedDailyPnlUsd === 0 && u0.ordersInWindow === 0, 'usage: an ABSENT fill ledger yields exposure 0 / realised 0 (the limits ARM), not null — absent ≠ unreadable');
+  // corrupt fill ledger → BOTH exposure and realised P&L null → both limits fail closed
+  const uBad = tmpFile('usage-badfills.jsonl'); fs.writeFileSync(uBad, '{not json\n');
+  const uErr = readUsage({ userId: 'op', now: NOWMS }, { auditFile: uAudit, fillsFile: uBad });
+  ok(uErr.openNotionalUsd === null && uErr.realisedDailyPnlUsd === null, 'usage: an UNREADABLE fill ledger → openNotionalUsd AND realisedDailyPnlUsd null → both limits FAIL CLOSED');
+
+  // 12i. BOTH now-armed limits fail closed when their measured input is unavailable (direct evaluateLimits).
+  const armedLimits = { maxOrderNotionalUsd: 25, maxOpenNotionalUsd: 500, maxOrdersPerWindow: 30, windowMs: 60000, maxDailyLossUsd: 50, venues: ['polymarket'] };
+  ok(RL.evaluateLimits({ order: { notionalUsd: 10 }, usage: { openNotionalUsd: null, ordersInWindow: 0, realisedDailyPnlUsd: 0 }, limits: armedLimits }).gate === 'max-open-notional', 'limits: exposure input null → max-open-notional FAILS CLOSED (no order without a verified exposure figure)');
+  ok(RL.evaluateLimits({ order: { notionalUsd: 10 }, usage: { openNotionalUsd: 0, ordersInWindow: 0, realisedDailyPnlUsd: null }, limits: armedLimits }).gate === 'daily-loss', 'limits: realised-P&L input null → daily-loss FAILS CLOSED');
+
+  // 12j. END-TO-END through the adapter: a realised daily-loss breach TRIPS a durable per-user kill, blocks
+  //      the next order, and REQUIRES A HUMAN CLEAR — with NO automatic midnight reset.
+  const killFile = tmpFile('dl-kill.json');
+  const killAudit = tmpFile('dl-kill-audit.jsonl');
+  const limitsFile = tmpFile('dl-limits.json');
+  fs.writeFileSync(limitsFile, JSON.stringify({ global: { maxOrderNotionalUsd: 25, maxOpenNotionalUsd: 500, maxOrdersPerWindow: 30, windowMs: 60000, maxDailyLossUsd: 50, venues: ['polymarket'] }, users: {} }));
+  const dlAudit = tmpFile('dl-audit.jsonl');
+  const dlFills = tmpFile('dl-fills.jsonl');
+  // a realised −$50 loss TODAY for 'op' (buy 100@0.60, sell 100@0.10 → −50), position now flat (open exposure 0).
+  F.recordFill({ userId: 'op', venue: 'polymarket', tokenId: 'Z', side: 'BUY', filledSize: 100, filledPrice: 0.60, feeUsd: 0, idempotencyKey: 'z1', source: 'sc', ts: NOWMS - 3000 }, { fillsFile: dlFills });
+  F.recordFill({ userId: 'op', venue: 'polymarket', tokenId: 'Z', side: 'SELL', filledSize: 100, filledPrice: 0.10, feeUsd: 0, idempotencyKey: 'z2', source: 'sc', ts: NOWMS - 2000 }, { fillsFile: dlFills });
+  const dlSafety = {
+    checkKill: ({ userId }) => KS.checkKill({ userId }, { stateFile: killFile, auditFile: killAudit }),
+    evaluateForOrder: ({ userId, venue, order }) => {
+      const resolved = RL.resolveLimits({ userId }, { configFile: limitsFile });
+      if (!resolved.ok) return { venueAllowed: false, limits: { allow: false, gate: 'limits-unreadable' }, clampEvents: [] };
+      const venueAllowed = RL.isVenueAllowed({ venue, limits: resolved.limits });
+      const usage = readUsage({ userId, now: NOWMS }, { auditFile: dlAudit, fillsFile: dlFills });
+      const limits = RL.evaluateLimits({ order, usage, limits: resolved.limits });
+      return { venueAllowed, limits, clampEvents: resolved.clampEvents || [], usage };
+    },
+    recordIntent: (i) => EA.recordIntent(i, { auditFile: dlAudit }),
+    recordOutcome: (o) => EA.recordOutcome(o, { auditFile: dlAudit }),
+    deriveIdempotencyKey: EA.deriveIdempotencyKey,
+    setUserKill: ({ userId, reason, by }) => KS.setUserKill({ userId, reason, by }, { stateFile: killFile, auditFile: killAudit }),
+  };
+  // sanity: the daily-loss limit is what usage now measures
+  ok(readUsage({ userId: 'op', now: NOWMS }, { auditFile: dlAudit, fillsFile: dlFills }).realisedDailyPnlUsd === -50, 'usage: realised daily P&L reads −$50 from the fill ledger (the input the daily-loss limit needed)');
+  const dlAdapter = createMakerAdapter({ mode: 'live-min', fundingApproved: true, credsProvider: async () => { throw new Error('unused'); }, signerProvider: async () => { throw new Error('unused'); }, safety: dlSafety });
+  return dlAdapter.postOrder({ tokenId: '0xZ', side: 'BUY', price: 0.5, size: 10, tickSize: 0.01, userId: 'op' }).then(dlRes => {
+    ok(dlRes.ok === false && dlRes.gate === 'limit-daily-loss', 'daily-loss: a placement while realised loss ≤ −cap is REFUSED at the daily-loss gate (limit-daily-loss)');
+    ok(KS.checkKill({ userId: 'op' }, { stateFile: killFile }).gate === 'kill-user', 'daily-loss: the breach AUTO-TRIPS a durable per-user kill (kill-user) — audited, survives restart');
+    // the kill blocks the NEXT order for that user
+    return dlAdapter.postOrder({ tokenId: '0xZ', side: 'BUY', price: 0.5, size: 10, tickSize: 0.01, userId: 'op' });
+  }).then(blocked => {
+    ok(blocked.ok === false && blocked.gate === 'kill-user', 'daily-loss: the very next order for the user is blocked by the auto-kill (kill-user)');
+    // NO automatic midnight reset: rolling to the next UTC day resets the ACCUMULATION but the kill PERSISTS.
+    const nextDay = NOWMS + DAY;
+    ok(F.computeRealisedDailyPnl({ userId: 'op', now: nextDay }, { fillsFile: dlFills }).realisedPnlUsd === 0, 'daily-loss: a new UTC day resets the realised-loss ACCUMULATION to 0…');
+    ok(KS.checkKill({ userId: 'op' }, { stateFile: killFile }).gate === 'kill-user', '…but the per-user kill is NOT auto-cleared at midnight — a broken strategy cannot re-lose the limit every day (durable until a human clears)');
+    // a HUMAN clear is what resumes execution.
+    KS.clearUserKill({ userId: 'op', by: 'human:selfcheck' }, { stateFile: killFile, auditFile: killAudit });
+    ok(KS.checkKill({ userId: 'op' }, { stateFile: killFile }).killed === false, 'daily-loss: only an explicit HUMAN clear (clearUserKill) lifts the kill and lets execution resume');
+    noWriteProof();
+  });
+}
 
 function finish() {
   console.log(`maker selfcheck: ${checks} assertions passed — cancel-only adapter unchanged & cannot place; maker adapter cannot transfer/withdraw; MAKER_MODE=off/paper/dry-run reach NO venue write; every rail trips; STALE feed stands down; below-min flagged; one-sided ÷3 surfaced; tick-snapped; live-min hard cap holds.`);
