@@ -110,10 +110,11 @@ interface Base {
 interface Row extends Base {
   poolDayUsd: number | null;
   netUsdPerDay: number | null;    // dailyUsd (primary) — sort key reused by rewards-filter
-  apr: number | null;             // annualized on DEPLOYED, capped — filter-only (not rendered)
-  apyRaw: number | null;          // annualized on DEPLOYED, UNCAPPED — drives the run-rate cap label
+  apr: number | null;             // annualized on MEASURED CAPACITY, capped — filter-only (not rendered)
+  apyRaw: number | null;          // annualized on MEASURED CAPACITY, UNCAPPED — null when capacity too thin to annualize
   apyCapped: boolean;             // apyRaw > APY_CAP → render ">200%/yr · run-rate, not guaranteed"
-  capacityUsd: number | null;     // = cap (filter field name)
+  capacityThin: boolean;          // priceable row whose measured capacity is below the annualization floor → annualized "—"
+  capacityUsd: number | null;     // measured reward-eligible book depth (both sides) — the annualization denominator
   deployed: number;
   idle: number;
   space: number;
@@ -147,6 +148,14 @@ interface FilterState {
   sortByPool: boolean;
   sortDir: 'asc' | 'desc';
 }
+
+// OPERATIONALLY-MEANINGFUL CAPACITY FLOOR for annualization. The annualized run-rate is
+// $/day × 365 / measured-reward-eligible-depth. When that depth is below the reference order the
+// estimate is priced for, the denominator is too small for the annualization to mean anything
+// (a $1k maker would dominate the book), so the annualized renders "—" — the row, its real $/day
+// and its real measured capacity all stay visible. Reuses the SAME constant the estimate assumes
+// (ASSUMED_ORDER_SIZE_USD == REWARD_REF_CAPITAL) — NOT a new threshold.
+const ANNUALIZE_MIN_CAPACITY_USD = ASSUMED_ORDER_SIZE_USD;
 
 const SENTINEL_SPREAD = -1;   // "not yet initialised from ranges" → treated as any
 const DEFAULT_FILTERS: FilterState = {
@@ -334,21 +343,30 @@ export default function RewardsUnified() {
     const unknown = est.unknown || b.nonExecReason != null;
     const netUsdPerDay = unknown ? null : est.estUsdPerDay;
     const share = unknown ? 0 : (est.share ?? 0);
-    // Annualized on the ASSUMED order size — a pure run-rate VIEW of the same estimate (drives the
-    // >200%/yr cap caveat only; never a separate share computation).
-    const apyRaw = unknown || netUsdPerDay == null
+    // The two-sided in-band depth already resting in the book — the MEASURED reward-eligible
+    // capacity (lib/reward-depth-floor competitorDepthUsd: near + far side for Polymarket). This
+    // is the annualization denominator: real book depth, never a hardcoded capital constant, never
+    // OI, never a modeled proxy. Real tier ⇒ null when the feed didn't carry it; free tier ⇒ lock.
+    const capacityUsd = competitorDepthUsd(b.m);
+    // ANNUALIZED = $/day × 365 / MEASURED CAPACITY. Three distinct states, never conflated:
+    //   • capacity MEASURED and ≥ the reference order → real run-rate on real depth (capped/labelled).
+    //   • capacity MEASURED but < the reference order → too thin to annualize → "—" + thin label
+    //     (row + $/day + capacity stay visible; nothing rewritten).
+    //   • capacity UNKNOWN (feed didn't carry it, or free-tier redaction) → annualized is simply
+    //     unmeasurable → "—" with NO "too thin" claim (never fabricated, never defaulted).
+    const capacityKnown = fin(capacityUsd);
+    const capacityThin  = !unknown && netUsdPerDay != null && capacityKnown && (capacityUsd as number) < ANNUALIZE_MIN_CAPACITY_USD;
+    const apyRaw = unknown || netUsdPerDay == null || !capacityKnown || capacityThin
       ? null
-      : (netUsdPerDay * 365 / est.assumedOrderSizeUsd) * 100;
+      : (netUsdPerDay * 365 / (capacityUsd as number)) * 100;
     return {
       ...b,
       netUsdPerDay,
       apr:          apyRaw == null ? null : Math.min(apyRaw, APY_CAP),
       apyRaw,
       apyCapped:    apyRaw != null && apyRaw > APY_CAP,
-      // The two-sided in-band depth already in the book — shown as CONTEXT (never the headline), the
-      // exact number the filter reads (lib/reward-depth-floor competitorDepthUsd). Real tier ⇒ "—"
-      // when the feed didn't carry it; free tier ⇒ redacted lock (depth is null).
-      capacityUsd:  competitorDepthUsd(b.m),
+      capacityThin,
+      capacityUsd,
       deployed:     est.assumedOrderSizeUsd,   // the fixed assumed order the estimate is priced for
       idle:         0,
       space:        Infinity,
@@ -405,7 +423,9 @@ export default function RewardsUnified() {
           <span className="rw-assume-k">La stima si basa su</span> un ordine da ${ASSUMED_ORDER_SIZE_USD.toLocaleString()},
           {' '}{ASSUMED_PLACEMENT_LABEL}. Sono <strong>premi lordi maturati</strong>: il P&amp;L di
           inventario quando i tuoi ordini vengono eseguiti <strong>non è incluso</strong> in nessuna
-          cifra di questa pagina. I premi Kalshi sono riservati ai membri residenti negli Stati Uniti.
+          cifra di questa pagina. L&rsquo;annualizzato è calcolato sulla profondità reale del
+          book, non su un capitale fisso: quando il book è troppo sottile diventa «—». I premi Kalshi
+          sono riservati ai membri residenti negli Stati Uniti.
         </div>
 
         {err && <EmptyState prefix="cc" title="Rewards feed unavailable" sub={err} />}
@@ -645,19 +665,30 @@ export default function RewardsUnified() {
                                 </span>
                               )}
                             </Redacted>
-                            {/* ANNUALIZED CAP LABEL — restored on the cards (paid tier too). The displayed
-                                $/day is unchanged; when its annualized run-rate on deployed capital exceeds the
-                                APY_CAP, the honest ">200%/yr · run-rate, not guaranteed" caveat renders beside
-                                it. Free tier has no depth ⇒ unknown ⇒ no label (the $/day is 🔒). */}
-                            {!row.unknown && row.apyCapped && (
-                              <span className="cc-row-runrate" title="annualized on the capital you deploy — a run-rate that compresses as makers arrive, not a guaranteed return">
-                                {APY_CAP_LABEL}
-                              </span>
-                            )}
-                            {!row.unknown && !row.apyCapped && row.apyRaw != null && row.apyRaw > 50 && (
-                              <span className="cc-row-runrate" title="annualized on the capital you deploy — a run-rate, not a guaranteed return">
-                                run-rate, not guaranteed
-                              </span>
+                            {/* ANNUALIZED — computed on the MEASURED reward-eligible book depth (never a
+                                hardcoded capital constant). When that depth is too thin to annualize the
+                                run-rate is suppressed to "—" (the $/day and the measured depth stay visible).
+                                Over the 200%/yr honest ceiling → the SHARED cap label. Free tier ⇒ unknown ⇒
+                                no line (the $/day is 🔒). */}
+                            {!row.unknown && (
+                              row.capacityThin ? (
+                                <span className="cc-row-runrate" title="capacità del book troppo sottile per annualizzare in modo significativo — la profondità misurata è sotto l'ordine di riferimento, quindi il denominatore è irreale. $/giorno e profondità restano visibili.">
+                                  annualizzato — · capacità troppo sottile per annualizzare
+                                </span>
+                              ) : row.apyCapped ? (
+                                <span className="cc-row-runrate" title="annualizzato sulla profondità reale del book — un run-rate che si comprime quando arrivano altri maker, non un rendimento garantito">
+                                  {APY_CAP_LABEL}
+                                </span>
+                              ) : row.apyRaw != null ? (
+                                <span className="cc-row-runrate" title="annualizzato sulla profondità reale del book — un run-rate, non un rendimento garantito">
+                                  ~{Math.round(row.apyRaw)}%/yr · run-rate, not guaranteed
+                                </span>
+                              ) : isPaid ? (
+                                // capacity unmeasured (feed didn't carry the depth) → annualized "—", no default.
+                                <span className="cc-row-runrate" title="profondità del book non misurata per questa riga — impossibile annualizzare senza un denominatore reale">
+                                  annualizzato —
+                                </span>
+                              ) : null   // free tier: capacity locked (🔒) — the $/day lock already conveys it
                             )}
                           </span>
                           {/* Kalshi gross qualifier — replaces the removed APY line. Calm, once.
