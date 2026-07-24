@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+// EDGE-SAFE import only: verifyAdminSession + ADMIN_COOKIE use jose (Web Crypto),
+// never node `crypto`. The node-crypto secret compare lives in lib/admin-secret.ts,
+// which is deliberately NOT imported here.
+import { verifyAdminSession, ADMIN_COOKIE } from '@/lib/admin-session';
 
 const cache = new Map<string, { count: number; reset: number }>();
 const WINDOW_MS   = 60_000;
@@ -11,6 +15,39 @@ function getIp(req: NextRequest): string {
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // --- Admin-gated settings lane (file-backed venue credentials) ------------
+  // Everything under /settings and /api/settings is admin-only, and hidden
+  // entirely (404) unless ADMIN_ACCESS_SECRET is configured. The login page and
+  // the login POST are the only paths reachable without a valid session.
+  if (pathname.startsWith('/settings') || pathname.startsWith('/api/settings')) {
+    const secret = process.env.ADMIN_ACCESS_SECRET;
+    if (!secret || secret.length === 0) {
+      // Feature hidden: no secret configured, no such surface.
+      return new NextResponse(null, { status: 404 });
+    }
+
+    // The login form and the login POST must be reachable without a session.
+    if (pathname === '/settings/login' || pathname === '/api/settings/login') {
+      return NextResponse.next();
+    }
+
+    const token = request.cookies.get(ADMIN_COOKIE)?.value;
+    const ok = await verifyAdminSession(token);
+    if (!ok) {
+      if (pathname.startsWith('/api/settings')) {
+        return new NextResponse(JSON.stringify({ error: 'Unauthorized' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      const url = request.nextUrl.clone();
+      url.pathname = '/settings/login';
+      url.search = '';
+      return NextResponse.redirect(url);
+    }
+    // Authenticated admin — fall through (settings pages skip the API rate-limiter).
+  }
 
   // Dashboard pages are intentionally public — the product rule is "never a login
   // wall on the main dashboard." Premium monetary fields are paywalled by
@@ -57,5 +94,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/api/:path*'],
+  matcher: ['/settings/:path*', '/api/:path*'],
 };
