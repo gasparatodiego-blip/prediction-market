@@ -369,7 +369,9 @@ module.exports = {
       max_memory_restart: '250M',
       watch:         false,
       autorestart:   true,
-      env:           { NODE_ENV: 'production', HOME: '/root', MAKER_MODE: 'off' },
+      // MAKER_ORDER_TTL_SECONDS: venue-native GTD expiry on every order (survives host death). Must exceed
+      // the maker refresh interval or agent35 refuses to start (startup assertion). Venue GTD floor is 3min.
+      env:           { NODE_ENV: 'production', HOME: '/root', MAKER_MODE: 'off', MAKER_ORDER_TTL_SECONDS: '60' },
     },
     {
       name:          'agent36-book-velocity',

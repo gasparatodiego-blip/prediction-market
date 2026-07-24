@@ -25,6 +25,7 @@ const fs = require('fs');
 const path = require('path');
 const { httpGet } = require('../lib/httpGet');
 const { loadMakerConfig } = require('../lib/maker/config');
+const { checkTtlVsRefresh, computeGtdExpiration, MIN_EFFECTIVE_TTL_SEC } = require('../lib/maker/order-ttl');
 const { planQuotes } = require('../lib/maker/quote-plan');
 const { earningRange } = require('../lib/maker/earning-range');
 const { decideRequote, planRequoteOrdering } = require('../lib/maker/requote-policy');
@@ -68,9 +69,9 @@ function heartbeat() { const hb = readJson(HB_FILE) || {}; hb['agent35-maker'] =
 //    → throwing providers (live wiring is a separate reviewed change; even live can't place here). ──
 function buildAdapter(cfg) {
   if (cfg.mode === 'off') return null;
-  if (cfg.mode === 'paper' || cfg.dryRun) return createMakerAdapter({ mode: 'paper', dryRun: cfg.dryRun });
+  if (cfg.mode === 'paper' || cfg.dryRun) return createMakerAdapter({ mode: 'paper', dryRun: cfg.dryRun, orderTtlSeconds: cfg.orderTtlSeconds });
   const throwProvider = async () => { throw new Error('live maker provider is not wired in this build — arming (custody signer + L2 creds) is a separate reviewed change (see lib/venues/polymarket-clob-maker/credentials.ts + scripts/polymarket-maker-store-key.ts)'); };
-  return createMakerAdapter({ mode: cfg.mode, liveMinCapUsd: cfg.liveMinCapUsd, credsProvider: throwProvider, signerProvider: throwProvider });
+  return createMakerAdapter({ mode: cfg.mode, liveMinCapUsd: cfg.liveMinCapUsd, orderTtlSeconds: cfg.orderTtlSeconds, credsProvider: throwProvider, signerProvider: throwProvider });
 }
 
 // tick cache — ALWAYS fetch per token, never assume (0.1/0.01/0.001/0.0001/0.0025 all exist). TTL 5min.
@@ -291,6 +292,23 @@ async function tick(cfg, adapter) {
 async function main() {
   const cfg = loadMakerConfig(process.env);
   log(`starting — MAKER_MODE=${cfg.mode} dryRun=${cfg.dryRun} canWrite=${cfg.canWrite} (default off; arms nothing)`);
+
+  // ── STARTUP ASSERTION: native TTL vs the refresh loop (fail-closed, refuse to start on violation) ──
+  // A TTL <= the refresh interval guarantees permanent gaps in the book (an order expires before the maker
+  // re-quotes it). The refresh interval is the SLOWER of the tick and the per-leg re-quote min-interval —
+  // the longest an order can rest untouched between re-quote opportunities.
+  const refreshIntervalMs = Math.max(TICK_MS, cfg.requote.minIntervalMs);
+  const ttlGate = checkTtlVsRefresh({ ttlSeconds: cfg.orderTtlSeconds, refreshIntervalMs });
+  if (!ttlGate.ok) {
+    log('FATAL (startup assertion): ' + ttlGate.reason + ` [refresh interval = max(tick ${TICK_MS}ms, requote-min ${cfg.requote.minIntervalMs}ms) = ${refreshIntervalMs}ms]`);
+    process.exit(1);
+  }
+  // Native expiry cannot be shorter than the venue's 3-minute GTD floor. If the configured TTL is below
+  // the floor's effective minimum, the on-venue expiry is clamped UP and the sub-floor freshness must come
+  // from cancel/replace, NOT the native expiry. Surface this loudly — it is a real limitation, not a nit.
+  const sampleTtl = computeGtdExpiration(Date.now(), cfg.orderTtlSeconds);
+  log(`order TTL: requested ${cfg.orderTtlSeconds}s → native GTD effective ${sampleTtl.effectiveTtlSeconds}s${sampleTtl.clampedToVenueFloor ? ` (CLAMPED UP to the venue 3-min GTD floor — the venue rejects any expiry < ${MIN_EFFECTIVE_TTL_SEC}s effective; sub-floor freshness must come from cancel/replace, not the native expiry)` : ''}. This native expiry is the ONLY layer that survives host death.`);
+
   const adapter = buildAdapter(cfg);
   if (adapter) log(`adapter built: mode=${adapter.mode} canWrite=${adapter.canWrite}`);
   // Refuse to silently run live without wired providers — a forced live call would throw; log it once.
