@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { revokeRow, getLast4, getPublicRow } from '@/lib/venue-maker-keys'
+import { revokeRow, getLast4, getPublicRow } from '@/lib/admin-venue-keys'
 import { appendAudit } from '@/lib/key-custody-audit'
 
 export const runtime = 'nodejs'

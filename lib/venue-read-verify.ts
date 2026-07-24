@@ -1,5 +1,5 @@
 import { createSign, createHmac, constants } from 'crypto'
-import type { VenueId, DecryptedCreds } from '@/lib/venue-maker-keys'
+import type { VenueId, DecryptedCreds } from '@/lib/admin-venue-keys'
 
 /**
  * Two-stage verification: a REAL authenticated, read-only HTTP GET to a harmless

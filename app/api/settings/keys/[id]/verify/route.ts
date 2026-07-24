@@ -5,7 +5,7 @@ import {
   getStatus,
   getLast4,
   setStatus,
-} from '@/lib/venue-maker-keys'
+} from '@/lib/admin-venue-keys'
 import { verifyRead } from '@/lib/venue-read-verify'
 import { appendAudit } from '@/lib/key-custody-audit'
 

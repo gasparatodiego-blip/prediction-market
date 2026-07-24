@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { listRows, saveRow, type VenueId } from '@/lib/venue-maker-keys'
+import { listRows, saveRow, type VenueId } from '@/lib/admin-venue-keys'
 import { appendAudit } from '@/lib/key-custody-audit'
 
 export const runtime = 'nodejs'
@@ -61,14 +61,20 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const row = await saveRow({
-    venue,
-    label: d.label,
-    walletAddress: d.walletAddress ?? null,
-    apiKey: d.apiKey ?? null,
-    apiSecret: d.apiSecret,
-    passphrase: d.passphrase ?? null,
-  })
+  let row
+  try {
+    row = await saveRow({
+      venue,
+      label: d.label,
+      walletAddress: d.walletAddress ?? null,
+      apiKey: d.apiKey ?? null,
+      apiSecret: d.apiSecret,
+      passphrase: d.passphrase ?? null,
+    })
+  } catch {
+    // saveRow rejects malformed input (e.g. a non-0x40 wallet address) — a fixed message, never a value.
+    return NextResponse.json({ error: 'Missing or invalid fields.' }, { status: 400 })
+  }
 
   await appendAudit({ venue, action: 'saved', outcome: 'stored', last4: row.last4 })
 

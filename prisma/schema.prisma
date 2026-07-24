@@ -89,6 +89,12 @@ model ExchangeKey {
   // (that was the objection to a permissions column when nothing read one).
   permissionsAtVerify String[] @default([])
   verifiedAt          DateTime?
+  // Admin-lane TWO-STAGE verification state (READ-ONLY vs TRADING). verifiedAt set = VERIFIED_READ_ONLY
+  // (a real authenticated read succeeded). tradingEnabledAt set = VERIFIED_TRADING — the operator's
+  // explicit second-stage intent; it arms NOTHING, places no order, and does not touch MAKER_MODE.
+  tradingEnabledAt    DateTime?
+  // Last verification-FAILURE message (never a credential). Diagnostic only, shown in the admin list.
+  lastError           String?
   // When the user acknowledged the withdrawal disclosure for a non-'refuse' venue
   // (accept_and_disclose / read_only). NULL for 'refuse' venues, which have no disclosure.
   acknowledgedAt      DateTime?

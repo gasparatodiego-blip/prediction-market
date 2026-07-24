@@ -44,6 +44,12 @@ const STATUS_CLASS: Record<KeyStatus, string> = {
 const WALLET_WARNING =
   'Use a dedicated wallet holding only your operating capital. A wallet private key cannot be revoked.'
 
+// The form stores ONLY the L2 API credentials (they can cancel and read, but cannot sign an order). The
+// raw wallet signing key is NEVER entered here — a private key should never traverse a browser form — it
+// is stored once from the server CLI. Shown verbatim in the Polymarket form.
+const POLY_SIGNING_KEY_NOTE =
+  'This form stores only your L2 API credentials (key / secret / passphrase) — they can cancel and read but cannot place an order. Your raw wallet signing key is never entered here; it is stored once from the server CLI (polymarket-maker-store-key), because a private key should never pass through a browser.'
+
 // Which secret fields each venue needs, in order. Wallet address is handled separately
 // as a PUBLIC text input.
 const SECRET_FIELDS: Record<VenueId, { key: string; label: string; name: string }[]> = {
@@ -344,6 +350,7 @@ export default function KeysClient() {
                       onChange={(e) => setForm({ ...form, walletAddress: e.target.value })}
                     />
                     <p className="font-body text-xs text-gold leading-relaxed">{WALLET_WARNING}</p>
+                    <p className="font-body text-xs text-muted leading-relaxed">{POLY_SIGNING_KEY_NOTE}</p>
                   </div>
                 )}
 
