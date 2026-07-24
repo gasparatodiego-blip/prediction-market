@@ -43,6 +43,8 @@ const { reconcileOnce, RECONCILE_INTERVAL_MS } = require('../lib/safety/reconcil
 const { atomicWriteJson } = require('../lib/atomicJsonWrite');
 const { getMakerSelection, DEFAULT_SELECTION } = require('../lib/maker/selection');
 const { resolveMakerUniverse } = require('../lib/maker/universe');
+const { readArming, checkArmedInvariants } = require('../lib/maker/arming');
+const { runPreflight } = require('../lib/maker/preflight');
 
 const OPERATOR_USER = process.env.MAKER_OPERATOR_USER || 'operator';
 
@@ -120,6 +122,10 @@ async function getRestBook(tokenId) {
 // per-leg re-quote memory: legKey -> { lastTarget, lastRequoteAt }
 const requoteState = new Map();
 let lastReconcileAt = 0; // throttle for the periodic fill reconciliation (see tick)
+// The armed-invariant preflight re-check is EXPENSIVE (offline signing + chain reads), so it runs on a slow
+// cadence while the cheap invariants (TTL, collateral, kill) are checked every tick. Default 120s.
+let lastPreflightAt = 0, lastPreflight = null;
+const PREFLIGHT_RECHECK_MS = Number(process.env.MAKER_PREFLIGHT_RECHECK_MS || 120_000);
 let lastUniverseIds = new Set(); // marketIds quoted last cycle — diffed to cancel markets that leave the universe
 // per-leg static-baseline vs follow accumulators (for the paper reward-vs-baseline report)
 const rewardAccum = new Map(); // legKey -> { followScoreMs, staticScoreMs, staticInitPrice, lastTs }
@@ -201,9 +207,38 @@ async function tick(cfg, adapter) {
   //    (b) attempt a cancel-all through the (shadow, in this disarmed build) adapter cancel path —
   //    REUSING the existing cancelMarketOrders, never a new venue write. Env MAKER_KILL still applies. ──
   const durableKill = checkKill({ userId: OPERATOR_USER });
-  const effCfg = durableKill.killed ? { ...cfg, killSwitch: true } : cfg;
-  if (durableKill.killed && adapter && typeof adapter.cancelMarketOrders === 'function') {
-    try { await cancelAllOnKill({ adapter, marketIds: [...legsByMarket.keys()] }); } catch (e) { log('cancel-on-kill failed:', e.message); }
+
+  // ── ARMING + AUTO-DISARM (re-checked EVERY cycle, not only at arming) — read the durable arming record
+  //    (enforces the TTL on read), and re-run the preflight invariants that can change WHILE armed. Any
+  //    breach — TTL expiry, a preflight check gone red (balance dropped, approval revoked, cancel path
+  //    down), or the collateral ceiling exceeded — AUTO-DISARMS (audited with the reason) and cancels. The
+  //    heartbeat-failed reason is owned by the dead-man watchdog (agent37). In this disarmed build MAKER_MODE
+  //    is off so nothing is armed and this is dormant, but the recheck is wired and proven by selfcheck. ──
+  let arming = { armed: false };
+  try { arming = readArming(); } catch (e) { log('arming read failed (treated disarmed):', e.message); }
+  if (arming.armed) {
+    if (prisma && now - lastPreflightAt >= PREFLIGHT_RECHECK_MS) {
+      lastPreflightAt = now;
+      try { lastPreflight = await runPreflight({ prisma, env: process.env }); }
+      catch (e) { log('armed preflight recheck failed (fail closed → NO-GO):', e.message); lastPreflight = { go: false, checks: [{ key: 'preflight-error', pass: false, value: e.message }] }; }
+    }
+    // paper build carries no real exposure, so collateralUsedUsd is 0 here; when live it comes from the fill ledger.
+    const inv = checkArmedInvariants({ preflight: lastPreflight, collateralUsedUsd: 0 });
+    if (!inv.armed) {
+      log('AUTO-DISARM:', inv.disarmedReason || 'ttl-expiry');
+      arming = { armed: false, disarmedReason: inv.disarmedReason };
+      if (adapter && typeof adapter.cancelMarketOrders === 'function') {
+        try { await cancelAllOnKill({ adapter, marketIds: [...legsByMarket.keys()] }); } catch (e) { log('auto-disarm cancel failed:', e.message); }
+      }
+    }
+  }
+
+  // A live-mode engine that is NOT armed must stand down exactly like a killed one (it may not quote). off/
+  // paper never place anyway; this makes the arming record a hard placement gate once the env goes live.
+  const notArmedLive = (cfg.mode === 'live-min' || cfg.mode === 'live') && !arming.armed;
+  const effCfg = (durableKill.killed || notArmedLive) ? { ...cfg, killSwitch: true } : cfg;
+  if ((durableKill.killed || notArmedLive) && adapter && typeof adapter.cancelMarketOrders === 'function') {
+    try { await cancelAllOnKill({ adapter, marketIds: [...legsByMarket.keys()] }); } catch (e) { log('cancel-on-standdown failed:', e.message); }
   }
 
   // ── Periodic FILL RECONCILIATION — resolves the operator's sent orders against VENUE TRUTH into the fill
@@ -332,6 +367,7 @@ async function tick(cfg, adapter) {
     universe: { matchedBeforeCap: universe.matchedBeforeCap, truncated: universe.truncated, maxMarkets: universe.maxMarkets, isDefaultSelection: !!selection.isDefault },
     mode: cfg.mode, dryRun: cfg.dryRun, canWrite: cfg.canWrite, killSwitch: effCfg.killSwitch,
     durableKill: { killed: durableKill.killed, scope: durableKill.scope, reason: durableKill.reason || null },
+    arming: { armed: arming.armed, expiresInSec: arming.expiresInSec ?? null, disarmedReason: arming.disarmedReason || null, notArmedLive },
     source: 'agent35-maker · paper pipeline · quotes from ADJUSTED mid · no orders placed (MAKER_MODE=' + cfg.mode + ')',
     config: { liveMinMarket: cfg.liveMinMarket, liveMinCapUsd: cfg.liveMinCapUsd, requote: cfg.requote, rails: cfg.rails },
     summary: { markets: Object.keys(marketsOut).length, totalWouldPost, totalRequotes, railsTrippedCount },

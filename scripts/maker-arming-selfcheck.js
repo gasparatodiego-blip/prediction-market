@@ -208,6 +208,43 @@ async function main() {
   ok(rnRed.ok === false && rnRed.refusedBy === 'preflight' && readArming(T).armed === false, 'TTL: RENEW while a preflight check is RED DISARMS (never extends past a failed condition)');
   ok(renew({}, { preflight: GO, deps: T }).refusedBy === 'not-armed', 'TTL: RENEW on a disarmed record is refused (arm() again to re-confirm)');
 
+  // ───────────────────────────────────────────────────────────────────────────────────────────────────
+  // [5] AUTO-DISARM — the per-cycle invariant re-check disarms (with an audited reason) when a condition
+  //     goes false WHILE armed: heartbeat failed, collateral cap exceeded, a preflight check gone red.
+  // ───────────────────────────────────────────────────────────────────────────────────────────────────
+  const { checkArmedInvariants } = require('../lib/maker/arming');
+  console.log('\n[5] AUTO-DISARM (per-cycle recheck)');
+  const mkArmed = (deps, cap) => { arm({ totalSizeUsd: 100, typedSizeConfirm: 100, ttlSeconds: 3600, collateralCapUsd: cap }, { preflight: GO, deps }); };
+
+  // healthy → stays armed
+  const A = { stateFile: pathm.join(tdir, 'inv-a.json'), auditFile: pathm.join(tdir, 'inv-a.jsonl'), now: () => clock };
+  mkArmed(A, 1000);
+  ok(checkArmedInvariants({ preflight: GO, collateralUsedUsd: 200, heartbeatOk: true }, A).armed === true, 'AUTO-DISARM: a healthy armed record (GO, under cap, heartbeat ok) STAYS armed');
+
+  // a preflight check went red while armed → disarm(preflight-red:*)
+  const B = { stateFile: pathm.join(tdir, 'inv-b.json'), auditFile: pathm.join(tdir, 'inv-b.jsonl'), now: () => clock };
+  mkArmed(B, 1000);
+  const invB = checkArmedInvariants({ preflight: NOGO, collateralUsedUsd: 0, heartbeatOk: true }, B);
+  ok(invB.armed === false && /^preflight-red:/.test(invB.disarmedReason) && invB.disarmedReason.includes('cancel'), 'AUTO-DISARM: a preflight check gone RED while armed disarms (reason names the red check)');
+
+  // collateral ceiling breached → disarm(collateral-cap-exceeded)
+  const C = { stateFile: pathm.join(tdir, 'inv-c.json'), auditFile: pathm.join(tdir, 'inv-c.jsonl'), now: () => clock };
+  mkArmed(C, 300);
+  const invC = checkArmedInvariants({ preflight: GO, collateralUsedUsd: 301, heartbeatOk: true }, C);
+  ok(invC.armed === false && invC.disarmedReason === 'collateral-cap-exceeded', 'AUTO-DISARM: collateral used past the cap disarms (collateral-cap-exceeded)');
+
+  // heartbeat failed → disarm(heartbeat-failed)
+  const E = { stateFile: pathm.join(tdir, 'inv-e.json'), auditFile: pathm.join(tdir, 'inv-e.jsonl'), now: () => clock };
+  mkArmed(E, 1000);
+  const invE = checkArmedInvariants({ preflight: GO, collateralUsedUsd: 0, heartbeatOk: false }, E);
+  ok(invE.armed === false && invE.disarmedReason === 'heartbeat-failed', 'AUTO-DISARM: a failed heartbeat disarms (heartbeat-failed)');
+
+  // each auto-disarm wrote an audited reason
+  for (const [dep, reason] of [[B, 'preflight-red'], [C, 'collateral-cap-exceeded'], [E, 'heartbeat-failed']]) {
+    const lines = fsm.readFileSync(dep.auditFile, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    ok(lines.some((a) => a.event === 'disarm' && String(a.reason).includes(reason.split(':')[0])), `AUTO-DISARM: the ${reason} disarm is AUDITED with its reason`);
+  }
+
   try { fsm.rmSync(tdir, { recursive: true, force: true }); } catch { /* temp cleanup */ }
 
   console.log(`\nmaker-arming selfcheck: ${checks} assertions passed.`);

@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 // can STOP orders but structurally cannot start one.
 import { killMaker } from '@/lib/maker/kill';
 import { buildCancelCredsProviders } from '@/lib/maker/cancel-creds-provider';
+import { disarm } from '@/lib/maker/arming';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -26,6 +27,8 @@ export async function POST() {
       by: 'operator · liquidity-rewards tab',
       reason: 'manual KILL from the liquidity-rewards tab',
       credsProviders,
+      // KILL also withdraws the arming authorization, so a later MAKER_MODE flip cannot resume a stale arm.
+      disarmArming: () => { disarm('kill-switch'); },
     });
     const anyFail =
       res.killed === false ||
