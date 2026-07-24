@@ -302,6 +302,12 @@ export const REDACTION_MAP: Record<RouteKey, string[]> = {
     'markets[].qualifyingLiquidity',
     'markets[].bookDepthAtBand',
     'markets[].volatilityStdev',
+    // Stability measurement inputs. Redacting `stability` (the 7d stdev/sample block) is what makes
+    // the free tier's stability cell resolve to "—": lib/reward-stability returns unknown the moment
+    // its dispersion input is missing. volume24hUsd is the paired trade-flow evidence — redacted
+    // with it so the free tier can never reconstruct the score from the surviving half.
+    'markets[].stability',
+    'markets[].volume24hUsd',
     'markets[].lastPrice',
     'markets[].bookSpread',
     // Per-side (YES/NO) book numbers are the same sensitive executable figures — redact
