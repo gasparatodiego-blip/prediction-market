@@ -35,6 +35,16 @@ interface KillResponse {
 interface PreflightCheck { key: string; label: string; pass: boolean; value: string; detail: string }
 interface PreflightResponse { at: string; checks: PreflightCheck[]; go: boolean; error?: string }
 
+interface ArmStatus {
+  armed: boolean; source: string; expiresInSec: number | null; expiresAt: string | null;
+  armedAt: string | null; totalSizeUsd: number | null; ttlSeconds: number | null; collateralCapUsd: number | null;
+}
+interface PreviewMarket { marketId: string; title: string; mid: number | null; bid: number | null; ask: number | null; sizePerSideUsd: number | null; collateralUsd: number | null; readable: boolean }
+interface ArmPreview { readable: boolean; blockedReason: string | null; markets: PreviewMarket[]; totalCollateralUsd: number | null; perSideSizeUsd: number | null; ttlSeconds: number | null }
+
+const money = (v: number | null | undefined): string => (v === null || v === undefined ? '—' : `$${v.toFixed(2)}`);
+const price = (v: number | null | undefined): string => (v === null || v === undefined ? '—' : v.toFixed(3));
+
 const dash = (v: unknown): string => (v === null || v === undefined || v === '' ? '—' : String(v));
 
 export default function MakerArmingPanel() {
@@ -45,19 +55,76 @@ export default function MakerArmingPanel() {
   const [killErr, setKillErr] = useState<string | null>(null);
   const [preflight, setPreflight] = useState<PreflightResponse | null>(null);
   const [pfRunning, setPfRunning] = useState(false);
+  const [armStatus, setArmStatus] = useState<ArmStatus | null>(null);
+  const [armOpen, setArmOpen] = useState(false); // step 1: the deliberate reveal (no accidental tap)
+  const [perSide, setPerSide] = useState('');
+  const [typedTotal, setTypedTotal] = useState(''); // step 2: type the exact total to confirm
+  const [preview, setPreview] = useState<ArmPreview | null>(null);
+  const [arming, setArming] = useState(false);
+  const [armMsg, setArmMsg] = useState<string | null>(null);
+
+  const loadArmStatus = useCallback(async () => {
+    try {
+      const r = await fetch('/api/maker/arm', { cache: 'no-store' });
+      if (r.ok) setArmStatus((await r.json()) as ArmStatus);
+    } catch { /* read-only; leave prior status */ }
+  }, []);
 
   useEffect(() => {
     let alive = true;
     (async () => {
       try {
         const r = await fetch('/api/maker/status', { cache: 'no-store' });
-        if (alive) setOperator(r.ok);
+        if (!alive) return;
+        setOperator(r.ok);
+        if (r.ok) loadArmStatus();
       } catch {
         if (alive) setOperator(false);
       }
     })();
-    return () => { alive = false; };
+    const t = setInterval(() => { if (alive) loadArmStatus(); }, 15_000);
+    return () => { alive = false; clearInterval(t); };
+  }, [loadArmStatus]);
+
+  const loadPreview = useCallback(async (perSideVal: string) => {
+    const qs = perSideVal ? `?perSide=${encodeURIComponent(perSideVal)}` : '';
+    try {
+      const r = await fetch(`/api/maker/arm-preview${qs}`, { cache: 'no-store' });
+      setPreview((await r.json()) as ArmPreview);
+    } catch (e) {
+      setPreview({ readable: false, blockedReason: (e as Error).message, markets: [], totalCollateralUsd: null, perSideSizeUsd: null, ttlSeconds: null });
+    }
   }, []);
+
+  const doArm = useCallback(async () => {
+    if (!preview?.readable || preview.totalCollateralUsd == null) return;
+    setArming(true);
+    setArmMsg(null);
+    try {
+      const r = await fetch('/api/maker/arm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          totalSizeUsd: preview.totalCollateralUsd,
+          typedSizeConfirm: Number(typedTotal),
+          perSideSizeUsd: perSide ? Number(perSide) : undefined,
+          universeMarketIds: preview.markets.map((m) => m.marketId),
+        }),
+      });
+      const body = await r.json();
+      if (body.ok) { setArmMsg('ARMED.'); setArmOpen(false); setTypedTotal(''); }
+      else setArmMsg(`Refused (${body.refusedBy || 'error'}): ${body.reason || body.error || 'blocked'}`);
+      loadArmStatus();
+    } catch (e) {
+      setArmMsg((e as Error).message);
+    } finally {
+      setArming(false);
+    }
+  }, [preview, typedTotal, perSide, loadArmStatus]);
+
+  const doDisarm = useCallback(async () => {
+    try { await fetch('/api/maker/disarm', { method: 'POST' }); loadArmStatus(); } catch { /* ignore */ }
+  }, [loadArmStatus]);
 
   // The KILL is ONE action — no confirmation dialog stands between the operator and stopping the maker.
   const doKill = useCallback(async () => {
@@ -128,6 +195,23 @@ export default function MakerArmingPanel() {
         .mkarm-cdetail { color: #8B95A5; font-size: 12px; margin-top: 2px; line-height: 1.4; }
         .mkarm-cval { color: #E6E9EF; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
         .mkarm-cval-red { color: #E5574E; }
+        .mkarm-armed { border: 1px solid #205038; background: #0d1f16; border-radius: 10px; padding: 12px 14px; }
+        .mkarm-armed-t { font-weight: 800; color: #57C98A; font-size: 14px; }
+        .mkarm-toggle { min-height: 40px; padding: 0 16px; border: 1px solid #3A4150; border-radius: 8px; cursor: pointer;
+          font-size: 13px; font-weight: 700; color: #E6E9EF; background: #1C2230; }
+        .mkarm-toggle:hover { background: #232a3a; }
+        .mkarm-input { width: 140px; padding: 8px 10px; border: 1px solid #2E5FBE; border-radius: 8px; background: #0d1420;
+          color: #E6E9EF; font-size: 14px; font-variant-numeric: tabular-nums; }
+        .mkarm-inrow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 10px 0; font-size: 13px; color: #C4CCD8; }
+        .mkarm-ptbl { margin: 10px 0; font-size: 13px; }
+        .mkarm-prow { display: grid; grid-template-columns: 1fr auto auto auto; gap: 10px; padding: 6px 0;
+          border-bottom: 1px solid #1a2030; align-items: baseline; }
+        .mkarm-phead { color: #8B95A5; font-size: 11px; text-transform: uppercase; letter-spacing: .4px; }
+        .mkarm-armbtn { min-height: 44px; padding: 0 20px; border: none; border-radius: 10px; cursor: pointer;
+          font-size: 15px; font-weight: 800; color: #06210f; background: #57C98A; }
+        .mkarm-armbtn:disabled { background: #2b3a30; color: #6b7a70; cursor: not-allowed; }
+        .mkarm-disarm { min-height: 40px; padding: 0 18px; border: 1px solid #4a3c12; border-radius: 8px; cursor: pointer;
+          font-size: 13px; font-weight: 700; color: #E8B23A; background: #1a1608; }
       `}</style>
 
       <div className="mkarm-hrow">
@@ -211,6 +295,99 @@ export default function MakerArmingPanel() {
               : 'A red check blocks arming. There is no override — fix the red item and re-run. Read live; never cached.'}
           </p>
         )}
+      </div>
+
+      {/* ── ARM control: two-step (deliberate reveal, then type the exact total). Gated on a fresh preflight. ── */}
+      <div className="mkarm-sec" data-maker-arm>
+        <div className="mkarm-sech">
+          <span className="mkarm-sectitle">Arm control</span>
+          {armStatus?.armed
+            ? <span className="mkarm-verdict mkarm-go">ARMED</span>
+            : <span className="mkarm-verdict mkarm-nogo">DISARMED</span>}
+        </div>
+
+        {armStatus?.armed ? (
+          <div className="mkarm-armed">
+            <div className="mkarm-armed-t">Maker is ARMED (record only — placement still needs MAKER_MODE + funding)</div>
+            <div className="mkarm-res">
+              Total size {money(armStatus.totalSizeUsd)} · TTL {armStatus.ttlSeconds != null ? `${Math.round(armStatus.ttlSeconds / 3600)}h` : '—'} ·
+              expires <span className="mkarm-num">{dash(armStatus.expiresAt)}</span>
+              {armStatus.expiresInSec != null && <> (<span className="mkarm-num">{armStatus.expiresInSec}</span>s)</>}
+            </div>
+            <div style={{ marginTop: 10 }}>
+              <button className="mkarm-disarm" onClick={doDisarm}>DISARM</button>
+            </div>
+          </div>
+        ) : !armOpen ? (
+          <>
+            <button className="mkarm-toggle" onClick={() => { setArmOpen(true); loadPreview(perSide); }}>
+              Enable arming…
+            </button>
+            <p className="mkarm-note">Step 1 of 2 — a deliberate reveal, so a stray tap cannot arm.</p>
+          </>
+        ) : (
+          <>
+            <div className="mkarm-inrow">
+              <span>Size per side (USD):</span>
+              <input
+                className="mkarm-input" type="number" inputMode="decimal" placeholder="e.g. 200"
+                value={perSide}
+                onChange={(e) => { setPerSide(e.target.value); loadPreview(e.target.value); }}
+              />
+            </div>
+
+            {/* What you're about to arm — every number real or "—"; blocked if unreadable. */}
+            {preview && (
+              <div className="mkarm-ptbl">
+                <div className="mkarm-prow mkarm-phead"><span>Market</span><span>Bid</span><span>Ask</span><span>Size</span></div>
+                {preview.markets.map((m) => (
+                  <div key={m.marketId} className="mkarm-prow">
+                    <span className="mkarm-clabel">{m.title || m.marketId.slice(0, 10)}</span>
+                    <span className="mkarm-num">{price(m.bid)}</span>
+                    <span className="mkarm-num">{price(m.ask)}</span>
+                    <span className="mkarm-num">{money(m.sizePerSideUsd)}</span>
+                  </div>
+                ))}
+                <div className="mkarm-res">
+                  Total collateral <b className="mkarm-num">{money(preview.totalCollateralUsd)}</b> ·
+                  TTL 4h (default) {!preview.readable && <span className="mkarm-warn"> · {dash(preview.blockedReason)} — arming blocked</span>}
+                </div>
+              </div>
+            )}
+
+            <div className="mkarm-inrow">
+              <span>Step 2 — type the total collateral to confirm{preview?.totalCollateralUsd != null ? ` (${money(preview.totalCollateralUsd)})` : ''}:</span>
+              <input
+                className="mkarm-input" type="number" inputMode="decimal" placeholder="type total"
+                value={typedTotal} onChange={(e) => setTypedTotal(e.target.value)}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 6 }}>
+              <button
+                className="mkarm-armbtn"
+                onClick={doArm}
+                disabled={
+                  arming ||
+                  !preview?.readable ||
+                  preview?.totalCollateralUsd == null ||
+                  Number(typedTotal) !== preview?.totalCollateralUsd ||
+                  preflight?.go !== true
+                }
+              >
+                {arming ? 'ARMING…' : 'ARM'}
+              </button>
+              <button className="mkarm-toggle" onClick={() => { setArmOpen(false); setTypedTotal(''); }}>Cancel</button>
+            </div>
+            <p className="mkarm-note">
+              {preflight?.go !== true
+                ? 'Run the preflight first — arming is refused while any check is red (server re-runs it fresh on ARM).'
+                : 'ARM enables only when the typed total matches exactly and the preflight is GO.'}
+            </p>
+          </>
+        )}
+
+        {armMsg && <div className="mkarm-res mkarm-warn">{dash(armMsg)}</div>}
       </div>
     </div>
   );

@@ -122,6 +122,64 @@ async function main() {
   ok(g.pass === true, `PREFLIGHT: the REAL guard check passes in-process — "${g.value}"`);
   ok(k.pass === true, `PREFLIGHT: the REAL kill check is reachable — "${k.value}"`);
 
+  // ───────────────────────────────────────────────────────────────────────────────────────────────────
+  // [3] ARM CONTROL — preflight-gated, two-step, collateral-capped, fail-closed. Temp files: no real state.
+  // ───────────────────────────────────────────────────────────────────────────────────────────────────
+  const os = require('os'), fsm = require('fs'), pathm = require('path');
+  const { arm, disarm, readArming } = require('../lib/maker/arming');
+  console.log('\n[3] ARM CONTROL');
+  const tdir = fsm.mkdtempSync(pathm.join(os.tmpdir(), 'maker-arm-'));
+  let clock = 1_753_000_000_000;
+  const D = { stateFile: pathm.join(tdir, 'arm.json'), auditFile: pathm.join(tdir, 'arm-audit.jsonl'), now: () => clock };
+  const GO = { go: true, at: 'now', checks: [{ key: 'signing', pass: true, value: 'MATCH' }] };
+  const NOGO = { go: false, at: 'now', checks: [{ key: 'cancel', pass: false, value: 'simulated only' }, { key: 'signing', pass: true, value: 'MATCH' }] };
+
+  // starts DISARMED (absent file ⇒ fail-closed disarmed)
+  ok(readArming(D).armed === false, 'ARM: absent state ⇒ DISARMED (fail closed)');
+
+  // refuse when preflight is NO-GO — arming impossible while a check is red (no override)
+  const r1 = arm({ totalSizeUsd: 400, typedSizeConfirm: 400, ttlSeconds: 3600 }, { preflight: NOGO, deps: D });
+  ok(r1.ok === false && r1.refusedBy === 'preflight', 'ARM: refused while preflight is NO-GO (a red check) — no override');
+  ok(readArming(D).armed === false, 'ARM: a refused arm leaves the record DISARMED');
+
+  // refuse on the two-step: typed size ≠ total
+  const r2 = arm({ totalSizeUsd: 400, typedSizeConfirm: 399, ttlSeconds: 3600 }, { preflight: GO, deps: D });
+  ok(r2.ok === false && r2.refusedBy === 'size-confirm', 'ARM: refused when the typed size ≠ total (two-step)');
+
+  // refuse over the collateral cap
+  const r3 = arm({ totalSizeUsd: 400, typedSizeConfirm: 400, ttlSeconds: 3600, collateralCapUsd: 300 }, { preflight: GO, deps: D });
+  ok(r3.ok === false && r3.refusedBy === 'collateral-cap', 'ARM: refused when total exceeds the collateral cap');
+
+  // refuse invalid size + refuse over-long TTL (no arm-forever)
+  ok(arm({ totalSizeUsd: 0, typedSizeConfirm: 0 }, { preflight: GO, deps: D }).refusedBy === 'invalid-size', 'ARM: refused on size ≤ 0');
+  ok(arm({ totalSizeUsd: 10, typedSizeConfirm: 10, ttlSeconds: 999999 }, { preflight: GO, deps: D }).refusedBy === 'ttl-too-long', 'ARM: refused on a TTL beyond the 24h ceiling (renew re-runs preflight)');
+
+  // SUCCEED — go + exact size + within cap + valid TTL
+  const rok = arm({ totalSizeUsd: 250, typedSizeConfirm: 250, ttlSeconds: 4 * 3600, collateralCapUsd: 1000, universeMarketIds: ['0xA', '0xB'], by: 'selfcheck' }, { preflight: GO, deps: D });
+  ok(rok.ok === true && rok.arming.armed === true, 'ARM: arms when GO + exact size + within cap + valid TTL');
+  const rs = readArming(D);
+  ok(rs.armed === true && rs.record.totalSizeUsd === 250 && rs.record.universeMarketIds.length === 2, 'ARM: readArming reflects the armed record (size, universe)');
+  ok(rs.record.preflightAtArm && rs.record.preflightAtArm.go === true, 'ARM: the arming record persists the preflight snapshot it was gated on');
+
+  // manual disarm
+  disarm('selfcheck-manual', D);
+  ok(readArming(D).armed === false, 'ARM: disarm() clears the record');
+
+  // the audit trail carries a reason for every arm + disarm + refusal
+  const audit = fsm.readFileSync(D.auditFile, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  ok(audit.some((a) => a.event === 'arm') && audit.some((a) => a.event === 'disarm') && audit.some((a) => a.event === 'arm-refused' && a.refusedBy === 'preflight'),
+    'ARM: every arm / disarm / refusal is AUDITED with its reason');
+
+  // ── ARM PREVIEW — "what you're about to arm": real numbers or "—" + block ──
+  const { buildArmPreview } = require('../lib/maker/arm-preview');
+  const good = buildArmPreview({ markets: { '0xA': { title: 'T', mid: 0.5, legs: [{ side: 'BUY', targetPrice: 0.49, notionalUsd: 100 }, { side: 'SELL', targetPrice: 0.51, notionalUsd: 100 }] } } }, { perSideSizeUsd: 100 });
+  ok(good.readable === true && good.markets[0].bid === 0.49 && good.markets[0].ask === 0.51 && good.totalCollateralUsd === 200, 'ARM PREVIEW: real bid/ask/size → total collateral computed (2 sides × $100 = $200)');
+  const noMid = buildArmPreview({ markets: { '0xA': { title: 'T', mid: null, legs: [] } } }, { perSideSizeUsd: 100 });
+  ok(noMid.readable === false && noMid.blockedReason, 'ARM PREVIEW: a market missing a readable mid/bid/ask → "—" and BLOCKED (never a fabricated preview)');
+  ok(buildArmPreview(null, {}).readable === false, 'ARM PREVIEW: unreadable maker state → blocked');
+
+  try { fsm.rmSync(tdir, { recursive: true, force: true }); } catch { /* temp cleanup */ }
+
   console.log(`\nmaker-arming selfcheck: ${checks} assertions passed.`);
 }
 
