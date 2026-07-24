@@ -13,6 +13,9 @@ import { computeLiquidityYield } from '@/lib/liquidity-yield';
 import { parseRewardFilters, applyRewardFilters, deriveRanges } from '@/lib/rewards-server-filter';
 // The SAME resolved-market drop the bot's universe resolver uses — shared so board and bot agree.
 import { dropResolvedRewards } from '@/lib/maker/universe';
+// The live depth-at-touch floor ($) — surfaced in meta so the "hide thin books" help text states the
+// REAL value (env REWARD_DEPTH_TOUCH_FLOOR_USD or the $25 default) and can never drift from the code.
+import { depthFloorUsd } from '@/lib/reward-depth-floor';
 
 // Reference balance the guardian evaluates at — the SAME default the list first shows (RewardsUnified
 // BAL_DEFAULT). The stamped day-yield is what a paid user sees at that balance.
@@ -123,6 +126,7 @@ export async function GET(request: NextRequest) {
       matchedMarkets: data.markets.length,
       ranges,
       appliedFilters: filters,
+      rewardDepthFloorUsd: depthFloorUsd(),   // real "thin book" floor ($) — the help text states this
     };
 
     const session = await getServerSession(authOptions);

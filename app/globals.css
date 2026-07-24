@@ -557,7 +557,13 @@ h1, h2, h3 {
   border: 1px solid var(--cc-border); border-radius: 10px; background: var(--cc-panel);
 }
 .cc-fgroup { display: flex; flex-direction: column; gap: 6px; }
-.cc-flabel { font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--cc-muted); }
+/* Plain-language label: sentence case, readable — it names the decision, not the field. */
+.cc-flabel { font-size: 13px; font-weight: 700; letter-spacing: 0; text-transform: none; color: var(--cc-text); line-height: 1.25; }
+/* One-line explanation underneath, in smaller quieter type — it says WHY the operator cares. */
+.cc-fhelp { font-size: 11px; line-height: 1.4; color: var(--cc-muted); max-width: 62ch; }
+.cc-fhelp-check { margin: -2px 0 2px; flex-basis: 100%; }
+/* Inline amber note (venue includes a non-Polymarket program). Calm, never an error. */
+.cc-fnote-amber { font-size: 11px; line-height: 1.4; color: var(--cc-amber); }
 .cc-chips  { display: flex; flex-wrap: wrap; gap: 6px; }
 .cc-fchip {
   font-size: 10.5px; font-weight: 600; letter-spacing: .02em;

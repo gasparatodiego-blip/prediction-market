@@ -371,6 +371,9 @@ export default function RewardsUnified() {
   const total = data?.meta?.totalMarkets ?? base.length;
   const rg: Ranges = ranges ?? { poolMax: 0, depthMax: 0, spreadMaxCents: 0, categories: [], venues: [], hasCompetition: false };
   const VENUE_CHIPS: Array<FilterState['venue']> = ['all', 'polymarket', 'kalshi'];
+  // The REAL depth-at-touch floor ($) from the server (env REWARD_DEPTH_TOUCH_FLOOR_USD or $25 default).
+  // Stated in the "hide thin books" help so the copy can never drift from the code.
+  const depthFloor = fin(data?.meta?.rewardDepthFloorUsd) ? (data!.meta.rewardDepthFloorUsd as number) : null;
   // Human summary of the constraints in force — shown in the calm zero-match empty state.
   const spreadActive = filters.maxSpreadCents >= 0 && filters.maxSpreadCents < rg.spreadMaxCents;
   const activeFilters: string[] = [
@@ -406,21 +409,28 @@ export default function RewardsUnified() {
         {!err && data && total > 0 && (
           <>
             <div className="cc-filterbar">
-              {/* VENUE — single select: all / Polymarket / Kalshi (server filter) */}
+              {/* SU QUALE PIATTAFORMA — single select: all / Polymarket / Kalshi (server filter) */}
               <div className="cc-fgroup">
-                <span className="cc-flabel">Venue</span>
+                <span className="cc-flabel">Su quale piattaforma</span>
+                <span className="cc-fhelp">Kalshi paga solo i residenti negli Stati Uniti.</span>
                 <div className="cc-chips">
                   {VENUE_CHIPS.map((v) => (
                     <button key={v} type="button"
                       className={`cc-fchip ${filters.venue === v ? 'is-on' : ''}`}
-                      onClick={() => set({ venue: v })}>{v === 'all' ? 'all' : v}</button>
+                      onClick={() => set({ venue: v })}>{v === 'all' ? 'tutte' : v}</button>
                   ))}
                 </div>
+                {filters.venue !== 'polymarket' && (
+                  <span className="cc-fnote-amber" role="note">
+                    Stai includendo Kalshi: quei premi potrebbero non essere riscuotibili da questo operatore.
+                  </span>
+                )}
               </div>
 
-              {/* CATEGORY — multi-select (server filter) */}
+              {/* CATEGORIA — multi-select (server filter; not one of the six, kept for browsing) */}
               <div className="cc-fgroup">
-                <span className="cc-flabel">Category</span>
+                <span className="cc-flabel">Categoria</span>
+                <span className="cc-fhelp">Restringe l&rsquo;elenco al tema del mercato.</span>
                 <div className="cc-chips">
                   {rg.categories.map((c: string) => (
                     <button key={c} type="button"
@@ -431,70 +441,77 @@ export default function RewardsUnified() {
                 </div>
               </div>
 
-              {/* MIN DAILY POT (server filter) */}
+              {/* DEVE PAGARE ALMENO — min daily pot (server filter) */}
               <div className="cc-fgroup cc-slider">
                 <div className="cc-slider-head">
-                  <span className="cc-flabel">Min daily pot ($/day)</span>
-                  <span className="cc-slider-val">≥ {filters.minPool > 0 ? fmtUsd(filters.minPool) : '$0'}</span>
+                  <span className="cc-flabel">Deve pagare almeno</span>
+                  <span className="cc-slider-val">≥ {filters.minPool > 0 ? fmtUsd(filters.minPool) : '$0'}/giorno</span>
                 </div>
+                <span className="cc-fhelp">Il montepremi giornaliero che la piattaforma mette su quel mercato. Sotto questa cifra non vale la pena esserci.</span>
                 <input className="cc-frange" type="range" min={0} max={Math.max(rg.poolMax, 1)} step={Math.max(1, Math.round(rg.poolMax / 100))}
                   value={Math.min(filters.minPool, Math.max(rg.poolMax, 1))}
-                  onChange={(e) => set({ minPool: Number(e.target.value) })} aria-label="minimum daily pot" />
+                  onChange={(e) => set({ minPool: Number(e.target.value) })} aria-label="deve pagare almeno" />
               </div>
 
-              {/* MIN BOOK DEPTH AT TOUCH (server filter) */}
+              {/* IL LIBRO DEVE REGGERE ALMENO — min book depth at touch (server filter) */}
               <div className="cc-fgroup cc-slider">
                 <div className="cc-slider-head">
-                  <span className="cc-flabel">Min book depth at touch</span>
+                  <span className="cc-flabel">Il libro deve reggere almeno</span>
                   <span className="cc-slider-val">≥ {filters.minDepth > 0 ? fmtUsd(filters.minDepth) : '$0'}</span>
                 </div>
+                <span className="cc-fhelp">Quanti soldi ci sono già sul book al miglior prezzo. Un libro sottile significa che il premio è alto solo perché non c&rsquo;è nessuno.</span>
                 <input className="cc-frange" type="range" min={0} max={Math.max(rg.depthMax, 1)} step={Math.max(1, Math.round(rg.depthMax / 100))}
                   value={Math.min(filters.minDepth, Math.max(rg.depthMax, 1))}
-                  onChange={(e) => set({ minDepth: Number(e.target.value) })} aria-label="minimum book depth at touch" />
+                  onChange={(e) => set({ minDepth: Number(e.target.value) })} aria-label="il libro deve reggere almeno" />
               </div>
 
-              {/* MAX SPREAD (server filter). At the range max ⇒ "any" (no constraint). */}
+              {/* DISTANZA MASSIMA FRA DOMANDA E OFFERTA — max spread (server filter). Max ⇒ "qualsiasi". */}
               <div className="cc-fgroup cc-slider">
                 <div className="cc-slider-head">
-                  <span className="cc-flabel">Max spread (¢)</span>
-                  <span className="cc-slider-val">{spreadActive ? `≤ ${filters.maxSpreadCents}¢` : 'any'}</span>
+                  <span className="cc-flabel">Distanza massima fra domanda e offerta</span>
+                  <span className="cc-slider-val">{spreadActive ? `≤ ${filters.maxSpreadCents}¢` : 'qualsiasi'}</span>
                 </div>
+                <span className="cc-fhelp">Più è larga, più il prezzo si muove sotto i tuoi ordini prima che qualcuno li prenda.</span>
                 <input className="cc-frange" type="range" min={0} max={Math.max(rg.spreadMaxCents, 1)} step={1}
                   value={filters.maxSpreadCents < 0 ? Math.max(rg.spreadMaxCents, 1) : Math.min(filters.maxSpreadCents, Math.max(rg.spreadMaxCents, 1))}
                   onChange={(e) => {
                     const v = Number(e.target.value);
                     set({ maxSpreadCents: v >= rg.spreadMaxCents ? SENTINEL_SPREAD : v });
                   }}
-                  aria-label="maximum spread in cents" />
+                  aria-label="distanza massima fra domanda e offerta" />
               </div>
 
-              {/* COMPETITION LEVEL — how much genuine competing depth is resting (server filter).
+              {/* QUANTI ALTRI SE LO DIVIDONO — competition level (server filter).
                   Disabled when no row carries a measured competition/saturation value. */}
               <div className={`cc-fgroup cc-slider ${rg.hasCompetition ? '' : 'is-disabled'}`}>
                 <div className="cc-slider-head">
-                  <span className="cc-flabel">Max competition level</span>
+                  <span className="cc-flabel">Quanti altri se lo dividono</span>
                   <span className="cc-slider-val">
-                    {rg.hasCompetition ? (filters.maxCompetitionPct >= 100 ? 'any' : `≤ ${filters.maxCompetitionPct}%`) : 'n/a'}
+                    {rg.hasCompetition ? (filters.maxCompetitionPct >= 100 ? 'qualsiasi' : `≤ ${filters.maxCompetitionPct}%`) : 'n/d'}
                   </span>
                 </div>
+                <span className="cc-fhelp">Il premio si spartisce fra tutti quelli che quotano. Più concorrenti, meno tocca a te.</span>
                 <input className="cc-frange" type="range" min={0} max={100} step={5}
                   value={filters.maxCompetitionPct}
                   disabled={!rg.hasCompetition}
-                  onChange={(e) => set({ maxCompetitionPct: Number(e.target.value) })} aria-label="maximum competition level" />
-                {!rg.hasCompetition && <span className="cc-slider-val rw-dim">competition not measured from this feed</span>}
+                  onChange={(e) => set({ maxCompetitionPct: Number(e.target.value) })} aria-label="quanti altri se lo dividono" />
+                {!rg.hasCompetition && <span className="cc-slider-val rw-dim">concorrenza non misurata da questo feed</span>}
               </div>
 
-              {/* CHECKBOXES */}
+              {/* NASCONDI I LIBRI TROPPO SOTTILI + sort (server filter + presentation) */}
               <div className="cc-checks">
                 <label className={`cc-check ${filters.hideThin ? 'is-on' : ''}`}>
                   <input type="checkbox" checked={filters.hideThin}
                     onChange={(e) => set({ hideThin: e.target.checked })} />
-                  Hide thin books
+                  Nascondi i libri troppo sottili
                 </label>
+                <span className="cc-fhelp cc-fhelp-check">
+                  Toglie i mercati dove sotto la soglia di profondità{depthFloor != null ? ` (${fmtUsd(depthFloor)})` : ''} il rendimento annualizzato diventa una cifra irreale.
+                </span>
                 <label className={`cc-check ${filters.sortByPool ? 'is-on' : ''}`}>
                   <input type="checkbox" checked={filters.sortByPool}
                     onChange={(e) => set({ sortByPool: e.target.checked })} />
-                  Sort by reward pool
+                  Ordina per montepremi
                 </label>
               </div>
             </div>
