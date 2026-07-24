@@ -34,13 +34,13 @@ function filterRows(f: Record<string, unknown>): [string, string][] {
     return v == null || v === '' ? null : String(v);
   };
   return [
-    ['Venue', g('venue') || 'all'],
-    ['Category', g('category') || 'any'],
-    ['Min pool', g('minPool') ? `$${g('minPool')}/day` : 'any'],
-    ['Min depth', g('minDepth') ? `$${g('minDepth')}` : 'any'],
-    ['Max spread', g('maxSpread') ? `${g('maxSpread')}¢` : 'any'],
-    ['Max competition', g('maxCompetition') ? `${g('maxCompetition')}%` : 'any'],
-    ['Hide thin', g('hideThin') === '1' || g('hideThin') === 'true' ? 'yes' : 'no'],
+    ['Piattaforma', g('venue') || 'tutte'],
+    ['Categoria', g('category') || 'qualsiasi'],
+    ['Paga almeno', g('minPool') ? `$${g('minPool')}/giorno` : 'qualsiasi'],
+    ['Libro almeno', g('minDepth') ? `$${g('minDepth')}` : 'qualsiasi'],
+    ['Spread max', g('maxSpread') ? `${g('maxSpread')}¢` : 'qualsiasi'],
+    ['Concorrenza max', g('maxCompetition') ? `${g('maxCompetition')}%` : 'qualsiasi'],
+    ['Nascondi sottili', g('hideThin') === '1' || g('hideThin') === 'true' ? 'sì' : 'no'],
   ];
 }
 
@@ -63,10 +63,10 @@ function normQs(obj: Record<string, unknown>): string {
 function Disclosures({ kalshi }: { kalshi: boolean }) {
   return (
     <div className="bu-disc">
-      <p>Reward figures shown are <strong>gross accrual</strong> — the program&rsquo;s stated pot rate, not net profit.</p>
-      <p><strong>Inventory P&amp;L when your orders fill is not included</strong> in any figure on this page.</p>
+      <p>Le cifre sono <strong>maturato lordo</strong> — il tasso del montepremi dichiarato dal programma, non il profitto netto.</p>
+      <p><strong>Il P&amp;L di inventario quando i tuoi ordini vengono eseguiti non è incluso</strong> in nessuna cifra di questa pagina.</p>
       {kalshi && (
-        <p>A selected market is on <strong>Kalshi</strong>: its incentive programme is restricted to U.S. members, so those rewards may not be collectable by this operator.</p>
+        <p>Un mercato selezionato è su <strong>Kalshi</strong>: il programma di incentivi è riservato ai membri residenti negli Stati Uniti, quindi quei premi potrebbero non essere riscuotibili da questo operatore.</p>
       )}
     </div>
   );
@@ -94,8 +94,8 @@ export default function MakerUniverseControl({ apiQuery }: { apiQuery: string })
     try {
       const r = await fetch(`/api/maker/universe?preview=1&${apiQuery}${apiQuery ? '&' : ''}maxMarkets=${maxHint}`, { cache: 'no-store' });
       if (r.ok) { setPreview(await r.json()); setOpen(true); }
-      else setMsg({ ok: false, text: 'Could not compute the preview.' });
-    } catch { setMsg({ ok: false, text: 'Could not compute the preview.' }); }
+      else setMsg({ ok: false, text: 'Impossibile calcolare l’anteprima.' });
+    } catch { setMsg({ ok: false, text: 'Impossibile calcolare l’anteprima.' }); }
   }, [apiQuery, maxHint]);
 
   const confirm = useCallback(async () => {
@@ -105,10 +105,10 @@ export default function MakerUniverseControl({ apiQuery }: { apiQuery: string })
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ filters: paramsToObj(apiQuery), venues: ['polymarket'], maxMarkets: maxHint }),
       });
-      if (r.status === 401) setMsg({ ok: false, text: 'Admin sign-in required to change the bot universe — /settings/login.' });
-      else if (!r.ok) { const d = await r.json().catch(() => ({})); setMsg({ ok: false, text: d.error || 'Could not set the bot universe.' }); }
-      else { setMsg({ ok: true, text: 'Bot universe updated.' }); setOpen(false); await loadActive(); }
-    } catch { setMsg({ ok: false, text: 'Could not set the bot universe.' }); }
+      if (r.status === 401) setMsg({ ok: false, text: 'Serve l’accesso admin per cambiare l’universo del bot — /settings/login.' });
+      else if (!r.ok) { const d = await r.json().catch(() => ({})); setMsg({ ok: false, text: d.error || 'Impossibile impostare l’universo del bot.' }); }
+      else { setMsg({ ok: true, text: 'Universo del bot aggiornato.' }); setOpen(false); await loadActive(); }
+    } catch { setMsg({ ok: false, text: 'Impossibile impostare l’universo del bot.' }); }
     finally { setBusy(false); }
   }, [apiQuery, maxHint, loadActive]);
 
@@ -156,22 +156,22 @@ export default function MakerUniverseControl({ apiQuery }: { apiQuery: string })
 
       {/* ── ALWAYS-VISIBLE ACTIVE UNIVERSE ── */}
       <div className="bu-head">
-        <span className="bu-title">Bot universe · what agent35 quotes</span>
-        <button className="bu-btn" onClick={openPanel} aria-label="Set as bot universe">Set as bot universe</button>
+        <span className="bu-title">Universo del bot · cosa quota agent35</span>
+        <button className="bu-btn" onClick={openPanel} aria-label="Imposta come universo del bot">Imposta come universo del bot</button>
       </div>
       <div className="bu-body">
         {!active ? (
-          <div className="bu-sub">Loading current bot universe…</div>
+          <div className="bu-sub">Carico l’universo attuale del bot…</div>
         ) : (
           <>
             <div className="bu-count">
-              {ar ? `${ar.marketIds.length} market${ar.marketIds.length === 1 ? '' : 's'}` : '—'}
-              {ar?.truncated ? <span className="bu-sub"> · top {ar.maxMarkets} of {ar.matchedBeforeCap} by daily pot</span> : null}
+              {ar ? `${ar.marketIds.length} mercat${ar.marketIds.length === 1 ? 'o' : 'i'}` : '—'}
+              {ar?.truncated ? <span className="bu-sub"> · primi {ar.maxMarkets} di {ar.matchedBeforeCap} per montepremi</span> : null}
             </div>
             <div className="bu-sub" style={{ marginBottom: 8 }}>
               {active.selection.isDefault
-                ? 'Default (never set): Polymarket only, no filter constraints, cap 5.'
-                : `Set ${active.selection.updatedAt ? new Date(active.selection.updatedAt).toLocaleString() : ''}`}
+                ? 'Predefinito (mai impostato): solo Polymarket, nessun vincolo, massimo 5.'
+                : `Impostato ${active.selection.updatedAt ? new Date(active.selection.updatedAt).toLocaleString() : ''}`}
             </div>
             <div className="bu-grid">
               {filterRows(active.selection.filters).map(([k, v]) => (
@@ -179,7 +179,7 @@ export default function MakerUniverseControl({ apiQuery }: { apiQuery: string })
               ))}
             </div>
             {differs && (
-              <div className="bu-diff">Your browse filters differ from the bot&rsquo;s active universe. Browsing does not change what the bot quotes — use &ldquo;Set as bot universe&rdquo; to promote them.</div>
+              <div className="bu-diff">I tuoi filtri di navigazione sono diversi dall&rsquo;universo attivo del bot. Navigare non cambia cosa quota il bot — usa &laquo;Imposta come universo del bot&raquo; per promuoverli.</div>
             )}
             <Disclosures kalshi={!!ar?.kalshiSelected} />
           </>
@@ -188,35 +188,35 @@ export default function MakerUniverseControl({ apiQuery }: { apiQuery: string })
         {/* ── CONFIRMATION PANEL ── */}
         {open && preview && (
           <div className="bu-panel">
-            <h4>Set the bot universe to these filters?</h4>
+            <h4>Impostare l&rsquo;universo del bot su questi filtri?</h4>
             <div className="bu-grid">
               {filterRows(preview.selection.filters).map(([k, v]) => (
                 <div className="bu-kv" key={k}><span className="bu-k">{k}</span><span className="bu-v">{v}</span></div>
               ))}
             </div>
             <div className="bu-count" style={{ marginTop: 10 }}>
-              {pr ? `${pr.marketIds.length} market${pr.marketIds.length === 1 ? '' : 's'} will be quoted` : '—'}
-              {pr?.truncated ? <span className="bu-sub"> · capped at {pr.maxMarkets} of {pr.matchedBeforeCap} by daily pot</span> : null}
+              {pr ? `${pr.marketIds.length} mercat${pr.marketIds.length === 1 ? 'o verrà quotato' : 'i verranno quotati'}` : '—'}
+              {pr?.truncated ? <span className="bu-sub"> · limitato a {pr.maxMarkets} di {pr.matchedBeforeCap} per montepremi</span> : null}
             </div>
             {pr && pr.markets.length > 0 && (
               <ul className="bu-names">
                 {pr.markets.map((m) => (
                   <li key={m.marketId}>
                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.title}</span>
-                    <span className="p">{m.dailyPool != null ? `$${m.dailyPool}/day` : '—'}</span>
+                    <span className="p">{m.dailyPool != null ? `$${m.dailyPool}/giorno` : '—'}</span>
                   </li>
                 ))}
               </ul>
             )}
             <div className="bu-replaced">
-              Replaces: {active?.selection.isDefault
-                ? 'the default (Polymarket only, no constraints, cap 5).'
-                : `the selection set ${active?.selection.updatedAt ? new Date(active.selection.updatedAt).toLocaleString() : ''} (${filterRows(active?.selection.filters || {}).map(([k, v]) => `${k} ${v}`).join(' · ')}).`}
+              Sostituisce: {active?.selection.isDefault
+                ? 'il predefinito (solo Polymarket, nessun vincolo, massimo 5).'
+                : `la selezione impostata ${active?.selection.updatedAt ? new Date(active.selection.updatedAt).toLocaleString() : ''} (${filterRows(active?.selection.filters || {}).map(([k, v]) => `${k} ${v}`).join(' · ')}).`}
             </div>
             <Disclosures kalshi={!!pr?.kalshiSelected} />
             <div className="bu-actions">
-              <button className="bu-confirm" disabled={busy} onClick={confirm}>{busy ? 'Setting…' : 'Confirm — set bot universe'}</button>
-              <button className="bu-cancel" disabled={busy} onClick={() => { setOpen(false); setMsg(null); }}>Cancel</button>
+              <button className="bu-confirm" disabled={busy} onClick={confirm}>{busy ? 'Imposto…' : 'Conferma — imposta universo'}</button>
+              <button className="bu-cancel" disabled={busy} onClick={() => { setOpen(false); setMsg(null); }}>Annulla</button>
             </div>
           </div>
         )}

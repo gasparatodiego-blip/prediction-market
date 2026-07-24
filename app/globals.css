@@ -581,8 +581,37 @@ h1, h2, h3 {
 .cc-fchip.is-on { color: var(--cc-green); border-color: rgba(47,226,154,.45); background: rgba(47,226,154,.08); }
 .cc-slider { display: flex; flex-direction: column; gap: 4px; }
 .cc-slider-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-.cc-slider-val { font-size: 10.5px; color: var(--cc-text); font-variant-numeric: tabular-nums; }
-.cc-frange { width: 100%; accent-color: var(--cc-spot); }
+.cc-slider-val { font-size: 12px; color: var(--cc-text); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* ── FILTER CARD ── one card; each control on its own row, hairline dividers between them. */
+.cc-fcard { margin: 0 0 12px; border: 1px solid var(--cc-border); border-radius: 12px; background: var(--cc-panel); overflow: hidden; }
+.cc-fctl { display: flex; flex-direction: column; gap: 7px; min-width: 0; padding: 14px; border-bottom: 1px solid var(--cc-border); }
+.cc-fctl:last-child { border-bottom: none; }
+.cc-fctl.is-disabled { opacity: .5; }
+/* slider row: track fills, the formatted value is pinned to the RIGHT and never wraps mid-figure. */
+.cc-slider-body { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.cc-slider-body .cc-frange { flex: 1 1 auto; min-width: 0; margin: 0; }
+.cc-slider-body .cc-slider-val { flex: 0 0 auto; text-align: right; min-width: 7ch; }
+
+/* range input: 44px touch target, ~24px thumb, thin track. */
+.cc-frange { width: 100%; min-height: 44px; background: transparent; cursor: pointer; -webkit-appearance: none; appearance: none; }
+.cc-frange:focus-visible { outline: 2px solid var(--cc-green); outline-offset: 4px; }
+.cc-frange::-webkit-slider-runnable-track { height: 4px; border-radius: 999px; background: var(--cc-border); }
+.cc-frange::-moz-range-track { height: 4px; border-radius: 999px; background: var(--cc-border); }
+.cc-frange::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 24px; height: 24px; margin-top: -10px; border-radius: 999px; background: var(--cc-green); border: 3px solid var(--cc-panel); box-shadow: 0 0 0 1px var(--cc-border); cursor: pointer; }
+.cc-frange::-moz-range-thumb { width: 24px; height: 24px; border-radius: 999px; background: var(--cc-green); border: 3px solid var(--cc-panel); box-shadow: 0 0 0 1px var(--cc-border); cursor: pointer; }
+.cc-frange:disabled { opacity: .5; cursor: not-allowed; }
+
+/* segmented control (venue, thin toggle): connected buttons, ≥44px tall touch targets. */
+.cc-seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--cc-border); border-radius: 10px; overflow: hidden; align-self: flex-start; }
+.cc-seg-btn { min-height: 44px; padding: 0 16px; font-size: 12.5px; font-weight: 600; font-family: inherit; letter-spacing: .01em;
+  color: var(--cc-muted); background: transparent; border: none; border-left: 1px solid var(--cc-border); cursor: pointer; touch-action: manipulation;
+  transition: color .15s, background .15s; }
+.cc-seg-btn:first-child { border-left: none; }
+.cc-seg-btn:hover { color: var(--cc-text); }
+.cc-seg-btn.is-on { color: var(--cc-green); background: rgba(47,226,154,.10); }
+.cc-seg-btn:focus-visible { outline: 2px solid var(--cc-green); outline-offset: -2px; }
+
 .cc-checks { display: flex; flex-wrap: wrap; gap: 8px 16px; }
 .cc-check { display: inline-flex; align-items: center; gap: 6px; font-size: 10.5px; color: var(--cc-muted); cursor: pointer; }
 .cc-check input { accent-color: var(--cc-green); cursor: pointer; }
@@ -751,9 +780,19 @@ h1, h2, h3 {
 .rewards .cc-row { min-height: 44px; }
 .rewards .cc-row-l, .rewards .cc-row-title, .rewards .cc-row-meta { min-width: 0; }
 .rewards .cc-row-net { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.rewards .cc-shell, .rewards .cc-fcard, .rewards .cc-fctl { min-width: 0; }
 @media (max-width: 760px) {
   .rewards .cc-row { flex-wrap: nowrap; }
   .rewards .cc-row-r { flex: 0 0 auto; }
+  /* narrow: value drops under the track so neither the track nor the figure is crushed */
+  .rewards .cc-slider-body { flex-wrap: wrap; }
+  .rewards .cc-slider-body .cc-slider-val { width: 100%; text-align: left; }
+  .rewards .cc-seg { width: 100%; }
+  .rewards .cc-seg-btn { flex: 1 1 auto; }
+}
+/* prefers-reduced-motion: no transitions on the filter controls when value changes */
+@media (prefers-reduced-motion: reduce) {
+  .rewards .cc-frange, .rewards .cc-seg-btn, .rewards .cc-fchip, .rewards .cc-sortbtn, .rewards .cc-row { transition: none; }
 }
 
 /* Calculator embedded inside a list row: drop the full-viewport wrapper so it sits

@@ -416,15 +416,18 @@ export default function RewardsUnified() {
 
         {!err && data && total > 0 && (
           <>
-            <div className="cc-filterbar">
-              {/* SU QUALE PIATTAFORMA — single select: all / Polymarket / Kalshi (server filter) */}
-              <div className="cc-fgroup">
+            {/* ── FILTER CARD ── one card, six controls, each on its own hairline-divided row.
+                Sliders show the current value to the RIGHT of the track; venue and the thin toggle
+                are segmented controls. */}
+            <div className="cc-fcard">
+              {/* SU QUALE PIATTAFORMA — segmented (server filter) */}
+              <div className="cc-fctl">
                 <span className="cc-flabel">Su quale piattaforma</span>
                 <span className="cc-fhelp">Kalshi paga solo i residenti negli Stati Uniti.</span>
-                <div className="cc-chips">
+                <div className="cc-seg" role="group" aria-label="su quale piattaforma">
                   {VENUE_CHIPS.map((v) => (
-                    <button key={v} type="button"
-                      className={`cc-fchip ${filters.venue === v ? 'is-on' : ''}`}
+                    <button key={v} type="button" aria-pressed={filters.venue === v}
+                      className={`cc-seg-btn ${filters.venue === v ? 'is-on' : ''}`}
                       onClick={() => set({ venue: v })}>{v === 'all' ? 'tutte' : v}</button>
                   ))}
                 </div>
@@ -435,8 +438,8 @@ export default function RewardsUnified() {
                 )}
               </div>
 
-              {/* CATEGORIA — multi-select (server filter; not one of the six, kept for browsing) */}
-              <div className="cc-fgroup">
+              {/* CATEGORIA — multi-select chips (server filter; kept for browsing) */}
+              <div className="cc-fctl">
                 <span className="cc-flabel">Categoria</span>
                 <span className="cc-fhelp">Restringe l&rsquo;elenco al tema del mercato.</span>
                 <div className="cc-chips">
@@ -450,77 +453,76 @@ export default function RewardsUnified() {
               </div>
 
               {/* DEVE PAGARE ALMENO — min daily pot (server filter) */}
-              <div className="cc-fgroup cc-slider">
-                <div className="cc-slider-head">
-                  <span className="cc-flabel">Deve pagare almeno</span>
+              <div className="cc-fctl">
+                <span className="cc-flabel">Deve pagare almeno</span>
+                <span className="cc-fhelp">Il montepremi giornaliero che la piattaforma mette su quel mercato. Sotto questa cifra non vale la pena esserci.</span>
+                <div className="cc-slider-body">
+                  <input className="cc-frange" type="range" min={0} max={Math.max(rg.poolMax, 1)} step={Math.max(1, Math.round(rg.poolMax / 100))}
+                    value={Math.min(filters.minPool, Math.max(rg.poolMax, 1))}
+                    onChange={(e) => set({ minPool: Number(e.target.value) })} aria-label="deve pagare almeno" />
                   <span className="cc-slider-val">≥ {filters.minPool > 0 ? fmtUsd(filters.minPool) : '$0'}/giorno</span>
                 </div>
-                <span className="cc-fhelp">Il montepremi giornaliero che la piattaforma mette su quel mercato. Sotto questa cifra non vale la pena esserci.</span>
-                <input className="cc-frange" type="range" min={0} max={Math.max(rg.poolMax, 1)} step={Math.max(1, Math.round(rg.poolMax / 100))}
-                  value={Math.min(filters.minPool, Math.max(rg.poolMax, 1))}
-                  onChange={(e) => set({ minPool: Number(e.target.value) })} aria-label="deve pagare almeno" />
               </div>
 
               {/* IL LIBRO DEVE REGGERE ALMENO — min book depth at touch (server filter) */}
-              <div className="cc-fgroup cc-slider">
-                <div className="cc-slider-head">
-                  <span className="cc-flabel">Il libro deve reggere almeno</span>
+              <div className="cc-fctl">
+                <span className="cc-flabel">Il libro deve reggere almeno</span>
+                <span className="cc-fhelp">Quanti soldi ci sono già sul book al miglior prezzo. Un libro sottile significa che il premio è alto solo perché non c&rsquo;è nessuno.</span>
+                <div className="cc-slider-body">
+                  <input className="cc-frange" type="range" min={0} max={Math.max(rg.depthMax, 1)} step={Math.max(1, Math.round(rg.depthMax / 100))}
+                    value={Math.min(filters.minDepth, Math.max(rg.depthMax, 1))}
+                    onChange={(e) => set({ minDepth: Number(e.target.value) })} aria-label="il libro deve reggere almeno" />
                   <span className="cc-slider-val">≥ {filters.minDepth > 0 ? fmtUsd(filters.minDepth) : '$0'}</span>
                 </div>
-                <span className="cc-fhelp">Quanti soldi ci sono già sul book al miglior prezzo. Un libro sottile significa che il premio è alto solo perché non c&rsquo;è nessuno.</span>
-                <input className="cc-frange" type="range" min={0} max={Math.max(rg.depthMax, 1)} step={Math.max(1, Math.round(rg.depthMax / 100))}
-                  value={Math.min(filters.minDepth, Math.max(rg.depthMax, 1))}
-                  onChange={(e) => set({ minDepth: Number(e.target.value) })} aria-label="il libro deve reggere almeno" />
               </div>
 
               {/* DISTANZA MASSIMA FRA DOMANDA E OFFERTA — max spread (server filter). Max ⇒ "qualsiasi". */}
-              <div className="cc-fgroup cc-slider">
-                <div className="cc-slider-head">
-                  <span className="cc-flabel">Distanza massima fra domanda e offerta</span>
+              <div className="cc-fctl">
+                <span className="cc-flabel">Distanza massima fra domanda e offerta</span>
+                <span className="cc-fhelp">Più è larga, più il prezzo si muove sotto i tuoi ordini prima che qualcuno li prenda.</span>
+                <div className="cc-slider-body">
+                  <input className="cc-frange" type="range" min={0} max={Math.max(rg.spreadMaxCents, 1)} step={1}
+                    value={filters.maxSpreadCents < 0 ? Math.max(rg.spreadMaxCents, 1) : Math.min(filters.maxSpreadCents, Math.max(rg.spreadMaxCents, 1))}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      set({ maxSpreadCents: v >= rg.spreadMaxCents ? SENTINEL_SPREAD : v });
+                    }}
+                    aria-label="distanza massima fra domanda e offerta" />
                   <span className="cc-slider-val">{spreadActive ? `≤ ${filters.maxSpreadCents}¢` : 'qualsiasi'}</span>
                 </div>
-                <span className="cc-fhelp">Più è larga, più il prezzo si muove sotto i tuoi ordini prima che qualcuno li prenda.</span>
-                <input className="cc-frange" type="range" min={0} max={Math.max(rg.spreadMaxCents, 1)} step={1}
-                  value={filters.maxSpreadCents < 0 ? Math.max(rg.spreadMaxCents, 1) : Math.min(filters.maxSpreadCents, Math.max(rg.spreadMaxCents, 1))}
-                  onChange={(e) => {
-                    const v = Number(e.target.value);
-                    set({ maxSpreadCents: v >= rg.spreadMaxCents ? SENTINEL_SPREAD : v });
-                  }}
-                  aria-label="distanza massima fra domanda e offerta" />
               </div>
 
               {/* QUANTI ALTRI SE LO DIVIDONO — competition level (server filter).
                   Disabled when no row carries a measured competition/saturation value. */}
-              <div className={`cc-fgroup cc-slider ${rg.hasCompetition ? '' : 'is-disabled'}`}>
-                <div className="cc-slider-head">
-                  <span className="cc-flabel">Quanti altri se lo dividono</span>
+              <div className={`cc-fctl ${rg.hasCompetition ? '' : 'is-disabled'}`}>
+                <span className="cc-flabel">Quanti altri se lo dividono</span>
+                <span className="cc-fhelp">Il premio si spartisce fra tutti quelli che quotano. Più concorrenti, meno tocca a te.</span>
+                <div className="cc-slider-body">
+                  <input className="cc-frange" type="range" min={0} max={100} step={5}
+                    value={filters.maxCompetitionPct}
+                    disabled={!rg.hasCompetition}
+                    onChange={(e) => set({ maxCompetitionPct: Number(e.target.value) })} aria-label="quanti altri se lo dividono" />
                   <span className="cc-slider-val">
                     {rg.hasCompetition ? (filters.maxCompetitionPct >= 100 ? 'qualsiasi' : `≤ ${filters.maxCompetitionPct}%`) : 'n/d'}
                   </span>
                 </div>
-                <span className="cc-fhelp">Il premio si spartisce fra tutti quelli che quotano. Più concorrenti, meno tocca a te.</span>
-                <input className="cc-frange" type="range" min={0} max={100} step={5}
-                  value={filters.maxCompetitionPct}
-                  disabled={!rg.hasCompetition}
-                  onChange={(e) => set({ maxCompetitionPct: Number(e.target.value) })} aria-label="quanti altri se lo dividono" />
-                {!rg.hasCompetition && <span className="cc-slider-val rw-dim">concorrenza non misurata da questo feed</span>}
+                {!rg.hasCompetition && <span className="cc-fhelp rw-dim">concorrenza non misurata da questo feed</span>}
               </div>
 
-              {/* NASCONDI I LIBRI TROPPO SOTTILI + sort (server filter + presentation) */}
-              <div className="cc-checks">
-                <label className={`cc-check ${filters.hideThin ? 'is-on' : ''}`}>
-                  <input type="checkbox" checked={filters.hideThin}
-                    onChange={(e) => set({ hideThin: e.target.checked })} />
-                  Nascondi i libri troppo sottili
-                </label>
-                <span className="cc-fhelp cc-fhelp-check">
+              {/* NASCONDI I LIBRI TROPPO SOTTILI — segmented (server filter) */}
+              <div className="cc-fctl">
+                <span className="cc-flabel">Nascondi i libri troppo sottili</span>
+                <span className="cc-fhelp">
                   Toglie i mercati dove sotto la soglia di profondità{depthFloor != null ? ` (${fmtUsd(depthFloor)})` : ''} il rendimento annualizzato diventa una cifra irreale.
                 </span>
-                <label className={`cc-check ${filters.sortByPool ? 'is-on' : ''}`}>
-                  <input type="checkbox" checked={filters.sortByPool}
-                    onChange={(e) => set({ sortByPool: e.target.checked })} />
-                  Ordina per montepremi
-                </label>
+                <div className="cc-seg" role="group" aria-label="nascondi i libri troppo sottili">
+                  <button type="button" aria-pressed={!filters.hideThin}
+                    className={`cc-seg-btn ${!filters.hideThin ? 'is-on' : ''}`}
+                    onClick={() => set({ hideThin: false })}>Mostra tutti</button>
+                  <button type="button" aria-pressed={filters.hideThin}
+                    className={`cc-seg-btn ${filters.hideThin ? 'is-on' : ''}`}
+                    onClick={() => set({ hideThin: true })}>Nascondi sottili</button>
+                </div>
               </div>
             </div>
 
@@ -530,24 +532,23 @@ export default function RewardsUnified() {
                   ? 'montepremi (alto→basso)'
                   : `$/giorno (${filters.sortDir === 'asc' ? 'basso→alto' : 'alto→basso'})`}
               </span>
-              {/* $/day sort direction — presentational only; reuses the engine's netUsdPerDay.
-                  Tapping an arrow selects $/day sort in that direction (overrides reward-pool
-                  sort); withheld/"—" rows stay pinned last in both directions (see sortRows). */}
-              <span className="cc-sortdir" role="group" aria-label="sort by net $/day direction">
-                <button type="button" title="Sort $/day ascending (low → high)" aria-label="sort $/day ascending"
+              {/* Sort — presentation only; reuses the engine's netUsdPerDay / poolDayUsd. Withheld/"—"
+                  rows stay pinned last in every mode (see sortRows). */}
+              <span className="cc-sortdir" role="group" aria-label="ordinamento">
+                <button type="button" title="$/giorno crescente (basso → alto)" aria-label="ordina per $/giorno crescente"
                   className={`cc-sortbtn ${!filters.sortByPool && filters.sortDir === 'asc' ? 'is-on' : ''}`}
                   aria-pressed={!filters.sortByPool && filters.sortDir === 'asc'}
-                  onClick={() => set({ sortByPool: false, sortDir: 'asc' })}>▲</button>
-                <button type="button" title="Sort $/day descending (high → low)" aria-label="sort $/day descending"
+                  onClick={() => set({ sortByPool: false, sortDir: 'asc' })}>$/g ▲</button>
+                <button type="button" title="$/giorno decrescente (alto → basso)" aria-label="ordina per $/giorno decrescente"
                   className={`cc-sortbtn ${!filters.sortByPool && filters.sortDir === 'desc' ? 'is-on' : ''}`}
                   aria-pressed={!filters.sortByPool && filters.sortDir === 'desc'}
-                  onClick={() => set({ sortByPool: false, sortDir: 'desc' })}>▼</button>
+                  onClick={() => set({ sortByPool: false, sortDir: 'desc' })}>$/g ▼</button>
+                <button type="button" title="Ordina per montepremi (alto → basso)" aria-label="ordina per montepremi"
+                  className={`cc-sortbtn ${filters.sortByPool ? 'is-on' : ''}`}
+                  aria-pressed={filters.sortByPool}
+                  onClick={() => set({ sortByPool: true })}>montepremi</button>
               </span>
             </div>
-
-            {/* Bot universe: the always-visible active universe + the deliberate "Set as bot universe"
-                promotion (gated write). Browsing never auto-syncs to the bot. */}
-            <MakerUniverseControl apiQuery={apiQuery} />
 
             {visible.length === 0 ? (
               <EmptyState prefix="cc" title="Nessun mercato passa questi filtri."
@@ -687,7 +688,7 @@ export default function RewardsUnified() {
                             className="rw-open-book"
                             onClick={(e) => e.stopPropagation()}
                           >
-                            Open order book →
+                            Apri il book →
                           </Link>
                         </div>
                       )}
@@ -696,6 +697,11 @@ export default function RewardsUnified() {
                 })}
               </div>
             )}
+
+            {/* Bot universe: the always-visible active universe + the deliberate "Set as bot universe"
+                promotion (gated write). Below the results, per the surface order. Browsing never
+                auto-syncs to the bot. */}
+            <MakerUniverseControl apiQuery={apiQuery} />
 
             <p className="cc-note">
               The headline is a MODELLED share ("stima"): the reward pool times a ${ASSUMED_ORDER_SIZE_USD.toLocaleString()} maker's
