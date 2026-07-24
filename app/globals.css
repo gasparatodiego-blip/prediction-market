@@ -797,6 +797,98 @@ h1, h2, h3 {
   .rewards .cc-frange, .rewards .cc-seg-btn, .rewards .cc-fchip, .rewards .cc-sortbtn, .rewards .cc-row { transition: none; }
 }
 
+/* ══ PRICE-FIRST rewards row (Part A) — mobile-first (360–430px), then wider ══════════════════════
+   Theme-aware: every colour is a --cc-* / --ds-* token (day + night both resolve). The price block
+   never wraps or truncates (min-width:0 children, nowrap numerics, clamp() sizes); inputs ≥44px tall. */
+
+/* La tua posizione — the two persisted controls */
+.rewards .rw-pos {
+  display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 12px;
+  padding: 12px; border: 1px solid var(--cc-border); border-radius: 12px; background: var(--cc-panel);
+}
+.rewards .rw-pos-ctl { display: flex; flex-direction: column; gap: 5px; flex: 1 1 160px; min-width: 0; }
+.rewards .rw-pos-label { font-size: 11px; font-weight: 700; color: var(--cc-text); }
+.rewards .rw-pos-hint { font-size: 10px; font-weight: 400; color: var(--cc-muted); }
+.rewards .rw-pos-inputwrap {
+  display: flex; align-items: center; gap: 4px; min-width: 0;
+  border: 1px solid var(--cc-border); border-radius: 10px; background: var(--cc-bg); padding: 0 10px;
+}
+.rewards .rw-pos-inputwrap:focus-within { border-color: var(--cc-green); }
+.rewards .rw-pos-affix { color: var(--cc-muted); font-size: 15px; font-variant-numeric: tabular-nums; flex: none; }
+.rewards .rw-pos-affix-r { order: 2; }
+.rewards .rw-pos-input {
+  flex: 1 1 auto; min-width: 0; min-height: 44px; border: none; background: transparent; outline: none;
+  color: var(--cc-text); font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.rewards .rw-pos-input::placeholder { color: var(--cc-muted); font-weight: 400; }
+.rewards .rw-pos-sub { font-size: 10px; color: var(--cc-muted); line-height: 1.35; }
+.rewards .rw-mid-lead { color: var(--cc-text); font-weight: 700; }
+
+/* Price-first expansion */
+.rewards .rw-pf { display: flex; flex-direction: column; gap: 12px; padding: 10px 6px 4px; }
+.rewards .rw-pf-locked { font-size: 13px; color: var(--cc-muted); }
+
+/* Price block — three cells, MID largest */
+.rewards .rw-pf-prices { display: flex; align-items: stretch; gap: 6px; }
+.rewards .rw-pf-cell {
+  flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding: 10px 4px; border: 1px solid var(--cc-border); border-radius: 10px; background: var(--cc-bg); text-align: center;
+}
+.rewards .rw-pf-cell.rw-pf-mid { border-color: rgba(47,226,154,.35); background: rgba(47,226,154,.06); flex: 1.25 1 0; }
+.rewards .rw-pf-k { font-size: 9.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--cc-muted); font-weight: 600; white-space: nowrap; }
+.rewards .rw-pf-v { font-size: clamp(17px, 6vw, 22px); font-weight: 800; color: var(--cc-text); font-variant-numeric: tabular-nums; white-space: nowrap; line-height: 1.05; }
+.rewards .rw-pf-vbig { font-size: clamp(24px, 9vw, 34px); color: var(--cc-green); }
+.rewards .rw-pf-ident { font-size: 11px; color: var(--cc-muted); text-align: center; line-height: 1.4; }
+.rewards .rw-pf-ident strong { color: var(--cc-text); }
+.rewards .rw-pf-ticknote { font-size: 10.5px; color: var(--cc-amber); line-height: 1.4; }
+
+/* Reward-band rail */
+.rewards .rw-rail-wrap { display: flex; flex-direction: column; gap: 6px; }
+.rewards .rw-rail { position: relative; height: 30px; border-radius: 8px; background: var(--cc-bg); border: 1px solid var(--cc-border); overflow: hidden; }
+.rewards .rw-rail-band { position: absolute; top: 0; bottom: 0; background: rgba(47,226,154,.14); border-left: 1px dashed rgba(47,226,154,.4); border-right: 1px dashed rgba(47,226,154,.4); }
+.rewards .rw-rail-mid { position: absolute; top: 3px; bottom: 3px; width: 2px; margin-left: -1px; background: var(--cc-green); border-radius: 2px; }
+.rewards .rw-rail-order { position: absolute; top: 4px; bottom: 4px; width: 3px; margin-left: -1.5px; background: var(--cc-spot); border-radius: 2px; box-shadow: 0 0 0 1px var(--cc-panel); }
+.rewards .rw-rail-order.is-out { background: var(--ds-danger); }
+.rewards .rw-rail-touch { position: absolute; top: 8px; bottom: 8px; width: 2px; margin-left: -1px; background: var(--cc-muted); opacity: .55; border-radius: 2px; }
+.rewards .rw-rail-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 10px; color: var(--cc-muted); }
+.rewards .rw-rail-lg { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.rewards .rw-rail-lg i { width: 10px; height: 4px; border-radius: 2px; display: inline-block; }
+.rewards .rw-lg-band { background: rgba(47,226,154,.35); }
+.rewards .rw-lg-order { background: var(--cc-spot); }
+.rewards .rw-lg-touch { background: var(--cc-muted); opacity: .55; }
+
+/* Band / min-size warning (from the shared validator) */
+.rewards .rw-pf-warn {
+  font-size: 11.5px; line-height: 1.45; color: var(--cc-amber);
+  padding: 8px 10px; border: 1px solid rgba(240,180,60,.4); border-radius: 10px; background: rgba(240,180,60,.07);
+}
+.rewards .rw-pf-warn strong { color: var(--cc-text); }
+
+/* Numbers below the block */
+.rewards .rw-pf-nums { display: flex; flex-wrap: wrap; gap: 8px; }
+.rewards .rw-pf-num {
+  flex: 1 1 120px; min-width: 0; display: flex; flex-direction: column; gap: 3px;
+  padding: 8px 10px; border: 1px solid var(--cc-border); border-radius: 10px; background: var(--cc-bg);
+}
+.rewards .rw-pf-nk { font-size: 9.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--cc-muted); font-weight: 600; }
+.rewards .rw-pf-nv { font-size: 16px; font-weight: 700; color: var(--cc-text); font-variant-numeric: tabular-nums; }
+.rewards .rw-pf-primary { color: var(--cc-green); }
+.rewards .rw-impact { font-weight: 700; font-variant-numeric: tabular-nums; }
+.rewards .rw-impact-low  { color: var(--cc-green); }
+.rewards .rw-impact-mid  { color: var(--cc-amber); }
+.rewards .rw-impact-high { color: var(--ds-danger); }
+.rewards .rw-pf-ceil { font-size: 11px; line-height: 1.45; color: var(--cc-muted); }
+.rewards .rw-pf-ceil strong { color: var(--cc-amber); }
+.rewards .rw-pf-net { font-size: 10.5px; line-height: 1.5; color: var(--cc-muted); }
+
+@media (min-width: 640px) {
+  .rewards .rw-pos-ctl { flex: 1 1 220px; }
+  .rewards .rw-pf { padding: 12px 10px 6px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rewards .rw-bar-fill, .rewards .rw-pos-inputwrap { transition: none; }
+}
+
 /* Calculator embedded inside a list row: drop the full-viewport wrapper so it sits
    inline. Identical math; presentation only. */
 .carrydetail.is-embedded { min-height: 0; padding: 0; background: transparent; }

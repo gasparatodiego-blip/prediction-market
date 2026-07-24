@@ -17,6 +17,12 @@ import {
 } from '@/lib/reward-operator-estimate';
 // The SAME two-sided in-band depth the filter and the old yield lib use — shown as context, not headline.
 import { competitorDepthUsd } from '@/lib/reward-depth-floor';
+// PRICE-FIRST row (Part A): posted prices from the scoring mid + offset, and expected gross $/day at the
+// user's size via the published quadratic against the feed's competitorQ. Pure lib, no parallel math.
+import { computePriceRow, type PriceRow } from '@/lib/reward-price-row';
+// The ONE shared venue-rules validator (Part B1–B3) — the UI band warning CALLS this, never reimplements
+// the check. validateQuotePair applies the qMin coupling (a two-sided quote is only as good as its weaker leg).
+import { validateQuotePair, type PairVerdict } from '@/lib/maker/venue-rules';
 // The 2%/day sane-reward gate — the SINGLE implementation (was wired only to the paper book). Surfacing it
 // here makes a thin / over-cap reward row read as a flagged run-rate, never a clean cashable $/day.
 import { REWARD_SANITY_CAP_PCT, isSanePolymarketLevel } from '@/lib/reward-gating';
@@ -51,6 +57,11 @@ interface RewardScore {
   poolDay: number | null;
   refShare: number | null;        // reference maker's live-book pool share = 1 − saturation
   refCapital: number;
+  // Price-first inputs (Part A). All REAL from lib/rewards-normalize; redacted → null on the free tier.
+  mid?: number | null;            // scoring mid = size-cutoff-adjusted mid (the ONE mid all math keys off)
+  maxSpreadCents?: number | null; // full reward band (cents); eligible half-width = this / 2
+  minSize?: number | null;        // min_incentive_size (shares)
+  competitorQ?: number | null;    // REAL Q_min the live book scored (the quadratic denominator)
 }
 interface SideBook { bookDepthAtBand: number | null }
 interface Market {
@@ -75,6 +86,11 @@ interface Market {
   hoursToResolution?: number | null;
   flags?: string[] | null;
   rewardScore?: RewardScore | null;
+  // Price-first inputs (Part A). tickSize is a static market param (public); bestBid/bestAsk are the live
+  // YES-token touch (redacted → null on the free tier). All null when the feed didn't carry them yet.
+  tickSize?: number | null;
+  bestBid?: number | null;
+  bestAsk?: number | null;
 }
 
 // Honest-engine: a settled market (resolution time in the past) can never pay active LP rewards,
@@ -237,6 +253,29 @@ export default function RewardsUnified() {
   const [filters, setFilters] = useState<FilterState>(
     () => parseFiltersFromUrl(searchParams as unknown as URLSearchParams),
   );
+
+  // ── PRICE-FIRST per-user controls (Part A4), persisted to localStorage so they survive refresh.
+  //    "Your size" is the TOTAL deployed across BOTH sides; default EMPTY (while empty, $/day + yield
+  //    render "—" — no default, no placeholder number). "Distance from mid" is the posting offset in
+  //    cents (default 1¢); the posted prices shown are snapped to each market's real tick. ──
+  const [sizeInput, setSizeInput] = useState<string>('');
+  const [distInput, setDistInput] = useState<string>('1');
+  useEffect(() => {
+    try {
+      const s = localStorage.getItem('rw_size'); if (s != null) setSizeInput(s);
+      const d = localStorage.getItem('rw_dist'); if (d != null) setDistInput(d);
+    } catch { /* private mode — controls just start at their defaults */ }
+  }, []);
+  useEffect(() => { try { localStorage.setItem('rw_size', sizeInput); } catch { /* ignore */ } }, [sizeInput]);
+  useEffect(() => { try { localStorage.setItem('rw_dist', distInput); } catch { /* ignore */ } }, [distInput]);
+  const totalSizeUsd = useMemo(() => {
+    const n = Number(sizeInput);
+    return sizeInput.trim() !== '' && Number.isFinite(n) && n > 0 ? n : null;
+  }, [sizeInput]);
+  const offsetCents = useMemo(() => {
+    const n = Number(distInput);
+    return distInput.trim() !== '' && Number.isFinite(n) && n >= 0 ? n : null;
+  }, [distInput]);
 
   // The ONLY inputs that hit the API. Sort is excluded on purpose (client presentation).
   const apiQuery = serverParams(filters, ranges).toString();
@@ -438,6 +477,38 @@ export default function RewardsUnified() {
 
         {!err && data && total > 0 && (
           <>
+            {/* ── LA TUA POSIZIONE · price-first controls (persisted per-user) ── The size drives the
+                expected gross $/day inside each row; the distance drives the posted prices + the band rail.
+                Empty size ⇒ every $/day and yield renders "—" (no default). ── */}
+            <div className="rw-pos" role="group" aria-label="la tua posizione">
+              <div className="rw-pos-ctl">
+                <label className="rw-pos-label" htmlFor="rw-size">
+                  La tua size <span className="rw-pos-hint">totale, entrambi i lati</span>
+                </label>
+                <div className="rw-pos-inputwrap">
+                  <span className="rw-pos-affix">$</span>
+                  <input id="rw-size" className="rw-pos-input" inputMode="decimal" type="number" min={0} step={100}
+                    placeholder="—" value={sizeInput} onChange={(e) => setSizeInput(e.target.value)}
+                    aria-label="la tua size totale in dollari" />
+                </div>
+                <span className="rw-pos-sub">
+                  {totalSizeUsd != null ? `${fmtUsd(totalSizeUsd / 2)} per lato` : 'vuota → $/giorno e resa restano «—»'}
+                </span>
+              </div>
+              <div className="rw-pos-ctl">
+                <label className="rw-pos-label" htmlFor="rw-dist">
+                  Distanza dal punto medio <span className="rw-pos-hint">offset in centesimi</span>
+                </label>
+                <div className="rw-pos-inputwrap">
+                  <input id="rw-dist" className="rw-pos-input" inputMode="decimal" type="number" min={0} step={0.1}
+                    placeholder="—" value={distInput} onChange={(e) => setDistInput(e.target.value)}
+                    aria-label="distanza dal punto medio in centesimi" />
+                  <span className="rw-pos-affix rw-pos-affix-r">¢</span>
+                </div>
+                <span className="rw-pos-sub">i prezzi mostrati sono arrotondati al tick di ogni mercato</span>
+              </div>
+            </div>
+
             {/* ── FILTER CARD ── one card, six controls, each on its own hairline-divided row.
                 Sliders show the current value to the RIGHT of the track; venue and the thin toggle
                 are segmented controls. */}
@@ -620,6 +691,15 @@ export default function RewardsUnified() {
                               small size, middot-separated. Any unavailable value renders "—" (free
                               tier → 🔒 unlock), never 0. */}
                           <span className="cc-row-meta">
+                            {/* PRICE-FIRST lead: the scoring mid (size-cutoff-adjusted) — the price the
+                                whole reward band is centred on. Redacted → 🔒 on the free tier. */}
+                            <span className="cc-meta-item">
+                              <span className="cc-meta-k">prezzo medio</span>{' '}
+                              <Redacted value={fin(m.rewardScore?.mid) ? (m.rewardScore!.mid as number) : null} isPaid={isPaid}>
+                                {(v) => <span className="rw-nowrap rw-mid-lead">{(Number(v) * 100).toFixed(1)}¢</span>}
+                              </Redacted>
+                            </span>
+                            <span className="cc-meta-dot">·</span>
                             <span className="cc-meta-item">
                               <span className="cc-meta-k">montepremi</span>{' '}
                               {/* pot is a PUBLIC teaser (owner freemium split) — real for every tier. */}
@@ -718,6 +798,10 @@ export default function RewardsUnified() {
 
                       {isOpen && (
                         <div className="cc-expand">
+                          {/* PRICE-FIRST block (Part A): scoring mid centre, BUY YES | MID | BUY NO,
+                              complementary-identity line, reward-band rail, expected gross $/day at YOUR
+                              size, own-impact chip, net "—". The band warning CALLS the shared validator. */}
+                          <RewardPriceFirst row={row} isPaid={isPaid} totalSizeUsd={totalSizeUsd} offsetCents={offsetCents} />
                           <RewardYieldBreakdown row={row} isPaid={isPaid} />
                           {/* Into the interactive order-book detail page for THIS exact market.
                               marketId is the raw feed id (Polymarket conditionId / Kalshi ticker) —
@@ -802,6 +886,186 @@ function RewardYieldBreakdown({ row, isPaid }: { row: Row; isPaid: boolean }) {
           </span>
           {row.isTrap && <span className="rw-trap">⚠ trap market</span>}
         </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * PRICE-FIRST expansion (Part A) — the reward row rebuilt around PRICE.
+ *  • three-cell price block BUY YES | MID | BUY NO (MID largest), derived from the SCORING mid + the
+ *    user's offset, tick-snapped; complementary-identity line under it.
+ *  • reward-band rail: mid tick, eligible band (mid ± maxSpread/2), posted bid/ask markers, live touch.
+ *  • expected GROSS $/day at the user's TOTAL size via the published quadratic (poolDay × share) at the
+ *    chosen offset against the feed's competitorQ; own-impact chip; net "—" (adverse selection unmodelled).
+ * Every number is REAL or "—". The band warning CALLS the shared venue-rules validator (never reimplemented).
+ */
+function RewardPriceFirst({ row, isPaid, totalSizeUsd, offsetCents }:
+  { row: Row; isPaid: boolean; totalSizeUsd: number | null; offsetCents: number | null }) {
+  const m = row.m;
+  const pr: PriceRow = computePriceRow({
+    rewardScore: m.rewardScore ?? null,
+    tick: fin(m.tickSize) ? (m.tickSize as number) : null,
+    totalSizeUsd,
+    offsetCents,
+    market: m,
+  });
+
+  // Free tier redacts rewardScore.mid/competitorQ → scoringMid null → the calm unlock/"—" state (never a
+  // fabricated price). Paid but genuinely unscored (no book) → "—" with no unlock.
+  if (!fin(pr.scoringMid)) {
+    return (
+      <div className="rw-pf">
+        <div className="rw-pf-locked">
+          {isPaid
+            ? <span className="rw-dim">— prezzo non calcolabile: il book non è stato valutato (nessun mid dal feed)</span>
+            : <Redacted value={null} isPaid={isPaid}>{() => <>—</>}</Redacted>}
+        </div>
+      </div>
+    );
+  }
+
+  const mid = pr.scoringMid as number;
+  const c1 = (p: number) => (p * 100).toFixed(1);   // price (0..1) → cents, one decimal
+
+  // Rail geometry — map a price to x% across a rail spanning mid ± railRadius cents; clamp to [0,100].
+  const railHalf = fin(pr.railRadiusC) ? (pr.railRadiusC as number) / 100 : null;
+  const xOf = (price: number | null): number | null => {
+    if (price == null || !fin(price) || railHalf == null || railHalf <= 0) return null;
+    return Math.max(0, Math.min(100, 50 + ((price - mid) / railHalf) * 50));
+  };
+  // Eligible band fills the central bandRadius/railRadius fraction (= 50%, since rail = 2× band radius).
+  const bandFrac = (fin(pr.bandRadiusC) && fin(pr.railRadiusC) && (pr.railRadiusC as number) > 0)
+    ? (pr.bandRadiusC as number) / (pr.railRadiusC as number) : null;
+  const bandLeftPct = bandFrac != null ? 50 - bandFrac * 50 : null;
+  const bandWidthPct = bandFrac != null ? bandFrac * 100 : null;
+  const xBid = xOf(pr.buyYes);
+  const xAsk = xOf(pr.sellYes);
+  const xTouchBid = xOf(fin(m.bestBid) ? (m.bestBid as number) : null);
+  const xTouchAsk = xOf(fin(m.bestAsk) ? (m.bestAsk as number) : null);
+
+  // ── B1–B3: the band warning CALLS the shared validator (validateQuotePair applies the qMin coupling).
+  //    Only run it when we have posted prices (an offset). Size in SHARES = per-side $ / leg price when the
+  //    user set a size; null otherwise (the price-level reasons hold regardless of size). ──
+  const canValidate = fin(pr.buyYes) && fin(pr.sellYes);
+  const rules = { tick: pr.tick, scoringMid: pr.scoringMid, maxSpreadCents: pr.maxSpreadCents, minSize: pr.minSize };
+  const bidShares = (pr.perSideUsd != null && fin(pr.buyYes) && (pr.buyYes as number) > 0) ? pr.perSideUsd / (pr.buyYes as number) : null;
+  const askShares = (pr.perSideUsd != null && fin(pr.sellYes) && (pr.sellYes as number) > 0) ? pr.perSideUsd / (pr.sellYes as number) : null;
+  const verdict: PairVerdict | null = canValidate
+    ? validateQuotePair(rules,
+        { side: 'BUY', price: pr.buyYes as number, size: bidShares as number },
+        { side: 'SELL', price: pr.sellYes as number, size: askShares as number })
+    : null;
+  const priceCodes = new Set(['OUT_OF_BAND', 'OFF_TICK', 'PRICE_OUT_OF_RANGE', 'RULES_UNREADABLE']);
+  const bandReasons = verdict ? verdict.reasons.filter((r) => priceCodes.has(r.code)) : [];
+  const outOfBand = bandReasons.some((r) => r.code === 'OUT_OF_BAND');
+  // Min-size reasons only matter once a size is set — surfaced near the $/day, not the band rail.
+  const sizeReasons = (verdict && totalSizeUsd != null) ? verdict.reasons.filter((r) => r.code === 'BELOW_MIN_SIZE') : [];
+
+  return (
+    <div className="rw-pf">
+      {/* ── PRICE BLOCK · the visual centre ── */}
+      <div className="rw-pf-prices" role="group" aria-label="prezzi da quotare">
+        <div className="rw-pf-cell">
+          <span className="rw-pf-k">compra YES</span>
+          <span className="rw-pf-v">{fin(pr.buyYes) ? `${c1(pr.buyYes as number)}¢` : '—'}</span>
+        </div>
+        <div className="rw-pf-cell rw-pf-mid">
+          <span className="rw-pf-k">punto medio</span>
+          <span className="rw-pf-v rw-pf-vbig">{c1(mid)}¢</span>
+        </div>
+        <div className="rw-pf-cell">
+          <span className="rw-pf-k">compra NO</span>
+          <span className="rw-pf-v">{fin(pr.buyNo) ? `${c1(pr.buyNo as number)}¢` : '—'}</span>
+        </div>
+      </div>
+      {fin(pr.buyNo) && fin(pr.sellYesForNoIdentity) && (
+        <div className="rw-pf-ident">
+          compra NO a {c1(pr.buyNo as number)}¢ = vendi YES a {c1(pr.sellYesForNoIdentity as number)}¢ — <strong>stesso ordine</strong>
+        </div>
+      )}
+      {!pr.tickKnown && (
+        <div className="rw-pf-ticknote">tick di mercato non disponibile dal feed — prezzi non arrotondati al tick</div>
+      )}
+
+      {/* ── REWARD-BAND RAIL ── centred on the mid, spanning ± max_spread; eligible band = ± max_spread/2 ── */}
+      {railHalf != null ? (
+        <div className="rw-rail-wrap">
+          <div className="rw-rail" aria-hidden="true">
+            {bandLeftPct != null && bandWidthPct != null && (
+              <span className="rw-rail-band" style={{ left: `${bandLeftPct}%`, width: `${bandWidthPct}%` }} />
+            )}
+            <span className="rw-rail-mid" style={{ left: '50%' }} />
+            {xTouchBid != null && <span className="rw-rail-touch" style={{ left: `${xTouchBid}%` }} title="miglior offerta reale sul book" />}
+            {xTouchAsk != null && <span className="rw-rail-touch" style={{ left: `${xTouchAsk}%` }} title="miglior domanda reale sul book" />}
+            {xBid != null && <span className={`rw-rail-order ${pr.bidInBand === false ? 'is-out' : ''}`} style={{ left: `${xBid}%` }} title="il tuo ordine di acquisto YES" />}
+            {xAsk != null && <span className={`rw-rail-order ${pr.askInBand === false ? 'is-out' : ''}`} style={{ left: `${xAsk}%` }} title="il tuo ordine di vendita YES" />}
+          </div>
+          <div className="rw-rail-legend">
+            <span className="rw-rail-lg"><i className="rw-lg-band" /> banda premiante (±{fin(pr.bandRadiusC) ? (pr.bandRadiusC as number).toFixed(1) : '—'}¢)</span>
+            <span className="rw-rail-lg"><i className="rw-lg-order" /> i tuoi ordini</span>
+            {(fin(m.bestBid) || fin(m.bestAsk)) && <span className="rw-rail-lg"><i className="rw-lg-touch" /> book reale</span>}
+          </div>
+        </div>
+      ) : (
+        <div className="rw-pf-ticknote">banda premiante non disponibile dal feed — nessun rail</div>
+      )}
+
+      {/* ── BAND WARNING — from the shared validator (B1–B3), plain language ── */}
+      {outOfBand && (
+        <div className="rw-pf-warn" role="note">
+          ⚠ A {offsetCents != null ? `${offsetCents}¢` : 'questa distanza'} dal punto medio i tuoi ordini sono <strong>fuori dalla banda premiante</strong>:
+          non maturano premi pur restando eseguibili (puoi comunque essere colpito).{verdict?.degraded && verdict.note ? ` Punteggio a due lati: ${verdict.note}.` : ''}
+        </div>
+      )}
+      {!outOfBand && bandReasons.length > 0 && (
+        <div className="rw-pf-warn" role="note">⚠ {bandReasons.map((r) => r.detail).join(' · ')}</div>
+      )}
+
+      {/* ── NUMBERS BELOW THE PRICE BLOCK (A5) ── */}
+      <div className="rw-pf-nums">
+        <div className="rw-pf-num">
+          <span className="rw-pf-nk">premio lordo · al tuo size</span>
+          <span className="rw-pf-nv rw-pf-primary">
+            {totalSizeUsd == null
+              ? <span className="rw-dim" title="inserisci la tua size in alto per stimare il $/giorno">—</span>
+              : <Redacted value={pr.grossPerDay} isPaid={isPaid} nullDisplay={<span className="rw-dim">—</span>}>
+                  {(v) => <span className="rw-nowrap">${Number(v).toFixed(2)}/day <span className="cc-row-stima">stima</span></span>}
+                </Redacted>}
+          </span>
+        </div>
+        <div className="rw-pf-num">
+          <span className="rw-pf-nk">resa</span>
+          <span className="rw-pf-nv">
+            {totalSizeUsd == null || pr.dayYieldPct == null
+              ? <span className="rw-dim">—</span>
+              : <Redacted value={pr.dayYieldPct} isPaid={isPaid} nullDisplay={<span className="rw-dim">—</span>}>{(v) => <span className="rw-nowrap">{Number(v).toFixed(3)}%/giorno</span>}</Redacted>}
+          </span>
+        </div>
+        <div className="rw-pf-num">
+          <span className="rw-pf-nk">tuo peso sul book</span>
+          <span className="rw-pf-nv">
+            {pr.ownImpactPct == null
+              ? <span className="rw-dim">—</span>
+              : <span className={`rw-impact rw-impact-${pr.ownImpactBand}`} title="la tua size rispetto alla profondità premiante già presente sul book (entrambi i lati)">
+                  {pr.ownImpactPct < 100 ? pr.ownImpactPct.toFixed(1) : Math.round(pr.ownImpactPct)}%{pr.ownImpactBand === 'high' ? ' · diventi tu il book' : ''}
+                </span>}
+          </span>
+        </div>
+      </div>
+
+      {pr.shareIsCeiling && (
+        <div className="rw-pf-ceil" role="note">
+          Con questo peso sul book la quota stimata è un <strong>tetto ottimistico</strong>: presuppone che gli altri maker non riquotino.
+        </div>
+      )}
+      {sizeReasons.length > 0 && (
+        <div className="rw-pf-warn" role="note">⚠ {sizeReasons.map((r) => r.detail).join(' · ')}</div>
+      )}
+
+      {/* NET — always "—": adverse selection / inventory risk on fills is not modelled. */}
+      <div className="rw-pf-net" title="il rendimento netto sottrae il costo di adverse selection quando i tuoi ordini vengono eseguiti — non è modellato, quindi resta sconosciuto">
+        netto <span className="rw-dim">—</span> · adverse selection non modellata · una quota di premio più alta = la quota più stretta, cioè quella più facilmente colpita
       </div>
     </div>
   );
