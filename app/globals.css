@@ -889,6 +889,71 @@ h1, h2, h3 {
   .rewards .rw-bar-fill, .rewards .rw-pos-inputwrap { transition: none; }
 }
 
+/* ══ TERMINAL LAYOUT — side-column filters + list (rewards board rebuild) ═══════════════════════════
+   Mobile-first: single column, the filter column (aside, first in DOM) stacks ABOVE the list. At ≥768px
+   it becomes a fixed 256px left column with the list as the protagonist on the right. Theme-aware tokens. */
+.rewards .rw-layout { display: block; }
+.rewards .rw-side { display: flex; flex-direction: column; gap: 12px; margin: 0 0 14px; }
+.rewards .rw-main { min-width: 0; }
+@media (min-width: 768px) {
+  .rewards .cc-shell, .prediction .rewards .cc-shell { max-width: 980px; }
+  .rewards .rw-layout { display: grid; grid-template-columns: 256px minmax(0, 1fr); gap: 18px; align-items: start; }
+  .rewards .rw-side { margin: 0; position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow-y: auto; }
+}
+
+/* Header totals across SELECTED markets */
+.rewards .rw-totals { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 0 0 12px; padding: 10px 12px;
+  border: 1px solid var(--cc-border); border-radius: 12px; background: var(--cc-panel); }
+.rewards .rw-tot { display: flex; flex-direction: column; gap: 2px; flex: 1 1 auto; min-width: 0; }
+.rewards .rw-tot-k { font-size: 9.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--cc-muted); font-weight: 600; white-space: nowrap; }
+.rewards .rw-tot-v { font-size: 17px; font-weight: 800; color: var(--cc-text); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rewards .rw-tot-primary { color: var(--cc-green); }
+
+/* Row: checkbox + clickable body (the body carries the expand click; the checkbox toggles selection) */
+.rewards .cc-row { align-items: stretch; gap: 8px; cursor: default; }
+.rewards .cc-row.is-sel { background: rgba(47,226,154,.05); }
+.rewards .cc-row-body { display: flex; justify-content: space-between; gap: 14px; flex: 1 1 auto; min-width: 0; align-items: flex-start; cursor: pointer; }
+.rewards .rw-sel { flex: none; display: inline-flex; align-items: flex-start; justify-content: center; min-width: 30px; min-height: 44px; padding-top: 2px; cursor: pointer; }
+.rewards .rw-sel input { width: 20px; height: 20px; accent-color: var(--cc-green); cursor: pointer; }
+
+/* Expiry chip */
+.rewards .rw-exp { font-size: 9.5px; font-weight: 700; padding: 1px 6px; border-radius: 999px; white-space: nowrap;
+  border: 1px solid var(--cc-border); color: var(--cc-muted); font-variant-numeric: tabular-nums; }
+.rewards .rw-exp-red { color: var(--ds-danger); border-color: rgba(229,86,78,.4); background: rgba(229,86,78,.08); }
+.rewards .rw-exp-amber { color: var(--cc-amber); border-color: rgba(240,180,60,.4); background: rgba(240,180,60,.07); }
+.rewards .rw-exp-none { opacity: .7; }
+
+/* Compact stat strip (own-impact + stability) — wraps rather than overflowing */
+.rewards .rw-strip { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 2px; }
+.rewards .rw-stat { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--cc-muted); min-width: 0; }
+.rewards .rw-stat-k { font-size: 9.5px; text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; }
+.rewards .rw-stat-v { font-weight: 700; color: var(--cc-text); white-space: nowrap; display: inline-flex; align-items: center; gap: 5px; font-variant-numeric: tabular-nums; }
+.rewards .rw-prov { font-size: 8px; opacity: .7; text-transform: none; letter-spacing: 0; font-weight: 400; }
+.rewards .rw-stab-bar { display: inline-block; width: 34px; height: 5px; border-radius: 3px; background: var(--cc-border); position: relative; overflow: hidden; }
+.rewards .rw-stab-bar::after { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: var(--v, 0%); border-radius: 3px; }
+.rewards .rw-stab-hi::after { background: var(--cc-green); }
+.rewards .rw-stab-mid::after { background: var(--cc-amber); }
+.rewards .rw-stab-lo::after { background: var(--ds-danger); }
+.rewards .rw-stab-none { opacity: .5; }
+
+/* Universo bot panel (filter column) */
+.rewards .rw-bu { border: 1px solid var(--cc-border); border-radius: 12px; padding: 12px; background: var(--cc-panel); display: flex; flex-direction: column; gap: 8px; }
+.rewards .rw-bu-title { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: var(--cc-text); }
+.rewards .rw-bu-note { font-size: 11px; line-height: 1.45; color: var(--cc-muted); margin: 0; }
+.rewards .rw-bu-note strong { color: var(--cc-text); }
+.rewards .rw-bu-kv { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--cc-muted); }
+.rewards .rw-bu-v { font-weight: 800; color: var(--cc-text); font-variant-numeric: tabular-nums; }
+.rewards .rw-bu-btn { min-height: 44px; border: none; border-radius: 10px; background: var(--cc-green); color: #05261a; font-weight: 800; font-size: 13px; cursor: pointer; padding: 0 12px; touch-action: manipulation; }
+.rewards .rw-bu-btn:hover { filter: brightness(1.06); }
+.rewards .rw-bu-btn:focus-visible { outline: 3px solid var(--cc-green); outline-offset: 2px; }
+.rewards .rw-bu-cancel { min-height: 44px; border: 1px solid var(--cc-border); border-radius: 10px; background: transparent; color: var(--cc-text); font-weight: 600; cursor: pointer; padding: 0 12px; }
+.rewards .rw-bu-actions { display: flex; gap: 8px; }
+.rewards .rw-bu-actions .rw-bu-btn { flex: 1 1 auto; }
+.rewards .rw-bu-confirm { display: flex; flex-direction: column; gap: 8px; border-top: 1px dashed var(--cc-border); padding-top: 8px; }
+.rewards .rw-bu-clear { background: none; border: none; color: var(--cc-muted); font-size: 11px; text-decoration: underline; cursor: pointer; align-self: flex-start; padding: 2px 0; min-height: 32px; }
+.rewards .rw-bu-ok { font-size: 11.5px; color: var(--cc-green); line-height: 1.4; }
+.rewards .rw-bu-err { font-size: 11.5px; color: var(--ds-danger); line-height: 1.4; }
+
 /* Calculator embedded inside a list row: drop the full-viewport wrapper so it sits
    inline. Identical math; presentation only. */
 .carrydetail.is-embedded { min-height: 0; padding: 0; background: transparent; }

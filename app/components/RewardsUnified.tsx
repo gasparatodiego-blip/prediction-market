@@ -1,11 +1,10 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Redacted } from './ui/Redacted';
 import { EmptyState } from './ds';
-import MakerUniverseControl from './MakerUniverseControl';
 import { APY_CAP, APY_CAP_LABEL } from '@/lib/honest-display';
 // The per-operator estimated share/day — the ONE headline number, from the shared quadratic scorer
 // (lib/rewardScore → rewards-normalize refShare). estUsdPerDay = poolDay × refShare; assumptions are
@@ -23,6 +22,9 @@ import { computePriceRow, type PriceRow } from '@/lib/reward-price-row';
 // The ONE shared venue-rules validator (Part B1–B3) — the UI band warning CALLS this, never reimplements
 // the check. validateQuotePair applies the qMin coupling (a two-sided quote is only as good as its weaker leg).
 import { validateQuotePair, type PairVerdict } from '@/lib/maker/venue-rules';
+// Provisional band-relative stability (structure-only) from the REAL 24h volatility measure — the ONE
+// definition, shared with the server filter (lib/rewards-server-filter). null when unmeasured → "—".
+import { computeStability } from '@/lib/reward-stability';
 // The 2%/day sane-reward gate — the SINGLE implementation (was wired only to the paper book). Surfacing it
 // here makes a thin / over-cap reward row read as a flagged run-rate, never a clean cashable $/day.
 import { REWARD_SANITY_CAP_PCT, isSanePolymarketLevel } from '@/lib/reward-gating';
@@ -84,6 +86,10 @@ interface Market {
   // Hours until the market resolves (real feed field, from lib/rewards-normalize). <= 0 means it
   // has ALREADY resolved → no active rewards. null when the feed didn't carry a resolution time.
   hoursToResolution?: number | null;
+  // Real 24h price-move stdev (agent24) + the band width — the inputs to the provisional stability
+  // score. Both redacted → null on the free tier (→ stability "—"). maxSpread also lives on rewardScore.
+  volatilityStdev?: number | null;
+  maxSpread?: number | null;
   flags?: string[] | null;
   rewardScore?: RewardScore | null;
   // Price-first inputs (Part A). tickSize is a static market param (public); bestBid/bestAsk are the live
@@ -136,6 +142,8 @@ interface Row extends Base {
   space: number;
   share: number;
   unknown: boolean;
+  stabilityScore: number | null;      // provisional 24h-volatility stability (0..100) or null (unmeasured)
+  hoursToResolution: number | null;   // real expiry field for the expiry cell + expiry sort
 }
 
 // Slider/chip ranges + option sets computed SERVER-SIDE over the full set (lib/rewards-server-filter
@@ -147,6 +155,8 @@ interface Ranges {
   categories: string[];
   venues: string[];
   hasCompetition: boolean;
+  stabMax: number;
+  hasStability: boolean;
 }
 
 // The six required server filters + category. These are the ONLY controls that hit the API; they
@@ -160,7 +170,9 @@ interface FilterState {
   maxSpreadCents: number;  // max spread (¢); at the range max ⇒ no constraint
   maxCompetitionPct: number;
   hideThin: boolean;
+  minStab: number;         // "Stabilità minima" 0–100 (server filter; unknown-stability rows NOT excluded)
   // client presentation only:
+  sortMode: 'stability' | 'day' | 'expiry';
   sortByPool: boolean;
   sortDir: 'asc' | 'desc';
 }
@@ -182,6 +194,8 @@ const DEFAULT_FILTERS: FilterState = {
   maxSpreadCents: SENTINEL_SPREAD,
   maxCompetitionPct: 100,
   hideThin: false,
+  minStab: 0,
+  sortMode: 'stability',   // default = stability (the real 24h-volatility field exists); "—" rows sort last
   sortByPool: false,
   sortDir: 'desc',
 };
@@ -204,6 +218,19 @@ const toggle = (arr: string[], v: string) =>
 
 const fin = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
 
+// Expiry from the REAL hoursToResolution feed field. Never guesses a date: null/absent → "— scad.".
+// "45g" under ~60 days, "2 mesi" beyond. Urgency band: ≤3d red, ≤14d amber, else neutral.
+function expiryView(hoursToResolution: number | null | undefined):
+  { label: string; band: 'red' | 'amber' | 'neutral' | 'none' } {
+  if (!fin(hoursToResolution) || hoursToResolution <= 0) return { label: '— scad.', band: 'none' };
+  const days = hoursToResolution / 24;
+  const label = days < 1 ? `${Math.max(1, Math.round(hoursToResolution))}h`
+    : days < 60 ? `${Math.round(days)}g`
+    : `${Math.round(days / 30)} mesi`;
+  const band = days <= 3 ? 'red' : days <= 14 ? 'amber' : 'neutral';
+  return { label, band };
+}
+
 /** Parse the URL query string into filter state (shareable / survives refresh). */
 function parseFiltersFromUrl(sp: URLSearchParams): FilterState {
   const nOr = (k: string, d: number) => {
@@ -223,6 +250,9 @@ function parseFiltersFromUrl(sp: URLSearchParams): FilterState {
     maxSpreadCents: sp.get('maxSpread') != null ? Math.max(0, nOr('maxSpread', SENTINEL_SPREAD)) : SENTINEL_SPREAD,
     maxCompetitionPct: Math.min(100, Math.max(0, nOr('maxCompetition', 100))),
     hideThin: sp.get('hideThin') === '1' || sp.get('hideThin') === 'true',
+    minStab: Math.min(100, Math.max(0, nOr('minStab', 0))),
+    sortMode: (['stability', 'day', 'expiry'] as const).includes(sp.get('smode') as any)
+      ? (sp.get('smode') as FilterState['sortMode']) : 'stability',
     sortByPool: sp.get('sort') === 'pool',
     sortDir: sp.get('dir') === 'asc' ? 'asc' : 'desc',
   };
@@ -239,6 +269,7 @@ function serverParams(f: FilterState, r: Ranges | null): URLSearchParams {
   if (f.maxSpreadCents >= 0 && (!r || f.maxSpreadCents < r.spreadMaxCents)) p.set('maxSpread', String(f.maxSpreadCents));
   if (f.maxCompetitionPct < 100) p.set('maxCompetition', String(f.maxCompetitionPct));
   if (f.hideThin) p.set('hideThin', '1');
+  if (f.minStab > 0) p.set('minStab', String(f.minStab));
   return p;
 }
 
@@ -277,6 +308,29 @@ export default function RewardsUnified() {
     return distInput.trim() !== '' && Number.isFinite(n) && n >= 0 ? n : null;
   }, [distInput]);
 
+  // ── BOT-UNIVERSE per-row SELECTION (persisted). Selecting a row toggles it into the explicit
+  //    selection that "Imposta come universo bot" force-includes (allowlist) into the maker-universe
+  //    store. This is a VIEW/selection state only — it arms nothing; nothing persists until the button. ──
+  const [selected, setSelected] = useState<string[]>([]);
+  useEffect(() => {
+    try { const s = localStorage.getItem('rw_selected'); if (s) setSelected(JSON.parse(s)); } catch { /* ignore */ }
+  }, []);
+  useEffect(() => { try { localStorage.setItem('rw_selected', JSON.stringify(selected)); } catch { /* ignore */ } }, [selected]);
+  const selectedSet = useMemo(() => new Set(selected), [selected]);
+  const toggleSelected = (marketId: string) =>
+    setSelected((prev) => (prev.includes(marketId) ? prev.filter((x) => x !== marketId) : [...prev, marketId]));
+
+  // A single price-first computation per market at the CURRENT size/offset — used for the row headline
+  // ($/day at your size), the own-impact chip, AND the header totals across selected. One math path.
+  const priceRowFor = useCallback(
+    (m: Market) => computePriceRow({
+      rewardScore: m.rewardScore ?? null,
+      tick: fin(m.tickSize) ? (m.tickSize as number) : null,
+      totalSizeUsd, offsetCents, market: m,
+    }),
+    [totalSizeUsd, offsetCents],
+  );
+
   // The ONLY inputs that hit the API. Sort is excluded on purpose (client presentation).
   const apiQuery = serverParams(filters, ranges).toString();
 
@@ -305,7 +359,7 @@ export default function RewardsUnified() {
   // is shareable. replace (not push) + scroll:false so it never spams history/jumps.
   useEffect(() => {
     const p = serverParams(filters, ranges);
-    if (filters.sortByPool) p.set('sort', 'pool');
+    if (filters.sortMode !== 'stability') p.set('smode', filters.sortMode);
     if (filters.sortDir === 'asc') p.set('dir', 'asc');
     const qs = p.toString();
     router.replace(qs ? `?${qs}` : '?', { scroll: false });
@@ -411,6 +465,13 @@ export default function RewardsUnified() {
       space:        Infinity,
       share,
       unknown,
+      // Sort/stat inputs (real fields). stabilityScore: provisional band-relative 24h-volatility score
+      // (null when unmeasured → sorts last, cell "—"). hoursToResolution: the real expiry field.
+      stabilityScore: computeStability({
+        volatilityStdev: fin(b.m.volatilityStdev) ? (b.m.volatilityStdev as number) : null,
+        maxSpreadCents:  b.m.rewardScore?.maxSpreadCents ?? (fin(b.m.maxSpread) ? (b.m.maxSpread as number) : null),
+      }).score,
+      hoursToResolution: fin(b.m.hoursToResolution) ? (b.m.hoursToResolution as number) : null,
     };
   }), [base]);
 
@@ -426,7 +487,7 @@ export default function RewardsUnified() {
 
   // Counts come from the server (meta) — the visible proof the filter is wired: total → matched.
   const total = data?.meta?.totalMarkets ?? base.length;
-  const rg: Ranges = ranges ?? { poolMax: 0, depthMax: 0, spreadMaxCents: 0, categories: [], venues: [], hasCompetition: false };
+  const rg: Ranges = ranges ?? { poolMax: 0, depthMax: 0, spreadMaxCents: 0, categories: [], venues: [], hasCompetition: false, stabMax: 100, hasStability: false };
   const VENUE_CHIPS: Array<FilterState['venue']> = ['all', 'polymarket', 'kalshi'];
   // The REAL depth-at-touch floor ($) from the server (env REWARD_DEPTH_TOUCH_FLOOR_USD or $25 default).
   // Stated in the "hide thin books" help so the copy can never drift from the code.
@@ -437,7 +498,21 @@ export default function RewardsUnified() {
     venue: 'Su quale piattaforma', category: 'Categoria', minPool: 'Deve pagare almeno',
     minDepth: 'Il libro deve reggere almeno', maxSpread: 'Distanza massima fra domanda e offerta',
     maxCompetition: 'Quanti altri se lo dividono', hideThin: 'Nascondi i libri troppo sottili',
+    minStab: 'Stabilità minima',
   };
+  // Header totals across the SELECTED markets (bot-universe selection): total expected GROSS $/day at
+  // the user's size + total committed capital (size × count). net is ALWAYS "—". Only counts rows the
+  // user explicitly selected AND that are priceable at the current size — unknowns never inflate a total.
+  const selectedRows = visible.filter((r) => selectedSet.has(r.m.marketId));
+  const selTotals = selectedRows.reduce(
+    (acc, r) => {
+      const pr = priceRowFor(r.m);
+      if (fin(pr.grossPerDay)) { acc.gross += pr.grossPerDay as number; acc.grossKnown++; }
+      if (totalSizeUsd != null) acc.capital += totalSizeUsd;
+      return acc;
+    },
+    { gross: 0, grossKnown: 0, capital: 0 },
+  );
   const mostRestrictiveKey: string | null = data?.meta?.mostRestrictiveFilter?.key ?? null;
   const mostRestrictiveLabel = mostRestrictiveKey ? MOST_RESTRICT_LABELS[mostRestrictiveKey] ?? null : null;
   // At the range max the spread filter imposes no constraint ("qualsiasi") — used in the slider value.
@@ -476,7 +551,9 @@ export default function RewardsUnified() {
         )}
 
         {!err && data && total > 0 && (
-          <>
+          <div className="rw-layout">
+            {/* ── LEFT: filter column (side on ≥768px, stacked above the list below) ── */}
+            <aside className="rw-side">
             {/* ── LA TUA POSIZIONE · price-first controls (persisted per-user) ── The size drives the
                 expected gross $/day inside each row; the distance drives the posted prices + the band rail.
                 Empty size ⇒ every $/day and yield renders "—" (no default). ── */}
@@ -617,29 +694,82 @@ export default function RewardsUnified() {
                     onClick={() => set({ hideThin: true })}>Nascondi sottili</button>
                 </div>
               </div>
+
+              {/* STABILITÀ MINIMA — provisional 24h-volatility floor (server filter). Structure-only:
+                  a market with NO measured stability is NOT excluded (its cell shows "—"). */}
+              <div className="cc-fctl">
+                <span className="cc-flabel">Stabilità minima</span>
+                <span className="cc-fhelp">
+                  Provvisorio — quanto poco il prezzo si è mosso nelle 24h rispetto alla banda premiante.
+                  I mercati senza misura non vengono nascosti.
+                </span>
+                <div className="cc-slider-body">
+                  <input className="cc-frange" type="range" min={0} max={100} step={5}
+                    value={filters.minStab}
+                    onChange={(e) => set({ minStab: Number(e.target.value) })} aria-label="stabilità minima" />
+                  <span className="cc-slider-val">{filters.minStab > 0 ? `≥ ${filters.minStab}` : 'qualsiasi'}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* ── UNIVERSO BOT — persist the current filters + explicit selection to the shared
+                maker-universe store. Arms nothing. ── */}
+            <BotUniversePanel apiQuery={apiQuery} selected={selected} onCleared={() => setSelected([])} />
+            </aside>
+
+            {/* ── RIGHT: the market list (the protagonist) ── */}
+            <div className="rw-main">
+
+            {/* ── HEADER TOTALS across SELECTED markets. Gross only; net is ALWAYS "—". ── */}
+            <div className="rw-totals" role="note">
+              <div className="rw-tot">
+                <span className="rw-tot-k">selezionati</span>
+                <span className="rw-tot-v">{selectedRows.length}</span>
+              </div>
+              <div className="rw-tot">
+                <span className="rw-tot-k">$/giorno lordo tot.</span>
+                <span className="rw-tot-v rw-tot-primary">
+                  {selectedRows.length === 0 || totalSizeUsd == null
+                    ? <span className="rw-dim">—</span>
+                    : !isPaid
+                      ? <span className="rw-dim" title="sblocca per vedere le cifre">🔒</span>
+                      : <>${selTotals.gross.toFixed(2)}{selTotals.grossKnown < selectedRows.length ? <span className="rw-dim"> (parziale)</span> : null}</>}
+                </span>
+              </div>
+              <div className="rw-tot">
+                <span className="rw-tot-k">capitale impegnato</span>
+                <span className="rw-tot-v">
+                  {selectedRows.length === 0 || totalSizeUsd == null ? <span className="rw-dim">—</span> : fmtUsd(selTotals.capital)}
+                </span>
+              </div>
+              <div className="rw-tot">
+                <span className="rw-tot-k">netto</span>
+                <span className="rw-tot-v rw-dim" title="adverse selection non modellata — il netto resta sconosciuto">—</span>
+              </div>
             </div>
 
             <div className="cc-count cc-count-row">
               <span className="cc-count-text">
-                {visible.length} mercati su {total} passano · ordinati per {filters.sortByPool
-                  ? 'montepremi (alto→basso)'
+                {visible.length} mercati su {total} passano · ordinati per {
+                  filters.sortMode === 'stability' ? 'stabilità (alta→bassa)'
+                  : filters.sortMode === 'expiry' ? 'scadenza (prima le vicine)'
                   : `$/giorno (${filters.sortDir === 'asc' ? 'basso→alto' : 'alto→basso'})`}
               </span>
-              {/* Sort — presentation only; reuses the engine's netUsdPerDay / poolDayUsd. Withheld/"—"
-                  rows stay pinned last in every mode (see sortRows). */}
+              {/* Sort — presentation only; reuses the engine's stabilityScore / netUsdPerDay /
+                  hoursToResolution. Withheld/"—" rows stay pinned LAST in every mode (see sortRows). */}
               <span className="cc-sortdir" role="group" aria-label="ordinamento">
-                <button type="button" title="$/giorno crescente (basso → alto)" aria-label="ordina per $/giorno crescente"
-                  className={`cc-sortbtn ${!filters.sortByPool && filters.sortDir === 'asc' ? 'is-on' : ''}`}
-                  aria-pressed={!filters.sortByPool && filters.sortDir === 'asc'}
-                  onClick={() => set({ sortByPool: false, sortDir: 'asc' })}>$/g ▲</button>
-                <button type="button" title="$/giorno decrescente (alto → basso)" aria-label="ordina per $/giorno decrescente"
-                  className={`cc-sortbtn ${!filters.sortByPool && filters.sortDir === 'desc' ? 'is-on' : ''}`}
-                  aria-pressed={!filters.sortByPool && filters.sortDir === 'desc'}
-                  onClick={() => set({ sortByPool: false, sortDir: 'desc' })}>$/g ▼</button>
-                <button type="button" title="Ordina per montepremi (alto → basso)" aria-label="ordina per montepremi"
-                  className={`cc-sortbtn ${filters.sortByPool ? 'is-on' : ''}`}
-                  aria-pressed={filters.sortByPool}
-                  onClick={() => set({ sortByPool: true })}>montepremi</button>
+                <button type="button" title="Ordina per stabilità (alta → bassa)"
+                  className={`cc-sortbtn ${filters.sortMode === 'stability' ? 'is-on' : ''}`}
+                  aria-pressed={filters.sortMode === 'stability'}
+                  onClick={() => set({ sortMode: 'stability' })}>stabilità</button>
+                <button type="button" title="Ordina per $/giorno (alto → basso)"
+                  className={`cc-sortbtn ${filters.sortMode === 'day' ? 'is-on' : ''}`}
+                  aria-pressed={filters.sortMode === 'day'}
+                  onClick={() => set({ sortMode: 'day', sortDir: 'desc' })}>$/giorno</button>
+                <button type="button" title="Ordina per scadenza (prima le vicine)"
+                  className={`cc-sortbtn ${filters.sortMode === 'expiry' ? 'is-on' : ''}`}
+                  aria-pressed={filters.sortMode === 'expiry'}
+                  onClick={() => set({ sortMode: 'expiry' })}>scadenza</button>
               </span>
             </div>
 
@@ -654,20 +784,32 @@ export default function RewardsUnified() {
                   const { m } = row;
                   const id = `${m.venue}-${m.marketId}`;
                   const isOpen = expandedId === id;
+                  const isSel = selectedSet.has(m.marketId);
+                  const pr = priceRowFor(m);                       // user-size gross + own-impact (one math path)
+                  const exp = expiryView(row.hoursToResolution);   // real expiry, "— scad." when unreadable
                   return (
                     <div key={id}>
-                      <div
-                        className={`cc-row ${isOpen ? 'is-open' : ''}`}
-                        role="button" tabIndex={0} aria-expanded={isOpen}
-                        onClick={() => setExpandedId(isOpen ? null : id)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpandedId(isOpen ? null : id); }
-                        }}
-                      >
+                      <div className={`cc-row ${isOpen ? 'is-open' : ''} ${isSel ? 'is-sel' : ''}`}>
+                        {/* SELECTION toggle → bot-universe selection. stopPropagation so it never expands the row. */}
+                        <label className="rw-sel" title="seleziona per l'universo bot" onClick={(e) => e.stopPropagation()}>
+                          <input type="checkbox" checked={isSel} onChange={() => toggleSelected(m.marketId)}
+                            aria-label={`seleziona ${m.title} per l'universo bot`} />
+                        </label>
+                        <span
+                          className="cc-row-body"
+                          role="button" tabIndex={0} aria-expanded={isOpen}
+                          onClick={() => setExpandedId(isOpen ? null : id)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpandedId(isOpen ? null : id); }
+                          }}
+                        >
                         <span className="cc-row-l">
                           <span className="rw-row-top">
                             <span className="rw-venue">{m.venue}</span>
                             <span className="rw-cat">{row.category ?? '—'}</span>
+                            {/* EXPIRY — real hoursToResolution → "45g"/"2 mesi"; "— scad." when unreadable.
+                                ≤3d red, ≤14d amber. Never guesses a date. */}
+                            <span className={`rw-exp rw-exp-${exp.band}`} title="tempo alla risoluzione del mercato">{exp.label}</span>
                             <span className={`rw-src ${row.measured ? 'is-measured' : 'is-observed'}`}>
                               {row.measured ? 'measured · live book' : 'observed split'}
                             </span>
@@ -727,6 +869,26 @@ export default function RewardsUnified() {
                               </Redacted>
                             </span>
                           </span>
+                          {/* ── COMPACT STAT STRIP — own-impact (size ÷ eligible depth) + stability (structure).
+                              Wraps 2×2 on the narrowest widths rather than overflowing. ── */}
+                          <span className="rw-strip">
+                            <span className="rw-stat">
+                              <span className="rw-stat-k">tuo peso</span>
+                              {pr.ownImpactPct == null
+                                ? <span className="rw-stat-v rw-dim">—</span>
+                                : <span className={`rw-stat-v rw-impact rw-impact-${pr.ownImpactBand}`} title="la tua size rispetto alla profondità premiante già presente (entrambi i lati)">
+                                    {pr.ownImpactPct < 100 ? pr.ownImpactPct.toFixed(1) : Math.round(pr.ownImpactPct)}%
+                                  </span>}
+                            </span>
+                            <span className="rw-stat">
+                              <span className="rw-stat-k">stabilità <span className="rw-prov">prov.</span></span>
+                              {row.stabilityScore == null
+                                ? <span className="rw-stat-v rw-dim" title="stabilità non ancora misurata per questo mercato — il motore reale è un task separato">— <i className="rw-stab-bar rw-stab-none" /></span>
+                                : <span className="rw-stat-v" title="provvisorio · quanto poco il prezzo si è mosso nelle 24h rispetto alla banda premiante">
+                                    {row.stabilityScore}<i className={`rw-stab-bar rw-stab-${row.stabilityScore >= 67 ? 'hi' : row.stabilityScore >= 34 ? 'mid' : 'lo'}`} style={{ ['--v' as any]: `${row.stabilityScore}%` }} />
+                                  </span>}
+                            </span>
+                          </span>
                         </span>
                         <span className="cc-row-r">
                           <span className="cc-row-net">
@@ -736,42 +898,34 @@ export default function RewardsUnified() {
                                 scored OR (Kalshi) it is one-sided / non-executable — reason on hover. */}
                             {/* est share/day is the LOCKED headline. Real tier: free → 🔒 unlock;
                                 paid → the number, or a calm "—" (with reason) when non-priceable. */}
+                            {/* HEADLINE = expected GROSS $/day AT THE USER'S SIZE (price-first) — the shared
+                                quadratic (poolDay × share) at the chosen offset vs the feed's competitorQ.
+                                "—" while the size box is empty (no default). Free tier → 🔒 unlock. */}
                             <Redacted
-                              value={row.unknown ? null : row.netUsdPerDay}
+                              value={pr.grossPerDay}
                               isPaid={isPaid}
-                              nullDisplay={<span title={row.nonExecReason ?? 'this book could not be scored — no pool or in-band depth from the feed'}>—</span>}
+                              nullDisplay={<span title={
+                                totalSizeUsd == null ? 'inserisci la tua size in alto per stimare il $/giorno'
+                                : row.nonExecReason ?? 'questo book non è valutabile — nessun pool o profondità in banda dal feed'
+                              }>—</span>}
                             >
                               {(v) => (
                                 <span className="rw-nowrap">
-                                  ${Number(v).toFixed(2)}/day <span className="cc-row-stima" title="modelled figure, not an observed payout">stima</span>
+                                  ${Number(v).toFixed(2)}/day <span className="cc-row-stima" title="cifra modellata al tuo size, non un pagamento osservato">stima</span>
                                 </span>
                               )}
                             </Redacted>
-                            {/* ANNUALIZED — computed on the MEASURED reward-eligible book depth (never a
-                                hardcoded capital constant). When that depth is too thin to annualize the
-                                run-rate is suppressed to "—" (the $/day and the measured depth stay visible).
-                                Over the 200%/yr honest ceiling → the SHARED cap label. Free tier ⇒ unknown ⇒
-                                no line (the $/day is 🔒). */}
-                            {!row.unknown && (
-                              row.capacityThin ? (
-                                <span className="cc-row-runrate" title="capacità del book troppo sottile per annualizzare in modo significativo — la profondità misurata è sotto l'ordine di riferimento, quindi il denominatore è irreale. $/giorno e profondità restano visibili.">
-                                  annualizzato — · capacità troppo sottile per annualizzare
-                                </span>
-                              ) : row.apyCapped ? (
-                                <span className="cc-row-runrate" title="annualizzato sulla profondità reale del book — un run-rate che si comprime quando arrivano altri maker, non un rendimento garantito">
-                                  {APY_CAP_LABEL}
-                                </span>
-                              ) : row.apyRaw != null ? (
-                                <span className="cc-row-runrate" title="annualizzato sulla profondità reale del book — un run-rate, non un rendimento garantito">
-                                  ~{Math.round(row.apyRaw)}%/yr · run-rate, not guaranteed
-                                </span>
-                              ) : isPaid ? (
-                                // capacity unmeasured (feed didn't carry the depth) → annualized "—", no default.
-                                <span className="cc-row-runrate" title="profondità del book non misurata per questa riga — impossibile annualizzare senza un denominatore reale">
-                                  annualizzato —
-                                </span>
-                              ) : null   // free tier: capacity locked (🔒) — the $/day lock already conveys it
-                            )}
+                            {/* ANNUALIZED — the user-size run-rate (resa/giorno × 365), demoted behind the
+                                SHARED APY_CAP + ">200%/yr" label from lib/honest-display (never forked). Only
+                                when a size is set AND the row is priceable; else no line. */}
+                            {(() => {
+                              const dy = pr.dayYieldPct;
+                              if (totalSizeUsd == null || !fin(dy) || !isPaid) return null;
+                              const annual = (dy as number) * 365;
+                              return annual > APY_CAP
+                                ? <span className="cc-row-runrate" title="annualizzato sul tuo size — un run-rate che si comprime quando arrivano altri maker, non un rendimento garantito">{APY_CAP_LABEL}</span>
+                                : <span className="cc-row-runrate" title="annualizzato sul tuo size — un run-rate, non un rendimento garantito">~{Math.round(annual)}%/yr · run-rate, not guaranteed</span>;
+                            })()}
                             {/* ADVERSE-SELECTION DISCLOSURE — persistent, non-dismissible, on EVERY row.
                                 Rewards $/day is a GROSS subsidy; the cost of adverse selection / inventory
                                 risk on resting maker orders is NOT modelled, so the NET return is unknown.
@@ -793,6 +947,7 @@ export default function RewardsUnified() {
                               gross · before uptime/distance scoring
                             </span>
                           )}
+                        </span>
                         </span>
                       </div>
 
@@ -822,22 +977,18 @@ export default function RewardsUnified() {
               </div>
             )}
 
-            {/* Bot universe: the always-visible active universe + the deliberate "Set as bot universe"
-                promotion (gated write). Below the results, per the surface order. Browsing never
-                auto-syncs to the bot. */}
-            <MakerUniverseControl apiQuery={apiQuery} />
-
             <p className="cc-note">
-              The headline is a MODELLED share ("stima"): the reward pool times a ${ASSUMED_ORDER_SIZE_USD.toLocaleString()} maker's
-              scored share of it, {ASSUMED_PLACEMENT_LABEL}. Polymarket rewards are two-sided — the
-              share is scored with the published quadratic formula S(v,s) = ((v−s)/v)², weighting each
-              order by its tightness to the size-cutoff-adjusted midpoint and diluting against the
-              qualifying depth already on BOTH sides. Polymarket depth/competition is measured from the
-              live CLOB; Kalshi is an observed one-sided flat pro-rata split. All figures are gross
-              reward accrual — inventory P&amp;L when your orders fill is not included. Point-in-time
-              snapshot; competitors re-quote; not a promised yield.
+              Il numero in testa è la <strong>stima al tuo size</strong>: il montepremi per la quota
+              di pool che il tuo ordine otterrebbe, quotato a due lati alla distanza scelta dal punto
+              medio (mid a taglio-dimensione), diluita contro la profondità già presente su entrambi i
+              lati con la formula quadratica pubblicata S(v,s) = ((v−s)/v)². Profondità e concorrenza su
+              Polymarket sono misurate dal CLOB live; Kalshi è uno split osservato a pro-rata. Tutte le
+              cifre sono premio <strong>lordo</strong> — il P&amp;L di inventario quando i tuoi ordini
+              vengono eseguiti non è incluso. Istantanea puntuale; i concorrenti riquotano; non è un
+              rendimento promesso.
             </p>
-          </>
+            </div>
+          </div>
         )}
       </div>
     </div>
@@ -1067,6 +1218,91 @@ function RewardPriceFirst({ row, isPaid, totalSizeUsd, offsetCents }:
       <div className="rw-pf-net" title="il rendimento netto sottrae il costo di adverse selection quando i tuoi ordini vengono eseguiti — non è modellato, quindi resta sconosciuto">
         netto <span className="rw-dim">—</span> · adverse selection non modellata · una quota di premio più alta = la quota più stretta, cioè quella più facilmente colpita
       </div>
+    </div>
+  );
+}
+
+/**
+ * BOT-UNIVERSE panel (filter-column). Persists the CURRENT filters + the explicit per-row selection to
+ * the EXISTING maker-universe store (Prisma singleton via lib/maker/selection → POST /api/maker/universe).
+ * The explicit selection is sent as `allowlist` (force-include). This ONLY persists selection — it arms
+ * nothing, enables no trading, places/signs nothing. Two-step (button → confirm) so browsing never
+ * auto-syncs. The gated POST (admin-only) is the ONLY write; a 401 tells the user to log in.
+ */
+function BotUniversePanel({ apiQuery, selected, onCleared }:
+  { apiQuery: string; selected: string[]; onCleared: () => void }) {
+  const [active, setActive] = useState<any | null>(null);
+  const [phase, setPhase] = useState<'idle' | 'confirm' | 'busy'>('idle');
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const loadActive = useCallback(async () => {
+    try {
+      const r = await fetch('/api/maker/universe', { cache: 'no-store' });
+      if (r.ok) setActive(await r.json());
+    } catch { /* leave prior */ }
+  }, []);
+  useEffect(() => { loadActive(); }, [loadActive]);
+
+  const filtersObj = useMemo(() => {
+    const o: Record<string, string> = {};
+    new URLSearchParams(apiQuery).forEach((v, k) => { o[k] = v; });
+    return o;
+  }, [apiQuery]);
+  // maxMarkets covers the explicit selection so a picked market is never capped below the selection size.
+  const maxMarkets = Math.max(5, selected.length);
+
+  const confirm = useCallback(async () => {
+    setPhase('busy'); setMsg(null);
+    try {
+      const r = await fetch('/api/maker/universe', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filters: filtersObj, venues: ['polymarket'], allowlist: selected, maxMarkets }),
+      });
+      if (r.status === 401) setMsg({ ok: false, text: 'Serve l’accesso admin per cambiare l’universo del bot — /settings/login.' });
+      else if (!r.ok) { const d = await r.json().catch(() => ({})); setMsg({ ok: false, text: d.error || 'Impossibile impostare l’universo del bot.' }); }
+      else { setMsg({ ok: true, text: 'Universo del bot aggiornato — nessun ordine è stato inviato.' }); setPhase('idle'); await loadActive(); return; }
+    } catch { setMsg({ ok: false, text: 'Impossibile impostare l’universo del bot.' }); }
+    setPhase('idle');
+  }, [filtersObj, selected, maxMarkets, loadActive]);
+
+  const activeCount = active?.resolved?.marketIds?.length ?? null;
+
+  return (
+    <div className="rw-bu">
+      <div className="rw-bu-title">Universo bot</div>
+      <p className="rw-bu-note">
+        I filtri cambiano la <strong>vista</strong>. Il bot si muove solo quando <strong>confermi</strong> —
+        e questa azione salva soltanto la selezione: non arma nulla, non invia nessun ordine.
+      </p>
+      <div className="rw-bu-kv">
+        <span>attivo ora</span>
+        <span className="rw-bu-v">{activeCount != null ? `${activeCount} mercati` : '—'}</span>
+      </div>
+      <div className="rw-bu-kv">
+        <span>selezionati qui</span>
+        <span className="rw-bu-v">{selected.length}</span>
+      </div>
+
+      {phase !== 'confirm' ? (
+        <button type="button" className="rw-bu-btn" disabled={phase === 'busy'} onClick={() => { setMsg(null); setPhase('confirm'); }}>
+          {phase === 'busy' ? 'Imposto…' : 'Imposta come universo bot'}
+        </button>
+      ) : (
+        <div className="rw-bu-confirm">
+          <p className="rw-bu-note">
+            L’universo diventa: i mercati che passano i filtri correnti{selected.length ? `, più i ${selected.length} selezionati (forzati)` : ''},
+            ordinati per montepremi e limitati a {maxMarkets}. Salva solo la selezione.
+          </p>
+          <div className="rw-bu-actions">
+            <button type="button" className="rw-bu-btn" onClick={confirm}>Conferma</button>
+            <button type="button" className="rw-bu-cancel" onClick={() => setPhase('idle')}>Annulla</button>
+          </div>
+        </div>
+      )}
+      {selected.length > 0 && phase === 'idle' && (
+        <button type="button" className="rw-bu-clear" onClick={onCleared}>deseleziona tutto</button>
+      )}
+      {msg && <div className={msg.ok ? 'rw-bu-ok' : 'rw-bu-err'}>{msg.text}</div>}
     </div>
   );
 }
