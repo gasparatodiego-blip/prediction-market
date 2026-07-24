@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 // The cancel-only STOP primitive (address-only signer, structurally cannot place). We import ONLY this —
 // never the maker placement adapter — so this endpoint can stop orders but never start one.
 import { cancelAllOrders } from '@/lib/maker/cancel-all';
+// The ONE cancel credentials provider (shared with agent37-maker-watchdog). Present creds → live cancel;
+// absent → dry-run (simulated).
+import { buildCancelCredsProviders } from '@/lib/maker/cancel-creds-provider';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -19,7 +22,8 @@ export const dynamic = 'force-dynamic';
  */
 export async function POST() {
   try {
-    const results = await cancelAllOrders();
+    const credsProviders = await buildCancelCredsProviders();
+    const results = await cancelAllOrders({ credsProviders });
     const anyFail = Array.isArray(results) && results.some((r: { ok: boolean }) => r.ok === false);
     return NextResponse.json(
       { ok: !anyFail, at: new Date().toISOString(), results },

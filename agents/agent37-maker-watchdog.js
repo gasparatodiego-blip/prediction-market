@@ -23,6 +23,9 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 const { cancelAllOrders } = require('../lib/maker/cancel-all');
+// The ONE cancel credentials provider (shared with POST /api/maker/cancel). Present creds → live cancel;
+// absent → dry-run (simulated). key-custody is required lazily inside it, AFTER the .env load below.
+const { buildCancelCredsProviders } = require('../lib/maker/cancel-creds-provider');
 const { atomicWriteJson } = require('../lib/atomicJsonWrite');
 
 // ── Load .env for Telegram creds (pm2 doesn't auto-load project env files) — read-only, never commit ──
@@ -86,6 +89,7 @@ function formatResults(results) {
 async function poll(deps = {}) {
   const nowMs = deps.now ? deps.now() : Date.now();
   const doCancelAll = deps.cancelAllOrders || cancelAllOrders;
+  const buildProviders = deps.buildCancelCredsProviders || buildCancelCredsProviders;
   const transport = deps.transport; // undefined → real Telegram (with its mute gates)
 
   const hb = readJson(HB_FILE);
@@ -119,8 +123,11 @@ async function poll(deps = {}) {
 
   log(`DEAD-MAN TRIGGER: maker heartbeat is ${stalenessSec}s stale (> ${DEADMAN_SEC}s). Cancelling ALL open orders on every configured venue.`);
   let results = [];
-  try { results = await doCancelAll(); }     // disarmed build → dryRun cancel adapter (no network, no creds)
-  catch (e) { log('cancel-all threw:', e.message); results = [{ venue: 'polymarket', ok: false, error: (e && e.message) || String(e), cancelled: 0 }]; }
+  try {
+    // Live cancel when L2 creds are stored; dry-run (simulated) when genuinely absent.
+    const credsProviders = await buildProviders();
+    results = await doCancelAll({ credsProviders });
+  } catch (e) { log('cancel-all threw:', e.message); results = [{ venue: 'polymarket', ok: false, error: (e && e.message) || String(e), cancelled: 0 }]; }
 
   state.triggeredForEpisode = true;
   state.lastTriggerTs = nowMs;
