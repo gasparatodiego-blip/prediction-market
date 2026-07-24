@@ -25,6 +25,9 @@ const https = require('https');
 const { scoreBook, estimateCapitalLevelRange } = require('../lib/rewardScore');
 const { categoryFromText } = require('../lib/category');
 const { writeCombinedSnapshot } = require('../lib/rewards-normalize');
+// Depth-at-touch suppression floor — shared SSOT (also used by lib/rewards-normalize and
+// re-exported to TS via lib/reward-gating.ts). Configurable via REWARD_DEPTH_TOUCH_FLOOR_USD.
+const { competitorDepthUsd, belowDepthFloor, depthFloorUsd } = require('../lib/reward-depth-floor');
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const SCAN_INTERVAL_MS  = 15 * 60_000;
@@ -353,7 +356,7 @@ async function scan() {
   const toProcess = markets.slice(0, MAX_CLOB_MARKETS);
   console.log(`  Processing top ${toProcess.length} of ${markets.length} reward markets for CLOB depth`);
 
-  const results = [];
+  let results = [];
 
   for (const m of toProcess) {
     const fallbackMid = m.lastTradePrice
@@ -455,12 +458,43 @@ async function scan() {
     return b.rewardsDailyRate - a.rewardsDailyRate;
   });
 
+  // ── DEPTH-AT-TOUCH SUPPRESSION ──────────────────────────────────────────────
+  // Drop rows whose real two-sided in-band depth is below the floor ($25 default). That
+  // depth is the mechanism behind the thin-book artifact: with only a few dollars resting,
+  // a $500–$50k maker "owns" ~100% of the pool and the $/day reads absurdly high. The 2%/day
+  // cap only flags it; this HIDES it (never rewrites the number). Prints before/after + the
+  // removed rows so the effect is visible, not asserted.
+  const floor = depthFloorUsd();
+  const beforeCount = results.length;
+  const removed = [];
+  const kept = results.filter(r => {
+    const depth = competitorDepthUsd({
+      venue: 'polymarket',
+      bookDepthAtBand: r.existing_depth_usd,
+      sides: { no: r.sides && r.sides.no ? { bookDepthAtBand: r.sides.no.existing_depth_usd } : null },
+    });
+    if (belowDepthFloor(depth, floor)) {
+      removed.push({ q: r.question, pool: r.rewardsDailyRate, depthUsd: depth,
+        dayYieldPct: r.levels?.['500']?.dayYieldPct ?? null, grossDay: r.levels?.['500']?.grossRewardDay ?? null });
+      return false;
+    }
+    return true;
+  });
+  console.log(`  Depth-at-touch floor $${floor}: ${beforeCount} rows → ${kept.length} after (removed ${removed.length} thin-book artifact${removed.length === 1 ? '' : 's'})`);
+  for (const r of removed) {
+    console.log(`    ✗ depth $${(r.depthUsd ?? 0).toFixed(2)} · pool $${r.pool}/day · ~${r.dayYieldPct != null ? r.dayYieldPct.toFixed(1) : '?'}%/day @$500 (gross $${r.grossDay != null ? r.grossDay.toFixed(2) : '?'}) — ${String(r.q).slice(0, 70)}`);
+  }
+  results = kept;
+
   const out = {
     meta: {
       generatedAt:        new Date().toISOString(),
       scanDurationMs:     Date.now() - t0,
       rewardMarketsFound: markets.length,
       totalMarkets:       results.length,
+      depthFloorUsd:      floor,
+      suppressedThinDepth: removed.length,
+      scannedBeforeFloor: beforeCount,
       saneAt500:          results.filter(r => r.sane500).length,
       flaggedAt500:       results.filter(r => !r.sane500).length,
       capitalLevels:      CAPITAL_LEVELS,

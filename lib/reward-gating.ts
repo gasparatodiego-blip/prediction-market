@@ -19,6 +19,15 @@
 // artifacts (implying >1500%/yr) that the old 5%/day cap let through.
 export const REWARD_SANITY_CAP_PCT = 2.0;
 
+// $/depth → the "depth at touch" suppression floor. The 2%/day cap above only FLAGS a thin
+// row; the depth floor SUPPRESSES it, because the real mechanism producing the thin-book
+// artifact ("+$47.54/day = 1736%/yr" off a few-dollar book) is the depth itself. Single
+// source of truth in lib/reward-depth-floor.js (a plain JS module agent24 can require);
+// re-exported here so TS consumers share the one value. Configurable via
+// REWARD_DEPTH_TOUCH_FLOOR_USD (default $25).
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+export const REWARD_DEPTH_TOUCH_FLOOR_USD: number = require('./reward-depth-floor').DEFAULT_DEPTH_AT_TOUCH_FLOOR_USD;
+
 export interface KalshiGatingFlags {
   TRAP:        boolean;
   SHORT_BURST: boolean;
