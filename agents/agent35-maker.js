@@ -41,6 +41,8 @@ const { queryByUser } = require('../lib/safety/execution-audit');
 const { sentOrdersFromAudit } = require('../lib/safety/usage');
 const { reconcileOnce, RECONCILE_INTERVAL_MS } = require('../lib/safety/reconcile-fills');
 const { atomicWriteJson } = require('../lib/atomicJsonWrite');
+const { getMakerSelection, DEFAULT_SELECTION } = require('../lib/maker/selection');
+const { resolveMakerUniverse } = require('../lib/maker/universe');
 
 const OPERATOR_USER = process.env.MAKER_OPERATOR_USER || 'operator';
 
@@ -118,6 +120,7 @@ async function getRestBook(tokenId) {
 // per-leg re-quote memory: legKey -> { lastTarget, lastRequoteAt }
 const requoteState = new Map();
 let lastReconcileAt = 0; // throttle for the periodic fill reconciliation (see tick)
+let lastUniverseIds = new Set(); // marketIds quoted last cycle — diffed to cancel markets that leave the universe
 // per-leg static-baseline vs follow accumulators (for the paper reward-vs-baseline report)
 const rewardAccum = new Map(); // legKey -> { followScoreMs, staticScoreMs, staticInitPrice, lastTs }
 
@@ -134,7 +137,10 @@ function loadInputs() {
   for (const m of (norm && norm.markets) || []) if (m.marketId && m.rewardScore) rewardScoreByMarket.set(m.marketId, m.rewardScore);
   const newsByMarket = new Map();
   for (const [mid, s] of Object.entries((news && news.markets) || {})) newsByMarket.set(mid, s && s.severity);
-  return { books, bandByMarket, rewardScoreByMarket, newsByMarket };
+  // The RAW board markets — the SAME /tmp/liquidity-rewards.json the board reads. The universe resolver
+  // runs the board's shared filter functions over these, so the bot's set is the board's set by construction.
+  const normMarkets = (norm && Array.isArray(norm.markets)) ? norm.markets : [];
+  return { books, bandByMarket, rewardScoreByMarket, newsByMarket, normMarkets };
 }
 
 async function loadLegs() {
@@ -164,9 +170,27 @@ function accrueReward(legKey, followScore, staticFrozenPrice, mid, vCents, now) 
 
 async function tick(cfg, adapter) {
   const now = Date.now();
-  const { books, bandByMarket, rewardScoreByMarket, newsByMarket } = loadInputs();
+  const { books, bandByMarket, rewardScoreByMarket, newsByMarket, normMarkets } = loadInputs();
   const legsByMarket = await loadLegs();
   const ngCfg = loadNewsGuardConfig(process.env);
+
+  // ── OPERATING UNIVERSE (the control channel) — re-read the persisted selection EVERY cycle (never at
+  //    boot only), resolve it through the board's SHARED filter code path, and gate quoting to that set.
+  //    A selection that needs a pm2 restart to take effect is not a control channel. ──
+  let selection = DEFAULT_SELECTION;
+  try { if (prisma) selection = await getMakerSelection(prisma); } catch (e) { log('selection read failed (using default):', e.message); }
+  const universe = resolveMakerUniverse(normMarkets, selection);
+  const universeSet = new Set(universe.resolvedMarketIds);
+  // Markets that LEFT the universe since last cycle → cancel their resting orders BEFORE quoting anywhere
+  // new, so a de-selected market never keeps orphan quotes. Idempotent (no resting order → no-op). Zero
+  // markets is a VALID state: we cancel what we had and quote nothing below — never an error/crash-loop.
+  const leaving = [...lastUniverseIds].filter((id) => !universeSet.has(id));
+  if (leaving.length && adapter && typeof adapter.cancelMarketOrders === 'function') {
+    for (const mid of leaving) {
+      try { await adapter.cancelMarketOrders(mid); } catch (e) { log('universe-leave cancel failed', mid, e.message); }
+    }
+  }
+  lastUniverseIds = universeSet;
 
   const globalState = { dailyPnlUsd: 0, totalExposureUsd: 0, recentErrorCount: 0 }; // paper: no realised P&L/exposure
   const marketsOut = {};
@@ -199,6 +223,7 @@ async function tick(cfg, adapter) {
   }
 
   for (const [marketId, legs] of legsByMarket) {
+    if (!universeSet.has(marketId)) continue; // outside the operating universe — do not quote this market
     // conditionIds are 0x+64hex — the SAME shape as a private key, so the shared redactor blanks them in
     // the audit (safe over-redaction). A conditionId is PUBLIC, so we log a redaction-surviving ref
     // (no 0x prefix → doesn't match the private-key scrub) to keep the audit trail identifiable.
@@ -300,6 +325,11 @@ async function tick(cfg, adapter) {
   const state = {
     generatedAt: new Date(now).toISOString(),
     openOrderCount,
+    // The operating universe the bot RESOLVED this cycle — externally observable via the heartbeat, so
+    // what the bot believes it should quote can be checked against the board without reading its mind.
+    resolvedMarketIds: universe.resolvedMarketIds,
+    selectionUpdatedAt: selection.updatedAt,
+    universe: { matchedBeforeCap: universe.matchedBeforeCap, truncated: universe.truncated, maxMarkets: universe.maxMarkets, isDefaultSelection: !!selection.isDefault },
     mode: cfg.mode, dryRun: cfg.dryRun, canWrite: cfg.canWrite, killSwitch: effCfg.killSwitch,
     durableKill: { killed: durableKill.killed, scope: durableKill.scope, reason: durableKill.reason || null },
     source: 'agent35-maker · paper pipeline · quotes from ADJUSTED mid · no orders placed (MAKER_MODE=' + cfg.mode + ')',
@@ -316,15 +346,18 @@ async function tick(cfg, adapter) {
 // dead-man heartbeat. On throw the heartbeat carries lastError; a heartbeat that STOPS is the real death
 // signal. tickFn is injectable purely so the throw-path can be exercised in a test — defaults to tick.
 async function runCycleAndHeartbeat(cfg, adapter, cycleNo, tickFn = tick) {
-  let openOrderCount = null, lastError = null;
+  let openOrderCount = null, lastError = null, resolvedMarketIds = null, selectionUpdatedAt = null, universe = null;
   try {
     const st = await tickFn(cfg, adapter);
     openOrderCount = (st && st.openOrderCount !== undefined) ? st.openOrderCount : null;
+    resolvedMarketIds = (st && Array.isArray(st.resolvedMarketIds)) ? st.resolvedMarketIds : null;
+    selectionUpdatedAt = (st && st.selectionUpdatedAt !== undefined) ? st.selectionUpdatedAt : null;
+    universe = (st && st.universe) ? st.universe : null;
   } catch (e) {
     lastError = (e && e.message) ? e.message : String(e);
     log('tick failed:', lastError);
   }
-  const hb = { ts: Date.now(), cycle: cycleNo, openOrderCount, mode: (cfg && cfg.mode) || null, lastError };
+  const hb = { ts: Date.now(), cycle: cycleNo, openOrderCount, mode: (cfg && cfg.mode) || null, lastError, resolvedMarketIds, selectionUpdatedAt, universe };
   writeMakerHeartbeat(hb);
   return hb;
 }
