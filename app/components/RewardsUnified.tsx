@@ -22,9 +22,9 @@ import { computePriceRow, type PriceRow } from '@/lib/reward-price-row';
 // The ONE shared venue-rules validator (Part B1–B3) — the UI band warning CALLS this, never reimplements
 // the check. validateQuotePair applies the qMin coupling (a two-sided quote is only as good as its weaker leg).
 import { validateQuotePair, type PairVerdict } from '@/lib/maker/venue-rules';
-// Provisional band-relative stability (structure-only) from the REAL 24h volatility measure — the ONE
-// definition, shared with the server filter (lib/rewards-server-filter). null when unmeasured → "—".
-import { computeStability } from '@/lib/reward-stability';
+// Measured band-relative price stability (7d window) — the ONE definition, shared with the server
+// filter (lib/rewards-server-filter). Unknown ⇒ score null ⇒ the cell renders "—" with the reason.
+import { stabilityOf, type Stability, type StabilityReason } from '@/lib/reward-stability';
 // The 2%/day sane-reward gate — the SINGLE implementation (was wired only to the paper book). Surfacing it
 // here makes a thin / over-cap reward row read as a flagged run-rate, never a clean cashable $/day.
 import { REWARD_SANITY_CAP_PCT, isSanePolymarketLevel } from '@/lib/reward-gating';
@@ -86,10 +86,15 @@ interface Market {
   // Hours until the market resolves (real feed field, from lib/rewards-normalize). <= 0 means it
   // has ALREADY resolved → no active rewards. null when the feed didn't carry a resolution time.
   hoursToResolution?: number | null;
-  // Real 24h price-move stdev (agent24) + the band width — the inputs to the provisional stability
-  // score. Both redacted → null on the free tier (→ stability "—"). maxSpread also lives on rewardScore.
+  // Real 24h price-move stdev (agent24) — the estimator's adverse-move input. Redacted on the free tier.
   volatilityStdev?: number | null;
   maxSpread?: number | null;
+  // STABILITY inputs (agent24, 7d window) — raw measurements, scored by lib/reward-stability.
+  // `stability` carries the dispersion + sample counts; volume24hUsd is the trade-flow evidence
+  // (null = Gamma omitted the key, i.e. NO measured flow — never read as zero). Both redacted on
+  // the free tier, which is what makes the free stability cell resolve to "—".
+  stability?: { stdev?: number | null; range?: number | null; nPts?: number | null; nDistinct?: number | null; windowHours?: number | null } | null;
+  volume24hUsd?: number | null;
   flags?: string[] | null;
   rewardScore?: RewardScore | null;
   // Price-first inputs (Part A). tickSize is a static market param (public); bestBid/bestAsk are the live
@@ -97,6 +102,36 @@ interface Market {
   tickSize?: number | null;
   bestBid?: number | null;
   bestAsk?: number | null;
+}
+
+// ── Stability, in words ──────────────────────────────────────────────────────────────────────
+// The hover text on a MEASURED stability cell: only the numbers the score was actually computed
+// from, so the reader can check the score instead of trusting it. No suggestion of where to quote.
+function stabilityDriverText(s: Stability): string {
+  const parts: string[] = [];
+  if (s.movedCents != null && s.windowHours != null) {
+    parts.push(`prezzo mosso ${s.movedCents.toFixed(2)}c (1σ) in ${Math.round(s.windowHours / 24)}g`);
+  }
+  if (s.consumedBandPct != null) parts.push(`= ${s.consumedBandPct}% della semi-banda premiante`);
+  if (s.bookDepthUsd != null)    parts.push(`book in banda $${Math.round(s.bookDepthUsd).toLocaleString('it-IT')}`);
+  if (s.volume24hUsd != null)    parts.push(`scambiato 24h $${Math.round(s.volume24hUsd).toLocaleString('it-IT')}`);
+  if (s.nPts != null)            parts.push(`${s.nPts} rilevazioni${s.nDistinct != null ? `, ${s.nDistinct} prezzi distinti` : ''}`);
+  return parts.join(' · ');
+}
+
+// Why a cell reads "—". Each reason names the MISSING measurement, never implies instability:
+// unmeasured is not "moves a lot", and an untraded market is not "calm".
+function stabilityUnknownText(reason: StabilityReason | null): string {
+  switch (reason) {
+    case 'no-band':       return 'non misurata: questo mercato non espone una banda premiante';
+    case 'no-history':    return 'non misurata: nessuno storico prezzi utilizzabile';
+    case 'thin-sample':   return 'non misurata: troppe poche rilevazioni di prezzo per misurare il movimento';
+    case 'no-trade-data': return 'non misurata: nessun volume scambiato rilevato nelle 24h — un prezzo fermo senza scambi non è calma, è assenza di dati';
+    case 'no-pool':       return 'non misurata: nessun premio giornaliero con cui confrontare il flusso scambiato';
+    case 'no-flow':       return 'non misurata: scambia meno di quanto paga in premi al giorno — il prezzo fermo non è prodotto dagli scambi';
+    case 'no-book':       return 'non misurata: book in banda assente o sotto la soglia minima';
+    default:              return 'non misurata per questo mercato';
+  }
 }
 
 // Honest-engine: a settled market (resolution time in the past) can never pay active LP rewards,
@@ -142,7 +177,8 @@ interface Row extends Base {
   space: number;
   share: number;
   unknown: boolean;
-  stabilityScore: number | null;      // provisional 24h-volatility stability (0..100) or null (unmeasured)
+  stabilityScore: number | null;      // measured band-relative stability (0..100) or null (unmeasured)
+  stability: Stability;               // full measurement — label, drivers, and the unknown reason
   hoursToResolution: number | null;   // real expiry field for the expiry cell + expiry sort
 }
 
@@ -434,6 +470,7 @@ export default function RewardsUnified() {
   const enriched: Row[] = useMemo(() => base.map((b) => {
     const est = estimatedOperatorSharePerDay(b.m.rewardScore ?? null);
     const unknown = est.unknown || b.nonExecReason != null;
+    const stab = stabilityOf(b.m);
     const netUsdPerDay = unknown ? null : est.estUsdPerDay;
     const share = unknown ? 0 : (est.share ?? 0);
     // The two-sided in-band depth already resting in the book — the MEASURED reward-eligible
@@ -465,12 +502,12 @@ export default function RewardsUnified() {
       space:        Infinity,
       share,
       unknown,
-      // Sort/stat inputs (real fields). stabilityScore: provisional band-relative 24h-volatility score
-      // (null when unmeasured → sorts last, cell "—"). hoursToResolution: the real expiry field.
-      stabilityScore: computeStability({
-        volatilityStdev: fin(b.m.volatilityStdev) ? (b.m.volatilityStdev as number) : null,
-        maxSpreadCents:  b.m.rewardScore?.maxSpreadCents ?? (fin(b.m.maxSpread) ? (b.m.maxSpread as number) : null),
-      }).score,
+      // Sort/stat inputs (real fields). stability: the measured band-relative score — unknown (score
+      // null) whenever any input is missing → sorts last, cell "—". hoursToResolution: real expiry.
+      // Same stabilityOf() the SERVER filter calls, so the shown score can never disagree with the
+      // score the "Stabilità minima" filter matched on.
+      stability:      stab,
+      stabilityScore: stab.score,
       hoursToResolution: fin(b.m.hoursToResolution) ? (b.m.hoursToResolution as number) : null,
     };
   }), [base]);
@@ -772,6 +809,13 @@ export default function RewardsUnified() {
                   onClick={() => set({ sortMode: 'expiry' })}>scadenza</button>
               </span>
             </div>
+            {/* PERMANENT caveat — the stability score is a backward-looking measurement, and the two
+                columns are meant to be read together. Never collapsed, never dismissible. */}
+            <p className="cc-stab-note" data-stab-caveat="1">
+              La stabilità misura quanto il prezzo si è <strong>già</strong> mosso: non prevede il futuro.
+              Un mercato fermo può muoversi su una notizia. Usa la <strong>scadenza</strong> come correzione —
+              un evento lontano ha meno motivi di muoversi adesso. Dove non è misurata leggi “—”, mai uno zero.
+            </p>
 
             {visible.length === 0 ? (
               <EmptyState prefix="cc" title="Nessun mercato passa questi filtri."
@@ -880,12 +924,15 @@ export default function RewardsUnified() {
                                     {pr.ownImpactPct < 100 ? pr.ownImpactPct.toFixed(1) : Math.round(pr.ownImpactPct)}%
                                   </span>}
                             </span>
+                            {/* STABILITÀ — score + plain label, with the MEASURED driver on hover.
+                                Facts only (movement, book, flow, sample); no placement advice. */}
                             <span className="rw-stat">
-                              <span className="rw-stat-k">stabilità <span className="rw-prov">prov.</span></span>
+                              <span className="rw-stat-k">stabilità</span>
                               {row.stabilityScore == null
-                                ? <span className="rw-stat-v rw-dim" title="stabilità non ancora misurata per questo mercato — il motore reale è un task separato">— <i className="rw-stab-bar rw-stab-none" /></span>
-                                : <span className="rw-stat-v" title="provvisorio · quanto poco il prezzo si è mosso nelle 24h rispetto alla banda premiante">
-                                    {row.stabilityScore}<i className={`rw-stab-bar rw-stab-${row.stabilityScore >= 67 ? 'hi' : row.stabilityScore >= 34 ? 'mid' : 'lo'}`} style={{ ['--v' as any]: `${row.stabilityScore}%` }} />
+                                ? <span className="rw-stat-v rw-dim" data-stab-driver="unknown" title={stabilityUnknownText(row.stability.reason)}>— <i className="rw-stab-bar rw-stab-none" /></span>
+                                : <span className="rw-stat-v" data-stab-driver="measured" title={stabilityDriverText(row.stability)}>
+                                    {row.stabilityScore}<span className="rw-stab-lab">{row.stability.label}</span>
+                                    <i className={`rw-stab-bar rw-stab-${row.stabilityScore >= 70 ? 'hi' : row.stabilityScore >= 35 ? 'mid' : 'lo'}`} style={{ ['--v' as any]: `${row.stabilityScore}%` }} />
                                   </span>}
                             </span>
                           </span>

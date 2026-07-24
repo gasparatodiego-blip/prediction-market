@@ -935,6 +935,12 @@ h1, h2, h3 {
 .rewards .rw-stab-mid::after { background: var(--cc-amber); }
 .rewards .rw-stab-lo::after { background: var(--ds-danger); }
 .rewards .rw-stab-none { opacity: .5; }
+/* Plain-language stability label ("fermo" / "medio" / "si muove") next to the score. Lowercase and
+   lighter than the number: the score is the measurement, the word is only its reading. */
+.rewards .rw-stab-lab { font-size: 9.5px; font-weight: 600; color: var(--cc-muted); text-transform: lowercase; letter-spacing: .01em; }
+/* Permanent stability caveat under the sort row — always visible, never a dismissible tooltip. */
+.rewards .cc-stab-note { margin: 6px 0 0; font-size: 10.5px; line-height: 1.45; color: var(--cc-muted); max-width: 78ch; }
+.rewards .cc-stab-note strong { color: var(--cc-text); font-weight: 700; }
 
 /* Universo bot panel (filter column) */
 .rewards .rw-bu { border: 1px solid var(--cc-border); border-radius: 12px; padding: 12px; background: var(--cc-panel); display: flex; flex-direction: column; gap: 8px; }
