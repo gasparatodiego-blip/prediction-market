@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Redacted } from './ui/Redacted';
 import { EmptyState } from './ds';
@@ -195,9 +194,15 @@ interface Ranges {
   hasStability: boolean;
 }
 
-// The six required server filters + category. These are the ONLY controls that hit the API; they
-// live in the URL query string so the view survives refresh and is shareable. Sort + balance are
-// client presentation/compute (also mirrored to the URL for a fully reproducible shared view).
+// ── VIEW filters (the six server filters + category + sort) ─────────────────────────────────────
+// These are the ONLY controls that hit the API. They are DELIBERATELY NOT PERSISTED: every page load
+// starts from DEFAULT_FILTERS. A filter is a momentary question about the board, not a setting — a
+// stale one silently hiding markets on a later visit is the failure mode this split removes.
+//
+// The state that DOES survive a refresh is separate and lives elsewhere: "La tua size" and "Distanza
+// dal mid" (localStorage rw_size/rw_dist — they describe the operator, not the view) and the
+// bot-universe selection (localStorage rw_selected + the persisted MakerUniverseSelection row — it is
+// an operating decision). "Azzera filtri" resets THIS interface only and never touches those.
 interface FilterState {
   venue: 'all' | 'polymarket' | 'kalshi';
   categories: string[];
@@ -267,31 +272,18 @@ function expiryView(hoursToResolution: number | null | undefined):
   return { label, band };
 }
 
-/** Parse the URL query string into filter state (shareable / survives refresh). */
-function parseFiltersFromUrl(sp: URLSearchParams): FilterState {
-  const nOr = (k: string, d: number) => {
-    const v = sp.get(k);
-    const n = Number(v);
-    return v != null && v !== '' && Number.isFinite(n) ? n : d;
-  };
-  const venueRaw = (sp.get('venue') || 'all').toLowerCase();
-  const venue: FilterState['venue'] =
-    venueRaw === 'polymarket' || venueRaw === 'kalshi' ? venueRaw : 'all';
-  const cats = sp.get('category');
-  return {
-    venue,
-    categories: cats ? cats.split(',').map((s) => s.trim()).filter(Boolean) : [],
-    minPool: Math.max(0, nOr('minPool', 0)),
-    minDepth: Math.max(0, nOr('minDepth', 0)),
-    maxSpreadCents: sp.get('maxSpread') != null ? Math.max(0, nOr('maxSpread', SENTINEL_SPREAD)) : SENTINEL_SPREAD,
-    maxCompetitionPct: Math.min(100, Math.max(0, nOr('maxCompetition', 100))),
-    hideThin: sp.get('hideThin') === '1' || sp.get('hideThin') === 'true',
-    minStab: Math.min(100, Math.max(0, nOr('minStab', 0))),
-    sortMode: (['stability', 'day', 'expiry'] as const).includes(sp.get('smode') as any)
-      ? (sp.get('smode') as FilterState['sortMode']) : 'stability',
-    sortByPool: sp.get('sort') === 'pool',
-    sortDir: sp.get('dir') === 'asc' ? 'asc' : 'desc',
-  };
+/** Is any VIEW filter currently constraining the board? Drives the reset button's enabled state. */
+function anyFilterActive(f: FilterState, r: Ranges | null): boolean {
+  return f.venue !== 'all'
+    || f.categories.length > 0
+    || f.minPool > 0
+    || f.minDepth > 0
+    || (f.maxSpreadCents >= 0 && (!r || f.maxSpreadCents < r.spreadMaxCents))
+    || f.maxCompetitionPct < 100
+    || f.hideThin
+    || f.minStab > 0
+    || f.sortMode !== DEFAULT_FILTERS.sortMode
+    || f.sortDir !== DEFAULT_FILTERS.sortDir;
 }
 
 /** The server-filter subset → query params (only constraining values; the six API filters). */
@@ -310,17 +302,16 @@ function serverParams(f: FilterState, r: Ranges | null): URLSearchParams {
 }
 
 export default function RewardsUnified() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-
   const [data, setData] = useState<Payload | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [ranges, setRanges] = useState<Ranges | null>(null);
-  const [filters, setFilters] = useState<FilterState>(
-    () => parseFiltersFromUrl(searchParams as unknown as URLSearchParams),
-  );
+  // VIEW filters always start at their defaults — never restored from the URL, localStorage or the DB.
+  const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
 
+  // ── STICKY STATE (1/2) · PRICE-FIRST per-user controls, persisted to localStorage so they survive
+  //    refresh. These describe the OPERATOR (how much capital, how far off the mid), not the view, so
+  //    they are deliberately outside FilterState and "Azzera filtri" never clears them. ──
   // ── PRICE-FIRST per-user controls (Part A4), persisted to localStorage so they survive refresh.
   //    "Your size" is the TOTAL deployed across BOTH sides; default EMPTY (while empty, $/day + yield
   //    render "—" — no default, no placeholder number). "Distance from mid" is the posting offset in
@@ -344,6 +335,11 @@ export default function RewardsUnified() {
     return distInput.trim() !== '' && Number.isFinite(n) && n >= 0 ? n : null;
   }, [distInput]);
 
+  // ── STICKY STATE (2/2) · BOT-UNIVERSE selection. Survives refresh (localStorage rw_selected) and,
+  //    once promoted, lives in the persisted MakerUniverseSelection row. Cleared ONLY by an explicit
+  //    deselect (the row checkbox or the panel's own clear action) — never by a refresh, never by
+  //    "Azzera filtri". A filter reset that silently emptied the bot's universe would be a control
+  //    action disguised as a view action. ──
   // ── BOT-UNIVERSE per-row SELECTION (persisted). Selecting a row toggles it into the explicit
   //    selection that "Imposta come universo bot" force-includes (allowlist) into the maker-universe
   //    store. This is a VIEW/selection state only — it arms nothing; nothing persists until the button. ──
@@ -391,15 +387,14 @@ export default function RewardsUnified() {
     return () => { alive = false; clearTimeout(deb); clearInterval(t); };
   }, [apiQuery]);
 
-  // URL SYNC — mirror the full view (filters + sort) to the query string so it survives refresh and
-  // is shareable. replace (not push) + scroll:false so it never spams history/jumps.
+  // NO URL SYNC. View filters are intentionally not mirrored to the query string: a URL that carried
+  // them would restore them on refresh (and on any bookmark/back-navigation), which is exactly the
+  // persistence this split removes. A leftover query string from an older shared link is stripped once
+  // on mount via the History API — no navigation, no re-render, so it can never fight the fetch effect.
   useEffect(() => {
-    const p = serverParams(filters, ranges);
-    if (filters.sortMode !== 'stability') p.set('smode', filters.sortMode);
-    if (filters.sortDir === 'asc') p.set('dir', 'asc');
-    const qs = p.toString();
-    router.replace(qs ? `?${qs}` : '?', { scroll: false });
-  }, [filters, ranges, router]);
+    if (typeof window === 'undefined' || !window.location.search) return;
+    window.history.replaceState(null, '', window.location.pathname);
+  }, []);
 
   const isPaid = data?.isPaid ?? false;
 
@@ -554,6 +549,9 @@ export default function RewardsUnified() {
   const mostRestrictiveLabel = mostRestrictiveKey ? MOST_RESTRICT_LABELS[mostRestrictiveKey] ?? null : null;
   // At the range max the spread filter imposes no constraint ("qualsiasi") — used in the slider value.
   const spreadActive = filters.maxSpreadCents >= 0 && filters.maxSpreadCents < rg.spreadMaxCents;
+  // Is anything constraining the board right now? Drives the reset button's enabled state (the button
+  // itself is always rendered — see the filter-card head).
+  const filtersActive = anyFilterActive(filters, ranges);
 
   return (
     <div className="rewards">
@@ -627,6 +625,29 @@ export default function RewardsUnified() {
                 Sliders show the current value to the RIGHT of the track; venue and the thin toggle
                 are segmented controls. */}
             <div className="cc-fcard">
+              {/* ── FILTER-CARD HEAD · "Azzera filtri" is ALWAYS rendered (never conditional, never
+                  hidden behind a menu) so the way out of a filtered board is visible before you
+                  remember which control you moved. It resets the VIEW filters only: la tua size, la
+                  distanza dal mid and the bot-universe selection are untouched — said in the note so
+                  the guarantee is on screen, not just in the code. ── */}
+              <div className="cc-fhead">
+                <span className="cc-fhead-t">Filtri</span>
+                <button
+                  type="button"
+                  className="cc-freset"
+                  data-filter-reset="1"
+                  disabled={!filtersActive}
+                  onClick={() => setFilters(DEFAULT_FILTERS)}
+                  title="Riporta tutti i filtri ai valori predefiniti. Size, distanza dal mid e universo bot non vengono toccati."
+                >
+                  Azzera filtri
+                </button>
+                <span className="cc-fhead-note">
+                  I filtri ripartono da zero a ogni ricarica. Size, distanza dal mid e selezione per
+                  l&rsquo;universo bot restano.
+                </span>
+              </div>
+
               {/* SU QUALE PIATTAFORMA — segmented (server filter) */}
               <div className="cc-fctl">
                 <span className="cc-flabel">Su quale piattaforma</span>
@@ -1008,14 +1029,27 @@ export default function RewardsUnified() {
                           {/* Into the interactive order-book detail page for THIS exact market.
                               marketId is the raw feed id (Polymarket conditionId / Kalshi ticker) —
                               the same key the detail route resolves against /api/rewards-unified. */}
-                          <Link
-                            href={`/dashboard/liquidity-rewards/${encodeURIComponent(m.marketId)}`}
-                            prefetch={false}
-                            className="rw-open-book"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            Apri il book →
-                          </Link>
+                          <div className="rw-open-row">
+                            <Link
+                              href={`/dashboard/liquidity-rewards/${encodeURIComponent(m.marketId)}`}
+                              prefetch={false}
+                              className="rw-open-book"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              Apri il book →
+                            </Link>
+                            {/* The READ-ONLY event terminal: rules, identifiers, dates, live book, chain
+                                state. Declares what this market is; suggests nothing. */}
+                            <Link
+                              href={`/dashboard/liquidity-rewards/${encodeURIComponent(m.marketId)}/event`}
+                              prefetch={false}
+                              className="rw-open-book"
+                              data-open-event="1"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              Scheda mercato →
+                            </Link>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -1159,6 +1193,11 @@ function RewardPriceFirst({ row, isPaid, totalSizeUsd, offsetCents }:
   const outOfBand = bandReasons.some((r) => r.code === 'OUT_OF_BAND');
   // Min-size reasons only matter once a size is set — surfaced near the $/day, not the band rail.
   const sizeReasons = (verdict && totalSizeUsd != null) ? verdict.reasons.filter((r) => r.code === 'BELOW_MIN_SIZE') : [];
+  // BELOW-MIN CLARITY: when the per-side order is below the venue's min_incentive_size the reward is a
+  // CORRECT $0 — but a bare "$0.00" hides WHY. Surface the venue minimum (in shares) inline by the $/day so
+  // the reason is legible. The $ needed scales with price (≈ minSize × price), so we state the share minimum.
+  const belowMin = sizeReasons.length > 0;
+  const minSizeShares = fin(pr.minSize) ? (pr.minSize as number) : null;
 
   return (
     <div className="rw-pf">
@@ -1227,9 +1266,18 @@ function RewardPriceFirst({ row, isPaid, totalSizeUsd, offsetCents }:
           <span className="rw-pf-nv rw-pf-primary">
             {totalSizeUsd == null
               ? <span className="rw-dim" title="inserisci la tua size in alto per stimare il $/giorno">—</span>
-              : <Redacted value={pr.grossPerDay} isPaid={isPaid} nullDisplay={<span className="rw-dim">—</span>}>
-                  {(v) => <span className="rw-nowrap">${Number(v).toFixed(2)}/day <span className="cc-row-stima">stima</span></span>}
-                </Redacted>}
+              : belowMin
+                ? <span
+                    className="rw-pf-belowmin"
+                    data-belowmin
+                    title={`la tua size è sotto il minimo del venue: servono almeno ${minSizeShares ?? '—'} shares per lato (≈ minSize × prezzo in $) per maturare premi`}
+                    style={{ color: '#E8B23A', fontWeight: 600, fontSize: '13px', whiteSpace: 'normal' }}
+                  >
+                    $0.00/day · sotto il minimo del venue{minSizeShares != null ? ` (≥ ${minSizeShares} shares/lato)` : ''}
+                  </span>
+                : <Redacted value={pr.grossPerDay} isPaid={isPaid} nullDisplay={<span className="rw-dim">—</span>}>
+                    {(v) => <span className="rw-nowrap">${Number(v).toFixed(2)}/day <span className="cc-row-stima">stima</span></span>}
+                  </Redacted>}
           </span>
         </div>
         <div className="rw-pf-num">
