@@ -398,5 +398,23 @@ module.exports = {
       autorestart:   true,
       env:           { NODE_ENV: 'production', HOME: '/root' },
     },
+    {
+      name:          'agent37-maker-watchdog',
+      script:        './agents/agent37-maker-watchdog.js',
+      cwd:           '/root/prediction-market',
+      restart_delay: 15000,
+      max_restarts:  20,
+      // The DEAD-MAN switch for agent35-maker. SEPARATE process by design — a watchdog inside the process
+      // it watches dies with it. Polls data/maker-heartbeat.json every 15s; if stale beyond
+      // MAKER_DEADMAN_SECONDS (120) it cancels ALL open orders on every configured venue via the
+      // CANCEL-ONLY surface (lib/maker/cancel-all → address-only signer; structurally cannot place) and
+      // alerts Telegram. Tiny footprint (reads two small JSON files, no book/market data). NOTE: a
+      // same-host watchdog does NOT survive host death — that is the venue-native order TTL's job.
+      // (Named 37, not 36: slot 36 is agent36-book-velocity.)
+      max_memory_restart: '150M',
+      watch:         false,
+      autorestart:   true,
+      env:           { NODE_ENV: 'production', HOME: '/root', MAKER_DEADMAN_SECONDS: '120' },
+    },
   ],
 };
