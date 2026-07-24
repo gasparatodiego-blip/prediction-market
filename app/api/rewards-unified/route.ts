@@ -135,6 +135,7 @@ export async function GET(request: NextRequest) {
       if (filters.maxSpreadCents != null)                  relaxations.push(['maxSpread',      { ...filters, maxSpreadCents: null }]);
       if (filters.maxCompetitionPct != null)               relaxations.push(['maxCompetition', { ...filters, maxCompetitionPct: null }]);
       if (filters.hideThin)                                relaxations.push(['hideThin',       { ...filters, hideThin: false }]);
+      if (filters.minStab != null && filters.minStab > 0)  relaxations.push(['minStab',        { ...filters, minStab: null }]);
       for (const [key, relaxed] of relaxations) {
         const recovers = applyRewardFilters(fullMarkets, relaxed).length;
         if (!mostRestrictiveFilter || recovers > mostRestrictiveFilter.recovers) {

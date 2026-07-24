@@ -7,6 +7,7 @@ export interface RewardFilterState {
   maxSpreadCents: number | null;
   maxCompetitionPct: number | null;
   hideThin: boolean;
+  minStab: number | null;
 }
 export interface RewardFilterScalars {
   venue: string | undefined;
@@ -16,6 +17,7 @@ export interface RewardFilterScalars {
   competitionPct: number | null;
   spreadCents: number | null;
   thin: boolean;
+  stabilityScore: number | null;
 }
 export interface RewardFilterRanges {
   poolMax: number;
@@ -24,6 +26,8 @@ export interface RewardFilterRanges {
   categories: string[];
   venues: string[];
   hasCompetition: boolean;
+  stabMax: number;
+  hasStability: boolean;
 }
 export function filterScalars(m: any): RewardFilterScalars;
 export function parseRewardFilters(sp: URLSearchParams | Record<string, string> | null): RewardFilterState;
