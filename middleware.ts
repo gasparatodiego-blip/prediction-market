@@ -20,7 +20,16 @@ export async function middleware(request: NextRequest) {
   // Everything under /settings and /api/settings is admin-only, and hidden
   // entirely (404) unless ADMIN_ACCESS_SECRET is configured. The login page and
   // the login POST are the only paths reachable without a valid session.
-  if (pathname.startsWith('/settings') || pathname.startsWith('/api/settings')) {
+  //
+  // The maker kill switch (/dashboard/maker page + /api/maker cancel API) rides the
+  // SAME ADMIN_ACCESS_SECRET gate — it can cancel real orders, so it must never be
+  // public. Only these two maker paths are gated; the rest of /dashboard stays public.
+  const isSettingsLane = pathname.startsWith('/settings') || pathname.startsWith('/api/settings');
+  const isMakerLane =
+    pathname === '/dashboard/maker' ||
+    pathname.startsWith('/dashboard/maker/') ||
+    pathname.startsWith('/api/maker');
+  if (isSettingsLane || isMakerLane) {
     const secret = process.env.ADMIN_ACCESS_SECRET;
     if (!secret || secret.length === 0) {
       // Feature hidden: no secret configured, no such surface.
@@ -35,7 +44,8 @@ export async function middleware(request: NextRequest) {
     const token = request.cookies.get(ADMIN_COOKIE)?.value;
     const ok = await verifyAdminSession(token);
     if (!ok) {
-      if (pathname.startsWith('/api/settings')) {
+      // API routes (settings OR maker) get a 401 JSON; pages redirect to the admin login.
+      if (pathname.startsWith('/api/')) {
         return new NextResponse(JSON.stringify({ error: 'Unauthorized' }), {
           status: 401,
           headers: { 'Content-Type': 'application/json' },
@@ -94,5 +104,7 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/settings/:path*', '/api/:path*'],
+  // /api/:path* already covers /api/maker; add the maker dashboard page so the gate runs on it too.
+  // The rest of /dashboard is deliberately absent here — it stays public.
+  matcher: ['/settings/:path*', '/dashboard/maker', '/dashboard/maker/:path*', '/api/:path*'],
 };
