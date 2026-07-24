@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Redacted } from './ui/Redacted';
 import { EmptyState } from './ds';
+import MakerUniverseControl from './MakerUniverseControl';
 import { APY_CAP, APY_CAP_LABEL } from '@/lib/honest-display';
 import { computeLiquidityYield } from '@/lib/liquidity-yield';
 // The 2%/day sane-reward gate — the SINGLE implementation (was wired only to the paper book). Surfacing it
@@ -552,6 +553,10 @@ export default function RewardsUnified() {
                   onClick={() => set({ sortByPool: false, sortDir: 'desc' })}>▼</button>
               </span>
             </div>
+
+            {/* Bot universe: the always-visible active universe + the deliberate "Set as bot universe"
+                promotion (gated write). Browsing never auto-syncs to the bot. */}
+            <MakerUniverseControl apiQuery={apiQuery} />
 
             {visible.length === 0 ? (
               <EmptyState prefix="cc" title="No reward markets match these filters."

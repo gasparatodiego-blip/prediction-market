@@ -24,6 +24,11 @@ export async function middleware(request: NextRequest) {
   // The maker kill switch (/dashboard/maker page + /api/maker cancel API) rides the
   // SAME ADMIN_ACCESS_SECRET gate — it can cancel real orders, so it must never be
   // public. Only these two maker paths are gated; the rest of /dashboard stays public.
+  // The ACTIVE bot universe is public read-only info shown on the public rewards board, so GET
+  // /api/maker/universe is exempt from the admin gate. CHANGING it (POST) stays gated below.
+  if (pathname === '/api/maker/universe' && request.method === 'GET') {
+    return NextResponse.next();
+  }
   const isSettingsLane = pathname.startsWith('/settings') || pathname.startsWith('/api/settings');
   const isMakerLane =
     pathname === '/dashboard/maker' ||

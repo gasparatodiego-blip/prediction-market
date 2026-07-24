@@ -11,6 +11,8 @@ import { computeLiquidityYield } from '@/lib/liquidity-yield';
 // before tier redaction, so the returned row COUNT is correct for every tier and the payload
 // is genuinely filtered (not fetch-all-and-hide-in-the-browser).
 import { parseRewardFilters, applyRewardFilters, deriveRanges } from '@/lib/rewards-server-filter';
+// The SAME resolved-market drop the bot's universe resolver uses — shared so board and bot agree.
+import { dropResolvedRewards } from '@/lib/maker/universe';
 
 // Reference balance the guardian evaluates at — the SAME default the list first shows (RewardsUnified
 // BAL_DEFAULT). The stamped day-yield is what a paid user sees at that balance.
@@ -104,9 +106,7 @@ export async function GET(request: NextRequest) {
     // Drop already-resolved markets (resolution time in the past ⇒ no active rewards) server-side,
     // so the counts below and the rows the client shows are the same set. A missing (null)
     // resolution time is NOT treated as resolved — we never fabricate one.
-    data.markets = data.markets.filter((m: any) =>
-      !(typeof m.hoursToResolution === 'number' && Number.isFinite(m.hoursToResolution) && m.hoursToResolution <= 0),
-    );
+    data.markets = dropResolvedRewards(data.markets);
 
     // ── SERVER-SIDE FILTERING ── applied on the REAL values, BEFORE redaction, so the returned
     // count is correct for every tier. Ranges/options are computed over the FULL verified set so
