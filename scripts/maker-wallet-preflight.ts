@@ -63,12 +63,12 @@ async function erc20(provider: JsonRpcProvider, token: string, wallet: string): 
     let dec = 6
     try { dec = Number(await c.decimals()) } catch { /* default 6 */ }
     const bal = await c.balanceOf(wallet)
-    const balance = cell(formatUnits(bal, dec), bal > 0n ? 'PASS' : 'MISSING')
+    const balance = cell(formatUnits(bal, dec), bal > BigInt(0) ? 'PASS' : 'MISSING')
     const allowances: Cell[] = []
     for (const ex of EXCHANGES) {
       try {
         const a = await c.allowance(wallet, ex.addr)
-        allowances.push(cell(a > 0n ? `${formatUnits(a, dec)} approved` : '0', a > 0n ? 'PASS' : 'MISSING'))
+        allowances.push(cell(a > BigInt(0) ? `${formatUnits(a, dec)} approved` : '0', a > BigInt(0) ? 'PASS' : 'MISSING'))
       } catch {
         allowances.push(cell(DASH, DASH))
       }
@@ -127,7 +127,7 @@ async function main() {
   let matic: Cell
   try {
     const bal = await provider.getBalance(wallet)
-    matic = cell(`${formatEther(bal)} MATIC`, bal > 0n ? 'PASS' : 'MISSING')
+    matic = cell(`${formatEther(bal)} MATIC`, bal > BigInt(0) ? 'PASS' : 'MISSING')
   } catch {
     matic = cell(DASH, DASH)
   }
