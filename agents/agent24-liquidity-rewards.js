@@ -168,6 +168,21 @@ async function fetchRewardMarkets() {
   return markets;
 }
 
+// ── Market tick size (ALWAYS fetched per token, never assumed — 0.1/0.01/0.001/0.0001/0.0025 all
+//    exist). Cached 1h (a tick size effectively never changes). null on failure → the price-first row
+//    renders "—" and no rail rather than guessing a tick. ─────────────────────────────────────────────
+const _tickCache = new Map(); // tokenId -> { tick, ts }
+async function getTick(tokenId) {
+  const c = _tickCache.get(tokenId);
+  if (c && Date.now() - c.ts < 3_600_000) return c.tick;
+  try {
+    const r = await httpGet(`https://clob.polymarket.com/tick-size?token_id=${tokenId}`);
+    const tick = r && r.status === 200 && r.data ? parseFloat(r.data.minimum_tick_size) : null;
+    if (Number.isFinite(tick)) { _tickCache.set(tokenId, { tick, ts: Date.now() }); return tick; }
+  } catch { /* fall through to any cached value, else null */ }
+  return c ? c.tick : null;
+}
+
 // ── Measure book depth + quadratic competitor score from CLOB ─────────────────
 // Returns:
 //   existingDepthUsd  — dollar notional (price×size) of in-band orders (UI display only)
@@ -196,6 +211,10 @@ async function measureBookDepth(tokenId, rewardsMaxSpread, minSize, fallbackMid)
 
     const bestBid  = bids.length ? bids[0].price : fallbackMid - 0.01;
     const bestAsk  = asks.length ? asks[0].price : fallbackMid + 0.01;
+    // REAL touch prices — only when that side actually has resting orders (never the synthesized
+    // fallback, which is not a book fact). These are surfaced for the price-first row's rail markers.
+    const realBestBid = bids.length ? bids[0].price : null;
+    const realBestAsk = asks.length ? asks[0].price : null;
     const plainMid = (bestBid + bestAsk) / 2;
     const bookSprd = parseFloat((bestAsk - bestBid).toFixed(4));
 
@@ -211,6 +230,8 @@ async function measureBookDepth(tokenId, rewardsMaxSpread, minSize, fallbackMid)
     return {
       mid:              qs.mid,
       bookSpread:       bookSprd,
+      bestBid:          realBestBid,
+      bestAsk:          realBestAsk,
       existingDepthUsd,
       emptyBook:        false,
       Qbids:            qs.Qbids,
@@ -369,12 +390,13 @@ async function scan() {
     // qualifying depth (and thus the per-side reward math) genuinely differs. 24h
     // volatility is identical for both tokens (NO = 1 − YES ⇒ Var(NO) = Var(YES)), so
     // we fetch it once and reuse it — exact, saves a call. NO book only when tokenIdNo.
-    const [book, bookNo, vol] = await Promise.all([
+    const [book, bookNo, vol, tickSize] = await Promise.all([
       measureBookDepth(m.tokenId, m.rewardsMaxSpread, m.rewardsMinSize, fallbackMid),
       m.tokenIdNo
         ? measureBookDepth(m.tokenIdNo, m.rewardsMaxSpread, m.rewardsMinSize, 1 - fallbackMid)
         : Promise.resolve(null),
       measure24hVolatility(m.tokenId),
+      getTick(m.tokenId),   // real market tick — required for the price-first row's on-tick prices
     ]);
 
     const volatilityRisk   = classifyVol(vol.stdev, vol.range, m.endDate, m.rewardsMaxSpread);
@@ -426,8 +448,11 @@ async function scan() {
       assetAddress:      m.assetAddress,
       tokenId:           m.tokenId,
       tokenIdNo:         m.tokenIdNo || null,
+      tickSize:          Number.isFinite(tickSize) ? tickSize : null,  // real market tick (price-first row / on-tick)
       mid:               book.mid,
       bookSpread:        book.bookSpread,
+      bestBid:           book.bestBid ?? null,   // REAL YES-token touch (null when that side is empty)
+      bestAsk:           book.bestAsk ?? null,
       existing_depth_usd: existingDepthUsd,
       // Per-side (YES/NO) real independent books — estimator inputs. Top-level fields
       // above mirror the YES side for backward compatibility; `sides` carries both.

@@ -323,6 +323,10 @@ export const REDACTION_MAP: Record<RouteKey, string[]> = {
     // status bar). source/model/vCents/minSize/refCapital are non-sensitive labels/params.
     'markets[].rewardScore.mid',
     'markets[].rewardScore.competitorQ',
+    // Live YES-token touch (best bid/ask) — executable price intel, redacted to the calm unlock state.
+    // tickSize is a static market parameter (not intel) and stays public.
+    'markets[].bestBid',
+    'markets[].bestAsk',
   ],
 
   'kalshi-rewards': [
