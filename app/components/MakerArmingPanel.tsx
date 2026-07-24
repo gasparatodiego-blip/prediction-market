@@ -62,6 +62,7 @@ export default function MakerArmingPanel() {
   const [preview, setPreview] = useState<ArmPreview | null>(null);
   const [arming, setArming] = useState(false);
   const [armMsg, setArmMsg] = useState<string | null>(null);
+  const [countdown, setCountdown] = useState<number | null>(null); // live TTL seconds remaining
 
   const loadArmStatus = useCallback(async () => {
     try {
@@ -125,6 +126,35 @@ export default function MakerArmingPanel() {
   const doDisarm = useCallback(async () => {
     try { await fetch('/api/maker/disarm', { method: 'POST' }); loadArmStatus(); } catch { /* ignore */ }
   }, [loadArmStatus]);
+
+  const doRenew = useCallback(async () => {
+    setArmMsg(null);
+    try {
+      const r = await fetch('/api/maker/renew', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      const body = await r.json();
+      if (!body.ok) setArmMsg(`Renew refused (${body.refusedBy || 'error'}): ${body.reason || body.error || ''}`);
+      loadArmStatus();
+    } catch (e) { setArmMsg((e as Error).message); }
+  }, [loadArmStatus]);
+
+  // Live TTL countdown: seed from the server's expiresInSec, tick locally, and when it hits 0 refetch —
+  // the server auto-disarms the record the instant it is read past expiry (readArming enforces the TTL).
+  useEffect(() => {
+    setCountdown(armStatus?.armed ? armStatus.expiresInSec ?? null : null);
+  }, [armStatus]);
+  useEffect(() => {
+    if (countdown == null) return;
+    if (countdown <= 0) { loadArmStatus(); return; }
+    const t = setTimeout(() => setCountdown((c) => (c == null ? null : c - 1)), 1_000);
+    return () => clearTimeout(t);
+  }, [countdown, loadArmStatus]);
+
+  const fmtDur = (s: number | null): string => {
+    if (s == null) return '—';
+    if (s <= 0) return 'expired';
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+    return h > 0 ? `${h}h ${m}m ${sec}s` : m > 0 ? `${m}m ${sec}s` : `${sec}s`;
+  };
 
   // The KILL is ONE action — no confirmation dialog stands between the operator and stopping the maker.
   const doKill = useCallback(async () => {
@@ -310,12 +340,16 @@ export default function MakerArmingPanel() {
           <div className="mkarm-armed">
             <div className="mkarm-armed-t">Maker is ARMED (record only — placement still needs MAKER_MODE + funding)</div>
             <div className="mkarm-res">
-              Total size {money(armStatus.totalSizeUsd)} · TTL {armStatus.ttlSeconds != null ? `${Math.round(armStatus.ttlSeconds / 3600)}h` : '—'} ·
-              expires <span className="mkarm-num">{dash(armStatus.expiresAt)}</span>
-              {armStatus.expiresInSec != null && <> (<span className="mkarm-num">{armStatus.expiresInSec}</span>s)</>}
+              Total size {money(armStatus.totalSizeUsd)} · TTL {armStatus.ttlSeconds != null ? `${Math.round(armStatus.ttlSeconds / 3600)}h` : '—'}
             </div>
-            <div style={{ marginTop: 10 }}>
+            {/* Live TTL countdown — at 0 the maker auto-disarms itself and cancels open orders. */}
+            <div className="mkarm-res" data-maker-ttl-countdown>
+              Auto-disarm in <b className="mkarm-num" style={{ color: countdown != null && countdown < 300 ? '#E8B23A' : '#57C98A' }}>{fmtDur(countdown)}</b>
+              {' '}(expires <span className="mkarm-num">{dash(armStatus.expiresAt)}</span>)
+            </div>
+            <div style={{ marginTop: 10, display: 'flex', gap: 10 }}>
               <button className="mkarm-disarm" onClick={doDisarm}>DISARM</button>
+              <button className="mkarm-toggle" onClick={doRenew}>RENEW (re-runs preflight)</button>
             </div>
           </div>
         ) : !armOpen ? (

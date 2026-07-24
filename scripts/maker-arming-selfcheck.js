@@ -178,6 +178,36 @@ async function main() {
   ok(noMid.readable === false && noMid.blockedReason, 'ARM PREVIEW: a market missing a readable mid/bid/ask → "—" and BLOCKED (never a fabricated preview)');
   ok(buildArmPreview(null, {}).readable === false, 'ARM PREVIEW: unreadable maker state → blocked');
 
+  // ───────────────────────────────────────────────────────────────────────────────────────────────────
+  // [4] MANDATORY TTL — auto-disarm the instant it expires; renew re-runs preflight; no arm-forever.
+  // ───────────────────────────────────────────────────────────────────────────────────────────────────
+  const { renew } = require('../lib/maker/arming');
+  console.log('\n[4] MANDATORY TTL');
+  const T = { stateFile: pathm.join(tdir, 'ttl.json'), auditFile: pathm.join(tdir, 'ttl-audit.jsonl'), now: () => clock };
+
+  // arm for 4h, then jump the clock past expiry → readArming AUTO-DISARMS on read (+ audits ttl-expiry).
+  clock = 2_000_000_000_000;
+  ok(arm({ totalSizeUsd: 100, typedSizeConfirm: 100, ttlSeconds: 4 * 3600 }, { preflight: GO, deps: T }).ok === true, 'TTL: armed with a 4h expiry');
+  ok(readArming(T).armed === true, 'TTL: armed before expiry');
+  clock += 4 * 3600 * 1000 + 1;               // one ms past the 4h expiry
+  const expired = readArming(T);
+  ok(expired.armed === false && expired.source === 'ttl-expiry', 'TTL: an expired arm AUTO-DISARMS the instant it is read (no arm-forever)');
+  const tAudit = fsm.readFileSync(T.auditFile, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  ok(tAudit.some((a) => a.event === 'auto-disarm' && a.reason === 'ttl-expiry'), 'TTL: the expiry auto-disarm writes an audit record (reason ttl-expiry)');
+
+  // RENEW extends when preflight is GO, and re-runs it (persists a fresh snapshot).
+  clock += 1000;
+  ok(arm({ totalSizeUsd: 100, typedSizeConfirm: 100, ttlSeconds: 3600 }, { preflight: GO, deps: T }).ok === true, 'TTL: re-armed for renew test');
+  const before = readArming(T).record.expiresAtMs;
+  clock += 1800 * 1000;                        // 30 min later
+  const rn = renew({ ttlSeconds: 3600 }, { preflight: GO, deps: T });
+  ok(rn.ok === true && readArming(T).record.expiresAtMs > before, 'TTL: RENEW extends the expiry (explicit, re-runs preflight)');
+
+  // RENEW while a check has gone RED → DISARMS instead of extending (the safe direction).
+  const rnRed = renew({ ttlSeconds: 3600 }, { preflight: NOGO, deps: T });
+  ok(rnRed.ok === false && rnRed.refusedBy === 'preflight' && readArming(T).armed === false, 'TTL: RENEW while a preflight check is RED DISARMS (never extends past a failed condition)');
+  ok(renew({}, { preflight: GO, deps: T }).refusedBy === 'not-armed', 'TTL: RENEW on a disarmed record is refused (arm() again to re-confirm)');
+
   try { fsm.rmSync(tdir, { recursive: true, force: true }); } catch { /* temp cleanup */ }
 
   console.log(`\nmaker-arming selfcheck: ${checks} assertions passed.`);
