@@ -159,6 +159,11 @@ async function fetchRewardMarkets() {
         bestAsk:          parseFloat(m.bestAsk) || 0,
         negRisk:          Boolean(m.negRisk),
         assetAddress:     cr[0].assetAddress,
+        // Gamma's real 24h traded volume — the "is anyone actually trading here" evidence the
+        // stability scorer needs. Gamma OMITS the key entirely for markets with no 24h flow
+        // (measured: 13 of 116 reward markets), so an absent value stays null. Coercing it to 0
+        // would be an imputation, and reading it as "zero volume" would be a fabrication.
+        volume24hUsd:     Number.isFinite(Number(m.volume24hr)) ? Number(m.volume24hr) : null,
       });
     }
 
@@ -244,6 +249,10 @@ async function measureBookDepth(tokenId, rewardsMaxSpread, minSize, fallbackMid)
 }
 
 // ── 24h price history → volatility stats ─────────────────────────────────────
+// NOTE `fidelity` is in MINUTES, so fidelity=120 over 24h returns only ~13 points. That is far too
+// coarse to judge stability (see measurePriceStability below, which uses a 7d/60min window). This
+// 24h measure is KEPT UNCHANGED because other consumers are calibrated to it: classifyVol's
+// LOW/MEDIUM/HIGH badge and lib/rewards-estimate's expectedAdverseMoveFor. Do not repoint them here.
 async function measure24hVolatility(tokenId) {
   try {
     const now  = Math.floor(Date.now() / 1000);
@@ -267,6 +276,49 @@ async function measure24hVolatility(tokenId) {
     };
   } catch (e) {
     return { stdev: null, range: null, nPts: 0 };
+  }
+}
+
+// ── 7-day price history → the STABILITY measurement ──────────────────────────
+// The window the stability score is built on (lib/reward-stability). 7 days at fidelity=60 returns
+// 102–169 points instead of the 24h window's 13 — measured 2026-07-24 across 116 live reward
+// markets, where the 13-point window called 34 of them perfectly flat and 24 of those had in fact
+// moved over the week (one by 30c against a 4.5c band).
+//
+// nPts and nDistinct are PERSISTED, not just used here: the scorer needs them to tell "still"
+// apart from "no data". A series of fewer than 2 points has NO measurable dispersion, so stdev is
+// null (never 0 — a degenerate 0 is what made an unmeasured market read as perfectly stable).
+const STABILITY_WINDOW_HOURS = 168;
+const STABILITY_FIDELITY_MIN = 60;
+
+async function measurePriceStability(tokenId) {
+  const empty = { stdev: null, range: null, nPts: 0, nDistinct: 0, windowHours: STABILITY_WINDOW_HOURS };
+  try {
+    const now  = Math.floor(Date.now() / 1000);
+    const from = now - STABILITY_WINDOW_HOURS * 3600;
+    const url  = `https://clob.polymarket.com/prices-history?market=${tokenId}`
+               + `&startTs=${from}&endTs=${now}&fidelity=${STABILITY_FIDELITY_MIN}`;
+    const r    = await httpGet(url);
+
+    if (r.status !== 200 || !r.data?.history?.length) return empty;
+
+    const prices = r.data.history.map(h => h.p).filter(p => typeof p === 'number' && Number.isFinite(p));
+    if (prices.length < 2) {
+      return { ...empty, nPts: prices.length, nDistinct: prices.length };
+    }
+
+    const mean  = prices.reduce((s, p) => s + p, 0) / prices.length;
+    const stdev = Math.sqrt(prices.reduce((s, p) => s + (p - mean) ** 2, 0) / prices.length);
+
+    return {
+      stdev:       parseFloat(stdev.toFixed(6)),
+      range:       parseFloat((Math.max(...prices) - Math.min(...prices)).toFixed(5)),
+      nPts:        prices.length,
+      nDistinct:   new Set(prices).size,
+      windowHours: STABILITY_WINDOW_HOURS,
+    };
+  } catch (e) {
+    return empty;
   }
 }
 
@@ -390,12 +442,16 @@ async function scan() {
     // qualifying depth (and thus the per-side reward math) genuinely differs. 24h
     // volatility is identical for both tokens (NO = 1 − YES ⇒ Var(NO) = Var(YES)), so
     // we fetch it once and reuse it — exact, saves a call. NO book only when tokenIdNo.
-    const [book, bookNo, vol, tickSize] = await Promise.all([
+    const [book, bookNo, vol, stab, tickSize] = await Promise.all([
       measureBookDepth(m.tokenId, m.rewardsMaxSpread, m.rewardsMinSize, fallbackMid),
       m.tokenIdNo
         ? measureBookDepth(m.tokenIdNo, m.rewardsMaxSpread, m.rewardsMinSize, 1 - fallbackMid)
         : Promise.resolve(null),
       measure24hVolatility(m.tokenId),
+      // Separate 7d window for the stability score. NOT derived from the 24h call — a 13-point
+      // sample cannot measure stillness (see measurePriceStability). Same token: NO = 1 − YES, so
+      // Var is identical and one fetch serves both sides.
+      measurePriceStability(m.tokenId),
       getTick(m.tokenId),   // real market tick — required for the price-first row's on-tick prices
     ]);
 
@@ -460,6 +516,12 @@ async function scan() {
       volatilityRisk,
       volatilityStdev:   vol.stdev,
       volatilityRange:   vol.range,
+      // Stability measurement inputs (7d window) — the scorer in lib/reward-stability decides
+      // known/unknown from these. Persisted raw so the score is reproducible from the feed.
+      stability:         { stdev: stab.stdev, range: stab.range, nPts: stab.nPts, nDistinct: stab.nDistinct, windowHours: stab.windowHours },
+      // Real 24h traded volume from Gamma. Gamma OMITS this key for markets with no 24h flow —
+      // that absence is carried through as null (missing evidence), NEVER coerced to 0.
+      volume24hUsd:      m.volume24hUsd,
       endDate:           m.endDate,
       negRisk:           m.negRisk,
       levels,
