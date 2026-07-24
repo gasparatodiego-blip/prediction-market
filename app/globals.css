@@ -658,6 +658,8 @@ h1, h2, h3 {
 .cc-row-gross { font-size: 9px; color: var(--cc-muted); opacity: .8; letter-spacing: .01em; cursor: help; text-align: right; max-width: 168px; }
 /* Annualized cap / run-rate caveat under the $/day — restored on the cards (paid too). Amber, calm, one line. */
 .cc-row-runrate { display: block; font-size: 9px; color: var(--cc-amber); opacity: .9; letter-spacing: .01em; cursor: help; text-align: right; max-width: 200px; margin-top: 2px; }
+/* Adverse-selection disclosure — persistent, non-dismissible, on every row: gross shown, net unknown. */
+.cc-row-adv { display: block; font-size: 9px; color: var(--cc-muted); opacity: .72; letter-spacing: .01em; cursor: help; text-align: right; max-width: 230px; margin-top: 3px; }
 .cc-expand { padding: 4px 2px 12px; border-bottom: 1px solid var(--cc-border); }
 /* Explicit affordance from the expanded card into the interactive order-book detail page. */
 .rw-open-book {

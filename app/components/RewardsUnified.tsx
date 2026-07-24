@@ -423,7 +423,9 @@ export default function RewardsUnified() {
           <span className="rw-assume-k">La stima si basa su</span> un ordine da ${ASSUMED_ORDER_SIZE_USD.toLocaleString()},
           {' '}{ASSUMED_PLACEMENT_LABEL}. Sono <strong>premi lordi maturati</strong>: il P&amp;L di
           inventario quando i tuoi ordini vengono eseguiti <strong>non è incluso</strong> in nessuna
-          cifra di questa pagina. L&rsquo;annualizzato è calcolato sulla profondità reale del
+          cifra di questa pagina. Mostriamo solo il <strong>lordo</strong> — l&rsquo;<strong>adverse
+          selection</strong> non è modellata, quindi il <strong>rendimento netto è sconosciuto (netto
+          —)</strong> e non viene stimato. L&rsquo;annualizzato è calcolato sulla profondità reale del
           book, non su un capitale fisso: quando il book è troppo sottile diventa «—». I premi Kalshi
           sono riservati ai membri residenti negli Stati Uniti.
         </div>
@@ -690,6 +692,13 @@ export default function RewardsUnified() {
                                 </span>
                               ) : null   // free tier: capacity locked (🔒) — the $/day lock already conveys it
                             )}
+                            {/* ADVERSE-SELECTION DISCLOSURE — persistent, non-dismissible, on EVERY row.
+                                Rewards $/day is a GROSS subsidy; the cost of adverse selection / inventory
+                                risk on resting maker orders is NOT modelled, so the NET return is unknown.
+                                No net figure is invented anywhere. */}
+                            <span className="cc-row-adv" title="i premi mostrati sono lordi; il costo di adverse selection e il rischio di inventario sugli ordini a riposo non sono modellati — il rendimento netto è sconosciuto e non viene stimato">
+                              lordo · adverse selection non modellata · netto —
+                            </span>
                           </span>
                           {/* Kalshi gross qualifier — replaces the removed APY line. Calm, once.
                               The feed prices full qualifying size at best bid/ask; Kalshi's real
@@ -780,8 +789,11 @@ function RewardYieldBreakdown({ row, isPaid }: { row: Row; isPaid: boolean }) {
             <span className="rw-brk-v">${row.deployed.toLocaleString()}</span></div>
           <div className="rw-brk-item"><span className="rw-brk-k">your pool share</span>
             <span className="rw-brk-v"><Redacted value={row.unknown ? null : row.share} isPaid={isPaid}>{(v) => <>{(Number(v) * 100).toFixed(1)}%</>}</Redacted></span></div>
-          <div className="rw-brk-item"><span className="rw-brk-k">your reward · stima</span>
+          <div className="rw-brk-item"><span className="rw-brk-k">your reward · stima (gross)</span>
             <span className="rw-brk-v rw-brk-primary"><Redacted value={row.unknown ? null : row.netUsdPerDay} isPaid={isPaid}>{(v) => <>${Number(v).toFixed(2)}/day</>}</Redacted></span></div>
+          {/* Net is NOT modelled — adverse selection / inventory risk on fills is excluded. No figure invented. */}
+          <div className="rw-brk-item"><span className="rw-brk-k">net (adverse selection non modellata)</span>
+            <span className="rw-brk-v rw-dim" title="il rendimento netto sottrae il costo di adverse selection quando i tuoi ordini vengono eseguiti — non è modellato, quindi resta sconosciuto">—</span></div>
         </div>
         <div className="rw-calc-meta">
           <span className="rw-dim">
