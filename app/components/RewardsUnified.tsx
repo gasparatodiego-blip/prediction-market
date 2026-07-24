@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Redacted } from './ui/Redacted';
 import { EmptyState } from './ds';
@@ -9,9 +10,10 @@ import { computeLiquidityYield } from '@/lib/liquidity-yield';
 // The 2%/day sane-reward gate — the SINGLE implementation (was wired only to the paper book). Surfacing it
 // here makes a thin / over-cap reward row read as a flagged run-rate, never a clean cashable $/day.
 import { REWARD_SANITY_CAP_PCT, isSanePolymarketLevel } from '@/lib/reward-gating';
-// Pure, node-verifiable filter/sort/derive — shared VERBATIM so the list the user sees and
-// any measurement of the filter behaviour cannot diverge (see lib/rewards-filter.js).
-import { deriveOptions, defaultState, applyFilters, sortRows, saturationView } from '@/lib/rewards-filter';
+// Sort + saturation view stay client presentation. FILTERING now happens SERVER-SIDE
+// (app/api/rewards-unified via lib/rewards-server-filter) so the row COUNT is correct for every
+// tier and the payload is genuinely filtered — the browser no longer fetches-all-and-hides.
+import { sortRows, saturationView } from '@/lib/rewards-filter';
 
 /**
  * Liquidity rewards — BALANCE-DRIVEN yield list.
@@ -120,17 +122,45 @@ interface Row extends Base {
   unknown: boolean;
 }
 
-interface FilterState {
+// Slider/chip ranges + option sets computed SERVER-SIDE over the full set (lib/rewards-server-filter
+// deriveRanges), returned in meta.ranges so tightening one filter never shrinks another's range.
+interface Ranges {
+  poolMax: number;
+  depthMax: number;
+  spreadMaxCents: number;
   categories: string[];
   venues: string[];
+  hasCompetition: boolean;
+}
+
+// The six required server filters + category. These are the ONLY controls that hit the API; they
+// live in the URL query string so the view survives refresh and is shareable. Sort + balance are
+// client presentation/compute (also mirrored to the URL for a fully reproducible shared view).
+interface FilterState {
+  venue: 'all' | 'polymarket' | 'kalshi';
+  categories: string[];
   minPool: number;
-  maxSaturationPct: number;
-  minApr: number;
-  minCapacity: number;
-  hideTrap: boolean;
+  minDepth: number;        // min book depth at touch ($)
+  maxSpreadCents: number;  // max spread (¢); at the range max ⇒ no constraint
+  maxCompetitionPct: number;
+  hideThin: boolean;
+  // client presentation only:
   sortByPool: boolean;
   sortDir: 'asc' | 'desc';
 }
+
+const SENTINEL_SPREAD = -1;   // "not yet initialised from ranges" → treated as any
+const DEFAULT_FILTERS: FilterState = {
+  venue: 'all',
+  categories: [],
+  minPool: 0,
+  minDepth: 0,
+  maxSpreadCents: SENTINEL_SPREAD,
+  maxCompetitionPct: 100,
+  hideThin: false,
+  sortByPool: false,
+  sortDir: 'desc',
+};
 
 const fmtUsd = (n: number) =>
   n >= 1_000_000 ? `$${(n / 1_000_000).toFixed(2)}M`
@@ -150,29 +180,96 @@ const toggle = (arr: string[], v: string) =>
 
 const fin = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
 
+const clampBalance = (v: number) => Math.min(BAL_MAX, Math.max(BAL_MIN, Math.round(v || 0)));
+
+/** Parse the URL query string into filter state (shareable / survives refresh). */
+function parseFiltersFromUrl(sp: URLSearchParams): FilterState {
+  const nOr = (k: string, d: number) => {
+    const v = sp.get(k);
+    const n = Number(v);
+    return v != null && v !== '' && Number.isFinite(n) ? n : d;
+  };
+  const venueRaw = (sp.get('venue') || 'all').toLowerCase();
+  const venue: FilterState['venue'] =
+    venueRaw === 'polymarket' || venueRaw === 'kalshi' ? venueRaw : 'all';
+  const cats = sp.get('category');
+  return {
+    venue,
+    categories: cats ? cats.split(',').map((s) => s.trim()).filter(Boolean) : [],
+    minPool: Math.max(0, nOr('minPool', 0)),
+    minDepth: Math.max(0, nOr('minDepth', 0)),
+    maxSpreadCents: sp.get('maxSpread') != null ? Math.max(0, nOr('maxSpread', SENTINEL_SPREAD)) : SENTINEL_SPREAD,
+    maxCompetitionPct: Math.min(100, Math.max(0, nOr('maxCompetition', 100))),
+    hideThin: sp.get('hideThin') === '1' || sp.get('hideThin') === 'true',
+    sortByPool: sp.get('sort') === 'pool',
+    sortDir: sp.get('dir') === 'asc' ? 'asc' : 'desc',
+  };
+}
+
+/** The server-filter subset → query params (only constraining values; the six API filters). */
+function serverParams(f: FilterState, r: Ranges | null): URLSearchParams {
+  const p = new URLSearchParams();
+  if (f.venue !== 'all') p.set('venue', f.venue);
+  if (f.categories.length) p.set('category', f.categories.join(','));
+  if (f.minPool > 0) p.set('minPool', String(f.minPool));
+  if (f.minDepth > 0) p.set('minDepth', String(f.minDepth));
+  // maxSpread constrains only when set AND below the full-set max (otherwise "any").
+  if (f.maxSpreadCents >= 0 && (!r || f.maxSpreadCents < r.spreadMaxCents)) p.set('maxSpread', String(f.maxSpreadCents));
+  if (f.maxCompetitionPct < 100) p.set('maxCompetition', String(f.maxCompetitionPct));
+  if (f.hideThin) p.set('hideThin', '1');
+  return p;
+}
+
 export default function RewardsUnified() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
   const [data, setData] = useState<Payload | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [balance, setBalance] = useState<number>(BAL_DEFAULT);
-  const [filters, setFilters] = useState<FilterState>(() => defaultState() as FilterState);
+  const [ranges, setRanges] = useState<Ranges | null>(null);
+  const [balance, setBalance] = useState<number>(() => {
+    const b = Number(searchParams.get('bal'));
+    return Number.isFinite(b) && b > 0 ? clampBalance(b) : BAL_DEFAULT;
+  });
+  const [filters, setFilters] = useState<FilterState>(
+    () => parseFiltersFromUrl(searchParams as unknown as URLSearchParams),
+  );
 
+  // The ONLY inputs that hit the API. Sort + balance are excluded on purpose (client compute).
+  const apiQuery = serverParams(filters, ranges).toString();
+
+  // FETCH — re-runs when the server-filter query changes (debounced for slider drags) + a 60s
+  // refresh. The API returns the FILTERED rows + meta.{totalMarkets,matchedMarkets,ranges}.
   useEffect(() => {
     let alive = true;
     async function load() {
       try {
-        const r = await fetch('/api/rewards-unified', { cache: 'no-store' });
+        const r = await fetch(`/api/rewards-unified${apiQuery ? `?${apiQuery}` : ''}`, { cache: 'no-store' });
         const j = await r.json();
         if (!alive) return;
-        setData(j); setErr(null);
+        setData(j);
+        if (j?.meta?.ranges) setRanges(j.meta.ranges);
+        setErr(null);
       } catch (e: any) {
         if (alive) setErr(e?.message ?? 'fetch failed');
       }
     }
-    load();
+    const deb = setTimeout(load, 200);
     const t = setInterval(load, 60_000);
-    return () => { alive = false; clearInterval(t); };
-  }, []);
+    return () => { alive = false; clearTimeout(deb); clearInterval(t); };
+  }, [apiQuery]);
+
+  // URL SYNC — mirror the full view (filters + sort + balance) to the query string so it survives
+  // refresh and is shareable. replace (not push) + scroll:false so it never spams history/jumps.
+  useEffect(() => {
+    const p = serverParams(filters, ranges);
+    if (filters.sortByPool) p.set('sort', 'pool');
+    if (filters.sortDir === 'asc') p.set('dir', 'asc');
+    if (balance !== BAL_DEFAULT) p.set('bal', String(balance));
+    const qs = p.toString();
+    router.replace(qs ? `?${qs}` : '?', { scroll: false });
+  }, [filters, balance, ranges, router]);
 
   const isPaid = data?.isPaid ?? false;
 
@@ -243,8 +340,8 @@ export default function RewardsUnified() {
       poolPerDay: b.poolDayUsd, cap: b.cap, qualifyingLiquidity: b.qualifyingLiquidity,
       qualifyingLiquidityOpposite: b.oppDepth, balance,
     });
-    // apr stays computed — the min-APR list FILTER (lib/rewards-filter) reads it — but it is
-    // no longer rendered on the cards; net $/day is the sole headline metric.
+    // apr kept on the row for completeness (annualized-on-deployed, capped); not rendered and no
+    // longer a filter — net $/day is the sole headline metric and the cap label uses apyRaw.
     const apr = y.unknown ? null : Math.min(y.apyRaw, APY_CAP);
     return {
       ...b,
@@ -263,14 +360,32 @@ export default function RewardsUnified() {
     };
   }), [base, balance]);
 
-  const opts = useMemo(() => deriveOptions(enriched), [enriched]);
+  // Rows are ALREADY filtered by the server (lib/rewards-server-filter). The client only SORTS
+  // (presentation) — no second filter pass, so the shown count can never diverge from the API's
+  // matched count.
   const visible: Row[] = useMemo(
-    () => sortRows(applyFilters(enriched, filters), filters) as Row[],
+    () => sortRows(enriched, filters) as Row[],
     [enriched, filters],
   );
 
   const set = (patch: Partial<FilterState>) => setFilters((f) => ({ ...f, ...patch }));
   const clampBal = (v: number) => Math.min(BAL_MAX, Math.max(BAL_MIN, Math.round(v || 0)));
+
+  // Counts come from the server (meta) — the visible proof the filter is wired: total → matched.
+  const total = data?.meta?.totalMarkets ?? base.length;
+  const rg: Ranges = ranges ?? { poolMax: 0, depthMax: 0, spreadMaxCents: 0, categories: [], venues: [], hasCompetition: false };
+  const VENUE_CHIPS: Array<FilterState['venue']> = ['all', 'polymarket', 'kalshi'];
+  // Human summary of the constraints in force — shown in the calm zero-match empty state.
+  const spreadActive = filters.maxSpreadCents >= 0 && filters.maxSpreadCents < rg.spreadMaxCents;
+  const activeFilters: string[] = [
+    filters.venue !== 'all' ? `venue: ${filters.venue}` : null,
+    filters.categories.length ? `category: ${filters.categories.join(', ')}` : null,
+    filters.minPool > 0 ? `min pot ≥ ${fmtUsd(filters.minPool)}/day` : null,
+    filters.minDepth > 0 ? `min depth ≥ ${fmtUsd(filters.minDepth)}` : null,
+    spreadActive ? `spread ≤ ${filters.maxSpreadCents}¢` : null,
+    filters.maxCompetitionPct < 100 ? `competition ≤ ${filters.maxCompetitionPct}%` : null,
+    filters.hideThin ? 'hiding thin books' : null,
+  ].filter(Boolean) as string[];
 
   return (
     <div className="rewards">
@@ -317,94 +432,97 @@ export default function RewardsUnified() {
 
         {err && <EmptyState prefix="cc" title="Rewards feed unavailable" sub={err} />}
         {!err && !data && <EmptyState prefix="cc" sub="Loading reward markets…" />}
-        {!err && data && base.length === 0 && (
+        {!err && data && total === 0 && (
           <EmptyState prefix="cc" title="No reward markets clear the sanity gate right now" />
         )}
 
-        {!err && data && base.length > 0 && (
+        {!err && data && total > 0 && (
           <>
             <div className="cc-filterbar">
-              {/* CATEGORY */}
+              {/* VENUE — single select: all / Polymarket / Kalshi (server filter) */}
+              <div className="cc-fgroup">
+                <span className="cc-flabel">Venue</span>
+                <div className="cc-chips">
+                  {VENUE_CHIPS.map((v) => (
+                    <button key={v} type="button"
+                      className={`cc-fchip ${filters.venue === v ? 'is-on' : ''}`}
+                      onClick={() => set({ venue: v })}>{v === 'all' ? 'all' : v}</button>
+                  ))}
+                </div>
+              </div>
+
+              {/* CATEGORY — multi-select (server filter) */}
               <div className="cc-fgroup">
                 <span className="cc-flabel">Category</span>
                 <div className="cc-chips">
-                  {opts.categories.map((c: string) => (
+                  {rg.categories.map((c: string) => (
                     <button key={c} type="button"
                       className={`cc-fchip ${filters.categories.includes(c) ? 'is-on' : ''}`}
                       onClick={() => set({ categories: toggle(filters.categories, c) })}>{c}</button>
                   ))}
-                  {opts.categories.length === 0 && <span className="cc-slider-val">—</span>}
+                  {rg.categories.length === 0 && <span className="cc-slider-val">—</span>}
                 </div>
               </div>
 
-              {/* VENUE */}
-              <div className="cc-fgroup">
-                <span className="cc-flabel">Venue</span>
-                <div className="cc-chips">
-                  {opts.venues.map((v: string) => (
-                    <button key={v} type="button"
-                      className={`cc-fchip ${filters.venues.includes(v) ? 'is-on' : ''}`}
-                      onClick={() => set({ venues: toggle(filters.venues, v) })}>{v}</button>
-                  ))}
-                </div>
-              </div>
-
-              {/* MIN REWARD POOL */}
+              {/* MIN DAILY POT (server filter) */}
               <div className="cc-fgroup cc-slider">
                 <div className="cc-slider-head">
-                  <span className="cc-flabel">Min reward pool ($/day)</span>
+                  <span className="cc-flabel">Min daily pot ($/day)</span>
                   <span className="cc-slider-val">≥ {filters.minPool > 0 ? fmtUsd(filters.minPool) : '$0'}</span>
                 </div>
-                <input className="cc-frange" type="range" min={0} max={Math.max(opts.poolMax, 1)} step={Math.max(1, Math.round(opts.poolMax / 100))}
-                  value={filters.minPool}
-                  onChange={(e) => set({ minPool: Number(e.target.value) })} aria-label="minimum reward pool" />
+                <input className="cc-frange" type="range" min={0} max={Math.max(rg.poolMax, 1)} step={Math.max(1, Math.round(rg.poolMax / 100))}
+                  value={Math.min(filters.minPool, Math.max(rg.poolMax, 1))}
+                  onChange={(e) => set({ minPool: Number(e.target.value) })} aria-label="minimum daily pot" />
               </div>
 
-              {/* MAX POOL COMPETITION (saturation) */}
-              <div className={`cc-fgroup cc-slider ${opts.hasSaturation ? '' : 'is-disabled'}`}>
+              {/* MIN BOOK DEPTH AT TOUCH (server filter) */}
+              <div className="cc-fgroup cc-slider">
                 <div className="cc-slider-head">
-                  <span className="cc-flabel">Max pool competition</span>
+                  <span className="cc-flabel">Min book depth at touch</span>
+                  <span className="cc-slider-val">≥ {filters.minDepth > 0 ? fmtUsd(filters.minDepth) : '$0'}</span>
+                </div>
+                <input className="cc-frange" type="range" min={0} max={Math.max(rg.depthMax, 1)} step={Math.max(1, Math.round(rg.depthMax / 100))}
+                  value={Math.min(filters.minDepth, Math.max(rg.depthMax, 1))}
+                  onChange={(e) => set({ minDepth: Number(e.target.value) })} aria-label="minimum book depth at touch" />
+              </div>
+
+              {/* MAX SPREAD (server filter). At the range max ⇒ "any" (no constraint). */}
+              <div className="cc-fgroup cc-slider">
+                <div className="cc-slider-head">
+                  <span className="cc-flabel">Max spread (¢)</span>
+                  <span className="cc-slider-val">{spreadActive ? `≤ ${filters.maxSpreadCents}¢` : 'any'}</span>
+                </div>
+                <input className="cc-frange" type="range" min={0} max={Math.max(rg.spreadMaxCents, 1)} step={1}
+                  value={filters.maxSpreadCents < 0 ? Math.max(rg.spreadMaxCents, 1) : Math.min(filters.maxSpreadCents, Math.max(rg.spreadMaxCents, 1))}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    set({ maxSpreadCents: v >= rg.spreadMaxCents ? SENTINEL_SPREAD : v });
+                  }}
+                  aria-label="maximum spread in cents" />
+              </div>
+
+              {/* COMPETITION LEVEL — how much genuine competing depth is resting (server filter).
+                  Disabled when no row carries a measured competition/saturation value. */}
+              <div className={`cc-fgroup cc-slider ${rg.hasCompetition ? '' : 'is-disabled'}`}>
+                <div className="cc-slider-head">
+                  <span className="cc-flabel">Max competition level</span>
                   <span className="cc-slider-val">
-                    {opts.hasSaturation
-                      ? (filters.maxSaturationPct >= 100 ? 'any' : `≤ ${filters.maxSaturationPct}%`)
-                      : 'n/a'}
+                    {rg.hasCompetition ? (filters.maxCompetitionPct >= 100 ? 'any' : `≤ ${filters.maxCompetitionPct}%`) : 'n/a'}
                   </span>
                 </div>
                 <input className="cc-frange" type="range" min={0} max={100} step={5}
-                  value={filters.maxSaturationPct}
-                  disabled={!opts.hasSaturation}
-                  onChange={(e) => set({ maxSaturationPct: Number(e.target.value) })} aria-label="maximum pool competition" />
-                {!opts.hasSaturation && <span className="cc-slider-val rw-dim">saturation not available from this feed</span>}
-              </div>
-
-              {/* MIN APR */}
-              <div className="cc-fgroup cc-slider">
-                <div className="cc-slider-head">
-                  <span className="cc-flabel">Min APR</span>
-                  <span className="cc-slider-val">≥ {filters.minApr.toFixed(0)}%/yr</span>
-                </div>
-                <input className="cc-frange" type="range" min={0} max={Math.max(opts.aprMax, 1)} step={1}
-                  value={filters.minApr}
-                  onChange={(e) => set({ minApr: Number(e.target.value) })} aria-label="minimum APR" />
-              </div>
-
-              {/* MIN CAPACITY */}
-              <div className="cc-fgroup cc-slider">
-                <div className="cc-slider-head">
-                  <span className="cc-flabel">Min capacity (book depth)</span>
-                  <span className="cc-slider-val">≥ {filters.minCapacity > 0 ? fmtUsd(filters.minCapacity) : '$0'}</span>
-                </div>
-                <input className="cc-frange" type="range" min={0} max={Math.max(opts.capMax, 1)} step={Math.max(1, Math.round(opts.capMax / 100))}
-                  value={filters.minCapacity}
-                  onChange={(e) => set({ minCapacity: Number(e.target.value) })} aria-label="minimum capacity" />
+                  value={filters.maxCompetitionPct}
+                  disabled={!rg.hasCompetition}
+                  onChange={(e) => set({ maxCompetitionPct: Number(e.target.value) })} aria-label="maximum competition level" />
+                {!rg.hasCompetition && <span className="cc-slider-val rw-dim">competition not measured from this feed</span>}
               </div>
 
               {/* CHECKBOXES */}
               <div className="cc-checks">
-                <label className={`cc-check ${filters.hideTrap ? 'is-on' : ''}`}>
-                  <input type="checkbox" checked={filters.hideTrap}
-                    onChange={(e) => set({ hideTrap: e.target.checked })} />
-                  Hide ⚠ TRAP
+                <label className={`cc-check ${filters.hideThin ? 'is-on' : ''}`}>
+                  <input type="checkbox" checked={filters.hideThin}
+                    onChange={(e) => set({ hideThin: e.target.checked })} />
+                  Hide thin books
                 </label>
                 <label className={`cc-check ${filters.sortByPool ? 'is-on' : ''}`}>
                   <input type="checkbox" checked={filters.sortByPool}
@@ -416,7 +534,7 @@ export default function RewardsUnified() {
 
             <div className="cc-count cc-count-row">
               <span className="cc-count-text">
-                {visible.length} of {base.length} rows · your ${balance.toLocaleString()} · sorted by {filters.sortByPool
+                {visible.length} of {total} markets after filters · your ${balance.toLocaleString()} · sorted by {filters.sortByPool
                   ? 'reward pool high→low'
                   : `$/day ${filters.sortDir === 'asc' ? 'low→high' : 'high→low'}`}
               </span>
@@ -436,7 +554,8 @@ export default function RewardsUnified() {
             </div>
 
             {visible.length === 0 ? (
-              <EmptyState prefix="cc" title="No reward markets match these filters." sub="Loosen a filter to see more." />
+              <EmptyState prefix="cc" title="No reward markets match these filters."
+                sub={activeFilters.length ? `Active: ${activeFilters.join(' · ')}. Loosen a filter to see more.` : 'Loosen a filter to see more.'} />
             ) : (
               <div className="cc-list">
                 {visible.map((row) => {

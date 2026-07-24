@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
 import fs from 'fs';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
@@ -6,6 +7,10 @@ import { getIsPaid, redactForTier, REDACTION_MAP } from '@/lib/paid-gating';
 import { filterSane, enforceVerified } from '@/lib/display-sanity';
 import { applyGuardian, assertRedacted } from '@/lib/guardian-suppress';
 import { computeLiquidityYield } from '@/lib/liquidity-yield';
+// Server-side filtering — the SINGLE filter math path (shared, node-testable). Applied here,
+// before tier redaction, so the returned row COUNT is correct for every tier and the payload
+// is genuinely filtered (not fetch-all-and-hide-in-the-browser).
+import { parseRewardFilters, applyRewardFilters, deriveRanges } from '@/lib/rewards-server-filter';
 
 // Reference balance the guardian evaluates at — the SAME default the list first shows (RewardsUnified
 // BAL_DEFAULT). The stamped day-yield is what a paid user sees at that balance.
@@ -57,7 +62,7 @@ function mergeNewsGuard(markets: any[]): { markets: any[]; guardMeta: any } {
   return { markets: merged, guardMeta };
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const raw  = fs.readFileSync(FILE, 'utf-8');
     const data = JSON.parse(raw);
@@ -95,6 +100,30 @@ export async function GET() {
     data.markets = applyGuardian('rewards', data.markets).rows;
     // Remove the ephemeral guardian input — it must never reach the client or the free tier.
     for (const m of data.markets) delete m.dayYieldPct;
+
+    // Drop already-resolved markets (resolution time in the past ⇒ no active rewards) server-side,
+    // so the counts below and the rows the client shows are the same set. A missing (null)
+    // resolution time is NOT treated as resolved — we never fabricate one.
+    data.markets = data.markets.filter((m: any) =>
+      !(typeof m.hoursToResolution === 'number' && Number.isFinite(m.hoursToResolution) && m.hoursToResolution <= 0),
+    );
+
+    // ── SERVER-SIDE FILTERING ── applied on the REAL values, BEFORE redaction, so the returned
+    // count is correct for every tier. Ranges/options are computed over the FULL verified set so
+    // tightening one filter never shrinks another's slider range. The counts are the visible
+    // proof the filter is wired: meta.totalMarkets → meta.matchedMarkets.
+    const fullMarkets   = data.markets;
+    const totalMarkets  = fullMarkets.length;
+    const ranges        = deriveRanges(fullMarkets);
+    const filters       = parseRewardFilters(request.nextUrl.searchParams);
+    data.markets        = applyRewardFilters(fullMarkets, filters);
+    data.meta = {
+      ...(data.meta || {}),
+      totalMarkets,
+      matchedMarkets: data.markets.length,
+      ranges,
+      appliedFilters: filters,
+    };
 
     const session = await getServerSession(authOptions);
     const isPaid  = await getIsPaid(session);
