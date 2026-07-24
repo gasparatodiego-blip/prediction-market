@@ -7,7 +7,16 @@ import { Redacted } from './ui/Redacted';
 import { EmptyState } from './ds';
 import MakerUniverseControl from './MakerUniverseControl';
 import { APY_CAP, APY_CAP_LABEL } from '@/lib/honest-display';
-import { computeLiquidityYield } from '@/lib/liquidity-yield';
+// The per-operator estimated share/day — the ONE headline number, from the shared quadratic scorer
+// (lib/rewardScore → rewards-normalize refShare). estUsdPerDay = poolDay × refShare; assumptions are
+// explicit constants surfaced on the page. NOT the pot, NOT computed in this component.
+import {
+  estimatedOperatorSharePerDay,
+  ASSUMED_ORDER_SIZE_USD,
+  ASSUMED_PLACEMENT_LABEL,
+} from '@/lib/reward-operator-estimate';
+// The SAME two-sided in-band depth the filter and the old yield lib use — shown as context, not headline.
+import { competitorDepthUsd } from '@/lib/reward-depth-floor';
 // The 2%/day sane-reward gate — the SINGLE implementation (was wired only to the paper book). Surfacing it
 // here makes a thin / over-cap reward row read as a flagged run-rate, never a clean cashable $/day.
 import { REWARD_SANITY_CAP_PCT, isSanePolymarketLevel } from '@/lib/reward-gating';
@@ -17,35 +26,24 @@ import { REWARD_SANITY_CAP_PCT, isSanePolymarketLevel } from '@/lib/reward-gatin
 import { sortRows, saturationView } from '@/lib/rewards-filter';
 
 /**
- * Liquidity rewards — BALANCE-DRIVEN yield list.
+ * Liquidity rewards — per-operator ESTIMATED share list.
  *
- * A sticky balance control drives every row: each $/day is computed from the user's own
- * balance via lib/liquidity-yield (deploy min(balance, book space), dilute share against the
- * qualifying liquidity already there). This replaces the old inflated aggregate number
- * (pool × filled%, i.e. the whole-book share as if you owned the book) — that path is gone.
+ * The headline on every row is what ONE maker would earn per day: its own modelled share of the
+ * reward pot, NOT the pot (the whole prize everyone shares). It is a "stima" — a modelled figure,
+ * never an observed payout — computed by the shared quadratic scorer, not in this component.
  *
  * HONEST-ENGINE
- *  - $/day = poolDay × deployed/(competitorDepth + deployed); deploying more shrinks your share.
- *  - competitorDepth is the qualifying liquidity you really compete with. Polymarket rewards are
- *    two-sided (Qmin), so it is BOTH sides' in-band depth (Qnear + Qopp) — a thin near side no
- *    longer reads as domination. Kalshi is one-sided (Qopp absent → near side only). See
- *    lib/liquidity-yield.ts for the derivation. The depth shown on the card IS competitorDepth,
- *    so "depth $X · share Y%" is always internally consistent.
- *  - Deployment caps at remaining book space (cap − Q); the rest is idle, shown calmly.
- *  - Real fields only: pool = rewardsDailyRate, near/far depth = per-side in-band book depth.
- *    Polymarket = measured (quadratic CLOB); Kalshi = observed (inferred flat pro-rata).
- *  - Net $/day is the sole headline; the annualized line was removed from the cards.
- *  - Missing pool / qualifying liquidity ⇒ "—", never fabricated. Free tier redacts to lock.
+ *  - est $/day = poolDay × refShare, where refShare is a $1,000 maker's scored pool share from
+ *    lib/rewardScore (Polymarket's published S(v,s) = ((v−s)/v)², Qmin two-sided) stamped by
+ *    lib/rewards-normalize. Surfaced via lib/reward-operator-estimate (poolDay × refShare). The
+ *    assumptions (order size, quarter-band placement) are FIXED, explicit constants, stated on the page.
+ *  - It reads the market's REAL min_incentive_size and max_incentive_spread; distant competitors are
+ *    down-weighted by tightness-to-mid, which is why this is higher than a naive depth split.
+ *  - The pot, the two-sided in-band depth, the spread and the competition level are CONTEXT — a quiet
+ *    metadata line, never the headline.
+ *  - Polymarket = measured (quadratic CLOB); Kalshi = observed (inferred flat pro-rata).
+ *  - Book couldn't be scored ⇒ "—", the pot stays visible, never fabricated, never 0. Free tier locks.
  */
-
-const BAL_MIN = 1;
-const BAL_MAX = 500_000;
-const BAL_DEFAULT = 1_000;
-const BAL_CHIPS = [100, 1_000, 10_000, 100_000];
-
-// log-scale slider ↔ dollars (0..1000 slider units span $1..$500k)
-const balToPos = (b: number) => Math.round((Math.log(Math.max(BAL_MIN, b)) / Math.log(BAL_MAX)) * 1000);
-const posToBal = (p: number) => Math.min(BAL_MAX, Math.max(BAL_MIN, Math.round(Math.exp((p / 1000) * Math.log(BAL_MAX)))));
 
 interface RewardScore {
   source: string;
@@ -181,8 +179,6 @@ const toggle = (arr: string[], v: string) =>
 
 const fin = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
 
-const clampBalance = (v: number) => Math.min(BAL_MAX, Math.max(BAL_MIN, Math.round(v || 0)));
-
 /** Parse the URL query string into filter state (shareable / survives refresh). */
 function parseFiltersFromUrl(sp: URLSearchParams): FilterState {
   const nOr = (k: string, d: number) => {
@@ -229,15 +225,11 @@ export default function RewardsUnified() {
   const [err, setErr] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [ranges, setRanges] = useState<Ranges | null>(null);
-  const [balance, setBalance] = useState<number>(() => {
-    const b = Number(searchParams.get('bal'));
-    return Number.isFinite(b) && b > 0 ? clampBalance(b) : BAL_DEFAULT;
-  });
   const [filters, setFilters] = useState<FilterState>(
     () => parseFiltersFromUrl(searchParams as unknown as URLSearchParams),
   );
 
-  // The ONLY inputs that hit the API. Sort + balance are excluded on purpose (client compute).
+  // The ONLY inputs that hit the API. Sort is excluded on purpose (client presentation).
   const apiQuery = serverParams(filters, ranges).toString();
 
   // FETCH — re-runs when the server-filter query changes (debounced for slider drags) + a 60s
@@ -261,16 +253,15 @@ export default function RewardsUnified() {
     return () => { alive = false; clearTimeout(deb); clearInterval(t); };
   }, [apiQuery]);
 
-  // URL SYNC — mirror the full view (filters + sort + balance) to the query string so it survives
-  // refresh and is shareable. replace (not push) + scroll:false so it never spams history/jumps.
+  // URL SYNC — mirror the full view (filters + sort) to the query string so it survives refresh and
+  // is shareable. replace (not push) + scroll:false so it never spams history/jumps.
   useEffect(() => {
     const p = serverParams(filters, ranges);
     if (filters.sortByPool) p.set('sort', 'pool');
     if (filters.sortDir === 'asc') p.set('dir', 'asc');
-    if (balance !== BAL_DEFAULT) p.set('bal', String(balance));
     const qs = p.toString();
     router.replace(qs ? `?${qs}` : '?', { scroll: false });
-  }, [filters, balance, ranges, router]);
+  }, [filters, ranges, router]);
 
   const isPaid = data?.isPaid ?? false;
 
@@ -335,31 +326,36 @@ export default function RewardsUnified() {
     });
   }, [data]);
 
-  // Balance-DRIVEN yield: recomputed live as the slider moves.
+  // FIXED-ASSUMPTION estimate: the modelled $/day for a $1,000 order quoted a quarter-band off the
+  // mid, from the shared quadratic scorer (poolDay × refShare). No balance slider, no second math
+  // path. A row that couldn't be scored (est.unknown) OR a non-executable Kalshi book renders "—".
   const enriched: Row[] = useMemo(() => base.map((b) => {
-    const y = computeLiquidityYield({
-      poolPerDay: b.poolDayUsd, cap: b.cap, qualifyingLiquidity: b.qualifyingLiquidity,
-      qualifyingLiquidityOpposite: b.oppDepth, balance,
-    });
-    // apr kept on the row for completeness (annualized-on-deployed, capped); not rendered and no
-    // longer a filter — net $/day is the sole headline metric and the cap label uses apyRaw.
-    const apr = y.unknown ? null : Math.min(y.apyRaw, APY_CAP);
+    const est = estimatedOperatorSharePerDay(b.m.rewardScore ?? null);
+    const unknown = est.unknown || b.nonExecReason != null;
+    const netUsdPerDay = unknown ? null : est.estUsdPerDay;
+    const share = unknown ? 0 : (est.share ?? 0);
+    // Annualized on the ASSUMED order size — a pure run-rate VIEW of the same estimate (drives the
+    // >200%/yr cap caveat only; never a separate share computation).
+    const apyRaw = unknown || netUsdPerDay == null
+      ? null
+      : (netUsdPerDay * 365 / est.assumedOrderSizeUsd) * 100;
     return {
       ...b,
-      netUsdPerDay: y.unknown ? null : y.dailyUsd,
-      apr,
-      apyRaw:       y.unknown ? null : y.apyRaw,
-      apyCapped:    !y.unknown && y.apyRaw > APY_CAP,
-      // The depth we SHOW is the depth the share dilutes against (both sides on Polymarket),
-      // so "depth $X · share Y%" is internally consistent. Also the min-capacity filter field.
-      capacityUsd:  y.unknown ? null : y.competitorDepth,
-      deployed:     y.deployed,
-      idle:         y.idle,
-      space:        y.space,
-      share:        y.unknown ? 0 : y.share,
-      unknown:      y.unknown,
+      netUsdPerDay,
+      apr:          apyRaw == null ? null : Math.min(apyRaw, APY_CAP),
+      apyRaw,
+      apyCapped:    apyRaw != null && apyRaw > APY_CAP,
+      // The two-sided in-band depth already in the book — shown as CONTEXT (never the headline), the
+      // exact number the filter reads (lib/reward-depth-floor competitorDepthUsd). Real tier ⇒ "—"
+      // when the feed didn't carry it; free tier ⇒ redacted lock (depth is null).
+      capacityUsd:  competitorDepthUsd(b.m),
+      deployed:     est.assumedOrderSizeUsd,   // the fixed assumed order the estimate is priced for
+      idle:         0,
+      space:        Infinity,
+      share,
+      unknown,
     };
-  }), [base, balance]);
+  }), [base]);
 
   // Rows are ALREADY filtered by the server (lib/rewards-server-filter). The client only SORTS
   // (presentation) — no second filter pass, so the shown count can never diverge from the API's
@@ -370,7 +366,6 @@ export default function RewardsUnified() {
   );
 
   const set = (patch: Partial<FilterState>) => setFilters((f) => ({ ...f, ...patch }));
-  const clampBal = (v: number) => Math.min(BAL_MAX, Math.max(BAL_MIN, Math.round(v || 0)));
 
   // Counts come from the server (meta) — the visible proof the filter is wired: total → matched.
   const total = data?.meta?.totalMarkets ?? base.length;
@@ -398,38 +393,9 @@ export default function RewardsUnified() {
             <span className="cc-title-accent"> · maker</span>
           </h1>
           <p className="cc-sub">
-            your real $/day for the balance you deploy — diluted by the qualifying liquidity already in the book
+            the modelled $/day a single maker earns — its own share of the pot, not the whole prize
           </p>
         </header>
-
-        {/* ── STICKY BALANCE CONTROL ─────────────────────────────── */}
-        <div className="rw-balbar">
-          <div className="rw-bal-head">
-            <span className="rw-bal-lbl">Your balance</span>
-            <div className="rw-bal-inputwrap">
-              <span className="rw-bal-dollar">$</span>
-              <input
-                className="rw-bal-input" type="number" min={BAL_MIN} max={BAL_MAX} step={100}
-                value={balance}
-                onChange={(e) => setBalance(clampBal(Number(e.target.value)))}
-                aria-label="your balance in dollars"
-              />
-            </div>
-          </div>
-          <input
-            className="rw-bal-range" type="range" min={0} max={1000} step={1}
-            value={balToPos(balance)}
-            onChange={(e) => setBalance(posToBal(Number(e.target.value)))}
-            aria-label="balance slider"
-          />
-          <div className="rw-bal-chips">
-            {BAL_CHIPS.map((c) => (
-              <button key={c} type="button"
-                className={`rw-bal-chip ${balance === c ? 'is-on' : ''}`}
-                onClick={() => setBalance(c)}>{fmtUsd(c)}</button>
-            ))}
-          </div>
-        </div>
 
         {err && <EmptyState prefix="cc" title="Rewards feed unavailable" sub={err} />}
         {!err && !data && <EmptyState prefix="cc" sub="Loading reward markets…" />}
@@ -535,7 +501,7 @@ export default function RewardsUnified() {
 
             <div className="cc-count cc-count-row">
               <span className="cc-count-text">
-                {visible.length} of {total} markets after filters · your ${balance.toLocaleString()} · sorted by {filters.sortByPool
+                {visible.length} of {total} markets after filters · sorted by {filters.sortByPool
                   ? 'reward pool high→low'
                   : `$/day ${filters.sortDir === 'asc' ? 'low→high' : 'high→low'}`}
               </span>
@@ -647,18 +613,22 @@ export default function RewardsUnified() {
                         </span>
                         <span className="cc-row-r">
                           <span className="cc-row-net">
-                            {/* Net $/day is the sole headline metric on these cards — the
-                                annualized run-rate line was removed (it dwarfed the honest
-                                daily figure). "—" when pool/depth are missing OR (Kalshi) the
-                                book is one-sided / non-executable, with the reason on hover. */}
-                            {/* est net $/day is the LOCKED headline. Real tier: free → 🔒 unlock;
+                            {/* HEADLINE = the maker's own MODELLED share of the pot per day, from the
+                                shared quadratic scorer (poolDay × refShare). Carries a visible "stima"
+                                so it never reads as an observed payout. "—" when the book couldn't be
+                                scored OR (Kalshi) it is one-sided / non-executable — reason on hover. */}
+                            {/* est share/day is the LOCKED headline. Real tier: free → 🔒 unlock;
                                 paid → the number, or a calm "—" (with reason) when non-priceable. */}
                             <Redacted
                               value={row.unknown ? null : row.netUsdPerDay}
                               isPaid={isPaid}
-                              nullDisplay={<span title={row.nonExecReason ?? 'no reward pool or in-band depth from the feed'}>—</span>}
+                              nullDisplay={<span title={row.nonExecReason ?? 'this book could not be scored — no pool or in-band depth from the feed'}>—</span>}
                             >
-                              {(v) => <>${Number(v).toFixed(2)}/day</>}
+                              {(v) => (
+                                <span className="rw-nowrap">
+                                  ${Number(v).toFixed(2)}/day <span className="cc-row-stima" title="modelled figure, not an observed payout">stima</span>
+                                </span>
+                              )}
                             </Redacted>
                             {/* ANNUALIZED CAP LABEL — restored on the cards (paid tier too). The displayed
                                 $/day is unchanged; when its annualized run-rate on deployed capital exceeds the
@@ -693,7 +663,7 @@ export default function RewardsUnified() {
 
                       {isOpen && (
                         <div className="cc-expand">
-                          <RewardYieldBreakdown row={row} balance={balance} isPaid={isPaid} />
+                          <RewardYieldBreakdown row={row} isPaid={isPaid} />
                           {/* Into the interactive order-book detail page for THIS exact market.
                               marketId is the raw feed id (Polymarket conditionId / Kalshi ticker) —
                               the same key the detail route resolves against /api/rewards-unified. */}
@@ -714,16 +684,14 @@ export default function RewardsUnified() {
             )}
 
             <p className="cc-note">
-              Your $/day is what you would earn deploying your balance NOW: you take share
-              deployed/(qualifying liquidity + deployed) of the pool — adding capital shrinks your
-              own share. Polymarket rewards are TWO-SIDED (you must quote both sides), so your share
-              dilutes against the in-band qualifying liquidity on BOTH sides — the depth shown is
-              that two-sided total, which is why a thin near side beside a thick far side no longer
-              reads as domination. Polymarket exposes no reward cap, so the whole balance deploys; if
-              a venue ever caps qualifying liquidity, capital beyond the room left is shown idle.
-              Polymarket depth/competition is measured from the live CLOB; Kalshi is an observed
-              one-sided flat pro-rata split. Point-in-time snapshot; competitors re-quote; adverse
-              selection is a separate cost; not a promised yield.
+              The headline is a MODELLED share ("stima"): the reward pool times a ${ASSUMED_ORDER_SIZE_USD.toLocaleString()} maker's
+              scored share of it, {ASSUMED_PLACEMENT_LABEL}. Polymarket rewards are two-sided — the
+              share is scored with the published quadratic formula S(v,s) = ((v−s)/v)², weighting each
+              order by its tightness to the size-cutoff-adjusted midpoint and diluting against the
+              qualifying depth already on BOTH sides. Polymarket depth/competition is measured from the
+              live CLOB; Kalshi is an observed one-sided flat pro-rata split. All figures are gross
+              reward accrual — inventory P&amp;L when your orders fill is not included. Point-in-time
+              snapshot; competitors re-quote; not a promised yield.
             </p>
           </>
         )}
@@ -733,21 +701,20 @@ export default function RewardsUnified() {
 }
 
 /**
- * Row-expand breakdown — the same lib/liquidity-yield numbers, itemised, at the current
- * global balance. No second math path; nothing the row doesn't already compute.
+ * Row-expand breakdown — the SAME shared-lib numbers the headline uses (poolDay × refShare),
+ * itemised at the fixed assumed order. No second math path; nothing the row doesn't already compute.
  */
-function RewardYieldBreakdown({ row, balance, isPaid }: { row: Row; balance: number; isPaid: boolean }) {
-  const hasCap = Number.isFinite(row.space);   // a real venue cap → idle capital can occur
+function RewardYieldBreakdown({ row, isPaid }: { row: Row; isPaid: boolean }) {
   const rowset: Array<[string, React.ReactNode]> = [
-    ['reward pool',              <Redacted key="p" value={row.poolDayUsd} isPaid>{(v) => <>${Number(v).toFixed(0)}/day</>}</Redacted>],
-    [row.venue === 'polymarket' ? 'in-band depth already there · both sides (Q)' : 'in-band depth already there (Q)',
+    ['reward pool (the whole prize)', <Redacted key="p" value={row.poolDayUsd} isPaid>{(v) => <>${Number(v).toFixed(0)}/day</>}</Redacted>],
+    [row.venue === 'polymarket' ? 'depth already there · both sides' : 'depth already there',
       <Redacted key="q" value={row.capacityUsd} isPaid={isPaid}>{(v) => <>{fmtDepth(Number(v))}</>}</Redacted>],
   ];
   return (
     <div className="rw-calc">
       <div className="rw-calc-block">
         <span className="rw-calc-h">
-          Your ${balance.toLocaleString()} in this book
+          A ${row.deployed.toLocaleString()} order in this book
           <span className={`rw-src ${row.measured ? 'is-measured' : 'is-observed'}`}>
             {row.measured ? 'measured · live book' : 'observed split'}
           </span>
@@ -758,20 +725,16 @@ function RewardYieldBreakdown({ row, balance, isPaid }: { row: Row; balance: num
           ))}
         </div>
         <div className="rw-brk rw-brk-strong">
-          <div className="rw-brk-item"><span className="rw-brk-k">you deploy</span>
-            <span className="rw-brk-v"><Redacted value={row.unknown ? null : row.deployed} isPaid={isPaid}>{(v) => <>${Number(v).toFixed(0)}</>}</Redacted></span></div>
-          {hasCap && row.idle > 0 && (
-            <div className="rw-brk-item"><span className="rw-brk-k">idle (book full)</span>
-              <span className="rw-brk-v rw-idle-v"><Redacted value={row.unknown ? null : row.idle} isPaid={isPaid}>{(v) => <>${Number(v).toFixed(0)}</>}</Redacted></span></div>
-          )}
+          <div className="rw-brk-item"><span className="rw-brk-k">assumed order</span>
+            <span className="rw-brk-v">${row.deployed.toLocaleString()}</span></div>
           <div className="rw-brk-item"><span className="rw-brk-k">your pool share</span>
             <span className="rw-brk-v"><Redacted value={row.unknown ? null : row.share} isPaid={isPaid}>{(v) => <>{(Number(v) * 100).toFixed(1)}%</>}</Redacted></span></div>
-          <div className="rw-brk-item"><span className="rw-brk-k">your reward</span>
+          <div className="rw-brk-item"><span className="rw-brk-k">your reward · stima</span>
             <span className="rw-brk-v rw-brk-primary"><Redacted value={row.unknown ? null : row.netUsdPerDay} isPaid={isPaid}>{(v) => <>${Number(v).toFixed(2)}/day</>}</Redacted></span></div>
         </div>
         <div className="rw-calc-meta">
           <span className="rw-dim">
-            share = deployed/(Q + deployed) · point-in-time · adverse selection is a separate cost
+            share scored by the published quadratic formula · gross accrual · point-in-time
             {row.measured ? '' : ' · split inferred (observed)'}
           </span>
           {row.isTrap && <span className="rw-trap">⚠ trap market</span>}
