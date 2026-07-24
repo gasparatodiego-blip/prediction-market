@@ -59,6 +59,19 @@ function normQs(obj: Record<string, unknown>): string {
   return p.toString();
 }
 
+// Statements of FACT about what the numbers mean. Always shown, never a tooltip, never dismissible.
+function Disclosures({ kalshi }: { kalshi: boolean }) {
+  return (
+    <div className="bu-disc">
+      <p>Reward figures shown are <strong>gross accrual</strong> — the program&rsquo;s stated pot rate, not net profit.</p>
+      <p><strong>Inventory P&amp;L when your orders fill is not included</strong> in any figure on this page.</p>
+      {kalshi && (
+        <p>A selected market is on <strong>Kalshi</strong>: its incentive programme is restricted to U.S. members, so those rewards may not be collectable by this operator.</p>
+      )}
+    </div>
+  );
+}
+
 export default function MakerUniverseControl({ apiQuery }: { apiQuery: string }) {
   const [active, setActive] = useState<UniverseResp | null>(null);
   const [open, setOpen] = useState(false);
@@ -134,6 +147,9 @@ export default function MakerUniverseControl({ apiQuery }: { apiQuery: string })
         .bu-actions { display:flex; gap:10px; margin-top:12px; flex-wrap:wrap; }
         .bu-confirm { min-height:44px; padding:0 18px; border:none; border-radius:10px; background:#0FBE82; color:#053626; font-weight:800; cursor:pointer; }
         .bu-cancel { min-height:44px; padding:0 16px; border:1px solid var(--ds-line,#3A4150); border-radius:10px; background:transparent; color:inherit; cursor:pointer; }
+        .bu-disc { margin-top:10px; padding:10px 12px; border-radius:8px; background: var(--ds-surface,#0f141b); border:1px solid var(--ds-line,#262C39); }
+        .bu-disc p { margin:0 0 6px; font-size:12px; line-height:1.45; color: var(--ds-muted,#9aa4b2); } .bu-disc p:last-child { margin-bottom:0; }
+        .bu-disc strong { color: inherit; font-weight:800; }
         .bu-msg-ok { color:#0A9D6B; font-size:13px; margin-top:8px; } .bu-msg-err { color:#E5564E; font-size:13px; margin-top:8px; }
         @media (max-width:760px){ .bu-grid{ grid-template-columns:1fr; } .bu-head{ flex-direction:column; align-items:stretch; } .bu-btn{ width:100%; } }
       `}</style>
@@ -165,6 +181,7 @@ export default function MakerUniverseControl({ apiQuery }: { apiQuery: string })
             {differs && (
               <div className="bu-diff">Your browse filters differ from the bot&rsquo;s active universe. Browsing does not change what the bot quotes — use &ldquo;Set as bot universe&rdquo; to promote them.</div>
             )}
+            <Disclosures kalshi={!!ar?.kalshiSelected} />
           </>
         )}
 
@@ -196,7 +213,7 @@ export default function MakerUniverseControl({ apiQuery }: { apiQuery: string })
                 ? 'the default (Polymarket only, no constraints, cap 5).'
                 : `the selection set ${active?.selection.updatedAt ? new Date(active.selection.updatedAt).toLocaleString() : ''} (${filterRows(active?.selection.filters || {}).map(([k, v]) => `${k} ${v}`).join(' · ')}).`}
             </div>
-            {/* HONEST_DISCLOSURE_SLOT */}
+            <Disclosures kalshi={!!pr?.kalshiSelected} />
             <div className="bu-actions">
               <button className="bu-confirm" disabled={busy} onClick={confirm}>{busy ? 'Setting…' : 'Confirm — set bot universe'}</button>
               <button className="bu-cancel" disabled={busy} onClick={() => { setOpen(false); setMsg(null); }}>Cancel</button>
