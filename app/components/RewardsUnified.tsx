@@ -374,17 +374,17 @@ export default function RewardsUnified() {
   // The REAL depth-at-touch floor ($) from the server (env REWARD_DEPTH_TOUCH_FLOOR_USD or $25 default).
   // Stated in the "hide thin books" help so the copy can never drift from the code.
   const depthFloor = fin(data?.meta?.rewardDepthFloorUsd) ? (data!.meta.rewardDepthFloorUsd as number) : null;
-  // Human summary of the constraints in force — shown in the calm zero-match empty state.
+  // At zero matches the server names the filter removing the most rows (meta.mostRestrictiveFilter).
+  // Map its key to the plain-language control label so the calm zero-state says what to relax.
+  const MOST_RESTRICT_LABELS: Record<string, string> = {
+    venue: 'Su quale piattaforma', category: 'Categoria', minPool: 'Deve pagare almeno',
+    minDepth: 'Il libro deve reggere almeno', maxSpread: 'Distanza massima fra domanda e offerta',
+    maxCompetition: 'Quanti altri se lo dividono', hideThin: 'Nascondi i libri troppo sottili',
+  };
+  const mostRestrictiveKey: string | null = data?.meta?.mostRestrictiveFilter?.key ?? null;
+  const mostRestrictiveLabel = mostRestrictiveKey ? MOST_RESTRICT_LABELS[mostRestrictiveKey] ?? null : null;
+  // At the range max the spread filter imposes no constraint ("qualsiasi") — used in the slider value.
   const spreadActive = filters.maxSpreadCents >= 0 && filters.maxSpreadCents < rg.spreadMaxCents;
-  const activeFilters: string[] = [
-    filters.venue !== 'all' ? `venue: ${filters.venue}` : null,
-    filters.categories.length ? `category: ${filters.categories.join(', ')}` : null,
-    filters.minPool > 0 ? `min pot ≥ ${fmtUsd(filters.minPool)}/day` : null,
-    filters.minDepth > 0 ? `min depth ≥ ${fmtUsd(filters.minDepth)}` : null,
-    spreadActive ? `spread ≤ ${filters.maxSpreadCents}¢` : null,
-    filters.maxCompetitionPct < 100 ? `competition ≤ ${filters.maxCompetitionPct}%` : null,
-    filters.hideThin ? 'hiding thin books' : null,
-  ].filter(Boolean) as string[];
 
   return (
     <div className="rewards">
@@ -400,10 +400,18 @@ export default function RewardsUnified() {
           </p>
         </header>
 
+        {/* ── ASSUMPTIONS · stated once, always visible (never a tooltip, never collapsed) ── */}
+        <div className="rw-assume" role="note">
+          <span className="rw-assume-k">La stima si basa su</span> un ordine da ${ASSUMED_ORDER_SIZE_USD.toLocaleString()},
+          {' '}{ASSUMED_PLACEMENT_LABEL}. Sono <strong>premi lordi maturati</strong>: il P&amp;L di
+          inventario quando i tuoi ordini vengono eseguiti <strong>non è incluso</strong> in nessuna
+          cifra di questa pagina. I premi Kalshi sono riservati ai membri residenti negli Stati Uniti.
+        </div>
+
         {err && <EmptyState prefix="cc" title="Rewards feed unavailable" sub={err} />}
         {!err && !data && <EmptyState prefix="cc" sub="Loading reward markets…" />}
         {!err && data && total === 0 && (
-          <EmptyState prefix="cc" title="No reward markets clear the sanity gate right now" />
+          <EmptyState prefix="cc" title="Nessun mercato premio supera il controllo di sanità in questo momento" />
         )}
 
         {!err && data && total > 0 && (
@@ -518,9 +526,9 @@ export default function RewardsUnified() {
 
             <div className="cc-count cc-count-row">
               <span className="cc-count-text">
-                {visible.length} of {total} markets after filters · sorted by {filters.sortByPool
-                  ? 'reward pool high→low'
-                  : `$/day ${filters.sortDir === 'asc' ? 'low→high' : 'high→low'}`}
+                {visible.length} mercati su {total} passano · ordinati per {filters.sortByPool
+                  ? 'montepremi (alto→basso)'
+                  : `$/giorno (${filters.sortDir === 'asc' ? 'basso→alto' : 'alto→basso'})`}
               </span>
               {/* $/day sort direction — presentational only; reuses the engine's netUsdPerDay.
                   Tapping an arrow selects $/day sort in that direction (overrides reward-pool
@@ -542,8 +550,10 @@ export default function RewardsUnified() {
             <MakerUniverseControl apiQuery={apiQuery} />
 
             {visible.length === 0 ? (
-              <EmptyState prefix="cc" title="No reward markets match these filters."
-                sub={activeFilters.length ? `Active: ${activeFilters.join(' · ')}. Loosen a filter to see more.` : 'Loosen a filter to see more.'} />
+              <EmptyState prefix="cc" title="Nessun mercato passa questi filtri."
+                sub={mostRestrictiveLabel
+                  ? `Il filtro che ne toglie di più adesso è «${mostRestrictiveLabel}»: allentalo per vederne altri.`
+                  : 'Allenta un filtro per vederne altri.'} />
             ) : (
               <div className="cc-list">
                 {visible.map((row) => {
@@ -579,53 +589,40 @@ export default function RewardsUnified() {
                               <span className="rw-trap" title="below the sane-reward gate (below-floor / one-sided / short-burst)">⚠ flagged</span>
                             )}
                           </span>
+                          {/* The market question, FULL text, wrapping — this is what the operator
+                              recognises a market by, so it is never truncated to one line. */}
                           <span className="cc-row-title">{m.groupItemTitle || m.title}</span>
-                          <span className="cc-row-sub">
-                            {/* pool $/day is a PUBLIC teaser (owner freemium split) — always the real
-                                number for every tier; null ⇒ genuine "—", never a paywall lock. */}
-                            pool{' '}
-                            <Redacted value={row.poolDayUsd} isPaid>{(v) => <>${Number(v).toFixed(0)}/day</>}</Redacted>
-                            {' · '}depth{' '}
-                            {/* depth $ is LOCKED. Pass the REAL tier so free → 🔒 unlock, while a paid
-                                user with a genuinely non-priceable row still gets a calm "—". */}
-                            <Redacted value={row.capacityUsd} isPaid={isPaid}>{(v) => <>{fmtDepth(Number(v))}</>}</Redacted>
-                            {/* your share % is LOCKED — always shown so free sees a 🔒, paid sees the
-                                real % (or "—" when the row is genuinely non-priceable / zero share). */}
-                            {' · '}your share{' '}
-                            <Redacted value={row.unknown || row.share <= 0 ? null : row.share} isPaid={isPaid}>
-                              {(v) => <span className="rw-nowrap">{(Number(v) * 100).toFixed(1)}%</span>}
-                            </Redacted>
-                          </span>
-                          {/* idle-capital note — calm, not an error */}
-                          {!row.unknown && row.idle > 0 && (
-                            <span className="rw-idle">
-                              ${row.deployed.toFixed(0)} deployed · <span className="rw-nowrap">${row.idle.toFixed(0)} idle</span> (book full)
+                          {/* QUIET METADATA LINE — context, not headline: the pot (whole prize),
+                              the two-sided book depth, the spread, the competition. All the same
+                              small size, middot-separated. Any unavailable value renders "—" (free
+                              tier → 🔒 unlock), never 0. */}
+                          <span className="cc-row-meta">
+                            <span className="cc-meta-item">
+                              <span className="cc-meta-k">montepremi</span>{' '}
+                              {/* pot is a PUBLIC teaser (owner freemium split) — real for every tier. */}
+                              <Redacted value={row.poolDayUsd} isPaid>{(v) => <span className="rw-nowrap">${Number(v).toFixed(0)}/giorno</span>}</Redacted>
                             </span>
-                          )}
-                          {/* SATURATION BAR — PUBLIC teaser (owner freemium split): the qualitative
-                              saturated/open status shows for every tier. isPaid forced so a genuinely
-                              unmeasured bar reads "competition · not measured", never a paywall lock. */}
-                          <span className="rw-satwrap">
-                            <Redacted
-                              value={row.saturation}
-                              isPaid
-                              nullDisplay={<span className="rw-dim">competition · not measured</span>}
-                            >
-                              {(sat) => {
-                                const v = saturationView(Number(sat));
-                                if (!v) return null;
-                                return (
-                                  <>
-                                    <span className="rw-satbar-track" title={row.measured
-                                      ? 'measured: existing makers’ quadratic pool share from the live CLOB book'
-                                      : 'observed: existing makers’ share under Kalshi’s inferred flat pro-rata split'}>
-                                      <span className={`rw-satbar-fill is-${v.band}`} style={{ width: `${v.pct}%` }} />
-                                    </span>
-                                    <span className={`rw-sat-label is-${v.band}`}>{Math.round(v.pct)}% {v.label}</span>
-                                  </>
-                                );
-                              }}
-                            </Redacted>
+                            <span className="cc-meta-dot">·</span>
+                            <span className="cc-meta-item">
+                              <span className="cc-meta-k">profondità</span>{' '}
+                              <Redacted value={row.capacityUsd} isPaid={isPaid}>{(v) => <span className="rw-nowrap">{fmtDepth(Number(v))}</span>}</Redacted>
+                            </span>
+                            <span className="cc-meta-dot">·</span>
+                            <span className="cc-meta-item">
+                              <span className="cc-meta-k">spread</span>{' '}
+                              <Redacted value={fin(m.bookSpread) ? (m.bookSpread as number) : null} isPaid={isPaid}>{(v) => <span className="rw-nowrap">{Math.round(Number(v) * 100)}¢</span>}</Redacted>
+                            </span>
+                            <span className="cc-meta-dot">·</span>
+                            <span className="cc-meta-item">
+                              <span className="cc-meta-k">concorrenza</span>{' '}
+                              {/* competition = saturation (how occupied the pool already is). Public teaser. */}
+                              <Redacted value={row.saturation} isPaid nullDisplay={<span className="rw-dim">—</span>}>
+                                {(sat) => {
+                                  const v = saturationView(Number(sat));
+                                  return v ? <span className="rw-nowrap">{Math.round(v.pct)}% occupato</span> : <span className="rw-dim">—</span>;
+                                }}
+                              </Redacted>
+                            </span>
                           </span>
                         </span>
                         <span className="cc-row-r">

@@ -120,6 +120,29 @@ export async function GET(request: NextRequest) {
     const ranges        = deriveRanges(fullMarkets);
     const filters       = parseRewardFilters(request.nextUrl.searchParams);
     data.markets        = applyRewardFilters(fullMarkets, filters);
+
+    // ── MOST-RESTRICTIVE FILTER ── when nothing matches, tell the operator which single filter is
+    // removing the most rows so they know what to relax. Computed by relaxing each ACTIVE filter to
+    // its neutral value (via the SAME applyRewardFilters — no new filter logic) and taking the one
+    // whose relaxation recovers the most rows. Only meaningful at zero matches; null otherwise.
+    let mostRestrictiveFilter: { key: string; recovers: number } | null = null;
+    if (data.markets.length === 0) {
+      const relaxations: Array<[string, any]> = [];
+      if (filters.venue && filters.venue !== 'all')        relaxations.push(['venue',          { ...filters, venue: 'all' }]);
+      if (filters.categories && filters.categories.length) relaxations.push(['category',       { ...filters, categories: [] }]);
+      if (filters.minPool)                                 relaxations.push(['minPool',        { ...filters, minPool: null }]);
+      if (filters.minDepth)                                relaxations.push(['minDepth',       { ...filters, minDepth: null }]);
+      if (filters.maxSpreadCents != null)                  relaxations.push(['maxSpread',      { ...filters, maxSpreadCents: null }]);
+      if (filters.maxCompetitionPct != null)               relaxations.push(['maxCompetition', { ...filters, maxCompetitionPct: null }]);
+      if (filters.hideThin)                                relaxations.push(['hideThin',       { ...filters, hideThin: false }]);
+      for (const [key, relaxed] of relaxations) {
+        const recovers = applyRewardFilters(fullMarkets, relaxed).length;
+        if (!mostRestrictiveFilter || recovers > mostRestrictiveFilter.recovers) {
+          mostRestrictiveFilter = { key, recovers };
+        }
+      }
+    }
+
     data.meta = {
       ...(data.meta || {}),
       totalMarkets,
@@ -127,6 +150,7 @@ export async function GET(request: NextRequest) {
       ranges,
       appliedFilters: filters,
       rewardDepthFloorUsd: depthFloorUsd(),   // real "thin book" floor ($) — the help text states this
+      mostRestrictiveFilter,                  // { key, recovers } at zero matches, else null
     };
 
     const session = await getServerSession(authOptions);

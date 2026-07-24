@@ -564,6 +564,12 @@ h1, h2, h3 {
 .cc-fhelp-check { margin: -2px 0 2px; flex-basis: 100%; }
 /* Inline amber note (venue includes a non-Polymarket program). Calm, never an error. */
 .cc-fnote-amber { font-size: 11px; line-height: 1.4; color: var(--cc-amber); }
+/* Always-visible assumptions banner — the fixed order size + placement the stima rests on,
+   gross accrual, no inventory P&L, Kalshi US-only. Stated once, never a tooltip. */
+.rw-assume { margin: 0 0 14px; padding: 10px 12px; border: 1px solid var(--cc-border); border-radius: 10px;
+  background: var(--cc-panel); font-size: 12px; line-height: 1.5; color: var(--cc-muted); max-width: 92ch; }
+.rw-assume-k { color: var(--cc-text); font-weight: 700; }
+.rw-assume strong { color: var(--cc-text); font-weight: 700; }
 .cc-chips  { display: flex; flex-wrap: wrap; gap: 6px; }
 .cc-fchip {
   font-size: 10.5px; font-weight: 600; letter-spacing: .02em;
@@ -598,17 +604,25 @@ h1, h2, h3 {
 
 .cc-list { display: flex; flex-direction: column; }
 .cc-row {
-  display: flex; align-items: center; justify-content: space-between; gap: 10px;
-  width: 100%; text-align: left; padding: 11px 6px; font-family: inherit;
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 14px;
+  width: 100%; text-align: left; padding: 13px 6px; font-family: inherit;
   border: none; border-bottom: 1px solid var(--cc-border); background: transparent; color: inherit; cursor: pointer;
   transition: background .12s;
 }
 .cc-row:hover, .cc-row.is-open { background: var(--cc-panel); }
-.cc-row-l { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.cc-row-title { font-size: 12px; font-weight: 600; color: var(--cc-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cc-row-sub { font-family: var(--font-mono), ui-monospace, monospace; font-size: 10px; color: var(--cc-muted); font-variant-numeric: tabular-nums; }
-.cc-row-r { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex: none; }
-.cc-row-net { font-size: 14px; font-weight: 700; color: var(--cc-green); font-variant-numeric: tabular-nums; line-height: 1.1; }
+.cc-row-l { min-width: 0; flex: 1 1 auto; display: flex; flex-direction: column; gap: 5px; }
+/* The market question: full text, WRAPPING (never truncated) — order-of-weight #1. */
+.cc-row-title { font-size: 14px; font-weight: 600; color: var(--cc-text); line-height: 1.35; overflow-wrap: anywhere; word-break: break-word; }
+/* Quiet metadata line — context, all one small size, middot-separated, wraps gracefully. */
+.cc-row-meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 3px 7px; font-size: 11px; color: var(--cc-muted); font-variant-numeric: tabular-nums; }
+.cc-meta-item { white-space: nowrap; }
+.cc-meta-k { opacity: .7; }
+.cc-meta-dot { opacity: .4; }
+.cc-row-r { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex: 0 0 auto; min-width: 0; }
+/* est share/day — the LARGEST number in the row (order-of-weight #2). */
+.cc-row-net { font-size: 18px; font-weight: 800; color: var(--cc-green); font-variant-numeric: tabular-nums; line-height: 1.1; }
+/* "stima" qualifier — small, quiet, right beside the number so it never reads as an observed payout. */
+.cc-row-stima { font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--cc-muted); opacity: .85; }
 .cc-row-apy { font-size: 10px; color: var(--cc-muted); font-variant-numeric: tabular-nums; }
 .cc-row-apy.is-amber { color: var(--cc-amber); }
 /* Kalshi gross qualifier — calm, muted, one line under the $/day (replaces the removed APY line). */
@@ -735,12 +749,11 @@ h1, h2, h3 {
 
 /* responsive: single column, no horizontal overflow, ≥44px row touch target */
 .rewards .cc-row { min-height: 44px; }
-.rewards .cc-row-l, .rewards .cc-row-title, .rewards .cc-row-sub { min-width: 0; }
+.rewards .cc-row-l, .rewards .cc-row-title, .rewards .cc-row-meta { min-width: 0; }
 .rewards .cc-row-net { white-space: nowrap; font-variant-numeric: tabular-nums; }
 @media (max-width: 760px) {
-  .rewards .rw-bal-input { max-width: 38vw; }
   .rewards .cc-row { flex-wrap: nowrap; }
-  .rewards .cc-row-r { flex: none; }
+  .rewards .cc-row-r { flex: 0 0 auto; }
 }
 
 /* Calculator embedded inside a list row: drop the full-viewport wrapper so it sits
