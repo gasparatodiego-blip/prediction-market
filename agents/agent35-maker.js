@@ -40,6 +40,7 @@ const { checkKill, cancelAllOnKill } = require('../lib/safety/kill-switch');
 const { queryByUser } = require('../lib/safety/execution-audit');
 const { sentOrdersFromAudit } = require('../lib/safety/usage');
 const { reconcileOnce, RECONCILE_INTERVAL_MS } = require('../lib/safety/reconcile-fills');
+const { atomicWriteJson } = require('../lib/atomicJsonWrite');
 
 const OPERATOR_USER = process.env.MAKER_OPERATOR_USER || 'operator';
 
@@ -49,6 +50,10 @@ const NORMALIZED_FILE = '/tmp/liquidity-rewards.json';       // carries rewardSc
 const NEWS_STATE_FILE = '/tmp/news-guard-state.json';        // per-market severity, if present
 const OUT_FILE        = '/tmp/maker-state.json';
 const HB_FILE         = '/tmp/agent-heartbeats.json';
+// The maker-specific heartbeat the dead-man watchdog (agent37) and the kill-switch UI read. Lives under
+// data/ (not /tmp) so it survives a reboot for the watchdog to detect staleness. Written at the END of
+// EVERY cycle — success OR error — so a heartbeat that STOPS is the death signal, an error is not.
+const MAKER_HB_FILE   = path.join(__dirname, '..', 'data', 'maker-heartbeat.json');
 const CLOB_BASE       = 'https://clob.polymarket.com';
 const UA = 'edgeradar-agent35-maker/1.0';
 
@@ -64,6 +69,10 @@ try { prisma = new (require('@prisma/client').PrismaClient)(); } catch { /* legs
 function readJson(f) { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return null; } }
 function atomicWrite(file, obj) { const t = `${file}.tmp.${process.pid}`; fs.writeFileSync(t, JSON.stringify(obj)); fs.renameSync(t, file); }
 function heartbeat() { const hb = readJson(HB_FILE) || {}; hb['agent35-maker'] = Date.now(); try { atomicWrite(HB_FILE, hb); } catch { /* best-effort */ } }
+// The dead-man heartbeat. { ts, cycle, openOrderCount (venue-reported, null when not queried — never a
+// fabricated 0), mode, lastError }. Atomic (tmp+fsync+rename). Best-effort: a write failure is logged,
+// never thrown, so it cannot itself crash the cycle.
+function writeMakerHeartbeat(hb) { try { atomicWriteJson(MAKER_HB_FILE, hb); } catch (e) { log('maker-heartbeat write failed:', e.message); } }
 
 // ── build the maker adapter for the current mode. off/paper → no providers (canWrite false). live modes
 //    → throwing providers (live wiring is a separate reviewed change; even live can't place here). ──
@@ -275,8 +284,22 @@ async function tick(cfg, adapter) {
     };
   }
 
+  // ── VENUE-REPORTED open order count for the heartbeat — from the venue response, NOT local state.
+  //    off mode has no adapter; paper/shadow returns a simulated result (NOT a real venue count) → null.
+  //    Honest-engine: null, never a fabricated 0, whenever we did not actually reach the venue. ──
+  let openOrderCount = null;
+  try {
+    if (adapter && typeof adapter.listOpenOrders === 'function') {
+      const oo = await adapter.listOpenOrders();
+      openOrderCount = (oo && oo.ok && !oo.simulated)
+        ? (Number.isFinite(oo.count) ? oo.count : (Array.isArray(oo.orders) ? oo.orders.length : null))
+        : null;
+    }
+  } catch { openOrderCount = null; }
+
   const state = {
     generatedAt: new Date(now).toISOString(),
+    openOrderCount,
     mode: cfg.mode, dryRun: cfg.dryRun, canWrite: cfg.canWrite, killSwitch: effCfg.killSwitch,
     durableKill: { killed: durableKill.killed, scope: durableKill.scope, reason: durableKill.reason || null },
     source: 'agent35-maker · paper pipeline · quotes from ADJUSTED mid · no orders placed (MAKER_MODE=' + cfg.mode + ')',
@@ -287,6 +310,23 @@ async function tick(cfg, adapter) {
   try { atomicWrite(OUT_FILE, state); } catch (e) { log('write failed:', e.message); }
   heartbeat();
   return state;
+}
+
+// One cycle + its guaranteed heartbeat. Runs tick, and WHATEVER happens (success or throw) writes the
+// dead-man heartbeat. On throw the heartbeat carries lastError; a heartbeat that STOPS is the real death
+// signal. tickFn is injectable purely so the throw-path can be exercised in a test — defaults to tick.
+async function runCycleAndHeartbeat(cfg, adapter, cycleNo, tickFn = tick) {
+  let openOrderCount = null, lastError = null;
+  try {
+    const st = await tickFn(cfg, adapter);
+    openOrderCount = (st && st.openOrderCount !== undefined) ? st.openOrderCount : null;
+  } catch (e) {
+    lastError = (e && e.message) ? e.message : String(e);
+    log('tick failed:', lastError);
+  }
+  const hb = { ts: Date.now(), cycle: cycleNo, openOrderCount, mode: (cfg && cfg.mode) || null, lastError };
+  writeMakerHeartbeat(hb);
+  return hb;
 }
 
 async function main() {
@@ -313,7 +353,11 @@ async function main() {
   if (adapter) log(`adapter built: mode=${adapter.mode} canWrite=${adapter.canWrite}`);
   // Refuse to silently run live without wired providers — a forced live call would throw; log it once.
   if (cfg.mode === 'live-min' || cfg.mode === 'live') log('WARNING: live mode set, but live providers are NOT wired in this build — no order can be signed. This is intentional (arming is a separate reviewed change).');
-  const loop = () => tick(cfg, adapter).catch(e => log('tick failed:', e.message)).finally(() => setTimeout(loop, TICK_MS));
+  // Per-cycle loop. The maker heartbeat is written at the END of every cycle — success OR throw — so a
+  // STOPPED heartbeat is the death signal the watchdog keys on, while an errored cycle still heartbeats
+  // (with lastError populated). openOrderCount comes from the venue via tick's state.
+  let cycleCount = 0;
+  const loop = async () => { cycleCount++; await runCycleAndHeartbeat(cfg, adapter, cycleCount); setTimeout(loop, TICK_MS); };
   loop();
 }
 
@@ -323,4 +367,4 @@ process.on('SIGINT', shutdown);
 
 if (require.main === module) main().catch(e => { log('fatal:', e.message); process.exit(1); });
 
-module.exports = { tick, buildAdapter, getTick, loadInputs };
+module.exports = { tick, buildAdapter, getTick, loadInputs, runCycleAndHeartbeat, writeMakerHeartbeat, MAKER_HB_FILE };

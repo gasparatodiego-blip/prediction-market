@@ -104,6 +104,11 @@ data/polymarket-clob-audit.jsonl
 data/polymarket-maker-audit.jsonl
 data/requote-economics-raw.json
 data/maker-*.jsonl
+# maker dead-man heartbeat (agent35 writes every cycle) + watchdog trigger state (agent37) — runtime only
+data/maker-heartbeat.json
+data/maker-heartbeat.json.tmp.*
+data/maker-watchdog-state.json
+data/maker-watchdog-state.json.tmp.*
 
 # Polymarket fee SSOT cache (runtime, per-market base_fee; not source)
 data/polymarket-fee-cache.json
