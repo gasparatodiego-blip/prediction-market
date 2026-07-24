@@ -77,6 +77,43 @@ const { createMakerAdapter, ALLOWED_OPS, LIVE_MIN_DEFAULT_CAP_USD, evaluatePlace
   ok(typeof m.postOrder === 'function', 'maker adapter DOES expose postOrder (it is the placement component)');
 }
 
+// ── 2b. FUNDER RESOLUTION: signer ≠ funder, and every ambiguous configuration refuses ──
+// A Polymarket proxy account signs with an EOA but MAKES orders for the proxy that holds the collateral.
+// Getting this pair wrong is not a soft failure: the exchange's own validateOrder() reverts (verified
+// on-chain 2026-07-24 — signatureType 1 passed for this account, 0 and 3 both reverted). So each half-
+// configured combination must refuse rather than guess. Pure: no env, no network, no key.
+{
+  const { resolveFunder } = require('../lib/venues/polymarket-clob-maker/funder');
+  // A neutral fixture, not the operator's real funder: this section proves the RESOLVER's rules, and the
+  // live account is verified separately (and against the chain) by scripts/maker-signing-proof.ts.
+  const FUNDER = '0xDEaDBeEF00c0ffee00C0ffEe00C0FFee00c0ffee';
+  const threw = (env) => { try { resolveFunder(env); return false; } catch { return true; } };
+
+  const none = resolveFunder({});
+  ok(none.signatureType === 0 && none.funderAddress === undefined, 'funder: nothing configured → self-custody EOA (type 0, no funder) — the SDK default, unchanged from before');
+
+  const proxy = resolveFunder({ MAKER_FUNDER_ADDRESS: FUNDER, MAKER_SIGNATURE_TYPE: '1' });
+  ok(proxy.signatureType === 1 && proxy.funderAddress === FUNDER, 'funder: type 1 + address → resolves to the proxy wallet, checksummed');
+  ok(resolveFunder({ MAKER_FUNDER_ADDRESS: FUNDER.toLowerCase(), MAKER_SIGNATURE_TYPE: '3' }).funderAddress === FUNDER, 'funder: a lowercase address is checksummed, not passed through raw');
+
+  ok(threw({ MAKER_FUNDER_ADDRESS: FUNDER }), 'funder: address without a signature type → REFUSE (the type is per-account; it is never assumed)');
+  ok(threw({ MAKER_SIGNATURE_TYPE: '1' }), 'funder: signature type 1 with no funder → REFUSE (no address to put in the maker field)');
+  ok(threw({ MAKER_FUNDER_ADDRESS: FUNDER, MAKER_SIGNATURE_TYPE: '0' }), 'funder: type 0 (EOA) alongside a funder → REFUSE (contradiction: type 0 means maker == signer)');
+  ok(threw({ MAKER_FUNDER_ADDRESS: '0xnope', MAKER_SIGNATURE_TYPE: '1' }), 'funder: malformed address → REFUSE');
+  ok(threw({ MAKER_FUNDER_ADDRESS: FUNDER, MAKER_SIGNATURE_TYPE: '4' }), 'funder: signature type outside 0|1|2|3 → REFUSE');
+  // Mixed case with ONE letter cased wrong — EIP-55's whole purpose, and the shape a hand-copied address
+  // takes when a character is dropped or transposed. (An all-lowercase address is legitimately unchecked.)
+  ok(threw({ MAKER_FUNDER_ADDRESS: '0xd' + FUNDER.slice(3), MAKER_SIGNATURE_TYPE: '1' }), 'funder: address failing EIP-55 checksum → REFUSE (a mistyped funder is an order signed for someone else)');
+
+  // The adapter resolves EAGERLY, so a half-configured funder cannot survive to an armed order.
+  let ctorThrew = false;
+  try { createMakerAdapter({ mode: 'paper', funder: resolveFunder({ MAKER_SIGNATURE_TYPE: '1' }) }); } catch { ctorThrew = true; }
+  ok(ctorThrew, 'funder: a refused resolution reaches the adapter constructor — it never gets as far as decrypting a key');
+
+  const wired = createMakerAdapter({ mode: 'paper', funder: proxy });
+  ok(wired.signatureType === 1 && wired.funderAddress === FUNDER, 'funder: the adapter reports the pair it will sign with (observable, not buried in a closure)');
+}
+
 // ── 2c. RE-POINTED FAIL-CLOSED PLACEMENT GATE: each blocker fires independently, BEFORE any network/key ──
 // After the CLOB v2 migration the "v2 SDK absent" refusal is gone (the SDK is installed); it is REPLACED
 // by the funding/approval gate. These are pure (no adapter, no network) proofs that every gate names the
