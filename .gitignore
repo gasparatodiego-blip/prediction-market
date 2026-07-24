@@ -126,3 +126,8 @@ data/safety-fills.jsonl
 # agent36-book-velocity — append-only detection log (single-writer, agent36 owns it)
 data/book-velocity.jsonl
 data/book-velocity.jsonl.*
+
+# admin venue-credential store + audit (secrets — never commit)
+data/venue-maker-keys.json
+data/venue-maker-keys.json.tmp.*
+data/key-custody-audit.jsonl
