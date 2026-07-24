@@ -86,6 +86,42 @@ async function main() {
   );
   ok(resDry.simulated === true, 'KILL: with NO cancel creds the sweep is honestly simulated:true (disarmed build) — never a claimed live cancel');
 
+  // ───────────────────────────────────────────────────────────────────────────────────────────────────
+  // [2] PREFLIGHT — the arming gate. all six pass ⇒ go; any single red ⇒ no-go (no override), red value shown.
+  // ───────────────────────────────────────────────────────────────────────────────────────────────────
+  const { runPreflight, CHECK_ORDER } = require('../lib/maker/preflight');
+  console.log('\n[2] PREFLIGHT — arming gate');
+
+  const passAll = {
+    signing: async () => ({ pass: true, value: 'MATCH', detail: '' }),
+    balance: async () => ({ pass: true, value: '$77.84 pUSD', detail: '' }),
+    approvals: async () => ({ pass: true, value: '3/3 present', detail: '' }),
+    cancel: async () => ({ pass: true, value: 'live', detail: '' }),
+    guard: async () => ({ pass: true, value: 'active', detail: '' }),
+    kill: async () => ({ pass: true, value: 'reachable', detail: '' }),
+  };
+  const green = await runPreflight({}, passAll);
+  ok(green.go === true && green.checks.length === 6, 'PREFLIGHT: all six checks pass ⇒ go=true');
+  ok(JSON.stringify(green.checks.map((c) => c.key)) === JSON.stringify(CHECK_ORDER), 'PREFLIGHT: reports every check in the fixed order');
+
+  for (const key of CHECK_ORDER) {
+    const one = { ...passAll, [key]: async () => ({ pass: false, value: 'RED-VALUE', detail: 'forced red' }) };
+    const res = await runPreflight({}, one);
+    ok(res.go === false, `PREFLIGHT: a single red check (${key}) ⇒ go=false — there is no override`);
+    const red = res.checks.find((c) => c.key === key);
+    ok(red && red.pass === false && red.value === 'RED-VALUE', `PREFLIGHT: the red check (${key}) is identified with its REAL value in the table`);
+  }
+
+  // The REAL guard + kill defaults run IN-PROCESS (no network, no key) — prove the live checks actually work.
+  const realGK = await runPreflight({}, {
+    signing: async () => ({ pass: true, value: 'skip' }), balance: async () => ({ pass: true, value: 'skip' }),
+    approvals: async () => ({ pass: true, value: 'skip' }), cancel: async () => ({ pass: true, value: 'skip' }),
+  });
+  const g = realGK.checks.find((c) => c.key === 'guard');
+  const k = realGK.checks.find((c) => c.key === 'kill');
+  ok(g.pass === true, `PREFLIGHT: the REAL guard check passes in-process — "${g.value}"`);
+  ok(k.pass === true, `PREFLIGHT: the REAL kill check is reachable — "${k.value}"`);
+
   console.log(`\nmaker-arming selfcheck: ${checks} assertions passed.`);
 }
 

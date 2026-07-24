@@ -32,6 +32,9 @@ interface KillResponse {
   error?: string;
 }
 
+interface PreflightCheck { key: string; label: string; pass: boolean; value: string; detail: string }
+interface PreflightResponse { at: string; checks: PreflightCheck[]; go: boolean; error?: string }
+
 const dash = (v: unknown): string => (v === null || v === undefined || v === '' ? '—' : String(v));
 
 export default function MakerArmingPanel() {
@@ -40,6 +43,8 @@ export default function MakerArmingPanel() {
   const [killing, setKilling] = useState(false);
   const [kill, setKill] = useState<KillResponse | null>(null);
   const [killErr, setKillErr] = useState<string | null>(null);
+  const [preflight, setPreflight] = useState<PreflightResponse | null>(null);
+  const [pfRunning, setPfRunning] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -68,6 +73,20 @@ export default function MakerArmingPanel() {
     }
   }, []);
 
+  // Preflight is deliberate + slow (it signs an order offline and reads chain state) → run on demand, never
+  // on mount. It reads REAL state every time; there is no cached "armable" flag.
+  const runPreflight = useCallback(async () => {
+    setPfRunning(true);
+    try {
+      const r = await fetch('/api/maker/preflight', { cache: 'no-store' });
+      setPreflight((await r.json()) as PreflightResponse);
+    } catch (e) {
+      setPreflight({ at: new Date().toISOString(), checks: [], go: false, error: (e as Error).message });
+    } finally {
+      setPfRunning(false);
+    }
+  }, []);
+
   if (operator !== true) return null;
 
   return (
@@ -90,6 +109,25 @@ export default function MakerArmingPanel() {
         .mkarm-warn { color: #E8B23A; }
         .mkarm-ok { color: #57C98A; }
         .mkarm-num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+        .mkarm-sec { margin-top: 20px; border-top: 1px solid #232937; padding-top: 16px; }
+        .mkarm-sech { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+        .mkarm-sectitle { font-size: 12px; font-weight: 800; letter-spacing: .4px; text-transform: uppercase; color: #9AA4B2; }
+        .mkarm-btn { min-height: 38px; padding: 0 16px; border: 1px solid #2E5FBE; border-radius: 8px; cursor: pointer;
+          font-size: 13px; font-weight: 700; color: #DCE6FF; background: #16233E; touch-action: manipulation; }
+        .mkarm-btn:hover { background: #1B2C4E; }
+        .mkarm-btn:disabled { opacity: .6; cursor: wait; }
+        .mkarm-verdict { font-size: 13px; font-weight: 800; padding: 3px 10px; border-radius: 999px; }
+        .mkarm-go { color: #57C98A; border: 1px solid #205038; background: #0d1f16; }
+        .mkarm-nogo { color: #E8B23A; border: 1px solid #4a3c12; background: #211a08; }
+        .mkarm-check { display: grid; grid-template-columns: 20px 1fr auto; gap: 10px; align-items: baseline;
+          padding: 8px 0; border-bottom: 1px solid #1a2030; font-size: 13px; }
+        .mkarm-dot { font-weight: 900; }
+        .mkarm-dot-green { color: #57C98A; }
+        .mkarm-dot-red { color: #E5574E; }
+        .mkarm-clabel { color: #C4CCD8; line-height: 1.4; }
+        .mkarm-cdetail { color: #8B95A5; font-size: 12px; margin-top: 2px; line-height: 1.4; }
+        .mkarm-cval { color: #E6E9EF; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+        .mkarm-cval-red { color: #E5574E; }
       `}</style>
 
       <div className="mkarm-hrow">
@@ -136,6 +174,44 @@ export default function MakerArmingPanel() {
           )}
         </div>
       )}
+
+      {/* ── PREFLIGHT: the arming gate. Real values read at click time; any red check blocks arming. ── */}
+      <div className="mkarm-sec" data-maker-preflight>
+        <div className="mkarm-sech">
+          <span className="mkarm-sectitle">Preflight — arming gate</span>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            {preflight && !preflight.error && (
+              <span className={`mkarm-verdict ${preflight.go ? 'mkarm-go' : 'mkarm-nogo'}`}>
+                {preflight.go ? 'GO' : 'NO-GO'}
+              </span>
+            )}
+            <button className="mkarm-btn" onClick={runPreflight} disabled={pfRunning}>
+              {pfRunning ? 'Reading real state…' : 'Run preflight'}
+            </button>
+          </div>
+        </div>
+
+        {preflight?.error && <div className="mkarm-res mkarm-warn">Preflight failed: {dash(preflight.error)}</div>}
+
+        {preflight && !preflight.error && preflight.checks.map((c) => (
+          <div key={c.key} className="mkarm-check">
+            <span className={`mkarm-dot ${c.pass ? 'mkarm-dot-green' : 'mkarm-dot-red'}`}>{c.pass ? '●' : '✕'}</span>
+            <span>
+              <span className="mkarm-clabel">{c.label}</span>
+              {!c.pass && c.detail && <div className="mkarm-cdetail">{c.detail}</div>}
+            </span>
+            <span className={`mkarm-cval ${c.pass ? '' : 'mkarm-cval-red'}`}>{dash(c.value)}</span>
+          </div>
+        ))}
+
+        {preflight && !preflight.error && (
+          <p className="mkarm-note">
+            {preflight.go
+              ? 'All checks pass — arming would be permitted (still gated by MAKER_MODE + MAKER_FUNDING_APPROVED).'
+              : 'A red check blocks arming. There is no override — fix the red item and re-run. Read live; never cached.'}
+          </p>
+        )}
+      </div>
     </div>
   );
 }
