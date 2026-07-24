@@ -107,6 +107,23 @@ model ExchangeKey {
   @@index([userId])
 }
 
+// The maker bot's operating universe — the SINGLE persisted selection that determines which markets
+// agent35-maker quotes. One row (id 'singleton'). `filters` holds the SAME six-filter param object the
+// rewards board uses (parseRewardFilters-compatible), so the bot's universe is resolved by the same code
+// path that produces the board. venues is a hard venue restriction (default Polymarket only); allowlist/
+// denylist are applied AFTER the filters; maxMarkets caps the set (top-N by daily pot). Read by agent35
+// every cycle and written by the gated /api/maker/universe endpoint — both through lib/maker/selection.
+model MakerUniverseSelection {
+  id          String   @id @default("singleton")
+  filters     Json                                    // { venue, category, minPool, minDepth, maxSpread, maxCompetition, hideThin }
+  venues      String[] @default(["polymarket"])       // hard venue restriction, applied after the filters
+  allowlist   String[] @default([])                   // marketIds forced IN (after filters)
+  denylist    String[] @default([])                   // marketIds forced OUT (after filters)
+  maxMarkets  Int      @default(5)                     // hard cap; if exceeded the bot quotes the top N by daily pot
+  updatedAt   DateTime @updatedAt
+  updatedBy   String                                  // who changed it (admin service account userId)
+}
+
 // Per-market liquidity-reward placement config — one row per (user, market).
 // Paper-only: `mode` is always 'paper' until live execution ships
 // (AUTO_EXECUTE_ENABLED=false). Read by agent27-news-guard to emit the advisory
