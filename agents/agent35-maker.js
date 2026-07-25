@@ -52,6 +52,9 @@ const { applyCollateralCap } = require('../lib/maker/market-cap');
 // REAL outcome-token inventory (read-only ERC-1155 balanceOf). Feeds the SELL guard; null = unreadable
 // = the SELL is blocked. Never assumed, never defaulted to a constant.
 const { readMarketInventory } = require('../lib/maker/inventory-read');
+// What happens AFTER a fill: the per-market inventory ceiling (DEFAULT 0 = do not accumulate, do not
+// re-quote the opposite side). Decision logic only — it emits no order and reaches no venue.
+const { planPostFill, preferredSides, CODES: INV_CODES } = require('../lib/maker/inventory-manager');
 const { getMarketCap } = require('../lib/maker/market-caps-store');
 // What the engine does when a leg fills — the per-side rule (close | opposite | hold), read from the
 // SAME RewardsLeg rows the quotes come from. Previously stored and never consulted.
@@ -175,6 +178,18 @@ function loadInputs() {
   return { books, bandByMarket, rewardScoreByMarket, newsByMarket, normMarkets };
 }
 
+// The per-market operator config that carries the inventory ceiling. Absent row ⇒ ceiling 0 ⇒ the bot
+// does not accumulate here. Unreadable DB ⇒ empty map ⇒ same conservative answer.
+async function loadPlacements() {
+  if (!prisma) return new Map();
+  try {
+    const rows = await prisma.rewardsPlacement.findMany({ where: { venue: 'polymarket' }, select: { marketId: true, maxInventoryUsd: true } });
+    const byMarket = new Map();
+    for (const r of rows) byMarket.set(r.marketId, r);
+    return byMarket;
+  } catch (e) { log('placement load failed (inventory ceiling treated as 0):', e.message); return new Map(); }
+}
+
 async function loadLegs() {
   if (!prisma) return new Map();
   try {
@@ -204,6 +219,7 @@ async function tick(cfg, adapter) {
   const now = Date.now();
   const { books, bandByMarket, rewardScoreByMarket, newsByMarket, normMarkets } = loadInputs();
   const legsByMarket = await loadLegs();
+  const placementsByMarket = await loadPlacements();
   const ngCfg = loadNewsGuardConfig(process.env);
 
   // ── OPERATING UNIVERSE (the control channel) — re-read the persisted selection EVERY cycle (never at
@@ -397,6 +413,35 @@ async function tick(cfg, adapter) {
         onFill: { rule: onFillRule, applied: onFill.appliedRule, action: onFill.action, forcedBy: onFill.forcedBy, reason: onFill.reason, quote: onFill.quote, guardValid: onFill.guard ? onFill.guard.valid : null } });
     }
 
+    // ── POST-FILL INVENTORY POLICY (decision only — emits no order, reaches no venue) ─────────────────
+    //    The ceiling is the operator's per-market number and DEFAULTS TO 0. At 0 a fill ends quoting on
+    //    that side: the engine records CAP_ZERO and re-quotes nothing. Above 0 the re-quote is sized from
+    //    the VENUE-CONFIRMED fill (never from the intent) and trimmed so the resulting position cannot
+    //    exceed the ceiling. In this disarmed build no order exists to fill, so the decision the engine
+    //    records is the gate itself — which is the honest thing to record.
+    const placement = placementsByMarket.get(marketId) || null;
+    const maxInventoryUsd = placement && Number.isFinite(placement.maxInventoryUsd) ? placement.maxInventoryUsd : 0;
+    const invYesUsd = (Number.isFinite(inventory.yes) && mid != null) ? inventory.yes * mid : null;
+    const invNoUsd = (Number.isFinite(inventory.no) && mid != null) ? inventory.no * (1 - mid) : null;
+    const inventoryUsd = (invYesUsd != null && invNoUsd != null) ? +(invYesUsd + invNoUsd).toFixed(4) : null;
+    const sides = preferredSides({ yesShares: inventory.yes, noShares: inventory.no });
+    const inventoryDecisions = [];
+    for (const q of plan.quotes) {
+      if (!q.postable) continue;
+      const oppositePrice = q.price != null ? +(1 - q.price).toFixed(6) : null;
+      // confirmed:false on purpose — there is no venue-confirmed fill in a disarmed build, and a
+      // re-quote may never be sized from an assumed one.
+      const d = planPostFill({
+        fill: { book: q.book, kind: q.kind, price: q.price, filledShares: q.size, confirmed: false },
+        maxInventoryUsd, inventoryUsd, oppositePrice,
+      });
+      inventoryDecisions.push({ leg: { book: q.book, kind: q.kind, price: q.price }, action: d.action, code: d.code, reason: d.reason, sizeShares: d.sizeShares, notionalUsd: d.notionalUsd, headroomUsd: d.headroomUsd });
+      // Every decision lands in the EXISTING append-only maker audit with its reason code.
+      appendMakerAudit({ ts: now, venue: 'polymarket', op: 'inventory-decision', mode: cfg.mode, marketRef,
+        leg: { book: q.book, kind: q.kind, price: q.price }, action: d.action, code: d.code,
+        maxInventoryUsd, inventoryUsd, requoteSizeShares: d.sizeShares, headroomUsd: d.headroomUsd });
+    }
+
     // ── reconcile (Phase 5): in paper we hold no venue orders, so desired == toPlace (belief starts empty) ──
     const desiredPostable = plan.quotes.filter(q => q.postable);
     const recon = reconcile({ desired: desiredPostable, venueOrders: [], tick });
@@ -428,6 +473,9 @@ async function tick(cfg, adapter) {
       // and any YES+NO pair priced at or above $1. Externally observable in /tmp/maker-state.json.
       inventory: { yesShares: inventory.yes, noShares: inventory.no, wallet: inventory.wallet, source: inventory.source },
       positionGuards: { sellBlocks: plan.market.sellBlocks, selfMatches: plan.market.selfMatches, blocked: plan.market.guardBlockedCount },
+      // The post-fill inventory policy in force here. maxInventoryUsd 0 (the default) means: after a
+      // fill, stop quoting that side — the engine re-quotes nothing and says why.
+      inventoryPolicy: { maxInventoryUsd, inventoryUsd, preferredSides: sides, decisions: inventoryDecisions },
       legs: legActions,
       advisory,
     };

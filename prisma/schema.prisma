@@ -145,6 +145,11 @@ model RewardsPlacement {
   onFillNo   String   @default("requote")        // 'requote' | 'close' — rule on a NO-side fill
   onFill     String   @default("requote")        // DEPRECATED legacy single field ('requote' | 'flatten')
   newsMode   String   @default("withdraw")       // 'withdraw' | 'alert' | 'off'
+  // Per-market MAXIMUM INVENTORY the bot may hold here, in DOLLARS of outcome-token notional.
+  // DEFAULT 0 and 0 means exactly what it says: after a fill the bot does NOT re-quote the opposite
+  // side, it stops quoting that side and records why. Accumulating a position is opt-in, per market,
+  // by typing a number — never the default, never inferred from the size or the collateral cap.
+  maxInventoryUsd Float @default(0)
   mode       String   @default("paper")          // 'paper' only; live gated OFF
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt

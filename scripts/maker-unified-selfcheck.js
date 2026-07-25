@@ -443,6 +443,70 @@ assert.strictEqual(cappedRow.capitalCapped, true);
 assert.ok(cappedRow.perSideShares != null, 'the operator\'s own SIZING is untouched by the estimate cap');
 ok('price row: estimate capital capped at $250 while the operator\'s sizing stays their own');
 
+// ── 3g · INVENTORY MANAGER — default 0 means "do not re-quote", literally ───────────────────────────
+console.log('\n3g. inventory manager — post-fill decisions, default 0');
+
+const { planPostFill, preferredSides, CODES: INV } = require('../lib/maker/inventory-manager');
+const invFill = { book: 'yes', kind: 'buy', price: 0.42, filledShares: 1000, confirmed: true };
+
+// (a) THE DEFAULT, proven literal: cap 0 → stop, with a reason, and NO re-quote size at all.
+const atZero = planPostFill({ fill: invFill, maxInventoryUsd: 0, inventoryUsd: 0, oppositePrice: 0.58 });
+assert.strictEqual(atZero.action, 'stop', 'cap 0 must STOP, not re-quote');
+assert.strictEqual(atZero.code, INV.CAP_ZERO);
+assert.strictEqual(atZero.sizeShares, null, 'a stop must carry no size — there is nothing to place');
+assert.ok(/NON ri-quota/.test(atZero.reason), 'the default must say what it does, not just refuse');
+ok('cap 0 (the default) → stop quoting that side, no re-quote, reason recorded');
+
+// (b) POSITIVE CONTROL — the SAME confirmed fill with a cap above zero does re-quote, so (a) is the
+//     cap and not a broken decision path.
+const withCap = planPostFill({ fill: invFill, maxInventoryUsd: 1000, inventoryUsd: 0, oppositePrice: 0.58 });
+assert.strictEqual(withCap.action, 'requote');
+assert.strictEqual(withCap.sizeShares, 1000, 'the re-quote is sized from the FILL, share for share');
+assert.strictEqual(withCap.book, 'no', 'and it goes on the complementary book');
+ok('cap $1,000 → re-quotes the filled 1,000 shares on the NO book ($580)');
+
+// (c) THE CAP IS A CEILING. A fill worth $580 against $300 of room re-quotes only what fits.
+const trimmed = planPostFill({ fill: invFill, maxInventoryUsd: 300, inventoryUsd: 0, oppositePrice: 0.58 });
+assert.strictEqual(trimmed.code, INV.CAP_TRIMMED);
+assert.ok(trimmed.notionalUsd <= 300 + 1e-6, `the re-quote must not exceed the ceiling: $${trimmed.notionalUsd}`);
+assert.ok(trimmed.sizeShares < invFill.filledShares, 'and it must be smaller than the full fill');
+ok(`ceiling trims the re-quote: $580 wanted, $${trimmed.notionalUsd} placed (${trimmed.sizeShares} shares)`);
+
+// (d) at the ceiling → stop, stated.
+const full = planPostFill({ fill: invFill, maxInventoryUsd: 300, inventoryUsd: 300, oppositePrice: 0.58 });
+assert.strictEqual(full.code, INV.CAP_REACHED);
+assert.strictEqual(full.headroomUsd, 0);
+ok('inventory already at the ceiling → stop (INVENTORY_CAP_REACHED), headroom 0');
+
+// (e) SIZE COMES FROM VENUE TRUTH. An unconfirmed fill re-quotes nothing, whatever the cap allows.
+const unconfirmed = planPostFill({ fill: { ...invFill, confirmed: false }, maxInventoryUsd: 10_000, inventoryUsd: 0, oppositePrice: 0.58 });
+assert.strictEqual(unconfirmed.action, 'stop');
+assert.strictEqual(unconfirmed.code, INV.FILL_UNCONFIRMED);
+ok('unconfirmed fill → nothing re-quoted, even with $10,000 of room (size never comes from the intent)');
+
+// (f) an unreadable ceiling or inventory is not permission.
+assert.strictEqual(planPostFill({ fill: invFill, maxInventoryUsd: null, inventoryUsd: 0, oppositePrice: 0.58 }).code, INV.CAP_UNREADABLE);
+assert.strictEqual(planPostFill({ fill: invFill, maxInventoryUsd: 500, inventoryUsd: null, oppositePrice: 0.58 }).code, INV.CAP_UNREADABLE);
+ok('unreadable ceiling or unreadable inventory → stop (fail closed)');
+
+// (g) the operating rule on which side to quote.
+const flat = preferredSides({ yesShares: 0, noShares: 0 });
+assert.ok(flat.yes.kind === 'buy' && flat.no.kind === 'buy', 'flat → BUY on both complementary tokens');
+const longYes = preferredSides({ yesShares: 500, noShares: 0 });
+assert.strictEqual(longYes.yes.kind, 'sell', 'holding YES → SELL preferred on that side');
+assert.strictEqual(longYes.no.kind, 'buy', 'and BUY on the other');
+const blind = preferredSides({ yesShares: null, noShares: 0 });
+assert.strictEqual(blind.yes.kind, 'buy', 'an unreadable balance falls back to BUY, which is always placeable');
+ok('operating rule: flat → BUY/BUY; holding YES → SELL on YES, BUY on NO; unreadable → BUY');
+
+// (h) NO NEW WRITE PATH. The decision module must not be able to reach a venue at all.
+const invSrc = fs.readFileSync(path.join(ROOT, 'lib', 'maker', 'inventory-manager.js'), 'utf8');
+for (const forbidden of ['require(', 'fetch(', 'http', 'adapter', 'postOrder', 'clob']) {
+  assert.ok(!new RegExp(forbidden.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i').test(invSrc.replace(/^\/\/.*$/gm, '')),
+    `inventory-manager must contain no ${forbidden} — it decides, it never acts`);
+}
+ok('inventory-manager has no require/fetch/http/adapter/order/clob — it decides, it cannot act');
+
 // ── 4 · CROSS-CHECK against a REAL feed row, if the snapshot is present ─────────────────────────────
 console.log('\n4. cross-check against the live feed snapshot (skipped when absent)');
 try {

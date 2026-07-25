@@ -134,6 +134,11 @@ export default function MarketTerminal({ marketId }: { marketId: string }) {
   const [uniMsg, setUniMsg] = useState<string | null>(null);
   const [cap, setCap] = useState<CapState | null>(null);
   const [capInput, setCapInput] = useState<string>('');
+  // Per-market MAXIMUM INVENTORY, in dollars. DEFAULT 0 — and 0 means the bot does not re-quote the
+  // opposite side after a fill. Accumulating a position here is opt-in, by typing a number.
+  const [maxInvInput, setMaxInvInput] = useState<string>('0');
+  const [maxInvSaved, setMaxInvSaved] = useState<number | null>(null);
+  const [maxInvMsg, setMaxInvMsg] = useState<string | null>(null);
   const [capMsg, setCapMsg] = useState<string | null>(null);
   const [armOpen, setArmOpen] = useState(false);
   const [typedTotal, setTypedTotal] = useState('');
@@ -381,6 +386,29 @@ export default function MarketTerminal({ marketId }: { marketId: string }) {
     } catch (e: any) { setUniMsg(e?.message ?? 'errore'); }
     finally { setUniBusy(false); }
   }, [marketId]);
+
+  // Persist the inventory ceiling on the SAME per-market placement row the engine reads.
+  const saveMaxInventory = useCallback(async () => {
+    const n = Number(maxInvInput);
+    if (!Number.isFinite(n) || n < 0) { setMaxInvMsg('inserisci un numero in dollari (0 = non accumulare)'); return; }
+    try {
+      const r = await fetch('/api/rewards/placement', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          marketId, venue: 'polymarket', side: 'both',
+          qtyPerSide: Math.max(1, Math.round(totalSizeUsd ?? 1)),
+          distanceC: offsetCents ?? 0, maxInventoryUsd: n,
+        }),
+      });
+      if (r.status === 401) { setMaxInvMsg('serve l\u2019accesso per salvare il tetto sul server — il motore legge questo valore dal server'); return; }
+      if (!r.ok) { const e = await r.json().catch(() => ({})); setMaxInvMsg(e?.error ?? `HTTP ${r.status}`); return; }
+      const j = await r.json();
+      setMaxInvSaved(j?.placement?.maxInventoryUsd ?? n);
+      setMaxInvMsg(n === 0
+        ? 'tetto a $0: dopo un fill il bot NON ri-quota il lato opposto — smette di quotare quel lato e registra il motivo'
+        : `tetto a ${usd(n, 0)}: dopo un fill il bot ri-quota il lato opposto per la size realmente eseguita, fermandosi al tetto`);
+    } catch (e: any) { setMaxInvMsg(e?.message ?? 'errore di salvataggio'); }
+  }, [maxInvInput, marketId, totalSizeUsd, offsetCents]);
 
   const saveCap = useCallback(async () => {
     setCapMsg(null);
@@ -745,6 +773,23 @@ export default function MarketTerminal({ marketId }: { marketId: string }) {
                   Usa la size configurata ({usd(capDefault, 0)})
                 </button>
               )}
+            </div>
+            <div className="mkt-ctl-row">
+              <label className="mkt-lab" htmlFor="mkt-maxinv">
+                <span>Inventario massimo (USD)</span>
+                <span>{maxInvSaved != null ? `salvato: ${usd(maxInvSaved, 0)}` : 'predefinito: $0'}</span>
+              </label>
+              <input id="mkt-maxinv" className="mkt-input" type="number" inputMode="decimal" min={0}
+                value={maxInvInput} onChange={(e) => setMaxInvInput(e.target.value)} />
+              <button className="mkt-btn" type="button" onClick={saveMaxInventory}>Salva l&rsquo;inventario massimo</button>
+              <p className="mkt-foot">
+                Quanta posizione il bot può arrivare a tenere su questo mercato. <strong>Il predefinito è $0</strong>,
+                e $0 vuol dire esattamente questo: quando un ordine viene eseguito il bot <strong>non</strong> ri-quota
+                il lato opposto — smette di quotare quel lato e registra il motivo. Con un tetto sopra lo zero
+                ri-quota il lato opposto <em>per la size realmente eseguita</em> (quella riportata dal venue, mai
+                quella che si era inteso piazzare) e si ferma al tetto, dicendolo.
+                {maxInvMsg ? ` ${maxInvMsg}` : ''}
+              </p>
             </div>
             <div className="mkt-ctl-row">
               <span className="mkt-lab"><span>Impegnabile ora / tetto</span>

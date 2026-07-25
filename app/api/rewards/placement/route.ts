@@ -26,6 +26,10 @@ const placementSchema = z.object({
   onFillNo:   RULE.optional(),
   onFill:     z.enum(['requote', 'flatten']).optional(),   // DEPRECATED legacy single field
   newsMode:   z.enum(['withdraw', 'alert', 'off']).default('withdraw'),
+  // Per-market MAXIMUM INVENTORY in dollars. DEFAULT 0, and 0 is the instruction "do not accumulate":
+  // after a fill the engine stops quoting that side instead of re-quoting the opposite one. Accumulating
+  // is opt-in per market, by typing a number (lib/maker/inventory-manager).
+  maxInventoryUsd: z.number().min(0).max(1_000_000).default(0),
   // `mode` intentionally NOT accepted from the client — always forced to 'paper'.
 });
 
@@ -79,11 +83,11 @@ export async function POST(req: NextRequest) {
       userId, marketId: d.marketId, venue: d.venue, side: d.side,
       qtyPerSide: d.qtyPerSide, distanceC: d.distanceC,
       onFillYes, onFillNo, onFill,
-      newsMode: d.newsMode, mode: 'paper',   // paper-only, live OFF
+      newsMode: d.newsMode, maxInventoryUsd: d.maxInventoryUsd, mode: 'paper',   // paper-only, live OFF
     },
     update: {
       venue: d.venue, side: d.side, qtyPerSide: d.qtyPerSide, distanceC: d.distanceC,
-      onFillYes, onFillNo, onFill, newsMode: d.newsMode, mode: 'paper',
+      onFillYes, onFillNo, onFill, newsMode: d.newsMode, maxInventoryUsd: d.maxInventoryUsd, mode: 'paper',
     },
   });
   return NextResponse.json({ placement: saved });
