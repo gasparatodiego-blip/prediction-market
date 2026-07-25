@@ -143,6 +143,10 @@ data/book-velocity.jsonl.*
 # Append-only, daily-rotated, 14-day retention — observation data, never commit it.
 data/mid-history*.jsonl
 
+# agent34 executed-trade tape: observed last_trade_price events for adverse-selection measurement.
+# Append-only, daily-rotated, 14-day retention — observation data, never commit it.
+data/trade-tape*.jsonl
+
 # admin venue-credential store + audit (secrets — never commit)
 data/venue-maker-keys.json
 data/venue-maker-keys.json.tmp.*

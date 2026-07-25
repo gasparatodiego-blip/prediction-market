@@ -72,6 +72,17 @@ const MID_HISTORY_DIR = '/root/prediction-market/data';
 const MID_HISTORY_INTERVAL_MS = Number(process.env.MID_HISTORY_INTERVAL_MS || 45_000);
 const MID_HISTORY_RETENTION_DAYS = 14;
 
+// ── TRADE TAPE (executed-trade recording for adverse-selection measurement) ──
+// The market channel already delivers `last_trade_price` events (verified verbatim: fields market,
+// asset_id, price, size, side, timestamp, transaction_hash). agent34 already receives them for its
+// subscribed tokens — this only APPENDS them, so there is NO subscription change and NO added message
+// volume. Same memory discipline as the mid-history journal: append STREAM only (never read back, never
+// buffer a day), daily rotation, 14-day retention by filename. This is the OBSERVED tape that replaces the
+// 45s-sampled fill inference. Read-only: no order path, agent35 stays disarmed. Rate is ~a few/min across
+// the universe (measured), so bytes/day is tiny — trades are never sampled, they are the ground truth.
+const TRADE_TAPE_DIR = '/root/prediction-market/data';
+const TRADE_TAPE_RETENTION_DAYS = 14;
+
 const log = (...a) => console.log(new Date().toISOString(), '[agent34]', ...a);
 
 // Lazy Prisma — legs are persisted user data (RewardsLeg). If the client/DB isn't
@@ -167,6 +178,8 @@ let reconnects = 0, watchdogReconnects = 0, restSnapshots = 0, droppedForCap = 0
 let driftSignals = 0;
 let midHistoryStream = null;       // { day, stream } — the daily-rotated append stream (never read back)
 let midHistoryRows = 0;            // rows appended this process lifetime (observability only)
+let tradeTapeStream = null;        // { day, stream } — the executed-trade tape append stream
+let tradeTapeRows = 0;             // trades appended this process lifetime (observability only)
 
 // ── drift-advisory state (Phase 4). Legs are persisted user data; we track per-leg
 // time-in/out-of-band and emit SHADOW DriftSignals through the news-guard rails. ──
@@ -185,7 +198,12 @@ client.on('open', () => {
   // before trusting the stream again.
   resnapshotAll('ws-open').catch(e => log('resnapshot on open failed:', e.message));
 });
-client.on('event', (ev, now) => { store.ingest(ev, now); });
+client.on('event', (ev, now) => {
+  store.ingest(ev, now);
+  // OBSERVED executed-trade tape — append every last_trade_price event already arriving on this socket.
+  // No subscription change, no order path; the book pipeline above is untouched.
+  if (ev && ev.event_type === 'last_trade_price') appendTrade(ev, now);
+});
 
 async function restBook(tokenId) {
   const r = await httpGet(`${CLOB_BASE}/book?token_id=${tokenId}`, { timeoutMs: 6_000, headers: { 'User-Agent': UA, Accept: 'application/json' } });
@@ -548,6 +566,65 @@ function sampleMidHistory() {
   if (batch) { stream.write(batch); midHistoryRows += n; }
 }
 
+// ── trade tape: rotation + 14-day retention (mirrors the mid-history discipline) ──
+function tradeTapePath(dayStr) { return path.join(TRADE_TAPE_DIR, `trade-tape-${dayStr}.jsonl`); }
+function pruneOldTradeTape(now) {
+  const cutoff = now - TRADE_TAPE_RETENTION_DAYS * 86_400_000;
+  let files = [];
+  try { files = fs.readdirSync(TRADE_TAPE_DIR); } catch { return; }
+  for (const f of files) {
+    const m = f.match(/^trade-tape-(\d{4}-\d{2}-\d{2})\.jsonl$/);
+    if (!m) continue;
+    const t = Date.parse(`${m[1]}T00:00:00Z`);
+    if (Number.isFinite(t) && t < cutoff) {
+      try { fs.unlinkSync(path.join(TRADE_TAPE_DIR, f)); log('trade-tape: pruned', f, `(older than ${TRADE_TAPE_RETENTION_DAYS}d)`); }
+      catch (e) { log('trade-tape: prune failed for', f, e.message); }
+    }
+  }
+}
+function tradeTapeStreamFor(now) {
+  const day = utcDayStr(now);
+  if (tradeTapeStream && tradeTapeStream.day === day) return tradeTapeStream.stream;
+  if (tradeTapeStream) { try { tradeTapeStream.stream.end(); } catch { /* ignore */ } }
+  const stream = fs.createWriteStream(tradeTapePath(day), { flags: 'a' });
+  stream.on('error', (e) => log('trade-tape: stream error:', e.message));
+  tradeTapeStream = { day, stream };
+  pruneOldTradeTape(now);
+  log(`trade-tape: appending ${tradeTapePath(day)} (retain ${TRADE_TAPE_RETENTION_DAYS}d)`);
+  return stream;
+}
+
+// Build ONE tape row from a market-channel `last_trade_price` event — PURE (no I/O), so the null path is
+// unit-testable. Records the venue timestamp AND the local receipt time, both. A field the venue does not
+// publish is written null — never inferred, never defaulted.
+function buildTradeRow(ev, now) {
+  const venueMs = ev.timestamp != null && Number.isFinite(Number(ev.timestamp)) ? Number(ev.timestamp) : null;
+  const price = ev.price != null && Number.isFinite(parseFloat(ev.price)) ? parseFloat(ev.price) : null;
+  const size = ev.size != null && Number.isFinite(parseFloat(ev.size)) ? parseFloat(ev.size) : null;
+  const feeBps = ev.fee_rate_bps != null && Number.isFinite(Number(ev.fee_rate_bps)) ? Number(ev.fee_rate_bps) : null;
+  return {
+    tsVenueMs: venueMs,
+    tsVenueIso: venueMs != null ? new Date(venueMs).toISOString() : null,
+    tsLocalIso: new Date(now).toISOString(),
+    marketId: ev.market || null,
+    tokenId: ev.asset_id || null,
+    price,
+    size,
+    side: ev.side || null,               // taker direction as published by the venue (BUY|SELL) or null
+    feeRateBps: feeBps,
+    txHash: ev.transaction_hash || null, // lets a reader verify the trade on-chain / against REST
+    src: 'ws:last_trade_price',
+  };
+}
+
+// Append ONE executed trade. Wrapped so a write hiccup can never stall the socket. No order path; read-only.
+function appendTrade(ev, now) {
+  try {
+    tradeTapeStreamFor(now).write(JSON.stringify(buildTradeRow(ev, now)) + '\n');
+    tradeTapeRows++;
+  } catch (e) { log('trade-tape: append failed:', e.message); }
+}
+
 async function tick() {
   // Heal any book that lost its snapshot (delta-without-seed).
   for (const id of store.resnapshotNeeded()) await resnapshotAsset(id, 'gap');
@@ -578,6 +655,7 @@ async function main() {
 function shutdown() {
   try { client.close(); } catch { /* ignore */ }
   if (midHistoryStream) { try { midHistoryStream.stream.end(); } catch { /* ignore */ } }
+  if (tradeTapeStream) { try { tradeTapeStream.stream.end(); } catch { /* ignore */ } }
   if (prisma) { prisma.$disconnect().catch(() => {}); }
   process.exit(0);
 }
@@ -586,4 +664,4 @@ process.on('SIGINT', shutdown);
 
 if (require.main === module) main().catch(e => { log('fatal:', e.message); process.exit(1); });
 
-module.exports = { collectDesiredMarkets, sideView, buildSnapshot, store, client, inBandDepth, sampleMidHistory, pruneOldHistory, utcDayStr, writeCoverageManifest, MID_HISTORY_INTERVAL_MS, COVERAGE_FILE };
+module.exports = { collectDesiredMarkets, sideView, buildSnapshot, store, client, inBandDepth, sampleMidHistory, pruneOldHistory, utcDayStr, writeCoverageManifest, appendTrade, buildTradeRow, pruneOldTradeTape, tradeTapePath, MID_HISTORY_INTERVAL_MS, COVERAGE_FILE };
