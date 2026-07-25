@@ -12,10 +12,20 @@ interface VenueResult {
   simulated?: boolean;
   markets?: { market: string; cancelled: number | null; ok: boolean; error: string | null }[];
 }
-interface CancelResponse {
+// POST /api/maker/kill — the SAME endpoint scripts/kill-maker.sh calls. It sets the DURABLE global kill
+// (data/safety-kill-switch.json, which agent35 re-reads every tick and a pm2 restart cannot clear),
+// withdraws the arming authorization, and runs the cancel sweep. `killed` is the load-bearing field:
+// cancelling orders without disarming the engine just lets it re-quote them.
+interface KillResponse {
   ok: boolean;
   at: string;
-  results: VenueResult[];
+  killed: boolean | null;
+  killError: string | null;
+  armingDisarmed: boolean | null;
+  cancel: VenueResult[];
+  cancelError: string | null;
+  simulated: boolean;
+  cancelledTotal: number;
   error?: string;
 }
 interface StatusResponse {
@@ -25,13 +35,13 @@ interface StatusResponse {
   watchdog: { lastTriggerTs: number | null; lastTriggerIso: string | null; lastStalenessSec: number | null; triggeredForEpisode: boolean } | null;
 }
 
-type Phase = 'idle' | 'confirm' | 'cancelling' | 'done' | 'error';
+type Phase = 'idle' | 'confirm' | 'killing' | 'done' | 'error';
 
 const dash = (v: unknown): string => (v === null || v === undefined || v === '' ? '—' : String(v));
 
 export default function MakerKillClient() {
   const [phase, setPhase] = useState<Phase>('idle');
-  const [result, setResult] = useState<CancelResponse | null>(null);
+  const [result, setResult] = useState<KillResponse | null>(null);
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [topError, setTopError] = useState<string | null>(null);
 
@@ -50,12 +60,15 @@ export default function MakerKillClient() {
     return () => clearInterval(t);
   }, [loadStatus]);
 
-  const doCancel = useCallback(async () => {
-    setPhase('cancelling');
+  // ONE code path. This is the same POST /api/maker/kill that scripts/kill-maker.sh makes — the button
+  // and the script are the same action, not two implementations that can drift apart. It sets the durable
+  // switch AND sweeps the orders; cancelling without disarming would let the engine re-quote.
+  const doKill = useCallback(async () => {
+    setPhase('killing');
     setTopError(null);
     try {
-      const r = await fetch('/api/maker/cancel', { method: 'POST' });
-      const body = (await r.json()) as CancelResponse;
+      const r = await fetch('/api/maker/kill', { method: 'POST' });
+      const body = (await r.json()) as KillResponse;
       setResult(body);
       setPhase('done');
       loadStatus();
@@ -107,56 +120,74 @@ export default function MakerKillClient() {
         }
       `}</style>
 
-      <h1 className="mkill-h1">Maker kill switch</h1>
-      <p className="mkill-sub">
-        Cancels every resting order on every configured venue immediately. This calls the venue cancel path
-        directly — it does not go through the maker process, so it works even when the maker is unresponsive.
-        This never places an order.
-      </p>
-
-      {/* ── the always-visible kill control ── */}
+      {/* THE CONTROL IS THE FIRST THING ON THE PAGE. In an emergency nothing may sit above it — no
+          heading to read past, no status panel to scroll through. The title comes after the button. */}
       {phase === 'idle' && (
-        <button className="mkill-btn mkill-red" onClick={() => setPhase('confirm')} aria-label="Cancel all orders">
-          CANCEL ALL ORDERS
+        <button className="mkill-btn mkill-red" onClick={() => setPhase('confirm')} aria-label="Kill the maker">
+          KILL MAKER
         </button>
       )}
 
       {phase === 'confirm' && (
         <>
           <div className="mkill-confirmrow">
-            <button className="mkill-btn mkill-red" onClick={doCancel} aria-label="Confirm cancel all orders">
-              CONFIRM CANCEL — TAP AGAIN
+            <button className="mkill-btn mkill-red" onClick={doKill} aria-label="Confirm kill the maker">
+              CONFIRM KILL — TAP AGAIN
             </button>
             <button className="mkill-abort" onClick={() => setPhase('idle')}>Back</button>
           </div>
-          <p className="mkill-note">One more tap will cancel all orders on every configured venue.</p>
+          <p className="mkill-note">One more tap disarms the maker durably and cancels every resting order.</p>
         </>
       )}
 
-      {phase === 'cancelling' && (
+      {phase === 'killing' && (
         <button className="mkill-btn mkill-red" disabled style={{ opacity: 0.7, cursor: 'wait' }}>
-          CANCELLING…
+          KILLING…
         </button>
       )}
 
       {(phase === 'done' || phase === 'error') && (
         <button className="mkill-btn mkill-red" onClick={() => { setPhase('idle'); }}>
-          CANCEL ALL ORDERS
+          KILL MAKER
         </button>
       )}
+
+      <h1 className="mkill-h1">Maker kill switch</h1>
+      <p className="mkill-sub">
+        Disarms the maker durably and cancels every resting order on every configured venue. The durable
+        part is what stops the engine: a pm2 restart cannot clear it, and agent35 re-reads it every tick.
+        This runs inside the Edgeradar backend, so it works even when the maker is unresponsive and even
+        when polymarket.com is unreachable from this browser. It never places an order.
+        The same action from a shell: <code>./scripts/kill-maker.sh</code>
+      </p>
 
       {/* ── result state (venue-authoritative) ── */}
       {phase === 'error' && (
         <div className="mkill-results">
           <div className="mkill-vrow mkill-vfail">
-            <div className="mkill-vname mkill-warn">Request failed — no venue was confirmed cancelled</div>
-            <div className="mkill-vdetail">{dash(topError)}</div>
+            <div className="mkill-vname mkill-warn">Request failed — the maker was NOT killed</div>
+            <div className="mkill-vdetail">
+              {dash(topError)} — run <code>./scripts/kill-maker.sh</code> from a shell; it confirms the
+              durable switch by re-reading it.
+            </div>
           </div>
         </div>
       )}
 
       {phase === 'done' && result && (
         <div className="mkill-results">
+          {/* The load-bearing outcome: is the DURABLE switch set? Cancelling orders without disarming
+              the engine only invites it to re-quote them, so this is reported first and separately. */}
+          <div className={`mkill-vrow ${result.killed === true ? 'mkill-vok' : 'mkill-vfail'}`}>
+            <div className={`mkill-vname ${result.killed === true ? '' : 'mkill-warn'}`}>
+              {result.killed === true ? 'Maker DISARMED — durable kill set' : 'Durable kill NOT set'}
+            </div>
+            <div className="mkill-vdetail">
+              {result.killed === true
+                ? `agent35 stands down on its next tick. A pm2 restart cannot clear this.${result.armingDisarmed ? ' Arming authorization withdrawn.' : ''}`
+                : `${dash(result.killError)} — the engine may still be armed. Run ./scripts/kill-maker.sh, which confirms by re-reading the state file.`}
+            </div>
+          </div>
           {!result.ok && (
             <div className="mkill-partial">
               {result.error ? 'Failed' : 'Partial — one or more venues did not confirm. Figures below are per venue.'}
@@ -168,7 +199,7 @@ export default function MakerKillClient() {
               <div className="mkill-vdetail">{dash(result.error)}</div>
             </div>
           )}
-          {result.results?.map((v) => {
+          {result.cancel?.map((v) => {
             const venueName = v.venue.charAt(0).toUpperCase() + v.venue.slice(1);
             const believedDiffers =
               believedOpen !== null && v.venueOpenBefore !== null && believedOpen !== v.venueOpenBefore;
