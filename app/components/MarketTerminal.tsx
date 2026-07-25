@@ -285,7 +285,12 @@ export default function MarketTerminal({ marketId }: { marketId: string }) {
     ownImpactPct: pr.ownImpactPct, perSideShares, minSize: pr.minSize, poolDay: pr.poolDay,
   }), [pr, adverse, perSideShares]);
 
-  const title: string | null = ev ? (ev.groupItemTitle || ev.title || null) : null;
+  // On a neg-risk event the feed carries BOTH the outcome label ("Jon Ossoff") and the parent question
+  // ("Will Jon Ossoff win the 2028 …?"). The outcome is what you actually quote, so it is the heading;
+  // the question is kept beneath it, because an outcome label alone does not say what resolves it.
+  const outcome: string | null = ev?.groupItemTitle ?? null;
+  const question: string | null = ev?.title ?? null;
+  const title: string | null = outcome || question;
   const cd = countdown(ev?.hoursToResolution);
   const inUniverse = !!universe?.marketIds?.includes(marketId);
 
@@ -440,6 +445,7 @@ export default function MarketTerminal({ marketId }: { marketId: string }) {
             {rules?.acceptingOrders === false && <span className="mkt-tag">ordini non accettati</span>}
           </div>
           <h1 className="mkt-title">{title ?? '—'}</h1>
+          {outcome && question && outcome !== question && <p className="mkt-foot" style={{ margin: '-4px 0 8px' }}>{question}</p>}
           <div className="mkt-cd">
             <span>alla chiusura</span><b>{cd ?? '—'}</b>
             <span>· montepremi {fin(rules?.dailyPotUsd) ? `${usd(rules.dailyPotUsd, 0)}/giorno` : '—'}</span>
@@ -777,13 +783,7 @@ export default function MarketTerminal({ marketId }: { marketId: string }) {
                   <button className="mkt-btn" type="button" onClick={doDisarm}>DISARMA</button>
                 </>
               ) : !armOpen ? (
-                <>
-                  <button className="mkt-btn" type="button" onClick={() => setArmOpen(true)}>Abilita l&rsquo;armamento…</button>
-                  <p className="mkt-foot">
-                    Durata dell&rsquo;armamento: <strong>4h</strong> (predefinita). Alla scadenza si disarma e
-                    cancella da solo; l&rsquo;unico modo di estenderlo è un rinnovo che ri-esegue il preflight.
-                  </p>
-                </>
+                <button className="mkt-btn" type="button" onClick={() => setArmOpen(true)}>Abilita l&rsquo;armamento…</button>
               ) : (
                 <>
                   <label className="mkt-lab" htmlFor="mkt-typed" style={{ marginTop: 8 }}>
@@ -797,6 +797,16 @@ export default function MarketTerminal({ marketId }: { marketId: string }) {
                   </button>
                   <button className="mkt-btn" type="button" onClick={() => { setArmOpen(false); setTypedTotal(''); }}>Annulla</button>
                 </>
+              )}
+
+              {/* The TTL is stated in EVERY state — before arming, while choosing, and once armed. An
+                  expiry the operator only reads on the confirmation screen is an expiry they forget. */}
+              {!gates?.arming?.armed && (
+                <p className="mkt-foot" data-mkt-ttl-note>
+                  Durata dell&rsquo;armamento: <strong>4h</strong> (predefinita, massimo 24h). Alla scadenza il
+                  motore <strong>si disarma e cancella gli ordini da solo</strong>; l&rsquo;unico modo di
+                  estenderla è un rinnovo esplicito, che ri-esegue il preflight. Non esiste un arm senza scadenza.
+                </p>
               )}
 
               {armBlockers.length > 0 && !gates?.arming?.armed && (

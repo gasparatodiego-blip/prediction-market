@@ -1556,8 +1556,10 @@ h1, h2, h3 {
 .mkt-data[open] > summary::before { content: '▾'; }
 
 /* 8 · sticky KILL — always visible, one tap, thumb reach */
+/* No negative margin: the shell's own horizontal padding is not guaranteed (the dashboard layout owns
+   it), and bleeding past it pushed the document 16px wider than the viewport on every phone width. */
 .mkt-kill {
-  position: sticky; bottom: 0; z-index: 20; margin: 0 -16px; padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+  position: sticky; bottom: 0; z-index: 20; margin: 0; padding: 10px 0 calc(10px + env(safe-area-inset-bottom));
   background: var(--cc-bg); border-top: 1px solid var(--cc-border);
 }
 .mkt-killbtn {
