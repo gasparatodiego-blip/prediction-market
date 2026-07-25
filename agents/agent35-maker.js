@@ -443,6 +443,10 @@ async function tick(cfg, adapter) {
     selectionUpdatedAt: selection.updatedAt,
     universe: { matchedBeforeCap: universe.matchedBeforeCap, truncated: universe.truncated, maxMarkets: universe.maxMarkets, isDefaultSelection: !!selection.isDefault },
     mode: cfg.mode, dryRun: cfg.dryRun, canWrite: cfg.canWrite, killSwitch: effCfg.killSwitch,
+    // The funding attestation as THIS process sees it. The dashboard runs in a different pm2 process
+    // with its own environment, so the market screen must read the engine's value here rather than its
+    // own — a gate that looks green in the browser and red in the engine is worse than no gate.
+    fundingApproved: process.env.MAKER_FUNDING_APPROVED === 'true',
     durableKill: { killed: durableKill.killed, scope: durableKill.scope, reason: durableKill.reason || null },
     arming: { armed: arming.armed, expiresInSec: arming.expiresInSec ?? null, disarmedReason: arming.disarmedReason || null, notArmedLive },
     source: 'agent35-maker · paper pipeline · quotes from ADJUSTED mid · no orders placed (MAKER_MODE=' + cfg.mode + ')',
