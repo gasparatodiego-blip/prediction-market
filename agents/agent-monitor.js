@@ -58,33 +58,19 @@ const MIN_STALE_MS = 5 * 60 * 1000;
 // tightly watched. This replaced a single global 10-min threshold that was
 // confirmed to fire real false-positive "down" Telegram alerts for agent20/
 // 23/26, whose cadences (30/15/30 min) all exceeded it.
+// FLEET-FOCUS 2026-07-25 — the liquidity-rewards lane only. The 15 out-of-scope agents this list
+// formerly watched (agent2/3/4/5/10/15/18/19/20/21/22/23/30/31/33) were pm2-stopped as part of the
+// rewards-only refocus. They are removed here ON PURPOSE: this monitor auto-restarts any watched
+// agent it finds stopped/stale (see checkHealth → pm2Restart), so leaving them in would resurrect
+// them within one cycle and undo the stop. What remains is exactly the rewards lane's own producers
+// (agent24/25), its honest-engine guardian (agent26), its two watchdogs (agent38/39) and the
+// dashboard. agent34/35/37 stay watched by their dedicated peers (agent38/agent37), not here — the
+// pre-existing design, left unchanged. RESTORE: `git revert` this commit (and the ecosystem stops),
+// then `pm2 restart agent-monitor` — the full watch list returns and the monitor re-adds the fleet.
 const WATCHED_AGENTS_RAW = [
-  { pm2Name: 'agent2-fetcher',             hbKey: 'fetcher',                 cadenceMs: 1  * 60_000 }, // agent2-fetcher.js INTERVAL
-  { pm2Name: 'agent3-matcher-politics',    hbKey: 'matcher-politics',        cadenceMs: 30 * 60_000 }, // agent3 buildRunner interval (shared-matcher)
-  { pm2Name: 'agent4-matcher-other',       hbKey: 'matcher-other',           cadenceMs: 30 * 60_000 }, // agent4 buildRunner interval (shared-matcher)
-  { pm2Name: 'agent5-calculator',          hbKey: 'calculator',              cadenceMs: 45_000 },      // agent5-calculator.js INTERVAL (45s)
-  { pm2Name: 'agent10-binance',            hbKey: 'agent10-binance',         cadenceMs: 1  * 60_000 }, // agent10-binance.js POLL_INTERVAL
-  { pm2Name: 'agent15-funding-writer',     hbKey: 'agent15-funding',         cadenceMs: 1  * 60_000 }, // agent15-funding-writer.js INTERVAL_MS
-  { pm2Name: 'agent18-mm-analyzer',        hbKey: null },
-  { pm2Name: 'agent19-basis',              hbKey: null },
-  { pm2Name: 'agent20-leaderboard',        hbKey: 'agent20-leaderboard',     cadenceMs: 30 * 60_000 }, // agent20-leaderboard.js SCAN_INTERVAL_MS
-  { pm2Name: 'agent21-copy-watcher',       hbKey: 'agent21-copy-watcher',    cadenceMs: 5  * 60_000 }, // agent21-copy-watcher.js POLL_INTERVAL_MS
-  { pm2Name: 'agent22-funding-alerts',     hbKey: null },
-  { pm2Name: 'agent23-prediction-repricer', hbKey: 'repricer',              cadenceMs: 15 * 60_000 }, // agent23-prediction-repricer.js INTERVAL_MS
   { pm2Name: 'agent24-liquidity-rewards',  hbKey: null },
   { pm2Name: 'agent25-kalshi-rewards',     hbKey: null },
-  { pm2Name: 'agent26-landing-auditor',    hbKey: 'agent26-landing-auditor', cadenceMs: 30 * 60_000 }, // agent26-landing-auditor.js SCAN_INTERVAL_MS
-  { pm2Name: 'agent30-trader-feed',        hbKey: 'agent30-trader-feed',     cadenceMs: 1  * 60_000 }, // agent30-trader-feed.js HEALTH_TICK_MS (beats every 5s)
-  { pm2Name: 'agent31-trader-auditor',     hbKey: 'agent31-trader-auditor',  cadenceMs: 90_000 },      // agent31-trader-auditor.js SCAN_INTERVAL_MS (beats every 5s)
-  // agent33 beats once per cycle from agent33-sport-recorder.js:576 — after the raw dump
-  // and derived layer, unconditionally. Only odds-api BOOK SNAPSHOTS pause on the credit
-  // cap; the cycle, the free Kalshi/Polymarket capture and this beat never do, so the
-  // heartbeat stays reliable even with the metered source fully exhausted.
-  // staleMsOverride: the derived 2.5x rule would give the 5-min MIN_STALE_MS floor here.
-  // 10 min is deliberately looser — it tolerates ~13 missed 45s cycles before alerting,
-  // which keeps a transient venue hiccup or a long Polymarket book walk from paging us,
-  // while still catching a real death inside one monitor interval of the 10-min mark.
-  { pm2Name: 'agent33-sport-recorder',     hbKey: 'agent33-sport-recorder',  cadenceMs: 45_000, staleMsOverride: 10 * 60_000 },
+  { pm2Name: 'agent26-landing-auditor',    hbKey: 'agent26-landing-auditor', cadenceMs: 30 * 60_000 }, // rewards honest-engine guardian
   { pm2Name: 'agent38-tape-watchdog',      hbKey: 'agent38-tape-watchdog',   cadenceMs: 60_000 },      // agent38 CHECK_INTERVAL_MS — the watcher is itself watched (who-watches-the-watchman)
   { pm2Name: 'agent39-net-rerun',          hbKey: 'agent39-net-rerun',       cadenceMs: 60 * 60_000 }, // agent39 hourly window check
   { pm2Name: 'dashboard',                  hbKey: null },
