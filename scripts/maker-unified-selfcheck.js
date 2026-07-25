@@ -214,6 +214,68 @@ assert.ok(coarse.buyYesRaw != null && coarse.snappedByC > 0,
 assert.ok(Math.abs(coarse.buyYesRaw - (0.4567 - 0.013)) < 1e-9, 'pre-snap target must be mid − offset, untouched');
 ok(`snap recorded: raw ${coarse.buyYesRaw.toFixed(4)} → ${coarse.buyYes} (moved ${coarse.snappedByC.toFixed(2)}¢)`);
 
+// ── 3c · UNITS — dollars in, SHARES on the wire, one conversion ─────────────────────────────────────
+// The operator types dollars, the venue sizes in shares, and the reward quadratic weights shares. The
+// conversion must happen exactly once (lib/reward-price-row.perSideShares) and every consumer must read
+// THAT number, or the panel describes an order the bot never posts.
+console.log('\n3c. units — one dollar→share conversion, panel = list = bot sizing');
+
+const rsUnit = { poolDay: 200, mid: 0.4, maxSpreadCents: 6, minSize: 100, competitorQ: 800, refCapital: 1000, refShare: 0.1 };
+const unitRow = computePriceRow({ rewardScore: rsUnit, tick: 0.01, totalSizeUsd: 1000, offsetCents: 1 });
+
+// (a) the conversion is priced off the price actually posted, and round-trips to the dollar it came from.
+assert.ok(unitRow.perSideShares != null, 'a priced row must expose its share count');
+// perSideShares is rounded to 4 dp to kill FP dust, so it agrees with the raw division to within half
+// a unit in the last place — not to the bit. The notional round-trip below is the assertion that matters.
+assert.ok(Math.abs(unitRow.perSideShares - unitRow.perSideUsd / unitRow.buyYes) <= 5e-5,
+  'perSideShares must be perSideUsd / buyYes (to its stated 4-dp rounding) — the one conversion');
+assert.ok(Math.abs(unitRow.notionalPerSideUsd - unitRow.perSideUsd) < 0.01,
+  `notional must round-trip to the cent: ${unitRow.notionalPerSideUsd} vs ${unitRow.perSideUsd}`);
+ok(`$${unitRow.perSideUsd} per lato @ ${unitRow.buyYes} → ${unitRow.perSideShares} shares → $${unitRow.notionalPerSideUsd} (round-trips to the cent)`);
+
+// (b) no price ⇒ no share count. Never a guessed size on an unpriceable row.
+const unitNoTick = computePriceRow({ rewardScore: rsUnit, tick: null, totalSizeUsd: 1000, offsetCents: 1 });
+assert.strictEqual(unitNoTick.perSideShares, null, 'no price ⇒ no share count');
+assert.strictEqual(unitNoTick.notionalPerSideUsd, null, 'no price ⇒ no notional');
+ok('unpriceable row → share count and notional are null, never a guess');
+
+// (c) BOT SIZING AGREES. Feed the panel's share count onto the leg exactly as saveLegs now persists it,
+//     and plan it the way agent35 does. The engine's size and notional must be the panel's, to the cent.
+const unitLegs = [
+  { book: 'yes', kind: 'buy', price: unitRow.buyYes, mode: 'pinned', offsetC: -1, sizeShares: unitRow.perSideShares, enabled: true },
+  { book: 'no',  kind: 'buy', price: unitRow.buyNo,  mode: 'pinned', offsetC: -1, sizeShares: unitRow.perSideSharesNo, enabled: true },
+];
+const unitPlan = planQuotes({
+  legs: unitLegs, mid: rsUnit.mid, maxSpreadC: rsUnit.maxSpreadCents, minSize: rsUnit.minSize,
+  tick: 0.01, tokenId: 'YES', tokenIdNo: 'NO', defaultSizeShares: 200,
+});
+const yesQuote = unitPlan.quotes.find((q) => q.book === 'yes');
+assert.strictEqual(yesQuote.size, unitRow.perSideShares, 'the engine must quote the operator\'s share count');
+assert.ok(Math.abs(yesQuote.notionalUsd - unitRow.perSideUsd) < 0.01,
+  `engine notional ${yesQuote.notionalUsd} must equal the panel's ${unitRow.perSideUsd} to the cent`);
+assert.notStrictEqual(yesQuote.size, 200, 'the engine default must NOT be what gets quoted once a size is persisted');
+ok(`bot sizing = panel sizing: ${yesQuote.size} shares, $${yesQuote.notionalUsd.toFixed(2)} (engine default 200 NOT used)`);
+
+// (c2) THE DOLLAR BUDGET IS RESPECTED. Each side is sized at its OWN price, so a "$1,000 total" config
+//      commits $1,000 — not $1,169 as equal share counts on differently-priced books would.
+const noQuote = unitPlan.quotes.find((q) => q.book === 'no');
+assert.ok(Math.abs(noQuote.notionalUsd - unitRow.perSideUsd) < 0.01,
+  `the NO side must commit its half of the budget too: $${noQuote.notionalUsd} vs $${unitRow.perSideUsd}`);
+assert.ok(Math.abs((yesQuote.notionalUsd + noQuote.notionalUsd) - unitRow.totalSizeUsd) < 0.02,
+  'both sides together must commit the stated total, to the cent');
+assert.notStrictEqual(yesQuote.size, noQuote.size,
+  'differently-priced books must NOT carry the same share count — that is the overspend this closes');
+ok(`dollar budget honoured: YES $${yesQuote.notionalUsd.toFixed(2)} + NO $${noQuote.notionalUsd.toFixed(2)} = $${(yesQuote.notionalUsd + noQuote.notionalUsd).toFixed(2)} of $${unitRow.totalSizeUsd}`);
+
+// (d) the OLD behaviour is what this fixes: a leg with no size still falls back to the engine default.
+const unitPlanNoSize = planQuotes({
+  legs: [{ book: 'yes', kind: 'buy', price: unitRow.buyYes, mode: 'pinned', offsetC: -1, enabled: true }],
+  mid: rsUnit.mid, maxSpreadC: rsUnit.maxSpreadCents, minSize: rsUnit.minSize,
+  tick: 0.01, tokenId: 'YES', tokenIdNo: 'NO', defaultSizeShares: 200,
+});
+assert.strictEqual(unitPlanNoSize.quotes[0].size, 200, 'a sizeless leg still falls back to the engine default');
+ok('control — a leg carrying no size still falls back to the engine default (the regression this closes)');
+
 // ── 4 · CROSS-CHECK against a REAL feed row, if the snapshot is present ─────────────────────────────
 console.log('\n4. cross-check against the live feed snapshot (skipped when absent)');
 try {

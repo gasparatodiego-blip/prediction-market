@@ -248,9 +248,9 @@ export default function MarketTerminal({ marketId }: { marketId: string }) {
     rewardScore: feed?.rewardScore ?? null, tick, totalSizeUsd, offsetCents, market: feed ?? undefined,
   }), [feed, tick, totalSizeUsd, offsetCents]);
 
-  const perSideShares = useMemo(
-    () => (pr.perSideUsd != null && fin(pr.buyYes) && pr.buyYes > 0 ? pr.perSideUsd / pr.buyYes : null),
-    [pr]);
+  // THE dollar→share conversion, read from the shared price row rather than divided again here. One
+  // conversion, one number — the panel, the list row and the size persisted on the leg cannot drift.
+  const perSideShares = pr.perSideShares;
 
   // The placement verdict for the pair, from the SHARED validator the maker itself runs.
   const bandVerdict = useMemo(() => {
@@ -318,9 +318,13 @@ export default function MarketTerminal({ marketId }: { marketId: string }) {
     }
     // The two orders you can actually place holding only pUSD: BUY YES and BUY NO. A SELL of a token you
     // do not own is not placeable, and BUY NO at 1−p IS the sell-YES order — same order, honest name.
+    // sizeShares is the CANONICAL unit (shares). Persisting it is what makes the engine quote the size
+    // the operator actually chose: without it agent35 falls back to its own default and the panel's
+    // dollar figure describes an order nobody placed.
     const legs: any[] = [];
-    if (side === 'both' || side === 'yes') legs.push({ book: 'yes', kind: 'buy', price: pr.buyYes, mode: legMode, offsetC: -offsetCents, onFill: fillYes });
-    if (side === 'both' || side === 'no') legs.push({ book: 'no', kind: 'buy', price: pr.buyNo, mode: legMode, offsetC: -offsetCents, onFill: fillNo });
+    // Each side carries the share count that commits ITS half of the dollar budget at ITS own price.
+    if (side === 'both' || side === 'yes') legs.push({ book: 'yes', kind: 'buy', price: pr.buyYes, mode: legMode, offsetC: -offsetCents, onFill: fillYes, sizeShares: perSideShares });
+    if (side === 'both' || side === 'no') legs.push({ book: 'no', kind: 'buy', price: pr.buyNo, mode: legMode, offsetC: -offsetCents, onFill: fillNo, sizeShares: pr.perSideSharesNo });
     setLegsSave('saving'); setLegsMsg('');
     try {
       const r = await fetch('/api/rewards/legs', {
@@ -489,7 +493,10 @@ export default function MarketTerminal({ marketId }: { marketId: string }) {
             <div className="mkt-ctl-row">
               <label className="mkt-lab" htmlFor="mkt-size">
                 <span>Size totale (USD)</span>
-                <span>{pr.perSideUsd != null ? `${usd(pr.perSideUsd, 0)} per lato` : '—'}</span>
+                {/* BOTH units, labelled separately: tu inserisci dollari, il venue conta shares. */}
+                <span>{pr.perSideUsd != null ? `${usd(pr.perSideUsd, 0)} per lato` : '—'}
+                  {perSideShares != null ? ` · ${perSideShares.toFixed(0)} shares YES` : ''}
+                  {pr.perSideSharesNo != null ? ` / ${pr.perSideSharesNo.toFixed(0)} shares NO` : ''}</span>
               </label>
               <input id="mkt-size" className="mkt-input" type="number" inputMode="decimal" min={0}
                 value={sizeInput} onChange={(e) => setSizeInput(e.target.value)} />

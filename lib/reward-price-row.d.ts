@@ -39,6 +39,16 @@ export interface PriceRow {
   tickUnknownReason: string | null;
   totalSizeUsd: number | null;
   perSideUsd: number | null;
+  /** THE dollar→share conversion for the YES buy: perSideUsd / buyYes. Shares. Null when either is null. */
+  perSideShares: number | null;
+  /** Same conversion for the NO buy at its own price: perSideUsd / buyNo. Shares. */
+  perSideSharesNo: number | null;
+  /** perSideShares × buyYes — the notional the YES side actually commits, in dollars. */
+  notionalPerSideUsd: number | null;
+  /** perSideSharesNo × buyNo — the notional the NO side actually commits, in dollars. */
+  notionalPerSideNoUsd: number | null;
+  /** Both sides together — what the configuration really commits against the stated total. */
+  notionalTotalUsd: number | null;
   share: number | null;
   grossPerDay: number | null;
   dayYieldPct: number | null;

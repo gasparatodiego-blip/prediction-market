@@ -37,6 +37,11 @@ const leg = z.object({
   onFill:  z.enum(['close', 'opposite', 'hold', 'requote', 'flatten'])
             .default('opposite')
             .transform((v) => normalizeFillRule(v)),
+  // Per-leg order size in SHARES — the canonical unit (lib/reward-price-row, "CANONICAL INTERNAL
+  // UNITS"). The operator types dollars; the ONE conversion (perSideUsd / buyYes) happens in the price
+  // row and the SHARE count lands here, because that is what the venue and the reward quadratic size in.
+  // Optional: omitted ⇒ null ⇒ agent35 falls back to its engine default, exactly as before.
+  sizeShares: z.number().positive().max(1_000_000).nullish(),
 });
 
 const putSchema = z.object({
@@ -95,8 +100,8 @@ export async function PUT(req: NextRequest) {
     for (const l of Array.from(desired.values())) {
       await tx.rewardsLeg.upsert({
         where:  { userId_marketId_book_kind_price: { userId, marketId, book: l.book, kind: l.kind, price: l.price } },
-        create: { userId, marketId, venue, book: l.book, kind: l.kind, price: l.price, mode: l.mode, offsetC: l.offsetC, onFill: l.onFill },
-        update: { venue, mode: l.mode, offsetC: l.offsetC, onFill: l.onFill },
+        create: { userId, marketId, venue, book: l.book, kind: l.kind, price: l.price, mode: l.mode, offsetC: l.offsetC, onFill: l.onFill, sizeShares: l.sizeShares ?? null },
+        update: { venue, mode: l.mode, offsetC: l.offsetC, onFill: l.onFill, sizeShares: l.sizeShares ?? null },
       });
     }
     return tx.rewardsLeg.findMany({
