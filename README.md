@@ -35,6 +35,49 @@ The easiest way to deploy your Next.js app is to use the [Vercel Platform](https
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/deployment) for more details.
 
+## Killing the maker
+
+Three ways to trip the same durable kill switch. They are equivalent — all three end at
+`POST /api/maker/kill`, which sets `data/safety-kill-switch.json`. agent35 re-reads that file every tick,
+and a pm2 restart cannot clear it.
+
+**1 · From a shell (the one you want on your phone)**
+
+```
+./scripts/kill-maker.sh
+```
+
+No arguments. It reads `ADMIN_ACCESS_SECRET` from `.env.local` itself, logs in, kills, and then
+**re-reads the durable state file to confirm** — an HTTP 200 that did not actually flip the switch is
+reported as a failure and exits non-zero. It prints exactly one line. The secret and the session cookie
+are passed to curl through stdin, never in argv, so neither is visible in `ps`.
+
+**2 · One word, if you are already attached**
+
+Add this to `~/.bashrc` (or a tmux session's shell) once:
+
+```
+alias kill-maker='/root/prediction-market/scripts/kill-maker.sh'
+```
+
+Then, in an emergency:
+
+```
+kill-maker
+```
+
+**3 · From a phone browser**
+
+Open **`/dashboard/maker`**. The red **KILL MAKER** button is the first thing on the page, above
+everything else, full-width and 56px tall — no scrolling, no hunting. Two taps (arm, confirm) and it
+calls the same endpoint the script does.
+
+Reading the state without changing it:
+
+```
+cat data/safety-kill-switch.json      # global.killed === true means the maker is stopped
+```
+
 ## Sports Arbitrage Scanner (agent12-sports.js)
 
 `agents/agent12-sports.js` is a **one-shot snapshot scanner** — it runs, writes results, and exits. It is **not** in PM2 autostart.

@@ -147,3 +147,5 @@ data/mid-history*.jsonl
 data/venue-maker-keys.json
 data/venue-maker-keys.json.tmp.*
 data/key-custody-audit.jsonl
+data/mid-history-coverage.json
+data/mid-history-coverage.json.tmp.*

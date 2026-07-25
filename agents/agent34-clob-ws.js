@@ -38,6 +38,11 @@ const WATCHLIST_FILE = '/root/prediction-market/data/liquidity-rewards.json'; //
 const NORMALIZED_FILE = '/tmp/liquidity-rewards.json';                        // normalized (carries rewardScore)
 const OUT_FILE       = '/tmp/clob-live-books.json';
 const HB_FILE        = '/tmp/agent-heartbeats.json';
+// Self-describing COVERAGE manifest for the mid-history journal. The journal only covers the markets
+// agent34 subscribes to (a subset of the rewards universe), so a backtest must state that. This records
+// the universe size AT COLLECTION TIME (not a later drifting feed read) so the mandated coverage header
+// (lib/mid-history-coverage) is honest for the day the data was collected.
+const COVERAGE_FILE  = path.join(__dirname, '..', 'data', 'mid-history-coverage.json');
 const CLOB_BASE      = 'https://clob.polymarket.com';
 
 const SUBSCRIPTION_CAP = 60;          // markets (× 2 tokens = ≤120 assets; well under the ~250/conn cap)
@@ -217,6 +222,7 @@ async function reconcileSubscriptions() {
   if (add.length) { client.subscribe(add); add.forEach(a => resnapshotAsset(a, 'new-sub')); }
   if (drop.length) { client.unsubscribe(drop); drop.forEach(a => store.remove(a)); }
   if (add.length || drop.length) log(`subs reconciled: +${add.length} -${drop.length} (markets=${desired.size}, assets=${assetToMarket.size})`);
+  writeCoverageManifest();   // keep the coverage manifest current with the subscribed set + the live universe size
 }
 
 // Compute per-side mids from a live book. Returns null fields when a side isn't seeded.
@@ -355,6 +361,27 @@ function runDrift(snapshot, now) {
       }
     }
   }
+}
+
+// Write the coverage manifest: how many markets the journal covers (subscribed) vs the FULL rewards
+// universe, captured at collection time. The full universe is the normalized board (Polymarket + Kalshi);
+// agent34 is a Polymarket CLOB feed, so Kalshi is structurally uncoverable here — recorded, not hidden.
+// A missing/unreadable universe file ⇒ universeMarketCount null (the coverage header then fails honest).
+function writeCoverageManifest() {
+  const norm = readJsonSafe(NORMALIZED_FILE);
+  const all = (norm && Array.isArray(norm.markets)) ? norm.markets : null;
+  const universeMarketCount = all ? all.length : null;
+  const universeMarketCountPolymarket = all ? all.filter((m) => m && m.venue === 'polymarket').length : null;
+  const manifest = {
+    at: new Date().toISOString(),
+    subscribedMarketCount: desired.size,           // markets this journal currently covers
+    subscriptionCap: SUBSCRIPTION_CAP,             // the hard bound on coverage
+    universeMarketCount,                           // FULL rewards universe (poly + kalshi) — mandated denominator
+    universeMarketCountPolymarket,                 // the CLOB-coverable subset (context)
+    sampleIntervalMs: MID_HISTORY_INTERVAL_MS,
+    note: 'agent34 is a Polymarket CLOB feed; Kalshi markets are not coverable by this journal. A backtest must call lib/mid-history-coverage.coverageHeader and print its header before any result.',
+  };
+  try { atomicWrite(COVERAGE_FILE, manifest); } catch (e) { log('coverage manifest write failed:', e.message); }
 }
 
 // ── mid-history: rotation + 14-day retention ──
@@ -498,4 +525,4 @@ process.on('SIGINT', shutdown);
 
 if (require.main === module) main().catch(e => { log('fatal:', e.message); process.exit(1); });
 
-module.exports = { collectDesiredMarkets, sideView, buildSnapshot, store, client, inBandDepth, sampleMidHistory, pruneOldHistory, utcDayStr, MID_HISTORY_INTERVAL_MS };
+module.exports = { collectDesiredMarkets, sideView, buildSnapshot, store, client, inBandDepth, sampleMidHistory, pruneOldHistory, utcDayStr, writeCoverageManifest, MID_HISTORY_INTERVAL_MS, COVERAGE_FILE };
