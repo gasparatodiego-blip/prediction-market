@@ -48,5 +48,34 @@ function phase1() {
   } catch (e) { console.log('  (live feed not readable — synthetic assertions still hold):', e.message); }
 }
 
+// ── PHASE 2 — Kalshi non-actionable + collectable-universe denominator ──────────────────────────────
+function phase2() {
+  console.log('\nPHASE 2 — Kalshi not collectable from the EU (US-only program)');
+  const { coverageHeader } = require('../lib/mid-history-coverage');
+  // GUARD FIRES INDEPENDENTLY: a Kalshi row with a big $/day is still demoted below a modest Polymarket
+  // row, purely on the notCollectable flag (potTooSmall neutralised here).
+  const rows = [
+    { m: { marketId: 'kalshi-big' }, venue: 'kalshi', netUsdPerDay: 90, stabilityScore: 99, hoursToResolution: 30, poolDayUsd: 500, potTooSmall: false, demoted: true },
+    { m: { marketId: 'poly-real' },  venue: 'polymarket', netUsdPerDay: 6, stabilityScore: 30, hoursToResolution: 200, poolDayUsd: 120, potTooSmall: false, demoted: false },
+  ];
+  const byDay = sortRows(rows, { sortMode: 'day', sortDir: 'desc' });
+  ok('Kalshi $90/day row demoted below the $6/day Polymarket row', byDay[0].m.marketId === 'poly-real' && byDay[1].m.marketId === 'kalshi-big');
+  const control = sortRows(rows.map((r) => ({ ...r, demoted: false })), { sortMode: 'day', sortDir: 'desc' });
+  ok('control: without the flag the Kalshi $90 row would sort FIRST', control[0].m.marketId === 'kalshi-big');
+
+  // COLLECTABLE denominator: coverage header uses Polymarket-only, and stays fail-honest.
+  try {
+    const man = JSON.parse(fs.readFileSync('/root/prediction-market/data/mid-history-coverage.json'));
+    console.log(`  manifest: collectable universe (universeMarketCount)=${man.universeMarketCount} · full=${man.universeMarketCountFull} · kalshiExcluded=${man.kalshiExcludedCount}`);
+    ok('denominator excludes Kalshi (collectable < full)', man.universeMarketCount != null && man.universeMarketCountFull != null && man.universeMarketCount < man.universeMarketCountFull);
+    const h = coverageHeader({ coveredMarketCount: man.subscribedMarketCount, universeMarketCount: man.universeMarketCount });
+    ok('coverage header denominator = collectable universe', h.universeMarketCount === man.universeMarketCount);
+  } catch (e) { console.log('  (manifest not present yet — agent34 restart pending):', e.message); }
+  // Fail-honest preserved: unknown denominator ⇒ partial AND below-half (never full coverage).
+  const u = coverageHeader({ coveredMarketCount: 60, universeMarketCount: null });
+  ok('fail-honest: unknown denominator → partial && belowHalf', u.partial === true && u.belowHalf === true && u.representative === false);
+}
+
 phase1();
+phase2();
 console.log(`\nrewards-selfcheck: ${passed} assertions passed`);

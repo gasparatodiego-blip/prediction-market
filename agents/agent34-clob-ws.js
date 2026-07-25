@@ -363,23 +363,27 @@ function runDrift(snapshot, now) {
   }
 }
 
-// Write the coverage manifest: how many markets the journal covers (subscribed) vs the FULL rewards
-// universe, captured at collection time. The full universe is the normalized board (Polymarket + Kalshi);
-// agent34 is a Polymarket CLOB feed, so Kalshi is structurally uncoverable here — recorded, not hidden.
-// A missing/unreadable universe file ⇒ universeMarketCount null (the coverage header then fails honest).
+// Write the coverage manifest, captured at collection time. The denominator a backtest MUST use is the
+// COLLECTABLE universe, not the full published one: Kalshi's liquidity-rewards program is US-only
+// (help.kalshi.com/en/articles/13823851-liquidity-incentive-program — "International, non-U.S. users
+// ineligible for rewards") and this operator is in the EU, so Kalshi markets are structurally
+// uncollectable AND uncoverable by this Polymarket CLOB feed. universeMarketCount is therefore the
+// Polymarket-only count; the full poly+kalshi total is kept alongside for transparency. A missing
+// universe file ⇒ universeMarketCount null (the coverage header then fails honest → partial + below-half).
 function writeCoverageManifest() {
   const norm = readJsonSafe(NORMALIZED_FILE);
   const all = (norm && Array.isArray(norm.markets)) ? norm.markets : null;
-  const universeMarketCount = all ? all.length : null;
-  const universeMarketCountPolymarket = all ? all.filter((m) => m && m.venue === 'polymarket').length : null;
+  const collectable = all ? all.filter((m) => m && m.venue === 'polymarket').length : null;
+  const full = all ? all.length : null;
   const manifest = {
     at: new Date().toISOString(),
     subscribedMarketCount: desired.size,           // markets this journal currently covers
     subscriptionCap: SUBSCRIPTION_CAP,             // the hard bound on coverage
-    universeMarketCount,                           // FULL rewards universe (poly + kalshi) — mandated denominator
-    universeMarketCountPolymarket,                 // the CLOB-coverable subset (context)
+    universeMarketCount: collectable,              // COLLECTABLE universe (Polymarket only) — the denominator to use
+    universeMarketCountFull: full,                 // full published universe (poly + kalshi) — transparency only
+    kalshiExcludedCount: (full != null && collectable != null) ? full - collectable : null,
     sampleIntervalMs: MID_HISTORY_INTERVAL_MS,
-    note: 'agent34 is a Polymarket CLOB feed; Kalshi markets are not coverable by this journal. A backtest must call lib/mid-history-coverage.coverageHeader and print its header before any result.',
+    note: 'Denominator = COLLECTABLE universe (Polymarket only). Kalshi liquidity rewards are US-only (help.kalshi.com/en/articles/13823851-liquidity-incentive-program) and this operator is in the EU, so Kalshi is not collectable and is excluded from the coverage denominator. A backtest must call lib/mid-history-coverage.coverageHeader and print its header before any result.',
   };
   try { atomicWrite(COVERAGE_FILE, manifest); } catch (e) { log('coverage manifest write failed:', e.message); }
 }

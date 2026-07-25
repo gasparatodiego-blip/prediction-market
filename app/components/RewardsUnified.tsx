@@ -177,6 +177,8 @@ interface Row extends Base {
   share: number;
   unknown: boolean;
   potTooSmall: boolean;               // reward pot below POT_DEMOTE_FLOOR_USD → demoted + labelled
+  notCollectable: boolean;            // Kalshi rewards are US-only → not collectable from the EU → non-actionable
+  demoted: boolean;                   // potTooSmall || notCollectable → ranked last by sortRows
   stabilityScore: number | null;      // measured band-relative stability (0..100) or null (unmeasured)
   stability: Stability;               // full measurement — label, drivers, and the unknown reason
   hoursToResolution: number | null;   // real expiry field for the expiry cell + expiry sort
@@ -512,6 +514,10 @@ export default function RewardsUnified() {
       // A pot below the floor makes any share of it meaningless — flagged here, demoted in sortRows,
       // labelled on the row. Uses the REAL pool $/day; a null pot is NOT "too small" (it renders "—").
       potTooSmall:  fin(b.poolDayUsd) && (b.poolDayUsd as number) < POT_DEMOTE_FLOOR_USD,
+      // Kalshi's liquidity-rewards program is US-only (help.kalshi.com/.../liquidity-incentive-program);
+      // this operator is in the EU, so those rewards are not collectable → the row is non-actionable.
+      notCollectable: b.venue === 'kalshi',
+      demoted:      (fin(b.poolDayUsd) && (b.poolDayUsd as number) < POT_DEMOTE_FLOOR_USD) || b.venue === 'kalshi',
       // Sort/stat inputs (real fields). stability: the measured band-relative score — unknown (score
       // null) whenever any input is missing → sorts last, cell "—". hoursToResolution: real expiry.
       // Same stabilityOf() the SERVER filter calls, so the shown score can never disagree with the
@@ -887,6 +893,13 @@ export default function RewardsUnified() {
                           <span className="rw-row-top">
                             <span className="rw-venue">{m.venue}</span>
                             <span className="rw-cat">{row.category ?? '—'}</span>
+                            {/* PHASE 2 — Kalshi rewards are US-only (this operator is in the EU): a permanent,
+                                non-dismissible "not collectable" badge, so the row can never read as actionable. */}
+                            {row.notCollectable && (
+                              <span className="rw-nocollect" title="il programma premi di Kalshi è riservato ai membri residenti negli Stati Uniti (help.kalshi.com) e questo operatore è nell'UE: questi premi non sono riscuotibili. La riga resta visibile ma non è un'opportunità.">
+                                non riscuotibile · solo USA
+                              </span>
+                            )}
                             {/* EXPIRY — real hoursToResolution → "45g"/"2 mesi"; "— scad." when unreadable.
                                 ≤3d red, ≤14d amber. Never guesses a date. */}
                             <span className={`rw-exp rw-exp-${exp.band}`} title="tempo alla risoluzione del mercato">{exp.label}</span>
@@ -1130,10 +1143,16 @@ function RewardYieldBreakdown({ row, isPaid }: { row: Row; isPaid: boolean }) {
         <div className="rw-brk rw-brk-strong">
           <div className="rw-brk-item"><span className="rw-brk-k">assumed order</span>
             <span className="rw-brk-v">${row.deployed.toLocaleString()}</span></div>
+          {/* PHASE 2 — Kalshi rewards are not collectable from the EU, so no earnable share/reward is
+              shown (a number you cannot collect is not honest to display): "—" + the jurisdiction reason. */}
           <div className="rw-brk-item"><span className="rw-brk-k">your pool share</span>
-            <span className="rw-brk-v"><Redacted value={row.unknown ? null : row.share} isPaid={isPaid}>{(v) => <>{(Number(v) * 100).toFixed(1)}%{fin(row.poolDayUsd) ? <span className="rw-dim"> · di ${(row.poolDayUsd as number).toFixed(0)}/g</span> : null}</>}</Redacted></span></div>
-          <div className="rw-brk-item"><span className="rw-brk-k">your reward · stima (gross)</span>
-            <span className="rw-brk-v rw-brk-primary"><Redacted value={row.unknown ? null : row.netUsdPerDay} isPaid={isPaid}>{(v) => <>${Number(v).toFixed(2)}/day</>}</Redacted></span></div>
+            <span className="rw-brk-v">{row.notCollectable
+              ? <span className="rw-dim" title="programma Kalshi riservato ai membri USA — non riscuotibile da questo operatore (UE)">—</span>
+              : <Redacted value={row.unknown ? null : row.share} isPaid={isPaid}>{(v) => <>{(Number(v) * 100).toFixed(1)}%{fin(row.poolDayUsd) ? <span className="rw-dim"> · di ${(row.poolDayUsd as number).toFixed(0)}/g</span> : null}</>}</Redacted>}</span></div>
+          <div className="rw-brk-item"><span className="rw-brk-k">{row.notCollectable ? 'your reward · non riscuotibile' : 'your reward · stima (gross)'}</span>
+            <span className="rw-brk-v rw-brk-primary">{row.notCollectable
+              ? <span className="rw-dim" title="i premi Kalshi sono riservati ai residenti USA; questo operatore è nell'UE — nessuna cifra guadagnabile viene mostrata">—</span>
+              : <Redacted value={row.unknown ? null : row.netUsdPerDay} isPaid={isPaid}>{(v) => <>${Number(v).toFixed(2)}/day</>}</Redacted>}</span></div>
           {/* Net is NOT modelled — adverse selection / inventory risk on fills is excluded. No figure invented. */}
           <div className="rw-brk-item"><span className="rw-brk-k">net (adverse selection non modellata)</span>
             <span className="rw-brk-v rw-dim" title="il rendimento netto sottrae il costo di adverse selection quando i tuoi ordini vengono eseguiti — non è modellato, quindi resta sconosciuto">—</span></div>

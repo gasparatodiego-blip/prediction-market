@@ -679,6 +679,9 @@ h1, h2, h3 {
 .cc-row-pot { display: block; font-size: 10px; color: var(--cc-muted); text-align: right; margin-top: 2px; font-variant-numeric: tabular-nums; max-width: 230px; }
 .cc-row-pot-k { text-transform: uppercase; letter-spacing: .04em; font-size: 8.5px; opacity: .8; }
 .cc-row-potwarn { color: var(--cc-amber); cursor: help; }
+/* PHASE 2 — Kalshi rewards not collectable from this jurisdiction: a permanent, calm, non-dismissible badge. */
+.rewards .rw-nocollect { font-size: 9px; font-weight: 700; padding: 1px 6px; border-radius: 999px; white-space: nowrap;
+  color: var(--ds-danger); border: 1px solid rgba(229,86,78,.4); background: rgba(229,86,78,.08); cursor: help; }
 .cc-expand { padding: 4px 2px 12px; border-bottom: 1px solid var(--cc-border); }
 /* Explicit affordance from the expanded card into the interactive order-book detail page. */
 .rw-open-book {
