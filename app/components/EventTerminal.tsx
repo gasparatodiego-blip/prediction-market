@@ -114,7 +114,14 @@ interface BookPayload {
   ladderCap: number; at: string; source: string;
 }
 
-export default function EventTerminal({ marketId }: { marketId: string }) {
+/**
+ * `embedded` — render ONLY the declarative half (identifiers, dates, venue rules, pUSD) for use as the
+ * "Dati mercato" section at the bottom of the unified market screen. The header, the live ladder, the
+ * reference prices and the two-orders section are omitted there because that screen already owns them:
+ * two copies of the same book on one page would be two places to disagree. In embedded mode the book
+ * poll is not started at all — the terminal reads only /api/rewards/event.
+ */
+export default function EventTerminal({ marketId, embedded = false }: { marketId: string; embedded?: boolean }) {
   const [ev, setEv] = useState<any | null>(null);
   const [book, setBook] = useState<BookPayload | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -154,7 +161,9 @@ export default function EventTerminal({ marketId }: { marketId: string }) {
   }, [loadEvent]);
 
   // The book polls OUR OWN route, which is fed by agent34's CLOB WebSocket — the venue is not polled.
+  // Skipped entirely when embedded: the unified screen already runs this poll for its own ladder.
   useEffect(() => {
+    if (embedded) return;
     let alive = true;
     async function load() {
       try {
@@ -167,7 +176,7 @@ export default function EventTerminal({ marketId }: { marketId: string }) {
     load();
     const t = setInterval(load, 2_000);
     return () => { alive = false; clearInterval(t); };
-  }, [marketId]);
+  }, [marketId, embedded]);
 
   const isPaid: boolean = ev?.isPaid ?? false;
   const feed = ev?.feed ?? null;
@@ -212,7 +221,7 @@ export default function EventTerminal({ marketId }: { marketId: string }) {
     return (
       <div className="evt">
         <div className="evt-shell">
-          <Link href="/dashboard/liquidity-rewards" className="evt-back">← elenco premi</Link>
+          {!embedded && <Link href="/dashboard/liquidity-rewards" className="evt-back">← elenco premi</Link>}
           <p className="evt-err">Scheda non disponibile: {err}</p>
         </div>
       </div>
@@ -222,9 +231,10 @@ export default function EventTerminal({ marketId }: { marketId: string }) {
   return (
     <div className="evt">
       <div className="evt-shell">
-        <Link href="/dashboard/liquidity-rewards" className="evt-back">← elenco premi</Link>
+        {!embedded && <Link href="/dashboard/liquidity-rewards" className="evt-back">← elenco premi</Link>}
 
         {/* ══ A · HEADER ═════════════════════════════════════════════════════════════════════ */}
+        {!embedded && (
         <header className="evt-head" data-evt-section="header">
           <div className="evt-head-tags">
             <span className="evt-tag">{ev?.venue ?? '—'}</span>
@@ -243,6 +253,7 @@ export default function EventTerminal({ marketId }: { marketId: string }) {
             </span>
           </div>
         </header>
+        )}
 
         {/* ══ B · IDENTIFIERS ════════════════════════════════════════════════════════════════ */}
         <Section id="identifiers" n="B" title="Identificativi"
@@ -353,6 +364,7 @@ export default function EventTerminal({ marketId }: { marketId: string }) {
         </Section>
 
         {/* ══ E · LIVE BOOK ══════════════════════════════════════════════════════════════════ */}
+        {!embedded && (<>
         <Section id="book" n="E" title="Book in tempo reale"
           sub="Lato YES. Il lato NO è il complemento: prezzo NO = 1 − prezzo YES.">
           <FeedBadge book={book} />
@@ -406,6 +418,7 @@ export default function EventTerminal({ marketId }: { marketId: string }) {
             ordini sotto la size minima. Quando i due divergono, è il secondo a contare.
           </p>
         </Section>
+        </>)}
 
         {/* ══ G · pUSD ═══════════════════════════════════════════════════════════════════════ */}
         <Section id="pusd" n="G" title="pUSD — cosa è possibile"
@@ -459,6 +472,7 @@ export default function EventTerminal({ marketId }: { marketId: string }) {
         </Section>
 
         {/* ══ H · YOUR TWO ORDERS ════════════════════════════════════════════════════════════ */}
+        {!embedded && (<>
         <Section id="orders" n="H" title="I tuoi due ordini"
           sub="Calcolati dalla size e dalla distanza salvate nell'elenco. Sono i tuoi parametri, non una proposta.">
           <div className="evt-rows">
@@ -518,6 +532,7 @@ export default function EventTerminal({ marketId }: { marketId: string }) {
             </ul>
           )}
         </Section>
+        </>)}
 
         {/* Provenance — what each section was read from, so nothing on this page is unattributed. */}
         <footer className="evt-prov">

@@ -1,15 +1,10 @@
-import EventTerminal from '@/app/components/EventTerminal';
+import { redirect } from 'next/navigation';
 
 export const dynamic = 'force-dynamic';
 
-export const metadata = {
-  title: 'Scheda mercato · liquidity rewards — Edgeradar',
-  description:
-    'Read-only data terminal for one reward market: identifiers, venue rules, the effective reward band, the live CLOB book, and the wallet’s on-chain position. Declares; never advises.',
-};
-
-// Server wrapper only — every read happens in the client terminal against /api/rewards/event(+/book),
-// which is where tier redaction and the read-only chain calls live.
-export default function EventPage({ params }: { params: { marketId: string } }) {
-  return <EventTerminal marketId={decodeURIComponent(params.marketId)} />;
+// The "Scheda mercato" is no longer its own page: it is section 7 of the unified market screen, so the
+// operator reads the venue rules WITHOUT leaving the book and the controls that act on them. This route
+// stays only so existing links and bookmarks land in the right place instead of 404-ing.
+export default function EventPageRedirect({ params }: { params: { marketId: string } }) {
+  redirect(`/dashboard/liquidity-rewards/${params.marketId}#data`);
 }

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import fs from 'fs';
 import { getMarketCap, setMarketCap, clearMarketCap, MAX_CAP_USD } from '@/lib/maker/market-caps-store';
-import { loadMakerConfig } from '@/lib/maker/config';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -24,9 +24,23 @@ export const dynamic = 'force-dynamic';
  * here binds on the next tick without a restart.
  */
 
-function railFallbackUsd(): number {
-  // The engine's own per-market notional rail — the ceiling that applies when the operator has set none.
-  return loadMakerConfig(process.env).rails.perMarketNotionalCapUsd;
+/**
+ * The env rail that applies when the operator has set no per-market ceiling.
+ *
+ * Read from the ENGINE's published state, not from this process's environment: the dashboard runs under
+ * a different pm2 env, and the number that matters is the one agent35 will actually enforce (it writes
+ * config.rails.perMarketNotionalCapUsd every cycle from its own lib/maker/config). Unreadable ⇒ null,
+ * so the client renders "—" instead of a rail we did not read. lib/maker/config is deliberately NOT
+ * imported here — it pulls in the CLOB v2 SDK, which has no business in a dashboard route.
+ */
+function railFallbackUsd(): number | null {
+  try {
+    const st = JSON.parse(fs.readFileSync('/tmp/maker-state.json', 'utf8'));
+    const v = st?.config?.rails?.perMarketNotionalCapUsd;
+    return typeof v === 'number' && Number.isFinite(v) ? v : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function GET(req: NextRequest) {

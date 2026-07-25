@@ -1384,3 +1384,197 @@ h1, h2, h3 {
 @media (prefers-reduced-motion: reduce) {
   .evt-back, .evt-copy { transition: none; }
 }
+
+/* ══ UNIFIED MARKET SCREEN — one market, one page, from "is this worth it" to ARM ═══════════════════
+   Replaces three disconnected views (the list preview bar, the separate order book, the separate data
+   card). Mobile-first 360–430px: every section is one stacked column, the ladder never overflows the
+   viewport (it scrolls inside its own box, the page body never scrolls sideways), and the KILL control
+   is a sticky bar in thumb reach. Colour comes from the SAME ds/cc tokens the event terminal uses, so
+   day and night both resolve without a second palette. */
+.mkt-shell { max-width: 860px; margin: 0 auto; padding-bottom: 84px; }
+.mkt-back {
+  display: inline-flex; align-items: center; min-height: 44px; font-size: 12px; font-weight: 600;
+  color: var(--cc-muted); text-decoration: none;
+}
+.mkt-back:hover { color: var(--cc-green); }
+.mkt-err { font-size: 13px; color: var(--ds-danger); }
+
+/* sections */
+.mkt-sec { padding: 16px 0; border-bottom: 1px solid var(--cc-border); }
+.mkt-sec-h { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.mkt-sec-n { font-size: 10px; font-weight: 800; letter-spacing: .12em; color: var(--cc-green); }
+.mkt-sec-t { font-size: 14px; font-weight: 800; color: var(--cc-text); margin: 0; }
+.mkt-sec-s { font-size: 11.5px; line-height: 1.5; color: var(--cc-muted); margin: 4px 0 12px; max-width: 70ch; }
+.mkt-foot { font-size: 10.5px; line-height: 1.55; color: var(--cc-muted); margin: 8px 0 0; max-width: 74ch; }
+.mkt-foot strong { color: var(--cc-text); }
+.mkt-dash { color: var(--cc-muted); }
+
+/* 1 · head + verdict */
+.mkt-head { padding: 10px 0 14px; }
+.mkt-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.mkt-tag {
+  font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  padding: 3px 8px; border-radius: 999px; color: var(--cc-muted); border: 1px solid var(--cc-border);
+}
+.mkt-title { font-size: clamp(17px, 5vw, 24px); line-height: 1.25; font-weight: 800; color: var(--cc-text); margin: 0 0 8px; overflow-wrap: anywhere; }
+.mkt-cd { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; font-size: 11px; color: var(--cc-muted); }
+.mkt-cd b { font-size: 14px; font-weight: 800; color: var(--cc-text); font-variant-numeric: tabular-nums; }
+
+.mkt-verdict { border-radius: 10px; border: 1px solid var(--cc-border); padding: 12px 14px; margin-top: 12px; }
+.mkt-verdict.is-no   { border-color: rgba(213,68,63,.5);  background: rgba(213,68,63,.08); }
+.mkt-verdict.is-thin { border-color: rgba(184,121,26,.5); background: rgba(184,121,26,.08); }
+.mkt-verdict.is-ok   { border-color: rgba(15,158,110,.45); background: rgba(15,158,110,.07); }
+.mkt-verdict-h { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.mkt-verdict-t { font-size: 15px; font-weight: 800; letter-spacing: .01em; }
+.is-no   .mkt-verdict-t { color: var(--ds-danger); }
+.is-thin .mkt-verdict-t { color: var(--cc-amber); }
+.is-ok   .mkt-verdict-t { color: var(--cc-green); }
+.mkt-verdict-n { font-size: 12px; color: var(--cc-muted); font-variant-numeric: tabular-nums; }
+.mkt-verdict ul { margin: 8px 0 0; padding-left: 16px; }
+.mkt-verdict li { font-size: 11.5px; line-height: 1.55; color: var(--cc-text); margin-top: 4px; }
+
+/* 2 · controls */
+.mkt-ctl { display: flex; flex-direction: column; gap: 14px; }
+.mkt-ctl-row { display: flex; flex-direction: column; gap: 6px; }
+.mkt-lab { font-size: 11px; font-weight: 700; color: var(--cc-text); display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.mkt-lab span:last-child { font-weight: 500; color: var(--cc-muted); font-variant-numeric: tabular-nums; }
+.mkt-input {
+  width: 100%; min-height: 44px; padding: 8px 12px; border-radius: 9px; font-size: 15px;
+  border: 1px solid var(--cc-border); background: var(--cc-panel); color: var(--cc-text);
+  font-variant-numeric: tabular-nums;
+}
+.mkt-input:focus-visible { outline: 2px solid var(--cc-green); outline-offset: 1px; }
+.mkt-seg { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.mkt-seg.is-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.mkt-seg button {
+  min-height: 44px; padding: 6px 8px; border-radius: 9px; cursor: pointer; font-size: 12px; font-weight: 700;
+  border: 1px solid var(--cc-border); background: var(--cc-panel); color: var(--cc-muted);
+  touch-action: manipulation; overflow-wrap: anywhere;
+}
+.mkt-seg button:hover { color: var(--cc-text); }
+.mkt-seg button[aria-pressed="true"] { color: var(--cc-green); border-color: rgba(15,158,110,.55); background: rgba(15,158,110,.08); }
+.mkt-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.mkt-chip {
+  min-height: 36px; padding: 4px 12px; border-radius: 999px; cursor: pointer; font-size: 12px; font-weight: 700;
+  border: 1px solid var(--cc-border); background: var(--cc-panel); color: var(--cc-muted); font-variant-numeric: tabular-nums;
+}
+.mkt-chip[aria-pressed="true"] { color: var(--cc-green); border-color: rgba(15,158,110,.55); background: rgba(15,158,110,.08); }
+
+/* 3 · one book */
+.mkt-feed { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-bottom: 10px; }
+.mkt-pill {
+  font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
+  padding: 3px 8px; border-radius: 999px; border: 1px solid var(--cc-border); color: var(--cc-muted);
+}
+.mkt-pill.is-live { color: var(--cc-green); border-color: rgba(15,158,110,.5); }
+.mkt-pill.is-rest { color: var(--cc-amber); border-color: rgba(184,121,26,.5); }
+.mkt-pill.is-stale { color: var(--ds-danger); border-color: rgba(213,68,63,.5); }
+.mkt-pill.is-ok { color: var(--cc-green); border-color: rgba(15,158,110,.5); }
+.mkt-pill.is-no { color: var(--ds-danger); border-color: rgba(213,68,63,.5); }
+.mkt-book { border: 1px solid var(--cc-border); border-radius: 10px; overflow-x: auto; }
+.mkt-lv {
+  display: grid; grid-template-columns: minmax(52px, 68px) minmax(0, 1fr) minmax(58px, auto) minmax(60px, auto);
+  gap: 8px; align-items: center; position: relative; padding: 7px 10px; font-size: 12px;
+  border-bottom: 1px solid var(--cc-border); font-variant-numeric: tabular-nums; min-width: 300px;
+}
+.mkt-lv:last-child { border-bottom: 0; }
+.mkt-lv-bar { position: absolute; left: 0; top: 0; bottom: 0; width: var(--w, 0%); opacity: .1; }
+.mkt-lv.is-bid .mkt-lv-bar { background: var(--cc-green); }
+.mkt-lv.is-ask .mkt-lv-bar { background: var(--ds-danger); }
+.mkt-lv.in-band { background: rgba(15,158,110,.05); }
+.mkt-lv-p { position: relative; font-weight: 700; color: var(--cc-text); }
+.mkt-lv.is-ask .mkt-lv-p { color: var(--ds-danger); }
+.mkt-lv.is-bid .mkt-lv-p { color: var(--cc-green); }
+.mkt-lv-s { position: relative; color: var(--cc-muted); text-align: right; }
+.mkt-lv-f { position: relative; font-size: 10px; color: var(--cc-muted); text-align: right; }
+.mkt-lv-y { position: relative; font-size: 10px; font-weight: 800; color: var(--cc-green); }
+.mkt-mid {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px;
+  padding: 9px 10px; background: var(--ds-fill-2, rgba(127,127,127,.06));
+  border-top: 1px solid var(--cc-border); border-bottom: 1px solid var(--cc-border);
+  font-size: 11px; color: var(--cc-muted);
+}
+.mkt-mid b { font-size: 14px; font-weight: 800; color: var(--cc-text); font-variant-numeric: tabular-nums; }
+.mkt-you {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: baseline;
+  padding: 8px 10px; font-size: 12px; border: 1px dashed var(--cc-border); border-radius: 9px; margin-top: 8px;
+  font-variant-numeric: tabular-nums;
+}
+.mkt-you b { color: var(--cc-text); }
+
+/* 4 · numbers */
+.mkt-nums { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.mkt-num { border: 1px solid var(--cc-border); border-radius: 9px; padding: 10px; min-width: 0; }
+.mkt-num-k { font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--cc-muted); }
+.mkt-num-v { font-size: clamp(17px, 5.2vw, 22px); font-weight: 800; color: var(--cc-text); margin-top: 3px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.mkt-num-v.is-green { color: var(--cc-green); }
+.mkt-num-s { font-size: 10px; line-height: 1.45; color: var(--cc-muted); margin-top: 4px; }
+.mkt-impact { font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--cc-border); }
+.mkt-impact.is-low  { color: var(--cc-green); border-color: rgba(15,158,110,.5); }
+.mkt-impact.is-mid  { color: var(--cc-amber); border-color: rgba(184,121,26,.5); }
+.mkt-impact.is-high { color: var(--ds-danger); border-color: rgba(213,68,63,.5); }
+
+/* 5 / 5bis · rules + risk */
+.mkt-kv { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--cc-border); font-size: 12px; }
+.mkt-kv:last-child { border-bottom: 0; }
+.mkt-kv > span:first-child { color: var(--cc-muted); }
+.mkt-kv > span:last-child { color: var(--cc-text); text-align: right; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.mkt-meter { height: 8px; border-radius: 999px; background: var(--ds-fill-2, rgba(127,127,127,.14)); overflow: hidden; margin-top: 6px; }
+.mkt-meter i { display: block; height: 100%; background: var(--cc-green); }
+.mkt-meter i.is-over { background: var(--ds-danger); }
+
+/* 6 · execution steps */
+.mkt-step { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 10px; padding: 12px 0; border-bottom: 1px solid var(--cc-border); }
+.mkt-step:last-of-type { border-bottom: 0; }
+.mkt-step-d { font-size: 15px; font-weight: 900; line-height: 1.4; }
+.mkt-step-d.is-ok { color: var(--cc-green); }
+.mkt-step-d.is-no { color: var(--ds-danger); }
+.mkt-step-d.is-unk { color: var(--cc-muted); }
+.mkt-step-t { font-size: 13px; font-weight: 800; color: var(--cc-text); }
+.mkt-step-v { font-size: 11.5px; color: var(--cc-muted); margin-top: 3px; line-height: 1.5; overflow-wrap: anywhere; }
+.mkt-step-v b { color: var(--cc-text); }
+.mkt-btn {
+  min-height: 44px; padding: 0 16px; border-radius: 9px; cursor: pointer; font-size: 13px; font-weight: 700;
+  border: 1px solid var(--cc-border); background: var(--cc-panel); color: var(--cc-text); touch-action: manipulation;
+  margin-top: 8px;
+}
+.mkt-btn:hover { border-color: var(--cc-green); }
+.mkt-btn:disabled { opacity: .5; cursor: not-allowed; }
+.mkt-btn.is-arm { background: var(--cc-green); color: #04150D; border-color: var(--cc-green); font-weight: 800; font-size: 15px; }
+.mkt-btn.is-arm:disabled { background: transparent; color: var(--cc-muted); border-color: var(--cc-border); }
+.mkt-blockers { margin: 8px 0 0; padding-left: 16px; }
+.mkt-blockers li { font-size: 11.5px; line-height: 1.55; color: var(--ds-danger); margin-top: 3px; }
+.mkt-ttl { font-size: 12px; color: var(--cc-text); margin-top: 8px; font-variant-numeric: tabular-nums; }
+
+/* 7 · embedded data card */
+.mkt-data > summary {
+  list-style: none; cursor: pointer; min-height: 44px; display: flex; align-items: center; gap: 8px;
+  font-size: 13px; font-weight: 800; color: var(--cc-text);
+}
+.mkt-data > summary::-webkit-details-marker { display: none; }
+.mkt-data > summary::before { content: '▸'; color: var(--cc-green); }
+.mkt-data[open] > summary::before { content: '▾'; }
+
+/* 8 · sticky KILL — always visible, one tap, thumb reach */
+.mkt-kill {
+  position: sticky; bottom: 0; z-index: 20; margin: 0 -16px; padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+  background: var(--cc-bg); border-top: 1px solid var(--cc-border);
+}
+.mkt-killbtn {
+  width: 100%; min-height: 52px; border: 0; border-radius: 10px; cursor: pointer;
+  font-size: 15px; font-weight: 900; letter-spacing: .04em; color: #fff; background: #D21F32;
+  touch-action: manipulation;
+}
+.mkt-killbtn:hover { background: #B81A2B; }
+.mkt-killbtn:disabled { opacity: .65; cursor: wait; }
+.mkt-killbtn:focus-visible { outline: 3px solid var(--cc-text); outline-offset: 2px; }
+.mkt-killnote { font-size: 10.5px; line-height: 1.45; color: var(--cc-muted); margin: 6px 0 0; }
+
+@media (min-width: 560px) {
+  .mkt-nums { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .mkt-ctl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 16px; }
+  .mkt-ctl-row.is-wide { grid-column: 1 / -1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mkt-back, .mkt-btn, .mkt-killbtn { transition: none; }
+}
