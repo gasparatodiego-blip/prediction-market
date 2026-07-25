@@ -11,7 +11,6 @@ import { APY_CAP, APY_CAP_LABEL } from '@/lib/honest-display';
 import {
   estimatedOperatorSharePerDay,
   ASSUMED_ORDER_SIZE_USD,
-  ASSUMED_PLACEMENT_LABEL,
 } from '@/lib/reward-operator-estimate';
 // The SAME two-sided in-band depth the filter and the old yield lib use — shown as context, not headline.
 import { competitorDepthUsd } from '@/lib/reward-depth-floor';
@@ -635,16 +634,22 @@ export default function RewardsUnified() {
           </p>
         </header>
 
-        {/* ── ASSUMPTIONS · stated once, always visible (never a tooltip, never collapsed) ── */}
+        {/* ── ASSUMPTIONS · stated once, always visible (never a tooltip, never collapsed). Describes what
+            the rows ACTUALLY show: the operator's own size + offset — not a fixed $1,000 basis. ── */}
         <div className="rw-assume" role="note">
-          <span className="rw-assume-k">La stima si basa su</span> un ordine da ${ASSUMED_ORDER_SIZE_USD.toLocaleString()},
-          {' '}{ASSUMED_PLACEMENT_LABEL}. Sono <strong>premi lordi maturati</strong>: il P&amp;L di
-          inventario quando i tuoi ordini vengono eseguiti <strong>non è incluso</strong> in nessuna
-          cifra di questa pagina. Mostriamo solo il <strong>lordo</strong> — l&rsquo;<strong>adverse
-          selection</strong> non è modellata, quindi il <strong>rendimento netto è sconosciuto (netto
-          —)</strong> e non viene stimato. L&rsquo;annualizzato è calcolato sulla profondità reale del
-          book, non su un capitale fisso: quando il book è troppo sottile diventa «—». I premi Kalshi
-          sono riservati ai membri residenti negli Stati Uniti.
+          <span className="rw-assume-k">Ogni cifra è calcolata sulla tua size e sulla tua distanza dal
+          punto medio</span>, impostate qui accanto e divise per lato. I prezzi sono arrotondati al tick di
+          ogni mercato: dove la distanza richiesta non cade sul tick, la riga indica quella applicata. La
+          size assunta è limitata dalla profondità reale in banda del mercato, e quando la lega, la riga lo
+          dice. Sono <strong>premi lordi maturati</strong>: il P&amp;L di inventario quando i tuoi ordini
+          vengono eseguiti <strong>non è incluso</strong> in nessuna cifra di questa pagina. Mostriamo solo
+          il <strong>lordo</strong> — l&rsquo;<strong>adverse selection</strong> non è modellata, quindi il
+          {' '}<strong>rendimento netto è sconosciuto (netto —)</strong> e non viene stimato.
+          L&rsquo;annualizzato è calcolato sulla profondità reale del book, non su un capitale fisso: quando
+          il book è troppo sottile diventa «—». La cifra di riferimento da
+          ${ASSUMED_ORDER_SIZE_USD.toLocaleString()} resta visibile solo come termine di paragone, non è la
+          tua. Con la size vuota ogni cifra è «—». I premi Kalshi sono riservati ai membri residenti negli
+          Stati Uniti.
         </div>
 
         {err && <EmptyState prefix="cc" title="Rewards feed unavailable" sub={err} />}
