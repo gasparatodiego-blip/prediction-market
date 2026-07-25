@@ -251,9 +251,22 @@ export default function MarketTerminal({ marketId }: { marketId: string }) {
   const tick: number | null = fin(rules?.tickSize) ? rules.tickSize : (fin(feed?.tickSize) ? feed.tickSize : null);
 
   // ONE price computation, shared with the board and the data card (lib/reward-price-row).
+  //
+  // THE MID COMES FROM THE LIVE FEED WHEN THERE IS ONE. rewardScore.mid is agent24's normalized snapshot
+  // and that scan runs every 15 MINUTES (agents/agent24-*.js SCAN_INTERVAL_MS), while agent34's CLOB
+  // WebSocket republishes the same size-cutoff-adjusted mid every ~3s and this screen already polls it
+  // every 2s for the ladder. Pricing the operator's orders off a mid up to 15 minutes old, with the live
+  // one sitting on screen next to it, is the stale-REST path this codebase exists to avoid.
+  //
+  // It is the ADJUSTED mid on both sides — never the plain (bestBid+bestAsk)/2. The book route labels
+  // its own source ('ws-live' vs 'feed-snapshot'), so we only override when it says ws-live, and we keep
+  // the snapshot mid otherwise rather than inventing freshness.
+  const liveScoringMid = book?.scoringMidSource === 'ws-live' && fin(book?.scoringMid) ? book.scoringMid : null;
+  const midSource: 'ws-live' | 'feed-snapshot' = liveScoringMid != null ? 'ws-live' : 'feed-snapshot';
   const pr = useMemo(() => computePriceRow({
-    rewardScore: feed?.rewardScore ?? null, tick, totalSizeUsd, offsetCents, market: feed ?? undefined,
-  }), [feed, tick, totalSizeUsd, offsetCents]);
+    rewardScore: feed?.rewardScore ? { ...feed.rewardScore, ...(liveScoringMid != null ? { mid: liveScoringMid } : {}) } : null,
+    tick, totalSizeUsd, offsetCents, market: feed ?? undefined,
+  }), [feed, tick, totalSizeUsd, offsetCents, liveScoringMid]);
 
   // THE dollar→share conversion, read from the shared price row rather than divided again here. One
   // conversion, one number — the panel, the list row and the size persisted on the leg cannot drift.
@@ -572,7 +585,10 @@ export default function MarketTerminal({ marketId }: { marketId: string }) {
                 value={distInput} onChange={(e) => setDistInput(e.target.value)} />
               <p className="mkt-foot">
                 Tick del mercato {fin(tick) ? `${cents(tick, 2)}` : '—'} — i prezzi sotto sono già
-                agganciati alla griglia: il venue rifiuta un prezzo più fine.
+                agganciati alla griglia: il venue rifiuta un prezzo più fine.{' '}
+                {midSource === 'ws-live'
+                  ? 'Il punto medio usato è quello live del book (aggiornato in continuo).'
+                  : 'Il punto medio usato viene dall\u2019ultimo scan (fino a 15 minuti fa): il feed live del book non è disponibile ora.'}
                 {!pr.tickKnown
                   ? ' Il tick non è leggibile ora: nessun prezzo viene proposto e la configurazione non è salvabile, perché senza griglia non si sa quale prezzo il venue accetta.'
                   : fin(pr.snappedByC) && pr.snappedByC > 0
