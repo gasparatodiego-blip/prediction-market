@@ -26,7 +26,48 @@ export const dynamic = 'force-dynamic';
 // Unified normalized reward board written by lib/rewards-normalize.js (agent24/25).
 const FILE       = '/tmp/liquidity-rewards.json';
 const GUARD_FILE = '/tmp/news-guard.json';       // written by agent27-news-guard (optional)
+const LIVE_FILE  = '/tmp/clob-live-books.json';   // agent34 live CLOB books + coherent rewardObs (optional)
 const STALE_MS   = 35 * 60_000;                  // agents scan every 15 min
+// PHASE 3 — a per-row observation older than this renders the SHARE/estimate as "—" rather than a stale
+// number presented as current. agent24 scans every 15 min, so a healthy scan row is ≤ ~15 min old; 35 min
+// means the scan has missed 2+ cycles (agent24 stalled) — the observation is no longer current.
+const ROW_STALE_MS = 35 * 60_000;
+
+// PHASE 3 — resolve the two-speed list. Each row is stamped with ONE coherent observation and never mixes
+// a live mid with a scan-time depth:
+//   • a row agent34 covers AND has a fresh coherent rewardObs for → swap the WHOLE reward block (mid +
+//     competitorQ + refShare + two-sided in-band depth), all measured at agent34's one instant. speed:'live'.
+//   • every other row keeps the scan block, itself coherent (mid + competitorQ from the same scan). speed:'scan'.
+// Every row carries observedAt + ageMs + speed + stale, so freshness is a per-row fact, not a page banner.
+function mergeLiveObservation(markets: any[], scanGeneratedAt: string | null): any[] {
+  let live: any = null;
+  try { live = JSON.parse(fs.readFileSync(LIVE_FILE, 'utf-8')); } catch { /* agent34 optional — all rows stay scan-speed */ }
+  const obsById: Record<string, any> = {};
+  const liveMarkets = live && live.markets ? live.markets : {};
+  for (const [mid, mk] of Object.entries<any>(liveMarkets)) {
+    if (mk && mk.rewardObs) obsById[mid] = mk.rewardObs;
+  }
+  const now = Date.now();
+  const scanTs = scanGeneratedAt ? new Date(scanGeneratedAt).getTime() : null;
+  const scanAge = scanTs != null ? now - scanTs : Infinity;
+  return markets.map((m) => {
+    const obs = m.venue === 'polymarket' ? obsById[m.marketId] : null;
+    if (obs && m.rewardScore) {
+      // WHOLE-BLOCK swap — one instant, never a partial mix. bookDepthAtBand becomes the live two-sided
+      // in-band depth; sides is dropped so competitorDepthUsd falls back to it (stays coherent).
+      const rewardScore = { ...m.rewardScore, mid: obs.mid, competitorQ: obs.competitorQ, refShare: obs.refShare };
+      return {
+        ...m,
+        midpoint: obs.mid,
+        rewardScore,
+        bookDepthAtBand: obs.inBandDepthUsd,
+        sides: null,
+        observation: { at: obs.observedAt ?? null, ageMs: Number.isFinite(obs.ageMs) ? obs.ageMs : null, speed: 'live', stale: false },
+      };
+    }
+    return { ...m, observation: { at: scanGeneratedAt, ageMs: Number.isFinite(scanAge) ? scanAge : null, speed: 'scan', stale: scanAge > ROW_STALE_MS } };
+  });
+}
 
 // Merge the news-guard's per-market severity + measured evidence + advisory PROTECT action, keyed
 // by marketId. Absent/stale guard → severity 'unknown' (—), never fabricated. Returns the per-market
@@ -78,6 +119,10 @@ export async function GET(request: NextRequest) {
     const merged = mergeNewsGuard(Array.isArray(data.markets) ? data.markets : []);
     data.markets = merged.markets;
     data.newsGuard = merged.guardMeta;   // execution posture for the UI's news-guard panel
+    // PHASE 3 — stamp each row's single coherent observation (live where agent34 covers it, else scan)
+    // and swap the whole reward block for live rows. Done BEFORE sanity/verify/filter so everything
+    // downstream (incl. the server filter's stability/depth scalars) reads the coherent per-row values.
+    data.markets = mergeLiveObservation(data.markets, data?.meta?.generatedAt ?? null);
     // Render-time sanity net: drop any reward row with a negative pool/liquidity or a
     // price outside [0,1] (logged as sanity-reject; UI shows fewer rows, calmly).
     data.markets = filterSane('rewards', data.markets);

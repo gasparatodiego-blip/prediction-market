@@ -27,7 +27,8 @@ const path = require('path');
 const { ClobWsClient } = require('../lib/clob-ws/client');
 const { LiveBookStore } = require('../lib/clob-ws/live-book');
 const { httpGet } = require('../lib/httpGet');
-const { adjustedMid, parseOrders } = require('../lib/rewardScore');
+const { adjustedMid, parseOrders, scoreBook, quadraticUserShare } = require('../lib/rewardScore');
+const REWARD_REF_CAPITAL = 1000; // MUST match lib/rewards-normalize REWARD_REF_CAPITAL (refShare capital)
 const { decideDrift } = require('../lib/rewards-drift');
 const { loadNewsGuardConfig } = require('../lib/news-guard/config');
 const { appendDriftShadowRecord } = require('../lib/news-guard/shadow-log');
@@ -251,6 +252,59 @@ function sideView(assetId, minSize, now) {
   };
 }
 
+// In-band $ (Σ price×size) around a mid, no size cutoff — matches agent24 existing_depth_usd so the live
+// depth is the same measure the scan produces. Returns 0 when the band/mid is unknown or the side empty.
+function inBandUsd(orders, mid, bandRadiusC) {
+  if (mid == null || bandRadiusC == null || !(bandRadiusC > 0)) return 0;
+  const r = bandRadiusC / 100;
+  let usd = 0;
+  for (const o of orders) if (o.price >= mid - r - 1e-12 && o.price <= mid + r + 1e-12) usd += o.price * o.size;
+  return usd;
+}
+
+// A COHERENT live reward observation from the full live books at ONE instant — mid, competitorQ, refShare
+// and the two-sided in-band depth all measured together, via the SAME SSOT the scan uses (scoreBook +
+// quadraticUserShare). This is what lets the API upgrade a covered row WITHOUT ever pairing a live mid
+// with a scan-time depth: the whole block travels together. Returns null (→ the API keeps the scan block)
+// when the book is not live, has no reward band, or cannot be scored. Never fabricates.
+function liveRewardObs(meta, now) {
+  if (meta.maxSpread == null || !(meta.maxSpread > 0)) return null;   // no band → cannot score coherently
+  const fr = store.freshness(meta.tokenId, STALE_MS, now);
+  if (!fr.live) return null;                                          // not fresh → stay at scan speed (never mix)
+  const bYes = store.getBook(meta.tokenId);
+  if (!bYes) return null;
+  const bids = parseOrders(bYes.bids, true);
+  const asks = parseOrders(bYes.asks, false);
+  const mid = adjustedMid(bids, asks, meta.minSize, null);
+  if (mid == null) return null;
+  const v = meta.maxSpread;                                           // full band (cents); radius = v/2
+  const sc = scoreBook({ bids, asks }, v, meta.minSize, mid);         // { Qbids, Qasks, Qmin, mid }
+  const competitorQ = sc.Qmin;
+  const refShare = quadraticUserShare(competitorQ, mid, v, meta.minSize, REWARD_REF_CAPITAL, v / 4);
+  if (refShare == null) return null;
+  // Two-sided in-band $ at THIS instant (YES around its mid + NO around its mid), same measure as the scan.
+  const depthYes = inBandUsd([...bids, ...asks], mid, v / 2);
+  let depthNo = 0;
+  if (meta.tokenIdNo) {
+    const bNo = store.getBook(meta.tokenIdNo);
+    if (bNo) {
+      const nb = parseOrders(bNo.bids, true), na = parseOrders(bNo.asks, false);
+      const midNo = adjustedMid(nb, na, meta.minSize, null);
+      depthNo = inBandUsd([...nb, ...na], midNo, v / 2);
+    }
+  }
+  return {
+    observedAt: new Date(now).toISOString(),
+    ageMs: fr.ageMs,
+    mid: Math.round(mid * 1e6) / 1e6,
+    competitorQ: Math.round(competitorQ * 1e4) / 1e4,
+    refShare: Math.round(refShare * 1e6) / 1e6,
+    minSize: meta.minSize,
+    maxSpreadCents: v,
+    inBandDepthUsd: Math.round((depthYes + depthNo) * 100) / 100,
+  };
+}
+
 function buildSnapshot() {
   const now = Date.now();
   const markets = {};
@@ -273,6 +327,9 @@ function buildSnapshot() {
       mid, plainMid, midAdjVsPlainC,
       live: yes.live,
       ageMs: yes.ageMs,
+      // COHERENT live reward observation (mid + competitorQ + refShare + depth, one instant) — null when
+      // the book is not live / no band / unscoreable, in which case the API keeps the coherent scan block.
+      rewardObs: liveRewardObs(meta, now),
       yes, no,
     };
   }

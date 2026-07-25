@@ -944,6 +944,13 @@ h1, h2, h3 {
 .rewards .rw-exp-red { color: var(--ds-danger); border-color: rgba(229,86,78,.4); background: rgba(229,86,78,.08); }
 .rewards .rw-exp-amber { color: var(--cc-amber); border-color: rgba(240,180,60,.4); background: rgba(240,180,60,.07); }
 .rewards .rw-exp-none { opacity: .7; }
+/* PHASE 3 — per-row observation freshness chip: live (agent34) vs scan (15-min), stale in red. */
+.rewards .rw-fresh { font-size: 9px; font-weight: 700; padding: 1px 6px; border-radius: 999px; white-space: nowrap;
+  border: 1px solid var(--cc-border); color: var(--cc-muted); font-variant-numeric: tabular-nums; }
+.rewards .rw-fresh-live { color: var(--cc-green); border-color: rgba(47,226,154,.4); background: rgba(47,226,154,.07); }
+.rewards .rw-fresh-scan { color: var(--cc-muted); }
+.rewards .rw-fresh-unknown { opacity: .6; }
+.rewards .rw-fresh.is-stale { color: var(--ds-danger); border-color: rgba(229,86,78,.5); background: rgba(229,86,78,.1); cursor: help; }
 
 /* Compact stat strip (own-impact + stability) — wraps rather than overflowing */
 .rewards .rw-strip { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 2px; }

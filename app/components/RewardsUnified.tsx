@@ -101,6 +101,9 @@ interface Market {
   tickSize?: number | null;
   bestBid?: number | null;
   bestAsk?: number | null;
+  // PHASE 3 — the row's single coherent observation: live (agent34, one instant) or scan (15-min).
+  // ageMs is the age of that observation; stale (age > threshold) → the share/estimate renders "—".
+  observation?: { at: string | null; ageMs: number | null; speed: 'live' | 'scan'; stale: boolean } | null;
 }
 
 // ── Stability, in words ──────────────────────────────────────────────────────────────────────
@@ -281,6 +284,21 @@ function expiryView(hoursToResolution: number | null | undefined):
     : `${Math.round(days / 30)} mesi`;
   const band = days <= 3 ? 'red' : days <= 14 ? 'amber' : 'neutral';
   return { label, band };
+}
+
+// PHASE 3 — per-row observation freshness. "dal vivo" (agent34, one live instant) vs "scansione"
+// (the 15-min scan), with the age. So a live mid and a scan-time depth are never presented as equal
+// freshness — each row states which speed it is at. null observation → unknown freshness ("—").
+function freshnessView(obs: { ageMs: number | null; speed: 'live' | 'scan'; stale: boolean } | null | undefined):
+  { label: string; speed: 'live' | 'scan' | 'unknown'; stale: boolean } {
+  if (!obs) return { label: '—', speed: 'unknown', stale: false };
+  const ms = fin(obs.ageMs) ? (obs.ageMs as number) : null;
+  const age = ms == null ? '—'
+    : ms < 60_000 ? `${Math.max(1, Math.round(ms / 1000))}s`
+    : ms < 3_600_000 ? `${Math.round(ms / 60_000)}m`
+    : `${Math.round(ms / 3_600_000)}h`;
+  const kind = obs.speed === 'live' ? 'dal vivo' : 'scansione';
+  return { label: `${kind} · ${age}`, speed: obs.speed, stale: !!obs.stale };
 }
 
 /** Is any VIEW filter currently constraining the board? Drives the reset button's enabled state. */
@@ -478,7 +496,10 @@ export default function RewardsUnified() {
     // capacity below): a $1,000 share scored against a $618 book is a statement about the book, not a
     // forecast. When the cap binds the headline $/day IS the capped figure and the row says so.
     const est = estimatedOperatorSharePerDay(b.m.rewardScore ?? null, { inBandDepthUsd: competitorDepthUsd(b.m) });
-    const unknown = est.unknown || b.nonExecReason != null;
+    // PHASE 3 — a row whose observation is stale (older than the threshold) renders its share/estimate as
+    // "—" rather than a stale number presented as current. The mid/pot/depth still show as context.
+    const stale = b.m.observation?.stale === true;
+    const unknown = est.unknown || b.nonExecReason != null || stale;
     const stab = stabilityOf(b.m);
     const netUsdPerDay = unknown ? null : est.estUsdPerDay;
     const share = unknown ? 0 : (est.share ?? 0);
@@ -833,6 +854,9 @@ export default function RewardsUnified() {
                   filters.sortMode === 'stability' ? 'stabilità (alta→bassa)'
                   : filters.sortMode === 'expiry' ? 'scadenza (prima le vicine)'
                   : `$/giorno (${filters.sortDir === 'asc' ? 'basso→alto' : 'alto→basso'})`}
+                {/* PHASE 3 — sorting is by value; freshness is disclosed per row (dal vivo / scansione),
+                    so a scan-speed row is never silently ranked as equally current as a live one. */}
+                <span className="rw-dim"> · ogni riga mostra la sua freschezza</span>
               </span>
               {/* Sort — presentation only; reuses the engine's stabilityScore / netUsdPerDay /
                   hoursToResolution. Withheld/"—" rows stay pinned LAST in every mode (see sortRows). */}
@@ -873,6 +897,7 @@ export default function RewardsUnified() {
                   const isSel = selectedSet.has(m.marketId);
                   const pr = priceRowFor(m);                       // user-size gross + own-impact (one math path)
                   const exp = expiryView(row.hoursToResolution);   // real expiry, "— scad." when unreadable
+                  const fresh = freshnessView(m.observation);      // per-row observation freshness (live vs scan)
                   return (
                     <div key={id}>
                       <div className={`cc-row ${isOpen ? 'is-open' : ''} ${isSel ? 'is-sel' : ''}`}>
@@ -903,6 +928,17 @@ export default function RewardsUnified() {
                             {/* EXPIRY — real hoursToResolution → "45g"/"2 mesi"; "— scad." when unreadable.
                                 ≤3d red, ≤14d amber. Never guesses a date. */}
                             <span className={`rw-exp rw-exp-${exp.band}`} title="tempo alla risoluzione del mercato">{exp.label}</span>
+                            {/* PHASE 3 — per-row observation freshness: "dal vivo" (agent34, one live instant)
+                                vs "scansione" (15-min scan). A live mid is never presented as equally fresh
+                                as a scan-time one; a stale observation shows "scaduto" and the share is "—". */}
+                            <span className={`rw-fresh rw-fresh-${fresh.speed} ${fresh.stale ? 'is-stale' : ''}`}
+                              title={fresh.stale
+                                ? 'osservazione più vecchia della soglia — la quota non è mostrata come attuale (—); mid, montepremi e profondità restano come contesto'
+                                : fresh.speed === 'live'
+                                  ? 'mid e profondità concorrente misurati insieme, dal vivo (agent34), nello stesso istante'
+                                  : 'riga alla velocità della scansione (ogni 15 min): mid e profondità concorrente dello stesso istante di scansione'}>
+                              {fresh.stale ? 'scaduto' : fresh.label}
+                            </span>
                             <span className={`rw-src ${row.measured ? 'is-measured' : 'is-observed'}`}>
                               {row.measured ? 'measured · live book' : 'observed split'}
                             </span>

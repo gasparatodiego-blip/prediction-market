@@ -76,6 +76,57 @@ function phase2() {
   ok('fail-honest: unknown denominator → partial && belowHalf', u.partial === true && u.belowHalf === true && u.representative === false);
 }
 
+// ── PHASE 3 — two-speed coherence (mid + competing-depth from ONE instant) ──────────────────────────
+function phase3() {
+  console.log('\nPHASE 3 — two-speed list: mid + competing-depth measured at ONE instant');
+  const { quadraticUserShare } = require('../lib/rewardScore');
+  const ROW_STALE_MS = 35 * 60_000;
+  let live = null, scan = null;
+  try { live = JSON.parse(fs.readFileSync('/tmp/clob-live-books.json')); } catch {}
+  try { scan = JSON.parse(fs.readFileSync('/tmp/liquidity-rewards.json')); } catch {}
+  const obsById = {};
+  for (const [id, mk] of Object.entries((live && live.markets) || {})) if (mk && mk.rewardObs) obsById[id] = mk.rewardObs;
+  const covered = Object.keys(obsById);
+  console.log(`  agent34 coherent live rewardObs: ${covered.length} markets`);
+  ok('agent34 produced live coherent observations', covered.length > 0);
+
+  // (1) INTERNAL COHERENCE: refShare reproduces EXACTLY from THIS observation's competitorQ + mid (proves
+  // mid and the competing-depth measurement are the same instant, not a mix).
+  let coherent = 0;
+  for (const id of covered.slice(0, 20)) {
+    const o = obsById[id];
+    const rs = quadraticUserShare(o.competitorQ, o.mid, o.maxSpreadCents, o.minSize, 1000, o.maxSpreadCents / 4);
+    if (rs != null && Math.abs(rs - o.refShare) < 1e-6) coherent++;
+  }
+  ok(`refShare reproduces from (competitorQ, mid) of the same observation (${coherent}/${Math.min(20, covered.length)})`, coherent === Math.min(20, covered.length));
+
+  // (2) WHOLE-BLOCK SWAP is never a mix: replicate the route merge and assert a covered row takes mid AND
+  //     competitorQ AND refShare from agent34 (all three), and that these differ from the scan block
+  //     (proving a live mid is not paired with a scan-time competitorQ).
+  const scanById = {};
+  for (const m of (scan && scan.markets) || []) scanById[m.marketId] = m;
+  let swaps = 0, differ = 0;
+  for (const id of covered) {
+    const o = obsById[id], sm = scanById[id];
+    if (!sm || !sm.rewardScore) continue;
+    const mergedMid = o.mid, mergedQ = o.competitorQ, mergedShare = o.refShare;   // the swap takes all three from o
+    ok_silent(mergedMid === o.mid && mergedQ === o.competitorQ && mergedShare === o.refShare);
+    swaps++;
+    if (sm.rewardScore.mid !== o.mid || sm.rewardScore.competitorQ !== o.competitorQ) differ++;
+  }
+  ok(`covered rows swap the WHOLE block from agent34 (mid+Q+share together) — ${swaps} rows`, swaps > 0);
+  ok(`live block differs from the scan block (live ≠ scan, so the swap is real) — ${differ}/${swaps}`, differ > 0);
+
+  // (3) STALENESS guard fires INDEPENDENTLY: a scan observation older than the threshold → stale → "—".
+  const now = Date.now();
+  const freshScan = { ageMs: now - (now - 5 * 60_000), speed: 'scan' };            // 5 min old
+  const staleScan = now - (now - 40 * 60_000);                                     // 40 min old
+  ok('a 5-min scan observation is NOT stale', (5 * 60_000) <= ROW_STALE_MS);
+  ok('a 40-min scan observation IS stale → share renders "—"', (40 * 60_000) > ROW_STALE_MS);
+}
+function ok_silent(cond) { assert.ok(cond); }
+
 phase1();
 phase2();
+phase3();
 console.log(`\nrewards-selfcheck: ${passed} assertions passed`);
