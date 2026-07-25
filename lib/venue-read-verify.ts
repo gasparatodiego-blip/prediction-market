@@ -108,10 +108,21 @@ async function verifyPolymarket(creds: DecryptedCreds): Promise<VerifyResult> {
 
   let signature: string
   try {
-    // Polymarket L2: HMAC-SHA256 over the message using the base64url-decoded secret,
-    // emitted base64url.
-    const key = Buffer.from(secret, 'base64url')
-    signature = createHmac('sha256', key).update(message).digest('base64url')
+    // Polymarket L2: HMAC-SHA256 over the message using the base64-decoded secret,
+    // emitted as URL-SAFE base64 that KEEPS the '=' padding.
+    //
+    // Node's digest('base64url') is NOT the same thing: it strips the padding, so a
+    // 32-byte HMAC comes out 43 chars instead of 44 and the CLOB rejects the request
+    // with 401 "Unauthorized/Invalid api key". The venue wants exactly what the
+    // official SDK's buildPolyHmacSignature emits — standard base64, then '+'→'-'
+    // and '/'→'_', padding left intact
+    // (node_modules/@polymarket/clob-client/dist/signing/hmac.js).
+    const key = Buffer.from(secret, 'base64url') // decodes base64 and base64url alike
+    signature = createHmac('sha256', key)
+      .update(message)
+      .digest('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
   } catch (e) {
     return { ok: false, error: (e as Error).message, detail: null }
   }
