@@ -46,6 +46,11 @@ const REFRESH_MARKETS_MS = 60_000;    // re-read the watchlist for adds/drops
 const STALE_MS = 30_000;              // no event within this ⇒ that book is STALE (≈3 heartbeats)
 const RESNAPSHOT_MIN_GAP_MS = 5_000;  // don't hammer REST for the same asset
 const STARTUP_DELAY_MS = 8_000;
+// Ladder depth persisted per side, per token. The event terminal renders a book, not a market-data
+// archive: 12 levels covers the visible ladder plus a couple of rows of context. BOUNDED ON PURPOSE —
+// the in-memory store already holds the full book, and dumping it every 3s would grow this file with
+// the depth of the most active market rather than with anything the UI shows.
+const LADDER_LEVELS = 12;
 const UA = 'edgeradar-agent34-clob-ws/1.0 (read-only)';
 
 const log = (...a) => console.log(new Date().toISOString(), '[agent34]', ...a);
@@ -208,11 +213,18 @@ function sideView(assetId, minSize, now) {
   const bestAsk = asks[0] ? asks[0].price : null;
   const plainMid = bestBid != null && bestAsk != null ? (bestBid + bestAsk) / 2 : null;
   const adjMid = adjustedMid(bids, asks, minSize, null);
+  // The ladder itself, top-of-book first, capped at LADDER_LEVELS. parseOrders already returns bids
+  // descending and asks ascending, so the slice is genuinely the top of each stack. These are the
+  // SAME level objects the mid/depth math above consumed — one book, not a second fetch.
+  const ladder = (arr) => arr.slice(0, LADDER_LEVELS).map((o) => ({ price: o.price, size: o.size }));
   return {
     live: fr.live, reason: fr.reason, ageMs: fr.ageMs,
     bestBid, bestAsk, plainMid,
     adjustedMid: adjMid != null ? adjMid : null,
     needsResnapshot: b.needsResnapshot,
+    // Levels beyond the cap exist in the book but are NOT in this file — stated so a consumer never
+    // reads the truncated ladder as the whole book.
+    levels: { bids: ladder(bids), asks: ladder(asks), cap: LADDER_LEVELS, bidCount: bids.length, askCount: asks.length },
   };
 }
 

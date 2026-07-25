@@ -17,6 +17,8 @@ export type RouteKey =
   | 'liquidity-rewards-book'
   | 'rewards-legs'
   | 'rewards-unified'
+  | 'rewards-event'
+  | 'rewards-event-book'
   | 'kalshi-rewards'
   | 'kalshi-rewards-book'
   | 'lp'
@@ -333,6 +335,65 @@ export const REDACTION_MAP: Record<RouteKey, string[]> = {
     // tickSize is a static market parameter (not intel) and stays public.
     'markets[].bestBid',
     'markets[].bestAsk',
+  ],
+
+  // Per-market EVENT TERMINAL (/api/rewards/event). Same split as 'rewards-unified', re-expressed for
+  // the single-object shape: the executable/derived intel is nulled, the public market identity is not.
+  //
+  // PUBLIC here (deliberate, matching the board): tickSize, min order size, the daily pot, every
+  // identifier/contract/oracle address, and every date. LOCKED: the scoring mid, the live touch, the
+  // reward band width (maxSpread / min incentive size), book depth, spread, stability and the raw
+  // venue fields those were read from — otherwise the "check column" would hand back the exact numbers
+  // the sections above redact. The chain section is withheld wholesale upstream (owner wallet data),
+  // so it needs no path here.
+  'rewards-event': [
+    'feed.midpoint',
+    'feed.maxSpread',
+    'feed.minSize',
+    'feed.qualifyingLiquidity',
+    'feed.bookDepthAtBand',
+    'feed.volatilityStdev',
+    'feed.stability',
+    'feed.volume24hUsd',
+    'feed.lastPrice',
+    'feed.bookSpread',
+    'feed.bestBid',
+    'feed.bestAsk',
+    'feed.sides.yes.midpoint',
+    'feed.sides.yes.qualifyingLiquidity',
+    'feed.sides.yes.bookDepthAtBand',
+    'feed.sides.yes.bookSpread',
+    'feed.sides.yes.volatilityStdev',
+    'feed.sides.no.midpoint',
+    'feed.sides.no.qualifyingLiquidity',
+    'feed.sides.no.bookDepthAtBand',
+    'feed.sides.no.bookSpread',
+    'feed.sides.no.volatilityStdev',
+    'feed.rewardScore.mid',
+    'feed.rewardScore.competitorQ',
+    'rules.maxSpreadCents',
+    'rules.bandRadiusCents',
+    'rules.minIncentiveSize',
+    'raw.clob.rewards.min_size',
+    'raw.clob.rewards.max_spread',
+    'raw.gamma.rewardsMinSize',
+    'raw.gamma.rewardsMaxSpread',
+  ],
+
+  // The terminal's LIVE ladder feed. The whole executable book is the locked artefact (same call the
+  // board's 'liquidity-rewards-book' key makes); the feed-state/age labels stay public so a free
+  // visitor still sees honestly whether the socket is live or the page is on a stale snapshot.
+  'rewards-event-book': [
+    'yes',
+    'no',
+    'bestBid',
+    'bestAsk',
+    'scoringMid',
+    'plainMid',
+    'maxSpreadCents',
+    'bandRadiusCents',
+    'bandLo',
+    'bandHi',
   ],
 
   'kalshi-rewards': [

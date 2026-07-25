@@ -14,19 +14,12 @@
 import { JsonRpcProvider, Contract, formatUnits, formatEther, isAddress } from 'ethers'
 import { PrismaClient } from '@prisma/client'
 import { POLY_MAKER_VENUE } from '../lib/venues/polymarket-clob-maker/credentials'
+// The addresses moved to lib/poly-contracts (same getContractConfig(137) source) so this preflight
+// and the event terminal's pUSD section can never drift onto different contracts.
+import { PUSD, USDCE, CTF, EXCHANGES, DEFAULT_RPC } from '../lib/poly-contracts'
 
-const RPC = process.env.POLYGON_RPC_URL || 'https://polygon-bor-rpc.publicnode.com'
+const RPC = process.env.POLYGON_RPC_URL || DEFAULT_RPC
 const DATA_API = 'https://data-api.polymarket.com'
-
-// getContractConfig(137) — Polygon mainnet
-const PUSD = '0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB' // v2 settlement collateral (config.collateral)
-const USDCE = '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174' // legacy collateral (USDC.e)
-const CTF = '0x4D97DCd97eC945f40cF65F87097ACe5EA0476045' // ConditionalTokens (ERC-1155) config.conditionalTokens
-const EXCHANGES = [
-  { name: 'CTF Exchange (v2)', addr: '0xE111180000d2663C0091e4f400237545B87B996B' },
-  { name: 'Neg-Risk CTF Exchange (v2)', addr: '0xe2222d279d744050d28e00520010520000310F59' },
-  { name: 'Neg Risk Adapter', addr: '0xd91E80cF2E7be2e162c6513ceD06f1dD0dA35296' },
-]
 
 const ERC20_ABI = [
   'function balanceOf(address) view returns (uint256)',

@@ -431,7 +431,7 @@ h1, h2, h3 {
 /* .rewards reuses the carry card language wholesale: the .cc-* component rules below are
    global class selectors, so only the TOKEN block needs to name the extra wrapper. No CSS
    is duplicated for the Rewards tab. */
-.cashcarry, .rewards, .prediction {
+.cashcarry, .rewards, .prediction, .evt {
   --cc-bg:     var(--ds-bg);
   --cc-panel:  var(--ds-panel);
   --cc-border: var(--ds-border);
@@ -588,6 +588,21 @@ h1, h2, h3 {
 .cc-fctl { display: flex; flex-direction: column; gap: 7px; min-width: 0; padding: 14px; border-bottom: 1px solid var(--cc-border); }
 .cc-fctl:last-child { border-bottom: none; }
 .cc-fctl.is-disabled { opacity: .5; }
+/* Filter-card head: title + the always-visible "Azzera filtri" reset + the persistence contract note.
+   The button is never hidden — a filtered board must always show its own way out. */
+.cc-fhead { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 10px 14px; border-bottom: 1px solid var(--cc-border); }
+.cc-fhead-t { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--cc-muted); flex: 1 1 auto; }
+.cc-fhead-note { flex: 1 1 100%; font-size: 10px; line-height: 1.4; color: var(--cc-muted); }
+.cc-freset {
+  flex: 0 0 auto; min-height: 44px; padding: 0 14px; border-radius: 10px; cursor: pointer;
+  font-family: inherit; font-size: 12px; font-weight: 700; letter-spacing: .01em;
+  color: var(--cc-text); background: transparent; border: 1px solid var(--cc-border);
+  transition: color .15s, border-color .15s, background .15s;
+}
+.cc-freset:hover:not(:disabled) { color: var(--cc-green); border-color: rgba(47,226,154,.45); background: rgba(47,226,154,.08); }
+.cc-freset:focus-visible { outline: 2px solid var(--cc-green); outline-offset: 2px; }
+/* Disabled = nothing to clear. Kept VISIBLE (not hidden) so the control's position never moves. */
+.cc-freset:disabled { opacity: .45; cursor: default; }
 /* slider row: track fills, the formatted value is pinned to the RIGHT and never wraps mid-figure. */
 .cc-slider-body { display: flex; align-items: center; gap: 14px; min-width: 0; }
 .cc-slider-body .cc-frange { flex: 1 1 auto; min-width: 0; margin: 0; }
@@ -1244,4 +1259,128 @@ h1, h2, h3 {
 
 @media (prefers-reduced-motion: reduce) {
   .dsskin * { transition: none !important; }
+}
+
+/* ══ EVENT TERMINAL — per-market read-only data terminal ═══════════════════════════════════════════
+   Mobile-first (360–430px): every section is a single stacked column of label/value rows. Nothing
+   scrolls horizontally — long hex truncates in-place (JS) and long slugs wrap on any character. The
+   ladder is two stacked columns on a phone, side-by-side from 560px. All colour comes from the shared
+   ds tokens (cc + ds custom properties), so day/night both resolve without a second palette. */
+.evt-shell { max-width: 860px; margin: 0 auto; }
+.evt-back {
+  display: inline-flex; align-items: center; min-height: 44px; font-size: 12px; font-weight: 600;
+  color: var(--cc-muted); text-decoration: none;
+}
+.evt-back:hover { color: var(--cc-green); }
+.evt-err { font-size: 13px; color: var(--ds-danger); }
+
+/* A · header */
+.evt-head { padding: 12px 0 16px; border-bottom: 1px solid var(--cc-border); margin-bottom: 4px; }
+.evt-head-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.evt-tag {
+  font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  padding: 3px 8px; border-radius: 999px; color: var(--cc-muted); border: 1px solid var(--cc-border);
+}
+.evt-tag.is-warn { color: var(--cc-amber); border-color: rgba(240,180,60,.45); }
+.evt-title { font-size: clamp(18px, 5.4vw, 26px); line-height: 1.25; font-weight: 800; color: var(--cc-text); margin: 0 0 10px; overflow-wrap: anywhere; }
+.evt-head-cd { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.evt-cd { font-size: clamp(20px, 6vw, 26px); font-weight: 800; color: var(--cc-green); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.evt-head-note, .evt-note-i { font-size: 10.5px; line-height: 1.4; color: var(--cc-muted); }
+.evt-note-i { display: inline-block; }
+
+/* sections */
+.evt-sec { padding: 18px 0; border-bottom: 1px solid var(--cc-border); }
+.evt-sec-h { display: flex; align-items: baseline; gap: 8px; }
+.evt-sec-n { font-size: 10px; font-weight: 800; letter-spacing: .12em; color: var(--cc-green); }
+.evt-sec-t { font-size: 14px; font-weight: 800; color: var(--cc-text); margin: 0; }
+.evt-sec-s { font-size: 11.5px; line-height: 1.5; color: var(--cc-muted); margin: 4px 0 12px; max-width: 70ch; }
+.evt-foot { font-size: 10.5px; line-height: 1.55; color: var(--cc-muted); margin: 8px 0 0; max-width: 74ch; }
+.evt-foot strong { color: var(--cc-text); }
+
+/* label/value rows — the terminal's basic unit */
+.evt-rows { display: flex; flex-direction: column; border: 1px solid var(--cc-border); border-radius: 12px; overflow: hidden; background: var(--cc-panel); }
+.evt-kv {
+  display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 12px;
+  padding: 9px 12px; min-height: 44px; border-bottom: 1px solid var(--cc-border); min-width: 0;
+}
+.evt-kv:last-child { border-bottom: none; }
+.evt-k { font-size: 11px; color: var(--cc-muted); font-weight: 600; display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; min-width: 0; }
+/* provenance chip: the raw venue field the value was read from */
+.evt-src { font-size: 9.5px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--cc-muted); opacity: .75; overflow-wrap: anywhere; }
+.evt-v { font-size: 13px; font-weight: 700; color: var(--cc-text); font-variant-numeric: tabular-nums; text-align: right; margin-left: auto; min-width: 0; }
+.evt-dash { color: var(--cc-muted); font-weight: 400; }
+.evt-wrap { overflow-wrap: anywhere; font-weight: 600; font-size: 12px; }
+.evt-inline { display: inline-flex; flex-wrap: wrap; align-items: baseline; justify-content: flex-end; gap: 4px 8px; }
+.evt-primary { color: var(--cc-green); }
+.evt-ref { color: var(--cc-muted); }
+.evt-yes { color: var(--cc-green); }
+.evt-no { color: var(--ds-danger); }
+.evt-impact.is-low { color: var(--cc-green); }
+.evt-impact.is-mid { color: var(--cc-amber); }
+.evt-impact.is-high { color: var(--ds-danger); }
+
+/* truncated hex + copy */
+.evt-mono { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.evt-mono-v { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.evt-copy {
+  min-width: 44px; min-height: 44px; padding: 0; border: none; background: transparent; cursor: pointer;
+  color: var(--cc-muted); font-size: 14px; font-family: inherit; line-height: 1;
+}
+.evt-copy:hover { color: var(--cc-green); }
+.evt-copy:focus-visible { outline: 2px solid var(--cc-green); outline-offset: -4px; border-radius: 8px; }
+
+/* D · reward band statement */
+.evt-band { margin-top: 12px; padding: 12px; border: 1px solid rgba(47,226,154,.30); border-radius: 12px; background: rgba(47,226,154,.05); }
+.evt-band-t { display: block; font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--cc-muted); }
+.evt-band-f { display: block; font-size: 12.5px; color: var(--cc-text); margin: 4px 0; }
+.evt-band-v { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; font-size: 18px; font-weight: 800; color: var(--cc-green); font-variant-numeric: tabular-nums; }
+.evt-band-range { font-size: 12px; font-weight: 600; color: var(--cc-muted); white-space: nowrap; }
+
+/* E · feed state + ladder */
+.evt-feed { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-bottom: 10px; }
+.evt-pill {
+  font-size: 10px; font-weight: 800; letter-spacing: .06em; padding: 4px 9px; border-radius: 999px;
+  border: 1px solid var(--cc-border); color: var(--cc-muted); white-space: nowrap;
+}
+.evt-pill.is-live { color: var(--cc-green); border-color: rgba(47,226,154,.45); background: rgba(47,226,154,.10); }
+.evt-pill.is-rest { color: var(--cc-amber); border-color: rgba(240,180,60,.45); background: rgba(240,180,60,.08); }
+.evt-pill.is-stale { color: var(--ds-danger); border-color: rgba(255,90,95,.45); background: rgba(255,90,95,.07); }
+.evt-pill.is-ok { color: var(--cc-green); border-color: rgba(47,226,154,.45); }
+.evt-pill.is-no { color: var(--cc-muted); }
+.evt-feed-age { font-size: 11px; font-variant-numeric: tabular-nums; color: var(--cc-text); font-weight: 700; white-space: nowrap; }
+.evt-appr { display: inline-flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end; }
+
+.evt-ladder { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+.evt-lad-col { border: 1px solid var(--cc-border); border-radius: 12px; overflow: hidden; background: var(--cc-panel); min-width: 0; }
+.evt-lad-h { display: flex; justify-content: space-between; gap: 8px; padding: 7px 10px; font-size: 9.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--cc-muted); font-weight: 700; border-bottom: 1px solid var(--cc-border); }
+.evt-lv { position: relative; display: grid; grid-template-columns: minmax(0,auto) minmax(0,1fr) minmax(0,auto); align-items: center; gap: 8px; padding: 6px 10px; font-size: 12px; font-variant-numeric: tabular-nums; overflow: hidden; }
+.evt-lv-bar { position: absolute; inset: 2px auto 2px 0; width: var(--w, 0%); border-radius: 6px; background: var(--cc-track, rgba(127,127,127,.10)); pointer-events: none; }
+.evt-lv.is-bid .evt-lv-bar { background: rgba(47,226,154,.13); }
+.evt-lv.is-ask .evt-lv-bar { background: rgba(255,90,95,.11); }
+.evt-lv-p { position: relative; font-weight: 700; color: var(--cc-text); white-space: nowrap; }
+.evt-lv-s { position: relative; color: var(--cc-muted); text-align: right; white-space: nowrap; }
+.evt-lv-b { position: relative; font-size: 9px; font-weight: 700; letter-spacing: .04em; color: var(--cc-green); text-align: right; white-space: nowrap; }
+.evt-lv.in-band { background: rgba(47,226,154,.05); }
+.evt-lv.is-empty { color: var(--cc-muted); }
+.evt-lad-mid { display: flex; flex-direction: column; gap: 2px; align-items: center; padding: 10px; border: 1px dashed rgba(47,226,154,.4); border-radius: 12px; text-align: center; }
+.evt-lad-midv { font-size: 22px; font-weight: 800; color: var(--cc-green); font-variant-numeric: tabular-nums; }
+.evt-lad-foot { grid-column: 1 / -1; }
+.evt-ladder-empty { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; font-size: 13px; color: var(--cc-muted); }
+
+/* H · validator reasons */
+.evt-reasons { margin: 10px 0 0; padding: 0 0 0 18px; display: flex; flex-direction: column; gap: 4px; }
+.evt-reasons li { font-size: 11px; line-height: 1.5; color: var(--cc-muted); overflow-wrap: anywhere; }
+.evt-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; color: var(--cc-amber); }
+
+/* provenance footer */
+.evt-prov { display: flex; flex-direction: column; gap: 3px; padding: 14px 0 0; font-size: 10px; line-height: 1.5; color: var(--cc-muted); overflow-wrap: anywhere; }
+
+/* the two links out of an expanded reward row */
+.rewards .rw-open-row { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+
+@media (min-width: 560px) {
+  .evt-ladder { grid-template-columns: minmax(0, 1fr) minmax(0, 150px) minmax(0, 1fr); align-items: start; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .evt-back, .evt-copy { transition: none; }
 }
