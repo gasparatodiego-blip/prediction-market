@@ -85,6 +85,7 @@ const WATCHED_AGENTS_RAW = [
   // which keeps a transient venue hiccup or a long Polymarket book walk from paging us,
   // while still catching a real death inside one monitor interval of the 10-min mark.
   { pm2Name: 'agent33-sport-recorder',     hbKey: 'agent33-sport-recorder',  cadenceMs: 45_000, staleMsOverride: 10 * 60_000 },
+  { pm2Name: 'agent38-tape-watchdog',      hbKey: 'agent38-tape-watchdog',   cadenceMs: 60_000 },      // agent38 CHECK_INTERVAL_MS — the watcher is itself watched (who-watches-the-watchman)
   { pm2Name: 'dashboard',                  hbKey: null },
 ];
 

@@ -416,5 +416,22 @@ module.exports = {
       autorestart:   true,
       env:           { NODE_ENV: 'production', HOME: '/root', MAKER_DEADMAN_SECONDS: '120' },
     },
+    {
+      name:          'agent38-tape-watchdog',
+      script:        './agents/agent38-tape-watchdog.js',
+      cwd:           '/root/prediction-market',
+      restart_delay: 15000,
+      max_restarts:  20,
+      // Continuity watchdog for the rewards TRADE-TAPE + MID-HISTORY journals (Jul-25 45h collection).
+      // SEPARATE process by design — a watchdog inside agent34 dies with it. Reads only the two newest
+      // daily journals (trailing-window tailRows, never the whole day), so a tiny footprint. It does NOT
+      // duplicate agent34's socket self-heal (PING/35s watchdog/backoff); it catches the case those miss —
+      // the process WEDGED-but-online with the files not growing — by restarting agent34 ONCE (by name,
+      // never pkill) and, only if that fails, sending ONE Telegram alert per fault episode. Places nothing.
+      max_memory_restart: '150M',
+      watch:         false,
+      autorestart:   true,
+      env:           { NODE_ENV: 'production', HOME: '/root' },
+    },
   ],
 };
