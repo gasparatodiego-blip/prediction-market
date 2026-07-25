@@ -19,12 +19,32 @@ export interface VerifyResult {
 
 const TIMEOUT_MS = 12_000
 
-/** Trim a venue error body to a short, credential-free snippet. */
+/**
+ * Trim a venue error body to a short, credential-free snippet.
+ *
+ * The operator has to be able to READ the venue's error — that is the whole point of
+ * showing it. A blanket ">=20 token-ish chars" rule censored real messages: '/' counts
+ * as a token char, so Polymarket's "Unauthorized/Invalid api key" (that run is exactly
+ * 20 chars) surfaced as "[redacted] api key" and hid the actual cause. Two bands
+ * instead, both of which still cover every credential shape we hold:
+ *
+ *   >= 32 chars            → always redacted. Our credentials are all longer than this
+ *                            (Polymarket apiKey 36 / secret 44 / passphrase 64; a Kalshi
+ *                            key id is a 36-char UUID), so this band is the real guard.
+ *   20-31 chars with digit → redacted. Opaque-token shaped; readable error prose in this
+ *                            length band ("Unauthorized/Invalid", "INSUFFICIENT_BALANCE")
+ *                            has no digits, so it survives.
+ *
+ * This is the VENUE's response, not ours — no credential is placed in it by this module.
+ * The redaction is defence in depth, so it errs long rather than clever.
+ */
 function safeSnippet(body: string): string | null {
   if (!body) return null
-  // Strip anything that looks like a long opaque token (>=20 base64/hex-ish chars),
-  // then cap length. This is the VENUE's response, but be defensive regardless.
-  const stripped = body.replace(/[A-Za-z0-9_\-+/=]{20,}/g, '[redacted]').trim()
+  const stripped = body
+    .replace(/[A-Za-z0-9_\-+/=]{20,}/g, (run) =>
+      run.length >= 32 || /\d/.test(run) ? '[redacted]' : run,
+    )
+    .trim()
   if (!stripped) return null
   return stripped.slice(0, 200)
 }
