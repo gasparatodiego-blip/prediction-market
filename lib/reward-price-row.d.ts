@@ -31,6 +31,11 @@ export interface PriceRow {
   sellYesRaw: number | null;
   /** How far the venue tick grid moved the target, in cents. null when no price was produced. */
   snappedByC: number | null;
+  /** Applied offset (cents) the posted BID/ASK sits from the mid AFTER the tick snap. null when no price. */
+  appliedOffsetBidC: number | null;
+  appliedOffsetAskC: number | null;
+  /** True when the venue grid moved the requested offset to a different applied offset (state it, never round silently). */
+  offsetSnapped: boolean;
   bidInBand: boolean | null;
   askInBand: boolean | null;
   anyOutOfBand: boolean;

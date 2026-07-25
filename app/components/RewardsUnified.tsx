@@ -169,6 +169,11 @@ interface Base {
 interface Row extends Base {
   poolDayUsd: number | null;
   netUsdPerDay: number | null;    // dailyUsd (primary) — sort key reused by rewards-filter
+  // FIXED-$1,000-quarter-band REFERENCE figures. Kept for the DEMOTED "riferimento" line only, never the
+  // operator's headline — the headline/sort read the PERSONALISED price-first figure at the operator's size.
+  refUsdPerDay: number | null;
+  refShare: number;
+  refDeployed: number;
   apr: number | null;             // annualized on MEASURED CAPACITY, capped — filter-only (not rendered)
   apyRaw: number | null;          // annualized on MEASURED CAPACITY, UNCAPPED — null when capacity too thin to annualize
   apyCapped: boolean;             // apyRaw > APY_CAP → render ">200%/yr · run-rate, not guaranteed"
@@ -528,6 +533,12 @@ export default function RewardsUnified() {
       capacityThin,
       capacityUsd,
       deployed:     est.assumedOrderSizeUsd,   // the fixed assumed order the estimate is priced for
+      // FIXED-REFERENCE ($1,000 a quarter-band off the mid) — surfaced ONLY as the demoted "riferimento"
+      // line so the operator can compare, never as their own figure. Phase 2 repoints the headline + sort
+      // key (netUsdPerDay/share) to the personalised price-first figure; these stay the fixed basis.
+      refUsdPerDay: unknown ? null : est.estUsdPerDay,
+      refShare:     unknown ? 0 : (est.share ?? 0),
+      refDeployed:  est.assumedOrderSizeUsd,
       idle:         0,
       space:        Infinity,
       share,
@@ -1047,6 +1058,28 @@ export default function RewardsUnified() {
                                 </span>
                               )}
                             </Redacted>
+                            {/* PERSONALISED QUALIFIERS (small, secondary, right-aligned like the run-rate line):
+                                (a) the venue grid can only post on the tick, so when it moved the requested
+                                offset the row STATES the applied offset — never a silent round;
+                                (b) a below-min / out-of-band order earns a CORRECT $0 and says why, never a
+                                small positive;
+                                (c) the FIXED-$1,000 reference is kept VISIBLE but DEMOTED and labelled a
+                                reference, not the operator's number. */}
+                            {totalSizeUsd != null && offsetCents != null && pr.offsetSnapped && fin(pr.appliedOffsetBidC) && (
+                              <span className="cc-row-applied" title="la tua size non cambia; il prezzo può stare solo sulla griglia del venue (tick), quindi l'offset richiesto è stato spostato al tick più vicino">
+                                offset richiesto {offsetCents}c → applicato {pr.appliedOffsetBidC}c{fin(pr.appliedOffsetAskC) && pr.appliedOffsetAskC !== pr.appliedOffsetBidC ? `/${pr.appliedOffsetAskC}c` : ''} (tick {pr.tick})
+                              </span>
+                            )}
+                            {totalSizeUsd != null && pr.grossPerDay === 0 && (
+                              <span className="cc-row-tails" title="un ordine sotto il minimo del venue o fuori dalla banda premiante matura zero — è uno zero corretto, non una piccola cifra positiva">
+                                {pr.anyOutOfBand ? 'fuori banda — nessun premio' : 'sotto il minimo del venue — nessun premio'}
+                              </span>
+                            )}
+                            {isPaid && fin(row.refUsdPerDay) && (
+                              <span className="cc-row-ref" title="cifra di riferimento per un ordine da $1.000 a un quarto della banda — un termine di paragone, NON la tua configurazione">
+                                rif. ${row.refDeployed.toLocaleString()}: ${(row.refUsdPerDay as number).toFixed(2)}/g
+                              </span>
+                            )}
                             {/* PHASE 1 — the POT the share/estimate is a share OF, always adjacent so a % or a
                                 $/day is never read without the money behind it. A pot below the floor is
                                 labelled "troppo piccolo": a high share of it is not an opportunity. */}
@@ -1101,7 +1134,7 @@ export default function RewardsUnified() {
                               complementary-identity line, reward-band rail, expected gross $/day at YOUR
                               size, own-impact chip, net "—". The band warning CALLS the shared validator. */}
                           <RewardPriceFirst row={row} isPaid={isPaid} totalSizeUsd={totalSizeUsd} offsetCents={offsetCents} />
-                          <RewardYieldBreakdown row={row} isPaid={isPaid} />
+                          <RewardYieldBreakdown row={row} isPaid={isPaid} totalSizeUsd={totalSizeUsd} offsetCents={offsetCents} />
                           {/* Into the interactive order-book detail page for THIS exact market.
                               marketId is the raw feed id (Polymarket conditionId / Kalshi ticker) —
                               the same key the detail route resolves against /api/rewards-unified. */}
@@ -1156,7 +1189,23 @@ export default function RewardsUnified() {
  * Row-expand breakdown — the SAME shared-lib numbers the headline uses (poolDay × refShare),
  * itemised at the fixed assumed order. No second math path; nothing the row doesn't already compute.
  */
-function RewardYieldBreakdown({ row, isPaid }: { row: Row; isPaid: boolean }) {
+function RewardYieldBreakdown({ row, isPaid, totalSizeUsd, offsetCents }:
+  { row: Row; isPaid: boolean; totalSizeUsd: number | null; offsetCents: number | null }) {
+  const m = row.m;
+  // PERSONALISED — the operator's OWN size + offset through the SAME shared quadratic (computePriceRow)
+  // the price-first block and the compact headline use. NOT the fixed $1,000 basis. One math path.
+  const pr = computePriceRow({
+    rewardScore: m.rewardScore ?? null,
+    tick: fin(m.tickSize) ? (m.tickSize as number) : null,
+    totalSizeUsd, offsetCents, market: m,
+  });
+  // The operator's figures are unknown when the row is unscoreable (stale / non-exec / no pool) OR the size
+  // box is empty — never a fallback to the reference.
+  const blocked = row.notCollectable || row.unknown;
+  const yourShare  = blocked ? null : (fin(pr.share) ? pr.share : null);
+  const yourReward = blocked ? null : (fin(pr.grossPerDay) ? pr.grossPerDay : null);
+  const tails = yourReward === 0;   // below-min / out-of-band earns a CORRECT $0, never a small positive
+
   const rowset: Array<[string, React.ReactNode]> = [
     ['reward pool (the whole prize)', <Redacted key="p" value={row.poolDayUsd} isPaid>{(v) => <>${Number(v).toFixed(0)}/day</>}</Redacted>],
     [row.venue === 'polymarket' ? 'depth already there · both sides' : 'depth already there',
@@ -1166,7 +1215,7 @@ function RewardYieldBreakdown({ row, isPaid }: { row: Row; isPaid: boolean }) {
     <div className="rw-calc">
       <div className="rw-calc-block">
         <span className="rw-calc-h">
-          A ${row.deployed.toLocaleString()} order in this book
+          Al TUO size in questo book
           <span className={`rw-src ${row.measured ? 'is-measured' : 'is-observed'}`}>
             {row.measured ? 'measured · live book' : 'observed split'}
           </span>
@@ -1177,21 +1226,36 @@ function RewardYieldBreakdown({ row, isPaid }: { row: Row; isPaid: boolean }) {
           ))}
         </div>
         <div className="rw-brk rw-brk-strong">
-          <div className="rw-brk-item"><span className="rw-brk-k">assumed order</span>
-            <span className="rw-brk-v">${row.deployed.toLocaleString()}</span></div>
+          {/* YOUR size — the configured total, and (when it binds) the depth-capped capital the share is
+              priced on. Never the fixed $1,000. Empty size ⇒ "—", never a default. */}
+          <div className="rw-brk-item"><span className="rw-brk-k">la tua size{pr.capitalCapped ? ' · limitata dalla profondità' : ''}</span>
+            <span className="rw-brk-v">{totalSizeUsd == null
+              ? <span className="rw-dim" title="inserisci la tua size in alto per stimare il tuo premio">—</span>
+              : <>${Number(totalSizeUsd).toLocaleString()}{pr.capitalCapped && fin(pr.capitalCapUsd) ? <span className="rw-dim" title={pr.capNote ?? undefined}> → quota su ${Math.round(pr.capitalCapUsd as number).toLocaleString()}</span> : null}</>}</span></div>
           {/* PHASE 2 — Kalshi rewards are not collectable from the EU, so no earnable share/reward is
               shown (a number you cannot collect is not honest to display): "—" + the jurisdiction reason. */}
-          <div className="rw-brk-item"><span className="rw-brk-k">your pool share</span>
+          <div className="rw-brk-item"><span className="rw-brk-k">la tua quota del pool</span>
             <span className="rw-brk-v">{row.notCollectable
               ? <span className="rw-dim" title="programma Kalshi riservato ai membri USA — non riscuotibile da questo operatore (UE)">—</span>
-              : <Redacted value={row.unknown ? null : row.share} isPaid={isPaid}>{(v) => <>{(Number(v) * 100).toFixed(1)}%{fin(row.poolDayUsd) ? <span className="rw-dim"> · di ${(row.poolDayUsd as number).toFixed(0)}/g</span> : null}</>}</Redacted>}</span></div>
-          <div className="rw-brk-item"><span className="rw-brk-k">{row.notCollectable ? 'your reward · non riscuotibile' : 'your reward · stima (gross)'}</span>
+              : <Redacted value={yourShare} isPaid={isPaid} nullDisplay={<span className="rw-dim">—</span>}>{(v) => <>{(Number(v) * 100).toFixed(1)}%{fin(row.poolDayUsd) ? <span className="rw-dim"> · di ${(row.poolDayUsd as number).toFixed(0)}/g</span> : null}</>}</Redacted>}</span></div>
+          <div className="rw-brk-item"><span className="rw-brk-k">{row.notCollectable ? 'il tuo premio · non riscuotibile' : 'il tuo premio · stima (gross)'}</span>
             <span className="rw-brk-v rw-brk-primary">{row.notCollectable
               ? <span className="rw-dim" title="i premi Kalshi sono riservati ai residenti USA; questo operatore è nell'UE — nessuna cifra guadagnabile viene mostrata">—</span>
-              : <Redacted value={row.unknown ? null : row.netUsdPerDay} isPaid={isPaid}>{(v) => <>${Number(v).toFixed(2)}/day</>}</Redacted>}</span></div>
+              : tails
+                ? <span className="rw-dim" title="ordine sotto il minimo del venue o fuori dalla banda premiante — matura zero, uno zero corretto, non una piccola cifra positiva">$0.00/day · {pr.anyOutOfBand ? 'fuori banda' : 'sotto il minimo'}</span>
+                : <Redacted value={yourReward} isPaid={isPaid} nullDisplay={<span className="rw-dim" title={totalSizeUsd == null ? 'inserisci la tua size in alto' : 'book non valutabile — nessun prezzo/profondità in banda'}>—</span>}>{(v) => <>${Number(v).toFixed(2)}/day</>}</Redacted>}</span></div>
           {/* Net is NOT modelled — adverse selection / inventory risk on fills is excluded. No figure invented. */}
           <div className="rw-brk-item"><span className="rw-brk-k">net (adverse selection non modellata)</span>
             <span className="rw-brk-v rw-dim" title="il rendimento netto sottrae il costo di adverse selection quando i tuoi ordini vengono eseguiti — non è modellato, quindi resta sconosciuto">—</span></div>
+        </div>
+        {pr.offsetSnapped && fin(pr.appliedOffsetBidC) && (
+          <div className="rw-calc-note rw-dim">offset richiesto {offsetCents}c → applicato {pr.appliedOffsetBidC}c{fin(pr.appliedOffsetAskC) && pr.appliedOffsetAskC !== pr.appliedOffsetBidC ? `/${pr.appliedOffsetAskC}c` : ''} (tick {pr.tick})</div>
+        )}
+        {pr.capNote && <div className="rw-calc-note rw-dim">{pr.capitalCapped ? '⚠ ' : ''}{pr.capNote}</div>}
+        {/* FIXED-$1,000 REFERENCE — kept VISIBLE but DEMOTED and explicitly labelled: a comparison basis,
+            NOT the operator's number. */}
+        <div className="rw-calc-ref rw-dim" title="riferimento fisso: un ordine da $1.000 a un quarto della banda dal punto medio — serve solo come paragone, non è la tua configurazione">
+          riferimento (${row.refDeployed.toLocaleString()}, un quarto della banda): {fin(row.refUsdPerDay) ? <>${(row.refUsdPerDay as number).toFixed(2)}/day</> : '—'} — non la tua cifra
         </div>
         <div className="rw-calc-meta">
           <span className="rw-dim">

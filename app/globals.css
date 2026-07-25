@@ -679,6 +679,15 @@ h1, h2, h3 {
 .cc-row-pot { display: block; font-size: 10px; color: var(--cc-muted); text-align: right; margin-top: 2px; font-variant-numeric: tabular-nums; max-width: 230px; }
 .cc-row-pot-k { text-transform: uppercase; letter-spacing: .04em; font-size: 8.5px; opacity: .8; }
 .cc-row-potwarn { color: var(--cc-amber); cursor: help; }
+/* PERSONALISED-ROW qualifiers (right-aligned, small, secondary — like the run-rate line). The applied-offset
+   notice states the tick snap; the tails note explains a correct $0; the demoted reference is the fixed
+   $1,000 basis, explicitly a comparison and never the operator's headline. Values never wrap. */
+.cc-row-applied { display: block; font-size: 9px; color: var(--cc-muted); opacity: .8; text-align: right; margin-top: 2px; max-width: 230px; cursor: help; line-height: 1.35; }
+.cc-row-tails { display: block; font-size: 9px; color: var(--cc-amber); opacity: .9; text-align: right; margin-top: 2px; max-width: 230px; cursor: help; line-height: 1.35; }
+.cc-row-ref { display: block; font-size: 9px; color: var(--cc-muted); opacity: .62; text-align: right; margin-top: 2px; max-width: 230px; cursor: help; line-height: 1.35; font-variant-numeric: tabular-nums; }
+/* Breakdown-panel notes (applied offset, capacity cap) + the demoted reference line inside the expand. */
+.rw-calc-note { font-size: 10px; margin-top: 6px; line-height: 1.4; }
+.rw-calc-ref { font-size: 10px; margin-top: 6px; opacity: .7; line-height: 1.4; cursor: help; border-top: 1px dashed var(--cc-border, rgba(255,255,255,.08)); padding-top: 6px; }
 /* PHASE 2 — Kalshi rewards not collectable from this jurisdiction: a permanent, calm, non-dismissible badge. */
 .rewards .rw-nocollect { font-size: 9px; font-weight: 700; padding: 1px 6px; border-radius: 999px; white-space: nowrap;
   color: var(--ds-danger); border: 1px solid rgba(229,86,78,.4); background: rgba(229,86,78,.08); cursor: help; }

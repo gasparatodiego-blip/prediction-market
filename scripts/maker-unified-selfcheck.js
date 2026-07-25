@@ -214,6 +214,58 @@ assert.ok(coarse.buyYesRaw != null && coarse.snappedByC > 0,
 assert.ok(Math.abs(coarse.buyYesRaw - (0.4567 - 0.013)) < 1e-9, 'pre-snap target must be mid − offset, untouched');
 ok(`snap recorded: raw ${coarse.buyYesRaw.toFixed(4)} → ${coarse.buyYes} (moved ${coarse.snappedByC.toFixed(2)}¢)`);
 
+// ── 3b′ · PERSONALISED ROW — REWARDS-ROW-PERSONALISE: every row is the OPERATOR'S size + offset, never
+//     the fixed $1,000-at-quarter-band basis. These assertions each trip ONE guard independently. ─────
+console.log('\n3b′. personalised row — operator size/offset, tick-applied offset, tails, cap, "—"');
+
+// A market with READABLE two-sided in-band depth (competitorDepthUsd = near + far). $9,000 of eligible depth.
+const mktDeep = { venue: 'polymarket', bookDepthAtBand: 5000, sides: { no: { bookDepthAtBand: 4000 } } };
+
+// (a) APPLIED OFFSET after the tick snap is stated, never rounded silently. 1.5c on a 0.01 grid can't apply
+//     exactly; 1c can. offsetSnapped reports the difference; the applied offset is the real distance.
+const snapRow = computePriceRow({ rewardScore: rsTick, tick: 0.01, totalSizeUsd: 400, offsetCents: 1.5, market: mktDeep });
+assert.strictEqual(snapRow.offsetSnapped, true, '1.5c on a 0.01 tick cannot apply exactly → offsetSnapped true');
+assert.ok(snapRow.appliedOffsetBidC != null && Math.abs(snapRow.appliedOffsetBidC - 1.5) > 1e-6,
+  'the applied offset differs from the requested 1.5c and is reported (not a silent round)');
+const exactRow = computePriceRow({ rewardScore: rsTick, tick: 0.01, totalSizeUsd: 400, offsetCents: 1, market: mktDeep });
+assert.strictEqual(exactRow.offsetSnapped, false, '1c on a 0.01 tick applies exactly → offsetSnapped false (no notice)');
+assert.ok(Math.abs(exactRow.appliedOffsetBidC - 1) < 1e-6, 'an exactly-applicable offset reports the same applied offset');
+ok(`applied offset stated: 1.5c → ${snapRow.appliedOffsetBidC}c (snapped) · 1c → ${exactRow.appliedOffsetBidC}c (exact, no notice)`);
+
+// (b) the headline $/day is the OPERATOR'S — it MOVES with the configured size (the fixed $1,000 basis does not).
+const g400  = computePriceRow({ rewardScore: rsTick, tick: 0.01, totalSizeUsd: 400,  offsetCents: 1, market: mktDeep }).grossPerDay;
+const g1000 = computePriceRow({ rewardScore: rsTick, tick: 0.01, totalSizeUsd: 1000, offsetCents: 1, market: mktDeep }).grossPerDay;
+assert.ok(g400 != null && g1000 != null && g400 < g1000,
+  `personalised $/day scales with size: $400 → ${g400} must be < $1000 → ${g1000}`);
+ok(`headline $/day follows the operator's size: $400 → $${g400.toFixed(4)}/day vs $1000 → $${g1000.toFixed(4)}/day`);
+
+// (c) TAILS — an out-of-band offset earns a CORRECT $0 (never a small positive). Band radius = 6/2 = 3c; 5c is out.
+const oob = computePriceRow({ rewardScore: rsTick, tick: 0.01, totalSizeUsd: 400, offsetCents: 5, market: mktDeep });
+assert.strictEqual(oob.grossPerDay, 0, 'an out-of-band offset earns exactly $0 (tails), never a small positive');
+assert.strictEqual(oob.anyOutOfBand, true, 'the out-of-band tail is flagged so the row can state WHY it is zero');
+ok('tails: an out-of-band offset → $0/day with anyOutOfBand=true (the row states why)');
+
+// (c2) TAILS — a per-side order below the venue min_incentive_size also earns $0 (below-min case).
+const belowMinRow = computePriceRow({ rewardScore: rsTick, tick: 0.01, totalSizeUsd: 2, offsetCents: 1, market: mktDeep });
+assert.strictEqual(belowMinRow.grossPerDay, 0, 'a per-side order below min_incentive_size earns $0 (below-min tail)');
+ok(`tails: a $2 order (< min ${rsTick.minSize} shares/side) → $0/day, not a small positive`);
+
+// (d) CAPACITY CAP — the modelled capital is capBind by real in-band depth; when it binds the row says so.
+const capBind = computePriceRow({ rewardScore: rsTick, tick: 0.01, totalSizeUsd: 20000, offsetCents: 1, market: mktDeep });
+assert.strictEqual(capBind.capitalCapped, true, 'a size above the in-band depth is capBind by the real book');
+assert.ok(Math.abs(capBind.estimateCapitalUsd - 9000) < 1e-6, 'the estimate is priced on the $9,000 of real depth, not the $20,000 requested');
+assert.ok(typeof capBind.capNote === 'string' && capBind.capNote.length > 0, 'the binding cap states its reason on the row');
+ok(`capacity cap binds: $20,000 requested → priced on $${capBind.estimateCapitalUsd} of real depth, reason stated`);
+
+// (e) "—" PATH — an UNREADABLE input yields NO figure, never a fallback to the reference. Missing depth
+//     (no market / no bookDepthAtBand) → grossPerDay null; the caller renders "—", not the $1,000 basis.
+const noDepthRow = computePriceRow({ rewardScore: rsTick, tick: 0.01, totalSizeUsd: 400, offsetCents: 1, market: { venue: 'polymarket' } });
+assert.strictEqual(noDepthRow.grossPerDay, null, 'unreadable in-band depth → grossPerDay null (row renders "—")');
+assert.ok(typeof noDepthRow.capNote === 'string' && /non leggibile/.test(noDepthRow.capNote), 'the "—" carries a reason, not a silent blank');
+const noSize = computePriceRow({ rewardScore: rsTick, tick: 0.01, totalSizeUsd: null, offsetCents: 1, market: mktDeep });
+assert.strictEqual(noSize.grossPerDay, null, 'an empty size box → grossPerDay null (no default, no reference fallback)');
+ok('"—" path: unreadable depth AND empty size → null $/day (never a fallback to the fixed reference)');
+
 // ── 3c · UNITS — dollars in, SHARES on the wire, one conversion ─────────────────────────────────────
 // The operator types dollars, the venue sizes in shares, and the reward quadratic weights shares. The
 // conversion must happen exactly once (lib/reward-price-row.perSideShares) and every consumer must read
