@@ -173,7 +173,13 @@ model RewardsLeg {
   price     Float                               // the placed price level (0..1)
   mode      String   @default("follow")         // 'follow' (target = mid∓offset, tracks live) | 'pinned' (target = price)
   offsetC   Float    @default(0)                // signed distance-to-mid in cents at placement: (price - mid)*100
-  onFill    String   @default("requote")        // per-level fill rule: 'requote' | 'close' (mirrors fillRules)
+  // Per-side on-fill rule, and the ONE field agent35 acts on when a leg fills. Canonical vocabulary is
+  // 'close' | 'opposite' | 'hold' (lib/maker/fill-policy); the legacy 'requote' (≡ opposite) and
+  // 'flatten' (≡ close) rows still read correctly because normalizeFillRule maps them. Stays a String
+  // precisely so the vocabulary could widen without a migration. The column DEFAULT stays "requote"
+  // on purpose: changing it would be schema drift needing a migration, and it already normalizes to
+  // 'opposite' on read — identical behaviour, no migration.
+  onFill    String   @default("requote")
   // Per-leg maker controls (agent35-maker). Independently enable/disable each channel/level and set its
   // size; null size → the engine default. Additive to the SAME leg model (not a parallel one) so the
   // drift advisory and the maker quote against one shared per-leg config.

@@ -109,6 +109,13 @@ data/maker-heartbeat.json
 data/maker-heartbeat.json.tmp.*
 data/maker-watchdog-state.json
 data/maker-watchdog-state.json.tmp.*
+# per-market collateral ceilings the operator sets on the market screen — operator runtime state,
+# machine-local like the arming record; the code that reads it is source, the ceilings are not
+data/maker-market-caps.json
+data/maker-market-caps.json.tmp.*
+# durable arming record (lib/maker/arming.js) — runtime only, never source
+data/maker-arming.json
+data/maker-arming.json.tmp.*
 
 # Polymarket fee SSOT cache (runtime, per-market base_fee; not source)
 data/polymarket-fee-cache.json
