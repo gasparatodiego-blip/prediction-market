@@ -501,13 +501,26 @@ export default function RewardsUnified() {
     // capacity below): a $1,000 share scored against a $618 book is a statement about the book, not a
     // forecast. When the cap binds the headline $/day IS the capped figure and the row says so.
     const est = estimatedOperatorSharePerDay(b.m.rewardScore ?? null, { inBandDepthUsd: competitorDepthUsd(b.m) });
+    // PERSONALISED price-first figure at the OPERATOR's own size + offset (the SAME computePriceRow the row
+    // headline and the summary bar use — one math path). This, NOT the fixed $1,000 est, is the sort key
+    // (netUsdPerDay) so the board ranks "where does MY capital work hardest", never a hypothetical $1,000.
+    const pr = computePriceRow({
+      rewardScore: b.m.rewardScore ?? null,
+      tick: fin(b.m.tickSize) ? (b.m.tickSize as number) : null,
+      totalSizeUsd, offsetCents, market: b.m,
+    });
     // PHASE 3 — a row whose observation is stale (older than the threshold) renders its share/estimate as
     // "—" rather than a stale number presented as current. The mid/pot/depth still show as context.
     const stale = b.m.observation?.stale === true;
-    const unknown = est.unknown || b.nonExecReason != null || stale;
+    // The FIXED reference is unknown only when the MARKET can't be scored (independent of the size box), so
+    // the demoted "riferimento" line stays visible even with an empty size.
+    const refUnknown = est.unknown || b.nonExecReason != null || stale;
+    // The OPERATOR's figure is additionally null when the size box is empty OR the personalised price is
+    // unreadable — never a fallback to the reference. This is the headline AND the sort key.
+    const unknown = refUnknown || !fin(pr.grossPerDay);
     const stab = stabilityOf(b.m);
-    const netUsdPerDay = unknown ? null : est.estUsdPerDay;
-    const share = unknown ? 0 : (est.share ?? 0);
+    const netUsdPerDay = unknown ? null : (pr.grossPerDay as number);
+    const share = unknown ? 0 : (fin(pr.share) ? (pr.share as number) : 0);
     // The two-sided in-band depth already resting in the book — the MEASURED reward-eligible
     // capacity (lib/reward-depth-floor competitorDepthUsd: near + far side for Polymarket). This
     // is the annualization denominator: real book depth, never a hardcoded capital constant, never
@@ -536,8 +549,8 @@ export default function RewardsUnified() {
       // FIXED-REFERENCE ($1,000 a quarter-band off the mid) — surfaced ONLY as the demoted "riferimento"
       // line so the operator can compare, never as their own figure. Phase 2 repoints the headline + sort
       // key (netUsdPerDay/share) to the personalised price-first figure; these stay the fixed basis.
-      refUsdPerDay: unknown ? null : est.estUsdPerDay,
-      refShare:     unknown ? 0 : (est.share ?? 0),
+      refUsdPerDay: refUnknown ? null : est.estUsdPerDay,
+      refShare:     refUnknown ? 0 : (est.share ?? 0),
       refDeployed:  est.assumedOrderSizeUsd,
       idle:         0,
       space:        Infinity,
@@ -558,7 +571,9 @@ export default function RewardsUnified() {
       stabilityScore: stab.score,
       hoursToResolution: fin(b.m.hoursToResolution) ? (b.m.hoursToResolution as number) : null,
     };
-  }), [base]);
+    // Depends on size/offset now that the headline + sort key are the PERSONALISED figure: changing either
+    // must re-rank the board (Phase 4 keeps this cheap — memoised, no refetch).
+  }), [base, totalSizeUsd, offsetCents]);
 
   // Rows are ALREADY filtered by the server (lib/rewards-server-filter). The client only SORTS
   // (presentation) — no second filter pass, so the shown count can never diverge from the API's

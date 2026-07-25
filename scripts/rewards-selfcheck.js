@@ -126,7 +126,56 @@ function phase3() {
 }
 function ok_silent(cond) { assert.ok(cond); }
 
+// ── PHASE 2 (REWARDS-ROW-PERSONALISE) — the board ranks by the OPERATOR'S figure, and "—" rows have a
+//    DEFINED position in every sort mode (never silently first or last). netUsdPerDay now carries the
+//    personalised price-first $/day, so sortRows ranking it = ranking the operator's own number. ───────
+function phase4() {
+  console.log('\nPHASE 2 — rank by the operator\'s own figure; "—" rows have a defined position');
+
+  // (1) the $/day sort ranks by netUsdPerDay high→low — whatever figure it holds (now the personalised one).
+  const rows = [
+    { m: { marketId: 'a' }, netUsdPerDay: 1.17, stabilityScore: 40, hoursToResolution: 100, poolDayUsd: 317 },
+    { m: { marketId: 'b' }, netUsdPerDay: 8.40, stabilityScore: 40, hoursToResolution: 100, poolDayUsd: 149 },
+    { m: { marketId: 'c' }, netUsdPerDay: 0.60, stabilityScore: 40, hoursToResolution: 100, poolDayUsd: 200 },
+  ];
+  const day = sortRows(rows, { sortMode: 'day', sortDir: 'desc' });
+  ok('$/day sort ranks by the personalised netUsdPerDay (8.40 > 1.17 > 0.60)',
+    day.map((r) => r.m.marketId).join('') === 'bac');
+
+  // (2) ranking follows the OPERATOR'S figure, NOT the fixed reference. Two rows whose FIXED reference would
+  //     order X>Y but whose PERSONALISED figure orders Y>X: sorting on netUsdPerDay (= personalised) yields Y
+  //     first — "where does MY capital work hardest", not a hypothetical $1,000's.
+  const persRows = [
+    { m: { marketId: 'X' }, refUsdPerDay: 175.88, netUsdPerDay: 2.10, stabilityScore: 50, hoursToResolution: 100, poolDayUsd: 300 },
+    { m: { marketId: 'Y' }, refUsdPerDay: 6.92,   netUsdPerDay: 48.67, stabilityScore: 50, hoursToResolution: 100, poolDayUsd: 300 },
+  ];
+  const byRef  = [...persRows].sort((p, q) => q.refUsdPerDay - p.refUsdPerDay).map((r) => r.m.marketId).join('');
+  const byPers = sortRows(persRows, { sortMode: 'day', sortDir: 'desc' }).map((r) => r.m.marketId).join('');
+  ok('the fixed reference would rank X (a $1k dominating a thin book) first', byRef === 'XY');
+  ok('but the personalised sort ranks Y first — the board follows the OPERATOR\'S figure, not $1,000', byPers === 'YX');
+
+  // (3) a "—" (null netUsdPerDay) row is pinned LAST in BOTH directions and in EVERY mode — a DEFINED
+  //     position, never silently first/last. It even has the highest pool + stability, so only the null
+  //     handling (not a lucky value) keeps it out of the top.
+  const withNull = [
+    { m: { marketId: 'n' }, netUsdPerDay: null, stabilityScore: 99, hoursToResolution: 10, poolDayUsd: 9999 },
+    { m: { marketId: 'p' }, netUsdPerDay: 3.0,  stabilityScore: 10, hoursToResolution: 999, poolDayUsd: 50 },
+  ];
+  ok('"—" row is LAST in $/day desc (never first on a null)', sortRows(withNull, { sortMode: 'day', sortDir: 'desc' }).at(-1).m.marketId === 'n');
+  ok('"—" row is LAST in $/day asc too (null pinned last in BOTH directions, not treated as 0)', sortRows(withNull, { sortMode: 'day', sortDir: 'asc' }).at(-1).m.marketId === 'n');
+  ok('"—" row is LAST in the default (legacy) $/day sort', sortRows(withNull, { sortDir: 'desc' }).at(-1).m.marketId === 'n');
+
+  // (4) a demoted row with a HUGE personalised figure still sorts below a non-demoted smaller one (the
+  //     tiny-pot / non-collectable guard composes with the personalised key).
+  const demRows = [
+    { m: { marketId: 'big-demoted' }, netUsdPerDay: 999, demoted: true, stabilityScore: 50, hoursToResolution: 100, poolDayUsd: 10 },
+    { m: { marketId: 'small-real' },  netUsdPerDay: 1.2, demoted: false, stabilityScore: 50, hoursToResolution: 100, poolDayUsd: 300 },
+  ];
+  ok('a demoted row keeps its below-the-fold position even with a huge personalised $/day', sortRows(demRows, { sortMode: 'day', sortDir: 'desc' })[0].m.marketId === 'small-real');
+}
+
 phase1();
 phase2();
 phase3();
+phase4();
 console.log(`\nrewards-selfcheck: ${passed} assertions passed`);
