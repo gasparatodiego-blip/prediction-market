@@ -16,6 +16,9 @@ import { dropResolvedRewards } from '@/lib/maker/universe';
 // The live depth-at-touch floor ($) — surfaced in meta so the "hide thin books" help text states the
 // REAL value (env REWARD_DEPTH_TOUCH_FLOOR_USD or the $25 default) and can never drift from the code.
 import { depthFloorUsd } from '@/lib/reward-depth-floor';
+// Per-market multi-level depth (history-preferred, live fallback) so the client can recompute LAYERED
+// (multi-price) scoring reactively. Adds only depth + source; the geometry stays the shared lib.
+import { enrichLayeredDepth } from '@/lib/reward-layered-enrich';
 
 // Reference balance the guardian evaluates at — the SAME default the list first shows (RewardsUnified
 // BAL_DEFAULT). The stamped day-yield is what a paid user sees at that balance.
@@ -199,8 +202,15 @@ export async function GET(request: NextRequest) {
       mostRestrictiveFilter,                  // { key, recovers } at zero matches, else null
     };
 
+    // Attach per-market multi-level depth (history-preferred median, live-ladder fallback) to the matched
+    // set so the client recomputes layered scoring reactively. Depth only — the client owns the geometry.
+    data.markets = enrichLayeredDepth(data.markets);
+
     const session = await getServerSession(authOptions);
     const isPaid  = await getIsPaid(session);
+    // Free tier never receives the per-level depth: it is the raw input a client would score the (paid)
+    // per-layer edge from, so it is gated exactly like the edge itself — nulled server-side, not teased.
+    if (!isPaid) for (const m of data.markets) if (m) m.layeredDepth = null;
     // Stamp the server-evaluated tier into the payload so the client can tell a LOCKED null
     // (free → 🔒) from a genuinely-not-measured null (paid → "—"). This flag is a presentation
     // hint only: the sensitive VALUES are already physically absent for free (redactForTier

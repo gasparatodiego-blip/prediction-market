@@ -30,6 +30,14 @@ import { REWARD_SANITY_CAP_PCT, isSanePolymarketLevel } from '@/lib/reward-gatin
 // (app/api/rewards-unified via lib/rewards-server-filter) so the row COUNT is correct for every
 // tier and the payload is genuinely filtered — the browser no longer fetches-all-and-hides.
 import { sortRows, saturationView } from '@/lib/rewards-filter';
+// LAYERED (multi-price) reward quoting (Phase 6). The client owns the GEOMETRY (derives band + tick and
+// asks for N layers at a spacing); the API owns the DEPTH (layeredDepth per level). These shared libs are
+// the SINGLE path — geometry (reward-layers), quadratic (rewardScore) and cap/score all live inside them,
+// never reimplemented here.
+import {
+  computeLayeredPlan, capLayeredPlan, scoreLayeredPlan, depthSourceLabel,
+  type ScoredLayeredPlan, type DepthSource, type LayerDepth,
+} from '@/lib/reward-layered';
 
 /**
  * Liquidity rewards — per-operator ESTIMATED share list.
@@ -103,6 +111,10 @@ interface Market {
   // PHASE 3 — the row's single coherent observation: live (agent34, one instant) or scan (15-min).
   // ageMs is the age of that observation; stale (age > threshold) → the share/estimate renders "—".
   observation?: { at: string | null; ageMs: number | null; speed: 'live' | 'scan'; stale: boolean } | null;
+  // LAYERED depth (Phase 6). Real per-level resting depth the layered scorer caps + scores against —
+  // history-preferred, live fallback, disclosed via `source`. null on the free tier and for unsupported
+  // markets (compute degrades to the single-layer path). The client derives the geometry; this is DEPTH.
+  layeredDepth?: { source: DepthSource; perLevel: LayerDepth[] } | null;
 }
 
 // ── Stability, in words ──────────────────────────────────────────────────────────────────────
@@ -193,6 +205,12 @@ interface Row extends Base {
   stabilityScore: number | null;      // measured band-relative stability (0..100) or null (unmeasured)
   stability: Stability;               // full measurement — label, drivers, and the unknown reason
   hoursToResolution: number | null;   // real expiry field for the expiry cell + expiry sort
+  // LAYERED (multi-price) quoting (Phase 6). null unless the operator asked for >1 layer AND the market
+  // carries per-level depth AND the band fits >1 layer AND a size is set. When present it repoints the
+  // headline/sort figure (netUsdPerDay) to the summed, pool-capped per-layer total and the expand renders
+  // a per-layer breakdown; single-layer rows are byte-identical to before (layered stays null).
+  layered: ScoredLayeredPlan | null;
+  maxUsableLayers: number | null;     // geometry cap = floor(band half-width / tick); cheap, every row
 }
 
 // Slider/chip ranges + option sets computed SERVER-SIDE over the full set (lib/rewards-server-filter
@@ -355,14 +373,24 @@ export default function RewardsUnified() {
   //    cents (default 1¢); the posted prices shown are snapped to each market's real tick. ──
   const [sizeInput, setSizeInput] = useState<string>('');
   const [distInput, setDistInput] = useState<string>('1');
+  // LAYERED controls (Phase 6): how many resting prices per side, and how many ticks apart. Both describe
+  // the OPERATOR (like size/distance), so they persist to localStorage and "Azzera filtri" never clears
+  // them. Default '1' (a single layer) so the board is byte-identical to the pre-layer behaviour until the
+  // operator explicitly asks for more.
+  const [layersInput, setLayersInput] = useState<string>('1');
+  const [spacingInput, setSpacingInput] = useState<string>('1');
   useEffect(() => {
     try {
       const s = localStorage.getItem('rw_size'); if (s != null) setSizeInput(s);
       const d = localStorage.getItem('rw_dist'); if (d != null) setDistInput(d);
+      const l = localStorage.getItem('rw_layers'); if (l != null) setLayersInput(l);
+      const sp = localStorage.getItem('rw_spacing'); if (sp != null) setSpacingInput(sp);
     } catch { /* private mode — controls just start at their defaults */ }
   }, []);
   useEffect(() => { try { localStorage.setItem('rw_size', sizeInput); } catch { /* ignore */ } }, [sizeInput]);
   useEffect(() => { try { localStorage.setItem('rw_dist', distInput); } catch { /* ignore */ } }, [distInput]);
+  useEffect(() => { try { localStorage.setItem('rw_layers', layersInput); } catch { /* ignore */ } }, [layersInput]);
+  useEffect(() => { try { localStorage.setItem('rw_spacing', spacingInput); } catch { /* ignore */ } }, [spacingInput]);
   const totalSizeUsd = useMemo(() => {
     const n = Number(sizeInput);
     return sizeInput.trim() !== '' && Number.isFinite(n) && n > 0 ? n : null;
@@ -371,6 +399,10 @@ export default function RewardsUnified() {
     const n = Number(distInput);
     return distInput.trim() !== '' && Number.isFinite(n) && n >= 0 ? n : null;
   }, [distInput]);
+  // Parsed layer config: at least 1, integer. A blank/invalid box falls back to 1 (single layer), so an
+  // empty control can never disable the board — it just means "no layering".
+  const layersN = useMemo(() => Math.max(1, Math.floor(Number(layersInput)) || 1), [layersInput]);
+  const spacingTicks = useMemo(() => Math.max(1, Math.floor(Number(spacingInput)) || 1), [spacingInput]);
 
   // ── STICKY STATE (2/2) · BOT-UNIVERSE selection. Survives refresh (localStorage rw_selected) and,
   //    once promoted, lives in the persisted MakerUniverseSelection row. Cleared ONLY by an explicit
@@ -517,7 +549,45 @@ export default function RewardsUnified() {
     // unreadable — never a fallback to the reference. This is the headline AND the sort key.
     const unknown = refUnknown || !fin(pr.grossPerDay);
     const stab = stabilityOf(b.m);
-    const netUsdPerDay = unknown ? null : (pr.grossPerDay as number);
+    // ── LAYERED (multi-price) quoting ── geometry is derived HERE (client owns geometry); depth comes from
+    // the API (b.m.layeredDepth). computeLayeredPlan is geometry-only, so it is cheap enough to run on every
+    // row for maxUsableLayers. The full cap+score path runs ONLY when: the operator asked for >1 layer, the
+    // market carries per-level depth, the band actually fits >1 layer, AND a size is set (an empty size must
+    // stay "—" everywhere — see the disclosure). Reuses the shared lib; no geometry/scoring/cap here.
+    const rsL = b.m.rewardScore ?? null;
+    const midL = fin(rsL?.mid) ? (rsL!.mid as number) : null;
+    const halfBandL = fin(rsL?.maxSpreadCents) ? (rsL!.maxSpreadCents as number) / 200 : null;
+    const rsArgL = {
+      mid:            fin(rsL?.mid) ? (rsL!.mid as number) : undefined,
+      maxSpreadCents: fin(rsL?.maxSpreadCents) ? (rsL!.maxSpreadCents as number) : undefined,
+      minSize:        fin(rsL?.minSize) ? (rsL!.minSize as number) : undefined,
+      poolDay:        fin(rsL?.poolDay) ? (rsL!.poolDay as number) : undefined,
+      competitorQ:    fin(rsL?.competitorQ) ? (rsL!.competitorQ as number) : undefined,
+    };
+    const plan = computeLayeredPlan({
+      rewardScore: rsArgL,
+      tick: fin(b.m.tickSize) ? (b.m.tickSize as number) : null,
+      bandLow:  midL != null && halfBandL != null ? midL - halfBandL : null,
+      bandHigh: midL != null && halfBandL != null ? midL + halfBandL : null,
+      perSideSizeUsd: totalSizeUsd != null ? totalSizeUsd / 2 : null,
+      numLayers: layersN,
+      spacingTicks,
+    });
+    const maxUsableLayers = plan.maxUsablePerSide;
+    const ld = b.m.layeredDepth ?? null;
+    let layered: ScoredLayeredPlan | null = null;
+    if (totalSizeUsd != null && layersN > 1 && ld && maxUsableLayers > 1) {
+      const capped = capLayeredPlan(plan, ld.perLevel);
+      layered = scoreLayeredPlan({
+        plan: capped,
+        perLevelDepth: ld.perLevel,
+        rewardScore: rsArgL,
+        depthSource: ld.source,
+      });
+    }
+    // Headline/sort figure: when the layered plan is present it REPLACES the single-layer $/day so the board
+    // re-ranks on the summed, pool-capped per-layer total; otherwise the single-layer `pr` figure is UNCHANGED.
+    const netUsdPerDay = unknown ? null : (layered ? layered.totalDailyUsd : (pr.grossPerDay as number));
     const share = unknown ? 0 : (fin(pr.share) ? (pr.share as number) : 0);
     // The two-sided in-band depth already resting in the book — the MEASURED reward-eligible
     // capacity (lib/reward-depth-floor competitorDepthUsd: near + far side for Polymarket). This
@@ -569,10 +639,13 @@ export default function RewardsUnified() {
       stability:      stab,
       stabilityScore: stab.score,
       hoursToResolution: fin(b.m.hoursToResolution) ? (b.m.hoursToResolution as number) : null,
+      layered,            // null on single-layer rows → the row renders byte-identical to before
+      maxUsableLayers,    // geometry cap for the expand's context
     };
-    // Depends on size/offset now that the headline + sort key are the PERSONALISED figure: changing either
-    // must re-rank the board (Phase 4 keeps this cheap — memoised, no refetch).
-  }), [base, totalSizeUsd, offsetCents]);
+    // Depends on size/offset AND the layer config now that the headline + sort key can be the LAYERED total:
+    // changing size, distance, layer count or spacing must re-rank the board (Phase 4 keeps this cheap —
+    // memoised, no refetch).
+  }), [base, totalSizeUsd, offsetCents, layersN, spacingTicks]);
 
   // Rows are ALREADY filtered by the server (lib/rewards-server-filter). The client only SORTS
   // (presentation) — no second filter pass, so the shown count can never diverge from the API's
@@ -641,7 +714,10 @@ export default function RewardsUnified() {
           punto medio</span>, impostate qui accanto e divise per lato. I prezzi sono arrotondati al tick di
           ogni mercato: dove la distanza richiesta non cade sul tick, la riga indica quella applicata. La
           size assunta è limitata dalla profondità reale in banda del mercato, e quando la lega, la riga lo
-          dice. Sono <strong>premi lordi maturati</strong>: il P&amp;L di inventario quando i tuoi ordini
+          dice. Con <strong>più di un livello per lato</strong> il $/giorno è la somma di stime indipendenti
+          per livello, ciascuna limitata dalla profondità del proprio livello e il totale limitato dal
+          montepremi del mercato; la profondità di ogni livello è una <strong>stima da storico o da lettura
+          live</strong>, indicata riga per riga nel dettaglio. Sono <strong>premi lordi maturati</strong>: il P&amp;L di inventario quando i tuoi ordini
           vengono eseguiti <strong>non è incluso</strong> in nessuna cifra di questa pagina. Mostriamo solo
           il <strong>lordo</strong> — l&rsquo;<strong>adverse selection</strong> non è modellata, quindi il
           {' '}<strong>rendimento netto è sconosciuto (netto —)</strong> e non viene stimato.
@@ -691,6 +767,31 @@ export default function RewardsUnified() {
                   <span className="rw-pos-affix rw-pos-affix-r">¢</span>
                 </div>
                 <span className="rw-pos-sub">i prezzi mostrati sono arrotondati al tick di ogni mercato</span>
+              </div>
+              <div className="rw-pos-ctl">
+                <label className="rw-pos-label" htmlFor="rw-layers">
+                  Numero di livelli <span className="rw-pos-hint">ordini per lato</span>
+                </label>
+                <div className="rw-pos-inputwrap">
+                  <input id="rw-layers" className="rw-pos-input" inputMode="numeric" type="number" min={1} step={1}
+                    placeholder="1" value={layersInput} onChange={(e) => setLayersInput(e.target.value)}
+                    aria-label="numero di livelli per lato" />
+                </div>
+                <span className="rw-pos-sub">
+                  {layersN > 1 ? `${layersN} livelli per lato — il $/giorno somma le stime di ogni livello` : 'un solo livello → nessuna scomposizione'}
+                </span>
+              </div>
+              <div className="rw-pos-ctl">
+                <label className="rw-pos-label" htmlFor="rw-spacing">
+                  Spaziatura tra livelli <span className="rw-pos-hint">(in tick)</span>
+                </label>
+                <div className="rw-pos-inputwrap">
+                  <input id="rw-spacing" className="rw-pos-input" inputMode="numeric" type="number" min={1} step={1}
+                    placeholder="1" value={spacingInput} onChange={(e) => setSpacingInput(e.target.value)}
+                    aria-label="spaziatura tra livelli in tick" />
+                  <span className="rw-pos-affix rw-pos-affix-r">tick</span>
+                </div>
+                <span className="rw-pos-sub">distanza fra un livello e il successivo, in tick di mercato</span>
               </div>
             </div>
 
@@ -1487,6 +1588,85 @@ function RewardPriceFirst({ row, isPaid, totalSizeUsd, offsetCents }:
       <div className="rw-pf-net" title="il rendimento netto sottrae il costo di adverse selection quando i tuoi ordini vengono eseguiti — non è modellato, quindi resta sconosciuto">
         netto <span className="rw-dim">—</span> · adverse selection non modellata · una quota di premio più alta = la quota più stretta, cioè quella più facilmente colpita
       </div>
+
+      {/* ── LAYERED BREAKDOWN ── ONLY when a multi-price plan is present (>1 layer, per-level depth known,
+          band fits >1 layer, size set). Single-layer rows never reach here → the block above is unchanged.
+          The figures are read straight off the shared scorer's per-layer output — no math in this view. */}
+      {row.layered && (() => {
+        const lay = row.layered!;
+        const perSide = totalSizeUsd != null ? totalSizeUsd / 2 : null;
+        const money   = (x: number | null | undefined) => (fin(x) ? `$${(x as number).toFixed(2)}` : '—');
+        const cents   = (x: number | null | undefined) => (fin(x) ? `${(x as number).toFixed(1)}¢` : '—');
+        const priceC  = (p: number | null | undefined) => (fin(p) ? `${((p as number) * 100).toFixed(1)}¢` : '—');
+        const shares  = (x: number | null | undefined) => (fin(x) ? Math.round(x as number).toLocaleString('it-IT') : '—');
+        const totCommitted   = lay.layers.reduce((a, l) => a + (fin(l.committedUsd) ? (l.committedUsd as number) : 0), 0);
+        const totUncommitted = lay.layers.reduce((a, l) => a + (fin(l.uncommittedUsd) ? (l.uncommittedUsd as number) : 0), 0);
+        const th: React.CSSProperties = { padding: '3px 6px', textAlign: 'left', fontWeight: 600, borderBottom: '1px solid rgba(128,128,128,0.35)', whiteSpace: 'nowrap' };
+        const td: React.CSSProperties = { padding: '3px 6px', textAlign: 'left', borderBottom: '1px solid rgba(128,128,128,0.15)', whiteSpace: 'nowrap' };
+        return (
+          <div className="rw-lay" role="group" aria-label="scomposizione per livello" style={{ marginTop: '10px' }}>
+            <div className="rw-lay-head" style={{ fontSize: '12px', marginBottom: '4px' }}>
+              Scomposizione su <strong>{lay.layers.length} livelli</strong> per lato · profondità: {depthSourceLabel(lay.depthSource) ?? '—'}
+            </div>
+            <div className="rw-lay-scroll" style={{ overflowX: 'auto' }}>
+              <table className="rw-lay-table" style={{ borderCollapse: 'collapse', width: '100%', fontSize: '11.5px' }}>
+                <thead>
+                  <tr>
+                    <th style={th}>liv.</th>
+                    <th style={th}>compra / vendi YES</th>
+                    <th style={th}>offset applicato</th>
+                    <th style={th}>tick</th>
+                    <th style={th}>fonte profondità</th>
+                    <th style={th}>profondità (bid/ask)</th>
+                    <th style={th}>capitale (impegnato / non)</th>
+                    <th style={th}>$/giorno</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lay.layers.map((L) => {
+                    // tail layer → a real $0 disclosed as "—" + note; unreadable depth → "—" (never 0).
+                    const dayCell = L.tailZero
+                      ? <span className="rw-dim" title={L.note ?? undefined}>— nessun premio</span>
+                      : L.dailyUsd == null
+                        ? <span className="rw-dim" title="profondità del livello non leggibile — nessuna stima">—</span>
+                        : <>${(L.dailyUsd as number).toFixed(2)}</>;
+                    return (
+                      <tr key={L.index}>
+                        <td style={td}>{L.index}</td>
+                        <td style={td}>{priceC(L.bidPrice)} / {priceC(L.askPrice)}</td>
+                        <td style={td}>{cents(L.distanceBidC)} / {cents(L.distanceAskC)}</td>
+                        <td style={td}>{fin(row.m.tickSize) ? priceC(row.m.tickSize as number) : '—'}</td>
+                        <td style={td}>{L.depthSourceLabel ?? '—'}</td>
+                        <td style={td}>{shares(L.bidDepth)} / {shares(L.askDepth)}</td>
+                        <td style={td}>
+                          {money(L.committedUsd)} / {money(L.uncommittedUsd)}
+                          {L.capBound && <span title={L.capNote ?? undefined} style={{ color: '#E8B23A', marginLeft: '4px' }}>limitato</span>}
+                        </td>
+                        <td style={td}>{dayCell}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td colSpan={7} style={{ ...td, fontWeight: 600, whiteSpace: 'normal' }}>
+                      totale · {money(totCommitted)} impegnati + {money(totUncommitted)} non impegnati
+                      {perSide != null ? ` = ${money(perSide)} per lato` : ''}
+                      {lay.poolCapped ? ' · limitato dal montepremi' : ''}
+                    </td>
+                    <td style={{ ...td, fontWeight: 700 }}>{money(lay.totalDailyUsd)}/giorno</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+            {lay.anyDepthUnreadable && (
+              <div className="rw-pf-ticknote" style={{ marginTop: '4px' }}>
+                profondità non leggibile su uno o più livelli — mostrati come «—», mai come 0
+              </div>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }
