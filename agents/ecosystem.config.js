@@ -134,6 +134,12 @@ module.exports = {
       restart_delay: 15000,
       max_restarts:  20,
       watch:         false,
+      // STOPPED 2026-07-25 as dead weight (fleet-focus on the liquidity-rewards lane). Its output
+      // /tmp/marketmaker-opps.json had been frozen since 2026-07-12 (~13 days, empty logs) and has NO
+      // live UI consumer — /api/marketmaker is referenced only by dead .save/.backup files. Definition
+      // kept (reversible: `pm2 start ecosystem.config.js --only agent-marketmaker`); autorestart:false
+      // so a fleet-wide `pm2 start` does not silently relaunch a producer nobody reads.
+      autorestart:   false,
       env:           { NODE_ENV: 'production', HOME: '/root' },
     },
     {
