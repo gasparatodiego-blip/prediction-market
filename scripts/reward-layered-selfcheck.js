@@ -139,8 +139,26 @@ function phase5() {
   ok('capped 3-layer total is NOT 3x the capped 1-layer figure (non-linear under the cap)', Math.abs(cappedScore.totalDailyUsd - 3 * c1.totalDailyUsd) > 0.5);
 }
 
+// ── PHASE 7 — ceiling/replay shared lib accepts a layered config, reusing the SAME scoring ─────────
+function phase7() {
+  console.log('PHASE 7 — ceiling/replay curve.js accepts a layered configuration');
+  const curve = require('./rewards-ceiling/lib/curve');
+  const depth = [
+    { index: 1, bidSizeAtLevel: 5000, askSizeAtLevel: 5000 },
+    { index: 2, bidSizeAtLevel: 3000, askSizeAtLevel: 3000 },
+    { index: 3, bidSizeAtLevel: 1000, askSizeAtLevel: 1000 },
+  ];
+  const viaCurve = curve.scoreLayeredConfig({ rewardScore: RS, ...BAND, perSideSizeUsd: 200, numLayers: 3, spacingTicks: 1, perLevelDepth: depth, depthSource: { kind: 'storico', hours: 8 } });
+  const viaLib = scoreLayeredPlan({ plan: capLayeredPlan(computeLayeredPlan({ rewardScore: RS, ...BAND, perSideSizeUsd: 200, numLayers: 3 }), depth), perLevelDepth: depth, rewardScore: RS, depthSource: { kind: 'storico', hours: 8 } });
+  console.log(`  curve total=${viaCurve.totalDailyUsd} lib total=${viaLib.totalDailyUsd}`);
+  ok('curve.scoreLayeredConfig reuses the shared lib (identical total, no second implementation)', viaCurve.totalDailyUsd === viaLib.totalDailyUsd);
+  ok('the layered ceiling/replay path carries the reconciliation + usable-layer cap', viaCurve.reconciliation.reconciles === true && viaCurve.maxUsablePerSide >= 3);
+  ok('curve still exports the single-level shareForCapital (S=1 ceiling unchanged, additive)', typeof curve.shareForCapital === 'function' && typeof curve.capitalForShare === 'function');
+}
+
 console.log('reward-layered-selfcheck\n');
 phase3();
 phase4();
 phase5();
+phase7();
 console.log(`\nreward-layered-selfcheck: ${passed} assertions passed`);

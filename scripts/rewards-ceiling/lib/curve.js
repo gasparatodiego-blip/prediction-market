@@ -12,6 +12,10 @@
 const path = require('path');
 const REWARD = require(path.join(__dirname, '..', '..', '..', 'lib', 'rewardScore'));
 const { scoreBook, adjustedMid, parseOrders, quadraticUserShare } = REWARD;
+// LAYERED path — reuse the board's shared layering libs READ-ONLY so ceiling/replay can score a
+// multi-price configuration with the SAME math the panel uses, never a second implementation.
+const LAYERED = require(path.join(__dirname, '..', '..', '..', 'lib', 'reward-layered'));
+const LAYERS = require(path.join(__dirname, '..', '..', '..', 'lib', 'reward-layers'));
 
 function clampPrice(mid) { return Math.max(0.01, Math.min(0.99, mid)); }
 
@@ -67,4 +71,41 @@ function measureFromBook(book, rewardsMaxSpread, minSize) {
   };
 }
 
-module.exports = { capitalForShare, shareForCapital, measureFromBook, quadraticUserShare, clampPrice };
+/**
+ * LAYERED scoring for the ceiling/replay: instead of a single mid placement, accept a multi-price
+ * configuration (numLayers, spacing) and score each layer against its OWN per-level depth, summing to a
+ * per-market total. This is a thin REUSE of the shared board libs (lib/reward-layers geometry +
+ * lib/reward-layered scoring/cap) — the exact same math the panel and agent34 use — so a layered ceiling
+ * or replay can never diverge from what the operator sees. Single-level callers keep using shareForCapital
+ * / capitalForShare unchanged; this is additive.
+ *
+ * @param {object} cfg
+ *   rewardScore   { mid, maxSpreadCents, minSize, poolDay }
+ *   tick, bandLow, bandHigh
+ *   perSideSizeUsd   capital committed per side
+ *   numLayers, spacingTicks   the layered configuration
+ *   perLevelDepth    [{ bidSizeAtLevel, askSizeAtLevel } | null] aligned to layers (from book or history)
+ *   depthSource      { kind:'storico'|'live', hours? } — disclosed through
+ * @returns the scoreLayeredPlan result (layers[], totalDailyUsd, poolCapped, reconciliation via the plan)
+ */
+function scoreLayeredConfig(cfg = {}) {
+  const plan = LAYERED.computeLayeredPlan({
+    rewardScore: cfg.rewardScore,
+    tick: cfg.tick,
+    bandLow: cfg.bandLow,
+    bandHigh: cfg.bandHigh,
+    perSideSizeUsd: cfg.perSideSizeUsd,
+    numLayers: cfg.numLayers,
+    spacingTicks: cfg.spacingTicks,
+  });
+  const capped = LAYERED.capLayeredPlan(plan, cfg.perLevelDepth || []);
+  const scored = LAYERED.scoreLayeredPlan({
+    plan: capped,
+    perLevelDepth: cfg.perLevelDepth || [],
+    rewardScore: cfg.rewardScore,
+    depthSource: cfg.depthSource || null,
+  });
+  return { ...scored, reconciliation: capped.reconciliation, maxUsablePerSide: plan.maxUsablePerSide };
+}
+
+module.exports = { capitalForShare, shareForCapital, scoreLayeredConfig, measureFromBook, quadraticUserShare, clampPrice, rewardLayers: LAYERS.rewardLayers };
