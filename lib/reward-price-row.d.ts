@@ -26,10 +26,17 @@ export interface PriceRow {
   sellYes: number | null;
   buyNo: number | null;
   sellYesForNoIdentity: number | null;
+  /** Pre-snap targets (mid ∓ offset) — kept so the tick snap is visible, never silent. */
+  buyYesRaw: number | null;
+  sellYesRaw: number | null;
+  /** How far the venue tick grid moved the target, in cents. null when no price was produced. */
+  snappedByC: number | null;
   bidInBand: boolean | null;
   askInBand: boolean | null;
   anyOutOfBand: boolean;
   tickKnown: boolean;
+  /** Plain-Italian reason the prices are withheld when the tick is unreadable. null when known. */
+  tickUnknownReason: string | null;
   totalSizeUsd: number | null;
   perSideUsd: number | null;
   share: number | null;

@@ -170,6 +170,50 @@ assert.strictEqual(forced.action, 'close');
 assert.strictEqual(forced.forcedBy, 'news-guard');
 ok('news-guard HIGH signal → forces close over the stored "lato opposto"');
 
+// ── 3b · TICK FAIL-CLOSED ───────────────────────────────────────────────────────────────────────────
+// The tick is the venue's price grid. Without it no price is knowably placeable, so the price row must
+// produce NOTHING (the caller renders "—") rather than a raw unsnapped number that looks placeable.
+// Each assertion below trips this gate ALONE: the rewardScore handed in is fully readable, so the only
+// thing that can withhold a price is the tick.
+console.log('\n3b. tick — snap is explicit, unknown tick fails closed');
+
+const rsTick = { poolDay: 100, mid: 0.5, maxSpreadCents: 6, minSize: 100, competitorQ: 500, refCapital: 1000, refShare: 0.1 };
+
+// (a) tick unknown → no price at all, with a stated reason. Nothing else is missing.
+for (const badTick of [null, undefined, 0, -1, NaN]) {
+  const row = computePriceRow({ rewardScore: rsTick, tick: badTick, totalSizeUsd: 1000, offsetCents: 1 });
+  assert.strictEqual(row.buyYes, null, `tick ${String(badTick)} must yield no buy price`);
+  assert.strictEqual(row.sellYes, null, `tick ${String(badTick)} must yield no sell price`);
+  assert.strictEqual(row.buyNo, null, `tick ${String(badTick)} must yield no NO price`);
+  assert.strictEqual(row.tickKnown, false);
+  assert.ok(typeof row.tickUnknownReason === 'string' && row.tickUnknownReason.length > 0,
+    'an unknown tick must state its reason, not just blank the number');
+}
+ok('unknown tick (null/undefined/0/negative/NaN) → no price, tickKnown false, reason stated');
+
+// (b) a KNOWN tick still prices — so (a) proves the tick gate, not a broken row.
+const okRow = computePriceRow({ rewardScore: rsTick, tick: 0.01, totalSizeUsd: 1000, offsetCents: 1 });
+assert.ok(okRow.buyYes > 0 && okRow.sellYes > 0 && okRow.tickKnown === true,
+  'positive control: a readable tick must still produce prices');
+ok('positive control — a readable tick still prices (the gate is the tick, not the row)');
+
+// (c) every produced price sits ON the grid, for real ticks this venue actually runs.
+for (const tk of [0.1, 0.01, 0.001, 0.0001]) {
+  const r = computePriceRow({ rewardScore: { ...rsTick, mid: 0.4567 }, tick: tk, totalSizeUsd: 1000, offsetCents: 1.3 });
+  for (const [label, p] of [['buyYes', r.buyYes], ['sellYes', r.sellYes]]) {
+    assert.ok(p != null, `${label} must exist at tick ${tk}`);
+    assert.ok(Math.abs(p / tk - Math.round(p / tk)) < 1e-6, `${label} ${p} is off the ${tk} grid`);
+  }
+}
+ok('prices land on the grid for every tick this venue runs (0.1 / 0.01 / 0.001 / 0.0001)');
+
+// (d) the snap is RECORDED, not silent: the pre-snap target and the distance moved are both readable.
+const coarse = computePriceRow({ rewardScore: { ...rsTick, mid: 0.4567 }, tick: 0.1, totalSizeUsd: 1000, offsetCents: 1.3 });
+assert.ok(coarse.buyYesRaw != null && coarse.snappedByC > 0,
+  'a snap that moved the price must report the pre-snap target and the distance moved');
+assert.ok(Math.abs(coarse.buyYesRaw - (0.4567 - 0.013)) < 1e-9, 'pre-snap target must be mid − offset, untouched');
+ok(`snap recorded: raw ${coarse.buyYesRaw.toFixed(4)} → ${coarse.buyYes} (moved ${coarse.snappedByC.toFixed(2)}¢)`);
+
 // ── 4 · CROSS-CHECK against a REAL feed row, if the snapshot is present ─────────────────────────────
 console.log('\n4. cross-check against the live feed snapshot (skipped when absent)');
 try {

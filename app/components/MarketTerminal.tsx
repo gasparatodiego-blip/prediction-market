@@ -306,6 +306,13 @@ export default function MarketTerminal({ marketId }: { marketId: string }) {
 
   // ── ACTIONS (each one an explicit operator tap) ──
   const saveLegs = useCallback(async () => {
+    // FAIL CLOSED ON THE TICK. The venue rejects any price off its grid, so without the market's real
+    // tick there is no price we can honestly write down. Refuse to build the order and say why.
+    if (!pr.tickKnown) {
+      setLegsSave('error');
+      setLegsMsg('tick del mercato non leggibile: senza la griglia dei prezzi del venue non si può sapere quale prezzo è valido, quindi non salvo nessun ordine. Riprova quando il book torna leggibile.');
+      return;
+    }
     if (!fin(pr.buyYes) || !fin(pr.buyNo) || perSideShares == null || offsetCents == null) {
       setLegsSave('error'); setLegsMsg('prezzi o size non calcolabili — niente da salvare'); return;
     }
@@ -505,6 +512,11 @@ export default function MarketTerminal({ marketId }: { marketId: string }) {
               <p className="mkt-foot">
                 Tick del mercato {fin(tick) ? `${cents(tick, 2)}` : '—'} — i prezzi sotto sono già
                 agganciati alla griglia: il venue rifiuta un prezzo più fine.
+                {!pr.tickKnown
+                  ? ' Il tick non è leggibile ora: nessun prezzo viene proposto e la configurazione non è salvabile, perché senza griglia non si sa quale prezzo il venue accetta.'
+                  : fin(pr.snappedByC) && pr.snappedByC > 0
+                    ? ` La griglia ha spostato la tua distanza di ${pr.snappedByC.toFixed(2)}¢: da ${fin(pr.buyYesRaw) ? cents(pr.buyYesRaw) : '—'} a ${fin(pr.buyYes) ? cents(pr.buyYes) : '—'} sul lato acquisto.`
+                    : ''}
                 {pr.anyOutOfBand ? ' Questa distanza porta un ordine FUORI banda: non matura premio.' : ''}
               </p>
             </div>
