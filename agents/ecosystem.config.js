@@ -433,5 +433,22 @@ module.exports = {
       autorestart:   true,
       env:           { NODE_ENV: 'production', HOME: '/root' },
     },
+    {
+      name:          'agent39-net-rerun',
+      script:        './agents/agent39-net-rerun.js',
+      cwd:           '/root/prediction-market',
+      restart_delay: 15000,
+      max_restarts:  20,
+      // Automates the TRIGGER for the rewards net verdict, never the conclusion. Hourly, it measures the
+      // CONTINUOUS tape coverage (span − Σ mid-history outage gaps) and, only at ≥48h of real coverage,
+      // runs scripts/rewards-replay --method tape once, writes a dated result, and sends ONE Telegram
+      // headline. It never fires early and never relaxes the replay's refusal-to-annualise guard; a
+      // fragmented window (agent34 restarted mid-collection) is reported as fragmented, not annualised.
+      // Tiny footprint (streams two journals' timestamps hourly). Places/signs/decrypts nothing.
+      max_memory_restart: '200M',
+      watch:         false,
+      autorestart:   true,
+      env:           { NODE_ENV: 'production', HOME: '/root' },
+    },
   ],
 };
