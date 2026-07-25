@@ -40,6 +40,7 @@ import { validateQuotePair } from '@/lib/maker/venue-rules';
 import { inBand } from '@/lib/rewards-live-band';
 import { computeWorthIt } from '@/lib/maker/worth-it';
 import { normalizeFillRule, type FillRule } from '@/lib/maker/fill-policy';
+import { canonicalize } from '@/lib/maker/canonical-position';
 import { estimateReward, type MarketSnapshot } from '@/lib/rewards-estimate';
 
 const fin = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
@@ -251,6 +252,17 @@ export default function MarketTerminal({ marketId }: { marketId: string }) {
   // THE dollar→share conversion, read from the shared price row rather than divided again here. One
   // conversion, one number — the panel, the list row and the size persisted on the leg cannot drift.
   const perSideShares = pr.perSideShares;
+
+  // What the BOOK will actually hold once this configuration is saved. Comprare NO a q è vendere YES a
+  // 1−q: the same resting order on the same side. The engine scores that canonical set, so the panel
+  // states it here rather than letting the operator count rows and assume.
+  const canonical = useMemo(() => {
+    if (!fin(pr.buyYes) || !fin(pr.buyNo)) return null;
+    const rows: Array<{ book: string; kind: string; price: number }> = [];
+    if (side === 'both' || side === 'yes') rows.push({ book: 'yes', kind: 'buy', price: pr.buyYes });
+    if (side === 'both' || side === 'no') rows.push({ book: 'no', kind: 'buy', price: pr.buyNo });
+    return canonicalize(rows);
+  }, [pr.buyYes, pr.buyNo, side]);
 
   // The placement verdict for the pair, from the SHARED validator the maker itself runs.
   const bandVerdict = useMemo(() => {
@@ -654,6 +666,23 @@ export default function MarketTerminal({ marketId }: { marketId: string }) {
               </div>
             </div>
           </div>
+          {/* What the book will actually hold. Two rows can be ONE resting position: say so inline,
+              keep both rows, and never drop what the operator configured. */}
+          {canonical && (
+            <p className="mkt-foot">
+              Sul book queste {canonical.positions.reduce((n, p) => n + p.legCount, 0)} righe diventano{' '}
+              <strong>{canonical.positions.length} posizion{canonical.positions.length === 1 ? 'e' : 'i'}</strong>
+              {' '}({canonical.positions.map((p) => p.label).join(' · ')}):{' '}
+              {canonical.twoSided
+                ? 'una in acquisto e una in vendita, quindi la quotazione è a due lati e non prende la penalità.'
+                : 'tutte sullo stesso lato, quindi la quotazione è a un lato solo e il punteggio scende.'}
+              {canonical.collapsed.length > 0 && (
+                <> Attenzione: {canonical.collapsed.map((g) => `«${g.label}» è configurata ${g.legCount} volte`).join('; ')} —
+                  comprare NO a q è vendere YES a 1−q, cioè lo stesso ordine sullo stesso lato: conta una
+                  volta sola nel punteggio, ma impegna il capitale di entrambe le righe.</>
+              )}
+            </p>
+          )}
           <p className="mkt-foot">
             <strong>Chiudi</strong> esce dall&rsquo;inventario e riduce l&rsquo;esposizione.
             <strong> Lato opposto</strong> ri-quota il complementare al prezzo speculare (il giro completo

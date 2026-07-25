@@ -276,6 +276,68 @@ const unitPlanNoSize = planQuotes({
 assert.strictEqual(unitPlanNoSize.quotes[0].size, 200, 'a sizeless leg still falls back to the engine default');
 ok('control — a leg carrying no size still falls back to the engine default (the regression this closes)');
 
+// ── 3d · CANONICAL POSITIONS — BUY NO @ q IS SELL YES @ 1−q ─────────────────────────────────────────
+// One book, two complementary tokens. Two-sidedness and the collapse report are properties of the
+// canonical set; judged on the raw leg list they come out wrong in both directions.
+console.log('\n3d. canonical positions — one book, two tokens');
+
+const { toCanonical, canonicalize } = require('../lib/maker/canonical-position');
+
+// (a) the mapping itself, all four user-facing forms.
+assert.deepStrictEqual(toCanonical({ book: 'yes', kind: 'buy',  price: 0.42 }).side, 'BID');
+assert.deepStrictEqual(toCanonical({ book: 'yes', kind: 'sell', price: 0.44 }).side, 'ASK');
+const noBuy = toCanonical({ book: 'no', kind: 'buy', price: 0.56 });
+assert.strictEqual(noBuy.side, 'ASK', 'buying NO is selling YES — an ASK');
+assert.ok(Math.abs(noBuy.yesPrice - 0.44) < 1e-9, 'buying NO at 0.56 rests at YES 0.44');
+assert.strictEqual(toCanonical({ book: 'no', kind: 'sell', price: 0.56 }).side, 'BID', 'selling NO is buying YES');
+assert.strictEqual(toCanonical({ book: 'no', kind: 'buy', price: null }), null, 'an undescribable leg maps to null, never a guessed side');
+ok('all four forms map onto the YES book (buy NO 0.56 ≡ sell YES 0.44)');
+
+// (b) BUY NO and SELL YES at the mirrored price are ONE position — collapse reported, neither dropped.
+const dupSet = canonicalize([
+  { book: 'no',  kind: 'buy',  price: 0.56, size: 100, id: 'L1' },
+  { book: 'yes', kind: 'sell', price: 0.44, size: 100, id: 'L2' },
+]);
+assert.strictEqual(dupSet.positions.length, 1, 'the same order written twice is ONE canonical position');
+assert.strictEqual(dupSet.collapsed.length, 1, 'the collapse must be reported');
+assert.strictEqual(dupSet.positions[0].legCount, 2, 'both configured legs stay named — nothing is dropped');
+assert.strictEqual(dupSet.positions[0].sizeShares, 200, 'sizes add: two real orders rest at that level');
+assert.strictEqual(dupSet.twoSided, false, 'one position on one side is NOT two-sided');
+ok('BUY NO + SELL YES → 1 position, collapse reported, both legs still named, sizes added');
+
+// (c) THE FIX THAT MATTERS: BUY YES + BUY NO is a real bid AND a real ask. Judged on raw legs it read
+//     as one-sided (neither leg is a YES sell) and wrongly carried the ÷3 penalty.
+const planBoth = planQuotes({
+  legs: [
+    { book: 'yes', kind: 'buy', price: 0.42, mode: 'pinned', enabled: true, sizeShares: 500 },
+    { book: 'no',  kind: 'buy', price: 0.56, mode: 'pinned', enabled: true, sizeShares: 500 },
+  ],
+  mid: 0.43, maxSpreadC: 6, minSize: 100, tick: 0.01, tokenId: 'Y', tokenIdNo: 'N', defaultSizeShares: 200,
+});
+assert.strictEqual(planBoth.market.twoSided, true, 'buy YES + buy NO IS two-sided');
+assert.strictEqual(planBoth.market.oneSidedPenalty, false, 'a genuinely two-sided quote must not carry the ÷3 flag');
+assert.strictEqual(planBoth.market.collapsedGroups.length, 0, 'a bid and an ask do not collapse');
+ok('BUY YES + BUY NO → two-sided, no ÷3 penalty flag, no collapse');
+
+// (d) A NO LEG IS MEASURED IN ITS OWN BOOK. Against the YES mid a NO buy one cent off the mid read as
+//     ~2·mid cents off, scored 0 and was refused. This gate fires alone: same band, same size, same
+//     tick — only the book differs.
+const noLeg = planBoth.quotes.find((q) => q.book === 'no');
+assert.ok(Math.abs(noLeg.distanceC - 1) < 0.01, `NO leg must sit 1¢ from the mid, read ${noLeg.distanceC}¢`);
+assert.ok(noLeg.score > 0 && noLeg.postable === true, 'a NO leg one cent off the mid must score and be postable');
+const yesLeg = planBoth.quotes.find((q) => q.book === 'yes');
+assert.ok(Math.abs(noLeg.score - yesLeg.score) < 1e-9, 'mirror-image legs must score identically');
+ok(`NO leg measured in the NO book: ${noLeg.distanceC}¢ off, score ${noLeg.score} (identical to its YES mirror)`);
+
+// (e) a genuinely one-sided configuration still reads one-sided — the fix is not "always two-sided".
+const planOne = planQuotes({
+  legs: [{ book: 'yes', kind: 'buy', price: 0.42, mode: 'pinned', enabled: true, sizeShares: 500 }],
+  mid: 0.43, maxSpreadC: 6, minSize: 100, tick: 0.01, tokenId: 'Y', tokenIdNo: 'N', defaultSizeShares: 200,
+});
+assert.strictEqual(planOne.market.twoSided, false, 'one bid alone is still one-sided');
+assert.strictEqual(planOne.market.oneSidedPenalty, true, 'and still carries the ÷3 flag');
+ok('control — a single bid is still one-sided and still flagged');
+
 // ── 4 · CROSS-CHECK against a REAL feed row, if the snapshot is present ─────────────────────────────
 console.log('\n4. cross-check against the live feed snapshot (skipped when absent)');
 try {
