@@ -174,8 +174,48 @@ function phase4() {
   ok('a demoted row keeps its below-the-fold position even with a huge personalised $/day', sortRows(demRows, { sortMode: 'day', sortDir: 'desc' })[0].m.marketId === 'small-real');
 }
 
+// ── PHASE 4 (REWARDS-ROW-PERSONALISE) — reactivity + performance: a size/offset change recomputes the
+//    board with NO refetch and NO stall, and a cleared size degrades to "—", never a stale number. ──────
+function phase5() {
+  console.log('\nPHASE 4 — reactive recompute without refetch or stall; honest partial state');
+  const { computePriceRow } = require('../lib/reward-price-row');
+  const { competitorDepthUsd } = require('../lib/reward-depth-floor');
+  const rs = { poolDay: 200, mid: 0.5, maxSpreadCents: 6, minSize: 100, competitorQ: 800, refCapital: 1000, refShare: 0.1 };
+  const mkt = { venue: 'polymarket', bookDepthAtBand: 5000, sides: { no: { bookDepthAtBand: 4000 } } };
+
+  // (1) HONEST PARTIAL STATE: a valid size yields a number; CLEARING the size yields null (→ "—"), NOT the
+  //     previous number presented as current. The figure always reflects the CURRENT input, never a stale one.
+  const at400 = computePriceRow({ rewardScore: rs, tick: 0.01, totalSizeUsd: 400, offsetCents: 1, market: mkt }).grossPerDay;
+  const cleared = computePriceRow({ rewardScore: rs, tick: 0.01, totalSizeUsd: null, offsetCents: 1, market: mkt }).grossPerDay;
+  ok('a valid size produces a figure', typeof at400 === 'number' && at400 > 0);
+  ok('clearing the size → null (renders "—"), never the previous $/day held over as current', cleared === null);
+  const at500 = computePriceRow({ rewardScore: rs, tick: 0.01, totalSizeUsd: 500, offsetCents: 1, market: mkt }).grossPerDay;
+  ok('changing the size changes the figure (the board reacts to the current config)', at500 !== at400);
+
+  // (2) PERFORMANCE: a full 313-row board recompute (computePriceRow ×N + a sort key read) completes well
+  //     within one frame — the "313 rows per keystroke" hazard is not a stall. Generous 50ms ceiling (the
+  //     measured time is ~1.6ms); this guards against a catastrophic regression (e.g. I/O in the hot path).
+  const N = 313;
+  const board = Array.from({ length: N }, () => ({ rewardScore: rs, tick: 0.01, market: mkt }));
+  const t0 = process.hrtime.bigint();
+  for (const r of board) computePriceRow({ rewardScore: r.rewardScore, tick: r.tick, totalSizeUsd: 400, offsetCents: 1.5, market: r.market });
+  const ms = Number(process.hrtime.bigint() - t0) / 1e6;
+  ok(`full ${N}-row board recompute is ${ms.toFixed(2)}ms (< 50ms ceiling — reacts within one frame, no stall)`, ms < 50);
+
+  // (3) NO-REFETCH ARCHITECTURE (source invariant): the API query is built from server filters ONLY, the
+  //     fetch effect depends on that query alone (never size/offset), and `enriched` DOES depend on
+  //     size/offset — so a size/offset change re-ranks the board WITHOUT hitting the API.
+  const src = fs.readFileSync(require('path').join(__dirname, '..', 'app', 'components', 'RewardsUnified.tsx'), 'utf8');
+  const serverParamsBody = (src.match(/function serverParams[\s\S]*?\n}/) || [''])[0];
+  ok('serverParams (the API query) references neither size nor offset', !/sizeInput|totalSizeUsd|offsetCents|distInput/.test(serverParamsBody));
+  ok('the fetch effect depends on [apiQuery] only — size/offset never trigger a refetch', /\}, \[apiQuery\]\);/.test(src));
+  ok('enriched DOES depend on [base, totalSizeUsd, offsetCents] — a size/offset change recomputes each row', /\}\), \[base, totalSizeUsd, offsetCents\]\);/.test(src));
+  ok('the per-row computation is memoised as row.pr (computed once in enriched, reused by the row + totals)', /pr,   \/\/ computed once above/.test(src) && /const pr = row\.pr;/.test(src));
+}
+
 phase1();
 phase2();
 phase3();
 phase4();
+phase5();
 console.log(`\nrewards-selfcheck: ${passed} assertions passed`);
