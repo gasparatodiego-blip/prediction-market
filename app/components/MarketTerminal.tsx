@@ -591,6 +591,14 @@ export default function MarketTerminal({ marketId }: { marketId: string }) {
               <div className="mkt-num-s">
                 {fin(pr.dayYieldPct) ? `${pr.dayYieldPct.toFixed(3)}%/giorno sulla size` : '—'} · al lordo del rischio
               </div>
+              {/* The capacity cap on the ESTIMATE. When it binds, the share shown IS the capped one and
+                  says so; when the depth cannot be read there is no share to show at all. */}
+              {pr.capNote && (
+                <div className="mkt-num-s">
+                  <span className="mkt-tag">{pr.capitalCapped ? `limitato dalla profondità in banda · $${Math.round(pr.capitalCapUsd ?? 0)}` : 'profondità in banda non leggibile'}</span>{' '}
+                  {pr.capNote}
+                </div>
+              )}
             </div>
             <div className="mkt-num">
               <div className="mkt-num-k">tuo peso sul book</div>

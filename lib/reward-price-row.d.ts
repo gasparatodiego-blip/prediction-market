@@ -52,6 +52,14 @@ export interface PriceRow {
   share: number | null;
   grossPerDay: number | null;
   dayYieldPct: number | null;
+  /** Capital the ESTIMATE is priced for: min(totalSizeUsd, in-band depth). Null when depth is unreadable. */
+  estimateCapitalUsd: number | null;
+  /** The measured in-band qualifying depth that caps it, in dollars. Null when unreadable. */
+  capitalCapUsd: number | null;
+  /** True when the depth cap actually bound (estimateCapitalUsd < totalSizeUsd). */
+  capitalCapped: boolean;
+  /** Plain-Italian statement of the cap, or of why no estimate exists. Null when nothing to say. */
+  capNote: string | null;
   ownImpactPct: number | null;
   ownImpactBand: 'low' | 'mid' | 'high' | null;
   eligibleDepthUsd: number | null;

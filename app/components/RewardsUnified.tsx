@@ -463,7 +463,10 @@ export default function RewardsUnified() {
   // mid, from the shared quadratic scorer (poolDay × refShare). No balance slider, no second math
   // path. A row that couldn't be scored (est.unknown) OR a non-executable Kalshi book renders "—".
   const enriched: Row[] = useMemo(() => base.map((b) => {
-    const est = estimatedOperatorSharePerDay(b.m.rewardScore ?? null);
+    // The assumed capital is capped by the MEASURED in-band depth (same competitorDepthUsd used for
+    // capacity below): a $1,000 share scored against a $618 book is a statement about the book, not a
+    // forecast. When the cap binds the headline $/day IS the capped figure and the row says so.
+    const est = estimatedOperatorSharePerDay(b.m.rewardScore ?? null, { inBandDepthUsd: competitorDepthUsd(b.m) });
     const unknown = est.unknown || b.nonExecReason != null;
     const stab = stabilityOf(b.m);
     const netUsdPerDay = unknown ? null : est.estUsdPerDay;
@@ -1257,6 +1260,14 @@ function RewardPriceFirst({ row, isPaid, totalSizeUsd, offsetCents }:
       )}
       {!outOfBand && bandReasons.length > 0 && (
         <div className="rw-pf-warn" role="note">⚠ {bandReasons.map((r) => r.detail).join(' · ')}</div>
+      )}
+
+      {/* The capacity cap on the ESTIMATE: when the in-band depth binds, the $/day and the resa below
+          are the CAPPED figures and say so; when the depth cannot be read there is no figure at all. */}
+      {pr.capNote && (
+        <div className="rw-pf-warn" role="note">
+          {pr.capitalCapped ? `⚠ limitato dalla profondità in banda ($${Math.round(pr.capitalCapUsd ?? 0)}) — ` : '⚠ '}{pr.capNote}
+        </div>
       )}
 
       {/* ── NUMBERS BELOW THE PRICE BLOCK (A5) ── */}

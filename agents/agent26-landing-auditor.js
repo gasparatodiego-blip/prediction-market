@@ -88,6 +88,10 @@ const SANITY_SPIKE_DELTA  = 25;   // new sanity-reject lines since last cycle be
 const SPORTS_FILE         = '/tmp/sports-odds.json';
 const ARB_FILE            = '/tmp/arbitrage-opportunities.json';
 const POLY_REWARDS_FILE   = '/root/prediction-market/data/liquidity-rewards.json';
+// The NORMALIZED feed the rewards board actually serves — the only file carrying rewardScore (refShare,
+// refCapital, competitorQ). data/liquidity-rewards.json is agent24's watchlist and has no scores, so a
+// share-coherence check pointed at it would silently pass on zero rows.
+const POLY_NORMALIZED_FILE = '/tmp/liquidity-rewards.json';
 const KALSHI_REWARDS_FILE = '/root/prediction-market/data/kalshi-rewards.json';
 
 // Guardian channel: the serve path logs every suppression here; this agent watches it.
@@ -113,6 +117,9 @@ function log(...a) { console.log('[A26]', new Date().toISOString(), ...a); }
 // verbatim below; if the source file changes, this block must change too.
 
 const APY_CAP       = 200; // lib/honest-display.ts APY_CAP
+// Above this pool share the number stops being a forecast and starts being a statement about how empty
+// the book is, so it may only be published WITH its depth qualification.
+const SHARE_QUALIFY_THRESHOLD = 0.5;
 function kIsWarn(m) { // lib/reward-gating.ts kIsWarn
   if (m.flags.TRAP) return false;
   const p = m.last_price;
@@ -367,8 +374,62 @@ function auditRewardsTooGood() {
   };
   scan(POLY_REWARDS_FILE,   'Polymarket', (m, lv)         => isSanePolymarketLevel({ flags: lv.flags ?? [] }));
   scan(KALSHI_REWARDS_FILE, 'Kalshi',     (m, lv, capStr) => isSaneKalshiMarket(m, capStr));
+  violations.push(...auditShareRestatementQualified());
   return violations;
 }
+
+// ── COHERENCE: the same thinness that caps the annualised figure must qualify the SHARE ─────────────
+// dayYieldPct x 365 and "your pool share" are the SAME underlying number in two units. If the annualised
+// form is capped or flagged for being too good while the share form is published bare, the figure has
+// simply been laundered through a different unit. A share only means something against the depth it was
+// scored on: a $1,000 maker "taking 99% of the pot" in a book holding $618 of qualifying in-band depth
+// is not a forecast, it is the observation that the book is empty. The serve path now caps the estimate's
+// assumed capital at that depth (lib/reward-price-row: estimateCapitalUsd / capitalCapped / capNote); this
+// watches the FEED for rows where the raw share is still published without that qualification.
+function auditShareRestatementQualified() {
+  const violations = [];
+  const binding = [];
+  const { competitorDepthUsd } = require('../lib/reward-depth-floor');
+  const { estimatedOperatorSharePerDay } = require('../lib/reward-operator-estimate');
+  const raw = readJsonSafe(POLY_NORMALIZED_FILE);
+  for (const m of raw?.markets ?? []) {
+    const rs = m.rewardScore;
+    if (!rs || typeof rs.refShare !== 'number' || !Number.isFinite(rs.refShare)) continue;
+    if (rs.refShare <= SHARE_QUALIFY_THRESHOLD) continue;
+    const title = (m.title || m.slug || '?').slice(0, 40);
+    const depth = competitorDepthUsd(m);
+
+    // A share with no measured book behind it is not a forecast at all — it must render "—".
+    if (depth == null) {
+      violations.push(`SHARE UNQUALIFIED: Polymarket "${title}" publishes a ${(rs.refShare * 100).toFixed(0)}% pool share with NO readable in-band depth — a share scored against an unmeasurable book must render "—", not a number`);
+      continue;
+    }
+
+    // COHERENCE ACROSS UNITS. The shared serve-path module caps the assumed capital at the measured
+    // in-band depth. When that cap binds, the $/day the row leads with MUST be the capped figure: the
+    // same thinness that limits the share limits the daily number, and publishing the uncapped one is
+    // the capped figure laundered into another unit.
+    const capped = estimatedOperatorSharePerDay(rs, { inBandDepthUsd: depth });
+    const uncapped = estimatedOperatorSharePerDay(rs);
+    if (!capped.capitalCapped) continue;
+    const served = Number.isFinite(m.estUsdPerDay) ? m.estUsdPerDay : null;
+    if (served != null && Number.isFinite(capped.estUsdPerDay) && served > capped.estUsdPerDay * 1.01) {
+      violations.push(`SHARE/YIELD INCOHERENT: Polymarket "${title}" serves $${served.toFixed(2)}/day while the depth-capped estimate is $${capped.estUsdPerDay.toFixed(2)}/day ($${Math.round(depth)} of in-band depth vs $${Math.round(capped.assumedOrderSizeUsd)} assumed) — the share is capped but the daily figure is not, which is the same number laundered through a different unit`);
+      continue;
+    }
+    // The cap binds and nothing contradicts it. That is the expected steady state, not a fault, so it is
+    // COUNTED and reported once — an alert per thin market every cycle would be noise, and noise is how
+    // a guardian gets muted.
+    if (uncapped.estUsdPerDay != null && capped.estUsdPerDay != null && uncapped.estUsdPerDay > capped.estUsdPerDay * 1.05) {
+      binding.push(`${title} (${Math.round(depth)}$ depth, $${uncapped.estUsdPerDay.toFixed(2)}→$${capped.estUsdPerDay.toFixed(2)}/day)`);
+    }
+  }
+  if (binding.length) {
+    violations.push(`SHARE CAP BINDS (advisory, ${binding.length} rows): the in-band depth cap is materially limiting the served estimate — e.g. ${binding.slice(0, 3).join('; ')}. Served figures must carry the capitalCapped qualification wherever the share or the $/day is shown.`);
+  }
+  return violations;
+}
+
 
 // ── GUARDIAN: observe the serve-path suppressor + emit cross-cycle directives ──
 

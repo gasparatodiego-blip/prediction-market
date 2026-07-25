@@ -404,6 +404,45 @@ assert.ok(r.reason.includes('non possiedi token NO') && r.reason.includes('compr
   'a refusal must state the reason and the alternative, not just refuse');
 ok('every block states the reason and the placeable alternative, in plain Italian');
 
+// ── 3f · CAPACITY CAP — the estimate's capital is bounded by real in-band depth ─────────────────────
+console.log('\n3f. capacity cap — assumed capital vs real in-band depth');
+
+const { estimatedOperatorSharePerDay } = require('../lib/reward-operator-estimate');
+
+// (a) the cap binds: a $1,000 assumption against a $250 book is repriced, and it says so.
+const thinRow = { poolDay: 100, refShare: 0.9, refCapital: 1000 };
+const thinCapped = estimatedOperatorSharePerDay(thinRow, { inBandDepthUsd: 250 });
+assert.strictEqual(thinCapped.capitalCapped, true, 'a $250 book must cap a $1,000 assumption');
+assert.ok(thinCapped.share < thinRow.refShare, 'the capped share must be lower than the raw one');
+assert.ok(thinCapped.capNote && /profondità in banda/.test(thinCapped.capNote), 'the cap must state itself');
+// exact algebra check: r=0.25 → 0.25·0.9 / (0.25·0.9 + 0.1)
+const rExp = (0.25 * 0.9) / (0.25 * 0.9 + 0.1);
+assert.ok(Math.abs(thinCapped.share - rExp) < 1e-12, 'the rescale must be the published quadratic algebra, not a fudge');
+ok(`cap binds: 90% → ${(thinCapped.share * 100).toFixed(1)}% on $250 of depth (exact quadratic rescale)`);
+
+// (b) POSITIVE CONTROL — a deep book does not cap, and the raw share survives untouched.
+const deep = estimatedOperatorSharePerDay(thinRow, { inBandDepthUsd: 50_000 });
+assert.strictEqual(deep.capitalCapped, false);
+assert.strictEqual(deep.share, thinRow.refShare, 'a deep book must leave the share exactly as scored');
+assert.strictEqual(deep.capNote, null);
+ok('positive control — a $50,000 book does not cap and the share is untouched');
+
+// (c) unreadable depth in the PRICE ROW → no estimate at all, never an uncapped one.
+const noDepth = computePriceRow({ rewardScore: rsUnit, tick: 0.01, totalSizeUsd: 1000, offsetCents: 1 });
+assert.strictEqual(noDepth.share, null, 'unreadable depth must withhold the share');
+assert.strictEqual(noDepth.grossPerDay, null, 'unreadable depth must withhold the $/day');
+assert.ok(/non leggibile/.test(noDepth.capNote || ''), 'and it must say why');
+ok('unreadable in-band depth → share and $/day withheld ("—"), reason stated');
+
+// (d) the price row caps too, and the displayed share IS the capped one.
+const cappedRow = computePriceRow({ rewardScore: rsUnit, tick: 0.01, totalSizeUsd: 1000, offsetCents: 1,
+  market: { venue: 'polymarket', bookDepthAtBand: 150, sides: { no: { bookDepthAtBand: 100 } } } });
+assert.strictEqual(cappedRow.capitalCapUsd, 250, 'the cap is the measured two-sided in-band depth');
+assert.strictEqual(cappedRow.estimateCapitalUsd, 250, 'the estimate is priced for the capped capital');
+assert.strictEqual(cappedRow.capitalCapped, true);
+assert.ok(cappedRow.perSideShares != null, 'the operator\'s own SIZING is untouched by the estimate cap');
+ok('price row: estimate capital capped at $250 while the operator\'s sizing stays their own');
+
 // ── 4 · CROSS-CHECK against a REAL feed row, if the snapshot is present ─────────────────────────────
 console.log('\n4. cross-check against the live feed snapshot (skipped when absent)');
 try {
