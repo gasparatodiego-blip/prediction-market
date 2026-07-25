@@ -41,6 +41,7 @@ import { inBand } from '@/lib/rewards-live-band';
 import { computeWorthIt } from '@/lib/maker/worth-it';
 import { normalizeFillRule, type FillRule } from '@/lib/maker/fill-policy';
 import { canonicalize } from '@/lib/maker/canonical-position';
+import { findSelfMatches } from '@/lib/maker/inventory-guard';
 import { estimateReward, type MarketSnapshot } from '@/lib/rewards-estimate';
 
 const fin = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
@@ -256,13 +257,24 @@ export default function MarketTerminal({ marketId }: { marketId: string }) {
   // What the BOOK will actually hold once this configuration is saved. Comprare NO a q è vendere YES a
   // 1−q: the same resting order on the same side. The engine scores that canonical set, so the panel
   // states it here rather than letting the operator count rows and assume.
-  const canonical = useMemo(() => {
-    if (!fin(pr.buyYes) || !fin(pr.buyNo)) return null;
-    const rows: Array<{ book: string; kind: string; price: number }> = [];
+  const configuredRows = useMemo(() => {
+    if (!fin(pr.buyYes) || !fin(pr.buyNo)) return [];
+    const rows: Array<{ book: 'yes' | 'no'; kind: 'buy'; price: number }> = [];
     if (side === 'both' || side === 'yes') rows.push({ book: 'yes', kind: 'buy', price: pr.buyYes });
     if (side === 'both' || side === 'no') rows.push({ book: 'no', kind: 'buy', price: pr.buyNo });
-    return canonicalize(rows);
+    return rows;
   }, [pr.buyYes, pr.buyNo, side]);
+
+  const canonical = useMemo(
+    () => (configuredRows.length ? canonicalize(configuredRows) : null),
+    [configuredRows]);
+
+  // A YES and a NO share are together worth exactly $1. Quoting both at prices that sum to $1 or more is
+  // an offer to buy both halves of a $1 pair for $1 or more — the two orders are each other's
+  // counterparty. Reachable from these very controls: at distance 0 the two prices sum to exactly 1.00.
+  const selfMatch = useMemo(
+    () => (configuredRows.length === 2 ? (findSelfMatches(configuredRows)[0] ?? null) : null),
+    [configuredRows]);
 
   // The placement verdict for the pair, from the SHARED validator the maker itself runs.
   const bandVerdict = useMemo(() => {
@@ -328,6 +340,8 @@ export default function MarketTerminal({ marketId }: { marketId: string }) {
     if (!fin(pr.buyYes) || !fin(pr.buyNo) || perSideShares == null || offsetCents == null) {
       setLegsSave('error'); setLegsMsg('prezzi o size non calcolabili — niente da salvare'); return;
     }
+    // SELF-MATCH. Two orders that are each other's counterparty must not be written down as a plan.
+    if (selfMatch) { setLegsSave('error'); setLegsMsg(selfMatch.reason); return; }
     // The two orders you can actually place holding only pUSD: BUY YES and BUY NO. A SELL of a token you
     // do not own is not placeable, and BUY NO at 1−p IS the sell-YES order — same order, honest name.
     // sizeShares is the CANONICAL unit (shares). Persisting it is what makes the engine quote the size
@@ -666,6 +680,13 @@ export default function MarketTerminal({ marketId }: { marketId: string }) {
               </div>
             </div>
           </div>
+          {/* SELF-MATCH. A YES and a NO share are together worth exactly $1, so two buys summing to
+              $1 or more are each other's counterparty. Calm, named, and it blocks the save. */}
+          {selfMatch && (
+            <p className="mkt-foot" style={{ color: 'var(--ds-danger)' }}>
+              <strong>I due ordini si incrocerebbero fra loro.</strong> {selfMatch.reason}
+            </p>
+          )}
           {/* What the book will actually hold. Two rows can be ONE resting position: say so inline,
               keep both rows, and never drop what the operator configured. */}
           {canonical && (

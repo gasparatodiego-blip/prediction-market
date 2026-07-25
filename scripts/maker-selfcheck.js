@@ -375,9 +375,16 @@ const { planQuotes, snapToTick } = require('../lib/maker/quote-plan');
   // one-sided in [0.10,0.90] → ÷3 penalty surfaced
   const oneSided = planQuotes({ legs: [{ book: 'yes', kind: 'buy', mode: 'follow', offsetC: -1, size: 500 }], mid: 0.5, maxSpreadC: 4, minSize: 100, tick: 0.01, tokenId: 'T', tokenIdNo: 'TN' });
   ok(oneSided.market.oneSidedPenalty === true && /÷3|\/3|c=3/.test(oneSided.market.penaltyNote), 'one-sided config in [0.10,0.90] surfaces the ÷3 penalty BEFORE arming');
-  // two-sided → no penalty
-  const twoSided = planQuotes({ legs: [{ book: 'yes', kind: 'buy', mode: 'follow', offsetC: -1, size: 500 }, { book: 'yes', kind: 'sell', mode: 'follow', offsetC: 1, size: 500 }], mid: 0.5, maxSpreadC: 4, minSize: 100, tick: 0.01, tokenId: 'T', tokenIdNo: 'TN' });
-  ok(twoSided.market.twoSided === true && twoSided.market.oneSidedPenalty === false, 'two-sided config → no one-sided penalty');
+  // two-sided → no penalty. The SELL leg now needs REAL inventory to be postable (a sell delivers an
+  // ERC-1155 token you must own), so this case supplies a measured balance. Without it the inventory
+  // guard blocks the sell and the config is correctly no longer two-sided — see the fail-closed case
+  // immediately below, which is the same call with no balance.
+  const twoSidedInput = { legs: [{ book: 'yes', kind: 'buy', mode: 'follow', offsetC: -1, size: 500 }, { book: 'yes', kind: 'sell', mode: 'follow', offsetC: 1, size: 500 }], mid: 0.5, maxSpreadC: 4, minSize: 100, tick: 0.01, tokenId: 'T', tokenIdNo: 'TN' };
+  const twoSided = planQuotes({ ...twoSidedInput, balances: { yes: 5000, no: 0 } });
+  ok(twoSided.market.twoSided === true && twoSided.market.oneSidedPenalty === false, 'two-sided config (with the inventory the sell needs) → no one-sided penalty');
+  const twoSidedNoInv = planQuotes(twoSidedInput);
+  ok(twoSidedNoInv.market.sellBlocks.length === 1 && twoSidedNoInv.quotes[1].postable === false && twoSidedNoInv.market.twoSided === false,
+    'the SAME config with no readable inventory → the sell is blocked (fail closed) and the quote is no longer two-sided');
   // one-sided in the tails → earns ZERO (must be two-sided)
   const tail = planQuotes({ legs: [{ book: 'yes', kind: 'buy', mode: 'follow', offsetC: -1, size: 500 }], mid: 0.95, maxSpreadC: 4, minSize: 100, tick: 0.01, tokenId: 'T', tokenIdNo: 'TN' });
   ok(tail.market.oneSidedZero === true, 'one-sided config in the tails (mid>0.90) → one-sided earns ZERO surfaced');

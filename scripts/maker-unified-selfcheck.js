@@ -338,6 +338,72 @@ assert.strictEqual(planOne.market.twoSided, false, 'one bid alone is still one-s
 assert.strictEqual(planOne.market.oneSidedPenalty, true, 'and still carries the ÷3 flag');
 ok('control — a single bid is still one-sided and still flagged');
 
+// ── 3e · POSITION GUARDS — a SELL needs inventory; YES+NO at or above $1 is a self-match ────────────
+// Both are gates in the CONSTRUCTION chain (postable goes false), not disabled controls. Each is proven
+// to fire ALONE: in every case below everything the other guard cares about is satisfied.
+console.log('\n3e. position guards — inventory and self-match');
+
+const { CODES: GUARD_CODES, checkSellInventory, findSelfMatches } = require('../lib/maker/inventory-guard');
+const guardBase = { mid: 0.43, maxSpreadC: 6, minSize: 100, tick: 0.01, tokenId: 'Y', tokenIdNo: 'N', defaultSizeShares: 500 };
+const sellLeg = [{ book: 'yes', kind: 'sell', price: 0.44, mode: 'pinned', enabled: true, sizeShares: 500 }];
+
+// (a) balance READ and zero → blocked, named, and it names the placeable alternative.
+const zeroInv = planQuotes({ ...guardBase, legs: sellLeg, balances: { yes: 0, no: 0 } });
+assert.strictEqual(zeroInv.quotes[0].postable, false, 'a SELL with no inventory must not be postable');
+assert.strictEqual(zeroInv.market.sellBlocks[0].code, GUARD_CODES.NO_INVENTORY);
+assert.ok(/comprare NO a 56\.0¢/.test(zeroInv.market.sellBlocks[0].reason),
+  'the block must name the equivalent BUY on the complementary token');
+ok('SELL with zero inventory → blocked (NO_INVENTORY), names "comprare NO a 56.0¢"');
+
+// (b) POSITIVE CONTROL — same leg, same band, same tick, real inventory → postable. So (a) is the
+//     inventory guard firing, not a broken leg.
+const heldInv = planQuotes({ ...guardBase, legs: sellLeg, balances: { yes: 5000, no: 0 } });
+assert.strictEqual(heldInv.quotes[0].postable, true, 'a SELL backed by real inventory must be postable');
+assert.strictEqual(heldInv.market.sellBlocks.length, 0);
+ok('positive control — the same SELL with 5,000 shares held is postable');
+
+// (c) UNREADABLE balance is not zero and not "probably fine" → fail closed, its own code.
+for (const bad of [{ yes: null, no: null }, undefined, { yes: NaN, no: 0 }]) {
+  const un = planQuotes({ ...guardBase, legs: sellLeg, balances: bad });
+  assert.strictEqual(un.quotes[0].postable, false, 'an unreadable balance must block the SELL');
+  assert.strictEqual(un.market.sellBlocks[0].code, GUARD_CODES.INVENTORY_UNREADABLE);
+}
+ok('unreadable balance (null / absent / NaN) → blocked (INVENTORY_UNREADABLE), fail closed');
+
+// (d) partial inventory is still short → blocked rather than partly posted.
+const partial = planQuotes({ ...guardBase, legs: sellLeg, balances: { yes: 100, no: 0 } });
+assert.strictEqual(partial.market.sellBlocks[0].code, GUARD_CODES.INSUFFICIENT_INVENTORY);
+ok('inventory smaller than the order (100 held vs 500) → blocked (INSUFFICIENT_INVENTORY)');
+
+// (e) SELF-MATCH fires ALONE: both legs are BUYs (the inventory guard has nothing to say), both in band,
+//     both above min size, both on tick — only the sum crosses $1.
+const cross = planQuotes({
+  ...guardBase, mid: 0.51,
+  legs: [
+    { book: 'yes', kind: 'buy', price: 0.52, mode: 'pinned', enabled: true, sizeShares: 500 },
+    { book: 'no',  kind: 'buy', price: 0.50, mode: 'pinned', enabled: true, sizeShares: 500 },
+  ],
+  balances: { yes: 0, no: 0 },
+});
+assert.strictEqual(cross.market.selfMatches.length, 1, 'a YES+NO pair summing to $1.02 is a self-match');
+assert.ok(Math.abs(cross.market.selfMatches[0].sum - 1.02) < 1e-9);
+assert.ok(cross.quotes.every((q) => q.postable === false), 'BOTH legs of a crossed pair are refused');
+assert.strictEqual(cross.market.sellBlocks.length, 0, 'the inventory guard is silent here — this is the self-match guard alone');
+ok('BUY YES 52¢ + BUY NO 50¢ = 102¢ → both legs refused (SELF_MATCH_CROSS), inventory guard silent');
+
+// (f) the boundary: exactly $1.00 is still a self-match; a cent under is not.
+assert.strictEqual(findSelfMatches([{ book: 'yes', kind: 'buy', price: 0.5 }, { book: 'no', kind: 'buy', price: 0.5 }]).length, 1,
+  'exactly $1.00 is a self-match — you pay 100¢ for a 100¢ pair');
+assert.strictEqual(findSelfMatches([{ book: 'yes', kind: 'buy', price: 0.42 }, { book: 'no', kind: 'buy', price: 0.56 }]).length, 0,
+  'control — 98¢ is a normal two-sided quote, not a self-match');
+ok('boundary — 100¢ crosses, 98¢ does not (the panel at distance 0 lands exactly on 100¢)');
+
+// (g) the guard reasons never contain a bare refusal: each states WHY in plain Italian.
+const r = checkSellInventory({ book: 'no', price: 0.56, size: 10 }, 0);
+assert.ok(r.reason.includes('non possiedi token NO') && r.reason.includes('comprare YES'),
+  'a refusal must state the reason and the alternative, not just refuse');
+ok('every block states the reason and the placeable alternative, in plain Italian');
+
 // ── 4 · CROSS-CHECK against a REAL feed row, if the snapshot is present ─────────────────────────────
 console.log('\n4. cross-check against the live feed snapshot (skipped when absent)');
 try {

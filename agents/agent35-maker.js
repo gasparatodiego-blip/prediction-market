@@ -49,6 +49,9 @@ const { evaluateRails } = require('../lib/maker/risk-rails');
 const { validateQuote } = require('../lib/maker/venue-rules');
 // The PER-MARKET collateral ceiling the operator sets on the market screen, and its durable store.
 const { applyCollateralCap } = require('../lib/maker/market-cap');
+// REAL outcome-token inventory (read-only ERC-1155 balanceOf). Feeds the SELL guard; null = unreadable
+// = the SELL is blocked. Never assumed, never defaulted to a constant.
+const { readMarketInventory } = require('../lib/maker/inventory-read');
 const { getMarketCap } = require('../lib/maker/market-caps-store');
 // What the engine does when a leg fills — the per-side rule (close | opposite | hold), read from the
 // SAME RewardsLeg rows the quotes come from. Previously stored and never consulted.
@@ -311,8 +314,13 @@ async function tick(cfg, adapter) {
     });
     if (rails.trips.length) railsTrippedCount += rails.trips.length;
 
+    // ── REAL inventory for the SELL guard. Read-only chain call, cached; an unreadable balance stays
+    //    null so the guard fails closed and blocks the SELL rather than assuming a position exists. ──
+    const inventory = await readMarketInventory({ tokenId, tokenIdNo });
+
     // ── desired quotes (Phase 3) ──
-    const plan = planQuotes({ legs, mid, maxSpreadC, minSize, tick, tokenId, tokenIdNo, defaultSizeShares: DEFAULT_SIZE_SHARES });
+    const plan = planQuotes({ legs, mid, maxSpreadC, minSize, tick, tokenId, tokenIdNo, defaultSizeShares: DEFAULT_SIZE_SHARES,
+      balances: { yes: inventory.yes, no: inventory.no } });
 
     // ── SHARED GUARD (lib/maker/venue-rules) — the follow engine re-computes a target off the live mid
     //    every cycle, so every cycle that target must be re-proved against the market's REAL rules:
@@ -416,6 +424,10 @@ async function tick(cfg, adapter) {
         headroomUsd: capHeadroomUsd, blockedLegs: capped.blockedCount, capExceeded: capped.capExceeded,
       },
       guard: { refused: plan.quotes.filter((q) => q.guard && !q.guard.valid).length, source: 'lib/maker/venue-rules.validateQuote' },
+      // The position guards: measured inventory (null = unreadable, never 0), the SELL legs they blocked
+      // and any YES+NO pair priced at or above $1. Externally observable in /tmp/maker-state.json.
+      inventory: { yesShares: inventory.yes, noShares: inventory.no, wallet: inventory.wallet, source: inventory.source },
+      positionGuards: { sellBlocks: plan.market.sellBlocks, selfMatches: plan.market.selfMatches, blocked: plan.market.guardBlockedCount },
       legs: legActions,
       advisory,
     };
