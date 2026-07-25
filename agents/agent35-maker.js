@@ -19,6 +19,19 @@
 //
 // Reward math, the news-guard, the structural-baseline gate, entitlement/redaction and the cancel-only
 // adapter are all REUSED, never changed. All quoting is off the ADJUSTED mid (agent34), never plain mid.
+//
+// WHAT THE OPERATOR'S MARKET SCREEN CONTROLS, and where this engine reads it (one read each, no copy):
+//   • follow / pinned   RewardsLeg.mode + .offsetC → planQuotes → legTarget (a follow leg re-computes its
+//                       target off the LIVE mid every cycle), then EVERY target — follow or pinned — is
+//                       re-proved by the shared guard lib/maker/venue-rules.validateQuote before it can
+//                       count as postable. Off-tick / out-of-band / under-min never reaches a venue.
+//   • on-fill rule      RewardsLeg.onFill → lib/maker/fill-policy.planOnFill, per side: close | opposite
+//                       | hold. 'opposite' must fit the market's remaining collateral headroom, and its
+//                       follow-up order passes the same guard. A HIGH news signal forces close.
+//   • collateral cap    data/maker-market-caps.json → lib/maker/market-caps-store.getMarketCap →
+//                       lib/maker/market-cap.applyCollateralCap. A hard per-market ceiling on committed
+//                       collateral, re-read every cycle, that bounds inventory accumulation from repeated
+//                       fills + re-quotes. Unreadable store ⇒ $0 ⇒ nothing committed.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const fs = require('fs');
@@ -30,6 +43,16 @@ const { planQuotes } = require('../lib/maker/quote-plan');
 const { earningRange } = require('../lib/maker/earning-range');
 const { decideRequote, planRequoteOrdering } = require('../lib/maker/requote-policy');
 const { evaluateRails } = require('../lib/maker/risk-rails');
+// The SHARED venue-rules guard. EVERY quote this engine would post — including every follow-mid
+// re-quote — is validated here before it can be counted postable. It is the same validateQuote the
+// preflight probes with a known-bad order and the market screen calls for its band warning.
+const { validateQuote } = require('../lib/maker/venue-rules');
+// The PER-MARKET collateral ceiling the operator sets on the market screen, and its durable store.
+const { applyCollateralCap } = require('../lib/maker/market-cap');
+const { getMarketCap } = require('../lib/maker/market-caps-store');
+// What the engine does when a leg fills — the per-side rule (close | opposite | hold), read from the
+// SAME RewardsLeg rows the quotes come from. Previously stored and never consulted.
+const { planOnFill, normalizeFillRule } = require('../lib/maker/fill-policy');
 const { reconcile } = require('../lib/maker/reconcile');
 const { legTarget } = require('../lib/rewards-live-band');
 const { scoreOrder } = require('../lib/rewardScore');
@@ -291,12 +314,42 @@ async function tick(cfg, adapter) {
     // ── desired quotes (Phase 3) ──
     const plan = planQuotes({ legs, mid, maxSpreadC, minSize, tick, tokenId, tokenIdNo, defaultSizeShares: DEFAULT_SIZE_SHARES });
 
+    // ── SHARED GUARD (lib/maker/venue-rules) — the follow engine re-computes a target off the live mid
+    //    every cycle, so every cycle that target must be re-proved against the market's REAL rules:
+    //    on-tick, inside the reward band (radius = maxSpread/2), at or above min_incentive_size, inside
+    //    the venue price range. A quote the guard refuses is NOT postable, whatever the planner thought.
+    //    FAIL CLOSED: unreadable rules ⇒ RULES_UNREADABLE ⇒ nothing is postable on this market. ──
+    const guardRules = { tick, scoringMid: mid, maxSpreadCents: maxSpreadC, minSize };
+    for (const q of plan.quotes) {
+      const g = validateQuote(guardRules, { side: q.side, price: q.price, size: q.size });
+      q.guard = { valid: g.valid, codes: g.reasons.map((r) => r.code) };
+      if (!g.valid && q.postable) {
+        q.postable = false;
+        q.reason = `rifiutato dal guard venue-rules: ${g.reasons.map((r) => r.code).join(', ')}`;
+      }
+    }
+
+    // ── PER-MARKET COLLATERAL CEILING — the hard limit on what the bot may commit HERE, including
+    //    everything an on-fill 'opposite' rule would re-quote. Read fresh every cycle (a ceiling that
+    //    needed a restart to take effect would not be a control). No per-market entry ⇒ fall back to the
+    //    env rail cap, never to "unlimited"; an unreadable store ⇒ $0 ⇒ nothing is committed. ──
+    const capRead = getMarketCap(marketId, { fallbackUsd: cfg.rails.perMarketNotionalCapUsd });
+    const capped = applyCollateralCap({ quotes: plan.quotes, capUsd: capRead.capUsd });
+    plan.quotes = capped.quotes;
+
     // ── earning-range advisory (Phase 4) — measure competing depth from the FULL REST ladder (agent34's
     //    snapshot has only best bid/ask). null book → advisory shows "—", never a fabricated 100% share. ──
     const advisoryBook = tokenId ? await getRestBook(tokenId) : null;
     const advisory = earningRange({ book: advisoryBook, mid, maxSpreadC, minSize, rewardsDailyRate, capitalUsd: 1000 });
 
     // ── re-quote decisions (Phase 5) + reward-vs-baseline accrual ──
+    // The operator's per-side ON-FILL rule travels on the SAME RewardsLeg row as the quote, so we index
+    // the legs by id and read leg.onFill for the quote the planner produced from it.
+    const legById = new Map((legs || []).map((l) => [l.id, l]));
+    // Collateral still available on this market AFTER the admitted quotes — what an on-fill 'opposite'
+    // round-trip may consume. null cap ⇒ null headroom (no ceiling configured, stated as such).
+    const capHeadroomUsd = capRead.capUsd == null ? null : Math.max(0, capRead.capUsd - capped.admittedNotionalUsd);
+    const newsForceClose = newsByMarket.get(marketId) === 'high';
     const legActions = [];
     for (const q of plan.quotes) {
       // Key on the leg's stable DB id — laddered follow legs share (book,kind,mode) so keying on those
@@ -319,8 +372,21 @@ async function tick(cfg, adapter) {
       const ra = accrueReward(legKey + ':fb', q.score || 0, q.price, mid, vCents, now);
       const rewardVsBaseline = ra.staticScoreMs > 0 ? +(ra.followScoreMs / ra.staticScoreMs).toFixed(3) : null;
 
+      // ── ON-FILL RULE (per side, from the leg's own row) — what this engine WOULD do the moment this
+      //    level fills. Resolved every cycle so the plan is always against the CURRENT mid/band/tick and
+      //    the CURRENT collateral headroom; the follow-up order is priced and guard-validated by
+      //    lib/maker/fill-policy before it can exist. Nothing here fires until a real fill arrives, and
+      //    in this disarmed build no order exists to fill — the rule is wired and dormant, not pretend. ──
+      const onFillRule = normalizeFillRule((legById.get(q.id) || {}).onFill);
+      const onFill = planOnFill({
+        filledLeg: { book: q.book, kind: q.kind, price: q.price, offsetC: q.offsetC, size: q.size },
+        rule: onFillRule, mid, maxSpreadC, tick, minSize, capHeadroomUsd, newsForceClose,
+      });
+
       if (q.postable && feedLive) totalWouldPost++;
-      legActions.push({ book: q.book, kind: q.kind, side: q.side, mode: q.mode, targetPrice: q.price, size: q.size, notionalUsd: q.notionalUsd, distanceC: q.distanceC, expectedScore: q.score, inBandNow: q.inBandNow, belowMinSize: q.belowMinSize, neverEarns: q.neverEarns, postable: q.postable, reason: q.reason, requote: dec.requote, requoteReason: dec.reason, outOfBookMs, ordering: ordering.order, rewardVsBaseline });
+      legActions.push({ book: q.book, kind: q.kind, side: q.side, mode: q.mode, targetPrice: q.price, size: q.size, notionalUsd: q.notionalUsd, distanceC: q.distanceC, expectedScore: q.score, inBandNow: q.inBandNow, belowMinSize: q.belowMinSize, neverEarns: q.neverEarns, postable: q.postable, reason: q.reason, requote: dec.requote, requoteReason: dec.reason, outOfBookMs, ordering: ordering.order, rewardVsBaseline,
+        guard: q.guard, capBlocked: !!q.capBlocked,
+        onFill: { rule: onFillRule, applied: onFill.appliedRule, action: onFill.action, forcedBy: onFill.forcedBy, reason: onFill.reason, quote: onFill.quote, guardValid: onFill.guard ? onFill.guard.valid : null } });
     }
 
     // ── reconcile (Phase 5): in paper we hold no venue orders, so desired == toPlace (belief starts empty) ──
@@ -332,6 +398,9 @@ async function tick(cfg, adapter) {
       appendMakerAudit({ ts: now, venue: 'polymarket', op: 'plan', mode: cfg.mode, marketRef,
         feedLive, mid, twoSided: plan.market.twoSided, oneSidedPenalty: plan.market.oneSidedPenalty,
         wouldPost: desiredPostable.length, wouldCancel: recon.toCancel.length, railHalt: rails.cancelScope,
+        guardRefused: plan.quotes.filter((q) => q.guard && !q.guard.valid).length,
+        capUsd: capRead.capUsd, capSource: capRead.source, capBlocked: capped.blockedCount,
+        admittedNotionalUsd: capped.admittedNotionalUsd,
       });
     }
 
@@ -339,6 +408,14 @@ async function tick(cfg, adapter) {
       title: (band && (band.question || band.title)) || (bookMarket && bookMarket.title) || '',
       mid, feedLive, maxSpreadC, minSize, tick, rewardsDailyRate,
       band: plan.market, rails: { cancelScope: rails.cancelScope, allowNewPlacement: rails.allowNewPlacement, trips: rails.trips },
+      // The ceiling this market ran under this cycle, and what it actually admitted — externally
+      // observable, so "the bot respects the cap" is a readable fact and not a claim.
+      collateralCap: {
+        capUsd: capRead.capUsd, source: capRead.source, updatedAt: capRead.updatedAt,
+        plannedNotionalUsd: capped.plannedNotionalUsd, admittedNotionalUsd: capped.admittedNotionalUsd,
+        headroomUsd: capHeadroomUsd, blockedLegs: capped.blockedCount, capExceeded: capped.capExceeded,
+      },
+      guard: { refused: plan.quotes.filter((q) => q.guard && !q.guard.valid).length, source: 'lib/maker/venue-rules.validateQuote' },
       legs: legActions,
       advisory,
     };

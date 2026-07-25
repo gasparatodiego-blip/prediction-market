@@ -4,6 +4,10 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { getIsPaid, redactForTier } from '@/lib/paid-gating';
 import prisma from '@/lib/prisma';
+// The on-fill rule vocabulary is owned by the maker (it is the module that ACTS on it), not by this
+// route. Importing the normalizer here is what keeps the column the engine reads and the value the UI
+// writes the same three words — and it maps the legacy 'requote'/'flatten' rows without a migration.
+import { normalizeFillRule } from '@/lib/maker/fill-policy';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,7 +29,14 @@ const leg = z.object({
   price:   z.number().gt(0).lt(1),
   mode:    z.enum(['follow', 'pinned']).default('follow'),
   offsetC: z.number().min(-100).max(100).default(0),
-  onFill:  z.enum(['requote', 'close']).default('requote'),
+  // Per-side on-fill rule. The canonical vocabulary is close | opposite | hold (lib/maker/fill-policy);
+  // the legacy 'requote' (≡ opposite) and 'flatten' (≡ close) are still ACCEPTED so rows written before
+  // the rule became operative keep working, and every value is normalized before it is persisted — the
+  // column the maker reads never holds a fourth spelling. RewardsLeg.onFill is a String, so widening the
+  // vocabulary needs no schema migration.
+  onFill:  z.enum(['close', 'opposite', 'hold', 'requote', 'flatten'])
+            .default('opposite')
+            .transform((v) => normalizeFillRule(v)),
 });
 
 const putSchema = z.object({
