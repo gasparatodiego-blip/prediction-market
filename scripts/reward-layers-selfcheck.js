@@ -24,6 +24,16 @@ function phase1() {
   ok('every layer price is on the tick grid', [...m.bid, ...m.ask].every((l) => Math.abs(l.price / 0.01 - Math.round(l.price / 0.01)) < 1e-9));
   ok('every layer price is inside the band', [...m.bid, ...m.ask].every((l) => l.price >= 0.6375 - 1e-9 && l.price <= 0.6825 + 1e-9));
 
+  // OFF-GRID mid (adjMid 0.835, band 0.8125–0.8575): the nearest ask layer is 0.84 (0.005 above mid) and
+  // the nearest bid is 0.83. Snapping the mid to the grid would drop 0.84 and mis-place the near-mid layer;
+  // grid-enumeration from the true mid keeps both. This is the exact real market caught in Phase-2 verify.
+  const og = rewardLayers(0.8125, 0.8575, 0.01);
+  console.log(`  off-grid mid 0.835: maxUsablePerSide=${og.maxUsablePerSide} bid=${prices(og.bid)} ask=${prices(og.ask)}`);
+  ok('off-grid mid: floor(0.0225/0.01) → 2 usable per side', og.maxUsablePerSide === 2);
+  ok('off-grid mid keeps the NEAREST ask layer 0.84 (not snapped away), then 0.85', JSON.stringify(prices(og.ask)) === JSON.stringify([0.84, 0.85]));
+  ok('off-grid mid bid layers are 0.83 then 0.82', JSON.stringify(prices(og.bid)) === JSON.stringify([0.83, 0.82]));
+  ok('off-grid mid: every layer still inside the band and on-grid', [...og.bid, ...og.ask].every((l) => l.price >= 0.8125 - 1e-9 && l.price <= 0.8575 + 1e-9 && Math.abs(l.price / 0.01 - Math.round(l.price / 0.01)) < 1e-9));
+
   // One-tick (half-width = 1 tick) band → EXACTLY 1 layer per side, and no selector should be offered.
   const one = rewardLayers(0.64, 0.66, 0.01);
   console.log(`  one-tick band: maxUsablePerSide=${one.maxUsablePerSide} bid=${prices(one.bid)} ask=${prices(one.ask)}`);
@@ -34,10 +44,11 @@ function phase1() {
   const tight = rewardLayers(0.645, 0.655, 0.01);
   ok('a sub-tick-half-width band yields 0 usable layers (never a guessed 1)', tight.maxUsablePerSide === 0 && tight.bid.length === 0);
 
-  // Spacing reduces how many fit, but never raises the hard cap.
+  // Spacing starts at the nearest-mid layer and steps outward; the second layer (0.65±0.02) exits this
+  // ±2.25-tick band, so only the nearest fits. Spacing never raises the hard cap.
   const spaced = rewardLayers(0.6375, 0.6825, 0.01, { spacingTicks: 2 });
   console.log(`  spacing=2: cap=${spaced.maxUsablePerSide} bid=${prices(spaced.bid)} ask=${prices(spaced.ask)}`);
-  ok('spacing 2 fits fewer layers (0.68 ask / 0.64 bid) but cap stays 2', spaced.maxUsablePerSide === 2 && JSON.stringify(prices(spaced.ask)) === JSON.stringify([0.68]) && JSON.stringify(prices(spaced.bid)) === JSON.stringify([0.64]));
+  ok('spacing 2 keeps only the nearest layer each side (0.67 ask / 0.65 bid) but cap stays 2', spaced.maxUsablePerSide === 2 && JSON.stringify(prices(spaced.ask)) === JSON.stringify([0.67]) && JSON.stringify(prices(spaced.bid)) === JSON.stringify([0.65]));
 
   // maxLayers caps the emitted count without changing the geometry.
   const capped = rewardLayers(0.6375, 0.6825, 0.01, { maxLayers: 1 });

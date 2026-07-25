@@ -28,6 +28,7 @@ const { ClobWsClient } = require('../lib/clob-ws/client');
 const { LiveBookStore } = require('../lib/clob-ws/live-book');
 const { httpGet } = require('../lib/httpGet');
 const { adjustedMid, parseOrders, scoreBook, quadraticUserShare } = require('../lib/rewardScore');
+const { levelsInBand } = require('../lib/reward-layers'); // per-level in-band depth (multi-layer persistence)
 const REWARD_REF_CAPITAL = 1000; // MUST match lib/rewards-normalize REWARD_REF_CAPITAL (refShare capital)
 const { decideDrift } = require('../lib/rewards-drift');
 const { loadNewsGuardConfig } = require('../lib/news-guard/config');
@@ -68,8 +69,14 @@ const UA = 'edgeradar-agent34-clob-ws/1.0 (read-only)';
 //   • retention: on each rotation, delete mid-history files older than MID_HISTORY_RETENTION_DAYS.
 // Interval: the spec's 15s × 60 markets × ~380 B/row ≈ 131 MB/day exceeds the 50 MB/day box budget, so
 // the interval is raised to the finest value that stays under it at the subscription cap (measured below).
+// 2026-07-25: adding the per-level `levels[]` array (REWARDS-MULTILEVEL-QUOTING) grew the row 376→560 B
+// (measured over all 60 subscribed markets, layer distribution {1:6, 2:53, 3:1}). At 45s that is
+// 64.5 MB/day mid-history + 1.9 MB/day tape ≈ 66 MB/day — over budget. Per the spec we cut the INTERVAL,
+// never the level count (the level count is the feature): 45s→75s → 38.7 + 1.9 ≈ 40.6 MB/day, ~19% under
+// the 50 MB/day cap. 75s is still 4× finer than the 5-min continuous-coverage outage threshold (agent39),
+// so raising it does not fragment the net-rerun window.
 const MID_HISTORY_DIR = '/root/prediction-market/data';
-const MID_HISTORY_INTERVAL_MS = Number(process.env.MID_HISTORY_INTERVAL_MS || 45_000);
+const MID_HISTORY_INTERVAL_MS = Number(process.env.MID_HISTORY_INTERVAL_MS || 75_000);
 const MID_HISTORY_RETENTION_DAYS = 14;
 
 // ── TRADE TAPE (executed-trade recording for adverse-selection measurement) ──
@@ -535,6 +542,7 @@ function sampleMidHistory() {
     const b = store.getBook(assetId);
     let bestBid = null, bestAsk = null, plainMid = null, adjMid = null;
     let bidDepthInBand = null, askDepthInBand = null, bandLow = null, bandHigh = null;
+    let levels = null; // per-layer in-band depth; null when there is no band to place layers within
     if (b) {
       const bids = parseOrders(b.bids, true);
       const asks = parseOrders(b.asks, false);
@@ -547,6 +555,12 @@ function sampleMidHistory() {
       const d = inBandDepth(bids, asks, adjMid, bandRadiusC, meta.minSize);
       bidDepthInBand = d.bidDepthInBand; askDepthInBand = d.askDepthInBand;
       bandLow = d.bandLow; bandHigh = d.bandHigh;
+      // Per-level qualifying depth at each reward layer (lib/reward-layers geometry). Same size-cutoff
+      // as the aggregate above. Kept alongside the aggregate fields, never replacing them. Each level
+      // keeps its index; a side whose depth cannot be read is null there, never 0, never dropped.
+      levels = (bandLow != null && bandHigh != null && meta.tick != null)
+        ? levelsInBand(bids, asks, bandLow, bandHigh, meta.tick, meta.minSize)
+        : null;
     }
     // "ws" only when the book got a fresh event within the sampling interval; otherwise the values are a
     // carried-forward book (or none) → "stale", exactly what the flag is for.
@@ -559,6 +573,7 @@ function sampleMidHistory() {
       bidDepthInBand, askDepthInBand,
       bandLow, bandHigh,
       tick: meta.tick != null ? meta.tick : null,
+      levels,
       src,
     }) + '\n';
     n++;
