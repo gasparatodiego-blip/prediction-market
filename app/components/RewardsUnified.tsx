@@ -176,6 +176,7 @@ interface Row extends Base {
   space: number;
   share: number;
   unknown: boolean;
+  potTooSmall: boolean;               // reward pot below POT_DEMOTE_FLOOR_USD → demoted + labelled
   stabilityScore: number | null;      // measured band-relative stability (0..100) or null (unmeasured)
   stability: Stability;               // full measurement — label, drivers, and the unknown reason
   hoursToResolution: number | null;   // real expiry field for the expiry cell + expiry sort
@@ -225,6 +226,14 @@ interface FilterState {
 // and its real measured capacity all stay visible. Reuses the SAME constant the estimate assumes
 // (ASSUMED_ORDER_SIZE_USD == REWARD_REF_CAPITAL) — NOT a new threshold.
 const ANNUALIZE_MIN_CAPACITY_USD = ASSUMED_ORDER_SIZE_USD;
+
+// PHASE 1 — POT DEMOTION FLOOR. The pool-share estimate is arithmetically correct (it reproduces on a
+// fresh CLOB book), but a high share of a TINY pot is not an opportunity: on these markets the qualifying
+// two-sided in-band depth is genuinely thin, so a $1k maker would dominate — of $11/day. Below this floor
+// even total dominance of the pot is a trivial gross subsidy. $15/day sits at ~the 30th percentile of the
+// 116-row pot distribution (median $18), where the "you take 84–99.5%" rows all cluster (their pots are
+// $10–50, mostly ≤ $20). Demoted rows are ranked last and told plainly — their share is never rewritten.
+const POT_DEMOTE_FLOOR_USD = 15;
 
 const SENTINEL_SPREAD = -1;   // "not yet initialised from ranges" → treated as any
 const DEFAULT_FILTERS: FilterState = {
@@ -500,6 +509,9 @@ export default function RewardsUnified() {
       space:        Infinity,
       share,
       unknown,
+      // A pot below the floor makes any share of it meaningless — flagged here, demoted in sortRows,
+      // labelled on the row. Uses the REAL pool $/day; a null pot is NOT "too small" (it renders "—").
+      potTooSmall:  fin(b.poolDayUsd) && (b.poolDayUsd as number) < POT_DEMOTE_FLOOR_USD,
       // Sort/stat inputs (real fields). stability: the measured band-relative score — unknown (score
       // null) whenever any input is missing → sorts last, cell "—". hoursToResolution: real expiry.
       // Same stabilityOf() the SERVER filter calls, so the shown score can never disagree with the
@@ -986,6 +998,18 @@ export default function RewardsUnified() {
                                 </span>
                               )}
                             </Redacted>
+                            {/* PHASE 1 — the POT the share/estimate is a share OF, always adjacent so a % or a
+                                $/day is never read without the money behind it. A pot below the floor is
+                                labelled "troppo piccolo": a high share of it is not an opportunity. */}
+                            <span className="cc-row-pot">
+                              <span className="cc-row-pot-k">montepremi</span>{' '}
+                              <Redacted value={row.poolDayUsd} isPaid>{(v) => <span className="rw-nowrap">${Number(v).toFixed(0)}/giorno</span>}</Redacted>
+                              {row.potTooSmall && (
+                                <span className="cc-row-potwarn" title="il montepremi è troppo piccolo perché una quota alta significhi un'opportunità: anche prendendolo quasi tutto sono pochi dollari al giorno — questa riga è retrocessa in fondo">
+                                  {' '}· troppo piccolo
+                                </span>
+                              )}
+                            </span>
                             {/* ANNUALIZED — the user-size run-rate (resa/giorno × 365), demoted behind the
                                 SHARED APY_CAP + ">200%/yr" label from lib/honest-display (never forked). Only
                                 when a size is set AND the row is priceable; else no line. */}
@@ -1107,7 +1131,7 @@ function RewardYieldBreakdown({ row, isPaid }: { row: Row; isPaid: boolean }) {
           <div className="rw-brk-item"><span className="rw-brk-k">assumed order</span>
             <span className="rw-brk-v">${row.deployed.toLocaleString()}</span></div>
           <div className="rw-brk-item"><span className="rw-brk-k">your pool share</span>
-            <span className="rw-brk-v"><Redacted value={row.unknown ? null : row.share} isPaid={isPaid}>{(v) => <>{(Number(v) * 100).toFixed(1)}%</>}</Redacted></span></div>
+            <span className="rw-brk-v"><Redacted value={row.unknown ? null : row.share} isPaid={isPaid}>{(v) => <>{(Number(v) * 100).toFixed(1)}%{fin(row.poolDayUsd) ? <span className="rw-dim"> · di ${(row.poolDayUsd as number).toFixed(0)}/g</span> : null}</>}</Redacted></span></div>
           <div className="rw-brk-item"><span className="rw-brk-k">your reward · stima (gross)</span>
             <span className="rw-brk-v rw-brk-primary"><Redacted value={row.unknown ? null : row.netUsdPerDay} isPaid={isPaid}>{(v) => <>${Number(v).toFixed(2)}/day</>}</Redacted></span></div>
           {/* Net is NOT modelled — adverse selection / inventory risk on fills is excluded. No figure invented. */}
