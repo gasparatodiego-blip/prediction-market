@@ -139,6 +139,10 @@ data/safety-fills.jsonl
 data/book-velocity.jsonl
 data/book-velocity.jsonl.*
 
+# agent34 mid-history: sampled adjusted-mid + in-band depth for the rewards backtest.
+# Append-only, daily-rotated, 14-day retention — observation data, never commit it.
+data/mid-history*.jsonl
+
 # admin venue-credential store + audit (secrets — never commit)
 data/venue-maker-keys.json
 data/venue-maker-keys.json.tmp.*

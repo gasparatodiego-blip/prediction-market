@@ -53,6 +53,19 @@ const STARTUP_DELAY_MS = 8_000;
 const LADDER_LEVELS = 12;
 const UA = 'edgeradar-agent34-clob-ws/1.0 (read-only)';
 
+// ── MID-HISTORY sampling (append-only observation log for the rewards backtest) ──
+// One JSONL line per market per sample, appended to a daily-rotated file. This is PURELY an append of
+// data already held in memory (the live book + the same size-cutoff adjusted mid the reward math uses);
+// it changes NO existing output, no estimate, and touches no order path. Memory-safe by construction:
+//   • append STREAM (flags:'a') — never read the file back, never buffer the day in memory;
+//   • rotate per UTC day → data/mid-history-YYYY-MM-DD.jsonl;
+//   • retention: on each rotation, delete mid-history files older than MID_HISTORY_RETENTION_DAYS.
+// Interval: the spec's 15s × 60 markets × ~380 B/row ≈ 131 MB/day exceeds the 50 MB/day box budget, so
+// the interval is raised to the finest value that stays under it at the subscription cap (measured below).
+const MID_HISTORY_DIR = '/root/prediction-market/data';
+const MID_HISTORY_INTERVAL_MS = Number(process.env.MID_HISTORY_INTERVAL_MS || 45_000);
+const MID_HISTORY_RETENTION_DAYS = 14;
+
 const log = (...a) => console.log(new Date().toISOString(), '[agent34]', ...a);
 
 // Lazy Prisma — legs are persisted user data (RewardsLeg). If the client/DB isn't
@@ -90,6 +103,7 @@ function collectDesiredMarkets() {
       tokenIdNo: m.tokenIdNo ? String(m.tokenIdNo) : null,
       minSize: Number(m.rewardsMinSize || m.minSize || 1) || 1,
       maxSpread: Number(m.rewardsMaxSpread ?? m.maxSpread) || null, // cents; band radius = /2
+      tick: Number(m.tickSize) > 0 ? Number(m.tickSize) : null,     // venue min tick (agent24 /tick-size); null if unknown
       title: (m.question || m.title || '').slice(0, 120),
     });
     if (out.size >= SUBSCRIPTION_CAP) break;
@@ -131,6 +145,7 @@ async function unionLegMarkets(into) {
       tokenIdNo: t.tokenIdNo,
       minSize: 1,          // unknown for off-watchlist markets → conservative; band stays null
       maxSpread: null,     // no reward-band config known → band null (mid/drift still tracked)
+      tick: null,          // off-watchlist market → venue tick unknown here → null (never fabricated)
       title: '',
       fromLeg: true,
     });
@@ -144,6 +159,8 @@ let assetToMarket = new Map();      // assetId -> { conditionId, side:'yes'|'no'
 const lastResnapshotAt = new Map(); // assetId -> ts (throttle REST)
 let reconnects = 0, watchdogReconnects = 0, restSnapshots = 0, droppedForCap = 0;
 let driftSignals = 0;
+let midHistoryStream = null;       // { day, stream } — the daily-rotated append stream (never read back)
+let midHistoryRows = 0;            // rows appended this process lifetime (observability only)
 
 // ── drift-advisory state (Phase 4). Legs are persisted user data; we track per-leg
 // time-in/out-of-band and emit SHADOW DriftSignals through the news-guard rails. ──
@@ -340,6 +357,109 @@ function runDrift(snapshot, now) {
   }
 }
 
+// ── mid-history: rotation + 14-day retention ──
+// Retention runs ON ROTATION (a new UTC day, or first open): list data/mid-history-YYYY-MM-DD.jsonl,
+// parse the date out of the name, and unlink any file whose day is older than the cutoff. Delete-by-name
+// (never read a file's contents), so pruning is O(files) and touches no memory.
+function midHistoryPath(dayStr) { return path.join(MID_HISTORY_DIR, `mid-history-${dayStr}.jsonl`); }
+function utcDayStr(now) { return new Date(now).toISOString().slice(0, 10); } // YYYY-MM-DD (UTC)
+function pruneOldHistory(now) {
+  const cutoff = now - MID_HISTORY_RETENTION_DAYS * 86_400_000;
+  let files = [];
+  try { files = fs.readdirSync(MID_HISTORY_DIR); } catch { return; }
+  for (const f of files) {
+    const m = f.match(/^mid-history-(\d{4}-\d{2}-\d{2})\.jsonl$/);
+    if (!m) continue;
+    const t = Date.parse(`${m[1]}T00:00:00Z`);
+    if (Number.isFinite(t) && t < cutoff) {
+      try { fs.unlinkSync(path.join(MID_HISTORY_DIR, f)); log('mid-history: pruned', f, `(older than ${MID_HISTORY_RETENTION_DAYS}d)`); }
+      catch (e) { log('mid-history: prune failed for', f, e.message); }
+    }
+  }
+}
+// The append stream for the CURRENT UTC day. On a day change we end the old stream, open the new one in
+// append mode (flags:'a'), and run retention. flags:'a' means we never truncate or read an existing file.
+function midHistoryStreamFor(now) {
+  const day = utcDayStr(now);
+  if (midHistoryStream && midHistoryStream.day === day) return midHistoryStream.stream;
+  if (midHistoryStream) { try { midHistoryStream.stream.end(); } catch { /* ignore */ } }
+  const stream = fs.createWriteStream(midHistoryPath(day), { flags: 'a' });
+  stream.on('error', (e) => log('mid-history: stream error:', e.message));
+  midHistoryStream = { day, stream };
+  pruneOldHistory(now);
+  log(`mid-history: appending ${midHistoryPath(day)} every ${MID_HISTORY_INTERVAL_MS / 1000}s (retain ${MID_HISTORY_RETENTION_DAYS}d)`);
+  return stream;
+}
+
+// Qualifying resting SIZE inside the reward band, per side. Same size-cutoff (≥ minSize) the reward
+// scoring uses, over the FULL in-memory book (not the truncated ladder). Band = adjMid ± bandRadiusC.
+// When the band or the mid is unknown, every band-derived field is null — never 0, never guessed.
+function inBandDepth(bids, asks, adjMid, bandRadiusC, minSize) {
+  if (adjMid == null || bandRadiusC == null || !(bandRadiusC > 0)) {
+    return { bandLow: null, bandHigh: null, bidDepthInBand: null, askDepthInBand: null };
+  }
+  const r = bandRadiusC / 100;
+  const bandLow = adjMid - r;
+  const bandHigh = adjMid + r;
+  const cutoff = minSize > 0 ? minSize : 0;
+  let bidDepth = 0, askDepth = 0;
+  for (const o of bids) if (o.size >= cutoff && o.price >= bandLow - 1e-12 && o.price <= bandHigh + 1e-12) bidDepth += o.size;
+  for (const o of asks) if (o.size >= cutoff && o.price >= bandLow - 1e-12 && o.price <= bandHigh + 1e-12) askDepth += o.size;
+  return {
+    bandLow: Math.round(bandLow * 1e6) / 1e6,
+    bandHigh: Math.round(bandHigh * 1e6) / 1e6,
+    bidDepthInBand: Math.round(bidDepth * 1e4) / 1e4,
+    askDepthInBand: Math.round(askDepth * 1e4) / 1e4,
+  };
+}
+
+// Append one row per market from IN-MEMORY book state only. A value not genuinely known at sample time
+// is null (never a fallback, never a silent carry). src distinguishes a book that got a fresh ws event
+// within the sampling interval ("ws") from one carried forward from an older event ("stale").
+function sampleMidHistory() {
+  const now = Date.now();
+  const iso = new Date(now).toISOString();
+  let stream;
+  try { stream = midHistoryStreamFor(now); } catch (e) { log('mid-history: stream open failed:', e.message); return; }
+  let batch = '';
+  let n = 0;
+  for (const meta of desired.values()) {
+    const assetId = meta.tokenId;
+    const fr = store.freshness(assetId, STALE_MS, now);
+    const b = store.getBook(assetId);
+    let bestBid = null, bestAsk = null, plainMid = null, adjMid = null;
+    let bidDepthInBand = null, askDepthInBand = null, bandLow = null, bandHigh = null;
+    if (b) {
+      const bids = parseOrders(b.bids, true);
+      const asks = parseOrders(b.asks, false);
+      bestBid = bids[0] ? bids[0].price : null;
+      bestAsk = asks[0] ? asks[0].price : null;
+      plainMid = (bestBid != null && bestAsk != null) ? Math.round(((bestBid + bestAsk) / 2) * 1e6) / 1e6 : null;
+      const am = adjustedMid(bids, asks, meta.minSize, null);
+      adjMid = am != null ? Math.round(am * 1e6) / 1e6 : null;
+      const bandRadiusC = meta.maxSpread != null ? meta.maxSpread / 2 : null;
+      const d = inBandDepth(bids, asks, adjMid, bandRadiusC, meta.minSize);
+      bidDepthInBand = d.bidDepthInBand; askDepthInBand = d.askDepthInBand;
+      bandLow = d.bandLow; bandHigh = d.bandHigh;
+    }
+    // "ws" only when the book got a fresh event within the sampling interval; otherwise the values are a
+    // carried-forward book (or none) → "stale", exactly what the flag is for.
+    const src = (b && fr.ageMs != null && fr.ageMs <= MID_HISTORY_INTERVAL_MS) ? 'ws' : 'stale';
+    batch += JSON.stringify({
+      ts: iso,
+      marketId: meta.conditionId,
+      tokenIdYes: meta.tokenId,
+      adjMid, plainMid, bestBid, bestAsk,
+      bidDepthInBand, askDepthInBand,
+      bandLow, bandHigh,
+      tick: meta.tick != null ? meta.tick : null,
+      src,
+    }) + '\n';
+    n++;
+  }
+  if (batch) { stream.write(batch); midHistoryRows += n; }
+}
+
 async function tick() {
   // Heal any book that lost its snapshot (delta-without-seed).
   for (const id of store.resnapshotNeeded()) await resnapshotAsset(id, 'gap');
@@ -361,11 +481,15 @@ async function main() {
 
   setInterval(() => { reconcileSubscriptions().catch(e => log('reconcile failed:', e.message)); }, REFRESH_MARKETS_MS);
   setInterval(() => { tick().catch(e => log('tick failed:', e.message)); }, WRITE_INTERVAL_MS);
+  // Append-only mid-history sample (separate, slower cadence than the 3s snapshot). Read-only; never
+  // reaches an order path. Wrapped so a write hiccup can never stall the feed loop.
+  setInterval(() => { try { sampleMidHistory(); } catch (e) { log('mid-history sample failed:', e.message); } }, MID_HISTORY_INTERVAL_MS);
   log(`up: ${desired.size} markets / ${assetToMarket.size} assets subscribed`);
 }
 
 function shutdown() {
   try { client.close(); } catch { /* ignore */ }
+  if (midHistoryStream) { try { midHistoryStream.stream.end(); } catch { /* ignore */ } }
   if (prisma) { prisma.$disconnect().catch(() => {}); }
   process.exit(0);
 }
@@ -374,4 +498,4 @@ process.on('SIGINT', shutdown);
 
 if (require.main === module) main().catch(e => { log('fatal:', e.message); process.exit(1); });
 
-module.exports = { collectDesiredMarkets, sideView, buildSnapshot, store, client };
+module.exports = { collectDesiredMarkets, sideView, buildSnapshot, store, client, inBandDepth, sampleMidHistory, pruneOldHistory, utcDayStr, MID_HISTORY_INTERVAL_MS };
