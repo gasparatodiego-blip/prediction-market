@@ -4,7 +4,7 @@
 // CAPACITY + capital reconciliation (Phase 5). Pure/offline. One assertion per new behaviour; each proves
 // it fires independently. Run: node scripts/reward-layered-selfcheck.js
 const assert = require('assert');
-const { computeLayeredPlan, scoreLayeredPlan, layerSizeSplit, depthSourceLabel, TAIL_LO, TAIL_HI } = require('../lib/reward-layered');
+const { computeLayeredPlan, capLayeredPlan, scoreLayeredPlan, layerSizeSplit, depthSourceLabel, TAIL_LO, TAIL_HI } = require('../lib/reward-layered');
 
 let passed = 0;
 const ok = (name, cond) => { assert.ok(cond, 'FAIL: ' + name); console.log('  ✓ ' + name); passed++; };
@@ -106,7 +106,41 @@ function phase4() {
   ok('the per-market total is capped at poolDay (never overstate the pool)', smallPool.totalDailyUsd <= 5 + 1e-9 && smallPool.poolCapped === true);
 }
 
+// ── PHASE 5 — per-layer capacity cap + capital reconciliation ──────────────────────────────────────
+function phase5() {
+  console.log('PHASE 5 — per-layer capacity cap + capital reconciliation');
+  const plan3 = computeLayeredPlan({ rewardScore: RS, ...BAND, perSideSizeUsd: 200, numLayers: 3 });
+  // Thin outer layer (50 shares ≈ $50 both sides) forces the cap on layer 3 only; inner books are deep.
+  const capped = capLayeredPlan(plan3, depth(5000, 3000, 50));
+  const L3 = capped.layers[2];
+  console.log(`  layer3: assigned $${L3.assignedUsd} eligibleDepth $${L3.eligibleDepthUsd} committed $${L3.committedUsd} uncommitted $${L3.uncommittedUsd} capBound ${L3.capBound}`);
+  ok('a thin outer layer is capacity-capped: committed < assigned', L3.capBound === true && L3.committedUsd < L3.assignedUsd);
+  ok('the uncommitted remainder is disclosed on that row (plain Italian)', L3.uncommittedUsd > 0 && /non impegnati/.test(L3.capNote));
+  ok('inner deep-book layers are NOT capped (assigned commits in full)', capped.layers[0].capBound === false && Math.abs(capped.layers[0].committedUsd - capped.layers[0].assignedUsd) < 0.01);
+  ok('capital reconciles: committed + uncommitted = configured per-side size', capped.reconciliation.reconciles === true && Math.abs(capped.reconciliation.totalCommitted + capped.reconciliation.totalUncommitted - 200) < 0.01);
+  ok('the uncommitted remainder is NOT reassigned (each layer keeps its own assigned share)', capped.layers.every((l) => Math.abs(l.assignedUsd - 200 / 3) < 0.01));
+
+  // Null-depth layer → fail closed: nothing committed, whole share uncommitted, reconciliation still holds.
+  const nullCap = capLayeredPlan(plan3, [depth(5000, 3000, 50)[0], { index: 2, bidSizeAtLevel: null, askSizeAtLevel: 3000 }, depth(5000, 3000, 50)[2]]);
+  ok('an unreadable-depth layer commits nothing (fail closed), whole share uncommitted', nullCap.layers[1].committedUsd === null && Math.abs(nullCap.layers[1].uncommittedUsd - 200 / 3) < 0.01 && nullCap.layers[1].capBound === true);
+  ok('reconciliation still holds with a null-depth layer present', nullCap.reconciliation.reconciles === true);
+
+  // The cap TEMPERS the thin-outer overstatement: scoring the capped plan earns less on that layer than
+  // the uncapped Phase-4 scoring did — you cannot dominate a book you would BE.
+  const uncappedScore = scoreLayeredPlan({ plan: plan3, perLevelDepth: depth(5000, 3000, 50), rewardScore: RS, depthSource: { kind: 'storico', hours: 8 } });
+  const cappedScore = scoreLayeredPlan({ plan: capped, perLevelDepth: depth(5000, 3000, 50), rewardScore: RS, depthSource: { kind: 'storico', hours: 8 } });
+  console.log(`  outer layer $/day: uncapped=${uncappedScore.layers[2].dailyUsd} capped=${cappedScore.layers[2].dailyUsd}`);
+  ok('capping the thin outer layer lowers its $/day', cappedScore.layers[2].dailyUsd < uncappedScore.layers[2].dailyUsd);
+
+  // CAPACITY-CAPPED-OUTER non-linearity: the capped 3-layer total is still NOT 3x the capped 1-layer figure.
+  const plan1 = computeLayeredPlan({ rewardScore: RS, ...BAND, perSideSizeUsd: 200, numLayers: 1 });
+  const c1 = scoreLayeredPlan({ plan: capLayeredPlan(plan1, depth(5000, 3000, 50)), perLevelDepth: depth(5000, 3000, 50), rewardScore: RS, depthSource: { kind: 'storico', hours: 8 } });
+  console.log(`  capped: 1-layer=${c1.totalDailyUsd} 3-layer=${cappedScore.totalDailyUsd} 3x1=${(3 * c1.totalDailyUsd).toFixed(2)}`);
+  ok('capped 3-layer total is NOT 3x the capped 1-layer figure (non-linear under the cap)', Math.abs(cappedScore.totalDailyUsd - 3 * c1.totalDailyUsd) > 0.5);
+}
+
 console.log('reward-layered-selfcheck\n');
 phase3();
 phase4();
+phase5();
 console.log(`\nreward-layered-selfcheck: ${passed} assertions passed`);
