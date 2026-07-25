@@ -209,7 +209,10 @@ function phase5() {
   const serverParamsBody = (src.match(/function serverParams[\s\S]*?\n}/) || [''])[0];
   ok('serverParams (the API query) references neither size nor offset', !/sizeInput|totalSizeUsd|offsetCents|distInput/.test(serverParamsBody));
   ok('the fetch effect depends on [apiQuery] only — size/offset never trigger a refetch', /\}, \[apiQuery\]\);/.test(src));
-  ok('enriched DOES depend on [base, totalSizeUsd, offsetCents] — a size/offset change recomputes each row', /\}\), \[base, totalSizeUsd, offsetCents\]\);/.test(src));
+  // enriched must still depend on [base, totalSizeUsd, offsetCents]; the layered-quoting work extends the
+  // SAME memo with the layer controls (…, layersN, spacingTicks), so size/offset/layer changes all
+  // recompute each row without a refetch. Require the three originals at the head; allow the extension.
+  ok('enriched DOES depend on [base, totalSizeUsd, offsetCents] (+ layer controls) — a size/offset/layer change recomputes each row', /\}\), \[base, totalSizeUsd, offsetCents[^\]]*\]\);/.test(src));
   ok('the per-row computation is memoised as row.pr (computed once in enriched, reused by the row + totals)', /pr,   \/\/ computed once above/.test(src) && /const pr = row\.pr;/.test(src));
 }
 
