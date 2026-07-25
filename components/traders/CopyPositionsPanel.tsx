@@ -12,6 +12,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { fmtPrice, fmtSize, fmtPnl, fmtUpdated } from './format';
+import CollectionStoppedNote from '@/app/components/CollectionStoppedNote';
 
 const ACCENT = '#0c9d6e';
 
@@ -34,6 +35,8 @@ export default function CopyPositionsPanel({ address }: { address: string }) {
   const [manualAuth, setManualAuth] = useState<boolean>(true);
   const [busy, setBusy]       = useState<string | null>(null);
   const [msg, setMsg]         = useState<string | null>(null);
+  const [copyStale, setCopyStale] = useState<boolean>(false);       // top-level stopped flag from /api/copy/paper
+  const [copyUpdatedAt, setCopyUpdatedAt] = useState<string | null>(null);
 
   const loadCopied = useCallback(async () => {
     try {
@@ -41,6 +44,8 @@ export default function CopyPositionsPanel({ address }: { address: string }) {
       if (r.status === 401) { setCopyAuth(false); setCopied([]); return; }
       setCopyAuth(true);
       const d = await r.json();
+      setCopyStale(!!d.stale);
+      setCopyUpdatedAt(d.updatedAt ?? null);
       const wl = address.toLowerCase();
       const mine = (d.configs ?? []) as CopyConfigView[];
       // Only positions copied from THIS trader's wallet.
@@ -87,6 +92,12 @@ export default function CopyPositionsPanel({ address }: { address: string }) {
           </div>
           <span className="shrink-0 font-body text-[10px] uppercase tracking-wide px-2 py-1 rounded-md" style={{ color: ACCENT, background: 'rgba(12,157,110,.10)' }}>engine-owned</span>
         </div>
+
+        {copyStale && (
+          <div className="px-4 pt-3">
+            <CollectionStoppedNote asOf={copyUpdatedAt} />
+          </div>
+        )}
 
         {!copyAuth ? (
           <Empty>Sign in to see and manage your copied positions from this trader.</Empty>

@@ -4,6 +4,10 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Redacted } from './ui/Redacted';
 import { CardSection, LegBox, ArmToggle, EmptyState } from './ds';
+// When agent19 is stopped the /api/carry/[id] feed freezes; we must not scale frozen basis/APY/
+// capacity as if current. This note + the "—" convention keep the calculator honest.
+import CollectionStoppedNote from '@/app/components/CollectionStoppedNote';
+import { STOPPED_DASH } from '@/lib/collection-status';
 
 /**
  * Cash & carry position calculator — "if I enter now, exactly how much do I net?"
@@ -58,7 +62,7 @@ interface Card {
   coinMargined: boolean;
   feeModel: FeeModel | null;
 }
-interface Payload { card: Card; isPaid: boolean; updatedAt: string | null; error?: string }
+interface Payload { card: Card; isPaid: boolean; updatedAt: string | null; agentStatus?: string; error?: string }
 
 const PRESETS = [1_000, 10_000, 50_000, 250_000];
 const DEFAULT_CAPITAL = 10_000;
@@ -100,6 +104,8 @@ export default function CarryPositionCalculator({ id, embedded = false }: { id: 
 
   const card = data?.card ?? null;
   const isPaid = data?.isPaid ?? false;
+  // Collection stopped = the API's freshness signal is anything other than 'running' ('stale'|'offline').
+  const stopped = !!(data?.agentStatus && data.agentStatus !== 'running');
   const capacity = card?.capacityUsd ?? null;
   const days = card?.daysToExpiry ?? null;
   const riskFree = card?.riskFreePct ?? 4;
@@ -165,6 +171,7 @@ export default function CarryPositionCalculator({ id, embedded = false }: { id: 
                 <span className="cd-dot">·</span>
                 <span className="cd-exp-dir">{card.direction ?? '—'}</span>
               </p>
+              {stopped && <CollectionStoppedNote asOf={data?.updatedAt ?? null} className="cd-stopped" />}
             </header>
 
             {/* 2. legs — buy spot / short future, side by side */}
@@ -194,7 +201,7 @@ export default function CarryPositionCalculator({ id, embedded = false }: { id: 
               <div className="cd-cap-row">
                 <label className="cd-label" htmlFor="cd-capital">How much do you want to deploy?</label>
                 <span className="cd-cap-max">
-                  max {capacity == null ? '—' : compact(capacity)}
+                  max {stopped ? STOPPED_DASH : (capacity == null ? '—' : compact(capacity))}
                   {card.bindingLeg ? ` · ${card.bindingLeg}` : ''} · book depth
                 </span>
               </div>
@@ -241,14 +248,20 @@ export default function CarryPositionCalculator({ id, embedded = false }: { id: 
               <span className="cd-answer-label">IF YOU ENTER NOW, HELD TO EXPIRY</span>
               <div className="cd-answer-row">
                 <span className="cd-answer-net">
-                  <Redacted value={calc?.net} isPaid={isPaid}>{(v) => <>+${money(Number(v))}</>}</Redacted>
+                  {stopped ? STOPPED_DASH : (
+                    <Redacted value={calc?.net} isPaid={isPaid}>{(v) => <>+${money(Number(v))}</>}</Redacted>
+                  )}
                 </span>
                 <span className="cd-answer-side">
                   <span className="cd-answer-sub">
-                    <Redacted value={calc?.netPerDay} isPaid={isPaid}>{(v) => <>${money(Number(v))}</>}</Redacted> / day
+                    {stopped ? STOPPED_DASH : (
+                      <Redacted value={calc?.netPerDay} isPaid={isPaid}>{(v) => <>${money(Number(v))}</>}</Redacted>
+                    )} / day
                   </span>
                   <span className="cd-answer-sub">
-                    <Redacted value={calc?.netApy} isPaid={isPaid}>{(v) => <>{Number(v).toFixed(2)}%/yr</>}</Redacted>
+                    {stopped ? STOPPED_DASH : (
+                      <Redacted value={calc?.netApy} isPaid={isPaid}>{(v) => <>{Number(v).toFixed(2)}%/yr</>}</Redacted>
+                    )}
                   </span>
                 </span>
               </div>
@@ -267,7 +280,9 @@ export default function CarryPositionCalculator({ id, embedded = false }: { id: 
               >
                 <span className="cd-acc-title">
                   Fee breakdown · total{' '}
-                  <Redacted value={calc?.totalFees} isPaid={isPaid}>{(v) => <>${money(Number(v))}</>}</Redacted>
+                  {stopped ? STOPPED_DASH : (
+                    <Redacted value={calc?.totalFees} isPaid={isPaid}>{(v) => <>${money(Number(v))}</>}</Redacted>
+                  )}
                 </span>
                 <span className="cd-acc-caret" aria-hidden>{feeOpen ? '▾' : '▸'}</span>
               </button>
@@ -275,13 +290,15 @@ export default function CarryPositionCalculator({ id, embedded = false }: { id: 
               {feeOpen && (
                 <div className="cd-acc-body">
                   <div className="cd-brk-row">
-                    <span>gross basis{card.executableBasisPct != null ? ` (+${card.executableBasisPct.toFixed(2)}%)` : ''}</span>
+                    <span>gross basis{!stopped && card.executableBasisPct != null ? ` (+${card.executableBasisPct.toFixed(2)}%)` : ''}</span>
                     <strong className="cd-green">
-                      <Redacted value={calc?.gross} isPaid={isPaid}>{(v) => <>+${money(Number(v))}</>}</Redacted>
+                      {stopped ? STOPPED_DASH : (
+                        <Redacted value={calc?.gross} isPaid={isPaid}>{(v) => <>+${money(Number(v))}</>}</Redacted>
+                      )}
                     </strong>
                   </div>
 
-                  {(calc?.feeRows ?? []).filter((f) => f.usd !== 0).map((f, i) => (
+                  {!stopped && (calc?.feeRows ?? []).filter((f) => f.usd !== 0).map((f, i) => (
                     <div className="cd-brk-row is-fee" key={i}>
                       <span>{f.label}{f.pct != null ? ` (${f.pct.toFixed(3)}%)` : ' (—)'}</span>
                       <strong className="cd-danger">
@@ -289,7 +306,7 @@ export default function CarryPositionCalculator({ id, embedded = false }: { id: 
                       </strong>
                     </div>
                   ))}
-                  {!calc?.feeRows?.length && (
+                  {!stopped && !calc?.feeRows?.length && (
                     <div className="cd-brk-row is-fee">
                       <span>fees</span>
                       <strong className="cd-danger">
@@ -299,9 +316,11 @@ export default function CarryPositionCalculator({ id, embedded = false }: { id: 
                   )}
 
                   <div className="cd-brk-row is-total">
-                    <span>total fees{card.feeModel?.totalPct != null ? ` (${card.feeModel.totalPct.toFixed(3)}%)` : ''}</span>
+                    <span>total fees{!stopped && card.feeModel?.totalPct != null ? ` (${card.feeModel.totalPct.toFixed(3)}%)` : ''}</span>
                     <strong className="cd-danger">
-                      <Redacted value={calc?.totalFees} isPaid={isPaid}>{(v) => <>−${money(Number(v))}</>}</Redacted>
+                      {stopped ? STOPPED_DASH : (
+                        <Redacted value={calc?.totalFees} isPaid={isPaid}>{(v) => <>−${money(Number(v))}</>}</Redacted>
+                      )}
                     </strong>
                   </div>
 

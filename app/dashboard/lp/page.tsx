@@ -23,6 +23,7 @@ import SectionHeading from '@/app/components/ui/SectionHeading';
 import StatCard from '@/app/components/ui/StatCard';
 import PlatformLogo from '@/components/PlatformLogo';
 import { Redacted } from '@/app/components/ui/Redacted';
+import CollectionStoppedNote from '@/app/components/CollectionStoppedNote';
 
 // $ fields (amountUSD/estimatedAPY/feesEarned, summary totals, candidate price)
 // are null on the free tier (server redaction, lib/paid-gating.ts → 'lp').
@@ -134,7 +135,7 @@ function Explainer() {
 }
 
 // ── expandable position row ────────────────────────────────────────────────────
-function PositionRow({ p, open, onToggle }: { p: Position; open: boolean; onToggle: () => void }) {
+function PositionRow({ p, open, onToggle, stale }: { p: Position; open: boolean; onToggle: () => void; stale: boolean }) {
   return (
     <div className="border-b border-line">
       <button onClick={onToggle} className="w-full grid grid-cols-[auto_1fr_auto_auto] items-center gap-3 px-3 py-2.5 text-left hover:bg-bg-soft/60 transition-colors">
@@ -144,16 +145,16 @@ function PositionRow({ p, open, onToggle }: { p: Position; open: boolean; onTogg
         <span className="min-w-0">
           <span className="flex items-center gap-1.5 flex-wrap">
             <span className="font-body text-[12.5px] font-medium text-ink truncate max-w-[280px]">{p.question}</span>
-            <span className="font-body text-[8.5px] uppercase tracking-wide text-mint-deep border border-mint-deep/30 bg-mint-tint rounded px-1">LIVE</span>
+            {!stale && <span className="font-body text-[8.5px] uppercase tracking-wide text-mint-deep border border-mint-deep/30 bg-mint-tint rounded px-1">LIVE</span>}
             <span className="font-body text-[8.5px] uppercase tracking-wide text-gold border border-gold/40 bg-gold-tint rounded px-1">sim</span>
           </span>
           <span className="font-body text-[10px] text-muted truncate block">
-            {p.source} · entry {p.entryPrice}¢ · opened {ago(p.enteredAt)} · vol {fmtUsd(p.volume24h)}
+            {p.source} · entry {p.entryPrice}¢ · opened {ago(p.enteredAt)} · vol {stale ? '—' : fmtUsd(p.volume24h)}
           </span>
         </span>
         <span className="text-right tabular-nums shrink-0">
           <span className="block font-display font-bold text-mint-deep" style={{ fontSize: 15 }}>
-            <Redacted value={p.estimatedAPY}>{v => `${(v as number).toFixed(0)}%`}</Redacted>
+            {stale ? DASH : <Redacted value={p.estimatedAPY}>{v => `${(v as number).toFixed(0)}%`}</Redacted>}
           </span>
           <span className="block font-body text-[8.5px] uppercase tracking-wide text-muted mt-0.5">APY · run-rate · not guaranteed</span>
         </span>
@@ -166,17 +167,17 @@ function PositionRow({ p, open, onToggle }: { p: Position; open: boolean; onTogg
             <DCell label="Venue">Polymarket</DCell>
             <DCell label="Entry price">{p.entryPrice}¢</DCell>
             <DCell label="Exposure" note="simulated sizing (Kelly)">
-              <span className="text-mint-deep"><Redacted value={p.amountUSD}>{v => fmtUsd0(v as number)}</Redacted></span>
+              <span className="text-mint-deep">{stale ? DASH : <Redacted value={p.amountUSD}>{v => fmtUsd0(v as number)}</Redacted>}</span>
             </DCell>
             <DCell label="Est. APY" note="run-rate · capped · not guaranteed">
-              <span className="text-mint-deep"><Redacted value={p.estimatedAPY}>{v => `${(v as number).toFixed(0)}%/yr`}</Redacted></span>
+              <span className="text-mint-deep">{stale ? DASH : <Redacted value={p.estimatedAPY}>{v => `${(v as number).toFixed(0)}%/yr`}</Redacted>}</span>
             </DCell>
             <DCell label="Fees earned" note="none accrued (simulation)">
-              <Redacted value={p.feesEarned}>{v => (v as number) === 0 ? '$0' : fmtUsd0(v as number)}</Redacted>
+              {stale ? DASH : <Redacted value={p.feesEarned}>{v => (v as number) === 0 ? '$0' : fmtUsd0(v as number)}</Redacted>}
             </DCell>
-            <DCell label="Volume 24h">{fmtUsd0(p.volume24h)}</DCell>
+            <DCell label="Volume 24h">{stale ? DASH : fmtUsd0(p.volume24h)}</DCell>
             <DCell label="Opened">{new Date(p.enteredAt).toLocaleDateString('en-GB')}<span className="text-muted"> · {ago(p.enteredAt)}</span></DCell>
-            <DCell label="Status"><span className="text-mint-deep">● active</span></DCell>
+            <DCell label="Status">{stale ? DASH : <span className="text-mint-deep">● active</span>}</DCell>
             <DCell label="Pool TVL" note="not tracked by this agent">{DASH}</DCell>
             <DCell label="Impermanent loss" note="n/a · binary market">{DASH}</DCell>
             <DCell label="Capacity" note="no book depth in feed">{DASH}</DCell>
@@ -200,7 +201,10 @@ export default function LPDashboard() {
   const [summary, setSummary]       = useState<Summary | null>(null);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [loading, setLoading]       = useState(true);
-  const [lastFetch, setLastFetch]   = useState<Date | null>(null);
+  // Real last-observation time + stale flag come from the API (file mtime), NOT a
+  // client clock — so a stopped collector reads as stopped, never "fetched just now".
+  const [updatedAt, setUpdatedAt]   = useState<number | null>(null);
+  const [stale, setStale]           = useState(false);
 
   const [sortKey, setSortKey] = useState<SortKey>('volume');
   const [query, setQuery]     = useState('');
@@ -214,7 +218,8 @@ export default function LPDashboard() {
         setPositions(data.positions ?? []);
         setSummary(data.summary ?? null);
         setCandidates(data.candidates ?? []);
-        setLastFetch(new Date());
+        setUpdatedAt(typeof data.updatedAt === 'number' ? data.updatedAt : null);
+        setStale(data.stale === true);
       }
     } catch (err) {
       console.error('Error fetching LP data:', err);
@@ -247,10 +252,16 @@ export default function LPDashboard() {
             </p>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
-            <span className="flex items-center gap-1.5 font-body font-medium text-xs text-mint-deep border border-mint-deep/30 bg-mint-tint px-2.5 py-1 rounded-pill">
-              <span className="w-1.5 h-1.5 rounded-full bg-mint" aria-hidden /> LIVE
-            </span>
-            <span className="font-body text-[12px] text-muted">{lastFetch ? `fetched ${ago(lastFetch.getTime())}` : '—'}</span>
+            {stale ? (
+              <CollectionStoppedNote asOf={updatedAt} />
+            ) : (
+              <>
+                <span className="flex items-center gap-1.5 font-body font-medium text-xs text-mint-deep border border-mint-deep/30 bg-mint-tint px-2.5 py-1 rounded-pill">
+                  <span className="w-1.5 h-1.5 rounded-full bg-mint" aria-hidden /> LIVE
+                </span>
+                <span className="font-body text-[12px] text-muted">{updatedAt ? `updated ${ago(updatedAt)}` : '—'}</span>
+              </>
+            )}
           </div>
         </div>
 
@@ -265,11 +276,11 @@ export default function LPDashboard() {
         {/* Hero stats */}
         {summary && (
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-            <StatCard label="Active positions" value={`${summary.activeCount}/${summary.maxPositions}`} note="paper book" />
-            <StatCard label="Total exposure" value={<Redacted value={summary.totalExposure}>{v => fmtUsd0(v as number)}</Redacted>} demoted="simulated capital" />
-            <StatCard label="Avg APY" value={<Redacted value={summary.avgAPY}>{v => `${v}%`}</Redacted>} demoted="run-rate · not guaranteed" />
-            <StatCard label="Fees accrued" value={<Redacted value={summary.totalFees}>{v => fmtUsd0(v as number)}</Redacted>} demoted="none in simulation" />
-            <StatCard label="Remaining capital" value={<Redacted value={summary.remainingCapital}>{v => fmtUsd0(v as number)}</Redacted>} demoted={`of ${fmtUsd0(summary.maxExposure)} cap`} />
+            <StatCard label="Active positions" value={stale ? DASH : `${summary.activeCount}/${summary.maxPositions}`} note="paper book" />
+            <StatCard label="Total exposure" value={stale ? DASH : <Redacted value={summary.totalExposure}>{v => fmtUsd0(v as number)}</Redacted>} demoted="simulated capital" />
+            <StatCard label="Avg APY" value={stale ? DASH : <Redacted value={summary.avgAPY}>{v => `${v}%`}</Redacted>} demoted="run-rate · not guaranteed" />
+            <StatCard label="Fees accrued" value={stale ? DASH : <Redacted value={summary.totalFees}>{v => fmtUsd0(v as number)}</Redacted>} demoted="none in simulation" />
+            <StatCard label="Remaining capital" value={stale ? DASH : <Redacted value={summary.remainingCapital}>{v => fmtUsd0(v as number)}</Redacted>} demoted={`of ${fmtUsd0(summary.maxExposure)} cap`} />
           </div>
         )}
 
@@ -324,7 +335,7 @@ export default function LPDashboard() {
               </div>
             ) : (
               shown.map(p => (
-                <PositionRow key={p.marketId} p={p} open={openId === p.marketId} onToggle={() => setOpenId(openId === p.marketId ? null : p.marketId)} />
+                <PositionRow key={p.marketId} p={p} open={openId === p.marketId} onToggle={() => setOpenId(openId === p.marketId ? null : p.marketId)} stale={stale} />
               ))
             )}
           </div>
@@ -341,8 +352,8 @@ export default function LPDashboard() {
                   <div className="min-w-0">
                     <p className="font-body text-[13px] font-medium text-ink truncate">{c.question}</p>
                     <div className="flex gap-3 mt-0.5 font-body text-[11px] text-muted">
-                      <span>price <Redacted value={c.price}>{v => `${v}¢`}</Redacted></span>
-                      <span>vol 24h {fmtUsd0(c.volume24h)}</span>
+                      <span>price {stale ? DASH : <Redacted value={c.price}>{v => `${v}¢`}</Redacted>}</span>
+                      <span>vol 24h {stale ? DASH : fmtUsd0(c.volume24h)}</span>
                     </div>
                   </div>
                   {c.url && (

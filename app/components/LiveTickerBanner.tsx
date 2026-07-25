@@ -2,17 +2,22 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import type { OppPreviewItem } from '@/app/api/opps-preview/route';
+import CollectionStoppedNote from '@/app/components/CollectionStoppedNote';
 
 const MAX_ITEMS = 14; // cap so the loop isn't too long
 
 export default function LiveTickerBanner() {
   const [items, setItems] = useState<OppPreviewItem[]>([]);
+  const [stale, setStale] = useState(false);
+  const [asOf, setAsOf]   = useState<number | string | null>(null);
 
   const load = useCallback(async () => {
     try {
       const res = await fetch(`/api/opps-preview?_=${Date.now()}`);
       if (!res.ok) throw new Error();
       const d = await res.json();
+      setStale(d?.stale === true);
+      setAsOf(d?.updatedAt ?? null);
       setItems((d.items ?? []).slice(0, MAX_ITEMS));
     } catch {}
   }, []);
@@ -22,6 +27,15 @@ export default function LiveTickerBanner() {
     const t = setInterval(load, 30_000);
     return () => clearInterval(t);
   }, [load]);
+
+  // Collection stopped: never scroll frozen legs. Show the honest stopped note in place of the ticker.
+  if (stale) {
+    return (
+      <div className="border-b border-line bg-surface/80 py-2 flex justify-center">
+        <CollectionStoppedNote asOf={asOf} />
+      </div>
+    );
+  }
 
   if (items.length === 0) return null;
 

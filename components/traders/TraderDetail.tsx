@@ -14,6 +14,7 @@ import { Redacted } from '@/app/components/ui/Redacted';
 import { PlatformLink } from '@/app/components/ui/PlatformLink';
 import { polymarketProfileUrl, polymarketMarketUrl, polymarketOutcomeUrl } from '@/lib/platform-links';
 import CopyPositionsPanel from './CopyPositionsPanel';
+import CollectionStoppedNote from '@/app/components/CollectionStoppedNote';
 import {
   fmtPnl, fmtWallet, fmtRelShort, fmtSince, fmtPct1, fmtSize, pnlColor, catText,
 } from './format';
@@ -107,6 +108,7 @@ export default function TraderDetail({ address }: { address: string }) {
     [positions, filter]);
 
   const healthState = !data ? 'loading'
+    : data.stale ? 'stopped'          // feed producer stopped → file frozen; never present as live
     : data.resyncing ? 'resyncing'
     : data.feedHealthy ? 'healthy'
     : 'unhealthy';
@@ -212,7 +214,9 @@ function Header({ address, data, healthState, tick }: {
             {profUrl && <PlatformLink href={profUrl} label="Polymarket profile" compact />}
           </div>
         </div>
-        <HealthChip state={healthState} />
+        {healthState === 'stopped'
+          ? <CollectionStoppedNote asOf={data?.updatedAt ?? null} />
+          : <HealthChip state={healthState} />}
       </div>
 
       <div className="mt-4 flex items-center gap-x-5 gap-y-1 flex-wrap font-body text-[12px] text-muted">

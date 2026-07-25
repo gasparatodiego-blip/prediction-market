@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import CollectionStoppedNote from '@/app/components/CollectionStoppedNote';
+import { STOPPED_DASH } from '@/lib/collection-status';
 
 interface Opp {
   id: string;
@@ -64,12 +66,12 @@ function fmtTime(d: Date) {
 }
 
 export default function LiveOpportunitiesPanel() {
-  const [opps, setOpps]           = useState<Opp[]>([]);
-  const [loading, setLoading]     = useState(true);
-  const [error, setError]         = useState(false);
-  const [updatedAt, setUpdatedAt] = useState<string>('--:--:--');
-  const [flash, setFlash]         = useState(false);
-  const prevIds                   = useRef<string>('');
+  const [opps, setOpps]       = useState<Opp[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [stale, setStale]     = useState(false);
+  const [asOf, setAsOf]       = useState<number | string | null>(null);
+  const [flash, setFlash]     = useState(false);
+  const prevIds               = useRef<string>('');
 
   const fetchOpps = async () => {
     try {
@@ -84,11 +86,16 @@ export default function LiveOpportunitiesPanel() {
       }
       prevIds.current = newIds;
 
+      // Collection stopped = the route's own file-age verdict. Never the client clock, never "empty
+      // == error": show the real last-observation stamp and, when stopped, the honest stopped note.
+      setStale(data?.stale === true);
+      setAsOf(data?.updatedAt ?? null);
       setOpps(list);
-      setUpdatedAt(fmtTime(new Date()));
-      setError(list.length === 0);
     } catch {
-      setError(true);
+      // A failed fetch is unknown freshness — treat as stopped (no frozen rows, no error tone).
+      setStale(true);
+      setAsOf(null);
+      setOpps([]);
     } finally {
       setLoading(false);
     }
@@ -113,7 +120,9 @@ export default function LiveOpportunitiesPanel() {
             Live Opportunities
           </span>
         </div>
-        <span className="font-mono text-[10px] tabular-nums text-muted">{updatedAt}</span>
+        <span className="font-mono text-[10px] tabular-nums text-muted">
+          {stale ? STOPPED_DASH : asOf != null ? fmtTime(new Date(asOf)) : '--:--:--'}
+        </span>
       </div>
 
       {/* Body */}
@@ -124,7 +133,11 @@ export default function LiveOpportunitiesPanel() {
           <SkeletonRow />
           <SkeletonRow />
         </div>
-      ) : error ? (
+      ) : stale ? (
+        <div className="flex flex-col items-center justify-center py-10 gap-3">
+          <CollectionStoppedNote asOf={asOf} />
+        </div>
+      ) : opps.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-10 gap-3">
           <span
             className="inline-block w-2 h-2 rounded-full bg-gold animate-pulse-slow"
@@ -177,7 +190,7 @@ export default function LiveOpportunitiesPanel() {
       )}
 
       {/* Footer */}
-      {!loading && !error && (
+      {!loading && !stale && (
         <div className="px-3 py-1.5 border-t border-line mt-auto">
           <span className="font-body text-[9px] uppercase tracking-[0.1em] text-muted">
             Auto-refresh 20s

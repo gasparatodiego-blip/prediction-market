@@ -14,6 +14,7 @@ import { useEffect, useMemo, useState } from 'react';
 import PlatformLogo from '@/components/PlatformLogo';
 import InfoDot from '@/app/components/ui/InfoDot';
 import { PlatformLink } from '@/app/components/ui/PlatformLink';
+import CollectionStoppedNote from '@/app/components/CollectionStoppedNote';
 import { fmtVol } from './format';
 
 type PolyRow = {
@@ -71,6 +72,9 @@ export default function MarketsTab() {
 
   const cats = data?.categories ?? [];
   const selected = useMemo(() => cats.find(c => c.key === cat) ?? cats[0] ?? null, [cats, cat]);
+  // Collector stopped → its /tmp dump is frozen; the market-implied prices below are
+  // abandoned, so we dash them and show WHEN collection last ran (never a frozen number).
+  const stopped = data?.stale === true;
 
   // Loading / empty states — calm, never an error wall.
   if (!data && !error) {
@@ -97,6 +101,7 @@ export default function MarketsTab() {
           <div className="font-body text-[11px] text-muted mt-0.5 leading-relaxed">
             Live prediction markets by category. Prices are CLOB bid/ask mid — not our forecast.
           </div>
+          {stopped && <CollectionStoppedNote asOf={data?.updatedAt ?? null} className="mt-2" />}
         </div>
       </div>
 
@@ -140,18 +145,18 @@ export default function MarketsTab() {
                     {m.question || '—'}
                   </div>
                   <div className="mt-1 flex items-center gap-3 font-body text-[10.5px] text-muted">
-                    <span>{vol == null ? '—' : `${fmtVol(vol)} ${volIs24h ? '24h vol' : 'vol'}`}</span>
+                    <span>{stopped || vol == null ? '—' : `${fmtVol(vol)} ${volIs24h ? '24h vol' : 'vol'}`}</span>
                     <span>ends {fmtEnd(m.endDate)}</span>
                   </div>
                 </div>
-                {/* YES implied probability + bar */}
+                {/* YES implied probability + bar — dashed (no frozen bar) once collection stopped */}
                 <div className="w-[92px] shrink-0 text-right">
                   <div className="font-mono font-semibold text-[18px] text-ink tabular-nums leading-none">
-                    {fmtProb(m.impliedProb)}
+                    {stopped ? '—' : fmtProb(m.impliedProb)}
                   </div>
                   <div className="font-body text-[9px] uppercase tracking-wide text-muted mt-0.5">YES</div>
                   <div className="mt-1.5 h-1.5 rounded-full bg-line overflow-hidden">
-                    {pct != null && (
+                    {!stopped && pct != null && (
                       <div className="h-full rounded-full bg-mint-deep" style={{ width: `${pct}%` }} />
                     )}
                   </div>

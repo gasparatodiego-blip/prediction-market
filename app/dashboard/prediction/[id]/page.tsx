@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { ExternalLink } from 'lucide-react';
 import PlatformLogo from '@/components/PlatformLogo';
 import { RedactedPanel } from '@/app/components/ui/Redacted';
+import CollectionStoppedNote from '@/app/components/CollectionStoppedNote';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -61,8 +62,11 @@ type PaidOpportunity = Opportunity & {
 interface ApiResponse {
   valid:     Opportunity[];
   rejected:  number;
-  stats:     unknown;
-  freshness: { isFresh: boolean; ageMinutes: number | null; label: string | null };
+  // Only the last-observation stamp is read here (to date the "collection stopped" note).
+  stats:     { updatedAt: number | null } | null;
+  // /api/prediction emits two independent staleness clocks; either being stale means the
+  // producing agent has stopped and the numbers below are frozen (see lib/collection-status.js).
+  freshness: { repriceStale?: boolean; discoveryStale?: boolean };
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -1104,6 +1108,11 @@ export default function PredictionDetailPage({ params }: { params: { id: string 
   // set for free tier — opp.roi is a reliable single proxy for "is this
   // opportunity's numbers visible" (see lib/paid-gating.ts REDACTION_MAP.prediction).
   const isRedacted = opp != null && opp.roi == null;
+  // Collection stopped = the re-pricer/discovery agent's file has frozen. The existing !data?.valid
+  // check below only catches a MISSING file — a frozen-but-present file passes it, so we gate on the
+  // staleness clocks and never present the frozen ROI/prices/step math as current.
+  const stopped = Boolean(data?.freshness?.repriceStale || data?.freshness?.discoveryStale);
+  const asOf = data?.stats?.updatedAt ?? null;
 
   return (
     <div className="max-w-[860px] mx-auto px-4 py-6">
@@ -1156,20 +1165,36 @@ export default function PredictionDetailPage({ params }: { params: { id: string 
               <PlatformLogo platform={opp.highMarket.platform} size={11} className="mx-0.5" />
               {platformLabel(opp.highMarket.platform)}
               {' · '}
-              {isRedacted
-                ? 'upgrade to see ROI/spread'
-                : opp.type === 'cashable'
-                  ? `${fmtPct(opp.roi!, 2)} net ROI${opp.annualizedROI != null && opp.daysToResolution != null ? ` · ${opp.annualizedROI.toFixed(1)}%/yr (${opp.daysToResolution}d lock)` : ''}`
-                  : `${opp.spread!.toFixed(1)}pp spread`
+              {stopped
+                ? '—'
+                : isRedacted
+                  ? 'upgrade to see ROI/spread'
+                  : opp.type === 'cashable'
+                    ? `${fmtPct(opp.roi!, 2)} net ROI${opp.annualizedROI != null && opp.daysToResolution != null ? ` · ${opp.annualizedROI.toFixed(1)}%/yr (${opp.daysToResolution}d lock)` : ''}`
+                    : `${opp.spread!.toFixed(1)}pp spread`
               }
             </p>
+            {stopped && (
+              <div className="mt-2">
+                <CollectionStoppedNote asOf={asOf} />
+              </div>
+            )}
           </div>
 
           {/* Branch on type — the live calculator, real bid/ask, ROI and
               step-by-step guide all derive from the same redacted field set,
               so free tier gets one panel rather than ~40 individually-blurred
               numbers (which would be unreadable in a dense calculator like this). */}
-          {isRedacted ? (
+          {stopped ? (
+            <div className="mt-4 px-4 py-4 border border-line bg-surface rounded-card">
+              <CollectionStoppedNote asOf={asOf} />
+              <p className="font-body text-[10px] text-muted leading-relaxed mt-3">
+                La raccolta dati è ferma — prezzi, ROI e la guida di esecuzione non vengono più
+                aggiornati. Non sono mostrati per non presentare numeri congelati come se fossero
+                attuali. Torneranno quando la raccolta riprende.
+              </p>
+            </div>
+          ) : isRedacted ? (
             <RedactedPanel
               label="The live calculator, real prices, ROI, and step-by-step execution guide are available on Pro"
               className="mt-4"

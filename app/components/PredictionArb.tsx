@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Redacted } from './ui/Redacted';
 import { Card, ScoreboardHeader, LegBox, ProgressBar, MetricValue, Chip, EmptyState } from './ds';
+import CollectionStoppedNote from '@/app/components/CollectionStoppedNote';
 
 /**
  * Cross-venue prediction-market arbitrage cards.
@@ -67,8 +68,11 @@ interface Row {
 }
 interface Payload {
   valid: Row[];
-  stats: { validCount: number; cashableCount: number; signalCount: number };
+  stats: { validCount: number; cashableCount: number; signalCount: number; updatedAt?: number | null };
   isPaid?: boolean;
+  // When the re-pricer/discovery agent is stopped its /tmp file freezes; these flags let the UI
+  // stop presenting the frozen numbers as current (see lib/collection-status.js).
+  freshness?: { repriceStale?: boolean; discoveryStale?: boolean };
 }
 
 const isMidPrice = (m: Mkt) =>
@@ -102,6 +106,10 @@ export default function PredictionArb() {
 
   const isPaid = data?.isPaid ?? false;
   const rows = data?.valid ?? [];
+  // Collection stopped = the producing agent's file has frozen. Never present frozen numbers as
+  // current: show the note near the header and dash the numeric values below.
+  const stopped = Boolean(data?.freshness?.repriceStale || data?.freshness?.discoveryStale);
+  const asOf = data?.stats?.updatedAt ?? null;
 
   return (
     <div className="prediction">
@@ -117,6 +125,12 @@ export default function PredictionArb() {
           </p>
         </header>
 
+        {stopped && (
+          <div className="cc-stopped-note" style={{ marginBottom: '0.75rem' }}>
+            <CollectionStoppedNote asOf={asOf} />
+          </div>
+        )}
+
         {err && <EmptyState prefix="cc" title="Prediction feed unavailable" sub={err} />}
         {!err && !data && <EmptyState prefix="cc" sub="Loading prediction book…" />}
         {!err && data && rows.length === 0 && (
@@ -127,7 +141,7 @@ export default function PredictionArb() {
           const signalOnly = r.type === 'signal' || r.cashable === false
             || isMidPrice(r.lowMarket) || isMidPrice(r.highMarket);
           const net = signalOnly ? null : r.roi;
-          const quarantined = !signalOnly && typeof net === 'number' && net > QUARANTINE_PCT;
+          const quarantined = !stopped && !signalOnly && typeof net === 'number' && net > QUARANTINE_PCT;
           const days = r.daysToResolution;
           const resolves = r.resolutionDate ? String(r.resolutionDate).slice(0, 10) : '—';
           // Binding leg = the thinner book. Only meaningful when both sides publish depth.
@@ -159,7 +173,7 @@ export default function PredictionArb() {
                   accent="spot"
                   slots={[
                     { cls: 'label', text: r.lowMarket.platform },
-                    { cls: 'price', text: fmtPrice(r.lowMarket.yesAsk ?? r.lowMarket.probability) },
+                    { cls: 'price', text: stopped ? '—' : fmtPrice(r.lowMarket.yesAsk ?? r.lowMarket.probability) },
                     { cls: 'tag',   text: isMidPrice(r.lowMarket) ? 'mid' : 'ask' },
                   ]}
                 />
@@ -168,7 +182,7 @@ export default function PredictionArb() {
                   accent="future"
                   slots={[
                     { cls: 'label', text: r.highMarket.platform },
-                    { cls: 'price', text: fmtPrice(r.highMarket.yesBid ?? r.highMarket.probability) },
+                    { cls: 'price', text: stopped ? '—' : fmtPrice(r.highMarket.yesBid ?? r.highMarket.probability) },
                     { cls: 'tag',   text: isMidPrice(r.highMarket) ? 'mid' : 'bid' },
                   ]}
                 />
@@ -176,11 +190,11 @@ export default function PredictionArb() {
                 <MetricValue
                   prefix="cc"
                   value={
-                    signalOnly
+                    stopped || signalOnly
                       ? <span className="cc-dim">—</span>
                       : <Redacted value={net} isPaid={isPaid}>{(v) => <>+{Number(v).toFixed(2)}%</>}</Redacted>
                   }
-                  caption={signalOnly ? 'signal only' : 'net · post-fee'}
+                  caption={stopped ? 'collection stopped' : signalOnly ? 'signal only' : 'net · post-fee'}
                 />
               </div>
 
@@ -192,14 +206,16 @@ export default function PredictionArb() {
               <div className="cc-figs">
                 <span>
                   max stake{' '}
-                  {signalOnly
+                  {stopped || signalOnly
                     ? <strong className="cc-dim">—</strong>
                     : <Redacted value={r.capacityUsd} isPaid={isPaid}>{(v) => <strong>{fmtUsd(Number(v))}</strong>}</Redacted>}
-                  {binding && !signalOnly && <span className="cc-dim"> · {binding} binds</span>}
+                  {binding && !signalOnly && !stopped && <span className="cc-dim"> · {binding} binds</span>}
                 </span>
                 <span>
                   spread{' '}
-                  <Redacted value={r.spread} isPaid={isPaid}>{(v) => <strong>{Number(v).toFixed(3)}</strong>}</Redacted>
+                  {stopped
+                    ? <strong className="cc-dim">—</strong>
+                    : <Redacted value={r.spread} isPaid={isPaid}>{(v) => <strong>{Number(v).toFixed(3)}</strong>}</Redacted>}
                 </span>
               </div>
 

@@ -6,6 +6,7 @@ import { Lock, ArrowLeft, ExternalLink, ShieldCheck } from 'lucide-react';
 import PlatformLogo from '@/components/PlatformLogo';
 import { Redacted } from '@/app/components/ui/Redacted';
 import { PlatformLink } from '@/app/components/ui/PlatformLink';
+import CollectionStoppedNote from '@/app/components/CollectionStoppedNote';
 import {
   PlatformComparatorTable,
   DeployCalculator,
@@ -275,7 +276,17 @@ function NoEdgeExplanation({ event }: { event: EventBucket }) {
   );
 }
 
-function EventDetail({ event, valid }: { event: EventBucket; valid: ApiResponse['valid'] }) {
+function EventDetail({
+  event,
+  valid,
+  stopped,
+  asOf,
+}: {
+  event: EventBucket;
+  valid: ApiResponse['valid'];
+  stopped: boolean;
+  asOf: number | null;
+}) {
   const edge = event.lockableEdge;
   const hasLockableEdge = !!edge?.matchedOpportunity;
 
@@ -293,28 +304,47 @@ function EventDetail({ event, valid }: { event: EventBucket; valid: ApiResponse[
           </span>
         </div>
         <h1 className="font-display font-bold text-xl text-ink leading-snug">{event.title}</h1>
-      </div>
-
-      {/* Price comparator */}
-      <div className="rounded-card shadow-card bg-surface px-5 py-5 mb-2">
-        <h2 className="font-display font-bold text-base text-ink mb-3">Price comparator</h2>
-        <PlatformComparatorTable event={event} />
-      </div>
-
-      {/* Side-only order panel — YES/NO selector, per-venue fee + routing, honest book state */}
-      <PlaceOrderPanel event={event} />
-
-      {/* Operational steps or calm no-edge explanation */}
-      {hasLockableEdge && edge ? (
-        <OperationalSteps event={event} edge={edge} valid={valid} />
-      ) : (
-        <div className="rounded-card shadow-card bg-surface px-5 py-5 mt-6">
-          <h2 className="font-display font-bold text-base text-ink mb-3">Operational steps</h2>
-          <NoEdgeExplanation event={event} />
-          <div className="mt-4 pt-4 border-t border-line">
-            <AutoExecutePanel noEdgeYet />
+        {stopped && (
+          <div className="mt-3">
+            <CollectionStoppedNote asOf={asOf} />
           </div>
+        )}
+      </div>
+
+      {stopped ? (
+        // Collection stopped: the prices, the lockable edge and the operational steps are all frozen.
+        // Suppress them rather than present the last snapshot as if it were current (honest-engine).
+        <div className="rounded-card shadow-card bg-surface px-5 py-5">
+          <p className="font-body text-[12.5px] text-muted leading-relaxed">
+            La raccolta dati è ferma — prezzi, edge e passaggi operativi non vengono più aggiornati.
+            Non sono mostrati per non presentare numeri congelati come se fossero attuali. Torneranno
+            quando la raccolta riprende.
+          </p>
         </div>
+      ) : (
+        <>
+          {/* Price comparator */}
+          <div className="rounded-card shadow-card bg-surface px-5 py-5 mb-2">
+            <h2 className="font-display font-bold text-base text-ink mb-3">Price comparator</h2>
+            <PlatformComparatorTable event={event} />
+          </div>
+
+          {/* Side-only order panel — YES/NO selector, per-venue fee + routing, honest book state */}
+          <PlaceOrderPanel event={event} />
+
+          {/* Operational steps or calm no-edge explanation */}
+          {hasLockableEdge && edge ? (
+            <OperationalSteps event={event} edge={edge} valid={valid} />
+          ) : (
+            <div className="rounded-card shadow-card bg-surface px-5 py-5 mt-6">
+              <h2 className="font-display font-bold text-base text-ink mb-3">Operational steps</h2>
+              <NoEdgeExplanation event={event} />
+              <div className="mt-4 pt-4 border-t border-line">
+                <AutoExecutePanel noEdgeYet />
+              </div>
+            </div>
+          )}
+        </>
       )}
     </>
   );
@@ -342,6 +372,11 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
   }, [load]);
 
   const event = data?.events?.find(e => e.eventKey === id) ?? null;
+  // Collection stopped = the re-pricer/discovery agent's file has frozen. The !data check below only
+  // catches a MISSING response; a frozen-but-present one passes it, so we gate on the staleness clocks
+  // and suppress the frozen prices/edge/steps instead of showing them as current.
+  const stopped = Boolean(data?.freshness?.repriceStale || data?.freshness?.discoveryStale);
+  const asOf = data?.stats?.updatedAt ?? null;
 
   return (
     <div className="max-w-[860px] mx-auto px-4 py-6">
@@ -378,7 +413,7 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
           </Link>
         </div>
       ) : (
-        <EventDetail event={event} valid={data.valid} />
+        <EventDetail event={event} valid={data.valid} stopped={stopped} asOf={asOf} />
       )}
     </div>
   );

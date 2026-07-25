@@ -4,9 +4,18 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { getIsPaid, redactForTier } from '@/lib/paid-gating';
 
+// The LP collectors write roughly every 1–15 min; 30 min trips permanently once the
+// producing agent is stopped, wide of any transient slowness. Honest-engine: past this
+// the frozen figures are abandoned, so the UI must dash them (lib/collection-status).
+const STALE_MS = 30 * 60_000;
+
 export async function GET() {
     try {
         const positionsRaw = fs.readFileSync('/tmp/liquidity-positions.json', 'utf8');
+        // Real data age from the producing agent's OWN file mtime — it freezes when the
+        // LP agent is stopped, so `stale` below trips (and stays) true. Never a client clock.
+        const updatedAt = fs.statSync('/tmp/liquidity-positions.json').mtimeMs;
+        const dataAge   = Date.now() - updatedAt;
         const historyRaw = fs.readFileSync('/tmp/liquidity-history.json', 'utf8');
         const polymarketRaw = fs.readFileSync('/tmp/polymarket-raw.json', 'utf8');
         
@@ -64,7 +73,11 @@ export async function GET() {
                 remainingCapital: 10000 - totalExposure
             },
             candidates: candidates.slice(0, 5),
-            lastUpdate: new Date().toISOString()
+            updatedAt,
+            dataAge,
+            stale: (dataAge ?? Infinity) > STALE_MS,
+            staleMinutes: updatedAt ? Math.floor(dataAge / 60000) : null,
+            lastUpdate: new Date(updatedAt).toISOString()
         }, 'lp', isPaid);
 
         return NextResponse.json(body);

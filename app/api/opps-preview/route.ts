@@ -19,12 +19,24 @@ export interface OppPreviewItem {
   note:   string;
 }
 
+// agent15-funding-writer rewrites /tmp/unified-opportunities.json every ~1 min; agent19-basis writes
+// /tmp/basis-opportunities.json every ~5 min. 15 min is the common cadence-derived staleness gate
+// (already applied to basis below). Past it, the producing agents are treated as stopped: the legs
+// are dropped rather than served frozen, and the surface is told collection has stopped.
+const STALE_MS = 15 * 60_000;
+
 export async function GET() {
   const items: OppPreviewItem[] = [];
+  let unifiedUpdatedAt: number | null = null;
+  let unifiedAge = Infinity;
 
   try {
     const u = JSON.parse(fs.readFileSync(UNIFIED_FILE, 'utf8'));
-    for (const o of (u.opportunities ?? []) as any[]) {
+    unifiedUpdatedAt = typeof u.generatedAt === 'number' ? u.generatedAt : null;
+    unifiedAge = unifiedUpdatedAt != null ? Date.now() - unifiedUpdatedAt : Infinity;
+    // Gate the unified funding/prediction legs on their own file age, exactly as the basis legs are
+    // gated below — a stopped agent must not keep feeding frozen teaser rows.
+    for (const o of (unifiedAge < STALE_MS ? (u.opportunities ?? []) : []) as any[]) {
       if (o.type === 'FUNDING' && typeof o.netROI === 'number' && o.netROI > 0) {
         items.push({
           id:     o.id,
@@ -75,8 +87,18 @@ export async function GET() {
   // server-side, before serialization. Order is computed on real values first.
   const session = await getServerSession(authOptions);
   const isPaid  = await getIsPaid(session);
-  const body    = redactForTier(
-    { items, total: items.length, generatedAt: Date.now() },
+  // `updatedAt` is the last real observation (unified file's own generatedAt), so the client can show
+  // "—" + when-it-stopped. `generatedAt` stays serve-time only for cache/debug — never a freshness cue.
+  const stale = unifiedAge > STALE_MS;
+  const body  = redactForTier(
+    {
+      items,
+      total:        items.length,
+      generatedAt:  Date.now(),
+      updatedAt:    unifiedUpdatedAt,
+      stale,
+      staleMinutes: unifiedUpdatedAt != null ? Math.floor(unifiedAge / 60_000) : null,
+    },
     'opps-preview',
     isPaid,
   );

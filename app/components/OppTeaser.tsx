@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { ArrowRight } from 'lucide-react';
 import type { OppPreviewItem } from '@/app/api/opps-preview/route';
+import CollectionStoppedNote from '@/app/components/CollectionStoppedNote';
 
 const SHOW_COUNT = 8;
 
@@ -11,6 +12,8 @@ interface PreviewData {
   items:       OppPreviewItem[];
   total:       number;
   generatedAt: number;
+  updatedAt?:  number | string | null;
+  stale?:      boolean;
 }
 
 const TYPE_CLS: Record<string, string> = {
@@ -66,6 +69,16 @@ export default function OppTeaser() {
         {Array.from({ length: 4 }).map((_, i) => (
           <div key={i} className="h-12 border-b border-line bg-surface last:border-b-0 animate-pulse" />
         ))}
+      </div>
+    );
+  }
+
+  // Collection stopped: the route drops frozen legs and flags `stale`. Show the honest stopped note
+  // in place of the teaser rows — never a frozen number and never the fresh-empty "Scanner" copy.
+  if (data.stale) {
+    return (
+      <div className="border border-line bg-surface px-5 py-8 text-center rounded-card">
+        <CollectionStoppedNote asOf={data.updatedAt ?? null} />
       </div>
     );
   }

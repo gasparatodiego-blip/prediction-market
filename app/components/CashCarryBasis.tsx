@@ -8,6 +8,10 @@ import { APY_CAP, APY_CAP_LABEL, isOverApyCap } from '@/lib/honest-display';
 // Pure, node-tested filter/sort/derive logic — shared verbatim so the list the user
 // sees and any measurement of the filter behaviour cannot diverge (see lib/carry-filter.js).
 import { deriveOptions, defaultState, applyFilters, sortRows } from '@/lib/carry-filter';
+// When the producing agent (agent19) is stopped its JSON freezes; we must not present the frozen
+// net/APY/capacity as current. This note + the "—" convention keep the surface honest.
+import CollectionStoppedNote from '@/app/components/CollectionStoppedNote';
+import { STOPPED_DASH } from '@/lib/collection-status';
 
 /**
  * Cash & Carry (basis) tab — FILTERABLE LIST.
@@ -121,6 +125,8 @@ export default function CashCarryBasis() {
 
   const meta = data?.carryMeta;
   const isPaid = data?.isPaid ?? false;
+  // Collection stopped = the API's freshness signal is anything other than 'running' ('stale'|'offline').
+  const stopped = !!(data?.agentStatus && data.agentStatus !== 'running');
   const cards: BasisCard[] = data?.basisCards ?? [];
   const riskFree = meta?.riskFreePct ?? 4.0;
 
@@ -144,6 +150,7 @@ export default function CashCarryBasis() {
             <span className="cc-title-accent"> · basis</span>
           </h1>
           <p className="cc-sub">buy spot, short the dated future, hold to expiry — capture the basis</p>
+          {stopped && <CollectionStoppedNote asOf={data?.updatedAt ?? null} className="cc-stopped" />}
         </header>
 
         {/* ── signal banner (NOT auto-fire) ──────────────────────── */}
@@ -299,19 +306,25 @@ export default function CashCarryBasis() {
                             <Redacted value={c.feeUsd} isPaid={isPaid}>{(v) => <>${Number(v).toFixed(2)}</>}</Redacted>
                             {' · '}{c.daysToExpiry ?? '—'}d
                             {' · '}cap{' '}
-                            <Redacted value={c.capacityUsd} isPaid={isPaid}>{(v) => <>{fmtUsd(Number(v))}</>}</Redacted>
+                            {stopped ? STOPPED_DASH : (
+                              <Redacted value={c.capacityUsd} isPaid={isPaid}>{(v) => <>{fmtUsd(Number(v))}</>}</Redacted>
+                            )}
                           </span>
                         </span>
                         <span className="cc-row-r">
                           <span className="cc-row-net">
-                            <Redacted value={c.netUsdPerDay} isPaid={isPaid}>{(v) => <>${Number(v).toFixed(2)}/day</>}</Redacted>
+                            {stopped ? STOPPED_DASH : (
+                              <Redacted value={c.netUsdPerDay} isPaid={isPaid}>{(v) => <>${Number(v).toFixed(2)}/day</>}</Redacted>
+                            )}
                           </span>
-                          <span className={`cc-row-apy ${c.belowRiskFree ? 'is-amber' : ''}`}>
-                            <Redacted value={c.annualizedPct} isPaid={isPaid}>
-                              {(v) => isOverApyCap(Number(v))
-                                ? <span title={APY_CAP_LABEL}>&gt;{APY_CAP}%/yr</span>
-                                : <>{Number(v).toFixed(2)}%/yr</>}
-                            </Redacted>
+                          <span className={`cc-row-apy ${!stopped && c.belowRiskFree ? 'is-amber' : ''}`}>
+                            {stopped ? STOPPED_DASH : (
+                              <Redacted value={c.annualizedPct} isPaid={isPaid}>
+                                {(v) => isOverApyCap(Number(v))
+                                  ? <span title={APY_CAP_LABEL}>&gt;{APY_CAP}%/yr</span>
+                                  : <>{Number(v).toFixed(2)}%/yr</>}
+                              </Redacted>
+                            )}
                           </span>
                         </span>
                       </div>
