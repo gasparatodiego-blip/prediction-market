@@ -48,6 +48,27 @@ export async function loadMakerSigningKey(
 }
 
 /**
+ * The stored PROXY (funder) wallet for the active maker account, or null when none is stored yet.
+ * This is a PUBLIC 0x address (not a secret) — it holds the pUSD collateral and is the order `maker`.
+ * Persisted by scripts/maker-store-proxy.ts (derived on-chain from the signer). Read-only consumers
+ * (preflight, the pUSD display, the settings badge) read THIS so they never fall back to the signer.
+ * Returns the checksummed address, or null if the row has no proxyAddress (never fabricated).
+ */
+export async function loadMakerProxyAddress(
+  prisma: PrismaClient,
+  userId?: string,
+): Promise<string | null> {
+  const row = await activeMakerRow(prisma, userId)
+  const addr = row?.proxyAddress ?? null
+  if (!addr) return null
+  try {
+    return require('ethers').getAddress(addr)
+  } catch {
+    return null
+  }
+}
+
+/**
  * The provider pair the maker adapter needs when armed. Returns two async thunks:
  *   credsProvider  → L2 creds + address (reused from the cancel flow)
  *   signerProvider → raw private key + address (from the maker row)

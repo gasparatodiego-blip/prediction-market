@@ -74,6 +74,14 @@ model ExchangeKey {
   accountAddress   String?                          // e.g. dYdX bech32 'dydx1...' owner address
   accountId        String?                          // e.g. dYdX authenticatorId (the on-chain authenticator record id)
   subaccountNumber Int?                             // e.g. dYdX subaccount number (default 0)
+  // Polymarket ONLY: the on-chain PROXY (funder) wallet the signer EOA controls. A Magic/email
+  // Polymarket account is TWO addresses — accountAddress above is the SIGNER (it signs, holds nothing),
+  // proxyAddress is the wallet that actually holds the pUSD collateral + the CTF outcome tokens and is
+  // the `maker`/settlement address Polymarket uses. NON-SECRET (a public 0x address), plaintext by the
+  // same reasoning as accountAddress. NULL for every non-Polymarket venue and for a self-custody EOA
+  // (signer == funder). Derived once from the signer via the exchange's getProxyWalletAddress and stored
+  // here so preflight, the settings display and the status badge all read ONE source of truth.
+  proxyAddress     String?
   // This row's data key, wrapped under the KEK named by kekVersion.
   dekEnc        String
   // Which master wrapped dekEnc. Not decoration: without it a half-finished
