@@ -26,7 +26,12 @@ export interface PublicRow {
   id: string
   venue: VenueId
   label: string
+  /** The SIGNER EOA (L2 auth address). For Polymarket it signs and holds nothing — see proxyAddress. */
   walletAddress: string | null
+  /** Polymarket only: the PROXY/funder wallet that holds the pUSD collateral and is the order `maker`.
+   * null for non-Polymarket venues or when not yet resolved. Shown next to walletAddress so the operator
+   * sees the real two-address relationship rather than reading the empty signer as "their wallet". */
+  proxyAddress: string | null
   last4: string | null
   status: KeyStatus
   savedAt: string
@@ -59,6 +64,7 @@ type Row = {
   venue: string
   label: string
   accountAddress: string | null
+  proxyAddress: string | null
   apiKeyEnc: string | null
   apiSecretEnc: string
   passphraseEnc: string | null
@@ -111,6 +117,7 @@ function toPublic(r: Row): PublicRow {
     venue: r.venue as VenueId,
     label: r.label,
     walletAddress: r.accountAddress ?? null,
+    proxyAddress: r.proxyAddress ?? null,
     last4: deriveLast4(r),
     status: deriveStatus(r),
     savedAt: r.createdAt.toISOString(),

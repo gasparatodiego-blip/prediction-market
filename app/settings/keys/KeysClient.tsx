@@ -20,6 +20,7 @@ interface KeyRow {
   venue: VenueId
   label: string
   walletAddress: string | null
+  proxyAddress: string | null
   last4: string | null
   status: KeyStatus
   savedAt: string
@@ -274,8 +275,21 @@ export default function KeysClient() {
                           </p>
                           <p className="font-body text-xs text-muted mt-0.5">
                             Saved {new Date(k.savedAt).toLocaleString()}
-                            {k.walletAddress ? ` · wallet ${k.walletAddress}` : ''}
                           </p>
+                          {/* Polymarket is TWO addresses: show both, labelled, so the empty signer is
+                              never mistaken for "the wallet". The proxy holds the funds; the signer signs. */}
+                          {k.proxyAddress ? (
+                            <>
+                              <p className="font-body text-xs text-muted mt-0.5 break-all">
+                                <span className="font-semibold">proxy</span> (detiene i fondi, è il «maker») {k.proxyAddress}
+                              </p>
+                              <p className="font-body text-xs text-muted mt-0.5 break-all">
+                                <span className="font-semibold">firmatario</span> (firma, saldo vuoto) {k.walletAddress ?? '—'}
+                              </p>
+                            </>
+                          ) : k.walletAddress ? (
+                            <p className="font-body text-xs text-muted mt-0.5 break-all">wallet {k.walletAddress}</p>
+                          ) : null}
                         </div>
                         <span
                           className={`shrink-0 px-2 py-1 rounded-button font-body text-xs font-semibold ${STATUS_CLASS[k.status]}`}
@@ -320,6 +334,21 @@ export default function KeysClient() {
                     </div>
                   )
                 })}
+              </div>
+            )}
+
+            {/* Cosa significa ogni stato — in chiaro, così il badge non promette più di ciò che è provato. */}
+            {mine.length > 0 && (
+              <div className="border-t border-line pt-3 mt-3 space-y-1">
+                <p className="font-body text-xs text-muted">
+                  <span className="font-semibold text-ink">NOT CONNECTED</span> — nessuna verifica riuscita: le credenziali non sono state ancora provate contro il venue.
+                </p>
+                <p className="font-body text-xs text-muted">
+                  <span className="font-semibold text-ink">VERIFIED · READ-ONLY</span> — una lettura autenticata è riuscita: queste credenziali L2 leggono e cancellano, ma non firmano ordini.
+                </p>
+                <p className="font-body text-xs text-muted">
+                  <span className="font-semibold text-ink">VERIFIED · TRADING</span> — l’operatore ha registrato l’<em>intento</em> di trading su queste credenziali L2. NON arma il maker, non piazza nulla, e da solo NON prova che il proxy sia finanziato o approvato: quei fatti on-chain (saldo pUSD e approvazioni sul <span className="font-semibold">proxy</span>) li mostra il preflight del maker (<code>scripts/maker-wallet-preflight.ts</code>), non questo badge.
+                </p>
               </div>
             )}
 

@@ -85,6 +85,7 @@ export async function POST(req: NextRequest) {
       venue: row.venue,
       label: row.label,
       walletAddress: row.walletAddress,
+      proxyAddress: row.proxyAddress,
       last4: row.last4,
       status: row.status,
       savedAt: row.savedAt,
