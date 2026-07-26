@@ -177,6 +177,31 @@ async function noWriteProof() {
   const fbp = await fundedButUnwired.postOrder({ tokenId: '0xabc', side: 'BUY', price: 0.5, size: 10, tickSize: 0.01, venueRules: VR });
   ok(fbp.ok === false && /provider not wired/i.test(String((fbp.error && fbp.error.message) || fbp.error || '')), 'even with funding attested, the throwing-provider belt fails a live placement closed (no key, no order) — independent gate');
 
+  // ── 8c. LIVE-PROVIDER WIRING (lib/maker/live-providers) — the REAL providers agent35 now builds, plus the
+  //     funding-refusal guard proven to fire INDEPENDENTLY, decisively, and BEFORE any provider/key access. ──
+  {
+    const { makerLiveProviders } = require('../lib/maker/live-providers');
+    const provPair = makerLiveProviders();
+    ok(typeof provPair.credsProvider === 'function' && typeof provPair.signerProvider === 'function',
+      'live-providers: makerLiveProviders() yields real creds + signer thunks (not the old throwing stub)');
+
+    // funding UNATTESTED + a SPY provider pair: the funding-refusal guard refuses the order BEFORE the
+    // provider is ever called — so with MAKER_FUNDING_APPROVED unset, no key is decrypted and no order signed.
+    const noFund = spyProviders();
+    const aNoFund = createMakerAdapter({ mode: 'live-min', fundingApproved: false, credsProvider: noFund.credsProvider, signerProvider: noFund.signerProvider, safety: permissiveSafety() });
+    const rNoFund = await aNoFund.postOrder({ tokenId: '0xabc', side: 'BUY', price: 0.5, size: 10, tickSize: 0.01, venueRules: VR });
+    ok(rNoFund.ok === false && rNoFund.sent === false && rNoFund.gate === 'funding-approval', 'live-providers: funding UNATTESTED → refused at the funding-approval gate (kill/venue/limits/mode all pass here — the funding guard is decisive on its own)');
+    ok(noFund.s.called === false, 'live-providers: the funding-refusal fires BEFORE the provider — the spy signer/creds is NEVER called, no key decrypted');
+
+    // funding ATTESTED + the SAME spy pair: the gate OPENS and the provider IS invoked (then throws) —
+    // proving the funding gate is EXACTLY what stands between a refusal and reaching the live signing path.
+    const yesFund = spyProviders();
+    const aYesFund = createMakerAdapter({ mode: 'live-min', fundingApproved: true, credsProvider: yesFund.credsProvider, signerProvider: yesFund.signerProvider, safety: permissiveSafety() });
+    const rYesFund = await aYesFund.postOrder({ tokenId: '0xabc', side: 'BUY', price: 0.5, size: 10, tickSize: 0.01, venueRules: VR });
+    ok(yesFund.s.called === true, 'live-providers: funding ATTESTED → the gate opens and the provider IS reached (spy called) — the funding gate is the sole guard before the live signing path');
+    ok(rYesFund.ok === false && rYesFund.sent === true, 'live-providers: with the spy provider throwing, the placement still fails closed (no order) — the invocation reached the provider, not the venue');
+  }
+
   // ── 9. off/paper/live all REJECT an off-tick price defensively (never post an unsnapped price) ──
   const offTick = await createMakerAdapter({ mode: 'paper' }).postOrder({ tokenId: '0xabc', side: 'BUY', price: 0.5237, size: 100, tickSize: 0.01 });
   ok(offTick.ok === false && /not a valid multiple of tick/i.test(offTick.reason || ''), 'an off-tick price is rejected (defense in depth), never posted');

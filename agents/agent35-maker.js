@@ -64,6 +64,7 @@ const { legTarget } = require('../lib/rewards-live-band');
 const { scoreOrder } = require('../lib/rewardScore');
 const { loadNewsGuardConfig } = require('../lib/news-guard/config');
 const { createMakerAdapter } = require('../lib/venues/polymarket-clob-maker/adapter');
+const { makerLiveProviders } = require('../lib/maker/live-providers');
 const { appendMakerAudit } = require('../lib/venues/polymarket-clob-maker/audit');
 const { checkKill, cancelAllOnKill } = require('../lib/safety/kill-switch');
 const { queryByUser } = require('../lib/safety/execution-audit');
@@ -108,12 +109,22 @@ function heartbeat() { const hb = readJson(HB_FILE) || {}; hb['agent35-maker'] =
 function writeMakerHeartbeat(hb) { try { atomicWriteJson(MAKER_HB_FILE, hb); } catch (e) { log('maker-heartbeat write failed:', e.message); } }
 
 // ── build the maker adapter for the current mode. off/paper → no providers (canWrite false). live modes
-//    → throwing providers (live wiring is a separate reviewed change; even live can't place here). ──
+//    → the REAL custody providers (L2 creds + signing key). EVERY gate stays intact: the adapter still
+//    refuses unless MAKER_FUNDING_APPROVED is attested AND MAKER_MODE is live AND the kill switch is off
+//    AND the venue-allowlist/notional/rate/inventory caps and the shared venue-rules guard all pass. The
+//    providers only make a key REACHABLE on a live mutating path; they decide nothing and remove no gate.
+//    In this fleet's env MAKER_MODE=off and MAKER_FUNDING_APPROVED is unset, so agent35 places nothing. ──
 function buildAdapter(cfg) {
   if (cfg.mode === 'off') return null;
   if (cfg.mode === 'paper' || cfg.dryRun) return createMakerAdapter({ mode: 'paper', dryRun: cfg.dryRun, orderTtlSeconds: cfg.orderTtlSeconds });
-  const throwProvider = async () => { throw new Error('live maker provider is not wired in this build — arming (custody signer + L2 creds) is a separate reviewed change (see lib/venues/polymarket-clob-maker/credentials.ts + scripts/polymarket-maker-store-key.ts)'); };
-  return createMakerAdapter({ mode: cfg.mode, liveMinCapUsd: cfg.liveMinCapUsd, orderTtlSeconds: cfg.orderTtlSeconds, credsProvider: throwProvider, signerProvider: throwProvider });
+  const { credsProvider, signerProvider } = makerLiveProviders();
+  return createMakerAdapter({
+    mode: cfg.mode, liveMinCapUsd: cfg.liveMinCapUsd, orderTtlSeconds: cfg.orderTtlSeconds,
+    // The human funding attestation — a REAL gate, not a formality. Read from the env so a live adapter
+    // built without MAKER_FUNDING_APPROVED=true still refuses at the funding gate before any key is loaded.
+    fundingApproved: process.env.MAKER_FUNDING_APPROVED === 'true',
+    credsProvider, signerProvider,
+  });
 }
 
 // tick cache — ALWAYS fetch per token, never assume (0.1/0.01/0.001/0.0001/0.0025 all exist). TTL 5min.
