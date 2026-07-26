@@ -428,10 +428,15 @@ export default function EventTerminal({ marketId, embedded = false }: { marketId
           ) : (
             <>
               <div className="evt-rows">
-                <KV k="portafoglio">
+                <KV k="proxy (detiene i fondi)">
                   {chain.wallet
-                    ? <span className="evt-inline"><Mono value={chain.wallet} /><span className="evt-note-i">{chain.walletSource === 'env' ? 'da variabile d’ambiente' : 'da custodia'}</span></span>
-                    : <span className="evt-inline">{D}<span className="evt-note-i">nessun portafoglio configurato</span></span>}
+                    ? <span className="evt-inline"><Mono value={chain.wallet} /><span className="evt-note-i">{chain.walletSource === 'env' ? 'da variabile d’ambiente' : chain.walletSource === 'env-funder' ? 'da MAKER_FUNDER_ADDRESS' : 'da custodia'} · qui vivono pUSD e token, è il «maker» dell’ordine</span></span>
+                    : <span className="evt-inline">{D}<span className="evt-note-i">proxy non risolto — nessun indirizzo dei fondi configurato</span></span>}
+                </KV>
+                <KV k="firmatario (firma, non detiene nulla)">
+                  {chain.signer
+                    ? <span className="evt-inline"><Mono value={chain.signer} /><span className="evt-note-i">EOA in custodia: firma gli ordini, saldo sempre vuoto per progettazione</span></span>
+                    : <span className="evt-inline">{D}<span className="evt-note-i">nessuna chiave di firma in custodia</span></span>}
                 </KV>
                 <KV k="saldo pUSD">{fin(chain.pusdBalance) ? usd(chain.pusdBalance) : D}</KV>
                 <KV k="bloccato da ordini aperti">

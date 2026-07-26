@@ -53,10 +53,15 @@ export interface ApprovalRead {
 }
 
 export interface ChainReadResult {
-  /** The address every figure below belongs to; null when no wallet is configured at all. */
+  /** The PROXY (funder) — the address every balance/allowance/approval below belongs to. This is where
+   * Polymarket holds the pUSD and the outcome tokens, and is the order `maker`. null when unresolved. */
   wallet: string | null;
-  /** How the wallet was resolved — 'env' | 'custody' | null. Shown so the operator knows what they read. */
-  walletSource: 'env' | 'custody' | null;
+  /** How the proxy was resolved. 'custody' = stored proxyAddress; 'env' = MAKER_WALLET_ADDRESS override;
+   * 'env-funder' = MAKER_FUNDER_ADDRESS (the signing path's funder). Shown so the operator knows the source. */
+  walletSource: 'env' | 'custody' | 'env-funder' | null;
+  /** The SIGNER EOA — it signs orders and holds nothing. Shown ALONGSIDE the proxy so the operator sees
+   * the real two-address relationship, and never again reads the empty signer as "the wallet". */
+  signer: string | null;
   rpcReachable: boolean;
   /** Native gas token, needed to send the approval transactions. null = unread. */
   maticBalance: number | null;
@@ -74,27 +79,44 @@ export interface ChainReadResult {
   readAt: string;
 }
 
-/** The wallet whose chain state the terminal reports: env override first, else the custody row. */
-async function resolveWallet(): Promise<{ wallet: string | null; source: 'env' | 'custody' | null }> {
+/**
+ * Resolve the PROXY (funder) whose chain state the terminal reports, plus the SIGNER for display.
+ *
+ * The funds, allowances and outcome tokens live on the PROXY, never on the signer — so this returns the
+ * proxy as `wallet` and NEVER falls back to the signer for it (reading the signer's empty balance is the
+ * exact bug this fixes). Resolution order: MAKER_WALLET_ADDRESS override → the stored proxyAddress →
+ * MAKER_FUNDER_ADDRESS (the same funder the signing adapter uses). The signer is returned separately so
+ * the page can show both, labelled.
+ */
+async function resolveWallet(): Promise<{ wallet: string | null; source: ChainReadResult['walletSource']; signer: string | null }> {
   const override = process.env.MAKER_WALLET_ADDRESS;
-  if (override && isAddress(override)) return { wallet: override, source: 'env' };
+  let signer: string | null = null;
+  let proxy: string | null = null;
   try {
     const row =
       (await prisma.exchangeKey.findFirst({
         where: { venue: POLY_MAKER_VENUE, revokedAt: null },
         orderBy: { createdAt: 'desc' },
-        select: { accountAddress: true },
+        select: { accountAddress: true, proxyAddress: true },
       })) ||
       (await prisma.exchangeKey.findFirst({
         where: { venue: 'polymarket', revokedAt: null },
         orderBy: { createdAt: 'desc' },
-        select: { accountAddress: true },
+        select: { accountAddress: true, proxyAddress: true },
       }));
-    const addr = row?.accountAddress ?? null;
-    return addr && isAddress(addr) ? { wallet: addr, source: 'custody' } : { wallet: null, source: null };
+    signer = row?.accountAddress && isAddress(row.accountAddress) ? row.accountAddress : null;
+    proxy = row?.proxyAddress && isAddress(row.proxyAddress) ? row.proxyAddress : null;
   } catch {
-    return { wallet: null, source: null };
+    return { wallet: null, source: null, signer: null };
   }
+
+  if (override && isAddress(override)) return { wallet: override, source: 'env', signer };
+  if (proxy) return { wallet: proxy, source: 'custody', signer };
+  const envFunder = process.env.MAKER_FUNDER_ADDRESS;
+  if (envFunder && isAddress(envFunder)) return { wallet: envFunder, source: 'env-funder', signer };
+  // No proxy resolvable. Return null for the funds address rather than the signer — an empty signer read
+  // would be a lie about where the money is.
+  return { wallet: null, source: null, signer };
 }
 
 const EMPTY_APPROVALS: ApprovalRead[] = EXCHANGES.map((e) => ({
@@ -115,13 +137,12 @@ export async function readChainState(
   // and loads no credential, so `reserved` is honestly unknown — and therefore `available` is too.
   const reservedReason =
     'la quota bloccata dagli ordini aperti vive nel registro del CLOB, non on-chain: leggerla richiede una sessione CLOB autenticata, che questa pagina non apre';
+  const { wallet, source, signer } = await resolveWallet();
   const base: ChainReadResult = {
-    wallet: null, walletSource: null, rpcReachable: false,
+    wallet: null, walletSource: null, signer, rpcReachable: false,
     maticBalance: null, pusdBalance: null, pusdReserved: null, reservedReason, pusdAvailable: null,
     approvals: EMPTY_APPROVALS, yesTokenBalance: null, noTokenBalance: null, readAt,
   };
-
-  const { wallet, source } = await resolveWallet();
   if (!wallet) return base;
 
   const provider = new JsonRpcProvider(process.env.POLYGON_RPC_URL || DEFAULT_RPC);
@@ -157,6 +178,7 @@ export async function readChainState(
     return {
       wallet,
       walletSource: source,
+      signer,
       // We reached the node if ANY call came back. A wallet with no history still returns a real 0 here.
       rpcReachable: maticRaw != null || balRaw != null,
       maticBalance: maticRaw == null ? null : Number(formatEther(maticRaw as bigint)),
@@ -176,7 +198,7 @@ export async function readChainState(
       readAt,
     };
   } catch {
-    return { ...base, wallet, walletSource: source };
+    return { ...base, wallet, walletSource: source, signer };
   } finally {
     try { provider.destroy(); } catch { /* provider already closed */ }
   }
