@@ -174,7 +174,12 @@ export default function RewardsAllocatePanel() {
       const unreadable = r.mid == null || r.tick == null || r.newestTsMs == null;
       const stale = !unreadable && ageS != null && ageS > STALE_S;
       const dRes = daysToRes(r.endDate, nowMs);
-      return { r, c, ageS, unreadable, stale, usable: !unreadable && !stale, dRes };
+      // S=1 ceiling artifact: an offset WIDER than the computed default whose gross is unchanged/improved. The
+      // replay's gross doesn't model within-band score decay, so widening only LOOKS free/better here.
+      const cDef = rowAt(r, r.computedDefaultOffsetTicks);
+      const wider = (offsets[r.marketId] ?? r.computedDefaultOffsetTicks) > r.computedDefaultOffsetTicks;
+      const artifact = wider && c.gross != null && cDef.gross != null && c.gross >= cDef.gross - 1e-9;
+      return { r, c, ageS, unreadable, stale, usable: !unreadable && !stale, dRes, artifact };
     });
     const resDist = rows.reduce((d, x) => {
       if (x.dRes == null) d.unknown++; else if (x.dRes < NEAR_RES_DAYS) d.near++; else if (x.dRes <= 90) d.mid++; else d.long++;
@@ -192,7 +197,7 @@ export default function RewardsAllocatePanel() {
       rows, grossNow, grossDefault, grossWider, fillsNow, netNow, anyOverride: Object.keys(offsets).length > 0,
       staleCount: rows.filter((x) => x.stale).length, unreadableCount: rows.filter((x) => x.unreadable).length,
       usableCount: usable.length, newestAge: ages.length ? Math.min(...ages) : null, oldestAge: ages.length ? Math.max(...ages) : null,
-      resDist,
+      resDist, artifactCount: rows.filter((x) => x.artifact).length,
     };
   }, [plan, offsets, nowMs]);
 
@@ -341,8 +346,8 @@ export default function RewardsAllocatePanel() {
             <b>{plan.fillScore.auc == null ? '—' : plan.fillScore.auc.toFixed(3)}</b>
             {plan.fillScore.ci95 ? <> · IC 95% [{plan.fillScore.ci95[0].toFixed(3)}, {plan.fillScore.ci95[1].toFixed(3)}]</> : ''}
             {' '}(su {plan.fillScore.nFilled} mercati con fill vs {plan.fillScore.nUnfilled} senza).
-            {plan.fillScore.ci95 && plan.fillScore.ci95[0] <= 0.52
-              ? <b style={{ color: '#d98a41' }}> Il limite inferiore dell’IC è vicino a 0,5: segnale al limite del rumore, non un filtro affidabile.</b>
+            {plan.fillScore.ci95 && plan.fillScore.ci95[0] <= 0.55
+              ? <b style={{ color: '#d98a41' }}> Il limite inferiore dell’IC ({plan.fillScore.ci95[0].toFixed(3)}) è quasi a 0,5 (il caso): è un discriminatore, NON una probabilità, e il bordo basso sfiora il rumore. Usalo come spareggio, mai come cancello.</b>
               : <> Non è un filtro affidabile (0,5 = nessuna discriminazione, 1,0 = perfetta); usalo come spareggio, non come cancello.</>}
           </div>
           <div className="alloc-tablewrap">
@@ -355,7 +360,7 @@ export default function RewardsAllocatePanel() {
                 </tr>
               </thead>
               <tbody>
-                {computed.rows.map(({ r, c, ageS, stale, unreadable, dRes }) => (
+                {computed.rows.map(({ r, c, ageS, stale, unreadable, dRes, artifact }) => (
                   <tr key={r.marketId} data-alloc-row data-alloc-usable={(!stale && !unreadable) ? '1' : '0'} style={{ opacity: (stale || unreadable) ? 0.55 : 1 }}>
                     <td className="name">
                       {r.nameAvailable ? r.name : <span><span className="alloc-addr">{r.shortId}</span> <span className="alloc-cat">· nome non disponibile</span></span>}
@@ -382,12 +387,16 @@ export default function RewardsAllocatePanel() {
                     <td className={r.tick == null ? 'dash' : ''}>{r.tick == null ? '—' : r.tick}</td>
                     <td className={r.depthShares == null ? 'dash' : ''}>{shares(r.depthShares)}</td>
                     <td className={c.gross == null ? 'dash' : ''} data-alloc-gross>
-                      {c.inBand === false ? <span className="oob">$0 · fuori banda</span> : (c.bandKnown === false && c.gross != null ? <span>{perDay(c.gross)}<small className="alloc-cat"> banda —</small></span> : perDay(c.gross))}
+                      {c.inBand === false ? <span className="oob">$0 · fuori banda</span>
+                        : c.bandKnown === false && c.gross != null ? <span>{perDay(c.gross)}<small className="alloc-cat"> banda —</small></span>
+                          : <>{perDay(c.gross)}{artifact && <small className="oob" data-alloc-s1-row title="lordo = tetto S=1: non modella il decadimento del punteggio con la distanza dal mid — allargare non è gratis"> · tetto S=1</small>}</>}
                     </td>
                     <td className={c.net == null ? 'dash' : ''} data-alloc-net>{c.net == null ? '—' : perDay(c.net)}</td>
                     <td className={c.fills == null ? 'dash' : ''} data-alloc-fills>{c.fills == null ? '—' : c.fills}</td>
                     <td className={r.fillScore == null ? 'dash' : ''} data-alloc-score>{r.fillScore == null ? '—' : r.fillScore.toFixed(2)}</td>
-                    <td className={c.orderVsDepth == null ? 'dash' : ''} data-alloc-orderdepth>{c.orderVsDepth == null ? '—' : `${c.orderVsDepth.toFixed(2)}×`}</td>
+                    <td className={c.orderVsDepth == null ? 'dash' : ''} data-alloc-orderdepth>
+                      {c.orderVsDepth == null ? '—' : <span className={c.orderVsDepth >= 10 ? 'fresh-stale' : c.orderVsDepth >= 2 ? 'oob' : ''}>{c.orderVsDepth.toFixed(2)}×{c.orderVsDepth >= 2 ? ' ⚠' : ''}</span>}
+                    </td>
                     <td className={ageS == null ? 'dash' : ''} data-alloc-fresh>
                       {unreadable ? <span className="fresh-stale">illeggibile</span>
                         : ageS == null ? '—'
@@ -406,7 +415,16 @@ export default function RewardsAllocatePanel() {
             <div><span>vs offset default</span><b>{perDay(computed.grossDefault)}{computed.anyOverride ? <small className="alloc-cat"> ({money(computed.grossNow - computed.grossDefault)}/g)</small> : ''}</b></div>
             <div><span>Netto atteso</span><b>{computed.netNow == null ? '—' : perDay(computed.netNow)}</b></div>
             <div><span>Fill attesi totali</span><b data-alloc-total-fills>{computed.fillsNow}</b></div>
+            <div><span>Allargare ogni riga +1 tick</span><b data-alloc-widen-cost>{perDay(computed.grossWider)}<small className="alloc-cat"> ({money(computed.grossWider - computed.grossNow)}/g lordo)</small></b></div>
           </div>
+
+          {/* CRITICAL: the S=1 ceiling caveat — renders whenever any row is wider than its computed default with
+              gross unchanged/improved. Never present a wider offset as free. */}
+          {computed.artifactCount > 0 && (
+            <div className="alloc-note alloc-warn" data-alloc-s1-caveat>
+              <b>Un offset più largo NON è gratis.</b> {computed.artifactCount} {computed.artifactCount === 1 ? 'riga ha' : 'righe hanno'} un offset oltre il default calcolato con lordo <b>invariato o “migliore”</b>: è un <b>artefatto del modello</b>, non un guadagno. Il lordo del replay è il <b>tetto S=1</b> e non modella il decadimento del punteggio quando il quote si allontana dal mid; l’accumulo reale dei reward cala con la distanza, quindi il costo vero di allargare è <b>sottostimato</b> qui.
+            </div>
+          )}
           <div className="alloc-sub" style={{ marginTop: 6 }} data-alloc-totals-scope>
             I totali coprono i <b>{computed.usableCount} mercati con dati aggiornati</b>{computed.staleCount || computed.unreadableCount ? <> — esclusi <b>{computed.staleCount} stale</b>{computed.unreadableCount ? <> e <b>{computed.unreadableCount} illeggibili</b></> : ''} (dati troppo vecchi per pianificare il book attuale, non azzerati)</> : ''}.
           </div>
@@ -427,7 +445,7 @@ export default function RewardsAllocatePanel() {
                 <span key={f.offsetCents} className="alloc-chip">{f.offsetCents}¢: {f.fills.toLocaleString()} fill{f.rewardLost > 0 ? ` · −$${f.rewardLost.toFixed(0)}/g reward` : ' · reward $0 perso'}</span>
               ))}
             </div>
-            <div className="alloc-sub" style={{ marginTop: 4 }}>1¢ evita ~97% dei fill a costo reward zero (tutte le bande ≥ 2¢); oltre, ogni mercato che supera il proprio raggio di banda perde tutto il reward.</div>
+            <div className="alloc-sub" style={{ marginTop: 4 }} data-alloc-s1-note>1¢ evita ~97% dei fill a costo reward zero (tutte le bande ≥ 2¢); oltre, ogni mercato che supera il proprio raggio di banda perde tutto il reward. <b>Il lordo qui è il tetto S=1</b> (indipendente dall’offset in banda): non modella il decadimento del punteggio con la distanza dal mid, quindi in banda allargare <b>sembra</b> gratis ma non lo è.</div>
           </div>
 
           <div className="alloc-sub" style={{ marginTop: 12 }}>{plan.coverage.trueNote}</div>
