@@ -45,6 +45,7 @@ const cents = (v: number | null | undefined): string => (v == null || !Number.is
 const trunc = (a: string | null): string => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—');
 const ageText = (s: number | null): string => (s == null ? '—' : s < 90 ? `${s}s fa` : s < 5400 ? `${Math.round(s / 60)} min fa` : `${(s / 3600).toFixed(1)} h fa`);
 const FRONTIER_MARKS = [1, 2, 3, 5, 10, 20];
+const STORE_KEY = 'edgeradar-alloc-offsets-v1'; // per-capital offset map, browser-local display preference
 
 // Recompute one row at `offsetTicks` from data the plan already returned — no refetch, no reimplemented tick
 // math (bid/ask/fills/cost were snapped server-side per tick). Band-honest: out of band earns ZERO.
@@ -86,8 +87,23 @@ export default function RewardsAllocatePanel() {
     if (!Number.isFinite(n) || n <= 0) { setPlan(null); return; }
     setLoading(true);
     fetch(`/api/rewards/allocate?capital=${encodeURIComponent(cap)}`)
-      .then((r) => r.json()).then((p: Plan) => { setPlan(p); setOffsets({}); }).catch(() => setPlan({ error: 'errore' } as any)).finally(() => setLoading(false));
+      .then((r) => r.json())
+      .then((p: Plan) => {
+        setPlan(p);
+        // restore the persisted per-market offset map for THIS capital (a display preference, deterministic)
+        let restored: Record<string, number> = {};
+        try { const all = JSON.parse(localStorage.getItem(STORE_KEY) || '{}'); restored = all[String(p.capital)] || {}; } catch { /* no store */ }
+        setOffsets(restored);
+      })
+      .catch(() => setPlan({ error: 'errore' } as any)).finally(() => setLoading(false));
   }, []);
+
+  // PERSIST the per-market offset map, keyed by capital, in the browser (localStorage). It is a DISPLAY
+  // preference — reproducible (same capital + same map ⇒ same allocation), never an order or a trade signal.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !plan || plan.error) return;
+    try { const all = JSON.parse(localStorage.getItem(STORE_KEY) || '{}'); all[String(plan.capital)] = offsets; localStorage.setItem(STORE_KEY, JSON.stringify(all)); } catch { /* storage unavailable */ }
+  }, [offsets, plan]);
 
   const effTicks = useCallback((r: Row) => (offsets[r.marketId] ?? r.defaultOffsetTicks), [offsets]);
 
@@ -313,6 +329,9 @@ export default function RewardsAllocatePanel() {
           </div>
 
           <div className="alloc-sub" style={{ marginTop: 12 }}>{plan.coverage.trueNote}</div>
+          <div className="alloc-sub" style={{ marginTop: 6 }} data-alloc-persist-note>
+            La configurazione degli offset è salvata nel <b>browser</b> (localStorage, per-capitale): sopravvive al reload ed è riproducibile — stesso capitale + stessa mappa produce la stessa allocazione. È una <b>preferenza di visualizzazione</b>, non un ordine né un’istruzione a operare, e resta locale a questo dispositivo.
+          </div>
         </div>
       )}
       {plan && !plan.error && plan.rows.length === 0 && Number(capital) > 0 && !loading && (
