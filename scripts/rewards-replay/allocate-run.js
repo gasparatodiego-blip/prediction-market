@@ -20,7 +20,9 @@ const path = require('path');
 const { loadJournal } = require('./lib/journal');
 const { loadTape } = require('./lib/tape');
 const { coverageHeader } = require('../../lib/mid-history-coverage');
-const { perMarketNetAtSize, allocateBudget } = require('./lib/allocate');
+// Import the allocator from the SHARED module (lib/rewards/allocator) — the exact same implementation the
+// UI (/dashboard/liquidity-rewards/allocate) imports, so the page can never drift from this backtest.
+const { perMarketNetAtSize, allocateBudget } = require('../../lib/rewards/allocator');
 
 const MIN_WINDOW_HOURS = 48;
 const STALE_UNTRUST = 0.20;
