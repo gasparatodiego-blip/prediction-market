@@ -10,6 +10,7 @@
 // key is ever read, logged or echoed.
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { bandStateFor } from '@/app/dashboard/liquidity-rewards/allocate/band-state';
 
 type Balance = {
   proxy: string | null; proxySource: string | null; signer: string | null;
@@ -179,7 +180,13 @@ export default function RewardsAllocatePanel() {
       const cDef = rowAt(r, r.computedDefaultOffsetTicks);
       const wider = (offsets[r.marketId] ?? r.computedDefaultOffsetTicks) > r.computedDefaultOffsetTicks;
       const artifact = wider && c.gross != null && cDef.gross != null && c.gross >= cDef.gross - 1e-9;
-      return { r, c, ageS, unreadable, stale, usable: !unreadable && !stale, dRes, artifact };
+      // Band-edge state at the CURRENT offset + what the NEXT +1 step would do (pre-emptive warning input).
+      const eff = offsets[r.marketId] ?? r.computedDefaultOffsetTicks;
+      const band = bandStateFor(r.maxSpreadCents, r.tick, eff);
+      const nextBand = bandStateFor(r.maxSpreadCents, r.tick, eff + 1);
+      const nextStepLeaves = band.state !== 'unknown' && band.state !== 'out' && nextBand.state === 'out';
+      const nextStepCost = nextStepLeaves && c.gross != null ? c.gross - (rowAt(r, eff + 1).gross ?? 0) : null;
+      return { r, c, ageS, unreadable, stale, usable: !unreadable && !stale, dRes, artifact, band, nextStepLeaves, nextStepCost };
     });
     const resDist = rows.reduce((d, x) => {
       if (x.dRes == null) d.unknown++; else if (x.dRes < NEAR_RES_DAYS) d.near++; else if (x.dRes <= 90) d.mid++; else d.long++;
@@ -218,7 +225,7 @@ export default function RewardsAllocatePanel() {
         .alloc-note{border-left:3px solid var(--ds-accent);padding:8px 12px;margin:10px 0;background:color-mix(in srgb,var(--ds-accent) 8%,transparent);border-radius:0 8px 8px 0;font-size:13px}
         .alloc-warn{border-left-color:#d9a441;background:color-mix(in srgb,#d9a441 12%,transparent)}
         .alloc-tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--ds-border);border-radius:10px}
-        table.alloc{border-collapse:collapse;width:100%;min-width:1120px;font-size:13px}
+        table.alloc{border-collapse:collapse;width:100%;min-width:1220px;font-size:13px}
         table.alloc th,table.alloc td{padding:8px 10px;border-bottom:1px solid var(--ds-border);text-align:right;white-space:nowrap}
         table.alloc th{position:sticky;top:0;background:var(--ds-bg);font-weight:600;color:color-mix(in srgb,var(--ds-text) 70%,transparent);font-size:11.5px;text-transform:uppercase;letter-spacing:.03em}
         table.alloc td.name,table.alloc th.name{text-align:left;white-space:normal;min-width:170px}
@@ -355,12 +362,12 @@ export default function RewardsAllocatePanel() {
               <thead>
                 <tr>
                   <th className="name">Mercato</th><th>Capitale</th><th>$/lato</th><th>Scad. (gg)</th><th>Offset (tick / ¢ da mid)</th>
-                  <th>Bid</th><th>Ask</th><th>Tick</th><th>Depth</th><th>Lordo/g</th><th>Netto/g</th><th>Fill attesi</th>
+                  <th>Margine banda</th><th>Bid</th><th>Ask</th><th>Tick</th><th>Depth</th><th>Lordo/g</th><th>Netto/g</th><th>Fill attesi</th>
                   <th>Score fill</th><th>Ord/depth</th><th>Freschezza</th>
                 </tr>
               </thead>
               <tbody>
-                {computed.rows.map(({ r, c, ageS, stale, unreadable, dRes, artifact }) => (
+                {computed.rows.map(({ r, c, ageS, stale, unreadable, dRes, artifact, band, nextStepLeaves, nextStepCost }) => (
                   <tr key={r.marketId} data-alloc-row data-alloc-usable={(!stale && !unreadable) ? '1' : '0'} style={{ opacity: (stale || unreadable) ? 0.55 : 1 }}>
                     <td className="name">
                       {r.nameAvailable ? r.name : <span><span className="alloc-addr">{r.shortId}</span> <span className="alloc-cat">· nome non disponibile</span></span>}
@@ -381,6 +388,11 @@ export default function RewardsAllocatePanel() {
                         <button className="off-step" aria-label="aumenta offset" disabled={r.tick == null || effTicks(r) >= c.maxTick} onClick={() => setRowOffset(r.marketId, effTicks(r) + 1)}>+</button>
                         {c.overridden && <button className="off-reset" title="ripristina default" data-alloc-row-reset onClick={() => resetRow(r.marketId)}>↺</button>}
                       </span>
+                    </td>
+                    <td data-alloc-headroom className={band.state === 'unknown' ? 'dash' : ''}>
+                      {band.state === 'unknown' ? <span data-band-unknown title="raggio di banda illeggibile — margine sconosciuto, non sicuro">— ignota</span>
+                        : band.headroomCents != null && band.headroomCents < 0 ? <span className="oob">oltre di {cents(-band.headroomCents)}</span>
+                          : <span data-band-room>{band.headroomTicks} tick · {cents(band.headroomCents)}</span>}
                     </td>
                     <td className={c.bid == null ? 'dash' : ''}>{price(c.bid)}</td>
                     <td className={c.ask == null ? 'dash' : ''}>{price(c.ask)}</td>
