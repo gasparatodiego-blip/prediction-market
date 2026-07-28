@@ -55,18 +55,32 @@ function computeNet(byMarket, markouts, potByCond, cfg) {
     const mos = moByMarket.get(marketId) || [];
     const costAt = {};
     const netAt = {};
+    const missingAt = {};
     for (const h of ['1m', '5m', '30m']) {
-      const sumMarkout = mos.reduce((s, m) => s + (m.horizons[h] ? m.horizons[h].usd : 0), 0);
-      costAt[h] = -sumMarkout;           // positive when the fills lost money
-      netAt[h] = grossWindow + sumMarkout; // net over the window
+      // Per-fill markout at this horizon; a fill with no sample (beyond window / null) is UNKNOWN, never 0.
+      const perFill = mos.map((m) => (m.horizons[h] && fin(m.horizons[h].usd) ? m.horizons[h].usd : null));
+      const computable = perFill.filter((v) => v != null);
+      missingAt[h] = perFill.length - computable.length; // fills excluded from this horizon, counted
+      let adverse; // realised adverse-selection LOSS ($), floored ≥ 0
+      if (mos.length === 0) adverse = 0;                 // no fills → zero realised cost (KNOWN, not unknown)
+      else if (computable.length === 0) adverse = null;  // fills but NONE has a horizon sample → cost UNKNOWN
+      else adverse = Math.max(0, -computable.reduce((s, x) => s + x, 0)); // favorable markout is unrealised → not booked
+      costAt[h] = adverse;                               // null ⇒ renders "—", never a defaulted 0
+      netAt[h] = adverse == null ? null : grossWindow - adverse; // null ⇒ "—"; else GUARANTEED ≤ grossWindow
     }
-    rows.push({ marketId, pot, share, limDepthShares: limDepth, mid, grossPerDay, grossWindow, fills: mos.length, costWindow: costAt, netWindow: netAt });
+    rows.push({ marketId, pot, share, limDepthShares: limDepth, mid, grossPerDay, grossWindow, fills: mos.length, costWindow: costAt, netWindow: netAt, missing: missingAt });
   }
-  // aggregate
-  const agg = { grossWindow: 0, fills: 0, costWindow: { '1m': 0, '5m': 0, '30m': 0 }, netWindow: { '1m': 0, '5m': 0, '30m': 0 }, markets: rows.length };
+  // aggregate — a market whose net is UNKNOWN at a horizon is excluded from that horizon's totals AND
+  // counted (unknownNet), never defaulted. net ≤ gross is preserved at the aggregate (each included net_i ≤
+  // gross_i, and excluded markets still add to gross), so no basis can make aggregate net exceed gross.
+  const H = ['1m', '5m', '30m'];
+  const agg = { grossWindow: 0, fills: 0, costWindow: { '1m': 0, '5m': 0, '30m': 0 }, netWindow: { '1m': 0, '5m': 0, '30m': 0 }, unknownNet: { '1m': 0, '5m': 0, '30m': 0 }, markets: rows.length };
   for (const r of rows) {
     agg.grossWindow += r.grossWindow; agg.fills += r.fills;
-    for (const h of ['1m', '5m', '30m']) { agg.costWindow[h] += r.costWindow[h]; agg.netWindow[h] += r.netWindow[h]; }
+    for (const h of H) {
+      if (r.netWindow[h] == null) { agg.unknownNet[h]++; continue; } // excluded + counted
+      agg.costWindow[h] += r.costWindow[h]; agg.netWindow[h] += r.netWindow[h];
+    }
   }
   return { rows, aggregate: agg, excluded };
 }
