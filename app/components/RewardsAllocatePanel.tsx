@@ -20,7 +20,7 @@ type FillTick = { tick: number; offsetCents: number | null; fills: number; costP
 type Row = {
   marketId: string; name: string | null; category: string | null; nameAvailable: boolean; shortId: string;
   capital: number; sizePerSideUsd: number; sizePerSideShares: number | null;
-  tick: number | null; mid: number | null; depthShares: number | null;
+  tick: number | null; mid: number | null; depthShares: number | null; newestTsMs: number | null;
   maxSpreadCents: number | null; grossInBandPerDay: number | null; defaultOffsetTicks: number;
   fillScore: number | null; fillsByTick: FillTick[];
 };
@@ -46,6 +46,12 @@ const trunc = (a: string | null): string => (a ? `${a.slice(0, 6)}…${a.slice(-
 const ageText = (s: number | null): string => (s == null ? '—' : s < 90 ? `${s}s fa` : s < 5400 ? `${Math.round(s / 60)} min fa` : `${(s / 3600).toFixed(1)} h fa`);
 const FRONTIER_MARKS = [1, 2, 3, 5, 10, 20];
 const STORE_KEY = 'edgeradar-alloc-offsets-v1'; // per-capital offset map, browser-local display preference
+// Freshness: the mid-history sampler writes each SUBSCRIBED market every ~60-90s; a row older than 5 min has
+// missed several cycles → it is not in agent34's live subscription and its mid/depth predate the current book.
+const STALE_S = 300;
+const CLOCK_MS = 15_000;   // re-tick per-row data age locally (no refetch) so staleness is always current
+const REFRESH_MS = 180_000; // re-fetch the whole plan; the recompute costs ~19s, matched to the route's cache TTL
+const freshAge = (s: number): string => (s < 90 ? `${Math.round(s)}s` : s < 5400 ? `${Math.round(s / 60)} min` : `${(s / 3600).toFixed(1)} h`);
 
 // Recompute one row at `offsetTicks` from data the plan already returned — no refetch, no reimplemented tick
 // math (bid/ask/fills/cost were snapped server-side per tick). Band-honest: out of band earns ZERO.
@@ -71,6 +77,16 @@ export default function RewardsAllocatePanel() {
   const [touched, setTouched] = useState(false);
   const [offsets, setOffsets] = useState<Record<string, number>>({}); // per-market offset override, in ticks
   const [recomputeMs, setRecomputeMs] = useState<number | null>(null);
+  const [nowMs, setNowMs] = useState<number>(() => Date.now()); // ticks CLOCK_MS → live per-row data age, no refetch
+  const [refreshMs, setRefreshMs] = useState<number | null>(null); // measured latency of the last auto-refresh fetch
+  const [lastRefreshMs, setLastRefreshMs] = useState<number | null>(null);
+
+  // Live age clock — re-render every CLOCK_MS so each row's "letto Xs fa" and STALE badge stay true, WITHOUT
+  // refetching any market data. Cheap: only re-derives ages from newestTsMs already in the plan.
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), CLOCK_MS);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -98,6 +114,27 @@ export default function RewardsAllocatePanel() {
       .catch(() => setPlan({ error: 'errore' } as any)).finally(() => setLoading(false));
   }, []);
 
+  // AUTO-REFRESH: re-fetch the plan for the SAME (already-computed) capital, updating ONLY the plan — it never
+  // touches the operator's typed capital or their per-market offset overrides, so both survive every cycle.
+  const refreshPlan = useCallback((cap: string) => {
+    const n = Number(cap);
+    if (!Number.isFinite(n) || n <= 0) return;
+    const t0 = performance.now();
+    fetch(`/api/rewards/allocate?capital=${encodeURIComponent(cap)}`)
+      .then((r) => r.json())
+      .then((p: Plan) => { if (p && !p.error) { setPlan(p); setRefreshMs(performance.now() - t0); setLastRefreshMs(Date.now()); } })
+      .catch(() => { /* keep the last good plan on a failed refresh */ });
+  }, []);
+
+  useEffect(() => {
+    if (!plan || plan.error || !(plan.capital > 0)) return;
+    const cap = String(plan.capital);
+    const id = setInterval(() => refreshPlan(cap), REFRESH_MS);
+    return () => clearInterval(id);
+    // key ONLY on capital so the interval is not torn down/recreated on every refresh (which would reset the timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plan?.capital, plan?.error, refreshPlan]);
+
   // PERSIST the per-market offset map, keyed by capital, in the browser (localStorage). It is a DISPLAY
   // preference — reproducible (same capital + same map ⇒ same allocation), never an order or a trade signal.
   useEffect(() => {
@@ -117,17 +154,32 @@ export default function RewardsAllocatePanel() {
   const setAll = useCallback((ticks: number) => { if (!plan) return; const t0 = performance.now(); setOffsets(Object.fromEntries(plan.rows.map((r) => [r.marketId, ticks]))); setRecomputeMs(performance.now() - t0); }, [plan]);
   const resetAll = useCallback(() => setOffsets({}), []);
 
-  // recompute all rows + totals at the current offsets (memoised — the "no visible stall" path)
+  // recompute all rows + totals at the current offsets (memoised — the "no visible stall" path). Each row also
+  // carries its LIVE data age; STALE rows (past STALE_S) and UNREADABLE rows (no mid/tick/sample) are shown with
+  // their true age but EXCLUDED from the totals and counted — never shown as current, never defaulted to zero.
   const computed = useMemo(() => {
     if (!plan) return null;
-    const rows = plan.rows.map((r) => ({ r, c: rowAt(r, offsets[r.marketId] ?? r.defaultOffsetTicks) }));
-    const grossNow = rows.reduce((s, x) => s + (x.c.gross ?? 0), 0);
-    const grossDefault = plan.rows.reduce((s, r) => s + (rowAt(r, r.defaultOffsetTicks).gross ?? 0), 0);
-    const fillsNow = rows.reduce((s, x) => s + (x.c.fills ?? 0), 0);
-    const netKnown = rows.every((x) => x.c.net != null);
-    const netNow = netKnown ? rows.reduce((s, x) => s + (x.c.net ?? 0), 0) : null;
-    return { rows, grossNow, grossDefault, fillsNow, netNow, anyOverride: Object.keys(offsets).length > 0 };
-  }, [plan, offsets]);
+    const rows = plan.rows.map((r) => {
+      const c = rowAt(r, offsets[r.marketId] ?? r.defaultOffsetTicks);
+      const ageS = r.newestTsMs != null ? Math.max(0, (nowMs - r.newestTsMs) / 1000) : null;
+      const unreadable = r.mid == null || r.tick == null || r.newestTsMs == null;
+      const stale = !unreadable && ageS != null && ageS > STALE_S;
+      return { r, c, ageS, unreadable, stale, usable: !unreadable && !stale };
+    });
+    const usable = rows.filter((x) => x.usable);
+    const grossNow = usable.reduce((s, x) => s + (x.c.gross ?? 0), 0);
+    const grossDefault = usable.reduce((s, x) => s + (rowAt(x.r, x.r.defaultOffsetTicks).gross ?? 0), 0);
+    const grossWider = usable.reduce((s, x) => s + (rowAt(x.r, (offsets[x.r.marketId] ?? x.r.defaultOffsetTicks) + 1).gross ?? 0), 0);
+    const fillsNow = usable.reduce((s, x) => s + (x.c.fills ?? 0), 0);
+    const netKnown = usable.length > 0 && usable.every((x) => x.c.net != null);
+    const netNow = netKnown ? usable.reduce((s, x) => s + (x.c.net ?? 0), 0) : null;
+    const ages = rows.map((x) => x.ageS).filter((a): a is number => a != null);
+    return {
+      rows, grossNow, grossDefault, grossWider, fillsNow, netNow, anyOverride: Object.keys(offsets).length > 0,
+      staleCount: rows.filter((x) => x.stale).length, unreadableCount: rows.filter((x) => x.unreadable).length,
+      usableCount: usable.length, newestAge: ages.length ? Math.min(...ages) : null, oldestAge: ages.length ? Math.max(...ages) : null,
+    };
+  }, [plan, offsets, nowMs]);
 
   const balanceNum = bal && bal.pusdBalance != null ? bal.pusdBalance : null;
   const capitalNum = Number(capital);
@@ -167,6 +219,10 @@ export default function RewardsAllocatePanel() {
         .off-reset{min-width:34px;min-height:44px;border:none;background:transparent;color:color-mix(in srgb,var(--ds-text) 55%,transparent);cursor:pointer;font-size:15px}
         .off-over{color:#d9a441;font-weight:700}
         .oob{color:#d98a41;font-weight:600}
+        .fresh-ok{color:#4c9a6a}
+        .fresh-stale{color:#d98a41;font-weight:700}
+        .fresh-bar{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center;font-size:12px;margin:2px 0 8px;color:color-mix(in srgb,var(--ds-text) 60%,transparent)}
+        .fresh-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:baseline}
         @media(max-width:430px){.alloc-in{width:44vw}}
       `}</style>
 
@@ -243,6 +299,15 @@ export default function RewardsAllocatePanel() {
             </div>
           </div>
 
+          {/* GLOBAL FRESHNESS — newest/oldest row age, stale count, and the auto-refresh cadence + measured latency. */}
+          <div className="fresh-bar" data-alloc-freshness>
+            <span><span className="fresh-dot" style={{ background: computed.staleCount ? '#d98a41' : '#4c9a6a' }} />
+              dati per-riga: più recente <b>{computed.newestAge != null ? freshAge(computed.newestAge) + ' fa' : '—'}</b> · più vecchio <b>{computed.oldestAge != null ? freshAge(computed.oldestAge) + ' fa' : '—'}</b></span>
+            <span className={computed.staleCount ? 'fresh-stale' : 'fresh-ok'} data-alloc-stale-count>
+              {computed.staleCount} STALE{computed.unreadableCount ? ` · ${computed.unreadableCount} illeggibili` : ''} esclusi dai totali (soglia {STALE_S / 60} min)</span>
+            <span>auto-refresh ogni {REFRESH_MS / 1000}s{lastRefreshMs ? ` · ultimo ${freshAge((nowMs - lastRefreshMs) / 1000)} fa` : ''}{refreshMs != null ? ` · latenza ${(refreshMs / 1000).toFixed(1)}s` : ''}</span>
+          </div>
+
           {/* Fill-exposure signal strength, stated honestly — a discriminator, NOT a probability. */}
           <div className="alloc-note" data-alloc-auc style={{ marginTop: 10 }}>
             <b>Esposizione al fill</b> (score strutturale per riga: order/depth + volatilità + spread stretto).
@@ -260,12 +325,12 @@ export default function RewardsAllocatePanel() {
                 <tr>
                   <th className="name">Mercato</th><th>Capitale</th><th>$/lato</th><th>Offset (tick / ¢ da mid)</th>
                   <th>Bid</th><th>Ask</th><th>Tick</th><th>Depth</th><th>Lordo/g</th><th>Netto/g</th><th>Fill attesi</th>
-                  <th>Score fill</th><th>Ord/depth</th>
+                  <th>Score fill</th><th>Ord/depth</th><th>Freschezza</th>
                 </tr>
               </thead>
               <tbody>
-                {computed.rows.map(({ r, c }) => (
-                  <tr key={r.marketId} data-alloc-row>
+                {computed.rows.map(({ r, c, ageS, stale, unreadable }) => (
+                  <tr key={r.marketId} data-alloc-row data-alloc-usable={(!stale && !unreadable) ? '1' : '0'} style={{ opacity: (stale || unreadable) ? 0.55 : 1 }}>
                     <td className="name">
                       {r.nameAvailable ? r.name : <span><span className="alloc-addr">{r.shortId}</span> <span className="alloc-cat">· nome non disponibile</span></span>}
                       {r.category && <div className="alloc-cat">{r.category}</div>}
@@ -294,6 +359,11 @@ export default function RewardsAllocatePanel() {
                     <td className={c.fills == null ? 'dash' : ''} data-alloc-fills>{c.fills == null ? '—' : c.fills}</td>
                     <td className={r.fillScore == null ? 'dash' : ''} data-alloc-score>{r.fillScore == null ? '—' : r.fillScore.toFixed(2)}</td>
                     <td className={c.orderVsDepth == null ? 'dash' : ''} data-alloc-orderdepth>{c.orderVsDepth == null ? '—' : `${c.orderVsDepth.toFixed(2)}×`}</td>
+                    <td className={ageS == null ? 'dash' : ''} data-alloc-fresh>
+                      {unreadable ? <span className="fresh-stale">illeggibile</span>
+                        : ageS == null ? '—'
+                          : <span className={stale ? 'fresh-stale' : 'fresh-ok'}>{stale ? 'STALE · ' : ''}{freshAge(ageS)} fa</span>}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -307,6 +377,9 @@ export default function RewardsAllocatePanel() {
             <div><span>vs offset default</span><b>{perDay(computed.grossDefault)}{computed.anyOverride ? <small className="alloc-cat"> ({money(computed.grossNow - computed.grossDefault)}/g)</small> : ''}</b></div>
             <div><span>Netto atteso</span><b>{computed.netNow == null ? '—' : perDay(computed.netNow)}</b></div>
             <div><span>Fill attesi totali</span><b data-alloc-total-fills>{computed.fillsNow}</b></div>
+          </div>
+          <div className="alloc-sub" style={{ marginTop: 6 }} data-alloc-totals-scope>
+            I totali coprono i <b>{computed.usableCount} mercati con dati aggiornati</b>{computed.staleCount || computed.unreadableCount ? <> — esclusi <b>{computed.staleCount} stale</b>{computed.unreadableCount ? <> e <b>{computed.unreadableCount} illeggibili</b></> : ''} (dati troppo vecchi per pianificare il book attuale, non azzerati)</> : ''}.
           </div>
           <div className="alloc-sub" style={{ marginTop: 6 }}>{plan.annualisedGross.label}. Il netto per-mercato è “—” dove non è stato osservato alcun fill reale. Un offset oltre il raggio di banda (maxSpread/2) porta il lordo a $0: la riga lo dice, non mostra un piccolo positivo.</div>
 

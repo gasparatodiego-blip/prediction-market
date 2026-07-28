@@ -22,7 +22,7 @@ export const dynamic = 'force-dynamic';
 
 // Inline runner — plain node, no webpack. Prints the plan JSON for the requested capital.
 const RUNNER = 'process.stdout.write(JSON.stringify(require("/root/prediction-market/lib/rewards/allocator").planFromCollection({ capital: Number(process.argv[1]) })))';
-const RESULT_TTL_MS = 15 * 60_000;
+const RESULT_TTL_MS = 180_000; // 3 min — the plan auto-refreshes at this cadence; recompute costs ~19s, so a fresh plan every 3 min is live-enough while the per-row data age ticks locally every 15s
 const SPAWN_TIMEOUT_MS = 90_000; // planFromCollection scores the universe + builds per-tick fill curves
 const MAX_BUFFER = 24 * 1024 * 1024;
 
