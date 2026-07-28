@@ -23,6 +23,7 @@ type Row = {
   tick: number | null; mid: number | null; depthShares: number | null; newestTsMs: number | null;
   endDate: string | null;
   maxSpreadCents: number | null; grossInBandPerDay: number | null; defaultOffsetTicks: number;
+  computedDefaultOffsetTicks: number; defaultReason: string; defaultNetDerived: boolean; grossMaxDefaultTicks: number;
   fillScore: number | null; fillsByTick: FillTick[];
 };
 type Plan = {
@@ -73,7 +74,7 @@ function rowAt(r: Row, offsetTicks: number) {
   const cost = ft ? ft.costPerDay : null;
   const net = fills != null && fills > 0 && gross != null && cost != null ? gross - cost : null;
   const orderVsDepth = r.sizePerSideShares != null && r.depthShares != null && r.depthShares > 0 ? r.sizePerSideShares / r.depthShares : null;
-  return { offsetTicks, offsetCents, bid: ft ? ft.bid : null, ask: ft ? ft.ask : null, inBand, bandKnown, gross, fills, cost, net, orderVsDepth, overridden: offsetTicks !== r.defaultOffsetTicks, maxTick: r.fillsByTick.length ? r.fillsByTick[r.fillsByTick.length - 1].tick : 0 };
+  return { offsetTicks, offsetCents, bid: ft ? ft.bid : null, ask: ft ? ft.ask : null, inBand, bandKnown, gross, fills, cost, net, orderVsDepth, overridden: offsetTicks !== r.computedDefaultOffsetTicks, maxTick: r.fillsByTick.length ? r.fillsByTick[r.fillsByTick.length - 1].tick : 0 };
 }
 
 export default function RewardsAllocatePanel() {
@@ -150,7 +151,7 @@ export default function RewardsAllocatePanel() {
     try { const all = JSON.parse(localStorage.getItem(STORE_KEY) || '{}'); all[String(plan.capital)] = offsets; localStorage.setItem(STORE_KEY, JSON.stringify(all)); } catch { /* storage unavailable */ }
   }, [offsets, plan]);
 
-  const effTicks = useCallback((r: Row) => (offsets[r.marketId] ?? r.defaultOffsetTicks), [offsets]);
+  const effTicks = useCallback((r: Row) => (offsets[r.marketId] ?? r.computedDefaultOffsetTicks), [offsets]);
 
   // set one row's offset (local recompute only — measured); NEVER refetches market data
   const setRowOffset = useCallback((marketId: string, ticks: number) => {
@@ -168,7 +169,7 @@ export default function RewardsAllocatePanel() {
   const computed = useMemo(() => {
     if (!plan) return null;
     const rows = plan.rows.map((r) => {
-      const c = rowAt(r, offsets[r.marketId] ?? r.defaultOffsetTicks);
+      const c = rowAt(r, offsets[r.marketId] ?? r.computedDefaultOffsetTicks);
       const ageS = r.newestTsMs != null ? Math.max(0, (nowMs - r.newestTsMs) / 1000) : null;
       const unreadable = r.mid == null || r.tick == null || r.newestTsMs == null;
       const stale = !unreadable && ageS != null && ageS > STALE_S;
@@ -181,8 +182,8 @@ export default function RewardsAllocatePanel() {
     }, { near: 0, mid: 0, long: 0, unknown: 0 });
     const usable = rows.filter((x) => x.usable);
     const grossNow = usable.reduce((s, x) => s + (x.c.gross ?? 0), 0);
-    const grossDefault = usable.reduce((s, x) => s + (rowAt(x.r, x.r.defaultOffsetTicks).gross ?? 0), 0);
-    const grossWider = usable.reduce((s, x) => s + (rowAt(x.r, (offsets[x.r.marketId] ?? x.r.defaultOffsetTicks) + 1).gross ?? 0), 0);
+    const grossDefault = usable.reduce((s, x) => s + (rowAt(x.r, x.r.computedDefaultOffsetTicks).gross ?? 0), 0);
+    const grossWider = usable.reduce((s, x) => s + (rowAt(x.r, (offsets[x.r.marketId] ?? x.r.computedDefaultOffsetTicks) + 1).gross ?? 0), 0);
     const fillsNow = usable.reduce((s, x) => s + (x.c.fills ?? 0), 0);
     const netKnown = usable.length > 0 && usable.every((x) => x.c.net != null);
     const netNow = netKnown ? usable.reduce((s, x) => s + (x.c.net ?? 0), 0) : null;
@@ -328,6 +329,11 @@ export default function RewardsAllocatePanel() {
             <span className="alloc-sub" style={{ fontStyle: 'italic' }}>capitale a lungo termine; entro {NEAR_RES_DAYS}g il prezzo si muove su notizie reali, non rumore — cambia il carattere del fill (righe segnate ⚠).</span>
           </div>
 
+          {/* COMPUTED DEFAULT OFFSET — net-max, not a fixed +1 tick. Explains why each row starts where it does. */}
+          <div className="alloc-note" data-alloc-computed-default style={{ marginTop: 8 }}>
+            <b>Offset di partenza calcolato, non fisso.</b> Ogni riga parte dall’offset che massimizza il <b>netto misurato</b> (lordo − markout osservato), non il lordo: massimizzare il lordo darebbe offset 0 — a metà prezzo — ovunque, perché il lordo è il tetto S=1 indipendente dall’offset (a 0¢ ha preso 14.642 fill nella finestra). Dove non c’è alcun fill osservato il netto non è misurabile: la riga parte dall’offset minimo a esposizione limitata (1 tick) ed è marcata <b>def exp</b>; le altre sono <b>def net</b>. Sotto ogni offset è indicato il default calcolato.
+          </div>
+
           {/* Fill-exposure signal strength, stated honestly — a discriminator, NOT a probability. */}
           <div className="alloc-note" data-alloc-auc style={{ marginTop: 10 }}>
             <b>Esposizione al fill</b> (score strutturale per riga: order/depth + volatilità + spread stretto).
@@ -363,9 +369,9 @@ export default function RewardsAllocatePanel() {
                     <td>
                       <span className="off-ctl">
                         <button className="off-step" aria-label="riduci offset" disabled={effTicks(r) <= 0} onClick={() => setRowOffset(r.marketId, Math.max(0, effTicks(r) - 1))}>−</button>
-                        <span className="off-val" data-alloc-offset-cell>
+                        <span className="off-val" data-alloc-offset-cell title={`default calcolato: ${r.computedDefaultOffsetTicks} tick — ${r.defaultReason}`}>
                           <b className={c.overridden ? 'off-over' : ''}>{r.tick == null ? '—' : `${effTicks(r)} tick`}</b>
-                          <small>{c.offsetCents == null ? '—' : cents(c.offsetCents)}{c.overridden ? ' • modif.' : ''}</small>
+                          <small>{c.offsetCents == null ? '—' : cents(c.offsetCents)}{c.overridden ? ` • modif. (def ${r.computedDefaultOffsetTicks}t)` : ` • def ${r.defaultNetDerived ? 'net' : 'exp'}`}</small>
                         </span>
                         <button className="off-step" aria-label="aumenta offset" disabled={r.tick == null || effTicks(r) >= c.maxTick} onClick={() => setRowOffset(r.marketId, effTicks(r) + 1)}>+</button>
                         {c.overridden && <button className="off-reset" title="ripristina default" data-alloc-row-reset onClick={() => resetRow(r.marketId)}>↺</button>}
