@@ -93,4 +93,72 @@ function runBacktest(cycles, cfg = {}) {
   };
 }
 
-module.exports = { replayCycle, runBacktest, longestLosingStreak, maxDrawdown, DEFAULTS };
+// ── PHASE 3: the 4% drawdown rule ───────────────────────────────────────────────
+// After a YES entry, if the position is down more than `drawdownPct`, open the OPPOSITE side (NO) at the
+// REAL observed ask, sized to offset the loss, from REAL depth. The hedge is full / partial / failed — never
+// assumed filled. Because YES was bought at ~0.98 and the trigger means YES has FALLEN (so NO has RISEN),
+// the pair always crosses (p + q > 1): the hedge caps the tail but locks a guaranteed crossing loss.
+//
+// The cycle carries a drawdown observation: cycle.drawdown = { yesMid, noAsk, noDepthUsd } — the observed
+// state at the moment the 4% check is made. Absent ⇒ the rule is not evaluable for that cycle (reported).
+const { hedgeSizeToOffset, hedgeFill, pairPnl, crossingLossPerPair } = require('./arithmetic');
+
+function replayCycleWithHedge(cycle, cfg = {}) {
+  const { drawdownPct = 0.04, sizeUsd = DEFAULTS.sizeUsd } = cfg;
+  const base = replayCycle(cycle, cfg);
+  if (base.status !== 'entered') return { ...base, hedge: null };
+
+  const dd = cycle.drawdown;
+  if (!dd || !fin(dd.yesMid)) return { ...base, hedge: { evaluable: false, reason: 'no drawdown observation' } };
+
+  const lossFrac = (base.fillAsk - dd.yesMid) / base.fillAsk; // (cost − current)/cost
+  if (!(lossFrac > drawdownPct)) return { ...base, hedge: { evaluable: true, triggered: false, lossFrac } };
+
+  // triggered: buy NO at the observed ask, sized to offset the full stake, from real depth
+  const neededShares = hedgeSizeToOffset(sizeUsd, dd.noAsk);
+  const fill = hedgeFill(neededShares, dd.noAsk, dd.noDepthUsd);
+  const crossPerPair = crossingLossPerPair(base.fillAsk, dd.noAsk);
+  const crossingLoss = crossPerPair == null ? null : crossPerPair * Math.min(base.shares, fill.filledShares);
+  const pnl = pairPnl(base.shares, base.fillAsk, fill.filledShares, dd.noAsk, cycle.settlement);
+  return {
+    ...base,
+    pnl, // combined position P&L (overrides the base's unhedged pnl)
+    hedge: {
+      evaluable: true, triggered: true, lossFrac, noAsk: dd.noAsk, neededShares,
+      filledShares: fill.filledShares, status: fill.status, cost: fill.cost, reason: fill.reason,
+      crosses: (base.fillAsk + dd.noAsk) >= 1, crossPerPair, crossingLoss,
+    },
+  };
+}
+
+/** Aggregate the drawdown-rule backtest, counting hedge trigger / full / partial / failed and crossing cost. */
+function runBacktestWithHedge(cycles, cfg = {}) {
+  const results = (cycles || []).map((c) => replayCycleWithHedge(c, cfg));
+  const entered = results.filter((r) => r.status === 'entered');
+  const triggered = entered.filter((r) => r.hedge && r.hedge.triggered);
+  const hedge = {
+    triggered: triggered.length,
+    filledFull: triggered.filter((r) => r.hedge.status === 'full').length,
+    partial: triggered.filter((r) => r.hedge.status === 'partial').length,
+    failed: triggered.filter((r) => r.hedge.status === 'failed').length,
+    crossedPairs: triggered.filter((r) => r.hedge.crosses).length,
+    totalCrossingLoss: triggered.reduce((s, r) => s + (fin(r.hedge.crossingLoss) ? r.hedge.crossingLoss : 0), 0),
+    notEvaluable: entered.filter((r) => r.hedge && r.hedge.evaluable === false).length,
+  };
+  const ordered = [...entered].sort((a, b) => (a.windowEndEpoch || 0) - (b.windowEndEpoch || 0));
+  const wins = entered.filter((r) => r.pnl > 0).length;
+  const grossPnl = entered.reduce((s, r) => s + r.pnl, 0);
+  return {
+    cyclesObserved: results.length, entered: entered.length,
+    skipped: results.filter((r) => r.status === 'skipped').length,
+    wins, losses: entered.length - wins,
+    grossPnl: entered.length ? grossPnl : null,
+    pnlPerCycle: entered.length ? grossPnl / entered.length : null,
+    longestLosingStreak: longestLosingStreak(ordered.map((r) => ({ win: r.pnl > 0 }))),
+    maxDrawdown: entered.length ? maxDrawdown(ordered) : null,
+    worstCycle: entered.reduce((w, r) => (w == null || r.pnl < w.pnl ? r : w), null),
+    hedge, enteredOrdered: ordered,
+  };
+}
+
+module.exports = { replayCycle, runBacktest, replayCycleWithHedge, runBacktestWithHedge, longestLosingStreak, maxDrawdown, DEFAULTS };
