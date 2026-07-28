@@ -132,6 +132,17 @@ data/safety-kill-audit.jsonl
 data/safety-risk-limits.json
 data/safety-risk-limits.json.tmp.*
 data/execution-audit.jsonl
+
+# rewards NET verdict + drift shadow — agent39 dated output + agent34 shadow log, runtime only
+data/rewards-replay-net-*.json
+data/rewards-drift-shadow.jsonl
+# dn-lp pool snapshot (agent-dn-lp), sport-arb reclassification passes — derived runtime data
+data/dn-lp-pools.json
+data/sport-arb-history.reclassified.jsonl
+data/sport-arb-history.reclassified.v2.jsonl
+# funding alert state (may name Telegram chat IDs — personal data) + targeted-edge scratch, runtime only
+data/funding-alert-state.json
+data/funding-targeted-edge.txt
 # append-only fill-truth ledger — confirmed venue fills/closes feeding open-exposure + realised-daily-loss
 data/safety-fills.jsonl
 
