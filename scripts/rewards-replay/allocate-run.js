@@ -46,10 +46,9 @@ function parseArgs(argv) {
 const money = (x) => (x == null ? '—' : (x < 0 ? '-$' : '$') + Math.abs(x).toFixed(2));
 const pct = (x) => (x == null ? '—' : (x > APY_CAP ? `>${APY_CAP}%/yr · run-rate, not guaranteed` : x.toFixed(2) + '%/yr'));
 
-// annualised NET %, honest: refuse under 48h, run-rate label handled by pct().
-function annualise(net5m, windowHours, capital) {
-  if (!(windowHours >= MIN_WINDOW_HOURS) || !(capital > 0)) return null;
-  const netPerDay = net5m / (windowHours / 24);
+// annualised NET %, honest: refuse under 48h span, run-rate label handled by pct(). Input is a $/day RATE.
+function annualise(netPerDay, capital, windowHours) {
+  if (!(windowHours >= MIN_WINDOW_HOURS) || !(capital > 0) || netPerDay == null) return null;
   return (netPerDay * 365 / capital) * 100;
 }
 
@@ -97,53 +96,75 @@ async function main() {
   const unit = args.unit || (args.budget <= 200 ? 2 : 100);
   console.log(`PLACEMENT: offset ${args.offset}¢ both sides · baseline size $${args.size}/side · max inventory $${args.maxInventory} · knapsack unit $${unit} capital`);
 
+  console.log('  NOTE: all figures are $/day RATES; each market amortised over ITS OWN observed span (observed-window).');
+
   // ── BASELINE: fund every fundable market at $size/side (the base replay's config) ──
-  let baseGross = 0, baseCost = 0, baseNet = 0, baseMarkets = 0;
+  const globalWindowDays = windowHours / 24;
+  let baseGrossPerDay = 0, baseCostPerDay = 0, baseNetPerDay = 0, baseMarkets = 0, baseUnknown = 0;
+  let baseAdverseSum = 0; const spans = []; // adverse $ over spans + span distribution, for the full-window delta
   for (const [marketId, rows] of J.byMarket.entries()) {
     const trades = (marketTokens.get(marketId) && tape.byToken.get(marketTokens.get(marketId))) || [];
-    const r = perMarketNetAtSize(marketId, rows, trades, potByCond, { offsetCents: args.offset, sizeUsd: args.size, maxInventoryUsd: args.maxInventory }, windowHours);
+    const r = perMarketNetAtSize(marketId, rows, trades, potByCond, { offsetCents: args.offset, sizeUsd: args.size, maxInventoryUsd: args.maxInventory });
     if (r.excluded) continue;
-    baseMarkets++; baseGross += r.gross; baseCost += r.cost5m; baseNet += r.net5m;
+    baseMarkets++;
+    if (r.spanHours != null) spans.push(r.spanHours);
+    if (r.netPerDay5m == null) { baseUnknown++; continue; } // unknown net excluded + counted
+    baseGrossPerDay += r.grossPerDay; baseCostPerDay += r.costPerDay5m; baseNetPerDay += r.netPerDay5m;
+    baseAdverseSum += r.cost5m; // adverse $ observed over this market's span
   }
+  // FULL-WINDOW (the OLD, over-scaled basis): amortise every market's adverse cost over the GLOBAL window,
+  // not its own span — this under-counts cost and inflates net. Report it only to show the correction's size.
+  const baseFullCostPerDay = baseAdverseSum / globalWindowDays;
+  const baseFullNetPerDay = baseGrossPerDay - baseFullCostPerDay;
   const baseCapital = baseMarkets * 2 * args.size;
-  const baseAnnual = annualise(baseNet, windowHours, baseCapital);
+  const baseAnnual = annualise(baseNetPerDay, baseCapital, windowHours);
   console.log('\n' + '─'.repeat(78));
   console.log(`BASELINE (every market at $${args.size}/side — the base replay's assumption):`);
-  console.log(`  fundable markets ${baseMarkets} · IMPLIED CAPITAL = ${baseMarkets} × 2 × $${args.size} = ${money(baseCapital)}`);
-  console.log(`  gross ${money(baseGross)} · cost(+5m) ${money(baseCost)} · NET(+5m) ${money(baseNet)}  over ${windowHours.toFixed(2)}h`);
+  console.log(`  fundable markets ${baseMarkets} (unknown-net excluded: ${baseUnknown}) · IMPLIED CAPITAL = ${baseMarkets} × 2 × $${args.size} = ${money(baseCapital)}`);
+  console.log(`  grossPerDay ${money(baseGrossPerDay)}/day · costPerDay(+5m) ${money(baseCostPerDay)}/day · NET ${money(baseNetPerDay)}/day`);
   console.log(`  annualised NET on ${money(baseCapital)}: ${pct(baseAnnual)}  vs ~${RISK_FREE_PCT}% risk-free: ${baseAnnual > RISK_FREE_PCT ? 'CLEARS' : 'FAILS'}`);
+  // observed-window vs the old over-scaled full-window basis
+  console.log(`  ── OBSERVED-WINDOW CORRECTION: cost amortised over each market's own span, not the global ${windowHours.toFixed(1)}h ──`);
+  console.log(`     full-window (OLD, over-scaled): costPerDay ${money(baseFullCostPerDay)}/day → NET ${money(baseFullNetPerDay)}/day → ${pct(annualise(baseFullNetPerDay, baseCapital, windowHours))}`);
+  console.log(`     observed-window (corrected):    costPerDay ${money(baseCostPerDay)}/day → NET ${money(baseNetPerDay)}/day → ${pct(baseAnnual)}`);
+  console.log(`     Δ = corrected NET is ${baseFullNetPerDay ? ((baseNetPerDay / baseFullNetPerDay - 1) * 100).toFixed(0) : '—'}% vs full-window (cost rose ${baseFullCostPerDay ? (baseCostPerDay / baseFullCostPerDay).toFixed(1) : '—'}× once amortised over real spans)`);
+  // per-market observed-span distribution (how big the correction is)
+  const ss = spans.slice().sort((a, b) => a - b); const sq = (p) => ss.length ? ss[Math.floor(p * (ss.length - 1))] : null;
+  const fullSpan = ss.filter((h) => h >= windowHours * 0.95).length;
+  console.log(`  SPAN DISTRIBUTION over ${ss.length} fundable markets (h observed of ${windowHours.toFixed(1)}h): ` +
+    `min ${sq(0)?.toFixed(1)} · p25 ${sq(0.25)?.toFixed(1)} · median ${sq(0.5)?.toFixed(1)} · p75 ${sq(0.75)?.toFixed(1)} · max ${sq(1)?.toFixed(1)} · ${fullSpan} (${(fullSpan / ss.length * 100).toFixed(0)}%) cover >95%`);
 
   // ── BUDGET: optimal split of --budget across markets ──
   const alloc = allocateBudget(J.byMarket, marketTokens, tape.byToken, potByCond,
-    { offsetCents: args.offset, maxInventoryUsd: args.maxInventory, windowHours, budgetUsd: args.budget, unitUsd: unit, maxPerMarketUsd: args.budget });
+    { offsetCents: args.offset, maxInventoryUsd: args.maxInventory, budgetUsd: args.budget, unitUsd: unit, maxPerMarketUsd: args.budget });
   const budgetCapitalUsed = alloc.usedUnits * unit;
-  const budgetAnnual = annualise(alloc.totalNet5m, windowHours, args.budget);
+  const budgetAnnual = annualise(alloc.totalNet5m, args.budget, windowHours); // totalNet5m = Σ net/day
   console.log('\n' + '─'.repeat(78));
-  console.log(`BUDGET = ${money(args.budget)} allocated across markets (multiple-choice knapsack on NET(+5m)):`);
+  console.log(`BUDGET = ${money(args.budget)} allocated across markets (multiple-choice knapsack on NET/day, observed-window):`);
   console.log(`  markets held ${alloc.marketsHeld} · capital deployed ${money(budgetCapitalUsed)} of ${money(args.budget)} (idle ${money(args.budget - budgetCapitalUsed)})`);
-  console.log(`  gross ${money(alloc.grossWindow)} · cost(+5m) ${money(alloc.cost5mWindow)} · NET(+5m) ${money(alloc.totalNet5m)}  over ${windowHours.toFixed(2)}h`);
+  console.log(`  grossPerDay ${money(alloc.grossPerDay)}/day · costPerDay(+5m) ${money(alloc.costPerDay5m)}/day · NET ${money(alloc.totalNet5m)}/day`);
   console.log(`  annualised NET on ${money(args.budget)}: ${pct(budgetAnnual)}  vs ~${RISK_FREE_PCT}% risk-free: ${budgetAnnual > RISK_FREE_PCT ? 'CLEARS' : 'FAILS'}`);
-  console.log('  top holdings (by NET):');
+  console.log('  top holdings (by NET/day):');
   for (const a of [...alloc.allocation].sort((x, y) => y.net5m - x.net5m).slice(0, 8)) {
-    console.log(`    ${a.marketId.slice(0, 14)}…  $${a.sizeUsd}/side (cap ${money(a.capital)}) · gross ${money(a.gross)} · cost ${money(a.cost5m)} · NET ${money(a.net5m)} · ${a.fills} fills · share ${(a.share * 100).toFixed(1)}%`);
+    console.log(`    ${a.marketId.slice(0, 14)}…  $${a.sizeUsd}/side (cap ${money(a.capital)}) · span ${a.spanHours != null ? a.spanHours.toFixed(1) + 'h' : '—'} · gross ${money(a.grossPerDay)}/d · cost ${money(a.costPerDay5m)}/d · NET ${money(a.netPerDay5m)}/d · ${a.fills} fills · share ${(a.share * 100).toFixed(1)}%`);
   }
 
-  // ── NON-LINEARITY: budget-net vs naive scaling of the baseline ──
+  // ── NON-LINEARITY: budget-net vs naive scaling of the baseline (both $/day) ──
   const scaleFactor = baseCapital / args.budget;
-  const naiveScaled = baseNet / scaleFactor;
+  const naiveScaled = baseNetPerDay / scaleFactor;
   console.log('\n' + '─'.repeat(78));
   console.log('NON-LINEARITY (the reward share s/(s+cQ) is concave in size, so nets do NOT scale):');
-  console.log(`  baseline NET ${money(baseNet)} on ${money(baseCapital)} ÷ ${scaleFactor.toFixed(1)} (= ${money(baseCapital)}/${money(args.budget)}) = ${money(naiveScaled)}  ← NAIVE, WRONG`);
-  console.log(`  actual ${money(args.budget)} NET (recomputed from the journal) = ${money(alloc.totalNet5m)}`);
+  console.log(`  baseline NET ${money(baseNetPerDay)}/day on ${money(baseCapital)} ÷ ${scaleFactor.toFixed(1)} (= ${money(baseCapital)}/${money(args.budget)}) = ${money(naiveScaled)}/day  ← NAIVE, WRONG`);
+  console.log(`  actual ${money(args.budget)} NET (recomputed from the journal) = ${money(alloc.totalNet5m)}/day`);
   const ratio = naiveScaled !== 0 ? alloc.totalNet5m / naiveScaled : null;
   console.log(`  → the ${money(args.budget)} result is ${ratio ? ratio.toFixed(2) + '×' : '—'} the naive scaling; direction: concentrating a small budget in the BEST markets, kept in the near-linear low-capital regime, earns ${ratio > 1 ? 'MORE' : 'LESS'} net per dollar than the blended big-denominator config.`);
 
   const out = {
     generatedAt: new Date(J.window.toMs).toISOString(), window: J.window, potSource: source, staleFrac: J.staleFrac, coverage: cov,
     placement: { offset: args.offset, size: args.size, maxInventory: args.maxInventory, unit },
-    baseline: { markets: baseMarkets, capital: baseCapital, gross: baseGross, cost5m: baseCost, net5m: baseNet, annualPct: baseAnnual },
-    budget: { budgetUsd: args.budget, marketsHeld: alloc.marketsHeld, capitalUsed: budgetCapitalUsed, gross: alloc.grossWindow, cost5m: alloc.cost5mWindow, net5m: alloc.totalNet5m, annualPct: budgetAnnual, allocation: alloc.allocation },
-    nonLinearity: { baseNet, baseCapital, scaleFactor, naiveScaled, actual: alloc.totalNet5m, ratio },
+    baseline: { markets: baseMarkets, unknownNet: baseUnknown, capital: baseCapital, grossPerDay: baseGrossPerDay, costPerDay5m: baseCostPerDay, netPerDay5m: baseNetPerDay, annualPct: baseAnnual },
+    budget: { budgetUsd: args.budget, marketsHeld: alloc.marketsHeld, capitalUsed: budgetCapitalUsed, grossPerDay: alloc.grossPerDay, costPerDay5m: alloc.costPerDay5m, netPerDay5m: alloc.totalNet5m, annualPct: budgetAnnual, allocation: alloc.allocation },
+    nonLinearity: { baseNetPerDay, baseCapital, scaleFactor, naiveScaled, actual: alloc.totalNet5m, ratio },
   };
   try { fs.mkdirSync(path.dirname(OUT), { recursive: true }); fs.writeFileSync(OUT, JSON.stringify(out, null, 0)); console.log('\nwrote', OUT); } catch (e) { console.error('json write failed:', e.message); }
 }

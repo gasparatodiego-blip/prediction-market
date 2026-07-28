@@ -38,19 +38,24 @@ console.log('INVENTORY CAP fires (a fill that would breach the cap is skipped)')
   const r = reconstructMarketFills(rows, { offsetCents: 1, sizeUsd: 1000, maxInventoryUsd: 1000 });
   ok('one buy fills, the second is capped (skipped)', r.fills.length === 1 && r.capped >= 1);
 }
-console.log('NET — hand-computed (reuses ceiling shareForCapital)');
+console.log('NET — hand-computed, OBSERVED WINDOW (reuses ceiling shareForCapital)');
 {
-  // pot $100/day, obs limiting depth 1000 sh, mid 0.50, size $1000/side → capital $2000.
-  // share = ((2000/2)/0.50)/(((2000/2)/0.50)+1000) = 2000/3000 = 0.6667; gross/day = 66.67; window 12h → 33.33.
-  const byMarket = new Map([['M', [R(0, { adjMid: 0.5, bidDepthInBand: 1000, askDepthInBand: 1000 })]]]);
+  // pot $100/day, depth 1000 sh, mid 0.50, size $1000/side → capital $2000. share 2000/3000 = 0.6667.
+  // grossPerDay = 100·0.6667 = 66.67. Two samples 12h apart → observed span 12h (0.5 d): grossWindow 33.33.
+  // cost(+5m) adverse = −Σmarkout floored = $4; costPerDay = 4 / 0.5 = $8/day; netPerDay = 66.67 − 8 = 58.67.
+  const byMarket = new Map([['M', [R(0, { adjMid: 0.5, bidDepthInBand: 1000, askDepthInBand: 1000 }), R(720, { adjMid: 0.5, bidDepthInBand: 1000, askDepthInBand: 1000 })]]]);
   const markouts = [{ marketId: 'M', side: 'buy', horizons: { '1m': { usd: -10 }, '5m': { usd: -4 }, '30m': { usd: -1 } } }];
-  const net = computeNet(byMarket, markouts, new Map([['M', 100]]), { sizeUsd: 1000, windowHours: 12, wsOnly: false });
+  const net = computeNet(byMarket, markouts, new Map([['M', 100]]), { sizeUsd: 1000, wsOnly: false });
   const row = net.rows[0];
   ok('share 0.6667', near(row.share, 2 / 3, 1e-4));
-  ok('grossWindow $33.33', near(row.grossWindow, 100 * (2 / 3) * 0.5, 1e-2));
-  ok('cost(+5m) = −Σmarkout = +$4', near(row.costWindow['5m'], 4));
-  ok('net(+5m) = 33.33 − 4 = 29.33', near(row.netWindow['5m'], 100 * (2 / 3) * 0.5 - 4, 1e-2));
-  const net2 = computeNet(byMarket, [], new Map(), { sizeUsd: 1000, windowHours: 12, wsOnly: false });
+  ok('spanHours = 12 (observed, from the two samples)', near(row.spanHours, 12, 1e-6));
+  ok('grossPerDay = pot·share = $66.67', near(row.grossPerDay, 100 * 2 / 3, 1e-2));
+  ok('grossWindow (over span 0.5d) = $33.33', near(row.grossWindow, 100 * (2 / 3) * 0.5, 1e-2));
+  ok('cost(+5m) window = adverse $4', near(row.costWindow['5m'], 4));
+  ok('net(+5m) window = 33.33 − 4 = 29.33', near(row.netWindow['5m'], 100 * (2 / 3) * 0.5 - 4, 1e-2));
+  ok('costPerDay(+5m) = 4 / 0.5d = $8/day', near(row.costPerDay['5m'], 8, 1e-6));
+  ok('netPerDay(+5m) = 66.67 − 8 = 58.67', near(row.netPerDay['5m'], 100 * 2 / 3 - 8, 1e-2));
+  const net2 = computeNet(byMarket, [], new Map(), { sizeUsd: 1000, wsOnly: false });
   ok('no pot → excluded + counted', net2.rows.length === 0 && net2.excluded.noPot === 1);
 }
 console.log('REFUSAL-TO-ANNUALISE guard');

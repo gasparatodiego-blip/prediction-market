@@ -28,20 +28,26 @@ console.log('perMarketNetAtSize — hand-computed fill, gross, cost, net');
   const trades = [{ tsVenueMs: 10000, tsMs: 10000, marketId: 'M', tokenId: 'TK', price: 0.49, size: 50, side: 'buy', src: 'ws', tsVenueIso: new Date(10000).toISOString() }];
   const potByCond = new Map([['M', 10]]); // $10/day pot
   // size $25/side → orderShares = 25/0.50 = 50; the print of 50 sh fills it exactly. capital = $50.
-  // share = ((50/2)/0.50)/((50/2)/0.50 + 100) = 50/150 = 1/3. grossPerDay = 10·(1/3) = 3.3333; window 24h → 3.3333.
-  // markout +5m: fill adjMid 0.50, nearest sample to +310s is t=315s (Δ5s) adjMid 0.48 → −0.02·50 = −$1.00 → cost +$1.00.
-  // net +5m = 3.3333 − 1.00 = 2.3333.
-  const r = perMarketNetAtSize('M', rows, trades, potByCond, { offsetCents: 1, sizeUsd: 25, maxInventoryUsd: 5000 }, 24);
+  // share = ((50/2)/0.50)/((50/2)/0.50 + 100) = 50/150 = 1/3. grossPerDay = 10·(1/3) = 3.3333 ($/day, no window).
+  // OBSERVED span = first→last row = 315s = 0.0875h (0.00364583 d). grossWindow = 3.3333·0.00364583 = $0.01215.
+  // markout +5m: fill adjMid 0.50, nearest sample to +310s is t=315s (Δ5s) adjMid 0.48 → −0.02·50 = −$1.00 adverse.
+  // costPerDay = 1.00 / 0.00364583 = $274.29/day; netPerDay = 3.3333 − 274.29 = −$270.95 (short span ⇒ cost blows up).
+  const spanDays = 0.0875 / 24;
+  const r = perMarketNetAtSize('M', rows, trades, potByCond, { offsetCents: 1, sizeUsd: 25, maxInventoryUsd: 5000 });
   ok('exactly one fill', r.fills === 1);
   ok('capital = 2×$25 = $50', near(r.capital, 50));
   ok('share = 1/3', near(r.share, 1 / 3, 1e-6));
-  ok('gross(window) = $3.3333', near(r.gross, 10 / 3, 1e-4));
-  ok('cost(+5m) = $1.00', near(r.cost5m, 1.00, 1e-9));
-  ok('net(+5m) = $2.3333', near(r.net5m, 10 / 3 - 1, 1e-4));
+  ok('spanHours = 315s = 0.0875h', near(r.spanHours, 0.0875, 1e-6));
+  ok('grossPerDay = pot·share = $3.3333', near(r.grossPerDay, 10 / 3, 1e-4));
+  ok('grossWindow (over span) = $0.01215', near(r.grossWindow, (10 / 3) * spanDays, 1e-5));
+  ok('cost(+5m) adverse over span = $1.00', near(r.cost5m, 1.00, 1e-9));
+  ok('costPerDay(+5m) = 1.00 / spanDays = $274.29/day', near(r.costPerDay5m, 1.00 / spanDays, 1e-2));
+  ok('netWindow(+5m) = grossWindow − 1.00 = −$0.98785', near(r.netWindow5m, (10 / 3) * spanDays - 1.00, 1e-4));
+  ok('netPerDay(+5m) = 3.3333 − 274.29 = −$270.95', near(r.netPerDay5m, 10 / 3 - 1.00 / spanDays, 1e-2));
   ok('not excluded (pot + depth present)', r.excluded === false);
   // no-pot market → excluded, unfundable
-  const rNoPot = perMarketNetAtSize('M', rows, trades, new Map(), { offsetCents: 1, sizeUsd: 25, maxInventoryUsd: 5000 }, 24);
-  ok('no pot → excluded', rNoPot.excluded === true && rNoPot.net5m == null);
+  const rNoPot = perMarketNetAtSize('M', rows, trades, new Map(), { offsetCents: 1, sizeUsd: 25, maxInventoryUsd: 5000 });
+  ok('no pot → excluded', rNoPot.excluded === true && rNoPot.netPerDay5m == null);
 }
 
 // ── (2) knapsack — shared budget across markets, hand-computed optima ─────────────

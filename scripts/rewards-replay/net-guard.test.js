@@ -14,10 +14,12 @@ const ok = (name, cond) => { assert.ok(cond, 'FAIL: ' + name); console.log('  �
 const near = (a, b, t = 1e-6) => a != null && b != null && Math.abs(a - b) <= t;
 const money = (x) => (x == null ? '—' : (x < 0 ? '-$' : '$') + Math.abs(x).toFixed(2)); // same contract as the drivers
 
-// one market, pot 100, depth 1000 sh, mid 0.50, size $1000/side → share 2000/3000 = 0.6667, gross 66.67 (24h).
-const mkMarket = () => new Map([['M', [{ ts: '', tsMs: 0, marketId: 'M', adjMid: 0.5, bidDepthInBand: 1000, askDepthInBand: 1000, bandLow: 0, bandHigh: 1, tick: 0.01, src: 'ws' }]]]);
+// one market, pot 100, depth 1000 sh, mid 0.50, size $1000/side → share 2000/3000 = 0.6667, grossPerDay 66.67.
+// Two samples exactly 24h apart → observed span 1 day → grossWindow = grossPerDay = 66.67.
+const row = (tsMs) => ({ ts: '', tsMs, marketId: 'M', adjMid: 0.5, bidDepthInBand: 1000, askDepthInBand: 1000, bandLow: 0, bandHigh: 1, tick: 0.01, src: 'ws' });
+const mkMarket = () => new Map([['M', [row(0), row(86400000)]]]);
 const pot = new Map([['M', 100]]);
-const GROSS = 100 * (2000 / 3000); // 66.6667
+const GROSS = 100 * (2000 / 3000); // 66.6667 = grossPerDay = grossWindow (span 1 day)
 const mo = (usd) => [{ marketId: 'M', side: 'buy', horizons: { '1m': usd == null ? null : { usd }, '5m': usd == null ? null : { usd }, '30m': usd == null ? null : { usd } } }];
 
 console.log('(1) UNKNOWN cost → net "—", never a number');

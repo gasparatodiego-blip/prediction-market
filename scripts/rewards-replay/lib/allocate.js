@@ -25,25 +25,30 @@ const { computeNet } = require('./net');
 function fin(x) { return typeof x === 'number' && Number.isFinite(x); }
 
 /**
- * Net for ONE market at ONE per-side size, reusing the shipped gross+cost+net math verbatim.
- * Returns { marketId, sizeUsd, capital, gross, cost5m, net5m, fills, share, excluded }.
- * `excluded` is true when the market has no pot or no scoreable depth (computeNet dropped it) — such a
- * market cannot be funded and only its zero level is meaningful.
+ * Net for ONE market at ONE per-side size, reusing the shipped gross+cost+net math verbatim. Now that
+ * computeNet uses each market's OWN observed window, the allocation objective is the observed-window NET
+ * PER DAY (netPerDay5m) — the honest go-forward rate — not a window total scaled to a global window.
+ * `excluded` is true when the market has no pot or no scoreable depth (computeNet dropped it).
+ * The `windowHours` param is accepted for call-site compatibility but ignored (computeNet uses the span).
  */
-function perMarketNetAtSize(marketId, marketRows, tokenTrades, potByCond, cfg, windowHours) {
+function perMarketNetAtSize(marketId, marketRows, tokenTrades, potByCond, cfg /* , windowHours */) {
   const { offsetCents, sizeUsd, maxInventoryUsd } = cfg;
   const fillsRes = reconstructTapeFillsForMarket(marketRows, tokenTrades, { offsetCents, sizeUsd, maxInventoryUsd });
   const one = new Map([[marketId, marketRows]]);
   const MO = markoutAll(fillsRes.fills, one);
-  const net = computeNet(one, MO, potByCond, { sizeUsd, windowHours, wsOnly: false });
+  const net = computeNet(one, MO, potByCond, { sizeUsd, wsOnly: false });
   const row = net.rows[0] || null;
   return {
     marketId,
     sizeUsd,
     capital: 2 * sizeUsd,
-    gross: row ? row.grossWindow : null,
-    cost5m: row ? row.costWindow['5m'] : null,
-    net5m: row ? row.netWindow['5m'] : null,
+    spanHours: row ? row.spanHours : null,
+    grossPerDay: row ? row.grossPerDay : null,
+    grossWindow: row ? row.grossWindow : null,
+    cost5m: row ? row.costWindow['5m'] : null,          // adverse-selection loss over the span ($, ≥0 or null)
+    costPerDay5m: row ? row.costPerDay['5m'] : null,
+    netWindow5m: row ? row.netWindow['5m'] : null,
+    netPerDay5m: row ? row.netPerDay['5m'] : null,       // ← the allocation objective
     fills: fillsRes.fills.length,
     share: row ? row.share : null,
     excluded: !row,
@@ -52,20 +57,25 @@ function perMarketNetAtSize(marketId, marketRows, tokenTrades, potByCond, cfg, w
 
 /**
  * Net curve for one market across a per-side size grid. Always includes the zero level (do not fund →
- * capital 0, net 0). Levels whose capital is not an exact multiple of `unitUsd` are still returned but the
- * knapsack only consumes those that land on its grid; the driver builds sizeGrid so capital = k·unitUsd.
- * @returns { marketId, excluded, levels:[{ sizeUsd, capital, units, gross, cost5m, net5m, fills, share }] }
+ * capital 0, net 0). The knapsack maximises `net5m`, which HERE carries the observed-window NET PER DAY
+ * ($/day) — the go-forward rate. A level whose net-per-day is UNKNOWN (fills but no +5m sample → null) is
+ * dropped, never defaulted to 0, so an unfundable-on-unknown-cost size is never chosen.
+ * @returns { marketId, excluded, levels:[{ sizeUsd, capital, units, grossPerDay, cost5m, costPerDay5m,
+ *            netWindow5m, netPerDay5m, net5m, fills, share, spanHours }] }
  */
 function perMarketNetCurve(marketId, marketRows, tokenTrades, potByCond, opts) {
-  const { offsetCents, maxInventoryUsd, sizeGrid, windowHours, unitUsd } = opts;
-  const levels = [{ sizeUsd: 0, capital: 0, units: 0, gross: 0, cost5m: 0, net5m: 0, fills: 0, share: 0 }];
+  const { offsetCents, maxInventoryUsd, sizeGrid, unitUsd } = opts;
+  const levels = [{ sizeUsd: 0, capital: 0, units: 0, grossPerDay: 0, cost5m: 0, costPerDay5m: 0, netWindow5m: 0, netPerDay5m: 0, net5m: 0, fills: 0, share: 0, spanHours: null }];
   let excluded = false;
   for (const s of sizeGrid) {
-    const r = perMarketNetAtSize(marketId, marketRows, tokenTrades, potByCond, { offsetCents, sizeUsd: s, maxInventoryUsd }, windowHours);
-    if (r.excluded) { excluded = true; continue; } // pot/depth missing → market unfundable; keep only zero level
+    const r = perMarketNetAtSize(marketId, marketRows, tokenTrades, potByCond, { offsetCents, sizeUsd: s, maxInventoryUsd });
+    if (r.excluded) { excluded = true; continue; }         // pot/depth missing → unfundable; keep only zero level
+    if (r.netPerDay5m == null) continue;                   // cost UNKNOWN at this size → skip (never default to 0)
     levels.push({
-      sizeUsd: s, capital: r.capital, units: Math.round(r.capital / unitUsd),
-      gross: r.gross, cost5m: r.cost5m, net5m: r.net5m, fills: r.fills, share: r.share,
+      sizeUsd: s, capital: r.capital, units: Math.round(r.capital / unitUsd), spanHours: r.spanHours,
+      grossPerDay: r.grossPerDay, cost5m: r.cost5m, costPerDay5m: r.costPerDay5m,
+      netWindow5m: r.netWindow5m, netPerDay5m: r.netPerDay5m, net5m: r.netPerDay5m, // net5m := objective (net/day)
+      fills: r.fills, share: r.share,
     });
   }
   return { marketId, excluded, levels };
@@ -141,11 +151,11 @@ function allocateBudget(byMarket, marketTokens, tapeByToken, potByCond, opts) {
     curves.push(c);
   }
   const budgetUnits = Math.floor(budgetUsd / unitUsd);
-  const res = knapsack(curves, budgetUnits);
-  // attach gross/cost aggregates over the chosen allocation (for reporting)
-  let grossWindow = 0, cost5mWindow = 0;
-  for (const a of res.allocation) { grossWindow += fin(a.gross) ? a.gross : 0; cost5mWindow += fin(a.cost5m) ? a.cost5m : 0; }
-  return { budgetUsd, unitUsd, curves, grossWindow, cost5mWindow, ...res };
+  const res = knapsack(curves, budgetUnits); // res.totalNet5m carries Σ net/day (the objective)
+  // attach per-day gross/cost aggregates over the chosen allocation (for reporting)
+  let grossPerDay = 0, costPerDay5m = 0;
+  for (const a of res.allocation) { grossPerDay += fin(a.grossPerDay) ? a.grossPerDay : 0; costPerDay5m += fin(a.costPerDay5m) ? a.costPerDay5m : 0; }
+  return { budgetUsd, unitUsd, curves, grossPerDay, costPerDay5m, ...res };
 }
 
 module.exports = { perMarketNetAtSize, perMarketNetCurve, knapsack, allocateBudget };

@@ -141,9 +141,9 @@ async function main() {
   const net = computeNet(J.byMarket, MO, potByCond, { sizeUsd: args.size, windowHours: J.window.hours, wsOnly: false });
   const netWs = computeNet(J.byMarket, markoutAll(F.fills.filter((f) => f.src === 'ws' || String(f.src).startsWith('ws')), J.byMarket), potByCond, { sizeUsd: args.size, windowHours: J.window.hours, wsOnly: true });
   const ag = net.aggregate;
-  console.log('\nPHASE 3 — NET over the ' + J.window.hours.toFixed(3) + 'h window (' + method + '; gross reward − markout cost):');
-  console.log('  markets ' + ag.markets + ' · fills ' + ag.fills + ' · gross(window) ' + money(ag.grossWindow));
-  for (const h of ['1m', '5m', '30m']) console.log('    at +' + h.padEnd(3) + ' cost ' + money(ag.costWindow[h]) + ' → NET(window) ' + money(ag.netWindow[h]));
+  console.log('\nPHASE 3 — NET, each market over ITS OWN observed window (' + method + '; gross reward − adverse cost):');
+  console.log('  markets ' + ag.markets + ' · fills ' + ag.fills + ' · grossPerDay ' + money(ag.grossPerDay) + '/day · gross(Σ observed windows) ' + money(ag.grossWindow));
+  for (const h of ['1m', '5m', '30m']) console.log('    at +' + h.padEnd(3) + ' costPerDay ' + money(ag.costPerDay[h]) + '/day → NET ' + money(ag.netPerDay[h]) + '/day  (unknown-net markets excluded: ' + ag.unknownNet[h] + ')');
   console.log('  excluded markets: no pot ' + net.excluded.noPot + ', no depth ' + net.excluded.noDepth);
 
   // ── SUFFICIENCY + VERDICT ──
@@ -159,10 +159,10 @@ async function main() {
     console.log('  fills are OBSERVED, not inferred. Re-run once ≥48h of tape exist to settle whether NET beats ' + RISK_FREE_PCT + '%.');
   } else {
     const capital = net.rows.length * 2 * args.size;
-    const netPerDay = ag.netWindow['5m'] / (J.window.hours / 24);
+    const netPerDay = ag.netPerDay['5m']; // Σ per-market NET/day, each amortised over its OWN observed span
     annualPct = capital > 0 ? (netPerDay * 365 / capital) * 100 : null;
-    const disp = annualPct == null ? '—' : (annualPct > 200 ? '>200%/yr · run-rate, not guaranteed' : annualPct.toFixed(2) + '%/yr');
-    console.log('  window ≥48h — annualised NET (' + method + ', on $' + capital.toLocaleString() + '): ' + disp + '  vs ~' + RISK_FREE_PCT + '% risk-free: ' + (annualPct > RISK_FREE_PCT ? 'CLEARS' : 'FAILS'));
+    const disp = annualPct == null ? '—' : (annualPct > 200 ? '>200%/yr · run-rate, not guaranteed' : annualPct.toFixed(2) + '%/yr · run-rate, not guaranteed');
+    console.log('  window ≥48h — annualised NET (' + method + ', observed-window, on $' + capital.toLocaleString() + '): ' + disp + '  vs ~' + RISK_FREE_PCT + '% risk-free: ' + (annualPct > RISK_FREE_PCT ? 'CLEARS' : 'FAILS'));
     if (J.staleFrac > STALE_UNTRUST) console.log('  ⚠ stale fraction ' + (J.staleFrac * 100).toFixed(1) + '% > 20% — do not trust.');
   }
 

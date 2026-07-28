@@ -66,8 +66,8 @@ async function main() {
   const budgetUnits = Math.floor(args.budget / args.unit);
 
   const F = frontierByCount(alloc.curves, budgetUnits, args.maxCount);
-  console.log('\nNET FRONTIER vs #markets held simultaneously (budget fixed; knapsack picks size per market):');
-  console.log('  count │   NET(+5m)  │ Δ vs best');
+  console.log('\nNET/day FRONTIER vs #markets held simultaneously (budget fixed; observed-window; knapsack picks size per market):');
+  console.log('  count │  NET/day    │ Δ vs best');
   const bestNet = Math.max(...F.frontier.map((p) => p.net));
   const bestCount = F.frontier.find((p) => Math.abs(p.net - bestNet) < 1e-9).count;
   for (const p of F.frontier) {
@@ -99,12 +99,12 @@ async function main() {
   // per offset, not a re-run of the knapsack. NOTE gross is the S=1 ceiling and does NOT fall with offset in
   // this replay, so offset moves COST/fills only; a wider offset that leaves the reward band would forfeit
   // gross on the venue but that is not modelled here (stated, not hidden).
-  console.log('\nOFFSET SENSITIVITY (baseline: every market at $' + args.size + '/side; gross is the S=1 ceiling → offset changes COST/fills only):');
+  console.log('\nOFFSET SENSITIVITY (baseline: every market at $' + args.size + '/side, observed-window $/day; gross is the S=1 ceiling → offset changes COST/fills only):');
   for (const off of [0, 1, 2, 3]) {
     const f = reconstructTapeFills(J.byMarket, tape.byToken, marketTokens, { offsetCents: off, sizeUsd: args.size, maxInventoryUsd: args.maxInventory });
-    const nt = computeNet(J.byMarket, markoutAll(f.fills, J.byMarket), potByCond, { sizeUsd: args.size, windowHours, wsOnly: false });
+    const nt = computeNet(J.byMarket, markoutAll(f.fills, J.byMarket), potByCond, { sizeUsd: args.size, wsOnly: false });
     const ag = nt.aggregate;
-    console.log(`  offset ${off}¢ → gross ${money(ag.grossWindow)} · cost(+5m) ${money(ag.costWindow['5m'])} · NET ${money(ag.netWindow['5m'])} · ${f.fills.length} fills`);
+    console.log(`  offset ${off}¢ → grossPerDay ${money(ag.grossPerDay)}/d · costPerDay(+5m) ${money(ag.costPerDay['5m'])}/d · NET ${money(ag.netPerDay['5m'])}/d · ${f.fills.length} fills`);
   }
 
   const out = { window: J.window, budget: args.budget, unit: args.unit, frontier: F.frontier, bestCount, bestNet, halfNet: F.netAt(half), doubleNet: F.netAt(dbl) };
