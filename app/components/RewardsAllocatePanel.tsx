@@ -162,7 +162,7 @@ export default function RewardsAllocatePanel() {
         <ul className="alloc-basis-ul">
           <li><b>È un piano calcolato su dati osservati, non un ordine.</b> Nessun ordine viene creato, firmato o inviato guardando o usando questa pagina, incluso il controllo dell’offset. Non viene mosso alcun capitale.</li>
           <li><b>Le cifre sono LORDE.</b> L’adverse selection è misurata a parte: il netto è “—” dove non è stato osservato un fill reale. Non sommare il lordo come rendimento.</li>
-          <li><b>Il backtest dietro questa allocazione è un campione MOLTO piccolo:</b> ~20% di copertura dell’universo reward collezionabile, su una finestra di 48,8 ore, con <b>11 fill osservati su 4 mercati</b>. Il comportamento di riempimento per-mercato è quindi statisticamente esile.</li>
+          <li data-alloc-disclaimer-counts><b>Il campione osservato è piccolo:</b> copertura ~{plan && plan.coverage.truePct != null ? plan.coverage.truePct : '20'}% dell’universo reward collezionabile{plan && plan.observed ? <>, su una finestra di <b>{plan.observed.windowHours.toFixed(1)} ore</b>, con <b>{plan.observed.totalFills} fill osservati nel tape su {plan.observed.filledMarkets} mercati distinti</b> con almeno un fill</> : <> su ~48h</>}. (I «11 fill su 4 mercati» descrivevano solo l’allocazione $5.000, non l’intero tape.) Il comportamento di riempimento per-mercato resta statisticamente esile.</li>
           <li><b>I pot dei reward si muovono.</b> Durante lo studio il lordo è sceso del <b>36% in due giorni</b>. Nessuna cifra qui è garantita: run-rate, non una promessa.</li>
         </ul>
       </div>
