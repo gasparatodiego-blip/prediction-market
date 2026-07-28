@@ -227,12 +227,24 @@ export default function RewardsAllocatePanel() {
             </div>
           </div>
 
+          {/* Fill-exposure signal strength, stated honestly — a discriminator, NOT a probability. */}
+          <div className="alloc-note" data-alloc-auc style={{ marginTop: 10 }}>
+            <b>Esposizione al fill</b> (score strutturale per riga: order/depth + volatilità + spread stretto).
+            {' '}Discriminatore <b>debole ma significativo</b>, {plan.fillScore.note}: AUC{' '}
+            <b>{plan.fillScore.auc == null ? '—' : plan.fillScore.auc.toFixed(3)}</b>
+            {plan.fillScore.ci95 ? <> · IC 95% [{plan.fillScore.ci95[0].toFixed(3)}, {plan.fillScore.ci95[1].toFixed(3)}]</> : ''}
+            {' '}(su {plan.fillScore.nFilled} mercati con fill vs {plan.fillScore.nUnfilled} senza).
+            {plan.fillScore.ci95 && plan.fillScore.ci95[0] <= 0.52
+              ? <b style={{ color: '#d98a41' }}> Il limite inferiore dell’IC è vicino a 0,5: segnale al limite del rumore, non un filtro affidabile.</b>
+              : <> Non è un filtro affidabile (0,5 = nessuna discriminazione, 1,0 = perfetta); usalo come spareggio, non come cancello.</>}
+          </div>
           <div className="alloc-tablewrap">
             <table className="alloc">
               <thead>
                 <tr>
                   <th className="name">Mercato</th><th>Capitale</th><th>$/lato</th><th>Offset (tick / ¢ da mid)</th>
                   <th>Bid</th><th>Ask</th><th>Tick</th><th>Depth</th><th>Lordo/g</th><th>Netto/g</th><th>Fill attesi</th>
+                  <th>Score fill</th><th>Ord/depth</th>
                 </tr>
               </thead>
               <tbody>
@@ -264,6 +276,8 @@ export default function RewardsAllocatePanel() {
                     </td>
                     <td className={c.net == null ? 'dash' : ''} data-alloc-net>{c.net == null ? '—' : perDay(c.net)}</td>
                     <td className={c.fills == null ? 'dash' : ''} data-alloc-fills>{c.fills == null ? '—' : c.fills}</td>
+                    <td className={r.fillScore == null ? 'dash' : ''} data-alloc-score>{r.fillScore == null ? '—' : r.fillScore.toFixed(2)}</td>
+                    <td className={c.orderVsDepth == null ? 'dash' : ''} data-alloc-orderdepth>{c.orderVsDepth == null ? '—' : `${c.orderVsDepth.toFixed(2)}×`}</td>
                   </tr>
                 ))}
               </tbody>
@@ -285,6 +299,17 @@ export default function RewardsAllocatePanel() {
             <div className="alloc-front">
               {FRONTIER_MARKS.map((n) => { const f = plan.frontier.find((x) => x.count === n); return <span key={n} className="alloc-chip">{n} mkt: {f ? `$${f.net.toFixed(1)}/g` : '—'}</span>; })}
             </div>
+          </div>
+
+          {/* Measured offset frontier from the risk-first run — fills avoided vs reward lost, per cent. */}
+          <div style={{ marginTop: 14 }} data-alloc-offset-frontier>
+            <div className="alloc-sub">Frontiera offset misurata (risk-first, $1000/lato, tutti i mercati) — cosa costa e cosa evita allargare:</div>
+            <div className="alloc-front">
+              {plan.offsetFrontier.map((f) => (
+                <span key={f.offsetCents} className="alloc-chip">{f.offsetCents}¢: {f.fills.toLocaleString()} fill{f.rewardLost > 0 ? ` · −$${f.rewardLost.toFixed(0)}/g reward` : ' · reward $0 perso'}</span>
+              ))}
+            </div>
+            <div className="alloc-sub" style={{ marginTop: 4 }}>1¢ evita ~97% dei fill a costo reward zero (tutte le bande ≥ 2¢); oltre, ogni mercato che supera il proprio raggio di banda perde tutto il reward.</div>
           </div>
 
           <div className="alloc-sub" style={{ marginTop: 12 }}>{plan.coverage.trueNote}</div>
