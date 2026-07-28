@@ -211,6 +211,8 @@ export default function RewardsAllocatePanel() {
       usableCount: usable.length, newestAge: ages.length ? Math.min(...ages) : null, oldestAge: ages.length ? Math.max(...ages) : null,
       resDist, artifactCount: rows.filter((x) => x.artifact).length,
       widenAllLeaves: rows.filter((x) => x.usable && x.nextStepLeaves).length, // rows a global +1 would push OUT
+      bandCounts: rows.reduce((b, x) => { b[x.band.state] = (b[x.band.state] || 0) + 1; return b; }, { comfortable: 0, edge: 0, out: 0, unknown: 0 } as Record<string, number>),
+      grossAllInBand: usable.reduce((s, x) => s + (x.r.grossInBandPerDay ?? 0), 0), // every row quoting INSIDE its band
     };
   }, [plan, offsets, nowMs]);
 
@@ -464,6 +466,11 @@ export default function RewardsAllocatePanel() {
               <b>Un offset più largo NON è gratis.</b> {computed.artifactCount} {computed.artifactCount === 1 ? 'riga ha' : 'righe hanno'} un offset oltre il default calcolato con lordo <b>invariato o “migliore”</b>: è un <b>artefatto del modello</b>, non un guadagno. Il lordo del replay è il <b>tetto S=1</b> e non modella il decadimento del punteggio quando il quote si allontana dal mid; l’accumulo reale dei reward cala con la distanza, quindi il costo vero di allargare è <b>sottostimato</b> qui.
             </div>
           )}
+          {/* BAND-STATE TRUTH: counts in every state, and — when any row is out — the loss made visible in the aggregate. */}
+          <div className="alloc-sub" data-alloc-band-counts style={{ marginTop: 8 }}>
+            <b>Stato banda:</b> <b className="fresh-ok">{computed.bandCounts.comfortable}</b> in banda · <b style={{ color: '#b9791f' }}>{computed.bandCounts.edge}</b> al bordo · <b className="oob">{computed.bandCounts.out}</b> fuori · <b style={{ color: '#8a8f98' }}>{computed.bandCounts.unknown}</b> ignota.
+            {computed.bandCounts.out > 0 && <> Lordo <b data-alloc-gross-configured>{perDay(computed.grossNow)}</b> come configurato <b>vs</b> <b data-alloc-gross-allinband>{perDay(computed.grossAllInBand)}</b> con ogni riga in banda — <b className="oob">{money(computed.grossNow - computed.grossAllInBand)}/g perso fuori banda</b>.</>}
+          </div>
           <div className="alloc-sub" style={{ marginTop: 6 }} data-alloc-totals-scope>
             I totali coprono i <b>{computed.usableCount} mercati con dati aggiornati</b>{computed.staleCount || computed.unreadableCount ? <> — esclusi <b>{computed.staleCount} stale</b>{computed.unreadableCount ? <> e <b>{computed.unreadableCount} illeggibili</b></> : ''} (dati troppo vecchi per pianificare il book attuale, non azzerati)</> : ''}.
           </div>
