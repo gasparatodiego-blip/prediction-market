@@ -21,6 +21,7 @@
 const { reconstructTapeFillsForMarket } = require('./tape');
 const { markoutAll } = require('./markout');
 const { computeNet } = require('./net');
+const { closeNowPolicy } = require('./close-now');
 
 function fin(x) { return typeof x === 'number' && Number.isFinite(x); }
 
@@ -31,27 +32,39 @@ function fin(x) { return typeof x === 'number' && Number.isFinite(x); }
  * `excluded` is true when the market has no pot or no scoreable depth (computeNet dropped it).
  * The `windowHours` param is accepted for call-site compatibility but ignored (computeNet uses the span).
  */
-function perMarketNetAtSize(marketId, marketRows, tokenTrades, potByCond, cfg /* , windowHours */) {
-  const { offsetCents, sizeUsd, maxInventoryUsd } = cfg;
+function perMarketNetAtSize(marketId, marketRows, tokenTrades, potByCond, cfg) {
+  const { offsetCents, sizeUsd, maxInventoryUsd, policy } = cfg; // policy: 'hold' (default) | 'close-now'
   const fillsRes = reconstructTapeFillsForMarket(marketRows, tokenTrades, { offsetCents, sizeUsd, maxInventoryUsd });
   const one = new Map([[marketId, marketRows]]);
   const MO = markoutAll(fillsRes.fills, one);
-  const net = computeNet(one, MO, potByCond, { sizeUsd, wsOnly: false });
+  const net = computeNet(one, MO, potByCond, { sizeUsd, wsOnly: false }); // gross + HOLD cost, observed-window
   const row = net.rows[0] || null;
+  if (!row) {
+    return { marketId, sizeUsd, capital: 2 * sizeUsd, excluded: true, spanHours: null, grossPerDay: null, grossWindow: null, cost5m: null, costPerDay5m: null, netWindow5m: null, netPerDay5m: null, fills: fillsRes.fills.length, share: null, closed: null, stuck: null, nakedRefused: null };
+  }
+  // HOLD figures come straight from computeNet (+5m markout, floored, observed-window).
+  let cost5m = row.costWindow['5m'], costPerDay5m = row.costPerDay['5m'], netWindow5m = row.netWindow['5m'], netPerDay5m = row.netPerDay['5m'];
+  let closed = null, stuck = null, nakedRefused = null, noBook = null;
+  if (policy === 'close-now') {
+    // CLOSE-NOW: cost is the REALISED spread paid crossing the real book at each fill instant (buy fills; sell
+    // fills are naked-refused). Certain and ≥0, so net ≤ gross by construction. Amortised over the span.
+    const cn = closeNowPolicy(fillsRes.fills, one);
+    // Floor the realised spread at ≥0: a fill whose nearest exit-book sample sits above entry books a
+    // spurious windfall (sample is up to 40s off the fill instant); a favorable exit is not reward income,
+    // so it is not booked — net ≤ gross holds for CLOSE-NOW too (same rule Phase 1 applied to HOLD markout).
+    const spread = Math.max(0, cn.aggregate.spreadPaid);
+    const spanDays = row.spanHours / 24;
+    cost5m = spread;
+    costPerDay5m = spanDays > 0 ? spread / spanDays : null;
+    netWindow5m = row.grossWindow - spread;
+    netPerDay5m = costPerDay5m == null ? null : row.grossPerDay - costPerDay5m;
+    closed = cn.aggregate.closed; stuck = cn.aggregate.stuck; nakedRefused = cn.aggregate.nakedRefused; noBook = cn.aggregate.noBook;
+  }
   return {
-    marketId,
-    sizeUsd,
-    capital: 2 * sizeUsd,
-    spanHours: row ? row.spanHours : null,
-    grossPerDay: row ? row.grossPerDay : null,
-    grossWindow: row ? row.grossWindow : null,
-    cost5m: row ? row.costWindow['5m'] : null,          // adverse-selection loss over the span ($, ≥0 or null)
-    costPerDay5m: row ? row.costPerDay['5m'] : null,
-    netWindow5m: row ? row.netWindow['5m'] : null,
-    netPerDay5m: row ? row.netPerDay['5m'] : null,       // ← the allocation objective
-    fills: fillsRes.fills.length,
-    share: row ? row.share : null,
-    excluded: !row,
+    marketId, sizeUsd, capital: 2 * sizeUsd, excluded: false,
+    spanHours: row.spanHours, grossPerDay: row.grossPerDay, grossWindow: row.grossWindow,
+    cost5m, costPerDay5m, netWindow5m, netPerDay5m,                         // ← netPerDay5m is the objective
+    fills: fillsRes.fills.length, closed, stuck, nakedRefused, noBook, share: row.share,
   };
 }
 
@@ -64,18 +77,18 @@ function perMarketNetAtSize(marketId, marketRows, tokenTrades, potByCond, cfg /*
  *            netWindow5m, netPerDay5m, net5m, fills, share, spanHours }] }
  */
 function perMarketNetCurve(marketId, marketRows, tokenTrades, potByCond, opts) {
-  const { offsetCents, maxInventoryUsd, sizeGrid, unitUsd } = opts;
-  const levels = [{ sizeUsd: 0, capital: 0, units: 0, grossPerDay: 0, cost5m: 0, costPerDay5m: 0, netWindow5m: 0, netPerDay5m: 0, net5m: 0, fills: 0, share: 0, spanHours: null }];
+  const { offsetCents, maxInventoryUsd, sizeGrid, unitUsd, policy } = opts;
+  const levels = [{ sizeUsd: 0, capital: 0, units: 0, grossPerDay: 0, cost5m: 0, costPerDay5m: 0, netWindow5m: 0, netPerDay5m: 0, net5m: 0, fills: 0, closed: 0, stuck: 0, nakedRefused: 0, share: 0, spanHours: null }];
   let excluded = false;
   for (const s of sizeGrid) {
-    const r = perMarketNetAtSize(marketId, marketRows, tokenTrades, potByCond, { offsetCents, sizeUsd: s, maxInventoryUsd });
+    const r = perMarketNetAtSize(marketId, marketRows, tokenTrades, potByCond, { offsetCents, sizeUsd: s, maxInventoryUsd, policy });
     if (r.excluded) { excluded = true; continue; }         // pot/depth missing → unfundable; keep only zero level
     if (r.netPerDay5m == null) continue;                   // cost UNKNOWN at this size → skip (never default to 0)
     levels.push({
       sizeUsd: s, capital: r.capital, units: Math.round(r.capital / unitUsd), spanHours: r.spanHours,
       grossPerDay: r.grossPerDay, cost5m: r.cost5m, costPerDay5m: r.costPerDay5m,
       netWindow5m: r.netWindow5m, netPerDay5m: r.netPerDay5m, net5m: r.netPerDay5m, // net5m := objective (net/day)
-      fills: r.fills, share: r.share,
+      fills: r.fills, closed: r.closed, stuck: r.stuck, nakedRefused: r.nakedRefused, noBook: r.noBook, share: r.share,
     });
   }
   return { marketId, excluded, levels };
@@ -137,7 +150,7 @@ function knapsack(curves, budgetUnits) {
  * @returns { budgetUsd, unitUsd, ...knapsack result, grossWindow, cost5mWindow }
  */
 function allocateBudget(byMarket, marketTokens, tapeByToken, potByCond, opts) {
-  const { offsetCents, maxInventoryUsd, windowHours, budgetUsd, unitUsd, maxPerMarketUsd } = opts;
+  const { offsetCents, maxInventoryUsd, budgetUsd, unitUsd, maxPerMarketUsd, policy } = opts;
   const perSideStep = unitUsd / 2;
   const capPerMarket = Math.min(maxPerMarketUsd || budgetUsd, budgetUsd); // a single market may take up to the whole budget
   const maxLevels = Math.max(1, Math.floor(capPerMarket / unitUsd));
@@ -147,7 +160,7 @@ function allocateBudget(byMarket, marketTokens, tapeByToken, potByCond, opts) {
   for (const [marketId, rows] of byMarket.entries()) {
     const tokenId = marketTokens.get(marketId);
     const trades = (tokenId && tapeByToken.get(tokenId)) || [];
-    const c = perMarketNetCurve(marketId, rows, trades, potByCond, { offsetCents, maxInventoryUsd, sizeGrid, windowHours, unitUsd });
+    const c = perMarketNetCurve(marketId, rows, trades, potByCond, { offsetCents, maxInventoryUsd, sizeGrid, unitUsd, policy });
     curves.push(c);
   }
   const budgetUnits = Math.floor(budgetUsd / unitUsd);
