@@ -94,11 +94,26 @@ export default function RewardsAllocatePanel() {
         .alloc-sum div b{font-size:17px;font-variant-numeric:tabular-nums}
         .alloc-front{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
         .alloc-chip{font-variant-numeric:tabular-nums;font-size:12px;border:1px solid var(--ds-border);border-radius:999px;padding:3px 9px;white-space:nowrap}
+        .alloc-basis{border:1px solid var(--ds-accent);border-radius:12px;padding:12px 16px;margin:14px 0;background:color-mix(in srgb,var(--ds-accent) 7%,transparent)}
+        .alloc-basis-h{font-weight:700;font-size:14px;letter-spacing:.02em;margin-bottom:6px}
+        .alloc-basis-ul{margin:0;padding-left:18px}
+        .alloc-basis-ul li{margin:5px 0;font-size:13px;line-height:1.5}
         @media(max-width:430px){.alloc-in{width:44vw}}
       `}</style>
 
       <h1 className="alloc-h">Allocazione capitale · liquidity rewards</h1>
       <p className="alloc-sub">Inserisci un capitale: l’ottimizzatore lo distribuisce sui mercati con la dimensione per-mercato corretta (knapsack sulla profondità reale in-band e sul pot), non in parti uguali.</p>
+
+      {/* BASIS & LIMITS — unmissable, plain Italian, not softened. */}
+      <div className="alloc-basis" data-alloc-basis>
+        <div className="alloc-basis-h">Cos’è questa pagina — e cosa NON è</div>
+        <ul className="alloc-basis-ul">
+          <li><b>È un piano calcolato su dati osservati, non un ordine.</b> Nessun ordine viene creato, firmato o inviato guardando o usando questa pagina. Non viene mosso alcun capitale.</li>
+          <li><b>Le cifre sono LORDE.</b> L’adverse selection (il costo di essere selezionati quando il prezzo si muove contro) è misurata a parte: il netto è mostrato solo dove è stato osservato un fill reale, altrimenti “—”. Non sommare il lordo come se fosse un rendimento.</li>
+          <li><b>Il backtest dietro questa allocazione è un campione MOLTO piccolo:</b> ~20% di copertura dell’universo reward collezionabile, su una finestra di 48,8 ore, con <b>11 fill osservati su 4 mercati</b>. Il comportamento di riempimento per-mercato è quindi statisticamente esile.</li>
+          <li><b>I pot dei reward si muovono.</b> Durante lo studio il lordo è sceso del <b>36% in due giorni</b>. Nessuna cifra qui è garantita: è un run-rate, non una promessa.</li>
+        </ul>
+      </div>
 
       {/* PROXY / BALANCE */}
       <div className="alloc-card" data-alloc-balance>
