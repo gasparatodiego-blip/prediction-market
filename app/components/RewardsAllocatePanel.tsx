@@ -56,6 +56,9 @@ const CLOCK_MS = 15_000;   // re-tick per-row data age locally (no refetch) so s
 const REFRESH_MS = 180_000; // re-fetch the whole plan; the recompute costs ~19s, matched to the route's cache TTL
 const freshAge = (s: number): string => (s < 90 ? `${Math.round(s)}s` : s < 5400 ? `${Math.round(s / 60)} min` : `${(s / 3600).toFixed(1)} h`);
 const NEAR_RES_DAYS = 15; // within 15d the price moves on real news, not noise — the character of a fill changes
+// Four band states, each with a TEXT label (never colour alone — phone-in-sunlight / colour-blind must get it).
+const BAND_LABEL: Record<string, string> = { comfortable: 'in banda', edge: 'al bordo', out: 'fuori banda', unknown: 'banda ignota' };
+const BAND_BORDER: Record<string, string> = { comfortable: '3px solid transparent', edge: '3px solid #d9a441', out: '3px solid #d1495b', unknown: '3px dashed #8a8f98' };
 // Days until resolution from the market's public endDate; null (never inferred) when endDate is missing/unparseable.
 const daysToRes = (endDate: string | null, now: number): number | null => {
   if (!endDate) return null;
@@ -248,6 +251,13 @@ export default function RewardsAllocatePanel() {
         .oob{color:#d98a41;font-weight:600}
         .fresh-ok{color:#4c9a6a}
         .fresh-stale{color:#d98a41;font-weight:700}
+        .band-badge{display:inline-block;font-size:11px;font-weight:700;padding:1px 7px;border-radius:6px;border:1px solid;white-space:nowrap}
+        .band-comfortable{color:#4c9a6a;border-color:color-mix(in srgb,#4c9a6a 45%,transparent);background:color-mix(in srgb,#4c9a6a 10%,transparent)}
+        .band-edge{color:#b9791f;border-color:#d9a441;background:color-mix(in srgb,#d9a441 16%,transparent)}
+        .band-out{color:#d1495b;border-color:#d1495b;background:color-mix(in srgb,#d1495b 14%,transparent)}
+        .band-unknown{color:#8a8f98;border:1px dashed #8a8f98;background:transparent}
+        .band-room{display:block;font-size:11px;color:color-mix(in srgb,var(--ds-text) 55%,transparent);margin-top:2px;white-space:nowrap}
+        .step-danger{border-color:#d1495b !important;color:#d1495b !important;background:color-mix(in srgb,#d1495b 12%,transparent) !important}
         .fresh-bar{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center;font-size:12px;margin:2px 0 8px;color:color-mix(in srgb,var(--ds-text) 60%,transparent)}
         .fresh-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:baseline}
         @media(max-width:430px){.alloc-in{width:44vw}}
@@ -369,7 +379,7 @@ export default function RewardsAllocatePanel() {
               <tbody>
                 {computed.rows.map(({ r, c, ageS, stale, unreadable, dRes, artifact, band, nextStepLeaves, nextStepCost }) => (
                   <tr key={r.marketId} data-alloc-row data-alloc-usable={(!stale && !unreadable) ? '1' : '0'} style={{ opacity: (stale || unreadable) ? 0.55 : 1 }}>
-                    <td className="name">
+                    <td className="name" style={{ borderLeft: BAND_BORDER[band.state] }}>
                       {r.nameAvailable ? r.name : <span><span className="alloc-addr">{r.shortId}</span> <span className="alloc-cat">· nome non disponibile</span></span>}
                       {r.category && <div className="alloc-cat">{r.category}</div>}
                     </td>
@@ -389,17 +399,20 @@ export default function RewardsAllocatePanel() {
                         {c.overridden && <button className="off-reset" title="ripristina default" data-alloc-row-reset onClick={() => resetRow(r.marketId)}>↺</button>}
                       </span>
                     </td>
-                    <td data-alloc-headroom className={band.state === 'unknown' ? 'dash' : ''}>
-                      {band.state === 'unknown' ? <span data-band-unknown title="raggio di banda illeggibile — margine sconosciuto, non sicuro">— ignota</span>
-                        : band.headroomCents != null && band.headroomCents < 0 ? <span className="oob">oltre di {cents(-band.headroomCents)}</span>
-                          : <span data-band-room>{band.headroomTicks} tick · {cents(band.headroomCents)}</span>}
+                    <td data-alloc-headroom data-alloc-band-state={band.state} className={band.state === 'unknown' ? 'dash' : ''}>
+                      <span className={`band-badge band-${band.state}`} data-band-label>{BAND_LABEL[band.state]}</span>
+                      <small className="band-room" data-band-room title={band.state === 'unknown' ? 'raggio di banda illeggibile — margine sconosciuto, non sicuro' : undefined}>
+                        {band.state === 'unknown' ? 'margine —'
+                          : band.state === 'out' ? `oltre di ${cents(-(band.headroomCents ?? 0))}`
+                            : `${band.headroomTicks} tick · ${cents(band.headroomCents)} al bordo`}
+                      </small>
                     </td>
                     <td className={c.bid == null ? 'dash' : ''}>{price(c.bid)}</td>
                     <td className={c.ask == null ? 'dash' : ''}>{price(c.ask)}</td>
                     <td className={r.tick == null ? 'dash' : ''}>{r.tick == null ? '—' : r.tick}</td>
                     <td className={r.depthShares == null ? 'dash' : ''}>{shares(r.depthShares)}</td>
                     <td className={c.gross == null ? 'dash' : ''} data-alloc-gross>
-                      {c.inBand === false ? <span className="oob">$0 · fuori banda</span>
+                      {c.inBand === false ? <span className="oob" data-alloc-oob-gross><s>{perDay(r.grossInBandPerDay)}</s> $0,00/g · fuori banda</span>
                         : c.bandKnown === false && c.gross != null ? <span>{perDay(c.gross)}<small className="alloc-cat"> banda —</small></span>
                           : <>{perDay(c.gross)}{artifact && <small className="oob" data-alloc-s1-row title="lordo = tetto S=1: non modella il decadimento del punteggio con la distanza dal mid — allargare non è gratis"> · tetto S=1</small>}</>}
                     </td>
