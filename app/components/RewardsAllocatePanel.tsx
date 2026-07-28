@@ -165,6 +165,8 @@ export default function RewardsAllocatePanel() {
   }, []);
   const resetRow = useCallback((marketId: string) => setOffsets((o) => { const n = { ...o }; delete n[marketId]; return n; }), []);
   const setAll = useCallback((ticks: number) => { if (!plan) return; const t0 = performance.now(); setOffsets(Object.fromEntries(plan.rows.map((r) => [r.marketId, ticks]))); setRecomputeMs(performance.now() - t0); }, [plan]);
+  // widen every row by ONE tick from its current offset (default or override) — local recompute only
+  const widenAll = useCallback(() => { if (!plan) return; const t0 = performance.now(); setOffsets((o) => Object.fromEntries(plan.rows.map((r) => [r.marketId, (o[r.marketId] ?? r.computedDefaultOffsetTicks) + 1]))); setRecomputeMs(performance.now() - t0); }, [plan]);
   const resetAll = useCallback(() => setOffsets({}), []);
 
   // recompute all rows + totals at the current offsets (memoised — the "no visible stall" path). Each row also
@@ -208,6 +210,7 @@ export default function RewardsAllocatePanel() {
       staleCount: rows.filter((x) => x.stale).length, unreadableCount: rows.filter((x) => x.unreadable).length,
       usableCount: usable.length, newestAge: ages.length ? Math.min(...ages) : null, oldestAge: ages.length ? Math.max(...ages) : null,
       resDist, artifactCount: rows.filter((x) => x.artifact).length,
+      widenAllLeaves: rows.filter((x) => x.usable && x.nextStepLeaves).length, // rows a global +1 would push OUT
     };
   }, [plan, offsets, nowMs]);
 
@@ -331,9 +334,17 @@ export default function RewardsAllocatePanel() {
               <button className="off-step" data-alloc-global-minus onClick={() => setAll(1)}>1t</button>
               <button className="off-step" style={{ fontSize: 13 }} onClick={() => setAll(2)}>2t</button>
               <button className="off-step" style={{ fontSize: 13 }} onClick={() => setAll(3)}>3t</button>
+              <button className={'off-step' + (computed.widenAllLeaves ? ' step-danger' : '')} style={{ fontSize: 12, minWidth: 60 }} data-alloc-widen-all
+                title={`allarga tutte di 1 tick: ${computed.widenAllLeaves} righe uscirebbero dalla banda, ${money(computed.grossWider - computed.grossNow)}/g lordo`}
+                onClick={widenAll}>+1 tutte</button>
               <button className="alloc-btn" style={{ minHeight: 44, background: 'transparent', fontSize: 13 }} data-alloc-reset-all onClick={resetAll}>Ripristina default</button>
               {recomputeMs != null && <span data-alloc-recompute-ms>· ricalcolo {recomputeMs.toFixed(1)} ms (locale, senza refetch)</span>}
             </div>
+          </div>
+
+          {/* PRE-EMPTIVE widening preview — states the effect of «+1 a tutte» BEFORE it is pressed. */}
+          <div className="alloc-sub" data-alloc-widen-preview style={{ margin: '4px 0 2px' }}>
+            Anteprima «+1 a tutte» (prima di premere): <b className={computed.widenAllLeaves ? 'oob' : ''}>{computed.widenAllLeaves}</b> righe uscirebbero dalla banda (reward → $0), costo <b>{money(computed.grossWider - computed.grossNow)}/g</b> lordo.
           </div>
 
           {/* GLOBAL FRESHNESS — newest/oldest row age, stale count, and the auto-refresh cadence + measured latency. */}
@@ -395,9 +406,12 @@ export default function RewardsAllocatePanel() {
                           <b className={c.overridden ? 'off-over' : ''}>{r.tick == null ? '—' : `${effTicks(r)} tick`}</b>
                           <small>{c.offsetCents == null ? '—' : cents(c.offsetCents)}{c.overridden ? ` • modif. (def ${r.computedDefaultOffsetTicks}t)` : ` • def ${r.defaultNetDerived ? 'net' : 'exp'}`}</small>
                         </span>
-                        <button className="off-step" aria-label="aumenta offset" disabled={r.tick == null || effTicks(r) >= c.maxTick} onClick={() => setRowOffset(r.marketId, effTicks(r) + 1)}>+</button>
+                        <button className={'off-step' + (nextStepLeaves ? ' step-danger' : '')} aria-label="aumenta offset"
+                          title={nextStepLeaves ? `+1 tick porta il quote FUORI banda: reward → $0 (perdi ${perDay(nextStepCost)})` : 'aumenta offset di 1 tick'}
+                          disabled={r.tick == null || effTicks(r) >= c.maxTick} onClick={() => setRowOffset(r.marketId, effTicks(r) + 1)}>+</button>
                         {c.overridden && <button className="off-reset" title="ripristina default" data-alloc-row-reset onClick={() => resetRow(r.marketId)}>↺</button>}
                       </span>
+                      {nextStepLeaves && <small className="oob" data-alloc-step-warn style={{ display: 'block', marginTop: 2 }}>+1 → fuori banda: −{perDay(nextStepCost)}</small>}
                     </td>
                     <td data-alloc-headroom data-alloc-band-state={band.state} className={band.state === 'unknown' ? 'dash' : ''}>
                       <span className={`band-badge band-${band.state}`} data-band-label>{BAND_LABEL[band.state]}</span>
