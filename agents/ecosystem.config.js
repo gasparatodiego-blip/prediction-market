@@ -448,13 +448,24 @@ module.exports = {
       // is the smallest round number that admits both legs while still bounding a single order to well
       // under a third of the deposited collateral. Total at rest is ~$50 of the 100 pUSD.
       //
-      // MAKER_PLACEMENT — 'dry-run' is already the code default (anything but the exact string 'send'
-      // resolves to dry-run), but it is named HERE anyway so the deployed posture is READABLE rather
-      // than inferred from a default. In dry-run the engine builds and SIGNS each order and puts it to
-      // the exchange's own validateOrder() via eth_call, then reports it and drops it — POST /order is
-      // never reached. Flipping this to 'send' is the single deliberate act that lets real orders leave
-      // this host; it is independent of MAKER_MODE, so arming the mode alone still sends nothing.
-      env:           { NODE_ENV: 'production', HOME: '/root', ADMIN_ACCESS_SECRET: process.env.ADMIN_ACCESS_SECRET, MAKER_MODE: 'live-min', MAKER_PLACEMENT: 'dry-run', MAKER_FUNDING_APPROVED: 'true', MAKER_FUNDER_ADDRESS: '0x4C81F19a436e8174f1f3b07d7c0169150Fbdbdee', MAKER_SIGNATURE_TYPE: '3', MAKER_LIVE_MIN_MARKET: '0x12dc2b61723b2a54fc1947a307389b5f32038e7a29a0e936ad1fe410b969d06a', MAKER_LIVE_MIN_CAP_USD: '30', MAKER_ORDER_TTL_SECONDS: '180' },
+      // MAKER_PLACEMENT — 'send' as of 2026-07-29, at the operator's explicit instruction. THIS IS THE
+      // SWITCH THAT LETS REAL ORDERS LEAVE THIS HOST. In 'dry-run' (the code default, and every value
+      // that is not the exact string 'send') the engine builds and SIGNS each order, puts it to
+      // CTFExchangeV2.validateOrder() via eth_call, reports it and drops it. In 'send' that same order
+      // continues to POST /order with real collateral behind it.
+      //
+      // WHAT STILL STANDS BETWEEN THIS AND A LIVE ORDER: exactly one thing — the ARMING RECORD
+      // (lib/maker/arming, data/maker-arming.json), which is currently DISARMED. An unarmed live engine
+      // stands down exactly like a killed one, so nothing is placed today. Arming it is now the last
+      // act; it is deliberately a two-step, TTL-bounded, preflight-gated write and not an env edit.
+      //
+      // If you are reading this while trying to work out why an order went out: this line is the answer.
+      // Set it back to 'dry-run' to stop sends without touching anything else.
+      //
+      // Bounds in force when the first order does go out: per-order cap $30 (adapter, hard), open
+      // notional $120, realised daily loss $25 (trips a durable auto-kill), post-only, GTD 180s native
+      // expiry that survives host death, single pinned market, two legs totalling ~$49.55.
+      env:           { NODE_ENV: 'production', HOME: '/root', ADMIN_ACCESS_SECRET: process.env.ADMIN_ACCESS_SECRET, MAKER_MODE: 'live-min', MAKER_PLACEMENT: 'send', MAKER_FUNDING_APPROVED: 'true', MAKER_FUNDER_ADDRESS: '0x4C81F19a436e8174f1f3b07d7c0169150Fbdbdee', MAKER_SIGNATURE_TYPE: '3', MAKER_LIVE_MIN_MARKET: '0x12dc2b61723b2a54fc1947a307389b5f32038e7a29a0e936ad1fe410b969d06a', MAKER_LIVE_MIN_CAP_USD: '30', MAKER_ORDER_TTL_SECONDS: '180' },
     },
     {
       name:          'agent36-book-velocity',
