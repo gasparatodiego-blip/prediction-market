@@ -399,7 +399,11 @@ module.exports = {
       // MAKER_ORDER_TTL_SECONDS: venue-native GTD expiry on every order (survives host death). Must exceed
       // the maker refresh interval or agent35 refuses to start (startup assertion). Venue GTD floor is 3min.
       // ADMIN_ACCESS_SECRET is read from .env (gitignored), never inlined here — this file is tracked.
-      env:           { NODE_ENV: 'production', HOME: '/root', ADMIN_ACCESS_SECRET: process.env.ADMIN_ACCESS_SECRET, MAKER_MODE: 'live-min', MAKER_FUNDING_APPROVED: 'true', MAKER_LIVE_MIN_MARKET: '0x6bd56627aa21311850825edb27e53434a0e17a4f782be0086bc07f71eee00d0d', MAKER_LIVE_MIN_CAP_USD: '25', MAKER_ORDER_TTL_SECONDS: '180' },
+      // DISARMED 2026-07-29: mode back to 'off' and the funding attestation removed. The attestation
+      // referred to a wallet whose signing key is now revoked (custody rows retained, revokedAt set),
+      // so leaving MAKER_FUNDING_APPROVED='true' would pre-approve funding for a wallet we no longer
+      // hold. Re-arming is an explicit human edit, after the new self-custody signer is imported.
+      env:           { NODE_ENV: 'production', HOME: '/root', ADMIN_ACCESS_SECRET: process.env.ADMIN_ACCESS_SECRET, MAKER_MODE: 'off', MAKER_FUNDING_APPROVED: 'false', MAKER_LIVE_MIN_MARKET: '0x6bd56627aa21311850825edb27e53434a0e17a4f782be0086bc07f71eee00d0d', MAKER_LIVE_MIN_CAP_USD: '25', MAKER_ORDER_TTL_SECONDS: '180' },
     },
     {
       name:          'agent36-book-velocity',
