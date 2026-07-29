@@ -19,9 +19,19 @@ import ThemeToggle from './ThemeToggle';
 //   superseded by that redirect.
 //   'Maker' (/dashboard/maker) stays deliberately OUT of the nav: it is admin-gated
 //   in middleware.ts (404 for non-admins), reachable only by direct URL.
+//
+// 'Alloca' (/dashboard/liquidity-rewards/allocate) was never in this list in any commit —
+// the page has shipped since 4165285 but was only ever reachable by typing the URL, so it
+// read as "the tab disappeared" when it had in fact never been linked. It is a PLANNING
+// page (RewardsAllocatePanel builds no order, signs nothing, places nothing), so linking
+// it adds no trading surface.
+//
+// `exact` exists because isActive() is a prefix match: without it, '/dashboard/liquidity-
+// rewards' would also light up while on the /allocate child, showing two active tabs.
 const NAV_LINKS = [
-  { href: '/dashboard/liquidity-rewards', label: 'Rewards' },
-  { href: '/how-it-works',                label: 'Guide'   },
+  { href: '/dashboard/liquidity-rewards',          label: 'Rewards', exact: true },
+  { href: '/dashboard/liquidity-rewards/allocate', label: 'Alloca'  },
+  { href: '/how-it-works',                         label: 'Guide'   },
 ];
 
 export default function EdgeradarHeader() {
@@ -29,8 +39,8 @@ export default function EdgeradarHeader() {
   const { data: session } = useSession();
   const [menuOpen, setMenuOpen] = useState(false);
 
-  const isActive = (href: string) =>
-    href === '/dashboard' ? pathname === '/dashboard' : pathname.startsWith(href);
+  const isActive = (href: string, exact?: boolean) =>
+    href === '/dashboard' || exact ? pathname === href : pathname.startsWith(href);
 
   const accountActive = pathname.startsWith('/dashboard/account');
   const initial = (session?.user?.name?.trim()?.[0] ?? session?.user?.email?.[0] ?? '?').toUpperCase();
@@ -49,8 +59,8 @@ export default function EdgeradarHeader() {
 
         {/* Nav — desktop */}
         <nav className="hidden md:flex items-stretch flex-1 overflow-x-auto">
-          {NAV_LINKS.map(({ href, label }) => {
-            const active = isActive(href);
+          {NAV_LINKS.map(({ href, label, exact }) => {
+            const active = isActive(href, exact);
             return (
               <Link
                 key={href}
@@ -107,8 +117,8 @@ export default function EdgeradarHeader() {
       {/* Mobile nav dropdown */}
       {menuOpen && (
         <div className="md:hidden border-t border-line bg-surface">
-          {NAV_LINKS.map(({ href, label }) => {
-            const active = isActive(href);
+          {NAV_LINKS.map(({ href, label, exact }) => {
+            const active = isActive(href, exact);
             return (
               <Link
                 key={href}
