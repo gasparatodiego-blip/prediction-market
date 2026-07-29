@@ -72,7 +72,7 @@ function spyProviders() {
 }
 
 // ── 2. MAKER adapter: banned surface, ALLOWED_OPS only ──
-const { createMakerAdapter, ALLOWED_OPS, LIVE_MIN_DEFAULT_CAP_USD, evaluatePlacementGate, v2SdkStatus, _internal } = require('../lib/venues/polymarket-clob-maker/adapter');
+const { createMakerAdapter, ALLOWED_OPS, LIVE_MIN_DEFAULT_CAP_USD, evaluatePlacementGate, evaluateOrderVersionGate, SUPPORTED_ORDER_VERSION, v2SdkStatus, _internal } = require('../lib/venues/polymarket-clob-maker/adapter');
 {
   const m = createMakerAdapter({ mode: 'paper' });
   const BANNED = ['transfer', 'withdraw', 'approve', 'redeem', 'deposit', 'send', 'deriveApiKey', 'createApiKey', 'closePosition', 'openPosition'];
@@ -132,6 +132,19 @@ const { createMakerAdapter, ALLOWED_OPS, LIVE_MIN_DEFAULT_CAP_USD, evaluatePlace
   ok(evaluatePlacementGate({ mode: 'live', dryRun: true, fundingApproved: true, sdk: goodSdk }).gate === 'dry-run', 'gate 3: dry-run belt set → refuse (dry-run)');
   ok(evaluatePlacementGate({ mode: 'live', dryRun: false, fundingApproved: false, sdk: goodSdk }).gate === 'funding-approval', 'gate 4: pUSD funding / v2 approvals not attested → refuse (funding-approval) — the honest replacement for the removed v2-absence gate');
   ok(evaluatePlacementGate({ mode: 'live', dryRun: false, fundingApproved: true, sdk: goodSdk }).allow === true, 'gate: allows ONLY when SDK ok + live + not dry-run + funding attested — capability, still behind the throwing-provider belt');
+
+  // ── gate 5: CLOB order version. The venue negotiates it (GET /version); the wallet's on-chain
+  // approvals are granted to the v2 exchanges ONLY. Anything but v2 must refuse, and an unreadable
+  // version must refuse just as hard — "could not read" and "is fine" are not the same answer.
+  ok(SUPPORTED_ORDER_VERSION === 2, 'order-version: this build is approved for exactly CLOB v2');
+  ok(evaluateOrderVersionGate(2).allow === true, 'gate 5: venue negotiates v2 → allow (the approved version)');
+  ok(evaluateOrderVersionGate('2').allow === true, 'gate 5b: numeric string "2" is accepted — GET /version is JSON, the type must not decide safety');
+  ok(evaluateOrderVersionGate(3).gate === 'order-version', 'gate 5c: venue negotiates v3 → refuse (order-version) — exchangeV3 exists in the installed SDK and the wallet has approved nothing to it');
+  ok(evaluateOrderVersionGate(1).gate === 'order-version', 'gate 5d: venue negotiates v1 → refuse (order-version) — a silent downgrade to the legacy exchange is still a downgrade');
+  ok(evaluateOrderVersionGate(null).gate === 'order-version-unknown', 'gate 5e: version unreadable (null) → refuse (order-version-unknown) — FAIL CLOSED, never sign blind');
+  ok(evaluateOrderVersionGate(undefined).gate === 'order-version-unknown', 'gate 5f: version absent (undefined) → refuse (order-version-unknown)');
+  ok(evaluateOrderVersionGate('v2').gate === 'order-version-unknown', 'gate 5g: unparseable version string → refuse (order-version-unknown)');
+  ok(evaluateOrderVersionGate(2.5).gate === 'order-version-unknown', 'gate 5h: non-integer version → refuse (order-version-unknown)');
 }
 
 // ── 3. MAKER_MODE=off / paper / dry-run → NO venue write reachable (async, closes the run) ──
