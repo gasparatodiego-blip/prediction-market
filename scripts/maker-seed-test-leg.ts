@@ -35,10 +35,20 @@ const DRY = process.argv.includes('--dry-run')
 const BOOKS = '/tmp/clob-live-books.json'
 const REWARDS = '/tmp/liquidity-rewards.json'
 
-// The market the live-min stage is pinned to. Overridable, but it must be a market that is BOTH in the
-// reward feed and being streamed by agent34 — the script proves that below rather than assuming it.
-const MARKET_ID = process.env.MAKER_LIVE_MIN_MARKET
+// The market to seed. --market wins, then MAKER_LIVE_MIN_MARKET (the market the live-min stage is
+// pinned to). Whichever it is, it must be BOTH in the reward feed and streamed by agent34 — the script
+// proves that below rather than assuming it.
+const marketArgIdx = process.argv.indexOf('--market')
+const MARKET_ID = (marketArgIdx >= 0 ? process.argv[marketArgIdx + 1] : '')
+  || process.env.MAKER_LIVE_MIN_MARKET
   || '0x6bd56627aa21311850825edb27e53434a0e17a4f782be0086bc07f71eee00d0d'
+
+// ONE SIDE EARNS NOTHING WHEN THE MID IS IN THE TAILS, and is penalised everywhere else. Polymarket's
+// reward formula pays two-sided liquidity: a one-sided book takes a ÷3 penalty, and when the mid is
+// below 0.10 or above 0.90 a one-sided configuration scores exactly ZERO (lib/maker/quote-plan reports
+// this as oneSidedZero). So the default is a PAIR. --one-sided seeds only the YES bid, for the case
+// where you deliberately want the cheaper half.
+const TWO_SIDED = !process.argv.includes('--one-sided')
 
 const SELECTION_ID = 'singleton'
 
@@ -69,39 +79,63 @@ async function main() {
   if (!rm) throw new Error(`market is NOT in the reward feed (${REWARDS}) — resolveMakerUniverse() only force-in ALLOWLISTED markets that are eligible there. Refusing to seed a leg the universe can never include.`)
   console.log(`  reward    : dailyPool=${rm.dailyPool} category=${rm.category}`)
 
-  // ── 3. the leg. Every number below is derived from the venue's OWN rules read above, never guessed ──
-  // A follow leg re-computes target = mid + offsetC/100 every cycle, then snaps to tick. offsetC = -0.5
-  // puts the bid half a cent under the mid: comfortably inside the reward band (radius = maxSpread/2 =
-  // 1.75c), so it scores > 0, and on the 0.01 tick it lands exactly on a tick with no snap drift.
+  // ── 3. the legs. Every number below is derived from the venue's OWN rules read above, never guessed ──
+  // A follow leg re-computes target = bookMid + offsetC/100 every cycle, then snaps to tick. offsetC of
+  // -0.5 puts each order half a cent inside its own book's mid — well within the reward band (radius =
+  // maxSpread/2), so both score > 0.
+  //
+  // BOTH LEGS ARE BUYS, and that is deliberate. A SELL delivers an ERC-1155 outcome token you must
+  // already own, so with zero inventory the position guard blocks every SELL (fail-closed, by design).
+  // BUY NO is the same resting order as SELL YES — buying NO at q IS offering YES at 1−q — but it is
+  // paid for with collateral, which we have. So a BUY YES + BUY NO pair is a genuine two-sided book.
   const offsetC = -0.5
   const bandRadiusC = maxSpreadC / 2
   if (Math.abs(offsetC) >= bandRadiusC) throw new Error(`offsetC ${offsetC} is outside the reward band radius ${bandRadiusC}c — the leg would score 0 forever`)
   // size must be >= min_incentive_size or the leg earns nothing (quote-plan flags belowMinSize).
   const sizeShares = minSize
-  const price = +(mid + offsetC / 100).toFixed(4)
-  const notional = +(price * sizeShares).toFixed(2)
 
-  // onFill 'hold' — do nothing on a fill. For a first test leg the follow-up order is the part you want
-  // OFF: a fill should leave you holding a known position, not silently open another order.
-  const leg = {
-    userId: 'svc-admin-maker',
-    marketId: MARKET_ID,
-    venue: 'polymarket',
-    book: 'yes',
-    kind: 'buy',      // a BUY YES: needs collateral, not inventory, so no position guard can block it
-    price,
-    mode: 'follow',
-    offsetC,
-    onFill: 'hold',
-    enabled: true,
-    sizeShares,
+  // Each book is priced in ITS OWN space: the NO book's mid is 1 − yesMid.
+  const mk = (book: 'yes' | 'no') => {
+    const bookMid = book === 'no' ? +(1 - mid).toFixed(6) : mid
+    const price = +(bookMid + offsetC / 100).toFixed(4)
+    return {
+      userId: 'svc-admin-maker',
+      marketId: MARKET_ID,
+      venue: 'polymarket',
+      book,
+      kind: 'buy',
+      price,
+      mode: 'follow',
+      offsetC,
+      // onFill 'hold' — do nothing on a fill. For a first test the follow-up order is the part you want
+      // OFF: a fill should leave you holding a known position, not silently opening another order.
+      onFill: 'hold',
+      enabled: true,
+      sizeShares,
+    }
   }
-  console.log('\nleg to seed:')
-  console.log(`  ${leg.kind.toUpperCase()} ${leg.book.toUpperCase()} ${leg.sizeShares} shares @ ~${leg.price}  (mode=${leg.mode} offsetC=${leg.offsetC}c onFill=${leg.onFill})`)
-  console.log(`  notional ≈ $${notional}   band radius ±${bandRadiusC}c   distance to mid ${Math.abs(offsetC)}c ⇒ scores > 0`)
+  const legs = TWO_SIDED ? [mk('yes'), mk('no')] : [mk('yes')]
+
+  console.log(`\nlegs to seed (${TWO_SIDED ? 'TWO-SIDED — required to earn' : 'ONE-SIDED — see --one-sided warning'}):`)
   const capUsd = Number(process.env.MAKER_LIVE_MIN_CAP_USD)
+  let total = 0
+  let overCap = false
+  for (const l of legs) {
+    const notional = +(l.price * l.sizeShares).toFixed(2)
+    total += notional
+    const over = Number.isFinite(capUsd) && notional > capUsd
+    if (over) overCap = true
+    console.log(`  ${l.kind.toUpperCase()} ${l.book.toUpperCase().padEnd(3)} ${l.sizeShares} shares @ ~${l.price}  ≈ $${notional}${over ? '   *** OVER the $' + capUsd + ' per-order live-min cap ***' : ''}`)
+  }
+  console.log(`  band radius ±${bandRadiusC}c · each leg sits ${Math.abs(offsetC)}c from its book mid ⇒ both score > 0`)
+  console.log(`  total collateral if both rest: ≈ $${total.toFixed(2)}`)
   if (Number.isFinite(capUsd)) {
-    console.log(`  MAKER_LIVE_MIN_CAP_USD=${capUsd} ⇒ ${notional <= capUsd ? 'WITHIN' : '*** OVER ***'} the live-min hard cap`)
+    // The live-min cap is PER ORDER (adapter.js rejects a single postOrder above it), not a total.
+    console.log(`  MAKER_LIVE_MIN_CAP_USD=$${capUsd} is a PER-ORDER cap ⇒ ${overCap ? 'AT LEAST ONE LEG WOULD BE REJECTED — raise the cap or pick a cheaper market' : 'every leg fits'}`)
+  }
+  if (!TWO_SIDED) {
+    console.log('  WARNING: one-sided liquidity takes the ÷3 reward penalty, and scores ZERO outright when')
+    console.log('           the mid is in the tails (<0.10 or >0.90). This will likely earn nothing.')
   }
 
   if (DRY) { console.log('\n--dry-run: nothing written.'); return }
@@ -127,15 +161,19 @@ async function main() {
     })
     console.log(`\nuniverse allowlist now: ${allowlist.join(', ')}`)
 
-    // ── the leg. Keyed on the model's own unique constraint so re-running updates instead of duplicating. ──
-    const row = await prisma.rewardsLeg.upsert({
-      where: { userId_marketId_book_kind_price: { userId: leg.userId, marketId: leg.marketId, book: leg.book, kind: leg.kind, price: leg.price } },
-      update: { mode: leg.mode, offsetC: leg.offsetC, onFill: leg.onFill, enabled: leg.enabled, sizeShares: leg.sizeShares },
-      create: leg,
-    })
-    console.log(`leg id: ${row.id}`)
-    const total = await prisma.rewardsLeg.count()
-    console.log(`RewardsLeg rows now: ${total}`)
+    // ── the legs. Keyed on the model's own unique constraint so re-running updates instead of
+    //    duplicating. Nothing is ever deleted: a superseded leg from an earlier run stays in the table
+    //    and must be retired deliberately (disable it), never silently by this script. ──
+    for (const leg of legs) {
+      const row = await prisma.rewardsLeg.upsert({
+        where: { userId_marketId_book_kind_price: { userId: leg.userId, marketId: leg.marketId, book: leg.book, kind: leg.kind, price: leg.price } },
+        update: { mode: leg.mode, offsetC: leg.offsetC, onFill: leg.onFill, enabled: leg.enabled, sizeShares: leg.sizeShares },
+        create: leg,
+      })
+      console.log(`  ${leg.kind} ${leg.book} @ ${leg.price} → leg id ${row.id}`)
+    }
+    const totalRows = await prisma.rewardsLeg.count()
+    console.log(`RewardsLeg rows now: ${totalRows}`)
     console.log('\nSeeded. agent35 re-reads legs AND the selection every cycle — no restart needed.')
     console.log('MAKER_MODE is unchanged; in `off` the engine reaches no venue write at all.')
   } finally {

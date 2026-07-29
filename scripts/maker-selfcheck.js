@@ -26,6 +26,12 @@ const NOW = 1_753_000_000_000;
 // the guard is satisfied and the gate they actually exercise (mode/funding/kill/cap/idempotency) still fires.
 const VR = Object.freeze({ tick: 0.01, scoringMid: 0.5, maxSpreadCents: 6, minSize: 5 });
 
+// The ONE market a live-min adapter is pinned to in these tests. live-min now REFUSES any order it cannot
+// prove belongs to its pinned market (evaluateLiveMinMarketGate), so every live-min fixture below names a
+// pin and every postOrder spec carries a marketId — a live-min adapter without a pin is, by design, an
+// adapter that can place nothing. Section 8c exercises the gate itself.
+const LIVE_MKT = '0x1111111111111111111111111111111111111111111111111111111111111111';
+
 // ── temp-fixture plumbing for the execution-safety layer (kill switch / limits / audit) ──
 // All safety state lives in files; the selfcheck points each module at throwaway temp files (never the
 // real data/ files) via dependency injection, so it proves the fail-closed behaviour deterministically.
@@ -72,7 +78,7 @@ function spyProviders() {
 }
 
 // ── 2. MAKER adapter: banned surface, ALLOWED_OPS only ──
-const { createMakerAdapter, ALLOWED_OPS, LIVE_MIN_DEFAULT_CAP_USD, evaluatePlacementGate, evaluateOrderVersionGate, SUPPORTED_ORDER_VERSION, v2SdkStatus, _internal } = require('../lib/venues/polymarket-clob-maker/adapter');
+const { createMakerAdapter, ALLOWED_OPS, LIVE_MIN_DEFAULT_CAP_USD, evaluatePlacementGate, evaluateLiveMinMarketGate, evaluateOrderVersionGate, SUPPORTED_ORDER_VERSION, v2SdkStatus, _internal } = require('../lib/venues/polymarket-clob-maker/adapter');
 {
   const m = createMakerAdapter({ mode: 'paper' });
   const BANNED = ['transfer', 'withdraw', 'approve', 'redeem', 'deposit', 'send', 'deriveApiKey', 'createApiKey', 'closePosition', 'openPosition'];
@@ -176,7 +182,7 @@ async function noWriteProof() {
     // No providers passed → if any mutating path tried to reach the venue it would need creds/signer and throw.
     const a = createMakerAdapter({ mode });
     ok(a.canWrite === false, `mode=${mode} → canWrite=false`);
-    const p = await a.postOrder({ tokenId: '0xabc', side: 'BUY', price: 0.5, size: 100, tickSize: 0.01, venueRules: VR });
+    const p = await a.postOrder({ marketId: LIVE_MKT, tokenId: '0xabc', side: 'BUY', price: 0.5, size: 100, tickSize: 0.01, venueRules: VR });
     ok(p.sent === false && p.simulated === true, `mode=${mode} postOrder makes NO venue write (sent=false, simulated)`);
     const c = await a.cancelMarketOrders('0xabc');
     ok(c.sent === false, `mode=${mode} cancelMarketOrders makes NO venue write`);
@@ -186,7 +192,7 @@ async function noWriteProof() {
   // dry-run belt independent of mode: even a live mode + dryRun → canWrite false, no providers required.
   const dry = createMakerAdapter({ mode: 'live', dryRun: true });
   ok(dry.canWrite === false, 'live + MAKER_ADAPTER_DRYRUN → canWrite=false (dry-run belt)');
-  const dp = await dry.postOrder({ tokenId: '0xabc', side: 'BUY', price: 0.5, size: 100, tickSize: 0.01, venueRules: VR });
+  const dp = await dry.postOrder({ marketId: LIVE_MKT, tokenId: '0xabc', side: 'BUY', price: 0.5, size: 100, tickSize: 0.01, venueRules: VR });
   ok(dp.sent === false, 'live+dry-run postOrder makes NO venue write');
 
   // A live adapter with THROWING providers (this build's live wiring). Post-migration the OUTER belt is
@@ -196,21 +202,72 @@ async function noWriteProof() {
   const thrower = async () => { throw new Error('provider not wired'); };
   // Inject a PERMISSIVE safety bag so the new kill/venue/limit gates pass and the chain still reaches the
   // existing funding-approval gate — proving the v2-migration gates are intact under the new safety layer.
-  const live = createMakerAdapter({ mode: 'live-min', credsProvider: thrower, signerProvider: thrower, liveMinCapUsd: 25, safety: permissiveSafety() });
+  const live = createMakerAdapter({ mode: 'live-min', liveMinMarket: LIVE_MKT, credsProvider: thrower, signerProvider: thrower, liveMinCapUsd: 25, safety: permissiveSafety() });
   ok(live.canWrite === true, 'live-min with providers → canWrite=true (capability owned)…');
-  const lp = await live.postOrder({ tokenId: '0xabc', side: 'BUY', price: 0.5, size: 10, tickSize: 0.01, venueRules: VR });
+  const lp = await live.postOrder({ marketId: LIVE_MKT, tokenId: '0xabc', side: 'BUY', price: 0.5, size: 10, tickSize: 0.01, venueRules: VR });
   ok(lp.ok === false && lp.sent === false && lp.gate === 'funding-approval', '…but a live placement fails CLOSED at the funding/approval gate (pUSD + v2 approvals unattested) — no order signed, no network, no key');
 
   // ── 8. live-min HARD per-order notional cap trips BEFORE the placement gate / any network/creds ──
-  const capped = await live.postOrder({ tokenId: '0xabc', side: 'BUY', price: 0.5, size: 1000, tickSize: 0.01, venueRules: VR }); // $500 » $25
+  const capped = await live.postOrder({ marketId: LIVE_MKT, tokenId: '0xabc', side: 'BUY', price: 0.5, size: 1000, tickSize: 0.01, venueRules: VR }); // $500 » $25
   ok(capped.sent === false && /live-min hard cap/i.test(capped.reason || ''), 'live-min hard cap rejects an over-cap order before touching creds');
+
+  // ── 8c. live-min SINGLE-MARKET gate — "ONE market only" is now actually enforced ─────────────────
+  // This guarantee was documented in lib/maker/config.js ("live-min quotes ONLY this market") and in the
+  // adapter's own staged-safety header, but NOTHING compared an order's market against the pin: the value
+  // was read into config, copied into the heartbeat, and never checked. In live-min the maker would have
+  // placed real orders on every market that had a leg. These assertions are the enforcement.
+  {
+    const OTHER = '0x2222222222222222222222222222222222222222222222222222222222222222';
+    // The pure gate, exhausted — no adapter, no I/O.
+    ok(evaluateLiveMinMarketGate({ mode: 'live-min', liveMinMarket: LIVE_MKT, marketId: LIVE_MKT }).allow === true, 'live-min market gate: the pinned market is allowed');
+    ok(evaluateLiveMinMarketGate({ mode: 'live-min', liveMinMarket: LIVE_MKT, marketId: LIVE_MKT.toUpperCase().replace('0X', '0x') }).allow === true, 'live-min market gate: comparison is case-insensitive (hex casing is not a mismatch)');
+    ok(evaluateLiveMinMarketGate({ mode: 'live-min', liveMinMarket: LIVE_MKT, marketId: OTHER }).gate === 'live-min-market-mismatch', 'live-min market gate: a DIFFERENT market → REFUSE (this is the bug that had no gate)');
+    ok(evaluateLiveMinMarketGate({ mode: 'live-min', liveMinMarket: LIVE_MKT, marketId: undefined }).gate === 'live-min-market-unknown', 'live-min market gate: no marketId on the order → REFUSE (a check that could not run is not a check that passed)');
+    ok(evaluateLiveMinMarketGate({ mode: 'live-min', liveMinMarket: '', marketId: LIVE_MKT }).gate === 'live-min-market-unset', 'live-min market gate: no pin configured → REFUSE ("one market only" naming no market is not a restriction)');
+    ok(evaluateLiveMinMarketGate({ mode: 'live-min', liveMinMarket: '   ', marketId: LIVE_MKT }).gate === 'live-min-market-unset', 'live-min market gate: a whitespace-only pin is treated as unset, not as a market named "   "');
+    // Scope: it must NOT fire outside live-min — off/paper reach no venue write anyway, and `live` is the
+    // deliberately unrestricted stage. Gating those would hide config errors behind a harmless mode.
+    for (const m of ['off', 'paper', 'live']) {
+      ok(evaluateLiveMinMarketGate({ mode: m, liveMinMarket: LIVE_MKT, marketId: OTHER }).allow === true, `live-min market gate: does NOT apply to mode='${m}' (scoped to live-min only)`);
+    }
+    // And through the real adapter: the gate trips BEFORE creds/keys, exactly like the notional cap.
+    const wrongMkt = await live.postOrder({ marketId: OTHER, tokenId: '0xabc', side: 'BUY', price: 0.5, size: 10, tickSize: 0.01, venueRules: VR });
+    ok(wrongMkt.sent === false && wrongMkt.gate === 'live-min-market-mismatch', 'adapter: a live-min order for an UNPINNED market is refused before any creds/key/network');
+    const noMkt = await live.postOrder({ tokenId: '0xabc', side: 'BUY', price: 0.5, size: 10, tickSize: 0.01, venueRules: VR });
+    ok(noMkt.sent === false && noMkt.gate === 'live-min-market-unknown', 'adapter: a live-min order with NO marketId is refused (fail closed)');
+    const unpinned = createMakerAdapter({ mode: 'live-min', liveMinMarket: '', credsProvider: thrower, signerProvider: thrower, safety: permissiveSafety() });
+    const up = await unpinned.postOrder({ marketId: LIVE_MKT, tokenId: '0xabc', side: 'BUY', price: 0.5, size: 10, tickSize: 0.01, venueRules: VR });
+    ok(up.sent === false && up.gate === 'live-min-market-unset', 'adapter: live-min with NO pin configured can place NOTHING at all');
+    ok(live.liveMinMarket === LIVE_MKT, 'adapter reports the market it is pinned to (observable, not buried in a closure)');
+  }
+
+  // ── 8d. A NO leg must be judged against the NO book's mid, by the GUARD as well as the planner ──────
+  // planQuotes mirrors the mid for the NO book (a NO order at q IS a YES order at 1 − q). agent35's call
+  // to the shared venue-rules guard did NOT, and passed the YES mid for every quote: a NO leg sitting
+  // 0.45c from its own mid was measured against the YES mid, read as ~7c away, and refused OUT_OF_BAND.
+  // Because BUY NO is the only way a collateral-funded maker can offer the ASK side (SELL YES needs
+  // inventory), that one missing mirror made EVERY two-sided configuration impossible — and one-sided
+  // liquidity takes the ÷3 penalty, or earns exactly zero when the mid is in the tails. Observed live on
+  // 2026-07-29: postable YES, OUT_OF_BAND NO, on a market where both legs were 0.45c from their own mids.
+  {
+    const { validateQuote } = require('../lib/maker/venue-rules');
+    const yesMid = 0.4625;
+    const noMid = +(1 - yesMid).toFixed(6);
+    const rules = (m) => ({ tick: 0.001, scoringMid: m, maxSpreadCents: 4.5, minSize: 50 });
+    // Both legs sit 0.45c inside their OWN book's mid — both must pass.
+    ok(validateQuote(rules(yesMid), { side: 'BUY', price: 0.458, size: 50 }).valid === true, 'guard mirror: the YES bid 0.45c from the YES mid is IN band');
+    ok(validateQuote(rules(noMid), { side: 'BUY', price: 0.533, size: 50 }).valid === true, 'guard mirror: the NO bid 0.45c from the NO mid is IN band when judged against the NO mid');
+    // And the exact bug: judging that same NO price against the YES mid refuses it.
+    const wrong = validateQuote(rules(yesMid), { side: 'BUY', price: 0.533, size: 50 });
+    ok(wrong.valid === false && wrong.reasons.some((r) => r.code === 'OUT_OF_BAND'), 'guard mirror: judging the NO leg against the YES mid REFUSES it OUT_OF_BAND — the bug this mirror fixes');
+  }
 
   // ── 8b. The throwing-provider belt is INDEPENDENT of the funding gate. Even if funding were attested
   //     (a TEST-only fundingApproved:true — agent35 never sets it, so the deployed engine still trips the
   //     funding gate above), this build's live wiring cannot obtain a key: liveClient() calls the (throwing)
   //     credsProvider on its FIRST line, before any network call or client construction. No order signed. ──
-  const fundedButUnwired = createMakerAdapter({ mode: 'live-min', fundingApproved: true, credsProvider: thrower, signerProvider: thrower, liveMinCapUsd: 25, safety: permissiveSafety() });
-  const fbp = await fundedButUnwired.postOrder({ tokenId: '0xabc', side: 'BUY', price: 0.5, size: 10, tickSize: 0.01, venueRules: VR });
+  const fundedButUnwired = createMakerAdapter({ mode: 'live-min', liveMinMarket: LIVE_MKT, fundingApproved: true, credsProvider: thrower, signerProvider: thrower, liveMinCapUsd: 25, safety: permissiveSafety() });
+  const fbp = await fundedButUnwired.postOrder({ marketId: LIVE_MKT, tokenId: '0xabc', side: 'BUY', price: 0.5, size: 10, tickSize: 0.01, venueRules: VR });
   ok(fbp.ok === false && /provider not wired/i.test(String((fbp.error && fbp.error.message) || fbp.error || '')), 'even with funding attested, the throwing-provider belt fails a live placement closed (no key, no order) — independent gate');
 
   // ── 8c. LIVE-PROVIDER WIRING (lib/maker/live-providers) — the REAL providers agent35 now builds, plus the
@@ -224,22 +281,22 @@ async function noWriteProof() {
     // funding UNATTESTED + a SPY provider pair: the funding-refusal guard refuses the order BEFORE the
     // provider is ever called — so with MAKER_FUNDING_APPROVED unset, no key is decrypted and no order signed.
     const noFund = spyProviders();
-    const aNoFund = createMakerAdapter({ mode: 'live-min', fundingApproved: false, credsProvider: noFund.credsProvider, signerProvider: noFund.signerProvider, safety: permissiveSafety() });
-    const rNoFund = await aNoFund.postOrder({ tokenId: '0xabc', side: 'BUY', price: 0.5, size: 10, tickSize: 0.01, venueRules: VR });
+    const aNoFund = createMakerAdapter({ mode: 'live-min', liveMinMarket: LIVE_MKT, fundingApproved: false, credsProvider: noFund.credsProvider, signerProvider: noFund.signerProvider, safety: permissiveSafety() });
+    const rNoFund = await aNoFund.postOrder({ marketId: LIVE_MKT, tokenId: '0xabc', side: 'BUY', price: 0.5, size: 10, tickSize: 0.01, venueRules: VR });
     ok(rNoFund.ok === false && rNoFund.sent === false && rNoFund.gate === 'funding-approval', 'live-providers: funding UNATTESTED → refused at the funding-approval gate (kill/venue/limits/mode all pass here — the funding guard is decisive on its own)');
     ok(noFund.s.called === false, 'live-providers: the funding-refusal fires BEFORE the provider — the spy signer/creds is NEVER called, no key decrypted');
 
     // funding ATTESTED + the SAME spy pair: the gate OPENS and the provider IS invoked (then throws) —
     // proving the funding gate is EXACTLY what stands between a refusal and reaching the live signing path.
     const yesFund = spyProviders();
-    const aYesFund = createMakerAdapter({ mode: 'live-min', fundingApproved: true, credsProvider: yesFund.credsProvider, signerProvider: yesFund.signerProvider, safety: permissiveSafety() });
-    const rYesFund = await aYesFund.postOrder({ tokenId: '0xabc', side: 'BUY', price: 0.5, size: 10, tickSize: 0.01, venueRules: VR });
+    const aYesFund = createMakerAdapter({ mode: 'live-min', liveMinMarket: LIVE_MKT, fundingApproved: true, credsProvider: yesFund.credsProvider, signerProvider: yesFund.signerProvider, safety: permissiveSafety() });
+    const rYesFund = await aYesFund.postOrder({ marketId: LIVE_MKT, tokenId: '0xabc', side: 'BUY', price: 0.5, size: 10, tickSize: 0.01, venueRules: VR });
     ok(yesFund.s.called === true, 'live-providers: funding ATTESTED → the gate opens and the provider IS reached (spy called) — the funding gate is the sole guard before the live signing path');
     ok(rYesFund.ok === false && rYesFund.sent === true, 'live-providers: with the spy provider throwing, the placement still fails closed (no order) — the invocation reached the provider, not the venue');
   }
 
   // ── 9. off/paper/live all REJECT an off-tick price defensively (never post an unsnapped price) ──
-  const offTick = await createMakerAdapter({ mode: 'paper' }).postOrder({ tokenId: '0xabc', side: 'BUY', price: 0.5237, size: 100, tickSize: 0.01 });
+  const offTick = await createMakerAdapter({ mode: 'paper' }).postOrder({ marketId: LIVE_MKT, tokenId: '0xabc', side: 'BUY', price: 0.5237, size: 100, tickSize: 0.01 });
   ok(offTick.ok === false && /not a valid multiple of tick/i.test(offTick.reason || ''), 'an off-tick price is rejected (defense in depth), never posted');
   ok(_internal.priceOnTick(0.52, 0.01) === true && _internal.priceOnTick(0.523, 0.01) === false, 'priceOnTick: 0.52 valid on 0.01, 0.523 invalid');
   ok(_internal.priceOnTick(0.523, 0.001) === true && _internal.priceOnTick(0.0025, 0.0025) === true, 'priceOnTick handles 0.001 and 0.0025 ticks (not just powers of ten)');
@@ -255,8 +312,8 @@ async function noWriteProof() {
       recordIntent: (i) => EA.recordIntent(i, { auditFile }), recordOutcome: () => {},
       deriveIdempotencyKey: EA.deriveIdempotencyKey, setUserKill: () => {},
     };
-    const a = createMakerAdapter({ mode: 'live-min', fundingApproved: true, credsProvider, signerProvider, safety: killedSafety });
-    const r = await a.postOrder({ tokenId: '0xabc', side: 'BUY', price: 0.5, size: 10, tickSize: 0.01, venueRules: VR });
+    const a = createMakerAdapter({ mode: 'live-min', liveMinMarket: LIVE_MKT, fundingApproved: true, credsProvider, signerProvider, safety: killedSafety });
+    const r = await a.postOrder({ marketId: LIVE_MKT, tokenId: '0xabc', side: 'BUY', price: 0.5, size: 10, tickSize: 0.01, venueRules: VR });
     ok(r.ok === false && r.gate === 'kill-global', 'adapter: a GLOBAL kill blocks placement at the kill gate (kill-global)');
     ok(s.called === false, 'adapter: a KILLED placement is refused BEFORE key decryption — the signer/creds provider is NEVER called');
     ok(!fs.existsSync(auditFile), 'adapter: a killed placement records NO intent (refused before intent-before-send)');
@@ -273,12 +330,12 @@ async function noWriteProof() {
       deriveIdempotencyKey: EA.deriveIdempotencyKey, setUserKill: () => {},
     });
     const v = spyProviders();
-    const aVictim = createMakerAdapter({ mode: 'live-min', fundingApproved: true, credsProvider: v.credsProvider, signerProvider: v.signerProvider, safety: mkSafety(tmpFile('v.jsonl')) });
-    const rv = await aVictim.postOrder({ tokenId: '0xabc', side: 'BUY', price: 0.5, size: 10, tickSize: 0.01, userId: 'victim', venueRules: VR });
+    const aVictim = createMakerAdapter({ mode: 'live-min', liveMinMarket: LIVE_MKT, fundingApproved: true, credsProvider: v.credsProvider, signerProvider: v.signerProvider, safety: mkSafety(tmpFile('v.jsonl')) });
+    const rv = await aVictim.postOrder({ marketId: LIVE_MKT, tokenId: '0xabc', side: 'BUY', price: 0.5, size: 10, tickSize: 0.01, userId: 'victim', venueRules: VR });
     ok(rv.gate === 'kill-user' && v.s.called === false, 'adapter: a per-user kill blocks the killed user (kill-user), before key decryption');
     const b = spyProviders();
-    const aOther = createMakerAdapter({ mode: 'live-min', fundingApproved: true, credsProvider: b.credsProvider, signerProvider: b.signerProvider, safety: mkSafety(tmpFile('o.jsonl')) });
-    const ro = await aOther.postOrder({ tokenId: '0xabc', side: 'BUY', price: 0.5, size: 10, tickSize: 0.01, userId: 'bystander', venueRules: VR });
+    const aOther = createMakerAdapter({ mode: 'live-min', liveMinMarket: LIVE_MKT, fundingApproved: true, credsProvider: b.credsProvider, signerProvider: b.signerProvider, safety: mkSafety(tmpFile('o.jsonl')) });
+    const ro = await aOther.postOrder({ marketId: LIVE_MKT, tokenId: '0xabc', side: 'BUY', price: 0.5, size: 10, tickSize: 0.01, userId: 'bystander', venueRules: VR });
     ok(ro.gate !== 'kill-user' && ro.sent === true && b.s.called === true, 'adapter: a DIFFERENT user is NOT blocked by another user\'s kill (reaches the provider)');
   }
 
@@ -289,8 +346,8 @@ async function noWriteProof() {
     safe.recordIntent = (i) => EA.recordIntent(i, { auditFile });
     safe.recordOutcome = (o) => EA.recordOutcome(o, { auditFile });
     const { credsProvider, signerProvider } = spyProviders();
-    const a = createMakerAdapter({ mode: 'live-min', fundingApproved: true, credsProvider, signerProvider, safety: safe });
-    const spec = { tokenId: '0xabc', side: 'BUY', price: 0.5, size: 10, tickSize: 0.01, idempotencyKey: 'retry-key', userId: 'u', venueRules: VR };
+    const a = createMakerAdapter({ mode: 'live-min', liveMinMarket: LIVE_MKT, fundingApproved: true, credsProvider, signerProvider, safety: safe });
+    const spec = { marketId: LIVE_MKT, tokenId: '0xabc', side: 'BUY', price: 0.5, size: 10, tickSize: 0.01, idempotencyKey: 'retry-key', userId: 'u', venueRules: VR };
     const first = await a.postOrder(spec);
     ok(first.sent === true && first.ok === false, 'adapter: a live placement whose provider throws is ambiguous (sent=true, ok=false)');
     ok(EA.hasIntent('retry-key', { auditFile }) === true, 'adapter: an INTENT row exists EVEN THOUGH the venue call threw (evidence written before send)');
@@ -309,8 +366,8 @@ async function noWriteProof() {
       recordIntent: () => ({ recorded: true, duplicate: false }), recordOutcome: () => {},
       deriveIdempotencyKey: EA.deriveIdempotencyKey, setUserKill: () => {},
     };
-    const a = createMakerAdapter({ mode: 'live-min', fundingApproved: true, credsProvider, signerProvider, safety: failClosedSafety });
-    const r = await a.postOrder({ tokenId: '0xabc', side: 'BUY', price: 0.5, size: 10, tickSize: 0.01, venueRules: VR });
+    const a = createMakerAdapter({ mode: 'live-min', liveMinMarket: LIVE_MKT, fundingApproved: true, credsProvider, signerProvider, safety: failClosedSafety });
+    const r = await a.postOrder({ marketId: LIVE_MKT, tokenId: '0xabc', side: 'BUY', price: 0.5, size: 10, tickSize: 0.01, venueRules: VR });
     ok(r.ok === false && r.gate === 'kill-switch-unreadable' && s.called === false, 'adapter: an UNREADABLE kill state fails CLOSED (kill-switch-unreadable), before key decryption');
   }
 
@@ -348,7 +405,7 @@ async function noWriteProof() {
       const ui = validateQuote(VG, quote);
       // Maker path: the adapter's guard, via postOrder. paper mode → the guard runs BEFORE the shadow branch.
       audits = [];
-      const res = await guardAdapter.postOrder({ tokenId: '0xg', ...quote, venueRules: VG });
+      const res = await guardAdapter.postOrder({ marketId: LIVE_MKT, tokenId: '0xg', ...quote, venueRules: VG });
       const uiCodes = codesOf(ui);
       const mkCodes = (res.reasons || []).map((x) => x.code).sort();
       const verdict = c.expect.length === 0 ? 'VALID' : `REFUSED [${res.reasons.map((x) => x.code).join(',')}]`;
@@ -370,14 +427,14 @@ async function noWriteProof() {
 
     // FAIL CLOSED: a market whose rules are not on the spec → RULES_UNREADABLE, never a default band.
     audits = [];
-    const noRules = await guardAdapter.postOrder({ tokenId: '0xg', side: 'BUY', price: 0.50, size: 200 /* no venueRules */ });
+    const noRules = await guardAdapter.postOrder({ marketId: LIVE_MKT, tokenId: '0xg', side: 'BUY', price: 0.50, size: 200 /* no venueRules */ });
     ok(noRules.ok === false && noRules.gate === 'venue-rules' && noRules.reasons[0].code === CODES.RULES_UNREADABLE, 'guard: NO venue rules on the spec → RULES_UNREADABLE (fail closed — the maker will not sign for a market it cannot judge)');
 
     // DRY-RUN, out of band: even with a live mode + dry-run on, the guard refuses to produce a signable order —
     // the refusal happens BEFORE the mode/shadow branch, so no mode can bypass it.
     const daudits = [];
     const dry = createMakerAdapter({ mode: 'live', dryRun: true, auditSink: (rec) => daudits.push(rec) });
-    const dres = await dry.postOrder({ tokenId: '0xg', side: 'BUY', price: 0.54, size: 200, venueRules: VG });
+    const dres = await dry.postOrder({ marketId: LIVE_MKT, tokenId: '0xg', side: 'BUY', price: 0.54, size: 200, venueRules: VG });
     ok(dres.ok === false && dres.sent === false && dres.gate === 'venue-rules' && dres.reasons.some((x) => x.code === CODES.OUT_OF_BAND), 'guard: in DRY-RUN an out-of-band offset is REFUSED (no signable order produced) — the guard is before the mode branch, no mode bypasses it');
     ok(daudits.some((a) => a.outcome === 'reject-venue-rules'), 'guard: the dry-run refusal is AUDITED with its reason code');
 
@@ -637,12 +694,12 @@ const { reconcile } = require('../lib/maker/reconcile');
   };
   // sanity: the daily-loss limit is what usage now measures
   ok(readUsage({ userId: 'op', now: NOWMS }, { auditFile: dlAudit, fillsFile: dlFills }).realisedDailyPnlUsd === -50, 'usage: realised daily P&L reads −$50 from the fill ledger (the input the daily-loss limit needed)');
-  const dlAdapter = createMakerAdapter({ mode: 'live-min', fundingApproved: true, credsProvider: async () => { throw new Error('unused'); }, signerProvider: async () => { throw new Error('unused'); }, safety: dlSafety });
-  return dlAdapter.postOrder({ tokenId: '0xZ', side: 'BUY', price: 0.5, size: 10, tickSize: 0.01, userId: 'op', venueRules: VR }).then(dlRes => {
+  const dlAdapter = createMakerAdapter({ mode: 'live-min', liveMinMarket: LIVE_MKT, fundingApproved: true, credsProvider: async () => { throw new Error('unused'); }, signerProvider: async () => { throw new Error('unused'); }, safety: dlSafety });
+  return dlAdapter.postOrder({ marketId: LIVE_MKT, tokenId: '0xZ', side: 'BUY', price: 0.5, size: 10, tickSize: 0.01, userId: 'op', venueRules: VR }).then(dlRes => {
     ok(dlRes.ok === false && dlRes.gate === 'limit-daily-loss', 'daily-loss: a placement while realised loss ≤ −cap is REFUSED at the daily-loss gate (limit-daily-loss)');
     ok(KS.checkKill({ userId: 'op' }, { stateFile: killFile }).gate === 'kill-user', 'daily-loss: the breach AUTO-TRIPS a durable per-user kill (kill-user) — audited, survives restart');
     // the kill blocks the NEXT order for that user
-    return dlAdapter.postOrder({ tokenId: '0xZ', side: 'BUY', price: 0.5, size: 10, tickSize: 0.01, userId: 'op', venueRules: VR });
+    return dlAdapter.postOrder({ marketId: LIVE_MKT, tokenId: '0xZ', side: 'BUY', price: 0.5, size: 10, tickSize: 0.01, userId: 'op', venueRules: VR });
   }).then(blocked => {
     ok(blocked.ok === false && blocked.gate === 'kill-user', 'daily-loss: the very next order for the user is blocked by the auto-kill (kill-user)');
     // NO automatic midnight reset: rolling to the next UTC day resets the ACCUMULATION but the kill PERSISTS.

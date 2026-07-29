@@ -354,8 +354,19 @@ async function tick(cfg, adapter) {
     //    on-tick, inside the reward band (radius = maxSpread/2), at or above min_incentive_size, inside
     //    the venue price range. A quote the guard refuses is NOT postable, whatever the planner thought.
     //    FAIL CLOSED: unreadable rules ⇒ RULES_UNREADABLE ⇒ nothing is postable on this market. ──
-    const guardRules = { tick, scoringMid: mid, maxSpreadCents: maxSpreadC, minSize };
+    //
+    //    EACH QUOTE IS JUDGED IN ITS OWN BOOK'S SPACE. A NO-token order at q IS a YES order at 1 − q, so
+    //    the NO book's mid is 1 − mid. planQuotes already does this mirror (see lib/maker/quote-plan.js,
+    //    "EVERY LEG IS PRICED AND JUDGED IN ITS OWN BOOK'S SPACE") — but this guard call did not, and
+    //    passed the YES mid for every quote regardless of book. The result was that the planner and the
+    //    guard disagreed about the same order: a NO leg 0.45c from the NO mid was measured against the
+    //    YES mid, read as ~7c away, and refused OUT_OF_BAND. Since BUY NO is how a collateral-funded
+    //    maker offers the ASK side (a SELL YES needs inventory it does not have), this silently made
+    //    EVERY two-sided configuration impossible — and one-sided liquidity takes the ÷3 reward penalty,
+    //    or earns exactly zero when the mid is in the tails. Same mirror, same formula, both sides.
     for (const q of plan.quotes) {
+      const guardMid = (mid != null && q.book === 'no') ? +(1 - mid).toFixed(6) : mid;
+      const guardRules = { tick, scoringMid: guardMid, maxSpreadCents: maxSpreadC, minSize };
       const g = validateQuote(guardRules, { side: q.side, price: q.price, size: q.size });
       q.guard = { valid: g.valid, codes: g.reasons.map((r) => r.code) };
       if (!g.valid && q.postable) {
@@ -586,8 +597,20 @@ async function main() {
 
   const adapter = buildAdapter(cfg);
   if (adapter) log(`adapter built: mode=${adapter.mode} canWrite=${adapter.canWrite}`);
-  // Refuse to silently run live without wired providers — a forced live call would throw; log it once.
-  if (cfg.mode === 'live-min' || cfg.mode === 'live') log('WARNING: live mode set, but live providers are NOT wired in this build — no order can be signed. This is intentional (arming is a separate reviewed change).');
+  // ── WHAT ACTUALLY STOPS AN ORDER IN LIVE MODE. The message here used to say "live providers are NOT
+  //    wired in this build — no order can be signed". That has been FALSE since 21120aa ("wire live
+  //    Polymarket signer providers"): buildAdapter() above calls makerLiveProviders() and passes real
+  //    creds + signing-key thunks. Leaving the old text in place meant the log confidently named the
+  //    wrong blocker, and anyone reading it went looking for missing providers instead of the real gap.
+  //
+  //    The real gap is HERE, in this engine: the tick loop computes quotes, guards them, scores them and
+  //    counts them as `wouldPost` — and then throws them away. agent35 calls cancelMarketOrders and
+  //    listOpenOrders; it has never once called adapter.postOrder (confirmed by `git log -S`). There is
+  //    no placement call to gate, which is why every safety layer below can be intact and still nothing
+  //    is ever placed. Wiring it is a separate reviewed change; see the report accompanying this commit.
+  if (cfg.mode === 'live-min' || cfg.mode === 'live') {
+    log('WARNING: live mode set, but this engine NEVER CALLS postOrder — quotes are computed, guarded and counted as wouldPost, then discarded. Live providers ARE wired (buildAdapter → makerLiveProviders); the missing piece is the placement call itself. No order can be placed. This is intentional (arming is a separate reviewed change).');
+  }
   // Per-cycle loop. The maker heartbeat is written at the END of every cycle — success OR throw — so a
   // STOPPED heartbeat is the death signal the watchdog keys on, while an errored cycle still heartbeats
   // (with lastError populated). openOrderCount comes from the venue via tick's state.

@@ -98,19 +98,25 @@ async function main() {
   line('\n[roles]');
   line('  signer (signs the order)      : from custody signing key (printed by healthCheck below)');
   line('  maker/funder (holds funds)    :', funder.funderAddress || '(none — EOA self-custody)');
-  line('  signatureType                 :', funder.signatureType, '(1 = POLY_PROXY: EOA signs FOR the proxy)');
+  line('  signatureType                 :', funder.signatureType, '(0=EOA 1=POLY_PROXY 2=POLY_GNOSIS_SAFE 3=POLY_1271 — per ACCOUNT, verified by scripts/maker-signing-proof.ts)');
   if (!funder.funderAddress) { line('REFUSE: no funder configured — an order would settle against the empty signer. Aborting.'); process.exit(2); }
 
   const { credsProvider, signerProvider } = makerLiveProviders();
-  const adapter = createMakerAdapter({
-    mode: 'live-min', fundingApproved: true, liveMinCapUsd: 25, orderTtlSeconds: TTL_SECONDS,
-    credsProvider, signerProvider, funder,
-  });
 
   let orderId = null;
   let cancelConfirmed = false;
   let filled = false;
   const market = pickMarket();
+
+  // live-min is restricted to ONE market (evaluateLiveMinMarketGate). This script picks its own market
+  // at runtime, so it pins the adapter to THAT market rather than to MAKER_LIVE_MIN_MARKET — otherwise
+  // the gate would (correctly) refuse the order as belonging to an unpinned market. The pin and the
+  // order's marketId therefore come from a single value, and the gate still proves they agree.
+  const adapter = createMakerAdapter({
+    mode: 'live-min', fundingApproved: true, liveMinCapUsd: 25, orderTtlSeconds: TTL_SECONDS,
+    liveMinMarket: market.marketId,
+    credsProvider, signerProvider, funder,
+  });
   try {
     // ── 1. LIVE AUTH (read-only) — proves creds + signer + connectivity BEFORE placing anything ──
     const hc = await adapter.healthCheck();
@@ -168,7 +174,7 @@ async function main() {
 
     // ── 5. PLACE THE ORDER ──
     line('\n[place] posting the order …');
-    const res = await adapter.postOrder({ tokenId: market.tokenId, side: 'BUY', price, size, tickSize: tick, postOnly: true, venueRules, ttlSeconds: TTL_SECONDS });
+    const res = await adapter.postOrder({ marketId: market.marketId, tokenId: market.tokenId, side: 'BUY', price, size, tickSize: tick, postOnly: true, venueRules, ttlSeconds: TTL_SECONDS });
     line('  postOrder → ok:', res.ok, '| sent:', res.sent, '| gate:', res.gate || '(none)', '| orderId:', res.orderId || '(none)');
     line('  FULL venue response:', JSON.stringify(res.response || res).slice(0, 600));
     // The venue can return an HTTP error object (e.g. 403) WITHOUT success:false — treat any non-2xx status

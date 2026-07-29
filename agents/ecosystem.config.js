@@ -419,7 +419,22 @@ module.exports = {
       // type 3 (POLY_1271): chosen by the VENUE, not by us — scripts/maker-signing-proof.ts signed a
       // real order for this funder at each candidate type and validateOrder() reverted on 1 and 2 and
       // ACCEPTED 3. This is a post-2026-06-29 ERC-1271 deposit wallet, so 1 and 2 cannot work on it.
-      env:           { NODE_ENV: 'production', HOME: '/root', ADMIN_ACCESS_SECRET: process.env.ADMIN_ACCESS_SECRET, MAKER_MODE: 'off', MAKER_FUNDING_APPROVED: 'false', MAKER_FUNDER_ADDRESS: '0x4C81F19a436e8174f1f3b07d7c0169150Fbdbdee', MAKER_SIGNATURE_TYPE: '3', MAKER_LIVE_MIN_MARKET: '0x6bd56627aa21311850825edb27e53434a0e17a4f782be0086bc07f71eee00d0d', MAKER_LIVE_MIN_CAP_USD: '25', MAKER_ORDER_TTL_SECONDS: '180' },
+      //
+      // MAKER_LIVE_MIN_MARKET — repointed 2026-07-29 to the Harry Kane Ballon d'Or market
+      // (0x12dc2b61…d06a). The previous pin (0x6bd56627…, "Putin out by 2026") could not host a viable
+      // test: its mid is 0.085, and a one-sided configuration with the mid in the tails (<0.10) scores
+      // EXACTLY ZERO under Polymarket's reward formula, while making it two-sided cost ~$198 because
+      // min_incentive_size there is 200 shares and the NO side prices near $0.91. The new market has
+      // min_incentive_size 50, mid ≈0.461 (nowhere near the tails) and a $117/day pool, so a genuine
+      // two-sided pair costs ~$50 against the 100 pUSD actually deposited. Tick 0.001, negRisk TRUE —
+      // its orders route to NegRiskCtfExchangeV2, so the Neg-Risk approvals are load-bearing here.
+      //
+      // MAKER_LIVE_MIN_CAP_USD — raised 25 → 30. This cap is PER ORDER (adapter.js rejects any single
+      // postOrder above it), not a total. At min_incentive_size 50 the NO leg is 50 × ~0.534 ≈ $26.70,
+      // which a $25 cap would have rejected outright — leaving a one-sided book that earns nothing. $30
+      // is the smallest round number that admits both legs while still bounding a single order to well
+      // under a third of the deposited collateral. Total at rest is ~$50 of the 100 pUSD.
+      env:           { NODE_ENV: 'production', HOME: '/root', ADMIN_ACCESS_SECRET: process.env.ADMIN_ACCESS_SECRET, MAKER_MODE: 'off', MAKER_FUNDING_APPROVED: 'false', MAKER_FUNDER_ADDRESS: '0x4C81F19a436e8174f1f3b07d7c0169150Fbdbdee', MAKER_SIGNATURE_TYPE: '3', MAKER_LIVE_MIN_MARKET: '0x12dc2b61723b2a54fc1947a307389b5f32038e7a29a0e936ad1fe410b969d06a', MAKER_LIVE_MIN_CAP_USD: '30', MAKER_ORDER_TTL_SECONDS: '180' },
     },
     {
       name:          'agent36-book-velocity',
