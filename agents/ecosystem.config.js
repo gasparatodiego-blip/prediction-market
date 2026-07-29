@@ -403,7 +403,23 @@ module.exports = {
       // referred to a wallet whose signing key is now revoked (custody rows retained, revokedAt set),
       // so leaving MAKER_FUNDING_APPROVED='true' would pre-approve funding for a wallet we no longer
       // hold. Re-arming is an explicit human edit, after the new self-custody signer is imported.
-      env:           { NODE_ENV: 'production', HOME: '/root', ADMIN_ACCESS_SECRET: process.env.ADMIN_ACCESS_SECRET, MAKER_MODE: 'off', MAKER_FUNDING_APPROVED: 'false', MAKER_SIGNATURE_TYPE: '0', MAKER_LIVE_MIN_MARKET: '0x6bd56627aa21311850825edb27e53434a0e17a4f782be0086bc07f71eee00d0d', MAKER_LIVE_MIN_CAP_USD: '25', MAKER_ORDER_TTL_SECONDS: '180' },
+      //
+      // MAKER_FUNDER_ADDRESS / MAKER_SIGNATURE_TYPE — WHO the maker signs FOR (lib/.../funder.js).
+      // agent35-maker.js does NOT read .env itself; it takes process.env from pm2, so these must be
+      // named HERE or the agent silently falls back to self-custody EOA (type 0, maker == signer, an
+      // account holding nothing). Both are PUBLIC values (a 0x address and a small integer), so they
+      // are inlined rather than pulled from the gitignored .env — .env carries the same pair for the
+      // tsx scripts, which load it by hand. KEEP THE TWO IN SYNC: agent35 logs the pair it resolved on
+      // every boot ("signing identity — signatureType=… funder=…"), so drift shows up in `pm2 logs
+      // agent35-maker` rather than at the venue.
+      //
+      // funder 0x4C81F1…bdee: confirmed by polymarket.com's profile API, by eth_getCode (a deployed
+      // Solady ERC-1967 proxy whose owner() is the signer), and by CTFExchangeV2.validateOrder().
+      // It is NOT getProxyWalletAddress(signer) = 0x87a01e28…, which has no code and no funds.
+      // type 3 (POLY_1271): chosen by the VENUE, not by us — scripts/maker-signing-proof.ts signed a
+      // real order for this funder at each candidate type and validateOrder() reverted on 1 and 2 and
+      // ACCEPTED 3. This is a post-2026-06-29 ERC-1271 deposit wallet, so 1 and 2 cannot work on it.
+      env:           { NODE_ENV: 'production', HOME: '/root', ADMIN_ACCESS_SECRET: process.env.ADMIN_ACCESS_SECRET, MAKER_MODE: 'off', MAKER_FUNDING_APPROVED: 'false', MAKER_FUNDER_ADDRESS: '0x4C81F19a436e8174f1f3b07d7c0169150Fbdbdee', MAKER_SIGNATURE_TYPE: '3', MAKER_LIVE_MIN_MARKET: '0x6bd56627aa21311850825edb27e53434a0e17a4f782be0086bc07f71eee00d0d', MAKER_LIVE_MIN_CAP_USD: '25', MAKER_ORDER_TTL_SECONDS: '180' },
     },
     {
       name:          'agent36-book-velocity',

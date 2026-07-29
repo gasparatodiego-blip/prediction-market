@@ -84,9 +84,9 @@ export interface ChainReadResult {
  *
  * The funds, allowances and outcome tokens live on the PROXY, never on the signer — so this returns the
  * proxy as `wallet` and NEVER falls back to the signer for it (reading the signer's empty balance is the
- * exact bug this fixes). Resolution order: MAKER_WALLET_ADDRESS override → the stored proxyAddress →
- * MAKER_FUNDER_ADDRESS (the same funder the signing adapter uses). The signer is returned separately so
- * the page can show both, labelled.
+ * exact bug this fixes). Resolution order: MAKER_WALLET_ADDRESS override → MAKER_FUNDER_ADDRESS (the same
+ * funder the signing adapter uses, and therefore the wallet these numbers must describe) → the stored
+ * proxyAddress. The signer is returned separately so the page can show both, labelled.
  */
 async function resolveWallet(): Promise<{ wallet: string | null; source: ChainReadResult['walletSource']; signer: string | null }> {
   const override = process.env.MAKER_WALLET_ADDRESS;
@@ -111,9 +111,13 @@ async function resolveWallet(): Promise<{ wallet: string | null; source: ChainRe
   }
 
   if (override && isAddress(override)) return { wallet: override, source: 'env', signer };
-  if (proxy) return { wallet: proxy, source: 'custody', signer };
+  // MAKER_FUNDER_ADDRESS OUTRANKS the stored proxyAddress: it is the address the signing path writes into
+  // every order's `maker` field, so it is the only wallet whose balances and approvals describe what the
+  // maker can actually do. A stale or wrongly-derived custody row must not be able to point this terminal
+  // at a different wallet and report PASS for approvals the maker will never use.
   const envFunder = process.env.MAKER_FUNDER_ADDRESS;
   if (envFunder && isAddress(envFunder)) return { wallet: envFunder, source: 'env-funder', signer };
+  if (proxy) return { wallet: proxy, source: 'custody', signer };
   // No proxy resolvable. Return null for the funds address rather than the signer — an empty signer read
   // would be a lie about where the money is.
   return { wallet: null, source: null, signer };

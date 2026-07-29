@@ -116,6 +116,29 @@ const { createMakerAdapter, ALLOWED_OPS, LIVE_MIN_DEFAULT_CAP_USD, evaluatePlace
 
   const wired = createMakerAdapter({ mode: 'paper', funder: proxy });
   ok(wired.signatureType === 1 && wired.funderAddress === FUNDER, 'funder: the adapter reports the pair it will sign with (observable, not buried in a closure)');
+
+  // ── The CONFIGURED funder beats the DERIVED one, and a real contradiction is loud ──────────────────
+  // getProxyWalletAddress() is a counterfactual CREATE2 address that never fails and never returns zero,
+  // so "it returned something" proved nothing — and on this operator's account it returned an address
+  // with no code while the real funder held the money. These lock in that it can no longer win silently.
+  const { configuredFunder, assertProxyAgreesWithConfig, derivationApplies } =
+    require('../lib/venues/polymarket-clob-maker/proxy-wallet');
+  const DERIVED = '0x87a01e28e18aDe9670f31D6098eFFaDf6FeE5092'; // shape fixture: a different address
+
+  ok(configuredFunder({ MAKER_FUNDER_ADDRESS: FUNDER.toLowerCase() }) === FUNDER, 'proxy: configuredFunder checksums the env value');
+  ok(configuredFunder({}) === null && configuredFunder({ MAKER_FUNDER_ADDRESS: '0xnope' }) === null, 'proxy: configuredFunder returns null for unset/malformed — never a fabricated address');
+  ok(derivationApplies(1) === true && derivationApplies(3) === false && derivationApplies(2) === false, 'proxy: the ProxyWallet derivation is authoritative for signatureType 1 ONLY');
+
+  let divergeThrew = false;
+  try { assertProxyAgreesWithConfig({ configured: FUNDER, derived: DERIVED, signatureType: 1 }); } catch { divergeThrew = true; }
+  ok(divergeThrew, 'proxy: configured != derived on a type-1 account → THROW (the derivation is the authority there, so one of them is wrong)');
+
+  const t3 = assertProxyAgreesWithConfig({ configured: FUNDER, derived: DERIVED, signatureType: 3 });
+  ok(t3.ok === true && t3.applicable === false, 'proxy: configured != derived on a type-3 account → NOT a mismatch (wrong factory), configured stands');
+
+  ok(assertProxyAgreesWithConfig({ configured: null, derived: DERIVED, signatureType: 1 }).ok === true, 'proxy: nothing configured → nothing to contradict');
+  ok(assertProxyAgreesWithConfig({ configured: FUNDER, derived: null, signatureType: 1 }).ok === true, 'proxy: derivation unreadable → NOT a mismatch (an RPC outage is not evidence)');
+  ok(assertProxyAgreesWithConfig({ configured: FUNDER, derived: FUNDER.toLowerCase(), signatureType: 1 }).ok === true, 'proxy: agreement is case-insensitive (checksum casing is not a mismatch)');
 }
 
 // ── 2c. RE-POINTED FAIL-CLOSED PLACEMENT GATE: each blocker fires independently, BEFORE any network/key ──

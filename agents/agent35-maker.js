@@ -554,6 +554,20 @@ async function main() {
   const cfg = loadMakerConfig(process.env);
   log(`starting — MAKER_MODE=${cfg.mode} dryRun=${cfg.dryRun} canWrite=${cfg.canWrite} (default off; arms nothing)`);
 
+  // ── WHO THIS PROCESS SIGNS FOR, logged at every boot. agent35 does NOT read .env (it takes process.env
+  //    from pm2), so a funder set only in .env reaches the tsx scripts and NOT this agent — the two then
+  //    disagree with nothing on screen to say so. Printing the RESOLVED pair makes that class of drift
+  //    visible in the log instead of at the venue. resolveFunder throws on a half-configured pair, which
+  //    is the safe direction: refuse to boot rather than quietly fall back to signing as a bare EOA. ──
+  try {
+    const { resolveFunder } = require('../lib/venues/polymarket-clob-maker/funder');
+    const f = resolveFunder(process.env);
+    log(`signing identity — signatureType=${f.signatureType} (0=EOA 1=POLY_PROXY 2=POLY_GNOSIS_SAFE 3=POLY_1271) funder=${f.funderAddress || '— none (self-custody EOA, maker == signer)'} source=${f.source}`);
+  } catch (e) {
+    log('FATAL (startup assertion): funder configuration is invalid — ' + e.message);
+    process.exit(1);
+  }
+
   // ── STARTUP ASSERTION: native TTL vs the refresh loop (fail-closed, refuse to start on violation) ──
   // A TTL <= the refresh interval guarantees permanent gaps in the book (an order expires before the maker
   // re-quotes it). The refresh interval is the SLOWER of the tick and the per-leg re-quote min-interval —

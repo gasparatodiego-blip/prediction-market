@@ -8,10 +8,19 @@
 //   npx tsx scripts/maker-store-proxy.ts            # resolve + persist for the active maker row
 //   npx tsx scripts/maker-store-proxy.ts --dry-run  # resolve + print, write nothing
 //
-// THE PROOF: the derived proxy must equal what Polymarket itself reports for this signer. The script
-// resolves on-chain (CTFExchangeV2.getProxyWalletAddress) AND cross-checks the profile API, and REFUSES
-// to persist a value the two disagree on. It also refuses if a proxyAddress is already stored and differs
-// from the freshly derived one (a silent identity change must never be written unnoticed).
+// WHAT GETS PERSISTED: the CONFIGURED funder (MAKER_FUNDER_ADDRESS) when one is set, because that is the
+// address the signing path puts in every order's `maker` field — persisting anything else would make the
+// preflight and the settings badge describe a wallet the maker never trades from. Only when nothing is
+// configured does it fall back to the on-chain ProxyWallet derivation.
+//
+// THE PROOF: whatever it is about to persist must equal what Polymarket itself reports for this signer
+// (the profile API). It REFUSES to persist a value the two disagree on. It also refuses if a proxyAddress
+// is already stored and differs (a silent identity change must never be written unnoticed), and — via
+// assertProxyAgreesWithConfig — if the configured funder contradicts the derivation on a signatureType 1
+// account, where the derivation is the authority.
+//
+// The ProxyWallet derivation is NOT authoritative for signatureType 2/3 accounts: it is a counterfactual
+// CREATE2 address from the wrong factory that never fails and never returns zero. See proxy-wallet.js.
 
 import { JsonRpcProvider, isAddress } from 'ethers'
 import { PrismaClient } from '@prisma/client'
@@ -42,17 +51,27 @@ async function main() {
     const provider = new JsonRpcProvider(RPC)
     let res
     try {
-      res = await resolveProxyForSigner(signer, { provider })
+      res = await resolveProxyForSigner(signer, { provider, env: process.env })
     } finally {
       try { provider.destroy() } catch { /* already closed */ }
     }
 
-    console.log(`\non-chain getProxyWalletAddress(signer) = ${res.onChain ?? '—'}`)
+    console.log(`\nconfigured MAKER_FUNDER_ADDRESS        = ${res.configured ?? '— (unset)'}`)
+    console.log(`on-chain getProxyWalletAddress(signer) = ${res.onChain ?? '—'}${res.applicable ? '' : '   (WRONG FACTORY for this signature type — informational only)'}`)
     console.log(`profile API proxyWallet(signer)        = ${res.profile ?? '— (unreachable)'}`)
-    console.log(`cross-check agree                      = ${res.agree === null ? 'profile unreachable (on-chain stands)' : res.agree}`)
+    console.log(`profile vs the address to persist      = ${res.source === 'config'
+      ? (res.agreeConfig === null ? 'profile unreachable (configured funder stands)' : String(res.agreeConfig))
+      : (res.agree === null ? 'profile unreachable (on-chain stands)' : String(res.agree))}`)
+    console.log(`verdict                                = ${res.verdict}`)
 
-    if (!res.proxyAddress) throw new Error('on-chain resolver returned no proxy for this signer (self-custody EOA, or exchange unreachable) — refusing to persist a fabricated address')
-    if (res.agree === false) throw new Error(`profile API (${res.profile}) DISAGREES with on-chain (${res.onChain}) — refusing to persist a contested proxy identity`)
+    if (!res.proxyAddress) throw new Error('no funder resolved for this signer (set MAKER_FUNDER_ADDRESS, or this is a self-custody EOA) — refusing to persist a fabricated address')
+    // Cross-check the address we are ACTUALLY about to persist, not the one we are not.
+    if (res.source === 'config' && res.agreeConfig === false) {
+      throw new Error(`profile API (${res.profile}) DISAGREES with the configured MAKER_FUNDER_ADDRESS (${res.configured}) — refusing to persist a contested proxy identity`)
+    }
+    if (res.source === 'onchain' && res.agree === false) {
+      throw new Error(`profile API (${res.profile}) DISAGREES with on-chain (${res.onChain}) — refusing to persist a contested proxy identity`)
+    }
     if (row.proxyAddress && isAddress(row.proxyAddress) && row.proxyAddress.toLowerCase() !== res.proxyAddress.toLowerCase()) {
       throw new Error(`a different proxy is already stored (${row.proxyAddress}) — refusing to silently overwrite; revoke + re-store if the signer truly changed`)
     }
