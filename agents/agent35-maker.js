@@ -13,9 +13,13 @@
 //     the real band config + rewardScore; computes the desired quotes, runs every risk rail, decides
 //     re-quotes, reconciles, and LOGS what it WOULD post (out-of-book gap + expected S) — ZERO venue
 //     writes, no key load.
-//   • live-min / live → constructs the maker adapter with credsProvider/signerProvider. In THIS build
-//     those providers THROW (live wiring is a separate reviewed change, exactly like the news-guard
-//     cancel adapter). So even MAKER_MODE=live cannot obtain a key to sign an order here.
+//   • live-min / live → constructs the maker adapter with REAL credsProvider/signerProvider
+//     (lib/maker/live-providers) and hands every postable quote to adapter.postOrder. The adapter then
+//     decides: gate chain, live-min notional cap, live-min single-market restriction, order-version
+//     gate, and the exchange's own validateOrder() via eth_call.
+//   • placement (MAKER_PLACEMENT) → 'dry-run' by DEFAULT, even in live modes: the order is built,
+//     SIGNED and validated on-chain, then reported and dropped. Nothing reaches POST /order until this
+//     is deliberately set to the exact string 'send'. It is the last belt and it defaults closed.
 //
 // Reward math, the news-guard, the structural-baseline gate, entitlement/redaction and the cancel-only
 // adapter are all REUSED, never changed. All quoting is off the ADJUSTED mid (agent34), never plain mid.
@@ -181,12 +185,18 @@ function loadInputs() {
   }
   const rewardScoreByMarket = new Map();
   for (const m of (norm && norm.markets) || []) if (m.marketId && m.rewardScore) rewardScoreByMarket.set(m.marketId, m.rewardScore);
+  // negRisk decides WHICH EXCHANGE an order settles against (NegRiskCtfExchangeV2 vs CTFExchangeV2), so
+  // it must come from the venue's own feed, never be assumed. A market absent here yields undefined →
+  // `=== true` below is false → the order is built for the standard exchange, and validateOrder would
+  // reject it against the wrong one rather than it silently settling somewhere unintended.
+  const negRiskByMarket = new Map();
+  for (const m of (norm && norm.markets) || []) if (m.marketId && typeof m.negRisk === 'boolean') negRiskByMarket.set(m.marketId, m.negRisk);
   const newsByMarket = new Map();
   for (const [mid, s] of Object.entries((news && news.markets) || {})) newsByMarket.set(mid, s && s.severity);
   // The RAW board markets — the SAME /tmp/liquidity-rewards.json the board reads. The universe resolver
   // runs the board's shared filter functions over these, so the bot's set is the board's set by construction.
   const normMarkets = (norm && Array.isArray(norm.markets)) ? norm.markets : [];
-  return { books, bandByMarket, rewardScoreByMarket, newsByMarket, normMarkets };
+  return { books, bandByMarket, rewardScoreByMarket, newsByMarket, normMarkets, negRiskByMarket };
 }
 
 // The per-market operator config that carries the inventory ceiling. Absent row ⇒ ceiling 0 ⇒ the bot
@@ -228,7 +238,7 @@ function accrueReward(legKey, followScore, staticFrozenPrice, mid, vCents, now) 
 
 async function tick(cfg, adapter) {
   const now = Date.now();
-  const { books, bandByMarket, rewardScoreByMarket, newsByMarket, normMarkets } = loadInputs();
+  const { books, bandByMarket, rewardScoreByMarket, newsByMarket, normMarkets, negRiskByMarket } = loadInputs();
   const legsByMarket = await loadLegs();
   const placementsByMarket = await loadPlacements();
   const ngCfg = loadNewsGuardConfig(process.env);
@@ -468,6 +478,60 @@ async function tick(cfg, adapter) {
     const desiredPostable = plan.quotes.filter(q => q.postable);
     const recon = reconcile({ desired: desiredPostable, venueOrders: [], tick });
 
+    // ── PLACEMENT — the call that had never existed in this engine ────────────────────────────────────
+    // Everything above decides WHAT to quote; this is the only place that hands a quote to the adapter.
+    // Until now the loop computed `wouldPost` and threw the quotes away, which is why every safety layer
+    // could be intact and yet nothing was ever placed.
+    //
+    // This adds NO authority. Every existing belt still decides, and each one can only subtract:
+    //   • canWrite    — off/paper/dry-run never reach here at all
+    //   • durable kill + rails — a killed engine or a tripped rail places nothing this cycle
+    //   • capBlocked  — the per-market collateral ceiling already marked over-cap legs unpostable
+    //   • the adapter — re-runs the venue-rules guard, the live-min cap, the live-min single-market
+    //                   restriction, the full gate chain, the order-version gate, validateOrder, and
+    //                   (by default) stops at dry-run without sending.
+    // The adapter is the authority on whether an order goes out; this loop only offers candidates.
+    //
+    // FAIL LOUD, NEVER SILENTLY: a refusal is logged with the gate that produced it, and a throw is
+    // caught per-leg so one bad leg cannot take down the cycle — but it is recorded, never swallowed.
+    const placements = [];
+    const placementBlocked =
+      !adapter ? 'no adapter (mode=off)'
+        : !adapter.canWrite ? `mode=${cfg.mode} cannot write`
+          : durableKill.killed ? `durable kill active (${durableKill.scope || 'global'})`
+            : !rails.allowNewPlacement ? `rails refuse new placement (${rails.cancelScope})`
+              : null;
+    if (placementBlocked) {
+      if (recon.toPlace.length && cfg.mode !== 'off') log(`placement skipped on ${marketRef}: ${placementBlocked} (${recon.toPlace.length} quote(s) held back)`);
+    } else {
+      for (const q of recon.toPlace) {
+        // Each leg is judged in ITS OWN book's space — the same mirror the planner and the guard use.
+        const legMid = (mid != null && q.book === 'no') ? +(1 - mid).toFixed(6) : mid;
+        try {
+          const res = await adapter.postOrder({
+            marketId,                                   // REQUIRED: the live-min single-market gate proves this
+            tokenId: q.token, side: q.side, price: q.price, size: q.size,
+            tickSize: tick, negRisk: negRiskByMarket.get(marketId) === true, postOnly: true,
+            venueRules: { tick, scoringMid: legMid, maxSpreadCents: maxSpreadC, minSize },
+            ttlSeconds: cfg.orderTtlSeconds, userId: OPERATOR_USER,
+            decision: { book: q.book, kind: q.kind, mode: q.mode, distanceC: q.distanceC, score: q.score },
+          });
+          placements.push({ book: q.book, kind: q.kind, side: q.side, price: q.price, size: q.size,
+            ok: res.ok === true, sent: res.sent === true, dryRun: res.dryRun === true,
+            gate: res.gate || null, reason: res.reason || null, orderId: res.orderId || null,
+            wouldSend: res.wouldSend || null });
+          if (res.dryRun) log(`DRY-RUN ${marketRef} ${q.side} ${q.book} ${q.size}@${q.price} → validateOrder ACCEPTED, NOT sent (placement=${adapter.placement})`);
+          else if (res.ok) log(`PLACED ${marketRef} ${q.side} ${q.book} ${q.size}@${q.price} orderId=${res.orderId}`);
+          else log(`REFUSED ${marketRef} ${q.side} ${q.book} ${q.size}@${q.price} gate=${res.gate || '-'} ${res.reason || ''}`);
+        } catch (e) {
+          // A throw here is NOT "nothing happened": the adapter records an intent before it sends, so
+          // the order may or may not exist at the venue. Say so plainly rather than implying a clean miss.
+          log(`PLACEMENT THREW on ${marketRef} ${q.side} ${q.book} ${q.size}@${q.price}: ${e.message} — outcome AMBIGUOUS, check the audit ledger`);
+          placements.push({ book: q.book, kind: q.kind, side: q.side, price: q.price, size: q.size, ok: false, sent: null, error: e.message });
+        }
+      }
+    }
+
     // ── what the engine WOULD do this tick (paper shadow) ──
     if (cfg.mode !== 'off') {
       appendMakerAudit({ ts: now, venue: 'polymarket', op: 'plan', mode: cfg.mode, marketRef,
@@ -491,6 +555,9 @@ async function tick(cfg, adapter) {
         headroomUsd: capHeadroomUsd, blockedLegs: capped.blockedCount, capExceeded: capped.capExceeded,
       },
       guard: { refused: plan.quotes.filter((q) => q.guard && !q.guard.valid).length, source: 'lib/maker/venue-rules.validateQuote' },
+      // What the placement path actually did this cycle: the adapter's verdict per leg, including
+      // the exact order a dry-run would have sent. Externally observable in /tmp/maker-state.json.
+      placement: { mode: adapter ? adapter.placement : null, blocked: placementBlocked, attempted: placements.length, results: placements },
       // The position guards: measured inventory (null = unreadable, never 0), the SELL legs they blocked
       // and any YES+NO pair priced at or above $1. Externally observable in /tmp/maker-state.json.
       inventory: { yesShares: inventory.yes, noShares: inventory.no, wallet: inventory.wallet, source: inventory.source },

@@ -434,7 +434,14 @@ module.exports = {
       // which a $25 cap would have rejected outright — leaving a one-sided book that earns nothing. $30
       // is the smallest round number that admits both legs while still bounding a single order to well
       // under a third of the deposited collateral. Total at rest is ~$50 of the 100 pUSD.
-      env:           { NODE_ENV: 'production', HOME: '/root', ADMIN_ACCESS_SECRET: process.env.ADMIN_ACCESS_SECRET, MAKER_MODE: 'off', MAKER_FUNDING_APPROVED: 'false', MAKER_FUNDER_ADDRESS: '0x4C81F19a436e8174f1f3b07d7c0169150Fbdbdee', MAKER_SIGNATURE_TYPE: '3', MAKER_LIVE_MIN_MARKET: '0x12dc2b61723b2a54fc1947a307389b5f32038e7a29a0e936ad1fe410b969d06a', MAKER_LIVE_MIN_CAP_USD: '30', MAKER_ORDER_TTL_SECONDS: '180' },
+      //
+      // MAKER_PLACEMENT — 'dry-run' is already the code default (anything but the exact string 'send'
+      // resolves to dry-run), but it is named HERE anyway so the deployed posture is READABLE rather
+      // than inferred from a default. In dry-run the engine builds and SIGNS each order and puts it to
+      // the exchange's own validateOrder() via eth_call, then reports it and drops it — POST /order is
+      // never reached. Flipping this to 'send' is the single deliberate act that lets real orders leave
+      // this host; it is independent of MAKER_MODE, so arming the mode alone still sends nothing.
+      env:           { NODE_ENV: 'production', HOME: '/root', ADMIN_ACCESS_SECRET: process.env.ADMIN_ACCESS_SECRET, MAKER_MODE: 'off', MAKER_PLACEMENT: 'dry-run', MAKER_FUNDING_APPROVED: 'false', MAKER_FUNDER_ADDRESS: '0x4C81F19a436e8174f1f3b07d7c0169150Fbdbdee', MAKER_SIGNATURE_TYPE: '3', MAKER_LIVE_MIN_MARKET: '0x12dc2b61723b2a54fc1947a307389b5f32038e7a29a0e936ad1fe410b969d06a', MAKER_LIVE_MIN_CAP_USD: '30', MAKER_ORDER_TTL_SECONDS: '180' },
     },
     {
       name:          'agent36-book-velocity',

@@ -22,7 +22,12 @@ set -uo pipefail
 
 BASE_URL="${KILL_BASE_URL:-http://localhost:3000}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ENV_FILE="$REPO_ROOT/.env.local"
+# The admin secret may live in EITHER file. This script previously read .env.local ONLY, and on a host
+# where the secret lives in .env — this one — the panic button failed on its first line with "cannot
+# read .env.local" and never reached the kill. A kill switch that depends on which of two conventional
+# filenames the operator happened to use is not a kill switch. Search both, in the same order every
+# other component does (lib, ecosystem.config.js): .env first, then .env.local overrides it.
+ENV_FILES="$REPO_ROOT/.env $REPO_ROOT/.env.local"
 STATE_FILE="$REPO_ROOT/data/safety-kill-switch.json"
 
 # EXACTLY ONE LINE OUT, on every path. curl's own diagnostics are captured to a scratch file and folded
@@ -34,24 +39,29 @@ fail() { printf 'KILL FAILED — %s\n' "$1" >&2; exit 1; }
 
 command -v curl >/dev/null 2>&1 || fail "curl is not installed"
 command -v node >/dev/null 2>&1 || fail "node is not installed (needed to read the durable state file)"
-[ -r "$ENV_FILE" ] || fail "cannot read $ENV_FILE (the admin secret lives there)"
+FOUND_ANY=0
+for f in $ENV_FILES; do [ -r "$f" ] && FOUND_ANY=1; done
+[ "$FOUND_ANY" = "1" ] || fail "cannot read either $REPO_ROOT/.env or $REPO_ROOT/.env.local (the admin secret lives in one of them)"
 
 # ── the secret, read in-process. No subshell that could surface it in a process listing. ──
 SECRET=""
-while IFS= read -r line || [ -n "$line" ]; do
-  case "$line" in
-    ADMIN_ACCESS_SECRET=*|export\ ADMIN_ACCESS_SECRET=*)
-      SECRET="${line#*ADMIN_ACCESS_SECRET=}"
-      SECRET="${SECRET%$'\r'}"
-      # strip one layer of surrounding quotes if present
-      case "$SECRET" in
-        \"*\") SECRET="${SECRET#\"}"; SECRET="${SECRET%\"}" ;;
-        \'*\') SECRET="${SECRET#\'}"; SECRET="${SECRET%\'}" ;;
-      esac
-      ;;
-  esac
-done < "$ENV_FILE"
-[ -n "$SECRET" ] || fail "ADMIN_ACCESS_SECRET is not set in .env.local — nothing to authenticate with"
+for f in $ENV_FILES; do
+  [ -r "$f" ] || continue
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in
+      ADMIN_ACCESS_SECRET=*|export\ ADMIN_ACCESS_SECRET=*)
+        SECRET="${line#*ADMIN_ACCESS_SECRET=}"
+        SECRET="${SECRET%$'\r'}"
+        # strip one layer of surrounding quotes if present
+        case "$SECRET" in
+          \"*\") SECRET="${SECRET#\"}"; SECRET="${SECRET%\"}" ;;
+          \'*\') SECRET="${SECRET#\'}"; SECRET="${SECRET%\'}" ;;
+        esac
+        ;;
+    esac
+  done < "$f"
+done
+[ -n "$SECRET" ] || fail "ADMIN_ACCESS_SECRET is not set in .env or .env.local — nothing to authenticate with"
 
 # JSON-escape the secret (backslash first, then quote) so an exotic character cannot break the body.
 esc="${SECRET//\\/\\\\}"

@@ -262,6 +262,42 @@ async function noWriteProof() {
     ok(wrong.valid === false && wrong.reasons.some((r) => r.code === 'OUT_OF_BAND'), 'guard mirror: judging the NO leg against the YES mid REFUSES it OUT_OF_BAND — the bug this mirror fixes');
   }
 
+  // ── 8e. PLACEMENT defaults to dry-run, and only the exact string 'send' arms the venue call ────────
+  // This is the belt that decides whether POST /order is ever reached. It must default closed, and it
+  // must not be talked into opening by a near-miss value: a typo, a stray space, a truthy-looking
+  // string. The cost of guessing wrong here is a real order with real money, so only 'send' counts.
+  {
+    ok(createMakerAdapter({ mode: 'paper' }).placement === 'dry-run', 'placement: unset → dry-run (the default is NOT to send)');
+    ok(createMakerAdapter({ mode: 'paper', placement: 'send' }).placement === 'send', "placement: the exact string 'send' arms the venue call");
+    // Surrounding whitespace is NORMALISED (an env var written as `MAKER_PLACEMENT=send ` means send) —
+    // that is trimming, not guessing. Everything else must match exactly, and case-sensitively: a
+    // truthy-looking or nearly-right value opens nothing.
+    ok(createMakerAdapter({ mode: 'paper', placement: '  send  ' }).placement === 'send', "placement: surrounding whitespace is trimmed ('  send  ' is still send)");
+    for (const v of ['', '  ', 'SEND', 'Send', 'sending', 'send-it', 'true', 'yes', '1', 'live', 'dry-run', 'dryrun', 'null']) {
+      const got = createMakerAdapter({ mode: 'paper', placement: v }).placement;
+      ok(got === 'dry-run', `placement: ${JSON.stringify(v)} → dry-run (a near-miss value never opens the venue path)`);
+    }
+    // It is INDEPENDENT of mode: a fully armed live-min adapter still defaults to not sending.
+    const armedButDry = createMakerAdapter({ mode: 'live-min', liveMinMarket: LIVE_MKT, fundingApproved: true, credsProvider: thrower, signerProvider: thrower, safety: permissiveSafety() });
+    ok(armedButDry.placement === 'dry-run', 'placement: an armed live-min adapter with funding attested STILL defaults to dry-run');
+  }
+
+  // ── 8f. validateOrder is consulted before sending, and fails CLOSED when it cannot be consulted ─────
+  // A revert means the exchange rejected the signed struct. An unreachable node means we do not KNOW.
+  // Those must never collapse into the same outcome as "accepted" — reading an RPC outage as approval
+  // is exactly how an unverified order reaches a venue.
+  {
+    const { orderToTuple, exchangeForOrder } = require('../lib/maker/order-validate');
+    ok(exchangeForOrder(false).key === 'ctfExchange', 'validate-order: a standard order is validated against CTFExchangeV2');
+    ok(exchangeForOrder(true).key === 'negRiskExchange', 'validate-order: a NEG-RISK order is validated against the NEG-RISK exchange, not the standard one');
+    const good = { salt: 1n, maker: '0x' + '1'.repeat(40), signer: '0x' + '2'.repeat(40), tokenId: 5n, makerAmount: 10n, takerAmount: 20n, side: 'BUY', signatureType: 3, timestamp: 7n, metadata: '0x' + '0'.repeat(64), builder: '0x' + '0'.repeat(64), signature: '0xdead' };
+    ok(orderToTuple(good)[6] === 0, 'validate-order: side BUY maps to uint8 0');
+    ok(orderToTuple({ ...good, side: 'SELL' })[6] === 1, 'validate-order: side SELL maps to uint8 1');
+    let partialThrew = false;
+    try { orderToTuple({ ...good, signature: undefined }); } catch { partialThrew = true; }
+    ok(partialThrew, 'validate-order: a signed order missing a field THROWS rather than validating a partial struct');
+  }
+
   // ── 8b. The throwing-provider belt is INDEPENDENT of the funding gate. Even if funding were attested
   //     (a TEST-only fundingApproved:true — agent35 never sets it, so the deployed engine still trips the
   //     funding gate above), this build's live wiring cannot obtain a key: liveClient() calls the (throwing)
