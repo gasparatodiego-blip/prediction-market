@@ -7,23 +7,21 @@ import RadarMark from './ui/RadarMark';
 import RadarScope from './ui/RadarScope';
 import ThemeToggle from './ThemeToggle';
 
-// Retired from the nav (UI only — routes redirect, agents/APIs untouched):
-//   'Funding' /dashboard/funding-arb — backtest-archived lane. agent10/15/18/19 and
-//     /api/crypto keep running; the ticker and other readers still consume them.
-//   'Sports'  /dashboard/sports      — superseded by 'Sport Arb'; /api/sports-snapshot stays live.
-// Both routes redirect via next.config.mjs, so old bookmarks and the links the ticker
-// API still emits land somewhere real instead of 404ing. Reversible: the page sources
-// are untouched, so restoring is a nav line + removing the redirect.
+// Nav trimmed to the Liquidity-Rewards product (UI only — every other route
+// redirects via next.config.mjs; agents, APIs and page sources are all untouched).
+// Retired tabs (prediction, carry, sport-arb, traders, portfolio, paper, plus the
+// already-archived copy/cex/hft/lp/mm/whales/funding-arb/sports) now redirect to
+// /dashboard/liquidity-rewards, so old bookmarks and the deep-links /api/ticker still
+// emits land on Rewards instead of 404ing. Reversible: restoring a tab is one nav
+// line here plus deleting its redirect.
+//   '/dashboard' itself redirects to /dashboard/liquidity-rewards, so the logo and
+//   any stray '/dashboard' link land on Rewards; the Overview hub page is kept but
+//   superseded by that redirect.
+//   'Maker' (/dashboard/maker) stays deliberately OUT of the nav: it is admin-gated
+//   in middleware.ts (404 for non-admins), reachable only by direct URL.
 const NAV_LINKS = [
-  { href: '/dashboard',                   label: 'Overview'   },
-  { href: '/dashboard/prediction',        label: 'Prediction' },
-  { href: '/dashboard/carry',             label: 'Carry'      },
-  { href: '/dashboard/sport-arb',         label: 'Sport Arb'  },
-  { href: '/dashboard/liquidity-rewards', label: 'Rewards'    },
-  { href: '/dashboard/traders',           label: 'Traders'    },
-  { href: '/dashboard/portfolio',         label: 'Portfolio'  },
-  { href: '/dashboard/paper',             label: 'Paper'      },
-  { href: '/how-it-works',                label: 'Guide'      },
+  { href: '/dashboard/liquidity-rewards', label: 'Rewards' },
+  { href: '/how-it-works',                label: 'Guide'   },
 ];
 
 export default function EdgeradarHeader() {

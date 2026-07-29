@@ -164,3 +164,20 @@ data/venue-maker-keys.json.tmp.*
 data/key-custody-audit.jsonl
 data/mid-history-coverage.json
 data/mid-history-coverage.json.tmp.*
+
+# config backups (never commit)
+sshd_config.bak-*
+*.bak-[0-9]*
+*.bak
+*.backup
+*_backup
+sshd_config
+sshd_config.d/
+
+# private keys / credentials (defensive — none tracked today)
+id_rsa
+id_ed25519
+*.key
+*.pem
+*.p12
+authorized_keys
