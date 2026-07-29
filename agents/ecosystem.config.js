@@ -399,10 +399,23 @@ module.exports = {
       // MAKER_ORDER_TTL_SECONDS: venue-native GTD expiry on every order (survives host death). Must exceed
       // the maker refresh interval or agent35 refuses to start (startup assertion). Venue GTD floor is 3min.
       // ADMIN_ACCESS_SECRET is read from .env (gitignored), never inlined here — this file is tracked.
-      // DISARMED 2026-07-29: mode back to 'off' and the funding attestation removed. The attestation
-      // referred to a wallet whose signing key is now revoked (custody rows retained, revokedAt set),
-      // so leaving MAKER_FUNDING_APPROVED='true' would pre-approve funding for a wallet we no longer
-      // hold. Re-arming is an explicit human edit, after the new self-custody signer is imported.
+      // MAKER_FUNDING_APPROVED — the HUMAN attestation that the funder is actually funded and approved.
+      // It was 'false' from 2026-07-29 because the previous attestation referred to a wallet whose
+      // signing key had since been revoked; attesting for a wallet you no longer hold is exactly the
+      // failure this flag exists to prevent.
+      //
+      // Set to 'true' on 2026-07-29 for funder 0x4C81F1…bdee, and it is an attestation with a verified
+      // basis rather than a formality. Read on-chain the same day (eth_call, block 91098546):
+      //   pUSD balance on the funder                          100.0
+      //   pUSD allowance → CTFExchangeV2                      unlimited
+      //   pUSD allowance → NegRiskCtfExchangeV2               unlimited
+      //   pUSD allowance → NegRiskAdapter                     unlimited
+      //   CTF ERC-1155 setApprovalForAll → all three           granted
+      // Confirmed twice, by scripts/maker-wallet-preflight.ts and by an independent direct read.
+      //
+      // THIS FLAG ALONE PLACES NOTHING. It removes ONE gate. MAKER_MODE=off still means no adapter is
+      // built at all, and MAKER_PLACEMENT=dry-run still means a fully armed adapter signs and validates
+      // but never POSTs. If the funder ever changes, set this back to 'false' FIRST.
       //
       // MAKER_FUNDER_ADDRESS / MAKER_SIGNATURE_TYPE — WHO the maker signs FOR (lib/.../funder.js).
       // agent35-maker.js does NOT read .env itself; it takes process.env from pm2, so these must be
@@ -441,7 +454,7 @@ module.exports = {
       // the exchange's own validateOrder() via eth_call, then reports it and drops it — POST /order is
       // never reached. Flipping this to 'send' is the single deliberate act that lets real orders leave
       // this host; it is independent of MAKER_MODE, so arming the mode alone still sends nothing.
-      env:           { NODE_ENV: 'production', HOME: '/root', ADMIN_ACCESS_SECRET: process.env.ADMIN_ACCESS_SECRET, MAKER_MODE: 'off', MAKER_PLACEMENT: 'dry-run', MAKER_FUNDING_APPROVED: 'false', MAKER_FUNDER_ADDRESS: '0x4C81F19a436e8174f1f3b07d7c0169150Fbdbdee', MAKER_SIGNATURE_TYPE: '3', MAKER_LIVE_MIN_MARKET: '0x12dc2b61723b2a54fc1947a307389b5f32038e7a29a0e936ad1fe410b969d06a', MAKER_LIVE_MIN_CAP_USD: '30', MAKER_ORDER_TTL_SECONDS: '180' },
+      env:           { NODE_ENV: 'production', HOME: '/root', ADMIN_ACCESS_SECRET: process.env.ADMIN_ACCESS_SECRET, MAKER_MODE: 'off', MAKER_PLACEMENT: 'dry-run', MAKER_FUNDING_APPROVED: 'true', MAKER_FUNDER_ADDRESS: '0x4C81F19a436e8174f1f3b07d7c0169150Fbdbdee', MAKER_SIGNATURE_TYPE: '3', MAKER_LIVE_MIN_MARKET: '0x12dc2b61723b2a54fc1947a307389b5f32038e7a29a0e936ad1fe410b969d06a', MAKER_LIVE_MIN_CAP_USD: '30', MAKER_ORDER_TTL_SECONDS: '180' },
     },
     {
       name:          'agent36-book-velocity',

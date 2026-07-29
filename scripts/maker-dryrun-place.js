@@ -18,8 +18,9 @@
 //
 // fundingApproved is set TRUE here, and that is a test-only attestation: without it the gate chain
 // refuses before the order is ever built, and there would be nothing to show. It grants no ability to
-// send — the dry-run branch is downstream of every gate and returns without POSTing. agent35 itself
-// still reads MAKER_FUNDING_APPROVED from the environment, which remains false.
+// send — the dry-run branch is downstream of every gate and returns without POSTing. As of 2026-07-29
+// agent35's own MAKER_FUNDING_APPROVED is 'true' (attested against a verified funder), so this line no
+// longer differs from the deployed value; what still stops agent35 is MAKER_MODE=off plus dry-run.
 
 const fs = require('fs');
 const path = require('path');

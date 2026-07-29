@@ -117,7 +117,11 @@ function writeMakerHeartbeat(hb) { try { atomicWriteJson(MAKER_HB_FILE, hb); } c
 //    refuses unless MAKER_FUNDING_APPROVED is attested AND MAKER_MODE is live AND the kill switch is off
 //    AND the venue-allowlist/notional/rate/inventory caps and the shared venue-rules guard all pass. The
 //    providers only make a key REACHABLE on a live mutating path; they decide nothing and remove no gate.
-//    In this fleet's env MAKER_MODE=off and MAKER_FUNDING_APPROVED is unset, so agent35 places nothing. ──
+//    In this fleet's env MAKER_FUNDING_APPROVED is now 'true' — attested 2026-07-29 against a funder
+//    verified on-chain to hold 100 pUSD with all six v2 approvals granted. That gate is therefore OPEN.
+//    agent35 still places nothing, for two independent reasons that have nothing to do with funding:
+//    MAKER_MODE=off means buildAdapter returns null below, and MAKER_PLACEMENT=dry-run means even a
+//    fully armed adapter builds, signs and on-chain-validates every order and then never POSTs it. ──
 function buildAdapter(cfg) {
   if (cfg.mode === 'off') return null;
   if (cfg.mode === 'paper' || cfg.dryRun) return createMakerAdapter({ mode: 'paper', dryRun: cfg.dryRun, orderTtlSeconds: cfg.orderTtlSeconds });
