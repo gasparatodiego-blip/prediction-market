@@ -98,6 +98,11 @@ const UA = 'edgeradar-agent35-maker/1.0';
 const TICK_MS = Number(process.env.MAKER_TICK_MS || 3_000);
 const DEFAULT_SIZE_SHARES = Number(process.env.MAKER_DEFAULT_SIZE || 200);
 const OUT_OF_BOOK_MODEL_MS = Number(process.env.MAKER_OUT_OF_BOOK_MS || 400); // modelled cancel→replace gap in paper
+// Stand-down cancel sweep. A live-mode engine that is killed or unarmed re-cancels as a safety net, but
+// that is a real venue write and its natural cadence is "occasionally", not "every quote tick".
+const STANDDOWN_SWEEP_MS = Number(process.env.MAKER_STANDDOWN_SWEEP_MS || 60_000);
+let lastStandDownSweepAt = 0;
+let wasStandingDown = false;
 
 const log = (...a) => console.log(new Date().toISOString(), '[agent35-maker]', ...a);
 
@@ -304,9 +309,24 @@ async function tick(cfg, adapter) {
   // paper never place anyway; this makes the arming record a hard placement gate once the env goes live.
   const notArmedLive = (cfg.mode === 'live-min' || cfg.mode === 'live') && !arming.armed;
   const effCfg = (durableKill.killed || notArmedLive) ? { ...cfg, killSwitch: true } : cfg;
-  if ((durableKill.killed || notArmedLive) && adapter && typeof adapter.cancelMarketOrders === 'function') {
-    try { await cancelAllOnKill({ adapter, marketIds: [...legsByMarket.keys()] }); } catch (e) { log('cancel-on-standdown failed:', e.message); }
+  // THROTTLED. A stand-down cancel is a REAL authenticated venue write when canWrite is true, and this
+  // branch is reached on EVERY tick for as long as the engine remains killed or unarmed — which is the
+  // normal resting state of a live-mode engine that has not been deliberately armed. Unthrottled that is
+  // a cancel-all to Polymarket every 3 seconds, forever: measured at 20 calls in 120s the first time
+  // MAKER_MODE went to live-min, all returning {canceled:[]} because there was nothing to cancel.
+  //
+  // Cancelling once per stand-down TRANSITION would be the tidy answer, but it is the wrong one: if an
+  // order somehow appears while the engine is standing down, once-only would never clear it. So the
+  // cancel repeats — just at a rate that reflects what it is (a safety sweep), not the quote cadence.
+  const standingDown = durableKill.killed || notArmedLive;
+  if (standingDown && adapter && typeof adapter.cancelMarketOrders === 'function') {
+    const sweepDue = now - lastStandDownSweepAt >= STANDDOWN_SWEEP_MS;
+    if (sweepDue || !wasStandingDown) {   // immediately on ENTERING stand-down, then at the sweep interval
+      lastStandDownSweepAt = now;
+      try { await cancelAllOnKill({ adapter, marketIds: [...legsByMarket.keys()] }); } catch (e) { log('cancel-on-standdown failed:', e.message); }
+    }
   }
+  wasStandingDown = standingDown;
 
   // ── Periodic FILL RECONCILIATION — resolves the operator's sent orders against VENUE TRUTH into the fill
   //    ledger (feeds openNotionalUsd / realisedDailyPnlUsd). Throttled to once per RECONCILE_INTERVAL_MS
@@ -668,19 +688,30 @@ async function main() {
 
   const adapter = buildAdapter(cfg);
   if (adapter) log(`adapter built: mode=${adapter.mode} canWrite=${adapter.canWrite}`);
-  // ── WHAT ACTUALLY STOPS AN ORDER IN LIVE MODE. The message here used to say "live providers are NOT
-  //    wired in this build — no order can be signed". That has been FALSE since 21120aa ("wire live
-  //    Polymarket signer providers"): buildAdapter() above calls makerLiveProviders() and passes real
-  //    creds + signing-key thunks. Leaving the old text in place meant the log confidently named the
-  //    wrong blocker, and anyone reading it went looking for missing providers instead of the real gap.
+  // ── WHAT ACTUALLY STOPS AN ORDER IN LIVE MODE — and the history of getting this wrong twice.
+  //    v1 of this banner said "live providers are NOT wired in this build". False since 21120aa:
+  //    buildAdapter() calls makerLiveProviders() and passes real creds + signing-key thunks.
+  //    v2 said "this engine NEVER CALLS postOrder". True when written, false as soon as the placement
+  //    wiring landed — the tick loop now hands every postable quote to adapter.postOrder.
+  //    Both versions sent readers hunting for a blocker that was not there, which is worse than saying
+  //    nothing. The banner below is therefore computed from the CURRENT environment rather than
+  //    asserting a fact about "this build" that goes stale the moment the build changes.
   //
-  //    The real gap is HERE, in this engine: the tick loop computes quotes, guards them, scores them and
-  //    counts them as `wouldPost` — and then throws them away. agent35 calls cancelMarketOrders and
-  //    listOpenOrders; it has never once called adapter.postOrder (confirmed by `git log -S`). There is
-  //    no placement call to gate, which is why every safety layer below can be intact and still nothing
-  //    is ever placed. Wiring it is a separate reviewed change; see the report accompanying this commit.
+  //    As of now, three things stop an order in live-min, and any ONE of them is sufficient:
+  //      • MAKER_PLACEMENT != 'send'  → built, signed, on-chain validated, then dropped (the default)
+  //      • the arming record disarmed → a live engine that is not armed stands down like a killed one
+  //      • the ordinary gate chain    → kill, venue allowlist, limits, caps, guards, version, validateOrder
   if (cfg.mode === 'live-min' || cfg.mode === 'live') {
-    log('WARNING: live mode set, but this engine NEVER CALLS postOrder — quotes are computed, guarded and counted as wouldPost, then discarded. Live providers ARE wired (buildAdapter → makerLiveProviders); the missing piece is the placement call itself. No order can be placed. This is intentional (arming is a separate reviewed change).');
+    // What actually stops an order NOW. This line has been wrong twice: it once claimed the live
+    // providers were unwired (they were wired), then that this engine never calls postOrder (it does,
+    // since the placement wiring). A startup banner that names the wrong blocker sends whoever reads it
+    // hunting in the wrong place, so it states the real ones and says which is decisive.
+    const placement = process.env.MAKER_PLACEMENT === 'send' ? 'send' : 'dry-run';
+    if (placement === 'send') {
+      log('ARMED FOR SEND: MAKER_PLACEMENT=send — postOrder will POST to the venue once the arming record is armed and every gate passes. Real orders, real money.');
+    } else {
+      log('live mode set, placement=dry-run: every postable quote IS handed to adapter.postOrder, which builds it, SIGNS it and validates it against the exchange via eth_call — then stops without POSTing. Set MAKER_PLACEMENT=send to reach the venue. Quoting ALSO requires an armed record (lib/maker/arming): an unarmed live engine stands down exactly like a killed one.');
+    }
   }
   // Per-cycle loop. The maker heartbeat is written at the END of every cycle — success OR throw — so a
   // STOPPED heartbeat is the death signal the watchdog keys on, while an errored cycle still heartbeats
