@@ -40,6 +40,7 @@ next-env.d.ts
 # secret env files — never commit any key material
 .env
 .env*
+!.env.example
 .env.matcher
 
 # persistent AI confirmation cache — local data, not committed

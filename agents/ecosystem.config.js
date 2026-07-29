@@ -1,3 +1,24 @@
+// Minimal .env loader (dotenv is not installed) — same pattern as scripts/maker-live-test-order.js.
+// Fills only MISSING keys, so a value already exported in the shell still wins. This exists so that
+// secrets referenced below (ADMIN_ACCESS_SECRET) resolve from .env, which is gitignored, instead of
+// being inlined into this file, which is tracked. Values are never printed.
+(function loadEnv() {
+  const fs = require('fs');
+  const path = require('path');
+  for (const f of ['.env', '.env.local']) {
+    try {
+      const txt = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+      for (const line of txt.split('\n')) {
+        const m = line.match(/^\s*(?:export\s+)?([A-Z0-9_]+)\s*=\s*(.*?)\s*$/);
+        if (!m) continue;
+        let v = m[2].replace(/\r$/, '');
+        if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1);
+        if (process.env[m[1]] === undefined) process.env[m[1]] = v;
+      }
+    } catch { /* file absent → fine */ }
+  }
+})();
+
 module.exports = {
   apps: [
     {
@@ -377,7 +398,8 @@ module.exports = {
       autorestart:   true,
       // MAKER_ORDER_TTL_SECONDS: venue-native GTD expiry on every order (survives host death). Must exceed
       // the maker refresh interval or agent35 refuses to start (startup assertion). Venue GTD floor is 3min.
-      env:           { NODE_ENV: 'production', HOME: '/root', MAKER_MODE: 'off', MAKER_ORDER_TTL_SECONDS: '60' },
+      // ADMIN_ACCESS_SECRET is read from .env (gitignored), never inlined here — this file is tracked.
+      env:           { NODE_ENV: 'production', HOME: '/root', ADMIN_ACCESS_SECRET: process.env.ADMIN_ACCESS_SECRET, MAKER_MODE: 'live-min', MAKER_FUNDING_APPROVED: 'true', MAKER_LIVE_MIN_MARKET: '0x6bd56627aa21311850825edb27e53434a0e17a4f782be0086bc07f71eee00d0d', MAKER_LIVE_MIN_CAP_USD: '25', MAKER_ORDER_TTL_SECONDS: '180' },
     },
     {
       name:          'agent36-book-velocity',
