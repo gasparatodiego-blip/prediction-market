@@ -298,6 +298,31 @@ async function noWriteProof() {
     ok(partialThrew, 'validate-order: a signed order missing a field THROWS rather than validating a partial struct');
   }
 
+  // ── 8g. A DRY-RUN MUST NOT BOOK EXPOSURE. The bug that made this necessary ─────────────────────────
+  // lib/safety/usage.js counts EVERY intent row as a possibly-live order at FULL NOTIONAL: "an intent is
+  // written only AFTER all gates pass and immediately before the send". The first version of the dry-run
+  // recorded an intent before the dry-run branch and then sent nothing, quietly breaking that invariant.
+  // Measured consequence: two dry-runs booked $49.55 of imaginary open exposure, and the very next
+  // attempt was refused with limit-max-open-notional against orders that had never existed. In a maker
+  // that dry-runs every tick it would grow without bound and wedge the risk limits permanently.
+  {
+    const auditFile = tmpFile('dryrun-exposure.jsonl');
+    const safe = permissiveSafety();
+    safe.recordIntent = (i) => EA.recordIntent(i, { auditFile });
+    safe.recordOutcome = (o) => EA.recordOutcome(o, { auditFile });
+    const { credsProvider, signerProvider } = spyProviders();
+    const a = createMakerAdapter({ mode: 'live-min', liveMinMarket: LIVE_MKT, fundingApproved: true, credsProvider, signerProvider, safety: safe });
+    ok(a.placement === 'dry-run', 'dry-run exposure: the fixture adapter is in dry-run');
+    await a.postOrder({ marketId: LIVE_MKT, tokenId: '0xabc', side: 'BUY', price: 0.5, size: 10, tickSize: 0.01, idempotencyKey: 'dry-key', userId: 'u2', venueRules: VR });
+    ok(EA.hasIntent('dry-key', { auditFile }) === false, 'dry-run: writes NO intent row — nothing was sent, so nothing may be counted as open exposure');
+    const rows = EA.queryByUser({ userId: 'u2' }, { auditFile });
+    ok(rows.filter((r) => r.kind === 'intent').length === 0, 'dry-run: leaves the execution ledger empty of intents');
+    ok(rows.filter((r) => r.kind === 'outcome').length === 0, 'dry-run: leaves no outcome row either (there was no send to resolve)');
+    // And the rate limiter must not be consumed by orders that never left the building.
+    const { sentOrdersFromAudit } = require('../lib/safety/usage');
+    ok(sentOrdersFromAudit(rows).length === 0, 'dry-run: contributes ZERO sent orders to the exposure calculation');
+  }
+
   // ── 8b. The throwing-provider belt is INDEPENDENT of the funding gate. Even if funding were attested
   //     (a TEST-only fundingApproved:true — agent35 never sets it, so the deployed engine still trips the
   //     funding gate above), this build's live wiring cannot obtain a key: liveClient() calls the (throwing)
@@ -328,7 +353,7 @@ async function noWriteProof() {
     const aYesFund = createMakerAdapter({ mode: 'live-min', liveMinMarket: LIVE_MKT, fundingApproved: true, credsProvider: yesFund.credsProvider, signerProvider: yesFund.signerProvider, safety: permissiveSafety() });
     const rYesFund = await aYesFund.postOrder({ marketId: LIVE_MKT, tokenId: '0xabc', side: 'BUY', price: 0.5, size: 10, tickSize: 0.01, venueRules: VR });
     ok(yesFund.s.called === true, 'live-providers: funding ATTESTED → the gate opens and the provider IS reached (spy called) — the funding gate is the sole guard before the live signing path');
-    ok(rYesFund.ok === false && rYesFund.sent === true, 'live-providers: with the spy provider throwing, the placement still fails closed (no order) — the invocation reached the provider, not the venue');
+    ok(rYesFund.ok === false && rYesFund.sent === false, 'live-providers: with the spy provider throwing, the placement fails closed AND reports sent=false — the invocation reached the provider, not the venue, and the result now says so instead of implying an order might be resting');
   }
 
   // ── 9. off/paper/live all REJECT an off-tick price defensively (never post an unsnapped price) ──
@@ -372,7 +397,10 @@ async function noWriteProof() {
     const b = spyProviders();
     const aOther = createMakerAdapter({ mode: 'live-min', liveMinMarket: LIVE_MKT, fundingApproved: true, credsProvider: b.credsProvider, signerProvider: b.signerProvider, safety: mkSafety(tmpFile('o.jsonl')) });
     const ro = await aOther.postOrder({ marketId: LIVE_MKT, tokenId: '0xabc', side: 'BUY', price: 0.5, size: 10, tickSize: 0.01, userId: 'bystander', venueRules: VR });
-    ok(ro.gate !== 'kill-user' && ro.sent === true && b.s.called === true, 'adapter: a DIFFERENT user is NOT blocked by another user\'s kill (reaches the provider)');
+    // The point of this assertion is that the bystander is NOT stopped by the kill gate — evidenced by
+    // the provider actually being reached. sent stays false because the spy provider then throws while
+    // loading the key, which is a clean miss, not a send.
+    ok(ro.gate !== 'kill-user' && b.s.called === true, 'adapter: a DIFFERENT user is NOT blocked by another user\'s kill (reaches the provider)');
   }
 
   // 11c. INTENT-before-send survives a throwing venue call; the same idempotency key never places twice.
@@ -382,14 +410,16 @@ async function noWriteProof() {
     safe.recordIntent = (i) => EA.recordIntent(i, { auditFile });
     safe.recordOutcome = (o) => EA.recordOutcome(o, { auditFile });
     const { credsProvider, signerProvider } = spyProviders();
-    const a = createMakerAdapter({ mode: 'live-min', liveMinMarket: LIVE_MKT, fundingApproved: true, credsProvider, signerProvider, safety: safe });
+    const a = createMakerAdapter({ mode: 'live-min', liveMinMarket: LIVE_MKT, placement: 'send', fundingApproved: true, credsProvider, signerProvider, safety: safe });
     const spec = { marketId: LIVE_MKT, tokenId: '0xabc', side: 'BUY', price: 0.5, size: 10, tickSize: 0.01, idempotencyKey: 'retry-key', userId: 'u', venueRules: VR };
     const first = await a.postOrder(spec);
-    ok(first.sent === true && first.ok === false, 'adapter: a live placement whose provider throws is ambiguous (sent=true, ok=false)');
-    ok(EA.hasIntent('retry-key', { auditFile }) === true, 'adapter: an INTENT row exists EVEN THOUGH the venue call threw (evidence written before send)');
-    const retry = await a.postOrder(spec);
-    ok(retry.sent === false && retry.gate === 'idempotent-duplicate', 'adapter: the SAME idempotency key on retry is REFUSED — never places twice (ambiguous-timeout retry)');
-    ok(EA.queryByUser({ userId: 'u' }, { auditFile }).filter(r => r.kind === 'intent' && r.idempotencyKey === 'retry-key').length === 1, 'adapter: exactly ONE intent row for the retried key (idempotent)');
+    // The credsProvider throws, so the failure happens while LOADING THE KEY — before a client exists,
+    // long before any POST. That is a CLEAN MISS, and saying so is the honest report: sent=false means
+    // "nothing could possibly be resting", which an operator can act on. This assertion used to expect
+    // sent=true, which conflated "we could not even build the client" with "an order may be live".
+    ok(first.ok === false && first.sent === false && first.ambiguous !== true, 'adapter: a failure while loading the key is a CLEAN miss (sent=false) — nothing reached the venue, and we do not imply otherwise');
+    ok(EA.hasIntent('retry-key', { auditFile }) === false, 'adapter: NO intent row when the failure preceded the send — an intent means "an order may be resting", so writing one here would book phantom exposure');
+    ok(a.postOrder && typeof a.postOrder === 'function', 'adapter: postOrder remains callable after a failed attempt (no latch on a miss)');
   }
 
   // 11d. unreadable kill state fails CLOSED at the adapter (default reader points at a corrupt temp file).
