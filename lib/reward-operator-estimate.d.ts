@@ -21,3 +21,25 @@ export function estimatedOperatorSharePerDay(
     | undefined,
   opts?: { inBandDepthUsd?: number | null },
 ): OperatorShareEstimate;
+
+export interface CapitalPricedEstimate {
+  estUsdPerDay: number | null;
+  share: number | null;
+  /** The capital the returned figures are priced for: the operator's, or the book's depth if smaller. */
+  capitalUsd: number | null;
+  depthLimited: boolean;
+  unknown: boolean;
+  reason: string | null;
+}
+
+/** The same estimate priced at a REAL capital instead of the $1,000 reference. A null/absent capital
+ *  yields unknown — it is never silently replaced by the reference, which would overstate. Pure and
+ *  browser-safe, so server and client compute one number. */
+export function estimateAtCapital(
+  rewardScore:
+    | { poolDay?: number | null; refShare?: number | null; refCapital?: number | null }
+    | null
+    | undefined,
+  capitalUsd: number | null,
+  inBandDepthUsd: number | null,
+): CapitalPricedEstimate;

@@ -26,7 +26,9 @@
 // form cannot paint green something the server would refuse. The server remains the authority.
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { validateQuote } from '@/lib/maker/venue-rules';
+// The shared guard, and the shared derivation of the furthest QUALIFYING prices. Both come from the same
+// module the server re-runs before a send, so the form's hints can never be looser than the refusal.
+import { validateQuote, inBandPriceBounds } from '@/lib/maker/venue-rules';
 
 interface KillState { readable: boolean; killed: boolean; scope: string | null; reason: string | null; by: string | null; at: number | null }
 interface PlacementState { mode: 'dry-run' | 'send'; key: string; sends: boolean; note: string }
@@ -165,6 +167,31 @@ export default function ManualOrdersPanel() {
     );
   }, [rules, scoringMid, priceNum, sizeNum]);
 
+  // ── PRE-FLIGHT HINTS ──────────────────────────────────────────────────────────────────────────────
+  // Everything below answers the operator BEFORE they press the button, with the market's real numbers.
+  // None of it relaxes anything: the server re-runs the identical guard, and these bounds are prices the
+  // guard itself accepted (lib/maker/venue-rules.inBandPriceBounds probes through validateQuote).
+  const bounds = useMemo(() => {
+    if (!rules?.readable) return { readable: false, lo: null, hi: null, tick: null };
+    return inBandPriceBounds({ tick: rules.tick, scoringMid, maxSpreadCents: rules.maxSpreadCents, minSize: rules.minSize });
+  }, [rules, scoringMid]);
+
+  const minSize = rules?.minSize ?? null;
+  // Typed a size, it is a number, and it is under the market's minimum → say so with both numbers.
+  const sizeBelowMin = Number.isFinite(sizeNum) && sizeNum > 0 && minSize != null && sizeNum < minSize;
+  // The tick-snapped price nearest to what was typed — what "0.5203 is not on the grid" should offer.
+  const snappedPrice = useMemo(() => {
+    const t = rules?.tick;
+    if (!Number.isFinite(priceNum) || !t || t <= 0) return null;
+    return +(Math.round(priceNum / t) * t).toFixed(10);
+  }, [priceNum, rules]);
+  const priceOffTick = Number.isFinite(priceNum) && snappedPrice != null && Math.abs(priceNum - snappedPrice) > (rules!.tick as number) / 1000;
+  // Out of band, and WHICH side of it — so the hint can name the exact nearest qualifying price.
+  const priceOutOfBand =
+    Number.isFinite(priceNum) && bounds.readable && bounds.lo != null && bounds.hi != null &&
+    (priceNum < bounds.lo - 1e-12 || priceNum > bounds.hi + 1e-12);
+  const nearestInBand = !priceOutOfBand ? null : (priceNum > (bounds.hi as number) ? bounds.hi : bounds.lo);
+
   const canPlace =
     !placing && !killed && manualOn && !overCap &&
     !!rules?.readable && verdict?.valid === true && notional != null;
@@ -279,6 +306,19 @@ export default function ManualOrdersPanel() {
           color: #E6E9EF; font-size: 14px; font-variant-numeric: tabular-nums; }
         .mkman-input:disabled { opacity: .5; cursor: not-allowed; border-color: #2E3646; }
         .mkman-input-sm { width: 92px; padding: 5px 8px; font-size: 13px; }
+        .mkman-input-bad { border-color: #8d2a24; background: #1a0d0c; }
+        .mkman-field { margin: 10px 0; }
+        .mkman-hint { font-size: 12px; color: #8B95A5; line-height: 1.45; flex: 1 1 220px; min-width: 0; }
+        .mkman-hint b { color: #C4CCD8; }
+        .mkman-flag { margin: 6px 0 0; padding: 8px 11px; border-radius: 8px; font-size: 12.5px; line-height: 1.55;
+          display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .mkman-flag-bad { color: #FFC9C4; border: 1px solid #5c1f1a; background: #1a0b0a; }
+        .mkman-flag-warn { color: #F0D08A; border: 1px solid #4a3c12; background: #1a1608; }
+        .mkman-fix { min-height: 32px; padding: 0 12px; border: 1px solid #2E5FBE; border-radius: 7px; cursor: pointer;
+          font-size: 12px; font-weight: 700; color: #DCE6FF; background: #16233E; white-space: nowrap;
+          touch-action: manipulation; }
+        .mkman-fix:hover { background: #1B2C4E; }
+        .mkman-fix:disabled { opacity: .55; cursor: not-allowed; }
         .mkman-toggle { display: inline-flex; border: 1px solid #2E3646; border-radius: 8px; overflow: hidden; }
         .mkman-tbtn { min-height: 38px; padding: 0 18px; border: none; cursor: pointer; font-size: 13px; font-weight: 800;
           color: #9AA4B2; background: #141926; letter-spacing: .4px; }
@@ -478,21 +518,91 @@ export default function ManualOrdersPanel() {
           </span>
         </div>
 
+        {/* ── PREZZO ── the qualifying range is stated next to the field, not discovered by being refused. */}
+        <div className="mkman-field" data-manual-field-price>
+          <div className="mkman-inrow">
+            <span>Prezzo:</span>
+            <input
+              className={`mkman-input ${priceOutOfBand || priceOffTick ? 'mkman-input-bad' : ''}`}
+              type="number" inputMode="decimal" step={rules?.tick ?? 0.001}
+              placeholder={scoringMid != null ? scoringMid.toFixed(3) : 'prezzo'}
+              value={price} onChange={(e) => setPrice(e.target.value)}
+              disabled={!rules?.readable} data-manual-price
+            />
+            <span className="mkman-hint" data-manual-price-range>
+              {bounds.readable && bounds.lo != null && bounds.hi != null ? (
+                <>In banda da <b className="mkman-num">{bounds.lo}</b> a <b className="mkman-num">{bounds.hi}</b> (mid {px(scoringMid)}, banda ±{rules?.bandRadiusCents != null ? rules.bandRadiusCents.toFixed(2) : '—'}¢)</>
+              ) : (
+                <>Banda non leggibile per questo mercato — nessun limite viene indovinato.</>
+              )}
+            </span>
+          </div>
+          {priceOutOfBand && (
+            <div className="mkman-flag mkman-flag-bad" data-manual-price-warn>
+              <span>
+                Fuori banda: <b className="mkman-num">{priceNum}</b> non matura nulla.{' '}
+                {priceNum > (bounds.hi as number)
+                  ? <>Il prezzo <b>massimo</b> che resta in banda è <b className="mkman-num">{`${bounds.hi}`}</b>.</>
+                  : <>Il prezzo <b>minimo</b> che resta in banda è <b className="mkman-num">{`${bounds.lo}`}</b>.</>}
+              </span>
+              {nearestInBand != null && (
+                <button className="mkman-fix" onClick={() => setPrice(String(nearestInBand))} data-manual-use-band>
+                  Usa {nearestInBand}
+                </button>
+              )}
+            </div>
+          )}
+          {!priceOutOfBand && priceOffTick && snappedPrice != null && (
+            <div className="mkman-flag mkman-flag-warn" data-manual-tick-warn>
+              <span>
+                Fuori griglia: il tick di questo mercato è <b className="mkman-num">{`${rules?.tick}`}</b>, quindi{' '}
+                <b className="mkman-num">{priceNum}</b> non è piazzabile. Il prezzo valido più vicino è{' '}
+                <b className="mkman-num">{`${snappedPrice}`}</b>.
+              </span>
+              <button className="mkman-fix" onClick={() => setPrice(String(snappedPrice))} data-manual-use-tick>
+                Usa {snappedPrice}
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* ── SIZE ── the market's own minimum sits beside the field, with a one-click fill. */}
+        <div className="mkman-field" data-manual-field-size>
+          <div className="mkman-inrow">
+            <span>Size (share):</span>
+            <input
+              className={`mkman-input ${sizeBelowMin ? 'mkman-input-bad' : ''}`}
+              type="number" inputMode="decimal" step={1}
+              placeholder={minSize != null ? String(minSize) : 'size'}
+              value={size} onChange={(e) => setSize(e.target.value)}
+              disabled={!rules?.readable} data-manual-size
+            />
+            {minSize != null && (
+              <button className="mkman-fix" onClick={() => setSize(String(minSize))} disabled={!rules?.readable} data-manual-use-min>
+                Usa minimo
+              </button>
+            )}
+            <span className="mkman-hint" data-manual-min-size>
+              Size minima premiata: <b className="mkman-num">{minSize != null ? minSize : '—'}</b>
+              {minSize != null && scoringMid != null ? ` (≈ ${money(minSize * scoringMid)} di controvalore)` : ''}
+            </span>
+          </div>
+          {sizeBelowMin && (
+            <div className="mkman-flag mkman-flag-bad" data-manual-size-warn>
+              <span>
+                Minimo richiesto: <b className="mkman-num">{minSize}</b> — il tuo valore{' '}
+                <b className="mkman-num">{`(${sizeNum})`}</b> è sotto soglia di{' '}
+                <b className="mkman-num">{`${+((minSize as number) - sizeNum).toFixed(4)} share`}</b>.
+                Un ordine sotto il minimo è valido sul CLOB ma <b>non matura alcun premio</b>.
+              </span>
+              <button className="mkman-fix" onClick={() => setSize(String(minSize))} data-manual-use-min-inline>
+                Usa {minSize}
+              </button>
+            </div>
+          )}
+        </div>
+
         <div className="mkman-inrow">
-          <span>Prezzo:</span>
-          <input
-            className="mkman-input" type="number" inputMode="decimal" step={rules?.tick ?? 0.001}
-            placeholder={scoringMid != null ? scoringMid.toFixed(3) : 'prezzo'}
-            value={price} onChange={(e) => setPrice(e.target.value)}
-            disabled={!rules?.readable} data-manual-price
-          />
-          <span>Size (share):</span>
-          <input
-            className="mkman-input" type="number" inputMode="decimal" step={1}
-            placeholder={rules?.minSize != null ? String(rules.minSize) : 'size'}
-            value={size} onChange={(e) => setSize(e.target.value)}
-            disabled={!rules?.readable} data-manual-size
-          />
           <span className="mkman-note">
             Controvalore <b className={`mkman-num ${overCap ? 'mkman-bad' : ''}`}>{money(notional)}</b>
             {capUsd != null ? ` / ${money(capUsd)}` : ''}

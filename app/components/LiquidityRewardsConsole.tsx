@@ -16,6 +16,13 @@
 //                                     capital actually resting IN BAND — out-of-band capital earns 0)
 //   header · ordini fuori banda    → GET /api/maker/board  summary    (shared band guard's verdict)
 //   Mercati / ladder / Regole      → GET /api/maker/board  markets    (agent24/25 scan + agent34 book)
+//
+// EVERY $/day IS PRICED AT THE REAL BALANCE. The feed scores each market for a $1,000 reference maker.
+// That figure is never displayed here: it is re-priced, through the shared estimateAtCapital, at the
+// proxy's actual on-chain pUSD — the same number the header shows. Showing the reference beside a $100
+// balance would overstate the take by roughly an order of magnitude. An unreadable balance yields N/D
+// with the reason, never a fallback to the reference. (The "Alloca capitale" planner is deliberately
+// exempt: there the capital is a free input, because its job is simulating amounts you do not yet hold.)
 //   Posizioni                      → GET /api/maker/positions         (Polymarket data-api, read-only)
 //   Ordini manuali                 → <ManualOrdersPanel/>, unchanged  (its own real endpoints)
 //   Alloca capitale                → <RewardsAllocatePanel/>, unchanged
@@ -32,6 +39,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+// The SHARED estimator, priced at a real capital. Pure and browser-safe, and the identical function the
+// server aggregation uses for the header's in-band figure — so no two numbers on this page can come from
+// two different models.
+import { estimateAtCapital } from '@/lib/reward-operator-estimate';
 import PriceLadder from './PriceLadder';
 import ManualOrdersPanel from './ManualOrdersPanel';
 import RewardsAllocatePanel from './RewardsAllocatePanel';
@@ -69,20 +80,24 @@ interface BoardMarket {
   maxSpreadCents: number | null; bandRadiusCents: number | null; bandLo: number | null; bandHi: number | null;
   rulesReadable: boolean; rulesMissing: string[]; tokenId: string | null; tokenIdNo: string | null;
   dailyPoolUsd: number | null; bookDepthAtBandUsd: number | null;
-  estUsdPerDay: number | null; estShare: number | null; estAssumedCapitalUsd: number | null;
-  estCapped: boolean; estCapNote: string | null; volume24hUsd: number | null; hoursToResolution: number | null;
+  volume24hUsd: number | null; hoursToResolution: number | null;
+  rewardScore: { poolDay?: number | null; refShare?: number | null; refCapital?: number | null } | null;
   spread: SpreadClass; stability: StabilityBadge;
+}
+/** A market with its $/day priced at the operator's REAL balance (see pricedMarkets below). */
+interface PricedMarket extends BoardMarket {
+  estUsdPerDay: number | null;
+  estCapitalUsd: number | null;
+  estDepthLimited: boolean;
+  estUnknown: boolean;
+  estReason: string | null;
+  estYieldPctPerDay: number | null;
 }
 interface Summary {
   committedUsd: number | null; committedInBandUsd: number | null; unjudgeableCapitalUsd: number | null;
   estGrossUsdPerDay: number | null;
   estPerMarket: Array<{ marketId: string | null; title: string | null; inBandCapitalUsd: number | null; estUsdPerDay: number | null }>;
   outOfBandCount: number; inBandCount: number; unknownBandCount: number; unpricedOrders: number;
-  bestMarkets: Array<{
-    marketId: string; title: string | null; estUsdPerDay: number; assumedCapitalUsd: number;
-    dailyPoolUsd: number | null; yieldPctPerDay: number | null; spreadLevel: string | null;
-    stabilityLabel: string | null; inBotUniverse: boolean | null;
-  }>;
   marketsWithOrders: Array<{ marketId: string | null; title: string | null; committedUsd: number | null; outOfBandCount: number; unknownBandCount: number; orderCount: number }>;
 }
 interface OrderBoard {
@@ -200,7 +215,44 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
 
   const orders = board?.orders ?? null;
   const summary = board?.summary ?? null;
-  const markets = useMemo(() => board?.markets ?? [], [board]);
+  const rawMarkets = useMemo(() => board?.markets ?? [], [board]);
+
+  // ── THE CAPITAL EVERY $/day ON THIS PAGE IS PRICED AT ─────────────────────────────────────────────
+  // The operator's REAL proxy balance, read on-chain — the same number the header shows as "capitale
+  // totale" and the allocation planner offers as "usa saldo intero". Not the feed's $1,000 reference:
+  // that figure describes a maker ten times this size, and showing it beside a $100 balance overstates
+  // the take by about an order of magnitude.
+  //
+  // UNREADABLE BALANCE ⇒ NO ESTIMATE. The reference capital is deliberately NOT used as a fallback —
+  // substituting it is precisely the overstatement being removed here. The sections render N/D and say
+  // why, which is the honest answer to "how much would I make" when the capital is unknown.
+  const capitalUsd = fin(bal?.pusdBalance) ? (bal!.pusdBalance as number) : null;
+
+  const pricedMarkets: PricedMarket[] = useMemo(() => rawMarkets.map((m) => {
+    const e = estimateAtCapital(m.rewardScore, capitalUsd, m.bookDepthAtBandUsd);
+    return {
+      ...m,
+      estUsdPerDay: e.unknown ? null : e.estUsdPerDay,
+      estCapitalUsd: e.capitalUsd,
+      estDepthLimited: e.depthLimited,
+      estUnknown: e.unknown,
+      estReason: e.reason,
+      // Daily yield on the capital the estimate is actually priced for — the ranking key for "miglior
+      // mercato". Ranking by $/day alone would just rank by pot size.
+      estYieldPctPerDay: (!e.unknown && fin(e.estUsdPerDay) && fin(e.capitalUsd) && (e.capitalUsd as number) > 0)
+        ? ((e.estUsdPerDay as number) / (e.capitalUsd as number)) * 100
+        : null,
+    };
+  }), [rawMarkets, capitalUsd]);
+
+  // Best markets BY RETURN on the operator's real capital, over markets that are actually scorable.
+  const bestMarkets = useMemo(
+    () => pricedMarkets
+      .filter((m) => m.rulesReadable && !m.estUnknown && fin(m.estYieldPctPerDay))
+      .sort((a, b) => (b.estYieldPctPerDay as number) - (a.estYieldPctPerDay as number))
+      .slice(0, 5),
+    [pricedMarkets],
+  );
 
   const ordersByMarket = useMemo(() => {
     const m = new Map<string, JudgedOrder[]>();
@@ -226,7 +278,7 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
 
   const visibleMarkets = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    let set = markets;
+    let set = pricedMarkets;
     if (scope === 'bot') set = set.filter((m) => m.inBotUniverse === true || ordersByMarket.has(m.marketId));
     if (scope === 'miei') set = set.filter((m) => ordersByMarket.has(m.marketId));
     if (needle) set = set.filter((m) => (m.title ?? '').toLowerCase().includes(needle) || m.marketId.toLowerCase().includes(needle));
@@ -239,11 +291,10 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
       const ua = a.inBotUniverse === true ? 1 : 0;
       const ub = b.inBotUniverse === true ? 1 : 0;
       if (ua !== ub) return ub - ua;
-      const ya = fin(a.estUsdPerDay) && fin(a.estAssumedCapitalUsd) && a.estAssumedCapitalUsd > 0 ? a.estUsdPerDay / a.estAssumedCapitalUsd : -1;
-      const yb = fin(b.estUsdPerDay) && fin(b.estAssumedCapitalUsd) && b.estAssumedCapitalUsd > 0 ? b.estUsdPerDay / b.estAssumedCapitalUsd : -1;
-      return yb - ya;
+      return (fin(b.estYieldPctPerDay) ? (b.estYieldPctPerDay as number) : -1)
+        - (fin(a.estYieldPctPerDay) ? (a.estYieldPctPerDay as number) : -1);
     });
-  }, [markets, q, scope, ordersByMarket]);
+  }, [pricedMarkets, q, scope, ordersByMarket]);
 
   // ── PUBLIC VISITOR ── the unchanged public board. Nothing operator-only is even fetched for them.
   if (operator === false) return <RewardsUnified />;
@@ -377,29 +428,37 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
             {/* MIGLIOR MERCATO PER RENDIMENTO */}
             <div className="lrc-card">
               <div className="lrc-card-k">Miglior mercato per rendimento</div>
-              {summary?.bestMarkets?.length ? (
+              {capitalUsd == null ? (
+                <div className="lrc-nd" data-lrc-best="no-capital">
+                  N/D — il saldo reale del proxy non è leggibile
+                  {balErr ? `: ${balErr}` : bal?.note ? `: ${bal.note}` : ''}. Senza il capitale vero non
+                  viene calcolata nessuna stima: mostrare la cifra di riferimento da $1.000 del feed
+                  sovrastimerebbe di circa dieci volte.
+                </div>
+              ) : bestMarkets.length ? (
                 <>
-                  <div className="lrc-card-v">{summary.bestMarkets[0].title ?? summary.bestMarkets[0].marketId}</div>
-                  <div className="lrc-card-big">
-                    {num(summary.bestMarkets[0].yieldPctPerDay, 2)}%<span className="lrc-card-unit">/giorno</span>
+                  <div className="lrc-card-v">{bestMarkets[0].title ?? bestMarkets[0].marketId}</div>
+                  <div className="lrc-card-big" data-lrc-best-yield>
+                    {num(bestMarkets[0].estYieldPctPerDay, 2)}%<span className="lrc-card-unit">/giorno</span>
                   </div>
                   <div className="lrc-card-sub">
-                    {money(summary.bestMarkets[0].estUsdPerDay)}/g su {money(summary.bestMarkets[0].assumedCapitalUsd, 0)} di capitale
-                    assunto · montepremi {money(summary.bestMarkets[0].dailyPoolUsd, 0)}/g
+                    {money(bestMarkets[0].estUsdPerDay)}/g sul tuo capitale di {money(bestMarkets[0].estCapitalUsd, 0)}
+                    {bestMarkets[0].estDepthLimited ? ' (limitato dalla profondità in banda)' : ''} ·
+                    montepremi {money(bestMarkets[0].dailyPoolUsd, 0)}/g
                   </div>
                   <ol className="lrc-rank">
-                    {summary.bestMarkets.slice(1).map((m) => (
+                    {bestMarkets.slice(1).map((m) => (
                       <li key={m.marketId}>
-                        <span className="lrc-num">{num(m.yieldPctPerDay, 2)}%/g</span>
+                        <span className="lrc-num">{num(m.estYieldPctPerDay, 2)}%/g</span>
                         <span className="lrc-rank-t">{m.title ?? m.marketId}</span>
                       </li>
                     ))}
                   </ol>
                   <p className="lrc-fine">
-                    Rendimento = stima $/giorno ÷ capitale su cui la stima è calcolata. Quel capitale è
-                    limitato dalla profondità reale in banda, quindi una percentuale alta spesso significa
-                    <b> book sottile</b>: ci stai dentro con pochi dollari, non con molti. Lordo, adverse
-                    selection non modellata.
+                    Rendimento = stima $/giorno ÷ capitale su cui la stima è calcolata, e quel capitale è
+                    il tuo saldo reale ({money(capitalUsd)}), non una cifra di riferimento. Dove il book
+                    contiene meno di quel saldo la stima è calcolata sulla profondità disponibile, perché
+                    oltre quella non c&apos;è libro in cui stare. Lordo, adverse selection non modellata.
                   </p>
                 </>
               ) : (
@@ -448,7 +507,7 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
         <section className="lrc-sec" data-lrc-section="mercati">
           <div className="lrc-controls">
             <div className="lrc-scope" role="group" aria-label="Quali mercati">
-              {([['bot', 'Set del bot + i miei'], ['miei', 'Solo con miei ordini'], ['tutti', `Tutti (${markets.length})`]] as const).map(([k, l]) => (
+              {([['bot', 'Set del bot + i miei'], ['miei', 'Solo con miei ordini'], ['tutti', `Tutti (${pricedMarkets.length})`]] as const).map(([k, l]) => (
                 <button key={k} className={`lrc-chip ${scope === k ? 'is-on' : ''}`} onClick={() => { setScope(k); setLimit(PAGE); }}>{l}</button>
               ))}
             </div>
@@ -456,6 +515,20 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
               className="lrc-search" type="search" placeholder="Cerca mercato o id…"
               value={q} onChange={(e) => { setQ(e.target.value); setLimit(PAGE); }} aria-label="Cerca mercato"
             />
+          </div>
+
+          {/* WHICH CAPITAL THE COLUMN "stima" IS PRICED AT — stated once, in the open, not only in a
+              tooltip. It is the same balance the header shows. */}
+          <div className={`lrc-banner ${capitalUsd == null ? 'lrc-banner-warn' : 'lrc-banner-ok'}`} data-lrc-capital-note>
+            {capitalUsd == null ? (
+              <>Stime non calcolate: il saldo reale del proxy non è leggibile{balErr ? ` (${balErr})` : ''}. Non viene
+                sostituito con il capitale di riferimento da $1.000 del feed, che sovrastimerebbe di circa dieci volte.</>
+            ) : (
+              <>Le stime $/giorno di questa lista sono calcolate sul tuo <b>saldo reale</b> di{' '}
+                <b className="lrc-num">{money(capitalUsd)}</b> (proxy funder, letto on-chain{bal?.stale ? ', valore non aggiornato' : ''}) —
+                non su un capitale ipotetico. Dove il book contiene meno di così, la stima usa la profondità
+                disponibile e la riga lo dichiara.</>
+            )}
           </div>
 
           {visibleMarkets.length === 0 ? (
@@ -518,9 +591,18 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
                     />
 
                     <div className="lrc-mkt-grid">
-                      <KV k="stima" v={m.estUsdPerDay == null ? 'N/D' : `${money(m.estUsdPerDay)}/g`}
-                        title={m.estCapped ? (m.estCapNote ?? '') : `quota modellata su ${money(m.estAssumedCapitalUsd, 0)} di capitale`} />
-                      <KV k="su capitale" v={money(m.estAssumedCapitalUsd, 0)} title={m.estCapped ? 'limitato dalla profondità reale in banda' : 'capitale di riferimento del feed'} />
+                      <KV
+                        k="stima al tuo capitale"
+                        v={m.estUsdPerDay == null ? 'N/D' : `${money(m.estUsdPerDay)}/g`}
+                        title={m.estUnknown ? (m.estReason ?? 'non calcolabile') : `quota modellata su ${money(m.estCapitalUsd, 0)} — il tuo saldo reale, non una cifra di riferimento`}
+                      />
+                      <KV
+                        k="su capitale"
+                        v={m.estCapitalUsd == null ? 'N/D' : money(m.estCapitalUsd, 0)}
+                        title={m.estDepthLimited
+                          ? 'il tuo saldo supera la profondità premiante di questo book: la stima è calcolata sulla profondità disponibile'
+                          : 'il saldo reale del proxy, letto on-chain'}
+                      />
                       <KV k="profondità in banda" v={money(m.bookDepthAtBandUsd, 0)} />
                       <KV k="mid" v={cents(m.mid)} title={`fonte: ${m.midSource ?? 'N/D'} · ${ageTxt(m.midAgeSec)}`} />
                       <KV k="bid / ask" v={`${cents(m.bestBid)} / ${cents(m.bestAsk)}`} />
@@ -528,7 +610,7 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
                       <KV k="scade fra" v={hoursTxt(m.hoursToResolution)} />
                     </div>
 
-                    {m.estCapped && m.estCapNote && <p className="lrc-fine lrc-warn">{m.estCapNote}</p>}
+                    {m.estReason && <p className="lrc-fine lrc-warn">{m.estReason}</p>}
                     {m.midSource !== 'live-book' && (
                       <p className="lrc-fine lrc-warn">
                         Il mid non viene dal book live ma dalla riga di scan ({m.midSource ?? 'N/D'}, {ageTxt(m.midAgeSec)}):
@@ -659,8 +741,8 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
             // The ladder for the market the manual panel is pinned to — same board data, so the ladder and
             // the panel below cannot show a different band or a different mid.
             const withOrders = Array.from(ordersByMarket.keys());
-            const pinnedId = withOrders.length === 1 ? withOrders[0] : (markets.find((m) => m.inBotUniverse === true)?.marketId ?? null);
-            const pinned = pinnedId ? markets.find((m) => m.marketId === pinnedId) ?? null : null;
+            const pinnedId = withOrders.length === 1 ? withOrders[0] : (pricedMarkets.find((m) => m.inBotUniverse === true)?.marketId ?? null);
+            const pinned = pinnedId ? pricedMarkets.find((m) => m.marketId === pinnedId) ?? null : null;
             if (!pinned) return null;
             const po = ordersByMarket.get(pinned.marketId) ?? [];
             return (

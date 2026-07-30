@@ -55,3 +55,12 @@ export function validateQuotePair(
 ): PairVerdict;
 export function isOnTick(price: number, tick: number): boolean;
 export function rulesReadable(rules: unknown): boolean;
+
+/** The furthest tick-snapped prices that still QUALIFY, probed through validateQuote itself (never a
+ *  second band formula). Unreadable rules ⇒ readable:false with null bounds. */
+export function inBandPriceBounds(rules: Partial<VenueRules> | null | undefined): {
+  readable: boolean;
+  lo: number | null;
+  hi: number | null;
+  tick: number | null;
+};

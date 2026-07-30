@@ -52,11 +52,9 @@ export interface BoardMarket {
 
   dailyPoolUsd: number | null;
   bookDepthAtBandUsd: number | null;
-  estUsdPerDay: number | null;
-  estShare: number | null;
-  estAssumedCapitalUsd: number | null;
-  estCapped: boolean;
-  estCapNote: string | null;
+  /** NO per-market $/day is published: it depends on the capital it is priced for, and only the console
+   *  knows the operator's real balance. These two fields plus rewardScore are the inputs it prices with
+   *  through the shared estimateAtCapital, so the page can never show two contradictory estimates. */
   volume24hUsd: number | null;
   hoursToResolution: number | null;
 
@@ -78,11 +76,6 @@ export interface BoardSummary {
   inBandCount: number;
   unknownBandCount: number;
   unpricedOrders: number;
-  bestMarkets: Array<{
-    marketId: string; title: string | null; estUsdPerDay: number; assumedCapitalUsd: number;
-    dailyPoolUsd: number | null; yieldPctPerDay: number | null;
-    spreadLevel: 'basso' | 'medio' | 'alto' | null; stabilityLabel: string | null; inBotUniverse: boolean | null;
-  }>;
   marketsWithOrders: Array<{
     marketId: string | null; title: string | null; committedUsd: number | null;
     outOfBandCount: number; unknownBandCount: number; orderCount: number;
@@ -194,9 +187,8 @@ export function buildMarketBoard(
 export function buildOrderBoard(deps?: { books?: unknown; norm?: unknown }): Promise<OrderBoard>;
 export function buildPositions(deps?: { wallet?: string; getJson?: (url: string) => Promise<unknown[]>; norm?: unknown }): Promise<PositionsResult>;
 export function buildSummary(markets: BoardMarket[], orderBoard: OrderBoard | null): BoardSummary;
-export function estimateAtCapital(
-  rewardScore: unknown, capitalUsd: number, inBandDepthUsd: number | null,
-): { estUsdPerDay: number | null; share: number | null; capitalUsd: number; unknown: boolean };
+/** Re-exported from lib/reward-operator-estimate so server callers need one import. Same function. */
+export { estimateAtCapital } from '../reward-operator-estimate';
 export function judgeOrder(order: RestingOrder, rules: unknown): JudgedOrder;
 export function classifySpread(bookSpread: number | null, maxSpreadCents: number | null): SpreadClass;
 export const VENUE: string;
