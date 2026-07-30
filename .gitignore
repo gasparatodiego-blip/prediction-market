@@ -117,6 +117,12 @@ data/maker-market-caps.json.tmp.*
 # durable arming record (lib/maker/arming.js) — runtime only, never source
 data/maker-arming.json
 data/maker-arming.json.tmp.*
+# per-market manual-ownership flag (lib/maker/manual-mode.js) + its audit trail — WHICH markets the
+# operator currently holds by hand is machine-local runtime state, exactly like the arming record and
+# the kill switch. The code that reads it is source; the ownership is not.
+data/maker-manual-mode.json
+data/maker-manual-mode.json.tmp.*
+data/maker-manual-mode-audit.jsonl
 
 # Polymarket fee SSOT cache (runtime, per-market base_fee; not source)
 data/polymarket-fee-cache.json

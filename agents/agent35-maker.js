@@ -71,6 +71,11 @@ const { createMakerAdapter } = require('../lib/venues/polymarket-clob-maker/adap
 const { makerLiveProviders } = require('../lib/maker/live-providers');
 const { appendMakerAudit } = require('../lib/venues/polymarket-clob-maker/audit');
 const { checkKill, cancelAllOnKill } = require('../lib/safety/kill-switch');
+// PER-MARKET MANUAL OWNERSHIP. When the operator takes a market by hand from the manual-orders panel,
+// this engine must not place on it AND must not sweep it with a routine cancel — cancelMarketOrders is
+// indiscriminate and would wipe the operator's own resting orders. Read LIVE every cycle (fail-closed:
+// unreadable ⇒ every market treated as manual ⇒ this engine stands off). See lib/maker/manual-mode.js.
+const { placementBlockReason, filterCancelTargets, readManualMode } = require('../lib/maker/manual-mode');
 const { queryByUser } = require('../lib/safety/execution-audit');
 const { sentOrdersFromAudit } = require('../lib/safety/usage');
 const { reconcileOnce, RECONCILE_INTERVAL_MS } = require('../lib/safety/reconcile-fills');
@@ -103,6 +108,9 @@ const OUT_OF_BOOK_MODEL_MS = Number(process.env.MAKER_OUT_OF_BOOK_MS || 400); //
 const STANDDOWN_SWEEP_MS = Number(process.env.MAKER_STANDDOWN_SWEEP_MS || 60_000);
 let lastStandDownSweepAt = 0;
 let wasStandingDown = false;
+// "manual mode active, skip" fires every tick while the operator holds a market; log it once a minute.
+const lastManualLogAt = new Map(); // marketId -> ts
+const MANUAL_LOG_MS = 60_000;
 
 const log = (...a) => console.log(new Date().toISOString(), '[agent35-maker]', ...a);
 
@@ -127,12 +135,18 @@ function writeMakerHeartbeat(hb) { try { atomicWriteJson(MAKER_HB_FILE, hb); } c
 //    agent35 still places nothing, for two independent reasons that have nothing to do with funding:
 //    MAKER_MODE=off means buildAdapter returns null below, and MAKER_PLACEMENT=dry-run means even a
 //    fully armed adapter builds, signs and on-chain-validates every order and then never POSTs it. ──
+// Every adapter audit line this ENGINE produces is stamped source:'agent35'. The manual-orders panel
+// stamps its own lines source:'manual-ui' (lib/maker/manual-order.js), so the one append-only trail
+// (data/polymarket-maker-audit.jsonl) answers "who did this" for every venue call, automatic or by hand.
+const agent35AuditSink = (rec) => appendMakerAudit({ ...rec, source: 'agent35' });
+
 function buildAdapter(cfg) {
   if (cfg.mode === 'off') return null;
-  if (cfg.mode === 'paper' || cfg.dryRun) return createMakerAdapter({ mode: 'paper', dryRun: cfg.dryRun, orderTtlSeconds: cfg.orderTtlSeconds });
+  if (cfg.mode === 'paper' || cfg.dryRun) return createMakerAdapter({ mode: 'paper', dryRun: cfg.dryRun, orderTtlSeconds: cfg.orderTtlSeconds, auditSink: agent35AuditSink });
   const { credsProvider, signerProvider } = makerLiveProviders();
   return createMakerAdapter({
     mode: cfg.mode, liveMinCapUsd: cfg.liveMinCapUsd, orderTtlSeconds: cfg.orderTtlSeconds,
+    auditSink: agent35AuditSink,
     // The human funding attestation — a REAL gate, not a formality. Read from the env so a live adapter
     // built without MAKER_FUNDING_APPROVED=true still refuses at the funding gate before any key is loaded.
     fundingApproved: process.env.MAKER_FUNDING_APPROVED === 'true',
@@ -264,7 +278,11 @@ async function tick(cfg, adapter) {
   // markets is a VALID state: we cancel what we had and quote nothing below — never an error/crash-loop.
   const leaving = [...lastUniverseIds].filter((id) => !universeSet.has(id));
   if (leaving.length && adapter && typeof adapter.cancelMarketOrders === 'function') {
-    for (const mid of leaving) {
+    // A market the OPERATOR holds by hand is excluded: this sweep cleans up the ENGINE's orphans, and
+    // cancelMarketOrders cannot tell whose order it is cancelling. See lib/maker/manual-mode.js.
+    const leaveTargets = filterCancelTargets(leaving);
+    for (const mid of leaveTargets.skipped) log(`manual mode active, skip universe-leave cancel on cid_${String(mid).replace(/^0x/, '')}`);
+    for (const mid of leaveTargets.allowed) {
       try { await adapter.cancelMarketOrders(mid); } catch (e) { log('universe-leave cancel failed', mid, e.message); }
     }
   }
@@ -300,7 +318,9 @@ async function tick(cfg, adapter) {
       log('AUTO-DISARM:', inv.disarmedReason || 'ttl-expiry');
       arming = { armed: false, disarmedReason: inv.disarmedReason };
       if (adapter && typeof adapter.cancelMarketOrders === 'function') {
-        try { await cancelAllOnKill({ adapter, marketIds: [...legsByMarket.keys()] }); } catch (e) { log('auto-disarm cancel failed:', e.message); }
+        const t = filterCancelTargets([...legsByMarket.keys()]);
+        for (const mid of t.skipped) log(`manual mode active, skip auto-disarm cancel on cid_${String(mid).replace(/^0x/, '')}`);
+        try { await cancelAllOnKill({ adapter, marketIds: t.allowed }); } catch (e) { log('auto-disarm cancel failed:', e.message); }
       }
     }
   }
@@ -323,7 +343,12 @@ async function tick(cfg, adapter) {
     const sweepDue = now - lastStandDownSweepAt >= STANDDOWN_SWEEP_MS;
     if (sweepDue || !wasStandingDown) {   // immediately on ENTERING stand-down, then at the sweep interval
       lastStandDownSweepAt = now;
-      try { await cancelAllOnKill({ adapter, marketIds: [...legsByMarket.keys()] }); } catch (e) { log('cancel-on-standdown failed:', e.message); }
+      // Manual markets are EXCLUDED from this housekeeping sweep. This does not weaken the kill: the
+      // operator's KILL button (POST /api/maker/kill → lib/maker/cancel-all) sweeps EVERY market through
+      // the cancel-only adapter, manual included, and is a different code path from this one.
+      const t = filterCancelTargets([...legsByMarket.keys()]);
+      for (const mid of t.skipped) log(`manual mode active, skip stand-down cancel on cid_${String(mid).replace(/^0x/, '')}`);
+      try { await cancelAllOnKill({ adapter, marketIds: t.allowed }); } catch (e) { log('cancel-on-standdown failed:', e.message); }
     }
   }
   wasStandingDown = standingDown;
@@ -519,12 +544,23 @@ async function tick(cfg, adapter) {
     // FAIL LOUD, NEVER SILENTLY: a refusal is logged with the gate that produced it, and a throw is
     // caught per-leg so one bad leg cannot take down the cycle — but it is recorded, never swallowed.
     const placements = [];
+    // MANUAL OWNERSHIP IS THE FIRST GATE, ahead of every engine-side belt: if a human holds this market
+    // the engine has nothing to decide here at all. Re-read every cycle, so taking a market by hand from
+    // the panel binds on the next tick (~3s) with no restart. Fail-closed inside manual-mode.js.
+    const manualBlock = placementBlockReason(marketId);
     const placementBlocked =
-      !adapter ? 'no adapter (mode=off)'
-        : !adapter.canWrite ? `mode=${cfg.mode} cannot write`
-          : durableKill.killed ? `durable kill active (${durableKill.scope || 'global'})`
-            : !rails.allowNewPlacement ? `rails refuse new placement (${rails.cancelScope})`
-              : null;
+      manualBlock ? manualBlock
+        : !adapter ? 'no adapter (mode=off)'
+          : !adapter.canWrite ? `mode=${cfg.mode} cannot write`
+            : durableKill.killed ? `durable kill active (${durableKill.scope || 'global'})`
+              : !rails.allowNewPlacement ? `rails refuse new placement (${rails.cancelScope})`
+                : null;
+    // Throttled to once a minute per market: this fires on EVERY tick for as long as the operator holds
+    // the market, and the proof of isolation is worth a log line, not 20 per minute.
+    if (manualBlock && now - (lastManualLogAt.get(marketId) || 0) >= MANUAL_LOG_MS) {
+      lastManualLogAt.set(marketId, now);
+      log(`${manualBlock} — ${marketRef} (${recon.toPlace.length} quote(s) held back, ${recon.toCancel.length} cancel(s) suppressed)`);
+    }
     if (placementBlocked) {
       if (recon.toPlace.length && cfg.mode !== 'off') log(`placement skipped on ${marketRef}: ${placementBlocked} (${recon.toPlace.length} quote(s) held back)`);
     } else {
@@ -582,6 +618,9 @@ async function tick(cfg, adapter) {
       // What the placement path actually did this cycle: the adapter's verdict per leg, including
       // the exact order a dry-run would have sent. Externally observable in /tmp/maker-state.json.
       placement: { mode: adapter ? adapter.placement : null, blocked: placementBlocked, attempted: placements.length, results: placements },
+      // Who owns this market this cycle. Externally observable, so "the engine really is standing off"
+      // is a readable fact rather than a claim — the manual panel reads it back to show the isolation.
+      manualMode: { active: manualBlock != null, reason: manualBlock },
       // The position guards: measured inventory (null = unreadable, never 0), the SELL legs they blocked
       // and any YES+NO pair priced at or above $1. Externally observable in /tmp/maker-state.json.
       inventory: { yesShares: inventory.yes, noShares: inventory.no, wallet: inventory.wallet, source: inventory.source },
@@ -621,6 +660,10 @@ async function tick(cfg, adapter) {
     // own — a gate that looks green in the browser and red in the engine is worse than no gate.
     fundingApproved: process.env.MAKER_FUNDING_APPROVED === 'true',
     durableKill: { killed: durableKill.killed, scope: durableKill.scope, reason: durableKill.reason || null },
+    // The markets the OPERATOR holds by hand this cycle — the engine places nothing and sweeps nothing on
+    // them. `readable:false` means the ownership file could not be read, in which case the engine treats
+    // EVERY market as manual (fail closed) and this list is not the whole story; the flag says so.
+    manualMode: (() => { const mm = readManualMode(); return { readable: mm.readable, error: mm.error, marketIds: mm.marketIds }; })(),
     arming: { armed: arming.armed, expiresInSec: arming.expiresInSec ?? null, disarmedReason: arming.disarmedReason || null, notArmedLive },
     source: 'agent35-maker · paper pipeline · quotes from ADJUSTED mid · no orders placed (MAKER_MODE=' + cfg.mode + ')',
     config: { liveMinMarket: cfg.liveMinMarket, liveMinCapUsd: cfg.liveMinCapUsd, requote: cfg.requote, rails: cfg.rails },
