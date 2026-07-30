@@ -1,15 +1,18 @@
-import RewardsAllocatePanel from '@/app/components/RewardsAllocatePanel';
+import { redirect } from 'next/navigation';
 
 export const dynamic = 'force-dynamic';
 
-export const metadata = {
-  title: 'Allocazione capitale · liquidity rewards — Edgeradar',
-  description:
-    'Inserisci un capitale e ottieni l’allocazione dell’ottimizzatore sui mercati, con la dimensione per-mercato corretta dalla profondità reale in-band. Piano, non un ordine.',
-};
-
-// PUBLIC page (no login wall, like the rest of the dashboard). It plans and displays only — see
-// RewardsAllocatePanel: no order is ever constructed, signed, armed or placed from here.
-export default function AllocatePage() {
-  return <RewardsAllocatePanel />;
+/**
+ * /dashboard/liquidity-rewards/allocate — kept ONLY as a redirect.
+ *
+ * Capital allocation is now the "Alloca capitale" section of the single-page console at
+ * /dashboard/liquidity-rewards, so this route no longer renders anything of its own: it forwards to
+ * that page with the landing section preselected. Old links, bookmarks and anything that still points
+ * here keep working and land exactly where the planner now lives.
+ *
+ * The planner itself (RewardsAllocatePanel) is unchanged — same component, same read-only endpoints,
+ * same plan-not-an-order behaviour. Only where it is mounted moved.
+ */
+export default function AllocateRedirectPage() {
+  redirect('/dashboard/liquidity-rewards?tab=alloca');
 }

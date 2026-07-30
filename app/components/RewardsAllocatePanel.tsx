@@ -210,6 +210,10 @@ export default function RewardsAllocatePanel() {
       staleCount: rows.filter((x) => x.stale).length, unreadableCount: rows.filter((x) => x.unreadable).length,
       usableCount: usable.length, newestAge: ages.length ? Math.min(...ages) : null, oldestAge: ages.length ? Math.max(...ages) : null,
       resDist, artifactCount: rows.filter((x) => x.artifact).length,
+      // Largest per-market gross among the rows that COUNT (usable ones). It is only the bar's scale —
+      // the bar is a reading aid for the $/g already in the cell, never a second number. Rows excluded
+      // from the totals (stale/unreadable) get no bar rather than a bar drawn to a scale they are not in.
+      maxGross: usable.reduce((m, x) => Math.max(m, x.c.gross ?? 0), 0),
       widenAllLeaves: rows.filter((x) => x.usable && x.nextStepLeaves).length, // rows a global +1 would push OUT
       bandCounts: rows.reduce((b, x) => { b[x.band.state] = (b[x.band.state] || 0) + 1; return b; }, { comfortable: 0, edge: 0, out: 0, unknown: 0 } as Record<string, number>),
       grossAllInBand: usable.reduce((s, x) => s + (x.r.grossInBandPerDay ?? 0), 0), // every row quoting INSIDE its band
@@ -264,6 +268,8 @@ export default function RewardsAllocatePanel() {
         .band-room{display:block;font-size:11px;color:color-mix(in srgb,var(--ds-text) 55%,transparent);margin-top:2px;white-space:nowrap}
         .step-danger{border-color:#d1495b !important;color:#d1495b !important;background:color-mix(in srgb,#d1495b 12%,transparent) !important}
         .fresh-bar{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center;font-size:12px;margin:2px 0 8px;color:color-mix(in srgb,var(--ds-text) 60%,transparent)}
+        .gross-bar{display:block;height:4px;min-width:48px;border-radius:999px;margin-top:4px;background:color-mix(in srgb,var(--ds-text) 10%,transparent);overflow:hidden}
+        .gross-bar i{display:block;height:100%;border-radius:999px;background:#2E5FBE}
         .fresh-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:baseline}
         @media(max-width:430px){.alloc-in{width:44vw}}
       `}</style>
@@ -431,6 +437,14 @@ export default function RewardsAllocatePanel() {
                       {c.inBand === false ? <span className="oob" data-alloc-oob-gross><s>{perDay(r.grossInBandPerDay)}</s> $0,00/g · fuori banda</span>
                         : c.bandKnown === false && c.gross != null ? <span>{perDay(c.gross)}<small className="alloc-cat"> banda —</small></span>
                           : <>{perDay(c.gross)}{artifact && <small className="oob" data-alloc-s1-row title="lordo = tetto S=1: non modella il decadimento del punteggio con la distanza dal mid — allargare non è gratis"> · tetto S=1</small>}</>}
+                      {/* Proportional bar — the same $/g already in this cell, drawn to the largest usable
+                          row so the split across markets is readable at a glance. Out-of-band earns zero,
+                          so its bar is genuinely empty; excluded rows get no bar at all. */}
+                      {!stale && !unreadable && computed.maxGross > 0 && (
+                        <span className="gross-bar" aria-hidden="true" data-alloc-gross-bar>
+                          <i style={{ width: `${Math.max(0, Math.min(100, ((c.inBand === false ? 0 : (c.gross ?? 0)) / computed.maxGross) * 100))}%` }} />
+                        </span>
+                      )}
                     </td>
                     <td className={c.net == null ? 'dash' : ''} data-alloc-net>{c.net == null ? '—' : perDay(c.net)}</td>
                     <td className={c.fills == null ? 'dash' : ''} data-alloc-fills>{c.fills == null ? '—' : c.fills}</td>

@@ -13,7 +13,7 @@
 //   Piazza ordine                             → POST   /api/maker/manual/order
 //   Aggiorna / auto-refresh                   → GET    /api/maker/manual/orders   (venue truth)
 //   Cancella (per riga)                       → POST   /api/maker/manual/cancel
-//   Modifica → Conferma (per riga)            → POST   /api/maker/manual/replace  (cancel+ripiazza)
+//   Riprezza → Conferma (per riga)            → POST   /api/maker/manual/replace  (cancel+ripiazza)
 //   banner, cap, stato, pin, isolamento       → GET    /api/maker/manual/config
 //
 // NOTHING IS HARDCODED. The kill banner is the durable kill file re-read on every poll; the caps are
@@ -258,8 +258,11 @@ export default function ManualOrdersPanel() {
         .mkman-sec { margin-top: 20px; border-top: 1px solid #232937; padding-top: 16px; }
         .mkman-sech { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
         .mkman-sectitle { font-size: 12px; font-weight: 800; letter-spacing: .4px; text-transform: uppercase; color: #9AA4B2; }
-        .mkman-note { font-size: 12px; color: #8B95A5; margin: 4px 2px 0; line-height: 1.45; }
-        .mkman-res { margin-top: 12px; font-size: 13px; color: #B7C0CE; line-height: 1.5; }
+        /* These two carry server-authored prose that can contain a bare 66-char market id (e.g. the
+           isolation reason). Without a break rule the id refuses to wrap and pushes the whole page into
+           horizontal scroll on a phone — so they break anywhere rather than overflow. */
+        .mkman-note { font-size: 12px; color: #8B95A5; margin: 4px 2px 0; line-height: 1.45; overflow-wrap: anywhere; }
+        .mkman-res { margin-top: 12px; font-size: 13px; color: #B7C0CE; line-height: 1.5; overflow-wrap: anywhere; }
         .mkman-warn { color: #E8B23A; }
         .mkman-ok { color: #57C98A; }
         .mkman-bad { color: #E5574E; }
@@ -607,9 +610,12 @@ export default function ManualOrdersPanel() {
                   </>
                 ) : (
                   <>
-                    <button className="mkman-edit"
+                    {/* RIPREZZA — the price/size edit. Named for what it does to a resting order rather
+                        than for the generic "modify" the venue does not actually offer. Prefilled with
+                        the order's current price and remaining size, so the operator changes one number. */}
+                    <button className="mkman-edit" data-manual-reprice
                       onClick={() => { setEditing(o.orderId); setEditPrice(o.price != null ? String(o.price) : ''); setEditSize(o.sizeRemaining != null ? String(o.sizeRemaining) : ''); }}>
-                      Modifica
+                      Riprezza
                     </button>
                     <button className="mkman-cancel" onClick={() => o.orderId && doCancel(o.orderId)}
                       disabled={busyOrder === o.orderId} data-manual-cancel>
@@ -627,7 +633,7 @@ export default function ManualOrdersPanel() {
         )}
 
         <p className="mkman-note">
-          «Modifica» è una sequenza <b>cancella → ripiazza</b> eseguita interamente sul server in una sola chiamata:
+          «Riprezza» è una sequenza <b>cancella → ripiazza</b> eseguita interamente sul server in una sola chiamata:
           il CLOB di Polymarket non espone nessun endpoint di modifica ordine. Il nuovo ordine viene validato
           <b> prima</b> di cancellare il vecchio, e fra i due passi esiste una finestra reale senza ordine a riposo.
           Le cancellazioni passano dall&apos;adapter cancel-only, che non possiede la chiave di firma e non può
