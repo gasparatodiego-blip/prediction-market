@@ -71,6 +71,16 @@ const nextConfig = {
       },
     ];
   },
+  // ── The CLOB SDKs are NOT bundled; they are required from node_modules at runtime. ──────────────
+  // POST /api/maker/manual/order is the first dashboard route that genuinely has to PLACE an order, so
+  // it reaches lib/venues/polymarket-clob-maker/adapter → @polymarket/clob-client-v2. Letting webpack
+  // bundle that package fails the build outright: its viem/ox dependency chain trips
+  // "Self-reference dependency has unused export name: This should not happen" across @noble/curves.
+  // Externalizing is also the CORRECT shape regardless of the bug — these are Node-only packages that
+  // load a signing key, and the routes that use them are all `runtime = 'nodejs'`.
+  experimental: {
+    serverComponentsExternalPackages: ['@polymarket/clob-client-v2', '@polymarket/clob-client'],
+  },
   compress: true,
   poweredByHeader: false,
   images: { formats: ['image/webp', 'image/avif'] },
