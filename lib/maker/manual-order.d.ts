@@ -7,16 +7,26 @@
 
 import type { ManualMarketVerdict, ManualModeDeps, ManualRecord } from './manual-mode';
 import type { AutoRepriceDeps, AutoRepriceRecord, AutoRepriceMarketState } from './auto-reprice-config';
+import type { MarketWindowResolved } from './market-clock';
+import type { MarketCatalogDeps, CatalogRecord } from './market-catalog';
 
 export type Book = 'yes' | 'no';
 export type Placement = 'dry-run' | 'send';
 /** WHO acted. 'agent35' is stamped by the engine and never appears on this path. */
 export type ManualSource = 'manual-ui' | 'auto-reprice-band-exit';
 
-export interface ManualDeps extends ManualModeDeps {
+export interface ManualDeps extends ManualModeDeps, MarketCatalogDeps {
   /** Injected fixtures for the selfcheck; production passes nothing and reads the real files. */
   books?: unknown;
   norm?: unknown;
+  /** Hand-added market metadata (fallback when the reward board has never seen this market). */
+  catalogRecord?: CatalogRecord | null;
+  /** Market-clock injection: an explicit close time, or fixtures for the files it reads. */
+  marketClockDeps?: Record<string, unknown>;
+  endMs?: number;
+  board?: unknown;
+  boardFile?: string;
+  normFile?: string;
   env?: Record<string, string | undefined>;
   manualDeps?: ManualModeDeps;
   limitDeps?: { configFile?: string };
@@ -40,8 +50,14 @@ export interface ManualExpiry {
   autoReprice: boolean;
   /** How much life is left on the order when the watcher renews it proactively. null when not managed. */
   refreshMarginSeconds: number | null;
-  source: 'explicit' | 'auto-reprice' | 'default' | 'default-fail-closed';
+  /** `+market-clock` is appended when the market's remaining life shortened the window. */
+  source: string;
   reason: string;
+  /** The market's own clock. null only when no market was named. */
+  window?: MarketWindowResolved | null;
+  /** true ⇒ inside the no-new-orders threshold: the caller MUST refuse (see `gate`). */
+  tooClose?: boolean;
+  gate?: string | null;
 }
 
 export interface EngineState {
@@ -71,12 +87,17 @@ export interface MarketRules {
   bandRadiusCents: number | null;
   feedLive: boolean;
   feedAgeSec: number | null;
-  /** Where the scoring mid came from — a board-row mid may be minutes old, and the panel says so. */
-  midSource: 'live-book' | 'board-row' | null;
+  /** Where the scoring mid came from — a board-row or catalog mid may be minutes old, and the panel says so. */
+  midSource: 'live-book' | 'board-row' | 'manual-catalog' | null;
   midAgeSec: number | null;
   bestBid: number | null;
   bestAsk: number | null;
   books: { yes: { tokenId: string | null; scoringMid: number | null }; no: { tokenId: string | null; scoringMid: number | null } };
+  /** Which source answered for this market. 'manual-catalog' = hand-added, not on the reward board. */
+  rulesSource?: 'live-book' | 'board-row' | 'manual-catalog' | null;
+  /** 'none' = the venue publishes no reward programme here. NOT a permission: the band guard still refuses. */
+  rewardProgramme?: 'active' | 'none' | null;
+  rewardsDailyRate?: number | null;
 }
 
 export interface Caps {
@@ -137,8 +158,16 @@ export interface AutoRepriceView {
     reason: string;
     record: AutoRepriceRecord | null;
   } | null;
-  /** The lifetime a NEW hand order on this market would get right now. */
-  expiry: { orderType: 'GTC' | 'GTD'; ttlSeconds: number; refreshMarginSeconds: number | null; source: string; reason: string } | null;
+  /** The lifetime a NEW hand order on this market would get right now, bounded by the market's own clock. */
+  expiry: {
+    orderType: 'GTC' | 'GTD'; ttlSeconds: number; refreshMarginSeconds: number | null; source: string; reason: string;
+    /** true ⇒ a new order here would be REFUSED: the market is inside its final minutes. */
+    tooClose?: boolean;
+    window?: {
+      closeKnown: boolean; endIso: string | null; closeSource: string | null;
+      minutesToClose: number | null; minMinutes: number; shortened: boolean;
+    } | null;
+  } | null;
   watcher: {
     readable: boolean;
     heartbeatAt: number | null;
@@ -167,6 +196,14 @@ export interface ManualContext {
   kill: KillView;
   placement: { mode: Placement; key: string; sends: boolean; note: string };
   engine: EngineState;
+  /** WHICH markets live-min may touch right now: the operator's enabled list plus the env pin. */
+  liveMinAllowlist: {
+    pinnedMarketId: string | null;
+    enabledMarketIds: string[];
+    count: number;
+    targetAllowed: boolean | null;
+    note: string;
+  };
   isolation: IsolationView | null;
   autoReprice: AutoRepriceView;
   caps: Caps;
@@ -295,7 +332,7 @@ export function evaluateManualCapGate(arg: { notionalUsd: number; caps: Caps }):
  * the fixed GTD — so a config that cannot be read can never produce an order with no expiry.
  */
 export function resolveManualTtlSeconds(
-  arg: { marketId?: string | null; ttlSeconds?: number | null },
+  arg: { marketId?: string | null; ttlSeconds?: number | null; nowMs?: number },
   deps?: ManualDeps,
 ): ManualExpiry;
 
