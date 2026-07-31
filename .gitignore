@@ -128,6 +128,16 @@ data/maker-manual-mode-audit.jsonl
 # reasoning as the manual-ownership flag above — WHICH markets are currently automated, and when the
 # watcher last beat, are machine-local facts. The code that reads them is source; the state is not.
 # The state file in particular is rewritten every few seconds and would otherwise churn the diff.
+# distanza target dal mid + soglia di inseguimento (lib/maker/offset-config.js), e la memoria della
+# prima distanza osservata per (mercato, lato). Stesso ragionamento dei pari qui sotto: e' stato locale
+# della macchina, riscritto dal watcher, non sorgente.
+data/maker-offsets.json
+data/maker-offsets.json.tmp.*
+data/maker-offsets-audit.jsonl
+# chiusura automatica su fill (lib/maker/auto-close-config.js)
+data/maker-auto-close.json
+data/maker-auto-close.json.tmp.*
+data/maker-auto-close-audit.jsonl
 data/maker-auto-reprice.json
 data/maker-auto-reprice.json.tmp.*
 data/maker-auto-reprice-state.json
