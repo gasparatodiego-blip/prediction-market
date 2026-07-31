@@ -32,6 +32,29 @@ interface KillResponse {
   error?: string;
 }
 
+// ── RIPRISTINA ── the green counterpart to the red KILL. Its result is a LIST OF STEPS, each with its own
+// evidence, because this feature exists precisely because "the orders table is empty" was once accepted as
+// proof of a clean state and was not proof at all.
+interface ResetStep { key: string; ok: boolean; label: string; evidence: unknown; at: string }
+interface ResetDiagnosis {
+  readable: boolean; openNotionalUsd: number | null;
+  fromConfirmedPositionsUsd: number; fromUnresolvedOrdersUsd: number;
+  unknowns: Array<{ idempotencyKey: string; notionalUsd: number; assumed?: string; stale?: boolean }>;
+  note: string;
+}
+interface ResetResponse {
+  ok: boolean; at: string; latencyMs?: number; steps: ResetStep[];
+  before?: ResetDiagnosis; after?: ResetDiagnosis;
+  cancelled?: Array<{ orderId: string; ok: boolean; cancelled: boolean; alreadyGone: boolean; reason: string | null }>;
+  resolved?: { fills: number; nofills: number; stillUnknown: number; ran: boolean };
+  killCleared?: boolean; venueOrdersAfter?: number; openNotionalAfter?: number | null;
+  reason: string | null; error?: string;
+}
+interface ResetState {
+  kill: { killed: boolean; readable: boolean; reason: string | null; at: number | null };
+  diagnosis: ResetDiagnosis;
+}
+
 interface PreflightCheck { key: string; label: string; pass: boolean; value: string; detail: string }
 interface PreflightResponse { at: string; checks: PreflightCheck[]; go: boolean; error?: string }
 
@@ -63,6 +86,11 @@ export default function MakerArmingPanel() {
   const [arming, setArming] = useState(false);
   const [armMsg, setArmMsg] = useState<string | null>(null);
   const [countdown, setCountdown] = useState<number | null>(null); // live TTL seconds remaining
+  // ── RIPRISTINA state. `resetState` is polled read-only and drives whether the button is enabled at all.
+  const [resetState, setResetState] = useState<ResetState | null>(null);
+  const [resetting, setResetting] = useState(false);
+  const [reset, setReset] = useState<ResetResponse | null>(null);
+  const [resetErr, setResetErr] = useState<string | null>(null);
 
   const loadArmStatus = useCallback(async () => {
     try {
@@ -170,6 +198,48 @@ export default function MakerArmingPanel() {
     }
   }, []);
 
+  // ── RIPRISTINA ── read-only poll: is the kill on, and what would the reset be fixing? Cheap, and it is
+  // the SINGLE source for both the button's enabled state and the "before" numbers, so the two cannot
+  // disagree for a few seconds and leave a green button pointing at a kill that is already clear.
+  const loadResetState = useCallback(async () => {
+    try {
+      const r = await fetch('/api/maker/manual/reset', { cache: 'no-store' });
+      if (!r.ok) return;
+      setResetState((await r.json()) as ResetState);
+    } catch { /* keep the last good state; the button simply stays as it was */ }
+  }, []);
+
+  // The reset is NOT instant — it makes several real venue round trips (read, cancel, re-read, cross-check
+  // trades, re-read again). `resetting` disables the button for the whole sequence so a second tap cannot
+  // start a parallel run, and the caption says which kind of work is in flight rather than a bare spinner.
+  const doReset = useCallback(async () => {
+    setResetting(true);
+    setResetErr(null);
+    setReset(null);
+    try {
+      const r = await fetch('/api/maker/manual/reset', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: 'ripristino dal pannello operatore' }),
+      });
+      setReset((await r.json()) as ResetResponse);
+      await loadResetState();
+      await loadArmStatus();
+    } catch (e) {
+      setResetErr((e as Error).message || 'request failed');
+    } finally {
+      setResetting(false);
+    }
+  }, [loadResetState, loadArmStatus]);
+
+  // Its OWN effect, deliberately separate from the arming poll above: this feature must not alter the
+  // arming console's fetch cadence or its lifecycle in any way.
+  useEffect(() => {
+    if (operator !== true) return;
+    loadResetState();
+    const t = setInterval(loadResetState, 10_000);
+    return () => clearInterval(t);
+  }, [operator, loadResetState]);
+
   // Preflight is deliberate + slow (it signs an order offline and reads chain state) → run on demand, never
   // on mount. It reads REAL state every time; there is no cached "armable" flag.
   const runPreflight = useCallback(async () => {
@@ -198,6 +268,17 @@ export default function MakerArmingPanel() {
           padding: 3px 8px; border-radius: 999px; }
         .mkarm-killbtn { min-height: 48px; padding: 0 22px; border: none; border-radius: 10px; cursor: pointer;
           font-size: 15px; font-weight: 800; letter-spacing: .4px; color: #fff; background: #D21F32; touch-action: manipulation; }
+        /* RIPRISTINA — same height, same weight, same shape as the KILL. Side by side and both always
+           visible: the two actions are opposites and the operator should never have to hunt for one. */
+        .mkarm-btnrow { display: flex; gap: 12px; flex-wrap: wrap; align-items: stretch; }
+        .mkarm-resetbtn { min-height: 48px; padding: 0 22px; border: none; border-radius: 10px; cursor: pointer;
+          font-size: 15px; font-weight: 800; letter-spacing: .4px; color: #06210f; background: #2FA96B; touch-action: manipulation; }
+        .mkarm-resetbtn:disabled { background: #2b3a30; color: #6b7a70; cursor: not-allowed; }
+        .mkarm-step { display: flex; gap: 8px; align-items: baseline; padding: 3px 0; font-size: 12.5px; line-height: 1.45; }
+        .mkarm-step-ok { color: #57C98A; font-weight: 800; }
+        .mkarm-step-bad { color: #E5574E; font-weight: 800; }
+        .mkarm-evi { color: #8B95A5; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px;
+          white-space: pre-wrap; word-break: break-word; margin: 2px 0 0 22px; }
         .mkarm-killbtn:hover { background: #B81A2B; }
         .mkarm-killbtn:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
         .mkarm-killbtn:disabled { opacity: .6; cursor: wait; }
@@ -249,22 +330,105 @@ export default function MakerArmingPanel() {
         <span className="mkarm-badge" data-maker-disarmed>DISARMED · MAKER_MODE off</span>
       </div>
 
-      {/* ── KILL: one tap, no confirmation dialog. Runs server-side; never depends on polymarket.com. ── */}
-      <button
-        className="mkarm-killbtn"
-        data-maker-kill
-        onClick={doKill}
-        disabled={killing}
-        aria-label="Kill the maker and cancel all resting orders now"
-      >
-        {killing ? 'KILLING…' : 'KILL — DISARM & CANCEL ALL'}
-      </button>
+      {/* ── KILL + RIPRISTINA, side by side and BOTH always visible. ──────────────────────────────────
+          They are opposites, so hiding either one is how an operator ends up hunting for a control at the
+          worst moment. The KILL is always enabled (stopping must never be blocked); RIPRISTINA is enabled
+          ONLY while the kill is actually on, because with the kill already clear there is nothing to
+          restore and a green button would invite a pointless round of venue calls. */}
+      <div className="mkarm-btnrow">
+        <button
+          className="mkarm-killbtn"
+          data-maker-kill
+          onClick={doKill}
+          disabled={killing}
+          aria-label="Kill the maker and cancel all resting orders now"
+        >
+          {killing ? 'KILLING…' : 'KILL — DISARM & CANCEL ALL'}
+        </button>
+        <button
+          className="mkarm-resetbtn"
+          data-maker-reset
+          onClick={doReset}
+          disabled={resetting || resetState?.kill.killed !== true}
+          title={resetState?.kill.killed === true
+            ? 'Cancella eventuali residui, riconcilia l\'esposizione contro il venue, disattiva il kill-switch e verifica che TUTTO sia a zero'
+            : 'Disponibile solo con il kill-switch attivo: adesso non c\'è nulla da ripristinare'}
+          aria-label="Ripristina: riarma e verifica che lo stato sia pulito"
+        >
+          {resetting ? 'VERIFICO SUL VENUE…' : 'RIPRISTINA — RIARMA E VERIFICA PULITO'}
+        </button>
+      </div>
       <p className="mkarm-note">
         One tap disarms the maker (durable global kill) and cancels every resting order — entirely on the
         Edgeradar server, no browser call to polymarket.com. Safe even when the maker is already off.
       </p>
 
       {killErr && <div className="mkarm-res mkarm-warn">Request failed — nothing confirmed: {dash(killErr)}</div>}
+
+      {/* ── RIPRISTINA: what it would fix, before you press it ────────────────────────────────────────
+          Shown only while the kill is on. The split between confirmed positions and unresolved orders is
+          the whole point: a total alone is what made "$67.04 open exposure with an empty orders table"
+          unexplainable in the first place. */}
+      {resetState?.kill.killed === true && resetState.diagnosis && (
+        <div className="mkarm-res" data-maker-reset-preview>
+          <div>
+            Kill-switch <b className="mkarm-warn">ATTIVO</b>
+            {resetState.kill.reason ? ` — ${resetState.kill.reason}` : ''}
+          </div>
+          <div>
+            Esposizione aperta vista dal gate cap: <b>{money(resetState.diagnosis.openNotionalUsd)}</b>
+            {resetState.diagnosis.fromUnresolvedOrdersUsd > 0 && (
+              <> — di cui <b className="mkarm-warn">{money(resetState.diagnosis.fromUnresolvedOrdersUsd)}</b> da{' '}
+                <b>{resetState.diagnosis.unknowns.length}</b> ordini inviati mai riconciliati, non da posizioni reali</>
+            )}
+          </div>
+          <div className="mkarm-note">{resetState.diagnosis.note}</div>
+        </div>
+      )}
+
+      {resetErr && <div className="mkarm-res mkarm-warn">Ripristino fallito — nulla è confermato: {dash(resetErr)}</div>}
+
+      {/* ── RIPRISTINA: the result, step by step, each with its evidence ─────────────────────────────── */}
+      {reset && (
+        <div className={`mkarm-res ${reset.ok ? '' : 'mkarm-warn'}`} data-maker-reset-result>
+          <div style={{ fontWeight: 800, marginBottom: 4 }}>
+            {reset.ok ? (
+              <span className="mkarm-ok">
+                RIPRISTINO COMPLETO — {reset.venueOrdersAfter} ordini confermati sul venue, esposizione aperta{' '}
+                {money(reset.openNotionalAfter ?? null)} confermata sul gate cap, kill-switch disattivato alle{' '}
+                {new Date(reset.at).toLocaleTimeString()}
+              </span>
+            ) : (
+              <span className="mkarm-warn">RIPRISTINO INCOMPLETO — {dash(reset.reason || reset.error)}</span>
+            )}
+          </div>
+
+          {/* What was actually found and cancelled, when there was anything. */}
+          {reset.cancelled && reset.cancelled.length > 0 && (
+            <div className="mkarm-note">
+              Residui trovati sul venue e cancellati: {reset.cancelled.map((c) => `${c.orderId.slice(0, 10)}…${c.cancelled ? ' cancellato' : c.alreadyGone ? ' già assente' : ' NON cancellato'}`).join(' · ')}
+            </div>
+          )}
+          {reset.resolved?.ran && (reset.resolved.nofills > 0 || reset.resolved.fills > 0 || reset.resolved.stillUnknown > 0) && (
+            <div className="mkarm-note">
+              Riconciliazione: {reset.resolved.fills} risolti come eseguiti, {reset.resolved.nofills} come NON eseguiti,{' '}
+              {reset.resolved.stillUnknown} ancora sconosciuti.
+            </div>
+          )}
+
+          {reset.steps.map((st) => (
+            <div key={st.key}>
+              <div className="mkarm-step">
+                <span className={st.ok ? 'mkarm-step-ok' : 'mkarm-step-bad'}>{st.ok ? '✓' : '✗'}</span>
+                <span>{st.label}</span>
+              </div>
+              {st.evidence != null && (
+                <div className="mkarm-evi">{JSON.stringify(st.evidence)}</div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
 
       {kill && (
         <div className="mkarm-res">
