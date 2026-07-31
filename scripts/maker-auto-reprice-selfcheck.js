@@ -509,6 +509,102 @@ async function scenarioOwnership() {
   }
 }
 
+// ── 12 · THE STANDING RECONCILIATION — what stops phantom exposure accumulating ────────────────────
+async function scenarioReconcile() {
+  console.log('\n12. la riconciliazione permanente della corsia manuale (dentro agent40)');
+  {
+    const MR = require('../lib/maker/manual-reset');
+    const SENT = {
+      idempotencyKey: 'idem_test_phantom', notionalUsd: 24.2, ts: 1, userId: 'operator', venue: 'polymarket',
+      tokenId: YES, side: 'BUY', price: 0.484, size: 50, orderId: 'ORDER_GONE',
+    };
+    // A phantom: the order was sent, it is GONE from the venue (expired), and the ledger never resolved it.
+    const phantomDiag = { readable: true, openNotionalUsd: 24.2, fromConfirmedPositionsUsd: 0,
+      fromUnresolvedOrdersUsd: 24.2, unknowns: [{ idempotencyKey: 'idem_test_phantom', notionalUsd: 24.2 }],
+      positions: [], sentOrders: [SENT], note: '' };
+    const st = { fillsFile: tmp('fills.jsonl') };
+
+    // ── The steady state: nothing unresolved ⇒ ZERO venue calls. This is what makes it safe to run every
+    //    minute forever on a process that is otherwise idle.
+    let listCalls = 0, tradeCalls = 0;
+    const clean = await MR.reconcileManualLane({}, {
+      ...st,
+      diagnoseExposure: () => ({ readable: true, unknowns: [], sentOrders: [], openNotionalUsd: 0, fromUnresolvedOrdersUsd: 0, fromConfirmedPositionsUsd: 0, positions: [], note: '' }),
+      listOrders: async () => { listCalls++; return { ok: true, simulated: false, orders: [] }; },
+      fetchVenueTrades: async () => { tradeCalls++; return { ok: true, trades: [] }; },
+    });
+    ok(clean.ran === false && clean.reason === 'nothing-unresolved' && listCalls === 0 && tradeCalls === 0,
+      'con niente da risolvere non tocca la rete NEMMENO una volta — due letture di file locali e basta, che e\' cio\' che rende sicuro girare ogni minuto per sempre');
+
+    // ── A phantom, with a successful trades cross-check showing no fills ⇒ resolved to no-fill.
+    const resolved = await MR.reconcileManualLane({}, {
+      ...st,
+      diagnoseExposure: () => phantomDiag,
+      listOrders: async () => ({ ok: true, simulated: false, orders: [] }),   // gone from the book
+      fetchVenueTrades: async () => ({ ok: true, trades: [], reason: '0 esecuzioni' }),
+      address: '0xTEST',
+    });
+    ok(resolved.ran === true && resolved.nofills === 1 && resolved.stillUnknown === 0,
+      'un ordine sparito dal book, con le esecuzioni reali che non ne mostrano traccia, viene risolto come NON eseguito');
+    ok(resolved.resolvedUsd === 24.2,
+      `…e riporta i $${resolved.resolvedUsd} di esposizione fantasma ritirati dal gate cap, non solo un conteggio`);
+
+    // THE FIX THAT MADE IT ACTUALLY WORK: the row must carry the userId, or readFills filters it back out
+    // and the phantom survives. This is the bug the reset's own verifier caught.
+    const rows = fs.readFileSync(st.fillsFile, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
+    ok(rows.length === 1 && rows[0].kind === 'nofill' && rows[0].userId === 'operator' && rows[0].venue === 'polymarket',
+      'la riga scritta porta userId e venue — senza, readFills la filtra via e l\'ordine resta "irrisolto" per sempre (il bug che il verificatore del ripristino ha scoperto)');
+
+    // ── FAIL CLOSED: no cross-check ⇒ nothing is resolved. Never guess.
+    const noCheck = await MR.reconcileManualLane({}, {
+      ...st, fillsFile: tmp('fills2.jsonl'),
+      diagnoseExposure: () => phantomDiag,
+      listOrders: async () => ({ ok: true, simulated: false, orders: [] }),
+      fetchVenueTrades: async () => ({ ok: false, trades: null, reason: 'data-api irraggiungibile' }),
+    });
+    ok(noCheck.ran === true && noCheck.nofills === 0 && noCheck.stillUnknown === 1,
+      'se il controllo incrociato sulle esecuzioni NON e\' disponibile, nessun ordine sparito viene risolto — resta sconosciuto e continua a contare (mai a indovinare)');
+
+    // ── FAIL CLOSED: venue not queried (no credentials) ⇒ nothing resolved.
+    const sim = await MR.reconcileManualLane({}, {
+      ...st, fillsFile: tmp('fills3.jsonl'),
+      diagnoseExposure: () => phantomDiag,
+      listOrders: async () => ({ ok: true, simulated: true, orders: [] }),
+      fetchVenueTrades: async () => ({ ok: true, trades: [] }),
+    });
+    ok(sim.ran === false && /non e\' stato interrogato|not-queried|credentials/i.test(sim.reason),
+      'senza credenziali il venue non viene interrogato e nulla viene risolto — una lista vuota non letta non e\' una lista vuota');
+
+    // ── An order STILL RESTING must never be resolved away.
+    const resting = await MR.reconcileManualLane({}, {
+      ...st, fillsFile: tmp('fills4.jsonl'),
+      diagnoseExposure: () => phantomDiag,
+      listOrders: async () => ({ ok: true, simulated: false, orders: [{ orderId: 'ORDER_GONE', tokenId: YES, side: 'BUY', price: 0.484, size: 50, sizeMatched: 0 }] }),
+      fetchVenueTrades: async () => ({ ok: true, trades: [] }),
+    });
+    ok(resting.nofills === 0,
+      'un ordine ANCORA a riposo sul venue non viene mai risolto: continua a contare come esposizione, che e\' corretto');
+
+    // ── The wiring: agent40 really calls it, on its own throttle and its own try/catch.
+    const src = fs.readFileSync(path.join(__dirname, '..', 'agents', 'agent40-manual-reprice.js'), 'utf8');
+    const code = src.replace(/^\s*\/\/.*$/gm, '');
+    ok(/reconcileManualLane\(/.test(code) && /reconcileTask\(/.test(code),
+      'agent40 chiama davvero reconcileManualLane, tramite il suo reconcileTask — il collegamento non puo\' marcire in silenzio');
+    ok(/RECONCILE_EVERY_MS/.test(code) && /lastReconcileAt/.test(code),
+      '…su un throttle proprio, non a ogni ciclo da 5 secondi');
+    // Assert on the BODY of cycle(), not on where the strings happen to appear in the file: the
+    // reconciliation must not be reachable from inside the reprice cycle, which returns early on a kill,
+    // on a disabled switch and on a market handed back to the engine. None of those may stop the ledger
+    // from being told the truth.
+    const cycleBody = code.slice(code.indexOf('async function cycle()'), code.indexOf('async function main()'));
+    ok(cycleBody.length > 50 && !/reconcileManualLane|reconcileTask/.test(cycleBody),
+      '…e NON e\' raggiungibile da dentro cycle(): il ciclo di riprezzo esce presto su kill/interruttore spento, e nessuno di quei casi deve impedire al ledger di sapere la verita\'');
+    ok(/await cycle\(\)[\s\S]{0,400}await reconcileTask\(\)/.test(code),
+      '…ma entrambe girano nello stesso giro del loop, ciascuna con il proprio try/catch: un riprezzo fallito non ferma la riconciliazione, e viceversa');
+  }
+  done();
+}
+
 // ── 9 · THE WIRING IS REAL ──────────────────────────────────────────────────────────────────────────
 async function scenarioWiring() {
   console.log('\n9. the wiring is real — the watcher process and the placement path actually use this');
@@ -732,7 +828,7 @@ async function scenarioBlackout() {
         '…and it is recorded in the audit trail under the automatism\'s own source, with the blind duration');
     }
 
-    done();
+    await scenarioReconcile();
   }
 }
 

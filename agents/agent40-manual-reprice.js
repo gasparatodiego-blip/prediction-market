@@ -5,13 +5,17 @@
 //
 // WHY IT EXISTS. A manual order used to carry a fixed ~180s GTD expiry: the venue killed it on a clock,
 // whatever the price was doing. That is the wrong axis for a reward maker — what matters is whether the
-// order is still inside the band that pays, not how long it has been sitting there. So a hand order on an
-// auto-reprice market now rests as GTC (no venue expiry — the venue supports it; the primary-source proof
-// is in lib/maker/order-ttl.js) and THIS process is what moves it: every few seconds it compares each
-// resting order against the CURRENT live mid and cancels+re-places it ONLY when the mid has travelled far
-// enough to push it out of the band. If the mid does not move that far, the order is not touched at all.
+// order is still inside the band that pays, not how long it has been sitting there. So on an auto-reprice
+// market a hand order carries a RESTING_GTD_SECONDS window (23 min) and this process does three things:
+//   • RE-PRICES it when the mid has travelled far enough to push it out of the band that pays. If the mid
+//     does not move that far, the order is not touched at all;
+//   • RENEWS the window proactively before it can lapse, so time never kills a healthy order — while the
+//     window itself stays real, as the DEAD-MAN'S SWITCH the exchange enforces if this host stops;
+//   • RECONCILES the manual lane's sent orders against venue truth, so an order the venue retired stops
+//     counting as open exposure in the risk ledger. Nothing else does this for the manual lane.
 //
-// NAMED agent40: slots 36-39 are taken (book-velocity, maker-watchdog, tape-watchdog, net-rerun). Unlike that one, this process CAN cause a placement,
+// NAMED agent40: slots 36-39 are taken (book-velocity, maker-watchdog, tape-watchdog, net-rerun). This
+// process CAN cause a placement,
 // so it is deliberately the narrowest thing that can: it owns no adapter, no credentials and no signing
 // key of its own. Its only reachable venue surface is lib/maker/manual-order.replaceManualOrder — the
 // SAME function the panel's "Riprezza" button calls — so every gate that governs a hand order governs
@@ -33,9 +37,10 @@
 // EVERYTHING it does is stamped source:'auto-reprice-band-exit' in data/polymarket-maker-audit.jsonl —
 // distinct from 'manual-ui' and from 'agent35', so the trail always says what moved what.
 //
-// IT IS ALSO THE THING THAT STANDS IN FOR THE VENUE EXPIRY. A GTC order has no venue-side deadline, so if
-// this process is dead an order rests unattended. It therefore writes a heartbeat every cycle, which the
-// manual panel displays; a stale heartbeat next to an ON switch is the operator's signal to look.
+// IF THIS PROCESS DIES, THE ORDERS ARE STILL SAFE — that is the whole point of keeping a real GTD window
+// rather than resting GTC: nothing renews, and the exchange retires them within it. What is lost is the
+// re-pricing and the reconciliation, so it writes a heartbeat every cycle which the manual panel displays;
+// a stale heartbeat next to an ON switch is the operator's signal to look.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const fs = require('fs');
@@ -55,6 +60,12 @@ for (const envFile of ['.env.local', '.env']) {
 const { runAutoRepriceCycle } = require('../lib/maker/auto-reprice');
 const { loadAutoRepriceTuning, EXPECTED_RENEWALS_PER_HOUR } = require('../lib/maker/auto-reprice-config');
 const { listManualOrders, replaceManualOrder, resolveMarketRules, cancelManualOrder } = require('../lib/maker/manual-order');
+// THE STANDING RECONCILIATION FOR THE MANUAL LANE. Without it, every hand order that reaches its
+// venue-side expiry leaves a permanent phantom at full notional in the risk ledger, and the cap gate
+// slowly starts refusing orders that nothing real is backing (that is exactly how "open exposure $67.04"
+// appeared next to an empty orders table). agent35 was never going to do this for us: its reconciliation
+// is "dormant until arming" and it stands off manual markets by design.
+const { reconcileManualLane } = require('../lib/maker/manual-reset');
 const { isManualMarket } = require('../lib/maker/manual-mode');
 const { appendMakerAudit } = require('../lib/venues/polymarket-clob-maker/audit');
 const killSwitch = require('../lib/safety/kill-switch');
@@ -74,6 +85,13 @@ const breaches = new Map();
 // process has not made it, and must not inherit it. Note that a restart is itself the safe direction
 // here — the orders it lost track of are carrying a venue-side expiry that retires them regardless.
 const link = { downSince: null, consecutiveFailures: 0 };
+
+// Reconciliation cadence. NOT every 5s cycle: it is not urgent (a phantom costs nothing until the next
+// order is sized) and each run that finds work makes venue calls. 60s matches agent35's own
+// RECONCILE_INTERVAL_MS. In the steady state it costs nothing at all — the function's first act is a
+// two-file local check, and it returns without touching the network when there is nothing unresolved.
+const RECONCILE_EVERY_MS = Number(process.env.MAKER_MANUAL_RECONCILE_MS || 60_000);
+let lastReconcileAt = 0;
 
 function heartbeat() {
   try {
@@ -118,6 +136,32 @@ function logCycle(res) {
   }
 }
 
+// Deliberately NOT inside cycle(): the reprice cycle returns early on a kill, on a disabled switch and on
+// a market handed back to the engine, and none of those should stop the ledger from being told the truth.
+// This places nothing and cancels nothing — it reads the venue and writes resolutions to our own ledger —
+// so a killed system is exactly when it is most worth running.
+async function reconcileTask() {
+  const now = Date.now();
+  if (now - lastReconcileAt < RECONCILE_EVERY_MS) return;
+  lastReconcileAt = now;
+  try {
+    const r = await reconcileManualLane({ now });
+    // Silent in the steady state. A watcher that logs "nothing to do" every minute buries the one line
+    // that matters — and here that line is "we just retired a phantom from the risk ledger".
+    if (r.ran && (r.nofills > 0 || r.fills > 0)) {
+      log(`reconcile: ${r.fills} risolti come eseguiti, ${r.nofills} come NON eseguiti`
+        + `${r.resolvedUsd ? ` (${r.resolvedUsd} $ di esposizione fantasma ritirata dal gate cap)` : ''}`
+        + `${r.stillUnknown ? `, ${r.stillUnknown} ancora sconosciuti` : ''} — ${r.reason}`);
+    } else if (r.ran && r.stillUnknown > 0) {
+      log(`reconcile: ${r.stillUnknown} ordini inviati restano irrisolti — ${r.reason}`);
+    } else if (!r.ran && r.checked > 0) {
+      log(`reconcile: ${r.checked} ordini da risolvere ma non è stato possibile — ${r.reason}`);
+    }
+  } catch (e) {
+    log('reconcile failed:', e && e.message ? e.message : String(e));
+  }
+}
+
 async function cycle() {
   const res = await runAutoRepriceCycle({
     killStatus: () => killSwitch.killStatus(),
@@ -149,12 +193,19 @@ async function main() {
     + ` within ${Math.round(tuning.restingGtdSeconds / 60)} minutes. That protection is the venue's, not ours — no second supervisor is required.`);
   log(`connection blackout: if the venue is unreachable for more than ${tuning.disconnectCancelSeconds}s, the hand orders on managed markets are CANCELLED on reconnect rather than renewed on top of an unobserved state.`);
   log('placement switch: MANUAL_ORDER_PLACEMENT=' + (process.env.MANUAL_ORDER_PLACEMENT === 'send' ? 'send (an automatic re-price REACHES the venue)' : 'dry-run (nothing reaches POST /order)'));
+  log(`manual-lane reconciliation: every ${Math.round(RECONCILE_EVERY_MS / 1000)}s, and ONLY when something is unresolved`
+    + ' — resolves expired/cancelled hand orders against venue truth so they stop counting as open exposure.'
+    + ' It places nothing and cancels nothing, and is deliberately NOT gated on the kill switch.');
   log('this process owns no adapter, no credentials and no signing key: it can only call the same manual replace path the panel button calls.');
 
   // Never let one bad cycle kill the watcher — but never let a failure be silent either.
   const run = async () => {
     try { await cycle(); }
     catch (e) { log('cycle failed:', e && e.message ? e.message : String(e)); }
+    // The reconciliation runs on its OWN throttle and its OWN try/catch: a reprice cycle that fails must
+    // not stop the ledger being reconciled, and vice versa.
+    try { await reconcileTask(); }
+    catch (e) { log('reconcile task failed:', e && e.message ? e.message : String(e)); }
     finally { heartbeat(); }
   };
   await run();
@@ -165,4 +216,4 @@ if (require.main === module) {
   main().catch((e) => { log('fatal:', e && e.stack ? e.stack : String(e)); process.exit(1); });
 }
 
-module.exports = { cycle, breaches };
+module.exports = { cycle, reconcileTask, breaches };
