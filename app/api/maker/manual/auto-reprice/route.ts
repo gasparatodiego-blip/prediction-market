@@ -3,8 +3,15 @@ import type { NextRequest } from 'next/server';
 import {
   readAutoRepriceConfig, isAutoRepriceEnabled, setAutoReprice,
   readAutoRepriceState, loadAutoRepriceTuning,
+  RESTING_GTD_SECONDS, REFRESH_MARGIN_SECONDS, EXPECTED_RENEWALS_PER_HOUR,
 } from '@/lib/maker/auto-reprice-config';
 import { resolveManualTtlSeconds } from '@/lib/maker/manual-order';
+
+// Derived ONCE from the constants, so every operator-facing message below states the window that is
+// actually in force. Restating "15 minuti" in prose is exactly how a note outlives the number it describes.
+const WIN_MIN = Math.round(RESTING_GTD_SECONDS / 60);
+const MARGIN_MIN = Math.round(REFRESH_MARGIN_SECONDS / 60);
+const RATE = Number(EXPECTED_RENEWALS_PER_HOUR.toFixed(1));
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -21,11 +28,14 @@ export const dynamic = 'force-dynamic';
  * something happen WITHOUT a human pressing a button:
  *   OFF (the default everywhere) — a hand order carries the fixed ~180s GTD expiry it always did. The
  *   venue kills it on a clock. Nothing moves by itself, ever.
- *   ON — a hand order on this market carries a 15-minute GTD expiry which agent40-manual-reprice RENEWS
- *   proactively with 3 minutes still on it (~5 renewals/hour), and re-prices EARLY whenever the live mid
+ *   ON — a hand order on this market carries a GTD expiry of RESTING_GTD_SECONDS which
+ *   agent40-manual-reprice RENEWS proactively with REFRESH_MARGIN_SECONDS still on it, and re-prices
+ *   EARLY whenever the live mid
  *   has travelled far enough to push the order out of the reward band. Time never kills a healthy order;
- *   the expiry exists so that if this host stops, the EXCHANGE retires the order within 15 minutes with
+ *   the expiry exists so that if this host stops, the EXCHANGE retires the order within that window with
  *   no second supervisor required. Both triggers share one mechanism, so they cannot double-fire.
+ *   The two numbers are declared once in lib/maker/auto-reprice-config.js; every message below derives
+ *   from them rather than restating them, so a change to the window cannot leave stale prose behind.
  *
  * THIS IS NOT AN ARMING CONTROL AND ADDS NO AUTHORITY. The automatism reaches the venue only through
  * lib/maker/manual-order.replaceManualOrder — the SAME function the panel's own "Riprezza" button calls —
@@ -115,7 +125,7 @@ export async function POST(req: NextRequest) {
     note: body.enabled
       ? (scope === 'global'
         ? 'Master switch dell\'auto-riprezzo ACCESO. Da solo non fa nulla: agiscono solo i mercati esplicitamente abilitati. Restano in vigore kill-switch, cap, gestione manuale, venue-rules e validateOrder; MANUAL_ORDER_PLACEMENT decide ancora se qualcosa viene davvero inviato.'
-        : 'Auto-riprezzo ACCESO su questo mercato. I NUOVI ordini manuali qui porteranno una scadenza GTD di 15 minuti che il watcher rinnova da solo quando ne mancano 3 (~5 rinnovi/ora), e verranno ripiazzati prima se il mid li porta fuori banda. Gli ordini GIÀ a riposo mantengono la scadenza con cui sono stati piazzati finché non vengono rinnovati o ripiazzati. La scadenza È il dead-man\'s switch: se questa macchina si ferma, nessuno rinnova e il venue ritira da solo ogni ordine entro 15 minuti — nessun sistema esterno di sorveglianza serve perché accada.')
+        : `Auto-riprezzo ACCESO su questo mercato. I NUOVI ordini manuali qui porteranno una scadenza GTD di ${WIN_MIN} minuti che il watcher rinnova da solo quando ne mancano ${MARGIN_MIN} (${RATE}/ora), e verranno ripiazzati prima se il mid li porta fuori banda. Gli ordini GIÀ a riposo mantengono la scadenza con cui sono stati piazzati finché non vengono rinnovati o ripiazzati. La scadenza È il dead-man's switch: se questa macchina si ferma, nessuno rinnova e il venue ritira da solo ogni ordine entro ${WIN_MIN} minuti — nessun sistema esterno di sorveglianza serve perché accada.`)
       : (scope === 'global'
         ? 'Master switch dell\'auto-riprezzo SPENTO: nessun mercato viene più toccato automaticamente. Le opt-in per mercato restano memorizzate ma inerti. I nuovi ordini manuali tornano alla scadenza fissa GTD di 180s.'
         : 'Auto-riprezzo SPENTO su questo mercato: nessun riprezzo automatico. I nuovi ordini manuali qui tornano alla scadenza fissa GTD di 180s, cioè il comportamento di prima.'),

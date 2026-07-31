@@ -30,9 +30,9 @@
 //      never unattributable ones;
 //   9. attribution — every automatic move is stamped source:'auto-reprice-band-exit', distinct from
 //      'manual-ui' and 'agent35', and records WHICH trigger fired;
-//  10. THE RENEWAL RATE — over 2 simulated hours with a moving mid the watcher renews ~5 times an hour,
-//      not the 6–15 the old 180s cycle produced; and with the watcher DEAD the order is retired by the
-//      EXCHANGE within the 15-minute window, with no host-side process involved;
+//  10. THE RENEWAL RATE — over 2 simulated hours with a moving mid the watcher renews exactly 3 times an
+//      hour (the derived rate, asserted against the constants themselves); and with the watcher DEAD the
+//      order is retired by the EXCHANGE within the 23-minute window, with no host-side process involved;
 //  11. THE BLACKOUT — a process that is alive but cannot reach the venue renews nothing (the expiry does
 //      the work), and on reconnection after a long blackout it CANCELS rather than renewing on top of a
 //      state it never observed.
@@ -552,10 +552,12 @@ async function scenarioExpiry() {
   console.log('\n10. the proactive refresh — the venue-side clock is renewed EARLY, at a bounded rate');
   {
     const W = ARC.RESTING_GTD_SECONDS, M = ARC.REFRESH_MARGIN_SECONDS;
-    ok(W === 900 && M === 180,
+    ok(W === 1380 && M === 180,
       `the window is ${W / 60} minutes with a ${M / 60}-minute renewal margin — a bounded, exchange-enforced lifetime, not an unlimited one`);
-    ok(Math.abs(ARC.EXPECTED_RENEWALS_PER_HOUR - 3600 / (W - M)) < 1e-9 && ARC.EXPECTED_RENEWALS_PER_HOUR === 5,
+    ok(Math.abs(ARC.EXPECTED_RENEWALS_PER_HOUR - 3600 / (W - M)) < 1e-9 && ARC.EXPECTED_RENEWALS_PER_HOUR === 3,
       `expected renewals/hour is DERIVED from those two constants (3600/(${W}−${M}) = ${ARC.EXPECTED_RENEWALS_PER_HOUR}/h), so it cannot drift out of date if either is changed`);
+    ok(ARC.DISCONNECT_CANCEL_SECONDS === M,
+      `the blackout threshold is still the refresh margin (${M}s) — widening the window did NOT move it as a side effect, which is exactly why the margin was left alone`);
 
     // The decision itself: in band, but the clock is nearly up.
     const inBandOrder = { orderId: 'O', price: 0.50, size: 60, book: 'yes', secondsToExpiry: M - 10 };
@@ -606,8 +608,10 @@ async function scenarioExpiry() {
     const refreshes = world.audits.filter((a) => a.outcome === 'trigger' && a.trigger === 'expiry-refresh').length;
     const bandExits = world.audits.filter((a) => a.outcome === 'trigger' && a.trigger !== 'expiry-refresh').length;
     console.log(`     → ${CYCLES} cycles = ${HOURS}h simulated · ${total} renewals total (${perHour.toFixed(1)}/hour): ${refreshes} proactive, ${bandExits} band-exit`);
-    ok(perHour >= 3 && perHour <= 5,
-      `over ${HOURS} simulated hours with a moving mid the watcher renewed ${total} times = ${perHour.toFixed(1)}/hour — inside the 3–5/hour target, not the 6–15 the old cycle produced`);
+    ok(perHour <= 3 + 1e-9,
+      `over ${HOURS} simulated hours with a moving mid the watcher renewed ${total} times = ${perHour.toFixed(1)}/hour — at or under the 3/hour ceiling, against the 5/hour the 15-minute window produced and the 6–15 of the original 180s cycle`);
+    ok(Math.abs(perHour - ARC.EXPECTED_RENEWALS_PER_HOUR) < 1e-9,
+      `…and it matches the rate DERIVED from the constants exactly (${ARC.EXPECTED_RENEWALS_PER_HOUR}/hour), so the simulation and the config cannot silently disagree`);
     ok(refreshes > 0, '…and the renewals really came from the proactive trigger, not from the mid');
 
     // The SAME two hours with a genuinely volatile mid: band exits now dominate, and the point is that

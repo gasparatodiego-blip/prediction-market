@@ -242,6 +242,15 @@ export default function ManualOrdersPanel() {
   const autoOn = ar?.market?.enabled === true;
   const autoReadable = ar?.readable !== false;
   const expiryType = ar?.expiry?.orderType ?? null;
+  // DERIVED from the payload, so the prose below states the window actually in force. Writing "15 minuti"
+  // in the copy is exactly how a paragraph outlives the constant it describes — this page has already had
+  // to be corrected once for that.
+  const winMin = ar?.expiry?.ttlSeconds != null ? Math.round(ar.expiry.ttlSeconds / 60) : '—';
+  const marginMin = ar?.expiry?.refreshMarginSeconds != null ? Math.round(ar.expiry.refreshMarginSeconds / 60) : '—';
+  const renewalsPerHour = (ar?.expiry?.ttlSeconds != null && ar?.expiry?.refreshMarginSeconds != null
+    && ar.expiry.ttlSeconds > ar.expiry.refreshMarginSeconds)
+    ? Number((3600 / (ar.expiry.ttlSeconds - ar.expiry.refreshMarginSeconds)).toFixed(1))
+    : '—';
 
   const setAutoReprice = useCallback(async (scope: 'global' | 'market', enabled: boolean) => {
     if (scope === 'market' && !marketId) return;
@@ -627,20 +636,21 @@ export default function ManualOrdersPanel() {
         {autoMsg && <div className={`mkman-res ${autoMsg.ok ? 'mkman-ok' : 'mkman-bad'}`}>{autoMsg.text}</div>}
 
         <p className="mkman-note">
-          Con l&apos;auto-riprezzo <b>ON</b> un ordine manuale su questo mercato porta una scadenza <b>GTD di 15
-          minuti</b> che il watcher <b>rinnova da solo</b> quando mancano 3 minuti — quindi il tempo non uccide mai
-          un ordine sano: circa <b>5 rinnovi l&apos;ora</b> in condizioni tranquille. In più, se il mid si muove
-          abbastanza da portarlo <b>fuori dalla banda premiante</b>, viene ripiazzato subito al prezzo valido più
-          vicino, stessa size e stesso lato. Se il mid non si muove così tanto, l&apos;ordine <b>non viene toccato</b>
-          se non per il rinnovo. Con l&apos;auto-riprezzo <b>OFF</b> torna il comportamento di prima: scadenza fissa
-          GTD di {ar?.expiry?.ttlSeconds && !autoOn ? ar.expiry.ttlSeconds : 180}s e nessun rinnovo.
+          Con l&apos;auto-riprezzo <b>ON</b> un ordine manuale su questo mercato porta una scadenza <b>GTD di {winMin}
+          minuti</b> che il watcher <b>rinnova da solo</b> quando ne mancano {marginMin} — quindi il tempo non uccide
+          mai un ordine sano: <b>{renewalsPerHour}&nbsp;rinnovi l&apos;ora</b> in condizioni tranquille. In più, se il
+          mid si muove abbastanza da portarlo <b>fuori dalla banda premiante</b>, viene ripiazzato subito al prezzo
+          valido più vicino, stessa size e stesso lato. Se il mid non si muove così tanto, l&apos;ordine <b>non viene
+          toccato</b> se non per il rinnovo. Con l&apos;auto-riprezzo <b>OFF</b> torna il comportamento di prima:
+          scadenza fissa GTD di 180s e nessun rinnovo.
         </p>
         <p className="mkman-note">
           <b>La scadenza È il dead-man&apos;s switch, e lo fa rispettare l&apos;exchange.</b> Se questa macchina si
           ferma — crash, reboot, rete giù — nessuno rinnova più nulla e il venue ritira da solo ogni ordine gestito
-          entro 15 minuti. Non serve nessun secondo sistema di sorveglianza esterno perché questo accada: la
-          scadenza è firmata dentro l&apos;ordine. Per ogni riga qui sotto trovi i due margini reali: quando
-          scatterà il prossimo rinnovo, e quanto sopravviverebbe l&apos;ordine se il server si fermasse adesso.
+          <b> entro {winMin} minuti</b> (al minimo {marginMin}, se si ferma appena prima di un rinnovo). Non serve
+          nessun secondo sistema di sorveglianza esterno perché questo accada: la scadenza è firmata dentro
+          l&apos;ordine. Per ogni riga qui sotto trovi i due margini reali: quando scatterà il prossimo rinnovo, e
+          quanto sopravviverebbe l&apos;ordine se il server si fermasse adesso.
         </p>
         <p className="mkman-note mkman-warn">
           Se la rete verso il venue cade mentre il processo resta vivo, nulla viene rinnovato (e la scadenza fa il

@@ -30,7 +30,7 @@ export interface ManualDeps extends ManualModeDeps {
 /**
  * HOW LONG A HAND ORDER RESTS. GTD 180s when auto-reprice is off (and when its config is unreadable —
  * the fail-closed answer is always the SHORTER unattended window). When auto-reprice owns the market:
- * GTD RESTING_GTD_SECONDS (15 min), renewed proactively by the watcher with refreshMarginSeconds of life
+ * GTD RESTING_GTD_SECONDS, renewed proactively by the watcher with refreshMarginSeconds of life
  * still on it. Time never kills a healthy order; the expiry is the exchange-held DEAD-MAN'S SWITCH that
  * retires the order by itself if this host stops.
  */
