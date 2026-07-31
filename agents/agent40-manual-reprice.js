@@ -65,7 +65,13 @@ const { listManualOrders, replaceManualOrder, resolveMarketRules, cancelManualOr
 // slowly starts refusing orders that nothing real is backing (that is exactly how "open exposure $67.04"
 // appeared next to an empty orders table). agent35 was never going to do this for us: its reconciliation
 // is "dormant until arming" and it stands off manual markets by design.
-const { reconcileManualLane } = require('../lib/maker/manual-reset');
+const { reconcileManualLane, fetchVenuePositions } = require('../lib/maker/manual-reset');
+// AUTOMATIC POSITION CLOSING. Runs on the same throttle as the reconciliation and for the same reason:
+// a fill is only observable after the venue is asked. Default OFF everywhere; see lib/maker/auto-close.js.
+const { runAutoCloseCycle } = require('../lib/maker/auto-close');
+const { readAutoCloseConfig } = require('../lib/maker/auto-close-config');
+const { placeManualOrder } = require('../lib/maker/manual-order');
+const { resolveFunder, venueAccountAddress } = require('../lib/venues/polymarket-clob-maker/funder');
 const { isManualMarket } = require('../lib/maker/manual-mode');
 const { appendMakerAudit } = require('../lib/venues/polymarket-clob-maker/audit');
 const killSwitch = require('../lib/safety/kill-switch');
@@ -162,6 +168,37 @@ async function reconcileTask() {
   }
 }
 
+// The closer shares the reconciliation's throttle: both only learn anything by asking the venue, and a
+// position cannot be covered before the fill that created it has been observed. Its own try/catch, so a
+// failure here cannot stop the reconciliation or the reprice cycle.
+async function closeTask() {
+  try {
+    const cfg = readAutoCloseConfig();
+    if (!cfg.readable || !cfg.enabledMarketIds.length) return;   // OFF: silent, and no venue I/O at all
+    const address = venueAccountAddress(resolveFunder(process.env), null);
+    const res = await runAutoCloseCycle({
+      marketIds: cfg.enabledMarketIds,
+      killStatus: () => killSwitch.killStatus(),
+      isManual: (marketId) => isManualMarket(marketId),
+      resolveRules: (marketId) => resolveMarketRules(marketId),
+      listOrders: ({ marketId }) => listManualOrders({ marketId }),
+      readPositions: async () => {
+        const p = await fetchVenuePositions({ address });
+        return { ok: p.ok, reason: p.reason, positions: (p.positions || []).map((x) => ({ tokenId: String(x.asset ?? x.tokenId ?? ''), size: Number(x.size), avgPrice: Number(x.avgPrice) })) };
+      },
+      placeOrder: (spec) => placeManualOrder(spec),
+      audit: (rec) => { try { appendMakerAudit(rec); } catch (e) { log('audit write failed:', e.message); } },
+    });
+    for (const m of res.markets) if (m.gate && m.gate !== 'disabled') log(`auto-close cid_${String(m.marketId).replace(/^0x/, '')}: ${m.gate} — ${m.reason}`);
+    for (const a of res.actions) {
+      if (a.action === 'close') log(`AUTO-CLOSE ${a.ok ? 'ok' : 'FALLITA'} · ${a.book.toUpperCase()} SELL ${a.size} @ ${a.price} su carico ${a.entryPrice} (+${a.profitCents}c/share)${a.sent ? ' · INVIATA' : ' · non inviata (dry-run)'}${a.ok ? '' : ` · gate=${a.gate} ${a.reason || ''}`}`);
+      else if (a.action === 'skip') log(`auto-close skip · ${a.gate}: ${a.reason}`);
+    }
+  } catch (e) {
+    log('close task failed:', e && e.message ? e.message : String(e));
+  }
+}
+
 async function cycle() {
   const res = await runAutoRepriceCycle({
     killStatus: () => killSwitch.killStatus(),
@@ -206,6 +243,8 @@ async function main() {
     // not stop the ledger being reconciled, and vice versa.
     try { await reconcileTask(); }
     catch (e) { log('reconcile task failed:', e && e.message ? e.message : String(e)); }
+    try { if (Date.now() - lastReconcileAt < 1000) await closeTask(); }
+    catch (e) { log('close task failed:', e && e.message ? e.message : String(e)); }
     finally { heartbeat(); }
   };
   await run();
@@ -216,4 +255,4 @@ if (require.main === module) {
   main().catch((e) => { log('fatal:', e && e.stack ? e.stack : String(e)); process.exit(1); });
 }
 
-module.exports = { cycle, reconcileTask, breaches };
+module.exports = { cycle, reconcileTask, closeTask, breaches };

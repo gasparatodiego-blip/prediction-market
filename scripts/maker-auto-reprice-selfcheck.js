@@ -485,7 +485,14 @@ async function scenarioOwnership() {
       'orders the panel provably placed — on either book — ARE candidates');
     ok(!ids.includes('ENGINE'), 'agent35\'s orders are NEVER candidates');
     ok(!ids.includes('UNKNOWN'), '…and neither are unattributable ones: "probably ours" is not ours');
-    ok(!ids.includes('SELL_LEG'), 'a SELL leg is left alone — this path measures no inventory, so it does not guess');
+    // CHANGED when auto-close shipped: a panel-owned SELL is a CLOSING order (lib/maker/auto-close.js),
+    // and an exit that drifts out of band stops earning while it waits — so it wants the same band
+    // management as anything else. What protects it is not exclusion but the one-way rule in
+    // decideReprice: a close SELL is only ever moved UP, never down through its profit.
+    ok(ids.includes('SELL_LEG'),
+      'a panel-owned SELL is now MANAGED too — it is a closing order, and an exit that drifts out of band stops earning while it waits');
+    ok(picked.find((p) => p.orderId === 'SELL_LEG').side === 'SELL',
+      '…and its side is carried through, so the replacement is re-placed as a SELL and not silently flipped to a BUY');
     ok(!ids.includes('FOREIGN_TOKEN'), 'an order whose token matches neither of the market\'s two token ids is skipped — its band cannot be mirrored correctly');
     ok(!ids.includes('OTHER_MARKET'), 'an order on a different market is skipped');
     ok(picked.find((p) => p.orderId === 'NO_BOOK').book === 'no',

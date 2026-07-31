@@ -65,10 +65,18 @@ interface AutoRepriceState {
     gate: string | null; reason: string | null; count: number; inLastHour: number;
   } | null;
 }
+// ── CHIUSURA AUTOMATICA ── quando un ordine a mano viene eseguito, l'uscita va sul book da sola.
+interface AutoCloseState {
+  readable: boolean; error: string | null; globalEnabled: boolean; optedInMarketIds: string[];
+  profitCents: number;
+  market: { marketId: string | null; enabled: boolean; marketEnabled: boolean; readable: boolean; reason: string; record: { atIso?: string; by?: string | null } | null } | null;
+  note: string;
+}
 interface ManualConfig {
   at: string; kill: KillState; placement: PlacementState; engine: EngineState;
   isolation: IsolationState | null; caps: CapsState; market: MarketRules | null; operatorUser: string;
   autoReprice: AutoRepriceState | null;
+  autoClose: AutoCloseState | null;
 }
 interface RestingOrder {
   orderId: string | null; marketId: string | null; tokenId: string | null; side: string | null;
@@ -127,6 +135,8 @@ export default function ManualOrdersPanel() {
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const [busyAuto, setBusyAuto] = useState(false);
   const [autoMsg, setAutoMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [busyClose, setBusyClose] = useState(false);
+  const [closeMsg, setCloseMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [busyOrder, setBusyOrder] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [editPrice, setEditPrice] = useState('');
@@ -270,6 +280,27 @@ export default function ManualOrdersPanel() {
     } catch (e) {
       setAutoMsg({ ok: false, text: (e as Error).message });
     } finally { setBusyAuto(false); }
+  }, [marketId, loadConfig]);
+
+  // ── CHIUSURA AUTOMATICA ── stesso schema dell'auto-riprezzo: generale + per mercato, entrambi necessari.
+  const ac = cfg?.autoClose ?? null;
+  const closeOn = ac?.market?.enabled === true;
+  const closeMarketOn = ac?.market?.marketEnabled === true;
+
+  const setAutoClose = useCallback(async (scope: 'global' | 'market', enabled: boolean) => {
+    if (scope === 'market' && !marketId) return;
+    setBusyClose(true); setCloseMsg(null);
+    try {
+      const r = await fetch('/api/maker/manual/auto-close', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scope, enabled, marketId: scope === 'market' ? marketId : undefined, reason: 'pannello ordini manuali' }),
+      });
+      const b = await r.json();
+      setCloseMsg({ ok: b.ok === true, text: b.ok ? String(b.note || 'fatto') : `rifiutato: ${b.error || 'errore'}` });
+      await loadConfig();
+    } catch (e) {
+      setCloseMsg({ ok: false, text: (e as Error).message });
+    } finally { setBusyClose(false); }
   }, [marketId, loadConfig]);
 
   const setManual = useCallback(async (manual: boolean) => {
@@ -662,6 +693,100 @@ export default function ManualOrdersPanel() {
         </p>
       </div>
 
+      {/* ── CHIUSURA AUTOMATICA ─────────────────────────────────────────────────────────────────────
+          Il secondo automatismo del pannello, e il piu' invasivo: apre un ordine su un lato che il
+          pannello non ha mai usato (VENDITA), contro inventario. Interruttore separato da quello
+          dell'auto-riprezzo proprio per non accenderlo per sbaglio cercando l'altro. */}
+      <div className="mkman-sec" data-manual-autoclose>
+        <div className="mkman-sech">
+          <span className="mkman-sectitle">Chiusura automatica · l&apos;uscita va sul book da sola</span>
+          <span className={`mkman-badge ${ac?.readable === false ? 'mkman-badge-red' : closeOn ? 'mkman-badge-ok' : 'mkman-badge-warn'}`} data-manual-close-badge>
+            {ac?.readable === false ? 'CONFIG NON LEGGIBILE' : closeOn ? 'CHIUSURA AUTOMATICA · ON' : 'CHIUSURA AUTOMATICA · OFF'}
+          </span>
+        </div>
+
+        {ac && ac.readable === false && (
+          <div className="mkman-banner mkman-banner-red">
+            Configurazione della chiusura automatica NON leggibile ({dash(ac.error)}) — trattata come SPENTA
+            (fail closed): nessuna uscita viene piazzata.
+          </div>
+        )}
+
+        <div className="mkman-grid">
+          <div className="mkman-kv">
+            <span className="mkman-k">Su questo mercato</span>
+            <span className="mkman-v">
+              {closeOn ? <span className="mkman-ok">attiva</span>
+                : closeMarketOn ? <span className="mkman-warn">abilitata, ma generale OFF</span>
+                  : 'spenta'}
+            </span>
+          </div>
+          <div className="mkman-kv">
+            <span className="mkman-k">Interruttore generale</span>
+            <span className="mkman-v">{ac ? (ac.globalEnabled ? <span className="mkman-ok">ON</span> : 'OFF') : '—'}</span>
+          </div>
+          <div className="mkman-kv">
+            <span className="mkman-k">Profitto obiettivo</span>
+            <span className="mkman-v" data-manual-close-target>+{ac?.profitCents ?? 1}¢ / share</span>
+          </div>
+          <div className="mkman-kv">
+            <span className="mkman-k">Prezzo di uscita</span>
+            <span className="mkman-v">
+              {rules?.tick != null && ac ? `carico + ${ac.profitCents}¢ → al tick ${rules.tick}` : '—'}
+            </span>
+          </div>
+        </div>
+
+        <div className="mkman-inrow">
+          {closeMarketOn ? (
+            <button className="mkman-give" onClick={() => setAutoClose('market', false)} disabled={busyClose || !marketId} data-manual-close-off>
+              {busyClose ? '…' : 'Disattiva chiusura automatica su questo mercato'}
+            </button>
+          ) : (
+            <button className="mkman-take" onClick={() => setAutoClose('market', true)} disabled={busyClose || !marketId} data-manual-close-on>
+              {busyClose ? '…' : 'Attiva chiusura automatica su questo mercato'}
+            </button>
+          )}
+          {ac?.globalEnabled ? (
+            <button className="mkman-give" onClick={() => setAutoClose('global', false)} disabled={busyClose} data-manual-close-global-off>
+              {busyClose ? '…' : 'Spegni globalmente'}
+            </button>
+          ) : (
+            <button className="mkman-take" onClick={() => setAutoClose('global', true)} disabled={busyClose} data-manual-close-global-on>
+              {busyClose ? '…' : 'Accendi l’interruttore generale'}
+            </button>
+          )}
+          {ac?.market?.record?.atIso && closeMarketOn && (
+            <span className="mkman-note">dal {ac.market.record.atIso}{ac.market.record.by ? ` · ${ac.market.record.by}` : ''}</span>
+          )}
+        </div>
+
+        {closeMsg && <div className={`mkman-res ${closeMsg.ok ? 'mkman-ok' : 'mkman-bad'}`}>{closeMsg.text}</div>}
+
+        <p className="mkman-note">
+          Quando un ordine a mano viene <b>eseguito</b>, la posizione che ne nasce non resta esposta: appena
+          il venue la conferma, viene piazzata una <b>VENDITA dello stesso token</b> a{' '}
+          <b>carico + {ac?.profitCents ?? 1}¢</b>, arrotondato <b>in su</b> al tick del mercato — quindi il
+          profitto reale non è mai inferiore al bersaglio. {ac?.note ? '' : ''}
+          Su Polymarket si chiude <b>vendendo il token che si possiede</b>, non comprando il lato opposto:
+          comprare l&apos;altro esito costruirebbe un set completo da $1 alla risoluzione, cioè impegnerebbe
+          <b> più</b> capitale invece di liberarlo.
+        </p>
+        <p className="mkman-note">
+          La size venduta è quella che il <b>venue</b> dice di possedere, mai dedotta — una vendita allo
+          scoperto non è esprimibile su questo percorso. L&apos;uscita passa dagli <b>stessi gate</b> di ogni
+          altro ordine (kill-switch, cap, gestione manuale, venue-rules, validateOrder), compare nella
+          tabella qui sotto come riga <b>SELL</b> con sorgente <b>auto-close-on-fill</b>, e viene gestita dal
+          watcher come le altre — con una differenza: <b>non viene mai abbassata</b>. Se la banda scende
+          sotto l&apos;uscita, resta dov&apos;è: smette di maturare premi mentre aspetta, ma il guadagno per
+          cui esiste è protetto.
+        </p>
+        <p className="mkman-note mkman-warn">
+          Con l&apos;interruttore <b>OFF</b> (il default) non cambia nulla rispetto a oggi: una posizione
+          riempita resta aperta finché non intervieni tu.
+        </p>
+      </div>
+
       {/* ── FORM ── */}
       <div className="mkman-sec" data-manual-form>
         <div className="mkman-sech">
@@ -909,7 +1034,9 @@ export default function ManualOrdersPanel() {
               <span className="mkman-num">{age(o.ageSec)}</span>
               <span>
                 <span className={`mkman-src ${o.source === 'manual-ui' ? 'mkman-src-manual' : 'mkman-src-auto'}`}>
-                  {o.source === 'manual-ui' ? 'manuale' : o.source === 'agent35' ? 'agent35' : '—'}
+                  {o.source === 'manual-ui'
+                    ? (String(o.side).toUpperCase() === 'SELL' ? 'uscita' : 'manuale')
+                    : o.source === 'agent35' ? 'agent35' : '—'}
                 </span>
               </span>
               {/* AUTO-RIPREZZO, per riga. Il watcher tocca SOLO gli ordini che il pannello ha piazzato
