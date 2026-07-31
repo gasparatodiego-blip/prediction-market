@@ -29,13 +29,17 @@ export interface ManualDeps extends ManualModeDeps {
 
 /**
  * HOW LONG A HAND ORDER RESTS. GTD 180s when auto-reprice is off (and when its config is unreadable —
- * the fail-closed answer is always the one WITH an expiry); GTC, ttlSeconds 0, no venue expiry at all
- * when auto-reprice owns the market and the band-exit watcher is what moves the order instead.
+ * the fail-closed answer is always the SHORTER unattended window). When auto-reprice owns the market:
+ * GTD RESTING_GTD_SECONDS (15 min), renewed proactively by the watcher with refreshMarginSeconds of life
+ * still on it. Time never kills a healthy order; the expiry is the exchange-held DEAD-MAN'S SWITCH that
+ * retires the order by itself if this host stops.
  */
 export interface ManualExpiry {
   ttlSeconds: number;
   orderType: 'GTC' | 'GTD';
   autoReprice: boolean;
+  /** How much life is left on the order when the watcher renews it proactively. null when not managed. */
+  refreshMarginSeconds: number | null;
   source: 'explicit' | 'auto-reprice' | 'default' | 'default-fail-closed';
   reason: string;
 }
@@ -116,8 +120,8 @@ export interface IsolationView {
 /**
  * The band-exit automatism as the PANEL sees it. `watcher.alive === null` means the watcher has never
  * been seen running — which the UI must render differently from `false` (seen, but its heartbeat is
- * old) and from `true`. With auto-reprice on, orders rest as GTC with no venue expiry, so this is the
- * only thing standing between a resting order and nobody minding it.
+ * old) and from `true`. A stale heartbeat does not endanger the orders (the venue-side GTD retires them
+ * on its own); it means they are about to lapse rather than be renewed, which the operator should see.
  */
 export interface AutoRepriceView {
   readable: boolean;
@@ -134,7 +138,7 @@ export interface AutoRepriceView {
     record: AutoRepriceRecord | null;
   } | null;
   /** The lifetime a NEW hand order on this market would get right now. */
-  expiry: { orderType: 'GTC' | 'GTD'; ttlSeconds: number; source: string; reason: string } | null;
+  expiry: { orderType: 'GTC' | 'GTD'; ttlSeconds: number; refreshMarginSeconds: number | null; source: string; reason: string } | null;
   watcher: {
     readable: boolean;
     heartbeatAt: number | null;
@@ -218,6 +222,19 @@ export interface RestingOrder {
   ageSec: number | null;
   source: 'manual-ui' | 'agent35' | 'unknown';
   notionalUsd: number | null;
+  /** VENUE TRUTH about this order's lifetime, read from its own `expiration` field.
+   *  'GTC' + secondsToExpiry:null means nothing will ever retire it except a fill, the operator, or the
+   *  watcher. For GTD the seconds are corrected for the 60s the exchange retires orders EARLY, so they
+   *  say when the order actually dies — not the timestamp printed on it. */
+  orderType: 'GTC' | 'GTD';
+  expirationUnix: number;
+  expiresAtMs: number | null;
+  expiresAtIso: string | null;
+  /** Absolute margin: how long this order survives if the server stopped right now. */
+  secondsToExpiry: number | null;
+  /** When the watcher would renew it — REFRESH_MARGIN_SECONDS before the real death time. */
+  secondsToRefresh: number | null;
+  venueOrderType: string | null;
 }
 
 export interface OrdersResult {

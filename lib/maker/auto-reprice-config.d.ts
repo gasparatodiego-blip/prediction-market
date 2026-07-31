@@ -72,6 +72,11 @@ export interface AutoRepriceMarketState {
   lastSent: boolean;
   lastGate: string | null;
   lastReason: string | null;
+  /** Which trigger moved it. Kept apart because the renewal RATE only means something when the
+   *  clock-driven renewals and the price-driven re-prices are countable separately. */
+  lastTrigger: 'band-exit' | 'expiry-refresh' | 'band-exit-and-expiry' | null;
+  bandExits: number;
+  expiryRefreshes: number;
   count: number;
   /** Rolling-hour timestamps — the input to the per-market runaway ceiling. */
   recentAt: number[];
@@ -98,6 +103,13 @@ export interface AutoRepriceTuning {
   maxMidAgeSec: number;
   requireLiveBook: boolean;
   strategy: 'band-edge' | 'nearest-mid';
+  /** The venue-side GTD window (seconds). This is the DEAD-MAN'S SWITCH: if this host stops, the
+   *  exchange retires the order within it, with no host-side process involved. */
+  restingGtdSeconds: number;
+  /** How much life is left when the watcher renews proactively. renewals/hour = 3600/(window − margin). */
+  refreshMarginSeconds: number;
+  /** Blind for longer than this and the reconnect path CANCELS rather than renewing on unobserved state. */
+  disconnectCancelSeconds: number;
 }
 
 export function readAutoRepriceConfig(deps?: AutoRepriceDeps): AutoRepriceConfigState;
@@ -127,3 +139,8 @@ export const AUDIT_FILE: string;
 export const AUTO_REPRICE_SOURCE: 'auto-reprice-band-exit';
 export const DEFAULTS: AutoRepriceTuning;
 export const STRATEGIES: readonly ['band-edge', 'nearest-mid'];
+export const RESTING_GTD_SECONDS: number;
+export const REFRESH_MARGIN_SECONDS: number;
+/** DERIVED from the two constants above — 3600/(window − margin) — so it cannot drift out of date. */
+export const EXPECTED_RENEWALS_PER_HOUR: number;
+export const DISCONNECT_CANCEL_SECONDS: number;

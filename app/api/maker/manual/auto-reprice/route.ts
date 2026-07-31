@@ -21,10 +21,11 @@ export const dynamic = 'force-dynamic';
  * something happen WITHOUT a human pressing a button:
  *   OFF (the default everywhere) — a hand order carries the fixed ~180s GTD expiry it always did. The
  *   venue kills it on a clock. Nothing moves by itself, ever.
- *   ON — a hand order on this market rests as GTC: no venue expiry at all. agent40-manual-reprice then
- *   watches the live mid and, when the mid has travelled far enough to push the order OUT of the reward
- *   band, cancels and re-places it at the nearest qualifying price. If the mid does not move that far,
- *   the order is not touched — for hours, if that is what the market does.
+ *   ON — a hand order on this market carries a 15-minute GTD expiry which agent40-manual-reprice RENEWS
+ *   proactively with 3 minutes still on it (~5 renewals/hour), and re-prices EARLY whenever the live mid
+ *   has travelled far enough to push the order out of the reward band. Time never kills a healthy order;
+ *   the expiry exists so that if this host stops, the EXCHANGE retires the order within 15 minutes with
+ *   no second supervisor required. Both triggers share one mechanism, so they cannot double-fire.
  *
  * THIS IS NOT AN ARMING CONTROL AND ADDS NO AUTHORITY. The automatism reaches the venue only through
  * lib/maker/manual-order.replaceManualOrder — the SAME function the panel's own "Riprezza" button calls —
@@ -114,7 +115,7 @@ export async function POST(req: NextRequest) {
     note: body.enabled
       ? (scope === 'global'
         ? 'Master switch dell\'auto-riprezzo ACCESO. Da solo non fa nulla: agiscono solo i mercati esplicitamente abilitati. Restano in vigore kill-switch, cap, gestione manuale, venue-rules e validateOrder; MANUAL_ORDER_PLACEMENT decide ancora se qualcosa viene davvero inviato.'
-        : 'Auto-riprezzo ACCESO su questo mercato. I NUOVI ordini manuali qui verranno piazzati in GTC — nessuna scadenza lato venue — e verranno cancellati/ripiazzati SOLO quando il mid li porta fuori banda. Gli ordini GIÀ a riposo mantengono la scadenza GTD con cui sono stati piazzati finché non vengono ripiazzati. ATTENZIONE: un ordine GTC non viene ripulito dal venue se questa macchina muore — il watchdog di scadenza nativa non c\'è più, resta solo agent40-manual-reprice, di cui il pannello mostra il battito.')
+        : 'Auto-riprezzo ACCESO su questo mercato. I NUOVI ordini manuali qui porteranno una scadenza GTD di 15 minuti che il watcher rinnova da solo quando ne mancano 3 (~5 rinnovi/ora), e verranno ripiazzati prima se il mid li porta fuori banda. Gli ordini GIÀ a riposo mantengono la scadenza con cui sono stati piazzati finché non vengono rinnovati o ripiazzati. La scadenza È il dead-man\'s switch: se questa macchina si ferma, nessuno rinnova e il venue ritira da solo ogni ordine entro 15 minuti — nessun sistema esterno di sorveglianza serve perché accada.')
       : (scope === 'global'
         ? 'Master switch dell\'auto-riprezzo SPENTO: nessun mercato viene più toccato automaticamente. Le opt-in per mercato restano memorizzate ma inerti. I nuovi ordini manuali tornano alla scadenza fissa GTD di 180s.'
         : 'Auto-riprezzo SPENTO su questo mercato: nessun riprezzo automatico. I nuovi ordini manuali qui tornano alla scadenza fissa GTD di 180s, cioè il comportamento di prima.'),

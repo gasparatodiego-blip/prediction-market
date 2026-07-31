@@ -53,8 +53,8 @@ for (const envFile of ['.env.local', '.env']) {
 }
 
 const { runAutoRepriceCycle } = require('../lib/maker/auto-reprice');
-const { loadAutoRepriceTuning } = require('../lib/maker/auto-reprice-config');
-const { listManualOrders, replaceManualOrder, resolveMarketRules } = require('../lib/maker/manual-order');
+const { loadAutoRepriceTuning, EXPECTED_RENEWALS_PER_HOUR } = require('../lib/maker/auto-reprice-config');
+const { listManualOrders, replaceManualOrder, resolveMarketRules, cancelManualOrder } = require('../lib/maker/manual-order');
 const { isManualMarket } = require('../lib/maker/manual-mode');
 const { appendMakerAudit } = require('../lib/venues/polymarket-clob-maker/audit');
 const killSwitch = require('../lib/safety/kill-switch');
@@ -68,6 +68,12 @@ const log = (...a) => console.log(new Date().toISOString(), '[agent40-manual-rep
 // must start counting again rather than inheriting a claim it did not witness. The DURABLE state (last
 // re-price, hourly counts) is what must survive a restart, and that lives in data/ instead.
 const breaches = new Map();
+
+// The CONNECTION BLACKOUT clock, also in process memory and also on purpose. "We have been unable to
+// reach the venue since T" is a claim about a continuous observation this process made; a restarted
+// process has not made it, and must not inherit it. Note that a restart is itself the safe direction
+// here — the orders it lost track of are carrying a venue-side expiry that retires them regardless.
+const link = { downSince: null, consecutiveFailures: 0 };
 
 function heartbeat() {
   try {
@@ -94,9 +100,14 @@ function logCycle(res) {
     if (m.gate) log(`market cid_${String(m.marketId).replace(/^0x/, '')}: ${m.gate} — ${m.reason}`);
   }
   for (const a of acted) {
-    log(`REPRICE ${a.ok ? 'ok' : 'FAILED'} · order ${a.orderId} · ${a.book.toUpperCase()} ${a.fromPrice} → ${a.toPrice} (size ${a.size})`
+    log(`${a.trigger === 'expiry-refresh' ? 'REFRESH' : 'REPRICE'} ${a.ok ? 'ok' : 'FAILED'} · ${a.trigger} · order ${a.orderId}`
+      + ` · ${a.book.toUpperCase()} ${a.fromPrice} → ${a.toPrice} (size ${a.size})`
+      + `${a.secondsToExpiry != null ? ` · ${a.secondsToExpiry}s to expiry` : ''}`
       + `${a.sent ? ' · SENT to venue' : ' · not sent (dry-run)'}`
       + `${a.ok ? '' : ` · gate=${a.gate} ${a.reason || ''}`}`);
+  }
+  for (const a of res.actions.filter((x) => x.action === 'reconnect-cancel')) {
+    log(`RECONNECT-CANCEL ${a.ok ? 'ok' : 'FAILED'} · order ${a.orderId}${a.reason ? ` · ${a.reason}` : ''}`);
   }
   // Skips that are not the routine "waiting for confirmation" deserve a line — they are the automatism
   // declining to act on something it saw.
@@ -114,9 +125,13 @@ async function cycle() {
     listOrders: ({ marketId }) => listManualOrders({ marketId }),
     resolveRules: (marketId) => resolveMarketRules(marketId),
     replaceOrder: (spec) => replaceManualOrder(spec),
+    // Used ONLY by the reconnect-after-blackout path. It goes through the CANCEL-ONLY adapter (address-only
+    // signer, structurally cannot place), so the recovery move can stop orders and can never start one.
+    cancelOrder: (spec) => cancelManualOrder(spec, 'auto-reprice-band-exit'),
     audit: (rec) => { try { appendMakerAudit(rec); } catch (e) { log('audit write failed:', e.message); } },
     config: loadAutoRepriceTuning(),
     breaches,
+    link,
   });
   logCycle(res);
   return res;
@@ -128,6 +143,11 @@ async function main() {
   log(`poll ${tuning.pollMs}ms · confirm ${tuning.confirmSamples} samples · hysteresis ${tuning.hysteresisTicks} tick`
     + ` · min interval ${Math.round(tuning.minIntervalMs / 1000)}s/order · ceiling ${tuning.maxPerHour}/hour/market`
     + ` · mid must be live-book${tuning.requireLiveBook ? '' : ' (RELAXED)'} and ≤ ${tuning.maxMidAgeSec}s old · strategy ${tuning.strategy}`);
+  log(`venue-side expiry ${Math.round(tuning.restingGtdSeconds / 60)} min (GTD), proactive renewal with ${Math.round(tuning.refreshMarginSeconds / 60)} min left`
+    + ` → one renewal every ${Math.round((tuning.restingGtdSeconds - tuning.refreshMarginSeconds) / 60)} min = ${EXPECTED_RENEWALS_PER_HOUR.toFixed(1)}/hour in quiet conditions.`);
+  log(`DEAD-MAN'S SWITCH: if this process stops, nothing renews and the EXCHANGE retires every managed order`
+    + ` within ${Math.round(tuning.restingGtdSeconds / 60)} minutes. That protection is the venue's, not ours — no second supervisor is required.`);
+  log(`connection blackout: if the venue is unreachable for more than ${tuning.disconnectCancelSeconds}s, the hand orders on managed markets are CANCELLED on reconnect rather than renewed on top of an unobserved state.`);
   log('placement switch: MANUAL_ORDER_PLACEMENT=' + (process.env.MANUAL_ORDER_PLACEMENT === 'send' ? 'send (an automatic re-price REACHES the venue)' : 'dry-run (nothing reaches POST /order)'));
   log('this process owns no adapter, no credentials and no signing key: it can only call the same manual replace path the panel button calls.');
 

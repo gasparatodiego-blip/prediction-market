@@ -52,7 +52,7 @@ interface MarketRules {
 // ── AUTO-RIPREZZO ── the band-exit watcher's switches and its proof of life. Every field is read from
 // the server (GET /api/maker/manual/config), never assumed: `alive:null` means "never seen it run",
 // which the panel must render differently from "it is running".
-interface AutoRepriceExpiry { orderType: 'GTC' | 'GTD'; ttlSeconds: number; source: string; reason: string }
+interface AutoRepriceExpiry { orderType: 'GTC' | 'GTD'; ttlSeconds: number; refreshMarginSeconds: number | null; source: string; reason: string }
 interface AutoRepriceState {
   readable: boolean; error: string | null; globalEnabled: boolean;
   optedInMarketIds: string[]; enabledMarketIds: string[];
@@ -74,6 +74,13 @@ interface RestingOrder {
   orderId: string | null; marketId: string | null; tokenId: string | null; side: string | null;
   price: number | null; size: number | null; sizeMatched: number | null; sizeRemaining: number | null;
   status: string; createdMs: number | null; ageSec: number | null; source: string; notionalUsd: number | null;
+  // VENUE TRUTH about this order's lifetime, read back from its own `expiration` field and already
+  // corrected for the 60s the exchange retires GTD orders EARLY. `secondsToExpiry` is the honest answer to
+  // "how long does this survive if the server stops right now"; `secondsToRefresh` is when the watcher
+  // would renew it. GTC ⇒ both null, and the panel says "nessuna scadenza" rather than a dash that could
+  // be misread as "unknown".
+  orderType: 'GTC' | 'GTD'; expirationUnix: number; expiresAtMs: number | null; expiresAtIso: string | null;
+  secondsToExpiry: number | null; secondsToRefresh: number | null; venueOrderType: string | null;
 }
 interface OrdersResponse { ok: boolean; error: string | null; simulated: boolean; count: number; orders: RestingOrder[]; at: string }
 interface PlaceResult {
@@ -113,6 +120,11 @@ export default function ManualOrdersPanel() {
   const [result, setResult] = useState<PlaceResult | null>(null);
 
   const [busyMode, setBusyMode] = useState(false);
+  // The two per-order margins are COUNTDOWNS. The orders list is polled every 20s, so rendering the
+  // server's snapshot values directly would show a margin that is up to 20 seconds optimistic — exactly
+  // the wrong direction for a number whose whole job is to say how much safety is left. We keep an
+  // absolute expiry timestamp per order and re-derive the seconds locally on a 1s tick instead.
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const [busyAuto, setBusyAuto] = useState(false);
   const [autoMsg, setAutoMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [busyOrder, setBusyOrder] = useState<string | null>(null);
@@ -149,6 +161,13 @@ export default function ManualOrdersPanel() {
   }, []);
 
   useEffect(() => { loadConfig(); }, [loadConfig]);
+
+  // 1s tick — cheap, and only re-derives countdowns already in state. No refetch.
+  useEffect(() => {
+    if (operator !== true) return;
+    const t = setInterval(() => setNowMs(Date.now()), 1_000);
+    return () => clearInterval(t);
+  }, [operator]);
 
   // The banner, the caps and the isolation state are LIVE state, so they are re-read on a timer rather
   // than snapshotted at mount — a kill set from the console above must show here within seconds.
@@ -385,8 +404,8 @@ export default function ManualOrdersPanel() {
         .mkman-give { min-height: 40px; padding: 0 18px; border: 1px solid #4a3c12; border-radius: 8px; cursor: pointer;
           font-size: 13px; font-weight: 700; color: #E8B23A; background: #1a1608; }
         .mkman-tbl { margin-top: 10px; font-size: 13px; overflow-x: auto; }
-        .mkman-row { display: grid; grid-template-columns: 62px 78px 92px 118px 78px 92px 104px 1fr; gap: 10px; padding: 8px 0;
-          border-bottom: 1px solid #1a2030; align-items: center; min-width: 830px; }
+        .mkman-row { display: grid; grid-template-columns: 62px 78px 92px 118px 78px 92px 190px 1fr; gap: 10px; padding: 8px 0;
+          border-bottom: 1px solid #1a2030; align-items: center; min-width: 930px; }
         .mkman-head { color: #8B95A5; font-size: 11px; text-transform: uppercase; letter-spacing: .4px; }
         .mkman-src { font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 999px; white-space: nowrap; }
         .mkman-src-manual { color: #DCE6FF; border: 1px solid #2E5FBE; background: #16233E; }
@@ -539,8 +558,17 @@ export default function ManualOrdersPanel() {
           <div className="mkman-kv">
             <span className="mkman-k">Scadenza dei nuovi ordini</span>
             <span className="mkman-v" data-manual-expiry-mode>
-              {expiryType === 'GTC' ? <span className="mkman-ok">GTC · nessuna scadenza</span>
-                : expiryType === 'GTD' ? `GTD · ${ar?.expiry?.ttlSeconds ?? '—'}s` : '—'}
+              {expiryType === 'GTC' ? <span className="mkman-warn">GTC · nessuna scadenza</span>
+                : expiryType === 'GTD'
+                  ? <>GTD · {Math.round((ar?.expiry?.ttlSeconds ?? 0) / 60)} min
+                      {ar?.expiry?.refreshMarginSeconds != null && (
+                        <small className="mkman-note" style={{ display: 'block' }}>
+                          rinnovo a {Math.round(ar.expiry.refreshMarginSeconds / 60)} min dalla fine
+                          {' → '}{(3600 / ((ar.expiry.ttlSeconds - ar.expiry.refreshMarginSeconds) || 1)).toFixed(1)}/ora
+                        </small>
+                      )}
+                    </>
+                  : '—'}
             </span>
           </div>
           <div className="mkman-kv">
@@ -599,20 +627,28 @@ export default function ManualOrdersPanel() {
         {autoMsg && <div className={`mkman-res ${autoMsg.ok ? 'mkman-ok' : 'mkman-bad'}`}>{autoMsg.text}</div>}
 
         <p className="mkman-note">
-          Con l&apos;auto-riprezzo <b>ON</b> un ordine manuale su questo mercato viene piazzato in <b>GTC</b>: nessuna
-          scadenza lato venue, resta a riposo finché non viene eseguito, finché non lo cancelli tu, o finché il
-          mid non si muove abbastanza da portarlo <b>fuori dalla banda premiante</b> — solo allora viene cancellato
-          e ripiazzato al prezzo valido più vicino, stessa size e stesso lato. Se il mid non si muove così tanto,
-          l&apos;ordine <b>non viene toccato</b>. Con l&apos;auto-riprezzo <b>OFF</b> torna il comportamento di prima:
-          scadenza fissa GTD di {ar?.expiry?.ttlSeconds ?? 180}s, che cancella l&apos;ordine a orologio.
+          Con l&apos;auto-riprezzo <b>ON</b> un ordine manuale su questo mercato porta una scadenza <b>GTD di 15
+          minuti</b> che il watcher <b>rinnova da solo</b> quando mancano 3 minuti — quindi il tempo non uccide mai
+          un ordine sano: circa <b>5 rinnovi l&apos;ora</b> in condizioni tranquille. In più, se il mid si muove
+          abbastanza da portarlo <b>fuori dalla banda premiante</b>, viene ripiazzato subito al prezzo valido più
+          vicino, stessa size e stesso lato. Se il mid non si muove così tanto, l&apos;ordine <b>non viene toccato</b>
+          se non per il rinnovo. Con l&apos;auto-riprezzo <b>OFF</b> torna il comportamento di prima: scadenza fissa
+          GTD di {ar?.expiry?.ttlSeconds && !autoOn ? ar.expiry.ttlSeconds : 180}s e nessun rinnovo.
+        </p>
+        <p className="mkman-note">
+          <b>La scadenza È il dead-man&apos;s switch, e lo fa rispettare l&apos;exchange.</b> Se questa macchina si
+          ferma — crash, reboot, rete giù — nessuno rinnova più nulla e il venue ritira da solo ogni ordine gestito
+          entro 15 minuti. Non serve nessun secondo sistema di sorveglianza esterno perché questo accada: la
+          scadenza è firmata dentro l&apos;ordine. Per ogni riga qui sotto trovi i due margini reali: quando
+          scatterà il prossimo rinnovo, e quanto sopravviverebbe l&apos;ordine se il server si fermasse adesso.
         </p>
         <p className="mkman-note mkman-warn">
-          Il prezzo del GTC: la scadenza GTD è l&apos;unica protezione che sopravvive alla morte di questa macchina —
-          un ordine GTC no. Se questo host muore, l&apos;ordine resta nel book senza nessuno che lo sorvegli. È per
-          questo che qui sopra è mostrato il battito del watcher: battito vecchio + auto-riprezzo ON = da guardare.
-          Ogni riprezzo automatico passa dagli stessi gate di un ordine a mano (kill-switch, cap, gestione manuale,
-          venue-rules, validateOrder) ed è tracciato nell&apos;audit con sorgente <b>auto-reprice-band-exit</b>,
-          diversa sia da <b>manual-ui</b> sia da <b>agent35</b>.
+          Se la rete verso il venue cade mentre il processo resta vivo, nulla viene rinnovato (e la scadenza fa il
+          suo lavoro); alla riconnessione, se il blackout è durato più di 3 minuti, gli ordini a mano su questo
+          mercato vengono <b>cancellati</b> invece di essere rinnovati su uno stato che non abbiamo osservato.
+          Ogni riprezzo e ogni rinnovo automatico passa dagli stessi gate di un ordine a mano (kill-switch, cap,
+          gestione manuale, venue-rules, validateOrder) ed è tracciato nell&apos;audit con sorgente
+          <b> auto-reprice-band-exit</b>, diversa sia da <b>manual-ui</b> sia da <b>agent35</b>.
         </p>
       </div>
 
@@ -846,7 +882,7 @@ export default function ManualOrdersPanel() {
 
         <div className="mkman-tbl">
           <div className="mkman-row mkman-head">
-            <span>Lato</span><span>Prezzo</span><span>Size</span><span>Stato</span><span>Età</span><span>Sorgente</span><span>Auto-riprezzo</span><span>Azioni</span>
+            <span>Lato</span><span>Prezzo</span><span>Size</span><span>Stato</span><span>Età</span><span>Sorgente</span><span>Auto-riprezzo · margini</span><span>Azioni</span>
           </div>
           {orders && orders.orders.length === 0 && orders.ok !== false && !orders.simulated && (
             <div className="mkman-empty">Nessun ordine a riposo sul venue per questo mercato (letto dal venue, non dedotto).</div>
@@ -873,10 +909,42 @@ export default function ManualOrdersPanel() {
               <span data-manual-row-auto>
                 {o.source !== 'manual-ui' ? (
                   <span className="mkman-note">n/d</span>
-                ) : autoOn ? (
-                  <span className="mkman-src mkman-src-manual" title="GTC: nessuna scadenza; viene ripiazzato solo all'uscita dalla banda">ON · GTC</span>
                 ) : (
-                  <span className="mkman-src mkman-src-auto" title={`OFF: scadenza fissa GTD ${ar?.expiry?.ttlSeconds ?? 180}s`}>OFF · GTD</span>
+                  <>
+                    {autoOn
+                      ? <span className="mkman-src mkman-src-manual" title="il watcher rinnova questo ordine prima che scada, e lo ripiazza prima se il mid lo porta fuori banda">ON · gestito</span>
+                      : <span className="mkman-src mkman-src-auto" title={`OFF: scadenza fissa GTD ${ar?.expiry?.ttlSeconds ?? 180}s, nessun rinnovo`}>OFF · GTD fisso</span>}
+                    {/* I DUE MARGINI CHE CONTANO, per ordine e letti dal venue (non dedotti):
+                        - quando il watcher lo rinnoverà;
+                        - quanto sopravvivrebbe se il server si fermasse ADESSO. Il secondo è il vero
+                          dead-man's switch, ed è l'exchange a farlo rispettare, non noi. */}
+                    {(() => {
+                      // Derived from the venue's absolute expiry timestamp against the live clock, so the
+                      // countdown is honest between polls. Falls back to the server's own seconds when the
+                      // timestamp is missing.
+                      const liveToExpiry = o.expiresAtMs != null ? Math.round((o.expiresAtMs - nowMs) / 1000) : o.secondsToExpiry;
+                      const margin = ar?.expiry?.refreshMarginSeconds ?? null;
+                      const liveToRefresh = liveToExpiry == null ? null : (margin != null ? liveToExpiry - margin : o.secondsToRefresh);
+                      return o.orderType === 'GTC' ? (
+                      <small className="mkman-note mkman-warn" style={{ display: 'block' }} data-manual-row-expiry>
+                        nessuna scadenza sul venue — se il server si ferma, questo ordine resta
+                      </small>
+                    ) : (
+                      <>
+                        <small className="mkman-note" style={{ display: 'block' }} data-manual-row-refresh>
+                          prossimo refresh proattivo: <b>{liveToRefresh == null ? '—' : liveToRefresh <= 0 ? 'ora' : age(liveToRefresh)}</b>
+                        </small>
+                        <small
+                          className={`mkman-note ${liveToExpiry != null && liveToExpiry < 120 ? 'mkman-warn' : ''}`}
+                          style={{ display: 'block' }} data-manual-row-expiry
+                          title="quanto vivrebbe questo ordine se il server si fermasse in questo istante. È la scadenza firmata che il venue fa rispettare da solo: nessun nostro processo serve perché avvenga."
+                        >
+                          se il server si ferma ora: <b>{liveToExpiry == null ? '—' : liveToExpiry <= 0 ? 'scaduto' : age(liveToExpiry)}</b>
+                        </small>
+                      </>
+                      );
+                    })()}
+                  </>
                 )}
               </span>
               <span>

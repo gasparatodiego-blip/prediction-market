@@ -20,11 +20,17 @@ export interface RestingLeg {
   tokenId?: string | null;
   marketId?: string | null;
   status?: string;
+  /** Venue-side life remaining, already corrected for the 60s the exchange retires GTD orders early.
+   *  null ⇒ GTC, so the proactive-refresh trigger never fires for this order. */
+  secondsToExpiry?: number | null;
+  orderType?: 'GTC' | 'GTD' | null;
 }
 
 export interface RepriceDecision {
   action: 'hold' | 'reprice' | 'skip';
-  /** Names WHICH rail or read produced this answer. null on a plain in-band hold and on a reprice. */
+  /** Names WHICH rail or read produced this answer, and on a reprice WHICH TRIGGER fired:
+   *  null = plain band exit, 'expiry-refresh' = the venue clock was running out at a price still in
+   *  band, 'band-exit-and-expiry' = both at once (one move settles both). */
   gate: string | null;
   reason: string;
   /** The price to move to — already proven valid by the shared venue-rules guard. */
@@ -33,6 +39,9 @@ export interface RepriceDecision {
   bandRadiusC: number | null;
   scoringMid: number | null;
   breachConfirmed: boolean;
+  secondsToExpiry?: number | null;
+  refreshMarginSeconds?: number;
+  expiring?: boolean;
 }
 
 export function decideReprice(args: {
@@ -64,7 +73,9 @@ export interface CycleMarketReport {
 export interface CycleAction {
   marketId: string;
   orderId: string;
-  action: 'reprice' | 'skip' | 'error';
+  action: 'reprice' | 'skip' | 'error' | 'reconnect-cancel';
+  trigger?: 'band-exit' | 'expiry-refresh' | 'band-exit-and-expiry';
+  secondsToExpiry?: number | null;
   ok?: boolean;
   gate?: string | null;
   reason?: string | null;
@@ -97,11 +108,16 @@ export function runAutoRepriceCycle(deps?: {
   listOrders?: (arg: { marketId: string }) => Promise<OrdersResult>;
   resolveRules?: (marketId: string) => MarketRules;
   replaceOrder?: (spec: Record<string, unknown>) => Promise<ReplaceResult>;
+  /** Used ONLY by the reconnect-after-blackout path — cancel-only, it can never start an order. */
+  cancelOrder?: (spec: { orderId: string; marketId: string }) => Promise<{ ok: boolean; reason?: string | null }>;
   audit?: (rec: Record<string, unknown>) => void;
   config?: AutoRepriceTuning;
   configDeps?: AutoRepriceDeps;
   /** Carried BETWEEN cycles by the caller — "consecutive" must mean consecutive. */
   breaches?: Map<string, number>;
+  /** The connection-blackout clock, also carried between cycles. A fresh process starts with none:
+   *  "we have been blind since T" is a claim about a continuous observation it did not make. */
+  link?: { downSince: number | null; consecutiveFailures: number };
   now?: () => number;
 }): Promise<CycleResult>;
 

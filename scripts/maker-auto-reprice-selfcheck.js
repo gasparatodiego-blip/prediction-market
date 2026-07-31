@@ -19,7 +19,7 @@
 //   3. THE OTHER HEADLINE — an order the mid never invalidates is NEVER touched, across a long simulated
 //      run (hundreds of cycles / many simulated minutes), not even once;
 //   4. the switches — OFF (globally or per market) means the watcher does nothing AND a new hand order
-//      goes back to the fixed 180s GTD expiry; ON means GTC with no venue expiry;
+//      goes back to the fixed 180s GTD expiry; ON means a 15-minute GTD renewed proactively;
 //   5. fail-closed everywhere it matters — unreadable config, stale mid, board-row mid, unreadable venue
 //      rules, a failed venue read: all of them leave the order alone;
 //   6. the gates are not bypassed — a global kill and a market handed back to the engine both stop the
@@ -29,7 +29,13 @@
 //   8. ownership — the watcher touches ONLY orders provably placed by the panel, never agent35's and
 //      never unattributable ones;
 //   9. attribution — every automatic move is stamped source:'auto-reprice-band-exit', distinct from
-//      'manual-ui' and 'agent35', and the replace call carries ttlSeconds:0 (GTC), never a GTD default.
+//      'manual-ui' and 'agent35', and records WHICH trigger fired;
+//  10. THE RENEWAL RATE — over 2 simulated hours with a moving mid the watcher renews ~5 times an hour,
+//      not the 6–15 the old 180s cycle produced; and with the watcher DEAD the order is retired by the
+//      EXCHANGE within the 15-minute window, with no host-side process involved;
+//  11. THE BLACKOUT — a process that is alive but cannot reach the venue renews nothing (the expiry does
+//      the work), and on reconnection after a long blackout it CANCELS rather than renewing on top of a
+//      state it never observed.
 
 const assert = require('assert');
 const fs = require('fs');
@@ -69,11 +75,15 @@ function rulesAt(mid, over = {}) {
 }
 
 // One resting order as the venue reports it, already attributed to the panel.
+// `secondsToExpiry` is the venue's own expiry, already corrected for the 60s the exchange retires GTD
+// orders early. The default is a comfortable 800s so the expiry trigger stays out of the way of the
+// band-exit scenarios; the expiry scenarios set it deliberately.
 function restingOrder(price, over = {}) {
   return {
     orderId: 'ORDER_A', marketId: MKT, tokenId: YES, side: 'BUY',
     price, size: 60, sizeMatched: 0, sizeRemaining: 60,
     status: 'LIVE', createdMs: 1, ageSec: 1, source: 'manual-ui', notionalUsd: price * 60,
+    orderType: 'GTD', secondsToExpiry: 800, secondsToRefresh: 800 - ARC.REFRESH_MARGIN_SECONDS,
     ...over,
   };
 }
@@ -106,15 +116,29 @@ function harness(world) {
       killStatus: () => world.kill || { effectivelyKilled: false, readable: true },
       isManual: () => world.manual || { manual: true, readable: true, error: null, record: null, reason: 'selfcheck' },
       resolveRules: () => world.rules,
-      listOrders: async () => world.orders || { ok: true, simulated: false, count: 0, orders: [] },
+      listOrders: async () => {
+        if (world.linkDown) return { ok: false, error: 'simulated network blackout', simulated: false, count: 0, orders: [] };
+        const src = world.orders || { ok: true, simulated: false, count: 0, orders: [] };
+        // AGE THE EXPIRY with the simulated clock, the way the venue would. Without this the order would
+        // read "800s left" forever and the proactive-refresh trigger could never be exercised at all.
+        return { ...src, orders: (src.orders || []).map((o) => {
+          if (o.placedAt == null) return o;
+          const left = Math.round(o.secondsToExpiry - (world.now - o.placedAt) / 1000);
+          return { ...o, secondsToExpiry: left, secondsToRefresh: left - ARC.REFRESH_MARGIN_SECONDS };
+        }) };
+      },
       audit: (rec) => world.audits.push(rec),
       replaceOrder: async (spec) => {
         world.replaced.push(spec);
         // The canned answer models a DRY-RUN replace: the old order is cancelled, the new one is built,
         // signed and validated, and NOTHING is sent. sent:false everywhere, on purpose.
+        // A replacement is a NEW order, so it carries a FULL venue-side window again. Modelling that is
+        // the whole reason the two triggers cannot double-fire: whatever moved the order, the clock it
+        // was racing is reset by the move itself.
         if (world.orders && Array.isArray(world.orders.orders)) {
           world.orders = { ...world.orders, orders: world.orders.orders.map((o) => (o.orderId === spec.orderId
-            ? { ...o, orderId: `${spec.orderId}_R${world.replaced.length}`, price: spec.price }
+            ? { ...o, orderId: `${spec.orderId}_R${world.replaced.length}`, price: spec.price,
+                orderType: 'GTD', placedAt: world.now, secondsToExpiry: ARC.RESTING_GTD_SECONDS }
             : o)) };
         }
         return { ok: true, replaced: true, oldCancelled: true, oldOrderId: spec.orderId,
@@ -133,7 +157,7 @@ function enable(st, { global = true, market = true } = {}) {
 // ── 1 · THE PURE DECISION ───────────────────────────────────────────────────────────────────────────
 console.log('\n1. the pure decision — in band means DO NOT TOUCH, out of band eventually means move');
 {
-  const order = { orderId: 'O', price: 0.49, size: 60, book: 'yes' };
+  const order = { orderId: 'O', price: 0.49, size: 60, book: 'yes', secondsToExpiry: 800 };
 
   // Mid 0.50, band ±1.5¢ ⇒ [0.485, 0.515]. The order at 0.49 sits inside it.
   const hold = AR.decideReprice({ order, rules: rulesAt(0.50), config: TUNING, now: 1_000_000 });
@@ -161,7 +185,7 @@ console.log('\n1. the pure decision — in band means DO NOT TOUCH, out of band 
     `the 'nearest-mid' strategy instead targets ${nm.targetPrice} — the qualifying price closest to the mid (more reward, more fill risk); both strategies stay inside the band`);
 
   // The NO book is judged in its own space: a NO order at q is a YES order at 1−q.
-  const noOrder = { orderId: 'O', price: 0.49, size: 60, book: 'no' };
+  const noOrder = { orderId: 'O', price: 0.49, size: 60, book: 'no', secondsToExpiry: 800 };
   const noHold = AR.decideReprice({ order: noOrder, rules: rulesAt(0.50), config: TUNING, now: 1_000_000 });
   ok(noHold.action === 'hold' && Math.abs(noHold.scoringMid - 0.5) < 1e-9,
     'a NO order is judged against the NO book\'s mirrored scoring mid (1 − mid), the same mirror the engine and the placement path use');
@@ -170,7 +194,7 @@ console.log('\n1. the pure decision — in band means DO NOT TOUCH, out of band 
 // ── 2 · HYSTERESIS AND THE RAILS ────────────────────────────────────────────────────────────────────
 console.log('\n2. the rails bind — hysteresis at the edge, the rate limit, the hourly ceiling');
 {
-  const order = { orderId: 'O', price: 0.49, size: 60, book: 'yes' };
+  const order = { orderId: 'O', price: 0.49, size: 60, book: 'yes', secondsToExpiry: 800 };
   // Mid 0.505 ⇒ band [0.49, 0.52]; the order at 0.49 is 1.5¢ out... exactly ON the edge.
   const edge = AR.decideReprice({ order, rules: rulesAt(0.507), config: TUNING, consecutiveBreaches: 5, now: 1_000_000 });
   ok(edge.action === 'hold' && edge.gate === 'hysteresis',
@@ -188,7 +212,7 @@ console.log('\n2. the rails bind — hysteresis at the edge, the rate limit, the
 // ── 3 · FAIL CLOSED ON EVERY UNTRUSTWORTHY INPUT ────────────────────────────────────────────────────
 console.log('\n3. fail closed — an input it cannot trust never produces a move');
 {
-  const order = { orderId: 'O', price: 0.49, size: 60, book: 'yes' };
+  const order = { orderId: 'O', price: 0.49, size: 60, book: 'yes', secondsToExpiry: 800 };
   const far = { consecutiveBreaches: 5, now: 1_000_000, config: TUNING };
 
   const stale = AR.decideReprice({ order, rules: rulesAt(0.53, { midAgeSec: 120 }), ...far });
@@ -221,7 +245,7 @@ console.log('\n3. fail closed — an input it cannot trust never produces a move
     '…while a band that narrow whose centre IS on the grid yields the one qualifying price (0.53) — it refuses only when there is genuinely nothing to move to');
 
   // A partially-filled remainder below min_incentive_size cannot be validly re-placed.
-  const smallOrder = { orderId: 'O', price: 0.49, size: 10, book: 'yes' };
+  const smallOrder = { orderId: 'O', price: 0.49, size: 10, book: 'yes', secondsToExpiry: 800 };
   const small = AR.decideReprice({ order: smallOrder, rules: rulesAt(0.53), ...far });
   ok(small.action === 'skip' && small.gate === 'replacement-invalid',
     'a remainder below min_incentive_size is left resting rather than cancelled for a replacement the guard would refuse');
@@ -264,8 +288,8 @@ console.log('\n4. SIMULATED SCENARIO — the mid moves enough to push a resting 
       '…for the SAME order, the SAME side and the SAME size — only the price changes');
     ok(call.price === 0.52,
       `…at ${call.price}, the nearest qualifying price to where it was (band [0.52, 0.54] around the new mid)`);
-    ok(call.ttlSeconds === 0,
-      '…and the replacement is placed GTC (ttlSeconds:0, no venue expiry), never with a GTD default silently picked up from elsewhere');
+    ok(call.ttlSeconds === undefined,
+      '…and the replace call does NOT pin a lifetime: omitting ttlSeconds lets resolveManualTtlSeconds read the market\'s live switch, so an order can never be given a 15-minute window a moment after the automatism was switched off');
     ok(call.source === ARC.AUTO_REPRICE_SOURCE,
       `…stamped source:'${ARC.AUTO_REPRICE_SOURCE}' — distinct from 'manual-ui' (a human) and 'agent35' (the engine)`);
     ok(r.markets[0].repriced === 1 && r.actions.some((a) => a.action === 'reprice' && a.ok === true && a.sent === false),
@@ -337,8 +361,10 @@ async function scenarioSwitches() {
 
     enable(st);
     const onTtl = resolveManualTtlSeconds({ marketId: MKT }, st);
-    ok(onTtl.orderType === 'GTC' && onTtl.ttlSeconds === 0 && onTtl.autoReprice === true,
-      'with auto-reprice ON the same order rests as GTC with NO venue expiry — the watcher, not a clock, decides when it moves');
+    ok(onTtl.orderType === 'GTD' && onTtl.ttlSeconds === ARC.RESTING_GTD_SECONDS && onTtl.autoReprice === true,
+      `with auto-reprice ON the order carries a ${ARC.RESTING_GTD_SECONDS / 60}-minute GTD expiry — bounded, not unlimited: the watcher renews it early, and the EXCHANGE retires it if the watcher stops`);
+    ok(onTtl.refreshMarginSeconds === ARC.REFRESH_MARGIN_SECONDS,
+      `…and reports the ${ARC.REFRESH_MARGIN_SECONDS / 60}-minute renewal margin alongside it, so the panel shows the same numbers the watcher acts on`);
 
     // Per-market OFF, master still on.
     ARC.setAutoReprice({ scope: 'market', marketId: MKT, enabled: false, by: 'selfcheck' }, st);
@@ -517,6 +543,191 @@ async function scenarioWiring() {
     ok(gtd.orderType === 'GTD' && gtd.survivesHostDeath === true && gtd.venueMaxTtlSeconds === null,
       'the GTD path is unchanged, and reports venueMaxTtlSeconds:null — the venue publishes NO maximum lifetime, so there is no ceiling to fall back to');
 
+    await scenarioExpiry();
+  }
+}
+
+// ── 10 · THE PROACTIVE REFRESH, AND THE RENEWAL RATE OVER 2 SIMULATED HOURS ────────────────────────
+async function scenarioExpiry() {
+  console.log('\n10. the proactive refresh — the venue-side clock is renewed EARLY, at a bounded rate');
+  {
+    const W = ARC.RESTING_GTD_SECONDS, M = ARC.REFRESH_MARGIN_SECONDS;
+    ok(W === 900 && M === 180,
+      `the window is ${W / 60} minutes with a ${M / 60}-minute renewal margin — a bounded, exchange-enforced lifetime, not an unlimited one`);
+    ok(Math.abs(ARC.EXPECTED_RENEWALS_PER_HOUR - 3600 / (W - M)) < 1e-9 && ARC.EXPECTED_RENEWALS_PER_HOUR === 5,
+      `expected renewals/hour is DERIVED from those two constants (3600/(${W}−${M}) = ${ARC.EXPECTED_RENEWALS_PER_HOUR}/h), so it cannot drift out of date if either is changed`);
+
+    // The decision itself: in band, but the clock is nearly up.
+    const inBandOrder = { orderId: 'O', price: 0.50, size: 60, book: 'yes', secondsToExpiry: M - 10 };
+    const refresh = AR.decideReprice({ order: inBandOrder, rules: rulesAt(0.50), config: TUNING, now: 1_000_000 });
+    ok(refresh.action === 'reprice' && refresh.gate === 'expiry-refresh',
+      'an order that is perfectly priced but nearly expired IS renewed — the trigger is the clock, not the price');
+    ok(refresh.targetPrice === 0.50,
+      '…at the SAME price: a renewal resets the exchange-held expiry, it does not chase the market');
+
+    const healthy = AR.decideReprice({ order: { ...inBandOrder, secondsToExpiry: M + 60 }, rules: rulesAt(0.50), config: TUNING, now: 1_000_000 });
+    ok(healthy.action === 'hold',
+      'the same order with life still on it is HELD — the refresh fires at the margin, never earlier');
+
+    const gtc = AR.decideReprice({ order: { ...inBandOrder, secondsToExpiry: null }, rules: rulesAt(0.50), config: TUNING, now: 1_000_000 });
+    ok(gtc.action === 'hold',
+      'a GTC order (no venue expiry at all) never triggers the refresh — there is no clock to renew');
+
+    // BOTH triggers at once: out of band AND nearly expired. One move must satisfy both, and the
+    // patience gates must not be allowed to let the order die while they wait for confirmation.
+    const both = AR.decideReprice({
+      order: { orderId: 'O', price: 0.49, size: 60, book: 'yes', secondsToExpiry: M - 10 },
+      rules: rulesAt(0.53), config: TUNING, consecutiveBreaches: 0, now: 1_000_000,
+    });
+    ok(both.action === 'reprice' && both.gate === 'band-exit-and-expiry' && both.targetPrice === 0.52,
+      'out of band AND nearly expired → ONE move that fixes both, skipping the confirmation wait (the exchange was about to retire it anyway, so waiting would lose the order rather than protect it)');
+
+    // ── TWO SIMULATED HOURS with a moderately moving mid ────────────────────────────────────────────
+    const world = {
+      now: 1_700_000_000_000, rules: rulesAt(0.50),
+      orders: { ok: true, simulated: false, count: 1, orders: [
+        { ...restingOrder(0.50), placedAt: 1_700_000_000_000, secondsToExpiry: ARC.RESTING_GTD_SECONDS },
+      ] },
+    };
+    const h = harness(world);
+    enable(h.stores);
+    const HOURS = 2;
+    const CYCLES = Math.round((HOURS * 3600 * 1000) / TUNING.pollMs);   // 1440 cycles at the 5s poll
+    for (let i = 0; i < CYCLES; i++) {
+      // A MODERATELY moving mid: ±0.6¢ around 0.50, a real wander that mostly stays inside the ±1.5¢
+      // band. This is the "normal conditions" the renewal-rate target is about.
+      world.rules = rulesAt(+(0.50 + 0.006 * Math.sin(i / 41)).toFixed(4));
+      world.now += TUNING.pollMs;
+      // eslint-disable-next-line no-await-in-loop
+      await AR.runAutoRepriceCycle(h.deps);
+    }
+    const total = world.replaced.length;
+    const perHour = total / HOURS;
+    const refreshes = world.audits.filter((a) => a.outcome === 'trigger' && a.trigger === 'expiry-refresh').length;
+    const bandExits = world.audits.filter((a) => a.outcome === 'trigger' && a.trigger !== 'expiry-refresh').length;
+    console.log(`     → ${CYCLES} cycles = ${HOURS}h simulated · ${total} renewals total (${perHour.toFixed(1)}/hour): ${refreshes} proactive, ${bandExits} band-exit`);
+    ok(perHour >= 3 && perHour <= 5,
+      `over ${HOURS} simulated hours with a moving mid the watcher renewed ${total} times = ${perHour.toFixed(1)}/hour — inside the 3–5/hour target, not the 6–15 the old cycle produced`);
+    ok(refreshes > 0, '…and the renewals really came from the proactive trigger, not from the mid');
+
+    // The SAME two hours with a genuinely volatile mid: band exits now dominate, and the point is that
+    // the two triggers do not ADD UP — every move, whatever caused it, resets the clock the other one
+    // was watching, and the rate limit + hourly ceiling bound the total either way.
+    {
+      const w2 = {
+        now: 1_700_000_000_000, rules: rulesAt(0.50),
+        orders: { ok: true, simulated: false, count: 1, orders: [
+          { ...restingOrder(0.50), placedAt: 1_700_000_000_000, secondsToExpiry: ARC.RESTING_GTD_SECONDS },
+        ] },
+      };
+      const h2 = harness(w2);
+      enable(h2.stores);
+      const times = [];
+      for (let i = 0; i < CYCLES; i++) {
+        w2.rules = rulesAt(+(0.50 + 0.04 * Math.sin(i / 23)).toFixed(4));   // ±4¢ on a ±1.5¢ band
+        w2.now += TUNING.pollMs;
+        const before = w2.replaced.length;
+        // eslint-disable-next-line no-await-in-loop
+        await AR.runAutoRepriceCycle(h2.deps);
+        if (w2.replaced.length > before) times.push(w2.now);
+      }
+      const volPerHour = w2.replaced.length / HOURS;
+      const exits = w2.audits.filter((a) => a.outcome === 'trigger' && a.trigger !== 'expiry-refresh').length;
+      console.log(`     → volatile mid (±4¢ on a ±1.5¢ band): ${w2.replaced.length} moves (${volPerHour.toFixed(1)}/hour), ${exits} of them band-exit`);
+      ok(exits > 0, 'with a genuinely volatile mid the BAND-EXIT trigger takes over — that is the trigger that protects the reward, and it is not rate-capped away');
+      ok(volPerHour <= TUNING.maxPerHour,
+        `…and the total stays under the ${TUNING.maxPerHour}/hour runaway ceiling (${volPerHour.toFixed(1)}/hour) even when the mid never settles`);
+      const tooClose = times.filter((t, i) => i > 0 && (t - times[i - 1]) < TUNING.minIntervalMs);
+      ok(tooClose.length === 0,
+        `…and NO two moves ever landed within the ${TUNING.minIntervalMs / 1000}s rate limit — the two triggers share one mechanism and cannot double-fire on the same leg`);
+    }
+
+    // ── THE SERVER DIES ─────────────────────────────────────────────────────────────────────────────
+    // No watcher, no renewals, nothing on this host does anything at all. The ONLY thing left is the
+    // signed expiration the exchange holds — which is exactly the property being claimed.
+    const deathAt = world.now;
+    const lastOrder = world.orders.orders[0];
+    const lifeLeftAtDeath = Math.round(lastOrder.secondsToExpiry - (deathAt - lastOrder.placedAt) / 1000);
+    ok(lifeLeftAtDeath > 0 && lifeLeftAtDeath <= ARC.RESTING_GTD_SECONDS,
+      `at the moment the server stops, the live order has ${lifeLeftAtDeath}s of exchange-enforced life left — by construction never more than the ${ARC.RESTING_GTD_SECONDS}s window`);
+
+    // Advance the clock past the window with the watcher NOT running, and confirm nothing renews it.
+    const replacedBeforeDeath = world.replaced.length;
+    world.now += ARC.RESTING_GTD_SECONDS * 1000 + 60_000;   // 15 min + a minute, no cycles run
+    ok(world.replaced.length === replacedBeforeDeath,
+      'with the watcher dead nothing renewed the order — no host-side process is involved in it expiring');
+    const lifeAfter = Math.round(lastOrder.secondsToExpiry - (world.now - lastOrder.placedAt) / 1000);
+    ok(lifeAfter < 0,
+      `${Math.round((world.now - deathAt) / 60000)} minutes after the server stopped the order is past its expiry (${lifeAfter}s) — the venue retires it WITHIN the ${ARC.RESTING_GTD_SECONDS / 60}-minute window, not hours later and not never`);
+
+    // And the guarantee is a property of the SIGNED order, not of our bookkeeping: order-ttl computes it.
+    const { computeGtdExpiration, SECURITY_DECREMENT_SEC } = require('../lib/maker/order-ttl');
+    const g = computeGtdExpiration(deathAt, ARC.RESTING_GTD_SECONDS);
+    ok(g.orderType === 'GTD' && g.survivesHostDeath === true
+      && g.expiration === Math.floor(deathAt / 1000) + SECURITY_DECREMENT_SEC + ARC.RESTING_GTD_SECONDS,
+      'the expiry is a SIGNED field on the order (stated = now + 60 + ttl, per the venue formula) — the exchange enforces it with no cooperation from this machine');
+    ok(g.effectiveTtlSeconds === ARC.RESTING_GTD_SECONDS && g.clampedToVenueFloor === false,
+      `…and ${ARC.RESTING_GTD_SECONDS}s is comfortably above the venue's 3-minute GTD floor, so nothing is clamped and the effective life is exactly the ${ARC.RESTING_GTD_SECONDS / 60} minutes intended`);
+
+    await scenarioBlackout();
+  }
+}
+
+// ── 11 · THE CONNECTION BLACKOUT ───────────────────────────────────────────────────────────────────
+async function scenarioBlackout() {
+  console.log('\n11. process alive, venue unreachable — and what happens on reconnection');
+  {
+    const mkWorld = () => {
+      const world = {
+        now: 1_700_000_000_000, rules: rulesAt(0.50),
+        orders: { ok: true, simulated: false, count: 1, orders: [
+          { ...restingOrder(0.50), placedAt: 1_700_000_000_000, secondsToExpiry: ARC.RESTING_GTD_SECONDS },
+        ] },
+      };
+      const h = harness(world);
+      // The cancel spy: the recovery path may ONLY cancel, never place.
+      world.cancelCalls = [];
+      h.deps.cancelOrder = async (spec) => { world.cancelCalls.push(spec); return { ok: true, cancelled: true, orderId: spec.orderId }; };
+      h.deps.link = { downSince: null, consecutiveFailures: 0 };
+      enable(h.stores);
+      return { world, h };
+    };
+
+    // SHORT blackout — under the threshold. The cycle simply resumes.
+    {
+      const { world, h } = mkWorld();
+      await AR.runAutoRepriceCycle(h.deps);
+      world.linkDown = true;
+      world.now += 60_000;                    // 60s blind, under the 180s threshold
+      const blind = await AR.runAutoRepriceCycle(h.deps);
+      ok(blind.markets[0].gate === 'list-failed' && world.replaced.length === 0,
+        'while the venue is unreachable nothing is renewed and nothing is guessed at — and the GTD expiry is meanwhile doing exactly the job it exists for');
+      world.linkDown = false;
+      world.now += TUNING.pollMs;
+      const back = await AR.runAutoRepriceCycle(h.deps);
+      ok(world.cancelCalls.length === 0 && /under the .* threshold/.test(back.markets[0].reason || ''),
+        'a SHORT blackout resumes normally — nothing is cancelled for a blip');
+    }
+
+    // LONG blackout — past the threshold. On reconnection the hand orders are cancelled, not renewed.
+    {
+      const { world, h } = mkWorld();
+      await AR.runAutoRepriceCycle(h.deps);
+      world.linkDown = true;
+      for (let i = 0; i < 3; i++) { world.now += 120_000; /* eslint-disable-next-line no-await-in-loop */ await AR.runAutoRepriceCycle(h.deps); }
+      world.linkDown = false;
+      world.now += TUNING.pollMs;
+      const back = await AR.runAutoRepriceCycle(h.deps);
+      ok(back.markets[0].gate === 'reconnect-cancel',
+        `after ${6} minutes blind (threshold ${ARC.DISCONNECT_CANCEL_SECONDS}s) the recovery path fires instead of the normal cycle`);
+      ok(world.cancelCalls.length === 1 && world.cancelCalls[0].orderId === 'ORDER_A',
+        '…and it CANCELS the hand order rather than renewing on top of a state we did not observe');
+      ok(world.replaced.length === 0,
+        '…placing nothing: the recovery move can only reduce exposure, never start an order');
+      ok(world.audits.some((a) => a.outcome === 'reconnect-cancel' && a.source === ARC.AUTO_REPRICE_SOURCE),
+        '…and it is recorded in the audit trail under the automatism\'s own source, with the blind duration');
+    }
+
     done();
   }
 }
@@ -524,8 +735,11 @@ async function scenarioWiring() {
 function done() {
   fs.rmSync(TMP, { recursive: true, force: true });
   console.log(`\nmaker auto-reprice selfcheck: ${checks} assertions passed.`);
-  console.log('An order INSIDE the band is never touched — proven over 30 simulated minutes of a moving mid.');
-  console.log('An order the mid pushes OUT of the band is re-priced exactly once, to a price the shared guard accepts,');
-  console.log('GTC, same side, same size, stamped auto-reprice-band-exit, behind kill/ownership/rate/ceiling gates.');
+  console.log('An order INSIDE the band is never touched by the price trigger — proven over 30 simulated minutes.');
+  console.log('An order the mid pushes OUT of the band is re-priced once, to a price the shared guard accepts,');
+  console.log('same side, same size, stamped auto-reprice-band-exit, behind kill/ownership/rate/ceiling gates.');
+  console.log(`The venue-side expiry is ${ARC.RESTING_GTD_SECONDS / 60} minutes, renewed proactively with ${ARC.REFRESH_MARGIN_SECONDS / 60} minutes to spare:`);
+  console.log(`measured ${ARC.EXPECTED_RENEWALS_PER_HOUR}/hour over 2 simulated hours. With the watcher dead the EXCHANGE retires`);
+  console.log('the order inside that window — the dead-man\'s switch is the venue\'s, and needs nothing of ours to work.');
   console.log('NO venue call, NO credentials, NO signing key and NO order — real or simulated — was involved in this run.');
 }
