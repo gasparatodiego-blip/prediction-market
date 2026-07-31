@@ -315,8 +315,125 @@ async function rest() {
       'a market NOT near its close is watched exactly as before (the stand-off is scoped, not a new blanket refusal)');
   }
 
+  section('8. a market enabled BY HAND is a market agent34 actually subscribes to');
+  {
+    // THE BUG THIS PINS DOWN. agent34 used to subscribe to the reward board only, so a market added from
+    // the Allocazione tab — typically one with no reward programme, which agent24 therefore never fetches
+    // — was never on the live feed. Its price in the panel was the snapshot taken when it was added
+    // (midSource 'manual-catalog'), frozen; and lib/maker/auto-reprice refuses outright to move a real
+    // order on a mid that is not agent34's live book. A market we let the operator quote on has to be a
+    // market we watch. Everything below runs on injected deps: no network, no writes to data/.
+    const A34 = require('../agents/agent34-clob-ws');
+    const BTC = '0x' + 'cd'.repeat(32);   // stands in for the hand-added Bitcoin Up/Down market
+    const depsCat = { catalogFile: tmp('a34-catalog.json'), catalogAuditFile: tmp('a34-catalog-audit.jsonl') };
+    const depsCfg = { configFile: tmp('a34-reprice.json'), autoAuditFile: tmp('a34-reprice-audit.jsonl') };
+    const { setAutoReprice } = require('../lib/maker/auto-reprice-config');
+    upsertMarket({
+      marketId: BTC, question: 'Bitcoin Up or Down - test', tokenIdYes: '900', tokenIdNo: '901',
+      tick: 0.01, negRisk: false, rewardsDailyRate: null, mid: 0.5,
+    }, { by: 'selfcheck' }, depsCat);
+    setAutoReprice({ scope: 'global', enabled: true, by: 'selfcheck' }, depsCfg);
+    setAutoReprice({ scope: 'market', marketId: KANE, enabled: true, by: 'selfcheck' }, depsCfg);
+    setAutoReprice({ scope: 'market', marketId: BTC, enabled: true, by: 'selfcheck' }, depsCfg);
+
+    const ids = A34.readOperatorEnabledIds(depsCfg);
+    ok(ids.includes(KANE.toLowerCase()) && ids.includes(BTC.toLowerCase()),
+      'agent34 reads the operator\'s enabled markets from the SAME file the panel writes and the live-min gate reads');
+
+    // A board of 60 markets (the reward cap), Kane among them — exactly today's production shape.
+    const board = { markets: [] };
+    for (let i = 0; i < 60; i++) {
+      const isKane = i === 29;
+      board.markets.push({
+        conditionId: isKane ? KANE : `0x${String(i).padStart(64, '0')}`,
+        tokenId: `${1000 + i}`, tokenIdNo: `${2000 + i}`,
+        rewardsMinSize: 50, rewardsMaxSpread: 4.5, tickSize: 0.001,
+        rewardsDailyRate: isKane ? 126 : (i % 7) + 1,
+        question: isKane ? 'Will Harry Kane win the 2026 Ballon d\'Or?' : `board ${i}`,
+      });
+    }
+    const desired = A34.collectDesiredMarkets({ watchlist: board });
+    ok(desired.size === 60 && desired.has(KANE), 'the reward board is collected exactly as before: 60 markets, cap unchanged, Kane included');
+
+    const noNet = { resolveTokens: async () => { throw new Error('selfcheck: no network here'); } };
+    await A34.unionOperatorMarkets(desired, { ...depsCat, ...depsCfg, ...noNet });
+    ok(desired.size === 61, 'the hand-added market is UNIONED in — 60 board + 1 operator, not 60');
+    const btc = desired.get(BTC.toLowerCase());
+    ok(!!btc && btc.tokenId === '900' && btc.tokenIdNo === '901',
+      'its two token ids come from the durable catalog the panel wrote — no network, nothing guessed');
+    ok(btc.minSize === null && btc.maxSpread === null,
+      'a market with NO reward programme keeps null min-size and null band — never a fabricated 1 that would satisfy a gate the venue never published');
+    ok(btc.source === 'operator-enabled' && btc.operatorEnabled === true, 'and the row says WHY it is subscribed');
+
+    // Kane is on the board AND enabled by hand. That must be ONE subscription, flagged — never two.
+    const kaneMeta = desired.get(KANE);
+    ok(kaneMeta.operatorEnabled === true && kaneMeta.source === 'reward-board' && kaneMeta.tokenId === '1029',
+      'a market that is BOTH on the board and hand-enabled is subscribed ONCE, keeping its board metadata, just flagged');
+    ok([...desired.keys()].filter((k) => k.toLowerCase() === KANE.toLowerCase()).length === 1,
+      'no duplicate subscription for it (dedup is case-insensitive on the conditionId)');
+
+    // PRECEDENCE AT THE CAP: a market the operator chose by hand never loses to a weak reward market.
+    const full = new Map();
+    for (let i = 0; i < A34.TOTAL_MARKET_CAP; i++) {
+      full.set(`0x${String(i).padStart(64, 'f')}`, { conditionId: `0x${String(i).padStart(64, 'f')}`, tokenId: `t${i}`, tokenIdNo: `n${i}`, source: 'reward-board', rewardsDailyRate: i + 1, minSize: 50, maxSpread: 4.5 });
+    }
+    await A34.unionOperatorMarkets(full, { ...depsCat, ...depsCfg, ...noNet, operatorIds: [BTC.toLowerCase()] });
+    ok(full.size === A34.TOTAL_MARKET_CAP && full.has(BTC.toLowerCase()),
+      `at the total cap (${A34.TOTAL_MARKET_CAP} markets) the hand-added market still gets in — it is not the one dropped`);
+    ok(!full.has(`0x${String(0).padStart(64, 'f')}`) && A34.operatorLaneState().evicted.length === 1,
+      'what gave way is the WEAKEST reward market (lowest $/day), and the eviction is recorded, not silent');
+
+    // …and when there is genuinely nothing left to give up, the drop is LOUD, never silent.
+    const allMine = new Map();
+    for (let i = 0; i < A34.TOTAL_MARKET_CAP; i++) {
+      const k = `0x${String(i).padStart(64, 'e')}`;
+      allMine.set(k, { conditionId: k, tokenId: `t${i}`, tokenIdNo: `n${i}`, source: 'operator-enabled', operatorEnabled: true, rewardsDailyRate: null, minSize: null, maxSpread: null });
+    }
+    await A34.unionOperatorMarkets(allMine, { ...depsCat, ...depsCfg, ...noNet, operatorIds: [BTC.toLowerCase()] });
+    ok(!allMine.has(BTC.toLowerCase()) && A34.operatorLaneState().dropped.includes(BTC.toLowerCase()),
+      'with nothing evictable the market is reported as DROPPED (feed.operatorDropped) instead of being silently missing');
+
+    // THE POINT OF THE WHOLE THING: with agent34 subscribed, the panel's mid is LIVE, and the venue rules
+    // the catalog holds are still there — the live book carries a price, never a tick or a negRisk flag.
+    const { resolveMarketRules } = require('../lib/maker/manual-order');
+    const catalogRec = require('../lib/maker/market-catalog').readMarketRecord(BTC, depsCat);
+    const before = resolveMarketRules(BTC, { books: null, norm: null, catalogRecord: catalogRec });
+    ok(before.midSource === 'manual-catalog', 'BEFORE the subscription the panel showed a snapshot mid (midSource manual-catalog) — the behaviour that is being fixed');
+    const liveBooks = { markets: { [BTC.toLowerCase()]: { mid: 0.63, ageMs: 1200, live: true, tokenId: '900', tokenIdNo: '901', minSize: null, maxSpread: null } } };
+    const after = resolveMarketRules(BTC, { books: liveBooks, norm: null, catalogRecord: catalogRec });
+    ok(after.midSource === 'live-book' && after.mid === 0.63 && after.midAgeSec === 1,
+      'AFTER it, the same market reads midSource live-book with the live mid and its real age');
+    ok(after.tick === 0.01 && after.negRisk === false && after.tokenId === '900' && after.rulesSource === 'live-book+manual-catalog',
+      'and the catalog rules SURVIVE the live book: tick/negRisk/tokens still there, both sources named');
+    ok(after.rewardProgramme === 'none',
+      'the "no reward programme" explanation survives too — it is why the band guard refuses, and it must not degrade to a bare "rules unreadable"');
+
+    // agent40 refuses to move a real order on a second-hand mid. That refusal is exactly what a frozen
+    // manual-catalog mid triggered; with the subscription it no longer fires.
+    const { decideReprice } = require('../lib/maker/auto-reprice');
+    const { loadAutoRepriceTuning } = require('../lib/maker/auto-reprice-config');
+    // The REAL production tuning (requireLiveBook defaults true) — asserting against a hand-made {} would
+    // silently disable the very gate under test.
+    const tuning = loadAutoRepriceTuning({});
+    ok(tuning.requireLiveBook === true, 'the production tuning does require agent34\'s live book by default');
+    const order = { price: 0.62, size: 10, book: 'yes' };
+    const beforeRules = { ...before, readable: true, maxSpreadCents: 4.5, minSize: 10, tick: 0.01 };
+    const afterRules = { ...after, readable: true, maxSpreadCents: 4.5, minSize: 10, tick: 0.01 };
+    ok(decideReprice({ order, rules: beforeRules, config: tuning }).gate === 'mid-not-live',
+      'agent40 on the OLD frozen mid: skip / mid-not-live — the automatism was blind on hand-added markets');
+    ok(decideReprice({ order, rules: afterRules, config: tuning }).gate !== 'mid-not-live',
+      'agent40 on the LIVE mid: that refusal is gone, the order is judged against the current book');
+
+    // NON-REGRESSION for the board lane: Kane is answered by its board row exactly as before.
+    const kaneNorm = { markets: [{ marketId: KANE, title: 'Kane', midpoint: 0.5, tickSize: 0.001, maxSpread: 4.5, minSize: 50, tokenId: '1029', tokenIdNo: '2029', negRisk: false, updatedAt: new Date().toISOString() }] };
+    const kaneBooks = { markets: { [KANE]: { mid: 0.52, ageMs: 3000, live: true, minSize: 50, maxSpread: 4.5, yes: { bestBid: 0.51, bestAsk: 0.53 } } } };
+    const kaneRules = resolveMarketRules(KANE, { books: kaneBooks, norm: kaneNorm });
+    ok(kaneRules.readable === true && kaneRules.midSource === 'live-book' && kaneRules.rulesSource === 'live-book' && kaneRules.mid === 0.52,
+      'a reward-board market is untouched by all of this: readable, live-book mid, rulesSource live-book');
+  }
+
   if (!OFFLINE) {
-    section('8. LIVE venue read — the search really is unfiltered, and a real short market shortens the window');
+    section('9. LIVE venue read — the search really is unfiltered, and a real short market shortens the window');
     const { searchMarkets, fetchMarketByConditionId } = require('../lib/maker/market-search');
 
     const res = await searchMarkets({ q: 'bitcoin up or down', limit: 12 });

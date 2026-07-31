@@ -93,8 +93,12 @@ export interface MarketRules {
   bestBid: number | null;
   bestAsk: number | null;
   books: { yes: { tokenId: string | null; scoringMid: number | null }; no: { tokenId: string | null; scoringMid: number | null } };
-  /** Which source answered for this market. 'manual-catalog' = hand-added, not on the reward board. */
-  rulesSource?: 'live-book' | 'board-row' | 'manual-catalog' | null;
+  /**
+   * Which source answered for this market. 'manual-catalog' = hand-added, not on the reward board.
+   * 'live-book+manual-catalog' = hand-added AND now subscribed by agent34: the price is live, the venue
+   * rules (tick / tokens / negRisk) still come from the catalog written when it was added.
+   */
+  rulesSource?: 'live-book' | 'board-row' | 'manual-catalog' | 'live-book+manual-catalog' | null;
   /** 'none' = the venue publishes no reward programme here. NOT a permission: the band guard still refuses. */
   rewardProgramme?: 'active' | 'none' | null;
   rewardsDailyRate?: number | null;

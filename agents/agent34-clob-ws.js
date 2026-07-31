@@ -13,8 +13,10 @@
 //     book behind a dead/lagging socket as live.
 //   • Failure isolation: this is its OWN pm2 process, NOT folded into agent27, so a
 //     dead socket can never stall the news-guard or the dashboard. autorestart:true.
-//   • Bounded: subscribes only to reward-eligible markets (+ persisted user legs,
-//     wired in a later commit), never "everything", capped at SUBSCRIPTION_CAP.
+//   • Bounded: subscribes to reward-eligible markets (capped at SUBSCRIPTION_CAP),
+//     PLUS every market the operator enabled by hand (cfg.enabledMarketIds — see
+//     unionEnabledMarkets), PLUS persisted user legs. Never "everything": the whole
+//     set is bounded by TOTAL_MARKET_CAP.
 //
 // Reward math is NOT changed here. We compute BOTH the plain mid (what the live UI
 // shows today) and the dust-filtered adjusted mid (what actually scores rewards)
@@ -47,7 +49,22 @@ const HB_FILE        = '/tmp/agent-heartbeats.json';
 const COVERAGE_FILE  = path.join(__dirname, '..', 'data', 'mid-history-coverage.json');
 const CLOB_BASE      = 'https://clob.polymarket.com';
 
-const SUBSCRIPTION_CAP = 60;          // markets (× 2 tokens = ≤120 assets; well under the ~250/conn cap)
+// ── THE TWO BOUNDS, AND WHICH ONE IS THE VENUE'S ────────────────────────────────────────────────────
+// SUBSCRIPTION_CAP is how many REWARD-BOARD markets we take from agent24's watchlist. It is OURS, not the
+// venue's: it was sized against this box's budgets (RSS ~5.9 KB/subscription, and the mid-history journal's
+// 50 MB/day disk budget was measured AT 60 markets — see MID_HISTORY_INTERVAL_MS below), and the watchlist
+// is routinely larger than it (113 markets on 2026-07-31), so it genuinely truncates the board.
+//
+// TOTAL_MARKET_CAP is the bound on the WHOLE subscribed set (board + operator-enabled + legs). The venue
+// publishes NO documented per-connection subscription maximum — docs.polymarket.com/developers/CLOB/
+// websocket says nothing about a maximum number of assets_ids, re-checked 2026-07-31 — so the "~250/conn"
+// figure this file used to cite was an assumption, never a measured venue limit. It is kept as a
+// deliberately conservative asset budget for ONE connection, and stated as ours rather than the venue's.
+// If the desired set ever exceeds it, we do NOT silently drop a market the operator chose by hand: the
+// weakest reward-board market (lowest rewardsDailyRate) is evicted instead, and the eviction is logged.
+const SUBSCRIPTION_CAP = 60;          // reward-board markets taken from the watchlist (× 2 tokens = ≤120 assets)
+const FEED_ASSET_BUDGET = 250;        // assets on one market-channel connection — OUR budget, not a venue limit
+const TOTAL_MARKET_CAP = Math.floor(FEED_ASSET_BUDGET / 2); // 125 markets (board + operator + legs), 2 tokens each
 const WRITE_INTERVAL_MS = 3_000;      // recompute + persist snapshot cadence
 const REFRESH_MARKETS_MS = 60_000;    // re-read the watchlist for adds/drops
 const STALE_MS = 30_000;              // no event within this ⇒ that book is STALE (≈3 heartbeats)
@@ -113,11 +130,13 @@ function heartbeat() {
   try { atomicWrite(HB_FILE, hb); } catch { /* best-effort */ }
 }
 
-// ── desired markets: reward-eligible watchlist (persisted user legs unioned in a
-// later commit via collectLegMarkets). Returns a Map<conditionId, marketMeta>. ──
-function collectDesiredMarkets() {
+function normId(v) { return typeof v === 'string' ? v.trim().toLowerCase() : ''; }
+
+// ── desired markets: reward-eligible watchlist (operator-enabled markets and persisted
+// user legs are unioned in afterwards). Returns a Map<conditionId, marketMeta>. ──
+function collectDesiredMarkets(deps = {}) {
   const out = new Map();
-  const d = readJsonSafe(WATCHLIST_FILE);
+  const d = deps.watchlist !== undefined ? deps.watchlist : readJsonSafe(WATCHLIST_FILE);
   const markets = (d && d.markets) || [];
   for (const m of markets) {
     if (!m.tokenId || !m.conditionId) continue;
@@ -129,10 +148,119 @@ function collectDesiredMarkets() {
       maxSpread: Number(m.rewardsMaxSpread ?? m.maxSpread) || null, // cents; band radius = /2
       tick: Number(m.tickSize) > 0 ? Number(m.tickSize) : null,     // venue min tick (agent24 /tick-size); null if unknown
       title: (m.question || m.title || '').slice(0, 120),
+      // WHERE this subscription came from, and how strong its reward is — the two things the overflow
+      // rule below needs in order to evict the WEAKEST board market rather than an operator's choice.
+      source: 'reward-board',
+      rewardsDailyRate: Number.isFinite(Number(m.rewardsDailyRate)) ? Number(m.rewardsDailyRate) : null,
     });
     if (out.size >= SUBSCRIPTION_CAP) break;
   }
   return out;
+}
+
+// ── THE OPERATOR'S OWN MARKETS ──────────────────────────────────────────────────────────────────────
+// A market the operator adds by hand from the Allocazione tab is written to data/maker-auto-reprice.json
+// as a per-market opt-in — the SAME list lib/maker/config.js exposes as cfg.enabledMarketIds and the
+// live-min allowlist gate reads. Such a market is very often NOT reward-eligible (BTC Up/Down pays no
+// liquidity reward), so agent24 never sees it and the watchlist above never carries it. Without this
+// union its price in the panel would be a SNAPSHOT taken when it was added (midSource:'manual-catalog'),
+// and lib/maker/auto-reprice.js refuses outright to move a real order on a mid that is not agent34's live
+// book (gate 'mid-not-live'). A market we let the operator quote on must therefore be a market we watch.
+//
+// We take the union of enabledMarketIds and optedInMarketIds. The difference is the auto-reprice MASTER
+// switch: with it off, enabledMarketIds is empty by design ("what will the watcher touch right now"). But
+// the master switch governs whether an automatism may MOVE an order — not whether we should know the
+// current price of a market the operator picked. Subscribing is read-only and grants no authority
+// whatsoever (the allowlist, caps, manual mode and kill switch all live elsewhere), so watching the wider
+// list is free and strictly more honest.
+function readOperatorEnabledIds(deps = {}) {
+  try {
+    const { readAutoRepriceConfig } = require('../lib/maker/auto-reprice-config');
+    const cfg = readAutoRepriceConfig(deps);
+    // An UNREADABLE config yields [] here (readAutoRepriceConfig fails closed) — the same "nothing extra
+    // is subscribed" as an empty list. Fail-closed on a config read can only ever cost us a subscription.
+    const ids = [...(cfg.enabledMarketIds || []), ...(cfg.optedInMarketIds || [])].map(normId).filter(Boolean);
+    return [...new Set(ids)];
+  } catch (e) { log('operator-enabled list unreadable (board-only this cycle):', e.message); return []; }
+}
+
+// Venue metadata for an operator-enabled market. First the durable catalog the Allocazione tab wrote when
+// the market was added (no network, and it already holds the venue's own tick/tokens/negRisk); the CLOB
+// lookup is the fallback for a market enabled without a catalog row. NEVER fabricates: a market whose YES
+// token cannot be resolved is skipped, and the reward fields stay null when the venue publishes none —
+// `minSize:null` in particular must NOT become 1, or a fabricated min_incentive_size would travel into
+// lib/maker/manual-order.resolveMarketRules and quietly satisfy a gate the venue never published.
+async function operatorMarketMeta(id, deps = {}) {
+  let rec = null;
+  try {
+    rec = deps.catalogRecord !== undefined ? deps.catalogRecord : require('../lib/maker/market-catalog').readMarketRecord(id, deps);
+  } catch { rec = null; }
+  let tokenId = rec && rec.tokenIdYes ? String(rec.tokenIdYes) : null;
+  let tokenIdNo = rec && rec.tokenIdNo ? String(rec.tokenIdNo) : null;
+  if (!tokenId) {
+    const t = await (deps.resolveTokens || resolveTokens)(id);
+    tokenId = (t && t.tokenId) || null; tokenIdNo = (t && t.tokenIdNo) || null;
+  }
+  if (!tokenId) return null;
+  return {
+    conditionId: id,
+    tokenId,
+    tokenIdNo: tokenIdNo || null,
+    minSize: rec && Number.isFinite(rec.rewardsMinSize) ? rec.rewardsMinSize : null,
+    maxSpread: rec && Number.isFinite(rec.rewardsMaxSpreadCents) ? rec.rewardsMaxSpreadCents : null,
+    tick: rec && Number.isFinite(rec.tick) && rec.tick > 0 ? rec.tick : null,
+    title: ((rec && rec.question) || '').slice(0, 120),
+    source: 'operator-enabled',
+    rewardsDailyRate: rec && Number.isFinite(rec.rewardsDailyRate) ? rec.rewardsDailyRate : null,
+    operatorEnabled: true,
+  };
+}
+
+// Free ONE slot for an operator market by dropping the weakest reward-board market — lowest
+// rewardsDailyRate first, an unknown rate counted as 0. A market the operator enabled is never a
+// candidate (that is the whole point), and neither is a leg market. Returns the evicted id, or null when
+// there is nothing left to give up — in which case the caller records the operator market as DROPPED and
+// says so loudly rather than pretending it is covered.
+function evictWeakestRewardMarket(into) {
+  let worst = null; let worstRate = Infinity;
+  for (const [id, m] of into) {
+    if (m.source !== 'reward-board' || m.operatorEnabled || m.fromLeg) continue;
+    const rate = Number.isFinite(m.rewardsDailyRate) ? m.rewardsDailyRate : 0;
+    if (rate < worstRate) { worst = id; worstRate = rate; }
+  }
+  if (!worst) return null;
+  into.delete(worst);
+  log(`cap ${TOTAL_MARKET_CAP} reached — evicted weakest reward market ${worst.slice(0, 10)}… (rate $${worstRate}/d) to make room for an operator-enabled market`);
+  return worst;
+}
+
+// Union the operator's enabled markets into `into` (mutates). Deduplicated against the board by
+// conditionId, case-insensitively: a market that is BOTH on the reward board and enabled by hand (Harry
+// Kane today) is subscribed ONCE and simply flagged, never counted or subscribed twice.
+async function unionOperatorMarkets(into, deps = {}) {
+  operatorDropped = []; operatorUnresolved = []; operatorEvicted = [];
+  const ids = deps.operatorIds !== undefined ? deps.operatorIds : readOperatorEnabledIds(deps);
+  if (!ids.length) return into;
+  const byLower = new Map([...into.keys()].map((k) => [normId(k), k]));
+  for (const id of ids) {
+    const existing = byLower.get(id);
+    if (existing) { into.get(existing).operatorEnabled = true; continue; }  // already covered by the board
+    if (into.size >= TOTAL_MARKET_CAP) {
+      const evicted = evictWeakestRewardMarket(into);
+      if (!evicted) { operatorDropped.push(id); continue; }
+      byLower.delete(normId(evicted));
+      operatorEvicted.push(evicted);
+    }
+    const meta = await operatorMarketMeta(id, deps);
+    if (!meta) { operatorUnresolved.push(id); continue; }   // unresolvable → skip, never fabricate a token
+    into.set(id, meta);
+    byLower.set(id, id);
+  }
+  if (operatorDropped.length) {
+    log(`ATTENZIONE: ${operatorDropped.length} mercati abilitati a mano NON sottoscritti — cap totale ${TOTAL_MARKET_CAP} raggiunto e nessun mercato reward evincibile: ${operatorDropped.join(', ')}`);
+  }
+  if (operatorUnresolved.length) log(`operator markets with unresolvable tokens (not subscribed): ${operatorUnresolved.join(', ')}`);
+  return into;
 }
 
 // Resolve YES/NO token ids for a conditionId via the CLOB (cached). Needed for
@@ -158,9 +286,14 @@ async function unionLegMarkets(into) {
   try {
     rows = await prisma.rewardsLeg.findMany({ where: { venue: 'polymarket' }, distinct: ['marketId'], select: { marketId: true } });
   } catch (e) { log('leg-market query failed (watchlist-only this cycle):', e.message); return; }
+  // Legs keep exactly the bound they always had: the reward-board budget, counted over board+leg entries
+  // ONLY. Operator-enabled markets are deliberately excluded from this count so that adding a market by
+  // hand can never quietly push a leg market off the feed — the two lanes do not compete.
+  const nonOperatorCount = (m) => [...m.values()].filter((x) => x.source !== 'operator-enabled').length;
   for (const { marketId } of rows) {
     if (into.has(marketId)) continue;            // already covered by the watchlist
-    if (into.size >= SUBSCRIPTION_CAP) break;     // stay bounded — never subscribe to everything
+    if (nonOperatorCount(into) >= SUBSCRIPTION_CAP) break; // stay bounded — never subscribe to everything
+    if (into.size >= TOTAL_MARKET_CAP) break;     // and never past the whole-connection budget
     const t = await resolveTokens(marketId);
     if (!t.tokenId) continue;                      // unresolvable → skip, never fabricate a token
     into.set(marketId, {
@@ -182,6 +315,11 @@ let desired = new Map();            // conditionId -> meta
 let assetToMarket = new Map();      // assetId -> { conditionId, side:'yes'|'no', meta }
 const lastResnapshotAt = new Map(); // assetId -> ts (throttle REST)
 let reconnects = 0, watchdogReconnects = 0, restSnapshots = 0, droppedForCap = 0;
+// Operator-lane bookkeeping, refreshed on every reconcile and published in the snapshot's feed block so
+// "the market I added by hand is covered" is answerable from the file, not from a log line.
+let operatorDropped = [];      // enabled markets NOT subscribed (total cap hit, nothing evictable)
+let operatorUnresolved = [];   // enabled markets whose YES token could not be resolved
+let operatorEvicted = [];      // reward-board markets given up to make room for an operator market
 let driftSignals = 0;
 let midHistoryStream = null;       // { day, stream } — the daily-rotated append stream (never read back)
 let midHistoryRows = 0;            // rows appended this process lifetime (observability only)
@@ -235,6 +373,7 @@ async function resnapshotAll(reason) {
 // Reconcile subscriptions to the current desired set. Adds/drops on the live socket.
 async function reconcileSubscriptions() {
   desired = collectDesiredMarkets();
+  await unionOperatorMarkets(desired); // + every market the operator enabled by hand (cfg.enabledMarketIds)
   await unionLegMarkets(desired);   // Phase 2: + markets where a user has legs
   await loadDriftInputs();          // Phase 4: refresh legs/placements/rewardScore/rails
   const nextAssets = new Map();
@@ -251,6 +390,12 @@ async function reconcileSubscriptions() {
   writeCoverageManifest();   // keep the coverage manifest current with the subscribed set + the live universe size
 }
 
+// The dust cutoff the adjusted mid is computed with. A reward market publishes a min_incentive_size and
+// that IS the cutoff. A market with no reward programme publishes none: the honest cutoff is then 0 (no
+// filter, adjusted mid = plain mid), NOT a made-up 1 — and `minSize` itself stays null everywhere it is
+// published, so nothing downstream can mistake our arithmetic choice for a venue rule.
+function sizeCutoff(minSize) { return Number.isFinite(minSize) && minSize > 0 ? minSize : 0; }
+
 // Compute per-side mids from a live book. Returns null fields when a side isn't seeded.
 function sideView(assetId, minSize, now) {
   const b = store.getBook(assetId);
@@ -261,7 +406,7 @@ function sideView(assetId, minSize, now) {
   const bestBid = bids[0] ? bids[0].price : null;
   const bestAsk = asks[0] ? asks[0].price : null;
   const plainMid = bestBid != null && bestAsk != null ? (bestBid + bestAsk) / 2 : null;
-  const adjMid = adjustedMid(bids, asks, minSize, null);
+  const adjMid = adjustedMid(bids, asks, sizeCutoff(minSize), null);
   // The ladder itself, top-of-book first, capped at LADDER_LEVELS. parseOrders already returns bids
   // descending and asks ascending, so the slice is genuinely the top of each stack. These are the
   // SAME level objects the mid/depth math above consumed — one book, not a second fetch.
@@ -294,6 +439,7 @@ function inBandUsd(orders, mid, bandRadiusC) {
 // when the book is not live, has no reward band, or cannot be scored. Never fabricates.
 function liveRewardObs(meta, now) {
   if (meta.maxSpread == null || !(meta.maxSpread > 0)) return null;   // no band → cannot score coherently
+  if (!Number.isFinite(meta.minSize) || !(meta.minSize > 0)) return null; // no published min size → not scoreable
   const fr = store.freshness(meta.tokenId, STALE_MS, now);
   if (!fr.live) return null;                                          // not fresh → stay at scan speed (never mix)
   const bYes = store.getBook(meta.tokenId);
@@ -346,6 +492,10 @@ function buildSnapshot() {
       tokenId: meta.tokenId,
       tokenIdNo: meta.tokenIdNo,
       title: meta.title,
+      // WHY this market is here. A consumer reading a null band on an 'operator-enabled' row knows the
+      // venue publishes no reward programme for it, rather than suspecting a lost field.
+      source: meta.source || (meta.fromLeg ? 'leg' : 'reward-board'),
+      operatorEnabled: meta.operatorEnabled === true,
       minSize: meta.minSize,
       maxSpread: meta.maxSpread,
       bandRadiusC,
@@ -359,6 +509,11 @@ function buildSnapshot() {
     };
   }
   const rss = process.memoryUsage().rss;
+  const bySource = { 'reward-board': 0, 'operator-enabled': 0, leg: 0 };
+  for (const meta of desired.values()) {
+    const s = meta.source || (meta.fromLeg ? 'leg' : 'reward-board');
+    bySource[s] = (bySource[s] || 0) + 1;
+  }
   return {
     generatedAt: new Date(now).toISOString(),
     source: 'Polymarket CLOB market channel · live · read-only · no orders placed',
@@ -368,6 +523,16 @@ function buildSnapshot() {
       subscriptions: assetToMarket.size,
       markets: desired.size,
       reconnects, watchdogReconnects, restSnapshots,
+      // The operator lane, stated in the file: how many hand-enabled markets are covered, and — the part
+      // that must never be silent — which ones are NOT, and what the board gave up for them.
+      rewardBoardMarkets: bySource['reward-board'],
+      operatorMarkets: bySource['operator-enabled'],
+      legMarkets: bySource.leg,
+      rewardCap: SUBSCRIPTION_CAP,
+      totalCap: TOTAL_MARKET_CAP,
+      operatorDropped: [...operatorDropped],
+      operatorUnresolved: [...operatorUnresolved],
+      operatorEvictedRewardMarkets: [...operatorEvicted],
     },
     staleMs: STALE_MS,
     markets,
@@ -457,9 +622,17 @@ function writeCoverageManifest() {
   const all = (norm && Array.isArray(norm.markets)) ? norm.markets : null;
   const collectable = all ? all.filter((m) => m && m.venue === 'polymarket').length : null;
   const full = all ? all.length : null;
+  // COVERAGE IS ABOUT THE REWARD UNIVERSE, so the numerator must stay the reward-board subset. Markets
+  // the operator enabled by hand are in the journal too, but they are not part of that universe (most pay
+  // no reward at all) and counting them here would inflate coverage against a denominator they were never
+  // in. They are reported separately instead.
+  const boardSubscribed = [...desired.values()].filter((m) => (m.source || 'reward-board') === 'reward-board').length;
+  const operatorSubscribed = [...desired.values()].filter((m) => m.source === 'operator-enabled').length;
   const manifest = {
     at: new Date().toISOString(),
-    subscribedMarketCount: desired.size,           // markets this journal currently covers
+    subscribedMarketCount: boardSubscribed,        // reward-board markets this journal covers (the numerator)
+    subscribedTotalCount: desired.size,            // every market in the journal (board + operator + legs)
+    operatorSubscribedCount: operatorSubscribed,   // hand-enabled markets, outside the reward universe
     subscriptionCap: SUBSCRIPTION_CAP,             // the hard bound on coverage
     universeMarketCount: collectable,              // COLLECTABLE universe (Polymarket only) — the denominator to use
     universeMarketCountFull: full,                 // full published universe (poly + kalshi) — transparency only
@@ -549,7 +722,7 @@ function sampleMidHistory() {
       bestBid = bids[0] ? bids[0].price : null;
       bestAsk = asks[0] ? asks[0].price : null;
       plainMid = (bestBid != null && bestAsk != null) ? Math.round(((bestBid + bestAsk) / 2) * 1e6) / 1e6 : null;
-      const am = adjustedMid(bids, asks, meta.minSize, null);
+      const am = adjustedMid(bids, asks, sizeCutoff(meta.minSize), null);
       adjMid = am != null ? Math.round(am * 1e6) / 1e6 : null;
       const bandRadiusC = meta.maxSpread != null ? meta.maxSpread / 2 : null;
       const d = inBandDepth(bids, asks, adjMid, bandRadiusC, meta.minSize);
@@ -679,4 +852,12 @@ process.on('SIGINT', shutdown);
 
 if (require.main === module) main().catch(e => { log('fatal:', e.message); process.exit(1); });
 
-module.exports = { collectDesiredMarkets, sideView, buildSnapshot, store, client, inBandDepth, sampleMidHistory, pruneOldHistory, utcDayStr, writeCoverageManifest, appendTrade, buildTradeRow, pruneOldTradeTape, tradeTapePath, MID_HISTORY_INTERVAL_MS, COVERAGE_FILE };
+module.exports = {
+  collectDesiredMarkets, sideView, buildSnapshot, store, client, inBandDepth, sampleMidHistory,
+  pruneOldHistory, utcDayStr, writeCoverageManifest, appendTrade, buildTradeRow, pruneOldTradeTape,
+  tradeTapePath, MID_HISTORY_INTERVAL_MS, COVERAGE_FILE,
+  // The operator lane — exported so the selfcheck can drive it with injected deps (no network, no data/).
+  readOperatorEnabledIds, operatorMarketMeta, unionOperatorMarkets, evictWeakestRewardMarket, sizeCutoff,
+  operatorLaneState: () => ({ dropped: [...operatorDropped], unresolved: [...operatorUnresolved], evicted: [...operatorEvicted] }),
+  SUBSCRIPTION_CAP, TOTAL_MARKET_CAP, FEED_ASSET_BUDGET,
+};
