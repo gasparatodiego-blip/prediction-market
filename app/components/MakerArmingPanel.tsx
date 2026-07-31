@@ -256,6 +256,41 @@ export default function MakerArmingPanel() {
 
   if (operator !== true) return null;
 
+  // ── "IL BOT STA LAVORANDO?" ───────────────────────────────────────────────────────────────────────
+  // Questo pannello E' la fonte di quel fatto: legge /api/maker/status e lo stato del kill. La console
+  // qui sotto non lo ri-deduce apposta — un fatto solo, letto in un posto solo.
+  //
+  // Quattro stati, come nel resto della console. Il grigio "non lo sappiamo" non si veste mai da rosso
+  // "e' fermo": se lo stato del kill non e' leggibile, non sappiamo se il bot gira, e dire "fermo"
+  // sarebbe una deduzione. L'ordine dei controlli e' deliberato: il kill vince su tutto, perche' un
+  // maker armato con il kill attivo non sta comunque piazzando niente.
+  const bot: { state: 'ok' | 'warn' | 'bad' | 'unknown'; label: string; detail: string } =
+    resetState?.kill.readable === false
+      ? {
+        state: 'unknown',
+        label: 'Non lo sappiamo',
+        detail: `Lo stato del kill-switch non è leggibile${resetState.kill.reason ? `: ${resetState.kill.reason}` : ''}. Non è né «gira» né «fermo».`,
+      }
+      : resetState?.kill.killed === true
+        ? {
+          state: 'bad',
+          label: 'Fermato dal kill',
+          detail: 'Il kill-switch è attivo: nessun ordine viene piazzato finché non premi RIPRISTINA.',
+        }
+        : armStatus == null
+          ? { state: 'unknown', label: 'In lettura…', detail: 'Stato di arming non ancora ricevuto dal server.' }
+          : armStatus.armed
+            ? {
+              state: 'ok',
+              label: 'Armato',
+              detail: `Il maker può piazzare${countdown != null ? `, e resta armato ancora ${Math.max(0, Math.round(countdown / 60))} min` : ''}. L'arming scade da solo: è un dead-man's switch, non un interruttore.`,
+            }
+            : {
+              state: 'warn',
+              label: 'Fermo — non armato',
+              detail: 'Il maker non piazza nulla. Gli ordini già a riposo sul venue restano dove sono: disarmare non li cancella.',
+            };
+
   return (
     <div className="mkarm-root" data-maker-panel>
       <style>{`
@@ -264,6 +299,27 @@ export default function MakerArmingPanel() {
           font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
         .mkarm-hrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
         .mkarm-title { font-size: 13px; font-weight: 800; letter-spacing: .4px; text-transform: uppercase; color: #9AA4B2; }
+
+        /* STESSO VOCABOLARIO DELLA CONSOLE: quattro stati, verde mint del design system, grigio di prima
+           classe per il non-misurabile. Le due superfici devono parlare la stessa lingua, o l operatore
+           impara due semafori invece di uno. */
+        .mkarm-s-ok      { --s: #4FD8A0; --s-bd: #14624A; --s-bg: #08201A; }
+        .mkarm-s-warn    { --s: #E8B23A; --s-bd: #4A3C12; --s-bg: #1A1608; }
+        .mkarm-s-bad     { --s: #FF9C93; --s-bd: #5C1F1A; --s-bg: #1A0B0A; }
+        .mkarm-s-unknown { --s: #8B95A5; --s-bd: #2E3646; --s-bg: #141926; }
+        .mkarm-ring-row { display: flex; gap: 14px; align-items: flex-start; margin-bottom: 14px;
+          padding: 12px 14px; border: 1px solid var(--s-bd); background: var(--s-bg); border-radius: 12px; }
+        .mkarm-ring { flex: 0 0 auto; width: 46px; height: 46px; border-radius: 50%; border: 3px solid var(--s);
+          display: flex; align-items: center; justify-content: center; }
+        .mkarm-ring-core { width: 16px; height: 16px; border-radius: 50%; background: var(--s); }
+        .mkarm-ring-txt { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
+        .mkarm-ring-q { font-size: 11px; text-transform: uppercase; letter-spacing: .4px; color: #8B95A5; }
+        .mkarm-ring-a { font-size: 21px; font-weight: 800; color: var(--s); line-height: 1.2; }
+        .mkarm-ring-d { font-size: 12.5px; color: #B7C0CE; line-height: 1.5; overflow-wrap: anywhere; }
+        @media (max-width: 620px) {
+          .mkarm-ring { width: 40px; height: 40px; }
+          .mkarm-ring-a { font-size: 19px; }
+        }
         .mkarm-badge { font-size: 11px; font-weight: 700; color: #E8B23A; border: 1px solid #4a3c12; background: #211a08;
           padding: 3px 8px; border-radius: 999px; }
         .mkarm-killbtn { min-height: 48px; padding: 0 22px; border: none; border-radius: 10px; cursor: pointer;
@@ -327,7 +383,21 @@ export default function MakerArmingPanel() {
 
       <div className="mkarm-hrow">
         <span className="mkarm-title">Maker · arming console</span>
-        <span className="mkarm-badge" data-maker-disarmed>DISARMED · MAKER_MODE off</span>
+      </div>
+
+      {/* LA DOMANDA IN CIMA, E LA RISPOSTA VERA.
+          Qui c'era un badge con il testo fisso «DISARMED · MAKER_MODE off»: una stringa scritta a mano,
+          che continuava a dire DISARMED anche con armStatus.armed a true. Una cifra o un'etichetta che
+          non puo' cambiare non e' uno stato, e' una decorazione che a volte mente. Adesso lo stato viene
+          letto, e quando non e' leggibile lo dice. Il colore non e' mai l'unico canale: la risposta sta
+          anche nel testo, e l'anello e' aria-hidden. */}
+      <div className={`mkarm-ring-row mkarm-s-${bot.state}`} data-maker-botstate={bot.state}>
+        <span className="mkarm-ring" aria-hidden="true"><span className="mkarm-ring-core" /></span>
+        <span className="mkarm-ring-txt">
+          <span className="mkarm-ring-q">Il bot sta lavorando?</span>
+          <span className="mkarm-ring-a">{bot.label}</span>
+          <span className="mkarm-ring-d">{bot.detail}</span>
+        </span>
       </div>
 
       {/* ── KILL + RIPRISTINA, side by side and BOTH always visible. ──────────────────────────────────

@@ -529,7 +529,13 @@ export default function MarketTerminal({ marketId }: { marketId: string }) {
             <span>· montepremi {fin(rules?.dailyPotUsd) ? `${usd(rules.dailyPotUsd, 0)}/giorno` : '—'}</span>
           </div>
 
-          <div className={`mkt-verdict is-${worth.verdict === 'unknown' ? 'thin' : worth.verdict}`} data-mkt-verdict={worth.verdict}>
+          <p className="mkt-ask">Conviene quotare questo mercato?</p>
+
+          {/* QUATTRO STATI, NON TRE. Qui unknown veniva reso come is-thin, cioe' in ambra: «non siamo
+              riusciti a misurarlo» prendeva in prestito il colore di «mercato sottile». Sono due cose
+              diverse — una e' una misura, l'altra e' la sua assenza — e su questa pagina la seconda non
+              deve mai somigliare alla prima. Adesso unknown ha il suo grigio. */}
+          <div className={`mkt-verdict is-${worth.verdict === 'unknown' ? 'unk' : worth.verdict}`} data-mkt-verdict={worth.verdict}>
             <div className="mkt-verdict-h">
               <span className="mkt-verdict-t">{worth.headline.toUpperCase()}</span>
               <span className="mkt-verdict-n">

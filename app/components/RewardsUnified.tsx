@@ -702,8 +702,10 @@ export default function RewardsUnified() {
             <span className="cc-title-dim">Edgeradar /</span> liquidity rewards
             <span className="cc-title-accent"> · maker</span>
           </h1>
+          <p className="cc-ask">Quanto rende fare il maker su questi mercati?</p>
           <p className="cc-sub">
-            the modelled $/day a single maker earns — its own share of the pot, not the whole prize
+            Il $/giorno modellato per un singolo maker: la <strong>sua quota</strong> del montepremi, non
+            il montepremi intero. Cifre lorde — il netto non è stimato, e più sotto è detto perché.
           </p>
         </header>
 
