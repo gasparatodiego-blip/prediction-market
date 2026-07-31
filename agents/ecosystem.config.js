@@ -544,9 +544,18 @@ module.exports = {
       // It owns no adapter, no credentials and no signing key: its only reachable venue surface is
       // lib/maker/manual-order.replaceManualOrder — the same function the panel's "Riprezza" button
       // calls — so MANUAL_ORDER_PLACEMENT, the caps, venue-rules and validateOrder() all still apply.
-      // Small footprint: two small JSON reads per cycle plus a getOpenOrders per enabled market.
+      // FOOTPRINT, measured rather than guessed: ~107 MB steady. Most of it is the CLOB read path's
+      // ethers dependency, loaded once. Per cycle it does two small JSON reads, a getOpenOrders per
+      // enabled market, and an INCREMENTAL tail of the append-only audit trail.
+      //
+      // WHY THE CEILING IS 350M AND NOT 200M. On a cold start the attribution cache has to catch up on
+      // the whole audit trail (80 MB / 268k lines today, and it grows), which transiently peaks around
+      // 158 MB before settling back to ~107 MB. At 200M pm2 killed the process mid-catch-up roughly twice
+      // a minute — a restart loop with an EMPTY error log and exit code 0, because nothing crashed: pm2
+      // was enforcing the ceiling. 350M leaves room for that one-off catch-up and for the trail to keep
+      // growing, while still being a real ceiling at ~3x the steady state.
       // (Named 40: slots 36-39 are book-velocity, maker-watchdog, tape-watchdog, net-rerun.)
-      max_memory_restart: '200M',
+      max_memory_restart: '350M',
       watch:         false,
       autorestart:   true,
       env:           { NODE_ENV: 'production', HOME: '/root' },
