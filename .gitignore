@@ -212,3 +212,13 @@ id_ed25519
 *.pem
 *.p12
 authorized_keys
+
+# Impostazioni LOCALI di Claude Code — non condivise, e storicamente il posto dove finiscono le
+# credenziali: le regole di permesso vengono salvate con il comando esatto che le ha generate, quindi un
+# curl con un token dentro diventa una riga di configurazione. Un token GitHub, la password del DB e il
+# secret di login admin sono stati trovati esattamente cosi' (nel file a livello utente, mai in questo
+# repo). Erano coperti solo dal gitignore GLOBALE della macchina, che non viaggia con il repo: su un
+# altro clone quella protezione non esisteva. Qui invece segue il repo.
+# .claude/settings.json (senza .local) resta versionato apposta: e' la policy condivisa, senza segreti.
+.claude/settings.local.json
+.claude/*.local.json
