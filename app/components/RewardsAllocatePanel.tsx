@@ -195,6 +195,8 @@ export default function RewardsAllocatePanel() {
   const [bal, setBal] = useState<Balance | null>(null);
   const [balLoaded, setBalLoaded] = useState(false);
   const [capital, setCapital] = useState<string>(''); // operator's typed value — NEVER rewritten by us
+  // Which mobile card has its technical detail open. One at a time: the card list is already long.
+  const [openCard, setOpenCard] = useState<string | null>(null);
   const [plan, setPlan] = useState<Plan | null>(null);
   const [loading, setLoading] = useState(false);
   const [touched, setTouched] = useState(false);
@@ -446,6 +448,31 @@ export default function RewardsAllocatePanel() {
         .alloc-note{border-left:3px solid var(--ds-accent);padding:8px 12px;margin:10px 0;background:color-mix(in srgb,var(--ds-accent) 8%,transparent);border-radius:0 8px 8px 0;font-size:13px}
         .alloc-warn{border-left-color:#d9a441;background:color-mix(in srgb,#d9a441 12%,transparent)}
         .alloc-tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--ds-border);border-radius:10px}
+
+        /* LE STESSE RIGHE, PER TELEFONO. Nascoste da desktop, dove la tabella a 17 colonne resta la
+           vista migliore; sotto i 900px si scambiano. Nessun numero viene ricalcolato qui: le schede
+           leggono gli stessi oggetti della tabella. */
+        .alloc-cards{display:none;flex-direction:column;gap:10px}
+        .ac{border:1px solid var(--ds-border);border-radius:12px;padding:11px 12px;background:color-mix(in srgb,var(--ds-text) 3%,transparent)}
+        .ac-top{display:flex;gap:10px;align-items:flex-start;justify-content:space-between}
+        .ac-name{font-size:14px;font-weight:700;line-height:1.3;min-width:0;overflow-wrap:anywhere}
+        .ac-zero{margin-top:8px;font-size:12.5px;line-height:1.45;color:#d98a41;border-radius:8px;padding:7px 9px;
+          border:1px solid color-mix(in srgb,#d98a41 40%,transparent);background:color-mix(in srgb,#d98a41 10%,transparent)}
+        .ac-nums{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px}
+        .ac-num span{display:block;font-size:11px;color:color-mix(in srgb,var(--ds-text) 55%,transparent)}
+        .ac-num b{display:block;font-size:17px;font-variant-numeric:tabular-nums;line-height:1.2;overflow-wrap:anywhere}
+        .ac-off{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:11px}
+        .ac-off-k{font-size:11px;color:color-mix(in srgb,var(--ds-text) 55%,transparent)}
+        .ac-warn{font-size:12px;margin-top:6px;line-height:1.45}
+        .ac-more{min-height:44px;width:100%;margin-top:9px;border:1px solid var(--ds-border);border-radius:10px;
+          background:transparent;color:var(--ds-text);font-size:13px;font-weight:700;cursor:pointer;touch-action:manipulation}
+        .ac-det{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px 12px;margin-top:10px;
+          border-top:1px solid var(--ds-border);padding-top:10px}
+        .ac-det span{display:block;font-size:11px;color:color-mix(in srgb,var(--ds-text) 55%,transparent)}
+        .ac-det b{display:block;font-size:13px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+        /* Scoped alla SOLA tabella del piano: alloc-tablewrap veste anche la tabella di ricerca e quella
+           dei risultati di esecuzione, che su telefono devono restare (scorrono in orizzontale). */
+        @media (max-width:900px){.alloc-cards{display:flex}.alloc-plantable{display:none}}
         table.alloc{border-collapse:collapse;width:100%;min-width:1360px;font-size:13px}
         table.alloc th,table.alloc td{padding:8px 10px;border-bottom:1px solid var(--ds-border);text-align:right;white-space:nowrap}
         table.alloc th{position:sticky;top:0;background:var(--ds-bg);font-weight:600;color:color-mix(in srgb,var(--ds-text) 70%,transparent);font-size:11.5px;text-transform:uppercase;letter-spacing:.03em}
@@ -615,7 +642,7 @@ export default function RewardsAllocatePanel() {
                         {!m.acceptingOrders && <div className="oob">non accetta ordini</div>}
                       </td>
                       <td>
-                        <button className="alloc-btn" style={{ fontSize: 12, minHeight: 36, padding: '6px 10px' }}
+                        <button className="alloc-btn" style={{ fontSize: 12, minHeight: 44, padding: '6px 10px' }}
                           data-alloc-add-preview
                           disabled={addBusy != null || m.enabled}
                           title={m.enabled ? 'già abilitato' : 'anteprima dell’aggiunta: non scrive nulla'}
@@ -739,7 +766,111 @@ export default function RewardsAllocatePanel() {
               ? <b style={{ color: '#d98a41' }}> Il limite inferiore dell’IC ({plan.fillScore.ci95[0].toFixed(3)}) è quasi a 0,5 (il caso): è un discriminatore, NON una probabilità, e il bordo basso sfiora il rumore. Usalo come spareggio, mai come cancello.</b>
               : <> Non è un filtro affidabile (0,5 = nessuna discriminazione, 1,0 = perfetta); usalo come spareggio, non come cancello.</>}
           </div>
-          <div className="alloc-tablewrap">
+          {/* ── TELEFONO: LE STESSE RIGHE, COME SCHEDE ───────────────────────────────────────────────
+              Diciassette colonne non stanno in uno schermo di telefono, e una tabella che scorre in
+              orizzontale nasconde proprio la cifra per cui sei venuto. Queste schede leggono gli STESSI
+              oggetti calcolati (r, c, band) che alimentano la tabella qui sotto: nessun numero viene
+              ricalcolato qui, quindi le due viste non possono divergere. Sotto i 900px la tabella
+              sparisce e restano queste; sopra, il contrario. */}
+          <div className="alloc-cards" data-alloc-cards>
+            {computed.rows.map(({ r, c, ageS, stale, unreadable, dRes, band, nextStepLeaves, nextStepCost }) => {
+              const openThis = openCard === r.marketId;
+              // Le due regole del venue che azzerano la riga. Il verdetto va PRIMA dei numeri, non in
+              // fondo: e' la risposta alla domanda che l'operatore sta per farsi guardando uno zero.
+              const zeroed = r.belowVenueMinSize || c.inBand === false;
+              return (
+                <div key={r.marketId} className="ac" data-alloc-card={r.marketId}
+                     data-alloc-usable={(!stale && !unreadable) ? '1' : '0'}
+                     style={{ opacity: (stale || unreadable) ? 0.55 : 1 }}>
+                  <div className="ac-top">
+                    <div className="ac-name">
+                      {r.nameAvailable ? r.name : <span className="alloc-addr">{r.shortId}</span>}
+                      {r.category && <div className="alloc-cat">{r.category}</div>}
+                    </div>
+                    <span className={`band-badge band-${band.state}`} data-band-label>{BAND_LABEL[band.state]}</span>
+                  </div>
+
+                  {zeroed && (
+                    <div className="ac-zero" data-alloc-card-zero>
+                      {r.belowVenueMinSize
+                        ? <>Rende <b>$0,00/g</b> — il capitale sta sotto la size minima del venue
+                          {r.capitalToQualifyUsd != null
+                            ? <>: servono almeno <b>{money(r.capitalToQualifyUsd)}</b> ({r.minSizeShares} share per lato)</>
+                            : <>, quindi l ordine non viene scorato</>}</>
+                        : <>Rende <b>$0,00/g</b> — a questo offset il quote esce dalla banda premiante</>}
+                    </div>
+                  )}
+
+                  <div className="ac-nums">
+                    <div className="ac-num">
+                      <span>Lordo/g</span>
+                      <b data-alloc-card-gross>{zeroed ? '$0,00/g' : perDay(c.gross)}</b>
+                    </div>
+                    <div className="ac-num">
+                      <span>Realistico/g</span>
+                      <b data-alloc-card-real>
+                        {c.real == null ? '—'
+                          : c.real.unknown ? <span className="oob">non stimabile</span>
+                            : perDay(c.real.realisticPerDay)}
+                      </b>
+                    </div>
+                    <div className="ac-num">
+                      <span>Capitale</span>
+                      <b>{money(r.capital)}</b>
+                    </div>
+                  </div>
+
+                  <div className="ac-off">
+                    <span className="ac-off-k">Offset dal mid</span>
+                    <span className="off-ctl">
+                      <button className="off-step" aria-label="riduci offset" disabled={effTicks(r) <= 0}
+                              onClick={() => setRowOffset(r.marketId, Math.max(0, effTicks(r) - 1))}>−</button>
+                      <span className="off-val">
+                        <b className={c.overridden ? 'off-over' : ''}>{r.tick == null ? '—' : `${effTicks(r)} tick`}</b>
+                        <small>{c.offsetCents == null ? '—' : cents(c.offsetCents)}</small>
+                      </span>
+                      <button className={'off-step' + (nextStepLeaves ? ' step-danger' : '')} aria-label="aumenta offset"
+                              disabled={r.tick == null || effTicks(r) >= c.maxTick}
+                              onClick={() => setRowOffset(r.marketId, effTicks(r) + 1)}>+</button>
+                      {c.overridden && (
+                        <button className="off-reset" title="ripristina default" data-alloc-card-reset
+                                onClick={() => resetRow(r.marketId)}>↺</button>
+                      )}
+                    </span>
+                  </div>
+                  {nextStepLeaves && (
+                    <div className="oob ac-warn" data-alloc-card-stepwarn>
+                      +1 tick porta il quote fuori banda: reward a $0 (−{perDay(nextStepCost)})
+                    </div>
+                  )}
+
+                  <button className="ac-more" data-alloc-card-more onClick={() => setOpenCard(openThis ? null : r.marketId)}>
+                    {openThis ? 'Nascondi dettagli tecnici' : 'Dettagli tecnici'}
+                  </button>
+
+                  {openThis && (
+                    <div className="ac-det" data-alloc-card-detail>
+                      <div><span>$ per lato</span><b>{money(r.sizePerSideUsd)}</b></div>
+                      <div><span>Margine banda</span><b>{band.state === 'unknown' ? '—'
+                        : band.state === 'out' ? `oltre di ${cents(-(band.headroomCents ?? 0))}`
+                          : `${band.headroomTicks} tick`}</b></div>
+                      <div><span>Bid / Ask</span><b>{price(c.bid)} / {price(c.ask)}</b></div>
+                      <div><span>Tick</span><b>{r.tick == null ? '—' : r.tick}</b></div>
+                      <div><span>Depth</span><b>{shares(r.depthShares)}</b></div>
+                      <div><span>Netto/g</span><b>{c.net == null ? '—' : perDay(c.net)}</b></div>
+                      <div><span>Fill attesi</span><b>{c.fills == null ? '—' : c.fills}</b></div>
+                      <div><span>Score fill</span><b>{r.fillScore == null ? '—' : r.fillScore.toFixed(2)}</b></div>
+                      <div><span>Ordine / depth</span><b>{c.orderVsDepth == null ? '—' : `${c.orderVsDepth.toFixed(2)}×`}</b></div>
+                      <div><span>Scadenza</span><b>{dRes == null ? '—' : `${Math.round(dRes)} gg`}</b></div>
+                      <div><span>Freschezza</span><b>{unreadable ? 'illeggibile' : ageS == null ? '—' : `${freshAge(ageS)} fa`}</b></div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="alloc-tablewrap alloc-plantable">
             <table className="alloc">
               <thead>
                 <tr>
