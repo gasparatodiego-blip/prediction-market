@@ -484,21 +484,43 @@ export default function ManualOrdersPanel() {
         .mkman-place { min-height: 46px; padding: 0 24px; border: none; border-radius: 10px; cursor: pointer;
           font-size: 15px; font-weight: 800; color: #06210f; background: #57C98A; letter-spacing: .3px; }
         .mkman-place:disabled { background: #2b3a30; color: #6b7a70; cursor: not-allowed; }
-        .mkman-take { min-height: 40px; padding: 0 18px; border: 1px solid #2E5FBE; border-radius: 8px; cursor: pointer;
+        .mkman-take { min-height: 44px; padding: 0 18px; border: 1px solid #2E5FBE; border-radius: 8px; cursor: pointer;
           font-size: 13px; font-weight: 700; color: #DCE6FF; background: #16233E; }
-        .mkman-give { min-height: 40px; padding: 0 18px; border: 1px solid #4a3c12; border-radius: 8px; cursor: pointer;
+        .mkman-give { min-height: 44px; padding: 0 18px; border: 1px solid #4a3c12; border-radius: 8px; cursor: pointer;
           font-size: 13px; font-weight: 700; color: #E8B23A; background: #1a1608; }
         .mkman-tbl { margin-top: 10px; font-size: 13px; overflow-x: auto; }
         .mkman-row { display: grid; grid-template-columns: 62px 78px 92px 118px 78px 92px 190px 1fr; gap: 10px; padding: 8px 0;
           border-bottom: 1px solid #1a2030; align-items: center; min-width: 930px; }
         .mkman-head { color: #8B95A5; font-size: 11px; text-transform: uppercase; letter-spacing: .4px; }
+        .mkman-row-off { grid-template-columns: 1fr 92px 92px 110px 110px 1fr; min-width: 700px; }
+
+        /* TELEFONO: le due griglie smettono di essere tabelle e diventano schede.
+           Le etichette arrivano da attr(data-k), non da una stringa nel foglio di stile: una virgoletta
+           qui verrebbe serializzata diversa fra server e client e romperebbe l idratazione. */
+        @media (max-width: 900px) {
+          .mkman-tbl { overflow-x: visible; }
+          .mkman-head { display: none; }
+          .mkman-row, .mkman-row-off {
+            grid-template-columns: repeat(2, minmax(0, 1fr)); min-width: 0; gap: 9px 12px;
+            border: 1px solid #232937; border-radius: 10px; padding: 11px 12px; margin-bottom: 9px;
+            align-items: start;
+          }
+          .mkman-row span[data-k] { min-width: 0; overflow-wrap: anywhere; }
+          .mkman-row span[data-k]::before {
+            content: attr(data-k); display: block; font-size: 10px; text-transform: uppercase;
+            letter-spacing: .4px; color: #8B95A5; margin-bottom: 2px;
+          }
+          .mkman-row span[data-k]:empty::before { content: none; }
+          /* Il riprezzo e le azioni portano dentro piu righe: prendono la larghezza intera. */
+          .mkman-row span[data-k=Auto-riprezzo], .mkman-row span[data-k=Azioni] { grid-column: 1 / -1; }
+        }
         .mkman-src { font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 999px; white-space: nowrap; }
         .mkman-src-manual { color: #DCE6FF; border: 1px solid #2E5FBE; background: #16233E; }
         .mkman-src-auto { color: #9AA4B2; border: 1px solid #2E3646; background: #141926; }
-        .mkman-cancel { min-height: 32px; padding: 0 12px; border: 1px solid #5c1f1a; border-radius: 7px; cursor: pointer;
+        .mkman-cancel { min-height: 44px; padding: 0 12px; border: 1px solid #5c1f1a; border-radius: 7px; cursor: pointer;
           font-size: 12px; font-weight: 700; color: #FF9C93; background: #1a0b0a; }
         .mkman-cancel:disabled { opacity: .55; cursor: wait; }
-        .mkman-edit { min-height: 32px; padding: 0 12px; border: 1px solid #2E3646; border-radius: 7px; cursor: pointer;
+        .mkman-edit { min-height: 44px; padding: 0 12px; border: 1px solid #2E3646; border-radius: 7px; cursor: pointer;
           font-size: 12px; font-weight: 700; color: #C4CCD8; background: #1C2230; margin-right: 6px; }
         .mkman-empty { color: #8B95A5; font-size: 13px; padding: 14px 2px; }
         .mkman-reasons { margin: 8px 0 0; padding-left: 18px; font-size: 12px; color: #E8B23A; line-height: 1.5; }
@@ -751,29 +773,29 @@ export default function ManualOrdersPanel() {
           : offsets.length === 0 ? <div className="mkman-note">Nessun mercato gestito: la tabella si popola quando un mercato viene preso in gestione manuale.</div>
             : (
               <div className="mkman-tbl">
-                <div className="mkman-row mkman-head" style={{ gridTemplateColumns: '1fr 92px 92px 110px 110px 1fr', minWidth: 700 }}>
+                <div className="mkman-row mkman-row-off mkman-head">
                   <span>Mercato</span><span>Dist. YES</span><span>Dist. NO</span><span>Soglia min.</span><span>Banda (tetto)</span><span>Azioni</span>
                 </div>
                 {offsets.map((o) => (
-                  <div key={o.marketId} className="mkman-row" style={{ gridTemplateColumns: '1fr 92px 92px 110px 110px 1fr', minWidth: 700 }}>
-                    <span>
+                  <div key={o.marketId} className="mkman-row mkman-row-off">
+                    <span data-k="Mercato">
                       {dash(o.title)}
                       <small className="mkman-note" style={{ display: 'block' }}>mid {px(o.mid)} · tick {dash(o.tick)}</small>
                     </span>
-                    <span className="mkman-num">
+                    <span className="mkman-num" data-k="Dist. YES">
                       {o.yes.targetOffsetCents == null ? '—' : `${o.yes.targetOffsetCents}¢`}
                       <small className="mkman-note" style={{ display: 'block' }}>{o.yes.source === 'configured' ? 'impostata' : o.yes.source === 'remembered' ? 'ricordata' : 'osservata'}</small>
                     </span>
-                    <span className="mkman-num">
+                    <span className="mkman-num" data-k="Dist. NO">
                       {o.no.targetOffsetCents == null ? '—' : `${o.no.targetOffsetCents}¢`}
                       <small className="mkman-note" style={{ display: 'block' }}>{o.no.source === 'configured' ? 'impostata' : o.no.source === 'remembered' ? 'ricordata' : 'osservata'}</small>
                     </span>
-                    <span className="mkman-num">{o.minMoveCents}¢</span>
-                    <span className="mkman-num" data-manual-band-ceiling>
+                    <span className="mkman-num" data-k="Soglia min.">{o.minMoveCents}¢</span>
+                    <span className="mkman-num" data-manual-band-ceiling data-k="Banda (tetto)">
                       ±{o.bandRadiusCents == null ? '—' : o.bandRadiusCents}¢
                       <small className="mkman-note" style={{ display: 'block' }}>dal venue</small>
                     </span>
-                    <span>
+                    <span data-k="Azioni">
                       <input className="mkman-input mkman-input-sm" type="number" step={o.tick ? o.tick * 100 : 0.1}
                         placeholder="dist ¢" value={offsetEdit[`${o.marketId}:t`] ?? ''}
                         onChange={(e) => setOffsetEdit((s2) => ({ ...s2, [`${o.marketId}:t`]: e.target.value }))} />
@@ -1142,15 +1164,15 @@ export default function ManualOrdersPanel() {
           )}
           {orders?.orders.map((o) => (
             <div key={o.orderId ?? Math.random()} className="mkman-row">
-              <span className="mkman-v">{dash(o.side)}</span>
-              <span className="mkman-num">{px(o.price)}</span>
-              <span className="mkman-num">
+              <span className="mkman-v" data-k="Lato">{dash(o.side)}</span>
+              <span className="mkman-num" data-k="Prezzo">{px(o.price)}</span>
+              <span className="mkman-num" data-k="Size">
                 {dash(o.sizeRemaining ?? o.size)}
                 {o.sizeMatched ? <span className="mkman-note"> ({o.sizeMatched} eseg.)</span> : null}
               </span>
-              <span>{dash(o.status)}</span>
-              <span className="mkman-num">{age(o.ageSec)}</span>
-              <span>
+              <span data-k="Stato">{dash(o.status)}</span>
+              <span className="mkman-num" data-k="Età">{age(o.ageSec)}</span>
+              <span data-k="Sorgente">
                 <span className={`mkman-src ${o.source === 'manual-ui' ? 'mkman-src-manual' : 'mkman-src-auto'}`}>
                   {o.source === 'manual-ui'
                     ? (String(o.side).toUpperCase() === 'SELL' ? 'uscita' : 'manuale')
@@ -1161,7 +1183,7 @@ export default function ManualOrdersPanel() {
                   (attribuiti dall'audit): un ordine di agent35 mostra «n/d», non «OFF», perché non è una
                   scelta che lo riguarda. L'interruttore è per MERCATO — è nella sezione qui sopra, e
                   metterne una copia per riga fingerebbe una granularità che non esiste. */}
-              <span data-manual-row-auto>
+              <span data-manual-row-auto data-k="Auto-riprezzo">
                 {o.source !== 'manual-ui' ? (
                   <span className="mkman-note">n/d</span>
                 ) : (
@@ -1202,7 +1224,7 @@ export default function ManualOrdersPanel() {
                   </>
                 )}
               </span>
-              <span>
+              <span data-k="Azioni">
                 {editing === o.orderId ? (
                   <>
                     <input className="mkman-input mkman-input-sm" type="number" step={rules?.tick ?? 0.001}

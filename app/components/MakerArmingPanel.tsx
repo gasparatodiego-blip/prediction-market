@@ -290,7 +290,7 @@ export default function MakerArmingPanel() {
         .mkarm-sec { margin-top: 20px; border-top: 1px solid #232937; padding-top: 16px; }
         .mkarm-sech { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
         .mkarm-sectitle { font-size: 12px; font-weight: 800; letter-spacing: .4px; text-transform: uppercase; color: #9AA4B2; }
-        .mkarm-btn { min-height: 38px; padding: 0 16px; border: 1px solid #2E5FBE; border-radius: 8px; cursor: pointer;
+        .mkarm-btn { min-height: 44px; padding: 0 16px; border: 1px solid #2E5FBE; border-radius: 8px; cursor: pointer;
           font-size: 13px; font-weight: 700; color: #DCE6FF; background: #16233E; touch-action: manipulation; }
         .mkarm-btn:hover { background: #1B2C4E; }
         .mkarm-btn:disabled { opacity: .6; cursor: wait; }
@@ -308,7 +308,7 @@ export default function MakerArmingPanel() {
         .mkarm-cval-red { color: #E5574E; }
         .mkarm-armed { border: 1px solid #205038; background: #0d1f16; border-radius: 10px; padding: 12px 14px; }
         .mkarm-armed-t { font-weight: 800; color: #57C98A; font-size: 14px; }
-        .mkarm-toggle { min-height: 40px; padding: 0 16px; border: 1px solid #3A4150; border-radius: 8px; cursor: pointer;
+        .mkarm-toggle { min-height: 44px; padding: 0 16px; border: 1px solid #3A4150; border-radius: 8px; cursor: pointer;
           font-size: 13px; font-weight: 700; color: #E6E9EF; background: #1C2230; }
         .mkarm-toggle:hover { background: #232a3a; }
         .mkarm-input { width: 140px; padding: 8px 10px; border: 1px solid #2E5FBE; border-radius: 8px; background: #0d1420;
@@ -321,7 +321,7 @@ export default function MakerArmingPanel() {
         .mkarm-armbtn { min-height: 44px; padding: 0 20px; border: none; border-radius: 10px; cursor: pointer;
           font-size: 15px; font-weight: 800; color: #06210f; background: #57C98A; }
         .mkarm-armbtn:disabled { background: #2b3a30; color: #6b7a70; cursor: not-allowed; }
-        .mkarm-disarm { min-height: 40px; padding: 0 18px; border: 1px solid #4a3c12; border-radius: 8px; cursor: pointer;
+        .mkarm-disarm { min-height: 44px; padding: 0 18px; border: 1px solid #4a3c12; border-radius: 8px; cursor: pointer;
           font-size: 13px; font-weight: 700; color: #E8B23A; background: #1a1608; }
       `}</style>
 
