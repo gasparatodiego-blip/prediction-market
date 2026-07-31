@@ -132,6 +132,45 @@ function correctionsTooltip(real: RealisticTick | null): string {
   ].join('\n');
 }
 
+// ── RICERCA MERCATI SENZA FILTRO ─────────────────────────────────────────────────────────────────────
+// Il piano qui sopra copre SOLO i mercati con montepremi: nasce dal board reward, che agent24 costruisce
+// filtrando su rewardsDailyRate > 0. Questa sezione interroga il venue direttamente e mostra TUTTO quello
+// che trova — con o senza reward — perché la scelta manuale sia informata e non cieca. Per ogni riga:
+// reward $/g (o «NESSUN REWARD»), spread attuale, tick, e quanto manca alla chiusura (che decide la
+// finestra GTD dell'ordine e se il mercato è già sotto la soglia di non-piazzamento).
+type SearchRow = {
+  marketId: string; question: string | null; slug: string | null; endDate: string | null;
+  minutesToClose: number | null; rewardsDailyRate: number | null; hasRewards: boolean;
+  rewardLabel: string; spreadCents: number | null; tick: number | null;
+  rewardsMaxSpreadCents: number | null; negRisk: boolean | null;
+  bestBid: number | null; bestAsk: number | null; mid: number | null;
+  closed: boolean; acceptingOrders: boolean;
+  enabled: boolean; optedIn: boolean; catalogued: boolean; tooCloseToClose: boolean;
+};
+type SearchResp = {
+  ok: boolean; error: string | null; query: string; count: number; markets: SearchRow[];
+  withRewards: number; withoutRewards: number; minMinutesToClose: number; globalAutoRepriceEnabled: boolean;
+};
+type EnableResp = {
+  ok: boolean; preview: boolean; action: string; marketId: string; error?: string; gate?: string;
+  summary?: {
+    question: string | null; rewardsDailyRate: number | null; hasRewards: boolean; rewardLabel: string;
+    spreadCents: number | null; tick: number | null; minutesToClose: number | null;
+    window: { ttlSeconds: number; refreshMarginSeconds: number | null; minutesToClose: number | null; minMinutes: number; tooClose: boolean; gate: string | null; reason: string };
+    capitalUsd: number | null; marketCountBefore: number; marketCountAfter: number;
+    alreadyEnabled: boolean; manualModeActive: boolean; willTakeManual: boolean; warnings: string[];
+  };
+  writes?: string[]; note?: string; warnings?: string[];
+  enabledBefore?: string[]; enabledAfter?: string[];
+};
+const closeText = (min: number | null): string => {
+  if (min == null) return 'scadenza ignota';
+  if (min < 0) return `chiuso da ${Math.abs(min) < 90 ? `${Math.round(Math.abs(min))} min` : `${(Math.abs(min) / 60).toFixed(1)} h`}`;
+  if (min < 90) return `${Math.round(min)} min`;
+  if (min < 2880) return `${(min / 60).toFixed(1)} h`;
+  return `${(min / 1440).toFixed(1)} g`;
+};
+
 // ── ESECUZIONE DELL'ALLOCAZIONE ── una riga per ordine, con il verdetto di ciascuna.
 type BulkRowResult = {
   marketId: string; title: string | null; book: string; side: string; price: number; size: number;
@@ -164,6 +203,16 @@ export default function RewardsAllocatePanel() {
   const [bulkResult, setBulkResult] = useState<BulkResult | null>(null);
   const [bulkBusy, setBulkBusy] = useState<'preview' | 'run' | null>(null);
   const [bulkErr, setBulkErr] = useState<string | null>(null);
+  // Ricerca mercati SENZA filtro reward + aggiunta manuale, anch'essa a due passi (anteprima → conferma).
+  const [query, setQuery] = useState('');
+  const [search, setSearch] = useState<SearchResp | null>(null);
+  const [searchBusy, setSearchBusy] = useState(false);
+  const [searchErr, setSearchErr] = useState<string | null>(null);
+  const [addPreview, setAddPreview] = useState<EnableResp | null>(null);
+  const [addResult, setAddResult] = useState<EnableResp | null>(null);
+  const [addBusy, setAddBusy] = useState<string | null>(null);
+  const [addErr, setAddErr] = useState<string | null>(null);
+  const [takeManual, setTakeManual] = useState(true);
 
   // Live age clock — re-render every CLOCK_MS so each row's "letto Xs fa" and STALE badge stay true, WITHOUT
   // refetching any market data. Cheap: only re-derives ages from newestTsMs already in the plan.
@@ -337,6 +386,46 @@ export default function RewardsAllocatePanel() {
   const capitalNum = Number(capital);
   const overBalance = balanceNum != null && Number.isFinite(capitalNum) && capitalNum > balanceNum;
 
+  // ── RICERCA SENZA FILTRO. Nessun mercato viene nascosto perché non paga reward: quelli senza
+  //    montepremi compaiono come tutti gli altri, con l'etichetta che lo dice. ──
+  const runSearch = useCallback(async () => {
+    const q = query.trim();
+    if (!q) return;
+    setSearchBusy(true); setSearchErr(null); setAddPreview(null); setAddResult(null);
+    try {
+      const r = await fetch(`/api/maker/markets/search?q=${encodeURIComponent(q)}&limit=20`);
+      const b = (await r.json()) as SearchResp;
+      setSearch(b);
+      if (!b.ok && b.error) setSearchErr(b.error);
+    } catch (e) { setSearchErr((e as Error).message); }
+    finally { setSearchBusy(false); }
+  }, [query]);
+
+  // Passo 1 dell'aggiunta: ANTEPRIMA. Rilegge il mercato dal venue e dice esattamente cosa verrebbe
+  // scritto — senza scrivere nulla. Passo 2: conferma (preview:false), che è l'unica cosa che scrive.
+  const addMarket = useCallback(async (marketId: string, preview: boolean) => {
+    setAddBusy(`${preview ? 'preview' : 'confirm'}:${marketId}`); setAddErr(null);
+    if (!preview) setAddResult(null);
+    try {
+      const cap = Number(capital);
+      const r = await fetch('/api/maker/markets/enable', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          marketId, preview, enabled: true, takeManual,
+          capitalUsd: Number.isFinite(cap) && cap > 0 ? cap : undefined,
+        }),
+      });
+      const b = (await r.json()) as EnableResp;
+      if (preview) { setAddPreview(b); setAddResult(null); }
+      else {
+        setAddResult(b); setAddPreview(null);
+        if (b.ok) runSearch();   // ricarica la lista: la riga appena abilitata deve dirlo da sola
+      }
+      if (!b.ok && (b.error || b.gate)) setAddErr(b.error || `rifiutato: ${b.gate}`);
+    } catch (e) { setAddErr((e as Error).message); }
+    finally { setAddBusy(null); }
+  }, [capital, takeManual, runSearch]);
+
   return (
     <div className="alloc-root">
       <style>{`
@@ -384,6 +473,9 @@ export default function RewardsAllocatePanel() {
         .gross-bar{display:block;height:4px;min-width:48px;border-radius:999px;margin-top:4px;background:color-mix(in srgb,var(--ds-text) 10%,transparent);overflow:hidden}
         .gross-bar i{display:block;height:100%;border-radius:999px;background:#2E5FBE}
         .fresh-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:baseline}
+        /* Etichetta TESTUALE (mai solo colore): un mercato senza montepremi va letto come tale anche su
+           uno schermo al sole o da chi non distingue i colori. */
+        .no-reward-badge{display:inline-block;margin-top:3px;font-size:11px;font-weight:700;letter-spacing:.02em;padding:1px 7px;border-radius:6px;color:#b9791f;border:1px solid #d9a441;background:color-mix(in srgb,#d9a441 16%,transparent);white-space:normal}
         @media(max-width:430px){.alloc-in{width:44vw}}
       `}</style>
 
@@ -441,6 +533,147 @@ export default function RewardsAllocatePanel() {
           <div className="alloc-note alloc-warn" data-alloc-overbalance>
             Il capitale richiesto (<b>{money(capitalNum)}</b>) supera il saldo reale del proxy (<b>{money(balanceNum)}</b>).
             Il valore inserito resta esattamente com’è: è un’ipotesi di piano, non viene ridotto.
+          </div>
+        )}
+      </div>
+
+      {/* ── CERCA E AGGIUNGI UN MERCATO — RICERCA SENZA FILTRO ────────────────────────────────────────
+          Il piano qui sotto copre solo i mercati con montepremi (è un piano di liquidity rewards). Questa
+          ricerca interroga il venue e mostra TUTTO: se un mercato non paga reward compare lo stesso, con
+          l'etichetta «NESSUN REWARD — solo trading direzionale», così la scelta è informata. Aggiungere
+          un mercato NON piazza nulla: lo rende ammissibile ai gate, che restano tutti in vigore. */}
+      <div className="alloc-card" data-alloc-search>
+        <div className="alloc-h" style={{ fontSize: 15 }}>Cerca un mercato (ricerca senza filtro)</div>
+        <div className="alloc-sub">
+          Cerca per testo o incolla un <b>conditionId</b> (0x…). Nessun filtro sui reward: i mercati
+          <b> senza montepremi</b> sono elencati come tutti gli altri e segnalati come tali. Ogni riga mostra
+          <b> reward $/g</b>, <b>spread attuale</b>, <b>tick</b> e quanto manca alla chiusura.
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 8 }}>
+          <input className="alloc-in" style={{ width: 320 }} value={query} data-alloc-search-input
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') runSearch(); }}
+            placeholder="es. bitcoin up or down · harry kane · 0x…" />
+          <button className="alloc-btn" data-alloc-search-go onClick={runSearch} disabled={searchBusy || !query.trim()}>
+            {searchBusy ? 'Cerco…' : 'Cerca'}
+          </button>
+          <label className="alloc-sub" style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+            <input type="checkbox" checked={takeManual} onChange={(e) => setTakeManual(e.target.checked)} data-alloc-take-manual />
+            prendi anche il <b>controllo manuale</b> del mercato (agent35 si tiene fuori)
+          </label>
+        </div>
+
+        {searchErr && <div className="alloc-note alloc-warn" style={{ marginTop: 10 }} data-alloc-search-error>Ricerca fallita: {searchErr}</div>}
+
+        {search && search.markets.length > 0 && (
+          <>
+            <div className="alloc-sub" style={{ marginTop: 10 }} data-alloc-search-counts>
+              <b>{search.count}</b> mercati · <b>{search.withRewards}</b> con reward · <b>{search.withoutRewards}</b> senza reward
+              {' '}(mostrati tutti, nessun filtro) · soglia di non-piazzamento: <b>{search.minMinutesToClose} min</b> alla chiusura
+              {!search.globalAutoRepriceEnabled && <> · <b className="oob">master auto-riprezzo SPENTO</b>: un mercato aggiunto resta opted-in ma non entra in lista</>}
+            </div>
+            <div className="alloc-tablewrap" style={{ marginTop: 8 }}>
+              <table className="alloc" style={{ minWidth: 980 }}>
+                <thead>
+                  <tr>
+                    <th className="name">Mercato</th><th>Reward/g</th><th>Spread</th><th>Tick</th>
+                    <th>Banda reward</th><th>Chiusura</th><th>Stato</th><th>Aggiungi</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {search.markets.map((m) => (
+                    <tr key={m.marketId} data-alloc-search-row data-alloc-has-rewards={m.hasRewards ? '1' : '0'}>
+                      <td className="name">
+                        {m.question || <span className="alloc-addr">{m.marketId.slice(0, 10)}…</span>}
+                        {!m.hasRewards && (
+                          <div className="no-reward-badge" data-alloc-no-reward-label>NESSUN REWARD — solo trading direzionale</div>
+                        )}
+                      </td>
+                      <td className={m.rewardsDailyRate == null ? 'dash' : ''} data-alloc-search-reward>
+                        {m.rewardsDailyRate == null ? 'nessun reward' : perDay(m.rewardsDailyRate)}
+                      </td>
+                      <td className={m.spreadCents == null ? 'dash' : ''} data-alloc-search-spread>{cents(m.spreadCents)}</td>
+                      <td className={m.tick == null ? 'dash' : ''} data-alloc-search-tick>{m.tick == null ? '—' : m.tick}</td>
+                      <td className={m.rewardsMaxSpreadCents ? '' : 'dash'} data-alloc-search-band>
+                        {m.rewardsMaxSpreadCents ? `±${(m.rewardsMaxSpreadCents / 2).toFixed(2)}¢` : '— nessuna'}
+                      </td>
+                      <td data-alloc-search-close className={m.tooCloseToClose ? 'oob' : ''}>
+                        {closeText(m.minutesToClose)}{m.tooCloseToClose ? ' ⚠' : ''}
+                      </td>
+                      <td data-alloc-search-state>
+                        {m.enabled ? <b className="fresh-ok">abilitato</b>
+                          : m.optedIn ? <span className="fresh-stale">opted-in</span>
+                            : <span className="alloc-cat">non abilitato</span>}
+                        {m.closed && <div className="oob">chiuso</div>}
+                        {!m.acceptingOrders && <div className="oob">non accetta ordini</div>}
+                      </td>
+                      <td>
+                        <button className="alloc-btn" style={{ fontSize: 12, minHeight: 36, padding: '6px 10px' }}
+                          data-alloc-add-preview
+                          disabled={addBusy != null || m.enabled}
+                          title={m.enabled ? 'già abilitato' : 'anteprima dell’aggiunta: non scrive nulla'}
+                          onClick={() => addMarket(m.marketId, true)}>
+                          {addBusy === `preview:${m.marketId}` ? '…' : m.enabled ? 'già in lista' : '1 · Anteprima'}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+        {search && search.ok && search.markets.length === 0 && (
+          <div className="alloc-sub" style={{ marginTop: 10 }} data-alloc-search-empty>Nessun mercato aperto trovato per «{search.query}».</div>
+        )}
+
+        {/* PASSO 2 — LA CONFERMA. Stessa forma del flusso di esecuzione: anteprima prima, conferma poi,
+            con capitale e numero di mercati sotto gli occhi al momento di premere. */}
+        {addPreview && addPreview.summary && (
+          <div className="alloc-note" style={{ marginTop: 12 }} data-alloc-add-confirm>
+            <div><b>Anteprima — non è stato scritto nulla.</b></div>
+            <div style={{ marginTop: 4 }}>
+              <b>{addPreview.summary.question || addPreview.marketId.slice(0, 12)}</b>
+              {' · '}{addPreview.summary.hasRewards ? perDay(addPreview.summary.rewardsDailyRate) : <b className="oob">NESSUN REWARD — solo trading direzionale</b>}
+              {' · spread '}{cents(addPreview.summary.spreadCents)}
+              {' · tick '}{addPreview.summary.tick ?? '—'}
+              {' · chiusura fra '}{closeText(addPreview.summary.minutesToClose)}
+            </div>
+            <div style={{ marginTop: 4 }}>
+              Capitale in gioco <b>{addPreview.summary.capitalUsd == null ? '—' : money(addPreview.summary.capitalUsd)}</b>
+              {' · mercati abilitati '}<b>{addPreview.summary.marketCountBefore} → {addPreview.summary.marketCountAfter}</b>
+              {' · finestra GTD che avrebbe un ordine qui: '}
+              <b>{addPreview.summary.window.tooClose ? 'nessuna — rifiutato' : `${addPreview.summary.window.ttlSeconds}s (${(addPreview.summary.window.ttlSeconds / 60).toFixed(1)} min)`}</b>
+              {addPreview.summary.window.refreshMarginSeconds != null && !addPreview.summary.window.tooClose && <> · rinnovo a <b>{addPreview.summary.window.refreshMarginSeconds}s</b> dalla scadenza</>}
+            </div>
+            {addPreview.writes && (
+              <ul style={{ margin: '6px 0 0 18px', padding: 0, fontSize: 12.5 }}>
+                {addPreview.writes.map((w) => <li key={w}>{w}</li>)}
+              </ul>
+            )}
+            {addPreview.summary.warnings.length > 0 && (
+              <ul style={{ margin: '6px 0 0 18px', padding: 0 }} data-alloc-add-warnings>
+                {addPreview.summary.warnings.map((w) => <li key={w} className="oob" style={{ fontSize: 12.5 }}>{w}</li>)}
+              </ul>
+            )}
+            <button className="alloc-btn" style={{ marginTop: 10, background: 'color-mix(in srgb,#2FA96B 30%,transparent)' }}
+              data-alloc-add-confirm-btn disabled={addBusy != null}
+              onClick={() => addMarket(addPreview.marketId, false)}>
+              {addBusy?.startsWith('confirm') ? 'Scrivo…' : '2 · Conferma e aggiungi'}
+            </button>
+          </div>
+        )}
+
+        {addErr && <div className="alloc-note alloc-warn" style={{ marginTop: 10 }} data-alloc-add-error>Aggiunta non riuscita — nulla è cambiato: {addErr}</div>}
+
+        {addResult && addResult.ok && (
+          <div className="alloc-note" style={{ marginTop: 10 }} data-alloc-add-result>
+            <b>Mercato aggiunto.</b> {addResult.note}
+            {addResult.warnings && addResult.warnings.length > 0 && (
+              <ul style={{ margin: '6px 0 0 18px', padding: 0 }}>
+                {addResult.warnings.map((w) => <li key={w} className="oob" style={{ fontSize: 12.5 }}>{w}</li>)}
+              </ul>
+            )}
           </div>
         )}
       </div>
