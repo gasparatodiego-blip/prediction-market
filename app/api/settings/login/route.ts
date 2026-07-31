@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { adminSecretConfigured, mintAdminSession, ADMIN_COOKIE } from '@/lib/admin-session'
+import { adminSecretConfigured, mintAdminSession, ADMIN_COOKIE, TTL_SECONDS } from '@/lib/admin-session'
 import { checkAdminSecret } from '@/lib/admin-secret'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-const TTL_SECONDS = 12 * 60 * 60 // 12h — matches the JWT expiry
+// TTL_SECONDS is IMPORTED, not re-declared. It used to be a second literal here that merely happened to
+// match the JWT's — two numbers, one meaning, and nothing to keep them in step. A cookie shorter than the
+// token silently ends the session early; a cookie longer than it leaves the browser sending a token the
+// server already rejects. Both look like "the login does not stick" and neither logs anything.
 
 /**
  * Admin login for the file-backed venue-credential settings lane.

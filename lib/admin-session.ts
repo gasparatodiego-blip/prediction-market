@@ -18,7 +18,29 @@ export const ADMIN_COOKIE = 'edgeradar_admin'
 
 const ISSUER = 'edgeradar'
 const AUDIENCE = 'edgeradar-admin'
-const TTL_SECONDS = 12 * 60 * 60 // 12h
+
+/**
+ * HOW LONG AN ADMIN SESSION LASTS — 90 days. EXPORTED because it governs TWO things that must agree:
+ * the JWT's own `exp` claim (minted below) and the browser cookie's `maxAge` (set in
+ * app/api/settings/login/route.ts). Those used to be two separate literals that merely happened to
+ * match; they are one value now, because the failure mode of drift is silent and confusing — a 90-day
+ * token inside a cookie the browser discards after 12 hours looks exactly like "the login does not
+ * stick", with nothing in any log to say why.
+ *
+ * WHY 90 DAYS AND NOT LONGER. Was 12h, which meant re-logging in most days: the console then silently
+ * falls back to the PUBLIC rewards board (LiquidityRewardsConsole renders <RewardsUnified/> on a 401),
+ * so an expired session does not look like an expired session — it looks like the operator console
+ * disappeared. 90 days removes that as routine friction while keeping a real ceiling: a leaked cookie
+ * stops working by itself eventually, and there is a natural moment to re-assert control. A token with
+ * no expiry has neither property.
+ *
+ * REVOCATION, so it is not assumed. There is no session store and no per-session id — every token is
+ * just an HS256 signature over ADMIN_ACCESS_SECRET. So the ONLY way to invalidate outstanding sessions
+ * before they lapse is to CHANGE ADMIN_ACCESS_SECRET (which invalidates all of them at once, including
+ * your own). That was equally true at 12h; a 90-day window simply means the "wait for it to expire"
+ * option now takes up to 90 days instead of half a day.
+ */
+export const TTL_SECONDS = 90 * 24 * 60 * 60 // 90 days
 
 /** True iff a usable admin secret is configured. The feature is hidden entirely otherwise. */
 export function adminSecretConfigured(): boolean {
@@ -36,7 +58,9 @@ function secretKey(): Uint8Array {
   return new TextEncoder().encode(s)
 }
 
-/** Mint a 12h admin session JWT (HS256). */
+/** Mint an admin session JWT (HS256), valid for TTL_SECONDS. NO SLIDING RENEWAL: this is the only
+ *  place a token is minted, and the middleware verifies without re-issuing, so the expiry is absolute
+ *  from the moment of login rather than extended by use. */
 export async function mintAdminSession(): Promise<string> {
   return new SignJWT({ role: 'admin' })
     .setProtectedHeader({ alg: 'HS256' })
