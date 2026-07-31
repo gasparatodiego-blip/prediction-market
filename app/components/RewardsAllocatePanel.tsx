@@ -18,6 +18,25 @@ type Balance = {
   ageSeconds: number | null; stale: boolean; latencyMs: number | null; cadenceSeconds: number; note: string;
 };
 type FillTick = { tick: number; offsetCents: number | null; fills: number; costPerDay: number | null; bid: number | null; ask: number | null };
+// ── THE SECOND, CORRECTED $/day FIGURE ──────────────────────────────────────────────────────────────
+// One entry per selectable offset, precomputed server-side (lib/rewards/realistic-estimate.js) so moving a
+// row's offset never needs a refetch — the same pattern fillsByTick already uses. `unknown:true` means the
+// figure was WITHHELD (e.g. no competing liquidity in band at all), which the UI must render as "non
+// stimabile" with its reason, never as $0.00 and never as a small optimistic number.
+type Correction = {
+  key: string; kind: 'derivata' | 'misurata' | 'assunzione'; label: string;
+  factor: number; usd?: number; applied: boolean; measurable: boolean; note: string;
+};
+type RealisticTick = {
+  tick: number; realisticPerDay: number | null; totalFactor: number | null; unknown: boolean;
+  reason: string | null; corrections: Correction[] | null;
+  flags: { key: string; severity: string; text: string }[]; summary: string;
+};
+type PoolTrend = {
+  measurable: boolean; ratio: number | null; discountFactor: number;
+  direction: 'up' | 'flat' | 'down' | null; samples: number;
+  currentPool: number | null; meanPool: number | null; note: string;
+};
 type Row = {
   marketId: string; name: string | null; category: string | null; nameAvailable: boolean; shortId: string;
   capital: number; sizePerSideUsd: number; sizePerSideShares: number | null;
@@ -26,6 +45,8 @@ type Row = {
   maxSpreadCents: number | null; grossInBandPerDay: number | null; defaultOffsetTicks: number;
   computedDefaultOffsetTicks: number; defaultReason: string; defaultNetDerived: boolean; grossMaxDefaultTicks: number;
   fillScore: number | null; fillsByTick: FillTick[];
+  realisticByTick: RealisticTick[]; realisticBestTick: number | null; realisticBestPerDay: number | null;
+  poolTrend: PoolTrend;
 };
 type Plan = {
   requested: number; capital: number; unit: number; offsetCents: number;
@@ -34,8 +55,12 @@ type Plan = {
   observed: { totalFills: number; filledMarkets: number; windowHours: number };
   fillScore: { auc: number | null; ci95: [number, number] | null; nFilled: number; nUnfilled: number; note: string };
   offsetFrontier: { offsetCents: number; fills: number; grossInBand: number; rewardLost: number }[];
-  totals: { capital: number; unallocated: number; grossPerDay: number; netPerDay: number | null; count: number };
+  totals: {
+    capital: number; unallocated: number; grossPerDay: number; netPerDay: number | null; count: number;
+    realisticPerDay: number | null; realisticRatio: number | null; realisticRowsUnknown: number | null;
+  };
   annualisedGross: { pct: number | null; capped: boolean; cap: number; label: string };
+  annualisedRealistic: { pct: number | null; capped: boolean; cap: number; label: string };
   frontier: { count: number; net: number }[];
   error?: string;
 };
@@ -78,7 +103,33 @@ function rowAt(r: Row, offsetTicks: number) {
   const cost = ft ? ft.costPerDay : null;
   const net = fills != null && fills > 0 && gross != null && cost != null ? gross - cost : null;
   const orderVsDepth = r.sizePerSideShares != null && r.depthShares != null && r.depthShares > 0 ? r.sizePerSideShares / r.depthShares : null;
-  return { offsetTicks, offsetCents, bid: ft ? ft.bid : null, ask: ft ? ft.ask : null, inBand, bandKnown, gross, fills, cost, net, orderVsDepth, overridden: offsetTicks !== r.computedDefaultOffsetTicks, maxTick: r.fillsByTick.length ? r.fillsByTick[r.fillsByTick.length - 1].tick : 0 };
+  // The corrected figure for THIS offset — looked up, never recomputed here. The corrections it applies
+  // (placement score, pool trend, thin book, coverage gaps, adverse selection) are arithmetic the server
+  // already did; re-deriving any of it in the browser would be a second implementation that can drift.
+  const real = (r.realisticByTick || []).find((x) => x.tick === offsetTicks) || null;
+  return {
+    offsetTicks, offsetCents, bid: ft ? ft.bid : null, ask: ft ? ft.ask : null, inBand, bandKnown,
+    gross, fills, cost, net, orderVsDepth, real,
+    overridden: offsetTicks !== r.computedDefaultOffsetTicks,
+    maxTick: r.fillsByTick.length ? r.fillsByTick[r.fillsByTick.length - 1].tick : 0,
+  };
+}
+
+/** The corrections, as one plain-text block for the cell's tooltip. Each line says whether it is derived
+ *  arithmetic, a measurement, or a declared assumption — an operator weighing a number needs to know which. */
+function correctionsTooltip(real: RealisticTick | null): string {
+  if (!real) return 'stima corretta non disponibile per questo offset';
+  if (real.unknown) return `NON STIMABILE — ${real.reason ?? 'motivo non disponibile'}`;
+  const kindLabel: Record<string, string> = { derivata: 'calcolo', misurata: 'misurato', assunzione: 'ASSUNZIONE' };
+  const lines = (real.corrections ?? [])
+    .map((c) => `• [${kindLabel[c.kind] ?? c.kind}] ${c.label}: ${c.applied ? `×${c.factor}${c.usd != null && c.usd > 0 ? ` (−$${c.usd.toFixed(2)}/g)` : ''}` : 'nessuna correzione'}\n   ${c.note}`);
+  return [
+    `${real.summary}`,
+    '',
+    ...lines,
+    '',
+    'Resta una STIMA, non una garanzia: le voci marcate ASSUNZIONE non sono misurate.',
+  ].join('\n');
 }
 
 export default function RewardsAllocatePanel() {
@@ -204,9 +255,18 @@ export default function RewardsAllocatePanel() {
     const fillsNow = usable.reduce((s, x) => s + (x.c.fills ?? 0), 0);
     const netKnown = usable.length > 0 && usable.every((x) => x.c.net != null);
     const netNow = netKnown ? usable.reduce((s, x) => s + (x.c.net ?? 0), 0) : null;
+    // ── THE REALISTIC TOTAL at the CURRENT offsets. Rows whose corrected figure was WITHHELD are excluded
+    //    and COUNTED — adding them as zero would understate, and adding their gross would defeat the point.
+    //    Either way the count is displayed, so the total is never read as covering more than it does.
+    const realRows = usable.filter((x) => x.c.real && !x.c.real.unknown && x.c.real.realisticPerDay != null);
+    const realisticNow = realRows.reduce((s, x) => s + (x.c.real!.realisticPerDay ?? 0), 0);
+    const realisticUnknownCount = usable.length - realRows.length;
+    const realisticGrossOfCounted = realRows.reduce((s, x) => s + (x.c.gross ?? 0), 0);
     const ages = rows.map((x) => x.ageS).filter((a): a is number => a != null);
     return {
-      rows, grossNow, grossDefault, grossWider, fillsNow, netNow, anyOverride: Object.keys(offsets).length > 0,
+      rows, grossNow, grossDefault, grossWider, fillsNow, netNow,
+      realisticNow, realisticUnknownCount, realisticGrossOfCounted,
+      anyOverride: Object.keys(offsets).length > 0,
       staleCount: rows.filter((x) => x.stale).length, unreadableCount: rows.filter((x) => x.unreadable).length,
       usableCount: usable.length, newestAge: ages.length ? Math.min(...ages) : null, oldestAge: ages.length ? Math.max(...ages) : null,
       resDist, artifactCount: rows.filter((x) => x.artifact).length,
@@ -237,7 +297,7 @@ export default function RewardsAllocatePanel() {
         .alloc-note{border-left:3px solid var(--ds-accent);padding:8px 12px;margin:10px 0;background:color-mix(in srgb,var(--ds-accent) 8%,transparent);border-radius:0 8px 8px 0;font-size:13px}
         .alloc-warn{border-left-color:#d9a441;background:color-mix(in srgb,#d9a441 12%,transparent)}
         .alloc-tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--ds-border);border-radius:10px}
-        table.alloc{border-collapse:collapse;width:100%;min-width:1220px;font-size:13px}
+        table.alloc{border-collapse:collapse;width:100%;min-width:1360px;font-size:13px}
         table.alloc th,table.alloc td{padding:8px 10px;border-bottom:1px solid var(--ds-border);text-align:right;white-space:nowrap}
         table.alloc th{position:sticky;top:0;background:var(--ds-bg);font-weight:600;color:color-mix(in srgb,var(--ds-text) 70%,transparent);font-size:11.5px;text-transform:uppercase;letter-spacing:.03em}
         table.alloc td.name,table.alloc th.name{text-align:left;white-space:normal;min-width:170px}
@@ -391,7 +451,9 @@ export default function RewardsAllocatePanel() {
               <thead>
                 <tr>
                   <th className="name">Mercato</th><th>Capitale</th><th>$/lato</th><th>Scad. (gg)</th><th>Offset (tick / ¢ da mid)</th>
-                  <th>Margine banda</th><th>Bid</th><th>Ask</th><th>Tick</th><th>Depth</th><th>Lordo/g</th><th>Netto/g</th><th>Fill attesi</th>
+                  <th>Margine banda</th><th>Bid</th><th>Ask</th><th>Tick</th><th>Depth</th><th>Lordo/g</th>
+                  <th title="Stima realistica: la cifra lorda dopo correzioni dichiarate (punteggio reale della posizione, andamento del montepremi, mercato sottile, buchi di copertura, selezione avversa). Passa il mouse su una cella per l'elenco completo.">Realistico/g</th>
+                  <th>Netto/g</th><th>Fill attesi</th>
                   <th>Score fill</th><th>Ord/depth</th><th>Freschezza</th>
                 </tr>
               </thead>
@@ -446,6 +508,35 @@ export default function RewardsAllocatePanel() {
                         </span>
                       )}
                     </td>
+                    {/* ── STIMA REALISTICA — la seconda cifra, ACCANTO alla lorda, mai al suo posto. ──
+                        Withheld ("non stimabile") is rendered as such WITH its reason: a book with no
+                        competing liquidity produces a 100%-of-the-pot share, which is a formula outside its
+                        domain, not an opportunity to be shaded down. */}
+                    <td className={c.real == null || c.real.unknown ? 'dash' : ''} data-alloc-realistic
+                        title={correctionsTooltip(c.real)}>
+                      {c.real == null ? '—'
+                        : c.real.unknown ? <span className="oob" data-alloc-realistic-unknown>non stimabile ⓘ</span>
+                          : <>
+                              <b>{perDay(c.real.realisticPerDay)}</b>
+                              {c.gross != null && c.gross > 0 && c.real.totalFactor != null && (
+                                <small className="alloc-cat" style={{ display: 'block' }}>{Math.round(c.real.totalFactor * 100)}% del lordo</small>
+                              )}
+                              {c.real.flags.map((fl) => (
+                                <small key={fl.key} className={fl.severity === 'danger' ? 'oob' : 'fresh-stale'} style={{ display: 'block' }} title={fl.text}>⚠ {fl.text.length > 42 ? `${fl.text.slice(0, 42)}…` : fl.text}</small>
+                              ))}
+                            </>}
+                      {/* The offset that maximises the CORRECTED figure. It disagrees with the configured
+                          default whenever the default was chosen against the flat S=1 gross, which is
+                          exactly the case worth showing. */}
+                      {r.realisticBestTick != null && r.realisticBestTick !== effTicks(r) && r.realisticBestPerDay != null && (
+                        <small className="alloc-cat" style={{ display: 'block' }}
+                               title="l'offset che massimizza la stima CORRETTA. Il default è scelto contro il lordo a tetto S=1, che non decade dentro la banda: qui il decadimento è prezzato.">
+                          a {r.realisticBestTick} tick: {perDay(r.realisticBestPerDay)}
+                          <button className="off-reset" style={{ marginLeft: 4 }} title={`imposta l'offset a ${r.realisticBestTick} tick`}
+                                  onClick={() => setRowOffset(r.marketId, r.realisticBestTick as number)}>→</button>
+                        </small>
+                      )}
+                    </td>
                     <td className={c.net == null ? 'dash' : ''} data-alloc-net>{c.net == null ? '—' : perDay(c.net)}</td>
                     <td className={c.fills == null ? 'dash' : ''} data-alloc-fills>{c.fills == null ? '—' : c.fills}</td>
                     <td className={r.fillScore == null ? 'dash' : ''} data-alloc-score>{r.fillScore == null ? '—' : r.fillScore.toFixed(2)}</td>
@@ -467,6 +558,15 @@ export default function RewardsAllocatePanel() {
             <div><span>Capitale allocato</span><b>{money(plan.totals.capital)}</b></div>
             <div><span>Non allocato (resto)</span><b>{money(plan.totals.unallocated)}</b></div>
             <div><span>Lordo atteso (offset attuale)</span><b data-alloc-total-gross>{perDay(computed.grossNow)}</b></div>
+            {/* La SECONDA cifra nel totale, affiancata alla lorda — mai al suo posto. */}
+            <div>
+              <span>Stima realistica (offset attuale)</span>
+              <b data-alloc-total-realistic>{perDay(computed.realisticNow)}
+                {computed.realisticGrossOfCounted > 0 && (
+                  <small className="alloc-cat"> ({Math.round((computed.realisticNow / computed.realisticGrossOfCounted) * 100)}% del lordo delle stesse righe)</small>
+                )}
+              </b>
+            </div>
             <div><span>vs offset default</span><b>{perDay(computed.grossDefault)}{computed.anyOverride ? <small className="alloc-cat"> ({money(computed.grossNow - computed.grossDefault)}/g)</small> : ''}</b></div>
             <div><span>Netto atteso</span><b>{computed.netNow == null ? '—' : perDay(computed.netNow)}</b></div>
             <div><span>Fill attesi totali</span><b data-alloc-total-fills>{computed.fillsNow}</b></div>
@@ -487,6 +587,43 @@ export default function RewardsAllocatePanel() {
           </div>
           <div className="alloc-sub" style={{ marginTop: 6 }} data-alloc-totals-scope>
             I totali coprono i <b>{computed.usableCount} mercati con dati aggiornati</b>{computed.staleCount || computed.unreadableCount ? <> — esclusi <b>{computed.staleCount} stale</b>{computed.unreadableCount ? <> e <b>{computed.unreadableCount} illeggibili</b></> : ''} (dati troppo vecchi per pianificare il book attuale, non azzerati)</> : ''}.
+          </div>
+          {/* ── LE DUE CIFRE, SPIEGATE IN CHIARO ────────────────────────────────────────────────────────
+              Questo è il testo che il prompt chiede: elenca le correzioni in linguaggio semplice e dice
+              a voce alta che resta una stima. Sta sotto la tabella, non in un tooltip soltanto, perché è
+              la cosa che cambia il modo di leggere ogni numero della pagina. */}
+          <div className="alloc-note alloc-warn" data-alloc-realistic-note>
+            <b>Due cifre, non una.</b> «Lordo/g» è il numero teorico di sempre: montepremi × quota modellata,
+            con l’ordine appoggiato <b>esattamente sul mid</b> (punteggio massimo) e a riposo <b>tutto il giorno</b>.
+            «Realistico/g» parte dallo stesso lordo e applica correzioni <b>dichiarate una per una</b> (passa il
+            mouse su una cella per vederle tutte con i numeri):
+            <ul style={{ margin: '6px 0 6px 18px', padding: 0 }}>
+              <li><b>Punteggio reale della posizione</b> <i>(calcolo)</i> — la formula pubblicata S=((v−s)/v)² fa
+                crollare il punteggio man mano che ti allontani dal mid. Un ordine a 1 tick da una banda di
+                ±2,25¢ vale il <b>31%</b> del massimo, non il 100%. È la correzione più grande e non è un’opinione:
+                è la stessa formula con cui il venue paga.</li>
+              <li><b>Andamento del montepremi</b> <i>(misurato su 48h)</i> — se il pool è stato tagliato, la stima
+                viene scontata di conseguenza. Se è cresciuto, l’aumento è segnalato ma <b>non incassato</b>.</li>
+              <li><b>Mercato sottile</b> <i>(assunzione)</i> — se la tua quota modellata sarebbe sproporzionata, è
+                un rischio, non un’occasione. Dove in banda <b>non c’è nessun altro</b>, la stima viene
+                <b> ritirata</b> («non stimabile»): la formula ti darebbe il 100% del montepremi, ma è una divisione
+                per un book che non esiste.</li>
+              <li><b>Buchi di copertura</b> <i>(misurato)</i> — i premi si campionano <b>una volta al minuto</b>
+                (1.440 campioni/giorno), e ogni cancella→ripiazza è tempo senza ordine a riposo. Di solito vale
+                pochi decimi di punto; qui è calcolato, non ipotizzato.</li>
+              <li><b>Selezione avversa</b> <i>(misurata dove ci sono fill, altrimenti assunzione)</i> — dove il nastro
+                ha prodotto esecuzioni reali si sottrae il markout <b>misurato</b>; dove non ce ne sono, si sottrae
+                una percentuale dichiarata e <b>volutamente grezza</b>.</li>
+            </ul>
+            <b>Resta una stima, non una garanzia.</b> Le voci marcate <i>assunzione</i> non sono misurate, e nemmeno
+            la parte calcolata promette un rendimento: descrive solo cosa succederebbe se il book restasse com’è.
+            {computed.realisticUnknownCount > 0 && <> Su questa allocazione <b>{computed.realisticUnknownCount}</b> {computed.realisticUnknownCount === 1 ? 'riga è' : 'righe sono'} «non stimabile» e {computed.realisticUnknownCount === 1 ? 'è esclusa' : 'sono escluse'} dal totale realistico.</>}
+          </div>
+          <div className="alloc-sub" style={{ marginTop: 6 }} data-alloc-apy-both>
+            Annualizzato sul capitale: <b>{plan.annualisedGross.pct == null ? '—' : `${plan.annualisedGross.pct.toFixed(0)}%`}</b> lordo
+            {' vs '}<b>{plan.annualisedRealistic.pct == null ? '—' : `${plan.annualisedRealistic.pct.toFixed(0)}%`}</b> realistico.
+            Numeri a tre o quattro cifre da entrambe le parti significano che il capitale è piccolo rispetto ai
+            montepremi dei mercati sottili in cui finisce — sono <b>run-rate</b>, non rendimenti attesi.
           </div>
           <div className="alloc-sub" style={{ marginTop: 6 }}>{plan.annualisedGross.label}. Il netto per-mercato è “—” dove non è stato osservato alcun fill reale. Un offset oltre il raggio di banda (maxSpread/2) porta il lordo a $0: la riga lo dice, non mostra un piccolo positivo.</div>
 
