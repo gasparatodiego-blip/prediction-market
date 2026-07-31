@@ -132,6 +132,19 @@ function correctionsTooltip(real: RealisticTick | null): string {
   ].join('\n');
 }
 
+// ── ESECUZIONE DELL'ALLOCAZIONE ── una riga per ordine, con il verdetto di ciascuna.
+type BulkRowResult = {
+  marketId: string; title: string | null; book: string; side: string; price: number; size: number;
+  index?: number; status: 'placed' | 'refused' | 'skipped'; notionalUsd?: number | null;
+  sent?: boolean; orderId?: string | null; gate?: string | null; reason?: string;
+};
+type BulkResult = {
+  ok: boolean; at: string; attempted: number; placed: number; refused: number; skipped: number;
+  stoppedBy: string | null; reason: string | null; results: BulkRowResult[];
+  totals: { requestedUsd: number; placedUsd: number; rows: number };
+  openBefore?: number | null; error?: string;
+};
+
 export default function RewardsAllocatePanel() {
   const [bal, setBal] = useState<Balance | null>(null);
   const [balLoaded, setBalLoaded] = useState(false);
@@ -144,6 +157,13 @@ export default function RewardsAllocatePanel() {
   const [nowMs, setNowMs] = useState<number>(() => Date.now()); // ticks CLOCK_MS → live per-row data age, no refetch
   const [refreshMs, setRefreshMs] = useState<number | null>(null); // measured latency of the last auto-refresh fetch
   const [lastRefreshMs, setLastRefreshMs] = useState<number | null>(null);
+  // Esecuzione: preview → conferma → run. Tre stati distinti perche' il passo intermedio (la conferma
+  // con capitale e numero di mercati) e' esattamente cio' che impedisce di piazzare un'allocazione
+  // guardata di sfuggita.
+  const [bulkPreview, setBulkPreview] = useState<BulkResult | null>(null);
+  const [bulkResult, setBulkResult] = useState<BulkResult | null>(null);
+  const [bulkBusy, setBulkBusy] = useState<'preview' | 'run' | null>(null);
+  const [bulkErr, setBulkErr] = useState<string | null>(null);
 
   // Live age clock — re-render every CLOCK_MS so each row's "letto Xs fa" and STALE badge stay true, WITHOUT
   // refetching any market data. Cheap: only re-derives ages from newestTsMs already in the plan.
@@ -279,6 +299,39 @@ export default function RewardsAllocatePanel() {
       grossAllInBand: usable.reduce((s, x) => s + (x.r.grossInBandPerDay ?? 0), 0), // every row quoting INSIDE its band
     };
   }, [plan, offsets, nowMs]);
+
+  // Le righe da eseguire, prese ESATTAMENTE dalla tabella come e' configurata adesso: stesso mercato,
+  // stesso lato, stesso prezzo, stessa size che l'operatore sta guardando. Escluse le righe stale o
+  // illeggibili (non sono nei totali) e quelle fuori banda (varrebbero zero).
+  const bulkRows = useMemo(() => {
+    if (!computed) return [];
+    return computed.rows
+      .filter((x) => x.usable && x.c.inBand !== false && x.c.bid != null && x.r.sizePerSideShares != null)
+      .map((x) => ({
+        marketId: x.r.marketId,
+        title: x.r.name || x.r.shortId,
+        book: 'yes' as const,
+        price: x.c.bid as number,
+        size: Math.round((x.r.sizePerSideShares as number) * 10) / 10,
+      }));
+  }, [computed]);
+
+  const runBulk = useCallback(async (preview: boolean) => {
+    if (!bulkRows.length) return;
+    setBulkBusy(preview ? 'preview' : 'run');
+    setBulkErr(null);
+    if (!preview) setBulkResult(null);
+    try {
+      const r = await fetch('/api/maker/manual/bulk-allocate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows: bulkRows, preview }),
+      });
+      const b = (await r.json()) as BulkResult;
+      if (preview) setBulkPreview(b); else { setBulkResult(b); setBulkPreview(null); }
+    } catch (e) {
+      setBulkErr((e as Error).message);
+    } finally { setBulkBusy(null); }
+  }, [bulkRows]);
 
   const balanceNum = bal && bal.pusdBalance != null ? bal.pusdBalance : null;
   const capitalNum = Number(capital);
@@ -626,6 +679,94 @@ export default function RewardsAllocatePanel() {
             montepremi dei mercati sottili in cui finisce — sono <b>run-rate</b>, non rendimenti attesi.
           </div>
           <div className="alloc-sub" style={{ marginTop: 6 }}>{plan.annualisedGross.label}. Il netto per-mercato è “—” dove non è stato osservato alcun fill reale. Un offset oltre il raggio di banda (maxSpread/2) porta il lordo a $0: la riga lo dice, non mostra un piccolo positivo.</div>
+
+          {/* ── ESEGUI ALLOCAZIONE ─────────────────────────────────────────────────────────────────
+              Due passi obbligatori: prima l'anteprima (che percorre la stessa aritmetica del cap senza
+              inviare nulla), poi la conferma. Un bottone singolo che piazza dieci ordini reali al primo
+              click e' il tipo di comando che si preme per sbaglio una volta sola. */}
+          <div className="alloc-card" data-alloc-bulk style={{ borderColor: '#2E5FBE' }}>
+            <div className="alloc-h" style={{ fontSize: 15 }}>Esegui allocazione</div>
+            <div className="alloc-sub">
+              Piazza <b>in sequenza</b> gli ordini della tabella qui sopra, uno per riga, con lo stesso
+              mercato/lato/prezzo/size che stai guardando. Ogni ordine passa dagli <b>stessi gate</b> di un
+              ordine a mano (validateOrder, kill-switch, cap) e finisce sotto la <b>stessa gestione del
+              watcher</b>: inseguimento del mid, vincolo di banda, rinnovo GTD, riconciliazione.
+            </div>
+
+            {bulkRows.length === 0 ? (
+              <div className="alloc-note alloc-warn" style={{ marginTop: 10 }}>
+                Nessuna riga eseguibile: servono righe con dati freschi, dentro banda e con un bid calcolabile.
+              </div>
+            ) : (
+              <>
+                <div className="alloc-sub" style={{ marginTop: 10 }} data-alloc-bulk-summary>
+                  <b>{bulkRows.length}</b> ordini · capitale totale{' '}
+                  <b>{money(bulkRows.reduce((s, r) => s + r.price * r.size, 0))}</b>
+                  {balanceNum != null && <> su un saldo reale di <b>{money(balanceNum)}</b></>}
+                </div>
+
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 10 }}>
+                  <button className="alloc-btn" data-alloc-bulk-preview onClick={() => runBulk(true)} disabled={bulkBusy != null}>
+                    {bulkBusy === 'preview' ? 'Verifico…' : '1 · Anteprima (non invia nulla)'}
+                  </button>
+                  <button
+                    className="alloc-btn"
+                    data-alloc-bulk-run
+                    style={{ background: bulkPreview ? 'color-mix(in srgb,#2FA96B 30%,transparent)' : undefined }}
+                    onClick={() => runBulk(false)}
+                    disabled={bulkBusy != null || !bulkPreview}
+                    title={bulkPreview ? 'piazza davvero gli ordini elencati nell\'anteprima' : 'fai prima l\'anteprima'}
+                  >
+                    {bulkBusy === 'run' ? 'Piazzo…' : '2 · Conferma ed esegui'}
+                  </button>
+                </div>
+
+                {bulkPreview && !bulkResult && (
+                  <div className="alloc-note" style={{ marginTop: 10 }} data-alloc-bulk-confirm>
+                    <b>Conferma:</b> verranno piazzati <b>{bulkPreview.results.filter((x) => x.status !== 'refused').length}</b> ordini
+                    su <b>{new Set(bulkPreview.results.map((x) => x.marketId)).size}</b> mercati, per{' '}
+                    <b>{money(bulkPreview.totals.requestedUsd)}</b> di capitale.
+                    {bulkPreview.stoppedBy === 'cap-cumulativo' && (
+                      <> <b className="oob">Attenzione:</b> {bulkPreview.reason} — le righe oltre quel punto NON verranno piazzate.</>
+                    )}
+                    {bulkPreview.openBefore ? <> Esposizione già aperta: <b>{money(bulkPreview.openBefore)}</b>.</> : null}
+                  </div>
+                )}
+
+                {bulkErr && <div className="alloc-note alloc-warn" style={{ marginTop: 10 }}>Richiesta fallita — nulla è confermato: {bulkErr}</div>}
+
+                {bulkResult && (
+                  <div style={{ marginTop: 10 }} data-alloc-bulk-result>
+                    <div className="alloc-sub">
+                      <b>{bulkResult.placed}</b> piazzati · <b>{bulkResult.refused}</b> rifiutati ·{' '}
+                      <b>{bulkResult.skipped}</b> saltati · capitale piazzato <b>{money(bulkResult.totals.placedUsd)}</b>
+                      {bulkResult.stoppedBy && <> — <b className="oob">fermata: {bulkResult.reason}</b></>}
+                    </div>
+                    <div className="alloc-tablewrap" style={{ marginTop: 8 }}>
+                      <table className="alloc" style={{ minWidth: 640 }}>
+                        <thead><tr><th className="name">Mercato</th><th>Prezzo</th><th>Size</th><th>Esito</th><th className="name">Dettaglio</th></tr></thead>
+                        <tbody>
+                          {bulkResult.results.map((x, i) => (
+                            <tr key={`${x.marketId}-${i}`}>
+                              <td className="name">{x.title || x.marketId.slice(0, 10)}</td>
+                              <td>{price(x.price)}</td>
+                              <td>{shares(x.size)}</td>
+                              <td>
+                                <b className={x.status === 'placed' ? 'fresh-ok' : x.status === 'refused' ? 'oob' : ''}>
+                                  {x.status === 'placed' ? (x.sent ? 'piazzato' : 'validato (dry-run)') : x.status === 'refused' ? 'rifiutato' : 'saltato'}
+                                </b>
+                              </td>
+                              <td className="name"><small>{x.gate ? `[${x.gate}] ` : ''}{x.reason}</small></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
 
           <div style={{ marginTop: 14 }}>
             <div className="alloc-sub">Frontiera netto/g per numero di mercati tenuti:</div>

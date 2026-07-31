@@ -78,6 +78,14 @@ interface ManualConfig {
   autoReprice: AutoRepriceState | null;
   autoClose: AutoCloseState | null;
 }
+// ── TABELLA DISTANZA/BANDA ── una riga per mercato gestito.
+interface OffsetRow {
+  marketId: string; title: string | null; readable: boolean;
+  mid: number | null; tick: number | null; bandRadiusCents: number | null; defaultMinMoveCents: number;
+  yes: { targetOffsetCents: number | null; source: string };
+  no: { targetOffsetCents: number | null; source: string };
+  minMoveCents: number;
+}
 interface RestingOrder {
   orderId: string | null; marketId: string | null; tokenId: string | null; side: string | null;
   price: number | null; size: number | null; sizeMatched: number | null; sizeRemaining: number | null;
@@ -137,6 +145,10 @@ export default function ManualOrdersPanel() {
   const [autoMsg, setAutoMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [busyClose, setBusyClose] = useState(false);
   const [closeMsg, setCloseMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [offsets, setOffsets] = useState<OffsetRow[] | null>(null);
+  const [offsetEdit, setOffsetEdit] = useState<Record<string, string>>({});
+  const [offsetMsg, setOffsetMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [busyOffset, setBusyOffset] = useState(false);
   const [busyOrder, setBusyOrder] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [editPrice, setEditPrice] = useState('');
@@ -302,6 +314,39 @@ export default function ManualOrdersPanel() {
       setCloseMsg({ ok: false, text: (e as Error).message });
     } finally { setBusyClose(false); }
   }, [marketId, loadConfig]);
+
+  // ── TABELLA DISTANZA/BANDA ──
+  const loadOffsets = useCallback(async () => {
+    try {
+      const r = await fetch('/api/maker/manual/offsets', { cache: 'no-store' });
+      if (!r.ok) return;
+      const b = await r.json();
+      setOffsets(Array.isArray(b.rows) ? b.rows : []);
+    } catch { /* read-only; keep the last good table */ }
+  }, []);
+
+  const saveOffset = useCallback(async (marketId: string, patch: { targetOffsetCents?: number; minMoveCents?: number; book?: 'yes' | 'no' }) => {
+    setBusyOffset(true); setOffsetMsg(null);
+    try {
+      const r = await fetch('/api/maker/manual/offsets', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ marketId, ...patch, reason: 'pannello ordini manuali' }),
+      });
+      const b = await r.json();
+      if (r.status === 422) {
+        setOffsetMsg({ ok: false, text: (b.errors || []).map((e: { detail: string }) => e.detail).join(' · ') });
+      } else if (!r.ok) {
+        setOffsetMsg({ ok: false, text: b.error || 'rifiutato' });
+      } else {
+        setOffsetMsg({ ok: true, text: 'salvato' });
+        await loadOffsets();
+      }
+    } catch (e) {
+      setOffsetMsg({ ok: false, text: (e as Error).message });
+    } finally { setBusyOffset(false); }
+  }, [loadOffsets]);
+
+  useEffect(() => { if (operator === true) loadOffsets(); }, [operator, loadOffsets]);
 
   const setManual = useCallback(async (manual: boolean) => {
     if (!marketId) return;
@@ -690,6 +735,79 @@ export default function ManualOrdersPanel() {
           Ogni riprezzo e ogni rinnovo automatico passa dagli stessi gate di un ordine a mano (kill-switch, cap,
           gestione manuale, venue-rules, validateOrder) ed è tracciato nell&apos;audit con sorgente
           <b> auto-reprice-band-exit</b>, diversa sia da <b>manual-ui</b> sia da <b>agent35</b>.
+        </p>
+      </div>
+
+      {/* ── DISTANZA DAL MID · SOGLIA · BANDA ────────────────────────────────────────────────────────
+          I tre numeri che governano l'inseguimento, per mercato. La banda e' mostrata ma NON modificabile
+          qui: e' il max_incentive_spread del venue, letto dal feed. E' il tetto, non una preferenza. */}
+      <div className="mkman-sec" data-manual-offsets>
+        <div className="mkman-sech">
+          <span className="mkman-sectitle">Distanza dal mid · soglia · banda</span>
+          <span className="mkman-note">l&apos;ordine insegue il mid mantenendo la distanza, non il prezzo</span>
+        </div>
+
+        {!offsets ? <div className="mkman-note">Caricamento…</div>
+          : offsets.length === 0 ? <div className="mkman-note">Nessun mercato gestito: la tabella si popola quando un mercato viene preso in gestione manuale.</div>
+            : (
+              <div className="mkman-tbl">
+                <div className="mkman-row mkman-head" style={{ gridTemplateColumns: '1fr 92px 92px 110px 110px 1fr', minWidth: 700 }}>
+                  <span>Mercato</span><span>Dist. YES</span><span>Dist. NO</span><span>Soglia min.</span><span>Banda (tetto)</span><span>Azioni</span>
+                </div>
+                {offsets.map((o) => (
+                  <div key={o.marketId} className="mkman-row" style={{ gridTemplateColumns: '1fr 92px 92px 110px 110px 1fr', minWidth: 700 }}>
+                    <span>
+                      {dash(o.title)}
+                      <small className="mkman-note" style={{ display: 'block' }}>mid {px(o.mid)} · tick {dash(o.tick)}</small>
+                    </span>
+                    <span className="mkman-num">
+                      {o.yes.targetOffsetCents == null ? '—' : `${o.yes.targetOffsetCents}¢`}
+                      <small className="mkman-note" style={{ display: 'block' }}>{o.yes.source === 'configured' ? 'impostata' : o.yes.source === 'remembered' ? 'ricordata' : 'osservata'}</small>
+                    </span>
+                    <span className="mkman-num">
+                      {o.no.targetOffsetCents == null ? '—' : `${o.no.targetOffsetCents}¢`}
+                      <small className="mkman-note" style={{ display: 'block' }}>{o.no.source === 'configured' ? 'impostata' : o.no.source === 'remembered' ? 'ricordata' : 'osservata'}</small>
+                    </span>
+                    <span className="mkman-num">{o.minMoveCents}¢</span>
+                    <span className="mkman-num" data-manual-band-ceiling>
+                      ±{o.bandRadiusCents == null ? '—' : o.bandRadiusCents}¢
+                      <small className="mkman-note" style={{ display: 'block' }}>dal venue</small>
+                    </span>
+                    <span>
+                      <input className="mkman-input mkman-input-sm" type="number" step={o.tick ? o.tick * 100 : 0.1}
+                        placeholder="dist ¢" value={offsetEdit[`${o.marketId}:t`] ?? ''}
+                        onChange={(e) => setOffsetEdit((s2) => ({ ...s2, [`${o.marketId}:t`]: e.target.value }))} />
+                      <input className="mkman-input mkman-input-sm" type="number" step={0.05} style={{ marginLeft: 6 }}
+                        placeholder="soglia ¢" value={offsetEdit[`${o.marketId}:m`] ?? ''}
+                        onChange={(e) => setOffsetEdit((s2) => ({ ...s2, [`${o.marketId}:m`]: e.target.value }))} />
+                      <button className="mkman-btn" style={{ marginLeft: 6, minHeight: 32 }} disabled={busyOffset}
+                        data-manual-offset-save
+                        onClick={() => {
+                          const t = offsetEdit[`${o.marketId}:t`];
+                          const m = offsetEdit[`${o.marketId}:m`];
+                          const patch: { targetOffsetCents?: number; minMoveCents?: number } = {};
+                          if (t !== undefined && t !== '') patch.targetOffsetCents = Number(t);
+                          if (m !== undefined && m !== '') patch.minMoveCents = Number(m);
+                          if (Object.keys(patch).length) saveOffset(o.marketId, patch);
+                        }}>
+                        {busyOffset ? '…' : 'Salva'}
+                      </button>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+        {offsetMsg && <div className={`mkman-res ${offsetMsg.ok ? 'mkman-ok' : 'mkman-bad'}`} data-manual-offset-msg>{offsetMsg.text}</div>}
+
+        <p className="mkman-note">
+          Un ordine <b>insegue il mid mantenendo la distanza</b>: con mid 10 e ordini a 7 e 13, se il mid va
+          a 11 gli ordini diventano 8 e 14. La <b>distanza</b> è l&apos;invariante, non il prezzo. Il default
+          è la distanza a cui l&apos;ordine è stato piazzato — «osservata» finché non la imposti tu.
+          La <b>soglia minima</b> evita di riprezzare sul rumore: sotto un tick il nuovo prezzo coinciderebbe
+          con quello attuale dopo l&apos;arrotondamento, quindi sarebbe churn puro.
+          La <b>banda</b> è il tetto del venue e non è modificabile da qui: se la distanza target la
+          eccedesse, il sistema piazza al bordo premiante e lo dichiara.
         </p>
       </div>
 
