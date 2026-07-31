@@ -2,9 +2,9 @@
 
 ## Permanent Behavior Rules
 
-- **Auto-approve all file edits and shell commands** — never prompt for confirmation on any file write, edit, or bash command.
-- **Never ask for confirmation** before taking action. Execute immediately.
-- After every code change, automatically run: `npm run build && pm2 restart dashboard`
+- **Local, reversible work is auto-approved** — file writes, edits, builds, tests, staging, and local commits proceed immediately, without asking.
+- **Anything touching real capital or live infrastructure always requires explicit confirmation.** This is enforced by permission rules in `.claude/settings.json` (with the same guardrails mirrored at user level in `~/.claude/settings.json`), and it overrides the auto-approve rule above and any "no gates" instruction in a prompt. Never auto-approved: `pm2 start/restart/stop/delete/reload`, anything touching the Prisma schema or the production DB, any script or endpoint that places real orders, `git push`, and destructive file commands (`rm`, `shred`, …).
+- After every code change, run `npm run build`. **Do not** run `pm2 restart dashboard` automatically — report that the build is green, then wait for an explicit go-ahead before restarting.
 - All agent scripts live in `/root/prediction-market/agents/`
 - Agents communicate via JSON files in `/tmp/`: `markets-raw.json`, `matches-politics.json`, `matches-other.json`, `arbitrage-opportunities.json`, `agent-status.json`, `agent-heartbeats.json`
 
