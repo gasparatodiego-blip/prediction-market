@@ -164,6 +164,20 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
   const [scope, setScope] = useState<'tutti' | 'bot' | 'miei'>('bot');
   const [limit, setLimit] = useState(PAGE);
   const [openLadder, setOpenLadder] = useState<string | null>(null);
+  // Technical detail (market id, tick, category, volume) is collapsed by default: it is reference data,
+  // not something read at a glance. One market open at a time, same as the ladder.
+  const [openTech, setOpenTech] = useState<string | null>(null);
+
+  // A slow clock, so every freshness readout AGES VISIBLY between polls instead of looking frozen-fresh
+  // until the next fetch lands. 5s is finer than the fastest cadence on this page (20s) and costs one
+  // re-render, never a refetch. Seeded in an effect, not in the initial state: Date.now() during the
+  // first render differs between server and client and would desync hydration.
+  const [nowMs, setNowMs] = useState(0);
+  useEffect(() => {
+    setNowMs(Date.now());
+    const t = setInterval(() => setNowMs(Date.now()), 5_000);
+    return () => clearInterval(t);
+  }, []);
 
   const loadBoard = useCallback(async () => {
     try {
@@ -276,6 +290,54 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
     [orders],
   );
 
+  // ── THE ONE QUESTION THE TOP OF THE PAGE ANSWERS ──────────────────────────────────────────────────
+  // "Il capitale sta maturando premi?" — derived ONLY from data this console already fetched.
+  //
+  // It deliberately does NOT answer "is the bot armed". That is a different fact with a different source
+  // (/api/maker/status) and it belongs to MakerArmingPanel, rendered directly above this component.
+  // Deriving the same claim twice, from two fetches, is exactly how two panels start disagreeing.
+  //
+  // FOUR states, not three. A traffic light with only green/amber/red would force "we could not read the
+  // venue" to borrow a colour from "nothing is earning". Those are different claims — one is a fact about
+  // the orders, the other is the absence of a fact — and this codebase never lets the second wear the
+  // clothes of the first. Unknown is grey, and grey is never red.
+  const earning = useMemo((): { state: 'ok' | 'warn' | 'bad' | 'unknown'; label: string; detail: string } => {
+    if (!orders) return { state: 'unknown', label: 'In lettura…', detail: 'Board non ancora ricevuto dal server.' };
+    if (orders.simulated) return {
+      state: 'unknown',
+      label: 'Non lo sappiamo',
+      detail: 'Nessuna credenziale di lettura: il venue non è stato interrogato. Non significa «zero ordini».',
+    };
+    if (orders.ok === false) return {
+      state: 'unknown',
+      label: 'Non lo sappiamo',
+      detail: `Lettura del venue fallita: ${orders.error ?? 'errore non riportato'}. Questa non è una lista vuota.`,
+    };
+    const inBand = summary?.inBandCount ?? 0;
+    const out = summary?.outOfBandCount ?? 0;
+    const unk = summary?.unknownBandCount ?? 0;
+    if (orders.count === 0) return {
+      state: 'bad',
+      label: 'Fermo',
+      detail: 'Nessun ordine a riposo sul venue — letto, non dedotto. Il capitale non sta maturando nulla.',
+    };
+    if (inBand > 0 && out === 0 && unk === 0) return {
+      state: 'ok',
+      label: 'Sì, sta maturando',
+      detail: `Tutti i ${inBand} ordini a riposo sono dentro la banda premiante.`,
+    };
+    if (inBand === 0) return {
+      state: 'bad',
+      label: 'No, non sta maturando',
+      detail: `${out} ${out === 1 ? 'ordine è fuori banda' : 'ordini sono fuori banda'}${unk > 0 ? `, ${unk} non giudicabili` : ''}: nessun ordine sta maturando.`,
+    };
+    return {
+      state: 'warn',
+      label: 'Solo in parte',
+      detail: `${inBand} in banda, ${out} fuori${unk > 0 ? `, ${unk} non giudicabili` : ''}. Solo la parte in banda matura.`,
+    };
+  }, [orders, summary]);
+
   const visibleMarkets = useMemo(() => {
     const needle = q.trim().toLowerCase();
     let set = pricedMarkets;
@@ -307,9 +369,12 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
     );
   }
 
-  const feedAgeSec = board?.feed.polyGeneratedAt
-    ? Math.max(0, Math.round((Date.now() - Date.parse(board.feed.polyGeneratedAt)) / 1000))
-    : null;
+  // Ages are measured against the slow clock, not Date.now() at render time: a value read during render
+  // is impure and, on the first paint, differs between server and client.
+  const ageFrom = (iso: string | null | undefined): number | null =>
+    (iso && nowMs ? Math.max(0, Math.round((nowMs - Date.parse(iso)) / 1000)) : null);
+  const feedAgeSec = ageFrom(board?.feed.polyGeneratedAt);
+  const ordersAgeSec = ageFrom(orders?.at);
 
   return (
     <div className="lrc-root" data-liquidity-console>
@@ -321,6 +386,8 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
           <h1 className="lrc-h1">Liquidity rewards · console operatore</h1>
           <span className="lrc-venue">solo Polymarket</span>
         </div>
+
+        <StatusRing state={earning.state} label={earning.label} detail={earning.detail} />
 
         <div className="lrc-metrics" data-lrc-metrics>
           <Metric
@@ -381,15 +448,23 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
             </button>
           ))}
         </div>
-        <div className="lrc-feedage">
-          Scan Polymarket {feedAgeSec == null ? 'N/D' : ageTxt(feedAgeSec)} · {board?.marketCount ?? 0} mercati premianti ·
-          ordini letti dal venue {orders?.at ? new Date(orders.at).toLocaleTimeString() : 'N/D'}
-        </div>
+        {/* FRESHNESS PER SOURCE, not one global "updated Xs ago". These three sources refresh at 20s,
+            60s and whatever agent34 last wrote: presenting them with equal weight is what makes a stale
+            balance look as current as a fresh book. Each is judged against ITS OWN cadence. */}
+        <Freshness
+          items={[
+            { k: 'Ordini dal venue', ageSec: ordersAgeSec, everySec: BOARD_POLL_MS / 1000 },
+            { k: 'Saldo on-chain', ageSec: bal?.ageSeconds ?? null, everySec: BALANCE_POLL_MS / 1000 },
+            { k: 'Scan Polymarket', ageSec: feedAgeSec, everySec: 60 },
+          ]}
+        />
+        <div className="lrc-feedage">{board?.marketCount ?? 0} mercati premianti nello scan</div>
       </div>
 
       {/* ── 1 · RIEPILOGO ─────────────────────────────────────────────────────────────────────────── */}
       {tab === 'riepilogo' && (
         <section className="lrc-sec" data-lrc-section="riepilogo">
+          <Ask q="Cosa devo guardare adesso?" sub="Gli ordini che non stanno maturando, e quanto capitale è fermo." />
           {orders?.simulated && (
             <div className="lrc-banner lrc-banner-warn">
               Nessuna credenziale di lettura: il venue non è stato interrogato. Le sezioni che dipendono
@@ -505,6 +580,7 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
       {/* ── 2 · MERCATI ───────────────────────────────────────────────────────────────────────────── */}
       {tab === 'mercati' && (
         <section className="lrc-sec" data-lrc-section="mercati">
+          <Ask q="Dove conviene mettere il capitale?" sub="Ordinati per rendimento stimato sul tuo saldo reale, non su una cifra di riferimento." />
           <div className="lrc-controls">
             <div className="lrc-scope" role="group" aria-label="Quali mercati">
               {([['bot', 'Set del bot + i miei'], ['miei', 'Solo con miei ordini'], ['tutti', `Tutti (${pricedMarkets.length})`]] as const).map(([k, l]) => (
@@ -540,6 +616,7 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
               {visibleMarkets.slice(0, limit).map((m) => {
                 const mine = ordersByMarket.get(m.marketId) ?? [];
                 const open = openLadder === m.marketId;
+                const tech = openTech === m.marketId;
                 return (
                   <div key={m.marketId} className="lrc-mkt" data-lrc-market={m.marketId}>
                     {/* HEADER — title, then badges on their OWN wrapping row. The pot line can no longer be
@@ -605,8 +682,6 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
                       />
                       <KV k="profondità in banda" v={money(m.bookDepthAtBandUsd, 0)} />
                       <KV k="mid" v={cents(m.mid)} title={`fonte: ${m.midSource ?? 'N/D'} · ${ageTxt(m.midAgeSec)}`} />
-                      <KV k="bid / ask" v={`${cents(m.bestBid)} / ${cents(m.bestAsk)}`} />
-                      <KV k="size minima" v={num(m.minSize)} />
                       <KV k="scade fra" v={hoursTxt(m.hoursToResolution)} />
                     </div>
 
@@ -621,6 +696,9 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
                     <div className="lrc-mkt-actions">
                       <button className="lrc-link" onClick={() => setOpenLadder(open ? null : m.marketId)}>
                         {open ? 'Nascondi dettaglio banda' : 'Dettaglio banda'}
+                      </button>
+                      <button className="lrc-link" onClick={() => setOpenTech(tech ? null : m.marketId)}>
+                        {tech ? 'Nascondi dettagli tecnici' : 'Dettagli tecnici'}
                       </button>
                       <Link className="lrc-link" href={`/dashboard/liquidity-rewards/${encodeURIComponent(m.marketId)}`} prefetch={false}>Apri il book →</Link>
                       <Link className="lrc-link" href={`/dashboard/liquidity-rewards/${encodeURIComponent(m.marketId)}/event`} prefetch={false}>Scheda mercato →</Link>
@@ -637,10 +715,21 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
                         <div className="lrc-mkt-grid">
                           <KV k="banda" v={`${cents(m.bandLo)} – ${cents(m.bandHi)}`} />
                           <KV k="raggio banda" v={`±${num(m.bandRadiusCents, 2)}¢`} />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* REFERENCE DATA, not glance data. Tick size, venue min-size, the market id: needed
+                        when you are debugging a specific order, noise the other 99% of the time. */}
+                    {tech && (
+                      <div className="lrc-expand" data-lrc-tech={m.marketId}>
+                        <div className="lrc-mkt-grid">
+                          <KV k="bid / ask" v={`${cents(m.bestBid)} / ${cents(m.bestAsk)}`} />
+                          <KV k="size minima" v={num(m.minSize)} title="min_incentive_size: sotto questa dimensione l ordine è valido sul CLOB ma invisibile al programma premi" />
                           <KV k="tick" v={m.tick == null ? 'N/D' : String(m.tick)} />
                           <KV k="volume 24h" v={money(m.volume24hUsd, 0)} />
                           <KV k="categoria" v={m.category ?? 'N/D'} />
-                          <KV k="id" v={`${m.marketId.slice(0, 10)}…`} title={m.marketId} />
+                          <KV k="id mercato" v={`${m.marketId.slice(0, 10)}…`} title={m.marketId} />
                         </div>
                       </div>
                     )}
@@ -660,6 +749,7 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
       {/* ── 3 · POSIZIONI ─────────────────────────────────────────────────────────────────────────── */}
       {tab === 'posizioni' && (
         <section className="lrc-sec" data-lrc-section="posizioni">
+          <Ask q="Cosa ho in mano?" sub="Esposizione netta per mercato, letta dal venue in sola lettura." />
           <div className="lrc-sechead">
             <span className="lrc-sectitle">Posizioni aperte · esposizione netta per mercato</span>
             <button className="lrc-btn" onClick={loadPositions} disabled={posLoading}>{posLoading ? 'Lettura…' : 'Aggiorna'}</button>
@@ -737,6 +827,7 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
       {/* ── 4 · ORDINI MANUALI ────────────────────────────────────────────────────────────────────── */}
       {tab === 'ordini' && (
         <section className="lrc-sec" data-lrc-section="ordini">
+          <Ask q="Cosa ho sul book, e devo muoverlo?" sub="Piazza, cancella e riprezza. Ogni bottone passa dagli stessi gate del motore." />
           {(() => {
             // The ladder for the market the manual panel is pinned to — same board data, so the ladder and
             // the panel below cannot show a different band or a different mid.
@@ -769,6 +860,7 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
       {/* ── 5 · ALLOCA CAPITALE ───────────────────────────────────────────────────────────────────── */}
       {tab === 'alloca' && (
         <section className="lrc-sec" data-lrc-section="alloca">
+          <Ask q="Quanto capitale metto, e su quali mercati?" sub="È un piano, non un ordine: questa sezione non piazza nulla da sola." />
           <RewardsAllocatePanel />
         </section>
       )}
@@ -776,6 +868,7 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
       {/* ── 6 · REGOLE ────────────────────────────────────────────────────────────────────────────── */}
       {tab === 'regole' && (
         <section className="lrc-sec" data-lrc-section="regole">
+          <Ask q="Come si guadagna, esattamente?" sub="Le regole del programma premi, e lo stato di ogni tuo ordine rispetto a quelle regole." />
           <div className="lrc-card lrc-card-wide">
             <div className="lrc-card-k">Come si guadagna, in breve</div>
             <ul className="lrc-rules">
@@ -879,6 +972,59 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
   );
 }
 
+/**
+ * The instrument at the top of the console: one question, one answer, one colour.
+ *
+ * The ring is decorative (aria-hidden) — the state is carried by the text, so it survives a screen
+ * reader, a colour-blind operator and a monochrome screen. Colour is the fast path, never the only one.
+ */
+function StatusRing({ state, label, detail }: { state: 'ok' | 'warn' | 'bad' | 'unknown'; label: string; detail: string }) {
+  return (
+    <div className={`lrc-ring-row lrc-s-${state}`} data-lrc-earning={state}>
+      <span className="lrc-ring" aria-hidden="true"><span className="lrc-ring-core" /></span>
+      <span className="lrc-ring-txt">
+        <span className="lrc-ring-q">Il capitale sta maturando premi?</span>
+        <span className="lrc-ring-a">{label}</span>
+        <span className="lrc-ring-d">{detail}</span>
+      </span>
+    </div>
+  );
+}
+
+/**
+ * Per-source freshness. Each source is judged against ITS OWN cadence, because "45 seconds old" is
+ * healthy for a 60s balance read and two polls missed for a 20s order board. A single global
+ * "aggiornato Xs fa" cannot say that, and hides the one that actually went stale.
+ */
+function Freshness({ items }: { items: Array<{ k: string; ageSec: number | null; everySec: number }> }) {
+  return (
+    <div className="lrc-fresh" data-lrc-freshness>
+      {items.map((i) => {
+        const st = i.ageSec == null ? 'unknown'
+          : i.ageSec > i.everySec * 3 ? 'bad'
+            : i.ageSec > i.everySec * 1.5 ? 'warn' : 'ok';
+        return (
+          <span key={i.k} className={`lrc-fresh-i lrc-s-${st}`}>
+            <span className="lrc-fresh-dot" aria-hidden="true" />
+            <span className="lrc-fresh-k">{i.k}</span>
+            <span className="lrc-fresh-v">{i.ageSec == null ? 'N/D' : ageTxt(i.ageSec)}</span>
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+/** The question a section answers, stated before its numbers. */
+function Ask({ q, sub }: { q: string; sub?: string }) {
+  return (
+    <div className="lrc-ask">
+      <h2 className="lrc-ask-q">{q}</h2>
+      {sub && <p className="lrc-ask-s">{sub}</p>}
+    </div>
+  );
+}
+
 function Metric({ k, v, sub, warn }: { k: string; v: string; sub?: string; warn?: boolean }) {
   return (
     <div className={`lrc-metric ${warn ? 'is-warn' : ''}`}>
@@ -900,7 +1046,46 @@ function KV({ k, v, title }: { k: string; v: string; title?: string }) {
 
 const CSS = `
 .lrc-root { max-width: 1080px; margin: 0 auto 20px; padding: 14px 16px 20px; color: #E6E9EF;
-  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  /* FOUR semantic states, one token set. Green is the Edgeradar mint 0FBE82 from the design system,
+     not a new invented hue. Grey is a first-class state, not a washed-out red: on this page the
+     difference between zero and unreadable is the difference between a fact and its absence. */
+  --lrc-ok: #0FBE82; --lrc-ok-dim: #4FD8A0; --lrc-ok-bd: #14624A; --lrc-ok-bg: #08201A;
+  --lrc-warn: #E8B23A; --lrc-warn-bd: #4A3C12; --lrc-warn-bg: #1A1608;
+  --lrc-bad: #E5574E; --lrc-bad-dim: #FF9C93; --lrc-bad-bd: #5C1F1A; --lrc-bad-bg: #1A0B0A;
+  --lrc-unk: #8B95A5; --lrc-unk-bd: #2E3646; --lrc-unk-bg: #141926; }
+
+/* Each state binds the same three slots, so every instrument below reads one vocabulary. */
+.lrc-s-ok      { --s: var(--lrc-ok-dim);  --s-bd: var(--lrc-ok-bd);   --s-bg: var(--lrc-ok-bg); }
+.lrc-s-warn    { --s: var(--lrc-warn);    --s-bd: var(--lrc-warn-bd); --s-bg: var(--lrc-warn-bg); }
+.lrc-s-bad     { --s: var(--lrc-bad-dim); --s-bd: var(--lrc-bad-bd);  --s-bg: var(--lrc-bad-bg); }
+.lrc-s-unknown { --s: var(--lrc-unk);     --s-bd: var(--lrc-unk-bd);  --s-bg: var(--lrc-unk-bg); }
+
+/* THE INSTRUMENT: one question, one answer, one colour. The ring is aria-hidden because the state is
+   already in the text — colour is the fast path here, never the only one. */
+.lrc-ring-row { display: flex; gap: 14px; align-items: flex-start; margin-top: 12px; padding: 12px 14px;
+  border: 1px solid var(--s-bd); background: var(--s-bg); border-radius: 12px; }
+.lrc-ring { flex: 0 0 auto; width: 46px; height: 46px; border-radius: 50%; border: 3px solid var(--s);
+  display: flex; align-items: center; justify-content: center; }
+.lrc-ring-core { width: 16px; height: 16px; border-radius: 50%; background: var(--s); }
+.lrc-ring-txt { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
+.lrc-ring-q { font-size: 11px; text-transform: uppercase; letter-spacing: .4px; color: #8B95A5; }
+.lrc-ring-a { font-size: 21px; font-weight: 800; color: var(--s); line-height: 1.2; }
+.lrc-ring-d { font-size: 12.5px; color: #B7C0CE; line-height: 1.5; overflow-wrap: anywhere; }
+
+/* FRESHNESS PER SOURCE. Each pill is coloured against its OWN cadence, so a 45s-old balance stays green
+   while a 45s-old order board turns amber. One global age line cannot express that. */
+.lrc-fresh { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.lrc-fresh-i { display: inline-flex; align-items: center; gap: 6px; font-size: 11px;
+  border: 1px solid var(--s-bd); background: var(--s-bg); border-radius: 999px; padding: 5px 10px; }
+.lrc-fresh-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--s); flex: 0 0 auto; }
+.lrc-fresh-k { color: #8B95A5; }
+.lrc-fresh-v { color: var(--s); font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* The question a section answers, before its numbers. */
+.lrc-ask { margin: 0 0 13px; }
+.lrc-ask-q { font-size: 19px; font-weight: 800; margin: 0; line-height: 1.25; letter-spacing: -.2px; color: #E6E9EF; }
+.lrc-ask-s { font-size: 12.5px; color: #8B95A5; margin: 5px 0 0; line-height: 1.5; }
 .lrc-head { border: 1px solid #2A3040; border-radius: 12px; background: #10141C; padding: 14px 16px; }
 .lrc-title-row { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 .lrc-h1 { font-size: 15px; font-weight: 800; letter-spacing: .3px; margin: 0; color: #E6E9EF; }
@@ -918,7 +1103,7 @@ const CSS = `
 .lrc-tabs { display: flex; gap: 6px; margin-top: 14px; overflow-x: auto; -webkit-overflow-scrolling: touch;
   scrollbar-width: none; padding-bottom: 2px; }
 .lrc-tabs::-webkit-scrollbar { display: none; }
-.lrc-tab { position: relative; min-height: 38px; padding: 0 14px; border: 1px solid #2E3646; border-radius: 8px;
+.lrc-tab { position: relative; min-height: 44px; padding: 0 14px; border: 1px solid #2E3646; border-radius: 8px;
   background: #141926; color: #9AA4B2; font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap;
   flex: 0 0 auto; touch-action: manipulation; }
 .lrc-tab:hover { background: #1b2233; }
@@ -959,10 +1144,10 @@ const CSS = `
 
 .lrc-controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
 .lrc-scope { display: flex; gap: 6px; flex-wrap: wrap; }
-.lrc-chip { min-height: 34px; padding: 0 12px; border: 1px solid #2E3646; border-radius: 8px; background: #141926;
+.lrc-chip { min-height: 44px; padding: 0 12px; border: 1px solid #2E3646; border-radius: 8px; background: #141926;
   color: #9AA4B2; font-size: 12px; font-weight: 700; cursor: pointer; }
 .lrc-chip.is-on { color: #DCE6FF; border-color: #2E5FBE; background: #16233E; }
-.lrc-search { flex: 1 1 200px; min-width: 0; min-height: 34px; padding: 0 10px; border: 1px solid #2E3646;
+.lrc-search { flex: 1 1 200px; min-width: 0; min-height: 44px; padding: 0 10px; border: 1px solid #2E3646;
   border-radius: 8px; background: #0d1420; color: #E6E9EF; font-size: 13px; }
 
 .lrc-mkts { display: flex; flex-direction: column; gap: 12px; }
@@ -1001,8 +1186,9 @@ const CSS = `
 .lrc-kv-v { display: block; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 
 .lrc-mkt-actions { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 11px; }
-.lrc-link { background: none; border: none; padding: 0; font-size: 12px; font-weight: 700; color: #7FA6FF;
-  cursor: pointer; text-decoration: none; }
+.lrc-link { display: inline-flex; align-items: center; min-height: 44px; background: none; border: none;
+  padding: 0; font-size: 13px; font-weight: 700; color: #7FA6FF; cursor: pointer; text-decoration: none;
+  touch-action: manipulation; }
 .lrc-link:hover { text-decoration: underline; }
 .lrc-expand { margin-top: 12px; border-top: 1px solid #1a2030; padding-top: 10px; }
 
@@ -1024,7 +1210,7 @@ const CSS = `
 .lrc-rules code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: #9AA4B2;
   background: #0d1119; border: 1px solid #232937; border-radius: 4px; padding: 1px 5px; }
 
-.lrc-btn { min-height: 38px; padding: 0 16px; border: 1px solid #2E5FBE; border-radius: 8px; cursor: pointer;
+.lrc-btn { min-height: 44px; padding: 0 16px; border: 1px solid #2E5FBE; border-radius: 8px; cursor: pointer;
   font-size: 13px; font-weight: 700; color: #DCE6FF; background: #16233E; touch-action: manipulation; }
 .lrc-btn:hover { background: #1B2C4E; }
 .lrc-btn:disabled { opacity: .55; cursor: not-allowed; }
@@ -1051,5 +1237,11 @@ const CSS = `
   .lrc-mkt-top { grid-template-columns: minmax(0, 1fr); }
   .lrc-mkt-pot { text-align: left; }
   .lrc-card-big { font-size: 22px; }
+  .lrc-ring-row { gap: 11px; padding: 11px 12px; }
+  .lrc-ring { width: 40px; height: 40px; }
+  .lrc-ring-a { font-size: 19px; }
+  .lrc-ask-q { font-size: 17px; }
+  /* The action row keeps 44px targets, so it needs vertical room to wrap without cramping. */
+  .lrc-mkt-actions { gap: 2px 16px; margin-top: 6px; }
 }
 `;
