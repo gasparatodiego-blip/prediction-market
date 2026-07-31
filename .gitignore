@@ -123,6 +123,16 @@ data/maker-arming.json.tmp.*
 data/maker-manual-mode.json
 data/maker-manual-mode.json.tmp.*
 data/maker-manual-mode-audit.jsonl
+# auto-reprice (lib/maker/auto-reprice-config.js): the operator's ON/OFF switches + their audit trail,
+# and the watcher's own runtime state (heartbeat, last automatic re-price, rolling hourly counts). Same
+# reasoning as the manual-ownership flag above — WHICH markets are currently automated, and when the
+# watcher last beat, are machine-local facts. The code that reads them is source; the state is not.
+# The state file in particular is rewritten every few seconds and would otherwise churn the diff.
+data/maker-auto-reprice.json
+data/maker-auto-reprice.json.tmp.*
+data/maker-auto-reprice-state.json
+data/maker-auto-reprice-state.json.tmp.*
+data/maker-auto-reprice-audit.jsonl
 
 # Polymarket fee SSOT cache (runtime, per-market base_fee; not source)
 data/polymarket-fee-cache.json
