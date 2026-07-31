@@ -32,13 +32,48 @@ function capitalForShare(competitorQ, mid, X) {
   return 2 * perSide;
 }
 
-/** Inverse: the share a TOTAL capital buys at S=1. size = (capital/2)/price; share = size/(size+cQ). */
-function shareForCapital(competitorQ, mid, capitalTotal) {
+/**
+ * Inverse: the share a TOTAL capital buys at S=1. size = (capital/2)/price; share = size/(size+cQ).
+ *
+ * THE VENUE MINIMUM IS PART OF THE SCORING, NOT A DETAIL. Polymarket publishes a per-market
+ * min_incentive_size (`rewards_min_size`), and an order smaller than it is not scored — it earns nothing.
+ * This repo already encodes that rule in BOTH directions inside its SSOT, lib/rewardScore.js: scoreSide()
+ * skips `o.size < minSize` when measuring the COMPETITION, and quadraticUserShare() returns 0 for OUR OWN
+ * order below the minimum. This function used to apply it to neither, which made a capital too small to be
+ * scored at all look like a positive — and worst of all, look BEST: with competitorQ measured as 0 (nobody
+ * else meets the minimum either) the formula returned share = 1, i.e. "you take 100% of the pot", for a
+ * few dollars that the venue would score as zero. On the 2026-07-31 board that single omission accounted
+ * for $28.00/day of a $52.96/day headline: three markets funded at $2 against minimums of 200, 200 and 50
+ * shares.
+ *
+ * `minSize` is OPTIONAL and defaults to no gate, using the exact `(minSize || 0)` idiom of
+ * quadraticUserShare — so a caller that does not know the market's minimum gets the old arithmetic and no
+ * silent new refusal, while every caller that does know it gets the venue's real rule.
+ *
+ * @param {number} competitorQ  in-band qualifying depth of everyone else (shares)
+ * @param {number} mid          scoring mid
+ * @param {number} capitalTotal BOTH sides' capital ($)
+ * @param {number} [minSize]    venue min_incentive_size (shares). Below it the share is 0, never a fraction.
+ */
+function shareForCapital(competitorQ, mid, capitalTotal, minSize) {
   if (!(competitorQ >= 0) || !(mid > 0) || !(capitalTotal >= 0)) return null;
   const price = clampPrice(mid);
   const size = (capitalTotal / 2) / price;
+  if (size < (minSize || 0)) return 0;   // venue min_incentive_size — same rule, same idiom as quadraticUserShare
   const denom = size + competitorQ;
   return denom > 0 ? size / denom : 0;
+}
+
+/**
+ * The TOTAL capital that would put a qualifying order on BOTH sides: minSize shares per side, at the
+ * market's own price. This is the number the operator needs when a row scores zero — "you are under the
+ * venue minimum" is only actionable together with "and here is what it takes". Derived from the same rule
+ * shareForCapital enforces, so the threshold and the refusal can never drift apart.
+ * Returns null when the inputs cannot answer it (never a guessed floor).
+ */
+function capitalToQualify(mid, minSize) {
+  if (!(mid > 0) || !(minSize > 0)) return null;
+  return 2 * clampPrice(mid) * minSize;
 }
 
 /**
@@ -108,4 +143,4 @@ function scoreLayeredConfig(cfg = {}) {
   return { ...scored, reconciliation: capped.reconciliation, maxUsablePerSide: plan.maxUsablePerSide };
 }
 
-module.exports = { capitalForShare, shareForCapital, scoreLayeredConfig, measureFromBook, quadraticUserShare, clampPrice, rewardLayers: LAYERS.rewardLayers };
+module.exports = { capitalForShare, shareForCapital, capitalToQualify, scoreLayeredConfig, measureFromBook, quadraticUserShare, clampPrice, rewardLayers: LAYERS.rewardLayers };

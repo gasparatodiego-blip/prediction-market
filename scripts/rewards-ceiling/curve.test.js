@@ -3,7 +3,7 @@
 // Unit tests for the capital-to-share curve — hand-computed expected values, and cross-checked against the
 // shared lib (quadraticUserShare) so my algebraic inverse can never diverge from the lane's own scoring.
 const assert = require('assert');
-const { capitalForShare, shareForCapital, quadraticUserShare } = require('./lib/curve');
+const { capitalForShare, shareForCapital, capitalToQualify, quadraticUserShare } = require('./lib/curve');
 
 let n = 0;
 const ok = (name, cond) => { assert.ok(cond, 'FAIL: ' + name); console.log('  ✓ ' + name); n++; };
@@ -43,5 +43,36 @@ ok('mid 0.20, cQ 300, X=50% → total $120', near(capitalForShare(300, 0.20, 0.5
 // ── Degenerate guards.
 ok('X→1 is not representable (returns for X<1 only)', capitalForShare(500, 0.5, 1) === null);
 ok('cQ=0 → zero capital holds ~100% (no competition)', capitalForShare(0, 0.5, 0.5) === 0);
+
+// ── LA SIZE MINIMA DEL VENUE (min_incentive_size) — la regola che mancava. ──────────────────────────────
+// Polymarket non assegna punteggio a un ordine sotto min_incentive_size: quel capitale rende ZERO, non una
+// frazione del montepremi. lib/rewardScore.quadraticUserShare lo fa gia' ("returns 0 if the order is below
+// the venue min size"); shareForCapital non lo faceva, e il caso peggiore era anche il piu' invitante — con
+// competitorQ misurato a 0 restituiva share = 1, cioe' "prendi il 100% del pot", per pochi dollari che il
+// venue avrebbe scorato zero.
+console.log('\nvenue min_incentive_size — sotto il minimo il rendimento e ZERO, mai positivo:');
+{
+  // mid 0.50, cQ 500, minimo 200 share. $100 totali → $50/lato → 100 share: SOTTO il minimo.
+  ok('capitale sotto il minimo → share 0 (non una frazione)', shareForCapital(500, 0.50, 100, 200) === 0);
+  ok('senza il minimo la STESSA chiamata dava un positivo (il bug)', shareForCapital(500, 0.50, 100) > 0);
+  // il caso che faceva piu' danno: nessun concorrente qualificato → il bug diceva "100% del pot"
+  ok('book vuoto + sotto il minimo → 0, non 1', shareForCapital(0, 0.50, 100, 200) === 0);
+  ok('book vuoto SENZA il minimo → 1 (il bug, in forma pura)', shareForCapital(0, 0.50, 100) === 1);
+  // esattamente al minimo qualifica, un capello sotto no: la soglia e' >=, come in quadraticUserShare
+  ok('esattamente al minimo → qualifica', shareForCapital(500, 0.50, 200, 200) > 0);
+  ok('un centesimo sotto il minimo → 0', shareForCapital(500, 0.50, 199.99, 200) === 0);
+  // sopra il minimo il numero non cambia di una virgola rispetto a prima: la correzione e' un gate, non un fattore
+  ok('sopra il minimo il valore e IDENTICO a prima (gate, non fattore)',
+    near(shareForCapital(500, 0.50, 1000, 200), shareForCapital(500, 0.50, 1000), 0));
+  ok('minSize assente/0 → nessun gate (compatibilita con i chiamanti che non lo conoscono)',
+    near(shareForCapital(500, 0.50, 100, undefined), shareForCapital(500, 0.50, 100), 0) && near(shareForCapital(500, 0.50, 100, 0), shareForCapital(500, 0.50, 100), 0));
+  // stessa risposta della SSOT sullo stesso input: e' la prova che non ho scritto una seconda regola
+  ok('concorda con lib/rewardScore.quadraticUserShare sotto il minimo (entrambe 0)',
+    quadraticUserShare(500, 0.50, 6, 200, 50, 0) === 0 && shareForCapital(500, 0.50, 100, 200) === 0);
+  // il capitale che sbloccherebbe la riga: minSize share per lato, ai due lati
+  ok('capitalToQualify(0.50, 200) = $200 (200 share/lato a 0,50)', near(capitalToQualify(0.50, 200), 200));
+  ok('capitalToQualify su input non rispondibili → null, mai una soglia inventata',
+    capitalToQualify(0, 200) === null && capitalToQualify(0.5, 0) === null);
+}
 
 console.log(`\ncurve.test: ${n} assertions passed`);

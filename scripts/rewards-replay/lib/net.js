@@ -12,7 +12,7 @@
 // fills that resting produced, at each horizon. NET = gross + Σmarkout (so a negative markout REDUCES net).
 // Everything is a WINDOW total; annualising is the caller's decision and is REFUSED under 48h.
 
-const { shareForCapital } = require('../../rewards-ceiling/lib/curve');
+const { shareForCapital, capitalToQualify } = require('../../rewards-ceiling/lib/curve');
 
 function fin(x) { return typeof x === 'number' && Number.isFinite(x); }
 function median(xs) {
@@ -40,7 +40,11 @@ function median(xs) {
  * @returns { rows:[...], aggregate:{...}, excluded:{noPot,noDepth} }
  */
 function computeNet(byMarket, markouts, potByCond, cfg) {
-  const { sizeUsd, wsOnly } = cfg;
+  // minSizeByMarket: conditionId → the venue's published min_incentive_size (shares). OPTIONAL — a caller
+  // that does not supply it keeps the previous arithmetic exactly (shareForCapital applies no gate), so no
+  // existing backtest output moves silently. A caller that does supply it gets the venue's real rule: a
+  // per-side size below the market's minimum is not scored, so its gross is 0, not a fraction of the pot.
+  const { sizeUsd, wsOnly, minSizeByMarket = null } = cfg;
   const capitalTotal = 2 * sizeUsd; // both sides
   const moByMarket = new Map();
   for (const m of markouts) {
@@ -60,7 +64,13 @@ function computeNet(byMarket, markouts, potByCond, cfg) {
     // observed span for THIS market (first→last sample). Cost is amortised over this, not the global window.
     const spanHours = src.length >= 2 ? (src[src.length - 1].tsMs - src[0].tsMs) / 3_600_000 : 0;
     const spanDays = spanHours / 24;
-    const share = shareForCapital(limDepth, mid, capitalTotal); // ceiling scoring; our size in denominator
+    const minSize = minSizeByMarket ? minSizeByMarket.get(marketId) : undefined;
+    const share = shareForCapital(limDepth, mid, capitalTotal, minSize); // ceiling scoring, venue min applied
+    // WHY this row scores zero, when it does. `share === 0` with a positive pot and positive depth is the
+    // under-the-minimum case, and it travels with the capital that would fix it — a refusal the operator
+    // cannot act on is only half a refusal.
+    const sizePerSideShares = (capitalTotal / 2) / Math.max(0.01, Math.min(0.99, mid));
+    const belowVenueMinSize = fin(minSize) && minSize > 0 && sizePerSideShares < minSize;
     const grossPerDay = pot * share;                            // $/day rate — window-independent
     const grossWindow = grossPerDay * spanDays;                 // over the market's OWN observed span
     const mos = moByMarket.get(marketId) || [];
@@ -84,6 +94,11 @@ function computeNet(byMarket, markouts, potByCond, cfg) {
       marketId, pot, share, limDepthShares: limDepth, mid, spanHours, grossPerDay, grossWindow,
       fills: mos.length, costWindow: costWindowAt, netWindow: netWindowAt, costPerDay: costPerDayAt,
       netPerDay: netPerDayAt, missing: missingAt,
+      // the venue minimum as it applied to THIS row (null when the caller did not supply one)
+      minSizeShares: fin(minSize) ? minSize : null,
+      sizePerSideShares,
+      belowVenueMinSize,
+      capitalToQualifyUsd: belowVenueMinSize ? capitalToQualify(mid, minSize) : null,
     });
   }
   // aggregate — a market whose net is UNKNOWN at a horizon is excluded from that horizon's totals AND

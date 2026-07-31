@@ -33,11 +33,14 @@ function fin(x) { return typeof x === 'number' && Number.isFinite(x); }
  * The `windowHours` param is accepted for call-site compatibility but ignored (computeNet uses the span).
  */
 function perMarketNetAtSize(marketId, marketRows, tokenTrades, potByCond, cfg) {
-  const { offsetCents, sizeUsd, maxInventoryUsd, policy } = cfg; // policy: 'hold' (default) | 'close-now'
+  const { offsetCents, sizeUsd, maxInventoryUsd, policy, minSizeByMarket = null } = cfg; // policy: 'hold' (default) | 'close-now'
   const fillsRes = reconstructTapeFillsForMarket(marketRows, tokenTrades, { offsetCents, sizeUsd, maxInventoryUsd });
   const one = new Map([[marketId, marketRows]]);
   const MO = markoutAll(fillsRes.fills, one);
-  const net = computeNet(one, MO, potByCond, { sizeUsd, wsOnly: false }); // gross + HOLD cost, observed-window
+  // minSizeByMarket travels down to computeNet so the venue's min_incentive_size applies at EVERY size on
+  // the grid: below the minimum a level scores 0, so the knapsack stops "buying" a market with capital the
+  // venue would not score at all.
+  const net = computeNet(one, MO, potByCond, { sizeUsd, wsOnly: false, minSizeByMarket }); // gross + HOLD cost, observed-window
   const row = net.rows[0] || null;
   if (!row) {
     return { marketId, sizeUsd, capital: 2 * sizeUsd, excluded: true, spanHours: null, grossPerDay: null, grossWindow: null, cost5m: null, costPerDay5m: null, netWindow5m: null, netPerDay5m: null, fills: fillsRes.fills.length, share: null, closed: null, stuck: null, nakedRefused: null };
@@ -65,6 +68,8 @@ function perMarketNetAtSize(marketId, marketRows, tokenTrades, potByCond, cfg) {
     spanHours: row.spanHours, grossPerDay: row.grossPerDay, grossWindow: row.grossWindow,
     cost5m, costPerDay5m, netWindow5m, netPerDay5m,                         // ← netPerDay5m is the objective
     fills: fillsRes.fills.length, closed, stuck, nakedRefused, noBook, share: row.share,
+    minSizeShares: row.minSizeShares, sizePerSideShares: row.sizePerSideShares,
+    belowVenueMinSize: row.belowVenueMinSize, capitalToQualifyUsd: row.capitalToQualifyUsd,
   };
 }
 
@@ -77,11 +82,11 @@ function perMarketNetAtSize(marketId, marketRows, tokenTrades, potByCond, cfg) {
  *            netWindow5m, netPerDay5m, net5m, fills, share, spanHours }] }
  */
 function perMarketNetCurve(marketId, marketRows, tokenTrades, potByCond, opts) {
-  const { offsetCents, maxInventoryUsd, sizeGrid, unitUsd, policy } = opts;
+  const { offsetCents, maxInventoryUsd, sizeGrid, unitUsd, policy, minSizeByMarket = null } = opts;
   const levels = [{ sizeUsd: 0, capital: 0, units: 0, grossPerDay: 0, cost5m: 0, costPerDay5m: 0, netWindow5m: 0, netPerDay5m: 0, net5m: 0, fills: 0, closed: 0, stuck: 0, nakedRefused: 0, share: 0, spanHours: null }];
   let excluded = false;
   for (const s of sizeGrid) {
-    const r = perMarketNetAtSize(marketId, marketRows, tokenTrades, potByCond, { offsetCents, sizeUsd: s, maxInventoryUsd, policy });
+    const r = perMarketNetAtSize(marketId, marketRows, tokenTrades, potByCond, { offsetCents, sizeUsd: s, maxInventoryUsd, policy, minSizeByMarket });
     if (r.excluded) { excluded = true; continue; }         // pot/depth missing → unfundable; keep only zero level
     if (r.netPerDay5m == null) continue;                   // cost UNKNOWN at this size → skip (never default to 0)
     levels.push({
@@ -89,6 +94,8 @@ function perMarketNetCurve(marketId, marketRows, tokenTrades, potByCond, opts) {
       grossPerDay: r.grossPerDay, cost5m: r.cost5m, costPerDay5m: r.costPerDay5m,
       netWindow5m: r.netWindow5m, netPerDay5m: r.netPerDay5m, net5m: r.netPerDay5m, // net5m := objective (net/day)
       fills: r.fills, closed: r.closed, stuck: r.stuck, nakedRefused: r.nakedRefused, noBook: r.noBook, share: r.share,
+      minSizeShares: r.minSizeShares, sizePerSideShares: r.sizePerSideShares,
+      belowVenueMinSize: r.belowVenueMinSize, capitalToQualifyUsd: r.capitalToQualifyUsd,
     });
   }
   return { marketId, excluded, levels };
@@ -150,7 +157,7 @@ function knapsack(curves, budgetUnits) {
  * @returns { budgetUsd, unitUsd, ...knapsack result, grossWindow, cost5mWindow }
  */
 function allocateBudget(byMarket, marketTokens, tapeByToken, potByCond, opts) {
-  const { offsetCents, maxInventoryUsd, budgetUsd, unitUsd, maxPerMarketUsd, policy } = opts;
+  const { offsetCents, maxInventoryUsd, budgetUsd, unitUsd, maxPerMarketUsd, policy, minSizeByMarket = null } = opts;
   const perSideStep = unitUsd / 2;
   const capPerMarket = Math.min(maxPerMarketUsd || budgetUsd, budgetUsd); // a single market may take up to the whole budget
   const maxLevels = Math.max(1, Math.floor(capPerMarket / unitUsd));
@@ -160,7 +167,7 @@ function allocateBudget(byMarket, marketTokens, tapeByToken, potByCond, opts) {
   for (const [marketId, rows] of byMarket.entries()) {
     const tokenId = marketTokens.get(marketId);
     const trades = (tokenId && tapeByToken.get(tokenId)) || [];
-    const c = perMarketNetCurve(marketId, rows, trades, potByCond, { offsetCents, maxInventoryUsd, sizeGrid, unitUsd, policy });
+    const c = perMarketNetCurve(marketId, rows, trades, potByCond, { offsetCents, maxInventoryUsd, sizeGrid, unitUsd, policy, minSizeByMarket });
     curves.push(c);
   }
   const budgetUnits = Math.floor(budgetUsd / unitUsd);
@@ -168,7 +175,17 @@ function allocateBudget(byMarket, marketTokens, tapeByToken, potByCond, opts) {
   // attach per-day gross/cost aggregates over the chosen allocation (for reporting)
   let grossPerDay = 0, costPerDay5m = 0;
   for (const a of res.allocation) { grossPerDay += fin(a.grossPerDay) ? a.grossPerDay : 0; costPerDay5m += fin(a.costPerDay5m) ? a.costPerDay5m : 0; }
-  return { budgetUsd, unitUsd, curves, grossPerDay, costPerDay5m, ...res };
+  // Markets the venue minimum priced out of THIS budget: every funded level scored zero because the size
+  // the budget can buy is under min_incentive_size. Reported rather than silently absent — the operator's
+  // question is "why is that market not here", and the answer is a dollar figure.
+  const belowMinSize = [];
+  for (const c of curves) {
+    const funded = c.levels.filter((l) => l.units > 0);
+    if (!funded.length || !funded.every((l) => l.belowVenueMinSize)) continue;
+    const need = funded.map((l) => l.capitalToQualifyUsd).filter((x) => fin(x));
+    belowMinSize.push({ marketId: c.marketId, minSizeShares: funded[0].minSizeShares, capitalToQualifyUsd: need.length ? Math.min.apply(null, need) : null });
+  }
+  return { budgetUsd, unitUsd, curves, grossPerDay, costPerDay5m, belowMinSize, ...res };
 }
 
 module.exports = { perMarketNetAtSize, perMarketNetCurve, knapsack, allocateBudget };

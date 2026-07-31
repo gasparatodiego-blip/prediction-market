@@ -45,6 +45,9 @@ type Row = {
   maxSpreadCents: number | null; grossInBandPerDay: number | null; defaultOffsetTicks: number;
   computedDefaultOffsetTicks: number; defaultReason: string; defaultNetDerived: boolean; grossMaxDefaultTicks: number;
   fillScore: number | null; fillsByTick: FillTick[];
+  // La size minima del venue (min_incentive_size) per questo mercato. Sotto di essa il venue non assegna
+  // punteggio: il lordo e' ZERO, e `capitalToQualifyUsd` e' il capitale che lo sbloccherebbe.
+  minSizeShares: number | null; belowVenueMinSize: boolean; capitalToQualifyUsd: number | null;
   realisticByTick: RealisticTick[]; realisticBestTick: number | null; realisticBestPerDay: number | null;
   poolTrend: PoolTrend;
 };
@@ -62,6 +65,8 @@ type Plan = {
   annualisedGross: { pct: number | null; capped: boolean; cap: number; label: string };
   annualisedRealistic: { pct: number | null; capped: boolean; cap: number; label: string };
   frontier: { count: number; net: number }[];
+  // Mercati che la size minima del venue esclude a questo capitale, con il capitale che li sbloccherebbe.
+  belowMinSize?: { marketId: string; name: string | null; shortId: string; minSizeShares: number | null; capitalToQualifyUsd: number | null }[];
   error?: string;
 };
 
@@ -98,7 +103,9 @@ function rowAt(r: Row, offsetTicks: number) {
   const offsetCents = r.tick != null ? offsetTicks * r.tick * 100 : null;
   const bandKnown = r.maxSpreadCents != null;
   const inBand = bandKnown && offsetCents != null ? offsetCents <= r.maxSpreadCents! / 2 + 1e-9 : null;
-  const gross = r.grossInBandPerDay == null ? null : (inBand === false ? 0 : r.grossInBandPerDay);
+  // Due regole del venue azzerano la riga, non una: FUORI BANDA non scora, e SOTTO LA SIZE MINIMA non
+  // scora. La seconda non dipende dall'offset — vale a qualunque tick — quindi va applicata prima.
+  const gross = r.grossInBandPerDay == null ? null : (r.belowVenueMinSize ? 0 : (inBand === false ? 0 : r.grossInBandPerDay));
   const fills = ft ? ft.fills : null;
   const cost = ft ? ft.costPerDay : null;
   const net = fills != null && fills > 0 && gross != null && cost != null ? gross - cost : null;
@@ -782,7 +789,13 @@ export default function RewardsAllocatePanel() {
                     <td className={r.tick == null ? 'dash' : ''}>{r.tick == null ? '—' : r.tick}</td>
                     <td className={r.depthShares == null ? 'dash' : ''}>{shares(r.depthShares)}</td>
                     <td className={c.gross == null ? 'dash' : ''} data-alloc-gross>
-                      {c.inBand === false ? <span className="oob" data-alloc-oob-gross><s>{perDay(r.grossInBandPerDay)}</s> $0,00/g · fuori banda</span>
+                      {r.belowVenueMinSize ? (
+                        <span className="oob" data-alloc-belowmin-gross
+                              title={`Il venue non assegna punteggio agli ordini sotto ${r.minSizeShares ?? '—'} share (min_incentive_size): con questo capitale l'ordine non e' scorato, quindi il reward e' zero.`}>
+                          <s>{perDay(r.grossInBandPerDay)}</s> $0,00/g · capitale insufficiente per la size minima del venue
+                          {r.capitalToQualifyUsd != null && <small style={{ display: 'block' }}>servono almeno {money(r.capitalToQualifyUsd)} ({r.minSizeShares} share/lato)</small>}
+                        </span>
+                      ) : c.inBand === false ? <span className="oob" data-alloc-oob-gross><s>{perDay(r.grossInBandPerDay)}</s> $0,00/g · fuori banda</span>
                         : c.bandKnown === false && c.gross != null ? <span>{perDay(c.gross)}<small className="alloc-cat"> banda —</small></span>
                           : <>{perDay(c.gross)}{artifact && <small className="oob" data-alloc-s1-row title="lordo = tetto S=1: non modella il decadimento del punteggio con la distanza dal mid — allargare non è gratis"> · tetto S=1</small>}</>}
                       {/* Proportional bar — the same $/g already in this cell, drawn to the largest usable
@@ -840,6 +853,19 @@ export default function RewardsAllocatePanel() {
             </table>
           </div>
 
+          {/* Mercati che la size minima del venue esclude a QUESTO capitale: sparirebbero dalla tabella
+              senza spiegazione, e la domanda dell'operatore e' esattamente "perche' quel mercato non c'e'". */}
+          {Array.isArray(plan.belowMinSize) && plan.belowMinSize.length > 0 && (
+            <div className="alloc-note" data-alloc-belowmin-list style={{ marginTop: 8, fontSize: 12 }}>
+              <b>{plan.belowMinSize.length} mercati esclusi dalla size minima del venue</b> — con questo capitale
+              l'ordine starebbe sotto <code>min_incentive_size</code> e non verrebbe scorato:{' '}
+              {plan.belowMinSize.slice(0, 6).map((b, i) => (
+                <span key={b.marketId}>{i > 0 ? ' · ' : ''}{b.name || b.shortId} (min {b.minSizeShares} share
+                  {b.capitalToQualifyUsd != null ? `, servono ${money(b.capitalToQualifyUsd)}` : ''})</span>
+              ))}
+              {plan.belowMinSize.length > 6 && <span> · +{plan.belowMinSize.length - 6} altri</span>}
+            </div>
+          )}
           <div className="alloc-sum">
             <div><span>Capitale allocato</span><b>{money(plan.totals.capital)}</b></div>
             <div><span>Non allocato (resto)</span><b>{money(plan.totals.unallocated)}</b></div>
