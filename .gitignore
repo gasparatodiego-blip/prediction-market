@@ -143,6 +143,10 @@ data/maker-auto-reprice.json.tmp.*
 data/maker-auto-reprice-state.json
 data/maker-auto-reprice-state.json.tmp.*
 data/maker-auto-reprice-audit.jsonl
+# catalogo dei mercati aggiunti a mano dalla tab Allocazione (lib/maker/market-catalog.js) — stato
+# runtime dell'operatore, esattamente come l'opt-in qui sopra: non appartiene al repo
+data/maker-manual-markets.json
+data/maker-manual-markets.json.tmp.*
 
 # Polymarket fee SSOT cache (runtime, per-market base_fee; not source)
 data/polymarket-fee-cache.json
