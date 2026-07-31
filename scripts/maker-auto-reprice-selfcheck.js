@@ -542,10 +542,11 @@ async function scenarioReconcile() {
       diagnoseExposure: () => phantomDiag,
       listOrders: async () => ({ ok: true, simulated: false, orders: [] }),   // gone from the book
       fetchVenueTrades: async () => ({ ok: true, trades: [], reason: '0 esecuzioni' }),
+      fetchVenuePositions: async () => ({ ok: true, positions: [], reason: '0 posizioni' }),
       address: '0xTEST',
     });
     ok(resolved.ran === true && resolved.nofills === 1 && resolved.stillUnknown === 0,
-      'un ordine sparito dal book, con le esecuzioni reali che non ne mostrano traccia, viene risolto come NON eseguito');
+      'un ordine sparito dal book, con NESSUNA esecuzione E NESSUNA posizione (due fonti concordi), viene risolto come NON eseguito');
     ok(resolved.resolvedUsd === 24.2,
       `…e riporta i $${resolved.resolvedUsd} di esposizione fantasma ritirati dal gate cap, non solo un conteggio`);
 
@@ -561,6 +562,7 @@ async function scenarioReconcile() {
       diagnoseExposure: () => phantomDiag,
       listOrders: async () => ({ ok: true, simulated: false, orders: [] }),
       fetchVenueTrades: async () => ({ ok: false, trades: null, reason: 'data-api irraggiungibile' }),
+      fetchVenuePositions: async () => ({ ok: true, positions: [], reason: '0 posizioni' }),
     });
     ok(noCheck.ran === true && noCheck.nofills === 0 && noCheck.stillUnknown === 1,
       'se il controllo incrociato sulle esecuzioni NON e\' disponibile, nessun ordine sparito viene risolto — resta sconosciuto e continua a contare (mai a indovinare)');
@@ -571,6 +573,7 @@ async function scenarioReconcile() {
       diagnoseExposure: () => phantomDiag,
       listOrders: async () => ({ ok: true, simulated: true, orders: [] }),
       fetchVenueTrades: async () => ({ ok: true, trades: [] }),
+      fetchVenuePositions: async () => ({ ok: true, positions: [] }),
     });
     ok(sim.ran === false && /non e\' stato interrogato|not-queried|credentials/i.test(sim.reason),
       'senza credenziali il venue non viene interrogato e nulla viene risolto — una lista vuota non letta non e\' una lista vuota');
@@ -581,9 +584,45 @@ async function scenarioReconcile() {
       diagnoseExposure: () => phantomDiag,
       listOrders: async () => ({ ok: true, simulated: false, orders: [{ orderId: 'ORDER_GONE', tokenId: YES, side: 'BUY', price: 0.484, size: 50, sizeMatched: 0 }] }),
       fetchVenueTrades: async () => ({ ok: true, trades: [] }),
+      fetchVenuePositions: async () => ({ ok: true, positions: [] }),
     });
     ok(resting.nofills === 0,
       'un ordine ANCORA a riposo sul venue non viene mai risolto: continua a contare come esposizione, che e\' corretto');
+
+    // ── P1: TWO SOURCES MUST AGREE BEFORE AN ORDER IS CALLED UNFILLED ────────────────────────────
+    // The bug this pins: /trades lags /positions. On 2026-07-31 a hand order on the NO leg genuinely
+    // filled, /positions showed the 50 shares at once, /trades still returned an empty list — and the
+    // reconciler recorded a no-fill for a real fill, understating exposure by the whole position.
+    const { planReconcile } = require('../lib/safety/reconcile-fills');
+    const GONE = { idempotencyKey: 'idem_x', userId: 'operator', venue: 'polymarket', tokenId: NO,
+      side: 'BUY', price: 0.485, size: 50, notionalUsd: 24.25, orderId: 'ORDER_X', ts: 1 };
+    const base = { userId: 'operator', sentOrders: [GONE], ledgerRows: [], venueReachable: true, venueOrders: [], now: 1 };
+
+    const lag = planReconcile({ ...base, venueFills: [], venuePositions: [{ asset: NO, size: 50 }] });
+    ok(lag.toNoFill.length === 0 && lag.stillUnknown[0].reason === 'positions-contradict-no-trades',
+      'nessuna esecuzione in /trades MA una posizione su quel token in /positions ⇒ le due fonti si contraddicono ⇒ NON si risolve nulla (e\' il caso reale del 31/07 che aveva sottostimato l\'esposizione)');
+
+    const noPos = planReconcile({ ...base, venueFills: [], venuePositions: null });
+    ok(noPos.toNoFill.length === 0 && noPos.stillUnknown[0].reason === 'no-positions-crosscheck',
+      'senza la lettura delle posizioni non si conclude "mai eseguito" su una sola fonte — l\'ordine resta sconosciuto e continua a contare');
+
+    const agree = planReconcile({ ...base, venueFills: [], venuePositions: [] });
+    ok(agree.toNoFill.length === 1 && agree.stillUnknown.length === 0,
+      'quando ENTRAMBE le fonti concordano (nessuna esecuzione, nessuna posizione) l\'ordine viene finalmente risolto come NON eseguito');
+
+    const filled = planReconcile({ ...base, venueFills: [{ tokenId: NO, side: 'BUY', size: 50, price: 0.485 }], venuePositions: [{ asset: NO, size: 50 }] });
+    ok(filled.toRecord.length === 1 && filled.toRecord[0].filledSize === 50,
+      'e quando /trades mostra l\'esecuzione, viene registrata come FILL al size reale');
+
+    // ── P2: THE AUDIT MUST KEEP ORDER IDS, or attribution can never match ─────────────────────────
+    const { redact } = require('../lib/venues/polymarket-clob/redact');
+    const REAL_ID = '0x0e9eb7d8a49c9f99e1f069c2325b11198ff55dfab77b2ea1383c047e732a61d8';
+    ok(redact({ orderId: REAL_ID }).orderId === REAL_ID,
+      'un orderId (0x + 64 hex, esattamente la forma della cintura anti-chiavi) sopravvive alla redazione — senza, ogni id nel trail diventava lo stesso segnaposto e l\'attribuzione non poteva mai combaciare');
+    ok(redact({ privateKey: REAL_ID }).privateKey === '[redacted]',
+      '…mentre una chiave privata resta oscurata: l\'esenzione vale solo per i campi che nominano un identificatore pubblico');
+    ok(String(redact({ note: `chiave ${REAL_ID}` }).note).includes('[redacted-64hex]'),
+      '…e un 64-hex dentro testo libero resta oscurato, perche\' li\' non c\'e\' nessun nome di campo a dire che e\' pubblico');
 
     // ── The wiring: agent40 really calls it, on its own throttle and its own try/catch.
     const src = fs.readFileSync(path.join(__dirname, '..', 'agents', 'agent40-manual-reprice.js'), 'utf8');
