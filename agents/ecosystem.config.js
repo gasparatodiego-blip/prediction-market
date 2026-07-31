@@ -110,7 +110,22 @@ module.exports = {
       restart_delay: 5000,
       max_restarts:  20,
       watch:         false,
-      env:           { NODE_ENV: 'production', HOME: '/root' },
+      // MAKER_FUNDING_APPROVED — added 2026-07-30 at the operator's explicit in-session confirmation.
+      // The MANUAL ORDERS panel runs IN THIS PROCESS, and lib/maker/manual-order.js:buildPlacementAdapter
+      // reads this flag from the dashboard's own env. Until it was set here the panel's adapter always
+      // refused at the 'funding-approval' gate (adapter.js evaluatePlacementGate), BEFORE signing,
+      // BEFORE validateOrder() and BEFORE the placement switch — so a hand order could never reach the
+      // venue no matter what MANUAL_ORDER_PLACEMENT said, and the panel's banner did not surface it.
+      // It is the SAME attestation agent35 already carries (funder 0x4C81F1…bdee, 100 pUSD, all six v2
+      // approvals granted, read on-chain 2026-07-29); this only stops the two processes disagreeing.
+      // It gates ONLY funding: the kill switch, caps, manual-mode ownership, venue-rules, the live-min
+      // pin and validateOrder() are all independent and all still apply.
+      // Set HERE rather than in .env deliberately: an ecosystem env survives pm2 restarts AND is
+      // observable in /proc/<pid>/environ, so "is the live process actually reading it?" is answerable
+      // without an admin session. Applying an edit here needs the ecosystem file on the restart:
+      //   pm2 restart agents/ecosystem.config.js --only dashboard --update-env
+      // To disarm hand-placed sends, prefer MANUAL_ORDER_PLACEMENT=dry-run in .env (one switch, one job).
+      env:           { NODE_ENV: 'production', HOME: '/root', MAKER_FUNDING_APPROVED: 'true' },
     },
     {
       name:          'agent-data-collector',
@@ -509,6 +524,32 @@ module.exports = {
       watch:         false,
       autorestart:   true,
       env:           { NODE_ENV: 'production', HOME: '/root', MAKER_DEADMAN_SECONDS: '120' },
+    },
+    {
+      name:          'agent40-manual-reprice',
+      script:        './agents/agent40-manual-reprice.js',
+      cwd:           '/root/prediction-market',
+      restart_delay: 15000,
+      max_restarts:  20,
+      // The BAND-EXIT WATCHER for HAND-PLACED orders. Replaces the fixed ~180s GTD expiry on manual
+      // orders with a price-driven rule: on a market whose auto-reprice switch is ON, a hand order rests
+      // as GTC (no venue expiry) and is cancelled+re-placed ONLY when the live mid has moved enough to
+      // push it out of the reward band. If the mid stays put, the order is never touched.
+      //
+      // INERT UNTIL SWITCHED ON. Both the global master switch and the per-market opt-in live in
+      // data/maker-auto-reprice.json and default OFF, so this process running changes nothing on its own;
+      // it logs "idle: disabled-global" and does no venue I/O at all. It also does nothing while the
+      // global kill switch is set, or on a market that is not in manual mode.
+      //
+      // It owns no adapter, no credentials and no signing key: its only reachable venue surface is
+      // lib/maker/manual-order.replaceManualOrder — the same function the panel's "Riprezza" button
+      // calls — so MANUAL_ORDER_PLACEMENT, the caps, venue-rules and validateOrder() all still apply.
+      // Small footprint: two small JSON reads per cycle plus a getOpenOrders per enabled market.
+      // (Named 40: slots 36-39 are book-velocity, maker-watchdog, tape-watchdog, net-rerun.)
+      max_memory_restart: '200M',
+      watch:         false,
+      autorestart:   true,
+      env:           { NODE_ENV: 'production', HOME: '/root' },
     },
     {
       name:          'agent38-tape-watchdog',

@@ -6,9 +6,12 @@
 // empty order list as "you have no orders" or a dry-run as "placed".
 
 import type { ManualMarketVerdict, ManualModeDeps, ManualRecord } from './manual-mode';
+import type { AutoRepriceDeps, AutoRepriceRecord, AutoRepriceMarketState } from './auto-reprice-config';
 
 export type Book = 'yes' | 'no';
 export type Placement = 'dry-run' | 'send';
+/** WHO acted. 'agent35' is stamped by the engine and never appears on this path. */
+export type ManualSource = 'manual-ui' | 'auto-reprice-band-exit';
 
 export interface ManualDeps extends ManualModeDeps {
   /** Injected fixtures for the selfcheck; production passes nothing and reads the real files. */
@@ -18,6 +21,23 @@ export interface ManualDeps extends ManualModeDeps {
   manualDeps?: ManualModeDeps;
   limitDeps?: { configFile?: string };
   killDeps?: { stateFile?: string; auditFile?: string };
+  autoRepriceDeps?: AutoRepriceDeps;
+  configFile?: string;
+  autoStateFile?: string;
+  autoAuditFile?: string;
+}
+
+/**
+ * HOW LONG A HAND ORDER RESTS. GTD 180s when auto-reprice is off (and when its config is unreadable —
+ * the fail-closed answer is always the one WITH an expiry); GTC, ttlSeconds 0, no venue expiry at all
+ * when auto-reprice owns the market and the band-exit watcher is what moves the order instead.
+ */
+export interface ManualExpiry {
+  ttlSeconds: number;
+  orderType: 'GTC' | 'GTD';
+  autoReprice: boolean;
+  source: 'explicit' | 'auto-reprice' | 'default' | 'default-fail-closed';
+  reason: string;
 }
 
 export interface EngineState {
@@ -93,12 +113,58 @@ export interface IsolationView {
   engineAcknowledged: boolean | null;
 }
 
+/**
+ * The band-exit automatism as the PANEL sees it. `watcher.alive === null` means the watcher has never
+ * been seen running — which the UI must render differently from `false` (seen, but its heartbeat is
+ * old) and from `true`. With auto-reprice on, orders rest as GTC with no venue expiry, so this is the
+ * only thing standing between a resting order and nobody minding it.
+ */
+export interface AutoRepriceView {
+  readable: boolean;
+  error: string | null;
+  globalEnabled: boolean;
+  optedInMarketIds: string[];
+  enabledMarketIds: string[];
+  market: {
+    marketId: string | null;
+    enabled: boolean;
+    marketEnabled: boolean;
+    readable: boolean;
+    reason: string;
+    record: AutoRepriceRecord | null;
+  } | null;
+  /** The lifetime a NEW hand order on this market would get right now. */
+  expiry: { orderType: 'GTC' | 'GTD'; ttlSeconds: number; source: string; reason: string } | null;
+  watcher: {
+    readable: boolean;
+    heartbeatAt: number | null;
+    heartbeatAgeSec: number | null;
+    cycles: number;
+    alive: boolean | null;
+    process: string;
+  };
+  last: {
+    at: number | null;
+    atIso: string | null;
+    orderId: string | null;
+    fromPrice: number | null;
+    toPrice: number | null;
+    ok: boolean;
+    sent: boolean;
+    gate: string | null;
+    reason: string | null;
+    count: number;
+    inLastHour: number;
+  } | null;
+}
+
 export interface ManualContext {
   at: string;
   kill: KillView;
   placement: { mode: Placement; key: string; sends: boolean; note: string };
   engine: EngineState;
   isolation: IsolationView | null;
+  autoReprice: AutoRepriceView;
   caps: Caps;
   market: MarketRules | null;
   operatorUser: string;
@@ -131,6 +197,9 @@ export interface PlaceResult {
   price?: number;
   size?: number;
   notionalUsd?: number | null;
+  /** The lifetime this order actually got, read back from the placement — GTC or GTD, and why. */
+  expiry?: ManualExpiry;
+  source?: ManualSource;
   venueRules?: Record<string, unknown>;
   caps?: Caps;
 }
@@ -184,6 +253,8 @@ export interface ReplaceResult {
   oldOrderId?: string;
   cancel?: CancelResult;
   place?: PlaceResult;
+  source?: ManualSource;
+  expiry?: ManualExpiry | null;
   gate: string | null;
   reason: string | null;
   reasons?: Array<{ code: string; detail: string }>;
@@ -201,8 +272,18 @@ export function readEngineState(now?: number): EngineState;
 export function evaluateManualGate(arg: { marketId: string }, deps?: ManualModeDeps): GateVerdict;
 export function evaluateManualCapGate(arg: { notionalUsd: number; caps: Caps }): GateVerdict;
 
+/**
+ * Resolve the lifetime a hand order on this market should carry. An explicit ttlSeconds always wins
+ * (0 ⇒ GTC); otherwise the market's auto-reprice switch decides, and an unreadable switch falls back to
+ * the fixed GTD — so a config that cannot be read can never produce an order with no expiry.
+ */
+export function resolveManualTtlSeconds(
+  arg: { marketId?: string | null; ttlSeconds?: number | null },
+  deps?: ManualDeps,
+): ManualExpiry;
+
 export function placeManualOrder(
-  spec: { marketId?: string; book: Book; price: number; size: number; ttlSeconds?: number; note?: string; userId?: string },
+  spec: { marketId?: string; book: Book; price: number; size: number; ttlSeconds?: number; note?: string; userId?: string; source?: ManualSource },
   deps?: ManualDeps,
 ): Promise<PlaceResult>;
 
@@ -210,13 +291,17 @@ export function listManualOrders(arg?: { marketId?: string | null }): Promise<Or
 
 export function cancelManualOrder(
   arg: { orderId: string; marketId?: string | null; userId?: string },
+  source?: ManualSource,
 ): Promise<CancelResult>;
 
 export function replaceManualOrder(
-  spec: { orderId: string; marketId?: string; book: Book; price: number; size: number; ttlSeconds?: number; note?: string; userId?: string },
+  spec: { orderId: string; marketId?: string; book: Book; price: number; size: number; ttlSeconds?: number; note?: string; userId?: string; source?: ManualSource },
   deps?: ManualDeps,
 ): Promise<ReplaceResult>;
 
 export const VENUE: string;
 export const OPERATOR_USER: string;
 export const FALLBACK_LIVE_MIN_CAP_USD: number;
+export const MANUAL_SOURCES: readonly ManualSource[];
+/** The panel's historical fixed expiry — still the behaviour whenever auto-reprice is off. */
+export const DEFAULT_MANUAL_TTL_SECONDS: number;

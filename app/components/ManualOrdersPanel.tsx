@@ -49,9 +49,26 @@ interface MarketRules {
   bestBid: number | null; bestAsk: number | null;
   books: { yes: { tokenId: string | null; scoringMid: number | null }; no: { tokenId: string | null; scoringMid: number | null } };
 }
+// ── AUTO-RIPREZZO ── the band-exit watcher's switches and its proof of life. Every field is read from
+// the server (GET /api/maker/manual/config), never assumed: `alive:null` means "never seen it run",
+// which the panel must render differently from "it is running".
+interface AutoRepriceExpiry { orderType: 'GTC' | 'GTD'; ttlSeconds: number; source: string; reason: string }
+interface AutoRepriceState {
+  readable: boolean; error: string | null; globalEnabled: boolean;
+  optedInMarketIds: string[]; enabledMarketIds: string[];
+  market: { marketId: string | null; enabled: boolean; marketEnabled: boolean; readable: boolean; reason: string; record: { at?: number; atIso?: string; by?: string | null; reason?: string | null } | null } | null;
+  expiry: AutoRepriceExpiry | null;
+  watcher: { readable: boolean; heartbeatAt: number | null; heartbeatAgeSec: number | null; cycles: number; alive: boolean | null; process: string };
+  last: {
+    at: number | null; atIso: string | null; orderId: string | null;
+    fromPrice: number | null; toPrice: number | null; ok: boolean; sent: boolean;
+    gate: string | null; reason: string | null; count: number; inLastHour: number;
+  } | null;
+}
 interface ManualConfig {
   at: string; kill: KillState; placement: PlacementState; engine: EngineState;
   isolation: IsolationState | null; caps: CapsState; market: MarketRules | null; operatorUser: string;
+  autoReprice: AutoRepriceState | null;
 }
 interface RestingOrder {
   orderId: string | null; marketId: string | null; tokenId: string | null; side: string | null;
@@ -96,6 +113,8 @@ export default function ManualOrdersPanel() {
   const [result, setResult] = useState<PlaceResult | null>(null);
 
   const [busyMode, setBusyMode] = useState(false);
+  const [busyAuto, setBusyAuto] = useState(false);
+  const [autoMsg, setAutoMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [busyOrder, setBusyOrder] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [editPrice, setEditPrice] = useState('');
@@ -195,6 +214,35 @@ export default function ManualOrdersPanel() {
   const canPlace =
     !placing && !killed && manualOn && !overCap &&
     !!rules?.readable && verdict?.valid === true && notional != null;
+
+  // ── AUTO-RIPREZZO ── derived state. `auto` is the effective answer (both switches on); `autoMarket`
+  // is the per-market opt-in on its own, so the panel can say "opted in, but the master switch is off"
+  // rather than showing a single misleading OFF.
+  const ar = cfg?.autoReprice ?? null;
+  const autoMarketOn = ar?.market?.marketEnabled === true;
+  const autoOn = ar?.market?.enabled === true;
+  const autoReadable = ar?.readable !== false;
+  const expiryType = ar?.expiry?.orderType ?? null;
+
+  const setAutoReprice = useCallback(async (scope: 'global' | 'market', enabled: boolean) => {
+    if (scope === 'market' && !marketId) return;
+    setBusyAuto(true); setAutoMsg(null);
+    try {
+      const r = await fetch('/api/maker/manual/auto-reprice', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scope, enabled,
+          marketId: scope === 'market' ? marketId : undefined,
+          reason: 'pannello ordini manuali',
+        }),
+      });
+      const b = await r.json();
+      setAutoMsg({ ok: b.ok === true, text: b.ok ? String(b.note || 'fatto') : `rifiutato: ${b.error || 'errore'}` });
+      await loadConfig();
+    } catch (e) {
+      setAutoMsg({ ok: false, text: (e as Error).message });
+    } finally { setBusyAuto(false); }
+  }, [marketId, loadConfig]);
 
   const setManual = useCallback(async (manual: boolean) => {
     if (!marketId) return;
@@ -337,8 +385,8 @@ export default function ManualOrdersPanel() {
         .mkman-give { min-height: 40px; padding: 0 18px; border: 1px solid #4a3c12; border-radius: 8px; cursor: pointer;
           font-size: 13px; font-weight: 700; color: #E8B23A; background: #1a1608; }
         .mkman-tbl { margin-top: 10px; font-size: 13px; overflow-x: auto; }
-        .mkman-row { display: grid; grid-template-columns: 62px 78px 92px 118px 78px 92px 1fr; gap: 10px; padding: 8px 0;
-          border-bottom: 1px solid #1a2030; align-items: center; min-width: 720px; }
+        .mkman-row { display: grid; grid-template-columns: 62px 78px 92px 118px 78px 92px 104px 1fr; gap: 10px; padding: 8px 0;
+          border-bottom: 1px solid #1a2030; align-items: center; min-width: 830px; }
         .mkman-head { color: #8B95A5; font-size: 11px; text-transform: uppercase; letter-spacing: .4px; }
         .mkman-src { font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 999px; white-space: nowrap; }
         .mkman-src-manual { color: #DCE6FF; border: 1px solid #2E5FBE; background: #16233E; }
@@ -453,6 +501,119 @@ export default function ManualOrdersPanel() {
             </p>
           </>
         )}
+      </div>
+
+      {/* ── AUTO-RIPREZZO ────────────────────────────────────────────────────────────────────────────
+          The ONLY control in this panel that makes something happen without a human pressing a button,
+          so it is rendered as a first-class section rather than a checkbox: what it is, whether it is
+          on, when it last acted, and — because a GTC order has no venue expiry — whether the process
+          that is supposed to be minding those orders is actually alive. */}
+      <div className="mkman-sec" data-manual-autoreprice>
+        <div className="mkman-sech">
+          <span className="mkman-sectitle">Auto-riprezzo · l&apos;ordine si muove col prezzo, non con l&apos;orologio</span>
+          <span className={`mkman-badge ${!autoReadable ? 'mkman-badge-red' : autoOn ? 'mkman-badge-ok' : 'mkman-badge-warn'}`} data-manual-auto-badge>
+            {!autoReadable ? 'CONFIG NON LEGGIBILE' : autoOn ? 'AUTO-RIPREZZO · ON' : 'AUTO-RIPREZZO · OFF'}
+          </span>
+        </div>
+
+        {ar && ar.readable === false && (
+          <div className="mkman-banner mkman-banner-red">
+            Configurazione dell&apos;auto-riprezzo NON leggibile ({dash(ar.error)}) — l&apos;automatismo è trattato
+            come SPENTO e non tocca niente (fail closed). Gli ordini nuovi tornano alla scadenza fissa GTD.
+          </div>
+        )}
+
+        <div className="mkman-grid">
+          <div className="mkman-kv">
+            <span className="mkman-k">Su questo mercato</span>
+            <span className="mkman-v">
+              {autoOn ? <span className="mkman-ok">attivo</span>
+                : autoMarketOn ? <span className="mkman-warn">abilitato, ma master OFF</span>
+                  : 'spento'}
+            </span>
+          </div>
+          <div className="mkman-kv">
+            <span className="mkman-k">Interruttore globale</span>
+            <span className="mkman-v">{ar ? (ar.globalEnabled ? <span className="mkman-ok">ON</span> : 'OFF') : '—'}</span>
+          </div>
+          <div className="mkman-kv">
+            <span className="mkman-k">Scadenza dei nuovi ordini</span>
+            <span className="mkman-v" data-manual-expiry-mode>
+              {expiryType === 'GTC' ? <span className="mkman-ok">GTC · nessuna scadenza</span>
+                : expiryType === 'GTD' ? `GTD · ${ar?.expiry?.ttlSeconds ?? '—'}s` : '—'}
+            </span>
+          </div>
+          <div className="mkman-kv">
+            <span className="mkman-k">Watcher ({ar?.watcher.process ?? '—'})</span>
+            <span className="mkman-v" data-manual-watcher>
+              {ar?.watcher.alive === true ? <span className="mkman-ok">vivo ({age(ar.watcher.heartbeatAgeSec)} fa)</span>
+                : ar?.watcher.alive === false ? <span className="mkman-bad">battito vecchio di {age(ar.watcher.heartbeatAgeSec)}</span>
+                  : <span className="mkman-warn">mai visto girare</span>}
+            </span>
+          </div>
+        </div>
+
+        {/* L'ULTIMO RIPREZZO AUTOMATICO — sostituisce il vecchio conto alla rovescia a scadenza fissa.
+            Non c'è più un timer da mostrare: quello che conta è quando il prezzo ha davvero mosso qualcosa. */}
+        <div className="mkman-res" data-manual-auto-last>
+          {ar?.last?.atIso ? (
+            <>
+              Ultimo riprezzo automatico: <b>{new Date(ar.last.atIso).toLocaleTimeString()}</b>
+              {ar.last.fromPrice != null && ar.last.toPrice != null
+                ? <> · <span className="mkman-num">{ar.last.fromPrice}</span> → <span className="mkman-num">{ar.last.toPrice}</span></>
+                : null}
+              {ar.last.ok
+                ? (ar.last.sent ? <span className="mkman-ok"> · inviato</span> : <span className="mkman-warn"> · validato, non inviato (dry-run)</span>)
+                : <span className="mkman-bad"> · fallito ({dash(ar.last.gate)})</span>}
+              {' · '}{ar.last.inLastHour} nell&apos;ultima ora, {ar.last.count} in totale
+            </>
+          ) : (
+            <>Nessun riprezzo automatico finora su questo mercato{autoOn ? ' — il mid non ha ancora portato nessun ordine fuori banda' : ''}.</>
+          )}
+        </div>
+
+        <div className="mkman-inrow">
+          {autoMarketOn ? (
+            <button className="mkman-give" onClick={() => setAutoReprice('market', false)} disabled={busyAuto || !marketId} data-manual-auto-off>
+              {busyAuto ? '…' : 'Disattiva auto-riprezzo su questo mercato'}
+            </button>
+          ) : (
+            <button className="mkman-take" onClick={() => setAutoReprice('market', true)} disabled={busyAuto || !marketId} data-manual-auto-on>
+              {busyAuto ? '…' : 'Attiva auto-riprezzo su questo mercato'}
+            </button>
+          )}
+          {ar?.globalEnabled ? (
+            <button className="mkman-give" onClick={() => setAutoReprice('global', false)} disabled={busyAuto} data-manual-auto-global-off>
+              {busyAuto ? '…' : 'Spegni globalmente'}
+            </button>
+          ) : (
+            <button className="mkman-take" onClick={() => setAutoReprice('global', true)} disabled={busyAuto} data-manual-auto-global-on>
+              {busyAuto ? '…' : 'Accendi l’interruttore globale'}
+            </button>
+          )}
+          {ar?.market?.record?.atIso && autoMarketOn && (
+            <span className="mkman-note">dal {ar.market.record.atIso}{ar.market.record.by ? ` · ${ar.market.record.by}` : ''}</span>
+          )}
+        </div>
+
+        {autoMsg && <div className={`mkman-res ${autoMsg.ok ? 'mkman-ok' : 'mkman-bad'}`}>{autoMsg.text}</div>}
+
+        <p className="mkman-note">
+          Con l&apos;auto-riprezzo <b>ON</b> un ordine manuale su questo mercato viene piazzato in <b>GTC</b>: nessuna
+          scadenza lato venue, resta a riposo finché non viene eseguito, finché non lo cancelli tu, o finché il
+          mid non si muove abbastanza da portarlo <b>fuori dalla banda premiante</b> — solo allora viene cancellato
+          e ripiazzato al prezzo valido più vicino, stessa size e stesso lato. Se il mid non si muove così tanto,
+          l&apos;ordine <b>non viene toccato</b>. Con l&apos;auto-riprezzo <b>OFF</b> torna il comportamento di prima:
+          scadenza fissa GTD di {ar?.expiry?.ttlSeconds ?? 180}s, che cancella l&apos;ordine a orologio.
+        </p>
+        <p className="mkman-note mkman-warn">
+          Il prezzo del GTC: la scadenza GTD è l&apos;unica protezione che sopravvive alla morte di questa macchina —
+          un ordine GTC no. Se questo host muore, l&apos;ordine resta nel book senza nessuno che lo sorvegli. È per
+          questo che qui sopra è mostrato il battito del watcher: battito vecchio + auto-riprezzo ON = da guardare.
+          Ogni riprezzo automatico passa dagli stessi gate di un ordine a mano (kill-switch, cap, gestione manuale,
+          venue-rules, validateOrder) ed è tracciato nell&apos;audit con sorgente <b>auto-reprice-band-exit</b>,
+          diversa sia da <b>manual-ui</b> sia da <b>agent35</b>.
+        </p>
       </div>
 
       {/* ── FORM ── */}
@@ -685,7 +846,7 @@ export default function ManualOrdersPanel() {
 
         <div className="mkman-tbl">
           <div className="mkman-row mkman-head">
-            <span>Lato</span><span>Prezzo</span><span>Size</span><span>Stato</span><span>Età</span><span>Sorgente</span><span>Azioni</span>
+            <span>Lato</span><span>Prezzo</span><span>Size</span><span>Stato</span><span>Età</span><span>Sorgente</span><span>Auto-riprezzo</span><span>Azioni</span>
           </div>
           {orders && orders.orders.length === 0 && orders.ok !== false && !orders.simulated && (
             <div className="mkman-empty">Nessun ordine a riposo sul venue per questo mercato (letto dal venue, non dedotto).</div>
@@ -704,6 +865,19 @@ export default function ManualOrdersPanel() {
                 <span className={`mkman-src ${o.source === 'manual-ui' ? 'mkman-src-manual' : 'mkman-src-auto'}`}>
                   {o.source === 'manual-ui' ? 'manuale' : o.source === 'agent35' ? 'agent35' : '—'}
                 </span>
+              </span>
+              {/* AUTO-RIPREZZO, per riga. Il watcher tocca SOLO gli ordini che il pannello ha piazzato
+                  (attribuiti dall'audit): un ordine di agent35 mostra «n/d», non «OFF», perché non è una
+                  scelta che lo riguarda. L'interruttore è per MERCATO — è nella sezione qui sopra, e
+                  metterne una copia per riga fingerebbe una granularità che non esiste. */}
+              <span data-manual-row-auto>
+                {o.source !== 'manual-ui' ? (
+                  <span className="mkman-note">n/d</span>
+                ) : autoOn ? (
+                  <span className="mkman-src mkman-src-manual" title="GTC: nessuna scadenza; viene ripiazzato solo all'uscita dalla banda">ON · GTC</span>
+                ) : (
+                  <span className="mkman-src mkman-src-auto" title={`OFF: scadenza fissa GTD ${ar?.expiry?.ttlSeconds ?? 180}s`}>OFF · GTD</span>
+                )}
               </span>
               <span>
                 {editing === o.orderId ? (

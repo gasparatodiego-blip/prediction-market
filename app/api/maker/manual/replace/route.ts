@@ -42,7 +42,8 @@ const bodySchema = z.object({
   book: z.enum(['yes', 'no']),
   price: z.number().finite().gt(0).lt(1),
   size: z.number().finite().gt(0).max(100_000),
-  ttlSeconds: z.number().int().min(60).max(86_400).optional(),
+  // 0 ⇒ GTC (no venue expiry). Omitted ⇒ the server picks from the market's auto-reprice switch.
+  ttlSeconds: z.number().int().min(0).max(86_400).optional(),
   note: z.string().trim().max(280).optional(),
 });
 

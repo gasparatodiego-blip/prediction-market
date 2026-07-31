@@ -40,7 +40,11 @@ const bodySchema = z.object({
   book: z.enum(['yes', 'no']),
   price: z.number().finite().gt(0).lt(1),
   size: z.number().finite().gt(0).max(100_000),
-  ttlSeconds: z.number().int().min(60).max(86_400).optional(),
+  // 0 is a MEANINGFUL value: it means GTC — rest with NO venue expiry, to be moved only when the mid
+  // pushes the order out of the reward band (see lib/maker/auto-reprice.js). It is not the same as
+  // omitting the field: omitting it lets the server decide from the market's auto-reprice switch
+  // (GTC when on, the usual 180s GTD when off), which is what the panel does.
+  ttlSeconds: z.number().int().min(0).max(86_400).optional(),
   note: z.string().trim().max(280).optional(),
 });
 
