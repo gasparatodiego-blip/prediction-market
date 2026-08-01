@@ -21,16 +21,18 @@ export const dynamic = 'force-dynamic';
  */
 
 // Inline runner — plain node, no webpack. Prints the plan JSON for the requested capital.
-const RUNNER = 'process.stdout.write(JSON.stringify(require("/root/prediction-market/lib/rewards/allocator").planFromCollection({ capital: Number(process.argv[1]) })))';
+// argv[2] carries the auto-optimise flag: with it on, the allocator also applies the resolution-horizon
+// test (lib/rewards/horizon) before the knapsack. OFF is the shipped path, byte-for-byte.
+const RUNNER = 'process.stdout.write(JSON.stringify(require("/root/prediction-market/lib/rewards/allocator").planFromCollection({ capital: Number(process.argv[1]), horizonFilter: process.argv[2] === "1" })))';
 const RESULT_TTL_MS = 180_000; // 3 min — the plan auto-refreshes at this cadence; recompute costs ~19s, so a fresh plan every 3 min is live-enough while the per-row data age ticks locally every 15s
 const SPAWN_TIMEOUT_MS = 90_000; // planFromCollection scores the universe + builds per-tick fill curves
 const MAX_BUFFER = 24 * 1024 * 1024;
 
 const resultCache = new Map<string, { atMs: number; body: any }>();
 
-function runAllocator(capital: number): Promise<any> {
+function runAllocator(capital: number, horizonFilter: boolean): Promise<any> {
   return new Promise((resolve, reject) => {
-    execFile('node', ['-e', RUNNER, String(capital)], { timeout: SPAWN_TIMEOUT_MS, maxBuffer: MAX_BUFFER }, (err, stdout) => {
+    execFile('node', ['-e', RUNNER, String(capital), horizonFilter ? '1' : '0'], { timeout: SPAWN_TIMEOUT_MS, maxBuffer: MAX_BUFFER }, (err, stdout) => {
       if (err) return reject(err);
       try { resolve(JSON.parse(stdout)); } catch (e: any) { reject(new Error('allocator output not JSON: ' + e.message)); }
     });
@@ -57,12 +59,17 @@ export async function GET(req: NextRequest) {
   }
   if (requested === 0) return NextResponse.json(EMPTY(0)); // default/empty capital → no allocation, no spawn
 
-  const bucket = String(Math.round(requested * 100) / 100);
+  // AUTO-OPTIMISE — read-only, like everything else on this route. It widens nothing (the universe was
+  // always the whole reward board) and writes nothing; it only turns on the resolution-horizon test and
+  // makes the allocator return its candidate ledger reasons under that rule.
+  const horizonFilter = req.nextUrl.searchParams.get('auto') === '1';
+
+  const bucket = `${Math.round(requested * 100) / 100}:${horizonFilter ? 'auto' : 'base'}`;
   const cached = resultCache.get(bucket);
   if (cached && Date.now() - cached.atMs < RESULT_TTL_MS) return NextResponse.json({ ...cached.body, cached: true });
 
   try {
-    const body = await runAllocator(requested);
+    const body = await runAllocator(requested, horizonFilter);
     resultCache.set(bucket, { atMs: Date.now(), body });
     return NextResponse.json(body);
   } catch (e: any) {
