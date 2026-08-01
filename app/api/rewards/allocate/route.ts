@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { execFile } from 'child_process';
+// THE POSITION CEILING IS DERIVED HERE, AND ONLY HERE. The planner has just computed how much capital
+// each market gets; the fill strategy needs exactly that number as its per-side inventory ceiling. It is
+// recorded as a derived snapshot — there is no control anywhere that lets an operator type it.
+import { writeAllocatedCapital } from '@/lib/maker/allocated-capital';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -71,6 +75,14 @@ export async function GET(req: NextRequest) {
   try {
     const body = await runAllocator(requested, horizonFilter);
     resultCache.set(bucket, { atMs: Date.now(), body });
+    // Record the derived ceiling. Best-effort: a failure here must never cost the operator their plan,
+    // and a missing snapshot fails CLOSED downstream (no ceiling ⇒ no new exposure), not open.
+    try {
+      writeAllocatedCapital({
+        rows: (body?.rows ?? []).map((r: any) => ({ marketId: r.marketId, capital: r.capital })),
+        capital: body?.capital ?? null,
+      });
+    } catch { /* the plan still stands; the strategy simply has no ceiling to read */ }
     return NextResponse.json(body);
   } catch (e: any) {
     return NextResponse.json({ error: 'allocation failed: ' + (e?.message ?? 'unknown'), requested }, { status: 500 });
