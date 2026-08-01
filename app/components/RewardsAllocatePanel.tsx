@@ -67,7 +67,31 @@ type Plan = {
   frontier: { count: number; net: number }[];
   // Mercati che la size minima del venue esclude a questo capitale, con il capitale che li sbloccherebbe.
   belowMinSize?: { marketId: string; name: string | null; shortId: string; minSizeShares: number | null; capitalToQualifyUsd: number | null }[];
+  // ── IL REGISTRO DEI CANDIDATI ── una riga per OGNI mercato dell'universo reward, scelto o scartato,
+  // con il motivo costruito dai suoi stessi numeri. Puramente descrittivo: non decide nulla.
+  candidates?: Candidate[];
+  universe?: {
+    withPot: number; evaluated: number; chosen: number;
+    horizonFilter: boolean; horizonRejected: number; note: string;
+  };
   error?: string;
+};
+type Candidate = {
+  marketId: string; name: string | null; shortId: string; nameAvailable?: boolean;
+  status: 'scelto' | 'scartato'; reason: string; reasonCode?: string;
+  capital: number; bestNetPerDay: number | null; bestGrossPerDay: number | null;
+  competitorShares: number | null; pot: number | null; maxSpreadCents: number | null;
+  horizon: { state: string; days: number | null; payback: number | null; paybackNever: boolean } | null;
+};
+/** Etichette dei motivi di scarto, per raggrupparli. Il testo per riga resta quello del server. */
+const REJECT_LABEL: Record<string, string> = {
+  'orizzonte': 'Scadenza troppo vicina',
+  'min-size': 'Sotto la size minima del venue',
+  'netto-negativo': 'Reward troppo basso rispetto al costo',
+  'netto-ignoto': 'Netto non misurabile',
+  'non-scorabile': 'Nessuna profondità scorabile',
+  'battuto': 'Battuti da mercati migliori',
+  'senza-storico': 'Nessuno storico prezzi raccolto',
 };
 
 const money = (v: number | null | undefined): string => (v == null || !Number.isFinite(v) ? '—' : `$${v.toFixed(2)}`);
@@ -222,6 +246,13 @@ export default function RewardsAllocatePanel() {
   const [addBusy, setAddBusy] = useState<string | null>(null);
   const [addErr, setAddErr] = useState<string | null>(null);
   const [takeManual, setTakeManual] = useState(true);
+  // ── OTTIMIZZAZIONE AUTOMATICA ── azione ESPLICITA e separata. Non parte da sola quando cambia il
+  // capitale: sovrascrivere in silenzio una selezione fatta a mano e' esattamente cio' che non deve
+  // succedere, quindi il piano automatico e' un secondo piano, tenuto a parte da `plan`.
+  const [autoPlan, setAutoPlan] = useState<Plan | null>(null);
+  const [autoBusy, setAutoBusy] = useState(false);
+  const [autoErr, setAutoErr] = useState<string | null>(null);
+  const [showRejected, setShowRejected] = useState(false);
 
   // Live age clock — re-render every CLOCK_MS so each row's "letto Xs fa" and STALE badge stay true, WITHOUT
   // refetching any market data. Cheap: only re-derives ages from newestTsMs already in the plan.
@@ -417,6 +448,23 @@ export default function RewardsAllocatePanel() {
     finally { setSearchBusy(false); }
   }, [query]);
 
+  // ── OTTIMIZZA AUTOMATICAMENTE ────────────────────────────────────────────────────────────────────
+  // Rilancia lo STESSO ottimizzatore sullo stesso universo (che e' sempre stato tutto il board reward,
+  // non la lista abilitata a mano) con in piu' il test dell'orizzonte di risoluzione, e chiede il
+  // registro dei candidati. E' una GET: non scrive niente, non abilita niente, non piazza niente.
+  const runAutoOptimise = useCallback(async () => {
+    const n = Number(capital);
+    if (!Number.isFinite(n) || n <= 0) { setAutoErr('inserisci prima un capitale'); return; }
+    setAutoBusy(true); setAutoErr(null); setAddPreview(null); setAddResult(null);
+    try {
+      const r = await fetch(`/api/rewards/allocate?capital=${encodeURIComponent(capital)}&auto=1`);
+      const b = (await r.json()) as Plan;
+      if (b.error) { setAutoErr(b.error); setAutoPlan(null); }
+      else setAutoPlan(b);
+    } catch (e) { setAutoErr((e as Error).message); }
+    finally { setAutoBusy(false); }
+  }, [capital]);
+
   // Passo 1 dell'aggiunta: ANTEPRIMA. Rilegge il mercato dal venue e dice esattamente cosa verrebbe
   // scritto — senza scrivere nulla. Passo 2: conferma (preview:false), che è l'unica cosa che scrive.
   const addMarket = useCallback(async (marketId: string, preview: boolean) => {
@@ -504,6 +552,129 @@ export default function RewardsAllocatePanel() {
             Il capitale richiesto (<b>{money(capitalNum)}</b>) supera il saldo reale del proxy (<b>{money(balanceNum)}</b>).
             Il valore inserito resta esattamente com’è: è un’ipotesi di piano, non viene ridotto.
           </div>
+        )}
+      </div>
+
+
+      {/* ══ OTTIMIZZA AUTOMATICAMENTE ═══════════════════════════════════════════════════════════════
+          UN'AZIONE ESPLICITA, MAI AUTOMATICA. Non parte quando cambia il capitale e non parte con
+          «Usa saldo intero»: si preme. Il risultato e' una PROPOSTA tenuta separata dal piano di
+          sopra — non riscrive `plan`, non tocca la lista abilitata, non piazza nulla. Ogni mercato
+          proposto passa dagli stessi due passi (anteprima → conferma) che gia' esistono qui sotto,
+          uno alla volta, e l'aggiunta e' additiva: il server calcola enabledAfter = enabledBefore + id,
+          quindi una scelta manuale precedente non puo' essere sovrascritta da qui. */}
+      <div className="alloc-card" data-alloc-auto>
+        <div className="alloc-h" style={{ fontSize: 15 }}>Ottimizza automaticamente</div>
+        <div className="alloc-sub" title="L universo e sempre stato tutto il board reward: enabledMarketIds non entra nel calcolo dell allocazione e non l ha mai fatto. Questa azione aggiunge il test dell orizzonte di risoluzione e restituisce il registro dei candidati.">
+          Cerca su <b>tutti</b> i mercati con montepremi — non solo quelli abilitati — e propone la
+          combinazione migliore per questo capitale, scartando quelli che scadono prima di rientrare del
+          costo di adverse selection.
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 10 }}>
+          <button className="alloc-btn" data-alloc-auto-run onClick={runAutoOptimise}
+            disabled={autoBusy || !(Number(capital) > 0)}>
+            {autoBusy ? 'Cerco sull’intero universo…' : '⚡ Ottimizza automaticamente'}
+          </button>
+          {autoPlan && (
+            <button className="alloc-btn" style={{ background: 'transparent' }} onClick={() => { setAutoPlan(null); setAutoErr(null); }}>
+              Chiudi proposta
+            </button>
+          )}
+        </div>
+
+        {autoErr && <div className="alloc-note alloc-warn" style={{ marginTop: 10 }} data-alloc-auto-error>⚠ Ottimizzazione non riuscita: {autoErr}</div>}
+
+        {autoPlan && autoPlan.universe && (
+          <>
+            <div className="alloc-sum" style={{ marginTop: 12 }} data-alloc-auto-universe>
+              <div><span>Con montepremi</span><b>{autoPlan.universe.withPot}</b></div>
+              <div>
+                <span>Valutabili</span><b>{autoPlan.universe.evaluated}</b>
+                {autoPlan.universe.evaluated < autoPlan.universe.withPot && (
+                  <p className="ex-why">{autoPlan.universe.withPot - autoPlan.universe.evaluated} senza storico prezzi</p>
+                )}
+              </div>
+              <div><span>Proposti</span><b className="fresh-ok">{autoPlan.universe.chosen}</b></div>
+              <div>
+                <span>Scartati per scadenza</span><b>{autoPlan.universe.horizonRejected}</b>
+              </div>
+              <div><span>Lordo atteso</span><b>{perDay(autoPlan.totals.grossPerDay)}</b></div>
+              <div><span>Lordo corretto</span><b>{perDay(autoPlan.totals.realisticPerDay)}</b></div>
+            </div>
+
+            <div className="alloc-note" style={{ marginTop: 10 }} data-alloc-auto-disclaimer>
+              <b>È una proposta.</b> Nessun mercato è stato abilitato e nessun ordine è stato creato.
+              Per ognuno servono i due passi qui sotto, uno alla volta. L’aggiunta è <b>additiva</b>: i
+              mercati che hai già abilitato a mano restano dove sono.
+            </div>
+
+            {/* ── SCELTI, col perché ── */}
+            <div className="alloc-sub" style={{ marginTop: 12, marginBottom: 4 }}>
+              <b>Proposti</b> — perché ciascuno è stato scelto
+            </div>
+            <div className="alloc-cards" style={{ display: 'flex' }} data-alloc-auto-chosen>
+              {(autoPlan.candidates ?? []).filter((c) => c.status === 'scelto').map((c) => (
+                <div key={c.marketId} className="ac" data-alloc-auto-row={c.marketId}>
+                  <div className="ac-top">
+                    <div className="ac-name">{c.name || <span className="alloc-addr">{c.shortId}</span>}</div>
+                    <b className="fresh-ok" style={{ fontFamily: 'var(--ex-mono)', whiteSpace: 'nowrap' }}>{money(c.capital)}</b>
+                  </div>
+                  <div className="alloc-sub" style={{ marginTop: 4 }} data-alloc-auto-why>✓ {c.reason}</div>
+                  <div className="ac-nums">
+                    <div className="ac-num"><span>Netto/g</span><b>{perDay(c.bestNetPerDay)}</b></div>
+                    <div className="ac-num"><span>Lordo/g</span><b>{perDay(c.bestGrossPerDay)}</b></div>
+                    <div className="ac-num"><span>Scadenza</span><b>{c.horizon && c.horizon.days != null ? `${Math.round(c.horizon.days)} g` : '—'}</b></div>
+                  </div>
+                  <div style={{ marginTop: 9 }}>
+                    <button className="alloc-btn" style={{ fontSize: 12 }}
+                      data-alloc-auto-preview
+                      disabled={addBusy != null}
+                      title="anteprima dell’aggiunta: non scrive nulla"
+                      onClick={() => addMarket(c.marketId, true)}>
+                      {addBusy === `preview:${c.marketId}` ? '…' : '1 · Anteprima'}
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {(autoPlan.candidates ?? []).filter((c) => c.status === 'scelto').length === 0 && (
+                <div className="alloc-note alloc-warn">
+                  ⚠ Nessun mercato qualifica con questo capitale. I motivi sono elencati qui sotto.
+                </div>
+              )}
+            </div>
+
+            {/* ── SCARTATI, raggruppati per motivo ── */}
+            <button className="ac-more" style={{ marginTop: 10 }} data-alloc-auto-rejected-toggle
+              onClick={() => setShowRejected((v) => !v)}>
+              {showRejected ? 'Nascondi gli scartati' : `Perché gli altri ${(autoPlan.candidates ?? []).filter((c) => c.status === 'scartato').length} sono stati scartati`}
+            </button>
+
+            {showRejected && (
+              <div style={{ marginTop: 10 }} data-alloc-auto-rejected>
+                {Object.entries(
+                  (autoPlan.candidates ?? []).filter((c) => c.status === 'scartato')
+                    .reduce((g: Record<string, Candidate[]>, c) => {
+                      const k = c.reasonCode || 'altro';
+                      (g[k] = g[k] || []).push(c);
+                      return g;
+                    }, {}),
+                ).map(([code, list]) => (
+                  <div key={code} style={{ marginTop: 8 }}>
+                    <div className="alloc-sub"><b>{REJECT_LABEL[code] ?? code}</b> · {list.length}</div>
+                    <ul className="alloc-basis-ul" style={{ marginTop: 4 }}>
+                      {list.slice(0, 8).map((c) => (
+                        <li key={c.marketId} title={c.reason}>
+                          {c.name || c.shortId} — <span className="alloc-cat">{c.reason}</span>
+                        </li>
+                      ))}
+                      {list.length > 8 && <li className="alloc-cat">+{list.length - 8} altri</li>}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
         )}
       </div>
 
