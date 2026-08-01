@@ -419,115 +419,8 @@ export default function ManualOrdersPanel() {
   if (operator !== true) return null;
 
   return (
-    <div className="mkman-root" data-manual-panel>
-      <style>{`
-        .mkman-root { max-width: 980px; margin: 0 auto 8px; padding: 14px 16px 18px; color: #E6E9EF;
-          border: 1px solid #2A3040; border-radius: 12px; background: #10141C;
-          font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
-        .mkman-hrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
-        .mkman-title { font-size: 13px; font-weight: 800; letter-spacing: .4px; text-transform: uppercase; color: #9AA4B2; }
-        .mkman-badge { font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px; }
-        .mkman-badge-warn { color: #E8B23A; border: 1px solid #4a3c12; background: #211a08; }
-        .mkman-badge-ok { color: #57C98A; border: 1px solid #205038; background: #0d1f16; }
-        .mkman-badge-red { color: #FF9C93; border: 1px solid #5c1f1a; background: #240d0b; }
-        .mkman-banner { border-radius: 10px; padding: 11px 14px; margin-bottom: 14px; font-size: 13px; line-height: 1.5; }
-        .mkman-banner-red { color: #FFC9C4; border: 1px solid #5c1f1a; background: #1a0b0a; }
-        .mkman-banner-ok { color: #A9E3C4; border: 1px solid #205038; background: #0d1f16; }
-        .mkman-banner-t { font-weight: 800; letter-spacing: .3px; }
-        .mkman-sec { margin-top: 20px; border-top: 1px solid #232937; padding-top: 16px; }
-        .mkman-sech { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
-        .mkman-sectitle { font-size: 12px; font-weight: 800; letter-spacing: .4px; text-transform: uppercase; color: #9AA4B2; }
-        /* These two carry server-authored prose that can contain a bare 66-char market id (e.g. the
-           isolation reason). Without a break rule the id refuses to wrap and pushes the whole page into
-           horizontal scroll on a phone — so they break anywhere rather than overflow. */
-        .mkman-note { font-size: 12px; color: #8B95A5; margin: 4px 2px 0; line-height: 1.45; overflow-wrap: anywhere; }
-        .mkman-res { margin-top: 12px; font-size: 13px; color: #B7C0CE; line-height: 1.5; overflow-wrap: anywhere; }
-        .mkman-warn { color: #E8B23A; }
-        .mkman-ok { color: #57C98A; }
-        .mkman-bad { color: #E5574E; }
-        .mkman-num { font-variant-numeric: tabular-nums; white-space: nowrap; }
-        .mkman-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px 18px; }
-        .mkman-kv { font-size: 13px; }
-        .mkman-k { color: #8B95A5; font-size: 11px; text-transform: uppercase; letter-spacing: .4px; display: block; }
-        .mkman-v { color: #E6E9EF; font-weight: 700; font-variant-numeric: tabular-nums; }
-        .mkman-mkt { border: 1px solid #232937; border-radius: 10px; padding: 10px 12px; background: #0d1119; margin-bottom: 12px; }
-        .mkman-mkt-t { font-weight: 700; font-size: 14px; color: #E6E9EF; }
-        .mkman-mkt-id { font-size: 11px; color: #6E7889; word-break: break-all; font-variant-numeric: tabular-nums; }
-        .mkman-inrow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 10px 0; font-size: 13px; color: #C4CCD8; }
-        .mkman-input { width: 130px; padding: 8px 10px; border: 1px solid #2E5FBE; border-radius: 8px; background: #0d1420;
-          color: #E6E9EF; font-size: 14px; font-variant-numeric: tabular-nums; }
-        .mkman-input:disabled { opacity: .5; cursor: not-allowed; border-color: #2E3646; }
-        .mkman-input-sm { width: 92px; padding: 5px 8px; font-size: 13px; }
-        .mkman-input-bad { border-color: #8d2a24; background: #1a0d0c; }
-        .mkman-field { margin: 10px 0; }
-        .mkman-hint { font-size: 12px; color: #8B95A5; line-height: 1.45; flex: 1 1 220px; min-width: 0; }
-        .mkman-hint b { color: #C4CCD8; }
-        .mkman-flag { margin: 6px 0 0; padding: 8px 11px; border-radius: 8px; font-size: 12.5px; line-height: 1.55;
-          display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-        .mkman-flag-bad { color: #FFC9C4; border: 1px solid #5c1f1a; background: #1a0b0a; }
-        .mkman-flag-warn { color: #F0D08A; border: 1px solid #4a3c12; background: #1a1608; }
-        .mkman-fix { min-height: 32px; padding: 0 12px; border: 1px solid #2E5FBE; border-radius: 7px; cursor: pointer;
-          font-size: 12px; font-weight: 700; color: #DCE6FF; background: #16233E; white-space: nowrap;
-          touch-action: manipulation; }
-        .mkman-fix:hover { background: #1B2C4E; }
-        .mkman-fix:disabled { opacity: .55; cursor: not-allowed; }
-        .mkman-toggle { display: inline-flex; border: 1px solid #2E3646; border-radius: 8px; overflow: hidden; }
-        .mkman-tbtn { min-height: 38px; padding: 0 18px; border: none; cursor: pointer; font-size: 13px; font-weight: 800;
-          color: #9AA4B2; background: #141926; letter-spacing: .4px; }
-        .mkman-tbtn:hover { background: #1b2233; }
-        .mkman-tbtn-on-yes { color: #06210f; background: #57C98A; }
-        .mkman-tbtn-on-no { color: #26100d; background: #E8916A; }
-        .mkman-btn { min-height: 38px; padding: 0 16px; border: 1px solid #2E5FBE; border-radius: 8px; cursor: pointer;
-          font-size: 13px; font-weight: 700; color: #DCE6FF; background: #16233E; touch-action: manipulation; }
-        .mkman-btn:hover { background: #1B2C4E; }
-        .mkman-btn:disabled { opacity: .55; cursor: not-allowed; }
-        .mkman-place { min-height: 46px; padding: 0 24px; border: none; border-radius: 10px; cursor: pointer;
-          font-size: 15px; font-weight: 800; color: #06210f; background: #57C98A; letter-spacing: .3px; }
-        .mkman-place:disabled { background: #2b3a30; color: #6b7a70; cursor: not-allowed; }
-        .mkman-take { min-height: 44px; padding: 0 18px; border: 1px solid #2E5FBE; border-radius: 8px; cursor: pointer;
-          font-size: 13px; font-weight: 700; color: #DCE6FF; background: #16233E; }
-        .mkman-give { min-height: 44px; padding: 0 18px; border: 1px solid #4a3c12; border-radius: 8px; cursor: pointer;
-          font-size: 13px; font-weight: 700; color: #E8B23A; background: #1a1608; }
-        .mkman-tbl { margin-top: 10px; font-size: 13px; overflow-x: auto; }
-        .mkman-row { display: grid; grid-template-columns: 62px 78px 92px 118px 78px 92px 190px 1fr; gap: 10px; padding: 8px 0;
-          border-bottom: 1px solid #1a2030; align-items: center; min-width: 930px; }
-        .mkman-head { color: #8B95A5; font-size: 11px; text-transform: uppercase; letter-spacing: .4px; }
-        .mkman-row-off { grid-template-columns: 1fr 92px 92px 110px 110px 1fr; min-width: 700px; }
-
-        /* TELEFONO: le due griglie smettono di essere tabelle e diventano schede.
-           Le etichette arrivano da attr(data-k), non da una stringa nel foglio di stile: una virgoletta
-           qui verrebbe serializzata diversa fra server e client e romperebbe l idratazione. */
-        @media (max-width: 900px) {
-          .mkman-tbl { overflow-x: visible; }
-          .mkman-head { display: none; }
-          .mkman-row, .mkman-row-off {
-            grid-template-columns: repeat(2, minmax(0, 1fr)); min-width: 0; gap: 9px 12px;
-            border: 1px solid #232937; border-radius: 10px; padding: 11px 12px; margin-bottom: 9px;
-            align-items: start;
-          }
-          .mkman-row span[data-k] { min-width: 0; overflow-wrap: anywhere; }
-          .mkman-row span[data-k]::before {
-            content: attr(data-k); display: block; font-size: 10px; text-transform: uppercase;
-            letter-spacing: .4px; color: #8B95A5; margin-bottom: 2px;
-          }
-          .mkman-row span[data-k]:empty::before { content: none; }
-          /* Il riprezzo e le azioni portano dentro piu righe: prendono la larghezza intera. */
-          .mkman-row span[data-k=Auto-riprezzo], .mkman-row span[data-k=Azioni] { grid-column: 1 / -1; }
-        }
-        .mkman-src { font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 999px; white-space: nowrap; }
-        .mkman-src-manual { color: #DCE6FF; border: 1px solid #2E5FBE; background: #16233E; }
-        .mkman-src-auto { color: #9AA4B2; border: 1px solid #2E3646; background: #141926; }
-        .mkman-cancel { min-height: 44px; padding: 0 12px; border: 1px solid #5c1f1a; border-radius: 7px; cursor: pointer;
-          font-size: 12px; font-weight: 700; color: #FF9C93; background: #1a0b0a; }
-        .mkman-cancel:disabled { opacity: .55; cursor: wait; }
-        .mkman-edit { min-height: 44px; padding: 0 12px; border: 1px solid #2E3646; border-radius: 7px; cursor: pointer;
-          font-size: 12px; font-weight: 700; color: #C4CCD8; background: #1C2230; margin-right: 6px; }
-        .mkman-empty { color: #8B95A5; font-size: 13px; padding: 14px 2px; }
-        .mkman-reasons { margin: 8px 0 0; padding-left: 18px; font-size: 12px; color: #E8B23A; line-height: 1.5; }
-        .mkman-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: #9AA4B2;
-          background: #0d1119; border: 1px solid #232937; border-radius: 6px; padding: 8px 10px; margin-top: 8px;
-          white-space: pre-wrap; word-break: break-all; max-height: 220px; overflow: auto; }
-      `}</style>
+    <div className="mkman-root exch" data-manual-panel>
+      <style>{CSS}</style>
 
       <div className="mkman-hrow">
         <span className="mkman-title">Ordini manuali · una mano sola su un mercato</span>
@@ -1155,106 +1048,126 @@ export default function ManualOrdersPanel() {
           </div>
         )}
 
-        <div className="mkman-tbl">
-          <div className="mkman-row mkman-head">
-            <span>Lato</span><span>Prezzo</span><span>Size</span><span>Stato</span><span>Età</span><span>Sorgente</span><span>Auto-riprezzo · margini</span><span>Azioni</span>
-          </div>
+        {/* ── LE RIGHE DENSE ────────────────────────────────────────────────────────────────────────
+            Lato colorato, prezzo, size e countdown di scadenza allineati a destra: i quattro numeri
+            che decidono se toccare l'ordine, tutti visibili senza aprire niente. La vecchia griglia a
+            otto colonne e 930px di larghezza minima trascinava la pagina in scroll orizzontale su ogni
+            telefono; queste righe non hanno larghezza minima. */}
+        <div className="mkman-orders">
           {orders && orders.orders.length === 0 && orders.ok !== false && !orders.simulated && (
             <div className="mkman-empty">Nessun ordine a riposo sul venue per questo mercato (letto dal venue, non dedotto).</div>
           )}
-          {orders?.orders.map((o) => (
-            <div key={o.orderId ?? Math.random()} className="mkman-row">
-              <span className="mkman-v" data-k="Lato">{dash(o.side)}</span>
-              <span className="mkman-num" data-k="Prezzo">{px(o.price)}</span>
-              <span className="mkman-num" data-k="Size">
-                {dash(o.sizeRemaining ?? o.size)}
-                {o.sizeMatched ? <span className="mkman-note"> ({o.sizeMatched} eseg.)</span> : null}
-              </span>
-              <span data-k="Stato">{dash(o.status)}</span>
-              <span className="mkman-num" data-k="Età">{age(o.ageSec)}</span>
-              <span data-k="Sorgente">
-                <span className={`mkman-src ${o.source === 'manual-ui' ? 'mkman-src-manual' : 'mkman-src-auto'}`}>
-                  {o.source === 'manual-ui'
-                    ? (String(o.side).toUpperCase() === 'SELL' ? 'uscita' : 'manuale')
-                    : o.source === 'agent35' ? 'agent35' : '—'}
-                </span>
-              </span>
-              {/* AUTO-RIPREZZO, per riga. Il watcher tocca SOLO gli ordini che il pannello ha piazzato
-                  (attribuiti dall'audit): un ordine di agent35 mostra «n/d», non «OFF», perché non è una
-                  scelta che lo riguarda. L'interruttore è per MERCATO — è nella sezione qui sopra, e
-                  metterne una copia per riga fingerebbe una granularità che non esiste. */}
-              <span data-manual-row-auto data-k="Auto-riprezzo">
-                {o.source !== 'manual-ui' ? (
-                  <span className="mkman-note">n/d</span>
-                ) : (
-                  <>
-                    {autoOn
-                      ? <span className="mkman-src mkman-src-manual" title="il watcher rinnova questo ordine prima che scada, e lo ripiazza prima se il mid lo porta fuori banda">ON · gestito</span>
-                      : <span className="mkman-src mkman-src-auto" title={`OFF: scadenza fissa GTD ${ar?.expiry?.ttlSeconds ?? 180}s, nessun rinnovo`}>OFF · GTD fisso</span>}
-                    {/* I DUE MARGINI CHE CONTANO, per ordine e letti dal venue (non dedotti):
-                        - quando il watcher lo rinnoverà;
-                        - quanto sopravvivrebbe se il server si fermasse ADESSO. Il secondo è il vero
-                          dead-man's switch, ed è l'exchange a farlo rispettare, non noi. */}
-                    {(() => {
-                      // Derived from the venue's absolute expiry timestamp against the live clock, so the
-                      // countdown is honest between polls. Falls back to the server's own seconds when the
-                      // timestamp is missing.
-                      const liveToExpiry = o.expiresAtMs != null ? Math.round((o.expiresAtMs - nowMs) / 1000) : o.secondsToExpiry;
-                      const margin = ar?.expiry?.refreshMarginSeconds ?? null;
-                      const liveToRefresh = liveToExpiry == null ? null : (margin != null ? liveToExpiry - margin : o.secondsToRefresh);
-                      return o.orderType === 'GTC' ? (
-                      <small className="mkman-note mkman-warn" style={{ display: 'block' }} data-manual-row-expiry>
-                        nessuna scadenza sul venue — se il server si ferma, questo ordine resta
-                      </small>
-                    ) : (
-                      <>
-                        <small className="mkman-note" style={{ display: 'block' }} data-manual-row-refresh>
-                          prossimo refresh proattivo: <b>{liveToRefresh == null ? '—' : liveToRefresh <= 0 ? 'ora' : age(liveToRefresh)}</b>
-                        </small>
-                        <small
-                          className={`mkman-note ${liveToExpiry != null && liveToExpiry < 120 ? 'mkman-warn' : ''}`}
-                          style={{ display: 'block' }} data-manual-row-expiry
-                          title="quanto vivrebbe questo ordine se il server si fermasse in questo istante. È la scadenza firmata che il venue fa rispettare da solo: nessun nostro processo serve perché avvenga."
-                        >
-                          se il server si ferma ora: <b>{liveToExpiry == null ? '—' : liveToExpiry <= 0 ? 'scaduto' : age(liveToExpiry)}</b>
-                        </small>
-                      </>
-                      );
-                    })()}
-                  </>
-                )}
-              </span>
-              <span data-k="Azioni">
-                {editing === o.orderId ? (
-                  <>
-                    <input className="mkman-input mkman-input-sm" type="number" step={rules?.tick ?? 0.001}
-                      value={editPrice} onChange={(e) => setEditPrice(e.target.value)} placeholder="prezzo" />
-                    <input className="mkman-input mkman-input-sm" type="number" step={1}
-                      value={editSize} onChange={(e) => setEditSize(e.target.value)} placeholder="size" style={{ marginLeft: 6 }} />
-                    <button className="mkman-btn" style={{ marginLeft: 6, minHeight: 32 }}
-                      onClick={() => o.orderId && doReplace(o.orderId)} disabled={busyOrder === o.orderId}>
-                      {busyOrder === o.orderId ? '…' : 'Conferma'}
-                    </button>
-                    <button className="mkman-edit" style={{ marginLeft: 6 }} onClick={() => setEditing(null)}>Annulla</button>
-                  </>
-                ) : (
-                  <>
-                    {/* RIPREZZA — the price/size edit. Named for what it does to a resting order rather
-                        than for the generic "modify" the venue does not actually offer. Prefilled with
-                        the order's current price and remaining size, so the operator changes one number. */}
-                    <button className="mkman-edit" data-manual-reprice
-                      onClick={() => { setEditing(o.orderId); setEditPrice(o.price != null ? String(o.price) : ''); setEditSize(o.sizeRemaining != null ? String(o.sizeRemaining) : ''); }}>
-                      Riprezza
-                    </button>
-                    <button className="mkman-cancel" onClick={() => o.orderId && doCancel(o.orderId)}
-                      disabled={busyOrder === o.orderId} data-manual-cancel>
-                      {busyOrder === o.orderId ? '…' : 'Cancella'}
-                    </button>
-                  </>
-                )}
-              </span>
-            </div>
-          ))}
+          {orders?.orders.map((o) => {
+            // Derived from the venue's absolute expiry timestamp against the live clock, so the
+            // countdown is honest between polls (the list itself is only re-read every 20s). Falls back
+            // to the server's own seconds when the timestamp is missing.
+            const liveToExpiry = o.expiresAtMs != null ? Math.round((o.expiresAtMs - nowMs) / 1000) : o.secondsToExpiry;
+            const margin = ar?.expiry?.refreshMarginSeconds ?? null;
+            const liveToRefresh = liveToExpiry == null ? null : (margin != null ? liveToExpiry - margin : o.secondsToRefresh);
+            const side = String(o.side ?? '').toUpperCase();
+            const sideCls = side === 'BUY' ? 'is-yes' : side === 'SELL' ? 'is-no' : '';
+            const expSoon = liveToExpiry != null && liveToExpiry < 120;
+            return (
+              <div key={o.orderId ?? Math.random()} className="mkman-orow" data-manual-order>
+                <div className="mkman-otop">
+                  <div className="mkman-oleft">
+                    <span className={`ex-side ${sideCls}`}>{side || 'N/D'}</span>
+                    <span className="mkman-num mkman-v">{dash(o.status)}</span>
+                    <span className={`mkman-src ${o.source === 'manual-ui' ? 'mkman-src-manual' : 'mkman-src-auto'}`}>
+                      {o.source === 'manual-ui'
+                        ? (side === 'SELL' ? 'uscita' : 'manuale')
+                        : o.source === 'agent35' ? 'agent35' : '—'}
+                    </span>
+                    {/* AUTO-RIPREZZO, per riga. Il watcher tocca SOLO gli ordini che il pannello ha
+                        piazzato (attribuiti dall'audit): un ordine di agent35 mostra «n/d», non «OFF»,
+                        perché non è una scelta che lo riguarda. L'interruttore è per MERCATO — sta nella
+                        sezione qui sopra, e metterne una copia per riga fingerebbe una granularità che
+                        non esiste. */}
+                    <span data-manual-row-auto>
+                      {o.source !== 'manual-ui' ? (
+                        <span className="mkman-src">auto-riprezzo n/d</span>
+                      ) : autoOn ? (
+                        <span className="mkman-src mkman-src-manual" title="il watcher rinnova questo ordine prima che scada, e lo ripiazza prima se il mid lo porta fuori banda">auto ON · gestito</span>
+                      ) : (
+                        <span className="mkman-src" title={`OFF: scadenza fissa GTD ${ar?.expiry?.ttlSeconds ?? 180}s, nessun rinnovo`}>auto OFF · GTD fisso</span>
+                      )}
+                    </span>
+                  </div>
+
+                  <div className="mkman-onums">
+                    <span className="ex-num">
+                      <span className="ex-num-k">prezzo</span>
+                      <span className="ex-num-v">{px(o.price)}</span>
+                    </span>
+                    <span className="ex-num">
+                      <span className="ex-num-k">size</span>
+                      <span className="ex-num-v">{dash(o.sizeRemaining ?? o.size)}</span>
+                    </span>
+                    <span className="ex-num">
+                      <span className="ex-num-k">età</span>
+                      <span className="ex-num-v">{age(o.ageSec)}</span>
+                    </span>
+                    {/* IL COUNTDOWN GTD — quanto vivrebbe questo ordine se il server si fermasse adesso.
+                        È la scadenza firmata che il venue fa rispettare da solo: nessun nostro processo
+                        serve perché avvenga. Un GTC non ne ha, e lo dice invece di mostrare un trattino
+                        che si leggerebbe come «sconosciuto». */}
+                    <span className="ex-num" data-manual-row-expiry>
+                      <span className="ex-num-k">scade fra</span>
+                      <span
+                        className={`ex-num-v ${o.orderType === 'GTC' ? 'ex-gold' : expSoon ? 'ex-dn' : ''}`}
+                        title={o.orderType === 'GTC'
+                          ? 'nessuna scadenza sul venue: se il server si ferma, questo ordine resta'
+                          : 'quanto vivrebbe questo ordine se il server si fermasse in questo istante'}
+                      >
+                        {o.orderType === 'GTC' ? 'mai' : liveToExpiry == null ? '—' : liveToExpiry <= 0 ? 'scaduto' : age(liveToExpiry)}
+                      </span>
+                    </span>
+                  </div>
+                </div>
+
+                <div className="mkman-ometa">
+                  {o.sizeMatched ? <><span className="mkman-num">{o.sizeMatched}</span> già eseguite · </> : null}
+                  {o.orderType === 'GTC' ? (
+                    <span className="mkman-warn">nessuna scadenza sul venue — se il server si ferma, questo ordine resta</span>
+                  ) : (
+                    <>prossimo refresh proattivo fra{' '}
+                      <b className="mkman-num">{liveToRefresh == null ? '—' : liveToRefresh <= 0 ? 'ora' : age(liveToRefresh)}</b></>
+                  )}
+                  {o.orderId ? <> · id <span className="mkman-num">{o.orderId.slice(0, 12)}…</span></> : null}
+                </div>
+
+                <div className="mkman-oacts">
+                  {editing === o.orderId ? (
+                    <>
+                      <input className="mkman-input mkman-input-sm" type="number" step={rules?.tick ?? 0.001}
+                        value={editPrice} onChange={(e) => setEditPrice(e.target.value)} placeholder="prezzo" />
+                      <input className="mkman-input mkman-input-sm" type="number" step={1}
+                        value={editSize} onChange={(e) => setEditSize(e.target.value)} placeholder="size" />
+                      <button className="mkman-btn"
+                        onClick={() => o.orderId && doReplace(o.orderId)} disabled={busyOrder === o.orderId}>
+                        {busyOrder === o.orderId ? '…' : 'Conferma'}
+                      </button>
+                      <button className="mkman-edit" onClick={() => setEditing(null)}>Annulla</button>
+                    </>
+                  ) : (
+                    <>
+                      {/* RIPREZZA — the price/size edit. Named for what it does to a resting order rather
+                          than for the generic "modify" the venue does not actually offer. Prefilled with
+                          the order's current price and remaining size, so the operator changes one number. */}
+                      <button className="mkman-edit" data-manual-reprice
+                        onClick={() => { setEditing(o.orderId); setEditPrice(o.price != null ? String(o.price) : ''); setEditSize(o.sizeRemaining != null ? String(o.sizeRemaining) : ''); }}>
+                        Riprezza
+                      </button>
+                      <button className="mkman-cancel" onClick={() => o.orderId && doCancel(o.orderId)}
+                        disabled={busyOrder === o.orderId} data-manual-cancel>
+                        {busyOrder === o.orderId ? '…' : 'Cancella'}
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
 
         {rowMsg && (
@@ -1272,3 +1185,168 @@ export default function ManualOrdersPanel() {
     </div>
   );
 }
+
+// NOTE: keep this stylesheet free of the characters React escapes in text nodes — quotes, angle
+// brackets, ampersands. As the child of a style element they are serialised escaped on the server and
+// raw on the client, which is a hydration mismatch that takes the whole root down to client rendering.
+// (This is also why the mobile card labels come from attr(data-k) and never from a literal string here.)
+const CSS = `
+.mkman-root { max-width: 1080px; margin: 0 auto 8px; padding: 12px 14px 16px;
+  border: 1px solid var(--ex-line); border-radius: 8px; background: var(--ex-panel); }
+.mkman-hrow { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin-bottom: 10px; flex-wrap: wrap; }
+.mkman-title { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--ex-txt-2); }
+
+/* Badges and banners speak the shared exchange vocabulary — grey unknown, gold warn, red bad, green ok. */
+.mkman-badge { font-size: 10.5px; font-weight: 700; padding: 1px 7px; border-radius: 3px; white-space: nowrap;
+  border: 1px solid var(--ex-unk-bd); background: var(--ex-unk-bg); color: var(--ex-txt-2); }
+.mkman-badge-warn { color: var(--ex-gold); border-color: var(--ex-gold-bd); background: var(--ex-gold-bg); }
+.mkman-badge-ok { color: var(--ex-green); border-color: var(--ex-green-bd); background: var(--ex-green-bg); }
+.mkman-badge-red { color: var(--ex-red); border-color: var(--ex-red-bd); background: var(--ex-red-bg); }
+.mkman-banner { border-radius: 6px; padding: 9px 12px; margin-bottom: 12px; font-size: 12.5px; line-height: 1.5;
+  border: 1px solid var(--ex-unk-bd); background: var(--ex-unk-bg); color: var(--ex-txt-2); }
+.mkman-banner-red { color: #FF9AA8; border-color: var(--ex-red-bd); background: var(--ex-red-bg); }
+.mkman-banner-ok { color: var(--ex-green); border-color: var(--ex-green-bd); background: var(--ex-green-bg); }
+.mkman-banner-t { font-weight: 700; letter-spacing: .02em; }
+
+.mkman-sec { margin-top: 18px; border-top: 1px solid var(--ex-line); padding-top: 14px; }
+.mkman-sech { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin-bottom: 10px; flex-wrap: wrap; }
+.mkman-sectitle { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--ex-txt-2); }
+/* These two carry server-authored prose that can contain a bare 66-char market id (e.g. the isolation
+   reason). Without a break rule the id refuses to wrap and pushes the whole page into horizontal scroll
+   on a phone — so they break anywhere rather than overflow. */
+.mkman-note { font-size: 11px; color: var(--ex-txt-3); margin: 4px 0 0; line-height: 1.5; overflow-wrap: anywhere; }
+.mkman-res { margin-top: 10px; font-size: 12.5px; color: var(--ex-txt-2); line-height: 1.55; overflow-wrap: anywhere; }
+.mkman-warn { color: var(--ex-gold); }
+.mkman-ok { color: var(--ex-green); }
+.mkman-bad { color: var(--ex-red); }
+.mkman-num { font-family: var(--ex-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.mkman-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 9px 14px; }
+.mkman-kv { font-size: 12.5px; min-width: 0; }
+.mkman-k { display: block; color: var(--ex-txt-3); font-size: 9.5px; text-transform: uppercase; letter-spacing: .05em; }
+.mkman-v { color: var(--ex-txt); font-weight: 700; font-family: var(--ex-mono); font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere; }
+.mkman-mkt { border: 1px solid var(--ex-line); border-radius: 6px; padding: 10px 12px;
+  background: var(--ex-panel-2); margin-bottom: 12px; }
+.mkman-mkt-t { font-weight: 600; font-size: 13px; color: var(--ex-txt); }
+.mkman-mkt-id { font-size: 10px; color: var(--ex-txt-3); word-break: break-all; font-family: var(--ex-mono); }
+
+.mkman-inrow { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; margin: 10px 0;
+  font-size: 12.5px; color: var(--ex-txt-2); }
+.mkman-input { width: 130px; min-height: 38px; padding: 0 10px; border: 1px solid var(--ex-line); border-radius: 6px;
+  background: #0D1114; color: var(--ex-txt); font-family: var(--ex-mono); font-size: 13px;
+  font-variant-numeric: tabular-nums; }
+.mkman-input:focus { outline: none; border-color: var(--ex-gold); }
+.mkman-input:disabled { opacity: .45; cursor: not-allowed; }
+.mkman-input-sm { width: 88px; min-height: 32px; font-size: 12px; }
+.mkman-input-bad { border-color: var(--ex-red); background: rgba(246,70,93,.08); }
+.mkman-field { margin: 10px 0; }
+.mkman-hint { font-size: 11.5px; color: var(--ex-txt-3); line-height: 1.45; flex: 1 1 200px; min-width: 0; }
+.mkman-hint b { color: var(--ex-txt-2); font-family: var(--ex-mono); }
+
+/* The inline fix-it flags: the figure that will be refused, and the one button that repairs it. */
+.mkman-flag { margin: 6px 0 0; padding: 8px 10px; border-radius: 6px; font-size: 12px; line-height: 1.5;
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.mkman-flag-bad { color: #FF9AA8; border: 1px solid var(--ex-red-bd); background: var(--ex-red-bg); }
+.mkman-flag-warn { color: var(--ex-gold); border: 1px solid var(--ex-gold-bd); background: var(--ex-gold-bg); }
+.mkman-fix { min-height: 30px; padding: 0 10px; border: 1px solid var(--ex-gold); border-radius: 4px;
+  cursor: pointer; font-family: inherit; font-size: 11.5px; font-weight: 700; color: #0B0E11;
+  background: var(--ex-gold); white-space: nowrap; touch-action: manipulation; }
+.mkman-fix:hover { background: var(--ex-gold-2); }
+.mkman-fix:disabled { opacity: .45; cursor: not-allowed; }
+
+/* YES / NO — the two books, in the two signal colours. Never colour alone: the word is the label. */
+.mkman-toggle { display: inline-flex; border: 1px solid var(--ex-line); border-radius: 6px; overflow: hidden; }
+.mkman-tbtn { min-height: 38px; padding: 0 18px; border: none; cursor: pointer; font-family: var(--ex-mono);
+  font-size: 12.5px; font-weight: 700; color: var(--ex-txt-2); background: var(--ex-panel-2); letter-spacing: .04em; }
+.mkman-tbtn:hover { color: var(--ex-txt); }
+.mkman-tbtn-on-yes { color: #06251A; background: var(--ex-green); }
+.mkman-tbtn-on-no { color: #fff; background: var(--ex-red); }
+
+.mkman-btn { min-height: 36px; padding: 0 13px; border: 1px solid var(--ex-line); border-radius: 6px;
+  cursor: pointer; font-family: inherit; font-size: 12.5px; font-weight: 700; color: var(--ex-txt);
+  background: var(--ex-panel-2); touch-action: manipulation; }
+.mkman-btn:hover { border-color: var(--ex-txt-3); }
+.mkman-btn:disabled { opacity: .45; cursor: not-allowed; }
+.mkman-place { min-height: 46px; padding: 0 22px; border: 1px solid var(--ex-gold); border-radius: 6px;
+  cursor: pointer; font-family: inherit; font-size: 14px; font-weight: 700; color: #0B0E11;
+  background: var(--ex-gold); letter-spacing: .03em; touch-action: manipulation; }
+.mkman-place:hover { background: var(--ex-gold-2); border-color: var(--ex-gold-2); }
+.mkman-place:disabled { background: #3A3520; border-color: #3A3520; color: #7A7259; cursor: not-allowed; }
+.mkman-take { min-height: 40px; padding: 0 15px; border: 1px solid var(--ex-line); border-radius: 6px;
+  cursor: pointer; font-family: inherit; font-size: 12.5px; font-weight: 700; color: var(--ex-txt);
+  background: var(--ex-panel-2); touch-action: manipulation; }
+.mkman-take:hover { border-color: var(--ex-gold); color: var(--ex-gold); }
+.mkman-give { min-height: 40px; padding: 0 15px; border: 1px solid var(--ex-gold-bd); border-radius: 6px;
+  cursor: pointer; font-family: inherit; font-size: 12.5px; font-weight: 700; color: var(--ex-gold);
+  background: var(--ex-gold-bg); touch-action: manipulation; }
+.mkman-take:disabled, .mkman-give:disabled { opacity: .45; cursor: not-allowed; }
+
+/* ── DISTANZA / SOGLIA / BANDA — still a table, now in the dense language. ─────────────────────────── */
+.mkman-tbl { margin-top: 10px; font-size: 12.5px; overflow-x: auto; }
+.mkman-row { display: grid; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--ex-line-soft);
+  align-items: center; }
+.mkman-head { color: var(--ex-txt-3); font-size: 9.5px; text-transform: uppercase; letter-spacing: .06em; }
+.mkman-row-off { grid-template-columns: 1fr 88px 88px 100px 104px 1fr; min-width: 680px; }
+
+/* TELEFONO: la griglia smette di essere tabella e diventa scheda. Le etichette arrivano da attr(data-k),
+   non da una stringa in questo foglio: una virgoletta qui verrebbe serializzata diversa fra server e
+   client e romperebbe l idratazione. */
+@media (max-width: 900px) {
+  .mkman-tbl { overflow-x: visible; }
+  .mkman-head { display: none; }
+  .mkman-row, .mkman-row-off {
+    grid-template-columns: repeat(2, minmax(0, 1fr)); min-width: 0; gap: 9px 12px;
+    border: 1px solid var(--ex-line); border-radius: 6px; padding: 10px 12px; margin-bottom: 8px;
+    align-items: start;
+  }
+  .mkman-row span[data-k] { min-width: 0; overflow-wrap: anywhere; }
+  .mkman-row span[data-k]::before {
+    content: attr(data-k); display: block; font-size: 9.5px; text-transform: uppercase;
+    letter-spacing: .05em; color: var(--ex-txt-3); margin-bottom: 2px;
+  }
+  .mkman-row span[data-k]:empty::before { content: none; }
+  .mkman-row span[data-k=Azioni] { grid-column: 1 / -1; }
+}
+
+/* ── ORDINI A RIPOSO — righe dense, non piu una griglia a 930px. ───────────────────────────────────
+   Lato colorato, prezzo, size e countdown di scadenza allineati a destra: i quattro numeri che
+   decidono se toccare l ordine, senza aprire niente. */
+.mkman-orders { border: 1px solid var(--ex-line); border-radius: 6px; margin-top: 10px; }
+.mkman-orow { border-bottom: 1px solid var(--ex-line-soft); padding: 10px 12px; }
+.mkman-orow:last-child { border-bottom: 0; }
+.mkman-otop { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; align-items: start; }
+.mkman-oleft { min-width: 0; display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.mkman-onums { display: flex; gap: 14px; justify-content: flex-end; }
+.mkman-ometa { margin-top: 6px; font-size: 10.5px; color: var(--ex-txt-3); line-height: 1.5;
+  overflow-wrap: anywhere; }
+.mkman-oacts { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 8px; }
+.mkman-src { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 3px; white-space: nowrap;
+  border: 1px solid var(--ex-line); background: var(--ex-panel-2); color: var(--ex-txt-2); }
+.mkman-src-manual { color: var(--ex-gold); border-color: var(--ex-gold-bd); background: var(--ex-gold-bg); }
+.mkman-src-auto { color: var(--ex-txt-2); }
+.mkman-cancel { min-height: 36px; padding: 0 12px; border: 1px solid var(--ex-red-bd); border-radius: 6px;
+  cursor: pointer; font-family: inherit; font-size: 12px; font-weight: 700; color: var(--ex-red);
+  background: var(--ex-red-bg); touch-action: manipulation; }
+.mkman-cancel:hover { background: rgba(246,70,93,.18); }
+.mkman-cancel:disabled { opacity: .45; cursor: wait; }
+.mkman-edit { min-height: 36px; padding: 0 12px; border: 1px solid var(--ex-line); border-radius: 6px;
+  cursor: pointer; font-family: inherit; font-size: 12px; font-weight: 700; color: var(--ex-txt);
+  background: var(--ex-panel-2); touch-action: manipulation; }
+.mkman-edit:hover { border-color: var(--ex-txt-3); }
+
+.mkman-empty { color: var(--ex-txt-2); font-size: 12.5px; padding: 14px 12px; }
+.mkman-reasons { margin: 8px 0 0; padding-left: 16px; font-size: 11.5px; color: var(--ex-gold); line-height: 1.5; }
+.mkman-code { font-family: var(--ex-mono); font-size: 10.5px; color: var(--ex-txt-2);
+  background: #0D1114; border: 1px solid var(--ex-line); border-radius: 6px; padding: 8px 10px; margin-top: 8px;
+  white-space: pre-wrap; word-break: break-all; max-height: 220px; overflow: auto; }
+
+@media (max-width: 620px) {
+  .mkman-otop { grid-template-columns: minmax(0, 1fr); }
+  .mkman-onums { justify-content: space-between; }
+}
+`;
