@@ -9,6 +9,12 @@
 // (The legacy /dashboard/liquidity-rewards/allocate route redirects here with ?tab=alloca, which is read
 // ONCE at mount purely to pick the landing section — after that the URL never changes again.)
 //
+// EXCHANGE SURFACE, DENSE BY DESIGN (shared .exch language in globals.css). Every figure this console
+// knows is ON SCREEN: balance, committed, $/day, out-of-band count sit on one strip at the top; each
+// market row carries mid, spread and $/day right-aligned; nothing that matters is behind a tap. A value
+// that is $0 or does not qualify still renders AS A FIGURE, with a small red note underneath saying why
+// — hiding a zero is how an operator ends up believing a market is earning when it is not.
+//
 // EVERY NUMBER IS REAL, AND SAYS WHERE IT CAME FROM:
 //   header · capitale totale       → GET /api/rewards/balance         (proxy pUSD, read on-chain)
 //   header · capitale impegnato    → GET /api/maker/board  orders     (the VENUE's open-order list)
@@ -140,6 +146,8 @@ const ageTxt = (s: number | null | undefined): string =>
   (!fin(s) ? 'N/D' : s < 60 ? `${Math.round(s)}s fa` : s < 3600 ? `${Math.round(s / 60)} min fa` : `${(s / 3600).toFixed(1)} h fa`);
 const hoursTxt = (h: number | null): string =>
   (!fin(h) ? 'N/D' : h < 48 ? `${Math.round(h)} h` : `${Math.round(h / 24)} g`);
+/** Sign class for a P&L figure: green up, red down, neutral at exactly flat or unreadable. */
+const pnlCls = (v: number | null | undefined): string => (!fin(v) ? '' : v > 0 ? 'ex-up' : v < 0 ? 'ex-dn' : '');
 
 const BOARD_POLL_MS = 20_000;
 const BALANCE_POLL_MS = 60_000;
@@ -302,15 +310,15 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
   // the orders, the other is the absence of a fact — and this codebase never lets the second wear the
   // clothes of the first. Unknown is grey, and grey is never red.
   const earning = useMemo((): { state: 'ok' | 'warn' | 'bad' | 'unknown'; label: string; detail: string } => {
-    if (!orders) return { state: 'unknown', label: 'In lettura…', detail: 'Board non ancora ricevuto dal server.' };
+    if (!orders) return { state: 'unknown', label: 'IN LETTURA…', detail: 'Board non ancora ricevuto dal server.' };
     if (orders.simulated) return {
       state: 'unknown',
-      label: 'Non lo sappiamo',
+      label: 'NON LO SAPPIAMO',
       detail: 'Nessuna credenziale di lettura: il venue non è stato interrogato. Non significa «zero ordini».',
     };
     if (orders.ok === false) return {
       state: 'unknown',
-      label: 'Non lo sappiamo',
+      label: 'NON LO SAPPIAMO',
       detail: `Lettura del venue fallita: ${orders.error ?? 'errore non riportato'}. Questa non è una lista vuota.`,
     };
     const inBand = summary?.inBandCount ?? 0;
@@ -318,22 +326,22 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
     const unk = summary?.unknownBandCount ?? 0;
     if (orders.count === 0) return {
       state: 'bad',
-      label: 'Fermo',
+      label: 'FERMO',
       detail: 'Nessun ordine a riposo sul venue — letto, non dedotto. Il capitale non sta maturando nulla.',
     };
     if (inBand > 0 && out === 0 && unk === 0) return {
       state: 'ok',
-      label: 'Sì, sta maturando',
+      label: 'STA MATURANDO',
       detail: `Tutti i ${inBand} ordini a riposo sono dentro la banda premiante.`,
     };
     if (inBand === 0) return {
       state: 'bad',
-      label: 'No, non sta maturando',
+      label: 'NON MATURA',
       detail: `${out} ${out === 1 ? 'ordine è fuori banda' : 'ordini sono fuori banda'}${unk > 0 ? `, ${unk} non giudicabili` : ''}: nessun ordine sta maturando.`,
     };
     return {
       state: 'warn',
-      label: 'Solo in parte',
+      label: 'SOLO IN PARTE',
       detail: `${inBand} in banda, ${out} fuori${unk > 0 ? `, ${unk} non giudicabili` : ''}. Solo la parte in banda matura.`,
     };
   }, [orders, summary]);
@@ -362,9 +370,9 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
   if (operator === false) return <RewardsUnified />;
   if (operator === null) {
     return (
-      <div className="lrc-root">
+      <div className="lrc-root exch">
         <style>{CSS}</style>
-        <div className="lrc-note">Caricamento della console…</div>
+        <div className="lrc-nd">Caricamento della console…</div>
       </div>
     );
   }
@@ -376,89 +384,110 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
   const feedAgeSec = ageFrom(board?.feed.polyGeneratedAt);
   const ordersAgeSec = ageFrom(orders?.at);
 
+  const earnBadge = earning.state === 'ok' ? 'is-ok' : earning.state === 'bad' ? 'is-bad' : earning.state === 'warn' ? 'is-warn' : '';
+
   return (
-    <div className="lrc-root" data-liquidity-console>
+    <div className="lrc-root exch" data-liquidity-console>
       <style>{CSS}</style>
 
-      {/* ── HEADER: four live metrics ─────────────────────────────────────────────────────────────── */}
+      {/* ── HEADER ────────────────────────────────────────────────────────────────────────────────────
+          Title, the state as a COMPACT BADGE beside it (the 46px ring is gone — it cost a third of the
+          first screen to say one word), then the four live figures on ONE dense strip. */}
       <div className="lrc-head">
         <div className="lrc-title-row">
           <h1 className="lrc-h1">Liquidity rewards · console operatore</h1>
+          <span className={`ex-badge ${earnBadge}`} data-lrc-earning={earning.state}>{earning.label}</span>
           <span className="lrc-venue">solo Polymarket</span>
         </div>
+        <p className="lrc-earndetail">
+          <span className="lrc-earnq">Il capitale sta maturando premi?</span> {earning.detail}
+        </p>
 
-        <StatusRing state={earning.state} label={earning.label} detail={earning.detail} />
+        <div className="ex-stats" data-lrc-metrics>
+          <div className="ex-stat">
+            <span className="ex-stat-k">Saldo</span>
+            <span className={`ex-stat-v ${bal?.pusdBalance == null ? 'ex-dim' : ''}`}>{money(bal?.pusdBalance)}</span>
+            <span className="ex-stat-s">
+              {bal?.pusdBalance == null ? 'proxy pUSD' : `pUSD proxy · ${ageTxt(bal?.ageSeconds)}`}
+            </span>
+            {bal?.pusdBalance == null && (
+              <p className="ex-why">{balErr ? `non letto: ${balErr}` : 'saldo non leggibile — non è «zero»'}</p>
+            )}
+            {bal?.stale === true && <p className="ex-why ex-why-warn">valore non aggiornato (STALE)</p>}
+          </div>
 
-        <div className="lrc-metrics" data-lrc-metrics>
-          <Metric
-            k="Capitale totale"
-            v={money(bal?.pusdBalance)}
-            sub={bal?.pusdBalance == null
-              ? (balErr ? `non letto: ${balErr}` : 'saldo non leggibile')
-              : `pUSD del proxy, on-chain · letto ${ageTxt(bal?.ageSeconds)}${bal?.stale ? ' · STALE' : ''}`}
-            warn={bal?.pusdBalance == null || bal?.stale === true}
-          />
-          <Metric
-            k="Capitale impegnato ora"
-            v={orders?.simulated ? 'N/D' : money(summary?.committedUsd)}
-            sub={orders?.simulated
-              ? 'venue non interrogato (nessuna credenziale) — non è «zero impegnato»'
-              : orders?.ok === false
-                ? `lettura fallita: ${orders.error ?? '—'}`
-                : `${orders?.count ?? 0} ordini a riposo${summary && summary.unpricedOrders > 0 ? ` · ${summary.unpricedOrders} senza controvalore` : ''}`}
-            warn={orders?.simulated === true || orders?.ok === false}
-          />
-          <Metric
-            k="$/giorno lordo stimato"
-            v={orders?.simulated ? 'N/D' : (summary?.estGrossUsdPerDay == null ? 'N/D' : `${money(summary.estGrossUsdPerDay)}/g`)}
-            sub={orders?.simulated
-              ? 'nessuna lettura del venue'
-              : summary?.estGrossUsdPerDay == null
-                ? 'un mercato con capitale in banda non è scorabile — nessun totale inventato'
-                : `sul capitale in banda (${money(summary?.committedInBandUsd)}) · lordo, adverse selection non modellata`}
-            warn={summary?.estGrossUsdPerDay == null || orders?.simulated === true}
-          />
-          <Metric
-            k="Ordini fuori banda"
-            v={orders?.simulated ? 'N/D' : String(summary?.outOfBandCount ?? 0)}
-            sub={orders?.simulated
-              ? 'nessuna lettura del venue'
-              : (summary?.unknownBandCount ?? 0) > 0
-                ? `${summary?.unknownBandCount} non giudicabili (regole di venue non leggibili)`
-                : (summary?.outOfBandCount ?? 0) > 0 ? 'non stanno maturando nulla' : 'tutti gli ordini a riposo sono in banda'}
-            warn={(summary?.outOfBandCount ?? 0) > 0 || (summary?.unknownBandCount ?? 0) > 0}
-          />
+          <div className="ex-stat">
+            <span className="ex-stat-k">Impegnato</span>
+            <span className={`ex-stat-v ${orders?.simulated ? 'ex-dim' : ''}`}>
+              {orders?.simulated ? 'N/D' : money(summary?.committedUsd)}
+            </span>
+            <span className="ex-stat-s">
+              {orders?.simulated ? 'venue non interrogato' : `${orders?.count ?? 0} ordini a riposo`}
+            </span>
+            {orders?.simulated && <p className="ex-why">nessuna credenziale di lettura — non è «zero impegnato»</p>}
+            {orders?.ok === false && <p className="ex-why">lettura fallita: {orders.error ?? '—'}</p>}
+            {!orders?.simulated && summary && summary.unpricedOrders > 0 && (
+              <p className="ex-why ex-why-warn">{summary.unpricedOrders} ordini senza controvalore leggibile</p>
+            )}
+          </div>
+
+          <div className="ex-stat">
+            <span className="ex-stat-k">$/giorno lordo</span>
+            <span className={`ex-stat-v ${orders?.simulated || summary?.estGrossUsdPerDay == null ? 'ex-dim' : 'ex-up'}`}>
+              {orders?.simulated || summary?.estGrossUsdPerDay == null ? 'N/D' : money(summary.estGrossUsdPerDay)}
+            </span>
+            <span className="ex-stat-s">
+              {orders?.simulated ? 'nessuna lettura' : `su ${money(summary?.committedInBandUsd)} in banda`}
+            </span>
+            {!orders?.simulated && summary?.estGrossUsdPerDay == null && (
+              <p className="ex-why">un mercato con capitale in banda non è scorabile — nessun totale inventato</p>
+            )}
+          </div>
+
+          <div className="ex-stat">
+            <span className="ex-stat-k">Fuori banda</span>
+            <span className={`ex-stat-v ${orders?.simulated ? 'ex-dim' : (summary?.outOfBandCount ?? 0) > 0 ? 'ex-dn' : 'ex-up'}`}>
+              {orders?.simulated ? 'N/D' : String(summary?.outOfBandCount ?? 0)}
+            </span>
+            <span className="ex-stat-s">
+              {orders?.simulated ? 'nessuna lettura' : (summary?.outOfBandCount ?? 0) > 0 ? 'non maturano nulla' : 'tutti in banda'}
+            </span>
+            {(summary?.unknownBandCount ?? 0) > 0 && !orders?.simulated && (
+              <p className="ex-why ex-why-warn">{summary?.unknownBandCount} non giudicabili (regole di venue non leggibili)</p>
+            )}
+          </div>
         </div>
 
-        {boardErr && <div className="lrc-banner lrc-banner-red">Board non leggibile: {boardErr}</div>}
+        {boardErr && <div className="ex-banner is-bad lrc-mt">Board non leggibile: {boardErr}</div>}
 
-        <div className="lrc-tabs" role="tablist" aria-label="Sezioni">
+        <div className="ex-tabs lrc-mt" role="tablist" aria-label="Sezioni">
           {TABS.map((t) => (
             <button
               key={t.key}
               role="tab"
               aria-selected={tab === t.key}
-              className={`lrc-tab ${tab === t.key ? 'is-on' : ''}`}
+              className={`ex-tab ${tab === t.key ? 'is-on' : ''}`}
               onClick={() => setTab(t.key)}
               data-lrc-tab={t.key}
             >
               <span className="lrc-tab-long">{t.label}</span>
               <span className="lrc-tab-short">{t.short}</span>
-              {t.key === 'riepilogo' && (summary?.outOfBandCount ?? 0) > 0 && <span className="lrc-tab-dot" aria-label="allarme" />}
+              {t.key === 'riepilogo' && (summary?.outOfBandCount ?? 0) > 0 && <span className="ex-tab-dot" aria-label="allarme" />}
             </button>
           ))}
         </div>
+
         {/* FRESHNESS PER SOURCE, not one global "updated Xs ago". These three sources refresh at 20s,
             60s and whatever agent34 last wrote: presenting them with equal weight is what makes a stale
             balance look as current as a fresh book. Each is judged against ITS OWN cadence. */}
         <Freshness
           items={[
-            { k: 'Ordini dal venue', ageSec: ordersAgeSec, everySec: BOARD_POLL_MS / 1000 },
-            { k: 'Saldo on-chain', ageSec: bal?.ageSeconds ?? null, everySec: BALANCE_POLL_MS / 1000 },
-            { k: 'Scan Polymarket', ageSec: feedAgeSec, everySec: 60 },
+            { k: 'Ordini', ageSec: ordersAgeSec, everySec: BOARD_POLL_MS / 1000 },
+            { k: 'Saldo', ageSec: bal?.ageSeconds ?? null, everySec: BALANCE_POLL_MS / 1000 },
+            { k: 'Scan', ageSec: feedAgeSec, everySec: 60 },
+            { k: 'Mercati', ageSec: null, everySec: 60, valueOverride: String(board?.marketCount ?? 0) },
           ]}
         />
-        <div className="lrc-feedage">{board?.marketCount ?? 0} mercati premianti nello scan</div>
       </div>
 
       {/* ── 1 · RIEPILOGO ─────────────────────────────────────────────────────────────────────────── */}
@@ -466,108 +495,144 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
         <section className="lrc-sec" data-lrc-section="riepilogo">
           <Ask q="Cosa devo guardare adesso?" sub="Gli ordini che non stanno maturando, e quanto capitale è fermo." />
           {orders?.simulated && (
-            <div className="lrc-banner lrc-banner-warn">
+            <div className="ex-banner is-warn lrc-mb">
               Nessuna credenziale di lettura: il venue non è stato interrogato. Le sezioni che dipendono
               dai tuoi ordini mostrano N/D — «nessun ordine» sarebbe una deduzione, non un fatto.
             </div>
           )}
 
-          {/* ALERT — named markets, named action. Never "some orders are out of band". */}
+          {/* ALERT — named markets, named action, one dense row each. Never "some orders are out of band". */}
           {outOfBandOrders.length > 0 ? (
             <div className="lrc-alert" data-lrc-alert="out-of-band">
               <div className="lrc-alert-t">
-                {outOfBandOrders.length} {outOfBandOrders.length === 1 ? 'ordine è fuori banda' : 'ordini sono fuori banda'} — non stanno maturando nulla
+                {outOfBandOrders.length} {outOfBandOrders.length === 1 ? 'ordine fuori banda' : 'ordini fuori banda'} — non stanno maturando nulla
               </div>
-              <ul className="lrc-alert-list">
+              <div className="ex-rows lrc-alert-rows">
                 {outOfBandOrders.map((o) => (
-                  <li key={o.orderId ?? Math.random()}>
-                    <b>{o.marketTitle ?? o.marketId ?? 'mercato sconosciuto'}</b> — {(o.book ?? '?').toUpperCase()} a {cents(o.price)},
-                    {' '}<span className="lrc-num">{num(o.distanceCents, 2)}¢</span> dal mid (banda ±{num(o.bandRadiusCents, 2)}¢).
-                    {' '}Azione: <b>riprezza a {cents(o.suggestedPrice)}</b> oppure cancella.
-                  </li>
+                  <div key={o.orderId ?? Math.random()} className="ex-row">
+                    <div className="ex-row-main">
+                      <div className="ex-row-t">
+                        <span className={`ex-side ${o.book === 'yes' ? 'is-yes' : o.book === 'no' ? 'is-no' : ''}`}>
+                          {(o.book ?? '?').toUpperCase()}
+                        </span>{' '}
+                        {o.marketTitle ?? o.marketId ?? 'mercato sconosciuto'}
+                      </div>
+                      <div className="ex-row-s">
+                        Azione: riprezza a <b className="ex-n ex-gold">{cents(o.suggestedPrice)}</b> oppure cancella.
+                      </div>
+                    </div>
+                    <div className="ex-row-nums">
+                      <span className="ex-num"><span className="ex-num-k">prezzo</span><span className="ex-num-v">{cents(o.price)}</span></span>
+                      <span className="ex-num"><span className="ex-num-k">dal mid</span><span className="ex-num-v ex-dn">{num(o.distanceCents, 2)}¢</span></span>
+                      <span className="ex-num"><span className="ex-num-k">banda</span><span className="ex-num-v">±{num(o.bandRadiusCents, 2)}¢</span></span>
+                    </div>
+                  </div>
                 ))}
-              </ul>
-              <button className="lrc-btn" onClick={() => setTab('ordini')} data-lrc-goto-orders>
+              </div>
+              <button className="ex-btn is-gold lrc-mt" onClick={() => setTab('ordini')} data-lrc-goto-orders>
                 Vai a Ordini manuali →
               </button>
             </div>
           ) : orders?.simulated ? null : (
-            <div className="lrc-banner lrc-banner-ok" data-lrc-alert="none">
+            <div className="ex-banner is-ok lrc-mb" data-lrc-alert="none">
               Nessun ordine fuori banda. {orders?.count === 0
                 ? 'Non hai ordini a riposo sul venue (letto, non dedotto).'
                 : `Tutti i ${orders?.count} ordini a riposo sono dentro la banda premiante.`}
             </div>
           )}
 
-          <div className="lrc-cards">
-            {/* MIGLIOR MERCATO PER RENDIMENTO */}
-            <div className="lrc-card">
-              <div className="lrc-card-k">Miglior mercato per rendimento</div>
-              {capitalUsd == null ? (
-                <div className="lrc-nd" data-lrc-best="no-capital">
-                  N/D — il saldo reale del proxy non è leggibile
-                  {balErr ? `: ${balErr}` : bal?.note ? `: ${bal.note}` : ''}. Senza il capitale vero non
-                  viene calcolata nessuna stima: mostrare la cifra di riferimento da $1.000 del feed
-                  sovrastimerebbe di circa dieci volte.
-                </div>
-              ) : bestMarkets.length ? (
-                <>
-                  <div className="lrc-card-v">{bestMarkets[0].title ?? bestMarkets[0].marketId}</div>
-                  <div className="lrc-card-big" data-lrc-best-yield>
-                    {num(bestMarkets[0].estYieldPctPerDay, 2)}%<span className="lrc-card-unit">/giorno</span>
-                  </div>
-                  <div className="lrc-card-sub">
-                    {money(bestMarkets[0].estUsdPerDay)}/g sul tuo capitale di {money(bestMarkets[0].estCapitalUsd, 0)}
-                    {bestMarkets[0].estDepthLimited ? ' (limitato dalla profondità in banda)' : ''} ·
-                    montepremi {money(bestMarkets[0].dailyPoolUsd, 0)}/g
-                  </div>
-                  <ol className="lrc-rank">
-                    {bestMarkets.slice(1).map((m) => (
-                      <li key={m.marketId}>
-                        <span className="lrc-num">{num(m.estYieldPctPerDay, 2)}%/g</span>
-                        <span className="lrc-rank-t">{m.title ?? m.marketId}</span>
-                      </li>
-                    ))}
-                  </ol>
-                  <p className="lrc-fine">
-                    Rendimento = stima $/giorno ÷ capitale su cui la stima è calcolata, e quel capitale è
-                    il tuo saldo reale ({money(capitalUsd)}), non una cifra di riferimento. Dove il book
-                    contiene meno di quel saldo la stima è calcolata sulla profondità disponibile, perché
-                    oltre quella non c&apos;è libro in cui stare. Lordo, adverse selection non modellata.
-                  </p>
-                </>
-              ) : (
-                <div className="lrc-nd">N/D — nessun mercato risulta scorabile in questo scan.</div>
+          {/* ── CAPITALE: totale, impegnato, libero, e la quota impegnata. Tutte cifre, nessun tap. ── */}
+          <div className="ex-sech"><span className="ex-sech-t">Capitale</span></div>
+          <div className="ex-stats">
+            <div className="ex-stat">
+              <span className="ex-stat-k">Totale</span>
+              <span className="ex-stat-v">{money(bal?.pusdBalance)}</span>
+              <span className="ex-stat-s">proxy funder, on-chain</span>
+            </div>
+            <div className="ex-stat">
+              <span className="ex-stat-k">Impegnato</span>
+              <span className="ex-stat-v">{orders?.simulated ? 'N/D' : money(summary?.committedUsd)}</span>
+              <span className="ex-stat-s">a riposo sul venue</span>
+            </div>
+            <div className="ex-stat">
+              <span className="ex-stat-k">Libero</span>
+              <span className={`ex-stat-v ${freeCapital != null && freeCapital > 0 ? 'ex-gold' : ''}`}>
+                {freeCapital == null ? 'N/D' : money(freeCapital)}
+              </span>
+              <span className="ex-stat-s">
+                {freeCapital == null ? 'differenza non calcolabile' : 'fermo: non matura nulla'}
+              </span>
+              {freeCapital == null && (
+                <p className="ex-why">
+                  {orders?.simulated
+                    ? 'il venue non è stato interrogato: il capitale impegnato non è noto'
+                    : 'saldo o impegnato non leggibili — nessuna sottrazione contro uno zero assunto'}
+                </p>
               )}
             </div>
-
-            {/* CAPITALE LIBERO / ECCEDENTE */}
-            <div className="lrc-card">
-              <div className="lrc-card-k">Capitale libero</div>
-              <div className="lrc-card-big">{freeCapital == null ? 'N/D' : money(freeCapital)}</div>
-              <div className="lrc-card-sub">
-                {freeCapital == null
-                  ? (orders?.simulated
-                    ? 'il venue non è stato interrogato: il capitale impegnato non è noto, quindi la differenza non è calcolabile'
-                    : 'saldo o capitale impegnato non leggibili — nessuna sottrazione contro uno zero assunto')
-                  : <>totale {money(bal?.pusdBalance)} − impegnato {money(summary?.committedUsd)}</>}
-              </div>
-              {freeCapital != null && fin(bal?.pusdBalance) && (bal!.pusdBalance as number) > 0 && (
-                <div className="lrc-barwrap" aria-hidden="true">
-                  <div
-                    className="lrc-bar lrc-bar-used"
-                    style={{ width: `${Math.max(0, Math.min(100, ((summary?.committedUsd ?? 0) / (bal!.pusdBalance as number)) * 100))}%` }}
-                  />
-                </div>
-              )}
-              <p className="lrc-fine">
-                {freeCapital != null && freeCapital > 0
-                  ? 'Capitale fermo: non matura premi finché non è a riposo dentro una banda. La sezione «Alloca capitale» propone un piano — è un piano, non un ordine.'
-                  : 'Tutto il capitale disponibile risulta impegnato.'}
-                {' '}Il saldo è quello del proxy funder, letto on-chain in sola lettura.
-              </p>
+            <div className="ex-stat">
+              <span className="ex-stat-k">Quota impegnata</span>
+              <span className="ex-stat-v">
+                {freeCapital != null && fin(bal?.pusdBalance) && (bal!.pusdBalance as number) > 0
+                  ? `${(((summary?.committedUsd ?? 0) / (bal!.pusdBalance as number)) * 100).toFixed(1)}%`
+                  : 'N/D'}
+              </span>
+              <span className="ex-stat-s">del saldo totale</span>
             </div>
           </div>
+          {freeCapital != null && fin(bal?.pusdBalance) && (bal!.pusdBalance as number) > 0 && (
+            <div className="lrc-barwrap" aria-hidden="true">
+              <div
+                className="lrc-bar"
+                style={{ width: `${Math.max(0, Math.min(100, ((summary?.committedUsd ?? 0) / (bal!.pusdBalance as number)) * 100))}%` }}
+              />
+            </div>
+          )}
+          <p className="lrc-fine">
+            {freeCapital != null && freeCapital > 0
+              ? 'Il capitale libero non matura premi finché non è a riposo dentro una banda. «Alloca capitale» propone un piano — è un piano, non un ordine.'
+              : 'Tutto il capitale disponibile risulta impegnato.'}
+            {' '}Il saldo è quello del proxy funder, letto on-chain in sola lettura.
+          </p>
+
+          {/* ── MIGLIOR MERCATO PER RENDIMENTO — la classifica per intero, non solo il primo. ── */}
+          <div className="ex-sech"><span className="ex-sech-t">Migliori mercati per rendimento sul tuo capitale</span></div>
+          {capitalUsd == null ? (
+            <div className="ex-banner is-warn" data-lrc-best="no-capital">
+              N/D — il saldo reale del proxy non è leggibile{balErr ? `: ${balErr}` : bal?.note ? `: ${bal.note}` : ''}.
+              Senza il capitale vero non viene calcolata nessuna stima: mostrare la cifra di riferimento da
+              $1.000 del feed sovrastimerebbe di circa dieci volte.
+            </div>
+          ) : bestMarkets.length ? (
+            <>
+              <div className="ex-panel ex-rows" data-lrc-best-yield>
+                {bestMarkets.map((m, i) => (
+                  <div key={m.marketId} className="ex-row">
+                    <div className="ex-row-main">
+                      <div className="ex-row-t"><span className="lrc-rank-n ex-n">{i + 1}</span> {m.title ?? m.marketId}</div>
+                      <div className="ex-row-s">
+                        su capitale <span className="ex-n">{money(m.estCapitalUsd, 0)}</span>
+                        {m.estDepthLimited ? ' (limitato dalla profondità in banda)' : ''} · montepremi{' '}
+                        <span className="ex-n">{money(m.dailyPoolUsd, 0)}</span>/g
+                      </div>
+                    </div>
+                    <div className="ex-row-nums">
+                      <span className="ex-num"><span className="ex-num-k">rend./g</span><span className="ex-num-v ex-up">{num(m.estYieldPctPerDay, 2)}%</span></span>
+                      <span className="ex-num"><span className="ex-num-k">stima</span><span className="ex-num-v">{money(m.estUsdPerDay)}</span></span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <p className="lrc-fine">
+                Rendimento = stima $/giorno ÷ capitale su cui la stima è calcolata, e quel capitale è il tuo
+                saldo reale (<span className="ex-n">{money(capitalUsd)}</span>), non una cifra di riferimento.
+                Dove il book contiene meno di quel saldo la stima è calcolata sulla profondità disponibile,
+                perché oltre quella non c&apos;è libro in cui stare. Lordo, adverse selection non modellata.
+              </p>
+            </>
+          ) : (
+            <div className="ex-banner">N/D — nessun mercato risulta scorabile in questo scan.</div>
+          )}
 
           <p className="lrc-note">
             Le cifre di questa sezione sono le stesse dell&apos;intestazione e delle altre sezioni: un solo
@@ -581,29 +646,33 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
       {tab === 'mercati' && (
         <section className="lrc-sec" data-lrc-section="mercati">
           <Ask q="Dove conviene mettere il capitale?" sub="Ordinati per rendimento stimato sul tuo saldo reale, non su una cifra di riferimento." />
+
           <div className="lrc-controls">
-            <div className="lrc-scope" role="group" aria-label="Quali mercati">
-              {([['bot', 'Set del bot + i miei'], ['miei', 'Solo con miei ordini'], ['tutti', `Tutti (${pricedMarkets.length})`]] as const).map(([k, l]) => (
-                <button key={k} className={`lrc-chip ${scope === k ? 'is-on' : ''}`} onClick={() => { setScope(k); setLimit(PAGE); }}>{l}</button>
+            <div className="ex-chips" role="group" aria-label="Quali mercati">
+              {([
+                ['bot', 'Abilitati + i miei'],
+                ['miei', 'Con miei ordini'],
+                ['tutti', `Tutti · ${pricedMarkets.length}`],
+              ] as const).map(([k, l]) => (
+                <button key={k} className={`ex-chip ${scope === k ? 'is-on' : ''}`} onClick={() => { setScope(k); setLimit(PAGE); }}>{l}</button>
               ))}
             </div>
             <input
-              className="lrc-search" type="search" placeholder="Cerca mercato o id…"
+              className="ex-input is-text lrc-search" type="search" placeholder="Cerca mercato o id…"
               value={q} onChange={(e) => { setQ(e.target.value); setLimit(PAGE); }} aria-label="Cerca mercato"
             />
           </div>
 
           {/* WHICH CAPITAL THE COLUMN "stima" IS PRICED AT — stated once, in the open, not only in a
               tooltip. It is the same balance the header shows. */}
-          <div className={`lrc-banner ${capitalUsd == null ? 'lrc-banner-warn' : 'lrc-banner-ok'}`} data-lrc-capital-note>
+          <div className={`ex-banner ${capitalUsd == null ? 'is-warn' : ''} lrc-mb`} data-lrc-capital-note>
             {capitalUsd == null ? (
               <>Stime non calcolate: il saldo reale del proxy non è leggibile{balErr ? ` (${balErr})` : ''}. Non viene
                 sostituito con il capitale di riferimento da $1.000 del feed, che sovrastimerebbe di circa dieci volte.</>
             ) : (
-              <>Le stime $/giorno di questa lista sono calcolate sul tuo <b>saldo reale</b> di{' '}
-                <b className="lrc-num">{money(capitalUsd)}</b> (proxy funder, letto on-chain{bal?.stale ? ', valore non aggiornato' : ''}) —
-                non su un capitale ipotetico. Dove il book contiene meno di così, la stima usa la profondità
-                disponibile e la riga lo dichiara.</>
+              <>Stime $/giorno calcolate sul tuo saldo reale di <b className="ex-n">{money(capitalUsd)}</b>{' '}
+                (proxy funder, on-chain{bal?.stale ? ', valore non aggiornato' : ''}). Dove il book contiene meno
+                di così, la stima usa la profondità disponibile e la riga lo dichiara.</>
             )}
           </div>
 
@@ -617,127 +686,153 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
                 const mine = ordersByMarket.get(m.marketId) ?? [];
                 const open = openLadder === m.marketId;
                 const tech = openTech === m.marketId;
+                const outOfBandHere = mine.some((o) => o.outOfBand === true);
                 return (
-                  <div key={m.marketId} className="lrc-mkt" data-lrc-market={m.marketId}>
-                    {/* HEADER — title, then badges on their OWN wrapping row. The pot line can no longer be
-                        overlapped by a badge on a narrow screen: they are separate grid rows, not floats. */}
-                    <div className="lrc-mkt-top">
-                      <div className="lrc-mkt-title">
-                        {m.title ?? m.marketId}
-                        {m.groupItemTitle && <span className="lrc-mkt-git"> · {m.groupItemTitle}</span>}
+                  <div key={m.marketId} className="lrc-mkt ex-panel" data-lrc-market={m.marketId}>
+                    {/* THE DENSE ROW: name + technical subtitle on the left, mid / spread / $-day on the
+                        right. The old overlap bug (a badge riding over the pot line on a narrow screen)
+                        cannot recur: title and figures are separate grid columns that stack, never float. */}
+                    <div className="ex-row lrc-mkt-row">
+                      <div className="ex-row-main">
+                        <div className="ex-row-t">
+                          {m.title ?? m.marketId}
+                          {m.groupItemTitle && <span className="ex-dim"> · {m.groupItemTitle}</span>}
+                        </div>
+                        <div className="ex-row-s">
+                          montepremi <span className="ex-n">{money(m.dailyPoolUsd, 0)}</span>/g · profondità in banda{' '}
+                          <span className="ex-n">{money(m.bookDepthAtBandUsd, 0)}</span> · scade fra{' '}
+                          <span className="ex-n">{hoursTxt(m.hoursToResolution)}</span>
+                        </div>
                       </div>
-                      <div className="lrc-mkt-pot">
-                        <span className="lrc-pot-k">montepremi</span>
-                        <span className="lrc-pot-v">{money(m.dailyPoolUsd, 0)}<span className="lrc-pot-u">/giorno</span></span>
+                      <div className="ex-row-nums">
+                        <span className="ex-num">
+                          <span className="ex-num-k">mid</span>
+                          <span className="ex-num-v">{cents(m.mid)}</span>
+                        </span>
+                        <span className="ex-num">
+                          <span className="ex-num-k">spread</span>
+                          <span className={`ex-num-v ${m.spread.level === 'basso' ? 'ex-up' : m.spread.level === 'alto' ? 'ex-dn' : m.spread.level === 'medio' ? 'ex-gold' : 'ex-dim'}`}>
+                            {m.spread.spreadCents == null ? 'N/D' : `${m.spread.spreadCents.toFixed(1)}¢`}
+                          </span>
+                        </span>
+                        <span className="ex-num">
+                          <span className="ex-num-k">$/g stim.</span>
+                          <span className={`ex-num-v ${m.estUsdPerDay == null ? 'ex-dim' : m.estUsdPerDay > 0 ? 'ex-up' : ''}`}>
+                            {m.estUsdPerDay == null ? 'N/D' : money(m.estUsdPerDay)}
+                          </span>
+                        </span>
                       </div>
                     </div>
 
-                    <div className="lrc-badges">
-                      {m.spread.level ? (
-                        <span className={`lrc-badge lrc-sp-${m.spread.level}`} title={m.spread.note}>{m.spread.label}</span>
-                      ) : (
-                        <span className="lrc-badge lrc-b-unk" title={m.spread.note}>spread N/D</span>
-                      )}
-                      {m.stability.known && m.stability.label ? (
-                        <span
-                          className={`lrc-badge lrc-st-${m.stability.label.replace(/\s/g, '-')}`}
-                          title={`stabilità misurata: uno scarto tipo muove ${num(m.stability.movedCents, 2)}¢, cioè il ${num(m.stability.consumedBandPct, 0)}% della mezza banda`}
-                        >
-                          {m.stability.label}
-                        </span>
-                      ) : (
-                        <span className="lrc-badge lrc-b-unk" title={`stabilità non misurabile: ${m.stability.reason ?? 'motivo non riportato'}`}>stabilità N/D</span>
-                      )}
-                      {m.inBotUniverse === true && <span className="lrc-badge lrc-b-bot" title="il bot quota questo mercato (set risolto dalla selezione salvata)">nel set del bot</span>}
-                      {mine.length > 0 && (
-                        <span className={`lrc-badge ${mine.some((o) => o.outOfBand === true) ? 'lrc-b-bad' : 'lrc-b-good'}`}>
-                          {mine.length} {mine.length === 1 ? 'tuo ordine' : 'tuoi ordini'}
-                          {mine.some((o) => o.outOfBand === true) ? ' · fuori banda' : ''}
-                        </span>
-                      )}
-                      {!m.rulesReadable && (
-                        <span className="lrc-badge lrc-b-bad" title={`mancano: ${m.rulesMissing.join(', ')}`}>regole non leggibili</span>
-                      )}
-                    </div>
-
-                    <PriceLadder
-                      mid={m.mid} bandLo={m.bandLo} bandHi={m.bandHi} bandRadiusCents={m.bandRadiusCents}
-                      bestBid={m.bestBid} bestAsk={m.bestAsk}
-                      orders={mine.map((o) => ({ orderId: o.orderId, book: o.book, price: o.price, size: o.restingSize, inBand: o.inBand, distanceCents: o.distanceCents }))}
-                      compact
-                    />
-
-                    <div className="lrc-mkt-grid">
-                      <KV
-                        k="stima al tuo capitale"
-                        v={m.estUsdPerDay == null ? 'N/D' : `${money(m.estUsdPerDay)}/g`}
-                        title={m.estUnknown ? (m.estReason ?? 'non calcolabile') : `quota modellata su ${money(m.estCapitalUsd, 0)} — il tuo saldo reale, non una cifra di riferimento`}
-                      />
-                      <KV
-                        k="su capitale"
-                        v={m.estCapitalUsd == null ? 'N/D' : money(m.estCapitalUsd, 0)}
-                        title={m.estDepthLimited
-                          ? 'il tuo saldo supera la profondità premiante di questo book: la stima è calcolata sulla profondità disponibile'
-                          : 'il saldo reale del proxy, letto on-chain'}
-                      />
-                      <KV k="profondità in banda" v={money(m.bookDepthAtBandUsd, 0)} />
-                      <KV k="mid" v={cents(m.mid)} title={`fonte: ${m.midSource ?? 'N/D'} · ${ageTxt(m.midAgeSec)}`} />
-                      <KV k="scade fra" v={hoursTxt(m.hoursToResolution)} />
-                    </div>
-
-                    {m.estReason && <p className="lrc-fine lrc-warn">{m.estReason}</p>}
+                    {/* THE ZERO IS SHOWN, AND THE REASON WITH IT. */}
+                    {m.estReason && <p className="ex-why lrc-pad">{m.estReason}</p>}
                     {m.midSource !== 'live-book' && (
-                      <p className="lrc-fine lrc-warn">
+                      <p className="ex-why ex-why-warn lrc-pad">
                         Il mid non viene dal book live ma dalla riga di scan ({m.midSource ?? 'N/D'}, {ageTxt(m.midAgeSec)}):
                         la banda disegnata è giudicata contro quel numero.
                       </p>
                     )}
 
-                    <div className="lrc-mkt-actions">
-                      <button className="lrc-link" onClick={() => setOpenLadder(open ? null : m.marketId)}>
-                        {open ? 'Nascondi dettaglio banda' : 'Dettaglio banda'}
-                      </button>
-                      <button className="lrc-link" onClick={() => setOpenTech(tech ? null : m.marketId)}>
-                        {tech ? 'Nascondi dettagli tecnici' : 'Dettagli tecnici'}
-                      </button>
-                      <Link className="lrc-link" href={`/dashboard/liquidity-rewards/${encodeURIComponent(m.marketId)}`} prefetch={false}>Apri il book →</Link>
-                      <Link className="lrc-link" href={`/dashboard/liquidity-rewards/${encodeURIComponent(m.marketId)}/event`} prefetch={false}>Scheda mercato →</Link>
+                    <div className="lrc-pad">
+                      <div className="ex-badges">
+                        {m.spread.level ? (
+                          <span className={`ex-badge ${m.spread.level === 'basso' ? 'is-ok' : m.spread.level === 'medio' ? 'is-warn' : 'is-bad'}`} title={m.spread.note}>{m.spread.label}</span>
+                        ) : (
+                          <span className="ex-badge" title={m.spread.note}>spread N/D</span>
+                        )}
+                        {m.stability.known && m.stability.label ? (
+                          <span
+                            className={`ex-badge ${m.stability.label === 'fermo' ? 'is-ok' : m.stability.label === 'medio' ? 'is-warn' : 'is-bad'}`}
+                            title={`stabilità misurata: uno scarto tipo muove ${num(m.stability.movedCents, 2)}¢, cioè il ${num(m.stability.consumedBandPct, 0)}% della mezza banda`}
+                          >
+                            {m.stability.label}
+                          </span>
+                        ) : (
+                          <span className="ex-badge" title={`stabilità non misurabile: ${m.stability.reason ?? 'motivo non riportato'}`}>stabilità N/D</span>
+                        )}
+                        {m.inBotUniverse === true && <span className="ex-badge is-gold" title="il bot quota questo mercato (set risolto dalla selezione salvata)">abilitato</span>}
+                        {mine.length > 0 && (
+                          <span className={`ex-badge ${outOfBandHere ? 'is-bad' : 'is-ok'}`}>
+                            {mine.length} {mine.length === 1 ? 'tuo ordine' : 'tuoi ordini'}{outOfBandHere ? ' · fuori banda' : ''}
+                          </span>
+                        )}
+                        {!m.rulesReadable && (
+                          <span className="ex-badge is-bad" title={`mancano: ${m.rulesMissing.join(', ')}`}>regole non leggibili</span>
+                        )}
+                      </div>
+
+                      <PriceLadder
+                        mid={m.mid} bandLo={m.bandLo} bandHi={m.bandHi} bandRadiusCents={m.bandRadiusCents}
+                        bestBid={m.bestBid} bestAsk={m.bestAsk}
+                        orders={mine.map((o) => ({ orderId: o.orderId, book: o.book, price: o.price, size: o.restingSize, inBand: o.inBand, distanceCents: o.distanceCents }))}
+                        compact
+                      />
+
+                      <div className="ex-kvs lrc-mt">
+                        <div className="ex-kv" title={m.estUnknown ? (m.estReason ?? 'non calcolabile') : `quota modellata su ${money(m.estCapitalUsd, 0)} — il tuo saldo reale`}>
+                          <span className="ex-kv-k">stima/g</span>
+                          <span className="ex-kv-v">{m.estUsdPerDay == null ? 'N/D' : money(m.estUsdPerDay)}</span>
+                        </div>
+                        <div className="ex-kv" title={m.estDepthLimited ? 'il tuo saldo supera la profondità premiante di questo book' : 'il saldo reale del proxy, letto on-chain'}>
+                          <span className="ex-kv-k">su capitale</span>
+                          <span className="ex-kv-v">{m.estCapitalUsd == null ? 'N/D' : money(m.estCapitalUsd, 0)}</span>
+                        </div>
+                        <div className="ex-kv"><span className="ex-kv-k">rendim./g</span><span className="ex-kv-v">{m.estYieldPctPerDay == null ? 'N/D' : `${num(m.estYieldPctPerDay, 2)}%`}</span></div>
+                        <div className="ex-kv"><span className="ex-kv-k">banda</span><span className="ex-kv-v">±{num(m.bandRadiusCents, 2)}¢</span></div>
+                        <div className="ex-kv" title={`fonte: ${m.midSource ?? 'N/D'} · ${ageTxt(m.midAgeSec)}`}><span className="ex-kv-k">bid / ask</span><span className="ex-kv-v">{cents(m.bestBid)} / {cents(m.bestAsk)}</span></div>
+                        <div className="ex-kv"><span className="ex-kv-k">size min</span><span className="ex-kv-v">{num(m.minSize)}</span></div>
+                      </div>
+
+                      <div className="lrc-actions">
+                        <button className="ex-link" onClick={() => setOpenLadder(open ? null : m.marketId)}>
+                          {open ? 'Nascondi banda' : 'Dettaglio banda'}
+                        </button>
+                        <button className="ex-link" onClick={() => setOpenTech(tech ? null : m.marketId)}>
+                          {tech ? 'Nascondi tecnici' : 'Dettagli tecnici'}
+                        </button>
+                        <Link className="ex-link" href={`/dashboard/liquidity-rewards/${encodeURIComponent(m.marketId)}`} prefetch={false}>Apri il book →</Link>
+                        <Link className="ex-link" href={`/dashboard/liquidity-rewards/${encodeURIComponent(m.marketId)}/event`} prefetch={false}>Scheda →</Link>
+                      </div>
+
+                      {open && (
+                        <div className="lrc-expand">
+                          <PriceLadder
+                            mid={m.mid} bandLo={m.bandLo} bandHi={m.bandHi} bandRadiusCents={m.bandRadiusCents}
+                            bestBid={m.bestBid} bestAsk={m.bestAsk}
+                            orders={mine.map((o) => ({ orderId: o.orderId, book: o.book, price: o.price, size: o.restingSize, inBand: o.inBand, distanceCents: o.distanceCents }))}
+                            caption="banda premio · mid · tocco · i tuoi ordini"
+                          />
+                          <div className="ex-kvs lrc-mt">
+                            <div className="ex-kv"><span className="ex-kv-k">banda lo</span><span className="ex-kv-v">{cents(m.bandLo)}</span></div>
+                            <div className="ex-kv"><span className="ex-kv-k">banda hi</span><span className="ex-kv-v">{cents(m.bandHi)}</span></div>
+                            <div className="ex-kv"><span className="ex-kv-k">raggio</span><span className="ex-kv-v">±{num(m.bandRadiusCents, 2)}¢</span></div>
+                            <div className="ex-kv"><span className="ex-kv-k">spread max</span><span className="ex-kv-v">{num(m.maxSpreadCents, 2)}¢</span></div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* REFERENCE DATA, not glance data. Tick size, venue min-size, the market id: needed
+                          when you are debugging a specific order, noise the other 99% of the time. */}
+                      {tech && (
+                        <div className="lrc-expand" data-lrc-tech={m.marketId}>
+                          <div className="ex-kvs">
+                            <div className="ex-kv" title="min_incentive_size: sotto questa dimensione l ordine è valido sul CLOB ma invisibile al programma premi">
+                              <span className="ex-kv-k">size minima</span><span className="ex-kv-v">{num(m.minSize)}</span>
+                            </div>
+                            <div className="ex-kv"><span className="ex-kv-k">tick</span><span className="ex-kv-v">{m.tick == null ? 'N/D' : String(m.tick)}</span></div>
+                            <div className="ex-kv"><span className="ex-kv-k">volume 24h</span><span className="ex-kv-v">{money(m.volume24hUsd, 0)}</span></div>
+                            <div className="ex-kv"><span className="ex-kv-k">categoria</span><span className="ex-kv-v">{m.category ?? 'N/D'}</span></div>
+                            <div className="ex-kv" title={m.marketId}><span className="ex-kv-k">id mercato</span><span className="ex-kv-v">{m.marketId.slice(0, 10)}…</span></div>
+                            <div className="ex-kv"><span className="ex-kv-k">mid letto</span><span className="ex-kv-v">{ageTxt(m.midAgeSec)}</span></div>
+                          </div>
+                        </div>
+                      )}
                     </div>
-
-                    {open && (
-                      <div className="lrc-expand">
-                        <PriceLadder
-                          mid={m.mid} bandLo={m.bandLo} bandHi={m.bandHi} bandRadiusCents={m.bandRadiusCents}
-                          bestBid={m.bestBid} bestAsk={m.bestAsk}
-                          orders={mine.map((o) => ({ orderId: o.orderId, book: o.book, price: o.price, size: o.restingSize, inBand: o.inBand, distanceCents: o.distanceCents }))}
-                          caption="banda premio · mid · tocco · i tuoi ordini"
-                        />
-                        <div className="lrc-mkt-grid">
-                          <KV k="banda" v={`${cents(m.bandLo)} – ${cents(m.bandHi)}`} />
-                          <KV k="raggio banda" v={`±${num(m.bandRadiusCents, 2)}¢`} />
-                        </div>
-                      </div>
-                    )}
-
-                    {/* REFERENCE DATA, not glance data. Tick size, venue min-size, the market id: needed
-                        when you are debugging a specific order, noise the other 99% of the time. */}
-                    {tech && (
-                      <div className="lrc-expand" data-lrc-tech={m.marketId}>
-                        <div className="lrc-mkt-grid">
-                          <KV k="bid / ask" v={`${cents(m.bestBid)} / ${cents(m.bestAsk)}`} />
-                          <KV k="size minima" v={num(m.minSize)} title="min_incentive_size: sotto questa dimensione l ordine è valido sul CLOB ma invisibile al programma premi" />
-                          <KV k="tick" v={m.tick == null ? 'N/D' : String(m.tick)} />
-                          <KV k="volume 24h" v={money(m.volume24hUsd, 0)} />
-                          <KV k="categoria" v={m.category ?? 'N/D'} />
-                          <KV k="id mercato" v={`${m.marketId.slice(0, 10)}…`} title={m.marketId} />
-                        </div>
-                      </div>
-                    )}
                   </div>
                 );
               })}
               {visibleMarkets.length > limit && (
-                <button className="lrc-btn lrc-more" onClick={() => setLimit((l) => l + PAGE)}>
+                <button className="ex-btn is-block" onClick={() => setLimit((l) => l + PAGE)}>
                   Mostra altri {Math.min(PAGE, visibleMarkets.length - limit)} (di {visibleMarkets.length})
                 </button>
               )}
@@ -750,61 +845,87 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
       {tab === 'posizioni' && (
         <section className="lrc-sec" data-lrc-section="posizioni">
           <Ask q="Cosa ho in mano?" sub="Esposizione netta per mercato, letta dal venue in sola lettura." />
-          <div className="lrc-sechead">
-            <span className="lrc-sectitle">Posizioni aperte · esposizione netta per mercato</span>
-            <button className="lrc-btn" onClick={loadPositions} disabled={posLoading}>{posLoading ? 'Lettura…' : 'Aggiorna'}</button>
+          <div className="ex-sech">
+            <span className="ex-sech-t">Posizioni aperte · esposizione netta</span>
+            <button className="ex-btn is-sm" onClick={loadPositions} disabled={posLoading}>{posLoading ? 'Lettura…' : 'Aggiorna'}</button>
           </div>
 
           {pos && pos.ok === false && (
-            <div className="lrc-banner lrc-banner-red">
+            <div className="ex-banner is-bad">
               Posizioni NON lette: {pos.error ?? 'errore sconosciuto'}. Questa non è una lista vuota — non sappiamo cosa ci sia.
             </div>
           )}
           {pos?.ok && pos.markets.length === 0 && (
-            <div className="lrc-banner lrc-banner-ok">
-              Nessuna posizione aperta sul wallet <span className="lrc-num">{pos.wallet}</span> — letto dal venue, non dedotto.
+            <div className="ex-banner is-ok">
+              Nessuna posizione aperta sul wallet <span className="ex-n">{pos.wallet}</span> — letto dal venue, non dedotto.
             </div>
           )}
-          {!pos && <div className="lrc-note">Lettura delle posizioni…</div>}
+          {!pos && <div className="lrc-nd">Lettura delle posizioni…</div>}
 
           {pos?.ok && pos.markets.length > 0 && (
             <>
-              <div className="lrc-metrics lrc-metrics-sm">
-                <Metric k="Mercati con posizione" v={String(pos.totals?.marketCount ?? 0)} sub={`${pos.totals?.legCount ?? 0} gambe YES/NO`} />
-                <Metric k="Valore a mid" v={money(pos.totals?.currentValueUsd)} sub={pos.totals?.valueUnknown ? 'una gamba senza valore leggibile — totale non calcolato' : 'mark-to-mid, non realizzato'} warn={pos.totals?.valueUnknown} />
-                <Metric k="P&L non realizzato" v={money(pos.totals?.unrealizedPnlUsd)} sub="mark-to-mid · non è un incasso" warn={pos.totals?.valueUnknown} />
+              <div className="ex-stats lrc-mb">
+                <div className="ex-stat">
+                  <span className="ex-stat-k">Mercati</span>
+                  <span className="ex-stat-v">{String(pos.totals?.marketCount ?? 0)}</span>
+                  <span className="ex-stat-s">{pos.totals?.legCount ?? 0} gambe YES/NO</span>
+                </div>
+                <div className="ex-stat">
+                  <span className="ex-stat-k">Valore a mid</span>
+                  <span className="ex-stat-v">{money(pos.totals?.currentValueUsd)}</span>
+                  <span className="ex-stat-s">mark-to-mid</span>
+                  {pos.totals?.valueUnknown && <p className="ex-why">una gamba senza valore leggibile — totale non calcolato</p>}
+                </div>
+                <div className="ex-stat">
+                  <span className="ex-stat-k">P&amp;L non realizz.</span>
+                  <span className={`ex-stat-v ${pnlCls(pos.totals?.unrealizedPnlUsd)}`}>{money(pos.totals?.unrealizedPnlUsd)}</span>
+                  <span className="ex-stat-s">non è un incasso</span>
+                </div>
               </div>
 
               <div className="lrc-poslist">
                 {pos.markets.map((p) => (
-                  <div key={p.marketId ?? Math.random()} className="lrc-pos" data-lrc-position={p.marketId ?? ''}>
-                    <div className="lrc-mkt-top">
-                      <div className="lrc-mkt-title">{p.title ?? p.marketId ?? 'mercato sconosciuto'}</div>
-                      <div className="lrc-mkt-pot">
-                        <span className="lrc-pot-k">netto</span>
-                        <span className={`lrc-pot-v ${p.netDirection === 'yes' ? 'lrc-ok' : p.netDirection === 'no' ? 'lrc-bad' : ''}`}>
-                          {p.netDirection === 'flat' ? 'piatto' : `${num(Math.abs(p.netShares ?? 0), 1)} ${p.netDirection.toUpperCase()}`}
-                        </span>
+                  <div key={p.marketId ?? Math.random()} className="ex-panel lrc-pos" data-lrc-position={p.marketId ?? ''}>
+                    {/* SCHEDA COMPATTA: netto, valore, P&L colorato sulla stessa riga del titolo. */}
+                    <div className="ex-row">
+                      <div className="ex-row-main">
+                        <div className="ex-row-t">{p.title ?? p.marketId ?? 'mercato sconosciuto'}</div>
+                        <div className="ex-row-s">
+                          netto{' '}
+                          <b className={`ex-n ${p.netDirection === 'yes' ? 'ex-up' : p.netDirection === 'no' ? 'ex-dn' : ''}`}>
+                            {p.netDirection === 'flat' ? 'piatto' : `${num(Math.abs(p.netShares ?? 0), 1)} ${p.netDirection.toUpperCase()}`}
+                          </b>
+                          {' · '}YES <span className="ex-n">{num(p.yesShares, 1)}</span>
+                          {' · '}NO <span className="ex-n">{num(p.noShares, 1)}</span>
+                        </div>
+                      </div>
+                      <div className="ex-row-nums">
+                        <span className="ex-num"><span className="ex-num-k">costo</span><span className="ex-num-v">{money(p.initialValueUsd)}</span></span>
+                        <span className="ex-num"><span className="ex-num-k">a mid</span><span className="ex-num-v">{money(p.currentValueUsd)}</span></span>
+                        <span className="ex-num"><span className="ex-num-k">P&amp;L</span><span className={`ex-num-v ${pnlCls(p.unrealizedPnlUsd)}`}>{money(p.unrealizedPnlUsd)}</span></span>
                       </div>
                     </div>
-                    <div className="lrc-mkt-grid">
-                      <KV k="YES" v={`${num(p.yesShares, 1)} share`} />
-                      <KV k="NO" v={`${num(p.noShares, 1)} share`} />
-                      <KV k="netto YES−NO" v={num(p.netShares, 1)} title="una gamba YES e una NO sullo stesso mercato sono UNA esposizione: il netto è la differenza" />
-                      <KV k="valore a mid" v={money(p.currentValueUsd)} />
-                      <KV k="costo" v={money(p.initialValueUsd)} />
-                      <KV k="P&L non realiz." v={money(p.unrealizedPnlUsd)} />
-                    </div>
-                    <div className="lrc-legs">
+                    {p.valueUnknown && (
+                      <p className="ex-why lrc-pad">Una gamba senza valore leggibile: il totale di questo mercato non è calcolato, non è zero.</p>
+                    )}
+                    <div className="ex-rows lrc-legs">
                       {p.legs.map((l) => (
-                        <div key={l.asset} className="lrc-leg">
-                          <span className={`lrc-badge ${l.side === 'yes' ? 'lrc-b-good' : l.side === 'no' ? 'lrc-b-bad' : 'lrc-b-unk'}`}>
-                            {l.sideKnown ? (l.side as string).toUpperCase() : 'lato N/D'}
-                          </span>
-                          <span className="lrc-num">{num(l.size, 1)} share</span>
-                          <span className="lrc-fine">medio {cents(l.avgPrice)} → mid {cents(l.curPrice)}</span>
-                          <span className="lrc-fine">{money(l.currentValueUsd)}</span>
-                          {!l.sideKnown && <span className="lrc-fine lrc-warn">lato non riportato dal venue: esclusa dal netto, non indovinata</span>}
+                        <div key={l.asset} className="ex-row">
+                          <div className="ex-row-main">
+                            <div className="ex-row-t">
+                              <span className={`ex-side ${l.side === 'yes' ? 'is-yes' : l.side === 'no' ? 'is-no' : ''}`}>
+                                {l.sideKnown ? (l.side as string).toUpperCase() : 'N/D'}
+                              </span>{' '}
+                              <span className="ex-n">{num(l.size, 1)}</span> share
+                            </div>
+                            {!l.sideKnown && <p className="ex-why">lato non riportato dal venue: esclusa dal netto, non indovinata</p>}
+                          </div>
+                          <div className="ex-row-nums">
+                            <span className="ex-num"><span className="ex-num-k">medio</span><span className="ex-num-v">{cents(l.avgPrice)}</span></span>
+                            <span className="ex-num"><span className="ex-num-k">mid</span><span className="ex-num-v">{cents(l.curPrice)}</span></span>
+                            <span className="ex-num"><span className="ex-num-k">valore</span><span className="ex-num-v">{money(l.currentValueUsd)}</span></span>
+                            <span className="ex-num"><span className="ex-num-k">P&amp;L</span><span className={`ex-num-v ${pnlCls(l.unrealizedPnlUsd)}`}>{money(l.unrealizedPnlUsd)}</span></span>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -816,8 +937,9 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
 
           {pos && (
             <p className="lrc-note">
-              Fonte: {pos.source}. Wallet <span className="lrc-num">{pos.wallet ?? 'N/D'}</span>, letto {new Date(pos.at).toLocaleTimeString()}.
-              Sola lettura: nessuna chiave viene toccata e nulla viene firmato. Il P&L è <b>mark-to-mid</b>,
+              Fonte: {pos.source}. Wallet <span className="ex-n">{pos.wallet ?? 'N/D'}</span>, letto{' '}
+              <span className="ex-n">{new Date(pos.at).toLocaleTimeString()}</span>.
+              Sola lettura: nessuna chiave viene toccata e nulla viene firmato. Il P&amp;L è <b>mark-to-mid</b>,
               cioè quanto varrebbero le posizioni al punto medio adesso — non un incasso.
             </p>
           )}
@@ -837,8 +959,8 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
             if (!pinned) return null;
             const po = ordersByMarket.get(pinned.marketId) ?? [];
             return (
-              <div className="lrc-card lrc-card-wide">
-                <div className="lrc-card-k">Scala prezzi · {pinned.title ?? pinned.marketId}</div>
+              <div className="ex-panel lrc-ladderbox">
+                <div className="ex-sech-t">Scala prezzi · {pinned.title ?? pinned.marketId}</div>
                 <PriceLadder
                   mid={pinned.mid} bandLo={pinned.bandLo} bandHi={pinned.bandHi} bandRadiusCents={pinned.bandRadiusCents}
                   bestBid={pinned.bestBid} bestAsk={pinned.bestAsk}
@@ -869,8 +991,8 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
       {tab === 'regole' && (
         <section className="lrc-sec" data-lrc-section="regole">
           <Ask q="Come si guadagna, esattamente?" sub="Le regole del programma premi, e lo stato di ogni tuo ordine rispetto a quelle regole." />
-          <div className="lrc-card lrc-card-wide">
-            <div className="lrc-card-k">Come si guadagna, in breve</div>
+          <div className="ex-panel lrc-rulesbox">
+            <div className="ex-sech-t">Come si guadagna, in breve</div>
             <ul className="lrc-rules">
               <li>
                 <b>Il premio si prende stando dentro la banda.</b> Ogni mercato premiante ha un
@@ -905,18 +1027,18 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
             </ul>
           </div>
 
-          <div className="lrc-sechead">
-            <span className="lrc-sectitle">Tutti i tuoi ordini attivi · distanza dal mid e stato</span>
+          <div className="ex-sech">
+            <span className="ex-sech-t">Tutti i tuoi ordini attivi · distanza dal mid e stato</span>
             <span className="lrc-fine">
-              {orders?.at ? `letto dal venue ${new Date(orders.at).toLocaleTimeString()}` : 'N/D'}
+              {orders?.at ? <>letto dal venue <span className="ex-n">{new Date(orders.at).toLocaleTimeString()}</span></> : 'N/D'}
             </span>
           </div>
 
           {orders?.ok === false && (
-            <div className="lrc-banner lrc-banner-red">Lettura del venue FALLITA: {orders.error ?? '—'} — questa non è una lista vuota.</div>
+            <div className="ex-banner is-bad lrc-mb">Lettura del venue FALLITA: {orders.error ?? '—'} — questa non è una lista vuota.</div>
           )}
           {orders?.simulated && orders.ok !== false && (
-            <div className="lrc-banner lrc-banner-warn">
+            <div className="ex-banner is-warn lrc-mb">
               Nessuna credenziale: il venue non è stato interrogato. «0 ordini» qui significa «non abbiamo letto».
             </div>
           )}
@@ -924,35 +1046,40 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
           {orders && orders.orders.length === 0 && orders.ok !== false && !orders.simulated ? (
             <div className="lrc-nd">Nessun ordine a riposo su nessun mercato (letto dal venue, non dedotto).</div>
           ) : (
-            <div className="lrc-tblwrap">
-              <table className="lrc-tbl" data-lrc-orders-table>
+            <div className="ex-tblwrap">
+              <table className="ex-tbl lrc-tbl" data-lrc-orders-table>
                 <thead>
                   <tr>
-                    <th>Mercato</th><th>Lato</th><th>Prezzo</th><th>Mid</th>
-                    <th>Distanza</th><th>Banda</th><th>Stato</th><th>Size</th><th>Controvalore</th>
+                    <th>Mercato</th><th>Lato</th><th className="ex-n">Prezzo</th><th className="ex-n">Mid</th>
+                    <th className="ex-n">Distanza</th><th className="ex-n">Banda</th><th>Stato</th>
+                    <th className="ex-n">Size</th><th className="ex-n">Controvalore</th>
                   </tr>
                 </thead>
                 <tbody>
                   {(orders?.orders ?? []).map((o) => (
-                    <tr key={o.orderId ?? Math.random()} className={o.outOfBand === true ? 'is-out' : ''}>
+                    <tr key={o.orderId ?? Math.random()} className={o.outOfBand === true ? 'is-bad' : ''}>
                       <td className="lrc-td-mkt">{o.marketTitle ?? o.marketId ?? 'N/D'}</td>
-                      <td>{o.book ? o.book.toUpperCase() : 'N/D'}</td>
-                      <td className="lrc-num">{cents(o.price)}</td>
-                      <td className="lrc-num">{cents(o.scoringMid)}</td>
-                      <td className="lrc-num">{o.distanceCents == null ? 'N/D' : `${o.distanceCents.toFixed(2)}¢`}</td>
-                      <td className="lrc-num">{o.bandRadiusCents == null ? 'N/D' : `±${o.bandRadiusCents.toFixed(2)}¢`}</td>
                       <td>
-                        {o.inBand === true ? <span className="lrc-badge lrc-b-good">in banda ✓</span>
-                          : o.inBand === false ? <span className="lrc-badge lrc-b-bad">fuori banda ✗</span>
-                            : <span className="lrc-badge lrc-b-unk" title={o.rulesReadable ? 'token non riconducibile ai due book del mercato' : 'regole di venue non leggibili'}>non giudicabile ?</span>}
+                        <span className={`ex-side ${o.book === 'yes' ? 'is-yes' : o.book === 'no' ? 'is-no' : ''}`}>
+                          {o.book ? o.book.toUpperCase() : 'N/D'}
+                        </span>
+                      </td>
+                      <td className="ex-n">{cents(o.price)}</td>
+                      <td className="ex-n">{cents(o.scoringMid)}</td>
+                      <td className={`ex-n ${o.outOfBand === true ? 'ex-dn' : ''}`}>{o.distanceCents == null ? 'N/D' : `${o.distanceCents.toFixed(2)}¢`}</td>
+                      <td className="ex-n">{o.bandRadiusCents == null ? 'N/D' : `±${o.bandRadiusCents.toFixed(2)}¢`}</td>
+                      <td>
+                        {o.inBand === true ? <span className="ex-badge is-ok">in banda</span>
+                          : o.inBand === false ? <span className="ex-badge is-bad">fuori banda</span>
+                            : <span className="ex-badge" title={o.rulesReadable ? 'token non riconducibile ai due book del mercato' : 'regole di venue non leggibili'}>non giudicabile</span>}
                         {o.valid === false && o.inBand === true && (
-                          <span className="lrc-badge lrc-b-unk" title={o.reasons.map((r) => `${r.code}: ${r.detail}`).join(' · ')}>
+                          <span className="ex-badge is-warn" title={o.reasons.map((r) => `${r.code}: ${r.detail}`).join(' · ')}>
                             {o.reasons.map((r) => r.code).join(', ')}
                           </span>
                         )}
                       </td>
-                      <td className="lrc-num">{num(o.restingSize, 1)}</td>
-                      <td className="lrc-num">{money(o.restingNotionalUsd)}</td>
+                      <td className="ex-n">{num(o.restingSize, 1)}</td>
+                      <td className="ex-n">{money(o.restingNotionalUsd)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -973,41 +1100,22 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
 }
 
 /**
- * The instrument at the top of the console: one question, one answer, one colour.
- *
- * The ring is decorative (aria-hidden) — the state is carried by the text, so it survives a screen
- * reader, a colour-blind operator and a monochrome screen. Colour is the fast path, never the only one.
- */
-function StatusRing({ state, label, detail }: { state: 'ok' | 'warn' | 'bad' | 'unknown'; label: string; detail: string }) {
-  return (
-    <div className={`lrc-ring-row lrc-s-${state}`} data-lrc-earning={state}>
-      <span className="lrc-ring" aria-hidden="true"><span className="lrc-ring-core" /></span>
-      <span className="lrc-ring-txt">
-        <span className="lrc-ring-q">Il capitale sta maturando premi?</span>
-        <span className="lrc-ring-a">{label}</span>
-        <span className="lrc-ring-d">{detail}</span>
-      </span>
-    </div>
-  );
-}
-
-/**
  * Per-source freshness. Each source is judged against ITS OWN cadence, because "45 seconds old" is
  * healthy for a 60s balance read and two polls missed for a 20s order board. A single global
  * "aggiornato Xs fa" cannot say that, and hides the one that actually went stale.
  */
-function Freshness({ items }: { items: Array<{ k: string; ageSec: number | null; everySec: number }> }) {
+function Freshness({ items }: { items: Array<{ k: string; ageSec: number | null; everySec: number; valueOverride?: string }> }) {
   return (
     <div className="lrc-fresh" data-lrc-freshness>
       {items.map((i) => {
-        const st = i.ageSec == null ? 'unknown'
-          : i.ageSec > i.everySec * 3 ? 'bad'
-            : i.ageSec > i.everySec * 1.5 ? 'warn' : 'ok';
+        const st = i.valueOverride != null ? 'na'
+          : i.ageSec == null ? 'unk'
+            : i.ageSec > i.everySec * 3 ? 'bad'
+              : i.ageSec > i.everySec * 1.5 ? 'warn' : 'ok';
         return (
-          <span key={i.k} className={`lrc-fresh-i lrc-s-${st}`}>
-            <span className="lrc-fresh-dot" aria-hidden="true" />
+          <span key={i.k} className={`lrc-fresh-i is-${st}`}>
             <span className="lrc-fresh-k">{i.k}</span>
-            <span className="lrc-fresh-v">{i.ageSec == null ? 'N/D' : ageTxt(i.ageSec)}</span>
+            <span className="lrc-fresh-v ex-n">{i.valueOverride ?? (i.ageSec == null ? 'N/D' : ageTxt(i.ageSec))}</span>
           </span>
         );
       })}
@@ -1025,223 +1133,88 @@ function Ask({ q, sub }: { q: string; sub?: string }) {
   );
 }
 
-function Metric({ k, v, sub, warn }: { k: string; v: string; sub?: string; warn?: boolean }) {
-  return (
-    <div className={`lrc-metric ${warn ? 'is-warn' : ''}`}>
-      <span className="lrc-metric-k">{k}</span>
-      <span className="lrc-metric-v">{v}</span>
-      {sub && <span className="lrc-metric-s">{sub}</span>}
-    </div>
-  );
-}
-
-function KV({ k, v, title }: { k: string; v: string; title?: string }) {
-  return (
-    <div className="lrc-kv" title={title}>
-      <span className="lrc-kv-k">{k}</span>
-      <span className="lrc-kv-v">{v}</span>
-    </div>
-  );
-}
-
+// NOTE: keep this stylesheet free of the characters React escapes in text nodes — quotes, angle
+// brackets, ampersands. As the child of a style element they are serialised escaped on the server and
+// raw on the client, which is a hydration mismatch that takes the whole root down to client rendering.
 const CSS = `
-.lrc-root { max-width: 1080px; margin: 0 auto 20px; padding: 14px 16px 20px; color: #E6E9EF;
-  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-  /* FOUR semantic states, one token set. Green is the Edgeradar mint 0FBE82 from the design system,
-     not a new invented hue. Grey is a first-class state, not a washed-out red: on this page the
-     difference between zero and unreadable is the difference between a fact and its absence. */
-  --lrc-ok: #0FBE82; --lrc-ok-dim: #4FD8A0; --lrc-ok-bd: #14624A; --lrc-ok-bg: #08201A;
-  --lrc-warn: #E8B23A; --lrc-warn-bd: #4A3C12; --lrc-warn-bg: #1A1608;
-  --lrc-bad: #E5574E; --lrc-bad-dim: #FF9C93; --lrc-bad-bd: #5C1F1A; --lrc-bad-bg: #1A0B0A;
-  --lrc-unk: #8B95A5; --lrc-unk-bd: #2E3646; --lrc-unk-bg: #141926; }
+.lrc-root { max-width: 1080px; margin: 0 auto; padding: 4px 14px 24px; }
+.lrc-head { border-bottom: 1px solid var(--ex-line); padding-bottom: 0; margin-bottom: 4px; }
+.lrc-title-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.lrc-h1 { font-size: 14px; font-weight: 700; letter-spacing: .01em; margin: 0; color: var(--ex-txt); }
+.lrc-venue { font-size: 10px; font-weight: 600; color: var(--ex-txt-3); border: 1px solid var(--ex-line);
+  border-radius: 3px; padding: 1px 6px; }
+.lrc-earndetail { font-size: 11.5px; color: var(--ex-txt-2); line-height: 1.5; margin: 0 0 10px;
+  overflow-wrap: anywhere; }
+.lrc-earnq { color: var(--ex-txt-3); }
 
-/* Each state binds the same three slots, so every instrument below reads one vocabulary. */
-.lrc-s-ok      { --s: var(--lrc-ok-dim);  --s-bd: var(--lrc-ok-bd);   --s-bg: var(--lrc-ok-bg); }
-.lrc-s-warn    { --s: var(--lrc-warn);    --s-bd: var(--lrc-warn-bd); --s-bg: var(--lrc-warn-bg); }
-.lrc-s-bad     { --s: var(--lrc-bad-dim); --s-bd: var(--lrc-bad-bd);  --s-bg: var(--lrc-bad-bg); }
-.lrc-s-unknown { --s: var(--lrc-unk);     --s-bd: var(--lrc-unk-bd);  --s-bg: var(--lrc-unk-bg); }
+.lrc-mt { margin-top: 10px; }
+.lrc-mb { margin-bottom: 10px; }
+.lrc-pad { padding: 0 12px; }
 
-/* THE INSTRUMENT: one question, one answer, one colour. The ring is aria-hidden because the state is
-   already in the text — colour is the fast path here, never the only one. */
-.lrc-ring-row { display: flex; gap: 14px; align-items: flex-start; margin-top: 12px; padding: 12px 14px;
-  border: 1px solid var(--s-bd); background: var(--s-bg); border-radius: 12px; }
-.lrc-ring { flex: 0 0 auto; width: 46px; height: 46px; border-radius: 50%; border: 3px solid var(--s);
-  display: flex; align-items: center; justify-content: center; }
-.lrc-ring-core { width: 16px; height: 16px; border-radius: 50%; background: var(--s); }
-.lrc-ring-txt { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
-.lrc-ring-q { font-size: 11px; text-transform: uppercase; letter-spacing: .4px; color: #8B95A5; }
-.lrc-ring-a { font-size: 21px; font-weight: 800; color: var(--s); line-height: 1.2; }
-.lrc-ring-d { font-size: 12.5px; color: #B7C0CE; line-height: 1.5; overflow-wrap: anywhere; }
-
-/* FRESHNESS PER SOURCE. Each pill is coloured against its OWN cadence, so a 45s-old balance stays green
-   while a 45s-old order board turns amber. One global age line cannot express that. */
-.lrc-fresh { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
-.lrc-fresh-i { display: inline-flex; align-items: center; gap: 6px; font-size: 11px;
-  border: 1px solid var(--s-bd); background: var(--s-bg); border-radius: 999px; padding: 5px 10px; }
-.lrc-fresh-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--s); flex: 0 0 auto; }
-.lrc-fresh-k { color: #8B95A5; }
-.lrc-fresh-v { color: var(--s); font-weight: 700; font-variant-numeric: tabular-nums; }
-
-/* The question a section answers, before its numbers. */
-.lrc-ask { margin: 0 0 13px; }
-.lrc-ask-q { font-size: 19px; font-weight: 800; margin: 0; line-height: 1.25; letter-spacing: -.2px; color: #E6E9EF; }
-.lrc-ask-s { font-size: 12.5px; color: #8B95A5; margin: 5px 0 0; line-height: 1.5; }
-.lrc-head { border: 1px solid #2A3040; border-radius: 12px; background: #10141C; padding: 14px 16px; }
-.lrc-title-row { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
-.lrc-h1 { font-size: 15px; font-weight: 800; letter-spacing: .3px; margin: 0; color: #E6E9EF; }
-.lrc-venue { font-size: 11px; font-weight: 700; color: #9AA4B2; border: 1px solid #2E3646; border-radius: 999px; padding: 2px 8px; }
-
-.lrc-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; margin-top: 12px; }
-.lrc-metrics-sm { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); margin-bottom: 12px; }
-.lrc-metric { border: 1px solid #232937; border-radius: 10px; background: #0d1119; padding: 10px 12px; min-width: 0; }
-.lrc-metric.is-warn { border-color: #4a3c12; }
-.lrc-metric-k { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .4px; color: #8B95A5; }
-.lrc-metric-v { display: block; font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums;
-  margin-top: 2px; line-height: 1.15; word-break: break-word; }
-.lrc-metric-s { display: block; font-size: 11px; color: #8B95A5; margin-top: 4px; line-height: 1.45; }
-
-.lrc-tabs { display: flex; gap: 6px; margin-top: 14px; overflow-x: auto; -webkit-overflow-scrolling: touch;
-  scrollbar-width: none; padding-bottom: 2px; }
-.lrc-tabs::-webkit-scrollbar { display: none; }
-.lrc-tab { position: relative; min-height: 44px; padding: 0 14px; border: 1px solid #2E3646; border-radius: 8px;
-  background: #141926; color: #9AA4B2; font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap;
-  flex: 0 0 auto; touch-action: manipulation; }
-.lrc-tab:hover { background: #1b2233; }
-.lrc-tab.is-on { color: #DCE6FF; border-color: #2E5FBE; background: #16233E; }
 .lrc-tab-short { display: none; }
-.lrc-tab-dot { position: absolute; top: 5px; right: 6px; width: 7px; height: 7px; border-radius: 50%; background: #E5574E; }
-.lrc-feedage { font-size: 11px; color: #6E7889; margin-top: 10px; line-height: 1.5; }
+
+/* Freshness: one compact pill per source, coloured against ITS OWN cadence. */
+.lrc-fresh { display: flex; flex-wrap: wrap; gap: 5px; margin: 8px 0 0; }
+.lrc-fresh-i { display: inline-flex; align-items: baseline; gap: 5px; font-size: 10px;
+  border: 1px solid var(--ex-line); border-radius: 3px; padding: 2px 7px; background: var(--ex-panel); }
+.lrc-fresh-k { color: var(--ex-txt-3); text-transform: uppercase; letter-spacing: .05em; }
+.lrc-fresh-v { font-weight: 700; color: var(--ex-txt-2); }
+.lrc-fresh-i.is-ok .lrc-fresh-v { color: var(--ex-green); }
+.lrc-fresh-i.is-warn .lrc-fresh-v { color: var(--ex-gold); }
+.lrc-fresh-i.is-bad .lrc-fresh-v { color: var(--ex-red); }
 
 .lrc-sec { margin-top: 14px; }
-.lrc-sechead { display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  margin: 16px 0 8px; flex-wrap: wrap; }
-.lrc-sectitle { font-size: 12px; font-weight: 800; letter-spacing: .4px; text-transform: uppercase; color: #9AA4B2; }
+.lrc-ask { margin: 0 0 12px; }
+.lrc-ask-q { font-size: 16px; font-weight: 700; margin: 0; line-height: 1.25; letter-spacing: -.01em; }
+.lrc-ask-s { font-size: 11.5px; color: var(--ex-txt-2); margin: 4px 0 0; line-height: 1.5; }
 
-.lrc-banner { border-radius: 10px; padding: 11px 14px; margin-bottom: 12px; font-size: 13px; line-height: 1.5; }
-.lrc-banner-red { color: #FFC9C4; border: 1px solid #5c1f1a; background: #1a0b0a; }
-.lrc-banner-warn { color: #F0D08A; border: 1px solid #4a3c12; background: #1a1608; }
-.lrc-banner-ok { color: #A9E3C4; border: 1px solid #205038; background: #0d1f16; }
+.lrc-alert { border: 1px solid var(--ex-red-bd); background: var(--ex-red-bg); border-radius: 8px;
+  padding: 11px 12px; margin-bottom: 12px; }
+.lrc-alert-t { color: var(--ex-red); font-weight: 700; font-size: 13px; margin-bottom: 8px; }
+.lrc-alert-rows { border: 1px solid var(--ex-line); border-radius: 6px; background: var(--ex-panel); }
 
-.lrc-alert { border: 1px solid #5c1f1a; background: #1a0b0a; border-radius: 12px; padding: 13px 15px; margin-bottom: 14px; }
-.lrc-alert-t { color: #FF9C93; font-weight: 800; font-size: 14px; margin-bottom: 8px; }
-.lrc-alert-list { margin: 0 0 10px; padding-left: 18px; font-size: 13px; color: #FFC9C4; line-height: 1.6; }
-.lrc-alert-list li { margin-bottom: 5px; }
+.lrc-barwrap { height: 4px; border-radius: 999px; background: var(--ex-line); margin-top: 8px; overflow: hidden; }
+.lrc-bar { height: 100%; background: var(--ex-gold); }
 
-.lrc-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
-.lrc-card { border: 1px solid #232937; border-radius: 12px; background: #10141C; padding: 13px 15px; min-width: 0; }
-.lrc-card-wide { grid-column: 1 / -1; margin-bottom: 12px; }
-.lrc-card-k { font-size: 11px; text-transform: uppercase; letter-spacing: .4px; color: #8B95A5; margin-bottom: 6px; }
-.lrc-card-v { font-size: 14px; font-weight: 700; line-height: 1.35; }
-.lrc-card-big { font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; margin-top: 4px; }
-.lrc-card-unit { font-size: 13px; font-weight: 600; color: #8B95A5; margin-left: 4px; }
-.lrc-card-sub { font-size: 12px; color: #8B95A5; margin-top: 4px; line-height: 1.5; }
-.lrc-rank { margin: 10px 0 0; padding-left: 18px; font-size: 12px; color: #B7C0CE; line-height: 1.7; }
-.lrc-rank-t { margin-left: 8px; color: #8B95A5; }
+.lrc-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+.lrc-search { flex: 1 1 180px; min-width: 0; }
 
-.lrc-barwrap { height: 8px; border-radius: 999px; background: #1b2233; margin-top: 10px; overflow: hidden; }
-.lrc-bar { height: 100%; border-radius: 999px; }
-.lrc-bar-used { background: #2E5FBE; }
+.lrc-mkts { display: flex; flex-direction: column; gap: 8px; }
+.lrc-mkt { padding-bottom: 10px; }
+.lrc-mkt-row { border-bottom: 1px solid var(--ex-line-soft); }
+.lrc-actions { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px; }
+.lrc-expand { margin-top: 10px; border-top: 1px solid var(--ex-line-soft); padding-top: 8px; }
 
-.lrc-controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
-.lrc-scope { display: flex; gap: 6px; flex-wrap: wrap; }
-.lrc-chip { min-height: 44px; padding: 0 12px; border: 1px solid #2E3646; border-radius: 8px; background: #141926;
-  color: #9AA4B2; font-size: 12px; font-weight: 700; cursor: pointer; }
-.lrc-chip.is-on { color: #DCE6FF; border-color: #2E5FBE; background: #16233E; }
-.lrc-search { flex: 1 1 200px; min-width: 0; min-height: 44px; padding: 0 10px; border: 1px solid #2E3646;
-  border-radius: 8px; background: #0d1420; color: #E6E9EF; font-size: 13px; }
+.lrc-poslist { display: flex; flex-direction: column; gap: 8px; }
+.lrc-pos { padding-bottom: 2px; }
+.lrc-legs { border-top: 1px solid var(--ex-line-soft); background: rgba(0,0,0,.18); }
 
-.lrc-mkts { display: flex; flex-direction: column; gap: 12px; }
-.lrc-mkt { border: 1px solid #232937; border-radius: 12px; background: #10141C; padding: 12px 14px; }
-/* THE OLD OVERLAP BUG: the pot line and the badges used to share one flex row, so on a narrow screen a
-   badge rode over the montepremi $X/giorno text. They are now separate block rows — the title/pot row
-   collapses to one column under 620px and the badges wrap on their own line, so nothing can overlap.
-   NOTE: keep this stylesheet free of the characters React escapes in text nodes — quotes, angle
-   brackets, ampersands. As the child of a style element they are serialised escaped on the server and
-   raw on the client, which is a hydration mismatch that takes the whole root down to client rendering. */
-.lrc-mkt-top { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 14px; align-items: start; }
-.lrc-mkt-title { font-size: 14px; font-weight: 700; line-height: 1.35; min-width: 0; overflow-wrap: anywhere; }
-.lrc-mkt-git { color: #8B95A5; font-weight: 600; }
-.lrc-mkt-pot { text-align: right; white-space: nowrap; min-width: 0; }
-.lrc-pot-k { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: .4px; color: #8B95A5; }
-.lrc-pot-v { display: block; font-size: 15px; font-weight: 800; font-variant-numeric: tabular-nums; }
-.lrc-pot-u { font-size: 11px; font-weight: 600; color: #8B95A5; margin-left: 2px; }
+.lrc-ladderbox { padding: 12px; margin-bottom: 12px; }
+.lrc-rulesbox { padding: 12px; margin-bottom: 4px; }
+.lrc-rules { margin: 8px 0 0; padding-left: 16px; font-size: 12.5px; color: var(--ex-txt-2); line-height: 1.6; }
+.lrc-rules li { margin-bottom: 8px; }
+.lrc-rules code { font-family: var(--ex-mono); font-size: 11px; color: var(--ex-gold);
+  background: var(--ex-panel-2); border: 1px solid var(--ex-line); border-radius: 3px; padding: 0 4px; }
 
-.lrc-badges { display: flex; flex-wrap: wrap; gap: 6px; margin: 9px 0 2px; }
-.lrc-badge { font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px; white-space: nowrap;
-  border: 1px solid #2E3646; background: #141926; color: #9AA4B2; }
-.lrc-sp-basso { color: #A9E3C4; border-color: #205038; background: #0d1f16; }
-.lrc-sp-medio { color: #E8B23A; border-color: #4a3c12; background: #1a1608; }
-.lrc-sp-alto { color: #FF9C93; border-color: #5c1f1a; background: #1a0b0a; }
-.lrc-st-fermo { color: #A9E3C4; border-color: #205038; background: #0d1f16; }
-.lrc-st-medio { color: #E8B23A; border-color: #4a3c12; background: #1a1608; }
-.lrc-st-si-muove { color: #FF9C93; border-color: #5c1f1a; background: #1a0b0a; }
-.lrc-b-good { color: #A9E3C4; border-color: #205038; background: #0d1f16; }
-.lrc-b-bad { color: #FF9C93; border-color: #5c1f1a; background: #1a0b0a; }
-.lrc-b-unk { color: #E8B23A; border-color: #4a3c12; background: #1a1608; }
-.lrc-b-bot { color: #DCE6FF; border-color: #2E5FBE; background: #16233E; }
+.lrc-tbl { min-width: 760px; }
+.lrc-td-mkt { max-width: 220px; overflow-wrap: anywhere; }
+.lrc-rank-n { display: inline-block; min-width: 16px; color: var(--ex-gold); font-weight: 700; }
 
-.lrc-mkt-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px 14px; margin-top: 10px; }
-.lrc-kv { min-width: 0; }
-.lrc-kv-k { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: .4px; color: #8B95A5; }
-.lrc-kv-v { display: block; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-
-.lrc-mkt-actions { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 11px; }
-.lrc-link { display: inline-flex; align-items: center; min-height: 44px; background: none; border: none;
-  padding: 0; font-size: 13px; font-weight: 700; color: #7FA6FF; cursor: pointer; text-decoration: none;
-  touch-action: manipulation; }
-.lrc-link:hover { text-decoration: underline; }
-.lrc-expand { margin-top: 12px; border-top: 1px solid #1a2030; padding-top: 10px; }
-
-.lrc-poslist { display: flex; flex-direction: column; gap: 12px; }
-.lrc-pos { border: 1px solid #232937; border-radius: 12px; background: #10141C; padding: 12px 14px; }
-.lrc-legs { margin-top: 10px; border-top: 1px solid #1a2030; padding-top: 8px; display: flex; flex-direction: column; gap: 6px; }
-.lrc-leg { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 12px; }
-
-.lrc-tblwrap { overflow-x: auto; border: 1px solid #232937; border-radius: 10px; }
-.lrc-tbl { width: 100%; border-collapse: collapse; font-size: 12px; min-width: 720px; }
-.lrc-tbl th { text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: .4px; color: #8B95A5;
-  padding: 8px 10px; border-bottom: 1px solid #232937; white-space: nowrap; }
-.lrc-tbl td { padding: 8px 10px; border-bottom: 1px solid #1a2030; vertical-align: top; }
-.lrc-tbl tr.is-out td { background: rgba(229,87,78,.07); }
-.lrc-td-mkt { max-width: 260px; overflow-wrap: anywhere; }
-
-.lrc-rules { margin: 0; padding-left: 18px; font-size: 13px; color: #B7C0CE; line-height: 1.65; }
-.lrc-rules li { margin-bottom: 9px; }
-.lrc-rules code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: #9AA4B2;
-  background: #0d1119; border: 1px solid #232937; border-radius: 4px; padding: 1px 5px; }
-
-.lrc-btn { min-height: 44px; padding: 0 16px; border: 1px solid #2E5FBE; border-radius: 8px; cursor: pointer;
-  font-size: 13px; font-weight: 700; color: #DCE6FF; background: #16233E; touch-action: manipulation; }
-.lrc-btn:hover { background: #1B2C4E; }
-.lrc-btn:disabled { opacity: .55; cursor: not-allowed; }
-.lrc-more { width: 100%; }
-
-.lrc-note { font-size: 12px; color: #8B95A5; line-height: 1.55; margin: 14px 0 0; }
-.lrc-fine { font-size: 11px; color: #8B95A5; line-height: 1.5; margin: 6px 0 0; }
-.lrc-nd { font-size: 13px; color: #8B95A5; padding: 16px 2px; }
-.lrc-num { font-variant-numeric: tabular-nums; }
-.lrc-warn { color: #E8B23A; }
-.lrc-ok { color: #57C98A; }
-.lrc-bad { color: #E5574E; }
+.lrc-note { font-size: 11px; color: var(--ex-txt-3); line-height: 1.55; margin: 12px 0 0; }
+.lrc-fine { font-size: 10.5px; color: var(--ex-txt-3); line-height: 1.5; margin: 6px 0 0; }
+.lrc-nd { font-size: 12.5px; color: var(--ex-txt-2); padding: 16px 2px; }
 
 @media (max-width: 620px) {
-  .lrc-root { padding: 10px 10px 18px; }
-  .lrc-head { padding: 12px; }
-  .lrc-metrics { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
-  .lrc-metric-v { font-size: 19px; }
-  .lrc-tab { padding: 0 11px; font-size: 12px; }
+  .lrc-root { padding: 4px 10px 24px; }
   .lrc-tab-long { display: none; }
   .lrc-tab-short { display: inline; }
-  /* Title and pot stack: the pot gets its own full-width row, left aligned, so no badge or long title
-     can ever ride over it. */
-  .lrc-mkt-top { grid-template-columns: minmax(0, 1fr); }
-  .lrc-mkt-pot { text-align: left; }
-  .lrc-card-big { font-size: 22px; }
-  .lrc-ring-row { gap: 11px; padding: 11px 12px; }
-  .lrc-ring { width: 40px; height: 40px; }
-  .lrc-ring-a { font-size: 19px; }
-  .lrc-ask-q { font-size: 17px; }
-  /* The action row keeps 44px targets, so it needs vertical room to wrap without cramping. */
-  .lrc-mkt-actions { gap: 2px 16px; margin-top: 6px; }
+  .lrc-ask-q { font-size: 15px; }
+  .lrc-actions { gap: 4px 14px; }
+  /* The dense row stacks: figures drop under the title, spread across the full width instead of
+     crushing against it. Selectors carry the .exch prefix so they beat the base .exch .ex-row rule
+     on specificity, not merely on source order. */
+  .exch .lrc-mkt-row { grid-template-columns: minmax(0, 1fr); }
+  .exch .lrc-mkt-row .ex-row-nums { justify-content: space-between; width: 100%; }
+  .exch .lrc-mkt-row .ex-num { text-align: left; }
 }
 `;
