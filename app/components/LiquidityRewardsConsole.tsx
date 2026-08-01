@@ -198,6 +198,7 @@ interface TrkMarket {
   marketId: string; gate: string | null; reason: string | null;
   offsetCents: number | null; minMoveCents: number | null; sizeShares: number | null;
   referenceMid: number | null; movedCents: number | null; repriceCount: number;
+  mid: number | null; midAgeSec: number | null; midSource: string | null; midReadAt: number | null; paused: boolean;
   plan: { yes: TrkPlanSide | null; no: TrkPlanSide | null } | null;
   sides: { yes: TrkSide; no: TrkSide } | null;
 }
@@ -964,7 +965,14 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
                     ?? live?.marketId ?? cfg.marketId;
                   const yes = live?.sides?.yes; const no = live?.sides?.no;
                   const pausedSides = [yes?.filled ? 'YES' : null, no?.filled ? 'NO' : null].filter(Boolean);
-                  const stato = live?.gate && live.gate !== 'below-threshold'
+                  // L'ETA' DEL MID, misurata sull'orologio locale a partire dalla lettura del motore:
+                  // fra un ciclo e l'altro un valore fermo direbbe una cosa falsa proprio quando conta.
+                  const midAge = live?.midReadAt != null && nowMs
+                    ? (live.midAgeSec ?? 0) + Math.max(0, Math.round((nowMs - live.midReadAt) / 1000))
+                    : live?.midAgeSec ?? null;
+                  const stato = live?.paused
+                    ? { txt: 'dati non freschi — in pausa', cls: 'is-bad' }
+                    : live?.gate && live.gate !== 'below-threshold'
                     ? { txt: live.gate, cls: 'is-bad' }
                     : pausedSides.length
                       ? { txt: `in pausa · ${pausedSides.join(' e ')} eseguito`, cls: 'is-warn' }
@@ -980,6 +988,10 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
                           {' · '}offset <span className="ex-n">{cfg.offsetCents}¢</span>
                           {' · soglia '}<span className="ex-n">{cfg.minMoveCents}¢</span>
                           {' · size '}<span className="ex-n">{cfg.sizeShares}</span>
+                          {' · mid '}
+                          <span className={`ex-n ${live?.paused ? 'ex-dn' : ''}`} data-lrc-track-midage>
+                            {midAge == null ? 'mai letto' : midAge < 2 ? 'aggiornato adesso' : `aggiornato ${midAge}s fa`}
+                          </span>
                           {live?.reason && <div className="ex-why">{live.reason}</div>}
                         </div>
                       </div>

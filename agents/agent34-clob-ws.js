@@ -267,6 +267,52 @@ async function unionOperatorMarkets(into, deps = {}) {
   return into;
 }
 
+// ── SOTTOSCRIZIONI PERMANENTI PER IL TRACKING ──────────────────────────────────────────────────────
+// Un mercato con il market making a due lati attivo ha bisogno del book live SEMPRE, non solo mentre
+// qualcuno guarda il pannello: il motore continua a quotare e a riprezzare anche con l'app chiusa. Il
+// permesso temporaneo (live-lease) muore in venti secondi ed e' l'attrezzo sbagliato per questo.
+//
+// Priorita' PIU ALTA dei permessi temporanei e pari a quella dei mercati abilitati a mano: se serve
+// spazio si cede un mercato del board (il piu' povero), non uno su cui un motore sta lavorando con
+// capitale reale. Alla scala prevista — 10-15 mercati in tracking su un budget di 125 — questo caso
+// non si presenta comunque.
+let trackedDropped = [];
+let trackedActiveIds = [];
+async function unionTrackedMarkets(into, deps = {}) {
+  trackedDropped = [];
+  let ids = [];
+  try {
+    const { trackedMarketIds } = require('../lib/maker/mm-tracking-config');
+    ids = deps.trackedIds !== undefined ? deps.trackedIds : trackedMarketIds();
+  } catch (e) {
+    log('configurazione del tracking non leggibile (nessuna sottoscrizione permanente questo giro):', e.message);
+    trackedActiveIds = [];
+    return into;
+  }
+  trackedActiveIds = ids.slice();
+  if (!ids.length) return into;
+  const byLower = new Map([...into.keys()].map((k) => [normId(k), k]));
+  for (const id of ids) {
+    const existing = byLower.get(normId(id));
+    if (existing) { into.get(existing).tracked = true; continue; }
+    if (into.size >= TOTAL_MARKET_CAP) {
+      const evicted = evictWeakestRewardMarket(into);
+      if (!evicted) { trackedDropped.push(id); continue; }
+      byLower.delete(normId(evicted));
+    }
+    const meta = await operatorMarketMeta(id, deps);
+    if (!meta) { trackedDropped.push(id); continue; }
+    meta.source = 'mm-tracking';
+    meta.tracked = true;
+    into.set(id, meta);
+    byLower.set(normId(id), id);
+  }
+  if (trackedDropped.length) {
+    log(`ATTENZIONE: ${trackedDropped.length} mercati CON TRACKING ATTIVO non sottoscritti — il motore li mettera in pausa per dati non freschi: ${trackedDropped.join(', ')}`);
+  }
+  return into;
+}
+
 // ── SOTTOSCRIZIONI TEMPORANEE (live-lease) ──────────────────────────────────────────────────────────
 // Un permesso in data/maker-live-leases.json significa: «un pannello di piazzamento e APERTO su questo
 // mercato adesso». La dashboard lo scrive all apertura e lo rinnova ogni 5s; scade da solo dopo 20s.
@@ -455,6 +501,7 @@ async function reconcileSubscriptions() {
   desired = collectDesiredMarkets();
   await unionOperatorMarkets(desired); // + every market the operator enabled by hand (cfg.enabledMarketIds)
   await unionLegMarkets(desired);   // Phase 2: + markets where a user has legs
+  await unionTrackedMarkets(desired); // + i mercati con il market making attivo (PERMANENTI, prima dei temporanei)
   await unionLeaseMarkets(desired); // + i mercati con un pannello di piazzamento aperto adesso (temporanei)
   await loadDriftInputs();          // Phase 4: refresh legs/placements/rewardScore/rails
   const nextAssets = new Map();
@@ -590,7 +637,7 @@ function buildSnapshot() {
     };
   }
   const rss = process.memoryUsage().rss;
-  const bySource = { 'reward-board': 0, 'operator-enabled': 0, leg: 0, 'live-lease': 0 };
+  const bySource = { 'reward-board': 0, 'operator-enabled': 0, leg: 0, 'live-lease': 0, 'mm-tracking': 0 };
   for (const meta of desired.values()) {
     const s = meta.source || (meta.fromLeg ? 'leg' : 'reward-board');
     bySource[s] = (bySource[s] || 0) + 1;
@@ -617,6 +664,9 @@ function buildSnapshot() {
       // Le sottoscrizioni temporanee, esposte per diagnosi: quante sono attive, quante NON e' stato
       // possibile attivare, e il tetto. Cosi' «perche' questo mercato non e' live?» ha una risposta
       // leggibile invece di richiedere i log del processo.
+      trackedMarkets: bySource['mm-tracking'] || 0,
+      trackedActive: [...trackedActiveIds],
+      trackedDropped: [...trackedDropped],
       leaseMarkets: bySource['live-lease'] || 0,
       leaseActive: [...leaseActiveIds],
       leaseDropped: [...leaseDropped],
@@ -932,11 +982,15 @@ async function main() {
   let lastLeaseKey = '';
   setInterval(() => {
     let ids = [];
+    let trk = [];
     try { ids = require('../lib/maker/live-lease').readActiveLeaseIds(); } catch { return; }
-    const key = ids.slice().sort().join(',');
+    // Anche la lista del tracking: accendere il toggle su un mercato nuovo deve produrre una
+    // sottoscrizione entro un paio di secondi, non al prossimo giro da sessanta.
+    try { trk = require('../lib/maker/mm-tracking-config').trackedMarketIds(); } catch { trk = []; }
+    const key = ids.slice().sort().join(',') + '|' + trk.slice().sort().join(',');
     if (key === lastLeaseKey) return;
     lastLeaseKey = key;
-    log(`live-lease cambiato (${ids.length} attivi) — riconcilio subito`);
+    log(`sottoscrizioni cambiate (${ids.length} temporanee, ${trk.length} in tracking) — riconcilio subito`);
     reconcileSubscriptions().catch((e) => log('reconcile (lease) failed:', e.message));
   }, LEASE_WATCH_MS);
   setInterval(() => { tick().catch(e => log('tick failed:', e.message)); }, WRITE_INTERVAL_MS);
@@ -967,6 +1021,7 @@ module.exports = {
   // La corsia delle sottoscrizioni temporanee, esportata per la stessa ragione: il selfcheck la guida con
   // deps iniettate, senza rete e senza toccare data/.
   unionLeaseMarkets, leaseLaneState: () => ({ dropped: [...leaseDropped], active: [...leaseActiveIds] }),
+  unionTrackedMarkets, trackedLaneState: () => ({ dropped: [...trackedDropped], active: [...trackedActiveIds] }),
   operatorLaneState: () => ({ dropped: [...operatorDropped], unresolved: [...operatorUnresolved], evicted: [...operatorEvicted] }),
   SUBSCRIPTION_CAP, TOTAL_MARKET_CAP, FEED_ASSET_BUDGET,
 };

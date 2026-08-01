@@ -613,6 +613,170 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
             </p>
           )}
 
+          {/* ── TRACKING ATTIVO (market making a due lati) ────────────────────────────────────────
+              SUBITO SOTTO I DATI DI MERCATO, e prima del piazzamento a mano. L'ordine conta: i due
+              campi di questa sezione — offset e soglia — si leggono CONTRO mid, tick e banda che stanno
+              appena sopra, e metterli in fondo obbligava a scorrere avanti e indietro per compilarli.
+              Il piazzamento a un lato viene dopo perche' e' l'alternativa, non il passo successivo.
+
+              Ha un doppio passo suo, separato da quello del piazzamento manuale, perche' autorizza una
+              cosa diversa: non un ordine, ma una delega continuata a piazzarne finche' resta accesa. */}
+          <div className="op-trk" data-op-tracking>
+            <button className="op-trk-head" onClick={() => setTrkOpen((v) => !v)} data-op-trk-toggle aria-expanded={trkOpen}>
+              <span className="op-trk-t">
+                Tracking attivo <span className="ex-dim">· market making a due lati</span>
+              </span>
+              <span className={`ex-badge ${trkActive ? 'is-gold' : ''}`} data-op-trk-state={trkActive ? 'on' : 'off'}>
+                {trkActive ? 'ATTIVO' : 'spento'}
+              </span>
+              <span className="op-trk-caret" aria-hidden="true">{trkOpen ? '▾' : '▸'}</span>
+            </button>
+
+            {trkOpen && (
+              <div className="op-trk-body">
+                {trkActive ? (
+                  <>
+                    <div className="ex-kvs op-mb" data-op-trk-active>
+                      <div className="ex-kv"><span className="ex-kv-k">offset</span><span className="ex-kv-v">{trkActive.offsetCents}¢</span></div>
+                      <div className="ex-kv"><span className="ex-kv-k">soglia</span><span className="ex-kv-v">{trkActive.minMoveCents}¢</span></div>
+                      <div className="ex-kv"><span className="ex-kv-k">size</span><span className="ex-kv-v">{trkActive.sizeShares}</span></div>
+                      <div className="ex-kv"><span className="ex-kv-k">dalle</span><span className="ex-kv-v">{trkActive.atIso ? new Date(trkActive.atIso).toLocaleTimeString() : 'N/D'}</span></div>
+                    </div>
+                    <p className="op-hint">
+                      Su questo mercato il motore quota entrambi i lati e li insegue da solo, senza chiedere
+                      conferma ordine per ordine. Il kill-switch, il tetto per ordine e la soglia dei 3 minuti
+                      dalla chiusura restano tutti in vigore.
+                    </p>
+                    {trkOffStep === 'idle' ? (
+                      <button className="ex-btn is-danger op-trk-btn" onClick={() => setTrkOffStep('choose')} data-op-trk-off>
+                        Disattiva il tracking
+                      </button>
+                    ) : (
+                      /* DUE OPZIONI, NESSUN DEFAULT NASCOSTO. Cosa succede agli ordini gia' a riposo e'
+                         una decisione dell'operatore, non una conseguenza silenziosa dello spegnimento. */
+                      <div className="op-trk-choice" data-op-trk-choice>
+                        <div className="op-trk-q">Gli ordini gia&apos; a riposo su questo mercato:</div>
+                        <button className="ex-btn is-danger op-trk-btn" disabled={trkBusy}
+                          onClick={async () => { const r = await trkCall({ enabled: false, preview: false, cancelOrders: true }); setTrkMsg(r.note ?? r.error ?? null); if (r.ok) { setTrkActive(null); setTrkOffStep('idle'); } }}
+                          data-op-trk-off-cancel>
+                          Spegni e CANCELLA gli ordini
+                        </button>
+                        <button className="ex-btn op-trk-btn" disabled={trkBusy}
+                          onClick={async () => { const r = await trkCall({ enabled: false, preview: false, cancelOrders: false }); setTrkMsg(r.note ?? r.error ?? null); if (r.ok) { setTrkActive(null); setTrkOffStep('idle'); } }}
+                          data-op-trk-off-leave>
+                          Spegni e lasciali scadere per GTD
+                        </button>
+                        <button className="ex-link op-trk-btn" onClick={() => setTrkOffStep('idle')}>annulla</button>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <div className="op-trk-grid">
+                      <label className="op-field">
+                        <span className="op-label">Offset <span className="op-labelhint">¢</span></span>
+                        <span className="op-trk-callout" data-op-trk-callout>↑ distanza dal prezzo medio (mid)</span>
+                        <input className="ex-input op-input" type="number" inputMode="decimal" step="0.1"
+                          value={trkOffset} placeholder={fin(maxSpreadCents) ? String(+(maxSpreadCents / 2).toFixed(2)) : '2'}
+                          onChange={(e) => { setTrkOffset(e.target.value); setTrkStep('form'); setTrkPreview(null); }}
+                          data-op-trk-offset />
+                      </label>
+                      <label className="op-field">
+                        <span className="op-label">Soglia di movimento <span className="op-labelhint">¢</span></span>
+                        <span className="op-trk-callout">↑ quanto deve muoversi il mid per riprezzare</span>
+                        <input className="ex-input op-input" type="number" inputMode="decimal" step="0.1"
+                          value={trkMinMove} placeholder={fin(tick) ? String(+(tick * 100).toFixed(2)) : '1'}
+                          onChange={(e) => { setTrkMinMove(e.target.value); setTrkStep('form'); setTrkPreview(null); }}
+                          data-op-trk-minmove />
+                      </label>
+                    </div>
+                    <p className="op-hint">
+                      Size: <b className="ex-n">{sizeStr || 'N/D'}</b> share per lato — la stessa del campo qui sopra.
+                      {fin(maxSpreadCents) && <> Raggio premiante <b className="ex-n">{(maxSpreadCents / 2).toFixed(2)}¢</b>: un offset piu&apos; largo mette quel lato fuori banda.</>}
+                    </p>
+
+                    {/* ANTEPRIMA CALCOLATA IN LOCALE, prima ancora del primo passo: dove finirebbero i
+                        due ordini col mid di adesso. Usa la stessa funzione del motore. */}
+                    {(() => {
+                      const off = Number(trkOffset);
+                      if (!fin(off) || off <= 0 || !fin(mid) || !fin(tick)) return null;
+                      const p = planQuotes({ mid, offsetCents: off, tick, bandRadiusCents: maxSpreadCents != null ? maxSpreadCents / 2 : null });
+                      if (!p.ok) return <p className="ex-flag is-bad"><span className="ex-flag-i">⚠</span><span>{p.reason}</span></p>;
+                      return (
+                        <div className="op-trk-prev" data-op-trk-preview>
+                          {(['yes', 'no'] as const).map((k) => {
+                            const q = p[k];
+                            if (!q) return null;
+                            return (
+                              <div key={k} className="op-trk-leg" data-op-trk-leg={k}>
+                                <span className={`ex-side ${k === 'yes' ? 'is-yes' : 'is-no'}`}>BUY {k.toUpperCase()}</span>
+                                <span className="ex-n op-trk-px">{q.placeable ? `${q.priceCents}¢` : 'N/D'}</span>
+                                {k === 'no' && q.placeable && <span className="ex-dim">= vendi YES a {(100 - (q.priceCents as number)).toFixed(1)}¢</span>}
+                                {q.inBand === false && <span className="ex-badge is-warn" data-op-trk-outband>fuori banda — nessun reward su questo lato</span>}
+                                {q.inBand === true && <span className="ex-badge is-ok">in banda</span>}
+                                {!q.placeable && <span className="ex-badge is-bad">{q.reason}</span>}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+
+                    {trkStep === 'review' && trkPreview?.plan && (
+                      <div className="op-review" data-op-trk-review>
+                        <div className="op-review-h">Rivedi la configurazione prima di attivare</div>
+                        <div className="ex-kvs">
+                          <div className="ex-kv"><span className="ex-kv-k">mercato</span><span className="ex-kv-v op-wrap">{target.title}</span></div>
+                          <div className="ex-kv"><span className="ex-kv-k">offset</span><span className="ex-kv-v">{trkOffset}¢</span></div>
+                          <div className="ex-kv"><span className="ex-kv-k">soglia</span><span className="ex-kv-v">{trkMinMove}¢</span></div>
+                          <div className="ex-kv"><span className="ex-kv-k">size/lato</span><span className="ex-kv-v">{sizeStr}</span></div>
+                          <div className="ex-kv"><span className="ex-kv-k">BUY YES</span><span className="ex-kv-v">{trkPreview.plan.yes?.priceCents ?? 'N/D'}¢</span></div>
+                          <div className="ex-kv"><span className="ex-kv-k">BUY NO</span><span className="ex-kv-v">{trkPreview.plan.no?.priceCents ?? 'N/D'}¢</span></div>
+                        </div>
+                        <p className="op-hint">
+                          Attivando, il motore piazza e riprezza da solo su questo mercato finche&apos; non lo
+                          spegni: <b>niente conferma ordine per ordine</b>. Restano in vigore kill-switch, tetto
+                          per ordine, gestione manuale e il blocco a 3 minuti dalla chiusura.
+                        </p>
+                      </div>
+                    )}
+
+                    {trkStep === 'form' ? (
+                      <button className="ex-btn is-gold op-trk-btn" // `Number('')` vale 0, che e' finito: controllare solo la finitezza rendeva il pulsante premibile a
+                        // campi vuoti, e il rifiuto sarebbe arrivato dal server invece che dallo schermo.
+                        disabled={trkBusy || !(Number(trkOffset) > 0) || !(Number(trkMinMove) > 0) || !(size > 0)}
+                        onClick={async () => {
+                          const r = await trkCall({ enabled: true, preview: true, offsetCents: Number(trkOffset), minMoveCents: Number(trkMinMove), sizeShares: size });
+                          if (r.ok) { setTrkPreview(r); setTrkStep('review'); } else setTrkMsg(r.error ?? 'anteprima non riuscita');
+                        }}
+                        data-op-trk-review-btn>
+                        {trkBusy ? 'Calcolo…' : 'Rivedi configurazione'}
+                      </button>
+                    ) : (
+                      <div className="op-trk-choice">
+                        <button className="ex-btn op-trk-btn" onClick={() => setTrkStep('form')} data-op-trk-back>Modifica</button>
+                        <button className="ex-btn is-danger op-trk-btn" disabled={trkBusy}
+                          onClick={async () => {
+                            const r = await trkCall({ enabled: true, preview: false, offsetCents: Number(trkOffset), minMoveCents: Number(trkMinMove), sizeShares: size });
+                            setTrkMsg(r.note ?? r.error ?? null);
+                            if (r.ok) { setTrkActive((r as { record?: TrackRecord }).record ?? null); setTrkStep('form'); }
+                          }}
+                          data-op-trk-activate>
+                          {trkBusy ? 'Attivo…' : 'Attiva tracking'}
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
+                {trkMsg && <div className="ex-banner op-mb" data-op-trk-msg>{trkMsg}</div>}
+              </div>
+            )}
+          </div>
+
+          {/* ── PIAZZAMENTO MANUALE A UN LATO ─────────────────────────────────────────────────────
+              L'alternativa al tracking: un ordine solo, su un lato solo, deciso adesso. */}
+          <div className="op-sech" data-op-manual-section>Piazzamento manuale a un lato</div>
+
           {/* ── 3 · LATO ──────────────────────────────────────────────────────────────────────── */}
           <div className="op-field">
             <div className="op-label">Lato</div>
@@ -703,159 +867,6 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
               ))}
             </div>
           )}
-
-          {/* ── TRACKING ATTIVO (market making a due lati) ────────────────────────────────────────
-              La sezione sta DOPO il piazzamento a mano e ha un doppio passo suo, perche' autorizza una
-              cosa diversa: non un ordine, ma una delega continuata a piazzarne finche' resta accesa. */}
-          <div className="op-trk" data-op-tracking>
-            <button className="op-trk-head" onClick={() => setTrkOpen((v) => !v)} data-op-trk-toggle aria-expanded={trkOpen}>
-              <span className="op-trk-t">
-                Tracking attivo <span className="ex-dim">· market making a due lati</span>
-              </span>
-              <span className={`ex-badge ${trkActive ? 'is-gold' : ''}`} data-op-trk-state={trkActive ? 'on' : 'off'}>
-                {trkActive ? 'ATTIVO' : 'spento'}
-              </span>
-              <span className="op-trk-caret" aria-hidden="true">{trkOpen ? '▾' : '▸'}</span>
-            </button>
-
-            {trkOpen && (
-              <div className="op-trk-body">
-                {trkActive ? (
-                  <>
-                    <div className="ex-kvs op-mb" data-op-trk-active>
-                      <div className="ex-kv"><span className="ex-kv-k">offset</span><span className="ex-kv-v">{trkActive.offsetCents}¢</span></div>
-                      <div className="ex-kv"><span className="ex-kv-k">soglia</span><span className="ex-kv-v">{trkActive.minMoveCents}¢</span></div>
-                      <div className="ex-kv"><span className="ex-kv-k">size</span><span className="ex-kv-v">{trkActive.sizeShares}</span></div>
-                      <div className="ex-kv"><span className="ex-kv-k">dalle</span><span className="ex-kv-v">{trkActive.atIso ? new Date(trkActive.atIso).toLocaleTimeString() : 'N/D'}</span></div>
-                    </div>
-                    <p className="op-hint">
-                      Su questo mercato il motore quota entrambi i lati e li insegue da solo, senza chiedere
-                      conferma ordine per ordine. Il kill-switch, il tetto per ordine e la soglia dei 3 minuti
-                      dalla chiusura restano tutti in vigore.
-                    </p>
-                    {trkOffStep === 'idle' ? (
-                      <button className="ex-btn is-danger op-trk-btn" onClick={() => setTrkOffStep('choose')} data-op-trk-off>
-                        Disattiva il tracking
-                      </button>
-                    ) : (
-                      /* DUE OPZIONI, NESSUN DEFAULT NASCOSTO. Cosa succede agli ordini gia' a riposo e'
-                         una decisione dell'operatore, non una conseguenza silenziosa dello spegnimento. */
-                      <div className="op-trk-choice" data-op-trk-choice>
-                        <div className="op-trk-q">Gli ordini gia&apos; a riposo su questo mercato:</div>
-                        <button className="ex-btn is-danger op-trk-btn" disabled={trkBusy}
-                          onClick={async () => { const r = await trkCall({ enabled: false, preview: false, cancelOrders: true }); setTrkMsg(r.note ?? r.error ?? null); if (r.ok) { setTrkActive(null); setTrkOffStep('idle'); } }}
-                          data-op-trk-off-cancel>
-                          Spegni e CANCELLA gli ordini
-                        </button>
-                        <button className="ex-btn op-trk-btn" disabled={trkBusy}
-                          onClick={async () => { const r = await trkCall({ enabled: false, preview: false, cancelOrders: false }); setTrkMsg(r.note ?? r.error ?? null); if (r.ok) { setTrkActive(null); setTrkOffStep('idle'); } }}
-                          data-op-trk-off-leave>
-                          Spegni e lasciali scadere per GTD
-                        </button>
-                        <button className="ex-link op-trk-btn" onClick={() => setTrkOffStep('idle')}>annulla</button>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <div className="op-trk-grid">
-                      <label className="op-field">
-                        <span className="op-label">Offset dal mid <span className="op-labelhint">¢</span></span>
-                        <input className="ex-input op-input" type="number" inputMode="decimal" step="0.1"
-                          value={trkOffset} placeholder={fin(maxSpreadCents) ? String(+(maxSpreadCents / 2).toFixed(2)) : '2'}
-                          onChange={(e) => { setTrkOffset(e.target.value); setTrkStep('form'); setTrkPreview(null); }}
-                          data-op-trk-offset />
-                      </label>
-                      <label className="op-field">
-                        <span className="op-label">Soglia di movimento <span className="op-labelhint">¢</span></span>
-                        <input className="ex-input op-input" type="number" inputMode="decimal" step="0.1"
-                          value={trkMinMove} placeholder={fin(tick) ? String(+(tick * 100).toFixed(2)) : '1'}
-                          onChange={(e) => { setTrkMinMove(e.target.value); setTrkStep('form'); setTrkPreview(null); }}
-                          data-op-trk-minmove />
-                      </label>
-                    </div>
-                    <p className="op-hint">
-                      Size: <b className="ex-n">{sizeStr || 'N/D'}</b> share per lato — la stessa del campo qui sopra.
-                      {fin(maxSpreadCents) && <> Raggio premiante <b className="ex-n">{(maxSpreadCents / 2).toFixed(2)}¢</b>: un offset piu&apos; largo mette quel lato fuori banda.</>}
-                    </p>
-
-                    {/* ANTEPRIMA CALCOLATA IN LOCALE, prima ancora del primo passo: dove finirebbero i
-                        due ordini col mid di adesso. Usa la stessa funzione del motore. */}
-                    {(() => {
-                      const off = Number(trkOffset);
-                      if (!fin(off) || off <= 0 || !fin(mid) || !fin(tick)) return null;
-                      const p = planQuotes({ mid, offsetCents: off, tick, bandRadiusCents: maxSpreadCents != null ? maxSpreadCents / 2 : null });
-                      if (!p.ok) return <p className="ex-flag is-bad"><span className="ex-flag-i">⚠</span><span>{p.reason}</span></p>;
-                      return (
-                        <div className="op-trk-prev" data-op-trk-preview>
-                          {(['yes', 'no'] as const).map((k) => {
-                            const q = p[k];
-                            if (!q) return null;
-                            return (
-                              <div key={k} className="op-trk-leg" data-op-trk-leg={k}>
-                                <span className={`ex-side ${k === 'yes' ? 'is-yes' : 'is-no'}`}>BUY {k.toUpperCase()}</span>
-                                <span className="ex-n op-trk-px">{q.placeable ? `${q.priceCents}¢` : 'N/D'}</span>
-                                {k === 'no' && q.placeable && <span className="ex-dim">= vendi YES a {(100 - (q.priceCents as number)).toFixed(1)}¢</span>}
-                                {q.inBand === false && <span className="ex-badge is-warn" data-op-trk-outband>fuori banda — nessun reward su questo lato</span>}
-                                {q.inBand === true && <span className="ex-badge is-ok">in banda</span>}
-                                {!q.placeable && <span className="ex-badge is-bad">{q.reason}</span>}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      );
-                    })()}
-
-                    {trkStep === 'review' && trkPreview?.plan && (
-                      <div className="op-review" data-op-trk-review>
-                        <div className="op-review-h">Rivedi la configurazione prima di attivare</div>
-                        <div className="ex-kvs">
-                          <div className="ex-kv"><span className="ex-kv-k">mercato</span><span className="ex-kv-v op-wrap">{target.title}</span></div>
-                          <div className="ex-kv"><span className="ex-kv-k">offset</span><span className="ex-kv-v">{trkOffset}¢</span></div>
-                          <div className="ex-kv"><span className="ex-kv-k">soglia</span><span className="ex-kv-v">{trkMinMove}¢</span></div>
-                          <div className="ex-kv"><span className="ex-kv-k">size/lato</span><span className="ex-kv-v">{sizeStr}</span></div>
-                          <div className="ex-kv"><span className="ex-kv-k">BUY YES</span><span className="ex-kv-v">{trkPreview.plan.yes?.priceCents ?? 'N/D'}¢</span></div>
-                          <div className="ex-kv"><span className="ex-kv-k">BUY NO</span><span className="ex-kv-v">{trkPreview.plan.no?.priceCents ?? 'N/D'}¢</span></div>
-                        </div>
-                        <p className="op-hint">
-                          Attivando, il motore piazza e riprezza da solo su questo mercato finche&apos; non lo
-                          spegni: <b>niente conferma ordine per ordine</b>. Restano in vigore kill-switch, tetto
-                          per ordine, gestione manuale e il blocco a 3 minuti dalla chiusura.
-                        </p>
-                      </div>
-                    )}
-
-                    {trkStep === 'form' ? (
-                      <button className="ex-btn is-gold op-trk-btn" // `Number('')` vale 0, che e' finito: controllare solo la finitezza rendeva il pulsante premibile a
-                        // campi vuoti, e il rifiuto sarebbe arrivato dal server invece che dallo schermo.
-                        disabled={trkBusy || !(Number(trkOffset) > 0) || !(Number(trkMinMove) > 0) || !(size > 0)}
-                        onClick={async () => {
-                          const r = await trkCall({ enabled: true, preview: true, offsetCents: Number(trkOffset), minMoveCents: Number(trkMinMove), sizeShares: size });
-                          if (r.ok) { setTrkPreview(r); setTrkStep('review'); } else setTrkMsg(r.error ?? 'anteprima non riuscita');
-                        }}
-                        data-op-trk-review-btn>
-                        {trkBusy ? 'Calcolo…' : 'Rivedi configurazione'}
-                      </button>
-                    ) : (
-                      <div className="op-trk-choice">
-                        <button className="ex-btn op-trk-btn" onClick={() => setTrkStep('form')} data-op-trk-back>Modifica</button>
-                        <button className="ex-btn is-danger op-trk-btn" disabled={trkBusy}
-                          onClick={async () => {
-                            const r = await trkCall({ enabled: true, preview: false, offsetCents: Number(trkOffset), minMoveCents: Number(trkMinMove), sizeShares: size });
-                            setTrkMsg(r.note ?? r.error ?? null);
-                            if (r.ok) { setTrkActive((r as { record?: TrackRecord }).record ?? null); setTrkStep('form'); }
-                          }}
-                          data-op-trk-activate>
-                          {trkBusy ? 'Attivo…' : 'Attiva tracking'}
-                        </button>
-                      </div>
-                    )}
-                  </>
-                )}
-                {trkMsg && <div className="ex-banner op-mb" data-op-trk-msg>{trkMsg}</div>}
-              </div>
-            )}
-          </div>
 
           {/* ── 9 · RIEPILOGO ─────────────────────────────────────────────────────────────────── */}
           {step === 'review' && (
@@ -977,6 +988,29 @@ const CSS = `
 .op-trk-prev { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
 .op-trk-leg { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; font-size: 11.5px; }
 .op-trk-px { font-size: 14px; font-weight: 700; color: var(--ex-gold); }
+/* Il callout spiega A PAROLE cosa misura il campo: «offset» da solo non dice da cosa. */
+.op-trk-callout { display: block; font-size: 10px; color: var(--ex-gold); line-height: 1.35; margin-top: 3px; }
+.op-sech { font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--ex-txt-3);
+  border-top: 1px solid var(--ex-line); padding-top: 10px; margin: 14px 0 2px; }
+
+/* ── COMPATTEZZA SENZA TAGLIARE NIENTE ───────────────────────────────────────────────────────────
+   Il pannello sta in una schermata di telefono per DIMENSIONI (font e padding ridotti, griglia dei
+   dati di mercato piu' fitta), non perche' qualcuno gli abbia bloccato l'altezza con overflow:hidden.
+   Quel trucco fa entrare tutto su un viewport e TAGLIA VIA il fondo su un altro, e il contenuto
+   tagliato non ha nemmeno lo scroll per essere raggiunto. Qui lo scroll resta sempre disponibile:
+   se il contenuto non entra, scorre. */
+@media (max-height: 720px) {
+  .op-sheet { max-height: 96vh; }
+  .op-head { padding: 9px 12px; }
+  .op-title { font-size: 13px; }
+  .op-body { padding: 9px 12px; }
+  .op-field { margin-bottom: 9px; }
+  .op-trk-body { padding: 0 10px 10px; }
+  .op-notional { padding: 8px 10px; margin: 9px 0; }
+  .op-notional-v { font-size: 17px; }
+  .op-segb { min-height: 40px; font-size: 12px; }
+  .op-actions .ex-btn { min-height: 44px; }
+}
 @media (max-width: 430px) { .op-trk-grid { grid-template-columns: 1fr; } }
 
 .op-actions { display: flex; gap: 8px; padding: 10px 14px calc(10px + env(safe-area-inset-bottom));

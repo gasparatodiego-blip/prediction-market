@@ -5,6 +5,13 @@ import { z } from 'zod';
 import { readTrackingConfig, setTracking, LIMITS } from '@/lib/maker/mm-tracking-config';
 import { planQuotes } from '@/lib/maker/mm-quote-math';
 import { resolveMarketRules, listManualOrders, cancelManualOrder } from '@/lib/maker/manual-order';
+import { marketWindowFor } from '@/lib/maker/market-clock';
+import { RESTING_GTD_SECONDS, REFRESH_MARGIN_SECONDS } from '@/lib/maker/auto-reprice-config';
+
+// La stessa soglia con cui il pannello smette di chiamare «live» un prezzo, e con cui il gate
+// stale-book rifiuta un ordine. Una terza soglia diversa qui vorrebbe dire tre risposte alla stessa
+// domanda: «questo prezzo e' ancora buono?».
+const FRESH_MID_MAX_SEC = 30;
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -122,6 +129,24 @@ export async function POST(req: NextRequest) {
         ok: false, error: `regole di venue non leggibili per questo mercato (mancano: ${rules.missing.join(', ')}) — non accendo un motore automatico su regole che non so leggere`,
       }, { status: 409 });
     }
+    // ── GLI STESSI GATE DEL PIAZZAMENTO A MANO, sull'ATTIVAZIONE ─────────────────────────────────
+    // Accendere il tracking e' piu' impegnativo che piazzare un ordine: autorizza N ordini futuri. Non
+    // avrebbe senso che passasse controlli piu' deboli di quelli che un ordine solo deve superare.
+    //   · il prezzo dev'essere vivo — accendere un motore che insegue il mid su un mid che non e' del
+    //     book live significa inseguire un numero fermo;
+    //   · il mercato non dev'essere a ridosso della chiusura — il motore li' non riprezzerebbe comunque
+    //     (lo stesso gate a 3 minuti), quindi accendere produrrebbe solo una riga in pausa.
+    const gates: string[] = [];
+    if (rules.midSource !== 'live-book') {
+      gates.push(`il prezzo di questo mercato viene da «${rules.midSource || 'fonte ignota'}», non dal book live: il motore inseguirebbe un mid che non e' quello vero. Apri il pannello e attendi che indichi «book live».`);
+    } else if (Number.isFinite(rules.midAgeSec) && (rules.midAgeSec as number) > FRESH_MID_MAX_SEC) {
+      gates.push(`il book live per questo mercato e' fermo da ${rules.midAgeSec}s: la sottoscrizione sembra caduta.`);
+    }
+    try {
+      const w = marketWindowFor({ marketId, baseTtlSeconds: RESTING_GTD_SECONDS, baseRefreshMarginSeconds: REFRESH_MARGIN_SECONDS });
+      if (w && w.tooClose === true) gates.push(`${w.reason} — il motore non riprezzerebbe comunque su questo mercato.`);
+    } catch { /* finestra non calcolabile: non e' un motivo per rifiutare */ }
+
     const plan = planQuotes({ mid: rules.mid, offsetCents, tick: rules.tick, bandRadiusCents: rules.bandRadiusCents });
 
     if (preview) {
@@ -129,8 +154,15 @@ export async function POST(req: NextRequest) {
         ok: true, preview: true, action: 'tracking-on', marketId,
         rules: { mid: rules.mid, tick: rules.tick, minSize: rules.minSize, bandRadiusCents: rules.bandRadiusCents, midSource: rules.midSource, midAgeSec: rules.midAgeSec },
         plan,
-        note: 'Anteprima: NIENTE e stato scritto e nessun ordine e stato piazzato. Questi sono i due livelli dove il motore quoterebbe con il mid di adesso.',
+        blockers: gates,
+        note: gates.length
+          ? `Anteprima: NIENTE e stato scritto. Ma il tracking NON si puo attivare adesso — ${gates.join(' ')}`
+          : 'Anteprima: NIENTE e stato scritto e nessun ordine e stato piazzato. Questi sono i due livelli dove il motore quoterebbe con il mid di adesso.',
       });
+    }
+
+    if (gates.length) {
+      return NextResponse.json({ ok: false, error: gates.join(' '), blockers: gates }, { status: 409 });
     }
 
     const on = setTracking({ marketId, enabled: true, offsetCents, minMoveCents, sizeShares, by: 'operatore · pannello ordine', reason: reason ?? null });

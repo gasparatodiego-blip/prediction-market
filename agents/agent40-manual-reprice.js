@@ -65,7 +65,7 @@ const { runAutoRepriceCycle } = require('../lib/maker/auto-reprice');
 // In piu' questo processo e' gia' «la cosa piu' stretta che possa piazzare» — nessun adapter, nessuna
 // credenziale, nessuna chiave, solo le funzioni del pannello manuale — quindi aggiungere qui non allarga
 // la superficie: la riusa.
-const { runTrackingCycle } = require('../lib/maker/mm-tracking');
+const { runTrackingCycle, TRACKING_POLL_MS, MID_STALE_PAUSE_SEC } = require('../lib/maker/mm-tracking');
 const { readTrackingConfig } = require('../lib/maker/mm-tracking-config');
 const { marketWindowFor } = require('../lib/maker/market-clock');
 const { loadAutoRepriceTuning, EXPECTED_RENEWALS_PER_HOUR } = require('../lib/maker/auto-reprice-config');
@@ -263,7 +263,7 @@ async function trackingTask() {
     // piazzare): la mossa che toglie un ordine non puo' mai, per costruzione, crearne uno.
     cancelOrder: (spec) => cancelManualOrder(spec, 'mm-tracking'),
     audit: (rec) => { try { appendMakerAudit(rec); } catch (e) { log('audit write failed:', e.message); } },
-    tuning: (() => { const t = loadAutoRepriceTuning(); return { minIntervalMs: t.minIntervalMs, maxMidAgeSec: t.maxMidAgeSec, requireLiveBook: t.requireLiveBook }; })(),
+    tuning: (() => { const t = loadAutoRepriceTuning(); return { minIntervalMs: t.minIntervalMs, midStalePauseSec: MID_STALE_PAUSE_SEC, requireLiveBook: t.requireLiveBook, refreshMarginSeconds: t.refreshMarginSeconds }; })(),
     state: trackingState,
   });
 
@@ -307,6 +307,8 @@ async function trackingTask() {
         marketId: m.marketId, gate: m.gate, reason: m.reason,
         offsetCents: m.offsetCents, minMoveCents: m.minMoveCents, sizeShares: m.sizeShares,
         referenceMid: m.referenceMid, movedCents: m.movedCents, repriceCount: m.repriceCount,
+        mid: m.mid ?? null, midAgeSec: m.midAgeSec ?? null, midSource: m.midSource ?? null,
+        midReadAt: m.midReadAt ?? null, paused: m.paused === true,
         plan: m.plan ? { yes: m.plan.yes, no: m.plan.no } : null,
         sides: m.sides || null,
       })),
@@ -350,14 +352,31 @@ async function main() {
     catch (e) { log('reconcile task failed:', e && e.message ? e.message : String(e)); }
     try { if (Date.now() - lastReconcileAt < 1000) await closeTask(); }
     catch (e) { log('close task failed:', e && e.message ? e.message : String(e)); }
-    // Il motore di market making, sul suo try/catch: un suo fallimento non deve poter fermare il
-    // watcher reattivo ne la riconciliazione, e viceversa.
-    try { await trackingTask(); }
-    catch (e) { log('tracking task failed:', e && e.message ? e.message : String(e)); }
+
     finally { heartbeat(); }
   };
   await run();
   setInterval(run, tuning.pollMs);
+
+  // ── IL MOTORE DI MARKET MAKING HA IL SUO OROLOGIO ────────────────────────────────────────────────
+  // 3 secondi, non i 5 del watcher reattivo. Sono due compiti diversi: quello reattivo interviene solo
+  // quando un ordine rischia di uscire dalla banda e puo' permettersi di guardare piu' di rado; questo
+  // insegue il mid, e la soglia di movimento ha senso solo se il mid viene guardato spesso abbastanza
+  // da coglierne il movimento. Intervallo separato anche perche' un ciclo lento dell'uno non deve poter
+  // rallentare l'altro.
+  let trackingRunning = false;
+  const runTracking = async () => {
+    // Niente sovrapposizioni: se un giro dura piu' di 3 secondi il successivo salta invece di
+    // accavallarsi, altrimenti due cicli potrebbero cancellare e ripiazzare lo stesso ordine.
+    if (trackingRunning) return;
+    trackingRunning = true;
+    try { await trackingTask(); }
+    catch (e) { log('tracking task failed:', e && e.message ? e.message : String(e)); }
+    finally { trackingRunning = false; }
+  };
+  await runTracking();
+  setInterval(runTracking, TRACKING_POLL_MS);
+  log(`market making: ciclo ogni ${TRACKING_POLL_MS / 1000}s · mid piu vecchio di ${MID_STALE_PAUSE_SEC}s ⇒ quel mercato va IN PAUSA (e riprende da solo).`);
 }
 
 if (require.main === module) {
