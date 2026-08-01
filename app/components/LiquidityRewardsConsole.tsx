@@ -52,6 +52,9 @@ import { estimateAtCapital } from '@/lib/reward-operator-estimate';
 import PriceLadder from './PriceLadder';
 import ManualOrdersPanel from './ManualOrdersPanel';
 import RewardsAllocatePanel from './RewardsAllocatePanel';
+// "Strategia sul fill" — sotto il pianificatore, perche' il tetto che quella strategia applica E' il
+// capitale che il pianificatore assegna: una decisione sola, una schermata sola.
+import FillStrategyPanel from './FillStrategyPanel';
 import RewardsUnified from './RewardsUnified';
 
 type TabKey = 'riepilogo' | 'mercati' | 'posizioni' | 'ordini' | 'alloca' | 'regole';
@@ -1081,6 +1084,7 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
         <section className="lrc-sec" data-lrc-section="alloca">
           <Ask q="Quanto capitale metto, e su quali mercati?" sub="Un piano, non un ordine: qui non si piazza nulla." />
           <RewardsAllocatePanel />
+          <FillStrategyPanel />
         </section>
       )}
 

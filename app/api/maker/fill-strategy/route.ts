@@ -6,6 +6,23 @@ import {
 } from '@/lib/maker/fill-strategy-config';
 import { readAllocatedCapitalAll, readAllocatedCapital } from '@/lib/maker/allocated-capital';
 import { readAutoRepriceConfig } from '@/lib/maker/auto-reprice-config';
+import fs from 'fs';
+import path from 'path';
+
+/** Market titles, read from the same reward board the rest of the console reads. Best-effort: a market
+ *  with no readable title shows its short id, never a blank row. */
+function titleMap(): Map<string, string> {
+  const m = new Map<string, string>();
+  try {
+    const raw = fs.readFileSync(path.join(process.cwd(), 'data', 'liquidity-rewards.json'), 'utf8');
+    for (const row of (JSON.parse(raw).markets ?? [])) {
+      if (row?.conditionId && typeof row.question === 'string' && row.question.trim()) {
+        m.set(String(row.conditionId).trim().toLowerCase(), row.question);
+      }
+    }
+  } catch { /* titles are a nicety; their absence never hides a market */ }
+  return m;
+}
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -38,12 +55,15 @@ export async function GET() {
     ...Object.keys(cfg.markets || {}),
   ].map((s) => String(s).trim().toLowerCase()).filter(Boolean)));
 
+  const titles = titleMap();
   const markets = ids.map((id) => {
     const rec = (cfg.markets as any)[id] || null;
     const p = paramsFor(id);
     const cap = readAllocatedCapital(id);
     return {
       marketId: id,
+      title: titles.get(id) ?? null,
+      shortId: `${id.slice(0, 10)}…${id.slice(-4)}`,
       enabled: !!(rec && rec.enabled === true),
       effectivelyEnabled: cfg.globalEnabled && !!(rec && rec.enabled === true),
       takeProfitCents: p.takeProfitCents, takeProfitIsDefault: p.takeProfitIsDefault,
