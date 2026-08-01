@@ -142,6 +142,27 @@ interface PositionMarket {
   netDirection: 'yes' | 'no' | 'flat'; currentValueUsd: number | null; initialValueUsd: number | null;
   unrealizedPnlUsd: number | null; valueUnknown: boolean;
 }
+/**
+ * Un risultato della ricerca SENZA FILTRO REWARD — la stessa fonte che «Cerca un mercato» usa nella tab
+ * Alloca (/api/maker/markets/search → lib/maker/market-search). Porta molti meno campi di una riga di
+ * board: niente stabilità, niente stima, niente banda misurata, perché quei numeri li produce la
+ * pipeline reward e un mercato fuori da quella pipeline non li ha. Vengono mostrati i campi che il venue
+ * dà davvero, e nessun altro.
+ */
+interface VenueSearchRow {
+  marketId: string; question: string | null; slug: string | null;
+  rewardsDailyRate: number | null; hasRewards: boolean; rewardLabel: string;
+  spreadCents: number | null; tick: number | null; rewardsMaxSpreadCents: number | null;
+  minutesToClose: number | null; tooCloseToClose: boolean;
+  bestBid: number | null; bestAsk: number | null; mid: number | null;
+  closed: boolean; acceptingOrders: boolean;
+  enabled: boolean; optedIn: boolean; catalogued: boolean;
+}
+interface VenueSearchResp {
+  ok: boolean; error: string | null; query: string; count: number;
+  markets: VenueSearchRow[]; withRewards: number; withoutRewards: number;
+}
+
 interface Positions {
   ok: boolean; wallet: string | null; error: string | null; source: string; at: string;
   markets: PositionMarket[];
@@ -154,6 +175,14 @@ const cents = (p: number | null | undefined): string => (fin(p) ? `${(p * 100).t
 const num = (v: number | null | undefined, nd = 0): string => (fin(v) ? v.toFixed(nd) : 'N/D');
 const ageTxt = (s: number | null | undefined): string =>
   (!fin(s) ? 'N/D' : s < 60 ? `${Math.round(s)}s fa` : s < 3600 ? `${Math.round(s / 60)} min fa` : `${(s / 3600).toFixed(1)} h fa`);
+/** Tempo alla chiusura da minuti — stessa convenzione di closeText nel pannello Alloca. */
+const closeTxt = (min: number | null): string => {
+  if (min == null || !Number.isFinite(min)) return 'scadenza ignota';
+  if (min < 0) return `chiuso da ${Math.abs(min) < 90 ? `${Math.round(Math.abs(min))} min` : `${(Math.abs(min) / 60).toFixed(1)} h`}`;
+  if (min < 90) return `chiude fra ${Math.round(min)} min`;
+  if (min < 2880) return `chiude fra ${(min / 60).toFixed(1)} h`;
+  return `chiude fra ${(min / 1440).toFixed(1)} g`;
+};
 const hoursTxt = (h: number | null): string =>
   (!fin(h) ? 'N/D' : h < 48 ? `${Math.round(h)} h` : `${Math.round(h / 24)} g`);
 /** Sign class for a P&L figure: green up, red down, neutral at exactly flat or unreadable. */
@@ -210,6 +239,14 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
   // Everything technical about one market — ladder, band, tick, id, volume — behind one toggle.
   // One market open at a time: the list is already long.
   const [openDetail, setOpenDetail] = useState<string | null>(null);
+  // ── LA RICERCA SULL'INTERO UNIVERSO ────────────────────────────────────────────────────────────
+  // La barra di ricerca interroga anche il venue, non solo il board reward. Un mercato senza montepremi
+  // (una finestra «Bitcoin Up or Down», per dire) non è nel board per costruzione — agent24 filtra su
+  // rewardsDailyRate > 0 — quindi filtrare soltanto la lista locale lo rendeva introvabile qui mentre la
+  // tab Alloca lo trovava. Stessa barra, stessa fonte, stesso risultato: è quello che ci si aspetta.
+  const [venue, setVenue] = useState<VenueSearchResp | null>(null);
+  const [venueBusy, setVenueBusy] = useState(false);
+  const [venueErr, setVenueErr] = useState<string | null>(null);
 
   // A slow clock, so every freshness readout AGES VISIBLY between polls instead of looking frozen-fresh
   // until the next fetch lands. 5s is finer than the fastest cadence on this page (20s) and costs one
@@ -269,6 +306,28 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
     const t = setInterval(loadPositions, POSITIONS_POLL_MS);
     return () => clearInterval(t);
   }, [operator, tab, loadPositions]);
+
+  // La ricerca sul venue parte SOLO da 3 caratteri e con 400ms di quiete: la barra filtra dal vivo la
+  // lista locale a ogni tasto, ma una GET verso Gamma a ogni tasto sarebbe una richiesta per lettera.
+  // La lista locale resta istantanea; questa la affianca quando la digitazione si ferma.
+  useEffect(() => {
+    const needle = q.trim();
+    if (operator !== true || needle.length < 3) { setVenue(null); setVenueErr(null); return; }
+    let alive = true;
+    setVenueBusy(true);
+    const t = setTimeout(async () => {
+      try {
+        const r = await fetch(`/api/maker/markets/search?q=${encodeURIComponent(needle)}&limit=25`, { cache: 'no-store' });
+        if (!alive) return;
+        const b = (await r.json()) as VenueSearchResp;
+        setVenue(b);
+        setVenueErr(b.ok === false ? (b.error ?? 'ricerca fallita') : null);
+      } catch (e) {
+        if (alive) { setVenue(null); setVenueErr((e as Error).message); }
+      } finally { if (alive) setVenueBusy(false); }
+    }, 400);
+    return () => { alive = false; clearTimeout(t); setVenueBusy(false); };
+  }, [q, operator]);
 
   const orders = board?.orders ?? null;
   const summary = board?.summary ?? null;
@@ -398,6 +457,14 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
   }), [pricedMarkets, ordersByMarket]);
 
   const anyFilterOn = fMove != null || fSoon || fEnabled || fMine;
+
+  // I risultati del venue che NON sono gia' nel board. Un mercato presente in entrambi si mostra UNA
+  // volta sola, nel gruppo del board, dove ha tutti i suoi numeri.
+  const venueOnly = useMemo(() => {
+    if (!venue || venue.ok === false) return [];
+    const inBoard = new Set(pricedMarkets.map((m) => m.marketId.toLowerCase()));
+    return (venue.markets || []).filter((m) => m.marketId && !inBoard.has(m.marketId.toLowerCase()));
+  }, [venue, pricedMarkets]);
 
   const visibleMarkets = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -763,14 +830,17 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
               </button>
             </div>
             <input
-              className="ex-input is-text lrc-search" type="search" placeholder="Cerca…"
-              value={q} onChange={(e) => { setQ(e.target.value); setLimit(PAGE); }} aria-label="Cerca mercato"
+              className="ex-input is-text lrc-search" type="search" placeholder="Cerca su tutto Polymarket…"
+              value={q} onChange={(e) => { setQ(e.target.value); setLimit(PAGE); }}
+              aria-label="Cerca mercato su tutto Polymarket, anche senza reward"
+              title="Filtra il board reward dal vivo e, da 3 caratteri, cerca anche fuori dal board: la stessa fonte di «Cerca un mercato» in Alloca."
             />
           </div>
 
           <p className="lrc-chiphint">
             <span className="ex-n">{visibleMarkets.length}</span> di <span className="ex-n">{pricedMarkets.length}</span>
             {' · '}🏆 ordina, non filtra
+            {' · '}<span className="ex-dim">la ricerca copre tutto Polymarket, anche i mercati senza reward</span>
             {anyFilterOn && <> · <button className="ex-link lrc-clear" onClick={() => { setFMove(null); setFSoon(false); setFEnabled(false); setFMine(false); setLimit(PAGE); }}>azzera filtri</button></>}
           </p>
 
@@ -786,8 +856,9 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
 
           {visibleMarkets.length === 0 ? (
             <div className="lrc-nd">
-              Nessun mercato con questi filtri.
+              Nessun mercato del board reward con questi filtri.
               {fMove != null && chipCounts.moveUnknown > 0 && ` ${chipCounts.moveUnknown} mercati hanno movimento non misurabile: non contano né come fermi né come veloci.`}
+              {venueOnly.length > 0 && ' I risultati fuori dal board sono qui sotto.'}
             </div>
           ) : (
             <div className="lrc-mkts">
@@ -965,6 +1036,11 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
               )}
             </div>
           )}
+
+          <VenueResults
+            q={q} busy={venueBusy} err={venueErr} rows={venueOnly}
+            anyFilterOn={anyFilterOn} sortByPool={sortByPool}
+          />
         </section>
       )}
 
@@ -1247,6 +1323,105 @@ function Freshness({ items }: { items: Array<{ k: string; ageSec: number | null;
 }
 
 /**
+ * I RISULTATI FUORI DAL BOARD REWARD.
+ *
+ * La barra di ricerca della tab Mercati interroga due fonti: la lista locale del board (istantanea, con
+ * tutti i numeri) e il venue per intero (la STESSA di «Cerca un mercato» in Alloca). Questo gruppo mostra
+ * ciò che esiste solo nella seconda — cioè i mercati che agent24 non raccoglie perché non pagano
+ * montepremi, «Bitcoin Up or Down» in testa.
+ *
+ * PERCHÉ I CHIP NON SI APPLICANO QUI, ed è una scelta, non una dimenticanza.
+ * I cinque chip filtrano su misure che produce la pipeline reward: il movimento viene dalla stdev del mid
+ * su 7 giorni raccolta dal collector, il montepremi dal board, la banda dallo scan. Un mercato fuori da
+ * quella pipeline non ha nessuna delle tre. Le alternative erano due, entrambe peggiori:
+ *   • applicare i chip lo stesso ⇒ questi risultati sparirebbero appena un filtro è attivo, che è
+ *     esattamente l'invisibilità che questa unificazione elimina;
+ *   • inventare un valore neutro ⇒ un mercato non misurato si presenterebbe come misurato.
+ * Quindi restano SEMPRE visibili, in un gruppo loro, e l'intestazione dice a voce alta che i chip qui
+ * sopra non li toccano. Chi cerca un nome lo trova, filtri accesi o spenti.
+ */
+function VenueResults({ q, busy, err, rows, anyFilterOn, sortByPool }: {
+  q: string; busy: boolean; err: string | null; rows: VenueSearchRow[];
+  anyFilterOn: boolean; sortByPool: boolean;
+}) {
+  const needle = q.trim();
+  if (needle.length < 3) return null;
+  return (
+    <div className="lrc-venue" data-lrc-venue-results>
+      <div className="ex-sech">
+        <span className="ex-sech-t">Fuori dal board reward</span>
+        <span className="lrc-fine">
+          {busy ? 'ricerca sul venue…' : `${rows.length} risultat${rows.length === 1 ? 'o' : 'i'}`}
+        </span>
+      </div>
+
+      {err && <div className="ex-banner is-bad">⚠ Ricerca sul venue fallita: {err}</div>}
+
+      {!err && !busy && rows.length === 0 && (
+        <div className="lrc-nd">Nessun altro mercato Polymarket per «{needle}».</div>
+      )}
+
+      {rows.length > 0 && (
+        <>
+          <p className="ex-flag is-dim" data-lrc-venue-note>
+            <span className="ex-flag-i" aria-hidden="true">ⓘ</span>
+            <span>
+              Cercati su tutto Polymarket, come in «Alloca». {(anyFilterOn || sortByPool) && <>I chip qui sopra non si applicano a questi: </>}
+              movimento, montepremi e banda non sono misurati fuori dal board reward.
+            </span>
+          </p>
+          <div className="ex-panel ex-rows lrc-mt">
+            {rows.map((m) => (
+              <div key={m.marketId} className="ex-row" data-lrc-venue-market={m.marketId}>
+                <div className="ex-row-main">
+                  <div className="ex-row-t">{m.question ?? `${m.marketId.slice(0, 10)}…`}</div>
+                  <div className="ex-row-s">
+                    {closeTxt(m.minutesToClose)}
+                    {m.tick != null && <> · tick <span className="ex-n">{m.tick}</span></>}
+                    {m.rewardsMaxSpreadCents != null && <> · banda <span className="ex-n">{m.rewardsMaxSpreadCents.toFixed(2)}¢</span></>}
+                  </div>
+                  <div className="ex-badges lrc-mt">
+                    {/* STESSA CONVENZIONE DI ALLOCA, parola per parola. */}
+                    {!m.hasRewards && (
+                      <span className="ex-badge is-warn" data-lrc-no-reward>NESSUN REWARD — solo trading direzionale</span>
+                    )}
+                    {m.enabled && <span className="ex-badge is-gold">abilitato</span>}
+                    {!m.enabled && m.optedIn && <span className="ex-badge">opted-in</span>}
+                    {m.closed && <span className="ex-badge is-bad">chiuso</span>}
+                    {!m.acceptingOrders && <span className="ex-badge is-bad">non accetta ordini</span>}
+                    {m.tooCloseToClose && <span className="ex-badge is-bad">sotto la soglia di chiusura</span>}
+                  </div>
+                </div>
+                <div className="ex-row-nums">
+                  <span className="ex-num">
+                    <span className="ex-num-k">mid</span>
+                    <span className={`ex-num-v ${m.mid == null ? 'ex-dim' : ''}`}>{cents(m.mid)}</span>
+                  </span>
+                  <span className="ex-num">
+                    <span className="ex-num-k">spread</span>
+                    <span className="ex-num-v">{m.spreadCents == null ? 'N/D' : `${m.spreadCents.toFixed(1)}¢`}</span>
+                  </span>
+                  <span className="ex-num">
+                    <span className="ex-num-k">reward/g</span>
+                    <span className={`ex-num-v ${m.rewardsDailyRate == null ? 'ex-dim' : 'ex-up'}`}>
+                      {m.rewardsDailyRate == null ? 'nessuno' : money(m.rewardsDailyRate, 0)}
+                    </span>
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="lrc-fine">
+            Per aggiungerne uno serve il flusso a due passi in «Alloca capitale» → «Cerca un mercato»:
+            questa lista trova, non abilita.
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
  * THE REWARD BAND AS A HAIRLINE.
  *
  * Replaces the always-open compact price ladder at the top of every card. The endpoints are printed
@@ -1352,6 +1527,7 @@ const CSS = `
 .lrc-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
 .lrc-search { flex: 1 1 180px; min-width: 0; }
 
+.lrc-venue { margin-top: 18px; border-top: 1px solid var(--ex-line); padding-top: 4px; }
 .lrc-chip-n { margin-left: 4px; opacity: .7; font-size: 10px; }
 .lrc-chiphint { font-size: 10.5px; color: var(--ex-txt-3); margin: 6px 0 8px; line-height: 1.5; }
 .lrc-clear { min-height: 0; font-size: 10.5px; }
