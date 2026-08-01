@@ -447,21 +447,24 @@ export default function RewardsAllocatePanel() {
       <style>{CSS}</style>
 
       <h1 className="alloc-h">Allocazione capitale · liquidity rewards</h1>
-      <p className="alloc-sub">Inserisci un capitale: l’ottimizzatore lo distribuisce sui mercati con la dimensione per-mercato corretta (knapsack sulla profondità reale in-band e sul pot), non in parti uguali. L’offset è ora regolabile per singolo mercato — leva diretta sull’essere riempiti.</p>
+      <p className="alloc-sub" title="L ottimizzatore distribuisce il capitale con un knapsack sulla profondita reale in-band e sul pot, non in parti uguali. L offset e regolabile per singolo mercato ed e leva diretta sull essere riempiti.">Un capitale, distribuito per knapsack sulla profondità reale — non in parti uguali. Offset regolabile per mercato.</p>
 
       <div className="alloc-basis" data-alloc-basis>
-        <div className="alloc-basis-h">Cos’è questa pagina — e cosa NON è</div>
+        <div className="alloc-basis-h">⚠ Un piano, non un ordine — cifre lorde, campione piccolo</div>
         <ul className="alloc-basis-ul">
-          <li><b>È un piano calcolato su dati osservati, non un ordine.</b> Nessun ordine viene creato, firmato o inviato guardando o usando questa pagina, incluso il controllo dell’offset. Non viene mosso alcun capitale.</li>
-          <li><b>Le cifre sono LORDE.</b> L’adverse selection è misurata a parte: il netto è “—” dove non è stato osservato un fill reale. Non sommare il lordo come rendimento.</li>
-          <li data-alloc-disclaimer-counts><b>Il campione osservato è piccolo:</b> copertura ~{plan && plan.coverage.truePct != null ? plan.coverage.truePct : '20'}% dell’universo reward collezionabile{plan && plan.observed ? <>, su una finestra di <b>{plan.observed.windowHours.toFixed(1)} ore</b>, con <b>{plan.observed.totalFills} fill osservati nel tape su {plan.observed.filledMarkets} mercati distinti</b> con almeno un fill</> : <> su ~48h</>}. (I «11 fill su 4 mercati» descrivevano solo l’allocazione $5.000, non l’intero tape.) Il comportamento di riempimento per-mercato resta statisticamente esile.</li>
-          <li><b>I pot dei reward si muovono.</b> Durante lo studio il lordo è sceso del <b>36% in due giorni</b>. Nessuna cifra qui è garantita: run-rate, non una promessa.</li>
+          <li title="Nessun ordine viene creato, firmato o inviato guardando o usando questa pagina, incluso il controllo dell offset. Non viene mosso alcun capitale."><b>Non piazza nulla.</b> Nemmeno il controllo dell’offset.</li>
+          <li title="L adverse selection e misurata a parte: il netto e — dove non e stato osservato un fill reale. Non sommare il lordo come rendimento."><b>Cifre LORDE.</b> Il netto è «—» dove non c’è un fill osservato.</li>
+          <li data-alloc-disclaimer-counts title="Il comportamento di riempimento per-mercato resta statisticamente esile.">
+            <b>Campione piccolo:</b> copertura ~{plan && plan.coverage.truePct != null ? plan.coverage.truePct : '20'}%
+            {plan && plan.observed ? <>, {plan.observed.windowHours.toFixed(1)}h, {plan.observed.totalFills} fill su {plan.observed.filledMarkets} mercati</> : <> su ~48h</>}.
+          </li>
+          <li title="Durante lo studio il lordo e sceso del 36% in due giorni. Nessuna cifra qui e garantita."><b>I pot si muovono.</b> Run-rate, non una promessa.</li>
         </ul>
       </div>
 
       {/* PROXY / BALANCE */}
       <div className="alloc-card" data-alloc-balance>
-        <div className="alloc-h" style={{ fontSize: 15 }}>Saldo reale del proxy (funder)</div>
+        <div className="alloc-h" style={{ fontSize: 15 }}>Saldo proxy</div>
         {!balLoaded ? <div className="alloc-sub">lettura on-chain…</div> : (
           <>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 20px', alignItems: 'baseline' }}>
@@ -510,11 +513,10 @@ export default function RewardsAllocatePanel() {
           l'etichetta «NESSUN REWARD — solo trading direzionale», così la scelta è informata. Aggiungere
           un mercato NON piazza nulla: lo rende ammissibile ai gate, che restano tutti in vigore. */}
       <div className="alloc-card" data-alloc-search>
-        <div className="alloc-h" style={{ fontSize: 15 }}>Cerca un mercato (ricerca senza filtro)</div>
-        <div className="alloc-sub">
-          Cerca per testo o incolla un <b>conditionId</b> (0x…). Nessun filtro sui reward: i mercati
-          <b> senza montepremi</b> sono elencati come tutti gli altri e segnalati come tali. Ogni riga mostra
-          <b> reward $/g</b>, <b>spread attuale</b>, <b>tick</b> e quanto manca alla chiusura.
+        <div className="alloc-h" style={{ fontSize: 15 }}>Cerca un mercato</div>
+        <div className="alloc-sub" title="Ogni riga mostra reward $/g, spread attuale, tick e quanto manca alla chiusura.">
+          Testo o <b>conditionId</b> (0x…). Nessun filtro sui reward: i mercati senza montepremi sono elencati
+          e segnalati.
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 8 }}>
           <input className="alloc-in" style={{ width: 320 }} value={query} data-alloc-search-input
@@ -684,20 +686,20 @@ export default function RewardsAllocatePanel() {
           </div>
 
           {/* COMPUTED DEFAULT OFFSET — net-max, not a fixed +1 tick. Explains why each row starts where it does. */}
-          <div className="alloc-note" data-alloc-computed-default style={{ marginTop: 8 }}>
-            <b>Offset di partenza calcolato, non fisso.</b> Ogni riga parte dall’offset che massimizza il <b>netto misurato</b> (lordo − markout osservato), non il lordo: massimizzare il lordo darebbe offset 0 — a metà prezzo — ovunque, perché il lordo è il tetto S=1 indipendente dall’offset (a 0¢ ha preso 14.642 fill nella finestra). Dove non c’è alcun fill osservato il netto non è misurabile: la riga parte dall’offset minimo a esposizione limitata (1 tick) ed è marcata <b>def exp</b>; le altre sono <b>def net</b>. Sotto ogni offset è indicato il default calcolato.
+          <div className="alloc-note" data-alloc-computed-default style={{ marginTop: 8 }}
+               title="Ogni riga parte dall offset che massimizza il netto misurato (lordo meno markout osservato), non il lordo: massimizzare il lordo darebbe offset 0 ovunque, perche il lordo e il tetto S=1 indipendente dall offset (a 0 centesimi ha preso 14.642 fill nella finestra). Dove non c e alcun fill osservato il netto non e misurabile: la riga parte dall offset minimo a esposizione limitata, 1 tick, ed e marcata def exp; le altre sono def net.">
+            <b>Offset di partenza calcolato</b>, non fisso: massimizza il netto misurato. <b>def net</b> = misurato,
+            <b> def exp</b> = nessun fill osservato, parte da 1 tick.
           </div>
 
           {/* Fill-exposure signal strength, stated honestly — a discriminator, NOT a probability. */}
-          <div className="alloc-note" data-alloc-auc style={{ marginTop: 10 }}>
-            <b>Esposizione al fill</b> (score strutturale per riga: order/depth + volatilità + spread stretto).
-            {' '}Discriminatore <b>debole ma significativo</b>, {plan.fillScore.note}: AUC{' '}
-            <b>{plan.fillScore.auc == null ? '—' : plan.fillScore.auc.toFixed(3)}</b>
-            {plan.fillScore.ci95 ? <> · IC 95% [{plan.fillScore.ci95[0].toFixed(3)}, {plan.fillScore.ci95[1].toFixed(3)}]</> : ''}
-            {' '}(su {plan.fillScore.nFilled} mercati con fill vs {plan.fillScore.nUnfilled} senza).
+          <div className="alloc-note" data-alloc-auc style={{ marginTop: 10 }}
+               title={`Score strutturale per riga: order/depth + volatilita + spread stretto. ${plan.fillScore.note}. Misurato su ${plan.fillScore.nFilled} mercati con fill contro ${plan.fillScore.nUnfilled} senza. 0,5 = nessuna discriminazione, 1,0 = perfetta.`}>
+            <b>Esposizione al fill</b> · AUC <b>{plan.fillScore.auc == null ? '—' : plan.fillScore.auc.toFixed(3)}</b>
+            {plan.fillScore.ci95 ? <> · IC95 [{plan.fillScore.ci95[0].toFixed(3)}, {plan.fillScore.ci95[1].toFixed(3)}]</> : ''}
             {plan.fillScore.ci95 && plan.fillScore.ci95[0] <= 0.55
-              ? <b style={{ color: '#d98a41' }}> Il limite inferiore dell’IC ({plan.fillScore.ci95[0].toFixed(3)}) è quasi a 0,5 (il caso): è un discriminatore, NON una probabilità, e il bordo basso sfiora il rumore. Usalo come spareggio, mai come cancello.</b>
-              : <> Non è un filtro affidabile (0,5 = nessuna discriminazione, 1,0 = perfetta); usalo come spareggio, non come cancello.</>}
+              ? <b className="oob"> — il bordo basso sfiora il caso: spareggio, mai cancello.</b>
+              : <> — spareggio, non cancello.</>}
           </div>
           {/* ── TELEFONO: LE STESSE RIGHE, COME SCHEDE ───────────────────────────────────────────────
               Diciassette colonne non stanno in uno schermo di telefono, e una tabella che scorre in
@@ -938,7 +940,7 @@ export default function RewardsAllocatePanel() {
           <div className="alloc-sum" data-alloc-summary>
             <div><span>Capitale allocato</span><b>{money(plan.totals.capital)}</b></div>
             <div>
-              <span>Non allocato (resto)</span>
+              <span>Non allocato</span>
               <b className={plan.totals.unallocated > 0 ? 'ex-gold' : ''}>{money(plan.totals.unallocated)}</b>
               {plan.totals.unallocated > 0 && <p className="ex-why ex-why-warn">capitale fermo: non matura nulla finche non e a riposo in banda</p>}
             </div>
@@ -963,10 +965,10 @@ export default function RewardsAllocatePanel() {
                 <p className="ex-why">{computed.realisticUnknownCount} righe non stimabili, escluse da questo totale</p>
               )}
             </div>
-            <div><span>Lordo atteso (offset attuale)</span><b data-alloc-total-gross>{perDay(computed.grossNow)}</b></div>
+            <div><span>Lordo atteso</span><b data-alloc-total-gross>{perDay(computed.grossNow)}</b></div>
             {/* La SECONDA cifra nel totale, affiancata alla lorda — mai al suo posto. */}
             <div>
-              <span>Stima realistica (offset attuale)</span>
+              <span>Lordo corretto</span>
               <b data-alloc-total-realistic>{perDay(computed.realisticNow)}
                 {computed.realisticGrossOfCounted > 0 && (
                   <small className="alloc-cat"> ({Math.round((computed.realisticNow / computed.realisticGrossOfCounted) * 100)}% del lordo delle stesse righe)</small>
@@ -975,15 +977,17 @@ export default function RewardsAllocatePanel() {
             </div>
             <div><span>vs offset default</span><b>{perDay(computed.grossDefault)}{computed.anyOverride ? <small className="alloc-cat"> ({money(computed.grossNow - computed.grossDefault)}/g)</small> : ''}</b></div>
             <div><span>Netto atteso</span><b>{computed.netNow == null ? '—' : perDay(computed.netNow)}</b></div>
-            <div><span>Fill attesi totali</span><b data-alloc-total-fills>{computed.fillsNow}</b></div>
-            <div><span>Allargare ogni riga +1 tick</span><b data-alloc-widen-cost>{perDay(computed.grossWider)}<small className="alloc-cat"> ({money(computed.grossWider - computed.grossNow)}/g lordo)</small></b></div>
+            <div><span>Fill attesi</span><b data-alloc-total-fills>{computed.fillsNow}</b></div>
+            <div><span>+1 tick a tutte</span><b data-alloc-widen-cost>{perDay(computed.grossWider)}<small className="alloc-cat"> ({money(computed.grossWider - computed.grossNow)}/g lordo)</small></b></div>
           </div>
 
           {/* CRITICAL: the S=1 ceiling caveat — renders whenever any row is wider than its computed default with
               gross unchanged/improved. Never present a wider offset as free. */}
           {computed.artifactCount > 0 && (
-            <div className="alloc-note alloc-warn" data-alloc-s1-caveat>
-              <b>Un offset più largo NON è gratis.</b> {computed.artifactCount} {computed.artifactCount === 1 ? 'riga ha' : 'righe hanno'} un offset oltre il default calcolato con lordo <b>invariato o “migliore”</b>: è un <b>artefatto del modello</b>, non un guadagno. Il lordo del replay è il <b>tetto S=1</b> e non modella il decadimento del punteggio quando il quote si allontana dal mid; l’accumulo reale dei reward cala con la distanza, quindi il costo vero di allargare è <b>sottostimato</b> qui.
+            <div className="alloc-note alloc-warn" data-alloc-s1-caveat
+                 title="Il lordo del replay e il tetto S=1 e non modella il decadimento del punteggio quando il quote si allontana dal mid; l accumulo reale dei reward cala con la distanza, quindi il costo vero di allargare e sottostimato qui.">
+              ⚠ <b>Allargare non è gratis.</b> {computed.artifactCount} {computed.artifactCount === 1 ? 'riga' : 'righe'} con lordo
+              invariato oltre il default: artefatto del modello (tetto S=1), non un guadagno.
             </div>
           )}
           {/* BAND-STATE TRUTH: counts in every state, and — when any row is out — the loss made visible in the aggregate. */}
@@ -998,38 +1002,30 @@ export default function RewardsAllocatePanel() {
               Questo è il testo che il prompt chiede: elenca le correzioni in linguaggio semplice e dice
               a voce alta che resta una stima. Sta sotto la tabella, non in un tooltip soltanto, perché è
               la cosa che cambia il modo di leggere ogni numero della pagina. */}
-          <div className="alloc-note alloc-warn" data-alloc-realistic-note>
-            <b>Due cifre, non una.</b> «Lordo/g» è il numero teorico di sempre: montepremi × quota modellata,
-            con l’ordine appoggiato <b>esattamente sul mid</b> (punteggio massimo) e a riposo <b>tutto il giorno</b>.
-            «Realistico/g» parte dallo stesso lordo e applica correzioni <b>dichiarate una per una</b> (passa il
-            mouse su una cella per vederle tutte con i numeri):
+          <details className="alloc-note alloc-warn" data-alloc-realistic-note>
+            <summary className="alloc-summary">
+              <b>Due cifre, non una</b> — «lordo» è teorico, «realistico» applica correzioni dichiarate
+            </summary>
+            <p style={{ margin: '6px 0 0' }}>
+              «Lordo/g» = montepremi × quota modellata, ordine <b>esattamente sul mid</b> e a riposo{' '}
+              <b>tutto il giorno</b>. «Realistico/g» parte da lì e applica, una per una:
+            </p>
             <ul style={{ margin: '6px 0 6px 18px', padding: 0 }}>
-              <li><b>Punteggio reale della posizione</b> <i>(calcolo)</i> — la formula pubblicata S=((v−s)/v)² fa
-                crollare il punteggio man mano che ti allontani dal mid. Un ordine a 1 tick da una banda di
-                ±2,25¢ vale il <b>31%</b> del massimo, non il 100%. È la correzione più grande e non è un’opinione:
-                è la stessa formula con cui il venue paga.</li>
-              <li><b>Andamento del montepremi</b> <i>(misurato su 48h)</i> — se il pool è stato tagliato, la stima
-                viene scontata di conseguenza. Se è cresciuto, l’aumento è segnalato ma <b>non incassato</b>.</li>
-              <li><b>Mercato sottile</b> <i>(assunzione)</i> — se la tua quota modellata sarebbe sproporzionata, è
-                un rischio, non un’occasione. Dove in banda <b>non c’è nessun altro</b>, la stima viene
-                <b> ritirata</b> («non stimabile»): la formula ti darebbe il 100% del montepremi, ma è una divisione
-                per un book che non esiste.</li>
-              <li><b>Buchi di copertura</b> <i>(misurato)</i> — i premi si campionano <b>una volta al minuto</b>
-                (1.440 campioni/giorno), e ogni cancella→ripiazza è tempo senza ordine a riposo. Di solito vale
-                pochi decimi di punto; qui è calcolato, non ipotizzato.</li>
-              <li><b>Selezione avversa</b> <i>(misurata dove ci sono fill, altrimenti assunzione)</i> — dove il nastro
-                ha prodotto esecuzioni reali si sottrae il markout <b>misurato</b>; dove non ce ne sono, si sottrae
-                una percentuale dichiarata e <b>volutamente grezza</b>.</li>
+              <li title="La formula pubblicata S=((v-s)/v)^2 fa crollare il punteggio man mano che ti allontani dal mid. Un ordine a 1 tick da una banda di +/-2,25 centesimi vale il 31% del massimo, non il 100%. E la correzione piu grande e non e un opinione: e la stessa formula con cui il venue paga."><b>Punteggio reale</b> <i>(calcolo)</i> — S=((v−s)/v)²: a 1 tick vale il <b>31%</b>, non il 100%.</li>
+              <li title="Se il pool e stato tagliato la stima viene scontata di conseguenza. Se e cresciuto, l aumento e segnalato ma non incassato."><b>Andamento montepremi</b> <i>(misurato 48h)</i> — taglio scontato, crescita non incassata.</li>
+              <li title="Se la tua quota modellata sarebbe sproporzionata e un rischio, non un occasione. Dove in banda non c e nessun altro la formula ti darebbe il 100% del montepremi, ma e una divisione per un book che non esiste."><b>Mercato sottile</b> <i>(assunzione)</i> — book vuoto in banda ⇒ stima <b>ritirata</b>, non gonfiata.</li>
+              <li title="I premi si campionano una volta al minuto, 1.440 campioni al giorno, e ogni cancella-ripiazza e tempo senza ordine a riposo. Di solito vale pochi decimi di punto; qui e calcolato, non ipotizzato."><b>Buchi di copertura</b> <i>(misurato)</i> — 1.440 campioni/giorno, ogni riprezzo è tempo scoperto.</li>
+              <li title="Dove il nastro ha prodotto esecuzioni reali si sottrae il markout misurato; dove non ce ne sono si sottrae una percentuale dichiarata e volutamente grezza."><b>Selezione avversa</b> <i>(misurata o assunta)</i> — markout reale dove c’è, percentuale grezza dove manca.</li>
             </ul>
-            <b>Resta una stima, non una garanzia.</b> Le voci marcate <i>assunzione</i> non sono misurate, e nemmeno
-            la parte calcolata promette un rendimento: descrive solo cosa succederebbe se il book restasse com’è.
-            {computed.realisticUnknownCount > 0 && <> Su questa allocazione <b>{computed.realisticUnknownCount}</b> {computed.realisticUnknownCount === 1 ? 'riga è' : 'righe sono'} «non stimabile» e {computed.realisticUnknownCount === 1 ? 'è esclusa' : 'sono escluse'} dal totale realistico.</>}
-          </div>
+            <p style={{ margin: '6px 0 0' }}>
+              <b>Resta una stima.</b> Le voci <i>assunzione</i> non sono misurate.
+              {computed.realisticUnknownCount > 0 && <> {computed.realisticUnknownCount} {computed.realisticUnknownCount === 1 ? 'riga' : 'righe'} «non stimabile», {computed.realisticUnknownCount === 1 ? 'esclusa' : 'escluse'} dal totale.</>}
+            </p>
+          </details>
           <div className="alloc-sub" style={{ marginTop: 6 }} data-alloc-apy-both>
             Annualizzato sul capitale: <b>{plan.annualisedGross.pct == null ? '—' : `${plan.annualisedGross.pct.toFixed(0)}%`}</b> lordo
             {' vs '}<b>{plan.annualisedRealistic.pct == null ? '—' : `${plan.annualisedRealistic.pct.toFixed(0)}%`}</b> realistico.
-            Numeri a tre o quattro cifre da entrambe le parti significano che il capitale è piccolo rispetto ai
-            montepremi dei mercati sottili in cui finisce — sono <b>run-rate</b>, non rendimenti attesi.
+            Cifre a tre o quattro zeri = capitale piccolo rispetto ai pot dei mercati sottili: <b>run-rate</b>.
           </div>
           <div className="alloc-sub" style={{ marginTop: 6 }}>{plan.annualisedGross.label}. Il netto per-mercato è “—” dove non è stato osservato alcun fill reale. Un offset oltre il raggio di banda (maxSpread/2) porta il lordo a $0: la riga lo dice, non mostra un piccolo positivo.</div>
 
@@ -1039,11 +1035,9 @@ export default function RewardsAllocatePanel() {
               click e' il tipo di comando che si preme per sbaglio una volta sola. */}
           <div className="alloc-card" data-alloc-bulk style={{ borderColor: '#2E5FBE' }}>
             <div className="alloc-h" style={{ fontSize: 15 }}>Esegui allocazione</div>
-            <div className="alloc-sub">
-              Piazza <b>in sequenza</b> gli ordini della tabella qui sopra, uno per riga, con lo stesso
-              mercato/lato/prezzo/size che stai guardando. Ogni ordine passa dagli <b>stessi gate</b> di un
-              ordine a mano (validateOrder, kill-switch, cap) e finisce sotto la <b>stessa gestione del
-              watcher</b>: inseguimento del mid, vincolo di banda, rinnovo GTD, riconciliazione.
+            <div className="alloc-sub" title="Ogni ordine passa dagli stessi gate di un ordine a mano (validateOrder, kill-switch, cap) e finisce sotto la stessa gestione del watcher: inseguimento del mid, vincolo di banda, rinnovo GTD, riconciliazione.">
+              Piazza <b>in sequenza</b> le righe qui sopra, stesso mercato/lato/prezzo/size. Stessi gate di un
+              ordine a mano.
             </div>
 
             {bulkRows.length === 0 ? (
@@ -1140,8 +1134,9 @@ export default function RewardsAllocatePanel() {
           </div>
 
           <div className="alloc-sub" style={{ marginTop: 12 }}>{plan.coverage.trueNote}</div>
-          <div className="alloc-sub" style={{ marginTop: 6 }} data-alloc-persist-note>
-            La configurazione degli offset è salvata nel <b>browser</b> (localStorage, per-capitale): sopravvive al reload ed è riproducibile — stesso capitale + stessa mappa produce la stessa allocazione. È una <b>preferenza di visualizzazione</b>, non un ordine né un’istruzione a operare, e resta locale a questo dispositivo.
+          <div className="alloc-sub" style={{ marginTop: 6 }} data-alloc-persist-note
+               title="Sopravvive al reload ed e riproducibile: stesso capitale piu stessa mappa produce la stessa allocazione. E una preferenza di visualizzazione, non un ordine ne un istruzione a operare.">
+            Offset salvati nel <b>browser</b> (localStorage, per-capitale) — preferenza di visualizzazione, locale.
           </div>
         </div>
       )}
@@ -1241,6 +1236,12 @@ table.alloc td.dash { color: var(--ex-txt-3); }
 .alloc-basis-h { font-weight: 700; font-size: 13px; letter-spacing: .01em; margin-bottom: 6px; color: var(--ex-gold); }
 .alloc-basis-ul { margin: 0; padding-left: 16px; }
 .alloc-basis-ul li { margin: 5px 0; font-size: 12px; line-height: 1.55; color: var(--ex-txt-2); }
+/* Il blocco che spiega le due cifre resta per intero, ma richiuso: e' materiale di riferimento,
+   non qualcosa che si rilegge a ogni ricalcolo. */
+.alloc-summary { cursor: pointer; list-style: none; min-height: 34px; display: flex; align-items: center; }
+.alloc-summary::-webkit-details-marker { display: none; }
+.alloc-summary::before { content: none; }
+details[data-alloc-realistic-note] .alloc-summary::after { content: none; }
 
 /* ── Controllo offset per riga ─────────────────────────────────────────────────────────────────── */
 .off-ctl { display: inline-flex; align-items: center; gap: 4px; justify-content: flex-end; }
