@@ -694,7 +694,7 @@ export default function RewardsUnified() {
   const filtersActive = anyFilterActive(filters, ranges);
 
   return (
-    <div className="rewards">
+    <div className="rewards exch">
       <div className="cc-shell">
 
         <header className="cc-head">

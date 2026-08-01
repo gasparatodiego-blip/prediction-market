@@ -2054,3 +2054,105 @@ h1, h2, h3 {
 /* The exchange surface fills the viewport, not just the 860px column: a dark shell floating on the
    day-theme dashboard background is two pages at once. */
 .mkt.exch { min-height: 100vh; padding: 0 12px; }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   PUBLIC REWARDS BOARD — EXCHANGE SKIN
+   ──────────────────────────────────────────────────────────────────────────────
+   Same method as the market terminal: the board's rules are written against the
+   shared --cc-* tokens, so re-pointing them inside .rewards.exch re-skins the
+   whole surface without touching the Cash & Carry tab, which owns the same token
+   names one scope up and must keep its own palette.
+
+   Gold takes over ACTIVE/ACTION (selected chip, selected segment, primary
+   button); green stays POSITIVE/LIVE (in band, live feed, positive figures); red
+   stays NEGATIVE/DANGER. And every figure on the board — pot, spread, depth,
+   $/day, yield, prices — becomes monospaced and tabular, so the rows read as
+   columns instead of as sentences.
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+.rewards.exch {
+  --cc-bg:     var(--ex-bg);
+  --cc-panel:  var(--ex-panel);
+  --cc-border: var(--ex-line);
+  --cc-text:   var(--ex-txt);
+  --cc-muted:  var(--ex-txt-2);
+  --cc-green:  var(--ex-green);
+  --cc-amber:  var(--ex-gold);
+  --cc-spot:   var(--ex-gold);
+  --cc-future: var(--ex-gold);
+  --ds-danger: var(--ex-red);
+  --ds-fill:   var(--ex-panel-2);
+  --ds-fill-2: var(--ex-panel-2);
+  background: var(--ex-bg);
+  color: var(--ex-txt);
+  font-family: var(--ex-sans);
+  padding: 14px 12px 40px;
+}
+
+/* ── ACTIVE and ACTION are gold. ─────────────────────────────────────────────── */
+.rewards.exch .cc-fchip.is-on,
+.rewards.exch .cc-seg-btn.is-on {
+  color: #0B0E11; background: var(--ex-gold); border-color: var(--ex-gold); font-weight: 700;
+}
+.rewards.exch .cc-title-accent { color: var(--ex-gold); }
+.rewards.exch .rw-sel input { accent-color: var(--ex-gold); }
+.rewards.exch .cc-freset:hover:enabled { color: var(--ex-gold); border-color: var(--ex-gold); }
+.rewards.exch .rw-bu-confirm {
+  background: var(--ex-gold); border-color: var(--ex-gold); color: #0B0E11; font-weight: 700;
+}
+.rewards.exch .rw-pos-input:focus,
+.rewards.exch .rw-bal-input:focus,
+.rewards.exch .rw-calc-input:focus { outline: none; border-color: var(--ex-gold); }
+.rewards.exch .cc-frange { accent-color: var(--ex-gold); }
+
+/* ── EVERY FIGURE MONOSPACED AND TABULAR. ────────────────────────────────────── */
+.rewards.exch .rw-pf-v,
+.rewards.exch .rw-pf-nv,
+.rewards.exch .rw-pf-vbig,
+.rewards.exch .rw-pf-num,
+.rewards.exch .rw-pf-net,
+.rewards.exch .rw-pf-prices,
+.rewards.exch .rw-stat-v,
+.rewards.exch .rw-tot-v,
+.rewards.exch .rw-brk-v,
+.rewards.exch .rw-calc-out-val,
+.rewards.exch .rw-bal-dollar,
+.rewards.exch .rw-bu-v,
+.rewards.exch .rw-idle-v,
+.rewards.exch .rw-pos-input,
+.rewards.exch .rw-pos-sub,
+.rewards.exch .rw-bal-input,
+.rewards.exch .rw-calc-input,
+.rewards.exch .cc-slider-val,
+.rewards.exch .cc-net-val,
+.rewards.exch .cc-dte,
+.rewards.exch .cc-figs strong {
+  font-family: var(--ex-mono); font-variant-numeric: tabular-nums; letter-spacing: -.01em;
+}
+
+/* ── Denser, squarer surfaces. The board is a list of rows, not a stack of cards. ── */
+.rewards.exch .cc-card,
+.rewards.exch .cc-fcard,
+.rewards.exch .rw-pos,
+.rewards.exch .rw-calc,
+.rewards.exch .rw-strip { border-radius: 8px; background: var(--ex-panel); }
+.rewards.exch .cc-fchip,
+.rewards.exch .cc-seg-btn,
+.rewards.exch .cc-chip,
+.rewards.exch .rw-bal-chip { border-radius: 4px; }
+.rewards.exch .rw-pos-input,
+.rewards.exch .rw-bal-input,
+.rewards.exch .rw-calc-input { border-radius: 6px; background: #0D1114; }
+
+/* ── Section labels in the same uppercase hairline voice as the operator console. ── */
+.rewards.exch .cc-fhead-t,
+.rewards.exch .cc-flabel {
+  letter-spacing: .04em;
+}
+.rewards.exch .rw-pf-k,
+.rewards.exch .rw-pf-nk,
+.rewards.exch .rw-stat-k,
+.rewards.exch .rw-tot-k,
+.rewards.exch .rw-brk-k {
+  text-transform: uppercase; letter-spacing: .05em; color: var(--ex-txt-3);
+}
