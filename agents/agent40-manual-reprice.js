@@ -58,6 +58,16 @@ for (const envFile of ['.env.local', '.env']) {
 }
 
 const { runAutoRepriceCycle } = require('../lib/maker/auto-reprice');
+// ── IL MOTORE DI MARKET MAKING A DUE LATI ──────────────────────────────────────────────────────────
+// Ospitato QUI, non in un processo suo. La ragione non e' la comodita': i due motori devono essere
+// d'accordo su chi possiede quale mercato, e in un processo solo quell'accordo e' una lettura di lista
+// in memoria invece di due processi che leggono lo stesso file e possono agire nella stessa finestra.
+// In piu' questo processo e' gia' «la cosa piu' stretta che possa piazzare» — nessun adapter, nessuna
+// credenziale, nessuna chiave, solo le funzioni del pannello manuale — quindi aggiungere qui non allarga
+// la superficie: la riusa.
+const { runTrackingCycle } = require('../lib/maker/mm-tracking');
+const { readTrackingConfig } = require('../lib/maker/mm-tracking-config');
+const { marketWindowFor } = require('../lib/maker/market-clock');
 const { loadAutoRepriceTuning, EXPECTED_RENEWALS_PER_HOUR } = require('../lib/maker/auto-reprice-config');
 const { listManualOrders, replaceManualOrder, resolveMarketRules, cancelManualOrder } = require('../lib/maker/manual-order');
 // THE STANDING RECONCILIATION FOR THE MANUAL LANE. Without it, every hand order that reaches its
@@ -78,6 +88,9 @@ const killSwitch = require('../lib/safety/kill-switch');
 const { atomicWriteJson } = require('../lib/atomicJsonWrite');
 
 const HEARTBEATS = '/tmp/agent-heartbeats.json';
+// Lo stato vivo del tracking, per la dashboard. Un motore che piazza da solo deve poter rispondere
+// «cosa stai facendo adesso» senza che si debbano leggere i log di un processo.
+const TRACKING_STATE_FILE = '/tmp/maker-mm-tracking-state.json';
 const log = (...a) => console.log(new Date().toISOString(), '[agent40-manual-reprice]', ...a);
 
 // The breach counter lives HERE, in process memory, deliberately. "N consecutive observations" is a
@@ -85,6 +98,15 @@ const log = (...a) => console.log(new Date().toISOString(), '[agent40-manual-rep
 // must start counting again rather than inheriting a claim it did not witness. The DURABLE state (last
 // re-price, hourly counts) is what must survive a restart, and that lives in data/ instead.
 const breaches = new Map();
+
+// Lo stato per mercato del motore di tracking, portato fra un ciclo e l'altro. In memoria di proposito,
+// come `breaches`: un riavvio lo azzera, ed e' corretto — gli ordini a riposo portano una scadenza GTD
+// venue-enforced, quindi un processo che riparte senza memoria non lascia nulla di eterno dietro di se.
+const trackingState = new Map();
+// Le ultime azioni del motore, per la tabella in dashboard. Limitato: e' una finestra, non un archivio
+// (l'archivio e' l'audit append-only).
+const trackingLog = [];
+const TRACKING_LOG_MAX = 200;
 
 // The CONNECTION BLACKOUT clock, also in process memory and also on purpose. "We have been unable to
 // reach the venue since T" is a claim about a continuous observation this process made; a restarted
@@ -218,6 +240,82 @@ async function cycle() {
   return res;
 }
 
+// ── IL CICLO DEL TRACKING ──────────────────────────────────────────────────────────────────────────
+// Try/catch suo, come la riconciliazione e la chiusura automatica: un motore che fallisce non deve poter
+// fermare gli altri due, e viceversa.
+async function trackingTask() {
+  const res = await runTrackingCycle({
+    readConfig: () => readTrackingConfig(),
+    killStatus: () => killSwitch.killStatus(),
+    isManual: (marketId) => isManualMarket(marketId),
+    marketWindow: (marketId) => {
+      try {
+        const t = loadAutoRepriceTuning();
+        return marketWindowFor({ marketId, baseTtlSeconds: t.restingGtdSeconds, baseRefreshMarginSeconds: t.refreshMarginSeconds });
+      } catch { return null; }
+    },
+    resolveRules: (marketId) => resolveMarketRules(marketId),
+    listOrders: ({ marketId }) => listManualOrders({ marketId }),
+    // LO STESSO percorso di piazzamento del pannello a mano. Non una copia: la stessa funzione, quindi
+    // ogni gate che governa un ordine a mano governa ogni ordine di questo motore.
+    placeOrder: (spec) => placeManualOrder(spec),
+    // Cancella tramite l'adapter CANCEL-ONLY (signer di solo indirizzo, strutturalmente incapace di
+    // piazzare): la mossa che toglie un ordine non puo' mai, per costruzione, crearne uno.
+    cancelOrder: (spec) => cancelManualOrder(spec, 'mm-tracking'),
+    audit: (rec) => { try { appendMakerAudit(rec); } catch (e) { log('audit write failed:', e.message); } },
+    tuning: (() => { const t = loadAutoRepriceTuning(); return { minIntervalMs: t.minIntervalMs, maxMidAgeSec: t.maxMidAgeSec, requireLiveBook: t.requireLiveBook }; })(),
+    state: trackingState,
+  });
+
+  // ── I LOG: solo cio' che vale una riga ────────────────────────────────────────────────────────────
+  for (const e of res.events || []) {
+    if (e.type === 'fill') {
+      log(`FILL RILEVATO · cid_${String(e.marketId).replace(/^0x/, '').slice(0, 10)} · lato ${e.side.toUpperCase()} · ${e.sizeMatched} share eseguite @ ${e.price}`
+        + ' — quel lato NON viene piu ripiazzato finche non intervieni a mano; l altro continua.');
+    }
+  }
+  for (const a of res.actions || []) {
+    if (a.action === 'place') {
+      log(`TRACKING ${a.ok ? 'ok' : 'FALLITO'} · ${a.trigger} · ${a.book.toUpperCase()} @ ${a.priceCents}c`
+        + ` · mid ${a.fromMid != null ? a.fromMid + 'c → ' : ''}${a.toMid}c`
+        + `${a.movedCents != null ? ` (mosso ${a.movedCents}c)` : ''}`
+        + ` · offset ${a.offsetCents}c · size ${a.size}`
+        + `${a.inBand === false ? ' · FUORI BANDA (nessun reward su questo lato)' : ''}`
+        + `${a.sent ? ' · INVIATO al venue' : ' · non inviato (dry-run)'}`
+        + `${a.ok ? '' : ` · gate=${a.gate} ${a.reason || ''}`}`);
+    } else if (a.action === 'skip') {
+      log(`tracking skip · ${a.book.toUpperCase()} · ${a.gate}: ${a.reason}`);
+    }
+  }
+  for (const m of res.markets || []) {
+    if (m.gate && m.gate !== 'below-threshold') log(`tracking cid_${String(m.marketId).replace(/^0x/, '').slice(0, 10)}: ${m.gate} — ${m.reason}`);
+  }
+
+  // ── LO STATO PER LA DASHBOARD ─────────────────────────────────────────────────────────────────────
+  for (const a of (res.actions || []).filter((x) => x.action === 'place')) {
+    trackingLog.unshift({ at: res.at, ...a });
+  }
+  for (const e of res.events || []) trackingLog.unshift({ at: res.at, action: 'event', ...e });
+  if (trackingLog.length > TRACKING_LOG_MAX) trackingLog.length = TRACKING_LOG_MAX;
+
+  try {
+    atomicWriteJson(TRACKING_STATE_FILE, {
+      at: res.at,
+      ran: res.ran, gate: res.gate, reason: res.reason,
+      placement: process.env.MANUAL_ORDER_PLACEMENT === 'send' ? 'send' : 'dry-run',
+      markets: (res.markets || []).map((m) => ({
+        marketId: m.marketId, gate: m.gate, reason: m.reason,
+        offsetCents: m.offsetCents, minMoveCents: m.minMoveCents, sizeShares: m.sizeShares,
+        referenceMid: m.referenceMid, movedCents: m.movedCents, repriceCount: m.repriceCount,
+        plan: m.plan ? { yes: m.plan.yes, no: m.plan.no } : null,
+        sides: m.sides || null,
+      })),
+      recent: trackingLog.slice(0, 60),
+    });
+  } catch (e) { log('tracking state write failed:', e.message); }
+  return res;
+}
+
 async function main() {
   const tuning = loadAutoRepriceTuning();
   log('starting — band-exit watcher for HAND-PLACED orders only.');
@@ -234,6 +332,13 @@ async function main() {
     + ' — resolves expired/cancelled hand orders against venue truth so they stop counting as open exposure.'
     + ' It places nothing and cancels nothing, and is deliberately NOT gated on the kill switch.');
   log('this process owns no adapter, no credentials and no signing key: it can only call the same manual replace path the panel button calls.');
+  const tr = readTrackingConfig();
+  log(`market making a due lati: ${tr.readable ? `${tr.marketIds.length} mercato/i con tracking attivo` : `configurazione ILLEGGIBILE (${tr.error}) — nessun mercato tracciato (fail closed)`}.`
+    + ' Su quei mercati il watcher reattivo sta alla larga: un mercato ha UN SOLO motore di reprice.');
+  if (tr.readable) for (const id of tr.marketIds) {
+    const m = tr.markets[id];
+    log(`  cid_${id.replace(/^0x/, '').slice(0, 10)} · offset ${m.offsetCents}c · soglia ${m.minMoveCents}c · size ${m.sizeShares}`);
+  }
 
   // Never let one bad cycle kill the watcher — but never let a failure be silent either.
   const run = async () => {
@@ -245,6 +350,10 @@ async function main() {
     catch (e) { log('reconcile task failed:', e && e.message ? e.message : String(e)); }
     try { if (Date.now() - lastReconcileAt < 1000) await closeTask(); }
     catch (e) { log('close task failed:', e && e.message ? e.message : String(e)); }
+    // Il motore di market making, sul suo try/catch: un suo fallimento non deve poter fermare il
+    // watcher reattivo ne la riconciliazione, e viceversa.
+    try { await trackingTask(); }
+    catch (e) { log('tracking task failed:', e && e.message ? e.message : String(e)); }
     finally { heartbeat(); }
   };
   await run();
@@ -255,4 +364,4 @@ if (require.main === module) {
   main().catch((e) => { log('fatal:', e && e.stack ? e.stack : String(e)); process.exit(1); });
 }
 
-module.exports = { cycle, reconcileTask, closeTask, breaches };
+module.exports = { cycle, reconcileTask, closeTask, trackingTask, breaches, trackingState };

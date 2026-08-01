@@ -191,6 +191,30 @@ interface RestingOrder {
   orderType: 'GTC' | 'GTD'; expiresAtMs: number | null;
   secondsToExpiry: number | null; secondsToRefresh: number | null;
 }
+/** Un mercato con il market making automatico acceso, piu' cio' che il motore sta facendo. */
+interface TrkSide { orderId: string | null; price: number | null; filled: boolean; filledAt: number | null }
+interface TrkPlanSide { priceCents: number | null; placeable: boolean; inBand: boolean | null; bandNote: string | null }
+interface TrkMarket {
+  marketId: string; gate: string | null; reason: string | null;
+  offsetCents: number | null; minMoveCents: number | null; sizeShares: number | null;
+  referenceMid: number | null; movedCents: number | null; repriceCount: number;
+  plan: { yes: TrkPlanSide | null; no: TrkPlanSide | null } | null;
+  sides: { yes: TrkSide; no: TrkSide } | null;
+}
+interface TrkAction {
+  at: string; action: string; marketId: string; book?: string; side?: string; type?: string;
+  fromMid?: number | null; toMid?: number | null; movedCents?: number | null;
+  priceCents?: number | null; size?: number | null; inBand?: boolean | null;
+  ok?: boolean; sent?: boolean; gate?: string | null; reason?: string | null; trigger?: string;
+  sizeMatched?: number | null;
+}
+interface TrkResp {
+  ok: boolean; readable: boolean; error: string | null; count: number;
+  markets: Array<{ marketId: string; offsetCents: number; minMoveCents: number; sizeShares: number; atIso: string | null }>;
+  engine: { at: string; ran: boolean; gate: string | null; reason: string | null; placement: string;
+    markets: TrkMarket[]; recent: TrkAction[] } | null;
+}
+
 interface RestingResp { ok: boolean; error: string | null; simulated: boolean; count: number; orders: RestingOrder[]; at: string }
 
 interface Positions {
@@ -305,6 +329,7 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
   // Ordini a riposo su TUTTI i mercati, con la scadenza letta dal venue. La board sa prezzo e banda ma
   // non sa quando un ordine muore; questa lettura sì, ed è l'unica che può muovere un countdown.
   const [resting, setResting] = useState<RestingResp | null>(null);
+  const [trk, setTrk] = useState<TrkResp | null>(null);
   const [killBusy, setKillBusy] = useState<'kill' | 'reset' | null>(null);
   const [killMsg, setKillMsg] = useState<string | null>(null);
 
@@ -366,6 +391,14 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
     }
   }, []);
 
+  // I mercati con il market making automatico acceso, e cosa il motore sta facendo su ciascuno.
+  const loadTracking = useCallback(async () => {
+    try {
+      const r = await fetch('/api/maker/mm-tracking', { cache: 'no-store' });
+      setTrk((await r.json()) as TrkResp);
+    } catch { /* lo stato resta ignoto: la sezione lo dice invece di supporlo spento */ }
+  }, []);
+
   useEffect(() => { loadBoard(); loadBalance(); }, [loadBoard, loadBalance]);
   useEffect(() => {
     if (operator !== true) return;
@@ -378,10 +411,13 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
   // che è l'unico posto che li mostra, è aperto.
   useEffect(() => {
     if (operator !== true || tab !== 'riepilogo') return;
-    loadPositions(); loadResting();
+    loadPositions(); loadResting(); loadTracking();
+    // Il tracking si rilegge piu' spesso delle posizioni: e' un motore che agisce da solo, e la domanda
+    // «cosa sta facendo adesso» non tollera un minuto di ritardo.
     const t = setInterval(() => { loadPositions(); loadResting(); }, POSITIONS_POLL_MS);
-    return () => clearInterval(t);
-  }, [operator, tab, loadPositions, loadResting]);
+    const tk = setInterval(loadTracking, 5_000);
+    return () => { clearInterval(t); clearInterval(tk); };
+  }, [operator, tab, loadPositions, loadResting, loadTracking]);
 
   // KILL e RIPRISTINA. Due endpoint che possono solo FERMARE: /api/maker/kill importa il solo modulo
   // di kill (che raggiunge il percorso cancel-only) e /manual/reset non ha altra chiamata mutante che
@@ -894,6 +930,119 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
             </>
           ) : (
             <div className="ex-banner">N/D — nessun mercato risulta scorabile in questo scan.</div>
+          )}
+
+          {/* ── MARKET MAKING AUTOMATICO ────────────────────────────────────────────────────────────
+              Questa tabella e' l'unico posto da cui si vede, tutto insieme, cosa un automatismo sta
+              facendo con capitale reale senza chiedere conferma ordine per ordine. Per questo sta in
+              cima al Riepilogo e non dietro un tap: se un motore quota da solo, deve essere la prima
+              cosa che si legge, non l'ultima che si scopre. */}
+          {trk && (trk.count > 0 || trk.readable === false) && (
+            <>
+              <div className="ex-sech">
+                <span className="ex-sech-t">Market making automatico</span>
+                <span className="lrc-fine">
+                  {trk.engine?.at ? <>motore <span className="ex-n">{new Date(trk.engine.at).toLocaleTimeString()}</span></> : 'motore non ancora visto'}
+                  {trk.engine?.placement && <> · <b className={trk.engine.placement === 'send' ? 'ex-dn' : ''}>{trk.engine.placement === 'send' ? 'INVIA DAVVERO' : 'dry-run'}</b></>}
+                </span>
+              </div>
+              {trk.readable === false && (
+                <div className="ex-banner is-bad lrc-mb">
+                  Configurazione del tracking NON leggibile ({trk.error}) — il motore non traccia nulla (fail closed).
+                </div>
+              )}
+              {!trk.engine && trk.count > 0 && (
+                <div className="ex-banner is-warn lrc-mb">
+                  {trk.count} mercato/i configurati, ma il motore non ha ancora pubblicato uno stato.
+                  Questo significa «non lo sappiamo», non «non sta facendo niente»: controlla che agent40 sia vivo.
+                </div>
+              )}
+              <div className="ex-panel ex-rows" data-lrc-tracking>
+                {trk.markets.map((cfg) => {
+                  const live = trk.engine?.markets.find((m) => m.marketId.toLowerCase() === cfg.marketId.toLowerCase()) ?? null;
+                  const title = pricedMarkets.find((m) => m.marketId.toLowerCase() === cfg.marketId.toLowerCase())?.title
+                    ?? live?.marketId ?? cfg.marketId;
+                  const yes = live?.sides?.yes; const no = live?.sides?.no;
+                  const pausedSides = [yes?.filled ? 'YES' : null, no?.filled ? 'NO' : null].filter(Boolean);
+                  const stato = live?.gate && live.gate !== 'below-threshold'
+                    ? { txt: live.gate, cls: 'is-bad' }
+                    : pausedSides.length
+                      ? { txt: `in pausa · ${pausedSides.join(' e ')} eseguito`, cls: 'is-warn' }
+                      : { txt: 'attivo', cls: 'is-ok' };
+                  return (
+                    <div key={cfg.marketId} className="ex-row" data-lrc-track-row={cfg.marketId}>
+                      <div className="ex-row-main">
+                        <div className="ex-row-t">{title}</div>
+                        <div className="ex-row-s">
+                          <span className={`ex-badge ${stato.cls} lrc-bdg`} data-lrc-track-state>{stato.txt}</span>
+                          {live?.plan?.yes?.inBand === false && <span className="ex-badge is-warn lrc-bdg" data-lrc-track-outband>YES fuori banda — nessun reward</span>}
+                          {live?.plan?.no?.inBand === false && <span className="ex-badge is-warn lrc-bdg">NO fuori banda — nessun reward</span>}
+                          {' · '}offset <span className="ex-n">{cfg.offsetCents}¢</span>
+                          {' · soglia '}<span className="ex-n">{cfg.minMoveCents}¢</span>
+                          {' · size '}<span className="ex-n">{cfg.sizeShares}</span>
+                          {live?.reason && <div className="ex-why">{live.reason}</div>}
+                        </div>
+                      </div>
+                      <div className="ex-row-nums">
+                        <span className="ex-num"><span className="ex-num-k">mid rif.</span><span className="ex-num-v">{cents(live?.referenceMid ?? null)}</span></span>
+                        <span className="ex-num">
+                          <span className="ex-num-k">BUY YES</span>
+                          <span className={`ex-num-v ${yes?.filled ? 'ex-dim' : 'ex-up'}`}>{yes?.price != null ? cents(yes.price) : 'N/D'}</span>
+                        </span>
+                        <span className="ex-num">
+                          <span className="ex-num-k">BUY NO</span>
+                          <span className={`ex-num-v ${no?.filled ? 'ex-dim' : 'ex-dn'}`}>{no?.price != null ? cents(no.price) : 'N/D'}</span>
+                        </span>
+                        <span className="ex-num"><span className="ex-num-k">reprice</span><span className="ex-num-v">{live?.repriceCount ?? 0}</span></span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* IL DIARIO DEL MOTORE. Un automatismo che piazza da solo deve poter rispondere «cosa hai
+                  fatto e perche'» senza aprire i log di un processo. */}
+              {trk.engine?.recent && trk.engine.recent.length > 0 && (
+                <>
+                  <p className="lrc-fine lrc-mt">Ultime azioni del motore</p>
+                  <div className="ex-panel ex-rows" data-lrc-tracking-log>
+                    {trk.engine.recent.slice(0, 12).map((a, i) => (
+                      <div key={`${a.at}-${i}`} className="ex-row">
+                        <div className="ex-row-main">
+                          <div className="ex-row-t">
+                            {a.action === 'event' ? (
+                              <><span className="ex-badge is-warn">{a.type === 'fill' ? 'FILL' : 'sparito'}</span>{' '}
+                                lato {String(a.side || '').toUpperCase()}
+                                {a.sizeMatched != null && <> · {num(a.sizeMatched, 1)} share eseguite</>}</>
+                            ) : (
+                              <><span className={`ex-side ${a.book === 'yes' ? 'is-yes' : 'is-no'}`}>BUY {String(a.book || '').toUpperCase()}</span>{' '}
+                                <span className="ex-n">{a.priceCents}¢</span>
+                                {a.inBand === false && <span className="ex-badge is-warn lrc-bdg">fuori banda</span>}
+                                {a.ok === false && <span className="ex-badge is-bad lrc-bdg">{a.gate}</span>}
+                                {a.sent === false && <span className="ex-badge lrc-bdg">dry-run</span>}</>
+                            )}
+                          </div>
+                          <div className="ex-row-s">
+                            {a.action !== 'event' && (
+                              <>{a.trigger === 'initial' ? 'primo piazzamento' : <>mid <span className="ex-n">{a.fromMid}¢</span> → <span className="ex-n">{a.toMid}¢</span>{a.movedCents != null && <> (mosso <span className="ex-n">{a.movedCents}¢</span>)</>}</>}
+                                {a.reason && <> · {a.reason}</>}</>
+                            )}
+                          </div>
+                        </div>
+                        <div className="ex-row-nums">
+                          <span className="ex-num"><span className="ex-num-k">ora</span><span className="ex-num-v">{new Date(a.at).toLocaleTimeString()}</span></span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+              <p className="lrc-fine">
+                Su questi mercati il motore piazza e riprezza <b>senza conferma ordine per ordine</b> — la
+                delega e&apos; stata data dal toggle nel pannello del mercato, e si toglie da lì. Kill-switch,
+                tetto per ordine, gestione manuale e il blocco a 3 minuti dalla chiusura restano tutti in vigore.
+              </p>
+            </>
           )}
 
           {/* ── ORDINI A RIPOSO · TUTTI I MERCATI, UNO PER RIGA ─────────────────────────────────────

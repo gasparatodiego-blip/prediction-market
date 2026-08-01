@@ -13,7 +13,7 @@ import type { MarketCatalogDeps, CatalogRecord } from './market-catalog';
 export type Book = 'yes' | 'no';
 export type Placement = 'dry-run' | 'send';
 /** WHO acted. 'agent35' is stamped by the engine and never appears on this path. */
-export type ManualSource = 'manual-ui' | 'auto-reprice-band-exit';
+export type ManualSource = 'manual-ui' | 'auto-reprice-band-exit' | 'mm-tracking';
 
 export interface ManualDeps extends ManualModeDeps, MarketCatalogDeps {
   /** Injected fixtures for the selfcheck; production passes nothing and reads the real files. */
@@ -245,6 +245,8 @@ export interface PlaceResult {
   /** The lifetime this order actually got, read back from the placement — GTC or GTD, and why. */
   expiry?: ManualExpiry;
   source?: ManualSource;
+  /** Declassa il SOLO codice OUT_OF_BAND da bloccante a dichiarato. Nessuna route HTTP lo accetta. */
+  allowOutOfBand?: boolean;
   venueRules?: Record<string, unknown>;
   caps?: Caps;
 }
