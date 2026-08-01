@@ -15,7 +15,7 @@ export const metadata = {
 /**
  * /dashboard/liquidity-rewards — ONE URL, SIX SECTIONS.
  *
- * Riepilogo · Mercati · Posizioni · Ordini manuali · Alloca capitale · Regole are tabs inside
+ * Riepilogo · Mercati · Posizioni · Ordini manuali · Ottimizza capitale · Regole are tabs inside
  * LiquidityRewardsConsole, held in client state: switching section never changes the URL and never
  * refetches. `?tab=` is read ONCE at mount, only so the legacy /allocate route can redirect straight to
  * its section; nothing on the page ever writes it back.

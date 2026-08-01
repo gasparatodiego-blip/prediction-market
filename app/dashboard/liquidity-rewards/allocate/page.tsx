@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic';
 /**
  * /dashboard/liquidity-rewards/allocate — kept ONLY as a redirect.
  *
- * Capital allocation is now the "Alloca capitale" section of the single-page console at
+ * Capital allocation is now the "Ottimizza capitale" section of the single-page console at
  * /dashboard/liquidity-rewards, so this route no longer renders anything of its own: it forwards to
  * that page with the landing section preselected. Old links, bookmarks and anything that still points
  * here keep working and land exactly where the planner now lives.

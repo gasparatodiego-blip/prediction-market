@@ -30,7 +30,7 @@ import ThemeToggle from './ThemeToggle';
 // rewards' would also light up while on the /allocate child, showing two active tabs.
 const NAV_LINKS = [
   { href: '/dashboard/liquidity-rewards',          label: 'Rewards', exact: true },
-  { href: '/dashboard/liquidity-rewards/allocate', label: 'Alloca'  },
+  { href: '/dashboard/liquidity-rewards/allocate', label: 'Ottimizza' },
   { href: '/how-it-works',                         label: 'Guide'   },
 ];
 

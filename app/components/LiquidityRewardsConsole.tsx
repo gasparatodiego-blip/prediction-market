@@ -3,7 +3,7 @@
 // LiquidityRewardsConsole — the ONE page, ONE URL, SIX sections operator console for the Polymarket
 // liquidity-rewards maker (/dashboard/liquidity-rewards).
 //
-// SIX SECTIONS, NO NAVIGATION. Riepilogo · Mercati · Posizioni · Ordini manuali · Alloca capitale ·
+// SIX SECTIONS, NO NAVIGATION. Riepilogo · Mercati · Posizioni · Ordini manuali · Ottimizza capitale ·
 // Regole are tabs held in client state. Switching one does not touch the URL, does not remount the data
 // and does not refetch: the board is fetched once per poll and every section is a projection of it.
 // (The legacy /dashboard/liquidity-rewards/allocate route redirects here with ?tab=alloca, which is read
@@ -27,7 +27,7 @@
 // That figure is never displayed here: it is re-priced, through the shared estimateAtCapital, at the
 // proxy's actual on-chain pUSD — the same number the header shows. Showing the reference beside a $100
 // balance would overstate the take by roughly an order of magnitude. An unreadable balance yields N/D
-// with the reason, never a fallback to the reference. (The "Alloca capitale" planner is deliberately
+// with the reason, never a fallback to the reference. (The "Ottimizza capitale" planner is deliberately
 // exempt: there the capital is a free input, because its job is simulating amounts you do not yet hold.)
 //   Posizioni                      → GET /api/maker/positions         (Polymarket data-api, read-only)
 //   Ordini manuali                 → <ManualOrdersPanel/>, unchanged  (its own real endpoints)
@@ -64,7 +64,7 @@ const TABS: Array<{ key: TabKey; label: string; short: string }> = [
   { key: 'mercati', label: 'Mercati', short: 'Mercati' },
   { key: 'posizioni', label: 'Posizioni', short: 'Posizioni' },
   { key: 'ordini', label: 'Ordini manuali', short: 'Ordini' },
-  { key: 'alloca', label: 'Alloca capitale', short: 'Alloca' },
+  { key: 'alloca', label: 'Ottimizza capitale', short: 'Ottimizza' },
   { key: 'regole', label: 'Regole', short: 'Regole' },
 ];
 
@@ -144,7 +144,7 @@ interface PositionMarket {
 }
 /**
  * Un risultato della ricerca SENZA FILTRO REWARD — la stessa fonte che «Cerca un mercato» usa nella tab
- * Alloca (/api/maker/markets/search → lib/maker/market-search). Porta molti meno campi di una riga di
+ * Ottimizza (/api/maker/markets/search → lib/maker/market-search). Porta molti meno campi di una riga di
  * board: niente stabilità, niente stima, niente banda misurata, perché quei numeri li produce la
  * pipeline reward e un mercato fuori da quella pipeline non li ha. Vengono mostrati i campi che il venue
  * dà davvero, e nessun altro.
@@ -178,10 +178,14 @@ const cents = (p: number | null | undefined): string => (fin(p) ? `${(p * 100).t
 const num = (v: number | null | undefined, nd = 0): string => (fin(v) ? v.toFixed(nd) : 'N/D');
 const ageTxt = (s: number | null | undefined): string =>
   (!fin(s) ? 'N/D' : s < 60 ? `${Math.round(s)}s fa` : s < 3600 ? `${Math.round(s / 60)} min fa` : `${(s / 3600).toFixed(1)} h fa`);
-/** Tempo alla chiusura da minuti — stessa convenzione di closeText nel pannello Alloca. */
+/** Tempo alla chiusura da minuti — stessa convenzione di closeText nel pannello Ottimizza. */
 const closeTxt = (min: number | null): string => {
   if (min == null || !Number.isFinite(min)) return 'scadenza ignota';
   if (min < 0) return `chiuso da ${Math.abs(min) < 90 ? `${Math.round(Math.abs(min))} min` : `${(Math.abs(min) / 60).toFixed(1)} h`}`;
+  // Sotto il minuto l arrotondamento darebbe «chiude fra 0 min», che si legge come «gia chiuso».
+  if (min < 1) return 'chiude fra meno di 1 min';
+  // Sotto i 10 minuti il decimo di minuto conta: su un ciclo da 5 minuti «4.2» e «4.8» sono cose diverse.
+  if (min < 10) return `chiude fra ${min.toFixed(1)} min`;
   if (min < 90) return `chiude fra ${Math.round(min)} min`;
   if (min < 2880) return `chiude fra ${(min / 60).toFixed(1)} h`;
   return `chiude fra ${(min / 1440).toFixed(1)} g`;
@@ -728,7 +732,7 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
           )}
           <p className="lrc-fine">
             {freeCapital != null && freeCapital > 0
-              ? 'Il capitale libero non matura nulla. «Alloca» propone un piano, non un ordine.'
+              ? 'Il capitale libero non matura nulla. «Ottimizza» propone un piano, non un ordine.'
               : 'Tutto impegnato.'}
             {' '}Saldo del proxy funder, on-chain, sola lettura.
           </p>
@@ -842,7 +846,7 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
               className="ex-input is-text lrc-search" type="search" placeholder="Cerca su tutto Polymarket…"
               value={q} onChange={(e) => { setQ(e.target.value); setLimit(PAGE); }}
               aria-label="Cerca mercato su tutto Polymarket, anche senza reward"
-              title="Filtra il board reward dal vivo e, da 3 caratteri, cerca anche fuori dal board: la stessa fonte di «Cerca un mercato» in Alloca."
+              title="Filtra il board reward dal vivo e, da 3 caratteri, cerca anche fuori dal board: la stessa fonte di «Cerca un mercato» in Ottimizza."
             />
           </div>
 
@@ -1337,7 +1341,7 @@ function Freshness({ items }: { items: Array<{ k: string; ageSec: number | null;
  * I RISULTATI FUORI DAL BOARD REWARD.
  *
  * La barra di ricerca della tab Mercati interroga due fonti: la lista locale del board (istantanea, con
- * tutti i numeri) e il venue per intero (la STESSA di «Cerca un mercato» in Alloca). Questo gruppo mostra
+ * tutti i numeri) e il venue per intero (la STESSA di «Cerca un mercato» in Ottimizza). Questo gruppo mostra
  * ciò che esiste solo nella seconda — cioè i mercati che agent24 non raccoglie perché non pagano
  * montepremi, «Bitcoin Up or Down» in testa.
  *
@@ -1380,7 +1384,7 @@ function VenueResults({ q, busy, err, rows, dropped, anyFilterOn, sortByPool, on
           <p className="ex-flag is-dim" data-lrc-venue-note>
             <span className="ex-flag-i" aria-hidden="true">ⓘ</span>
             <span>
-              Cercati su tutto Polymarket, come in «Alloca». {(anyFilterOn || sortByPool) && <>I chip qui sopra non si applicano a questi: </>}
+              Cercati su tutto Polymarket, come in «Ottimizza». {(anyFilterOn || sortByPool) && <>I chip qui sopra non si applicano a questi: </>}
               movimento, montepremi e banda non sono misurati fuori dal board reward.
             </span>
           </p>
@@ -1408,7 +1412,8 @@ function VenueResults({ q, busy, err, rows, dropped, anyFilterOn, sortByPool, on
                         resta in lista e dice quanto gli manca. */}
                     {!m.tooCloseToClose && m.minutesToClose != null && m.minutesToClose <= 60 && (
                       <span className="ex-badge is-warn" data-lrc-expiring>
-                        scade fra {Math.max(0, Math.round(m.minutesToClose))}m
+                        {/* Mai «0m»: sotto il minuto si dice, sotto i dieci si tiene il decimo. */}
+                        scade fra {m.minutesToClose < 1 ? '<1' : m.minutesToClose < 10 ? m.minutesToClose.toFixed(1) : String(Math.round(m.minutesToClose))}m
                       </span>
                     )}
                   </div>
@@ -1429,7 +1434,7 @@ function VenueResults({ q, busy, err, rows, dropped, anyFilterOn, sortByPool, on
                     </span>
                   </span>
                 </div>
-                {/* NON abilita da qui: porta al flusso a due passi, che vive in Alloca e resta in un
+                {/* NON abilita da qui: porta al flusso a due passi, che vive in Ottimizza e resta in un
                     posto solo. Un secondo percorso di scrittura verso una config auditata sarebbe due
                     copie da tenere allineate. Questo e' routing, non una nuova autorizzazione. */}
                 <div className="lrc-venue-act">
@@ -1437,16 +1442,16 @@ function VenueResults({ q, busy, err, rows, dropped, anyFilterOn, sortByPool, on
                     className="ex-btn is-sm"
                     data-lrc-venue-open
                     onClick={() => onOpenInAlloca(m.question ?? m.marketId)}
-                    title="Apre «Alloca capitale» con questo mercato gia cercato. Non abilita nulla: i due passi restano da premere."
+                    title="Apre «Ottimizza capitale» con questo mercato gia cercato. Non abilita nulla: i due passi restano da premere."
                   >
-                    Aggiungi in Alloca →
+                    Aggiungi in Ottimizza →
                   </button>
                 </div>
               </div>
             ))}
           </div>
           <p className="lrc-fine">
-            Questa lista trova; l&apos;aggiunta resta il flusso a due passi in «Alloca capitale», dove il
+            Questa lista trova; l&apos;aggiunta resta il flusso a due passi in «Ottimizza capitale», dove il
             pulsante qui sopra porta con il nome gia&apos; cercato.
           </p>
         </>

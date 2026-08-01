@@ -579,7 +579,7 @@ export default function RewardsAllocatePanel({ initialQuery }: { initialQuery?: 
           uno alla volta, e l'aggiunta e' additiva: il server calcola enabledAfter = enabledBefore + id,
           quindi una scelta manuale precedente non puo' essere sovrascritta da qui. */}
       <div className="alloc-card" data-alloc-auto>
-        <div className="alloc-h" style={{ fontSize: 15 }}>Ottimizza automaticamente</div>
+        <div className="alloc-h" style={{ fontSize: 15 }}>Cerca la combinazione migliore</div>
         <div className="alloc-sub" title="L universo e sempre stato tutto il board reward: enabledMarketIds non entra nel calcolo dell allocazione e non l ha mai fatto. Questa azione aggiunge il test dell orizzonte di risoluzione e restituisce il registro dei candidati.">
           Cerca su <b>tutti</b> i mercati con montepremi — non solo quelli abilitati — e propone la
           combinazione migliore per questo capitale, scartando quelli che scadono prima di rientrare del
@@ -589,7 +589,7 @@ export default function RewardsAllocatePanel({ initialQuery }: { initialQuery?: 
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 10 }}>
           <button className="alloc-btn" data-alloc-auto-run onClick={runAutoOptimise}
             disabled={autoBusy || !(Number(capital) > 0)}>
-            {autoBusy ? 'Cerco sull’intero universo…' : '⚡ Ottimizza automaticamente'}
+            {autoBusy ? 'Cerco sull’intero universo…' : '⚡ Cerca la combinazione migliore'}
           </button>
           {autoPlan && (
             <button className="alloc-btn" style={{ background: 'transparent' }} onClick={() => { setAutoPlan(null); setAutoErr(null); }}>
@@ -598,7 +598,7 @@ export default function RewardsAllocatePanel({ initialQuery }: { initialQuery?: 
           )}
         </div>
 
-        {autoErr && <div className="alloc-note alloc-warn" style={{ marginTop: 10 }} data-alloc-auto-error>⚠ Ottimizzazione non riuscita: {autoErr}</div>}
+        {autoErr && <div className="alloc-note alloc-warn" style={{ marginTop: 10 }} data-alloc-auto-error>⚠ Ricerca della combinazione non riuscita: {autoErr}</div>}
 
         {autoPlan && autoPlan.universe && (
           <>

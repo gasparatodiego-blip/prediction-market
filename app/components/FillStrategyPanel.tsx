@@ -2,7 +2,7 @@
 
 // FillStrategyPanel — "Strategia sul fill": what happens the moment an order fills.
 //
-// WHERE IT LIVES AND WHY. Inside the Alloca tab, under the planner. The position ceiling this strategy
+// WHERE IT LIVES AND WHY. Inside the Ottimizza tab, under the planner. The position ceiling this strategy
 // enforces IS the capital the planner assigned to each market — so the control that spends an allocation
 // and the screen that decides the allocation are the same screen. Putting it in Regole would have split
 // one decision across two tabs, and Regole is reference material (how the programme pays, what my orders
