@@ -101,6 +101,13 @@ interface PricedMarket extends BoardMarket {
   estUnknown: boolean;
   estReason: string | null;
   estYieldPctPerDay: number | null;
+  // ── LA SOGLIA DEL VENUE ────────────────────────────────────────────────────────────────────────
+  // Sotto min_incentive_size il venue non assegna punteggio: la stima e' ZERO, non una frazione. Prima
+  // la riscalatura dal capitale di riferimento non lo sapeva e mostrava una cifra positiva su una
+  // posizione che non avrebbe scorato nulla.
+  estBelowMinSize: boolean;
+  estCapitalToQualifyUsd: number | null;
+  estMinSizeJudgeable: boolean;
 }
 interface Summary {
   committedUsd: number | null; committedInBandUsd: number | null; unjudgeableCapitalUsd: number | null;
@@ -287,6 +294,9 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
       estDepthLimited: e.depthLimited,
       estUnknown: e.unknown,
       estReason: e.reason,
+      estBelowMinSize: e.belowVenueMinSize === true,
+      estCapitalToQualifyUsd: e.capitalToQualifyUsd ?? null,
+      estMinSizeJudgeable: e.minSizeJudgeable !== false,
       // Daily yield on the capital the estimate is actually priced for — the ranking key for "miglior
       // mercato". Ranking by $/day alone would just rank by pot size.
       estYieldPctPerDay: (!e.unknown && fin(e.estUsdPerDay) && fin(e.capitalUsd) && (e.capitalUsd as number) > 0)
@@ -791,7 +801,21 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
                 // integrale del server e l'eventuale seconda causa restano nel title, non spariscono.
                 const stale = m.midSource !== 'live-book';
                 const flag: { cls: string; icon: string; text: string; title: string } | null =
-                  m.estUnknown
+                  m.estBelowMinSize
+                    ? {
+                      cls: 'is-bad', icon: '⚠',
+                      text: m.estCapitalToQualifyUsd != null
+                        ? `sotto la size minima — servono ${money(m.estCapitalToQualifyUsd)}`
+                        : 'sotto la size minima del venue',
+                      title: m.estReason ?? 'il venue non assegna punteggio sotto min_incentive_size: il reward e zero',
+                    }
+                    : !m.estMinSizeJudgeable
+                      ? {
+                        cls: 'is-dim', icon: 'ⓘ',
+                        text: 'soglia del venue non giudicabile',
+                        title: m.estReason ?? 'size minima o mid non leggibili: la stima passa invariata, ma la soglia non e stata verificata',
+                      }
+                    : m.estUnknown
                     ? {
                       cls: 'is-bad', icon: '⚠', text: 'stima non calcolabile',
                       title: m.estReason ?? 'nessun motivo riportato dal server',
