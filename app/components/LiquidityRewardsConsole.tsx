@@ -247,6 +247,8 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
   const [venue, setVenue] = useState<VenueSearchResp | null>(null);
   const [venueBusy, setVenueBusy] = useState(false);
   const [venueErr, setVenueErr] = useState<string | null>(null);
+  // Il termine da passare al pannello Alloca quando si arriva li' da un risultato «fuori board».
+  const [allocPrefill, setAllocPrefill] = useState<string | null>(null);
 
   // A slow clock, so every freshness readout AGES VISIBLY between polls instead of looking frozen-fresh
   // until the next fetch lands. 5s is finer than the fastest cadence on this page (20s) and costs one
@@ -1040,6 +1042,7 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
           <VenueResults
             q={q} busy={venueBusy} err={venueErr} rows={venueOnly}
             anyFilterOn={anyFilterOn} sortByPool={sortByPool}
+            onOpenInAlloca={(term) => { setAllocPrefill(term); setTab('alloca'); }}
           />
         </section>
       )}
@@ -1183,7 +1186,7 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
       {tab === 'alloca' && (
         <section className="lrc-sec" data-lrc-section="alloca">
           <Ask q="Quanto capitale metto, e su quali mercati?" sub="Un piano, non un ordine: qui non si piazza nulla." />
-          <RewardsAllocatePanel />
+          <RewardsAllocatePanel initialQuery={allocPrefill} />
           <FillStrategyPanel />
         </section>
       )}
@@ -1340,9 +1343,10 @@ function Freshness({ items }: { items: Array<{ k: string; ageSec: number | null;
  * Quindi restano SEMPRE visibili, in un gruppo loro, e l'intestazione dice a voce alta che i chip qui
  * sopra non li toccano. Chi cerca un nome lo trova, filtri accesi o spenti.
  */
-function VenueResults({ q, busy, err, rows, anyFilterOn, sortByPool }: {
+function VenueResults({ q, busy, err, rows, anyFilterOn, sortByPool, onOpenInAlloca }: {
   q: string; busy: boolean; err: string | null; rows: VenueSearchRow[];
   anyFilterOn: boolean; sortByPool: boolean;
+  onOpenInAlloca: (term: string) => void;
 }) {
   const needle = q.trim();
   if (needle.length < 3) return null;
@@ -1408,12 +1412,25 @@ function VenueResults({ q, busy, err, rows, anyFilterOn, sortByPool }: {
                     </span>
                   </span>
                 </div>
+                {/* NON abilita da qui: porta al flusso a due passi, che vive in Alloca e resta in un
+                    posto solo. Un secondo percorso di scrittura verso una config auditata sarebbe due
+                    copie da tenere allineate. Questo e' routing, non una nuova autorizzazione. */}
+                <div className="lrc-venue-act">
+                  <button
+                    className="ex-btn is-sm"
+                    data-lrc-venue-open
+                    onClick={() => onOpenInAlloca(m.question ?? m.marketId)}
+                    title="Apre «Alloca capitale» con questo mercato gia cercato. Non abilita nulla: i due passi restano da premere."
+                  >
+                    Aggiungi in Alloca →
+                  </button>
+                </div>
               </div>
             ))}
           </div>
           <p className="lrc-fine">
-            Per aggiungerne uno serve il flusso a due passi in «Alloca capitale» → «Cerca un mercato»:
-            questa lista trova, non abilita.
+            Questa lista trova; l&apos;aggiunta resta il flusso a due passi in «Alloca capitale», dove il
+            pulsante qui sopra porta con il nome gia&apos; cercato.
           </p>
         </>
       )}
@@ -1528,6 +1545,7 @@ const CSS = `
 .lrc-search { flex: 1 1 180px; min-width: 0; }
 
 .lrc-venue { margin-top: 18px; border-top: 1px solid var(--ex-line); padding-top: 4px; }
+.lrc-venue-act { grid-column: 1 / -1; margin-top: 8px; }
 .lrc-chip-n { margin-left: 4px; opacity: .7; font-size: 10px; }
 .lrc-chiphint { font-size: 10.5px; color: var(--ex-txt-3); margin: 6px 0 8px; line-height: 1.5; }
 .lrc-clear { min-height: 0; font-size: 10.5px; }

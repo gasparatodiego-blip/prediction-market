@@ -215,7 +215,7 @@ type BulkResult = {
   openBefore?: number | null; error?: string;
 };
 
-export default function RewardsAllocatePanel() {
+export default function RewardsAllocatePanel({ initialQuery }: { initialQuery?: string | null } = {}) {
   const [bal, setBal] = useState<Balance | null>(null);
   const [balLoaded, setBalLoaded] = useState(false);
   const [capital, setCapital] = useState<string>(''); // operator's typed value — NEVER rewritten by us
@@ -435,8 +435,8 @@ export default function RewardsAllocatePanel() {
 
   // ── RICERCA SENZA FILTRO. Nessun mercato viene nascosto perché non paga reward: quelli senza
   //    montepremi compaiono come tutti gli altri, con l'etichetta che lo dice. ──
-  const runSearch = useCallback(async () => {
-    const q = query.trim();
+  const runSearch = useCallback(async (term?: string) => {
+    const q = (term ?? query).trim();
     if (!q) return;
     setSearchBusy(true); setSearchErr(null); setAddPreview(null); setAddResult(null);
     try {
@@ -447,6 +447,19 @@ export default function RewardsAllocatePanel() {
     } catch (e) { setSearchErr((e as Error).message); }
     finally { setSearchBusy(false); }
   }, [query]);
+
+  // ── ARRIVO DALLA TAB MERCATI ────────────────────────────────────────────────────────────────────
+  // La lista «Fuori dal board reward» dei Mercati trova un mercato ma non puo' abilitarlo: il flusso a
+  // due passi vive qui, in un posto solo, ed e' giusto che resti cosi'. Quel pulsante quindi porta qui
+  // con il nome gia' cercato, invece di lasciare l'operatore a ridigitarlo. Solo una GET di ricerca:
+  // non abilita nulla, i due passi restano interamente da premere.
+  useEffect(() => {
+    const q = (initialQuery ?? '').trim();
+    if (!q) return;
+    setQuery(q);
+    runSearch(q);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialQuery]);
 
   // ── OTTIMIZZA AUTOMATICAMENTE ────────────────────────────────────────────────────────────────────
   // Rilancia lo STESSO ottimizzatore sullo stesso universo (che e' sempre stato tutto il board reward,
@@ -694,7 +707,7 @@ export default function RewardsAllocatePanel() {
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') runSearch(); }}
             placeholder="es. bitcoin up or down · harry kane · 0x…" />
-          <button className="alloc-btn" data-alloc-search-go onClick={runSearch} disabled={searchBusy || !query.trim()}>
+          <button className="alloc-btn" data-alloc-search-go onClick={() => runSearch()} disabled={searchBusy || !query.trim()}>
             {searchBusy ? 'Cerco…' : 'Cerca'}
           </button>
           <label className="alloc-sub" style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
@@ -713,7 +726,7 @@ export default function RewardsAllocatePanel() {
               {!search.globalAutoRepriceEnabled && <> · <b className="oob">master auto-riprezzo SPENTO</b>: un mercato aggiunto resta opted-in ma non entra in lista</>}
             </div>
             <div className="alloc-tablewrap" style={{ marginTop: 8 }}>
-              <table className="alloc" style={{ minWidth: 980 }}>
+              <table className="alloc alloc-searchtable" style={{ minWidth: 980 }}>
                 <thead>
                   <tr>
                     <th className="name">Mercato</th><th>Reward/g</th><th>Spread</th><th>Tick</th>
@@ -1374,6 +1387,20 @@ const CSS = `
 /* Scoped alla SOLA tabella del piano: alloc-tablewrap veste anche la tabella di ricerca e quella dei
    risultati di esecuzione, che su telefono devono restare (scorrono in orizzontale). */
 @media (max-width: 900px) { .alloc-cards { display: flex; } .alloc-plantable { display: none; } }
+
+/* ── L AZIONE RESTA SOTTO IL POLLICE ──────────────────────────────────────────────────────────────
+   La tabella di ricerca e larga 980px e la colonna «Aggiungi» e l ottava di otto: su un telefono da
+   390px cominciava oltre gli 800px, cioe fuori schermo di due volte la larghezza del display. Il
+   pulsante c era ed era premibile — semplicemente non lo si raggiungeva senza scoprire che la tabella
+   scorre in orizzontale. Adesso l ultima colonna e ancorata al bordo destro: scorre il resto, l azione
+   resta ferma e visibile. Nessun cambiamento di comportamento, solo di posizione. */
+.alloc-searchtable td:last-child,
+.alloc-searchtable th:last-child {
+  position: sticky; right: 0; z-index: 1;
+  background: var(--ex-panel);
+  box-shadow: -10px 0 10px -10px rgba(0, 0, 0, .65);
+}
+.alloc-searchtable th:last-child { background: var(--ex-panel-2); z-index: 3; }
 
 /* ── LA TABELLA — ogni cella numerica in monospazio tabulare. ─────────────────────────────────────── */
 table.alloc { border-collapse: collapse; width: 100%; min-width: 1360px; font-size: 12px;
