@@ -1614,3 +1614,309 @@ h1, h2, h3 {
 @media (prefers-reduced-motion: reduce) {
   .mkt-back, .mkt-btn, .mkt-killbtn { transition: none; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   EXCHANGE SURFACE — the shared visual system for the liquidity-rewards operator
+   console and the public rewards board.
+   ──────────────────────────────────────────────────────────────────────────────
+   WHY IT LIVES HERE AND NOT IN SIX INLINE <style> BLOCKS. Six components render
+   this language (LiquidityRewardsConsole, RewardsAllocatePanel, ManualOrdersPanel,
+   MarketTerminal, MakerArmingPanel, RewardsUnified). Six copies of the same tokens
+   is six chances for them to drift apart, and a drifted token is a screen where
+   "green" means two different things. One definition, one vocabulary.
+
+   THE RULE THIS SURFACE IS BUILT ON: every number is shown. A figure that is $0,
+   or that does not qualify, still renders as a figure — with a small red note
+   underneath saying WHY (.ex-why). Hiding a zero behind "tap for details" is how
+   an operator ends up believing a market is earning when it is not.
+
+   EVERY DIGIT IS MONOSPACED (.ex-n). Prices, sizes, balances, rewards, countdowns.
+   Proportional digits in a column do not align, and a column that does not align
+   cannot be scanned — which is the entire job of this screen.
+
+   Scoped to .exch so nothing here can leak onto the Edgeradar day surfaces or the
+   Cash & Carry .cc-* language, which share this stylesheet.
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+.exch {
+  /* Base — near-black page, one step up for panels, hairline borders. */
+  --ex-bg:        #0B0E11;
+  --ex-panel:     #161A1E;
+  --ex-panel-2:   #1E2329;
+  --ex-line:      #2B3139;
+  --ex-line-soft: #21262D;
+  /* Type */
+  --ex-txt:       #EAECEF;
+  --ex-txt-2:     #848E9C;
+  --ex-txt-3:     #5E6673;
+  /* Accent — gold is "active / primary action", never "good". */
+  --ex-gold:      #F0B90B;
+  --ex-gold-2:    #C99400;
+  --ex-gold-bg:   rgba(240, 185, 11, .10);
+  --ex-gold-bd:   rgba(240, 185, 11, .38);
+  /* Signal — green positive/live, red negative/danger. */
+  --ex-green:     #0ECB81;
+  --ex-green-bg:  rgba(14, 203, 129, .10);
+  --ex-green-bd:  rgba(14, 203, 129, .34);
+  --ex-red:       #F6465D;
+  --ex-red-bg:    rgba(246, 70, 93, .10);
+  --ex-red-bd:    rgba(246, 70, 93, .34);
+  /* Unknown is a FIRST-CLASS state, not a washed-out red. On these screens the
+     difference between "zero" and "we could not read it" is the difference
+     between a fact and the absence of one, and grey is never red. */
+  --ex-unk:       #848E9C;
+  --ex-unk-bg:    rgba(132, 142, 156, .10);
+  --ex-unk-bd:    rgba(132, 142, 156, .30);
+
+  --ex-mono: var(--font-mono), Roboto Mono, ui-monospace, SFMono-Regular, Menlo, monospace;
+  --ex-sans: var(--font-sans), Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+
+  background: var(--ex-bg);
+  color: var(--ex-txt);
+  font-family: var(--ex-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Numerals ─────────────────────────────────────────────────────────────────
+   .ex-n on EVERY figure. Tabular so columns line up digit-for-digit. */
+.exch .ex-n {
+  font-family: var(--ex-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+  letter-spacing: -.01em;
+}
+.exch .ex-up   { color: var(--ex-green); }
+.exch .ex-dn   { color: var(--ex-red); }
+.exch .ex-gold { color: var(--ex-gold); }
+.exch .ex-dim  { color: var(--ex-txt-2); }
+.exch .ex-faint{ color: var(--ex-txt-3); }
+
+/* ── Panels ─────────────────────────────────────────────────────────────────── */
+.exch .ex-panel {
+  border: 1px solid var(--ex-line);
+  background: var(--ex-panel);
+  border-radius: 8px;
+}
+.exch .ex-panel-flush { border-radius: 8px; overflow: hidden; }
+
+/* ── Section head — a thin uppercase rule above a block of rows. ───────────── */
+.exch .ex-sech {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; flex-wrap: wrap; margin: 16px 0 8px;
+}
+.exch .ex-sech-t {
+  font-size: 11px; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--ex-txt-2);
+}
+
+/* ── Tabs — horizontal, scrollable, active one underlined in gold. ─────────── */
+.exch .ex-tabs {
+  display: flex; gap: 0; overflow-x: auto; -webkit-overflow-scrolling: touch;
+  scrollbar-width: none; border-bottom: 1px solid var(--ex-line);
+}
+.exch .ex-tabs::-webkit-scrollbar { display: none; }
+.exch .ex-tab {
+  position: relative; flex: 0 0 auto; min-height: 44px; padding: 0 14px;
+  border: 0; background: none; cursor: pointer; white-space: nowrap;
+  color: var(--ex-txt-2); font-size: 13px; font-weight: 600;
+  font-family: inherit; touch-action: manipulation;
+}
+.exch .ex-tab:hover { color: var(--ex-txt); }
+.exch .ex-tab.is-on { color: var(--ex-gold); font-weight: 700; }
+.exch .ex-tab.is-on::after {
+  content: ''; position: absolute; left: 10px; right: 10px; bottom: -1px;
+  height: 2px; background: var(--ex-gold); border-radius: 2px;
+}
+.exch .ex-tab-dot {
+  display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--ex-red); margin-left: 6px; vertical-align: middle;
+}
+
+/* ── Filter chips ─────────────────────────────────────────────────────────── */
+.exch .ex-chips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.exch .ex-chips::-webkit-scrollbar { display: none; }
+.exch .ex-chip {
+  flex: 0 0 auto; min-height: 32px; padding: 0 11px; border-radius: 4px;
+  border: 1px solid var(--ex-line); background: var(--ex-panel-2);
+  color: var(--ex-txt-2); font-size: 12px; font-weight: 600; font-family: inherit;
+  cursor: pointer; white-space: nowrap; touch-action: manipulation;
+}
+.exch .ex-chip:hover { color: var(--ex-txt); }
+.exch .ex-chip.is-on {
+  color: #0B0E11; background: var(--ex-gold); border-color: var(--ex-gold); font-weight: 700;
+}
+
+/* ── Dense stat strip — the balance bar. Label above, mono figure below. ───── */
+.exch .ex-stats {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+  gap: 1px; background: var(--ex-line); border: 1px solid var(--ex-line); border-radius: 8px;
+  overflow: hidden;
+}
+.exch .ex-stat { background: var(--ex-panel); padding: 9px 11px; min-width: 0; }
+.exch .ex-stat-k {
+  display: block; font-size: 10px; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--ex-txt-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.exch .ex-stat-v {
+  display: block; margin-top: 3px; font-size: 16px; font-weight: 700; line-height: 1.15;
+  font-family: var(--ex-mono); font-variant-numeric: tabular-nums; overflow-wrap: anywhere;
+}
+.exch .ex-stat-s { display: block; margin-top: 3px; font-size: 10.5px; color: var(--ex-txt-3); line-height: 1.4; }
+
+/* ── THE DENSE ROW — the workhorse. ───────────────────────────────────────────
+   Left: name, then a small technical subtitle. Right: two or three figures,
+   right-aligned, each with its own tiny caption. Nothing is behind a tap. */
+.exch .ex-rows { display: flex; flex-direction: column; }
+.exch .ex-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 12px; align-items: center;
+  padding: 10px 12px; border-bottom: 1px solid var(--ex-line-soft);
+}
+.exch .ex-row:last-child { border-bottom: 0; }
+.exch .ex-row-main { min-width: 0; }
+.exch .ex-row-t {
+  font-size: 13px; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; color: var(--ex-txt);
+}
+.exch .ex-row-s {
+  margin-top: 2px; font-size: 10.5px; line-height: 1.4; color: var(--ex-txt-3);
+  overflow-wrap: anywhere;
+}
+.exch .ex-row-nums { display: flex; gap: 14px; align-items: flex-start; justify-content: flex-end; }
+.exch .ex-num { text-align: right; min-width: 0; }
+.exch .ex-num-k {
+  display: block; font-size: 9.5px; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--ex-txt-3); white-space: nowrap;
+}
+.exch .ex-num-v {
+  display: block; margin-top: 1px; font-size: 13px; font-weight: 700; white-space: nowrap;
+  font-family: var(--ex-mono); font-variant-numeric: tabular-nums;
+}
+
+/* ── Key/value grid — dense reference figures inside a card. ───────────────── */
+.exch .ex-kvs {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 8px 12px;
+}
+.exch .ex-kv { min-width: 0; }
+.exch .ex-kv-k {
+  display: block; font-size: 9.5px; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--ex-txt-3);
+}
+.exch .ex-kv-v {
+  display: block; margin-top: 1px; font-size: 12.5px; font-weight: 700;
+  font-family: var(--ex-mono); font-variant-numeric: tabular-nums; overflow-wrap: anywhere;
+}
+
+/* ── Badges — compact state, colour plus text (never colour alone). ────────── */
+.exch .ex-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 10.5px; font-weight: 700; line-height: 1.6; white-space: nowrap;
+  padding: 1px 7px; border-radius: 3px;
+  border: 1px solid var(--ex-unk-bd); background: var(--ex-unk-bg); color: var(--ex-txt-2);
+}
+.exch .ex-badge.is-ok   { border-color: var(--ex-green-bd); background: var(--ex-green-bg); color: var(--ex-green); }
+.exch .ex-badge.is-bad  { border-color: var(--ex-red-bd);   background: var(--ex-red-bg);   color: var(--ex-red); }
+.exch .ex-badge.is-warn { border-color: var(--ex-gold-bd);  background: var(--ex-gold-bg);  color: var(--ex-gold); }
+.exch .ex-badge.is-gold { border-color: var(--ex-gold); background: var(--ex-gold); color: #0B0E11; }
+.exch .ex-badges { display: flex; flex-wrap: wrap; gap: 5px; }
+
+/* Side tag — YES green, NO red, unknown grey. Reads at a glance on an order row. */
+.exch .ex-side {
+  display: inline-block; min-width: 34px; text-align: center;
+  font-family: var(--ex-mono); font-size: 10.5px; font-weight: 700; letter-spacing: .04em;
+  padding: 1px 5px; border-radius: 3px;
+  border: 1px solid var(--ex-unk-bd); background: var(--ex-unk-bg); color: var(--ex-txt-2);
+}
+.exch .ex-side.is-yes { border-color: var(--ex-green-bd); background: var(--ex-green-bg); color: var(--ex-green); }
+.exch .ex-side.is-no  { border-color: var(--ex-red-bd);   background: var(--ex-red-bg);   color: var(--ex-red); }
+
+/* ── THE RED NOTE. Sits under a figure that is real but does not qualify, and
+      says why in plain language. This is what replaces hiding the zero. ────── */
+.exch .ex-why {
+  margin: 3px 0 0; font-size: 10.5px; line-height: 1.45; color: var(--ex-red);
+  overflow-wrap: anywhere;
+}
+.exch .ex-why-warn { color: var(--ex-gold); }
+.exch .ex-why-dim  { color: var(--ex-txt-3); }
+
+/* ── Banners ──────────────────────────────────────────────────────────────── */
+.exch .ex-banner {
+  border-radius: 6px; padding: 9px 12px; font-size: 12.5px; line-height: 1.5;
+  border: 1px solid var(--ex-unk-bd); background: var(--ex-unk-bg); color: var(--ex-txt-2);
+}
+.exch .ex-banner.is-ok   { border-color: var(--ex-green-bd); background: var(--ex-green-bg); color: var(--ex-green); }
+.exch .ex-banner.is-bad  { border-color: var(--ex-red-bd);   background: var(--ex-red-bg);   color: #FF9AA8; }
+.exch .ex-banner.is-warn { border-color: var(--ex-gold-bd);  background: var(--ex-gold-bg);  color: var(--ex-gold); }
+
+/* ── Buttons ──────────────────────────────────────────────────────────────── */
+.exch .ex-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 40px; padding: 0 14px; border-radius: 6px; cursor: pointer;
+  font-family: inherit; font-size: 13px; font-weight: 700; touch-action: manipulation;
+  border: 1px solid var(--ex-line); background: var(--ex-panel-2); color: var(--ex-txt);
+}
+.exch .ex-btn:hover { border-color: var(--ex-txt-3); }
+.exch .ex-btn:disabled { opacity: .45; cursor: not-allowed; }
+.exch .ex-btn.is-gold {
+  background: var(--ex-gold); border-color: var(--ex-gold); color: #0B0E11;
+}
+.exch .ex-btn.is-gold:hover { background: var(--ex-gold-2); border-color: var(--ex-gold-2); }
+.exch .ex-btn.is-gold:disabled { background: #3A3520; border-color: #3A3520; color: #7A7259; opacity: 1; }
+.exch .ex-btn.is-danger { background: var(--ex-red); border-color: var(--ex-red); color: #fff; }
+.exch .ex-btn.is-danger:hover { background: #D93A4E; border-color: #D93A4E; }
+.exch .ex-btn.is-green { background: var(--ex-green); border-color: var(--ex-green); color: #06251A; }
+.exch .ex-btn.is-green:hover { background: #0BB673; border-color: #0BB673; }
+.exch .ex-btn.is-green:disabled { background: #1C3B30; border-color: #1C3B30; color: #5E7A6E; opacity: 1; }
+.exch .ex-btn.is-ghost { background: none; }
+.exch .ex-btn.is-block { width: 100%; }
+.exch .ex-btn.is-sm { min-height: 32px; padding: 0 10px; font-size: 12px; }
+.exch .ex-link {
+  display: inline-flex; align-items: center; min-height: 32px; padding: 0;
+  border: 0; background: none; cursor: pointer; text-decoration: none;
+  font-family: inherit; font-size: 12px; font-weight: 700; color: var(--ex-gold);
+  touch-action: manipulation;
+}
+.exch .ex-link:hover { text-decoration: underline; }
+
+/* ── Inputs ───────────────────────────────────────────────────────────────── */
+.exch .ex-input {
+  min-height: 40px; padding: 0 10px; border-radius: 6px;
+  border: 1px solid var(--ex-line); background: #0D1114; color: var(--ex-txt);
+  font-family: var(--ex-mono); font-size: 13px; font-variant-numeric: tabular-nums;
+}
+.exch .ex-input:focus { outline: none; border-color: var(--ex-gold); }
+.exch .ex-input.is-text { font-family: var(--ex-sans); }
+
+/* ── Dense table — every numeric cell monospaced. ─────────────────────────── */
+.exch .ex-tblwrap { overflow-x: auto; border: 1px solid var(--ex-line); border-radius: 8px; }
+.exch .ex-tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
+.exch .ex-tbl th {
+  position: sticky; top: 0; text-align: left; white-space: nowrap;
+  font-size: 9.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--ex-txt-3);
+  padding: 8px 10px; background: var(--ex-panel-2); border-bottom: 1px solid var(--ex-line);
+}
+.exch .ex-tbl td { padding: 8px 10px; border-bottom: 1px solid var(--ex-line-soft); vertical-align: top; }
+.exch .ex-tbl tr:last-child td { border-bottom: 0; }
+.exch .ex-tbl td.ex-n, .exch .ex-tbl th.ex-n { text-align: right; white-space: nowrap; }
+.exch .ex-tbl tr.is-bad td { background: var(--ex-red-bg); }
+
+/* ── FIXED ACTION BAR — the primary action stays under the thumb during scroll.
+      The spacer reserves its height so the last row is never covered. ─────── */
+.exch .ex-actionbar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
+  display: flex; gap: 8px; align-items: stretch;
+  padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
+  background: rgba(11, 14, 17, .96);
+  border-top: 1px solid var(--ex-line);
+  backdrop-filter: blur(8px);
+}
+.exch .ex-actionbar .ex-btn { flex: 1 1 0; min-height: 46px; font-size: 14px; letter-spacing: .03em; }
+.ex-actionbar-spacer { height: 74px; }
+
+@media (max-width: 620px) {
+  .exch .ex-row { padding: 9px 10px; }
+  .exch .ex-row-nums { gap: 10px; }
+  .exch .ex-num-v { font-size: 12.5px; }
+  .exch .ex-stat-v { font-size: 15px; }
+  .exch .ex-actionbar .ex-btn { font-size: 13px; padding: 0 8px; }
+}

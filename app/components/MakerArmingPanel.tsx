@@ -6,9 +6,14 @@
 // probes that gate on mount and renders NOTHING for a non-admin visitor (the public rewards board is
 // unchanged for everyone else). For the operator it is a persistent control.
 //
-// This build ships the KILL first (the thing that must always work). The preflight table, the two-step
-// ARM control and the TTL countdown are layered in by later commits; the markers below (data-maker-*) are
-// the stable hooks the compiled-bundle proof greps for.
+// EXCHANGE SURFACE. The state instrument is a COMPACT BADGE beside the title, not a 46px ring: the ring
+// spent a third of the first screen saying one word. The facts it used to carry — arming TTL, total size,
+// open exposure, collateral cap — are now four monospaced figures in a dense strip, all visible at once.
+//
+// KILL and RIPRISTINA live in a FIXED bottom bar. They are the two actions that must be reachable at the
+// worst possible moment, and hunting for a scrolled-away button is exactly the failure this avoids. Each
+// exists ONCE in the tree (the markers below are the stable hooks), with the same handlers and the same
+// enable logic as before: KILL is never blocked, RIPRISTINA is live only while the kill actually is.
 
 import { useCallback, useEffect, useState } from 'react';
 
@@ -268,208 +273,120 @@ export default function MakerArmingPanel() {
     resetState?.kill.readable === false
       ? {
         state: 'unknown',
-        label: 'Non lo sappiamo',
+        label: 'NON LO SAPPIAMO',
         detail: `Lo stato del kill-switch non è leggibile${resetState.kill.reason ? `: ${resetState.kill.reason}` : ''}. Non è né «gira» né «fermo».`,
       }
       : resetState?.kill.killed === true
         ? {
           state: 'bad',
-          label: 'Fermato dal kill',
+          label: 'FERMATO DAL KILL',
           detail: 'Il kill-switch è attivo: nessun ordine viene piazzato finché non premi RIPRISTINA.',
         }
         : armStatus == null
-          ? { state: 'unknown', label: 'In lettura…', detail: 'Stato di arming non ancora ricevuto dal server.' }
+          ? { state: 'unknown', label: 'IN LETTURA…', detail: 'Stato di arming non ancora ricevuto dal server.' }
           : armStatus.armed
             ? {
               state: 'ok',
-              label: 'Armato',
+              label: 'ARMATO',
               detail: `Il maker può piazzare${countdown != null ? `, e resta armato ancora ${Math.max(0, Math.round(countdown / 60))} min` : ''}. L'arming scade da solo: è un dead-man's switch, non un interruttore.`,
             }
             : {
               state: 'warn',
-              label: 'Fermo — non armato',
+              label: 'FERMO — NON ARMATO',
               detail: 'Il maker non piazza nulla. Gli ordini già a riposo sul venue restano dove sono: disarmare non li cancella.',
             };
 
+  const badgeClass = bot.state === 'ok' ? 'is-ok' : bot.state === 'bad' ? 'is-bad' : bot.state === 'warn' ? 'is-warn' : '';
+  const killOn = resetState?.kill.killed === true;
+
   return (
-    <div className="mkarm-root" data-maker-panel>
-      <style>{`
-        .mkarm-root { max-width: 980px; margin: 0 auto 8px; padding: 14px 16px 18px; color: #E6E9EF;
-          border: 1px solid #2A3040; border-radius: 12px; background: #10141C;
-          font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
-        .mkarm-hrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
-        .mkarm-title { font-size: 13px; font-weight: 800; letter-spacing: .4px; text-transform: uppercase; color: #9AA4B2; }
+    <div className="mkarm-root exch" data-maker-panel>
+      <style>{CSS}</style>
 
-        /* STESSO VOCABOLARIO DELLA CONSOLE: quattro stati, verde mint del design system, grigio di prima
-           classe per il non-misurabile. Le due superfici devono parlare la stessa lingua, o l operatore
-           impara due semafori invece di uno. */
-        .mkarm-s-ok      { --s: #4FD8A0; --s-bd: #14624A; --s-bg: #08201A; }
-        .mkarm-s-warn    { --s: #E8B23A; --s-bd: #4A3C12; --s-bg: #1A1608; }
-        .mkarm-s-bad     { --s: #FF9C93; --s-bd: #5C1F1A; --s-bg: #1A0B0A; }
-        .mkarm-s-unknown { --s: #8B95A5; --s-bd: #2E3646; --s-bg: #141926; }
-        .mkarm-ring-row { display: flex; gap: 14px; align-items: flex-start; margin-bottom: 14px;
-          padding: 12px 14px; border: 1px solid var(--s-bd); background: var(--s-bg); border-radius: 12px; }
-        .mkarm-ring { flex: 0 0 auto; width: 46px; height: 46px; border-radius: 50%; border: 3px solid var(--s);
-          display: flex; align-items: center; justify-content: center; }
-        .mkarm-ring-core { width: 16px; height: 16px; border-radius: 50%; background: var(--s); }
-        .mkarm-ring-txt { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
-        .mkarm-ring-q { font-size: 11px; text-transform: uppercase; letter-spacing: .4px; color: #8B95A5; }
-        .mkarm-ring-a { font-size: 21px; font-weight: 800; color: var(--s); line-height: 1.2; }
-        .mkarm-ring-d { font-size: 12.5px; color: #B7C0CE; line-height: 1.5; overflow-wrap: anywhere; }
-        @media (max-width: 620px) {
-          .mkarm-ring { width: 40px; height: 40px; }
-          .mkarm-ring-a { font-size: 19px; }
-        }
-        .mkarm-badge { font-size: 11px; font-weight: 700; color: #E8B23A; border: 1px solid #4a3c12; background: #211a08;
-          padding: 3px 8px; border-radius: 999px; }
-        .mkarm-killbtn { min-height: 48px; padding: 0 22px; border: none; border-radius: 10px; cursor: pointer;
-          font-size: 15px; font-weight: 800; letter-spacing: .4px; color: #fff; background: #D21F32; touch-action: manipulation; }
-        /* RIPRISTINA — same height, same weight, same shape as the KILL. Side by side and both always
-           visible: the two actions are opposites and the operator should never have to hunt for one. */
-        .mkarm-btnrow { display: flex; gap: 12px; flex-wrap: wrap; align-items: stretch; }
-        .mkarm-resetbtn { min-height: 48px; padding: 0 22px; border: none; border-radius: 10px; cursor: pointer;
-          font-size: 15px; font-weight: 800; letter-spacing: .4px; color: #06210f; background: #2FA96B; touch-action: manipulation; }
-        .mkarm-resetbtn:disabled { background: #2b3a30; color: #6b7a70; cursor: not-allowed; }
-        .mkarm-step { display: flex; gap: 8px; align-items: baseline; padding: 3px 0; font-size: 12.5px; line-height: 1.45; }
-        .mkarm-step-ok { color: #57C98A; font-weight: 800; }
-        .mkarm-step-bad { color: #E5574E; font-weight: 800; }
-        .mkarm-evi { color: #8B95A5; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px;
-          white-space: pre-wrap; word-break: break-word; margin: 2px 0 0 22px; }
-        .mkarm-killbtn:hover { background: #B81A2B; }
-        .mkarm-killbtn:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
-        .mkarm-killbtn:disabled { opacity: .6; cursor: wait; }
-        .mkarm-note { font-size: 12px; color: #8B95A5; margin: 4px 2px 0; line-height: 1.45; }
-        .mkarm-res { margin-top: 12px; font-size: 13px; color: #B7C0CE; line-height: 1.5; }
-        .mkarm-warn { color: #E8B23A; }
-        .mkarm-ok { color: #57C98A; }
-        .mkarm-num { font-variant-numeric: tabular-nums; white-space: nowrap; }
-        .mkarm-sec { margin-top: 20px; border-top: 1px solid #232937; padding-top: 16px; }
-        .mkarm-sech { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
-        .mkarm-sectitle { font-size: 12px; font-weight: 800; letter-spacing: .4px; text-transform: uppercase; color: #9AA4B2; }
-        .mkarm-btn { min-height: 44px; padding: 0 16px; border: 1px solid #2E5FBE; border-radius: 8px; cursor: pointer;
-          font-size: 13px; font-weight: 700; color: #DCE6FF; background: #16233E; touch-action: manipulation; }
-        .mkarm-btn:hover { background: #1B2C4E; }
-        .mkarm-btn:disabled { opacity: .6; cursor: wait; }
-        .mkarm-verdict { font-size: 13px; font-weight: 800; padding: 3px 10px; border-radius: 999px; }
-        .mkarm-go { color: #57C98A; border: 1px solid #205038; background: #0d1f16; }
-        .mkarm-nogo { color: #E8B23A; border: 1px solid #4a3c12; background: #211a08; }
-        .mkarm-check { display: grid; grid-template-columns: 20px 1fr auto; gap: 10px; align-items: baseline;
-          padding: 8px 0; border-bottom: 1px solid #1a2030; font-size: 13px; }
-        .mkarm-dot { font-weight: 900; }
-        .mkarm-dot-green { color: #57C98A; }
-        .mkarm-dot-red { color: #E5574E; }
-        .mkarm-clabel { color: #C4CCD8; line-height: 1.4; }
-        .mkarm-cdetail { color: #8B95A5; font-size: 12px; margin-top: 2px; line-height: 1.4; }
-        .mkarm-cval { color: #E6E9EF; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
-        .mkarm-cval-red { color: #E5574E; }
-        .mkarm-armed { border: 1px solid #205038; background: #0d1f16; border-radius: 10px; padding: 12px 14px; }
-        .mkarm-armed-t { font-weight: 800; color: #57C98A; font-size: 14px; }
-        .mkarm-toggle { min-height: 44px; padding: 0 16px; border: 1px solid #3A4150; border-radius: 8px; cursor: pointer;
-          font-size: 13px; font-weight: 700; color: #E6E9EF; background: #1C2230; }
-        .mkarm-toggle:hover { background: #232a3a; }
-        .mkarm-input { width: 140px; padding: 8px 10px; border: 1px solid #2E5FBE; border-radius: 8px; background: #0d1420;
-          color: #E6E9EF; font-size: 14px; font-variant-numeric: tabular-nums; }
-        .mkarm-inrow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 10px 0; font-size: 13px; color: #C4CCD8; }
-        .mkarm-ptbl { margin: 10px 0; font-size: 13px; }
-        .mkarm-prow { display: grid; grid-template-columns: 1fr auto auto auto; gap: 10px; padding: 6px 0;
-          border-bottom: 1px solid #1a2030; align-items: baseline; }
-        .mkarm-phead { color: #8B95A5; font-size: 11px; text-transform: uppercase; letter-spacing: .4px; }
-        .mkarm-armbtn { min-height: 44px; padding: 0 20px; border: none; border-radius: 10px; cursor: pointer;
-          font-size: 15px; font-weight: 800; color: #06210f; background: #57C98A; }
-        .mkarm-armbtn:disabled { background: #2b3a30; color: #6b7a70; cursor: not-allowed; }
-        .mkarm-disarm { min-height: 44px; padding: 0 18px; border: 1px solid #4a3c12; border-radius: 8px; cursor: pointer;
-          font-size: 13px; font-weight: 700; color: #E8B23A; background: #1a1608; }
-      `}</style>
-
-      <div className="mkarm-hrow">
-        <span className="mkarm-title">Maker · arming console</span>
-      </div>
-
-      {/* LA DOMANDA IN CIMA, E LA RISPOSTA VERA.
+      {/* ── HEADER — the state is a COMPACT BADGE beside the title, not a ring. ──────────────────────
           Qui c'era un badge con il testo fisso «DISARMED · MAKER_MODE off»: una stringa scritta a mano,
           che continuava a dire DISARMED anche con armStatus.armed a true. Una cifra o un'etichetta che
           non puo' cambiare non e' uno stato, e' una decorazione che a volte mente. Adesso lo stato viene
           letto, e quando non e' leggibile lo dice. Il colore non e' mai l'unico canale: la risposta sta
-          anche nel testo, e l'anello e' aria-hidden. */}
-      <div className={`mkarm-ring-row mkarm-s-${bot.state}`} data-maker-botstate={bot.state}>
-        <span className="mkarm-ring" aria-hidden="true"><span className="mkarm-ring-core" /></span>
-        <span className="mkarm-ring-txt">
-          <span className="mkarm-ring-q">Il bot sta lavorando?</span>
-          <span className="mkarm-ring-a">{bot.label}</span>
-          <span className="mkarm-ring-d">{bot.detail}</span>
-        </span>
+          nel testo del badge, e la riga sotto la spiega per esteso. */}
+      <div className="mkarm-hrow">
+        <span className="mkarm-title">Maker · arming</span>
+        <span className={`ex-badge ${badgeClass}`} data-maker-botstate={bot.state}>{bot.label}</span>
+      </div>
+      <p className="mkarm-detail">{bot.detail}</p>
+
+      {/* ── THE FOUR FIGURES, ALL VISIBLE. Each renders even when it is zero or unreadable: a missing
+             number is read as "nothing to worry about", which is the one thing it never means. ─────── */}
+      <div className="ex-stats" data-maker-stats>
+        <div className="ex-stat">
+          <span className="ex-stat-k">Auto-disarm fra</span>
+          <span className="ex-stat-v" style={{ color: countdown == null ? 'var(--ex-txt-2)' : countdown < 300 ? 'var(--ex-gold)' : 'var(--ex-green)' }} data-maker-ttl-countdown>
+            {fmtDur(countdown)}
+          </span>
+          <span className="ex-stat-s">
+            {armStatus?.armed ? `scade ${dash(armStatus.expiresAt)}` : 'non armato — nessun timer in corso'}
+          </span>
+        </div>
+        <div className="ex-stat">
+          <span className="ex-stat-k">Size armata</span>
+          <span className="ex-stat-v">{money(armStatus?.totalSizeUsd)}</span>
+          <span className="ex-stat-s">
+            {armStatus?.armed
+              ? `TTL ${armStatus.ttlSeconds != null ? `${Math.round(armStatus.ttlSeconds / 3600)}h` : '—'}`
+              : 'nessun arming attivo'}
+          </span>
+        </div>
+        <div className="ex-stat">
+          <span className="ex-stat-k">Esposizione aperta</span>
+          <span className="ex-stat-v">{money(resetState?.diagnosis.openNotionalUsd)}</span>
+          <span className="ex-stat-s">vista dal gate cap</span>
+          {resetState?.diagnosis.readable === false && (
+            <p className="ex-why">Non leggibile: il gate cap non ha potuto misurare l&apos;esposizione — non è «zero».</p>
+          )}
+          {(resetState?.diagnosis.fromUnresolvedOrdersUsd ?? 0) > 0 && (
+            <p className="ex-why">
+              {money(resetState!.diagnosis.fromUnresolvedOrdersUsd)} da {resetState!.diagnosis.unknowns.length} ordini
+              inviati mai riconciliati, non da posizioni reali.
+            </p>
+          )}
+        </div>
+        <div className="ex-stat">
+          <span className="ex-stat-k">Cap collaterale</span>
+          <span className="ex-stat-v">{money(armStatus?.collateralCapUsd)}</span>
+          <span className="ex-stat-s">tetto per arming</span>
+        </div>
       </div>
 
-      {/* ── KILL + RIPRISTINA, side by side and BOTH always visible. ──────────────────────────────────
-          They are opposites, so hiding either one is how an operator ends up hunting for a control at the
-          worst moment. The KILL is always enabled (stopping must never be blocked); RIPRISTINA is enabled
-          ONLY while the kill is actually on, because with the kill already clear there is nothing to
-          restore and a green button would invite a pointless round of venue calls. */}
-      <div className="mkarm-btnrow">
-        <button
-          className="mkarm-killbtn"
-          data-maker-kill
-          onClick={doKill}
-          disabled={killing}
-          aria-label="Kill the maker and cancel all resting orders now"
-        >
-          {killing ? 'KILLING…' : 'KILL — DISARM & CANCEL ALL'}
-        </button>
-        <button
-          className="mkarm-resetbtn"
-          data-maker-reset
-          onClick={doReset}
-          disabled={resetting || resetState?.kill.killed !== true}
-          title={resetState?.kill.killed === true
-            ? 'Cancella eventuali residui, riconcilia l\'esposizione contro il venue, disattiva il kill-switch e verifica che TUTTO sia a zero'
-            : 'Disponibile solo con il kill-switch attivo: adesso non c\'è nulla da ripristinare'}
-          aria-label="Ripristina: riarma e verifica che lo stato sia pulito"
-        >
-          {resetting ? 'VERIFICO SUL VENUE…' : 'RIPRISTINA — RIARMA E VERIFICA PULITO'}
-        </button>
-      </div>
-      <p className="mkarm-note">
-        One tap disarms the maker (durable global kill) and cancels every resting order — entirely on the
-        Edgeradar server, no browser call to polymarket.com. Safe even when the maker is already off.
-      </p>
-
-      {killErr && <div className="mkarm-res mkarm-warn">Request failed — nothing confirmed: {dash(killErr)}</div>}
+      {killErr && <div className="ex-banner is-bad mkarm-mt">Request failed — nothing confirmed: {dash(killErr)}</div>}
 
       {/* ── RIPRISTINA: what it would fix, before you press it ────────────────────────────────────────
           Shown only while the kill is on. The split between confirmed positions and unresolved orders is
           the whole point: a total alone is what made "$67.04 open exposure with an empty orders table"
           unexplainable in the first place. */}
-      {resetState?.kill.killed === true && resetState.diagnosis && (
-        <div className="mkarm-res" data-maker-reset-preview>
-          <div>
-            Kill-switch <b className="mkarm-warn">ATTIVO</b>
-            {resetState.kill.reason ? ` — ${resetState.kill.reason}` : ''}
-          </div>
-          <div>
-            Esposizione aperta vista dal gate cap: <b>{money(resetState.diagnosis.openNotionalUsd)}</b>
-            {resetState.diagnosis.fromUnresolvedOrdersUsd > 0 && (
-              <> — di cui <b className="mkarm-warn">{money(resetState.diagnosis.fromUnresolvedOrdersUsd)}</b> da{' '}
-                <b>{resetState.diagnosis.unknowns.length}</b> ordini inviati mai riconciliati, non da posizioni reali</>
-            )}
-          </div>
+      {killOn && resetState?.diagnosis && (
+        <div className="ex-banner is-bad mkarm-mt" data-maker-reset-preview>
+          Kill-switch <b>ATTIVO</b>{resetState.kill.reason ? ` — ${resetState.kill.reason}` : ''}. Esposizione aperta{' '}
+          <b className="ex-n">{money(resetState.diagnosis.openNotionalUsd)}</b>
+          {resetState.diagnosis.fromUnresolvedOrdersUsd > 0 && (
+            <> — di cui <b className="ex-n">{money(resetState.diagnosis.fromUnresolvedOrdersUsd)}</b> da{' '}
+              <b className="ex-n">{resetState.diagnosis.unknowns.length}</b> ordini inviati mai riconciliati.</>
+          )}
           <div className="mkarm-note">{resetState.diagnosis.note}</div>
         </div>
       )}
 
-      {resetErr && <div className="mkarm-res mkarm-warn">Ripristino fallito — nulla è confermato: {dash(resetErr)}</div>}
+      {resetErr && <div className="ex-banner is-bad mkarm-mt">Ripristino fallito — nulla è confermato: {dash(resetErr)}</div>}
 
       {/* ── RIPRISTINA: the result, step by step, each with its evidence ─────────────────────────────── */}
       {reset && (
-        <div className={`mkarm-res ${reset.ok ? '' : 'mkarm-warn'}`} data-maker-reset-result>
-          <div style={{ fontWeight: 800, marginBottom: 4 }}>
+        <div className={`ex-banner mkarm-mt ${reset.ok ? 'is-ok' : 'is-warn'}`} data-maker-reset-result>
+          <div className="mkarm-strong">
             {reset.ok ? (
-              <span className="mkarm-ok">
-                RIPRISTINO COMPLETO — {reset.venueOrdersAfter} ordini confermati sul venue, esposizione aperta{' '}
-                {money(reset.openNotionalAfter ?? null)} confermata sul gate cap, kill-switch disattivato alle{' '}
-                {new Date(reset.at).toLocaleTimeString()}
-              </span>
+              <>RIPRISTINO COMPLETO — <span className="ex-n">{reset.venueOrdersAfter}</span> ordini confermati sul venue,
+                esposizione aperta <span className="ex-n">{money(reset.openNotionalAfter ?? null)}</span> confermata sul
+                gate cap, kill-switch disattivato alle <span className="ex-n">{new Date(reset.at).toLocaleTimeString()}</span></>
             ) : (
-              <span className="mkarm-warn">RIPRISTINO INCOMPLETO — {dash(reset.reason || reset.error)}</span>
+              <>RIPRISTINO INCOMPLETO — {dash(reset.reason || reset.error)}</>
             )}
           </div>
 
@@ -481,15 +398,16 @@ export default function MakerArmingPanel() {
           )}
           {reset.resolved?.ran && (reset.resolved.nofills > 0 || reset.resolved.fills > 0 || reset.resolved.stillUnknown > 0) && (
             <div className="mkarm-note">
-              Riconciliazione: {reset.resolved.fills} risolti come eseguiti, {reset.resolved.nofills} come NON eseguiti,{' '}
-              {reset.resolved.stillUnknown} ancora sconosciuti.
+              Riconciliazione: <span className="ex-n">{reset.resolved.fills}</span> risolti come eseguiti,{' '}
+              <span className="ex-n">{reset.resolved.nofills}</span> come NON eseguiti,{' '}
+              <span className="ex-n">{reset.resolved.stillUnknown}</span> ancora sconosciuti.
             </div>
           )}
 
           {reset.steps.map((st) => (
             <div key={st.key}>
               <div className="mkarm-step">
-                <span className={st.ok ? 'mkarm-step-ok' : 'mkarm-step-bad'}>{st.ok ? '✓' : '✗'}</span>
+                <span className={st.ok ? 'ex-up' : 'ex-dn'}>{st.ok ? '✓' : '✗'}</span>
                 <span>{st.label}</span>
               </div>
               {st.evidence != null && (
@@ -501,21 +419,20 @@ export default function MakerArmingPanel() {
       )}
 
       {kill && (
-        <div className="mkarm-res">
+        <div className="mkarm-res" data-maker-kill-result>
           <div>
-            Disarm (durable kill): {kill.killed ? <span className="mkarm-ok">SET</span> : <span className="mkarm-warn">FAILED — {dash(kill.killError)}</span>}
+            Disarm (durable kill): {kill.killed ? <span className="ex-up">SET</span> : <span className="ex-dn">FAILED — {dash(kill.killError)}</span>}
           </div>
           {kill.cancelError ? (
-            <div className="mkarm-warn">Cancel sweep error: {dash(kill.cancelError)}</div>
+            <div className="ex-dn">Cancel sweep error: {dash(kill.cancelError)}</div>
           ) : (
             <div>
-              Cancel sweep:{' '}
-              <span className="mkarm-num">{kill.cancelledTotal}</span> cancelled
-              {kill.simulated ? <span className="mkarm-warn"> (dry-run — no cancel creds / disarmed build)</span> : <span className="mkarm-ok"> (live)</span>}
+              Cancel sweep: <span className="ex-n">{kill.cancelledTotal}</span> cancelled
+              {kill.simulated ? <span className="ex-gold"> (dry-run — no cancel creds / disarmed build)</span> : <span className="ex-up"> (live)</span>}
               {kill.cancel?.map((v) => (
                 <span key={v.venue}>
-                  {' · '}{v.venue}: venue-open-before <span className="mkarm-num">{dash(v.venueOpenBefore)}</span>
-                  {v.ok ? '' : <span className="mkarm-warn"> (FAILED: {dash(v.error)})</span>}
+                  {' · '}{v.venue}: venue-open-before <span className="ex-n">{dash(v.venueOpenBefore)}</span>
+                  {v.ok ? '' : <span className="ex-dn"> (FAILED: {dash(v.error)})</span>}
                 </span>
               ))}
             </div>
@@ -525,32 +442,37 @@ export default function MakerArmingPanel() {
 
       {/* ── PREFLIGHT: the arming gate. Real values read at click time; any red check blocks arming. ── */}
       <div className="mkarm-sec" data-maker-preflight>
-        <div className="mkarm-sech">
-          <span className="mkarm-sectitle">Preflight — arming gate</span>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        <div className="ex-sech">
+          <span className="ex-sech-t">Preflight — arming gate</span>
+          <div className="mkarm-inline">
             {preflight && !preflight.error && (
-              <span className={`mkarm-verdict ${preflight.go ? 'mkarm-go' : 'mkarm-nogo'}`}>
-                {preflight.go ? 'GO' : 'NO-GO'}
-              </span>
+              <span className={`ex-badge ${preflight.go ? 'is-ok' : 'is-warn'}`}>{preflight.go ? 'GO' : 'NO-GO'}</span>
             )}
-            <button className="mkarm-btn" onClick={runPreflight} disabled={pfRunning}>
+            <button className="ex-btn is-sm" onClick={runPreflight} disabled={pfRunning}>
               {pfRunning ? 'Reading real state…' : 'Run preflight'}
             </button>
           </div>
         </div>
 
-        {preflight?.error && <div className="mkarm-res mkarm-warn">Preflight failed: {dash(preflight.error)}</div>}
+        {preflight?.error && <div className="ex-banner is-bad">Preflight failed: {dash(preflight.error)}</div>}
 
-        {preflight && !preflight.error && preflight.checks.map((c) => (
-          <div key={c.key} className="mkarm-check">
-            <span className={`mkarm-dot ${c.pass ? 'mkarm-dot-green' : 'mkarm-dot-red'}`}>{c.pass ? '●' : '✕'}</span>
-            <span>
-              <span className="mkarm-clabel">{c.label}</span>
-              {!c.pass && c.detail && <div className="mkarm-cdetail">{c.detail}</div>}
-            </span>
-            <span className={`mkarm-cval ${c.pass ? '' : 'mkarm-cval-red'}`}>{dash(c.value)}</span>
+        {preflight && !preflight.error && preflight.checks.length > 0 && (
+          <div className="ex-panel ex-rows">
+            {preflight.checks.map((c) => (
+              <div key={c.key} className="ex-row">
+                <div className="ex-row-main">
+                  <div className="ex-row-t">
+                    <span className={c.pass ? 'ex-up' : 'ex-dn'}>{c.pass ? '●' : '✕'}</span> {c.label}
+                  </div>
+                  {!c.pass && c.detail && <div className="ex-row-s">{c.detail}</div>}
+                </div>
+                <div className="ex-row-nums">
+                  <span className={`ex-num-v ${c.pass ? '' : 'ex-dn'}`}>{dash(c.value)}</span>
+                </div>
+              </div>
+            ))}
           </div>
-        ))}
+        )}
 
         {preflight && !preflight.error && (
           <p className="mkarm-note">
@@ -563,33 +485,31 @@ export default function MakerArmingPanel() {
 
       {/* ── ARM control: two-step (deliberate reveal, then type the exact total). Gated on a fresh preflight. ── */}
       <div className="mkarm-sec" data-maker-arm>
-        <div className="mkarm-sech">
-          <span className="mkarm-sectitle">Arm control</span>
+        <div className="ex-sech">
+          <span className="ex-sech-t">Arm control</span>
           {armStatus?.armed
-            ? <span className="mkarm-verdict mkarm-go">ARMED</span>
-            : <span className="mkarm-verdict mkarm-nogo">DISARMED</span>}
+            ? <span className="ex-badge is-ok">ARMED</span>
+            : <span className="ex-badge is-warn">DISARMED</span>}
         </div>
 
         {armStatus?.armed ? (
-          <div className="mkarm-armed">
-            <div className="mkarm-armed-t">Maker is ARMED (record only — placement still needs MAKER_MODE + funding)</div>
-            <div className="mkarm-res">
-              Total size {money(armStatus.totalSizeUsd)} · TTL {armStatus.ttlSeconds != null ? `${Math.round(armStatus.ttlSeconds / 3600)}h` : '—'}
+          <div className="ex-panel mkarm-pad">
+            <div className="mkarm-strong ex-up">Maker is ARMED (record only — placement still needs MAKER_MODE + funding)</div>
+            <div className="ex-kvs mkarm-mt">
+              <div className="ex-kv"><span className="ex-kv-k">Total size</span><span className="ex-kv-v">{money(armStatus.totalSizeUsd)}</span></div>
+              <div className="ex-kv"><span className="ex-kv-k">TTL</span><span className="ex-kv-v">{armStatus.ttlSeconds != null ? `${Math.round(armStatus.ttlSeconds / 3600)}h` : '—'}</span></div>
+              <div className="ex-kv"><span className="ex-kv-k">Auto-disarm</span><span className="ex-kv-v" style={{ color: countdown != null && countdown < 300 ? 'var(--ex-gold)' : 'var(--ex-green)' }}>{fmtDur(countdown)}</span></div>
             </div>
-            {/* Live TTL countdown — at 0 the maker auto-disarms itself and cancels open orders. */}
-            <div className="mkarm-res" data-maker-ttl-countdown>
-              Auto-disarm in <b className="mkarm-num" style={{ color: countdown != null && countdown < 300 ? '#E8B23A' : '#57C98A' }}>{fmtDur(countdown)}</b>
-              {' '}(expires <span className="mkarm-num">{dash(armStatus.expiresAt)}</span>)
-            </div>
-            <div style={{ marginTop: 10, display: 'flex', gap: 10 }}>
-              <button className="mkarm-disarm" onClick={doDisarm}>DISARM</button>
-              <button className="mkarm-toggle" onClick={doRenew}>RENEW (re-runs preflight)</button>
+            <div className="mkarm-note">Expires <span className="ex-n">{dash(armStatus.expiresAt)}</span></div>
+            <div className="mkarm-btns">
+              <button className="ex-btn" onClick={doDisarm}>DISARM</button>
+              <button className="ex-btn" onClick={doRenew}>RENEW (re-runs preflight)</button>
             </div>
           </div>
         ) : !armOpen ? (
           <>
-            <button className="mkarm-toggle" onClick={() => { setArmOpen(true); loadPreview(perSide); }}>
-              Enable arming…
+            <button className="ex-btn is-gold" data-maker-arm-open onClick={() => { setArmOpen(true); loadPreview(perSide); }}>
+              ARMA IL BOT…
             </button>
             <p className="mkarm-note">Step 1 of 2 — a deliberate reveal, so a stray tap cannot arm.</p>
           </>
@@ -598,7 +518,7 @@ export default function MakerArmingPanel() {
             <div className="mkarm-inrow">
               <span>Size per side (USD):</span>
               <input
-                className="mkarm-input" type="number" inputMode="decimal" placeholder="e.g. 200"
+                className="ex-input mkarm-w140" type="number" inputMode="decimal" placeholder="e.g. 200"
                 value={perSide}
                 onChange={(e) => { setPerSide(e.target.value); loadPreview(e.target.value); }}
               />
@@ -606,34 +526,42 @@ export default function MakerArmingPanel() {
 
             {/* What you're about to arm — every number real or "—"; blocked if unreadable. */}
             {preview && (
-              <div className="mkarm-ptbl">
-                <div className="mkarm-prow mkarm-phead"><span>Market</span><span>Bid</span><span>Ask</span><span>Size</span></div>
-                {preview.markets.map((m) => (
-                  <div key={m.marketId} className="mkarm-prow">
-                    <span className="mkarm-clabel">{m.title || m.marketId.slice(0, 10)}</span>
-                    <span className="mkarm-num">{price(m.bid)}</span>
-                    <span className="mkarm-num">{price(m.ask)}</span>
-                    <span className="mkarm-num">{money(m.sizePerSideUsd)}</span>
-                  </div>
-                ))}
-                <div className="mkarm-res">
-                  Total collateral <b className="mkarm-num">{money(preview.totalCollateralUsd)}</b> ·
-                  TTL 4h (default) {!preview.readable && <span className="mkarm-warn"> · {dash(preview.blockedReason)} — arming blocked</span>}
+              <>
+                <div className="ex-panel ex-rows mkarm-mt">
+                  {preview.markets.map((m) => (
+                    <div key={m.marketId} className="ex-row">
+                      <div className="ex-row-main">
+                        <div className="ex-row-t">{m.title || m.marketId.slice(0, 10)}</div>
+                        <div className="ex-row-s">{m.marketId.slice(0, 18)}…</div>
+                      </div>
+                      <div className="ex-row-nums">
+                        <span className="ex-num"><span className="ex-num-k">bid</span><span className="ex-num-v">{price(m.bid)}</span></span>
+                        <span className="ex-num"><span className="ex-num-k">ask</span><span className="ex-num-v">{price(m.ask)}</span></span>
+                        <span className="ex-num"><span className="ex-num-k">size/lato</span><span className="ex-num-v">{money(m.sizePerSideUsd)}</span></span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              </div>
+                <div className="mkarm-note">
+                  Total collateral <b className="ex-n">{money(preview.totalCollateralUsd)}</b> · TTL 4h (default)
+                </div>
+                {!preview.readable && (
+                  <p className="ex-why">{dash(preview.blockedReason)} — arming blocked.</p>
+                )}
+              </>
             )}
 
             <div className="mkarm-inrow">
               <span>Step 2 — type the total collateral to confirm{preview?.totalCollateralUsd != null ? ` (${money(preview.totalCollateralUsd)})` : ''}:</span>
               <input
-                className="mkarm-input" type="number" inputMode="decimal" placeholder="type total"
+                className="ex-input mkarm-w140" type="number" inputMode="decimal" placeholder="type total"
                 value={typedTotal} onChange={(e) => setTypedTotal(e.target.value)}
               />
             </div>
 
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 6 }}>
+            <div className="mkarm-btns">
               <button
-                className="mkarm-armbtn"
+                className="ex-btn is-gold"
                 onClick={doArm}
                 disabled={
                   arming ||
@@ -645,7 +573,7 @@ export default function MakerArmingPanel() {
               >
                 {arming ? 'ARMING…' : 'ARM'}
               </button>
-              <button className="mkarm-toggle" onClick={() => { setArmOpen(false); setTypedTotal(''); }}>Cancel</button>
+              <button className="ex-btn" onClick={() => { setArmOpen(false); setTypedTotal(''); }}>Cancel</button>
             </div>
             <p className="mkarm-note">
               {preflight?.go !== true
@@ -655,8 +583,68 @@ export default function MakerArmingPanel() {
           </>
         )}
 
-        {armMsg && <div className="mkarm-res mkarm-warn">{dash(armMsg)}</div>}
+        {armMsg && <div className="ex-banner is-warn mkarm-mt">{dash(armMsg)}</div>}
+      </div>
+
+      <p className="mkarm-note">
+        One tap disarms the maker (durable global kill) and cancels every resting order — entirely on the
+        Edgeradar server, no browser call to polymarket.com. Safe even when the maker is already off.
+      </p>
+
+      {/* ── THE FIXED ACTION BAR ─────────────────────────────────────────────────────────────────────
+          KILL is always enabled: stopping must never be blocked. RIPRISTINA is enabled ONLY while the
+          kill is actually on — with the kill already clear there is nothing to restore, and a live green
+          button would invite a pointless round of venue calls. Both stay reachable at any scroll depth. */}
+      <div className="ex-actionbar-spacer" aria-hidden="true" />
+      <div className="ex-actionbar" data-maker-actionbar>
+        <button
+          className="ex-btn is-green"
+          data-maker-reset
+          onClick={doReset}
+          disabled={resetting || !killOn}
+          title={killOn
+            ? 'Cancella eventuali residui, riconcilia l\'esposizione contro il venue, disattiva il kill-switch e verifica che TUTTO sia a zero'
+            : 'Disponibile solo con il kill-switch attivo: adesso non c\'è nulla da ripristinare'}
+          aria-label="Ripristina: riarma e verifica che lo stato sia pulito"
+        >
+          {resetting ? 'VERIFICO…' : 'RIPRISTINA'}
+        </button>
+        <button
+          className="ex-btn is-danger"
+          data-maker-kill
+          onClick={doKill}
+          disabled={killing}
+          aria-label="Kill the maker and cancel all resting orders now"
+        >
+          {killing ? 'KILLING…' : 'KILL — DISARM & CANCEL ALL'}
+        </button>
       </div>
     </div>
   );
 }
+
+// NOTE: keep this stylesheet free of the characters React escapes in text nodes — quotes, angle brackets,
+// ampersands. As the child of a style element they are serialised escaped on the server and raw on the
+// client, which is a hydration mismatch that takes the whole root down to client rendering.
+const CSS = `
+.mkarm-root { max-width: 1080px; margin: 0 auto; padding: 12px 14px 4px; }
+.mkarm-hrow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.mkarm-title { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--ex-txt-2); }
+.mkarm-detail { font-size: 12px; color: var(--ex-txt-2); line-height: 1.5; margin: 6px 0 12px;
+  overflow-wrap: anywhere; }
+.mkarm-mt { margin-top: 12px; }
+.mkarm-pad { padding: 12px; }
+.mkarm-strong { font-weight: 700; font-size: 13px; line-height: 1.4; }
+.mkarm-note { font-size: 11px; color: var(--ex-txt-3); line-height: 1.5; margin: 8px 0 0; overflow-wrap: anywhere; }
+.mkarm-res { font-size: 12.5px; color: var(--ex-txt-2); line-height: 1.6; margin-top: 12px; overflow-wrap: anywhere; }
+.mkarm-sec { margin-top: 18px; border-top: 1px solid var(--ex-line); padding-top: 4px; }
+.mkarm-inline { display: flex; gap: 8px; align-items: center; }
+.mkarm-btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.mkarm-inrow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 12px 0 0;
+  font-size: 12.5px; color: var(--ex-txt-2); }
+.mkarm-w140 { width: 140px; }
+.mkarm-step { display: flex; gap: 8px; align-items: baseline; padding: 3px 0; font-size: 12.5px; line-height: 1.45; }
+.mkarm-evi { color: var(--ex-txt-3); font-family: var(--ex-mono); font-size: 10.5px;
+  white-space: pre-wrap; word-break: break-word; margin: 2px 0 0 20px; }
+`;
