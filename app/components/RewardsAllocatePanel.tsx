@@ -181,6 +181,8 @@ type SearchRow = {
 type SearchResp = {
   ok: boolean; error: string | null; query: string; count: number; markets: SearchRow[];
   withRewards: number; withoutRewards: number; minMinutesToClose: number; globalAutoRepriceEnabled: boolean;
+  /** Quanti la ricerca ha tolto perché non operabili — dichiarato, mai silenzioso. */
+  notTradableDropped?: number;
 };
 type EnableResp = {
   ok: boolean; preview: boolean; action: string; marketId: string; error?: string; gate?: string;
@@ -722,7 +724,8 @@ export default function RewardsAllocatePanel({ initialQuery }: { initialQuery?: 
           <>
             <div className="alloc-sub" style={{ marginTop: 10 }} data-alloc-search-counts>
               <b>{search.count}</b> mercati · <b>{search.withRewards}</b> con reward · <b>{search.withoutRewards}</b> senza reward
-              {' '}(mostrati tutti, nessun filtro) · soglia di non-piazzamento: <b>{search.minMinutesToClose} min</b> alla chiusura
+              {' '}(nessun filtro sui reward){(search.notTradableDropped ?? 0) > 0 && <> · <b>{search.notTradableDropped}</b> non operabili nascosti (risolti, ritirati, scaduti)</>}
+              {' '}· soglia di non-piazzamento: <b>{search.minMinutesToClose} min</b> alla chiusura
               {!search.globalAutoRepriceEnabled && <> · <b className="oob">master auto-riprezzo SPENTO</b>: un mercato aggiunto resta opted-in ma non entra in lista</>}
             </div>
             <div className="alloc-tablewrap" style={{ marginTop: 8 }}>

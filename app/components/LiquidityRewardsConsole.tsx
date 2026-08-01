@@ -151,6 +151,7 @@ interface PositionMarket {
  */
 interface VenueSearchRow {
   marketId: string; question: string | null; slug: string | null;
+  tradable?: boolean; notTradableReason?: string | null;
   rewardsDailyRate: number | null; hasRewards: boolean; rewardLabel: string;
   spreadCents: number | null; tick: number | null; rewardsMaxSpreadCents: number | null;
   minutesToClose: number | null; tooCloseToClose: boolean;
@@ -161,6 +162,8 @@ interface VenueSearchRow {
 interface VenueSearchResp {
   ok: boolean; error: string | null; query: string; count: number;
   markets: VenueSearchRow[]; withRewards: number; withoutRewards: number;
+  /** Quanti la ricerca ha tolto perché non operabili (risolti, ritirati, scaduti, senza ordini). */
+  notTradableDropped?: number;
 }
 
 interface Positions {
@@ -598,7 +601,11 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
               role="tab"
               aria-selected={tab === t.key}
               className={`ex-tab ${tab === t.key ? 'is-on' : ''}`}
-              onClick={() => setTab(t.key)}
+              // Il prefill vale per LA navigazione che lo ha impostato, non per sempre. Senza questo
+              // azzeramento, riaprire «Alloca» dalla barra delle tab — settimane dopo, o dopo aver
+              // svuotato il campo a mano — reimponeva il vecchio termine e rilanciava quella ricerca,
+              // sovrascrivendo quello che l'operatore stava facendo. Verificato: succedeva davvero.
+              onClick={() => { setAllocPrefill(null); setTab(t.key); }}
               data-lrc-tab={t.key}
             >
               <span className="lrc-tab-long">{t.label}</span>
@@ -1041,6 +1048,7 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
 
           <VenueResults
             q={q} busy={venueBusy} err={venueErr} rows={venueOnly}
+            dropped={venue?.notTradableDropped ?? 0}
             anyFilterOn={anyFilterOn} sortByPool={sortByPool}
             onOpenInAlloca={(term) => { setAllocPrefill(term); setTab('alloca'); }}
           />
@@ -1343,8 +1351,8 @@ function Freshness({ items }: { items: Array<{ k: string; ageSec: number | null;
  * Quindi restano SEMPRE visibili, in un gruppo loro, e l'intestazione dice a voce alta che i chip qui
  * sopra non li toccano. Chi cerca un nome lo trova, filtri accesi o spenti.
  */
-function VenueResults({ q, busy, err, rows, anyFilterOn, sortByPool, onOpenInAlloca }: {
-  q: string; busy: boolean; err: string | null; rows: VenueSearchRow[];
+function VenueResults({ q, busy, err, rows, dropped, anyFilterOn, sortByPool, onOpenInAlloca }: {
+  q: string; busy: boolean; err: string | null; rows: VenueSearchRow[]; dropped: number;
   anyFilterOn: boolean; sortByPool: boolean;
   onOpenInAlloca: (term: string) => void;
 }) {
@@ -1356,6 +1364,8 @@ function VenueResults({ q, busy, err, rows, anyFilterOn, sortByPool, onOpenInAll
         <span className="ex-sech-t">Fuori dal board reward</span>
         <span className="lrc-fine">
           {busy ? 'ricerca sul venue…' : `${rows.length} risultat${rows.length === 1 ? 'o' : 'i'}`}
+          {/* Una lista che si accorcia in silenzio e' indistinguibile da una ricerca che trova meno. */}
+          {!busy && dropped > 0 && <> · <span className="ex-dim">{dropped} non operabili nascosti</span></>}
         </span>
       </div>
 
@@ -1394,6 +1404,13 @@ function VenueResults({ q, busy, err, rows, anyFilterOn, sortByPool, onOpenInAll
                     {m.closed && <span className="ex-badge is-bad">chiuso</span>}
                     {!m.acceptingOrders && <span className="ex-badge is-bad">non accetta ordini</span>}
                     {m.tooCloseToClose && <span className="ex-badge is-bad">sotto la soglia di chiusura</span>}
+                    {/* POCO TEMPO E UN RISCHIO DA MOSTRARE, non un motivo per nascondere: il mercato
+                        resta in lista e dice quanto gli manca. */}
+                    {!m.tooCloseToClose && m.minutesToClose != null && m.minutesToClose <= 60 && (
+                      <span className="ex-badge is-warn" data-lrc-expiring>
+                        scade fra {Math.max(0, Math.round(m.minutesToClose))}m
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div className="ex-row-nums">
