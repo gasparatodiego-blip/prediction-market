@@ -319,12 +319,12 @@ export default function MakerArmingPanel() {
              number is read as "nothing to worry about", which is the one thing it never means. ─────── */}
       <div className="ex-stats" data-maker-stats>
         <div className="ex-stat">
-          <span className="ex-stat-k">Auto-disarm fra</span>
+          <span className="ex-stat-k">Auto-disarm</span>
           <span className="ex-stat-v" style={{ color: countdown == null ? 'var(--ex-txt-2)' : countdown < 300 ? 'var(--ex-gold)' : 'var(--ex-green)' }} data-maker-ttl-countdown>
             {fmtDur(countdown)}
           </span>
           <span className="ex-stat-s">
-            {armStatus?.armed ? `scade ${dash(armStatus.expiresAt)}` : 'non armato — nessun timer in corso'}
+            {armStatus?.armed ? `scade ${dash(armStatus.expiresAt)}` : 'non armato'}
           </span>
         </div>
         <div className="ex-stat">
@@ -339,21 +339,21 @@ export default function MakerArmingPanel() {
         <div className="ex-stat">
           <span className="ex-stat-k">Esposizione aperta</span>
           <span className="ex-stat-v">{money(resetState?.diagnosis.openNotionalUsd)}</span>
-          <span className="ex-stat-s">vista dal gate cap</span>
+          <span className="ex-stat-s">dal gate cap</span>
           {resetState?.diagnosis.readable === false && (
-            <p className="ex-why">Non leggibile: il gate cap non ha potuto misurare l&apos;esposizione — non è «zero».</p>
+            <p className="ex-why">non leggibile — non è «zero»</p>
           )}
           {(resetState?.diagnosis.fromUnresolvedOrdersUsd ?? 0) > 0 && (
             <p className="ex-why">
               {money(resetState!.diagnosis.fromUnresolvedOrdersUsd)} da {resetState!.diagnosis.unknowns.length} ordini
-              inviati mai riconciliati, non da posizioni reali.
+              mai riconciliati, non da posizioni reali
             </p>
           )}
         </div>
         <div className="ex-stat">
           <span className="ex-stat-k">Cap collaterale</span>
           <span className="ex-stat-v">{money(armStatus?.collateralCapUsd)}</span>
-          <span className="ex-stat-s">tetto per arming</span>
+          <span className="ex-stat-s">tetto arming</span>
         </div>
       </div>
 
@@ -477,8 +477,8 @@ export default function MakerArmingPanel() {
         {preflight && !preflight.error && (
           <p className="mkarm-note">
             {preflight.go
-              ? 'All checks pass — arming would be permitted (still gated by MAKER_MODE + MAKER_FUNDING_APPROVED).'
-              : 'A red check blocks arming. There is no override — fix the red item and re-run. Read live; never cached.'}
+              ? '✓ Arming permesso — resta gated da MAKER_MODE + MAKER_FUNDING_APPROVED.'
+              : '⚠ Un check rosso blocca l\u2019arming. Nessun override: correggi e rilancia.'}
           </p>
         )}
       </div>
@@ -494,7 +494,7 @@ export default function MakerArmingPanel() {
 
         {armStatus?.armed ? (
           <div className="ex-panel mkarm-pad">
-            <div className="mkarm-strong ex-up">Maker is ARMED (record only — placement still needs MAKER_MODE + funding)</div>
+            <div className="mkarm-strong ex-up" title="Il record di arming da solo non basta: il piazzamento richiede anche MAKER_MODE e MAKER_FUNDING_APPROVED.">ARMATO — il piazzamento richiede anche MAKER_MODE + funding</div>
             <div className="ex-kvs mkarm-mt">
               <div className="ex-kv"><span className="ex-kv-k">Total size</span><span className="ex-kv-v">{money(armStatus.totalSizeUsd)}</span></div>
               <div className="ex-kv"><span className="ex-kv-k">TTL</span><span className="ex-kv-v">{armStatus.ttlSeconds != null ? `${Math.round(armStatus.ttlSeconds / 3600)}h` : '—'}</span></div>
@@ -511,7 +511,7 @@ export default function MakerArmingPanel() {
             <button className="ex-btn is-gold" data-maker-arm-open onClick={() => { setArmOpen(true); loadPreview(perSide); }}>
               ARMA IL BOT…
             </button>
-            <p className="mkarm-note">Step 1 of 2 — a deliberate reveal, so a stray tap cannot arm.</p>
+            <p className="mkarm-note">Passo 1 di 2 — un tocco per sbaglio non arma.</p>
           </>
         ) : (
           <>
@@ -577,8 +577,8 @@ export default function MakerArmingPanel() {
             </div>
             <p className="mkarm-note">
               {preflight?.go !== true
-                ? 'Run the preflight first — arming is refused while any check is red (server re-runs it fresh on ARM).'
-                : 'ARM enables only when the typed total matches exactly and the preflight is GO.'}
+                ? '⚠ Lancia prima il preflight — il server lo rilancia comunque su ARM.'
+                : 'ARM si abilita solo con il totale digitato esatto e preflight GO.'}
             </p>
           </>
         )}
@@ -586,9 +586,8 @@ export default function MakerArmingPanel() {
         {armMsg && <div className="ex-banner is-warn mkarm-mt">{dash(armMsg)}</div>}
       </div>
 
-      <p className="mkarm-note">
-        One tap disarms the maker (durable global kill) and cancels every resting order — entirely on the
-        Edgeradar server, no browser call to polymarket.com. Safe even when the maker is already off.
+      <p className="mkarm-note" title="Interamente sul server Edgeradar, nessuna chiamata dal browser a polymarket.com. Sicuro anche a maker gia spento.">
+        KILL = disarma (kill globale durevole) e cancella ogni ordine a riposo.
       </p>
 
       {/* ── THE FIXED ACTION BAR ─────────────────────────────────────────────────────────────────────

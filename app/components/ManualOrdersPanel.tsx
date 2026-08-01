@@ -423,7 +423,7 @@ export default function ManualOrdersPanel() {
       <style>{CSS}</style>
 
       <div className="mkman-hrow">
-        <span className="mkman-title">Ordini manuali · una mano sola su un mercato</span>
+        <span className="mkman-title">Ordini manuali</span>
         <span className={`mkman-badge ${cfg?.placement.sends ? 'mkman-badge-red' : 'mkman-badge-warn'}`} data-manual-placement>
           {cfg ? (cfg.placement.sends ? 'MANUAL_ORDER_PLACEMENT · SEND' : 'MANUAL_ORDER_PLACEMENT · DRY-RUN') : '—'}
         </span>
@@ -447,10 +447,10 @@ export default function ManualOrdersPanel() {
                 {dash(cfg.kill.reason)}
                 {cfg.kill.by ? ` · impostato da ${cfg.kill.by}` : ''}
                 {cfg.kill.at ? ` · ${new Date(cfg.kill.at).toISOString()}` : ''}
-                {' — il bottone «Piazza ordine» resta disabilitato finché è attivo. Le cancellazioni restano sempre possibili.'}
+                {' — «Piazza ordine» disabilitato. Le cancellazioni restano possibili.'}
               </>
             ) : (
-              'Il piazzamento è permesso dal kill-switch. Restano in vigore cap, venue-rules, gestione manuale e validateOrder.'
+              'Piazzamento permesso. Restano cap, venue-rules, gestione manuale, validateOrder.'
             )}
           </div>
         </div>
@@ -459,7 +459,7 @@ export default function ManualOrdersPanel() {
       {/* ── STATO: piazzamento manuale, motore automatico, isolamento ── */}
       <div className="mkman-sec" data-manual-status>
         <div className="mkman-sech">
-          <span className="mkman-sectitle">Stato · piazzamento e isolamento dal motore</span>
+          <span className="mkman-sectitle">Stato e isolamento</span>
           {cfg?.isolation && (
             <span className={`mkman-badge ${manualOn ? 'mkman-badge-ok' : 'mkman-badge-warn'}`}>
               {cfg.isolation.readable === false ? 'PROPRIETÀ NON LEGGIBILE' : manualOn ? 'GESTIONE MANUALE ATTIVA' : 'MERCATO DEL MOTORE'}
@@ -469,7 +469,7 @@ export default function ManualOrdersPanel() {
 
         <div className="mkman-grid">
           <div className="mkman-kv">
-            <span className="mkman-k">Piazzamento manuale</span>
+            <span className="mkman-k">Piazzamento</span>
             <span className="mkman-v">{cfg ? cfg.placement.mode : '—'}</span>
           </div>
           <div className="mkman-kv">
@@ -481,7 +481,7 @@ export default function ManualOrdersPanel() {
             <span className="mkman-v">{cfg?.engine.fresh ? `fresco (${age(cfg.engine.ageSec)})` : '—'}</span>
           </div>
           <div className="mkman-kv">
-            <span className="mkman-k">Il motore ha recepito</span>
+            <span className="mkman-k">Recepito</span>
             <span className="mkman-v">
               {cfg?.isolation?.engineAcknowledged === true ? <span className="mkman-ok">sì</span>
                 : cfg?.isolation?.engineAcknowledged === false ? <span className="mkman-warn">non ancora</span>
@@ -492,7 +492,7 @@ export default function ManualOrdersPanel() {
 
         <p className="mkman-note">{cfg ? cfg.placement.note : ''}</p>
         {cfg && !cfg.engine.fresh && (
-          <p className="mkman-note mkman-warn">Motore: {dash(cfg.engine.unknownReason)} — «il motore ha recepito» resta «—», perché non sapere è diverso da sapere di no.</p>
+          <p className="mkman-note mkman-warn" title="Non sapere e diverso da sapere di no: il campo resta a trattino invece di dire no.">⚠ Motore: {dash(cfg.engine.unknownReason)} — «ha recepito» resta «—».</p>
         )}
 
         {cfg?.isolation && (
@@ -513,10 +513,8 @@ export default function ManualOrdersPanel() {
               )}
             </div>
             <p className="mkman-note">
-              Prendere il mercato in gestione manuale ferma agent35 <b>solo qui</b>: dal ciclo successivo (~3s) non
-              piazza e non cancella più nulla su questo mercato, e ogni altro mercato resta invariato. Non tocca il
-              kill-switch globale, non arma niente e non disarma niente. Il KILL continua a cancellare tutto,
-              anche gli ordini manuali.
+              Ferma agent35 <b>solo su questo mercato</b> (dal ciclo dopo, ~3s). Non tocca il kill globale né
+              l&apos;arming. Il KILL cancella comunque tutto, anche gli ordini a mano.
             </p>
           </>
         )}
@@ -529,7 +527,7 @@ export default function ManualOrdersPanel() {
           that is supposed to be minding those orders is actually alive. */}
       <div className="mkman-sec" data-manual-autoreprice>
         <div className="mkman-sech">
-          <span className="mkman-sectitle">Auto-riprezzo · l&apos;ordine si muove col prezzo, non con l&apos;orologio</span>
+          <span className="mkman-sectitle">Auto-riprezzo</span>
           <span className={`mkman-badge ${!autoReadable ? 'mkman-badge-red' : autoOn ? 'mkman-badge-ok' : 'mkman-badge-warn'}`} data-manual-auto-badge>
             {!autoReadable ? 'CONFIG NON LEGGIBILE' : autoOn ? 'AUTO-RIPREZZO · ON' : 'AUTO-RIPREZZO · OFF'}
           </span>
@@ -537,8 +535,7 @@ export default function ManualOrdersPanel() {
 
         {ar && ar.readable === false && (
           <div className="mkman-banner mkman-banner-red">
-            Configurazione dell&apos;auto-riprezzo NON leggibile ({dash(ar.error)}) — l&apos;automatismo è trattato
-            come SPENTO e non tocca niente (fail closed). Gli ordini nuovi tornano alla scadenza fissa GTD.
+            ⚠ Config auto-riprezzo non leggibile ({dash(ar.error)}) — trattata come SPENTA, GTD fisso.
           </div>
         )}
 
@@ -552,11 +549,11 @@ export default function ManualOrdersPanel() {
             </span>
           </div>
           <div className="mkman-kv">
-            <span className="mkman-k">Interruttore globale</span>
+            <span className="mkman-k">Globale</span>
             <span className="mkman-v">{ar ? (ar.globalEnabled ? <span className="mkman-ok">ON</span> : 'OFF') : '—'}</span>
           </div>
           <div className="mkman-kv">
-            <span className="mkman-k">Scadenza dei nuovi ordini</span>
+            <span className="mkman-k">Scadenza nuovi</span>
             <span className="mkman-v" data-manual-expiry-mode>
               {expiryType === 'GTC' ? <span className="mkman-warn">GTC · nessuna scadenza</span>
                 : expiryType === 'GTD'
@@ -626,30 +623,15 @@ export default function ManualOrdersPanel() {
 
         {autoMsg && <div className={`mkman-res ${autoMsg.ok ? 'mkman-ok' : 'mkman-bad'}`}>{autoMsg.text}</div>}
 
-        <p className="mkman-note">
-          Con l&apos;auto-riprezzo <b>ON</b> un ordine manuale su questo mercato porta una scadenza <b>GTD di {winMin}
-          minuti</b> che il watcher <b>rinnova da solo</b> quando ne mancano {marginMin} — quindi il tempo non uccide
-          mai un ordine sano: <b>{renewalsPerHour}&nbsp;rinnovi l&apos;ora</b> in condizioni tranquille. In più, se il
-          mid si muove abbastanza da portarlo <b>fuori dalla banda premiante</b>, viene ripiazzato subito al prezzo
-          valido più vicino, stessa size e stesso lato. Se il mid non si muove così tanto, l&apos;ordine <b>non viene
-          toccato</b> se non per il rinnovo. Con l&apos;auto-riprezzo <b>OFF</b> torna il comportamento di prima:
-          scadenza fissa GTD di 180s e nessun rinnovo.
+        <p className="mkman-note" title="Con ON: scadenza GTD rinnovata dal watcher a marginMin dalla fine, e ripiazzamento immediato al prezzo valido piu vicino se il mid porta l ordine fuori banda. Se il mid non si muove abbastanza, l ordine non viene toccato se non per il rinnovo. Con OFF: scadenza fissa GTD 180s, nessun rinnovo.">
+          <b>ON</b> · GTD {winMin} min, rinnovo a {marginMin} ({renewalsPerHour}/ora) + ripiazzo se esce di banda.
+          {' '}<b>OFF</b> · GTD 180s fisso, nessun rinnovo.
         </p>
-        <p className="mkman-note">
-          <b>La scadenza È il dead-man&apos;s switch, e lo fa rispettare l&apos;exchange.</b> Se questa macchina si
-          ferma — crash, reboot, rete giù — nessuno rinnova più nulla e il venue ritira da solo ogni ordine gestito
-          <b> entro {winMin} minuti</b> (al minimo {marginMin}, se si ferma appena prima di un rinnovo). Non serve
-          nessun secondo sistema di sorveglianza esterno perché questo accada: la scadenza è firmata dentro
-          l&apos;ordine. Per ogni riga qui sotto trovi i due margini reali: quando scatterà il prossimo rinnovo, e
-          quanto sopravviverebbe l&apos;ordine se il server si fermasse adesso.
+        <p className="mkman-note" title="La scadenza e firmata dentro l ordine: se questa macchina si ferma (crash, reboot, rete giu) nessuno rinnova e il venue ritira da solo ogni ordine gestito entro winMin minuti, al minimo marginMin se si ferma appena prima di un rinnovo. Non serve nessun sistema di sorveglianza esterno.">
+          ⏱ La scadenza <b>è</b> il dead-man&apos;s switch, e la fa rispettare l&apos;exchange — non noi.
         </p>
-        <p className="mkman-note mkman-warn">
-          Se la rete verso il venue cade mentre il processo resta vivo, nulla viene rinnovato (e la scadenza fa il
-          suo lavoro); alla riconnessione, se il blackout è durato più di 3 minuti, gli ordini a mano su questo
-          mercato vengono <b>cancellati</b> invece di essere rinnovati su uno stato che non abbiamo osservato.
-          Ogni riprezzo e ogni rinnovo automatico passa dagli stessi gate di un ordine a mano (kill-switch, cap,
-          gestione manuale, venue-rules, validateOrder) ed è tracciato nell&apos;audit con sorgente
-          <b> auto-reprice-band-exit</b>, diversa sia da <b>manual-ui</b> sia da <b>agent35</b>.
+        <p className="mkman-note mkman-warn" title="Se la rete verso il venue cade mentre il processo resta vivo nulla viene rinnovato e la scadenza fa il suo lavoro. Ogni riprezzo e ogni rinnovo passa dagli stessi gate di un ordine a mano (kill-switch, cap, gestione manuale, venue-rules, validateOrder) ed e tracciato nell audit con sorgente auto-reprice-band-exit, diversa da manual-ui e da agent35.">
+          ⚠ Blackout di rete oltre 3 min → gli ordini vengono <b>cancellati</b>, non rinnovati alla cieca.
         </p>
       </div>
 
@@ -658,8 +640,8 @@ export default function ManualOrdersPanel() {
           qui: e' il max_incentive_spread del venue, letto dal feed. E' il tetto, non una preferenza. */}
       <div className="mkman-sec" data-manual-offsets>
         <div className="mkman-sech">
-          <span className="mkman-sectitle">Distanza dal mid · soglia · banda</span>
-          <span className="mkman-note">l&apos;ordine insegue il mid mantenendo la distanza, non il prezzo</span>
+          <span className="mkman-sectitle">Distanza · soglia · banda</span>
+          <span className="mkman-note">insegue il mid, non il prezzo</span>
         </div>
 
         {!offsets ? <div className="mkman-note">Caricamento…</div>
@@ -715,14 +697,9 @@ export default function ManualOrdersPanel() {
 
         {offsetMsg && <div className={`mkman-res ${offsetMsg.ok ? 'mkman-ok' : 'mkman-bad'}`} data-manual-offset-msg>{offsetMsg.text}</div>}
 
-        <p className="mkman-note">
-          Un ordine <b>insegue il mid mantenendo la distanza</b>: con mid 10 e ordini a 7 e 13, se il mid va
-          a 11 gli ordini diventano 8 e 14. La <b>distanza</b> è l&apos;invariante, non il prezzo. Il default
-          è la distanza a cui l&apos;ordine è stato piazzato — «osservata» finché non la imposti tu.
-          La <b>soglia minima</b> evita di riprezzare sul rumore: sotto un tick il nuovo prezzo coinciderebbe
-          con quello attuale dopo l&apos;arrotondamento, quindi sarebbe churn puro.
-          La <b>banda</b> è il tetto del venue e non è modificabile da qui: se la distanza target la
-          eccedesse, il sistema piazza al bordo premiante e lo dichiara.
+        <p className="mkman-note" title="Con mid 10 e ordini a 7 e 13, se il mid va a 11 gli ordini diventano 8 e 14: la distanza e l invariante, non il prezzo. Il default e la distanza a cui l ordine e stato piazzato, osservata finche non la imposti tu. La soglia minima evita il churn: sotto un tick il nuovo prezzo coinciderebbe col vecchio dopo l arrotondamento. La banda e il tetto del venue, non modificabile: se la distanza target la eccede si piazza al bordo premiante e lo si dichiara.">
+          L&apos;ordine insegue il mid tenendo la <b>distanza</b>, non il prezzo. La <b>banda</b> è il tetto del
+          venue, non modificabile da qui.
         </p>
       </div>
 
@@ -732,7 +709,7 @@ export default function ManualOrdersPanel() {
           dell'auto-riprezzo proprio per non accenderlo per sbaglio cercando l'altro. */}
       <div className="mkman-sec" data-manual-autoclose>
         <div className="mkman-sech">
-          <span className="mkman-sectitle">Chiusura automatica · l&apos;uscita va sul book da sola</span>
+          <span className="mkman-sectitle">Chiusura automatica</span>
           <span className={`mkman-badge ${ac?.readable === false ? 'mkman-badge-red' : closeOn ? 'mkman-badge-ok' : 'mkman-badge-warn'}`} data-manual-close-badge>
             {ac?.readable === false ? 'CONFIG NON LEGGIBILE' : closeOn ? 'CHIUSURA AUTOMATICA · ON' : 'CHIUSURA AUTOMATICA · OFF'}
           </span>
@@ -740,8 +717,7 @@ export default function ManualOrdersPanel() {
 
         {ac && ac.readable === false && (
           <div className="mkman-banner mkman-banner-red">
-            Configurazione della chiusura automatica NON leggibile ({dash(ac.error)}) — trattata come SPENTA
-            (fail closed): nessuna uscita viene piazzata.
+            ⚠ Config chiusura automatica non leggibile ({dash(ac.error)}) — trattata come SPENTA.
           </div>
         )}
 
@@ -755,15 +731,15 @@ export default function ManualOrdersPanel() {
             </span>
           </div>
           <div className="mkman-kv">
-            <span className="mkman-k">Interruttore generale</span>
+            <span className="mkman-k">Generale</span>
             <span className="mkman-v">{ac ? (ac.globalEnabled ? <span className="mkman-ok">ON</span> : 'OFF') : '—'}</span>
           </div>
           <div className="mkman-kv">
-            <span className="mkman-k">Profitto obiettivo</span>
+            <span className="mkman-k">Obiettivo</span>
             <span className="mkman-v" data-manual-close-target>+{ac?.profitCents ?? 1}¢ / share</span>
           </div>
           <div className="mkman-kv">
-            <span className="mkman-k">Prezzo di uscita</span>
+            <span className="mkman-k">Uscita</span>
             <span className="mkman-v">
               {rules?.tick != null && ac ? `carico + ${ac.profitCents}¢ → al tick ${rules.tick}` : '—'}
             </span>
@@ -796,27 +772,12 @@ export default function ManualOrdersPanel() {
 
         {closeMsg && <div className={`mkman-res ${closeMsg.ok ? 'mkman-ok' : 'mkman-bad'}`}>{closeMsg.text}</div>}
 
-        <p className="mkman-note">
-          Quando un ordine a mano viene <b>eseguito</b>, la posizione che ne nasce non resta esposta: appena
-          il venue la conferma, viene piazzata una <b>VENDITA dello stesso token</b> a{' '}
-          <b>carico + {ac?.profitCents ?? 1}¢</b>, arrotondato <b>in su</b> al tick del mercato — quindi il
-          profitto reale non è mai inferiore al bersaglio. {ac?.note ? '' : ''}
-          Su Polymarket si chiude <b>vendendo il token che si possiede</b>, non comprando il lato opposto:
-          comprare l&apos;altro esito costruirebbe un set completo da $1 alla risoluzione, cioè impegnerebbe
-          <b> più</b> capitale invece di liberarlo.
+        <p className="mkman-note" title="Appena il venue conferma il fill viene piazzata una VENDITA dello stesso token a carico + N centesimi, arrotondato in su al tick, quindi il profitto reale non e mai sotto il bersaglio. Su Polymarket si chiude vendendo il token posseduto, non comprando il lato opposto: quello costruirebbe un set completo da $1 alla risoluzione e impegnerebbe piu capitale invece di liberarlo. La size venduta e quella che il venue dice di possedere, mai dedotta.">
+          Su fill, <b>vendita dello stesso token</b> a carico +{ac?.profitCents ?? 1}¢, arrotondata in su al tick.
         </p>
-        <p className="mkman-note">
-          La size venduta è quella che il <b>venue</b> dice di possedere, mai dedotta — una vendita allo
-          scoperto non è esprimibile su questo percorso. L&apos;uscita passa dagli <b>stessi gate</b> di ogni
-          altro ordine (kill-switch, cap, gestione manuale, venue-rules, validateOrder), compare nella
-          tabella qui sotto come riga <b>SELL</b> con sorgente <b>auto-close-on-fill</b>, e viene gestita dal
-          watcher come le altre — con una differenza: <b>non viene mai abbassata</b>. Se la banda scende
-          sotto l&apos;uscita, resta dov&apos;è: smette di maturare premi mentre aspetta, ma il guadagno per
-          cui esiste è protetto.
-        </p>
-        <p className="mkman-note mkman-warn">
-          Con l&apos;interruttore <b>OFF</b> (il default) non cambia nulla rispetto a oggi: una posizione
-          riempita resta aperta finché non intervieni tu.
+        <p className="mkman-note" title="L uscita passa dagli stessi gate di ogni altro ordine (kill-switch, cap, gestione manuale, venue-rules, validateOrder), compare qui sotto come riga SELL con sorgente auto-close-on-fill, ed e gestita dal watcher come le altre con una differenza: non viene mai abbassata. Se la banda scende sotto l uscita resta dov e, smette di maturare premi mentre aspetta ma il guadagno e protetto.">
+          Riga <b>SELL</b> qui sotto, stessi gate, mai riprezzata al ribasso. Con <b>OFF</b> (default) la
+          posizione riempita resta aperta.
         </p>
       </div>
 
@@ -838,11 +799,11 @@ export default function ManualOrdersPanel() {
             <div className="mkman-mkt-t">{dash(rules.title)}</div>
             <div className="mkman-mkt-id">{dash(rules.marketId)}</div>
             <div className="mkman-grid" style={{ marginTop: 10 }}>
-              <div className="mkman-kv"><span className="mkman-k">Mid di scoring ({book.toUpperCase()})</span><span className="mkman-v">{px(scoringMid)}</span></div>
-              <div className="mkman-kv"><span className="mkman-k">Banda premio</span><span className="mkman-v">±{rules.bandRadiusCents != null ? rules.bandRadiusCents.toFixed(2) : '—'}¢</span></div>
+              <div className="mkman-kv"><span className="mkman-k">Mid ({book.toUpperCase()})</span><span className="mkman-v">{px(scoringMid)}</span></div>
+              <div className="mkman-kv"><span className="mkman-k">Banda</span><span className="mkman-v">±{rules.bandRadiusCents != null ? rules.bandRadiusCents.toFixed(2) : '—'}¢</span></div>
               <div className="mkman-kv"><span className="mkman-k">Tick</span><span className="mkman-v">{dash(rules.tick)}</span></div>
-              <div className="mkman-kv"><span className="mkman-k">Size minima premiata</span><span className="mkman-v">{dash(rules.minSize)}</span></div>
-              <div className="mkman-kv"><span className="mkman-k">Best bid / ask (YES)</span><span className="mkman-v">{px(rules.bestBid)} / {px(rules.bestAsk)}</span></div>
+              <div className="mkman-kv"><span className="mkman-k">Size minima</span><span className="mkman-v">{dash(rules.minSize)}</span></div>
+              <div className="mkman-kv"><span className="mkman-k">Bid / ask</span><span className="mkman-v">{px(rules.bestBid)} / {px(rules.bestAsk)}</span></div>
               <div className="mkman-kv"><span className="mkman-k">negRisk</span><span className="mkman-v">{rules.negRisk === null ? '—' : String(rules.negRisk)}</span></div>
             </div>
             {rules.midSource !== 'live-book' && (
@@ -860,8 +821,7 @@ export default function ManualOrdersPanel() {
 
         {rules && !rules.readable && (
           <div className="mkman-banner mkman-banner-red">
-            Regole di venue non leggibili (mancano: {rules.missing.join(', ')}) — nessun ordine è giudicabile su
-            questo mercato, quindi tutti sono rifiutati. Mai una banda o un tick indovinati.
+            ⚠ Regole di venue non leggibili ({rules.missing.join(', ')}) — ogni ordine è rifiutato.
           </div>
         )}
 
@@ -877,9 +837,8 @@ export default function ManualOrdersPanel() {
               onClick={() => setBook('no')} data-manual-book-no
             >NO</button>
           </div>
-          <span className="mkman-note">
-            Acquisto sul book scelto. Un ordine NO a q è un ordine YES a 1−q, quindi la banda è misurata nel
-            book del lato selezionato — lo stesso specchio che usa il motore.
+          <span className="mkman-note" title="Un ordine NO a q e un ordine YES a 1-q: la banda e misurata nel book del lato selezionato, lo stesso specchio che usa il motore.">
+            Acquisto sul book scelto.
           </span>
         </div>
 
@@ -982,8 +941,7 @@ export default function ManualOrdersPanel() {
         )}
         {verdict?.valid && !overCap && (
           <div className="mkman-res mkman-ok" data-manual-verdict>
-            Il guard condiviso (lib/maker/venue-rules) accetta questa quota: sul tick, dentro la banda, sopra la
-            size minima. Il server la rivaliderà comunque prima di qualsiasi invio.
+            ✓ Sul tick, in banda, sopra la size minima. Il server rivalida comunque prima dell&apos;invio.
           </div>
         )}
         {overCap && (
@@ -1038,13 +996,12 @@ export default function ManualOrdersPanel() {
 
         {orders && orders.ok === false && (
           <div className="mkman-res mkman-bad">
-            Lettura del venue FALLITA: {dash(orders.error)} — non sappiamo cosa ci sia a riposo. Questa non è una lista vuota.
+            ⚠ Lettura del venue fallita: {dash(orders.error)} — non è una lista vuota.
           </div>
         )}
         {orders?.simulated && orders.ok !== false && (
           <div className="mkman-res mkman-warn">
-            Nessuna credenziale disponibile: il venue non è stato interrogato. «0 ordini» qui significa «non
-            abbiamo letto», non «non hai ordini».
+            ⚠ Venue non interrogato: «0 ordini» = «non abbiamo letto», non «non hai ordini».
           </div>
         )}
 
@@ -1174,12 +1131,9 @@ export default function ManualOrdersPanel() {
           <div className={`mkman-res ${rowMsg.ok ? 'mkman-ok' : 'mkman-warn'}`}>{rowMsg.text}</div>
         )}
 
-        <p className="mkman-note">
-          «Riprezza» è una sequenza <b>cancella → ripiazza</b> eseguita interamente sul server in una sola chiamata:
-          il CLOB di Polymarket non espone nessun endpoint di modifica ordine. Il nuovo ordine viene validato
-          <b> prima</b> di cancellare il vecchio, e fra i due passi esiste una finestra reale senza ordine a riposo.
-          Le cancellazioni passano dall&apos;adapter cancel-only, che non possiede la chiave di firma e non può
-          strutturalmente piazzare nulla.
+        <p className="mkman-note" title="Il CLOB di Polymarket non espone nessun endpoint di modifica ordine. Il nuovo ordine viene validato prima di cancellare il vecchio. Le cancellazioni passano dall adapter cancel-only, che non possiede la chiave di firma e non puo strutturalmente piazzare nulla.">
+          «Riprezza» = cancella → ripiazza sul server. ⚠ Fra i due passi c&apos;è una finestra reale senza
+          ordine a riposo.
         </p>
       </div>
     </div>
