@@ -463,6 +463,10 @@ export default function RewardsAllocatePanel({ initialQuery }: { initialQuery?: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialQuery]);
 
+  // Si arriva qui da un conditionId quando il pulsante dei Mercati ha scelto un mercato preciso. La
+  // casella mostra l'id perche' e' quello che rende la ricerca esatta — la riga sotto porta il nome.
+  const arrivedById = /^0x[0-9a-fA-F]{64}$/.test((initialQuery ?? '').trim());
+
   // ── OTTIMIZZA AUTOMATICAMENTE ────────────────────────────────────────────────────────────────────
   // Rilancia lo STESSO ottimizzatore sullo stesso universo (che e' sempre stato tutto il board reward,
   // non la lista abilitata a mano) con in piu' il test dell'orizzonte di risoluzione, e chiede il
@@ -718,6 +722,12 @@ export default function RewardsAllocatePanel({ initialQuery }: { initialQuery?: 
           </label>
         </div>
 
+        {arrivedById && search && search.markets.length > 0 && (
+          <div className="alloc-note" style={{ marginTop: 10 }} data-alloc-arrived-by-id>
+            Arrivato dalla tab <b>Mercati</b> su un mercato preciso: la ricerca è per <b>conditionId</b>,
+            quindi qui sotto c&apos;è <b>una riga sola</b> — quella del mercato che hai toccato.
+          </div>
+        )}
         {searchErr && <div className="alloc-note alloc-warn" style={{ marginTop: 10 }} data-alloc-search-error>Ricerca fallita: {searchErr}</div>}
 
         {search && search.markets.length > 0 && (

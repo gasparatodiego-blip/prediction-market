@@ -1436,13 +1436,24 @@ function VenueResults({ q, busy, err, rows, dropped, anyFilterOn, sortByPool, on
                 </div>
                 {/* NON abilita da qui: porta al flusso a due passi, che vive in Ottimizza e resta in un
                     posto solo. Un secondo percorso di scrittura verso una config auditata sarebbe due
-                    copie da tenere allineate. Questo e' routing, non una nuova autorizzazione. */}
+                    copie da tenere allineate. Questo e' routing, non una nuova autorizzazione.
+
+                    SI PASSA IL conditionId, NON IL TITOLO — e la differenza non e' cosmetica.
+                    Con il titolo la destinazione riceveva una ricerca TESTUALE, quindi una LISTA: e da
+                    quando i risultati sono ordinati per scadenza piu' vicina, il mercato da cui si
+                    arrivava non era quasi mai il primo. Misurato: partendo dalla card «3:20PM-3:25PM»
+                    la tabella mostrava «2:15PM-2:30PM» in riga 1 e quella giusta in riga 4 — e chi
+                    premeva «1 · Anteprima» sulla prima riga, che e' la cosa naturale da fare,
+                    abilitava un mercato che non aveva scelto. E' successo davvero, alle 18:09:37.
+                    Un conditionId invece e' una chiave esatta: searchMarkets lo riconosce e restituisce
+                    UNA riga, quella. Non c'e' piu' una prima riga sbagliata da premere. */}
                 <div className="lrc-venue-act">
                   <button
                     className="ex-btn is-sm"
                     data-lrc-venue-open
-                    onClick={() => onOpenInAlloca(m.question ?? m.marketId)}
-                    title="Apre «Ottimizza capitale» con questo mercato gia cercato. Non abilita nulla: i due passi restano da premere."
+                    data-lrc-venue-open-id={m.marketId}
+                    onClick={() => onOpenInAlloca(m.marketId)}
+                    title="Apre «Ottimizza capitale» su QUESTO mercato, cercato per conditionId: una riga sola, nessuna ambiguita. Non abilita nulla: i due passi restano da premere."
                   >
                     Aggiungi in Ottimizza →
                   </button>
