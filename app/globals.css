@@ -2156,3 +2156,74 @@ h1, h2, h3 {
 .rewards.exch .rw-brk-k {
   text-transform: uppercase; letter-spacing: .05em; color: var(--ex-txt-3);
 }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   EXCHANGE — SHORT-FORM PRIMITIVES
+   ──────────────────────────────────────────────────────────────────────────────
+   The board had grown paragraphs where a line would do. These four primitives are
+   what replaces them, and the rule behind all of them is the same: SAY IT ONCE.
+   A figure that is already coloured does not also need a pill repeating the
+   colour in words; a caveat does not need two sentences when it needs six words
+   and a title attribute for the rest.
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+/* ── ONE-LINE NOTICE. Icon, six words, and the long version on hover/focus via
+      title. Replaces the multi-sentence caveat paragraphs. ─────────────────── */
+.exch .ex-flag {
+  display: flex; align-items: baseline; gap: 5px;
+  margin: 6px 0 0; font-size: 11px; line-height: 1.45;
+  color: var(--ex-gold); overflow-wrap: anywhere;
+}
+.exch .ex-flag.is-bad { color: var(--ex-red); }
+.exch .ex-flag.is-dim { color: var(--ex-txt-3); }
+.exch .ex-flag-i { flex: 0 0 auto; font-size: 10px; line-height: 1.6; }
+
+/* ── THE THREE HEADLINE FIGURES. Monospaced, semantic colour, minimal labels. ── */
+.exch .ex-big {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px;
+  background: var(--ex-line);
+  border-top: 1px solid var(--ex-line); border-bottom: 1px solid var(--ex-line);
+}
+.exch .ex-big-c { background: var(--ex-panel); padding: 8px 10px; min-width: 0; }
+.exch .ex-big-k {
+  display: block; font-size: 9px; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--ex-txt-3); white-space: nowrap;
+}
+.exch .ex-big-v {
+  display: block; margin-top: 2px; font-family: var(--ex-mono); font-variant-numeric: tabular-nums;
+  font-size: 17px; font-weight: 700; line-height: 1.15; overflow-wrap: anywhere;
+}
+
+/* ── THE BAND, AS A HAIRLINE. Range endpoints sit at the sides — once, not once
+      above and once below. The track spans whatever the band, the touch and the
+      mid actually cover; the band is the lit segment, bid/ask/mid are ticks. ── */
+.exch .ex-bandbar {
+  display: flex; align-items: center; gap: 8px; margin: 9px 0 0;
+  font-family: var(--ex-mono); font-variant-numeric: tabular-nums;
+  font-size: 10px; color: var(--ex-txt-3);
+}
+.exch .ex-bandbar-e { flex: 0 0 auto; white-space: nowrap; }
+.exch .ex-bandbar-t {
+  position: relative; flex: 1 1 auto; min-width: 40px; height: 4px;
+  border-radius: 999px; background: var(--ex-line); overflow: hidden;
+}
+.exch .ex-bandbar-band { position: absolute; top: 0; bottom: 0; background: var(--ex-green); opacity: .45; }
+.exch .ex-bandbar-tick { position: absolute; top: -2px; bottom: -2px; width: 2px; border-radius: 1px; }
+.exch .ex-bandbar-tick.is-mid { background: var(--ex-gold); }
+.exch .ex-bandbar-tick.is-bid { background: var(--ex-green); }
+.exch .ex-bandbar-tick.is-ask { background: var(--ex-red); }
+
+/* ── SORT vs FILTER. A sort does not remove rows, so it must not look like a
+      control that does. Filters fill solid gold when on; the sort chip only
+      outlines, and carries an arrow. ─────────────────────────────────────────── */
+.exch .ex-chip.is-sort { border-style: dashed; }
+.exch .ex-chip.is-sort.is-on {
+  color: var(--ex-gold); background: var(--ex-gold-bg);
+  border-color: var(--ex-gold); border-style: solid; font-weight: 700;
+}
+
+/* Card action row: one or two words per link, on one line. */
+.exch .ex-cardacts {
+  display: flex; gap: 16px; align-items: center; flex-wrap: wrap;
+  padding: 8px 10px 0; border-top: 1px solid var(--ex-line-soft); margin-top: 9px;
+}

@@ -153,6 +153,21 @@ const BOARD_POLL_MS = 20_000;
 const BALANCE_POLL_MS = 60_000;
 const POSITIONS_POLL_MS = 60_000;
 const PAGE = 20;
+/** «In scadenza» horizon. Same hoursToResolution the card already prints as "scade fra". */
+const SOON_HOURS = 24 * 7;
+
+// ── MOVEMENT: THE MEASURE ALREADY IN THE FEED, NOT A NEW ONE ────────────────────────────────────
+// lib/reward-stability computes it server-side: the stdev of the mid over a 7-day window sampled
+// hourly, expressed as a fraction of the reward band's half-width, scored 0–100 (100 = still).
+// The two chips read its published cut-points, they do not re-derive anything:
+//   fermo    score ≥ 70   one stdev consumes under 30% of the half-band
+//   si muove score < 35   one stdev consumes 65% or more of it
+// A market whose stability is UNKNOWN matches NEITHER chip. That is deliberate and it is the whole
+// reason this metric is worth using: it returns unknown when a price sat still because nobody
+// traded, and "nobody traded" is not "calm". Counting those as fermi would fill the chip with
+// exactly the markets a maker must avoid.
+const isStill = (m: PricedMarket): boolean => m.stability.known === true && m.stability.label === 'fermo';
+const isFast = (m: PricedMarket): boolean => m.stability.known === true && m.stability.label === 'si muove';
 
 export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: string }) {
   // null = still probing the admin gate; false = public visitor (gets the unchanged public board).
@@ -169,12 +184,22 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
 
   // Mercati controls — purely local view state, never sent anywhere.
   const [q, setQ] = useState('');
-  const [scope, setScope] = useState<'tutti' | 'bot' | 'miei'>('bot');
   const [limit, setLimit] = useState(PAGE);
-  const [openLadder, setOpenLadder] = useState<string | null>(null);
-  // Technical detail (market id, tick, category, volume) is collapsed by default: it is reference data,
-  // not something read at a glance. One market open at a time, same as the ladder.
-  const [openTech, setOpenTech] = useState<string | null>(null);
+  // ── CHIP FILTERS ───────────────────────────────────────────────────────────────────────────────
+  // Combinable across dimensions, and each one filters the list for real. `sortByPool` is the one
+  // exception: it REORDERS and removes nothing, which is why it wears a different chip style.
+  //
+  // «fermi» and «veloci» are the two ends of one dimension, so they are mutually exclusive — asking
+  // for both at once is asking for the empty set, and a control that can only produce nothing is a
+  // trap, not a filter.
+  const [sortByPool, setSortByPool] = useState(false);
+  const [fMove, setFMove] = useState<'fermi' | 'veloci' | null>(null);
+  const [fSoon, setFSoon] = useState(false);
+  const [fEnabled, setFEnabled] = useState(false);
+  const [fMine, setFMine] = useState(false);
+  // Everything technical about one market — ladder, band, tick, id, volume — behind one toggle.
+  // One market open at a time: the list is already long.
+  const [openDetail, setOpenDetail] = useState<string | null>(null);
 
   // A slow clock, so every freshness readout AGES VISIBLY between polls instead of looking frozen-fresh
   // until the next fetch lands. 5s is finer than the fastest cadence on this page (20s) and costs one
@@ -346,15 +371,39 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
     };
   }, [orders, summary]);
 
+  // How many markets each chip would show, computed on the SAME predicates the chips filter with —
+  // so a chip can never advertise a count its own filter does not produce. A zero count is shown, not
+  // hidden: "0 fermi" is the answer to "which ones are still?", and hiding the chip would leave the
+  // question unanswered.
+  const chipCounts = useMemo(() => ({
+    fermi: pricedMarkets.filter(isStill).length,
+    veloci: pricedMarkets.filter(isFast).length,
+    soon: pricedMarkets.filter((m) => fin(m.hoursToResolution) && (m.hoursToResolution as number) <= SOON_HOURS).length,
+    enabled: pricedMarkets.filter((m) => m.inBotUniverse === true).length,
+    mine: pricedMarkets.filter((m) => ordersByMarket.has(m.marketId)).length,
+    moveUnknown: pricedMarkets.filter((m) => m.stability.known !== true).length,
+  }), [pricedMarkets, ordersByMarket]);
+
+  const anyFilterOn = fMove != null || fSoon || fEnabled || fMine;
+
   const visibleMarkets = useMemo(() => {
     const needle = q.trim().toLowerCase();
     let set = pricedMarkets;
-    if (scope === 'bot') set = set.filter((m) => m.inBotUniverse === true || ordersByMarket.has(m.marketId));
-    if (scope === 'miei') set = set.filter((m) => ordersByMarket.has(m.marketId));
+    // FILTERS — combinable, each one an AND.
+    if (fMove === 'fermi') set = set.filter(isStill);
+    if (fMove === 'veloci') set = set.filter(isFast);
+    if (fSoon) set = set.filter((m) => fin(m.hoursToResolution) && (m.hoursToResolution as number) <= SOON_HOURS);
+    if (fEnabled) set = set.filter((m) => m.inBotUniverse === true);
+    if (fMine) set = set.filter((m) => ordersByMarket.has(m.marketId));
     if (needle) set = set.filter((m) => (m.title ?? '').toLowerCase().includes(needle) || m.marketId.toLowerCase().includes(needle));
-    // Markets you have capital in first, then the bot's set, then by estimated yield on the capital the
-    // estimate is priced for — the same ranking the Riepilogo's "miglior mercato" uses.
+    // SORT — «miglior reward» ranks by the market's daily pot, which is what that phrase means at the
+    // venue. Without it: markets you have capital in first, then the bot's set, then by estimated
+    // yield on the capital the estimate is priced for — the same ranking the Riepilogo uses.
     return [...set].sort((a, b) => {
+      if (sortByPool) {
+        return (fin(b.dailyPoolUsd) ? (b.dailyPoolUsd as number) : -1)
+          - (fin(a.dailyPoolUsd) ? (a.dailyPoolUsd as number) : -1);
+      }
       const oa = ordersByMarket.has(a.marketId) ? 1 : 0;
       const ob = ordersByMarket.has(b.marketId) ? 1 : 0;
       if (oa !== ob) return ob - oa;
@@ -364,7 +413,7 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
       return (fin(b.estYieldPctPerDay) ? (b.estYieldPctPerDay as number) : -1)
         - (fin(a.estYieldPctPerDay) ? (a.estYieldPctPerDay as number) : -1);
     });
-  }, [pricedMarkets, q, scope, ordersByMarket]);
+  }, [pricedMarkets, q, ordersByMarket, sortByPool, fMove, fSoon, fEnabled, fMine]);
 
   // ── PUBLIC VISITOR ── the unchanged public board. Nothing operator-only is even fetched for them.
   if (operator === false) return <RewardsUnified />;
@@ -432,7 +481,7 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
           </div>
 
           <div className="ex-stat">
-            <span className="ex-stat-k">$/giorno lordo</span>
+            <span className="ex-stat-k">$/giorno</span>
             <span className={`ex-stat-v ${orders?.simulated || summary?.estGrossUsdPerDay == null ? 'ex-dim' : 'ex-up'}`}>
               {orders?.simulated || summary?.estGrossUsdPerDay == null ? 'N/D' : money(summary.estGrossUsdPerDay)}
             </span>
@@ -493,11 +542,11 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
       {/* ── 1 · RIEPILOGO ─────────────────────────────────────────────────────────────────────────── */}
       {tab === 'riepilogo' && (
         <section className="lrc-sec" data-lrc-section="riepilogo">
-          <Ask q="Cosa devo guardare adesso?" sub="Gli ordini che non stanno maturando, e quanto capitale è fermo." />
+          <Ask q="Cosa devo guardare adesso?" sub="Cosa non sta maturando, e quanto capitale è fermo." />
           {orders?.simulated && (
             <div className="ex-banner is-warn lrc-mb">
-              Nessuna credenziale di lettura: il venue non è stato interrogato. Le sezioni che dipendono
-              dai tuoi ordini mostrano N/D — «nessun ordine» sarebbe una deduzione, non un fatto.
+              Venue non interrogato (nessuna credenziale): dove dipende dai tuoi ordini leggi N/D.
+              «Nessun ordine» sarebbe una deduzione, non un fatto.
             </div>
           )}
 
@@ -547,12 +596,12 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
             <div className="ex-stat">
               <span className="ex-stat-k">Totale</span>
               <span className="ex-stat-v">{money(bal?.pusdBalance)}</span>
-              <span className="ex-stat-s">proxy funder, on-chain</span>
+              <span className="ex-stat-s">proxy, on-chain</span>
             </div>
             <div className="ex-stat">
               <span className="ex-stat-k">Impegnato</span>
               <span className="ex-stat-v">{orders?.simulated ? 'N/D' : money(summary?.committedUsd)}</span>
-              <span className="ex-stat-s">a riposo sul venue</span>
+              <span className="ex-stat-s">a riposo</span>
             </div>
             <div className="ex-stat">
               <span className="ex-stat-k">Libero</span>
@@ -577,7 +626,7 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
                   ? `${(((summary?.committedUsd ?? 0) / (bal!.pusdBalance as number)) * 100).toFixed(1)}%`
                   : 'N/D'}
               </span>
-              <span className="ex-stat-s">del saldo totale</span>
+              <span className="ex-stat-s">del saldo</span>
             </div>
           </div>
           {freeCapital != null && fin(bal?.pusdBalance) && (bal!.pusdBalance as number) > 0 && (
@@ -590,18 +639,17 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
           )}
           <p className="lrc-fine">
             {freeCapital != null && freeCapital > 0
-              ? 'Il capitale libero non matura premi finché non è a riposo dentro una banda. «Alloca capitale» propone un piano — è un piano, non un ordine.'
-              : 'Tutto il capitale disponibile risulta impegnato.'}
-            {' '}Il saldo è quello del proxy funder, letto on-chain in sola lettura.
+              ? 'Il capitale libero non matura nulla. «Alloca» propone un piano, non un ordine.'
+              : 'Tutto impegnato.'}
+            {' '}Saldo del proxy funder, on-chain, sola lettura.
           </p>
 
           {/* ── MIGLIOR MERCATO PER RENDIMENTO — la classifica per intero, non solo il primo. ── */}
           <div className="ex-sech"><span className="ex-sech-t">Migliori mercati per rendimento sul tuo capitale</span></div>
           {capitalUsd == null ? (
             <div className="ex-banner is-warn" data-lrc-best="no-capital">
-              N/D — il saldo reale del proxy non è leggibile{balErr ? `: ${balErr}` : bal?.note ? `: ${bal.note}` : ''}.
-              Senza il capitale vero non viene calcolata nessuna stima: mostrare la cifra di riferimento da
-              $1.000 del feed sovrastimerebbe di circa dieci volte.
+              N/D — saldo del proxy non leggibile{balErr ? `: ${balErr}` : bal?.note ? `: ${bal.note}` : ''}.
+              Nessuna stima calcolata: il riferimento da $1.000 del feed sovrastimerebbe di ~10×.
             </div>
           ) : bestMarkets.length ? (
             <>
@@ -624,10 +672,8 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
                 ))}
               </div>
               <p className="lrc-fine">
-                Rendimento = stima $/giorno ÷ capitale su cui la stima è calcolata, e quel capitale è il tuo
-                saldo reale (<span className="ex-n">{money(capitalUsd)}</span>), non una cifra di riferimento.
-                Dove il book contiene meno di quel saldo la stima è calcolata sulla profondità disponibile,
-                perché oltre quella non c&apos;è libro in cui stare. Lordo, adverse selection non modellata.
+                Rendimento = stima $/g ÷ capitale, sul tuo saldo reale{' '}
+                <span className="ex-n">{money(capitalUsd)}</span>. Lordo: adverse selection non modellata.
               </p>
             </>
           ) : (
@@ -635,9 +681,7 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
           )}
 
           <p className="lrc-note">
-            Le cifre di questa sezione sono le stesse dell&apos;intestazione e delle altre sezioni: un solo
-            fetch, una sola lettura del venue, un solo giudizio di banda. Se due sezioni mostrassero numeri
-            diversi sarebbe un bug, non una differenza di metodo.
+            Stesse cifre dell&apos;intestazione: un fetch, una lettura del venue, un giudizio di banda.
           </p>
         </section>
       )}
@@ -645,185 +689,241 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
       {/* ── 2 · MERCATI ───────────────────────────────────────────────────────────────────────────── */}
       {tab === 'mercati' && (
         <section className="lrc-sec" data-lrc-section="mercati">
-          <Ask q="Dove conviene mettere il capitale?" sub="Ordinati per rendimento stimato sul tuo saldo reale, non su una cifra di riferimento." />
+          <Ask q="Dove conviene mettere il capitale?" sub="Stime sul tuo saldo reale." />
 
+          {/* ── CHIP ─ un ordinamento e quattro filtri, combinabili fra loro. ────────────────────── */}
           <div className="lrc-controls">
-            <div className="ex-chips" role="group" aria-label="Quali mercati">
-              {([
-                ['bot', 'Abilitati + i miei'],
-                ['miei', 'Con miei ordini'],
-                ['tutti', `Tutti · ${pricedMarkets.length}`],
-              ] as const).map(([k, l]) => (
-                <button key={k} className={`ex-chip ${scope === k ? 'is-on' : ''}`} onClick={() => { setScope(k); setLimit(PAGE); }}>{l}</button>
-              ))}
+            <div className="ex-chips" role="group" aria-label="Filtri mercati">
+              <button
+                className={`ex-chip is-sort ${sortByPool ? 'is-on' : ''}`}
+                aria-pressed={sortByPool}
+                onClick={() => { setSortByPool((v) => !v); setLimit(PAGE); }}
+                title="Ordina per montepremi giornaliero. Non nasconde nessun mercato."
+                data-lrc-chip="reward"
+              >
+                🏆 Miglior reward
+              </button>
+              <button
+                className={`ex-chip ${fMove === 'fermi' ? 'is-on' : ''}`}
+                aria-pressed={fMove === 'fermi'}
+                onClick={() => { setFMove((v) => (v === 'fermi' ? null : 'fermi')); setLimit(PAGE); }}
+                title="Prezzo poco mosso rispetto alla banda: uno scarto tipo consuma meno del 30% della mezza banda, misurato su 7 giorni."
+                data-lrc-chip="fermi"
+              >
+                ⏸ Fermi <span className="ex-n lrc-chip-n">{chipCounts.fermi}</span>
+              </button>
+              <button
+                className={`ex-chip ${fMove === 'veloci' ? 'is-on' : ''}`}
+                aria-pressed={fMove === 'veloci'}
+                onClick={() => { setFMove((v) => (v === 'veloci' ? null : 'veloci')); setLimit(PAGE); }}
+                title="Prezzo molto mosso rispetto alla banda: uno scarto tipo ne consuma il 65% o più, misurato su 7 giorni."
+                data-lrc-chip="veloci"
+              >
+                ⚡ Veloci <span className="ex-n lrc-chip-n">{chipCounts.veloci}</span>
+              </button>
+              <button
+                className={`ex-chip ${fSoon ? 'is-on' : ''}`}
+                aria-pressed={fSoon}
+                onClick={() => { setFSoon((v) => !v); setLimit(PAGE); }}
+                title="Risoluzione entro 7 giorni."
+                data-lrc-chip="scadenza"
+              >
+                ⏳ In scadenza <span className="ex-n lrc-chip-n">{chipCounts.soon}</span>
+              </button>
+              <button
+                className={`ex-chip ${fEnabled ? 'is-on' : ''}`}
+                aria-pressed={fEnabled}
+                onClick={() => { setFEnabled((v) => !v); setLimit(PAGE); }}
+                title="Solo i mercati nella lista abilitata del bot."
+                data-lrc-chip="abilitati"
+              >
+                ✓ Abilitati <span className="ex-n lrc-chip-n">{chipCounts.enabled}</span>
+              </button>
+              <button
+                className={`ex-chip ${fMine ? 'is-on' : ''}`}
+                aria-pressed={fMine}
+                onClick={() => { setFMine((v) => !v); setLimit(PAGE); }}
+                title="Solo i mercati dove hai ordini a riposo."
+                data-lrc-chip="miei"
+              >
+                ◆ Con miei ordini <span className="ex-n lrc-chip-n">{chipCounts.mine}</span>
+              </button>
             </div>
             <input
-              className="ex-input is-text lrc-search" type="search" placeholder="Cerca mercato o id…"
+              className="ex-input is-text lrc-search" type="search" placeholder="Cerca…"
               value={q} onChange={(e) => { setQ(e.target.value); setLimit(PAGE); }} aria-label="Cerca mercato"
             />
           </div>
 
-          {/* WHICH CAPITAL THE COLUMN "stima" IS PRICED AT — stated once, in the open, not only in a
-              tooltip. It is the same balance the header shows. */}
-          <div className={`ex-banner ${capitalUsd == null ? 'is-warn' : ''} lrc-mb`} data-lrc-capital-note>
-            {capitalUsd == null ? (
-              <>Stime non calcolate: il saldo reale del proxy non è leggibile{balErr ? ` (${balErr})` : ''}. Non viene
-                sostituito con il capitale di riferimento da $1.000 del feed, che sovrastimerebbe di circa dieci volte.</>
-            ) : (
-              <>Stime $/giorno calcolate sul tuo saldo reale di <b className="ex-n">{money(capitalUsd)}</b>{' '}
-                (proxy funder, on-chain{bal?.stale ? ', valore non aggiornato' : ''}). Dove il book contiene meno
-                di così, la stima usa la profondità disponibile e la riga lo dichiara.</>
-            )}
-          </div>
+          <p className="lrc-chiphint">
+            <span className="ex-n">{visibleMarkets.length}</span> di <span className="ex-n">{pricedMarkets.length}</span>
+            {' · '}🏆 ordina, non filtra
+            {anyFilterOn && <> · <button className="ex-link lrc-clear" onClick={() => { setFMove(null); setFSoon(false); setFEnabled(false); setFMine(false); setLimit(PAGE); }}>azzera filtri</button></>}
+          </p>
+
+          {/* Il capitale su cui ogni stima è prezzata: una riga, non un paragrafo. */}
+          <p className={`ex-flag ${capitalUsd == null ? 'is-bad' : 'is-dim'} lrc-mb`} data-lrc-capital-note>
+            <span className="ex-flag-i" aria-hidden="true">{capitalUsd == null ? '⚠' : 'ⓘ'}</span>
+            <span>
+              {capitalUsd == null
+                ? <>saldo non leggibile{balErr ? ` (${balErr})` : ''} — nessuna stima calcolata</>
+                : <>stime sul saldo reale <b className="ex-n">{money(capitalUsd)}</b>{bal?.stale ? ' (non aggiornato)' : ''}</>}
+            </span>
+          </p>
 
           {visibleMarkets.length === 0 ? (
             <div className="lrc-nd">
-              Nessun mercato corrisponde a questo filtro. {scope === 'bot' && 'Il set del bot è deciso dalla selezione salvata; prova «Tutti».'}
+              Nessun mercato con questi filtri.
+              {fMove != null && chipCounts.moveUnknown > 0 && ` ${chipCounts.moveUnknown} mercati hanno movimento non misurabile: non contano né come fermi né come veloci.`}
             </div>
           ) : (
             <div className="lrc-mkts">
               {visibleMarkets.slice(0, limit).map((m) => {
                 const mine = ordersByMarket.get(m.marketId) ?? [];
-                const open = openLadder === m.marketId;
-                const tech = openTech === m.marketId;
+                const detail = openDetail === m.marketId;
                 const outOfBandHere = mine.some((o) => o.outOfBand === true);
+                // ── UN SOLO AVVISO, IL PIÙ GRAVE ────────────────────────────────────────────────
+                // Prima erano due paragrafi indipendenti, uno sotto l'altro, ciascuno di due frasi:
+                // la stima limitata e il mid non-live. Adesso è una riga di sei parole; il testo
+                // integrale del server e l'eventuale seconda causa restano nel title, non spariscono.
+                const stale = m.midSource !== 'live-book';
+                const flag: { cls: string; icon: string; text: string; title: string } | null =
+                  m.estUnknown
+                    ? {
+                      cls: 'is-bad', icon: '⚠', text: 'stima non calcolabile',
+                      title: m.estReason ?? 'nessun motivo riportato dal server',
+                    }
+                    : m.estDepthLimited
+                      ? {
+                        cls: '', icon: '⚠',
+                        text: `solo ${money(m.bookDepthAtBandUsd, 0)} in banda — stima limitata`,
+                        title: m.estReason ?? 'il tuo saldo supera la profondità premiante di questo book: la stima è calcolata sulla profondità disponibile',
+                      }
+                      : stale
+                        ? {
+                          cls: 'is-dim', icon: 'ⓘ',
+                          text: `mid da scan · ${ageTxt(m.midAgeSec)}`,
+                          title: `il mid non viene dal book live ma dalla riga di scan (${m.midSource ?? 'N/D'}): la banda è giudicata contro quel numero`,
+                        }
+                        : null;
+                // Se l'avviso mostrato non è già quello del mid, il mid stantio finisce nel title.
+                const flagTitle = flag && flag.cls !== 'is-dim' && stale
+                  ? `${flag.title} · inoltre: mid da scan (${m.midSource ?? 'N/D'}, ${ageTxt(m.midAgeSec)}), non dal book live`
+                  : flag?.title;
+
                 return (
                   <div key={m.marketId} className="lrc-mkt ex-panel" data-lrc-market={m.marketId}>
-                    {/* THE DENSE ROW: name + technical subtitle on the left, mid / spread / $-day on the
-                        right. The old overlap bug (a badge riding over the pot line on a narrow screen)
-                        cannot recur: title and figures are separate grid columns that stack, never float. */}
-                    <div className="ex-row lrc-mkt-row">
-                      <div className="ex-row-main">
-                        <div className="ex-row-t">
-                          {m.title ?? m.marketId}
-                          {m.groupItemTitle && <span className="ex-dim"> · {m.groupItemTitle}</span>}
-                        </div>
-                        <div className="ex-row-s">
-                          montepremi <span className="ex-n">{money(m.dailyPoolUsd, 0)}</span>/g · profondità in banda{' '}
-                          <span className="ex-n">{money(m.bookDepthAtBandUsd, 0)}</span> · scade fra{' '}
-                          <span className="ex-n">{hoursTxt(m.hoursToResolution)}</span>
-                        </div>
+                    {/* TITOLO, e sotto la sola riga che serve: scadenza e montepremi. */}
+                    <div className="lrc-mkt-head">
+                      <div className="lrc-mkt-t">
+                        {m.title ?? m.marketId}
+                        {m.groupItemTitle && <span className="ex-dim"> · {m.groupItemTitle}</span>}
                       </div>
-                      <div className="ex-row-nums">
-                        <span className="ex-num">
-                          <span className="ex-num-k">mid</span>
-                          <span className="ex-num-v">{cents(m.mid)}</span>
-                        </span>
-                        <span className="ex-num">
-                          <span className="ex-num-k">spread</span>
-                          <span className={`ex-num-v ${m.spread.level === 'basso' ? 'ex-up' : m.spread.level === 'alto' ? 'ex-dn' : m.spread.level === 'medio' ? 'ex-gold' : 'ex-dim'}`}>
-                            {m.spread.spreadCents == null ? 'N/D' : `${m.spread.spreadCents.toFixed(1)}¢`}
+                      <div className="lrc-mkt-sub">
+                        <span className="ex-n">{hoursTxt(m.hoursToResolution)}</span>
+                        {' · pool '}<span className="ex-n">{money(m.dailyPoolUsd, 0)}</span>/g
+                        {/* Solo pillole che dicono qualcosa che i numeri non dicono già. Quella dello
+                            spread è sparita: lo spread è qui sopra, colorato — ripeterlo a parole era
+                            la stessa informazione due volte. */}
+                        {m.stability.known && m.stability.label && (
+                          <span
+                            className={`ex-badge lrc-bdg ${m.stability.label === 'fermo' ? 'is-ok' : m.stability.label === 'medio' ? '' : 'is-warn'}`}
+                            title={`uno scarto tipo muove ${num(m.stability.movedCents, 2)}¢, cioè il ${num(m.stability.consumedBandPct, 0)}% della mezza banda (7 giorni)`}
+                          >
+                            {m.stability.label}
                           </span>
-                        </span>
-                        <span className="ex-num">
-                          <span className="ex-num-k">$/g stim.</span>
-                          <span className={`ex-num-v ${m.estUsdPerDay == null ? 'ex-dim' : m.estUsdPerDay > 0 ? 'ex-up' : ''}`}>
-                            {m.estUsdPerDay == null ? 'N/D' : money(m.estUsdPerDay)}
+                        )}
+                        {m.inBotUniverse === true && <span className="ex-badge is-gold lrc-bdg" title="il bot quota questo mercato">abilitato</span>}
+                        {mine.length > 0 && (
+                          <span className={`ex-badge lrc-bdg ${outOfBandHere ? 'is-bad' : 'is-ok'}`}>
+                            {mine.length} ordini{outOfBandHere ? ' · fuori' : ''}
                           </span>
+                        )}
+                        {!m.rulesReadable && (
+                          <span className="ex-badge is-bad lrc-bdg" title={`mancano: ${m.rulesMissing.join(', ')}`}>regole N/D</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* I TRE NUMERI. Monospazio, colore semantico, etichette di una parola. */}
+                    <div className="ex-big" data-lrc-big>
+                      <div className="ex-big-c">
+                        <span className="ex-big-k">mid</span>
+                        <span className={`ex-big-v ${m.mid == null ? 'ex-dim' : ''}`}>{cents(m.mid)}</span>
+                      </div>
+                      <div className="ex-big-c">
+                        <span className="ex-big-k">spread</span>
+                        <span className={`ex-big-v ${m.spread.level === 'basso' ? 'ex-up' : m.spread.level === 'alto' ? 'ex-dn' : m.spread.level === 'medio' ? 'ex-gold' : 'ex-dim'}`}
+                          title={m.spread.note}>
+                          {m.spread.spreadCents == null ? 'N/D' : `${m.spread.spreadCents.toFixed(1)}¢`}
+                        </span>
+                      </div>
+                      <div className="ex-big-c">
+                        <span className="ex-big-k">$/g stim.</span>
+                        <span className={`ex-big-v ${m.estUsdPerDay == null ? 'ex-dim' : m.estUsdPerDay > 0 ? 'ex-up' : 'ex-dn'}`}>
+                          {m.estUsdPerDay == null ? 'N/D' : money(m.estUsdPerDay)}
                         </span>
                       </div>
                     </div>
 
-                    {/* THE ZERO IS SHOWN, AND THE REASON WITH IT. */}
-                    {m.estReason && <p className="ex-why lrc-pad">{m.estReason}</p>}
-                    {m.midSource !== 'live-book' && (
-                      <p className="ex-why ex-why-warn lrc-pad">
-                        Il mid non viene dal book live ma dalla riga di scan ({m.midSource ?? 'N/D'}, {ageTxt(m.midAgeSec)}):
-                        la banda disegnata è giudicata contro quel numero.
-                      </p>
-                    )}
-
                     <div className="lrc-pad">
-                      <div className="ex-badges">
-                        {m.spread.level ? (
-                          <span className={`ex-badge ${m.spread.level === 'basso' ? 'is-ok' : m.spread.level === 'medio' ? 'is-warn' : 'is-bad'}`} title={m.spread.note}>{m.spread.label}</span>
-                        ) : (
-                          <span className="ex-badge" title={m.spread.note}>spread N/D</span>
-                        )}
-                        {m.stability.known && m.stability.label ? (
-                          <span
-                            className={`ex-badge ${m.stability.label === 'fermo' ? 'is-ok' : m.stability.label === 'medio' ? 'is-warn' : 'is-bad'}`}
-                            title={`stabilità misurata: uno scarto tipo muove ${num(m.stability.movedCents, 2)}¢, cioè il ${num(m.stability.consumedBandPct, 0)}% della mezza banda`}
-                          >
-                            {m.stability.label}
-                          </span>
-                        ) : (
-                          <span className="ex-badge" title={`stabilità non misurabile: ${m.stability.reason ?? 'motivo non riportato'}`}>stabilità N/D</span>
-                        )}
-                        {m.inBotUniverse === true && <span className="ex-badge is-gold" title="il bot quota questo mercato (set risolto dalla selezione salvata)">abilitato</span>}
-                        {mine.length > 0 && (
-                          <span className={`ex-badge ${outOfBandHere ? 'is-bad' : 'is-ok'}`}>
-                            {mine.length} {mine.length === 1 ? 'tuo ordine' : 'tuoi ordini'}{outOfBandHere ? ' · fuori banda' : ''}
-                          </span>
-                        )}
-                        {!m.rulesReadable && (
-                          <span className="ex-badge is-bad" title={`mancano: ${m.rulesMissing.join(', ')}`}>regole non leggibili</span>
-                        )}
-                      </div>
+                      {flag && (
+                        <p className={`ex-flag ${flag.cls}`} title={flagTitle} data-lrc-flag>
+                          <span className="ex-flag-i" aria-hidden="true">{flag.icon}</span>
+                          <span>{flag.text}</span>
+                        </p>
+                      )}
 
-                      <PriceLadder
-                        mid={m.mid} bandLo={m.bandLo} bandHi={m.bandHi} bandRadiusCents={m.bandRadiusCents}
+                      {/* LA BANDA, SOTTILE. Estremi ai lati una volta sola. */}
+                      <BandBar
+                        mid={m.mid} bandLo={m.bandLo} bandHi={m.bandHi}
                         bestBid={m.bestBid} bestAsk={m.bestAsk}
-                        orders={mine.map((o) => ({ orderId: o.orderId, book: o.book, price: o.price, size: o.restingSize, inBand: o.inBand, distanceCents: o.distanceCents }))}
-                        compact
                       />
 
-                      <div className="ex-kvs lrc-mt">
-                        <div className="ex-kv" title={m.estUnknown ? (m.estReason ?? 'non calcolabile') : `quota modellata su ${money(m.estCapitalUsd, 0)} — il tuo saldo reale`}>
-                          <span className="ex-kv-k">stima/g</span>
-                          <span className="ex-kv-v">{m.estUsdPerDay == null ? 'N/D' : money(m.estUsdPerDay)}</span>
-                        </div>
-                        <div className="ex-kv" title={m.estDepthLimited ? 'il tuo saldo supera la profondità premiante di questo book' : 'il saldo reale del proxy, letto on-chain'}>
-                          <span className="ex-kv-k">su capitale</span>
-                          <span className="ex-kv-v">{m.estCapitalUsd == null ? 'N/D' : money(m.estCapitalUsd, 0)}</span>
-                        </div>
-                        <div className="ex-kv"><span className="ex-kv-k">rendim./g</span><span className="ex-kv-v">{m.estYieldPctPerDay == null ? 'N/D' : `${num(m.estYieldPctPerDay, 2)}%`}</span></div>
-                        <div className="ex-kv"><span className="ex-kv-k">banda</span><span className="ex-kv-v">±{num(m.bandRadiusCents, 2)}¢</span></div>
-                        <div className="ex-kv" title={`fonte: ${m.midSource ?? 'N/D'} · ${ageTxt(m.midAgeSec)}`}><span className="ex-kv-k">bid / ask</span><span className="ex-kv-v">{cents(m.bestBid)} / {cents(m.bestAsk)}</span></div>
-                        <div className="ex-kv"><span className="ex-kv-k">size min</span><span className="ex-kv-v">{num(m.minSize)}</span></div>
+                      <div className="ex-cardacts">
+                        <Link className="ex-link" href={`/dashboard/liquidity-rewards/${encodeURIComponent(m.marketId)}`} prefetch={false}>Book →</Link>
+                        <button className="ex-link" onClick={() => setOpenDetail(detail ? null : m.marketId)} data-lrc-detail-toggle>
+                          {detail ? 'Chiudi ↑' : 'Dettagli →'}
+                        </button>
                       </div>
 
-                      <div className="lrc-actions">
-                        <button className="ex-link" onClick={() => setOpenLadder(open ? null : m.marketId)}>
-                          {open ? 'Nascondi banda' : 'Dettaglio banda'}
-                        </button>
-                        <button className="ex-link" onClick={() => setOpenTech(tech ? null : m.marketId)}>
-                          {tech ? 'Nascondi tecnici' : 'Dettagli tecnici'}
-                        </button>
-                        <Link className="ex-link" href={`/dashboard/liquidity-rewards/${encodeURIComponent(m.marketId)}`} prefetch={false}>Apri il book →</Link>
-                        <Link className="ex-link" href={`/dashboard/liquidity-rewards/${encodeURIComponent(m.marketId)}/event`} prefetch={false}>Scheda →</Link>
-                      </div>
-
-                      {open && (
-                        <div className="lrc-expand">
+                      {/* DIETRO «Dettagli»: tutto quello che prima stava sempre a schermo — scala
+                          prezzi, banda, stima e capitale, tick, id, volume. Niente è sparito. */}
+                      {detail && (
+                        <div className="lrc-expand" data-lrc-detail={m.marketId}>
                           <PriceLadder
                             mid={m.mid} bandLo={m.bandLo} bandHi={m.bandHi} bandRadiusCents={m.bandRadiusCents}
                             bestBid={m.bestBid} bestAsk={m.bestAsk}
                             orders={mine.map((o) => ({ orderId: o.orderId, book: o.book, price: o.price, size: o.restingSize, inBand: o.inBand, distanceCents: o.distanceCents }))}
-                            caption="banda premio · mid · tocco · i tuoi ordini"
+                            caption="banda · mid · tocco · i tuoi ordini"
                           />
                           <div className="ex-kvs lrc-mt">
-                            <div className="ex-kv"><span className="ex-kv-k">banda lo</span><span className="ex-kv-v">{cents(m.bandLo)}</span></div>
-                            <div className="ex-kv"><span className="ex-kv-k">banda hi</span><span className="ex-kv-v">{cents(m.bandHi)}</span></div>
+                            <div className="ex-kv" title={m.estUnknown ? (m.estReason ?? 'non calcolabile') : `quota modellata su ${money(m.estCapitalUsd, 0)}`}>
+                              <span className="ex-kv-k">stima/g</span><span className="ex-kv-v">{m.estUsdPerDay == null ? 'N/D' : money(m.estUsdPerDay)}</span>
+                            </div>
+                            <div className="ex-kv"><span className="ex-kv-k">su capitale</span><span className="ex-kv-v">{m.estCapitalUsd == null ? 'N/D' : money(m.estCapitalUsd, 0)}</span></div>
+                            <div className="ex-kv"><span className="ex-kv-k">rendim./g</span><span className="ex-kv-v">{m.estYieldPctPerDay == null ? 'N/D' : `${num(m.estYieldPctPerDay, 2)}%`}</span></div>
+                            <div className="ex-kv"><span className="ex-kv-k">profondità</span><span className="ex-kv-v">{money(m.bookDepthAtBandUsd, 0)}</span></div>
+                            <div className="ex-kv"><span className="ex-kv-k">banda</span><span className="ex-kv-v">{cents(m.bandLo)} – {cents(m.bandHi)}</span></div>
                             <div className="ex-kv"><span className="ex-kv-k">raggio</span><span className="ex-kv-v">±{num(m.bandRadiusCents, 2)}¢</span></div>
+                            <div className="ex-kv"><span className="ex-kv-k">bid / ask</span><span className="ex-kv-v">{cents(m.bestBid)} / {cents(m.bestAsk)}</span></div>
                             <div className="ex-kv"><span className="ex-kv-k">spread max</span><span className="ex-kv-v">{num(m.maxSpreadCents, 2)}¢</span></div>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* REFERENCE DATA, not glance data. Tick size, venue min-size, the market id: needed
-                          when you are debugging a specific order, noise the other 99% of the time. */}
-                      {tech && (
-                        <div className="lrc-expand" data-lrc-tech={m.marketId}>
-                          <div className="ex-kvs">
-                            <div className="ex-kv" title="min_incentive_size: sotto questa dimensione l ordine è valido sul CLOB ma invisibile al programma premi">
-                              <span className="ex-kv-k">size minima</span><span className="ex-kv-v">{num(m.minSize)}</span>
+                            <div className="ex-kv" title="min_incentive_size: sotto questa soglia l ordine è valido sul CLOB ma invisibile ai premi">
+                              <span className="ex-kv-k">size min</span><span className="ex-kv-v">{num(m.minSize)}</span>
                             </div>
                             <div className="ex-kv"><span className="ex-kv-k">tick</span><span className="ex-kv-v">{m.tick == null ? 'N/D' : String(m.tick)}</span></div>
                             <div className="ex-kv"><span className="ex-kv-k">volume 24h</span><span className="ex-kv-v">{money(m.volume24hUsd, 0)}</span></div>
                             <div className="ex-kv"><span className="ex-kv-k">categoria</span><span className="ex-kv-v">{m.category ?? 'N/D'}</span></div>
-                            <div className="ex-kv" title={m.marketId}><span className="ex-kv-k">id mercato</span><span className="ex-kv-v">{m.marketId.slice(0, 10)}…</span></div>
-                            <div className="ex-kv"><span className="ex-kv-k">mid letto</span><span className="ex-kv-v">{ageTxt(m.midAgeSec)}</span></div>
+                            <div className="ex-kv"><span className="ex-kv-k">movimento</span>
+                              <span className="ex-kv-v" title={m.stability.known ? `${num(m.stability.consumedBandPct, 0)}% della mezza banda` : (m.stability.reason ?? 'non riportato')}>
+                                {m.stability.known ? `${num(m.stability.score, 0)}/100` : 'N/D'}
+                              </span>
+                            </div>
+                            <div className="ex-kv" title={`fonte: ${m.midSource ?? 'N/D'}`}><span className="ex-kv-k">mid letto</span><span className="ex-kv-v">{ageTxt(m.midAgeSec)}</span></div>
+                            <div className="ex-kv" title={m.marketId}><span className="ex-kv-k">id</span><span className="ex-kv-v">{m.marketId.slice(0, 10)}…</span></div>
+                          </div>
+                          <div className="lrc-actions">
+                            <Link className="ex-link" href={`/dashboard/liquidity-rewards/${encodeURIComponent(m.marketId)}/event`} prefetch={false}>Scheda →</Link>
                           </div>
                         </div>
                       )}
@@ -844,7 +944,7 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
       {/* ── 3 · POSIZIONI ─────────────────────────────────────────────────────────────────────────── */}
       {tab === 'posizioni' && (
         <section className="lrc-sec" data-lrc-section="posizioni">
-          <Ask q="Cosa ho in mano?" sub="Esposizione netta per mercato, letta dal venue in sola lettura." />
+          <Ask q="Cosa ho in mano?" sub="Esposizione netta per mercato, letta dal venue." />
           <div className="ex-sech">
             <span className="ex-sech-t">Posizioni aperte · esposizione netta</span>
             <button className="ex-btn is-sm" onClick={loadPositions} disabled={posLoading}>{posLoading ? 'Lettura…' : 'Aggiorna'}</button>
@@ -852,12 +952,12 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
 
           {pos && pos.ok === false && (
             <div className="ex-banner is-bad">
-              Posizioni NON lette: {pos.error ?? 'errore sconosciuto'}. Questa non è una lista vuota — non sappiamo cosa ci sia.
+              Posizioni NON lette: {pos.error ?? 'errore sconosciuto'} — non è una lista vuota.
             </div>
           )}
           {pos?.ok && pos.markets.length === 0 && (
             <div className="ex-banner is-ok">
-              Nessuna posizione aperta sul wallet <span className="ex-n">{pos.wallet}</span> — letto dal venue, non dedotto.
+              Nessuna posizione sul wallet <span className="ex-n">{pos.wallet}</span> — letto, non dedotto.
             </div>
           )}
           {!pos && <div className="lrc-nd">Lettura delle posizioni…</div>}
@@ -873,7 +973,7 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
                 <div className="ex-stat">
                   <span className="ex-stat-k">Valore a mid</span>
                   <span className="ex-stat-v">{money(pos.totals?.currentValueUsd)}</span>
-                  <span className="ex-stat-s">mark-to-mid</span>
+                  <span className="ex-stat-s">a mid</span>
                   {pos.totals?.valueUnknown && <p className="ex-why">una gamba senza valore leggibile — totale non calcolato</p>}
                 </div>
                 <div className="ex-stat">
@@ -937,10 +1037,9 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
 
           {pos && (
             <p className="lrc-note">
-              Fonte: {pos.source}. Wallet <span className="ex-n">{pos.wallet ?? 'N/D'}</span>, letto{' '}
-              <span className="ex-n">{new Date(pos.at).toLocaleTimeString()}</span>.
-              Sola lettura: nessuna chiave viene toccata e nulla viene firmato. Il P&amp;L è <b>mark-to-mid</b>,
-              cioè quanto varrebbero le posizioni al punto medio adesso — non un incasso.
+              {pos.source} · wallet <span className="ex-n">{pos.wallet ?? 'N/D'}</span> · letto{' '}
+              <span className="ex-n">{new Date(pos.at).toLocaleTimeString()}</span> · sola lettura.
+              P&amp;L <b>mark-to-mid</b>, non un incasso.
             </p>
           )}
         </section>
@@ -949,7 +1048,7 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
       {/* ── 4 · ORDINI MANUALI ────────────────────────────────────────────────────────────────────── */}
       {tab === 'ordini' && (
         <section className="lrc-sec" data-lrc-section="ordini">
-          <Ask q="Cosa ho sul book, e devo muoverlo?" sub="Piazza, cancella e riprezza. Ogni bottone passa dagli stessi gate del motore." />
+          <Ask q="Cosa ho sul book, e devo muoverlo?" sub="Piazza, cancella, riprezza — dagli stessi gate del motore." />
           {(() => {
             // The ladder for the market the manual panel is pinned to — same board data, so the ladder and
             // the panel below cannot show a different band or a different mid.
@@ -968,9 +1067,7 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
                   caption="dove paga la banda, dove sta il tocco, dove stanno i tuoi ordini"
                 />
                 <p className="lrc-fine">
-                  Il modulo qui sotto è la console ordini manuali completa: prende/restituisce il mercato al
-                  motore, piazza, cancella e <b>riprezza</b> (cancella e ripiazza in una sola chiamata server).
-                  Ogni bottone passa dagli stessi gate del motore — kill-switch, cap, venue-rules, validateOrder.
+                  Ogni bottone passa dagli stessi gate del motore: kill-switch, cap, venue-rules, validateOrder.
                 </p>
               </div>
             );
@@ -982,7 +1079,7 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
       {/* ── 5 · ALLOCA CAPITALE ───────────────────────────────────────────────────────────────────── */}
       {tab === 'alloca' && (
         <section className="lrc-sec" data-lrc-section="alloca">
-          <Ask q="Quanto capitale metto, e su quali mercati?" sub="È un piano, non un ordine: questa sezione non piazza nulla da sola." />
+          <Ask q="Quanto capitale metto, e su quali mercati?" sub="Un piano, non un ordine: qui non si piazza nulla." />
           <RewardsAllocatePanel />
         </section>
       )}
@@ -990,7 +1087,7 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
       {/* ── 6 · REGOLE ────────────────────────────────────────────────────────────────────────────── */}
       {tab === 'regole' && (
         <section className="lrc-sec" data-lrc-section="regole">
-          <Ask q="Come si guadagna, esattamente?" sub="Le regole del programma premi, e lo stato di ogni tuo ordine rispetto a quelle regole." />
+          <Ask q="Come si guadagna, esattamente?" sub="Le regole del programma, e i tuoi ordini rispetto a quelle." />
           <div className="ex-panel lrc-rulesbox">
             <div className="ex-sech-t">Come si guadagna, in breve</div>
             <ul className="lrc-rules">
@@ -1039,7 +1136,7 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
           )}
           {orders?.simulated && orders.ok !== false && (
             <div className="ex-banner is-warn lrc-mb">
-              Nessuna credenziale: il venue non è stato interrogato. «0 ordini» qui significa «non abbiamo letto».
+              Venue non interrogato: «0 ordini» qui significa «non abbiamo letto».
             </div>
           )}
 
@@ -1088,10 +1185,8 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
           )}
 
           <p className="lrc-note">
-            «In banda» è il verdetto della <b>stessa</b> funzione condivisa che il server riesegue prima di
-            ogni piazzamento (lib/maker/venue-rules → lib/rewards-live-band): questa tabella non può dire
-            «in banda» su un ordine che il server rifiuterebbe. «Non giudicabile» significa che una regola
-            del venue non era leggibile — non viene contato né dentro né fuori.
+            «In banda» è il verdetto della stessa funzione che il server riesegue prima di ogni piazzamento.
+            «Non giudicabile» = regola di venue non leggibile: non conta né dentro né fuori.
           </p>
         </section>
       )}
@@ -1119,6 +1214,56 @@ function Freshness({ items }: { items: Array<{ k: string; ageSec: number | null;
           </span>
         );
       })}
+    </div>
+  );
+}
+
+/**
+ * THE REWARD BAND AS A HAIRLINE.
+ *
+ * Replaces the always-open compact price ladder at the top of every card. The endpoints are printed
+ * ONCE, at the two sides — the old layout repeated them above the bar and again in the grid below it.
+ *
+ * The track spans whatever the band, the touch and the mid actually cover together, so an order book
+ * sitting outside its own reward band is visible as such instead of being clipped to the band's edge.
+ * Nothing here is computed: every value is the board's, drawn to scale.
+ */
+function BandBar({ mid, bandLo, bandHi, bestBid, bestAsk }: {
+  mid: number | null; bandLo: number | null; bandHi: number | null;
+  bestBid: number | null; bestAsk: number | null;
+}) {
+  if (!fin(bandLo) || !fin(bandHi) || (bandHi as number) <= (bandLo as number)) {
+    return (
+      <p className="ex-flag is-dim" data-lrc-band="unknown">
+        <span className="ex-flag-i" aria-hidden="true">ⓘ</span>
+        <span>banda non leggibile</span>
+      </p>
+    );
+  }
+  const pts = [bandLo, bandHi, mid, bestBid, bestAsk].filter(fin) as number[];
+  const rawLo = Math.min(...pts);
+  const rawHi = Math.max(...pts);
+  // A hair of padding so a tick sitting exactly on an endpoint is still drawn inside the track.
+  const pad = Math.max((rawHi - rawLo) * 0.08, 0.002);
+  const lo = rawLo - pad;
+  const hi = rawHi + pad;
+  const pct = (v: number) => ((v - lo) / (hi - lo)) * 100;
+  const clamp = (v: number) => Math.max(0, Math.min(100, v));
+  const tick = (v: number | null, cls: string, label: string) =>
+    (fin(v) ? <span key={cls} className={`ex-bandbar-tick ${cls}`} style={{ left: `${clamp(pct(v as number))}%` }} title={`${label} ${cents(v)}`} /> : null);
+  return (
+    <div className="ex-bandbar" data-lrc-band="ok">
+      <span className="ex-bandbar-e">{cents(bandLo)}</span>
+      <span className="ex-bandbar-t">
+        <span
+          className="ex-bandbar-band"
+          style={{ left: `${clamp(pct(bandLo as number))}%`, width: `${clamp(pct(bandHi as number)) - clamp(pct(bandLo as number))}%` }}
+        />
+        {tick(mid, 'is-mid', 'mid')}
+        {tick(bestBid, 'is-bid', 'bid')}
+        {tick(bestAsk, 'is-ask', 'ask')}
+      </span>
+      <span className="ex-bandbar-e">{cents(bandHi)}</span>
     </div>
   );
 }
@@ -1179,9 +1324,17 @@ const CSS = `
 .lrc-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
 .lrc-search { flex: 1 1 180px; min-width: 0; }
 
+.lrc-chip-n { margin-left: 4px; opacity: .7; font-size: 10px; }
+.lrc-chiphint { font-size: 10.5px; color: var(--ex-txt-3); margin: 6px 0 8px; line-height: 1.5; }
+.lrc-clear { min-height: 0; font-size: 10.5px; }
+
 .lrc-mkts { display: flex; flex-direction: column; gap: 8px; }
 .lrc-mkt { padding-bottom: 10px; }
-.lrc-mkt-row { border-bottom: 1px solid var(--ex-line-soft); }
+.lrc-mkt-head { padding: 10px 10px 9px; }
+.lrc-mkt-t { font-size: 13.5px; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+.lrc-mkt-sub { margin-top: 4px; font-size: 11px; color: var(--ex-txt-3); line-height: 1.9;
+  overflow-wrap: anywhere; }
+.lrc-bdg { margin-left: 6px; vertical-align: 1px; }
 .lrc-actions { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px; }
 .lrc-expand { margin-top: 10px; border-top: 1px solid var(--ex-line-soft); padding-top: 8px; }
 
@@ -1210,11 +1363,8 @@ const CSS = `
   .lrc-tab-short { display: inline; }
   .lrc-ask-q { font-size: 15px; }
   .lrc-actions { gap: 4px 14px; }
-  /* The dense row stacks: figures drop under the title, spread across the full width instead of
-     crushing against it. Selectors carry the .exch prefix so they beat the base .exch .ex-row rule
-     on specificity, not merely on source order. */
-  .exch .lrc-mkt-row { grid-template-columns: minmax(0, 1fr); }
-  .exch .lrc-mkt-row .ex-row-nums { justify-content: space-between; width: 100%; }
-  .exch .lrc-mkt-row .ex-num { text-align: left; }
+  /* Under 420px the three headline figures would each get ~100px; two columns keeps them legible
+     and lets the third wrap onto its own line rather than shrinking the font. */
+  .exch .ex-big { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 `;
