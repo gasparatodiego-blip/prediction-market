@@ -240,7 +240,23 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
   //   · Gamma                                                    → 12s. E' una REST di terzi: la si
   //     interroga con parsimonia, e su un mercato che agent34 non segue nemmeno 3s comprerebbero molto.
   const closeSoon = fin(target.minutesToClose) && (target.minutesToClose as number) < 20;
-  const quoteEveryMs = quote?.source === 'gamma' ? 12_000 : (closeSoon ? 3_000 : 8_000);
+  // ── IL PREZZO E' LIVE, SI' O NO ────────────────────────────────────────────────────────────────
+  // Tre condizioni, tutte necessarie. `source` da solo non basta: il feed scrive nel suo snapshot anche i
+  // book fermi, e infatti un mercato scaduto compare come «live-book» con un'eta' di trentasei minuti.
+  // Verificato il 2026-08-01 sulla finestra 2:15PM-2:30PM.
+  const quoteAgeMs = quote ? (fin(quote.ageMs) ? (quote.ageMs as number) : 0) + Math.max(0, nowMs - quoteAtMs.current) : null;
+  const bookLive = quote?.source === 'live-book' && quote.live === true
+    && fin(quoteAgeMs) && (quoteAgeMs as number) <= FRESH_BOOK_MAX_MS;
+
+  // MENTRE LA SOTTOSCRIZIONE SI STA STABILENDO SI GUARDA SPESSO. Il ritmo da 12 secondi e' giusto per
+  // Gamma a regime — e' una REST di terzi e non la si martella — ma nei primi secondi dopo l'apertura
+  // stiamo aspettando che il feed prenda il mercato, e a 12 secondi il passaggio a «book live» arrivava
+  // fino a 15 secondi dopo il tocco. Misurato: 15,4s, quasi tutti spesi ad aspettare il prossimo giro,
+  // non il feed. Dentro la finestra di attesa si interroga ogni 2 secondi; appena il book e' live si
+  // torna al ritmo normale.
+  const settling = !bookLive && (lease === 'asking'
+    || (lease === 'held' && leaseHeldSince.current != null && nowMs - leaseHeldSince.current < LEASE_CONNECT_GRACE_MS));
+  const quoteEveryMs = settling ? 2_000 : (quote?.source === 'gamma' ? 12_000 : (closeSoon ? 3_000 : 8_000));
 
   // IL RITMO STA IN UN REF, NON FRA LE DIPENDENZE DELL'EFFETTO. Il ritmo dipende dalla FONTE, e la
   // fonte si conosce solo dopo la prima risposta: metterlo fra le dipendenze faceva smontare e
@@ -349,14 +365,6 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
     && (cfg?.autoReprice?.optedInMarketIds ?? []).map((x) => x.toLowerCase()).includes(target.marketId.toLowerCase()));
 
   // ── LE VALIDAZIONI, contro le regole del venue di QUESTO mercato ────────────────────────────────
-
-  // ── IL PREZZO E' LIVE, SI' O NO ────────────────────────────────────────────────────────────────
-  // Tre condizioni, tutte necessarie. `source` da solo non basta: il feed scrive nel suo snapshot anche i
-  // book fermi, e infatti un mercato scaduto compare come «live-book» con un'eta' di trentasei minuti.
-  // Verificato il 2026-08-01 sulla finestra 2:15PM-2:30PM.
-  const quoteAgeMs = quote ? (fin(quote.ageMs) ? (quote.ageMs as number) : 0) + Math.max(0, nowMs - quoteAtMs.current) : null;
-  const bookLive = quote?.source === 'live-book' && quote.live === true
-    && fin(quoteAgeMs) && (quoteAgeMs as number) <= FRESH_BOOK_MAX_MS;
 
   const problems = useMemo(() => {
     const out: Array<{ key: string; text: string; blocking: boolean }> = [];

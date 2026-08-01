@@ -329,13 +329,34 @@ async function resolveTokens(conditionId) {
   try {
     const r = await httpGet(`${CLOB_BASE}/markets/${conditionId}`, { timeoutMs: 6_000, headers: { 'User-Agent': UA, Accept: 'application/json' } });
     const tokens = r && r.status === 200 && Array.isArray(r.data.tokens) ? r.data.tokens : [];
-    const yes = tokens.find(t => t.outcome === 'Yes');
-    const no = tokens.find(t => t.outcome === 'No');
-    const rec = { tokenId: yes ? String(yes.token_id) : null, tokenIdNo: no ? String(no.token_id) : null };
+    // ── NON TUTTI I MERCATI BINARI SI CHIAMANO «Yes» E «No» ────────────────────────────────────────
+    // Questa funzione cercava letteralmente `outcome === 'Yes'`, e per un «Bitcoin Up or Down» il venue
+    // pubblica ['Up', 'Down']: nessun token trovato, mercato scartato, prezzo mai live. Ed e' proprio la
+    // famiglia di mercati per cui la sottoscrizione a richiesta e' stata scritta.
+    //
+    // Prima si prova per etichetta (comportamento identico a prima dove le etichette sono Yes/No), poi
+    // per POSIZIONE quando i token sono esattamente due. La posizione non e' un'invenzione: e' la
+    // convenzione che il resto del progetto usa gia' (lib/maker/market-search.tokenIdsOf e agent24
+    // leggono clobTokenIds[0]/[1]), e i due ordinamenti coincidono — verificato il 2026-08-01 su un
+    // mercato Yes/No e su uno Up/Down, CLOB.tokens[i].token_id === Gamma.clobTokenIds[i] per entrambi.
+    // Con un numero di token diverso da due non si indovina: si restituisce null e il mercato viene
+    // scartato, perche' invertire i due lati significherebbe quotare il lato sbagliato.
+    const byLabel = (want) => tokens.find((t) => String(t.outcome || '').trim().toLowerCase() === want);
+    let yes = byLabel('yes');
+    let no = byLabel('no');
+    let via = 'etichetta';
+    if ((!yes || !no) && tokens.length === 2) { yes = tokens[0]; no = tokens[1]; via = 'posizione'; }
+    const rec = {
+      tokenId: yes ? String(yes.token_id) : null,
+      tokenIdNo: no ? String(no.token_id) : null,
+      resolvedVia: yes && no ? via : null,
+    };
     if (rec.tokenId) resolvedTokens.set(conditionId, rec);
+    else log(`token non risolvibili per ${conditionId.slice(0, 10)}… (${tokens.length} token, outcome: ${tokens.map((t) => t.outcome).join('/')})`);
     return rec;
-  } catch { return { tokenId: null, tokenIdNo: null }; }
+  } catch { return { tokenId: null, tokenIdNo: null, resolvedVia: null }; }
 }
+
 
 // Union in markets where ANY user has a persisted leg (Phase 2). We read only the
 // DISTINCT (marketId, venue) — never any leg's price/side/contents. Mutates `into`.
