@@ -2227,3 +2227,6 @@ h1, h2, h3 {
   display: flex; gap: 16px; align-items: center; flex-wrap: wrap;
   padding: 8px 10px 0; border-top: 1px solid var(--ex-line-soft); margin-top: 9px;
 }
+
+/* Inline red flag inside a footnote line — the one-line replacement for a caveat sentence. */
+.mkt-shell.exch .mkt-flagbad { color: var(--ex-red); }

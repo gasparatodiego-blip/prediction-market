@@ -561,7 +561,7 @@ export default function MarketTerminal({ marketId }: { marketId: string }) {
 
         {/* ══ 2 · CONFIGURE ════════════════════════════════════════════════════════════════════ */}
         <Section id="config" n="2" title="Configura"
-          sub="La size è il totale su entrambi i lati; la distanza è quanto ti scosti dal punto medio di scoring. Sono gli stessi due valori dell'elenco.">
+          sub="Size totale su entrambi i lati, distanza dal mid di scoring. Gli stessi due valori dell'elenco.">
           <div className="mkt-ctl">
             <div className="mkt-ctl-row">
               <label className="mkt-lab" htmlFor="mkt-size">
@@ -589,18 +589,17 @@ export default function MarketTerminal({ marketId }: { marketId: string }) {
               <input id="mkt-dist" className="mkt-input" type="number" inputMode="decimal" min={0}
                 step={fin(tick) ? tick * 100 : 0.1}
                 value={distInput} onChange={(e) => setDistInput(e.target.value)} />
-              <p className="mkt-foot">
-                Tick del mercato {fin(tick) ? `${cents(tick, 2)}` : '—'} — i prezzi sotto sono già
-                agganciati alla griglia: il venue rifiuta un prezzo più fine.{' '}
+              <p className="mkt-foot" title="I prezzi sono agganciati alla griglia del tick: il venue rifiuta un prezzo piu fine.">
+                Tick {fin(tick) ? `${cents(tick, 2)}` : '—'} ·{' '}
                 {midSource === 'ws-live'
-                  ? 'Il punto medio usato è quello live del book (aggiornato in continuo).'
-                  : 'Il punto medio usato viene dall\u2019ultimo scan (fino a 15 minuti fa): il feed live del book non è disponibile ora.'}
+                  ? 'mid live dal book'
+                  : 'mid dall\u2019ultimo scan (fino a 15 min fa)'}
                 {!pr.tickKnown
-                  ? ' Il tick non è leggibile ora: nessun prezzo viene proposto e la configurazione non è salvabile, perché senza griglia non si sa quale prezzo il venue accetta.'
+                  ? <span className="mkt-flagbad"> · ⚠ tick non leggibile: nessun prezzo proposto, configurazione non salvabile</span>
                   : fin(pr.snappedByC) && pr.snappedByC > 0
-                    ? ` La griglia ha spostato la tua distanza di ${pr.snappedByC.toFixed(2)}¢: da ${fin(pr.buyYesRaw) ? cents(pr.buyYesRaw) : '—'} a ${fin(pr.buyYes) ? cents(pr.buyYes) : '—'} sul lato acquisto.`
+                    ? ` · griglia: ${pr.snappedByC.toFixed(2)}¢ di spostamento (${fin(pr.buyYesRaw) ? cents(pr.buyYesRaw) : '—'} → ${fin(pr.buyYes) ? cents(pr.buyYes) : '—'})`
                     : ''}
-                {pr.anyOutOfBand ? ' Questa distanza porta un ordine FUORI banda: non matura premio.' : ''}
+                {pr.anyOutOfBand ? <span className="mkt-flagbad"> · ⚠ FUORI banda: non matura premio</span> : ''}
               </p>
             </div>
 
@@ -611,12 +610,9 @@ export default function MarketTerminal({ marketId }: { marketId: string }) {
                   <button key={v} type="button" aria-pressed={side === v} onClick={() => setSide(v)}>{l}</button>
                 ))}
               </div>
-              <p className="mkt-foot">
-                Un solo lato prende <strong>un terzo</strong> del punteggio quando il medio è fra 10¢ e
-                90¢, e <strong>zero</strong> fuori da quell&rsquo;intervallo. «Compra NO» a {fin(pr.buyNo) ? cents(pr.buyNo) : '—'} è
-                lo stesso ordine di «vendi YES» a {fin(pr.sellYes) ? cents(pr.sellYes) : '—'}: con i soli
-                pUSD puoi immettere solo <strong>acquisti</strong> — una vendita consegna il token, quindi
-                richiede di possederlo.
+              <p className="mkt-foot" title="Compra NO e lo stesso ordine di vendi YES a 1 meno il prezzo. Con i soli pUSD puoi immettere solo acquisti: una vendita consegna il token, quindi richiede di possederlo.">
+                Un lato solo prende <strong>un terzo</strong> del punteggio fra 10¢ e 90¢, <strong>zero</strong> fuori.
+                «Compra NO» {fin(pr.buyNo) ? cents(pr.buyNo) : '—'} ≡ «vendi YES» {fin(pr.sellYes) ? cents(pr.sellYes) : '—'}.
               </p>
             </div>
           </div>
@@ -624,14 +620,14 @@ export default function MarketTerminal({ marketId }: { marketId: string }) {
 
         {/* ══ 3 · ONE BOOK ═════════════════════════════════════════════════════════════════════ */}
         <Section id="book" n="3" title="Book"
-          sub="Un solo book. Il lato NO non è un secondo grafico: prezzo NO = 1 − prezzo YES sullo stesso livello.">
+          sub="Un solo book: prezzo NO = 1 − prezzo YES sullo stesso livello.">
           <FeedBadge book={book} />
           <Ladder book={book} isPaid={isPaid} buyYes={pr.buyYes} sellYes={pr.sellYes} side={side} />
         </Section>
 
         {/* ══ 4 · NUMBERS ══════════════════════════════════════════════════════════════════════ */}
         <Section id="numbers" n="4" title="Numeri alla tua size"
-          sub="Calcolati sulla quota quadratica pubblicata contro la profondità concorrente reale del feed.">
+          sub="Quota quadratica pubblicata, contro la profondità reale del feed.">
           <div className="mkt-nums">
             <div className="mkt-num">
               <div className="mkt-num-k">lordo / giorno</div>
@@ -669,10 +665,9 @@ export default function MarketTerminal({ marketId }: { marketId: string }) {
             <div className="mkt-num">
               <div className="mkt-num-k">netto / giorno</div>
               <div className="mkt-num-v">{D}</div>
-              <div className="mkt-num-s">
-                l&rsquo;adverse selection non è misurata, solo modellata
-                {adverse?.cost != null ? ` (stima ${usd(adverse.cost)}/giorno, ${adverse.source === 'market-vol' ? 'dalla volatilità del mercato' : 'banda prudenziale 2–5%'})` : ''}
-                : un netto stampato da quel modello sarebbe una precisione che non abbiamo.
+              <div className="mkt-num-s" title="Un netto stampato da quel modello sarebbe una precisione che non abbiamo.">
+                adverse selection modellata, non misurata
+                {adverse?.cost != null ? ` · ~${usd(adverse.cost)}/g (${adverse.source === 'market-vol' ? 'volatilità' : 'banda 2–5%'})` : ''}
               </div>
             </div>
           </div>
@@ -702,7 +697,7 @@ export default function MarketTerminal({ marketId }: { marketId: string }) {
 
         {/* ══ 5 · PER-ORDER RULES ══════════════════════════════════════════════════════════════ */}
         <Section id="rules" n="5" title="Regole per ordine"
-          sub="Queste due scelte non sono promemoria: il motore le rilegge a ogni ciclo dalla riga dell'ordine (agent35-maker → lib/maker/quote-plan e lib/maker/fill-policy)."
+          sub="Non promemoria: il motore le rilegge a ogni ciclo dalla riga dell'ordine."
         >
           <div className="mkt-ctl">
             <div className="mkt-ctl-row is-wide">
@@ -773,13 +768,13 @@ export default function MarketTerminal({ marketId }: { marketId: string }) {
             {legsSave === 'saving' ? 'Salvo…' : 'Salva la configurazione degli ordini'}
           </button>
           {legsMsg && <p className="mkt-foot" style={{ color: legsSave === 'error' ? 'var(--ds-danger)' : undefined }}>{legsMsg}</p>}
-          <p className="mkt-foot">Salvare scrive solo la configurazione. <strong>Non piazza nessun ordine.</strong></p>
+          <p className="mkt-foot">Salva solo la configurazione. <strong>Non piazza nulla.</strong></p>
         </Section>
 
         {/* ══ 5b · RISK LIMIT (operator) ═══════════════════════════════════════════════════════ */}
         {operator === true && (
         <Section id="risk" n="5b" title="Limite di rischio su questo mercato"
-          sub="Il tetto massimo di collaterale che il bot può impegnare qui. È il limite che tiene sotto controllo l'accumulo di inventario: nemmeno fill ripetuti con la regola «lato opposto» possono superarlo.">
+          sub="Tetto di collaterale impegnabile qui. Nemmeno fill ripetuti possono superarlo.">
           <div className="mkt-ctl">
             <div className="mkt-ctl-row">
               <label className="mkt-lab" htmlFor="mkt-cap">
@@ -838,7 +833,7 @@ export default function MarketTerminal({ marketId }: { marketId: string }) {
         {/* ══ 6 · EXECUTION (operator) ═════════════════════════════════════════════════════════ */}
         {operator === true && (
         <Section id="exec" n="6" title="Esecuzione"
-          sub="Quattro passaggi, in ordine. Ognuno mostra il suo stato reale letto dal motore, non una spunta locale.">
+          sub="Quattro passaggi, ognuno con lo stato reale letto dal motore.">
           {gates?.engine?.unknownReason && (
             <p className="mkt-foot" style={{ color: 'var(--cc-amber)' }}>
               Stato dei gate non determinabile: {gates.engine.unknownReason}. Finché è così nessun
@@ -923,7 +918,7 @@ export default function MarketTerminal({ marketId }: { marketId: string }) {
                     {gates.arming.ttlSeconds != null ? ` (TTL ${Math.round(gates.arming.ttlSeconds / 3600)}h)` : ''}
                     {gates.arming.expiresAt ? ` · scade ${gates.arming.expiresAt}` : ''}
                   </div>
-                  <p className="mkt-foot">Alla scadenza il motore si disarma da solo e cancella gli ordini aperti. Non esiste un arm senza scadenza.</p>
+                  <p className="mkt-foot" title="Non esiste un arm senza scadenza.">⏱ Alla scadenza si disarma da solo e cancella gli ordini aperti.</p>
                   <button className="mkt-btn" type="button" onClick={doDisarm}>DISARMA</button>
                 </>
               ) : !armOpen ? (
@@ -1089,9 +1084,8 @@ function Ladder({ book, isPaid, buyYes, sellYes, side }: {
           </b>
         </div>
       )}
-      <p className="mkt-foot">
-        Primi {book?.ladderCap ?? '—'} livelli per lato: il book può essere più profondo. Le righe
-        evidenziate sono dentro la banda premiante; fuori da lì un ordine riposa ma vale 0.
+      <p className="mkt-foot" title="Il book puo essere piu profondo di cosi. Fuori dalla banda premiante un ordine riposa ma vale 0.">
+        Primi {book?.ladderCap ?? '—'} livelli per lato · le righe evidenziate sono in banda.
       </p>
     </>
   );
