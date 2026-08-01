@@ -24,6 +24,22 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+// Il rinnovo del permesso, e la soglia di freschezza che il pannello PROMETTE al server quando conferma.
+//
+// PERCHE' 30 SECONDI E NON 5. L'eta' di un book e' il tempo dall'ultimo messaggio del websocket, non un
+// segno di vita della connessione: un mercato tranquillo puo' stare fermo un minuto con la sottoscrizione
+// perfettamente viva, semplicemente perche' nessuno ha mosso il book. Una soglia a 5 secondi rifiuterebbe
+// ordini su libri sani, e un blocco che scatta quando va tutto bene e' un blocco che l'operatore impara a
+// ignorare — cioe' peggio che non averlo. 30 secondi e' la stessa soglia con cui il feed stesso smette di
+// chiamare «live» un book (STALE_MS in agent34): usare la sua definizione invece di inventarne una
+// seconda significa che non possono dare due risposte diverse alla stessa domanda.
+const LEASE_RENEW_MS = 5_000;
+const FRESH_BOOK_MAX_MS = 30_000;
+// Quanto si aspetta prima di smettere di chiamarlo «collegamento in corso». agent34 guarda il file dei
+// permessi ogni 2s e poi deve risolvere i token e ricevere il primo snapshot: quindici secondi coprono
+// quel percorso con abbondanza. Oltre, non è latenza — è che quel mercato non verrà coperto.
+const LEASE_CONNECT_GRACE_MS = 15_000;
+
 /** La forma normalizzata che il pannello accetta, da qualunque lista arrivi. */
 export interface OrderTarget {
   marketId: string;
@@ -110,6 +126,11 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
   const [quote, setQuote] = useState<Quote | null>(null);
   const [quoteErr, setQuoteErr] = useState<string | null>(null);
   const [priceTouched, setPriceTouched] = useState(false);
+  // Lo stato della sottoscrizione temporanea al book. Tre valori, non due: «sto chiedendo» e «ho chiesto
+  // e non ce l'ho fatta» sono cose diverse, e mostrarle uguali farebbe leggere una latenza normale come
+  // un guasto — o, molto peggio, un guasto come una latenza normale.
+  const [lease, setLease] = useState<'idle' | 'asking' | 'held' | 'failed'>('idle');
+  const [leaseErr, setLeaseErr] = useState<string | null>(null);
   const [sizeTouched, setSizeTouched] = useState(false);
   // Orologio a 1s: il countdown sotto i 5 minuti deve muoversi, non sembrare fermo.
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
@@ -117,6 +138,9 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
   // Quando la quotazione e' ARRIVATA. Senza questo l'etichetta direbbe sempre la stessa eta' fra un
   // poll e l'altro, cioe' esattamente il difetto che stiamo togliendo, solo spostato di un metro.
   const quoteAtMs = useRef<number>(Date.now());
+  // Da quando il permesso e' preso. Serve a smettere di dire «mi sto collegando» quando e' evidente che
+  // il collegamento non arrivera': un'attesa che non finisce mai e' una bugia lenta.
+  const leaseHeldSince = useRef<number | null>(null);
 
   useEffect(() => {
     const t = setInterval(() => setNowMs(Date.now()), 1000);
@@ -152,6 +176,56 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
     })();
     return () => { alive = false; };
   }, []);
+
+  // ── LA SOTTOSCRIZIONE TEMPORANEA AL BOOK ───────────────────────────────────────────────────────
+  // agent34 segue il board reward piu' i mercati abilitati a mano. Per tutti gli altri il prezzo migliore
+  // che sapevamo dare veniva dalla REST di Gamma, ferma per minuti su un ciclo da cinque. Aprire questo
+  // pannello ora CHIEDE al feed di sottoscriversi a questo mercato, e la richiesta e' l'apertura stessa:
+  // niente da premere, perche' chiedere un prezzo non e' un'azione che vada confermata.
+  //
+  // IL RINNOVO NON E' UNA RIDONDANZA, E' IL MECCANISMO. Il permesso scade da solo dopo 20 secondi e
+  // questo ciclo lo rinnova ogni 5. Se il browser viene chiuso di colpo, la scheda uccisa dal sistema o
+  // la pagina va in crash, nessun rilascio parte mai — e va bene cosi': il permesso muore da solo. Il
+  // rilascio esplicito qui sotto libera lo slot subito, ma non e' quello su cui si conta.
+  useEffect(() => {
+    let alive = true;
+    const id = target.marketId;
+    const call = async (action: 'acquire' | 'release') => {
+      const r = await fetch('/api/maker/live-lease', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ marketId: id, action, by: 'pannello ordine' }),
+      });
+      return r.json();
+    };
+    setLease('asking'); setLeaseErr(null); leaseHeldSince.current = null;
+    const renew = async () => {
+      try {
+        const b = await call('acquire');
+        if (!alive) return;
+        if (b.ok) { if (leaseHeldSince.current == null) leaseHeldSince.current = Date.now(); setLease('held'); setLeaseErr(null); }
+        else { setLease('failed'); setLeaseErr(b.error ?? 'permesso rifiutato'); }
+      } catch (e) {
+        if (alive) { setLease('failed'); setLeaseErr((e as Error).message); }
+      }
+    };
+    renew();
+    const t = setInterval(renew, LEASE_RENEW_MS);
+    // Chiusura della scheda: `sendBeacon` e' l'unica cosa che il browser garantisce di consegnare mentre
+    // la pagina muore. Se non arriva nemmeno quella, ci pensa la scadenza.
+    const onHide = () => {
+      try {
+        navigator.sendBeacon?.('/api/maker/live-lease',
+          new Blob([JSON.stringify({ marketId: id, action: 'release' })], { type: 'application/json' }));
+      } catch { /* la scadenza e' la rete di sicurezza */ }
+    };
+    window.addEventListener('pagehide', onHide);
+    return () => {
+      alive = false;
+      clearInterval(t);
+      window.removeEventListener('pagehide', onHide);
+      call('release').catch(() => { /* scade da solo */ });
+    };
+  }, [target.marketId]);
 
   // ── LA QUOTAZIONE LIVE ─────────────────────────────────────────────────────────────────────────
   // Alla prima apertura e poi a ritmo, finche il pannello resta aperto. Prima questi numeri erano
@@ -275,6 +349,15 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
     && (cfg?.autoReprice?.optedInMarketIds ?? []).map((x) => x.toLowerCase()).includes(target.marketId.toLowerCase()));
 
   // ── LE VALIDAZIONI, contro le regole del venue di QUESTO mercato ────────────────────────────────
+
+  // ── IL PREZZO E' LIVE, SI' O NO ────────────────────────────────────────────────────────────────
+  // Tre condizioni, tutte necessarie. `source` da solo non basta: il feed scrive nel suo snapshot anche i
+  // book fermi, e infatti un mercato scaduto compare come «live-book» con un'eta' di trentasei minuti.
+  // Verificato il 2026-08-01 sulla finestra 2:15PM-2:30PM.
+  const quoteAgeMs = quote ? (fin(quote.ageMs) ? (quote.ageMs as number) : 0) + Math.max(0, nowMs - quoteAtMs.current) : null;
+  const bookLive = quote?.source === 'live-book' && quote.live === true
+    && fin(quoteAgeMs) && (quoteAgeMs as number) <= FRESH_BOOK_MAX_MS;
+
   const problems = useMemo(() => {
     const out: Array<{ key: string; text: string; blocking: boolean }> = [];
     if (!fin(size) || size <= 0) out.push({ key: 'size', text: 'Inserisci una size.', blocking: true });
@@ -300,25 +383,37 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
       out.push({ key: 'kill', text: cfg.kill.readable === false ? 'Kill-switch non leggibile — trattato come attivo.' : 'Kill-switch ATTIVO: nessun ordine può essere piazzato.', blocking: true });
     }
     if (!isEnabled) out.push({ key: 'enable', text: 'Mercato non abilitato: il gate live-min rifiuterebbe. Abilitalo qui sopra.', blocking: true });
-    // ── MERCATO VELOCE, PREZZO LENTO ────────────────────────────────────────────────────────────
-    // agent34 e' sottoscritto al board reward piu' ai mercati abilitati: per tutti gli altri la fonte
-    // piu' fresca che abbiamo e' la REST di Gamma, che serve uno snapshot suo e non il book live.
-    // Misurato su «Bitcoin Up or Down 3:35-3:40PM» il 2026-08-01: sette letture in 60 secondi, mid
-    // fermo a 51,5¢ tutte e sette. Su un ciclo da cinque minuti quel numero puo' essere vecchio quanto
-    // il ciclo stesso. Non e' un difetto che si possa correggere da qui — si dice, e si dice come si
-    // risolve, invece di lasciar credere che il prezzo a schermo sia il prezzo di adesso.
-    if (quote?.source === 'gamma' && fin(minsLeft) && (minsLeft as number) < 20) {
+    // ── IL PREZZO DEV'ESSERE VIVO PER POTER CONFERMARE ──────────────────────────────────────────
+    // Questo pannello promette un prezzo live: chiede al feed una sottoscrizione temporanea al book e la
+    // tiene finche' resta aperto. Se quella promessa non regge — la sottoscrizione non si e' stabilita, e'
+    // caduta, il feed e' fermo, o il mercato e' fuori dal budget del feed — la schermata continuerebbe a
+    // mostrare l'ultimo numero buono, e confermare vorrebbe dire piazzare su un prezzo vecchio credendolo
+    // attuale. Quindi BLOCCA. Non e' un avviso: un avviso lo si legge dopo aver gia' premuto.
+    //
+    // Lo stesso controllo viene rifatto dal server prima di inviare (gate `stale-book`), perche' fra il
+    // momento in cui questa schermata dice «si puo'» e il momento in cui l'ordine parte c'e' del tempo, e
+    // la sottoscrizione puo' cadere proprio li' in mezzo.
+    if (!bookLive) {
+      const why = lease === 'asking'
+        ? 'sottoscrizione al book live in corso — attendi qualche secondo.'
+        : lease === 'failed'
+          ? `sottoscrizione al book live NON riuscita${leaseErr ? ` (${leaseErr})` : ''}: il prezzo mostrato viene da Gamma e puo' essere vecchio di minuti.`
+          : quote?.source === 'gamma'
+            ? 'il prezzo viene da Gamma, non dal book live: il feed non e\' ancora sottoscritto a questo mercato.'
+            : fin(quoteAgeMs) && (quoteAgeMs as number) > FRESH_BOOK_MAX_MS
+              ? `il book live per questo mercato e' fermo da ${Math.round((quoteAgeMs as number) / 1000)}s: la sottoscrizione sembra caduta.`
+              : 'il book live non e\' ancora arrivato.';
       out.push({
-        key: 'slow-quote',
-        text: 'Prezzo da Gamma, non dal book live: agent34 non è sottoscritto a questo mercato. Su un ciclo così corto può essere vecchio di minuti. Abilita il mercato per averlo sul feed live.',
-        blocking: false,
+        key: 'not-live',
+        text: `Non si conferma su un prezzo non live — ${why}`,
+        blocking: true,
       });
     }
     if (fin(minsLeft) && (minsLeft as number) < 3) {
       out.push({ key: 'expiry', text: `Scade fra ${closeTxt(minsLeft)}: sotto i 3 minuti il venue non riesce a esprimere la durata di un ordine — potrebbe non arrivare a tempo.`, blocking: false });
     }
     return out;
-  }, [size, price, notional, tick, minSize, cfg, balanceUsd, isEnabled, minsLeft, quote?.source]);
+  }, [size, price, notional, tick, minSize, cfg, balanceUsd, isEnabled, minsLeft, bookLive, lease, leaseErr, quote?.source, quoteAgeMs]);
 
   const blocking = problems.filter((p) => p.blocking);
   const canReview = blocking.length === 0;
@@ -348,6 +443,10 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
           // 0 ⇒ GTC. Con il rinnovo disattivato si chiede la finestra fissa; altrimenti si lascia
           // decidere al server dallo switch per-mercato, che è la fonte di verità.
           ...(autoRenew ? {} : { ttlSeconds }),
+          // LA PROMESSA, DICHIARATA AL SERVER. Questa schermata ha mostrato un prezzo live; il gate
+          // `stale-book` verifica che lo sia ancora nell'istante in cui l'ordine parte, e rifiuta invece
+          // di piazzare su un dato stantio se nel frattempo la sottoscrizione e' caduta.
+          requireFreshBookMs: FRESH_BOOK_MAX_MS,
           note: 'pannello ordine',
         }),
       });
@@ -359,11 +458,21 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
 
   const sends = cfg?.placement?.sends === true;
 
+
   // L'eta del prezzo, misurata dal momento della lettura piu l'attesa da allora. Sotto il secondo si
   // dice «adesso»: scrivere «0s fa» su un book websocket sarebbe vero ma illeggibile.
   const quoteAge = (() => {
     if (!quote) return quoteErr ? 'non letto' : 'in lettura…';
-    const ms = (fin(quote.ageMs) ? (quote.ageMs as number) : 0) + Math.max(0, nowMs - quoteAtMs.current);
+    // Mentre il permesso e' in corso e il prezzo arriva ancora da Gamma, si dice che si sta
+    // collegando invece di far sembrare definitivo un ripiego che sta per essere sostituito.
+    // «Mi sto collegando» vale finché il collegamento può ancora arrivare. Passata la finestra, il feed
+    // quel mercato non lo copre — cap pieno, token non risolvibili, processo fermo — e continuare a dire
+    // che ci si sta collegando sarebbe un'attesa che non finisce mai, cioè una bugia lenta. Da lì si dice
+    // com'è: il dato è di ripiego, e viene da Gamma.
+    const connecting = lease === 'asking'
+      || (lease === 'held' && leaseHeldSince.current != null && nowMs - leaseHeldSince.current < LEASE_CONNECT_GRACE_MS);
+    if (quote.source === 'gamma' && connecting) return 'connessione al book…';
+    const ms = fin(quoteAgeMs) ? (quoteAgeMs as number) : 0;
     const src = quote.source === 'live-book' ? 'book live' : 'Gamma';
     if (ms < 1500) return `${src} · adesso`;
     if (ms < 60_000) return `${src} · ${Math.round(ms / 1000)}s fa`;
@@ -390,6 +499,12 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
               {' '}
               <span className={`ex-badge ${isEnabled ? 'is-gold' : ''}`} data-op-enabled={isEnabled ? '1' : '0'}>
                 {isEnabled ? 'abilitato' : 'non abilitato'}
+              </span>
+              {' '}
+              <span className={`ex-badge ${bookLive ? 'is-ok' : lease === 'failed' ? 'is-bad' : 'is-warn'}`}
+                data-op-booklive={bookLive ? '1' : '0'} data-op-lease={lease}
+                title={quote?.sourceNote ?? 'in attesa della prima quotazione'}>
+                {bookLive ? 'book live' : lease === 'asking' ? 'collegamento…' : lease === 'failed' ? 'book NON live' : 'book non live'}
               </span>
               {!target.hasRewards && <span className="ex-badge is-warn op-bdg">NESSUN REWARD — solo trading direzionale</span>}
             </div>

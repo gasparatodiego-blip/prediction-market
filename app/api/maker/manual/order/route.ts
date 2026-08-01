@@ -46,6 +46,12 @@ const bodySchema = z.object({
   // (GTC when on, the usual 180s GTD when off), which is what the panel does.
   ttlSeconds: z.number().int().min(0).max(86_400).optional(),
   note: z.string().trim().max(280).optional(),
+  // LA PROMESSA DI FRESCHEZZA. Chi ha mostrato all'operatore un prezzo dichiarandolo «live» lo scrive
+  // qui, e il gate `stale-book` lo tiene alla promessa: la banda dev'essere giudicata contro un mid che
+  // viene davvero dal book live e che sia piu' giovane di questi millisecondi. Assente ⇒ nessun requisito,
+  // perche' un chiamante che non ha promesso niente non va bloccato da un vincolo che non gli e' stato
+  // posto e che su un mercato fuori dal feed non potrebbe soddisfare.
+  requireFreshBookMs: z.number().int().min(1000).max(120_000).optional(),
 });
 
 export async function POST(req: NextRequest) {

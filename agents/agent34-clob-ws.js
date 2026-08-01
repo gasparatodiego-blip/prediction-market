@@ -67,6 +67,10 @@ const FEED_ASSET_BUDGET = 250;        // assets on one market-channel connection
 const TOTAL_MARKET_CAP = Math.floor(FEED_ASSET_BUDGET / 2); // 125 markets (board + operator + legs), 2 tokens each
 const WRITE_INTERVAL_MS = 3_000;      // recompute + persist snapshot cadence
 const REFRESH_MARKETS_MS = 60_000;    // re-read the watchlist for adds/drops
+// Ogni quanto si guarda il file dei permessi temporanei. Volutamente MOLTO piu' fitto della
+// riconciliazione: e' una lettura di un file locale di poche centinaia di byte, e chi apre un pannello
+// sta guardando lo schermo adesso. La riconciliazione vera scatta solo se l'insieme e' cambiato.
+const LEASE_WATCH_MS = 2_000;
 const STALE_MS = 30_000;              // no event within this ⇒ that book is STALE (≈3 heartbeats)
 const RESNAPSHOT_MIN_GAP_MS = 5_000;  // don't hammer REST for the same asset
 const STARTUP_DELAY_MS = 8_000;
@@ -263,6 +267,61 @@ async function unionOperatorMarkets(into, deps = {}) {
   return into;
 }
 
+// ── SOTTOSCRIZIONI TEMPORANEE (live-lease) ──────────────────────────────────────────────────────────
+// Un permesso in data/maker-live-leases.json significa: «un pannello di piazzamento e APERTO su questo
+// mercato adesso». La dashboard lo scrive all apertura e lo rinnova ogni 5s; scade da solo dopo 20s.
+//
+// PERCHE UN PERMESSO PUO EVINCERE UN MERCATO DEL BOARD. Al tetto, un permesso segue la stessa regola dei
+// mercati abilitati a mano: cede il posto il mercato reward con il montepremi piu basso (uno sconosciuto
+// conta zero). Sembra aggressivo, e la ragione per cui non lo e: l operatore sta GUARDANDO quel mercato
+// in questo istante, probabilmente per piazzarci sopra, mentre il mercato evincito e quello che rende
+// meno di tutti; i permessi sono al massimo otto su un budget di 125; e ognuno scade in venti secondi,
+// quindi lo sfratto si ripara da solo entro il giro di riconciliazione successivo. Se non c e nulla da
+// evincere il permesso viene SCARTATO e detto ad alta voce — il pannello continua a mostrare Gamma e lo
+// dichiara, invece di far credere che il prezzo sia live.
+//
+// Un mercato gia sottoscritto per altri motivi (board, abilitato, leg) viene solo MARCATO, mai
+// sottoscritto due volte: il permesso in quel caso non costa niente.
+let leaseDropped = [];
+let leaseActiveIds = [];
+async function unionLeaseMarkets(into, deps = {}) {
+  leaseDropped = [];
+  let ids = [];
+  try {
+    const { readActiveLeaseIds } = require('../lib/maker/live-lease');
+    ids = deps.leaseIds !== undefined ? deps.leaseIds : readActiveLeaseIds();
+  } catch (e) {
+    // File illeggibile o modulo assente ⇒ nessun permesso. Fallire chiuso qui puo solo costare una
+    // sottoscrizione temporanea, mai concederne una che nessuno ha chiesto.
+    log('live-lease non leggibile (nessuna sottoscrizione temporanea questo giro):', e.message);
+    leaseActiveIds = [];
+    return into;
+  }
+  leaseActiveIds = ids.slice();
+  if (!ids.length) return into;
+  const byLower = new Map([...into.keys()].map((k) => [normId(k), k]));
+  for (const id of ids) {
+    const existing = byLower.get(normId(id));
+    if (existing) { into.get(existing).leased = true; continue; }
+    if (into.size >= TOTAL_MARKET_CAP) {
+      const evicted = evictWeakestRewardMarket(into);
+      if (!evicted) { leaseDropped.push(id); continue; }
+      byLower.delete(normId(evicted));
+    }
+    const meta = await operatorMarketMeta(id, deps);
+    if (!meta) { leaseDropped.push(id); continue; }   // token non risolvibile → mai inventato
+    meta.source = 'live-lease';
+    meta.operatorEnabled = false;
+    meta.leased = true;
+    into.set(id, meta);
+    byLower.set(normId(id), id);
+  }
+  if (leaseDropped.length) {
+    log(`ATTENZIONE: ${leaseDropped.length} sottoscrizioni temporanee NON attivate (tetto ${TOTAL_MARKET_CAP} o token non risolvibili): ${leaseDropped.join(', ')}`);
+  }
+  return into;
+}
+
 // Resolve YES/NO token ids for a conditionId via the CLOB (cached). Needed for
 // leg-only markets that aren't in the reward-eligible watchlist file.
 async function resolveTokens(conditionId) {
@@ -375,6 +434,7 @@ async function reconcileSubscriptions() {
   desired = collectDesiredMarkets();
   await unionOperatorMarkets(desired); // + every market the operator enabled by hand (cfg.enabledMarketIds)
   await unionLegMarkets(desired);   // Phase 2: + markets where a user has legs
+  await unionLeaseMarkets(desired); // + i mercati con un pannello di piazzamento aperto adesso (temporanei)
   await loadDriftInputs();          // Phase 4: refresh legs/placements/rewardScore/rails
   const nextAssets = new Map();
   for (const meta of desired.values()) {
@@ -509,7 +569,7 @@ function buildSnapshot() {
     };
   }
   const rss = process.memoryUsage().rss;
-  const bySource = { 'reward-board': 0, 'operator-enabled': 0, leg: 0 };
+  const bySource = { 'reward-board': 0, 'operator-enabled': 0, leg: 0, 'live-lease': 0 };
   for (const meta of desired.values()) {
     const s = meta.source || (meta.fromLeg ? 'leg' : 'reward-board');
     bySource[s] = (bySource[s] || 0) + 1;
@@ -533,6 +593,13 @@ function buildSnapshot() {
       operatorDropped: [...operatorDropped],
       operatorUnresolved: [...operatorUnresolved],
       operatorEvictedRewardMarkets: [...operatorEvicted],
+      // Le sottoscrizioni temporanee, esposte per diagnosi: quante sono attive, quante NON e' stato
+      // possibile attivare, e il tetto. Cosi' «perche' questo mercato non e' live?» ha una risposta
+      // leggibile invece di richiedere i log del processo.
+      leaseMarkets: bySource['live-lease'] || 0,
+      leaseActive: [...leaseActiveIds],
+      leaseDropped: [...leaseDropped],
+      leaseCap: (() => { try { return require('../lib/maker/live-lease').LEASE_CAP; } catch { return null; } })(),
     },
     staleMs: STALE_MS,
     markets,
@@ -833,6 +900,24 @@ async function main() {
   await resnapshotAll('startup'); // seed immediately via REST so we're useful before the first ws snapshot
 
   setInterval(() => { reconcileSubscriptions().catch(e => log('reconcile failed:', e.message)); }, REFRESH_MARKETS_MS);
+
+  // ── IL PERCORSO RAPIDO PER I PERMESSI TEMPORANEI ────────────────────────────────────────────────
+  // La riconciliazione normale gira ogni 60 secondi, che va benissimo per un board che cambia con lo
+  // scan. Per un permesso NO: chi apre il pannello sta guardando lo schermo adesso, e aspettare fino a
+  // un minuto perche il prezzo diventi live vorrebbe dire non averlo fatto. Quindi il file dei permessi
+  // si guarda ogni 2 secondi — e solo il file, che e piccolo e locale — e si riconcilia SOLO quando
+  // l insieme e cambiato davvero. A regime, senza pannelli aperti, questo costa una lettura di un file
+  // vuoto ogni due secondi e nient altro: nessuna riconciliazione, nessuna chiamata al venue.
+  let lastLeaseKey = '';
+  setInterval(() => {
+    let ids = [];
+    try { ids = require('../lib/maker/live-lease').readActiveLeaseIds(); } catch { return; }
+    const key = ids.slice().sort().join(',');
+    if (key === lastLeaseKey) return;
+    lastLeaseKey = key;
+    log(`live-lease cambiato (${ids.length} attivi) — riconcilio subito`);
+    reconcileSubscriptions().catch((e) => log('reconcile (lease) failed:', e.message));
+  }, LEASE_WATCH_MS);
   setInterval(() => { tick().catch(e => log('tick failed:', e.message)); }, WRITE_INTERVAL_MS);
   // Append-only mid-history sample (separate, slower cadence than the 3s snapshot). Read-only; never
   // reaches an order path. Wrapped so a write hiccup can never stall the feed loop.
@@ -858,6 +943,9 @@ module.exports = {
   tradeTapePath, MID_HISTORY_INTERVAL_MS, COVERAGE_FILE,
   // The operator lane — exported so the selfcheck can drive it with injected deps (no network, no data/).
   readOperatorEnabledIds, operatorMarketMeta, unionOperatorMarkets, evictWeakestRewardMarket, sizeCutoff,
+  // La corsia delle sottoscrizioni temporanee, esportata per la stessa ragione: il selfcheck la guida con
+  // deps iniettate, senza rete e senza toccare data/.
+  unionLeaseMarkets, leaseLaneState: () => ({ dropped: [...leaseDropped], active: [...leaseActiveIds] }),
   operatorLaneState: () => ({ dropped: [...operatorDropped], unresolved: [...operatorUnresolved], evicted: [...operatorEvicted] }),
   SUBSCRIPTION_CAP, TOTAL_MARKET_CAP, FEED_ASSET_BUDGET,
 };
