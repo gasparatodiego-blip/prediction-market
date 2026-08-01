@@ -347,6 +347,13 @@ export default function RewardsAllocatePanel() {
       anyOverride: Object.keys(offsets).length > 0,
       staleCount: rows.filter((x) => x.stale).length, unreadableCount: rows.filter((x) => x.unreadable).length,
       usableCount: usable.length, newestAge: ages.length ? Math.min(...ages) : null, oldestAge: ages.length ? Math.max(...ages) : null,
+      // ── QUANTI MERCATI QUALIFICANO DAVVERO, e per quale delle due regole gli altri non lo fanno.
+      // Il riepilogo finale mostra la cifra e, sotto, il motivo: un piano su 12 mercati di cui 5
+      // rendono zero non e' un piano su 12 mercati, ed e' esattamente la cosa che uno zero nascosto
+      // lascia credere.
+      qualifyingCount: usable.filter((x) => (x.c.gross ?? 0) > 0).length,
+      belowMinCount: rows.filter((x) => x.r.belowVenueMinSize).length,
+      outOfBandCount: rows.filter((x) => x.c.inBand === false).length,
       resDist, artifactCount: rows.filter((x) => x.artifact).length,
       // Largest per-market gross among the rows that COUNT (usable ones). It is only the bar's scale —
       // the bar is a reading aid for the $/g already in the cell, never a second number. Rows excluded
@@ -436,82 +443,8 @@ export default function RewardsAllocatePanel() {
   }, [capital, takeManual, runSearch]);
 
   return (
-    <div className="alloc-root">
-      <style>{`
-        .alloc-root{color:var(--ds-text);max-width:1040px;margin:0 auto;padding:16px 12px 48px;font:14px/1.5 ui-sans-serif,system-ui,-apple-system,sans-serif}
-        .alloc-card{background:color-mix(in srgb,var(--ds-text) 3%,transparent);border:1px solid var(--ds-border);border-radius:12px;padding:14px 16px;margin:12px 0}
-        .alloc-h{font-weight:600;font-size:18px;margin:0 0 4px}
-        .alloc-sub{color:color-mix(in srgb,var(--ds-text) 55%,transparent);font-size:12.5px}
-        .alloc-addr{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
-        .alloc-in{font:16px ui-monospace,monospace;background:var(--ds-bg);color:var(--ds-text);border:1px solid var(--ds-border);border-radius:8px;padding:10px 12px;width:180px;min-height:44px}
-        .alloc-btn{min-height:44px;min-width:44px;padding:8px 14px;border-radius:8px;border:1px solid var(--ds-border);background:color-mix(in srgb,var(--ds-accent) 14%,transparent);color:var(--ds-text);font-weight:600;cursor:pointer}
-        .alloc-note{border-left:3px solid var(--ds-accent);padding:8px 12px;margin:10px 0;background:color-mix(in srgb,var(--ds-accent) 8%,transparent);border-radius:0 8px 8px 0;font-size:13px}
-        .alloc-warn{border-left-color:#d9a441;background:color-mix(in srgb,#d9a441 12%,transparent)}
-        .alloc-tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--ds-border);border-radius:10px}
-
-        /* LE STESSE RIGHE, PER TELEFONO. Nascoste da desktop, dove la tabella a 17 colonne resta la
-           vista migliore; sotto i 900px si scambiano. Nessun numero viene ricalcolato qui: le schede
-           leggono gli stessi oggetti della tabella. */
-        .alloc-cards{display:none;flex-direction:column;gap:10px}
-        .ac{border:1px solid var(--ds-border);border-radius:12px;padding:11px 12px;background:color-mix(in srgb,var(--ds-text) 3%,transparent)}
-        .ac-top{display:flex;gap:10px;align-items:flex-start;justify-content:space-between}
-        .ac-name{font-size:14px;font-weight:700;line-height:1.3;min-width:0;overflow-wrap:anywhere}
-        .ac-zero{margin-top:8px;font-size:12.5px;line-height:1.45;color:#d98a41;border-radius:8px;padding:7px 9px;
-          border:1px solid color-mix(in srgb,#d98a41 40%,transparent);background:color-mix(in srgb,#d98a41 10%,transparent)}
-        .ac-nums{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px}
-        .ac-num span{display:block;font-size:11px;color:color-mix(in srgb,var(--ds-text) 55%,transparent)}
-        .ac-num b{display:block;font-size:17px;font-variant-numeric:tabular-nums;line-height:1.2;overflow-wrap:anywhere}
-        .ac-off{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:11px}
-        .ac-off-k{font-size:11px;color:color-mix(in srgb,var(--ds-text) 55%,transparent)}
-        .ac-warn{font-size:12px;margin-top:6px;line-height:1.45}
-        .ac-more{min-height:44px;width:100%;margin-top:9px;border:1px solid var(--ds-border);border-radius:10px;
-          background:transparent;color:var(--ds-text);font-size:13px;font-weight:700;cursor:pointer;touch-action:manipulation}
-        .ac-det{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px 12px;margin-top:10px;
-          border-top:1px solid var(--ds-border);padding-top:10px}
-        .ac-det span{display:block;font-size:11px;color:color-mix(in srgb,var(--ds-text) 55%,transparent)}
-        .ac-det b{display:block;font-size:13px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
-        /* Scoped alla SOLA tabella del piano: alloc-tablewrap veste anche la tabella di ricerca e quella
-           dei risultati di esecuzione, che su telefono devono restare (scorrono in orizzontale). */
-        @media (max-width:900px){.alloc-cards{display:flex}.alloc-plantable{display:none}}
-        table.alloc{border-collapse:collapse;width:100%;min-width:1360px;font-size:13px}
-        table.alloc th,table.alloc td{padding:8px 10px;border-bottom:1px solid var(--ds-border);text-align:right;white-space:nowrap}
-        table.alloc th{position:sticky;top:0;background:var(--ds-bg);font-weight:600;color:color-mix(in srgb,var(--ds-text) 70%,transparent);font-size:11.5px;text-transform:uppercase;letter-spacing:.03em}
-        table.alloc td.name,table.alloc th.name{text-align:left;white-space:normal;min-width:170px}
-        table.alloc td.dash{color:color-mix(in srgb,var(--ds-text) 45%,transparent)}
-        .alloc-cat{color:color-mix(in srgb,var(--ds-text) 50%,transparent);font-size:11.5px}
-        .alloc-sum{display:flex;flex-wrap:wrap;gap:14px 26px;margin-top:10px}
-        .alloc-sum div span{display:block;color:color-mix(in srgb,var(--ds-text) 55%,transparent);font-size:11.5px}
-        .alloc-sum div b{font-size:17px;font-variant-numeric:tabular-nums}
-        .alloc-front{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
-        .alloc-chip{font-variant-numeric:tabular-nums;font-size:12px;border:1px solid var(--ds-border);border-radius:999px;padding:3px 9px;white-space:nowrap}
-        .alloc-basis{border:1px solid var(--ds-accent);border-radius:12px;padding:12px 16px;margin:14px 0;background:color-mix(in srgb,var(--ds-accent) 7%,transparent)}
-        .alloc-basis-h{font-weight:700;font-size:14px;letter-spacing:.02em;margin-bottom:6px}
-        .alloc-basis-ul{margin:0;padding-left:18px}.alloc-basis-ul li{margin:5px 0;font-size:13px;line-height:1.5}
-        .off-ctl{display:inline-flex;align-items:center;gap:4px;justify-content:flex-end}
-        .off-step{min-width:44px;min-height:44px;padding:0;border-radius:8px;border:1px solid var(--ds-border);background:color-mix(in srgb,var(--ds-accent) 10%,transparent);color:var(--ds-text);font-size:18px;font-weight:700;cursor:pointer;line-height:1}
-        .off-val{min-width:74px;text-align:center;font-variant-numeric:tabular-nums}
-        .off-val b{font-size:14px}.off-val small{display:block;font-size:11px;color:color-mix(in srgb,var(--ds-text) 55%,transparent)}
-        .off-reset{min-width:34px;min-height:44px;border:none;background:transparent;color:color-mix(in srgb,var(--ds-text) 55%,transparent);cursor:pointer;font-size:15px}
-        .off-over{color:#d9a441;font-weight:700}
-        .oob{color:#d98a41;font-weight:600}
-        .fresh-ok{color:#4c9a6a}
-        .fresh-stale{color:#d98a41;font-weight:700}
-        .band-badge{display:inline-block;font-size:11px;font-weight:700;padding:1px 7px;border-radius:6px;border:1px solid;white-space:nowrap}
-        .band-comfortable{color:#4c9a6a;border-color:color-mix(in srgb,#4c9a6a 45%,transparent);background:color-mix(in srgb,#4c9a6a 10%,transparent)}
-        .band-edge{color:#b9791f;border-color:#d9a441;background:color-mix(in srgb,#d9a441 16%,transparent)}
-        .band-out{color:#d1495b;border-color:#d1495b;background:color-mix(in srgb,#d1495b 14%,transparent)}
-        .band-unknown{color:#8a8f98;border:1px dashed #8a8f98;background:transparent}
-        .band-room{display:block;font-size:11px;color:color-mix(in srgb,var(--ds-text) 55%,transparent);margin-top:2px;white-space:nowrap}
-        .step-danger{border-color:#d1495b !important;color:#d1495b !important;background:color-mix(in srgb,#d1495b 12%,transparent) !important}
-        .fresh-bar{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center;font-size:12px;margin:2px 0 8px;color:color-mix(in srgb,var(--ds-text) 60%,transparent)}
-        .gross-bar{display:block;height:4px;min-width:48px;border-radius:999px;margin-top:4px;background:color-mix(in srgb,var(--ds-text) 10%,transparent);overflow:hidden}
-        .gross-bar i{display:block;height:100%;border-radius:999px;background:#2E5FBE}
-        .fresh-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:baseline}
-        /* Etichetta TESTUALE (mai solo colore): un mercato senza montepremi va letto come tale anche su
-           uno schermo al sole o da chi non distingue i colori. */
-        .no-reward-badge{display:inline-block;margin-top:3px;font-size:11px;font-weight:700;letter-spacing:.02em;padding:1px 7px;border-radius:6px;color:#b9791f;border:1px solid #d9a441;background:color-mix(in srgb,#d9a441 16%,transparent);white-space:normal}
-        @media(max-width:430px){.alloc-in{width:44vw}}
-      `}</style>
+    <div className="alloc-root exch">
+      <style>{CSS}</style>
 
       <h1 className="alloc-h">Allocazione capitale · liquidity rewards</h1>
       <p className="alloc-sub">Inserisci un capitale: l’ottimizzatore lo distribuisce sui mercati con la dimensione per-mercato corretta (knapsack sulla profondità reale in-band e sul pot), non in parti uguali. L’offset è ora regolabile per singolo mercato — leva diretta sull’essere riempiti.</p>
@@ -997,9 +930,39 @@ export default function RewardsAllocatePanel() {
               {plan.belowMinSize.length > 6 && <span> · +{plan.belowMinSize.length - 6} altri</span>}
             </div>
           )}
-          <div className="alloc-sum">
+          {/* ── IL RIEPILOGO FINALE ───────────────────────────────────────────────────────────────────
+              Capitale allocato, non allocato, mercati che qualificano davvero e stima realistica: le
+              quattro cifre con cui si decide, tutte visibili insieme. Una cifra che vale zero resta a
+              schermo con la nota rossa che dice perche' — sotto la size minima del venue, oppure fuori
+              banda — invece di sparire e lasciar credere che quel capitale stia lavorando. */}
+          <div className="alloc-sum" data-alloc-summary>
             <div><span>Capitale allocato</span><b>{money(plan.totals.capital)}</b></div>
-            <div><span>Non allocato (resto)</span><b>{money(plan.totals.unallocated)}</b></div>
+            <div>
+              <span>Non allocato (resto)</span>
+              <b className={plan.totals.unallocated > 0 ? 'ex-gold' : ''}>{money(plan.totals.unallocated)}</b>
+              {plan.totals.unallocated > 0 && <p className="ex-why ex-why-warn">capitale fermo: non matura nulla finche non e a riposo in banda</p>}
+            </div>
+            <div>
+              <span>Mercati che qualificano</span>
+              <b className={computed.qualifyingCount === 0 ? 'ex-dn' : ''} data-alloc-qualifying>
+                {computed.qualifyingCount} / {computed.rows.length}
+              </b>
+              {(computed.belowMinCount > 0 || computed.outOfBandCount > 0) && (
+                <p className="ex-why">
+                  {computed.belowMinCount > 0 && <>{computed.belowMinCount} sotto la size minima del venue</>}
+                  {computed.belowMinCount > 0 && computed.outOfBandCount > 0 && ' · '}
+                  {computed.outOfBandCount > 0 && <>{computed.outOfBandCount} fuori banda</>}
+                  {' '}— rendono $0,00/g
+                </p>
+              )}
+            </div>
+            <div>
+              <span>Stima realistica</span>
+              <b data-alloc-summary-realistic>{perDay(computed.realisticNow)}</b>
+              {computed.realisticUnknownCount > 0 && (
+                <p className="ex-why">{computed.realisticUnknownCount} righe non stimabili, escluse da questo totale</p>
+              )}
+            </div>
             <div><span>Lordo atteso (offset attuale)</span><b data-alloc-total-gross>{perDay(computed.grossNow)}</b></div>
             {/* La SECONDA cifra nel totale, affiancata alla lorda — mai al suo posto. */}
             <div>
@@ -1188,3 +1151,140 @@ export default function RewardsAllocatePanel() {
     </div>
   );
 }
+
+// NOTE: keep this stylesheet free of the characters React escapes in text nodes — quotes, angle
+// brackets, ampersands. As the child of a style element they are serialised escaped on the server and
+// raw on the client, which is a hydration mismatch that takes the whole root down to client rendering.
+const CSS = `
+.alloc-root { max-width: 1080px; margin: 0 auto; padding: 12px 12px 40px; font-size: 13px; line-height: 1.5; }
+.alloc-card { background: var(--ex-panel); border: 1px solid var(--ex-line); border-radius: 8px;
+  padding: 12px 14px; margin: 10px 0; }
+.alloc-h { font-weight: 700; font-size: 15px; margin: 0 0 4px; letter-spacing: -.01em; }
+.alloc-sub { color: var(--ex-txt-2); font-size: 11.5px; line-height: 1.5; }
+.alloc-addr { font-family: var(--ex-mono); font-size: 11px; }
+.alloc-in { min-height: 40px; padding: 0 10px; width: 180px; border-radius: 6px;
+  border: 1px solid var(--ex-line); background: #0D1114; color: var(--ex-txt);
+  font-family: var(--ex-mono); font-size: 14px; font-variant-numeric: tabular-nums; }
+.alloc-in:focus { outline: none; border-color: var(--ex-gold); }
+.alloc-btn { min-height: 40px; min-width: 40px; padding: 0 13px; border-radius: 6px;
+  border: 1px solid var(--ex-line); background: var(--ex-panel-2); color: var(--ex-txt);
+  font-family: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer; touch-action: manipulation; }
+.alloc-btn:hover { border-color: var(--ex-gold); color: var(--ex-gold); }
+.alloc-btn:disabled { opacity: .45; cursor: not-allowed; }
+.alloc-note { border-left: 2px solid var(--ex-gold); padding: 8px 11px; margin: 10px 0;
+  background: var(--ex-gold-bg); border-radius: 0 6px 6px 0; font-size: 12px; line-height: 1.55;
+  color: var(--ex-txt-2); }
+.alloc-warn { border-left-color: var(--ex-red); background: var(--ex-red-bg); color: #FF9AA8; }
+.alloc-tablewrap { overflow-x: auto; -webkit-overflow-scrolling: touch;
+  border: 1px solid var(--ex-line); border-radius: 8px; }
+
+/* LE STESSE RIGHE, PER TELEFONO. Nascoste da desktop, dove la tabella a 17 colonne resta la vista
+   migliore; sotto i 900px si scambiano. Nessun numero viene ricalcolato li: le schede leggono gli
+   stessi oggetti della tabella. */
+.alloc-cards { display: none; flex-direction: column; gap: 8px; }
+.ac { border: 1px solid var(--ex-line); border-radius: 8px; padding: 11px 12px; background: var(--ex-panel); }
+.ac-top { display: flex; gap: 10px; align-items: flex-start; justify-content: space-between; }
+.ac-name { font-size: 13px; font-weight: 600; line-height: 1.3; min-width: 0; overflow-wrap: anywhere; }
+/* LO ZERO SI VEDE, E SOTTO C E IL PERCHE. Una riga che rende $0 resta a schermo con la sua cifra e
+   la nota rossa che la spiega — nasconderla e come dire che il mercato sta guadagnando. */
+.ac-zero { margin-top: 8px; font-size: 11.5px; line-height: 1.45; color: var(--ex-red);
+  border-radius: 6px; padding: 7px 9px; border: 1px solid var(--ex-red-bd); background: var(--ex-red-bg); }
+.ac-nums { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+.ac-num span { display: block; font-size: 9.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--ex-txt-3); }
+.ac-num b { display: block; font-size: 15px; font-family: var(--ex-mono); font-variant-numeric: tabular-nums;
+  line-height: 1.2; overflow-wrap: anywhere; margin-top: 2px; }
+.ac-off { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; }
+.ac-off-k { font-size: 9.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--ex-txt-3); }
+.ac-warn { font-size: 11.5px; margin-top: 6px; line-height: 1.45; }
+.ac-more { min-height: 40px; width: 100%; margin-top: 8px; border: 1px solid var(--ex-line);
+  border-radius: 6px; background: transparent; color: var(--ex-txt-2); font-family: inherit;
+  font-size: 12px; font-weight: 700; cursor: pointer; touch-action: manipulation; }
+.ac-more:hover { color: var(--ex-gold); border-color: var(--ex-gold); }
+.ac-det { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; margin-top: 10px;
+  border-top: 1px solid var(--ex-line); padding-top: 10px; }
+.ac-det span { display: block; font-size: 9.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--ex-txt-3); }
+.ac-det b { display: block; font-size: 12.5px; font-family: var(--ex-mono); font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere; }
+/* Scoped alla SOLA tabella del piano: alloc-tablewrap veste anche la tabella di ricerca e quella dei
+   risultati di esecuzione, che su telefono devono restare (scorrono in orizzontale). */
+@media (max-width: 900px) { .alloc-cards { display: flex; } .alloc-plantable { display: none; } }
+
+/* ── LA TABELLA — ogni cella numerica in monospazio tabulare. ─────────────────────────────────────── */
+table.alloc { border-collapse: collapse; width: 100%; min-width: 1360px; font-size: 12px;
+  font-family: var(--ex-mono); font-variant-numeric: tabular-nums; }
+table.alloc th, table.alloc td { padding: 7px 9px; border-bottom: 1px solid var(--ex-line-soft);
+  text-align: right; white-space: nowrap; }
+table.alloc th { position: sticky; top: 0; background: var(--ex-panel-2); font-family: var(--ex-sans);
+  font-weight: 700; color: var(--ex-txt-3); font-size: 9.5px; text-transform: uppercase; letter-spacing: .06em;
+  border-bottom: 1px solid var(--ex-line); }
+table.alloc td.name, table.alloc th.name { text-align: left; white-space: normal; min-width: 170px;
+  font-family: var(--ex-sans); }
+table.alloc td.dash { color: var(--ex-txt-3); }
+.alloc-cat { color: var(--ex-txt-3); font-size: 10.5px; font-family: var(--ex-sans); }
+
+/* ── IL RIEPILOGO FINALE — una striscia densa, non una lista. ─────────────────────────────────────── */
+.alloc-sum { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 1px;
+  background: var(--ex-line); border: 1px solid var(--ex-line); border-radius: 8px; overflow: hidden;
+  margin-top: 12px; }
+.alloc-sum div { background: var(--ex-panel); padding: 9px 11px; min-width: 0; }
+.alloc-sum div span { display: block; color: var(--ex-txt-3); font-size: 9.5px; letter-spacing: .05em;
+  text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.alloc-sum div b { display: block; margin-top: 3px; font-size: 15px; font-family: var(--ex-mono);
+  font-variant-numeric: tabular-nums; line-height: 1.2; overflow-wrap: anywhere; }
+
+.alloc-front { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 6px; }
+.alloc-chip { font-family: var(--ex-mono); font-variant-numeric: tabular-nums; font-size: 11px;
+  border: 1px solid var(--ex-line); border-radius: 3px; padding: 2px 8px; white-space: nowrap;
+  background: var(--ex-panel-2); color: var(--ex-txt-2); }
+.alloc-basis { border: 1px solid var(--ex-gold-bd); border-radius: 8px; padding: 11px 14px; margin: 12px 0;
+  background: var(--ex-gold-bg); }
+.alloc-basis-h { font-weight: 700; font-size: 13px; letter-spacing: .01em; margin-bottom: 6px; color: var(--ex-gold); }
+.alloc-basis-ul { margin: 0; padding-left: 16px; }
+.alloc-basis-ul li { margin: 5px 0; font-size: 12px; line-height: 1.55; color: var(--ex-txt-2); }
+
+/* ── Controllo offset per riga ─────────────────────────────────────────────────────────────────── */
+.off-ctl { display: inline-flex; align-items: center; gap: 4px; justify-content: flex-end; }
+.off-step { min-width: 40px; min-height: 40px; padding: 0; border-radius: 6px;
+  border: 1px solid var(--ex-line); background: var(--ex-panel-2); color: var(--ex-txt);
+  font-family: inherit; font-size: 16px; font-weight: 700; cursor: pointer; line-height: 1;
+  touch-action: manipulation; }
+.off-step:hover { border-color: var(--ex-gold); color: var(--ex-gold); }
+.off-step:disabled { opacity: .35; cursor: not-allowed; }
+.off-val { min-width: 74px; text-align: center; font-family: var(--ex-mono); font-variant-numeric: tabular-nums; }
+.off-val b { font-size: 13px; }
+.off-val small { display: block; font-size: 10px; color: var(--ex-txt-3); }
+.off-reset { min-width: 32px; min-height: 40px; border: none; background: transparent;
+  color: var(--ex-txt-3); cursor: pointer; font-size: 14px; }
+.off-reset:hover { color: var(--ex-gold); }
+.off-over { color: var(--ex-gold); font-weight: 700; }
+.oob { color: var(--ex-red); font-weight: 600; }
+.fresh-ok { color: var(--ex-green); }
+.fresh-stale { color: var(--ex-gold); font-weight: 700; }
+
+/* Quattro stati di banda, ognuno con un ETICHETTA TESTUALE — mai solo colore: telefono al sole e
+   daltonismo devono leggere lo stesso verdetto. */
+.band-badge { display: inline-block; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 3px;
+  border: 1px solid; white-space: nowrap; font-family: var(--ex-sans); }
+.band-comfortable { color: var(--ex-green); border-color: var(--ex-green-bd); background: var(--ex-green-bg); }
+.band-edge { color: var(--ex-gold); border-color: var(--ex-gold-bd); background: var(--ex-gold-bg); }
+.band-out { color: var(--ex-red); border-color: var(--ex-red-bd); background: var(--ex-red-bg); }
+.band-unknown { color: var(--ex-txt-2); border: 1px dashed var(--ex-unk-bd); background: transparent; }
+.band-room { display: block; font-size: 10px; color: var(--ex-txt-3); margin-top: 2px; white-space: nowrap; }
+.step-danger { border-color: var(--ex-red) !important; color: var(--ex-red) !important;
+  background: var(--ex-red-bg) !important; }
+
+.fresh-bar { display: flex; flex-wrap: wrap; gap: 5px 14px; align-items: center; font-size: 11px;
+  margin: 2px 0 8px; color: var(--ex-txt-3); }
+.gross-bar { display: block; height: 3px; min-width: 44px; border-radius: 999px; margin-top: 4px;
+  background: var(--ex-line); overflow: hidden; }
+.gross-bar i { display: block; height: 100%; border-radius: 999px; background: var(--ex-gold); }
+.fresh-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 5px;
+  vertical-align: baseline; }
+/* Etichetta TESTUALE (mai solo colore): un mercato senza montepremi va letto come tale anche su uno
+   schermo al sole o da chi non distingue i colori. */
+.no-reward-badge { display: inline-block; margin-top: 3px; font-size: 10px; font-weight: 700;
+  letter-spacing: .02em; padding: 1px 6px; border-radius: 3px; color: var(--ex-gold);
+  border: 1px solid var(--ex-gold-bd); background: var(--ex-gold-bg); white-space: normal;
+  font-family: var(--ex-sans); }
+@media (max-width: 430px) { .alloc-in { width: 44vw; } }
+`;
