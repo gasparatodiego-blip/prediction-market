@@ -52,21 +52,30 @@ import { estimateAtCapital } from '@/lib/reward-operator-estimate';
 import PriceLadder from './PriceLadder';
 import ManualOrdersPanel from './ManualOrdersPanel';
 import RewardsAllocatePanel from './RewardsAllocatePanel';
-// "Strategia sul fill" — sotto il pianificatore, perche' il tetto che quella strategia applica E' il
-// capitale che il pianificatore assegna: una decisione sola, una schermata sola.
-import FillStrategyPanel from './FillStrategyPanel';
 import RewardsUnified from './RewardsUnified';
+import OrderPanel, { type OrderTarget } from './OrderPanel';
 
-type TabKey = 'riepilogo' | 'mercati' | 'posizioni' | 'ordini' | 'alloca' | 'regole';
+// ── TRE SEZIONI, NON SEI ────────────────────────────────────────────────────────────────────────
+// Sei tab volevano dire che rispondere a «i miei ordini stanno maturando?» costava tre passaggi:
+// Riepilogo per il capitale, Posizioni per l'esposizione, Ordini per il book — tre viste sullo stesso
+// istante, mai a schermo insieme. Adesso lo stato sta tutto in UNA sezione: capitale, ordini a riposo
+// col loro countdown, posizioni aperte, kill e ripristino.
+//
+// «Mercati» e «Ottimizza» restano separate perché rispondono a domande diverse (quale mercato · quanto
+// capitale), ma da entrambe si piazza dallo STESSO pannello, aperto sopra la lista.
+//
+// «Regole» non era una sezione: era un testo che non cambia mai. Sta dietro il «?» in intestazione.
+type TabKey = 'riepilogo' | 'mercati' | 'alloca';
 
 const TABS: Array<{ key: TabKey; label: string; short: string }> = [
   { key: 'riepilogo', label: 'Riepilogo', short: 'Riepilogo' },
   { key: 'mercati', label: 'Mercati', short: 'Mercati' },
-  { key: 'posizioni', label: 'Posizioni', short: 'Posizioni' },
-  { key: 'ordini', label: 'Ordini manuali', short: 'Ordini' },
   { key: 'alloca', label: 'Ottimizza capitale', short: 'Ottimizza' },
-  { key: 'regole', label: 'Regole', short: 'Regole' },
 ];
+/** I vecchi ?tab= continuano a funzionare: puntano alla sezione che ora li contiene. */
+const LEGACY_TAB: Record<string, TabKey> = {
+  posizioni: 'riepilogo', ordini: 'riepilogo', regole: 'riepilogo',
+};
 
 interface JudgedOrder {
   orderId: string | null; marketId: string | null; tokenId: string | null; side: string | null;
@@ -154,6 +163,9 @@ interface VenueSearchRow {
   tradable?: boolean; notTradableReason?: string | null;
   rewardsDailyRate: number | null; hasRewards: boolean; rewardLabel: string;
   spreadCents: number | null; tick: number | null; rewardsMaxSpreadCents: number | null;
+  /** min_incentive_size — la soglia sotto cui il programma premi non vede l'ordine. */
+  rewardsMinSize: number | null;
+  endDate: string | null;
   minutesToClose: number | null; tooCloseToClose: boolean;
   bestBid: number | null; bestAsk: number | null; mid: number | null;
   closed: boolean; acceptingOrders: boolean;
@@ -165,6 +177,21 @@ interface VenueSearchResp {
   /** Quanti la ricerca ha tolto perché non operabili (risolti, ritirati, scaduti, senza ordini). */
   notTradableDropped?: number;
 }
+
+/**
+ * Un ordine a riposo COL SUO TEMPO DI VITA, letto dal venue (/api/maker/manual/orders senza marketId ⇒
+ * l'intera lista aperta del conto). `secondsToExpiry` è già corretto per i 60 secondi con cui l'exchange
+ * ritira un GTD in anticipo: è la risposta onesta a «quanto sopravvive se il server si ferma adesso».
+ * GTC ⇒ null su entrambi, e si scrive «nessuna scadenza», non un trattino che si legge «non lo so».
+ */
+interface RestingOrder {
+  orderId: string | null; marketId: string | null; side: string | null;
+  price: number | null; size: number | null; sizeMatched: number | null; sizeRemaining: number | null;
+  status: string; source: string; notionalUsd: number | null;
+  orderType: 'GTC' | 'GTD'; expiresAtMs: number | null;
+  secondsToExpiry: number | null; secondsToRefresh: number | null;
+}
+interface RestingResp { ok: boolean; error: string | null; simulated: boolean; count: number; orders: RestingOrder[]; at: string }
 
 interface Positions {
   ok: boolean; wallet: string | null; error: string | null; source: string; at: string;
@@ -189,6 +216,17 @@ const closeTxt = (min: number | null): string => {
   if (min < 90) return `chiude fra ${Math.round(min)} min`;
   if (min < 2880) return `chiude fra ${(min / 60).toFixed(1)} h`;
   return `chiude fra ${(min / 1440).toFixed(1)} g`;
+};
+/**
+ * Il tempo che resta a un ordine, in mm:ss. Sotto lo zero non si scrive «0:00» ma «scaduto»: un ordine
+ * che il venue ha già ritirato non è un ordine con zero secondi davanti, ed è una differenza che conta
+ * proprio nell'istante in cui si sta decidendo se rinnovarlo.
+ */
+const ttlTxt = (sec: number | null | undefined): string => {
+  if (!fin(sec)) return 'N/D';
+  if (sec <= 0) return 'scaduto';
+  const m = Math.floor(sec / 60);
+  return `${m}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
 };
 const hoursTxt = (h: number | null): string =>
   (!fin(h) ? 'N/D' : h < 48 ? `${Math.round(h)} h` : `${Math.round(h / 24)} g`);
@@ -219,7 +257,9 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
   // null = still probing the admin gate; false = public visitor (gets the unchanged public board).
   const [operator, setOperator] = useState<boolean | null>(null);
   const [tab, setTab] = useState<TabKey>(
-    (TABS.some((t) => t.key === initialTab) ? (initialTab as TabKey) : 'riepilogo'),
+    TABS.some((t) => t.key === initialTab)
+      ? (initialTab as TabKey)
+      : (initialTab && LEGACY_TAB[initialTab]) || 'riepilogo',
   );
   const [board, setBoard] = useState<Board | null>(null);
   const [boardErr, setBoardErr] = useState<string | null>(null);
@@ -254,19 +294,34 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
   const [venue, setVenue] = useState<VenueSearchResp | null>(null);
   const [venueBusy, setVenueBusy] = useState(false);
   const [venueErr, setVenueErr] = useState<string | null>(null);
-  // Il termine da passare al pannello Alloca quando si arriva li' da un risultato «fuori board».
-  const [allocPrefill, setAllocPrefill] = useState<string | null>(null);
+  // ── IL PANNELLO ORDINE ─────────────────────────────────────────────────────────────────────────
+  // Tiene l'OGGETTO del mercato toccato, non il suo nome. È la differenza che chiude alla radice il
+  // bug di identità: finché l'identità viaggiava come testo, chi la riceveva doveva RICERCARLA, e una
+  // ricerca restituisce una lista in cui il mercato di partenza non è la prima riga. Qui non c'è
+  // nessun passaggio in cui il conditionId possa diventare un altro.
+  const [orderTarget, setOrderTarget] = useState<OrderTarget | null>(null);
+  // Le regole del programma: un testo che non cambia mai, quindi non una sezione ma un pannello.
+  const [showRules, setShowRules] = useState(false);
+  // Ordini a riposo su TUTTI i mercati, con la scadenza letta dal venue. La board sa prezzo e banda ma
+  // non sa quando un ordine muore; questa lettura sì, ed è l'unica che può muovere un countdown.
+  const [resting, setResting] = useState<RestingResp | null>(null);
+  const [killBusy, setKillBusy] = useState<'kill' | 'reset' | null>(null);
+  const [killMsg, setKillMsg] = useState<string | null>(null);
 
   // A slow clock, so every freshness readout AGES VISIBLY between polls instead of looking frozen-fresh
   // until the next fetch lands. 5s is finer than the fastest cadence on this page (20s) and costs one
   // re-render, never a refetch. Seeded in an effect, not in the initial state: Date.now() during the
   // first render differs between server and client and would desync hydration.
+  //
+  // Nel Riepilogo batte al secondo, non ogni cinque: lì c'è il countdown alla scadenza degli ordini, e
+  // un conto alla rovescia che salta di cinque secondi alla volta si legge come rotto. Altrove cinque
+  // secondi bastano — nessuna cifra di quella pagina cambia più in fretta.
   const [nowMs, setNowMs] = useState(0);
   useEffect(() => {
     setNowMs(Date.now());
-    const t = setInterval(() => setNowMs(Date.now()), 5_000);
+    const t = setInterval(() => setNowMs(Date.now()), tab === 'riepilogo' ? 1_000 : 5_000);
     return () => clearInterval(t);
-  }, []);
+  }, [tab]);
 
   const loadBoard = useCallback(async () => {
     try {
@@ -300,6 +355,17 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
     } finally { setPosLoading(false); }
   }, []);
 
+  // Ordini a riposo su TUTTI i mercati: marketId omesso di proposito. Un ordine su un mercato che il
+  // pannello ha smesso di seguire non deve poter sparire da questa lista.
+  const loadResting = useCallback(async () => {
+    try {
+      const r = await fetch('/api/maker/manual/orders', { cache: 'no-store' });
+      setResting((await r.json()) as RestingResp);
+    } catch (e) {
+      setResting({ ok: false, error: (e as Error).message, simulated: false, count: 0, orders: [], at: new Date().toISOString() });
+    }
+  }, []);
+
   useEffect(() => { loadBoard(); loadBalance(); }, [loadBoard, loadBalance]);
   useEffect(() => {
     if (operator !== true) return;
@@ -308,13 +374,39 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
     return () => { clearInterval(a); clearInterval(b); };
   }, [operator, loadBoard, loadBalance]);
 
-  // Positions cost a venue round-trip, so they are fetched only while their section is open.
+  // Posizioni e ordini a riposo costano un giro verso il venue: si leggono solo mentre il Riepilogo,
+  // che è l'unico posto che li mostra, è aperto.
   useEffect(() => {
-    if (operator !== true || tab !== 'posizioni') return;
-    loadPositions();
-    const t = setInterval(loadPositions, POSITIONS_POLL_MS);
+    if (operator !== true || tab !== 'riepilogo') return;
+    loadPositions(); loadResting();
+    const t = setInterval(() => { loadPositions(); loadResting(); }, POSITIONS_POLL_MS);
     return () => clearInterval(t);
-  }, [operator, tab, loadPositions]);
+  }, [operator, tab, loadPositions, loadResting]);
+
+  // KILL e RIPRISTINA. Due endpoint che possono solo FERMARE: /api/maker/kill importa il solo modulo
+  // di kill (che raggiunge il percorso cancel-only) e /manual/reset non ha altra chiamata mutante che
+  // una cancellazione. Nessuno dei due può piazzare, per costruzione, non per convenzione.
+  const doKill = useCallback(async () => {
+    setKillBusy('kill'); setKillMsg(null);
+    try {
+      const r = await fetch('/api/maker/kill', { method: 'POST' });
+      const b = await r.json();
+      setKillMsg(b.ok ? 'KILL eseguito: maker disarmato e ordini cancellati sul venue.' : `KILL parziale: ${b.error ?? b.cancelError ?? 'vedi audit'}`);
+      loadBoard(); loadResting();
+    } catch (e) { setKillMsg(`KILL fallito: ${(e as Error).message}`); }
+    finally { setKillBusy(null); }
+  }, [loadBoard, loadResting]);
+
+  const doReset = useCallback(async () => {
+    setKillBusy('reset'); setKillMsg(null);
+    try {
+      const r = await fetch('/api/maker/manual/reset', { method: 'POST' });
+      const b = await r.json();
+      setKillMsg(b.ok ? 'Ripristino completato: venue e cap gate confermano zero esposizione residua.' : `Ripristino NON confermato: ${b.error ?? b.reason ?? 'una delle due verifiche non dà zero'}`);
+      loadBoard(); loadResting();
+    } catch (e) { setKillMsg(`Ripristino fallito: ${(e as Error).message}`); }
+    finally { setKillBusy(null); }
+  }, [loadBoard, loadResting]);
 
   // La ricerca sul venue parte SOLO da 3 caratteri e con 400ms di quiete: la barra filtra dal vivo la
   // lista locale a ogni tasto, ma una GET verso Gamma a ogni tasto sarebbe una richiesta per lettera.
@@ -475,6 +567,38 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
     return (venue.markets || []).filter((m) => m.marketId && !inBoard.has(m.marketId.toLowerCase()));
   }, [venue, pricedMarkets]);
 
+  // ── DALLA CARD AL PANNELLO, SENZA PASSARE DAL TESTO ────────────────────────────────────────────
+  // Due sorgenti, una sola forma. Ogni campo viene copiato dalla riga toccata; nessuno viene cercato,
+  // dedotto o riletto altrove. Il `marketId` che arriva nella POST è, per costruzione, quello della
+  // card: non esiste un punto in mezzo dove possa cambiare.
+  const targetFromBoard = useCallback((m: PricedMarket): OrderTarget => ({
+    marketId: m.marketId,
+    title: m.title ?? m.marketId,
+    // La board pubblica le ore alla risoluzione, non l'istante: si passa il minuto letto, non un
+    // orario ricostruito che sembrerebbe più preciso di quanto sia.
+    endDate: null,
+    minutesToClose: fin(m.hoursToResolution) ? (m.hoursToResolution as number) * 60 : null,
+    mid: m.mid, bestBid: m.bestBid, bestAsk: m.bestAsk,
+    spreadCents: m.spread.spreadCents, tick: m.tick, minSize: m.minSize,
+    maxSpreadCents: m.maxSpreadCents,
+    rewardsDailyRate: m.dailyPoolUsd,
+    hasRewards: fin(m.dailyPoolUsd) && (m.dailyPoolUsd as number) > 0,
+    enabled: m.inBotUniverse === true,
+  }), []);
+
+  const targetFromVenue = useCallback((m: VenueSearchRow): OrderTarget => ({
+    marketId: m.marketId,
+    title: m.question ?? m.marketId,
+    endDate: m.endDate ?? null,
+    minutesToClose: m.minutesToClose,
+    mid: m.mid, bestBid: m.bestBid, bestAsk: m.bestAsk,
+    spreadCents: m.spreadCents, tick: m.tick, minSize: m.rewardsMinSize ?? null,
+    maxSpreadCents: m.rewardsMaxSpreadCents,
+    rewardsDailyRate: m.rewardsDailyRate,
+    hasRewards: m.hasRewards === true,
+    enabled: m.enabled === true,
+  }), []);
+
   const visibleMarkets = useMemo(() => {
     const needle = q.trim().toLowerCase();
     let set = pricedMarkets;
@@ -536,6 +660,11 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
           <h1 className="lrc-h1">Liquidity rewards · console operatore</h1>
           <span className={`ex-badge ${earnBadge}`} data-lrc-earning={earning.state}>{earning.label}</span>
           <span className="lrc-venue">solo Polymarket</span>
+          <button
+            className="lrc-help" onClick={() => setShowRules(true)}
+            aria-label="Regole del programma premi" title="Come si guadagna, esattamente"
+            data-lrc-rules-open
+          >?</button>
         </div>
         <p className="lrc-earndetail">
           <span className="lrc-earnq">Il capitale sta maturando premi?</span> {earning.detail}
@@ -605,11 +734,7 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
               role="tab"
               aria-selected={tab === t.key}
               className={`ex-tab ${tab === t.key ? 'is-on' : ''}`}
-              // Il prefill vale per LA navigazione che lo ha impostato, non per sempre. Senza questo
-              // azzeramento, riaprire «Alloca» dalla barra delle tab — settimane dopo, o dopo aver
-              // svuotato il campo a mano — reimponeva il vecchio termine e rilanciava quella ricerca,
-              // sovrascrivendo quello che l'operatore stava facendo. Verificato: succedeva davvero.
-              onClick={() => { setAllocPrefill(null); setTab(t.key); }}
+              onClick={() => setTab(t.key)}
               data-lrc-tab={t.key}
             >
               <span className="lrc-tab-long">{t.label}</span>
@@ -671,9 +796,7 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
                   </div>
                 ))}
               </div>
-              <button className="ex-btn is-gold lrc-mt" onClick={() => setTab('ordini')} data-lrc-goto-orders>
-                Vai a Ordini manuali →
-              </button>
+              <p className="lrc-fine">I comandi per riprezzare o cancellare stanno qui sotto, sulla stessa schermata.</p>
             </div>
           ) : orders?.simulated ? null : (
             <div className="ex-banner is-ok lrc-mb" data-lrc-alert="none">
@@ -773,9 +896,174 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
             <div className="ex-banner">N/D — nessun mercato risulta scorabile in questo scan.</div>
           )}
 
+          {/* ── ORDINI A RIPOSO · TUTTI I MERCATI, UNO PER RIGA ─────────────────────────────────────
+              Il venue è la fonte: prezzo, size, quanto è già stato eseguito e — la cosa che solo questa
+              lettura sa — quando l'ordine muore. Il countdown è quello vero, già corretto per i 60
+              secondi con cui l'exchange ritira un GTD in anticipo. */}
+          <div className="ex-sech">
+            <span className="ex-sech-t">Ordini a riposo · tutti i mercati</span>
+            <span className="lrc-fine">
+              {resting?.at ? <>dal venue <span className="ex-n">{new Date(resting.at).toLocaleTimeString()}</span></> : 'in lettura…'}
+            </span>
+          </div>
+          {resting?.ok === false && (
+            <div className="ex-banner is-bad lrc-mb">Lettura FALLITA: {resting.error ?? '—'} — questa non è una lista vuota.</div>
+          )}
+          {resting?.simulated && (
+            <div className="ex-banner is-warn lrc-mb">Venue non interrogato: «nessun ordine» qui vorrebbe dire «non abbiamo letto».</div>
+          )}
+          {!resting ? (
+            <div className="lrc-nd">Lettura degli ordini…</div>
+          ) : resting.ok && !resting.simulated && resting.orders.length === 0 ? (
+            <div className="ex-banner is-ok lrc-mb" data-lrc-resting="empty">
+              Nessun ordine a riposo sul venue — letto, non dedotto.
+            </div>
+          ) : resting.orders.length > 0 ? (
+            <div className="ex-panel ex-rows" data-lrc-resting-list>
+              {resting.orders.map((o) => {
+                const judged = (orders?.orders ?? []).find((j) => j.orderId && j.orderId === o.orderId) ?? null;
+                const title = judged?.marketTitle
+                  ?? pricedMarkets.find((m) => m.marketId === o.marketId)?.title
+                  ?? o.marketId ?? 'mercato sconosciuto';
+                // Il tempo residuo scorre sull'orologio locale a partire dall'istante letto: se il
+                // countdown si fermasse fra un poll e l'altro direbbe una cosa falsa proprio nei
+                // secondi in cui conta di più.
+                const left = o.expiresAtMs != null
+                  ? Math.round((o.expiresAtMs - nowMs) / 1000)
+                  : (fin(o.secondsToExpiry) ? (o.secondsToExpiry as number) - Math.round((nowMs - Date.parse(resting.at)) / 1000) : null);
+                const filled = fin(o.sizeMatched) && (o.sizeMatched as number) > 0;
+                return (
+                  <div key={o.orderId ?? Math.random()} className="ex-row" data-lrc-resting-row={o.orderId ?? ''}>
+                    <div className="ex-row-main">
+                      <div className="ex-row-t">
+                        <span className={`ex-side ${judged?.book === 'yes' ? 'is-yes' : judged?.book === 'no' ? 'is-no' : ''}`}>
+                          {(o.side ?? 'BUY').toUpperCase()} {judged?.book ? judged.book.toUpperCase() : 'N/D'}
+                        </span>{' '}
+                        {title}
+                      </div>
+                      <div className="ex-row-s">
+                        {judged?.inBand === true ? <span className="ex-badge is-ok lrc-bdg">in banda</span>
+                          : judged?.inBand === false ? <span className="ex-badge is-bad lrc-bdg">fuori banda</span>
+                            : <span className="ex-badge lrc-bdg" title="regole di venue non leggibili oppure token non riconducibile ai due book">non giudicabile</span>}
+                        {' '}<span className="ex-badge lrc-bdg">{o.status}</span>
+                        {filled && <span className="ex-badge is-warn lrc-bdg">eseguito {num(o.sizeMatched, 1)}</span>}
+                        {' · '}<span className="ex-dim">{o.source}</span>
+                      </div>
+                    </div>
+                    <div className="ex-row-nums">
+                      <span className="ex-num"><span className="ex-num-k">prezzo</span><span className="ex-num-v">{cents(o.price)}</span></span>
+                      <span className="ex-num"><span className="ex-num-k">size</span><span className="ex-num-v">{num(o.sizeRemaining ?? o.size, 1)}</span></span>
+                      <span className="ex-num"><span className="ex-num-k">valore</span><span className="ex-num-v">{money(o.notionalUsd)}</span></span>
+                      <span className="ex-num">
+                        <span className="ex-num-k">{o.orderType === 'GTC' ? 'durata' : 'scade fra'}</span>
+                        <span className={`ex-num-v ${o.orderType === 'GTC' ? 'ex-dim' : left != null && left <= 180 ? 'ex-dn' : 'ex-gold'}`}
+                          data-lrc-resting-ttl={o.orderId ?? ''}>
+                          {o.orderType === 'GTC' ? 'nessuna' : ttlTxt(left)}
+                        </span>
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
+          <p className="lrc-fine">
+            Il countdown è la scadenza dichiarata dal venue, già corretta per i 60 secondi con cui un GTD
+            viene ritirato in anticipo: è quanto sopravvive l&apos;ordine se il server si ferma adesso.
+            {resting?.orders.some((o) => fin(o.secondsToRefresh))
+              ? ' Dove il rinnovo automatico è attivo, il riprezzo scatta prima di quel momento.'
+              : ''}
+          </p>
+
+          {/* ── POSIZIONI APERTE ────────────────────────────────────────────────────────────────── */}
+          <div className="ex-sech">
+            <span className="ex-sech-t">Posizioni aperte · esposizione netta</span>
+            <button className="ex-btn is-sm" onClick={loadPositions} disabled={posLoading}>{posLoading ? 'Lettura…' : 'Aggiorna'}</button>
+          </div>
+          {pos && pos.ok === false && (
+            <div className="ex-banner is-bad">Posizioni NON lette: {pos.error ?? 'errore sconosciuto'} — non è una lista vuota.</div>
+          )}
+          {pos?.ok && pos.markets.length === 0 && (
+            <div className="ex-banner is-ok">
+              Nessuna posizione sul wallet <span className="ex-n">{pos.wallet}</span> — letto, non dedotto.
+            </div>
+          )}
+          {!pos && <div className="lrc-nd">Lettura delle posizioni…</div>}
+          {pos?.ok && pos.markets.length > 0 && (
+            <>
+              <div className="ex-stats lrc-mb">
+                <div className="ex-stat">
+                  <span className="ex-stat-k">Mercati</span>
+                  <span className="ex-stat-v">{String(pos.totals?.marketCount ?? 0)}</span>
+                  <span className="ex-stat-s">{pos.totals?.legCount ?? 0} gambe YES/NO</span>
+                </div>
+                <div className="ex-stat">
+                  <span className="ex-stat-k">Valore a mid</span>
+                  <span className="ex-stat-v">{money(pos.totals?.currentValueUsd)}</span>
+                  <span className="ex-stat-s">a mid</span>
+                  {pos.totals?.valueUnknown && <p className="ex-why">una gamba senza valore leggibile — totale non calcolato</p>}
+                </div>
+                <div className="ex-stat">
+                  <span className="ex-stat-k">P&amp;L non realizz.</span>
+                  <span className={`ex-stat-v ${pnlCls(pos.totals?.unrealizedPnlUsd)}`}>{money(pos.totals?.unrealizedPnlUsd)}</span>
+                  <span className="ex-stat-s">non è un incasso</span>
+                </div>
+              </div>
+              <div className="ex-panel ex-rows" data-lrc-poslist>
+                {pos.markets.map((p) => (
+                  <div key={p.marketId ?? Math.random()} className="ex-row" data-lrc-position={p.marketId ?? ''}>
+                    <div className="ex-row-main">
+                      <div className="ex-row-t">{p.title ?? p.marketId ?? 'mercato sconosciuto'}</div>
+                      <div className="ex-row-s">
+                        netto{' '}
+                        <b className={`ex-n ${p.netDirection === 'yes' ? 'ex-up' : p.netDirection === 'no' ? 'ex-dn' : ''}`}>
+                          {p.netDirection === 'flat' ? 'piatto' : `${num(Math.abs(p.netShares ?? 0), 1)} ${p.netDirection.toUpperCase()}`}
+                        </b>
+                        {' · '}medio{' '}
+                        <span className="ex-n">{cents(p.legs.find((l) => l.side === p.netDirection)?.avgPrice ?? p.legs[0]?.avgPrice ?? null)}</span>
+                        {' · '}mid{' '}
+                        <span className="ex-n">{cents(p.legs.find((l) => l.side === p.netDirection)?.curPrice ?? p.legs[0]?.curPrice ?? null)}</span>
+                        {p.valueUnknown && <span className="ex-badge is-warn lrc-bdg" title="una gamba senza valore leggibile: il totale non è calcolato, non è zero">parziale</span>}
+                      </div>
+                    </div>
+                    <div className="ex-row-nums">
+                      <span className="ex-num"><span className="ex-num-k">costo</span><span className="ex-num-v">{money(p.initialValueUsd)}</span></span>
+                      <span className="ex-num"><span className="ex-num-k">a mid</span><span className="ex-num-v">{money(p.currentValueUsd)}</span></span>
+                      <span className="ex-num"><span className="ex-num-k">P&amp;L</span><span className={`ex-num-v ${pnlCls(p.unrealizedPnlUsd)}`}>{money(p.unrealizedPnlUsd)}</span></span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+          {pos && (
+            <p className="lrc-fine">
+              {pos.source} · wallet <span className="ex-n">{pos.wallet ?? 'N/D'}</span> · sola lettura.
+              P&amp;L <b>mark-to-mid</b>, non un incasso.
+            </p>
+          )}
+
+          {/* ── I COMANDI, sulla stessa schermata dello stato che descrivono ────────────────────── */}
+          <div className="ex-sech"><span className="ex-sech-t">Comandi sugli ordini</span></div>
+          <ManualOrdersPanel />
+
           <p className="lrc-note">
             Stesse cifre dell&apos;intestazione: un fetch, una lettura del venue, un giudizio di banda.
           </p>
+
+          {/* KILL e RIPRISTINA, ancorati in fondo: sono i due comandi che devono restare raggiungibili
+              qualunque cosa si stia guardando, senza cercarli. */}
+          <div className="ex-actionbar" data-lrc-killbar>
+            <button className="ex-btn is-danger" onClick={doKill} disabled={killBusy != null} data-lrc-kill>
+              {killBusy === 'kill' ? 'KILL in corso…' : '⛔ KILL'}
+            </button>
+            <button className="ex-btn" onClick={doReset} disabled={killBusy != null} data-lrc-reset>
+              {killBusy === 'reset' ? 'Ripristino…' : 'Ripristina'}
+            </button>
+            <span className="lrc-killnote">
+              {killMsg ?? 'KILL disarma e cancella tutto sul venue. Ripristina verifica da due fonti che non resti esposizione.'}
+            </span>
+          </div>
         </section>
       )}
 
@@ -924,6 +1212,17 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
 
                 return (
                   <div key={m.marketId} className="lrc-mkt ex-panel" data-lrc-market={m.marketId}>
+                    {/* ── LA CARD INTERA APRE IL PANNELLO ──────────────────────────────────────
+                        Non un pulsantino in un angolo: la superficie che si legge è la superficie
+                        che si tocca, ed è quella che porta con sé il proprio conditionId. I comandi
+                        secondari («Book», «Dettagli») stanno fuori da questo bottone, così un tocco
+                        su di loro non apre nulla. */}
+                    <button
+                      className="lrc-mkt-open"
+                      onClick={() => setOrderTarget(targetFromBoard(m))}
+                      data-lrc-open-order={m.marketId}
+                      title="Apre il pannello ordine su QUESTO mercato, senza cambiare tab e senza cercare nulla"
+                    >
                     {/* TITOLO, e sotto la sola riga che serve: scadenza e montepremi. */}
                     <div className="lrc-mkt-head">
                       <div className="lrc-mkt-t">
@@ -976,6 +1275,7 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
                         </span>
                       </div>
                     </div>
+                    </button>
 
                     <div className="lrc-pad">
                       {flag && (
@@ -992,6 +1292,7 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
                       />
 
                       <div className="ex-cardacts">
+                        <span className="lrc-taphint">tocca la scheda per piazzare</span>
                         <Link className="ex-link" href={`/dashboard/liquidity-rewards/${encodeURIComponent(m.marketId)}`} prefetch={false}>Book →</Link>
                         <button className="ex-link" onClick={() => setOpenDetail(detail ? null : m.marketId)} data-lrc-detail-toggle>
                           {detail ? 'Chiudi ↑' : 'Dettagli →'}
@@ -1054,161 +1355,35 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
             q={q} busy={venueBusy} err={venueErr} rows={venueOnly}
             dropped={venue?.notTradableDropped ?? 0}
             anyFilterOn={anyFilterOn} sortByPool={sortByPool}
-            onOpenInAlloca={(term) => { setAllocPrefill(term); setTab('alloca'); }}
+            onOpenOrder={(row) => setOrderTarget(targetFromVenue(row))}
           />
         </section>
       )}
 
-      {/* ── 3 · POSIZIONI ─────────────────────────────────────────────────────────────────────────── */}
-      {tab === 'posizioni' && (
-        <section className="lrc-sec" data-lrc-section="posizioni">
-          <Ask q="Cosa ho in mano?" sub="Esposizione netta per mercato, letta dal venue." />
-          <div className="ex-sech">
-            <span className="ex-sech-t">Posizioni aperte · esposizione netta</span>
-            <button className="ex-btn is-sm" onClick={loadPositions} disabled={posLoading}>{posLoading ? 'Lettura…' : 'Aggiorna'}</button>
-          </div>
-
-          {pos && pos.ok === false && (
-            <div className="ex-banner is-bad">
-              Posizioni NON lette: {pos.error ?? 'errore sconosciuto'} — non è una lista vuota.
-            </div>
-          )}
-          {pos?.ok && pos.markets.length === 0 && (
-            <div className="ex-banner is-ok">
-              Nessuna posizione sul wallet <span className="ex-n">{pos.wallet}</span> — letto, non dedotto.
-            </div>
-          )}
-          {!pos && <div className="lrc-nd">Lettura delle posizioni…</div>}
-
-          {pos?.ok && pos.markets.length > 0 && (
-            <>
-              <div className="ex-stats lrc-mb">
-                <div className="ex-stat">
-                  <span className="ex-stat-k">Mercati</span>
-                  <span className="ex-stat-v">{String(pos.totals?.marketCount ?? 0)}</span>
-                  <span className="ex-stat-s">{pos.totals?.legCount ?? 0} gambe YES/NO</span>
-                </div>
-                <div className="ex-stat">
-                  <span className="ex-stat-k">Valore a mid</span>
-                  <span className="ex-stat-v">{money(pos.totals?.currentValueUsd)}</span>
-                  <span className="ex-stat-s">a mid</span>
-                  {pos.totals?.valueUnknown && <p className="ex-why">una gamba senza valore leggibile — totale non calcolato</p>}
-                </div>
-                <div className="ex-stat">
-                  <span className="ex-stat-k">P&amp;L non realizz.</span>
-                  <span className={`ex-stat-v ${pnlCls(pos.totals?.unrealizedPnlUsd)}`}>{money(pos.totals?.unrealizedPnlUsd)}</span>
-                  <span className="ex-stat-s">non è un incasso</span>
-                </div>
-              </div>
-
-              <div className="lrc-poslist">
-                {pos.markets.map((p) => (
-                  <div key={p.marketId ?? Math.random()} className="ex-panel lrc-pos" data-lrc-position={p.marketId ?? ''}>
-                    {/* SCHEDA COMPATTA: netto, valore, P&L colorato sulla stessa riga del titolo. */}
-                    <div className="ex-row">
-                      <div className="ex-row-main">
-                        <div className="ex-row-t">{p.title ?? p.marketId ?? 'mercato sconosciuto'}</div>
-                        <div className="ex-row-s">
-                          netto{' '}
-                          <b className={`ex-n ${p.netDirection === 'yes' ? 'ex-up' : p.netDirection === 'no' ? 'ex-dn' : ''}`}>
-                            {p.netDirection === 'flat' ? 'piatto' : `${num(Math.abs(p.netShares ?? 0), 1)} ${p.netDirection.toUpperCase()}`}
-                          </b>
-                          {' · '}YES <span className="ex-n">{num(p.yesShares, 1)}</span>
-                          {' · '}NO <span className="ex-n">{num(p.noShares, 1)}</span>
-                        </div>
-                      </div>
-                      <div className="ex-row-nums">
-                        <span className="ex-num"><span className="ex-num-k">costo</span><span className="ex-num-v">{money(p.initialValueUsd)}</span></span>
-                        <span className="ex-num"><span className="ex-num-k">a mid</span><span className="ex-num-v">{money(p.currentValueUsd)}</span></span>
-                        <span className="ex-num"><span className="ex-num-k">P&amp;L</span><span className={`ex-num-v ${pnlCls(p.unrealizedPnlUsd)}`}>{money(p.unrealizedPnlUsd)}</span></span>
-                      </div>
-                    </div>
-                    {p.valueUnknown && (
-                      <p className="ex-why lrc-pad">Una gamba senza valore leggibile: il totale di questo mercato non è calcolato, non è zero.</p>
-                    )}
-                    <div className="ex-rows lrc-legs">
-                      {p.legs.map((l) => (
-                        <div key={l.asset} className="ex-row">
-                          <div className="ex-row-main">
-                            <div className="ex-row-t">
-                              <span className={`ex-side ${l.side === 'yes' ? 'is-yes' : l.side === 'no' ? 'is-no' : ''}`}>
-                                {l.sideKnown ? (l.side as string).toUpperCase() : 'N/D'}
-                              </span>{' '}
-                              <span className="ex-n">{num(l.size, 1)}</span> share
-                            </div>
-                            {!l.sideKnown && <p className="ex-why">lato non riportato dal venue: esclusa dal netto, non indovinata</p>}
-                          </div>
-                          <div className="ex-row-nums">
-                            <span className="ex-num"><span className="ex-num-k">medio</span><span className="ex-num-v">{cents(l.avgPrice)}</span></span>
-                            <span className="ex-num"><span className="ex-num-k">mid</span><span className="ex-num-v">{cents(l.curPrice)}</span></span>
-                            <span className="ex-num"><span className="ex-num-k">valore</span><span className="ex-num-v">{money(l.currentValueUsd)}</span></span>
-                            <span className="ex-num"><span className="ex-num-k">P&amp;L</span><span className={`ex-num-v ${pnlCls(l.unrealizedPnlUsd)}`}>{money(l.unrealizedPnlUsd)}</span></span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-
-          {pos && (
-            <p className="lrc-note">
-              {pos.source} · wallet <span className="ex-n">{pos.wallet ?? 'N/D'}</span> · letto{' '}
-              <span className="ex-n">{new Date(pos.at).toLocaleTimeString()}</span> · sola lettura.
-              P&amp;L <b>mark-to-mid</b>, non un incasso.
-            </p>
-          )}
-        </section>
-      )}
-
-      {/* ── 4 · ORDINI MANUALI ────────────────────────────────────────────────────────────────────── */}
-      {tab === 'ordini' && (
-        <section className="lrc-sec" data-lrc-section="ordini">
-          <Ask q="Cosa ho sul book, e devo muoverlo?" sub="Piazza, cancella, riprezza — dagli stessi gate del motore." />
-          {(() => {
-            // The ladder for the market the manual panel is pinned to — same board data, so the ladder and
-            // the panel below cannot show a different band or a different mid.
-            const withOrders = Array.from(ordersByMarket.keys());
-            const pinnedId = withOrders.length === 1 ? withOrders[0] : (pricedMarkets.find((m) => m.inBotUniverse === true)?.marketId ?? null);
-            const pinned = pinnedId ? pricedMarkets.find((m) => m.marketId === pinnedId) ?? null : null;
-            if (!pinned) return null;
-            const po = ordersByMarket.get(pinned.marketId) ?? [];
-            return (
-              <div className="ex-panel lrc-ladderbox">
-                <div className="ex-sech-t">Scala prezzi · {pinned.title ?? pinned.marketId}</div>
-                <PriceLadder
-                  mid={pinned.mid} bandLo={pinned.bandLo} bandHi={pinned.bandHi} bandRadiusCents={pinned.bandRadiusCents}
-                  bestBid={pinned.bestBid} bestAsk={pinned.bestAsk}
-                  orders={po.map((o) => ({ orderId: o.orderId, book: o.book, price: o.price, size: o.restingSize, inBand: o.inBand, distanceCents: o.distanceCents }))}
-                  caption="dove paga la banda, dove sta il tocco, dove stanno i tuoi ordini"
-                />
-                <p className="lrc-fine">
-                  Ogni bottone passa dagli stessi gate del motore: kill-switch, cap, venue-rules, validateOrder.
-                </p>
-              </div>
-            );
-          })()}
-          <ManualOrdersPanel />
-        </section>
-      )}
-
-      {/* ── 5 · ALLOCA CAPITALE ───────────────────────────────────────────────────────────────────── */}
+      {/* ── 3 · OTTIMIZZA CAPITALE ────────────────────────────────────────────────────────────────
+          Solo il pianificatore. La ricerca di un singolo mercato è sparita da qui: cercare un mercato
+          è il mestiere della tab Mercati, e averne due copie con comportamenti diversi è esattamente
+          come è nato il disallineamento fra la card toccata e il mercato raggiunto.
+          Anche «Strategia sul fill» è via: il suo ciclo non ha nessun chiamante in agent o API, quindi
+          quei comandi descrivevano una funzione che non gira. Un interruttore che non è collegato a
+          niente è peggio di un interruttore assente. */}
       {tab === 'alloca' && (
         <section className="lrc-sec" data-lrc-section="alloca">
-          <Ask q="Quanto capitale metto, e su quali mercati?" sub="Un piano, non un ordine: qui non si piazza nulla." />
-          <RewardsAllocatePanel initialQuery={allocPrefill} />
-          <FillStrategyPanel />
+          <Ask q="Quanto capitale metto, e su quali mercati?" sub="Un piano, non un ordine: da qui si piazza solo aprendo il pannello su un mercato." />
+          <RewardsAllocatePanel onPlaceOrder={(row) => setOrderTarget(row)} />
         </section>
       )}
 
-      {/* ── 6 · REGOLE ────────────────────────────────────────────────────────────────────────────── */}
-      {tab === 'regole' && (
-        <section className="lrc-sec" data-lrc-section="regole">
-          <Ask q="Come si guadagna, esattamente?" sub="Le regole del programma, e i tuoi ordini rispetto a quelle." />
-          <div className="ex-panel lrc-rulesbox">
-            <div className="ex-sech-t">Come si guadagna, in breve</div>
+      {/* Le regole del programma: sempre a un tocco dal «?», mai una sezione da attraversare. */}
+      {showRules && (
+        <div className="lrc-scrim" data-lrc-section="regole" onClick={(e) => { if (e.target === e.currentTarget) setShowRules(false); }}>
+          <div className="lrc-modal" role="dialog" aria-modal="true" aria-label="Regole del programma premi">
+            <div className="lrc-modal-head">
+              <span className="ex-sech-t">Come si guadagna, esattamente</span>
+              <button className="lrc-modal-x" onClick={() => setShowRules(false)} aria-label="Chiudi" data-lrc-rules-close>✕</button>
+            </div>
+            <div className="lrc-modal-body">
+          <div className="lrc-rulesbox">
             <ul className="lrc-rules">
               <li>
                 <b>Il premio si prende stando dentro la banda.</b> Ogni mercato premiante ha un
@@ -1241,73 +1416,23 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
                 per questo l&apos;intestazione conta gli ordini fuori banda e il Riepilogo li nomina.
               </li>
             </ul>
-          </div>
-
-          <div className="ex-sech">
-            <span className="ex-sech-t">Tutti i tuoi ordini attivi · distanza dal mid e stato</span>
-            <span className="lrc-fine">
-              {orders?.at ? <>letto dal venue <span className="ex-n">{new Date(orders.at).toLocaleTimeString()}</span></> : 'N/D'}
-            </span>
-          </div>
-
-          {orders?.ok === false && (
-            <div className="ex-banner is-bad lrc-mb">Lettura del venue FALLITA: {orders.error ?? '—'} — questa non è una lista vuota.</div>
-          )}
-          {orders?.simulated && orders.ok !== false && (
-            <div className="ex-banner is-warn lrc-mb">
-              Venue non interrogato: «0 ordini» qui significa «non abbiamo letto».
+              </div>
             </div>
-          )}
+          </div>
+        </div>
+      )}
 
-          {orders && orders.orders.length === 0 && orders.ok !== false && !orders.simulated ? (
-            <div className="lrc-nd">Nessun ordine a riposo su nessun mercato (letto dal venue, non dedotto).</div>
-          ) : (
-            <div className="ex-tblwrap">
-              <table className="ex-tbl lrc-tbl" data-lrc-orders-table>
-                <thead>
-                  <tr>
-                    <th>Mercato</th><th>Lato</th><th className="ex-n">Prezzo</th><th className="ex-n">Mid</th>
-                    <th className="ex-n">Distanza</th><th className="ex-n">Banda</th><th>Stato</th>
-                    <th className="ex-n">Size</th><th className="ex-n">Controvalore</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(orders?.orders ?? []).map((o) => (
-                    <tr key={o.orderId ?? Math.random()} className={o.outOfBand === true ? 'is-bad' : ''}>
-                      <td className="lrc-td-mkt">{o.marketTitle ?? o.marketId ?? 'N/D'}</td>
-                      <td>
-                        <span className={`ex-side ${o.book === 'yes' ? 'is-yes' : o.book === 'no' ? 'is-no' : ''}`}>
-                          {o.book ? o.book.toUpperCase() : 'N/D'}
-                        </span>
-                      </td>
-                      <td className="ex-n">{cents(o.price)}</td>
-                      <td className="ex-n">{cents(o.scoringMid)}</td>
-                      <td className={`ex-n ${o.outOfBand === true ? 'ex-dn' : ''}`}>{o.distanceCents == null ? 'N/D' : `${o.distanceCents.toFixed(2)}¢`}</td>
-                      <td className="ex-n">{o.bandRadiusCents == null ? 'N/D' : `±${o.bandRadiusCents.toFixed(2)}¢`}</td>
-                      <td>
-                        {o.inBand === true ? <span className="ex-badge is-ok">in banda</span>
-                          : o.inBand === false ? <span className="ex-badge is-bad">fuori banda</span>
-                            : <span className="ex-badge" title={o.rulesReadable ? 'token non riconducibile ai due book del mercato' : 'regole di venue non leggibili'}>non giudicabile</span>}
-                        {o.valid === false && o.inBand === true && (
-                          <span className="ex-badge is-warn" title={o.reasons.map((r) => `${r.code}: ${r.detail}`).join(' · ')}>
-                            {o.reasons.map((r) => r.code).join(', ')}
-                          </span>
-                        )}
-                      </td>
-                      <td className="ex-n">{num(o.restingSize, 1)}</td>
-                      <td className="ex-n">{money(o.restingNotionalUsd)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          <p className="lrc-note">
-            «In banda» è il verdetto della stessa funzione che il server riesegue prima di ogni piazzamento.
-            «Non giudicabile» = regola di venue non leggibile: non conta né dentro né fuori.
-          </p>
-        </section>
+      {/* ── IL PANNELLO ORDINE ────────────────────────────────────────────────────────────────────
+          Montato QUI, in coda alla console e non dentro una sezione: si apre sopra la lista che lo ha
+          chiamato senza smontarla, quindi alla chiusura la lista è ancora dov era — stessa posizione,
+          stessi filtri, stessa ricerca. Nessuna tab cambia. */}
+      {orderTarget && (
+        <OrderPanel
+          target={orderTarget}
+          balanceUsd={capitalUsd}
+          onClose={() => setOrderTarget(null)}
+          onEnabled={() => { loadBoard(); }}
+        />
       )}
     </div>
   );
@@ -1355,10 +1480,10 @@ function Freshness({ items }: { items: Array<{ k: string; ageSec: number | null;
  * Quindi restano SEMPRE visibili, in un gruppo loro, e l'intestazione dice a voce alta che i chip qui
  * sopra non li toccano. Chi cerca un nome lo trova, filtri accesi o spenti.
  */
-function VenueResults({ q, busy, err, rows, dropped, anyFilterOn, sortByPool, onOpenInAlloca }: {
+function VenueResults({ q, busy, err, rows, dropped, anyFilterOn, sortByPool, onOpenOrder }: {
   q: string; busy: boolean; err: string | null; rows: VenueSearchRow[]; dropped: number;
   anyFilterOn: boolean; sortByPool: boolean;
-  onOpenInAlloca: (term: string) => void;
+  onOpenOrder: (row: VenueSearchRow) => void;
 }) {
   const needle = q.trim();
   if (needle.length < 3) return null;
@@ -1390,7 +1515,14 @@ function VenueResults({ q, busy, err, rows, dropped, anyFilterOn, sortByPool, on
           </p>
           <div className="ex-panel ex-rows lrc-mt">
             {rows.map((m) => (
-              <div key={m.marketId} className="ex-row" data-lrc-venue-market={m.marketId}>
+              <button
+                key={m.marketId}
+                className="ex-row lrc-venue-row"
+                data-lrc-venue-market={m.marketId}
+                data-lrc-open-order={m.marketId}
+                onClick={() => onOpenOrder(m)}
+                title="Apre il pannello ordine su QUESTO mercato. Nessun cambio di tab, nessuna ricerca: il conditionId e quello di questa riga."
+              >
                 <div className="ex-row-main">
                   <div className="ex-row-t">{m.question ?? `${m.marketId.slice(0, 10)}…`}</div>
                   <div className="ex-row-s">
@@ -1434,36 +1566,22 @@ function VenueResults({ q, busy, err, rows, dropped, anyFilterOn, sortByPool, on
                     </span>
                   </span>
                 </div>
-                {/* NON abilita da qui: porta al flusso a due passi, che vive in Ottimizza e resta in un
-                    posto solo. Un secondo percorso di scrittura verso una config auditata sarebbe due
-                    copie da tenere allineate. Questo e' routing, non una nuova autorizzazione.
-
-                    SI PASSA IL conditionId, NON IL TITOLO — e la differenza non e' cosmetica.
-                    Con il titolo la destinazione riceveva una ricerca TESTUALE, quindi una LISTA: e da
-                    quando i risultati sono ordinati per scadenza piu' vicina, il mercato da cui si
-                    arrivava non era quasi mai il primo. Misurato: partendo dalla card «3:20PM-3:25PM»
-                    la tabella mostrava «2:15PM-2:30PM» in riga 1 e quella giusta in riga 4 — e chi
-                    premeva «1 · Anteprima» sulla prima riga, che e' la cosa naturale da fare,
-                    abilitava un mercato che non aveva scelto. E' successo davvero, alle 18:09:37.
-                    Un conditionId invece e' una chiave esatta: searchMarkets lo riconosce e restituisce
-                    UNA riga, quella. Non c'e' piu' una prima riga sbagliata da premere. */}
-                <div className="lrc-venue-act">
-                  <button
-                    className="ex-btn is-sm"
-                    data-lrc-venue-open
-                    data-lrc-venue-open-id={m.marketId}
-                    onClick={() => onOpenInAlloca(m.marketId)}
-                    title="Apre «Ottimizza capitale» su QUESTO mercato, cercato per conditionId: una riga sola, nessuna ambiguita. Non abilita nulla: i due passi restano da premere."
-                  >
-                    Aggiungi in Ottimizza →
-                  </button>
-                </div>
-              </div>
+                {/* ── PERCHE QUI NON C'E PIU UN PULSANTE «vai a…» ─────────────────────────────
+                    Prima questa riga portava altrove passando il mercato a una RICERCA, e una ricerca
+                    restituisce una lista: da quando i risultati sono ordinati per scadenza piu vicina,
+                    il mercato di partenza non era quasi mai la prima riga. Misurato: partendo dalla card
+                    «3:20PM-3:25PM» la tabella mostrava «2:15PM-2:30PM» in riga 1 e quella giusta in riga
+                    4 — e chi premeva la prima riga, che e la cosa naturale da fare, agiva su un mercato
+                    che non aveva scelto. E successo davvero, alle 18:09:37 del 2026-08-01.
+                    Il rimedio non e ordinare meglio quella lista: e non produrne nessuna. La riga
+                    consegna l OGGETTO al pannello, e il conditionId che arriva nella POST e per
+                    costruzione questo. Non esiste piu una prima riga sbagliata da premere. */}
+              </button>
             ))}
           </div>
           <p className="lrc-fine">
-            Questa lista trova; l&apos;aggiunta resta il flusso a due passi in «Ottimizza capitale», dove il
-            pulsante qui sopra porta con il nome gia&apos; cercato.
+            Tocca una riga per aprire il pannello ordine su quel mercato: si apre sopra questa lista,
+            senza cambiare tab e senza perdere ricerca e filtri.
           </p>
         </>
       )}
@@ -1596,6 +1714,36 @@ const CSS = `
 .lrc-poslist { display: flex; flex-direction: column; gap: 8px; }
 .lrc-pos { padding-bottom: 2px; }
 .lrc-legs { border-top: 1px solid var(--ex-line-soft); background: rgba(0,0,0,.18); }
+
+/* La scheda intera e il bersaglio del tocco: un bottone che non sembra un bottone, perche la
+   superficie che si legge e la superficie che si preme. Nessun riquadro, nessuna ombra: solo il
+   bordo che si accende, come su una riga di book. */
+.lrc-mkt-open { display: block; width: 100%; text-align: left; cursor: pointer;
+  background: none; border: 0; border-radius: 8px 8px 0 0; padding: 0; color: inherit; font: inherit; }
+.lrc-mkt-open:hover { background: rgba(240,185,11,.05); }
+.lrc-mkt-open:focus-visible { outline: 2px solid var(--ex-gold); outline-offset: -2px; }
+.lrc-taphint { font-size: 10px; color: var(--ex-txt-3); margin-right: auto; }
+.lrc-venue-row { width: 100%; text-align: left; cursor: pointer; font: inherit; color: inherit; }
+.lrc-venue-row:hover { background: rgba(240,185,11,.05); }
+.lrc-venue-row:focus-visible { outline: 2px solid var(--ex-gold); outline-offset: -2px; }
+
+.lrc-help { margin-left: 6px; width: 22px; height: 22px; border-radius: 50%; cursor: pointer;
+  border: 1px solid var(--ex-line); background: var(--ex-panel-2); color: var(--ex-txt-3);
+  font-size: 12px; font-weight: 700; line-height: 1; flex: 0 0 auto; }
+.lrc-help:hover { border-color: var(--ex-gold); color: var(--ex-gold); }
+
+.lrc-scrim { position: fixed; inset: 0; z-index: 55; background: rgba(0,0,0,.6);
+  display: flex; align-items: center; justify-content: center; padding: 16px; }
+.lrc-modal { width: 100%; max-width: 560px; max-height: 84vh; display: flex; flex-direction: column;
+  background: var(--ex-bg); border: 1px solid var(--ex-line); border-radius: 10px; }
+.lrc-modal-head { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 11px 13px; border-bottom: 1px solid var(--ex-line); }
+.lrc-modal-x { width: 30px; height: 30px; border-radius: 6px; cursor: pointer; flex: 0 0 auto;
+  border: 1px solid var(--ex-line); background: var(--ex-panel-2); color: var(--ex-txt); }
+.lrc-modal-x:hover { border-color: var(--ex-gold); color: var(--ex-gold); }
+.lrc-modal-body { overflow-y: auto; padding: 4px 13px 13px; }
+
+.lrc-killnote { font-size: 10.5px; color: var(--ex-txt-3); line-height: 1.4; flex: 1 1 140px; min-width: 0; }
 
 .lrc-ladderbox { padding: 12px; margin-bottom: 12px; }
 .lrc-rulesbox { padding: 12px; margin-bottom: 4px; }

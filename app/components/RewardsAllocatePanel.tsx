@@ -1,5 +1,6 @@
 'use client';
 
+
 // RewardsAllocatePanel — PUBLIC allocation planner for the liquidity-rewards maker.
 //
 // It reads the operator's real proxy pUSD balance (/api/rewards/balance) and the capital allocation plan
@@ -11,6 +12,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { bandStateFor } from '@/app/dashboard/liquidity-rewards/allocate/band-state';
+import type { OrderTarget } from '@/app/components/OrderPanel';
 
 type Balance = {
   proxy: string | null; proxySource: string | null; signer: string | null;
@@ -217,7 +219,34 @@ type BulkResult = {
   openBefore?: number | null; error?: string;
 };
 
-export default function RewardsAllocatePanel({ initialQuery }: { initialQuery?: string | null } = {}) {
+/**
+ * Da una riga del piano al pannello ordine. Si passa la size CHE IL PIANO HA DECISO, non la minima del
+ * venue: il senso di aprire il pannello da qui e proprio eseguire il piano, e ricominciare dal minimo
+ * butterebbe via il calcolo. Il conditionId e quello della riga, copiato, mai ricercato.
+ */
+function targetFromPlanRow(r: Row): OrderTarget {
+  return {
+    marketId: r.marketId,
+    title: r.nameAvailable && r.name ? r.name : r.shortId,
+    endDate: r.endDate ?? null,
+    minutesToClose: r.endDate && Number.isFinite(Date.parse(r.endDate))
+      ? (Date.parse(r.endDate) - Date.now()) / 60_000 : null,
+    mid: r.mid, bestBid: null, bestAsk: null, spreadCents: null,
+    tick: r.tick, minSize: r.minSizeShares,
+    maxSpreadCents: r.maxSpreadCents,
+    rewardsDailyRate: null,
+    // Il piano è UN PIANO DI LIQUIDITY REWARDS: ogni riga viene da un mercato che un montepremi ce
+    // l'ha. Il tasso puntuale non viaggia in questa struttura, quindi si dichiara il fatto che si sa
+    // (c'è un programma) e non si finge di sapere la cifra.
+    hasRewards: true,
+    enabled: true,
+    presetSize: r.sizePerSideShares,
+  };
+}
+
+export default function RewardsAllocatePanel(
+  { onPlaceOrder }: { onPlaceOrder?: (t: OrderTarget) => void } = {},
+) {
   const [bal, setBal] = useState<Balance | null>(null);
   const [balLoaded, setBalLoaded] = useState(false);
   const [capital, setCapital] = useState<string>(''); // operator's typed value — NEVER rewritten by us
@@ -239,10 +268,6 @@ export default function RewardsAllocatePanel({ initialQuery }: { initialQuery?: 
   const [bulkBusy, setBulkBusy] = useState<'preview' | 'run' | null>(null);
   const [bulkErr, setBulkErr] = useState<string | null>(null);
   // Ricerca mercati SENZA filtro reward + aggiunta manuale, anch'essa a due passi (anteprima → conferma).
-  const [query, setQuery] = useState('');
-  const [search, setSearch] = useState<SearchResp | null>(null);
-  const [searchBusy, setSearchBusy] = useState(false);
-  const [searchErr, setSearchErr] = useState<string | null>(null);
   const [addPreview, setAddPreview] = useState<EnableResp | null>(null);
   const [addResult, setAddResult] = useState<EnableResp | null>(null);
   const [addBusy, setAddBusy] = useState<string | null>(null);
@@ -435,37 +460,13 @@ export default function RewardsAllocatePanel({ initialQuery }: { initialQuery?: 
   const capitalNum = Number(capital);
   const overBalance = balanceNum != null && Number.isFinite(capitalNum) && capitalNum > balanceNum;
 
-  // ── RICERCA SENZA FILTRO. Nessun mercato viene nascosto perché non paga reward: quelli senza
-  //    montepremi compaiono come tutti gli altri, con l'etichetta che lo dice. ──
-  const runSearch = useCallback(async (term?: string) => {
-    const q = (term ?? query).trim();
-    if (!q) return;
-    setSearchBusy(true); setSearchErr(null); setAddPreview(null); setAddResult(null);
-    try {
-      const r = await fetch(`/api/maker/markets/search?q=${encodeURIComponent(q)}&limit=20`);
-      const b = (await r.json()) as SearchResp;
-      setSearch(b);
-      if (!b.ok && b.error) setSearchErr(b.error);
-    } catch (e) { setSearchErr((e as Error).message); }
-    finally { setSearchBusy(false); }
-  }, [query]);
-
-  // ── ARRIVO DALLA TAB MERCATI ────────────────────────────────────────────────────────────────────
-  // La lista «Fuori dal board reward» dei Mercati trova un mercato ma non puo' abilitarlo: il flusso a
-  // due passi vive qui, in un posto solo, ed e' giusto che resti cosi'. Quel pulsante quindi porta qui
-  // con il nome gia' cercato, invece di lasciare l'operatore a ridigitarlo. Solo una GET di ricerca:
-  // non abilita nulla, i due passi restano interamente da premere.
-  useEffect(() => {
-    const q = (initialQuery ?? '').trim();
-    if (!q) return;
-    setQuery(q);
-    runSearch(q);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialQuery]);
-
-  // Si arriva qui da un conditionId quando il pulsante dei Mercati ha scelto un mercato preciso. La
-  // casella mostra l'id perche' e' quello che rende la ricerca esatta — la riga sotto porta il nome.
-  const arrivedById = /^0x[0-9a-fA-F]{64}$/.test((initialQuery ?? '').trim());
+  // ── PERCHE QUI NON C'E PIU UNA RICERCA ─────────────────────────────────────────────────────────
+  // C'erano due ricerche, in due tab, sulla stessa fonte ma con due comportamenti: una filtrava dal vivo
+  // una lista locale, l'altra faceva una GET e mostrava una TABELLA. E la seconda era il punto in cui
+  // l'identita di un mercato si perdeva: chi arrivava qui da una card riceveva un termine di ricerca,
+  // quindi una lista, e la riga giusta non era la prima. Adesso cercare e mestiere di una tab sola, e da
+  // li si apre il pannello ordine direttamente sull'oggetto toccato. Questa tab fa una cosa sola:
+  // decidere quanto capitale mettere e su quali mercati.
 
   // ── OTTIMIZZA AUTOMATICAMENTE ────────────────────────────────────────────────────────────────────
   // Rilancia lo STESSO ottimizzatore sullo stesso universo (che e' sempre stato tutto il board reward,
@@ -502,12 +503,11 @@ export default function RewardsAllocatePanel({ initialQuery }: { initialQuery?: 
       if (preview) { setAddPreview(b); setAddResult(null); }
       else {
         setAddResult(b); setAddPreview(null);
-        if (b.ok) runSearch();   // ricarica la lista: la riga appena abilitata deve dirlo da sola
       }
       if (!b.ok && (b.error || b.gate)) setAddErr(b.error || `rifiutato: ${b.gate}`);
     } catch (e) { setAddErr((e as Error).message); }
     finally { setAddBusy(null); }
-  }, [capital, takeManual, runSearch]);
+  }, [capital, takeManual]);
 
   return (
     <div className="alloc-root exch">
@@ -697,152 +697,6 @@ export default function RewardsAllocatePanel({ initialQuery }: { initialQuery?: 
         )}
       </div>
 
-      {/* ── CERCA E AGGIUNGI UN MERCATO — RICERCA SENZA FILTRO ────────────────────────────────────────
-          Il piano qui sotto copre solo i mercati con montepremi (è un piano di liquidity rewards). Questa
-          ricerca interroga il venue e mostra TUTTO: se un mercato non paga reward compare lo stesso, con
-          l'etichetta «NESSUN REWARD — solo trading direzionale», così la scelta è informata. Aggiungere
-          un mercato NON piazza nulla: lo rende ammissibile ai gate, che restano tutti in vigore. */}
-      <div className="alloc-card" data-alloc-search>
-        <div className="alloc-h" style={{ fontSize: 15 }}>Cerca un mercato</div>
-        <div className="alloc-sub" title="Ogni riga mostra reward $/g, spread attuale, tick e quanto manca alla chiusura.">
-          Testo o <b>conditionId</b> (0x…). Nessun filtro sui reward: i mercati senza montepremi sono elencati
-          e segnalati.
-        </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 8 }}>
-          <input className="alloc-in" style={{ width: 320 }} value={query} data-alloc-search-input
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') runSearch(); }}
-            placeholder="es. bitcoin up or down · harry kane · 0x…" />
-          <button className="alloc-btn" data-alloc-search-go onClick={() => runSearch()} disabled={searchBusy || !query.trim()}>
-            {searchBusy ? 'Cerco…' : 'Cerca'}
-          </button>
-          <label className="alloc-sub" style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
-            <input type="checkbox" checked={takeManual} onChange={(e) => setTakeManual(e.target.checked)} data-alloc-take-manual />
-            prendi anche il <b>controllo manuale</b> del mercato (agent35 si tiene fuori)
-          </label>
-        </div>
-
-        {arrivedById && search && search.markets.length > 0 && (
-          <div className="alloc-note" style={{ marginTop: 10 }} data-alloc-arrived-by-id>
-            Arrivato dalla tab <b>Mercati</b> su un mercato preciso: la ricerca è per <b>conditionId</b>,
-            quindi qui sotto c&apos;è <b>una riga sola</b> — quella del mercato che hai toccato.
-          </div>
-        )}
-        {searchErr && <div className="alloc-note alloc-warn" style={{ marginTop: 10 }} data-alloc-search-error>Ricerca fallita: {searchErr}</div>}
-
-        {search && search.markets.length > 0 && (
-          <>
-            <div className="alloc-sub" style={{ marginTop: 10 }} data-alloc-search-counts>
-              <b>{search.count}</b> mercati · <b>{search.withRewards}</b> con reward · <b>{search.withoutRewards}</b> senza reward
-              {' '}(nessun filtro sui reward){(search.notTradableDropped ?? 0) > 0 && <> · <b>{search.notTradableDropped}</b> non operabili nascosti (risolti, ritirati, scaduti)</>}
-              {' '}· soglia di non-piazzamento: <b>{search.minMinutesToClose} min</b> alla chiusura
-              {!search.globalAutoRepriceEnabled && <> · <b className="oob">master auto-riprezzo SPENTO</b>: un mercato aggiunto resta opted-in ma non entra in lista</>}
-            </div>
-            <div className="alloc-tablewrap" style={{ marginTop: 8 }}>
-              <table className="alloc alloc-searchtable" style={{ minWidth: 980 }}>
-                <thead>
-                  <tr>
-                    <th className="name">Mercato</th><th>Reward/g</th><th>Spread</th><th>Tick</th>
-                    <th>Banda reward</th><th>Chiusura</th><th>Stato</th><th>Aggiungi</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {search.markets.map((m) => (
-                    <tr key={m.marketId} data-alloc-search-row data-alloc-has-rewards={m.hasRewards ? '1' : '0'}>
-                      <td className="name">
-                        {m.question || <span className="alloc-addr">{m.marketId.slice(0, 10)}…</span>}
-                        {!m.hasRewards && (
-                          <div className="no-reward-badge" data-alloc-no-reward-label>NESSUN REWARD — solo trading direzionale</div>
-                        )}
-                      </td>
-                      <td className={m.rewardsDailyRate == null ? 'dash' : ''} data-alloc-search-reward>
-                        {m.rewardsDailyRate == null ? 'nessun reward' : perDay(m.rewardsDailyRate)}
-                      </td>
-                      <td className={m.spreadCents == null ? 'dash' : ''} data-alloc-search-spread>{cents(m.spreadCents)}</td>
-                      <td className={m.tick == null ? 'dash' : ''} data-alloc-search-tick>{m.tick == null ? '—' : m.tick}</td>
-                      <td className={m.rewardsMaxSpreadCents ? '' : 'dash'} data-alloc-search-band>
-                        {m.rewardsMaxSpreadCents ? `±${(m.rewardsMaxSpreadCents / 2).toFixed(2)}¢` : '— nessuna'}
-                      </td>
-                      <td data-alloc-search-close className={m.tooCloseToClose ? 'oob' : ''}>
-                        {closeText(m.minutesToClose)}{m.tooCloseToClose ? ' ⚠' : ''}
-                      </td>
-                      <td data-alloc-search-state>
-                        {m.enabled ? <b className="fresh-ok">abilitato</b>
-                          : m.optedIn ? <span className="fresh-stale">opted-in</span>
-                            : <span className="alloc-cat">non abilitato</span>}
-                        {m.closed && <div className="oob">chiuso</div>}
-                        {!m.acceptingOrders && <div className="oob">non accetta ordini</div>}
-                      </td>
-                      <td>
-                        <button className="alloc-btn" style={{ fontSize: 12, minHeight: 44, padding: '6px 10px' }}
-                          data-alloc-add-preview
-                          disabled={addBusy != null || m.enabled}
-                          title={m.enabled ? 'già abilitato' : 'anteprima dell’aggiunta: non scrive nulla'}
-                          onClick={() => addMarket(m.marketId, true)}>
-                          {addBusy === `preview:${m.marketId}` ? '…' : m.enabled ? 'già in lista' : '1 · Anteprima'}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </>
-        )}
-        {search && search.ok && search.markets.length === 0 && (
-          <div className="alloc-sub" style={{ marginTop: 10 }} data-alloc-search-empty>Nessun mercato aperto trovato per «{search.query}».</div>
-        )}
-
-        {/* PASSO 2 — LA CONFERMA. Stessa forma del flusso di esecuzione: anteprima prima, conferma poi,
-            con capitale e numero di mercati sotto gli occhi al momento di premere. */}
-        {addPreview && addPreview.summary && (
-          <div className="alloc-note" style={{ marginTop: 12 }} data-alloc-add-confirm>
-            <div><b>Anteprima — non è stato scritto nulla.</b></div>
-            <div style={{ marginTop: 4 }}>
-              <b>{addPreview.summary.question || addPreview.marketId.slice(0, 12)}</b>
-              {' · '}{addPreview.summary.hasRewards ? perDay(addPreview.summary.rewardsDailyRate) : <b className="oob">NESSUN REWARD — solo trading direzionale</b>}
-              {' · spread '}{cents(addPreview.summary.spreadCents)}
-              {' · tick '}{addPreview.summary.tick ?? '—'}
-              {' · chiusura fra '}{closeText(addPreview.summary.minutesToClose)}
-            </div>
-            <div style={{ marginTop: 4 }}>
-              Capitale in gioco <b>{addPreview.summary.capitalUsd == null ? '—' : money(addPreview.summary.capitalUsd)}</b>
-              {' · mercati abilitati '}<b>{addPreview.summary.marketCountBefore} → {addPreview.summary.marketCountAfter}</b>
-              {' · finestra GTD che avrebbe un ordine qui: '}
-              <b>{addPreview.summary.window.tooClose ? 'nessuna — rifiutato' : `${addPreview.summary.window.ttlSeconds}s (${(addPreview.summary.window.ttlSeconds / 60).toFixed(1)} min)`}</b>
-              {addPreview.summary.window.refreshMarginSeconds != null && !addPreview.summary.window.tooClose && <> · rinnovo a <b>{addPreview.summary.window.refreshMarginSeconds}s</b> dalla scadenza</>}
-            </div>
-            {addPreview.writes && (
-              <ul style={{ margin: '6px 0 0 18px', padding: 0, fontSize: 12.5 }}>
-                {addPreview.writes.map((w) => <li key={w}>{w}</li>)}
-              </ul>
-            )}
-            {addPreview.summary.warnings.length > 0 && (
-              <ul style={{ margin: '6px 0 0 18px', padding: 0 }} data-alloc-add-warnings>
-                {addPreview.summary.warnings.map((w) => <li key={w} className="oob" style={{ fontSize: 12.5 }}>{w}</li>)}
-              </ul>
-            )}
-            <button className="alloc-btn" style={{ marginTop: 10, background: 'color-mix(in srgb,#2FA96B 30%,transparent)' }}
-              data-alloc-add-confirm-btn disabled={addBusy != null}
-              onClick={() => addMarket(addPreview.marketId, false)}>
-              {addBusy?.startsWith('confirm') ? 'Scrivo…' : '2 · Conferma e aggiungi'}
-            </button>
-          </div>
-        )}
-
-        {addErr && <div className="alloc-note alloc-warn" style={{ marginTop: 10 }} data-alloc-add-error>Aggiunta non riuscita — nulla è cambiato: {addErr}</div>}
-
-        {addResult && addResult.ok && (
-          <div className="alloc-note" style={{ marginTop: 10 }} data-alloc-add-result>
-            <b>Mercato aggiunto.</b> {addResult.note}
-            {addResult.warnings && addResult.warnings.length > 0 && (
-              <ul style={{ margin: '6px 0 0 18px', padding: 0 }}>
-                {addResult.warnings.map((w) => <li key={w} className="oob" style={{ fontSize: 12.5 }}>{w}</li>)}
-              </ul>
-            )}
-          </div>
-        )}
-      </div>
 
       {loading && <div className="alloc-sub" style={{ margin: '8px 2px' }}>calcolo dell’allocazione…</div>}
       {plan && !plan.error && computed && plan.rows.length > 0 && (
@@ -921,6 +775,14 @@ export default function RewardsAllocatePanel({ initialQuery }: { initialQuery?: 
                     </div>
                     <span className={`band-badge band-${band.state}`} data-band-label>{BAND_LABEL[band.state]}</span>
                   </div>
+
+                  {onPlaceOrder && (
+                    <button className="alloc-btn alloc-place" data-alloc-place={r.marketId}
+                      onClick={() => onPlaceOrder(targetFromPlanRow(r))}
+                      title="Apre il pannello ordine su QUESTO mercato, con la size decisa dal piano. Restano due tocchi prima di scrivere.">
+                      Piazza ordine → {shares(r.sizePerSideShares)} share
+                    </button>
+                  )}
 
                   {zeroed && (
                     <div className="ac-zero" data-alloc-card-zero>
@@ -1018,6 +880,13 @@ export default function RewardsAllocatePanel({ initialQuery }: { initialQuery?: 
                   <tr key={r.marketId} data-alloc-row data-alloc-usable={(!stale && !unreadable) ? '1' : '0'} style={{ opacity: (stale || unreadable) ? 0.55 : 1 }}>
                     <td className="name" style={{ borderLeft: BAND_BORDER[band.state] }}>
                       {r.nameAvailable ? r.name : <span><span className="alloc-addr">{r.shortId}</span> <span className="alloc-cat">· nome non disponibile</span></span>}
+                      {onPlaceOrder && (
+                        <button className="alloc-btn alloc-place" data-alloc-place={r.marketId}
+                          onClick={() => onPlaceOrder(targetFromPlanRow(r))}
+                          title="Apre il pannello ordine su QUESTO mercato, con la size decisa dal piano.">
+                          Piazza ordine →
+                        </button>
+                      )}
                       {r.category && <div className="alloc-cat">{r.category}</div>}
                     </td>
                     <td>{money(r.capital)}</td>
@@ -1407,6 +1276,9 @@ const CSS = `
    pulsante c era ed era premibile — semplicemente non lo si raggiungeva senza scoprire che la tabella
    scorre in orizzontale. Adesso l ultima colonna e ancorata al bordo destro: scorre il resto, l azione
    resta ferma e visibile. Nessun cambiamento di comportamento, solo di posizione. */
+.alloc-place { margin-top: 6px; font-size: 11px; padding: 5px 9px; border-color: var(--ex-gold-bd);
+  color: var(--ex-gold); background: var(--ex-gold-bg); }
+.alloc-place:hover { border-color: var(--ex-gold); }
 .alloc-searchtable td:last-child,
 .alloc-searchtable th:last-child {
   position: sticky; right: 0; z-index: 1;
