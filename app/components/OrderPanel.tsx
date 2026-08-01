@@ -51,6 +51,13 @@ interface ManualCfg {
   caps: { readable: boolean; effectiveOrderCapUsd: number | null; maxOrderNotionalUsd: number | null; liveMinCapUsd: number | null };
   autoReprice: { expiry: { orderType: string; ttlSeconds: number; refreshMarginSeconds: number | null } | null; globalEnabled: boolean; optedInMarketIds: string[] } | null;
 }
+/** Quello che /api/maker/quote restituisce: i prezzi PIU' la loro provenienza e la loro eta'. */
+interface Quote {
+  marketId: string; title: string | null;
+  mid: number | null; bestBid: number | null; bestAsk: number | null; spreadCents: number | null;
+  tick: number | null; minSize: number | null; maxSpreadCents: number | null;
+  source: 'live-book' | 'gamma'; sourceNote: string; live: boolean; ageMs: number | null;
+}
 interface PlaceResult {
   ok: boolean; sent: boolean; dryRun?: boolean; placement?: string;
   gate: string | null; reason: string | null; orderId?: string | null; notionalUsd?: number | null;
@@ -96,9 +103,20 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
   const [enabling, setEnabling] = useState(false);
   const [enableMsg, setEnableMsg] = useState<string | null>(null);
   const [isEnabled, setIsEnabled] = useState(target.enabled);
+  // LA QUOTAZIONE LIVE, e le due bandierine che la tengono al suo posto.
+  // `priceTouched` esiste perche un aggiornamento del mid NON deve poter riscrivere un prezzo che
+  // l'operatore ha scelto a mano. Stare lontani dal mid e una decisione, non una svista: sovrascriverla
+  // ogni pochi secondi farebbe perdere una modifica intenzionale — e' gia' successo in un test reale.
+  const [quote, setQuote] = useState<Quote | null>(null);
+  const [quoteErr, setQuoteErr] = useState<string | null>(null);
+  const [priceTouched, setPriceTouched] = useState(false);
+  const [sizeTouched, setSizeTouched] = useState(false);
   // Orologio a 1s: il countdown sotto i 5 minuti deve muoversi, non sembrare fermo.
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const firstFocus = useRef<HTMLButtonElement | null>(null);
+  // Quando la quotazione e' ARRIVATA. Senza questo l'etichetta direbbe sempre la stessa eta' fra un
+  // poll e l'altro, cioe' esattamente il difetto che stiamo togliendo, solo spostato di un metro.
+  const quoteAtMs = useRef<number>(Date.now());
 
   useEffect(() => {
     const t = setInterval(() => setNowMs(Date.now()), 1000);
@@ -116,6 +134,10 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
     setPriceStr(fin(p) ? String(p) : '');
     setStep('form'); setResult(null); setEnableMsg(null);
     setIsEnabled(target.enabled);
+    // Mercato nuovo, pannello nuovo: le bandierine ripartono da zero, altrimenti un prezzo toccato su
+    // un mercato bloccherebbe la precompilazione su quello dopo.
+    setPriceTouched(false); setSizeTouched(false);
+    setQuote(null); setQuoteErr(null);
   }, [target]);
 
   useEffect(() => {
@@ -130,6 +152,81 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
     })();
     return () => { alive = false; };
   }, []);
+
+  // ── LA QUOTAZIONE LIVE ─────────────────────────────────────────────────────────────────────────
+  // Alla prima apertura e poi a ritmo, finche il pannello resta aperto. Prima questi numeri erano
+  // ereditati dalla card che aveva aperto il pannello: per un mercato del board voleva dire fino a 20
+  // secondi di ritardo, per un mercato trovato con la ricerca voleva dire il valore congelato
+  // all'istante della ricerca — che non veniva mai ripetuta. Su un ciclo da cinque minuti e' una vita.
+  //
+  // IL RITMO SEGUE LA FONTE, NON UN NUMERO SCELTO A CASO:
+  //   · book live di agent34, mercato che chiude entro 20 minuti → 3s. E' un file locale, il costo e'
+  //     una lettura di disco, e su un ciclo breve il prezzo si muove davvero fra un secondo e l'altro.
+  //   · book live, scadenza lontana                              → 8s.
+  //   · Gamma                                                    → 12s. E' una REST di terzi: la si
+  //     interroga con parsimonia, e su un mercato che agent34 non segue nemmeno 3s comprerebbero molto.
+  const closeSoon = fin(target.minutesToClose) && (target.minutesToClose as number) < 20;
+  const quoteEveryMs = quote?.source === 'gamma' ? 12_000 : (closeSoon ? 3_000 : 8_000);
+
+  // IL RITMO STA IN UN REF, NON FRA LE DIPENDENZE DELL'EFFETTO. Il ritmo dipende dalla FONTE, e la
+  // fonte si conosce solo dopo la prima risposta: metterlo fra le dipendenze faceva smontare e
+  // rimontare il ciclo appena arrivava quella risposta, con una seconda richiesta sparata subito
+  // dietro la prima. Misurato: due chiamate a 0,1 secondi di distanza. Cosi' invece il valore nuovo
+  // lo legge il prossimo `setTimeout`, e il ciclo non riparte mai da capo.
+  const everyRef = useRef(quoteEveryMs);
+  everyRef.current = quoteEveryMs;
+
+  useEffect(() => {
+    let alive = true;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const tick = async () => {
+      try {
+        const r = await fetch(`/api/maker/quote?marketId=${encodeURIComponent(target.marketId)}`, { cache: 'no-store' });
+        const b = await r.json();
+        if (!alive) return;
+        if (b.ok && b.quote) { quoteAtMs.current = Date.now(); setQuote(b.quote as Quote); setQuoteErr(null); }
+        else setQuoteErr(b.error ?? 'quotazione non leggibile');
+      } catch (e) {
+        // Una lettura fallita NON azzera l'ultima buona: si tiene quella e si dice che e' vecchia.
+        // Cancellare i numeri a ogni singhiozzo di rete sarebbe peggio del ritardo che stiamo togliendo.
+        if (alive) setQuoteErr((e as Error).message);
+      } finally {
+        if (alive) timer = setTimeout(tick, everyRef.current);
+      }
+    };
+    tick();
+    return () => { alive = false; if (timer) clearTimeout(timer); };
+  }, [target.marketId]);
+
+  // ── I NUMERI CHE IL PANNELLO MOSTRA ────────────────────────────────────────────────────────────
+  // La quotazione live vince sul valore della card quando la fonte quel campo lo pubblica davvero. Il
+  // tick non lo pubblica il book live (e' una regola di venue, non un dato di mercato): li' resta
+  // quello che la card conosce, che viene da una fonte che il tick lo pubblica. Un null della
+  // quotazione significa «questa fonte non lo dice», mai «vale zero».
+  const pick = <T,>(live: T | null | undefined, card: T | null): T | null =>
+    (live === null || live === undefined ? card : live);
+  const mid = pick(quote?.mid, target.mid);
+  const bestBid = pick(quote?.bestBid, target.bestBid);
+  const bestAsk = pick(quote?.bestAsk, target.bestAsk);
+  const spreadCents = pick(quote?.spreadCents, target.spreadCents);
+  const tick = pick(quote?.tick, target.tick);
+  const minSize = pick(quote?.minSize, target.minSize);
+  const maxSpreadCents = pick(quote?.maxSpreadCents, target.maxSpreadCents);
+
+  // Il prezzo segue il mid SOLO finche l'operatore non lo ha toccato. Dal primo carattere digitato
+  // il campo e suo e nessun aggiornamento lo tocca piu.
+  useEffect(() => {
+    if (priceTouched || !fin(mid)) return;
+    const p = fin(tick) && (tick as number) > 0 ? snapToTick(mid as number, tick as number) : mid;
+    setPriceStr(fin(p) ? String(p) : '');
+  }, [mid, tick, priceTouched]);
+
+  // Stessa regola per la size: se la soglia premiante arriva dalla quotazione e l'operatore non ha
+  // scritto niente, il campo si allinea; se ha scritto, resta com'e.
+  useEffect(() => {
+    if (sizeTouched || fin(target.presetSize) || !fin(minSize)) return;
+    setSizeStr(String(+(minSize as number).toFixed(4)));
+  }, [minSize, sizeTouched, target.presetSize]);
 
   // Chiusura con Escape, oltre alla X — il pannello è modale e deve avere una via d'uscita da tastiera.
   // LO SFONDO NON SI MUOVE. Il pannello si apre SOPRA la lista, e alla chiusura la lista deve essere
@@ -181,16 +278,16 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
   const problems = useMemo(() => {
     const out: Array<{ key: string; text: string; blocking: boolean }> = [];
     if (!fin(size) || size <= 0) out.push({ key: 'size', text: 'Inserisci una size.', blocking: true });
-    else if (fin(target.minSize) && size < (target.minSize as number)) {
+    else if (fin(minSize) && size < (minSize as number)) {
       // PRECISIONE SUL PERCHÉ. Questa soglia è min_incentive_size, non un minimo d'ordine: un ordine più
       // piccolo il CLOB lo accetta eccome. Semplicemente il programma premi non lo vede, quindi matura
       // zero. Dirlo come «viene rifiutato» sarebbe falso, e la conseguenza vera è peggiore: un ordine
       // che resta lì a occupare capitale senza produrre nulla.
-      out.push({ key: 'minsize', text: `Sotto min_incentive_size (${target.minSize} share): il CLOB lo accetta, ma il programma premi non lo vede e matura ZERO.`, blocking: true });
+      out.push({ key: 'minsize', text: `Sotto min_incentive_size (${minSize} share): il CLOB lo accetta, ma il programma premi non lo vede e matura ZERO.`, blocking: true });
     }
     if (!fin(price) || price <= 0 || price >= 1) out.push({ key: 'price', text: 'Il prezzo deve stare fra 0 e 1.', blocking: true });
-    else if (fin(target.tick) && (target.tick as number) > 0 && !onTick(price, target.tick as number)) {
-      out.push({ key: 'tick', text: `Fuori griglia: il tick è ${target.tick}. Il prezzo valido più vicino è ${snapToTick(price, target.tick as number)}.`, blocking: true });
+    else if (fin(tick) && (tick as number) > 0 && !onTick(price, tick as number)) {
+      out.push({ key: 'tick', text: `Fuori griglia: il tick è ${tick}. Il prezzo valido più vicino è ${snapToTick(price, tick as number)}.`, blocking: true });
     }
     const cap = cfg?.caps?.effectiveOrderCapUsd ?? null;
     if (fin(notional) && fin(cap) && (notional as number) > (cap as number) + 1e-9) {
@@ -203,11 +300,25 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
       out.push({ key: 'kill', text: cfg.kill.readable === false ? 'Kill-switch non leggibile — trattato come attivo.' : 'Kill-switch ATTIVO: nessun ordine può essere piazzato.', blocking: true });
     }
     if (!isEnabled) out.push({ key: 'enable', text: 'Mercato non abilitato: il gate live-min rifiuterebbe. Abilitalo qui sopra.', blocking: true });
+    // ── MERCATO VELOCE, PREZZO LENTO ────────────────────────────────────────────────────────────
+    // agent34 e' sottoscritto al board reward piu' ai mercati abilitati: per tutti gli altri la fonte
+    // piu' fresca che abbiamo e' la REST di Gamma, che serve uno snapshot suo e non il book live.
+    // Misurato su «Bitcoin Up or Down 3:35-3:40PM» il 2026-08-01: sette letture in 60 secondi, mid
+    // fermo a 51,5¢ tutte e sette. Su un ciclo da cinque minuti quel numero puo' essere vecchio quanto
+    // il ciclo stesso. Non e' un difetto che si possa correggere da qui — si dice, e si dice come si
+    // risolve, invece di lasciar credere che il prezzo a schermo sia il prezzo di adesso.
+    if (quote?.source === 'gamma' && fin(minsLeft) && (minsLeft as number) < 20) {
+      out.push({
+        key: 'slow-quote',
+        text: 'Prezzo da Gamma, non dal book live: agent34 non è sottoscritto a questo mercato. Su un ciclo così corto può essere vecchio di minuti. Abilita il mercato per averlo sul feed live.',
+        blocking: false,
+      });
+    }
     if (fin(minsLeft) && (minsLeft as number) < 3) {
       out.push({ key: 'expiry', text: `Scade fra ${closeTxt(minsLeft)}: sotto i 3 minuti il venue non riesce a esprimere la durata di un ordine — potrebbe non arrivare a tempo.`, blocking: false });
     }
     return out;
-  }, [size, price, notional, target, cfg, balanceUsd, isEnabled, minsLeft]);
+  }, [size, price, notional, tick, minSize, cfg, balanceUsd, isEnabled, minsLeft, quote?.source]);
 
   const blocking = problems.filter((p) => p.blocking);
   const canReview = blocking.length === 0;
@@ -247,6 +358,17 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
   }, [target.marketId, book, price, size, autoRenew, ttlSeconds]);
 
   const sends = cfg?.placement?.sends === true;
+
+  // L'eta del prezzo, misurata dal momento della lettura piu l'attesa da allora. Sotto il secondo si
+  // dice «adesso»: scrivere «0s fa» su un book websocket sarebbe vero ma illeggibile.
+  const quoteAge = (() => {
+    if (!quote) return quoteErr ? 'non letto' : 'in lettura…';
+    const ms = (fin(quote.ageMs) ? (quote.ageMs as number) : 0) + Math.max(0, nowMs - quoteAtMs.current);
+    const src = quote.source === 'live-book' ? 'book live' : 'Gamma';
+    if (ms < 1500) return `${src} · adesso`;
+    if (ms < 60_000) return `${src} · ${Math.round(ms / 1000)}s fa`;
+    return `${src} · ${Math.round(ms / 60_000)} min fa`;
+  })();
 
   return (
     <div className="op-scrim exch" data-order-panel={target.marketId} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
@@ -290,19 +412,34 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
 
           {/* ── 2 · DATI DI MERCATO LIVE ──────────────────────────────────────────────────────── */}
           <div className="ex-stats op-mb" data-op-market-data>
-            <div className="ex-stat"><span className="ex-stat-k">mid</span><span className="ex-stat-v">{cents(target.mid)}</span></div>
-            <div className="ex-stat"><span className="ex-stat-k">bid</span><span className="ex-stat-v ex-up">{cents(target.bestBid)}</span></div>
-            <div className="ex-stat"><span className="ex-stat-k">ask</span><span className="ex-stat-v ex-dn">{cents(target.bestAsk)}</span></div>
-            <div className="ex-stat"><span className="ex-stat-k">spread</span><span className="ex-stat-v">{fin(target.spreadCents) ? `${target.spreadCents!.toFixed(1)}¢` : 'N/D'}</span></div>
-            <div className="ex-stat"><span className="ex-stat-k">tick</span><span className="ex-stat-v">{target.tick ?? 'N/D'}</span></div>
-            <div className="ex-stat"><span className="ex-stat-k">size min</span><span className="ex-stat-v">{target.minSize ?? 'N/D'}</span></div>
-            {fin(target.maxSpreadCents) && (
-              <div className="ex-stat"><span className="ex-stat-k">banda</span><span className="ex-stat-v">{target.maxSpreadCents!.toFixed(2)}¢</span></div>
+            <div className="ex-stat">
+              <span className="ex-stat-k">mid</span>
+              <span className="ex-stat-v" data-op-mid>{cents(mid)}</span>
+              {/* QUANTO E VECCHIO QUESTO PREZZO fa parte del prezzo: un mid di 9 millisecondi e un mid
+                  di due minuti non sono lo stesso fatto, e su un ciclo da cinque minuti la differenza
+                  decide l ordine. Sta scritto qui invece di chiedere all operatore di fidarsi. */}
+              <span className="ex-stat-s" data-op-freshness title={quote?.sourceNote ?? 'in attesa della prima quotazione'}>
+                {quoteAge}
+              </span>
+            </div>
+            <div className="ex-stat"><span className="ex-stat-k">bid</span><span className="ex-stat-v ex-up" data-op-bid>{cents(bestBid)}</span></div>
+            <div className="ex-stat"><span className="ex-stat-k">ask</span><span className="ex-stat-v ex-dn" data-op-ask>{cents(bestAsk)}</span></div>
+            <div className="ex-stat"><span className="ex-stat-k">spread</span><span className="ex-stat-v" data-op-spread>{fin(spreadCents) ? `${spreadCents.toFixed(1)}¢` : 'N/D'}</span></div>
+            <div className="ex-stat"><span className="ex-stat-k">tick</span><span className="ex-stat-v">{tick ?? 'N/D'}</span></div>
+            <div className="ex-stat"><span className="ex-stat-k">size min</span><span className="ex-stat-v">{minSize ?? 'N/D'}</span></div>
+            {fin(maxSpreadCents) && (
+              <div className="ex-stat"><span className="ex-stat-k">banda</span><span className="ex-stat-v">{maxSpreadCents.toFixed(2)}¢</span></div>
             )}
             {fin(target.rewardsDailyRate) && (
               <div className="ex-stat"><span className="ex-stat-k">reward/g</span><span className="ex-stat-v ex-up">{money(target.rewardsDailyRate, 0)}</span></div>
             )}
           </div>
+          {quoteErr && (
+            <p className="ex-flag is-dim op-mb" data-op-quote-error>
+              <span className="ex-flag-i" aria-hidden="true">ⓘ</span>
+              <span>ultimo aggiornamento non riuscito ({quoteErr}) — i numeri qui sopra restano l&apos;ultima lettura buona, non sono stati azzerati</span>
+            </p>
+          )}
 
           {/* ── 3 · LATO ──────────────────────────────────────────────────────────────────────── */}
           <div className="op-field">
@@ -325,15 +462,15 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
             <div className="op-label">
               Size (share)
               <span className="op-labelhint">
-                min. premiante {target.minSize ?? 'N/D'}
+                min. premiante {minSize ?? 'N/D'}
                 {fin(target.presetSize) ? ` · precompilata dal piano` : ''}
               </span>
             </div>
             <input className={`ex-input op-input ${problems.some((p) => p.key === 'minsize' || p.key === 'size') ? 'is-bad' : ''}`}
               type="number" inputMode="decimal" value={sizeStr} data-op-size
-              onChange={(e) => { setSizeStr(e.target.value); setStep('form'); }} />
-            {fin(target.minSize) && (
-              <button className="ex-link op-fix" onClick={() => setSizeStr(String(target.minSize))} data-op-use-min>usa il minimo</button>
+              onChange={(e) => { setSizeStr(e.target.value); setSizeTouched(true); setStep('form'); }} />
+            {fin(minSize) && (
+              <button className="ex-link op-fix" onClick={() => { setSizeStr(String(minSize)); setSizeTouched(true); }} data-op-use-min>usa il minimo</button>
             )}
           </div>
 
@@ -341,14 +478,18 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
           <div className="op-field">
             <div className="op-label">
               Prezzo
-              <span className="op-labelhint">tick {target.tick ?? 'N/D'} · mid {cents(target.mid)}</span>
+              <span className="op-labelhint">
+                tick {tick ?? 'N/D'} · mid {cents(mid)}
+                {priceTouched && <b className="ex-gold"> · prezzo tuo, non lo tocchiamo</b>}
+              </span>
             </div>
             <input className={`ex-input op-input ${problems.some((p) => p.key === 'tick' || p.key === 'price') ? 'is-bad' : ''}`}
-              type="number" inputMode="decimal" step={target.tick ?? 0.01} value={priceStr} data-op-price
-              onChange={(e) => { setPriceStr(e.target.value); setStep('form'); }} />
-            {fin(target.tick) && fin(price) && !onTick(price, target.tick as number) && (
-              <button className="ex-link op-fix" onClick={() => setPriceStr(String(snapToTick(price, target.tick as number)))} data-op-use-tick>
-                usa {snapToTick(price, target.tick as number)}
+              type="number" inputMode="decimal" step={tick ?? 0.01} value={priceStr} data-op-price
+              data-op-price-touched={priceTouched ? '1' : '0'}
+              onChange={(e) => { setPriceStr(e.target.value); setPriceTouched(true); setStep('form'); }} />
+            {fin(tick) && fin(price) && !onTick(price, tick as number) && (
+              <button className="ex-link op-fix" onClick={() => { setPriceStr(String(snapToTick(price, tick as number))); setPriceTouched(true); }} data-op-use-tick>
+                usa {snapToTick(price, tick as number)}
               </button>
             )}
           </div>
