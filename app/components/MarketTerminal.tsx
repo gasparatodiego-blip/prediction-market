@@ -500,8 +500,8 @@ export default function MarketTerminal({ marketId }: { marketId: string }) {
 
   if (err) {
     return (
-      <div className="mkt">
-        <div className="mkt-shell">
+      <div className="mkt exch">
+        <div className="mkt-shell exch">
           <Link href="/dashboard/liquidity-rewards" className="mkt-back">← elenco premi</Link>
           <p className="mkt-err">Mercato non disponibile: {err}</p>
         </div>
@@ -510,8 +510,8 @@ export default function MarketTerminal({ marketId }: { marketId: string }) {
   }
 
   return (
-    <div className="mkt">
-      <div className="mkt-shell">
+    <div className="mkt exch">
+      <div className="mkt-shell exch">
         <Link href="/dashboard/liquidity-rewards" className="mkt-back">← elenco premi</Link>
 
         {/* ══ 1 · HEAD + VERDICT ═══════════════════════════════════════════════════════════════ */}

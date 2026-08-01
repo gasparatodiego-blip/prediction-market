@@ -1920,3 +1920,137 @@ h1, h2, h3 {
   .exch .ex-stat-v { font-size: 15px; }
   .exch .ex-actionbar .ex-btn { font-size: 13px; padding: 0 8px; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   MARKET TERMINAL — EXCHANGE SKIN + MOBILE OVERLAP FIXES
+   ──────────────────────────────────────────────────────────────────────────────
+   The terminal's 112 rules above are written against the shared --cc-* tokens, so
+   the whole surface re-skins by re-pointing those tokens inside .mkt-shell.exch
+   rather than by rewriting every rule. The Cash & Carry surface, which owns the
+   same --cc-* names one scope up, is untouched.
+
+   TWO THINGS CHANGE BEYOND COLOUR:
+   1. Gold is the ACTIVE/ACTION accent, green stays POSITIVE/LIVE. Under the old
+      palette one green did both jobs, so a selected segment and an in-band level
+      spoke with the same voice.
+   2. Every figure is monospaced and tabular. Prices, sizes, countdowns, ladder
+      levels — a column of proportional digits does not line up, and lining up is
+      the only reason a ladder is a ladder.
+
+   AND THE OVERLAP HARDENING (H1-H4 below). Reported as text riding over text on
+   the market screen on a phone. Four places could produce it, all the same shape:
+   a flex or grid item that cannot shrink below its min-content, in a track narrow
+   enough on a 320-360px screen that it has to. Fixed by letting them shrink and
+   wrap, not by making the text shorter.
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+.mkt-shell.exch {
+  --cc-bg:     var(--ex-bg);
+  --cc-panel:  var(--ex-panel);
+  --cc-border: var(--ex-line);
+  --cc-text:   var(--ex-txt);
+  --cc-muted:  var(--ex-txt-2);
+  --cc-green:  var(--ex-green);
+  --cc-amber:  var(--ex-gold);
+  --ds-danger: var(--ex-red);
+  --ds-fill-2: var(--ex-panel-2);
+  background: var(--ex-bg);
+  color: var(--ex-txt);
+  font-family: var(--ex-sans);
+}
+
+/* ── Gold for ACTIVE and ACTION; green stays reserved for positive/live. ─────── */
+.mkt-shell.exch .mkt-sec-n { color: var(--ex-gold); }
+.mkt-shell.exch .mkt-back:hover { color: var(--ex-gold); }
+.mkt-shell.exch .mkt-btn:hover { border-color: var(--ex-gold); color: var(--ex-gold); }
+.mkt-shell.exch .mkt-seg button[aria-pressed="true"],
+.mkt-shell.exch .mkt-chip[aria-pressed="true"] {
+  color: #0B0E11; background: var(--ex-gold); border-color: var(--ex-gold); font-weight: 700;
+}
+.mkt-shell.exch .mkt-input:focus-visible { outline: 2px solid var(--ex-gold); outline-offset: 1px; }
+.mkt-shell.exch .mkt-data > summary::before { color: var(--ex-gold); }
+.mkt-shell.exch .mkt-btn.is-arm {
+  background: var(--ex-gold); color: #0B0E11; border-color: var(--ex-gold);
+}
+.mkt-shell.exch .mkt-btn.is-arm:disabled {
+  background: #3A3520; color: #7A7259; border-color: #3A3520; opacity: 1;
+}
+.mkt-shell.exch .mkt-killbtn { background: var(--ex-red); border-radius: 6px; }
+.mkt-shell.exch .mkt-killbtn:hover { background: #D93A4E; }
+.mkt-shell.exch .mkt-kill { background: rgba(11, 14, 17, .96); backdrop-filter: blur(8px); }
+
+/* ── EVERY DIGIT MONOSPACED. ─────────────────────────────────────────────────── */
+.mkt-shell.exch .mkt-cd b,
+.mkt-shell.exch .mkt-verdict-n,
+.mkt-shell.exch .mkt-lv,
+.mkt-shell.exch .mkt-mid b,
+.mkt-shell.exch .mkt-you,
+.mkt-shell.exch .mkt-num-v,
+.mkt-shell.exch .mkt-impact,
+.mkt-shell.exch .mkt-kv > span:last-child,
+.mkt-shell.exch .mkt-lab > span:last-child,
+.mkt-shell.exch .mkt-input,
+.mkt-shell.exch .mkt-chip,
+.mkt-shell.exch .mkt-ttl {
+  font-family: var(--ex-mono); font-variant-numeric: tabular-nums;
+}
+.mkt-shell.exch .mkt-tag,
+.mkt-shell.exch .mkt-pill,
+.mkt-shell.exch .mkt-impact { border-radius: 3px; text-transform: uppercase; letter-spacing: .05em; }
+.mkt-shell.exch .mkt-verdict,
+.mkt-shell.exch .mkt-book,
+.mkt-shell.exch .mkt-num,
+.mkt-shell.exch .mkt-you,
+.mkt-shell.exch .mkt-input,
+.mkt-shell.exch .mkt-btn,
+.mkt-shell.exch .mkt-seg button { border-radius: 6px; }
+.mkt-shell.exch .mkt-num { background: var(--ex-panel); }
+
+/* ── H1 · THE LADDER ROW ──────────────────────────────────────────────────────
+   Four columns, an absolutely-positioned depth bar behind them, and a 300px floor
+   that the columns do not actually need. On a 320px screen the 1fr column (the
+   "your order is here" marker) was squeezed below its min-content while its
+   siblings kept their auto width, so the marker rode over the size figure.
+   Every cell may now shrink and wrap; the bar is explicitly behind and inert. */
+.mkt-shell.exch .mkt-lv { min-width: 264px; }
+.mkt-shell.exch .mkt-lv-bar { z-index: 0; pointer-events: none; }
+.mkt-shell.exch .mkt-lv-p,
+.mkt-shell.exch .mkt-lv-y,
+.mkt-shell.exch .mkt-lv-s,
+.mkt-shell.exch .mkt-lv-f {
+  z-index: 1; min-width: 0; overflow-wrap: anywhere;
+}
+
+/* ── H2 · "I TUOI ORDINI CADREBBERO SU UN LIVELLO OGGI VUOTO" ──────────────────
+   minmax(0, 1fr) auto: the auto column held a string like
+   "BUY NO 51.0¢ (= SELL YES 49.0¢) · FUORI banda", whose max-content is wider than
+   a phone. The auto track took it all, the 1fr track collapsed, and the sentence
+   on the left overflowed straight across the value on the right. It stacks now. */
+.mkt-shell.exch .mkt-you > * { min-width: 0; overflow-wrap: anywhere; }
+@media (max-width: 560px) {
+  .mkt-shell.exch .mkt-you { grid-template-columns: minmax(0, 1fr); }
+  .mkt-shell.exch .mkt-you b { text-align: left; }
+}
+
+/* ── H3 · THE KEY/VALUE ROWS ──────────────────────────────────────────────────
+   display:flex + justify-content:space-between, and neither item could shrink
+   below min-content (flex items default to min-width:auto). A long label beside a
+   long value did not wrap — it overflowed, and the two collided in the middle.
+   They shrink and wrap now, and stack rather than collide when there is no room. */
+.mkt-shell.exch .mkt-kv { flex-wrap: wrap; }
+.mkt-shell.exch .mkt-kv > span { min-width: 0; overflow-wrap: anywhere; }
+.mkt-shell.exch .mkt-kv > span:first-child { flex: 1 1 auto; }
+.mkt-shell.exch .mkt-kv > span:last-child { flex: 0 1 auto; }
+
+/* ── H4 · THE FIELD LABELS ────────────────────────────────────────────────────
+   Same shape as H3: "Size totale (USD)" beside "$100 per lato · 213 shares YES /
+   187 shares NO". It wrapped between the two spans but neither could shrink, so on
+   the narrowest phones the right-hand span overflowed its line.
+   The muted styling also moves to a CHILD selector: as a descendant selector it
+   was claiming any nested span, including ones that carry their own colour. */
+.mkt-shell.exch .mkt-lab > span { min-width: 0; overflow-wrap: anywhere; }
+.mkt-shell.exch .mkt-lab > span:last-child { font-weight: 500; color: var(--ex-txt-3); }
+
+/* The exchange surface fills the viewport, not just the 860px column: a dark shell floating on the
+   day-theme dashboard background is two pages at once. */
+.mkt.exch { min-height: 100vh; padding: 0 12px; }
