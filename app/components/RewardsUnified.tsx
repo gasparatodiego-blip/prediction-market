@@ -703,32 +703,35 @@ export default function RewardsUnified() {
             <span className="cc-title-accent"> · maker</span>
           </h1>
           <p className="cc-ask">Quanto rende fare il maker su questi mercati?</p>
-          <p className="cc-sub">
-            Il $/giorno modellato per un singolo maker: la <strong>sua quota</strong> del montepremi, non
-            il montepremi intero. Cifre lorde — il netto non è stimato, e più sotto è detto perché.
+          <p className="cc-sub" title="Non il montepremi intero: la quota di un singolo maker. Il netto non e stimato.">
+            $/giorno per un singolo maker — la <strong>sua quota</strong> del montepremi, lorda.
           </p>
         </header>
 
         {/* ── ASSUMPTIONS · stated once, always visible (never a tooltip, never collapsed). Describes what
             the rows ACTUALLY show: the operator's own size + offset — not a fixed $1,000 basis. ── */}
-        <div className="rw-assume" role="note">
-          <span className="rw-assume-k">Ogni cifra è calcolata sulla tua size e sulla tua distanza dal
-          punto medio</span>, impostate qui accanto e divise per lato. I prezzi sono arrotondati al tick di
-          ogni mercato: dove la distanza richiesta non cade sul tick, la riga indica quella applicata. La
-          size assunta è limitata dalla profondità reale in banda del mercato, e quando la lega, la riga lo
-          dice. Con <strong>più di un livello per lato</strong> il $/giorno è la somma di stime indipendenti
-          per livello, ciascuna limitata dalla profondità del proprio livello e il totale limitato dal
-          montepremi del mercato; la profondità di ogni livello è una <strong>stima da storico o da lettura
-          live</strong>, indicata riga per riga nel dettaglio. Sono <strong>premi lordi maturati</strong>: il P&amp;L di inventario quando i tuoi ordini
-          vengono eseguiti <strong>non è incluso</strong> in nessuna cifra di questa pagina. Mostriamo solo
-          il <strong>lordo</strong> — l&rsquo;<strong>adverse selection</strong> non è modellata, quindi il
-          {' '}<strong>rendimento netto è sconosciuto (netto —)</strong> e non viene stimato.
-          L&rsquo;annualizzato è calcolato sulla profondità reale del book, non su un capitale fisso: quando
-          il book è troppo sottile diventa «—». La cifra di riferimento da
-          ${ASSUMED_ORDER_SIZE_USD.toLocaleString()} resta visibile solo come termine di paragone, non è la
-          tua. Con la size vuota ogni cifra è «—». I premi Kalshi sono riservati ai membri residenti negli
-          Stati Uniti.
-        </div>
+        {/* ── LE ASSUNZIONI, RICHIUDIBILI ────────────────────────────────────────────────────────────
+            Erano venti righe di paragrafo unico sopra la lista: la cosa piu' lunga della dashboard, e
+            quella che nessuno rileggeva dalla seconda visita in poi. Adesso la riga che conta e' sempre
+            visibile — le cifre sono LORDE e calcolate sulla TUA size — e le altre nove assunzioni
+            stanno dietro un click. Nessuna e' stata rimossa: sono esattamente le stesse. */}
+        <details className="rw-assume" data-rw-assume>
+          <summary className="rw-assume-s">
+            ⚠ Cifre <b>lorde</b>, sulla <b>tua size</b> e distanza — netto sconosciuto. Come si calcolano
+          </summary>
+          <ul className="rw-assume-ul">
+            <li>Ogni cifra è calcolata sulla tua <b>size</b> e sulla tua <b>distanza dal mid</b>, divise per lato.</li>
+            <li>Prezzi arrotondati al <b>tick</b> di ogni mercato; dove la distanza non ci cade, la riga indica quella applicata.</li>
+            <li>La size assunta è limitata dalla <b>profondità reale in banda</b>; quando la lega, la riga lo dice.</li>
+            <li>Con <b>più livelli per lato</b> il $/giorno somma stime indipendenti per livello, ciascuna limitata dalla propria profondità e il totale dal montepremi.</li>
+            <li>La profondità di ogni livello è una <b>stima</b> da storico o da lettura live, indicata riga per riga nel dettaglio.</li>
+            <li><b>Premi lordi maturati.</b> Il P&amp;L di inventario sui fill <b>non è incluso</b> in nessuna cifra.</li>
+            <li>L&rsquo;<b>adverse selection non è modellata</b>: il rendimento netto è <b>sconosciuto</b> e non viene stimato.</li>
+            <li>L&rsquo;annualizzato è sulla profondità reale del book, non su un capitale fisso: book troppo sottile ⇒ «—».</li>
+            <li>La cifra di riferimento da ${ASSUMED_ORDER_SIZE_USD.toLocaleString()} resta solo come paragone, non è la tua.</li>
+            <li>Con la size vuota ogni cifra è «—». I premi Kalshi sono riservati ai residenti USA.</li>
+          </ul>
+        </details>
 
         {err && <EmptyState prefix="cc" title="Rewards feed unavailable" sub={err} />}
         {!err && !data && <EmptyState prefix="cc" sub="Loading reward markets…" />}
@@ -818,9 +821,8 @@ export default function RewardsUnified() {
                 >
                   Azzera filtri
                 </button>
-                <span className="cc-fhead-note">
-                  I filtri ripartono da zero a ogni ricarica. Size, distanza dal mid e selezione per
-                  l&rsquo;universo bot restano.
+                <span className="cc-fhead-note" title="Size, distanza dal mid e selezione per l universo bot non vengono toccate dall azzeramento ne dalla ricarica.">
+                  Ripartono da zero a ogni ricarica.
                 </span>
               </div>
 
@@ -859,7 +861,7 @@ export default function RewardsUnified() {
               {/* DEVE PAGARE ALMENO — min daily pot (server filter) */}
               <div className="cc-fctl">
                 <span className="cc-flabel">Deve pagare almeno</span>
-                <span className="cc-fhelp">Il montepremi giornaliero che la piattaforma mette su quel mercato. Sotto questa cifra non vale la pena esserci.</span>
+                <span className="cc-fhelp" title="Il montepremi giornaliero che la piattaforma mette su quel mercato.">Sotto questa cifra non vale la pena esserci.</span>
                 <div className="cc-slider-body">
                   <input className="cc-frange" type="range" min={0} max={Math.max(rg.poolMax, 1)} step={Math.max(1, Math.round(rg.poolMax / 100))}
                     value={Math.min(filters.minPool, Math.max(rg.poolMax, 1))}
@@ -871,7 +873,7 @@ export default function RewardsUnified() {
               {/* IL LIBRO DEVE REGGERE ALMENO — min book depth at touch (server filter) */}
               <div className="cc-fctl">
                 <span className="cc-flabel">Il libro deve reggere almeno</span>
-                <span className="cc-fhelp">Quanti soldi ci sono già sul book al miglior prezzo. Un libro sottile significa che il premio è alto solo perché non c&rsquo;è nessuno.</span>
+                <span className="cc-fhelp" title="Quanti soldi ci sono gia sul book al miglior prezzo.">Un libro sottile = premio alto solo perché non c&rsquo;è nessuno.</span>
                 <div className="cc-slider-body">
                   <input className="cc-frange" type="range" min={0} max={Math.max(rg.depthMax, 1)} step={Math.max(1, Math.round(rg.depthMax / 100))}
                     value={Math.min(filters.minDepth, Math.max(rg.depthMax, 1))}
@@ -883,7 +885,7 @@ export default function RewardsUnified() {
               {/* DISTANZA MASSIMA FRA DOMANDA E OFFERTA — max spread (server filter). Max ⇒ "qualsiasi". */}
               <div className="cc-fctl">
                 <span className="cc-flabel">Distanza massima fra domanda e offerta</span>
-                <span className="cc-fhelp">Più è larga, più il prezzo si muove sotto i tuoi ordini prima che qualcuno li prenda.</span>
+                <span className="cc-fhelp">Più larga, più il prezzo si muove sotto i tuoi ordini.</span>
                 <div className="cc-slider-body">
                   <input className="cc-frange" type="range" min={0} max={Math.max(rg.spreadMaxCents, 1)} step={1}
                     value={filters.maxSpreadCents < 0 ? Math.max(rg.spreadMaxCents, 1) : Math.min(filters.maxSpreadCents, Math.max(rg.spreadMaxCents, 1))}

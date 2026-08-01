@@ -2230,3 +2230,18 @@ h1, h2, h3 {
 
 /* Inline red flag inside a footnote line — the one-line replacement for a caveat sentence. */
 .mkt-shell.exch .mkt-flagbad { color: var(--ex-red); }
+
+/* ── The assumptions block, collapsible. The one line that changes how every figure on the board is
+      read stays visible; the nine that qualify it sit one click away. ─────────────────────────────── */
+.rewards.exch .rw-assume { padding: 9px 11px; border-radius: 8px; }
+.rewards.exch .rw-assume-s {
+  cursor: pointer; list-style: none; font-size: 12px; line-height: 1.5;
+  color: var(--ex-gold); display: flex; align-items: baseline; gap: 5px; min-height: 26px;
+}
+.rewards.exch .rw-assume-s::-webkit-details-marker { display: none; }
+.rewards.exch .rw-assume-s b { color: var(--ex-gold); }
+.rewards.exch .rw-assume[open] .rw-assume-s { margin-bottom: 4px; }
+.rewards.exch .rw-assume-ul {
+  margin: 0; padding-left: 16px; font-size: 11.5px; line-height: 1.55; color: var(--ex-txt-2);
+}
+.rewards.exch .rw-assume-ul li { margin: 4px 0; }
