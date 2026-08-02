@@ -119,6 +119,31 @@ interface Quote {
 interface TrackSide { book: string; price: number | null; priceCents: number | null; placeable: boolean; reason: string | null; inBand: boolean | null; bandNote: string | null }
 interface TrackPreview { ok: boolean; error?: string; plan?: { ok: boolean; reason: string | null; yes: TrackSide | null; no: TrackSide | null }; rules?: { mid: number | null; tick: number | null; bandRadiusCents: number | null }; restingOrders?: Array<{ orderId: string | null; price: number | null; size: number | null }>; note?: string }
 interface TrackRecord { marketId: string; offsetCents: number; minMoveCents: number; sizeShares: number; atIso: string | null }
+
+/**
+ * Lo stato della CHIUSURA AUTOMATICA per QUESTO mercato.
+ *
+ * Due interruttori, entrambi necessari, come per il tracking e per l'auto-riprezzo: un generale e uno per
+ * mercato. `enabled` e' gia' la loro AND, calcolata dal server — il pannello non la ricompone, cosi' non
+ * puo' dare una risposta diversa da quella che il motore usera' davvero.
+ *
+ * `readable:false` significa «non lo so», e non viene mai mostrato come «spento».
+ */
+interface AutoCloseState {
+  readable: boolean;
+  error: string | null;
+  globalEnabled: boolean;
+  profitCents: number | null;
+  market: {
+    marketId: string;
+    enabled: boolean;
+    marketEnabled: boolean;
+    globalEnabled: boolean;
+    readable: boolean;
+    reason: string | null;
+    record: { atIso?: string | null; by?: string | null } | null;
+  } | null;
+}
 interface PlaceResult {
   ok: boolean; sent: boolean; dryRun?: boolean; placement?: string;
   gate: string | null; reason: string | null; orderId?: string | null; notionalUsd?: number | null;
@@ -207,6 +232,17 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
   const [trkMsg, setTrkMsg] = useState<string | null>(null);
   const [trkActive, setTrkActive] = useState<TrackRecord | null>(null);
   const [trkOffStep, setTrkOffStep] = useState<'idle' | 'choose'>('idle');
+  // ── LA CHIUSURA AUTOMATICA, PER QUESTO MERCATO ─────────────────────────────────────────────────
+  // Il meccanismo sotto era gia' generico — `setAutoClose({scope:'market', marketId})` accetta qualunque
+  // conditionId e lo scrive in una mappa durevole. Quello che mancava era un modo di raggiungerlo: l'unico
+  // comando in interfaccia stava nel vecchio pannello e agiva sul mercato PINNATO (MAKER_LIVE_MIN_MARKET),
+  // uno solo alla volta e cambiabile solo da variabile d'ambiente. Da qui agisce sul mercato che hai
+  // aperto, chiunque esso sia.
+  const [acOpen, setAcOpen] = useState(false);
+  const [acBusy, setAcBusy] = useState(false);
+  const [acMsg, setAcMsg] = useState<string | null>(null);
+  const [acStep, setAcStep] = useState<'form' | 'review'>('form');
+  const [acState, setAcState] = useState<AutoCloseState | null>(null);
   const [leaseErr, setLeaseErr] = useState<string | null>(null);
   const [sizeTouched, setSizeTouched] = useState(false);
   // Orologio a 1s: il countdown sotto i 5 minuti deve muoversi, non sembrare fermo.
@@ -452,6 +488,46 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
     setTrkOffset(''); setTrkMinMove(''); setTrkActive(null);
     loadTracking();
   }, [target.marketId, loadTracking]);
+
+  // ── LO STATO DELLA CHIUSURA AUTOMATICA DI QUESTO MERCATO ───────────────────────────────────────
+  // Si chiede al server PER QUESTO marketId, non si deduce da una configurazione globale: la route
+  // risponde per il mercato che le si nomina, ed e' l'unico modo perche' il pannello dica la verita' su
+  // un mercato qualsiasi invece che su quello pinnato.
+  //
+  // Una lettura fallita lascia `null`, che la sezione mostra come «non letto» — mai come «spento». Uno
+  // stato che non abbiamo letto non e' uno stato sicuro, ed e' esattamente la confusione che farebbe
+  // credere disattivato un automatismo acceso.
+  const loadAutoClose = useCallback(async () => {
+    try {
+      const r = await fetch(`/api/maker/manual/auto-close?marketId=${encodeURIComponent(target.marketId)}`, { cache: 'no-store' });
+      const b = (await r.json()) as AutoCloseState;
+      setAcState(b && typeof b.readable === 'boolean' ? b : null);
+    } catch { setAcState(null); }
+  }, [target.marketId]);
+  useEffect(() => {
+    setAcOpen(false); setAcStep('form'); setAcMsg(null); setAcState(null);
+    loadAutoClose();
+  }, [target.marketId, loadAutoClose]);
+
+  /** Accende o spegne un interruttore della chiusura automatica. Scrive: e' il secondo dei due passi. */
+  const acCall = useCallback(async (scope: 'global' | 'market', enabled: boolean) => {
+    setAcBusy(true); setAcMsg(null);
+    try {
+      const r = await fetch('/api/maker/manual/auto-close', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scope, enabled,
+          marketId: scope === 'market' ? target.marketId : undefined,
+          reason: 'pannello ordine · scelta per mercato',
+        }),
+      });
+      const b = await r.json();
+      setAcMsg(b.ok ? String(b.note ?? 'fatto') : `rifiutato: ${b.error ?? 'errore'}`);
+      await loadAutoClose();
+      return b.ok === true;
+    } catch (e) { setAcMsg((e as Error).message); return false; }
+    finally { setAcBusy(false); }
+  }, [target.marketId, loadAutoClose]);
 
   // Chiusura con Escape, oltre alla X — il pannello è modale e deve avere una via d'uscita da tastiera.
   // LO SFONDO NON SI MUOVE. Il pannello si apre SOPRA la lista, e alla chiusura la lista deve essere
@@ -1077,6 +1153,160 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
             )}
           </div>
 
+          {/* ── CHIUSURA AUTOMATICA ───────────────────────────────────────────────────────────────
+              ACCANTO AL TRACKING, sotto la stessa intestazione «Motore automatico» e con lo stesso
+              aspetto, perche' e' la stessa categoria di potere: qualcosa che agisce da solo. Ma e' un
+              potere DIVERSO — il tracking piazza acquisti su due lati per fare mercato, questo VENDE il
+              token che un fill ha prodotto — quindi ha un interruttore suo e non eredita quello del
+              tracking. Un operatore che ne accende uno non ha acceso l'altro.
+
+              DUE INTERRUTTORI, ENTRAMBI NECESSARI, com'e' nel motore: un generale e uno per questo
+              mercato. Il pannello li mostra separati invece di fonderli in un solo comando, perche'
+              fonderli vorrebbe dire accendere un potere globale mentre si crede di toccare un mercato. */}
+          <div className="op-trk op-mb" data-op-autoclose>
+            <button className="op-trk-head" onClick={() => setAcOpen((v) => !v)} data-op-ac-toggle aria-expanded={acOpen}>
+              <span className="op-trk-bolt" aria-hidden="true">⚡</span>
+              <span className="op-trk-t">
+                Chiusura automatica <span className="ex-dim">· vende dopo un fill</span>
+              </span>
+              <span className="op-trk-auto" data-op-ac-auto>AUTO</span>
+              {/* TRE STATI, NON DUE. «non letto» e' un terzo esito reale e non viene mai dipinto come
+                  «spento»: un automatismo il cui stato non conosciamo potrebbe essere acceso. */}
+              <span
+                className={`ex-badge ${acState == null ? '' : acState.market?.enabled ? 'is-gold' : ''}`}
+                data-op-ac-state={acState == null ? 'unknown' : acState.market?.enabled ? 'on' : 'off'}>
+                {acState == null ? 'non letto' : acState.market?.enabled ? 'ATTIVA' : 'spenta'}
+              </span>
+              <span className="op-trk-caret" aria-hidden="true">{acOpen ? '▾' : '▸'}</span>
+            </button>
+
+            {acOpen && (
+              <div className="op-trk-body">
+                {acState == null ? (
+                  <p className="ex-flag is-bad" data-op-ac-unknown>
+                    <span className="ex-flag-i" aria-hidden="true">⚠</span>
+                    <span>Stato della chiusura automatica NON letto per questo mercato. Non e&apos; la stessa cosa di
+                      &laquo;spenta&raquo;: finche&apos; non si legge, non si puo&apos; dire se sia attiva.</span>
+                  </p>
+                ) : (
+                  <>
+                    {/* I DUE INTERRUTTORI, DETTI SEPARATAMENTE. Il generale non e' una casella tecnica:
+                        e' cio' che decide se questo mercato conti qualcosa. */}
+                    <div className="ex-kvs op-mb" data-op-ac-switches>
+                      <div className="ex-kv">
+                        <span className="ex-kv-k">interruttore generale</span>
+                        <span className="ex-kv-v" data-op-ac-global={acState.globalEnabled ? 'on' : 'off'}>
+                          {acState.globalEnabled ? 'acceso' : 'SPENTO'}
+                        </span>
+                      </div>
+                      <div className="ex-kv">
+                        <span className="ex-kv-k">questo mercato</span>
+                        <span className="ex-kv-v" data-op-ac-market={acState.market?.marketEnabled ? 'on' : 'off'}>
+                          {acState.market?.marketEnabled ? 'acceso' : 'spento'}
+                        </span>
+                      </div>
+                      <div className="ex-kv">
+                        <span className="ex-kv-k">uscita a</span>
+                        <span className="ex-kv-v">carico +{acState.profitCents ?? 1}¢</span>
+                      </div>
+                      <div className="ex-kv">
+                        <span className="ex-kv-k">in vigore qui</span>
+                        <span className="ex-kv-v">{acState.market?.enabled ? 'sì' : 'no'}</span>
+                      </div>
+                    </div>
+
+                    {/* PERCHE' NON AGISCE, quando non agisce. La ragione arriva dal motore, non da una
+                        frase ricomposta qui: e' la stessa che finirebbe nell'audit. */}
+                    {acState.market && !acState.market.enabled && acState.market.reason && (
+                      <p className="ex-flag is-dim" data-op-ac-reason>
+                        <span className="ex-flag-i" aria-hidden="true">ⓘ</span><span>{acState.market.reason}</span>
+                      </p>
+                    )}
+
+                    {/* ── DUE COSE VERE CHE VANNO DETTE PRIMA, NON DOPO ────────────────────────────
+                        Nessuna delle due e' un difetto di questo comando, ma entrambe cambiano cosa ci
+                        si puo' aspettare — e scoprirle a fill avvenuto sarebbe scoprirle troppo tardi. */}
+                    <p className="op-hint" data-op-ac-latency>
+                      Il fill viene rilevato leggendo le posizioni dal venue, e quella lettura gira
+                      <b> ogni 60 secondi</b>: fra il riempimento e l&apos;ordine di uscita passa fino a un minuto.
+                      {fin(minsLeft) && (minsLeft as number) < 5 && (
+                        <> <b className="ex-gold">Su questo mercato restano {closeTxt(minsLeft)}</b>: sotto i 5 minuti
+                          di vita residua nessun ordine nuovo viene piazzato, quindi un&apos;uscita automatica
+                          verrebbe rifiutata al gate dell&apos;orologio.</>
+                      )}
+                    </p>
+
+                    {acState.market?.enabled ? (
+                      <button className="ex-btn is-danger op-trk-btn" disabled={acBusy}
+                        onClick={async () => { await acCall('market', false); setAcStep('form'); }}
+                        data-op-ac-off>
+                        {acBusy ? 'Spengo…' : 'Disattiva su questo mercato'}
+                      </button>
+                    ) : acStep === 'form' ? (
+                      <button className="ex-btn is-gold op-trk-btn" disabled={acBusy}
+                        onClick={() => setAcStep('review')} data-op-ac-review-btn>
+                        Rivedi attivazione
+                      </button>
+                    ) : (
+                      <>
+                        <div className="op-review" data-op-ac-review>
+                          <div className="op-review-h">Rivedi prima di attivare</div>
+                          <div className="ex-kvs">
+                            <div className="ex-kv"><span className="ex-kv-k">mercato</span><span className="ex-kv-v op-wrap">{target.title}</span></div>
+                            <div className="ex-kv"><span className="ex-kv-k">azione</span><span className="ex-kv-v">VENDITA del token posseduto</span></div>
+                            <div className="ex-kv"><span className="ex-kv-k">prezzo</span><span className="ex-kv-v">carico +{acState.profitCents ?? 1}¢, arrotondato in su al tick</span></div>
+                            <div className="ex-kv"><span className="ex-kv-k">size</span><span className="ex-kv-v">quella che il VENUE dice posseduta</span></div>
+                          </div>
+                          <p className="op-hint">
+                            Attivando, dopo ogni fill su questo mercato viene piazzata da sola una vendita di
+                            uscita, <b>senza conferma ordine per ordine</b>, finche&apos; non la spegni. Passa dagli
+                            stessi gate di ogni altro ordine: kill-switch, tetto per ordine, gestione manuale,
+                            regole di venue e validateOrder.
+                            {!acState.globalEnabled && (
+                              <> <b className="ex-gold">L&apos;interruttore generale e&apos; spento</b>: accendere qui
+                                registra la scelta su questo mercato ma non fara&apos; ancora nulla, finche&apos; non
+                                accendi anche quello.</>
+                            )}
+                          </p>
+                        </div>
+                        <div className="op-trk-choice">
+                          <button className="ex-btn op-trk-btn" onClick={() => setAcStep('form')} data-op-ac-back>Modifica</button>
+                          <button className="ex-btn is-danger op-trk-btn" disabled={acBusy}
+                            onClick={async () => { const ok = await acCall('market', true); if (ok) setAcStep('form'); }}
+                            data-op-ac-activate>
+                            {acBusy ? 'Attivo…' : 'Attiva su questo mercato'}
+                          </button>
+                        </div>
+                      </>
+                    )}
+
+                    {/* L'INTERRUTTORE GENERALE, IN FONDO E DETTO PER QUELLO CHE E'. Non e' una casella
+                        di questo mercato: vale per tutti quelli abilitati, presenti e futuri. Sta qui
+                        sotto, separato e con la sua etichetta, perche' non lo si prema credendo di
+                        toccare solo il mercato aperto. */}
+                    <div className="op-ac-master" data-op-ac-master>
+                      <span className="op-ac-master-k">
+                        Interruttore GENERALE — vale per <b>tutti</b> i mercati abilitati, non solo questo
+                      </span>
+                      {acState.globalEnabled ? (
+                        <button className="ex-link op-trk-btn" disabled={acBusy}
+                          onClick={() => acCall('global', false)} data-op-ac-master-off>
+                          spegni il generale
+                        </button>
+                      ) : (
+                        <button className="ex-link op-trk-btn" disabled={acBusy}
+                          onClick={() => acCall('global', true)} data-op-ac-master-on>
+                          accendi il generale
+                        </button>
+                      )}
+                    </div>
+                  </>
+                )}
+                {acMsg && <div className="ex-banner op-mb" data-op-ac-msg>{acMsg}</div>}
+              </div>
+            )}
+          </div>
+
           {/* ── PIAZZAMENTO MANUALE A UN LATO ─────────────────────────────────────────────────────
               L'alternativa al tracking: un ordine solo, su un lato solo, deciso adesso. */}
           <div className="op-eyebrow" data-op-eyebrow="manual" data-op-manual-section>
@@ -1425,6 +1655,12 @@ const CSS = `
 .op-trk-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
 .op-trk-btn { width: 100%; min-height: 44px; margin-top: 8px; }
 .op-trk-choice { display: flex; flex-direction: column; gap: 2px; }
+
+/* L INTERRUTTORE GENERALE della chiusura automatica. Separato da una riga e volutamente piu spento dei
+   comandi sopra: e un comando che vale per TUTTI i mercati, quindi non deve sembrare l ovvio passo
+   successivo di quello per il singolo mercato che ha appena sopra. */
+.op-ac-master { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--ex-line-soft); }
+.op-ac-master-k { display: block; font-size: 10px; color: var(--ex-txt-3); line-height: 1.5; }
 .op-trk-q { font-size: 11.5px; color: var(--ex-txt-2); margin-top: 8px; }
 .op-trk-prev { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
 .op-trk-leg { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; font-size: 11.5px; }
