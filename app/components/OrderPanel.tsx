@@ -29,7 +29,7 @@ import { planQuotes } from '@/lib/maker/mm-quote-math';
 // Le STESSE funzioni pure che la route usa per costruire la vista del book: distanza dal mid, righe
 // bloccate dal filtro e verdetto sul prezzo. Sono in un modulo condiviso e coperto da test proprio perche'
 // il pannello non possa dare una risposta diversa dal server sulla stessa domanda.
-import { distanceCents, levelBlocked, priceVerdict } from '@/lib/maker/book-view';
+import { distanceCents, priceVerdict } from '@/lib/maker/book-view';
 
 // Il rinnovo del permesso, e la soglia di freschezza che il pannello PROMETTE al server quando conferma.
 //
@@ -122,6 +122,8 @@ interface TrackRecord { marketId: string; offsetCents: number; minMoveCents: num
 interface PlaceResult {
   ok: boolean; sent: boolean; dryRun?: boolean; placement?: string;
   gate: string | null; reason: string | null; orderId?: string | null; notionalUsd?: number | null;
+  /** Non un rifiuto: l'ordine è passato E non maturerà reward. Detto insieme all'esito, non al posto suo. */
+  bandAdvisory?: string | null;
 }
 
 const fin = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
@@ -189,13 +191,6 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
   // e non ce l'ho fatta» sono cose diverse, e mostrarle uguali farebbe leggere una latenza normale come
   // un guasto — o, molto peggio, un guasto come una latenza normale.
   const [lease, setLease] = useState<'idle' | 'asking' | 'held' | 'failed'>('idle');
-  // ── IL FILTRO «DISTANZA MINIMA DAL MID» ────────────────────────────────────────────────────────
-  // Quotare attaccati al mid massimizza i premi e massimizza anche la probabilita' di essere presi
-  // proprio quando il prezzo si sta muovendo contro. Questo cursore rende quella scelta esplicita:
-  // sotto la soglia le righe restano VISIBILI — si deve poter vedere dove sta la liquidita' che si sta
-  // rinunciando a toccare — ma diventano inerti, cosi' un tocco distratto non puo' compilarle.
-  // Default 2¢: dentro la banda tipica da ±2.25¢ resta un margine operabile, e non e' zero.
-  const [minDistC, setMinDistC] = useState(2);
   // La riga toccata, tenuta per prezzo e non per indice: il book si riordina a ogni aggiornamento, e un
   // indice evidenzierebbe la riga sbagliata un secondo dopo.
   const [pickedPrice, setPickedPrice] = useState<number | null>(null);
@@ -629,6 +624,12 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
           // `stale-book` verifica che lo sia ancora nell'istante in cui l'ordine parte, e rifiuta invece
           // di piazzare su un dato stantio se nel frattempo la sottoscrizione e' caduta.
           requireFreshBookMs: FRESH_BOOK_MAX_MS,
+          // FUORI BANDA È UN COSTO DICHIARATO, NON UN DIVIETO. Questa schermata mostra l'avviso giallo
+          // «non matura reward» sopra il campo del prezzo, e chi conferma l'ha letto: due tocchi separati
+          // stanno fra quell'avviso e l'invio. Il server declassa quindi il solo codice OUT_OF_BAND da
+          // rifiuto ad annotazione. Il tick NON è coperto da questa dichiarazione e resta un blocco: un
+          // prezzo fuori griglia lo rifiuterebbe l'exchange, non noi.
+          acknowledgeOutOfBand: true,
           note: 'pannello ordine',
         }),
       });
@@ -740,35 +741,10 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
             </div>
           </div>
 
-          {/* ── 3 · ORDER BOOK ────────────────────────────────────────────────────────────────────
-              Il filtro sta SOPRA il book, non altrove nel pannello: e' un comando che agisce su quelle
-              righe, e un comando lontano da cio' che governa si legge come un'impostazione globale.
-              Da qui e' evidente che riguarda la lista che ha sotto, e nient'altro.
-
-              E' DICHIARATO «SOLO VISTA» perche' e' l'unico controllo del pannello che non tocca nessun
-              ordine: oscura righe, non piazza e non sposta niente. Confonderlo con l'offset del motore
-              automatico — che invece decide dove finiscono ordini VERI — sarebbe l'errore piu' caro
-              possibile su questa schermata, quindi i due non condividono ne' etichetta ne' aspetto. */}
+          {/* ── 3 · ORDER BOOK ─────────────────────────────────────────────────────────────────── */}
           <div className="op-eyebrow" data-op-eyebrow="book">
             Order book
             <span className="op-eyebrow-r">{book.toUpperCase()}</span>
-          </div>
-
-          <div className="op-filter op-mb" data-op-dist-field>
-            <div className="op-filter-top">
-              <span className="op-filter-i" aria-hidden="true">👁</span>
-              <span className="op-filter-l">Distanza minima visualizzata dal mid</span>
-              <span className="op-filter-v ex-n" data-op-dist-value>{minDistC.toFixed(2)}¢</span>
-            </div>
-            <input className="op-slider" type="range" min={0} max={6} step={0.25}
-              value={minDistC} data-op-dist-slider
-              aria-label="Distanza minima visualizzata dal mid — solo vista, non piazza nulla"
-              onChange={(e) => setMinDistC(Number(e.target.value))} />
-            <div className="op-filter-note">
-              <span className="op-filter-tag" data-op-filter-viewonly>SOLO VISTA — non piazza nulla</span>
-              Oscura le righe a meno di <b className="ex-n">{minDistC.toFixed(2)}¢</b> dal mid e le rende
-              non selezionabili. Non tocca nessun ordine.
-            </div>
           </div>
 
           {/* ── IL BOOK, VERTICALE, STILE EXCHANGE ────────────────────────────────────────────────
@@ -777,9 +753,13 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
               cumulato; la barra di sfondo e' proporzionale alla size, cosi' dove c'e' liquidita' si vede
               senza leggere i numeri.
 
-              TOCCARE UNA RIGA COMPILA IL PREZZO. Le righe sotto la soglia del cursore restano visibili
-              ma barrate e inerti: il filtro non nasconde la liquidita', impedisce solo di sceglierla
-              per sbaglio. */}
+              TOCCARE UNA RIGA COMPILA IL PREZZO — QUALSIASI RIGA. Qui c'era un cursore «distanza minima
+              dal mid» che rendeva inerti le righe piu' vicine al mid, per impedire un tocco distratto
+              su un livello a forte rischio di fill. E' stato tolto: sceglieva al posto dell'operatore su
+              una schermata che chiede comunque due tocchi espliciti prima di mandare qualcosa, e la
+              conseguenza pratica era che i livelli attaccati al mid — quelli che maturano di piu' —
+              erano gli unici non selezionabili. La distanza dal mid resta scritta sul title di ogni
+              riga, che informa senza decidere. */}
           <div className="op-book op-mb" data-op-book data-op-book-side={book}>
             <div className="op-book-top">
               <span className="op-book-t">Order book · <b className="ex-n">{book.toUpperCase()}</b></span>
@@ -800,21 +780,14 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
             <div className="op-book-side" data-op-asks>
               {askRows.length === 0 && <div className="op-book-empty" data-op-asks-empty>nessun ask sul book</div>}
               {askRows.map((l) => {
-                const blocked = levelBlocked(l.price, mid, minDistC);
                 const d = distanceCents(l.price, mid);
                 return (
                   <button key={`a${l.price}`} type="button"
-                    className={`op-row is-ask ${blocked ? 'is-blocked' : ''} ${pickedPrice === l.price ? 'is-picked' : ''}`}
+                    className={`op-row is-ask ${pickedPrice === l.price ? 'is-picked' : ''}`}
                     data-op-level="ask" data-op-level-price={l.price}
-                    data-op-level-blocked={blocked ? '1' : '0'}
                     data-op-level-dist={d ?? ''}
-                    disabled={blocked}
-                    aria-disabled={blocked}
-                    title={blocked
-                      ? `${d?.toFixed(2)}¢ dal mid — sotto la soglia di ${minDistC.toFixed(2)}¢, non selezionabile`
-                      : `usa ${cents(l.price)} (${d?.toFixed(2)}¢ dal mid)`}
+                    title={`usa ${cents(l.price)} (${d?.toFixed(2)}¢ dal mid)`}
                     onClick={() => {
-                      if (blocked) return;
                       setPriceStr(String(l.price)); setPriceTouched(true); setPickedPrice(l.price); setStep('form');
                     }}>
                     <span className="op-row-bar is-ask" style={{ width: maxSize ? `${Math.max(2, (l.size / maxSize) * 100)}%` : '0%' }} aria-hidden="true" />
@@ -845,21 +818,14 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
             <div className="op-book-side" data-op-bids>
               {bidRows.length === 0 && <div className="op-book-empty" data-op-bids-empty>nessun bid sul book</div>}
               {bidRows.map((l) => {
-                const blocked = levelBlocked(l.price, mid, minDistC);
                 const d = distanceCents(l.price, mid);
                 return (
                   <button key={`b${l.price}`} type="button"
-                    className={`op-row is-bid ${blocked ? 'is-blocked' : ''} ${pickedPrice === l.price ? 'is-picked' : ''}`}
+                    className={`op-row is-bid ${pickedPrice === l.price ? 'is-picked' : ''}`}
                     data-op-level="bid" data-op-level-price={l.price}
-                    data-op-level-blocked={blocked ? '1' : '0'}
                     data-op-level-dist={d ?? ''}
-                    disabled={blocked}
-                    aria-disabled={blocked}
-                    title={blocked
-                      ? `${d?.toFixed(2)}¢ dal mid — sotto la soglia di ${minDistC.toFixed(2)}¢, non selezionabile`
-                      : `usa ${cents(l.price)} (${d?.toFixed(2)}¢ dal mid)`}
+                    title={`usa ${cents(l.price)} (${d?.toFixed(2)}¢ dal mid)`}
                     onClick={() => {
-                      if (blocked) return;
                       setPriceStr(String(l.price)); setPriceTouched(true); setPickedPrice(l.price); setStep('form');
                     }}>
                     <span className="op-row-bar is-bid" style={{ width: maxSize ? `${Math.max(2, (l.size / maxSize) * 100)}%` : '0%' }} aria-hidden="true" />
@@ -1172,17 +1138,19 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
 
             {/* ── L'AVVISO CHE SI AGGIORNA A OGNI MODIFICA ────────────────────────────────────────
                 Sia che il prezzo arrivi da un tocco sul book sia che venga digitato: e' lo stesso
-                stato, quindi e' lo stesso avviso. Rosso = l'ordine non farebbe quello che sembra
-                (incrocia, quindi esegue subito) o non matura premi. Verde = resta sul book come
-                maker, dentro la banda. */}
+                stato, quindi e' lo stesso avviso.
+                  verde  = resta sul book come maker, dentro la banda;
+                  giallo = FUORI BANDA — non matura reward, ma si piazza: e' un costo dichiarato, e
+                           l'operatore puo' volerlo. Nessun pulsante viene disabilitato da qui;
+                  rosso  = incrocia il book, quindi si eseguirebbe subito invece di riposare. */}
             {verdict && (
-              <div className={`op-verdict ${verdict.level === 'ok' ? 'is-ok' : verdict.level === 'bad' ? 'is-bad' : 'is-unk'}`}
+              <div className={`op-verdict ${verdict.level === 'ok' ? 'is-ok' : verdict.level === 'bad' ? 'is-bad' : verdict.level === 'warn' ? 'is-warn' : 'is-unk'}`}
                 data-op-price-verdict={verdict.level}
                 data-op-verdict-crosses={verdict.crosses ? '1' : '0'}
                 data-op-verdict-outofband={verdict.outOfBand === null ? '' : verdict.outOfBand ? '1' : '0'}
                 role="status" aria-live="polite">
                 <span className="op-verdict-i" aria-hidden="true">
-                  {verdict.level === 'ok' ? '✓' : verdict.level === 'bad' ? '⛔' : 'ⓘ'}
+                  {verdict.level === 'ok' ? '✓' : verdict.level === 'bad' ? '⛔' : verdict.level === 'warn' ? '⚠' : 'ⓘ'}
                 </span>
                 <span className="op-verdict-tx">
                   {verdict.messages.map((m, i) => <span key={i} className="op-verdict-l">{m}</span>)}
@@ -1253,6 +1221,13 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
                   : <><b data-op-dryrun>DRY-RUN — nessun ordine reale piazzato.</b> L&apos;ordine è stato costruito, firmato e validato dal venue, poi scartato (placement={result.placement ?? 'dry-run'}).</>
               ) : (
                 <><b>Rifiutato al gate {result.gate ?? '—'}</b>: {result.reason ?? '—'}</>
+              )}
+              {/* L'ordine è passato E non matura reward: due fatti veri insieme. Detto qui, dopo l'esito,
+                  perché a piazzamento avvenuto è l'unica cosa che resta da sapere su quel prezzo. */}
+              {result.ok && result.bandAdvisory && (
+                <span className="op-banner-sub" data-op-band-advisory>
+                  ⚠ Fuori dalla banda reward: questo ordine riposa regolarmente ma NON matura reward.
+                </span>
               )}
             </div>
           )}
@@ -1345,19 +1320,6 @@ const CSS = `
 .op-mkt-s.is-ok { color: var(--ex-green); }
 .op-mkt-s.is-warn { color: var(--ex-gold); }
 
-/* ── FILTRO DI SOLA VISTA ── volutamente MUTO: niente oro, niente bordo marcato. L oro in questo
-   pannello significa «il motore agisce da solo», e un filtro che non piazza niente non deve
-   indossarlo. Il contrasto con il pannello del tracking e l informazione. */
-.op-filter { border: 1px solid var(--ex-line-soft); border-radius: 8px; padding: 9px 11px 11px;
-  background: rgba(255,255,255,.012); }
-.op-filter-top { display: flex; align-items: center; gap: 8px; }
-.op-filter-i { font-size: 12px; opacity: .5; filter: grayscale(1); }
-.op-filter-l { flex: 1 1 auto; font-size: 11px; color: var(--ex-txt-2); }
-.op-filter-v { font-size: 12.5px; font-weight: 700; color: var(--ex-txt); }
-.op-filter-note { font-size: 10px; color: var(--ex-txt-3); line-height: 1.5; margin-top: 6px; }
-.op-filter-tag { display: inline-block; margin-right: 6px; padding: 1px 5px; border-radius: 3px;
-  border: 1px solid var(--ex-line); background: var(--ex-panel-2);
-  font-size: 8.5px; letter-spacing: .07em; font-weight: 700; color: var(--ex-txt-2); vertical-align: 1px; }
 .op-booknote { font-size: 10.5px; color: var(--ex-txt-3); line-height: 1.5; }
 
 /* ── IL BOOK ─────────────────────────────────────────────────────────────────────────────────────
@@ -1397,13 +1359,8 @@ const CSS = `
 .op-row:hover:not(:disabled) { background: rgba(240,185,11,.06); }
 .op-row.is-picked { border-left-color: var(--ex-gold); background: rgba(240,185,11,.12); }
 
-/* SOTTO SOGLIA: visibile, barrata, inerte. Si deve poter vedere la liquidita a cui si sta rinunciando;
-   quello che non si deve poter fare e sceglierla per sbaglio. */
-.op-row.is-blocked { opacity: .32; cursor: not-allowed; pointer-events: none; }
-.op-row.is-blocked .op-row-p { text-decoration: line-through; }
 @media (pointer: coarse) {
   .op-row { min-height: 44px; }
-  .op-slider { height: 44px; }
 }
 
 .op-book-mid { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
@@ -1417,7 +1374,6 @@ const CSS = `
 .op-midnote-p { margin-bottom: 4px; }
 
 /* ── IL CURSORE DELLA DISTANZA ── area di tocco piena, non un filo di 4px. */
-.op-slider { width: 100%; margin-top: 8px; accent-color: var(--ex-gold); height: 26px; }
 
 /* ── IL VERDETTO SUL PREZZO ── */
 .op-verdict { display: flex; gap: 8px; align-items: flex-start; margin-top: 7px;
@@ -1426,6 +1382,11 @@ const CSS = `
 .op-verdict-tx { display: flex; flex-direction: column; gap: 3px; }
 .op-verdict.is-ok { color: var(--ex-green); border-color: var(--ex-green-bd); background: var(--ex-green-bg); }
 .op-verdict.is-bad { color: var(--ex-red); border-color: var(--ex-red-bd); background: var(--ex-red-bg); }
+/* GIALLO = fuori banda. Deliberatamente NON rosso: il rosso in questo pannello significa «questo
+   ordine non e quello che credi», e un ordine fuori banda e' esattamente quello che l operatore ha
+   chiesto — costa i premi, e lo dice. */
+.op-verdict.is-warn { color: var(--ex-gold); border-color: var(--ex-gold-bd); background: var(--ex-gold-bg); }
+.op-banner-sub { display: block; margin-top: 5px; font-size: 10.5px; color: var(--ex-gold); }
 .op-verdict.is-unk { color: var(--ex-txt-2); border-color: var(--ex-unk-bd); background: var(--ex-unk-bg); }
 
 .op-seg { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 6px; }

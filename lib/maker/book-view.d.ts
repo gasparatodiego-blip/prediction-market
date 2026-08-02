@@ -62,6 +62,5 @@ export declare function crossesBook(q: {
 export declare function priceVerdict(q: {
   price: number; bestBid: number | null; bestAsk: number | null;
   scoringMid: number | null; bandRadiusCents: number | null; side?: 'BUY' | 'SELL';
-}): { level: 'ok' | 'bad' | 'unknown'; crosses: boolean; outOfBand: boolean | null; messages: string[] };
+}): { level: 'ok' | 'warn' | 'bad' | 'unknown'; crosses: boolean; outOfBand: boolean | null; messages: string[] };
 export declare function distanceCents(price: number | null, mid: number | null): number | null;
-export declare function levelBlocked(price: number | null, mid: number | null, minDistanceCents: number | null): boolean;

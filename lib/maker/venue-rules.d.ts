@@ -53,6 +53,12 @@ export function validateQuotePair(
   bid: Partial<Quote> | null | undefined,
   ask: Partial<Quote> | null | undefined,
 ): PairVerdict;
+/** Separa i motivi BLOCCANTI da quelli solo dichiarati. Con allowOutOfBand:true il codice OUT_OF_BAND
+ *  scende da bloccante ad `advisories` (non viene mai perso); ogni altro codice resta bloccante. */
+export function splitVerdict(
+  verdict: QuoteVerdict | null | undefined,
+  opts?: { allowOutOfBand?: boolean },
+): { valid: boolean; reasons: Reason[]; advisories: Reason[]; outOfBand: boolean };
 export function isOnTick(price: number, tick: number): boolean;
 export function rulesReadable(rules: unknown): boolean;
 

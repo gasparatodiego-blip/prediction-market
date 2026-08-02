@@ -245,7 +245,9 @@ export interface PlaceResult {
   /** The lifetime this order actually got, read back from the placement — GTC or GTD, and why. */
   expiry?: ManualExpiry;
   source?: ManualSource;
-  /** Declassa il SOLO codice OUT_OF_BAND da bloccante a dichiarato. Nessuna route HTTP lo accetta. */
+  /** Declassa il SOLO codice OUT_OF_BAND da bloccante a dichiarato (lib/maker/venue-rules.splitVerdict).
+   *  La route del pannello lo accende quando l'operatore ha visto l'avviso «non matura reward»
+   *  (`acknowledgeOutOfBand`); il motore di tracking lo accende per l'offset che ha dichiarato. */
   allowOutOfBand?: boolean;
   venueRules?: Record<string, unknown>;
   caps?: Caps;
@@ -343,7 +345,15 @@ export function resolveManualTtlSeconds(
 ): ManualExpiry;
 
 export function placeManualOrder(
-  spec: { marketId?: string; book: Book; price: number; size: number; ttlSeconds?: number; note?: string; userId?: string; source?: ManualSource },
+  spec: {
+    marketId?: string; book: Book; price: number; size: number; ttlSeconds?: number; note?: string;
+    userId?: string; source?: ManualSource; side?: 'BUY' | 'SELL';
+    /** La promessa di freschezza: il gate `stale-book` verifica che il mid venga davvero dal book live
+     *  e sia piu' giovane di questi millisecondi. Assente ⇒ nessun requisito. */
+    requireFreshBookMs?: number;
+    /** Declassa il SOLO codice OUT_OF_BAND da bloccante a dichiarato (vedi ManualOrderSpec). */
+    allowOutOfBand?: boolean;
+  },
   deps?: ManualDeps,
 ): Promise<PlaceResult>;
 
