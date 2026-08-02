@@ -146,9 +146,30 @@ export async function POST(req: NextRequest) {
     } else if (Number.isFinite(rules.midAgeSec) && (rules.midAgeSec as number) > FRESH_MID_MAX_SEC) {
       gates.push(`il book live per questo mercato e' fermo da ${rules.midAgeSec}s: la sottoscrizione sembra caduta.`);
     }
+    // ── QUANTA VITA OPERATIVA RESTA DAVVERO ───────────────────────────────────────────────────────
+    // Il gate rifiuta solo quando il mercato e' GIA' sotto soglia. Ma fra «sopra soglia» e «utile» c'e'
+    // di mezzo tutto: attivare il tracking con 7 minuti di vita su una soglia da 3 significa comprare
+    // 4 minuti di motore, non un turno di lavoro. E' successo davvero — attivazione con 7.6 minuti
+    // residui, tre ordini piazzati, motore fermo 2 minuti dopo — e dallo schermo non si vedeva.
+    //
+    // NON E' UN RIFIUTO, ed e' una scelta: su una finestra Bitcoin da 5 minuti quei pochi minuti sono
+    // esattamente cio' che si vuole, e trasformare l'avviso in un divieto renderebbe il tracking
+    // inutilizzabile proprio dove serve. Quindi si dice quanto durera', e si lascia decidere.
+    const warnings: string[] = [];
+    let runwayMin: number | null = null;
     try {
       const w = marketWindowFor({ marketId, baseTtlSeconds: RESTING_GTD_SECONDS, baseRefreshMarginSeconds: REFRESH_MARGIN_SECONDS });
       if (w && w.tooClose === true) gates.push(`${w.reason} — il motore non riprezzerebbe comunque su questo mercato.`);
+      else if (w && Number.isFinite(w.minutesToClose) && Number.isFinite(w.minMinutes)) {
+        runwayMin = +((w.minutesToClose as number) - (w.minMinutes as number)).toFixed(1);
+        if (runwayMin < 3 * (w.minMinutes as number)) {
+          warnings.push(
+            `Vita operativa BREVE: il mercato chiude fra ${(w.minutesToClose as number).toFixed(1)} min e il motore smette di`
+            + ` riprezzare sotto i ${w.minMinutes} min, quindi lavorera' per circa ${runwayMin} min.`
+            + ' Dopo quel momento gli ordini a riposo vengono CANCELLATI, non lasciati fermi.',
+          );
+        }
+      }
     } catch { /* finestra non calcolabile: non e' un motivo per rifiutare */ }
 
     const plan = planQuotes({ mid: rules.mid, offsetCents, tick: rules.tick, bandRadiusCents: rules.bandRadiusCents });
@@ -180,13 +201,14 @@ export async function POST(req: NextRequest) {
         ok: true, preview: true, action: 'tracking-on', marketId,
         rules: { mid: rules.mid, tick: rules.tick, minSize: rules.minSize, bandRadiusCents: rules.bandRadiusCents, midSource: rules.midSource, midAgeSec: rules.midAgeSec },
         plan, sides, activeSides: wanted, ordersToRetire: orphans,
-        blockers: gates,
+        blockers: gates, warnings, runwayMinutes: runwayMin,
         note: gates.length
           ? `Anteprima: NIENTE e stato scritto. Ma il tracking NON si puo attivare adesso — ${gates.join(' ')}`
           : `Anteprima: NIENTE e stato scritto e nessun ordine e stato piazzato. ${wanted.length === 2
             ? 'Questi sono i due livelli dove il motore quoterebbe con il mid di adesso.'
             : `Il motore quoterebbe SOLO il lato ${wanted[0].toUpperCase()}, a questo livello. Un lato solo NON matura reward: il punteggio prende il minimo fra i due lati.`}`
-          + (orphans.length ? ` Ci sono ${orphans.length} ordini sul lato che verrebbe ritirato: alla conferma vengono CANCELLATI subito.` : ''),
+          + (orphans.length ? ` Ci sono ${orphans.length} ordini sul lato che verrebbe ritirato: alla conferma vengono CANCELLATI subito.` : '')
+          + (warnings.length ? ` ${warnings.join(' ')}` : ''),
       });
     }
 
@@ -215,9 +237,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       ok: true, preview: false, action: 'tracking-on', marketId, record: on.record, plan,
       sides, activeSides: wanted, prevSides: on.prevSides ?? null, cancelled,
+      warnings, runwayMinutes: runwayMin,
       note: `Tracking ATTIVO su ${wanted.length === 2 ? 'ENTRAMBI i lati' : `il solo lato ${wanted[0].toUpperCase()}`}.`
         + ' Da adesso il motore quota e insegue il mid quando si muove oltre la soglia, senza chiedere conferma ordine per ordine. Si spegne dallo stesso pulsante.'
         + (wanted.length === 1 ? ' ATTENZIONE: un lato solo NON matura reward — il punteggio del programma premi prende il minimo fra i due lati.' : '')
+        + (warnings.length ? ` ${warnings.join(' ')}` : '')
         + (cancelled.length
           ? ` ${cancelled.length - failed}/${cancelled.length} ordini sul lato ritirato sono stati cancellati subito.${failed ? ' Quelli non cancellati restano in carico al motore, che continua a riprovare a ogni ciclo.' : ''}`
           : ''),

@@ -66,7 +66,7 @@ const { runAutoRepriceCycle } = require('../lib/maker/auto-reprice');
 // credenziale, nessuna chiave, solo le funzioni del pannello manuale — quindi aggiungere qui non allarga
 // la superficie: la riusa.
 const { runTrackingCycle, TRACKING_POLL_MS, MID_STALE_PAUSE_SEC } = require('../lib/maker/mm-tracking');
-const { readTrackingConfig } = require('../lib/maker/mm-tracking-config');
+const { readTrackingConfig, setTracking } = require('../lib/maker/mm-tracking-config');
 const { marketWindowFor } = require('../lib/maker/market-clock');
 const { loadAutoRepriceTuning, EXPECTED_RENEWALS_PER_HOUR } = require('../lib/maker/auto-reprice-config');
 const { listManualOrders, replaceManualOrder, resolveMarketRules, cancelManualOrder } = require('../lib/maker/manual-order');
@@ -246,6 +246,10 @@ async function cycle() {
 async function trackingTask() {
   const res = await runTrackingCycle({
     readConfig: () => readTrackingConfig(),
+    // SPEGNERE IL TRACKING SU UN MERCATO CHIUSO. Il motore decide QUANDO (solo a mercato risolto e a
+    // libro gia' libero); qui si passa la mano che scrive. Iniettarla invece di importarla dentro il
+    // modulo tiene il ciclo puro e testabile senza toccare la configurazione vera.
+    disableTracking: ({ marketId, reason }) => setTracking({ marketId, enabled: false, by: 'motore · mercato chiuso', reason }),
     killStatus: () => killSwitch.killStatus(),
     isManual: (marketId) => isManualMarket(marketId),
     marketWindow: (marketId) => {
