@@ -282,7 +282,7 @@ async function trackingTask() {
         + ` · offset ${a.offsetCents}c · size ${a.size}`
         + `${a.inBand === false ? ' · FUORI BANDA (nessun reward su questo lato)' : ''}`
         + `${a.sent ? ' · INVIATO al venue' : ' · non inviato (dry-run)'}`
-        + `${a.ok ? '' : ` · gate=${a.gate} ${a.reason || ''}`}`);
+        + `${a.ok ? '' : ` · gate=${a.gate}${a.failStreak ? ` (${a.failStreak}° rifiuto consecutivo, riprovo fra ${Math.round((a.backoffMs || 0) / 1000)}s)` : ''} ${a.reason || ''}`}`);
     } else if (a.action === 'skip') {
       log(`tracking skip · ${a.book.toUpperCase()} · ${a.gate}: ${a.reason}`);
     }
@@ -311,6 +311,7 @@ async function trackingTask() {
         midReadAt: m.midReadAt ?? null, paused: m.paused === true,
         plan: m.plan ? { yes: m.plan.yes, no: m.plan.no } : null,
         sides: m.sides || null,
+        sideDecisions: m.sideDecisions || null,
       })),
       recent: trackingLog.slice(0, 60),
     });
