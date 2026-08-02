@@ -26,6 +26,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 // La STESSA funzione che il motore usa per decidere dove quotare: l'anteprima non puo' mostrare un
 // livello diverso da quello che verrebbe piazzato, perche' e' lo stesso codice.
 import { planQuotes } from '@/lib/maker/mm-quote-math';
+// Le STESSE funzioni pure che la route usa per costruire la vista del book: distanza dal mid, righe
+// bloccate dal filtro e verdetto sul prezzo. Sono in un modulo condiviso e coperto da test proprio perche'
+// il pannello non possa dare una risposta diversa dal server sulla stessa domanda.
+import { distanceCents, levelBlocked, priceVerdict } from '@/lib/maker/book-view';
 
 // Il rinnovo del permesso, e la soglia di freschezza che il pannello PROMETTE al server quando conferma.
 //
@@ -70,12 +74,47 @@ interface ManualCfg {
   caps: { readable: boolean; effectiveOrderCapUsd: number | null; maxOrderNotionalUsd: number | null; liveMinCapUsd: number | null };
   autoReprice: { expiry: { orderType: string; ttlSeconds: number; refreshMarginSeconds: number | null } | null; globalEnabled: boolean; optedInMarketIds: string[] } | null;
 }
+/** Una riga del book: prezzo, size a QUEL livello, e il cumulato dal tocco fin qui. */
+interface Level { price: number; size: number; total: number }
+/**
+ * LA VISTA COERENTE DI UN BOOK, come la costruisce lib/maker/book-view.js. Mid, tocco e scala escono
+ * tutti dagli STESSI livelli letti nello STESSO istante — è questo che rende impossibile per costruzione
+ * il difetto «MID 20.0¢ accanto a BID 21.0¢ e ASK 22.0¢».
+ *
+ * `mid` e `scoringMid` sono DUE COSE DIVERSE e restano separate apposta:
+ *   · `mid`        = midpoint del tocco disegnato qui sotto. È quello che il pannello mostra.
+ *   · `scoringMid` = il mid del VENUE (filtrato di min_incentive_size), contro cui si misura la banda
+ *                    premiante e su cui il motore piazza. Non viene toccato da questo lavoro.
+ * Quando divergono, `midNotes` lo dice a parole: una nota, non tre cifre mute.
+ */
+interface BookSide {
+  bestBid: number | null; bestAsk: number | null; spreadCents: number | null;
+  mid: number | null;
+  midKind: 'midpoint' | 'one-sided-bid' | 'one-sided-ask' | 'unavailable';
+  scoringMid: number | null;
+  midDiffersFromScoring: boolean;
+  scoringMidOutsideTouch: boolean;
+  midNotes: string[];
+  scoringMidNote: string | null;
+  lastTradePrice: number | null;
+  levels: {
+    bids: Level[]; asks: Level[];
+    bidCount: number; askCount: number; bidShown: number; askShown: number;
+    truncated: boolean; maxSize: number | null; requested: number; sourceCap: number | null;
+  };
+  live: boolean; ageMs: number | null; source: string | null; tokenId: string | null;
+}
 /** Quello che /api/maker/quote restituisce: i prezzi PIU' la loro provenienza e la loro eta'. */
 interface Quote {
   marketId: string; title: string | null;
   mid: number | null; bestBid: number | null; bestAsk: number | null; spreadCents: number | null;
+  scoringMid: number | null; midKind: BookSide['midKind'];
+  midDiffersFromScoring: boolean; scoringMidOutsideTouch: boolean; midNotes: string[];
   tick: number | null; minSize: number | null; maxSpreadCents: number | null;
   source: 'live-book' | 'gamma'; sourceNote: string; live: boolean; ageMs: number | null;
+  /** Da dove viene la PROFONDITA'. Puo' differire da `source`: le regole da Gamma, il book dalla REST. */
+  depthSource: 'live-book' | 'clob-rest' | null; depthSourceNote: string;
+  books: { yes: BookSide; no: BookSide };
 }
 interface TrackSide { book: string; price: number | null; priceCents: number | null; placeable: boolean; reason: string | null; inBand: boolean | null; bandNote: string | null }
 interface TrackPreview { ok: boolean; error?: string; plan?: { ok: boolean; reason: string | null; yes: TrackSide | null; no: TrackSide | null }; rules?: { mid: number | null; tick: number | null; bandRadiusCents: number | null }; restingOrders?: Array<{ orderId: string | null; price: number | null; size: number | null }>; note?: string }
@@ -88,6 +127,20 @@ interface PlaceResult {
 const fin = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
 const money = (v: number | null | undefined, nd = 2): string => (fin(v) ? `$${v.toFixed(nd)}` : 'N/D');
 const cents = (p: number | null | undefined): string => (fin(p) ? `${(p * 100).toFixed(1)}¢` : 'N/D');
+/**
+ * Le size del book. Migliaia separate da uno SPAZIO, mai da un punto.
+ *
+ * Il punto sarebbe il separatore italiano, ma in questa colonna convive con prezzi scritti alla maniera
+ * dei mercati (0.746, tick 0.01): «36.982» accanto a «24.0¢» si legge trentasei-virgola-nove, non
+ * trentaseimila. Lo spazio non ha quel doppio senso, ed e' la convenzione SI usata anche in finanza.
+ * Sotto le mille si tengono al massimo due decimali, perche' le size del CLOB ce li hanno davvero.
+ */
+const fmtSize = (s: number | null | undefined): string => {
+  if (!fin(s)) return 'N/D';
+  const n = s >= 1000 ? Math.round(s) : Math.round(s * 100) / 100;
+  const [i, d] = String(n).split('.');
+  return i.replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + (d ? `.${d}` : '');
+};
 
 /** Countdown leggibile. Mai «0m»: sotto il minuto lo dice, sotto i dieci tiene il decimo. */
 function closeTxt(min: number | null): string {
@@ -136,6 +189,16 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
   // e non ce l'ho fatta» sono cose diverse, e mostrarle uguali farebbe leggere una latenza normale come
   // un guasto — o, molto peggio, un guasto come una latenza normale.
   const [lease, setLease] = useState<'idle' | 'asking' | 'held' | 'failed'>('idle');
+  // ── IL FILTRO «DISTANZA MINIMA DAL MID» ────────────────────────────────────────────────────────
+  // Quotare attaccati al mid massimizza i premi e massimizza anche la probabilita' di essere presi
+  // proprio quando il prezzo si sta muovendo contro. Questo cursore rende quella scelta esplicita:
+  // sotto la soglia le righe restano VISIBILI — si deve poter vedere dove sta la liquidita' che si sta
+  // rinunciando a toccare — ma diventano inerti, cosi' un tocco distratto non puo' compilarle.
+  // Default 2¢: dentro la banda tipica da ±2.25¢ resta un margine operabile, e non e' zero.
+  const [minDistC, setMinDistC] = useState(2);
+  // La riga toccata, tenuta per prezzo e non per indice: il book si riordina a ogni aggiornamento, e un
+  // indice evidenzierebbe la riga sbagliata un secondo dopo.
+  const [pickedPrice, setPickedPrice] = useState<number | null>(null);
   // ── IL TRACKING ATTIVO ─────────────────────────────────────────────────────────────────────────
   // L'unico punto di questo progetto in cui due tocchi comprano una DELEGA CONTINUATA invece di un
   // singolo ordine. Per questo ha un passo di revisione suo, separato da quello del piazzamento a mano:
@@ -314,13 +377,37 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
   // quotazione significa «questa fonte non lo dice», mai «vale zero».
   const pick = <T,>(live: T | null | undefined, card: T | null): T | null =>
     (live === null || live === undefined ? card : live);
-  const mid = pick(quote?.mid, target.mid);
-  const bestBid = pick(quote?.bestBid, target.bestBid);
-  const bestAsk = pick(quote?.bestAsk, target.bestAsk);
-  const spreadCents = pick(quote?.spreadCents, target.spreadCents);
   const tick = pick(quote?.tick, target.tick);
   const minSize = pick(quote?.minSize, target.minSize);
   const maxSpreadCents = pick(quote?.maxSpreadCents, target.maxSpreadCents);
+
+  // ── IL BOOK DEL LATO SCELTO ────────────────────────────────────────────────────────────────────
+  // Su Polymarket YES e NO sono due CLOB indipendenti, ciascuno con la sua scala. Il pannello disegna
+  // quello del lato selezionato, e da lì escono mid, tocco, righe e giudizio sul prezzo. Non c'e' nessuna
+  // formula speculare da mantenere allineata: il lato NO e' corretto perche' guarda i propri dati, non
+  // perche' qualcuno ha ricordato di invertire un segno. Prima il pannello scriveva «Mid (NO)» accanto al
+  // bid/ask del book YES — un terzo modo di mettere in fila numeri che non si riferiscono alla stessa cosa.
+  const view: BookSide | null = quote?.books ? quote.books[book] : null;
+  // MID, TOCCO E SPREAD VENGONO DALLA STESSA VISTA, O DA NESSUNA. Prima erano tre `pick()` indipendenti:
+  // bastava che la quotazione live pubblicasse il mid ma non l'ask perche' il mid fosse di adesso e l'ask
+  // dello snapshot della card, cioe' due istanti diversi affiancati senza dirlo. Se la vista live manca si
+  // ripiega sulla card in blocco — tutti e tre insieme, mai mescolati.
+  const mid = view ? view.mid : (book === 'yes' ? target.mid : (fin(target.mid) ? +(1 - target.mid).toFixed(6) : null));
+  const bestBid = view ? view.bestBid : (book === 'yes' ? target.bestBid : null);
+  const bestAsk = view ? view.bestAsk : (book === 'yes' ? target.bestAsk : null);
+  const spreadCents = view ? view.spreadCents : (book === 'yes' ? target.spreadCents : null);
+  // Il mid del VENUE: quello contro cui si misura la banda premiante e su cui il motore piazza. Quando la
+  // fonte non lo pubblica (percorso REST) si usa il midpoint mostrato e lo si DICHIARA, invece di far
+  // passare una sostituzione per un dato del venue.
+  const scoringMid = view && fin(view.scoringMid) ? view.scoringMid : mid;
+  const scoringMidIsSubstitute = !!(view && !fin(view.scoringMid) && fin(mid));
+  const bandRadiusCents = fin(maxSpreadCents) ? maxSpreadCents / 2 : null;
+  // IL MID DEL MOTORE — sempre quello del book YES, qualunque lato si stia guardando. Il tracking quota
+  // entrambi i lati a partire da li', e il motore giudica la banda contro il mid di SCORING: l'anteprima
+  // deve parlare quella lingua, non quella della vista.
+  const engineMid = quote?.books
+    ? (fin(quote.books.yes.scoringMid) ? quote.books.yes.scoringMid : quote.books.yes.mid)
+    : target.mid;
 
   // Il prezzo segue il mid SOLO finche l'operatore non lo ha toccato. Dal primo carattere digitato
   // il campo e suo e nessun aggiornamento lo tocca piu.
@@ -329,6 +416,23 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
     const p = fin(tick) && (tick as number) > 0 ? snapToTick(mid as number, tick as number) : mid;
     setPriceStr(fin(p) ? String(p) : '');
   }, [mid, tick, priceTouched]);
+
+  // Cambiando lato si cambia BOOK, non solo etichetta: la riga evidenziata apparteneva all'altra scala e
+  // non significa piu' niente qui.
+  useEffect(() => { setPickedPrice(null); }, [book]);
+
+  // ── LE RIGHE DEL BOOK, gia' filtrate ───────────────────────────────────────────────────────────
+  // Gli ask si disegnano dal piu' ALTO al piu' basso, cosi' il miglior ask sta in fondo alla sezione
+  // rossa, appoggiato alla riga del mid; i bid scendono dal miglior bid in giu'. E' la disposizione di
+  // un book da exchange: piu' ci si allontana dal centro, piu' si e' lontani dal prezzo.
+  //
+  // Il cumulato NON viene ricalcolato qui: arriva gia' dal server, contato dal tocco verso l'esterno. Se
+  // lo si sommasse di nuovo nell'ordine di disegno, la colonna «totale» degli ask crescerebbe verso
+  // l'alto partendo dalla riga piu' lontana — cioe' misurerebbe un'altra cosa da quella dei bid.
+  const askRows = useMemo(() => (view ? [...view.levels.asks].reverse() : []), [view]);
+  const bidRows = view ? view.levels.bids : [];
+  const maxSize = view?.levels.maxSize ?? null;
+
 
   // Stessa regola per la size: se la soglia premiante arriva dalla quotazione e l'operatore non ha
   // scritto niente, il campo si allinea; se ha scritto, resta com'e.
@@ -379,6 +483,27 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
   const size = Number(sizeStr);
   const price = Number(priceStr);
   const notional = fin(size) && fin(price) && size > 0 && price > 0 ? size * price : null;
+
+  /**
+   * IL VERDETTO SUL PREZZO, ricalcolato a ogni modifica — sia da tocco sul book sia da digitazione.
+   *
+   * ROSSO quando l'ordine non farebbe quello che sembra: a un prezzo che raggiunge il miglior ask
+   * l'ordine si esegue subito contro chi vende, quindi e' taker e non resta a riposo. E' l'errore reale
+   * gia' incontrato in produzione — «invalid post-only order: order crosses book» — ma detto PRIMA di
+   * premere invece che dopo. Rosso anche fuori dalla banda premiante, dove l'ordine resta sul book ma
+   * non matura nulla.
+   *
+   * VALE PER TUTTI E DUE I LATI SENZA CASI SPECIALI: `bestAsk` e' quello del book CHE SI STA GUARDANDO,
+   * quindi «BUY NO a q incrocia l'ask del book NO» e' la stessa frase, applicata ai suoi dati.
+   */
+  const verdict = useMemo(() => {
+    if (!fin(price) || price <= 0 || price >= 1) return null;
+    return priceVerdict({
+      price, bestBid, bestAsk, scoringMid, bandRadiusCents,
+      // Questo percorso non vende mai: «BUY NO» e' un ACQUISTO sul book NO, non una vendita di YES.
+      side: 'BUY',
+    });
+  }, [price, bestBid, bestAsk, scoringMid, bandRadiusCents]);
 
   // Minuti alla chiusura, ricalcolati sull'orologio locale: il valore arrivato con la card invecchia
   // mentre il pannello resta aperto, e un countdown fermo su un mercato da 5 minuti è peggio di nessun
@@ -582,29 +707,172 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
           )}
           {enableMsg && <div className="ex-banner op-mb" data-op-enable-msg>{enableMsg}</div>}
 
-          {/* ── 2 · DATI DI MERCATO LIVE ──────────────────────────────────────────────────────── */}
-          <div className="ex-stats op-mb" data-op-market-data>
-            <div className="ex-stat">
-              <span className="ex-stat-k">mid</span>
-              <span className="ex-stat-v" data-op-mid>{cents(mid)}</span>
+          {/* ── 2 · IL BOOK, VERTICALE, STILE EXCHANGE ────────────────────────────────────────────
+              Ask in alto (rossi, dal piu' alto al piu' basso), la riga del mid al centro, bid sotto
+              (verdi, dal piu' vicino al mid in giu'). Ogni riga porta prezzo, size a quel livello e
+              cumulato; la barra di sfondo e' proporzionale alla size, cosi' dove c'e' liquidita' si vede
+              senza leggere i numeri.
+
+              TOCCARE UNA RIGA COMPILA IL PREZZO. Le righe sotto la soglia del cursore restano visibili
+              ma barrate e inerti: il filtro non nasconde la liquidita', impedisce solo di sceglierla
+              per sbaglio. */}
+          <div className="op-book op-mb" data-op-book data-op-book-side={book}>
+            <div className="op-book-top">
+              <span className="op-book-t">Order book · <b className="ex-n">{book.toUpperCase()}</b></span>
               {/* QUANTO E VECCHIO QUESTO PREZZO fa parte del prezzo: un mid di 9 millisecondi e un mid
                   di due minuti non sono lo stesso fatto, e su un ciclo da cinque minuti la differenza
                   decide l ordine. Sta scritto qui invece di chiedere all operatore di fidarsi. */}
-              <span className="ex-stat-s" data-op-freshness title={quote?.sourceNote ?? 'in attesa della prima quotazione'}>
+              <span className={`ex-badge ${bookLive ? 'is-ok' : 'is-warn'}`} data-op-freshness
+                title={quote?.depthSourceNote ?? quote?.sourceNote ?? 'in attesa della prima quotazione'}>
                 {quoteAge}
               </span>
             </div>
-            <div className="ex-stat"><span className="ex-stat-k">bid</span><span className="ex-stat-v ex-up" data-op-bid>{cents(bestBid)}</span></div>
-            <div className="ex-stat"><span className="ex-stat-k">ask</span><span className="ex-stat-v ex-dn" data-op-ask>{cents(bestAsk)}</span></div>
-            <div className="ex-stat"><span className="ex-stat-k">spread</span><span className="ex-stat-v" data-op-spread>{fin(spreadCents) ? `${spreadCents.toFixed(1)}¢` : 'N/D'}</span></div>
-            <div className="ex-stat"><span className="ex-stat-k">tick</span><span className="ex-stat-v">{tick ?? 'N/D'}</span></div>
-            <div className="ex-stat"><span className="ex-stat-k">size min</span><span className="ex-stat-v">{minSize ?? 'N/D'}</span></div>
-            {fin(maxSpreadCents) && (
-              <div className="ex-stat"><span className="ex-stat-k">banda</span><span className="ex-stat-v">{maxSpreadCents.toFixed(2)}¢</span></div>
-            )}
-            {fin(target.rewardsDailyRate) && (
-              <div className="ex-stat"><span className="ex-stat-k">reward/g</span><span className="ex-stat-v ex-up">{money(target.rewardsDailyRate, 0)}</span></div>
-            )}
+
+            <div className="op-book-hd" aria-hidden="true">
+              <span>prezzo</span><span>size</span><span>totale</span>
+            </div>
+
+            {/* ── ASK ── il miglior ask e' l'ULTIMA riga di questo blocco, appoggiata al mid. */}
+            <div className="op-book-side" data-op-asks>
+              {askRows.length === 0 && <div className="op-book-empty" data-op-asks-empty>nessun ask sul book</div>}
+              {askRows.map((l) => {
+                const blocked = levelBlocked(l.price, mid, minDistC);
+                const d = distanceCents(l.price, mid);
+                return (
+                  <button key={`a${l.price}`} type="button"
+                    className={`op-row is-ask ${blocked ? 'is-blocked' : ''} ${pickedPrice === l.price ? 'is-picked' : ''}`}
+                    data-op-level="ask" data-op-level-price={l.price}
+                    data-op-level-blocked={blocked ? '1' : '0'}
+                    data-op-level-dist={d ?? ''}
+                    disabled={blocked}
+                    aria-disabled={blocked}
+                    title={blocked
+                      ? `${d?.toFixed(2)}¢ dal mid — sotto la soglia di ${minDistC.toFixed(2)}¢, non selezionabile`
+                      : `usa ${cents(l.price)} (${d?.toFixed(2)}¢ dal mid)`}
+                    onClick={() => {
+                      if (blocked) return;
+                      setPriceStr(String(l.price)); setPriceTouched(true); setPickedPrice(l.price); setStep('form');
+                    }}>
+                    <span className="op-row-bar is-ask" style={{ width: maxSize ? `${Math.max(2, (l.size / maxSize) * 100)}%` : '0%' }} aria-hidden="true" />
+                    <span className="op-row-p ex-dn">{cents(l.price)}</span>
+                    <span className="op-row-s">{fmtSize(l.size)}</span>
+                    <span className="op-row-c">{fmtSize(l.total)}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* ── LA RIGA DEL MID ── il midpoint del tocco qui sopra e qui sotto. Stessa fonte, stesso
+                istante, sempre fra i due: non e' un numero che arriva da un'altra parte. */}
+            <div className="op-book-mid" data-op-book-mid>
+              <span className="op-book-mid-v" data-op-mid>{cents(mid)}</span>
+              <span className="op-book-mid-k">
+                {view?.midKind === 'midpoint' ? 'mid · midpoint del book'
+                  : view?.midKind === 'one-sided-bid' ? 'miglior bid — il book non ha ask'
+                    : view?.midKind === 'one-sided-ask' ? 'miglior ask — il book non ha bid'
+                      : 'mid non disponibile'}
+              </span>
+              <span className="op-book-mid-s" data-op-spread>
+                spread {fin(spreadCents) ? `${spreadCents.toFixed(1)}¢` : 'N/D'}
+              </span>
+            </div>
+
+            {/* ── BID ── il miglior bid e' la PRIMA riga, appoggiata al mid. */}
+            <div className="op-book-side" data-op-bids>
+              {bidRows.length === 0 && <div className="op-book-empty" data-op-bids-empty>nessun bid sul book</div>}
+              {bidRows.map((l) => {
+                const blocked = levelBlocked(l.price, mid, minDistC);
+                const d = distanceCents(l.price, mid);
+                return (
+                  <button key={`b${l.price}`} type="button"
+                    className={`op-row is-bid ${blocked ? 'is-blocked' : ''} ${pickedPrice === l.price ? 'is-picked' : ''}`}
+                    data-op-level="bid" data-op-level-price={l.price}
+                    data-op-level-blocked={blocked ? '1' : '0'}
+                    data-op-level-dist={d ?? ''}
+                    disabled={blocked}
+                    aria-disabled={blocked}
+                    title={blocked
+                      ? `${d?.toFixed(2)}¢ dal mid — sotto la soglia di ${minDistC.toFixed(2)}¢, non selezionabile`
+                      : `usa ${cents(l.price)} (${d?.toFixed(2)}¢ dal mid)`}
+                    onClick={() => {
+                      if (blocked) return;
+                      setPriceStr(String(l.price)); setPriceTouched(true); setPickedPrice(l.price); setStep('form');
+                    }}>
+                    <span className="op-row-bar is-bid" style={{ width: maxSize ? `${Math.max(2, (l.size / maxSize) * 100)}%` : '0%' }} aria-hidden="true" />
+                    <span className="op-row-p ex-up">{cents(l.price)}</span>
+                    <span className="op-row-s">{fmtSize(l.size)}</span>
+                    <span className="op-row-c">{fmtSize(l.total)}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* ── SOTTO IL BOOK ── spread, tick, banda, e QUANTI LIVELLI ESISTONO DAVVERO. Un book di
+                tre righe su un mercato che ne ha tre e' un book sottile; su uno che ne ha quaranta e'
+                una vista troncata. Non sono la stessa cosa e qui si distinguono. */}
+            <div className="op-book-foot" data-op-book-foot>
+              <span>spread <b className="ex-n">{fin(spreadCents) ? `${spreadCents.toFixed(1)}¢` : 'N/D'}</b></span>
+              <span>tick <b className="ex-n">{tick ?? 'N/D'}</b></span>
+              <span>banda <b className="ex-n">{fin(maxSpreadCents) ? `±${(maxSpreadCents / 2).toFixed(2)}¢` : 'N/D'}</b></span>
+              <span>size min <b className="ex-n">{minSize ?? 'N/D'}</b></span>
+              {fin(target.rewardsDailyRate) && <span>reward/g <b className="ex-n ex-up">{money(target.rewardsDailyRate, 0)}</b></span>}
+              {view && (
+                <span data-op-book-levels
+                  data-op-bid-count={view.levels.bidCount} data-op-ask-count={view.levels.askCount}>
+                  livelli reali <b className="ex-n">{view.levels.bidCount} bid · {view.levels.askCount} ask</b>
+                  {view.levels.truncated
+                    ? ` (mostrati i primi ${view.levels.requested} per lato)`
+                    : ''}
+                </span>
+              )}
+              {quote?.depthSource && (
+                <span data-op-depth-source={quote.depthSource} title={quote.depthSourceNote}>
+                  profondità <b className="ex-n">{quote.depthSource === 'live-book' ? 'book live agent34' : 'REST CLOB'}</b>
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* ── LA NOTA SUL MID ── quando il mid del VENUE non coincide col midpoint del book, lo si
+              dice. E' esattamente il caso che produceva «MID 20.0¢ · BID 21.0¢ · ASK 22.0¢»: adesso i
+              tre numeri sono coerenti e la differenza col mid di scoring e' scritta, non nascosta. */}
+          {view && view.midNotes.length > 0 && (
+            <div className="op-midnote op-mb" data-op-mid-note
+              data-op-mid-outside={view.scoringMidOutsideTouch ? '1' : '0'}>
+              {view.midNotes.map((n, i) => (
+                <p key={i} className="ex-flag is-dim op-midnote-p"><span className="ex-flag-i" aria-hidden="true">ⓘ</span><span>{n}</span></p>
+              ))}
+            </div>
+          )}
+          {view?.scoringMidNote && (
+            <p className="ex-flag is-dim op-mb" data-op-scoringmid-note>
+              <span className="ex-flag-i" aria-hidden="true">ⓘ</span><span>{view.scoringMidNote}</span>
+            </p>
+          )}
+          {scoringMidIsSubstitute && fin(maxSpreadCents) && (
+            <p className="ex-flag is-dim op-mb" data-op-band-substitute>
+              <span className="ex-flag-i" aria-hidden="true">ⓘ</span>
+              <span>La banda qui sotto è misurata contro il midpoint del book, non contro il mid di scoring del venue: questa fonte non lo pubblica.</span>
+            </p>
+          )}
+
+          {/* ── FILTRO DISTANZA MINIMA DAL MID ────────────────────────────────────────────────────
+              Agisce sul book qui sopra IN TEMPO REALE. Il valore sta scritto in cifre accanto
+              all'etichetta: un cursore senza il suo numero e' una preferenza, non un'impostazione. */}
+          <div className="op-field" data-op-dist-field>
+            <div className="op-label">
+              <span>Distanza minima dal prezzo medio (mid)</span>
+              <span className="op-labelhint"><b className="ex-gold" data-op-dist-value>{minDistC.toFixed(2)}¢</b></span>
+            </div>
+            <input className="op-slider" type="range" min={0} max={6} step={0.25}
+              value={minDistC} data-op-dist-slider
+              aria-label="Distanza minima dal prezzo medio (mid)"
+              onChange={(e) => setMinDistC(Number(e.target.value))} />
+            <div className="op-hint">
+              Le righe a meno di <b className="ex-n">{minDistC.toFixed(2)}¢</b> dal mid restano visibili ma
+              barrate e non selezionabili. Quotare attaccati al mid rende di più e riempie prima, anche
+              quando il prezzo si sta muovendo contro.
+            </div>
           </div>
           {quoteErr && (
             <p className="ex-flag is-dim op-mb" data-op-quote-error>
@@ -699,8 +967,14 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
                         due ordini col mid di adesso. Usa la stessa funzione del motore. */}
                     {(() => {
                       const off = Number(trkOffset);
-                      if (!fin(off) || off <= 0 || !fin(mid) || !fin(tick)) return null;
-                      const p = planQuotes({ mid, offsetCents: off, tick, bandRadiusCents: maxSpreadCents != null ? maxSpreadCents / 2 : null });
+                      // `engineMid`, NON il mid del lato che si sta guardando. Il tracking quota
+                      // entrambi i lati a partire dal mid del book YES, ed e' il mid di SCORING quello
+                      // che il motore usa davvero: l'anteprima deve mostrare i prezzi che verrebbero
+                      // piazzati, non quelli che si otterrebbero da un mid diverso. Da quando il pannello
+                      // disegna il book del lato selezionato, `mid` cambia col toggle YES/NO — e passarlo
+                      // qui avrebbe fatto ribaltare l'anteprima insieme al toggle.
+                      if (!fin(off) || off <= 0 || !fin(engineMid) || !fin(tick)) return null;
+                      const p = planQuotes({ mid: engineMid, offsetCents: off, tick, bandRadiusCents: maxSpreadCents != null ? maxSpreadCents / 2 : null });
                       if (!p.ok) return <p className="ex-flag is-bad"><span className="ex-flag-i">⚠</span><span>{p.reason}</span></p>;
                       return (
                         <div className="op-trk-prev" data-op-trk-preview>
@@ -827,6 +1101,26 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
               <button className="ex-link op-fix" onClick={() => { setPriceStr(String(snapToTick(price, tick as number))); setPriceTouched(true); }} data-op-use-tick>
                 usa {snapToTick(price, tick as number)}
               </button>
+            )}
+
+            {/* ── L'AVVISO CHE SI AGGIORNA A OGNI MODIFICA ────────────────────────────────────────
+                Sia che il prezzo arrivi da un tocco sul book sia che venga digitato: e' lo stesso
+                stato, quindi e' lo stesso avviso. Rosso = l'ordine non farebbe quello che sembra
+                (incrocia, quindi esegue subito) o non matura premi. Verde = resta sul book come
+                maker, dentro la banda. */}
+            {verdict && (
+              <div className={`op-verdict ${verdict.level === 'ok' ? 'is-ok' : verdict.level === 'bad' ? 'is-bad' : 'is-unk'}`}
+                data-op-price-verdict={verdict.level}
+                data-op-verdict-crosses={verdict.crosses ? '1' : '0'}
+                data-op-verdict-outofband={verdict.outOfBand === null ? '' : verdict.outOfBand ? '1' : '0'}
+                role="status" aria-live="polite">
+                <span className="op-verdict-i" aria-hidden="true">
+                  {verdict.level === 'ok' ? '✓' : verdict.level === 'bad' ? '⛔' : 'ⓘ'}
+                </span>
+                <span className="op-verdict-tx">
+                  {verdict.messages.map((m, i) => <span key={i} className="op-verdict-l">{m}</span>)}
+                </span>
+              </div>
             )}
           </div>
 
@@ -955,6 +1249,74 @@ const CSS = `
 .op-fix { margin-top: 4px; font-size: 11px; }
 .op-hint { font-size: 10.5px; color: var(--ex-txt-3); line-height: 1.5; margin-top: 5px; }
 .op-check { display: flex; gap: 7px; align-items: center; margin-top: 7px; font-size: 11.5px; color: var(--ex-txt-2); }
+
+/* ── IL BOOK ─────────────────────────────────────────────────────────────────────────────────────
+   Griglia a tre colonne: prezzo a sinistra, size e cumulato allineati a destra. Tutte le cifre in
+   monospazio, cosi le colonne restano incolonnate mentre i numeri cambiano.
+   NIENTE altezza bloccata e niente overflow:hidden sul contenitore: il book cresce e la scheda scorre.
+   Un book tagliato a meta non e piu compatto, e semplicemente un book che mente. */
+.op-book { border: 1px solid var(--ex-line); border-radius: 8px; background: var(--ex-panel); overflow: hidden; }
+.op-book-top { display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 8px 10px; border-bottom: 1px solid var(--ex-line-soft); flex-wrap: wrap; }
+.op-book-t { font-size: 11.5px; font-weight: 600; color: var(--ex-txt-2); }
+.op-book-hd { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; padding: 5px 10px;
+  font-size: 9.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--ex-txt-3);
+  border-bottom: 1px solid var(--ex-line-soft); }
+.op-book-hd span:nth-child(2), .op-book-hd span:nth-child(3) { text-align: right; min-width: 62px; }
+.op-book-side { display: flex; flex-direction: column; }
+.op-book-empty { padding: 9px 10px; font-size: 10.5px; color: var(--ex-txt-3); }
+
+/* La riga e un BOTTONE: tocco, tastiera e stato disabilitato arrivano gratis e sono quelli veri del
+   browser, non un div che finge. */
+/* ALTEZZA DELLA RIGA: 34px col mouse, 44px col dito.
+   Una scala di book vive di densita: dieci righe da 44px sarebbero 440px e spingerebbero la riga del mid
+   fuori da uno schermo da 640. Ma la riga E un comando — si tocca per compilare il prezzo — e su un dito
+   32px sono sotto la soglia di errore. Quindi la densita resta dov e utile (puntatore fine) e il bersaglio
+   cresce dove serve (puntatore grosso), invece di scegliere una taglia sola sbagliata per meta dei casi. */
+.op-row { position: relative; display: grid; grid-template-columns: 1fr auto auto; gap: 10px;
+  align-items: center; width: 100%; padding: 0 10px; min-height: 34px; cursor: pointer;
+  background: none; border: 0; border-left: 2px solid transparent; color: inherit;
+  font-family: var(--ex-mono); font-size: 12px; text-align: left; }
+.op-row-bar { position: absolute; top: 2px; bottom: 2px; right: 0; z-index: 0; border-radius: 2px 0 0 2px; }
+.op-row-bar.is-ask { background: rgba(246,70,93,.16); }
+.op-row-bar.is-bid { background: rgba(14,203,129,.16); }
+.op-row-p, .op-row-s, .op-row-c { position: relative; z-index: 1; }
+.op-row-p { font-weight: 700; }
+.op-row-s { text-align: right; min-width: 62px; color: var(--ex-txt); }
+.op-row-c { text-align: right; min-width: 62px; color: var(--ex-txt-2); }
+.op-row:hover:not(:disabled) { background: rgba(240,185,11,.06); }
+.op-row.is-picked { border-left-color: var(--ex-gold); background: rgba(240,185,11,.12); }
+
+/* SOTTO SOGLIA: visibile, barrata, inerte. Si deve poter vedere la liquidita a cui si sta rinunciando;
+   quello che non si deve poter fare e sceglierla per sbaglio. */
+.op-row.is-blocked { opacity: .32; cursor: not-allowed; pointer-events: none; }
+.op-row.is-blocked .op-row-p { text-decoration: line-through; }
+@media (pointer: coarse) {
+  .op-row { min-height: 44px; }
+  .op-slider { height: 44px; }
+}
+
+.op-book-mid { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+  padding: 7px 10px; background: var(--ex-gold-bg);
+  border-top: 1px solid var(--ex-gold-bd); border-bottom: 1px solid var(--ex-gold-bd); }
+.op-book-mid-v { font-family: var(--ex-mono); font-size: 16px; font-weight: 700; color: var(--ex-gold); }
+.op-book-mid-k { font-size: 10px; color: var(--ex-txt-2); flex: 1 1 auto; }
+.op-book-mid-s { font-family: var(--ex-mono); font-size: 10.5px; color: var(--ex-txt-2); }
+.op-book-foot { display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 8px 10px;
+  border-top: 1px solid var(--ex-line-soft); font-size: 10px; color: var(--ex-txt-3); }
+.op-midnote-p { margin-bottom: 4px; }
+
+/* ── IL CURSORE DELLA DISTANZA ── area di tocco piena, non un filo di 4px. */
+.op-slider { width: 100%; margin-top: 8px; accent-color: var(--ex-gold); height: 26px; }
+
+/* ── IL VERDETTO SUL PREZZO ── */
+.op-verdict { display: flex; gap: 8px; align-items: flex-start; margin-top: 7px;
+  padding: 8px 10px; border-radius: 6px; font-size: 11.5px; line-height: 1.45; border: 1px solid; }
+.op-verdict-i { flex: 0 0 auto; }
+.op-verdict-tx { display: flex; flex-direction: column; gap: 3px; }
+.op-verdict.is-ok { color: var(--ex-green); border-color: var(--ex-green-bd); background: var(--ex-green-bg); }
+.op-verdict.is-bad { color: var(--ex-red); border-color: var(--ex-red-bd); background: var(--ex-red-bg); }
+.op-verdict.is-unk { color: var(--ex-txt-2); border-color: var(--ex-unk-bd); background: var(--ex-unk-bg); }
 
 .op-seg { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 6px; }
 .op-segb { min-height: 46px; border-radius: 6px; cursor: pointer; font-family: var(--ex-mono);
