@@ -25,7 +25,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 // La STESSA funzione che il motore usa per decidere dove quotare: l'anteprima non puo' mostrare un
 // livello diverso da quello che verrebbe piazzato, perche' e' lo stesso codice.
-import { planQuotes, offsetFromPrice } from '@/lib/maker/mm-quote-math';
+import { planQuotes, offsetFromPrice, sizeScale, sizeAtPct } from '@/lib/maker/mm-quote-math';
 // Le STESSE funzioni pure che la route usa per costruire la vista del book: distanza dal mid, righe
 // bloccate dal filtro e verdetto sul prezzo. Sono in un modulo condiviso e coperto da test proprio perche'
 // il pannello non possa dare una risposta diversa dal server sulla stessa domanda.
@@ -236,6 +236,23 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
   // Dove scorrere dopo il tocco. Il contenitore che scorre e' `.op-body`, quindi scrollIntoView agisce
   // dentro il pannello e non muove la pagina sotto.
   const manualRef = useRef<HTMLDivElement | null>(null);
+
+  // ── IL FOGLIO RAPIDO AL TOCCO ──────────────────────────────────────────────────────────────────
+  // La via veloce: si apre sopra il pannello e porta dal tocco alla conferma senza scorrere.
+  //
+  // NON HA UNO STATO SUO per le cose che contano. Lato, prezzo, size, soglia e chiusura automatica
+  // sono LO STESSO stato dei pannelli sotto, e la conferma chiama LA STESSA `place()`. Due percorsi di
+  // scrittura verso lo stesso venue sarebbero due insiemi di gate da tenere allineati per sempre, e la
+  // prima volta che divergessero lo si scoprirebbe da un ordine sbagliato. Quello che il foglio ha di
+  // suo e' soltanto: se e' aperto, a che passo e', e i due comandi (percentuale e distanza) che
+  // TRADUCONO un gesto in quei valori condivisi.
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [sheetStep, setSheetStep] = useState<'form' | 'review'>('form');
+  // Da che parte del mid stava la riga toccata. Serve a ricostruire il prezzo dalla distanza senza
+  // ribaltare l'ordine sull'altro lato del libro quando si usa lo stepper.
+  const [sheetBelow, setSheetBelow] = useState(true);
+  // La distanza dal mid in centesimi, che e' il comando vero del foglio: il prezzo ne e' la conseguenza.
+  const [sheetDistC, setSheetDistC] = useState<number | null>(null);
 
   // La riga toccata, tenuta per prezzo e non per indice: il book si riordina a ogni aggiornamento, e un
   // indice evidenzierebbe la riga sbagliata un secondo dopo.
@@ -522,7 +539,33 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
         && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       manualRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'start' });
     });
-  }, [offsetFromTap]);
+    // ── E IL FOGLIO RAPIDO SALE ──────────────────────────────────────────────────────────────────
+    // Lo scorrimento qui sopra NON e' ridondante: e' cio' che l'operatore trova gia' fatto quando
+    // chiude il foglio. Il foglio e' la via veloce, i pannelli restano la via lunga, e chiudere l'uno
+    // lascia l'altro pronto invece di riportare a un pannello vuoto.
+    if (fin(mid)) {
+      setSheetBelow(price <= (mid as number));
+      // La distanza si arrotonda al passo dello stepper, cosi' il primo + o − parte da un valore
+      // allineato invece che da uno strano.
+      setSheetDistC(+(Math.round((Math.abs(price - (mid as number)) * 100) / 0.25) * 0.25).toFixed(2));
+    } else {
+      setSheetBelow(true); setSheetDistC(null);
+    }
+    setSheetStep('form');
+    setSheetOpen(true);
+  }, [offsetFromTap, mid]);
+
+  /** Muove la distanza dal mid di un passo, e con essa il prezzo. Lo stepper e' l'unico modo di
+   *  cambiarla: un campo libero inviterebbe a scrivere numeri che il tick non puo' esprimere. */
+  const stepDist = useCallback((delta: number) => {
+    setSheetDistC((cur) => {
+      const base = fin(cur) ? (cur as number) : 0;
+      const next = +Math.max(0, base + delta).toFixed(2);
+      const px = fin(mid) ? +((sheetBelow ? (mid as number) - next / 100 : (mid as number) + next / 100)).toFixed(6) : null;
+      if (px != null && px > 0 && px < 1) { setPriceStr(String(px)); setPriceTouched(true); }
+      return next;
+    });
+  }, [mid, sheetBelow]);
   const bidRows = view ? view.levels.bids : [];
   const maxSize = view?.levels.maxSize ?? null;
 
@@ -780,6 +823,39 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
   }, [target.marketId, book, price, size, autoRenew, ttlSeconds]);
 
   const sends = cfg?.placement?.sends === true;
+
+  // ── I DUE COMANDI DEL FOGLIO, e i numeri che ne derivano ───────────────────────────────────────
+
+  /** Il prezzo che corrisponde a una distanza dal mid, sullo stesso lato della riga toccata. */
+  const priceFromDist = useCallback((d: number | null): number | null => {
+    if (!fin(d) || !fin(mid)) return null;
+    return +((sheetBelow ? (mid as number) - (d as number) / 100 : (mid as number) + (d as number) / 100)).toFixed(6);
+  }, [mid, sheetBelow]);
+
+  /**
+   * QUANTE SHARE VALE UNA PERCENTUALE.
+   *   0%   = la size minima premiante del venue. Sotto quella il CLOB accetta l'ordine ma il programma
+   *          premi non lo vede, quindi non e' un minimo tecnico: e' il minimo che ha senso.
+   *   100% = quante se ne comprano col capitale disponibile a QUESTO prezzo.
+   *
+   * `null` quando manca un ingrediente, e il foglio lo dice invece di mostrare uno zero: una size
+   * inventata su un saldo non letto e' esattamente il numero che non deve arrivare al venue.
+   */
+  const sizeRange = useMemo(
+    () => sizeScale({ minSize, price, capitalUsd: balanceUsd }),
+    [minSize, price, balanceUsd],
+  );
+  const sizeFromPct = useCallback((pct: number) => sizeAtPct(sizeRange, pct), [sizeRange]);
+
+  /** La percentuale che corrisponde alla size attuale — cosi' il cursore parte da dove si e' gia'. */
+  const sizePct = useMemo(() => {
+    if (!sizeRange.readable || sizeRange.lo == null || sizeRange.hi == null || !fin(size)) return 0;
+    if (sizeRange.hi <= sizeRange.lo) return 0;
+    return Math.min(100, Math.max(0, Math.round((((size as number) - sizeRange.lo) / (sizeRange.hi - sizeRange.lo)) * 100)));
+  }, [sizeRange, size]);
+
+  const orderCapUsd = cfg?.caps?.effectiveOrderCapUsd ?? null;
+  const overCap = fin(notional) && fin(orderCapUsd) && (notional as number) > (orderCapUsd as number) + 1e-9;
 
 
   // L'eta del prezzo, misurata dal momento della lettura piu l'attesa da allora. Sotto il secondo si
@@ -1623,6 +1699,248 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
             </>
           )}
         </div>
+
+        {/* ══ IL FOGLIO RAPIDO ═══════════════════════════════════════════════════════════════════
+            Sale dal basso al tocco di una riga e porta dal gesto alla conferma senza scorrere. Vive
+            DENTRO il pannello, sopra tutto il resto, e usa le stesse classi: e' la stessa schermata
+            in una forma piu' corta, non una seconda schermata con regole sue.
+
+            SCRIVE ATTRAVERSO `place()`, la stessa funzione del pannello lungo. Non esiste un secondo
+            percorso verso il venue: gli stessi gate, gli stessi due tocchi, lo stesso audit. */}
+        {sheetOpen && (
+          <div className="op-qs-scrim" data-op-quicksheet-scrim
+            onClick={() => { setSheetOpen(false); setSheetStep('form'); }}>
+            <div className="op-qs" data-op-quicksheet data-op-qs-step={sheetStep}
+              role="dialog" aria-modal="true" aria-label="Ordine rapido"
+              onClick={(e) => e.stopPropagation()}>
+              <div className="op-qs-grab" aria-hidden="true" />
+
+              {/* ── 1 · INTESTAZIONE ─────────────────────────────────────────────────────────── */}
+              <div className="op-qs-head">
+                <div className="op-qs-h-txt">
+                  <div className="op-qs-t" data-op-qs-title>
+                    BUY {book.toUpperCase()}
+                    <span className="ex-dim"> · {sheetBelow ? 'sotto il mid' : 'sopra il mid'}</span>
+                  </div>
+                  <div className="op-qs-s" data-op-qs-sub>
+                    riga toccata <b className="ex-n">{cents(price)}</b> · mid <b className="ex-n">{cents(mid)}</b>
+                  </div>
+                </div>
+                <button className="op-x" onClick={() => { setSheetOpen(false); setSheetStep('form'); }}
+                  aria-label="Chiudi" data-op-qs-close>✕</button>
+              </div>
+
+              <div className="op-qs-body">
+                {sheetStep === 'form' ? (
+                  <>
+                    {/* IL LATO resta modificabile: la riga toccata lo propone, non lo impone. */}
+                    <div className="op-field">
+                      <div className="op-label">Lato</div>
+                      <div className="op-seg" role="group" aria-label="Book">
+                        <button className={`op-segb ${book === 'yes' ? 'is-yes' : ''}`} onClick={() => setBook('yes')} data-op-qs-book="yes">BUY YES</button>
+                        <button className={`op-segb ${book === 'no' ? 'is-no' : ''}`} onClick={() => setBook('no')} data-op-qs-book="no">BUY NO</button>
+                      </div>
+                    </div>
+
+                    {/* L'AVVISO DELL'INCROCIO, dallo STESSO verdetto del pannello lungo. Non e' una
+                        seconda valutazione: e' la stessa, mostrata piu' vicino al dito. */}
+                    {verdict && verdict.level !== 'ok' && (
+                      <div className={`op-verdict ${verdict.level === 'bad' ? 'is-bad' : verdict.level === 'warn' ? 'is-warn' : 'is-unk'}`}
+                        data-op-qs-verdict={verdict.level} role="status" aria-live="polite">
+                        <span className="op-verdict-i" aria-hidden="true">
+                          {verdict.level === 'bad' ? '⛔' : verdict.level === 'warn' ? '⚠' : 'ⓘ'}
+                        </span>
+                        <span className="op-verdict-tx">
+                          {verdict.messages.map((m, i) => <span key={i} className="op-verdict-l">{m}</span>)}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* ── 2 · SIZE, in percentuale ────────────────────────────────────────────── */}
+                    <div className="op-field">
+                      <div className="op-label">
+                        Size
+                        <span className="op-labelhint" data-op-qs-size-pct>{sizePct}%</span>
+                      </div>
+                      {sizeRange.readable ? (
+                        <>
+                          <input className="op-qs-slider" type="range" min={0} max={100} step={1}
+                            value={sizePct} data-op-qs-size-slider
+                            aria-label="Size, da minima premiante a massimo acquistabile"
+                            onChange={(e) => {
+                              const s = sizeFromPct(Number(e.target.value));
+                              if (s != null) { setSizeStr(String(s)); setSizeTouched(true); setStep('form'); }
+                            }} />
+                          <div className="op-qs-ends" aria-hidden="true">
+                            <span>0% · {sizeRange.lo} share</span>
+                            <span>100% · {sizeRange.hi} share</span>
+                          </div>
+                          <div className="op-qs-out" data-op-qs-size-out>
+                            <b className="ex-n">{fin(size) ? size : 'N/D'}</b> share
+                            <span className="ex-dim"> · </span>
+                            <b className="ex-n">{money(notional)}</b>
+                            {fin(orderCapUsd) && <span className="ex-dim"> · tetto {money(orderCapUsd)}</span>}
+                          </div>
+                        </>
+                      ) : (
+                        /* NON si disegna un cursore su una scala che non conosciamo: 0% senza una size
+                           minima pubblicata, o 100% senza un saldo letto, sarebbero due estremi finti. */
+                        <p className="ex-flag is-dim" data-op-qs-size-unknown>
+                          <span className="ex-flag-i" aria-hidden="true">ⓘ</span>
+                          <span>Il cursore non è disponibile: manca {!fin(minSize) ? 'la size minima premiante del venue' : 'il saldo disponibile'}.
+                            La size resta modificabile a mano nel pannello sotto.</span>
+                        </p>
+                      )}
+                      {overCap && (
+                        <p className="ex-flag is-bad" data-op-qs-overcap>
+                          <span className="ex-flag-i" aria-hidden="true">⛔</span>
+                          <span>Controvalore {money(notional)} oltre il tetto per ordine {money(orderCapUsd)}.</span>
+                        </p>
+                      )}
+                    </div>
+
+                    {/* ── 3 · DISTANZA DAL MID ────────────────────────────────────────────────── */}
+                    <div className="op-field">
+                      <div className="op-label">
+                        Distanza dal mid
+                        <span className="op-labelhint">passo 0.25¢</span>
+                      </div>
+                      <div className="op-qs-step" data-op-qs-dist-row>
+                        <button className="op-qs-btn" onClick={() => stepDist(-0.25)} data-op-qs-dist-minus aria-label="Riduci la distanza">−</button>
+                        <div className="op-qs-val">
+                          <b className="ex-n" data-op-qs-dist>{fin(sheetDistC) ? `${(sheetDistC as number).toFixed(2)}¢` : 'N/D'}</b>
+                          {/* IL PREZZO ASSOLUTO accanto alla distanza: e' quello che finisce nell'ordine,
+                              e una distanza senza il prezzo che produce si legge a meta'. */}
+                          <span className="ex-dim" data-op-qs-dist-price> → {cents(priceFromDist(sheetDistC))}</span>
+                        </div>
+                        <button className="op-qs-btn" onClick={() => stepDist(0.25)} data-op-qs-dist-plus aria-label="Aumenta la distanza">+</button>
+                      </div>
+                      {/* BANDA: verde dentro, giallo fuori — avviso, non blocco, come in tutto il resto
+                          del pannello. TICK: blocco pieno, perche' quello lo rifiuta il venue. */}
+                      <div className="op-qs-badges">
+                        {verdict?.outOfBand === true && (
+                          <span className="ex-badge is-warn" data-op-qs-band="out">fuori banda — non matura reward, ma è piazzabile</span>
+                        )}
+                        {verdict?.outOfBand === false && (
+                          <span className="ex-badge is-ok" data-op-qs-band="in">dentro la banda reward</span>
+                        )}
+                        {problems.some((p) => p.key === 'tick') && (
+                          <span className="ex-badge is-bad" data-op-qs-tick="off">fuori griglia del tick {tick} — bloccante</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* ── 4 · SOGLIA REPRICE ──────────────────────────────────────────────────── */}
+                    <div className="op-field">
+                      <div className="op-label">
+                        Soglia reprice
+                        <span className="op-labelhint">del motore · passo 0.25¢</span>
+                      </div>
+                      <div className="op-qs-step" data-op-qs-thr-row>
+                        <button className="op-qs-btn" data-op-qs-thr-minus aria-label="Riduci la soglia"
+                          onClick={() => setTrkMinMove((v) => String(+Math.max(0, (Number(v) || 0) - 0.25).toFixed(2)))}>−</button>
+                        <div className="op-qs-val"><b className="ex-n" data-op-qs-thr>{trkMinMove === '' ? '—' : `${trkMinMove}¢`}</b></div>
+                        <button className="op-qs-btn" data-op-qs-thr-plus aria-label="Aumenta la soglia"
+                          onClick={() => setTrkMinMove((v) => String(+((Number(v) || 0) + 0.25).toFixed(2)))}>+</button>
+                      </div>
+                      <p className="op-hint">
+                        Serve al motore di tracking, non a quest&apos;ordine: è di quanto deve muoversi il mid
+                        prima che un ordine venga riprezzato. Resta com&apos;è finché non attivi il tracking.
+                      </p>
+                    </div>
+
+                    {/* ── 5 · CHIUSURA AUTOMATICA ─────────────────────────────────────────────
+                        STESSO STATO del pannello sotto: `acState` e `acCall` sono quelli, non una
+                        copia. Accendere qui accende li', e viceversa, perche' e' la stessa
+                        configurazione letta e scritta dallo stesso posto. */}
+                    <div className="op-field">
+                      <div className="op-label">Chiusura automatica</div>
+                      {acState == null ? (
+                        <p className="ex-flag is-bad" data-op-qs-ac-unknown>
+                          <span className="ex-flag-i" aria-hidden="true">⚠</span>
+                          <span>Stato NON letto: non è la stessa cosa di «spenta».</span>
+                        </p>
+                      ) : (
+                        <>
+                          <button
+                            className={`ex-btn op-qs-toggle ${acState.market?.enabled ? 'is-danger' : ''}`}
+                            disabled={acBusy}
+                            data-op-qs-ac={acState.market?.enabled ? 'on' : 'off'}
+                            onClick={() => acCall('market', !(acState.market?.enabled === true))}>
+                            {acBusy ? 'Attendi…' : acState.market?.enabled ? 'ATTIVA — tocca per spegnere' : 'spenta — tocca per attivare'}
+                          </button>
+                          <p className="op-hint" data-op-qs-ac-latency>
+                            Vende dopo un fill a carico +{acState.profitCents ?? 1}¢. Il fill si rileva leggendo
+                            le posizioni dal venue <b>ogni 60 secondi</b>: fra riempimento e uscita passa fino a un minuto.
+                            {!acState.globalEnabled && <> <b className="ex-gold">L&apos;interruttore generale è spento</b>: qui si registra la scelta, ma non agirà finché non accendi anche quello.</>}
+                          </p>
+                        </>
+                      )}
+                    </div>
+
+                    {problems.filter((p) => p.blocking).length > 0 && (
+                      <div className="op-probs" data-op-qs-problems>
+                        {problems.filter((p) => p.blocking).map((p) => (
+                          <p key={p.key} className="ex-flag is-bad" data-op-qs-problem={p.key}>
+                            <span className="ex-flag-i" aria-hidden="true">⛔</span><span>{p.text}</span>
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  /* ── 6 · IL RIEPILOGO, dentro lo stesso foglio ──────────────────────────────── */
+                  <div className="op-review" data-op-qs-review>
+                    <div className="op-review-h">Rivedi prima di confermare</div>
+                    <div className="ex-kvs">
+                      <div className="ex-kv"><span className="ex-kv-k">mercato</span><span className="ex-kv-v op-wrap">{target.title}</span></div>
+                      <div className="ex-kv"><span className="ex-kv-k">lato</span><span className="ex-kv-v">BUY {book.toUpperCase()}</span></div>
+                      <div className="ex-kv"><span className="ex-kv-k">size</span><span className="ex-kv-v">{fin(size) ? size : 'N/D'} share</span></div>
+                      <div className="ex-kv"><span className="ex-kv-k">prezzo</span><span className="ex-kv-v">{price}</span></div>
+                      <div className="ex-kv"><span className="ex-kv-k">distanza dal mid</span><span className="ex-kv-v">{fin(sheetDistC) ? `${(sheetDistC as number).toFixed(2)}¢` : 'N/D'}</span></div>
+                      <div className="ex-kv"><span className="ex-kv-k">soglia reprice</span><span className="ex-kv-v">{trkMinMove === '' ? '—' : `${trkMinMove}¢`}</span></div>
+                      <div className="ex-kv"><span className="ex-kv-k">chiusura auto</span><span className="ex-kv-v" data-op-qs-review-ac>{acState == null ? 'non letta' : acState.market?.enabled ? 'ATTIVA' : 'spenta'}</span></div>
+                      <div className="ex-kv"><span className="ex-kv-k">controvalore</span><span className="ex-kv-v">{money(notional)}</span></div>
+                      <div className="ex-kv"><span className="ex-kv-k">durata</span><span className="ex-kv-v">GTD {Math.round(ttlSeconds / 60)}m</span></div>
+                      <div className="ex-kv"><span className="ex-kv-k">banda</span>
+                        <span className="ex-kv-v">{verdict?.outOfBand === true ? 'FUORI — non matura reward' : verdict?.outOfBand === false ? 'dentro' : 'non verificabile'}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {result && (
+                  <div className={`ex-banner ${result.ok ? (result.sent ? 'is-ok' : 'is-warn') : 'is-bad'} op-mb`} data-op-qs-result>
+                    {result.ok
+                      ? (result.sent
+                        ? <><b>ORDINE INVIATO AL VENUE.</b>{result.orderId ? <> orderId <span className="ex-n">{result.orderId}</span></> : null}</>
+                        : <><b>DRY-RUN — nessun ordine reale piazzato.</b></>)
+                      : <><b>Rifiutato al gate {result.gate ?? '—'}</b>: {result.reason ?? '—'}</>}
+                  </div>
+                )}
+              </div>
+
+              {/* ── LE DUE AZIONI, gli stessi due tocchi del pannello lungo ────────────────────── */}
+              <div className="op-qs-actions">
+                {sheetStep === 'form' ? (
+                  <button className="ex-btn is-gold op-primary" disabled={!canReview}
+                    onClick={() => { setStep('review'); setSheetStep('review'); }} data-op-qs-review-btn>
+                    Rivedi ordine
+                  </button>
+                ) : (
+                  <>
+                    <button className="ex-btn op-back" onClick={() => { setSheetStep('form'); setStep('form'); }} data-op-qs-back>Modifica</button>
+                    <button className={`ex-btn op-primary ${sends ? 'is-danger' : 'is-gold'}`}
+                      disabled={busy || !canReview} onClick={place}
+                      data-op-qs-confirm data-op-sends={sends ? '1' : '0'}>
+                      {busy ? 'Invio…' : sends ? 'Conferma e piazza — INVIA DAVVERO' : 'Conferma e piazza (dry-run)'}
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1633,7 +1951,9 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
 const CSS = `
 .op-scrim { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,.6);
   display: flex; align-items: flex-end; justify-content: center; backdrop-filter: blur(2px); }
-.op-sheet { width: 100%; max-width: 560px; max-height: 92vh; display: flex; flex-direction: column;
+/* position:relative perche il foglio rapido si ancori a QUESTO pannello e non alla finestra: su schermo
+   largo il pannello e centrato a 560px, e un foglio ancorato alla finestra ne uscirebbe dai bordi. */
+.op-sheet { position: relative; width: 100%; max-width: 560px; max-height: 92vh; display: flex; flex-direction: column;
   background: var(--ex-bg); border: 1px solid var(--ex-line); border-radius: 12px 12px 0 0;
   box-shadow: 0 -8px 40px rgba(0,0,0,.6); }
 /* ── COMPATTEZZA IN ALTO ─────────────────────────────────────────────────────────────────────────
@@ -1828,6 +2148,46 @@ const CSS = `
    successivo di quello per il singolo mercato che ha appena sopra. */
 .op-ac-master { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--ex-line-soft); }
 .op-ac-master-k { display: block; font-size: 10px; color: var(--ex-txt-3); line-height: 1.5; }
+
+/* ══ IL FOGLIO RAPIDO ═════════════════════════════════════════════════════════════════════════════
+   Stesse variabili, stessi bordi, stesse pillole del resto del pannello: e la stessa schermata in una
+   forma piu corta. Nessun colore nuovo — solo i token gia definiti in cima a questo foglio. */
+.op-qs-scrim { position: absolute; inset: 0; z-index: 20; background: rgba(0,0,0,.62);
+  display: flex; align-items: flex-end; justify-content: center; }
+.op-qs { width: 100%; max-height: 94%; display: flex; flex-direction: column;
+  background: var(--ex-bg); border: 1px solid var(--ex-line); border-top-color: var(--ex-gold-bd);
+  border-radius: 14px 14px 0 0; box-shadow: 0 -10px 40px rgba(0,0,0,.55); }
+/* La maniglia: dice «questo sale dal basso e si puo chiudere» senza scriverlo. */
+.op-qs-grab { width: 38px; height: 4px; border-radius: 999px; background: var(--ex-line);
+  margin: 8px auto 2px; flex: 0 0 auto; }
+.op-qs-head { display: flex; align-items: flex-start; gap: 10px; padding: 6px 14px 10px;
+  border-bottom: 1px solid var(--ex-line); flex: 0 0 auto; }
+.op-qs-h-txt { min-width: 0; flex: 1 1 auto; }
+.op-qs-t { font-size: 14px; font-weight: 700; line-height: 1.25; }
+.op-qs-s { margin-top: 3px; font-size: 10.5px; color: var(--ex-txt-3); }
+.op-qs-body { overflow-y: auto; padding: 12px 14px 4px; flex: 1 1 auto; }
+.op-qs-actions { display: flex; gap: 8px; padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--ex-line); background: var(--ex-panel); flex: 0 0 auto; }
+.op-qs-actions .op-primary { flex: 1 1 auto; min-height: 46px; }
+.op-qs-actions .op-back { flex: 0 0 auto; min-height: 46px; }
+
+.op-qs-slider { width: 100%; margin-top: 8px; accent-color: var(--ex-gold); height: 30px; }
+.op-qs-ends { display: flex; justify-content: space-between; font-size: 9.5px; color: var(--ex-txt-3);
+  font-family: var(--ex-mono); }
+.op-qs-out { margin-top: 6px; font-family: var(--ex-mono); font-size: 13px; }
+
+/* LO STEPPER: due bersagli da 44px e il valore al centro. Niente campo libero — un numero scritto a
+   mano invita a valori che il tick non puo esprimere, e qui il tick e un blocco vero. */
+.op-qs-step { display: flex; align-items: stretch; gap: 8px; margin-top: 6px; }
+.op-qs-btn { flex: 0 0 auto; width: 52px; min-height: 44px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--ex-line); background: var(--ex-panel-2); color: var(--ex-txt);
+  font-size: 20px; line-height: 1; }
+.op-qs-btn:hover { border-color: var(--ex-gold); color: var(--ex-gold); }
+.op-qs-val { flex: 1 1 auto; display: flex; align-items: center; justify-content: center; gap: 6px;
+  border: 1px solid var(--ex-line); border-radius: 8px; background: var(--ex-panel);
+  font-family: var(--ex-mono); font-size: 15px; min-height: 44px; }
+.op-qs-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+.op-qs-toggle { width: 100%; min-height: 44px; margin-top: 6px; }
 .op-trk-q { font-size: 11.5px; color: var(--ex-txt-2); margin-top: 8px; }
 .op-trk-prev { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
 .op-trk-leg { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; font-size: 11.5px; }

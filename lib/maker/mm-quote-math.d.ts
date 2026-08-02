@@ -25,3 +25,11 @@ export declare function offsetFromPrice(args: {
   price: number | null; mid: number | null;
   tick?: number | null; bandRadiusCents?: number | null;
 }): number | null;
+
+export interface SizeScale { readable: boolean; lo: number | null; hi: number | null }
+/** 0% = size minima premiante, 100% = massimo acquistabile col capitale a quel prezzo. */
+export declare function sizeScale(args: {
+  minSize?: number | null; price?: number | null; capitalUsd?: number | null;
+}): SizeScale;
+/** La size a una percentuale sulla scala; null se la scala non e' leggibile. */
+export declare function sizeAtPct(scale: SizeScale | null | undefined, pct: number): number | null;
