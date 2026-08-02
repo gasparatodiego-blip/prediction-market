@@ -25,7 +25,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 // La STESSA funzione che il motore usa per decidere dove quotare: l'anteprima non puo' mostrare un
 // livello diverso da quello che verrebbe piazzato, perche' e' lo stesso codice.
-import { planQuotes } from '@/lib/maker/mm-quote-math';
+import { planQuotes, offsetFromPrice } from '@/lib/maker/mm-quote-math';
 // Le STESSE funzioni pure che la route usa per costruire la vista del book: distanza dal mid, righe
 // bloccate dal filtro e verdetto sul prezzo. Sono in un modulo condiviso e coperto da test proprio perche'
 // il pannello non possa dare una risposta diversa dal server sulla stessa domanda.
@@ -221,6 +221,22 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
   // e non ce l'ho fatta» sono cose diverse, e mostrarle uguali farebbe leggere una latenza normale come
   // un guasto — o, molto peggio, un guasto come una latenza normale.
   const [lease, setLease] = useState<'idle' | 'asking' | 'held' | 'failed'>('idle');
+  // ── L'EVIDENZIAZIONE DOPO IL TOCCO ─────────────────────────────────────────────────────────────
+  // Toccare una riga cambia DUE cose lontane fra loro sullo schermo — il prezzo del piazzamento manuale
+  // e l'offset del motore — e una di queste sta sotto la piega. Senza un segnale, l'operatore vede
+  // solo il libro reagire e deve fidarsi che il resto sia cambiato. Il lampeggio dura 800ms: abbastanza
+  // per essere notato, troppo poco per diventare un'animazione che si aspetta.
+  const [flashAt, setFlashAt] = useState<number | null>(null);
+  const flashing = flashAt != null;
+  useEffect(() => {
+    if (flashAt == null) return;
+    const t = setTimeout(() => setFlashAt(null), 800);
+    return () => clearTimeout(t);
+  }, [flashAt]);
+  // Dove scorrere dopo il tocco. Il contenitore che scorre e' `.op-body`, quindi scrollIntoView agisce
+  // dentro il pannello e non muove la pagina sotto.
+  const manualRef = useRef<HTMLDivElement | null>(null);
+
   // La riga toccata, tenuta per prezzo e non per indice: il book si riordina a ogni aggiornamento, e un
   // indice evidenzierebbe la riga sbagliata un secondo dopo.
   const [pickedPrice, setPickedPrice] = useState<number | null>(null);
@@ -469,6 +485,44 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
   // lo si sommasse di nuovo nell'ordine di disegno, la colonna «totale» degli ask crescerebbe verso
   // l'alto partendo dalla riga piu' lontana — cioe' misurerebbe un'altra cosa da quella dei bid.
   const askRows = useMemo(() => (view ? [...view.levels.asks].reverse() : []), [view]);
+  /** L'offset del motore derivato dal prezzo toccato. L'aritmetica sta in mm-quote-math accanto a
+   *  planQuotes che la consuma — qui si passano solo i numeri di questo mercato. */
+  const offsetFromTap = useCallback((price: number): number | null => offsetFromPrice({
+    price, mid, tick, bandRadiusCents: fin(maxSpreadCents) ? (maxSpreadCents as number) / 2 : null,
+  }), [mid, tick, maxSpreadCents]);
+
+  /**
+   * IL TOCCO SU UNA RIGA DEL BOOK, in un posto solo.
+   *
+   * Prima ogni riga ripeteva le stesse quattro setState inline, una volta per gli ask e una per i bid.
+   * Ora fanno la stessa cosa perche' chiamano la stessa funzione — e la cosa che fanno e' cresciuta:
+   * compila il prezzo manuale, deriva l'offset del motore, evidenzia, e porta l'operatore dove il
+   * prezzo e' finito.
+   *
+   * IL LATO NON VIENE CAMBIATO, ed e' deliberato: il book mostrato E' quello del lato selezionato
+   * (`data-op-book-side`), quindi una riga bid di questo libro e' gia' un BUY su questo libro. Cambiare
+   * `book` qui vorrebbe dire ribaltare il libro sotto il dito che lo sta toccando.
+   */
+  const tapLevel = useCallback((price: number) => {
+    setPriceStr(String(price));
+    setPriceTouched(true);
+    setPickedPrice(price);
+    setStep('form');
+    // L'offset del motore segue lo stesso tocco: e' la distanza che l'operatore ha appena scelto
+    // guardando il libro, ed e' esattamente cio' che il tracking dovrebbe tenere.
+    const off = offsetFromTap(price);
+    if (off != null) { setTrkOffset(String(off)); setTrkStep('form'); setTrkPreview(null); }
+    // La SOGLIA REPRICE non si tocca: non e' una conseguenza del prezzo scelto, e riscriverla a ogni
+    // tocco cancellerebbe un valore che l'operatore ha messo a mano.
+    setFlashAt(Date.now());
+    // Lo scorrimento parte dopo il render, altrimenti si scorrerebbe verso la posizione vecchia.
+    // `prefers-reduced-motion` viene rispettato: chi lo ha chiesto riceve un salto, non un'animazione.
+    requestAnimationFrame(() => {
+      const smooth = typeof window !== 'undefined'
+        && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      manualRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'start' });
+    });
+  }, [offsetFromTap]);
   const bidRows = view ? view.levels.bids : [];
   const maxSize = view?.levels.maxSize ?? null;
 
@@ -846,7 +900,8 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
               conseguenza pratica era che i livelli attaccati al mid — quelli che maturano di piu' —
               erano gli unici non selezionabili. La distanza dal mid resta scritta sul title di ogni
               riga, che informa senza decidere. */}
-          <div className="op-book op-mb" data-op-book data-op-book-side={book}>
+          <div className={`op-book op-mb ${flashing ? 'is-flash' : ''}`} data-op-book data-op-book-side={book}
+            data-op-flash={flashing ? '1' : '0'}>
             <div className="op-book-top">
               <span className="op-book-t">Order book · <b className="ex-n">{book.toUpperCase()}</b></span>
               {/* QUANTO E VECCHIO QUESTO PREZZO fa parte del prezzo: un mid di 9 millisecondi e un mid
@@ -873,9 +928,7 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
                     data-op-level="ask" data-op-level-price={l.price}
                     data-op-level-dist={d ?? ''}
                     title={`usa ${cents(l.price)} (${d?.toFixed(2)}¢ dal mid)`}
-                    onClick={() => {
-                      setPriceStr(String(l.price)); setPriceTouched(true); setPickedPrice(l.price); setStep('form');
-                    }}>
+                    onClick={() => tapLevel(l.price)}>
                     <span className="op-row-bar is-ask" style={{ width: maxSize ? `${Math.max(2, (l.size / maxSize) * 100)}%` : '0%' }} aria-hidden="true" />
                     <span className="op-row-p ex-dn">{cents(l.price)}</span>
                     <span className="op-row-s">{fmtSize(l.size)}</span>
@@ -911,9 +964,7 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
                     data-op-level="bid" data-op-level-price={l.price}
                     data-op-level-dist={d ?? ''}
                     title={`usa ${cents(l.price)} (${d?.toFixed(2)}¢ dal mid)`}
-                    onClick={() => {
-                      setPriceStr(String(l.price)); setPriceTouched(true); setPickedPrice(l.price); setStep('form');
-                    }}>
+                    onClick={() => tapLevel(l.price)}>
                     <span className="op-row-bar is-bid" style={{ width: maxSize ? `${Math.max(2, (l.size / maxSize) * 100)}%` : '0%' }} aria-hidden="true" />
                     <span className="op-row-p ex-up">{cents(l.price)}</span>
                     <span className="op-row-s">{fmtSize(l.size)}</span>
@@ -1233,12 +1284,175 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
             )}
           </div>
 
+          {/* ── PIAZZAMENTO MANUALE A UN LATO ─────────────────────────────────────────────────────
+              L'alternativa al tracking: un ordine solo, su un lato solo, deciso adesso. */}
+          {/* L'ANCORA DELLO SCORRIMENTO. Toccare una riga del book porta qui: e' il punto in cui il
+              prezzo appena scelto e' diventato un campo compilabile, e vederlo da soli richiederebbe
+              di scorrere oltre il book e oltre il pannello del motore. */}
+          <div className="op-eyebrow" ref={manualRef} data-op-eyebrow="manual" data-op-manual-section>
+            Piazzamento manuale
+            <span className="op-eyebrow-r">un lato · un ordine</span>
+          </div>
+
+          {/* ── 3 · LATO ──────────────────────────────────────────────────────────────────────── */}
+          <div className="op-field">
+            <div className="op-label">Lato</div>
+            <div className="op-seg" role="group" aria-label="Book">
+              <button className={`op-segb ${book === 'yes' ? 'is-yes' : ''}`} onClick={() => setBook('yes')} data-op-book="yes">BUY YES</button>
+              <button className={`op-segb ${book === 'no' ? 'is-no' : ''}`} onClick={() => setBook('no')} data-op-book="no">BUY NO</button>
+            </div>
+            {/* Onestà su cosa questo percorso può fare: una VENDITA consegna il token, quindi richiede di
+                possederlo, e l'endpoint manuale non accetta il lato SELL. Comprare NO è il modo con cui
+                un maker a collaterale offre l'altro lato. */}
+            <div className="op-hint">
+              Solo acquisti: una vendita consegna il token e richiede di possederlo. «BUY NO a q» è
+              l&apos;equivalente di «vendi YES a 1−q».
+            </div>
+          </div>
+
+          {/* ── 4 · SIZE ──────────────────────────────────────────────────────────────────────── */}
+          <div className="op-field">
+            <div className="op-label">
+              Size (share)
+              <span className="op-labelhint">
+                min. premiante {minSize ?? 'N/D'}
+                {fin(target.presetSize) ? ` · precompilata dal piano` : ''}
+              </span>
+            </div>
+            <input className={`ex-input op-input ${problems.some((p) => p.key === 'minsize' || p.key === 'size') ? 'is-bad' : ''}`}
+              type="number" inputMode="decimal" value={sizeStr} data-op-size
+              onChange={(e) => { setSizeStr(e.target.value); setSizeTouched(true); setStep('form'); }} />
+            {fin(minSize) && (
+              <button className="ex-link op-fix" onClick={() => { setSizeStr(String(minSize)); setSizeTouched(true); }} data-op-use-min>usa il minimo</button>
+            )}
+          </div>
+
+          {/* ── 5 · PREZZO ────────────────────────────────────────────────────────────────────── */}
+          <div className="op-field">
+            <div className="op-label">
+              Prezzo
+              <span className="op-labelhint">
+                tick {tick ?? 'N/D'} · mid {cents(mid)}
+                {priceTouched && <b className="ex-gold"> · prezzo tuo, non lo tocchiamo</b>}
+              </span>
+            </div>
+            <input className={`ex-input op-input ${problems.some((p) => p.key === 'tick' || p.key === 'price') ? 'is-bad' : ''} ${flashing ? 'is-flash' : ''}`}
+              type="number" inputMode="decimal" step={tick ?? 0.01} value={priceStr} data-op-price
+              data-op-price-flash={flashing ? '1' : '0'}
+              data-op-price-touched={priceTouched ? '1' : '0'}
+              onChange={(e) => { setPriceStr(e.target.value); setPriceTouched(true); setStep('form'); }} />
+            {fin(tick) && fin(price) && !onTick(price, tick as number) && (
+              <button className="ex-link op-fix" onClick={() => { setPriceStr(String(snapToTick(price, tick as number))); setPriceTouched(true); }} data-op-use-tick>
+                usa {snapToTick(price, tick as number)}
+              </button>
+            )}
+
+            {/* ── L'AVVISO CHE SI AGGIORNA A OGNI MODIFICA ────────────────────────────────────────
+                Sia che il prezzo arrivi da un tocco sul book sia che venga digitato: e' lo stesso
+                stato, quindi e' lo stesso avviso.
+                  verde  = resta sul book come maker, dentro la banda;
+                  giallo = FUORI BANDA — non matura reward, ma si piazza: e' un costo dichiarato, e
+                           l'operatore puo' volerlo. Nessun pulsante viene disabilitato da qui;
+                  rosso  = incrocia il book, quindi si eseguirebbe subito invece di riposare. */}
+            {verdict && (
+              <div className={`op-verdict ${verdict.level === 'ok' ? 'is-ok' : verdict.level === 'bad' ? 'is-bad' : verdict.level === 'warn' ? 'is-warn' : 'is-unk'}`}
+                data-op-price-verdict={verdict.level}
+                data-op-verdict-crosses={verdict.crosses ? '1' : '0'}
+                data-op-verdict-outofband={verdict.outOfBand === null ? '' : verdict.outOfBand ? '1' : '0'}
+                role="status" aria-live="polite">
+                <span className="op-verdict-i" aria-hidden="true">
+                  {verdict.level === 'ok' ? '✓' : verdict.level === 'bad' ? '⛔' : verdict.level === 'warn' ? '⚠' : 'ⓘ'}
+                </span>
+                <span className="op-verdict-tx">
+                  {verdict.messages.map((m, i) => <span key={i} className="op-verdict-l">{m}</span>)}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* ── 6 · DURATA ────────────────────────────────────────────────────────────────────── */}
+          <div className="op-field">
+            <div className="op-label">Durata</div>
+            <div className="op-hint" data-op-ttl>
+              GTD <b className="ex-n">{Math.round(ttlSeconds / 60)} min</b>
+              {repriceOn && autoRenew ? (
+                <> · <b>rinnovo automatico attivo</b>: si rinnova {Math.round((refreshMargin ?? 180) / 60)} minuti prima della scadenza</>
+              ) : (
+                <> · one-shot: nessun rinnovo, l&apos;ordine scade e basta</>
+              )}
+            </div>
+            {repriceOn && (
+              <label className="op-check">
+                <input type="checkbox" checked={autoRenew} onChange={(e) => setAutoRenew(e.target.checked)} data-op-autorenew />
+                <span>lascia il rinnovo automatico su questo ordine</span>
+              </label>
+            )}
+          </div>
+
+          {/* ── 7 · CONTROVALORE ──────────────────────────────────────────────────────────────── */}
+          <div className="op-notional" data-op-notional>
+            <span className="op-label">Controvalore</span>
+            <span className="op-notional-v ex-n">{money(notional)}</span>
+            {fin(cfg?.caps?.effectiveOrderCapUsd) && <span className="op-hint">tetto per ordine {money(cfg!.caps.effectiveOrderCapUsd)}</span>}
+          </div>
+
+          {/* ── 8 · AVVISI ────────────────────────────────────────────────────────────────────── */}
+          {problems.length > 0 && (
+            <div className="op-probs" data-op-problems>
+              {problems.map((p) => (
+                <p key={p.key} className={`ex-flag ${p.blocking ? 'is-bad' : ''}`} data-op-problem={p.key}>
+                  <span className="ex-flag-i" aria-hidden="true">{p.blocking ? '⛔' : '⚠'}</span>
+                  <span>{p.text}</span>
+                </p>
+              ))}
+            </div>
+          )}
+
+          {/* ── 9 · RIEPILOGO ─────────────────────────────────────────────────────────────────── */}
+          {step === 'review' && (
+            <div className="op-review" data-op-review>
+              <div className="op-review-h">Rivedi prima di confermare</div>
+              <div className="ex-kvs">
+                <div className="ex-kv"><span className="ex-kv-k">mercato</span><span className="ex-kv-v op-wrap">{target.title}</span></div>
+                <div className="ex-kv"><span className="ex-kv-k">lato</span><span className="ex-kv-v">BUY {book.toUpperCase()}</span></div>
+                <div className="ex-kv"><span className="ex-kv-k">size</span><span className="ex-kv-v">{size}</span></div>
+                <div className="ex-kv"><span className="ex-kv-k">prezzo</span><span className="ex-kv-v">{price}</span></div>
+                <div className="ex-kv"><span className="ex-kv-k">controvalore</span><span className="ex-kv-v">{money(notional)}</span></div>
+                <div className="ex-kv"><span className="ex-kv-k">durata</span><span className="ex-kv-v">GTD {Math.round(ttlSeconds / 60)}m</span></div>
+              </div>
+            </div>
+          )}
+
+          {/* ── ESITO ─────────────────────────────────────────────────────────────────────────── */}
+          {result && (
+            <div className={`ex-banner ${result.ok ? (result.sent ? 'is-ok' : 'is-warn') : 'is-bad'} op-mb`} data-op-result>
+              {result.ok ? (
+                result.sent
+                  ? <><b>ORDINE INVIATO AL VENUE.</b>{result.orderId ? <> orderId <span className="ex-n">{result.orderId}</span></> : null}</>
+                  : <><b data-op-dryrun>DRY-RUN — nessun ordine reale piazzato.</b> L&apos;ordine è stato costruito, firmato e validato dal venue, poi scartato (placement={result.placement ?? 'dry-run'}).</>
+              ) : (
+                <><b>Rifiutato al gate {result.gate ?? '—'}</b>: {result.reason ?? '—'}</>
+              )}
+              {/* L'ordine è passato E non matura reward: due fatti veri insieme. Detto qui, dopo l'esito,
+                  perché a piazzamento avvenuto è l'unica cosa che resta da sapere su quel prezzo. */}
+              {result.ok && result.bandAdvisory && (
+                <span className="op-banner-sub" data-op-band-advisory>
+                  ⚠ Fuori dalla banda reward: questo ordine riposa regolarmente ma NON matura reward.
+                </span>
+              )}
+            </div>
+          )}
           {/* ── CHIUSURA AUTOMATICA ───────────────────────────────────────────────────────────────
-              ACCANTO AL TRACKING, sotto la stessa intestazione «Motore automatico» e con lo stesso
-              aspetto, perche' e' la stessa categoria di potere: qualcosa che agisce da solo. Ma e' un
-              potere DIVERSO — il tracking piazza acquisti su due lati per fare mercato, questo VENDE il
-              token che un fill ha prodotto — quindi ha un interruttore suo e non eredita quello del
-              tracking. Un operatore che ne accende uno non ha acceso l'altro.
+              SUBITO SOTTO IL PIAZZAMENTO MANUALE, e non piu' accanto al Tracking. La ragione e' il
+              flusso: si arriva qui dopo aver toccato una riga del book e aver visto il prezzo compilarsi,
+              e la domanda successiva — «e quando viene eseguito, chi lo chiude?» — ha senso adesso, non
+              tre schermate prima. Resta un pannello che si apre da solo, senza popup: chi non la vuole
+              lo scorre e basta.
+
+              Ha lo stesso aspetto del Tracking perche' e' la stessa categoria di potere: qualcosa che
+              agisce da solo. Ma e' un potere DIVERSO — il tracking piazza acquisti su due lati per fare
+              mercato, questo VENDE il token che un fill ha prodotto — quindi ha un interruttore suo e
+              non eredita quello del tracking. Un operatore che ne accende uno non ha acceso l'altro.
 
               DUE INTERRUTTORI, ENTRAMBI NECESSARI, com'e' nel motore: un generale e uno per questo
               mercato. Il pannello li mostra separati invece di fonderli in un solo comando, perche'
@@ -1386,161 +1600,6 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
               </div>
             )}
           </div>
-
-          {/* ── PIAZZAMENTO MANUALE A UN LATO ─────────────────────────────────────────────────────
-              L'alternativa al tracking: un ordine solo, su un lato solo, deciso adesso. */}
-          <div className="op-eyebrow" data-op-eyebrow="manual" data-op-manual-section>
-            Piazzamento manuale
-            <span className="op-eyebrow-r">un lato · un ordine</span>
-          </div>
-
-          {/* ── 3 · LATO ──────────────────────────────────────────────────────────────────────── */}
-          <div className="op-field">
-            <div className="op-label">Lato</div>
-            <div className="op-seg" role="group" aria-label="Book">
-              <button className={`op-segb ${book === 'yes' ? 'is-yes' : ''}`} onClick={() => setBook('yes')} data-op-book="yes">BUY YES</button>
-              <button className={`op-segb ${book === 'no' ? 'is-no' : ''}`} onClick={() => setBook('no')} data-op-book="no">BUY NO</button>
-            </div>
-            {/* Onestà su cosa questo percorso può fare: una VENDITA consegna il token, quindi richiede di
-                possederlo, e l'endpoint manuale non accetta il lato SELL. Comprare NO è il modo con cui
-                un maker a collaterale offre l'altro lato. */}
-            <div className="op-hint">
-              Solo acquisti: una vendita consegna il token e richiede di possederlo. «BUY NO a q» è
-              l&apos;equivalente di «vendi YES a 1−q».
-            </div>
-          </div>
-
-          {/* ── 4 · SIZE ──────────────────────────────────────────────────────────────────────── */}
-          <div className="op-field">
-            <div className="op-label">
-              Size (share)
-              <span className="op-labelhint">
-                min. premiante {minSize ?? 'N/D'}
-                {fin(target.presetSize) ? ` · precompilata dal piano` : ''}
-              </span>
-            </div>
-            <input className={`ex-input op-input ${problems.some((p) => p.key === 'minsize' || p.key === 'size') ? 'is-bad' : ''}`}
-              type="number" inputMode="decimal" value={sizeStr} data-op-size
-              onChange={(e) => { setSizeStr(e.target.value); setSizeTouched(true); setStep('form'); }} />
-            {fin(minSize) && (
-              <button className="ex-link op-fix" onClick={() => { setSizeStr(String(minSize)); setSizeTouched(true); }} data-op-use-min>usa il minimo</button>
-            )}
-          </div>
-
-          {/* ── 5 · PREZZO ────────────────────────────────────────────────────────────────────── */}
-          <div className="op-field">
-            <div className="op-label">
-              Prezzo
-              <span className="op-labelhint">
-                tick {tick ?? 'N/D'} · mid {cents(mid)}
-                {priceTouched && <b className="ex-gold"> · prezzo tuo, non lo tocchiamo</b>}
-              </span>
-            </div>
-            <input className={`ex-input op-input ${problems.some((p) => p.key === 'tick' || p.key === 'price') ? 'is-bad' : ''}`}
-              type="number" inputMode="decimal" step={tick ?? 0.01} value={priceStr} data-op-price
-              data-op-price-touched={priceTouched ? '1' : '0'}
-              onChange={(e) => { setPriceStr(e.target.value); setPriceTouched(true); setStep('form'); }} />
-            {fin(tick) && fin(price) && !onTick(price, tick as number) && (
-              <button className="ex-link op-fix" onClick={() => { setPriceStr(String(snapToTick(price, tick as number))); setPriceTouched(true); }} data-op-use-tick>
-                usa {snapToTick(price, tick as number)}
-              </button>
-            )}
-
-            {/* ── L'AVVISO CHE SI AGGIORNA A OGNI MODIFICA ────────────────────────────────────────
-                Sia che il prezzo arrivi da un tocco sul book sia che venga digitato: e' lo stesso
-                stato, quindi e' lo stesso avviso.
-                  verde  = resta sul book come maker, dentro la banda;
-                  giallo = FUORI BANDA — non matura reward, ma si piazza: e' un costo dichiarato, e
-                           l'operatore puo' volerlo. Nessun pulsante viene disabilitato da qui;
-                  rosso  = incrocia il book, quindi si eseguirebbe subito invece di riposare. */}
-            {verdict && (
-              <div className={`op-verdict ${verdict.level === 'ok' ? 'is-ok' : verdict.level === 'bad' ? 'is-bad' : verdict.level === 'warn' ? 'is-warn' : 'is-unk'}`}
-                data-op-price-verdict={verdict.level}
-                data-op-verdict-crosses={verdict.crosses ? '1' : '0'}
-                data-op-verdict-outofband={verdict.outOfBand === null ? '' : verdict.outOfBand ? '1' : '0'}
-                role="status" aria-live="polite">
-                <span className="op-verdict-i" aria-hidden="true">
-                  {verdict.level === 'ok' ? '✓' : verdict.level === 'bad' ? '⛔' : verdict.level === 'warn' ? '⚠' : 'ⓘ'}
-                </span>
-                <span className="op-verdict-tx">
-                  {verdict.messages.map((m, i) => <span key={i} className="op-verdict-l">{m}</span>)}
-                </span>
-              </div>
-            )}
-          </div>
-
-          {/* ── 6 · DURATA ────────────────────────────────────────────────────────────────────── */}
-          <div className="op-field">
-            <div className="op-label">Durata</div>
-            <div className="op-hint" data-op-ttl>
-              GTD <b className="ex-n">{Math.round(ttlSeconds / 60)} min</b>
-              {repriceOn && autoRenew ? (
-                <> · <b>rinnovo automatico attivo</b>: si rinnova {Math.round((refreshMargin ?? 180) / 60)} minuti prima della scadenza</>
-              ) : (
-                <> · one-shot: nessun rinnovo, l&apos;ordine scade e basta</>
-              )}
-            </div>
-            {repriceOn && (
-              <label className="op-check">
-                <input type="checkbox" checked={autoRenew} onChange={(e) => setAutoRenew(e.target.checked)} data-op-autorenew />
-                <span>lascia il rinnovo automatico su questo ordine</span>
-              </label>
-            )}
-          </div>
-
-          {/* ── 7 · CONTROVALORE ──────────────────────────────────────────────────────────────── */}
-          <div className="op-notional" data-op-notional>
-            <span className="op-label">Controvalore</span>
-            <span className="op-notional-v ex-n">{money(notional)}</span>
-            {fin(cfg?.caps?.effectiveOrderCapUsd) && <span className="op-hint">tetto per ordine {money(cfg!.caps.effectiveOrderCapUsd)}</span>}
-          </div>
-
-          {/* ── 8 · AVVISI ────────────────────────────────────────────────────────────────────── */}
-          {problems.length > 0 && (
-            <div className="op-probs" data-op-problems>
-              {problems.map((p) => (
-                <p key={p.key} className={`ex-flag ${p.blocking ? 'is-bad' : ''}`} data-op-problem={p.key}>
-                  <span className="ex-flag-i" aria-hidden="true">{p.blocking ? '⛔' : '⚠'}</span>
-                  <span>{p.text}</span>
-                </p>
-              ))}
-            </div>
-          )}
-
-          {/* ── 9 · RIEPILOGO ─────────────────────────────────────────────────────────────────── */}
-          {step === 'review' && (
-            <div className="op-review" data-op-review>
-              <div className="op-review-h">Rivedi prima di confermare</div>
-              <div className="ex-kvs">
-                <div className="ex-kv"><span className="ex-kv-k">mercato</span><span className="ex-kv-v op-wrap">{target.title}</span></div>
-                <div className="ex-kv"><span className="ex-kv-k">lato</span><span className="ex-kv-v">BUY {book.toUpperCase()}</span></div>
-                <div className="ex-kv"><span className="ex-kv-k">size</span><span className="ex-kv-v">{size}</span></div>
-                <div className="ex-kv"><span className="ex-kv-k">prezzo</span><span className="ex-kv-v">{price}</span></div>
-                <div className="ex-kv"><span className="ex-kv-k">controvalore</span><span className="ex-kv-v">{money(notional)}</span></div>
-                <div className="ex-kv"><span className="ex-kv-k">durata</span><span className="ex-kv-v">GTD {Math.round(ttlSeconds / 60)}m</span></div>
-              </div>
-            </div>
-          )}
-
-          {/* ── ESITO ─────────────────────────────────────────────────────────────────────────── */}
-          {result && (
-            <div className={`ex-banner ${result.ok ? (result.sent ? 'is-ok' : 'is-warn') : 'is-bad'} op-mb`} data-op-result>
-              {result.ok ? (
-                result.sent
-                  ? <><b>ORDINE INVIATO AL VENUE.</b>{result.orderId ? <> orderId <span className="ex-n">{result.orderId}</span></> : null}</>
-                  : <><b data-op-dryrun>DRY-RUN — nessun ordine reale piazzato.</b> L&apos;ordine è stato costruito, firmato e validato dal venue, poi scartato (placement={result.placement ?? 'dry-run'}).</>
-              ) : (
-                <><b>Rifiutato al gate {result.gate ?? '—'}</b>: {result.reason ?? '—'}</>
-              )}
-              {/* L'ordine è passato E non matura reward: due fatti veri insieme. Detto qui, dopo l'esito,
-                  perché a piazzamento avvenuto è l'unica cosa che resta da sapere su quel prezzo. */}
-              {result.ok && result.bandAdvisory && (
-                <span className="op-banner-sub" data-op-band-advisory>
-                  ⚠ Fuori dalla banda reward: questo ordine riposa regolarmente ma NON matura reward.
-                </span>
-              )}
-            </div>
-          )}
         </div>
 
         {/* ── 10 · LE DUE AZIONI, in fondo e sempre visibili ───────────────────────────────────── */}
@@ -1577,12 +1636,17 @@ const CSS = `
 .op-sheet { width: 100%; max-width: 560px; max-height: 92vh; display: flex; flex-direction: column;
   background: var(--ex-bg); border: 1px solid var(--ex-line); border-radius: 12px 12px 0 0;
   box-shadow: 0 -8px 40px rgba(0,0,0,.6); }
-.op-head { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px;
+/* ── COMPATTEZZA IN ALTO ─────────────────────────────────────────────────────────────────────────
+   Intestazione e dati di mercato sono CONTESTO: si leggono una volta e poi si lavora piu in basso.
+   Rimpicciolirli fa entrare piu book nella prima schermata, che e la superficie su cui si agisce.
+   Quello che NON si rimpicciolisce sono i numeri di prezzo — restano il contenuto piu importante — e
+   l altezza toccabile delle righe, che e accessibilita e non densita. */
+.op-head { display: flex; align-items: flex-start; gap: 10px; padding: 9px 12px;
   border-bottom: 1px solid var(--ex-line); }
 .op-head-txt { min-width: 0; flex: 1 1 auto; }
-.op-title { font-size: 14px; font-weight: 700; line-height: 1.3; overflow-wrap: anywhere; }
-.op-sub { margin-top: 5px; font-size: 11px; color: var(--ex-txt-3); line-height: 1.9; overflow-wrap: anywhere; }
-.op-id { margin-top: 4px; font-size: 9.5px; color: var(--ex-txt-3); word-break: break-all; }
+.op-title { font-size: 13.5px; font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; }
+.op-sub { margin-top: 4px; font-size: 10.5px; color: var(--ex-txt-3); line-height: 1.75; overflow-wrap: anywhere; }
+.op-id { margin-top: 3px; font-size: 9px; color: var(--ex-txt-3); word-break: break-all; }
 .op-bdg { margin-left: 4px; }
 .op-x { flex: 0 0 auto; width: 34px; height: 34px; border-radius: 6px; cursor: pointer;
   border: 1px solid var(--ex-line); background: var(--ex-panel-2); color: var(--ex-txt); font-size: 14px; }
@@ -1620,12 +1684,13 @@ const CSS = `
    Con sette voci e una griglia a quattro colonne l ultima riga resta spaiata: col trucco del gap quel
    posto vuoto si vedeva come un riquadro piu chiaro, cioe una cella che non esiste. Cosi invece lo
    spazio avanzato e semplicemente sfondo, e la griglia finisce dove finiscono i dati. */
-.op-mkt { display: grid; grid-template-columns: repeat(auto-fit, minmax(84px, 1fr));
+.op-mkt { display: grid; grid-template-columns: repeat(auto-fit, minmax(78px, 1fr));
   background: #12151A; border: 1px solid var(--ex-line); border-radius: 8px; overflow: hidden; }
-.op-mkt-c { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; min-width: 0;
+.op-mkt-c { display: flex; flex-direction: column; gap: 1px; padding: 6px 8px; min-width: 0;
   box-shadow: inset -1px -1px 0 var(--ex-line-soft); }
-.op-mkt-k { font-size: 9px; letter-spacing: .07em; text-transform: uppercase; color: var(--ex-txt-3); }
-.op-mkt-v { font-family: var(--ex-mono); font-size: 14px; font-weight: 700; line-height: 1.2; }
+.op-mkt-k { font-size: 8.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--ex-txt-3); }
+/* il VALORE non scende sotto i 13.5px: e il numero, non l etichetta */
+.op-mkt-v { font-family: var(--ex-mono); font-size: 13.5px; font-weight: 700; line-height: 1.15; }
 .op-mkt-s { font-family: var(--ex-mono); font-size: 9px; color: var(--ex-txt-3); overflow-wrap: anywhere; }
 .op-mkt-s.is-ok { color: var(--ex-green); }
 .op-mkt-s.is-warn { color: var(--ex-gold); }
@@ -1639,10 +1704,10 @@ const CSS = `
    Un book tagliato a meta non e piu compatto, e semplicemente un book che mente. */
 .op-book { border: 1px solid var(--ex-line); border-radius: 8px; background: var(--ex-panel); overflow: hidden; }
 .op-book-top { display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  padding: 8px 10px; border-bottom: 1px solid var(--ex-line-soft); flex-wrap: wrap; }
-.op-book-t { font-size: 11.5px; font-weight: 600; color: var(--ex-txt-2); }
-.op-book-hd { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; padding: 5px 10px;
-  font-size: 9.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--ex-txt-3);
+  padding: 6px 10px; border-bottom: 1px solid var(--ex-line-soft); flex-wrap: wrap; }
+.op-book-t { font-size: 11px; font-weight: 600; color: var(--ex-txt-2); }
+.op-book-hd { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; padding: 4px 10px;
+  font-size: 9px; letter-spacing: .06em; text-transform: uppercase; color: var(--ex-txt-3);
   border-bottom: 1px solid var(--ex-line-soft); }
 .op-book-hd span:nth-child(2), .op-book-hd span:nth-child(3) { text-align: right; min-width: 62px; }
 .op-book-side { display: flex; flex-direction: column; }
@@ -1656,7 +1721,7 @@ const CSS = `
    da 640 insieme al resto, e va bene cosi: il pannello scorre. Un bersaglio troppo piccolo invece non
    si aggiusta scorrendo, si sbaglia e basta. */
 .op-row { position: relative; display: grid; grid-template-columns: 1fr auto auto; gap: 10px;
-  align-items: center; width: 100%; padding: 0 10px; min-height: 40px; cursor: pointer;
+  align-items: center; width: 100%; padding: 0 10px; min-height: 36px; cursor: pointer;
   background: none; border: 0; border-left: 2px solid transparent; color: inherit;
   font-family: var(--ex-mono); font-size: 12px; text-align: left; }
 .op-row-bar { position: absolute; top: 2px; bottom: 2px; right: 0; z-index: 0; border-radius: 2px 0 0 2px; }
@@ -1669,16 +1734,38 @@ const CSS = `
 .op-row:hover:not(:disabled) { background: rgba(240,185,11,.06); }
 .op-row.is-picked { border-left-color: var(--ex-gold); background: rgba(240,185,11,.12); }
 
+/* 44px COL DITO, e questa non e una densita da limare: e la soglia dei bersagli toccabili. La riga del
+   book E un comando, quindi la compattezza si prende da padding e testi di contorno, non da qui. */
 @media (pointer: coarse) {
   .op-row { min-height: 44px; }
 }
 
-.op-book-mid { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
-  padding: 7px 10px; background: var(--ex-gold-bg);
+/* ── IL LAMPEGGIO DOPO IL TOCCO ─────────────────────────────────────────────────────────────────
+   800ms, una volta sola, su due elementi lontani fra loro: il libro che e stato toccato e il campo
+   prezzo che si e compilato. Serve a rendere visibile un cambiamento che avviene sotto la piega.
+   prefers-reduced-motion lo spegne: chi lo ha chiesto vede lo stato finale senza transizione.
+   NB: niente backtick in questo foglio — e dentro un template literal, e lo terminerebbe. */
+@keyframes op-flash {
+  0%   { border-color: var(--ex-gold); box-shadow: 0 0 0 2px var(--ex-gold-bg); }
+  70%  { border-color: var(--ex-gold); box-shadow: 0 0 0 2px var(--ex-gold-bg); }
+  100% { border-color: var(--ex-line); box-shadow: none; }
+}
+.op-book.is-flash { animation: op-flash 800ms ease-out 1; }
+.op-input.is-flash { animation: op-flash 800ms ease-out 1; }
+@media (prefers-reduced-motion: reduce) {
+  .op-book.is-flash, .op-input.is-flash { animation: none; border-color: var(--ex-gold); }
+}
+
+/* LA RIGA DEL MID sta gia dove deve, fra il miglior ask (ultima riga del blocco sopra) e il miglior
+   bid (prima riga del blocco sotto). Qui cambia solo l allineamento: CENTRATA, perche e la linea di
+   separazione fra i due lati e un contenuto allineato a sinistra la faceva leggere come un intestazione
+   del blocco dei bid invece che come il confine fra i due. */
+.op-book-mid { display: flex; align-items: baseline; justify-content: center; gap: 8px; flex-wrap: wrap;
+  padding: 6px 10px; text-align: center; background: var(--ex-gold-bg);
   border-top: 1px solid var(--ex-gold-bd); border-bottom: 1px solid var(--ex-gold-bd); }
-.op-book-mid-v { font-family: var(--ex-mono); font-size: 16px; font-weight: 700; color: var(--ex-gold); }
-.op-book-mid-k { font-size: 10px; color: var(--ex-txt-2); flex: 1 1 auto; }
-.op-book-mid-s { font-family: var(--ex-mono); font-size: 10.5px; color: var(--ex-txt-2); }
+.op-book-mid-v { font-family: var(--ex-mono); font-size: 15.5px; font-weight: 700; color: var(--ex-gold); }
+.op-book-mid-k { font-size: 9.5px; color: var(--ex-txt-2); }
+.op-book-mid-s { font-family: var(--ex-mono); font-size: 10px; color: var(--ex-txt-2); }
 .op-book-foot { display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 8px 10px;
   border-top: 1px solid var(--ex-line-soft); font-size: 10px; color: var(--ex-txt-3); }
 .op-midnote-p { margin-bottom: 4px; }

@@ -18,3 +18,10 @@ export declare function decideRetrack(args: {
   lastRepriceAt?: number | null; minIntervalMs?: number; now?: number;
 }): { act: boolean; gate: string | null; reason: string; movedCents?: number | null };
 export declare function snap(price: number, tick: number): number | null;
+
+/** L'offset del motore, in centesimi, derivato da un prezzo scelto sul book. Sul tick, mai sotto un
+ *  tick, mai oltre il raggio premiante quando il venue ne pubblica uno. null se prezzo o mid mancano. */
+export declare function offsetFromPrice(args: {
+  price: number | null; mid: number | null;
+  tick?: number | null; bandRadiusCents?: number | null;
+}): number | null;
