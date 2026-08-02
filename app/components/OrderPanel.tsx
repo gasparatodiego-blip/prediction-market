@@ -25,7 +25,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 // La STESSA funzione che il motore usa per decidere dove quotare: l'anteprima non puo' mostrare un
 // livello diverso da quello che verrebbe piazzato, perche' e' lo stesso codice.
-import { planQuotes, offsetFromPrice, sizeScale, sizeAtPct } from '@/lib/maker/mm-quote-math';
+// `planQuotes` e `offsetFromPrice` non servono piu' a questo componente: l'anteprima a due gambe viveva
+// nel pannello lungo, e la distanza dal mid ora la tiene lo stepper del popup. Restano usate dal motore.
+import { sizeScale, sizeAtPct } from '@/lib/maker/mm-quote-math';
 // Le STESSE funzioni pure che la route usa per costruire la vista del book: distanza dal mid, righe
 // bloccate dal filtro e verdetto sul prezzo. Sono in un modulo condiviso e coperto da test proprio perche'
 // il pannello non possa dare una risposta diversa dal server sulla stessa domanda.
@@ -204,7 +206,6 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
   const [sizeStr, setSizeStr] = useState('');
   const [priceStr, setPriceStr] = useState('');
   const [autoRenew, setAutoRenew] = useState(true);
-  const [step, setStep] = useState<'form' | 'review'>('form');
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<PlaceResult | null>(null);
   const [enabling, setEnabling] = useState(false);
@@ -233,9 +234,6 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
     const t = setTimeout(() => setFlashAt(null), 800);
     return () => clearTimeout(t);
   }, [flashAt]);
-  // Dove scorrere dopo il tocco. Il contenitore che scorre e' `.op-body`, quindi scrollIntoView agisce
-  // dentro il pannello e non muove la pagina sotto.
-  const manualRef = useRef<HTMLDivElement | null>(null);
 
   // ── IL FOGLIO RAPIDO AL TOCCO ──────────────────────────────────────────────────────────────────
   // La via veloce: si apre sopra il pannello e porta dal tocco alla conferma senza scorrere.
@@ -253,6 +251,10 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
   const [sheetBelow, setSheetBelow] = useState(true);
   // La distanza dal mid in centesimi, che e' il comando vero del foglio: il prezzo ne e' la conseguenza.
   const [sheetDistC, setSheetDistC] = useState<number | null>(null);
+  // QUALE MOTORE governa l'ordine. E' la scelta che decide cosa fa il pulsante finale: un ordine solo
+  // fermo dov'e', oppure una delega continuata a un motore che lo insegue. Sono due poteri diversi e
+  // il foglio li fa scegliere per nome invece di dedurli da quali campi sono stati compilati.
+  const [sheetEngine, setSheetEngine] = useState<'manual' | 'tracking'>('manual');
 
   // La riga toccata, tenuta per prezzo e non per indice: il book si riordina a ogni aggiornamento, e un
   // indice evidenzierebbe la riga sbagliata un secondo dopo.
@@ -261,12 +263,8 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
   // L'unico punto di questo progetto in cui due tocchi comprano una DELEGA CONTINUATA invece di un
   // singolo ordine. Per questo ha un passo di revisione suo, separato da quello del piazzamento a mano:
   // le due conferme autorizzano cose diverse e non devono poter essere confuse l'una con l'altra.
-  const [trkOpen, setTrkOpen] = useState(false);
-  const [trkOffset, setTrkOffset] = useState('');
   const [trkMinMove, setTrkMinMove] = useState('');
-  const [trkStep, setTrkStep] = useState<'form' | 'review'>('form');
   const [trkBusy, setTrkBusy] = useState(false);
-  const [trkPreview, setTrkPreview] = useState<TrackPreview | null>(null);
   const [trkMsg, setTrkMsg] = useState<string | null>(null);
   const [trkActive, setTrkActive] = useState<TrackRecord | null>(null);
   const [trkOffStep, setTrkOffStep] = useState<'idle' | 'choose'>('idle');
@@ -310,7 +308,7 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
     const p = fin(target.mid) && fin(target.tick) && (target.tick as number) > 0
       ? snapToTick(target.mid as number, target.tick as number) : target.mid;
     setPriceStr(fin(p) ? String(p) : '');
-    setStep('form'); setResult(null); setEnableMsg(null);
+    setResult(null); setEnableMsg(null);
     setIsEnabled(target.enabled);
     // Mercato nuovo, pannello nuovo: le bandierine ripartono da zero, altrimenti un prezzo toccato su
     // un mercato bloccherebbe la precompilazione su quello dopo.
@@ -502,47 +500,23 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
   // lo si sommasse di nuovo nell'ordine di disegno, la colonna «totale» degli ask crescerebbe verso
   // l'alto partendo dalla riga piu' lontana — cioe' misurerebbe un'altra cosa da quella dei bid.
   const askRows = useMemo(() => (view ? [...view.levels.asks].reverse() : []), [view]);
-  /** L'offset del motore derivato dal prezzo toccato. L'aritmetica sta in mm-quote-math accanto a
-   *  planQuotes che la consuma — qui si passano solo i numeri di questo mercato. */
-  const offsetFromTap = useCallback((price: number): number | null => offsetFromPrice({
-    price, mid, tick, bandRadiusCents: fin(maxSpreadCents) ? (maxSpreadCents as number) / 2 : null,
-  }), [mid, tick, maxSpreadCents]);
-
   /**
-   * IL TOCCO SU UNA RIGA DEL BOOK, in un posto solo.
+   * IL TOCCO SU UNA RIGA DEL BOOK — l'unico ingresso al percorso operativo.
    *
-   * Prima ogni riga ripeteva le stesse quattro setState inline, una volta per gli ask e una per i bid.
-   * Ora fanno la stessa cosa perche' chiamano la stessa funzione — e la cosa che fanno e' cresciuta:
-   * compila il prezzo manuale, deriva l'offset del motore, evidenzia, e porta l'operatore dove il
-   * prezzo e' finito.
+   * La pagina sotto e' sola lettura: qui si passa dal libro alla configurazione, e tutto il resto
+   * avviene nel popup. Le due righe (ask e bid) chiamano questa stessa funzione, quindi non possono
+   * comportarsi in modo diverso.
    *
    * IL LATO NON VIENE CAMBIATO, ed e' deliberato: il book mostrato E' quello del lato selezionato
-   * (`data-op-book-side`), quindi una riga bid di questo libro e' gia' un BUY su questo libro. Cambiare
-   * `book` qui vorrebbe dire ribaltare il libro sotto il dito che lo sta toccando.
+   * (`data-op-book-side`), quindi una riga di questo libro e' gia' un BUY su questo libro. Ribaltarlo
+   * sotto il dito che lo sta toccando sarebbe la sorpresa piu' costosa di questa schermata — e il lato
+   * resta comunque cambiabile dentro il popup, che e' dove si decide.
    */
   const tapLevel = useCallback((price: number) => {
     setPriceStr(String(price));
     setPriceTouched(true);
     setPickedPrice(price);
-    setStep('form');
-    // L'offset del motore segue lo stesso tocco: e' la distanza che l'operatore ha appena scelto
-    // guardando il libro, ed e' esattamente cio' che il tracking dovrebbe tenere.
-    const off = offsetFromTap(price);
-    if (off != null) { setTrkOffset(String(off)); setTrkStep('form'); setTrkPreview(null); }
-    // La SOGLIA REPRICE non si tocca: non e' una conseguenza del prezzo scelto, e riscriverla a ogni
-    // tocco cancellerebbe un valore che l'operatore ha messo a mano.
     setFlashAt(Date.now());
-    // Lo scorrimento parte dopo il render, altrimenti si scorrerebbe verso la posizione vecchia.
-    // `prefers-reduced-motion` viene rispettato: chi lo ha chiesto riceve un salto, non un'animazione.
-    requestAnimationFrame(() => {
-      const smooth = typeof window !== 'undefined'
-        && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      manualRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'start' });
-    });
-    // ── E IL FOGLIO RAPIDO SALE ──────────────────────────────────────────────────────────────────
-    // Lo scorrimento qui sopra NON e' ridondante: e' cio' che l'operatore trova gia' fatto quando
-    // chiude il foglio. Il foglio e' la via veloce, i pannelli restano la via lunga, e chiudere l'uno
-    // lascia l'altro pronto invece di riportare a un pannello vuoto.
     if (fin(mid)) {
       setSheetBelow(price <= (mid as number));
       // La distanza si arrotonda al passo dello stepper, cosi' il primo + o − parte da un valore
@@ -552,8 +526,9 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
       setSheetBelow(true); setSheetDistC(null);
     }
     setSheetStep('form');
+    setSheetEngine('manual');
     setSheetOpen(true);
-  }, [offsetFromTap, mid]);
+  }, [mid]);
 
   /** Muove la distanza dal mid di un passo, e con essa il prezzo. Lo stepper e' l'unico modo di
    *  cambiarla: un campo libero inviterebbe a scrivere numeri che il tick non puo' esprimere. */
@@ -587,12 +562,12 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
       setTrkActive(mine ?? null);
       // Un record senza `sides` e' stato scritto prima che il lato esistesse: vale 'both', esattamente
       // come lo legge il motore. Il pannello non deve mostrarne una versione diversa.
-      if (mine) { setTrkOffset(String(mine.offsetCents)); setTrkMinMove(String(mine.minMoveCents)); setTrkSides(mine.sides ?? 'both'); }
+      if (mine) { setTrkMinMove(String(mine.minMoveCents)); setTrkSides(mine.sides ?? 'both'); }
     } catch { /* lo stato resta ignoto: la sezione lo dice invece di supporlo spento */ }
   }, [target.marketId]);
   useEffect(() => {
-    setTrkOpen(false); setTrkStep('form'); setTrkPreview(null); setTrkMsg(null); setTrkOffStep('idle');
-    setTrkOffset(''); setTrkMinMove(''); setTrkActive(null); setTrkSides('both');
+    setTrkMsg(null); setTrkOffStep('idle');
+    setTrkMinMove(''); setTrkActive(null); setTrkSides('both');
     loadTracking();
   }, [target.marketId, loadTracking]);
 
@@ -842,8 +817,8 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
    * inventata su un saldo non letto e' esattamente il numero che non deve arrivare al venue.
    */
   const sizeRange = useMemo(
-    () => sizeScale({ minSize, price, capitalUsd: balanceUsd }),
-    [minSize, price, balanceUsd],
+    () => sizeScale({ minSize, price, capitalUsd: balanceUsd, orderCapUsd: cfg?.caps?.effectiveOrderCapUsd ?? null }),
+    [minSize, price, balanceUsd, cfg?.caps?.effectiveOrderCapUsd],
   );
   const sizeFromPct = useCallback((pct: number) => sizeAtPct(sizeRange, pct), [sizeRange]);
 
@@ -954,6 +929,14 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
               <span className="op-mkt-k">banda</span>
               <span className="op-mkt-v" data-op-band>{fin(maxSpreadCents) ? `±${(maxSpreadCents / 2).toFixed(2)}¢` : 'N/D'}</span>
               {fin(target.rewardsDailyRate) && <span className="op-mkt-s">{money(target.rewardsDailyRate, 0)}/g</span>}
+            </div>
+            {/* IL SALDO fra i dati di mercato, non altrove: e' il numero che decide quanto si puo'
+                comprare, e leggerlo accanto al prezzo evita di aprire il popup per scoprire che non
+                basta. `N/D` quando non e' stato letto — mai uno zero, che sarebbe un saldo vuoto. */}
+            <div className="op-mkt-c">
+              <span className="op-mkt-k">saldo</span>
+              <span className="op-mkt-v" data-op-balance>{fin(balanceUsd) ? money(balanceUsd) : 'N/D'}</span>
+              {fin(orderCapUsd) && <span className="op-mkt-s">tetto {money(orderCapUsd)}</span>}
             </div>
           </div>
 
@@ -1113,609 +1096,33 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
             </p>
           )}
 
-          {/* ── TRACKING ATTIVO (market making a due lati) ────────────────────────────────────────
-              SUBITO SOTTO I DATI DI MERCATO, e prima del piazzamento a mano. L'ordine conta: i due
-              campi di questa sezione — offset e soglia — si leggono CONTRO mid, tick e banda che stanno
-              appena sopra, e metterli in fondo obbligava a scorrere avanti e indietro per compilarli.
-              Il piazzamento a un lato viene dopo perche' e' l'alternativa, non il passo successivo.
-
-              Ha un doppio passo suo, separato da quello del piazzamento manuale, perche' autorizza una
-              cosa diversa: non un ordine, ma una delega continuata a piazzarne finche' resta accesa. */}
-          <div className="op-eyebrow" data-op-eyebrow="tracking">Motore automatico</div>
-          <div className="op-trk" data-op-tracking>
-            <button className="op-trk-head" onClick={() => setTrkOpen((v) => !v)} data-op-trk-toggle aria-expanded={trkOpen}>
-              {/* Il fulmine e il badge AUTO distinguono a colpo d'occhio l'unica sezione che agisce da
-                  sola: tutto il resto del pannello fa qualcosa solo quando lo tocchi. */}
-              <span className="op-trk-bolt" aria-hidden="true">⚡</span>
-              <span className="op-trk-t">
-                Tracking <span className="ex-dim">· market making a due lati</span>
-              </span>
-              <span className="op-trk-auto" data-op-trk-auto>AUTO</span>
-              <span className={`ex-badge ${trkActive ? 'is-gold' : ''}`} data-op-trk-state={trkActive ? 'on' : 'off'}>
-                {trkActive ? 'ATTIVO' : 'spento'}
-              </span>
-              <span className="op-trk-caret" aria-hidden="true">{trkOpen ? '▾' : '▸'}</span>
-            </button>
-
-            {trkOpen && (
-              <div className="op-trk-body">
-                {trkActive ? (
-                  <>
-                    <div className="ex-kvs op-mb" data-op-trk-active>
-                      {/* PRIMA COSA MOSTRATA: cosa sta quotando. Un tracking «attivo» che quota una
-                          gamba sola e uno che ne quota due non sono lo stesso stato, e il badge in
-                          testata dice ATTIVO in entrambi i casi. */}
-                      <div className="ex-kv">
-                        <span className="ex-kv-k">lati</span>
-                        <span className="ex-kv-v" data-op-trk-active-sides={trkActive.sides ?? 'both'}>
-                          {(trkActive.sides ?? 'both') === 'both' ? 'entrambi' : `SOLO ${(trkActive.sides as string).toUpperCase()}`}
-                        </span>
-                      </div>
-                      <div className="ex-kv"><span className="ex-kv-k">offset</span><span className="ex-kv-v">{trkActive.offsetCents}¢</span></div>
-                      <div className="ex-kv"><span className="ex-kv-k">soglia</span><span className="ex-kv-v">{trkActive.minMoveCents}¢</span></div>
-                      <div className="ex-kv"><span className="ex-kv-k">size</span><span className="ex-kv-v">{trkActive.sizeShares}</span></div>
-                      <div className="ex-kv"><span className="ex-kv-k">dalle</span><span className="ex-kv-v">{trkActive.atIso ? new Date(trkActive.atIso).toLocaleTimeString() : 'N/D'}</span></div>
-                    </div>
-                    <p className="op-hint">
-                      Su questo mercato il motore quota{' '}
-                      {(trkActive.sides ?? 'both') === 'both'
-                        ? 'entrambi i lati e li insegue'
-                        : <>il <b>solo lato {(trkActive.sides as string).toUpperCase()}</b> e lo insegue</>}{' '}
-                      da solo, senza chiedere conferma ordine per ordine. Il kill-switch, il tetto per ordine
-                      e la soglia dei 3 minuti dalla chiusura restano tutti in vigore.
-                      {(trkActive.sides ?? 'both') !== 'both' && (
-                        <> <b className="ex-gold">Con un lato solo questo mercato non matura reward.</b></>
-                      )}
-                    </p>
-                    {trkOffStep === 'idle' ? (
-                      <button className="ex-btn is-danger op-trk-btn" onClick={() => setTrkOffStep('choose')} data-op-trk-off>
-                        Disattiva il tracking
-                      </button>
-                    ) : (
-                      /* DUE OPZIONI, NESSUN DEFAULT NASCOSTO. Cosa succede agli ordini gia' a riposo e'
-                         una decisione dell'operatore, non una conseguenza silenziosa dello spegnimento. */
-                      <div className="op-trk-choice" data-op-trk-choice>
-                        <div className="op-trk-q">Gli ordini gia&apos; a riposo su questo mercato:</div>
-                        <button className="ex-btn is-danger op-trk-btn" disabled={trkBusy}
-                          onClick={async () => { const r = await trkCall({ enabled: false, preview: false, cancelOrders: true }); setTrkMsg(r.note ?? r.error ?? null); if (r.ok) { setTrkActive(null); setTrkOffStep('idle'); } }}
-                          data-op-trk-off-cancel>
-                          Spegni e CANCELLA gli ordini
-                        </button>
-                        <button className="ex-btn op-trk-btn" disabled={trkBusy}
-                          onClick={async () => { const r = await trkCall({ enabled: false, preview: false, cancelOrders: false }); setTrkMsg(r.note ?? r.error ?? null); if (r.ok) { setTrkActive(null); setTrkOffStep('idle'); } }}
-                          data-op-trk-off-leave>
-                          Spegni e lasciali scadere per GTD
-                        </button>
-                        <button className="ex-link op-trk-btn" onClick={() => setTrkOffStep('idle')}>annulla</button>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    {/* ── QUALI LATI ─────────────────────────────────────────────────────────────
-                        Sta PRIMA di offset e soglia perche' cambia cosa vogliono dire: con un lato
-                        solo l'offset descrive una gamba sola, e l'anteprima qui sotto mostra un
-                        prezzo solo. Deciderlo dopo aver compilato i numeri vorrebbe dire rileggerli.
-
-                        NON e' il selettore BUY YES / BUY NO del piazzamento manuale, che sta piu' in
-                        basso e riguarda UN ordine deciso adesso. Questo decide cosa fara' il motore
-                        per tutto il tempo in cui resta acceso, e per questo vive qui dentro. */}
-                    <div className="op-field">
-                      <span className="op-label">Lati quotati</span>
-                      <div className="op-seg" role="group" aria-label="Lati che il motore quota">
-                        {([['both', 'Entrambi'], ['yes', 'Solo YES'], ['no', 'Solo NO']] as const).map(([v, label]) => (
-                          <button key={v} type="button"
-                            className={`op-segb ${trkSides === v ? (v === 'no' ? 'is-no' : 'is-yes') : ''}`}
-                            onClick={() => { setTrkSides(v); setTrkStep('form'); setTrkPreview(null); }}
-                            data-op-trk-sides={v} aria-pressed={trkSides === v}>
-                            {label}
-                          </button>
-                        ))}
-                      </div>
-                      {/* LA CONSEGUENZA MENO OVVIA, detta dove si sceglie e non in fondo alla pagina:
-                          il punteggio premi prende il MINIMO fra i due lati, quindi una gamba sola
-                          vale zero per i reward per quanto bene sia quotata. */}
-                      {trkSides !== 'both' && (
-                        <p className="ex-flag is-bad" data-op-trk-sides-warn>
-                          <span className="ex-flag-i" aria-hidden="true">⚠</span>
-                          <span>
-                            Un lato solo <b>NON matura reward</b>: il punteggio prende il minimo fra i due lati,
-                            e con una gamba sola quel minimo è zero. Resta utile per esposizione direzionale
-                            o accumulo, non per i premi.
-                          </span>
-                        </p>
-                      )}
-                    </div>
-
-                    <div className="op-trk-grid">
-                      {/* ── DUE ETICHETTE CHE NON DEVONO POTERSI CONFONDERE COL FILTRO ────────────
-                          Sopra c'e' un cursore «distanza dal mid» che oscura righe e basta. Qui ci sono
-                          due campi che decidono dove finiscono ORDINI VERI e quando vengono rifatti.
-                          Chiamarli entrambi «distanza dal mid» sarebbe l'ambiguita' piu' costosa di
-                          questa schermata: «Offset ORDINI» dice di cosa sposta il prezzo, e il pedice
-                          dice che sono ordini piazzati, non righe guardate. */}
-                      <label className="op-field">
-                        <span className="op-label">Offset ordini <span className="op-labelhint">¢</span></span>
-                        <span className="op-trk-callout" data-op-trk-callout>distanza reale degli ordini piazzati dal mid</span>
-                        <input className="ex-input op-input" type="number" inputMode="decimal" step="0.1"
-                          value={trkOffset} placeholder={fin(maxSpreadCents) ? String(+(maxSpreadCents / 2).toFixed(2)) : '2'}
-                          onChange={(e) => { setTrkOffset(e.target.value); setTrkStep('form'); setTrkPreview(null); }}
-                          data-op-trk-offset />
-                      </label>
-                      <label className="op-field">
-                        <span className="op-label">Soglia reprice <span className="op-labelhint">¢</span></span>
-                        <span className="op-trk-callout">movimento minimo del mid per riprezzare</span>
-                        <input className="ex-input op-input" type="number" inputMode="decimal" step="0.1"
-                          value={trkMinMove} placeholder={fin(tick) ? String(+(tick * 100).toFixed(2)) : '1'}
-                          onChange={(e) => { setTrkMinMove(e.target.value); setTrkStep('form'); setTrkPreview(null); }}
-                          data-op-trk-minmove />
-                      </label>
-                    </div>
-                    <p className="op-hint">
-                      Size: <b className="ex-n">{sizeStr || 'N/D'}</b> share per lato — la stessa del campo qui sopra.
-                      {fin(maxSpreadCents) && <> Raggio premiante <b className="ex-n">{(maxSpreadCents / 2).toFixed(2)}¢</b>: un offset piu&apos; largo mette quel lato fuori banda.</>}
-                    </p>
-
-                    {/* ANTEPRIMA CALCOLATA IN LOCALE, prima ancora del primo passo: dove finirebbero i
-                        due ordini col mid di adesso. Usa la stessa funzione del motore. */}
-                    {(() => {
-                      const off = Number(trkOffset);
-                      // `engineMid`, NON il mid del lato che si sta guardando. Il tracking quota
-                      // entrambi i lati a partire dal mid del book YES, ed e' il mid di SCORING quello
-                      // che il motore usa davvero: l'anteprima deve mostrare i prezzi che verrebbero
-                      // piazzati, non quelli che si otterrebbero da un mid diverso. Da quando il pannello
-                      // disegna il book del lato selezionato, `mid` cambia col toggle YES/NO — e passarlo
-                      // qui avrebbe fatto ribaltare l'anteprima insieme al toggle.
-                      if (!fin(off) || off <= 0 || !fin(engineMid) || !fin(tick)) return null;
-                      const p = planQuotes({ mid: engineMid, offsetCents: off, tick, bandRadiusCents: maxSpreadCents != null ? maxSpreadCents / 2 : null });
-                      if (!p.ok) return <p className="ex-flag is-bad"><span className="ex-flag-i">⚠</span><span>{p.reason}</span></p>;
-                      return (
-                        <div className="op-trk-prev" data-op-trk-preview>
-                          {(['yes', 'no'] as const).map((k) => {
-                            const q = p[k];
-                            if (!q) return null;
-                            // L'anteprima mostra SOLO i lati che verrebbero davvero quotati. Disegnare
-                            // anche l'altro, magari sbiadito, farebbe credere che venga piazzato.
-                            if (trkSides !== 'both' && trkSides !== k) return null;
-                            return (
-                              <div key={k} className="op-trk-leg" data-op-trk-leg={k}>
-                                <span className={`ex-side ${k === 'yes' ? 'is-yes' : 'is-no'}`}>BUY {k.toUpperCase()}</span>
-                                <span className="ex-n op-trk-px">{q.placeable ? `${q.priceCents}¢` : 'N/D'}</span>
-                                {k === 'no' && q.placeable && <span className="ex-dim">= vendi YES a {(100 - (q.priceCents as number)).toFixed(1)}¢</span>}
-                                {q.inBand === false && <span className="ex-badge is-warn" data-op-trk-outband>fuori banda — nessun reward su questo lato</span>}
-                                {q.inBand === true && <span className="ex-badge is-ok">in banda</span>}
-                                {!q.placeable && <span className="ex-badge is-bad">{q.reason}</span>}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      );
-                    })()}
-
-                    {trkStep === 'review' && trkPreview?.plan && (
-                      <div className="op-review" data-op-trk-review>
-                        <div className="op-review-h">Rivedi la configurazione prima di attivare</div>
-                        <div className="ex-kvs">
-                          <div className="ex-kv"><span className="ex-kv-k">mercato</span><span className="ex-kv-v op-wrap">{target.title}</span></div>
-                          <div className="ex-kv"><span className="ex-kv-k">lati</span>
-                            <span className="ex-kv-v" data-op-trk-review-sides={trkSides}>
-                              {trkSides === 'both' ? 'entrambi (YES e NO)' : `SOLO ${trkSides.toUpperCase()}`}
-                            </span>
-                          </div>
-                          <div className="ex-kv"><span className="ex-kv-k">offset</span><span className="ex-kv-v">{trkOffset}¢</span></div>
-                          <div className="ex-kv"><span className="ex-kv-k">soglia</span><span className="ex-kv-v">{trkMinMove}¢</span></div>
-                          <div className="ex-kv"><span className="ex-kv-k">size/lato</span><span className="ex-kv-v">{sizeStr}</span></div>
-                          {trkSides !== 'no' && <div className="ex-kv"><span className="ex-kv-k">BUY YES</span><span className="ex-kv-v">{trkPreview.plan.yes?.priceCents ?? 'N/D'}¢</span></div>}
-                          {trkSides !== 'yes' && <div className="ex-kv"><span className="ex-kv-k">BUY NO</span><span className="ex-kv-v">{trkPreview.plan.no?.priceCents ?? 'N/D'}¢</span></div>}
-                        </div>
-                        {/* GLI ORDINI CHE VERREBBERO CANCELLATI, se questa attivazione ritira un lato
-                            che era acceso. Il server li ha letti dal venue durante l'anteprima: qui si
-                            dicono prima della conferma, non si scoprono dopo. */}
-                        {Array.isArray(trkPreview.ordersToRetire) && trkPreview.ordersToRetire.length > 0 && (
-                          <p className="ex-flag is-bad" data-op-trk-retire>
-                            <span className="ex-flag-i" aria-hidden="true">⚠</span>
-                            <span>
-                              Ci sono <b>{trkPreview.ordersToRetire.length}</b> ordini sul lato che stai togliendo:
-                              confermando vengono <b>cancellati subito</b>, non lasciati scadere.
-                            </span>
-                          </p>
-                        )}
-                        <p className="op-hint">
-                          Attivando, il motore piazza e riprezza da solo su questo mercato finche&apos; non lo
-                          spegni: <b>niente conferma ordine per ordine</b>. Restano in vigore kill-switch, tetto
-                          per ordine, gestione manuale e il blocco a 3 minuti dalla chiusura.
-                        </p>
-                      </div>
-                    )}
-
-                    {trkStep === 'form' ? (
-                      <button className="ex-btn is-gold op-trk-btn" // `Number('')` vale 0, che e' finito: controllare solo la finitezza rendeva il pulsante premibile a
-                        // campi vuoti, e il rifiuto sarebbe arrivato dal server invece che dallo schermo.
-                        disabled={trkBusy || !(Number(trkOffset) > 0) || !(Number(trkMinMove) > 0) || !(size > 0)}
-                        onClick={async () => {
-                          const r = await trkCall({ enabled: true, preview: true, sides: trkSides, offsetCents: Number(trkOffset), minMoveCents: Number(trkMinMove), sizeShares: size });
-                          if (r.ok) { setTrkPreview(r); setTrkStep('review'); } else setTrkMsg(r.error ?? 'anteprima non riuscita');
-                        }}
-                        data-op-trk-review-btn>
-                        {trkBusy ? 'Calcolo…' : 'Rivedi configurazione'}
-                      </button>
-                    ) : (
-                      <div className="op-trk-choice">
-                        <button className="ex-btn op-trk-btn" onClick={() => setTrkStep('form')} data-op-trk-back>Modifica</button>
-                        <button className="ex-btn is-danger op-trk-btn" disabled={trkBusy}
-                          onClick={async () => {
-                            const r = await trkCall({ enabled: true, preview: false, sides: trkSides, offsetCents: Number(trkOffset), minMoveCents: Number(trkMinMove), sizeShares: size });
-                            setTrkMsg(r.note ?? r.error ?? null);
-                            if (r.ok) { setTrkActive((r as { record?: TrackRecord }).record ?? null); setTrkStep('form'); }
-                          }}
-                          data-op-trk-activate>
-                          {trkBusy ? 'Attivo…' : 'Attiva tracking'}
-                        </button>
-                      </div>
-                    )}
-                  </>
-                )}
-                {trkMsg && <div className="ex-banner op-mb" data-op-trk-msg>{trkMsg}</div>}
-              </div>
-            )}
-          </div>
-
-          {/* ── PIAZZAMENTO MANUALE A UN LATO ─────────────────────────────────────────────────────
-              L'alternativa al tracking: un ordine solo, su un lato solo, deciso adesso. */}
-          {/* L'ANCORA DELLO SCORRIMENTO. Toccare una riga del book porta qui: e' il punto in cui il
-              prezzo appena scelto e' diventato un campo compilabile, e vederlo da soli richiederebbe
-              di scorrere oltre il book e oltre il pannello del motore. */}
-          <div className="op-eyebrow" ref={manualRef} data-op-eyebrow="manual" data-op-manual-section>
-            Piazzamento manuale
-            <span className="op-eyebrow-r">un lato · un ordine</span>
-          </div>
-
-          {/* ── 3 · LATO ──────────────────────────────────────────────────────────────────────── */}
-          <div className="op-field">
-            <div className="op-label">Lato</div>
-            <div className="op-seg" role="group" aria-label="Book">
-              <button className={`op-segb ${book === 'yes' ? 'is-yes' : ''}`} onClick={() => setBook('yes')} data-op-book="yes">BUY YES</button>
-              <button className={`op-segb ${book === 'no' ? 'is-no' : ''}`} onClick={() => setBook('no')} data-op-book="no">BUY NO</button>
-            </div>
-            {/* Onestà su cosa questo percorso può fare: una VENDITA consegna il token, quindi richiede di
-                possederlo, e l'endpoint manuale non accetta il lato SELL. Comprare NO è il modo con cui
-                un maker a collaterale offre l'altro lato. */}
-            <div className="op-hint">
-              Solo acquisti: una vendita consegna il token e richiede di possederlo. «BUY NO a q» è
-              l&apos;equivalente di «vendi YES a 1−q».
-            </div>
-          </div>
-
-          {/* ── 4 · SIZE ──────────────────────────────────────────────────────────────────────── */}
-          <div className="op-field">
-            <div className="op-label">
-              Size (share)
-              <span className="op-labelhint">
-                min. premiante {minSize ?? 'N/D'}
-                {fin(target.presetSize) ? ` · precompilata dal piano` : ''}
-              </span>
-            </div>
-            <input className={`ex-input op-input ${problems.some((p) => p.key === 'minsize' || p.key === 'size') ? 'is-bad' : ''}`}
-              type="number" inputMode="decimal" value={sizeStr} data-op-size
-              onChange={(e) => { setSizeStr(e.target.value); setSizeTouched(true); setStep('form'); }} />
-            {fin(minSize) && (
-              <button className="ex-link op-fix" onClick={() => { setSizeStr(String(minSize)); setSizeTouched(true); }} data-op-use-min>usa il minimo</button>
-            )}
-          </div>
-
-          {/* ── 5 · PREZZO ────────────────────────────────────────────────────────────────────── */}
-          <div className="op-field">
-            <div className="op-label">
-              Prezzo
-              <span className="op-labelhint">
-                tick {tick ?? 'N/D'} · mid {cents(mid)}
-                {priceTouched && <b className="ex-gold"> · prezzo tuo, non lo tocchiamo</b>}
-              </span>
-            </div>
-            <input className={`ex-input op-input ${problems.some((p) => p.key === 'tick' || p.key === 'price') ? 'is-bad' : ''} ${flashing ? 'is-flash' : ''}`}
-              type="number" inputMode="decimal" step={tick ?? 0.01} value={priceStr} data-op-price
-              data-op-price-flash={flashing ? '1' : '0'}
-              data-op-price-touched={priceTouched ? '1' : '0'}
-              onChange={(e) => { setPriceStr(e.target.value); setPriceTouched(true); setStep('form'); }} />
-            {fin(tick) && fin(price) && !onTick(price, tick as number) && (
-              <button className="ex-link op-fix" onClick={() => { setPriceStr(String(snapToTick(price, tick as number))); setPriceTouched(true); }} data-op-use-tick>
-                usa {snapToTick(price, tick as number)}
-              </button>
-            )}
-
-            {/* ── L'AVVISO CHE SI AGGIORNA A OGNI MODIFICA ────────────────────────────────────────
-                Sia che il prezzo arrivi da un tocco sul book sia che venga digitato: e' lo stesso
-                stato, quindi e' lo stesso avviso.
-                  verde  = resta sul book come maker, dentro la banda;
-                  giallo = FUORI BANDA — non matura reward, ma si piazza: e' un costo dichiarato, e
-                           l'operatore puo' volerlo. Nessun pulsante viene disabilitato da qui;
-                  rosso  = incrocia il book, quindi si eseguirebbe subito invece di riposare. */}
-            {verdict && (
-              <div className={`op-verdict ${verdict.level === 'ok' ? 'is-ok' : verdict.level === 'bad' ? 'is-bad' : verdict.level === 'warn' ? 'is-warn' : 'is-unk'}`}
-                data-op-price-verdict={verdict.level}
-                data-op-verdict-crosses={verdict.crosses ? '1' : '0'}
-                data-op-verdict-outofband={verdict.outOfBand === null ? '' : verdict.outOfBand ? '1' : '0'}
-                role="status" aria-live="polite">
-                <span className="op-verdict-i" aria-hidden="true">
-                  {verdict.level === 'ok' ? '✓' : verdict.level === 'bad' ? '⛔' : verdict.level === 'warn' ? '⚠' : 'ⓘ'}
-                </span>
-                <span className="op-verdict-tx">
-                  {verdict.messages.map((m, i) => <span key={i} className="op-verdict-l">{m}</span>)}
-                </span>
-              </div>
-            )}
-          </div>
-
-          {/* ── 6 · DURATA ────────────────────────────────────────────────────────────────────── */}
-          <div className="op-field">
-            <div className="op-label">Durata</div>
-            <div className="op-hint" data-op-ttl>
-              GTD <b className="ex-n">{Math.round(ttlSeconds / 60)} min</b>
-              {repriceOn && autoRenew ? (
-                <> · <b>rinnovo automatico attivo</b>: si rinnova {Math.round((refreshMargin ?? 180) / 60)} minuti prima della scadenza</>
-              ) : (
-                <> · one-shot: nessun rinnovo, l&apos;ordine scade e basta</>
-              )}
-            </div>
-            {repriceOn && (
-              <label className="op-check">
-                <input type="checkbox" checked={autoRenew} onChange={(e) => setAutoRenew(e.target.checked)} data-op-autorenew />
-                <span>lascia il rinnovo automatico su questo ordine</span>
-              </label>
-            )}
-          </div>
-
-          {/* ── 7 · CONTROVALORE ──────────────────────────────────────────────────────────────── */}
-          <div className="op-notional" data-op-notional>
-            <span className="op-label">Controvalore</span>
-            <span className="op-notional-v ex-n">{money(notional)}</span>
-            {fin(cfg?.caps?.effectiveOrderCapUsd) && <span className="op-hint">tetto per ordine {money(cfg!.caps.effectiveOrderCapUsd)}</span>}
-          </div>
-
-          {/* ── 8 · AVVISI ────────────────────────────────────────────────────────────────────── */}
-          {problems.length > 0 && (
-            <div className="op-probs" data-op-problems>
-              {problems.map((p) => (
-                <p key={p.key} className={`ex-flag ${p.blocking ? 'is-bad' : ''}`} data-op-problem={p.key}>
-                  <span className="ex-flag-i" aria-hidden="true">{p.blocking ? '⛔' : '⚠'}</span>
-                  <span>{p.text}</span>
-                </p>
-              ))}
-            </div>
-          )}
-
-          {/* ── 9 · RIEPILOGO ─────────────────────────────────────────────────────────────────── */}
-          {step === 'review' && (
-            <div className="op-review" data-op-review>
-              <div className="op-review-h">Rivedi prima di confermare</div>
-              <div className="ex-kvs">
-                <div className="ex-kv"><span className="ex-kv-k">mercato</span><span className="ex-kv-v op-wrap">{target.title}</span></div>
-                <div className="ex-kv"><span className="ex-kv-k">lato</span><span className="ex-kv-v">BUY {book.toUpperCase()}</span></div>
-                <div className="ex-kv"><span className="ex-kv-k">size</span><span className="ex-kv-v">{size}</span></div>
-                <div className="ex-kv"><span className="ex-kv-k">prezzo</span><span className="ex-kv-v">{price}</span></div>
-                <div className="ex-kv"><span className="ex-kv-k">controvalore</span><span className="ex-kv-v">{money(notional)}</span></div>
-                <div className="ex-kv"><span className="ex-kv-k">durata</span><span className="ex-kv-v">GTD {Math.round(ttlSeconds / 60)}m</span></div>
-              </div>
-            </div>
-          )}
-
-          {/* ── ESITO ─────────────────────────────────────────────────────────────────────────── */}
-          {result && (
-            <div className={`ex-banner ${result.ok ? (result.sent ? 'is-ok' : 'is-warn') : 'is-bad'} op-mb`} data-op-result>
-              {result.ok ? (
-                result.sent
-                  ? <><b>ORDINE INVIATO AL VENUE.</b>{result.orderId ? <> orderId <span className="ex-n">{result.orderId}</span></> : null}</>
-                  : <><b data-op-dryrun>DRY-RUN — nessun ordine reale piazzato.</b> L&apos;ordine è stato costruito, firmato e validato dal venue, poi scartato (placement={result.placement ?? 'dry-run'}).</>
-              ) : (
-                <><b>Rifiutato al gate {result.gate ?? '—'}</b>: {result.reason ?? '—'}</>
-              )}
-              {/* L'ordine è passato E non matura reward: due fatti veri insieme. Detto qui, dopo l'esito,
-                  perché a piazzamento avvenuto è l'unica cosa che resta da sapere su quel prezzo. */}
-              {result.ok && result.bandAdvisory && (
-                <span className="op-banner-sub" data-op-band-advisory>
-                  ⚠ Fuori dalla banda reward: questo ordine riposa regolarmente ma NON matura reward.
-                </span>
-              )}
-            </div>
-          )}
-          {/* ── CHIUSURA AUTOMATICA ───────────────────────────────────────────────────────────────
-              SUBITO SOTTO IL PIAZZAMENTO MANUALE, e non piu' accanto al Tracking. La ragione e' il
-              flusso: si arriva qui dopo aver toccato una riga del book e aver visto il prezzo compilarsi,
-              e la domanda successiva — «e quando viene eseguito, chi lo chiude?» — ha senso adesso, non
-              tre schermate prima. Resta un pannello che si apre da solo, senza popup: chi non la vuole
-              lo scorre e basta.
-
-              Ha lo stesso aspetto del Tracking perche' e' la stessa categoria di potere: qualcosa che
-              agisce da solo. Ma e' un potere DIVERSO — il tracking piazza acquisti su due lati per fare
-              mercato, questo VENDE il token che un fill ha prodotto — quindi ha un interruttore suo e
-              non eredita quello del tracking. Un operatore che ne accende uno non ha acceso l'altro.
-
-              DUE INTERRUTTORI, ENTRAMBI NECESSARI, com'e' nel motore: un generale e uno per questo
-              mercato. Il pannello li mostra separati invece di fonderli in un solo comando, perche'
-              fonderli vorrebbe dire accendere un potere globale mentre si crede di toccare un mercato. */}
-          <div className="op-trk op-mb" data-op-autoclose>
-            <button className="op-trk-head" onClick={() => setAcOpen((v) => !v)} data-op-ac-toggle aria-expanded={acOpen}>
-              <span className="op-trk-bolt" aria-hidden="true">⚡</span>
-              <span className="op-trk-t">
-                Chiusura automatica <span className="ex-dim">· vende dopo un fill</span>
-              </span>
-              <span className="op-trk-auto" data-op-ac-auto>AUTO</span>
-              {/* TRE STATI, NON DUE. «non letto» e' un terzo esito reale e non viene mai dipinto come
-                  «spento»: un automatismo il cui stato non conosciamo potrebbe essere acceso. */}
-              <span
-                className={`ex-badge ${acState == null ? '' : acState.market?.enabled ? 'is-gold' : ''}`}
-                data-op-ac-state={acState == null ? 'unknown' : acState.market?.enabled ? 'on' : 'off'}>
-                {acState == null ? 'non letto' : acState.market?.enabled ? 'ATTIVA' : 'spenta'}
-              </span>
-              <span className="op-trk-caret" aria-hidden="true">{acOpen ? '▾' : '▸'}</span>
-            </button>
-
-            {acOpen && (
-              <div className="op-trk-body">
-                {acState == null ? (
-                  <p className="ex-flag is-bad" data-op-ac-unknown>
-                    <span className="ex-flag-i" aria-hidden="true">⚠</span>
-                    <span>Stato della chiusura automatica NON letto per questo mercato. Non e&apos; la stessa cosa di
-                      &laquo;spenta&raquo;: finche&apos; non si legge, non si puo&apos; dire se sia attiva.</span>
-                  </p>
-                ) : (
-                  <>
-                    {/* I DUE INTERRUTTORI, DETTI SEPARATAMENTE. Il generale non e' una casella tecnica:
-                        e' cio' che decide se questo mercato conti qualcosa. */}
-                    <div className="ex-kvs op-mb" data-op-ac-switches>
-                      <div className="ex-kv">
-                        <span className="ex-kv-k">interruttore generale</span>
-                        <span className="ex-kv-v" data-op-ac-global={acState.globalEnabled ? 'on' : 'off'}>
-                          {acState.globalEnabled ? 'acceso' : 'SPENTO'}
-                        </span>
-                      </div>
-                      <div className="ex-kv">
-                        <span className="ex-kv-k">questo mercato</span>
-                        <span className="ex-kv-v" data-op-ac-market={acState.market?.marketEnabled ? 'on' : 'off'}>
-                          {acState.market?.marketEnabled ? 'acceso' : 'spento'}
-                        </span>
-                      </div>
-                      <div className="ex-kv">
-                        <span className="ex-kv-k">uscita a</span>
-                        <span className="ex-kv-v">carico +{acState.profitCents ?? 1}¢</span>
-                      </div>
-                      <div className="ex-kv">
-                        <span className="ex-kv-k">in vigore qui</span>
-                        <span className="ex-kv-v">{acState.market?.enabled ? 'sì' : 'no'}</span>
-                      </div>
-                    </div>
-
-                    {/* PERCHE' NON AGISCE, quando non agisce. La ragione arriva dal motore, non da una
-                        frase ricomposta qui: e' la stessa che finirebbe nell'audit. */}
-                    {acState.market && !acState.market.enabled && acState.market.reason && (
-                      <p className="ex-flag is-dim" data-op-ac-reason>
-                        <span className="ex-flag-i" aria-hidden="true">ⓘ</span><span>{acState.market.reason}</span>
-                      </p>
-                    )}
-
-                    {/* ── DUE COSE VERE CHE VANNO DETTE PRIMA, NON DOPO ────────────────────────────
-                        Nessuna delle due e' un difetto di questo comando, ma entrambe cambiano cosa ci
-                        si puo' aspettare — e scoprirle a fill avvenuto sarebbe scoprirle troppo tardi. */}
-                    <p className="op-hint" data-op-ac-latency>
-                      Il fill viene rilevato leggendo le posizioni dal venue, e quella lettura gira
-                      <b> ogni 60 secondi</b>: fra il riempimento e l&apos;ordine di uscita passa fino a un minuto.
-                      {fin(minsLeft) && (minsLeft as number) < 5 && (
-                        <> <b className="ex-gold">Su questo mercato restano {closeTxt(minsLeft)}</b>: sotto i 5 minuti
-                          di vita residua nessun ordine nuovo viene piazzato, quindi un&apos;uscita automatica
-                          verrebbe rifiutata al gate dell&apos;orologio.</>
-                      )}
-                    </p>
-
-                    {acState.market?.enabled ? (
-                      <button className="ex-btn is-danger op-trk-btn" disabled={acBusy}
-                        onClick={async () => { await acCall('market', false); setAcStep('form'); }}
-                        data-op-ac-off>
-                        {acBusy ? 'Spengo…' : 'Disattiva su questo mercato'}
-                      </button>
-                    ) : acStep === 'form' ? (
-                      <button className="ex-btn is-gold op-trk-btn" disabled={acBusy}
-                        onClick={() => setAcStep('review')} data-op-ac-review-btn>
-                        Rivedi attivazione
-                      </button>
-                    ) : (
-                      <>
-                        <div className="op-review" data-op-ac-review>
-                          <div className="op-review-h">Rivedi prima di attivare</div>
-                          <div className="ex-kvs">
-                            <div className="ex-kv"><span className="ex-kv-k">mercato</span><span className="ex-kv-v op-wrap">{target.title}</span></div>
-                            <div className="ex-kv"><span className="ex-kv-k">azione</span><span className="ex-kv-v">VENDITA del token posseduto</span></div>
-                            <div className="ex-kv"><span className="ex-kv-k">prezzo</span><span className="ex-kv-v">carico +{acState.profitCents ?? 1}¢, arrotondato in su al tick</span></div>
-                            <div className="ex-kv"><span className="ex-kv-k">size</span><span className="ex-kv-v">quella che il VENUE dice posseduta</span></div>
-                          </div>
-                          <p className="op-hint">
-                            Attivando, dopo ogni fill su questo mercato viene piazzata da sola una vendita di
-                            uscita, <b>senza conferma ordine per ordine</b>, finche&apos; non la spegni. Passa dagli
-                            stessi gate di ogni altro ordine: kill-switch, tetto per ordine, gestione manuale,
-                            regole di venue e validateOrder.
-                            {!acState.globalEnabled && (
-                              <> <b className="ex-gold">L&apos;interruttore generale e&apos; spento</b>: accendere qui
-                                registra la scelta su questo mercato ma non fara&apos; ancora nulla, finche&apos; non
-                                accendi anche quello.</>
-                            )}
-                          </p>
-                        </div>
-                        <div className="op-trk-choice">
-                          <button className="ex-btn op-trk-btn" onClick={() => setAcStep('form')} data-op-ac-back>Modifica</button>
-                          <button className="ex-btn is-danger op-trk-btn" disabled={acBusy}
-                            onClick={async () => { const ok = await acCall('market', true); if (ok) setAcStep('form'); }}
-                            data-op-ac-activate>
-                            {acBusy ? 'Attivo…' : 'Attiva su questo mercato'}
-                          </button>
-                        </div>
-                      </>
-                    )}
-
-                    {/* L'INTERRUTTORE GENERALE, IN FONDO E DETTO PER QUELLO CHE E'. Non e' una casella
-                        di questo mercato: vale per tutti quelli abilitati, presenti e futuri. Sta qui
-                        sotto, separato e con la sua etichetta, perche' non lo si prema credendo di
-                        toccare solo il mercato aperto. */}
-                    <div className="op-ac-master" data-op-ac-master>
-                      <span className="op-ac-master-k">
-                        Interruttore GENERALE — vale per <b>tutti</b> i mercati abilitati, non solo questo
-                      </span>
-                      {acState.globalEnabled ? (
-                        <button className="ex-link op-trk-btn" disabled={acBusy}
-                          onClick={() => acCall('global', false)} data-op-ac-master-off>
-                          spegni il generale
-                        </button>
-                      ) : (
-                        <button className="ex-link op-trk-btn" disabled={acBusy}
-                          onClick={() => acCall('global', true)} data-op-ac-master-on>
-                          accendi il generale
-                        </button>
-                      )}
-                    </div>
-                  </>
-                )}
-                {acMsg && <div className="ex-banner op-mb" data-op-ac-msg>{acMsg}</div>}
-              </div>
-            )}
-          </div>
         </div>
 
-        {/* ── 10 · LE DUE AZIONI, in fondo e sempre visibili ───────────────────────────────────── */}
-        <div className="op-actions">
-          {step === 'form' ? (
-            <button className="ex-btn is-gold op-primary" disabled={!canReview} onClick={() => setStep('review')} data-op-review-btn>
-              Rivedi ordine
-            </button>
-          ) : (
-            <>
-              <button className="ex-btn op-back" onClick={() => setStep('form')} data-op-back>Modifica</button>
-              <button
-                className={`ex-btn op-primary ${sends ? 'is-danger' : 'is-gold'}`}
-                disabled={busy || !canReview}
-                onClick={place}
-                data-op-confirm
-                data-op-sends={sends ? '1' : '0'}
-              >
-                {busy ? 'Invio…' : sends ? 'Conferma e piazza — INVIA DAVVERO' : 'Conferma e piazza (dry-run)'}
-              </button>
-            </>
-          )}
-        </div>
 
-        {/* ══ IL FOGLIO RAPIDO ═══════════════════════════════════════════════════════════════════
-            Sale dal basso al tocco di una riga e porta dal gesto alla conferma senza scorrere. Vive
-            DENTRO il pannello, sopra tutto il resto, e usa le stesse classi: e' la stessa schermata
-            in una forma piu' corta, non una seconda schermata con regole sue.
+        {/* ══ IL POPUP — L'UNICO PERCORSO OPERATIVO ══════════════════════════════════════════════
+            La pagina sotto e' diventata sola lettura: stato, dati di mercato, book. Ogni decisione —
+            lato, size, prezzo, motore, chiusura automatica — si prende qui dentro.
 
-            SCRIVE ATTRAVERSO `place()`, la stessa funzione del pannello lungo. Non esiste un secondo
-            percorso verso il venue: gli stessi gate, gli stessi due tocchi, lo stesso audit. */}
+            PERCHE' UNO SOLO. Prima gli stessi controlli esistevano due volte: nei pannelli lunghi e
+            qui. Due copie della stessa scelta sono due posti dove leggere uno stato diverso, e la
+            domanda «ma allora quale vale?» non ha una buona risposta. Ora la risposta e' una.
+
+            NON HA UNO STATO SUO. Lato, prezzo, size, offset, soglia, lati quotati e chiusura
+            automatica sono lo STESSO stato di prima, e la conferma chiama le STESSE funzioni —
+            `place()` per l'ordine singolo, `trkCall()` per il motore. Nessun secondo percorso verso
+            il venue: stessi gate, stesso audit.
+
+            INTESTAZIONE E AZIONI FISSE, solo il centro scorre: su uno schermo piccolo il pulsante che
+            invia non deve mai poter finire fuori vista. */}
         {sheetOpen && (
           <div className="op-qs-scrim" data-op-quicksheet-scrim
             onClick={() => { setSheetOpen(false); setSheetStep('form'); }}>
             <div className="op-qs" data-op-quicksheet data-op-qs-step={sheetStep}
-              role="dialog" aria-modal="true" aria-label="Ordine rapido"
+              role="dialog" aria-modal="true" aria-label="Configura ordine"
               onClick={(e) => e.stopPropagation()}>
               <div className="op-qs-grab" aria-hidden="true" />
 
-              {/* ── 1 · INTESTAZIONE ─────────────────────────────────────────────────────────── */}
+              {/* ── INTESTAZIONE (fissa) ─────────────────────────────────────────────────────── */}
               <div className="op-qs-head">
                 <div className="op-qs-h-txt">
                   <div className="op-qs-t" data-op-qs-title>
@@ -1723,7 +1130,7 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
                     <span className="ex-dim"> · {sheetBelow ? 'sotto il mid' : 'sopra il mid'}</span>
                   </div>
                   <div className="op-qs-s" data-op-qs-sub>
-                    riga toccata <b className="ex-n">{cents(price)}</b> · mid <b className="ex-n">{cents(mid)}</b>
+                    riga toccata <b className="ex-n">{cents(pickedPrice)}</b> · mid <b className="ex-n">{cents(mid)}</b>
                   </div>
                 </div>
                 <button className="op-x" onClick={() => { setSheetOpen(false); setSheetStep('form'); }}
@@ -1733,30 +1140,22 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
               <div className="op-qs-body">
                 {sheetStep === 'form' ? (
                   <>
-                    {/* IL LATO resta modificabile: la riga toccata lo propone, non lo impone. */}
+                    {/* ── 1 · LATO ────────────────────────────────────────────────────────────── */}
                     <div className="op-field">
                       <div className="op-label">Lato</div>
-                      <div className="op-seg" role="group" aria-label="Book">
-                        <button className={`op-segb ${book === 'yes' ? 'is-yes' : ''}`} onClick={() => setBook('yes')} data-op-qs-book="yes">BUY YES</button>
-                        <button className={`op-segb ${book === 'no' ? 'is-no' : ''}`} onClick={() => setBook('no')} data-op-qs-book="no">BUY NO</button>
+                      <div className="op-qs-sides" role="group" aria-label="Lato">
+                        <button className={`op-qs-side ${book === 'yes' ? 'is-yes' : ''}`}
+                          onClick={() => setBook('yes')} data-op-qs-book="yes" aria-pressed={book === 'yes'}>
+                          BUY YES
+                        </button>
+                        <button className={`op-qs-side ${book === 'no' ? 'is-no' : ''}`}
+                          onClick={() => setBook('no')} data-op-qs-book="no" aria-pressed={book === 'no'}>
+                          BUY NO
+                        </button>
                       </div>
                     </div>
 
-                    {/* L'AVVISO DELL'INCROCIO, dallo STESSO verdetto del pannello lungo. Non e' una
-                        seconda valutazione: e' la stessa, mostrata piu' vicino al dito. */}
-                    {verdict && verdict.level !== 'ok' && (
-                      <div className={`op-verdict ${verdict.level === 'bad' ? 'is-bad' : verdict.level === 'warn' ? 'is-warn' : 'is-unk'}`}
-                        data-op-qs-verdict={verdict.level} role="status" aria-live="polite">
-                        <span className="op-verdict-i" aria-hidden="true">
-                          {verdict.level === 'bad' ? '⛔' : verdict.level === 'warn' ? '⚠' : 'ⓘ'}
-                        </span>
-                        <span className="op-verdict-tx">
-                          {verdict.messages.map((m, i) => <span key={i} className="op-verdict-l">{m}</span>)}
-                        </span>
-                      </div>
-                    )}
-
-                    {/* ── 2 · SIZE, in percentuale ────────────────────────────────────────────── */}
+                    {/* ── 2 · SIZE ────────────────────────────────────────────────────────────── */}
                     <div className="op-field">
                       <div className="op-label">
                         Size
@@ -1766,12 +1165,12 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
                         <>
                           <input className="op-qs-slider" type="range" min={0} max={100} step={1}
                             value={sizePct} data-op-qs-size-slider
-                            aria-label="Size, da minima premiante a massimo acquistabile"
+                            aria-label="Size, dalla minima premiante al massimo consentito"
                             onChange={(e) => {
                               const s = sizeFromPct(Number(e.target.value));
-                              if (s != null) { setSizeStr(String(s)); setSizeTouched(true); setStep('form'); }
+                              if (s != null) { setSizeStr(String(s)); setSizeTouched(true); }
                             }} />
-                          <div className="op-qs-ends" aria-hidden="true">
+                          <div className="op-qs-ends" data-op-qs-ends>
                             <span>0% · {sizeRange.lo} share</span>
                             <span>100% · {sizeRange.hi} share</span>
                           </div>
@@ -1779,22 +1178,39 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
                             <b className="ex-n">{fin(size) ? size : 'N/D'}</b> share
                             <span className="ex-dim"> · </span>
                             <b className="ex-n">{money(notional)}</b>
-                            {fin(orderCapUsd) && <span className="ex-dim"> · tetto {money(orderCapUsd)}</span>}
+                            {fin(orderCapUsd) && <span className="ex-dim"> · tetto per ordine {money(orderCapUsd)}</span>}
                           </div>
+                          {/* QUALE DEI DUE LIMITI HA FERMATO IL 100%: senza dirlo, un massimo basso
+                              sembra un saldo basso anche quando e' il tetto che morde. */}
+                          <p className="op-hint" data-op-qs-bound={sizeRange.boundBy ?? ''}>
+                            Il 100% e&apos; fermato {sizeRange.boundBy === 'tetto-ordine'
+                              ? <>dal <b>tetto per ordine</b> ({money(orderCapUsd)}), non dal saldo.</>
+                              : <>dal <b>capitale disponibile</b> ({money(balanceUsd)}).</>}
+                          </p>
+                          {/* ── IL CURSORE SENZA CORSA ────────────────────────────────────────────
+                              Quando gia' la size minima premiante costa piu' del tetto per ordine, i due
+                              estremi coincidono e il cursore non puo' esprimere nulla: qualunque
+                              posizione dia lo stesso numero, e quel numero e' comunque oltre il tetto.
+                              Detto cosi' e' un fatto azionabile — alzare il tetto, o accettare che su
+                              questo mercato a questo prezzo non si maturi — invece di un cursore muto
+                              e un rifiuto generico piu' in basso. */}
+                          {sizeRange.hi === sizeRange.lo && (
+                            <p className="ex-flag is-bad" data-op-qs-size-degenere>
+                              <span className="ex-flag-i" aria-hidden="true">⛔</span>
+                              <span>
+                                A {cents(price)} la size minima premiante ({sizeRange.lo} share) costa {money((sizeRange.lo ?? 0) * (price as number))},
+                                {fin(orderCapUsd) && <> oltre il tetto per ordine di {money(orderCapUsd)}</>}: il cursore non ha corsa e
+                                l&apos;ordine verrebbe rifiutato. Serve alzare il tetto, oppure un prezzo più basso.
+                              </span>
+                            </p>
+                          )}
                         </>
                       ) : (
                         /* NON si disegna un cursore su una scala che non conosciamo: 0% senza una size
                            minima pubblicata, o 100% senza un saldo letto, sarebbero due estremi finti. */
                         <p className="ex-flag is-dim" data-op-qs-size-unknown>
                           <span className="ex-flag-i" aria-hidden="true">ⓘ</span>
-                          <span>Il cursore non è disponibile: manca {!fin(minSize) ? 'la size minima premiante del venue' : 'il saldo disponibile'}.
-                            La size resta modificabile a mano nel pannello sotto.</span>
-                        </p>
-                      )}
-                      {overCap && (
-                        <p className="ex-flag is-bad" data-op-qs-overcap>
-                          <span className="ex-flag-i" aria-hidden="true">⛔</span>
-                          <span>Controvalore {money(notional)} oltre il tetto per ordine {money(orderCapUsd)}.</span>
+                          <span>Cursore non disponibile: manca {!fin(minSize) ? 'la size minima premiante del venue' : 'il saldo disponibile'}.</span>
                         </p>
                       )}
                     </div>
@@ -1809,50 +1225,172 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
                         <button className="op-qs-btn" onClick={() => stepDist(-0.25)} data-op-qs-dist-minus aria-label="Riduci la distanza">−</button>
                         <div className="op-qs-val">
                           <b className="ex-n" data-op-qs-dist>{fin(sheetDistC) ? `${(sheetDistC as number).toFixed(2)}¢` : 'N/D'}</b>
-                          {/* IL PREZZO ASSOLUTO accanto alla distanza: e' quello che finisce nell'ordine,
-                              e una distanza senza il prezzo che produce si legge a meta'. */}
-                          <span className="ex-dim" data-op-qs-dist-price> → {cents(priceFromDist(sheetDistC))}</span>
+                          <span className="ex-dim" data-op-qs-dist-price>→ {cents(priceFromDist(sheetDistC))}</span>
                         </div>
                         <button className="op-qs-btn" onClick={() => stepDist(0.25)} data-op-qs-dist-plus aria-label="Aumenta la distanza">+</button>
                       </div>
-                      {/* BANDA: verde dentro, giallo fuori — avviso, non blocco, come in tutto il resto
-                          del pannello. TICK: blocco pieno, perche' quello lo rifiuta il venue. */}
-                      <div className="op-qs-badges">
-                        {verdict?.outOfBand === true && (
-                          <span className="ex-badge is-warn" data-op-qs-band="out">fuori banda — non matura reward, ma è piazzabile</span>
-                        )}
-                        {verdict?.outOfBand === false && (
-                          <span className="ex-badge is-ok" data-op-qs-band="in">dentro la banda reward</span>
-                        )}
-                        {problems.some((p) => p.key === 'tick') && (
-                          <span className="ex-badge is-bad" data-op-qs-tick="off">fuori griglia del tick {tick} — bloccante</span>
-                        )}
-                      </div>
+
+                      {/* ── IL BOX DI VALIDAZIONE, TRE STATI ─────────────────────────────────────
+                          Rosso = l'ordine non farebbe quello che sembra, o il venue lo rifiuterebbe.
+                          Giallo = costa i premi ma si piazza. Verde = riposa come maker, dentro banda.
+                          La distinzione fra rosso e giallo e' la stessa di splitVerdict lato server:
+                          fuori banda e' un COSTO dichiarato, fuori tick e' una regola del venue. */}
+                      {(() => {
+                        const offTick = problems.some((p) => p.key === 'tick');
+                        const badPrice = problems.some((p) => p.key === 'price');
+                        if (offTick || badPrice || verdict?.crosses) {
+                          return (
+                            <div className="op-verdict is-bad" data-op-qs-check="bad" role="status" aria-live="polite">
+                              <span className="op-verdict-i" aria-hidden="true">⛔</span>
+                              <span className="op-verdict-tx">
+                                {verdict?.crosses && <span className="op-verdict-l">A {cents(price)} incroci il book: l&apos;ordine si eseguirebbe subito, non resterebbe come maker.</span>}
+                                {offTick && <span className="op-verdict-l">Fuori dalla griglia del tick ({tick}): il venue lo rifiuterebbe. Bloccante.</span>}
+                                {badPrice && <span className="op-verdict-l">Il prezzo deve stare fra 0 e 1.</span>}
+                              </span>
+                            </div>
+                          );
+                        }
+                        if (verdict?.outOfBand === true) {
+                          return (
+                            <div className="op-verdict is-warn" data-op-qs-check="warn" role="status" aria-live="polite">
+                              <span className="op-verdict-i" aria-hidden="true">⚠</span>
+                              <span className="op-verdict-tx">
+                                <span className="op-verdict-l">Fuori dalla banda reward: non matura reward, ma è piazzabile — avviso, non blocco.</span>
+                              </span>
+                            </div>
+                          );
+                        }
+                        if (verdict?.outOfBand === false) {
+                          return (
+                            <div className="op-verdict is-ok" data-op-qs-check="ok" role="status" aria-live="polite">
+                              <span className="op-verdict-i" aria-hidden="true">✓</span>
+                              <span className="op-verdict-tx">
+                                <span className="op-verdict-l">Dentro la banda reward, e resta sul book come maker.</span>
+                              </span>
+                            </div>
+                          );
+                        }
+                        return (
+                          <div className="op-verdict is-unk" data-op-qs-check="unknown" role="status" aria-live="polite">
+                            <span className="op-verdict-i" aria-hidden="true">ⓘ</span>
+                            <span className="op-verdict-tx">
+                              <span className="op-verdict-l">Banda non verificabile: manca il mid di scoring o il raggio premiante.</span>
+                            </span>
+                          </div>
+                        );
+                      })()}
                     </div>
 
-                    {/* ── 4 · SOGLIA REPRICE ──────────────────────────────────────────────────── */}
+                    {/* ── 4 · MOTORE ──────────────────────────────────────────────────────────── */}
                     <div className="op-field">
-                      <div className="op-label">
-                        Soglia reprice
-                        <span className="op-labelhint">del motore · passo 0.25¢</span>
+                      <div className="op-label">Motore</div>
+                      <div className="op-seg" role="group" aria-label="Motore">
+                        <button className={`op-segb ${sheetEngine === 'manual' ? 'is-yes' : ''}`}
+                          onClick={() => setSheetEngine('manual')} data-op-qs-engine="manual" aria-pressed={sheetEngine === 'manual'}>
+                          Manuale
+                        </button>
+                        <button className={`op-segb ${sheetEngine === 'tracking' ? 'is-yes' : ''}`}
+                          onClick={() => setSheetEngine('tracking')} data-op-qs-engine="tracking" aria-pressed={sheetEngine === 'tracking'}>
+                          Tracking
+                        </button>
                       </div>
-                      <div className="op-qs-step" data-op-qs-thr-row>
-                        <button className="op-qs-btn" data-op-qs-thr-minus aria-label="Riduci la soglia"
-                          onClick={() => setTrkMinMove((v) => String(+Math.max(0, (Number(v) || 0) - 0.25).toFixed(2)))}>−</button>
-                        <div className="op-qs-val"><b className="ex-n" data-op-qs-thr>{trkMinMove === '' ? '—' : `${trkMinMove}¢`}</b></div>
-                        <button className="op-qs-btn" data-op-qs-thr-plus aria-label="Aumenta la soglia"
-                          onClick={() => setTrkMinMove((v) => String(+((Number(v) || 0) + 0.25).toFixed(2)))}>+</button>
-                      </div>
-                      <p className="op-hint">
-                        Serve al motore di tracking, non a quest&apos;ordine: è di quanto deve muoversi il mid
-                        prima che un ordine venga riprezzato. Resta com&apos;è finché non attivi il tracking.
+                      <p className="op-hint" data-op-qs-engine-note>
+                        {sheetEngine === 'manual'
+                          ? <>Un ordine solo, fermo al prezzo scelto, GTD {Math.round(ttlSeconds / 60)} min. Nessun riposizionamento: se il mid si muove, l&apos;ordine resta dov&apos;è.</>
+                          : <>L&apos;ordine insegue il mid: il motore lo riprezza da solo quando il mid si sposta oltre la soglia, <b>senza chiedere conferma ordine per ordine</b>, finché non lo spegni.</>}
                       </p>
                     </div>
 
-                    {/* ── 5 · CHIUSURA AUTOMATICA ─────────────────────────────────────────────
-                        STESSO STATO del pannello sotto: `acState` e `acCall` sono quelli, non una
-                        copia. Accendere qui accende li', e viceversa, perche' e' la stessa
-                        configurazione letta e scritta dallo stesso posto. */}
+                    {/* ── 5 · SOLO CON IL TRACKING ────────────────────────────────────────────── */}
+                    {sheetEngine === 'tracking' && (
+                      <>
+                        <div className="op-field" data-op-qs-tracking-extra>
+                          <div className="op-label">Lati quotati</div>
+                          <div className="op-seg" role="group" aria-label="Lati quotati">
+                            {([['both', 'Entrambi'], ['yes', 'Solo YES'], ['no', 'Solo NO']] as const).map(([v, label]) => (
+                              <button key={v} type="button"
+                                className={`op-segb ${trkSides === v ? (v === 'no' ? 'is-no' : 'is-yes') : ''}`}
+                                onClick={() => setTrkSides(v)} data-op-qs-sides={v} aria-pressed={trkSides === v}>
+                                {label}
+                              </button>
+                            ))}
+                          </div>
+                          {trkSides !== 'both' && (
+                            <p className="ex-flag is-bad" data-op-qs-sides-warn>
+                              <span className="ex-flag-i" aria-hidden="true">⚠</span>
+                              <span>
+                                Un lato solo <b>NON matura reward</b>: il punteggio prende il minimo fra i due lati
+                                (Q_min), e con una gamba sola quel minimo è zero.
+                              </span>
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="op-field">
+                          <div className="op-label">
+                            Soglia reprice
+                            <span className="op-labelhint">passo 0.25¢</span>
+                          </div>
+                          <div className="op-qs-step" data-op-qs-thr-row>
+                            <button className="op-qs-btn" data-op-qs-thr-minus aria-label="Riduci la soglia"
+                              onClick={() => setTrkMinMove((v) => String(+Math.max(0.25, (Number(v) || 0) - 0.25).toFixed(2)))}>−</button>
+                            <div className="op-qs-val"><b className="ex-n" data-op-qs-thr>{trkMinMove === '' ? '—' : `${trkMinMove}¢`}</b></div>
+                            <button className="op-qs-btn" data-op-qs-thr-plus aria-label="Aumenta la soglia"
+                              onClick={() => setTrkMinMove((v) => String(+((Number(v) || 0) + 0.25).toFixed(2)))}>+</button>
+                          </div>
+                          <p className="op-hint">
+                            Di quanto deve muoversi il mid prima che l&apos;ordine venga riposizionato.
+                            Più bassa = insegue più da vicino, e riprezza più spesso.
+                          </p>
+                        </div>
+
+                        {/* IL TRACKING GIA' ATTIVO su questo mercato, con il suo spegnimento: era
+                            l'unico modo di fermarlo, e non puo' sparire insieme al pannello lungo. */}
+                        {trkActive && (
+                          <div className="op-field" data-op-qs-trk-active>
+                            <p className="ex-flag is-dim">
+                              <span className="ex-flag-i" aria-hidden="true">ⓘ</span>
+                              <span>
+                                Tracking già ATTIVO qui: {(trkActive.sides ?? 'both') === 'both' ? 'entrambi i lati' : `solo ${(trkActive.sides as string).toUpperCase()}`},
+                                offset {trkActive.offsetCents}¢, soglia {trkActive.minMoveCents}¢.
+                              </span>
+                            </p>
+                            {trkOffStep === 'idle' ? (
+                              <button className="ex-btn is-danger op-qs-toggle" onClick={() => setTrkOffStep('choose')} data-op-qs-trk-off>
+                                Disattiva il tracking
+                              </button>
+                            ) : (
+                              <div className="op-trk-choice" data-op-qs-trk-choice>
+                                <div className="op-trk-q">Gli ordini già a riposo su questo mercato:</div>
+                                <button className="ex-btn is-danger op-qs-toggle" disabled={trkBusy}
+                                  onClick={async () => { const r = await trkCall({ enabled: false, preview: false, cancelOrders: true }); setTrkMsg(r.note ?? r.error ?? null); if (r.ok) { setTrkActive(null); setTrkOffStep('idle'); } }}
+                                  data-op-qs-trk-off-cancel>Spegni e CANCELLA gli ordini</button>
+                                <button className="ex-btn op-qs-toggle" disabled={trkBusy}
+                                  onClick={async () => { const r = await trkCall({ enabled: false, preview: false, cancelOrders: false }); setTrkMsg(r.note ?? r.error ?? null); if (r.ok) { setTrkActive(null); setTrkOffStep('idle'); } }}
+                                  data-op-qs-trk-off-leave>Spegni e lasciali scadere per GTD</button>
+                                <button className="ex-link op-qs-toggle" onClick={() => setTrkOffStep('idle')}>annulla</button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </>
+                    )}
+
+                    {/* IL RINNOVO, quando questo mercato e' sotto auto-reprice. Era una casella del
+                        pannello lungo, e senza di essa si perderebbe la scelta fra un ordine che si
+                        rinnova e uno che scade e basta. */}
+                    {sheetEngine === 'manual' && repriceOn && (
+                      <div className="op-field">
+                        <label className="op-check">
+                          <input type="checkbox" checked={autoRenew} onChange={(e) => setAutoRenew(e.target.checked)} data-op-qs-autorenew />
+                          <span>lascia il rinnovo automatico su questo ordine</span>
+                        </label>
+                      </div>
+                    )}
+
+                    {/* ── 6 · CHIUSURA AUTOMATICA ─────────────────────────────────────────────
+                        STESSA configurazione del motore, letta e scritta dallo stesso posto: non una
+                        copia locale che potrebbe raccontare un altro stato. */}
                     <div className="op-field">
                       <div className="op-label">Chiusura automatica</div>
                       {acState == null ? (
@@ -1867,16 +1405,28 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
                             disabled={acBusy}
                             data-op-qs-ac={acState.market?.enabled ? 'on' : 'off'}
                             onClick={() => acCall('market', !(acState.market?.enabled === true))}>
-                            {acBusy ? 'Attendi…' : acState.market?.enabled ? 'ATTIVA — tocca per spegnere' : 'spenta — tocca per attivare'}
+                            {acBusy ? 'Attendi…' : acState.market?.enabled ? 'attiva — vende dopo un fill' : 'spenta — tocca per attivare'}
                           </button>
                           <p className="op-hint" data-op-qs-ac-latency>
-                            Vende dopo un fill a carico +{acState.profitCents ?? 1}¢. Il fill si rileva leggendo
-                            le posizioni dal venue <b>ogni 60 secondi</b>: fra riempimento e uscita passa fino a un minuto.
-                            {!acState.globalEnabled && <> <b className="ex-gold">L&apos;interruttore generale è spento</b>: qui si registra la scelta, ma non agirà finché non accendi anche quello.</>}
+                            Vende a carico +{acState.profitCents ?? 1}¢ dopo un fill. Il fill si rileva leggendo le
+                            posizioni dal venue <b>ogni 60 secondi</b>: fra riempimento e uscita passa fino a un minuto.
                           </p>
+                          <div className="op-ac-master" data-op-qs-ac-master>
+                            <span className="op-ac-master-k">
+                              Interruttore GENERALE — {acState.globalEnabled ? 'acceso' : <b className="ex-gold">SPENTO</b>}: senza di
+                              esso la chiusura automatica non agisce su nessun mercato, nemmeno dove è accesa.
+                            </span>
+                            <button className="ex-link op-qs-toggle" disabled={acBusy}
+                              data-op-qs-ac-master-btn={acState.globalEnabled ? 'on' : 'off'}
+                              onClick={() => acCall('global', !acState.globalEnabled)}>
+                              {acState.globalEnabled ? 'spegni il generale' : 'accendi il generale'}
+                            </button>
+                          </div>
                         </>
                       )}
                     </div>
+
+                    {trkMsg && <div className="ex-banner op-mb" data-op-qs-trk-msg>{trkMsg}</div>}
 
                     {problems.filter((p) => p.blocking).length > 0 && (
                       <div className="op-probs" data-op-qs-problems>
@@ -1889,23 +1439,55 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
                     )}
                   </>
                 ) : (
-                  /* ── 6 · IL RIEPILOGO, dentro lo stesso foglio ──────────────────────────────── */
-                  <div className="op-review" data-op-qs-review>
-                    <div className="op-review-h">Rivedi prima di confermare</div>
-                    <div className="ex-kvs">
-                      <div className="ex-kv"><span className="ex-kv-k">mercato</span><span className="ex-kv-v op-wrap">{target.title}</span></div>
-                      <div className="ex-kv"><span className="ex-kv-k">lato</span><span className="ex-kv-v">BUY {book.toUpperCase()}</span></div>
-                      <div className="ex-kv"><span className="ex-kv-k">size</span><span className="ex-kv-v">{fin(size) ? size : 'N/D'} share</span></div>
-                      <div className="ex-kv"><span className="ex-kv-k">prezzo</span><span className="ex-kv-v">{price}</span></div>
-                      <div className="ex-kv"><span className="ex-kv-k">distanza dal mid</span><span className="ex-kv-v">{fin(sheetDistC) ? `${(sheetDistC as number).toFixed(2)}¢` : 'N/D'}</span></div>
-                      <div className="ex-kv"><span className="ex-kv-k">soglia reprice</span><span className="ex-kv-v">{trkMinMove === '' ? '—' : `${trkMinMove}¢`}</span></div>
-                      <div className="ex-kv"><span className="ex-kv-k">chiusura auto</span><span className="ex-kv-v" data-op-qs-review-ac>{acState == null ? 'non letta' : acState.market?.enabled ? 'ATTIVA' : 'spenta'}</span></div>
-                      <div className="ex-kv"><span className="ex-kv-k">controvalore</span><span className="ex-kv-v">{money(notional)}</span></div>
-                      <div className="ex-kv"><span className="ex-kv-k">durata</span><span className="ex-kv-v">GTD {Math.round(ttlSeconds / 60)}m</span></div>
-                      <div className="ex-kv"><span className="ex-kv-k">banda</span>
-                        <span className="ex-kv-v">{verdict?.outOfBand === true ? 'FUORI — non matura reward' : verdict?.outOfBand === false ? 'dentro' : 'non verificabile'}</span>
+                  /* ── 7 · IL RIEPILOGO, dentro lo stesso popup ──────────────────────────────── */
+                  <div data-op-qs-review>
+                    <div className="op-review">
+                      <div className="op-review-h">Rivedi prima di confermare</div>
+                      <div className="ex-kvs">
+                        <div className="ex-kv"><span className="ex-kv-k">mercato</span><span className="ex-kv-v op-wrap">{target.title}</span></div>
+                        <div className="ex-kv"><span className="ex-kv-k">lato</span><span className="ex-kv-v">BUY {book.toUpperCase()}</span></div>
+                        <div className="ex-kv"><span className="ex-kv-k">size</span><span className="ex-kv-v">{fin(size) ? size : 'N/D'} share</span></div>
+                        <div className="ex-kv"><span className="ex-kv-k">prezzo</span><span className="ex-kv-v">{price}</span></div>
+                        <div className="ex-kv"><span className="ex-kv-k">distanza dal mid</span><span className="ex-kv-v">{fin(sheetDistC) ? `${(sheetDistC as number).toFixed(2)}¢` : 'N/D'}</span></div>
+                        <div className="ex-kv"><span className="ex-kv-k">motore</span><span className="ex-kv-v" data-op-qs-review-engine={sheetEngine}>{sheetEngine === 'manual' ? 'Manuale — un ordine fermo' : 'Tracking — insegue il mid'}</span></div>
+                        {sheetEngine === 'tracking' && (
+                          <>
+                            <div className="ex-kv"><span className="ex-kv-k">lati quotati</span><span className="ex-kv-v" data-op-qs-review-sides={trkSides}>{trkSides === 'both' ? 'entrambi' : `SOLO ${trkSides.toUpperCase()}`}</span></div>
+                            <div className="ex-kv"><span className="ex-kv-k">soglia reprice</span><span className="ex-kv-v">{trkMinMove === '' ? '—' : `${trkMinMove}¢`}</span></div>
+                          </>
+                        )}
+                        <div className="ex-kv"><span className="ex-kv-k">chiusura auto</span><span className="ex-kv-v" data-op-qs-review-ac>{acState == null ? 'non letta' : acState.market?.enabled ? 'ATTIVA' : 'spenta'}</span></div>
+                        <div className="ex-kv"><span className="ex-kv-k">durata</span><span className="ex-kv-v">GTD {Math.round(ttlSeconds / 60)} min</span></div>
+                      </div>
+                      {/* IL CONTROVALORE IN EVIDENZA: e' la cifra che lascia il conto, e in un elenco
+                          di dieci righe uguali sparirebbe fra le altre nove. */}
+                      <div className="op-qs-total" data-op-qs-review-total>
+                        <span className="op-qs-total-k">controvalore</span>
+                        <span className="op-qs-total-v ex-n">{money(notional)}</span>
                       </div>
                     </div>
+
+                    {/* GLI AVVISI SI RIPETONO QUI. Chi conferma legge questa schermata, non quella
+                        di prima, e un avviso visto due schermate fa non e' un avviso al momento
+                        della decisione. */}
+                    {verdict?.outOfBand === true && (
+                      <p className="ex-flag is-bad" data-op-qs-review-band>
+                        <span className="ex-flag-i" aria-hidden="true">⚠</span>
+                        <span>Fuori dalla banda reward: quest&apos;ordine riposa ma <b>NON matura reward</b>.</span>
+                      </p>
+                    )}
+                    {sheetEngine === 'tracking' && trkSides !== 'both' && (
+                      <p className="ex-flag is-bad" data-op-qs-review-leg>
+                        <span className="ex-flag-i" aria-hidden="true">⚠</span>
+                        <span>Un lato solo: il punteggio prende il minimo fra i due lati, quindi <b>Q_min = 0</b> e questo mercato non maturerà reward.</span>
+                      </p>
+                    )}
+                    {sheetEngine === 'tracking' && (
+                      <p className="ex-flag is-bad" data-op-qs-review-delega>
+                        <span className="ex-flag-i" aria-hidden="true">⚠</span>
+                        <span>Confermando autorizzi il motore a piazzare e riprezzare <b>da solo</b> su questo mercato, senza conferma ordine per ordine, finché non lo spegni.</span>
+                      </p>
+                    )}
                   </div>
                 )}
 
@@ -1916,24 +1498,46 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
                         ? <><b>ORDINE INVIATO AL VENUE.</b>{result.orderId ? <> orderId <span className="ex-n">{result.orderId}</span></> : null}</>
                         : <><b>DRY-RUN — nessun ordine reale piazzato.</b></>)
                       : <><b>Rifiutato al gate {result.gate ?? '—'}</b>: {result.reason ?? '—'}</>}
+                    {result.ok && result.bandAdvisory && (
+                      <span className="op-banner-sub" data-op-qs-band-advisory>
+                        ⚠ Fuori dalla banda reward: riposa regolarmente ma NON matura reward.
+                      </span>
+                    )}
                   </div>
                 )}
               </div>
 
-              {/* ── LE DUE AZIONI, gli stessi due tocchi del pannello lungo ────────────────────── */}
+              {/* ── LE AZIONI (fisse, fuori dall'area che scorre) ──────────────────────────────── */}
               <div className="op-qs-actions">
                 {sheetStep === 'form' ? (
                   <button className="ex-btn is-gold op-primary" disabled={!canReview}
-                    onClick={() => { setStep('review'); setSheetStep('review'); }} data-op-qs-review-btn>
+                    onClick={() => setSheetStep('review')} data-op-qs-review-btn>
                     Rivedi ordine
                   </button>
                 ) : (
                   <>
-                    <button className="ex-btn op-back" onClick={() => { setSheetStep('form'); setStep('form'); }} data-op-qs-back>Modifica</button>
+                    <button className="ex-btn op-back" onClick={() => setSheetStep('form')} data-op-qs-back>Modifica</button>
                     <button className={`ex-btn op-primary ${sends ? 'is-danger' : 'is-gold'}`}
-                      disabled={busy || !canReview} onClick={place}
-                      data-op-qs-confirm data-op-sends={sends ? '1' : '0'}>
-                      {busy ? 'Invio…' : sends ? 'Conferma e piazza — INVIA DAVVERO' : 'Conferma e piazza (dry-run)'}
+                      disabled={busy || trkBusy || !canReview}
+                      data-op-qs-confirm data-op-sends={sends ? '1' : '0'} data-op-qs-confirm-engine={sheetEngine}
+                      onClick={async () => {
+                        // UN SOLO PULSANTE, DUE POTERI, e ognuno passa dalla sua funzione di sempre.
+                        if (sheetEngine === 'tracking') {
+                          const r = await trkCall({
+                            enabled: true, preview: false, sides: trkSides,
+                            offsetCents: fin(sheetDistC) ? sheetDistC : undefined,
+                            minMoveCents: Number(trkMinMove) || undefined,
+                            sizeShares: size,
+                          });
+                          setTrkMsg(r.note ?? r.error ?? null);
+                          if (r.ok) { setTrkActive((r as { record?: TrackRecord }).record ?? null); setSheetStep('form'); }
+                        } else {
+                          await place();
+                        }
+                      }}>
+                      {busy || trkBusy ? 'Invio…'
+                        : sheetEngine === 'tracking' ? 'Conferma e ATTIVA il motore'
+                          : sends ? 'Conferma e piazza — INVIA DAVVERO' : 'Conferma e piazza (dry-run)'}
                     </button>
                   </>
                 )}
@@ -2127,20 +1731,9 @@ const CSS = `
 /* ── MOTORE AUTOMATICO ── l unica sezione con il bordo oro, e non e decorazione: in questo pannello
    l oro vuol dire «da qui in poi qualcosa agisce senza chiedertelo ogni volta». Il filtro qui sopra
    e grigio proprio per non rivendicare lo stesso peso. */
-.op-trk { border: 1px solid var(--ex-gold-bd); border-radius: 8px; margin: 0 0 12px;
-  background: linear-gradient(180deg, rgba(240,185,11,.05), rgba(240,185,11,.015)); }
-.op-trk-head { display: flex; align-items: center; gap: 8px; width: 100%; padding: 11px 12px; min-height: 46px;
   cursor: pointer; background: none; border: 0; color: inherit; font: inherit; text-align: left; }
-.op-trk-head:hover { background: rgba(240,185,11,.07); }
-.op-trk-bolt { flex: 0 0 auto; font-size: 13px; line-height: 1; }
-.op-trk-auto { flex: 0 0 auto; padding: 2px 6px; border-radius: 3px;
   background: var(--ex-gold); color: #1A1300;
   font-family: var(--ex-mono); font-size: 8.5px; font-weight: 700; letter-spacing: .1em; }
-.op-trk-t { flex: 1 1 auto; font-size: 12.5px; font-weight: 600; }
-.op-trk-caret { color: var(--ex-txt-3); font-size: 11px; }
-.op-trk-body { padding: 0 12px 12px; border-top: 1px solid var(--ex-line-soft); }
-.op-trk-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
-.op-trk-btn { width: 100%; min-height: 44px; margin-top: 8px; }
 .op-trk-choice { display: flex; flex-direction: column; gap: 2px; }
 
 /* L INTERRUTTORE GENERALE della chiusura automatica. Separato da una riga e volutamente piu spento dei
@@ -2189,12 +1782,8 @@ const CSS = `
 .op-qs-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
 .op-qs-toggle { width: 100%; min-height: 44px; margin-top: 6px; }
 .op-trk-q { font-size: 11.5px; color: var(--ex-txt-2); margin-top: 8px; }
-.op-trk-prev { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
-.op-trk-leg { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; font-size: 11.5px; }
-.op-trk-px { font-size: 14px; font-weight: 700; color: var(--ex-gold); }
 /* Il callout spiega A PAROLE cosa misura il campo: «offset» da solo non dice da cosa, e soprattutto non
    dice che qui si parla di ordini VERI mentre il cursore qui sopra parla solo di righe guardate. */
-.op-trk-callout { display: block; font-size: 10px; color: var(--ex-gold); line-height: 1.35; margin-top: 3px; }
 
 /* ── COMPATTEZZA SENZA TAGLIARE NIENTE ───────────────────────────────────────────────────────────
    Il pannello sta in una schermata di telefono per DIMENSIONI (font e padding ridotti, griglia dei
@@ -2208,17 +1797,12 @@ const CSS = `
   .op-title { font-size: 13px; }
   .op-body { padding: 9px 12px; }
   .op-field { margin-bottom: 9px; }
-  .op-trk-body { padding: 0 10px 10px; }
   .op-notional { padding: 8px 10px; margin: 9px 0; }
   .op-notional-v { font-size: 17px; }
   .op-segb { min-height: 40px; font-size: 12px; }
-  .op-actions .ex-btn { min-height: 44px; }
 }
-@media (max-width: 430px) { .op-trk-grid { grid-template-columns: 1fr; } }
 
-.op-actions { display: flex; gap: 8px; padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
   border-top: 1px solid var(--ex-line); background: var(--ex-panel); }
-.op-actions .ex-btn { min-height: 48px; font-size: 14px; }
 .op-primary { flex: 1 1 auto; }
 .op-back { flex: 0 0 auto; }
 

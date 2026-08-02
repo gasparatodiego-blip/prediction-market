@@ -26,10 +26,14 @@ export declare function offsetFromPrice(args: {
   tick?: number | null; bandRadiusCents?: number | null;
 }): number | null;
 
-export interface SizeScale { readable: boolean; lo: number | null; hi: number | null }
-/** 0% = size minima premiante, 100% = massimo acquistabile col capitale a quel prezzo. */
+export interface SizeScale {
+  readable: boolean; lo: number | null; hi: number | null;
+  /** Quale dei due limiti ha fermato il 100%: il capitale o il tetto per ordine. */
+  boundBy: 'capitale' | 'tetto-ordine' | null;
+}
+/** 0% = size minima premiante, 100% = massimo consentito dal PIU BASSO fra capitale e tetto per ordine. */
 export declare function sizeScale(args: {
-  minSize?: number | null; price?: number | null; capitalUsd?: number | null;
+  minSize?: number | null; price?: number | null; capitalUsd?: number | null; orderCapUsd?: number | null;
 }): SizeScale;
 /** La size a una percentuale sulla scala; null se la scala non e' leggibile. */
 export declare function sizeAtPct(scale: SizeScale | null | undefined, pct: number): number | null;
