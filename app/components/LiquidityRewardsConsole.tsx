@@ -216,6 +216,15 @@ interface TrkResp {
     markets: TrkMarket[]; recent: TrkAction[] } | null;
 }
 
+interface WalletTodo { who: 'operatore' | 'sistema'; what: string; how?: string }
+interface WalletApproval { name: string; address: string; erc20: string | null; erc1155: boolean | null }
+interface WalletResp {
+  ok: boolean; at: string; error: string | null; address: string | null;
+  chain: { readable: boolean; error: string | null; balanceUsd: number | null; minUsefulUsd: number; funded: boolean; approvals: WalletApproval[]; approvalsOk: boolean } | null;
+  fundingApproved: boolean; placement: string; ready: boolean;
+  blockedBy: 'operatore' | 'sistema' | null; todo: WalletTodo[];
+}
+
 interface RestingResp { ok: boolean; error: string | null; simulated: boolean; count: number; orders: RestingOrder[]; at: string }
 
 interface Positions {
@@ -331,6 +340,7 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
   // non sa quando un ordine muore; questa lettura sì, ed è l'unica che può muovere un countdown.
   const [resting, setResting] = useState<RestingResp | null>(null);
   const [trk, setTrk] = useState<TrkResp | null>(null);
+  const [wal, setWal] = useState<WalletResp | null>(null);
   const [killBusy, setKillBusy] = useState<'kill' | 'reset' | null>(null);
   const [killMsg, setKillMsg] = useState<string | null>(null);
 
@@ -400,6 +410,15 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
     } catch { /* lo stato resta ignoto: la sezione lo dice invece di supporlo spento */ }
   }, []);
 
+  // Lo stato del wallet e degli interruttori di piazzamento. Legge la catena, quindi non si interroga
+  // di continuo: e' una risposta che cambia quando l'operatore fa qualcosa, non ogni secondo.
+  const loadWallet = useCallback(async () => {
+    try {
+      const r = await fetch('/api/maker/wallet-status', { cache: 'no-store' });
+      setWal((await r.json()) as WalletResp);
+    } catch { /* resta ignoto: il pannello lo dice invece di supporlo pronto */ }
+  }, []);
+
   useEffect(() => { loadBoard(); loadBalance(); }, [loadBoard, loadBalance]);
   useEffect(() => {
     if (operator !== true) return;
@@ -412,13 +431,13 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
   // che è l'unico posto che li mostra, è aperto.
   useEffect(() => {
     if (operator !== true || tab !== 'riepilogo') return;
-    loadPositions(); loadResting(); loadTracking();
+    loadPositions(); loadResting(); loadTracking(); loadWallet();
     // Il tracking si rilegge piu' spesso delle posizioni: e' un motore che agisce da solo, e la domanda
     // «cosa sta facendo adesso» non tollera un minuto di ritardo.
     const t = setInterval(() => { loadPositions(); loadResting(); }, POSITIONS_POLL_MS);
     const tk = setInterval(loadTracking, 5_000);
     return () => { clearInterval(t); clearInterval(tk); };
-  }, [operator, tab, loadPositions, loadResting, loadTracking]);
+  }, [operator, tab, loadPositions, loadResting, loadTracking, loadWallet]);
 
   // KILL e RIPRISTINA. Due endpoint che possono solo FERMARE: /api/maker/kill importa il solo modulo
   // di kill (che raggiunge il percorso cancel-only) e /manual/reset non ha altra chiamata mutante che
@@ -931,6 +950,104 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
             </>
           ) : (
             <div className="ex-banner">N/D — nessun mercato risulta scorabile in questo scan.</div>
+          )}
+
+          {/* ── STATO WALLET & PIAZZAMENTO ──────────────────────────────────────────────────────────
+              La domanda «posso fare un ordine vero adesso?» aveva una risposta sola, e viveva nei log di
+              un processo: «gate=funding-approval … on-chain signatures required». Con il telefono in mano
+              non c'era modo di sapere se quel messaggio volesse dire «devi firmare qualcosa dal wallet»
+              oppure «manca una riga di configurazione» — e sono due mondi diversi. Qui sono separati, e
+              ciascuno dice di chi e' il prossimo passo. */}
+          {wal && (
+            <>
+              <div className="ex-sech">
+                <span className="ex-sech-t">Stato wallet e piazzamento</span>
+                <span className="lrc-fine">
+                  {wal.at ? <>letto <span className="ex-n">{new Date(wal.at).toLocaleTimeString()}</span> · on-chain</> : ''}
+                  {' · '}<button className="ex-link lrc-clear" onClick={loadWallet}>rileggi</button>
+                </span>
+              </div>
+
+              <div className={`ex-banner ${wal.ready ? 'is-ok' : wal.blockedBy === 'operatore' ? 'is-bad' : 'is-warn'} lrc-mb`} data-lrc-wallet-verdict={wal.ready ? 'ready' : (wal.blockedBy ?? 'unknown')}>
+                {wal.ready
+                  ? <><b>PRONTO.</b> Saldo, approvazioni e interruttori sono tutti a posto: un ordine da questo pannello raggiunge il venue.</>
+                  : wal.blockedBy === 'operatore'
+                    ? <><b>SERVE UN&apos;AZIONE TUA sul wallet.</b> Il sistema non puo&apos; farla al posto tuo: richiede una firma dal tuo wallet.</>
+                    : <><b>NON PRONTO — manca un interruttore lato sistema.</b> Nessuna firma richiesta: e&apos; configurazione.</>}
+              </div>
+
+              <div className="ex-stats lrc-mb" data-lrc-wallet>
+                <div className="ex-stat">
+                  <span className="ex-stat-k">Saldo pUSD</span>
+                  <span className={`ex-stat-v ${wal.chain?.funded ? 'ex-up' : 'ex-dn'}`} data-lrc-wallet-balance>
+                    {wal.chain?.balanceUsd == null ? 'N/D' : money(wal.chain.balanceUsd)}
+                  </span>
+                  <span className="ex-stat-s">on-chain, non da cache</span>
+                  {wal.chain?.readable === false && <p className="ex-why">non letto: {wal.chain.error} — non e&apos; «zero»</p>}
+                </div>
+                <div className="ex-stat">
+                  <span className="ex-stat-k">Approvazioni</span>
+                  <span className={`ex-stat-v ${wal.chain?.approvalsOk ? 'ex-up' : 'ex-dn'}`} data-lrc-wallet-approvals>
+                    {wal.chain?.readable === false ? 'N/D' : wal.chain?.approvalsOk ? 'complete' : 'incomplete'}
+                  </span>
+                  <span className="ex-stat-s">{wal.chain?.approvals.length ?? 0} exchange</span>
+                </div>
+                <div className="ex-stat">
+                  <span className="ex-stat-k">Finanziamento attestato</span>
+                  <span className={`ex-stat-v ${wal.fundingApproved ? 'ex-up' : 'ex-dn'}`} data-lrc-wallet-funding={wal.fundingApproved ? '1' : '0'}>
+                    {wal.fundingApproved ? 'sì' : 'no'}
+                  </span>
+                  <span className="ex-stat-s">MAKER_FUNDING_APPROVED</span>
+                </div>
+                <div className="ex-stat">
+                  <span className="ex-stat-k">Invio ordini</span>
+                  <span className={`ex-stat-v ${wal.placement === 'send' ? 'ex-dn' : 'ex-dim'}`} data-lrc-wallet-placement={wal.placement}>
+                    {wal.placement === 'send' ? 'INVIA' : 'dry-run'}
+                  </span>
+                  <span className="ex-stat-s">MANUAL_ORDER_PLACEMENT</span>
+                </div>
+              </div>
+
+              {/* IL DETTAGLIO PER CONTRATTO: quale exchange, quale tipo di autorizzazione. Serve per
+                  sapere DOVE andare a concederla, non solo che manca. */}
+              {wal.chain?.approvals.length ? (
+                <div className="ex-panel ex-rows lrc-mb" data-lrc-wallet-detail>
+                  {wal.chain.approvals.map((a) => (
+                    <div key={a.address} className="ex-row">
+                      <div className="ex-row-main">
+                        <div className="ex-row-t">{a.name}</div>
+                        <div className="ex-row-s"><span className="ex-n">{a.address}</span></div>
+                      </div>
+                      <div className="ex-row-nums">
+                        <span className="ex-num"><span className="ex-num-k">collaterale</span><span className={`ex-num-v ${a.erc20 === 'illimitata' ? 'ex-up' : 'ex-dn'}`}>{a.erc20 ?? 'N/D'}</span></span>
+                        <span className="ex-num"><span className="ex-num-k">token esito</span><span className={`ex-num-v ${a.erc1155 ? 'ex-up' : 'ex-dn'}`}>{a.erc1155 === null ? 'N/D' : a.erc1155 ? 'concessa' : 'MANCA'}</span></span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              {/* COSA MANCA, DIVISO PER CHI DEVE FARLO. E' la distinzione che decide se apri il wallet
+                  o se chiedi una modifica di configurazione. */}
+              {wal.todo.length > 0 && (
+                <div className="lrc-mb" data-lrc-wallet-todo>
+                  {wal.todo.map((t, i) => (
+                    <p key={i} className={`ex-flag ${t.who === 'operatore' ? 'is-bad' : ''}`} data-lrc-wallet-todo-who={t.who}>
+                      <span className="ex-flag-i" aria-hidden="true">{t.who === 'operatore' ? '👤' : '⚙'}</span>
+                      <span>
+                        <b>{t.who === 'operatore' ? 'Tu:' : 'Sistema:'}</b> {t.what}
+                        {t.how && <><br /><span className="ex-dim">{t.how}</span></>}
+                      </span>
+                    </p>
+                  ))}
+                </div>
+              )}
+              <p className="lrc-fine">
+                Proxy <span className="ex-n">{wal.address ?? 'N/D'}</span> — letto con `eth_call`, che non
+                firma e non spende. Depositi e approvazioni restano azioni tue dal wallet: questo pannello
+                dice se servono, non le esegue.
+              </p>
+            </>
           )}
 
           {/* ── MARKET MAKING AUTOMATICO ────────────────────────────────────────────────────────────
