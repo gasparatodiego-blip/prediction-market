@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import fs from 'fs';
 import { z } from 'zod';
-import { readTrackingConfig, setTracking, LIMITS } from '@/lib/maker/mm-tracking-config';
+import { readTrackingConfig, setTracking, LIMITS, SIDES, activeSides } from '@/lib/maker/mm-tracking-config';
 import { planQuotes } from '@/lib/maker/mm-quote-math';
 import { resolveMarketRules, listManualOrders, cancelManualOrder } from '@/lib/maker/manual-order';
 import { marketWindowFor } from '@/lib/maker/market-clock';
@@ -43,6 +43,9 @@ const bodySchema = z.object({
   offsetCents: z.number().finite().optional(),
   minMoveCents: z.number().finite().optional(),
   sizeShares: z.number().finite().optional(),
+  // QUALI LATI QUOTARE. Omesso ⇒ 'both', che e' il comportamento di sempre: un chiamante che non conosce
+  // questo campo non puo' cambiare per sbaglio cosa fa il motore su un mercato.
+  sides: z.enum(['both', 'yes', 'no']).optional(),
   // Allo spegnimento: cancellare gli ordini a riposo, oppure lasciarli scadere per GTD. Nessun default
   // nascosto — la route lo pretende esplicito e l'anteprima dice cosa succederebbe in entrambi i casi.
   cancelOrders: z.boolean().optional(),
@@ -75,6 +78,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ') }, { status: 400 });
   }
   const { marketId, enabled, offsetCents, minMoveCents, sizeShares, cancelOrders, reason } = parsed.data;
+  const sides = parsed.data.sides ?? 'both';
   const preview = parsed.data.preview !== false;
 
   try {
@@ -148,16 +152,41 @@ export async function POST(req: NextRequest) {
     } catch { /* finestra non calcolabile: non e' un motivo per rifiutare */ }
 
     const plan = planQuotes({ mid: rules.mid, offsetCents, tick: rules.tick, bandRadiusCents: rules.bandRadiusCents });
+    const wanted = activeSides(sides);
+    const retired = (['yes', 'no'] as const).filter((s) => !wanted.includes(s));
+
+    // ── COSA RESTEREBBE INDIETRO CAMBIANDO I LATI ────────────────────────────────────────────────
+    // Passare da «entrambi» a «solo YES» su un tracking gia' acceso lascia un ordine NO a riposo che
+    // nessuno governa piu'. Si guarda il venue PRIMA, cosi' l'anteprima puo' dire quanti e quali, e la
+    // conferma sa esattamente cosa cancellare.
+    const orphans: Array<{ orderId: string | null; book: 'yes' | 'no'; price: number | null; size: number | null }> = [];
+    if (retired.length) {
+      try {
+        const l = await listManualOrders({ marketId });
+        if (l && l.ok) {
+          for (const o of (l.orders || []) as Array<{ orderId: string | null; tokenId: string | null; price: number | null; sizeRemaining: number | null }>) {
+            const book = String(o.tokenId) === String(rules.tokenIdNo) ? 'no' : String(o.tokenId) === String(rules.tokenId) ? 'yes' : null;
+            // Un ordine il cui token non e' ne' YES ne' NO di questo mercato NON viene attribuito a un
+            // lato e quindi non viene toccato: indovinare qui vorrebbe dire cancellare l'ordine di
+            // qualcun altro.
+            if (book && retired.includes(book)) orphans.push({ orderId: o.orderId, book, price: o.price, size: o.sizeRemaining });
+          }
+        }
+      } catch { /* la lista non e' una precondizione: il paracadute nel motore ritira comunque */ }
+    }
 
     if (preview) {
       return NextResponse.json({
         ok: true, preview: true, action: 'tracking-on', marketId,
         rules: { mid: rules.mid, tick: rules.tick, minSize: rules.minSize, bandRadiusCents: rules.bandRadiusCents, midSource: rules.midSource, midAgeSec: rules.midAgeSec },
-        plan,
+        plan, sides, activeSides: wanted, ordersToRetire: orphans,
         blockers: gates,
         note: gates.length
           ? `Anteprima: NIENTE e stato scritto. Ma il tracking NON si puo attivare adesso — ${gates.join(' ')}`
-          : 'Anteprima: NIENTE e stato scritto e nessun ordine e stato piazzato. Questi sono i due livelli dove il motore quoterebbe con il mid di adesso.',
+          : `Anteprima: NIENTE e stato scritto e nessun ordine e stato piazzato. ${wanted.length === 2
+            ? 'Questi sono i due livelli dove il motore quoterebbe con il mid di adesso.'
+            : `Il motore quoterebbe SOLO il lato ${wanted[0].toUpperCase()}, a questo livello. Un lato solo NON matura reward: il punteggio prende il minimo fra i due lati.`}`
+          + (orphans.length ? ` Ci sono ${orphans.length} ordini sul lato che verrebbe ritirato: alla conferma vengono CANCELLATI subito.` : ''),
       });
     }
 
@@ -165,11 +194,33 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: gates.join(' '), blockers: gates }, { status: 409 });
     }
 
-    const on = setTracking({ marketId, enabled: true, offsetCents, minMoveCents, sizeShares, by: 'operatore · pannello ordine', reason: reason ?? null });
+    const on = setTracking({ marketId, enabled: true, offsetCents, minMoveCents, sizeShares, sides, by: 'operatore · pannello ordine', reason: reason ?? null });
     if (!on.ok) return NextResponse.json({ ok: false, error: on.error }, { status: 400 });
+
+    // ── IL LATO RITIRATO SI CANCELLA SUBITO ──────────────────────────────────────────────────────
+    // Non si aspetta la scadenza GTD: quell'ordine e' stato piazzato da un motore che da questo istante
+    // non lo governa piu', e lasciarlo riposare 23 minuti significherebbe tenere esposizione che nessuno
+    // sta piu' guardando. Si cancella DOPO aver scritto la configurazione, cosi' se la cancellazione
+    // fallisce il motore vede comunque il lato come non-attivo e continua a riprovare a ritirarlo.
+    const cancelled: Array<{ orderId: string | null; book: string; ok: boolean; reason: string | null }> = [];
+    for (const o of orphans) {
+      if (!o.orderId) continue;
+      try {
+        const c = await cancelManualOrder({ orderId: o.orderId, marketId }, 'mm-tracking');
+        cancelled.push({ orderId: o.orderId, book: o.book, ok: c.ok !== false, reason: c.reason ?? null });
+      } catch (e) { cancelled.push({ orderId: o.orderId, book: o.book, ok: false, reason: (e as Error).message }); }
+    }
+    const failed = cancelled.filter((c) => !c.ok).length;
+
     return NextResponse.json({
       ok: true, preview: false, action: 'tracking-on', marketId, record: on.record, plan,
-      note: 'Tracking ATTIVO. Da adesso il motore quota entrambi i lati e li insegue quando il mid si muove oltre la soglia, senza chiedere conferma ordine per ordine. Si spegne dallo stesso pulsante.',
+      sides, activeSides: wanted, prevSides: on.prevSides ?? null, cancelled,
+      note: `Tracking ATTIVO su ${wanted.length === 2 ? 'ENTRAMBI i lati' : `il solo lato ${wanted[0].toUpperCase()}`}.`
+        + ' Da adesso il motore quota e insegue il mid quando si muove oltre la soglia, senza chiedere conferma ordine per ordine. Si spegne dallo stesso pulsante.'
+        + (wanted.length === 1 ? ' ATTENZIONE: un lato solo NON matura reward — il punteggio del programma premi prende il minimo fra i due lati.' : '')
+        + (cancelled.length
+          ? ` ${cancelled.length - failed}/${cancelled.length} ordini sul lato ritirato sono stati cancellati subito.${failed ? ' Quelli non cancellati restano in carico al motore, che continua a riprovare a ogni ciclo.' : ''}`
+          : ''),
     });
   } catch (e) {
     return NextResponse.json({ ok: false, error: (e as Error).message }, { status: 500 });

@@ -117,8 +117,13 @@ interface Quote {
   books: { yes: BookSide; no: BookSide };
 }
 interface TrackSide { book: string; price: number | null; priceCents: number | null; placeable: boolean; reason: string | null; inBand: boolean | null; bandNote: string | null }
-interface TrackPreview { ok: boolean; error?: string; plan?: { ok: boolean; reason: string | null; yes: TrackSide | null; no: TrackSide | null }; rules?: { mid: number | null; tick: number | null; bandRadiusCents: number | null }; restingOrders?: Array<{ orderId: string | null; price: number | null; size: number | null }>; note?: string }
-interface TrackRecord { marketId: string; offsetCents: number; minMoveCents: number; sizeShares: number; atIso: string | null }
+interface TrackPreview { ok: boolean; error?: string; plan?: { ok: boolean; reason: string | null; yes: TrackSide | null; no: TrackSide | null }; rules?: { mid: number | null; tick: number | null; bandRadiusCents: number | null }; restingOrders?: Array<{ orderId: string | null; price: number | null; size: number | null }>; ordersToRetire?: Array<{ orderId: string | null; book: 'yes' | 'no'; price: number | null; size: number | null }>; note?: string }
+type TrkSides = 'both' | 'yes' | 'no';
+interface TrackRecord {
+  marketId: string; offsetCents: number; minMoveCents: number; sizeShares: number; atIso: string | null;
+  /** Assente sui record scritti prima che il lato fosse selezionabile: vale 'both'. */
+  sides?: TrkSides;
+}
 
 /**
  * Lo stato della CHIUSURA AUTOMATICA per QUESTO mercato.
@@ -232,6 +237,9 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
   const [trkMsg, setTrkMsg] = useState<string | null>(null);
   const [trkActive, setTrkActive] = useState<TrackRecord | null>(null);
   const [trkOffStep, setTrkOffStep] = useState<'idle' | 'choose'>('idle');
+  // QUALI LATI QUOTA IL MOTORE. Parte da 'both', che e' quello che il tracking ha sempre fatto: la
+  // scelta nuova non deve cambiare da sola il comportamento di chi non la tocca.
+  const [trkSides, setTrkSides] = useState<TrkSides>('both');
   // ── LA CHIUSURA AUTOMATICA, PER QUESTO MERCATO ─────────────────────────────────────────────────
   // Il meccanismo sotto era gia' generico — `setAutoClose({scope:'market', marketId})` accetta qualunque
   // conditionId e lo scrive in una mappa durevole. Quello che mancava era un modo di raggiungerlo: l'unico
@@ -480,12 +488,14 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
       const b = await r.json();
       const mine = (b.markets || []).find((m: TrackRecord) => m.marketId.toLowerCase() === target.marketId.toLowerCase());
       setTrkActive(mine ?? null);
-      if (mine) { setTrkOffset(String(mine.offsetCents)); setTrkMinMove(String(mine.minMoveCents)); }
+      // Un record senza `sides` e' stato scritto prima che il lato esistesse: vale 'both', esattamente
+      // come lo legge il motore. Il pannello non deve mostrarne una versione diversa.
+      if (mine) { setTrkOffset(String(mine.offsetCents)); setTrkMinMove(String(mine.minMoveCents)); setTrkSides(mine.sides ?? 'both'); }
     } catch { /* lo stato resta ignoto: la sezione lo dice invece di supporlo spento */ }
   }, [target.marketId]);
   useEffect(() => {
     setTrkOpen(false); setTrkStep('form'); setTrkPreview(null); setTrkMsg(null); setTrkOffStep('idle');
-    setTrkOffset(''); setTrkMinMove(''); setTrkActive(null);
+    setTrkOffset(''); setTrkMinMove(''); setTrkActive(null); setTrkSides('both');
     loadTracking();
   }, [target.marketId, loadTracking]);
 
@@ -1005,15 +1015,30 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
                 {trkActive ? (
                   <>
                     <div className="ex-kvs op-mb" data-op-trk-active>
+                      {/* PRIMA COSA MOSTRATA: cosa sta quotando. Un tracking «attivo» che quota una
+                          gamba sola e uno che ne quota due non sono lo stesso stato, e il badge in
+                          testata dice ATTIVO in entrambi i casi. */}
+                      <div className="ex-kv">
+                        <span className="ex-kv-k">lati</span>
+                        <span className="ex-kv-v" data-op-trk-active-sides={trkActive.sides ?? 'both'}>
+                          {(trkActive.sides ?? 'both') === 'both' ? 'entrambi' : `SOLO ${(trkActive.sides as string).toUpperCase()}`}
+                        </span>
+                      </div>
                       <div className="ex-kv"><span className="ex-kv-k">offset</span><span className="ex-kv-v">{trkActive.offsetCents}¢</span></div>
                       <div className="ex-kv"><span className="ex-kv-k">soglia</span><span className="ex-kv-v">{trkActive.minMoveCents}¢</span></div>
                       <div className="ex-kv"><span className="ex-kv-k">size</span><span className="ex-kv-v">{trkActive.sizeShares}</span></div>
                       <div className="ex-kv"><span className="ex-kv-k">dalle</span><span className="ex-kv-v">{trkActive.atIso ? new Date(trkActive.atIso).toLocaleTimeString() : 'N/D'}</span></div>
                     </div>
                     <p className="op-hint">
-                      Su questo mercato il motore quota entrambi i lati e li insegue da solo, senza chiedere
-                      conferma ordine per ordine. Il kill-switch, il tetto per ordine e la soglia dei 3 minuti
-                      dalla chiusura restano tutti in vigore.
+                      Su questo mercato il motore quota{' '}
+                      {(trkActive.sides ?? 'both') === 'both'
+                        ? 'entrambi i lati e li insegue'
+                        : <>il <b>solo lato {(trkActive.sides as string).toUpperCase()}</b> e lo insegue</>}{' '}
+                      da solo, senza chiedere conferma ordine per ordine. Il kill-switch, il tetto per ordine
+                      e la soglia dei 3 minuti dalla chiusura restano tutti in vigore.
+                      {(trkActive.sides ?? 'both') !== 'both' && (
+                        <> <b className="ex-gold">Con un lato solo questo mercato non matura reward.</b></>
+                      )}
                     </p>
                     {trkOffStep === 'idle' ? (
                       <button className="ex-btn is-danger op-trk-btn" onClick={() => setTrkOffStep('choose')} data-op-trk-off>
@@ -1040,6 +1065,41 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
                   </>
                 ) : (
                   <>
+                    {/* ── QUALI LATI ─────────────────────────────────────────────────────────────
+                        Sta PRIMA di offset e soglia perche' cambia cosa vogliono dire: con un lato
+                        solo l'offset descrive una gamba sola, e l'anteprima qui sotto mostra un
+                        prezzo solo. Deciderlo dopo aver compilato i numeri vorrebbe dire rileggerli.
+
+                        NON e' il selettore BUY YES / BUY NO del piazzamento manuale, che sta piu' in
+                        basso e riguarda UN ordine deciso adesso. Questo decide cosa fara' il motore
+                        per tutto il tempo in cui resta acceso, e per questo vive qui dentro. */}
+                    <div className="op-field">
+                      <span className="op-label">Lati quotati</span>
+                      <div className="op-seg" role="group" aria-label="Lati che il motore quota">
+                        {([['both', 'Entrambi'], ['yes', 'Solo YES'], ['no', 'Solo NO']] as const).map(([v, label]) => (
+                          <button key={v} type="button"
+                            className={`op-segb ${trkSides === v ? (v === 'no' ? 'is-no' : 'is-yes') : ''}`}
+                            onClick={() => { setTrkSides(v); setTrkStep('form'); setTrkPreview(null); }}
+                            data-op-trk-sides={v} aria-pressed={trkSides === v}>
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                      {/* LA CONSEGUENZA MENO OVVIA, detta dove si sceglie e non in fondo alla pagina:
+                          il punteggio premi prende il MINIMO fra i due lati, quindi una gamba sola
+                          vale zero per i reward per quanto bene sia quotata. */}
+                      {trkSides !== 'both' && (
+                        <p className="ex-flag is-bad" data-op-trk-sides-warn>
+                          <span className="ex-flag-i" aria-hidden="true">⚠</span>
+                          <span>
+                            Un lato solo <b>NON matura reward</b>: il punteggio prende il minimo fra i due lati,
+                            e con una gamba sola quel minimo è zero. Resta utile per esposizione direzionale
+                            o accumulo, non per i premi.
+                          </span>
+                        </p>
+                      )}
+                    </div>
+
                     <div className="op-trk-grid">
                       {/* ── DUE ETICHETTE CHE NON DEVONO POTERSI CONFONDERE COL FILTRO ────────────
                           Sopra c'e' un cursore «distanza dal mid» che oscura righe e basta. Qui ci sono
@@ -1087,6 +1147,9 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
                           {(['yes', 'no'] as const).map((k) => {
                             const q = p[k];
                             if (!q) return null;
+                            // L'anteprima mostra SOLO i lati che verrebbero davvero quotati. Disegnare
+                            // anche l'altro, magari sbiadito, farebbe credere che venga piazzato.
+                            if (trkSides !== 'both' && trkSides !== k) return null;
                             return (
                               <div key={k} className="op-trk-leg" data-op-trk-leg={k}>
                                 <span className={`ex-side ${k === 'yes' ? 'is-yes' : 'is-no'}`}>BUY {k.toUpperCase()}</span>
@@ -1107,12 +1170,29 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
                         <div className="op-review-h">Rivedi la configurazione prima di attivare</div>
                         <div className="ex-kvs">
                           <div className="ex-kv"><span className="ex-kv-k">mercato</span><span className="ex-kv-v op-wrap">{target.title}</span></div>
+                          <div className="ex-kv"><span className="ex-kv-k">lati</span>
+                            <span className="ex-kv-v" data-op-trk-review-sides={trkSides}>
+                              {trkSides === 'both' ? 'entrambi (YES e NO)' : `SOLO ${trkSides.toUpperCase()}`}
+                            </span>
+                          </div>
                           <div className="ex-kv"><span className="ex-kv-k">offset</span><span className="ex-kv-v">{trkOffset}¢</span></div>
                           <div className="ex-kv"><span className="ex-kv-k">soglia</span><span className="ex-kv-v">{trkMinMove}¢</span></div>
                           <div className="ex-kv"><span className="ex-kv-k">size/lato</span><span className="ex-kv-v">{sizeStr}</span></div>
-                          <div className="ex-kv"><span className="ex-kv-k">BUY YES</span><span className="ex-kv-v">{trkPreview.plan.yes?.priceCents ?? 'N/D'}¢</span></div>
-                          <div className="ex-kv"><span className="ex-kv-k">BUY NO</span><span className="ex-kv-v">{trkPreview.plan.no?.priceCents ?? 'N/D'}¢</span></div>
+                          {trkSides !== 'no' && <div className="ex-kv"><span className="ex-kv-k">BUY YES</span><span className="ex-kv-v">{trkPreview.plan.yes?.priceCents ?? 'N/D'}¢</span></div>}
+                          {trkSides !== 'yes' && <div className="ex-kv"><span className="ex-kv-k">BUY NO</span><span className="ex-kv-v">{trkPreview.plan.no?.priceCents ?? 'N/D'}¢</span></div>}
                         </div>
+                        {/* GLI ORDINI CHE VERREBBERO CANCELLATI, se questa attivazione ritira un lato
+                            che era acceso. Il server li ha letti dal venue durante l'anteprima: qui si
+                            dicono prima della conferma, non si scoprono dopo. */}
+                        {Array.isArray(trkPreview.ordersToRetire) && trkPreview.ordersToRetire.length > 0 && (
+                          <p className="ex-flag is-bad" data-op-trk-retire>
+                            <span className="ex-flag-i" aria-hidden="true">⚠</span>
+                            <span>
+                              Ci sono <b>{trkPreview.ordersToRetire.length}</b> ordini sul lato che stai togliendo:
+                              confermando vengono <b>cancellati subito</b>, non lasciati scadere.
+                            </span>
+                          </p>
+                        )}
                         <p className="op-hint">
                           Attivando, il motore piazza e riprezza da solo su questo mercato finche&apos; non lo
                           spegni: <b>niente conferma ordine per ordine</b>. Restano in vigore kill-switch, tetto
@@ -1126,7 +1206,7 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
                         // campi vuoti, e il rifiuto sarebbe arrivato dal server invece che dallo schermo.
                         disabled={trkBusy || !(Number(trkOffset) > 0) || !(Number(trkMinMove) > 0) || !(size > 0)}
                         onClick={async () => {
-                          const r = await trkCall({ enabled: true, preview: true, offsetCents: Number(trkOffset), minMoveCents: Number(trkMinMove), sizeShares: size });
+                          const r = await trkCall({ enabled: true, preview: true, sides: trkSides, offsetCents: Number(trkOffset), minMoveCents: Number(trkMinMove), sizeShares: size });
                           if (r.ok) { setTrkPreview(r); setTrkStep('review'); } else setTrkMsg(r.error ?? 'anteprima non riuscita');
                         }}
                         data-op-trk-review-btn>
@@ -1137,7 +1217,7 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
                         <button className="ex-btn op-trk-btn" onClick={() => setTrkStep('form')} data-op-trk-back>Modifica</button>
                         <button className="ex-btn is-danger op-trk-btn" disabled={trkBusy}
                           onClick={async () => {
-                            const r = await trkCall({ enabled: true, preview: false, offsetCents: Number(trkOffset), minMoveCents: Number(trkMinMove), sizeShares: size });
+                            const r = await trkCall({ enabled: true, preview: false, sides: trkSides, offsetCents: Number(trkOffset), minMoveCents: Number(trkMinMove), sizeShares: size });
                             setTrkMsg(r.note ?? r.error ?? null);
                             if (r.ok) { setTrkActive((r as { record?: TrackRecord }).record ?? null); setTrkStep('form'); }
                           }}
