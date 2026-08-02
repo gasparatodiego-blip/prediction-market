@@ -707,7 +707,71 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
           )}
           {enableMsg && <div className="ex-banner op-mb" data-op-enable-msg>{enableMsg}</div>}
 
-          {/* ── 2 · IL BOOK, VERTICALE, STILE EXCHANGE ────────────────────────────────────────────
+          {/* ── 2 · DATI DI MERCATO ───────────────────────────────────────────────────────────────
+              I sette numeri che descrivono il mercato adesso, in una griglia compatta. Sta PRIMA del
+              book perche' e' il contesto che si legge una volta, mentre il book e' la superficie su cui
+              si agisce; e sta in una griglia e non in card separate perche' sono lo stesso fatto letto
+              da sette angoli, non sette fatti.
+
+              I valori sono gli stessi che alimentano il book qui sotto — stessa `view`, stessa fonte,
+              stesso istante. Non c'e' una seconda lettura che possa divergere. */}
+          <div className="op-eyebrow" data-op-eyebrow="market">Dati di mercato</div>
+          <div className="op-mkt op-mb" data-op-market-data>
+            <div className="op-mkt-c">
+              <span className="op-mkt-k">mid</span>
+              <span className="op-mkt-v" data-op-mid-stat>{cents(mid)}</span>
+              {/* QUANTO E VECCHIO QUESTO PREZZO fa parte del prezzo: un mid di 9 millisecondi e un mid
+                  di due minuti non sono lo stesso fatto, e su un ciclo da cinque minuti la differenza
+                  decide l ordine. Sta scritto qui invece di chiedere all operatore di fidarsi. */}
+              <span className={`op-mkt-s ${bookLive ? 'is-ok' : 'is-warn'}`} data-op-freshness
+                title={quote?.depthSourceNote ?? quote?.sourceNote ?? 'in attesa della prima quotazione'}>
+                {quoteAge}
+              </span>
+            </div>
+            <div className="op-mkt-c"><span className="op-mkt-k">bid</span><span className="op-mkt-v ex-up" data-op-bid>{cents(bestBid)}</span></div>
+            <div className="op-mkt-c"><span className="op-mkt-k">ask</span><span className="op-mkt-v ex-dn" data-op-ask>{cents(bestAsk)}</span></div>
+            <div className="op-mkt-c"><span className="op-mkt-k">spread</span><span className="op-mkt-v" data-op-spread-stat>{fin(spreadCents) ? `${spreadCents.toFixed(1)}¢` : 'N/D'}</span></div>
+            <div className="op-mkt-c"><span className="op-mkt-k">tick</span><span className="op-mkt-v" data-op-tick>{tick ?? 'N/D'}</span></div>
+            <div className="op-mkt-c"><span className="op-mkt-k">size min</span><span className="op-mkt-v" data-op-minsize>{minSize ?? 'N/D'}</span></div>
+            <div className="op-mkt-c">
+              <span className="op-mkt-k">banda</span>
+              <span className="op-mkt-v" data-op-band>{fin(maxSpreadCents) ? `±${(maxSpreadCents / 2).toFixed(2)}¢` : 'N/D'}</span>
+              {fin(target.rewardsDailyRate) && <span className="op-mkt-s">{money(target.rewardsDailyRate, 0)}/g</span>}
+            </div>
+          </div>
+
+          {/* ── 3 · ORDER BOOK ────────────────────────────────────────────────────────────────────
+              Il filtro sta SOPRA il book, non altrove nel pannello: e' un comando che agisce su quelle
+              righe, e un comando lontano da cio' che governa si legge come un'impostazione globale.
+              Da qui e' evidente che riguarda la lista che ha sotto, e nient'altro.
+
+              E' DICHIARATO «SOLO VISTA» perche' e' l'unico controllo del pannello che non tocca nessun
+              ordine: oscura righe, non piazza e non sposta niente. Confonderlo con l'offset del motore
+              automatico — che invece decide dove finiscono ordini VERI — sarebbe l'errore piu' caro
+              possibile su questa schermata, quindi i due non condividono ne' etichetta ne' aspetto. */}
+          <div className="op-eyebrow" data-op-eyebrow="book">
+            Order book
+            <span className="op-eyebrow-r">{book.toUpperCase()}</span>
+          </div>
+
+          <div className="op-filter op-mb" data-op-dist-field>
+            <div className="op-filter-top">
+              <span className="op-filter-i" aria-hidden="true">👁</span>
+              <span className="op-filter-l">Distanza minima visualizzata dal mid</span>
+              <span className="op-filter-v ex-n" data-op-dist-value>{minDistC.toFixed(2)}¢</span>
+            </div>
+            <input className="op-slider" type="range" min={0} max={6} step={0.25}
+              value={minDistC} data-op-dist-slider
+              aria-label="Distanza minima visualizzata dal mid — solo vista, non piazza nulla"
+              onChange={(e) => setMinDistC(Number(e.target.value))} />
+            <div className="op-filter-note">
+              <span className="op-filter-tag" data-op-filter-viewonly>SOLO VISTA — non piazza nulla</span>
+              Oscura le righe a meno di <b className="ex-n">{minDistC.toFixed(2)}¢</b> dal mid e le rende
+              non selezionabili. Non tocca nessun ordine.
+            </div>
+          </div>
+
+          {/* ── IL BOOK, VERTICALE, STILE EXCHANGE ────────────────────────────────────────────────
               Ask in alto (rossi, dal piu' alto al piu' basso), la riga del mid al centro, bid sotto
               (verdi, dal piu' vicino al mid in giu'). Ogni riga porta prezzo, size a quel livello e
               cumulato; la barra di sfondo e' proporzionale alla size, cosi' dove c'e' liquidita' si vede
@@ -833,6 +897,13 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
             </div>
           </div>
 
+          {/* ── COME SI USA ── il book e' toccabile, e non e' ovvio da guardare: una riga sembra una
+              riga di tabella finche' qualcuno non dice che e' un comando. */}
+          <p className="op-booknote op-mb" data-op-book-note>
+            Tocca una riga per portarne il prezzo nel campo <b>Prezzo</b> del piazzamento manuale, in
+            fondo. Le righe oscurate sono escluse dal filtro qui sopra e non rispondono al tocco.
+          </p>
+
           {/* ── LA NOTA SUL MID ── quando il mid del VENUE non coincide col midpoint del book, lo si
               dice. E' esattamente il caso che produceva «MID 20.0¢ · BID 21.0¢ · ASK 22.0¢»: adesso i
               tre numeri sono coerenti e la differenza col mid di scoring e' scritta, non nascosta. */}
@@ -856,24 +927,6 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
             </p>
           )}
 
-          {/* ── FILTRO DISTANZA MINIMA DAL MID ────────────────────────────────────────────────────
-              Agisce sul book qui sopra IN TEMPO REALE. Il valore sta scritto in cifre accanto
-              all'etichetta: un cursore senza il suo numero e' una preferenza, non un'impostazione. */}
-          <div className="op-field" data-op-dist-field>
-            <div className="op-label">
-              <span>Distanza minima dal prezzo medio (mid)</span>
-              <span className="op-labelhint"><b className="ex-gold" data-op-dist-value>{minDistC.toFixed(2)}¢</b></span>
-            </div>
-            <input className="op-slider" type="range" min={0} max={6} step={0.25}
-              value={minDistC} data-op-dist-slider
-              aria-label="Distanza minima dal prezzo medio (mid)"
-              onChange={(e) => setMinDistC(Number(e.target.value))} />
-            <div className="op-hint">
-              Le righe a meno di <b className="ex-n">{minDistC.toFixed(2)}¢</b> dal mid restano visibili ma
-              barrate e non selezionabili. Quotare attaccati al mid rende di più e riempie prima, anche
-              quando il prezzo si sta muovendo contro.
-            </div>
-          </div>
           {quoteErr && (
             <p className="ex-flag is-dim op-mb" data-op-quote-error>
               <span className="ex-flag-i" aria-hidden="true">ⓘ</span>
@@ -889,11 +942,16 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
 
               Ha un doppio passo suo, separato da quello del piazzamento manuale, perche' autorizza una
               cosa diversa: non un ordine, ma una delega continuata a piazzarne finche' resta accesa. */}
+          <div className="op-eyebrow" data-op-eyebrow="tracking">Motore automatico</div>
           <div className="op-trk" data-op-tracking>
             <button className="op-trk-head" onClick={() => setTrkOpen((v) => !v)} data-op-trk-toggle aria-expanded={trkOpen}>
+              {/* Il fulmine e il badge AUTO distinguono a colpo d'occhio l'unica sezione che agisce da
+                  sola: tutto il resto del pannello fa qualcosa solo quando lo tocchi. */}
+              <span className="op-trk-bolt" aria-hidden="true">⚡</span>
               <span className="op-trk-t">
-                Tracking attivo <span className="ex-dim">· market making a due lati</span>
+                Tracking <span className="ex-dim">· market making a due lati</span>
               </span>
+              <span className="op-trk-auto" data-op-trk-auto>AUTO</span>
               <span className={`ex-badge ${trkActive ? 'is-gold' : ''}`} data-op-trk-state={trkActive ? 'on' : 'off'}>
                 {trkActive ? 'ATTIVO' : 'spento'}
               </span>
@@ -941,17 +999,23 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
                 ) : (
                   <>
                     <div className="op-trk-grid">
+                      {/* ── DUE ETICHETTE CHE NON DEVONO POTERSI CONFONDERE COL FILTRO ────────────
+                          Sopra c'e' un cursore «distanza dal mid» che oscura righe e basta. Qui ci sono
+                          due campi che decidono dove finiscono ORDINI VERI e quando vengono rifatti.
+                          Chiamarli entrambi «distanza dal mid» sarebbe l'ambiguita' piu' costosa di
+                          questa schermata: «Offset ORDINI» dice di cosa sposta il prezzo, e il pedice
+                          dice che sono ordini piazzati, non righe guardate. */}
                       <label className="op-field">
-                        <span className="op-label">Offset <span className="op-labelhint">¢</span></span>
-                        <span className="op-trk-callout" data-op-trk-callout>↑ distanza dal prezzo medio (mid)</span>
+                        <span className="op-label">Offset ordini <span className="op-labelhint">¢</span></span>
+                        <span className="op-trk-callout" data-op-trk-callout>distanza reale degli ordini piazzati dal mid</span>
                         <input className="ex-input op-input" type="number" inputMode="decimal" step="0.1"
                           value={trkOffset} placeholder={fin(maxSpreadCents) ? String(+(maxSpreadCents / 2).toFixed(2)) : '2'}
                           onChange={(e) => { setTrkOffset(e.target.value); setTrkStep('form'); setTrkPreview(null); }}
                           data-op-trk-offset />
                       </label>
                       <label className="op-field">
-                        <span className="op-label">Soglia di movimento <span className="op-labelhint">¢</span></span>
-                        <span className="op-trk-callout">↑ quanto deve muoversi il mid per riprezzare</span>
+                        <span className="op-label">Soglia reprice <span className="op-labelhint">¢</span></span>
+                        <span className="op-trk-callout">movimento minimo del mid per riprezzare</span>
                         <input className="ex-input op-input" type="number" inputMode="decimal" step="0.1"
                           value={trkMinMove} placeholder={fin(tick) ? String(+(tick * 100).toFixed(2)) : '1'}
                           onChange={(e) => { setTrkMinMove(e.target.value); setTrkStep('form'); setTrkPreview(null); }}
@@ -1049,7 +1113,10 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
 
           {/* ── PIAZZAMENTO MANUALE A UN LATO ─────────────────────────────────────────────────────
               L'alternativa al tracking: un ordine solo, su un lato solo, deciso adesso. */}
-          <div className="op-sech" data-op-manual-section>Piazzamento manuale a un lato</div>
+          <div className="op-eyebrow" data-op-eyebrow="manual" data-op-manual-section>
+            Piazzamento manuale
+            <span className="op-eyebrow-r">un lato · un ordine</span>
+          </div>
 
           {/* ── 3 · LATO ──────────────────────────────────────────────────────────────────────── */}
           <div className="op-field">
@@ -1250,6 +1317,49 @@ const CSS = `
 .op-hint { font-size: 10.5px; color: var(--ex-txt-3); line-height: 1.5; margin-top: 5px; }
 .op-check { display: flex; gap: 7px; align-items: center; margin-top: 7px; font-size: 11.5px; color: var(--ex-txt-2); }
 
+/* ── EYEBROW ─────────────────────────────────────────────────────────────────────────────────────
+   Il separatore di sezione e una riga di testo, non una card. Una card dentro una card produce due
+   bordi concentrici e ruba larghezza su un telefono senza aggiungere informazione: qui la gerarchia
+   la fa la tipografia (maiuscoletto grigio, filetto sottile), e il pannello resta un piano solo. */
+.op-eyebrow { display: flex; align-items: center; gap: 8px;
+  font-size: 9.5px; letter-spacing: .11em; text-transform: uppercase; font-weight: 700;
+  color: var(--ex-txt-3); margin: 16px 0 7px; }
+.op-eyebrow::after { content: ""; flex: 1 1 auto; height: 1px; background: var(--ex-line-soft); }
+.op-eyebrow-r { order: 3; letter-spacing: .06em; font-weight: 600; color: var(--ex-txt-2); }
+.op-eyebrow:first-child { margin-top: 2px; }
+
+/* ── DATI DI MERCATO ── griglia auto-adattiva: tre colonne su un telefono stretto, quattro appena
+   c e spazio. Nessun valore va a capo perche i numeri sono monospazio e la colonna e dimensionata
+   sul piu largo che possa capitare. */
+/* I filetti fra le celle sono ombre INTERNE alla cella, non un gap che lascia vedere lo sfondo.
+   Con sette voci e una griglia a quattro colonne l ultima riga resta spaiata: col trucco del gap quel
+   posto vuoto si vedeva come un riquadro piu chiaro, cioe una cella che non esiste. Cosi invece lo
+   spazio avanzato e semplicemente sfondo, e la griglia finisce dove finiscono i dati. */
+.op-mkt { display: grid; grid-template-columns: repeat(auto-fit, minmax(84px, 1fr));
+  background: #12151A; border: 1px solid var(--ex-line); border-radius: 8px; overflow: hidden; }
+.op-mkt-c { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; min-width: 0;
+  box-shadow: inset -1px -1px 0 var(--ex-line-soft); }
+.op-mkt-k { font-size: 9px; letter-spacing: .07em; text-transform: uppercase; color: var(--ex-txt-3); }
+.op-mkt-v { font-family: var(--ex-mono); font-size: 14px; font-weight: 700; line-height: 1.2; }
+.op-mkt-s { font-family: var(--ex-mono); font-size: 9px; color: var(--ex-txt-3); overflow-wrap: anywhere; }
+.op-mkt-s.is-ok { color: var(--ex-green); }
+.op-mkt-s.is-warn { color: var(--ex-gold); }
+
+/* ── FILTRO DI SOLA VISTA ── volutamente MUTO: niente oro, niente bordo marcato. L oro in questo
+   pannello significa «il motore agisce da solo», e un filtro che non piazza niente non deve
+   indossarlo. Il contrasto con il pannello del tracking e l informazione. */
+.op-filter { border: 1px solid var(--ex-line-soft); border-radius: 8px; padding: 9px 11px 11px;
+  background: rgba(255,255,255,.012); }
+.op-filter-top { display: flex; align-items: center; gap: 8px; }
+.op-filter-i { font-size: 12px; opacity: .5; filter: grayscale(1); }
+.op-filter-l { flex: 1 1 auto; font-size: 11px; color: var(--ex-txt-2); }
+.op-filter-v { font-size: 12.5px; font-weight: 700; color: var(--ex-txt); }
+.op-filter-note { font-size: 10px; color: var(--ex-txt-3); line-height: 1.5; margin-top: 6px; }
+.op-filter-tag { display: inline-block; margin-right: 6px; padding: 1px 5px; border-radius: 3px;
+  border: 1px solid var(--ex-line); background: var(--ex-panel-2);
+  font-size: 8.5px; letter-spacing: .07em; font-weight: 700; color: var(--ex-txt-2); vertical-align: 1px; }
+.op-booknote { font-size: 10.5px; color: var(--ex-txt-3); line-height: 1.5; }
+
 /* ── IL BOOK ─────────────────────────────────────────────────────────────────────────────────────
    Griglia a tre colonne: prezzo a sinistra, size e cumulato allineati a destra. Tutte le cifre in
    monospazio, cosi le colonne restano incolonnate mentre i numeri cambiano.
@@ -1268,13 +1378,13 @@ const CSS = `
 
 /* La riga e un BOTTONE: tocco, tastiera e stato disabilitato arrivano gratis e sono quelli veri del
    browser, non un div che finge. */
-/* ALTEZZA DELLA RIGA: 34px col mouse, 44px col dito.
-   Una scala di book vive di densita: dieci righe da 44px sarebbero 440px e spingerebbero la riga del mid
-   fuori da uno schermo da 640. Ma la riga E un comando — si tocca per compilare il prezzo — e su un dito
-   32px sono sotto la soglia di errore. Quindi la densita resta dov e utile (puntatore fine) e il bersaglio
-   cresce dove serve (puntatore grosso), invece di scegliere una taglia sola sbagliata per meta dei casi. */
+/* ALTEZZA DELLA RIGA: 40px, 44px col dito.
+   La riga E un comando — si tocca per compilare il prezzo — quindi vale la soglia dei bersagli
+   toccabili, non la densita di una tabella da leggere. Dieci righe da 40px non entrano in uno schermo
+   da 640 insieme al resto, e va bene cosi: il pannello scorre. Un bersaglio troppo piccolo invece non
+   si aggiusta scorrendo, si sbaglia e basta. */
 .op-row { position: relative; display: grid; grid-template-columns: 1fr auto auto; gap: 10px;
-  align-items: center; width: 100%; padding: 0 10px; min-height: 34px; cursor: pointer;
+  align-items: center; width: 100%; padding: 0 10px; min-height: 40px; cursor: pointer;
   background: none; border: 0; border-left: 2px solid transparent; color: inherit;
   font-family: var(--ex-mono); font-size: 12px; text-align: left; }
 .op-row-bar { position: absolute; top: 2px; bottom: 2px; right: 0; z-index: 0; border-radius: 2px 0 0 2px; }
@@ -1336,10 +1446,18 @@ const CSS = `
 .op-review-h { font-size: 12px; font-weight: 700; color: var(--ex-gold); margin-bottom: 8px; }
 .op-wrap { overflow-wrap: anywhere; }
 
-.op-trk { border: 1px solid var(--ex-line); border-radius: 8px; margin: 12px 0; background: var(--ex-panel); }
-.op-trk-head { display: flex; align-items: center; gap: 8px; width: 100%; padding: 10px 12px; cursor: pointer;
-  background: none; border: 0; color: inherit; font: inherit; text-align: left; }
-.op-trk-head:hover { background: rgba(240,185,11,.05); }
+/* ── MOTORE AUTOMATICO ── l unica sezione con il bordo oro, e non e decorazione: in questo pannello
+   l oro vuol dire «da qui in poi qualcosa agisce senza chiedertelo ogni volta». Il filtro qui sopra
+   e grigio proprio per non rivendicare lo stesso peso. */
+.op-trk { border: 1px solid var(--ex-gold-bd); border-radius: 8px; margin: 0 0 12px;
+  background: linear-gradient(180deg, rgba(240,185,11,.05), rgba(240,185,11,.015)); }
+.op-trk-head { display: flex; align-items: center; gap: 8px; width: 100%; padding: 11px 12px; min-height: 46px;
+  cursor: pointer; background: none; border: 0; color: inherit; font: inherit; text-align: left; }
+.op-trk-head:hover { background: rgba(240,185,11,.07); }
+.op-trk-bolt { flex: 0 0 auto; font-size: 13px; line-height: 1; }
+.op-trk-auto { flex: 0 0 auto; padding: 2px 6px; border-radius: 3px;
+  background: var(--ex-gold); color: #1A1300;
+  font-family: var(--ex-mono); font-size: 8.5px; font-weight: 700; letter-spacing: .1em; }
 .op-trk-t { flex: 1 1 auto; font-size: 12.5px; font-weight: 600; }
 .op-trk-caret { color: var(--ex-txt-3); font-size: 11px; }
 .op-trk-body { padding: 0 12px 12px; border-top: 1px solid var(--ex-line-soft); }
@@ -1350,10 +1468,9 @@ const CSS = `
 .op-trk-prev { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
 .op-trk-leg { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; font-size: 11.5px; }
 .op-trk-px { font-size: 14px; font-weight: 700; color: var(--ex-gold); }
-/* Il callout spiega A PAROLE cosa misura il campo: «offset» da solo non dice da cosa. */
+/* Il callout spiega A PAROLE cosa misura il campo: «offset» da solo non dice da cosa, e soprattutto non
+   dice che qui si parla di ordini VERI mentre il cursore qui sopra parla solo di righe guardate. */
 .op-trk-callout { display: block; font-size: 10px; color: var(--ex-gold); line-height: 1.35; margin-top: 3px; }
-.op-sech { font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--ex-txt-3);
-  border-top: 1px solid var(--ex-line); padding-top: 10px; margin: 14px 0 2px; }
 
 /* ── COMPATTEZZA SENZA TAGLIARE NIENTE ───────────────────────────────────────────────────────────
    Il pannello sta in una schermata di telefono per DIMENSIONI (font e padding ridotti, griglia dei
