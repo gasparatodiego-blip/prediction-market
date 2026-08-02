@@ -375,7 +375,38 @@ async function main() {
     finally { trackingRunning = false; }
   };
   await runTracking();
+
+  // ── PUSH DAL FEED, NON POLLING ─────────────────────────────────────────────────────────────────
+  // agent34 e' un processo separato: il websocket del venue arriva LI', non qui. Il canale fra i due e'
+  // lo snapshot che agent34 scrive; fs.watch su quel file sveglia il motore nell'istante in cui lo
+  // snapshot cambia, invece di scoprirlo al prossimo giro di un intervallo fisso.
+  //
+  // ONESTA' SU COSA QUESTO COMPRA E COSA NO. Toglie il disallineamento del MOTORE (fino a un intervallo
+  // intero di ritardo fra «il prezzo e' cambiato» e «il motore lo sa»). NON scende sotto la cadenza con
+  // cui agent34 scrive lo snapshot: quello e' il pavimento vero, e per abbassarlo bisognerebbe toccare
+  // WRITE_INTERVAL_MS in agent34 — una decisione separata, con un costo suo.
+  //
+  // L'intervallo resta come BATTITO DI SICUREZZA: se il file smettesse di cambiare (feed fermo), il
+  // ciclo deve girare lo stesso per accorgersene e mettere in pausa i mercati.
+  let pushTimer = null;
+  try {
+    // SI GUARDA LA DIRECTORY, NON IL FILE. agent34 scrive in modo atomico (tmp + rename), quindi
+    // l'inode del file cambia a ogni scrittura e un watch sul percorso del file smette di ricevere
+    // eventi dopo la PRIMA sostituzione. Misurato: 1 risveglio su 10. Guardando la cartella e
+    // filtrando per nome, ogni rename viene visto.
+    fs.watch('/tmp', (ev, name) => {
+      if (name !== 'clob-live-books.json') return;
+      // Debounce corto: una scrittura atomica produce piu' eventi (rename + change) e senza questo il
+      // ciclo partirebbe due o tre volte per lo stesso snapshot.
+      if (pushTimer) return;
+      pushTimer = setTimeout(() => { pushTimer = null; runTracking(); }, 120);
+    });
+    log('market making: agganciato al feed in PUSH (fs.watch sullo snapshot di agent34) — il ciclo parte quando il prezzo cambia, non a orologio.');
+  } catch (e) {
+    log('market making: fs.watch non disponibile (' + e.message + ') — resta il solo battito periodico.');
+  }
   setInterval(runTracking, TRACKING_POLL_MS);
+  log(`market making: battito di sicurezza ogni ${TRACKING_POLL_MS / 1000}s, cosi un feed fermo viene comunque notato.`);
   log(`market making: ciclo ogni ${TRACKING_POLL_MS / 1000}s · mid piu vecchio di ${MID_STALE_PAUSE_SEC}s ⇒ quel mercato va IN PAUSA (e riprende da solo).`);
 }
 
