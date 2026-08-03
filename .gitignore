@@ -73,6 +73,11 @@ data/funding-history-14d.json.tmp.*
 data/history/
 # sports arb scanner outputs — rewritten each scan, credit state is local
 data/sports/
+# riallocatore periodico (agent41) — registro append-only dei cicli, stato del timer e montepremi con cui
+# l'ultimo piano fu deciso. Tutto stato di esecuzione locale: cresce da solo, non si versiona.
+data/realloc-scheduler.jsonl
+data/realloc-scheduler-state.json
+data/realloc-plan-pools.json
 # runtime SQLite DB — written continuously by agent5-calculator, not source-controlled
 data/opportunities.db
 data/opportunities.db-wal

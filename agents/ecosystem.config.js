@@ -603,5 +603,32 @@ module.exports = {
       autorestart:   true,
       env:           { NODE_ENV: 'production', HOME: '/root' },
     },
+    {
+      name:          'agent41-realloc-scheduler',
+      script:        './agents/agent41-realloc-scheduler.js',
+      cwd:           '/root/prediction-market',
+      restart_delay: 30000,
+      max_restarts:  20,
+      // IL RIALLOCATORE PERIODICO. Ogni 6 ore chiede al VENUE (non alla cache locale) se i mercati in
+      // gestione sono ancora quelli su cui il piano fu deciso — risolto, non più negoziabile, senza
+      // banda, in scadenza, o con il montepremi crollato sotto metà — e se anche uno solo non lo è più
+      // rifà il piano al saldo libero attuale (tetto 30% per mercato) e lo mette in opera con
+      // lib/maker/allocation-reset.js. Se sono tutti ancora buoni non fa niente: niente churn.
+      //
+      // È L'UNICO PROCESSO CHE PUÒ CANCELLARE E PIAZZARE ORDINI VERI SENZA UNA CONFERMA UMANA, per
+      // eccezione esplicita dell'operatore (3 agosto 2026). Perciò la riga qui sotto NON basta ad
+      // accenderlo: senza REALLOC_SCHEDULER_ENABLED=1 il processo resta vivo e completamente inerte —
+      // nessuna lettura del venue, nessun piano, nessun ordine. Per accenderlo serve mettere il flag qui
+      // e riavviare con --update-env; per guardarlo lavorare a capitale fermo, REALLOC_SCHEDULER_DRY_RUN=1.
+      //
+      // Non apre nessuna strada nuova verso il venue: passa dalle stesse funzioni del bottone del
+      // pannello (listManualOrders / cancelManualOrder in corsia cancel-only / runBulkAllocation), quindi
+      // kill switch, cap di esposizione, rate limit 20/60s e gate per riga valgono identici. Ogni ciclo
+      // finisce in data/realloc-scheduler.jsonl, un passo per riga.
+      max_memory_restart: '400M',
+      watch:         false,
+      autorestart:   true,
+      env:           { NODE_ENV: 'production', HOME: '/root' },
+    },
   ],
 };
