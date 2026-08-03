@@ -298,6 +298,36 @@ export default function RewardsAllocatePanel(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ── IL CAPITALE GIA' IMPEGNATO (punto 5) ────────────────────────────────────────────────────────
+  // Il saldo del proxy NON scende quando un ordine viene piazzato: scende quando viene ESEGUITO. Un
+  // pannello che mostra solo il saldo dice quindi «hai tutto libero» anche mentre il motore di tracking
+  // ha appena impegnato metà di quel saldo in ordini a riposo — e il piano che propone parte da una
+  // cifra che non è più disponibile.
+  //
+  // Si legge dalla STESSA fonte dell'intestazione (`/api/maker/board` → summary.committedUsd, che
+  // riassume la lista ordini VERA del venue), non da un secondo conteggio: due strade verso la stessa
+  // cifra sono due occasioni di mostrarne due diverse. Ogni ordine del tracking passa da lì appena
+  // piazzato, quindi questa vista lo include senza saperne nulla.
+  const [committed, setCommitted] = useState<{ usd: number | null; simulated: boolean; readable: boolean }>({ usd: null, simulated: false, readable: false });
+  useEffect(() => {
+    let alive = true;
+    const leggi = () => fetch('/api/maker/board', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((b: { summary?: { committedUsd?: number | null }; orders?: { simulated?: boolean } | null }) => {
+        if (!alive) return;
+        setCommitted({
+          usd: typeof b?.summary?.committedUsd === 'number' ? b.summary.committedUsd : null,
+          simulated: b?.orders?.simulated === true,
+          readable: !!b?.summary,
+        });
+      })
+      .catch(() => { if (alive) setCommitted({ usd: null, simulated: false, readable: false }); });
+    leggi();
+    // Stessa cadenza dell'intestazione: un piazzamento del motore compare qui entro 20 secondi.
+    const id = setInterval(leggi, 20_000);
+    return () => { alive = false; clearInterval(id); };
+  }, []);
+
   const compute = useCallback((cap: string) => {
     const n = Number(cap);
     if (!Number.isFinite(n) || n <= 0) { setPlan(null); return; }
@@ -545,6 +575,31 @@ export default function RewardsAllocatePanel(
               </div>
               <div className="alloc-sub">letto {ageText(bal?.ageSeconds ?? null)}{bal?.stale ? ' · NON aggiornato (valore precedente)' : ''}</div>
             </div>
+            {/* IMPEGNATO e LIBERO. «N/D» quando il venue non è stato interrogato: non è «zero impegnato»,
+                ed è la differenza che decide se il piano qui sotto parte da una cifra reale. */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 20px', alignItems: 'baseline', marginTop: 6 }}
+              data-alloc-committed>
+              <div>
+                <span className="alloc-sub">impegnato in ordini a riposo </span>
+                <b style={{ fontVariantNumeric: 'tabular-nums' }} data-alloc-committed-value>
+                  {committed.simulated || !committed.readable ? 'N/D' : money(committed.usd)}
+                </b>
+              </div>
+              <div>
+                <span className="alloc-sub">libero </span>
+                <b style={{ fontVariantNumeric: 'tabular-nums' }} data-alloc-free-value>
+                  {(bal?.pusdBalance == null || committed.usd == null || committed.simulated)
+                    ? '—'
+                    : money(Math.max(0, (bal.pusdBalance as number) - committed.usd))}
+                </b>
+              </div>
+            </div>
+            {(committed.simulated || !committed.readable) && (
+              <div className="alloc-sub" data-alloc-committed-unknown>
+                capitale impegnato non letto dal venue — non è «zero impegnato»: il piano qui sotto potrebbe
+                partire da un saldo di cui una parte è già in ordini.
+              </div>
+            )}
             <div className="alloc-sub" style={{ marginTop: 6 }}>
               <span className="alloc-addr">funder (proxy): {trunc(bal?.proxy ?? null)}</span>{' · '}
               <span className="alloc-addr">signer (firma, non detiene fondi): {trunc(bal?.signer ?? null)}</span>

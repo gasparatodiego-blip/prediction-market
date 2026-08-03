@@ -788,6 +788,10 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
           // rifiuto ad annotazione. Il tick NON è coperto da questa dichiarazione e resta un blocco: un
           // prezzo fuori griglia lo rifiuterebbe l'exchange, non noi.
           acknowledgeOutOfBand: true,
+          // LA DISTANZA CON CUI L'ORDINE E' STATO COMPOSTO. Il server la usa per ricalcolare il prezzo
+          // sul mid VIVO al momento dell'invio: un ordine composto qualche secondo fa non deve poter
+          // diventare un taker solo perche' il mid si e' mosso mentre lo si guardava.
+          ...(fin(sheetDistC) ? { distanceCents: sheetDistC as number, belowMid: sheetBelow } : {}),
           note: 'pannello ordine',
         }),
       });

@@ -64,6 +64,13 @@ const bodySchema = z.object({
   // da bloccante a dichiarato. Assente ⇒ false ⇒ comportamento severo di prima, perché un chiamante che
   // non ha mostrato nulla non può acconsentire per conto di nessuno.
   acknowledgeOutOfBand: z.boolean().optional(),
+  // ── LA DISTANZA DAL MID CON CUI L'ORDINE E' STATO COMPOSTO (punto 2) ──────────────────────────
+  // Chi ha scelto il prezzo muovendo lo stepper «distanza dal mid» lo dichiara qui. Al momento
+  // dell'invio il prezzo viene RICALCOLATO da questa distanza sul mid VIVO, cosi' un ordine composto
+  // qualche secondo fa non puo' diventare un taker perche' il mid si e' spostato nel frattempo.
+  // Assente ⇒ nessun ricalcolo: il prezzo parte esattamente com'e' stato scritto.
+  distanceCents: z.number().finite().min(0).max(99).optional(),
+  belowMid: z.boolean().optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -79,7 +86,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { acknowledgeOutOfBand, ...order } = parsed.data;
+    const { acknowledgeOutOfBand, ...order } = parsed.data;   // distanceCents/belowMid passano invariati
     const res = await placeManualOrder({ ...order, allowOutOfBand: acknowledgeOutOfBand === true });
     // A refused order is a 200 with ok:false and its gate — the request was well-formed and the system
     // answered it. Reserve non-2xx for a request or server that failed, so the panel can always render

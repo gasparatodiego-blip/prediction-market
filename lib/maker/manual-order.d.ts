@@ -353,6 +353,11 @@ export function placeManualOrder(
     requireFreshBookMs?: number;
     /** Declassa il SOLO codice OUT_OF_BAND da bloccante a dichiarato (vedi ManualOrderSpec). */
     allowOutOfBand?: boolean;
+    /** La distanza dal mid con cui l'ordine e' stato composto: il prezzo viene ricalcolato su quella
+     *  distanza col mid VIVO all'invio, cosi' un mid mosso non trasforma l'ordine in un taker. */
+    distanceCents?: number;
+    /** Da che parte del mid stava il prezzo scelto. Default true (sotto). */
+    belowMid?: boolean;
   },
   deps?: ManualDeps,
 ): Promise<PlaceResult>;
