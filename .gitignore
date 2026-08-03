@@ -78,6 +78,8 @@ data/sports/
 data/realloc-scheduler.jsonl
 data/realloc-scheduler-state.json
 data/realloc-plan-pools.json
+# elenco dei mercati che l'ottimizzatore vuole tenere caldi — riscritto a ogni piano, stato di esecuzione
+data/collector-priority.json
 # runtime SQLite DB — written continuously by agent5-calculator, not source-controlled
 data/opportunities.db
 data/opportunities.db-wal

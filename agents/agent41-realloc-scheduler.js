@@ -49,6 +49,7 @@ const { readAutoRepriceConfig, setAutoReprice } = require('../lib/maker/auto-rep
 const { readTrackingConfig, setTracking } = require('../lib/maker/mm-tracking-config');
 const { setManualMode } = require('../lib/maker/manual-mode');
 const { writeAllocatedCapital } = require('../lib/maker/allocated-capital');
+const { writeCollectorPriority } = require('../lib/rewards/collector-priority');
 const { appendMakerAudit } = require('../lib/venues/polymarket-clob-maker/audit');
 
 const ROOT = path.resolve(__dirname, '..');
@@ -186,7 +187,20 @@ async function leggiSaldo() {
 // del trigger di valore, non un piano da mettere in opera.
 async function calcolaPiano({ capital, maxPerMarketUsd, onlyMarketIds = null }) {
   const { planFromCollection } = require('../lib/rewards/allocator');
-  return planFromCollection({ capital, maxPerMarketUsd, onlyMarketIds, horizonFilter: true });
+  const piano = planFromCollection({ capital, maxPerMarketUsd, onlyMarketIds, horizonFilter: true });
+
+  // Il piano LIBERO dice al raccoglitore cosa tenere caldo: le righe scelte e i migliori candidati
+  // valutati. Si scrive SEMPRE, anche in dry run e anche quando nessun trigger scatta — non è un'azione
+  // sul capitale, è la lista di cosa guardare, e serve proprio nei cicli in cui non si fa niente.
+  // Il piano RISTRETTO (onlyMarketIds) non la scrive: guarda solo dove siamo già, e prenderla per buona
+  // congelerebbe la copertura sui mercati attuali, che è l'opposto del punto.
+  if (!onlyMarketIds) {
+    try {
+      const pr = writeCollectorPriority(piano);
+      annuncia('log', `priorità del raccoglitore aggiornate: ${pr.marketIds.length} mercati`);
+    } catch (e) { annuncia('error', 'priorità del raccoglitore non scritte', { error: e.message }); }
+  }
+  return piano;
 }
 
 // ── IL RESET ────────────────────────────────────────────────────────────────────────────────────────

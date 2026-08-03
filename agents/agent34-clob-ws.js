@@ -62,7 +62,20 @@ const CLOB_BASE      = 'https://clob.polymarket.com';
 // deliberately conservative asset budget for ONE connection, and stated as ours rather than the venue's.
 // If the desired set ever exceeds it, we do NOT silently drop a market the operator chose by hand: the
 // weakest reward-board market (lowest rewardsDailyRate) is evicted instead, and the eviction is logged.
-const SUBSCRIPTION_CAP = 60;          // reward-board markets taken from the watchlist (× 2 tokens = ≤120 assets)
+// 60 → 90 il 3 agosto 2026, e questa è l'aritmetica per intero. Il board pubblicato quel giorno era di
+// 118 mercati e a 60 se ne copriva la metà, ordinati per MONTEPREMI; l'ottimizzatore però sceglie per
+// reward per dollaro e pescava sotto quella soglia (Spider-Man era in posizione 115), quindi i mercati
+// che il piano proponeva non avevano storico. La corsia del piano (unionPlanMarkets) tiene caldi quelli
+// GIÀ noti all'ottimizzatore; questo numero serve all'altra metà del problema, la SCOPERTA: un mercato
+// senza nessuno storico non è nemmeno un candidato, quindi non può entrare in quella corsia.
+//
+// Perché 90 e non 118. I conti che lo limitano sono due: 90 × 2 = 180 asset più le altre corsie (fino a
+// ~35 mercati fra abilitati, tracking, piano e permessi) restano sotto i 250 asset del budget di
+// connessione e sotto i 125 mercati di TOTAL_MARKET_CAP; e il giornale mid-history costa ~1,5 MB al
+// giorno per mercato (misurato: 71,5 MB in 17,3 h su 65 mercati), quindi si passa da ~100 a ~170 MB al
+// giorno, cioè ~2,4 GB sui 14 giorni di retention — con 59 GB liberi è una spesa reale ma piccola.
+// Portarlo a 118 lascerebbe invece zero margine alle altre corsie sul tetto totale.
+const SUBSCRIPTION_CAP = 90;          // reward-board markets taken from the watchlist (× 2 tokens = ≤180 assets)
 const FEED_ASSET_BUDGET = 250;        // assets on one market-channel connection — OUR budget, not a venue limit
 const TOTAL_MARKET_CAP = Math.floor(FEED_ASSET_BUDGET / 2); // 125 markets (board + operator + legs), 2 tokens each
 const WRITE_INTERVAL_MS = 3_000;      // recompute + persist snapshot cadence
@@ -225,7 +238,7 @@ async function operatorMarketMeta(id, deps = {}) {
 // candidate (that is the whole point), and neither is a leg market. Returns the evicted id, or null when
 // there is nothing left to give up — in which case the caller records the operator market as DROPPED and
 // says so loudly rather than pretending it is covered.
-function evictWeakestRewardMarket(into) {
+function evictWeakestRewardMarket(into, per = 'un mercato abilitato a mano') {
   let worst = null; let worstRate = Infinity;
   for (const [id, m] of into) {
     if (m.source !== 'reward-board' || m.operatorEnabled || m.fromLeg) continue;
@@ -234,7 +247,7 @@ function evictWeakestRewardMarket(into) {
   }
   if (!worst) return null;
   into.delete(worst);
-  log(`cap ${TOTAL_MARKET_CAP} reached — evicted weakest reward market ${worst.slice(0, 10)}… (rate $${worstRate}/d) to make room for an operator-enabled market`);
+  log(`cap ${TOTAL_MARKET_CAP} reached — evicted weakest reward market ${worst.slice(0, 10)}… (rate $${worstRate}/d) to make room for ${per}`);
   return worst;
 }
 
@@ -296,7 +309,7 @@ async function unionTrackedMarkets(into, deps = {}) {
     const existing = byLower.get(normId(id));
     if (existing) { into.get(existing).tracked = true; continue; }
     if (into.size >= TOTAL_MARKET_CAP) {
-      const evicted = evictWeakestRewardMarket(into);
+      const evicted = evictWeakestRewardMarket(into, 'un mercato con il market making attivo');
       if (!evicted) { trackedDropped.push(id); continue; }
       byLower.delete(normId(evicted));
     }
@@ -309,6 +322,65 @@ async function unionTrackedMarkets(into, deps = {}) {
   }
   if (trackedDropped.length) {
     log(`ATTENZIONE: ${trackedDropped.length} mercati CON TRACKING ATTIVO non sottoscritti — il motore li mettera in pausa per dati non freschi: ${trackedDropped.join(', ')}`);
+  }
+  return into;
+}
+
+// ── LA CORSIA DEL PIANO ─────────────────────────────────────────────────────────────────────────────
+// Il board si ordina per MONTEPREMI; l'ottimizzatore sceglie per reward atteso PER DOLLARO sotto il
+// tetto di concentrazione. Sono due criteri diversi, e il secondo pesca regolarmente sotto la soglia
+// del primo: il 3 agosto 2026, dei 5 mercati del piano fresco UNO SOLO era sottoscritto, e «Spider-Man:
+// Brand New Day» (posizione 115 del board, $25/g) aveva l'ultimo prezzo di 8,4 ore prima. Il piano lo
+// proponeva, il guard di freschezza lo scartava, e il capitale restava fermo.
+//
+// Qui la si chiude: chi calcola un piano scrive in data/collector-priority.json i mercati che ha scelto
+// o valutato meglio, e questa corsia li sottoscrive con la stessa priorità dei mercati abilitati a mano
+// — al tetto cede il posto il mercato reward più povero, mai uno del piano. Così quando l'ottimizzatore
+// riproporrà quel mercato, il suo storico sarà già caldo da ore invece che da adesso.
+//
+// L'elenco SCADE (lib/rewards/collector-priority.MAX_AGE_MS): se chi lo scrive muore, la corsia si
+// svuota e il raccoglitore torna al comportamento di sempre, invece di restare inchiodato ai mercati di
+// un piano defunto.
+let planDropped = [];
+let planActiveIds = [];
+let planLaneReason = null;
+async function unionPlanMarkets(into, deps = {}) {
+  planDropped = [];
+  let ids = [];
+  try {
+    if (deps.planIds !== undefined) { ids = deps.planIds; planLaneReason = null; }
+    else {
+      const { readCollectorPriority } = require('../lib/rewards/collector-priority');
+      const letto = readCollectorPriority({});
+      ids = letto.marketIds;
+      planLaneReason = letto.reason;
+    }
+  } catch (e) {
+    log('elenco delle priorità del piano non leggibile (nessuna sottoscrizione da questa corsia):', e.message);
+    planActiveIds = []; planLaneReason = e.message;
+    return into;
+  }
+  planActiveIds = ids.slice();
+  if (!ids.length) return into;
+  const byLower = new Map([...into.keys()].map((k) => [normId(k), k]));
+  for (const id of ids) {
+    const existing = byLower.get(normId(id));
+    if (existing) { into.get(existing).fromPlan = true; continue; }   // già coperto: si marca soltanto
+    if (into.size >= TOTAL_MARKET_CAP) {
+      const evicted = evictWeakestRewardMarket(into, 'un mercato proposto dal piano');
+      if (!evicted) { planDropped.push(id); continue; }
+      byLower.delete(normId(evicted));
+    }
+    const meta = await operatorMarketMeta(id, deps);
+    if (!meta) { planDropped.push(id); continue; }                    // token non risolvibili → mai inventati
+    meta.source = 'piano';
+    meta.fromPlan = true;
+    meta.operatorEnabled = false;
+    into.set(id, meta);
+    byLower.set(normId(id), id);
+  }
+  if (planDropped.length) {
+    log(`ATTENZIONE: ${planDropped.length} mercati PROPOSTI DAL PIANO non sottoscritti — il loro storico restera vecchio e l allocatore li scartera: ${planDropped.join(', ')}`);
   }
   return into;
 }
@@ -502,6 +574,7 @@ async function reconcileSubscriptions() {
   await unionOperatorMarkets(desired); // + every market the operator enabled by hand (cfg.enabledMarketIds)
   await unionLegMarkets(desired);   // Phase 2: + markets where a user has legs
   await unionTrackedMarkets(desired); // + i mercati con il market making attivo (PERMANENTI, prima dei temporanei)
+  await unionPlanMarkets(desired);    // + i mercati che l'ottimizzatore ha scelto o valutato meglio
   await unionLeaseMarkets(desired); // + i mercati con un pannello di piazzamento aperto adesso (temporanei)
   await loadDriftInputs();          // Phase 4: refresh legs/placements/rewardScore/rails
   const nextAssets = new Map();
@@ -667,6 +740,13 @@ function buildSnapshot() {
       trackedMarkets: bySource['mm-tracking'] || 0,
       trackedActive: [...trackedActiveIds],
       trackedDropped: [...trackedDropped],
+      // La corsia del piano: quanti mercati proposti dall'ottimizzatore sono coperti, quali NON si è
+      // riusciti a sottoscrivere (quelli il cui storico resterà vecchio e che il piano poi scarterà), e
+      // perché l'elenco è eventualmente vuoto — scaduto, assente, malformato.
+      planMarkets: bySource.piano || 0,
+      planActive: [...planActiveIds],
+      planDropped: [...planDropped],
+      planListReason: planLaneReason,
       leaseMarkets: bySource['live-lease'] || 0,
       leaseActive: [...leaseActiveIds],
       leaseDropped: [...leaseDropped],
@@ -1022,6 +1102,7 @@ module.exports = {
   // deps iniettate, senza rete e senza toccare data/.
   unionLeaseMarkets, leaseLaneState: () => ({ dropped: [...leaseDropped], active: [...leaseActiveIds] }),
   unionTrackedMarkets, trackedLaneState: () => ({ dropped: [...trackedDropped], active: [...trackedActiveIds] }),
+  unionPlanMarkets, planLaneState: () => ({ dropped: [...planDropped], active: [...planActiveIds], reason: planLaneReason }),
   operatorLaneState: () => ({ dropped: [...operatorDropped], unresolved: [...operatorUnresolved], evicted: [...operatorEvicted] }),
   SUBSCRIPTION_CAP, TOTAL_MARKET_CAP, FEED_ASSET_BUDGET,
 };

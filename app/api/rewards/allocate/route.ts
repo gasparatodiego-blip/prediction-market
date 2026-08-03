@@ -4,6 +4,10 @@ import { execFile } from 'child_process';
 // each market gets; the fill strategy needs exactly that number as its per-side inventory ceiling. It is
 // recorded as a derived snapshot — there is no control anywhere that lets an operator type it.
 import { writeAllocatedCapital } from '@/lib/maker/allocated-capital';
+// Un piano calcolato è anche una dichiarazione di quali mercati contano: il raccoglitore di storico
+// prezzi la legge per tenerli sottoscritti. Vale per i piani nati qui esattamente come per quelli del
+// riallocatore periodico — altrimenti la copertura dipenderebbe da CHI ha chiesto il piano.
+import { writeCollectorPriority } from '@/lib/rewards/collector-priority';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -83,6 +87,9 @@ export async function GET(req: NextRequest) {
         capital: body?.capital ?? null,
       });
     } catch { /* the plan still stands; the strategy simply has no ceiling to read */ }
+    // Stessa regola: best-effort. Se fallisce, il raccoglitore resta con l'elenco precedente (o con
+    // nessuno), che è la copertura di prima — mai peggio di com'era.
+    try { writeCollectorPriority(body); } catch { /* la copertura resta quella di prima */ }
     return NextResponse.json(body);
   } catch (e: any) {
     return NextResponse.json({ error: 'allocation failed: ' + (e?.message ?? 'unknown'), requested }, { status: 500 });
