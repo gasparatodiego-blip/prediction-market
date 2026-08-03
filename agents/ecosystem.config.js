@@ -457,11 +457,20 @@ module.exports = {
       // two-sided pair costs ~$50 against the 100 pUSD actually deposited. Tick 0.001, negRisk TRUE —
       // its orders route to NegRiskCtfExchangeV2, so the Neg-Risk approvals are load-bearing here.
       //
-      // MAKER_LIVE_MIN_CAP_USD — raised 25 → 30. This cap is PER ORDER (adapter.js rejects any single
-      // postOrder above it), not a total. At min_incentive_size 50 the NO leg is 50 × ~0.534 ≈ $26.70,
-      // which a $25 cap would have rejected outright — leaving a one-sided book that earns nothing. $30
-      // is the smallest round number that admits both legs while still bounding a single order to well
-      // under a third of the deposited collateral. Total at rest is ~$50 of the 100 pUSD.
+      // MAKER_LIVE_MIN_CAP_USD — 25 → 30 (luglio) → 1000 il 3 agosto 2026, su istruzione esplicita
+      // dell'operatore. Questo tetto e' PER ORDINE (adapter.js rifiuta qualunque postOrder sopra), non un
+      // totale, ed e' il MINIMO fra questo e maxOrderNotionalUsd in data/safety-risk-limits.json a
+      // vincolare davvero: vanno alzati INSIEME, altrimenti il piu' basso continua a mordere.
+      //
+      // PERCHE' E' STATO TOLTO. A $30 il tetto non proteggeva da un rischio: tagliava l'allocazione.
+      // L'allocatore di produzione proponeva $324 su un mercato e il motore poteva piazzarne $30 per
+      // lato, quindi i $600 finivano spalmati su dieci mercati mediocri per aggirare un limite invece
+      // che concentrati dove rendono. A 1000 il vincolo sparisce e l'allocazione torna quella ottimale.
+      //
+      // COSA RESTA A PROTEGGERE: maxOpenNotionalUsd ($600, ma conta solo i fill RICONCILIATI e la
+      // riconciliazione gira ogni 60s), maxOrdersPerWindow (20/60s, immediato), maxDailyLossUsd ($25,
+      // ma sulla perdita REALIZZATA) e — il backstop vero — il collaterale sul venue, che non lascia
+      // comprare piu' di quanto si possiede.
       //
       // MAKER_PLACEMENT — 'send' as of 2026-07-29, at the operator's explicit instruction. THIS IS THE
       // SWITCH THAT LETS REAL ORDERS LEAVE THIS HOST. In 'dry-run' (the code default, and every value
@@ -480,7 +489,7 @@ module.exports = {
       // Bounds in force when the first order does go out: per-order cap $30 (adapter, hard), open
       // notional $120, realised daily loss $25 (trips a durable auto-kill), post-only, GTD 180s native
       // expiry that survives host death, single pinned market, two legs totalling ~$49.55.
-      env:           { NODE_ENV: 'production', HOME: '/root', ADMIN_ACCESS_SECRET: process.env.ADMIN_ACCESS_SECRET, MAKER_MODE: 'live-min', MAKER_PLACEMENT: 'send', MAKER_FUNDING_APPROVED: 'true', MAKER_FUNDER_ADDRESS: '0x4C81F19a436e8174f1f3b07d7c0169150Fbdbdee', MAKER_SIGNATURE_TYPE: '3', MAKER_LIVE_MIN_MARKET: '0x12dc2b61723b2a54fc1947a307389b5f32038e7a29a0e936ad1fe410b969d06a', MAKER_LIVE_MIN_CAP_USD: '30', MAKER_ORDER_TTL_SECONDS: '180' },
+      env:           { NODE_ENV: 'production', HOME: '/root', ADMIN_ACCESS_SECRET: process.env.ADMIN_ACCESS_SECRET, MAKER_MODE: 'live-min', MAKER_PLACEMENT: 'send', MAKER_FUNDING_APPROVED: 'true', MAKER_FUNDER_ADDRESS: '0x4C81F19a436e8174f1f3b07d7c0169150Fbdbdee', MAKER_SIGNATURE_TYPE: '3', MAKER_LIVE_MIN_MARKET: '0x12dc2b61723b2a54fc1947a307389b5f32038e7a29a0e936ad1fe410b969d06a', MAKER_LIVE_MIN_CAP_USD: '1000', MAKER_ORDER_TTL_SECONDS: '180' },
     },
     {
       name:          'agent36-book-velocity',
