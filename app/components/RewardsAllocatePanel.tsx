@@ -217,6 +217,17 @@ type BulkResult = {
   stoppedBy: string | null; reason: string | null; results: BulkRowResult[];
   totals: { requestedUsd: number; placedUsd: number; rows: number };
   openBefore?: number | null; error?: string;
+  // ── IL RESET, dal 3 agosto 2026 ─────────────────────────────────────────────────────────────────
+  // «Conferma ed esegui» non aggiunge più ordini sopra lo stato precedente: lo azzera. Questo blocco
+  // dice cosa verrà (o è stato) cancellato e spento, ed è la parte che l'anteprima deve mostrare PRIMA
+  // del tap, perché è la più conseguente.
+  reset?: {
+    stoppedBy: string | null; reason: string | null; preview: boolean;
+    inventario?: { abilitatiPrima: string[]; trackingPrima: string[]; nelPiano: string[]; gestiti: string[] };
+    cancellazione?: { daCancellare: Array<{ marketId: string; orderId: string; price: number | null; size: number | null }>; cancellati: unknown; falliti: unknown; simulata?: boolean };
+    spegnimento?: { tracking: unknown[]; abilitati: unknown[]; simulato?: boolean };
+    accensione?: { markets: unknown[]; simulato?: boolean };
+  } | null;
 };
 
 /**
@@ -1225,11 +1236,50 @@ export default function RewardsAllocatePanel(
                     style={{ background: bulkPreview ? 'color-mix(in srgb,#2FA96B 30%,transparent)' : undefined }}
                     onClick={() => runBulk(false)}
                     disabled={bulkBusy != null || !bulkPreview}
-                    title={bulkPreview ? 'piazza davvero gli ordini elencati nell\'anteprima' : 'fai prima l\'anteprima'}
+                    title={bulkPreview
+                      ? 'RESET COMPLETO: cancella gli ordini a riposo sui mercati gestiti, spegne i mercati fuori dal piano, poi piazza gli ordini dell\'anteprima'
+                      : 'fai prima l\'anteprima'}
                   >
-                    {bulkBusy === 'run' ? 'Piazzo…' : '2 · Conferma ed esegui'}
+                    {bulkBusy === 'run' ? 'Azzero e ripiazzo…' : '2 · Conferma ed esegui (reset completo)'}
                   </button>
                 </div>
+
+                {/* ── COSA FARÀ IL TAP, PRIMA DEL TAP ───────────────────────────────────────────────
+                    Il bottone non aggiunge più ordini sopra lo stato precedente: lo azzera. Cancellare
+                    ordini VERI è la conseguenza più pesante di questa azione, e un riquadro di conferma
+                    che parla solo di quanti ordini verranno piazzati la nasconderebbe. Qui si dice per
+                    primo cosa sparisce, e solo dopo cosa nasce. */}
+                {bulkPreview?.reset && !bulkResult && (
+                  <div className="alloc-note alloc-warn" style={{ marginTop: 10 }} data-alloc-bulk-reset-warning>
+                    <b>Questo è un reset completo, non un’aggiunta.</b> Premendo «Conferma ed esegui», nell’ordine:
+                    <ol style={{ margin: '6px 0 0 18px', padding: 0 }}>
+                      <li>
+                        vengono <b>cancellati {bulkPreview.reset.cancellazione?.daCancellare?.length ?? 0} ordini</b> reali
+                        oggi a riposo sui mercati gestiti dal bot
+                        {(bulkPreview.reset.cancellazione?.daCancellare?.length ?? 0) > 0 && (
+                          <> — compresi quelli piazzati in sessioni precedenti</>
+                        )}
+                      </li>
+                      <li>
+                        vengono <b>spenti {bulkPreview.reset.spegnimento?.abilitati?.length ?? 0} mercati</b> che
+                        non fanno parte di questa proposta
+                        {(bulkPreview.reset.spegnimento?.tracking?.length ?? 0) > 0 && (
+                          <>, e il tracking viene azzerato su {bulkPreview.reset.spegnimento?.tracking?.length} mercati</>
+                        )}
+                      </li>
+                      <li>
+                        vengono <b>abilitati i {bulkPreview.reset.accensione?.markets?.length ?? 0} mercati</b> della
+                        proposta, e solo quelli
+                      </li>
+                      <li>vengono piazzati gli ordini elencati qui sotto</li>
+                    </ol>
+                    <div style={{ marginTop: 6 }}>
+                      Alla fine lo stato attivo sarà <b>esattamente</b> questa proposta. Se una cancellazione
+                      non riesce, la sequenza si ferma <b>prima</b> di modificare qualsiasi cosa e nessun ordine
+                      viene piazzato.
+                    </div>
+                  </div>
+                )}
 
                 {bulkPreview && !bulkResult && (
                   <div className="alloc-note" style={{ marginTop: 10 }} data-alloc-bulk-confirm>
