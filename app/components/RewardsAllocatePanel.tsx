@@ -677,6 +677,48 @@ export default function RewardsAllocatePanel(
               <div><span>Lordo corretto</span><b>{perDay(autoPlan.totals.realisticPerDay)}</b></div>
             </div>
 
+            {/* ── POCHI MERCATI È UNA SCELTA, NON UN FALLIMENTO ─────────────────────────────────────
+                Da quando il tetto per ordine non taglia più l'allocazione, il piano migliore concentra
+                il capitale su pochi mercati invece di spalmarlo su dieci. Sullo schermo però «2
+                proposti su 95 valutabili» si legge come «non ne ha trovati», ed è l'opposto di quello
+                che è successo.
+                La prova sta in un dato che l'allocatore già restituisce: la FRONTIERA, cioè il netto
+                del miglior piano al variare del numero di mercati. Se il netto non cresce aggiungendo
+                mercati, spalmare non paga — e questo lo dice invece di lasciarlo dedurre. */}
+            {(() => {
+              const u = autoPlan.universe;
+              if (!u || !Array.isArray(autoPlan.frontier) || !autoPlan.frontier.length) return null;
+              // Si avvisa solo quando lo scarto è netto: pochi scelti su molti valutabili.
+              if (!(u.evaluated >= 5 && u.chosen > 0 && u.chosen * 3 <= u.evaluated)) return null;
+              const qui = autoPlan.frontier.find((f) => f.count === u.chosen);
+              const piuLarghi = autoPlan.frontier.filter((f) => f.count > u.chosen);
+              const meglioAltrove = piuLarghi.length ? Math.max(...piuLarghi.map((f) => f.net)) : null;
+              const guadagno = qui && meglioAltrove != null ? meglioAltrove - qui.net : null;
+              return (
+                <div className="alloc-note" style={{ marginTop: 10 }} data-alloc-auto-concentration>
+                  <b>Sono pochi per scelta, non per mancanza di candidati.</b>{' '}
+                  Su <b>{u.evaluated}</b> mercati valutabili l’allocatore ne propone <b>{u.chosen}</b>: concentrare
+                  il capitale su quelli che rendono di più batte spalmarlo, perché ogni mercato in più
+                  toglie size a quelli migliori.
+                  {qui && (
+                    <> Con <b>{u.chosen}</b> {u.chosen === 1 ? 'mercato' : 'mercati'} il netto modellato è{' '}
+                      <b>{perDay(qui.net)}</b>
+                      {meglioAltrove != null && (
+                        guadagno != null && guadagno > 0.005
+                          ? <>; il miglior piano con più mercati arriva a <b>{perDay(meglioAltrove)}</b>.</>
+                          : <>, e <b>nessun piano con più mercati fa meglio</b> (al massimo {perDay(meglioAltrove)}).</>
+                      )}
+                    </>
+                  )}
+                  {u.horizonRejected > 0 && (
+                    <> <b>{u.horizonRejected}</b> {u.horizonRejected === 1 ? 'mercato è stato scartato' : 'mercati sono stati scartati'} perché
+                      {u.horizonRejected === 1 ? ' risolve' : ' risolvono'} troppo presto per rientrare del costo di adverse
+                      selection — sono nell’elenco degli scartati, con il motivo.</>
+                  )}
+                </div>
+              );
+            })()}
+
             <div className="alloc-note" style={{ marginTop: 10 }} data-alloc-auto-disclaimer>
               <b>È una proposta.</b> Nessun mercato è stato abilitato e nessun ordine è stato creato.
               Per ognuno servono i due passi qui sotto, uno alla volta. L’aggiunta è <b>additiva</b>: i

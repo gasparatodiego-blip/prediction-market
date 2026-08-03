@@ -201,12 +201,26 @@ interface TrkMarket {
   mid: number | null; midAgeSec: number | null; midSource: string | null; midReadAt: number | null; paused: boolean;
   plan: { yes: TrkPlanSide | null; no: TrkPlanSide | null } | null;
   sides: { yes: TrkSide; no: TrkSide } | null;
+  // Il bersaglio VERO calcolato a runtime. `offsetCents` qui sopra è quello configurato nel registro:
+  // da quando il motore si mette un tick dietro il migliore altrui, quello è solo il ripiego.
+  target: { yes: TrkTarget | null; no: TrkTarget | null } | null;
+  dynamicGate: string | null;
+}
+interface TrkTarget {
+  mode: 'behind-best' | 'band-clamped' | 'fallback-alone' | 'erosion-retreat' | string;
+  onTop: boolean | null; alone: boolean | null;
+  bestOther: number | null; offsetCents: number | null; priceCents: number | null;
 }
 interface TrkAction {
   at: string; action: string; marketId: string; book?: string; side?: string; type?: string;
   fromMid?: number | null; toMid?: number | null; movedCents?: number | null;
   priceCents?: number | null; size?: number | null; inBand?: boolean | null;
   ok?: boolean; sent?: boolean; gate?: string | null; reason?: string | null; trigger?: string;
+  // La CAUSA del riposizionamento, e dove ci ha messo rispetto al book. Arrivavano già nel JSON:
+  // mancava solo di dichiararli qui e di mostrarli.
+  triggerKind?: 'mid' | 'erosione' | 'entrambi' | null;
+  placement?: { mode?: string; onTop?: boolean | null; alone?: boolean | null; bestOther?: number | null; offsetCents?: number | null } | null;
+  erosion?: { ratioPct?: number | null; baseline?: number | null; depth?: number | null; armed?: boolean } | null;
   sizeMatched?: number | null;
 }
 interface TrkResp {
@@ -1102,7 +1116,61 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
                           <span className={`ex-badge ${stato.cls} lrc-bdg`} data-lrc-track-state>{stato.txt}</span>
                           {live?.plan?.yes?.inBand === false && <span className="ex-badge is-warn lrc-bdg" data-lrc-track-outband>YES fuori banda — nessun reward</span>}
                           {live?.plan?.no?.inBand === false && <span className="ex-badge is-warn lrc-bdg">NO fuori banda — nessun reward</span>}
-                          {' · '}offset <span className="ex-n">{cfg.offsetCents}¢</span>
+                          {/* ── LA DISTANZA DAL MID, QUELLA VERA ────────────────────────────────
+                              Prima qui c'era `cfg.offsetCents`, cioè il valore CONFIGURATO nel
+                              registro. Da quando il motore si posiziona un tick dietro il miglior
+                              prezzo altrui, quel numero non descrive più dove sta l'ordine — è solo il
+                              ripiego per quando siamo soli sul lato. Mostrarlo come «offset» era un
+                              dato falso, non incompleto: statico mentre la distanza vera cambia a ogni
+                              ciclo (misurato: 0,6¢ reali contro 1¢ configurato).
+                              Adesso si legge il bersaglio calcolato a runtime, e si ripiega sul
+                              configurato solo quando il motore non ne ha prodotto uno — dicendolo. */}
+                          {(() => {
+                            const ty = live?.target?.yes; const tn = live?.target?.no;
+                            const reali = [ty?.offsetCents, tn?.offsetCents].filter((x): x is number => typeof x === 'number');
+                            if (!reali.length) {
+                              return (
+                                <>
+                                  {' · '}offset <span className="ex-n" data-lrc-track-offset>{cfg.offsetCents}¢</span>
+                                  <span className="ex-badge lrc-bdg" data-lrc-track-offset-kind>configurato</span>
+                                </>
+                              );
+                            }
+                            const uguali = reali.length === 2 && Math.abs(reali[0] - reali[1]) < 0.001;
+                            return (
+                              <>
+                                {' · '}dal mid{' '}
+                                <span className="ex-n" data-lrc-track-offset>
+                                  {uguali || reali.length === 1
+                                    ? `${reali[0].toFixed(2)}¢`
+                                    : `${reali[0].toFixed(2)}¢ / ${reali[1].toFixed(2)}¢`}
+                                </span>
+                                <span className="ex-badge is-ok lrc-bdg" data-lrc-track-offset-kind title={`offset configurato ${cfg.offsetCents}¢ — usato solo come ripiego quando siamo gli unici sul lato`}>
+                                  dal book
+                                </span>
+                              </>
+                            );
+                          })()}
+                          {/* ── SIAMO IN CIMA AL BOOK, O NO ─────────────────────────────────────
+                              L'obiettivo dichiarato è non esserci mai: il caso in cui ci si finisce
+                              comunque (bordo banda) è una scelta voluta, e va vista. */}
+                          {(['yes', 'no'] as const).map((sd) => {
+                            const t = live?.target?.[sd];
+                            if (!t) return null;
+                            const b = t.mode === 'fallback-alone'
+                              ? { txt: `${sd.toUpperCase()} solo`, cls: '', ttl: 'nessun altro su questo lato: si usa l offset di ripiego, e si torna dietro al migliore appena ricompare qualcuno' }
+                              : t.onTop === true
+                                ? { txt: `${sd.toUpperCase()} in cima`, cls: 'is-warn', ttl: 'un tick dietro il migliore altrui cadrebbe fuori banda: ci si è fermati al bordo premiante, e questo ci mette in cima al book' }
+                                : t.onTop === false
+                                  ? { txt: `${sd.toUpperCase()} dietro`, cls: 'is-ok', ttl: `un tick dietro il miglior prezzo altrui${t.bestOther != null ? ` (${(t.bestOther * 100).toFixed(1)}¢)` : ''}` }
+                                  : null;
+                            if (!b) return null;
+                            return (
+                              <span key={sd} className={`ex-badge ${b.cls} lrc-bdg`} title={b.ttl} data-lrc-track-top={sd}>
+                                {b.txt}{t.mode === 'erosion-retreat' ? ' · arretrato' : ''}
+                              </span>
+                            );
+                          })}
                           {' · soglia '}<span className="ex-n">{cfg.minMoveCents}¢</span>
                           {' · size '}<span className="ex-n">{cfg.sizeShares}</span>
                           {' · mid '}
@@ -1140,12 +1208,51 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
                         <div className="ex-row-main">
                           <div className="ex-row-t">
                             {a.action === 'event' ? (
-                              <><span className="ex-badge is-warn">{a.type === 'fill' ? 'FILL' : 'sparito'}</span>{' '}
+                              <><span className={`ex-badge ${a.type === 'erosion-recovered' ? '' : 'is-warn'}`}>
+                                {a.type === 'fill' ? 'FILL'
+                                  : a.type === 'erosion-armed' ? 'EROSIONE'
+                                    : a.type === 'erosion-recovered' ? 'erosione rientrata'
+                                      : a.type === 'tracking-auto-off' ? 'tracking spento'
+                                        : 'sparito'}
+                              </span>{' '}
                                 lato {String(a.side || '').toUpperCase()}
                                 {a.sizeMatched != null && <> · {num(a.sizeMatched, 1)} share eseguite</>}</>
                             ) : (
                               <><span className={`ex-side ${a.book === 'yes' ? 'is-yes' : 'is-no'}`}>BUY {String(a.book || '').toUpperCase()}</span>{' '}
                                 <span className="ex-n">{a.priceCents}¢</span>
+                                {/* ── PERCHE' QUESTO ORDINE SI E' MOSSO ────────────────────────────
+                                    `triggerKind` arrivava già nel JSON ma non compariva: un
+                                    riposizionamento per erosione del book era indistinguibile da uno
+                                    per movimento del mid, e sono due cose diverse — il primo è la rete
+                                    di sicurezza che scatta, il secondo è amministrazione ordinaria. */}
+                                {a.triggerKind === 'erosione' && (
+                                  <span className="ex-badge is-warn lrc-bdg" data-lrc-log-trigger="erosione"
+                                    title={a.erosion?.ratioPct != null ? `profondità al ${a.erosion.ratioPct}% della media recente (${a.erosion.baseline} share): ci si arretra al bordo premiante` : 'la coda davanti all ordine si è assottigliata'}>
+                                    erosione{a.erosion?.ratioPct != null ? ` ${a.erosion.ratioPct}%` : ''}
+                                  </span>
+                                )}
+                                {a.triggerKind === 'entrambi' && (
+                                  <span className="ex-badge is-warn lrc-bdg" data-lrc-log-trigger="entrambi"
+                                    title="mid uscito di banda ED erosione del book confermata nello stesso momento">
+                                    mid + erosione
+                                  </span>
+                                )}
+                                {a.triggerKind === 'mid' && a.trigger === 'follow-book' && (
+                                  <span className="ex-badge lrc-bdg" data-lrc-log-trigger="mid"
+                                    title={a.placement?.bestOther != null ? `il miglior prezzo altrui si è spostato a ${(a.placement.bestOther * 100).toFixed(1)}¢` : 'il book si è spostato'}>
+                                    segue il book
+                                  </span>
+                                )}
+                                {a.placement?.onTop === true && (
+                                  <span className="ex-badge is-warn lrc-bdg" data-lrc-log-ontop
+                                    title="un tick dietro il migliore altrui cadeva fuori banda: fermati al bordo premiante, quindi in cima al book">
+                                    in cima
+                                  </span>
+                                )}
+                                {a.placement?.mode === 'fallback-alone' && (
+                                  <span className="ex-badge lrc-bdg" data-lrc-log-alone
+                                    title="nessun altro su questo lato: offset di ripiego">soli</span>
+                                )}
                                 {a.inBand === false && <span className="ex-badge is-warn lrc-bdg">fuori banda</span>}
                                 {a.ok === false && <span className="ex-badge is-bad lrc-bdg">{a.gate}</span>}
                                 {a.sent === false && <span className="ex-badge lrc-bdg">dry-run</span>}</>

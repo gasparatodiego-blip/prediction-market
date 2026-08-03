@@ -326,6 +326,31 @@ async function trackingTask() {
         plan: m.plan ? { yes: m.plan.yes, no: m.plan.no } : null,
         sides: m.sides || null,
         sideDecisions: m.sideDecisions || null,
+        // ── IL BERSAGLIO VERO, PER LATO ────────────────────────────────────────────────────────────
+        // `offsetCents` qui sopra e' quello CONFIGURATO nel registro, e da quando il motore si mette
+        // «un tick dietro il migliore altrui» non descrive piu' dove sta l'ordine: e' solo il valore di
+        // ripiego per quando siamo soli sul lato. Senza questi campi la dashboard mostrava un numero
+        // statico al posto di una distanza che cambia a ogni ciclo — un dato falso, non incompleto.
+        //
+        // Si trasporta solo cio' che serve a dirlo a schermo: modo, se siamo in cima, il migliore
+        // altrui, e la distanza REALE dal mid. Non l'oggetto intero, che porterebbe anche i bordi banda
+        // e la scala dei livelli senza che nessuno li legga.
+        target: m.target
+          ? {
+            yes: m.target.yes && m.target.yes.ok === true
+              ? { mode: m.target.yes.mode, onTop: m.target.yes.onTop, alone: m.target.yes.alone,
+                bestOther: m.target.yes.bestOther, offsetCents: m.target.yes.offsetCents, priceCents: m.target.yes.priceCents }
+              : null,
+            no: m.target.no && m.target.no.ok === true
+              ? { mode: m.target.no.mode, onTop: m.target.no.onTop, alone: m.target.no.alone,
+                bestOther: m.target.no.bestOther, offsetCents: m.target.no.offsetCents, priceCents: m.target.no.priceCents }
+              : null,
+          }
+          : null,
+        // Lo scopo dei comportamenti dinamici: quando e' valorizzato, questo mercato NON e' governato
+        // da «mai in cima» ne' dall'erosione, e il pannello deve poter dire perche' invece di mostrare
+        // celle vuote che sembrano un guasto.
+        dynamicGate: m.erosionGate || null,
       })),
       recent: trackingLog.slice(0, 60),
     });
