@@ -326,6 +326,18 @@ export interface ReplaceResult {
 
 export function manualContext(arg?: { marketId?: string | null; userId?: string }, deps?: ManualDeps): ManualContext;
 export function resolveMarketRules(marketId: string, deps?: ManualDeps): MarketRules;
+
+/** I BID dei due book, per il trigger di erosione del tracking. Stessa fonte di `resolveMarketRules`,
+ *  chiamata separata: la scala di profondità non viaggia nelle risposte del pannello. */
+export function resolveMarketDepth(marketId: string, deps?: ManualDeps): {
+  readable: boolean;
+  reason: string | null;
+  marketId: string;
+  yes: { bids: Array<{ price: number | string; size: number | string }> } | null;
+  no: { bids: Array<{ price: number | string; size: number | string }> } | null;
+  ageMs: number | null;
+  live: boolean;
+};
 export function resolveCaps(arg?: { userId?: string; engine?: EngineState | null }, deps?: { configFile?: string }): Caps;
 export function manualPlacement(env?: Record<string, string | undefined>): Placement;
 export function readEngineState(now?: number): EngineState;

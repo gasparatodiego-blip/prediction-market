@@ -69,7 +69,7 @@ const { runTrackingCycle, TRACKING_POLL_MS, MID_STALE_PAUSE_SEC } = require('../
 const { readTrackingConfig, setTracking } = require('../lib/maker/mm-tracking-config');
 const { marketWindowFor } = require('../lib/maker/market-clock');
 const { loadAutoRepriceTuning, EXPECTED_RENEWALS_PER_HOUR } = require('../lib/maker/auto-reprice-config');
-const { listManualOrders, replaceManualOrder, resolveMarketRules, cancelManualOrder } = require('../lib/maker/manual-order');
+const { listManualOrders, replaceManualOrder, resolveMarketRules, resolveMarketDepth, cancelManualOrder } = require('../lib/maker/manual-order');
 // THE STANDING RECONCILIATION FOR THE MANUAL LANE. Without it, every hand order that reaches its
 // venue-side expiry leaves a permanent phantom at full notional in the risk ledger, and the cap gate
 // slowly starts refusing orders that nothing real is backing (that is exactly how "open exposure $67.04"
@@ -259,6 +259,10 @@ async function trackingTask() {
       } catch { return null; }
     },
     resolveRules: (marketId) => resolveMarketRules(marketId),
+    // I LIVELLI DEL BOOK, per il secondo trigger di riposizionamento (erosione della coda davanti
+    // all'ordine). Stessa fonte del mid — lo snapshot di agent34 — letta con la funzione che vive
+    // accanto a resolveMarketRules, non con un secondo lettore che potrebbe non essere d'accordo.
+    readDepth: (marketId) => resolveMarketDepth(marketId),
     listOrders: ({ marketId }) => listManualOrders({ marketId }),
     // LO STESSO percorso di piazzamento del pannello a mano. Non una copia: la stessa funzione, quindi
     // ogni gate che governa un ordine a mano governa ogni ordine di questo motore.
@@ -276,11 +280,17 @@ async function trackingTask() {
     if (e.type === 'fill') {
       log(`FILL RILEVATO · cid_${String(e.marketId).replace(/^0x/, '').slice(0, 10)} · lato ${e.side.toUpperCase()} · ${e.sizeMatched} share eseguite @ ${e.price}`
         + ' — quel lato NON viene piu ripiazzato finche non intervieni a mano; l altro continua.');
+    } else if (e.type === 'erosion-armed' || e.type === 'erosion-recovered') {
+      // Solo le TRANSIZIONI, non ogni lettura: il ciclo gira ogni 3s e una riga per lettura sarebbe
+      // 1200 righe l'ora per lato senza dire mai niente di nuovo.
+      log(`${e.type === 'erosion-armed' ? 'EROSIONE ARMATA' : 'erosione rientrata'} · cid_${String(e.marketId).replace(/^0x/, '').slice(0, 10)}`
+        + ` · lato ${e.side.toUpperCase()} · profondita ${e.depth} share contro baseline ${e.baseline} (${e.ratioPct}%)`);
     }
   }
   for (const a of res.actions || []) {
     if (a.action === 'place') {
-      log(`TRACKING ${a.ok ? 'ok' : 'FALLITO'} · ${a.trigger} · ${a.book.toUpperCase()} @ ${a.priceCents}c`
+      log(`TRACKING ${a.ok ? 'ok' : 'FALLITO'} · ${a.trigger}${a.triggerKind ? ` [${a.triggerKind}]` : ''} · ${a.book.toUpperCase()} @ ${a.priceCents}c`
+        + `${a.erosion && a.erosion.armed ? ` · EROSIONE ${a.erosion.ratioPct}% della baseline ${a.erosion.baseline}` : ''}`
         + ` · mid ${a.fromMid != null ? a.fromMid + 'c → ' : ''}${a.toMid}c`
         + `${a.movedCents != null ? ` (mosso ${a.movedCents}c)` : ''}`
         + ` · offset ${a.offsetCents}c · size ${a.size}`
