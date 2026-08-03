@@ -3,9 +3,12 @@
 // agents/agent41-realloc-scheduler.js — IL RIALLOCATORE PERIODICO.
 //
 // ═══ COSA FA ═════════════════════════════════════════════════════════════════════════════════════════
-// Ogni 6 ore chiede al venue se i mercati che il bot sta gestendo sono ancora quelli su cui il piano era
-// stato deciso. Se lo sono, non fa niente. Se anche uno solo non lo è più, rifà il piano al saldo attuale
-// e lo mette in opera con il reset completo (cancella, spegne, riaccende, piazza).
+// Ogni 6 ore fa due domande indipendenti, e gli basta che una sola risponda male per rifare il piano al
+// saldo attuale e metterlo in opera con il reset completo (cancella, spegne, riaccende, piazza):
+//   1 · VALIDITÀ  i mercati in gestione sono ancora quelli su cui il piano fu deciso? (risolti, non
+//                 negoziabili, senza banda, in scadenza, col montepremi crollato sotto metà)
+//   2 · VALORE    il piano che si farebbe oggi vale più del 20% in più di quello in produzione?
+// Se entrambe rispondono bene, non fa niente. Il referto dice sempre quale delle due ha deciso.
 //
 // La logica non è qui: è in lib/maker/realloc-cycle.js, che non legge file e non tocca la rete. Questo
 // file è solo il cablaggio — quale funzione vera sta dietro ogni dipendenza — più il timer e il registro.
@@ -179,9 +182,11 @@ async function leggiSaldo() {
 // planFromCollection si richiede qui direttamente (siamo in node semplice, non c'è il webpack che
 // costringeva /api/rewards/allocate a spawnare un figlio). `horizonFilter: true` è la stessa modalità
 // «auto» del pannello: scarta i mercati troppo vicini alla risoluzione prima del knapsack.
-async function calcolaPiano({ capital, maxPerMarketUsd }) {
+// `onlyMarketIds`, quando c'è, restringe l'universo ai mercati già in gestione: è il piano di paragone
+// del trigger di valore, non un piano da mettere in opera.
+async function calcolaPiano({ capital, maxPerMarketUsd, onlyMarketIds = null }) {
   const { planFromCollection } = require('../lib/rewards/allocator');
-  return planFromCollection({ capital, maxPerMarketUsd, horizonFilter: true });
+  return planFromCollection({ capital, maxPerMarketUsd, onlyMarketIds, horizonFilter: true });
 }
 
 // ── IL RESET ────────────────────────────────────────────────────────────────────────────────────────
@@ -276,7 +281,21 @@ function pianificaProssimo(motivo) {
   setTimeout(async () => { await giro('timer'); pianificaProssimo('dopo un ciclo'); }, ms);
 }
 
+// `--once` esegue UN ciclo subito e esce: serve a guardarlo lavorare senza aspettare sei ore. Rispetta
+// gli stessi due interruttori d'ambiente del processo lungo — non è una scorciatoia per accenderlo.
+async function unaVolta() {
+  if (!ENABLED) {
+    annuncia('error', '--once rifiutato: REALLOC_SCHEDULER_ENABLED non vale 1');
+    process.exit(2);
+  }
+  annuncia('log', `esecuzione singola forzata${DRY_RUN ? ' — DRY RUN' : ' — ORDINI VERI'}`);
+  const r = await giro('forzato --once');
+  console.log('\n' + JSON.stringify(r, null, 2));
+  process.exit(r && r.azione === 'fermato' ? 1 : 0);
+}
+
 function main() {
+  if (process.argv.includes('--once')) return void unaVolta();
   if (!ENABLED) {
     annuncia('log', 'SPENTO: REALLOC_SCHEDULER_ENABLED non vale 1 — nessuna verifica, nessun piano, nessun ordine.');
     scrivi({ at: new Date().toISOString(), tipo: 'avvio', stato: 'spento', motivo: 'REALLOC_SCHEDULER_ENABLED != 1' });
