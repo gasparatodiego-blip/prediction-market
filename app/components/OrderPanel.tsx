@@ -1320,13 +1320,30 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
                             ))}
                           </div>
                           {trkSides !== 'both' && (
-                            <p className="ex-flag is-bad" data-op-qs-sides-warn>
-                              <span className="ex-flag-i" aria-hidden="true">⚠</span>
-                              <span>
-                                Un lato solo <b>NON matura reward</b>: il punteggio prende il minimo fra i due lati
-                                (Q_min), e con una gamba sola quel minimo è zero.
-                              </span>
-                            </p>
+                            <>
+                              <p className="ex-flag is-bad" data-op-qs-sides-warn>
+                                <span className="ex-flag-i" aria-hidden="true">⚠</span>
+                                <span>
+                                  Un lato solo <b>NON matura reward</b>: il punteggio prende il minimo fra i due lati
+                                  (Q_min), e con una gamba sola quel minimo è zero.
+                                </span>
+                              </p>
+                              {/* NON È SOLO «ZERO REWARD»: SUI DATI STORICI HA PERSO. Il backtest del 3 agosto
+                                  2026 (216 fill, 61 mercati premianti, 10 giorni) ha separato i mercati dove il
+                                  motore quotava una gamba sola da quelli a due lati. Senza reward resta solo il
+                                  P&L di prezzo, e quello sul campione e' negativo. Detto qui perche' «non maturi
+                                  nulla» si legge come «guadagni zero», mentre il numero misurato e' sotto zero. */}
+                              <p className="ex-flag is-bad" data-op-qs-sides-loss>
+                                <span className="ex-flag-i" aria-hidden="true">⛔</span>
+                                <span>
+                                  E sui dati storici <b>ha reso in PERDITA</b>, non zero: sul campione misurato
+                                  (216 fill, 61 mercati, 10 giorni) i mercati a gamba singola hanno chiuso a
+                                  <b> −$11,93</b> contro <b>+$15,15</b> di quelli a due lati. Senza reward resta solo
+                                  il movimento del prezzo, e quello da solo perde.
+                                  Questa è una <b>scommessa direzionale</b>, non market making.
+                                </span>
+                              </p>
+                            </>
                           )}
                         </div>
 
