@@ -615,11 +615,19 @@ module.exports = {
       // rifà il piano al saldo libero attuale (tetto 30% per mercato) e lo mette in opera con
       // lib/maker/allocation-reset.js. Se sono tutti ancora buoni non fa niente: niente churn.
       //
+      // Il reset scatta per DUE motivi indipendenti, registrati separatamente: la VALIDITÀ (sopra) e il
+      // VALORE — ogni ciclo ricalcola anche il piano ristretto ai mercati già in gestione e, se il piano
+      // libero vale più del 20% in più, rialloca anche con tutti i mercati ancora validi.
+      //
       // È L'UNICO PROCESSO CHE PUÒ CANCELLARE E PIAZZARE ORDINI VERI SENZA UNA CONFERMA UMANA, per
       // eccezione esplicita dell'operatore (3 agosto 2026). Perciò la riga qui sotto NON basta ad
       // accenderlo: senza REALLOC_SCHEDULER_ENABLED=1 il processo resta vivo e completamente inerte —
-      // nessuna lettura del venue, nessun piano, nessun ordine. Per accenderlo serve mettere il flag qui
-      // e riavviare con --update-env; per guardarlo lavorare a capitale fermo, REALLOC_SCHEDULER_DRY_RUN=1.
+      // nessuna lettura del venue, nessun piano, nessun ordine.
+      //
+      // STATO ATTUALE — 3 agosto 2026: ACCESO IN DRY RUN. Gira il ciclo intero ogni 6 ore, entrambi i
+      // trigger, e scrive nel registro cosa AVREBBE fatto; non cancella e non piazza niente. Il passaggio
+      // a live è REALLOC_SCHEDULER_DRY_RUN=0 + `pm2 restart agent41-realloc-scheduler --update-env`, e
+      // aspetta la conferma esplicita dell'operatore dopo aver letto almeno un ciclo dry run.
       //
       // Non apre nessuna strada nuova verso il venue: passa dalle stesse funzioni del bottone del
       // pannello (listManualOrders / cancelManualOrder in corsia cancel-only / runBulkAllocation), quindi
@@ -628,7 +636,11 @@ module.exports = {
       max_memory_restart: '400M',
       watch:         false,
       autorestart:   true,
-      env:           { NODE_ENV: 'production', HOME: '/root' },
+      env:           {
+        NODE_ENV: 'production', HOME: '/root',
+        REALLOC_SCHEDULER_ENABLED: '1',
+        REALLOC_SCHEDULER_DRY_RUN: '1',   // ← l'unico interruttore fra «racconta» e «fa». Non toccarlo senza volerlo.
+      },
     },
   ],
 };
