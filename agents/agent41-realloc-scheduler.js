@@ -44,7 +44,8 @@ const { runReallocCycle, CONCENTRATION_CAP_FRAC, INTERVAL_MS } = require('../lib
 const { runAllocationReset } = require('../lib/maker/allocation-reset');
 const { runBulkAllocation } = require('../lib/maker/bulk-allocate');
 const { diagnoseExposure } = require('../lib/maker/manual-reset');
-const { listManualOrders, cancelManualOrder } = require('../lib/maker/manual-order');
+const { listManualOrders, cancelManualOrder, OPERATOR_USER } = require('../lib/maker/manual-order');
+const { readUsage } = require('../lib/safety/usage');
 const { readAutoRepriceConfig, setAutoReprice } = require('../lib/maker/auto-reprice-config');
 const { readTrackingConfig, setTracking } = require('../lib/maker/mm-tracking-config');
 const { setManualMode } = require('../lib/maker/manual-mode');
@@ -227,9 +228,23 @@ async function eseguiReset({ rows, dryRunOnly }) {
       setTrackingOff: ({ marketId, reason }) => setTracking({ marketId, enabled: false, by: 'riallocatore periodico', reason }),
       setEnabled: ({ marketId, enabled, reason }) => setAutoReprice({ scope: 'market', marketId, enabled, by: 'riallocatore periodico', reason }),
       setManual: ({ marketId, manual, reason }) => setManualMode({ marketId, manual, by: 'riallocatore periodico', reason }),
+      // `cancelOrder` non è una strada nuova verso il venue: è la stessa corsia cancel-only che il reset
+      // usa già due righe più sopra. Serve a runBulkAllocation per RITIRARE una gamba rimasta sola
+      // quando la sua controparte viene rifiutata — senza, una coppia a metà resterebbe sul libro.
       placeBulk: ({ rows: r, dryRunOnly: d }) => runBulkAllocation(
         { rows: r, dryRunOnly: d },
-        { openNotionalUsd: diag.readable ? (diag.openNotionalUsd || 0) : 0 },
+        {
+          openNotionalUsd: diag.readable ? (diag.openNotionalUsd || 0) : 0,
+          cancelOrder: ({ orderId, marketId }) => cancelManualOrder({ orderId, marketId }, 'manual-ui'),
+          // Quanti ordini sono già stati inviati nella finestra del rate limit. Serve a fermarsi al
+          // confine di una COPPIA invece di spezzarla a metà: con due gambe per mercato il ventunesimo
+          // ordine rifiutato non è un mercato in meno, è mezza posizione viva. Non leggibile ⇒ 0, e il
+          // gate per-ordine resta comunque l'ultima parola.
+          ordersInWindow: (() => {
+            try { const u = readUsage({ userId: OPERATOR_USER }); return Number.isFinite(u.ordersInWindow) ? u.ordersInWindow : 0; }
+            catch { return 0; }
+          })(),
+        },
       ),
       audit: (rec) => { try { appendMakerAudit(rec); } catch { /* l'audit non blocca */ } },
     },

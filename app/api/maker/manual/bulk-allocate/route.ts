@@ -97,7 +97,15 @@ export async function POST(req: NextRequest) {
         placeBulk: ({ rows, dryRunOnly }: { rows: unknown[]; dryRunOnly: boolean }) =>
           runBulkAllocation(
             { rows: rows as never, dryRunOnly },
-            { openNotionalUsd: diag.readable ? (diag.openNotionalUsd || 0) : 0 },
+            {
+              openNotionalUsd: diag.readable ? (diag.openNotionalUsd || 0) : 0,
+              // Il ritiro di una gamba rimasta sola quando la sua controparte viene rifiutata. Le righe
+              // che il pannello manda oggi non sono accoppiate, quindi non scatta mai; è cablata lo
+              // stesso perché il giorno in cui il pannello manderà coppie, l'assenza di questa riga
+              // sarebbe un'esposizione asimmetrica invece di un ripristino.
+              cancelOrder: ({ orderId, marketId }: { orderId: string; marketId: string }) =>
+                cancelManualOrder({ orderId, marketId }, 'manual-ui'),
+            },
           ),
         audit: (rec: Record<string, unknown>) => { try { appendMakerAudit(rec); } catch { /* l'audit non blocca */ } },
       },
