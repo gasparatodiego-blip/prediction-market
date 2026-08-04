@@ -50,6 +50,9 @@ const { readUsage } = require('../lib/safety/usage');
 const { readAutoRepriceConfig, setAutoReprice } = require('../lib/maker/auto-reprice-config');
 const { readTrackingConfig, setTracking } = require('../lib/maker/mm-tracking-config');
 const { setManualMode } = require('../lib/maker/manual-mode');
+const { setAutoClose } = require('../lib/maker/auto-close-config');
+const { fetchVenuePositions } = require('../lib/maker/manual-reset');
+const { resolveMarketRules } = require('../lib/maker/manual-order');
 const { writeAllocatedCapital } = require('../lib/maker/allocated-capital');
 const { writeCollectorPriority } = require('../lib/rewards/collector-priority');
 const { appendMakerAudit } = require('../lib/venues/polymarket-clob-maker/audit');
@@ -280,6 +283,27 @@ async function eseguiReset({ rows, dryRunOnly }) {
       setTrackingOff: ({ marketId, reason }) => setTracking({ marketId, enabled: false, by: 'riallocatore periodico', reason }),
       setEnabled: ({ marketId, enabled, reason }) => setAutoReprice({ scope: 'market', marketId, enabled, by: 'riallocatore periodico', reason }),
       setManual: ({ marketId, manual, reason }) => setManualMode({ marketId, manual, by: 'riallocatore periodico', reason }),
+      // OGNI mercato del piano ha l'uscita automatica accesa PRIMA di avere ordini (fase 3 del reset).
+      setAutoClose: ({ marketId, enabled, reason }) => setAutoClose({ scope: 'market', marketId, enabled, by: 'riallocatore periodico', reason }),
+      // Serve solo a decidere se SPEGNERE l'uscita su un mercato che esce dal piano. Le posizioni si
+      // leggono dal VENUE, e si incrociano con i due token del mercato: una posizione su uno dei due
+      // libri è una posizione su questo mercato. Illeggibile ⇒ `leggibile:false`, e allora l'uscita
+      // resta accesa — non si abbandona capitale per un dato che non si è riusciti a leggere.
+      posizioneAperta: async ({ marketId }) => {
+        try {
+          const rules = resolveMarketRules(marketId);
+          const pos = await fetchVenuePositions();
+          if (!pos || pos.ok !== true || !Array.isArray(pos.positions)) {
+            return { leggibile: false, aperta: null, error: (pos && pos.reason) || 'posizioni non leggibili' };
+          }
+          const token = new Set([rules && rules.tokenId, rules && rules.tokenIdNo].filter(Boolean).map(String));
+          const aperta = pos.positions.some((p) => {
+            const t = String(p.tokenId ?? p.asset ?? '');
+            return t && token.has(t) && Number(p.size) > 0;
+          });
+          return { leggibile: true, aperta };
+        } catch (e) { return { leggibile: false, aperta: null, error: e.message }; }
+      },
       // `cancelOrder` non è una strada nuova verso il venue: è la stessa corsia cancel-only che il reset
       // usa già due righe più sopra. Serve a runBulkAllocation per RITIRARE una gamba rimasta sola
       // quando la sua controparte viene rifiutata — senza, una coppia a metà resterebbe sul libro.

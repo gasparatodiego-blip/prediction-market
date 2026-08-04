@@ -8,6 +8,12 @@ import { listManualOrders, cancelManualOrder } from '@/lib/maker/manual-order';
 import { readAutoRepriceConfig, setAutoReprice } from '@/lib/maker/auto-reprice-config';
 import { readTrackingConfig, setTracking } from '@/lib/maker/mm-tracking-config';
 import { setManualMode } from '@/lib/maker/manual-mode';
+// L'USCITA AUTOMATICA VALE ANCHE PER IL BOTTONE. La regola non e' «i mercati del riallocatore hanno una
+// via d'uscita»: e' «ogni mercato che il bot gestisce ce l'ha». Due percorsi che piazzano gambe devono
+// accenderla entrambi, altrimenti la protezione dipende da CHI ha premuto.
+import { setAutoClose } from '@/lib/maker/auto-close-config';
+import { fetchVenuePositions } from '@/lib/maker/manual-reset';
+import { resolveMarketRules } from '@/lib/maker/manual-order';
 import { appendMakerAudit } from '@/lib/venues/polymarket-clob-maker/audit';
 // LA VERIFICA AL VENUE DEI MERCATI CHE STANNO PER RICEVERE ORDINI. Il riallocatore automatico ce
 // l'aveva; questo percorso no, e il 4 agosto 2026 la traccia ha mostrato due mercati su cinque col
@@ -131,6 +137,25 @@ export async function POST(req: NextRequest) {
           setAutoReprice({ scope: 'market', marketId, enabled, by: 'operatore · reset allocazione', reason }),
         setManual: ({ marketId, manual, reason }: { marketId: string; manual: boolean; reason: string }) =>
           setManualMode({ marketId, manual, by: 'operatore · reset allocazione', reason }),
+        setAutoClose: ({ marketId, enabled, reason }: { marketId: string; enabled: boolean; reason: string }) =>
+          setAutoClose({ scope: 'market', marketId, enabled, by: 'operatore · reset allocazione', reason }),
+        // Illeggibile ⇒ l'uscita resta ACCESA: non si abbandona una posizione per un dato mancante.
+        posizioneAperta: async ({ marketId }: { marketId: string }) => {
+          try {
+            const rules = resolveMarketRules(marketId) as unknown as { tokenId?: string; tokenIdNo?: string };
+            const pos = await fetchVenuePositions() as { ok?: boolean; positions?: unknown[]; reason?: string };
+            if (!pos || pos.ok !== true || !Array.isArray(pos.positions)) {
+              return { leggibile: false, aperta: null, error: (pos && pos.reason) || 'posizioni non leggibili' };
+            }
+            const token = new Set([rules?.tokenId, rules?.tokenIdNo].filter(Boolean).map(String));
+            const aperta = pos.positions.some((p) => {
+              const q = p as { tokenId?: string; asset?: string; size?: number };
+              const t = String(q.tokenId ?? q.asset ?? '');
+              return !!t && token.has(t) && Number(q.size) > 0;
+            });
+            return { leggibile: true, aperta };
+          } catch (e) { return { leggibile: false, aperta: null, error: (e as Error).message }; }
+        },
         // La fase 4 è il ciclo di piazzamento di SEMPRE: stesso cap cumulativo, stesso rate limit,
         // stessi gate per riga. Il reset non apre una seconda strada verso il venue.
         placeBulk: ({ rows, dryRunOnly }: { rows: unknown[]; dryRunOnly: boolean }) =>
