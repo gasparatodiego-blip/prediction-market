@@ -18,6 +18,10 @@ import { bandStateFor } from '@/app/dashboard/liquidity-rewards/allocate/band-st
 // costruiva le righe da sé e ne mandava UNA per mercato: un BUY sul libro YES. Con la formula ufficiale a
 // due lati quel lato solo matura ZERO fuori dal range [0,10-0,90] e un terzo dentro.
 import { gambeDiUnaRiga } from '@/lib/rewards/plan-to-orders';
+// LA REGOLA DEL NETTO, LA STESSA DEL SERVER. Era riscritta qui a mano — correttamente, ma riscritta:
+// e la copia gemella dentro l'allocatore, scritta con la stessa buona intenzione, era invecchiata e
+// mostrava il lordo al posto del netto su ogni card di proposta. Una regola sola, importata.
+import { calcNetPerDay } from '@/lib/rewards/net-per-day';
 import type { OrderTarget } from '@/app/components/OrderPanel';
 
 type Balance = {
@@ -99,6 +103,11 @@ type Candidate = {
   marketId: string; name: string | null; shortId: string; nameAvailable?: boolean;
   status: 'scelto' | 'scartato'; reason: string; reasonCode?: string;
   capital: number; bestNetPerDay: number | null; bestGrossPerDay: number | null;
+  /** PERCHÉ il netto manca. «Nessun fill osservato» e «non calcolabile» sono due assenze diverse, e un
+   *  trattino solo le confonde. null quando il netto c'è davvero. */
+  bestNetAssente?: 'nessun-fill-osservato' | 'non-calcolabile' | null;
+  /** I fill OSSERVATI su cui il netto si regge. 0 ⇒ non c'è netto, per costruzione. */
+  bestNetFills?: number | null;
   competitorShares: number | null; pot: number | null; maxSpreadCents: number | null;
   horizon: {
     state: string; days: number | null; payback: number | null; paybackNever: boolean;
@@ -157,7 +166,10 @@ function rowAt(r: Row, offsetTicks: number) {
   const gross = r.grossInBandPerDay == null ? null : (r.belowVenueMinSize ? 0 : (inBand === false ? 0 : r.grossInBandPerDay));
   const fills = ft ? ft.fills : null;
   const cost = ft ? ft.costPerDay : null;
-  const net = fills != null && fills > 0 && gross != null && cost != null ? gross - cost : null;
+  // Il netto NON si compone qui: si compone il candidato (lordo − costo) e lo si sottopone alla regola
+  // condivisa, che decide se è un netto o un'assenza. Così «zero fill ⇒ nessun netto» non può divergere
+  // fra browser e server, che è esattamente ciò che era successo dentro l'allocatore.
+  const net = calcNetPerDay({ fills, netPerDay: gross != null && cost != null ? gross - cost : null });
   const orderVsDepth = r.sizePerSideShares != null && r.depthShares != null && r.depthShares > 0 ? r.sizePerSideShares / r.depthShares : null;
   // The corrected figure for THIS offset — looked up, never recomputed here. The corrections it applies
   // (placement score, pool trend, thin book, coverage gaps, adverse selection) are arithmetic the server
@@ -738,6 +750,25 @@ export default function RewardsAllocatePanel(
               <div><span>Lordo corretto</span><b>{perDay(autoPlan.totals.realisticPerDay)}</b></div>
             </div>
 
+            {/* ── PERCHÉ LE DUE CIFRE NON COINCIDONO ────────────────────────────────────────────────
+                Uno scarto di circa 3× fra «atteso» e «corretto» sembra un'incongruenza finché non si
+                dice che è VOLUTO. Non lo è: il lordo atteso prezza un ordine appoggiato esattamente sul
+                mid, cioè il punteggio massimo S=1 della formula pubblicata; un ordine reale, un tick
+                fuori da una banda di 4,5¢, vale S=((2,25−1)/2,25)²≈0,31. Da sola quella correzione fa
+                il grosso del fattore. Le altre (andamento del montepremi, mercato sottile, copertura
+                temporale) sono dichiarate riga per riga, ognuna col suo fattore e col suo «non
+                misurabile» quando non c'è evidenza.
+                Nessun fattore nascosto: il rapporto è mostrato, non lasciato dedurre. */}
+            {autoPlan.totals.realisticRatio != null && (
+              <p className="ex-why" data-alloc-realistic-why style={{ marginTop: 6 }}>
+                corretto = atteso × <b>{autoPlan.totals.realisticRatio.toFixed(3)}</b> — il fattore è il
+                prodotto delle correzioni dichiarate per ogni riga (la principale è il punteggio reale
+                della posizione: il lordo prezza un ordine sul mid, cioè il massimo teorico).
+                {autoPlan.totals.realisticRowsUnknown ? ` ${autoPlan.totals.realisticRowsUnknown} riga/he non stimabile/i, esclusa/e dal corretto.` : ''}
+                {' '}Ogni correzione, col suo fattore e il suo «non misurabile», è nel dettaglio della riga.
+              </p>
+            )}
+
             {/* ── POCHI MERCATI È UNA SCELTA, NON UN FALLIMENTO ─────────────────────────────────────
                 Il piano migliore concentra il capitale su pochi mercati invece di spalmarlo su dieci —
                 entro il tetto per mercato, che da questa revisione la tab applica (30% del capitale,
@@ -800,7 +831,23 @@ export default function RewardsAllocatePanel(
                   </div>
                   <div className="alloc-sub" style={{ marginTop: 4 }} data-alloc-auto-why>✓ {c.reason}</div>
                   <div className="ac-nums">
-                    <div className="ac-num"><span>Netto/g</span><b>{perDay(c.bestNetPerDay)}</b></div>
+                    {/* ── IL NETTO NON È MAI IL LORDO TRAVESTITO ────────────────────────────────
+                        Fino al 4 agosto 2026 queste due colonne mostravano lo STESSO numero su ogni
+                        proposta, mentre il banner in cima alla pagina prometteva un trattino. Il motore
+                        modella «nessun fill osservato» come costo 0 — giusto per SCEGLIERE, perché
+                        assumere un costo inventato escluderebbe un mercato per un'ipotesi — e quel
+                        valore arrivava qui come netto = lordo − 0. La regola sta ora in un punto solo
+                        (lib/rewards/net-per-day.js) e vale sia per le righe del piano sia per queste
+                        card, che prima la applicavano in modo diverso pur venendo dallo stesso file. */}
+                    <div className="ac-num"><span>Netto/g</span>
+                      {c.bestNetPerDay == null
+                        ? <b className="oob" data-alloc-card-net-absent={c.bestNetAssente ?? 'assente'}
+                          title={c.bestNetAssente === 'nessun-fill-osservato'
+                            ? 'Nessun fill osservato su questo mercato: senza esecuzioni non c’è markout, quindi nessun costo di adverse selection misurato e il netto non esiste. Il lordo qui accanto NON è il netto.'
+                            : 'Il netto non è calcolabile a questa size: il costo risulta non misurabile e non viene sostituito con zero.'}
+                        >—</b>
+                        : <b data-alloc-card-net title={`su ${c.bestNetFills ?? '?'} fill osservati`}>{perDay(c.bestNetPerDay)}</b>}
+                    </div>
                     <div className="ac-num"><span>Lordo/g</span><b>{perDay(c.bestGrossPerDay)}</b></div>
                     {/* Un trattino diceva due cose diverse con lo stesso segno: «scade fra tanto» e
                         «non lo so». La seconda ora si legge, e dice anche da dove viene la data quando
