@@ -50,6 +50,9 @@ type Row = {
   capital: number; sizePerSideUsd: number; sizePerSideShares: number | null;
   tick: number | null; mid: number | null; depthShares: number | null; newestTsMs: number | null;
   endDate: string | null;
+  // Provenienza della scadenza: 'market' se pubblicata sul mercato, 'event' se ereditata dall'evento
+  // padre (Gamma la omette sul record del singolo esito nei mercati negRisk), null se ignota.
+  endDateSource?: 'market' | 'event' | null;
   maxSpreadCents: number | null; grossInBandPerDay: number | null; defaultOffsetTicks: number;
   computedDefaultOffsetTicks: number; defaultReason: string; defaultNetDerived: boolean; grossMaxDefaultTicks: number;
   fillScore: number | null; fillsByTick: FillTick[];
@@ -81,6 +84,9 @@ type Plan = {
   universe?: {
     withPot: number; evaluated: number; chosen: number;
     horizonFilter: boolean; horizonRejected: number; note: string;
+    // Mercati entrati nel piano senza scadenza leggibile: il filtro orizzonte non ha potuto
+    // pronunciarsi su di loro. Zero rifiuti non significa zero incognite.
+    horizonUnknown?: number; horizonUnknownAll?: number;
   };
   // Il tetto per singolo mercato EFFETTIVAMENTE applicato a questo piano, e da dove viene. Vanno
   // mostrati entrambi: «nessun tetto» e «tetto pari all'intero capitale» danno lo stesso numero e non
@@ -94,7 +100,13 @@ type Candidate = {
   status: 'scelto' | 'scartato'; reason: string; reasonCode?: string;
   capital: number; bestNetPerDay: number | null; bestGrossPerDay: number | null;
   competitorShares: number | null; pot: number | null; maxSpreadCents: number | null;
-  horizon: { state: string; days: number | null; payback: number | null; paybackNever: boolean } | null;
+  horizon: {
+    state: string; days: number | null; payback: number | null; paybackNever: boolean;
+    source?: 'market' | 'event' | null; endDateKnown?: boolean;
+  } | null;
+  // true = questo mercato è stato valutato SENZA scadenza leggibile. Non è un rifiuto: è un controllo
+  // che non si è potuto eseguire, e va mostrato come tale invece di sparire fra i verdetti favorevoli.
+  horizonUnknown?: boolean;
 };
 /** Etichette dei motivi di scarto, per raggrupparli. Il testo per riga resta quello del server. */
 const REJECT_LABEL: Record<string, string> = {
@@ -784,7 +796,14 @@ export default function RewardsAllocatePanel(
                   <div className="ac-nums">
                     <div className="ac-num"><span>Netto/g</span><b>{perDay(c.bestNetPerDay)}</b></div>
                     <div className="ac-num"><span>Lordo/g</span><b>{perDay(c.bestGrossPerDay)}</b></div>
-                    <div className="ac-num"><span>Scadenza</span><b>{c.horizon && c.horizon.days != null ? `${Math.round(c.horizon.days)} g` : '—'}</b></div>
+                    {/* Un trattino diceva due cose diverse con lo stesso segno: «scade fra tanto» e
+                        «non lo so». La seconda ora si legge, e dice anche da dove viene la data quando
+                        è stata ereditata dall'evento padre (tipico dei mercati negRisk). */}
+                    <div className="ac-num"><span>Scadenza</span><b
+                      title={c.horizon && c.horizon.source === 'event' ? 'data ereditata dall\'evento padre' : undefined}
+                    >{c.horizon && c.horizon.days != null
+                      ? `${Math.round(c.horizon.days)} g${c.horizon.source === 'event' ? ' ᴱ' : ''}`
+                      : (c.horizonUnknown ? 'ignota' : '—')}</b></div>
                   </div>
                   <div style={{ marginTop: 9 }}>
                     <button className="alloc-btn" style={{ fontSize: 12 }}
@@ -996,7 +1015,9 @@ export default function RewardsAllocatePanel(
                       <div><span>Fill attesi</span><b>{c.fills == null ? '—' : c.fills}</b></div>
                       <div><span>Score fill</span><b>{r.fillScore == null ? '—' : r.fillScore.toFixed(2)}</b></div>
                       <div><span>Ordine / depth</span><b>{c.orderVsDepth == null ? '—' : `${c.orderVsDepth.toFixed(2)}×`}</b></div>
-                      <div><span>Scadenza</span><b>{dRes == null ? '—' : `${Math.round(dRes)} gg`}</b></div>
+                      <div><span>Scadenza</span><b
+                        title={r.endDateSource === 'event' ? 'data ereditata dall\'evento padre' : undefined}
+                      >{dRes == null ? 'ignota' : `${Math.round(dRes)} gg${r.endDateSource === 'event' ? ' ᴱ' : ''}`}</b></div>
                       <div><span>Freschezza</span><b>{unreadable ? 'illeggibile' : ageS == null ? '—' : `${freshAge(ageS)} fa`}</b></div>
                     </div>
                   )}

@@ -24,6 +24,7 @@ const fs    = require('fs');
 const https = require('https');
 const { scoreBook, estimateCapitalLevelRange } = require('../lib/rewardScore');
 const { categoryFromText } = require('../lib/category');
+const { risolviScadenza } = require('../lib/rewards/scadenza-mercato');
 const { writeCombinedSnapshot } = require('../lib/rewards-normalize');
 // Depth-at-touch suppression floor — shared SSOT (also used by lib/rewards-normalize and
 // re-exported to TS via lib/reward-gating.ts). Configurable via REWARD_DEPTH_TOUCH_FLOOR_USD.
@@ -134,12 +135,28 @@ async function fetchRewardMarkets() {
 
       if (!tokenIds.length) continue;
 
+      // ── LA SCADENZA, E DA DOVE ARRIVA ──────────────────────────────────────────────────────────
+      // Gamma OMETTE `endDate` sul record del singolo mercato molto piu' spesso di quanto sembri:
+      // misurato il 4 agosto 2026 sulla pagina all'offset 300, 100 record su 100 senza `m.endDate` —
+      // e 100 su 100 con la data sull'EVENTO padre. Sul board vivo erano 21 mercati su 117, venti dei
+      // quali negRisk, tutti mostrati con scadenza «—».
+      //
+      // Su un evento multi-esito (negRisk) la data e' una proprieta' dell'EVENTO, non dell'esito: le
+      // elezioni del Wisconsin si decidono il 2026-11-03 tanto per la riga «Republicans» quanto per la
+      // riga «Democrats». Ereditarla dal padre non e' un'inferenza — e' leggere il dato dove il venue
+      // lo pubblica davvero.
+      //
+      // Cio' che NON si fa: inventarla. Se manca anche sull'evento resta null, `endDateSource` resta
+      // null, e il filtro orizzonte lo dichiara invece di lasciarlo passare in silenzio.
+      const evento   = (Array.isArray(m.events) && m.events[0]) || null;
+      const scadenza = risolviScadenza(m);
+
       markets.push({
         conditionId:      m.conditionId,
         // Polymarket deep-link needs the EVENT slug (…/event/<slug>), NOT the per-market
         // slug (which carries a numeric suffix and 404s on the SINGLE-segment /event/<slug>).
         // Gamma nests the event slug under events[0].slug. null when absent → no link.
-        slug:             (Array.isArray(m.events) && m.events[0] && m.events[0].slug) || null,
+        slug:             (evento && evento.slug) || null,
         // Per-OUTCOME market slug (m.slug). On a multi-outcome (negRisk) event every outcome
         // shares one event slug but has its own m.slug — the real two-segment page is
         // …/event/<eventSlug>/<marketSlug>. Kept so the UI can deep-link the exact outcome
@@ -153,7 +170,10 @@ async function fetchRewardMarkets() {
         rewardsMaxSpread: maxSpread,
         tokenId:          tokenIds[0],
         tokenIdNo:        tokenIds[1] || null,
-        endDate:          m.endDate || null,
+        endDate:          scadenza.endDate,
+        // 'market' = pubblicata sul mercato · 'event' = ereditata dall'evento padre · null = ignota.
+        // Serve a distinguere un dato diretto da uno ereditato senza doverlo ridedurre a valle.
+        endDateSource:    scadenza.endDateSource,
         lastTradePrice:   parseFloat(m.lastTradePrice) || 0,
         bestBid:          parseFloat(m.bestBid) || 0,
         bestAsk:          parseFloat(m.bestAsk) || 0,
@@ -523,6 +543,9 @@ async function scan() {
       // that absence is carried through as null (missing evidence), NEVER coerced to 0.
       volume24hUsd:      m.volume24hUsd,
       endDate:           m.endDate,
+      // Provenienza della scadenza — 'market' | 'event' | null. Viaggia fino al board perche' chi legge
+      // il piano possa distinguere una data pubblicata sul mercato da una ereditata dall'evento padre.
+      endDateSource:     m.endDateSource ?? null,
       negRisk:           m.negRisk,
       levels,
       sane500:           sane,  // convenience flag; UI re-evaluates per level
