@@ -26,6 +26,10 @@ import { calcNetPerDay } from '@/lib/rewards/net-per-day';
 // coda può scorrere, e non conosce nessun endpoint: un avanzamento automatico non è un rischio da
 // sorvegliare, è una cosa che lì non si può scrivere.
 import { decidiAvanzamento, avanza as avanzaCoda, metti as mettiInCoda, riepilogo as riepilogoCoda } from '@/lib/rewards/coda-piazzamento';
+// LE RIGHE DEI DUE PIANI, IN UNA FUNZIONE PURA E PROVABILE. Stava dentro un useMemo, leggeva un solo
+// piano, e teneva invisibile «+ Metti in coda» per chi arrivava dal percorso normale. Una condizione
+// dentro un componente si può verificare solo con una regex sul sorgente, cioè non si può verificare.
+import { righePerId as costruisciRighe, puoAndareInCoda } from '@/lib/rewards/righe-piano';
 import type { OrderTarget } from '@/app/components/OrderPanel';
 
 type Balance = {
@@ -614,12 +618,10 @@ export default function RewardsAllocatePanel(
   //
   // Entrambi, quindi, con `autoPlan` che vince dove un mercato sta in tutti e due: è la riga che
   // l'operatore sta guardando quando preme il bottone sulla card.
-  const righePerId = useMemo(() => {
-    const m = new Map<string, Row>();
-    for (const r of plan?.rows ?? []) m.set(r.marketId.toLowerCase(), r);
-    for (const r of autoPlan?.rows ?? []) m.set(r.marketId.toLowerCase(), r);
-    return m;
-  }, [plan, autoPlan]);
+  const righePerId = useMemo(
+    () => costruisciRighe<Row>({ plan, autoPlan }),
+    [plan, autoPlan],
+  );
 
   const testaId = coda[0] ?? null;
   const testaRiga = testaId ? righePerId.get(testaId.toLowerCase()) ?? null : null;
@@ -629,9 +631,36 @@ export default function RewardsAllocatePanel(
     [testaRiga, offsets],
   );
 
-  const inCoda = useCallback((marketId: string) => {
-    setCoda((q) => mettiInCoda({ coda: q, marketId }));
-  }, []);
+  // ── IN CODA SOLO SE LE DUE FONTI SUL MONTEPREMI CONCORDANO ────────────────────────────────────
+  // Il gate `reward-contraddizione` (a70f608) vive nella route di abilitazione, cioè sul vecchio
+  // flusso. Ma la coda è l'altra strada verso lo stesso capitale, e una garanzia che vale su un
+  // percorso e non sull'altro è esattamente la classe di difetto che questa settimana abbiamo passato
+  // a togliere. Quindi mettere in coda fa PRIMA l'anteprima — che non scrive niente — e se il venue
+  // smentisce il montepremi della card il mercato NON entra, con il motivo scritto sotto la card.
+  const [codaErr, setCodaErr] = useState<{ marketId: string; motivo: string } | null>(null);
+  const [codaBusy, setCodaBusy] = useState<string | null>(null);
+  const inCoda = useCallback(async (marketId: string, potAtPlan?: number | null) => {
+    setCodaBusy(marketId); setCodaErr(null);
+    try {
+      const r = await fetch('/api/maker/markets/enable', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          marketId, preview: true, enabled: true, takeManual,
+          potAtPlan: typeof potAtPlan === 'number' && Number.isFinite(potAtPlan) ? potAtPlan : undefined,
+        }),
+      });
+      const b = (await r.json()) as EnableResp & { gate?: string; potAlVenue?: number | null };
+      if (b.gate === 'reward-contraddizione') {
+        setCodaErr({ marketId, motivo: b.error || 'il venue non conferma il montepremi mostrato dalla card' });
+        return;                                   // NON entra in coda
+      }
+      // Qualunque altro esito non blocca l'ingresso: la coda non piazza, e gli altri gate (banda,
+      // size, kill, cap) restano dove sono — al momento della conferma, dove contano davvero.
+      setCoda((q) => mettiInCoda({ coda: q, marketId }));
+    } catch (e) {
+      setCodaErr({ marketId, motivo: `controllo del montepremi non riuscito: ${(e as Error).message}. Il mercato non entra in coda.` });
+    } finally { setCodaBusy(null); }
+  }, [takeManual]);
   const avanza = useCallback((come: 'piazzato' | 'saltato') => {
     setCoda((q) => {
       const testa = q[0];
@@ -1004,14 +1033,20 @@ export default function RewardsAllocatePanel(
                         da confermare una per una. È deliberatamente separato da «1 · Anteprima»,
                         che fa un'altra cosa (rende il mercato ammissibile), e dal piazzamento in
                         blocco, che azzera e rifà tutto il piano. */}
-                    {righePerId.has(c.marketId.toLowerCase()) && (
+                    {puoAndareInCoda({ righe: righePerId, marketId: c.marketId }) && (
                       <button className="alloc-btn" style={{ fontSize: 12, marginLeft: 6 }}
                         data-alloc-queue-add={c.marketId}
-                        disabled={coda.some((x) => x.toLowerCase() === c.marketId.toLowerCase())}
-                        title="Aggiunge questo mercato alla coda di conferme. Non piazza nulla adesso."
-                        onClick={() => inCoda(c.marketId)}>
-                        {coda.some((x) => x.toLowerCase() === c.marketId.toLowerCase()) ? '✓ in coda' : '+ Metti in coda'}
+                        disabled={codaBusy != null || coda.some((x) => x.toLowerCase() === c.marketId.toLowerCase())}
+                        title="Aggiunge questo mercato alla coda di conferme. Non piazza nulla adesso: controlla solo che il venue confermi il montepremi della card."
+                        onClick={() => inCoda(c.marketId, c.pot)}>
+                        {codaBusy === c.marketId ? 'verifico…'
+                          : coda.some((x) => x.toLowerCase() === c.marketId.toLowerCase()) ? '✓ in coda' : '+ Metti in coda'}
                       </button>
+                    )}
+                    {codaErr && codaErr.marketId.toLowerCase() === c.marketId.toLowerCase() && (
+                      <div className="alloc-note alloc-warn" style={{ marginTop: 6 }} data-alloc-queue-refused>
+                        ⚠ <b>Non messo in coda.</b> {codaErr.motivo}
+                      </div>
                     )}
                   </div>
 
