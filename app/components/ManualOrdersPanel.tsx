@@ -29,6 +29,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 // The shared guard, and the shared derivation of the furthest QUALIFYING prices. Both come from the same
 // module the server re-runs before a send, so the form's hints can never be looser than the refusal.
 import { validateQuote, inBandPriceBounds } from '@/lib/maker/venue-rules';
+import { numeroDigitato } from '@/lib/campo-numerico';
 
 interface KillState { readable: boolean; killed: boolean; scope: string | null; reason: string | null; by: string | null; at: number | null }
 interface PlacementState { mode: 'dry-run' | 'send'; key: string; sends: boolean; note: string }
@@ -210,9 +211,32 @@ export default function ManualOrdersPanel() {
 
   const rules = cfg?.market ?? null;
   const scoringMid = rules ? (book === 'no' ? rules.books.no.scoringMid : rules.books.yes.scoringMid) : null;
-  const priceNum = Number(price);
-  const sizeNum = Number(size);
-  const notional = Number.isFinite(priceNum) && Number.isFinite(sizeNum) && priceNum > 0 && sizeNum > 0 ? priceNum * sizeNum : null;
+  // ── UN CAMPO VUOTO NON È UNO ZERO ────────────────────────────────────────────────────────────────
+  // `Number('')` vale 0, non NaN. Da qui nasceva il difetto del 4 agosto 2026: i due campi partono da
+  // useState(''), quindi su un modulo MAI TOCCATO il guard veniva eseguito su `price: 0, size: 0` e
+  // rispondeva — correttamente, per quei valori — con tre errori:
+  //
+  //     PRICE_OUT_OF_RANGE  price 0 is outside the venue range [0.001, 0.999]
+  //     OUT_OF_BAND         |price − scoring mid| 53.55¢ exceeds the reward band ±2.25¢
+  //     BELOW_MIN_SIZE      size is missing or ≤ 0
+  //
+  // Con il mid a 0,5355 quei 53,55¢ sono esattamente |0 − 0,5355|: il guard non stava leggendo un dato
+  // scollegato dal form, stava leggendo il form vuoto. Quello che l'operatore vedeva nei campi — 0.536
+  // e 50 — era il PLACEHOLDER (il mid e la size minima, righe 852 e 900), non un valore inserito.
+  //
+  // L'errore non era nell'aritmetica ma nell'epistemica, ed è quella che questo repo applica ovunque
+  // tranne che qui: l'assenza di un dato non è il valore zero. Un modulo vuoto non è un modulo
+  // sbagliato, e dirgli che è sbagliato insegna all'operatore a ignorare gli avvisi del guard —
+  // proprio quelli che un giorno serviranno.
+  //
+  // Il ramo giusto ESISTEVA già («Inserisci prezzo e size», più sotto) ed era irraggiungibile, perché
+  // `verdict && !verdict.valid` scattava prima su un verdetto emesso per 0/0.
+  // La regola vive in lib/campo-numerico.js, non qui: l'idioma corretto era già scritto due volte
+  // altrove (RewardsUnified, MarketTerminal) e questo pannello era l'unico fuori riga. Una terza copia
+  // avrebbe solo aggiunto un altro posto da cui divergere.
+  const priceNum = numeroDigitato(price);
+  const sizeNum = numeroDigitato(size);
+  const notional = priceNum != null && sizeNum != null && priceNum > 0 && sizeNum > 0 ? priceNum * sizeNum : null;
   const capUsd = cfg?.caps.effectiveOrderCapUsd ?? null;
   const overCap = notional != null && capUsd != null && notional > capUsd + 1e-9;
   const killed = cfg?.kill.killed === true || cfg?.kill.readable === false;
@@ -220,7 +244,8 @@ export default function ManualOrdersPanel() {
 
   // The SHARED validator — never a local reimplementation of the band, the tick or the min size.
   const verdict = useMemo(() => {
-    if (!rules || !rules.readable || !Number.isFinite(priceNum) || !Number.isFinite(sizeNum)) return null;
+    // Nessun verdetto finché non c'è qualcosa da giudicare: un modulo vuoto non è una quota invalida.
+    if (!rules || !rules.readable || priceNum == null || sizeNum == null) return null;
     return validateQuote(
       { tick: rules.tick, scoringMid, maxSpreadCents: rules.maxSpreadCents, minSize: rules.minSize },
       { side: 'BUY', price: priceNum, size: sizeNum },
@@ -238,19 +263,19 @@ export default function ManualOrdersPanel() {
 
   const minSize = rules?.minSize ?? null;
   // Typed a size, it is a number, and it is under the market's minimum → say so with both numbers.
-  const sizeBelowMin = Number.isFinite(sizeNum) && sizeNum > 0 && minSize != null && sizeNum < minSize;
+  const sizeBelowMin = sizeNum != null && sizeNum > 0 && minSize != null && sizeNum < minSize;
   // The tick-snapped price nearest to what was typed — what "0.5203 is not on the grid" should offer.
   const snappedPrice = useMemo(() => {
     const t = rules?.tick;
-    if (!Number.isFinite(priceNum) || !t || t <= 0) return null;
+    if (priceNum == null || !t || t <= 0) return null;
     return +(Math.round(priceNum / t) * t).toFixed(10);
   }, [priceNum, rules]);
-  const priceOffTick = Number.isFinite(priceNum) && snappedPrice != null && Math.abs(priceNum - snappedPrice) > (rules!.tick as number) / 1000;
+  const priceOffTick = priceNum != null && snappedPrice != null && Math.abs(priceNum - snappedPrice) > (rules!.tick as number) / 1000;
   // Out of band, and WHICH side of it — so the hint can name the exact nearest qualifying price.
   const priceOutOfBand =
-    Number.isFinite(priceNum) && bounds.readable && bounds.lo != null && bounds.hi != null &&
+    priceNum != null && bounds.readable && bounds.lo != null && bounds.hi != null &&
     (priceNum < bounds.lo - 1e-12 || priceNum > bounds.hi + 1e-12);
-  const nearestInBand = !priceOutOfBand ? null : (priceNum > (bounds.hi as number) ? bounds.hi : bounds.lo);
+  const nearestInBand = !priceOutOfBand ? null : ((priceNum as number) > (bounds.hi as number) ? bounds.hi : bounds.lo);
 
   const canPlace =
     !placing && !killed && manualOn && !overCap &&
@@ -362,6 +387,11 @@ export default function ManualOrdersPanel() {
 
   const doPlace = useCallback(async () => {
     if (!marketId) return;
+    // Il fermo strutturale, vicino all'invio invece che a due schermate di distanza. `canPlace` lo
+    // garantisce già (richiede `notional != null`, che richiede entrambi i campi digitati), ma un
+    // invariante che vive solo in un bottone è un invariante che il prossimo refactor può perdere:
+    // qui non si può partire con un campo non digitato, e non lo si può nemmeno inviare come zero.
+    if (priceNum == null || sizeNum == null) return;
     setPlacing(true); setResult(null);
     try {
       const r = await fetch('/api/maker/manual/order', {
