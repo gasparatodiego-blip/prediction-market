@@ -567,7 +567,22 @@ module.exports = {
       max_memory_restart: '350M',
       watch:         false,
       autorestart:   true,
-      env:           { NODE_ENV: 'production', HOME: '/root' },
+      // ── MAKER_FUNDING_APPROVED — ALLINEATO AD agent41 E agent35 IL 4 AGOSTO 2026 ──────────────────
+      // Questo blocco conteneva solo NODE_ENV e HOME, e gli agenti non caricano .env (nessuno importa
+      // dotenv): l'attestazione non arrivava qui. Conseguenza misurata leggendo /proc/<pid>/environ, non
+      // pm2: agent40 girava senza la variabile mentre agent41 e agent35 ce l'avevano.
+      //
+      // Non si vedeva, perche' agent40 di suo RIPREZZA e non apre posizioni. Si sarebbe visto al primo
+      // fill: l'uscita automatica e il rimpiazzo della gamba eseguita passano da placeManualOrder →
+      // buildPlacementAdapter, che legge `process.env.MAKER_FUNDING_APPROVED === 'true'`, e senza di essa
+      // evaluatePlacementGate rifiuta con gate `funding-approval`. Cioe' esattamente i due meccanismi di
+      // sicurezza costruiti per il fill non sarebbero entrati in funzione, e il rifiuto sarebbe arrivato
+      // nel momento peggiore: con delle share gia' nostre e nessuna via d'uscita.
+      //
+      // NON accende niente da sola: e' un'attestazione umana (il wallet e' finanziato e le approvazioni
+      // on-chain ci sono). L'interruttore di invio resta MANUAL_ORDER_PLACEMENT, e restano kill-switch,
+      // cap, venue-rules e validateOrder.
+      env:           { NODE_ENV: 'production', HOME: '/root', MAKER_FUNDING_APPROVED: 'true' },
     },
     {
       name:          'agent38-tape-watchdog',
@@ -640,6 +655,20 @@ module.exports = {
         NODE_ENV: 'production', HOME: '/root',
         REALLOC_SCHEDULER_ENABLED: '1',
         REALLOC_SCHEDULER_DRY_RUN: '1',   // ← l'unico interruttore fra «racconta» e «fa». Non toccarlo senza volerlo.
+        // ── DICHIARATA, NON PIÙ SOLO EREDITATA (4 agosto 2026) ────────────────────────────────────
+        // agent41 GIÀ girava con MAKER_FUNDING_APPROVED=true — ma la ereditava dall'ambiente del
+        // demone pm2, non da qui: cercandola in questo file non c'era. Questa riga non cambia nulla di
+        // ciò che il processo vede oggi (verificato in /proc prima e dopo); toglie una fragilità.
+        //
+        // Perché conta proprio su questo processo: agent41 è l'UNICO che apre posizioni da solo. Se un
+        // giorno il demone pm2 ripartisse da una shell pulita, agent41 perderebbe l'attestazione senza
+        // che niente lo dica, e OGNI piazzamento verrebbe rifiutato con gate `funding-approval` —
+        // silenziosamente, dentro un ciclo automatico che nessuno sta guardando. È lo stesso difetto
+        // appena corretto su agent40, sul processo dove farebbe più danno.
+        //
+        // NON arma niente: è un'attestazione umana. L'interruttore fra «racconta» e «fa» resta la riga
+        // qui sopra, e resta a 1.
+        MAKER_FUNDING_APPROVED: 'true',
       },
     },
   ],

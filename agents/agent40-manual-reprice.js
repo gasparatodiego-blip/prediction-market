@@ -68,7 +68,7 @@ const { runAutoRepriceCycle } = require('../lib/maker/auto-reprice');
 const { runTrackingCycle, TRACKING_POLL_MS, MID_STALE_PAUSE_SEC } = require('../lib/maker/mm-tracking');
 const { readTrackingConfig, setTracking } = require('../lib/maker/mm-tracking-config');
 const { marketWindowFor } = require('../lib/maker/market-clock');
-const { loadAutoRepriceTuning, EXPECTED_RENEWALS_PER_HOUR } = require('../lib/maker/auto-reprice-config');
+const { loadAutoRepriceTuning, EXPECTED_RENEWALS_PER_HOUR, setAutoReprice } = require('../lib/maker/auto-reprice-config');
 const { listManualOrders, replaceManualOrder, resolveMarketRules, resolveMarketDepth, cancelManualOrder } = require('../lib/maker/manual-order');
 // THE STANDING RECONCILIATION FOR THE MANUAL LANE. Without it, every hand order that reaches its
 // venue-side expiry leaves a permanent phantom at full notional in the risk ledger, and the cap gate
@@ -295,6 +295,15 @@ async function cycle() {
     // Used ONLY by the reconnect-after-blackout path. It goes through the CANCEL-ONLY adapter (address-only
     // signer, structurally cannot place), so the recovery move can stop orders and can never start one.
     cancelOrder: (spec) => cancelManualOrder(spec, 'auto-reprice-band-exit'),
+    // TOGLIERE UN MERCATO CHIUSO DALLA ALLOWLIST. Gemella di `disableTracking` qui sotto, sulla stessa
+    // condizione e per lo stesso motivo: il motore decide QUANDO (solo a mercato risolto e a libro gia'
+    // libero), qui si passa la mano che scrive. Senza questa riga la decisione esisterebbe e non la
+    // prenderebbe nessuno — la guardia `typeof deps.disableMarket === 'function'` sarebbe sempre falsa,
+    // che e' il difetto trovato quattro volte in una settimana e che scripts/dipendenze-scollegate.js
+    // ora impedisce di lasciar passare.
+    disableMarket: ({ marketId, reason }) => setAutoReprice({
+      scope: 'market', marketId, enabled: false, by: 'motore · mercato chiuso', reason,
+    }),
     audit: (rec) => { try { appendMakerAudit(rec); } catch (e) { log('audit write failed:', e.message); } },
     config: loadAutoRepriceTuning(),
     breaches,
