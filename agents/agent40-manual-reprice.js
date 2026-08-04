@@ -76,6 +76,10 @@ const { listManualOrders, replaceManualOrder, resolveMarketRules, resolveMarketD
 // appeared next to an empty orders table). agent35 was never going to do this for us: its reconciliation
 // is "dormant until arming" and it stands off manual markets by design.
 const { reconcileManualLane, fetchVenuePositions } = require('../lib/maker/manual-reset');
+const { decideRimpiazzo } = require('../lib/maker/rimpiazzo-gamba');
+const { resolveOffsetFor } = require('../lib/maker/offset-config');
+const { readAllocatedCapital } = require('../lib/maker/allocated-capital');
+const { AUTO_CLOSE_SOURCE } = require('../lib/maker/auto-close-config');
 const { writeVenuePositions } = require('../lib/safety/venue-positions-snapshot');
 // AUTOMATIC POSITION CLOSING. Runs on the same throttle as the reconciliation and for the same reason:
 // a fill is only observable after the venue is asked. Default OFF everywhere; see lib/maker/auto-close.js.
@@ -218,11 +222,62 @@ async function closeTask() {
         return { ok: p.ok, reason: p.reason, positions: (p.positions || []).map((x) => ({ tokenId: String(x.asset ?? x.tokenId ?? ''), size: Number(x.size), avgPrice: Number(x.avgPrice) })) };
       },
       placeOrder: (spec) => placeManualOrder(spec),
+      // ── LA GAMBA ESEGUITA TORNA SUL LIBRO ────────────────────────────────────────────────────
+      // Subito dopo che l'uscita e' stata piazzata. Senza questa iniezione la decisione esiste ma non
+      // viene mai presa: `decideRimpiazzo` era scritto e testato e non lo chiamava nessuno, e la
+      // guardia `typeof deps.rimpiazzaGamba === 'function'` in auto-close era sempre falsa.
+      //
+      // Tre cose che questa funzione risolve da se', perche' auto-close non le ha e non deve averle:
+      //   · l'OFFSET, dal registro per mercato (lib/maker/offset-config) — lo stesso che usa il riprezzo;
+      //   · il TETTO del mercato, dal piano di allocazione corrente (lib/maker/allocated-capital);
+      //   · gli ORDINI GIA' A RIPOSO su quel mercato, che occupano spazio sotto il tetto insieme alla
+      //     posizione e all'uscita appena messa.
+      rimpiazzaGamba: async ({ marketId, book, posizioneUsd, uscitaUsd }) => {
+        const rules = resolveMarketRules(marketId);
+        const off = resolveOffsetFor({ marketId, book, tick: rules && rules.tick });
+        const tetto = readAllocatedCapital(marketId);
+
+        // Il nozionale gia' a riposo su questo mercato. L'uscita appena piazzata puo' non essere ancora
+        // visibile al venue, quindi la si somma a parte: contarla due volte stringerebbe il tetto, non
+        // contarla affatto lo allargherebbe — e fra i due errori si sceglie il primo.
+        let ordiniUsd = Number(uscitaUsd) || 0;
+        try {
+          const listed = await listManualOrders({ marketId });
+          if (listed && listed.ok !== false) {
+            for (const o of listed.orders || []) {
+              if (o && o.source === 'manual-ui' && Number.isFinite(o.notionalUsd)) ordiniUsd += o.notionalUsd;
+            }
+          }
+        } catch { /* illeggibile: resta il solo nozionale dell'uscita, che e' il piu' prudente noto */ }
+
+        const d = decideRimpiazzo({
+          book, rules,
+          offsetCents: off && off.targetOffsetCents,
+          tettoMercatoUsd: tetto && tetto.readable ? tetto.capUsd : null,
+          posizioneUsd: Number(posizioneUsd) || 0,
+          ordiniApertiUsd: ordiniUsd,
+          minSizeShares: rules && rules.minSize,
+        });
+        if (d.action !== 'rimpiazza') return d;
+
+        // Si piazza dalla STESSA porta di tutto il resto, con la regola della coda accesa: e' una
+        // quotazione maker come le altre, non un'uscita. La sorgente resta quella dell'uscita
+        // automatica perche' MANUAL_SOURCES e' un'allowlist di sicurezza che non vale la pena
+        // allargare per un'etichetta — la nota dice cosa e'.
+        const res = await placeManualOrder({
+          marketId, book, side: 'BUY', price: d.price, size: d.size,
+          inCoda: true, source: AUTO_CLOSE_SOURCE,
+          note: `rimpiazzo della gamba ${book.toUpperCase()} eseguita: torna a riposo a ${d.price} x ${d.size}`,
+        });
+        return { ...d, ok: res && res.ok === true, sent: res && res.sent === true, gate: (res && res.gate) || d.gate };
+      },
       audit: (rec) => { try { appendMakerAudit(rec); } catch (e) { log('audit write failed:', e.message); } },
     });
     for (const m of res.markets) if (m.gate && m.gate !== 'disabled') log(`auto-close cid_${String(m.marketId).replace(/^0x/, '')}: ${m.gate} — ${m.reason}`);
     for (const a of res.actions) {
       if (a.action === 'close') log(`AUTO-CLOSE ${a.ok ? 'ok' : 'FALLITA'} · ${a.book.toUpperCase()} SELL ${a.size} @ ${a.price} su carico ${a.entryPrice} (+${a.profitCents}c/share)${a.sent ? ' · INVIATA' : ' · non inviata (dry-run)'}${a.ok ? '' : ` · gate=${a.gate} ${a.reason || ''}`}`);
+      else if (a.action === 'rimpiazzo') log(`RIMPIAZZO ${a.ok ? 'ok' : 'FALLITO'} · ${a.book.toUpperCase()} BUY ${a.size} @ ${a.price} — ${a.reason}`);
+      else if (a.action === 'rimpiazzo-saltato') log(`rimpiazzo saltato · ${a.gate}: ${a.reason}`);
       else if (a.action === 'skip') log(`auto-close skip · ${a.gate}: ${a.reason}`);
     }
   } catch (e) {
