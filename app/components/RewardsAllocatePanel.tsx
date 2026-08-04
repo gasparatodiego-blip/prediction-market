@@ -12,6 +12,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { bandStateFor } from '@/app/dashboard/liquidity-rewards/allocate/band-state';
+// LE GAMBE LE COSTRUISCE UNA FUNZIONE SOLA, e non è più questa. `gambeDiUnaRiga` è la STESSA che usa il
+// riallocatore automatico (lib/rewards/plan-to-orders), quindi il bottone «Conferma ed esegui» e il ciclo
+// delle 6 ore non possono più mandare al venue due cose diverse. Fino a questa revisione il pannello
+// costruiva le righe da sé e ne mandava UNA per mercato: un BUY sul libro YES. Con la formula ufficiale a
+// due lati quel lato solo matura ZERO fuori dal range [0,10-0,90] e un terzo dentro.
+import { gambeDiUnaRiga } from '@/lib/rewards/plan-to-orders';
 import type { OrderTarget } from '@/app/components/OrderPanel';
 
 type Balance = {
@@ -472,18 +478,27 @@ export default function RewardsAllocatePanel(
   // Le righe da eseguire, prese ESATTAMENTE dalla tabella come e' configurata adesso: stesso mercato,
   // stesso lato, stesso prezzo, stessa size che l'operatore sta guardando. Escluse le righe stale o
   // illeggibili (non sono nei totali) e quelle fuori banda (varrebbero zero).
-  const bulkRows = useMemo(() => {
-    if (!computed) return [];
-    return computed.rows
-      .filter((x) => x.usable && x.c.inBand !== false && x.c.bid != null && x.r.sizePerSideShares != null)
-      .map((x) => ({
-        marketId: x.r.marketId,
-        title: x.r.name || x.r.shortId,
-        book: 'yes' as const,
-        price: x.c.bid as number,
-        size: Math.round((x.r.sizePerSideShares as number) * 10) / 10,
-      }));
-  }, [computed]);
+  // ── LE RIGHE DA MANDARE AL VENUE: DUE PER MERCATO ─────────────────────────────────────────────
+  // I predicati di esclusione (usable = leggibile e non stantio, banda, bid) restano quelli di prima e
+  // restano qui, perché dipendono dall'offset che l'operatore ha scelto su questa schermata. Quello che
+  // NON è più qui è la costruzione delle gambe: la fa `gambeDiUnaRiga`, all'offset scelto, e i suoi
+  // rifiuti (un lato non piazzabile, capitale sotto la size minima premiante del venue) diventano
+  // esclusioni dichiarate invece di ordini che il venue non premierebbe.
+  const bulk = useMemo(() => {
+    type Gamba = NonNullable<ReturnType<typeof gambeDiUnaRiga>['rows']>[number];
+    const rows: Gamba[] = [];
+    const scartate: { marketId: string; motivo: string; dettaglio: string }[] = [];
+    let mercati = 0;
+    if (!computed) return { rows, scartate, mercati };
+    for (const x of computed.rows) {
+      if (!(x.usable && x.c.inBand !== false && x.c.bid != null && x.r.sizePerSideShares != null)) continue;
+      const g = gambeDiUnaRiga(x.r, offsets[x.r.marketId] ?? x.r.computedDefaultOffsetTicks);
+      if (g.scarto) { scartate.push({ marketId: g.scarto.marketId, motivo: g.scarto.motivo, dettaglio: g.scarto.dettaglio }); continue; }
+      if (g.rows) { rows.push(...g.rows); mercati += 1; }
+    }
+    return { rows, scartate, mercati };
+  }, [computed, offsets]);
+  const bulkRows = bulk.rows;
 
   const runBulk = useCallback(async (preview: boolean) => {
     if (!bulkRows.length) return;
@@ -1239,8 +1254,14 @@ export default function RewardsAllocatePanel(
             ) : (
               <>
                 <div className="alloc-sub" style={{ marginTop: 10 }} data-alloc-bulk-summary>
-                  <b>{bulkRows.length}</b> ordini · capitale totale{' '}
+                  <b>{bulk.mercati}</b> {bulk.mercati === 1 ? 'mercato' : 'mercati'} ·{' '}
+                  <b>{bulkRows.length}</b> ordini (due gambe per mercato: BUY sul libro YES e BUY sul libro NO,
+                  che sul libro YES è l’ask) · capitale totale{' '}
                   <b>{money(bulkRows.reduce((s, r) => s + r.price * r.size, 0))}</b>
+                  {bulk.scartate.length > 0 && (
+                    <> · <b>{bulk.scartate.length}</b> {bulk.scartate.length === 1 ? 'mercato escluso' : 'mercati esclusi'}:{' '}
+                      {bulk.scartate.map((x) => `${x.marketId.slice(0, 10)}… ${x.motivo}`).join(', ')}</>
+                  )}
                   {balanceNum != null && <> su un saldo reale di <b>{money(balanceNum)}</b></>}
                 </div>
 

@@ -55,10 +55,35 @@ function capitalForShare(competitorQ, mid, X) {
  * @param {number} capitalTotal BOTH sides' capital ($)
  * @param {number} [minSize]    venue min_incentive_size (shares). Below it the share is 0, never a fraction.
  */
-function shareForCapital(competitorQ, mid, capitalTotal, minSize) {
+/**
+ * ── QUANTE SHARE COMPRA IL CAPITALE, PER LATO ──────────────────────────────────────────────────────
+ *
+ * `pairCostUsd` è il costo di UNA COPPIA di share — una sul lato bid, una sul lato ask — e cambia la
+ * risposta in modo che sui mercati economici non è un dettaglio ma un fattore dieci.
+ *
+ *   ASSENTE (il difetto storico, e resta il difetto):  size = (capitalTotal / 2) / mid
+ *     Assume che i due lati costino uguale, cioè `mid` per share ciascuno. È vero solo a mid ≈ 0,50.
+ *     Regge quando il lato ask è una VENDITA di share che si possiedono già: lì non costa collaterale
+ *     e il capitale va tutto sul bid. È l'ipotesi con cui è nato il backtest, ed è per questo che
+ *     l'assenza del parametro lo lascia byte-per-byte com'era.
+ *
+ *   PRESENTE:  size = capitalTotal / pairCostUsd
+ *     Quotare due lati partendo da solo collaterale significa comprare YES a (mid − d) e NO a
+ *     (1 − mid − d): la coppia costa `1 − 2d`, indipendentemente dal mid. Con share UGUALI sui due
+ *     lati — che è anche ciò che massimizza min(Q_bids, Q_asks) a parità di capitale — il conto è
+ *     una divisione sola.
+ *
+ * Perché conta per la CLASSIFICA e non solo per il display: il rapporto fra le due formule è
+ * 2·mid/(1−2d), cioè 1,00 a mid 0,49 e 0,11 a mid 0,055. Con la formula vecchia un mercato a 5¢
+ * sembra comprare nove volte le share che il capitale compra davvero, quindi sembra rendere nove
+ * volte tanto, quindi il knapsack ci va. La distorsione non è nel numero mostrato: è nella SCELTA.
+ */
+function shareForCapital(competitorQ, mid, capitalTotal, minSize, pairCostUsd = null) {
   if (!(competitorQ >= 0) || !(mid > 0) || !(capitalTotal >= 0)) return null;
   const price = clampPrice(mid);
-  const size = (capitalTotal / 2) / price;
+  const size = (typeof pairCostUsd === 'number' && Number.isFinite(pairCostUsd) && pairCostUsd > 0)
+    ? capitalTotal / pairCostUsd
+    : (capitalTotal / 2) / price;
   if (size < (minSize || 0)) return 0;   // venue min_incentive_size — same rule, same idiom as quadraticUserShare
   const denom = size + competitorQ;
   return denom > 0 ? size / denom : 0;
@@ -71,8 +96,12 @@ function shareForCapital(competitorQ, mid, capitalTotal, minSize) {
  * shareForCapital enforces, so the threshold and the refusal can never drift apart.
  * Returns null when the inputs cannot answer it (never a guessed floor).
  */
-function capitalToQualify(mid, minSize) {
+function capitalToQualify(mid, minSize, pairCostUsd = null) {
   if (!(mid > 0) || !(minSize > 0)) return null;
+  // Stessa regola di shareForCapital, invertita: quanto capitale serve perché `size` arrivi a `minSize`.
+  // Con il costo della coppia noto è `minSize × pairCost`; senza, resta il vecchio `2 × mid × minSize`.
+  // Le due devono muoversi insieme, altrimenti la soglia e il rifiuto raccontano due storie diverse.
+  if (typeof pairCostUsd === 'number' && Number.isFinite(pairCostUsd) && pairCostUsd > 0) return minSize * pairCostUsd;
   return 2 * clampPrice(mid) * minSize;
 }
 

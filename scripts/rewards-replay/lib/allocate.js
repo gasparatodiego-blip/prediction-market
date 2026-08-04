@@ -33,14 +33,14 @@ function fin(x) { return typeof x === 'number' && Number.isFinite(x); }
  * The `windowHours` param is accepted for call-site compatibility but ignored (computeNet uses the span).
  */
 function perMarketNetAtSize(marketId, marketRows, tokenTrades, potByCond, cfg) {
-  const { offsetCents, sizeUsd, maxInventoryUsd, policy, minSizeByMarket = null } = cfg; // policy: 'hold' (default) | 'close-now'
+  const { offsetCents, sizeUsd, maxInventoryUsd, policy, minSizeByMarket = null, pairCostUsd = null } = cfg; // policy: 'hold' (default) | 'close-now'
   const fillsRes = reconstructTapeFillsForMarket(marketRows, tokenTrades, { offsetCents, sizeUsd, maxInventoryUsd });
   const one = new Map([[marketId, marketRows]]);
   const MO = markoutAll(fillsRes.fills, one);
   // minSizeByMarket travels down to computeNet so the venue's min_incentive_size applies at EVERY size on
   // the grid: below the minimum a level scores 0, so the knapsack stops "buying" a market with capital the
   // venue would not score at all.
-  const net = computeNet(one, MO, potByCond, { sizeUsd, wsOnly: false, minSizeByMarket }); // gross + HOLD cost, observed-window
+  const net = computeNet(one, MO, potByCond, { sizeUsd, wsOnly: false, minSizeByMarket, pairCostUsd }); // gross + HOLD cost, observed-window
   const row = net.rows[0] || null;
   if (!row) {
     return { marketId, sizeUsd, capital: 2 * sizeUsd, excluded: true, spanHours: null, grossPerDay: null, grossWindow: null, cost5m: null, costPerDay5m: null, netWindow5m: null, netPerDay5m: null, fills: fillsRes.fills.length, share: null, closed: null, stuck: null, nakedRefused: null };
@@ -82,11 +82,11 @@ function perMarketNetAtSize(marketId, marketRows, tokenTrades, potByCond, cfg) {
  *            netWindow5m, netPerDay5m, net5m, fills, share, spanHours }] }
  */
 function perMarketNetCurve(marketId, marketRows, tokenTrades, potByCond, opts) {
-  const { offsetCents, maxInventoryUsd, sizeGrid, unitUsd, policy, minSizeByMarket = null } = opts;
+  const { offsetCents, maxInventoryUsd, sizeGrid, unitUsd, policy, minSizeByMarket = null, pairCostUsd = null } = opts;
   const levels = [{ sizeUsd: 0, capital: 0, units: 0, grossPerDay: 0, cost5m: 0, costPerDay5m: 0, netWindow5m: 0, netPerDay5m: 0, net5m: 0, fills: 0, closed: 0, stuck: 0, nakedRefused: 0, share: 0, spanHours: null }];
   let excluded = false;
   for (const s of sizeGrid) {
-    const r = perMarketNetAtSize(marketId, marketRows, tokenTrades, potByCond, { offsetCents, sizeUsd: s, maxInventoryUsd, policy, minSizeByMarket });
+    const r = perMarketNetAtSize(marketId, marketRows, tokenTrades, potByCond, { offsetCents, sizeUsd: s, maxInventoryUsd, policy, minSizeByMarket, pairCostUsd });
     if (r.excluded) { excluded = true; continue; }         // pot/depth missing → unfundable; keep only zero level
     if (r.netPerDay5m == null) continue;                   // cost UNKNOWN at this size → skip (never default to 0)
     levels.push({
@@ -157,7 +157,7 @@ function knapsack(curves, budgetUnits) {
  * @returns { budgetUsd, unitUsd, ...knapsack result, grossWindow, cost5mWindow }
  */
 function allocateBudget(byMarket, marketTokens, tapeByToken, potByCond, opts) {
-  const { offsetCents, maxInventoryUsd, budgetUsd, unitUsd, maxPerMarketUsd, policy, minSizeByMarket = null } = opts;
+  const { offsetCents, maxInventoryUsd, budgetUsd, unitUsd, maxPerMarketUsd, policy, minSizeByMarket = null, pairCostUsd = null } = opts;
   const perSideStep = unitUsd / 2;
   const capPerMarket = Math.min(maxPerMarketUsd || budgetUsd, budgetUsd); // a single market may take up to the whole budget
   const maxLevels = Math.max(1, Math.floor(capPerMarket / unitUsd));
@@ -167,7 +167,7 @@ function allocateBudget(byMarket, marketTokens, tapeByToken, potByCond, opts) {
   for (const [marketId, rows] of byMarket.entries()) {
     const tokenId = marketTokens.get(marketId);
     const trades = (tokenId && tapeByToken.get(tokenId)) || [];
-    const c = perMarketNetCurve(marketId, rows, trades, potByCond, { offsetCents, maxInventoryUsd, sizeGrid, unitUsd, policy, minSizeByMarket });
+    const c = perMarketNetCurve(marketId, rows, trades, potByCond, { offsetCents, maxInventoryUsd, sizeGrid, unitUsd, policy, minSizeByMarket, pairCostUsd });
     curves.push(c);
   }
   const budgetUnits = Math.floor(budgetUsd / unitUsd);

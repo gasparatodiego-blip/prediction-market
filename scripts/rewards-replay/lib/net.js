@@ -44,7 +44,12 @@ function computeNet(byMarket, markouts, potByCond, cfg) {
   // that does not supply it keeps the previous arithmetic exactly (shareForCapital applies no gate), so no
   // existing backtest output moves silently. A caller that does supply it gets the venue's real rule: a
   // per-side size below the market's minimum is not scored, so its gross is 0, not a fraction of the pot.
-  const { sizeUsd, wsOnly, minSizeByMarket = null } = cfg;
+  // `pairCostUsd` — il costo di una coppia di share (una per lato). Assente ⇒ l'aritmetica storica,
+  // byte per byte: il backtest e la pipeline del ceiling non si muovono. Presente ⇒ le share per lato
+  // sono `capitale / costo della coppia`, che è ciò che il capitale compra davvero quando ENTRAMBI i
+  // lati vanno pagati in collaterale. Vedi la nota estesa in rewards-ceiling/lib/curve.shareForCapital.
+  const { sizeUsd, wsOnly, minSizeByMarket = null, pairCostUsd = null } = cfg;
+  const usaCoppia = typeof pairCostUsd === 'number' && Number.isFinite(pairCostUsd) && pairCostUsd > 0;
   const capitalTotal = 2 * sizeUsd; // both sides
   const moByMarket = new Map();
   for (const m of markouts) {
@@ -65,11 +70,16 @@ function computeNet(byMarket, markouts, potByCond, cfg) {
     const spanHours = src.length >= 2 ? (src[src.length - 1].tsMs - src[0].tsMs) / 3_600_000 : 0;
     const spanDays = spanHours / 24;
     const minSize = minSizeByMarket ? minSizeByMarket.get(marketId) : undefined;
-    const share = shareForCapital(limDepth, mid, capitalTotal, minSize); // ceiling scoring, venue min applied
+    const share = shareForCapital(limDepth, mid, capitalTotal, minSize, pairCostUsd); // ceiling scoring, venue min applied
     // WHY this row scores zero, when it does. `share === 0` with a positive pot and positive depth is the
     // under-the-minimum case, and it travels with the capital that would fix it — a refusal the operator
     // cannot act on is only half a refusal.
-    const sizePerSideShares = (capitalTotal / 2) / Math.max(0.01, Math.min(0.99, mid));
+    // LE SHARE PER LATO, con la stessa regola che ha appena deciso il punteggio. Se questa riga e
+    // shareForCapital divergessero, il piano mostrerebbe una size che non e quella con cui e stato
+    // classificato — ed e esattamente il difetto che il costo della coppia esiste per chiudere.
+    const sizePerSideShares = usaCoppia
+      ? capitalTotal / pairCostUsd
+      : (capitalTotal / 2) / Math.max(0.01, Math.min(0.99, mid));
     const belowVenueMinSize = fin(minSize) && minSize > 0 && sizePerSideShares < minSize;
     const grossPerDay = pot * share;                            // $/day rate — window-independent
     const grossWindow = grossPerDay * spanDays;                 // over the market's OWN observed span
@@ -98,7 +108,7 @@ function computeNet(byMarket, markouts, potByCond, cfg) {
       minSizeShares: fin(minSize) ? minSize : null,
       sizePerSideShares,
       belowVenueMinSize,
-      capitalToQualifyUsd: belowVenueMinSize ? capitalToQualify(mid, minSize) : null,
+      capitalToQualifyUsd: belowVenueMinSize ? capitalToQualify(mid, minSize, pairCostUsd) : null,
     });
   }
   // aggregate — a market whose net is UNKNOWN at a horizon is excluded from that horizon's totals AND

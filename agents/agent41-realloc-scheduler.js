@@ -44,7 +44,7 @@ const { runReallocCycle, CONCENTRATION_CAP_FRAC, INTERVAL_MS } = require('../lib
 const { runAllocationReset } = require('../lib/maker/allocation-reset');
 const { runBulkAllocation } = require('../lib/maker/bulk-allocate');
 const { diagnoseExposure } = require('../lib/maker/manual-reset');
-const { listManualOrders, cancelManualOrder, OPERATOR_USER } = require('../lib/maker/manual-order');
+const { listManualOrders, cancelManualOrder, resolveCaps, OPERATOR_USER } = require('../lib/maker/manual-order');
 const { readUsage } = require('../lib/safety/usage');
 const { readAutoRepriceConfig, setAutoReprice } = require('../lib/maker/auto-reprice-config');
 const { readTrackingConfig, setTracking } = require('../lib/maker/mm-tracking-config');
@@ -270,6 +270,14 @@ async function giro(motivoAvvio) {
       readPlanPools: leggiPoolDelPiano,
       writePlanPools: scriviPoolDelPiano,
       readBalance: leggiSaldo,
+      // Il tetto di esposizione aperta, dalla STESSA fonte che il gate per-ordine consulta
+      // (lib/safety/risk-limits). Il piano non può allocare più di quanto il libro possa portare:
+      // sarebbe un piano che si ferma a metà sul cap cumulativo invece di essere il miglior piano
+      // possibile dentro il limite. Si taglia il capitale, mai il tetto.
+      readExposureCap: () => {
+        const caps = resolveCaps({ userId: OPERATOR_USER });
+        return { readable: caps.readable === true, maxOpenNotionalUsd: caps.maxOpenNotionalUsd, error: caps.error || null };
+      },
       makePlan: calcolaPiano,
       runReset: eseguiReset,
       writeAllocatedCapital: (snap) => writeAllocatedCapital(snap),
