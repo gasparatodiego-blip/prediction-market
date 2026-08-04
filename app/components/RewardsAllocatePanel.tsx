@@ -1636,6 +1636,23 @@ export default function RewardsAllocatePanel(
                   {balanceNum != null && <> su un saldo reale di <b>{money(balanceNum)}</b></>}
                 </div>
 
+                {/* ── QUESTO BOTTONE DISFA IL LAVORO DELLA CODA ───────────────────────────────────
+                    Non è un difetto: «Conferma ed esegui» è un RESET, e cancellare per primo è
+                    esattamente ciò che deve fare — porta lo stato del venue a coincidere con un piano
+                    nuovo, ricalcolato adesso. Il problema è che dalla schermata non si legge: i due
+                    percorsi stanno nella stessa tab e niente diceva che uno smonta l'altro.
+                    L'avviso compare SOLO quando c'è davvero qualcosa da perdere — cioè quando la coda
+                    ha già piazzato. Un avviso che c'è sempre è un avviso che non si legge più. */}
+                {codaRiepilogo.piazzati > 0 && (
+                  <div className="alloc-note alloc-warn" style={{ marginTop: 10 }} data-alloc-bulk-vs-queue>
+                    ⚠ <b>Hai già piazzato {codaRiepilogo.piazzati} mercat{codaRiepilogo.piazzati === 1 ? 'o' : 'i'} dalla coda</b>
+                    {' '}({money(codaRiepilogo.capitaleUsd)}). «Conferma ed esegui» è un <b>reset</b>: cancella
+                    ogni ordine a riposo sui mercati gestiti — <b>compresi quelli</b> — e ripiazza il piano
+                    ricalcolato in questo momento, che può essere diverso da quello che hai confermato.
+                    <br />Se vuoi tenere ciò che hai piazzato, usa la coda per gli altri mercati invece di questo bottone.
+                  </div>
+                )}
+
                 <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 10 }}>
                   <button className="alloc-btn" data-alloc-bulk-preview onClick={() => runBulk(true)} disabled={bulkBusy != null}>
                     {bulkBusy === 'preview' ? 'Verifico…' : '1 · Anteprima (non invia nulla)'}
