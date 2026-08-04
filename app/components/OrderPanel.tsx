@@ -221,11 +221,15 @@ function onTick(price: number, tick: number): boolean {
   return Math.abs(price - snapToTick(price, tick)) < tick / 1000;
 }
 
-export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
+export default function OrderPanel({ target, balanceUsd, onClose, onEnabled, onPlaced }: {
   target: OrderTarget;
   balanceUsd: number | null;
   onClose: () => void;
   onEnabled?: (marketId: string) => void;
+  /** Chiamato SOLO dopo un piazzamento andato a buon fine, con cio' che e' stato piazzato davvero.
+   *  Serve alla coda dell'allocatore per avanzare: la coda non piazza nulla da se', osserva. Non viene
+   *  mai chiamato per un rifiuto, ne' per una gamba che l'operatore non ha confermato. */
+  onPlaced?: (info: { marketId: string; book: 'yes' | 'no'; price: number; size: number; sent: boolean; legIdx: number; legTotal: number }) => void;
 }) {
   const [cfg, setCfg] = useState<ManualCfg | null>(null);
   const [book, setBook] = useState<'yes' | 'no'>('yes');
@@ -857,11 +861,21 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
           note: 'pannello ordine',
         }),
       });
-      setResult((await r.json()) as PlaceResult);
+      const esito = (await r.json()) as PlaceResult;
+      setResult(esito);
+      // Il segnale verso chi sta tenendo una coda. Solo su esito positivo, e con i numeri VERI di
+      // cio' che e' partito — non con quelli che il modulo mostrava un attimo prima.
+      if (esito.ok && typeof onPlaced === 'function') {
+        onPlaced({
+          marketId: target.marketId, book, price, size,
+          sent: esito.sent === true,
+          legIdx, legTotal: legs ? legs.length : 1,
+        });
+      }
     } catch (e) {
       setResult({ ok: false, sent: false, gate: 'request-failed', reason: (e as Error).message });
     } finally { setBusy(false); }
-  }, [target.marketId, book, price, size, autoRenew, ttlSeconds]);
+  }, [target.marketId, book, price, size, autoRenew, ttlSeconds, onPlaced, legIdx, legs]);
 
   const sends = cfg?.placement?.sends === true;
 

@@ -348,6 +348,11 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
   // ricerca restituisce una lista in cui il mercato di partenza non è la prima riga. Qui non c'è
   // nessun passaggio in cui il conditionId possa diventare un altro.
   const [orderTarget, setOrderTarget] = useState<OrderTarget | null>(null);
+  // L'ultimo piazzamento riuscito, con il suo istante: e' il segnale che la coda dell'allocatore
+  // osserva per avanzare. `at` serve a distinguere due piazzamenti sullo stesso mercato.
+  const [placedTick, setPlacedTick] = useState<
+    { marketId: string; book: 'yes' | 'no'; price: number; size: number; sent: boolean; legIdx: number; legTotal: number; at: number } | null
+  >(null);
   // Le regole del programma: un testo che non cambia mai, quindi non una sezione ma un pannello.
   const [showRules, setShowRules] = useState(false);
   // Ordini a riposo su TUTTI i mercati, con la scadenza letta dal venue. La board sa prezzo e banda ma
@@ -1755,7 +1760,7 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
       {tab === 'alloca' && (
         <section className="lrc-sec" data-lrc-section="alloca">
           <Ask q="Quanto capitale metto, e su quali mercati?" sub="Un piano, non un ordine: da qui si piazza solo aprendo il pannello su un mercato." />
-          <RewardsAllocatePanel onPlaceOrder={(row) => setOrderTarget(row)} />
+          <RewardsAllocatePanel onPlaceOrder={(row) => setOrderTarget(row)} placed={placedTick} />
         </section>
       )}
 
@@ -1817,6 +1822,10 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
           balanceUsd={capitalUsd}
           onClose={() => setOrderTarget(null)}
           onEnabled={() => { loadBoard(); }}
+          // IL SEGNALE VERSO LA CODA DELL'ALLOCATORE. La console fa solo da filo: non decide niente,
+          // riporta che un piazzamento e' andato a buon fine e su quale mercato. La coda avanza solo
+          // sentendo questo, quindi non puo' avanzare su un ordine che non e' partito.
+          onPlaced={(info) => setPlacedTick({ ...info, at: Date.now() })}
         />
       )}
     </div>

@@ -10,7 +10,7 @@
 // changes recompute the row + totals LOCALLY from data the plan already returned (no refetch). No private
 // key is ever read, logged or echoed.
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { bandStateFor } from '@/app/dashboard/liquidity-rewards/allocate/band-state';
 // LE GAMBE LE COSTRUISCE UNA FUNZIONE SOLA, e non è più questa. `gambeDiUnaRiga` è la STESSA che usa il
 // riallocatore automatico (lib/rewards/plan-to-orders), quindi il bottone «Conferma ed esegui» e il ciclo
@@ -22,6 +22,10 @@ import { gambeDiUnaRiga } from '@/lib/rewards/plan-to-orders';
 // e la copia gemella dentro l'allocatore, scritta con la stessa buona intenzione, era invecchiata e
 // mostrava il lordo al posto del netto su ogni card di proposta. Una regola sola, importata.
 import { calcNetPerDay } from '@/lib/rewards/net-per-day';
+// LA CODA DECIDE IN UN MODULO PURO, NON QUI. `decidiAvanzamento` è l'unica cosa che stabilisce se la
+// coda può scorrere, e non conosce nessun endpoint: un avanzamento automatico non è un rischio da
+// sorvegliare, è una cosa che lì non si può scrivere.
+import { decidiAvanzamento, avanza as avanzaCoda, metti as mettiInCoda, riepilogo as riepilogoCoda } from '@/lib/rewards/coda-piazzamento';
 import type { OrderTarget } from '@/app/components/OrderPanel';
 
 type Balance = {
@@ -315,8 +319,14 @@ function targetFromPlanRow(r: Row, offsetTicks?: number): OrderTarget {
   };
 }
 
+/** Il segnale di «piazzato» che arriva dalla console (OrderPanel → LiquidityRewardsConsole → qui). */
+export type PlacedTick = {
+  marketId: string; book: 'yes' | 'no'; price: number; size: number;
+  sent: boolean; legIdx: number; legTotal: number; at: number;
+};
+
 export default function RewardsAllocatePanel(
-  { onPlaceOrder }: { onPlaceOrder?: (t: OrderTarget) => void } = {},
+  { onPlaceOrder, placed }: { onPlaceOrder?: (t: OrderTarget) => void; placed?: PlacedTick | null } = {},
 ) {
   const [bal, setBal] = useState<Balance | null>(null);
   const [balLoaded, setBalLoaded] = useState(false);
@@ -548,6 +558,92 @@ export default function RewardsAllocatePanel(
     return { rows, scartate, mercati };
   }, [computed, offsets]);
   const bulkRows = bulk.rows;
+
+  // ══ LA CODA DI CONFERME, UNO ALLA VOLTA ═══════════════════════════════════════════════════════════
+  // È il TERZO percorso, e la sua ragione d'essere sta in ciò che gli altri due NON fanno:
+  //
+  //   · «1 · Anteprima» sulla card   → abilita il mercato. Non piazza niente, e non deve.
+  //   · «Conferma ed esegui»         → RESET: cancella tutto, spegne ciò che esce dal piano, riaccende
+  //                                     e ripiazza il piano intero. È il percorso del riallocatore
+  //                                     automatico, ed è giusto che resti così: serve a portare lo
+  //                                     stato del venue a coincidere ESATTAMENTE con un piano nuovo.
+  //   · questa coda                  → i mercati che l'operatore ha scelto, uno per volta, ognuno con
+  //                                     la sua conferma. Non azzera niente e non tocca ciò che non è
+  //                                     in coda.
+  //
+  // LA CODA NON PIAZZA. Non ha un percorso di invio suo: «Conferma e piazza» apre il pannello ordine
+  // con `targetFromPlanRow`, cioè lo stesso identico target del bottone della singola riga, e lì
+  // l'operatore conferma come sempre. Questa è la proprietà che rende impossibile un invio automatico:
+  // non esiste codice qui che possa mandare un ordine, nemmeno per errore.
+  //
+  // E AVANZA SOLO SENTENDO UN ESITO. Non dopo il tocco, non dopo un timeout: dopo che la console ha
+  // riportato un piazzamento riuscito su QUEL mercato e sulla SUA ULTIMA gamba. Avanzare dopo la prima
+  // gamba di due lascerebbe l'altra orfana, che è la cosa che questo piano esiste per evitare.
+  const [coda, setCoda] = useState<string[]>([]);
+  const [codaEsiti, setCodaEsiti] = useState<{ marketId: string; nome: string; esito: 'piazzato' | 'saltato'; capitale: number }[]>([]);
+
+  // ── PERSISTENZA: SOLO L'ELENCO, MAI I PREZZI ────────────────────────────────────────────────────
+  // In sessionStorage finiscono i conditionId e nient'altro. La tentazione sarebbe salvare anche
+  // prezzo e size «per non perderli», ed è esattamente ciò che non va fatto: un prezzo calcolato venti
+  // minuti fa, ripescato e piazzato, è un ordine su un mid che non esiste più. Al rientro la coda si
+  // ricostruisce dal piano CORRENTE, e un mercato che il piano nuovo non contiene più viene mostrato
+  // come non più proponibile invece di essere piazzato a un prezzo vecchio.
+  const CODA_KEY = 'alloc_coda_v1';
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(CODA_KEY);
+      if (raw) { const v = JSON.parse(raw); if (Array.isArray(v)) setCoda(v.filter((x) => typeof x === 'string')); }
+    } catch { /* niente coda ripristinata: si ricomincia, che è l'esito sicuro */ }
+  }, []);
+  useEffect(() => {
+    try { sessionStorage.setItem(CODA_KEY, JSON.stringify(coda)); } catch { /* la coda resta solo in memoria */ }
+  }, [coda]);
+
+  // Le righe del piano corrente, per id: la coda tiene id, i valori vengono SEMPRE da qui.
+  const righePerId = useMemo(() => {
+    const m = new Map<string, Row>();
+    for (const r of plan?.rows ?? []) m.set(r.marketId.toLowerCase(), r);
+    return m;
+  }, [plan]);
+
+  const testaId = coda[0] ?? null;
+  const testaRiga = testaId ? righePerId.get(testaId.toLowerCase()) ?? null : null;
+  // Il target della testa: la STESSA funzione del bottone «Piazza ordine» di quella riga.
+  const testaTarget = useMemo(
+    () => (testaRiga ? targetFromPlanRow(testaRiga, offsets[testaRiga.marketId] ?? testaRiga.computedDefaultOffsetTicks) : null),
+    [testaRiga, offsets],
+  );
+
+  const inCoda = useCallback((marketId: string) => {
+    setCoda((q) => mettiInCoda({ coda: q, marketId }));
+  }, []);
+  const avanza = useCallback((come: 'piazzato' | 'saltato') => {
+    setCoda((q) => {
+      const testa = q[0];
+      if (!testa) return q;
+      const r = righePerId.get(testa.toLowerCase()) ?? null;
+      const next = avanzaCoda({
+        coda: q, esiti: [], come,
+        nome: r ? (r.nameAvailable && r.name ? r.name : r.shortId) : null,
+        capitale: r ? r.capital : 0,
+      });
+      setCodaEsiti((e) => [...e, ...next.esiti]);
+      return next.coda;
+    });
+  }, [righePerId]);
+
+  // L'AVANZAMENTO. Solo su un esito riuscito, solo sul mercato in testa, solo all'ultima gamba.
+  const ultimoTick = useRef<number | null>(null);
+  useEffect(() => {
+    const d = decidiAvanzamento({ coda, esito: placed ?? null, ultimoAt: ultimoTick.current });
+    if (!d.avanza) return;
+    ultimoTick.current = placed!.at;
+    avanza('piazzato');
+  }, [placed, coda, avanza]);
+
+  const codaTotale = coda.length + codaEsiti.length;
+  const codaRiepilogo = riepilogoCoda(codaEsiti);
+
 
   const runBulk = useCallback(async (preview: boolean) => {
     if (!bulkRows.length) return;
@@ -885,6 +981,20 @@ export default function RewardsAllocatePanel(
                       onClick={() => addMarket(c.marketId, true)}>
                       {addBusy === `preview:${c.marketId}` ? '…' : '1 · Anteprima'}
                     </button>
+                    {/* ── IN CODA, NON IN ORDINE ────────────────────────────────────────────────
+                        Mettere in coda non piazza e non abilita niente: costruisce un elenco di cose
+                        da confermare una per una. È deliberatamente separato da «1 · Anteprima»,
+                        che fa un'altra cosa (rende il mercato ammissibile), e dal piazzamento in
+                        blocco, che azzera e rifà tutto il piano. */}
+                    {righePerId.has(c.marketId.toLowerCase()) && (
+                      <button className="alloc-btn" style={{ fontSize: 12, marginLeft: 6 }}
+                        data-alloc-queue-add={c.marketId}
+                        disabled={coda.some((x) => x.toLowerCase() === c.marketId.toLowerCase())}
+                        title="Aggiunge questo mercato alla coda di conferme. Non piazza nulla adesso."
+                        onClick={() => inCoda(c.marketId)}>
+                        {coda.some((x) => x.toLowerCase() === c.marketId.toLowerCase()) ? '✓ in coda' : '+ Metti in coda'}
+                      </button>
+                    )}
                   </div>
 
                   {/* ── PASSO 2 — L'ANTEPRIMA, SOTTO IL MERCATO A CUI SI RIFERISCE ──────────────────
@@ -958,6 +1068,110 @@ export default function RewardsAllocatePanel(
                 </div>
               )}
             </div>
+
+            {/* ══ LA CODA DI CONFERME ═══════════════════════════════════════════════════════════════
+                Mostra UN mercato alla volta — quello in testa — con i numeri del piano corrente.
+                Non piazza: «Conferma e piazza» apre il pannello ordine con lo stesso target del
+                bottone della singola riga, e la conferma vera avviene lì. La coda avanza solo quando
+                la console riporta che quel mercato è stato piazzato, e solo all'ultima gamba. */}
+            {(coda.length > 0 || codaEsiti.length > 0) && (
+              <div className="alloc-card" style={{ marginTop: 12 }} data-alloc-queue>
+                <div className="alloc-h" style={{ fontSize: 14 }}>
+                  Coda di piazzamento — {codaEsiti.length} di {codaTotale} trattati
+                </div>
+
+                {testaId && (
+                  <div className="alloc-note" style={{ marginTop: 8 }} data-alloc-queue-head={testaId}>
+                    {testaRiga == null ? (
+                      // Il caso che la persistenza rende possibile, e che va detto invece di indovinato.
+                      <>
+                        <div><b>{testaId.slice(0, 10)}… non è più nel piano corrente.</b></div>
+                        <div className="alloc-sub" style={{ marginTop: 4 }}>
+                          La coda conserva solo l’elenco dei mercati, mai i prezzi: un prezzo calcolato
+                          venti minuti fa non va piazzato. Ricalcola il piano, oppure salta questo.
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div><b>{testaRiga.nameAvailable && testaRiga.name ? testaRiga.name : testaRiga.shortId}</b></div>
+                        {testaTarget?.pairLegs ? (
+                          <div style={{ marginTop: 6 }}>
+                            {testaTarget.pairLegs.map((l, i) => (
+                              <div key={l.book} className="alloc-sub" data-alloc-queue-leg={l.book}>
+                                {i + 1}ª gamba · BUY {l.book.toUpperCase()} <b>{l.size}</b> share @ <b>{l.price}</b>
+                                {' → '}<span className="ex-n">{money(l.price * l.size)}</span>
+                                {' · '}{Math.abs(l.price - (l.book === 'yes' ? (testaRiga.mid ?? 0) : 1 - (testaRiga.mid ?? 0))) * 100 < 100
+                                  ? `${(Math.abs(l.price - (l.book === 'yes' ? (testaRiga.mid ?? 0) : 1 - (testaRiga.mid ?? 0))) * 100).toFixed(2)}¢ dal mid`
+                                  : '—'}
+                                {testaRiga.maxSpreadCents != null ? ` · banda ±${(testaRiga.maxSpreadCents / 2).toFixed(2)}¢` : ''}
+                              </div>
+                            ))}
+                            <div className="alloc-sub" style={{ marginTop: 4 }}>
+                              capitale del piano su questo mercato <b>{money(testaRiga.capital)}</b>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="alloc-sub alloc-warn" style={{ marginTop: 4 }}>
+                            Le gambe non sono calcolabili a questo offset: il pannello ripartirà dal mid
+                            e sarà il guard del venue a dire di no. Meglio saltarlo.
+                          </div>
+                        )}
+
+                        <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                          <button className="alloc-btn" data-alloc-queue-confirm
+                            style={{ background: 'color-mix(in srgb,#2FA96B 30%,transparent)' }}
+                            disabled={!onPlaceOrder || testaTarget == null}
+                            title="Apre il pannello ordine su questo mercato, con i valori del piano. La conferma avviene lì."
+                            onClick={() => { if (onPlaceOrder && testaTarget) onPlaceOrder(testaTarget); }}>
+                            Conferma e piazza →
+                          </button>
+                          <button className="alloc-btn" data-alloc-queue-skip onClick={() => avanza('saltato')}>
+                            Salta questo
+                          </button>
+                        </div>
+                      </>
+                    )}
+                    {testaRiga == null && (
+                      <div style={{ marginTop: 10 }}>
+                        <button className="alloc-btn" data-alloc-queue-skip onClick={() => avanza('saltato')}>Salta questo</button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {coda.length > 1 && (
+                  <div className="alloc-sub" style={{ marginTop: 8 }} data-alloc-queue-rest>
+                    In attesa dopo questo: {coda.slice(1).map((id) => {
+                      const r2 = righePerId.get(id.toLowerCase());
+                      return r2 ? (r2.nameAvailable && r2.name ? r2.name : r2.shortId) : `${id.slice(0, 10)}…`;
+                    }).join(' · ')}
+                  </div>
+                )}
+
+                {coda.length === 0 && codaEsiti.length > 0 && (
+                  <div className="alloc-note" style={{ marginTop: 8 }} data-alloc-queue-done>
+                    <b>Coda finita.</b> {codaRiepilogo.piazzati} piazzat{codaRiepilogo.piazzati === 1 ? 'o' : 'i'},
+                    {' '}{codaRiepilogo.saltati} saltat{codaRiepilogo.saltati === 1 ? 'o' : 'i'} ·
+                    {' '}capitale impegnato <b>{money(codaRiepilogo.capitaleUsd)}</b>
+                    <ul className="alloc-basis-ul" style={{ marginTop: 6 }}>
+                      {codaEsiti.map((e) => (
+                        <li key={e.marketId} data-alloc-queue-outcome={e.esito}>
+                          {e.esito === 'piazzato' ? '✓' : '—'} {e.nome}
+                          {e.esito === 'piazzato' ? ` · ${money(e.capitale)}` : ' · saltato'}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                <div style={{ marginTop: 10 }}>
+                  <button className="ac-more" data-alloc-queue-cancel
+                    onClick={() => { setCoda([]); setCodaEsiti([]); }}>
+                    {coda.length ? 'Annulla coda (i già piazzati restano)' : 'Chiudi riepilogo'}
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* ── SCARTATI, raggruppati per motivo ── */}
             <button className="ac-more" style={{ marginTop: 10 }} data-alloc-auto-rejected-toggle
