@@ -8,6 +8,11 @@ import { writeAllocatedCapital } from '@/lib/maker/allocated-capital';
 // prezzi la legge per tenerli sottoscritti. Vale per i piani nati qui esattamente come per quelli del
 // riallocatore periodico — altrimenti la copertura dipenderebbe da CHI ha chiesto il piano.
 import { writeCollectorPriority } from '@/lib/rewards/collector-priority';
+// IL TETTO DI CONCENTRAZIONE, LETTO DA DOVE LO LEGGE IL RIALLOCATORE PERIODICO. Fino a questa revisione
+// questa route non ne passava nessuno, quindi il tetto effettivo del pannello era il capitale intero:
+// sullo stesso saldo e nello stesso istante «Ottimizza» e il ciclo automatico producevano piani diversi
+// (4 mercati col 76,5% su uno solo contro 7 mercati col 29,4% al massimo) senza che nulla lo dicesse.
+import { CONCENTRATION_CAP_FRAC, capPerMarketUsd } from '@/lib/rewards/concentration';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -31,16 +36,19 @@ export const dynamic = 'force-dynamic';
 // Inline runner — plain node, no webpack. Prints the plan JSON for the requested capital.
 // argv[2] carries the auto-optimise flag: with it on, the allocator also applies the resolution-horizon
 // test (lib/rewards/horizon) before the knapsack. OFF is the shipped path, byte-for-byte.
-const RUNNER = 'process.stdout.write(JSON.stringify(require("/root/prediction-market/lib/rewards/allocator").planFromCollection({ capital: Number(process.argv[1]), horizonFilter: process.argv[2] === "1" })))';
+// argv[3] carries the per-market concentration cap in dollars ("" = no cap). It is NOT a new knob typed
+// by anyone: it is CONCENTRATION_CAP_FRAC × capital, the same 30% the periodic reallocator has always
+// applied, read from the same module (lib/rewards/concentration.js) so the two paths cannot drift.
+const RUNNER = 'process.stdout.write(JSON.stringify(require("/root/prediction-market/lib/rewards/allocator").planFromCollection({ capital: Number(process.argv[1]), horizonFilter: process.argv[2] === "1", maxPerMarketUsd: process.argv[3] === "" ? null : Number(process.argv[3]) })))';
 const RESULT_TTL_MS = 180_000; // 3 min — the plan auto-refreshes at this cadence; recompute costs ~19s, so a fresh plan every 3 min is live-enough while the per-row data age ticks locally every 15s
 const SPAWN_TIMEOUT_MS = 90_000; // planFromCollection scores the universe + builds per-tick fill curves
 const MAX_BUFFER = 24 * 1024 * 1024;
 
 const resultCache = new Map<string, { atMs: number; body: any }>();
 
-function runAllocator(capital: number, horizonFilter: boolean): Promise<any> {
+function runAllocator(capital: number, horizonFilter: boolean, capUsd: number | null): Promise<any> {
   return new Promise((resolve, reject) => {
-    execFile('node', ['-e', RUNNER, String(capital), horizonFilter ? '1' : '0'], { timeout: SPAWN_TIMEOUT_MS, maxBuffer: MAX_BUFFER }, (err, stdout) => {
+    execFile('node', ['-e', RUNNER, String(capital), horizonFilter ? '1' : '0', capUsd == null ? '' : String(capUsd)], { timeout: SPAWN_TIMEOUT_MS, maxBuffer: MAX_BUFFER }, (err, stdout) => {
       if (err) return reject(err);
       try { resolve(JSON.parse(stdout)); } catch (e: any) { reject(new Error('allocator output not JSON: ' + e.message)); }
     });
@@ -72,12 +80,30 @@ export async function GET(req: NextRequest) {
   // makes the allocator return its candidate ledger reasons under that rule.
   const horizonFilter = req.nextUrl.searchParams.get('auto') === '1';
 
-  const bucket = `${Math.round(requested * 100) / 100}:${horizonFilter ? 'auto' : 'base'}`;
+  // ── IL TETTO PER MERCATO ────────────────────────────────────────────────────────────────────────
+  // Di difetto il 30% del capitale, lo stesso che il riallocatore periodico applica da sempre, così le
+  // due strade non possono più rispondere in modo diverso alla stessa domanda. `cap=0` lo toglie —
+  // esiste perché il piano senza tetto resta una cosa che si può VOLER vedere (è il piano che massimizza
+  // il rendimento nominale), ma da adesso va chiesto invece di essere il difetto silenzioso.
+  const capRaw = req.nextUrl.searchParams.get('cap');
+  const capOverride = capRaw == null || capRaw === '' ? null : Number(capRaw);
+  if (capOverride != null && (!Number.isFinite(capOverride) || capOverride < 0)) {
+    return NextResponse.json({ error: 'cap must be a non-negative number of dollars (0 = no cap)', cap: capRaw }, { status: 400 });
+  }
+  const capUsd = capOverride == null ? capPerMarketUsd(requested) : (capOverride > 0 ? capOverride : null);
+
+  const bucket = `${Math.round(requested * 100) / 100}:${horizonFilter ? 'auto' : 'base'}:${capUsd == null ? 'nocap' : capUsd}`;
   const cached = resultCache.get(bucket);
   if (cached && Date.now() - cached.atMs < RESULT_TTL_MS) return NextResponse.json({ ...cached.body, cached: true });
 
   try {
-    const body = await runAllocator(requested, horizonFilter);
+    const body = await runAllocator(requested, horizonFilter, capUsd);
+    // Il tetto applicato viaggia col piano, dichiarato, perché un piano cappato e un piano concentrato
+    // si somigliano nei numeri e non nella storia. `concentration` lo porta gia' dall'allocatore; questa
+    // riga aggiunge da DOVE viene, che e' l'unica parte che il pannello non potrebbe dedurre.
+    body.concentrationSource = capOverride == null
+      ? { frac: CONCENTRATION_CAP_FRAC, origin: 'difetto', note: `tetto ${Math.round(CONCENTRATION_CAP_FRAC * 100)}% del capitale — lo stesso del riallocatore periodico` }
+      : { frac: null, origin: 'richiesto', note: capUsd == null ? 'nessun tetto: richiesto esplicitamente con cap=0' : `tetto $${capUsd} richiesto esplicitamente` };
     resultCache.set(bucket, { atMs: Date.now(), body });
     // Record the derived ceiling. Best-effort: a failure here must never cost the operator their plan,
     // and a missing snapshot fails CLOSED downstream (no ceiling ⇒ no new exposure), not open.

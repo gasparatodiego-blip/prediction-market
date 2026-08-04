@@ -76,6 +76,11 @@ type Plan = {
     withPot: number; evaluated: number; chosen: number;
     horizonFilter: boolean; horizonRejected: number; note: string;
   };
+  // Il tetto per singolo mercato EFFETTIVAMENTE applicato a questo piano, e da dove viene. Vanno
+  // mostrati entrambi: «nessun tetto» e «tetto pari all'intero capitale» danno lo stesso numero e non
+  // sono la stessa storia, ed è quella distinzione che per mesi non era sullo schermo.
+  concentration?: { maxPerMarketUsd: number | null; capped: boolean };
+  concentrationSource?: { frac: number | null; origin: 'difetto' | 'richiesto'; note: string };
   error?: string;
 };
 type Candidate = {
@@ -684,15 +689,28 @@ export default function RewardsAllocatePanel(
               <div>
                 <span>Scartati per scadenza</span><b>{autoPlan.universe.horizonRejected}</b>
               </div>
+              {/* IL TETTO PER MERCATO, SULLO SCHERMO. Fino a questa revisione la tab non ne passava
+                  nessuno e nessuna riga lo diceva: un piano che metteva il 76,5% del capitale su un
+                  mercato solo era indistinguibile da uno che rispettava un limite. */}
+              <div>
+                <span>Tetto per mercato</span>
+                <b>{autoPlan.concentration && autoPlan.concentration.capped && autoPlan.concentration.maxPerMarketUsd != null
+                  ? `$${autoPlan.concentration.maxPerMarketUsd.toFixed(2)}`
+                  : 'nessuno'}</b>
+                {autoPlan.concentrationSource && (
+                  <p className="ex-why">{autoPlan.concentrationSource.note}</p>
+                )}
+              </div>
               <div><span>Lordo atteso</span><b>{perDay(autoPlan.totals.grossPerDay)}</b></div>
               <div><span>Lordo corretto</span><b>{perDay(autoPlan.totals.realisticPerDay)}</b></div>
             </div>
 
             {/* ── POCHI MERCATI È UNA SCELTA, NON UN FALLIMENTO ─────────────────────────────────────
-                Da quando il tetto per ordine non taglia più l'allocazione, il piano migliore concentra
-                il capitale su pochi mercati invece di spalmarlo su dieci. Sullo schermo però «2
-                proposti su 95 valutabili» si legge come «non ne ha trovati», ed è l'opposto di quello
-                che è successo.
+                Il piano migliore concentra il capitale su pochi mercati invece di spalmarlo su dieci —
+                entro il tetto per mercato, che da questa revisione la tab applica (30% del capitale,
+                lo stesso del riallocatore periodico) e mostra nel riquadro qui sopra. Sullo schermo
+                però «2 proposti su 95 valutabili» si legge come «non ne ha trovati», ed è l'opposto di
+                quello che è successo.
                 La prova sta in un dato che l'allocatore già restituisce: la FRONTIERA, cioè il netto
                 del miglior piano al variare del numero di mercati. Se il netto non cresce aggiungendo
                 mercati, spalmare non paga — e questo lo dice invece di lasciarlo dedurre. */}

@@ -185,9 +185,13 @@ async function leggiSaldo() {
 // «auto» del pannello: scarta i mercati troppo vicini alla risoluzione prima del knapsack.
 // `onlyMarketIds`, quando c'è, restringe l'universo ai mercati già in gestione: è il piano di paragone
 // del trigger di valore, non un piano da mettere in opera.
-async function calcolaPiano({ capital, maxPerMarketUsd, onlyMarketIds = null }) {
+// `excludeMarketIds`, quando c'è, toglie dall'universo i mercati che la verifica al venue ha appena
+// bocciato: il piano si rifà senza di loro e quel capitale va altrove. Un piano così NON è un piano
+// ristretto — l'universo resta intero meno quei mercati — quindi le priorità del raccoglitore si
+// scrivono lo stesso.
+async function calcolaPiano({ capital, maxPerMarketUsd, onlyMarketIds = null, excludeMarketIds = null }) {
   const { planFromCollection } = require('../lib/rewards/allocator');
-  const piano = planFromCollection({ capital, maxPerMarketUsd, onlyMarketIds, horizonFilter: true });
+  const piano = planFromCollection({ capital, maxPerMarketUsd, onlyMarketIds, excludeMarketIds, horizonFilter: true });
 
   // Il piano LIBERO dice al raccoglitore cosa tenere caldo: le righe scelte e i migliori candidati
   // valutati. Si scrive SEMPRE, anche in dry run e anche quando nessun trigger scatta — non è un'azione
