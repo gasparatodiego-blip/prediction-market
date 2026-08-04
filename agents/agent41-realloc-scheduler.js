@@ -39,6 +39,7 @@ const fs = require('fs');
 const path = require('path');
 const http = require('http');
 const https = require('https');
+const { execFile } = require('child_process');
 
 const { runReallocCycle, CONCENTRATION_CAP_FRAC, INTERVAL_MS } = require('../lib/maker/realloc-cycle');
 const { runAllocationReset } = require('../lib/maker/allocation-reset');
@@ -180,10 +181,62 @@ async function leggiSaldo() {
   return { readable: true, usd: j.pusdBalance, readAt: j.readAt, ageSeconds: j.ageSeconds };
 }
 
-// ── IL PIANO ────────────────────────────────────────────────────────────────────────────────────────
-// planFromCollection si richiede qui direttamente (siamo in node semplice, non c'è il webpack che
-// costringeva /api/rewards/allocate a spawnare un figlio). `horizonFilter: true` è la stessa modalità
-// «auto» del pannello: scarta i mercati troppo vicini alla risoluzione prima del knapsack.
+// ── IL PIANO, CALCOLATO IN UN PROCESSO FIGLIO CHE POI MUORE ─────────────────────────────────────────
+//
+// ═══ PERCHÉ NON PIÙ IN-PROCESS ═════════════════════════════════════════════════════════════════════
+// Fino al 4 agosto 2026 `planFromCollection` si richiedeva qui dentro, con questa motivazione: «siamo in
+// node semplice, non c'è il webpack che costringeva /api/rewards/allocate a spawnare un figlio». La
+// ragione webpack era vera — e non era l'unica ragione per cui quella route spawna un figlio. Il suo
+// commento lo dice per esteso: «frees the heavy journal memory when the child exits».
+//
+// Misurato: il calcolo del piano porta il processo da 41 MB a 687 MB (48 ore di journal + tape caricati
+// in memoria), contro il tetto pm2 di questo processo, che è 400 MB. pm2 lo fermava e lo riavviava —
+// con un arresto PULITO, `Stopping app` + SIGINT + exit code 0, indistinguibile da un `pm2 restart`
+// manuale, e con `unstable restarts` a zero perché il processo era vissuto ben oltre `min_uptime`.
+// Il 4 agosto è successo quattro volte su cinque cicli, sempre ~29 secondi dopo l'inizio del ciclo,
+// cioè nel mezzo del calcolo.
+//
+// IN DRY RUN non è costato niente. In LIVE sarebbe l'incidente peggiore che questo processo possa
+// causare: allocation-reset CANCELLA per primo e PIAZZA per ultimo, quindi un arresto in mezzo lascia
+// il libro vuoto e il capitale fermo fino al ciclo successivo — sei ore dopo, senza che nessuno lo sappia.
+//
+// ═══ LA CORREZIONE ═════════════════════════════════════════════════════════════════════════════════
+// La stessa di /api/rewards/allocate: il piano lo calcola un figlio che nasce, calcola, stampa e muore.
+// I 687 MB vivono e muoiono con lui; questo processo resta sui suoi ~18 MB e il tetto di 400 MB torna a
+// significare qualcosa. Le opzioni viaggiano su STDIN e non su argv: `onlyMarketIds` ed
+// `excludeMarketIds` sono liste di conditionId, e su argv sarebbero un problema di escaping e di
+// lunghezza massima che su stdin semplicemente non esiste.
+const RUNNER_PIANO = 'let b="";process.stdin.setEncoding("utf8");process.stdin.on("data",(d)=>{b+=d});process.stdin.on("end",()=>{try{const o=JSON.parse(b);process.stdout.write(JSON.stringify(require("/root/prediction-market/lib/rewards/allocator").planFromCollection(o)))}catch(e){process.stderr.write(String(e&&e.stack||e));process.exit(3)}});';
+// Il piano misurato costa ~22s. 120s lascia margine per una macchina carica senza che un blocco vero
+// resti appeso: se scade, il ciclo tratta il piano come fallito, che è già un esito previsto.
+const PLAN_TIMEOUT_MS = 120_000;
+// Il corpo del piano porta per ogni riga la curva dei fill tick per tick e il registro dei candidati:
+// su un universo da ~110 valutati sono megabyte, non kilobyte.
+const PLAN_MAX_BUFFER = 48 * 1024 * 1024;
+
+/** Il piano, fuori da questo processo. Rifiuta invece di restituire un piano parziale o indovinato. */
+function calcolaPianoFuoriProcesso(opzioni) {
+  return new Promise((resolve, reject) => {
+    const figlio = execFile('node', ['-e', RUNNER_PIANO],
+      { timeout: PLAN_TIMEOUT_MS, maxBuffer: PLAN_MAX_BUFFER },
+      (err, stdout, stderr) => {
+        if (err) {
+          const coda = (stderr || '').trim().slice(-400);
+          return reject(new Error(`il processo figlio del piano è fallito (${err.killed ? `timeout dopo ${PLAN_TIMEOUT_MS}ms` : err.message})${coda ? ` — ${coda}` : ''}`));
+        }
+        let piano = null;
+        try { piano = JSON.parse(stdout); }
+        catch (e) { return reject(new Error(`il processo figlio del piano non ha restituito JSON: ${e.message}`)); }
+        resolve(piano);
+      });
+    figlio.on('error', (e) => reject(new Error(`impossibile avviare il processo figlio del piano: ${e.message}`)));
+    try { figlio.stdin.end(JSON.stringify(opzioni)); }
+    catch (e) { reject(new Error(`impossibile passare le opzioni al processo figlio: ${e.message}`)); }
+  });
+}
+
+// `horizonFilter: true` è la stessa modalità «auto» del pannello: scarta i mercati troppo vicini alla
+// risoluzione prima del knapsack.
 // `onlyMarketIds`, quando c'è, restringe l'universo ai mercati già in gestione: è il piano di paragone
 // del trigger di valore, non un piano da mettere in opera.
 // `excludeMarketIds`, quando c'è, toglie dall'universo i mercati che la verifica al venue ha appena
@@ -191,8 +244,7 @@ async function leggiSaldo() {
 // ristretto — l'universo resta intero meno quei mercati — quindi le priorità del raccoglitore si
 // scrivono lo stesso.
 async function calcolaPiano({ capital, maxPerMarketUsd, onlyMarketIds = null, excludeMarketIds = null }) {
-  const { planFromCollection } = require('../lib/rewards/allocator');
-  const piano = planFromCollection({ capital, maxPerMarketUsd, onlyMarketIds, excludeMarketIds, horizonFilter: true });
+  const piano = await calcolaPianoFuoriProcesso({ capital, maxPerMarketUsd, onlyMarketIds, excludeMarketIds, horizonFilter: true });
 
   // Il piano LIBERO dice al raccoglitore cosa tenere caldo: le righe scelte e i migliori candidati
   // valutati. Si scrive SEMPRE, anche in dry run e anche quando nessun trigger scatta — non è un'azione
