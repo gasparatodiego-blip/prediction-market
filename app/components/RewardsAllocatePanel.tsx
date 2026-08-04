@@ -221,6 +221,12 @@ type EnableResp = {
   writes?: string[]; note?: string; warnings?: string[];
   enabledBefore?: string[]; enabledAfter?: string[];
 };
+/** Due conditionId sono lo stesso mercato. La route normalizza a minuscolo (`marketId.toLowerCase()`),
+ *  il board no: confrontarli alla lettera farebbe sparire l'anteprima proprio quando è arrivata. Regge
+ *  anche un `marketId` assente, che è ciò che torna da una risposta di errore. */
+const stessoMercato = (a: string | null | undefined, b: string | null | undefined): boolean =>
+  typeof a === 'string' && typeof b === 'string' && a.toLowerCase() === b.toLowerCase();
+
 const closeText = (min: number | null): string => {
   if (min == null) return 'scadenza ignota';
   if (min < 0) return `chiuso da ${Math.abs(min) < 90 ? `${Math.round(Math.abs(min))} min` : `${(Math.abs(min) / 60).toFixed(1)} h`}`;
@@ -814,8 +820,72 @@ export default function RewardsAllocatePanel(
                       {addBusy === `preview:${c.marketId}` ? '…' : '1 · Anteprima'}
                     </button>
                   </div>
+
+                  {/* ── PASSO 2 — L'ANTEPRIMA, SOTTO IL MERCATO A CUI SI RIFERISCE ──────────────────
+                      Questo blocco è esistito, ed è stato perso: il refactor «sei tab diventano tre»
+                      (b7b80b4, 31 luglio) ha rimosso le venti righe che lo rendevano e ha lasciato in
+                      piedi lo stato e il bottone. Da allora premere «1 · Anteprima» faceva la chiamata,
+                      riceveva la risposta, la metteva in `addPreview` — e nessuno la leggeva: niente
+                      pannello, e nemmeno l'errore, perché anche `addErr` era diventato scrivi-e-basta.
+                      Sta DENTRO la scheda del suo mercato, non in fondo alla lista: con quattro proposte
+                      a schermo, un pannello lontano dal bottone che l'ha prodotto è metà del problema. */}
+                  {addPreview && addPreview.summary && stessoMercato(addPreview.marketId, c.marketId) && (
+                    <div className="alloc-note" style={{ marginTop: 10 }} data-alloc-add-confirm>
+                      <div><b>Anteprima — non è stato scritto nulla.</b></div>
+                      <div style={{ marginTop: 4 }}>
+                        <b>{addPreview.summary.question || addPreview.marketId.slice(0, 12)}</b>
+                        {' · '}{addPreview.summary.hasRewards ? perDay(addPreview.summary.rewardsDailyRate) : <b className="oob">NESSUN REWARD — solo trading direzionale</b>}
+                        {' · spread '}{cents(addPreview.summary.spreadCents)}
+                        {' · tick '}{addPreview.summary.tick ?? '—'}
+                        {' · chiusura fra '}{closeText(addPreview.summary.minutesToClose)}
+                      </div>
+                      <div style={{ marginTop: 4 }}>
+                        Capitale in gioco <b>{addPreview.summary.capitalUsd == null ? '—' : money(addPreview.summary.capitalUsd)}</b>
+                        {' · mercati abilitati '}<b>{addPreview.summary.marketCountBefore} → {addPreview.summary.marketCountAfter}</b>
+                        {' · finestra GTD che avrebbe un ordine qui: '}
+                        <b>{addPreview.summary.window.tooClose ? 'nessuna — rifiutato' : `${addPreview.summary.window.ttlSeconds}s (${(addPreview.summary.window.ttlSeconds / 60).toFixed(1)} min)`}</b>
+                        {addPreview.summary.window.refreshMarginSeconds != null && !addPreview.summary.window.tooClose && <> · rinnovo a <b>{addPreview.summary.window.refreshMarginSeconds}s</b> dalla scadenza</>}
+                      </div>
+                      {addPreview.writes && (
+                        <ul style={{ margin: '6px 0 0 18px', padding: 0, fontSize: 12.5 }}>
+                          {addPreview.writes.map((w) => <li key={w}>{w}</li>)}
+                        </ul>
+                      )}
+                      {addPreview.summary.warnings.length > 0 && (
+                        <ul style={{ margin: '6px 0 0 18px', padding: 0 }} data-alloc-add-warnings>
+                          {addPreview.summary.warnings.map((w) => <li key={w} className="oob" style={{ fontSize: 12.5 }}>{w}</li>)}
+                        </ul>
+                      )}
+                      <button className="alloc-btn" style={{ marginTop: 10, background: 'color-mix(in srgb,#2FA96B 30%,transparent)' }}
+                        data-alloc-add-confirm-btn disabled={addBusy != null}
+                        onClick={() => addMarket(addPreview.marketId, false)}>
+                        {addBusy?.startsWith('confirm') ? 'Scrivo…' : '2 · Conferma e aggiungi'}
+                      </button>
+                    </div>
+                  )}
+
+                  {/* L'esito della conferma, sulla stessa scheda. */}
+                  {addResult && addResult.ok && stessoMercato(addResult.marketId, c.marketId) && (
+                    <div className="alloc-note" style={{ marginTop: 10 }} data-alloc-add-result>
+                      <b>Mercato aggiunto.</b> {addResult.note}
+                      {addResult.warnings && addResult.warnings.length > 0 && (
+                        <ul style={{ margin: '6px 0 0 18px', padding: 0 }}>
+                          {addResult.warnings.map((w) => <li key={w} className="oob" style={{ fontSize: 12.5 }}>{w}</li>)}
+                        </ul>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
+
+              {/* L'ERRORE NON È LEGATO A UN MERCATO — vale per l'ultima azione, e deve comparire comunque.
+                  Un fallimento silenzioso è indistinguibile da un successo che non si vede: era metà del
+                  sintomo riportato («nemmeno un messaggio di errore»). */}
+              {addErr && (
+                <div className="alloc-note alloc-warn" style={{ marginTop: 10 }} data-alloc-add-error>
+                  Azione non riuscita — nulla è cambiato: {addErr}
+                </div>
+              )}
               {(autoPlan.candidates ?? []).filter((c) => c.status === 'scelto').length === 0 && (
                 <div className="alloc-note alloc-warn">
                   ⚠ Nessun mercato qualifica con questo capitale. I motivi sono elencati qui sotto.

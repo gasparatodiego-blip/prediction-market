@@ -277,10 +277,12 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
   // comando in interfaccia stava nel vecchio pannello e agiva sul mercato PINNATO (MAKER_LIVE_MIN_MARKET),
   // uno solo alla volta e cambiabile solo da variabile d'ambiente. Da qui agisce sul mercato che hai
   // aperto, chiunque esso sia.
-  const [acOpen, setAcOpen] = useState(false);
   const [acBusy, setAcBusy] = useState(false);
+  // L'ESITO DEL TOGGLE, che fino al 4 agosto 2026 veniva scritto e mai mostrato: `acCall` metteva qui
+  // sia la nota di successo sia il «rifiutato: …», e nessuno leggeva la variabile. Un rifiuto
+  // sull'interruttore della chiusura automatica — cioè sulla via d'uscita di una posizione — spariva
+  // senza lasciare traccia sullo schermo.
   const [acMsg, setAcMsg] = useState<string | null>(null);
-  const [acStep, setAcStep] = useState<'form' | 'review'>('form');
   const [acState, setAcState] = useState<AutoCloseState | null>(null);
   const [leaseErr, setLeaseErr] = useState<string | null>(null);
   const [sizeTouched, setSizeTouched] = useState(false);
@@ -587,7 +589,7 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
     } catch { setAcState(null); }
   }, [target.marketId]);
   useEffect(() => {
-    setAcOpen(false); setAcStep('form'); setAcMsg(null); setAcState(null);
+    setAcMsg(null); setAcState(null);
     loadAutoClose();
   }, [target.marketId, loadAutoClose]);
 
@@ -1445,6 +1447,10 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
                           </div>
                         </>
                       )}
+                      {/* L'esito dell'ultimo toggle: la nota di conferma, o il rifiuto. Prima veniva
+                          scritto in `acMsg` e non lo leggeva nessuno — premevi e non cambiava niente
+                          sullo schermo, che è indistinguibile da un successo silenzioso. */}
+                      {acMsg && <div className="ex-banner op-mb" data-op-qs-ac-msg>{acMsg}</div>}
                     </div>
 
                     {trkMsg && <div className="ex-banner op-mb" data-op-qs-trk-msg>{trkMsg}</div>}
