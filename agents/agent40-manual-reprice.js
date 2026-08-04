@@ -198,27 +198,59 @@ async function reconcileTask() {
 // The closer shares the reconciliation's throttle: both only learn anything by asking the venue, and a
 // position cannot be covered before the fill that created it has been observed. Its own try/catch, so a
 // failure here cannot stop the reconciliation or the reprice cycle.
+// ── LO SNAPSHOT DELLE POSIZIONI NON DIPENDE PIÙ DALL'USCITA AUTOMATICA ─────────────────────────────
+// Era scritto DENTRO `readPositions` della chiusura automatica, cioè dopo il `return` che salta tutto
+// quando nessun mercato ha l'uscita accesa. Il guaio è che quello snapshot non serve solo alla
+// chiusura: `lib/safety/risk-limits.js` lo legge per calcolare l'esposizione, e se ha più di 180
+// secondi RIFIUTA OGNI PIAZZAMENTO con `venue-positions-unreadable`.
+//
+// Cioè: «nessun mercato ha l'uscita automatica» diventava silenziosamente «il sistema non piazza più
+// niente», per una catena che non è ovvia in nessuno dei due file. Il 4 agosto 2026 reggeva solo
+// perché tre mercati morti tenevano acceso l'auto-close: ripulendoli senza accorgersene, il conteggio
+// sarebbe andato a zero e ogni ordine sarebbe stato rifiutato per un motivo che non c'entra niente.
+//
+// Adesso la lettura del venue è un compito suo, sullo stesso ritmo della riconciliazione (60s, ben
+// sotto i 180 di scadenza) e SENZA condizioni. La chiusura automatica la riusa invece di rifarla: la
+// cache brevissima qui sotto evita di chiedere due volte al venue nello stesso giro.
+const POSIZIONI_FRESCHE_MS = 5_000;
+let ultimePosizioni = { at: 0, res: null };
+
+async function leggiPosizioniVenue() {
+  const now = Date.now();
+  if (ultimePosizioni.res && now - ultimePosizioni.at < POSIZIONI_FRESCHE_MS) return ultimePosizioni.res;
+  const address = venueAccountAddress(resolveFunder(process.env), null);
+  const p = await fetchVenuePositions({ address });
+  // ── LE POSIZIONI VERE VANNO A CHI CALCOLA I TETTI ──────────────────────────────────────────────
+  // Questa è la STESSA lettura che alimenta l'uscita automatica: una sola fonte di verità. Chiude il
+  // buco del 4 agosto, quando il ledger locale diceva $0 mentre al venue c'erano 199,99 share e il
+  // tetto di esposizione non le vedeva.
+  try {
+    const w = writeVenuePositions(p);
+    if (!w.written) log('snapshot posizioni NON aggiornato:', w.reason);
+  } catch (e) { log('snapshot posizioni fallito:', e && e.message ? e.message : String(e)); }
+  ultimePosizioni = { at: now, res: p };
+  return p;
+}
+
+/** Il compito autonomo: aggiorna lo snapshot comunque, anche senza un solo mercato con uscita accesa. */
+async function snapshotPosizioniTask() {
+  await leggiPosizioniVenue();
+}
+
 async function closeTask() {
   try {
     const cfg = readAutoCloseConfig();
-    if (!cfg.readable || !cfg.enabledMarketIds.length) return;   // OFF: silent, and no venue I/O at all
-    const address = venueAccountAddress(resolveFunder(process.env), null);
+    if (!cfg.readable || !cfg.enabledMarketIds.length) return;   // OFF: silent — lo snapshot lo tiene vivo snapshotPosizioniTask
     const res = await runAutoCloseCycle({
       marketIds: cfg.enabledMarketIds,
       killStatus: () => killSwitch.killStatus(),
       isManual: (marketId) => isManualMarket(marketId),
       resolveRules: (marketId) => resolveMarketRules(marketId),
       listOrders: ({ marketId }) => listManualOrders({ marketId }),
+      // La stessa lettura del compito dello snapshot, riusata: una fonte sola, e nessuna seconda
+      // chiamata al venue nello stesso giro.
       readPositions: async () => {
-        const p = await fetchVenuePositions({ address });
-        // ── LE POSIZIONI VERE VANNO ANCHE A CHI CALCOLA I TETTI ────────────────────────────────
-        // Questa e' la STESSA lettura che alimenta l'uscita automatica. Depositarla qui evita una
-        // terza fonte di verita' e chiude il buco del 4 agosto: il ledger locale diceva $0 mentre al
-        // venue c'erano 199,99 share, e il tetto di esposizione non le vedeva.
-        try {
-          const w = writeVenuePositions(p);
-          if (!w.written) log('snapshot posizioni NON aggiornato:', w.reason);
-        } catch (e) { log('snapshot posizioni fallito:', e && e.message ? e.message : String(e)); }
+        const p = await leggiPosizioniVenue();
         return { ok: p.ok, reason: p.reason, positions: (p.positions || []).map((x) => ({ tokenId: String(x.asset ?? x.tokenId ?? ''), size: Number(x.size), avgPrice: Number(x.avgPrice) })) };
       },
       placeOrder: (spec) => placeManualOrder(spec),
@@ -463,6 +495,11 @@ async function main() {
     // not stop the ledger being reconciled, and vice versa.
     try { await reconcileTask(); }
     catch (e) { log('reconcile task failed:', e && e.message ? e.message : String(e)); }
+    // Lo snapshot delle posizioni PRIMA della chiusura automatica, e senza condizioni: chi calcola i
+    // tetti di esposizione lo legge, e se scade oltre 180s ogni piazzamento viene rifiutato. Non deve
+    // dipendere dal fatto che esista almeno un mercato con l'uscita accesa.
+    try { if (Date.now() - lastReconcileAt < 1000) await snapshotPosizioniTask(); }
+    catch (e) { log('snapshot posizioni task failed:', e && e.message ? e.message : String(e)); }
     try { if (Date.now() - lastReconcileAt < 1000) await closeTask(); }
     catch (e) { log('close task failed:', e && e.message ? e.message : String(e)); }
 
@@ -527,4 +564,4 @@ if (require.main === module) {
   main().catch((e) => { log('fatal:', e && e.stack ? e.stack : String(e)); process.exit(1); });
 }
 
-module.exports = { cycle, reconcileTask, closeTask, trackingTask, breaches, trackingState };
+module.exports = { cycle, reconcileTask, closeTask, snapshotPosizioniTask, trackingTask, breaches, trackingState };

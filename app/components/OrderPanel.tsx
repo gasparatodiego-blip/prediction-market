@@ -156,6 +156,11 @@ interface PlaceResult {
   gate: string | null; reason: string | null; orderId?: string | null; notionalUsd?: number | null;
   /** Non un rifiuto: l'ordine è passato E non maturerà reward. Detto insieme all'esito, non al posto suo. */
   bandAdvisory?: string | null;
+  /** Il prezzo che il server ha applicato, se diverso da quello scritto. La regola «mai primo sul
+   *  libro» sposta la quotazione dietro al miglior altro ordine per non essere il bersaglio di un
+   *  taker informato — ma un prezzo che cambia senza dirlo è peggio del male che cura. */
+  priceAdjusted?: { inCoda?: { from: number; to: number; mode?: string; onTop?: boolean; bestOther?: number | null } } | null;
+  inCoda?: { ok: boolean; mode?: string; onTop?: boolean; bestOther?: number | null; reason?: string | null } | null;
 }
 
 const fin = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
@@ -784,6 +789,14 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
           // `stale-book` verifica che lo sia ancora nell'istante in cui l'ordine parte, e rifiuta invece
           // di piazzare su un dato stantio se nel frattempo la sottoscrizione e' caduta.
           requireFreshBookMs: FRESH_BOOK_MAX_MS,
+          // ── «MAI PRIMO SUL LIBRO», ANCHE DI QUI ──────────────────────────────────────────────
+          // Il piano la porta su ogni riga, l'uscita automatica e il rimpiazzo pure; il percorso a
+          // mano era il quarto e non l'aveva — e fino al 4 agosto 2026 non avrebbe potuto averla
+          // comunque, perché lo schema zod della route scartava il campo senza dirlo.
+          // Essere primi sul libro significa essere il bersaglio di chi sa qualcosa che noi non
+          // sappiamo: è la stessa adverse selection che il resto del sistema evita per costruzione.
+          // Se il prezzo viene spostato, l'esito lo dice — vedi `priceAdjusted` nel banner.
+          inCoda: true,
           // FUORI BANDA È UN COSTO DICHIARATO, NON UN DIVIETO. Questa schermata mostra l'avviso giallo
           // «non matura reward» sopra il campo del prezzo, e chi conferma l'ha letto: due tocchi separati
           // stanno fra quell'avviso e l'invio. Il server declassa quindi il solo codice OUT_OF_BAND da
@@ -1528,6 +1541,22 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
                     {result.ok && result.bandAdvisory && (
                       <span className="op-banner-sub" data-op-qs-band-advisory>
                         ⚠ Fuori dalla banda reward: riposa regolarmente ma NON matura reward.
+                      </span>
+                    )}
+                    {/* IL PREZZO NON CAMBIA MAI DI NASCOSTO. La regola «mai primo sul libro» può
+                        spostare la quotazione dietro al miglior altro ordine: se lo fa, si legge qui
+                        col prezzo di partenza e quello applicato. */}
+                    {result.ok && result.priceAdjusted?.inCoda && (
+                      <span className="op-banner-sub" data-op-qs-in-coda>
+                        Prezzo spostato per non essere primo sul libro:{' '}
+                        <b>{cents(result.priceAdjusted.inCoda.from)}</b> → <b>{cents(result.priceAdjusted.inCoda.to)}</b>
+                        {result.priceAdjusted.inCoda.bestOther != null
+                          ? <> (dietro a {cents(result.priceAdjusted.inCoda.bestOther)})</> : null}
+                      </span>
+                    )}
+                    {result.ok && !result.priceAdjusted?.inCoda && result.inCoda && result.inCoda.onTop === false && (
+                      <span className="op-banner-sub" data-op-qs-in-coda>
+                        Non era primo sul libro: prezzo lasciato com’era.
                       </span>
                     )}
                   </div>

@@ -71,6 +71,20 @@ const bodySchema = z.object({
   // Assente ⇒ nessun ricalcolo: il prezzo parte esattamente com'e' stato scritto.
   distanceCents: z.number().finite().min(0).max(99).optional(),
   belowMid: z.boolean().optional(),
+  // ── «MAI PRIMO SUL LIBRO» — DICHIARATO, NON PIÙ SCARTATO IN SILENZIO ─────────────────────────
+  // `placeManualOrder` applica la regola della coda solo se riceve `spec.inCoda === true`, e questo
+  // schema non dichiarava il campo: zod scarta le chiavi che non conosce, quindi la regola non poteva
+  // raggiungere il percorso a mano NEMMENO se il pannello l'avesse mandata. Il piano la porta
+  // (lib/rewards/plan-to-orders.js la mette su ogni riga), l'uscita automatica e il rimpiazzo pure —
+  // qui si fermava a metà strada, senza un errore e senza una riga di log.
+  //
+  // È esattamente la forma del difetto che il 3 agosto aveva fatto sparire `coppia` e `gamba` prima
+  // che arrivassero a valle, disattivando tutte le protezioni sulla coppia. Uno schema che scarta è
+  // un posto dove le garanzie muoiono senza rumore.
+  //
+  // Assente ⇒ comportamento di prima. Il pannello lo manda `true` e mostra l'eventuale spostamento
+  // in `priceAdjusted`, così il prezzo non cambia mai di nascosto a chi l'ha scritto.
+  inCoda: z.boolean().optional(),
 });
 
 export async function POST(req: NextRequest) {

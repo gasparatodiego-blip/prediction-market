@@ -5,6 +5,7 @@ import { fetchMarketByConditionId, rewardLabelFor, NO_REWARD_LABEL } from '@/lib
 import { upsertMarket, readMarketCatalog } from '@/lib/maker/market-catalog';
 import { readAutoRepriceConfig, setAutoReprice } from '@/lib/maker/auto-reprice-config';
 import { isManualMarket, setManualMode } from '@/lib/maker/manual-mode';
+import { setAutoClose, readAutoCloseConfig } from '@/lib/maker/auto-close-config';
 import { resolveMarketWindow, minMinutesToClose } from '@/lib/maker/market-clock';
 
 export const runtime = 'nodejs';
@@ -19,10 +20,14 @@ export const dynamic = 'force-dynamic';
  * reason: a control that enables real orders on a new market at one click is a control that gets pressed
  * by accident exactly once.
  *
- * WHAT A CONFIRM WRITES — three durable, audited records, and nothing else:
+ * WHAT A CONFIRM WRITES — four durable, audited records, and nothing else:
  *   1. data/maker-manual-markets.json  the market's VENUE METADATA (tokens, tick, negRisk, reward pot,
  *      close date, book snapshot), so lib/maker/manual-order.resolveMarketRules can judge orders on a
  *      market the reward board has never heard of. (lib/maker/market-catalog.js — atomic + audit line.)
+ *   1b. data/maker-auto-close.json     the per-market AUTO-CLOSE opt-in, written BEFORE the allowlist and
+ *      a HARD STOP if it fails: a market that can receive orders must already have a way out. Added
+ *      2026-08-04 — the guarantee existed in lib/maker/allocation-reset.js phase 3 (the RESET path) and
+ *      was absent from this one, which is additive; a market enabled from here was born without an exit.
  *   2. data/maker-auto-reprice.json    the per-market opt-in, which IS cfg.enabledMarketIds — the list the
  *      adapter's live-min gate now checks instead of one pinned market. (setAutoReprice — atomic + audit
  *      line, the same write the panel's own switch uses. No second mechanism was invented for this.)
@@ -101,6 +106,7 @@ export async function POST(req: NextRequest) {
     }
     const m = look.market;
 
+    const autoCloseCfg = readAutoCloseConfig();
     const minMinutes = minMinutesToClose();
     const endMs = m.endDate ? Date.parse(m.endDate) : NaN;
     // The window a hand order on this market would get if placed right now — computed with the same pure
@@ -119,6 +125,10 @@ export async function POST(req: NextRequest) {
     if (!cfgBefore.globalEnabled) warnings.push('Il master switch dell\'auto-riprezzo è SPENTO: il mercato risulterà opted-in ma NON entrerà in cfg.enabledMarketIds finché il master resta spento, quindi il gate live-min continuerà a rifiutare.');
     if (!manualBefore.manual && !takeManual) warnings.push('La modalità manuale NON è attiva su questo mercato: senza di essa il pannello rifiuta con manual-mode-inactive. Spuntala nella conferma, o attivala dal pannello ordini manuali.');
     if (m.mid == null) warnings.push('Book senza mid leggibile in questo momento (libro vuoto o senza quotazioni): un ordine verrebbe rifiutato con rules-unreadable finché non c\'è un mid.');
+    // L'opt-in per mercato non serve a niente se il generale è spento: il mercato risulterebbe «con
+    // uscita accesa» e nessuna uscita verrebbe mai tentata. Va detto PRIMA di confermare.
+    if (!autoCloseCfg.readable) warnings.push('Lo stato dell\'uscita automatica non è leggibile: l\'abilitazione verrà rifiutata, perché non si può garantire una via d\'uscita su un mercato che sta per diventare piazzabile.');
+    else if (!autoCloseCfg.globalEnabled) warnings.push('L\'interruttore GENERALE dell\'uscita automatica è SPENTO: l\'opt-in per questo mercato verrà scritto, ma finché il generale resta spento nessuna uscita viene tentata su nessun mercato — un fill resterebbe senza via d\'uscita.');
 
     const summary = {
       marketId: id,
@@ -145,6 +155,11 @@ export async function POST(req: NextRequest) {
       marketCountBefore: enabledBefore.length,
       marketCountAfter: enabledBefore.includes(id) ? enabledBefore.length : enabledBefore.length + 1,
       alreadyEnabled: enabledBefore.includes(id),
+      // Se l'uscita automatica è GIÀ accesa qui, e se l'interruttore generale lo è. Il pannello deve
+      // poter distinguere «gliela accendo io adesso» da «c'era già», e soprattutto deve mostrare il
+      // generale: l'opt-in per mercato non serve a niente se il generale è spento.
+      autoCloseBefore: autoCloseCfg.readable ? autoCloseCfg.enabledMarketIds.includes(id) : null,
+      autoCloseGlobal: autoCloseCfg.readable ? autoCloseCfg.globalEnabled : null,
       alreadyCatalogued: Object.prototype.hasOwnProperty.call(catBefore.markets || {}, id),
       manualModeActive: manualBefore.manual === true,
       willTakeManual: takeManual,
@@ -156,6 +171,7 @@ export async function POST(req: NextRequest) {
         ok: true, preview: true, action: 'enable', marketId: id, summary,
         writes: [
           'data/maker-manual-markets.json — metadati di venue (token, tick, negRisk, reward, chiusura, snapshot del book)',
+          'data/maker-auto-close.json — USCITA AUTOMATICA accesa su questo mercato, PRIMA della allowlist: se non si riesce ad accenderla il mercato non viene abilitato affatto',
           'data/maker-auto-reprice.json — opt-in per-mercato = cfg.enabledMarketIds (il gate live-min legge questa lista)',
           ...(takeManual ? ['data/maker-manual-mode.json — modalità manuale (agent35 si tiene fuori da questo mercato)'] : []),
         ],
@@ -179,12 +195,39 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, gate: 'catalog-write-failed', marketId: id, error: cat.error, missing: cat.missing, summary }, { status: 409 });
     }
 
+    // ── L'USCITA AUTOMATICA SI ACCENDE PRIMA DELLA ALLOWLIST, NON DOPO ────────────────────────────
+    // È la stessa regola della fase 3 di lib/maker/allocation-reset.js, e la stessa ragione: fra il
+    // momento in cui un mercato diventa piazzabile e il momento in cui ha una via d'uscita non deve
+    // esistere un istante — perché è esattamente in quell'istante che un fill arriverebbe senza
+    // nessuno pronto a chiuderlo.
+    //
+    // Fino al 4 agosto 2026 questa route non chiamava `setAutoClose` da nessuna parte. La garanzia
+    // «ogni mercato che il bot gestisce ha una via d'uscita» era stata costruita nel percorso di
+    // RESET e non in questo, che è additivo — e Spider-Man, abilitato da qui la sera del 4 agosto,
+    // è nato con due gambe potenziali e nessuna uscita. Verificato sullo stato vero: l'uscita era
+    // accesa su tre mercati, tutti vecchi, due dei quali finestre Bitcoin già chiuse.
+    //
+    // PERCHÉ PRIMA E NON DOPO. Se fallisse questa, non si abilita niente (fermo duro qui sotto) e non
+    // c'è nulla da disfare. Se invece fallisse la allowlist DOPO che l'uscita è accesa, resterebbe
+    // un'uscita accesa su un mercato non abilitato: innocua per costruzione — un interruttore di
+    // chiusura su un mercato senza posizioni non fa niente, mentre il contrario abbandona capitale.
+    const ac = setAutoClose({
+      scope: 'market', marketId: id, enabled: true, by: BY,
+      reason: reason || 'mercato aggiunto dalla tab Allocazione: la via d uscita esiste PRIMA che esistano ordini',
+    });
+    if (!ac.ok) {
+      return NextResponse.json({
+        ok: false, gate: 'auto-close-write-failed', marketId: id, error: ac.error, catalog: cat, summary,
+        note: 'Il mercato NON è stato abilitato: non è stato possibile accendere l\'uscita automatica, e un mercato piazzabile senza via d\'uscita è peggio di un mercato in meno. Nulla è stato aggiunto alla allowlist.',
+      }, { status: 409 });
+    }
+
     const on = setAutoReprice({
       scope: 'market', marketId: id, enabled: true, by: BY,
       reason: reason || `mercato scelto a mano dalla tab Allocazione${m.hasRewards ? '' : ' — SENZA reward (trading direzionale)'}${capitalUsd != null ? ` · capitale ${capitalUsd}$` : ''}`,
     });
     if (!on.ok) {
-      return NextResponse.json({ ok: false, gate: 'enable-write-failed', marketId: id, error: on.error, catalog: cat, summary }, { status: 409 });
+      return NextResponse.json({ ok: false, gate: 'enable-write-failed', marketId: id, error: on.error, catalog: cat, autoClose: ac, summary }, { status: 409 });
     }
 
     let manual = null;
@@ -200,7 +243,8 @@ export async function POST(req: NextRequest) {
       ok: true, preview: false, action: 'enable', marketId: id, summary,
       catalog: cat, enable: on, manual,
       enabledBefore, enabledAfter: cfgAfter.enabledMarketIds || [],
-      note: `Mercato registrato e abilitato. Da adesso il gate live-min accetta ordini su questo market_id (${(cfgAfter.enabledMarketIds || []).length} mercati abilitati in totale) — e continua a rifiutare qualunque market_id fuori lista. Nessun ordine è stato piazzato da questa azione.`,
+      autoClose: ac,
+      note: `Mercato registrato e abilitato, con USCITA AUTOMATICA accesa prima della allowlist. Da adesso il gate live-min accetta ordini su questo market_id (${(cfgAfter.enabledMarketIds || []).length} mercati abilitati in totale) — e continua a rifiutare qualunque market_id fuori lista. Nessun ordine è stato piazzato da questa azione.`,
       warnings,
     });
   } catch (e) {
