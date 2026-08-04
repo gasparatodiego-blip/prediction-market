@@ -600,11 +600,26 @@ export default function RewardsAllocatePanel(
   }, [coda]);
 
   // Le righe del piano corrente, per id: la coda tiene id, i valori vengono SEMPRE da qui.
+  // ── LE RIGHE DEI DUE PIANI, NON DI UNO SOLO ─────────────────────────────────────────────────────
+  // Questa mappa alimenta la coda, e per una sera intera è stata costruita dal piano SBAGLIATO.
+  // In questo pannello i piani sono due, con due bottoni e due stati distinti:
+  //
+  //   `plan`      ← «Calcola»                        le righe del piano manuale
+  //   `autoPlan`  ← «Cerca la combinazione migliore»  LE CARD DI PROPOSTA
+  //
+  // La griglia delle proposte rende `autoPlan.candidates`, ma la mappa leggeva `plan.rows`. Chi preme
+  // solo «Cerca la combinazione migliore» — cioè il percorso normale per arrivare alle proposte — ha
+  // `plan` a null: la mappa restava vuota, la condizione `righePerId.has(...)` era sempre falsa e il
+  // bottone «+ Metti in coda» non compariva MAI. Non era nascosto da un flag: non veniva renderizzato.
+  //
+  // Entrambi, quindi, con `autoPlan` che vince dove un mercato sta in tutti e due: è la riga che
+  // l'operatore sta guardando quando preme il bottone sulla card.
   const righePerId = useMemo(() => {
     const m = new Map<string, Row>();
     for (const r of plan?.rows ?? []) m.set(r.marketId.toLowerCase(), r);
+    for (const r of autoPlan?.rows ?? []) m.set(r.marketId.toLowerCase(), r);
     return m;
-  }, [plan]);
+  }, [plan, autoPlan]);
 
   const testaId = coda[0] ?? null;
   const testaRiga = testaId ? righePerId.get(testaId.toLowerCase()) ?? null : null;
@@ -693,7 +708,7 @@ export default function RewardsAllocatePanel(
 
   // Passo 1 dell'aggiunta: ANTEPRIMA. Rilegge il mercato dal venue e dice esattamente cosa verrebbe
   // scritto — senza scrivere nulla. Passo 2: conferma (preview:false), che è l'unica cosa che scrive.
-  const addMarket = useCallback(async (marketId: string, preview: boolean) => {
+  const addMarket = useCallback(async (marketId: string, preview: boolean, potAtPlan?: number | null) => {
     setAddBusy(`${preview ? 'preview' : 'confirm'}:${marketId}`); setAddErr(null);
     if (!preview) setAddResult(null);
     try {
@@ -703,6 +718,9 @@ export default function RewardsAllocatePanel(
         body: JSON.stringify({
           marketId, preview, enabled: true, takeManual,
           capitalUsd: Number.isFinite(cap) && cap > 0 ? cap : undefined,
+          // La cifra che la CARD ha mostrato. Il server la confronta con quella che il venue pubblica
+          // adesso: se una dice «$57/g» e l'altra «nessun reward», non si abilita niente.
+          potAtPlan: typeof potAtPlan === 'number' && Number.isFinite(potAtPlan) ? potAtPlan : undefined,
         }),
       });
       const b = (await r.json()) as EnableResp;
@@ -978,7 +996,7 @@ export default function RewardsAllocatePanel(
                       data-alloc-auto-preview
                       disabled={addBusy != null}
                       title="anteprima dell’aggiunta: non scrive nulla"
-                      onClick={() => addMarket(c.marketId, true)}>
+                      onClick={() => addMarket(c.marketId, true, c.pot)}>
                       {addBusy === `preview:${c.marketId}` ? '…' : '1 · Anteprima'}
                     </button>
                     {/* ── IN CODA, NON IN ORDINE ────────────────────────────────────────────────
@@ -1034,7 +1052,7 @@ export default function RewardsAllocatePanel(
                       )}
                       <button className="alloc-btn" style={{ marginTop: 10, background: 'color-mix(in srgb,#2FA96B 30%,transparent)' }}
                         data-alloc-add-confirm-btn disabled={addBusy != null}
-                        onClick={() => addMarket(addPreview.marketId, false)}>
+                        onClick={() => addMarket(addPreview.marketId, false, addPreview.summary?.rewardsDailyRate ?? null)}>
                         {addBusy?.startsWith('confirm') ? 'Scrivo…' : '2 · Conferma e aggiungi'}
                       </button>
                     </div>

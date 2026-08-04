@@ -52,6 +52,11 @@ const bodySchema = z.object({
   preview: z.boolean().optional(),        // default true — writing requires an explicit preview:false
   takeManual: z.boolean().optional(),     // also stand agent35 off this market
   capitalUsd: z.number().finite().nonnegative().optional(), // echoed into the confirmation summary + audit
+  // ── IL MONTEPREMI CHE LA CARD HA MOSTRATO ────────────────────────────────────────────────────
+  // Il chiamante dichiara la cifra su cui l'operatore ha deciso. Serve a UNA cosa sola: accorgersi
+  // che questa route e la card stiano dicendo il contrario l'una dell'altra sullo stesso mercato.
+  // Assente ⇒ nessun confronto (un chiamante che non ha mostrato niente non ha niente da smentire).
+  potAtPlan: z.number().finite().nonnegative().optional(),
   reason: z.string().max(500).optional(),
 });
 
@@ -70,6 +75,7 @@ export async function POST(req: NextRequest) {
   const preview = parsed.data.preview !== false;
   const takeManual = parsed.data.takeManual === true;
   const capitalUsd = parsed.data.capitalUsd ?? null;
+  const potAtPlan = parsed.data.potAtPlan ?? null;
   const reason = parsed.data.reason ?? null;
   const id = marketId.toLowerCase();
 
@@ -116,8 +122,37 @@ export async function POST(req: NextRequest) {
       baseTtlSeconds: 1380, baseRefreshMarginSeconds: 180, minMinutes,
     });
 
+    // ── DUE FONTI SUL MONTEPREMI, E NESSUNO CHE LE CONFRONTAVA ────────────────────────────────────
+    // La card dell'allocatore prende il montepremi dal BOARD (data/liquidity-rewards.json, che agent24
+    // riscrive ogni 15 minuti); questa route lo chiede al VENUE, adesso. Sono due letture diverse dello
+    // stesso fatto, e finora potevano contraddirsi senza che niente se ne accorgesse: la sera del
+    // 4 agosto 2026 una card mostrava «montepremi $57/g · netto $4.81/g» e l'anteprima, sullo stesso
+    // mercato e a pochi secondi di distanza, «NESSUN REWARD — solo trading direzionale».
+    //
+    // Quale delle due avesse ragione non cambia cosa fare: se le due fonti non concordano sul fatto che
+    // un mercato paghi, NON si abilita. L'operatore stava per impegnare capitale su una cifra, e
+    // l'altra fonte dice che quella cifra non esiste — è la definizione di un dato su cui non si agisce.
+    //
+    // Questo controllo non decide CHI ha ragione e non prova a indovinarlo: dichiara che non si sa.
+    const contraddizionePot = potAtPlan != null && potAtPlan > 0 && m.hasRewards !== true;
+    if (contraddizionePot) {
+      return NextResponse.json({
+        ok: false, gate: 'reward-contraddizione', marketId: id,
+        potAtPlan, potAlVenue: m.rewardsDailyRate, hasRewards: m.hasRewards,
+        error: `Il piano ha proposto questo mercato con un montepremi di $${potAtPlan}/g, ma il venue in questo momento non pubblica nessun programma reward (${NO_REWARD_LABEL}). Le due fonti si contraddicono sullo stesso mercato: NON viene abilitato.`,
+        note: 'Il montepremi della card viene dal board (agent24, riscritto ogni ~15 min); questo controllo lo chiede al venue adesso. Ricalcola il piano: se il programma è finito davvero, il mercato sparirà dalle proposte; se torna con il montepremi, era il board a essere indietro.',
+        summary: null,
+      }, { status: 409 });
+    }
+
     const warnings: string[] = [];
     if (!m.hasRewards) warnings.push(`${NO_REWARD_LABEL}: questo mercato non ha montepremi di liquidità, quindi qualunque ordine qui non produce reward.`);
+    // Il caso opposto non è un rifiuto: il venue paga più (o paga e il piano non lo sapeva). Si dice e
+    // basta — un montepremi migliore del previsto non è una ragione per fermare niente.
+    if (potAtPlan != null && m.hasRewards && m.rewardsDailyRate != null
+      && Math.abs(m.rewardsDailyRate - potAtPlan) > Math.max(1, potAtPlan * 0.2)) {
+      warnings.push(`Il montepremi è cambiato da quando il piano è stato calcolato: la card diceva $${potAtPlan}/g, il venue adesso dice $${m.rewardsDailyRate}/g. Il piano è stato deciso sulla cifra vecchia.`);
+    }
     if (m.rewardsMaxSpreadCents == null || !(m.rewardsMaxSpreadCents > 0)) warnings.push('Il venue non pubblica una banda reward (max_spread) per questo mercato: il guard di banda condiviso rifiuterà gli ordini con RULES_UNREADABLE finché non esiste una banda contro cui giudicarli. Il mercato viene registrato lo stesso, ma sappilo prima di contarci.');
     if (window.tooClose) warnings.push(`Mancano ${window.minutesToClose == null ? '—' : window.minutesToClose.toFixed(1)} min alla chiusura (soglia ${minMinutes} min): finché resta sotto soglia ogni nuovo ordine viene rifiutato con ${window.gate}.`);
     if (m.closed) warnings.push('Il venue segnala questo mercato come CHIUSO.');
