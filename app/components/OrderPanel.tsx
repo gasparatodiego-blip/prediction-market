@@ -68,6 +68,27 @@ export interface OrderTarget {
   enabled: boolean;
   /** Size suggerita da un piano di allocazione; assente ⇒ si parte dalla size minima del venue. */
   presetSize?: number | null;
+  // ── LE GAMBE DEL PIANO, GIÀ CALCOLATE ────────────────────────────────────────────────────────────
+  // Fino al 4 agosto 2026 da un piano arrivava SOLO la size, e il prezzo veniva precompilato con il mid
+  // agganciato al tick — cioè con la quotazione peggiore che esista: appoggiata esattamente sul mid,
+  // in cima al libro, dove il replay ha misurato 14.642 fill contro i 395 di un tick più in là.
+  // Il piano quel prezzo lo calcola già (`snappedBid`/`snappedAsk` all'offset scelto): non c'era
+  // ragione di ricavarne un altro, tantomeno il più esposto.
+  //
+  // E ne calcola DUE, non uno: `gambeDiUnaRiga` produce BUY YES a mid−d e BUY NO a (1−mid)−d, perché
+  // con la formula ufficiale a due lati un lato solo matura zero fuori da [0,10–0,90] e un terzo dentro.
+  // Il pannello ne apriva una: metà del piano si perdeva per strada.
+  //
+  // `pairLegs` le porta entrambe, IN ORDINE. Il pannello ne rende attiva una alla volta e la seconda
+  // richiede un tocco esplicito: mettere in coda non è mai autorizzare.
+  pairLegs?: Array<{
+    book: 'yes' | 'no';
+    side: 'BUY' | 'SELL';
+    price: number;
+    size: number;
+    /** L'etichetta della gamba, per dire all'operatore a che punto è: «gamba 1 di 2 · YES». */
+    label?: string;
+  }> | null;
 }
 
 interface ManualCfg {
@@ -208,6 +229,14 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
 }) {
   const [cfg, setCfg] = useState<ManualCfg | null>(null);
   const [book, setBook] = useState<'yes' | 'no'>('yes');
+  // ── QUALE GAMBA DEL PIANO SI STA GUARDANDO ────────────────────────────────────────────────────────
+  // Un piano a due lati arriva come `target.pairLegs` in ordine. Se ne rende attiva UNA alla volta: la
+  // seconda si apre solo con un tocco esplicito dopo che la prima è stata piazzata. Mettere due gambe
+  // in coda non è autorizzarne due — e questa è la riga che tiene quella promessa.
+  const [legIdx, setLegIdx] = useState(0);
+  const legs = target.pairLegs && target.pairLegs.length ? target.pairLegs : null;
+  const active = legs ? (legs[legIdx] ?? legs[0]) : null;
+  const legNext = legs && legIdx + 1 < legs.length ? legs[legIdx + 1] : null;
   const [sizeStr, setSizeStr] = useState('');
   const [priceStr, setPriceStr] = useState('');
   const [autoRenew, setAutoRenew] = useState(true);
@@ -309,19 +338,37 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
   // PRECOMPILAZIONE. Size = quella del piano se c'è, altrimenti la minima del venue. Prezzo = il mid
   // agganciato al tick. Entrambi editabili; entrambi validati contro le regole del venue, non contro
   // una copia locale di quelle regole.
+  // Mercato nuovo ⇒ si riparte SEMPRE dalla prima gamba. Senza questo, aprire un secondo mercato dopo
+  // aver piazzato la gamba 1 di 2 lo aprirebbe direttamente sulla gamba 2 — cioè sul libro sbagliato.
+  useEffect(() => { setLegIdx(0); }, [target]);
+
   useEffect(() => {
-    const s = fin(target.presetSize) && (target.presetSize as number) > 0 ? (target.presetSize as number) : target.minSize;
+    // ── LA GAMBA DEL PIANO VINCE SUL MID ──────────────────────────────────────────────────────────
+    // Se il piano ha calcolato le gambe, prezzo, size e libro vengono da LÌ: sono i numeri che
+    // l'operatore ha appena letto sulla card, e ricavarne altri qui significherebbe piazzare qualcosa
+    // di diverso da ciò che è stato approvato.
+    //
+    // Il ripiego resta il mid agganciato al tick, ed è il ripiego giusto SOLO perché è ciò che si può
+    // dire senza un piano: è anche la quotazione più esposta che esista (in cima al libro), quindi si
+    // usa quando non c'è di meglio, mai al posto di un prezzo calcolato.
+    const leg = active;
+    const s = leg ? leg.size
+      : (fin(target.presetSize) && (target.presetSize as number) > 0 ? (target.presetSize as number) : target.minSize);
     setSizeStr(fin(s) ? String(+(s as number).toFixed(4)) : '');
-    const p = fin(target.mid) && fin(target.tick) && (target.tick as number) > 0
-      ? snapToTick(target.mid as number, target.tick as number) : target.mid;
+    const p = leg ? leg.price
+      : (fin(target.mid) && fin(target.tick) && (target.tick as number) > 0
+        ? snapToTick(target.mid as number, target.tick as number) : target.mid);
     setPriceStr(fin(p) ? String(p) : '');
+    if (leg) setBook(leg.book);
     setResult(null); setEnableMsg(null);
     setIsEnabled(target.enabled);
     // Mercato nuovo, pannello nuovo: le bandierine ripartono da zero, altrimenti un prezzo toccato su
     // un mercato bloccherebbe la precompilazione su quello dopo.
     setPriceTouched(false); setSizeTouched(false);
     setQuote(null); setQuoteErr(null);
-  }, [target]);
+    // `legIdx` fra le dipendenze: passare alla seconda gamba deve riempire i campi come farebbe
+    // l'apertura di un mercato nuovo, non lasciare i numeri della prima.
+  }, [target, legIdx, active]);
 
   useEffect(() => {
     let alive = true;
@@ -1485,10 +1532,28 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
                       <div className="op-review-h">Rivedi prima di confermare</div>
                       <div className="ex-kvs">
                         <div className="ex-kv"><span className="ex-kv-k">mercato</span><span className="ex-kv-v op-wrap">{target.title}</span></div>
+                        {/* A CHE PUNTO DEL PIANO SI È. Con due gambe, «BUY YES» da solo non dice se
+                            manca ancora l'altro lato — e un lato solo matura zero fuori dal range
+                            [0,10–0,90] e un terzo dentro. */}
+                        {legs && (
+                          <div className="ex-kv"><span className="ex-kv-k">gamba</span>
+                            <span className="ex-kv-v" data-op-qs-review-leg-idx={`${legIdx + 1}/${legs.length}`}>
+                              {active?.label ?? `gamba ${legIdx + 1} di ${legs.length}`}
+                            </span></div>
+                        )}
                         <div className="ex-kv"><span className="ex-kv-k">lato</span><span className="ex-kv-v">BUY {book.toUpperCase()}</span></div>
                         <div className="ex-kv"><span className="ex-kv-k">size</span><span className="ex-kv-v">{fin(size) ? size : 'N/D'} share</span></div>
-                        <div className="ex-kv"><span className="ex-kv-k">prezzo</span><span className="ex-kv-v">{price}</span></div>
+                        <div className="ex-kv"><span className="ex-kv-k">prezzo</span>
+                          <span className="ex-kv-v" data-op-qs-review-price-src={active ? 'piano' : 'mid'}>
+                            {price}{active ? <span className="ex-kv-note"> · dal piano</span> : null}
+                          </span></div>
                         <div className="ex-kv"><span className="ex-kv-k">distanza dal mid</span><span className="ex-kv-v">{fin(sheetDistC) ? `${(sheetDistC as number).toFixed(2)}¢` : 'N/D'}</span></div>
+                        {/* La banda accanto alla distanza: sono i due numeri che insieme dicono se
+                            l'ordine matura reward, e leggerne uno solo non basta a deciderlo. */}
+                        <div className="ex-kv"><span className="ex-kv-k">banda reward</span>
+                          <span className="ex-kv-v" data-op-qs-review-band-width>
+                            {fin(bandRadiusCents) ? `±${(bandRadiusCents as number).toFixed(2)}¢` : 'non pubblicata'}
+                          </span></div>
                         <div className="ex-kv"><span className="ex-kv-k">motore</span><span className="ex-kv-v" data-op-qs-review-engine={sheetEngine}>{sheetEngine === 'manual' ? 'Manuale — un ordine fermo' : 'Tracking — insegue il mid'}</span></div>
                         {sheetEngine === 'tracking' && (
                           <>
@@ -1557,6 +1622,31 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled }: {
                     {result.ok && !result.priceAdjusted?.inCoda && result.inCoda && result.inCoda.onTop === false && (
                       <span className="op-banner-sub" data-op-qs-in-coda>
                         Non era primo sul libro: prezzo lasciato com’era.
+                      </span>
+                    )}
+                    {/* ── LA SECONDA GAMBA: IN CODA, MAI IN AUTOMATICO ────────────────────────────
+                        Il piano ne prevede due, e con un lato solo la posizione non è mezza posizione:
+                        è capitale esposto che matura zero fuori da [0,10–0,90] e un terzo dentro.
+                        Ma «il piano ne prevede due» non è «l'operatore ne ha autorizzate due»: la
+                        seconda si apre solo di qui, con i suoi numeri sotto gli occhi, e passa dallo
+                        stesso riepilogo e dalla stessa conferma della prima. */}
+                    {result.ok && legNext && (
+                      <div className="op-banner-sub" data-op-qs-next-leg>
+                        <div>
+                          Manca la <b>{legNext.label ?? `gamba ${legIdx + 2}`}</b>:
+                          {' '}BUY {legNext.book.toUpperCase()} <b>{legNext.size}</b> share @ <b>{legNext.price}</b>
+                          {' '}(<span className="ex-n">{money(legNext.price * legNext.size)}</span>).
+                        </div>
+                        <button className="ex-btn is-gold" style={{ marginTop: 8 }}
+                          data-op-qs-next-leg-btn
+                          onClick={() => { setLegIdx(legIdx + 1); setSheetStep('form'); }}>
+                          Prepara la {legNext.label ?? 'seconda gamba'} →
+                        </button>
+                      </div>
+                    )}
+                    {result.ok && legs && !legNext && legIdx + 1 === legs.length && legs.length > 1 && (
+                      <span className="op-banner-sub" data-op-qs-legs-done>
+                        Entrambe le gambe del piano sono state trattate.
                       </span>
                     )}
                   </div>

@@ -276,7 +276,23 @@ type BulkResult = {
  * venue: il senso di aprire il pannello da qui e proprio eseguire il piano, e ricominciare dal minimo
  * butterebbe via il calcolo. Il conditionId e quello della riga, copiato, mai ricercato.
  */
-function targetFromPlanRow(r: Row): OrderTarget {
+function targetFromPlanRow(r: Row, offsetTicks?: number): OrderTarget {
+  // ── LE DUE GAMBE, DALLA STESSA FUNZIONE CHE USA IL RIALLOCATORE ─────────────────────────────────
+  // Non si ricostruiscono qui: `gambeDiUnaRiga` è la stessa che alimenta «Conferma ed esegui» e il ciclo
+  // automatico delle 6 ore, quindi il bottone della singola riga non può più mandare al venue qualcosa
+  // di diverso da ciò che il piano ha calcolato e mostrato.
+  //
+  // Se la riga non è piazzabile all'offset scelto (fuori banda, sotto la size minima premiante, un lato
+  // impossibile) `gambeDiUnaRiga` lo dichiara con uno `scarto`: in quel caso non si inventa un prezzo,
+  // si lascia che il pannello riparta dal mid come faceva prima e sia il guard a dire di no.
+  const g = gambeDiUnaRiga(r, offsetTicks ?? r.computedDefaultOffsetTicks);
+  const legs = g.scarto || !g.rows ? null : g.rows.map((x, i) => ({
+    book: x.book as 'yes' | 'no',
+    side: (x.side ?? 'BUY') as 'BUY' | 'SELL',
+    price: x.price,
+    size: x.size,
+    label: `gamba ${i + 1} di ${g.rows!.length} · ${String(x.book).toUpperCase()}`,
+  }));
   return {
     marketId: r.marketId,
     title: r.nameAvailable && r.name ? r.name : r.shortId,
@@ -292,7 +308,10 @@ function targetFromPlanRow(r: Row): OrderTarget {
     // (c'è un programma) e non si finge di sapere la cifra.
     hasRewards: true,
     enabled: true,
-    presetSize: r.sizePerSideShares,
+    // La size resta quella del piano anche quando le gambe non sono calcolabili: è il dato che il
+    // pannello mostrava già correttamente, e toglierlo sarebbe una regressione.
+    presetSize: legs ? legs[0].size : r.sizePerSideShares,
+    pairLegs: legs,
   };
 }
 
@@ -1055,7 +1074,7 @@ export default function RewardsAllocatePanel(
 
                   {onPlaceOrder && (
                     <button className="alloc-btn alloc-place" data-alloc-place={r.marketId}
-                      onClick={() => onPlaceOrder(targetFromPlanRow(r))}
+                      onClick={() => onPlaceOrder(targetFromPlanRow(r, offsets[r.marketId] ?? r.computedDefaultOffsetTicks))}
                       title="Apre il pannello ordine su QUESTO mercato, con la size decisa dal piano. Restano due tocchi prima di scrivere.">
                       Piazza ordine → {shares(r.sizePerSideShares)} share
                     </button>
@@ -1161,7 +1180,7 @@ export default function RewardsAllocatePanel(
                       {r.nameAvailable ? r.name : <span><span className="alloc-addr">{r.shortId}</span> <span className="alloc-cat">· nome non disponibile</span></span>}
                       {onPlaceOrder && (
                         <button className="alloc-btn alloc-place" data-alloc-place={r.marketId}
-                          onClick={() => onPlaceOrder(targetFromPlanRow(r))}
+                          onClick={() => onPlaceOrder(targetFromPlanRow(r, offsets[r.marketId] ?? r.computedDefaultOffsetTicks))}
                           title="Apre il pannello ordine su QUESTO mercato, con la size decisa dal piano.">
                           Piazza ordine →
                         </button>
