@@ -9,6 +9,10 @@ import { readAutoRepriceConfig, setAutoReprice } from '@/lib/maker/auto-reprice-
 import { readTrackingConfig, setTracking } from '@/lib/maker/mm-tracking-config';
 import { setManualMode } from '@/lib/maker/manual-mode';
 import { appendMakerAudit } from '@/lib/venues/polymarket-clob-maker/audit';
+// LA VERIFICA AL VENUE DEI MERCATI CHE STANNO PER RICEVERE ORDINI. Il riallocatore automatico ce
+// l'aveva; questo percorso no, e il 4 agosto 2026 la traccia ha mostrato due mercati su cinque col
+// montepremi crollato ($114/g → $11/g e $5/g → $2/g) che stavano per ricevere $192 di capitale.
+import { verificaMercatiAlVenue, filtraRighe, leggiVenueClob } from '@/lib/maker/verifica-mercati-venue';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -53,6 +57,13 @@ const rowSchema = z.object({
   price: z.number().finite().gt(0).lt(1),
   size: z.number().finite().gt(0).max(100_000),
   title: z.string().max(300).optional(),
+  // ── L'APPARTENENZA ALLA COPPIA DEVE SOPRAVVIVERE ALLA VALIDAZIONE ────────────────────────────
+  // zod scarta le chiavi che non dichiara. Senza queste due righe `coppia` e `gamba` — che il
+  // pannello manda da quando le gambe sono due — venivano tolte qui dentro, e runBulkAllocation
+  // vedeva righe non accoppiate: niente cap sulla coppia, niente rate limit sulla coppia, niente
+  // ripristino della gamba orfana. Tutte le protezioni c'erano e nessuna poteva scattare.
+  coppia: z.string().trim().min(1).max(200).optional(),
+  gamba: z.enum(['yes', 'no']).optional(),
 });
 const bodySchema = z.object({
   rows: z.array(rowSchema).min(1).max(50),
@@ -73,8 +84,36 @@ export async function POST(req: NextRequest) {
     const diag = diagnoseExposure({});
     const preview = parsed.data.preview === true;
 
+    // ── I MERCATI SONO ANCORA QUELLI SU CUI IL PIANO È STATO DECISO? ──────────────────────────────
+    // Si chiede al VENUE, non alla cache locale da cui il piano è nato: è la cache che il 4 agosto
+    // raccontava $114/g mentre il venue diceva $11/g. Vale sia in anteprima che in esecuzione, così
+    // l'operatore VEDE l'esclusione prima di confermare invece di scoprirla dopo.
+    //
+    // Un mercato bocciato perde ENTRAMBE le gambe: mezza coppia sarebbe l'esposizione asimmetrica che
+    // tutto questo percorso esiste per impedire. Un mercato ILLEGGIBILE ferma tutto — per un mercato
+    // che sta per ricevere ordini veri la parte che non agisce è non piazzare.
+    const verifica = await verificaMercatiAlVenue(
+      { rows: parsed.data.rows, poolAlPiano: {}, nowMs: Date.now() },
+      { readVenue: leggiVenueClob },
+    );
+    if (verifica.illeggibili.length) {
+      return NextResponse.json({
+        ok: false, gate: 'venue-illeggibile',
+        error: `${verifica.illeggibili.length} mercato/i del piano non è leggibile dal venue: non si piazzano ordini veri su un mercato che non si è potuto confermare`,
+        illeggibili: verifica.illeggibili, placed: 0, refused: 0, skipped: parsed.data.rows.length, results: [],
+      }, { status: 409 });
+    }
+    const righe = filtraRighe(parsed.data.rows, verifica.bocciati);
+    if (!righe.length) {
+      return NextResponse.json({
+        ok: false, gate: 'nessun-mercato-valido',
+        error: `tutti i ${verifica.bocciati.length} mercati del piano sono stati bocciati dal venue: non resta niente da piazzare`,
+        esclusiDalVenue: verifica.bocciati, placed: 0, refused: 0, skipped: parsed.data.rows.length, results: [],
+      }, { status: 409 });
+    }
+
     const reset = await runAllocationReset(
-      { rows: parsed.data.rows, dryRunOnly: preview },
+      { rows: righe, dryRunOnly: preview },
       {
         readEnabled: () => readAutoRepriceConfig({}).enabledMarketIds || [],
         readTracking: () => readTrackingConfig().marketIds || [],
@@ -116,6 +155,9 @@ export async function POST(req: NextRequest) {
     const place = reset.piazzamento || { ok: reset.ok, placed: 0, refused: 0, skipped: 0, results: [], totals: null };
     return NextResponse.json({
       ...place,
+      // Le esclusioni decise dal venue viaggiano SEMPRE nel referto, anche quando sono zero: «il piano
+      // che hai confermato non è quello che è stato eseguito» non deve poter essere una scoperta.
+      esclusiDalVenue: verifica.bocciati,
       ok: reset.ok && place.ok !== false,
       reset: {
         stoppedBy: reset.stoppedBy, reason: reset.reason, preview: reset.preview,
