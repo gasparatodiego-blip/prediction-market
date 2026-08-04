@@ -76,6 +76,7 @@ const { listManualOrders, replaceManualOrder, resolveMarketRules, resolveMarketD
 // appeared next to an empty orders table). agent35 was never going to do this for us: its reconciliation
 // is "dormant until arming" and it stands off manual markets by design.
 const { reconcileManualLane, fetchVenuePositions } = require('../lib/maker/manual-reset');
+const { writeVenuePositions } = require('../lib/safety/venue-positions-snapshot');
 // AUTOMATIC POSITION CLOSING. Runs on the same throttle as the reconciliation and for the same reason:
 // a fill is only observable after the venue is asked. Default OFF everywhere; see lib/maker/auto-close.js.
 const { runAutoCloseCycle } = require('../lib/maker/auto-close');
@@ -206,6 +207,14 @@ async function closeTask() {
       listOrders: ({ marketId }) => listManualOrders({ marketId }),
       readPositions: async () => {
         const p = await fetchVenuePositions({ address });
+        // ── LE POSIZIONI VERE VANNO ANCHE A CHI CALCOLA I TETTI ────────────────────────────────
+        // Questa e' la STESSA lettura che alimenta l'uscita automatica. Depositarla qui evita una
+        // terza fonte di verita' e chiude il buco del 4 agosto: il ledger locale diceva $0 mentre al
+        // venue c'erano 199,99 share, e il tetto di esposizione non le vedeva.
+        try {
+          const w = writeVenuePositions(p);
+          if (!w.written) log('snapshot posizioni NON aggiornato:', w.reason);
+        } catch (e) { log('snapshot posizioni fallito:', e && e.message ? e.message : String(e)); }
         return { ok: p.ok, reason: p.reason, positions: (p.positions || []).map((x) => ({ tokenId: String(x.asset ?? x.tokenId ?? ''), size: Number(x.size), avgPrice: Number(x.avgPrice) })) };
       },
       placeOrder: (spec) => placeManualOrder(spec),
