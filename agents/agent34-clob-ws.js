@@ -71,9 +71,17 @@ const CLOB_BASE      = 'https://clob.polymarket.com';
 //
 // Perché 90 e non 118. I conti che lo limitano sono due: 90 × 2 = 180 asset più le altre corsie (fino a
 // ~35 mercati fra abilitati, tracking, piano e permessi) restano sotto i 250 asset del budget di
-// connessione e sotto i 125 mercati di TOTAL_MARKET_CAP; e il giornale mid-history costa ~1,5 MB al
-// giorno per mercato (misurato: 71,5 MB in 17,3 h su 65 mercati), quindi si passa da ~100 a ~170 MB al
-// giorno, cioè ~2,4 GB sui 14 giorni di retention — con 59 GB liberi è una spesa reale ma piccola.
+// connessione e sotto i 125 mercati di TOTAL_MARKET_CAP.
+// Il 4 agosto la corsia del piano è passata da 20 a 40 mercati (unione mobile con isteresi), e il conto
+// regge perché la corsia NON costa il suo intero elenco: misurato quel giorno, dei 20 id in elenco solo 9
+// erano mercati che il board non copriva già, cioè ~45%. Un elenco da 40 costa quindi ~18 slot, che con i
+// 5 abilitati a mano portano il set a ~113 dei 125 di tetto — il feed misurato stava a 104. Se un giorno
+// il tetto si raggiungesse davvero, la regola di sfratto resta quella: cede il mercato reward più povero,
+// mai uno del piano, e lo sfratto finisce a registro.
+//
+// Il secondo conto è il disco: il giornale mid-history costa ~1,5 MB al giorno per mercato (misurato:
+// 71,5 MB in 17,3 h su 65 mercati), quindi si passa da ~100 a ~170 MB al giorno, cioè ~2,4 GB sui 14
+// giorni di retention — con 59 GB liberi è una spesa reale ma piccola.
 // Portarlo a 118 lascerebbe invece zero margine alle altre corsie sul tetto totale.
 const SUBSCRIPTION_CAP = 90;          // reward-board markets taken from the watchlist (× 2 tokens = ≤180 assets)
 const FEED_ASSET_BUDGET = 250;        // assets on one market-channel connection — OUR budget, not a venue limit
@@ -337,6 +345,12 @@ async function unionTrackedMarkets(into, deps = {}) {
 // o valutato meglio, e questa corsia li sottoscrive con la stessa priorità dei mercati abilitati a mano
 // — al tetto cede il posto il mercato reward più povero, mai uno del piano. Così quando l'ottimizzatore
 // riproporrà quel mercato, il suo storico sarà già caldo da ore invece che da adesso.
+//
+// L'elenco è un'UNIONE MOBILE, non la fotografia di un piano: un mercato ci resta per ore dopo l'ultima
+// volta che è stato scelto o quasi-scelto. Serve perché la graduatoria dell'ottimizzatore ondeggia più in
+// fretta di quanto si calcolino i piani — misurato il 3 agosto: due mercati usciti dall'elenco e rientrati
+// nel piano mezz'ora dopo avevano buchi di campionamento di 233 e 232 minuti. Chi legge non deve
+// sorprendersi se l'elenco contiene mercati che il piano PIÙ RECENTE non ha scelto: è voluto.
 //
 // L'elenco SCADE (lib/rewards/collector-priority.MAX_AGE_MS): se chi lo scrive muore, la corsia si
 // svuota e il raccoglitore torna al comportamento di sempre, invece di restare inchiodato ai mercati di

@@ -194,10 +194,14 @@ async function calcolaPiano({ capital, maxPerMarketUsd, onlyMarketIds = null }) 
   // sul capitale, è la lista di cosa guardare, e serve proprio nei cicli in cui non si fa niente.
   // Il piano RISTRETTO (onlyMarketIds) non la scrive: guarda solo dove siamo già, e prenderla per buona
   // congelerebbe la copertura sui mercati attuali, che è l'opposto del punto.
+  //
+  // La scrittura UNISCE, non sostituisce: quello che questo piano non sceglie più resta caldo ancora per
+  // ore. È il motivo per cui questa riga conta anche — soprattutto — nei cicli automatici: una lista
+  // scritta adesso non fa in tempo ad aiutare QUESTO ciclo, ma è quella che rende eseguibile il prossimo.
   if (!onlyMarketIds) {
     try {
       const pr = writeCollectorPriority(piano);
-      annuncia('log', `priorità del raccoglitore aggiornate: ${pr.marketIds.length} mercati`);
+      annuncia('log', `priorità del raccoglitore aggiornate: ${pr.marketIds.length} mercati (${pr.freschi} da questo piano, ${pr.trattenuti} tenuti caldi dai piani precedenti, ${pr.scaduti} lasciati raffreddare)`);
     } catch (e) { annuncia('error', 'priorità del raccoglitore non scritte', { error: e.message }); }
   }
   return piano;
