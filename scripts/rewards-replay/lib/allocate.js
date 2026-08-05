@@ -17,6 +17,17 @@
 //
 // Capital accounting: "capital committed" in a market = 2 × perSideSize (both sides must rest to score),
 // matching net.js's capitalTotal. The budget constrains Σ(2 × perSideSize) over funded markets.
+//
+// ── DUE MODI DI MISURARE LA DISTANZA DAL MID, E CHI USA QUALE (5 agosto 2026) ──────────────────────
+// `offsetCents` valuta ogni mercato a una distanza in centesimi uguale per tutti. `offsetTicks` lo
+// valuta al suo offset reale di N tick, risolto sul tick del mercato. I due coincidono su tick 0,01 e
+// divergono di un fattore dieci su tick 0,001.
+//
+// Questo modulo NON sceglie: espone entrambi e lascia `offsetTicks` assente per difetto. Tutti i
+// driver di backtest (allocate-run, sweep-run, policy-run, rewards-riskfirst, rewards-worstcase) non
+// lo passano e restano numero per numero quelli di sempre. Chi lo accende e' `planAllocation` in
+// lib/rewards/allocator.js — il pianificatore che alimenta il piazzamento vero — e la' la scelta e'
+// dichiarata per esteso, con la data e il motivo.
 
 const { reconstructTapeFillsForMarket } = require('./tape');
 const { markoutAll } = require('./markout');
@@ -33,8 +44,10 @@ function fin(x) { return typeof x === 'number' && Number.isFinite(x); }
  * The `windowHours` param is accepted for call-site compatibility but ignored (computeNet uses the span).
  */
 function perMarketNetAtSize(marketId, marketRows, tokenTrades, potByCond, cfg) {
-  const { offsetCents, sizeUsd, maxInventoryUsd, policy, minSizeByMarket = null, pairCostUsd = null } = cfg; // policy: 'hold' (default) | 'close-now'
-  const fillsRes = reconstructTapeFillsForMarket(marketRows, tokenTrades, { offsetCents, sizeUsd, maxInventoryUsd });
+  // `offsetTicks` — la distanza dal mid in TICK DI QUESTO MERCATO invece che in centesimi uguali per
+  // tutti. Assente ⇒ si usa `offsetCents` e i fill sono quelli di sempre. Vedi tape.reconstructTapeFillsForMarket.
+  const { offsetCents, offsetTicks = null, sizeUsd, maxInventoryUsd, policy, minSizeByMarket = null, pairCostUsd = null } = cfg; // policy: 'hold' (default) | 'close-now'
+  const fillsRes = reconstructTapeFillsForMarket(marketRows, tokenTrades, { offsetCents, offsetTicks, sizeUsd, maxInventoryUsd });
   const one = new Map([[marketId, marketRows]]);
   const MO = markoutAll(fillsRes.fills, one);
   // minSizeByMarket travels down to computeNet so the venue's min_incentive_size applies at EVERY size on
@@ -82,11 +95,11 @@ function perMarketNetAtSize(marketId, marketRows, tokenTrades, potByCond, cfg) {
  *            netWindow5m, netPerDay5m, net5m, fills, share, spanHours }] }
  */
 function perMarketNetCurve(marketId, marketRows, tokenTrades, potByCond, opts) {
-  const { offsetCents, maxInventoryUsd, sizeGrid, unitUsd, policy, minSizeByMarket = null, pairCostUsd = null } = opts;
+  const { offsetCents, offsetTicks = null, maxInventoryUsd, sizeGrid, unitUsd, policy, minSizeByMarket = null, pairCostUsd = null } = opts;
   const levels = [{ sizeUsd: 0, capital: 0, units: 0, grossPerDay: 0, cost5m: 0, costPerDay5m: 0, netWindow5m: 0, netPerDay5m: 0, net5m: 0, fills: 0, closed: 0, stuck: 0, nakedRefused: 0, share: 0, spanHours: null }];
   let excluded = false;
   for (const s of sizeGrid) {
-    const r = perMarketNetAtSize(marketId, marketRows, tokenTrades, potByCond, { offsetCents, sizeUsd: s, maxInventoryUsd, policy, minSizeByMarket, pairCostUsd });
+    const r = perMarketNetAtSize(marketId, marketRows, tokenTrades, potByCond, { offsetCents, offsetTicks, sizeUsd: s, maxInventoryUsd, policy, minSizeByMarket, pairCostUsd });
     if (r.excluded) { excluded = true; continue; }         // pot/depth missing → unfundable; keep only zero level
     if (r.netPerDay5m == null) continue;                   // cost UNKNOWN at this size → skip (never default to 0)
     levels.push({
@@ -96,6 +109,10 @@ function perMarketNetCurve(marketId, marketRows, tokenTrades, potByCond, opts) {
       fills: r.fills, closed: r.closed, stuck: r.stuck, nakedRefused: r.nakedRefused, noBook: r.noBook, share: r.share,
       minSizeShares: r.minSizeShares, sizePerSideShares: r.sizePerSideShares,
       belowVenueMinSize: r.belowVenueMinSize, capitalToQualifyUsd: r.capitalToQualifyUsd,
+      // Il costo della coppia con cui QUESTO livello e' stato classificato. Viaggia sul livello, non a
+      // fianco, perche' con l'offset per mercato non e' piu' una costante del piano: chi legge la riga
+      // scelta deve poter ricostruire le share con lo stesso numero che ha deciso il punteggio.
+      pairCostUsd: pairCostUsd,
     });
   }
   return { marketId, excluded, levels };
@@ -151,13 +168,56 @@ function knapsack(curves, budgetUnits) {
   return { totalNet5m, budgetUnits: B, usedUnits, marketsHeld: allocation.length, allocation };
 }
 
+/** Il tick DI QUESTO MERCATO, dalla prima riga che ne dichiara uno. null se nessuna lo dichiara — e
+ * allora l'offset in tick non e' risolvibile e si ricade sui centesimi, mai su un tick inventato. */
+function marketTick(marketRows) {
+  for (const r of marketRows) if (fin(r.tick) && r.tick > 0) return r.tick;
+  return null;
+}
+
+/**
+ * ── IL COSTO DI UNA COPPIA DI SHARE, PER QUESTO MERCATO ────────────────────────────────────────────
+ *
+ * Quotare due lati partendo da collaterale e' comprare YES a (mid − d) e NO a ((1 − mid) − d). La
+ * coppia costa:
+ *
+ *     (mid − d) + (1 − mid − d)  =  1 − 2d
+ *
+ * Il `mid` si cancella: il costo della coppia non dipende dal prezzo del mercato, solo da `d`.
+ *
+ * PERCHE' LA FORMULA RESTA VALIDA CON UN OFFSET VARIABILE. La derivazione qui sopra non ha mai usato
+ * il fatto che `d` fosse lo stesso su tutti i mercati — e' un'identita' contabile INTERNA a un
+ * mercato, fra le due gambe di quel mercato. `1 − 2d` era uno scalare di piano solo perche' lo era
+ * `d`, non perche' ci fosse qualcosa di globale nell'economia della coppia. Rendendo `d` per mercato,
+ * la stessa identita' si valuta al `d` di ciascuno: la formula non cambia, cambia dove la si applica.
+ * Il capitale di una riga continua a coprire esattamente le sue due gambe (share × p_yes + share ×
+ * p_no = share × (1 − 2d) = capitale), che e' l'invariante su cui poggia il tetto per mercato.
+ *
+ * `d` in dollari: `offsetTicks × tick` in modo tick, `offsetCents / 100` altrimenti. Tick ignoto ⇒ si
+ * ricade sui centesimi: un tick non si inventa, e il numero deve restare quello con cui i fill di
+ * QUESTO mercato sono stati ricostruiti.
+ */
+function pairCostForMarket(marketRows, { offsetCents, offsetTicks, usePairCost, pairCostUsd }) {
+  if (!usePairCost) return pairCostUsd;      // niente costo della coppia ⇒ l'aritmetica storica, invariata
+  const tick = fin(offsetTicks) && offsetTicks > 0 ? marketTick(marketRows) : null;
+  const d = tick != null ? offsetTicks * tick : offsetCents / 100;
+  if (!fin(d) || d < 0 || d >= 0.5) return pairCostUsd;   // un offset che azzera o inverte la coppia non e' un offset
+  return +(1 - 2 * d).toFixed(6);
+}
+
 /**
  * End-to-end: build curves for every market, then knapsack under a dollar budget. `unitUsd` is the capital
  * granularity (dollars of both-sides capital per knapsack unit); the per-side size step is unitUsd/2.
+ *
+ * `offsetTicks` (opzionale) valuta OGNI mercato al suo offset reale di N tick invece che a una
+ * distanza in centesimi uguale per tutti; `usePairCost` deriva il costo della coppia dallo stesso
+ * offset, per mercato. Assenti entrambi — che e' il caso di ogni driver di backtest — questa
+ * funzione produce numero per numero quelli di prima.
  * @returns { budgetUsd, unitUsd, ...knapsack result, grossWindow, cost5mWindow }
  */
 function allocateBudget(byMarket, marketTokens, tapeByToken, potByCond, opts) {
-  const { offsetCents, maxInventoryUsd, budgetUsd, unitUsd, maxPerMarketUsd, policy, minSizeByMarket = null, pairCostUsd = null } = opts;
+  const { offsetCents, offsetTicks = null, maxInventoryUsd, budgetUsd, unitUsd, maxPerMarketUsd, policy, minSizeByMarket = null, pairCostUsd = null, usePairCost = false } = opts;
+  const inTick = fin(offsetTicks) && offsetTicks > 0;
   const perSideStep = unitUsd / 2;
   const capPerMarket = Math.min(maxPerMarketUsd || budgetUsd, budgetUsd); // a single market may take up to the whole budget
   const maxLevels = Math.max(1, Math.floor(capPerMarket / unitUsd));
@@ -167,7 +227,13 @@ function allocateBudget(byMarket, marketTokens, tapeByToken, potByCond, opts) {
   for (const [marketId, rows] of byMarket.entries()) {
     const tokenId = marketTokens.get(marketId);
     const trades = (tokenId && tapeByToken.get(tokenId)) || [];
-    const c = perMarketNetCurve(marketId, rows, trades, potByCond, { offsetCents, maxInventoryUsd, sizeGrid, unitUsd, policy, minSizeByMarket, pairCostUsd });
+    // ── L'UNICO PUNTO IN CUI «L'OFFSET DI QUESTO MERCATO» ESISTE ─────────────────────────────────
+    // Qui si sa insieme il mercato e il suo tick, quindi qui — e solo qui — la distanza dal mid
+    // diventa un numero. Il costo della coppia si deriva NELLA STESSA RIGA, perche' e' la stessa
+    // distanza vista da un'altra angolazione: se i due venissero da posti diversi potrebbero
+    // scollarsi, ed e' esattamente lo scollamento che questa modifica esiste per chiudere.
+    const pc = pairCostForMarket(rows, { offsetCents, offsetTicks: inTick ? offsetTicks : null, usePairCost, pairCostUsd });
+    const c = perMarketNetCurve(marketId, rows, trades, potByCond, { offsetCents, offsetTicks, maxInventoryUsd, sizeGrid, unitUsd, policy, minSizeByMarket, pairCostUsd: pc });
     curves.push(c);
   }
   const budgetUnits = Math.floor(budgetUsd / unitUsd);
@@ -188,4 +254,4 @@ function allocateBudget(byMarket, marketTokens, tapeByToken, potByCond, opts) {
   return { budgetUsd, unitUsd, curves, grossPerDay, costPerDay5m, belowMinSize, ...res };
 }
 
-module.exports = { perMarketNetAtSize, perMarketNetCurve, knapsack, allocateBudget };
+module.exports = { perMarketNetAtSize, perMarketNetCurve, knapsack, allocateBudget, marketTick, pairCostForMarket };

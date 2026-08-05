@@ -67,9 +67,22 @@ function loadTape({ fromMs = -Infinity, toMs = Infinity } = {}) {
  * Tape-based fills for one market. Placement is a follow-the-mid maker (from the journal); fills come from
  * real prints in each 45s interval, size-respecting (partial). Returns fills in the SAME shape the markout
  * + net modules already consume, plus tradePrice/filledShares/partial/orderShares for the audit.
+ *
+ * ── DUE MODI DI DIRE «QUANTO LONTANO DAL MID» ─────────────────────────────────────────────────────
+ * `offsetCents` e' una distanza in CENTESIMI, uguale per ogni mercato. Su un mercato a tick 0,01 un
+ * centesimo E' un tick; su uno a tick 0,001 sono DIECI tick, cioe' una posizione dieci livelli piu'
+ * indietro di quella che un maker prende davvero.
+ *
+ * `offsetTicks` e' la stessa distanza espressa in TICK DEL MERCATO, e si risolve riga per riga contro
+ * il `tick` di quella riga: un tick e' 1¢ dove il tick vale 0,01 e 0,1¢ dove vale 0,001. E' il modo
+ * in cui il motore di piazzamento ragiona.
+ *
+ * Quando `offsetTicks` e' presente vince lui; altrimenti resta `offsetCents`, ed e' per questo che
+ * ogni chiamante che non lo passa — tutti i driver di backtest — produce gli stessi fill di prima.
  */
 function reconstructTapeFillsForMarket(marketRows, tokenTrades, cfg) {
-  const { offsetCents, sizeUsd, maxInventoryUsd } = cfg;
+  const { offsetCents, offsetTicks = null, sizeUsd, maxInventoryUsd } = cfg;
+  const inTick = fin(offsetTicks) && offsetTicks > 0;
   const fills = [];
   const reasons = {};
   let excluded = 0, capped = 0, placedIntervals = 0, partials = 0;
@@ -84,8 +97,11 @@ function reconstructTapeFillsForMarket(marketRows, tokenTrades, cfg) {
     const price = clampPrice(t.adjMid);
     const orderShares = sizeUsd > 0 ? sizeUsd / price : 0;
     const maxInvShares = maxInventoryUsd > 0 ? maxInventoryUsd / price : Infinity;
-    const bidPrice = snapToTick(t.adjMid - offsetCents / 100, t.tick);
-    const askPrice = snapToTick(t.adjMid + offsetCents / 100, t.tick);
+    // La distanza dal mid, in dollari. In modo «tick» si risolve sul tick DI QUESTA riga: e' l'unico
+    // punto in cui il mercato specifico entra nel prezzo, ed e' gia' garantito finito dal guard sopra.
+    const d = inTick ? offsetTicks * t.tick : offsetCents / 100;
+    const bidPrice = snapToTick(t.adjMid - d, t.tick);
+    const askPrice = snapToTick(t.adjMid + d, t.tick);
     const inBandBid = fin(t.bandLow) && fin(t.bandHigh) ? (bidPrice >= t.bandLow - 1e-9 && bidPrice <= t.bandHigh + 1e-9) : null;
     const inBandAsk = fin(t.bandLow) && fin(t.bandHigh) ? (askPrice >= t.bandLow - 1e-9 && askPrice <= t.bandHigh + 1e-9) : null;
     let remBid = orderShares, remAsk = orderShares;
