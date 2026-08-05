@@ -240,6 +240,9 @@ type EnableResp = {
   };
   writes?: string[]; note?: string; warnings?: string[];
   enabledBefore?: string[]; enabledAfter?: string[];
+  /** La proprietà manuale RILETTA dal disco dopo la scrittura, con la stessa funzione che il gate usa.
+   *  È questo — non l'esito della scrittura — che dice se agent35 si sta davvero tenendo fuori. */
+  manualModeActive?: boolean;
 };
 /** Due conditionId sono lo stesso mercato. La route normalizza a minuscolo (`marketId.toLowerCase()`),
  *  il board no: confrontarli alla lettera farebbe sparire l'anteprima proprio quando è arrivata. Regge
@@ -639,6 +642,11 @@ export default function RewardsAllocatePanel(
   // smentisce il montepremi della card il mercato NON entra, con il motivo scritto sotto la card.
   const [codaErr, setCodaErr] = useState<{ marketId: string; motivo: string } | null>(null);
   const [codaBusy, setCodaBusy] = useState<string | null>(null);
+  // I MERCATI CHE LA MESSA IN CODA HA PRESO IN GESTIONE MANUALE. Serve al riepilogo: prendere un mercato
+  // in gestione manuale è una scrittura durevole che toglie quel mercato ad agent35, e l'operatore deve
+  // leggerlo dove decide — non scoprirlo dopo. Solo in memoria di proposito: è il racconto di QUESTA
+  // sessione, e il fatto durevole vive in data/maker-manual-mode.json, che è la fonte.
+  const [codaPresiInGestione, setCodaPresiInGestione] = useState<string[]>([]);
   const inCoda = useCallback(async (marketId: string, potAtPlan?: number | null) => {
     setCodaBusy(marketId); setCodaErr(null);
     // ── UN MERCATO CHE LE REGOLE HANNO SCARTATO NON ENTRA IN CODA ──────────────────────────────
@@ -668,13 +676,69 @@ export default function RewardsAllocatePanel(
         setCodaErr({ marketId, motivo: b.error || 'il venue non conferma il montepremi mostrato dalla card' });
         return;                                   // NON entra in coda
       }
+
+      // ── PRENDERE IL MERCATO IN GESTIONE MANUALE FA PARTE DEL METTERE IN CODA ────────────────────
+      //
+      // IL PROBLEMA CHE RISOLVE. Il gate `manual-mode-inactive` è giusto e non si tocca: impedisce che
+      // agent35 e il pannello a mano scrivano sullo stesso libro. Ma l'attivazione della proprietà
+      // manuale non faceva parte di QUESTO percorso: la coda accettava il mercato, l'operatore arrivava
+      // alla conferma finale, e lì il piazzamento veniva rifiutato — con l'unica via d'uscita di lasciare
+      // il flusso, aprire l'anteprima della card, premere «2 · Conferma e aggiungi», e tornare in coda.
+      // È successo su Eric Barlow, su Ed Markey e su Dan Green: è un ostacolo sistematico, non un caso.
+      //
+      // Quindi si attiva QUI, dove il mercato entra in coda — cioè PRIMA che esista un ordine da
+      // piazzare, non al momento dell'invio. E si usa il percorso che esiste già (`/api/maker/markets/
+      // enable` con `preview:false`, `takeManual:true`), non una seconda strada verso lo stesso file:
+      // quella route scrive anche il catalogo di venue, l'uscita automatica e la allowlist, che sono le
+      // altre tre cose senza cui il piazzamento verrebbe rifiutato da un gate diverso. Attivare solo la
+      // proprietà manuale scambierebbe un rifiuto con un altro, e farebbe nascere un mercato piazzabile
+      // senza via d'uscita — il difetto documentato nella route stessa.
+      //
+      // SE FALLISCE, NON SI ENTRA IN CODA. Un mercato in coda è un mercato che l'operatore si aspetta di
+      // poter piazzare: farlo entrare senza la proprietà manuale rimanderebbe il rifiuto al punto in cui
+      // costa di più. L'errore mostrato è quello vero, non un messaggio inventato qui.
+      //
+      // GIÀ IN GESTIONE MANUALE ⇒ NON SI SCRIVE NIENTE. Nessuna riattivazione, nessuna riscrittura del
+      // catalogo, nessun effetto collaterale: si legge `summary.manualModeActive` dall'anteprima — che
+      // per costruzione non ha scritto nulla — e se è già vera si passa direttamente alla coda.
+      const giaManuale = b.summary?.manualModeActive === true;
+      if (!giaManuale) {
+        if (!takeManual) {
+          setCodaErr({ marketId, motivo: 'la modalità manuale non è attiva su questo mercato e la spunta «prendi in gestione manuale» è disattivata:'
+            + ' senza quella proprietà il piazzamento verrebbe rifiutato con manual-mode-inactive. Riattiva la spunta, oppure prendi il mercato in gestione manuale dal pannello ordini manuali.' });
+          return;                                 // NON entra in coda
+        }
+        const w = await fetch('/api/maker/markets/enable', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            marketId, preview: false, enabled: true, takeManual: true,
+            capitalUsd: rigaScelta && Number.isFinite(rigaScelta.capital) ? rigaScelta.capital : undefined,
+            potAtPlan: typeof potAtPlan === 'number' && Number.isFinite(potAtPlan) ? potAtPlan : undefined,
+            reason: 'messa in coda dalla tab Allocazione: il mercato passa in gestione manuale prima che esista un ordine',
+          }),
+        });
+        const wb = (await w.json()) as EnableResp & { gate?: string; error?: string; manualModeActive?: boolean; note?: string };
+        // LA VERIFICA È SUL FATTO RILETTO, non sull'esito della scrittura: la route rilegge il flag con la
+        // stessa funzione che il gate userà, e lo riporta in `manualModeActive`. Un `ok:true` senza quel
+        // fatto vero non basta per far entrare un mercato in coda.
+        const attiva = wb.ok === true && (wb.manualModeActive === true || wb.summary?.manualModeActive === true);
+        if (!attiva) {
+          setCodaErr({ marketId, motivo: `non è stato possibile prendere questo mercato in gestione manuale`
+            + `${wb.gate ? ` (${wb.gate})` : ''}: ${wb.error || wb.note || 'la rilettura non vede la modalità manuale attiva'}.`
+            + ' Il mercato NON entra in coda: senza la gestione manuale agent35 può ancora scrivere su questo libro,'
+            + ' e il piazzamento verrebbe rifiutato comunque.' });
+          return;                                 // NON entra in coda
+        }
+        setCodaPresiInGestione((s) => (s.includes(marketId.toLowerCase()) ? s : [...s, marketId.toLowerCase()]));
+      }
+
       // Qualunque altro esito non blocca l'ingresso: la coda non piazza, e gli altri gate (banda,
       // size, kill, cap) restano dove sono — al momento della conferma, dove contano davvero.
       setCoda((q) => mettiInCoda({ coda: q, marketId }));
     } catch (e) {
       setCodaErr({ marketId, motivo: `controllo del montepremi non riuscito: ${(e as Error).message}. Il mercato non entra in coda.` });
     } finally { setCodaBusy(null); }
-  }, [takeManual]);
+  }, [takeManual, righePerId, offsets]);
   const avanza = useCallback((come: 'piazzato' | 'saltato') => {
     setCoda((q) => {
       const testa = q[0];
@@ -786,7 +850,11 @@ export default function RewardsAllocatePanel(
       <div className="alloc-basis" data-alloc-basis>
         <div className="alloc-basis-h">⚠ Un piano, non un ordine — cifre lorde, campione piccolo</div>
         <ul className="alloc-basis-ul">
-          <li title="Nessun ordine viene creato, firmato o inviato guardando o usando questa pagina, incluso il controllo dell offset. Non viene mosso alcun capitale."><b>Non piazza nulla.</b> Nemmeno il controllo dell’offset.</li>
+          <li title="Nessun ordine viene creato, firmato o inviato guardando o usando questa pagina, incluso il controllo dell offset. Non viene mosso alcun capitale. Mettere in coda scrive la configurazione del mercato (catalogo, uscita automatica, allowlist, gestione manuale) ma non crea nessun ordine.">
+            <b>Non piazza nulla.</b> Nemmeno il controllo dell’offset. <b>Mettere in coda</b> però
+            <b> scrive</b>: registra il mercato e lo prende in <b>gestione manuale</b> (agent35 si tiene fuori
+            da quel libro). Nessun ordine parte comunque senza la tua conferma nel pannello ordine.
+          </li>
           <li title="L adverse selection e misurata a parte: il netto e — dove non e stato osservato un fill reale. Non sommare il lordo come rendimento."><b>Cifre LORDE.</b> Il netto è «—» dove non c’è un fill osservato.</li>
           <li data-alloc-disclaimer-counts title="Il comportamento di riempimento per-mercato resta statisticamente esile.">
             <b>Campione piccolo:</b> copertura ~{plan && plan.coverage.truePct != null ? plan.coverage.truePct : '20'}%
@@ -1043,15 +1111,19 @@ export default function RewardsAllocatePanel(
                       {addBusy === `preview:${c.marketId}` ? '…' : '1 · Anteprima'}
                     </button>
                     {/* ── IN CODA, NON IN ORDINE ────────────────────────────────────────────────
-                        Mettere in coda non piazza e non abilita niente: costruisce un elenco di cose
-                        da confermare una per una. È deliberatamente separato da «1 · Anteprima»,
-                        che fa un'altra cosa (rende il mercato ammissibile), e dal piazzamento in
+                        Mettere in coda NON PIAZZA: costruisce un elenco di cose da confermare una per
+                        una. Ma da adesso ABILITA — cioè registra il mercato, accende l'uscita
+                        automatica, lo mette in allowlist e lo prende in gestione manuale — perché
+                        senza quelle scritture il piazzamento veniva rifiutato alla conferma finale e
+                        l'operatore doveva uscire dal flusso per farle a mano. Resta separato da
+                        «1 · Anteprima» / «2 · Conferma e aggiungi», che continuano a funzionare per
+                        chi vuole abilitare un mercato senza metterlo in coda, e dal piazzamento in
                         blocco, che azzera e rifà tutto il piano. */}
                     {puoAndareInCoda({ righe: righePerId, marketId: c.marketId }) && (
                       <button className="alloc-btn" style={{ fontSize: 12, marginLeft: 6 }}
                         data-alloc-queue-add={c.marketId}
                         disabled={codaBusy != null || coda.some((x) => x.toLowerCase() === c.marketId.toLowerCase())}
-                        title="Aggiunge questo mercato alla coda di conferme. Non piazza nulla adesso: controlla solo che il venue confermi il montepremi della card."
+                        title="Aggiunge questo mercato alla coda di conferme. NON piazza nulla adesso. Se il mercato non è ancora in gestione manuale lo prende in gestione ora (agent35 si terrà fuori da quel libro), perché senza quella proprietà il piazzamento verrebbe rifiutato alla conferma."
                         onClick={() => inCoda(c.marketId, c.pot)}>
                         {codaBusy === c.marketId ? 'verifico…'
                           : coda.some((x) => x.toLowerCase() === c.marketId.toLowerCase()) ? '✓ in coda' : '+ Metti in coda'}
@@ -1177,6 +1249,21 @@ export default function RewardsAllocatePanel(
                             ))}
                             <div className="alloc-sub" style={{ marginTop: 4 }}>
                               capitale del piano su questo mercato <b>{money(testaRiga.capital)}</b>
+                            </div>
+                            {/* ── COSA FA QUESTA OPERAZIONE OLTRE A PIAZZARE ─────────────────────────
+                                Prendere un mercato in gestione manuale è una scrittura durevole che lo
+                                toglie ad agent35: da quel momento il motore automatico non piazza e non
+                                cancella più su questo libro, e resta così finché qualcuno non lo
+                                restituisce. Non è un dettaglio tecnico e non deve essere un effetto
+                                collaterale invisibile — si legge qui, dove la decisione si prende. */}
+                            <div className="alloc-sub" style={{ marginTop: 6 }}
+                              data-alloc-queue-manual={codaPresiInGestione.includes(testaId.toLowerCase()) ? 'preso' : 'gia-attiva'}>
+                              {codaPresiInGestione.includes(testaId.toLowerCase())
+                                ? <>⚙ <b>Questo mercato è in GESTIONE MANUALE</b>: la messa in coda l’ha preso in
+                                  gestione, quindi agent35 non piazza né cancella più su questo libro. Resta così
+                                  finché non lo restituisci al motore dal pannello ordini manuali.</>
+                                : <>⚙ <b>Questo mercato è già in GESTIONE MANUALE</b>: agent35 si tiene fuori da
+                                  questo libro. La messa in coda non ha cambiato niente.</>}
                             </div>
                           </div>
                         ) : (
@@ -1771,7 +1858,9 @@ export default function RewardsAllocatePanel(
                       </li>
                       <li>
                         vengono <b>abilitati i {bulkPreview.reset.accensione?.markets?.length ?? 0} mercati</b> della
-                        proposta, e solo quelli
+                        proposta, e solo quelli — e ognuno viene <b>preso in gestione manuale</b>: da quel
+                        momento agent35 non piazza né cancella su quei libri. Se la gestione manuale non
+                        riesce su un mercato, la sequenza si ferma e <b>nessun ordine viene piazzato</b>
                       </li>
                       <li>vengono piazzati gli ordini elencati qui sotto</li>
                     </ol>

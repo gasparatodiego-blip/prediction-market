@@ -281,17 +281,58 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, gate: 'enable-write-failed', marketId: id, error: on.error, catalog: cat, autoClose: ac, summary }, { status: 409 });
     }
 
+    // ── LA PROPRIETÀ MANUALE SI SCRIVE, E POI SI RILEGGE ──────────────────────────────────────────
+    //
+    // PERCHÉ RILEGGERE. `setManualMode` restituisce `ok:true` appena `writeStoreAtomic` non ha lanciato;
+    // non torna a controllare che il file dica quello che doveva dire. Per un flag che decide se agent35
+    // può scrivere sullo stesso libro su cui stiamo per piazzare, «ho provato a scriverlo» non è
+    // «è attivo»: la verifica è la STESSA funzione che il gate userà (`isManualMarket`), letta dal disco.
+    //
+    // E PERCHÉ È UN FERMO DURO. Fino a qui il fallimento della scrittura tornava dentro `manual` e la
+    // risposta restava `ok:true`: il mercato risultava abilitato, il pannello lo mostrava pronto, e il
+    // rifiuto arrivava molto dopo — al piazzamento, come `manual-mode-inactive`. Stessa forma del fermo
+    // sull'uscita automatica qui sopra, e stessa ragione: un mercato che sembra piazzabile e non lo è
+    // costa più di un mercato in meno.
     let manual = null;
+    let manualOra = manualBefore.manual === true;
     if (takeManual && !manualBefore.manual) {
-      manual = setManualMode({
-        marketId: id, manual: true, by: BY,
-        reason: reason || 'mercato aggiunto a mano dalla tab Allocazione — il motore automatico si tiene fuori',
-      });
+      try {
+        manual = setManualMode({
+          marketId: id, manual: true, by: BY,
+          reason: reason || 'mercato aggiunto a mano dalla tab Allocazione — il motore automatico si tiene fuori',
+        });
+      } catch (e) {
+        manual = { ok: false, error: (e as Error).message, marketId: id, manual: false };
+      }
+      const dopo = isManualMarket(id);
+      manualOra = dopo.manual === true;
+      if (!manual.ok || !manualOra) {
+        return NextResponse.json({
+          ok: false, gate: 'manual-mode-write-failed', marketId: id,
+          error: manual.error || dopo.reason
+            || 'la modalità manuale è stata scritta ma la rilettura non la vede attiva',
+          catalog: cat, autoClose: ac, enable: on, manual,
+          manualModeActive: manualOra,
+          summary: { ...summary, manualModeActive: manualOra },
+          note: 'Il mercato NON è pronto: la modalità manuale non risulta attiva, quindi agent35 può ancora'
+            + ' scrivere su questo libro e il piazzamento verrebbe rifiutato con manual-mode-inactive.'
+            + ' Catalogo, uscita automatica e allowlist sono già scritti — restano innocui su un mercato'
+            + ' senza ordini — ma nessun ordine va piazzato qui finché la proprietà manuale non è attiva.'
+            + ' Controlla data/maker-manual-mode.json e i permessi di scrittura su data/.',
+          warnings,
+        }, { status: 409 });
+      }
     }
 
     const cfgAfter = readAutoRepriceConfig();
     return NextResponse.json({
-      ok: true, preview: false, action: 'enable', marketId: id, summary,
+      ok: true, preview: false, action: 'enable', marketId: id,
+      // `manualModeActive` è il fatto RILETTO dal disco, non l'esito della scrittura: è quello che il
+      // chiamante deve poter controllare prima di far partire un piazzamento. `manual:null` significa
+      // «non c'era niente da scrivere» (era già attiva, o non è stata chiesta), e in quel caso questo
+      // campo dice comunque com'è adesso.
+      summary: { ...summary, manualModeActive: manualOra },
+      manualModeActive: manualOra,
       catalog: cat, enable: on, manual,
       enabledBefore, enabledAfter: cfgAfter.enabledMarketIds || [],
       autoClose: ac,
