@@ -164,6 +164,10 @@ function logCycle(res) {
     log(`${a.trigger === 'expiry-refresh' ? 'REFRESH' : 'REPRICE'} ${a.ok ? 'ok' : 'FAILED'} · ${a.trigger} · order ${a.orderId}`
       + ` · ${a.book.toUpperCase()} ${a.fromPrice} → ${a.toPrice} (size ${a.size})`
       + `${a.secondsToExpiry != null ? ` · ${a.secondsToExpiry}s to expiry` : ''}`
+      // L'ESENZIONE DAL TETTO, DETTA DOVE SI GUARDA. Il tetto orario ferma i riprezzi discrezionali; un
+      // rinnovo di scadenza passa comunque, altrimenti il tetto garantirebbe la morte dell'ordine invece
+      // di proteggerlo. Se passa in esenzione, la riga lo dice — con i numeri su cui e' stato deciso.
+      + `${a.capExemptRenewal ? ` · ESENTE DAL TETTO ORARIO (${a.repricesThisHour}/${a.maxPerHour} nell'ultima ora): un rinnovo bloccato e' una scadenza garantita` : ''}`
       + `${a.sent ? ' · SENT to venue' : ' · not sent (dry-run)'}`
       + `${a.ok ? '' : ` · gate=${a.gate} ${a.reason || ''}`}`);
   }
