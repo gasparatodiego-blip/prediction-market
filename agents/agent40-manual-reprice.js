@@ -175,7 +175,25 @@ function logCycle(res) {
   for (const s of skips) if (s.gate !== 'awaiting-confirmation') log(`skip · order ${s.orderId} · ${s.gate}: ${s.reason}`);
   if (acted.length === 0 && skips.length === 0 && totals.considered > 0) {
     // The steady state the whole feature exists to produce: orders resting, untouched, in band.
-    log(`holding ${totals.held}/${totals.considered} order(s) in band — nothing touched`);
+    //
+    // CON I NUMERI. Fino al 5 agosto 2026 questa riga era «holding 2/2 in band» e basta: a posteriori
+    // non si poteva dire quale fosse il mid, quanta distanza avesse l'ordine, ne' quanto margine
+    // restasse prima del bordo premiante — ed e' precisamente il buco che ha reso impossibile
+    // verificare da soli se gli ordini su TX-15 stessero maturando premi. I valori arrivano da
+    // `m.holds`, la fotografia che la decisione stessa ha lasciato: non sono ricalcolati qui.
+    //
+    // Resta UNA riga per ciclo (~5s). Le gambe oltre la quarta diventano un contatore, perche' con
+    // molti mercati aperti la riga diventerebbe illeggibile invece che informativa.
+    const holds = res.markets.flatMap((m) => m.holds || []);
+    const c2 = (v) => (Number.isFinite(v) ? v.toFixed(2) : '?');
+    const dettaglio = holds.slice(0, 4).map((h) => `${h.book.toUpperCase()} ${h.price}`
+      + ` mid ${Number.isFinite(h.scoringMid) ? h.scoringMid.toFixed(4) : '?'}`
+      + ` d ${c2(h.distanceC)}¢/±${c2(h.bandRadiusC)}¢ margine ${c2(h.marginC)}¢`).join(' · ');
+    const eta = holds.map((h) => h.midAgeSec).filter(Number.isFinite);
+    log(`holding ${totals.held}/${totals.considered} order(s) in band — nothing touched`
+      + (dettaglio ? ` · ${dettaglio}` : '')
+      + (holds.length > 4 ? ` · +${holds.length - 4} altre` : '')
+      + (eta.length ? ` · mid ${Math.max(...eta)}s` : ''));
   }
 }
 
