@@ -114,6 +114,12 @@ const breaches = new Map();
 // data/, che fonde per orderId — quindi un riavvio non fa riapparire un avviso già dato.
 const residuiSegnalati = new Set();
 
+// GLI ORDINI PER CUI IL CONFLITTO INSEGUIMENTO/MAI-PRIMO È GIÀ STATO DICHIARATO. Stesso posto e stessa
+// ragione: la soppressione è uno stato che dura finché il book non cambia, e nel registro durevole ci
+// vanno le transizioni. Un riavvio lo azzera e va bene — la riga uscirà una volta in più, non una in
+// meno, che è il verso giusto per un meccanismo che si sta imparando a verificare.
+const conflittiSoppressi = new Set();
+
 // Lo stato per mercato del motore di tracking, portato fra un ciclo e l'altro. In memoria di proposito,
 // come `breaches`: un riavvio lo azzera, ed e' corretto — gli ordini a riposo portano una scadenza GTD
 // venue-enforced, quindi un processo che riparte senza memoria non lascia nulla di eterno dietro di se.
@@ -192,7 +198,13 @@ function logCycle(res) {
     const c2 = (v) => (Number.isFinite(v) ? v.toFixed(2) : '?');
     const dettaglio = holds.slice(0, 4).map((h) => `${h.book.toUpperCase()} ${h.price}`
       + ` mid ${Number.isFinite(h.scoringMid) ? h.scoringMid.toFixed(4) : '?'}`
-      + ` d ${c2(h.distanceC)}¢/±${c2(h.bandRadiusC)}¢ margine ${c2(h.marginC)}¢`).join(' · ');
+      + ` d ${c2(h.distanceC)}¢/±${c2(h.bandRadiusC)}¢ margine ${c2(h.marginC)}¢`
+      // PERCHE' QUESTA GAMBA NON SI MUOVE, quando la ragione e' il conflitto fra inseguimento e «mai
+      // primi». Nel registro durevole la transizione ha una riga sua; qui il numero c'e' a ogni ciclo,
+      // perche' chi guarda il processo girare non deve dover cercare altrove.
+      + (h.inseguimentoSoppresso
+        ? ` · INSEGUIMENTO SOPPRESSO: chiedeva ${h.inseguimentoPrezzo} (${c2(h.inseguimentoDistanzaC)}¢), «mai primi» impone ${h.maiPrimoPrezzo} (${c2(h.maiPrimoDistanzaC)}¢, dietro ${h.bestOther}) — piu' vicino al mid, quindi meglio`
+        : '')).join(' · ');
     const eta = holds.map((h) => h.midAgeSec).filter(Number.isFinite);
     log(`holding ${totals.held}/${totals.considered} order(s) in band — nothing touched`
       + (dettaglio ? ` · ${dettaglio}` : '')
@@ -421,6 +433,7 @@ async function cycle() {
     config: loadAutoRepriceTuning(),
     breaches,
     residuiSegnalati,
+    conflittiSoppressi,
     link,
   });
   logCycle(res);
