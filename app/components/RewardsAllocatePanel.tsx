@@ -641,6 +641,20 @@ export default function RewardsAllocatePanel(
   const [codaBusy, setCodaBusy] = useState<string | null>(null);
   const inCoda = useCallback(async (marketId: string, potAtPlan?: number | null) => {
     setCodaBusy(marketId); setCodaErr(null);
+    // ── UN MERCATO CHE LE REGOLE HANNO SCARTATO NON ENTRA IN CODA ──────────────────────────────
+    // `gambeDiUnaRiga` può rifiutare una riga (incrocia il libro, fuori banda sul libro vivo, sarebbe
+    // primo sul libro). Senza questo controllo il mercato entrava lo stesso: `targetFromPlanRow`
+    // restituisce `pairLegs: null`, il pannello ordine si apriva e ricavava i prezzi dal MID invece
+    // che dal piano — cioè non spariva con una spiegazione, cambiava prezzi in silenzio, che è peggio.
+    const rigaScelta = righePerId.get(marketId.toLowerCase());
+    if (rigaScelta) {
+      const gg = gambeDiUnaRiga(rigaScelta, offsets[marketId] ?? rigaScelta.computedDefaultOffsetTicks);
+      if (gg.scarto) {
+        setCodaErr({ marketId, motivo: `${gg.scarto.motivo} — ${gg.scarto.dettaglio}` });
+        setCodaBusy(null);
+        return;
+      }
+    }
     try {
       const r = await fetch('/api/maker/markets/enable', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1685,8 +1699,14 @@ export default function RewardsAllocatePanel(
                   che sul libro YES è l’ask) · capitale totale{' '}
                   <b>{money(bulkRows.reduce((s, r) => s + r.price * r.size, 0))}</b>
                   {bulk.scartate.length > 0 && (
-                    <> · <b>{bulk.scartate.length}</b> {bulk.scartate.length === 1 ? 'mercato escluso' : 'mercati esclusi'}:{' '}
-                      {bulk.scartate.map((x) => `${x.marketId.slice(0, 10)}… ${x.motivo}`).join(', ')}</>
+                    /* IL CODICE NON BASTA: `sarebbe-primo-sul-libro` dice cosa, non perché. Un mercato
+                       escluso senza spiegazione è la stessa cosa di un mercato sparito. */
+                    <> · <b>{bulk.scartate.length}</b> {bulk.scartate.length === 1 ? 'mercato escluso' : 'mercati esclusi'}:
+                      {bulk.scartate.map((x) => (
+                        <div key={x.marketId} className="alloc-scartato" data-alloc-scartato={x.motivo}>
+                          <b>{x.marketId.slice(0, 10)}… {x.motivo}</b>{x.dettaglio ? <> — {x.dettaglio}</> : null}
+                        </div>
+                      ))}</>
                   )}
                   {balanceNum != null && <> su un saldo reale di <b>{money(balanceNum)}</b></>}
                 </div>
@@ -1861,6 +1881,7 @@ const CSS = `
   font-family: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer; touch-action: manipulation; }
 .alloc-btn:hover { border-color: var(--ex-gold); color: var(--ex-gold); }
 .alloc-btn:disabled { opacity: .45; cursor: not-allowed; }
+.alloc-scartato { margin-top: 4px; font-size: 11.5px; color: var(--ex-txt-2); overflow-wrap: anywhere; }
 .alloc-note { border-left: 2px solid var(--ex-gold); padding: 8px 11px; margin: 10px 0;
   background: var(--ex-gold-bg); border-radius: 0 6px 6px 0; font-size: 12px; line-height: 1.55;
   color: var(--ex-txt-2); }

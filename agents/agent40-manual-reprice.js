@@ -367,8 +367,14 @@ async function cycle() {
     listOrders: ({ marketId }) => listManualOrders({ marketId }),
     resolveRules: (marketId) => resolveMarketRules(marketId),
     replaceOrder: (spec) => replaceManualOrder(spec),
-    // Used ONLY by the reconnect-after-blackout path. It goes through the CANCEL-ONLY adapter (address-only
-    // signer, structurally cannot place), so the recovery move can stop orders and can never start one.
+    // ── LA PROFONDITÀ, PER SAPERE SE SIAMO DIVENTATI I PRIMI ────────────────────────────────────
+    // Senza questa riga il trigger «top-of-book» non potrebbe mai scattare: `decideReprice` lo salta
+    // in silenzio quando `resolveDepth` non è una funzione. È la classe di difetto che
+    // scripts/dipendenze-scollegate.js esiste per impedire — una decisione scritta e mai raggiunta.
+    resolveDepth: (marketId) => resolveMarketDepth(marketId),
+    // Used ONLY by the reconnect-after-blackout path AND by the top-of-book cancel. It goes through the
+    // CANCEL-ONLY adapter (address-only signer, structurally cannot place), so both can stop orders and
+    // neither can ever start one.
     cancelOrder: (spec) => cancelManualOrder(spec, 'auto-reprice-band-exit'),
     // TOGLIERE UN MERCATO CHIUSO DALLA ALLOWLIST. Gemella di `disableTracking` qui sotto, sulla stessa
     // condizione e per lo stesso motivo: il motore decide QUANDO (solo a mercato risolto e a libro gia'
