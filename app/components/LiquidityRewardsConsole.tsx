@@ -236,6 +236,12 @@ interface WalletResp {
   ok: boolean; at: string; error: string | null; address: string | null;
   chain: { readable: boolean; error: string | null; balanceUsd: number | null; minUsefulUsd: number; funded: boolean; approvals: WalletApproval[]; approvalsOk: boolean } | null;
   fundingApproved: boolean; placement: string; ready: boolean;
+  // Lo snapshot delle posizioni al venue: il gate lo legge prima di ogni ordine e rifiuta se non è
+  // leggibile. Opzionale nel tipo perché una risposta d'errore della rotta non lo porta.
+  venuePositions?: {
+    readable: boolean; ageMs: number | null; ageSec: number | null; maxAgeSec: number;
+    count: number; reason: string | null; writer: string;
+  } | null;
   blockedBy: 'operatore' | 'sistema' | null; todo: WalletTodo[];
 }
 
@@ -1025,6 +1031,35 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
                   </span>
                   <span className="ex-stat-s">MANUAL_ORDER_PLACEMENT</span>
                 </div>
+                {/* ── LE POSIZIONI APERTE AL VENUE ────────────────────────────────────────────────
+                    Il gate `limit-venue-positions-unreadable` le pretende fresche prima di OGNI
+                    ordine, e finora questo pannello non le nominava: si poteva leggere «PRONTO» qui
+                    e vedersi rifiutare l'ordine un secondo dopo. L'unico modo di accorgersene era
+                    provare a piazzare — che è il momento peggiore per scoprire una cosa del genere.
+                    Chi scrive lo snapshot è dichiarato: senza quel nome, «non leggibile» non dice
+                    dove andare a guardare. */}
+                {wal.venuePositions && (
+                  <div className="ex-stat">
+                    <span className="ex-stat-k">Posizioni al venue</span>
+                    <span className={`ex-stat-v ${wal.venuePositions.readable ? 'ex-up' : 'ex-dn'}`}
+                      data-lrc-wallet-positions={wal.venuePositions.readable ? '1' : '0'}>
+                      {wal.venuePositions.readable
+                        ? `${wal.venuePositions.count} aperte`
+                        : 'NON LEGGIBILI'}
+                    </span>
+                    <span className="ex-stat-s">
+                      {wal.venuePositions.ageSec == null
+                        ? `mai scritte · le scrive ${wal.venuePositions.writer}`
+                        : `lette ${wal.venuePositions.ageSec}s fa · scadono a ${wal.venuePositions.maxAgeSec}s`}
+                    </span>
+                    {!wal.venuePositions.readable && (
+                      <p className="ex-why">
+                        {wal.venuePositions.reason} — il gate rifiuterà ogni ordine finché non torna
+                        leggibile. Lo scrive <b>{wal.venuePositions.writer}</b>.
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* IL DETTAGLIO PER CONTRATTO: quale exchange, quale tipo di autorizzazione. Serve per

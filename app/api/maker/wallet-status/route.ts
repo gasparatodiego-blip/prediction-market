@@ -1,5 +1,10 @@
 import { NextResponse } from 'next/server';
 import { resolveFunder, venueAccountAddress } from '@/lib/venues/polymarket-clob-maker/funder';
+// LO SNAPSHOT DELLE POSIZIONI È UN INTERRUTTORE COME GLI ALTRI, e finora non compariva qui.
+// `lib/safety/risk-limits.js` rifiuta OGNI piazzamento quando non è leggibile — quindi questa pagina
+// poteva dire «PRONTO» mentre ogni ordine veniva respinto, e l'unico modo di scoprirlo era provare a
+// piazzare. Il 5 agosto 2026 è successo esattamente questo.
+import { readVenuePositions, MAX_AGE_MS } from '@/lib/safety/venue-positions-snapshot';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -119,15 +124,39 @@ export async function GET() {
     todo.push({ who: 'sistema', what: 'MANUAL_ORDER_PLACEMENT e\' su dry-run: gli ordini vengono costruiti, firmati e validati, poi scartati', how: 'passare a «send» e\' l\'ultimo interruttore, e va acceso di proposito' });
   }
 
+  // ── LE POSIZIONI APERTE AL VENUE, LETTE COME LE LEGGE IL GATE ──────────────────────────────────
+  // Stessa funzione, stesso file, stessa soglia: se qui risulta leggibile e il gate la rifiuta, allora
+  // il difetto è nel gate — non in due letture che divergono.
+  const snap = readVenuePositions();
+  if (!snap.readable) {
+    todo.push({
+      who: 'sistema',
+      what: `posizioni aperte al venue NON leggibili (${snap.reason}) — il gate limit-venue-positions-unreadable rifiutera' ogni ordine`,
+      how: 'le scrive agent40-manual-reprice ogni 60s: se il file non si aggiorna, quel processo non sta girando o non riesce a leggere il venue',
+    });
+  }
+
   return NextResponse.json({
     ok: true, at, error: null,
     address, rpc: rpc.replace(/\/\/([^@]*@)?/, '//'),
     chain: { readable: chainError == null, error: chainError, balanceUsd, minUsefulUsd: MIN_USEFUL_USD, funded, approvals, approvalsOk },
     fundingApproved,
     placement,
+    // Lo stato dello snapshot, con la sua eta' e la soglia contro cui viene giudicata: cosi' «non
+    // leggibile» si distingue da «vecchio di 200 secondi», che hanno cause diverse.
+    venuePositions: {
+      readable: snap.readable,
+      ageMs: snap.ageMs,
+      ageSec: snap.ageMs == null ? null : Math.round(snap.ageMs / 1000),
+      maxAgeSec: Math.round(MAX_AGE_MS / 1000),
+      count: snap.positions.length,
+      reason: snap.reason,
+      writer: 'agent40-manual-reprice',
+    },
     // PRONTO significa: nulla piu' da fare, ne' all'operatore ne' al sistema. Il pannello non dice
     // «pronto» finche' anche un solo interruttore manca — mezza verita' qui costa un ordine rifiutato.
-    ready: funded && approvalsOk && fundingApproved && placement === 'send',
+    // LO SNAPSHOT E' UNO DI QUELLI: senza, il gate rifiuta, quindi «pronto» sarebbe falso.
+    ready: funded && approvalsOk && fundingApproved && placement === 'send' && snap.readable,
     blockedBy: todo.length ? todo[0].who : null,
     todo,
   }, { headers: { 'Cache-Control': 'no-store' } });

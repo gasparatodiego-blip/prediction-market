@@ -173,9 +173,15 @@ function logCycle(res) {
 // a market handed back to the engine, and none of those should stop the ledger from being told the truth.
 // This places nothing and cancels nothing — it reads the venue and writes resolutions to our own ledger —
 // so a killed system is exactly when it is most worth running.
+// ── RESTITUISCE SE HA GIRATO IN QUESTO GIRO ───────────────────────────────────────────────────────
+// Serve a chi deve girare SUBITO DOPO. Prima quel «subito dopo» si deduceva da
+// `Date.now() - lastReconcileAt < 1000`, cioè si INDOVINAVA guardando l'orologio: un proxy che regge
+// solo finché la riconciliazione dura meno di un secondo. Misurato il 5 agosto 2026: quando ha
+// davvero lavoro la sola prima chiamata al venue impiega 3948 ms. Restituire il fatto invece di
+// dedurlo dal tempo toglie la dipendenza dalla latenza.
 async function reconcileTask() {
   const now = Date.now();
-  if (now - lastReconcileAt < RECONCILE_EVERY_MS) return;
+  if (now - lastReconcileAt < RECONCILE_EVERY_MS) return false;
   lastReconcileAt = now;
   try {
     const r = await reconcileManualLane({ now });
@@ -193,6 +199,7 @@ async function reconcileTask() {
   } catch (e) {
     log('reconcile failed:', e && e.message ? e.message : String(e));
   }
+  return true;
 }
 
 // The closer shares the reconciliation's throttle: both only learn anything by asking the venue, and a
@@ -232,9 +239,45 @@ async function leggiPosizioniVenue() {
   return p;
 }
 
+// ── LO SNAPSHOT HA IL SUO OROLOGIO, E NON LO PRENDE IN PRESTITO DA NESSUNO ────────────────────────
+// Il compito era già «autonomo» nel nome e nel commento, ma nel ciclo veniva chiamato dietro
+// `if (Date.now() - lastReconcileAt < 1000)` — la condizione della riga sotto, copiata insieme alla
+// riga. Il commento diceva «senza condizioni» e il codice ne aveva una.
+//
+// La condizione regge solo finché la riconciliazione dura meno di un secondo, e lei dura poco SOLO nel
+// caso in cui non ha niente da fare: `reconcileManualLane` esce prima di toccare la rete quando non ci
+// sono ordini irrisolti. Appena ce n'è uno — cioè appena si comincia a piazzare davvero — fa tre
+// chiamate al venue in fila. Misurata il 5 agosto 2026: la prima da sola, 3948 ms.
+//
+// Quindi l'effetto non era «ogni tanto salta»: era che lo snapshot smetteva di essere scritto ESATTAMENTE
+// quando si inizia a operare, e dopo 180 secondi il gate di esposizione rifiutava ogni piazzamento. Un
+// guasto che non si può incontrare provando, solo usando.
+//
+// Ora la cadenza è sua: 60 secondi, un terzo della scadenza. E se una lettura fallisce si riprova dopo
+// 15 invece di aspettarne altri 60 — dentro i 180 secondi di budget ci stanno una decina di tentativi
+// invece di due. Fallire non è la stessa cosa che rinunciare.
+const SNAPSHOT_EVERY_MS = 60_000;
+const SNAPSHOT_RETRY_MS = 15_000;
+let lastSnapshotAt = 0;
+let ultimoSnapshotOk = false;
+
 /** Il compito autonomo: aggiorna lo snapshot comunque, anche senza un solo mercato con uscita accesa. */
 async function snapshotPosizioniTask() {
-  await leggiPosizioniVenue();
+  const now = Date.now();
+  if (now - lastSnapshotAt < (ultimoSnapshotOk ? SNAPSHOT_EVERY_MS : SNAPSHOT_RETRY_MS)) {
+    return { girato: false };
+  }
+  lastSnapshotAt = now;
+  const p = await leggiPosizioniVenue();
+  const ok = !!(p && p.ok);
+  // Un fallimento si dice UNA volta, non a ogni giro: un log che si ripete ogni minuto seppellisce la
+  // riga che conta. Ma il passaggio da «va» a «non va» e viceversa si dice sempre.
+  if (ok !== ultimoSnapshotOk) {
+    log(ok ? 'snapshot posizioni: lettura del venue tornata a funzionare'
+      : `snapshot posizioni: lettura del venue NON riuscita (${(p && p.reason) || 'motivo ignoto'}) — lo snapshot invecchia, e oltre 180s ogni piazzamento verrà rifiutato`);
+  }
+  ultimoSnapshotOk = ok;
+  return { girato: true, ok };
 }
 
 async function closeTask() {
@@ -493,14 +536,20 @@ async function main() {
     catch (e) { log('cycle failed:', e && e.message ? e.message : String(e)); }
     // The reconciliation runs on its OWN throttle and its OWN try/catch: a reprice cycle that fails must
     // not stop the ledger being reconciled, and vice versa.
-    try { await reconcileTask(); }
+    // `riconciliato` è un FATTO restituito dalla riconciliazione, non un'ipotesi dedotta dall'orologio.
+    let riconciliato = false;
+    try { riconciliato = await reconcileTask(); }
     catch (e) { log('reconcile task failed:', e && e.message ? e.message : String(e)); }
-    // Lo snapshot delle posizioni PRIMA della chiusura automatica, e senza condizioni: chi calcola i
-    // tetti di esposizione lo legge, e se scade oltre 180s ogni piazzamento viene rifiutato. Non deve
-    // dipendere dal fatto che esista almeno un mercato con l'uscita accesa.
-    try { if (Date.now() - lastReconcileAt < 1000) await snapshotPosizioniTask(); }
+    // Lo snapshot delle posizioni SENZA CONDIZIONI, come dice da sempre il commento qui accanto: chi
+    // calcola i tetti di esposizione lo legge, e se scade oltre 180s ogni piazzamento viene rifiutato.
+    // Ha il suo throttle (60s), quindi chiamarlo a ogni giro non moltiplica le chiamate al venue.
+    try { await snapshotPosizioniTask(); }
     catch (e) { log('snapshot posizioni task failed:', e && e.message ? e.message : String(e)); }
-    try { if (Date.now() - lastReconcileAt < 1000) await closeTask(); }
+    // La chiusura automatica gira DOPO una riconciliazione, e questo resta: una posizione non si copre
+    // prima di aver osservato il fill che l'ha creata. Ma «dopo una riconciliazione» ora si chiede a
+    // lei, invece di dedurlo dal tempo trascorso — che è ciò che la faceva saltare proprio nei giri in
+    // cui la riconciliazione aveva davvero lavoro da fare, cioè quando serviva di più.
+    try { if (riconciliato) await closeTask(); }
     catch (e) { log('close task failed:', e && e.message ? e.message : String(e)); }
 
     finally { heartbeat(); }
