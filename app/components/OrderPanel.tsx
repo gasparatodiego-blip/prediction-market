@@ -41,6 +41,10 @@ import { statoBook } from '@/lib/maker/stato-book';
 // vivono in un modulo puro, esercitato da un test: dentro il JSX sarebbero verificabili solo con una
 // regex sul sorgente, cioè non verificabili.
 import { riepilogoOrdine } from '@/lib/maker/riepilogo-ordine';
+// SE IL PULSANTE È SPENTO, C'È SCRITTO PERCHÉ. `puoInviare` è definito come «nessun motivo», quindi lo
+// stato del pulsante e l'elenco dei motivi non sono due espressioni da tenere allineate: sono la stessa.
+// Prima erano due, in due punti diversi del file, e sono divergute — vedi lib/maker/motivi-blocco.js.
+import { motiviBlocco } from '@/lib/maker/motivi-blocco';
 // Un campo vuoto NON vale zero: `Number('')` fa 0, e uno zero in un riepilogo d'ordine si legge come un
 // prezzo. Stessa funzione già usata dal pannello manuale.
 import { numeroDigitato } from '@/lib/campo-numerico';
@@ -870,6 +874,17 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled, onP
   const blocking = problems.filter((p) => p.blocking);
   const canReview = blocking.length === 0;
 
+  // ── TUTTI I MOTIVI PER CUI NON SI PUÒ INVIARE, IN UN ELENCO SOLO ────────────────────────────────
+  // `canReview` copre i gate del pannello; `busy`, `trkBusy` e il riepilogo incompleto no, ed erano
+  // condizioni che spegnevano il pulsante da fuori quella lista. Qui rientrano tutte, e la schermata
+  // di conferma le mostra: nessuna può più spegnere in silenzio.
+  const blocco = useMemo(() => motiviBlocco({
+    problemiBloccanti: blocking,
+    busy, trkBusy,
+    riepilogoCompleto: riepilogo.completo,
+    mancanti: riepilogo.mancanti,
+  }), [blocking, busy, trkBusy, riepilogo.completo, riepilogo.mancanti]);
+
   const enableNow = useCallback(async () => {
     setEnabling(true); setEnableMsg(null);
     try {
@@ -1684,13 +1699,28 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled, onP
                       </div>
                     )}
 
-                    {/* SE MANCA UN DATO ESSENZIALE LO SI DICE QUI, dove si sta per confermare — e il
-                        pulsante è già spento per conto suo. */}
-                    {!riepilogo.completo && (
-                      <p className="ex-flag is-bad" data-op-review-incompleto>
-                        <span className="ex-flag-i" aria-hidden="true">⛔</span>
-                        <span>Manca {riepilogo.mancanti.join(', ')}: non si conferma un ordine di cui non si sa {riepilogo.mancanti.length > 1 ? 'tutto' : 'questo'}.</span>
-                      </p>
+                    {/* ── PERCHÉ IL PULSANTE È SPENTO ────────────────────────────────────────────────
+                        QUESTO BLOCCO MANCAVA, ed è il difetto che questa sessione corregge. L'elenco
+                        dei gate bloccanti era renderizzato SOLO nel ramo del modulo: finché per
+                        confermare bisognava passarci, lo si vedeva per forza. Poi la coda ha iniziato
+                        ad atterrare direttamente qui — il percorso si è accorciato, che era lo scopo —
+                        e l'unico posto in cui i motivi erano scritti è rimasto fuori dal cammino.
+                        Il pulsante continuava a leggere `canReview`; i motivi no.
+
+                        Adesso pulsante ed elenco vengono dalla STESSA `motiviBlocco`, dove
+                        `puoInviare` è definito come «nessun motivo». Non possono più divergere. */}
+                    {blocco.motivi.length > 0 && (
+                      <div className="op-probs" data-op-review-blocchi={blocco.motivi.length}>
+                        {blocco.motivi.map((m) => (
+                          <p key={m.chiave} className="ex-flag is-bad" data-op-review-blocco={m.chiave}>
+                            <span className="ex-flag-i" aria-hidden="true">⛔</span>
+                            <span>
+                              {m.testo}
+                              {m.azione ? <><br /><span className="op-azione">{m.azione}</span></> : null}
+                            </span>
+                          </p>
+                        ))}
+                      </div>
                     )}
 
                     {/* GLI AVVISI SI RIPETONO QUI. Chi conferma legge questa schermata, non quella
@@ -1797,12 +1827,13 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled, onP
                 ) : (
                   <>
                     <button className="ex-btn op-back" onClick={() => setSheetStep('form')} data-op-qs-back>Modifica</button>
-                    {/* `!riepilogo.completo` SI SOMMA AI GATE, non li sostituisce: `canReview` continua
-                        a decidere da solo esattamente come prima, e questa condizione può solo
-                        SPEGNERE il pulsante, mai accenderlo. Un riepilogo con un «N/D» fra prezzo,
-                        size o lato è una schermata che non dice cosa si sta per inviare. */}
+                    {/* UNA CONDIZIONE SOLA, ED È LA STESSA CHE PRODUCE I MOTIVI QUI SOPRA.
+                        Prima era `busy || trkBusy || !canReview || !riepilogo.completo`: quattro
+                        termini, di cui uno solo (`riepilogo.completo`) aveva un messaggio in questa
+                        schermata. `blocco.puoInviare` copre tutti e quattro e per costruzione non può
+                        essere falso con l'elenco vuoto. */}
                     <button className={`ex-btn op-primary ${sends ? 'is-danger' : 'is-gold'}`}
-                      disabled={busy || trkBusy || !canReview || !riepilogo.completo}
+                      disabled={!blocco.puoInviare}
                       data-op-qs-confirm data-op-sends={sends ? '1' : '0'} data-op-qs-confirm-engine={sheetEngine}
                       onClick={async () => {
                         // UN SOLO PULSANTE, DUE POTERI, e ognuno passa dalla sua funzione di sempre.
@@ -1910,6 +1941,8 @@ const CSS = `
 .op-more { display: block; width: 100%; text-align: left; background: none; border: 0; cursor: pointer;
   padding: 8px 2px; margin: 0 0 8px; font: inherit; font-size: 11px; color: var(--ex-txt-2); }
 .op-more:hover { color: var(--ex-txt-1); }
+/* Il rimedio sotto il motivo: si legge dopo, e va distinto dal motivo stesso. */
+.op-azione { display: inline-block; margin-top: 3px; color: var(--ex-txt-2); font-size: 11.5px; }
 /* Il riepilogo compatto: valori in evidenza, e il tono dice l esito senza doverlo leggere. */
 .op-rsum-v.is-ok { color: var(--ex-green); }
 .op-rsum-v.is-warn { color: var(--ex-gold); }
