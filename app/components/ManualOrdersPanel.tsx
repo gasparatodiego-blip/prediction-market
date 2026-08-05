@@ -659,7 +659,16 @@ export default function ManualOrdersPanel() {
         <div className="mkman-res" data-manual-auto-last>
           {ar?.last?.atIso ? (
             <>
-              Ultimo riprezzo automatico: <b>{new Date(ar.last.atIso).toLocaleTimeString()}</b>
+              {/* LA DATA, NON SOLO L'ORA. Con toLocaleTimeString() un record del 2 agosto si legge
+                  "17:55:17" ed e' indistinguibile da questo pomeriggio: e' cosi' che sette voci
+                  vecchie hanno fatto sembrare TX-15 in dry-run. Se non e' di oggi lo dice. */}
+              Ultimo riprezzo automatico: <b>{(() => {
+                const d = new Date(ar.last.atIso);
+                const oggi = new Date().toDateString() === d.toDateString();
+                return oggi ? d.toLocaleTimeString() : `${d.toLocaleDateString()} ${d.toLocaleTimeString()}`;
+              })()}</b>
+              {new Date().toDateString() !== new Date(ar.last.atIso).toDateString()
+                ? <span className="mkman-warn"> · non di oggi</span> : null}
               {ar.last.fromPrice != null && ar.last.toPrice != null
                 ? <> · <span className="mkman-num">{ar.last.fromPrice}</span> → <span className="mkman-num">{ar.last.toPrice}</span></>
                 : null}
