@@ -254,6 +254,18 @@ interface WalletResp {
       expiresAt: string | null; scaduto: boolean | null;
     }>;
   } | null;
+  // GLI ORDINI SPENTI DALLA SCADENZA GTD SENZA RINNOVO. Il 5 agosto due gambe su Eric Barlow sono
+  // sparite dal venue alle 21:03 e l'unico segno era la loro assenza: nessuna cancellazione, nessun
+  // fill, nessun evento. Il capitale è tornato libero senza che nessuno lo sapesse.
+  scadenzeSenzaRinnovo?: {
+    count: number; capitaleUsd: number | null;
+    items: Array<{
+      marketId: string; marketTitle: string | null; orderId: string;
+      book: string; side: string; price: number; size: number; sizeMatched: number | null;
+      notionalUsd: number | null; expiresAt: string | null; at: string;
+      bloccoGate: string | null;
+    }>;
+  } | null;
   blockedBy: 'operatore' | 'sistema' | null; todo: WalletTodo[];
 }
 
@@ -1094,6 +1106,31 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
                       Dopo un acquisto parziale restano meno quote del minimo che il mercato richiede per
                       pagare, quindi l&apos;ordine non si può rinnovare e viene lasciato spegnere. La
                       posizione già comprata non c&apos;entra e segue la sua uscita per conto suo.
+                    </p>
+                  </div>
+                )}
+
+                {/* ── SPENTI DALLA SCADENZA, SENZA RINNOVO ────────────────────────────────────────
+                    Accanto ai residui e con la stessa regola: compare solo quando ce n'è almeno uno.
+                    La differenza è il tempo verbale — un residuo sta morendo, questo è già morto — e
+                    quindi qui il numero che conta è il capitale TORNATO LIBERO, non quello in attesa.
+                    Il 5 agosto questa casella sarebbe stata l'unico posto in cui la morte delle due
+                    gambe di Barlow (39.00$ + 20.79$) si vedeva: al venue erano semplicemente spariti. */}
+                {wal.scadenzeSenzaRinnovo && wal.scadenzeSenzaRinnovo.count > 0 && (
+                  <div className="ex-stat" data-lrc-wallet-scadenze={wal.scadenzeSenzaRinnovo.count}>
+                    <span className="ex-stat-k">Spenti dalla scadenza</span>
+                    <span className="ex-stat-v ex-dn">
+                      {wal.scadenzeSenzaRinnovo.count === 1 ? '1 ordine' : `${wal.scadenzeSenzaRinnovo.count} ordini`}
+                    </span>
+                    <span className="ex-stat-s">
+                      {money(wal.scadenzeSenzaRinnovo.capitaleUsd)} tornati liberi
+                    </span>
+                    <p className="ex-why ex-why-warn">
+                      Questi ordini non sono più sul libro: la scadenza del venue li ha spenti e nessun
+                      rinnovo è partito prima. Non sono stati cancellati e non sono stati eseguiti — hanno
+                      semplicemente smesso di esistere, quindi da quel momento non maturano premi. Il
+                      motivo per cui il rinnovo non è avvenuto è nell&apos;elenco qui sotto, ordine per
+                      ordine.
                     </p>
                   </div>
                 )}

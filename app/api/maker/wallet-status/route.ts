@@ -10,6 +10,7 @@ import { readVenuePositions, MAX_AGE_MS } from '@/lib/safety/venue-positions-sna
 // invariata — ma finora scadeva in silenzio, e il capitale che portava tornava libero senza che nessuno
 // lo sapesse. Qui l'avviso entra nella stessa lista «cosa manca» che si legge prima di piazzare.
 import { readResiduiSottoSoglia } from '@/lib/maker/residui-sotto-soglia';
+import { readScadenzeSenzaRinnovo } from '@/lib/maker/scadenze-senza-rinnovo';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -172,6 +173,39 @@ export async function GET() {
     });
   }
 
+  // ── GLI ORDINI MORTI DI SCADENZA, DETTI A PAROLE ───────────────────────────────────────────────
+  // Accanto ai residui e per la stessa ragione: è un avviso, non un blocco, quindi viene DOPO
+  // `bloccantiCount` e non entra in `blockedBy`. La differenza rispetto al residuo è il tempo verbale —
+  // il residuo sta morendo, questo è già morto — e quindi il testo dice cos'è successo e cosa resta da
+  // fare, non cosa succederà.
+  const scadenze = readScadenzeSenzaRinnovo();
+  for (const s of scadenze.scadenze) {
+    const mercato = s.marketTitle || `mercato cid_${String(s.marketId).replace(/^0x/, '').slice(0, 10)}`;
+    const capitale = s.notionalUsd == null ? 'importo non leggibile' : `$${s.notionalUsd.toFixed(2)}`;
+    // Il motivo tecnico tradotto una volta sola, qui. `null` non è «non lo sappiamo»: è «il rinnovo non è
+    // mai stato nemmeno valutato», che è un'informazione diversa e va detta come tale.
+    const perche = s.bloccoGate === 'hourly-cap'
+      ? 'il rinnovo era dovuto ma il tetto orario di riprezzi lo ha fermato'
+      : s.bloccoGate === 'refresh-invalid'
+        ? 'il rinnovo era dovuto ma ripiazzare quella size non avrebbe passato i controlli del venue'
+        : s.bloccoGate === 'rate-limited'
+          ? 'il rinnovo era dovuto ma il limite minimo fra due mosse sulla stessa gamba lo ha fermato'
+          : s.bloccoGate === 'mid-stale' || s.bloccoGate === 'mid-not-live'
+            ? 'il rinnovo era dovuto ma il prezzo di mercato non era abbastanza fresco per agire'
+            : s.bloccoGate
+              ? `il rinnovo era dovuto ed è stato fermato dal controllo «${s.bloccoGate}»`
+              : 'il rinnovo non è mai stato valutato prima della scadenza';
+    todo.push({
+      who: 'operatore',
+      what: `Ordine spento dalla scadenza, senza rinnovo — «${mercato}», lato ${latoTxt(s)}:`
+        + ` ${s.size} quote a ${(s.price * 100).toFixed(1)}¢ non sono più sul libro, e ${capitale} sono tornati liberi.`
+        + ` Motivo: ${perche}.`,
+      how: `Si è spento ${quandoTxt(s.expiresAt)} e non ha maturato premi da quel momento.`
+        + ' Quel capitale va rimesso in gioco se quel mercato serve ancora.'
+        + (s.sizeMatched ? ` Attenzione: ${s.sizeMatched} quote erano già state eseguite, e quella posizione segue la sua uscita per conto suo.` : ''),
+    });
+  }
+
   return NextResponse.json({
     ok: true, at, error: null,
     address, rpc: rpc.replace(/\/\/([^@]*@)?/, '//'),
@@ -206,6 +240,19 @@ export async function GET() {
         book: r.book, side: r.side, price: r.price,
         sizeRemaining: r.sizeRemaining, minSize: r.minSize, notionalUsd: r.notionalUsd,
         expiresAt: r.expiresAt, scaduto: r.scaduto ?? null,
+      })),
+    },
+    // Gli ordini che la scadenza GTD ha spento senza che nessuno li rinnovasse. Stessa forma del blocco
+    // qui sopra: il testo in `todo` resta la fonte di ciò che si legge, questo serve al conteggio e al
+    // totale del capitale tornato libero.
+    scadenzeSenzaRinnovo: {
+      count: scadenze.count,
+      capitaleUsd: scadenze.capitaleUsd,
+      items: scadenze.scadenze.map((s) => ({
+        marketId: s.marketId, marketTitle: s.marketTitle, orderId: s.orderId,
+        book: s.book, side: s.side, price: s.price, size: s.size, sizeMatched: s.sizeMatched ?? null,
+        notionalUsd: s.notionalUsd, expiresAt: s.expiresAt, at: s.at,
+        bloccoGate: s.bloccoGate ?? null,
       })),
     },
   }, { headers: { 'Cache-Control': 'no-store' } });

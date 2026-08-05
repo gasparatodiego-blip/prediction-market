@@ -84,6 +84,7 @@ const { writeVenuePositions } = require('../lib/safety/venue-positions-snapshot'
 // L'AVVISO SUI RESIDUI CHE MUOIONO SOTTO LA SOGLIA MINIMA. Deposita in data/ quello che il ciclo scopre,
 // perché lo legga la dashboard: la riga di log da sola non ha mai avvisato nessuno (0x4c19a7, 5 agosto).
 const { registraResiduiSottoSoglia } = require('../lib/maker/residui-sotto-soglia');
+const { registraScadenzeSenzaRinnovo } = require('../lib/maker/scadenze-senza-rinnovo');
 // AUTOMATIC POSITION CLOSING. Runs on the same throttle as the reconciliation and for the same reason:
 // a fill is only observable after the venue is asked. Default OFF everywhere; see lib/maker/auto-close.js.
 const { runAutoCloseCycle } = require('../lib/maker/auto-close');
@@ -119,6 +120,12 @@ const residuiSegnalati = new Set();
 // vanno le transizioni. Un riavvio lo azzera e va bene — la riga uscirà una volta in più, non una in
 // meno, che è il verso giusto per un meccanismo che si sta imparando a verificare.
 const conflittiSoppressi = new Set();
+
+// CIO' CHE SAPPIAMO DI OGNI ORDINE VISTO A RIPOSO, per poter rispondere «e' morto per scadenza, e perche'
+// nessuno l'ha rinnovato?» su un ordine che non c'e' piu'. Un riavvio la azzera, e la conseguenza e'
+// accettabile nel verso giusto: un ordine morto durante il riavvio non viene annunciato, invece di essere
+// annunciato per sbaglio. La deduplica DURA vive nel file di data/, che fonde per orderId.
+const ordiniVisti = new Map();
 
 // Lo stato per mercato del motore di tracking, portato fra un ciclo e l'altro. In memoria di proposito,
 // come `breaches`: un riavvio lo azzera, ed e' corretto — gli ordini a riposo portano una scadenza GTD
@@ -434,6 +441,7 @@ async function cycle() {
     breaches,
     residuiSegnalati,
     conflittiSoppressi,
+    ordiniVisti,
     link,
   });
   logCycle(res);
@@ -455,6 +463,28 @@ async function cycle() {
       const w = registraResiduiSottoSoglia(residui);
       if (!w.ok) log(`avviso residui NON depositato (${w.reason}) — resta solo in questo log`);
     } catch (e) { log('avviso residui NON depositato:', e.message); }
+  }
+
+  // ── LA MORTE PER SCADENZA ESCE DAL PROCESSO ────────────────────────────────────────────────────
+  // Stessa strada dell'avviso sui residui, e per lo stesso motivo: il 5 agosto la morte delle due gambe
+  // di Barlow non ha prodotto un solo evento, e cinquecentoquaranta righe di log identiche non avevano
+  // avvisato nessuno. Try/catch suo: un file che non si scrive non deve poter fermare il motore.
+  const scadenze = (res.events || []).filter((e) => e.type === 'scaduto-senza-rinnovo');
+  if (scadenze.length) {
+    for (const e of scadenze) {
+      log(`SCADUTO SENZA RINNOVO · cid_${String(e.marketId).replace(/^0x/, '').slice(0, 10)}`
+        + ` · ${String(e.book).toUpperCase()} ${e.side} ${e.price} x ${e.size}`
+        + `${Number.isFinite(e.notionalUsd) ? ` · $${e.notionalUsd.toFixed(2)} tornati liberi` : ''}`
+        + ` · scadenza prevista ${e.expiresAt}`
+        + (e.bloccoGate
+          ? ` · il rinnovo era DOVUTO e l ha fermato «${e.bloccoGate}»: ${e.bloccoReason}`
+          : ' · nessun rinnovo e stato valutato prima della scadenza')
+        + ' — l ordine non e piu sul book: quel capitale va rimesso in gioco.');
+    }
+    try {
+      const w = registraScadenzeSenzaRinnovo(scadenze);
+      if (!w.ok) log(`avviso scadenze NON depositato (${w.reason}) — resta solo in questo log`);
+    } catch (e) { log('avviso scadenze NON depositato:', e.message); }
   }
   return res;
 }
