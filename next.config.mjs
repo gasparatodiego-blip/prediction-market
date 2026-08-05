@@ -19,6 +19,14 @@ const securityHeaders = [
 ];
 
 const nextConfig = {
+  // ── VERIFICARE UNA BUILD SENZA BUTTARE GIÙ QUELLA VIVA ──────────────────────────────────────────
+  // `next start` (il processo pm2 «dashboard») serve la build con cui è partito. Un `npm run build`
+  // riscrive .next e CANCELLA gli hash dei chunk che il processo vivo continua a distribuire: le pagine
+  // rispondono 200 ma ogni /_next/static/chunks/… va in 400, e la dashboard resta rotta finché non la si
+  // riavvia — e il riavvio è un'azione autorizzata a parte. Con NEXT_DIST_DIR la build di verifica va in
+  // un'altra cartella e la produzione non viene toccata: il difetto è vuoto, quindi la build normale è
+  // identica a prima.
+  distDir: process.env.NEXT_DIST_DIR || '.next',
   async redirects() {
     // Dashboard trimmed to the Liquidity-Rewards product: every non-rewards tab
     // redirects to /dashboard/liquidity-rewards. UI/routing only — agents, all API
