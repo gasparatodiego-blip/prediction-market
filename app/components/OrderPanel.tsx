@@ -32,6 +32,18 @@ import { sizeScale, sizeAtPct } from '@/lib/maker/mm-quote-math';
 // bloccate dal filtro e verdetto sul prezzo. Sono in un modulo condiviso e coperto da test proprio perche'
 // il pannello non possa dare una risposta diversa dal server sulla stessa domanda.
 import { distanceCents, priceVerdict } from '@/lib/maker/book-view';
+// «QUESTO PREZZO È LIVE?» SI CHIEDE UNA VOLTA SOLA. Prima questo file rispondeva due volte con due
+// regole diverse — la testata guardava fonte+vitalità+età, l'etichetta di freschezza solo la fonte — e
+// sullo stesso mercato mostrava «book non live» accanto a «book live · 2 min fa». Il verdetto e tutte
+// le scritte che ne discendono vengono da qui, quindi non possono più divergere.
+import { statoBook } from '@/lib/maker/stato-book';
+// COSA SI LEGGE PRIMA DI CONFERMARE. Le righe del riepilogo e la risposta a «ci sono tutti i dati?»
+// vivono in un modulo puro, esercitato da un test: dentro il JSX sarebbero verificabili solo con una
+// regex sul sorgente, cioè non verificabili.
+import { riepilogoOrdine } from '@/lib/maker/riepilogo-ordine';
+// Un campo vuoto NON vale zero: `Number('')` fa 0, e uno zero in un riepilogo d'ordine si legge come un
+// prezzo. Stessa funzione già usata dal pannello manuale.
+import { numeroDigitato } from '@/lib/campo-numerico';
 
 // Il rinnovo del permesso, e la soglia di freschezza che il pannello PROMETTE al server quando conferma.
 //
@@ -284,6 +296,10 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled, onP
   // TRADUCONO un gesto in quei valori condivisi.
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sheetStep, setSheetStep] = useState<'form' | 'review'>('form');
+  // Le impostazioni secondarie del riepilogo (motore, durata, chiusura) e il book completo della pagina
+  // partono PIEGATI: restano a un tocco, ma non stanno più sul percorso obbligato verso la conferma.
+  const [reviewDetails, setReviewDetails] = useState(false);
+  const [bookAperto, setBookAperto] = useState(false);
   // Da che parte del mid stava la riga toccata. Serve a ricostruire il prezzo dalla distanza senza
   // ribaltare l'ordine sull'altro lato del libro quando si usa lo stepper.
   const [sheetBelow, setSheetBelow] = useState(true);
@@ -374,6 +390,27 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled, onP
     // l'apertura di un mercato nuovo, non lasciare i numeri della prima.
   }, [target, legIdx, active]);
 
+  // ── QUANDO IL PIANO HA GIÀ DECISO, SI VA DRITTI ALLA VERIFICA ──────────────────────────────────
+  // Se il pannello si apre da una gamba del piano, prezzo, size e lato sono già calcolati e già letti
+  // sulla card: far scorrere blocco dati, order book e note prima di poterli confermare non aggiunge
+  // niente alla decisione. Si atterra sul riepilogo compatto, con «Modifica» a un tocco.
+  //
+  // L'EFFETTO STA DOPO LA PRECOMPILAZIONE, e non è un dettaglio: gli effetti girano nell'ordine in cui
+  // sono dichiarati e i loro `set` finiscono nello stesso lotto, quindi il riepilogo non può essere
+  // disegnato prima che i campi contengano i numeri della gamba. Aprirlo prima avrebbe mostrato un
+  // istante di campi vuoti — cioè «N/D» al posto di un prezzo vero.
+  //
+  // Una volta per mercato: `autoAperto` impedisce che chiudere il popup lo faccia riaprire da solo.
+  const autoAperto = useRef<string | null>(null);
+  useEffect(() => {
+    if (!active) return;
+    if (autoAperto.current === target.marketId) return;
+    autoAperto.current = target.marketId;
+    setSheetEngine('manual');
+    setSheetStep('review');
+    setSheetOpen(true);
+  }, [target.marketId, active]);
+
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -455,8 +492,23 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled, onP
   // book fermi, e infatti un mercato scaduto compare come «live-book» con un'eta' di trentasei minuti.
   // Verificato il 2026-08-01 sulla finestra 2:15PM-2:30PM.
   const quoteAgeMs = quote ? (fin(quote.ageMs) ? (quote.ageMs as number) : 0) + Math.max(0, nowMs - quoteAtMs.current) : null;
-  const bookLive = quote?.source === 'live-book' && quote.live === true
-    && fin(quoteAgeMs) && (quoteAgeMs as number) <= FRESH_BOOK_MAX_MS;
+  // «Mi sto collegando» vale finché il collegamento può ancora arrivare. Passata la finestra, il feed
+  // quel mercato non lo copre — cap pieno, token non risolvibili, processo fermo — e continuare a dire
+  // che ci si sta collegando sarebbe un'attesa che non finisce mai, cioè una bugia lenta.
+  const connecting = lease === 'asking'
+    || (lease === 'held' && leaseHeldSince.current != null && nowMs - leaseHeldSince.current < LEASE_CONNECT_GRACE_MS);
+  // IL VERDETTO E TUTTE LE SCRITTE VENGONO DA QUI. Una domanda, una risposta: vedi lib/maker/stato-book.
+  const stato = statoBook({
+    source: quote?.source ?? null,
+    live: quote?.live ?? null,
+    ageMs: quoteAgeMs,
+    freshMaxMs: FRESH_BOOK_MAX_MS,
+    lease,
+    connecting,
+    letto: !!quote,
+    erroreLettura: !!quoteErr,
+  });
+  const bookLive = stato.live;
 
   // MENTRE LA SOTTOSCRIZIONE SI STA STABILENDO SI GUARDA SPESSO. Il ritmo da 12 secondi e' giusto per
   // Gamma a regime — e' una REST di terzi e non la si martella — ma nei primi secondi dopo l'apertura
@@ -464,8 +516,7 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled, onP
   // fino a 15 secondi dopo il tocco. Misurato: 15,4s, quasi tutti spesi ad aspettare il prossimo giro,
   // non il feed. Dentro la finestra di attesa si interroga ogni 2 secondi; appena il book e' live si
   // torna al ritmo normale.
-  const settling = !bookLive && (lease === 'asking'
-    || (lease === 'held' && leaseHeldSince.current != null && nowMs - leaseHeldSince.current < LEASE_CONNECT_GRACE_MS));
+  const settling = !bookLive && connecting;
   const quoteEveryMs = settling ? 2_000 : (quote?.source === 'gamma' ? 12_000 : (closeSoon ? 3_000 : 8_000));
 
   // IL RITMO STA IN UN REF, NON FRA LE DIPENDENZE DELL'EFFETTO. Il ritmo dipende dalla FONTE, e la
@@ -691,8 +742,11 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled, onP
     };
   }, [onClose]);
 
-  const size = Number(sizeStr);
-  const price = Number(priceStr);
+  // UN CAMPO VUOTO NON È UNO ZERO. `Number('')` fa 0: il gate lo fermava lo stesso (`size <= 0`), ma il
+  // riepilogo avrebbe scritto «0 share» e «$0.00», che si leggono come valori. `NaN` non è un valore, e
+  // ogni `fin(...)` a valle lo tratta già come assente — il comportamento dei gate non cambia.
+  const size = numeroDigitato(sizeStr) ?? NaN;
+  const price = numeroDigitato(priceStr) ?? NaN;
   const notional = fin(size) && fin(price) && size > 0 && price > 0 ? size * price : null;
 
   /**
@@ -715,6 +769,24 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled, onP
       side: 'BUY',
     });
   }, [price, bestBid, bestAsk, scoringMid, bandRadiusCents]);
+
+  // ── LA DISTANZA CHE CONTA È QUELLA DAL MID DI SCORING ──────────────────────────────────────────
+  // È il numero contro cui il venue giudica la banda, quindi è l'unico che rende «distanza» e «in
+  // banda» due letture dello stesso fatto invece che due numeri accostati.
+  // E si calcola dal PREZZO, non dallo stepper: `sheetDistC` esiste solo se si è toccata una riga del
+  // book, quindi su una gamba che arriva dal piano sarebbe rimasto null — e il riepilogo avrebbe
+  // scritto «N/D» proprio nel percorso in cui il numero è noto con certezza.
+  const distDaScoring = distanceCents(price, scoringMid);
+
+  // ── IL RIEPILOGO COMPATTO ──────────────────────────────────────────────────────────────────────
+  // Le righe non si costruiscono qui: le costruisce `riepilogoOrdine`, che un test esercita. Qui si
+  // passano solo i valori veri — quelli che verrebbero inviati, non una loro copia.
+  const riepilogo = useMemo(() => riepilogoOrdine({
+    title: target.title, marketId: target.marketId, book,
+    price, size, distanceCents: distDaScoring, bandRadiusCents, verdict,
+    legIdx, legsTotal: legs ? legs.length : null,
+    fonte: active ? 'piano' : 'digitato',
+  }), [target.title, target.marketId, book, price, size, distDaScoring, bandRadiusCents, verdict, legIdx, legs, active]);
 
   // Minuti alla chiusura, ricalcolati sull'orologio locale: il valore arrivato con la card invecchia
   // mentre il pannello resta aperto, e un countdown fermo su un mercato da 5 minuti è peggio di nessun
@@ -913,25 +985,13 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled, onP
   const overCap = fin(notional) && fin(orderCapUsd) && (notional as number) > (orderCapUsd as number) + 1e-9;
 
 
-  // L'eta del prezzo, misurata dal momento della lettura piu l'attesa da allora. Sotto il secondo si
-  // dice «adesso»: scrivere «0s fa» su un book websocket sarebbe vero ma illeggibile.
-  const quoteAge = (() => {
-    if (!quote) return quoteErr ? 'non letto' : 'in lettura…';
-    // Mentre il permesso e' in corso e il prezzo arriva ancora da Gamma, si dice che si sta
-    // collegando invece di far sembrare definitivo un ripiego che sta per essere sostituito.
-    // «Mi sto collegando» vale finché il collegamento può ancora arrivare. Passata la finestra, il feed
-    // quel mercato non lo copre — cap pieno, token non risolvibili, processo fermo — e continuare a dire
-    // che ci si sta collegando sarebbe un'attesa che non finisce mai, cioè una bugia lenta. Da lì si dice
-    // com'è: il dato è di ripiego, e viene da Gamma.
-    const connecting = lease === 'asking'
-      || (lease === 'held' && leaseHeldSince.current != null && nowMs - leaseHeldSince.current < LEASE_CONNECT_GRACE_MS);
-    if (quote.source === 'gamma' && connecting) return 'connessione al book…';
-    const ms = fin(quoteAgeMs) ? (quoteAgeMs as number) : 0;
-    const src = quote.source === 'live-book' ? 'book live' : 'Gamma';
-    if (ms < 1500) return `${src} · adesso`;
-    if (ms < 60_000) return `${src} · ${Math.round(ms / 1000)}s fa`;
-    return `${src} · ${Math.round(ms / 60_000)} min fa`;
-  })();
+  // L'ETÀ DEL PREZZO, DALLA STESSA FONTE DEL VERDETTO. Questa riga era il difetto: costruiva l'etichetta
+  // da `quote.source` e basta, cioè chiamava «live» la PROVENIENZA del numero. Ma «viene dal feed di
+  // agent34» e «è fresco» sono due fatti diversi — il feed pubblica anche i book fermi — e con un dato
+  // di due minuti la testata diceva «book non live» mentre qui compariva «book live · 2 min fa».
+  // Adesso è la stessa `statoBook` che decide il badge: se il verdetto è no, questa scritta nomina la
+  // fonte e dice da quanto è ferma, e la parola «live» non può comparire.
+  const quoteAge = stato.freschezza;
 
   return (
     <div className="op-scrim exch" data-order-panel={target.marketId} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
@@ -955,10 +1015,10 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled, onP
                 {isEnabled ? 'abilitato' : 'non abilitato'}
               </span>
               {' '}
-              <span className={`ex-badge ${bookLive ? 'is-ok' : lease === 'failed' ? 'is-bad' : 'is-warn'}`}
+              <span className={`ex-badge is-${stato.tono}`}
                 data-op-booklive={bookLive ? '1' : '0'} data-op-lease={lease}
-                title={quote?.sourceNote ?? 'in attesa della prima quotazione'}>
-                {bookLive ? 'book live' : lease === 'asking' ? 'collegamento…' : lease === 'failed' ? 'book NON live' : 'book non live'}
+                title={`${stato.motivo}${quote?.sourceNote ? ` — ${quote.sourceNote}` : ''}`}>
+                {stato.badge}
               </span>
               {!target.hasRewards && <span className="ex-badge is-warn op-bdg">NESSUN REWARD — solo trading direzionale</span>}
             </div>
@@ -995,7 +1055,7 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled, onP
               {/* QUANTO E VECCHIO QUESTO PREZZO fa parte del prezzo: un mid di 9 millisecondi e un mid
                   di due minuti non sono lo stesso fatto, e su un ciclo da cinque minuti la differenza
                   decide l ordine. Sta scritto qui invece di chiedere all operatore di fidarsi. */}
-              <span className={`op-mkt-s ${bookLive ? 'is-ok' : 'is-warn'}`} data-op-freshness
+              <span className={`op-mkt-s is-${stato.tono}`} data-op-freshness
                 title={quote?.depthSourceNote ?? quote?.sourceNote ?? 'in attesa della prima quotazione'}>
                 {quoteAge}
               </span>
@@ -1020,7 +1080,29 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled, onP
             </div>
           </div>
 
-          {/* ── 3 · ORDER BOOK ─────────────────────────────────────────────────────────────────── */}
+          {/* ── 2b · LA STRADA CORTA VERSO LA CONFERMA ────────────────────────────────────────────
+              PRIMA QUESTO PULSANTE NON ESISTEVA. L'unico modo di aprire il popup era toccare una riga
+              dell'order book: per arrivarci bisognava scorrere il blocco dati, il book intero e due
+              note, e con due gambe si ripeteva. Un percorso lungo non rende la decisione più
+              consapevole — sposta solo l'attenzione altrove prima del punto in cui serve.
+
+              Il tocco di conferma non si tocca: questo pulsante APRE la verifica, non invia niente.
+              Da lì «Conferma e piazza» resta l'unico punto che scrive, con i suoi gate. */}
+          <button className="ex-btn is-gold op-goreview" data-op-goreview
+            onClick={() => { setSheetEngine('manual'); setSheetStep('review'); setSheetOpen(true); }}>
+            Verifica e conferma →
+          </button>
+
+          {/* ── 3 · ORDER BOOK, PIEGATO ───────────────────────────────────────────────────────────
+              Resta intero e resta toccabile: cambia solo che non sta più fra chi decide e la
+              decisione. Chi vuole scegliere il prezzo dal libro lo apre; chi arriva dal piano con
+              prezzo e size già calcolati non ha motivo di scorrerlo. */}
+          <button className="op-more" onClick={() => setBookAperto((v) => !v)}
+            data-op-book-toggle aria-expanded={bookAperto}>
+            {bookAperto ? '▾ Nascondi order book' : '▸ Mostra order book completo'}
+          </button>
+
+          {bookAperto && (<>
           <div className="op-eyebrow" data-op-eyebrow="book">
             Order book
             <span className="op-eyebrow-r">{book.toUpperCase()}</span>
@@ -1046,7 +1128,7 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled, onP
               {/* QUANTO E VECCHIO QUESTO PREZZO fa parte del prezzo: un mid di 9 millisecondi e un mid
                   di due minuti non sono lo stesso fatto, e su un ciclo da cinque minuti la differenza
                   decide l ordine. Sta scritto qui invece di chiedere all operatore di fidarsi. */}
-              <span className={`ex-badge ${bookLive ? 'is-ok' : 'is-warn'}`} data-op-freshness
+              <span className={`ex-badge is-${stato.tono}`} data-op-freshness
                 title={quote?.depthSourceNote ?? quote?.sourceNote ?? 'in attesa della prima quotazione'}>
                 {quoteAge}
               </span>
@@ -1168,6 +1250,7 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled, onP
               <span>La banda qui sotto è misurata contro il midpoint del book, non contro il mid di scoring del venue: questa fonte non lo pubblica.</span>
             </p>
           )}
+          </>)}
 
           {quoteErr && (
             <p className="ex-flag is-dim op-mb" data-op-quote-error>
@@ -1209,8 +1292,14 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled, onP
                     BUY {book.toUpperCase()}
                     <span className="ex-dim"> · {sheetBelow ? 'sotto il mid' : 'sopra il mid'}</span>
                   </div>
+                  {/* «RIGA TOCCATA» SOLO SE UNA RIGA È STATA TOCCATA. Arrivando dal piano non lo è mai:
+                      `pickedPrice` resta null e questa riga scriveva «riga toccata N/D», cioè un campo
+                      vuoto travestito da dato. Il titolo del mercato, invece, serve sempre — è ciò che
+                      si sta per comprare, e nel popup non compariva da nessuna parte. */}
                   <div className="op-qs-s" data-op-qs-sub>
-                    riga toccata <b className="ex-n">{cents(pickedPrice)}</b> · mid <b className="ex-n">{cents(mid)}</b>
+                    <span className="op-qs-mkt" data-op-qs-market>{target.title}</span>
+                    {fin(pickedPrice) && <> · riga toccata <b className="ex-n">{cents(pickedPrice)}</b></>}
+                    {' · '}mid <b className="ex-n">{cents(mid)}</b>
                   </div>
                 </div>
                 <button className="op-x" onClick={() => { setSheetOpen(false); setSheetStep('form'); }}
@@ -1540,34 +1629,47 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled, onP
                     )}
                   </>
                 ) : (
-                  /* ── 7 · IL RIEPILOGO, dentro lo stesso popup ──────────────────────────────── */
+                  /* ── 7 · IL RIEPILOGO COMPATTO ─────────────────────────────────────────────────
+                      QUESTA È LA SCHERMATA CHE DECIDE, e deve stare in uno schermo di telefono senza
+                      scorrere. Prima erano dodici righe più tre avvisi, e la parte che conta —
+                      prezzo, size, incrocia?, in banda? — arrivava dopo sette righe di contorno.
+
+                      Le righe le costruisce `riepilogoOrdine`, un modulo puro con il suo test: qui
+                      non c'è nessun valore calcolato a mano, quindi non c'è nessun posto da cui
+                      possa divergere da ciò che verrà inviato.
+
+                      IL SECONDARIO NON SPARISCE, SI PIEGA. Motore, lati quotati, soglia, chiusura
+                      automatica e durata restano a un tocco di distanza: sono cose che si scelgono
+                      una volta e si rileggono di rado, non a ogni conferma. */
                   <div data-op-qs-review>
                     <div className="op-review">
-                      <div className="op-review-h">Rivedi prima di confermare</div>
-                      <div className="ex-kvs">
-                        <div className="ex-kv"><span className="ex-kv-k">mercato</span><span className="ex-kv-v op-wrap">{target.title}</span></div>
-                        {/* A CHE PUNTO DEL PIANO SI È. Con due gambe, «BUY YES» da solo non dice se
-                            manca ancora l'altro lato — e un lato solo matura zero fuori dal range
-                            [0,10–0,90] e un terzo dentro. */}
-                        {legs && (
-                          <div className="ex-kv"><span className="ex-kv-k">gamba</span>
-                            <span className="ex-kv-v" data-op-qs-review-leg-idx={`${legIdx + 1}/${legs.length}`}>
-                              {active?.label ?? `gamba ${legIdx + 1} di ${legs.length}`}
-                            </span></div>
-                        )}
-                        <div className="ex-kv"><span className="ex-kv-k">lato</span><span className="ex-kv-v">BUY {book.toUpperCase()}</span></div>
-                        <div className="ex-kv"><span className="ex-kv-k">size</span><span className="ex-kv-v">{fin(size) ? size : 'N/D'} share</span></div>
-                        <div className="ex-kv"><span className="ex-kv-k">prezzo</span>
-                          <span className="ex-kv-v" data-op-qs-review-price-src={active ? 'piano' : 'mid'}>
-                            {price}{active ? <span className="ex-kv-note"> · dal piano</span> : null}
-                          </span></div>
-                        <div className="ex-kv"><span className="ex-kv-k">distanza dal mid</span><span className="ex-kv-v">{fin(sheetDistC) ? `${(sheetDistC as number).toFixed(2)}¢` : 'N/D'}</span></div>
-                        {/* La banda accanto alla distanza: sono i due numeri che insieme dicono se
-                            l'ordine matura reward, e leggerne uno solo non basta a deciderlo. */}
-                        <div className="ex-kv"><span className="ex-kv-k">banda reward</span>
-                          <span className="ex-kv-v" data-op-qs-review-band-width>
-                            {fin(bandRadiusCents) ? `±${(bandRadiusCents as number).toFixed(2)}¢` : 'non pubblicata'}
-                          </span></div>
+                      <div className="op-review-h">Verifica e conferma</div>
+                      <div className="ex-kvs op-rsum" data-op-review-rows={riepilogo.righe.length}>
+                        {riepilogo.righe.map((r) => (
+                          <div className="ex-kv" key={r.chiave} data-op-review-row={r.chiave} data-op-review-tone={r.tono}>
+                            <span className="ex-kv-k">{r.k}</span>
+                            <span className={`ex-kv-v op-rsum-v is-${r.tono}`} data-op-review-value={r.chiave}>
+                              {r.v}{r.nota ? <span className="ex-kv-note"> · {r.nota}</span> : null}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                      {/* IL CONTROVALORE IN EVIDENZA: e' la cifra che lascia il conto, e in un elenco
+                          di righe uguali sparirebbe fra le altre. */}
+                      <div className="op-qs-total" data-op-qs-review-total>
+                        <span className="op-qs-total-k">controvalore</span>
+                        <span className="op-qs-total-v ex-n">{money(notional)}</span>
+                      </div>
+                    </div>
+
+                    {/* ── IL RESTO, PIEGATO ─────────────────────────────────────────────────────── */}
+                    <button className="op-more" onClick={() => setReviewDetails((v) => !v)}
+                      data-op-review-more aria-expanded={reviewDetails}>
+                      {reviewDetails ? '▾ Nascondi impostazioni' : '▸ Mostra impostazioni (motore, durata, chiusura)'}
+                    </button>
+                    {reviewDetails && (
+                      <div className="ex-kvs op-mb" data-op-review-details>
+                        <div className="ex-kv"><span className="ex-kv-k">mercato (id)</span><span className="ex-kv-v op-wrap ex-n">{target.marketId}</span></div>
                         <div className="ex-kv"><span className="ex-kv-k">motore</span><span className="ex-kv-v" data-op-qs-review-engine={sheetEngine}>{sheetEngine === 'manual' ? 'Manuale — un ordine fermo' : 'Tracking — insegue il mid'}</span></div>
                         {sheetEngine === 'tracking' && (
                           <>
@@ -1577,14 +1679,19 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled, onP
                         )}
                         <div className="ex-kv"><span className="ex-kv-k">chiusura auto</span><span className="ex-kv-v" data-op-qs-review-ac>{acState == null ? 'non letta' : acState.market?.enabled ? 'ATTIVA' : 'spenta'}</span></div>
                         <div className="ex-kv"><span className="ex-kv-k">durata</span><span className="ex-kv-v">GTD {Math.round(ttlSeconds / 60)} min</span></div>
+                        <div className="ex-kv"><span className="ex-kv-k">prezzo del book</span><span className="ex-kv-v">{cents(bestBid)} / {cents(bestAsk)}</span></div>
+                        <div className="ex-kv"><span className="ex-kv-k">mid di scoring</span><span className="ex-kv-v">{cents(scoringMid)}</span></div>
                       </div>
-                      {/* IL CONTROVALORE IN EVIDENZA: e' la cifra che lascia il conto, e in un elenco
-                          di dieci righe uguali sparirebbe fra le altre nove. */}
-                      <div className="op-qs-total" data-op-qs-review-total>
-                        <span className="op-qs-total-k">controvalore</span>
-                        <span className="op-qs-total-v ex-n">{money(notional)}</span>
-                      </div>
-                    </div>
+                    )}
+
+                    {/* SE MANCA UN DATO ESSENZIALE LO SI DICE QUI, dove si sta per confermare — e il
+                        pulsante è già spento per conto suo. */}
+                    {!riepilogo.completo && (
+                      <p className="ex-flag is-bad" data-op-review-incompleto>
+                        <span className="ex-flag-i" aria-hidden="true">⛔</span>
+                        <span>Manca {riepilogo.mancanti.join(', ')}: non si conferma un ordine di cui non si sa {riepilogo.mancanti.length > 1 ? 'tutto' : 'questo'}.</span>
+                      </p>
+                    )}
 
                     {/* GLI AVVISI SI RIPETONO QUI. Chi conferma legge questa schermata, non quella
                         di prima, e un avviso visto due schermate fa non e' un avviso al momento
@@ -1651,9 +1758,22 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled, onP
                           {' '}BUY {legNext.book.toUpperCase()} <b>{legNext.size}</b> share @ <b>{legNext.price}</b>
                           {' '}(<span className="ex-n">{money(legNext.price * legNext.size)}</span>).
                         </div>
+                        {/* I VALORI DELLA GAMBA NUOVA SI SCRIVONO QUI, NON SOLO NELL'EFFETTO.
+                            L'effetto di precompilazione li scriverebbe comunque, ma DOPO il disegno:
+                            ci sarebbe un fotogramma con il riepilogo della gamba 2 e i numeri della
+                            gamba 1. Un istante, e nessuno tocca in un istante — ma «i dati veri
+                            visibili prima del tocco» non ammette fotogrammi in cui non lo sono.
+                            Scritti nello stesso lotto, quel fotogramma non esiste. */}
                         <button className="ex-btn is-gold" style={{ marginTop: 8 }}
                           data-op-qs-next-leg-btn
-                          onClick={() => { setLegIdx(legIdx + 1); setSheetStep('form'); }}>
+                          onClick={() => {
+                            setLegIdx(legIdx + 1);
+                            setBook(legNext.book);
+                            setPriceStr(String(legNext.price));
+                            setSizeStr(String(+legNext.size.toFixed(4)));
+                            setResult(null);
+                            setSheetStep('review');
+                          }}>
                           Prepara la {legNext.label ?? 'seconda gamba'} →
                         </button>
                       </div>
@@ -1677,8 +1797,12 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled, onP
                 ) : (
                   <>
                     <button className="ex-btn op-back" onClick={() => setSheetStep('form')} data-op-qs-back>Modifica</button>
+                    {/* `!riepilogo.completo` SI SOMMA AI GATE, non li sostituisce: `canReview` continua
+                        a decidere da solo esattamente come prima, e questa condizione può solo
+                        SPEGNERE il pulsante, mai accenderlo. Un riepilogo con un «N/D» fra prezzo,
+                        size o lato è una schermata che non dice cosa si sta per inviare. */}
                     <button className={`ex-btn op-primary ${sends ? 'is-danger' : 'is-gold'}`}
-                      disabled={busy || trkBusy || !canReview}
+                      disabled={busy || trkBusy || !canReview || !riepilogo.completo}
                       data-op-qs-confirm data-op-sends={sends ? '1' : '0'} data-op-qs-confirm-engine={sheetEngine}
                       onClick={async () => {
                         // UN SOLO PULSANTE, DUE POTERI, e ognuno passa dalla sua funzione di sempre.
@@ -1778,6 +1902,22 @@ const CSS = `
 .op-mkt-s { font-family: var(--ex-mono); font-size: 9px; color: var(--ex-txt-3); overflow-wrap: anywhere; }
 .op-mkt-s.is-ok { color: var(--ex-green); }
 .op-mkt-s.is-warn { color: var(--ex-gold); }
+.op-mkt-s.is-bad { color: var(--ex-red); }
+/* La strada corta: il pulsante che porta alla verifica sta subito sotto i dati di mercato, a piena
+   larghezza, dove prima c era l inizio dell order book. */
+.op-goreview { display: block; width: 100%; min-height: 46px; margin: 0 0 10px; font-weight: 700; }
+/* Le pieghe: un comando, non un titolo. Basso contrasto, perche il percorso principale e altrove. */
+.op-more { display: block; width: 100%; text-align: left; background: none; border: 0; cursor: pointer;
+  padding: 8px 2px; margin: 0 0 8px; font: inherit; font-size: 11px; color: var(--ex-txt-2); }
+.op-more:hover { color: var(--ex-txt-1); }
+/* Il riepilogo compatto: valori in evidenza, e il tono dice l esito senza doverlo leggere. */
+.op-rsum-v.is-ok { color: var(--ex-green); }
+.op-rsum-v.is-warn { color: var(--ex-gold); }
+.op-rsum-v.is-bad { color: var(--ex-red); font-weight: 700; }
+.op-rsum-v.is-forte { font-weight: 700; }
+/* Il nome del mercato e lungo: va a capo dentro la sua riga invece di allargare il popup. */
+.op-rsum-v { overflow-wrap: anywhere; min-width: 0; text-align: right; }
+.op-qs-mkt { overflow-wrap: anywhere; }
 
 .op-booknote { font-size: 10.5px; color: var(--ex-txt-3); line-height: 1.5; }
 

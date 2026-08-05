@@ -30,6 +30,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 // module the server re-runs before a send, so the form's hints can never be looser than the refusal.
 import { validateQuote, inBandPriceBounds } from '@/lib/maker/venue-rules';
 import { numeroDigitato } from '@/lib/campo-numerico';
+// La STESSA schermata di verifica del pannello ordine, e lo STESSO verdetto sul prezzo. Due pannelli che
+// piazzano sullo stesso venue non possono mostrare due riepiloghi diversi né due giudizi diversi sullo
+// stesso prezzo: sarebbero due posti da cui divergere.
+import { riepilogoOrdine } from '@/lib/maker/riepilogo-ordine';
+import { priceVerdict, distanceCents } from '@/lib/maker/book-view';
+// «Il prezzo è live?» è un verdetto, non una provenienza — vedi lib/maker/stato-book.
+import { statoBook } from '@/lib/maker/stato-book';
 
 interface KillState { readable: boolean; killed: boolean; scope: string | null; reason: string | null; by: string | null; at: number | null }
 interface PlacementState { mode: 'dry-run' | 'send'; key: string; sends: boolean; note: string }
@@ -280,6 +287,45 @@ export default function ManualOrdersPanel() {
   const canPlace =
     !placing && !killed && manualOn && !overCap &&
     !!rules?.readable && verdict?.valid === true && notional != null;
+
+  // ── IL VERDETTO SUL PREZZO, dalla funzione condivisa ────────────────────────────────────────────
+  // `validateQuote` giudica tick, banda e size minima, ma NON l'incrocio: un BUY al prezzo dell'ask lo
+  // passerebbe. `priceVerdict` è la stessa funzione che il pannello ordine usa per colorare il prezzo e
+  // che `gambeDiUnaRiga` usa per scartare una gamba — qui non se ne scrive una seconda.
+  const verdettoPrezzo = useMemo(() => {
+    if (priceNum == null || !rules) return null;
+    return priceVerdict({
+      price: priceNum, bestBid: rules.bestBid, bestAsk: rules.bestAsk,
+      scoringMid, bandRadiusCents: rules.bandRadiusCents, side: 'BUY',
+    });
+  }, [priceNum, rules, scoringMid]);
+
+  // ── LA VERIFICA PRIMA DELL'INVIO ────────────────────────────────────────────────────────────────
+  // Stesse righe, stesso modulo e stesso test del pannello ordine. Prima qui si piazzava con un tocco
+  // solo, leggendo i valori sparsi in un form lungo; adesso il percorso è lo stesso nei due pannelli.
+  const riepilogo = useMemo(() => riepilogoOrdine({
+    title: rules?.title ?? null, marketId: rules?.marketId ?? null, book,
+    price: priceNum, size: sizeNum,
+    distanceCents: distanceCents(priceNum, scoringMid),
+    bandRadiusCents: rules?.bandRadiusCents ?? null,
+    verdict: verdettoPrezzo, fonte: 'digitato',
+  }), [rules, book, priceNum, sizeNum, scoringMid, verdettoPrezzo]);
+
+  // ── LO STATO DEL PREZZO: FONTE ≠ FRESCHEZZA ─────────────────────────────────────────────────────
+  // L'avviso di prima scattava su `midSource !== 'live-book'`, cioè sulla PROVENIENZA: un mid che veniva
+  // dal feed ma era fermo da cinque minuti non produceva nessun avviso. È lo stesso difetto trovato nel
+  // pannello ordine, sull'altro pannello.
+  const statoPrezzo = useMemo(() => statoBook({
+    source: rules?.midSource ?? null,
+    live: rules?.feedLive ?? null,
+    ageMs: rules?.midAgeSec != null ? rules.midAgeSec * 1000 : null,
+    letto: !!rules,
+  }), [rules]);
+
+  // Il passo della conferma. Cambiare un valore RIPORTA AL FORM: un riepilogo costruito su numeri che
+  // nel frattempo sono cambiati è esattamente ciò che la conferma deve impedire.
+  const [passo, setPasso] = useState<'form' | 'verifica'>('form');
+  useEffect(() => { setPasso('form'); }, [price, size, book, rules?.marketId]);
 
   // ── AUTO-RIPREZZO ── derived state. `auto` is the effective answer (both switches on); `autoMarket`
   // is the per-market opt-in on its own, so the panel can say "opted in, but the master switch is off"
@@ -836,10 +882,13 @@ export default function ManualOrdersPanel() {
               <div className="mkman-kv"><span className="mkman-k">Bid / ask</span><span className="mkman-v">{px(rules.bestBid)} / {px(rules.bestAsk)}</span></div>
               <div className="mkman-kv"><span className="mkman-k">negRisk</span><span className="mkman-v">{rules.negRisk === null ? '—' : String(rules.negRisk)}</span></div>
             </div>
-            {rules.midSource !== 'live-book' && (
-              <p className="mkman-note mkman-warn">
-                Attenzione: il mid non viene dal book live di agent34 ma dalla riga della board
-                ({dash(rules.midSource)}, {age(rules.midAgeSec)} fa). La banda è giudicata contro quel numero.
+            {/* NON «da dove viene» MA «è fresco». La condizione di prima (`midSource !== 'live-book'`)
+                taceva su un mid che veniva dal feed ma era fermo da minuti — il caso peggiore, perché
+                sembra il migliore. */}
+            {!statoPrezzo.live && (
+              <p className="mkman-note mkman-warn" data-manual-mid-stale>
+                Attenzione: il prezzo non è live — {statoPrezzo.motivo}. La banda è giudicata contro
+                quel numero.
               </p>
             )}
           </div>
@@ -980,10 +1029,54 @@ export default function ManualOrdersPanel() {
           </div>
         )}
 
+        {/* ── LA VERIFICA COMPATTA, PRIMA DELL'INVIO ────────────────────────────────────────────────
+            Prima qui si inviava con UN tocco, leggendo i valori sparsi in un form lungo. Adesso il
+            percorso è quello del pannello ordine: un tocco apre la verifica, un secondo invia. Le
+            righe le costruisce lo stesso modulo, quindi i due pannelli non possono dire cose diverse
+            sullo stesso ordine. */}
+        {passo === 'verifica' && (
+          <div className="mkman-verifica" data-manual-review>
+            <div className="mkman-verifica-h">Verifica e conferma</div>
+            <div className="mkman-verifica-rows">
+              {riepilogo.righe.map((r) => (
+                <div className="mkman-verifica-r" key={r.chiave}
+                  data-manual-review-row={r.chiave} data-manual-review-tone={r.tono}>
+                  <span className="mkman-verifica-k">{r.k}</span>
+                  <span className={`mkman-verifica-v mkman-t-${r.tono}`} data-manual-review-value={r.chiave}>
+                    {r.v}{r.nota ? <span className="mkman-hint"> · {r.nota}</span> : null}
+                  </span>
+                </div>
+              ))}
+            </div>
+            {!riepilogo.completo && (
+              <div className="mkman-res mkman-bad" data-manual-review-incompleto>
+                Manca {riepilogo.mancanti.join(', ')} — non si conferma un ordine di cui non si sa questo.
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="mkman-inrow" style={{ marginTop: 14 }}>
-          <button className="mkman-place" onClick={doPlace} disabled={!canPlace} data-manual-place>
-            {placing ? 'INVIO…' : cfg?.placement.sends ? 'PIAZZA ORDINE (INVIA DAVVERO)' : 'Piazza ordine (dry-run)'}
-          </button>
+          {passo === 'form' ? (
+            /* APRE LA VERIFICA, NON INVIA. Resta disabilitato esattamente quando lo era il bottone di
+               invio: le stesse condizioni, senza scorciatoie. */
+            <button className="mkman-place" onClick={() => setPasso('verifica')} disabled={!canPlace}
+              data-manual-goreview>
+              Verifica e conferma →
+            </button>
+          ) : (
+            <>
+              <button className="mkman-fix" onClick={() => setPasso('form')} data-manual-review-back>
+                Modifica
+              </button>
+              {/* L'UNICO PUNTO CHE INVIA. `riepilogo.completo` si SOMMA a `canPlace`: può solo
+                  spegnere il bottone, mai accenderlo. */}
+              <button className="mkman-place" onClick={doPlace} disabled={!canPlace || !riepilogo.completo}
+                data-manual-place>
+                {placing ? 'INVIO…' : cfg?.placement.sends ? 'PIAZZA ORDINE (INVIA DAVVERO)' : 'Piazza ordine (dry-run)'}
+              </button>
+            </>
+          )}
           {!canPlace && (
             <span className="mkman-note mkman-warn">
               {killed ? 'Bloccato dal kill-switch globale.'
@@ -1207,6 +1300,21 @@ const CSS = `
 .mkman-warn { color: var(--ex-gold); }
 .mkman-ok { color: var(--ex-green); }
 .mkman-bad { color: var(--ex-red); }
+/* La verifica compatta: poche righe, valori a destra, nessun paragrafo. Deve stare in uno schermo. */
+.mkman-verifica { margin-top: 14px; border: 1px solid var(--ex-line); border-radius: 6px; padding: 10px 12px;
+  background: var(--ex-bg-2); }
+.mkman-verifica-h { font-size: 11px; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--ex-txt-3); margin-bottom: 8px; }
+.mkman-verifica-rows { display: flex; flex-direction: column; gap: 5px; }
+.mkman-verifica-r { display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  font-size: 12.5px; }
+.mkman-verifica-k { color: var(--ex-txt-3); flex: 0 0 auto; }
+.mkman-verifica-v { font-family: var(--ex-mono); color: var(--ex-txt-1); text-align: right;
+  overflow-wrap: anywhere; min-width: 0; }
+.mkman-t-ok { color: var(--ex-green); }
+.mkman-t-warn { color: var(--ex-gold); }
+.mkman-t-bad { color: var(--ex-red); font-weight: 700; }
+.mkman-t-forte { font-weight: 700; }
 .mkman-num { font-family: var(--ex-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 .mkman-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 9px 14px; }
