@@ -93,6 +93,10 @@ const REFRESH_MARKETS_MS = 60_000;    // re-read the watchlist for adds/drops
 // sta guardando lo schermo adesso. La riconciliazione vera scatta solo se l'insieme e' cambiato.
 const LEASE_WATCH_MS = 2_000;
 const STALE_MS = 30_000;              // no event within this ⇒ that book is STALE (≈3 heartbeats)
+// La finestra su cui si misura la vitalita' del FEED (non del singolo asset). Vedi feed.vitality piu'
+// sotto: 30s e' il p90 dell'eta' misurata sulla flotta, cioe' l'orizzonte entro cui in condizioni
+// normali quasi tutti gli asset ricevono almeno un evento.
+const FEED_VITALITY_WINDOW_MS = 30_000;
 const RESNAPSHOT_MIN_GAP_MS = 5_000;  // don't hammer REST for the same asset
 const STARTUP_DELAY_MS = 8_000;
 // Ladder depth persisted per side, per token. The event terminal renders a book, not a market-data
@@ -735,6 +739,18 @@ function buildSnapshot() {
     feed: {
       connected: client.connected,
       silentMs: client.connected ? client.silenceMs(now) : null,
+      // ── VITALITA' DEL FEED, PER CHI DEVE DISTINGUERE «NESSUNA NOTIZIA» DA «SIAMO CIECHI» ─────────
+      // Su quanti asset distinti e' arrivato un evento nella finestra. Il consumatore e' il guard
+      // mid-stale di lib/maker/auto-reprice: un mid fermo su un mercato tranquillo e' valido se il
+      // socket sta consegnando altrove, e sospetto se non consegna da nessuna parte. La finestra e'
+      // 30s perche' e' il p90 dell'eta' misurata sulla flotta (105 mercati, mediana 4s): entro 30s
+      // la flotta normalmente si rinnova quasi tutta, quindi un conteggio basso qui e' un fatto, non
+      // rumore. Pubblicato SEMPRE, anche a socket caduto, perche' l'assenza del campo e' cio' che fa
+      // ripiegare il consumatore sul limite severo.
+      vitality: (() => {
+        try { return store.vitality(FEED_VITALITY_WINDOW_MS, now); }
+        catch { return null; }
+      })(),
       subscriptions: assetToMarket.size,
       markets: desired.size,
       reconnects, watchdogReconnects, restSnapshots,
