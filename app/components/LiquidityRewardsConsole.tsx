@@ -242,6 +242,18 @@ interface WalletResp {
     readable: boolean; ageMs: number | null; ageSec: number | null; maxAgeSec: number;
     count: number; reason: string | null; writer: string;
   } | null;
+  // I RESIDUI CHE MUOIONO SOTTO LA SOGLIA MINIMA. Un fill parziale può lasciare una size che non arriva
+  // più a `min_incentive_size`: quell'ordine non è rinnovabile e viene lasciato scadere, ma il capitale
+  // che porta resta fermo fino ad allora e poi torna libero. Prima non lo diceva nessuno.
+  residuiSottoSoglia?: {
+    count: number; capitaleUsd: number | null;
+    items: Array<{
+      marketId: string; marketTitle: string | null; orderId: string;
+      book: string; side: string; price: number;
+      sizeRemaining: number; minSize: number; notionalUsd: number | null;
+      expiresAt: string | null; scaduto: boolean | null;
+    }>;
+  } | null;
   blockedBy: 'operatore' | 'sistema' | null; todo: WalletTodo[];
 }
 
@@ -1058,6 +1070,31 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
                         leggibile. Lo scrive <b>{wal.venuePositions.writer}</b>.
                       </p>
                     )}
+                  </div>
+                )}
+
+                {/* ── RESIDUI SOTTO SOGLIA ────────────────────────────────────────────────────────
+                    Compare SOLO quando ce n'è almeno uno: una casella permanente che dice «0» sarebbe
+                    un'altra cosa da imparare a ignorare, e questo avviso esiste proprio perché un
+                    silenzio si era mangiato un ordine intero (0x4c19a7, 5 agosto: 24 righe di skip
+                    identiche e nessuno avvisato). Il dettaglio per ordine sta nell'elenco qui sotto,
+                    dove stanno già tutte le altre cose da fare: qui c'è quanto capitale è coinvolto,
+                    che è la cifra per cui vale la pena guardare. */}
+                {wal.residuiSottoSoglia && wal.residuiSottoSoglia.count > 0 && (
+                  <div className="ex-stat" data-lrc-wallet-residui={wal.residuiSottoSoglia.count}>
+                    <span className="ex-stat-k">Residui sotto soglia</span>
+                    <span className="ex-stat-v ex-dn">
+                      {wal.residuiSottoSoglia.count === 1 ? '1 ordine' : `${wal.residuiSottoSoglia.count} ordini`}
+                    </span>
+                    <span className="ex-stat-s">
+                      {money(wal.residuiSottoSoglia.capitaleUsd)} in attesa di riallocazione
+                    </span>
+                    <p className="ex-why ex-why-warn">
+                      Residuo sotto soglia minima: non rinnovabile, capitale in attesa di riallocazione.
+                      Dopo un acquisto parziale restano meno quote del minimo che il mercato richiede per
+                      pagare, quindi l&apos;ordine non si può rinnovare e viene lasciato spegnere. La
+                      posizione già comprata non c&apos;entra e segue la sua uscita per conto suo.
+                    </p>
                   </div>
                 )}
               </div>

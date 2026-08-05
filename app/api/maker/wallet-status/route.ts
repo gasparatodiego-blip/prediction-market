@@ -5,6 +5,11 @@ import { resolveFunder, venueAccountAddress } from '@/lib/venues/polymarket-clob
 // poteva dire «PRONTO» mentre ogni ordine veniva respinto, e l'unico modo di scoprirlo era provare a
 // piazzare. Il 5 agosto 2026 è successo esattamente questo.
 import { readVenuePositions, MAX_AGE_MS } from '@/lib/safety/venue-positions-snapshot';
+// I RESIDUI CHE MUOIONO SOTTO LA SOGLIA MINIMA. Un fill parziale può lasciare una size che non arriva più
+// a `min_incentive_size`: quell'ordine non è rinnovabile, viene lasciato scadere — decisione giusta e
+// invariata — ma finora scadeva in silenzio, e il capitale che portava tornava libero senza che nessuno
+// lo sapesse. Qui l'avviso entra nella stessa lista «cosa manca» che si legge prima di piazzare.
+import { readResiduiSottoSoglia } from '@/lib/maker/residui-sotto-soglia';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -136,6 +141,37 @@ export async function GET() {
     });
   }
 
+  // ── I RESIDUI CONDANNATI, DETTI A PAROLE ───────────────────────────────────────────────────────
+  // Vengono DOPO tutto il resto e non entrano in `blockedBy`: non impediscono di piazzare — nessun gate
+  // li guarda — e spacciarli per un blocco farebbe leggere «bloccato dall'operatore» a un sistema che
+  // funziona. Sono un avviso, e un avviso che si traveste da blocco è il modo più rapido per far
+  // ignorare entrambi.
+  const bloccantiCount = todo.length;
+  const residui = readResiduiSottoSoglia();
+  const latoTxt = (r: { book: string; side: string }) =>
+    `${String(r.book).toLowerCase() === 'no' ? 'NO' : 'SÌ'}${r.side === 'SELL' ? ' (ordine di uscita)' : ''}`;
+  const quandoTxt = (iso: string | null): string => {
+    if (!iso) return 'senza scadenza dichiarata';
+    const ms = Date.parse(iso);
+    if (!Number.isFinite(ms)) return 'senza scadenza leggibile';
+    const d = ms - Date.now();
+    const min = Math.round(Math.abs(d) / 60_000);
+    if (d > 0) return d < 90_000 ? `fra meno di un minuto (${new Date(ms).toLocaleTimeString('it-IT')})` : `fra ${min} min (${new Date(ms).toLocaleTimeString('it-IT')})`;
+    return min < 1 ? `ora (${new Date(ms).toLocaleTimeString('it-IT')})` : `${min} min fa (${new Date(ms).toLocaleTimeString('it-IT')})`;
+  };
+  for (const r of residui.residui) {
+    const mercato = r.marketTitle || `mercato cid_${String(r.marketId).replace(/^0x/, '').slice(0, 10)}`;
+    const capitale = r.notionalUsd == null ? 'importo non leggibile' : `$${r.notionalUsd.toFixed(2)}`;
+    todo.push({
+      who: 'operatore',
+      what: `Residuo sotto soglia minima: non rinnovabile, capitale in attesa di riallocazione — «${mercato}», lato ${latoTxt(r)}:`
+        + ` restano ${r.sizeRemaining} quote contro il minimo di ${r.minSize} richiesto per essere pagati, e ${capitale} restano fermi lì.`,
+      how: r.scaduto
+        ? `L'ordine si è spento ${quandoTxt(r.expiresAt)}: quel capitale adesso è libero e va rimesso in gioco. La posizione già comprata non c'entra e segue la sua uscita per conto suo.`
+        : `L'ordine non viene rinnovato e si spegne da solo ${quandoTxt(r.expiresAt)}; da quel momento il capitale è libero e va rimesso in gioco. La posizione già comprata non c'entra e segue la sua uscita per conto suo.`,
+    });
+  }
+
   return NextResponse.json({
     ok: true, at, error: null,
     address, rpc: rpc.replace(/\/\/([^@]*@)?/, '//'),
@@ -157,7 +193,20 @@ export async function GET() {
     // «pronto» finche' anche un solo interruttore manca — mezza verita' qui costa un ordine rifiutato.
     // LO SNAPSHOT E' UNO DI QUELLI: senza, il gate rifiuta, quindi «pronto» sarebbe falso.
     ready: funded && approvalsOk && fundingApproved && placement === 'send' && snap.readable,
-    blockedBy: todo.length ? todo[0].who : null,
+    // Solo le voci che precedono gli avvisi sui residui: quelle sì impediscono di piazzare.
+    blockedBy: bloccantiCount ? todo[0].who : null,
     todo,
+    // Gli stessi fatti in forma strutturata, per la casella riassuntiva del pannello. Il testo qui sopra
+    // resta la fonte di ciò che si legge: questo serve al conteggio e al totale, non a ridirlo.
+    residuiSottoSoglia: {
+      count: residui.count,
+      capitaleUsd: residui.capitaleUsd,
+      items: residui.residui.map((r) => ({
+        marketId: r.marketId, marketTitle: r.marketTitle, orderId: r.orderId,
+        book: r.book, side: r.side, price: r.price,
+        sizeRemaining: r.sizeRemaining, minSize: r.minSize, notionalUsd: r.notionalUsd,
+        expiresAt: r.expiresAt, scaduto: r.scaduto ?? null,
+      })),
+    },
   }, { headers: { 'Cache-Control': 'no-store' } });
 }

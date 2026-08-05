@@ -11,6 +11,7 @@
 import type { AutoRepriceDeps, AutoRepriceTuning } from './auto-reprice-config';
 import type { MarketRules, ReplaceResult, OrdersResult, Book } from './manual-order';
 import type { ManualMarketVerdict } from './manual-mode';
+import type { ResiduoSottoSoglia } from './residui-sotto-soglia';
 
 export interface RestingLeg {
   orderId: string;
@@ -42,6 +43,20 @@ export interface RepriceDecision {
   secondsToExpiry?: number | null;
   refreshMarginSeconds?: number;
   expiring?: boolean;
+  /** Solo su gate 'refresh-invalid': i codici del guard condiviso che hanno rifiutato il rinnovo. */
+  refreshInvalidCodes?: string[];
+  /** True SOLO quando fra quei codici c'è BELOW_MIN_SIZE — cioè quando il residuo lasciato da un fill
+   *  non arriva più a `min_incentive_size` e l'ordine è condannato a scadere. Gli altri motivi di
+   *  refresh-invalid (fuori tick, fuori dai limiti di prezzo) NON lo accendono: un avviso «capitale in
+   *  attesa di riallocazione» su quelli sarebbe un falso allarme. */
+  belowMinSize?: boolean;
+  minSize?: number;
+  sizeRemaining?: number;
+  price?: number;
+  book?: Book;
+  side?: 'BUY' | 'SELL';
+  /** price × sizeRemaining: il capitale fermo su quel residuo. */
+  notionalUsd?: number;
 }
 
 export function decideReprice(args: {
@@ -99,6 +114,9 @@ export interface CycleResult {
   reason: string | null;
   markets: CycleMarketReport[];
   actions: CycleAction[];
+  /** Fatti che valgono un avviso, emessi UNA VOLTA per ordine e non a ogni giro. Oggi ce n'è uno solo:
+   *  il residuo che muore sotto la soglia minima. */
+  events: ResiduoSottoSoglia[];
   latencyMs?: number;
 }
 
@@ -115,6 +133,10 @@ export function runAutoRepriceCycle(deps?: {
   configDeps?: AutoRepriceDeps;
   /** Carried BETWEEN cycles by the caller — "consecutive" must mean consecutive. */
   breaches?: Map<string, number>;
+  /** Gli ordini per cui l'avviso «residuo sotto soglia» è già uscito. Portato fra i cicli dal chiamante
+   *  come `breaches`: senza, l'avviso si ripeterebbe a ogni giro finché l'ordine non scade — che è
+   *  esattamente il rumore da cui questo avviso è nato. Si pota quando l'ordine sparisce dal libro. */
+  residuiSegnalati?: Set<string>;
   /** The connection-blackout clock, also carried between cycles. A fresh process starts with none:
    *  "we have been blind since T" is a claim about a continuous observation it did not make. */
   link?: { downSince: number | null; consecutiveFailures: number };

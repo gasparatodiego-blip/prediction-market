@@ -81,6 +81,9 @@ const { resolveOffsetFor } = require('../lib/maker/offset-config');
 const { readAllocatedCapital } = require('../lib/maker/allocated-capital');
 const { AUTO_CLOSE_SOURCE } = require('../lib/maker/auto-close-config');
 const { writeVenuePositions } = require('../lib/safety/venue-positions-snapshot');
+// L'AVVISO SUI RESIDUI CHE MUOIONO SOTTO LA SOGLIA MINIMA. Deposita in data/ quello che il ciclo scopre,
+// perché lo legga la dashboard: la riga di log da sola non ha mai avvisato nessuno (0x4c19a7, 5 agosto).
+const { registraResiduiSottoSoglia } = require('../lib/maker/residui-sotto-soglia');
 // AUTOMATIC POSITION CLOSING. Runs on the same throttle as the reconciliation and for the same reason:
 // a fill is only observable after the venue is asked. Default OFF everywhere; see lib/maker/auto-close.js.
 const { runAutoCloseCycle } = require('../lib/maker/auto-close');
@@ -103,6 +106,13 @@ const log = (...a) => console.log(new Date().toISOString(), '[agent40-manual-rep
 // must start counting again rather than inheriting a claim it did not witness. The DURABLE state (last
 // re-price, hourly counts) is what must survive a restart, and that lives in data/ instead.
 const breaches = new Map();
+
+// GLI ORDINI PER CUI L'AVVISO «RESIDUO SOTTO SOGLIA» È GIÀ USCITO. Accanto a `breaches` e per la stessa
+// ragione: la condizione si ripresenta identica a ogni ciclo finché l'ordine non scade, e senza questo
+// Set l'avviso uscirebbe dodici volte al minuto — cioè si leggerebbe come il rumore che sostituisce.
+// In memoria come gli altri, e va bene: un riavvio lo azzera, ma la deduplica DURA vive nel file di
+// data/, che fonde per orderId — quindi un riavvio non fa riapparire un avviso già dato.
+const residuiSegnalati = new Set();
 
 // Lo stato per mercato del motore di tracking, portato fra un ciclo e l'altro. In memoria di proposito,
 // come `breaches`: un riavvio lo azzera, ed e' corretto — gli ordini a riposo portano una scadenza GTD
@@ -388,9 +398,29 @@ async function cycle() {
     audit: (rec) => { try { appendMakerAudit(rec); } catch (e) { log('audit write failed:', e.message); } },
     config: loadAutoRepriceTuning(),
     breaches,
+    residuiSegnalati,
     link,
   });
   logCycle(res);
+
+  // ── L'AVVISO ESCE DAL PROCESSO ────────────────────────────────────────────────────────────────
+  // Il ciclo emette l'evento una volta sola per ordine; qui lo si mette dove si vede. Try/catch suo:
+  // un file che non si scrive non deve poter fermare il motore che sorveglia gli ordini veri.
+  const residui = (res.events || []).filter((e) => e.type === 'residuo-sotto-soglia');
+  if (residui.length) {
+    for (const e of residui) {
+      log(`RESIDUO SOTTO SOGLIA · cid_${String(e.marketId).replace(/^0x/, '').slice(0, 10)} · lato ${String(e.book).toUpperCase()}`
+        + ` · restano ${e.sizeRemaining} share contro il minimo ${e.minSize}`
+        + `${Number.isFinite(e.notionalUsd) ? ` · $${e.notionalUsd.toFixed(2)} fermi` : ''}`
+        + `${e.secondsToExpiry != null ? ` · scade fra ${e.secondsToExpiry}s` : ''}`
+        + ' — NON rinnovabile: l ordine si spegne da solo e quel capitale torna da riallocare.'
+        + ' La posizione gia eseguita non viene toccata: segue la sua uscita.');
+    }
+    try {
+      const w = registraResiduiSottoSoglia(residui);
+      if (!w.ok) log(`avviso residui NON depositato (${w.reason}) — resta solo in questo log`);
+    } catch (e) { log('avviso residui NON depositato:', e.message); }
+  }
   return res;
 }
 
