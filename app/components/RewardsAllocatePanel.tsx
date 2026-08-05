@@ -1063,7 +1063,9 @@ export default function RewardsAllocatePanel(
                       <div><b>Anteprima — non è stato scritto nulla.</b></div>
                       <div style={{ marginTop: 4 }}>
                         <b>{addPreview.summary.question || addPreview.marketId.slice(0, 12)}</b>
-                        {' · '}{addPreview.summary.hasRewards ? perDay(addPreview.summary.rewardsDailyRate) : <b className="oob">NESSUN REWARD — solo trading direzionale</b>}
+                        {/* Anche qui l'etichetta viene dalla funzione: la copia scritta a mano diceva
+                            «NESSUN REWARD» pure quando il montepremi non era stato letto. */}
+                        {' · '}{addPreview.summary.hasRewards ? perDay(addPreview.summary.rewardsDailyRate) : <b className="oob">{addPreview.summary.rewardLabel}</b>}
                         {' · spread '}{cents(addPreview.summary.spreadCents)}
                         {' · tick '}{addPreview.summary.tick ?? '—'}
                         {' · chiusura fra '}{closeText(addPreview.summary.minutesToClose)}

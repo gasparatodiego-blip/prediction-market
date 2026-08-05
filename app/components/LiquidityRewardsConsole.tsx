@@ -1960,9 +1960,12 @@ function VenueResults({ q, busy, err, rows, dropped, anyFilterOn, sortByPool, on
                     {m.rewardsMaxSpreadCents != null && <> · banda <span className="ex-n">{m.rewardsMaxSpreadCents.toFixed(2)}¢</span></>}
                   </div>
                   <div className="ex-badges lrc-mt">
-                    {/* STESSA CONVENZIONE DI ALLOCA, parola per parola. */}
+                    {/* L'ETICHETTA VIENE DALLA FUNZIONE, non da una copia della stringa. Qui c'era il
+                        testo scritto a mano, e diceva «NESSUN REWARD» anche quando il montepremi non
+                        era stato LETTO — due fatti diversi con la stessa frase. `rewardLabel` li
+                        distingue già (lib/maker/market-search.rewardLabelFor). */}
                     {!m.hasRewards && (
-                      <span className="ex-badge is-warn" data-lrc-no-reward>NESSUN REWARD — solo trading direzionale</span>
+                      <span className="ex-badge is-warn" data-lrc-no-reward>{m.rewardLabel}</span>
                     )}
                     {m.enabled && <span className="ex-badge is-gold">abilitato</span>}
                     {!m.enabled && m.optedIn && <span className="ex-badge">opted-in</span>}

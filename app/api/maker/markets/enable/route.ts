@@ -134,19 +134,35 @@ export async function POST(req: NextRequest) {
     // l'altra fonte dice che quella cifra non esiste — è la definizione di un dato su cui non si agisce.
     //
     // Questo controllo non decide CHI ha ragione e non prova a indovinarlo: dichiara che non si sa.
+    // ── DUE MOTIVI DIVERSI PER LO STESSO RIFIUTO ────────────────────────────────────────────────
+    // «Il venue dice che non paga» e «il venue non me l'ha detto» portano entrambi a NON abilitare —
+    // su un dato che non concorda, o che non si è letto, non si impegna capitale. Ma sono due fatti
+    // diversi, e fino al 5 agosto 2026 il secondo veniva raccontato come il primo: un mercato che
+    // pagava $30/g veniva rifiutato dicendo che il venue non pubblica nessun programma reward.
+    // La decisione non cambia; cambia che adesso è vera.
     const contraddizionePot = potAtPlan != null && potAtPlan > 0 && m.hasRewards !== true;
     if (contraddizionePot) {
+      const nonLetto = m.rewardsStato === 'illeggibile';
       return NextResponse.json({
-        ok: false, gate: 'reward-contraddizione', marketId: id,
+        ok: false, gate: nonLetto ? 'reward-non-letto' : 'reward-contraddizione', marketId: id,
         potAtPlan, potAlVenue: m.rewardsDailyRate, hasRewards: m.hasRewards,
-        error: `Il piano ha proposto questo mercato con un montepremi di $${potAtPlan}/g, ma il venue in questo momento non pubblica nessun programma reward (${NO_REWARD_LABEL}). Le due fonti si contraddicono sullo stesso mercato: NON viene abilitato.`,
-        note: 'Il montepremi della card viene dal board (agent24, riscritto ogni ~15 min); questo controllo lo chiede al venue adesso. Ricalcola il piano: se il programma è finito davvero, il mercato sparirà dalle proposte; se torna con il montepremi, era il board a essere indietro.',
+        rewardsStato: m.rewardsStato, rewardsPerche: m.rewardsPerche,
+        error: nonLetto
+          ? `Il piano ha proposto questo mercato con un montepremi di $${potAtPlan}/g, e il montepremi al venue NON È STATO LETTO (${m.rewardsPerche}). Non si impegna capitale su un dato che non si è letto: NON viene abilitato. Questo non vuol dire che il mercato non paghi — vuol dire che in questo momento non lo sappiamo.`
+          : `Il piano ha proposto questo mercato con un montepremi di $${potAtPlan}/g, ma il venue in questo momento non pubblica nessun programma reward (${NO_REWARD_LABEL}). Le due fonti si contraddicono sullo stesso mercato: NON viene abilitato.`,
+        note: nonLetto
+          ? 'La lettura del venue è intermittente: riprova fra qualche secondo. Se il montepremi torna, era una risposta incompleta; se resta illeggibile, il problema è la fonte e non il mercato.'
+          : 'Il montepremi della card viene dal board (agent24, riscritto ogni ~15 min); questo controllo lo chiede al venue adesso. Ricalcola il piano: se il programma è finito davvero, il mercato sparirà dalle proposte; se torna con il montepremi, era il board a essere indietro.',
         summary: null,
       }, { status: 409 });
     }
 
     const warnings: string[] = [];
-    if (!m.hasRewards) warnings.push(`${NO_REWARD_LABEL}: questo mercato non ha montepremi di liquidità, quindi qualunque ordine qui non produce reward.`);
+    if (m.rewardsStato === 'illeggibile') {
+      warnings.push(`Montepremi NON LETTO al venue (${m.rewardsPerche}): non si sa se questo mercato paghi. Non è la stessa cosa di «non paga».`);
+    } else if (!m.hasRewards) {
+      warnings.push(`${NO_REWARD_LABEL}: questo mercato non ha montepremi di liquidità, quindi qualunque ordine qui non produce reward.`);
+    }
     // Il caso opposto non è un rifiuto: il venue paga più (o paga e il piano non lo sapeva). Si dice e
     // basta — un montepremi migliore del previsto non è una ragione per fermare niente.
     if (potAtPlan != null && m.hasRewards && m.rewardsDailyRate != null
