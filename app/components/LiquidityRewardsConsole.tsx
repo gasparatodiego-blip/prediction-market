@@ -266,6 +266,20 @@ interface WalletResp {
       bloccoGate: string | null;
     }>;
   } | null;
+  // IL LIBRO SVUOTATO DAL GUARDIANO. Il 6 agosto 2026 alle 00:16:03 UTC agent37 ha cancellato nove
+  // ordini reali su cinque mercati perché il battito del motore maker era fermo da 121s (soglia 120s):
+  // $663 tornati fermi, e l'unica traccia leggibile era in un log di processo. È l'evento più grosso
+  // che questo sistema possa produrre da solo, ed era l'unico che non arrivava fin qui.
+  cancellazioniDiEmergenza?: {
+    count: number; ordiniCancellati: number; capitaleUsd: number | null;
+    items: Array<{
+      id: string; at: string;
+      stalenessSec: number | null; thresholdSec: number | null; oltreSogliaSec: number | null;
+      heartbeatAt: string | null;
+      ordiniCancellati: number; mercatiToccati: number;
+      capitaleUsd: number | null; simulata: boolean; erroreVenue: string | null;
+    }>;
+  } | null;
   blockedBy: 'operatore' | 'sistema' | null; todo: WalletTodo[];
 }
 
@@ -1082,6 +1096,35 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
                         leggibile. Lo scrive <b>{wal.venuePositions.writer}</b>.
                       </p>
                     )}
+                  </div>
+                )}
+
+                {/* ── IL GUARDIANO HA SVUOTATO IL LIBRO ───────────────────────────────────────────
+                    Prima dei residui e delle scadenze, perché è l'unico avviso che spiega un libro
+                    INTERO vuoto: leggere «due residui sotto soglia» mentre ne mancano nove porta a
+                    cercare nel posto sbagliato. Stessa regola delle altre due caselle — compare solo
+                    quando è successo davvero, mai come casella permanente che dice zero.
+                    La finestra qui è di dodici ore e non di mezz'ora: questo evento capita di notte
+                    (il 6 agosto: 00:16 UTC) e un avviso già scaduto all'apertura del pannello la
+                    mattina dopo non avrebbe avvisato nessuno — che è esattamente com'è andata. */}
+                {wal.cancellazioniDiEmergenza && wal.cancellazioniDiEmergenza.count > 0 && (
+                  <div className="ex-stat" data-lrc-wallet-emergenza={wal.cancellazioniDiEmergenza.count}>
+                    <span className="ex-stat-k">Libro svuotato dal guardiano</span>
+                    <span className="ex-stat-v ex-dn">
+                      {wal.cancellazioniDiEmergenza.ordiniCancellati === 1
+                        ? '1 ordine cancellato'
+                        : `${wal.cancellazioniDiEmergenza.ordiniCancellati} ordini cancellati`}
+                    </span>
+                    <span className="ex-stat-s">
+                      {money(wal.cancellazioniDiEmergenza.capitaleUsd)} tornati liberi
+                    </span>
+                    <p className="ex-why ex-why-warn">
+                      Il guardiano del maker ha cancellato tutti gli ordini a riposo perché il battito del
+                      motore era fermo oltre la soglia consentita. Non è una scadenza e non è un&apos;esecuzione:
+                      gli ordini sono stati tolti di proposito, quindi quel capitale è libero e resta fermo
+                      finché non lo rimetti in gioco. Quanto era fermo il battito, contro quale soglia, e su
+                      quali mercati: nell&apos;elenco qui sotto.
+                    </p>
                   </div>
                 )}
 

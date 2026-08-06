@@ -26,6 +26,14 @@ const { cancelAllOrders } = require('../lib/maker/cancel-all');
 // The ONE cancel credentials provider (shared with POST /api/maker/cancel). Present creds → live cancel;
 // absent → dry-run (simulated). key-custody is required lazily inside it, AFTER the .env load below.
 const { buildCancelCredsProviders } = require('../lib/maker/cancel-creds-provider');
+// ── LO SCATTO ESCE DAL LOG DI PROCESSO ────────────────────────────────────────────────────────────
+// Il 6 agosto 2026 alle 00:16:03 questo watchdog ha cancellato nove ordini reali su cinque mercati e
+// l'ha scritto in tre righe di ~/.pm2/logs/agent37-maker-watchdog-out.log, con il Telegram «not
+// configured». Il mattino dopo: libro vuoto, $663 fermi, nessuna spiegazione visibile in nessun
+// pannello. Un avviso che per essere visto pretende che qualcuno legga i log di un processo non è un
+// avviso — è la stessa lezione di residui-sotto-soglia e scadenze-senza-rinnovo, e qui prende la
+// stessa strada: un file in data/ che /api/maker/wallet-status porta in «Stato wallet e piazzamento».
+const { costruisciCancellazione, registraCancellazioneDiEmergenza } = require('../lib/maker/cancellazione-di-emergenza');
 const { atomicWriteJson } = require('../lib/atomicJsonWrite');
 
 // ── Load .env for Telegram creds (pm2 doesn't auto-load project env files) — read-only, never commit ──
@@ -80,7 +88,10 @@ function formatResults(results) {
     if (r.ok === false) return `  • ${r.venue}: ERROR — ${r.error}`;
     const c = r.cancelled == null ? '?' : r.cancelled;
     const believed = r.venueOpenBefore != null ? `, venue-open-before ${r.venueOpenBefore}` : '';
-    return `  • ${r.venue}: ${c} cancelled${r.simulated ? ' (dry-run/disarmed)' : ''}${believed}`;
+    // Il capitale che quegli ordini impegnavano: è la cifra che dice se alzarsi adesso o domattina.
+    // `null` (non leggibile) resta detto come tale — mai uno zero di comodo.
+    const usd = r.notionalUsd != null ? `, $${Number(r.notionalUsd).toFixed(2)} freed` : '';
+    return `  • ${r.venue}: ${c} cancelled${r.simulated ? ' (dry-run/disarmed)' : ''}${believed}${usd}`;
   }).join('\n');
 }
 
@@ -137,9 +148,28 @@ async function poll(deps = {}) {
 
   const totalCancelled = results.reduce((a, r) => a + (Number.isFinite(r.cancelled) ? r.cancelled : 0), 0);
   log(`cancel-all complete: ${totalCancelled} cancelled across ${results.length} venue(s). ${formatResults(results).replace(/\n/g, ' | ')}`);
+
+  // ── IL REFERTO, DOVE SI GUARDA ──────────────────────────────────────────────────────────────────
+  // Try/catch suo e DOPO la cancellazione: un file che non si scrive non deve poter interferire con il
+  // guardiano, e il guardiano ha già fatto la sua parte. Se il deposito fallisce lo si dice — resterebbe
+  // solo il log di processo, cioè esattamente il buco che questo blocco esiste per chiudere.
+  const evento = costruisciCancellazione({
+    at: nowMs,
+    stalenessSec,
+    thresholdSec: DEADMAN_SEC,
+    heartbeatTs: (hb && typeof hb.ts === 'number') ? hb.ts : null,
+    results,
+  });
+  try {
+    const w = (deps.registraCancellazione || registraCancellazioneDiEmergenza)(evento);
+    if (!w.ok) log(`avviso cancellazione di emergenza NON depositato (${w.reason}) — resta solo in questo log`);
+    else log(`avviso depositato per la dashboard: ${evento.ordiniCancellati} ordini su ${evento.mercatiToccati} mercati`
+      + `${evento.capitaleUsd != null ? `, $${evento.capitaleUsd.toFixed(2)} tornati liberi` : ', capitale non leggibile'}`
+      + ` · battito fermo da ${stalenessSec}s contro una soglia di ${DEADMAN_SEC}s`);
+  } catch (e) { log('avviso cancellazione di emergenza NON depositato:', e.message); }
   await sendTelegram(`🛑 <b>MAKER DEAD-MAN TRIGGERED</b>\nagent35 heartbeat stale <b>${stalenessSec}s</b> (&gt; ${DEADMAN_SEC}s dead-man).\nIssued cancel-all:\n${formatResults(results)}`, transport);
 
-  return { action: 'triggered', stalenessSec, results };
+  return { action: 'triggered', stalenessSec, results, evento };
 }
 
 async function loop() {

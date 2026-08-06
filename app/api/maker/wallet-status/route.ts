@@ -11,6 +11,11 @@ import { readVenuePositions, MAX_AGE_MS } from '@/lib/safety/venue-positions-sna
 // lo sapesse. Qui l'avviso entra nella stessa lista «cosa manca» che si legge prima di piazzare.
 import { readResiduiSottoSoglia } from '@/lib/maker/residui-sotto-soglia';
 import { readScadenzeSenzaRinnovo } from '@/lib/maker/scadenze-senza-rinnovo';
+// IL DEAD-MAN CHE SVUOTA IL LIBRO. La notte fra il 5 e il 6 agosto 2026 agent37 ha cancellato nove
+// ordini reali su cinque mercati alle 00:16:03 e l'unica traccia leggibile era in un log di processo:
+// il mattino dopo il pannello mostrava un libro vuoto e nessuna spiegazione. È l'evento più grosso che
+// questo sistema possa produrre da solo, e finora era l'unico che non arrivava qui.
+import { readCancellazioniDiEmergenza } from '@/lib/maker/cancellazione-di-emergenza';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -160,6 +165,34 @@ export async function GET() {
     if (d > 0) return d < 90_000 ? `fra meno di un minuto (${new Date(ms).toLocaleTimeString('it-IT')})` : `fra ${min} min (${new Date(ms).toLocaleTimeString('it-IT')})`;
     return min < 1 ? `ora (${new Date(ms).toLocaleTimeString('it-IT')})` : `${min} min fa (${new Date(ms).toLocaleTimeString('it-IT')})`;
   };
+  // ── IL LIBRO SVUOTATO DAL DEAD-MAN, PRIMA DI TUTTI GLI ALTRI AVVISI ────────────────────────────
+  // Viene per primo fra gli avvisi perché è l'unico che spiega un LIBRO INTERO vuoto: leggere «residuo
+  // sotto soglia» su due gambe mentre ne mancano nove è una traccia che porta nella direzione sbagliata.
+  // Non entra in `blockedBy` — nessun gate lo guarda, e non impedisce di ripiazzare adesso.
+  const emergenze = readCancellazioniDiEmergenza();
+  for (const c of emergenze.cancellazioni) {
+    const capitale = c.capitaleUsd == null ? 'importo non leggibile' : `$${c.capitaleUsd.toFixed(2)}`;
+    const quando = quandoTxt(c.at);
+    // Un pelo sopra la soglia e un crollo sono due diagnosi diverse, e la differenza è un numero solo.
+    const margine = c.oltreSogliaSec == null
+      ? ''
+      : c.oltreSogliaSec <= 10
+        ? ` — appena ${c.oltreSogliaSec}s oltre la soglia, quindi è mancato pochissimo`
+        : ` — ${c.oltreSogliaSec}s oltre la soglia`;
+    todo.push({
+      who: 'operatore',
+      what: (c.simulata ? 'Il guardiano SIMULA una cancellazione totale' : 'IL GUARDIANO HA CANCELLATO TUTTO IL LIBRO')
+        + `: ${c.ordiniCancellati} ordini su ${c.mercatiToccati} mercati, e ${capitale} sono tornati liberi.`
+        + ` Motivo: il battito del motore maker era fermo da ${c.stalenessSec ?? '?'}s contro una soglia di ${c.thresholdSec ?? '?'}s${margine}.`
+        + (c.simulata ? ' Nessuna credenziale di cancellazione: gli ordini sono ancora sul libro.' : '')
+        + (c.erroreVenue ? ` ATTENZIONE: il venue ha risposto con un errore (${c.erroreVenue}) — parte di quegli ordini potrebbe essere ancora a riposo.` : ''),
+      how: `È successo ${quando}${c.heartbeatAt ? `; l'ultimo battito del motore risale a ${new Date(c.heartbeatAt).toLocaleTimeString('it-IT')}` : ''}.`
+        + ' Questa non è una scadenza né un fill: gli ordini sono stati tolti dal guardiano, quindi il capitale è libero'
+        + ' e resta fermo finché non lo si rimette in gioco a mano.'
+        + ' Prima di ripiazzare vale la pena guardare perché il motore aveva smesso di battere.',
+    });
+  }
+
   for (const r of residui.residui) {
     const mercato = r.marketTitle || `mercato cid_${String(r.marketId).replace(/^0x/, '').slice(0, 10)}`;
     const capitale = r.notionalUsd == null ? 'importo non leggibile' : `$${r.notionalUsd.toFixed(2)}`;
@@ -245,6 +278,22 @@ export async function GET() {
     // Gli ordini che la scadenza GTD ha spento senza che nessuno li rinnovasse. Stessa forma del blocco
     // qui sopra: il testo in `todo` resta la fonte di ciò che si legge, questo serve al conteggio e al
     // totale del capitale tornato libero.
+    // Le cancellazioni totali del dead-man nelle ultime 12 ore. Finestra più lunga delle altre due di
+    // proposito: questo evento capita di notte (il 6 agosto: 00:16 UTC) e un avviso già scaduto quando
+    // si apre il pannello la mattina non è un avviso.
+    cancellazioniDiEmergenza: {
+      count: emergenze.count,
+      ordiniCancellati: emergenze.ordiniCancellati,
+      capitaleUsd: emergenze.capitaleUsd,
+      items: emergenze.cancellazioni.map((c) => ({
+        id: c.id, at: c.at,
+        stalenessSec: c.stalenessSec, thresholdSec: c.thresholdSec, oltreSogliaSec: c.oltreSogliaSec,
+        heartbeatAt: c.heartbeatAt,
+        ordiniCancellati: c.ordiniCancellati, mercatiToccati: c.mercatiToccati,
+        capitaleUsd: c.capitaleUsd, simulata: c.simulata, erroreVenue: c.erroreVenue,
+        venues: c.venues,
+      })),
+    },
     scadenzeSenzaRinnovo: {
       count: scadenze.count,
       capitaleUsd: scadenze.capitaleUsd,
