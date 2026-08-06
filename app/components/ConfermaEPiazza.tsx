@@ -18,10 +18,11 @@
 // Chiudere il dialog non piazza niente. Il bottone di conferma dentro il dialog è l'unico punto da cui
 // parte un ordine.
 //
-// ═══ LO STESSO COMPONENTE PER SAFE E PER RISK ═══════════════════════════════════════════════════════
-// La tab Ottimizza e la tab Risk usano QUESTO file, non due copie. `profile` è solo un'etichetta che
-// viaggia nell'audit e nel testo: non cambia un gate, non cambia il motore, non cambia il prezzo. Se un
-// giorno cambiasse qualcosa, cambierebbe per tutti e due — che è il punto.
+// ═══ UN COMPONENTE SOLO, PERCHÉ IL MOTORE È UNO SOLO ════════════════════════════════════════════════
+// Fino al 6 agosto 2026 questo file portava un `profile` ('safe'|'risk') che viaggiava nell'audit e nel
+// testo del dialog. Non cambiava mai un gate né un prezzo — era un'etichetta — e con la fine dei due
+// profili non ha più due valori da distinguere. Tolta: un parametro che può assumere un solo valore
+// non è un parametro, è rumore che suggerisce una scelta che non esiste.
 
 import { useCallback, useState } from 'react';
 
@@ -73,7 +74,7 @@ const cents = (v: number | null | undefined) =>
   typeof v === 'number' && Number.isFinite(v) ? `${(v * 100).toFixed(2)}¢` : '—';
 
 export default function ConfermaEPiazza({
-  marketId, title, gambe, capitaleUsd, potAtPlan, profile, onPlaced, disabled, disabledReason,
+  marketId, title, gambe, capitaleUsd, potAtPlan, onPlaced, disabled, disabledReason,
 }: {
   marketId: string;
   title?: string | null;
@@ -81,7 +82,6 @@ export default function ConfermaEPiazza({
   gambe: GambaOrdine[];
   capitaleUsd: number | null;
   potAtPlan?: number | null;
-  profile: 'safe' | 'risk';
   onPlaced?: (marketId: string, esito: Risposta) => void;
   disabled?: boolean;
   disabledReason?: string | null;
@@ -109,7 +109,6 @@ export default function ConfermaEPiazza({
           marketId,
           rows: gambe,
           preview,
-          profile,
           potAtPlan: typeof potAtPlan === 'number' && Number.isFinite(potAtPlan) ? potAtPlan : undefined,
         }),
       });
@@ -128,7 +127,7 @@ export default function ConfermaEPiazza({
     } finally {
       setBusy(null);
     }
-  }, [marketId, gambe, profile, potAtPlan, onPlaced]);
+  }, [marketId, gambe, potAtPlan, onPlaced]);
 
   if (!dueGambe) {
     return (
@@ -176,7 +175,7 @@ export default function ConfermaEPiazza({
         <div className="alloc-card" style={{ marginTop: 10, borderColor: 'color-mix(in srgb,#2FA96B 45%,transparent)' }}
           role="dialog" aria-modal="false" aria-label="Conferma piazzamento" data-conferma-dialog={marketId}>
           <div className="alloc-h" style={{ fontSize: 14 }}>
-            Conferma il piazzamento{profile === 'risk' ? ' · profilo Risk' : ''}
+            Conferma il piazzamento
           </div>
           <div style={{ marginTop: 6 }}>
             <b>{title || marketId.slice(0, 16)}</b>

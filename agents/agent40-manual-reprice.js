@@ -78,7 +78,7 @@ const { listManualOrders, replaceManualOrder, resolveMarketRules, resolveMarketD
 const { reconcileManualLane, fetchVenuePositions } = require('../lib/maker/manual-reset');
 const { decideRimpiazzo } = require('../lib/maker/rimpiazzo-gamba');
 const { resolveOffsetFor } = require('../lib/maker/offset-config');
-const { readAllocatedCapital, readMarketProfile } = require('../lib/maker/allocated-capital');
+const { readAllocatedCapital } = require('../lib/maker/allocated-capital');
 // ── IL PERCORSO DI PROFILO, CABLATO AL CICLO ────────────────────────────────────────────────────────
 // `valutaPiazzamento` instrada un mercato verso i controlli Safe (mai-primo, depth $15 cumulata,
 // volatilita' 8h, spread anomalo, quota 65%, esposizione 30%) o Risk (mai-primo, depth $20 sul

@@ -39,19 +39,16 @@ export const dynamic = 'force-dynamic';
 // argv[3] carries the per-market concentration cap in dollars ("" = no cap). It is NOT a new knob typed
 // by anyone: it is CONCENTRATION_CAP_FRAC × capital, the same 30% the periodic reallocator has always
 // applied, read from the same module (lib/rewards/concentration.js) so the two paths cannot drift.
-// argv[4] carries the PROFILE ("safe" | "risk" | "" = nessun profilo). "" e "safe" producono la stessa
-// identica chiamata di sempre: vedi lib/rewards/profili-allocatore.test.js, che confronta i due piani
-// con deepStrictEqual invece di fidarsi di questa frase.
-const RUNNER = 'process.stdout.write(JSON.stringify(require("/root/prediction-market/lib/rewards/allocator").planFromCollection({ capital: Number(process.argv[1]), horizonFilter: process.argv[2] === "1", maxPerMarketUsd: process.argv[3] === "" ? null : Number(process.argv[3]), profile: process.argv[4] === "" ? null : process.argv[4] })))';
+const RUNNER = 'process.stdout.write(JSON.stringify(require("/root/prediction-market/lib/rewards/allocator").planFromCollection({ capital: Number(process.argv[1]), horizonFilter: process.argv[2] === "1", maxPerMarketUsd: process.argv[3] === "" ? null : Number(process.argv[3]) })))';
 const RESULT_TTL_MS = 180_000; // 3 min — the plan auto-refreshes at this cadence; recompute costs ~19s, so a fresh plan every 3 min is live-enough while the per-row data age ticks locally every 15s
 const SPAWN_TIMEOUT_MS = 90_000; // planFromCollection scores the universe + builds per-tick fill curves
 const MAX_BUFFER = 24 * 1024 * 1024;
 
 const resultCache = new Map<string, { atMs: number; body: any }>();
 
-function runAllocator(capital: number, horizonFilter: boolean, capUsd: number | null, profile: string): Promise<any> {
+function runAllocator(capital: number, horizonFilter: boolean, capUsd: number | null): Promise<any> {
   return new Promise((resolve, reject) => {
-    execFile('node', ['-e', RUNNER, String(capital), horizonFilter ? '1' : '0', capUsd == null ? '' : String(capUsd), profile], { timeout: SPAWN_TIMEOUT_MS, maxBuffer: MAX_BUFFER }, (err, stdout) => {
+    execFile('node', ['-e', RUNNER, String(capital), horizonFilter ? '1' : '0', capUsd == null ? '' : String(capUsd)], { timeout: SPAWN_TIMEOUT_MS, maxBuffer: MAX_BUFFER }, (err, stdout) => {
       if (err) return reject(err);
       try { resolve(JSON.parse(stdout)); } catch (e: any) { reject(new Error('allocator output not JSON: ' + e.message)); }
     });
@@ -95,20 +92,12 @@ export async function GET(req: NextRequest) {
   }
   const capUsd = capOverride == null ? capPerMarketUsd(requested) : (capOverride > 0 ? capOverride : null);
 
-  // ── IL PROFILO ─────────────────────────────────────────────────────────────────────────────────
-  // Assente o «safe» ⇒ il percorso storico, invariato. Solo «risk» cambia la regola di scadenza che il
-  // filtro applica (pavimento del venue invece del rientro dal costo di adverse selection) e tollera
-  // banda e dati stale. Un valore sconosciuto ricade su safe: il difetto stringe sempre.
-  const profileRaw = (req.nextUrl.searchParams.get('profile') || '').trim().toLowerCase();
-  const profile = profileRaw === 'risk' ? 'risk' : profileRaw === 'safe' ? 'safe' : '';
-  const isRisk = profile === 'risk';
-
-  const bucket = `${Math.round(requested * 100) / 100}:${horizonFilter ? 'auto' : 'base'}:${capUsd == null ? 'nocap' : capUsd}:${profile || 'noprofile'}`;
+  const bucket = `${Math.round(requested * 100) / 100}:${horizonFilter ? 'auto' : 'base'}:${capUsd == null ? 'nocap' : capUsd}`;
   const cached = resultCache.get(bucket);
   if (cached && Date.now() - cached.atMs < RESULT_TTL_MS) return NextResponse.json({ ...cached.body, cached: true });
 
   try {
-    const body = await runAllocator(requested, horizonFilter, capUsd, profile);
+    const body = await runAllocator(requested, horizonFilter, capUsd);
     // Il tetto applicato viaggia col piano, dichiarato, perché un piano cappato e un piano concentrato
     // si somigliano nei numeri e non nella storia. `concentration` lo porta gia' dall'allocatore; questa
     // riga aggiunge da DOVE viene, che e' l'unica parte che il pannello non potrebbe dedurre.
@@ -116,28 +105,15 @@ export async function GET(req: NextRequest) {
       ? { frac: CONCENTRATION_CAP_FRAC, origin: 'difetto', note: `tetto ${Math.round(CONCENTRATION_CAP_FRAC * 100)}% del capitale — lo stesso del riallocatore periodico` }
       : { frac: null, origin: 'richiesto', note: capUsd == null ? 'nessun tetto: richiesto esplicitamente con cap=0' : `tetto $${capUsd} richiesto esplicitamente` };
     resultCache.set(bucket, { atMs: Date.now(), body });
-    // ── I DUE SNAPSHOT DI PRODUZIONE, ORA SCRITTI DA ENTRAMBI I PROFILI ──────────────────────────
-    // Fino al 6 agosto 2026 qui c'era un `if (!isRisk)`: `writeAllocatedCapital` sostituiva la mappa
-    // dei tetti PER INTERO, quindi un piano Risk — che sceglie mercati diversi — avrebbe cancellato i
-    // tetti dei mercati Safe, e a valle un tetto assente vale «niente nuova esposizione». Una
-    // simulazione nella tab Risk avrebbe fermato l'accumulo sul capitale vero, in silenzio.
-    //
-    // Quella toppa non serve più: lo store adesso FONDE PER PROFILO — un piano di profilo P sostituisce
-    // esattamente i mercati P e non tocca gli altri. Quindi il piano Risk può finalmente registrare i
-    // SUOI tetti (prima non ne aveva nessuno, ed era la limitazione dichiarata due sessioni fa) e, con
-    // essi, il profilo che il motore legge a ogni ciclo per sapere quali controlli applicare.
+    // Il tetto di posizione e la priorita' del raccoglitore, dall'unico piano che esiste. Il ramo per
+    // profilo che stava qui non serve piu': con uno scrittore solo non c'e' nessuna mappa da fondere.
     try {
       writeAllocatedCapital({
         rows: (body?.rows ?? []).map((r: any) => ({ marketId: r.marketId, capital: r.capital })),
         capital: body?.capital ?? null,
-        profile: isRisk ? 'risk' : 'safe',
       });
     } catch { /* the plan still stands; the strategy simply has no ceiling to read */ }
-    // La priorità del raccoglitore resta guidata dal solo percorso Safe: è la copertura dello storico
-    // prezzi, non un tetto, e allargarla al percorso Risk cambierebbe cosa agent34 sottoscrive.
-    if (!isRisk) {
-      try { writeCollectorPriority(body); } catch { /* la copertura resta quella di prima */ }
-    }
+    try { writeCollectorPriority(body); } catch { /* la copertura resta quella di prima */ }
     return NextResponse.json(body);
   } catch (e: any) {
     return NextResponse.json({ error: 'allocation failed: ' + (e?.message ?? 'unknown'), requested }, { status: 500 });

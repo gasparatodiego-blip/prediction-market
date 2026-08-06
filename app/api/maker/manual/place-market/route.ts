@@ -92,8 +92,6 @@ const bodySchema = z.object({
   preview: z.boolean().optional(),
   /** Il montepremi che la card mostrava quando l'operatore ha deciso. Serve al guardiano del venue. */
   potAtPlan: z.number().finite().nonnegative().optional(),
-  /** Da quale profilo viene la proposta. È SOLO un'etichetta d'audit: non cambia un gate né un gate. */
-  profile: z.enum(['safe', 'risk']).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -106,7 +104,6 @@ export async function POST(req: NextRequest) {
   }
   const { marketId, rows, potAtPlan } = parsed.data;
   const preview = parsed.data.preview === true;
-  const profile = parsed.data.profile || 'safe';
 
   // Le due righe devono parlare dello STESSO mercato di `marketId`, e devono essere le due gambe opposte.
   const mid = marketId.trim().toLowerCase();
@@ -167,7 +164,7 @@ export async function POST(req: NextRequest) {
     if (preview) {
       const diagP = diagnoseExposure({});
       return NextResponse.json({
-        ok: true, preview: true, marketId, profile,
+        ok: true, preview: true, marketId,
         capitaleTotaleUsd,
         gambe: righe.map((r) => ({ book: r.book, side: r.side || 'BUY', price: r.price, size: r.size, notionalUsd: +(r.price * r.size).toFixed(2) })),
         preparazione: {
@@ -183,7 +180,7 @@ export async function POST(req: NextRequest) {
     }
 
     // ── 2. LA PREPARAZIONE. Se una fallisce, non si piazza. ───────────────────────────────────────
-    const motivo = `conferma a un tocco dalla tab ${profile === 'risk' ? 'Risk' : 'Ottimizza'}: il mercato viene preparato nello stesso gesto che piazza`;
+    const motivo = 'conferma a un tocco: il mercato viene preparato nello stesso gesto che piazza';
     const preparazione: Array<{ passo: string; ok: boolean; detail?: string }> = [];
     const passo = async (nome: string, fn: () => unknown) => {
       try { const r = await fn(); const ok = r !== false && !(r && typeof r === 'object' && (r as { ok?: boolean }).ok === false);
@@ -205,7 +202,7 @@ export async function POST(req: NextRequest) {
     if (pronto) pronto = await passo('allowlist', () => setAutoReprice({ scope: 'market', marketId, enabled: true, by: 'operatore · conferma a un tocco', reason: motivo }));
 
     if (!pronto) {
-      try { appendMakerAudit({ op: 'place-market', esito: 'preparazione-fallita', marketId, profile, preparazione, at: new Date().toISOString() }); } catch { /* l'audit non blocca */ }
+      try { appendMakerAudit({ op: 'place-market', esito: 'preparazione-fallita', marketId, preparazione, at: new Date().toISOString() }); } catch { /* l'audit non blocca */ }
       return NextResponse.json({
         ok: false, gate: 'preparazione-fallita',
         error: 'il mercato non è stato preparato del tutto: NESSUN ordine è stato inviato. Un mercato preparato a metà è un rifiuto rimandato.',
@@ -233,7 +230,7 @@ export async function POST(req: NextRequest) {
 
     try {
       appendMakerAudit({
-        op: 'place-market', marketId, profile, capitaleTotaleUsd,
+        op: 'place-market', marketId, capitaleTotaleUsd,
         placed: esito.placed, refused: esito.refused, rolledBack: esito.rolledBack ?? 0, orphan: esito.orphan ?? 0,
         at: new Date().toISOString(),
       });
@@ -259,7 +256,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       ...esito,
-      marketId, profile, capitaleTotaleUsd,
+      marketId, capitaleTotaleUsd,
       preparazione,
       perGamba,
       // La frase che l'interfaccia mostra senza doverla comporre: lo stato non deve essere una deduzione.

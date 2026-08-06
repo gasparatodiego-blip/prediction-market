@@ -24,8 +24,6 @@ import { gambeDiUnaRiga } from '@/lib/rewards/plan-to-orders';
 import { calcNetPerDay } from '@/lib/rewards/net-per-day';
 // LA CONFERMA A UN TOCCO, condivisa fra la tab Ottimizza e la tab Risk. Un file, non due.
 import ConfermaEPiazza from './ConfermaEPiazza';
-// Le differenze fra i due profili, GENERATE dai valori veri delle soglie invece che scritte a mano.
-import { differenzeProfili } from '@/lib/rewards/allocator-profiles';
 // LE RIGHE DEI DUE PIANI, IN UNA FUNZIONE PURA E PROVABILE. Stava dentro un useMemo, leggeva un solo
 // piano, e teneva invisibile «+ Metti in coda» per chi arrivava dal percorso normale. Una condizione
 // dentro un componente si può verificare solo con una regex sul sorgente, cioè non si può verificare.
@@ -414,19 +412,11 @@ export type PlacedTick = {
 };
 
 export default function RewardsAllocatePanel(
-  { onPlaceOrder, placed, profile = 'safe' }: {
+  { onPlaceOrder, placed }: {
     onPlaceOrder?: (t: OrderTarget) => void;
     placed?: PlacedTick | null;
-    // ── IL PROFILO — L'UNICA DIFFERENZA FRA LA TAB OTTIMIZZA E LA TAB RISK ──────────────────────
-    // Le due tab montano QUESTO componente, non due copie. Il profilo viaggia nella query
-    // dell'allocatore (`&profile=`) e nell'etichetta d'audit del piazzamento; non cambia nessun
-    // gate, nessun prezzo e nessuna parte del motore di esecuzione.
-    profile?: 'safe' | 'risk';
   } = {},
 ) {
-  const isRisk = profile === 'risk';
-  /** Il suffisso di query dell'allocatore. Con 'safe' resta la chiamata storica, invariata. */
-  const qProfilo = isRisk ? '&profile=risk' : '';
   const [bal, setBal] = useState<Balance | null>(null);
   const [balLoaded, setBalLoaded] = useState(false);
   const [capital, setCapital] = useState<string>(''); // operator's typed value — NEVER rewritten by us
@@ -512,7 +502,7 @@ export default function RewardsAllocatePanel(
     const n = Number(cap);
     if (!Number.isFinite(n) || n <= 0) { setPlan(null); return; }
     setLoading(true);
-    fetch(`/api/rewards/allocate?capital=${encodeURIComponent(cap)}${qProfilo}`)
+    fetch(`/api/rewards/allocate?capital=${encodeURIComponent(cap)}`)
       .then((r) => r.json())
       .then((p: Plan) => {
         setPlan(p);
@@ -522,7 +512,7 @@ export default function RewardsAllocatePanel(
         setOffsets(restored);
       })
       .catch(() => setPlan({ error: 'errore' } as any)).finally(() => setLoading(false));
-  }, [qProfilo]);
+  }, []);
 
   // AUTO-REFRESH: re-fetch the plan for the SAME (already-computed) capital, updating ONLY the plan — it never
   // touches the operator's typed capital or their per-market offset overrides, so both survive every cycle.
@@ -530,11 +520,11 @@ export default function RewardsAllocatePanel(
     const n = Number(cap);
     if (!Number.isFinite(n) || n <= 0) return;
     const t0 = performance.now();
-    fetch(`/api/rewards/allocate?capital=${encodeURIComponent(cap)}${qProfilo}`)
+    fetch(`/api/rewards/allocate?capital=${encodeURIComponent(cap)}`)
       .then((r) => r.json())
       .then((p: Plan) => { if (p && !p.error) { setPlan(p); setRefreshMs(performance.now() - t0); setLastRefreshMs(Date.now()); } })
       .catch(() => { /* keep the last good plan on a failed refresh */ });
-  }, [qProfilo]);
+  }, []);
 
   useEffect(() => {
     if (!plan || plan.error || !(plan.capital > 0)) return;
@@ -753,13 +743,13 @@ export default function RewardsAllocatePanel(
     if (!Number.isFinite(n) || n <= 0) { setAutoErr('inserisci prima un capitale'); return; }
     setAutoBusy(true); setAutoErr(null); setAddPreview(null); setAddResult(null);
     try {
-      const r = await fetch(`/api/rewards/allocate?capital=${encodeURIComponent(capital)}&auto=1${qProfilo}`);
+      const r = await fetch(`/api/rewards/allocate?capital=${encodeURIComponent(capital)}&auto=1`);
       const b = (await r.json()) as Plan;
       if (b.error) { setAutoErr(b.error); setAutoPlan(null); }
       else setAutoPlan(b);
     } catch (e) { setAutoErr((e as Error).message); }
     finally { setAutoBusy(false); }
-  }, [capital, qProfilo]);
+  }, [capital]);
 
   // Passo 1 dell'aggiunta: ANTEPRIMA. Rilegge il mercato dal venue e dice esattamente cosa verrebbe
   // scritto — senza scrivere nulla. Passo 2: conferma (preview:false), che è l'unica cosa che scrive.
@@ -894,37 +884,10 @@ export default function RewardsAllocatePanel(
         <div className="alloc-h" style={{ fontSize: 15 }}>Cerca la combinazione migliore</div>
         <div className="alloc-sub" title="L universo e sempre stato tutto il board reward: enabledMarketIds non entra nel calcolo dell allocazione e non l ha mai fatto. Questa azione aggiunge il test dell orizzonte di risoluzione e restituisce il registro dei candidati.">
           Cerca su <b>tutti</b> i mercati con montepremi — non solo quelli abilitati — e propone la
-          combinazione migliore per questo capitale
-          {isRisk
-            ? <>, con le soglie del <b>profilo Risk</b> elencate qui sotto.</>
-            : <>, scartando quelli che scadono prima di rientrare del costo di adverse selection.</>}
+          combinazione migliore per questo capitale, scartando quelli che scadono prima di rientrare
+          del costo di adverse selection.
         </div>
 
-        {/* ══ LE SOGLIE VERE DEL PROFILO RISK ═══════════════════════════════════════════════════════
-            Non è un testo scritto a mano che descrive il codice: `differenzeProfili()` legge le soglie
-            dai moduli che le possiedono (order-ttl, horizon, plan-to-orders) e le formatta. Se una
-            cambia, questa tabella cambia con lei e non può restare indietro. */}
-        {isRisk && (
-          <div className="alloc-note" style={{ marginTop: 10 }} data-alloc-profilo-risk>
-            <div><b>Cosa cambia rispetto al profilo Safe</b></div>
-            <table style={{ width: '100%', marginTop: 6, fontSize: 12.5, borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ textAlign: 'left', opacity: 0.75 }}>
-                  <th style={{ width: '34%' }}>Vincolo</th><th style={{ width: '33%' }}>Safe</th><th>Risk</th>
-                </tr>
-              </thead>
-              <tbody>
-                {differenzeProfili().map((d) => (
-                  <tr key={d.voce} data-alloc-profilo-voce={d.voce}>
-                    <td style={{ paddingRight: 8 }}>{d.voce}</td>
-                    <td style={{ paddingRight: 8, opacity: 0.85 }}>{d.safe}</td>
-                    <td><b>{d.risk}</b></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
 
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 10 }}>
           <button className="alloc-btn" data-alloc-auto-run onClick={runAutoOptimise}
@@ -1096,7 +1059,6 @@ export default function RewardsAllocatePanel(
                     gambe={gambeCard(c.marketId)}
                     capitaleUsd={c.capital ?? null}
                     potAtPlan={c.pot ?? null}
-                    profile={profile}
                     onPlaced={(mid, esito) => { if (esito && esito.ok) setPiazzati((v) => (v.includes(mid.toLowerCase()) ? v : [...v, mid.toLowerCase()])); }}
                     disabled={piazzati.includes(c.marketId.toLowerCase())}
                     disabledReason={piazzati.includes(c.marketId.toLowerCase())

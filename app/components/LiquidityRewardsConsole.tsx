@@ -2228,7 +2228,7 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
       {tab === 'alloca' && (
         <section className="lrc-sec" data-lrc-section="alloca">
           <Ask q="Quanto capitale metto, e su quali mercati?" sub="Un piano, non un ordine: da qui si piazza solo aprendo il pannello su un mercato." />
-          <RewardsAllocatePanel onPlaceOrder={(row) => setOrderTarget(row)} placed={placedTick} profile="safe" />
+          <RewardsAllocatePanel onPlaceOrder={(row) => setOrderTarget(row)} placed={placedTick} />
         </section>
       )}
 
