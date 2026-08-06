@@ -105,6 +105,9 @@ type Plan = {
   // sono la stessa storia, ed è quella distinzione che per mesi non era sullo schermo.
   concentration?: { maxPerMarketUsd: number | null; capped: boolean };
   concentrationSource?: { frac: number | null; origin: 'difetto' | 'richiesto'; note: string };
+  // SU COSA è misurata la velocità delle righe: senza la finestra e il passo di campionamento quei
+  // numeri non si sanno leggere.
+  velocitaMisura?: { finestraOre: number; mercatiMisurati: number; passoCampioneSec: number } | null;
   error?: string;
 };
 type Candidate = {
@@ -124,6 +127,23 @@ type Candidate = {
   // true = questo mercato è stato valutato SENZA scadenza leggibile. Non è un rifiuto: è un controllo
   // che non si è potuto eseguire, e va mostrato come tale invece di sparire fra i verdetti favorevoli.
   horizonUnknown?: boolean;
+  /** ── QUANTO SI MUOVE QUESTO MERCATO — SOLO DA GUARDARE ────────────────────────────────────────
+   *  Misurata da lib/rewards/velocita-mercato sul giornale che agent34 scrive già. NESSUN parametro
+   *  operativo è legato a questi numeri: non entrano nel knapsack, non scartano niente, non modulano
+   *  soglia di movimento né profondità N. Servono a vedere, prima di decidere se legarci qualcosa.
+   *  `null` = nessuno storico nella finestra, che è diverso da «immobile». */
+  velocita?: {
+    /** % di campioni senza NESSUN evento websocket nei 75s precedenti. TX-15 stava al 26%, il board al 2%. */
+    silenzioPct: number | null;
+    /** centesimi percorsi dal mid, per ora. */
+    movimentoCentsOra: number | null;
+    /** quante volte il mid cambia, per ora. */
+    passiOra: number | null;
+    /** centesimi per passo: distingue un salto solo da un tremolio continuo. */
+    centsPerPasso: number | null;
+    campioni: number;
+    coperturaOre: number;
+  } | null;
 };
 /** Etichette dei motivi di scarto, per raggrupparli. Il testo per riga resta quello del server. */
 const REJECT_LABEL: Record<string, string> = {
@@ -142,6 +162,67 @@ const price = (v: number | null | undefined): string => (v == null || !Number.is
 const perDay = (v: number | null | undefined): string => (v == null || !Number.isFinite(v) ? '—' : `$${v.toFixed(2)}/g`);
 const cents = (v: number | null | undefined): string => (v == null || !Number.isFinite(v) ? '—' : `${v.toFixed(v < 1 ? 2 : 1)}¢`);
 const trunc = (a: string | null): string => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—');
+
+// ── LA VELOCITÀ DEL MERCATO, IN UNA CELLA ─────────────────────────────────────────────────────────
+// PURAMENTE DESCRITTIVA. Nessun parametro operativo è legato a questi numeri: non entrano nel knapsack,
+// non scartano candidati, non modulano la soglia di movimento né la profondità N. Sono lì per essere
+// GUARDATI, in attesa di misurare se esiste una correlazione fra velocità del mercato e frequenza dei
+// fill — e solo dopo, eventualmente, decidere se legarci qualcosa.
+//
+// PERCHÉ DUE NUMERI E NON UNO. Sono indipendenti, e i mercati veli mostrano entrambi i casi estremi:
+// «OpenAI IPO before 2027?» ha feed continuo (0% di silenzio) e mid del tutto immobile (0¢/h), mentre
+// MI-10 ha il 26% di silenzio E 6,7¢/h di movimento. Un numero solo li descriverebbe male entrambi.
+//   · SILENZIO   quota di campioni senza un solo evento websocket nei 75s precedenti. È la misura che
+//                ha previsto l'incidente del 6 agosto: il board sta al 2%, TX-15 stava al 26%. Su un
+//                mercato così il guard sul mid vecchio rifiuta di agire per un quarto del tempo.
+//   · MOVIMENTO  centesimi percorsi dal mid in un'ora. È il lavoro di riprezzo e il rischio di uscire
+//                dalla banda.
+// L'etichetta riassume SOLO il silenzio, e il testo lo dice ("feed …"): non è un voto sul mercato.
+const etichettaFeed = (silenzioPct: number | null | undefined): { cls: string; testo: string } => {
+  if (silenzioPct == null || !Number.isFinite(silenzioPct)) return { cls: 'oob', testo: 'non misurato' };
+  if (silenzioPct >= 15) return { cls: 'oob', testo: 'feed intermittente' };
+  if (silenzioPct >= 5) return { cls: '', testo: 'feed a tratti' };
+  return { cls: 'fresh-ok', testo: 'feed continuo' };
+};
+
+function velocitaCella(
+  c: Candidate,
+  misura: { finestraOre: number; mercatiMisurati: number; passoCampioneSec: number } | null | undefined,
+): JSX.Element {
+  const v = c.velocita;
+  const fin_ = misura ? `${misura.finestraOre}h` : 'finestra ignota';
+  // «Non misurato» non è «immobile»: un mercato senza storico nella finestra non deve poter sembrare
+  // fermo. Si dichiara, e si dice perché.
+  if (!v || v.silenzioPct == null) {
+    return (
+      <div className="ac-num" data-alloc-card-velocita="assente">
+        <span>Velocità</span>
+        <b className="oob" title={`Nessuno storico nella finestra di ${fin_}: questo mercato non è nel giornale di agent34, quindi la velocità non è stata misurata. Non significa che sia fermo.`}>non misurata</b>
+      </div>
+    );
+  }
+  const et = etichettaFeed(v.silenzioPct);
+  const spiega =
+    `Misurato sul giornale dei mid (campione ogni ${misura ? misura.passoCampioneSec : 75}s) su una finestra di ${fin_}, `
+    + `${v.campioni} campioni su ${v.coperturaOre.toFixed(1)}h di copertura.\n\n`
+    + `SILENZIO ${v.silenzioPct}% — quota di campioni in cui questo mercato non ha ricevuto NESSUN evento `
+    + `websocket per almeno ${misura ? misura.passoCampioneSec : 75}s. Il resto del board sta intorno al 2%. `
+    + `Più è alto, più spesso il motore trova il mid troppo vecchio e si rifiuta — correttamente — di muovere un ordine.\n\n`
+    + `MOVIMENTO ${v.movimentoCentsOra ?? '—'}¢/h — i centesimi che il mid percorre in un'ora`
+    + (v.passiOra != null ? `, in ${v.passiOra} cambi/h` : '')
+    + (v.centsPerPasso != null ? ` (${v.centsPerPasso}¢ per cambio)` : '')
+    + `.\n\nNessun parametro operativo è legato a questi numeri: sono solo da guardare.`;
+  return (
+    <div className="ac-num" data-alloc-card-velocita={et.testo}
+      data-alloc-card-silenzio={v.silenzioPct} data-alloc-card-movimento={v.movimentoCentsOra ?? ''}>
+      <span>Velocità</span>
+      <b className={et.cls} title={spiega}>
+        {v.silenzioPct}% fermo · {v.movimentoCentsOra == null ? '—' : `${v.movimentoCentsOra}¢/h`}
+      </b>
+      <p className="ex-why" title={spiega}>{et.testo}</p>
+    </div>
+  );
+}
 const ageText = (s: number | null): string => (s == null ? '—' : s < 90 ? `${s}s fa` : s < 5400 ? `${Math.round(s / 60)} min fa` : `${(s / 3600).toFixed(1)} h fa`);
 const FRONTIER_MARKS = [1, 2, 3, 5, 10, 20];
 const STORE_KEY = 'edgeradar-alloc-offsets-v1'; // per-capital offset map, browser-local display preference
@@ -1101,6 +1182,12 @@ export default function RewardsAllocatePanel(
                     >{c.horizon && c.horizon.days != null
                       ? `${Math.round(c.horizon.days)} g${c.horizon.source === 'event' ? ' ᴱ' : ''}`
                       : (c.horizonUnknown ? 'ignota' : '—')}</b></div>
+                    {/* ── QUANTO SI MUOVE — accanto agli altri numeri della riga ───────────────────
+                        Solo da guardare: nessun parametro operativo è legato a questa misura, non
+                        entra nel knapsack e non scarta niente. Esiste perché il 6 agosto 2026 i
+                        mercati su cui stava il capitale erano da 5 a 13 volte più silenziosi della
+                        media del board, e questa schermata non aveva modo di dirlo. */}
+                    {velocitaCella(c, autoPlan.velocitaMisura)}
                   </div>
                   <div style={{ marginTop: 9 }}>
                     <button className="alloc-btn" style={{ fontSize: 12 }}
@@ -1351,6 +1438,14 @@ export default function RewardsAllocatePanel(
                       {list.slice(0, 8).map((c) => (
                         <li key={c.marketId} title={c.reason}>
                           {c.name || c.shortId} — <span className="alloc-cat">{c.reason}</span>
+                          {/* La velocità viaggia anche sugli SCARTATI: serve a rispondere «e se lo
+                              riabilitassi a mano?», che è precisamente il momento in cui uno di questi
+                              mercati torna in gioco. Non ha alcun ruolo nello scarto. */}
+                          {c.velocita && c.velocita.silenzioPct != null && (
+                            <span className="alloc-cat" data-alloc-rejected-velocita={c.velocita.silenzioPct}
+                              title={`Velocità (solo informativa): ${c.velocita.silenzioPct}% dei campioni senza eventi websocket, mid in movimento di ${c.velocita.movimentoCentsOra ?? '—'}¢/h. Non c'entra con lo scarto.`}
+                            > · {c.velocita.silenzioPct}% fermo</span>
+                          )}
                         </li>
                       ))}
                       {list.length > 8 && <li className="alloc-cat">+{list.length - 8} altri</li>}
