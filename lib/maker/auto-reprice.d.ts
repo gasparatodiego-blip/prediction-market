@@ -107,7 +107,7 @@ export function decideReprice(
     ownOrders?: Array<{ orderId?: string; price: number; size?: number; sizeRemaining?: number; book?: Book }> | null;
   },
   deps?: {
-    resolveOffset?: (arg: Record<string, unknown>) => { targetOffsetCents: number | null; minMoveCents: number; source: string };
+    resolveOffset?: (arg: Record<string, unknown>) => { targetOffsetCents: number | null; minMoveCents: number; depthMultiple?: number; source: string };
     offsetDeps?: Record<string, unknown>;
     /** I livelli del book. Senza questa, né il trigger «sono diventato il primo» né il rilevamento del
      *  conflitto inseguimento/mai-primo possono rispondere: si torna al comportamento precedente, che è
@@ -200,7 +200,7 @@ export function runAutoRepriceCycle(deps?: {
   trackedMarketIds?: () => string[];
   marketWindow?: (marketId: string) => { tooClose?: boolean; gate?: string; reason?: string; minutesToClose?: number | null } | null;
   disableMarket?: (arg: { marketId: string; reason: string }) => Promise<{ ok: boolean; error?: string }>;
-  resolveOffset?: (arg: Record<string, unknown>) => { targetOffsetCents: number | null; minMoveCents: number; source: string };
+  resolveOffset?: (arg: Record<string, unknown>) => { targetOffsetCents: number | null; minMoveCents: number; depthMultiple?: number; source: string };
   offsetDeps?: Record<string, unknown>;
   rememberObserved?: (arg: Record<string, unknown>, deps?: Record<string, unknown>) => void;
   /** The connection-blackout clock, also carried between cycles. A fresh process starts with none:

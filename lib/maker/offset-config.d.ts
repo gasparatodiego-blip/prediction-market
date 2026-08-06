@@ -22,6 +22,8 @@ export interface OffsetDeps {
 export interface OffsetMarketRecord {
   targetOffsetCents: { yes?: number | null; no?: number | null };
   minMoveCents?: number;
+  /** N — profondità richiesta davanti, in multipli della propria size. Assente/0 ⇒ protezione spenta. */
+  depthMultiple?: number;
   at: number;
   atIso: string;
   by: string | null;
@@ -40,6 +42,8 @@ export interface OffsetConfigState {
 export interface ResolvedOffset {
   targetOffsetCents: number | null;
   minMoveCents: number;
+  /** N risolto per questo mercato. 0 ⇒ protezione di profondità spenta. */
+  depthMultiple: number;
   source: OffsetSource;
   record: OffsetMarketRecord | null;
 }
@@ -56,11 +60,12 @@ export function rememberObserved(
 export function validateOffset(arg: {
   targetOffsetCents?: number | null;
   minMoveCents?: number | null;
+  depthMultiple?: number | null;
   bandRadiusCents?: number | null;
   tick?: number | null;
 }): { valid: boolean; errors: Array<{ field: string; detail: string }> };
 export function setMarketOffset(
-  arg: { marketId: string; targetOffsetCents?: number; minMoveCents?: number; book?: Book | null; by?: string | null; reason?: string | null },
+  arg: { marketId: string; targetOffsetCents?: number; minMoveCents?: number; depthMultiple?: number; book?: Book | null; by?: string | null; reason?: string | null },
   deps?: OffsetDeps,
 ): { ok: boolean; error?: string; marketId?: string; record?: OffsetMarketRecord };
 export function defaultMinMoveCents(tick: number | null | undefined): number;
@@ -70,3 +75,5 @@ export const AUDIT_FILE: string;
 /** Below this the re-price recomputes the SAME price after tick-snapping — churn with no benefit. */
 export const MIN_MOVE_FLOOR_CENTS: number;
 export const FALLBACK_MIN_MOVE_CENTS: number;
+/** Oltre questo N la soglia non è raggiungibile in banda su nessun book reale osservato. */
+export const DEPTH_MULTIPLE_MAX: number;

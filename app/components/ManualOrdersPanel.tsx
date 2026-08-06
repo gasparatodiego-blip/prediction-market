@@ -93,6 +93,8 @@ interface OffsetRow {
   yes: { targetOffsetCents: number | null; source: string };
   no: { targetOffsetCents: number | null; source: string };
   minMoveCents: number;
+  // N — la protezione di profondità, per MERCATO. 0 = spenta (il default di ogni mercato).
+  depthMultiple: number;
 }
 interface RestingOrder {
   orderId: string | null; marketId: string | null; tokenId: string | null; side: string | null;
@@ -396,7 +398,7 @@ export default function ManualOrdersPanel() {
     } catch { /* read-only; keep the last good table */ }
   }, []);
 
-  const saveOffset = useCallback(async (marketId: string, patch: { targetOffsetCents?: number; minMoveCents?: number; book?: 'yes' | 'no' }) => {
+  const saveOffset = useCallback(async (marketId: string, patch: { targetOffsetCents?: number; minMoveCents?: number; depthMultiple?: number; book?: 'yes' | 'no' }) => {
     setBusyOffset(true); setOffsetMsg(null);
     try {
       const r = await fetch('/api/maker/manual/offsets', {
@@ -734,7 +736,7 @@ export default function ManualOrdersPanel() {
             : (
               <div className="mkman-tbl">
                 <div className="mkman-row mkman-row-off mkman-head">
-                  <span>Mercato</span><span>Dist. YES</span><span>Dist. NO</span><span>Soglia min.</span><span>Banda (tetto)</span><span>Azioni</span>
+                  <span>Mercato</span><span>Dist. YES</span><span>Dist. NO</span><span>Soglia min.</span><span>Profondità N</span><span>Banda (tetto)</span><span>Azioni</span>
                 </div>
                 {offsets.map((o) => (
                   <div key={o.marketId} className="mkman-row mkman-row-off">
@@ -751,6 +753,12 @@ export default function ManualOrdersPanel() {
                       <small className="mkman-note" style={{ display: 'block' }}>{o.no.source === 'configured' ? 'impostata' : o.no.source === 'remembered' ? 'ricordata' : 'osservata'}</small>
                     </span>
                     <span className="mkman-num" data-k="Soglia min.">{o.minMoveCents}¢</span>
+                    {/* N — quante volte la propria size deve stare davanti prima di smettere di arretrare.
+                        0 = spenta, ed è così che sta ogni mercato finché non la si accende qui. */}
+                    <span className="mkman-num" data-manual-depth-multiple data-k="Profondità N">
+                      {!o.depthMultiple ? '—' : `${o.depthMultiple}×`}
+                      <small className="mkman-note" style={{ display: 'block' }}>{!o.depthMultiple ? 'spenta' : 'della size'}</small>
+                    </span>
                     <span className="mkman-num" data-manual-band-ceiling data-k="Banda (tetto)">
                       ±{o.bandRadiusCents == null ? '—' : o.bandRadiusCents}¢
                       <small className="mkman-note" style={{ display: 'block' }}>dal venue</small>
@@ -762,14 +770,21 @@ export default function ManualOrdersPanel() {
                       <input className="mkman-input mkman-input-sm" type="number" step={0.05} style={{ marginLeft: 6 }}
                         placeholder="soglia ¢" value={offsetEdit[`${o.marketId}:m`] ?? ''}
                         onChange={(e) => setOffsetEdit((s2) => ({ ...s2, [`${o.marketId}:m`]: e.target.value }))} />
+                      <input className="mkman-input mkman-input-sm" type="number" step={0.5} min={0} style={{ marginLeft: 6 }}
+                        title="Profondità N: l'ordine arretra finché davanti non ha N volte la propria size in share altrui. 0 spegne la protezione. La banda premiante vince sempre: non si esce dalla banda per soddisfare N."
+                        placeholder="prof. N×" value={offsetEdit[`${o.marketId}:d`] ?? ''}
+                        onChange={(e) => setOffsetEdit((s2) => ({ ...s2, [`${o.marketId}:d`]: e.target.value }))} />
                       <button className="mkman-btn" style={{ marginLeft: 6, minHeight: 32 }} disabled={busyOffset}
                         data-manual-offset-save
                         onClick={() => {
                           const t = offsetEdit[`${o.marketId}:t`];
                           const m = offsetEdit[`${o.marketId}:m`];
-                          const patch: { targetOffsetCents?: number; minMoveCents?: number } = {};
+                          const d = offsetEdit[`${o.marketId}:d`];
+                          const patch: { targetOffsetCents?: number; minMoveCents?: number; depthMultiple?: number } = {};
                           if (t !== undefined && t !== '') patch.targetOffsetCents = Number(t);
                           if (m !== undefined && m !== '') patch.minMoveCents = Number(m);
+                          // Uno 0 esplicito DEVE passare: è il modo di rispegnere la protezione.
+                          if (d !== undefined && d !== '') patch.depthMultiple = Number(d);
                           if (Object.keys(patch).length) saveOffset(o.marketId, patch);
                         }}>
                         {busyOffset ? '…' : 'Salva'}
@@ -784,7 +799,9 @@ export default function ManualOrdersPanel() {
 
         <p className="mkman-note" title="Con mid 10 e ordini a 7 e 13, se il mid va a 11 gli ordini diventano 8 e 14: la distanza e l invariante, non il prezzo. Il default e la distanza a cui l ordine e stato piazzato, osservata finche non la imposti tu. La soglia minima evita il churn: sotto un tick il nuovo prezzo coinciderebbe col vecchio dopo l arrotondamento. La banda e il tetto del venue, non modificabile: se la distanza target la eccede si piazza al bordo premiante e lo si dichiara.">
           L&apos;ordine insegue il mid tenendo la <b>distanza</b>, non il prezzo. La <b>banda</b> è il tetto del
-          venue, non modificabile da qui.
+          venue, non modificabile da qui. La <b>profondità N</b> arretra l&apos;ordine finché davanti non ha N volte
+          la propria size in share altrui: <b>0 = spenta</b>, e la banda vince sempre — non si esce mai dalla
+          banda per soddisfare N.
         </p>
       </div>
 
@@ -1392,7 +1409,7 @@ const CSS = `
 .mkman-row { display: grid; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--ex-line-soft);
   align-items: center; }
 .mkman-head { color: var(--ex-txt-3); font-size: 9.5px; text-transform: uppercase; letter-spacing: .06em; }
-.mkman-row-off { grid-template-columns: 1fr 88px 88px 100px 104px 1fr; min-width: 680px; }
+.mkman-row-off { grid-template-columns: 1fr 88px 88px 100px 104px 104px 1fr; min-width: 780px; }
 
 /* TELEFONO: la griglia smette di essere tabella e diventa scheda. Le etichette arrivano da attr(data-k),
    non da una stringa in questo foglio: una virgoletta qui verrebbe serializzata diversa fra server e

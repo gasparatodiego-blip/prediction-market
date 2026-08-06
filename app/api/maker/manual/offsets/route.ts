@@ -13,7 +13,11 @@ export const dynamic = 'force-dynamic';
  * GET  → one row per managed market: the resolved target distance for each side, where that value came
  *        from (an explicit setting, a remembered first observation, or the distance seen right now), the
  *        minimum movement that triggers a chase, and the reward band's radius as the HARD CEILING.
- * POST { marketId, book?, targetOffsetCents?, minMoveCents?, reason? } → set one market's values.
+ * POST { marketId, book?, targetOffsetCents?, minMoveCents?, depthMultiple?, reason? } → set one market's values.
+ *
+ * `depthMultiple` (N) è la protezione di profondità: l'ordine arretra oltre il minimo di «un tick
+ * dietro» finché davanti non ha almeno N × la propria size in share altrui. 0 = spenta, ed è il
+ * default di ogni mercato che non l'ha mai configurata.
  *
  * The band radius is shown but NOT settable here: it is the venue's own max_incentive_spread, read from
  * the live feed. A target beyond it would configure a quote that cannot earn, so it is refused.
@@ -37,6 +41,9 @@ function rowFor(marketId: string) {
     yes: { targetOffsetCents: yes.targetOffsetCents, source: yes.source },
     no: { targetOffsetCents: no.targetOffsetCents, source: no.source },
     minMoveCents: yes.minMoveCents,
+    // N è per MERCATO, non per lato: descrive la struttura del libro, che è la stessa cosa per i due
+    // lati. 0 ⇒ protezione spenta ⇒ il comportamento di sempre.
+    depthMultiple: yes.depthMultiple,
   };
 }
 
@@ -58,7 +65,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  let body: { marketId?: unknown; book?: unknown; targetOffsetCents?: unknown; minMoveCents?: unknown; reason?: unknown };
+  let body: { marketId?: unknown; book?: unknown; targetOffsetCents?: unknown; minMoveCents?: unknown; depthMultiple?: unknown; reason?: unknown };
   try { body = await req.json(); } catch { return NextResponse.json({ error: 'invalid JSON' }, { status: 400 }); }
 
   const marketId = typeof body.marketId === 'string' ? body.marketId.trim() : '';
@@ -66,6 +73,9 @@ export async function POST(req: NextRequest) {
   const book = body.book === 'yes' || body.book === 'no' ? body.book : null;
   const target = body.targetOffsetCents === undefined || body.targetOffsetCents === null ? undefined : Number(body.targetOffsetCents);
   const minMove = body.minMoveCents === undefined || body.minMoveCents === null ? undefined : Number(body.minMoveCents);
+  // `null` NON è «non dichiarato»: azzerare è il modo di RISPEGNERE la protezione dal pannello, e
+  // confonderlo con l'omissione la renderebbe impossibile da spegnere una volta accesa.
+  const depthMul = body.depthMultiple === undefined ? undefined : Number(body.depthMultiple);
   const reason = typeof body.reason === 'string' ? body.reason.slice(0, 300) : null;
 
   const rules = resolveMarketRules(marketId);
@@ -76,6 +86,7 @@ export async function POST(req: NextRequest) {
   const v = validateOffset({
     targetOffsetCents: target === undefined ? null : target,
     minMoveCents: minMove === undefined ? null : minMove,
+    depthMultiple: depthMul === undefined ? null : depthMul,
     bandRadiusCents: rules.bandRadiusCents,
     tick: rules.tick,
   });
@@ -83,7 +94,7 @@ export async function POST(req: NextRequest) {
   if (!v.valid) return NextResponse.json({ ok: false, errors: v.errors }, { status: 422 });
 
   const res = setMarketOffset({
-    marketId, book, targetOffsetCents: target, minMoveCents: minMove,
+    marketId, book, targetOffsetCents: target, minMoveCents: minMove, depthMultiple: depthMul,
     by: 'operator · pannello ordini manuali', reason,
   });
   if (!res.ok) return NextResponse.json(res, { status: 409 });
