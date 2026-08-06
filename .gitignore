@@ -240,3 +240,6 @@ data/maker-allocated-capital.json
 data/maker-allocated-capital.json.tmp.*
 data/maker-live-leases.json
 data/maker-live-leases.json.tmp.*
+
+# Build di verifica su porta temporanea: artefatto locale, mai versionato.
+.next-verifica/

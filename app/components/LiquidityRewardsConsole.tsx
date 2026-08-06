@@ -262,6 +262,32 @@ interface TrkResp {
 
 interface WalletTodo { who: 'operatore' | 'sistema'; what: string; how?: string }
 interface WalletApproval { name: string; address: string; erc20: string | null; erc1155: boolean | null }
+/** La risposta di /api/maker/confronto-reward: la stima del pannello contro il consuntivo del venue.
+ *
+ *  `realeUsd` è NULLABILE e non collassa mai su 0: una giornata che il venue non ha consolidato in
+ *  tempo esce con `realeDisponibile: false` e il motivo. Uno zero al suo posto direbbe «non hai
+ *  guadagnato niente» dove il fatto è «non lo sappiamo ancora», e i due si leggono uguale. */
+interface ConfrontoResp {
+  at?: string;
+  orari?: { stimaUtc: string; realeUtc: string[]; tentativiMax: number };
+  scartoMedioPct?: number | null;
+  giorniConfrontabili?: number;
+  count?: number;
+  giorni?: Array<{
+    giorno: string;
+    stimaUsd: number | null;
+    realeUsd: number | null;
+    realeDisponibile?: boolean | null;
+    realeMotivo?: string | null;
+    tentativi?: number | null;
+    esaurito?: boolean | null;
+    assolutoUsd?: number | null;
+    percentuale?: number | null;
+    direzione?: string | null;
+  }>;
+  error?: string;
+}
+
 interface WalletResp {
   ok: boolean; at: string; error: string | null; address: string | null;
   chain: { readable: boolean; error: string | null; balanceUsd: number | null; minUsefulUsd: number; funded: boolean; approvals: WalletApproval[]; approvalsOk: boolean } | null;
@@ -454,6 +480,7 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
   const [resting, setResting] = useState<RestingResp | null>(null);
   const [trk, setTrk] = useState<TrkResp | null>(null);
   const [wal, setWal] = useState<WalletResp | null>(null);
+  const [conf, setConf] = useState<ConfrontoResp | null>(null);
   const [killBusy, setKillBusy] = useState<'kill' | 'reset' | null>(null);
   const [killMsg, setKillMsg] = useState<string | null>(null);
 
@@ -532,6 +559,16 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
     } catch { /* resta ignoto: il pannello lo dice invece di supporlo pronto */ }
   }, []);
 
+  // LA STIMA CONTRO IL CONSUNTIVO DEL VENUE. Si rilegge una volta sola all'apertura del Riepilogo e
+  // mai a intervallo: il file dietro cambia due volte al giorno (23:55 e 00:20 UTC), e ripolleggiarlo
+  // ogni pochi secondi chiederebbe centinaia di volte una risposta che è ferma da ore.
+  const loadConfronto = useCallback(async () => {
+    try {
+      const r = await fetch('/api/maker/confronto-reward', { cache: 'no-store' });
+      setConf((await r.json()) as ConfrontoResp);
+    } catch { /* resta ignoto: la sezione lo dice invece di mostrare uno scarto che non ha misurato */ }
+  }, []);
+
   useEffect(() => { loadBoard(); loadBalance(); }, [loadBoard, loadBalance]);
   useEffect(() => {
     if (operator !== true) return;
@@ -544,13 +581,13 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
   // che è l'unico posto che li mostra, è aperto.
   useEffect(() => {
     if (operator !== true || tab !== 'riepilogo') return;
-    loadPositions(); loadResting(); loadTracking(); loadWallet();
+    loadPositions(); loadResting(); loadTracking(); loadWallet(); loadConfronto();
     // Il tracking si rilegge piu' spesso delle posizioni: e' un motore che agisce da solo, e la domanda
     // «cosa sta facendo adesso» non tollera un minuto di ritardo.
     const t = setInterval(() => { loadPositions(); loadResting(); }, POSITIONS_POLL_MS);
     const tk = setInterval(loadTracking, 5_000);
     return () => { clearInterval(t); clearInterval(tk); };
-  }, [operator, tab, loadPositions, loadResting, loadTracking, loadWallet]);
+  }, [operator, tab, loadPositions, loadResting, loadTracking, loadWallet, loadConfronto]);
 
   // KILL e RIPRISTINA. Due endpoint che possono solo FERMARE: /api/maker/kill importa il solo modulo
   // di kill (che raggiunge il percorso cancel-only) e /manual/reset non ha altra chiamata mutante che
@@ -1876,6 +1913,74 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
             <p className="lrc-fine">
               {pos.source} · wallet <span className="ex-n">{pos.wallet ?? 'N/D'}</span> · sola lettura.
               P&amp;L <b>mark-to-mid</b>, non un incasso.
+            </p>
+          )}
+
+          {/* ── LA STIMA CONTRO IL CONSUNTIVO DEL VENUE ─────────────────────────────────────────
+              Il «$/giorno» in cima è un CALCOLO, non un incasso: applica la formula del venue al libro
+              che il bot vede. Finché nessuno l'ha confrontato con quanto il venue ha davvero pagato,
+              può restare sbagliato di un ordine di grandezza per settimane senza che niente lo dica.
+              Qui c'è quel confronto, giorno per giorno: la stima presa alle 23:55 UTC e il consuntivo
+              letto dopo la mezzanotte, sulla STESSA giornata UTC.
+              La colonna «reale» resta vuota, mai zero, quando il venue non ha consolidato in tempo. */}
+          <div className="ex-sech"><span className="ex-sech-t">Stima contro consuntivo del venue</span></div>
+          {conf?.giorni && conf.giorni.length > 0 ? (
+            <>
+              <p className="lrc-note">
+                {conf.giorniConfrontabili
+                  ? <>Scarto medio sulle {conf.giorniConfrontabili} {conf.giorniConfrontabili === 1 ? 'giornata misurata' : 'giornate misurate'}: <strong>{conf.scartoMedioPct == null ? 'non calcolabile' : `${conf.scartoMedioPct > 0 ? '+' : ''}${conf.scartoMedioPct}%`}</strong>. Le giornate senza consuntivo non entrano nella media.</>
+                  : <>Nessuna giornata ancora confrontabile: la media resta vuota invece di dire zero.</>}
+                {conf.orari && <> Stima alle {conf.orari.stimaUtc} UTC, consuntivo alle {conf.orari.realeUtc.join(', ')} UTC.</>}
+              </p>
+              <div className="ex-rows" data-lrc-confronto={conf.giorni.length}>
+                {conf.giorni.slice(0, 14).map((g) => (
+                  <div className="ex-row" key={g.giorno} data-lrc-confronto-giorno={g.giorno}>
+                    <div className="ex-row-main">
+                      <div className="ex-row-t">{g.giorno}</div>
+                      <div className="ex-row-s">
+                        {g.assolutoUsd == null
+                          ? (g.realeDisponibile === false
+                              ? `Consuntivo non disponibile — ${g.realeMotivo ?? 'motivo non registrato'}`
+                                + (g.esaurito
+                                    ? ` · tentativi esauriti (${g.tentativi ?? 0}/${conf.orari?.tentativiMax ?? 3}), non si riprova`
+                                    : ` · tentativo ${g.tentativi ?? 1}/${conf.orari?.tentativiMax ?? 3}`)
+                              : 'In attesa del consuntivo del venue.')
+                          : g.direzione === 'sovrastima'
+                            ? 'La stima era più alta di quanto il venue ha pagato.'
+                            : g.direzione === 'sottostima'
+                              ? 'La stima era più bassa di quanto il venue ha pagato.'
+                              : 'Stima e consuntivo coincidono.'}
+                      </div>
+                    </div>
+                    <div className="ex-row-nums">
+                      <span className="ex-num">
+                        <span className="ex-num-k">stima</span>
+                        <span className={`ex-num-v ${g.stimaUsd == null ? 'ex-dim' : ''}`}>{g.stimaUsd == null ? 'N/D' : money(g.stimaUsd)}</span>
+                      </span>
+                      <span className="ex-num">
+                        <span className="ex-num-k">reale</span>
+                        <span className={`ex-num-v ${g.realeDisponibile === true && g.realeUsd != null ? '' : 'ex-dim'}`}>
+                          {g.realeDisponibile === true && g.realeUsd != null ? money(g.realeUsd) : 'N/D'}
+                        </span>
+                      </span>
+                      <span className="ex-num">
+                        <span className="ex-num-k">scarto</span>
+                        <span className={`ex-num-v ${g.assolutoUsd == null ? 'ex-dim' : Math.abs(g.percentuale ?? 0) <= 15 ? 'ex-up' : 'ex-dn'}`}>
+                          {g.assolutoUsd == null
+                            ? 'N/D'
+                            : `${g.assolutoUsd > 0 ? '+' : ''}${money(g.assolutoUsd)}${g.percentuale == null ? '' : ` · ${g.percentuale > 0 ? '+' : ''}${g.percentuale}%`}`}
+                        </span>
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <p className="lrc-note">
+              Nessun confronto ancora registrato. Il primo arriva dopo la prossima mezzanotte UTC:
+              agent40 fotografa la stima alle 23:55 e legge il consuntivo del venue alle 00:20.
+              {conf?.error ? ` Lettura fallita: ${conf.error}` : ''}
             </p>
           )}
 

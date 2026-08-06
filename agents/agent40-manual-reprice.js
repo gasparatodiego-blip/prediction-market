@@ -89,6 +89,18 @@ const { leggiFinestraMercato } = require('../lib/rewards/velocita-mercato');
 // LE CANCELLAZIONI CHE SI DEVONO VEDERE. Il 6 agosto 2026 una gamba e' stata cancellata correttamente
 // e nessun evento e' arrivato a una superficie: l'operatore se n'e' accorto guardando l'app del venue.
 const { registraCancellazioni } = require('../lib/maker/cancellazioni-visibili');
+// ── IL CONFRONTO STIMA / CONSUNTIVO ─────────────────────────────────────────────────────────────────
+// Due controlli orari dentro QUESTO processo: nessun pm2 nuovo. agent40 e' gia' sempre acceso e gira
+// ogni 5 secondi, quindi ha gia' l'orologio che serve — aggiungere un processo per due letture al
+// giorno sarebbe stato un demone in piu' da sorvegliare per niente.
+const { compitiDovuti, registraStima, registraReale } = require('../lib/maker/confronto-reward');
+// La lettura del consuntivo. SOLA LETTURA per costruzione: usa solo le credenziali L2, parla solo in
+// GET, e non importa l'adapter — l'unico oggetto del progetto che sappia mandare un ordine.
+const { leggiRewardReale } = require('../lib/maker/reward-reale');
+// La STESSA funzione che alimenta il pannello: la stima fotografata e' quella che l'operatore vede,
+// non un secondo calcolo che potrebbe divergerne. `buildMarketBoard` legge dai file degli agent, non
+// dal database — nessuna connessione Prisma entra in questo processo.
+const { buildMarketBoard, buildOrderBoard, buildSummary } = require('../lib/maker/operator-board');
 const { AUTO_CLOSE_SOURCE } = require('../lib/maker/auto-close-config');
 const { writeVenuePositions } = require('../lib/safety/venue-positions-snapshot');
 // L'AVVISO SUI RESIDUI CHE MUOIONO SOTTO LA SOGLIA MINIMA. Deposita in data/ quello che il ciclo scopre,
@@ -731,8 +743,62 @@ async function main() {
   }
 
   // Never let one bad cycle kill the watcher — but never let a failure be silent either.
+  // ══ I DUE CONTROLLI ORARI — DENTRO QUESTO CICLO, NON IN UN PROCESSO NUOVO ═══════════════════════
+  //
+  // Girano appesi al ciclo da 5 secondi che c'e' gia'. `compitiDovuti` e' puro e riceve l'orologio,
+  // quindi decide con una finestra di 4 minuti: un riavvio alle 23:54:58 non deve far perdere la
+  // fotografia di quella giornata, e una giornata persa non si recupera.
+  //
+  // L'IDEMPOTENZA STA NEL FILE, non qui: `registraStima` e `registraReale` non riscrivono una riga
+  // gia' completa. Percio' girare piu' volte dentro la finestra non produce doppioni.
+  //
+  // TRY/CATCH SUO, come la riconciliazione e la chiusura: un confronto che fallisce e' un referto
+  // mancato, e non deve poter fermare il motore che riprezza capitale reale.
+  let confrontoInCorso = false;
+  const controlliOrari = async () => {
+    if (confrontoInCorso) return;
+    confrontoInCorso = true;
+    try {
+      const c = compitiDovuti({ now: Date.now() });
+
+      if (c.stima) {
+        // La stima e' quella che il pannello mostra: stessa fonte, nessun secondo calcolo.
+        const board = await buildMarketBoard({});
+        const ordini = await buildOrderBoard();
+        const sum = buildSummary(board.markets, ordini);
+        const w = registraStima({
+          giorno: c.giornoStima,
+          stimaUsd: sum && Number.isFinite(sum.estGrossUsdPerDay) ? sum.estGrossUsdPerDay : null,
+          perMercato: sum && Array.isArray(sum.estPerMarket) ? sum.estPerMarket : null,
+        });
+        if (w.scritto) {
+          log(`CONFRONTO REWARD · stima di ${c.giornoStima} fotografata:`
+            + ` $${sum && Number.isFinite(sum.estGrossUsdPerDay) ? sum.estGrossUsdPerDay.toFixed(2) : 'N/D'}/g`);
+        }
+      }
+
+      if (c.reale) {
+        const r = await leggiRewardReale({ giorno: c.giornoReale });
+        const w = registraReale({
+          giorno: c.giornoReale, disponibile: r.disponibile,
+          realeUsd: r.totaleUsd, motivo: r.motivo, tentativo: c.tentativo,
+        });
+        if (w.scritto) {
+          log(r.disponibile
+            ? `CONFRONTO REWARD · consuntivo di ${c.giornoReale}: $${r.totaleUsd.toFixed(2)} (tentativo ${c.tentativo})`
+            : `CONFRONTO REWARD · consuntivo di ${c.giornoReale} non disponibile (tentativo ${c.tentativo}/3): ${r.motivo}`
+              + (w.esaurito ? ' — tentativi esauriti, la giornata resta marcata non disponibile' : ''));
+        }
+      }
+    } catch (e) {
+      log('confronto reward NON eseguito:', e && e.message ? e.message : String(e));
+    } finally { confrontoInCorso = false; }
+  };
+
   const run = async () => {
     cicloManuale++;
+    // Prima del ciclo vero: e' una lettura, non tocca ordini, e un suo fallimento e' gia' isolato.
+    controlliOrari().catch(() => {});
     let esito = null; let erroreCiclo = null;
     try { esito = await cycle(); }
     catch (e) { erroreCiclo = e; log('cycle failed:', e && e.message ? e.message : String(e)); }
