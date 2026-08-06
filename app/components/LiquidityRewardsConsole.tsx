@@ -2008,7 +2008,28 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
         </section>
       )}
 
-      {/* ══ 4 · MERCATI LIBERI (RISCHIOSI) ════════════════════════════════════════════════════════
+      {/* ── 3a · OTTIMIZZA CAPITALE — PRIMO BLOCCO DELLA TAB ──────────────────────────────────────
+          Stava in fondo, dopo le oltre cento card del board: la domanda che apre la tab («quanto
+          capitale metto») si raggiungeva solo scorrendo la risposta a una domanda diversa. Su telefono
+          erano parecchi schermi di card prima del campo in cui si scrive la cifra. Ora è il primo
+          blocco, e la lista dei mercati viene dopo — l'ordine di lettura segue l'ordine delle decisioni.
+          Lo spostamento è di sola posizione nel JSX: le due sezioni sono sorelle indipendenti, nessuna
+          legge dati dell'altra e nessuna misura il DOM, quindi nessun comportamento cambia con l'ordine.
+
+          Solo il pianificatore. La ricerca di un singolo mercato è sparita da qui: cercare un mercato
+          è il mestiere della tab Mercati, e averne due copie con comportamenti diversi è esattamente
+          come è nato il disallineamento fra la card toccata e il mercato raggiunto.
+          Anche «Strategia sul fill» è via: il suo ciclo non ha nessun chiamante in agent o API, quindi
+          quei comandi descrivevano una funzione che non gira. Un interruttore che non è collegato a
+          niente è peggio di un interruttore assente. */}
+      {tab === 'alloca' && (
+        <section className="lrc-sec" data-lrc-section="alloca">
+          <Ask q="Quanto capitale metto, e su quali mercati?" sub="Un piano, non un ordine: da qui si piazza solo aprendo il pannello su un mercato." />
+          <RewardsAllocatePanel onPlaceOrder={(row) => setOrderTarget(row)} placed={placedTick} />
+        </section>
+      )}
+
+      {/* ══ 3b · MERCATI LIBERI (RISCHIOSI) ════════════════════════════════════════════════════════
           Ricerca libera su QUALUNQUE mercato del venue, non solo su quelli che il piano propone.
           Il nome porta l'avvertenza perché l'avvertenza è il punto: qui si esce dal piano. */}
       {/* ── LA RICERCA LIBERA, DENTRO «MERCATI OTTIMIZZATI» ────────────────────────────────────────
@@ -2175,17 +2196,15 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
 
                 return (
                   <div key={m.marketId} className="lrc-mkt ex-panel" data-lrc-market={m.marketId}>
-                    {/* ── LA CARD INTERA APRE IL PANNELLO ──────────────────────────────────────
-                        Non un pulsantino in un angolo: la superficie che si legge è la superficie
-                        che si tocca, ed è quella che porta con sé il proprio conditionId. I comandi
-                        secondari («Book», «Dettagli») stanno fuori da questo bottone, così un tocco
-                        su di loro non apre nulla. */}
-                    <button
-                      className="lrc-mkt-open"
-                      onClick={() => setOrderTarget(targetFromBoard(m))}
-                      data-lrc-open-order={m.marketId}
-                      title="Apre il pannello ordine su QUESTO mercato, senza cambiare tab e senza cercare nulla"
-                    >
+                    {/* ── LA CARD SI LEGGE, NON SI TOCCA ───────────────────────────────────────
+                        Era tutta un bottone, con sotto la scritta «tocca la scheda per piazzare».
+                        Una superficie che apre il pannello ordine ma non lo dichiara dove la si
+                        tocca è ambigua nel verso peggiore: piazzare è l'azione che scrive al venue,
+                        e non deve poter partire da un tocco che voleva solo leggere il titolo.
+                        Ora la card è muta e l'azione è UN bottone dichiarato, in fondo. Il target
+                        che porta è lo stesso di prima — `targetFromBoard(m)`, il conditionId di
+                        QUESTA card — quindi il mercato raggiunto resta per costruzione quello letto. */}
+                    <div className="lrc-mkt-body">
                     {/* TITOLO, e sotto la sola riga che serve: scadenza e montepremi. */}
                     <div className="lrc-mkt-head">
                       <div className="lrc-mkt-t">
@@ -2238,7 +2257,7 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
                         </span>
                       </div>
                     </div>
-                    </button>
+                    </div>
 
                     <div className="lrc-pad">
                       {flag && (
@@ -2254,10 +2273,26 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
                         bestBid={m.bestBid} bestAsk={m.bestAsk}
                       />
 
+                      {/* ── L'AZIONE, DICHIARATA ─────────────────────────────────────────────
+                          Stesso pattern del piano automatico («Piazza ordine →» sulle card
+                          dell'allocatore): l'azione che scrive ha un bottone che la nomina, non una
+                          superficie da indovinare. Qui non c'è una size pre-calcolata da mostrare
+                          accanto al testo — nessun allocatore ha valutato questo mercato — quindi
+                          il bottone dice solo cosa fa, e prezzo e size si scelgono nel pannello.
+                          IL PERCORSO È IDENTICO A PRIMA: stesso `setOrderTarget(targetFromBoard(m))`,
+                          stesso OrderPanel, stessa catena di gate (proprietà manuale, mai primo sul
+                          libro, pavimento di profondità, tetto 20%, kill-switch, validateOrder).
+                          Cambia da dove si preme, non cosa succede dopo. */}
                       <div className="ex-cardacts">
-                        <span className="lrc-taphint">tocca la scheda per piazzare</span>
-                        <Link className="ex-link" href={`/dashboard/liquidity-rewards/${encodeURIComponent(m.marketId)}`} prefetch={false}>Book →</Link>
-                        <button className="ex-link" onClick={() => setOpenDetail(detail ? null : m.marketId)} data-lrc-detail-toggle>
+                        <button
+                          className="ex-btn is-gold lrc-place"
+                          onClick={() => setOrderTarget(targetFromBoard(m))}
+                          data-lrc-open-order={m.marketId}
+                          title="Apre il pannello ordine su QUESTO mercato, senza cambiare tab e senza cercare nulla. Restano i controlli di sempre prima che qualcosa parta."
+                        >
+                          Piazza ordine →
+                        </button>
+                        <button className="ex-link lrc-cardact-2" onClick={() => setOpenDetail(detail ? null : m.marketId)} data-lrc-detail-toggle>
                           {detail ? 'Chiudi ↑' : 'Dettagli →'}
                         </button>
                       </div>
@@ -2297,7 +2332,11 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
                             <div className="ex-kv" title={`fonte: ${m.midSource ?? 'N/D'}`}><span className="ex-kv-k">mid letto</span><span className="ex-kv-v">{ageTxt(m.midAgeSec)}</span></div>
                             <div className="ex-kv" title={m.marketId}><span className="ex-kv-k">id</span><span className="ex-kv-v">{m.marketId.slice(0, 10)}…</span></div>
                           </div>
+                          {/* «Book →» stava nella riga comandi della card, accanto al vecchio
+                              suggerimento di tocco. È sceso qui invece di sparire: la pagina del
+                              book resterebbe altrimenti senza un solo ingresso dal pannello. */}
                           <div className="lrc-actions">
+                            <Link className="ex-link" href={`/dashboard/liquidity-rewards/${encodeURIComponent(m.marketId)}`} prefetch={false}>Book →</Link>
                             <Link className="ex-link" href={`/dashboard/liquidity-rewards/${encodeURIComponent(m.marketId)}/event`} prefetch={false}>Scheda →</Link>
                           </div>
                         </div>
@@ -2323,19 +2362,6 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
         </section>
       )}
 
-      {/* ── 3 · OTTIMIZZA CAPITALE ────────────────────────────────────────────────────────────────
-          Solo il pianificatore. La ricerca di un singolo mercato è sparita da qui: cercare un mercato
-          è il mestiere della tab Mercati, e averne due copie con comportamenti diversi è esattamente
-          come è nato il disallineamento fra la card toccata e il mercato raggiunto.
-          Anche «Strategia sul fill» è via: il suo ciclo non ha nessun chiamante in agent o API, quindi
-          quei comandi descrivevano una funzione che non gira. Un interruttore che non è collegato a
-          niente è peggio di un interruttore assente. */}
-      {tab === 'alloca' && (
-        <section className="lrc-sec" data-lrc-section="alloca">
-          <Ask q="Quanto capitale metto, e su quali mercati?" sub="Un piano, non un ordine: da qui si piazza solo aprendo il pannello su un mercato." />
-          <RewardsAllocatePanel onPlaceOrder={(row) => setOrderTarget(row)} placed={placedTick} />
-        </section>
-      )}
 
       {/* Le regole del programma: sempre a un tocco dal «?», mai una sezione da attraversare. */}
       {showRules && (
@@ -2685,14 +2711,17 @@ const CSS = `
 .lrc-pos { padding-bottom: 2px; }
 .lrc-legs { border-top: 1px solid var(--ex-line-soft); background: rgba(0,0,0,.18); }
 
-/* La scheda intera e il bersaglio del tocco: un bottone che non sembra un bottone, perche la
-   superficie che si legge e la superficie che si preme. Nessun riquadro, nessuna ombra: solo il
-   bordo che si accende, come su una riga di book. */
-.lrc-mkt-open { display: block; width: 100%; text-align: left; cursor: pointer;
-  background: none; border: 0; border-radius: 8px 8px 0 0; padding: 0; color: inherit; font: inherit; }
-.lrc-mkt-open:hover { background: rgba(240,185,11,.05); }
-.lrc-mkt-open:focus-visible { outline: 2px solid var(--ex-gold); outline-offset: -2px; }
-.lrc-taphint { font-size: 10px; color: var(--ex-txt-3); margin-right: auto; }
+/* La scheda si LEGGE: non e piu un bottone e non reagisce al tocco. L azione sta nel bottone
+   dichiarato in fondo alla card. Niente hover e niente cursore a mano qui sopra: un hover che si
+   accende su una superficie inerte promette un click che non esiste. */
+.lrc-mkt-body { border-radius: 8px 8px 0 0; }
+/* Il bottone che scrive: pieno, oro, primo nella riga comandi e con il bersaglio pieno del pollice
+   (44px e la soglia sotto cui un tocco su telefono comincia a mancare). Occupa la larghezza che gli
+   serve, non tutta: accanto deve restare visibile «Dettagli», che e l azione che NON scrive. */
+.lrc-place { min-height: 44px; padding: 0 16px; font-size: 12.5px; font-weight: 700; margin-right: auto; }
+/* L azione secondaria, deliberatamente piu piccola del bottone: la gerarchia si vede prima di
+   leggerla. */
+.lrc-cardact-2 { font-size: 11.5px; }
 .lrc-venue-row { width: 100%; text-align: left; cursor: pointer; font: inherit; color: inherit; }
 .lrc-venue-row:hover { background: rgba(240,185,11,.05); }
 .lrc-venue-row:focus-visible { outline: 2px solid var(--ex-gold); outline-offset: -2px; }
