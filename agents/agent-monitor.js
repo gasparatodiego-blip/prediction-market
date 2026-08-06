@@ -62,17 +62,33 @@ const MIN_STALE_MS = 5 * 60 * 1000;
 // formerly watched (agent2/3/4/5/10/15/18/19/20/21/22/23/30/31/33) were pm2-stopped as part of the
 // rewards-only refocus. They are removed here ON PURPOSE: this monitor auto-restarts any watched
 // agent it finds stopped/stale (see checkHealth → pm2Restart), so leaving them in would resurrect
-// them within one cycle and undo the stop. What remains is exactly the rewards lane's own producers
-// (agent24/25), its honest-engine guardian (agent26), its two watchdogs (agent38/39) and the
-// dashboard. agent34/35/37 stay watched by their dedicated peers (agent38/agent37), not here — the
-// pre-existing design, left unchanged. RESTORE: `git revert` this commit (and the ecosystem stops),
-// then `pm2 restart agent-monitor` — the full watch list returns and the monitor re-adds the fleet.
+// them within one cycle and undo the stop. agent34/35/37 stay watched by their dedicated peers
+// (agent38/agent37), not here — the pre-existing design, left unchanged.
+//
+// ── RIDUZIONE ALL'INSIEME MINIMO — 6 agosto 2026 ────────────────────────────────────────────────
+// Tolti da questa lista agent25-kalshi-rewards, agent26-landing-auditor e agent39-net-rerun, perché
+// sono stati fermati con `pm2 stop` nella stessa sessione. Lasciarli qui li avrebbe fatti risorgere
+// entro un ciclo (2 minuti) — è precisamente ciò che il paragrafo qui sopra dice, e che va onorato
+// ogni volta che si ferma qualcosa.
+//
+// Perché quei tre non servono più (verificato prima di fermarli, non dedotto):
+//   · agent25  agent24 chiama writeCombinedSnapshot() a ogni scan e buildCombined() tratta un file
+//              kalshi assente come [] senza sollevare: i 112 mercati Polymarket restano tutti, e
+//              agent34 sottoscrive solo Polymarket. I premi Kalshi sono US-only, operatore UE.
+//   · agent26  scrive landing-auditor-state.json (nessun lettore) e guardian-directives.json, letto
+//              solo da /api/health tramite lib/guardian-health, che degrada a null senza sollevare.
+//   · agent39  misura la copertura del tape e lancia il replay del netto a 48h. Utile, ma NON
+//              operativo: non piazza, non riprezza, non sorveglia nulla che tenga in vita un ordine.
+//
+// Restano sorvegliati esattamente i produttori e i guardiani che continuano a girare: agent24 (la
+// watchlist di agent34 e il normalizzato), agent38 (che a sua volta riavvia agent34 quando i
+// giornali smettono di crescere) e la dashboard.
+//
+// RESTORE: `git revert` di questo commit e di quello sull'ecosystem, poi `pm2 start <nome>` per
+// ciascuno e `pm2 restart agent-monitor`. Niente è stato cancellato: solo fermato.
 const WATCHED_AGENTS_RAW = [
   { pm2Name: 'agent24-liquidity-rewards',  hbKey: null },
-  { pm2Name: 'agent25-kalshi-rewards',     hbKey: null },
-  { pm2Name: 'agent26-landing-auditor',    hbKey: 'agent26-landing-auditor', cadenceMs: 30 * 60_000 }, // rewards honest-engine guardian
   { pm2Name: 'agent38-tape-watchdog',      hbKey: 'agent38-tape-watchdog',   cadenceMs: 60_000 },      // agent38 CHECK_INTERVAL_MS — the watcher is itself watched (who-watches-the-watchman)
-  { pm2Name: 'agent39-net-rerun',          hbKey: 'agent39-net-rerun',       cadenceMs: 60 * 60_000 }, // agent39 hourly window check
   { pm2Name: 'dashboard',                  hbKey: null },
 ];
 

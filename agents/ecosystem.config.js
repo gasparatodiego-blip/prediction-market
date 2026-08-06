@@ -19,10 +19,73 @@
   }
 })();
 
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════
+// RIDUZIONE ALL'INSIEME MINIMO — 6 agosto 2026
+//
+// MOTIVO. Questo sistema serve a UNA cosa sola: i liquidity rewards su Polymarket. I rami scanner,
+// arbitraggio multi-venue, copy trading, leaderboard e trader feed — il prodotto originale del vendor —
+// sono stati abbandonati per decisione dell'operatore, che accetta consapevolmente di perderne le
+// funzioni. Trenta processi sono stati fermati con `pm2 stop` (mai `pm2 delete`: le definizioni restano
+// qui e tutto si riaccende con `pm2 start <nome>`).
+//
+// I NUMERI CHE L'HANNO DECISA. La box è un 4 GB con 3814 MB utilizzabili. Prima: 37 processi pm2,
+// 2742 MB di RSS più 1303 MB in swap, Committed_AS al 105% del CommitLimit, dieci OOM kill in otto
+// giorni. Il percorso critico dei rewards — feed, motore, watchdog, riprezzo, scheduler, dashboard,
+// agent24 — pesa 444 MB. Il resto serviva rotte che in due giorni di log nginx hanno ricevuto ZERO
+// richieste: /api/mm, /api/marketmaker, /api/poly-hft, /api/poly-whales, /api/leaderboard,
+// /api/traders, /api/carry, /api/ticker, /api/copy, /api/prediction, /api/markets.
+//
+// ── PERCHÉ `autostart: false` E NON `autorestart: false` ──────────────────────────────────────────
+// QUESTA È LA PARTE CHE NEL LUGLIO SCORSO È ANDATA STORTA, e vale la pena scriverla per esteso perché
+// non è ovvia e ci è già costata una resurrezione silenziosa.
+//
+// Il 25 luglio agent-marketmaker fu fermato e marcato `autorestart: false`. Il 28 luglio, al reboot,
+// era di nuovo online. Non per colpa di agent-monitor (non è nella sua lista) e non perché mancasse un
+// `pm2 save`: il motivo sta nel codice di pm2.
+//
+// Al boot systemd esegue `pm2 resurrect` (unit pm2-root.service). Guardando lib/API/Startup.js, la
+// resurrezione NON legge lo `status` salvato: costruisce `tostart` come «ogni nome nel dump che non è
+// già in esecuzione» — e al reboot non è in esecuzione NIENTE — poi chiama `prepare` su ciascuno.
+// L'unico campo che ferma davvero il lancio è in lib/God.js riga 223:
+//
+//     if (env_copy['autostart'] === false) { ...registra e basta... return cb(null, clu); }
+//
+// `autorestart` governa tutt'altro: cosa fare quando un processo GIÀ AVVIATO esce. Non ha voce sul
+// lancio iniziale. E `autostart` assente non basta: la riga 180 mette lo status a STOPPED ma il
+// confronto della 223 è `=== false`, quindi `undefined` prosegue e il processo parte lo stesso.
+//
+// Quindi: ogni app disabilitata qui sotto porta `autostart: false` ESPLICITO, e lo stesso valore è
+// stato applicato allo stato vivo di pm2 prima di `pm2 save`, perché è il dump — non questo file — che
+// il boot legge. Questo file protegge l'altro percorso, `pm2 start ecosystem.config.js`.
+//
+// RIACCENDERE UNO: `pm2 start ecosystem.config.js --only <nome>` dopo aver tolto il suo
+// `autostart: false`, oppure `pm2 start <nome>` per una riaccensione temporanea. Poi `pm2 save`.
+//
+// ── UN DIFETTO REGISTRATO QUI PERCHÉ NON VADA PERSO (non corretto in questa sessione) ─────────────
+// agent27-news-guard è fra i processi fermati, e va detto che il freno sulle notizie che dovrebbe
+// alimentare NON HA MAI FUNZIONATO — quindi spegnerlo non toglie niente che oggi operi.
+//
+// agent27 produce due file: /tmp/news-guard.json, che contiene i 312 mercati con la loro severità, e
+// /tmp/news-guard-state.json, che contiene solo la sua contabilità interna (alerted, bookHist,
+// regimeState, actionCooldown, actionHourly, providerHealth) e NESSUN campo `markets`.
+//
+// agent35-maker legge il SECONDO (riga 204, NEWS_STATE_FILE) e alla riga 218 itera
+// `Object.entries((news && news.markets) || {})`. Quel campo lì non esiste, quindi `newsByMarket` è
+// SEMPRE VUOTA: `newsForceClose` (riga 457) è sempre falso e il rail `news-high` di
+// lib/maker/risk-rails.js non ha mai ricevuto un solo input. La severità di agent27 raggiunge solo
+// /api/rewards-unified, che ha zero richieste.
+//
+// LA CORREZIONE, quando la si vorrà: far leggere ad agent35 /tmp/news-guard.json invece del file di
+// stato, adattando la forma (lì `markets` è un ARRAY di righe con `marketId` e `newsRisk`/`severity`,
+// non un oggetto indicizzato per id). E riaccendere agent27, che senza di lui non produce più niente.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════
+
 module.exports = {
   apps: [
     {
       name:          'agent14-rebalancer',
+      // DISABILITATO 2026-08-06 — vedi la nota in testa al file.
+      autostart:     false,
       script:        './agents/agent14-rebalancer.js',
       cwd:           '/root/prediction-market',
       restart_delay: 30000,
@@ -34,6 +97,8 @@ module.exports = {
     },
     {
       name:          'agent29-verifier',
+      // DISABILITATO 2026-08-06 — vedi la nota in testa al file.
+      autostart:     false,
       script:        './agents/agent29-verifier.js',
       cwd:           '/root/prediction-market',
       restart_delay: 30000,
@@ -45,6 +110,8 @@ module.exports = {
     },
     {
       name:          'agent28-perp-spot',
+      // DISABILITATO 2026-08-06 — vedi la nota in testa al file.
+      autostart:     false,
       script:        './agents/agent28-perp-spot.js',
       cwd:           '/root/prediction-market',
       restart_delay: 30000,
@@ -56,6 +123,8 @@ module.exports = {
     },
     {
       name:          'agent27-news-guard',
+      // DISABILITATO 2026-08-06 — vedi la nota in testa al file.
+      autostart:     false,
       script:        './agents/agent27-news-guard.js',
       cwd:           '/root/prediction-market',
       restart_delay: 30000,
@@ -67,6 +136,8 @@ module.exports = {
     },
     {
       name:          'agent26-landing-auditor',
+      // DISABILITATO 2026-08-06 — vedi la nota in testa al file.
+      autostart:     false,
       script:        './agents/agent26-landing-auditor.js',
       cwd:           '/root/prediction-market',
       restart_delay: 30000,
@@ -77,6 +148,8 @@ module.exports = {
     },
     {
       name:          'agent25-kalshi-rewards',
+      // DISABILITATO 2026-08-06 — vedi la nota in testa al file.
+      autostart:     false,
       script:        './agents/agent25-kalshi-rewards.js',
       cwd:           '/root/prediction-market',
       restart_delay: 60000,
@@ -95,6 +168,8 @@ module.exports = {
     },
     {
       name:          'agent23-prediction-repricer',
+      // DISABILITATO 2026-08-06 — vedi la nota in testa al file.
+      autostart:     false,
       script:        './agents/agent23-prediction-repricer.js',
       cwd:           '/root/prediction-market',
       restart_delay: 30000,
@@ -129,6 +204,8 @@ module.exports = {
     },
     {
       name:          'agent-data-collector',
+      // DISABILITATO 2026-08-06 — vedi la nota in testa al file.
+      autostart:     false,
       script:        './agents/agent-data-collector.js',
       cwd:           '/root/prediction-market',
       restart_delay: 15000,
@@ -138,6 +215,8 @@ module.exports = {
     },
     {
       name:          'agent10-binance',
+      // DISABILITATO 2026-08-06 — vedi la nota in testa al file.
+      autostart:     false,
       script:        './agents/agent10-binance.js',
       cwd:           '/root/prediction-market',
       restart_delay: 5000,
@@ -147,6 +226,8 @@ module.exports = {
     },
     {
       name:          'agent-master',
+      // DISABILITATO 2026-08-06 — vedi la nota in testa al file.
+      autostart:     false,
       script:        './agents/agent-master.js',
       cwd:           '/root/prediction-market',
       restart_delay: 30000,
@@ -165,6 +246,8 @@ module.exports = {
     },
     {
       name:          'agent-marketmaker',
+      // DISABILITATO 2026-08-06 — vedi la nota in testa al file.
+      autostart:     false,
       script:        './agents/agent-marketmaker.js',
       cwd:           '/root/prediction-market',
       restart_delay: 15000,
@@ -180,6 +263,8 @@ module.exports = {
     },
     {
       name:          'agent-liquidity',
+      // DISABILITATO 2026-08-06 — vedi la nota in testa al file.
+      autostart:     false,
       script:        './agents/agent-liquidity.js',
       cwd:           '/root/prediction-market',
       restart_delay: 15000,
@@ -189,6 +274,8 @@ module.exports = {
     },
     {
       name:          'agent2-fetcher',
+      // DISABILITATO 2026-08-06 — vedi la nota in testa al file.
+      autostart:     false,
       script:        './agents/agent2-fetcher.js',
       cwd:           '/root/prediction-market',
       restart_delay: 15000,
@@ -199,6 +286,8 @@ module.exports = {
     },
     {
       name:          'agent3-matcher-politics',
+      // DISABILITATO 2026-08-06 — vedi la nota in testa al file.
+      autostart:     false,
       script:        './agents/agent3-matcher-politics.js',
       cwd:           '/root/prediction-market',
       restart_delay: 30000,
@@ -208,6 +297,8 @@ module.exports = {
     },
     {
       name:          'agent4-matcher-other',
+      // DISABILITATO 2026-08-06 — vedi la nota in testa al file.
+      autostart:     false,
       script:        './agents/agent4-matcher-other.js',
       cwd:           '/root/prediction-market',
       restart_delay: 30000,
@@ -217,6 +308,8 @@ module.exports = {
     },
     {
       name:          'agent5-calculator',
+      // DISABILITATO 2026-08-06 — vedi la nota in testa al file.
+      autostart:     false,
       script:        './agents/agent5-calculator.js',
       cwd:           '/root/prediction-market',
       restart_delay: 15000,
@@ -227,6 +320,8 @@ module.exports = {
     },
     {
       name:          'agent15-funding-writer',
+      // DISABILITATO 2026-08-06 — vedi la nota in testa al file.
+      autostart:     false,
       script:        './agents/agent15-funding-writer.js',
       cwd:           '/root/prediction-market',
       restart_delay: 10000,
@@ -237,6 +332,8 @@ module.exports = {
     },
     {
       name:          'agent16-poly-hft',
+      // DISABILITATO 2026-08-06 — vedi la nota in testa al file.
+      autostart:     false,
       script:        './agents/agent16-poly-hft.js',
       cwd:           '/root/prediction-market',
       restart_delay: 15000,
@@ -247,6 +344,8 @@ module.exports = {
     },
     {
       name:          'agent17-poly-whales',
+      // DISABILITATO 2026-08-06 — vedi la nota in testa al file.
+      autostart:     false,
       script:        './agents/agent17-poly-whales.js',
       cwd:           '/root/prediction-market',
       restart_delay: 30000,
@@ -257,6 +356,8 @@ module.exports = {
     },
     {
       name:          'agent18-mm-analyzer',
+      // DISABILITATO 2026-08-06 — vedi la nota in testa al file.
+      autostart:     false,
       script:        './agents/agent18-mm-analyzer.js',
       cwd:           '/root/prediction-market',
       restart_delay: 15000,
@@ -267,6 +368,8 @@ module.exports = {
     },
     {
       name:          'agent19-basis',
+      // DISABILITATO 2026-08-06 — vedi la nota in testa al file.
+      autostart:     false,
       script:        './agents/agent19-basis.js',
       cwd:           '/root/prediction-market',
       restart_delay: 15000,
@@ -277,6 +380,8 @@ module.exports = {
     },
     {
       name:          'agent20-leaderboard',
+      // DISABILITATO 2026-08-06 — vedi la nota in testa al file.
+      autostart:     false,
       script:        './agents/agent20-leaderboard.js',
       cwd:           '/root/prediction-market',
       // Boot-crash-loop throttle: back off fast restarts instead of hammering.
@@ -316,6 +421,8 @@ module.exports = {
     },
     {
       name:          'agent21-copy-watcher',
+      // DISABILITATO 2026-08-06 — vedi la nota in testa al file.
+      autostart:     false,
       script:        './agents/agent21-copy-watcher.js',
       cwd:           '/root/prediction-market',
       restart_delay: 15000,
@@ -326,6 +433,8 @@ module.exports = {
     },
     {
       name:          'agent22-funding-alerts',
+      // DISABILITATO 2026-08-06 — vedi la nota in testa al file.
+      autostart:     false,
       script:        './agents/agent22-funding-alerts.js',
       cwd:           '/root/prediction-market',
       restart_delay: 10000,
@@ -336,6 +445,8 @@ module.exports = {
     },
     {
       name:          'agent30-trader-feed',
+      // DISABILITATO 2026-08-06 — vedi la nota in testa al file.
+      autostart:     false,
       script:        './agents/agent30-trader-feed.js',
       cwd:           '/root/prediction-market',
       restart_delay: 10000,
@@ -347,6 +458,8 @@ module.exports = {
     },
     {
       name:          'agent31-trader-auditor',
+      // DISABILITATO 2026-08-06 — vedi la nota in testa al file.
+      autostart:     false,
       script:        './agents/agent31-trader-auditor.js',
       cwd:           '/root/prediction-market',
       restart_delay: 30000,
@@ -358,6 +471,8 @@ module.exports = {
     },
     {
       name:          'agent32-paper-trader',
+      // DISABILITATO 2026-08-06 — vedi la nota in testa al file.
+      autostart:     false,
       script:        './agents/agent32-paper-trader.js',
       cwd:           '/root/prediction-market',
       restart_delay: 30000,
@@ -369,6 +484,8 @@ module.exports = {
     },
     {
       name:          'agent33-sport-recorder',
+      // DISABILITATO 2026-08-06 — vedi la nota in testa al file.
+      autostart:     false,
       script:        './agents/agent33-sport-recorder.js',
       cwd:           '/root/prediction-market',
       restart_delay: 30000,
@@ -493,6 +610,8 @@ module.exports = {
     },
     {
       name:          'agent36-book-velocity',
+      // DISABILITATO 2026-08-06 — vedi la nota in testa al file.
+      autostart:     false,
       script:        './agents/agent36-book-velocity.js',
       cwd:           '/root/prediction-market',
       restart_delay: 15000,
@@ -605,6 +724,8 @@ module.exports = {
     },
     {
       name:          'agent39-net-rerun',
+      // DISABILITATO 2026-08-06 — vedi la nota in testa al file.
+      autostart:     false,
       script:        './agents/agent39-net-rerun.js',
       cwd:           '/root/prediction-market',
       restart_delay: 15000,
