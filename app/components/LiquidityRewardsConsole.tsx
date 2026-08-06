@@ -54,6 +54,10 @@ import ManualOrdersPanel from './ManualOrdersPanel';
 import RewardsAllocatePanel from './RewardsAllocatePanel';
 import RewardsUnified from './RewardsUnified';
 import OrderPanel, { type OrderTarget } from './OrderPanel';
+// LA CLASSIFICAZIONE SAFE/RISK, la stessa funzione che pre-filtra l'allocatore e che etichetta le card
+// della tab Risk. Qui serve per DUE cose: dividere gli ordini a riposo nei due bucket e sommarne i
+// dollari. Non se ne scrive una seconda copia — vedi lib/maker/risk-classifier.js.
+import { bucketizza } from '@/lib/maker/risk-classifier';
 
 // ── TRE SEZIONI, NON SEI ────────────────────────────────────────────────────────────────────────
 // Sei tab volevano dire che rispondere a «i miei ordini stanno maturando?» costava tre passaggi:
@@ -65,16 +69,25 @@ import OrderPanel, { type OrderTarget } from './OrderPanel';
 // capitale), ma da entrambe si piazza dallo STESSO pannello, aperto sopra la lista.
 //
 // «Regole» non era una sezione: era un testo che non cambia mai. Sta dietro il «?» in intestazione.
-type TabKey = 'riepilogo' | 'mercati' | 'alloca';
+// ── TRE TAB: RIEPILOGO · RISK · OTTIMIZZA ─────────────────────────────────────────────────────────
+// «Mercati» non e' piu' una tab. Rispondeva a «quale mercato esiste sul venue», che e' una domanda da
+// strumento di ricerca, non una delle tre viste su cui si opera; e teneva a schermo una lista che non
+// dice niente sul capitale. La ricerca NON e' stata cancellata: sta in fondo al Riepilogo, dietro un
+// accordion chiuso (vedi «Cerca un mercato sul venue»), perche' toglierla del tutto avrebbe tolto
+// l'unico modo di aprire un mercato che il piano non propone.
+//
+// Al suo posto entra RISK, che e' l'altra meta' del capitale: i mercati che l'ottimizzatore Safe
+// scarta per una ragione dichiarata e che l'operatore puo' decidere di prendere lo stesso.
+type TabKey = 'riepilogo' | 'risk' | 'alloca';
 
 const TABS: Array<{ key: TabKey; label: string; short: string }> = [
   { key: 'riepilogo', label: 'Riepilogo', short: 'Riepilogo' },
-  { key: 'mercati', label: 'Mercati', short: 'Mercati' },
-  { key: 'alloca', label: 'Ottimizza capitale', short: 'Ottimizza' },
+  { key: 'risk', label: 'Risk', short: 'Risk' },
+  { key: 'alloca', label: 'Ottimizza', short: 'Ottimizza' },
 ];
 /** I vecchi ?tab= continuano a funzionare: puntano alla sezione che ora li contiene. */
 const LEGACY_TAB: Record<string, TabKey> = {
-  posizioni: 'riepilogo', ordini: 'riepilogo', regole: 'riepilogo',
+  posizioni: 'riepilogo', ordini: 'riepilogo', regole: 'riepilogo', mercati: 'riepilogo',
 };
 
 interface JudgedOrder {
@@ -619,6 +632,112 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
     [orders],
   );
 
+  // ── I DUE BUCKET, E I LORO DOLLARI ────────────────────────────────────────────────────────────────
+  // Gli ordini di /api/maker/board portano il verdetto sulla BANDA ma non la scadenza del mercato ne'
+  // l'eta' del dato: quelli stanno sulla riga di MERCATO. Senza unirli, ogni ordine risulterebbe «non
+  // giudicabile» e i due bucket sarebbero vuoti — quindi il contesto per marketId viaggia con la
+  // chiamata, ed e' `bucketizza` a fondere le due fonti (i campi dell'ordine vincono su quelli del
+  // mercato, perche' sono piu' specifici).
+  const contestoMercati = useMemo(() => {
+    const m = new Map<string, { hoursToResolution: number | null; midAgeSec: number | null; bandLo: number | null; bandHi: number | null }>();
+    for (const x of rawMarkets) {
+      if (!x.marketId) continue;
+      m.set(x.marketId.toLowerCase(), {
+        hoursToResolution: x.hoursToResolution ?? null,
+        midAgeSec: x.midAgeSec ?? null,
+        bandLo: x.bandLo ?? null,
+        bandHi: x.bandHi ?? null,
+      });
+    }
+    return m;
+  }, [rawMarkets]);
+
+  const bucket = useMemo(
+    () => bucketizza(orders?.orders ?? [], { nowMs: nowMs || Date.now(), contesto: contestoMercati }),
+    [orders, nowMs, contestoMercati],
+  );
+
+  // Libero = saldo − TUTTO l'impegnato (Safe + Risk + non giudicabile). Come prima, entrambi i lati
+  // devono essere reali: se uno dei due non si legge la cifra e' N/D, mai una sottrazione contro uno
+  // zero assunto.
+  const capitaleSafeUsd = orders?.simulated ? null : bucket.safeUsd;
+  const capitaleRiskUsd = orders?.simulated ? null : bucket.riskUsd;
+  const capitaleIgnotoUsd = orders?.simulated ? null : bucket.nonGiudicabileUsd;
+
+  // Gli orderId di ciascun bucket. Le due liste (Riepilogo · Safe e Risk · gia' in esecuzione) sono
+  // proiezioni della STESSA classificazione: qui si tengono solo gli id, e la riga la disegna
+  // `rigaOrdine` piu' sotto — una funzione sola, cosi' le due viste non possono divergere.
+  const idSafe = useMemo(
+    () => new Set(bucket.safe.map((o) => o.orderId).filter(Boolean) as string[]),
+    [bucket],
+  );
+  const idRisk = useMemo(
+    () => new Set(bucket.risk.map((o) => o.orderId).filter(Boolean) as string[]),
+    [bucket],
+  );
+  // ── UNA RIGA D'ORDINE, DISEGNATA IN UN POSTO SOLO ───────────────────────────────────────────────
+  // La usano sia «Allocazione balance · Safe» (Riepilogo) sia «Già in esecuzione · Risk» (tab Risk).
+  // Erano destinate a essere due liste con lo stesso contenuto e due copie del markup: due copie
+  // divergono, e la seconda a divergere sarebbe stata quella guardata di meno.
+  const rigaOrdine = useCallback((o: RestingOrder, flags?: string[]) => {
+    const judged = (orders?.orders ?? []).find((j) => j.orderId && j.orderId === o.orderId) ?? null;
+    const title = judged?.marketTitle
+      ?? pricedMarkets.find((m) => m.marketId === o.marketId)?.title
+      ?? o.marketId ?? 'mercato sconosciuto';
+    // Il tempo residuo scorre sull'orologio locale a partire dall'istante letto: se il countdown si
+    // fermasse fra un poll e l'altro direbbe una cosa falsa proprio nei secondi in cui conta di più.
+    const left = o.expiresAtMs != null
+      ? Math.round((o.expiresAtMs - nowMs) / 1000)
+      : (fin(o.secondsToExpiry) && resting?.at
+        ? (o.secondsToExpiry as number) - Math.round((nowMs - Date.parse(resting.at)) / 1000)
+        : null);
+    const filled = fin(o.sizeMatched) && (o.sizeMatched as number) > 0;
+    return (
+      <div key={o.orderId ?? Math.random()} className="ex-row" data-lrc-resting-row={o.orderId ?? ''}>
+        <div className="ex-row-main">
+          <div className="ex-row-t">
+            <span className={`ex-side ${judged?.book === 'yes' ? 'is-yes' : judged?.book === 'no' ? 'is-no' : ''}`}>
+              {(o.side ?? 'BUY').toUpperCase()} {judged?.book ? judged.book.toUpperCase() : 'N/D'}
+            </span>{' '}
+            {title}
+          </div>
+          <div className="ex-row-s">
+            {judged?.inBand === true ? <span className="ex-badge is-ok lrc-bdg">in banda</span>
+              : judged?.inBand === false ? <span className="ex-badge is-bad lrc-bdg">fuori banda</span>
+                : <span className="ex-badge lrc-bdg" title="regole di venue non leggibili oppure token non riconducibile ai due book">non giudicabile</span>}
+            {' '}<span className="ex-badge lrc-bdg">{o.status}</span>
+            {filled && <span className="ex-badge is-warn lrc-bdg">eseguito {num(o.sizeMatched, 1)}</span>}
+            {/* I MOTIVI DI RISCHIO, sulla riga a cui si riferiscono. La banda compare già come badge
+                sopra: qui si mostrano gli ALTRI flag, per non dire due volte la stessa cosa. */}
+            {(flags ?? []).filter((f) => f !== 'fuori banda').map((f) => (
+              <span key={f} className="ex-badge is-warn lrc-bdg" data-lrc-flag={f}>⚠ {f}</span>
+            ))}
+            {' · '}<span className="ex-dim">{o.source}</span>
+          </div>
+        </div>
+        <div className="ex-row-nums">
+          <span className="ex-num"><span className="ex-num-k">prezzo</span><span className="ex-num-v">{cents(o.price)}</span></span>
+          <span className="ex-num"><span className="ex-num-k">size</span><span className="ex-num-v">{num(o.sizeRemaining ?? o.size, 1)}</span></span>
+          <span className="ex-num"><span className="ex-num-k">valore</span><span className="ex-num-v">{money(o.notionalUsd)}</span></span>
+          <span className="ex-num">
+            <span className="ex-num-k">{o.orderType === 'GTC' ? 'durata' : 'scade fra'}</span>
+            <span className={`ex-num-v ${o.orderType === 'GTC' ? 'ex-dim' : left != null && left <= 180 ? 'ex-dn' : 'ex-gold'}`}
+              data-lrc-resting-ttl={o.orderId ?? ''}>
+              {o.orderType === 'GTC' ? 'nessuna' : ttlTxt(left)}
+            </span>
+          </span>
+        </div>
+      </div>
+    );
+  }, [orders, pricedMarkets, nowMs, resting]);
+
+  /** I flag di rischio di un ordine, per orderId. Servono alla tab Risk per mostrarli sulla riga. */
+  const flagPerOrdine = useMemo(() => {
+    const m = new Map<string, string[]>();
+    for (const o of bucket.risk) if (o.orderId) m.set(o.orderId, o.rischio.flags);
+    return m;
+  }, [bucket]);
+
   // ── THE ONE QUESTION THE TOP OF THE PAGE ANSWERS ──────────────────────────────────────────────────
   // "Il capitale sta maturando premi?" — derived ONLY from data this console already fetched.
   //
@@ -771,6 +890,19 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
 
   const earnBadge = earning.state === 'ok' ? 'is-ok' : earning.state === 'bad' ? 'is-bad' : earning.state === 'warn' ? 'is-warn' : '';
 
+  // ── UN SOLO CHIP, SENZA DETTAGLI TECNICI IN VISTA ─────────────────────────────────────────────────
+  // Il badge a quattro stati resta la verita' completa, ma «STA MATURANDO / SOLO IN PARTE / NON MATURA
+  // / NON LO SAPPIAMO» e' una frase da leggere, non uno stato da cogliere. In cima serve la risposta
+  // binaria: si puo' operare, oppure c'e' qualcosa da guardare.
+  //
+  // «NON LO SAPPIAMO» sta con PROBLEMA, non con PRONTO. Un venue non letto non e' una condizione di
+  // marcia: e' l'assenza della prova che lo sia, e nel dubbio il chip stringe.
+  const pronto = earning.state === 'ok';
+  // Il dettaglio non sparisce: passa nel `title`, cioe' e' a un passaggio del mouse, non a schermo.
+  const chipStato = pronto
+    ? { cls: 'is-ok', label: 'PRONTO' }
+    : { cls: 'is-bad', label: 'PROBLEMA' };
+
   return (
     <div className="lrc-root exch" data-liquidity-console>
       <style>{CSS}</style>
@@ -781,7 +913,12 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
       <div className="lrc-head">
         <div className="lrc-title-row">
           <h1 className="lrc-h1">Liquidity rewards · console operatore</h1>
-          <span className={`ex-badge ${earnBadge}`} data-lrc-earning={earning.state}>{earning.label}</span>
+          <span
+            className={`ex-badge ${chipStato.cls}`}
+            data-lrc-stato={pronto ? 'pronto' : 'problema'}
+            data-lrc-earning={earning.state}
+            title={`${earning.label} — ${earning.detail}`}
+          >{chipStato.label}</span>
           <span className="lrc-venue">solo Polymarket</span>
           <button
             className="lrc-help" onClick={() => setShowRules(true)}
@@ -789,9 +926,14 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
             data-lrc-rules-open
           >?</button>
         </div>
-        <p className="lrc-earndetail">
-          <span className="lrc-earnq">Il capitale sta maturando premi?</span> {earning.detail}
-        </p>
+        {/* Il dettaglio tecnico non sta piu' in cima a ogni tab: sta dietro il chip (title) e per
+            esteso nell'accordion «Dettagli tecnici» del Riepilogo. Qui resta solo quando c'e' qualcosa
+            che non va — un problema non deve richiedere un passaggio del mouse per essere letto. */}
+        {!pronto && (
+          <p className="lrc-earndetail" data-lrc-stato-dettaglio>
+            <span className="lrc-earnq">{earning.label}:</span> {earning.detail}
+          </p>
+        )}
 
         <div className="ex-stats" data-lrc-metrics>
           <div className="ex-stat">
@@ -930,19 +1072,20 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
           )}
 
           {/* ── CAPITALE: totale, impegnato, libero, e la quota impegnata. Tutte cifre, nessun tap. ── */}
+          {/* ══ SALDO TOTALE, POI LO SPLIT IN TRE ═══════════════════════════════════════════════════
+              Prima erano Totale / Impegnato / Libero / Quota. «Impegnato» pero' e' una cifra sola su
+              due cose diverse: capitale che riposa dentro le regole e capitale che riposa fuori da
+              almeno una. Sommarli nascondeva esattamente la distinzione su cui si decide.
+              La classificazione e' quella di lib/maker/risk-classifier.js — la STESSA che etichetta le
+              card della tab Risk e che pre-filtra l'allocatore. */}
           <div className="ex-sech"><span className="ex-sech-t">Capitale</span></div>
-          <div className="ex-stats">
+          <div className="ex-stats" data-lrc-capitale>
             <div className="ex-stat">
-              <span className="ex-stat-k">Totale</span>
+              <span className="ex-stat-k">Saldo totale</span>
               <span className="ex-stat-v">{money(bal?.pusdBalance)}</span>
               <span className="ex-stat-s">proxy, on-chain</span>
             </div>
-            <div className="ex-stat">
-              <span className="ex-stat-k">Impegnato</span>
-              <span className="ex-stat-v">{orders?.simulated ? 'N/D' : money(summary?.committedUsd)}</span>
-              <span className="ex-stat-s">a riposo</span>
-            </div>
-            <div className="ex-stat">
+            <div className="ex-stat" data-lrc-cap-libero>
               <span className="ex-stat-k">Libero</span>
               <span className={`ex-stat-v ${freeCapital != null && freeCapital > 0 ? 'ex-gold' : ''}`}>
                 {freeCapital == null ? 'N/D' : money(freeCapital)}
@@ -958,16 +1101,35 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
                 </p>
               )}
             </div>
-            <div className="ex-stat">
-              <span className="ex-stat-k">Quota impegnata</span>
-              <span className="ex-stat-v">
-                {freeCapital != null && fin(bal?.pusdBalance) && (bal!.pusdBalance as number) > 0
-                  ? `${(((summary?.committedUsd ?? 0) / (bal!.pusdBalance as number)) * 100).toFixed(1)}%`
-                  : 'N/D'}
+            <div className="ex-stat" data-lrc-cap-safe>
+              <span className="ex-stat-k">Safe</span>
+              <span className="ex-stat-v">{capitaleSafeUsd == null ? 'N/D' : money(capitaleSafeUsd)}</span>
+              <span className="ex-stat-s">
+                {capitaleSafeUsd == null ? 'venue non interrogato' : `${bucket.safe.length} ordini, nessun motivo di rischio`}
               </span>
-              <span className="ex-stat-s">del saldo</span>
+            </div>
+            <div className="ex-stat" data-lrc-cap-risk>
+              <span className="ex-stat-k">Risk</span>
+              <span className={`ex-stat-v ${capitaleRiskUsd != null && capitaleRiskUsd > 0 ? 'oob' : ''}`}>
+                {capitaleRiskUsd == null ? 'N/D' : money(capitaleRiskUsd)}
+              </span>
+              <span className="ex-stat-s">
+                {capitaleRiskUsd == null ? 'venue non interrogato' : `${bucket.risk.length} ordini con almeno un flag`}
+              </span>
             </div>
           </div>
+          {/* ── IL QUARTO NUMERO, QUANDO ESISTE ────────────────────────────────────────────────────
+              Capitale su cui NON si e' potuto misurare niente: né la banda, né la scadenza, né l'eta'
+              del dato. Non e' Safe (non e' stato verificato) e non e' Risk (non e' stato misurato
+              niente contro). Metterlo dentro Safe sarebbe il modo esatto in cui si finisce per credere
+              che del capitale stia maturando quando non si sa. Compare solo se c'e'. */}
+          {capitaleIgnotoUsd != null && capitaleIgnotoUsd > 0 && (
+            <div className="ex-banner is-warn lrc-mb" style={{ marginTop: 8 }} data-lrc-cap-ignoto>
+              <b>{money(capitaleIgnotoUsd)}</b> su {bucket.nonGiudicabili.length} ordini non è
+              classificabile: banda, scadenza o età del dato non leggibili. Non è contato né in Safe né
+              in Risk — «non lo so» non è «va bene».
+            </div>
+          )}
           {freeCapital != null && fin(bal?.pusdBalance) && (bal!.pusdBalance as number) > 0 && (
             <div className="lrc-barwrap" aria-hidden="true">
               <div
@@ -1025,6 +1187,18 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
               non c'era modo di sapere se quel messaggio volesse dire «devi firmare qualcosa dal wallet»
               oppure «manca una riga di configurazione» — e sono due mondi diversi. Qui sono separati, e
               ciascuno dice di chi e' il prossimo passo. */}
+          {/* ── DETTAGLI TECNICI — CHIUSO DI DIFETTO ────────────────────────────────────────────────
+              Proxy, signer, approvazioni on-chain, riconciliazione. Sono i fatti che servono quando
+              qualcosa non va, e occupavano mezzo primo schermo quando invece va tutto bene. Il chip di
+              stato in cima dice se c'e' da guardarli; questo accordion e' dove si guardano.
+              NON ci finisce «Market making automatico»: quel blocco documenta lui stesso perche' deve
+              stare in chiaro — se un motore quota da solo con capitale reale, e' la prima cosa da
+              leggere, non l'ultima da scoprire. */}
+          <details className="lrc-sec" data-lrc-dettagli-tecnici open={!pronto}>
+            <summary className="ex-sech" style={{ cursor: 'pointer' }}>
+              <span className="ex-sech-t">Dettagli tecnici</span>
+              <span className="lrc-fine">proxy, signer, approvazioni, riconciliazione{pronto ? '' : ' — aperto: c\'è un problema da guardare'}</span>
+            </summary>
           {wal && (
             <>
               <div className="ex-sech">
@@ -1234,6 +1408,7 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
               </p>
             </>
           )}
+          </details>
 
           {/* ── MARKET MAKING AUTOMATICO ────────────────────────────────────────────────────────────
               Questa tabella e' l'unico posto da cui si vede, tutto insieme, cosa un automatismo sta
@@ -1456,8 +1631,14 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
               Il venue è la fonte: prezzo, size, quanto è già stato eseguito e — la cosa che solo questa
               lettura sa — quando l'ordine muore. Il countdown è quello vero, già corretto per i 60
               secondi con cui l'exchange ritira un GTD in anticipo. */}
+          {/* ── ALLOCAZIONE BALANCE · SAFE ────────────────────────────────────────────────────────
+              SOLO gli ordini classificati Safe, RAGGRUPPATI PER MERCATO invece che una riga per gamba.
+              Il raggruppamento non e' cosmetico: le due gambe di un mercato sono una posizione sola —
+              elencarle separate faceva contare due volte lo stesso mercato a occhio, e nascondeva il
+              caso che conta davvero, cioe' una gamba viva e l'altra no.
+              Gli ordini Risk NON sono qui: hanno la loro tab, con il dettaglio per gamba. */}
           <div className="ex-sech">
-            <span className="ex-sech-t">Ordini a riposo · tutti i mercati</span>
+            <span className="ex-sech-t">Allocazione balance · Safe</span>
             <span className="lrc-fine">
               {resting?.at ? <>dal venue <span className="ex-n">{new Date(resting.at).toLocaleTimeString()}</span></> : 'in lettura…'}
             </span>
@@ -1474,55 +1655,58 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
             <div className="ex-banner is-ok lrc-mb" data-lrc-resting="empty">
               Nessun ordine a riposo sul venue — letto, non dedotto.
             </div>
-          ) : resting.orders.length > 0 ? (
-            <div className="ex-panel ex-rows" data-lrc-resting-list>
-              {resting.orders.map((o) => {
-                const judged = (orders?.orders ?? []).find((j) => j.orderId && j.orderId === o.orderId) ?? null;
-                const title = judged?.marketTitle
-                  ?? pricedMarkets.find((m) => m.marketId === o.marketId)?.title
-                  ?? o.marketId ?? 'mercato sconosciuto';
-                // Il tempo residuo scorre sull'orologio locale a partire dall'istante letto: se il
-                // countdown si fermasse fra un poll e l'altro direbbe una cosa falsa proprio nei
-                // secondi in cui conta di più.
-                const left = o.expiresAtMs != null
-                  ? Math.round((o.expiresAtMs - nowMs) / 1000)
-                  : (fin(o.secondsToExpiry) ? (o.secondsToExpiry as number) - Math.round((nowMs - Date.parse(resting.at)) / 1000) : null);
-                const filled = fin(o.sizeMatched) && (o.sizeMatched as number) > 0;
-                return (
-                  <div key={o.orderId ?? Math.random()} className="ex-row" data-lrc-resting-row={o.orderId ?? ''}>
-                    <div className="ex-row-main">
-                      <div className="ex-row-t">
-                        <span className={`ex-side ${judged?.book === 'yes' ? 'is-yes' : judged?.book === 'no' ? 'is-no' : ''}`}>
-                          {(o.side ?? 'BUY').toUpperCase()} {judged?.book ? judged.book.toUpperCase() : 'N/D'}
-                        </span>{' '}
-                        {title}
-                      </div>
-                      <div className="ex-row-s">
-                        {judged?.inBand === true ? <span className="ex-badge is-ok lrc-bdg">in banda</span>
-                          : judged?.inBand === false ? <span className="ex-badge is-bad lrc-bdg">fuori banda</span>
-                            : <span className="ex-badge lrc-bdg" title="regole di venue non leggibili oppure token non riconducibile ai due book">non giudicabile</span>}
-                        {' '}<span className="ex-badge lrc-bdg">{o.status}</span>
-                        {filled && <span className="ex-badge is-warn lrc-bdg">eseguito {num(o.sizeMatched, 1)}</span>}
-                        {' · '}<span className="ex-dim">{o.source}</span>
-                      </div>
-                    </div>
-                    <div className="ex-row-nums">
-                      <span className="ex-num"><span className="ex-num-k">prezzo</span><span className="ex-num-v">{cents(o.price)}</span></span>
-                      <span className="ex-num"><span className="ex-num-k">size</span><span className="ex-num-v">{num(o.sizeRemaining ?? o.size, 1)}</span></span>
-                      <span className="ex-num"><span className="ex-num-k">valore</span><span className="ex-num-v">{money(o.notionalUsd)}</span></span>
-                      <span className="ex-num">
-                        <span className="ex-num-k">{o.orderType === 'GTC' ? 'durata' : 'scade fra'}</span>
-                        <span className={`ex-num-v ${o.orderType === 'GTC' ? 'ex-dim' : left != null && left <= 180 ? 'ex-dn' : 'ex-gold'}`}
-                          data-lrc-resting-ttl={o.orderId ?? ''}>
-                          {o.orderType === 'GTC' ? 'nessuna' : ttlTxt(left)}
+          ) : (() => {
+            const safeOrders = resting.orders.filter((o) => o.orderId && idSafe.has(o.orderId));
+            if (!safeOrders.length) {
+              return (
+                <div className="ex-banner is-warn lrc-mb" data-lrc-safe="empty">
+                  Nessun ordine a riposo è classificato Safe.
+                  {idRisk.size > 0 && <> {idRisk.size} {idRisk.size === 1 ? 'ordine è' : 'ordini sono'} nel bucket Risk — la tab «Risk» li elenca con il motivo.</>}
+                </div>
+              );
+            }
+            // Raggruppati per mercato, ordinati per capitale impegnato decrescente.
+            const perMercato = new Map<string, RestingOrder[]>();
+            for (const o of safeOrders) {
+              const k = o.marketId ?? 'sconosciuto';
+              if (!perMercato.has(k)) perMercato.set(k, []);
+              perMercato.get(k)!.push(o);
+            }
+            const gruppi = Array.from(perMercato.entries()).sort((a, b) => {
+              const sa = a[1].reduce((t: number, x: RestingOrder) => t + (fin(x.notionalUsd) ? (x.notionalUsd as number) : 0), 0);
+              const sb = b[1].reduce((t: number, x: RestingOrder) => t + (fin(x.notionalUsd) ? (x.notionalUsd as number) : 0), 0);
+              return sb - sa;
+            });
+            return (
+              <div data-lrc-safe-list>
+                {gruppi.map(([mid, lista]) => {
+                  const m = pricedMarkets.find((x) => x.marketId === mid) ?? null;
+                  const titolo = m?.title
+                    ?? (orders?.orders ?? []).find((j2) => j2.marketId === mid)?.marketTitle
+                    ?? mid;
+                  const impegnato = lista.reduce((t: number, x: RestingOrder) => t + (fin(x.notionalUsd) ? (x.notionalUsd as number) : 0), 0);
+                  return (
+                    <div key={mid} className="ex-panel" style={{ marginBottom: 10 }} data-lrc-safe-market={mid}>
+                      <div className="ex-sech" style={{ marginTop: 0 }}>
+                        <span className="ex-sech-t">{titolo}</span>
+                        <span className="lrc-fine">
+                          <b className="ex-n">{money(impegnato)}</b> su {lista.length} {lista.length === 1 ? 'gamba' : 'gambe'}
                         </span>
-                      </span>
+                      </div>
+                      {/* LA POSIZIONE DENTRO LA BANDA, come barra: dove riposa il prezzo rispetto agli
+                          estremi premianti. Serve a vedere quanto margine resta prima di uscirne. */}
+                      {m && fin(m.mid) && fin(m.bandLo) && fin(m.bandHi) && (
+                        <BandBar mid={m.mid} bandLo={m.bandLo} bandHi={m.bandHi} bestBid={m.bestBid} bestAsk={m.bestAsk} />
+                      )}
+                      <div className="ex-rows">
+                        {lista.map((o: RestingOrder) => rigaOrdine(o))}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : null}
+                  );
+                })}
+              </div>
+            );
+          })()}
           <p className="lrc-fine">
             Il countdown è la scadenza dichiarata dal venue, già corretta per i 60 secondi con cui un GTD
             viene ritirato in anticipo: è quanto sopravvive l&apos;ordine se il server si ferma adesso.
@@ -1623,9 +1807,20 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
         </section>
       )}
 
-      {/* ── 2 · MERCATI ───────────────────────────────────────────────────────────────────────────── */}
-      {tab === 'mercati' && (
-        <section className="lrc-sec" data-lrc-section="mercati">
+      {/* ── LA RICERCA MERCATI — NON PIÙ UNA TAB, MA NEMMENO CANCELLATA ────────────────────────────
+          «Mercati» era la seconda delle tre tab e rispondeva a «quale mercato esiste sul venue»: una
+          domanda da strumento di ricerca, non una delle tre viste su cui si opera. Il suo posto lo
+          prende «Risk», che e' l'altra meta' del capitale.
+          Ma cancellarla avrebbe tolto l'unico modo di aprire un mercato che il piano non propone —
+          la ricerca al venue, la scala dei prezzi, il pannello ordine per un mercato scelto a mano.
+          Quindi resta, in fondo al Riepilogo, dietro un accordion CHIUSO di difetto: raggiungibile
+          quando serve, e fuori dai piedi quando non serve. */}
+      {tab === 'riepilogo' && (
+        <details className="lrc-sec" data-lrc-section="mercati">
+          <summary className="ex-sech" style={{ cursor: 'pointer' }}>
+            <span className="ex-sech-t">Cerca un mercato sul venue</span>
+            <span className="lrc-fine">ricerca, scala dei prezzi, apertura ordine a mano</span>
+          </summary>
           <Ask q="Dove conviene mettere il capitale?" sub="Stime sul tuo saldo reale." />
 
           {/* ── CHIP ─ un ordinamento e quattro filtri, combinabili fra loro. ────────────────────── */}
@@ -1913,6 +2108,71 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
             anyFilterOn={anyFilterOn} sortByPool={sortByPool}
             onOpenOrder={(row) => setOrderTarget(targetFromVenue(row))}
           />
+        </details>
+      )}
+
+      {/* ══ 2 · RISK ══════════════════════════════════════════════════════════════════════════════
+          I mercati che l'ottimizzatore Safe scarta per una ragione dichiarata, e che l'operatore puo'
+          decidere di prendere lo stesso. La differenza sta TUTTA nella selezione: quale mercato si e'
+          disposti a proporre, e con che soglia di scadenza. Non c'e' nessuna differenza a valle. */}
+      {tab === 'risk' && (
+        <section className="lrc-sec" data-lrc-section="risk">
+          <Ask q="Cosa scarta il profilo Safe, e quanto varrebbe?" sub="Stesso motore di esecuzione, soglie di selezione diverse." />
+
+          {/* ── IL BANNER — LA COSA PIÙ IMPORTANTE DELLA TAB ─────────────────────────────────────
+              «Risk» qui non vuol dire «gestito diversamente». Vuol dire «segnalato». Un ordine nato da
+              questa tab, una volta sul libro, e' indistinguibile da uno nato da Ottimizza: stessa
+              finestra GTD, stesso rinnovo, stesso dead-man's switch, stessa reconciliation, stesso
+              kill-switch. La verifica di questa frase e' strutturale e sta in
+              lib/maker/motore-condiviso.test.js: i moduli di esecuzione non nominano mai il profilo,
+              quindi non esiste nessun ramo che possa dipenderne. */}
+          <div className="ex-banner is-warn lrc-mb" data-lrc-risk-banner>
+            <b>Segnalati, non gestiti diversamente.</b> I mercati di questa tab portano almeno un motivo
+            di rischio (fuori banda, scadenza vicina, dati vecchi). Ma una volta partiti seguono lo{' '}
+            <b>stesso motore di esecuzione</b> dei mercati Safe: stessa finestra GTD, stesso rinnovo,
+            stesso dead-man&apos;s switch, stessa reconciliation, stesso kill-switch. Nessuna logica
+            diversa a valle del piazzamento — cambia solo quali mercati l&apos;allocatore è disposto a
+            proporre, e con quale soglia di scadenza.
+          </div>
+
+          {/* IL PANNELLO DI ALLOCAZIONE — lo STESSO componente della tab Ottimizza, con l'unico
+              parametro che cambia. Non una copia: `profile="risk"` aggiunge `&profile=risk` alla
+              chiamata dell'allocatore e stampa la tabella delle soglie reali sotto il bottone. */}
+          <RewardsAllocatePanel onPlaceOrder={(row) => setOrderTarget(row)} placed={placedTick} profile="risk" />
+
+          {/* ── GIÀ IN ESECUZIONE · RISK ────────────────────────────────────────────────────────
+              Gli stessi ordini che nel Riepilogo stanno nel bucket Risk. Qui e' la vista dedicata:
+              dettaglio per GAMBA (non raggruppato), con i flag che ne hanno determinato la
+              classificazione stampati sulla riga. */}
+          <div className="ex-sech">
+            <span className="ex-sech-t">Già in esecuzione · Risk</span>
+            <span className="lrc-fine">
+              {capitaleRiskUsd == null ? 'venue non interrogato' : <><b className="ex-n">{money(capitaleRiskUsd)}</b> su {idRisk.size} {idRisk.size === 1 ? 'gamba' : 'gambe'}</>}
+            </span>
+          </div>
+          {!resting ? (
+            <div className="lrc-nd">Lettura degli ordini…</div>
+          ) : resting.ok === false ? (
+            <div className="ex-banner is-bad lrc-mb">Lettura FALLITA: {resting.error ?? '—'} — questa non è una lista vuota.</div>
+          ) : (() => {
+            const riskOrders = resting.orders.filter((o) => o.orderId && idRisk.has(o.orderId));
+            if (!riskOrders.length) {
+              return (
+                <div className="ex-banner is-ok lrc-mb" data-lrc-risk-esecuzione="empty">
+                  Nessun ordine a riposo è classificato Risk.
+                </div>
+              );
+            }
+            return (
+              <div className="ex-panel ex-rows" data-lrc-risk-list>
+                {riskOrders.map((o: RestingOrder) => rigaOrdine(o, o.orderId ? flagPerOrdine.get(o.orderId) : undefined))}
+              </div>
+            );
+          })()}
+          <p className="lrc-fine">
+            Il countdown è la scadenza dichiarata dal venue, già corretta per i 60 secondi con cui un GTD
+            viene ritirato in anticipo — la stessa lettura del Riepilogo, sugli stessi ordini.
+          </p>
         </section>
       )}
 
@@ -1926,7 +2186,7 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
       {tab === 'alloca' && (
         <section className="lrc-sec" data-lrc-section="alloca">
           <Ask q="Quanto capitale metto, e su quali mercati?" sub="Un piano, non un ordine: da qui si piazza solo aprendo il pannello su un mercato." />
-          <RewardsAllocatePanel onPlaceOrder={(row) => setOrderTarget(row)} placed={placedTick} />
+          <RewardsAllocatePanel onPlaceOrder={(row) => setOrderTarget(row)} placed={placedTick} profile="safe" />
         </section>
       )}
 
