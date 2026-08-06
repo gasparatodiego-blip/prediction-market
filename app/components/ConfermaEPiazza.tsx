@@ -152,7 +152,8 @@ export default function ConfermaEPiazza({
         disabled={busy != null || disabled === true}
         title={disabled === true
           ? (disabledReason || 'non disponibile')
-          : 'Apre il riepilogo di conferma. Non piazza niente adesso: il dialog mostra le due gambe e il capitale totale, e solo il bottone dentro il dialog invia.'}
+          : 'Apre il riepilogo di conferma. Non piazza niente adesso: il dialog mostra le due gambe e il capitale totale, e solo il bottone dentro il dialog invia.'
+            + ' Alla conferma, se il mercato non è già in gestione manuale viene preso ora — agent35 non scriverà più su quel libro finché non lo restituisci.'}
         onClick={() => chiedi(true)}
       >
         {busy === 'anteprima' ? 'verifico al venue…' : `Conferma e piazza — ${money(totale)}`}
@@ -212,12 +213,18 @@ export default function ConfermaEPiazza({
             </div>
           )}
 
+          {/* ── COSA CAMBIA IN MODO DUREVOLE, DETTO PRIMA DEL TAP ────────────────────────────────
+              Prendere un mercato in gestione manuale non è un dettaglio di implementazione: è una
+              scrittura che resta, e che toglie quel libro ad agent35 finché non lo si restituisce.
+              Chi conferma deve leggerlo QUI, non scoprirlo dopo — e «l'ho preso io adesso» e «c'era
+              già» sono due fatti diversi, quindi si distinguono invece di riassumerli. */}
           {anteprima.preparazione && !Array.isArray(anteprima.preparazione) && (
-            <div className="alloc-sub" style={{ marginTop: 8 }}>
+            <div className="alloc-sub" style={{ marginTop: 8 }} data-conferma-preparazione>
               Prima dell&apos;ordine verranno scritte: {anteprima.preparazione.scritture.join(' · ')}.
               {anteprima.preparazione.giaInGestioneManuale
-                ? ' Il mercato è già in gestione manuale.'
-                : ' Il mercato passerà in gestione manuale (agent35 si terrà fuori da questo libro).'}
+                ? ' Il mercato era già in gestione manuale: nessuna nuova presa di proprietà.'
+                : ' Il mercato passa ORA in gestione manuale: agent35 non scriverà più su questo libro,'
+                  + ' e resta così finché non lo restituisci dal pannello ordini manuali.'}
             </div>
           )}
 

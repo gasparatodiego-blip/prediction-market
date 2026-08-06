@@ -10,7 +10,7 @@
 // changes recompute the row + totals LOCALLY from data the plan already returned (no refetch). No private
 // key is ever read, logged or echoed.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { bandStateFor } from '@/app/dashboard/liquidity-rewards/allocate/band-state';
 // LE GAMBE LE COSTRUISCE UNA FUNZIONE SOLA, e non è più questa. `gambeDiUnaRiga` è la STESSA che usa il
 // riallocatore automatico (lib/rewards/plan-to-orders), quindi il bottone «Conferma ed esegui» e il ciclo
@@ -22,10 +22,6 @@ import { gambeDiUnaRiga } from '@/lib/rewards/plan-to-orders';
 // e la copia gemella dentro l'allocatore, scritta con la stessa buona intenzione, era invecchiata e
 // mostrava il lordo al posto del netto su ogni card di proposta. Una regola sola, importata.
 import { calcNetPerDay } from '@/lib/rewards/net-per-day';
-// LA CODA DECIDE IN UN MODULO PURO, NON QUI. `decidiAvanzamento` è l'unica cosa che stabilisce se la
-// coda può scorrere, e non conosce nessun endpoint: un avanzamento automatico non è un rischio da
-// sorvegliare, è una cosa che lì non si può scrivere.
-import { decidiAvanzamento, avanza as avanzaCoda, metti as mettiInCoda, riepilogo as riepilogoCoda } from '@/lib/rewards/coda-piazzamento';
 // LA CONFERMA A UN TOCCO, condivisa fra la tab Ottimizza e la tab Risk. Un file, non due.
 import ConfermaEPiazza from './ConfermaEPiazza';
 // Le differenze fra i due profili, GENERATE dai valori veri delle soglie invece che scritte a mano.
@@ -33,7 +29,7 @@ import { differenzeProfili } from '@/lib/rewards/allocator-profiles';
 // LE RIGHE DEI DUE PIANI, IN UNA FUNZIONE PURA E PROVABILE. Stava dentro un useMemo, leggeva un solo
 // piano, e teneva invisibile «+ Metti in coda» per chi arrivava dal percorso normale. Una condizione
 // dentro un componente si può verificare solo con una regex sul sorgente, cioè non si può verificare.
-import { righePerId as costruisciRighe, puoAndareInCoda } from '@/lib/rewards/righe-piano';
+import { righePerId as costruisciRighe } from '@/lib/rewards/righe-piano';
 import type { OrderTarget } from '@/app/components/OrderPanel';
 
 type Balance = {
@@ -662,45 +658,19 @@ export default function RewardsAllocatePanel(
   }, [computed, offsets]);
   const bulkRows = bulk.rows;
 
-  // ══ LA CODA DI CONFERME, UNO ALLA VOLTA ═══════════════════════════════════════════════════════════
-  // È il TERZO percorso, e la sua ragione d'essere sta in ciò che gli altri due NON fanno:
+  // ── LA CODA DI CONFERME NON C'È PIÙ (6 agosto 2026) ─────────────────────────────────────────────
+  // Era il terzo percorso di piazzamento: «+ Metti in coda» accumulava mercati e poi si confermava uno
+  // alla volta, due volte per mercato (una gamba per tocco). L'ha sostituita ConfermaEPiazza: un
+  // bottone per proposta, un dialog, entrambe le gambe.
   //
-  //   · «1 · Anteprima» sulla card   → abilita il mercato. Non piazza niente, e non deve.
-  //   · «Conferma ed esegui»         → RESET: cancella tutto, spegne ciò che esce dal piano, riaccende
-  //                                     e ripiazza il piano intero. È il percorso del riallocatore
-  //                                     automatico, ed è giusto che resti così: serve a portare lo
-  //                                     stato del venue a coincidere ESATTAMENTE con un piano nuovo.
-  //   · questa coda                  → i mercati che l'operatore ha scelto, uno per volta, ognuno con
-  //                                     la sua conferma. Non azzera niente e non tocca ciò che non è
-  //                                     in coda.
+  // È stata TOLTA, non lasciata spenta. Senza il bottone che ci metteva dentro i mercati la coda era
+  // irraggiungibile, e uno stato che nessuno può più raggiungere è codice morto che continua a
+  // sembrare una funzione — lib/maker/stato-collegato.test.js lo ha rilevato subito (`codaErr` e
+  // `codaBusy` scritti e mai letti), ed è esattamente il difetto che quel test esiste per trovare.
   //
-  // LA CODA NON PIAZZA. Non ha un percorso di invio suo: «Conferma e piazza» apre il pannello ordine
-  // con `targetFromPlanRow`, cioè lo stesso identico target del bottone della singola riga, e lì
-  // l'operatore conferma come sempre. Questa è la proprietà che rende impossibile un invio automatico:
-  // non esiste codice qui che possa mandare un ordine, nemmeno per errore.
-  //
-  // E AVANZA SOLO SENTENDO UN ESITO. Non dopo il tocco, non dopo un timeout: dopo che la console ha
-  // riportato un piazzamento riuscito su QUEL mercato e sulla SUA ULTIMA gamba. Avanzare dopo la prima
-  // gamba di due lascerebbe l'altra orfana, che è la cosa che questo piano esiste per evitare.
-  const [coda, setCoda] = useState<string[]>([]);
-  const [codaEsiti, setCodaEsiti] = useState<{ marketId: string; nome: string; esito: 'piazzato' | 'saltato'; capitale: number }[]>([]);
+  // lib/rewards/coda-piazzamento.js resta al suo posto: è un modulo puro, testato, e la decisione
+  // «quando può avanzare una coda» non è sbagliata — semplicemente non ha più un chiamante qui.
 
-  // ── PERSISTENZA: SOLO L'ELENCO, MAI I PREZZI ────────────────────────────────────────────────────
-  // In sessionStorage finiscono i conditionId e nient'altro. La tentazione sarebbe salvare anche
-  // prezzo e size «per non perderli», ed è esattamente ciò che non va fatto: un prezzo calcolato venti
-  // minuti fa, ripescato e piazzato, è un ordine su un mid che non esiste più. Al rientro la coda si
-  // ricostruisce dal piano CORRENTE, e un mercato che il piano nuovo non contiene più viene mostrato
-  // come non più proponibile invece di essere piazzato a un prezzo vecchio.
-  const CODA_KEY = 'alloc_coda_v1';
-  useEffect(() => {
-    try {
-      const raw = sessionStorage.getItem(CODA_KEY);
-      if (raw) { const v = JSON.parse(raw); if (Array.isArray(v)) setCoda(v.filter((x) => typeof x === 'string')); }
-    } catch { /* niente coda ripristinata: si ricomincia, che è l'esito sicuro */ }
-  }, []);
-  useEffect(() => {
-    try { sessionStorage.setItem(CODA_KEY, JSON.stringify(coda)); } catch { /* la coda resta solo in memoria */ }
-  }, [coda]);
 
   // Le righe del piano corrente, per id: la coda tiene id, i valori vengono SEMPRE da qui.
   // ── LE RIGHE DEI DUE PIANI, NON DI UNO SOLO ─────────────────────────────────────────────────────
@@ -743,145 +713,6 @@ export default function RewardsAllocatePanel(
   // ripristinarla. Non è persistito: al ricarico il piano si rifà comunque.
   const [piazzati, setPiazzati] = useState<string[]>([]);
 
-  const testaId = coda[0] ?? null;
-  const testaRiga = testaId ? righePerId.get(testaId.toLowerCase()) ?? null : null;
-  // Il target della testa: la STESSA funzione del bottone «Piazza ordine» di quella riga.
-  const testaTarget = useMemo(
-    () => (testaRiga ? targetFromPlanRow(testaRiga, offsets[testaRiga.marketId] ?? testaRiga.computedDefaultOffsetTicks) : null),
-    [testaRiga, offsets],
-  );
-
-  // ── IN CODA SOLO SE LE DUE FONTI SUL MONTEPREMI CONCORDANO ────────────────────────────────────
-  // Il gate `reward-contraddizione` (a70f608) vive nella route di abilitazione, cioè sul vecchio
-  // flusso. Ma la coda è l'altra strada verso lo stesso capitale, e una garanzia che vale su un
-  // percorso e non sull'altro è esattamente la classe di difetto che questa settimana abbiamo passato
-  // a togliere. Quindi mettere in coda fa PRIMA l'anteprima — che non scrive niente — e se il venue
-  // smentisce il montepremi della card il mercato NON entra, con il motivo scritto sotto la card.
-  const [codaErr, setCodaErr] = useState<{ marketId: string; motivo: string } | null>(null);
-  const [codaBusy, setCodaBusy] = useState<string | null>(null);
-  // I MERCATI CHE LA MESSA IN CODA HA PRESO IN GESTIONE MANUALE. Serve al riepilogo: prendere un mercato
-  // in gestione manuale è una scrittura durevole che toglie quel mercato ad agent35, e l'operatore deve
-  // leggerlo dove decide — non scoprirlo dopo. Solo in memoria di proposito: è il racconto di QUESTA
-  // sessione, e il fatto durevole vive in data/maker-manual-mode.json, che è la fonte.
-  const [codaPresiInGestione, setCodaPresiInGestione] = useState<string[]>([]);
-  const inCoda = useCallback(async (marketId: string, potAtPlan?: number | null) => {
-    setCodaBusy(marketId); setCodaErr(null);
-    // ── UN MERCATO CHE LE REGOLE HANNO SCARTATO NON ENTRA IN CODA ──────────────────────────────
-    // `gambeDiUnaRiga` può rifiutare una riga (incrocia il libro, fuori banda sul libro vivo, sarebbe
-    // primo sul libro). Senza questo controllo il mercato entrava lo stesso: `targetFromPlanRow`
-    // restituisce `pairLegs: null`, il pannello ordine si apriva e ricavava i prezzi dal MID invece
-    // che dal piano — cioè non spariva con una spiegazione, cambiava prezzi in silenzio, che è peggio.
-    const rigaScelta = righePerId.get(marketId.toLowerCase());
-    if (rigaScelta) {
-      const gg = gambeDiUnaRiga(rigaScelta, offsets[marketId] ?? rigaScelta.computedDefaultOffsetTicks);
-      if (gg.scarto) {
-        setCodaErr({ marketId, motivo: `${gg.scarto.motivo} — ${gg.scarto.dettaglio}` });
-        setCodaBusy(null);
-        return;
-      }
-    }
-    try {
-      const r = await fetch('/api/maker/markets/enable', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          marketId, preview: true, enabled: true, takeManual,
-          potAtPlan: typeof potAtPlan === 'number' && Number.isFinite(potAtPlan) ? potAtPlan : undefined,
-        }),
-      });
-      const b = (await r.json()) as EnableResp & { gate?: string; potAlVenue?: number | null };
-      if (b.gate === 'reward-contraddizione') {
-        setCodaErr({ marketId, motivo: b.error || 'il venue non conferma il montepremi mostrato dalla card' });
-        return;                                   // NON entra in coda
-      }
-
-      // ── PRENDERE IL MERCATO IN GESTIONE MANUALE FA PARTE DEL METTERE IN CODA ────────────────────
-      //
-      // IL PROBLEMA CHE RISOLVE. Il gate `manual-mode-inactive` è giusto e non si tocca: impedisce che
-      // agent35 e il pannello a mano scrivano sullo stesso libro. Ma l'attivazione della proprietà
-      // manuale non faceva parte di QUESTO percorso: la coda accettava il mercato, l'operatore arrivava
-      // alla conferma finale, e lì il piazzamento veniva rifiutato — con l'unica via d'uscita di lasciare
-      // il flusso, aprire l'anteprima della card, premere «2 · Conferma e aggiungi», e tornare in coda.
-      // È successo su Eric Barlow, su Ed Markey e su Dan Green: è un ostacolo sistematico, non un caso.
-      //
-      // Quindi si attiva QUI, dove il mercato entra in coda — cioè PRIMA che esista un ordine da
-      // piazzare, non al momento dell'invio. E si usa il percorso che esiste già (`/api/maker/markets/
-      // enable` con `preview:false`, `takeManual:true`), non una seconda strada verso lo stesso file:
-      // quella route scrive anche il catalogo di venue, l'uscita automatica e la allowlist, che sono le
-      // altre tre cose senza cui il piazzamento verrebbe rifiutato da un gate diverso. Attivare solo la
-      // proprietà manuale scambierebbe un rifiuto con un altro, e farebbe nascere un mercato piazzabile
-      // senza via d'uscita — il difetto documentato nella route stessa.
-      //
-      // SE FALLISCE, NON SI ENTRA IN CODA. Un mercato in coda è un mercato che l'operatore si aspetta di
-      // poter piazzare: farlo entrare senza la proprietà manuale rimanderebbe il rifiuto al punto in cui
-      // costa di più. L'errore mostrato è quello vero, non un messaggio inventato qui.
-      //
-      // GIÀ IN GESTIONE MANUALE ⇒ NON SI SCRIVE NIENTE. Nessuna riattivazione, nessuna riscrittura del
-      // catalogo, nessun effetto collaterale: si legge `summary.manualModeActive` dall'anteprima — che
-      // per costruzione non ha scritto nulla — e se è già vera si passa direttamente alla coda.
-      const giaManuale = b.summary?.manualModeActive === true;
-      if (!giaManuale) {
-        if (!takeManual) {
-          setCodaErr({ marketId, motivo: 'la modalità manuale non è attiva su questo mercato e la spunta «prendi in gestione manuale» è disattivata:'
-            + ' senza quella proprietà il piazzamento verrebbe rifiutato con manual-mode-inactive. Riattiva la spunta, oppure prendi il mercato in gestione manuale dal pannello ordini manuali.' });
-          return;                                 // NON entra in coda
-        }
-        const w = await fetch('/api/maker/markets/enable', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            marketId, preview: false, enabled: true, takeManual: true,
-            capitalUsd: rigaScelta && Number.isFinite(rigaScelta.capital) ? rigaScelta.capital : undefined,
-            potAtPlan: typeof potAtPlan === 'number' && Number.isFinite(potAtPlan) ? potAtPlan : undefined,
-            reason: 'messa in coda dalla tab Allocazione: il mercato passa in gestione manuale prima che esista un ordine',
-          }),
-        });
-        const wb = (await w.json()) as EnableResp & { gate?: string; error?: string; manualModeActive?: boolean; note?: string };
-        // LA VERIFICA È SUL FATTO RILETTO, non sull'esito della scrittura: la route rilegge il flag con la
-        // stessa funzione che il gate userà, e lo riporta in `manualModeActive`. Un `ok:true` senza quel
-        // fatto vero non basta per far entrare un mercato in coda.
-        const attiva = wb.ok === true && (wb.manualModeActive === true || wb.summary?.manualModeActive === true);
-        if (!attiva) {
-          setCodaErr({ marketId, motivo: `non è stato possibile prendere questo mercato in gestione manuale`
-            + `${wb.gate ? ` (${wb.gate})` : ''}: ${wb.error || wb.note || 'la rilettura non vede la modalità manuale attiva'}.`
-            + ' Il mercato NON entra in coda: senza la gestione manuale agent35 può ancora scrivere su questo libro,'
-            + ' e il piazzamento verrebbe rifiutato comunque.' });
-          return;                                 // NON entra in coda
-        }
-        setCodaPresiInGestione((s) => (s.includes(marketId.toLowerCase()) ? s : [...s, marketId.toLowerCase()]));
-      }
-
-      // Qualunque altro esito non blocca l'ingresso: la coda non piazza, e gli altri gate (banda,
-      // size, kill, cap) restano dove sono — al momento della conferma, dove contano davvero.
-      setCoda((q) => mettiInCoda({ coda: q, marketId }));
-    } catch (e) {
-      setCodaErr({ marketId, motivo: `controllo del montepremi non riuscito: ${(e as Error).message}. Il mercato non entra in coda.` });
-    } finally { setCodaBusy(null); }
-  }, [takeManual, righePerId, offsets]);
-  const avanza = useCallback((come: 'piazzato' | 'saltato') => {
-    setCoda((q) => {
-      const testa = q[0];
-      if (!testa) return q;
-      const r = righePerId.get(testa.toLowerCase()) ?? null;
-      const next = avanzaCoda({
-        coda: q, esiti: [], come,
-        nome: r ? (r.nameAvailable && r.name ? r.name : r.shortId) : null,
-        capitale: r ? r.capital : 0,
-      });
-      setCodaEsiti((e) => [...e, ...next.esiti]);
-      return next.coda;
-    });
-  }, [righePerId]);
-
-  // L'AVANZAMENTO. Solo su un esito riuscito, solo sul mercato in testa, solo all'ultima gamba.
-  const ultimoTick = useRef<number | null>(null);
-  useEffect(() => {
-    const d = decidiAvanzamento({ coda, esito: placed ?? null, ultimoAt: ultimoTick.current });
-    if (!d.avanza) return;
-    ultimoTick.current = placed!.at;
-    avanza('piazzato');
-  }, [placed, coda, avanza]);
-
-  const codaTotale = coda.length + codaEsiti.length;
-  const codaRiepilogo = riepilogoCoda(codaEsiti);
 
 
   const runBulk = useCallback(async (preview: boolean) => {
@@ -1352,119 +1183,6 @@ export default function RewardsAllocatePanel(
                 Non piazza: «Conferma e piazza» apre il pannello ordine con lo stesso target del
                 bottone della singola riga, e la conferma vera avviene lì. La coda avanza solo quando
                 la console riporta che quel mercato è stato piazzato, e solo all'ultima gamba. */}
-            {(coda.length > 0 || codaEsiti.length > 0) && (
-              <div className="alloc-card" style={{ marginTop: 12 }} data-alloc-queue>
-                <div className="alloc-h" style={{ fontSize: 14 }}>
-                  Coda di piazzamento — {codaEsiti.length} di {codaTotale} trattati
-                </div>
-
-                {testaId && (
-                  <div className="alloc-note" style={{ marginTop: 8 }} data-alloc-queue-head={testaId}>
-                    {testaRiga == null ? (
-                      // Il caso che la persistenza rende possibile, e che va detto invece di indovinato.
-                      <>
-                        <div><b>{testaId.slice(0, 10)}… non è più nel piano corrente.</b></div>
-                        <div className="alloc-sub" style={{ marginTop: 4 }}>
-                          La coda conserva solo l’elenco dei mercati, mai i prezzi: un prezzo calcolato
-                          venti minuti fa non va piazzato. Ricalcola il piano, oppure salta questo.
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <div><b>{testaRiga.nameAvailable && testaRiga.name ? testaRiga.name : testaRiga.shortId}</b></div>
-                        {testaTarget?.pairLegs ? (
-                          <div style={{ marginTop: 6 }}>
-                            {testaTarget.pairLegs.map((l, i) => (
-                              <div key={l.book} className="alloc-sub" data-alloc-queue-leg={l.book}>
-                                {i + 1}ª gamba · BUY {l.book.toUpperCase()} <b>{l.size}</b> share @ <b>{l.price}</b>
-                                {' → '}<span className="ex-n">{money(l.price * l.size)}</span>
-                                {' · '}{Math.abs(l.price - (l.book === 'yes' ? (testaRiga.mid ?? 0) : 1 - (testaRiga.mid ?? 0))) * 100 < 100
-                                  ? `${(Math.abs(l.price - (l.book === 'yes' ? (testaRiga.mid ?? 0) : 1 - (testaRiga.mid ?? 0))) * 100).toFixed(2)}¢ dal mid`
-                                  : '—'}
-                                {testaRiga.maxSpreadCents != null ? ` · banda ±${(testaRiga.maxSpreadCents / 2).toFixed(2)}¢` : ''}
-                              </div>
-                            ))}
-                            <div className="alloc-sub" style={{ marginTop: 4 }}>
-                              capitale del piano su questo mercato <b>{money(testaRiga.capital)}</b>
-                            </div>
-                            {/* ── COSA FA QUESTA OPERAZIONE OLTRE A PIAZZARE ─────────────────────────
-                                Prendere un mercato in gestione manuale è una scrittura durevole che lo
-                                toglie ad agent35: da quel momento il motore automatico non piazza e non
-                                cancella più su questo libro, e resta così finché qualcuno non lo
-                                restituisce. Non è un dettaglio tecnico e non deve essere un effetto
-                                collaterale invisibile — si legge qui, dove la decisione si prende. */}
-                            <div className="alloc-sub" style={{ marginTop: 6 }}
-                              data-alloc-queue-manual={codaPresiInGestione.includes(testaId.toLowerCase()) ? 'preso' : 'gia-attiva'}>
-                              {codaPresiInGestione.includes(testaId.toLowerCase())
-                                ? <>⚙ <b>Questo mercato è in GESTIONE MANUALE</b>: la messa in coda l’ha preso in
-                                  gestione, quindi agent35 non piazza né cancella più su questo libro. Resta così
-                                  finché non lo restituisci al motore dal pannello ordini manuali.</>
-                                : <>⚙ <b>Questo mercato è già in GESTIONE MANUALE</b>: agent35 si tiene fuori da
-                                  questo libro. La messa in coda non ha cambiato niente.</>}
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="alloc-sub alloc-warn" style={{ marginTop: 4 }}>
-                            Le gambe non sono calcolabili a questo offset: il pannello ripartirà dal mid
-                            e sarà il guard del venue a dire di no. Meglio saltarlo.
-                          </div>
-                        )}
-
-                        <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                          <button className="alloc-btn" data-alloc-queue-confirm
-                            style={{ background: 'color-mix(in srgb,#2FA96B 30%,transparent)' }}
-                            disabled={!onPlaceOrder || testaTarget == null}
-                            title="Apre il pannello ordine su questo mercato, con i valori del piano. La conferma avviene lì."
-                            onClick={() => { if (onPlaceOrder && testaTarget) onPlaceOrder(testaTarget); }}>
-                            Conferma e piazza →
-                          </button>
-                          <button className="alloc-btn" data-alloc-queue-skip onClick={() => avanza('saltato')}>
-                            Salta questo
-                          </button>
-                        </div>
-                      </>
-                    )}
-                    {testaRiga == null && (
-                      <div style={{ marginTop: 10 }}>
-                        <button className="alloc-btn" data-alloc-queue-skip onClick={() => avanza('saltato')}>Salta questo</button>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {coda.length > 1 && (
-                  <div className="alloc-sub" style={{ marginTop: 8 }} data-alloc-queue-rest>
-                    In attesa dopo questo: {coda.slice(1).map((id) => {
-                      const r2 = righePerId.get(id.toLowerCase());
-                      return r2 ? (r2.nameAvailable && r2.name ? r2.name : r2.shortId) : `${id.slice(0, 10)}…`;
-                    }).join(' · ')}
-                  </div>
-                )}
-
-                {coda.length === 0 && codaEsiti.length > 0 && (
-                  <div className="alloc-note" style={{ marginTop: 8 }} data-alloc-queue-done>
-                    <b>Coda finita.</b> {codaRiepilogo.piazzati} piazzat{codaRiepilogo.piazzati === 1 ? 'o' : 'i'},
-                    {' '}{codaRiepilogo.saltati} saltat{codaRiepilogo.saltati === 1 ? 'o' : 'i'} ·
-                    {' '}capitale impegnato <b>{money(codaRiepilogo.capitaleUsd)}</b>
-                    <ul className="alloc-basis-ul" style={{ marginTop: 6 }}>
-                      {codaEsiti.map((e) => (
-                        <li key={e.marketId} data-alloc-queue-outcome={e.esito}>
-                          {e.esito === 'piazzato' ? '✓' : '—'} {e.nome}
-                          {e.esito === 'piazzato' ? ` · ${money(e.capitale)}` : ' · saltato'}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                <div style={{ marginTop: 10 }}>
-                  <button className="ac-more" data-alloc-queue-cancel
-                    onClick={() => { setCoda([]); setCodaEsiti([]); }}>
-                    {coda.length ? 'Annulla coda (i già piazzati restano)' : 'Chiudi riepilogo'}
-                  </button>
-                </div>
-              </div>
-            )}
 
             {/* ── SCARTATI, raggruppati per motivo ── */}
             <button className="ac-more" style={{ marginTop: 10 }} data-alloc-auto-rejected-toggle
@@ -1943,20 +1661,25 @@ export default function RewardsAllocatePanel(
                   {balanceNum != null && <> su un saldo reale di <b>{money(balanceNum)}</b></>}
                 </div>
 
-                {/* ── QUESTO BOTTONE DISFA IL LAVORO DELLA CODA ───────────────────────────────────
+                {/* ── QUESTO BOTTONE DISFA IL LAVORO DELLA CONFERMA A UN TOCCO ────────────────────
                     Non è un difetto: «Conferma ed esegui» è un RESET, e cancellare per primo è
                     esattamente ciò che deve fare — porta lo stato del venue a coincidere con un piano
                     nuovo, ricalcolato adesso. Il problema è che dalla schermata non si legge: i due
                     percorsi stanno nella stessa tab e niente diceva che uno smonta l'altro.
-                    L'avviso compare SOLO quando c'è davvero qualcosa da perdere — cioè quando la coda
-                    ha già piazzato. Un avviso che c'è sempre è un avviso che non si legge più. */}
-                {codaRiepilogo.piazzati > 0 && (
+                    L'avviso compare SOLO quando c'è davvero qualcosa da perdere — cioè quando in
+                    questa sessione è già stato piazzato qualcosa. Un avviso che c'è sempre è un
+                    avviso che non si legge più.
+                    (Prima questo contatore veniva dalla coda di conferme; la coda non c'è più, e il
+                    conto ora è quello dei mercati confermati a un tocco — lo stesso rischio, la
+                    stessa frase, un'altra sorgente.) */}
+                {piazzati.length > 0 && (
                   <div className="alloc-note alloc-warn" style={{ marginTop: 10 }} data-alloc-bulk-vs-queue>
-                    ⚠ <b>Hai già piazzato {codaRiepilogo.piazzati} mercat{codaRiepilogo.piazzati === 1 ? 'o' : 'i'} dalla coda</b>
-                    {' '}({money(codaRiepilogo.capitaleUsd)}). «Conferma ed esegui» è un <b>reset</b>: cancella
-                    ogni ordine a riposo sui mercati gestiti — <b>compresi quelli</b> — e ripiazza il piano
-                    ricalcolato in questo momento, che può essere diverso da quello che hai confermato.
-                    <br />Se vuoi tenere ciò che hai piazzato, usa la coda per gli altri mercati invece di questo bottone.
+                    ⚠ <b>Hai già piazzato {piazzati.length} mercat{piazzati.length === 1 ? 'o' : 'i'} da questa schermata</b>.
+                    {' '}«Conferma ed esegui» è un <b>reset</b>: cancella ogni ordine a riposo sui mercati
+                    gestiti — <b>compresi quelli</b> — e ripiazza il piano ricalcolato in questo momento,
+                    che può essere diverso da quello che hai confermato.
+                    <br />Se vuoi tenere ciò che hai piazzato, continua a usare «Conferma e piazza» sulle
+                    singole proposte invece di questo bottone.
                   </div>
                 )}
 
