@@ -78,7 +78,13 @@ const { listManualOrders, replaceManualOrder, resolveMarketRules, resolveMarketD
 const { reconcileManualLane, fetchVenuePositions } = require('../lib/maker/manual-reset');
 const { decideRimpiazzo } = require('../lib/maker/rimpiazzo-gamba');
 const { resolveOffsetFor } = require('../lib/maker/offset-config');
-const { readAllocatedCapital } = require('../lib/maker/allocated-capital');
+const { readAllocatedCapital, readMarketProfile } = require('../lib/maker/allocated-capital');
+// ── IL PERCORSO DI PROFILO, CABLATO AL CICLO ────────────────────────────────────────────────────────
+// `valutaPiazzamento` instrada un mercato verso i controlli Safe (mai-primo, depth $15 cumulata,
+// volatilita' 8h, spread anomalo, quota 65%, esposizione 30%) o Risk (mai-primo, depth $20 sul
+// gradino, nervosismo 5 min). Il motore non contiene nessun `if (profilo)`: legge il profilo dallo
+// store e passa la decisione a quella funzione, che e' pura e testata a parte.
+const { valutaPiazzamento } = require('../lib/maker/regole-piazzamento');
 const { AUTO_CLOSE_SOURCE } = require('../lib/maker/auto-close-config');
 const { writeVenuePositions } = require('../lib/safety/venue-positions-snapshot');
 // L'AVVISO SUI RESIDUI CHE MUOIONO SOTTO LA SOGLIA MINIMA. Deposita in data/ quello che il ciclo scopre,
@@ -471,6 +477,13 @@ async function cycle() {
     // in silenzio quando `resolveDepth` non è una funzione. È la classe di difetto che
     // scripts/dipendenze-scollegate.js esiste per impedire — una decisione scritta e mai raggiunta.
     resolveDepth: (marketId) => resolveMarketDepth(marketId),
+    // ── IL VETO DI PROFILO ────────────────────────────────────────────────────────────────────────
+    // Due mani, non una logica: il ciclo chiede «che profilo ha questo mercato?» e «questo
+    // piazzamento passa i controlli di quel profilo?». Entrambe le risposte vengono da moduli puri.
+    // Il profilo si rilegge dal file a ogni giro: un mercato che cambia profilo fra due cicli viene
+    // valutato con quello nuovo al ciclo successivo.
+    leggiProfilo: (marketId) => readMarketProfile(marketId),
+    valutaPiazzamento: (arg) => valutaPiazzamento(arg),
     // Used ONLY by the reconnect-after-blackout path AND by the top-of-book cancel. It goes through the
     // CANCEL-ONLY adapter (address-only signer, structurally cannot place), so both can stop orders and
     // neither can ever start one.

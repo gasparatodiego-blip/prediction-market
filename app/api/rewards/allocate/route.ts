@@ -116,30 +116,26 @@ export async function GET(req: NextRequest) {
       ? { frac: CONCENTRATION_CAP_FRAC, origin: 'difetto', note: `tetto ${Math.round(CONCENTRATION_CAP_FRAC * 100)}% del capitale — lo stesso del riallocatore periodico` }
       : { frac: null, origin: 'richiesto', note: capUsd == null ? 'nessun tetto: richiesto esplicitamente con cap=0' : `tetto $${capUsd} richiesto esplicitamente` };
     resultCache.set(bucket, { atMs: Date.now(), body });
-    // ── I DUE SNAPSHOT DI PRODUZIONE LI SCRIVE SOLO IL PERCORSO SAFE ──────────────────────────────
-    // `writeAllocatedCapital` SOSTITUISCE la mappa dei tetti per intero, non la fonde. Un piano Risk —
-    // che per costruzione sceglie mercati diversi — cancellerebbe quindi i tetti dei mercati Safe, e a
-    // valle un tetto assente vale «non aggiungere esposizione» (fail closed): una simulazione nella tab
-    // Risk fermerebbe l'accumulo sul capitale vero della tab Ottimizza, in silenzio.
+    // ── I DUE SNAPSHOT DI PRODUZIONE, ORA SCRITTI DA ENTRAMBI I PROFILI ──────────────────────────
+    // Fino al 6 agosto 2026 qui c'era un `if (!isRisk)`: `writeAllocatedCapital` sostituiva la mappa
+    // dei tetti PER INTERO, quindi un piano Risk — che sceglie mercati diversi — avrebbe cancellato i
+    // tetti dei mercati Safe, e a valle un tetto assente vale «niente nuova esposizione». Una
+    // simulazione nella tab Risk avrebbe fermato l'accumulo sul capitale vero, in silenzio.
     //
-    // Quindi la scrittura resta ESATTAMENTE dov'era: sul percorso senza profilo o col profilo safe. Il
-    // percorso Risk non tocca nessuno store di produzione.
-    //
-    // CONSEGUENZA DA SAPERE, e dichiarata invece che nascosta: un mercato proposto SOLO dal profilo Risk
-    // non ha una voce nel tetto, quindi la fill-strategy lo tratta come «niente nuova esposizione».
-    // È la direzione prudente, ed è quella giusta come difetto; allargarla vorrebbe dire cambiare la
-    // semantica di uno store che governa capitale reale, che non si fa di straforo.
+    // Quella toppa non serve più: lo store adesso FONDE PER PROFILO — un piano di profilo P sostituisce
+    // esattamente i mercati P e non tocca gli altri. Quindi il piano Risk può finalmente registrare i
+    // SUOI tetti (prima non ne aveva nessuno, ed era la limitazione dichiarata due sessioni fa) e, con
+    // essi, il profilo che il motore legge a ogni ciclo per sapere quali controlli applicare.
+    try {
+      writeAllocatedCapital({
+        rows: (body?.rows ?? []).map((r: any) => ({ marketId: r.marketId, capital: r.capital })),
+        capital: body?.capital ?? null,
+        profile: isRisk ? 'risk' : 'safe',
+      });
+    } catch { /* the plan still stands; the strategy simply has no ceiling to read */ }
+    // La priorità del raccoglitore resta guidata dal solo percorso Safe: è la copertura dello storico
+    // prezzi, non un tetto, e allargarla al percorso Risk cambierebbe cosa agent34 sottoscrive.
     if (!isRisk) {
-      // Record the derived ceiling. Best-effort: a failure here must never cost the operator their plan,
-      // and a missing snapshot fails CLOSED downstream (no ceiling ⇒ no new exposure), not open.
-      try {
-        writeAllocatedCapital({
-          rows: (body?.rows ?? []).map((r: any) => ({ marketId: r.marketId, capital: r.capital })),
-          capital: body?.capital ?? null,
-        });
-      } catch { /* the plan still stands; the strategy simply has no ceiling to read */ }
-      // Stessa regola: best-effort. Se fallisce, il raccoglitore resta con l'elenco precedente (o con
-      // nessuno), che è la copertura di prima — mai peggio di com'era.
       try { writeCollectorPriority(body); } catch { /* la copertura resta quella di prima */ }
     }
     return NextResponse.json(body);
