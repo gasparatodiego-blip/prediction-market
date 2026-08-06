@@ -55,12 +55,6 @@ export interface RiskOptions {
   contesto?: Map<string, RiskSubject>;
 }
 
-export interface RiskProfileFilter {
-  safeFloorMinutes?: number;
-  allowOutOfBand?: boolean;
-  allowStaleData?: boolean;
-}
-
 export interface BucketResult<T = RiskSubject> {
   safe: Array<T & { rischio: RiskVerdict }>;
   risk: Array<T & { rischio: RiskVerdict }>;
@@ -72,16 +66,8 @@ export interface BucketResult<T = RiskSubject> {
   impegnatoUsd: number;
 }
 
-export interface FilterResult<T = RiskSubject> {
-  ammessi: Array<T & { rischio: RiskVerdict }>;
-  scartati: Array<T & { rischio: RiskVerdict; motivo: string }>;
-}
-
 export function classifyRisk(soggetto?: RiskSubject, opts?: RiskOptions): RiskVerdict;
 export function bucketizza<T extends RiskSubject>(ordini?: T[], opts?: RiskOptions): BucketResult<T>;
-export function filtraPerProfilo<T extends RiskSubject>(
-  candidati?: T[], profile?: RiskProfileFilter, opts?: RiskOptions,
-): FilterResult<T>;
 export function etichettaScadenza(minuti: number | null): string | null;
 export function minutiAllaChiusura(a?: RiskSubject & { nowMs?: number }): number | null;
 export function fuoriBanda(a?: RiskSubject): boolean | null;
