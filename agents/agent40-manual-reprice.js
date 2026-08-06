@@ -16,10 +16,17 @@
 //
 // NAMED agent40: slots 36-39 are taken (book-velocity, maker-watchdog, tape-watchdog, net-rerun). This
 // process CAN cause a placement,
-// so it is deliberately the narrowest thing that can: it owns no adapter, no credentials and no signing
-// key of its own. Its only reachable venue surface is lib/maker/manual-order.replaceManualOrder — the
-// SAME function the panel's "Riprezza" button calls — so every gate that governs a hand order governs
-// every automatic re-price, with no second code path that could drift from the first.
+// so it is deliberately the narrowest thing that can: it owns no adapter and NO SIGNING KEY of its own.
+// Its only reachable venue surface for WRITES is lib/maker/manual-order.replaceManualOrder — the SAME
+// function the panel's "Riprezza" button calls — so every gate that governs a hand order governs every
+// automatic re-price, with no second code path that could drift from the first.
+//
+// It does hold ONE credential, and only since the daily reward comparison landed: the L2 (HMAC) creds,
+// used by lib/maker/reward-reale.js to GET the venue's confirmed payout. That is not a hole in the
+// sentence above — L2 creds cannot sign an order. A Polymarket order needs an EIP-712 struct signed by
+// the L1 key, which this process does not have and cannot reach. Saying "no credentials" was simpler
+// and is now false, and a startup line that is 90% true is the kind of thing that misleads whoever
+// reads it during an incident.
 //
 // WHAT IT WILL NOT DO, and these are structural, not stylistic:
 //   • It does nothing at all unless BOTH the global master switch and the per-market opt-in are on
@@ -733,7 +740,8 @@ async function main() {
   log(`manual-lane reconciliation: every ${Math.round(RECONCILE_EVERY_MS / 1000)}s, and ONLY when something is unresolved`
     + ' — resolves expired/cancelled hand orders against venue truth so they stop counting as open exposure.'
     + ' It places nothing and cancels nothing, and is deliberately NOT gated on the kill switch.');
-  log('this process owns no adapter, no credentials and no signing key: it can only call the same manual replace path the panel button calls.');
+  log('this process owns no adapter and no signing key: to place anything it can only call the same manual replace path the panel button calls.');
+  log('the only credential it holds is the L2 (HMAC) pair, used read-only by reward-reale.js for the daily payout comparison — L2 alone cannot sign an order.');
   const tr = readTrackingConfig();
   log(`market making a due lati: ${tr.readable ? `${tr.marketIds.length} mercato/i con tracking attivo` : `configurazione ILLEGGIBILE (${tr.error}) — nessun mercato tracciato (fail closed)`}.`
     + ' Su quei mercati il watcher reattivo sta alla larga: un mercato ha UN SOLO motore di reprice.');
