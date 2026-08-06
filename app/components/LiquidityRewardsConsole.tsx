@@ -58,15 +58,9 @@ import OrderPanel, { type OrderTarget } from './OrderPanel';
 // della tab Risk. Qui serve per DUE cose: dividere gli ordini a riposo nei due bucket e sommarne i
 // dollari. Non se ne scrive una seconda copia — vedi lib/maker/risk-classifier.js.
 import { bucketizza } from '@/lib/maker/risk-classifier';
-// ── LE SOGLIE DEL MOTORE, LETTE DAL MOTORE ────────────────────────────────────────────────────────
-// Il banner della tab Risk DICHIARA con che regole quel percorso piazza. Scrivere quei numeri a mano
-// vorrebbe dire che il giorno in cui una costante cambia, la frase resta indietro e mente. Tutti e tre
-// i moduli qui sotto sono puri (nessun `fs`, nessuna rete) e quindi importabili da un componente
-// client: le soglie di volatilità stanno apposta in `soglie-profili`, separate dal modulo che le
-// applica, che invece legge il giornale di agent34 e non si può bundlare.
-import { RISK_BUCKET_CAP_PCT, RISK_PER_MARKET_CAP_PCT } from '@/lib/maker/risk-caps';
-import { RISK_DEPTH_FLOOR_USD } from '@/lib/maker/depth-adattiva';
-import { RISK_VOLATILITY_WINDOW_MIN, RISK_VOLATILITY_THRESHOLD_MULT } from '@/lib/maker/soglie-profili';
+// LE COSTANTI DEL MOTORE UNICO, lette dal motore invece che scritte a mano: se una cambia, la frase
+// che la descrive cambia con lei. `motore-unico` è puro, quindi importabile da un componente client.
+import { MARKET_CAP_PCT, DEPTH_FLOOR_PCT_OF_AVG, MID_MIN_UN_LATO, MID_MAX_UN_LATO } from '@/lib/maker/motore-unico';
 
 // ── TRE SEZIONI, NON SEI ────────────────────────────────────────────────────────────────────────
 // Sei tab volevano dire che rispondere a «i miei ordini stanno maturando?» costava tre passaggi:
@@ -94,17 +88,23 @@ import { RISK_VOLATILITY_WINDOW_MIN, RISK_VOLATILITY_THRESHOLD_MULT } from '@/li
 // — qualunque mercato aperto da lì è per definizione FUORI dal piano che Safe o Risk hanno calcolato,
 // e questo va detto prima del tap, non scoperto dopo. Una dichiarazione del genere non sta in fondo a
 // un accordion chiuso.
-type TabKey = 'riepilogo' | 'risk' | 'alloca' | 'liberi';
+// ── DUE TAB ───────────────────────────────────────────────────────────────────────────────────────
+// «Risk» sparisce perché il profilo non esiste più: la formula del venue è una curva continua e non
+// conosce bucket, quindi una tab dedicata a metà di una divisione che non c'è descriveva il nostro
+// modello, non il mercato. «Mercati liberi» si fonde in «Ottimizzati»: cercare un mercato a mano e
+// riceverne uno dall'allocatore portano allo stesso identico motore, e due tab lo facevano sembrare
+// due percorsi diversi — che era proprio la lettura da evitare.
+type TabKey = 'riepilogo' | 'alloca';
 
 const TABS: Array<{ key: TabKey; label: string; short: string }> = [
   { key: 'riepilogo', label: 'Riepilogo', short: 'Riepilogo' },
-  { key: 'risk', label: 'Risk', short: 'Risk' },
-  { key: 'alloca', label: 'Ottimizza', short: 'Ottimizza' },
-  { key: 'liberi', label: 'Mercati liberi', short: 'Liberi' },
+  { key: 'alloca', label: 'Mercati ottimizzati', short: 'Ottimizzati' },
 ];
 /** I vecchi ?tab= continuano a funzionare: puntano alla sezione che ora li contiene. */
 const LEGACY_TAB: Record<string, TabKey> = {
-  posizioni: 'riepilogo', ordini: 'riepilogo', regole: 'riepilogo', mercati: 'liberi',
+  posizioni: 'riepilogo', ordini: 'riepilogo', regole: 'riepilogo',
+  // I due ?tab= che puntavano alle sezioni fuse: chi aveva un segnalibro non finisce su una pagina vuota.
+  mercati: 'alloca', risk: 'riepilogo', liberi: 'alloca',
 };
 
 interface JudgedOrder {
@@ -309,17 +309,9 @@ interface WalletResp {
       motivo: string; motivoLeggibile: string; dettaglio: string | null; at: string;
     }>;
   } | null;
-  // LE GAMBE RIMASTE SOLE, COL COUNTDOWN. Una gamba sola matura ZERO fuori dal range [0,10–0,90] e un
-  // TERZO dentro, col capitale impegnato per intero: il countdown è l'unica cosa che permette di
-  // intervenire prima che scatti la cancellazione automatica.
-  gambeOrfane?: {
-    tolleranzaMin: number; leggibile: boolean;
-    items: Array<{
-      marketId: string; book: string | null;
-      orfanaDa: number | null; orfanaDaIso: string | null;
-      scadeAms: number | null; restaSec: number | null;
-    }>;
-  } | null;
+  // IL RANGE IN CUI UN LATO SOLO MATURA ANCORA. Dal 6 agosto 2026 non c'è più un countdown: la
+  // formula decide. Servono gli estremi per poter dire PERCHÉ un lato solo è stato tenuto o chiuso.
+  latoSingolo?: { midMin: number; midMax: number } | null;
   // IL LIBRO SVUOTATO DAL GUARDIANO. Il 6 agosto 2026 alle 00:16:03 UTC agent37 ha cancellato nove
   // ordini reali su cinque mercati perché il battito del motore maker era fermo da 121s (soglia 120s):
   // $663 tornati fermi, e l'unica traccia leggibile era in un log di processo. È l'evento più grosso
@@ -1112,39 +1104,47 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
             </div>
           )}
 
-          {/* ══ GAMBE RIMASTE SOLE — IL COUNTDOWN, NON UN AVVISO GENERICO ═══════════════════════════
-              Sta PRIMA del capitale perché è la cosa su cui si può ancora agire: passata la finestra,
-              il motore cancella da sé e resta solo il referto. Un mercato elencato qui sta maturando
-              una frazione del dovuto proprio adesso. */}
-          {wal?.gambeOrfane && wal.gambeOrfane.items.length > 0 && (
-            <div className="ex-banner is-warn lrc-mb" data-lrc-gambe-orfane={wal.gambeOrfane.items.length}>
-              <b>{wal.gambeOrfane.items.length === 1 ? 'Un mercato ha una gamba sola' : `${wal.gambeOrfane.items.length} mercati hanno una gamba sola`}.</b>{' '}
-              Una gamba sola matura zero fuori dal range 10–90¢ e un terzo dentro, col capitale
-              impegnato per intero. Il ciclo sta già ritentando l&apos;altra gamba con le regole di
-              sempre; se non ci riesce entro {wal.gambeOrfane.tolleranzaMin} minuti, cancella anche
-              questa.
-              <div className="ex-rows" style={{ marginTop: 6 }}>
-                {wal.gambeOrfane.items.map((o) => (
-                  <div key={o.marketId} className="ex-row" data-lrc-orfana={o.marketId}>
-                    <div className="ex-row-main">
-                      <div className="ex-row-t">
-                        <span className={`ex-side ${o.book === 'yes' ? 'is-yes' : 'is-no'}`}>{(o.book ?? '?').toUpperCase()}</span>{' '}
-                        {(pricedMarkets.find((m) => m.marketId === o.marketId)?.title) ?? o.marketId.slice(0, 18)}
+          {/* ══ UN LATO SOLO CHE MATURA UN TERZO — SI DICE, NON SI NASCONDE ═══════════════════════
+              Non è un allarme e non ha un countdown: dentro [0.10, 0.90] un lato solo matura 1/3 del
+              punteggio, quindi tenerlo rende più che chiuderlo e il motore lo tiene. Ma è capitale
+              che lavora a frazione, e va detto — era esattamente il tipo di stato che il 6 agosto
+              restava invisibile. Fuori da quel range il motore lo chiude da sé, subito. */}
+          {(() => {
+            const soli = bucket.risk.concat(bucket.safe, bucket.nonGiudicabili)
+              .reduce((acc: Map<string, string[]>, o) => {
+                const k = String(o.marketId || '').toLowerCase();
+                if (!k) return acc;
+                const j2 = (orders?.orders ?? []).find((x) => x.orderId === o.orderId);
+                if (j2 && j2.book) acc.set(k, Array.from(new Set((acc.get(k) || []).concat(j2.book))));
+                return acc;
+              }, new Map<string, string[]>());
+            const unLato = Array.from(soli.entries()).filter(([, b]) => b.length === 1);
+            if (!unLato.length) return null;
+            return (
+              <div className="ex-banner is-warn lrc-mb" data-lrc-lato-singolo={unLato.length}>
+                <b>{unLato.length === 1 ? 'Un mercato ha un lato solo' : `${unLato.length} mercati hanno un lato solo`}.</b>{' '}
+                Con il midpoint fra {wal?.latoSingolo?.midMin ?? MID_MIN_UN_LATO} e{' '}
+                {wal?.latoSingolo?.midMax ?? MID_MAX_UN_LATO} un lato solo matura <b>un terzo</b> del
+                punteggio: il motore lo tiene — chiuderlo renderebbe zero — e continua a ritentare
+                l&apos;altro lato con le stesse regole. Fuori da quel range lo chiude subito da sé.
+                <div className="ex-rows" style={{ marginTop: 6 }}>
+                  {unLato.map(([mid, b]) => (
+                    <div key={mid} className="ex-row" data-lrc-lato-solo={mid}>
+                      <div className="ex-row-main">
+                        <div className="ex-row-t">
+                          <span className={`ex-side ${b[0] === 'yes' ? 'is-yes' : 'is-no'}`}>{b[0].toUpperCase()}</span>{' '}
+                          {pricedMarkets.find((m) => m.marketId.toLowerCase() === mid)?.title ?? mid.slice(0, 18)}
+                        </div>
+                      </div>
+                      <div className="ex-row-nums">
+                        <span className="ex-num"><span className="ex-num-k">matura</span><span className="ex-num-v ex-gold">1/3</span></span>
                       </div>
                     </div>
-                    <div className="ex-row-nums">
-                      <span className="ex-num">
-                        <span className="ex-num-k">cancella fra</span>
-                        <span className={`ex-num-v ${(o.restaSec ?? 0) <= 120 ? 'ex-dn' : 'ex-gold'}`} data-lrc-orfana-resta={o.marketId}>
-                          {o.restaSec == null ? 'N/D' : ttlTxt(o.restaSec)}
-                        </span>
-                      </span>
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* ══ COSA HA CANCELLATO IL MOTORE, E PERCHÉ ═══════════════════════════════════════════════
               Il motivo NON si riassume: «mai primo sul libro» e «gamba rimasta sola» chiedono due
@@ -1211,35 +1211,21 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
                 </p>
               )}
             </div>
-            <div className="ex-stat" data-lrc-cap-safe>
-              <span className="ex-stat-k">Safe</span>
-              <span className="ex-stat-v">{capitaleSafeUsd == null ? 'N/D' : money(capitaleSafeUsd)}</span>
-              <span className="ex-stat-s">
-                {capitaleSafeUsd == null ? 'venue non interrogato' : `${bucket.safe.length} ordini, nessun motivo di rischio`}
-              </span>
-            </div>
-            <div className="ex-stat" data-lrc-cap-risk>
-              <span className="ex-stat-k">Risk</span>
-              <span className={`ex-stat-v ${capitaleRiskUsd != null && capitaleRiskUsd > 0 ? 'oob' : ''}`}>
-                {capitaleRiskUsd == null ? 'N/D' : money(capitaleRiskUsd)}
+            {/* ── IMPEGNATO, IN UN NUMERO SOLO ────────────────────────────────────────────────────
+                Erano due, Safe e Risk. La divisione non esiste più: la formula del venue è una curva
+                continua e non conosce bucket, quindi mostrare due cifre avrebbe descritto il nostro
+                vecchio modello invece del mercato. Ciò che l'operatore deve sapere è quanto capitale
+                sta lavorando e quanto è fermo. */}
+            <div className="ex-stat" data-lrc-cap-impegnato>
+              <span className="ex-stat-k">Impegnato</span>
+              <span className="ex-stat-v">
+                {orders?.simulated ? 'N/D' : money(bucket.impegnatoUsd)}
               </span>
               <span className="ex-stat-s">
-                {capitaleRiskUsd == null ? 'venue non interrogato' : `${bucket.risk.length} ordini con almeno un flag`}
+                {orders?.simulated ? 'venue non interrogato' : `${orders?.count ?? 0} ordini a riposo`}
               </span>
             </div>
           </div>
-          {/* ── IL QUARTO NUMERO, QUANDO ESISTE ────────────────────────────────────────────────────
-              Capitale su cui NON si e' potuto misurare niente: né la banda, né la scadenza, né l'eta'
-              del dato. Non e' Safe (non e' stato verificato) e non e' Risk (non e' stato misurato
-              niente contro). Metterlo dentro Safe sarebbe il modo esatto in cui si finisce per credere
-              che del capitale stia maturando quando non si sa. Compare solo se c'e'. */}
-          {capitaleIgnotoUsd != null && capitaleIgnotoUsd > 0 && (
-            <div className="ex-banner is-warn lrc-mb" style={{ marginTop: 8 }} data-lrc-cap-ignoto>
-              <b>{money(capitaleIgnotoUsd)}</b> su {bucket.nonGiudicabili.length} ordini non è
-              classificabile: banda, scadenza o età del dato non leggibili. Non è contato né in Safe né
-              in Risk — «non lo so» non è «va bene».
-            </div>
-          )}
           {freeCapital != null && fin(bal?.pusdBalance) && (bal!.pusdBalance as number) > 0 && (
             <div className="lrc-barwrap" aria-hidden="true">
               <div
@@ -1920,9 +1906,13 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
       {/* ══ 4 · MERCATI LIBERI (RISCHIOSI) ════════════════════════════════════════════════════════
           Ricerca libera su QUALUNQUE mercato del venue, non solo su quelli che il piano propone.
           Il nome porta l'avvertenza perché l'avvertenza è il punto: qui si esce dal piano. */}
-      {tab === 'liberi' && (
+      {/* ── LA RICERCA LIBERA, DENTRO «MERCATI OTTIMIZZATI» ────────────────────────────────────────
+          Era una tab a sé, e questo la faceva sembrare un percorso alternativo. Non lo è: un mercato
+          aperto da qui passa dalle STESSE cinque regole del motore — mai primo, pavimento adattivo,
+          punteggio, lato singolo, tetto 20%. L'unica differenza è che nessun allocatore ha detto che
+          valga il capitale. Vive quindi accanto alle proposte, non altrove. */}
+      {tab === 'alloca' && (
         <section className="lrc-sec" data-lrc-section="liberi">
-          <Ask q="Quale mercato esiste sul venue, e a che prezzo?" sub="Ricerca libera: fuori dal piano ottimizzato." />
 
           {/* ── IL BANNER — COSA VUOL DIRE «LIBERO», E COSA NON VUOL DIRE ─────────────────────────
               «Fuori dal piano» non è «senza regole». Le due cose vengono confuse esattamente qui, ed
@@ -1930,13 +1920,14 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
               e Risk è la SELEZIONE — nessun ottimizzatore ha detto che questo mercato valga il
               capitale. Quello che NON cambia è il piazzamento: l'ordine passa dalla stessa catena di
               gate di ogni altro, «mai primo sul libro» compreso. */}
+          <div className="ex-sech"><span className="ex-sech-t">Ricerca libera sul venue</span></div>
           <div className="ex-banner is-warn lrc-mb" data-lrc-liberi-banner>
-            <b>Qui sei fuori dal piano.</b> Nessun ottimizzatore ha valutato questi mercati: non hanno
-            una stima di rendimento, non hanno un tetto di capitale assegnato, e non compaiono nei
-            bucket Safe o Risk finché un piano non li sceglie.{' '}
-            <b>Le regole di piazzamento restano tutte.</b> Un ordine aperto da qui passa dalla stessa
-            catena di ogni altro — proprietà manuale, regole del venue, cap per ordine, kill-switch,
-            e <b>«mai primo sul libro»</b>, che vale qui esattamente come su Safe e su Risk.
+            <b>Fuori dal piano, non fuori dalle regole.</b> Nessun allocatore ha valutato questi
+            mercati: non hanno una stima di rendimento né un tetto assegnato finché un piano non li
+            sceglie. Ma un ordine aperto da qui passa dallo <b>stesso identico motore</b> delle
+            proposte qui sopra — mai primo sul libro, pavimento di profondità calcolato sulla
+            liquidità di quel mercato, tetto del 20% per mercato — oltre alla catena di sempre
+            (proprietà manuale, regole del venue, cap per ordine, kill-switch).
           </div>
 
           {/* ── CHIP ─ un ordinamento e quattro filtri, combinabili fra loro. ────────────────────── */}
@@ -2224,78 +2215,6 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
             anyFilterOn={anyFilterOn} sortByPool={sortByPool}
             onOpenOrder={(row) => setOrderTarget(targetFromVenue(row))}
           />
-        </section>
-      )}
-
-      {/* ══ 2 · RISK ══════════════════════════════════════════════════════════════════════════════
-          I mercati che l'ottimizzatore Safe scarta per una ragione dichiarata, e che l'operatore puo'
-          decidere di prendere lo stesso. La differenza sta TUTTA nella selezione: quale mercato si e'
-          disposti a proporre, e con che soglia di scadenza. Non c'e' nessuna differenza a valle. */}
-      {tab === 'risk' && (
-        <section className="lrc-sec" data-lrc-section="risk">
-          <Ask q="Cosa scarta il profilo Safe, e quanto varrebbe?" sub="Stesso motore di esecuzione, soglie di selezione diverse." />
-
-          {/* ── IL BANNER — LA COSA PIÙ IMPORTANTE DELLA TAB ─────────────────────────────────────
-              «Risk» qui non vuol dire «gestito diversamente». Vuol dire «segnalato». Un ordine nato da
-              questa tab, una volta sul libro, e' indistinguibile da uno nato da Ottimizza: stessa
-              finestra GTD, stesso rinnovo, stesso dead-man's switch, stessa reconciliation, stesso
-              kill-switch. La verifica di questa frase e' strutturale e sta in
-              lib/maker/motore-condiviso.test.js: i moduli di esecuzione non nominano mai il profilo,
-              quindi non esiste nessun ramo che possa dipenderne. */}
-          <div className="ex-banner is-warn lrc-mb" data-lrc-risk-banner>
-            <b>Segnalati, non gestiti diversamente.</b> I mercati di questa tab portano almeno un motivo
-            di rischio (fuori banda, scadenza vicina, dati meno freschi). Ma una volta partiti seguono
-            lo <b>stesso motore di esecuzione</b> dei mercati Safe: stessa finestra GTD, stesso rinnovo,
-            stesso dead-man&apos;s switch, stessa reconciliation, stesso kill-switch.
-            <br />
-            {/* I NUMERI VENGONO DALLE COSTANTI, NON DA QUI. Se una cambia, cambia anche questa frase. */}
-            Quello che cambia sono i <b>criteri di selezione</b> e le <b>regole di piazzamento</b>: la
-            profondità si misura sul singolo gradino (2° o 3° tick, pavimento{' '}
-            <b>${RISK_DEPTH_FLOOR_USD}</b>) invece che cumulata, il nervosismo si guarda su{' '}
-            <b>{RISK_VOLATILITY_WINDOW_MIN} min</b> (soglia {RISK_VOLATILITY_THRESHOLD_MULT}× la banda),
-            e il capitale è limitato al <b>{Math.round(RISK_BUCKET_CAP_PCT * 100)}%</b> del saldo per
-            l&apos;intero bucket e al <b>{Math.round(RISK_PER_MARKET_CAP_PCT * 100)}%</b> per singolo
-            mercato. Il controllo <b>«mai primo sul libro»</b> resta identico a Safe.
-          </div>
-
-          {/* IL PANNELLO DI ALLOCAZIONE — lo STESSO componente della tab Ottimizza, con l'unico
-              parametro che cambia. Non una copia: `profile="risk"` aggiunge `&profile=risk` alla
-              chiamata dell'allocatore e stampa la tabella delle soglie reali sotto il bottone. */}
-          <RewardsAllocatePanel onPlaceOrder={(row) => setOrderTarget(row)} placed={placedTick} profile="risk" />
-
-          {/* ── GIÀ IN ESECUZIONE · RISK ────────────────────────────────────────────────────────
-              Gli stessi ordini che nel Riepilogo stanno nel bucket Risk. Qui e' la vista dedicata:
-              dettaglio per GAMBA (non raggruppato), con i flag che ne hanno determinato la
-              classificazione stampati sulla riga. */}
-          <div className="ex-sech">
-            <span className="ex-sech-t">Già in esecuzione · Risk</span>
-            <span className="lrc-fine">
-              {capitaleRiskUsd == null ? 'venue non interrogato' : <><b className="ex-n">{money(capitaleRiskUsd)}</b> su {idRisk.size} {idRisk.size === 1 ? 'gamba' : 'gambe'}</>}
-            </span>
-          </div>
-          {!resting ? (
-            <div className="lrc-nd">Lettura degli ordini…</div>
-          ) : resting.ok === false ? (
-            <div className="ex-banner is-bad lrc-mb">Lettura FALLITA: {resting.error ?? '—'} — questa non è una lista vuota.</div>
-          ) : (() => {
-            const riskOrders = resting.orders.filter((o) => o.orderId && idRisk.has(o.orderId));
-            if (!riskOrders.length) {
-              return (
-                <div className="ex-banner is-ok lrc-mb" data-lrc-risk-esecuzione="empty">
-                  Nessun ordine a riposo è classificato Risk.
-                </div>
-              );
-            }
-            return (
-              <div className="ex-panel ex-rows" data-lrc-risk-list>
-                {riskOrders.map((o: RestingOrder) => rigaOrdine(o, o.orderId ? flagPerOrdine.get(o.orderId) : undefined))}
-              </div>
-            );
-          })()}
-          <p className="lrc-fine">
-            Il countdown è la scadenza dichiarata dal venue, già corretta per i 60 secondi con cui un GTD
-            viene ritirato in anticipo — la stessa lettura del Riepilogo, sugli stessi ordini.
-          </p>
         </section>
       )}
 

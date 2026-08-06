@@ -84,12 +84,10 @@ const { readAllocatedCapital, readMarketProfile } = require('../lib/maker/alloca
 // volatilita' 8h, spread anomalo, quota 65%, esposizione 30%) o Risk (mai-primo, depth $20 sul
 // gradino, nervosismo 5 min). Il motore non contiene nessun `if (profilo)`: legge il profilo dallo
 // store e passa la decisione a quella funzione, che e' pura e testata a parte.
-const { valutaPiazzamento } = require('../lib/maker/regole-piazzamento');
-// ── LA GAMBA RIMASTA SOLA, E LE CANCELLAZIONI CHE SI DEVONO VEDERE ──────────────────────────────────
-// Il 6 agosto 2026 la gamba YES di Catalina Lauf e' stata cancellata correttamente e la NO e' rimasta
-// sola per due ore, rinnovata a ogni giro, a maturare un terzo del dovuto. Nessun evento visibile.
-// Questi due moduli chiudono le due meta' del buco: il timer di tolleranza e il referto.
-const { leggiOrfanaDa, aggiornaTimer } = require('../lib/maker/gamba-orfana');
+const { valutaMercato } = require('../lib/maker/motore-unico');
+const { leggiFinestraMercato } = require('../lib/rewards/velocita-mercato');
+// LE CANCELLAZIONI CHE SI DEVONO VEDERE. Il 6 agosto 2026 una gamba e' stata cancellata correttamente
+// e nessun evento e' arrivato a una superficie: l'operatore se n'e' accorto guardando l'app del venue.
 const { registraCancellazioni } = require('../lib/maker/cancellazioni-visibili');
 const { AUTO_CLOSE_SOURCE } = require('../lib/maker/auto-close-config');
 const { writeVenuePositions } = require('../lib/safety/venue-positions-snapshot');
@@ -488,12 +486,16 @@ async function cycle() {
     // piazzamento passa i controlli di quel profilo?». Entrambe le risposte vengono da moduli puri.
     // Il profilo si rilegge dal file a ogni giro: un mercato che cambia profilo fra due cicli viene
     // valutato con quello nuovo al ciclo successivo.
-    leggiProfilo: (marketId) => readMarketProfile(marketId),
-    valutaPiazzamento: (arg) => valutaPiazzamento(arg),
-    // Il timer della gamba orfana: letto e scritto per singolo mercato, su file, cosi' un riavvio non
-    // regala dieci minuti nuovi a una gamba che era sola da nove.
-    leggiOrfanaDa: (marketId) => leggiOrfanaDa(marketId),
-    aggiornaTimerOrfana: (arg) => aggiornaTimer(arg),
+    // IL MOTORE UNICO: una sola valutazione, nessuna biforcazione per profilo.
+    valutaMercato: (arg) => valutaMercato(arg),
+    // La liquidita' media in banda di QUESTO mercato, dal giornale di agent34: e' cio' che rende il
+    // pavimento di profondita' confrontabile fra un mercato da $60.000 in banda e uno da $200.
+    liquiditaMedia: (marketId) => {
+      try {
+        const w = leggiFinestraMercato({ marketId, windowMinutes: 240 });
+        return { media: w && w.depthMedia != null ? w.depthMedia : null, campioni: (w && w.depthCampioni) || 0 };
+      } catch { return { media: null, campioni: 0 }; }
+    },
     // Used ONLY by the reconnect-after-blackout path AND by the top-of-book cancel. It goes through the
     // CANCEL-ONLY adapter (address-only signer, structurally cannot place), so both can stop orders and
     // neither can ever start one.
@@ -576,12 +578,11 @@ async function cycle() {
     } catch (e) { log('referto cancellazioni NON depositato:', e.message); }
   }
 
-  // Le gambe orfane ANCORA dentro la finestra: si dicono a voce alta a ogni giro in cui esistono,
-  // perche' il countdown e' l'unica cosa che permette di intervenire prima della cancellazione.
-  for (const o of (res.orfaneAperte || [])) {
-    log(`GAMBA SOLA · cid_${String(o.marketId).replace(/^0x/, '').slice(0, 10)}`
-      + ` · resta la ${String(o.book).toUpperCase()} · ${o.restaSec}s prima della cancellazione automatica`
-      + ' — il ciclo sta gia' + String.fromCharCode(39) + ' ritentando l altra gamba con le regole di sempre.');
+  // I lati singoli che maturano un terzo: non un allarme, uno stato che va detto.
+  for (const o of (res.latiSingoli || [])) {
+    log(`LATO SINGOLO · cid_${String(o.marketId).replace(/^0x/, '').slice(0, 10)}`
+      + ` · resta la ${String(o.book).toUpperCase()} · mid ${o.mid} dentro [0.10, 0.90]`
+      + ` ⇒ matura ${(o.frazione * 100).toFixed(0)}% — si tiene, e il ciclo ritenta l altro lato.`);
   }
 
   return res;
