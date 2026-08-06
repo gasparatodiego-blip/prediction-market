@@ -296,6 +296,30 @@ interface WalletResp {
       bloccoGate: string | null;
     }>;
   } | null;
+  // LE CANCELLAZIONI DECISE DAL MOTORE, COL MOTIVO DISTINTO. Il 6 agosto 2026 alle 12:28:08 la gamba
+  // YES di Catalina Lauf è stata cancellata per «mai primo sul libro»: decisione giusta, motivo scritto
+  // — nell'audit da mezzo gigabyte. Qui non arrivava niente, e l'operatore se n'è accorto guardando
+  // l'app del venue tre ore dopo.
+  cancellazioniMotore?: {
+    count: number;
+    perMotivo: Record<string, number>;
+    items: Array<{
+      marketId: string; marketTitle: string | null; orderId: string;
+      book: string; price: number; size: number; notionalUsd: number | null;
+      motivo: string; motivoLeggibile: string; dettaglio: string | null; at: string;
+    }>;
+  } | null;
+  // LE GAMBE RIMASTE SOLE, COL COUNTDOWN. Una gamba sola matura ZERO fuori dal range [0,10–0,90] e un
+  // TERZO dentro, col capitale impegnato per intero: il countdown è l'unica cosa che permette di
+  // intervenire prima che scatti la cancellazione automatica.
+  gambeOrfane?: {
+    tolleranzaMin: number; leggibile: boolean;
+    items: Array<{
+      marketId: string; book: string | null;
+      orfanaDa: number | null; orfanaDaIso: string | null;
+      scadeAms: number | null; restaSec: number | null;
+    }>;
+  } | null;
   // IL LIBRO SVUOTATO DAL GUARDIANO. Il 6 agosto 2026 alle 00:16:03 UTC agent37 ha cancellato nove
   // ordini reali su cinque mercati perché il battito del motore maker era fermo da 121s (soglia 120s):
   // $663 tornati fermi, e l'unica traccia leggibile era in un log di processo. È l'evento più grosso
@@ -1085,6 +1109,75 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
               Nessun ordine fuori banda. {orders?.count === 0
                 ? 'Non hai ordini a riposo sul venue (letto, non dedotto).'
                 : `Tutti i ${orders?.count} ordini a riposo sono dentro la banda premiante.`}
+            </div>
+          )}
+
+          {/* ══ GAMBE RIMASTE SOLE — IL COUNTDOWN, NON UN AVVISO GENERICO ═══════════════════════════
+              Sta PRIMA del capitale perché è la cosa su cui si può ancora agire: passata la finestra,
+              il motore cancella da sé e resta solo il referto. Un mercato elencato qui sta maturando
+              una frazione del dovuto proprio adesso. */}
+          {wal?.gambeOrfane && wal.gambeOrfane.items.length > 0 && (
+            <div className="ex-banner is-warn lrc-mb" data-lrc-gambe-orfane={wal.gambeOrfane.items.length}>
+              <b>{wal.gambeOrfane.items.length === 1 ? 'Un mercato ha una gamba sola' : `${wal.gambeOrfane.items.length} mercati hanno una gamba sola`}.</b>{' '}
+              Una gamba sola matura zero fuori dal range 10–90¢ e un terzo dentro, col capitale
+              impegnato per intero. Il ciclo sta già ritentando l&apos;altra gamba con le regole di
+              sempre; se non ci riesce entro {wal.gambeOrfane.tolleranzaMin} minuti, cancella anche
+              questa.
+              <div className="ex-rows" style={{ marginTop: 6 }}>
+                {wal.gambeOrfane.items.map((o) => (
+                  <div key={o.marketId} className="ex-row" data-lrc-orfana={o.marketId}>
+                    <div className="ex-row-main">
+                      <div className="ex-row-t">
+                        <span className={`ex-side ${o.book === 'yes' ? 'is-yes' : 'is-no'}`}>{(o.book ?? '?').toUpperCase()}</span>{' '}
+                        {(pricedMarkets.find((m) => m.marketId === o.marketId)?.title) ?? o.marketId.slice(0, 18)}
+                      </div>
+                    </div>
+                    <div className="ex-row-nums">
+                      <span className="ex-num">
+                        <span className="ex-num-k">cancella fra</span>
+                        <span className={`ex-num-v ${(o.restaSec ?? 0) <= 120 ? 'ex-dn' : 'ex-gold'}`} data-lrc-orfana-resta={o.marketId}>
+                          {o.restaSec == null ? 'N/D' : ttlTxt(o.restaSec)}
+                        </span>
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ══ COSA HA CANCELLATO IL MOTORE, E PERCHÉ ═══════════════════════════════════════════════
+              Il motivo NON si riassume: «mai primo sul libro» e «gamba rimasta sola» chiedono due
+              reazioni diverse, e mescolarle toglie l'informazione per cui vale la pena guardare. */}
+          {wal?.cancellazioniMotore && wal.cancellazioniMotore.count > 0 && (
+            <div className="lrc-alert" data-lrc-cancellazioni={wal.cancellazioniMotore.count}>
+              <div className="lrc-alert-t">
+                {wal.cancellazioniMotore.count === 1
+                  ? 'Il motore ha cancellato un ordine nell\'ultima mezz\'ora'
+                  : `Il motore ha cancellato ${wal.cancellazioniMotore.count} ordini nell'ultima mezz'ora`}
+                {' — '}
+                {Object.entries(wal.cancellazioniMotore.perMotivo).map(([m, n]) => `${n}× ${m}`).join(' · ')}
+              </div>
+              <div className="ex-rows lrc-alert-rows">
+                {wal.cancellazioniMotore.items.map((c) => (
+                  <div key={c.orderId} className="ex-row" data-lrc-cancellazione={c.motivo}>
+                    <div className="ex-row-main">
+                      <div className="ex-row-t">
+                        <span className={`ex-side ${c.book === 'yes' ? 'is-yes' : 'is-no'}`}>{(c.book ?? '?').toUpperCase()}</span>{' '}
+                        {c.marketTitle ?? c.marketId.slice(0, 18)}
+                      </div>
+                      <div className="ex-row-s">
+                        <span className="ex-badge is-warn lrc-bdg">{c.motivoLeggibile}</span>{' '}
+                        <span className="ex-dim">{new Date(c.at).toLocaleTimeString()}</span>
+                      </div>
+                    </div>
+                    <div className="ex-row-nums">
+                      <span className="ex-num"><span className="ex-num-k">prezzo</span><span className="ex-num-v">{cents(c.price)}</span></span>
+                      <span className="ex-num"><span className="ex-num-k">liberati</span><span className="ex-num-v">{money(c.notionalUsd)}</span></span>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 

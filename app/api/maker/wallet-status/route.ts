@@ -11,6 +11,10 @@ import { readVenuePositions, MAX_AGE_MS } from '@/lib/safety/venue-positions-sna
 // lo sapesse. Qui l'avviso entra nella stessa lista «cosa manca» che si legge prima di piazzare.
 import { readResiduiSottoSoglia } from '@/lib/maker/residui-sotto-soglia';
 import { readScadenzeSenzaRinnovo } from '@/lib/maker/scadenze-senza-rinnovo';
+// LE CANCELLAZIONI DEL MOTORE E LE GAMBE RIMASTE SOLE. Il 6 agosto 2026 una gamba e' stata cancellata
+// correttamente e l'altra e' rimasta sola per due ore: nessuna delle due cose arrivava a una superficie.
+import { readCancellazioni } from '@/lib/maker/cancellazioni-visibili';
+import { leggiOrfaneTutte, ORPHAN_LEG_TOLERANCE_MIN, ORPHAN_LEG_TOLERANCE_MS } from '@/lib/maker/gamba-orfana';
 // IL DEAD-MAN CHE SVUOTA IL LIBRO. La notte fra il 5 e il 6 agosto 2026 agent37 ha cancellato nove
 // ordini reali su cinque mercati alle 00:16:03 e l'unica traccia leggibile era in un log di processo:
 // il mattino dopo il pannello mostrava un libro vuoto e nessuna spiegazione. È l'evento più grosso che
@@ -239,6 +243,8 @@ export async function GET() {
   // il residuo sta morendo, questo è già morto — e quindi il testo dice cos'è successo e cosa resta da
   // fare, non cosa succederà.
   const scadenze = readScadenzeSenzaRinnovo();
+  const cancellazioni = readCancellazioni();
+  const orfane = leggiOrfaneTutte();
   for (const s of scadenze.scadenze) {
     const mercato = s.marketTitle || `mercato cid_${String(s.marketId).replace(/^0x/, '').slice(0, 10)}`;
     const capitale = s.notionalUsd == null ? 'importo non leggibile' : `$${s.notionalUsd.toFixed(2)}`;
@@ -332,6 +338,39 @@ export async function GET() {
         notionalUsd: s.notionalUsd, expiresAt: s.expiresAt, at: s.at,
         bloccoGate: s.bloccoGate ?? null,
       })),
+    },
+    // ── LE CANCELLAZIONI DEL MOTORE, COL MOTIVO DISTINTO ──────────────────────────────────────────
+    // «Ordine cancellato» non e' un avviso: e' una notifica. `mai-primo-sul-libro` e
+    // `gamba-orfana-scaduta` chiedono due reazioni diverse, quindi restano due voci diverse.
+    cancellazioniMotore: {
+      count: cancellazioni.count,
+      perMotivo: cancellazioni.perMotivo,
+      items: (cancellazioni.cancellazioni as Array<Record<string, unknown>>).map((c) => ({
+        marketId: c.marketId, marketTitle: c.marketTitle ?? null, orderId: c.orderId,
+        book: c.book, price: c.price, size: c.size, notionalUsd: c.notionalUsd ?? null,
+        motivo: c.motivo, motivoLeggibile: c.motivoLeggibile, dettaglio: c.dettaglio ?? null, at: c.at,
+      })),
+    },
+    // ── LE GAMBE ANCORA SOLE, COL COUNTDOWN ───────────────────────────────────────────────────────
+    // Il countdown e' la parte utile: e' l'unica cosa che permette di intervenire PRIMA che la
+    // cancellazione automatica scatti. Un mercato in questo elenco sta maturando una frazione del
+    // dovuto proprio adesso.
+    gambeOrfane: {
+      tolleranzaMin: ORPHAN_LEG_TOLERANCE_MIN,
+      leggibile: orfane.leggibile,
+      items: Object.entries(orfane.markets || {}).map(([marketId, r]) => {
+        const rec = r as { orfanaDa?: number; bookSuperstite?: string };
+        const scadeA = typeof rec.orfanaDa === 'number' ? rec.orfanaDa + ORPHAN_LEG_TOLERANCE_MS : null;
+        const resta = scadeA != null ? Math.max(0, scadeA - Date.now()) : null;
+        return {
+          marketId,
+          book: rec.bookSuperstite ?? null,
+          orfanaDa: rec.orfanaDa ?? null,
+          orfanaDaIso: typeof rec.orfanaDa === 'number' ? new Date(rec.orfanaDa).toISOString() : null,
+          scadeAms: scadeA,
+          restaSec: resta != null ? Math.ceil(resta / 1000) : null,
+        };
+      }),
     },
   }, { headers: { 'Cache-Control': 'no-store' } });
 }

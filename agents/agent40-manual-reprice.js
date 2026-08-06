@@ -85,6 +85,12 @@ const { readAllocatedCapital, readMarketProfile } = require('../lib/maker/alloca
 // gradino, nervosismo 5 min). Il motore non contiene nessun `if (profilo)`: legge il profilo dallo
 // store e passa la decisione a quella funzione, che e' pura e testata a parte.
 const { valutaPiazzamento } = require('../lib/maker/regole-piazzamento');
+// ── LA GAMBA RIMASTA SOLA, E LE CANCELLAZIONI CHE SI DEVONO VEDERE ──────────────────────────────────
+// Il 6 agosto 2026 la gamba YES di Catalina Lauf e' stata cancellata correttamente e la NO e' rimasta
+// sola per due ore, rinnovata a ogni giro, a maturare un terzo del dovuto. Nessun evento visibile.
+// Questi due moduli chiudono le due meta' del buco: il timer di tolleranza e il referto.
+const { leggiOrfanaDa, aggiornaTimer } = require('../lib/maker/gamba-orfana');
+const { registraCancellazioni } = require('../lib/maker/cancellazioni-visibili');
 const { AUTO_CLOSE_SOURCE } = require('../lib/maker/auto-close-config');
 const { writeVenuePositions } = require('../lib/safety/venue-positions-snapshot');
 // L'AVVISO SUI RESIDUI CHE MUOIONO SOTTO LA SOGLIA MINIMA. Deposita in data/ quello che il ciclo scopre,
@@ -484,6 +490,10 @@ async function cycle() {
     // valutato con quello nuovo al ciclo successivo.
     leggiProfilo: (marketId) => readMarketProfile(marketId),
     valutaPiazzamento: (arg) => valutaPiazzamento(arg),
+    // Il timer della gamba orfana: letto e scritto per singolo mercato, su file, cosi' un riavvio non
+    // regala dieci minuti nuovi a una gamba che era sola da nove.
+    leggiOrfanaDa: (marketId) => leggiOrfanaDa(marketId),
+    aggiornaTimerOrfana: (arg) => aggiornaTimer(arg),
     // Used ONLY by the reconnect-after-blackout path AND by the top-of-book cancel. It goes through the
     // CANCEL-ONLY adapter (address-only signer, structurally cannot place), so both can stop orders and
     // neither can ever start one.
@@ -547,6 +557,33 @@ async function cycle() {
       if (!w.ok) log(`avviso scadenze NON depositato (${w.reason}) — resta solo in questo log`);
     } catch (e) { log('avviso scadenze NON depositato:', e.message); }
   }
+
+  // ── LE CANCELLAZIONI DEL MOTORE, DOVE SI VEDONO ──────────────────────────────────────────────────
+  // Stessa strada delle due sopra, e per lo stesso motivo — con una differenza: qui il motivo NON si
+  // riassume. «Ordine cancellato» non e' un avviso, e' una notifica; «mai primo sul libro» e «gamba
+  // rimasta sola oltre la tolleranza» chiedono due reazioni diverse.
+  const cancellazioni = res.cancellazioni || [];
+  if (cancellazioni.length) {
+    for (const c of cancellazioni) {
+      log(`CANCELLATO DAL MOTORE · ${c.motivo} · cid_${String(c.marketId).replace(/^0x/, '').slice(0, 10)}`
+        + ` · ${String(c.book).toUpperCase()} ${c.price} x ${c.size}`
+        + `${Number.isFinite(c.notionalUsd) ? ` · $${c.notionalUsd.toFixed(2)} tornati liberi` : ''}`
+        + ` — ${c.dettaglio || ''}`);
+    }
+    try {
+      const w = registraCancellazioni(cancellazioni);
+      if (!w.ok) log(`referto cancellazioni NON depositato (${w.reason}) — resta solo in questo log`);
+    } catch (e) { log('referto cancellazioni NON depositato:', e.message); }
+  }
+
+  // Le gambe orfane ANCORA dentro la finestra: si dicono a voce alta a ogni giro in cui esistono,
+  // perche' il countdown e' l'unica cosa che permette di intervenire prima della cancellazione.
+  for (const o of (res.orfaneAperte || [])) {
+    log(`GAMBA SOLA · cid_${String(o.marketId).replace(/^0x/, '').slice(0, 10)}`
+      + ` · resta la ${String(o.book).toUpperCase()} · ${o.restaSec}s prima della cancellazione automatica`
+      + ' — il ciclo sta gia' + String.fromCharCode(39) + ' ritentando l altra gamba con le regole di sempre.');
+  }
+
   return res;
 }
 
