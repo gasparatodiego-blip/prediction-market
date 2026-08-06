@@ -58,6 +58,15 @@ import OrderPanel, { type OrderTarget } from './OrderPanel';
 // della tab Risk. Qui serve per DUE cose: dividere gli ordini a riposo nei due bucket e sommarne i
 // dollari. Non se ne scrive una seconda copia — vedi lib/maker/risk-classifier.js.
 import { bucketizza } from '@/lib/maker/risk-classifier';
+// ── LE SOGLIE DEL MOTORE, LETTE DAL MOTORE ────────────────────────────────────────────────────────
+// Il banner della tab Risk DICHIARA con che regole quel percorso piazza. Scrivere quei numeri a mano
+// vorrebbe dire che il giorno in cui una costante cambia, la frase resta indietro e mente. Tutti e tre
+// i moduli qui sotto sono puri (nessun `fs`, nessuna rete) e quindi importabili da un componente
+// client: le soglie di volatilità stanno apposta in `soglie-profili`, separate dal modulo che le
+// applica, che invece legge il giornale di agent34 e non si può bundlare.
+import { RISK_BUCKET_CAP_PCT, RISK_PER_MARKET_CAP_PCT } from '@/lib/maker/risk-caps';
+import { RISK_DEPTH_FLOOR_USD } from '@/lib/maker/depth-adattiva';
+import { RISK_VOLATILITY_WINDOW_MIN, RISK_VOLATILITY_THRESHOLD_MULT } from '@/lib/maker/soglie-profili';
 
 // ── TRE SEZIONI, NON SEI ────────────────────────────────────────────────────────────────────────
 // Sei tab volevano dire che rispondere a «i miei ordini stanno maturando?» costava tre passaggi:
@@ -78,16 +87,24 @@ import { bucketizza } from '@/lib/maker/risk-classifier';
 //
 // Al suo posto entra RISK, che e' l'altra meta' del capitale: i mercati che l'ottimizzatore Safe
 // scarta per una ragione dichiarata e che l'operatore puo' decidere di prendere lo stesso.
-type TabKey = 'riepilogo' | 'risk' | 'alloca';
+// ── QUATTRO TAB ───────────────────────────────────────────────────────────────────────────────────
+// La ricerca libera sul venue torna a essere una TAB, dopo essere stata un accordion in fondo al
+// Riepilogo. Il motivo del ritorno non è ripensamento: è che il suo NOME è cambiato, e col nome il
+// suo posto. «Mercati» era una funzione di servizio; «Mercati liberi (rischiosi)» è una dichiarazione
+// — qualunque mercato aperto da lì è per definizione FUORI dal piano che Safe o Risk hanno calcolato,
+// e questo va detto prima del tap, non scoperto dopo. Una dichiarazione del genere non sta in fondo a
+// un accordion chiuso.
+type TabKey = 'riepilogo' | 'risk' | 'alloca' | 'liberi';
 
 const TABS: Array<{ key: TabKey; label: string; short: string }> = [
   { key: 'riepilogo', label: 'Riepilogo', short: 'Riepilogo' },
   { key: 'risk', label: 'Risk', short: 'Risk' },
   { key: 'alloca', label: 'Ottimizza', short: 'Ottimizza' },
+  { key: 'liberi', label: 'Mercati liberi', short: 'Liberi' },
 ];
 /** I vecchi ?tab= continuano a funzionare: puntano alla sezione che ora li contiene. */
 const LEGACY_TAB: Record<string, TabKey> = {
-  posizioni: 'riepilogo', ordini: 'riepilogo', regole: 'riepilogo', mercati: 'riepilogo',
+  posizioni: 'riepilogo', ordini: 'riepilogo', regole: 'riepilogo', mercati: 'liberi',
 };
 
 interface JudgedOrder {
@@ -1807,21 +1824,27 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
         </section>
       )}
 
-      {/* ── LA RICERCA MERCATI — NON PIÙ UNA TAB, MA NEMMENO CANCELLATA ────────────────────────────
-          «Mercati» era la seconda delle tre tab e rispondeva a «quale mercato esiste sul venue»: una
-          domanda da strumento di ricerca, non una delle tre viste su cui si opera. Il suo posto lo
-          prende «Risk», che e' l'altra meta' del capitale.
-          Ma cancellarla avrebbe tolto l'unico modo di aprire un mercato che il piano non propone —
-          la ricerca al venue, la scala dei prezzi, il pannello ordine per un mercato scelto a mano.
-          Quindi resta, in fondo al Riepilogo, dietro un accordion CHIUSO di difetto: raggiungibile
-          quando serve, e fuori dai piedi quando non serve. */}
-      {tab === 'riepilogo' && (
-        <details className="lrc-sec" data-lrc-section="mercati">
-          <summary className="ex-sech" style={{ cursor: 'pointer' }}>
-            <span className="ex-sech-t">Cerca un mercato sul venue</span>
-            <span className="lrc-fine">ricerca, scala dei prezzi, apertura ordine a mano</span>
-          </summary>
-          <Ask q="Dove conviene mettere il capitale?" sub="Stime sul tuo saldo reale." />
+      {/* ══ 4 · MERCATI LIBERI (RISCHIOSI) ════════════════════════════════════════════════════════
+          Ricerca libera su QUALUNQUE mercato del venue, non solo su quelli che il piano propone.
+          Il nome porta l'avvertenza perché l'avvertenza è il punto: qui si esce dal piano. */}
+      {tab === 'liberi' && (
+        <section className="lrc-sec" data-lrc-section="liberi">
+          <Ask q="Quale mercato esiste sul venue, e a che prezzo?" sub="Ricerca libera: fuori dal piano ottimizzato." />
+
+          {/* ── IL BANNER — COSA VUOL DIRE «LIBERO», E COSA NON VUOL DIRE ─────────────────────────
+              «Fuori dal piano» non è «senza regole». Le due cose vengono confuse esattamente qui, ed
+              è la confusione che questo banner esiste per impedire. Quello che cambia rispetto a Safe
+              e Risk è la SELEZIONE — nessun ottimizzatore ha detto che questo mercato valga il
+              capitale. Quello che NON cambia è il piazzamento: l'ordine passa dalla stessa catena di
+              gate di ogni altro, «mai primo sul libro» compreso. */}
+          <div className="ex-banner is-warn lrc-mb" data-lrc-liberi-banner>
+            <b>Qui sei fuori dal piano.</b> Nessun ottimizzatore ha valutato questi mercati: non hanno
+            una stima di rendimento, non hanno un tetto di capitale assegnato, e non compaiono nei
+            bucket Safe o Risk finché un piano non li sceglie.{' '}
+            <b>Le regole di piazzamento restano tutte.</b> Un ordine aperto da qui passa dalla stessa
+            catena di ogni altro — proprietà manuale, regole del venue, cap per ordine, kill-switch,
+            e <b>«mai primo sul libro»</b>, che vale qui esattamente come su Safe e su Risk.
+          </div>
 
           {/* ── CHIP ─ un ordinamento e quattro filtri, combinabili fra loro. ────────────────────── */}
           <div className="lrc-controls">
@@ -2108,7 +2131,7 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
             anyFilterOn={anyFilterOn} sortByPool={sortByPool}
             onOpenOrder={(row) => setOrderTarget(targetFromVenue(row))}
           />
-        </details>
+        </section>
       )}
 
       {/* ══ 2 · RISK ══════════════════════════════════════════════════════════════════════════════
@@ -2128,11 +2151,18 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
               quindi non esiste nessun ramo che possa dipenderne. */}
           <div className="ex-banner is-warn lrc-mb" data-lrc-risk-banner>
             <b>Segnalati, non gestiti diversamente.</b> I mercati di questa tab portano almeno un motivo
-            di rischio (fuori banda, scadenza vicina, dati vecchi). Ma una volta partiti seguono lo{' '}
-            <b>stesso motore di esecuzione</b> dei mercati Safe: stessa finestra GTD, stesso rinnovo,
-            stesso dead-man&apos;s switch, stessa reconciliation, stesso kill-switch. Nessuna logica
-            diversa a valle del piazzamento — cambia solo quali mercati l&apos;allocatore è disposto a
-            proporre, e con quale soglia di scadenza.
+            di rischio (fuori banda, scadenza vicina, dati meno freschi). Ma una volta partiti seguono
+            lo <b>stesso motore di esecuzione</b> dei mercati Safe: stessa finestra GTD, stesso rinnovo,
+            stesso dead-man&apos;s switch, stessa reconciliation, stesso kill-switch.
+            <br />
+            {/* I NUMERI VENGONO DALLE COSTANTI, NON DA QUI. Se una cambia, cambia anche questa frase. */}
+            Quello che cambia sono i <b>criteri di selezione</b> e le <b>regole di piazzamento</b>: la
+            profondità si misura sul singolo gradino (2° o 3° tick, pavimento{' '}
+            <b>${RISK_DEPTH_FLOOR_USD}</b>) invece che cumulata, il nervosismo si guarda su{' '}
+            <b>{RISK_VOLATILITY_WINDOW_MIN} min</b> (soglia {RISK_VOLATILITY_THRESHOLD_MULT}× la banda),
+            e il capitale è limitato al <b>{Math.round(RISK_BUCKET_CAP_PCT * 100)}%</b> del saldo per
+            l&apos;intero bucket e al <b>{Math.round(RISK_PER_MARKET_CAP_PCT * 100)}%</b> per singolo
+            mercato. Il controllo <b>«mai primo sul libro»</b> resta identico a Safe.
           </div>
 
           {/* IL PANNELLO DI ALLOCAZIONE — lo STESSO componente della tab Ottimizza, con l'unico
