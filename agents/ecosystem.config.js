@@ -61,23 +61,36 @@
 // RIACCENDERE UNO: `pm2 start ecosystem.config.js --only <nome>` dopo aver tolto il suo
 // `autostart: false`, oppure `pm2 start <nome>` per una riaccensione temporanea. Poi `pm2 save`.
 //
-// ── UN DIFETTO REGISTRATO QUI PERCHÉ NON VADA PERSO (non corretto in questa sessione) ─────────────
-// agent27-news-guard è fra i processi fermati, e va detto che il freno sulle notizie che dovrebbe
-// alimentare NON HA MAI FUNZIONATO — quindi spegnerlo non toglie niente che oggi operi.
+// ── IL DIFETTO DEL NEWS-GUARD: TROVATO IL 6 AGOSTO, CORRETTO LO STESSO GIORNO ─────────────────────
+// agent27-news-guard era stato fermato con gli altri. È RIENTRATO poche ore dopo, perché la
+// correzione al suo consumatore lo ha reso di nuovo utile: prima non lo era, e il motivo merita di
+// restare scritto.
 //
-// agent27 produce due file: /tmp/news-guard.json, che contiene i 312 mercati con la loro severità, e
-// /tmp/news-guard-state.json, che contiene solo la sua contabilità interna (alerted, bookHist,
-// regimeState, actionCooldown, actionHourly, providerHealth) e NESSUN campo `markets`.
+// COS'ERA. agent27 produce DUE file: /tmp/news-guard.json, che contiene i mercati con la loro
+// severità, e /tmp/news-guard-state.json, che contiene solo la sua contabilità interna (alerted,
+// bookHist, regimeState, actionCooldown, actionHourly, providerHealth) e NESSUN campo `markets`.
+// agent35-maker leggeva il SECONDO e vi cercava `.markets`. Quel campo lì non è mai esistito, quindi
+// `newsByMarket` era SEMPRE VUOTA: `newsForceClose` sempre falso e il rail `news-high` di
+// lib/maker/risk-rails.js senza un solo input in tutta la vita del sistema. La severità di agent27
+// raggiungeva solo /api/rewards-unified, che ha zero richieste.
 //
-// agent35-maker legge il SECONDO (riga 204, NEWS_STATE_FILE) e alla riga 218 itera
-// `Object.entries((news && news.markets) || {})`. Quel campo lì non esiste, quindi `newsByMarket` è
-// SEMPRE VUOTA: `newsForceClose` (riga 457) è sempre falso e il rail `news-high` di
-// lib/maker/risk-rails.js non ha mai ricevuto un solo input. La severità di agent27 raggiunge solo
-// /api/rewards-unified, che ha zero richieste.
+// PERCHÉ È SOPRAVVISSUTO TANTO. Da fuori un rail SENZA input e un rail con input tranquillo producono
+// lo stesso silenzio. Non c'era modo di distinguerli guardando lo stato del motore.
 //
-// LA CORREZIONE, quando la si vorrà: far leggere ad agent35 /tmp/news-guard.json invece del file di
-// stato, adattando la forma (lì `markets` è un ARRAY di righe con `marketId` e `newsRisk`/`severity`,
-// non un oggetto indicizzato per id). E riaccendere agent27, che senza di lui non produce più niente.
+// COSA È STATO FATTO. agent35 ora legge /tmp/news-guard.json e ne adatta la forma (lì `markets` è un
+// ARRAY di righe con `marketId` e `newsRisk` — la severità effettiva del regime, con isteresi —
+// accanto a `severity`), filtrando per venue polymarket. Aggiunto un limite di età di 30 minuti: oltre
+// quello la severità NON viene usata e la mappa resta vuota di proposito, perché un freno che si
+// aziona su una notizia di ieri è peggio di un freno che non c'è, e uno bloccato su un 'high' stantio
+// congelerebbe il mercato per sempre. E soprattutto: lo stato del motore pubblica ora `newsFeed`
+// (file, età, se è fresco, quanti mercati portano severità, e PERCHÉ sono zero quando lo sono) più
+// `newsSeverity` su ogni mercato — così la cecità che ha nascosto il difetto non può ripetersi.
+//
+// VERIFICATO il 6 agosto: 118 mercati con severità, file fresco, entrambi i mercati dell'universo di
+// agent35 con `newsSeverity:'low'`, e il rail `news-high` che scatta su 'high' e su nient'altro.
+//
+// agent27 è quindi TENUTO ACCESO e sorvegliato da agent-monitor: se muore, il suo file invecchia,
+// agent35 lo scarta dopo 30 minuti — correttamente — e il freno torna cieco.
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════
 
 module.exports = {
@@ -123,8 +136,6 @@ module.exports = {
     },
     {
       name:          'agent27-news-guard',
-      // DISABILITATO 2026-08-06 — vedi la nota in testa al file.
-      autostart:     false,
       script:        './agents/agent27-news-guard.js',
       cwd:           '/root/prediction-market',
       restart_delay: 30000,

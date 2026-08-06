@@ -86,8 +86,15 @@ const MIN_STALE_MS = 5 * 60 * 1000;
 //
 // RESTORE: `git revert` di questo commit e di quello sull'ecosystem, poi `pm2 start <nome>` per
 // ciascuno e `pm2 restart agent-monitor`. Niente è stato cancellato: solo fermato.
+// agent27-news-guard è RIENTRATO il 6 agosto 2026, poche ore dopo essere stato fermato, perché la
+// correzione al suo consumatore l'ha reso di nuovo utile: agent35 ora legge /tmp/news-guard.json (il
+// file che contiene davvero le severità) invece di /tmp/news-guard-state.json, quindi il rail
+// `news-high` di lib/maker/risk-rails.js riceve finalmente un input. Va sorvegliato proprio per questo:
+// se agent27 muore, il suo file invecchia, agent35 lo scarta oltre i 30 minuti — correttamente — e il
+// freno torna cieco. Un freno che si spegne in silenzio è la cosa che questo monitor esiste per evitare.
 const WATCHED_AGENTS_RAW = [
   { pm2Name: 'agent24-liquidity-rewards',  hbKey: null },
+  { pm2Name: 'agent27-news-guard',         hbKey: 'agent27-news-guard',      cadenceMs: 11 * 60_000 }, // scan ~10-11 min (54s di lavoro + attesa)
   { pm2Name: 'agent38-tape-watchdog',      hbKey: 'agent38-tape-watchdog',   cadenceMs: 60_000 },      // agent38 CHECK_INTERVAL_MS — the watcher is itself watched (who-watches-the-watchman)
   { pm2Name: 'dashboard',                  hbKey: null },
 ];
@@ -331,7 +338,16 @@ async function checkHealth() {
 
   for (const { pm2Name: name, hbKey, staleMs } of WATCHED_AGENTS) {
     const heartbeatRequired = hbKey != null;
-    const lastBeat = heartbeatRequired ? (hb[hbKey] ?? null) : null;
+    // ── DUE FORME DI BATTITO, UNA SOLA LETTURA ────────────────────────────────────────────────────
+    // La maggior parte degli agent scrive un numero (l'epoch ms). Tre — agent27, agent28, agent29 —
+    // scrivono invece un OGGETTO `{ ts, …contatori }`. Qui si faceva `now - lastBeat` sul valore
+    // grezzo: con l'oggetto il risultato è NaN, e la riga sotto (`beatAge > staleMs`) su NaN è FALSA,
+    // quindi quell'agent non sarebbe MAI risultato stantio. Una sorveglianza che non può accorgersi
+    // di niente è peggio di nessuna sorveglianza, perché sullo schermo si legge «✓».
+    // Trovato il 6 agosto 2026 rimettendo agent27 sotto sorveglianza dopo la correzione del news-guard.
+    const beatRaw = heartbeatRequired ? (hb[hbKey] ?? null) : null;
+    const lastBeat = typeof beatRaw === 'number' ? beatRaw
+      : (beatRaw && typeof beatRaw === 'object' && Number.isFinite(beatRaw.ts) ? beatRaw.ts : null);
     const pm2proc  = pm2map[name];
     const pm2status = pm2proc?.pm2_env?.status ?? 'unknown';
     const pm2uptime = pm2proc?.pm2_env?.pm_uptime ? Math.round((now - pm2proc.pm2_env.pm_uptime) / 1000) : null;

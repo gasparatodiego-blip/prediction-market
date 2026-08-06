@@ -90,7 +90,28 @@ const OPERATOR_USER = process.env.MAKER_OPERATOR_USER || 'operator';
 const LIVE_BOOKS_FILE = '/tmp/clob-live-books.json';        // agent34 (adjusted mid + live/stale)
 const WATCHLIST_FILE  = '/root/prediction-market/data/liquidity-rewards.json'; // band config + rewardsDailyRate
 const NORMALIZED_FILE = '/tmp/liquidity-rewards.json';       // carries rewardScore per market
-const NEWS_STATE_FILE = '/tmp/news-guard-state.json';        // per-market severity, if present
+// ── LA SEVERITÀ DELLE NOTIZIE — IL FILE GIUSTO, dal 6 agosto 2026 ─────────────────────────────────
+// Qui c'era /tmp/news-guard-state.json, e il codice più sotto vi cercava `.markets`. Quel campo in
+// quel file non è mai esistito: news-guard-state.json è la CONTABILITÀ INTERNA di agent27 (alerted,
+// bookHist, regimeState, actionCooldown, actionHourly, providerHealth). La severità per mercato sta
+// nell'ALTRO file che agent27 scrive, /tmp/news-guard.json.
+//
+// Conseguenza, misurata prima della correzione: `newsByMarket` era SEMPRE VUOTA, quindi
+// `newsForceClose` (più sotto) era sempre falso e il rail `news-high` di lib/maker/risk-rails.js non
+// ha mai ricevuto un solo input in tutta la vita del sistema. Un freno di sicurezza scritto, testato,
+// collegato — e alimentato da un file che non contiene il dato.
+//
+// La forma è DIVERSA e va adattata, non copiata: qui `markets` è un ARRAY di righe, non un oggetto
+// indicizzato per id, e ogni riga porta `newsRisk` (la severità EFFETTIVA del regime, con isteresi —
+// è quella su cui agent27 stesso decide) accanto a `severity`.
+const NEWS_FILE = '/tmp/news-guard.json';                    // agent27 — severità per mercato (array)
+// Oltre questa età il file non descrive più il mondo: agent27 fa uno scan ogni ~10 minuti (misurato:
+// 53-55s di lavoro, ciclo completo intorno ai 10-11 min), quindi mezz'ora è ~3 cicli persi. Un file più
+// vecchio NON viene usato: la severità torna sconosciuta e il rail non scatta, che è la direzione
+// giusta — un freno che si aziona su una notizia di ieri è peggio di un freno che non c'è, e uno che
+// resta bloccato su un 'high' stantio congelerebbe il mercato per sempre. La staleness viaggia nello
+// stato pubblicato, così «non lo sappiamo» si legge invece di sembrare «nessuna notizia».
+const NEWS_STALE_MS = 30 * 60_000;
 const OUT_FILE        = '/tmp/maker-state.json';
 const HB_FILE         = '/tmp/agent-heartbeats.json';
 // The maker-specific heartbeat the dead-man watchdog (agent37) and the kill-switch UI read. Lives under
@@ -201,7 +222,7 @@ function loadInputs() {
   const books = readJson(LIVE_BOOKS_FILE);
   const watch = readJson(WATCHLIST_FILE);
   const norm = readJson(NORMALIZED_FILE);
-  const news = readJson(NEWS_STATE_FILE);
+  const news = readJson(NEWS_FILE);
   const bandByMarket = new Map();
   for (const m of (watch && watch.markets) || []) {
     if (m.conditionId) bandByMarket.set(m.conditionId, m);
@@ -214,12 +235,45 @@ function loadInputs() {
   // reject it against the wrong one rather than it silently settling somewhere unintended.
   const negRiskByMarket = new Map();
   for (const m of (norm && norm.markets) || []) if (m.marketId && typeof m.negRisk === 'boolean') negRiskByMarket.set(m.marketId, m.negRisk);
+  // ── LA SEVERITÀ PER MERCATO, dalla forma vera del file ──────────────────────────────────────────
+  // `markets` è un ARRAY di righe. Si prende `newsRisk`, che agent27 documenta come la severità
+  // EFFETTIVA del regime (politica book-primary + isteresi) — cioè quella su cui decide lui stesso —
+  // e si ripiega su `severity` solo se manca. Si filtra per venue: questo è il maker di Polymarket, e
+  // una riga Kalshi non deve poter fermare un mercato che non è suo.
+  //
+  // UN FILE VECCHIO NON PARLA. Oltre NEWS_STALE_MS la mappa resta vuota di proposito e il fatto viene
+  // pubblicato (`newsFeed` nello stato, più sotto): «non lo sappiamo» deve leggersi come tale, non
+  // travestirsi da «nessuna notizia». Vale anche a file assente — che è lo stato normale quando
+  // agent27 è fermo.
   const newsByMarket = new Map();
-  for (const [mid, s] of Object.entries((news && news.markets) || {})) newsByMarket.set(mid, s && s.severity);
+  const newsAt = news && news.meta && news.meta.generatedAt ? Date.parse(news.meta.generatedAt) : NaN;
+  const newsAgeMs = Number.isFinite(newsAt) ? Date.now() - newsAt : null;
+  const newsFresh = newsAgeMs != null && newsAgeMs >= 0 && newsAgeMs <= NEWS_STALE_MS;
+  if (newsFresh && Array.isArray(news.markets)) {
+    for (const m of news.markets) {
+      if (!m || !m.marketId) continue;
+      if (m.venue && m.venue !== 'polymarket') continue;
+      const sev = m.newsRisk || m.severity || null;
+      if (sev) newsByMarket.set(m.marketId, sev);
+    }
+  }
+  const newsFeed = {
+    file: NEWS_FILE,
+    readable: !!news,
+    generatedAt: Number.isFinite(newsAt) ? new Date(newsAt).toISOString() : null,
+    ageSec: newsAgeMs != null ? Math.round(newsAgeMs / 1000) : null,
+    maxAgeSec: Math.round(NEWS_STALE_MS / 1000),
+    fresh: newsFresh,
+    marketsWithSeverity: newsByMarket.size,
+    // Perché la mappa è vuota, quando lo è. Le tre assenze sono diverse e non vanno confuse.
+    reason: !news ? 'file assente — agent27-news-guard non sta girando'
+      : !newsFresh ? `stato vecchio di ${newsAgeMs != null ? Math.round(newsAgeMs / 1000) : '?'}s (limite ${Math.round(NEWS_STALE_MS / 1000)}s) — severità NON usata`
+        : null,
+  };
   // The RAW board markets — the SAME /tmp/liquidity-rewards.json the board reads. The universe resolver
   // runs the board's shared filter functions over these, so the bot's set is the board's set by construction.
   const normMarkets = (norm && Array.isArray(norm.markets)) ? norm.markets : [];
-  return { books, bandByMarket, rewardScoreByMarket, newsByMarket, normMarkets, negRiskByMarket };
+  return { books, bandByMarket, rewardScoreByMarket, newsByMarket, newsFeed, normMarkets, negRiskByMarket };
 }
 
 // The per-market operator config that carries the inventory ceiling. Absent row ⇒ ceiling 0 ⇒ the bot
@@ -261,7 +315,7 @@ function accrueReward(legKey, followScore, staticFrozenPrice, mid, vCents, now) 
 
 async function tick(cfg, adapter) {
   const now = Date.now();
-  const { books, bandByMarket, rewardScoreByMarket, newsByMarket, normMarkets, negRiskByMarket } = loadInputs();
+  const { books, bandByMarket, rewardScoreByMarket, newsByMarket, newsFeed, normMarkets, negRiskByMarket } = loadInputs();
   const legsByMarket = await loadLegs();
   const placementsByMarket = await loadPlacements();
   const ngCfg = loadNewsGuardConfig(process.env);
@@ -606,6 +660,12 @@ async function tick(cfg, adapter) {
     marketsOut[marketId] = {
       title: (band && (band.question || band.title)) || (bookMarket && bookMarket.title) || '',
       mid, feedLive, maxSpreadC, minSize, tick, rewardsDailyRate,
+      // LA SEVERITÀ CHE È ENTRATA NEI RAIL SU QUESTO MERCATO, pubblicata invece che solo consumata.
+      // Serviva: il difetto per cui `newsByMarket` era sempre vuota è sopravvissuto a lungo proprio
+      // perché da fuori un rail SENZA input e un rail con input tranquillo producono lo stesso
+      // silenzio. `null` qui significa «agent27 non copre questo mercato, o il suo file è vecchio» —
+      // e quale delle due lo dice `newsFeed` in cima allo stato.
+      newsSeverity: newsByMarket.get(marketId) || null,
       band: plan.market, rails: { cancelScope: rails.cancelScope, allowNewPlacement: rails.allowNewPlacement, trips: rails.trips },
       // The ceiling this market ran under this cycle, and what it actually admitted — externally
       // observable, so "the bot respects the cap" is a readable fact and not a claim.
@@ -664,6 +724,13 @@ async function tick(cfg, adapter) {
     // them. `readable:false` means the ownership file could not be read, in which case the engine treats
     // EVERY market as manual (fail closed) and this list is not the whole story; the flag says so.
     manualMode: (() => { const mm = readManualMode(); return { readable: mm.readable, error: mm.error, marketIds: mm.marketIds }; })(),
+    // ── DA DOVE ARRIVA (O NON ARRIVA) LA SEVERITÀ DELLE NOTIZIE ────────────────────────────────
+    // Esternamente osservabile di proposito: fino al 6 agosto 2026 questo motore leggeva il file
+    // sbagliato e `newsByMarket` era sempre vuota, ma da fuori non c'era modo di accorgersene —
+    // un rail senza input e un rail con input tranquillo producono lo stesso silenzio. Adesso lo
+    // stato dice quale file, di che età, se è considerato fresco, quanti mercati portano una
+    // severità e — quando sono zero — perché.
+    newsFeed,
     arming: { armed: arming.armed, expiresInSec: arming.expiresInSec ?? null, disarmedReason: arming.disarmedReason || null, notArmedLive },
     source: 'agent35-maker · paper pipeline · quotes from ADJUSTED mid · no orders placed (MAKER_MODE=' + cfg.mode + ')',
     config: { liveMinMarket: cfg.liveMinMarket, liveMinCapUsd: cfg.liveMinCapUsd, requote: cfg.requote, rails: cfg.rails },
