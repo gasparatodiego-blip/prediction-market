@@ -26,6 +26,10 @@ import { calcNetPerDay } from '@/lib/rewards/net-per-day';
 // coda può scorrere, e non conosce nessun endpoint: un avanzamento automatico non è un rischio da
 // sorvegliare, è una cosa che lì non si può scrivere.
 import { decidiAvanzamento, avanza as avanzaCoda, metti as mettiInCoda, riepilogo as riepilogoCoda } from '@/lib/rewards/coda-piazzamento';
+// LA CONFERMA A UN TOCCO, condivisa fra la tab Ottimizza e la tab Risk. Un file, non due.
+import ConfermaEPiazza from './ConfermaEPiazza';
+// Le differenze fra i due profili, GENERATE dai valori veri delle soglie invece che scritte a mano.
+import { differenzeProfili } from '@/lib/rewards/allocator-profiles';
 // LE RIGHE DEI DUE PIANI, IN UNA FUNZIONE PURA E PROVABILE. Stava dentro un useMemo, leggeva un solo
 // piano, e teneva invisibile «+ Metti in coda» per chi arrivava dal percorso normale. Una condizione
 // dentro un componente si può verificare solo con una regex sul sorgente, cioè non si può verificare.
@@ -414,8 +418,19 @@ export type PlacedTick = {
 };
 
 export default function RewardsAllocatePanel(
-  { onPlaceOrder, placed }: { onPlaceOrder?: (t: OrderTarget) => void; placed?: PlacedTick | null } = {},
+  { onPlaceOrder, placed, profile = 'safe' }: {
+    onPlaceOrder?: (t: OrderTarget) => void;
+    placed?: PlacedTick | null;
+    // ── IL PROFILO — L'UNICA DIFFERENZA FRA LA TAB OTTIMIZZA E LA TAB RISK ──────────────────────
+    // Le due tab montano QUESTO componente, non due copie. Il profilo viaggia nella query
+    // dell'allocatore (`&profile=`) e nell'etichetta d'audit del piazzamento; non cambia nessun
+    // gate, nessun prezzo e nessuna parte del motore di esecuzione.
+    profile?: 'safe' | 'risk';
+  } = {},
 ) {
+  const isRisk = profile === 'risk';
+  /** Il suffisso di query dell'allocatore. Con 'safe' resta la chiamata storica, invariata. */
+  const qProfilo = isRisk ? '&profile=risk' : '';
   const [bal, setBal] = useState<Balance | null>(null);
   const [balLoaded, setBalLoaded] = useState(false);
   const [capital, setCapital] = useState<string>(''); // operator's typed value — NEVER rewritten by us
@@ -501,7 +516,7 @@ export default function RewardsAllocatePanel(
     const n = Number(cap);
     if (!Number.isFinite(n) || n <= 0) { setPlan(null); return; }
     setLoading(true);
-    fetch(`/api/rewards/allocate?capital=${encodeURIComponent(cap)}`)
+    fetch(`/api/rewards/allocate?capital=${encodeURIComponent(cap)}${qProfilo}`)
       .then((r) => r.json())
       .then((p: Plan) => {
         setPlan(p);
@@ -511,7 +526,7 @@ export default function RewardsAllocatePanel(
         setOffsets(restored);
       })
       .catch(() => setPlan({ error: 'errore' } as any)).finally(() => setLoading(false));
-  }, []);
+  }, [qProfilo]);
 
   // AUTO-REFRESH: re-fetch the plan for the SAME (already-computed) capital, updating ONLY the plan — it never
   // touches the operator's typed capital or their per-market offset overrides, so both survive every cycle.
@@ -519,11 +534,11 @@ export default function RewardsAllocatePanel(
     const n = Number(cap);
     if (!Number.isFinite(n) || n <= 0) return;
     const t0 = performance.now();
-    fetch(`/api/rewards/allocate?capital=${encodeURIComponent(cap)}`)
+    fetch(`/api/rewards/allocate?capital=${encodeURIComponent(cap)}${qProfilo}`)
       .then((r) => r.json())
       .then((p: Plan) => { if (p && !p.error) { setPlan(p); setRefreshMs(performance.now() - t0); setLastRefreshMs(Date.now()); } })
       .catch(() => { /* keep the last good plan on a failed refresh */ });
-  }, []);
+  }, [qProfilo]);
 
   useEffect(() => {
     if (!plan || plan.error || !(plan.capital > 0)) return;
@@ -707,6 +722,27 @@ export default function RewardsAllocatePanel(
     [plan, autoPlan],
   );
 
+  // ── LE DUE GAMBE DI UNA CARD ────────────────────────────────────────────────────────────────────
+  // Non si costruiscono qui: si chiede a `gambeDiUnaRiga`, la STESSA funzione che alimentava la coda e
+  // il piazzamento in blocco. Se il piano non riesce a produrre due gambe piazzabili (incrocia il
+  // libro, fuori banda sul libro vivo, sotto la size minima, sarebbe primo sul libro) restituisce uno
+  // scarto, e ConfermaEPiazza mostra il rifiuto invece del bottone — che è ciò che deve succedere:
+  // il bottone non deve esistere quando l'azione non esiste.
+  const gambeCard = useCallback((marketId: string) => {
+    const riga = righePerId.get(marketId.toLowerCase());
+    if (!riga) return [];
+    const off = offsets[marketId] ?? (riga as Row).computedDefaultOffsetTicks;
+    try {
+      const g = gambeDiUnaRiga(riga, off);
+      return g && !g.scarto && Array.isArray(g.rows) ? g.rows : [];
+    } catch { return []; }
+  }, [righePerId, offsets]);
+
+  // I mercati piazzati IN QUESTA SESSIONE. Serve a una cosa sola: impedire che lo stesso piano venga
+  // confermato due volte di fila senza ricalcolarlo — che raddoppierebbe la posizione invece di
+  // ripristinarla. Non è persistito: al ricarico il piano si rifà comunque.
+  const [piazzati, setPiazzati] = useState<string[]>([]);
+
   const testaId = coda[0] ?? null;
   const testaRiga = testaId ? righePerId.get(testaId.toLowerCase()) ?? null : null;
   // Il target della testa: la STESSA funzione del bottone «Piazza ordine» di quella riga.
@@ -886,13 +922,13 @@ export default function RewardsAllocatePanel(
     if (!Number.isFinite(n) || n <= 0) { setAutoErr('inserisci prima un capitale'); return; }
     setAutoBusy(true); setAutoErr(null); setAddPreview(null); setAddResult(null);
     try {
-      const r = await fetch(`/api/rewards/allocate?capital=${encodeURIComponent(capital)}&auto=1`);
+      const r = await fetch(`/api/rewards/allocate?capital=${encodeURIComponent(capital)}&auto=1${qProfilo}`);
       const b = (await r.json()) as Plan;
       if (b.error) { setAutoErr(b.error); setAutoPlan(null); }
       else setAutoPlan(b);
     } catch (e) { setAutoErr((e as Error).message); }
     finally { setAutoBusy(false); }
-  }, [capital]);
+  }, [capital, qProfilo]);
 
   // Passo 1 dell'aggiunta: ANTEPRIMA. Rilegge il mercato dal venue e dice esattamente cosa verrebbe
   // scritto — senza scrivere nulla. Passo 2: conferma (preview:false), che è l'unica cosa che scrive.
@@ -1027,9 +1063,37 @@ export default function RewardsAllocatePanel(
         <div className="alloc-h" style={{ fontSize: 15 }}>Cerca la combinazione migliore</div>
         <div className="alloc-sub" title="L universo e sempre stato tutto il board reward: enabledMarketIds non entra nel calcolo dell allocazione e non l ha mai fatto. Questa azione aggiunge il test dell orizzonte di risoluzione e restituisce il registro dei candidati.">
           Cerca su <b>tutti</b> i mercati con montepremi — non solo quelli abilitati — e propone la
-          combinazione migliore per questo capitale, scartando quelli che scadono prima di rientrare del
-          costo di adverse selection.
+          combinazione migliore per questo capitale
+          {isRisk
+            ? <>, con le soglie del <b>profilo Risk</b> elencate qui sotto.</>
+            : <>, scartando quelli che scadono prima di rientrare del costo di adverse selection.</>}
         </div>
+
+        {/* ══ LE SOGLIE VERE DEL PROFILO RISK ═══════════════════════════════════════════════════════
+            Non è un testo scritto a mano che descrive il codice: `differenzeProfili()` legge le soglie
+            dai moduli che le possiedono (order-ttl, horizon, plan-to-orders) e le formatta. Se una
+            cambia, questa tabella cambia con lei e non può restare indietro. */}
+        {isRisk && (
+          <div className="alloc-note" style={{ marginTop: 10 }} data-alloc-profilo-risk>
+            <div><b>Cosa cambia rispetto al profilo Safe</b></div>
+            <table style={{ width: '100%', marginTop: 6, fontSize: 12.5, borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ textAlign: 'left', opacity: 0.75 }}>
+                  <th style={{ width: '34%' }}>Vincolo</th><th style={{ width: '33%' }}>Safe</th><th>Risk</th>
+                </tr>
+              </thead>
+              <tbody>
+                {differenzeProfili().map((d) => (
+                  <tr key={d.voce} data-alloc-profilo-voce={d.voce}>
+                    <td style={{ paddingRight: 8 }}>{d.voce}</td>
+                    <td style={{ paddingRight: 8, opacity: 0.85 }}>{d.safe}</td>
+                    <td><b>{d.risk}</b></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
 
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 10 }}>
           <button className="alloc-btn" data-alloc-auto-run onClick={runAutoOptimise}
@@ -1189,39 +1253,25 @@ export default function RewardsAllocatePanel(
                         media del board, e questa schermata non aveva modo di dirlo. */}
                     {velocitaCella(c, autoPlan.velocitaMisura)}
                   </div>
-                  <div style={{ marginTop: 9 }}>
-                    <button className="alloc-btn" style={{ fontSize: 12 }}
-                      data-alloc-auto-preview
-                      disabled={addBusy != null}
-                      title="anteprima dell’aggiunta: non scrive nulla"
-                      onClick={() => addMarket(c.marketId, true, c.pot)}>
-                      {addBusy === `preview:${c.marketId}` ? '…' : '1 · Anteprima'}
-                    </button>
-                    {/* ── IN CODA, NON IN ORDINE ────────────────────────────────────────────────
-                        Mettere in coda NON PIAZZA: costruisce un elenco di cose da confermare una per
-                        una. Ma da adesso ABILITA — cioè registra il mercato, accende l'uscita
-                        automatica, lo mette in allowlist e lo prende in gestione manuale — perché
-                        senza quelle scritture il piazzamento veniva rifiutato alla conferma finale e
-                        l'operatore doveva uscire dal flusso per farle a mano. Resta separato da
-                        «1 · Anteprima» / «2 · Conferma e aggiungi», che continuano a funzionare per
-                        chi vuole abilitare un mercato senza metterlo in coda, e dal piazzamento in
-                        blocco, che azzera e rifà tutto il piano. */}
-                    {puoAndareInCoda({ righe: righePerId, marketId: c.marketId }) && (
-                      <button className="alloc-btn" style={{ fontSize: 12, marginLeft: 6 }}
-                        data-alloc-queue-add={c.marketId}
-                        disabled={codaBusy != null || coda.some((x) => x.toLowerCase() === c.marketId.toLowerCase())}
-                        title="Aggiunge questo mercato alla coda di conferme. NON piazza nulla adesso. Se il mercato non è ancora in gestione manuale lo prende in gestione ora (agent35 si terrà fuori da quel libro), perché senza quella proprietà il piazzamento verrebbe rifiutato alla conferma."
-                        onClick={() => inCoda(c.marketId, c.pot)}>
-                        {codaBusy === c.marketId ? 'verifico…'
-                          : coda.some((x) => x.toLowerCase() === c.marketId.toLowerCase()) ? '✓ in coda' : '+ Metti in coda'}
-                      </button>
-                    )}
-                    {codaErr && codaErr.marketId.toLowerCase() === c.marketId.toLowerCase() && (
-                      <div className="alloc-note alloc-warn" style={{ marginTop: 6 }} data-alloc-queue-refused>
-                        ⚠ <b>Non messo in coda.</b> {codaErr.motivo}
-                      </div>
-                    )}
-                  </div>
+                  {/* ══ UN SOLO BOTTONE ══════════════════════════════════════════════════════════
+                      Prima qui c'erano «1 · Anteprima» e «+ Metti in coda», e la conferma vera
+                      avveniva altrove, due volte, una per gamba. Adesso la decisione si conferma dove
+                      la si prende: il dialog di ConfermaEPiazza mostra mercato, capitale totale e le
+                      due gambe coi numeri appena riletti dal server, e solo il bottone dentro il
+                      dialog invia. È lo STESSO componente della tab Risk. */}
+                  <ConfermaEPiazza
+                    marketId={c.marketId}
+                    title={c.name || c.shortId || null}
+                    gambe={gambeCard(c.marketId)}
+                    capitaleUsd={c.capital ?? null}
+                    potAtPlan={c.pot ?? null}
+                    profile={profile}
+                    onPlaced={(mid, esito) => { if (esito && esito.ok) setPiazzati((v) => (v.includes(mid.toLowerCase()) ? v : [...v, mid.toLowerCase()])); }}
+                    disabled={piazzati.includes(c.marketId.toLowerCase())}
+                    disabledReason={piazzati.includes(c.marketId.toLowerCase())
+                      ? 'già piazzato in questa sessione: ricalcola il piano prima di rifarlo, altrimenti raddoppieresti la posizione'
+                      : null}
+                  />
 
                   {/* ── PASSO 2 — L'ANTEPRIMA, SOTTO IL MERCATO A CUI SI RIFERISCE ──────────────────
                       Questo blocco è esistito, ed è stato perso: il refactor «sei tab diventano tre»
