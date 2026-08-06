@@ -179,17 +179,44 @@ export async function GET() {
       : c.oltreSogliaSec <= 10
         ? ` — appena ${c.oltreSogliaSec}s oltre la soglia, quindi è mancato pochissimo`
         : ` — ${c.oltreSogliaSec}s oltre la soglia`;
+    // QUANTO LIBRO è sparito. Una corsia sola e il libro intero sono due mattine diverse, e il testo
+    // deve dirlo nella prima riga — non lasciarlo dedurre da un conteggio.
+    const mirata = c.ambito === 'corsie';
+    const morti = (c.motoriMorti ?? []).map((m) => m.processo).filter(Boolean).join(', ') || 'il motore maker';
+    const vivi = (c.motoriVivi ?? []).map((m) => m.processo).filter(Boolean).join(', ');
+    // UNO SCATTO CHE NON HA TOLTO NIENTE NON È UNA PERDITA DI CAPITALE, ed è sbagliato raccontarlo come
+    // tale: «0 ordini cancellati, $0.00 tornati liberi» in mezzo a «cosa manca» è precisamente la riga
+    // che si impara a ignorare. Resta però un fatto che conta — un motore è morto — quindi la voce c'è,
+    // dice quello, e non finge che ci sia capitale da rimettere in gioco.
+    if (c.ordiniCancellati === 0 && !c.simulata) {
+      todo.push({
+        who: 'operatore',
+        what: `Un motore si è fermato e il guardiano è scattato, ma non c'era niente da cancellare:`
+          + ` ${morti} non batteva da ${c.stalenessSec ?? '?'}s contro una soglia di ${c.thresholdSec ?? '?'}s${margine}.`
+          + (mirata && vivi ? ` ${vivi} stava lavorando regolarmente e il suo libro non è stato toccato.` : '')
+          + (c.ordiniLasciati ? ` I ${c.ordiniLasciati} ordini a riposo sono ancora tutti sul book.` : ' Nessun ordine era a riposo in quel momento.'),
+        how: `È successo ${quando}. Nessun capitale è tornato libero — non c'è niente da rimettere in gioco.`
+          + ` Vale però la pena guardare perché ${morti} aveva smesso di battere: la prossima volta potrebbe succedere con il libro pieno.`,
+      });
+      continue;
+    }
     todo.push({
       who: 'operatore',
-      what: (c.simulata ? 'Il guardiano SIMULA una cancellazione totale' : 'IL GUARDIANO HA CANCELLATO TUTTO IL LIBRO')
+      what: (c.simulata
+        ? `Il guardiano SIMULA una cancellazione${mirata ? ' mirata' : ' totale'}`
+        : mirata ? 'IL GUARDIANO HA CANCELLATO UNA CORSIA DEL LIBRO' : 'IL GUARDIANO HA CANCELLATO TUTTO IL LIBRO')
         + `: ${c.ordiniCancellati} ordini su ${c.mercatiToccati} mercati, e ${capitale} sono tornati liberi.`
-        + ` Motivo: il battito del motore maker era fermo da ${c.stalenessSec ?? '?'}s contro una soglia di ${c.thresholdSec ?? '?'}s${margine}.`
+        + (mirata && c.ordiniLasciati
+          ? ` Gli altri ${c.ordiniLasciati} ordini a riposo NON sono stati toccati: appartengono a un motore ancora vivo.`
+          : '')
+        + ` Motivo: ${morti} non batteva da ${c.stalenessSec ?? '?'}s contro una soglia di ${c.thresholdSec ?? '?'}s${margine}.`
+        + (mirata && vivi ? ` ${vivi} invece stava lavorando regolarmente, quindi il suo libro è stato lasciato dov'era.` : '')
         + (c.simulata ? ' Nessuna credenziale di cancellazione: gli ordini sono ancora sul libro.' : '')
         + (c.erroreVenue ? ` ATTENZIONE: il venue ha risposto con un errore (${c.erroreVenue}) — parte di quegli ordini potrebbe essere ancora a riposo.` : ''),
-      how: `È successo ${quando}${c.heartbeatAt ? `; l'ultimo battito del motore risale a ${new Date(c.heartbeatAt).toLocaleTimeString('it-IT')}` : ''}.`
+      how: `È successo ${quando}${c.heartbeatAt ? `; l'ultimo battito risale a ${new Date(c.heartbeatAt).toLocaleTimeString('it-IT')}` : ''}.`
         + ' Questa non è una scadenza né un fill: gli ordini sono stati tolti dal guardiano, quindi il capitale è libero'
         + ' e resta fermo finché non lo si rimette in gioco a mano.'
-        + ' Prima di ripiazzare vale la pena guardare perché il motore aveva smesso di battere.',
+        + ` Prima di ripiazzare vale la pena guardare perché ${morti} aveva smesso di battere.`,
     });
   }
 
@@ -291,6 +318,8 @@ export async function GET() {
         heartbeatAt: c.heartbeatAt,
         ordiniCancellati: c.ordiniCancellati, mercatiToccati: c.mercatiToccati,
         capitaleUsd: c.capitaleUsd, simulata: c.simulata, erroreVenue: c.erroreVenue,
+        ambito: c.ambito, ordiniLasciati: c.ordiniLasciati,
+        motoriMorti: c.motoriMorti, motoriVivi: c.motoriVivi,
         venues: c.venues,
       })),
     },

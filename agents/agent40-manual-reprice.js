@@ -97,6 +97,20 @@ const killSwitch = require('../lib/safety/kill-switch');
 const { atomicWriteJson } = require('../lib/atomicJsonWrite');
 
 const HEARTBEATS = '/tmp/agent-heartbeats.json';
+// ── IL BATTITO CHE IL GUARDIANO DEVE SORVEGLIARE ────────────────────────────────────────────────────
+// Questo processo possiede gli ordini della corsia manuale: li piazza, li riprezza, li rinnova, li
+// cancella. Fino al 6 agosto 2026 non aveva un battito che qualcuno guardasse — scriveva solo quello di
+// flotta in /tmp/agent-heartbeats.json, che nessun watchdog legge — mentre agent37 sorvegliava agent35,
+// che su questi mercati sta deliberatamente alla larga («manual mode active, skip»).
+//
+// Quella notte agent35 si è fermato 129s e agent37 ha cancellato NOVE ordini di QUESTO processo, che
+// nello stesso intervallo stava facendo undici chiamate al venue ogni cinque secondi. Il guardiano
+// stava sorvegliando la cosa sbagliata; adesso questo file è la cosa giusta.
+//
+// SIGNIFICA UNA COSA SOLA: «un ciclo è arrivato in fondo». Non «ho piazzato», non «ho deciso di sì» —
+// uno skip deliberato batte esattamente come un riprezzo, perché è un giro completato. Il ciclo che si
+// rifiuta di agire su un mid vecchio sta lavorando, non morendo.
+const MANUAL_HB_FILE = path.join(__dirname, '..', 'data', 'manual-reprice-heartbeat.json');
 // Lo stato vivo del tracking, per la dashboard. Un motore che piazza da solo deve poter rispondere
 // «cosa stai facendo adesso» senza che si debbano leggere i log di un processo.
 const TRACKING_STATE_FILE = '/tmp/maker-mm-tracking-state.json';
@@ -155,6 +169,40 @@ function heartbeat() {
     hb['agent40-manual-reprice'] = Date.now();
     atomicWriteJson(HEARTBEATS, hb);
   } catch { /* best-effort; the durable heartbeat in data/ is the one the panel reads */ }
+}
+
+// ── IL BATTITO DUREVOLE DELLA CORSIA MANUALE ────────────────────────────────────────────────────────
+// Scritto in fondo a OGNI giro — riuscito O fallito — con la stessa disciplina del battito di agent35:
+// un ciclo andato in errore batte comunque, portando `lastError`, mentre un battito che SI FERMA è il
+// vero segnale di morte. Se il battito si fermasse su un errore, ogni eccezione transitoria diventerebbe
+// una cancellazione del libro.
+//
+// Porta anche cosa il ciclo ha VISTO, perché il guardiano e il pannello devono poter distinguere «vivo e
+// fermo per prudenza» da «vivo e senza niente da fare»: gate e motivo dell'ultimo giro, quanti ordini
+// c'erano a riposo, su quali mercati. Il 6 agosto quei campi avrebbero detto, a chiare lettere,
+// `gate:null` con nove ordini sorvegliati e 216 skip consecutivi su TX-15.
+let cicloManuale = 0;
+function scriviBattitoManuale(res, errore) {
+  const mercati = (res && Array.isArray(res.markets)) ? res.markets : [];
+  const ordiniARiposo = mercati.reduce((a, m) => a + (Number.isFinite(m.considered) ? m.considered : 0), 0);
+  try {
+    atomicWriteJson(MANUAL_HB_FILE, {
+      ts: Date.now(),
+      cycle: cicloManuale,
+      // Il ciclo ha girato davvero, oppure è uscito su un interruttore spento: due stati diversi, ed
+      // entrambi sono vita. Il guardiano non legge questo campo — legge `ts` — ma chi guarda il pannello sì.
+      ran: res ? res.ran === true : false,
+      gate: res ? (res.gate || null) : null,
+      reason: res ? (res.reason || null) : null,
+      ordiniARiposo,
+      marketIds: mercati.map((m) => m.marketId).filter(Boolean),
+      // Il gate per mercato dell'ultimo giro: è qui che «skip-mid-stale su TX-15» diventa un fatto
+      // leggibile da fuori invece di una riga di log fra centomila.
+      gatePerMercato: mercati.filter((m) => m.gate).map((m) => ({ marketId: m.marketId, gate: m.gate })),
+      lastError: errore ? (errore.message || String(errore)) : null,
+      processo: 'agent40-manual-reprice',
+    });
+  } catch (e) { log('battito manuale NON scritto:', e && e.message ? e.message : String(e)); }
 }
 
 // Summarise a cycle in one line, and ONLY when something is worth saying. A watcher that logs "nothing
@@ -633,8 +681,10 @@ async function main() {
 
   // Never let one bad cycle kill the watcher — but never let a failure be silent either.
   const run = async () => {
-    try { await cycle(); }
-    catch (e) { log('cycle failed:', e && e.message ? e.message : String(e)); }
+    cicloManuale++;
+    let esito = null; let erroreCiclo = null;
+    try { esito = await cycle(); }
+    catch (e) { erroreCiclo = e; log('cycle failed:', e && e.message ? e.message : String(e)); }
     // The reconciliation runs on its OWN throttle and its OWN try/catch: a reprice cycle that fails must
     // not stop the ledger being reconciled, and vice versa.
     // `riconciliato` è un FATTO restituito dalla riconciliazione, non un'ipotesi dedotta dall'orologio.
@@ -653,7 +703,10 @@ async function main() {
     try { if (riconciliato) await closeTask(); }
     catch (e) { log('close task failed:', e && e.message ? e.message : String(e)); }
 
-    finally { heartbeat(); }
+    // IL BATTITO PER ULTIMO, E SEMPRE. `finally` perché la morte è il SILENZIO, non l'errore: se un
+    // fallimento saltasse il battito, ogni eccezione transitoria diventerebbe una cancellazione del
+    // libro — cioè il difetto del 6 agosto, riprodotto sull'altro motore.
+    finally { heartbeat(); scriviBattitoManuale(esito, erroreCiclo); }
   };
   await run();
   setInterval(run, tuning.pollMs);

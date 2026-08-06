@@ -278,6 +278,10 @@ interface WalletResp {
       heartbeatAt: string | null;
       ordiniCancellati: number; mercatiToccati: number;
       capitaleUsd: number | null; simulata: boolean; erroreVenue: string | null;
+      // 'corsie' = è morto UN motore e l'altro lavorava: è sparita solo la sua parte del libro.
+      ambito?: 'tutto' | 'corsie'; ordiniLasciati?: number;
+      motoriMorti?: Array<{ id: string | null; processo: string | null; etichetta: string | null; stalenessSec: number | null }>;
+      motoriVivi?: Array<{ id: string | null; processo: string | null; etichetta: string | null; stalenessSec: number | null }>;
     }>;
   } | null;
   blockedBy: 'operatore' | 'sistema' | null; todo: WalletTodo[];
@@ -1107,9 +1111,18 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
                     La finestra qui è di dodici ore e non di mezz'ora: questo evento capita di notte
                     (il 6 agosto: 00:16 UTC) e un avviso già scaduto all'apertura del pannello la
                     mattina dopo non avrebbe avvisato nessuno — che è esattamente com'è andata. */}
-                {wal.cancellazioniDiEmergenza && wal.cancellazioniDiEmergenza.count > 0 && (
+                {/* La casella riassuntiva compare solo se c'è CAPITALE coinvolto: uno scatto che non ha
+                    tolto niente è comunque un fatto (un motore è morto) e resta nell'elenco qui sotto,
+                    ma non merita un numerone «0 ordini · $0.00» in cima. */}
+                {wal.cancellazioniDiEmergenza && wal.cancellazioniDiEmergenza.ordiniCancellati > 0 && (
                   <div className="ex-stat" data-lrc-wallet-emergenza={wal.cancellazioniDiEmergenza.count}>
-                    <span className="ex-stat-k">Libro svuotato dal guardiano</span>
+                    <span className="ex-stat-k">
+                      {/* Una corsia sola e il libro intero sono due mattine diverse: lo dice il titolo,
+                          non un conteggio da interpretare. */}
+                      {wal.cancellazioniDiEmergenza.items.every((c) => c.ambito === 'corsie')
+                        ? 'Una corsia cancellata dal guardiano'
+                        : 'Libro svuotato dal guardiano'}
+                    </span>
                     <span className="ex-stat-v ex-dn">
                       {wal.cancellazioniDiEmergenza.ordiniCancellati === 1
                         ? '1 ordine cancellato'
@@ -1119,11 +1132,12 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
                       {money(wal.cancellazioniDiEmergenza.capitaleUsd)} tornati liberi
                     </span>
                     <p className="ex-why ex-why-warn">
-                      Il guardiano del maker ha cancellato tutti gli ordini a riposo perché il battito del
-                      motore era fermo oltre la soglia consentita. Non è una scadenza e non è un&apos;esecuzione:
+                      Il guardiano del maker ha cancellato gli ordini a riposo di un motore il cui battito
+                      era fermo oltre la soglia consentita. Non è una scadenza e non è un&apos;esecuzione:
                       gli ordini sono stati tolti di proposito, quindi quel capitale è libero e resta fermo
-                      finché non lo rimetti in gioco. Quanto era fermo il battito, contro quale soglia, e su
-                      quali mercati: nell&apos;elenco qui sotto.
+                      finché non lo rimetti in gioco. Se un secondo motore stava lavorando regolarmente il
+                      suo libro NON è stato toccato — quale motore era fermo, da quanto, contro quale
+                      soglia e cosa è rimasto in piedi: nell&apos;elenco qui sotto.
                     </p>
                   </div>
                 )}

@@ -13,8 +13,17 @@ export interface MercatoCancellato {
   ok: boolean;
 }
 
+export interface MotoreNelReferto {
+  id: string | null;
+  processo: string | null;
+  etichetta: string | null;
+  stalenessSec: number | null;
+}
+
 export interface VenueCancellato {
   venue: string | null;
+  /** La corsia cancellata, quando lo scatto è stato mirato. `null` per una spazzata totale. */
+  corsia: string | null;
   ok: boolean;
   cancelled: number | null;
   venueOpenBefore: number | null;
@@ -42,6 +51,15 @@ export interface CancellazioneDiEmergenza {
   mercatiToccati: number;
   /** Il capitale tornato libero. `null` = almeno un ordine non leggibile, mai uno zero di comodo. */
   capitaleUsd: number | null;
+  /**
+   * 'tutto'  — nessun motore rispondeva più: il libro è vuoto.
+   * 'corsie' — un motore è morto e l'altro lavorava: è sparita solo la sua parte del libro.
+   */
+  ambito: 'tutto' | 'corsie';
+  /** Ordini a riposo LASCIATI dov'erano da uno scatto mirato, perché di un motore ancora vivo. */
+  ordiniLasciati: number;
+  motoriMorti: MotoreNelReferto[];
+  motoriVivi: MotoreNelReferto[];
   simulata: boolean;
   /** Un venue che ha risposto male: quegli ordini potrebbero essere ancora sul libro. */
   erroreVenue: string | null;
@@ -54,6 +72,9 @@ export function costruisciCancellazione(args: {
   thresholdSec: number | null;
   heartbeatTs?: number | null;
   results?: unknown[];
+  ambito?: 'tutto' | 'corsie';
+  motoriMorti?: Array<Partial<MotoreNelReferto>>;
+  motoriVivi?: Array<Partial<MotoreNelReferto>>;
 }): CancellazioneDiEmergenza;
 
 export function registraCancellazioneDiEmergenza(
