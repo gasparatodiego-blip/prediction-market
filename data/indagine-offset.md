@@ -137,9 +137,55 @@ una decisione separata.
 
 ---
 
-## Proposte — nessuna applicata
+## APPLICATO — proposta 1, e un secondo fattore che è emerso applicandola
 
-**1 · Far pagare a `computedDefaultOffset` il punteggio che sta buttando via.** Oggi confronta
+*(aggiunto il 7 agosto 2026, su richiesta esplicita. Le proposte 2–4 restano non applicate.)*
+
+`computedDefaultOffset` ora confronta **`S(t) × lordo − costo(t)`**. `placementScore` è importata da
+`realistic-estimate.js`, non riscritta: due implementazioni della stessa formula sarebbero due opinioni
+su dove conviene stare.
+
+**Applicando la correzione è saltato fuori un secondo fattore, e senza quello la correzione era
+peggio di niente su alcune righe.** Il costo di adverse selection si sottrae in **dollari**, il
+punteggio **moltiplica**: se il lordo è stantio, il confronto fra i due è fuori scala. Su una riga
+reale il montepremi era crollato da $36/g a $6/g (`pool-trend` ×0,165):
+
+| tick | offset | S | lordo pieno − costo | lordo **scontato** − costo | realistico |
+|---|---|---|---|---|---|
+| 1 | 0,1¢ | 0,913 | $2,27 − $0,33 = **$1,94** | $0,375 − $0,33 = **$0,04** | $0,00 |
+| 8 | 0,8¢ | 0,415 | $1,03 − $0,02 = $1,01 | $0,171 − $0,02 = **$0,15** | **$0,16** |
+
+Col lordo pieno la funzione sceglieva il tick stretto **proprio dove il montepremi non c'è più**. Ora
+applica anche lo sconto del trend — tick-indipendente, quindi non cambia la forma della curva, cambia
+il peso relativo del costo. Il motivo della riga lo dichiara: `«lordo pesato dal punteggio e scontato
+dal trend (×0.165) − markout misurato»`.
+
+**Cosa NON è incluso**: il cap `thin-book` del modello realistico (scatta oltre il 60% di quota
+modellata). È anch'esso tick-indipendente e moltiplicativo, quindi in linea di principio può spostare
+la scelta allo stesso modo del trend; non l'ho aggiunto perché richiederebbe di duplicare qui l'algebra
+delle share e la costante `maxCredibleShare`. Sulle righe dove morde, il pannello mostra già la
+bandiera «mercato molto sottile».
+
+**Esito misurato**, subito dopo la modifica:
+
+| piano | righe | realistico | divergenze con `realisticBest` | tick scelti |
+|---|---|---|---|---|
+| $620 | 8 | $9,44/g | **0** (era 0) | 1×7, **8×1** |
+| $60.000 | 20 | $161,06/g | **0** (erano 2, −$12,39/g) | 1×20 |
+
+I totali assoluti non sono confrontabili fra i giri — il board si aggiorna ogni 15 minuti e in un'ora
+è passato da $4,85 a $161 a capitali diversi. **Quello che è confrontabile è il numero di divergenze:
+zero su entrambi i piani.** E la riga a 8 tick nel piano da $620 è la prova che la correzione non
+degenera in «sempre il tick più stretto»: dove il montepremi è crollato, allarga.
+
+30 assertion in `selfcheckOffset`, incluse le due righe reali di questa indagine e i quattro casi del
+trend. `agent41` e `dashboard` riavviati.
+
+---
+
+## Proposte — le restanti, non applicate
+
+**1 · ~~Far pagare a `computedDefaultOffset` il punteggio che sta buttando via.~~ FATTO, sopra.** Oggi confronta
 `gross − costo` con un gross piatto. Il confronto onesto è `S(tick) × gross − costo(tick)`: la stessa
 funzione, con il lordo pesato dal punteggio pubblicato. Sulle due righe qui sopra sceglierebbe il tick 1
 in entrambi i casi. È la correzione più piccola possibile e usa una formula che il repo già implementa
