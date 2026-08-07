@@ -16,6 +16,10 @@ export interface QuotePlan {
   yes: QuoteSide | null; no: QuoteSide | null;
 }
 export declare const TRACKING_SOURCE: string;
+/** L'orologio del motore di tracking, in millisecondi. */
+export declare const TRACKING_POLL_MS: number;
+/** Oltre questa età del mid il motore mette il mercato IN PAUSA. Il pannello mostra la stessa soglia. */
+export declare const MID_STALE_PAUSE_SEC: number;
 export declare function planQuotes(args: { mid?: number | null; offsetCents?: number | null; tick?: number | null; bandRadiusCents?: number | null }): QuotePlan;
 export declare function decideRetrack(args: {
   mid?: number | null; referenceMid?: number | null; minMoveCents?: number | null;

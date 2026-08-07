@@ -58,6 +58,8 @@ import RewardsUnified from './RewardsUnified';
 // nessun comando: vive nel Riepilogo perché è stato, non perché sia una leva.
 import Watch21Panel from './Watch21Panel';
 import OrderPanel, { type OrderTarget } from './OrderPanel';
+// Il mid vivo: sola lettura, in push dal feed di agent34 via SSE. Non piazza e non cancella.
+import MidVivoPanel from './MidVivoPanel';
 // LA CLASSIFICAZIONE SAFE/RISK, la stessa funzione che pre-filtra l'allocatore e che etichetta le card
 // della tab Risk. Qui serve per DUE cose: dividere gli ordini a riposo nei due bucket e sommarne i
 // dollari. Non se ne scrive una seconda copia — vedi lib/maker/risk-classifier.js.
@@ -1872,6 +1874,12 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
               ? ' Dove il rinnovo automatico è attivo, il riprezzo scatta prima di quel momento.'
               : ''}
           </p>
+
+          {/* ── MID VIVO ────────────────────────────────────────────────────────────────────────
+              Sta QUI, subito sotto gli ordini a riposo e sopra le posizioni, perché è la stessa cosa
+              guardata mentre si muove: la tabella sopra dice dove sono gli ordini, questa dice dove
+              sono RISPETTO al mid adesso. Sola lettura, in push dal feed. */}
+          <MidVivoPanel />
 
           {/* ── POSIZIONI APERTE ────────────────────────────────────────────────────────────────── */}
           <div className="ex-sech">
