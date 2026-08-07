@@ -10,7 +10,13 @@ export interface EndOfScaleVerdict {
   midCents: number | null;
   side: 'low' | 'high' | null;
   reason: string | null;
+  /** Le soglie EFFETTIVE di questa chiamata, in centesimi: difetto 3/97, o quelle lette da .env. */
+  lowCents: number;
+  highCents: number;
 }
 
 /** @param mid il mid in PREZZO (0–1), non in centesimi. */
-export function endOfScaleCheck(mid: number | null | undefined): EndOfScaleVerdict;
+export function endOfScaleCheck(mid: number | null | undefined, env?: Record<string, string | undefined>): EndOfScaleVerdict;
+export function sogliaFineScala(env?: Record<string, string | undefined>): {
+  lowCents: number; highCents: number; origine: 'difetto' | 'env' | 'scartato';
+};

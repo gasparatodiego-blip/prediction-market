@@ -449,6 +449,8 @@ async function tick(cfg, adapter) {
         structurallyDegenerate: oneSidedByConstruction,
         newsSeverity: newsByMarket.get(marketId) || null,
         marketNotionalUsd: 0, positionUsd: 0,
+        // Il mid vivo del book: lo legge la rotaia `end-of-scale` (3¢/97¢, o le soglie di .env).
+        mid,
       },
       config: effCfg,
     });
