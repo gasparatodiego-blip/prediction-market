@@ -252,5 +252,38 @@ data/maker-allocated-capital.json.tmp.*
 data/maker-live-leases.json
 data/maker-live-leases.json.tmp.*
 
+# ── I SEI SNAPSHOT CHE COMPARIVANO IN `git status` DA SETTIMANE (7 agosto 2026) ─────────────────────
+# Erano non tracciati e non ignorati: la peggiore delle tre condizioni, perche' restano a rumoreggiare
+# in `git status` a ogni sessione finche' qualcuno, per farli sparire, non li committa — e allora entra
+# nella storia del repo lo stato di UNA macchina in UN istante. Stessa regola gia' applicata a
+# maker-arming, maker-market-caps, maker-manual-mode e ai tre qui sopra: il codice che li legge e'
+# sorgente, il contenuto no.
+#
+# Due di loro (profondita-altrui, manual-reprice-heartbeat) vengono riscritti dagli agent mentre si
+# lavora — erano cambiati due volte durante la sessione in cui li ho aggiunti qui.
+#
+# `.tmp*` e non `.tmp.*`: chi passa da lib/atomicJsonWrite scrive `.tmp.<pid>.<ts>`, ma
+# confronto-reward, venue-positions e scadenze-senza-rinnovo scrivono un `.tmp` secco. La forma corta
+# copre entrambi; `.tmp.*` da sola avrebbe lasciato scoperti tre file su sei.
+#
+# confronto-reward       lib/maker/confronto-reward.js      stima reward giorno per giorno, rigenerabile
+# maker-ordini-preesistenti lib/maker/ordini-preesistenti.js quali ordini c'erano gia' al riarmo
+# maker-profondita-altrui   lib/maker/profondita-altrui.js   serie storica della profondita' altrui
+# manual-reprice-heartbeat  lib/maker/battito-motori.js      battito di agent40, un record per ciclo
+# scadenze-senza-rinnovo    lib/maker/scadenze-senza-rinnovo.js ordini morti di scadenza, per il pannello
+# venue-positions        lib/safety/venue-positions-snapshot.js posizioni lette dal venue
+data/confronto-reward.json
+data/confronto-reward.json.tmp*
+data/maker-ordini-preesistenti.json
+data/maker-ordini-preesistenti.json.tmp*
+data/maker-profondita-altrui.json
+data/maker-profondita-altrui.json.tmp*
+data/manual-reprice-heartbeat.json
+data/manual-reprice-heartbeat.json.tmp*
+data/scadenze-senza-rinnovo.json
+data/scadenze-senza-rinnovo.json.tmp*
+data/venue-positions.json
+data/venue-positions.json.tmp*
+
 # Build di verifica su porta temporanea: artefatto locale, mai versionato.
 .next-verifica/
