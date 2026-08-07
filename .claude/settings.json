@@ -188,5 +188,20 @@
       "Edit(//root/rewards-bot/agents/ecosystem.config.js)",
       "Bash(*> /root/rewards-bot/.env*)"
     ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node /root/rewards-bot/.claude/hooks/blocca-piazzamento.js",
+            "timeout": 15,
+            "statusMessage": "controllo piazzamento reale…"
+          }
+        ]
+      }
+    ]
   }
 }
