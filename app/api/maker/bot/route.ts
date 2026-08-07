@@ -12,7 +12,7 @@ import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 import { statoBot, impostaBot, rampa, RAMPA_ORE, RAMPA_MAX_MERCATI } from '@/lib/maker/bot-enabled';
-import { killStatus } from '@/lib/safety/kill-switch';
+import { killStatus, checkKill } from '@/lib/safety/kill-switch';
 import { DATA_DIR } from '@/lib/safety/store';
 
 export const runtime = 'nodejs';
@@ -120,6 +120,9 @@ export async function GET() {
  * `enabled` deve essere un booleano ESPLICITO: niente toggle implicito, perché un toggle su una rotta
  * che autorizza spesa reale è un bottone che fa cose diverse a seconda di uno stato che il chiamante
  * potrebbe non conoscere. Il middleware ha già ristretto la rotta a una sessione admin.
+ *
+ * Due esiti oltre al 200: 400 se `enabled` non è un booleano, 409 se si chiede di ACCENDERE mentre il
+ * kill è attivo o illeggibile. Spegnere non ha rifiuti.
  */
 export async function POST(req: Request) {
   try {
@@ -132,6 +135,33 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
+    // ── IL KILL SI CONTROLLA QUI, NON SOLO NEL PANNELLO ─────────────────────────────────────────────
+    // Il tasto AVVIA è già disabilitato a kill attivo, ma quella è una cortesia della UI: chiunque
+    // abbia una sessione admin e `curl` la scavalca, e fino a oggi la scavalcava davvero. Una rotta
+    // che autorizza spesa reale non può delegare al suo client l'unica verifica che conta.
+    //
+    // Si usa `checkKill`, il chokepoint, e non `killStatus`: il secondo è documentato per la GET di
+    // visualizzazione e guarda solo il globale, mentre il primo restituisce una decisione definita,
+    // copre anche lo scope utente e — soprattutto — FALLISCE CHIUSO se lo stato non è leggibile.
+    // «Non riesco a leggere il kill» non è «il kill è spento».
+    //
+    // SOLO L'ACCENSIONE PASSA DI QUI. FERMA deve restare possibile sempre, e a maggior ragione a kill
+    // attivo: se fermarsi richiedesse che l'emergenza sia a posto, l'emergenza bloccherebbe il freno.
+    if (enabled === true) {
+      const k = checkKill({}) as { killed?: boolean; scope?: string | null; gate?: string | null; reason?: string };
+      if (k.killed === true) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: 'AVVIA rifiutato: il KILL è attivo. Toglilo prima, oppure usa FERMA — che resta sempre disponibile.',
+            gate: k.gate ?? 'kill', scope: k.scope ?? null, motivoKill: k.reason ?? null,
+            ...istantanea(),
+          },
+          { status: 409 },
+        );
+      }
+    }
+
     const reason = (body as { reason?: unknown } | null)?.reason;
     const r = impostaBot({
       enabled,
