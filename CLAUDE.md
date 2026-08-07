@@ -11,7 +11,7 @@
 
 ### The one live switch: AVVIA/FERMA (7 August 2026)
 
-Whether the bot opens positions on its own is decided in **exactly one place**: `lib/maker/bot-enabled.js`, backed by `data/maker-bot-enabled.json`, toggled by the AVVIA/FERMA button in the dashboard's Mercati tab. `agent41` re-reads it **every cycle**, so FERMA takes effect on the next cycle without a restart. Missing, unreadable, or malformed file ⇒ **stopped**.
+Whether the bot opens positions on its own is decided in **exactly one place**: `lib/maker/bot-enabled.js`, backed by `data/maker-bot-enabled.json`, toggled by the AVVIA/FERMA button at the top of the dashboard's **Mercati ottimizzati** tab (`data-lrc-tab="alloca"`). `agent41` re-reads it **every cycle**, so FERMA takes effect on the next cycle without a restart. Missing, unreadable, or malformed file ⇒ **stopped**.
 
 `REALLOC_SCHEDULER_DRY_RUN` used to be a second switch for the same decision. It was **removed** on 7 August 2026 — from `ecosystem.config.js` and from every line of `agent41` that read it. Do not reintroduce it, and do not add a fallback env var beside the flag: two switches for one decision mean turning one off doesn't turn the thing off. `REALLOC_SCHEDULER_ENABLED` is **not** a second switch — it decides whether the process does anything at all, not whether it may place orders.
 

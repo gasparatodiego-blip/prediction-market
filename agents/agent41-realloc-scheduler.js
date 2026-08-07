@@ -504,7 +504,7 @@ function main() {
   const bot0 = statoBot();
   annuncia('log', `ACCESO — intervallo ${INTERVAL_MS / 3_600_000}h, tetto per mercato ${Math.round(CONCENTRATION_CAP_FRAC * 100)}% del capitale`
     + ` · il bot e' ${bot0.enabled ? 'AVVIATO (ordini veri quando le regole lo consentono)' : 'FERMO (solo piano, nessun ordine)'}`
-    + ` · l'interruttore e' ${FILE_INTERRUTTORE}, si commuta dalla tab Mercati`);
+    + ` · l'interruttore e' ${FILE_INTERRUTTORE}, si commuta dalla tab «Mercati ottimizzati»`);
   scrivi({ at: new Date().toISOString(), tipo: 'avvio', stato: 'acceso', botEnabled: bot0.enabled,
     botMotivo: bot0.motivo, intervalloOre: INTERVAL_MS / 3_600_000 });
   pianificaProssimo('avvio');
