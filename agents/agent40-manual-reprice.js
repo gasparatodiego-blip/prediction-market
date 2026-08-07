@@ -96,6 +96,13 @@ const { valutaMercato } = require('../lib/maker/motore-unico');
 // pavimento (Regola 2): due moduli puri, due dipendenze iniettate, nessuna logica nuova qui dentro.
 const { leggiSaldoUsd } = require('../lib/maker/saldo-cache');
 const { campionaProfonditaAltrui, mediaProfonditaAltrui } = require('../lib/maker/profondita-altrui');
+// GLI ORDINI CHE C'ERANO GIA'. Fotografati all'avvio e a ogni riarmo, poi invisibili al ciclo: non si
+// riprezzano, non si rinnovano, non si cancellano e non contano nel capitale impegnato. Il KILL li
+// prende comunque (passa da cancel-all, non da qui) e una loro esecuzione diventa una posizione, che
+// si gestisce normalmente. Vedi lib/maker/ordini-preesistenti.js.
+const {
+  fotografaPreesistenti, potaPreesistenti, separaPreesistenti, idsPreesistenti,
+} = require('../lib/maker/ordini-preesistenti');
 const { leggiFinestraMercato } = require('../lib/rewards/velocita-mercato');
 // LE CANCELLAZIONI CHE SI DEVONO VEDERE. Il 6 agosto 2026 una gamba e' stata cancellata correttamente
 // e nessun evento e' arrivato a una superficie: l'operatore se n'e' accorto guardando l'app del venue.
@@ -331,6 +338,21 @@ async function reconcileTask() {
   } catch (e) {
     log('reconcile failed:', e && e.message ? e.message : String(e));
   }
+
+  // ── I PRE-ESISTENTI SI SVUOTANO DA SOLI ──────────────────────────────────────────────────────
+  // Uno che il venue non elenca piu' e' scaduto, eseguito o tolto a mano: esce dal deposito. Se non
+  // uscisse, il suo id resterebbe li' per sempre. Try/catch suo: una potatura mancata non deve poter
+  // fermare la riconciliazione, e al giro dopo si ritenta.
+  try {
+    const listed = await listManualOrders({ marketId: null });
+    const p = potaPreesistenti({ listed, now: Date.now() });
+    if (p.potata && p.rimossi.length) {
+      log(`PRE-ESISTENTI · ${p.rimossi.length} non sono piu' sul venue (scaduti, eseguiti o tolti a mano):`
+        + ` escono dal deposito, ne restano ${p.restano}.`
+        + ' Se erano ESEGUITI la posizione che ne nasce e\' gestita normalmente: l\'invisibilita\' vale per gli ordini, non per il capitale in posizione.');
+    }
+  } catch (e) { log('potatura dei pre-esistenti fallita:', e && e.message ? e.message : String(e)); }
+
   return true;
 }
 
@@ -531,8 +553,45 @@ function posizioniUsdDi(marketId) {
   return { leggibile: true, usd: +usd.toFixed(4), motivo: null };
 }
 
+// ── LA FOTOGRAFIA DEI PRE-ESISTENTI ────────────────────────────────────────────────────────────────
+// Si scatta in due momenti soli: all'AVVIO del processo, e quando il kill si SPEGNE (il riarmo). Non a
+// ogni giro: una fotografia continua marcherebbe pre-esistente anche cio' che il bot ha appena piazzato,
+// e il motore smetterebbe di gestire i propri stessi ordini un secondo dopo averli messi.
+async function scattaFotografia(motivo) {
+  let listed = null;
+  try { listed = await listManualOrders({ marketId: null }); }
+  catch (e) { listed = { ok: false, error: e && e.message ? e.message : String(e) }; }
+  const f = fotografaPreesistenti({ listed, now: Date.now(), motivo });
+  if (!f.scattata) { log(`PRE-ESISTENTI · nessuna fotografia (${motivo}): ${f.motivo}`); return f; }
+  if (f.marcati === 0) { log(`PRE-ESISTENTI · ${motivo}: nessun ordine a riposo, il libro era libero — il ciclo gestisce tutto cio' che verra' piazzato da adesso.`); return f; }
+  log(`PRE-ESISTENTI · ${motivo}: ${f.marcati} ordine/i gia' a riposo, da ora INVISIBILI al motore`
+    + ' — non riprezzati, non rinnovati, non cancellati, fuori dal capitale impegnato. Scadranno da soli.');
+  for (const o of f.ordini) {
+    log(`  · ${o.orderId.slice(0, 12)}… cid_${String(o.marketId || '').replace(/^0x/, '').slice(0, 10)}`
+      + ` · ${o.side} ${o.size} @ ${o.price}${o.orderType ? ` (${o.orderType})` : ''} · attribuzione ${o.source || 'ignota'}`);
+  }
+  log('  NOTA: essendo invisibili non vengono nemmeno SOTTRATTI dal book, quindi la profondita\' «altrui»'
+    + ' li conta come di terzi. E\' la conseguenza voluta dell\'invisibilita\', e rende il motore piu\' timido, mai piu\' aggressivo.');
+  return f;
+}
+
+// Il kill spento e' il riarmo: si rifotografa perche' nel frattempo il libro puo' essere cambiato sotto
+// di noi (il KILL cancella tutto, ma una mano puo' aver piazzato qualcosa prima di riaccendere).
+let killPrecedente = null;
+async function fotografiaSuRiarmo() {
+  let attivo = null;
+  try { const k = killSwitch.killStatus(); attivo = k && (k.effectivelyKilled === true || k.readable === false); }
+  catch { return; }
+  if (killPrecedente === true && attivo === false) await scattaFotografia('kill spento: riarmo');
+  killPrecedente = attivo;
+}
+
 async function cycle() {
   const saldo = await saldoDelGiro();
+  await fotografiaSuRiarmo();
+  // Gli id si rileggono UNA volta per giro e si passano al filtro: dentro il ciclo il filtro viene
+  // chiamato una volta per mercato, e rileggere il file ogni volta sarebbe I/O per lo stesso fatto.
+  const preesistentiOra = idsPreesistenti();
   const res = await runAutoRepriceCycle({
     killStatus: () => killSwitch.killStatus(),
     isManual: (marketId) => isManualMarket(marketId),
@@ -557,6 +616,9 @@ async function cycle() {
     // posizioni vengono dallo snapshot che questo stesso processo aggiorna, con la sua eta'.
     saldo: () => saldo,
     posizioniMercatoUsd: (marketId) => posizioniUsdDi(marketId),
+    // IL FILTRO UNICO DEI PRE-ESISTENTI. Sta all'imbocco del ciclo, e da li' in giu' quegli ordini non
+    // esistono per nessuna regola. Senza questa riga il filtro sarebbe scritto e mai raggiunto.
+    filtraPreesistenti: (orders) => separaPreesistenti(orders, { ids: preesistentiOra }),
     // ── IL DENOMINATORE PULITO DEL PAVIMENTO ─────────────────────────────────────────────────────
     // Un campione ogni 45s per mercato, misurato con la STESSA `othersLadder` che produce il
     // numeratore: la profondita' ALTRUI in banda, in dollari. Vedi lib/maker/profondita-altrui.js per
@@ -813,6 +875,13 @@ async function main() {
     const m = tr.markets[id];
     log(`  cid_${id.replace(/^0x/, '').slice(0, 10)} · offset ${m.offsetCents}c · soglia ${m.minMoveCents}c · size ${m.sizeShares}`);
   }
+
+  // ── LA FOTOGRAFIA, PRIMA DEL PRIMO GIRO ────────────────────────────────────────────────────────
+  // `await`, non «e poi si vedra'»: se il primo ciclo partisse prima della fotografia, per un giro
+  // quegli ordini sarebbero gestibili — ed e' il giro in cui il motore decide se riprezzarli.
+  await scattaFotografia('avvio di agent40');
+  try { const k = killSwitch.killStatus(); killPrecedente = !!(k && (k.effectivelyKilled === true || k.readable === false)); }
+  catch { killPrecedente = null; }
 
   // Never let one bad cycle kill the watcher — but never let a failure be silent either.
   // ══ I DUE CONTROLLI ORARI — DENTRO QUESTO CICLO, NON IN UN PROCESSO NUOVO ═══════════════════════

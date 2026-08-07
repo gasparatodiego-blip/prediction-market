@@ -116,6 +116,8 @@ interface JudgedOrder {
   inBand: boolean | null; outOfBand: boolean | null; valid: boolean | null;
   reasons: Array<{ code: string; detail: string }>;
   suggestedPrice: number | null; restingSize: number | null; restingNotionalUsd: number | null;
+  /** Era già a riposo all'avvio del motore: visibile qui, invisibile al bot. */
+  preesistente?: boolean;
   marketTitle: string | null; rulesReadable: boolean;
 }
 interface SpreadClass { spreadCents: number | null; level: 'basso' | 'medio' | 'alto' | null; label: string | null; note: string }
@@ -159,7 +161,8 @@ interface OrderBoard {
   ok: boolean; error: string | null; simulated: boolean; at: string; count: number;
   orders: JudgedOrder[];
   byMarket: Array<{ marketId: string | null; title: string | null; orders: JudgedOrder[]; committedUsd: number | null; outOfBandCount: number; unknownBandCount: number }>;
-  totals: { committedUsd: number | null; unpricedOrders: number; outOfBandCount: number; inBandCount: number; unknownBandCount: number };
+  totals: { committedUsd: number | null; unpricedOrders: number; outOfBandCount: number; inBandCount: number; unknownBandCount: number;
+    preesistentiCount?: number; preesistentiUsd?: number | null };
 }
 interface Board {
   at: string; markets: BoardMarket[]; marketCount: number;
@@ -777,6 +780,15 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
                 : <span className="ex-badge lrc-bdg" title="regole di venue non leggibili oppure token non riconducibile ai due book">non giudicabile</span>}
             {' '}<span className="ex-badge lrc-bdg">{o.status}</span>
             {filled && <span className="ex-badge is-warn lrc-bdg">eseguito {num(o.sizeMatched, 1)}</span>}
+            {/* PRE-ESISTENTE. L'invisibilità è del motore, non tua: l'ordine è sul venue e si vede qui
+                come tutti gli altri, ma con detto chiaramente che il bot non lo tocca. Nasconderlo
+                farebbe mostrare alla dashboard meno capitale di quanto ce n'è davvero. */}
+            {judged?.preesistente === true && (
+              <span className="ex-badge lrc-bdg" data-lrc-preesistente={o.orderId ?? ''}
+                title="Era già a riposo quando il motore si è avviato: il bot non lo riprezza, non lo rinnova, non lo cancella e non lo conta nel capitale impegnato. Scadrà da solo. Il KILL lo cancella comunque.">
+                pre-esistente · ignorato dal bot
+              </span>
+            )}
             {/* I MOTIVI DI RISCHIO, sulla riga a cui si riferiscono. La banda compare già come badge
                 sopra: qui si mostrano gli ALTRI flag, per non dire due volte la stessa cosa. */}
             {(flags ?? []).filter((f) => f !== 'fuori banda').map((f) => (
@@ -1261,6 +1273,15 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
               <span className="ex-stat-s">
                 {orders?.simulated ? 'venue non interrogato' : `${orders?.count ?? 0} ordini a riposo`}
               </span>
+              {/* Quanto di questo capitale il bot NON governa. Non si sottrae dal totale: quei dollari
+                  sono davvero impegnati sul venue. Si dice solo che nessuna regola li sta guardando. */}
+              {!orders?.simulated && (orders?.totals?.preesistentiCount ?? 0) > 0 && (
+                <p className="ex-why" data-lrc-preesistenti-nota>
+                  di cui {orders!.totals!.preesistentiCount} {orders!.totals!.preesistentiCount === 1 ? 'ordine pre-esistente' : 'ordini pre-esistenti'}
+                  {fin(orders?.totals?.preesistentiUsd) ? ` (${money(orders!.totals!.preesistentiUsd)})` : ''}
+                  {' '}— erano già a riposo all&apos;avvio del motore: il bot non li tocca e scadranno da soli. Il KILL li cancella comunque.
+                </p>
+              )}
             </div>
           </div>
           {freeCapital != null && fin(bal?.pusdBalance) && (bal!.pusdBalance as number) > 0 && (

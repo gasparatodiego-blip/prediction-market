@@ -138,6 +138,8 @@ export function esposizioneDelMercato(a: {
 
 export interface CycleMarketReport {
   marketId: string;
+  /** Quanti ordini a riposo su questo mercato sono pre-esistenti, e quindi invisibili al motore. */
+  preesistenti?: number;
   gate: string | null;
   reason: string | null;
   considered: number;
@@ -223,6 +225,8 @@ export function runAutoRepriceCycle(deps?: {
   liquiditaAltrui?: (marketId: string) => { mediaUsd: number | null; campioni: number | null };
   /** La vecchia media dal giornale di agent34, in share. Solo come paragone nell'audit. */
   liquiditaMedia?: (marketId: string) => { media: number | null; campioni: number };
+  /** IL FILTRO UNICO dei pre-esistenti. Assente ⇒ nessun ordine è pre-esistente e il ciclo è quello di prima. */
+  filtraPreesistenti?: (orders: RestingLeg[]) => { gestiti: RestingLeg[]; preesistenti: RestingLeg[] };
   /** Deposita un campione di profondità altrui per questo mercato. Best-effort, si autolimita. */
   campionaProfondita?: (arg: { marketId: string; rules: MarketRules; ownOrders: RestingLeg[]; now: number }) => unknown;
   trackedMarketIds?: () => string[];
