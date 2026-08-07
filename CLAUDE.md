@@ -86,35 +86,51 @@ interruttori per una decisione sola significano che spegnerne uno non la spegne.
 `REALLOC_SCHEDULER_ENABLED` **non** è un secondo interruttore: decide se il processo fa qualcosa,
 non se può piazzare.
 
-### Permessi della sessione (stato al 7 agosto 2026, ~22:10 UTC)
+### Permessi della sessione (stato al 7 agosto 2026, ~23:05 UTC)
 
 `.claude/settings.json` (progetto) e `~/.claude/settings.json` (utente) portano una **copia identica**
-della stessa policy: `allow` ampio + **67 regole `ask`**. `ask` batte `allow` da qualunque file arrivi,
+della stessa policy: `allow` ampio + **163 regole `ask`**. `ask` batte `allow` da qualunque file arrivi,
 e le regole si **fondono** fra i file. `.claude/settings.local.json` deve restare privo di regole `ask`.
-Le due copie vanno tenute in sync: se ne modifichi una, modifica l'altra.
+Le due copie vanno tenute in sync: se ne modifichi una, modifica l'altra — e
+`lib/safety/policy-permessi.test.js` fallisce se divergono.
 
-Le regole `ask` si dividono in **due famiglie, con due criteri diversi**, e la differenza è voluta:
+Le regole `ask` si dividono in **tre famiglie, con criteri diversi**, e la differenza è voluta:
 
 1. **Capitale reale — `ask` anche in lettura.** Ordini manuali (`/api/maker/manual/*`), script di
    piazzamento, `node agent35-maker` / `agent40-manual-reprice`, armamento (`/api/maker/{arm,disarm}`)
    e gli env che abilitano il piazzamento (`MAKER_PLACEMENT`, `MANUAL_ORDER_PLACEMENT`,
    `MAKER_MODE=live|on`, `MAKER_FUNDING_APPROVED`). Qui basta *nominare* la cosa per far scattare il
-   prompt: massima cautela, anche a costo di chiedere su un `grep`.
-2. **Flag di stato/sicurezza — `ask` solo in scrittura** (dal 7 agosto 2026). AVVIA/FERMA
-   (`bot-enabled`, `impostaBot`, `api/maker/bot`) e KILL (`safety-kill`, `kill-maker`,
-   `/api/maker/kill`) non hanno più una regola-ombrello sul nome. Al suo posto c'è una regola per
-   ogni **forma di scrittura**: redirezione (`*>*`), `tee`, `sed`, `rm`, `mv`, `cp`, `touch`,
-   `truncate`, esecuzione via `node`/`python`/`perl`/`sh`/`./`, `curl`/`wget` sulle route, e
-   `git checkout` / `git restore` (che possono rimettere indietro il flag). La lettura — `cat`,
-   `grep`, `ls`, `find`, `wc`, `git log`, `git diff`, `git check-ignore` — passa in autonomia.
+   prompt: massima cautela, anche a costo di chiedere su un `grep`. **Questa famiglia non si allarga.**
+2. **pm2 — `ask` anche solo se nominato** (dal 7 agosto 2026): `restart`, `stop`, `delete`, `reload`,
+   `kill`, `startOrRestart`. Prima non c'era **nessuna** regola su pm2: la regola 2 di §2 viveva solo
+   in questo file, e un riavvio poteva partire muto. `pm2 list/describe/env/logs` passano.
+3. **Flag di stato/sicurezza — `ask` solo in scrittura** (dal 7 agosto 2026). AVVIA/FERMA
+   (`bot-enabled`, `impostaBot`, `api/maker/bot`), KILL (`safety-kill`, `kill-maker`,
+   `/api/maker/kill`), il guardiano delle perdite (`guardian-baseline`, `guardian-state`), la gestione
+   manuale per mercato (`maker-manual-mode`) e il file di armamento (`maker-arming`) non hanno una
+   regola-ombrello sul nome. Al suo posto c'è, per **ognuno** di questi sei flag, la stessa famiglia di
+   **19 forme di scrittura**: redirezione (`*> *T*` e `*>*T*.json`), `tee`, `sed`, `rm`, `mv`, `cp`,
+   `touch`, `truncate`, `dd of=`, esecuzione via `node`/`python`/`perl`/`bash`/`sh -c`/`./`, e
+   `git checkout` / `git restore` / `git reset` (che possono rimettere indietro il flag); più
+   `curl`/`wget` sulle route e la regola `Edit(...)` sul file. La lettura — `cat`, `grep`, `ls`,
+   `find`, `wc`, `head`, `git log`, `git diff`, `git check-ignore` — passa in autonomia.
    Motivo: la regola-ombrello interrompeva l'auto mode su ispezioni che non cambiano nulla.
 
-**Limite dichiarato della famiglia 2:** la copertura è per *forme note* di scrittura, non per
-costruzione. Una scrittura con uno strumento non elencato (`dd`, `install`, `sponge`, `awk` con
-redirezione indiretta, `git reset --hard` che non nomina il path) non incontra nessun `ask`. Il
-presidio vero resta la **regola 3 di §2**: sul capitale e sugli interruttori si chiede in chat, la
-policy dei permessi è la seconda linea, non l'unica. Se aggiungi un flag di stato nuovo, aggiungi la
-famiglia di forme di scrittura, non un pattern sul solo nome.
+Due dettagli di forma che contano, e sono verificati dal test:
+- la redirezione è `*> *T*` **con lo spazio** più `*>*T*.json` **ancorato in fondo**, non `*>*T*`:
+  quest'ultima scattava su letture come `ls data/*.json 2>/dev/null | grep bot-enabled`, dove il `>`
+  è quello di `/dev/null`;
+- **eseguire** un file che nomina il flag chiede *anche quando è il suo stesso test*
+  (`node lib/maker/bot-enabled.test.js`). Non è una lettura, ed è la parte prudente: il 7 agosto 2026
+  una versione del test del guardiano ha lasciato residui sullo stato **vero** (§5 punto 1).
+
+**Limite dichiarato della famiglia 3:** la copertura è per *forme note* di scrittura, non per
+costruzione. `install`, `sponge`, `awk` con redirezione indiretta, `git reset --hard` che non nomina il
+path, o una redirezione senza spazio seguita da altro (`printf x >data/f.json && ls`) non incontrano
+nessun `ask`. Il presidio vero resta la **regola 3 di §2**: sul capitale e sugli interruttori si chiede
+in chat, la policy dei permessi è la seconda linea, non l'unica. Se aggiungi un flag di stato nuovo,
+aggiungi le 19 forme di scrittura — non un pattern sul solo nome — e mettilo nell'elenco `FLAG` di
+`lib/safety/policy-permessi.test.js`, che conta la famiglia completa flag per flag.
 
 Le sessioni si aprono da `/root/rewards-bot` (il file di progetto si carica solo se quella è la cwd):
 
