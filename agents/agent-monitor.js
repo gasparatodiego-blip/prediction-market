@@ -96,6 +96,15 @@ const WATCHED_AGENTS_RAW = [
   { pm2Name: 'agent24-liquidity-rewards',  hbKey: null },
   { pm2Name: 'agent27-news-guard',         hbKey: 'agent27-news-guard',      cadenceMs: 11 * 60_000 }, // scan ~10-11 min (54s di lavoro + attesa)
   { pm2Name: 'agent38-tape-watchdog',      hbKey: 'agent38-tape-watchdog',   cadenceMs: 60_000 },      // agent38 CHECK_INTERVAL_MS — the watcher is itself watched (who-watches-the-watchman)
+  // agent42 batte una volta per giro: POLL_MS 30s + ~7s di giro dei 21 wallet ≈ 37s. La soglia
+  // derivata (2,5× → 92s) finisce comunque sotto il pavimento MIN_STALE_MS, quindi vale 5 minuti:
+  // giusto, perché un giro può allungarsi legittimamente quando recupera un arretrato.
+  //
+  // ATTENZIONE, la regola di questa lista vale anche qui: stando dentro, agent42 viene RIAVVIATO
+  // automaticamente se lo si trova fermo. Se un giorno lo si volesse spegnere sul serio, va tolto da
+  // questa riga PRIMA di fermarlo, altrimenti risorge entro due minuti. Restart innocuo quanto il
+  // processo: non piazza, non firma, non legge nessuno stato del motore.
+  { pm2Name: 'agent42-watch-makers',       hbKey: 'agent42-watch-makers',    cadenceMs: 40_000 },
   { pm2Name: 'dashboard',                  hbKey: null },
 ];
 

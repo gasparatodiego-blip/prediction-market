@@ -1,0 +1,639 @@
+{
+ "meta": {
+  "generato": "da data/manuale-operativo-maker-v2.md \u2014 finestra 90 giorni chiusa il 7 agosto 2026",
+  "wallet": 21,
+  "mercatiDistinti": 24948
+ },
+ "wallet": [
+  {
+   "nome": "Gurupolimarket",
+   "indirizzo": "0x26519b477f1cd031919e18f33fd8d3fcb48c3471",
+   "v2": {
+    "rewardGiorno": 151.89,
+    "fillGiorno": 16.2,
+    "nuoviMercatiGiorno": 9,
+    "scadenzaMedianaGg": 0.251,
+    "scadenzaQ1Q3": [
+     0.0717,
+     0.523
+    ],
+    "premioMediano": 150.0,
+    "nozionaleMediano": 28.97,
+    "oreUltimoFillPrimaRisoluzione": 2.72,
+    "oreUltimoFillQ1Q3": [
+     0.4989,
+     7.7289
+    ],
+    "mercatiContemporanei": 9,
+    "categoriaPrevalente": "altro",
+    "capitaleAffidabile": true
+   },
+   "storico": {
+    "mercati": 633,
+    "fill": 1432,
+    "primoTs": 1778461011,
+    "ultimoTs": 1786091038
+   }
+  },
+  {
+   "nome": "Anon",
+   "indirizzo": "0x4a1a27c4af018a874e97e551410953cb29e70208",
+   "v2": {
+    "rewardGiorno": 137.5,
+    "fillGiorno": 4.1,
+    "nuoviMercatiGiorno": 3.5,
+    "scadenzaMedianaGg": 0.175,
+    "scadenzaQ1Q3": [
+     0.1084,
+     0.2108
+    ],
+    "premioMediano": 300.0,
+    "nozionaleMediano": 228.49,
+    "oreUltimoFillPrimaRisoluzione": 4.34,
+    "oreUltimoFillQ1Q3": [
+     3.1606,
+     5.1703
+    ],
+    "mercatiContemporanei": 3.5,
+    "categoriaPrevalente": "esport",
+    "capitaleAffidabile": true
+   },
+   "storico": {
+    "mercati": 261,
+    "fill": 331,
+    "primoTs": 1779207466,
+    "ultimoTs": 1785753305
+   }
+  },
+  {
+   "nome": "0x71a5B653",
+   "indirizzo": "0x71a5b65336ef41585cce33e49073742be8c1b594",
+   "v2": {
+    "rewardGiorno": 132.32,
+    "fillGiorno": 10.9,
+    "nuoviMercatiGiorno": 9,
+    "scadenzaMedianaGg": 0.436,
+    "scadenzaQ1Q3": [
+     0.1923,
+     0.9635
+    ],
+    "premioMediano": 906.0,
+    "nozionaleMediano": 45.6,
+    "oreUltimoFillPrimaRisoluzione": 10.17,
+    "oreUltimoFillQ1Q3": [
+     5.1628,
+     22.3631
+    ],
+    "mercatiContemporanei": 10,
+    "categoriaPrevalente": "sport",
+    "capitaleAffidabile": true
+   },
+   "storico": {
+    "mercati": 934,
+    "fill": 1432,
+    "primoTs": 1768181286,
+    "ultimoTs": 1786067416
+   }
+  },
+  {
+   "nome": "0xF0e02A54",
+   "indirizzo": "0xf0e02a54c235b27273fdc63fef80224e1280016a",
+   "v2": {
+    "rewardGiorno": 131.59,
+    "fillGiorno": 15.9,
+    "nuoviMercatiGiorno": 13,
+    "scadenzaMedianaGg": 59.819,
+    "scadenzaQ1Q3": [
+     4.9211,
+     151.4709
+    ],
+    "premioMediano": 3.0,
+    "nozionaleMediano": 14.0,
+    "oreUltimoFillPrimaRisoluzione": 1423.33,
+    "oreUltimoFillQ1Q3": [
+     118.1028,
+     3614.635
+    ],
+    "mercatiContemporanei": 14,
+    "categoriaPrevalente": "altro",
+    "capitaleAffidabile": false
+   },
+   "storico": {
+    "mercati": 876,
+    "fill": 1366,
+    "primoTs": 1778681546,
+    "ultimoTs": 1786087483
+   }
+  },
+  {
+   "nome": "lmtscapt",
+   "indirizzo": "0x5556aa398ba264f83ad75a95294bdbab23e82759",
+   "v2": {
+    "rewardGiorno": 115.95,
+    "fillGiorno": 7.3,
+    "nuoviMercatiGiorno": 5.5,
+    "scadenzaMedianaGg": 0.521,
+    "scadenzaQ1Q3": [
+     0.3271,
+     0.8463
+    ],
+    "premioMediano": 476.5,
+    "nozionaleMediano": 74.41,
+    "oreUltimoFillPrimaRisoluzione": 10.65,
+    "oreUltimoFillQ1Q3": [
+     7.1303,
+     19.3875
+    ],
+    "mercatiContemporanei": 6,
+    "categoriaPrevalente": "esport",
+    "capitaleAffidabile": true
+   },
+   "storico": {
+    "mercati": 286,
+    "fill": 442,
+    "primoTs": 1780850283,
+    "ultimoTs": 1786084915
+   }
+  },
+  {
+   "nome": "jjjjjsda",
+   "indirizzo": "0xb41c082290933df8904699cf67895d60ffd95bd3",
+   "v2": {
+    "rewardGiorno": 113.41,
+    "fillGiorno": 28.8,
+    "nuoviMercatiGiorno": 8.0,
+    "scadenzaMedianaGg": 0.798,
+    "scadenzaQ1Q3": [
+     0.198,
+     0.9565
+    ],
+    "premioMediano": 20.0,
+    "nozionaleMediano": 17.8,
+    "oreUltimoFillPrimaRisoluzione": 14.08,
+    "oreUltimoFillQ1Q3": [
+     5.8781,
+     22.5886
+    ],
+    "mercatiContemporanei": 10.0,
+    "categoriaPrevalente": "altro",
+    "capitaleAffidabile": true
+   },
+   "storico": {
+    "mercati": 753,
+    "fill": 2572,
+    "primoTs": 1778375903,
+    "ultimoTs": 1786084989
+   }
+  },
+  {
+   "nome": "Flashwhisky",
+   "indirizzo": "0x8833ed3241e0bcdb7052df5b3bf1af2816373ea1",
+   "v2": {
+    "rewardGiorno": 86.23,
+    "fillGiorno": 7.2,
+    "nuoviMercatiGiorno": 5.0,
+    "scadenzaMedianaGg": 0.494,
+    "scadenzaQ1Q3": [
+     0.1795,
+     1.0891
+    ],
+    "premioMediano": 47.0,
+    "nozionaleMediano": 10.52,
+    "oreUltimoFillPrimaRisoluzione": 11.8,
+    "oreUltimoFillQ1Q3": [
+     4.6892,
+     26.1114
+    ],
+    "mercatiContemporanei": 5.0,
+    "categoriaPrevalente": "sport",
+    "capitaleAffidabile": true
+   },
+   "storico": {
+    "mercati": 505,
+    "fill": 599,
+    "primoTs": 1778941727,
+    "ultimoTs": 1786041456
+   }
+  },
+  {
+   "nome": "wesquezz",
+   "indirizzo": "0xe41c4cc0d910a6f44b1fc85c42cd3ad82039afab",
+   "v2": {
+    "rewardGiorno": 78.81,
+    "fillGiorno": 18.6,
+    "nuoviMercatiGiorno": 12,
+    "scadenzaMedianaGg": 0.261,
+    "scadenzaQ1Q3": [
+     0.1931,
+     0.5996
+    ],
+    "premioMediano": 225.0,
+    "nozionaleMediano": 47.18,
+    "oreUltimoFillPrimaRisoluzione": 5.82,
+    "oreUltimoFillQ1Q3": [
+     3.9844,
+     12.0142
+    ],
+    "mercatiContemporanei": 12,
+    "categoriaPrevalente": "esport",
+    "capitaleAffidabile": true
+   },
+   "storico": {
+    "mercati": 835,
+    "fill": 1302,
+    "primoTs": 1780046319,
+    "ultimoTs": 1786022039
+   }
+  },
+  {
+   "nome": "Alicia",
+   "indirizzo": "0xf1899a30a2c016941bf4abd77b900ecacd768e47",
+   "v2": {
+    "rewardGiorno": 68.34,
+    "fillGiorno": 5.5,
+    "nuoviMercatiGiorno": 3,
+    "scadenzaMedianaGg": 0.53,
+    "scadenzaQ1Q3": [
+     0.4287,
+     22.8699
+    ],
+    "premioMediano": 10.0,
+    "nozionaleMediano": 127.01,
+    "oreUltimoFillPrimaRisoluzione": 12.77,
+    "oreUltimoFillQ1Q3": [
+     8.1617,
+     301.0144
+    ],
+    "mercatiContemporanei": 4.0,
+    "categoriaPrevalente": "altro",
+    "capitaleAffidabile": true
+   },
+   "storico": {
+    "mercati": 181,
+    "fill": 467,
+    "primoTs": 1778803305,
+    "ultimoTs": 1786082995
+   }
+  },
+  {
+   "nome": "cedrocoffee",
+   "indirizzo": "0x9e8ecc4cb3c4e48f544cba2fbbb252a6a65e8db8",
+   "v2": {
+    "rewardGiorno": 66.96,
+    "fillGiorno": 18.3,
+    "nuoviMercatiGiorno": 10,
+    "scadenzaMedianaGg": 0.937,
+    "scadenzaQ1Q3": [
+     0.2628,
+     3.2441
+    ],
+    "premioMediano": 10.0,
+    "nozionaleMediano": 41.98,
+    "oreUltimoFillPrimaRisoluzione": 22.03,
+    "oreUltimoFillQ1Q3": [
+     7.1425,
+     76.7439
+    ],
+    "mercatiContemporanei": 11,
+    "categoriaPrevalente": "sport",
+    "capitaleAffidabile": true
+   },
+   "storico": {
+    "mercati": 1008,
+    "fill": 1471,
+    "primoTs": 1779138303,
+    "ultimoTs": 1786065232
+   }
+  },
+  {
+   "nome": "alvaro25011",
+   "indirizzo": "0x9eae9dc70a6eb5c831a0ac96931c8488431598a5",
+   "v2": {
+    "rewardGiorno": 64.42,
+    "fillGiorno": 39.6,
+    "nuoviMercatiGiorno": 13,
+    "scadenzaMedianaGg": 0.352,
+    "scadenzaQ1Q3": [
+     0.0358,
+     5.4093
+    ],
+    "premioMediano": 10.0,
+    "nozionaleMediano": 14.89,
+    "oreUltimoFillPrimaRisoluzione": 9.84,
+    "oreUltimoFillQ1Q3": [
+     1.9081,
+     101.9256
+    ],
+    "mercatiContemporanei": 24.0,
+    "categoriaPrevalente": "altro",
+    "capitaleAffidabile": true
+   },
+   "storico": {
+    "mercati": 1310,
+    "fill": 3565,
+    "primoTs": 1778325303,
+    "ultimoTs": 1786090612
+   }
+  },
+  {
+   "nome": "Nopants",
+   "indirizzo": "0x94a5c8d234ca67c4fba9ee99619c88f547654eb8",
+   "v2": {
+    "rewardGiorno": 59.7,
+    "fillGiorno": 8.9,
+    "nuoviMercatiGiorno": 3,
+    "scadenzaMedianaGg": 0.98,
+    "scadenzaQ1Q3": [
+     0.2583,
+     7.0291
+    ],
+    "premioMediano": 100.0,
+    "nozionaleMediano": 24.5,
+    "oreUltimoFillPrimaRisoluzione": 26.94,
+    "oreUltimoFillQ1Q3": [
+     6.4453,
+     168.7422
+    ],
+    "mercatiContemporanei": 3.5,
+    "categoriaPrevalente": "altro",
+    "capitaleAffidabile": true
+   },
+   "storico": {
+    "mercati": 1760,
+    "fill": 2387,
+    "primoTs": 1755372218,
+    "ultimoTs": 1786078698
+   }
+  },
+  {
+   "nome": "0xA19df895Ec6624b12D86ca3036648B85825F3909-1770449209332",
+   "indirizzo": "0xa19df895ec6624b12d86ca3036648b85825f3909",
+   "v2": {
+    "rewardGiorno": 40.71,
+    "fillGiorno": 32.2,
+    "nuoviMercatiGiorno": 12,
+    "scadenzaMedianaGg": 0.204,
+    "scadenzaQ1Q3": [
+     0.1673,
+     0.2262
+    ],
+    "premioMediano": 948.0,
+    "nozionaleMediano": 77.44,
+    "oreUltimoFillPrimaRisoluzione": 4.53,
+    "oreUltimoFillQ1Q3": [
+     3.5111,
+     5.1028
+    ],
+    "mercatiContemporanei": 13.0,
+    "categoriaPrevalente": "sport",
+    "capitaleAffidabile": true
+   },
+   "storico": {
+    "mercati": 1115,
+    "fill": 2889,
+    "primoTs": 1778341400,
+    "ultimoTs": 1786093152
+   }
+  },
+  {
+   "nome": "superstonksbro",
+   "indirizzo": "0x969fae0a3a93778adc42178f72c612ed8c4e4d55",
+   "v2": {
+    "rewardGiorno": 11.78,
+    "fillGiorno": 146.6,
+    "nuoviMercatiGiorno": 28,
+    "scadenzaMedianaGg": 1.266,
+    "scadenzaQ1Q3": [
+     0.2681,
+     4.2193
+    ],
+    "premioMediano": 10.0,
+    "nozionaleMediano": 17.5,
+    "oreUltimoFillPrimaRisoluzione": 26.07,
+    "oreUltimoFillQ1Q3": [
+     4.8106,
+     77.8164
+    ],
+    "mercatiContemporanei": 53,
+    "categoriaPrevalente": "altro",
+    "capitaleAffidabile": true
+   },
+   "storico": {
+    "mercati": 1636,
+    "fill": 10500,
+    "primoTs": 1779910836,
+    "ultimoTs": 1786095481
+   }
+  },
+  {
+   "nome": "NovaB",
+   "indirizzo": "0x2037bb7a0773499b3afc9b4a4c18ff8fb715473d",
+   "v2": {
+    "rewardGiorno": 10.52,
+    "fillGiorno": 6.8,
+    "nuoviMercatiGiorno": 4.0,
+    "scadenzaMedianaGg": 0.008,
+    "scadenzaQ1Q3": [
+     -0.0547,
+     0.0869
+    ],
+    "premioMediano": 1536.0,
+    "nozionaleMediano": 829.56,
+    "oreUltimoFillPrimaRisoluzione": 1.51,
+    "oreUltimoFillQ1Q3": [
+     0.6453,
+     4.7164
+    ],
+    "mercatiContemporanei": 4.0,
+    "categoriaPrevalente": "sport",
+    "capitaleAffidabile": false
+   },
+   "storico": {
+    "mercati": 423,
+    "fill": 610,
+    "primoTs": 1778335971,
+    "ultimoTs": 1786071429
+   }
+  },
+  {
+   "nome": "M1XU",
+   "indirizzo": "0x33bcb6e9bd44be709122b2940c55e34f1a7e37dc",
+   "v2": {
+    "rewardGiorno": 8.46,
+    "fillGiorno": 22.9,
+    "nuoviMercatiGiorno": 9.0,
+    "scadenzaMedianaGg": -0.082,
+    "scadenzaQ1Q3": [
+     -0.3605,
+     -0.0391
+    ],
+    "premioMediano": 3.0,
+    "nozionaleMediano": 33.97,
+    "oreUltimoFillPrimaRisoluzione": 10.89,
+    "oreUltimoFillQ1Q3": [
+     1.6456,
+     168.3406
+    ],
+    "mercatiContemporanei": 9.0,
+    "categoriaPrevalente": "sport",
+    "capitaleAffidabile": false
+   },
+   "storico": {
+    "mercati": 2004,
+    "fill": 2063,
+    "primoTs": 1778325064,
+    "ultimoTs": 1786056623
+   }
+  },
+  {
+   "nome": "7zhfr68nhf568jgr346j",
+   "indirizzo": "0xa49b6ea0a604c581f2a9569db42c192b1c487054",
+   "v2": {
+    "rewardGiorno": 3.1,
+    "fillGiorno": 94.0,
+    "nuoviMercatiGiorno": 16.5,
+    "scadenzaMedianaGg": 1.865,
+    "scadenzaQ1Q3": [
+     1.0754,
+     6.2309
+    ],
+    "premioMediano": 11.0,
+    "nozionaleMediano": 2.73,
+    "oreUltimoFillPrimaRisoluzione": 36.46,
+    "oreUltimoFillQ1Q3": [
+     24.3961,
+     99.0967
+    ],
+    "mercatiContemporanei": 25,
+    "categoriaPrevalente": "altro",
+    "capitaleAffidabile": true
+   },
+   "storico": {
+    "mercati": 1686,
+    "fill": 8462,
+    "primoTs": 1778325050,
+    "ultimoTs": 1786094134
+   }
+  },
+  {
+   "nome": "Unknown",
+   "indirizzo": "0x6d3c5bd13984b2de47c3a88ddc455309aab3d294",
+   "v2": {
+    "rewardGiorno": 0.14,
+    "fillGiorno": 376.0,
+    "nuoviMercatiGiorno": 137,
+    "scadenzaMedianaGg": 0.493,
+    "scadenzaQ1Q3": [
+     0.1112,
+     4.0096
+    ],
+    "premioMediano": 0.0,
+    "nozionaleMediano": 50.88,
+    "oreUltimoFillPrimaRisoluzione": 7.67,
+    "oreUltimoFillQ1Q3": [
+     0.9789,
+     84.0519
+    ],
+    "mercatiContemporanei": 152,
+    "categoriaPrevalente": "sport",
+    "capitaleAffidabile": false
+   },
+   "storico": {
+    "mercati": 5231,
+    "fill": 10500,
+    "primoTs": 1783687390,
+    "ultimoTs": 1786095255
+   }
+  },
+  {
+   "nome": "gcmcrb",
+   "indirizzo": "0x2d6ac4f70307102ac46e9e6ded67f3838ddf8add",
+   "v2": {
+    "rewardGiorno": 0.03,
+    "fillGiorno": 43.2,
+    "nuoviMercatiGiorno": 22,
+    "scadenzaMedianaGg": 0.0,
+    "scadenzaQ1Q3": [
+     0.0002,
+     0.0003
+    ],
+    "premioMediano": 131.0,
+    "nozionaleMediano": 89.83,
+    "oreUltimoFillPrimaRisoluzione": 0.01,
+    "oreUltimoFillQ1Q3": [
+     0.0056,
+     0.0078
+    ],
+    "mercatiContemporanei": 22,
+    "categoriaPrevalente": "sport",
+    "capitaleAffidabile": false
+   },
+   "storico": {
+    "mercati": 2492,
+    "fill": 3885,
+    "primoTs": 1778324372,
+    "ultimoTs": 1786069791
+   }
+  },
+  {
+   "nome": "Lilybaeum",
+   "indirizzo": "0x01c78f8873c0c86d6b6b92ff627e3802237ee995",
+   "v2": {
+    "rewardGiorno": 0.01,
+    "fillGiorno": 216.4,
+    "nuoviMercatiGiorno": 35.5,
+    "scadenzaMedianaGg": -0.004,
+    "scadenzaQ1Q3": [
+     -0.0341,
+     7.2362
+    ],
+    "premioMediano": 5083.0,
+    "nozionaleMediano": 15.9,
+    "oreUltimoFillPrimaRisoluzione": 173.62,
+    "oreUltimoFillQ1Q3": [
+     168.1656,
+     181.7142
+    ],
+    "mercatiContemporanei": 36.0,
+    "categoriaPrevalente": "sport",
+    "capitaleAffidabile": false
+   },
+   "storico": {
+    "mercati": 1763,
+    "fill": 10500,
+    "primoTs": 1781907028,
+    "ultimoTs": 1786092876
+   }
+  },
+  {
+   "nome": "LondonBridge",
+   "indirizzo": "0xfb1c3c1ab4fb2d0cbcbb9538c8d4d357dd95963e",
+   "v2": {
+    "rewardGiorno": 0.0,
+    "fillGiorno": 27.9,
+    "nuoviMercatiGiorno": 10.0,
+    "scadenzaMedianaGg": 0.003,
+    "scadenzaQ1Q3": [
+     0.0017,
+     0.0032
+    ],
+    "premioMediano": 0.0,
+    "nozionaleMediano": 9.6,
+    "oreUltimoFillPrimaRisoluzione": 0.06,
+    "oreUltimoFillQ1Q3": [
+     0.0397,
+     0.0761
+    ],
+    "mercatiContemporanei": 10.0,
+    "categoriaPrevalente": "crypto 5min",
+    "capitaleAffidabile": true
+   },
+   "storico": {
+    "mercati": 1234,
+    "fill": 2506,
+    "primoTs": 1778326241,
+    "ultimoTs": 1786093939
+   }
+  }
+ ]
+}
