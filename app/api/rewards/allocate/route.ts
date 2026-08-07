@@ -37,8 +37,9 @@ export const dynamic = 'force-dynamic';
 // argv[2] carries the auto-optimise flag: with it on, the allocator also applies the resolution-horizon
 // test (lib/rewards/horizon) before the knapsack. OFF is the shipped path, byte-for-byte.
 // argv[3] carries the per-market concentration cap in dollars ("" = no cap). It is NOT a new knob typed
-// by anyone: it is CONCENTRATION_CAP_FRAC × capital, the same 30% the periodic reallocator has always
-// applied, read from the same module (lib/rewards/concentration.js) so the two paths cannot drift.
+// by anyone: it is CONCENTRATION_CAP_FRAC × capital, the same 20% the periodic reallocator applies —
+// and the same ceiling the placement engine enforces at quoting time (motore-unico.MARKET_CAP_PCT) —
+// read from the same module (lib/rewards/concentration.js) so the paths cannot drift.
 const RUNNER = 'process.stdout.write(JSON.stringify(require("/root/prediction-market/lib/rewards/allocator").planFromCollection({ capital: Number(process.argv[1]), horizonFilter: process.argv[2] === "1", maxPerMarketUsd: process.argv[3] === "" ? null : Number(process.argv[3]) })))';
 const RESULT_TTL_MS = 180_000; // 3 min — the plan auto-refreshes at this cadence; recompute costs ~19s, so a fresh plan every 3 min is live-enough while the per-row data age ticks locally every 15s
 const SPAWN_TIMEOUT_MS = 90_000; // planFromCollection scores the universe + builds per-tick fill curves

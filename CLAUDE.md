@@ -186,9 +186,12 @@ i due bucket ci mettevano sopra una scalinata che il venue non paga. Nessun `if 
    rilegge a ogni ciclo. (Ha sostituito la tolleranza a 10 minuti del 6 agosto.)
 5. **Tetto di capitale 20% per mercato** — `MARKET_CAP_PCT = 0.20`. È gestione del rischio di
    risoluzione, deliberatamente fuori dal calcolo del punteggio.
-   ⚠️ **Il tetto del motore non è l'unico**: il *pianificatore* (`lib/rewards/concentration.js`,
-   `CONCENTRATION_CAP_FRAC = 0.30`) usa **30%**, ed è il numero che leggono sia il pannello
-   «Ottimizza» sia `realloc-cycle.js`. Due tetti, due valori — vedi §5 punto 7.
+   Dal 7 agosto 2026 è **un numero solo**: anche il *pianificatore* (`lib/rewards/concentration.js`,
+   `CONCENTRATION_CAP_FRAC = 0.20`) usa 20%, ed è quello che leggono il pannello «Ottimizza» e
+   `realloc-cycle.js`. Prima erano 20% nel motore e 30% nel pianificatore: il vincolo più stretto
+   vinceva comunque, ma il pianificatore proponeva righe che il quoting tagliava. Il valore giusto è
+   quello del motore, che è il tetto di sicurezza deciso esplicitamente. Se cambia, cambiano insieme:
+   un test lo verifica (`netto-centralizzato.test.js`, `realloc-cycle.test.js`).
 
 **Merge — eseguibile, spento.** Strategia a livelli in `lib/maker/strategia-merge.js`: L1 taker
 immediato se la coppia YES+NO costa ≤ 99¢, L2 maker con skew (attesa 60 min), L3 ripiego sull'uscita
@@ -274,14 +277,15 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
    file dello stesso tipo — comprese baseline e latch del guardiano — sono ignorati per una ragione
    esplicita: descrivono *questa* macchina in *questo* momento, e versionare l'interruttore
    AVVIA/FERMA significa che un `git checkout` può spostarlo. Da aggiungere all'ignore.
-7. **Due tetti di concentrazione per mercato, con due valori diversi.** Il motore ammette fino al
-   **20%** del saldo su un mercato (`motore-unico.MARKET_CAP_PCT = 0.20`, «rischio di risoluzione»);
-   il pianificatore ne alloca fino al **30%** (`lib/rewards/concentration.CONCENTRATION_CAP_FRAC =
-   0.30`, motivato dalla misura del 3 agosto sul knapsack senza tetto). `concentration.js` è già la
-   fonte unica per pannello e `realloc-cycle`, ma `motore-unico` non la legge: un piano al 30% viene
-   poi tagliato a 20% in fase di quoting. Non è una rottura — il vincolo più stretto vince, ed è
-   quello giusto — ma è **la stessa domanda con due risposte in due file**, che è precisamente ciò che
-   il resto del repo evita per principio. Da decidere se allinearli e su quale valore.
+7. **Il tetto di concentrazione è allineato a 20%, ma i processi vivi tengono ancora il 30%.**
+   Il punto «due tetti, due valori» è chiuso: l'utente ha deciso il 7 agosto 2026 che il valore giusto
+   è il **20%** del motore, e `CONCENTRATION_CAP_FRAC` è passato da `0.30` a `0.20`.
+   Resta pendente il **deploy**: `CONCENTRATION_CAP_FRAC` è una costante letta al `require`, quindi
+   `agent41-realloc-scheduler` (avviato alle 18:49) tiene 0.30 in memoria — il suo log di avvio dice
+   «tetto per mercato 30% del capitale» — e il `dashboard` serve `/api/rewards/allocate` dal bundle
+   precedente. Finché non si riavviano, il piano periodico e il pannello «Ottimizza» continuano a
+   proporre fino al 30%. Il build è fatto; **il restart va chiesto** (regola 2). `agent35-maker` non è
+   coinvolto: usa `MARKET_CAP_PCT`, che non è cambiato.
 
 ---
 
