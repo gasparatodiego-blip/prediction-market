@@ -344,6 +344,12 @@ async function eseguiReset({ rows, dryRunOnly }) {
       readEnabled: () => readAutoRepriceConfig({}).enabledMarketIds || [],
       readTracking: () => readTrackingConfig().marketIds || [],
       listOrders: ({ marketId }) => listManualOrders({ marketId }),
+      // ── LA MANO CHE DISTINGUE I PROPRI ORDINI DA QUELLI DI UNA PERSONA ────────────────────────
+      // Iniettata SOLO qui. Il pannello non la passa, e per il pannello e' giusto cosi': li' a premere
+      // il bottone c'e' davvero l'operatore, quindi «cancella tutto cio' che e' a riposo» resta la cosa
+      // che ha chiesto. Questo processo invece si sveglia da solo ogni sei ore, e senza questa riga
+      // cancellerebbe anche gli ordini messi a mano dieci minuti prima.
+      leggiOrigini: () => require('../lib/maker/origine-ordine').mappaOrigini(),
       cancelOrder: ({ orderId, marketId }) => cancelManualOrder({ orderId, marketId }, 'manual-ui'),
       setTrackingOff: ({ marketId, reason }) => setTracking({ marketId, enabled: false, by: 'riallocatore periodico', reason }),
       setEnabled: ({ marketId, enabled, reason }) => setAutoReprice({ scope: 'market', marketId, enabled, by: 'riallocatore periodico', reason }),
@@ -373,7 +379,11 @@ async function eseguiReset({ rows, dryRunOnly }) {
       // usa già due righe più sopra. Serve a runBulkAllocation per RITIRARE una gamba rimasta sola
       // quando la sua controparte viene rifiutata — senza, una coppia a metà resterebbe sul libro.
       placeBulk: ({ rows: r, dryRunOnly: d }) => runBulkAllocation(
-        { rows: r, dryRunOnly: d },
+        // `origine: 'auto'` — QUI a premere il bottone non c'è nessuno. Il pannello lascia il difetto
+        // manuale, perché lì una persona c'è davvero; questo processo si dichiara per quello che è, e
+        // il timbro finisce nel registro accanto a ogni ordine. È quel timbro che, sei ore dopo, gli
+        // permette di riconoscere i propri ordini e di NON cancellare quelli messi a mano.
+        { rows: r, dryRunOnly: d, origine: 'auto' },
         {
           openNotionalUsd: diag.readable ? (diag.openNotionalUsd || 0) : 0,
           cancelOrder: ({ orderId, marketId }) => cancelManualOrder({ orderId, marketId }, 'manual-ui'),
