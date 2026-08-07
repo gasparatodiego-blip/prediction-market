@@ -45,7 +45,12 @@ export default function BotSwitch() {
   const carica = useCallback(async () => {
     try {
       const r = await fetch('/api/maker/bot', { cache: 'no-store' });
-      setS(await r.json());
+      const j = await r.json();
+      setS(j);
+      // Una risposta che arriva ma non è `ok` — 401 con la sessione scaduta, 500 — lascerebbe il
+      // pannello «in lettura» per sempre e in silenzio. Il tasto resta giustamente bloccato, ma chi
+      // guarda deve sapere che sta aspettando una cosa che non arriverà.
+      setErrore(j?.ok === true ? null : (j?.error || `stato non leggibile (HTTP ${r.status})`));
     } catch (e) { setErrore((e as Error).message); }
   }, []);
 
@@ -66,8 +71,26 @@ export default function BotSwitch() {
     finally { setInCorso(false); setConferma(false); }
   }, [carica, s]);
 
-  const acceso = s?.enabled === true;
+  // ── FINCHÉ NON SI SA, NON SI AUTORIZZA ──────────────────────────────────────────────────────────
+  // `s` parte a null e ci resta finché la prima GET non risponde. In quella finestra ogni `=== true`
+  // qui sotto vale false, e il pannello DISEGNAVA già lo stato di riposo: «○ fermo» col tasto AVVIA
+  // vivo. Due conseguenze, e la seconda è quella seria:
+  //   · mostrava «fermo» senza saperlo — a bot acceso lampeggiava il contrario del vero a ogni carico;
+  //   · `killAttivo` era false perché il kill non era ancora stato LETTO, non perché fosse spento,
+  //     quindi AVVIA restava cliccabile a kill attivo. La guardia del kill vive solo qui: la POST non
+  //     la rifà. Bastava premere prima che la rete rispondesse.
+  //
+  // `statoNoto` è la condizione perché il pannello possa affermare qualcosa. Non basta «la fetch è
+  // tornata»: una risposta d'errore (`ok:false`) o un corpo senza `enabled` sono altrettanto un non
+  // sapere, ed è la seconda porta sullo stesso buco. Si pretende un booleano vero e proprio.
+  const statoNoto = s?.ok === true && typeof s.enabled === 'boolean';
+  const acceso = statoNoto && s?.enabled === true;
   const killAttivo = s?.kill?.effectivelyKilled === true;
+  // Solo AVVIA passa di qui. FERMA non ha una condizione propria e non deve averne: si disegna quando
+  // sappiamo che il bot è acceso, e da quel momento fermarlo non richiede altre verifiche — in
+  // particolare non lo blocca il kill, perché «il kill è attivo» non è mai una ragione per impedire di
+  // fermarsi. Un freno che si inceppa quando le cose vanno male non è un freno.
+  const avviaBloccato = inCorso || killAttivo || !statoNoto;
   const pos = s?.posizioni;
   const ciclo = s?.ciclo;
 
@@ -81,16 +104,17 @@ export default function BotSwitch() {
           deve mai richiedere un passaggio in più. */}
       {!acceso && !conferma && (
         <button
-          type="button" disabled={inCorso || killAttivo}
+          type="button" disabled={avviaBloccato}
           onClick={() => setConferma(true)}
+          title={!statoNoto ? 'stato non ancora letto' : killAttivo ? 'il KILL è attivo' : undefined}
           style={{
             width: '100%', padding: '20px 16px', fontSize: 20, fontWeight: 700, letterSpacing: '.04em',
-            borderRadius: 10, cursor: killAttivo ? 'not-allowed' : 'pointer',
+            borderRadius: 10, cursor: avviaBloccato ? 'not-allowed' : 'pointer',
             border: '1px solid var(--ok-bd, #2f7d4f)', background: 'var(--ok-bg, #123020)', color: 'var(--ok-fg, #7ee2a8)',
-            opacity: killAttivo ? 0.5 : 1,
+            opacity: avviaBloccato ? 0.5 : 1,
           }}
         >
-          AVVIA BOT
+          {statoNoto ? 'AVVIA BOT' : 'AVVIA BOT — stato in lettura…'}
         </button>
       )}
       {!acceso && conferma && (
@@ -123,12 +147,18 @@ export default function BotSwitch() {
 
       {/* ── LA RIGA DI STATO ─────────────────────────────────────────────────────────────────────── */}
       <div style={{ marginTop: 10, fontSize: 13, lineHeight: 1.7 }}>
-        <strong>{acceso ? '● attivo' : '○ fermo'}</strong>
-        {' · '}
-        {pos?.leggibile
-          ? <>posizioni aperte <strong>{pos.n}</strong> · capitale impegnato <strong>{usd(pos.costoUsd)}</strong></>
-          : <span style={{ opacity: 0.75 }}>posizioni non leggibili — non «zero», non lette</span>}
-        {s?.atIso && <> · ultimo cambio {new Date(s.atIso).toLocaleString('it-IT')}{s.by ? ` da ${s.by}` : ''}</>}
+        {/* «in lettura» è uno stato a sé e non si traveste da «fermo»: dire «fermo» senza averlo letto
+            è un'affermazione, e su questo pannello un'affermazione sbagliata è quella che conta. */}
+        <strong>{!statoNoto ? '◌ stato in lettura…' : acceso ? '● attivo' : '○ fermo'}</strong>
+        {statoNoto && (
+          <>
+            {' · '}
+            {pos?.leggibile
+              ? <>posizioni aperte <strong>{pos.n}</strong> · capitale impegnato <strong>{usd(pos.costoUsd)}</strong></>
+              : <span style={{ opacity: 0.75 }}>posizioni non leggibili — non «zero», non lette</span>}
+            {s?.atIso && <> · ultimo cambio {new Date(s.atIso).toLocaleString('it-IT')}{s.by ? ` da ${s.by}` : ''}</>}
+          </>
+        )}
       </div>
 
       {acceso && s?.rampa?.motivo && (
@@ -155,7 +185,10 @@ export default function BotSwitch() {
 
       {/* ── IL PIANO CORRENTE, SOLA LETTURA ──────────────────────────────────────────────────────── */}
       <div className="ex-sech" style={{ marginTop: 14 }}><span className="ex-sech-t">Piano corrente del riallocatore</span></div>
-      {!ciclo?.letto && <div style={{ fontSize: 12.5, opacity: 0.75 }}>{ciclo?.motivo || 'nessun ciclo registrato'}</div>}
+      {/* Stessa regola del tasto: «nessun ciclo registrato» è una conclusione, e non la si trae da una
+          risposta che non è ancora arrivata. */}
+      {!statoNoto && <div style={{ fontSize: 12.5, opacity: 0.75 }}>in lettura…</div>}
+      {statoNoto && !ciclo?.letto && <div style={{ fontSize: 12.5, opacity: 0.75 }}>{ciclo?.motivo || 'nessun ciclo registrato'}</div>}
       {ciclo?.letto && (
         <>
           <div style={{ fontSize: 12.5, opacity: 0.85, marginBottom: 8 }}>
