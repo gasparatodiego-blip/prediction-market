@@ -56,9 +56,19 @@ const SEGNALI = [
   [/\/api\/maker\/manual\/bulk-allocate/, 'rotta di allocazione in blocco'],
   [/maker-live-test-order/, 'script di ordine reale di prova'],
   [/maker-dryrun-place/, 'script di piazzamento'],
-  [/agent35-maker/, 'il motore maker: gira con MAKER_PLACEMENT=send'],
-  [/agent40-manual-reprice/, 'il watcher che riprezza gli ordini a mano'],
-  [/agent41-realloc-scheduler/, 'il riallocatore: è l\'unico processo che piazza da solo'],
+  // ── GLI AGENT: SI GUARDA L'ESECUZIONE, NON IL NOME ────────────────────────────────────────────
+  // Prima bastava che il nome comparisse, e il risultato era che `pm2 restart agent35-maker` veniva
+  // bloccato da qui. È il blocco sbagliato per due ragioni: un riavvio NON piazza un ordine (accende
+  // un processo che, alle sue condizioni, potrà farlo), e soprattutto pm2 ha già il suo presidio —
+  // le regole `ask` su restart/stop/delete/reload/kill/start, che fermano il comando e lo mettono
+  // davanti all'operatore. Quello è il meccanismo giusto: chiede, e l'operatore risponde in chat.
+  // Un hook che DENY-a un riavvio non lascia quella possibilità, e l'unico modo di procedere
+  // diventerebbe aggirarlo — cioè il contrario di ciò che serve.
+  // Quello che resta bloccato è ciò che un hook può giudicare da solo: lanciare l'agent a mano,
+  // fuori da pm2, dove nessun'altra regola guarda.
+  [/(?:^|[\s;&|])(?:node|nodemon|npx|bash|sh|\.\/)\s*\S*agent35-maker/, 'esecuzione diretta del motore maker (gira con MAKER_PLACEMENT=send)'],
+  [/(?:^|[\s;&|])(?:node|nodemon|npx|bash|sh|\.\/)\s*\S*agent40-manual-reprice/, 'esecuzione diretta del watcher che riprezza gli ordini a mano'],
+  [/(?:^|[\s;&|])(?:node|nodemon|npx|bash|sh|\.\/)\s*\S*agent41-realloc-scheduler/, 'esecuzione diretta del riallocatore: è l\'unico processo che piazza da solo'],
   [/MAKER_PLACEMENT\s*=\s*send/, 'MAKER_PLACEMENT=send arma il piazzamento del motore'],
   [/MANUAL_ORDER_PLACEMENT\s*=\s*send/, 'MANUAL_ORDER_PLACEMENT=send arma il piazzamento manuale'],
   [/MAKER_MODE\s*=\s*(live|on)\b/, 'MAKER_MODE live/on arma il motore'],

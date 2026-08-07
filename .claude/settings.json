@@ -40,6 +40,7 @@
       "Bash(*pm2 delete*)",
       "Bash(*pm2 reload*)",
       "Bash(*pm2 kill*)",
+      "Bash(*pm2 start*)",
       "Bash(*pm2 startOrRestart*)",
 
       "Edit(//root/rewards-bot/data/maker-bot-enabled.json)",
