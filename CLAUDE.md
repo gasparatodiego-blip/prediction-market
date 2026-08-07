@@ -3,12 +3,14 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt**: non serve più reincollarlo ogni volta.
 
-Ultima verifica contro codice/stato reali: **7 agosto 2026**, ~21:35 UTC.
+Ultima verifica contro codice/stato reali: **7 agosto 2026**, ~23:45 UTC.
 
-> **Attenzione, 7 agosto 2026:** durante la stesura di questo file era attiva **una seconda sessione
-> Claude Code** sullo stesso repo (PID 1034803, avviata alle 19:33). Fra le 21:27 e le 21:29 ha
-> avviato `agent42-guardian` in pm2 e toccato `.env`. Se leggi §3/§4 e qualcosa non torna, ricontrolla
-> lo stato runtime: parte di ciò che è descritto qui si è mosso *mentre* veniva scritto.
+> **Il codice di questa sera è committato ma NON è ancora nei processi vivi.** agent35, agent40 e
+> agent41 tengono in memoria il codice con cui sono partiti, e il `dashboard` serve il bundle
+> compilato prima delle fasi 1–8. Tutto ciò che §4 descrive come *nuovo* (fine scala su quattro
+> percorsi, cadenza adattiva, pannello del mid vivo, timbro `origine`, ordini propri sottratti dalla
+> coda) **è vero nel repo e non ancora nel runtime**: serve un riavvio, e il riavvio si chiede.
+> Vedi §5 punto 7.
 
 ---
 
@@ -124,6 +126,26 @@ Due dettagli di forma che contano, e sono verificati dal test:
   (`node lib/maker/bot-enabled.test.js`). Non è una lettura, ed è la parte prudente: il 7 agosto 2026
   una versione del test del guardiano ha lasciato residui sullo stato **vero** (§5 punto 1).
 
+### L'hook che guarda dentro gli script (dal 7 agosto 2026)
+
+`.claude/hooks/blocca-piazzamento.js`, registrato in entrambe le copie di `settings.json` sotto
+`PreToolUse` / matcher `Bash`, timeout 15s. Chiude il limite che le regole `ask` dichiarano da sempre:
+`node /tmp/x.js`, dove `x.js` importa la funzione che piazza, non nomina niente e nessuna regola lo vede.
+L'hook **apre il file e cammina il grafo dei `require`** fino a profondità 3 cercando la superficie di
+piazzamento vera (la POST /order dell'adapter, `placeManualOrder`, `replaceManualOrder`,
+`runBulkAllocation`, `createOrder`, la firma EIP-712, le tre rotte manuali, gli agent che piazzano, gli
+env che armano). **Cancellare non è in elenco**: può solo ridurre l'esposizione, e il guardiano deve
+poterlo fare.
+
+Tre esenzioni, tutte dichiarate e tutte trovate dai test facendo fallire l'hook su se stesso:
+- le **letture** si valutano per prime e **segmento per segmento** (`cat x | curl -X POST …/order` non è
+  una lettura solo perché comincia con `cat`);
+- i file **`*.test.js`** del repo sono esenti dall'analisi del *contenuto* — è il loro mestiere nominare
+  quelle funzioni per provare che rifiutano — ma non da quella del comando che li lancia;
+- il **corpo di un heredoc** è un dato, non una riga di comando: un messaggio di commit che *spiega* il
+  piazzamento non è un piazzamento. Se però l'heredoc va in pasto a `node`, torna a contare.
+- i separatori **dentro le virgolette** non separano (`grep -rn "a\|b"` è un comando solo).
+
 **Limite dichiarato della famiglia 3:** la copertura è per *forme note* di scrittura, non per
 costruzione. `install`, `sponge`, `awk` con redirezione indiretta, `git reset --hard` che non nomina il
 path, o una redirezione senza spazio seguita da altro (`printf x >data/f.json && ls`) non incontrano
@@ -175,6 +197,22 @@ Si completa tutto il resto, si dice cosa è pronto, e si aspetta il messaggio um
 Distinzione da tenere ferma: **agent37 guarda i processi, agent42-guardian guarda il capitale.** Sono
 due guasti indipendenti (un motore può battere regolare e perdere soldi), quindi due processi.
 
+**Fuori da pm2, a richiesta — il monitor delle «Reti dei 21»** (7 agosto 2026). Non è un agent e non va
+messo in pm2: si lancia in un terminale dedicato quando serve guardare.
+
+```bash
+cd /root/rewards-bot && node scripts/monitor-reti-dei-21.js            # una fotografia
+cd /root/rewards-bot && node scripts/monitor-reti-dei-21.js --watch    # rilegge ogni 60s
+cd /root/rewards-bot && node scripts/monitor-reti-dei-21.js --json     # una riga JSON
+```
+
+Confronta il board reward corrente con il **Setting Consensus** misurato sui 21 wallet vincenti
+(`data/manuale-operativo-maker-v2.md`): scadenza mediana 0,44 g (Q1–Q3 0,18–0,80), nozionale ~$34
+($16–74), size 77 share, un tick dal mid, chiusura via redeem (94%). **Non filtra sul montepremi** —
+il campione dice che la banda non è un criterio — e un mercato con scadenza non leggibile **non** entra
+fra i coerenti. Sola lettura dimostrata: un test cammina l'albero dei `require` (5 file raggiungibili,
+nessuna superficie di piazzamento o cancellazione). Prima lettura reale: 314 mercati, **1** coerente.
+
 ---
 
 ## 4 · STATO ATTUALE DEL SISTEMA
@@ -208,6 +246,39 @@ i due bucket ci mettevano sopra una scalinata che il venue non paga. Nessun `if 
    vinceva comunque, ma il pianificatore proponeva righe che il quoting tagliava. Il valore giusto è
    quello del motore, che è il tetto di sicurezza deciso esplicitamente. Se cambia, cambiano insieme:
    un test lo verifica (`netto-centralizzato.test.js`, `realloc-cycle.test.js`).
+   **Deployato il 7 agosto 2026, ~22:40 UTC**: agent41 riavviato scrive «tetto per mercato 20% del
+   capitale», e il piano servito dal pannello su $660 si ferma a **$130 = 19,7%** (tetto $132). Con il
+   vecchio 30% gli stessi dati davano $195 = 29,5%.
+
+**Fine scala — la regola sta su tutti e quattro i percorsi** (dal 7 agosto 2026). Sotto i 3¢ o sopra i
+97¢ un mercato non fa più mercato: sta risolvendo, e un ordine a riposo lì è una scommessa asimmetrica.
+`lib/maker/end-of-scale.js` resta l'unica definizione, ma ora la chiamano **quattro** moduli e non due:
+`auto-reprice` (agent40), `mm-tracking`, la rotaia `end-of-scale` di `risk-rails` (che copre **agent35**,
+azione `halt-market`) e il gate 2-ter di `placeManualOrder` (che copre pannello manuale, `bulk-allocate`
+e quindi **agent41**). Le soglie si rileggono da `.env` a ogni chiamata — `MID_EXTREME_LOW=0.03`,
+`MID_EXTREME_HIGH=0.97`, in prezzo e non in centesimi — e un valore che non si capisce viene **scartato**
+in favore del difetto: un `.env` sbagliato non può spegnere la protezione.
+
+**Cadenza di reprice adattiva per mercato** (`lib/maker/cadenza-adattiva.js`, 7 agosto 2026). I due cicli
+di agent40 non guardano più ogni mercato con lo stesso orologio: l'escursione del mid su 15 minuti
+(`velocita-mercato.leggiFinestraMercato`, la stessa misura del filtro «⚡ Veloci») si traduce in tick/ora
+e da lì in tre classi — veloce 1s, media = cadenza di prima, lenta 10s. Misurato sul giornale vero: 162
+mercati → 102 lenti, 49 non misurabili, 6 medi, 5 veloci; chiamate al venue **−37,9%**. Non abbassa
+nessuna soglia: `minMoveCents` e `hysteresisTicks` restano dov'erano, e guardare più spesso non riprezza
+di più. Misura assente ⇒ cadenza di difetto, cioè il comportamento di prima.
+
+**Origine degli ordini — una mano o un ciclo** (`lib/maker/origine-ordine.js`, 7 agosto 2026). Campo
+`origine` **accanto** a `source`, non al posto suo: `source` dice quale corsia piazza (ed è quello che
+agent35/agent40 leggono), `origine` dice se dietro c'era una persona. Serve perché `bulk-allocate` timbra
+`manual-ui` sia per il bottone del pannello sia per agent41. Il reset di agent41 ora cancella **solo** ciò
+che è provatamente `auto`: manuale e **ignoto** restano sul libro, e gli ordini piazzati prima di questa
+modifica sono ignoti per costruzione. Il pannello non cambia: la mano `leggiOrigini` è iniettata solo da
+agent41.
+
+**Il pannello non si accoda più a se stesso.** `placeManualOrder`, quando il chiamante non passa
+`ownOrders`, li **legge** dal venue e tiene solo il lato che sta quotando (per token id). Prima solo
+agent40 li passava: tutti gli altri percorsi con `inCoda:true` mandavano una lista vuota, e dal secondo
+ordine in poi il «concorrente» da battere eravamo noi — un tick per ogni nostro ordine davanti.
 
 **Merge — eseguibile, spento.** Strategia a livelli in `lib/maker/strategia-merge.js`: L1 taker
 immediato se la coppia YES+NO costa ≤ 99¢, L2 maker con skew (attesa 60 min), L3 ripiego sull'uscita
@@ -277,8 +348,17 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
    i piazzamenti nuovi senza bloccare anche le uscite. Da correggere: il commento, o la copertura.
 3. **`REALLOC_SCHEDULER_DRY_RUN=1` è ancora nell'ambiente del processo agent41** (ereditato dal demone
    pm2, non da `ecosystem.config.js`). Inerte, perché nessuna riga di codice la legge, ma chi ispeziona
-   l'ambiente la trova e può concluderne il contrario. Sparisce con un `pm2 kill` + resurrect, che
-   richiede conferma (regola 2).
+   l'ambiente la trova e può concluderne il contrario.
+   **Verificato il 7 agosto 2026, ~23:20 UTC:** la variabile **non è in `.env`** e non è in
+   `ecosystem.config.js` — in entrambi i file compare solo dentro commenti storici. Non c'è quindi
+   niente da togliere da `.env`: vive **solo** nell'ambiente del demone pm2 e, attenzione, **anche nel
+   dump** `~/.pm2/dump.pm2`, quindi un `pm2 kill` + `resurrect` la rimetterebbe. La rimozione pulita è
+   un riavvio del solo agent41 da una shell che non ce l'ha, seguito da `pm2 save`:
+   ```bash
+   env -u REALLOC_SCHEDULER_DRY_RUN pm2 restart agents/ecosystem.config.js \
+     --only agent41-realloc-scheduler --update-env && pm2 save
+   ```
+   Richiede conferma (regola 2) ed è fra i riavvii pendenti del punto 7.
 4. **L'header di `lib/maker/strategia-merge.js` è invecchiato.** Elenca ancora quattro ragioni per cui
    il merge «NON è eseguibile dallo stack attuale»; il relayer gasless ne ha tolte tre e
    `ctf-relayer.js` la quarta, e il ciclo è stato eseguito davvero il 7 agosto 2026 (commit `95aa634`
@@ -293,15 +373,30 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
    file dello stesso tipo — comprese baseline e latch del guardiano — sono ignorati per una ragione
    esplicita: descrivono *questa* macchina in *questo* momento, e versionare l'interruttore
    AVVIA/FERMA significa che un `git checkout` può spostarlo. Da aggiungere all'ignore.
-7. **Il tetto di concentrazione è allineato a 20%, ma i processi vivi tengono ancora il 30%.**
-   Il punto «due tetti, due valori» è chiuso: l'utente ha deciso il 7 agosto 2026 che il valore giusto
-   è il **20%** del motore, e `CONCENTRATION_CAP_FRAC` è passato da `0.30` a `0.20`.
-   Resta pendente il **deploy**: `CONCENTRATION_CAP_FRAC` è una costante letta al `require`, quindi
-   `agent41-realloc-scheduler` (avviato alle 18:49) tiene 0.30 in memoria — il suo log di avvio dice
-   «tetto per mercato 30% del capitale» — e il `dashboard` serve `/api/rewards/allocate` dal bundle
-   precedente. Finché non si riavviano, il piano periodico e il pannello «Ottimizza» continuano a
-   proporre fino al 30%. Il build è fatto; **il restart va chiesto** (regola 2). `agent35-maker` non è
-   coinvolto: usa `MARKET_CAP_PCT`, che non è cambiato.
+7. **Il codice della sera del 7 agosto è committato, buildato e NON attivo: i riavvii sono pendenti.**
+   Il tetto di concentrazione al 20% è **deployato** (agent41 e dashboard riavviati alle ~22:30–22:41,
+   con l'autorizzazione esplicita dell'utente): quel punto è chiuso e verificato sul piano vero.
+   Restano da attivare le fasi 1–8, tutte già in `main` e con build verde:
+
+   | Processo | Cosa aspetta | Perché serve il riavvio |
+   |---|---|---|
+   | `agent35-maker` | rotaia `end-of-scale` in `risk-rails` | costanti e moduli letti al `require` |
+   | `agent40-manual-reprice` | cadenza adattiva, ordini propri letti in coda, fine scala | idem |
+   | `agent41-realloc-scheduler` | timbro `origine: 'auto'`, `leggiOrigini` nel reset | idem (+ vedi punto 3) |
+   | `dashboard` | pannello «Mid vivo» e rotta SSE `/api/maker/live-mid` | serve il bundle di ~22:39 |
+
+   **Nessuno di questi riavvii è stato fatto**: l'utente ha autorizzato in chat solo quelli della fase 0
+   (agent41 e dashboard, per il tetto). Regola 2: si chiede ogni volta.
+   Nota operativa registrata: **verificare `.next/prerender-manifest.json` prima di riavviare il
+   dashboard**. Una build incompleta ne produce solo la variante `.js`, e il processo entra in crash
+   loop con `ENOENT` (successo il 7 agosto: 19 riavvii automatici prima che una build nuova lo
+   risolvesse).
+
+8. **`pgrep -f <nome-processo>` non è affidabile in questa sessione.** Il comando che lo esegue contiene
+   il nome cercato, quindi `pgrep` trova anche la propria shell e `head -1` può restituire quella: il
+   7 agosto è costato due riavvii inutili di agent41 e una diagnosi sbagliata («l'ambiente è andato
+   perso», mentre erano 102 variabili tutte al loro posto). Per l'ambiente di un processo pm2 si prende
+   il pid da `pm2 jlist` e si legge `/proc/<pid>/environ`.
 
 ---
 
