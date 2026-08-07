@@ -844,5 +844,50 @@ module.exports = {
       autorestart:   true,
       env:           { NODE_ENV: 'production', HOME: '/root' },
     },
+    {
+      name:          'agent42-guardian',
+      script:        './agents/agent42-guardian.js',
+      cwd:           '/root/prediction-market',
+      restart_delay: 20000,
+      max_restarts:  20,
+      // IL GUARDIANO DELLE PERDITE ECONOMICHE. Sorveglia il CAPITALE, non i processi.
+      //
+      // NOME: condivide il 42 con agent42-watch-makers qui sopra, su richiesta esplicita dell'operatore.
+      // pm2 distingue per nome intero e i due non collidono, ma rompe la convenzione «un numero, un
+      // processo» che il resto della flotta rispetta (vedi agent37: «Named 37, not 36»). Se un giorno si
+      // rinumera, questo è il candidato: agent43-guardian.
+      //
+      // COSA FA CHE agent37 NON PUÒ FARE. agent37 chiede «il motore è vivo?» e guarda i battiti: un
+      // motore che batte regolare, supera ogni preflight e intanto perde soldi è, per lui, sano. Questo
+      // guarda l'unica cosa che quella domanda non copre — il capitale scende? Ogni 30 s confronta
+      // (saldo pUSD + posizioni al prezzo corrente) con il baseline in data/guardian-baseline.json, e
+      // oltre GUARDIAN_LOSS_PCT o GUARDIAN_LOSS_ABS cancella tutti gli ordini a riposo, deposita un
+      // referto reason='guardian-auto-kill' e mette il bot su FERMA. Sono due guasti indipendenti,
+      // quindi due processi: un doppio scatto simultaneo è innocuo (la seconda cancellazione trova il
+      // libro già vuoto e riporta 0, non un errore) e i due referti restano distinguibili per `id`.
+      //
+      // LE SOGLIE SI RILEGGONO A OGNI GIRO dal file .env, non da questo env: `process.env` in pm2 è una
+      // fotografia dell'avvio, e una soglia che per cambiare pretende un riavvio è una soglia che
+      // durante il riavvio non protegge. Qui NON si dichiarano quindi GUARDIAN_LOSS_*: metterle qui
+      // creerebbe un secondo posto dove sono definite, e due posti per un numero solo significano che
+      // cambiarne uno non lo cambia.
+      //
+      // NON PUÒ PIAZZARE, per costruzione: la sua unica superficie verso il venue è lib/maker/cancel-all
+      // (adapter di sola cancellazione, signer che non sa firmare). lib/maker/guardian-perdite.test.js
+      // cammina il suo albero di require e fallisce se qualcuno ci trascina dentro un modulo di
+      // piazzamento, oltre a vietare signTypedData/postOrder/placeManualOrder nel sorgente.
+      //
+      // NON FERMA LE USCITE. Usa FERMA (data/maker-bot-enabled.json) e NON il kill-switch, perché il
+      // kill blocca anche lib/maker/auto-close («una chiusura è comunque un ordine nuovo»): killare
+      // lascerebbe senza uscita proprio le posizioni che c'era da proteggere. Vedi il blocco in testa
+      // ad agents/agent42-guardian.js per il ragionamento completo, incluso ciò che FERMA NON copre.
+      //
+      // Footprint atteso simile ad agent37 (due letture JSON e una lettura di saldo in cache per giro),
+      // con l'aggiunta del path ethers di saldo-cache: 200M lascia margine abbondante.
+      max_memory_restart: '200M',
+      watch:         false,
+      autorestart:   true,
+      env:           { NODE_ENV: 'production', HOME: '/root' },
+    },
   ],
 };

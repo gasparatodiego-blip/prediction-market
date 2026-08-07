@@ -285,5 +285,24 @@ data/scadenze-senza-rinnovo.json.tmp*
 data/venue-positions.json
 data/venue-positions.json.tmp*
 
+# ── agent42-guardian: il punto zero e la latch ──────────────────────────────────────────────────────
+# Stessa regola dei sei qui sopra, e per questi due la ragione è più stringente del solito: descrivono
+# QUESTA macchina in QUESTO momento, e versionarli sarebbe attivamente dannoso.
+#
+# guardian-baseline  agents/agent42-guardian.js (via lib/maker/guardian-perdite.baselineDaScrivere)
+#                    Il capitale al momento in cui il guardiano è entrato in servizio: il punto zero
+#                    rispetto a cui misura ogni perdita. DEVE sopravvivere ai riavvii — un guardiano che
+#                    lo ricalcola a ogni avvio azzera la perdita accumulata a ogni crash, cioè non
+#                    protegge da niente. Si azzera SOLO cancellandolo a mano. Un baseline committato
+#                    verrebbe ripristinato da un checkout e sposterebbe la soglia sotto i piedi.
+# guardian-state     agents/agent42-guardian.js
+#                    La latch dello scatto: presente e `scattato:true` ⇒ il guardiano è fermo e non
+#                    rifà la spazzata. È lo stato di un evento avvenuto su questa macchina, non una
+#                    configurazione; committarlo significherebbe far nascere un clone già scattato.
+data/guardian-baseline.json
+data/guardian-baseline.json.tmp*
+data/guardian-state.json
+data/guardian-state.json.tmp*
+
 # Build di verifica su porta temporanea: artefatto locale, mai versionato.
 .next-verifica/
