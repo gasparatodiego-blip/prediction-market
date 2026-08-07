@@ -1,63 +1,284 @@
-# Prediction Market Dashboard — Claude Instructions
+# CLAUDE.md — contesto permanente del progetto
 
-## Permanent Behavior Rules
+Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
+`/root/rewards-bot`. **Il contesto vive qui, non nel prompt**: non serve più reincollarlo ogni volta.
 
-- **Everything is auto-approved except arming and firing (7 August 2026).** Reads, edits to any file, `git` including `push`, every `pm2` verb, `npm`/build/test, generic shell, searches, read-only API calls — all run without asking. The permission policy is now a broad `allow` plus a short `ask` list, not a list of blessed commands, so a small variation in a command no longer produces a fresh prompt.
-- **The `ask` list is 28 rules and covers exactly two things: sending real orders, and arming the thing that sends them.** Namely: the `/api/maker/manual/{order,orders,replace,cancel,bulk-allocate}` endpoints, `maker-live-test-order` / `maker-dryrun-place`, running `agent35`/`agent40` directly with `node`; the AVVIA/FERMA switch (`data/maker-bot-enabled.json`, `impostaBot`, `POST /api/maker/bot` — see "The one live switch" below), `/api/maker/{arm,disarm}`, `data/maker-arming.json`, and the `MAKER_PLACEMENT` / `MANUAL_ORDER_PLACEMENT` / `MAKER_MODE=live` / `MAKER_FUNDING_APPROVED` flags; the kill switch (`safety-kill`, `kill-maker`, `data/safety-kill-switch.json`, `/api/maker/kill`); and `.env` / `ecosystem.config.js`, which carry the credentials and the flags.
-- **What this deliberately gave up.** `git push`, `rm -rf`, `pm2 delete/stop`, `prisma`/`psql` against the production DB, `systemctl`, `nginx`, `certbot`, `npm publish` and the venue key-management scripts (`polymarket-maker-store-key`, `polymarket-derive-creds`, `rotate-kek`) now run **without confirmation**. This was an explicit operator decision, taken with the trade-off stated. It replaces the earlier rule that said a "no gates" instruction in a prompt could never widen this list — that rule is gone; the `ask` list above is now the whole of it.
-- After every code change, run `npm run build`. Restarting the affected process afterwards no longer needs a go-ahead — but say which processes were restarted and what the change activates.
+Ultima verifica contro codice/stato reali: **7 agosto 2026**, ~21:30 UTC.
 
-### Start sessions from `/root/rewards-bot`, with `--permission-mode auto`
+---
 
+## 1 · STACK E INFRASTRUTTURA
+
+Bot di **liquidity rewards su Polymarket**: piazza ordini maker *fermi* dentro la banda premiante e
+incassa i premi di liquidità del venue. I reward si pagano sugli ordini **a riposo**, non sui fill —
+per un maker l'esecuzione è il costo, non il ricavo.
+
+| | |
+|---|---|
+| Runtime | Next.js 14.2 (App Router) · Node v20.20.2 · TypeScript |
+| DB | Prisma 5 → **PostgreSQL** (`DATABASE_URL` in `.env`) |
+| Processi | **pm2**, 41 processi definiti in `agents/ecosystem.config.js`; **11 online**, gli altri deliberatamente fermi (commit `47ff87e`: «riduzione all'insieme minimo») |
+| Server | Hetzner Helsinki, Ubuntu, `62.238.52.227` (verificato) |
+| Path | Repo in `/root/rewards-bot`. **`/root/prediction-market` è un symlink allo stesso path** ed è il `cwd` dichiarato in pm2: i due nomi sono la stessa directory |
+| Repo | GitHub privato `git@github.com:gasparatodiego-blip/prediction-market.git`, branch `main` |
+
+**Capitale reale connesso.** Funder on-chain `0x4C81F19a436e8174f1f3b07d7c0169150Fbdbdee` (è un
+*contratto* deposit-wallet ERC-1271, `MAKER_SIGNATURE_TYPE=3`; l'EOA firma e non detiene nulla).
+Alla verifica del 7 agosto 2026: **pUSD $590,26 + 1 posizione ~$70,30 ≈ $660 totali**.
+
+Il numero invecchia: **non citarlo a memoria, rileggilo** (lettura on-chain, sola lettura):
+
+```bash
+node -e "
+const fs=require('fs');
+for(const l of fs.readFileSync('.env','utf8').split('\n')){const m=l.match(/^\s*([A-Z0-9_]+)\s*=\s*\"?([^\"#]*?)\"?\s*\$/); if(m&&!process.env[m[1]])process.env[m[1]]=m[2];}
+(async()=>{
+  const {leggiSaldoUsd}=require('./lib/maker/saldo-cache');
+  const {readVenuePositions}=require('./lib/safety/venue-positions-snapshot');
+  const s=await leggiSaldoUsd(); const p=readVenuePositions();
+  const v=(p&&p.positions||[]).reduce((a,x)=>a+(Number(x.size)*Number(x.curPrice)||0),0);
+  console.log('saldo',s.usd,'affidabile',s.affidabile,'| posizioni',(p&&p.positions||[]).length,'valore',v.toFixed(2));
+})();"
 ```
+
+---
+
+## 2 · REGOLE DI SICUREZZA FISSE
+
+**Invariabili. Non si riscrivono senza istruzione esplicita dell'utente in chat.**
+
+1. **Mai toccare lo schema Prisma né modificare il database di produzione.** Niente `migrate`,
+   niente `db push`, niente `UPDATE`/`DELETE` su Postgres.
+2. **Mai fermare o riavviare un processo pm2 senza conferma esplicita dell'utente in chat, ogni
+   volta.** Un'autorizzazione vale **solo per quel riavvio specifico**: non si estende al successivo,
+   né a un altro processo, né al giorno dopo. Vale per `restart`, `stop`, `delete`, `reload`.
+   *(Questa regola sostituisce la precedente «restart senza go-ahead». La allowlist dei permessi
+   decide cosa non apre un prompt tecnico; questo file decide cosa devo comunque chiedere.)*
+3. **Mai piazzare ordini reali senza conferma esplicita dell'utente in chat.** Due sole eccezioni,
+   e sono le uniche azioni su capitale reale che procedono in autonomia:
+   - **(a) agent41** — riallocazione periodica, quando è fuori dry-run *e* il bot è su AVVIA;
+   - **(b) agent42-guardian** — cancellazioni automatiche in caso di perdita oltre soglia.
+4. **`npm run build` in autonomia; il restart no** (vedi regola 2).
+5. **Ogni modifica di codice va deployata subito sul bot live** — build + attivazione — non solo
+   committata. Il deploy che richiede un restart pm2 si chiede (regola 2) e si esegue subito dopo.
+6. **Commit e push su `main` per ogni modifica significativa**, salvo istruzione contraria.
+7. **Verifica sempre a fondo prima di dichiarare concluso un lavoro.** Non fermarsi alla prima
+   lettura superficiale: leggere il codice che decide davvero, non il commento che lo descrive, e
+   controllare lo stato runtime (`pm2 env`, i file in `data/`) e non solo la configurazione.
+
+### I tre interruttori, e chi decide cosa
+
+| Interruttore | File / flag | Semantica |
+|---|---|---|
+| **AVVIA / FERMA** | `data/maker-bot-enabled.json` via `lib/maker/bot-enabled.js`, bottone in cima alla tab **Mercati ottimizzati** | Decide se il bot apre posizioni da solo. `agent41` lo rilegge **a ogni ciclo**: FERMA vale dal ciclo dopo, senza restart. File mancante/illeggibile/malformato ⇒ **fermo**. Ferma i piazzamenti *nuovi*, lascia gestite le posizioni aperte (auto-close, riprezzatura, rinnovi). |
+| **KILL** | `data/safety-kill-switch.json`, `lib/safety/kill-switch`, `/api/maker/kill` | Emergenza assoluta. Lo leggono tutti i percorsi **compreso `auto-close`**: killare lascia le posizioni aperte *senza uscita*. Non è l'interruttore operativo. |
+| **ARM / DISARM** | `data/maker-arming.json`, `/api/maker/{arm,disarm}` | Autorizzazione di sessione al piazzamento, con cap di collaterale. |
+
+`REALLOC_SCHEDULER_DRY_RUN` **è stato rimosso** il 7 agosto 2026 da `ecosystem.config.js` e da ogni
+riga di `agent41`. Non reintrodurlo e non aggiungere un env di fallback accanto ad AVVIA/FERMA: due
+interruttori per una decisione sola significano che spegnerne uno non la spegne. Un test
+(`lib/maker/gestione-manuale-nel-flusso.test.js`) fallisce se ricompare.
+`REALLOC_SCHEDULER_ENABLED` **non** è un secondo interruttore: decide se il processo fa qualcosa,
+non se può piazzare.
+
+### Permessi della sessione (stato al 7 agosto 2026)
+
+`.claude/settings.json` (progetto) e `~/.claude/settings.json` (utente) portano una **copia identica**
+della stessa policy: `allow` ampio + **28 regole `ask`** che coprono esattamente due cose — *mandare
+ordini veri* e *armare ciò che li manda*. `ask` batte `allow` da qualunque file arrivi, e le regole si
+**fondono** fra i file. `.claude/settings.local.json` deve restare privo di regole `ask`.
+Le due copie vanno tenute in sync: se ne modifichi una, modifica l'altra.
+
+Le sessioni si aprono da `/root/rewards-bot` (il file di progetto si carica solo se quella è la cwd):
+
+```bash
 cd /root/rewards-bot && claude --permission-mode auto
 ```
 
-**Why the directory matters:** `.claude/settings.json` is a *project* file and loads only when the session's working directory is the project root. A session started from `/root` does not read it. That is why prompts kept reappearing before 7 August 2026 — the policy was being edited in the project file while three other settings files kept their own `ask` rules alive, and `ask` beats `allow` no matter which file it comes from, with rules **merged** across files rather than overridden.
+### Guardrail auto-resume
 
-As a safety net, `~/.claude/settings.json` now carries an **identical** copy of the policy, so starting from the wrong directory degrades to the same behaviour instead of a stricter one. Keep the two files in sync: if you edit one, edit the other. `.claude/settings.local.json` (both project and user level) must stay free of `ask` rules — Claude Code appends to the project-level one automatically when you approve something, and anything that lands there overrides nothing but adds to the merge.
-- All agent scripts live in `/root/prediction-market/agents/`
-- Agents communicate via JSON files in `/tmp/`: `markets-raw.json`, `matches-politics.json`, `matches-other.json`, `arbitrage-opportunities.json`, `agent-status.json`, `agent-heartbeats.json`
+Se il turno corrente è stato aperto da un risveglio automatico (ScheduleWakeup o simile) e **non** da
+un messaggio umano: build, test, edit, commit locali restano autorizzati; **`git push` e qualunque
+deploy o restart pm2 no**, anche se il prompt che ha programmato il risveglio diceva «senza gate».
+Si completa tutto il resto, si dice cosa è pronto, e si aspetta il messaggio umano successivo.
 
-### The one live switch: AVVIA/FERMA (7 August 2026)
+---
 
-Whether the bot opens positions on its own is decided in **exactly one place**: `lib/maker/bot-enabled.js`, backed by `data/maker-bot-enabled.json`, toggled by the AVVIA/FERMA button at the top of the dashboard's **Mercati ottimizzati** tab (`data-lrc-tab="alloca"`). `agent41` re-reads it **every cycle**, so FERMA takes effect on the next cycle without a restart. Missing, unreadable, or malformed file ⇒ **stopped**.
+## 3 · AGENTI CHIAVE
 
-`REALLOC_SCHEDULER_DRY_RUN` used to be a second switch for the same decision. It was **removed** on 7 August 2026 — from `ecosystem.config.js` and from every line of `agent41` that read it. Do not reintroduce it, and do not add a fallback env var beside the flag: two switches for one decision mean turning one off doesn't turn the thing off. `REALLOC_SCHEDULER_ENABLED` is **not** a second switch — it decides whether the process does anything at all, not whether it may place orders.
+**Online al 7 agosto 2026** (`pm2 list` — verificato, non assunto):
 
-Note the division of labour with the kill switch: FERMA stops *new* placements and rotations while leaving open positions managed (auto-close, repricing, renewals); KILL (`lib/safety/kill-switch`) is separate and absolute.
+| pm2 | Cosa fa | File |
+|---|---|---|
+| `agent34-clob-ws` | Feed **websocket** dei book CLOB Polymarket. Sola lettura, canale pubblico e senza chiavi: non può firmare, piazzare o cancellare nulla. Alimenta tape e mid-history. | `agents/agent34-clob-ws.js` |
+| `agent35-maker` | **Il motore maker**: pianifica ed espone le quote sui mercati selezionati. Gira con `MAKER_MODE=live-min`, `MAKER_PLACEMENT=send` (vedi §5, punto 2). | `agents/agent35-maker.js` |
+| `agent37-maker-watchdog` | **Dead-man dei processi**: sorveglia i battiti di agent35/agent40; se un motore si ferma, cancella i suoi ordini rimasti soli sul venue. Guarda la salute, non i dollari. | `agents/agent37-maker-watchdog.js` |
+| `agent38-tape-watchdog` | Watchdog di **continuità** dei giornali (trade tape + mid-history): copre il buco che l'auto-heal del socket di agent34 non vede. | `agents/agent38-tape-watchdog.js` |
+| `agent40-manual-reprice` | **Riprezzatura / uscita dalla banda** per gli ordini piazzati a mano: l'asse giusto non è la scadenza a 180 s ma «l'ordine è ancora dentro la banda che paga?». Scrive lo snapshot posizioni. | `agents/agent40-manual-reprice.js` |
+| `agent41-realloc-scheduler` | **Riallocazione periodica** (ogni 6 h). Due trigger indipendenti: *validità* (i mercati in gestione sono ancora buoni?) e *valore* (il piano fresco vale >20% in più?). **È l'unico processo che può cancellare e piazzare ordini veri senza conferma umana**, per eccezione esplicita dell'operatore (3 agosto 2026). | `agents/agent41-realloc-scheduler.js` |
+| `agent42-watch-makers` | Monitor dei **21 maker di riferimento**: ingressi, convergenze, ritiri pre-risoluzione. L'unico processo della flotta che **non può toccare capitale nemmeno in linea di principio** (nessun import da `lib/maker/`, nessuna credenziale). | `agents/agent42-watch-makers.js` |
+| `agent24-liquidity-rewards` | Scanner dei mercati con reward: ogni 15 min legge Gamma + book e assegna il punteggio con la formula quadratica esatta del venue. | `agents/agent24-liquidity-rewards.js` |
+| `agent27-news-guard` | Guardia notizie/volatilità: segnala che il prezzo sta per muoversi, così le quote si ritirano prima del fill avverso. | `agents/agent27-news-guard.js` |
+| `agent-monitor` | Sorveglia la flotta via heartbeat e riavvia gli agenti fermi, con circuit breaker per agente. | `agents/agent-monitor.js` |
+| `dashboard` | Il Next.js che serve pannello e `/api/*` sulla porta 3000. Il **pannello ordini manuali gira dentro questo processo**. | `npm start -- --port 3000` |
 
-### Auto-Resume Guardrail: Push/Deploy Requires a Live Human Turn
+**Scritto ma NON in servizio:**
 
-The "auto-approve" and "no confirmation" rules above authorize autonomous action only for a **live, attended turn** — one kicked off by a fresh human message the user is actually watching. They do not carry over into a turn that resumes on its own, such as via ScheduleWakeup or any other self-scheduled/auto-resume mechanism firing while the user is away.
+| | |
+|---|---|
+| `agent42-guardian` | **Il guardiano delle perdite economiche.** Ogni 30 s confronta (saldo pUSD + posizioni al prezzo corrente) con il baseline in `data/guardian-baseline.json`; oltre `GUARDIAN_LOSS_PCT` (default 5%) o `GUARDIAN_LOSS_ABS` (default $30) cancella **tutti gli ordini a riposo**, deposita un referto `reason='guardian-auto-kill'` e mette il bot su **FERMA**. Non tocca le posizioni aperte e non ferma l'uscita automatica. Nessun auto-riarmo: si riparte cancellando `data/guardian-state.json` a mano. Le soglie si rileggono da `.env` **a ogni giro**, senza restart. Strutturalmente incapace di piazzare (unica superficie: `lib/maker/cancel-all`), verificato da un test che cammina l'albero dei `require`. File: `agents/agent42-guardian.js` + `lib/maker/guardian-perdite.js`. **Stato: blocco presente in `ecosystem.config.js` ma il processo NON compare in `pm2 list`, e i tre file sono ancora fuori da git.** Vedi §5 punto 1. |
 
-When the current turn was entered via ScheduleWakeup (or any other auto-resume, not a new human message):
+Distinzione da tenere ferma: **agent37 guarda i processi, agent42-guardian guarda il capitale.** Sono
+due guasti indipendenti (un motore può battere regolare e perdere soldi), quindi due processi.
 
-- Local, reversible work stays auto-approved: building, testing, editing/writing files, staging changes, and creating local commits.
-- `git push`, and any deploy or process-restart action (including `pm2 restart`, which a live turn may now run freely), are **not** auto-approved — this holds even if the prompt that originally scheduled the wakeup said "no gates" or "do all steps end to end." The `pm2 restart` exception above is scoped to a live, attended turn: an unattended wakeup must not restart a process with nobody watching.
-- Instead, complete any remaining local, reversible steps — including cleanup of test artifacts, scratch commits, or temp state — then stop short of `git push` and any deploy/pm2 restart, summarize what's staged/committed and ready to ship, and wait for the next live human message to authorize push/deploy.
+---
 
-This overrides the "Auto-approve all file edits and shell commands," "Never ask for confirmation," and automatic `pm2 restart` rules above specifically for the push/deploy step, and specifically when the acting turn is an auto-resume rather than me. It does not touch anything else: a normal interactive prompt — including one that says "no gates" — still gets full end-to-end autonomy, push and deploy included.
+## 4 · STATO ATTUALE DEL SISTEMA
 
-## Project Overview
+Tutto ciò che segue è stato letto dal codice/config/stato reali il 7 agosto 2026.
 
-Next.js 14 dashboard that scans 4 prediction market platforms (PredictIt, Manifold, Kalshi, Polymarket) for arbitrage opportunities.
+**Motore di piazzamento — unificato.** `lib/maker/motore-unico.js` ha sostituito i due profili
+Safe/Risk il 6 agosto 2026: niente più due pavimenti, due finestre di volatilità, due tetti. La
+formula del venue (`lib/rewardScore.js`) è una curva continua e non conosce «safe» o «rischioso»;
+i due bucket ci mettevano sopra una scalinata che il venue non paga. Nessun `if (profilo)` nel repo.
 
-## Agent Architecture
+**Le cinque regole vive, nell'ordine in cui si applicano** (`motore-unico.js`):
 
-Six pm2-managed agents run 24/7:
+1. **Mai primo sul book** — vincolo assoluto, slegato dal punteggio. Se «un tick dietro il migliore»
+   e «dentro la banda» si contraddicono, **vince la banda**: ci si ferma al suo bordo e il verdetto
+   porta `onTop:true` perché il caso sia visibile. `top-of-book.js` sottrae i nostri ordini dal book,
+   altrimenti il motore inseguirebbe se stesso fino al bordo della banda.
+2. **Depth floor adattivo** — `DEPTH_FLOOR_PCT_OF_AVG = 0.10`, cioè il **10% della liquidità altrui
+   media in banda di quel mercato specifico**, non un dollaro fisso. Fallback `$15` per i mercati
+   senza storico.
+3. **Poi ci si ferma** — conseguenza del quadratico: soddisfatte 1 e 2 il livello trovato è già
+   quello col punteggio più alto. Non esiste più un controllo separato di volatilità o spread.
+4. **Lato singolo deciso dalla formula, non da un timer** — dentro `[0.10, 0.90]` un lato solo matura
+   comunque un terzo e si tiene; fuori da quel range matura **zero** e si cancella subito. Il mid si
+   rilegge a ogni ciclo. (Ha sostituito la tolleranza a 10 minuti del 6 agosto.)
+5. **Tetto di capitale 20% per mercato** — `MARKET_CAP_PCT = 0.20`. È gestione del rischio di
+   risoluzione, deliberatamente fuori dal calcolo del punteggio.
+   ⚠️ **Il tetto del motore non è l'unico**: il *pianificatore* (`lib/rewards/concentration.js`,
+   `CONCENTRATION_CAP_FRAC = 0.30`) usa **30%**, ed è il numero che leggono sia il pannello
+   «Ottimizza» sia `realloc-cycle.js`. Due tetti, due valori — vedi §5 punto 7.
 
-| # | Name | pm2 process | Purpose |
-|---|------|-------------|---------|
-| 1 | Orchestrator | `agent-orchestrator` | Monitors all agents, writes `/tmp/agent-status.json`, restarts stuck ones |
-| 2 | Data Fetcher | `agent-fetcher` | Fetches all 4 platforms every 60 s → `/tmp/markets-raw.json` |
-| 3 | AI Matcher Politics | `agent-matcher-politics` | Matches political/election markets → `/tmp/matches-politics.json` |
-| 4 | AI Matcher Other | `agent-matcher-other` | Matches sports/crypto/finance markets → `/tmp/matches-other.json` |
-| 5 | Arbitrage Calculator | `agent-calculator` | Calculates ROI → `/tmp/arbitrage-opportunities.json` |
-| 6 | UI Updater | `agent-ui-updater` | Keeps `/tmp/ui-data.json` fresh, triggers API cache refresh |
+**Merge — eseguibile, spento.** Strategia a livelli in `lib/maker/strategia-merge.js`: L1 taker
+immediato se la coppia YES+NO costa ≤ 99¢, L2 maker con skew (attesa 60 min), L3 ripiego sull'uscita
+classica. Il **ciclo split→merge è stato provato davvero** il 7 agosto 2026 su Schwartzel FL-19
+(`negRisk=true`, il caso più difficile): split $2 → merge $2, saldo tornato alla cifra esatta di
+partenza, gas pagato dal relayer gasless. **Nessun livello è attivo oggi**, perché due costanti
+distinte sono entrambe `false`:
+- `CTF_RELAYER_ENABLED = false` — costante nel sorgente di `lib/maker/ctf-relayer.js:94`, **non** una
+  env. Sotto di essa ogni operazione si ferma *prima* della firma.
+- `MERGE_STRATEGY_ENABLED = false` — `lib/maker/strategia-merge.js`. Accendere la prima non accende la
+  seconda. Nessun agent, route o scheduler importa `ctf-relayer`.
+Motivo dichiarato dello spegnimento: senza merge, completare la coppia **immobilizza** capitale invece
+di liberarlo — profilo diverso da quello approvato, e la decisione è dell'operatore.
+Trappola operativa registrata: il relayer rifiuta le deadline corte (`400 deadline too soon`);
+`DEADLINE_SEC` è ora **900 s**.
 
-## Key Files
+**`CTF_RELAYER_ENABLED`: `false`** (verificato: `lib/maker/ctf-relayer.js:94`).
 
-- `app/api/markets/route.ts` — serves `/api/markets`; reads from `/tmp/arbitrage-opportunities.json` when fresh
-- `agents/agent*.js` — the 6 background agents
-- `agents/ecosystem.config.js` — pm2 process definitions
+**agent41 dry-run: la variabile non esiste più.** `REALLOC_SCHEDULER_DRY_RUN` non è letta da nessuna
+riga di codice (verificato con `grep`: restano solo commenti storici e i test che ne vietano il
+ritorno). La decisione «racconta / fa» è passata interamente ad AVVIA/FERMA.
+**Stato operativo al 7 agosto 2026: il bot è su FERMA** (`data/maker-bot-enabled.json`,
+`enabled:false`) — agent41 gira il ciclo intero ogni 6 ore, registra cosa *avrebbe* fatto e non
+cancella né piazza niente. Ultimo ciclo: `2026-08-07T16:16:26Z`, azione `reset`, motivo «il piano
+fresco vale $7,89/g contro $2,73/g dei mercati in gestione (188,8% in più, soglia 20%)».
+*Attenzione:* quel FERMA non è una scelta operativa — vedi §5 punto 1.
+
+**Altri stati letti:** kill-switch **non attivo** (`killed:false`); arming **disarmato**
+(`armed:false`, `disarmReason:"kill-switch"`, del 6 agosto, mai riarmato); `MANUAL_ORDER_PLACEMENT=send`;
+`MAKER_FUNDING_APPROVED=true` su agent35/40/41 (attestazione umana, non un armamento).
+
+---
+
+## 5 · QUESTIONI APERTE
+
+Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di stato.
+
+1. **agent42-guardian è scritto, testato e verde (65/65), ma non è in servizio — e un suo test ha
+   lasciato residui sullo stato reale.**
+   - Il blocco pm2 esiste in `agents/ecosystem.config.js` (modifica **non committata**), ma il
+     processo **non compare in `pm2 list`**: non è mai stato avviato. `agents/agent42-guardian.js`,
+     `lib/maker/guardian-perdite.js` e il suo test sono ancora **untracked**.
+   - `data/maker-bot-enabled.json` porta `enabled:false`, `by:"agent42-guardian"`, motivo «perdita
+     oltre soglia: −100% / −1000 USD», e `data/cancellazioni-di-emergenza.json` contiene un referto
+     con `id: guardian-1786200000000` e data **futura** `2026-08-08T14:40Z`. Quel timestamp è
+     esattamente la costante `NOW = 1_786_200_000_000` del test, e una perdita del 100% è impossibile
+     per costruzione (il guardiano rifiuta di scattare su un capitale illeggibile): **sono residui di
+     una versione precedente del test che non iniettava `impostaBot` / `registraCancellazione`**. La
+     versione attuale li inietta e non tocca più i file veri (riverificato eseguendo il test).
+   - **Conseguenza da sapere: il bot è FERMO per un artefatto di test, non per una decisione.** Non
+     l'ho rimesso su AVVIA da solo — è un'azione su capitale reale e richiede la conferma dell'utente.
+     Da decidere: (a) premere AVVIA quando l'utente lo vuole, (b) ripulire il referto fittizio,
+     (c) committare i tre file + il blocco ecosystem e avviare il processo.
+2. **La copertura dichiarata di FERMA non corrisponde al runtime di agent35.** L'header di
+   `agent42-guardian.js` afferma che agent35 «è fermato a monte da `MAKER_MODE=off` e non può
+   piazzare». Il processo in esecuzione ha invece `MAKER_MODE=live-min` e `MAKER_PLACEMENT=send`
+   (letto da `/proc/<pid>/environ`; è ciò che `ecosystem.config.js:620` dichiara). Oggi non piazza per
+   un'altra ragione — `manual mode active` sul mercato in questione (`data/maker-manual-mode.json`) —
+   che è uno stato per-mercato, non un blocco globale. Il limite reale resta quello documentato:
+   **FERMA copre agent41, non agent35 né il pannello manuale**, e non esiste un punto in cui bloccare
+   i piazzamenti nuovi senza bloccare anche le uscite. Da correggere: il commento, o la copertura.
+3. **`REALLOC_SCHEDULER_DRY_RUN=1` è ancora nell'ambiente del processo agent41** (ereditato dal demone
+   pm2, non da `ecosystem.config.js`). Inerte, perché nessuna riga di codice la legge, ma chi ispeziona
+   l'ambiente la trova e può concluderne il contrario. Sparisce con un `pm2 kill` + resurrect, che
+   richiede conferma (regola 2).
+4. **L'header di `lib/maker/strategia-merge.js` è invecchiato.** Elenca ancora quattro ragioni per cui
+   il merge «NON è eseguibile dallo stack attuale»; il relayer gasless ne ha tolte tre e
+   `ctf-relayer.js` la quarta, e il ciclo è stato eseguito davvero il 7 agosto 2026 (commit `95aa634`
+   e `d21669d`). Il manuale operativo v2 è già stato corretto; questo file no.
+5. **Arming disarmato da un kill ormai revocato.** `data/maker-arming.json` è `armed:false` con
+   `disarmReason:"kill-switch"` del 6 agosto 22:13; il kill è stato revocato il 7 agosto («nuovo
+   interruttore AVVIA/FERMA: il kill torna a essere lo STOP di emergenza»), ma l'arming non è mai
+   stato ripreso. Da chiarire se è voluto.
+6. **Modifiche in sospeso su `main`.** `.gitignore` (+19 righe, ignora `guardian-baseline.json` e
+   `guardian-state.json`) e `agents/ecosystem.config.js` (+45 righe, blocco agent42-guardian) sono
+   modificati e non committati; `data/maker-bot-enabled.json` e `data/cancellazioni-di-emergenza.json`
+   sono untracked e **non** coperti da `.gitignore`, a differenza degli altri file di stato.
+7. **Due tetti di concentrazione per mercato, con due valori diversi.** Il motore ammette fino al
+   **20%** del saldo su un mercato (`motore-unico.MARKET_CAP_PCT = 0.20`, «rischio di risoluzione»);
+   il pianificatore ne alloca fino al **30%** (`lib/rewards/concentration.CONCENTRATION_CAP_FRAC =
+   0.30`, motivato dalla misura del 3 agosto sul knapsack senza tetto). `concentration.js` è già la
+   fonte unica per pannello e `realloc-cycle`, ma `motore-unico` non la legge: un piano al 30% viene
+   poi tagliato a 20% in fase di quoting. Non è una rottura — il vincolo più stretto vince, ed è
+   quello giusto — ma è **la stessa domanda con due risposte in due file**, che è precisamente ciò che
+   il resto del repo evita per principio. Da decidere se allinearli e su quale valore.
+
+---
+
+## 6 · COME L'UTENTE VUOLE ESSERE SERVITO
+
+- **Risposte finali sempre in italiano.**
+- **Nessuna domanda a metà lavoro.** Se manca una decisione, scegli **l'opzione più prudente per il
+  capitale reale** e segnalala nel riepilogo finale, invece di fermarti. «Più prudente» significa: non
+  piazzare, non riarmare, non riavviare, non cancellare stato — e dirlo.
+- **Riepilogo finale sempre con quattro voci:**
+  1. cosa è stato fatto;
+  2. file toccati;
+  3. esito dei test (`npm run build` e i test mirati, con l'output vero — se qualcosa fallisce, si dice);
+  4. stato di `git status` e `pm2 list`.
+- Lavora fino allo STOP: se una parte è bloccata, completa tutto il resto e dichiara esplicitamente
+  cosa è rimasto fuori e perché.
+
+---
+
+## 7 · MANUTENZIONE DI QUESTO FILE
+
+**Istruzione permanente.** Ogni volta che una sessione Claude Code completa un lavoro che **cambia lo
+stato del sistema** — nuovo agente, agente rimosso, regola cambiata, bug risolto, dry-run tolto, flag
+commutato, interruttore premuto — **deve aggiornare le sezioni 3, 4 e 5 di questo file come parte
+dello STOP finale**, prima del riepilogo. Così `CLAUDE.md` resta sincronizzato senza intervento manuale.
+
+Regole di manutenzione:
+
+- **§3 e §4 si scrivono solo dopo aver verificato** contro `pm2 list`, `/proc/<pid>/environ`, il
+  sorgente e i file in `data/`. Mai per assunzione, mai copiando un commento: i commenti in questo
+  repo sono ricchi ma possono invecchiare (vedi §5 punti 2 e 4).
+- **§5 è una lista viva.** Quando l'utente chiude un punto in chat, va **tolto** in una sessione
+  successiva; quando se ne apre uno nuovo, va **aggiunto**. Non inventare voci: solo evidenza reale.
+- **§2 non si tocca** senza istruzione esplicita dell'utente in chat.
+- Aggiorna la data di «ultima verifica» in cima quando rivedi §3/§4.
+- Il file va **committato e pushato** insieme al lavoro che lo ha reso obsoleto, non dopo.
