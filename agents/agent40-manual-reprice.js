@@ -586,6 +586,36 @@ async function fotografiaSuRiarmo() {
   killPrecedente = attivo;
 }
 
+// ══ LA CADENZA PER MERCATO — UNA SOLA MANO, DUE MOTORI ═══════════════════════════════════════════
+// I due cicli (watcher reattivo e market making) condividono lo stesso registro di «quando ho guardato
+// questo mercato l'ultima volta» e la stessa misura di velocità. Condividerlo non è un'ottimizzazione:
+// se ognuno tenesse il suo, un mercato lento verrebbe comunque interrogato da entrambi a orologi
+// diversi, e il risparmio di chiamate al venue — che è il punto — sparirebbe per metà.
+//
+// In memoria di proposito: è una cadenza, non uno stato di sicurezza. Dopo un riavvio ogni mercato
+// viene guardato al primo giro (nessuna `ultimaValutazione` ⇒ si valuta), che è il verso giusto.
+const ultimaValutazione = new Map();
+function cadenzaPer(marketId, difettoMs) {
+  try {
+    const { decidiCadenza, cadenzaAttiva, FINESTRA_MIN } = require('../lib/maker/cadenza-adattiva');
+    const { leggiFinestraMercato } = require('../lib/rewards/velocita-mercato');
+    const misura = leggiFinestraMercato({ marketId, windowMinutes: FINESTRA_MIN, minCampioni: 4 });
+    let tickCents = 1;
+    try {
+      const r = resolveMarketRules(marketId);
+      if (r && r.readable && Number.isFinite(r.tickSize) && r.tickSize > 0) tickCents = r.tickSize * 100;
+    } catch { /* tick ignoto ⇒ 1¢, che è il tick di quasi tutto il board */ }
+    return decidiCadenza({
+      now: Date.now(), ultimaValutazioneMs: ultimaValutazione.get(marketId) ?? null,
+      misura, tickCents, difettoMs, attiva: cadenzaAttiva(),
+    });
+  } catch (e) {
+    // Una misura che esplode NON deve poter fermare un motore che sorveglia capitale reale: si guarda,
+    // come si guardava prima che questa funzione esistesse.
+    return { valuta: true, cadenzaMs: difettoMs, classe: 'errore', attesaMs: 0, motivo: e && e.message ? e.message : String(e) };
+  }
+}
+
 async function cycle() {
   const saldo = await saldoDelGiro();
   await fotografiaSuRiarmo();
@@ -593,6 +623,10 @@ async function cycle() {
   // chiamato una volta per mercato, e rileggere il file ogni volta sarebbe I/O per lo stesso fatto.
   const preesistentiOra = idsPreesistenti();
   const res = await runAutoRepriceCycle({
+    // La cadenza adattiva: il difetto è l'orologio di questo motore (5s), e da lì si scende a 1s sui
+    // mercati veloci e si sale a 10s su quelli fermi.
+    cadenza: (marketId) => cadenzaPer(marketId, loadAutoRepriceTuning().pollMs),
+    segnaValutazione: (marketId, t) => ultimaValutazione.set(marketId, t),
     killStatus: () => killSwitch.killStatus(),
     isManual: (marketId) => isManualMarket(marketId),
     listOrders: ({ marketId }) => listManualOrders({ marketId }),
@@ -738,6 +772,10 @@ async function cycle() {
 // fermare gli altri due, e viceversa.
 async function trackingTask() {
   const res = await runTrackingCycle({
+    // Stessa mano, stesso registro: il difetto qui è l'orologio del tracking (3s), non quello del
+    // watcher. Il registro `ultimaValutazione` è condiviso apposta — vedi il commento su cadenzaPer.
+    cadenza: (marketId) => cadenzaPer(marketId, TRACKING_POLL_MS),
+    segnaValutazione: (marketId, t) => ultimaValutazione.set(marketId, t),
     readConfig: () => readTrackingConfig(),
     // SPEGNERE IL TRACKING SU UN MERCATO CHIUSO. Il motore decide QUANDO (solo a mercato risolto e a
     // libro gia' libero); qui si passa la mano che scrive. Iniettarla invece di importarla dentro il
