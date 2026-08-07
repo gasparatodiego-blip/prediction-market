@@ -92,6 +92,10 @@ const { readAllocatedCapital } = require('../lib/maker/allocated-capital');
 // gradino, nervosismo 5 min). Il motore non contiene nessun `if (profilo)`: legge il profilo dallo
 // store e passa la decisione a quella funzione, che e' pura e testata a parte.
 const { valutaMercato } = require('../lib/maker/motore-unico');
+// GLI INGRESSI DEL MOTORE. Il saldo del funder in cache (Regola 5) e il denominatore pulito del
+// pavimento (Regola 2): due moduli puri, due dipendenze iniettate, nessuna logica nuova qui dentro.
+const { leggiSaldoUsd } = require('../lib/maker/saldo-cache');
+const { campionaProfonditaAltrui, mediaProfonditaAltrui } = require('../lib/maker/profondita-altrui');
 const { leggiFinestraMercato } = require('../lib/rewards/velocita-mercato');
 // LE CANCELLAZIONI CHE SI DEVONO VEDERE. Il 6 agosto 2026 una gamba e' stata cancellata correttamente
 // e nessun evento e' arrivato a una superficie: l'operatore se n'e' accorto guardando l'app del venue.
@@ -109,7 +113,7 @@ const { leggiRewardReale } = require('../lib/maker/reward-reale');
 // dal database — nessuna connessione Prisma entra in questo processo.
 const { buildMarketBoard, buildOrderBoard, buildSummary } = require('../lib/maker/operator-board');
 const { AUTO_CLOSE_SOURCE } = require('../lib/maker/auto-close-config');
-const { writeVenuePositions } = require('../lib/safety/venue-positions-snapshot');
+const { writeVenuePositions, readVenuePositions } = require('../lib/safety/venue-positions-snapshot');
 // L'AVVISO SUI RESIDUI CHE MUOIONO SOTTO LA SOGLIA MINIMA. Deposita in data/ quello che il ciclo scopre,
 // perché lo legga la dashboard: la riga di log da sola non ha mai avvisato nessuno (0x4c19a7, 5 agosto).
 const { registraResiduiSottoSoglia } = require('../lib/maker/residui-sotto-soglia');
@@ -488,7 +492,47 @@ async function closeTask() {
   }
 }
 
+// ── IL SALDO, LETTO UNA VOLTA PER GIRO DALLA CACHE ─────────────────────────────────────────────────
+// La lettura vera va sulla catena al massimo ogni 45s (lib/maker/saldo-cache.js); qui si prende il
+// valore PRIMA di entrare nel ciclo, cosi' tutti i mercati di quel giro giudicano con lo stesso saldo.
+// `await` dentro il loop dei mercati avrebbe dato numeri diversi allo stesso giro.
+let saldoPrecedente = null;
+async function saldoDelGiro() {
+  const s = await leggiSaldoUsd();
+  const stato = `${s.affidabile ? 'ok' : 'NON affidabile'}·${s.fonte}`;
+  if (stato !== saldoPrecedente) {
+    log(s.affidabile
+      ? `saldo funder: $${Number(s.usd).toFixed(2)} (${s.fonte}${s.etaMs != null ? `, ${Math.round(s.etaMs / 1000)}s` : ''}) — la Regola 5 ha il suo tetto`
+      : `saldo funder NON leggibile (${s.motivo}) — la Regola 5 resta fail-closed: nessuna nuova esposizione`);
+    saldoPrecedente = stato;
+  }
+  return s;
+}
+
+/** Il nozionale delle posizioni gia' aperte su un mercato, dallo snapshot che questo stesso processo scrive. */
+function posizioniUsdDi(marketId) {
+  const want = String(marketId || '').trim().toLowerCase();
+  const snap = readVenuePositions();
+  if (!snap || snap.readable !== true) {
+    return { leggibile: false, usd: null, motivo: (snap && snap.reason) || 'snapshot delle posizioni non leggibile' };
+  }
+  let usd = 0;
+  for (const p of snap.positions || []) {
+    if (String(p && p.conditionId || '').trim().toLowerCase() !== want) continue;
+    const size = Math.abs(Number(p.size));
+    // Il capitale IMPEGNATO e' quello che e' uscito davvero, quindi il prezzo di carico e non quello
+    // corrente: il tetto governa quanto ne abbiamo messo su un mercato, non quanto vale adesso.
+    const px = Number(p.avgPrice);
+    if (!Number.isFinite(size) || !Number.isFinite(px)) {
+      return { leggibile: false, usd: null, motivo: 'una posizione senza size o prezzo di carico: il capitale impegnato non si sa contare' };
+    }
+    usd += size * px;
+  }
+  return { leggibile: true, usd: +usd.toFixed(4), motivo: null };
+}
+
 async function cycle() {
+  const saldo = await saldoDelGiro();
   const res = await runAutoRepriceCycle({
     killStatus: () => killSwitch.killStatus(),
     isManual: (marketId) => isManualMarket(marketId),
@@ -507,8 +551,28 @@ async function cycle() {
     // valutato con quello nuovo al ciclo successivo.
     // IL MOTORE UNICO: una sola valutazione, nessuna biforcazione per profilo.
     valutaMercato: (arg) => valutaMercato(arg),
-    // La liquidita' media in banda di QUESTO mercato, dal giornale di agent34: e' cio' che rende il
-    // pavimento di profondita' confrontabile fra un mercato da $60.000 in banda e uno da $200.
+    // ── I DUE INGRESSI DELLA REGOLA 5 (il tetto del 20% per mercato) ─────────────────────────────
+    // Erano scollegati fino al 6 agosto 2026: la regola c'era, i numeri no, e falliva chiusa a ogni
+    // giro con «saldo non leggibile». Il saldo e' quello letto una volta sola per questo giro; le
+    // posizioni vengono dallo snapshot che questo stesso processo aggiorna, con la sua eta'.
+    saldo: () => saldo,
+    posizioniMercatoUsd: (marketId) => posizioniUsdDi(marketId),
+    // ── IL DENOMINATORE PULITO DEL PAVIMENTO ─────────────────────────────────────────────────────
+    // Un campione ogni 45s per mercato, misurato con la STESSA `othersLadder` che produce il
+    // numeratore: la profondita' ALTRUI in banda, in dollari. Vedi lib/maker/profondita-altrui.js per
+    // il motivo per cui la misura sta qui e non nel giornale di agent34.
+    campionaProfondita: ({ marketId, rules, ownOrders, now }) => campionaProfonditaAltrui({
+      marketId, rules, ownOrders, now, depth: resolveMarketDepth(marketId),
+    }),
+    liquiditaAltrui: (marketId) => {
+      try {
+        const m = mediaProfonditaAltrui({ marketId });
+        return { mediaUsd: m.mediaUsd, campioni: m.campioni };
+      } catch { return { mediaUsd: null, campioni: 0 }; }
+    },
+    // La vecchia media dal giornale di agent34, TENUTA SOLO COME PARAGONE nell'audit
+    // (`pavimentoLordoUsd`): somma il book pubblico, i nostri ordini compresi, quindi non puo' fare da
+    // denominatore a un numeratore che li toglie. Non decide piu' nessun pavimento.
     liquiditaMedia: (marketId) => {
       try {
         const w = leggiFinestraMercato({ marketId, windowMinutes: 240 });

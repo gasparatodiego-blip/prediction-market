@@ -122,6 +122,20 @@ export function selectOwnedOrders(
   arg: { marketId: string; rules: MarketRules },
 ): RestingLeg[];
 
+/** Il capitale già impegnato su un mercato: ordini a riposo + posizioni. `leggibile:false` ⇒ ignoto, mai 0. */
+export function esposizioneDelMercato(a: {
+  owned?: RestingLeg[];
+  escludiOrderId?: string | null;
+  posizioni?: { leggibile: boolean; usd: number | null; motivo?: string | null } | null;
+  imposta?: number | null;
+}): {
+  leggibile: boolean;
+  usd: number | null;
+  ordiniUsd: number | null;
+  posizioniUsd: number | null;
+  motivo: string | null;
+};
+
 export interface CycleMarketReport {
   marketId: string;
   gate: string | null;
@@ -197,6 +211,20 @@ export function runAutoRepriceCycle(deps?: {
   ordiniVisti?: Map<string, Record<string, unknown>>;
   /** I livelli del book, per il trigger «sono diventato il primo» e per il rilevamento del conflitto. */
   resolveDepth?: (marketId: string) => unknown;
+  /** Il motore unico. Senza questa iniezione il veto non gira e il ciclo è quello di prima. */
+  valutaMercato?: (arg: Record<string, unknown>) => Record<string, unknown>;
+  /** REGOLA 5 — il saldo del funder, già letto per questo giro (lib/maker/saldo-cache). */
+  saldo?: () => { usd: number | null; affidabile: boolean; fonte?: string; etaMs?: number | null; motivo?: string | null };
+  /** REGOLA 5 — il nozionale delle posizioni aperte su quel mercato. `leggibile:false` ⇒ si blocca. */
+  posizioniMercatoUsd?: (marketId: string) => { leggibile: boolean; usd: number | null; motivo?: string | null };
+  /** Scorciatoia per i banchi: un'esposizione secca che sostituisce il calcolo. */
+  esposizioneMercatoUsd?: number;
+  /** REGOLA 2 — la media della profondità ALTRUI in banda, in dollari (lib/maker/profondita-altrui). */
+  liquiditaAltrui?: (marketId: string) => { mediaUsd: number | null; campioni: number | null };
+  /** La vecchia media dal giornale di agent34, in share. Solo come paragone nell'audit. */
+  liquiditaMedia?: (marketId: string) => { media: number | null; campioni: number };
+  /** Deposita un campione di profondità altrui per questo mercato. Best-effort, si autolimita. */
+  campionaProfondita?: (arg: { marketId: string; rules: MarketRules; ownOrders: RestingLeg[]; now: number }) => unknown;
   trackedMarketIds?: () => string[];
   marketWindow?: (marketId: string) => { tooClose?: boolean; gate?: string; reason?: string; minutesToClose?: number | null } | null;
   disableMarket?: (arg: { marketId: string; reason: string }) => Promise<{ ok: boolean; error?: string }>;
