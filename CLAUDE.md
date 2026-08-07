@@ -188,11 +188,11 @@ Trappola operativa registrata: il relayer rifiuta le deadline corte (`400 deadli
 **agent41 dry-run: la variabile non esiste più.** `REALLOC_SCHEDULER_DRY_RUN` non è letta da nessuna
 riga di codice (verificato con `grep`: restano solo commenti storici e i test che ne vietano il
 ritorno). La decisione «racconta / fa» è passata interamente ad AVVIA/FERMA.
-**Stato operativo al 7 agosto 2026: il bot è su FERMA** (`data/maker-bot-enabled.json`,
-`enabled:false`) — agent41 gira il ciclo intero ogni 6 ore, registra cosa *avrebbe* fatto e non
-cancella né piazza niente. Ultimo ciclo: `2026-08-07T16:16:26Z`, azione `reset`, motivo «il piano
-fresco vale $7,89/g contro $2,73/g dei mercati in gestione (188,8% in più, soglia 20%)».
-*Attenzione:* quel FERMA non è una scelta operativa — vedi §5 punto 1.
+**Stato operativo al 7 agosto 2026: il bot è FERMO.** `statoBot()` risponde `enabled:false`, motivo
+«mai avviato: il flag non è mai stato scritto» — `data/maker-bot-enabled.json` non esiste, e file
+assente ⇒ fermo. agent41 gira il ciclo intero ogni 6 ore, registra cosa *avrebbe* fatto e non cancella
+né piazza niente. Ultimo ciclo: `2026-08-07T16:16:26Z`, azione `reset`, motivo «il piano fresco vale
+$7,89/g contro $2,73/g dei mercati in gestione (188,8% in più, soglia 20%)».
 
 **Guardiano delle perdite: attivo.** `agent42-guardian` gira dalle 21:27:31 del 7 agosto 2026 con
 baseline **$660,56** in `data/guardian-baseline.json` (sopravvive ai riavvii, si azzera solo
@@ -212,21 +212,20 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
 1. **agent42-guardian è in servizio, ma il suo codice non è ancora in git — e un suo test ha lasciato
    residui sullo stato reale.**
    - **Avviato alle 21:27:31 del 7 agosto 2026** (da una sessione parallela, non da questa),
-     baseline $660,56, PnL 0,00, nessuno scatto. Ma il blocco pm2 in `agents/ecosystem.config.js` è
-     una modifica **non committata**, e `agents/agent42-guardian.js`, `lib/maker/guardian-perdite.js`
-     e il suo test sono **untracked**: un processo che sorveglia il capitale gira da file che un
-     `git checkout` non ripristinerebbe.
-   - `data/maker-bot-enabled.json` porta `enabled:false`, `by:"agent42-guardian"`, motivo «perdita
-     oltre soglia: −100% / −1000 USD», e `data/cancellazioni-di-emergenza.json` contiene un referto
-     con `id: guardian-1786200000000` e data **futura** `2026-08-08T14:40Z`. Quel timestamp è
-     esattamente la costante `NOW = 1_786_200_000_000` del test, e una perdita del 100% è impossibile
-     per costruzione (il guardiano rifiuta di scattare su un capitale illeggibile): **sono residui di
-     una versione precedente del test che non iniettava `impostaBot` / `registraCancellazione`**. La
-     versione attuale li inietta e non tocca più i file veri (riverificato eseguendo il test).
-   - **Conseguenza da sapere: il bot è FERMO per un artefatto di test, non per una decisione.** Non
-     l'ho rimesso su AVVIA da solo — è un'azione su capitale reale e richiede la conferma dell'utente.
-     Da decidere: (a) premere AVVIA quando l'utente lo vuole, (b) ripulire il referto fittizio,
-     (c) committare i tre file + il blocco ecosystem, ora che il processo gira.
+     baseline $660,56, PnL 0,00, nessuno scatto. Codice e blocco pm2 **committati alle 21:33**
+     (`dbba34e`): questo punto è chiuso per la parte «fuori da git».
+   - **Residui di test, ora ripuliti.** Fino alle ~21:35 `data/maker-bot-enabled.json` portava
+     `enabled:false`, `by:"agent42-guardian"`, motivo «perdita oltre soglia: −100% / −1000 USD», e
+     `data/cancellazioni-di-emergenza.json` un referto con `id: guardian-1786200000000` e data
+     **futura** `2026-08-08T14:40Z` — cioè esattamente la costante `NOW = 1_786_200_000_000` del test.
+     Una perdita del 100% è impossibile per costruzione (il guardiano rifiuta di scattare su un
+     capitale illeggibile): erano residui di una versione precedente del test che non iniettava
+     `impostaBot` / `registraCancellazione`. La versione attuale li inietta (riverificato eseguendo il
+     test), e **la sessione parallela ha cancellato entrambi i file**.
+   - **Resta aperto: il bot non è mai stato avviato.** `statoBot()` ora risponde `enabled:false`,
+     motivo «mai avviato: il flag non è mai stato scritto» — file assente ⇒ fermo, che è il default
+     giusto. Non l'ho messo su AVVIA da solo: è un'azione su capitale reale e richiede la conferma
+     esplicita dell'utente in chat (regola 3).
 2. **La copertura dichiarata di FERMA non corrisponde al runtime di agent35.** L'header di
    `agent42-guardian.js` afferma che agent35 «è fermato a monte da `MAKER_MODE=off` e non può
    piazzare». Il processo in esecuzione ha invece `MAKER_MODE=live-min` e `MAKER_PLACEMENT=send`
@@ -247,10 +246,12 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
    `disarmReason:"kill-switch"` del 6 agosto 22:13; il kill è stato revocato il 7 agosto («nuovo
    interruttore AVVIA/FERMA: il kill torna a essere lo STOP di emergenza»), ma l'arming non è mai
    stato ripreso. Da chiarire se è voluto.
-6. **Modifiche in sospeso su `main`.** `.gitignore` (+19 righe, ignora `guardian-baseline.json` e
-   `guardian-state.json`) e `agents/ecosystem.config.js` (+45 righe, blocco agent42-guardian) sono
-   modificati e non committati; `data/maker-bot-enabled.json` e `data/cancellazioni-di-emergenza.json`
-   sono untracked e **non** coperti da `.gitignore`, a differenza degli altri file di stato.
+6. **`data/maker-bot-enabled.json` e `data/cancellazioni-di-emergenza.json` non sono coperti da
+   `.gitignore`.** Al momento non esistono (cancellati con i residui di test), quindi `git status` è
+   pulito e il problema non si vede; ricompariranno come `??` alla prima scrittura. Tutti gli altri
+   file dello stesso tipo — comprese baseline e latch del guardiano — sono ignorati per una ragione
+   esplicita: descrivono *questa* macchina in *questo* momento, e versionare l'interruttore
+   AVVIA/FERMA significa che un `git checkout` può spostarlo. Da aggiungere all'ignore.
 7. **Due tetti di concentrazione per mercato, con due valori diversi.** Il motore ammette fino al
    **20%** del saldo su un mercato (`motore-unico.MARKET_CAP_PCT = 0.20`, «rischio di risoluzione»);
    il pianificatore ne alloca fino al **30%** (`lib/rewards/concentration.CONCENTRATION_CAP_FRAC =
