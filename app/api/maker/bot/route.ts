@@ -101,10 +101,14 @@ function istantanea() {
   };
 }
 
+// `serverAt` e non `at`: dentro l'istantanea `at` è già l'istante in cui l'interruttore fu commutato
+// l'ultima volta, e uno spread lo sovrascriveva silenziosamente con l'ora della risposta — o meglio, il
+// contrario: il campo dichiarato ISO finiva rimpiazzato dall'epoch numerico del flag. Due significati
+// diversi non possono condividere un nome in un oggetto che si spalma.
 /** GET /api/maker/bot — stato dell'interruttore, della rampa e del kill. Sola lettura. */
 export async function GET() {
   try {
-    return NextResponse.json({ ok: true, at: new Date().toISOString(), ...istantanea() });
+    return NextResponse.json({ ok: true, serverAt: new Date().toISOString(), ...istantanea() });
   } catch (e) {
     return NextResponse.json({ ok: false, error: (e as Error).message }, { status: 500 });
   }
@@ -135,7 +139,7 @@ export async function POST(req: Request) {
       reason: typeof reason === 'string' && reason.trim() ? reason.trim() : (enabled ? 'AVVIA dalla dashboard' : 'FERMA dalla dashboard'),
     });
     if (!r.ok) return NextResponse.json({ ok: false, error: r.motivo }, { status: 500 });
-    return NextResponse.json({ ok: true, at: new Date().toISOString(), prima: r.prima, ...istantanea() });
+    return NextResponse.json({ ok: true, serverAt: new Date().toISOString(), prima: r.prima, ...istantanea() });
   } catch (e) {
     return NextResponse.json({ ok: false, error: (e as Error).message }, { status: 500 });
   }
