@@ -22,7 +22,7 @@ per un maker l'esecuzione è il costo, non il ricavo.
 |---|---|
 | Runtime | Next.js 14.2 (App Router) · Node v20.20.2 · TypeScript |
 | DB | Prisma 5 → **PostgreSQL** (`DATABASE_URL` in `.env`) |
-| Processi | **pm2**, 41 processi definiti in `agents/ecosystem.config.js`; **11 online**, gli altri deliberatamente fermi (commit `47ff87e`: «riduzione all'insieme minimo») |
+| Processi | **pm2**, 41 processi definiti in `agents/ecosystem.config.js`; **12 online**, gli altri deliberatamente fermi (commit `47ff87e`: «riduzione all'insieme minimo») |
 | Server | Hetzner Helsinki, Ubuntu, `62.238.52.227` (verificato) |
 | Path | Repo in `/root/rewards-bot`. **`/root/prediction-market` è un symlink allo stesso path** ed è il `cwd` dichiarato in pm2: i due nomi sono la stessa directory |
 | Repo | GitHub privato `git@github.com:gasparatodiego-blip/prediction-market.git`, branch `main` |
