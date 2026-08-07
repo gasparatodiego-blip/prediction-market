@@ -173,7 +173,48 @@ Per ogni parametro del motore: il valore mediano del campione, e la proposta per
 | Chiusura | **redeem 94%** | 76–99% | auto-close | **lasciar risolvere** |
 | Uscita anticipata | 10,65 h prima | 4,5–22 h | — | **smettere di rinnovare ~6 h prima** |
 | BUY/SELL | 1,17 | 0,64–2,43 | — | non vincolare |
-| Merge | 12 wallet su 21 | coppia ~99¢ | costruito, spento | **opzionale**, soglia 99/100,5 confermata |
+| Merge | 12 wallet su 21 | coppia ~99¢ | **eseguibile, spento** (`CTF_RELAYER_ENABLED`) | **opzionale**, soglia 99/100,5 confermata |
+
+> **Il merge non è più teorico — nota del 7 agosto 2026.**
+>
+> Fino a stamattina questa riga diceva «costruito, spento», e dietro c'era una conclusione più dura:
+> il merge on-chain era ritenuto **non eseguibile** dal nostro stack. Le ragioni erano quattro e
+> nessuna campata in aria — nessun percorso di scrittura on-chain in tutto il repo, i token nel
+> funder-contratto e non nell'EOA che firma, il funder senza MATIC per il gas, e il deposit wallet
+> ERC-1271 la cui interfaccia non era nel nostro stack.
+>
+> Il **relayer gasless** di Polymarket ne toglie tre: paga lui il gas, e fa eseguire al deposit
+> wallet un batch firmato dal suo owner. La quarta l'abbiamo scritta noi: `lib/maker/ctf-relayer.js`.
+>
+> **Provato per davvero**, su Schwartzel FL-19 (`negRisk=true`, il caso più difficile perché passa dal
+> NegRiskAdapter e le posizioni vivono su `WrappedCollateral`, non su pUSD):
+>
+> | | tx | blocco | pUSD |
+> |---|---|---|---|
+> | split $2 | `0x96072ab7…143a` | 91619080 | 590,264868 → 588,264868 |
+> | merge $2 | `0x792b31e5…76a8` | 91619511 | 588,264868 → **590,264868** |
+>
+> Saldo tornato alla cifra esatta di partenza, esposizione netta zero, gas pagato dal relayer in
+> entrambi i casi. L'ordine manuale a riposo sul venue non è stato toccato.
+>
+> **Attenzione a non confondere due interruttori diversi**, perché governano cose diverse:
+>
+> - `CTF_RELAYER_ENABLED` — in `lib/maker/ctf-relayer.js`, è una **costante nel sorgente, non una
+>   variabile d'ambiente**: si accende modificando il file e ricostruendo. Decide se il *meccanismo*
+>   può firmare e inviare. È **`false`**, rimesso a false a prova finita.
+> - `MERGE_STRATEGY_ENABLED` — in `lib/maker/strategia-merge.js`. Decide se la *strategia* completa le
+>   coppie dopo un fill. È **`false`**, e per una ragione che resta valida: comprare il secondo lato
+>   immobilizza capitale nuovo, ed è una scelta dell'operatore, non una conseguenza del fatto che
+>   adesso il merge si può fare.
+>
+> Accendere il primo non accende il secondo. Nessun agent, route o scheduler importa `ctf-relayer`:
+> l'unico file che ne fa `require` è il suo test, quindi con l'interruttore acceso non parte nulla da
+> solo — toglie il freno a una chiamata fatta a mano, e a nient'altro.
+>
+> **Una trappola operativa da ricordare:** il relayer rifiuta le deadline corte con `400 deadline too
+> soon`. `DEADLINE_SEC` era 240s «il valore raccomandato dall'SDK di riferimento» e il primo merge è
+> stato respinto — mentre lo split di quattro minuti prima era passato con la *stessa* deadline. La
+> soglia non è documentata e non è osservabile senza inviare. Ora è **900s**.
 
 ### E il capitale?
 

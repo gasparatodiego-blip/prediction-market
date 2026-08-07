@@ -208,7 +208,7 @@ sotto i 100¢ la coppia è in perdita certa alla risoluzione. Il guadagno resta 
 | Cicli in perdita | 7,8% | 6,3% | **3,4%** | 70% | — | < 8% |
 | Taglio delle perdite | 45,6 h | **0,83 h** | 10,2 h | 194 h | — | **entro 1–10 h** |
 | Rotazione sul capitale | 5,8× | 4,6× | 4,1× | 2,1× | — | 4–6× |
-| Merge | mai | 123 (99,66¢) | mai | 2 | costruito, spento | **opzionale** |
+| Merge | mai | 123 (99,66¢) | mai | 2 | **eseguibile, spento** ([nota nel v2](manuale-operativo-maker-v2.md#il-setting-consensus)) | **opzionale** |
 
 ### Il numero che conta
 
