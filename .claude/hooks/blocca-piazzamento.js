@@ -79,7 +79,20 @@ const INNOCUI = [
   /^curl\s+[^|;&]*https?:\/\/localhost:3000\/api\/(health|rewards|maker\/(board|status|positions|markets|live-mid|gates|universe))/,
 ];
 
-const segmenti = (cmd) => cmd.split(/\|\||&&|[;|]/).map((s) => s.trim()).filter(Boolean);
+// I separatori DENTRO LE VIRGOLETTE non separano niente: `grep -rn "a\|b" file` è un comando solo, e
+// tagliarlo su quella barra produce un frammento (`b" file`) che non somiglia a nulla di innocuo — così
+// una ricerca finiva bloccata per via della propria regex. Le parti citate si mascherano prima di
+// segmentare; per il resto dell'analisi il testo resta quello vero.
+const mascheraCitazioni = (cmd) => cmd.replace(/'[^']*'|"[^"]*"/g, (m) => '"' + 'x'.repeat(Math.max(0, m.length - 2)) + '"');
+const segmenti = (cmd) => {
+  const mascherato = mascheraCitazioni(cmd);
+  const tagli = [];
+  const re = /\|\||&&|[;|]/g;
+  let m, prec = 0;
+  while ((m = re.exec(mascherato))) { tagli.push(cmd.slice(prec, m.index)); prec = m.index + m[0].length; }
+  tagli.push(cmd.slice(prec));
+  return tagli.map((s) => s.trim()).filter(Boolean);
+};
 const tuttoInnocuo = (cmd) => {
   const parti = segmenti(cmd);
   return parti.length > 0 && parti.every((p) => INNOCUI.some((re) => re.test(p.replace(/^\(\s*/, ''))));
