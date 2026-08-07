@@ -52,7 +52,11 @@ import { estimateAtCapital } from '@/lib/reward-operator-estimate';
 import PriceLadder from './PriceLadder';
 import ManualOrdersPanel from './ManualOrdersPanel';
 import RewardsAllocatePanel from './RewardsAllocatePanel';
+import BotSwitch from './BotSwitch';
 import RewardsUnified from './RewardsUnified';
+// «I 21 ora» — la finestra sui maker di riferimento. Legge un endpoint di sola lettura e non ha
+// nessun comando: vive nel Riepilogo perché è stato, non perché sia una leva.
+import Watch21Panel from './Watch21Panel';
 import OrderPanel, { type OrderTarget } from './OrderPanel';
 // LA CLASSIFICAZIONE SAFE/RISK, la stessa funzione che pre-filtra l'allocatore e che etichetta le card
 // della tab Risk. Qui serve per DUE cose: dividere gli ordini a riposo nei due bucket e sommarne i
@@ -2005,6 +2009,13 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
             </p>
           )}
 
+          {/* ── I 21 ORA ─────────────────────────────────────────────────────────────────────────
+              Sta QUI, in coda alle letture e PRIMA dei comandi, e la posizione è la sua dichiarazione:
+              tutto ciò che sta sopra descrive il nostro capitale, tutto ciò che sta sotto lo muove,
+              e questo blocco non fa né l'uno né l'altro — guarda cosa fanno gli altri. Metterlo fra i
+              comandi avrebbe suggerito che da lì si agisce; non si agisce. */}
+          <Watch21Panel />
+
           {/* ── I COMANDI, sulla stessa schermata dello stato che descrivono ────────────────────── */}
           <div className="ex-sech"><span className="ex-sech-t">Comandi sugli ordini</span></div>
           <ManualOrdersPanel />
@@ -2043,6 +2054,16 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
           Anche «Strategia sul fill» è via: il suo ciclo non ha nessun chiamante in agent o API, quindi
           quei comandi descrivevano una funzione che non gira. Un interruttore che non è collegato a
           niente è peggio di un interruttore assente. */}
+      {/* ── L'INTERRUTTORE, IN CIMA ALLA TAB ──────────────────────────────────────────────────────
+          Sta qui e non nel Riepilogo perche' questa e' la tab dove si decide dove va il capitale, e
+          AVVIA/FERMA e' la stessa decisione al livello sopra: se il bot possa deciderlo da solo. */}
+      {tab === 'alloca' && (
+        <section className="lrc-sec" data-lrc-section="bot">
+          <Ask q="Il bot puo' lavorare da solo?" sub="AVVIA e' la conferma esplicita: da li' in poi il riallocatore piazza, sempre passando da tutte le regole del motore." />
+          <BotSwitch />
+        </section>
+      )}
+
       {tab === 'alloca' && (
         <section className="lrc-sec" data-lrc-section="alloca">
           <Ask q="Quanto capitale metto, e su quali mercati?" sub="Un piano, non un ordine: da qui si piazza solo aprendo il pannello su un mercato." />

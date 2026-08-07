@@ -21,8 +21,10 @@
 // riavvio della macchina o un `pm2 resurrect` non possono accenderlo: serve una modifica esplicita
 // all'ecosystem e un --update-env.
 //
-// Con REALLOC_SCHEDULER_DRY_RUN=1 il ciclo gira per intero — verifica, saldo, piano — ma il reset è in
-// anteprima: niente cancellazioni, niente ordini. È il modo di guardarlo lavorare a capitale fermo.
+// REALLOC_SCHEDULER_ENABLED dice se il processo esiste operativamente; NON dice se apre posizioni.
+// Quello lo dice l'unico interruttore del sistema, `lib/maker/bot-enabled`: a bot FERMO il ciclo gira
+// per intero — verifica, saldo, piano — ma il reset è in anteprima: niente cancellazioni, niente
+// ordini. È il modo di guardarlo lavorare a capitale fermo, ed è anche il default.
 //
 // ═══ PERCHÉ UN PROCESSO NUOVO E NON UN'ESTENSIONE DI AGENT40 ════════════════════════════════════════
 // agent40 riprezza ordini esistenti ogni pochi secondi; questo cancella tutto e ricostruisce ogni sei ore.
@@ -64,7 +66,18 @@ const STATE_FILE = path.join(DATA_DIR, 'realloc-scheduler-state.json');
 const POOLS_FILE = path.join(DATA_DIR, 'realloc-plan-pools.json');
 
 const ENABLED = process.env.REALLOC_SCHEDULER_ENABLED === '1';
-const DRY_RUN = process.env.REALLOC_SCHEDULER_DRY_RUN === '1';
+// ── L'INTERRUTTORE FRA «RACCONTA» E «FA» È UNO SOLO, E NON È UNA VARIABILE D'AMBIENTE ────────────────
+// Fino al 7 agosto 2026 era `REALLOC_SCHEDULER_DRY_RUN`, letta una volta all'avvio: per passare a
+// ordini veri servivano una modifica a ecosystem.config.js e un riavvio, cioè due gesti che non
+// somigliano a «premo avvia». Adesso decide `lib/maker/bot-enabled`, che l'operatore commuta dalla
+// dashboard e che si rilegge A OGNI GIRO — quindi FERMA ha effetto dal ciclo successivo senza riavviare
+// niente.
+//
+// La vecchia variabile è stata RIMOSSA, non lasciata come ripiego: né da qui, né da ecosystem.config.js.
+// Due interruttori per la stessa decisione sono peggio di quello sbagliato da solo, perché chi ne
+// spegne uno crede di aver spento la cosa. Se `bot-enabled` non è leggibile la risposta è FERMO — il
+// ripiego è già dentro quel modulo e non ha bisogno di una seconda variabile che lo duplichi.
+const { statoBot, botAttivo, rampa, FILE: FILE_INTERRUTTORE } = require('../lib/maker/bot-enabled');
 const DASHBOARD = (process.env.REALLOC_DASHBOARD_BASE || 'http://127.0.0.1:3000').replace(/\/+$/, '');
 const CLOB_BASE = process.env.POLY_CLOB_BASE || 'https://clob.polymarket.com';
 // Un ciclo non parte mai nel primo minuto di vita del processo: un riavvio in serie di pm2 non deve
@@ -271,10 +284,62 @@ async function calcolaPiano({ capital, maxPerMarketUsd, onlyMarketIds = null, ex
 // Cablaggio identico a quello di /api/maker/manual/bulk-allocate: stesse funzioni, stessa corsia
 // cancel-only, stesso runBulkAllocation. Non esiste una seconda strada verso il venue, e questo processo
 // non ne apre una: passa dalla stessa porta del bottone.
+// ── QUANTE POSIZIONI, E QUANTE NUOVE AL PRIMO GIORNO ───────────────────────────────────────────────
+// Il tetto vive QUI e non nell'allocatore: `maxCount` di planAllocation governa solo la curva
+// `frontier` che il pannello disegna, non le righe del piano (verificato il 7 agosto 2026 —
+// data/indagine-offset.md §3). Il numero di posizioni che teniamo davvero e' una politica operativa
+// dello scheduler, e questo e' lo scheduler.
+//
+// 10 e' la mediana dei 21 maker misurati (data/manuale-operativo-maker-v2.md, Q1 6 · Q3 22). Con $620
+// sono ~$62 a mercato, cioe' ~$31 per lato: dentro la forchetta del nozionale osservato ($16-74).
+const MAX_POSIZIONI = 10;
+
+/**
+ * Applica le due politiche di apertura alle righe del piano, PRIMA che diventino ordini.
+ *
+ * Ordine deliberato: prima la rampa (che limita solo i mercati NUOVI), poi il tetto complessivo. Al
+ * contrario un mercato gia' in gestione potrebbe essere tagliato dal tetto per far posto a uno nuovo
+ * che la rampa avrebbe comunque fermato.
+ */
+function applicaPolitiche(rows, gestiti, now) {
+  const inGestione = new Set((gestiti || []).map((x) => String(x).trim().toLowerCase()));
+  const r = rampa({ now });
+  const tenute = [];
+  const scartate = [];
+  let nuoviAmmessi = r.attiva ? r.residuo : Infinity;
+  for (const riga of rows || []) {
+    const id = String(riga.marketId || '').toLowerCase();
+    const nuovo = !inGestione.has(id);
+    if (nuovo && nuoviAmmessi <= 0) {
+      scartate.push({ marketId: riga.marketId, motivo: 'rampa', dettaglio: r.motivo });
+      continue;
+    }
+    if (tenute.length >= MAX_POSIZIONI) {
+      scartate.push({ marketId: riga.marketId, motivo: 'tetto-posizioni', dettaglio: `gia' ${MAX_POSIZIONI} posizioni nel piano` });
+      continue;
+    }
+    if (nuovo) nuoviAmmessi -= 1;
+    tenute.push(riga);
+  }
+  return { tenute, scartate, rampa: r, tetto: MAX_POSIZIONI };
+}
+
 async function eseguiReset({ rows, dryRunOnly }) {
   const diag = diagnoseExposure({});
+  // LE POLITICHE DI APERTURA SI APPLICANO QUI, sulle righe che stanno per diventare ordini — non nel
+  // piano. Il piano deve continuare a dire cosa sarebbe meglio fare; il tetto e la rampa dicono quanto
+  // di quel meglio ci concediamo oggi, e la differenza fra i due va registrata invece che appianata.
+  const gestiti = (() => { try { return readAutoRepriceConfig({}).enabledMarketIds || []; } catch { return []; } })();
+  const pol = applicaPolitiche(rows, gestiti, Date.now());
+  if (pol.scartate.length) {
+    scrivi({ tipo: 'politiche-apertura', tetto: pol.tetto, rampa: pol.rampa,
+      tenute: pol.tenute.length, scartate: pol.scartate });
+    annuncia('log', `politiche di apertura: ${pol.tenute.length} righe tenute, ${pol.scartate.length} scartate`
+      + ` (${pol.scartate.filter((x) => x.motivo === 'rampa').length} dalla rampa, `
+      + `${pol.scartate.filter((x) => x.motivo === 'tetto-posizioni').length} dal tetto di ${pol.tetto})`);
+  }
   return runAllocationReset(
-    { rows, dryRunOnly },
+    { rows: pol.tenute, dryRunOnly },
     {
       readEnabled: () => readAutoRepriceConfig({}).enabledMarketIds || [],
       readTracking: () => readTrackingConfig().marketIds || [],
@@ -334,12 +399,23 @@ async function giro(motivoAvvio) {
   if (inCorso) { annuncia('log', 'giro già in corso, questo si salta'); return null; }
   inCorso = true;
   const avvio = Date.now();
-  scrivi({ at: new Date(avvio).toISOString(), tipo: 'ciclo-avvio', motivoAvvio, dryRun: DRY_RUN, intervalloOre: INTERVAL_MS / 3_600_000, tettoFrazione: CONCENTRATION_CAP_FRAC });
-  annuncia('log', `ciclo avviato (${motivoAvvio})${DRY_RUN ? ' — DRY RUN' : ''}`);
+  // IL FLAG SI RILEGGE ADESSO, non all'avvio del processo: FERMA deve avere effetto dal giro
+  // successivo, non dal prossimo riavvio.
+  const bot = statoBot();
+  const r = rampa({ now: avvio });
+  // `dryRunOnly` resta il nome del parametro a valle (runReallocCycle non cambia): qui significa
+  // «calcola tutto ma non toccare il venue». Con il bot fermo è esattamente quello che vogliamo, e il
+  // ciclo continua a girare per intero — verifica, saldo, piano — così il pannello ha sempre da mostrare.
+  const soloRacconto = !bot.enabled;
+  scrivi({ at: new Date(avvio).toISOString(), tipo: 'ciclo-avvio', motivoAvvio, dryRun: soloRacconto,
+    botEnabled: bot.enabled, botBy: bot.by, botAt: bot.atIso, rampa: r,
+    intervalloOre: INTERVAL_MS / 3_600_000, tettoFrazione: CONCENTRATION_CAP_FRAC });
+  annuncia('log', `ciclo avviato (${motivoAvvio}) — bot ${bot.enabled ? 'AVVIATO' : 'FERMO'}`
+    + (bot.enabled ? ` (${r.motivo})` : `: ${bot.motivo || 'nessun piazzamento, solo piano'}`));
 
   let referto;
   try {
-    referto = await runReallocCycle({ dryRunOnly: DRY_RUN }, {
+    referto = await runReallocCycle({ dryRunOnly: soloRacconto }, {
       readEnabled: () => readAutoRepriceConfig({}).enabledMarketIds || [],
       readTracking: () => readTrackingConfig().marketIds || [],
       readVenue: leggiVenue,
@@ -403,13 +479,14 @@ function pianificaProssimo(motivo) {
 }
 
 // `--once` esegue UN ciclo subito e esce: serve a guardarlo lavorare senza aspettare sei ore. Rispetta
-// gli stessi due interruttori d'ambiente del processo lungo — non è una scorciatoia per accenderlo.
+// esattamente gli stessi due cancelli del processo lungo — REALLOC_SCHEDULER_ENABLED per esistere,
+// `bot-enabled` per poter piazzare — e non è una scorciatoia per scavalcare né l'uno né l'altro.
 async function unaVolta() {
   if (!ENABLED) {
     annuncia('error', '--once rifiutato: REALLOC_SCHEDULER_ENABLED non vale 1');
     process.exit(2);
   }
-  annuncia('log', `esecuzione singola forzata${DRY_RUN ? ' — DRY RUN' : ' — ORDINI VERI'}`);
+  annuncia('log', `esecuzione singola forzata — bot ${botAttivo() ? 'AVVIATO' : 'FERMO'}`);
   const r = await giro('forzato --once');
   console.log('\n' + JSON.stringify(r, null, 2));
   process.exit(r && r.azione === 'fermato' ? 1 : 0);
@@ -424,8 +501,12 @@ function main() {
     setInterval(() => {}, 1 << 30);
     return;
   }
-  annuncia('log', `ACCESO — intervallo ${INTERVAL_MS / 3_600_000}h, tetto per mercato ${Math.round(CONCENTRATION_CAP_FRAC * 100)}% del capitale${DRY_RUN ? ', DRY RUN' : ', ORDINI VERI'}`);
-  scrivi({ at: new Date().toISOString(), tipo: 'avvio', stato: 'acceso', dryRun: DRY_RUN, intervalloOre: INTERVAL_MS / 3_600_000 });
+  const bot0 = statoBot();
+  annuncia('log', `ACCESO — intervallo ${INTERVAL_MS / 3_600_000}h, tetto per mercato ${Math.round(CONCENTRATION_CAP_FRAC * 100)}% del capitale`
+    + ` · il bot e' ${bot0.enabled ? 'AVVIATO (ordini veri quando le regole lo consentono)' : 'FERMO (solo piano, nessun ordine)'}`
+    + ` · l'interruttore e' ${FILE_INTERRUTTORE}, si commuta dalla tab Mercati`);
+  scrivi({ at: new Date().toISOString(), tipo: 'avvio', stato: 'acceso', botEnabled: bot0.enabled,
+    botMotivo: bot0.motivo, intervalloOre: INTERVAL_MS / 3_600_000 });
   pianificaProssimo('avvio');
 }
 

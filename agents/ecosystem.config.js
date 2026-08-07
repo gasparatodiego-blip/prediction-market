@@ -773,10 +773,16 @@ module.exports = {
       // accenderlo: senza REALLOC_SCHEDULER_ENABLED=1 il processo resta vivo e completamente inerte —
       // nessuna lettura del venue, nessun piano, nessun ordine.
       //
-      // STATO ATTUALE — 3 agosto 2026: ACCESO IN DRY RUN. Gira il ciclo intero ogni 6 ore, entrambi i
-      // trigger, e scrive nel registro cosa AVREBBE fatto; non cancella e non piazza niente. Il passaggio
-      // a live è REALLOC_SCHEDULER_DRY_RUN=0 + `pm2 restart agent41-realloc-scheduler --update-env`, e
-      // aspetta la conferma esplicita dell'operatore dopo aver letto almeno un ciclo dry run.
+      // STATO ATTUALE — 7 agosto 2026: ACCESO, E FERMO PERCHÉ NESSUNO HA ANCORA PREMUTO AVVIA. Gira il
+      // ciclo intero ogni 6 ore, entrambi i trigger, e scrive nel registro cosa AVREBBE fatto; non
+      // cancella e non piazza niente.
+      //
+      // QUI NON C'È PIÙ NESSUN INTERRUTTORE FRA «RACCONTA» E «FA». C'era, era REALLOC_SCHEDULER_DRY_RUN,
+      // ed è stata rimossa il 7 agosto 2026 insieme al codice che la leggeva. Adesso decide un flag
+      // solo, `data/maker-bot-enabled.json`, che l'operatore commuta col tasto AVVIA/FERMA nella tab
+      // Mercati e che agent41 rilegge A OGNI GIRO: non serve toccare questo file e non serve un
+      // riavvio. Non rimettere qui una variabile per la stessa decisione — due interruttori per una
+      // cosa sola significano che spegnerne uno non la spegne.
       //
       // Non apre nessuna strada nuova verso il venue: passa dalle stesse funzioni del bottone del
       // pannello (listManualOrders / cancelManualOrder in corsia cancel-only / runBulkAllocation), quindi
@@ -787,8 +793,7 @@ module.exports = {
       autorestart:   true,
       env:           {
         NODE_ENV: 'production', HOME: '/root',
-        REALLOC_SCHEDULER_ENABLED: '1',
-        REALLOC_SCHEDULER_DRY_RUN: '1',   // ← l'unico interruttore fra «racconta» e «fa». Non toccarlo senza volerlo.
+        REALLOC_SCHEDULER_ENABLED: '1',   // ← fa esistere il processo; NON gli fa piazzare niente (vedi sopra).
         // ── DICHIARATA, NON PIÙ SOLO EREDITATA (4 agosto 2026) ────────────────────────────────────
         // Qui la fragilità è REALE, a differenza del caso di agent40: agent41 NON ha il caricatore di
         // .env scritto a mano che agent40 ha in testa al file (verificato: `grep -c "Load .env"` → 0).
@@ -805,6 +810,39 @@ module.exports = {
         // qui sopra, e resta a 1.
         MAKER_FUNDING_APPROVED: 'true',
       },
+    },
+    {
+      name:          'agent42-watch-makers',
+      script:        './agents/agent42-watch-makers.js',
+      cwd:           '/root/prediction-market',
+      restart_delay: 20000,
+      max_restarts:  20,
+      // IL MONITOR DEI 21 MAKER DI RIFERIMENTO. Segue l'attività pubblica dei 21 wallet del manuale v2
+      // (data/manuale-operativo-maker-v2.md) e ne ricava tre segnali: ingressi su mercati mai toccati,
+      // convergenze (≥2 dei 21 sullo stesso mercato entro due ore) e ritiri pre-risoluzione. Scrive
+      // data/maker-21-{eventi.jsonl,stato,statistiche,gamma-cache}.json e niente altro.
+      //
+      // È L'UNICO PROCESSO DELLA FLOTTA CHE NON PUÒ, NEMMENO IN LINEA DI PRINCIPIO, TOCCARE CAPITALE.
+      // Non importa nulla da lib/maker/, non legge nessuno dei file che decidono il piazzamento, non
+      // ha credenziali e non ne riceve dall'ambiente qui sotto: l'env dichiarato è il minimo che serve
+      // a un processo node, senza una sola chiave. I file che scrive non hanno nessun lettore fra i
+      // processi che piazzano — li legge solo /api/maker/watch-21, che a sua volta è di sola lettura.
+      // Il segnale è informativo per COSTRUZIONE, non per disciplina: perché diventi un criterio di
+      // selezione servirebbe una modifica esplicita all'allocatore, che non esiste.
+      //
+      // Perché un processo separato e non un ramo di agent34: agent34 parla col socket CLOB, che NON
+      // porta l'identità di chi esegue (`last_trade_price` è {asset_id, price, side} — vedi
+      // lib/clob-ws/live-book.js:125). L'attribuzione di un fill a un wallet esiste solo sulla
+      // data-api, quindi questa è una fonte diversa con una cadenza diversa, e appenderla al processo
+      // che tiene vivo il book significherebbe far dipendere il book da un polling che non gli serve.
+      //
+      // Cadenza 30 s + ~7 s di giro dei 21 wallet ⇒ un battito ogni ~37 s (agent-monitor lo sorveglia
+      // con soglia 5 min). Un'assenza si recupera ripaginando la data-api; oltre 7 giorni diventa un
+      // evento `buco` nel giornale, mai un silenzio.
+      max_memory_restart: '250M',
+      watch:         false,
+      autorestart:   true,
+      env:           { NODE_ENV: 'production', HOME: '/root' },
     },
   ],
 };

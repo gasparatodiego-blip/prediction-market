@@ -1,0 +1,142 @@
+import { NextResponse } from 'next/server';
+// L'INTERRUTTORE AVVIA / FERMA DEL BOT.
+//
+// Questa rotta importa SOLO `lib/maker/bot-enabled`, che è un file di stato: nessun adapter, nessun
+// percorso di piazzamento, nessuna credenziale. Premere AVVIA non manda niente al venue — scrive un
+// flag che agent41 rilegge a ogni giro. Il primo ordine reale nascerà dal ciclo successivo del
+// riallocatore, e solo se tutte le regole del motore lo consentono.
+//
+// AVVIA/FERMA NON È IL KILL. FERMA blocca i nuovi piazzamenti e le rotazioni ma lascia gestite le
+// posizioni aperte (auto-close, riprezzatura, rinnovi). Il KILL — /api/maker/kill — resta separato,
+// invariato e assoluto. Sono due bottoni perché sono due intenzioni diverse.
+import fs from 'fs';
+import path from 'path';
+import { statoBot, impostaBot, rampa, RAMPA_ORE, RAMPA_MAX_MERCATI } from '@/lib/maker/bot-enabled';
+import { killStatus } from '@/lib/safety/kill-switch';
+import { DATA_DIR } from '@/lib/safety/store';
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
+/**
+ * L'ULTIMO CICLO DI agent41, letto dalla CODA del suo registro.
+ *
+ * Il registro è append-only e cresce; si leggono gli ultimi 512 KiB e basta. Il piano non viene
+ * ricalcolato qui — sarebbe una seconda matematica accanto a quella dello scheduler, e le due
+ * potrebbero divergere senza che nessuno se ne accorga. Questa rotta MOSTRA quello che agent41 ha
+ * deciso, non decide.
+ */
+function ultimoCiclo() {
+  const file = path.join(DATA_DIR, 'realloc-scheduler.jsonl');
+  let coda = '';
+  try {
+    const st = fs.statSync(file);
+    const CHUNK = 512 * 1024;
+    const da = Math.max(0, st.size - CHUNK);
+    const fd = fs.openSync(file, 'r');
+    try {
+      const buf = Buffer.allocUnsafe(Math.min(CHUNK, st.size));
+      const n = fs.readSync(fd, buf, 0, buf.length, da);
+      coda = buf.subarray(0, n).toString('utf8');
+    } finally { fs.closeSync(fd); }
+  } catch {
+    return { letto: false, motivo: 'registro del riallocatore non leggibile' };
+  }
+  const righe = coda.split('\n');
+  for (let i = righe.length - 1; i >= 0; i -= 1) {
+    let j: Record<string, unknown>;
+    try { j = JSON.parse(righe[i]); } catch { continue; }
+    if (j && j.tipo === 'ciclo-referto') {
+      const piano = (j.piano || {}) as { capitale?: number; mercati?: unknown[]; capitaleImpegnatoUsd?: number };
+      return {
+        letto: true,
+        at: j.at ?? null,
+        azione: j.azione ?? null,
+        motivo: j.motivo ?? null,
+        soloPiano: j.dryRun === true,
+        capitale: piano.capitale ?? null,
+        capitaleImpegnatoUsd: piano.capitaleImpegnatoUsd ?? null,
+        mercati: Array.isArray(piano.mercati) ? piano.mercati : [],
+      };
+    }
+  }
+  return { letto: false, motivo: 'nessun ciclo nella coda del registro' };
+}
+
+/** Posizioni aperte, dalla fotografia che agent40 già scrive. Nessuna chiamata al venue da qui. */
+function posizioniAperte() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'venue-positions.json'), 'utf8'));
+    const arr = Array.isArray(raw?.positions) ? raw.positions : [];
+    let usd = 0;
+    let leggibile = true;
+    for (const p of arr) {
+      const size = Math.abs(Number(p?.size));
+      const px = Number(p?.avgPrice);
+      if (!Number.isFinite(size) || !Number.isFinite(px)) { leggibile = false; continue; }
+      usd += size * px;
+    }
+    return { leggibile, n: arr.length, costoUsd: +usd.toFixed(2), at: raw?.takenAtIso ?? raw?.takenAt ?? null };
+  } catch {
+    return { leggibile: false, n: null, costoUsd: null, at: null };
+  }
+}
+
+function istantanea() {
+  const s = statoBot({});
+  const r = rampa({});
+  let kill: { effectivelyKilled: boolean | null; readable: boolean } = { effectivelyKilled: null, readable: false };
+  try {
+    const k = killStatus() as { effectivelyKilled?: boolean; readable?: boolean };
+    kill = { effectivelyKilled: k.effectivelyKilled === true, readable: k.readable === true };
+  } catch { /* il kill illeggibile si riporta come tale, non si indovina */ }
+  return {
+    enabled: s.enabled,
+    at: s.at, atIso: s.atIso, by: s.by, reason: s.reason,
+    leggibile: s.leggibile, motivo: s.motivo,
+    rampa: { ...r, ore: RAMPA_ORE, maxMercati: RAMPA_MAX_MERCATI },
+    kill,
+    posizioni: posizioniAperte(),
+    ciclo: ultimoCiclo(),
+  };
+}
+
+/** GET /api/maker/bot — stato dell'interruttore, della rampa e del kill. Sola lettura. */
+export async function GET() {
+  try {
+    return NextResponse.json({ ok: true, at: new Date().toISOString(), ...istantanea() });
+  } catch (e) {
+    return NextResponse.json({ ok: false, error: (e as Error).message }, { status: 500 });
+  }
+}
+
+/**
+ * POST /api/maker/bot — commuta l'interruttore. Body: { enabled: boolean, reason?: string }.
+ *
+ * `enabled` deve essere un booleano ESPLICITO: niente toggle implicito, perché un toggle su una rotta
+ * che autorizza spesa reale è un bottone che fa cose diverse a seconda di uno stato che il chiamante
+ * potrebbe non conoscere. Il middleware ha già ristretto la rotta a una sessione admin.
+ */
+export async function POST(req: Request) {
+  try {
+    let body: unknown = null;
+    try { body = await req.json(); } catch { /* corpo assente o non JSON */ }
+    const enabled = (body as { enabled?: unknown } | null)?.enabled;
+    if (typeof enabled !== 'boolean') {
+      return NextResponse.json(
+        { ok: false, error: 'serve { "enabled": true|false } — un booleano esplicito, non un toggle' },
+        { status: 400 },
+      );
+    }
+    const reason = (body as { reason?: unknown } | null)?.reason;
+    const r = impostaBot({
+      enabled,
+      by: 'operatore · tab Mercati',
+      reason: typeof reason === 'string' && reason.trim() ? reason.trim() : (enabled ? 'AVVIA dalla dashboard' : 'FERMA dalla dashboard'),
+    });
+    if (!r.ok) return NextResponse.json({ ok: false, error: r.motivo }, { status: 500 });
+    return NextResponse.json({ ok: true, at: new Date().toISOString(), prima: r.prima, ...istantanea() });
+  } catch (e) {
+    return NextResponse.json({ ok: false, error: (e as Error).message }, { status: 500 });
+  }
+}
