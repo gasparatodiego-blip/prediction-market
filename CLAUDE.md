@@ -3,7 +3,7 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt**: non serve più reincollarlo ogni volta.
 
-Ultima verifica contro codice/stato reali: **8 agosto 2026**, ~10:40 UTC.
+Ultima verifica contro codice/stato reali: **8 agosto 2026**, ~11:55 UTC.
 
 > **Il codice della sera del 7 agosto è in `main` E nei processi vivi** (riavvii autorizzati alle
 > ~23:52–23:57 UTC): fine scala su quattro percorsi, cadenza adattiva, pannello del mid vivo, timbro
@@ -30,10 +30,14 @@ Ultima verifica contro codice/stato reali: **8 agosto 2026**, ~10:40 UTC.
 > **Nuovo in flotta: `agent44-audit-scoperta`**, l'audit di sola scoperta. Non è sempre vivo: gira alle
 > 03:07 UTC, scansiona, scrive la coda ed esce. Vedi §3 e §5 punto 16.
 >
-> **Resta pendente UN riavvio**, ed è nuovo: il **trigger a capitale fermo** aggiunto stamattina vive
-> dentro agent41 stesso (non in un processo figlio, a differenza dell'allocatore), quindi finché
-> `agent41-realloc-scheduler` gira col codice delle 09:15 il trigger non esiste. Il ciclo fisso continua
-> a funzionare. Vedi §5 punto 17.
+> **Il trigger a capitale fermo è vivo** dalle ~11:24 UTC (agent41 riavviato dall'operatore, restart
+> 33 → 34; il log dice «trigger capitale fermo ACCESO — soglia $50, controllo ogni 120s»). §5 punto 17
+> è chiuso.
+>
+> **Resta pendente UN riavvio, ed è quello che conta:** `agent40-manual-reprice` gira ancora col codice
+> che lo teneva al **110% di un core**. La correzione è in `main` — vedi §5 punto 18 — e il comando è
+> il più semplice possibile, `pm2 restart agent40-manual-reprice`, perché agent40 **ha** il proprio
+> caricatore di `.env` (righe 56-62) a differenza di agent41.
 >
 > **A parte quello, sui riavvii non resta altro.** `REALLOC_SCHEDULER_DRY_RUN` è ancora nell'ambiente di
 > agent41 e ci **resta per decisione dell'operatore** (8 agosto 2026): è inerte, e un `restart` non può
@@ -316,6 +320,20 @@ e da lì in tre classi — veloce 1s, media = cadenza di prima, lenta 10s. Misur
 mercati → 102 lenti, 49 non misurabili, 6 medi, 5 veloci; chiamate al venue **−37,9%**. Non abbassa
 nessuna soglia: `minMoveCents` e `hysteresisTicks` restano dov'erano, e guardare più spesso non riprezza
 di più. Misura assente ⇒ cadenza di difetto, cioè il comportamento di prima.
+
+**Il giornale si legge una volta per ciclo, e solo per la finestra chiesta** (`velocita-mercato.js`,
+8 agosto 2026 — in `main`, **serve il riavvio di agent40**, §5 punto 18). La cadenza adattiva qui sopra
+aveva un costo che nessuno aveva misurato: `leggiFinestraMercato` veniva chiamata **una volta per
+mercato per ciclo**, e ogni chiamata rileggeva il giornale del giorno **dall'inizio** — perché il seek
+era `size − TETTO_BYTE` (128 MB, tarato su una finestra da sei ore) invece che sulla finestra da 15
+minuti effettivamente richiesta. Con il giornale a 77 MB: 524 ms a chiamata, 61.746 righe parsate per
+estrarne 12, ×13 mercati = **6,8 s di CPU dentro un ciclo da 5 s**, in crescita durante la giornata e
+con azzeramento a mezzanotte. Ora: **una** lettura per ciclo (`leggiFinestraTutti`, di cui la variante
+per un mercato solo è una proiezione) e un budget di byte dimensionato sulla finestra, con un controllo
+di copertura che allarga e rilegge se la stima del tasso non basta — così la finestra non può
+accorciarsi in silenzio. **6.812 ms → 29-36 ms per ciclo**, risultato identico (firma SHA-256 uguale su
+169 righe). Il test `lib/rewards/una-lettura-per-ciclo.test.js` conta le aperture del file, non i
+millisecondi: è un difetto che nessun test funzionale vede, perché il risultato era già corretto.
 
 **Origine degli ordini — una mano o un ciclo** (`lib/maker/origine-ordine.js`, 7 agosto 2026). Campo
 `origine` **accanto** a `source`, non al posto suo: `source` dice quale corsia piazza (ed è quello che
@@ -763,18 +781,46 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     battiti dei motori. Il campo `by` dei referti passa al nome nuovo solo per i referti futuri: quelli
     storici restano col vecchio, ed è giusto, dicono chi li ha scritti.
 
-17. **Il trigger a capitale fermo è in `main` ma non nel processo: serve un riavvio di agent41.**
-    A differenza del lavoro sull'allocatore (punto 14), questo **non** vive in un processo figlio: è il
-    poller e il mini-ciclo di agent41 stesso, quindi finché il processo gira col codice delle 09:15 il
-    trigger non esiste. Il ciclo fisso continua a funzionare come sempre nel frattempo.
-    Riavviarlo con la tecnica del punto 3 (agent41 non ha il caricatore di `.env`: un `--update-env` da
-    una shell qualsiasi gli toglierebbe 63 variabili).
-    **Cosa succede al primo giro dopo il riavvio:** `data/realloc-ultimo-piano.json` non esiste ancora —
-    lo scrive il primo ciclo completo — quindi fino ad allora il mini-ciclo risponde «nessun piano
-    salvato» e non piazza niente. È il comportamento voluto: non si inventa un piano per avere qualcosa
-    da fare.
-    **E oggi non piazzerebbe comunque:** il bot è FERMO (punto 1), e il trigger rilegge quell'interruttore
-    a ogni controllo esattamente come il ciclo delle sei ore.
+17. **~~Il trigger a capitale fermo non è nel processo~~ — CHIUSO alle ~11:24 UTC dell'8 agosto 2026.**
+    agent41 riavviato dall'operatore (restart 33 → 34); il log all'avvio dice «trigger capitale fermo
+    ACCESO — soglia $50, controllo ogni 120s · non cancella niente, non ricalcola il piano».
+    Il primo giro ha risposto come previsto: `data/realloc-ultimo-piano.json` lo scrive il primo ciclo
+    completo, e fino ad allora il mini-ciclo non piazza. E comunque il bot è FERMO (punto 1).
+    **Una riga di quel file è cambiata DOPO il riavvio** e aspetta il prossimo: `controlloCapitaleFermo`
+    guardava il saldo *prima* di guardare se il bot è avviato — una HTTP più una lettura on-chain ogni
+    120 s per una decisione già presa, ~720 al giorno a vuoto. Adesso i due cancelli gratuiti vengono
+    prima. **Non urgente**: costa chiamate, non correttezza.
+
+18. **La correzione del consumo di agent40 è in `main` ma non nel processo.** agent40 gira ancora col
+    codice che lo tiene al **110% di un core** — metà della macchina, su due vCPU. Due difetti nello
+    stesso percorso, entrambi corretti e misurati:
+    - il **seek** in `lib/rewards/velocita-mercato.leggiCoda` partiva da `size − 128 MB` (tetto
+      dimensionato per sei ore) invece che dalla finestra chiesta: con il giornale a 77 MB quel conto
+      dà zero, quindi si leggeva tutto dall'inizio anche per quindici minuti. **524 ms → 32 ms**;
+    - `cadenzaPer` chiamava `leggiFinestraMercato` **una volta per mercato**, e ogni chiamata costruisce
+      la mappa di *tutti* i mercati per proiettarne uno. Ora c'è `leggiFinestraTutti`: una lettura per
+      ciclo. **Il gate cadenza di un ciclo intero: 6.812 ms → 29-36 ms**, cioè da **136% a 0,6%** di un
+      core, con 3,75 MB letti invece di 77.
+    - e il test anti-regressione ha trovato un terzo punto che la diagnosi non aveva visto:
+      `liquiditaMedia` è un'altra lettura per mercato, con finestra da **240 minuti**, sul percorso di
+      riprezzo. Adesso passa da una mappa **pigra** — costa zero nei giri in cui nessuno riprezza.
+
+    **Il risultato non cambia**, ed è provato: firma SHA-256 identica prima e dopo su 169 righe (13
+    mercati × finestre 15/60/240 min, più `leggiVelocita` a 6 h su 130 mercati), calcolata su una copia
+    congelata del giornale vero.
+
+    **Il comando, ed è quello semplice:**
+    ```bash
+    pm2 restart agent40-manual-reprice
+    ```
+    Niente ricostruzione dell'ambiente come per agent41: agent40 **ha** il proprio caricatore di `.env`
+    (righe 56-62), e un `restart` per nome non tocca la descrizione in memoria di pm2 — verificato dal
+    riavvio delle 09:16, dopo il quale il processo aveva 95 variabili e tutte e quattro le critiche.
+
+    **Perché conta anche a bot FERMO:** finché non si riavvia, un core su due resta occupato e il costo
+    **cresce durante la giornata** (il giornale cresce ~6,7 MB/h e si azzera a mezzanotte). Verso le
+    19:00 il file supera i 128 MB e il ciclo da 5 s comincerebbe a slittare — cioè il motore che tiene
+    gli ordini dentro la banda arriverebbe tardi, che è l'unica conseguenza davvero operativa.
 
 ---
 
