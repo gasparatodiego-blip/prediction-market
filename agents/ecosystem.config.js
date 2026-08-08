@@ -894,5 +894,57 @@ module.exports = {
       autorestart:   true,
       env:           { NODE_ENV: 'production', HOME: '/root' },
     },
+    {
+      name:          'agent44-audit-scoperta',
+      script:        './agents/agent44-audit-scoperta.js',
+      cwd:           '/root/prediction-market',
+      // ── L'AUDIT DI SCOPERTA. TROVA, ARCHIVIA, ESCE. ──────────────────────────────────────────────
+      // Legge il codice del bot una volta al giorno cercando i pattern di rischio che in questo
+      // progetto hanno già prodotto guasti veri (costanti dello stesso concetto con valori diversi,
+      // protezioni presenti su un percorso e assenti su un altro, flag che nessuno legge più, commenti
+      // fermi a un valore vecchio, test rossi nuovi, collisioni di numerazione) e scrive
+      // data/audit-coda.{json,md}. NON corregge niente e non tocca ordini né capitale — un test
+      // cammina il suo albero dei require e fallisce se qualcuno ce li trascina dentro.
+      //
+      // ── PERCHÉ NON È SEMPRE VIVO, ED È LA COSA PIÙ IMPORTANTE DI QUESTO BLOCCO ───────────────────
+      // Questo box ha DUE vCPU e dodici processi che gestiscono capitale reale, con load average già
+      // intorno a 2. Un tredicesimo processo sempre in ascolto costerebbe RAM tutto il giorno per
+      // lavorare due minuti. Quindi `cron_restart` + `autorestart: false`: pm2 lo avvia all'ora
+      // giusta, lui gira, esce, e resta `stopped` fino al giorno dopo. Fra una scansione e l'altra
+      // consuma ESATTAMENTE zero — si vede in `pm2 list`, dove sta a 0% e 0b.
+      //
+      // Perché pm2 e non una riga di crontab: la flotta di questo progetto è descritta in QUESTO file
+      // e si ispeziona con `pm2 list`. Un job in crontab sarebbe l'unico pezzo invisibile a quella
+      // convenzione — e la prima cosa che nessuno ricorderebbe di guardare. In più `pm2 save` lo porta
+      // nel dump, quindi sopravvive a un riavvio della macchina senza un secondo posto da ricordare.
+      //
+      // ── L'ORA, SCELTA SUI DATI E NON A INTUITO ───────────────────────────────────────────────────
+      // `sar` su nove giorni: le ore più quiete in UTC sono 02 (28,5% CPU), 03 (28,6%) e 04 (29,2%);
+      // la peggiore è 08 (40,7%), poi 20 (39,0%) e 19 (38,7%). Fra le tre quiete si sceglie le 03
+      // perché è l'unica che sta DOPO la finestra della riconciliazione notturna di agent40
+      // (23:55 · 00:20 · 00:40 · 01:00) — così l'audit legge il confronto stima/consuntivo della notte
+      // appena chiusa invece di quello del giorno prima — e prima della salita delle 06-08.
+      // Il minuto 7 e non 0: in cima all'ora scattano i cron di sistema, e accodarsi a quelli sarebbe
+      // il modo più semplice di rendere inutile tutto il resto di questo blocco.
+      cron_restart: '7 3 * * *',
+      autorestart:  false,
+      // ── I TETTI DI RISORSA ──────────────────────────────────────────────────────────────────────
+      // 150M è il taglio che questo repo usa già per i processi leggeri (agent37, agent38): non
+      // introduce una scala nuova. La fotografia del codice sta in decine di MB, quindi c'è margine.
+      // NB: con `autorestart:false` questo tetto è la seconda linea — la prima è il vigile interno
+      // dell'agente, che si ferma da solo e SCRIVE PERCHÉ invece di essere ucciso in silenzio.
+      max_memory_restart: '150M',
+      watch:         false,
+      // Se una scansione fallisce, il posto giusto per accorgersene è la coda del giorno dopo, non un
+      // riavvio a raffica: `max_restarts` basso e `restart_delay` lungo perché anche il caso peggiore
+      // (crash immediato in loop) non possa diventare un consumo di CPU.
+      max_restarts:  3,
+      restart_delay: 60000,
+      // La priorità CPU/I/O NON si imposta qui: pm2 esegue lo script direttamente e non c'è modo di
+      // anteporgli `nice`/`ionice`. È l'agente ad abbassarsi da solo alla prima riga di lavoro
+      // (`os.setPriority` + `ionice -c 3` sul proprio pid), il che è anche più robusto — vale comunque
+      // lo si lanci, anche a mano.
+      env:           { NODE_ENV: 'production', HOME: '/root' },
+    },
   ],
 };

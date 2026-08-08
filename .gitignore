@@ -306,3 +306,19 @@ data/guardian-state.json.tmp*
 
 # Build di verifica su porta temporanea: artefatto locale, mai versionato.
 .next-verifica/
+
+# ── agent44-audit-scoperta: la coda dei reperti ─────────────────────────────────────────────────────
+# Stessa regola degli altri snapshot di runtime: descrive cosa questo albero di lavoro conteneva la
+# notte scorsa, su QUESTA macchina. Committarla farebbe due danni, e il secondo è il peggiore.
+#
+# audit-coda.json    agents/agent44-audit-scoperta.js (via lib/audit/coda.scriviCoda)
+#                    La MEMORIA dell'audit: ogni reperto con la data della prima volta che si è visto,
+#                    dell'ultima, e — se non c'è più — di quando è stato marcato risolto. Un checkout
+#                    che la riportasse indietro resusciterebbe reperti già chiusi e, peggio, farebbe
+#                    ripartire da zero l'età dei problemi aperti: «aperto da nove giorni» tornerebbe
+#                    «aperto da oggi», che è esattamente l'informazione per cui questo file esiste.
+# audit-coda.md      La VISTA leggibile, rigenerata da zero a ogni scansione. Non contiene niente che
+#                    non stia nel json: è lì per `cat`, non per essere una seconda fonte di verità.
+data/audit-coda.json
+data/audit-coda.json.tmp*
+data/audit-coda.md
