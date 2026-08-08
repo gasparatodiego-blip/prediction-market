@@ -14,9 +14,13 @@ Ultima verifica contro codice/stato reali: **8 agosto 2026**, ~21:30 UTC.
 > Il riavvio delle **21:35** ha attivato una versione a **due** scritture, e la misura sui dati vivi ha
 > mostrato che non bastava: `manual-mode-inactive` è sparito e il rifiuto si è spostato su
 > `live-min-market-mismatch`, perché la corsia manuale chiede `mode: 'live-min'` **cablato**
-> (`manual-order.js:733`) a prescindere dal `MAKER_MODE` del processo. La terza scrittura è in `main`,
-> test e build verdi — **§5 punto 41** — e **aspetta il riavvio**:
-> `pm2 restart agent41-realloc-scheduler`.
+> (`manual-order.js:733`) a prescindere dal `MAKER_MODE` del processo. La terza scrittura è entrata col
+> riavvio delle **21:47** (restart 39) — **§5 punto 41** — e i due gate sono spariti dall'audit.
+>
+> **Resta un terzo difetto, ed è quello che tiene fermi i $608 adesso — §5 punto 42.** Il registro di
+> idempotenza non sapeva cosa fosse una cancellazione, quindi una gamba cancellata dal mid stantio non
+> era più ripiazzabile: `idempotent-duplicate` a ogni giro. Correzione in `main`, test e build verdi,
+> **aspetta il riavvio**: `pm2 restart agent41-realloc-scheduler`.
 >
 > **Stato reale verificato alle ~21:10 UTC**, e smentisce il banner qui sotto: il KILL è stato
 > **revocato** alle 20:55:50Z (`data/safety-kill-switch.json` → `killed:false`,
@@ -1801,6 +1805,72 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     pm2 restart agent41-realloc-scheduler
     ```
     Fallisce **chiuso** — nessun capitale a rischio — ma il piano non viene eseguito.
+
+42. **UNA GAMBA CANCELLATA BRUCIAVA LA SUA CHIAVE PER SEMPRE — CORRETTO in `main` l'8 agosto 2026,
+    ~22:20 UTC. ASPETTA IL RIAVVIO, DA CONFERMARE DA DIEGO IN CHAT.**
+
+    **Come si è presentato.** Col fix del punto 41 vivo, i due gate che bloccavano il piano erano
+    spariti dall'audit — e il mini-ciclo continuava a dire `0 ordini piazzati, 1 rifiutati`, otto volte
+    di fila, con `$608` fermi contro un obiettivo del 90%. Unico gate residuo: `idempotent-duplicate`.
+
+    **La causa, e NON è `notionalePerMercato`.** Quel mercato era davvero vuoto, e riportare $0 era la
+    risposta giusta: l'ordine era stato **cancellato**. La catena, verificata sui dati:
+    1. **21:42:18** — il ciclo da 6h piazza BUY YES 61,2 @ $0,34 su `0x4e89a330` (HIMS earnings).
+       Intent `idem_c12152a1…`, ordine `0xd88822e0…` vivo.
+    2. **21:44:00** — agent40 lo cancella: `outcome: "mid-stantio-cancellato"`, «mid stantio da 30,0s,
+       oltre il limite di 20s… **il capitale liberato torna al trigger, che lo rimette al lavoro**».
+       È la fase 4 (§5 punto 38), deployata lo stesso giorno.
+    3. Il trigger fa esattamente quello che quella frase promette. Il piano dice $0,35, ma la regola
+       «mai primi» risnappa a **$0,34** ⇒ stessa identità economica ⇒ **stessa chiave** ⇒ rifiutato.
+    4. Prova aritmetica che il mercato era vuoto: piazzati $115,43, `aRiposoUsd` $94,62, differenza
+       **$20,81 esatti** — l'ordine cancellato. E i quattro superstiti sommano 94,622, cifra per cifra.
+
+    La chiave è deterministica sull'identità economica (`sha256(userId|venue|tokenId|side|price|size)`,
+    **nessuna componente temporale**) e **il registro non sapeva cosa fosse una cancellazione**: zero
+    occorrenze di `cancel` in `lib/safety/execution-audit.js`. Due meccanismi ciascuno corretto e
+    reciprocamente contraddittori. **Non è il punto 22**: lì il problema è il saldo che non cala; qui la
+    contabilità torna ($668,25 liberi + $94,62 al lavoro = $762,87). È un difetto nuovo, nato
+    dall'incontro fra la fase 4 e il registro preesistente.
+
+    **Il fix, e la forma non è nuova.** È quella che `lib/maker/manual-order.js:1475-1484` applica già ai
+    **rimpiazzi**: un piazzamento che supera un ordine MORTO è un ordine diverso e merita una chiave
+    diversa, derivata dall'id di quello che supera.
+    - `lib/safety/execution-audit.js`: nuove `risolviDuplicato` e `chiaveDopoOrdineMorto` (+ `leggiRighe`).
+      **La regola sta nel registro, il fatto no**: il chiamante passa `vivi`, l'insieme degli ordini che
+      il venue dice aperti adesso. Così la regola si prova senza rete e il registro non impara a
+      conoscere il venue. Percorre la **catena** delle sostituzioni (max 64 anelli).
+    - `lib/venues/polymarket-clob-maker/adapter.js`: nel ramo del duplicato, legge gli ordini aperti e
+      chiede al registro. `idempotencyKey` diventa `let`, così esito, latch e audit parlano della chiave
+      nuova. Nuovo esito d'audit `supera-duplicato-cancellato`, e il motivo del mancato superamento
+      finisce nel testo del rifiuto.
+    - **Costa solo nel caso rotto**: la lettura parte unicamente dopo che il duplicato è già scattato.
+    - **FALLISCE CHIUSO ovunque**: nessun insieme (lettura fallita, modalità senza rete, `safety`
+      parziale) ⇒ nessun superamento; esito senza `orderId` (invio ambiguo) ⇒ nessun superamento; ordine
+      ancora vivo ⇒ **rifiuto**, che è la ragione per cui la guardia esiste.
+    - **Copre entrambe le corsie**: né `bulk-allocate.js` né `plan-to-orders.js` né agent41 passano una
+      chiave esplicita, quindi mini-ciclo **e** ciclo fisso da 6h cadono sullo stesso
+      `adapter.js:686` e beneficiano entrambi. Logica di cancellazione e schema Prisma **non toccati**.
+
+    **Verifica.** Nuovo `lib/safety/idempotenza-dopo-cancellazione.test.js` (**32/32**): piazza →
+    cancella → ripiazza identico **passa**; doppio invio senza cancellazione **resta bloccato**; due
+    superamenti dello stesso ordine morto collidono fra loro; invio ambiguo e lettura fallita falliscono
+    chiuso. Il fixture deriva la chiave **vera** dell'8 agosto (`idem_c12152a1e1ccd0a5c899adad`), quindi
+    riproduce l'incidente e non una sua imitazione. Provato che fallisce senza il fix. Suite **116 verdi
+    / 6 rossi** (i soliti sei del punto 40), `npm run build` verde.
+
+    **Scoperto scrivendo il test, e non corretto** (fuori perimetro, nessun effetto in produzione):
+    `recordIntent` deriva la chiave da `intent.tokenId`, ma la riga di intent registra `intent.market`.
+    Un chiamante che passasse solo `market` **senza** chiave esplicita deriverebbe su `undefined`.
+    Oggi non succede: l'adapter passa sempre la chiave già derivata.
+
+    **Riavvio: NON eseguito, serve conferma esplicita di Diego in chat** (§2 regola 2). Il fix vive
+    nell'adapter, quindi tocca **ogni** processo che piazza — `agent41-realloc-scheduler` per il caso
+    misurato, e `agent40-manual-reprice`/`dashboard` per le loro corsie:
+    ```bash
+    pm2 restart agent41-realloc-scheduler
+    ```
+    Finché non riparte, il loop continua: fallisce **chiuso**, nessun capitale a rischio, ma i $608
+    restano fermi.
 
 ---
 
