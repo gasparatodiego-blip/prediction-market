@@ -3,7 +3,7 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt**: non serve più reincollarlo ogni volta.
 
-Ultima verifica contro codice/stato reali: **8 agosto 2026**, ~18:00 UTC.
+Ultima verifica contro codice/stato reali: **8 agosto 2026**, ~19:30 UTC.
 
 > ## 🔴 KILL ATTIVO DALLE 17:20:17 UTC DELL'8 AGOSTO 2026 — CONTO PIATTO
 > `data/safety-kill-switch.json` dice `killed:true`, `by:"operator · liquidity-rewards tab"`. Verificato
@@ -1231,11 +1231,16 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     2.100**: la copertura resta parziale e il log lo **dichiara** a ogni scansione invece di lasciarlo
     dedurre.
 
-    **Cosa NON entra, e per scelta:** i crypto «Up or Down» a 5 minuti — misurati fino a **$833/giorno**,
-    dieci volte il miglior mercato eleggibile — scadono sotto le 6 ore e cadono sotto
-    `MIN_HORIZON_DAYS`. La scoperta ora li VEDE; è il pavimento a escluderli, ed è una decisione
-    dichiarata (vedi il commento della costante). Se un giorno si vuole quell'archetipo, il pavimento è
-    la riga da discutere, non la scoperta.
+    **Cosa NON entra — e la ragione NON è il pavimento, misurato l'8 agosto sera.** Questo punto diceva
+    che i crypto «Up or Down» a 5 minuti (fino a **$833/giorno**) restano fuori perché scadono sotto le
+    6 ore e cadono sotto `MIN_HORIZON_DAYS`. La misura dice qualcosa di più semplice: **nell'universo
+    premiante delle prossime 48 ore i mercati crypto sono ZERO**, e nel campione dei 21 maker solo
+    **3 ingressi su 44** su crypto erano su un mercato che paga davvero — gli altri 35 `btc-updown-5m`
+    hanno `montepremi 0`. Abbassare il pavimento non produrrebbe niente da prendere.
+    I tre premianti riportano `rewardsDailyRate: 10000` **senza banda pubblicata**
+    (`rewardsMaxSpread: 0`): la formula del venue `S(v,s)=((v−s)/v)²` è indefinita con `v=0`, e
+    `agent24-liquidity-rewards.js:190` li scarta correttamente. Il pavimento resta una decisione
+    dichiarata, ma non è lui a tenere fuori il crypto. Vedi `data/ricerca-categorie-21-wallet.md` §4.3.
 
 24. **IL 10 AGOSTO ALLE 01:01:33Z IL RESET CANCELLA TUTTO, se il board non è aggiornato per allora.**
     Non è un'ipotesi: è aritmetica su due costanti e un calendario.
@@ -1527,6 +1532,57 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     pm2 di agent41 (400 MB) perché è un processo suo — è la correzione del 4 agosto — ma su una macchina
     con 2 vCPU e altri undici processi vivi la differenza è reale. Se un giorno il ricalcolo leggero
     diventasse frequente (oggi è protetto dal cooldown di 10 minuti), è il numero da guardare per primo.
+
+37. **LA RICERCA SULLE CATEGORIE È FATTA, E RIBALTA LA LETTURA OVVIA** (8 agosto 2026 sera — report
+    completo in `data/ricerca-categorie-21-wallet.md`, rifacibile con
+    `node scripts/ricerca-categorie-21.js --universo`, sola lettura).
+
+    **Il campione**: 450 ingressi dei 21 maker in 31 ore (erano 299), 20 wallet, 441 mercati, 133
+    famiglie. Classificatore in `lib/rewards/categoria-mercato.js` — **puro, e nessun modulo di `lib/`,
+    `agents/` o `app/` lo importa**: è uno strumento di misura, non una regola del motore, e un test lo
+    verifica camminando l'albero dei sorgenti. Copertura: **0 non classificati su 450 e su 112**;
+    accordo con il campo `category` di Gamma sul board: **95/95 = 100%**.
+
+    **Il fatto che riorienta tutto: solo 40 ingressi su 450 (8,9%) sono su mercati che pagano premi.**
+    I 21 entrano per il **77% su sport**, ma di quei 345 ingressi ne pagano **6 (1,7%)**. Il resto è un
+    mestiere diverso da quello di questo bot. Il confronto giusto col board è con i **40 premianti**:
+
+    | categoria | 21 · tutti | 21 · premianti | board | universo premiante 0-48h |
+    |---|---|---|---|---|
+    | sport | 77,0% | 15,0% | 8,9% | 3,2% |
+    | crypto | 9,8% | 7,5% | — | **zero** |
+    | finanza-aziende | 6,7% | **27,5%** | 6,3% | 0,5% |
+    | cronaca-eventi | 3,8% | **25,0%** | 12,5% | 18,9% |
+    | meteo | 2,0% | 17,5% | **39,3%** | **73,3%** |
+    | politica (elez. + locali) | 0,7% | 7,5% | 33,0% | 1,4% |
+
+    **Il pattern più importante è di ORIZZONTE, e tocca una costante viva:** gli ingressi **premianti**
+    hanno un orizzonte mediano di **21,4 ore**, i non premianti di **2,2 ore**. `MIN_HORIZON_DAYS = 0,25`
+    (6 ore) è tarato sulla mediana 0,22 g dell'insieme COMPLETO, cioè su una popolazione che per il 91%
+    non paga premi. **Non è stato cambiato niente** — tocca l'allocazione di capitale reale, quindi è
+    una decisione dell'operatore (R1 del report). Da guardare con più dati: oggi n=40.
+
+    **La ripetizione è forte ma nel posto sbagliato:** 20 famiglie coprono il **60,3%** degli ingressi
+    (441 mercati distinti su 133 famiglie — tornano sulla *serie*, mai sullo stesso mercato). Ma nel
+    sottoinsieme premiante quasi tutte le famiglie hanno un solo ingresso: una watchlist aiuterebbe
+    l'attività NON premiante molto più di quella premiante.
+
+    **Le tre cose da sapere sul board, e due sono assoluzioni:**
+    - **meteo non è sovra-pesato**: sembra +21,8 contro i 21, ma è **−34** contro ciò che esiste
+      (39,3% board vs 73,3% universo). Il board sta già selezionando. Nessuna azione.
+    - **finanza-aziende (−21,3) è strutturale, con un dettaglio azionabile**: nell'universo 0-48h esiste
+      UN solo mercato di finanza premiante. Ma gli 11 ingressi premianti dei 21 sono la famiglia
+      `<ticker>-up-or-down-on-<data>` ($20-200/g, affollamento mediano **3**, il più basso del campione)
+      — che esiste **solo nei giorni di borsa e per poche ore**, e scade fra **2,6 e 8,0 ore**, cioè a
+      cavallo del pavimento. Il bot non l'ha mai vista. R2 del report: una watchlist di famiglie
+      interrogate per slug, additiva alla scoperta. **Non implementata**, perché è in tensione con R1:
+      scoprirla senza decidere il pavimento vorrebbe dire pescare mercati che il filtro dopo scarta.
+    - **cronaca-eventi (−12,5) è l'unico scarto dove i tre numeri concordano**: offerta 18,9%, i 21 al
+      25,0%, board al 12,5%. È la candidata più pulita per un peso maggiore. Tocca il punteggio di
+      selezione ⇒ decisione dell'operatore.
+
+    **Nessun peso, filtro o soglia è stato modificato in questa sessione.** L'unica correzione applicata
+    è al testo del punto 23 qui sopra, che attribuiva al pavimento un'assenza che è strutturale.
 
 ---
 
