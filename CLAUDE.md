@@ -3,22 +3,30 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt**: non serve più reincollarlo ogni volta.
 
-Ultima verifica contro codice/stato reali: **8 agosto 2026**, ~16:40 UTC.
+Ultima verifica contro codice/stato reali: **8 agosto 2026**, ~17:15 UTC.
 
-> ## 🟠 IL MERGE È ACCESO IN `main` — E ASPETTA UN RIAVVIO DI agent40
-> `MERGE_STRATEGY_ENABLED = true` (costante di sorgente, **non** una env). Dal riavvio di agent40 un
-> fill su un lato solo **compra il secondo lato con capitale reale** invece di vendere subito: è
-> un'espansione vera di ciò che il bot fa da solo, e il riavvio è l'atto che la arma.
-> **Comando pendente: `pm2 restart agent40-manual-reprice`** — §5 punto 28.
+> ## 🟢 IL MERGE È VIVO NEL PROCESSO — E HA GIÀ COMPRATO IL SECONDO LATO
+> `MERGE_STRATEGY_ENABLED = true` (costante di sorgente, **non** una env). Il riavvio che lo armava
+> **è stato eseguito dall'operatore alle 16:49:18Z** (`agent40-manual-reprice`, restart 53 → 54, dopo
+> il commit `f4bf022` delle 16:41): da lì l'eccezione di riduzione, i quattro fix del punto 27 e il
+> ramo che **esegue** i Livelli 1-2 sono in servizio. Non resta nessun riavvio pendente.
 >
-> **Le due posizioni bloccate ora possono uscire.** L'eccezione di riduzione è in `main`: un SELL su
-> posizione realmente detenuta non è più vincolato alla allowlist live-min. Matt Little `0x822409`
-> (32,27 YES @ 0,80) e Schwartzel `0xc16fade4` (22,20 NO @ 0,5177) escono al primo ciclo dopo il
-> riavvio. **Fino al riavvio restano bloccate** — il codice è in `main`, non nel processo.
+> **Primo completamento di coppia mai piazzato da questo stack: 17:06:25Z.** Matt Little `0x822409`
+> — BUY **NO 32,27 @ 0,19**, nozionale **$6,13**, ordine `0x83de2c71…`, `status: live`. È il Livello 2
+> (l'ask di NO a 21¢ sta sopra il tetto di 19¢), e l'attesa di 60 minuti è su disco in
+> `data/merge-attese.json`. **$6,13 di capitale nuovo impegnato**, che non torna liquido prima della
+> risoluzione: senza merge on-chain la coppia paga $1 alla scadenza, non adesso.
 >
-> **Il Livello 1 (taker) oggi non può eseguire**, e non è un difetto di questo lavoro: `manual-order`
-> consente di attraversare lo spread **solo in vendita**. Degrada al Livello 2 nello stesso ciclo. §5
-> punto 29.
+> **La allowlist è tornata a 5 mercati** (§5 punto 31): i due con posizione aperta sono stati
+> riabilitati alle 17:05:30Z. **Il prossimo reset di agent41 li rispegne** se non entrano nel piano.
+>
+> **Schwartzel `0xc16fade4` NON completa la coppia, e non per la allowlist** — §5 punto 32: la
+> chiusura forzata a mercato (uscita a riposo da 24,5h) intercetta prima del ramo del merge, e fallisce
+> sulla cancellazione perché `closeTask` **non inietta `cancelOrder`**. Il suo Livello 1 è calcolato e
+> conveniente (coppia a **98,8¢**) e resta irraggiungibile.
+>
+> **Il Livello 1 (taker) comunque non può eseguire**: `manual-order` consente di attraversare lo
+> spread **solo in vendita**. Degrada al Livello 2 nello stesso ciclo. §5 punto 29.
 
 > ## ⚠ IL BOT È SU AVVIA DALLE 12:07:55 UTC DELL'8 AGOSTO 2026
 > Non è più un'anteprima: **il prossimo ciclo di agent41 piazza ordini veri con capitale reale.**
@@ -404,7 +412,7 @@ nessuna soglia: `minMoveCents` e `hysteresisTicks` restano dov'erano, e guardare
 di più. Misura assente ⇒ cadenza di difetto, cioè il comportamento di prima.
 
 **Il giornale si legge una volta per ciclo, e solo per la finestra chiesta** (`velocita-mercato.js`,
-8 agosto 2026 — in `main`, **serve il riavvio di agent40**, §5 punto 18). La cadenza adattiva qui sopra
+8 agosto 2026 — in servizio dal riavvio delle 12:07:06Z, §5 punto 18). La cadenza adattiva qui sopra
 aveva un costo che nessuno aveva misurato: `leggiFinestraMercato` veniva chiamata **una volta per
 mercato per ciclo**, e ogni chiamata rileggeva il giornale del giorno **dall'inizio** — perché il seek
 era `size − TETTO_BYTE` (128 MB, tarato su una finestra da sei ore) invece che sulla finestra da 15
@@ -577,7 +585,7 @@ si scrive con `findIndex` o `some`, mai con la truthiness di `find`.
 agent40 li passava: tutti gli altri percorsi con `inCoda:true` mandavano una lista vuota, e dal secondo
 ordine in poi il «concorrente» da battere eravamo noi — un tick per ogni nostro ordine davanti.
 
-**Merge — I LIVELLI 1 E 2 SONO ACCESI (in `main`, dal riavvio di agent40).** Strategia a livelli in
+**Merge — I LIVELLI 1 E 2 SONO VIVI NEL PROCESSO (dal riavvio di agent40 delle 16:49:18Z dell'8 agosto 2026).** Strategia a livelli in
 `lib/maker/strategia-merge.js`: L1 taker immediato se la coppia YES+NO costa ≤ 99¢, L2 maker con skew
 (attesa 60 min), L3 ripiego sull'uscita classica. Il **ciclo split→merge è stato provato davvero** il
 7 agosto 2026 su Schwartzel FL-19 (`negRisk=true`, il caso più difficile): split $2 → merge $2, saldo
@@ -1132,8 +1140,13 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     Serve a poter dire fra un mese se il canale delle scadenze vicine è ancora aperto: se il board
     torna ad avere il minimo sopra i due giorni, la seconda passata ha smesso di funzionare.
 
-26. **~~DUE POSIZIONI APERTE SENZA VIA D'USCITA~~ — CORRETTO in `main` l'8 agosto 2026, ~16:30 UTC;
-    ASPETTA IL RIAVVIO DI agent40.** La correzione è l'**eccezione di riduzione**
+26. **~~DUE POSIZIONI APERTE SENZA VIA D'USCITA~~ — CHIUSO alle 16:49:18Z dell'8 agosto 2026** (riavvio
+    di agent40 eseguito dall'operatore, restart 53 → 54). **Verificato sui dati vivi, non per test:**
+    alle **16:49:27Z**, trentanove secondi dopo il riavvio, l'uscita di Matt Little è passata — SELL
+    YES 32,27 @ 0,81, ordine `0x23277f14…`, `status: live`, nozionale $26,14. Il rifiuto
+    `reject-live-min-market-mismatch` che si ripeteva ogni 60 s è sparito dal registro. È la conferma
+    sui dati vivi che §5 punto 30 diceva sarebbe arrivata dai log del primo ciclo.
+    La correzione era l'**eccezione di riduzione**
     (`evaluateReductionProof`, `lib/venues/polymarket-clob-maker/adapter.js`): un ordine che *toglie*
     esposizione non è più vincolato alla allowlist live-min, che governa dove si può *aprire*.
     - **La prova è positiva, mai per difetto**: serve lato `SELL`, size detenuta **letta** dallo
@@ -1184,8 +1197,12 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     scritta** (turno di sola diagnosi). La direzione: esentare dalla allowlist gli ordini di **riduzione**
     su una posizione realmente detenuta — non allargare la allowlist, che riaprirebbe anche gli ingressi.
 
-27. **~~I Livelli 1 e 2 non sono mai stati raggiunti~~ — CORRETTI TUTTI E QUATTRO in `main` l'8 agosto
-    2026; ASPETTANO IL RIAVVIO DI agent40.** Cosa è stato scritto, oltre ai quattro fix elencati sotto:
+27. **~~I Livelli 1 e 2 non sono mai stati raggiunti~~ — CHIUSO alle 16:49:18Z dell'8 agosto 2026.**
+    Il riavvio ha armato tutti e quattro i fix, e il registro lo dimostra riga per riga: dal primo
+    ciclo Matt Little scrive `merge-livello-2` con `askLetta: true` e `attesaMin` popolabile — cioè la
+    scala ask **viene letta davvero** (`readDepth` iniettato) e il motivo in audit non è più una
+    conclusione non misurata. Alle **17:06:23Z**, appena la allowlist ha smesso di rifiutare, l'esito è
+    diventato `merge-livello-2-piazzato`. Cosa era stato scritto, oltre ai quattro fix elencati sotto:
     - **il ramo che ESEGUE i Livelli 1 e 2 non esisteva e ora esiste** (`auto-close.js`). Era il difetto
       che nascondeva gli altri: accendere `MERGE_STRATEGY_ENABLED` da solo avrebbe cambiato **solo la
       stringa nell'audit**, facendogli dichiarare eseguito ciò che non accadeva;
@@ -1230,7 +1247,10 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
       `MERGE_STRATEGY_ENABLED` resta una **decisione dell'operatore** e non è implicata da nulla di
       quanto sopra: senza merge on-chain, completare la coppia immobilizza capitale invece di liberarlo.
 
-28. **IL RIAVVIO DI agent40 ARMA UN COMPORTAMENTO NUOVO SU CAPITALE REALE — e va saputo prima di darlo.**
+28. **~~IL RIAVVIO DI agent40 ARMA UN COMPORTAMENTO NUOVO SU CAPITALE REALE~~ — ESEGUITO alle
+    16:49:18Z dell'8 agosto 2026** (restart 53 → 54). Il comportamento nuovo si è manifestato entro
+    diciassette minuti e con la cifra prevista: **$6,13** di capitale nuovo su Matt Little (§5 punto 31).
+    Il testo resta come registro di cosa è stato armato — e di cosa vale ancora.
     `pm2 restart agent40-manual-reprice` (forma semplice: agent40 **ha** il proprio caricatore di `.env`,
     righe 56-62, a differenza di agent41 — §5 punto 3). Da quel momento e senza altre conferme:
     - **un fill su un lato solo fa COMPRARE il secondo lato**, su qualunque mercato in gestione manuale
@@ -1266,8 +1286,70 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     dell'adapter, anche in sola lettura: non può sapere che quella valutazione non piazzava niente.
     Non è stato aggirato. La copertura è quindi: **verdetti dei livelli** calcolati sui dati veri
     (posizioni dal venue + book live di agent34), **decisione del gate** provata da 15 asserzioni sui
-    casi esatti di queste due posizioni. Chi vorrà la conferma sui dati vivi la avrà dai log del primo
-    ciclo dopo il riavvio, che è comunque la prova migliore.
+    casi esatti di queste due posizioni. **La conferma sui dati vivi è arrivata** alle 16:49:27Z e alle
+    17:06:25Z — vedi i punti 26 e 31: il gate si comporta esattamente come le 15 asserzioni dicevano.
+
+31. **I DUE MERCATI CON POSIZIONE APERTA SONO TORNATI NELLA ALLOWLIST — 17:05:30Z dell'8 agosto 2026,
+    su richiesta esplicita dell'operatore.** Scritti con `setAutoReprice` (lo stesso meccanismo del
+    pannello e del riallocatore, nessun formato inventato) in `data/maker-auto-reprice.json`, con audit
+    in `data/maker-auto-reprice-audit.jsonl`. La allowlist passa da **3 a 5** mercati:
+    `0xc16fade4…` (Schwartzel FL-19) e `0x822409…` (Matt Little MN-02).
+    - **Nessun riavvio è servito, e non è una fortuna:** il gate legge la lista **una volta per
+      piazzamento** da disco (`adapter.js:405-419`, «un controllo che ha bisogno di un riavvio non è un
+      controllo»). Misurato: scrittura alle 17:05:30, primo effetto alle **17:06:23**, cioè al ciclo di
+      60 s successivo.
+    - **Effetto misurato, con la cifra esatta.** Matt Little è passato in un solo ciclo da
+      `merge-livello-2-reject-live-min-market-mismatch` a **`merge-livello-2-piazzato`**: BUY **NO 32,27
+      @ 0,19**, nozionale **$6,1313**, ordine `0x83de2c71e01f…`, `status: live` alle 17:06:25.334Z.
+      Il prezzo è il tetto della coppia (100 − 80 − 1 = 19¢) e non l'ask meno un tick (20¢), perché il
+      minimo dei due è il tetto. `data/merge-attese.json` ha registrato l'attesa: al ciclo dopo l'esito
+      è `merge-in-attesa` e **non** un secondo ordine.
+    - **Il capitale nuovo impegnato è $6,13, e non torna liquido prima della risoluzione** (11 agosto
+      per MN-02): senza merge on-chain la coppia paga $1 alla scadenza. È la premessa del punto 28.
+    - **NON È DUREVOLE.** Il reset di agent41 rispegne ogni mercato abilitato che il piano non contiene
+      (`allocation-reset.js:258`). Ultimo ciclo completo **15:41:31Z**, quindi il prossimo cade attorno
+      alle **21:41:31Z**: se a quel giro i due mercati non sono nel piano — e non lo saranno, non hanno
+      montepremi interessante — tornano fuori allowlist. L'uscita automatica invece **resta accesa**
+      perché il reset la spegne solo su mercati senza posizione. Se la riabilitazione deve sopravvivere
+      al reset, la riga da cambiare è quella, non questo file.
+
+32. **SCHWARTZEL NON COMPLETA LA COPPIA, E NON È LA ALLOWLIST: `closeTask` NON INIETTA `cancelOrder`.**
+    Trovato l'8 agosto 2026 sui log vivi, dopo la riabilitazione. Il Livello 1 su `0xc16fade4` è
+    calcolato **e conveniente** — «l ask di YES sta entro il tetto: 22,2 share a 47,0¢ medi su 1
+    livello · la coppia costa **98,8¢**» — e non viene mai tentato.
+    - **Perché.** Il ramo del merge sta in `auto-close.js:467`, **dopo** la chiusura forzata a mercato
+      (`d.action === 'close-at-market'`, riga 400), che fa `continue`. Su Schwartzel il trigger
+      `max-wait` è scattato (uscita a riposo da 24,5h, tetto 24h), quindi la chiusura forzata vince —
+      ed è per costruzione, non per errore: «una chiusura che deve eseguire adesso non viene mai
+      rimandata da un merge».
+    - **E lì si ferma.** La chiusura forzata cancella le uscite a riposo prima di vendere, e
+      `deps.cancelOrder` **è `undefined`** in `closeTask` (`agent40-manual-reprice.js:479-556`: inietta
+      `killStatus`, `isManual`, `resolveRules`, `readDepth`, `attesaMerge`, `listOrders`,
+      `readPositions`, `placeOrder`, `rimpiazzaGamba`, `audit` — non `cancelOrder`). Le righe 797 e 919
+      lo iniettano, ma sono il ciclo di riprezzo e quello di mm-tracking. Esito: `exit-cancel-failed`
+      con motivo `ignoto`, ogni 60 s, **da 24,5 ore**.
+    - **Fallisce nella direzione sicura** — non vende — ma la posizione resta ferma senza che nessuno
+      dei due percorsi la chiuda. **Non corretto in questa sessione, e per una ragione:** iniettare
+      `cancelOrder` armerebbe una **vendita a mercato** di 22,20 NO al bid, che è l'opposto di quello
+      che l'operatore ha chiesto per questo mercato (completare la coppia). La scelta fra le due è sua.
+
+33. **La stessa guardia, un ramo più in là: `null` non è una cancellazione riuscita** — corretto in
+    `main` l'8 agosto 2026, **aspetta il prossimo riavvio di agent40**. Al timeout del Livello 2
+    (`auto-close.js:572`) il codice cancella il completamento e solo allora vende, e lo dichiara in tre
+    righe di commento. La guardia era `if (c && c.ok === false)`: con `cancelOrder` non iniettato
+    `c` vale **`null`**, che è falsy, quindi si scendeva a **vendere il primo lato con il BUY di
+    completamento ancora sul libro** — il «comprare e vendere insieme» che quel commento dice di voler
+    impedire. Il ramo gemello della chiusura a mercato (riga 408) tratta `null` come fallimento da
+    sempre: le due guardie ora sono allineate (`if (!c || c.ok === false)`), e l'attesa non viene
+    ripulita, così non se ne apre una seconda al giro dopo.
+    - **Era il 100% della produzione, non un caso di laboratorio** (punto 32).
+    - **Diventava raggiungibile alle ~18:06Z di oggi**, sessanta minuti dopo il completamento delle
+      17:06 su Matt Little. Con il processo ancora sul codice vecchio la vendita d'uscita, a quel giro,
+      viene comunque rifiutata da `idempotent-duplicate` — è una coincidenza fortunata, non una
+      protezione, ed è la ragione per cui la correzione è stata scritta subito.
+    - Coperto da `lib/maker/merge-livelli-vivi.test.js` (64/64), caso `5f-bis`.
+    - **Riavvio non chiesto e non eseguito**: la correzione fa fare *meno* al bot, quindi aspettare
+      costa nulla, e un riavvio non richiesto su capitale reale non si prende da soli (§2 regola 2).
 
 ---
 
