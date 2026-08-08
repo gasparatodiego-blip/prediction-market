@@ -42,6 +42,29 @@ const NEAR_EXPIRY_DAYS  = 14;    // markets closing within → force HIGH vol
 const GAMMA_PAGE_SIZE   = 100;
 const MAX_PAGES         = 21;    // offset 0..2000 (21 × 100)
 const MAX_CLOB_MARKETS  = 120;   // top-N by rate for CLOB depth
+// ── LA SECONDA PASSATA (8 agosto 2026) ────────────────────────────────────────
+// Quanto in là guarda la camminata ordinata sulle scadenze. 3 giorni e non 1,5 (il tetto del
+// pianificatore) perche' la scoperta non applica politiche: vedere anche cio' che si scartera' e'
+// l'unico modo per accorgersi che lo si sta scartando.
+const FAST_WINDOW_DAYS  = Number(process.env.REWARD_FAST_WINDOW_DAYS) > 0
+  ? Number(process.env.REWARD_FAST_WINDOW_DAYS) : 2;
+// Il tetto di pagine della seconda passata. Misurato l'8 agosto: coprire 36 ore costa ~20 pagine
+// (~2.000 mercati, quasi tutti senza montepremi), quindi 25 copre la finestra con margine e tiene il
+// costo LIMITATO anche se un giorno il venue crea molti piu' mercati a breve. Il taglio, se arriva,
+// e' dichiarato nel log della scansione invece di essere silenzioso.
+// LE FETTE. Gamma tronca OGNI query a ~2.100 record, quindi non basta ordinare per scadenza: la
+// camminata da `adesso` in avanti consuma tutti e 2.100 i posti sui mercati piu' imminenti (sport e
+// crypto, quasi tutti senza montepremi) e non arriva mai alle ore che ci interessano. Misurato l'8
+// agosto: una camminata unica trovava 0 mercati premiati fra 6h e 36h, mentre le stesse ore
+// interrogate a fette di 6 ore ne trovano 70. La finestra va PARTIZIONATA, non percorsa.
+const FAST_SLICE_HOURS  = Number(process.env.REWARD_FAST_SLICE_HOURS) > 0
+  ? Number(process.env.REWARD_FAST_SLICE_HOURS) : 6;
+// Il budget di pagine dell'INTERA seconda passata, non della singola fetta: un tetto sul costo che
+// non dipende da quante fette servono. 120 pagine coprono le 48 ore misurate (135 pagine per 8 fette,
+// di cui le prime sei ne chiedono 98). Se il budget si esaurisce il fatto viene DICHIARATO nel log:
+// una copertura parziale silenziosa e' peggio di una dichiarata.
+const FAST_MAX_PAGES    = Number(process.env.REWARD_FAST_MAX_PAGES) > 0
+  ? Number(process.env.REWARD_FAST_MAX_PAGES) : 120;
 const GAP_SHARE_THRESH  = 0.20;  // ≥20% estimated share at $500 → band is thinly covered
 
 // ── Rate-limited HTTP queue ───────────────────────────────────────────────────
@@ -103,19 +126,59 @@ function atomicWrite(file, obj) {
 }
 
 // ── Fetch reward-eligible markets from Gamma ──────────────────────────────────
-async function fetchRewardMarkets() {
-  const markets = [];
+//
+// ═══ DUE PASSATE, E LA SECONDA È NATA L'8 AGOSTO 2026 ══════════════════════════════════════════════
+// La prima passata pagina il listino non filtrato (`active=true&closed=false`). Sembra esaustiva e non
+// lo è: **Gamma tronca QUALUNQUE query a ~2.100 record**, e in quel listino l'ordinamento di difetto è
+// per `id` crescente, cioè dal mercato più VECCHIO. Misurato: offset 2100 risponde vuoto sia sul
+// listino intero sia su una finestra di tre giorni — è il tetto della API, non la fine dei mercati.
+// Conseguenza: i mercati creati di recente, che sono esattamente quelli a scadenza rapida, cadono
+// oltre il taglio e non sono MAI stati visti. Il board del 8 agosto aveva 115 mercati e il più corto
+// scadeva fra **2,41 giorni**, mentre i 21 maker di riferimento entrano con mediana **5,3 ore**.
+//
+// Nessun filtro di categoria li escludeva: non venivano proprio interrogati.
+//
+// La seconda passata chiede la stessa cosa in un ordine diverso — `order=endDate&ascending=true` con
+// `end_date_min=adesso` — e cammina in AVANTI nel tempo fermandosi appena supera la finestra. Non è un
+// universo nuovo: è lo stesso universo interrogato da un capo diverso, così il taglio dei 2.100 cade
+// dove non ci interessa invece che dove ci interessa. Prima misura, 8 agosto 2026: quattro mercati
+// premiati entro 36 ore che il board non aveva, fra cui «Solana Up or Down 10:15-10:30 ET» a
+// **$833/giorno** e «Dogecoin Up or Down» a $417/giorno, contro un montepremi mediano di board di $47.
+//
+// Le due passate si UNISCONO su `conditionId`: nessun mercato viene contato due volte, e nessuno dei
+// criteri di selezione già esistenti cambia — non si tocca il montepremi, non si tocca la banda, non
+// si tocca il gate di contraddizione. Questo lavoro allarga SOLO l'ampiezza della scoperta.
+async function fetchRewardMarkets(deps = {}) {
+  // L'HTTP è INIETTABILE, e non è un vezzo: senza, l'unico modo di provare questa funzione sarebbe
+  // sparare ~45 richieste vere a Gamma dentro un test. Con l'iniezione si prova la LOGICA — le due
+  // passate, l'unione, la fermata sulla finestra — su pagine finte e in millisecondi, ed è la stessa
+  // disciplina del resto del maker: si esegue QUESTA funzione, non una sua imitazione.
+  const get = deps.httpGet || httpGet;
+  const adesso = Number.isFinite(deps.nowMs) ? deps.nowMs : Date.now();
+  const perId = new Map();
 
-  for (let page = 0; page < MAX_PAGES; page++) {
-    const offset = page * GAMMA_PAGE_SIZE;
-    const url    = `https://gamma-api.polymarket.com/markets?active=true&closed=false&limit=${GAMMA_PAGE_SIZE}&offset=${offset}`;
-    let r;
-    try { r = await httpGet(url); }
-    catch (e) { console.warn(`  Gamma page ${page} error: ${e.message}`); break; }
+  /** Le pagine di UNA passata, con l'indice condiviso: la stessa riga costruita nello stesso modo. */
+  async function passata(nome, urlDiPagina, { maxPagine }) {
+    let pagine = 0, aggiunti = 0;
+    for (let page = 0; page < maxPagine; page++) {
+      const offset = page * GAMMA_PAGE_SIZE;
+      let r;
+      try { r = await get(urlDiPagina(offset)); }
+      catch (e) { console.warn(`  Gamma [${nome}] page ${page} error: ${e.message}`); break; }
 
-    if (r.status !== 200 || !Array.isArray(r.data) || r.data.length === 0) break;
+      if (r.status !== 200 || !Array.isArray(r.data) || r.data.length === 0) break;
+      pagine++;
 
-    for (const m of r.data) {
+      aggiunti += raccogli(r.data);
+      if (r.data.length < GAMMA_PAGE_SIZE) break;
+    }
+    return { nome, pagine, aggiunti };
+  }
+
+  /** Costruisce e indicizza le righe di una pagina. Ritorna quanti mercati NUOVI ha aggiunto. */
+  function raccogli(righe) {
+    let nuovi = 0;
+    for (const m of righe) {
       const cr = m.clobRewards;
       if (!cr || !cr.length) continue;
 
@@ -151,7 +214,7 @@ async function fetchRewardMarkets() {
       const evento   = (Array.isArray(m.events) && m.events[0]) || null;
       const scadenza = risolviScadenza(m);
 
-      markets.push({
+      const riga = {
         conditionId:      m.conditionId,
         // Polymarket deep-link needs the EVENT slug (…/event/<slug>), NOT the per-market
         // slug (which carries a numeric suffix and 404s on the SINGLE-segment /event/<slug>).
@@ -184,13 +247,50 @@ async function fetchRewardMarkets() {
         // (measured: 13 of 116 reward markets), so an absent value stays null. Coercing it to 0
         // would be an imputation, and reading it as "zero volume" would be a fabrication.
         volume24hUsd:     Number.isFinite(Number(m.volume24hr)) ? Number(m.volume24hr) : null,
-      });
+      };
+      // L'UNIONE: la prima passata che vede un mercato lo tiene. Le due passate leggono lo stesso
+      // endpoint con lo stesso schema, quindi la riga è identica e non c'è una versione «migliore» da
+      // preferire — sovrascrivere sarebbe solo un modo diverso di ottenere lo stesso oggetto.
+      if (!perId.has(riga.conditionId)) { perId.set(riga.conditionId, riga); nuovi++; }
     }
-
-    if (r.data.length < GAMMA_PAGE_SIZE) break;
+    return nuovi;
   }
 
-  return markets;
+  // ── PASSATA 1 · il listino, come è sempre stato ────────────────────────────────────────────────
+  const p1 = await passata('listino', (off) =>
+    `https://gamma-api.polymarket.com/markets?active=true&closed=false&limit=${GAMMA_PAGE_SIZE}&offset=${off}`,
+    { maxPagine: MAX_PAGES });
+
+  // ── PASSATA 2 · LE SCADENZE VICINE, A FETTE ────────────────────────────────────────────────────
+  // Ogni fetta è una query con la SUA finestra `[end_date_min, end_date_max]`, quindi ognuna ha i suoi
+  // 2.100 posti e il tetto della API smette di essere il collo di bottiglia. La finestra complessiva è
+  // deliberatamente PIÙ LARGA del tetto del pianificatore (`MAX_HORIZON_DAYS`, 1,5 g): la scoperta non
+  // è il posto dove si applica una politica di selezione — vedere ciò che si scarta è l'unico modo per
+  // accorgersi che lo si sta scartando.
+  const isoZ = (ms) => new Date(ms).toISOString().slice(0, 19) + 'Z';
+  const fetteN = Math.ceil((FAST_WINDOW_DAYS * 24) / FAST_SLICE_HOURS);
+  let pagineUsate = 0, nuoviVicini = 0, fetteFatte = 0, budgetFinito = false, fetteAlTetto = 0;
+
+  for (let i = 0; i < fetteN; i++) {
+    if (pagineUsate >= FAST_MAX_PAGES) { budgetFinito = true; break; }
+    const da = adesso + i * FAST_SLICE_HOURS * 3_600_000;
+    const a  = adesso + (i + 1) * FAST_SLICE_HOURS * 3_600_000;
+    const r = await passata(`fetta+${i * FAST_SLICE_HOURS}h`, (off) =>
+      `https://gamma-api.polymarket.com/markets?active=true&closed=false&limit=${GAMMA_PAGE_SIZE}&offset=${off}`
+      + `&end_date_min=${encodeURIComponent(isoZ(da))}&end_date_max=${encodeURIComponent(isoZ(a))}`,
+      { maxPagine: Math.min(22, FAST_MAX_PAGES - pagineUsate) });
+    pagineUsate += r.pagine; nuoviVicini += r.aggiunti; fetteFatte++;
+    // Una fetta che consuma 21 pagine ha con ogni probabilità toccato il tetto della API: la sua
+    // copertura è parziale e va detto, non dedotto da chi legge i log fra un mese.
+    if (r.pagine >= 21) fetteAlTetto++;
+  }
+
+  console.log(`  scoperta: ${p1.pagine}p listino (+${p1.aggiunti}) · ${pagineUsate}p in ${fetteFatte}/${fetteN} fette da ${FAST_SLICE_HOURS}h`
+    + ` (+${nuoviVicini} nuovi entro ${FAST_WINDOW_DAYS}g)`
+    + (fetteAlTetto ? ` · ${fetteAlTetto} fetta/e al tetto dei 2.100: copertura PARZIALE` : '')
+    + (budgetFinito ? ` · BUDGET ESAURITO a ${FAST_MAX_PAGES}p: le fette oltre +${fetteFatte * FAST_SLICE_HOURS}h non sono state lette` : '')
+    + ` → ${perId.size} mercati premiati`);
+  return [...perId.values()];
 }
 
 // ── Market tick size (ALWAYS fetched per token, never assumed — 0.1/0.01/0.001/0.0001/0.0025 all
@@ -745,7 +845,11 @@ function runFormulaVerification() {
 }
 
 // ── Entry point ───────────────────────────────────────────────────────────────
-(async () => {
+// SOTTO GUARDIA dall'8 agosto 2026. Prima era una IIFE nuda: bastava un `require` di questo file —
+// da un test, da una sonda — per far partire il ciclo infinito e, alla prima scansione, RISCRIVERE
+// `data/liquidity-rewards.json`, cioè il board vivo che agent41 e la dashboard leggono. Una funzione
+// non provabile senza effetti collaterali non è una funzione provata.
+async function main() {
   console.log(`[agent24-liquidity-rewards] starting (capital levels: ${CAPITAL_LEVELS.map(c => '$'+c).join(', ')})…`);
   runFormulaVerification();
   await sleep(STARTUP_DELAY_MS);
@@ -754,4 +858,8 @@ function runFormulaVerification() {
     catch (e) { console.error(`[agent24] uncaught:`, e.message, e.stack?.split('\n')[1]); }
     await sleep(SCAN_INTERVAL_MS);
   }
-})();
+}
+
+if (require.main === module) main();
+
+module.exports = { fetchRewardMarkets, FAST_WINDOW_DAYS, FAST_SLICE_HOURS, FAST_MAX_PAGES, MAX_PAGES, GAMMA_PAGE_SIZE };

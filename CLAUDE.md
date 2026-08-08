@@ -3,7 +3,7 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt**: non serve più reincollarlo ogni volta.
 
-Ultima verifica contro codice/stato reali: **8 agosto 2026**, ~14:30 UTC.
+Ultima verifica contro codice/stato reali: **8 agosto 2026**, ~15:00 UTC.
 
 > ## ⚠ IL BOT È SU AVVIA DALLE 12:07:55 UTC DELL'8 AGOSTO 2026
 > Non è più un'anteprima: **il prossimo ciclo di agent41 piazza ordini veri con capitale reale.**
@@ -15,8 +15,14 @@ Ultima verifica contro codice/stato reali: **8 agosto 2026**, ~14:30 UTC.
 > processo, e dopo il riavvio **piazzerà davvero** (~$100, non ~$30). Comando e cifre: §5 punto 21.
 >
 > **E il pianificatore ha ora un TETTO di orizzonte a 1,5 giorni** (§4). Non serve riavviare — il piano
-> nasce in un processo figlio. Ma col board di oggi **nessun mercato lo supera**: il prossimo ciclo
-> produrrebbe un piano a zero righe. §5 punto 23 spiega perché e cosa comporta.
+> nasce in un processo figlio.
+>
+> **RIAVVIO PENDENTE — `agent24-liquidity-rewards`.** La scoperta è stata allargata (§4): dal vivo trova
+> ora **66 mercati eleggibili** dentro la finestra, contro **zero** di prima. Finché agent24 non riparte,
+> il board resta quello vecchio e il piano continuerebbe a uscire vuoto. `pm2 restart agent24-liquidity-rewards`.
+>
+> **PRIORITÀ — il 10 agosto all'01:01Z il reset cancella tutto se il board non è ancora aggiornato.**
+> Vedi §5 punto 24: è l'unica cosa con una data.
 
 > **Il codice della sera del 7 agosto è in `main` E nei processi vivi** (riavvii autorizzati alle
 > ~23:52–23:57 UTC): fine scala su quattro percorsi, cadenza adattiva, pannello del mid vivo, timbro
@@ -987,33 +993,60 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
       O il collaterale non viene immobilizzato come si crede, o la lettura non misura quel pool. Finché
       non si sa, il trigger sovrastima il capitale libero.
 
-23. **IL TETTO DI ORIZZONTE È GIUSTO E NON BASTA: col board di oggi l'universo eleggibile è ZERO.**
-    Il tetto a 1,5 g è in `main` e funziona (§4). Ma misurato sul board vero l'8 agosto 2026:
-    **115 mercati, e il più corto scade fra 2,41 giorni.** Nessuno entra nella finestra `[0,25 · 1,5]`
-    — e non entrerebbe con nessun valore fra 1 e 2. Simulazione del pianificatore vero sull'universo
-    vero: `evaluated 114 · chosen 0`, 114 candidati scartati per scadenza.
+23. **~~Il tetto di orizzonte non basta: l'universo eleggibile è zero~~ — RISOLTO l'8 agosto 2026 sera,
+    ASPETTA IL RIAVVIO DI agent24.** La causa non era un filtro: era la **paginazione**. Gamma tronca
+    **qualunque** query a ~2.100 record (misurato: offset 2100 risponde vuoto sia sul listino intero sia
+    su una finestra di tre giorni) e il listino `active=true&closed=false` è ordinato per `id`
+    crescente, cioè **dal mercato più vecchio**. I mercati a scadenza rapida sono i più recenti: cadevano
+    oltre il taglio e **non venivano mai chiesti**. Nessuna categoria era esclusa; nessuna era interrogata.
 
-    **Quindi il vincolo che morde non è il tetto: è cosa `agent24-liquidity-rewards` mette nel board.**
-    I 21 wallet entrano su mercati con mediana 5,3 ore — meteo giornaliero, crypto a 5 minuti, sport —
-    e nel nostro board non ce n'è **nemmeno uno**. Un esempio dal monitor: «Will the highest temperature
-    in Singapore be 32°C on August 8?», 24,1 h alla scadenza, montepremi $51/g, banda 4,5¢: è nel
-    programma premi, paga, e noi non lo vediamo. **Questo è il lavoro vero, e non è stato fatto**:
-    va capito se agent24 filtra quei mercati o se la sua query a Gamma non li chiede proprio.
+    **La correzione, e il tentativo sbagliato che l'ha preceduta.** La prima idea — una camminata unica
+    `order=endDate&ascending=true` da adesso in avanti — è caduta nello STESSO tetto: i 2.100 posti si
+    consumano tutti sui mercati più imminenti (sport e crypto senza montepremi) e la camminata non
+    arriva mai alle ore utili. Misurato: 0 mercati premiati fra 6h e 36h. La finestra va **partizionata**,
+    non percorsa: ogni fetta di 6 ore è una query con i **suoi** 2.100 posti. Le stesse ore, a fette,
+    ne trovano 70.
 
-    **Conseguenza operativa da sapere PRIMA che accada, perché tocca capitale.** Con il piano a zero
-    righe la guardia «universo vuoto» **non scatta** — `universe.evaluated` si conta sui candidati
-    valutati, cioè PRIMA del filtro orizzonte, quindi il ciclo legge un piano *magro*, non *cieco*.
-    Da lì:
-    - il **trigger di valore** non scatta (fresco $0/g contro produzione > $0): nessun reset, gli
-      ordini vivi restano dove sono. È il caso normale.
-    - il **trigger di validità** invece scatta quando un mercato in gestione si risolve — e allora il
-      reset gira con `rows: []`: **cancella tutto e non piazza niente**. Matt Little scade fra ~2,4
-      giorni, quindi è previsto che succeda entro quella finestra.
+    **Risultato dal vivo (8 agosto, 15:00Z): 66 mercati eleggibili** nella finestra `[0,25 · 1,5]`, contro
+    zero. I più ricchi: `$87/g` e `$60/g` sui transiti di Bab el-Mandeb a 33,4h, `$53/g` sul box office
+    di «The Odyssey», **`$51/g` e `$50/g` sui due HI-01 a 9,4 ore** — banda 4,5¢, esattamente l'archetipo
+    dei 21. Il board vecchio ne aveva **115 con il più corto a 2,41 giorni**.
 
-    **Non ho messo una guardia contro questo, ed è una scelta.** L'alternativa sarebbe fermare il
-    reset per tenere in piedi ordini su mercati che la politica appena decisa dichiara sbagliati:
-    peggio. Uscire è la direzione giusta, riduce esposizione, e il capitale torna liquido in attesa
-    che il board abbia mercati veri. Ma va saputo prima, non scoperto dopo.
+    **Il costo, misurato e da sapere:** la scansione passa da **21 pagine / ~14s** a **141 pagine / ~97s**,
+    ogni 15 minuti — circa l'11% di ciclo utile contro il 2% di prima. Il budget di pagine
+    (`REWARD_FAST_MAX_PAGES`, difetto 120) tiene il costo limitato; con la finestra a 2 giorni copre
+    7 fette su 8, cioè fino a +42h, che è oltre il tetto di 1,5 g. **5 fette su 7 toccano comunque i
+    2.100**: la copertura resta parziale e il log lo **dichiara** a ogni scansione invece di lasciarlo
+    dedurre.
+
+    **Cosa NON entra, e per scelta:** i crypto «Up or Down» a 5 minuti — misurati fino a **$833/giorno**,
+    dieci volte il miglior mercato eleggibile — scadono sotto le 6 ore e cadono sotto
+    `MIN_HORIZON_DAYS`. La scoperta ora li VEDE; è il pavimento a escluderli, ed è una decisione
+    dichiarata (vedi il commento della costante). Se un giorno si vuole quell'archetipo, il pavimento è
+    la riga da discutere, non la scoperta.
+
+24. **IL 10 AGOSTO ALLE 01:01:33Z IL RESET CANCELLA TUTTO, se il board non è aggiornato per allora.**
+    Non è un'ipotesi: è aritmetica su due costanti e un calendario.
+    - `HORIZON_MIN_HOURS = 24` (`lib/maker/market-validity.js:28`): un mercato in gestione a meno di 24
+      ore dalla risoluzione diventa `in-scadenza`, cioè **non valido**, e il trigger di **validità**
+      scatta.
+    - «Will Matt Little be the Democratic nominee for MN-02?» ha `endDate 2026-08-11T00:00:00Z`. Diventa
+      `in-scadenza` alle **2026-08-10T00:00:00Z**.
+    - I cicli cadono ogni 6h da 13:01:33Z: il primo dopo quella soglia è **2026-08-10T01:01:33Z**.
+
+    A quel giro il reset gira. Se il board è ancora quello vecchio il piano fresco ha **zero righe**, e
+    `runAllocationReset` con `rows: []` **cancella i tre mercati in gestione e non piazza niente**. La
+    guardia «universo vuoto» non protegge: `universe.evaluated` si conta PRIMA del filtro orizzonte,
+    quindi il ciclo legge un piano magro e non cieco.
+
+    **Il riavvio di agent24 disinnesca lo scenario** — con 66 mercati eleggibili il piano non è più
+    vuoto. È la ragione per cui quel riavvio è la cosa più urgente in questo file.
+
+25. **La misura che ha fatto scattare tutto, tenuta come riferimento.** Prima dell'allargamento, l'8
+    agosto 2026: board di **115 mercati, il più corto a 2,41 giorni**, e il pianificatore vero
+    sull'universo vero rispondeva `evaluated 114 · chosen 0` — 114 candidati scartati per scadenza.
+    Serve a poter dire fra un mese se il canale delle scadenze vicine è ancora aperto: se il board
+    torna ad avere il minimo sopra i due giorni, la seconda passata ha smesso di funzionare.
 
 ---
 
