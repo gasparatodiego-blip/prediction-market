@@ -3,7 +3,12 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt**: non serve più reincollarlo ogni volta.
 
-Ultima verifica contro codice/stato reali: **8 agosto 2026**, ~11:55 UTC.
+Ultima verifica contro codice/stato reali: **8 agosto 2026**, ~12:50 UTC.
+
+> ## ⚠ IL BOT È SU AVVIA DALLE 12:07:55 UTC DELL'8 AGOSTO 2026
+> Non è più un'anteprima: **il prossimo ciclo di agent41 piazza ordini veri con capitale reale.**
+> Rampa a `0/5` mercati nelle prime 24h, tetto 20% per mercato, guardiano attivo, kill spento.
+> Primo ciclo utile: **16:16:26Z** — e §5 punto 19 spiega perché il trigger a $50 non lo anticipa.
 
 > **Il codice della sera del 7 agosto è in `main` E nei processi vivi** (riavvii autorizzati alle
 > ~23:52–23:57 UTC): fine scala su quattro percorsi, cadenza adattiva, pannello del mid vivo, timbro
@@ -493,11 +498,21 @@ Trappola operativa registrata: il relayer rifiuta le deadline corte (`400 deadli
 **agent41 dry-run: la variabile non esiste più.** `REALLOC_SCHEDULER_DRY_RUN` non è letta da nessuna
 riga di codice (verificato con `grep`: restano solo commenti storici e i test che ne vietano il
 ritorno). La decisione «racconta / fa» è passata interamente ad AVVIA/FERMA.
-**Stato operativo al 7 agosto 2026: il bot è FERMO.** `statoBot()` risponde `enabled:false`, motivo
-«mai avviato: il flag non è mai stato scritto» — `data/maker-bot-enabled.json` non esiste, e file
-assente ⇒ fermo. agent41 gira il ciclo intero ogni 6 ore, registra cosa *avrebbe* fatto e non cancella
-né piazza niente. Ultimo ciclo: `2026-08-07T16:16:26Z`, azione `reset`, motivo «il piano fresco vale
-$7,89/g contro $2,73/g dei mercati in gestione (188,8% in più, soglia 20%)».
+
+**STATO OPERATIVO ALL'8 AGOSTO 2026, 12:07:55 UTC: IL BOT È SU AVVIA.** L'operatore ha premuto il
+bottone dalla tab «Mercati ottimizzati»: `data/maker-bot-enabled.json` esiste e dice `enabled:true`,
+`by:"operatore · tab Mercati"`, `reason:"AVVIA dalla dashboard"`. **Da questo momento il prossimo ciclo
+di agent41 piazza ordini VERI** — non è più un'anteprima. La rampa è a `0/5 mercati aperti nelle prime
+24h` (scade alle 12:07:55Z del 9 agosto).
+
+**Ma alle 12:45 UTC non era ancora stato piazzato niente, e la ragione è strutturale.** L'ultimo ciclo
+completo è delle `2026-08-08T10:16:26Z` — *prima* dell'AVVIA e prima che agent41 ripartisse (11:24) col
+codice del trigger. Premere AVVIA **non anticipa il ciclo**: `prossimoRitardo()` conta dalle sei ore
+dell'ultimo `lastRunAt` su disco, quindi il prossimo giro è alle **16:16:26Z**. E il trigger a capitale
+fermo, che esiste proprio per non aspettare, **non può coprire il primo avvio**: scatta regolarmente
+(`saldo $646,26 ≥ soglia $50`, ogni 10 min per il cooldown) ma esce al passo 1 con «nessun piano
+salvato finora: il primo ciclo completo lo scrive» — `data/realloc-ultimo-piano.json` non esiste ancora.
+Vedi §5 punto 19.
 
 **Guardiano delle perdite: attivo.** Il processo gira dalle 21:27:31 del 7 agosto 2026 con
 baseline **$660,56** in `data/guardian-baseline.json` (sopravvive ai riavvii, si azzera solo
@@ -549,15 +564,12 @@ notte per un catalogo non attribuito), riaccendibile con `conScomposizione`.
 
 Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di stato.
 
-1. **Il bot non è mai stato avviato.** (Il resto di questo punto è chiuso: il codice del guardiano è in
-   git dal 7 agosto — `dbba34e` — e i residui che un suo test aveva lasciato sullo stato vero
-   (`data/maker-bot-enabled.json` con `by:"agent42-guardian"` e un referto datato al futuro) sono stati
-   cancellati la sera stessa; la versione attuale del test inietta `impostaBot` e
-   `registraCancellazione` e non tocca più niente di reale.)
-   `statoBot()` risponde `enabled:false`,
-     motivo «mai avviato: il flag non è mai stato scritto» — file assente ⇒ fermo, che è il default
-     giusto. Non l'ho messo su AVVIA da solo: è un'azione su capitale reale e richiede la conferma
-     esplicita dell'utente in chat (regola 3).
+1. **~~Il bot non è mai stato avviato~~ — CHIUSO alle 12:07:55 UTC dell'8 agosto 2026.** L'operatore ha
+   premuto AVVIA dalla dashboard. `statoBot()` risponde `enabled:true`, `by:"operatore · tab Mercati"`.
+   Vedi §4 per lo stato completo e §5 punto 19 per il motivo per cui questo, da solo, non ha ancora
+   prodotto ordini. (Era già chiuso il resto del punto: il codice del guardiano è in git dal 7 agosto
+   — `dbba34e` — e i residui che un suo test aveva lasciato sullo stato vero sono stati cancellati la
+   sera stessa; la versione attuale del test inietta `impostaBot` e `registraCancellazione`.)
 2. **La copertura dichiarata di FERMA non corrisponde al runtime di agent35.** L'header di
    `agent43-guardian.js` afferma che agent35 «è fermato a monte da `MAKER_MODE=off` e non può
    piazzare». Il processo in esecuzione ha invece `MAKER_MODE=live-min` e `MAKER_PLACEMENT=send`
@@ -619,8 +631,10 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
    interruttore AVVIA/FERMA: il kill torna a essere lo STOP di emergenza»), ma l'arming non è mai
    stato ripreso. Da chiarire se è voluto.
 6. **`data/maker-bot-enabled.json` e `data/cancellazioni-di-emergenza.json` non sono coperti da
-   `.gitignore`.** Al momento non esistono (cancellati con i residui di test), quindi `git status` è
-   pulito e il problema non si vede; ricompariranno come `??` alla prima scrittura. Tutti gli altri
+   `.gitignore`.** **Non è più teorico: dalle 12:07:55 dell'8 agosto `data/maker-bot-enabled.json`
+   esiste e compare come `??` in `git status`** — esattamente come questo punto prevedeva. Va aggiunto
+   all'ignore *prima* che qualcuno lo committi: versionato, un `git checkout` può spostare
+   l'interruttore del capitale. Tutti gli altri
    file dello stesso tipo — comprese baseline e latch del guardiano — sono ignorati per una ragione
    esplicita: descrivono *questa* macchina in *questo* momento, e versionare l'interruttore
    AVVIA/FERMA significa che un `git checkout` può spostarlo. Da aggiungere all'ignore.
@@ -791,9 +805,12 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     120 s per una decisione già presa, ~720 al giorno a vuoto. Adesso i due cancelli gratuiti vengono
     prima. **Non urgente**: costa chiamate, non correttezza.
 
-18. **La correzione del consumo di agent40 è in `main` ma non nel processo.** agent40 gira ancora col
-    codice che lo tiene al **110% di un core** — metà della macchina, su due vCPU. Due difetti nello
-    stesso percorso, entrambi corretti e misurati:
+18. **~~La correzione del consumo di agent40 è in `main` ma non nel processo~~ — CHIUSO alle 12:07:06
+    UTC dell'8 agosto 2026.** Riavvio eseguito dall'operatore (restart 52 → 53), dopo il commit `8f23d65`
+    delle 12:02:15. **Misura di conferma:** agent40 sta ora fra **7,8% e 12,9%** di CPU, contro il 110%
+    di prima. Il resto di questo punto resta come registro di cosa è stato corretto.
+
+    Due difetti nello stesso percorso, entrambi corretti e misurati:
     - il **seek** in `lib/rewards/velocita-mercato.leggiCoda` partiva da `size − 128 MB` (tetto
       dimensionato per sei ore) invece che dalla finestra chiesta: con il giornale a 77 MB quel conto
       dà zero, quindi si leggeva tutto dall'inizio anche per quindici minuti. **524 ms → 32 ms**;
@@ -817,10 +834,55 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     (righe 56-62), e un `restart` per nome non tocca la descrizione in memoria di pm2 — verificato dal
     riavvio delle 09:16, dopo il quale il processo aveva 95 variabili e tutte e quattro le critiche.
 
-    **Perché conta anche a bot FERMO:** finché non si riavvia, un core su due resta occupato e il costo
-    **cresce durante la giornata** (il giornale cresce ~6,7 MB/h e si azzera a mezzanotte). Verso le
-    19:00 il file supera i 128 MB e il ciclo da 5 s comincerebbe a slittare — cioè il motore che tiene
-    gli ordini dentro la banda arriverebbe tardi, che è l'unica conseguenza davvero operativa.
+    **Perché contava anche a bot FERMO:** finché non si riavviava, un core su due restava occupato e il
+    costo **cresceva durante la giornata** (il giornale cresce ~6,7 MB/h e si azzera a mezzanotte).
+    Verso le 19:00 il file supera i 128 MB e il ciclo da 5 s avrebbe cominciato a slittare — cioè il
+    motore che tiene gli ordini dentro la banda sarebbe arrivato tardi. Con il bot ora su AVVIA il
+    riavvio è arrivato appena in tempo.
+
+19. **IL PRIMO AVVIO NON HA UN INNESCO, e nessuno dei due percorsi lo copre** (trovato l'8 agosto 2026,
+    ~12:30 UTC, a bot già su AVVIA e con capitale reale collegato). Non è un guasto: è un buco fra due
+    meccanismi che funzionano entrambi.
+    - **Il ciclo fisso non si sposta.** `prossimoRitardo()` legge `lastRunAt` da disco: premere AVVIA
+      non lo azzera e non anticipa niente. AVVIA alle 12:07, ultimo ciclo alle 10:16 ⇒ primo ciclo utile
+      alle **16:16:26Z**, cioè **quattro ore dopo l'avvio**, con il capitale fermo nel frattempo.
+    - **Il trigger a capitale fermo non può sostituirlo.** Scatta correttamente ($646,26 ≥ $50) ma il
+      passo 1 di `miniCiclo` legge `data/realloc-ultimo-piano.json`, che **solo un ciclo completo
+      scrive** (`agent41-realloc-scheduler.js:296`). Quel codice è nato alle 11:01 di oggi; l'ultimo
+      ciclo completo è delle 10:16. Quindi il file non è mai esistito e il mini-ciclo esce con
+      «nessun piano salvato finora» — registrato alle 12:09, 12:19, 12:31, 12:43.
+    - **Si autorisolve** al primo ciclo completo e non si ripresenterà su questa macchina. Ma si
+      ripresenta **identico** su un deploy pulito, dopo una cancellazione di `data/`, o ogni volta che
+      il trigger venga usato per la prima volta. Il costo è una finestra fino a **6 ore** di capitale
+      fermo dopo un AVVIA.
+    - **Correzione non fatta e da decidere** (nessuna scritta: il turno era di sola diagnosi, poi di
+      sola esecuzione). Le due candidate ovvie: far sì che `impostaBot({enabled:true})` azzeri
+      `lastRunAt` — così AVVIA *è* l'innesco; oppure far scrivere l'ultimo piano anche al ciclo in
+      anteprima a bot fermo, che è già ciò che il codice fa (`calcolaPiano` lo scrive sempre) e che
+      quindi coprirebbe il caso da solo alla prima esecuzione post-11:01.
+
+20. **L'hook di piazzamento blocca anche il ciclo di agent41 lanciato a mano — ed è corretto, ma va
+    saputo prima.** `.claude/hooks/blocca-piazzamento.js:71` blocca
+    `(node|nodemon|npx|bash|sh|./)\s*\S*agent41-realloc-scheduler`. Quindi **una sessione Claude Code
+    non può forzare un ciclo**, nemmeno con l'autorizzazione esplicita dell'utente in chat: l'hook non
+    legge la chat. L'8 agosto 2026 è successo davvero, con l'operatore che aveva autorizzato in anticipo.
+    **Non si aggira** (lo dice l'hook stesso). Il comando lo esegue l'operatore in un terminale, o con
+    il prefisso `!` nel prompt:
+    ```bash
+    cd /root/rewards-bot && PID=$(pm2 pid agent41-realloc-scheduler) && \
+    while IFS= read -r -d '' kv; do k=${kv%%=*}; \
+      case "$k" in NODE_CHANNEL_FD|NODE_CHANNEL_SERIALIZATION_MODE|PM2_JSON_PROCESSING|PM2_USAGE|NODE_APP_INSTANCE) continue;; esac; \
+      case "$k" in [A-Z]*) export "$kv";; esac; \
+    done < /proc/$PID/environ && node agents/agent41-realloc-scheduler.js --once
+    ```
+    La ricostruzione dell'ambiente **non è opzionale**: agent41 non ha il caricatore di `.env` (§5
+    punto 3), e senza quel passo il ciclo parte senza `MANUAL_ORDER_PLACEMENT`, `MAKER_FUNDER_ADDRESS`,
+    `KEY_CUSTODY_MASTER` e `DATABASE_URL`.
+    **Va lanciato subito dopo uno scatto del trigger**, non a caso: il mini-ciclo del demone gira nello
+    stesso capitale e il lucchetto `inCorso` è in-process, quindi non protegge da un secondo processo.
+    Dopo uno scatto ci sono **10 minuti** di cooldown, che bastano con margine (il ciclo costa ~52 s di
+    piano più il piazzamento). Gli scatti si leggono con
+    `grep -a '"tipo":"mini-ciclo"' data/realloc-scheduler.jsonl | tail -1`.
 
 ---
 

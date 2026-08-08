@@ -78,6 +78,12 @@ data/sports/
 data/realloc-scheduler.jsonl
 data/realloc-scheduler-state.json
 data/realloc-plan-pools.json
+# (data/realloc-ultimo-piano.json è già ignorato più in basso, col suo perché)
+# L'INTERRUTTORE AVVIA/FERMA e il registro delle cancellazioni d'emergenza. Ignorati per la stessa
+# ragione di baseline e latch del guardiano: descrivono QUESTA macchina in QUESTO momento. Versionare
+# l'interruttore del capitale significa che un `git checkout` può spostarlo — vedi CLAUDE.md §5 punto 6.
+data/maker-bot-enabled.json
+data/cancellazioni-di-emergenza.json
 # elenco dei mercati che l'ottimizzatore vuole tenere caldi — riscritto a ogni piano, stato di esecuzione
 data/collector-priority.json
 # runtime SQLite DB — written continuously by agent5-calculator, not source-controlled
