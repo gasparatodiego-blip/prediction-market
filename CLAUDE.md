@@ -9,12 +9,13 @@ Ultima verifica contro codice/stato reali: **8 agosto 2026**, ~07:20 UTC.
 > ~23:52–23:57 UTC): fine scala su quattro percorsi, cadenza adattiva, pannello del mid vivo, timbro
 > `origine` e ordini propri sottratti dalla coda sono **attivi**.
 >
-> **Il codice della mattina dell'8 agosto è in `main` ma NON nei processi vivi.** Tre lavori —
-> graduatoria della corsia calda + K/N rimisurati, punteggio di posizione nella selezione, confronto
-> stima/consuntivo — sono committati, pushati e costruiti (`npm run build` verde), e aspettano un
-> riavvio che **non è stato chiesto**: vedi §5 punto 9 per l'elenco esatto dei processi e di cosa
-> ciascuno guadagna. L'unico percorso già vivo senza riavvio è il pannello «Ottimizza», perché
-> `/api/rewards/allocate` esegue `planFromCollection` in un processo node NUOVO a ogni chiamata.
+> **Anche il codice della mattina dell'8 agosto è in `main` E nei processi vivi.** agent41, agent40,
+> agent34 e il `dashboard` sono stati riavviati alle ~07:21–07:22 UTC con l'autorizzazione esplicita
+> dell'utente in chat: graduatoria della corsia calda con K/N rimisurati, punteggio di posizione nella
+> selezione e confronto stima/consuntivo sono **attivi**. Vedi §5 punto 9 per la verifica.
+> Resta pendente la stessa cosa di ieri, ed è nel punto 3 di §5: `REALLOC_SCHEDULER_DRY_RUN` è ancora
+> nell'ambiente di agent41 (inerte — nessuna riga di codice la legge), perché toglierla richiede un
+> riavvio di forma diversa (`env -u … --update-env`) che non è stato chiesto.
 
 ---
 
@@ -456,21 +457,28 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
    perso», mentre erano 102 variabili tutte al loro posto). Per l'ambiente di un processo pm2 si prende
    il pid da `pm2 jlist` e si legge `/proc/<pid>/environ`.
 
-9. **Il codice dell'8 agosto è in `main` e costruito, ma quattro processi girano ancora con quello di
-   ieri.** Nessun riavvio è stato chiesto né fatto (regola 2 di §2, e istruzione esplicita
-   dell'utente). Cosa guadagna ciascuno:
+9. **~~Il codice dell'8 agosto non è nei processi~~ — CHIUSO alle 07:22 UTC dell'8 agosto 2026.**
+   Riavvii autorizzati esplicitamente in chat («Riavvia agent41, agent40, dashboard e agent34»).
 
-   | Processo | Cosa entrerebbe in servizio |
-   |---|---|
-   | `agent41-realloc-scheduler` | punteggio di posizione nella selezione + nuova graduatoria e K/N della corsia calda (è il processo che *scrive* `collector-priority.json`) |
-   | `agent34-clob-ws` | il nuovo `MAX_MARKETS=30` in `readCollectorPriority` — oggi in memoria ha ancora 40 (effetto minore: l'elenco lo scrive agent41 e sarà già ≤30) |
-   | `agent40-manual-reprice` | percorso corretto del consuntivo (`/rewards/user/markets`), guardia di attribuzione, scomposizione per mercato, avviso di deriva nel log |
-   | `dashboard` | `divergenza` e `soglie` su `/api/maker/confronto-reward` |
+   | Processo | restart | Cosa è entrato in servizio | Verifica |
+   |---|---|---|---|
+   | `agent41-realloc-scheduler` | 31 → 32 | punteggio di posizione nella selezione + graduatoria e K/N della corsia calda (è chi *scrive* `collector-priority.json`) | env intatto: 102 variabili, `MAKER_FUNDING_APPROVED=true`, `MAKER_MODE=off`; «tetto per mercato 20% · il bot è FERMO» |
+   | `agent40-manual-reprice` | 50 → 51 | percorso corretto del consuntivo, guardia di attribuzione, scomposizione per mercato, avviso di deriva | cadenza adattiva regolare, log di errore vuoto |
+   | `agent34-clob-ws` | 15 → 16 | `MAX_MARKETS=30` in `readCollectorPriority` | risottoscrizione pulita, 107 mercati / 214 asset |
+   | `dashboard` | 168 → 169 | `divergenza` e `soglie` su `/api/maker/confronto-reward` | http 200 sulla root; la rotta risponde 401 come `board` e `status` (stesso gate operatore); «divergenza» nel chunk servito |
 
-   **Già vivo senza riavvio:** il pannello «Ottimizza». `/api/rewards/allocate` non importa
-   l'allocatore nel bundle — esegue `planFromCollection` in un processo node NUOVO a ogni chiamata,
-   quindi legge il codice su disco. Prima di riavviare il `dashboard`, la nota del punto 7:
-   verificare `.next/prerender-manifest.json` (presente, build delle 07:10 UTC dell'8 agosto).
+   Log di errore vuoti su tutti e tre gli agent; le righe rosse del `dashboard` sono le vecchie delle
+   03:36 e il contatore dei riavvii non sale (verificato a +3 minuti: 169/16/51/32, tutti +1).
+   `.next/prerender-manifest.json` verificato PRIMA del riavvio del dashboard (nota del punto 7).
+
+   **Effetto immediato, misurato:** `collector-priority.json` è ancora quello scritto alle 04:16 dal
+   codice vecchio (**40 mercati**), ma agent34 adesso ne legge **30** — il tetto nuovo morde già in
+   lettura. Il file tornerà nativamente a ≤30 al prossimo ciclo di agent41, **fra ~175 minuti**
+   (~10:15 UTC): fino ad allora K=15 vive solo in lettura, non ancora in scrittura.
+
+   Già vivo anche senza riavvio, e resta un fatto utile: il pannello «Ottimizza». `/api/rewards/allocate`
+   non importa l'allocatore nel bundle — esegue `planFromCollection` in un processo node NUOVO a ogni
+   chiamata, quindi legge sempre il codice su disco.
 
 10. **L'obiettivo del knapsack sente il punteggio di posizione ma non il tetto di credibilità della
     quota.** Misurato l'8 agosto 2026 sul piano vero: col punteggio acceso l'obiettivo sale a
