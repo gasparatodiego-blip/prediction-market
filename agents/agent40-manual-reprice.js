@@ -720,6 +720,14 @@ function memoLiquidita() {
   };
 }
 
+// ── QUANDO IL FEED HA PUBBLICATO L'ULTIMO BOOK DI QUESTO MERCATO ────────────────────────────────
+// Serve alla decisione «valuta adesso» della cadenza: `ageMs` è l'età che agent34 stampa nel proprio
+// snapshot, quindi l'istante è `adesso − ageMs`. Non è un secondo orologio: è LO STESSO dato che il
+// motore già usa per giudicare se il mid è fresco, letto una volta e riusato.
+// Illeggibile ⇒ `null`, che vale «nessun evento» e riporta la cadenza al comportamento di prima.
+// L'istante dell'ultimo book su cui si e' DECISO, per mercato. Vedi il blocco dentro `cadenzaPer`.
+const ultimoBookValutato = new Map();
+
 function cadenzaPer(marketId, difettoMs, mappa = null) {
   try {
     const { decidiCadenza, cadenzaAttiva, FINESTRA_MIN } = require('../lib/maker/cadenza-adattiva');
@@ -730,14 +738,41 @@ function cadenzaPer(marketId, difettoMs, mappa = null) {
       ? (mappa.per.get(marketId) || finestraVuota(marketId, 'nessun campione per questo mercato nella finestra'))
       : leggiFinestraMercato({ marketId, windowMinutes: FINESTRA_MIN, minCampioni: 4 });
     let tickCents = 1;
+    let bookMs = null;
     try {
       const r = resolveMarketRules(marketId);
-      if (r && r.readable && Number.isFinite(r.tickSize) && r.tickSize > 0) tickCents = r.tickSize * 100;
-    } catch { /* tick ignoto ⇒ 1¢, che è il tick di quasi tutto il board */ }
-    return decidiCadenza({
+      // ── IL CAMPO SI CHIAMA `tick`, NON `tickSize` — CORRETTO L'8 AGOSTO 2026, SERA ─────────────
+      // Qui c'era `r.tickSize`, che `resolveMarketRules` non restituisce: la lettura dava sempre
+      // `undefined`, quindi `tickCents` restava 1 per OGNI mercato e la misura finiva in
+      // centesimi/ora invece che in tick/ora — cioe' proprio la normalizzazione che l'intestazione di
+      // cadenza-adattiva dichiara di fare («quattro tick l'ora vuol dire la stessa cosa su un mercato
+      // da 1¢ e su uno da 0,1¢»). Su un mercato a tick 0,1¢ la misura risultava dieci volte piu'
+      // piccola del vero, quindi «lento» quando era veloce. Nessun test funzionale poteva vederlo: il
+      // risultato era plausibile, solo sbagliato di un fattore.
+      if (r && r.readable && Number.isFinite(r.tick) && r.tick > 0) tickCents = r.tick * 100;
+      // L'ETA' DEL BOOK, dalla STESSA lettura: `feedAgeSec` e' l'eta' dello snapshot di agent34 per
+      // questo mercato — la domanda giusta per «il feed ha parlato?» — con `midAgeSec` come ripiego.
+      // Nessuna seconda lettura e nessun secondo orologio: se divergessero, «il mid e' fresco» e «il
+      // feed ha parlato» potrebbero dire il contrario l'uno dell'altro.
+      const eta = Number.isFinite(r && r.feedAgeSec) ? r.feedAgeSec
+        : (Number.isFinite(r && r.midAgeSec) ? r.midAgeSec : null);
+      if (Number.isFinite(eta) && eta >= 0) bookMs = Date.now() - eta * 1000;
+    } catch { /* tick ignoto ⇒ 1¢; eta' ignota ⇒ nessun evento, cioe' il comportamento di prima */ }
+    // ── LA DECISIONE SEGUE IL FEED, NON SOLO L'OROLOGIO ─────────────────────────────────────────
+    // Il DATO era già live su tutti i mercati (agent34, invariato); la DECISIONE no: un mercato
+    // classificato «lento» aspettava dieci secondi anche con il book appena cambiato. Adesso un book
+    // nuovo fa valutare subito, su qualunque classe. Il freno sui veloci resta: `MIN_MS` (1s) è il
+    // pavimento fra due valutazioni anche per gli eventi, e le soglie che decidono se RIPREZZARE
+    // (`hysteresisTicks`, `confirmSamples`, `minIntervalMs`) non sono toccate — vedi cadenza-adattiva.
+    const d = decidiCadenza({
       now: Date.now(), ultimaValutazioneMs: ultimaValutazione.get(marketId) ?? null,
       misura, tickCents, difettoMs, attiva: cadenzaAttiva(),
+      bookAggiornatoMs: bookMs, bookValutatoMs: ultimoBookValutato.get(marketId) ?? null,
     });
+    // Si ricorda l'istante del book SOLO quando si valuta davvero: altrimenti un evento verrebbe
+    // consumato da un giro che non ha deciso niente, e quel movimento resterebbe non guardato.
+    if (d.valuta && Number.isFinite(bookMs)) ultimoBookValutato.set(marketId, bookMs);
+    return d;
   } catch (e) {
     // Una misura che esplode NON deve poter fermare un motore che sorveglia capitale reale: si guarda,
     // come si guardava prima che questa funzione esistesse.
