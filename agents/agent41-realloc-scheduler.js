@@ -679,29 +679,47 @@ const PIANO_FRESCO_MAX_MS = Number(process.env.REALLOC_PIANO_FRESCO_MAX_MS || 60
  * LE DUE PRECONDIZIONI DI UN MERCATO CHE NON ABBIAMO MAI TOCCATO, nell'ordine in cui contano.
  *
  * Non e' una regola nuova: e' la fase 3 di `runAllocationReset` (lib/maker/allocation-reset.js:302-353)
- * applicata al percorso che non l'aveva. Le stesse due scritture, lo stesso verso di fallimento, la
- * stessa ragione — con una differenza voluta: qui NON si tocca la allowlist di auto-reprice
- * (`setEnabled`). Il reset la scrive perche' ridefinisce l'intero insieme dei mercati gestiti; questo
- * giro aggiunge capitale e basta, e quella lista governa dove si puo' APRIRE per i processi che girano
- * in `MAKER_MODE=live-min` — allargarla da qui vorrebbe dire concedere a un altro processo un permesso
- * che nessuno gli ha chiesto. agent41 gira in `MAKER_MODE=off`, quindi per i SUOI ordini quel gate non
- * si applica (adapter.js:277), e l'uscita di una posizione resta comunque possibile per l'eccezione di
- * riduzione (adapter.js:294). Il prezzo, dichiarato: agent40 non riprezzera' questi ordini finche' il
- * ciclo delle sei ore non porta il mercato nel piano vero.
+ * applicata al percorso che non l'aveva. Le stesse TRE scritture, nello stesso ordine, con lo stesso
+ * verso di fallimento.
  *
- * SE LA PRIMA RIESCE E LA SECONDA NO, il mercato resta in gestione manuale senza ordini. E' il
- * comportamento del reset, e si tiene per non divergere: la scrittura di ritorno sarebbe essa stessa
- * una scrittura che puo' fallire, e agent35 che sta alla larga da un mercato su cui nessuno piazza
- * costa un'occasione, non capitale. Il ciclo delle sei ore rimette ordine.
+ * ── PERCHE' SONO TRE E NON DUE (corretto sui dati vivi l'8 agosto 2026) ────────────────────────────
+ * La prima stesura ne faceva due, omettendo `setEnabled` di proposito: il ragionamento era che la
+ * allowlist di auto-reprice governa `MAKER_MODE=live-min`, che agent41 non usa — il suo processo ha
+ * `MAKER_MODE=off`. Il ragionamento guardava la variabile sbagliata. La corsia manuale costruisce
+ * l'adapter con `mode: 'live-min'` CABLATO (lib/maker/manual-order.js:733), qualunque cosa dica
+ * l'ambiente del processo: quindi `evaluateLiveMinMarketGate` si applica SEMPRE a chi passa di qui,
+ * agent41 compreso. Misurato dopo il riavvio delle 21:35: `manual-mode-inactive` era sparito — le due
+ * scritture funzionavano — e ogni gamba moriva un gradino piu' in la', su `live-min-market-mismatch`.
+ * La lezione: l'ambiente di un processo non dice quale modalita' una corsia CHIEDE.
+ *
+ * Il permesso resta comunque stretto dove conta: e' `manual: true` — la seconda scrittura — a tenere
+ * agent35 fuori da questo libro, e quella non si allenta. La allowlist dice «qui si puo' operare», la
+ * proprieta' manuale dice «e a operarci e' questo processo, non il motore».
+ *
+ * SE UNA RIESCE E LA SUCCESSIVA NO, si lascia com'e': niente ordini su quel mercato, e nessuna
+ * scrittura di ritorno. E' il comportamento del reset, e si tiene per non divergere — la scrittura di
+ * ritorno sarebbe essa stessa una scrittura che puo' fallire, e un mercato abilitato su cui nessuno
+ * piazza costa un'occasione, non capitale. Il ciclo delle sei ore rimette ordine.
  *
  * @returns {Promise<{ok: boolean, motivo: string|null}>}
  */
-async function preparaMercatoNuovo(marketId, prendiInGestione, accendiUscita) {
+async function preparaMercatoNuovo(marketId, abilita, prendiInGestione, accendiUscita) {
+  if (typeof abilita !== 'function') {
+    return { ok: false, motivo: 'nessuna funzione setEnabled cablata: non si piazza su un mercato che la corsia manuale rifiutera per allowlist' };
+  }
   if (typeof prendiInGestione !== 'function') {
     return { ok: false, motivo: 'nessuna funzione setManual cablata: non si piazza su un mercato che agent35 puo ancora scrivere' };
   }
   if (typeof accendiUscita !== 'function') {
     return { ok: false, motivo: 'nessuna funzione setAutoClose cablata: non si piazza su un mercato di cui non si puo accendere l uscita automatica' };
+  }
+  let en = null;
+  try {
+    en = await abilita({ marketId, enabled: true,
+      reason: 'trigger a capitale fermo: mercato scelto dal ricalcolo, la corsia manuale deve poterci operare' });
+  } catch (e) { en = { ok: false, error: e && e.message ? e.message : String(e) }; }
+  if (!(en && en.ok)) {
+    return { ok: false, motivo: `abilitazione non scritta (${(en && en.error) || 'esito non leggibile'})` };
   }
   let mn = null;
   try {
@@ -734,6 +752,8 @@ async function miniCiclo(decisione, deps = {}) {
   // Stessa forma della fase 3 del reset (`runAllocationReset`), stesso `by` distinguibile: chi legge
   // l'audit deve poter separare «preso in gestione dal ciclo delle sei ore» da «preso in gestione dal
   // trigger a capitale fermo», perche' sono due decisioni con due raggi d'azione diversi.
+  const abilita = deps.setEnabled
+    || (({ marketId, enabled, reason }) => setAutoReprice({ scope: 'market', marketId, enabled, by: 'riallocatore · trigger capitale fermo', reason }));
   const prendiInGestione = deps.setManual
     || (({ marketId, manual, reason }) => setManualMode({ marketId, manual, by: 'riallocatore · trigger capitale fermo', reason }));
   const accendiUscita = deps.setAutoClose
@@ -862,7 +882,7 @@ async function miniCiclo(decisione, deps = {}) {
 
     // ── 5-bis · UN MERCATO NUOVO VA PRESO IN GESTIONE PRIMA DI RICEVERE ORDINI ────────────────────
     // Il difetto che questa riga chiude: il mini-ciclo sceglieva i mercati e piazzava, ma non faceva
-    // MAI le due scritture che la fase 3 del reset fa su ogni mercato del piano. Finche' sceglieva dal
+    // MAI le tre scritture che la fase 3 del reset fa su ogni mercato del piano. Finche' sceglieva dal
     // piano salvato non si vedeva — quei mercati il reset li aveva gia' preparati. Dal momento in cui
     // puo' RICALCOLARE (piano vecchio, assente o senza spazio) sceglie mercati che nessuno ha mai
     // preparato, e allora ogni singola gamba veniva rifiutata al gate 1 di `placeManualOrder`
@@ -883,11 +903,11 @@ async function miniCiclo(decisione, deps = {}) {
     // E L'USCITA SI ACCENDE PRIMA DEGLI ORDINI, non dopo: e' la stessa regola della fase 3 del reset,
     // e vale qui per la stessa ragione. `runAutoCloseCycle` visita SOLO i mercati con l'opt-in acceso
     // (agent40 gli passa `readAutoCloseConfig().enabledMarketIds`), quindi un mercato aperto senza
-    // questa riga avrebbe due gambe vive e nessuno che le chiuda su un fill. Entrambe sono FERMI DURI:
-    // se una delle due scritture non riesce, quel mercato esce dal giro e gli altri proseguono —
+    // questa riga avrebbe due gambe vive e nessuno che le chiuda su un fill. Tutte e tre sono FERMI
+    // DURI: se una delle scritture non riesce, quel mercato esce dal giro e gli altri proseguono —
     // meglio un mercato in meno che un mercato con ordini e senza via d'uscita.
     if (s.nuovo === true) {
-      const p = await preparaMercatoNuovo(s.riga.marketId, prendiInGestione, accendiUscita);
+      const p = await preparaMercatoNuovo(s.riga.marketId, abilita, prendiInGestione, accendiUscita);
       if (!p.ok) {
         nonPreparati.push({ marketId: s.riga.marketId, titolo: s.riga.name || null, motivo: p.motivo });
         continue;

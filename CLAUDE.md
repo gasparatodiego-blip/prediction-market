@@ -5,12 +5,17 @@ Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code a
 
 Ultima verifica contro codice/stato reali: **8 agosto 2026**, ~21:30 UTC.
 
-> ## 🔧 UN RIAVVIO PENDENTE, E ASPETTA LA CONFERMA DI DIEGO IN CHAT
-> `agent41-realloc-scheduler` gira ancora col codice per cui **il mini-ciclo sceglie mercati che poi non
-> può toccare**: non li prende in gestione manuale, e il gate 1 di `placeManualOrder` rifiuta ogni gamba
-> (`manual-mode-inactive`). È la ragione per cui alle 20:56 dell'8 agosto il piano da $600 ha prodotto
-> **0 ordini piazzati e 5 rifiutati** con il bot su AVVIA. **Non era l'arming**, che con agent41 non
-> c'entra. Correzione in `main`, test e build verdi: **§5 punto 41**. Comando:
+> ## 🔧 UN SECONDO RIAVVIO PENDENTE, E SERVE UNA NUOVA CONFERMA DI DIEGO IN CHAT
+> Il mini-ciclo sceglieva mercati che poi non poteva toccare: non faceva le tre scritture che il reset
+> fa su ogni mercato del piano, e ogni gamba moriva al gate 1 di `placeManualOrder`. È la ragione per
+> cui alle 20:56 dell'8 agosto il piano da $600 ha prodotto **0 ordini piazzati e 5 rifiutati** con il
+> bot su AVVIA. **Non era l'arming**, che con agent41 non c'entra.
+>
+> Il riavvio delle **21:35** ha attivato una versione a **due** scritture, e la misura sui dati vivi ha
+> mostrato che non bastava: `manual-mode-inactive` è sparito e il rifiuto si è spostato su
+> `live-min-market-mismatch`, perché la corsia manuale chiede `mode: 'live-min'` **cablato**
+> (`manual-order.js:733`) a prescindere dal `MAKER_MODE` del processo. La terza scrittura è in `main`,
+> test e build verdi — **§5 punto 41** — e **aspetta il riavvio**:
 > `pm2 restart agent41-realloc-scheduler`.
 >
 > **Stato reale verificato alle ~21:10 UTC**, e smentisce il banner qui sotto: il KILL è stato
@@ -1745,8 +1750,9 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     (piano oltre `PIANO_FRESCO_MAX_MS`, 60 min) sceglie mercati **nuovi** che nessuno ha preparato.
 
     **Il fix, e cosa NON tocca.** `agents/agent41-realloc-scheduler.js`: nuova `preparaMercatoNuovo`
-    (righe 678-724) e passo **5-bis** dentro `miniCiclo` (righe 858-897), più le due deps iniettabili
-    (righe 733-740) e `nonPreparati` nel referto. **Il gate non è stato toccato di una virgola**: resta
+    (le **tre** precondizioni della fase 3 del reset, nello stesso ordine) e passo **5-bis** dentro
+    `miniCiclo`, più le tre deps iniettabili e `nonPreparati` nel referto. **Nessun gate è stato toccato
+    di una virgola** — né `evaluateManualGate` né `evaluateLiveMinMarketGate`: restano
     identico per chiunque altro e continua a impedire due scrittori sullo stesso libro. Qui se ne
     soddisfa la **precondizione**, che è il rapporto che il reset ha col gate da sempre.
     - **Solo i mercati `nuovo`** (nessun nostro ordine a riposo, `trigger-capitale-fermo.js:358`):
@@ -1757,14 +1763,19 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
       quindi il solo `setManual` avrebbe aperto mercati con due gambe vive e **nessuna via d'uscita** —
       esattamente ciò che la fase 3 del reset tratta come fermo duro. Entrambe sono fermi duri: se una
       scrittura fallisce quel mercato esce dal giro e gli altri proseguono.
-    - **`setEnabled` NON è stato aggiunto, di proposito.** Quella lista è la allowlist live-min, che
-      governa dove si può APRIRE per i processi in `MAKER_MODE=live-min`: allargarla da qui darebbe a un
-      altro processo un permesso che nessuno gli ha chiesto. agent41 gira in `MAKER_MODE=off` (verificato
-      su `/proc`), quindi per i suoi ordini quel gate non si applica (`adapter.js:277`), e l'uscita di
-      una posizione resta possibile per l'eccezione di riduzione (`adapter.js:294`). **Il prezzo,
-      dichiarato:** agent40 non riprezzerà questi ordini finché il ciclo delle sei ore non porta il
-      mercato nel piano vero.
-    - **Asimmetria**: il mini-ciclo può PRENDERE un mercato e ACCENDERGLI l'uscita, mai il contrario.
+    - **`setEnabled` c'è, ed è stato aggiunto DOPO una misura sui dati vivi.** La prima stesura lo
+      ometteva di proposito, con questo ragionamento: la allowlist di auto-reprice governa
+      `MAKER_MODE=live-min`, e il processo di agent41 ha `MAKER_MODE=off` (verificato su `/proc`),
+      quindi quel gate non lo tocca. **Il ragionamento guardava la variabile sbagliata.** La corsia
+      manuale costruisce l'adapter con `mode: 'live-min'` **cablato**
+      (`lib/maker/manual-order.js:733`), qualunque cosa dica l'ambiente: `evaluateLiveMinMarketGate`
+      si applica **sempre** a chi passa di lì, agent41 compreso. Misurato dopo il riavvio delle 21:35:
+      `manual-mode-inactive` era **sparito** — le due scritture funzionavano — e ogni gamba moriva un
+      gradino più in là, su `live-min-market-mismatch`. **Lezione: l'ambiente di un processo non dice
+      quale modalità una corsia CHIEDE.** Il permesso resta stretto dove conta: è `manual: true` a
+      tenere agent35 fuori dal libro, non la allowlist.
+    - **Asimmetria**: il mini-ciclo può ABILITARE un mercato, PRENDERLO in gestione e ACCENDERGLI
+      l'uscita, mai il contrario — disabilitare, rilasciare e spegnere restano del ciclo delle sei ore.
 
     **Verifica.** Nuovo `lib/maker/miniciclo-prende-il-mercato.test.js` (**28/28**), che esegue
     `miniCiclo` vero con la corsia di piazzamento sostituita da un registratore. **Provato che fallisce
@@ -1778,13 +1789,18 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     Suite: **115 verdi / 6 rossi**, gli stessi sei del punto 40. `npm run build` verde, `BUILD_ID`
     presente.
 
-    **Riavvio: NON eseguito, in attesa di conferma esplicita di Diego in chat** (§2 regola 2). Comando —
-    dalla fase 7 basta la forma semplice, agent41 ha il caricatore di `.env`:
+    **Primo riavvio eseguito alle ~21:35 UTC** su autorizzazione esplicita di Diego in chat (restart
+    37 → 38, pid 1179999, **102 → 102 variabili, 9/9 critiche**). È quello che ha prodotto la misura
+    del punto sopra: il fix a due scritture era vivo, `manual-mode-inactive` era sparito, e il rifiuto
+    si era spostato su `live-min-market-mismatch`. La terza scrittura è stata aggiunta dopo.
+
+    **SECONDO RIAVVIO PENDENTE — NON eseguito, serve una NUOVA conferma di Diego in chat** (§2 regola 2:
+    un'autorizzazione vale solo per quel riavvio specifico). Il processo vivo ha ancora il fix a due
+    scritture, quindi continua a farsi rifiutare ogni gamba per allowlist. Comando:
     ```bash
     pm2 restart agent41-realloc-scheduler
     ```
-    Finché il processo non riparte, il mini-ciclo continua a scegliere mercati nuovi e a farsi rifiutare
-    ogni gamba: fallisce **chiuso**, quindi nessun capitale è a rischio, ma il piano non viene eseguito.
+    Fallisce **chiuso** — nessun capitale a rischio — ma il piano non viene eseguito.
 
 ---
 
