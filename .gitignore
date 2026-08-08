@@ -322,3 +322,16 @@ data/guardian-state.json.tmp*
 data/audit-coda.json
 data/audit-coda.json.tmp*
 data/audit-coda.md
+
+# ── agent41: l'ultimo piano ridotto, per il mini-ciclo del trigger a capitale fermo ─────────────────
+# Stessa regola degli altri snapshot di runtime: è la fotografia di cosa il piano aveva deciso su
+# QUESTA macchina all'ultimo ciclo, non una configurazione.
+#
+# realloc-ultimo-piano  agents/agent41-realloc-scheduler.js (via scriviUltimoPiano)
+#                       Le righe del piano ridotte ai campi che servono a costruire le due gambe. Il
+#                       mini-ciclo lo legge per scegliere un mercato senza ricalcolare il piano (che
+#                       costa ~52s e 687 MB). Committarlo significherebbe che un `git checkout` può
+#                       far piazzare capitale sulla base del piano di un altro giorno — cioè
+#                       esattamente il contrario del motivo per cui questo file esiste.
+data/realloc-ultimo-piano.json
+data/realloc-ultimo-piano.json.tmp*
