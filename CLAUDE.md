@@ -3,7 +3,7 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt**: non serve più reincollarlo ogni volta.
 
-Ultima verifica contro codice/stato reali: **8 agosto 2026**, ~07:20 UTC.
+Ultima verifica contro codice/stato reali: **8 agosto 2026**, ~08:40 UTC.
 
 > **Il codice della sera del 7 agosto è in `main` E nei processi vivi** (riavvii autorizzati alle
 > ~23:52–23:57 UTC): fine scala su quattro percorsi, cadenza adattiva, pannello del mid vivo, timbro
@@ -13,7 +13,15 @@ Ultima verifica contro codice/stato reali: **8 agosto 2026**, ~07:20 UTC.
 > agent34 e il `dashboard` sono stati riavviati alle ~07:21–07:22 UTC con l'autorizzazione esplicita
 > dell'utente in chat: graduatoria della corsia calda con K/N rimisurati, punteggio di posizione nella
 > selezione e confronto stima/consuntivo sono **attivi**. Vedi §5 punto 9 per la verifica.
-> **Non resta niente in sospeso sui riavvii.** `REALLOC_SCHEDULER_DRY_RUN` è ancora nell'ambiente di
+> **Anche il codice della SERA dell'8 agosto è vivo — e senza nessun riavvio.** Il tetto di credibilità
+> della quota dentro l'obiettivo del knapsack (`useCredibleShareCap`) è committato, pushato e
+> costruito, e **è già in servizio**: entrambi i percorsi che calcolano un piano lo fanno in un processo
+> node NUOVO, che rilegge il codice da disco — `/api/rewards/allocate` per il pannello «Ottimizza» e
+> `RUNNER_PIANO` per agent41 (`agents/agent41-realloc-scheduler.js:225`, un figlio che nasce, calcola e
+> muore, introdotto il 4 agosto per non far esplodere i 400 MB di tetto pm2). Verificato eseguendo
+> **quel comando esatto**: risponde `tettoCredibilita: true`. Vedi §5 punto 14.
+>
+> **Sui riavvii non resta altro.** `REALLOC_SCHEDULER_DRY_RUN` è ancora nell'ambiente di
 > agent41 e ci **resta per decisione dell'operatore** (8 agosto 2026): è inerte, e un `restart` non può
 > toglierla in nessuna forma — vive nella descrizione in memoria di pm2, e `--update-env` fonde invece
 > di sostituire. Il punto 3 di §5 è stato riscritto con la misura, con la tecnica giusta per riavviare
@@ -289,8 +297,8 @@ che è provatamente `auto`: manuale e **ignoto** restano sul libro, e gli ordini
 modifica sono ignoti per costruzione. Il pannello non cambia: la mano `leggiOrigini` è iniettata solo da
 agent41.
 
-**La SELEZIONE sente il tick vero** (`usePlacementScore`, 8 agosto 2026 — in `main`, vivo solo nel
-pannello «Ottimizza»). Il 5 agosto `offsetTicks` aveva corretto *dove* il motore si mette (un tick dal
+**La SELEZIONE sente il tick vero** (`usePlacementScore`, 8 agosto 2026 — in `main` e in servizio: il
+piano si calcola sempre in un processo figlio, vedi §5 punto 14). Il 5 agosto `offsetTicks` aveva corretto *dove* il motore si mette (un tick dal
 concorrente); restava scoperto *quanto vale starci*. Il lordo dell'obiettivo del knapsack è il ceiling
 a **S=1** — un ordine appoggiato sul mid — e non contiene nessun termine di offset: in selezione ogni
 mercato era pesato uguale, cioè l'equivalente esatto di una distanza fissa per tutti. Il venue paga
@@ -303,11 +311,52 @@ viene da `marketTick`, la stessa fonte del piazzamento; `placementScore` è impo
 - **Non tocca l'esecuzione**: `grossPerDay` e `netPerDay5m` restano il ceiling e il netto misurato —
   `computedDefaultOffset` e `realisticEstimate` pesano già il punteggio per conto loro. Misurato: zero
   offset di piazzamento cambiati.
-- **Effetto misurato** ($660, 8 agosto): un mercato a tick grosso esce, nessuno entra, e il capitale
-  si sposta di **+$91 verso i tick fini** (−$39 e −$52 dai grossi). Obiettivo $62,05 → $62,79/g
-  (+1,2%); stima *realistica* −$0,53/g (−1,6%) — vedi §5 punto 10.
+- **Effetto misurato** ($660, 8 agosto mattina): un mercato a tick grosso esce, nessuno entra, e il
+  capitale si sposta di **+$91 verso i tick fini** (−$39 e −$52 dai grossi).
 - Banda o tick illeggibili ⇒ nessun peso, e il mercato finisce in `pesoNonApplicato` che viaggia col
   piano. Sull'universo reale l'elenco è vuoto: tutti i mercati con montepremi pubblicano la banda.
+- **Corretto la sera dell'8 agosto: il fattore NON è `S`.** L'obiettivo faceva `lordo × S`, cioè
+  `pot·shareCeiling·S`, mentre la quota vera di un ordine a S<1 è `pot·S·size/(S·size + cQ)` — sempre
+  più grande, perché S sta *anche al denominatore*. Penalizzava troppo, e di più proprio i tick grossi
+  (S piccolo), cioè gonfiava il vantaggio del tick fine. Ora usa `placementShareFactor`, la stessa
+  algebra esatta della stima realistica: il vantaggio del tick fine sul fixture di prova vale **2,79×**
+  invece di 2,96×, ed è quello vero.
+
+**E la selezione sente anche quanto di quella quota è credibile** (`useCredibleShareCap`, 8 agosto
+2026 sera — in `main` e **già in servizio**: il piano si calcola sempre in un processo figlio, vedi §5
+punto 14). `share = size/(size+cQ)` tende a **1** quando la concorrenza in banda tende a 0, e il knapsack *massimizza*: un book vuoto gli sembrava
+l'occasione migliore che esista. La correzione **thin-book** della stima realistica lo tagliava già a
+`maxCredibleShare = 0,60`, ma **solo dopo** che la scelta era stata fatta — il knapsack sceglieva su
+un'informazione più ottimistica di quella con cui il piano veniva poi giudicato.
+- **Una fonte sola.** `ceilingShare`, `placementShareFactor` e `credibleShareFactor` sono state
+  **estratte** da `lib/rewards/realistic-estimate.js` e sono chiamate da entrambe le parti — la stima
+  realistica continua a usarle, l'obiettivo del knapsack le riusa. L'estrazione è stata **provata
+  neutra**: firma SHA-256 identica su 4.320 combinazioni di ingressi, prima e dopo.
+- **Il taglio si applica per LIVELLO della curva**, non per mercato: aggiungere capitale a un mercato
+  sottile smette di aiutare oltre il tetto. È la concavità che alla selezione mancava.
+- **Le due correzioni non si sovrappongono**, ed è algebra: la posizione agisce sul *numeratore* della
+  quota (`S·size` invece di `size`), il tetto sul suo *valore massimo*. Un test lo verifica livello per
+  livello — `lordo pesato = lordo × fattorePosizione × fattoreCredibilità`, senza termini in più.
+- **Nessuna sovra-penalizzazione dei book normali**: sotto la soglia il fattore è **esattamente 1**,
+  non «quasi 1». Sul piano reale i mercati capati sono **3-5 su ~110 valutati**.
+- **L'effetto che si cercava: obiettivo e stima realistica convergono.** Misurato su due finestre con
+  la stessa metrica (l'obiettivo letto dalle righe, cioè quello che quel knapsack ha massimizzato):
+
+  | finestra | divario obiettivo↔realistico | | | obiettivo B→C |
+  |---|---|---|---|---|
+  | | A · ceiling | B · +posizione | **C · +tetto** | |
+  | 2026-08-07 20:14 UTC | −62,8% | −51,0% | **−31,2%** | $50,94 → $36,31/g (−28,7%) |
+  | 2026-08-08 02:15 UTC | −96,6% | −94,7% | **−90,9%** | $75,26 → $48,76/g (−35,2%) |
+
+  Il divario si stringe in entrambe, e si stringe perché **cade l'ottimismo dell'obiettivo**, non
+  perché peggiori la stima.
+- **E la lista dei mercati cambia dove doveva.** Alla finestra delle 02:15 esce dal piano
+  `0xfad21673` — «Will Trump meet with Changpeng Zhao in 2026?», **quota 100%, capata**, $52 di
+  capitale, e con la stima realistica che **si rifiutava di stimarlo** (regola `empty-book`). I suoi
+  $52 vanno su mercati con book vero: **realistico $4,00 → $4,45/g (+11,3%)**. Su sei finestre
+  campionate la stima realistica del piano non peggiora **mai**.
+- **Non tocca l'esecuzione**: zero offset di piazzamento cambiati, e un test verifica che nessun modulo
+  di `lib/maker/` nomini il tetto (158 file controllati).
 
 **La corsia calda si ordina sull'obiettivo del knapsack** (`collector-priority.js`, 8 agosto 2026 —
 in `main`, non ancora nei processi). L'unione mobile con isteresi c'era; la **graduatoria** dei
@@ -515,15 +564,12 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
    non importa l'allocatore nel bundle — esegue `planFromCollection` in un processo node NUOVO a ogni
    chiamata, quindi legge sempre il codice su disco.
 
-10. **L'obiettivo del knapsack sente il punteggio di posizione ma non il tetto di credibilità della
-    quota.** Misurato l'8 agosto 2026 sul piano vero: col punteggio acceso l'obiettivo sale a
-    $62,79/g (+1,2%) mentre la stima *realistica* scende di $0,53/g (−1,6%). Non è un effetto
-    collaterale ignoto — è una correzione che l'obiettivo ancora non ha: sul mercato che guadagna
-    capitale la correzione `thin-book` vale **0,9465** con il **63,4% di quota modellata**, e il
-    knapsack non la vede perché il suo lordo è `pot × s/(s+cQ)` senza tetto di credibilità.
-    Le due cifre divergono per quel motivo e per nessun altro (verificato leggendo le correzioni riga
-    per riga). Da decidere: portare anche `maxCredibleShare` dentro l'obiettivo, o lasciarlo alla
-    stima realistica e accettare la divergenza dichiarandola.
+10. **~~L'obiettivo non sente il tetto di credibilità~~ — CHIUSO l'8 agosto 2026, sera.**
+    `maxCredibleShare` è dentro l'obiettivo del knapsack (`useCredibleShareCap`), riusando le funzioni
+    **estratte** da `realistic-estimate.js` invece di riscriverle; l'estrazione è provata neutra sulla
+    stima realistica (hash identico su 4.320 combinazioni). Nel farlo è emerso e si è corretto un
+    secondo difetto: il fattore di posizione non è `S` ma `S·size/(S·size+cQ)` diviso la quota-ceiling.
+    Vedi §4. Misurato su sei finestre: il realistico non peggiora mai e migliora fino a **+11,2%**.
 
 11. **Il confronto stima/consuntivo è pronto ma non ha ancora un solo dato: il venue non attribuisce.**
     `/rewards/user/markets?date=…` risponde 200 su ogni giornata provata (4→7 agosto), ma
@@ -543,6 +589,40 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     che «scade fra mezza giornata» venga scartato per orizzonte, e invece viene scelto con
     `horizon.state === 'ok'` a 1 giorno. Non sono stati toccati in questa sessione — sono elencati qui
     perché nessuno li scambi per una regressione dell'8 agosto.
+
+13. **Resta il caso degenere che il tetto NON copre: la concorrenza misurata ZERO.** È adesso il
+    termine dominante del divario fra obiettivo e stima realistica, ed è misurato, non ipotizzato.
+    `realisticEstimate` ha una regola più dura del tetto: con `competitorQ === 0` **si rifiuta di
+    stimare** (`empty-book`, restituisce `unknown`), perché la formula della quota starebbe girando
+    fuori dal suo dominio. L'obiettivo invece quel mercato lo scora, tagliato al 60%.
+    Sul piano dell'8 agosto sera: **$51,00 dei $69,77 di lordo — il 73% — vengono da UN solo mercato
+    con concorrenza misurata zero** (`0xd1f23e2b`, TX-15), che la stima realistica trattiene. È lui a
+    spiegare la maggior parte del divario residuo: sulle sole righe confrontabili il divario è −49,2%,
+    su tutte è −86,4%.
+    **Non l'ho chiuso di mia iniziativa**: portare la regola `empty-book` nell'obiettivo significa
+    togliere dal piano un mercato che oggi ne è la riga principale, ed è una decisione sul capitale
+    reale, non una scelta implementativa. Le due strade sono (a) escludere dall'obiettivo i mercati con
+    `cQ = 0`, come già fa la stima realistica; (b) tenerli ma con un tetto molto più basso del 60%.
+    Va anche detto che «zero profondità *misurata*» può essere un buco di misura e non un book
+    davvero vuoto — motivo in più per non deciderlo in automatico.
+
+14. **Il lavoro sull'allocatore NON richiede riavvii, e vale la pena saperlo una volta per tutte.**
+    Nessuno dei tre file toccati (`lib/rewards/allocator.js`, `lib/rewards/realistic-estimate.js`,
+    `scripts/rewards-replay/lib/allocate.js`) vive dentro un processo pm2 di lunga durata: **entrambi**
+    i percorsi che calcolano un piano lo fanno in un processo node nuovo che rilegge il codice da disco.
+    - `/api/rewards/allocate` → `execFile('node', ['-e', RUNNER])` (pannello «Ottimizza»);
+    - `agent41-realloc-scheduler` → `RUNNER_PIANO`, riga 225, un figlio per ciclo. Non è per il codice
+      caldo: è la correzione del 4 agosto 2026, perché il piano porta il processo da 41 MB a 687 MB
+      contro un tetto pm2 di 400 MB, e pm2 lo fermava **nel mezzo del ciclo**.
+    Verificato empiricamente eseguendo il runner esatto di agent41: risponde `tettoCredibilita: true`,
+    `mercatiCapati: 4`. Quindi il lavoro è in servizio senza toccare niente.
+
+    **TRAPPOLA REGISTRATA, e ci sono cascato:** un walker del grafo dei `require` che cerchi
+    `require('...')` con una regex trova anche i `require` **dentro le stringhe** — e `RUNNER_PIANO` è
+    esattamente una stringa che contiene `require(".../lib/rewards/allocator")`. Il walker mi ha
+    dichiarato che agent41 importa l'allocatore in-process, e non è vero: c'è solo quella stringa. Chi
+    scrive un test che cammina i `require` (ce ne sono già tre in questo repo) tenga conto che una
+    stringa non è un import — e che qui la differenza è fra «serve un riavvio» e «non serve».
 
 ---
 
