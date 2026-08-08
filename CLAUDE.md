@@ -3,7 +3,7 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt**: non serve più reincollarlo ogni volta.
 
-Ultima verifica contro codice/stato reali: **8 agosto 2026**, ~15:40 UTC.
+Ultima verifica contro codice/stato reali: **8 agosto 2026**, ~15:30 UTC.
 
 > ## ⚠ IL BOT È SU AVVIA DALLE 12:07:55 UTC DELL'8 AGOSTO 2026
 > Non è più un'anteprima: **il prossimo ciclo di agent41 piazza ordini veri con capitale reale.**
@@ -11,18 +11,17 @@ Ultima verifica contro codice/stato reali: **8 agosto 2026**, ~15:40 UTC.
 > Il ciclo forzato dall'operatore è girato alle **13:01:33Z**: 3 mercati abilitati, **5 gambe piazzate**,
 > 0 cancellazioni. Prossimo ciclo automatico **19:01:33Z**.
 >
-> **RIAVVIO PENDENTE — `agent41-realloc-scheduler`.** Il trigger a $50 è corretto in `main` ma non nel
-> processo, e dopo il riavvio **piazzerà davvero** (~$100, non ~$30). Comando e cifre: §5 punto 21.
+> **NESSUN RIAVVIO PENDENTE — eseguiti entrambi dall'operatore l'8 agosto.** `agent24-liquidity-rewards`
+> alle **15:10:28Z** (restart 3 → 4) e `agent41-realloc-scheduler` alle **15:19:15Z** (34 → 35, con la
+> ricostruzione dell'ambiente da `/proc`: 60 variabili prima, 60 dopo, tutte e nove le critiche presenti).
+> Effetti misurati in §5 punti 21 e 23.
 >
-> **E il pianificatore ha ora un TETTO di orizzonte a 1,5 giorni** (§4). Non serve riavviare — il piano
-> nasce in un processo figlio.
+> **L'orizzonte non è più un cancello:** muro a 150 g in `horizon.js`, quota del 12% sulla coda oltre 7 g
+> nell'allocatore (§4). Non serve riavviare — il piano nasce in un processo figlio a ogni ciclo.
 >
-> **RIAVVIO PENDENTE — `agent24-liquidity-rewards`.** La scoperta è stata allargata (§4): dal vivo trova
-> ora **66 mercati eleggibili** dentro la finestra, contro **zero** di prima. Finché agent24 non riparte,
-> il board resta quello vecchio e il piano continuerebbe a uscire vuoto. `pm2 restart agent24-liquidity-rewards`.
->
-> **PRIORITÀ — il 10 agosto all'01:01Z il reset cancella tutto se il board non è ancora aggiornato.**
-> Vedi §5 punto 24: è l'unica cosa con una data.
+> **Il rischio del 10 agosto è rientrato.** Con il muro a 150 g e il board nuovo il piano non esce più
+> vuoto, quindi il reset del 10 agosto all'01:01Z non può più cancellare tutto senza ripiazzare.
+> §5 punto 24 resta come registro di com'era.
 
 > **Il codice della sera del 7 agosto è in `main` E nei processi vivi** (riavvii autorizzati alle
 > ~23:52–23:57 UTC): fine scala su quattro percorsi, cadenza adattiva, pannello del mid vivo, timbro
@@ -987,7 +986,19 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     computazione sul **piano vero** salvato su disco: zero eccezioni sulle 6 righe, Matt Klein scartato
     con `gamba-impossibile`, le altre 5 costruiscono due gambe ciascuna.
 
-    **Il comando (agent41 non ha il caricatore di `.env` — vedi punto 3):**
+    **ESEGUITO alle 15:19:15Z dell'8 agosto 2026** (restart 34 → 35, ambiente ricostruito da `/proc`:
+    60 variabili prima e dopo, tutte e nove le critiche presenti). **Il trigger non esplode più**, e al
+    primo scatto — 15:25:22Z, saldo $620,45, $237,91 già a riposo — ha fatto esattamente quello che deve:
+
+    > `mini-ciclo: $120 rimessi al lavoro su 0xd15f77a9… (0 ordini piazzati, 1 rifiutati)`
+
+    Ha scelto il morbillo, ha costruito le gambe, e la gamba YES è stata **rifiutata dalla rotaia
+    `mai-primo-sul-libro`**: «un tick dietro il miglior bid altrui (24¢) darebbe 23¢, fuori dalla banda
+    premiante [24¢–27¢]». **Nessun ordine piazzato, nessun capitale mosso** — il percorso che per un
+    giorno intero andava in `TypeError` adesso arriva fino in fondo e si ferma dove deve. Gli ultimi
+    `MINI-CICLO FERMATO` nel log di errore sono delle 15:19:15, cioè del processo vecchio.
+
+    **Il comando usato (agent41 non ha il caricatore di `.env` — vedi punto 3):**
     ```bash
     cd /root/rewards-bot && PID=$(pm2 pid agent41-realloc-scheduler) && \
     while IFS= read -r -d '' kv; do k=${kv%%=*}; \
@@ -1034,7 +1045,23 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     non percorsa: ogni fetta di 6 ore è una query con i **suoi** 2.100 posti. Le stesse ore, a fette,
     ne trovano 70.
 
-    **Risultato dal vivo (8 agosto, 15:00Z): 66 mercati eleggibili** nella finestra `[0,25 · 1,5]`, contro
+    **ESEGUITO alle 15:10:28Z dell'8 agosto** (restart 3 → 4; agent24 non ha bisogno della
+    ricostruzione dell'ambiente — usa solo API pubbliche, 31 variabili prima e dopo). Primo board nuovo
+    scritto alle **15:18:53Z**. **Misurato sul board vero, prima → dopo:**
+
+    | | prima | dopo |
+    |---|---|---|
+    | mercati sul board | 115 | 100 |
+    | il più corto | **2,37 g** | **0,36 g** (8,6 ore) |
+    | entro 1,5 g | **0** | **12** |
+    | entro 7 g | 0 | 20 |
+
+    La riga di scoperta: `21p listino (+636) · 120p in 7/8 fette da 6h (+100 nuovi entro 2g) · 5 fette
+    al tetto dei 2.100: copertura PARZIALE · BUDGET ESAURITO a 120p → 736 mercati premiati`. Il board
+    scende da 115 a 100 perché `MAX_CLOB_MARKETS` ne tiene 120 per montepremi: sono entrati i corti e
+    usciti i lunghi meno ricchi.
+
+    **Risultato in simulazione prima del riavvio (15:00Z): 66 mercati eleggibili** nella finestra `[0,25 · 1,5]`, contro
     zero. I più ricchi: `$87/g` e `$60/g` sui transiti di Bab el-Mandeb a 33,4h, `$53/g` sul box office
     di «The Odyssey», **`$51/g` e `$50/g` sui due HI-01 a 9,4 ore** — banda 4,5¢, esattamente l'archetipo
     dei 21. Il board vecchio ne aveva **115 con il più corto a 2,41 giorni**.
