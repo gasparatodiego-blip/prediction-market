@@ -111,7 +111,7 @@ const { registraCancellazioni } = require('../lib/maker/cancellazioni-visibili')
 // Due controlli orari dentro QUESTO processo: nessun pm2 nuovo. agent40 e' gia' sempre acceso e gira
 // ogni 5 secondi, quindi ha gia' l'orologio che serve — aggiungere un processo per due letture al
 // giorno sarebbe stato un demone in piu' da sorvegliare per niente.
-const { compitiDovuti, registraStima, registraReale } = require('../lib/maker/confronto-reward');
+const { compitiDovuti, registraStima, registraReale, leggiConfronto } = require('../lib/maker/confronto-reward');
 // La lettura del consuntivo. SOLA LETTURA per costruzione: usa solo le credenziali L2, parla solo in
 // GET, e non importa l'adapter — l'unico oggetto del progetto che sappia mandare un ordine.
 const { leggiRewardReale } = require('../lib/maker/reward-reale');
@@ -934,6 +934,8 @@ async function main() {
   // TRY/CATCH SUO, come la riconciliazione e la chiusura: un confronto che fallisce e' un referto
   // mancato, e non deve poter fermare il motore che riprezza capitale reale.
   let confrontoInCorso = false;
+  // L'ultimo verdetto di deriva gia' annunciato: si parla quando CAMBIA, non a ogni giro.
+  let ultimoStatoDivergenza = null;
   const controlliOrari = async () => {
     if (confrontoInCorso) return;
     confrontoInCorso = true;
@@ -961,12 +963,25 @@ async function main() {
         const w = registraReale({
           giorno: c.giornoReale, disponibile: r.disponibile,
           realeUsd: r.totaleUsd, motivo: r.motivo, tentativo: c.tentativo,
+          // La scomposizione per mercato e la prova che il venue ha ATTRIBUITO la lettura a noi: un
+          // 200 pieno di zeri non attribuito non è un consuntivo. Vedi lib/maker/reward-reale.js.
+          perMercato: r.perMercato, attribuito: r.attribuito ?? null, righeLette: r.righe ?? null,
         });
         if (w.scritto) {
           log(r.disponibile
-            ? `CONFRONTO REWARD · consuntivo di ${c.giornoReale}: $${r.totaleUsd.toFixed(2)} (tentativo ${c.tentativo})`
+            ? `CONFRONTO REWARD · consuntivo di ${c.giornoReale}: $${r.totaleUsd.toFixed(2)} su ${(r.perMercato || []).length} mercati (tentativo ${c.tentativo})`
             : `CONFRONTO REWARD · consuntivo di ${c.giornoReale} non disponibile (tentativo ${c.tentativo}/3): ${r.motivo}`
               + (w.esaurito ? ' — tentativi esauriti, la giornata resta marcata non disponibile' : ''));
+        }
+        // ── L'AVVISO DI DERIVA ────────────────────────────────────────────────────────────────────
+        // Si dice UNA volta per verdetto, non a ogni tentativo: un avviso ripetuto ogni notte
+        // diventa rumore, e il rumore è il modo in cui un allarme smette di essere letto. Non
+        // corregge niente — vedi le soglie in lib/maker/confronto-reward.js.
+        const d = leggiConfronto().divergenza;
+        if (d && d.stato !== ultimoStatoDivergenza) {
+          ultimoStatoDivergenza = d.stato;
+          if (d.avviso) log(`CONFRONTO REWARD · ATTENZIONE, DERIVA DELLA STIMA: ${d.messaggio}`);
+          else log(`CONFRONTO REWARD · ${d.messaggio}`);
         }
       }
     } catch (e) {

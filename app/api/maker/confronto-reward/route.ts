@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { leggiConfronto, ORA_STIMA, ORE_REALE, TENTATIVI_MAX } from '@/lib/maker/confronto-reward';
+import { leggiConfronto, ORA_STIMA, ORE_REALE, TENTATIVI_MAX, SOGLIA_SCARTO_PCT, OSSERVAZIONI_MINIME } from '@/lib/maker/confronto-reward';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -37,12 +37,17 @@ export async function GET() {
       },
       scartoMedioPct: c.scartoMedioPct,
       giorniConfrontabili: c.giorniConfrontabili,
+      // IL VERDETTO SULLA DERIVA — segnala, non corregge. `stato: 'dati-insufficienti'` NON vuol dire
+      // «va tutto bene»: vuol dire che nessun giudizio è stato ancora possibile, ed è una differenza
+      // che questa rotta non deve appianare.
+      divergenza: c.divergenza,
+      soglie: { scartoPct: SOGLIA_SCARTO_PCT, osservazioniMinime: OSSERVAZIONI_MINIME },
       count: c.count,
       giorni: c.giorni,
     }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (e) {
     return NextResponse.json(
-      { error: (e as Error).message, giorni: [], count: 0 },
+      { error: (e as Error).message, giorni: [], count: 0, divergenza: null },
       { status: 500, headers: { 'Cache-Control': 'no-store' } },
     );
   }
