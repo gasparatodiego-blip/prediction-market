@@ -3,7 +3,16 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt**: non serve più reincollarlo ogni volta.
 
-Ultima verifica contro codice/stato reali: **8 agosto 2026**, ~17:15 UTC.
+Ultima verifica contro codice/stato reali: **8 agosto 2026**, ~18:00 UTC.
+
+> ## 🔴 KILL ATTIVO DALLE 17:20:17 UTC DELL'8 AGOSTO 2026 — CONTO PIATTO
+> `data/safety-kill-switch.json` dice `killed:true`, `by:"operator · liquidity-rewards tab"`. Verificato
+> sul venue alle 17:37: **zero posizioni aperte, zero ordini a riposo**, saldo pUSD **$668,25** —
+> capitale interamente liquido, **utilizzo 0%**. `maker-bot-enabled.json` dice ancora `enabled:true`, ma
+> il KILL vince su tutto e lo leggono tutti i percorsi, auto-close compreso.
+>
+> **Il lavoro del «capitale al lavoro» (8 agosto, sera) è in `main` e ASPETTA TRE RIAVVII** — vedi §5
+> punto 34. Fino a quel momento i processi vivi hanno il codice di prima.
 
 > ## 🟢 IL MERGE È VIVO NEL PROCESSO — E HA GIÀ COMPRATO IL SECONDO LATO
 > `MERGE_STRATEGY_ENABLED = true` (costante di sorgente, **non** una env). Il riavvio che lo armava
@@ -530,6 +539,84 @@ osservati a 3,01h · 6,01h · 8,01h), **MAX_MARKETS 40 → 30** (righe 7-9 + K 1
 il feed sta a **112 mercati su 125** di `TOTAL_MARKET_CAP`, quindi ogni slot chiesto è un mercato del
 board in meno). Misura riproducibile: `node scripts/misura-ricambio-candidati.js` (sola lettura).
 
+**IL CAPITALE DEVE STARE AL LAVORO: obiettivo 90%, e adesso è un numero** (`lib/maker/utilizzo-capitale.js`,
+8 agosto 2026 sera — in `main`, **serve il riavvio di agent41 e del dashboard**, §5 punto 34). Il bot ha
+sempre avuto tetti — 20% per mercato, 12% sulla coda lunga, un muro a 150 giorni — cioè regole che dicono
+*dove non* mettere il capitale. Non aveva la regola simmetrica, e quindi non sbagliava mai per eccesso e
+sbagliava sistematicamente per difetto senza che nessun numero lo dichiarasse.
+- **Cosa conta come impegnato**: ordini a riposo (al nozionale) + posizioni aperte (al prezzo corrente).
+  Il **totale** è quello più il saldo pUSD, e non c'è doppio conteggio: su questo venue un BUY a riposo
+  immobilizza il collaterale, quindi ciò che è impegnato *non* sta nel saldo.
+- **90% e non 100%**: il 10% di respiro è ~$67 su questo conto, cioè due ordini del nozionale mediano dei
+  21 maker (~$34). Serve perché il trigger abbia sempre di che lavorare senza dover prima disfare.
+  Si cambia con `MAKER_TARGET_UTILIZZO` (frazione); un valore illeggibile o fuori da `(0,1]` viene
+  **scartato** in favore del difetto — la stessa regola di fine scala e dell'orizzonte.
+- **NON è un permesso.** Non alza un tetto, non salta un controllo, non rende ammissibile un mercato che
+  non lo era. Se i mercati validi non bastano, il verdetto giusto è «non raggiunto perché non c'era dove
+  metterlo», e il modulo lo dichiara invece di forzare un ordine. `misuraUtilizzo` non decide niente:
+  misura, e chi legge decide.
+- **Non misurabile non è zero.** Un saldo illeggibile trattato come 0 direbbe «utilizzo 100%» proprio
+  quando il capitale è fermo: è il difetto peggiore possibile qui, e per questo qualunque ingresso
+  mancante produce `leggibile:false` senza percentuale, col motivo che dice *quale* ingresso manca.
+- **Dove si vede**: `GET /api/maker/utilizzo-capitale` (sola lettura, tre fonti dichiarate una per una) e
+  il referto di ogni mini-ciclo (`utilizzo`, `utilizzoStimatoDopo`) più la riga di audit
+  `capital-idle-trigger`. Le fonti sono le **stesse** su cui il bot decide, non una seconda lettura.
+
+**Il piano LEGGERO: «qual è il miglior uso del capitale libero adesso»** (`agent41`, 8 agosto 2026 sera —
+in `main`, **serve il riavvio di agent41**). Il mini-ciclo sceglieva solo dal piano già salvato: se quel
+piano non c'era, era vecchio, o i suoi mercati non avevano più spazio, rispondeva «nessuna azione» e il
+capitale restava fermo **pur essendoci mercati validi che nessuno guardava**. Adesso ricalcola — con una
+finestra di storico più corta, e il numero viene dalla misura:
+
+| finestra | tempo | RSS di picco | righe scelte |
+|---|---|---|---|
+| 48h (il ciclo pesante) | 20,9-24,4 s | **1074-1086 MB** | 7 |
+| 12h | 15,9 s | 464 MB | 7 |
+| **6h — SCELTA** | **12,3-13,1 s** | **208-254 MB** | 7 |
+| 3h | 12,2-12,6 s | 151-348 MB | 7 |
+| 1h | 12,4 s | 322 MB | 7, ma la **composizione cambia** |
+
+A sei ore il piano è **lo stesso** del pesante — stessi sette mercati, stesso capitale per mercato, in
+entrambe le esecuzioni — a un quarto della memoria. A un'ora due righe si spostano ($24→$36, $96→$84):
+è lì che la finestra diventa troppo corta. Sei ore stanno a fattore sei da quel punto.
+- **Quando ricalcola**: piano assente · piano più vecchio di **1 ora** · piano fresco ma **senza spazio**
+  per il capitale libero. Il caso comune — piano di venti minuti fa con un mercato svuotato — **non** paga
+  i tredici secondi: si parte dal salvato.
+- **Non sovrascrive la memoria del ciclo pesante**: chiama `calcolaPianoFuoriProcesso` e non
+  `calcolaPiano`, quindi né `realloc-ultimo-piano.json` né le priorità del raccoglitore vengono toccate.
+- **«Leggero» vuol dire meno storico, non meno regole**: muro dell'orizzonte, quota della coda lunga,
+  tetto di categoria sui book vuoti e tetto di credibilità restano tutti.
+- Si cambia con `REALLOC_PIANO_LEGGERO_ORE`; sotto le 2 o sopra le 48 il valore è scartato.
+
+**Il mini-ciclo tocca PIÙ mercati in un giro** (`pianificaGiro`, stesso lavoro). Con un tetto al 20% un
+solo mercato assorbe al più un quinto del capitale: da un conto interamente liquido servivano **cinque**
+mini-cicli, e fra uno e l'altro c'è il cooldown di dieci minuti — quasi un'ora per rimettere al lavoro
+capitale già tutto disponibile al primo giro. Ora `scegliMercato` viene chiamata in sequenza su un libro
+mastro che si aggiorna: **nessuna seconda logica di selezione**, la stessa funzione con gli stessi
+cancelli, applicata più volte. Si ferma al primo fra: capitale sotto il minimo di un ordine sensato ·
+obiettivo di impegno raggiunto · **6 mercati per giro** (`TRIGGER_CAPITALE_MAX_MERCATI`) · **rampa
+esaurita** · nessuna riga più utilizzabile — e il motivo dello stop viaggia nel referto.
+
+**AVVIA piazza in minuti, non in ore** (`sorvegliaAvvio` in agent41, 8 agosto 2026 sera — in `main`,
+**serve il riavvio di agent41**). Premere AVVIA non anticipava niente: il ciclo fisso conta dalle sei ore
+dell'ultimo `lastRunAt`, quindi l'8 agosto un AVVIA alle 12:07 aveva il primo ciclo utile alle 16:16.
+Adesso un poller da **15 s** guarda l'*istante* dell'interruttore e, quando cambia in accensione, lancia
+**un mini-ciclo forzato**.
+- **Non tocca il timer delle sei ore** e non sposta `lastRunAt`: il ciclo pesante ribilancia e cancella, e
+  farlo partire da un bottone sarebbe un'azione molto più grande di quella che il bottone promette.
+- **La forzatura salta le due ATTESE e nient'altro**: quiete e cooldown esistono contro il polling, non
+  contro una persona. Bot FERMO, kill e lucchetto del ciclo restano davanti — provato da cinque asserzioni.
+- **L'istante e non un booleano**: con un booleano un AVVIA premuto mentre il processo era giù sarebbe
+  letto come «acceso da sempre» al riavvio. All'avvio si parte dall'istante corrente, proprio perché un
+  `pm2 restart` non è un bottone premuto da una persona.
+- **Il conto dei due minuti, misurato**: rilevazione ≤15 s + saldo ~1 s + ordini ~1-3 s + ricalcolo
+  **15,3 s** (misurato col piano vero) + piazzamento ~2-6 s = **~35 s**, con il margine tutto davanti.
+
+**Il KILL è diventato un cancello del trigger, non solo un rifiuto a valle.** Fermava già ogni ordine, ma
+molto più giù: il mini-ciclo arrivava a leggere saldo e ordini — e da oggi a calcolare un piano — per poi
+vedersi rifiutare ogni gamba. Con il ricalcolo quel lavoro sprecato costa tredici secondi e centinaia di
+megabyte per giro. Il kill si legge in un microsecondo: va davanti.
+
 **Il capitale fermo non aspetta sei ore** (`lib/maker/trigger-capitale-fermo.js`, 8 agosto 2026 — in
 `main`, **non ancora nel processo**: serve un riavvio di agent41, §5 punto 17). Il ciclo fisso resta
 identico e continua a girare ogni 6 h; accanto c'è un **mini-ciclo** che ogni **120 s** guarda una cosa
@@ -584,6 +671,34 @@ si scrive con `findIndex` o `some`, mai con la truthiness di `find`.
 `ownOrders`, li **legge** dal venue e tiene solo il lato che sta quotando (per token id). Prima solo
 agent40 li passava: tutti gli altri percorsi con `inCoda:true` mandavano una lista vuota, e dal secondo
 ordine in poi il «concorrente» da battere eravamo noi — un tick per ogni nostro ordine davanti.
+
+**LA GERARCHIA DEL MERGE NON HA PIÙ SCORCIATOIE** (`lib/maker/auto-close.js`, 8 agosto 2026 sera — in
+`main`, **serve il riavvio di agent40**, §5 punto 34). Fino a oggi il tentativo di completare la coppia
+viveva in **un ramo solo** del ciclo, quello appena prima dell'uscita ordinaria. Gli altri due arrivavano
+prima e facevano `continue`:
+- `already-covered` (c'è già un'uscita a riposo) → il merge non veniva **nemmeno valutato**;
+- `close-at-market` (l'attesa ha superato le 24h) → idem, e per costruzione.
+
+Cioè «prima si completa la coppia, poi si vende» era vero su un percorso su tre, e i due che la saltavano
+erano proprio quelli in cui una posizione stava ferma **da più tempo**. Su Schwartzel FL-19 il Livello 1
+era calcolato, conveniente (coppia a **98,8¢**) e irraggiungibile per ventiquattro ore di fila.
+
+Adesso c'è **una funzione sola** (`completaCoppia`) chiamata da **tutti e tre** i rami: la precedenza è una
+proprietà del codice, non una promessa in un commento.
+- **La disciplina non cambia**: le uscite a riposo si **tolgono prima**, e se anche una sola cancellazione
+  non riesce non si compra niente — stessa regola della chiusura a mercato, stessa lista, stesso verso di
+  fallimento. `!c` e non `c && c.ok === false`: un cancellatore assente non è una cancellazione riuscita.
+- **Se il merge rinuncia dopo aver cancellato**, la posizione è scoperta *adesso*: si ridecide con la lista
+  vera degli ordini rimasti e **l'uscita torna sul libro nello stesso ciclo**, non al prossimo.
+- **Il merge non è un rinvio infinito**: se il completamento va a riposo parte l'orologio dei 60 minuti, e
+  alla scadenza `decidiLivello` risponde 3 — si torna alla chiusura forzata e si vende davvero.
+- **Più aggressivo verso il completamento**: un'attesa aperta non congela più la decisione. Se mentre il
+  Livello 2 riposa l'ask dell'altro lato scende dentro il tetto, si **cancella il completamento a riposo e
+  si prende l'ask** (Livello 1). Prima si aspettavano i 60 minuti a prescindere.
+- **Cosa passa ancora prima, e giustamente**: mercato chiuso e mercato che non accetta ordini. Lì non si
+  piazza niente di niente, quindi non c'è gerarchia da rispettare.
+- **La gamba riempita non viene messa in uscita per il solo fatto di essere sbilanciata**: resta viva e
+  matura premi finché la coppia non si completa o la gerarchia non arriva al Livello 3.
 
 **Merge — I LIVELLI 1 E 2 SONO VIVI NEL PROCESSO (dal riavvio di agent40 delle 16:49:18Z dell'8 agosto 2026).** Strategia a livelli in
 `lib/maker/strategia-merge.js`: L1 taker immediato se la coppia YES+NO costa ≤ 99¢, L2 maker con skew
@@ -1051,17 +1166,22 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     dalla gamba scaduta. Nella corsa vera `notionalePerMercato` sottrae gli ordini vivi, quindi la cifra
     sarà minore — ma **l'ordine di grandezza da aspettarsi è ~$100, non ~$30**.
 
-22. **Tre cose che il fix ha scoperto e NON ha risolto.** Nessuna è stata toccata: sono decisioni sul
-    capitale, e questa sessione era un fix su una guardia.
-    - **La rampa non conta niente.** `registraMercatoAperto` (`lib/maker/bot-enabled.js:130`) è
-      esportata e **non è chiamata da nessuna riga del repo** (verificato con grep su `lib/`, `agents/`,
-      `app/`). `mercatiDallAvvio` resta `[]` per sempre, quindi `rampa()` risponde sempre «0/5, ne
-      restano 5» e il tetto delle prime 24h **non si chiude mai** — nemmeno dopo il reset delle 13:02
-      che ha abilitato 3 mercati. Il tetto `MAX_POSIZIONI = 10` regge ancora, la rampa no.
-    - **Il mini-ciclo non guarda la rampa affatto.** `miniCiclo` non chiama `applicaPolitiche`: conosce
-      il tetto di concentrazione, non il tetto dei mercati nuovi. Un mercato del piano con zero ordini
-      a riposo ha `spazio = tetto` intero, quindi il trigger può **aprirne uno nuovo** — che è
-      esattamente ciò che la rampa esisterebbe per limitare.
+22. **Tre cose che il fix ha scoperto — le prime due CHIUSE l'8 agosto sera, la terza no.**
+    - **~~La rampa non conta niente~~ — CHIUSA.** `registraMercatoAperto` era esportata e non la chiamava
+      nessuna riga del repo, quindi `mercatiDallAvvio` restava `[]` per sempre e `rampa()` rispondeva
+      sempre «0/5, ne restano 5». Adesso il mini-ciclo la chiama per **ogni mercato aperto con successo**,
+      e non è un dettaglio: da oggi quel giro può aprirne più d'uno in una volta, quindi contarli è la
+      differenza fra una rampa e una decorazione.
+      **E la chiamata ha aperto una finestra che andava chiusa nello stesso gesto:** il file è uno solo,
+      quindi per aggiungere un mercato al contatore si riscrive anche `enabled` — e fra la lettura e la
+      scrittura l'operatore può aver premuto FERMA, che verrebbe **annullata da un contatore**. Ora
+      `registraMercatoAperto` rilegge prima di scrivere e rinuncia se l'istante dell'interruttore è
+      cambiato: si perde un conteggio (recuperabile al giro dopo), non un FERMA (che non si recupera).
+    - **~~Il mini-ciclo non guarda la rampa affatto~~ — CHIUSA.** `pianificaGiro` riceve `nuoviAmmessi`
+      dal residuo della rampa e `mercatiGiaAperti`: un mercato già aperto non consuma un posto, uno nuovo
+      sì, e quando i posti finiscono il giro **si ferma e lo dichiara** (`rampa esaurita: … sarebbe un
+      mercato NUOVO`) invece di allentarsi per arrivare al 90%. È il Requisito 1.3 applicato: le
+      protezioni esistenti vincono sul target di utilizzo.
     - **La premessa del saldo non regge alla misura.** L'header di `trigger-capitale-fermo.js` dice che
       un BUY a riposo immobilizza il collaterale, quindi «il saldo pUSD libero **è** il capitale non
       allocato». Misurato: alle 12:28 il saldo era `646,262868`; dopo aver piazzato ~$236 di gambe alle
@@ -1313,8 +1433,25 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
       perché il reset la spegne solo su mercati senza posizione. Se la riabilitazione deve sopravvivere
       al reset, la riga da cambiare è quella, non questo file.
 
-32. **SCHWARTZEL NON COMPLETA LA COPPIA, E NON È LA ALLOWLIST: `closeTask` NON INIETTA `cancelOrder`.**
-    Trovato l'8 agosto 2026 sui log vivi, dopo la riabilitazione. Il Livello 1 su `0xc16fade4` è
+32. **~~SCHWARTZEL NON COMPLETA LA COPPIA: `closeTask` NON INIETTA `cancelOrder`~~ — CORRETTO in `main`
+    l'8 agosto 2026 sera, ASPETTA IL RIAVVIO DI agent40** (§5 punto 34). Due correzioni, entrambe
+    necessarie e nessuna sufficiente da sola:
+    - **il bug tecnico**: `closeTask` ora inietta `cancelOrder` (la stessa funzione degli altri due cicli
+      di agent40, con la sua etichetta di origine). Tre percorsi lo aspettavano — chiusura forzata,
+      timeout del Livello 2 e, da oggi, il completamento della coppia — e tutti e tre ricevevano
+      `undefined`, che diventava `null`, che diventava «ignoto»;
+    - **la priorità logica**: la chiusura forzata non salta più il merge. Dopo che le cancellazioni sono
+      confermate — quindi con la posizione già scoperta, senza incrociare niente — si tenta il
+      completamento come **ultimo tentativo**, e solo se rinuncia si vende al bid. Non è un rinvio senza
+      fine: se il completamento va a riposo parte l'orologio dei 60 minuti e alla scadenza si vende.
+    - Il caso di Schwartzel non è più riproducibile sui dati vivi (posizione chiusa dall'operatore alle
+      ~17:20 col KILL), quindi la verifica è per test: `capitale-al-lavoro.test.js` allestisce
+      esattamente quella situazione — uscita a riposo da 25 ore, ask del secondo lato dentro il tetto —
+      e verifica che si compri invece di vendere, e che senza cancellatore non si faccia **né** l'uno
+      **né** l'altro.
+    *(La diagnosi originale resta qui sotto: è il registro di come ci si è arrivati.)*
+
+    Il Livello 1 su `0xc16fade4` era
     calcolato **e conveniente** — «l ask di YES sta entro il tetto: 22,2 share a 47,0¢ medi su 1
     livello · la coppia costa **98,8¢**» — e non viene mai tentato.
     - **Perché.** Il ramo del merge sta in `auto-close.js:467`, **dopo** la chiusura forzata a mercato
@@ -1328,10 +1465,11 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
       `readPositions`, `placeOrder`, `rimpiazzaGamba`, `audit` — non `cancelOrder`). Le righe 797 e 919
       lo iniettano, ma sono il ciclo di riprezzo e quello di mm-tracking. Esito: `exit-cancel-failed`
       con motivo `ignoto`, ogni 60 s, **da 24,5 ore**.
-    - **Fallisce nella direzione sicura** — non vende — ma la posizione resta ferma senza che nessuno
-      dei due percorsi la chiuda. **Non corretto in questa sessione, e per una ragione:** iniettare
-      `cancelOrder` armerebbe una **vendita a mercato** di 22,20 NO al bid, che è l'opposto di quello
-      che l'operatore ha chiesto per questo mercato (completare la coppia). La scelta fra le due è sua.
+    - **Falliva nella direzione sicura** — non vendeva — ma la posizione restava ferma senza che nessuno
+      dei due percorsi la chiudesse. All'epoca non era stato corretto perché iniettare `cancelOrder` da
+      solo avrebbe armato una **vendita a mercato** di 22,20 NO al bid, cioè l'opposto di completare la
+      coppia. La correzione dell'8 agosto sera risolve proprio quel dilemma: si inietta il cancellatore
+      **e** si mette il merge davanti alla vendita, quindi il ramo arriva in fondo *completando*.
 
 33. **La stessa guardia, un ramo più in là: `null` non è una cancellazione riuscita** — corretto in
     `main` l'8 agosto 2026, **aspetta il prossimo riavvio di agent40**. Al timeout del Livello 2
@@ -1348,8 +1486,47 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
       viene comunque rifiutata da `idempotent-duplicate` — è una coincidenza fortunata, non una
       protezione, ed è la ragione per cui la correzione è stata scritta subito.
     - Coperto da `lib/maker/merge-livelli-vivi.test.js` (64/64), caso `5f-bis`.
-    - **Riavvio non chiesto e non eseguito**: la correzione fa fare *meno* al bot, quindi aspettare
-      costa nulla, e un riavvio non richiesto su capitale reale non si prende da soli (§2 regola 2).
+    - **Riavvio non chiesto e non eseguito** allora; adesso rientra nei tre del punto 34.
+    - **L'8 agosto sera la stessa guardia è stata portata dentro `completaCoppia`**, che è l'unico posto
+      da cui i tre rami cancellano: la regola «`null` non è una cancellazione riuscita» vive ora in una
+      funzione sola invece che ripetuta in tre punti che potevano divergere.
+
+34. **TRE RIAVVII PENDENTI, e senza di loro il lavoro dell'8 agosto sera non è nei processi.** Il bot è
+    su KILL e il conto è piatto (zero posizioni, zero ordini), quindi non c'è fretta e non c'è rischio di
+    piazzamento durante il deploy — ma finché non si riavvia, i processi vivi hanno il codice di prima.
+    **Non eseguiti: un riavvio su capitale reale non si prende da soli (§2 regola 2).**
+
+    | processo | cosa entra in servizio | comando |
+    |---|---|---|
+    | `agent40-manual-reprice` | `cancelOrder` iniettato in `closeTask`; la gerarchia del merge senza scorciatoie (`already-covered` e `close-at-market` tentano la coppia); il Livello 1 preso anche durante l'attesa | `pm2 restart agent40-manual-reprice` |
+    | `agent41-realloc-scheduler` | ricalcolo leggero; mini-ciclo multi-mercato; obiettivo di utilizzo; rampa contata; kill come cancello; sorveglianza dell'AVVIA | ricostruire l'ambiente da `/proc` — **§5 punto 3** |
+    | `dashboard` | la rotta `GET /api/maker/utilizzo-capitale` | `pm2 restart dashboard` (verificare PRIMA `.next/prerender-manifest.json` — §5 punto 7) |
+
+    **agent40 e dashboard prendono la forma semplice**; **agent41 no**: non ha il caricatore di `.env` e
+    un `restart` per nome gli farebbe perdere 63 variabili fra cui `DATABASE_URL` e
+    `MAKER_FUNDER_ADDRESS`. Il comando completo, già usato due volte con successo, è nel punto 3.
+
+    **Cosa cambia il giorno in cui il KILL viene tolto e il bot torna su AVVIA**, e va saputo prima:
+    entro ~35 secondi dal click il mini-ciclo forzato ricalcola e piazza su **più mercati insieme** —
+    misurato in simulazione, $507 su 6 mercati con l'universo vero di stasera, cioè utilizzo **0% →
+    75,9%** in un giro solo. Prima era «un mercato ogni dieci minuti, e solo se il piano salvato lo
+    conteneva». È il comportamento che i sei requisiti chiedono, ma è un raggio d'azione più largo di
+    quello di ieri e la prima volta va guardato.
+
+35. **Il 75,9% e non il 90%: il target non si raggiunge sempre, ed è il punto.** Misurato in simulazione
+    sull'universo vero dell'8 agosto sera con $668,25 liberi: il ricalcolo leggero trova 6 mercati
+    ammissibili e il giro si ferma a **$507 (75,9%)**, non perché una protezione abbia morso ma perché
+    il tetto di 6 mercati per giro e i tetti per mercato non lasciano altro spazio *in quel giro*. Il
+    giro successivo riparte dal residuo. Su un piano finto con più righe lo stesso codice arriva a
+    **90,0% esatti** lasciando $66,82 liquidi. Le due misure insieme sono la prova che il target è un
+    metro e non una forzatura: quando i mercati bastano ci arriva, quando non bastano si ferma e lo
+    dichiara (`utilizzo 19,5% sotto l'obiettivo 90%: mancano $471,43 …`).
+
+36. **`REALLOC_PIANO_LEGGERO_ORE` è il primo parametro che governa quanta memoria consuma un figlio.**
+    A 6h il piano di prova costa 208-254 MB; a 48h ne costa 1074-1086. Il figlio non è soggetto al tetto
+    pm2 di agent41 (400 MB) perché è un processo suo — è la correzione del 4 agosto — ma su una macchina
+    con 2 vCPU e altri undici processi vivi la differenza è reale. Se un giorno il ricalcolo leggero
+    diventasse frequente (oggi è protetto dal cooldown di 10 minuti), è il numero da guardare per primo.
 
 ---
 

@@ -61,6 +61,9 @@ const { gambeDiUnaRiga } = require('../lib/rewards/plan-to-orders');
 const { capPerMarketUsd } = require('../lib/rewards/concentration');
 const TRIG = require('../lib/maker/trigger-capitale-fermo');
 const { appendMakerAudit } = require('../lib/venues/polymarket-clob-maker/audit');
+const killSwitch = require('../lib/safety/kill-switch');
+const { readVenuePositions } = require('../lib/safety/venue-positions-snapshot');
+const UTIL = require('../lib/maker/utilizzo-capitale');
 
 const ROOT = path.resolve(__dirname, '..');
 const DATA_DIR = path.join(ROOT, 'data');
@@ -90,7 +93,7 @@ const TRIGGER_ATTIVO = process.env.TRIGGER_CAPITALE_FERMO !== '0';
 // Due interruttori per la stessa decisione sono peggio di quello sbagliato da solo, perché chi ne
 // spegne uno crede di aver spento la cosa. Se `bot-enabled` non è leggibile la risposta è FERMO — il
 // ripiego è già dentro quel modulo e non ha bisogno di una seconda variabile che lo duplichi.
-const { statoBot, botAttivo, rampa, FILE: FILE_INTERRUTTORE } = require('../lib/maker/bot-enabled');
+const { statoBot, botAttivo, rampa, registraMercatoAperto, FILE: FILE_INTERRUTTORE } = require('../lib/maker/bot-enabled');
 const DASHBOARD = (process.env.REALLOC_DASHBOARD_BASE || 'http://127.0.0.1:3000').replace(/\/+$/, '');
 const CLOB_BASE = process.env.POLY_CLOB_BASE || 'https://clob.polymarket.com';
 // Un ciclo non parte mai nel primo minuto di vita del processo: un riavvio in serie di pm2 non deve
@@ -296,6 +299,63 @@ async function calcolaPiano({ capital, maxPerMarketUsd, onlyMarketIds = null, ex
     try { scriviUltimoPiano(piano); } catch (e) { annuncia('error', 'ultimo piano non salvato per il trigger', { error: e.message }); }
   }
   return piano;
+}
+
+// ── IL PIANO LEGGERO — «QUAL È IL MIGLIOR USO DEL CAPITALE LIBERO ADESSO» ───────────────────────────
+//
+// ═══ IL DIFETTO CHE CHIUDE ═══════════════════════════════════════════════════════════════════════════
+// Il mini-ciclo del trigger sceglieva SOLO dal piano già salvato su disco. Se quel piano non esisteva
+// (macchina appena avviata, `data/` ripulita, primo AVVIA), o se era vecchio, o se i suoi mercati non
+// avevano più spazio per il capitale libero, il trigger rispondeva «nessuna azione» e il capitale
+// restava fermo — pur essendoci mercati validi che nessuno stava guardando. Non era un caso di
+// laboratorio: l'8 agosto 2026 il primo AVVIA ha prodotto esattamente quello per ore.
+//
+// ═══ PERCHÉ «LEGGERO», E QUANTO LEGGERO — MISURATO, NON STIMATO ═════════════════════════════════════
+// Il piano pesante del ciclo a sei ore carica 48 ore di giornale e di tape: è quello che porta il
+// processo figlio a oltre un gigabyte. Ma la finestra è un PARAMETRO, e la domanda del trigger è più
+// stretta di quella del ciclo: non «come dovrebbe essere composto il portafoglio» ma «dove va il
+// capitale libero adesso». Misurato l'8 agosto 2026 su questo conto ($620, tetto 20%), due esecuzioni
+// per finestra:
+//
+//   finestra    tempo        RSS di picco      righe scelte
+//   48h        20,9-24,4 s   1074-1086 MB      7   ← il ciclo pesante
+//   12h        15,9 s          464 MB          7
+//   6h         12,3-13,1 s     208-254 MB      7   ← SCELTA
+//   3h         12,2-12,6 s     151-348 MB      7
+//   1h         12,4 s          322 MB          7   ma la COMPOSIZIONE cambia
+//
+// A sei ore il piano è lo STESSO del pesante — stessi sette mercati, stesso capitale per mercato, in
+// entrambe le esecuzioni — a un quarto della memoria e in metà tempo. A un'ora cambia: due righe si
+// spostano ($24→$36 e $96→$84), cioè la finestra è diventata troppo corta perché le stime siano le
+// stesse. Sei ore stanno a fattore sei dal punto in cui la risposta comincia a muoversi: è margine
+// misurato, non un numero tondo.
+//
+// Sotto i tredici secondi c'è un pavimento che la finestra non tocca (board, feature, punteggi di fill):
+// è il costo fisso del piano, ed è quello che rende possibile la promessa dei due minuti dall'AVVIA.
+//
+// ═══ COSA NON FA ════════════════════════════════════════════════════════════════════════════════════
+// NON scrive `realloc-ultimo-piano.json` e NON tocca le priorità del raccoglitore: quelle due sono la
+// memoria del ciclo pesante, e un piano calcolato su sei ore di storico non deve poter sostituire la
+// memoria di uno calcolato su quarantotto. Per questo chiama `calcolaPianoFuoriProcesso` e non
+// `calcolaPiano`.
+const FINESTRA_LEGGERA_ORE = (() => {
+  const v = Number(process.env.REALLOC_PIANO_LEGGERO_ORE);
+  // Stessa regola di fine scala e dell'orizzonte: un valore illeggibile o assurdo viene SCARTATO in
+  // favore del difetto misurato. Sotto le 2 ore la composizione cambia, e non si lascia che un `.env`
+  // sbagliato peggiori una scelta presa con la misura in mano.
+  return Number.isFinite(v) && v >= 2 && v <= 48 ? v : 6;
+})();
+
+async function pianoLeggero({ capital, maxPerMarketUsd, excludeMarketIds = null }) {
+  const to = new Date().toISOString();
+  const from = new Date(Date.now() - FINESTRA_LEGGERA_ORE * 3_600_000).toISOString();
+  return calcolaPianoFuoriProcesso({
+    capital, maxPerMarketUsd, from, to,
+    // TUTTE le protezioni restano quelle del piano pesante: il muro dell'orizzonte, la quota della coda
+    // lunga, il tetto di categoria sui book vuoti, il tetto di credibilità della quota. «Leggero» vuol
+    // dire meno storico, non meno regole — e nessuna di queste è un parametro che si passa da qui.
+    horizonFilter: true, excludeMarketIds,
+  });
 }
 
 // ── L'ULTIMO PIANO, RIDOTTO ALL'OSSO ────────────────────────────────────────────────────────────────
@@ -572,32 +632,39 @@ function piazzaCoppia(rows, diag) {
 // Ogni effetto collaterale e' iniettabile — la stessa disciplina del resto del maker. Serve a poter
 // eseguire QUESTA funzione, non una sua imitazione, con il piazzamento sostituito da un registratore:
 // una simulazione che gira su una copia del codice non dimostra niente sul codice che gira davvero.
+// QUANTO PUÒ ESSERE VECCHIO IL PIANO SALVATO perché valga ancora la pena partire da lui invece di
+// ricalcolare. Un'ora: è la soglia che il Requisito 5 nomina, ed è coerente con il resto — il board si
+// riscrive ogni 15 minuti, quindi a un'ora un piano ha visto passare quattro fotografie del mercato.
+// Oltre, il ricalcolo leggero costa tredici secondi e risponde alla domanda di ADESSO.
+const PIANO_FRESCO_MAX_MS = Number(process.env.REALLOC_PIANO_FRESCO_MAX_MS || 60 * 60_000);
+
 async function miniCiclo(decisione, deps = {}) {
   const leggiPiano = deps.leggiPiano || leggiUltimoPiano;
   const leggiOrdini = deps.listOrders || (() => listManualOrders({}));
   const piazza = deps.piazza || piazzaCoppia;
+  const ricalcola = deps.pianoLeggero || pianoLeggero;
+  const posizioni = deps.leggiPosizioni || readVenuePositions;
+  const rampaOra = deps.rampa || rampa;
+  const registra = deps.registraMercatoAperto || registraMercatoAperto;
   const etaBoard = deps.etaBoardMs !== undefined
     ? () => deps.etaBoardMs
     : () => { try { return Date.now() - fs.statSync(path.join(DATA_DIR, 'liquidity-rewards.json')).mtimeMs; } catch { return null; } };
 
   const t0 = Date.now();
   const referto = { tipo: 'mini-ciclo', at: new Date(t0).toISOString(), reason: 'capital-idle-trigger',
-    saldoUsd: decisione.saldoUsd, sogliaUsd: TRIG.SOGLIA_USD };
+    saldoUsd: decisione.saldoUsd, sogliaUsd: TRIG.SOGLIA_USD, forzato: decisione.forzato === true };
 
-  // 1 · L'ULTIMO PIANO. Senza, non c'e' niente da cui scegliere e non si inventa.
-  const piano = leggiPiano();
-  if (!piano.ok) return { ...referto, esito: 'nessuna-azione', motivo: piano.motivo || 'nessun piano salvato' };
-
-  // 2 · IL BOARD DEVE ESSERE FRESCO. Il prezzo delle gambe esce dal tocco vivo (`rif`), che viene dalla
+  // 1 · IL BOARD DEVE ESSERE FRESCO. Il prezzo delle gambe esce dal tocco vivo (`rif`), che viene dalla
   //     fotografia del board: se quella e' vecchia, il «vivo» non e' vivo. Si guarda l'eta' del FILE,
-  //     che e' l'unica cosa che dice davvero quando agent24 lo ha riscritto.
+  //     che e' l'unica cosa che dice davvero quando agent24 lo ha riscritto. Va PRIMA di tutto il resto
+  //     perche' senza board non serve ne' leggere gli ordini ne' — soprattutto — ricalcolare un piano.
   const etaBoardMs = etaBoard();
   if (etaBoardMs == null || etaBoardMs > TRIG.ETA_BOARD_MAX_MS) {
     return { ...referto, esito: 'nessuna-azione', etaBoardMs,
       motivo: `il board ha ${etaBoardMs == null ? 'eta ignota' : Math.round(etaBoardMs / 60000) + ' minuti'} (limite ${TRIG.ETA_BOARD_MAX_MS / 60000}): il tocco su cui si quota non e' vivo` };
   }
 
-  // 3 · QUANTO C'E' GIA' A RIPOSO, per mercato. E' l'unica lettura del venue di questo percorso, e
+  // 2 · QUANTO C'E' GIA' A RIPOSO, per mercato. E' l'unica lettura del venue di questo percorso, e
   //     avviene SOLO adesso — non a ogni controllo dei due minuti.
   let ordini;
   try { ordini = await leggiOrdini(); }
@@ -606,62 +673,156 @@ async function miniCiclo(decisione, deps = {}) {
     return { ...referto, esito: 'nessuna-azione', motivo: `ordini a riposo non leggibili: ${(ordini && ordini.error) || 'risposta vuota'}` };
   }
   const perMercato = TRIG.notionalePerMercato(ordini.orders || []);
-
-  // 4 · IL MERCATO E QUANTO. Il tetto di concentrazione e' quello di sempre, calcolato sul capitale
-  //     TOTALE (liquido + gia' a riposo): un tetto sul solo residuo non sarebbe il tetto del piano.
   const aRiposo = Object.values(perMercato).reduce((t, x) => t + x, 0);
-  const capitaleTotale = decisione.saldoUsd + aRiposo;
-  const scelta = TRIG.scegliMercato({
-    righe: piano.righe,
-    disponibileUsd: decisione.saldoUsd,
-    notionalePerMercato: perMercato,
-    capPerMercatoUsd: capPerMarketUsd(capitaleTotale),
-    // Una riga le cui gambe non si costruiscono viene SALTATA, non fa fallire il giro: la scelta
-    // passa alla successiva della graduatoria. Senza questo, una sola riga malformata in testa al
-    // piano — l'8 agosto 2026 una con `tick: null` — bastava a tenere fermo tutto il capitale.
-    // È la STESSA funzione del passo 5 qui sotto, quindi il verdetto non può divergere.
-    gambeCostruibili: (riga) => {
-      const g = gambeDiUnaRiga(riga, riga.computedDefaultOffsetTicks);
-      if (g.scarto) return { ok: false, motivo: `${g.scarto.motivo} — ${g.scarto.dettaglio}` };
-      if (!g.rows) return { ok: false, motivo: 'nessuna riga costruita' };
-      return { ok: true };
-    },
+
+  // 3 · L'UTILIZZO DEL CAPITALE, MISURATO PRIMA DI AGIRE. Non e' un cancello: e' il metro che dice
+  //     quanto di questo giro serve davvero, e che finisce nel referto perche' «il capitale e' fermo»
+  //     smetta di essere un'impressione. Una lettura delle posizioni che fallisce NON ferma il giro —
+  //     il cancello del trigger e' il saldo, e quello e' gia' stato letto — ma si dichiara.
+  let posLette = null;
+  try { posLette = posizioni(); } catch (e) { posLette = { readable: false, reason: e.message, positions: [] }; }
+  const valorePos = posLette && posLette.readable === true ? UTIL.valorePosizioni(posLette.positions || []) : null;
+  const utilPrima = UTIL.misuraUtilizzo({
+    saldoUsd: decisione.saldoUsd, ordiniARiposoUsd: +aRiposo.toFixed(4), posizioniUsd: valorePos,
   });
-  if (!scelta.riga) {
-    return { ...referto, esito: 'nessuna-azione', motivo: scelta.motivo, esaminate: scelta.esaminate.slice(0, 6),
+  // Il capitale TOTALE per il tetto di concentrazione: se le posizioni non si leggono si usa
+  // liquido + ordini, che e' la stima piu' BASSA possibile — quindi il tetto per mercato piu' stretto.
+  // Sbagliare in difetto qui vuol dire piazzare meno, che e' il verso sicuro.
+  const capitaleTotale = utilPrima.leggibile ? utilPrima.capitaleTotaleUsd : decisione.saldoUsd + aRiposo;
+  const capMercato = capPerMarketUsd(capitaleTotale);
+  // Quanto si PUNTA a impegnare in questo giro: il deficit rispetto al 90%, mai piu' del liquido.
+  // Non e' un permesso — non alza nessun tetto — e se la misura non e' leggibile si usa il liquido,
+  // cioe' il comportamento di prima.
+  const obiettivoUsd = utilPrima.leggibile ? Math.min(decisione.saldoUsd, utilPrima.deficitUsd) : decisione.saldoUsd;
+
+  // 4 · LE RIGHE FRA CUI SCEGLIERE. Prima l'ultimo piano se e' fresco (costa una lettura di file), e
+  //     solo se quello non produce niente si RICALCOLA. E' l'ordine giusto: il caso comune — un piano
+  //     di venti minuti fa con un mercato svuotato da una chiusura — non paga tredici secondi.
+  const gambeCostruibili = (riga) => {
+    const g = gambeDiUnaRiga(riga, riga.computedDefaultOffsetTicks);
+    if (g.scarto) return { ok: false, motivo: `${g.scarto.motivo} — ${g.scarto.dettaglio}` };
+    if (!g.rows) return { ok: false, motivo: 'nessuna riga costruita' };
+    return { ok: true };
+  };
+  const r = rampaOra();
+  const comuni = {
+    notionalePerMercato: perMercato, capPerMercatoUsd: capMercato, gambeCostruibili,
+    obiettivoImpegnoUsd: obiettivoUsd,
+    // La RAMPA e' una protezione esistente e vince sul target di utilizzo (Requisito 1.3): se non
+    // restano mercati nuovi da aprire nelle prime ore dall'AVVIA, il giro si ferma e lo dichiara.
+    nuoviAmmessi: r && r.attiva ? r.residuo : Infinity,
+    mercatiGiaAperti: Object.keys(perMercato),
+  };
+
+  const piano = leggiPiano();
+  const etaPianoMs = piano.ok && piano.at ? Date.now() - Date.parse(piano.at) : null;
+  const pianoFresco = piano.ok && Number.isFinite(etaPianoMs) && etaPianoMs <= PIANO_FRESCO_MAX_MS;
+  let giro = { scelte: [], motivoStop: piano.ok ? null : (piano.motivo || 'nessun piano salvato') };
+  let fonte = null;
+  if (pianoFresco) {
+    giro = TRIG.pianificaGiro({ ...comuni, righe: piano.righe, disponibileUsd: decisione.saldoUsd });
+    fonte = `piano salvato (${Math.round(etaPianoMs / 60000)} min)`;
+  }
+
+  // ── IL RICALCOLO, QUANDO IL PIANO SALVATO NON BASTA ────────────────────────────────────────────
+  // Tre casi, e sono tutti «il piano vecchio non risponde alla domanda di adesso»: non c'e', e' piu'
+  // vecchio di un'ora, oppure c'e' ed e' fresco ma nessuna delle sue righe ha spazio per il capitale
+  // libero. Il terzo e' quello che il Requisito 2 chiama per nome: prima il trigger si fermava li'.
+  let pianoRicalcolato = null;
+  if (!giro.scelte.length) {
+    const perche = !piano.ok ? (piano.motivo || 'nessun piano salvato')
+      : !pianoFresco ? `il piano salvato ha ${etaPianoMs == null ? 'eta ignota' : Math.round(etaPianoMs / 60000) + ' minuti'} (limite ${PIANO_FRESCO_MAX_MS / 60000})`
+        : `il piano salvato non ha righe utilizzabili adesso (${giro.motivoStop})`;
+    annuncia('log', `mini-ciclo: ricalcolo leggero — ${perche}`);
+    const tRic = Date.now();
+    try {
+      pianoRicalcolato = await ricalcola({ capital: decisione.saldoUsd, maxPerMarketUsd: capMercato });
+    } catch (e) {
+      return { ...referto, esito: 'nessuna-azione', utilizzo: utilPrima,
+        motivo: `${perche}, e il ricalcolo leggero e' fallito: ${e.message}` };
+    }
+    const righeFresche = (pianoRicalcolato && pianoRicalcolato.rows) || [];
+    referto.ricalcolo = { motivo: perche, durataMs: Date.now() - tRic, righe: righeFresche.length,
+      finestraOre: FINESTRA_LEGGERA_ORE };
+    if (!righeFresche.length) {
+      return { ...referto, esito: 'nessuna-azione', utilizzo: utilPrima,
+        motivo: `${perche} — e il ricalcolo leggero non ha trovato nessun mercato ammissibile adesso:`
+          + ' il capitale resta liquido perche' + ' non c\'e\' dove metterlo, non perche\' non si e\' guardato' };
+    }
+    giro = TRIG.pianificaGiro({ ...comuni, righe: righeFresche, disponibileUsd: decisione.saldoUsd });
+    fonte = `ricalcolo leggero (${FINESTRA_LEGGERA_ORE}h, ${Date.now() - tRic}ms)`;
+  }
+
+  if (!giro.scelte.length) {
+    return { ...referto, esito: 'nessuna-azione', motivo: giro.motivoStop, fonte,
+      esaminate: (giro.esaminate || []).slice(0, 6), utilizzo: utilPrima,
       capitaleTotale: +capitaleTotale.toFixed(2), aRiposoUsd: +aRiposo.toFixed(2) };
   }
 
-  // 5 · LE DUE GAMBE, con la STESSA funzione del piano e del pannello. Se una delle due non e'
-  //     piazzabile — fuori banda, prezzo sull'ask, lato impossibile — non si piazza NESSUNA delle due:
-  //     una gamba sola matura zero fuori dal range [0,10-0,90] e un terzo dentro.
-  const g = gambeDiUnaRiga(scelta.riga, scelta.riga.computedDefaultOffsetTicks);
-  if (g.scarto || !g.rows) {
-    return { ...referto, esito: 'nessuna-azione', marketId: scelta.riga.marketId,
-      motivo: `le gambe non sono costruibili: ${g.scarto ? `${g.scarto.motivo} — ${g.scarto.dettaglio}` : 'nessuna riga'}` };
+  // 5 · LE GAMBE DI OGNI MERCATO SCELTO, con la STESSA funzione del piano e del pannello. Se una delle
+  //     due non e' piazzabile non si piazza NESSUNA delle due di QUEL mercato — gli altri proseguono.
+  const righeOrdine = [];
+  const mercati = [];
+  for (const s of giro.scelte) {
+    const g = gambeDiUnaRiga(s.riga, s.riga.computedDefaultOffsetTicks);
+    if (g.scarto || !g.rows) continue;   // gia' filtrato dal predicato, ma il verdetto vale solo se ricontrollato
+    righeOrdine.push(...g.rows);
+    mercati.push({ marketId: s.riga.marketId, titolo: s.riga.name || null, allocatoUsd: s.allocatoUsd, nuovo: s.nuovo });
+  }
+  if (!righeOrdine.length) {
+    return { ...referto, esito: 'nessuna-azione', fonte, utilizzo: utilPrima,
+      motivo: 'nessuna gamba costruibile fra i mercati scelti' };
   }
 
-  // 6 · IL PIAZZAMENTO. Stessa corsia del reset, stesso timbro. NESSUNA cancellazione: la corsia
-  //     riceve `cancelOrder` solo perche' la usa per RITIRARE una gamba rimasta sola se l'altra viene
-  //     rifiutata — e' l'unico uso, e riduce esposizione, mai la aumenta.
+  // 6 · IL PIAZZAMENTO, UNA SOLA CHIAMATA per tutte le gambe del giro. Stessa corsia del reset, stesso
+  //     timbro. NESSUNA cancellazione: la corsia riceve `cancelOrder` solo perche' la usa per RITIRARE
+  //     una gamba rimasta sola se l'altra viene rifiutata — e' l'unico uso, e riduce esposizione.
   const diag = deps.diag !== undefined ? deps.diag : diagnoseExposure({});
-  const esito = await piazza(g.rows, diag);
+  const esito = await piazza(righeOrdine, diag);
 
-  // 7 · L'AUDIT, con un motivo TUTTO SUO. Serve a poter contare nel tempo quante volte il trigger e'
+  // 7 · LA RAMPA CONTA DAVVERO. `registraMercatoAperto` era esportata e non la chiamava nessuno, quindi
+  //     il tetto delle prime ore non si chiudeva mai (CLAUDE.md §5 punto 22). Adesso che questo giro
+  //     puo' aprire piu' mercati in una volta, contarli non e' un dettaglio: e' la differenza fra una
+  //     rampa e una decorazione. Si registra solo dopo un piazzamento riuscito.
+  const registrati = [];
+  if (esito && esito.placed > 0) {
+    for (const m of mercati) {
+      try { const rr = registra({ marketId: m.marketId }); if (rr && rr.ok && !rr.giaPresente) registrati.push(m.marketId); }
+      catch { /* il conteggio della rampa non deve poter far fallire un ordine gia' mandato */ }
+    }
+  }
+
+  // 8 · L'UTILIZZO DOPO, con il capitale che questo giro ha impegnato. E' una STIMA dichiarata come
+  //     tale: il venue conferma gli ordini in modo asincrono, e la misura vera torna al giro dopo
+  //     leggendo di nuovo saldo e ordini. Serve a rispondere subito a «quanto ci siamo avvicinati».
+  const impegnatoOra = giro.allocatoUsd;
+  const utilDopo = UTIL.misuraUtilizzo({
+    saldoUsd: Math.max(0, decisione.saldoUsd - impegnatoOra),
+    ordiniARiposoUsd: +(aRiposo + impegnatoOra).toFixed(4),
+    posizioniUsd: valorePos,
+    motivoDeficit: giro.motivoStop,
+  });
+
+  // 9 · L'AUDIT, con un motivo TUTTO SUO. Serve a poter contare nel tempo quante volte il trigger e'
   //     scattato e quanto capitale ha rimesso al lavoro, senza confonderlo coi cicli fissi.
   try {
     appendMakerAudit({
       ts: Date.now(), venue: 'polymarket', source: 'realloc-scheduler', op: 'capital-idle-trigger',
       reason: 'capital-idle-trigger',
-      marketId: scelta.riga.marketId, capitaleUsd: scelta.allocatoUsd,
+      marketId: mercati.map((m) => m.marketId).join(','), capitaleUsd: impegnatoOra,
       saldoPrimaUsd: decisione.saldoUsd, sogliaUsd: TRIG.SOGLIA_USD,
       placed: esito && esito.placed, refused: esito && esito.refused,
+      observed: { fonte, mercati: mercati.length, forzato: decisione.forzato === true,
+        utilizzoPrimaPct: utilPrima.pct, utilizzoDopoPct: utilDopo.pct, targetPct: utilPrima.targetPct },
     });
   } catch { /* l'audit non blocca un ordine gia' mandato */ }
 
   return {
-    ...referto, esito: 'allocato', marketId: scelta.riga.marketId,
-    titolo: scelta.riga.name || null, allocatoUsd: scelta.allocatoUsd,
+    ...referto, esito: 'allocato', fonte,
+    mercati, marketId: mercati[0] && mercati[0].marketId, titolo: mercati[0] && mercati[0].titolo,
+    allocatoUsd: impegnatoOra, residuoUsd: giro.residuoUsd, motivoStop: giro.motivoStop,
+    rampaRegistrati: registrati,
+    utilizzo: utilPrima, utilizzoStimatoDopo: utilDopo,
     capitaleTotale: +capitaleTotale.toFixed(2), aRiposoUsd: +aRiposo.toFixed(2),
     piazzati: esito && esito.placed, rifiutati: esito && esito.refused,
     durataMs: Date.now() - t0, risultati: esito && esito.results,
@@ -669,14 +830,24 @@ async function miniCiclo(decisione, deps = {}) {
 }
 
 /** Il controllo periodico. Costa una lettura di saldo (in cache) e niente altro finche' non scatta. */
-async function controlloCapitaleFermo() {
+async function controlloCapitaleFermo({ forzatoDa = null } = {}) {
   if (inCorso) return;                    // il lucchetto, prima di qualunque I/O
   // ── I CANCELLI GRATUITI PRIMA DI QUELLO CHE COSTA (8 agosto 2026) ──────────────────────────────
   // `leggiSaldo` e' una chiamata HTTP al dashboard che a sua volta fa una lettura on-chain (cache TTL
   // 45s, sotto la cadenza di 120s: quindi ogni giro ne provocava una nuova). Farla PRIMA di guardare
   // se il bot e' avviato significava ~720 letture al giorno per una decisione gia' presa: a bot FERMO
   // il trigger non scatta comunque. I due controlli che non costano niente vanno prima.
+  //
+  // E da oggi c'e' un terzo cancello gratuito, il KILL: da quando il mini-ciclo puo' RICALCOLARE, un
+  // giro sprecato non costa piu' una lettura ma tredici secondi e centinaia di megabyte.
   if (!TRIGGER_ATTIVO || !botAttivo()) return;
+  let kill = { effectivelyKilled: false, readable: true };
+  try { kill = killSwitch.killStatus(); } catch { kill = { effectivelyKilled: true, readable: false }; }
+  const killAttivo = kill.effectivelyKilled === true || kill.readable === false;
+  if (killAttivo) {
+    if (forzatoDa) annuncia('log', `avvio forzato ignorato: kill-switch ${kill.readable === false ? 'NON LEGGIBILE' : 'ATTIVO'} — nessun piazzamento`);
+    return;
+  }
   let saldo = null;
   try { saldo = await leggiSaldo(); } catch (e) { saldo = { readable: false, error: e.message }; }
   const st = leggiStato();
@@ -684,12 +855,19 @@ async function controlloCapitaleFermo() {
     abilitato: TRIGGER_ATTIVO,
     botAttivo: botAttivo(),
     cicloInCorso: inCorso,
+    killAttivo,
     saldo,
     ultimoCicloAt: fin(st.lastRunAt) ? st.lastRunAt : null,
     ultimoTriggerAt,
     now: Date.now(),
+    // Un AVVIA non e' un timer che scatta: salta quiete e cooldown, e NIENTE ALTRO.
+    ignoraAttese: !!forzatoDa,
+    motivoForzatura: forzatoDa,
   });
-  if (!d.scatta) return;
+  if (!d.scatta) {
+    if (forzatoDa) annuncia('log', `avvio forzato: nessuna azione — ${d.motivo}`);
+    return;
+  }
 
   // Il lucchetto si prende ADESSO: fino a qui non si e' fatto niente che vada protetto, e prenderlo
   // prima avrebbe bloccato il ciclo delle sei ore per tutta la durata di una lettura di saldo.
@@ -707,11 +885,56 @@ async function controlloCapitaleFermo() {
 
   scrivi(r);
   if (r.esito === 'allocato') {
-    annuncia('log', `mini-ciclo: $${r.allocatoUsd} rimessi al lavoro su ${String(r.marketId).slice(0, 10)}…`
-      + ` (${r.piazzati} ordini piazzati, ${r.rifiutati} rifiutati)`);
+    annuncia('log', `mini-ciclo${r.forzato ? ' FORZATO' : ''}: $${r.allocatoUsd} rimessi al lavoro su ${(r.mercati || []).length} mercato/i`
+      + ` (${r.piazzati} ordini piazzati, ${r.rifiutati} rifiutati) · fonte: ${r.fonte}`
+      + ` · ${UTIL.formattaUtilizzo(r.utilizzoStimatoDopo)}`);
   } else if (r.esito === 'nessuna-azione') {
     annuncia('log', `mini-ciclo: nessuna azione — ${r.motivo}`);
   }
+}
+
+// ── IL SORVEGLIANTE DELL'INTERRUTTORE — «AVVIA» DEVE PIAZZARE IN MINUTI, NON IN ORE ─────────────────
+//
+// ═══ IL DIFETTO ══════════════════════════════════════════════════════════════════════════════════════
+// Premere AVVIA non anticipava niente. Il ciclo fisso conta dalle sei ore dell'ultimo `lastRunAt` su
+// disco, quindi l'8 agosto 2026 un AVVIA alle 12:07 aveva il primo ciclo utile alle 16:16 — quattro ore
+// dopo, con il capitale fermo nel frattempo. E il trigger a capitale fermo non poteva coprirlo, perche'
+// leggeva un piano salvato che a macchina fredda non esiste ancora.
+//
+// ═══ LA CORREZIONE, E PERCHE' NON TOCCA IL TIMER ════════════════════════════════════════════════════
+// Questo sorvegliante NON sposta `lastRunAt` e non anticipa il ciclo delle sei ore: quello ribilancia e
+// cancella, e farlo partire da un bottone sarebbe un'azione molto piu' grande di quella che il bottone
+// promette. Fa la cosa piccola: si accorge che l'interruttore e' passato a AVVIA e lancia UN mini-ciclo
+// forzato, che adesso sa ricalcolare da solo. Il ciclo pesante resta sul suo orologio.
+//
+// ═══ IL CONTO DEI DUE MINUTI ════════════════════════════════════════════════════════════════════════
+//   rilevazione     ≤ 15 s   (questo timer)
+//   saldo           ~1 s     (cache 45 s, lettura locale)
+//   ordini a riposo ~1-3 s   (una chiamata al venue)
+//   ricalcolo       ~13 s    (piano leggero a 6 h — misurato, vedi FINESTRA_LEGGERA_ORE)
+//   piazzamento     ~2-6 s   (una sola chiamata per tutte le gambe del giro)
+//   ───────────────────────
+//   totale          ~20-40 s, con il margine dei due minuti tutto ancora davanti.
+//
+// ═══ PERCHE' L'ISTANTE E NON UN BOOLEANO ════════════════════════════════════════════════════════════
+// Si confronta `statoBot().at` — l'istante in cui l'interruttore e' stato scritto — e non «prima era
+// falso, adesso e' vero». Con un booleano, un AVVIA premuto mentre questo processo era giu' sarebbe
+// stato visto come «acceso da sempre» al riavvio successivo. Con l'istante si distingue, e all'avvio si
+// parte dall'istante corrente PROPRIO per non far scattare un piazzamento come effetto di un riavvio:
+// un pm2 restart non e' un bottone premuto da una persona.
+const AVVIO_CADENZA_MS = Number(process.env.REALLOC_AVVIO_CADENZA_MS || 15_000);
+let ultimoAvvioVisto = null;
+
+async function sorvegliaAvvio() {
+  let s;
+  try { s = statoBot(); } catch { return; }
+  if (!s || s.leggibile !== true || !Number.isFinite(s.at)) return;
+  if (ultimoAvvioVisto == null) { ultimoAvvioVisto = s.at; return; }
+  if (s.at <= ultimoAvvioVisto) return;
+  ultimoAvvioVisto = s.at;
+  if (s.enabled !== true) { annuncia('log', 'interruttore commutato su FERMA: nessun ciclo, i piazzamenti nuovi si fermano dal prossimo giro'); return; }
+  annuncia('log', `AVVIA rilevato (${s.by || 'ignoto'}) — mini-ciclo forzato subito: non si aspetta ne' il cooldown ne' il ciclo delle sei ore`);
+  await controlloCapitaleFermo({ forzatoDa: 'AVVIA appena premuto' });
 }
 
 // ── IL TIMER ────────────────────────────────────────────────────────────────────────────────────────
@@ -767,10 +990,18 @@ function main() {
   // sarebbe una decisione presa senza contesto. `unref()` non serve — questo processo vive comunque.
   if (TRIGGER_ATTIVO) {
     annuncia('log', `trigger capitale fermo ACCESO — soglia $${TRIG.SOGLIA_USD}, controllo ogni ${TRIG.CADENZA_MS / 1000}s`
-      + ` · non cancella niente, non ricalcola il piano, e rilegge AVVIA/FERMA a ogni controllo`);
+      + ` · non cancella niente, rilegge AVVIA/FERMA e il kill a ogni controllo`
+      + ` · obiettivo di utilizzo ${Math.round(UTIL.TARGET_UTILIZZO * 100)}%, fino a ${TRIG.MAX_MERCATI_PER_GIRO} mercati per giro`
+      + ` · se il piano salvato manca, e' vecchio (> ${PIANO_FRESCO_MAX_MS / 60000} min) o non ha spazio, RICALCOLA (piano leggero a ${FINESTRA_LEGGERA_ORE}h)`);
     setTimeout(() => {
       setInterval(() => { controlloCapitaleFermo().catch((e) => annuncia('error', 'controllo capitale fermo fallito', { error: e.message })); }, TRIG.CADENZA_MS);
     }, STARTUP_DELAY_MS);
+    // Il sorvegliante dell'interruttore parte SUBITO e non dopo il minuto di grazia: la sua prima
+    // esecuzione non piazza niente per costruzione (inizializza l'istante), e serve proprio a essere
+    // gia' in ascolto se qualcuno preme AVVIA nel primo minuto di vita del processo.
+    annuncia('log', `sorveglianza dell'interruttore ACCESA — controllo ogni ${AVVIO_CADENZA_MS / 1000}s: un AVVIA fa partire un mini-ciclo forzato entro ~2 minuti`);
+    sorvegliaAvvio().catch(() => {});
+    setInterval(() => { sorvegliaAvvio().catch((e) => annuncia('error', 'sorveglianza avvio fallita', { error: e.message })); }, AVVIO_CADENZA_MS);
   } else {
     annuncia('log', 'trigger capitale fermo SPENTO (TRIGGER_CAPITALE_FERMO=0) — resta solo il ciclo fisso');
   }
@@ -779,4 +1010,5 @@ function main() {
 if (require.main === module) main();
 
 module.exports = { leggiVenue, leggiSaldo, prossimoRitardo, scriviUltimoPiano, leggiUltimoPiano,
-  miniCiclo, LOG_FILE, STATE_FILE, POOLS_FILE, ULTIMO_PIANO_FILE };
+  miniCiclo, pianoLeggero, sorvegliaAvvio, LOG_FILE, STATE_FILE, POOLS_FILE, ULTIMO_PIANO_FILE,
+  FINESTRA_LEGGERA_ORE, PIANO_FRESCO_MAX_MS, AVVIO_CADENZA_MS };

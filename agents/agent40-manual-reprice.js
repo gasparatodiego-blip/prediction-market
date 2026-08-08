@@ -496,6 +496,24 @@ async function closeTask() {
       // Su file e non in memoria: un'attesa di 60 minuti che si azzera a ogni riavvio del processo non
       // e' un timeout, e agent40 riavvia. auto-close resta puro — qui c'e' l'unica scrittura.
       attesaMerge: registroAttesaMerge(),
+      // ── IL CANCELLATORE, CHE QUI NON C'ERA — E TRE PERCORSI LO ASPETTAVANO ───────────────────────
+      // `auto-close` chiama `deps.cancelOrder` in tre punti, tutti e tre PRIMA di fare qualcosa di
+      // irreversibile: la chiusura forzata a mercato (toglie l'uscita e la liquidita' prima di vendere
+      // al bid), il timeout del Livello 2 (toglie il completamento prima di vendere) e — da oggi — il
+      // completamento della coppia (toglie l'uscita prima di comprare l'altro lato). Senza questa
+      // riga tutti e tre ricevevano `undefined`, che `typeof … === 'function'` traduce in `null`.
+      //
+      // Misurato l'8 agosto 2026: su Schwartzel FL-19 la chiusura forzata falliva con
+      // `exit-cancel-failed` motivo «ignoto» ogni 60 secondi da oltre ventiquattro ore, e il Livello 1
+      // — coppia a 98,8¢, cioe' conveniente — restava irraggiungibile perche' quel ramo non arrivava
+      // mai in fondo. Le righe 797 e 919 lo iniettavano gia', ma sono il ciclo di riprezzo e quello di
+      // mm-tracking: percorsi diversi, che non passano da `closeTask`.
+      //
+      // E' la STESSA funzione degli altri due cicli, con la sua etichetta di origine: una cancellazione
+      // riduce esposizione e non e' mai vincolata alla allowlist, quindi non apre nessuna superficie
+      // nuova — toglie soltanto il caso in cui «non ho potuto togliere l'ordine» era indistinguibile da
+      // «non ho nemmeno provato».
+      cancelOrder: (spec) => cancelManualOrder(spec, AUTO_CLOSE_SOURCE),
       listOrders: ({ marketId }) => listManualOrders({ marketId }),
       // La stessa lettura del compito dello snapshot, riusata: una fonte sola, e nessuna seconda
       // chiamata al venue nello stesso giro.
