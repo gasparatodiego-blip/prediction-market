@@ -3,7 +3,7 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt**: non serve più reincollarlo ogni volta.
 
-Ultima verifica contro codice/stato reali: **8 agosto 2026**, ~08:40 UTC.
+Ultima verifica contro codice/stato reali: **8 agosto 2026**, ~09:40 UTC.
 
 > **Il codice della sera del 7 agosto è in `main` E nei processi vivi** (riavvii autorizzati alle
 > ~23:52–23:57 UTC): fine scala su quattro percorsi, cadenza adattiva, pannello del mid vivo, timbro
@@ -13,15 +13,20 @@ Ultima verifica contro codice/stato reali: **8 agosto 2026**, ~08:40 UTC.
 > agent34 e il `dashboard` sono stati riavviati alle ~07:21–07:22 UTC con l'autorizzazione esplicita
 > dell'utente in chat: graduatoria della corsia calda con K/N rimisurati, punteggio di posizione nella
 > selezione e confronto stima/consuntivo sono **attivi**. Vedi §5 punto 9 per la verifica.
-> **Anche il codice della SERA dell'8 agosto è vivo — e senza nessun riavvio.** Il tetto di credibilità
-> della quota dentro l'obiettivo del knapsack (`useCredibleShareCap`) è committato, pushato e
-> costruito, e **è già in servizio**: entrambi i percorsi che calcolano un piano lo fanno in un processo
-> node NUOVO, che rilegge il codice da disco — `/api/rewards/allocate` per il pannello «Ottimizza» e
-> `RUNNER_PIANO` per agent41 (`agents/agent41-realloc-scheduler.js:225`, un figlio che nasce, calcola e
-> muore, introdotto il 4 agosto per non far esplodere i 400 MB di tetto pm2). Verificato eseguendo
-> **quel comando esatto**: risponde `tettoCredibilita: true`. Vedi §5 punto 14.
 >
-> **Sui riavvii non resta altro.** `REALLOC_SCHEDULER_DRY_RUN` è ancora nell'ambiente di
+> **Anche il codice della SERA dell'8 agosto è vivo — e quasi tutto senza riavvii.** Il tetto di
+> credibilità della quota, la distinzione fra deserto misurato e buco e il tetto di categoria sui book
+> vuoti sono **già in servizio**: entrambi i percorsi che calcolano un piano lo fanno in un processo
+> node NUOVO che rilegge il codice da disco — `/api/rewards/allocate` per il pannello «Ottimizza» e
+> `RUNNER_PIANO` per agent41 (`agents/agent41-realloc-scheduler.js:225`). Verificato eseguendo **quel
+> comando esatto**: risponde `tettoCredibilita: true`. Vedi §5 punto 14.
+>
+> **Due cose invece aspettano.** Il consuntivo reward dalla fonte nuova entra in servizio al prossimo
+> giro notturno di **agent40**, che gira ancora col codice delle 07:22 (il registro è già stato
+> riempito a mano con i consuntivi veri, quindi il dato non manca: manca solo l'automatismo). E la
+> rinomina in `agent43-guardian` è nel codice ma non in pm2 — serve un `delete` + `start`, §5 punto 15.
+>
+> **A parte quelli, sui riavvii non resta altro.** `REALLOC_SCHEDULER_DRY_RUN` è ancora nell'ambiente di
 > agent41 e ci **resta per decisione dell'operatore** (8 agosto 2026): è inerte, e un `restart` non può
 > toglierla in nessuna forma — vive nella descrizione in memoria di pm2, e `--update-env` fonde invece
 > di sostituire. Il punto 3 di §5 è stato riscritto con la misura, con la tecnica giusta per riavviare
@@ -358,6 +363,29 @@ un'informazione più ottimistica di quella con cui il piano veniva poi giudicato
 - **Non tocca l'esecuzione**: zero offset di piazzamento cambiati, e un test verifica che nessun modulo
   di `lib/maker/` nomini il tetto (158 file controllati).
 
+**E il caso degenere: concorrenza misurata ZERO** (8 agosto 2026 sera — in `main`, già in servizio).
+`share = size/(size+cQ)` vale **1** quando la concorrenza in banda vale 0, e il knapsack massimizza: un
+book vuoto era l'occasione migliore che potesse leggere, mentre `realisticEstimate` su quel caso si
+**rifiuta** di stimare (`empty-book`). Due meccanismi, con lo stesso interruttore:
+- **Lo zero è un fatto o un buco?** Si può sapere: `agent34` scrive la profondità in banda come `null`
+  quando banda, mid o book mancano, e come **numero solo dopo aver camminato ogni ordine** dentro la
+  banda. Uno **0** è «ho guardato e non c'era nessuno»; un dato mancante è `null` e non diventa mai
+  zero. `profonditaVerificata(rows)` classifica `misurata` / `vuota-verificata` (mediana zero con ≥10
+  campioni misurati e ≥1 zero su book **fresco**, `src:'ws'`) / `non-verificata`. Sul terzo caso
+  **l'obiettivo si astiene** — niente punteggio, e neanche un fattore più basso inventato.
+- **Quanto piano può reggere un deserto verificato?** `capVuotiFrac = 0,30`: i mercati con book vuoto
+  verificato possono valere insieme al più il 30% del lordo pesato del piano; oltre, si tengono i
+  migliori e gli altri restano fuori col motivo, e il DP rigira (lo stesso idioma del filtro orizzonte).
+  Serve perché **un tetto di capitale non basterebbe**: con `cQ = 0` la quota vale 1 a qualunque size,
+  quindi il lordo è piatto e il knapsack dà già il minimo — l'unica leva è quanti ne entrano.
+  0,30 e non altro: il tetto per *mercato* è 0,20 sul *capitale*, e questo vincola il *lordo modellato*
+  di una *categoria*, quindi è deliberatamente più largo — ma resta sotto la metà.
+- **Misurato**: su cinque finestre (dal vivo a −36h) i mercati a profondità mediana zero sono 0-2 e
+  sono **tutti verificati** — lo zero non verificato non si presenta mai, quindi il primo meccanismo è
+  protettivo e non correttivo. Sul piano vero ($660): 1 mercato su 6 è un deserto verificato e pesa il
+  **25,9%** del lordo pesato, sotto il tetto ⇒ **il piano non cambia**. I due meccanismi sono tarati
+  perché la situazione di oggi passi e quella delle 20:00 (73% su un mercato solo) no.
+
 **La corsia calda si ordina sull'obiettivo del knapsack** (`collector-priority.js`, 8 agosto 2026 —
 in `main`, non ancora nei processi). L'unione mobile con isteresi c'era; la **graduatoria** dei
 quasi-vincitori no: era ordinata per `bestNetPerDay`, che `calcNetPerDay` annulla quando nessun fill è
@@ -419,8 +447,28 @@ di questo maker. Una lettura vale quindi solo se **almeno una riga è attribuita
 indirizzo (EOA o funder); altrimenti `disponibile:false`, `attribuito:false`, motivo per esteso.
 Il verdetto sulla deriva (`divergenza`) è **mediana ≥30% su ≥5 giornate confrontabili e ≥80% nello
 stesso verso**, viaggia nel file, nella rotta e nel log di agent40 quando *cambia*; `dati-insufficienti`
-è un terzo esito e non vuol dire «va bene». **Non corregge niente** per scelta. Stato reale: **zero
-giornate confrontabili** — vedi §5 punto 11.
+è un terzo esito e non vuol dire «va bene». **Non corregge niente** per scelta.
+
+**LA FONTE CHE ATTRIBUISCE DAVVERO, trovata l'8 agosto sera.** Il CLOB non attribuisce nulla, e la
+ragione non era l'endpoint: era l'**identità**. Le credenziali L2 sono dell'EOA che firma, ma su un
+deposit-wallet ERC-1271 il maker è il **funder**. Il registro attività **pubblico** è keyed sul funder:
+
+```
+GET https://data-api.polymarket.com/activity?user=<funder>&type=REWARD
+```
+
+Sul conto di questa macchina c'è **un** pagamento: **$1,3042** alle 00:00:03 del 7 agosto,
+tx `0x4333636f…3be` — il reward della giornata del **6 agosto**, per cui la stima diceva **$3,09**.
+**Primo confronto stima↔consuntivo mai riuscito: sovrastima del 136,93%.** Il 401 lo teneva invisibile.
+- La fonte è **senza credenziali** — rafforza la proprietà del modulo: non ha nemmeno le chiavi L2.
+- **Non porta il mercato** (`conditionId` vuoto): la scomposizione resta non disponibile e viene
+  dichiarata, non inventata dividendo il totale.
+- Un pagamento appartiene alla giornata UTC appena chiusa (`giornoDiCompetenza`, 6 ore di margine
+  dichiarate — assunzione su una sola osservazione).
+- **Uno zero vale zero solo se** il registro contiene almeno un nostro pagamento *e* la finestra di
+  quella giornata è chiusa. Altrimenti resta «non lo so».
+Il percorso CLOB è diventato `leggiRewardDaMercati`, fonte **secondaria e spenta** (≈51 richieste a
+notte per un catalogo non attribuito), riaccendibile con `conScomposizione`.
 
 **Altri stati letti:** kill-switch **non attivo** (`killed:false`); arming **disarmato**
 (`armed:false`, `disarmReason:"kill-switch"`, del 6 agosto, mai riarmato); `MANUAL_ORDER_PLACEMENT=send`;
@@ -563,40 +611,34 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     secondo difetto: il fattore di posizione non è `S` ma `S·size/(S·size+cQ)` diviso la quota-ceiling.
     Vedi §4. Misurato su sei finestre: il realistico non peggiora mai e migliora fino a **+11,2%**.
 
-11. **Il confronto stima/consuntivo è pronto ma non ha ancora un solo dato: il venue non attribuisce.**
-    `/rewards/user/markets?date=…` risponde 200 su ogni giornata provata (4→7 agosto), ma
-    `maker_address` è l'indirizzo **zero** su tutte le righe e `earnings` è 0 ovunque: è il catalogo,
-    non l'estratto conto. La guardia di attribuzione lo rifiuta come consuntivo — giustamente, perché
-    scriverne «$0 incassati» farebbe segnalare una sovrastima del 100% ogni notte. **Giornate
-    confrontabili: 0.** Servono **almeno 5 giornate ATTRIBUITE** perché `divergenza` esca da
-    `dati-insufficienti`. Da capire se l'attribuzione manca perché il maker è il funder ERC-1271 e le
-    chiavi L2 sono dell'EOA, o perché in quelle giornate nessun ordine ha davvero maturato punteggio
-    (il bot non è mai stato su AVVIA — punto 1). Le due ipotesi si distinguono da sole alla prima
-    giornata con ordini a riposo e bot avviato.
+11. **~~Il confronto non ha ancora un dato~~ — CHIUSO l'8 agosto 2026, sera.** La fonte che attribuisce
+    è il registro attività pubblico, keyed sul **funder** (le credenziali L2 sono dell'EOA: era un
+    problema di identità, non di endpoint). Prima misura reale: stima $3,09 contro consuntivo
+    **$1,3042** per il 6 agosto, **sovrastima del 136,93%**, con il `transactionHash` nel registro.
+    Restano **4 giornate** prima che `divergenza` possa pronunciarsi (ne servono 5 confrontabili).
+    Vedi §4.
 
-12. **Cinque test del repo fallivano GIÀ prima del lavoro dell'8 agosto** (verificato con `git stash`,
-    non assunto): `lib/rewards/scadenza-ereditata.test.js`, `lib/maker/cancellazione-riconosciuta.test.js`,
-    `lib/maker/dipendenze-collegate.test.js`, `lib/maker/risk-classifier.test.js`,
-    `lib/maker/scaduto-senza-rinnovo.test.js`. Il primo è il più interessante: asserisce che un mercato
-    che «scade fra mezza giornata» venga scartato per orizzonte, e invece viene scelto con
-    `horizon.state === 'ok'` a 1 giorno. Non sono stati toccati in questa sessione — sono elencati qui
-    perché nessuno li scambi per una regressione dell'8 agosto.
+12. **I cinque test rossi: diagnosi fatta, correzione da decidere.** Il report è in
+    `docs/indagine-cinque-test-rossi.md` (8 agosto 2026). **Nessuno dei cinque segnala un bug di
+    produzione**, e in particolare **il sospetto bug di unità di misura su `MIN_HORIZON_DAYS` non
+    esiste**: la conversione giorni→minuti è corretta, è cambiato il *valore* (2 → 0,25 g) con il
+    commit `0a0a845` e con la motivazione misurata (i 21 maker entrano su mercati con vita mediana
+    0,44 g; il pavimento a 2 giorni escludeva l'archetipo). Tutti e cinque sono `(a)`: test o
+    rilevatori rimasti indietro, o fixture che non allestiscono il caso che vogliono provare —
+    `risk-classifier` e `scadenza-ereditata` hanno la **stessa** causa, `cancellazione-riconosciuta`
+    interroga la produzione e trova un campione vuoto (0 `cancelOrder` su 22.602 righe di polling),
+    `dipendenze-collegate` è un falso positivo su un ternario andato a capo, `scaduto-senza-rinnovo` ha
+    una fixture il cui ordine viene riprezzato al primo giro.
+    **Una cosa da correggere c'è, ed è un commento:** `lib/maker/risk-classifier.js:26` dichiara
+    `MIN_HORIZON_DAYS = 2` mentre il valore importato è 0,25 — su un modulo la cui intestazione promette
+    che «la soglia usata e la soglia scritta non possano raccontare due numeri diversi». Non corretto:
+    va deciso insieme al test, e scritto in modo che non possa invecchiare di nuovo.
 
-13. **Resta il caso degenere che il tetto NON copre: la concorrenza misurata ZERO.** È adesso il
-    termine dominante del divario fra obiettivo e stima realistica, ed è misurato, non ipotizzato.
-    `realisticEstimate` ha una regola più dura del tetto: con `competitorQ === 0` **si rifiuta di
-    stimare** (`empty-book`, restituisce `unknown`), perché la formula della quota starebbe girando
-    fuori dal suo dominio. L'obiettivo invece quel mercato lo scora, tagliato al 60%.
-    Sul piano dell'8 agosto sera: **$51,00 dei $69,77 di lordo — il 73% — vengono da UN solo mercato
-    con concorrenza misurata zero** (`0xd1f23e2b`, TX-15), che la stima realistica trattiene. È lui a
-    spiegare la maggior parte del divario residuo: sulle sole righe confrontabili il divario è −49,2%,
-    su tutte è −86,4%.
-    **Non l'ho chiuso di mia iniziativa**: portare la regola `empty-book` nell'obiettivo significa
-    togliere dal piano un mercato che oggi ne è la riga principale, ed è una decisione sul capitale
-    reale, non una scelta implementativa. Le due strade sono (a) escludere dall'obiettivo i mercati con
-    `cQ = 0`, come già fa la stima realistica; (b) tenerli ma con un tetto molto più basso del 60%.
-    Va anche detto che «zero profondità *misurata*» può essere un buco di misura e non un book
-    davvero vuoto — motivo in più per non deciderlo in automatico.
+13. **~~Il caso degenere della concorrenza misurata ZERO~~ — CHIUSO l'8 agosto 2026, sera.** Vedi §4:
+    la distinzione fra deserto misurato e buco è ricostruibile e implementata, e un tetto di categoria
+    al 30% impedisce che un deserto verificato sia la maggioranza del piano. Misurato: lo zero non
+    verificato non si presenta mai su cinque finestre, e sul piano di adesso la categoria pesa il 25,9%
+    — sotto il tetto, quindi il piano non cambia.
 
 14. **Il lavoro sull'allocatore NON richiede riavvii, e vale la pena saperlo una volta per tutte.**
     Nessuno dei tre file toccati (`lib/rewards/allocator.js`, `lib/rewards/realistic-estimate.js`,
