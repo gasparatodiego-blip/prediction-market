@@ -3,7 +3,7 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt**: non serve più reincollarlo ogni volta.
 
-Ultima verifica contro codice/stato reali: **8 agosto 2026**, ~13:55 UTC.
+Ultima verifica contro codice/stato reali: **8 agosto 2026**, ~14:30 UTC.
 
 > ## ⚠ IL BOT È SU AVVIA DALLE 12:07:55 UTC DELL'8 AGOSTO 2026
 > Non è più un'anteprima: **il prossimo ciclo di agent41 piazza ordini veri con capitale reale.**
@@ -13,6 +13,10 @@ Ultima verifica contro codice/stato reali: **8 agosto 2026**, ~13:55 UTC.
 >
 > **RIAVVIO PENDENTE — `agent41-realloc-scheduler`.** Il trigger a $50 è corretto in `main` ma non nel
 > processo, e dopo il riavvio **piazzerà davvero** (~$100, non ~$30). Comando e cifre: §5 punto 21.
+>
+> **E il pianificatore ha ora un TETTO di orizzonte a 1,5 giorni** (§4). Non serve riavviare — il piano
+> nasce in un processo figlio. Ma col board di oggi **nessun mercato lo supera**: il prossimo ciclo
+> produrrebbe un piano a zero righe. §5 punto 23 spiega perché e cosa comporta.
 
 > **Il codice della sera del 7 agosto è in `main` E nei processi vivi** (riavvii autorizzati alle
 > ~23:52–23:57 UTC): fine scala su quattro percorsi, cadenza adattiva, pannello del mid vivo, timbro
@@ -312,6 +316,28 @@ i due bucket ci mettevano sopra una scalinata che il venue non paga. Nessun `if 
    **Deployato il 7 agosto 2026, ~22:40 UTC**: agent41 riavviato scrive «tetto per mercato 20% del
    capitale», e il piano servito dal pannello su $660 si ferma a **$130 = 19,7%** (tetto $132). Con il
    vecchio 30% gli stessi dati davano $195 = 29,5%.
+
+**L'orizzonte ha finalmente DUE estremi: `[0,25 · 1,5]` giorni** (`lib/rewards/horizon.js`, 8 agosto
+2026 sera — in `main`; il pianificatore nasce in un processo figlio a ogni ciclo, quindi **non serve
+riavviare niente**). Il pavimento c'era dal principio; il tetto no, e la sua assenza non era benigna:
+il knapsack massimizza un **tasso al giorno**, e un tasso al giorno non contiene la durata. Un mercato
+che rende $3/g per due giorni e uno che rende $3/g per centoquarantaquattro avevano lo stesso identico
+punteggio. Misurato: il piano in produzione aveva mediana **144,4 g** contro lo **0,44** dei 21 maker
+di riferimento — **328 volte** — mentre il manuale v1 si era già dato «< 24 ore» come obiettivo.
+- **1,5 giorni**, e il numero viene dai fill: i **299 ingressi veri** che `agent42-watch-makers` ha
+  osservato sui 21 wallet (`data/maker-21-eventi.jsonl`) danno mediana **0,221 g**, Q1 0,046, Q3 0,504.
+  Copertura per tetto: 1,0 → 78,9% · **1,5 → 81,6%** · 2,0 → 83,6% · 3,0 → 84,9% · 5,0 → 84,9%. Il
+  ginocchio è a 1,5: oltre si comprano 3,3 punti triplicando l'orizzonte ammesso.
+- **Quinto verdetto, `too-far`**, deciso PRIMA del payback e indipendente da quanto il mercato renda:
+  è un fatto di calendario. Entra in `horizonRejects` (`allocator.js`) accanto a `resolved` e `short` —
+  **un solo punto di applicazione**, quindi ogni percorso che consulta `horizonVerdict` lo eredita.
+- Confine **inclusivo da entrambi i lati**: `days === MIN` passa e `days === MAX` passa. La finestra si
+  legge come `[MIN, MAX]` e non c'è un'estremità che si comporta diversamente dall'altra.
+- Si cambia con `MAKER_MAX_HORIZON_DAYS`; un valore illeggibile o ≤ MIN **viene scartato in favore del
+  difetto** (stessa regola di fine scala: un `.env` sbagliato non spegne una protezione). Nota
+  operativa: agent41 non carica `.env`, quindi per cambiarlo davvero sul bot serve metterlo
+  nell'ambiente pm2, non solo nel file.
+- `MIN_HORIZON_DAYS` **non è stato toccato**: resta 0,25.
 
 **Fine scala — la regola sta su tutti e quattro i percorsi** (dal 7 agosto 2026). Sotto i 3¢ o sopra i
 97¢ un mercato non fa più mercato: sta risolvendo, e un ordine a riposo lì è una scommessa asimmetrica.
@@ -960,6 +986,34 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
       13:02, alle 13:49 era **ancora `646,262868`** (lettura fresca, `etaMs: 0`, `affidabile: true`).
       O il collaterale non viene immobilizzato come si crede, o la lettura non misura quel pool. Finché
       non si sa, il trigger sovrastima il capitale libero.
+
+23. **IL TETTO DI ORIZZONTE È GIUSTO E NON BASTA: col board di oggi l'universo eleggibile è ZERO.**
+    Il tetto a 1,5 g è in `main` e funziona (§4). Ma misurato sul board vero l'8 agosto 2026:
+    **115 mercati, e il più corto scade fra 2,41 giorni.** Nessuno entra nella finestra `[0,25 · 1,5]`
+    — e non entrerebbe con nessun valore fra 1 e 2. Simulazione del pianificatore vero sull'universo
+    vero: `evaluated 114 · chosen 0`, 114 candidati scartati per scadenza.
+
+    **Quindi il vincolo che morde non è il tetto: è cosa `agent24-liquidity-rewards` mette nel board.**
+    I 21 wallet entrano su mercati con mediana 5,3 ore — meteo giornaliero, crypto a 5 minuti, sport —
+    e nel nostro board non ce n'è **nemmeno uno**. Un esempio dal monitor: «Will the highest temperature
+    in Singapore be 32°C on August 8?», 24,1 h alla scadenza, montepremi $51/g, banda 4,5¢: è nel
+    programma premi, paga, e noi non lo vediamo. **Questo è il lavoro vero, e non è stato fatto**:
+    va capito se agent24 filtra quei mercati o se la sua query a Gamma non li chiede proprio.
+
+    **Conseguenza operativa da sapere PRIMA che accada, perché tocca capitale.** Con il piano a zero
+    righe la guardia «universo vuoto» **non scatta** — `universe.evaluated` si conta sui candidati
+    valutati, cioè PRIMA del filtro orizzonte, quindi il ciclo legge un piano *magro*, non *cieco*.
+    Da lì:
+    - il **trigger di valore** non scatta (fresco $0/g contro produzione > $0): nessun reset, gli
+      ordini vivi restano dove sono. È il caso normale.
+    - il **trigger di validità** invece scatta quando un mercato in gestione si risolve — e allora il
+      reset gira con `rows: []`: **cancella tutto e non piazza niente**. Matt Little scade fra ~2,4
+      giorni, quindi è previsto che succeda entro quella finestra.
+
+    **Non ho messo una guardia contro questo, ed è una scelta.** L'alternativa sarebbe fermare il
+    reset per tenere in piedi ordini su mercati che la politica appena decisa dichiara sbagliati:
+    peggio. Uscire è la direzione giusta, riduce esposizione, e il capitale torna liquido in attesa
+    che il board abbia mercati veri. Ma va saputo prima, non scoperto dopo.
 
 ---
 
