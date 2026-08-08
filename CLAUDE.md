@@ -3,12 +3,16 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt**: non serve più reincollarlo ogni volta.
 
-Ultima verifica contro codice/stato reali: **8 agosto 2026**, ~12:50 UTC.
+Ultima verifica contro codice/stato reali: **8 agosto 2026**, ~13:55 UTC.
 
 > ## ⚠ IL BOT È SU AVVIA DALLE 12:07:55 UTC DELL'8 AGOSTO 2026
 > Non è più un'anteprima: **il prossimo ciclo di agent41 piazza ordini veri con capitale reale.**
 > Rampa a `0/5` mercati nelle prime 24h, tetto 20% per mercato, guardiano attivo, kill spento.
-> Primo ciclo utile: **16:16:26Z** — e §5 punto 19 spiega perché il trigger a $50 non lo anticipa.
+> Il ciclo forzato dall'operatore è girato alle **13:01:33Z**: 3 mercati abilitati, **5 gambe piazzate**,
+> 0 cancellazioni. Prossimo ciclo automatico **19:01:33Z**.
+>
+> **RIAVVIO PENDENTE — `agent41-realloc-scheduler`.** Il trigger a $50 è corretto in `main` ma non nel
+> processo, e dopo il riavvio **piazzerà davvero** (~$100, non ~$30). Comando e cifre: §5 punto 21.
 
 > **Il codice della sera del 7 agosto è in `main` E nei processi vivi** (riavvii autorizzati alle
 > ~23:52–23:57 UTC): fine scala su quattro percorsi, cadenza adattiva, pannello del mid vivo, timbro
@@ -472,6 +476,28 @@ sola: quanto collaterale è libero.
   quanto capitale rimette al lavoro senza confonderlo coi cicli fissi.
 - **Si guarda lavorare senza toccare capitale**: `node scripts/simula-trigger-capitale.js 120` esegue la
   funzione vera con la sola corsia di piazzamento sostituita da un registratore.
+- **Una riga malformata non ferma più la ricerca** (8 agosto 2026, sera — in `main`, **serve il riavvio
+  di agent41**, §5 punto 21). `scegliMercato` accetta un predicato iniettato `gambeCostruibili`: una
+  riga le cui due gambe non si costruiscono viene **saltata** con il motivo a verbale in `esaminate`,
+  e la scelta passa alla successiva della graduatoria — esattamente come già faceva per lo spazio
+  insufficiente o le share sotto il minimo. Il predicato è iniettato e non importato, così il modulo
+  resta puro e la costruzione delle gambe continua a vivere in un posto solo; un predicato che
+  **esplode** vale «non costruibile», mai un via libera. Chi non lo passa ha il comportamento di prima.
+
+**La truthiness di `find` non è un test di esistenza** (`lib/rewards/plan-to-orders.js`, 8 agosto 2026
+sera). `gambeDiUnaRiga` proteggeva la gamba nulla così:
+
+```js
+const impossibile = gambe.find((g) => !g || g.placeable !== true);   // ← restituisce l'ELEMENTO
+if (impossibile) { … }                                               // ← e l'elemento È null
+```
+
+`planQuotes` torna con `yes:null, no:null` quando mid, offset o **tick** non sono leggibili
+(`mm-quote-math.js:32-34`). In quel caso `find` trovava la gamba nulla, restituiva `null`, e la guardia
+**non scattava** — ingannata esattamente dal caso per cui era stata scritta. Due righe sotto,
+`g.inBand` esplodeva. Ora è `findIndex` con la sentinella `-1`, che non può collidere con un elemento
+legittimo. **Regola generale**: in un array che può contenere valori falsy, «esiste un elemento che…»
+si scrive con `findIndex` o `some`, mai con la truthiness di `find`.
 
 **Il pannello non si accoda più a se stesso.** `placeManualOrder`, quando il chiamante non passa
 `ownOrders`, li **legge** dal venue e tiene solo il lato che sta quotando (per token id). Prima solo
@@ -883,6 +909,57 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     Dopo uno scatto ci sono **10 minuti** di cooldown, che bastano con margine (il ciclo costa ~52 s di
     piano più il piazzamento). Gli scatti si leggono con
     `grep -a '"tipo":"mini-ciclo"' data/realloc-scheduler.jsonl | tail -1`.
+
+21. **Il trigger a $50 non ha MAI funzionato — corretto in `main`, ASPETTA IL RIAVVIO DI agent41.**
+    Dal momento in cui è nato, il mini-ciclo andava in `TypeError` a **ogni** scatto (ogni ~10 min per
+    il cooldown): `Cannot read properties of null (reading 'inBand')`, `plan-to-orders.js:151`. Causa:
+    la guardia con la truthiness di `find` descritta in §4, e la riga in testa al piano dell'8 agosto —
+    «Will Matt Klein be the Democratic nominee for MN-02?» — che ha **`tick: null`**. Falliva **chiuso**
+    (eccezione ⇒ nessun ordine, capitale fermo), quindi non ha mai messo a rischio capitale: ha solo
+    reso la funzione inutile al 100%.
+
+    Due correzioni, entrambe necessarie e nessuna delle due sufficiente da sola:
+    - la **guardia** (`findIndex`), che trasforma l'esplosione in uno scarto dichiarato;
+    - lo **scavalcamento della riga rotta** in `scegliMercato`, senza il quale il mini-ciclo si sarebbe
+      limitato a rispondere «nessuna azione» per sempre, perché sceglie **un** mercato e non prova il
+      successivo.
+
+    Provato in isolamento su dati finti (`lib/maker/gamba-nulla-non-esplode.test.js`, 25/25) e in sola
+    computazione sul **piano vero** salvato su disco: zero eccezioni sulle 6 righe, Matt Klein scartato
+    con `gamba-impossibile`, le altre 5 costruiscono due gambe ciascuna.
+
+    **Il comando (agent41 non ha il caricatore di `.env` — vedi punto 3):**
+    ```bash
+    cd /root/rewards-bot && PID=$(pm2 pid agent41-realloc-scheduler) && \
+    while IFS= read -r -d '' kv; do k=${kv%%=*}; \
+      case "$k" in NODE_CHANNEL_FD|NODE_CHANNEL_SERIALIZATION_MODE|PM2_JSON_PROCESSING|PM2_USAGE|NODE_APP_INSTANCE) continue;; esac; \
+      case "$k" in [A-Z]*) export "$kv";; esac; \
+    done < /proc/$PID/environ && \
+    pm2 restart agents/ecosystem.config.js --only agent41-realloc-scheduler --update-env && pm2 save
+    ```
+    **Dopo il riavvio il trigger piazza davvero.** Simulato col saldo vero ($646,26) e con la mappa
+    degli ordini a riposo VUOTA (ipotesi peggiore — interrogare il venue non era ammesso): il primo
+    scatto utile allocherebbe **$120 sul mercato del morbillo** (`0xd15f77a921`), non i $28,15 liberati
+    dalla gamba scaduta. Nella corsa vera `notionalePerMercato` sottrae gli ordini vivi, quindi la cifra
+    sarà minore — ma **l'ordine di grandezza da aspettarsi è ~$100, non ~$30**.
+
+22. **Tre cose che il fix ha scoperto e NON ha risolto.** Nessuna è stata toccata: sono decisioni sul
+    capitale, e questa sessione era un fix su una guardia.
+    - **La rampa non conta niente.** `registraMercatoAperto` (`lib/maker/bot-enabled.js:130`) è
+      esportata e **non è chiamata da nessuna riga del repo** (verificato con grep su `lib/`, `agents/`,
+      `app/`). `mercatiDallAvvio` resta `[]` per sempre, quindi `rampa()` risponde sempre «0/5, ne
+      restano 5» e il tetto delle prime 24h **non si chiude mai** — nemmeno dopo il reset delle 13:02
+      che ha abilitato 3 mercati. Il tetto `MAX_POSIZIONI = 10` regge ancora, la rampa no.
+    - **Il mini-ciclo non guarda la rampa affatto.** `miniCiclo` non chiama `applicaPolitiche`: conosce
+      il tetto di concentrazione, non il tetto dei mercati nuovi. Un mercato del piano con zero ordini
+      a riposo ha `spazio = tetto` intero, quindi il trigger può **aprirne uno nuovo** — che è
+      esattamente ciò che la rampa esisterebbe per limitare.
+    - **La premessa del saldo non regge alla misura.** L'header di `trigger-capitale-fermo.js` dice che
+      un BUY a riposo immobilizza il collaterale, quindi «il saldo pUSD libero **è** il capitale non
+      allocato». Misurato: alle 12:28 il saldo era `646,262868`; dopo aver piazzato ~$236 di gambe alle
+      13:02, alle 13:49 era **ancora `646,262868`** (lettura fresca, `etaMs: 0`, `affidabile: true`).
+      O il collaterale non viene immobilizzato come si crede, o la lettura non misura quel pool. Finché
+      non si sa, il trigger sovrastima il capitale libero.
 
 ---
 

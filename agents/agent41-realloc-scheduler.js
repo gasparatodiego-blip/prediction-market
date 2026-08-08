@@ -616,6 +616,16 @@ async function miniCiclo(decisione, deps = {}) {
     disponibileUsd: decisione.saldoUsd,
     notionalePerMercato: perMercato,
     capPerMercatoUsd: capPerMarketUsd(capitaleTotale),
+    // Una riga le cui gambe non si costruiscono viene SALTATA, non fa fallire il giro: la scelta
+    // passa alla successiva della graduatoria. Senza questo, una sola riga malformata in testa al
+    // piano — l'8 agosto 2026 una con `tick: null` — bastava a tenere fermo tutto il capitale.
+    // È la STESSA funzione del passo 5 qui sotto, quindi il verdetto non può divergere.
+    gambeCostruibili: (riga) => {
+      const g = gambeDiUnaRiga(riga, riga.computedDefaultOffsetTicks);
+      if (g.scarto) return { ok: false, motivo: `${g.scarto.motivo} — ${g.scarto.dettaglio}` };
+      if (!g.rows) return { ok: false, motivo: 'nessuna riga costruita' };
+      return { ok: true };
+    },
   });
   if (!scelta.riga) {
     return { ...referto, esito: 'nessuna-azione', motivo: scelta.motivo, esaminate: scelta.esaminate.slice(0, 6),
