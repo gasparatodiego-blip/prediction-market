@@ -11,8 +11,10 @@ Ultima verifica contro codice/stato reali: **8 agosto 2026**, ~19:30 UTC.
 > capitale interamente liquido, **utilizzo 0%**. `maker-bot-enabled.json` dice ancora `enabled:true`, ma
 > il KILL vince su tutto e lo leggono tutti i percorsi, auto-close compreso.
 >
-> **Il lavoro del «capitale al lavoro» (8 agosto, sera) è in `main` e ASPETTA TRE RIAVVII** — vedi §5
-> punto 34. Fino a quel momento i processi vivi hanno il codice di prima.
+> **Il lavoro del «capitale al lavoro» (8 agosto, sera) È NEI PROCESSI** dai tre riavvii eseguiti
+> dall'operatore alle **18:30:52-18:31:16 UTC** (§5 punto 34): obiettivo di utilizzo 90%, mini-ciclo
+> multi-mercato, ricalcolo leggero, sorveglianza dell'AVVIA e kill come cancello del trigger.
+> **Nessun riavvio pendente.**
 
 > ## 🟢 IL MERGE È VIVO NEL PROCESSO — E HA GIÀ COMPRATO IL SECONDO LATO
 > `MERGE_STRATEGY_ENABLED = true` (costante di sorgente, **non** una env). Il riavvio che lo armava
@@ -1496,10 +1498,24 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
       da cui i tre rami cancellano: la regola «`null` non è una cancellazione riuscita» vive ora in una
       funzione sola invece che ripetuta in tre punti che potevano divergere.
 
-34. **TRE RIAVVII PENDENTI, e senza di loro il lavoro dell'8 agosto sera non è nei processi.** Il bot è
-    su KILL e il conto è piatto (zero posizioni, zero ordini), quindi non c'è fretta e non c'è rischio di
-    piazzamento durante il deploy — ma finché non si riavvia, i processi vivi hanno il codice di prima.
-    **Non eseguiti: un riavvio su capitale reale non si prende da soli (§2 regola 2).**
+34. **~~TRE RIAVVII PENDENTI~~ — ESEGUITI DALL'OPERATORE alle 18:30:52 / 18:31:02 / 18:31:16 UTC
+    dell'8 agosto 2026** (agent40 54 → 55, dashboard 169 → 170, agent41 35 → 36), circa venti minuti dopo
+    il commit `2cb8f39`. **Il lavoro del «capitale al lavoro» è nei processi.** Verificato dal log
+    d'avvio di agent41, che dice esattamente cosa è entrato in servizio:
+
+    > `trigger capitale fermo ACCESO — soglia $50, controllo ogni 120s · non cancella niente, rilegge
+    > AVVIA/FERMA e il kill a ogni controllo · obiettivo di utilizzo 90%, fino a 6 mercati per giro · se
+    > il piano salvato manca, è vecchio (> 60 min) o non ha spazio, RICALCOLA (piano leggero a 6h)`
+    > `sorveglianza dell'interruttore ACCESA — controllo ogni 15s: un AVVIA fa partire un mini-ciclo
+    > forzato entro ~2 minuti`
+
+    **E il cancello del kill si vede lavorare sui dati veri.** Prima del riavvio il log ripeteva
+    `TRIGGER capitale fermo — capitale liquido fermo $668.25 ≥ soglia $50.00` seguito da
+    `mini-ciclo: $84 rimessi al lavoro … (0 ordini piazzati, 0 rifiutati)`: il giro arrivava in fondo e
+    ogni gamba veniva poi rifiutata a valle dal kill. **Dopo il riavvio: zero mini-cicli**, perché il
+    kill è letto prima del saldo. È la conferma sui dati vivi di ciò che il test provava in isolamento.
+
+    *(La tabella qui sotto resta come registro di cosa è stato deployato.)*
 
     | processo | cosa entra in servizio | comando |
     |---|---|---|
