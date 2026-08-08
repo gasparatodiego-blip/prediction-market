@@ -3,13 +3,18 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt**: non serve più reincollarlo ogni volta.
 
-Ultima verifica contro codice/stato reali: **7 agosto 2026**, ~23:58 UTC.
+Ultima verifica contro codice/stato reali: **8 agosto 2026**, ~07:20 UTC.
 
-> **Il codice di questa sera è in `main` E nei processi vivi.** agent35, agent40, agent41 e il
-> `dashboard` sono stati riavviati alle ~23:52–23:57 UTC con l'autorizzazione esplicita dell'utente in
-> chat: fine scala su quattro percorsi, cadenza adattiva, pannello del mid vivo, timbro `origine` e
-> ordini propri sottratti dalla coda sono **attivi**. Resta pendente una sola cosa, ed è nel punto 3
-> di §5: `REALLOC_SCHEDULER_DRY_RUN` è ancora nell'ambiente di agent41 (inerte).
+> **Il codice della sera del 7 agosto è in `main` E nei processi vivi** (riavvii autorizzati alle
+> ~23:52–23:57 UTC): fine scala su quattro percorsi, cadenza adattiva, pannello del mid vivo, timbro
+> `origine` e ordini propri sottratti dalla coda sono **attivi**.
+>
+> **Il codice della mattina dell'8 agosto è in `main` ma NON nei processi vivi.** Tre lavori —
+> graduatoria della corsia calda + K/N rimisurati, punteggio di posizione nella selezione, confronto
+> stima/consuntivo — sono committati, pushati e costruiti (`npm run build` verde), e aspettano un
+> riavvio che **non è stato chiesto**: vedi §5 punto 9 per l'elenco esatto dei processi e di cosa
+> ciascuno guadagna. L'unico percorso già vivo senza riavvio è il pannello «Ottimizza», perché
+> `/api/rewards/allocate` esegue `planFromCollection` in un processo node NUOVO a ogni chiamata.
 
 ---
 
@@ -280,6 +285,39 @@ che è provatamente `auto`: manuale e **ignoto** restano sul libro, e gli ordini
 modifica sono ignoti per costruzione. Il pannello non cambia: la mano `leggiOrigini` è iniettata solo da
 agent41.
 
+**La SELEZIONE sente il tick vero** (`usePlacementScore`, 8 agosto 2026 — in `main`, vivo solo nel
+pannello «Ottimizza»). Il 5 agosto `offsetTicks` aveva corretto *dove* il motore si mette (un tick dal
+concorrente); restava scoperto *quanto vale starci*. Il lordo dell'obiettivo del knapsack è il ceiling
+a **S=1** — un ordine appoggiato sul mid — e non contiene nessun termine di offset: in selezione ogni
+mercato era pesato uguale, cioè l'equivalente esatto di una distanza fissa per tutti. Il venue paga
+`S(v,s)=((v−s)/v)²`, e su banda 4,5¢ **un tick vale 0,309 su tick 0,01 e 0,913 su tick 0,001 — 2,96
+volte**; 48 dei 113 mercati valutabili sono a tick fine. Ora l'obiettivo pesa il lordo col punteggio
+alla distanza reale (`placementWeightForMarket`, in `scripts/rewards-replay/lib/allocate.js`; il tick
+viene da `marketTick`, la stessa fonte del piazzamento; `placementScore` è importata, non riscritta).
+- **Acceso solo nel pianificatore**: `allocateBudget` lo lascia spento, quindi i backtest sono
+  invariati numero per numero.
+- **Non tocca l'esecuzione**: `grossPerDay` e `netPerDay5m` restano il ceiling e il netto misurato —
+  `computedDefaultOffset` e `realisticEstimate` pesano già il punteggio per conto loro. Misurato: zero
+  offset di piazzamento cambiati.
+- **Effetto misurato** ($660, 8 agosto): un mercato a tick grosso esce, nessuno entra, e il capitale
+  si sposta di **+$91 verso i tick fini** (−$39 e −$52 dai grossi). Obiettivo $62,05 → $62,79/g
+  (+1,2%); stima *realistica* −$0,53/g (−1,6%) — vedi §5 punto 10.
+- Banda o tick illeggibili ⇒ nessun peso, e il mercato finisce in `pesoNonApplicato` che viaggia col
+  piano. Sull'universo reale l'elenco è vuoto: tutti i mercati con montepremi pubblicano la banda.
+
+**La corsia calda si ordina sull'obiettivo del knapsack** (`collector-priority.js`, 8 agosto 2026 —
+in `main`, non ancora nei processi). L'unione mobile con isteresi c'era; la **graduatoria** dei
+quasi-vincitori no: era ordinata per `bestNetPerDay`, che `calcNetPerDay` annulla quando nessun fill è
+stato osservato. Giusto per un numero da leggere, sbagliato per una graduatoria — escludeva i mercati
+*silenziosi*, cioè quelli su cui un maker vuole stare. Misurato: **412 delle 755 righe future
+esaminate erano fuori graduatoria**, quindi irraggiungibili da qualunque K. Ora si ordina su
+`bestObiettivoPerDay` e scendono a 142/666 (storico) e **0/214** (vivo). I tre numeri, rimisurati:
+**TOP_K 30 → 15** (vivo: K=10 copre 214/214 righe, profondità massima 9; storico: K=15 copre il 98,5%
+delle coperibili e oltre non guadagna nulla fino a 50+), **RETENTION 12h confermato** (ritorni
+osservati a 3,01h · 6,01h · 8,01h), **MAX_MARKETS 40 → 30** (righe 7-9 + K 15 = 24, restano 6 slot;
+il feed sta a **112 mercati su 125** di `TOTAL_MARKET_CAP`, quindi ogni slot chiesto è un mercato del
+board in meno). Misura riproducibile: `node scripts/misura-ricambio-candidati.js` (sola lettura).
+
 **Il pannello non si accoda più a se stesso.** `placeManualOrder`, quando il chiamante non passa
 `ownOrders`, li **legge** dal venue e tiene solo il lato che sta quotando (per token id). Prima solo
 agent40 li passava: tutti gli altri percorsi con `inCoda:true` mandavano una lista vuota, e dal secondo
@@ -315,6 +353,21 @@ $7,89/g contro $2,73/g dei mercati in gestione (188,8% in più, soglia 20%)».
 baseline **$660,56** in `data/guardian-baseline.json` (sopravvive ai riavvii, si azzera solo
 cancellando il file). Soglie lette da `.env` a ogni giro: `GUARDIAN_LOSS_PCT=5`,
 `GUARDIAN_LOSS_ABS=30`. Nessuno scatto: `data/guardian-state.json` non esiste.
+
+**Confronto stima / consuntivo del venue: infrastruttura pronta, dato ancora assente.**
+`lib/maker/confronto-reward.js` (agent40, 23:55 e 00:20/00:40/01:00 UTC) più
+`lib/maker/reward-reale.js`, rotta `/api/maker/confronto-reward`. L'8 agosto 2026 il percorso
+interrogato è stato **corretto**: `/rewards/user` e `/rewards/user/total` rispondono **401** con le
+nostre credenziali L2, **`/rewards/user/markets?date=…` risponde 200** e dà anche la scomposizione per
+mercato (paginato, `next_cursor`; la firma HMAC va sul percorso *completo*, query inclusa).
+**Ma quel 200 non è un consuntivo**: nella lettura reale portava `maker_address` a **zero su tutte e
+5.065 le righe** e `earnings: 0` ovunque — è il catalogo dei mercati premianti, non l'estratto conto
+di questo maker. Una lettura vale quindi solo se **almeno una riga è attribuita** a un nostro
+indirizzo (EOA o funder); altrimenti `disponibile:false`, `attribuito:false`, motivo per esteso.
+Il verdetto sulla deriva (`divergenza`) è **mediana ≥30% su ≥5 giornate confrontabili e ≥80% nello
+stesso verso**, viaggia nel file, nella rotta e nel log di agent40 quando *cambia*; `dati-insufficienti`
+è un terzo esito e non vuol dire «va bene». **Non corregge niente** per scelta. Stato reale: **zero
+giornate confrontabili** — vedi §5 punto 11.
 
 **Altri stati letti:** kill-switch **non attivo** (`killed:false`); arming **disarmato**
 (`armed:false`, `disarmReason:"kill-switch"`, del 6 agosto, mai riarmato); `MANUAL_ORDER_PLACEMENT=send`;
@@ -402,6 +455,51 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
    7 agosto è costato due riavvii inutili di agent41 e una diagnosi sbagliata («l'ambiente è andato
    perso», mentre erano 102 variabili tutte al loro posto). Per l'ambiente di un processo pm2 si prende
    il pid da `pm2 jlist` e si legge `/proc/<pid>/environ`.
+
+9. **Il codice dell'8 agosto è in `main` e costruito, ma quattro processi girano ancora con quello di
+   ieri.** Nessun riavvio è stato chiesto né fatto (regola 2 di §2, e istruzione esplicita
+   dell'utente). Cosa guadagna ciascuno:
+
+   | Processo | Cosa entrerebbe in servizio |
+   |---|---|
+   | `agent41-realloc-scheduler` | punteggio di posizione nella selezione + nuova graduatoria e K/N della corsia calda (è il processo che *scrive* `collector-priority.json`) |
+   | `agent34-clob-ws` | il nuovo `MAX_MARKETS=30` in `readCollectorPriority` — oggi in memoria ha ancora 40 (effetto minore: l'elenco lo scrive agent41 e sarà già ≤30) |
+   | `agent40-manual-reprice` | percorso corretto del consuntivo (`/rewards/user/markets`), guardia di attribuzione, scomposizione per mercato, avviso di deriva nel log |
+   | `dashboard` | `divergenza` e `soglie` su `/api/maker/confronto-reward` |
+
+   **Già vivo senza riavvio:** il pannello «Ottimizza». `/api/rewards/allocate` non importa
+   l'allocatore nel bundle — esegue `planFromCollection` in un processo node NUOVO a ogni chiamata,
+   quindi legge il codice su disco. Prima di riavviare il `dashboard`, la nota del punto 7:
+   verificare `.next/prerender-manifest.json` (presente, build delle 07:10 UTC dell'8 agosto).
+
+10. **L'obiettivo del knapsack sente il punteggio di posizione ma non il tetto di credibilità della
+    quota.** Misurato l'8 agosto 2026 sul piano vero: col punteggio acceso l'obiettivo sale a
+    $62,79/g (+1,2%) mentre la stima *realistica* scende di $0,53/g (−1,6%). Non è un effetto
+    collaterale ignoto — è una correzione che l'obiettivo ancora non ha: sul mercato che guadagna
+    capitale la correzione `thin-book` vale **0,9465** con il **63,4% di quota modellata**, e il
+    knapsack non la vede perché il suo lordo è `pot × s/(s+cQ)` senza tetto di credibilità.
+    Le due cifre divergono per quel motivo e per nessun altro (verificato leggendo le correzioni riga
+    per riga). Da decidere: portare anche `maxCredibleShare` dentro l'obiettivo, o lasciarlo alla
+    stima realistica e accettare la divergenza dichiarandola.
+
+11. **Il confronto stima/consuntivo è pronto ma non ha ancora un solo dato: il venue non attribuisce.**
+    `/rewards/user/markets?date=…` risponde 200 su ogni giornata provata (4→7 agosto), ma
+    `maker_address` è l'indirizzo **zero** su tutte le righe e `earnings` è 0 ovunque: è il catalogo,
+    non l'estratto conto. La guardia di attribuzione lo rifiuta come consuntivo — giustamente, perché
+    scriverne «$0 incassati» farebbe segnalare una sovrastima del 100% ogni notte. **Giornate
+    confrontabili: 0.** Servono **almeno 5 giornate ATTRIBUITE** perché `divergenza` esca da
+    `dati-insufficienti`. Da capire se l'attribuzione manca perché il maker è il funder ERC-1271 e le
+    chiavi L2 sono dell'EOA, o perché in quelle giornate nessun ordine ha davvero maturato punteggio
+    (il bot non è mai stato su AVVIA — punto 1). Le due ipotesi si distinguono da sole alla prima
+    giornata con ordini a riposo e bot avviato.
+
+12. **Cinque test del repo fallivano GIÀ prima del lavoro dell'8 agosto** (verificato con `git stash`,
+    non assunto): `lib/rewards/scadenza-ereditata.test.js`, `lib/maker/cancellazione-riconosciuta.test.js`,
+    `lib/maker/dipendenze-collegate.test.js`, `lib/maker/risk-classifier.test.js`,
+    `lib/maker/scaduto-senza-rinnovo.test.js`. Il primo è il più interessante: asserisce che un mercato
+    che «scade fra mezza giornata» venga scartato per orizzonte, e invece viene scelto con
+    `horizon.state === 'ok'` a 1 giorno. Non sono stati toccati in questa sessione — sono elencati qui
+    perché nessuno li scambi per una regressione dell'8 agosto.
 
 ---
 
