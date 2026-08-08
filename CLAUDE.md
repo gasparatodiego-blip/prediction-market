@@ -3,7 +3,14 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt**: non serve più reincollarlo ogni volta.
 
-Ultima verifica contro codice/stato reali: **8 agosto 2026**, ~15:30 UTC.
+Ultima verifica contro codice/stato reali: **8 agosto 2026**, ~16:05 UTC.
+
+> ## 🔴 DUE POSIZIONI APERTE NON POSSONO USCIRE — §5 PUNTO 26
+> Matt Little `0x822409` (32,27 YES @ 0,80 · **$25,82**) e Schwartzel `0xc16fade4` (22,20 NO @ 0,5177 ·
+> **$11,49**) hanno l'uscita automatica **abilitata** e **rifiutata** ogni 60 s con
+> `reject-live-min-market-mismatch`: la allowlist live-min è `data/maker-auto-reprice.json`, che il
+> **reset di agent41 riscrive a ogni riallocazione**, mentre le posizioni sopravvivono alla rotazione.
+> Nessun ordine di uscita è a riposo. Diagnosi sola, **nessuna correzione scritta**.
 
 > ## ⚠ IL BOT È SU AVVIA DALLE 12:07:55 UTC DELL'8 AGOSTO 2026
 > Non è più un'anteprima: **il prossimo ciclo di agent41 piazza ordini veri con capitale reale.**
@@ -1101,6 +1108,75 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     sull'universo vero rispondeva `evaluated 114 · chosen 0` — 114 candidati scartati per scadenza.
     Serve a poter dire fra un mese se il canale delle scadenze vicine è ancora aperto: se il board
     torna ad avere il minimo sopra i due giorni, la seconda passata ha smesso di funzionare.
+
+26. **DUE POSIZIONI APERTE SENZA VIA D'USCITA: la rotazione dei mercati non porta con sé le posizioni**
+    (trovato l'8 agosto 2026, ~16:00 UTC, sola diagnosi — niente è stato toccato). **È il punto più
+    urgente di questo file.**
+
+    Due registri distinti governano la stessa posizione, e uno solo dei due ruota:
+    - `data/maker-auto-close.json` dice **se** una posizione ha diritto all'uscita automatica — 22
+      mercati abilitati, fra cui entrambi quelli qui sotto;
+    - `data/maker-auto-reprice.json` (`enabledMarketIds`, letto da `lib/maker/config.js:45-51`) è la
+      **allowlist live-min** che `placeManualOrder` applica come restrizione dura a **ogni** ordine,
+      uscite comprese. Il **reset di agent41 la riscrive** a ogni riallocazione.
+
+    Le posizioni però **sopravvivono alla riallocazione**. Quando il reset ruota i mercati, ogni
+    posizione lasciata indietro conserva il diritto di uscire e perde il permesso di piazzare:
+
+    | | posizione | uscita rifiutata da |
+    |---|---|---|
+    | Matt Little MN-02 `0x822409` | 32,27 YES @ 0,80 (**$25,82**) | **15:57:18Z**, dopo il reset delle 15:41 |
+    | Schwartzel FL-19 `0xc16fade4` | 22,20 NO @ 0,5177 (**$11,49**) | **15:36:27Z**, già prima del reset |
+
+    Il rifiuto è testuale e si ripete **ogni 60 s**: `reject-live-min-market-mismatch` — «this order is
+    for market 0x…, which is NOT on the enabled list (4 market(s): …). Enable it deliberately from the
+    allocation panel first. Refusing.» La allowlist di adesso è
+    `0xd25c820d…, 0x9cb9e4b0…, 0xc3999e22…` più il pin `0x12dc2b61…`: **nessuno dei due mercati con
+    posizione aperta**.
+
+    **Che l'uscita non sia sul libro non è dedotto**: `runAutoCloseCycle` esce con `already-covered`
+    quando un ordine di copertura esiste (`auto-close.js:365`), e invece **ritriggera a ogni giro** —
+    16:02:32 l'ultimo visto. Su Matt Little le due uscite riuscite sono delle **14:50:54Z** e
+    **15:14:09Z** (a `0,81` = carico 0,80 +1%, l'`82¢` osservato dall'operatore); dopo il reset non ne
+    passa più una.
+
+    **Fallisce nella direzione sbagliata.** Il commento di `auto-close.js:98-101` dichiara il criterio
+    giusto — «questa funzione non apre esposizione, la chiude: rifiutarsi di chiudere per un dato
+    mancante lascerebbe capitale bloccato» — ma il gate live-min sta **a valle**, in `placeManualOrder`,
+    dove quella distinzione non esiste: tratta un'uscita come un ingresso. **Nessuna correzione è stata
+    scritta** (turno di sola diagnosi). La direzione: esentare dalla allowlist gli ordini di **riduzione**
+    su una posizione realmente detenuta — non allargare la allowlist, che riaprirebbe anche gli ingressi.
+
+27. **I Livelli 1 e 2 non sono mai stati raggiunti — e per tre ragioni indipendenti, non per la
+    freschezza del book.** Diagnosi dell'8 agosto 2026 sui fill di Matt Little e Schwartzel.
+    - **Niente viene eseguito, a nessun livello.** `MERGE_STRATEGY_ENABLED = false`: `auto-close.js:341-353`
+      **calcola** il livello e lo scrive in audit come `merge-livello-N-osservato`, poi prosegue con
+      l'uscita classica. Entrambe le posizioni sono a **Livello 2 osservato**, riscritto ogni 60 s. La
+      vendita d'uscita non è quindi «il Livello 3 dopo che 1 e 2 hanno fallito»: è **l'unico percorso
+      vivo**, e sarebbe partita identica in ogni caso.
+    - **Il Livello 1 non è nemmeno valutabile.** `auto-close.js:339` legge la scala ask da
+      `deps.readDepth`, che **il chiamante non inietta**: nel blocco deps di `closeTask`
+      (`agent40-manual-reprice.js:440-502`) `readDepth` non c'è — è iniettato solo nel ciclo
+      *mm-tracking* (riga 858). Quindi `asksAltroLato` è **sempre `null`**, `quantoAlVolo` restituisce
+      `size: 0` per «array assente» esattamente come per «tutti gli ask sopra il tetto», e si cade al
+      Livello 2 **a prescindere dal prezzo vero**. Non è staleness: **il dato non viene proprio chiesto.**
+    - **E l'audit afferma una cosa che non ha misurato.** Il motivo registrato — «l ask di NO e' sopra
+      il tetto di 19.0¢» — è una **conclusione non misurata**: `quantoAlVolo` non distingue i due casi e
+      `decidiLivello` emette lo stesso testo per entrambi. È il difetto più insidioso dei tre, perché
+      rende invisibile in audit proprio il dato mancante. Il fix minimo è distinguere
+      `asksAltroLato == null` (→ «scala ask non disponibile») da «letta e tutta sopra il tetto».
+    - **Il timeout di 60 minuti non può scattare.** `attesaDaMs` non è mai passato da `auto-close.js`,
+      quindi `attesaMin` resta `null` e il ramo di `strategia-merge.js:218-224` non è raggiungibile.
+      Coerente con l'osservato: `"attesaMin": null` su tutte le righe.
+    - **La gestione manuale NON è esclusa dalla gerarchia — è il suo prerequisito.** `auto-close.js:273-276`
+      salta il mercato quando **non** è in gestione manuale («la chiusura automatica agisce solo dove il
+      mercato è in gestione manuale»). Entrambi i mercati sono `manual: true`, ed è per questo che
+      vengono valutati. La risposta alla domanda su Schwartzel è quindi: **è sempre stato dentro la
+      gerarchia**, con lo stesso esito di Matt Little.
+    - **Ordine di correzione**, se si vorrà: prima il punto 26 (capitale esposto), poi il messaggio
+      d'audit (fa credere misurato ciò che non lo è), poi `readDepth`. Accendere
+      `MERGE_STRATEGY_ENABLED` resta una **decisione dell'operatore** e non è implicata da nulla di
+      quanto sopra: senza merge on-chain, completare la coppia immobilizza capitale invece di liberarlo.
 
 ---
 
