@@ -36,6 +36,19 @@
 // `usePlacementScore` fa sentire all'obiettivo il quadratico pubblicato alla distanza REALE del
 // mercato. Assente per difetto, come gli altri due: i driver di backtest non lo passano.
 // Vedi `placementWeightForMarket` per la misura e per l'unico caso in cui non e' applicabile.
+//
+// ── E UNA QUARTA: QUANTA DI QUELLA QUOTA E' CREDIBILE (8 agosto 2026, sera) ────────────────────────
+// `share = size/(size + cQ)` tende a 1 quando la concorrenza in banda tende a 0, e il knapsack
+// MASSIMIZZA: un book vuoto gli sembrava l'occasione migliore che esista. La stima realistica lo
+// tagliava gia' a `maxCredibleShare` (correzione «thin-book»), ma solo DOPO che la scelta era fatta —
+// misurato sul piano vero: obiettivo +1,2%/g contro stima realistica −1,6%/g sullo stesso capitale.
+// `useCredibleShareCap` porta quel tetto DENTRO l'obiettivo, per LIVELLO della curva: aggiungere
+// capitale a un mercato sottile smette di aiutare oltre il tetto, ed e' la concavita' che la selezione
+// doveva sentire. Stessa funzione e stessa costante della stima realistica — importate, non riscritte.
+//
+// LE QUATTRO NON SI SOVRAPPONGONO, e vale la pena dirlo una volta sola: `offsetCents`/`offsetTicks`
+// decidono DOVE si sta, `usePlacementScore` quanto vale starci (agisce sul NUMERATORE della quota),
+// `useCredibleShareCap` quanto di quella quota e' credibile (agisce sul suo VALORE MASSIMO).
 
 const { reconstructTapeFillsForMarket } = require('./tape');
 const { markoutAll } = require('./markout');
@@ -46,7 +59,14 @@ const { closeNowPolicy } = require('./close-now');
 // due implementazioni della stessa formula sono due opinioni su quanto vale una posizione, e possono
 // divergere senza che nessuno se ne accorga. Il modulo è puro (nessun I/O, nessun orologio), quindi
 // importarlo da qui non porta dentro niente che un backtest non possa eseguire.
-const { placementScore } = require('../../../lib/rewards/realistic-estimate');
+const {
+  placementScore,
+  // Le DUE correzioni di quota, riusate e non riscritte. Vivono in realistic-estimate.js perche' e' li'
+  // che sono nate e li' che la stima realistica continua a chiamarle: una fonte sola, altrimenti
+  // l'obiettivo e la stima finale possono divergere senza che nessuno se ne accorga — che e' esattamente
+  // il difetto chiuso l'8 agosto 2026.
+  placementShareFactor, credibleShareFactor, DEFAULTS: RE_DEFAULTS,
+} = require('../../../lib/rewards/realistic-estimate');
 
 function fin(x) { return typeof x === 'number' && Number.isFinite(x); }
 
@@ -62,7 +82,14 @@ function perMarketNetAtSize(marketId, marketRows, tokenTrades, potByCond, cfg) {
   // tutti. Assente ⇒ si usa `offsetCents` e i fill sono quelli di sempre. Vedi tape.reconstructTapeFillsForMarket.
   // `punteggioPosizione` — il peso S del venue per la posizione REALE di questo mercato (vedi
   // `placementWeightForMarket`). null ⇒ nessun peso, e il netto oggettivo resta quello di sempre.
-  const { offsetCents, offsetTicks = null, sizeUsd, maxInventoryUsd, policy, minSizeByMarket = null, pairCostUsd = null, punteggioPosizione = null } = cfg; // policy: 'hold' (default) | 'close-now'
+  const {
+    offsetCents, offsetTicks = null, sizeUsd, maxInventoryUsd, policy, minSizeByMarket = null, pairCostUsd = null,
+    punteggioPosizione = null,
+    // `maxCredibleShare` — il tetto di credibilita' della quota, LO STESSO NOME e lo stesso numero della
+    // correzione «thin-book» in lib/rewards/realistic-estimate.js. null ⇒ nessun tetto, e l'obiettivo
+    // resta quello di prima.
+    maxCredibleShare = null,
+  } = cfg; // policy: 'hold' (default) | 'close-now'
   const fillsRes = reconstructTapeFillsForMarket(marketRows, tokenTrades, { offsetCents, offsetTicks, sizeUsd, maxInventoryUsd });
   const one = new Map([[marketId, marketRows]]);
   const MO = markoutAll(fillsRes.fills, one);
@@ -99,14 +126,45 @@ function perMarketNetAtSize(marketId, marketRows, tokenTrades, potByCond, cfg) {
   // `grossScoredPerDay` è lo stesso lordo visto da dove il motore si mette DAVVERO. Resta ACCANTO al
   // ceiling, mai al posto suo: il ceiling continua ad alimentare la scelta dell'offset e la stima
   // realistica, che lo pesano già per conto loro e lo peserebbero due volte.
+  //
+  // ── E IL TETTO DI CREDIBILITÀ, DENTRO L'OBIETTIVO E NON DOPO (8 agosto 2026) ─────────────────────
+  // `share → 1` quando la concorrenza in banda → 0. Il knapsack MASSIMIZZA, quindi un book vuoto gli
+  // sembrava l'occasione migliore che ci sia: «il 100% del montepremi». La stima realistica lo tagliava
+  // a `maxCredibleShare`, ma DOPO che la scelta era già stata fatta — misurato il piano vero, obiettivo
+  // +1,2%/g e stima realistica −1,6%/g sullo stesso capitale. Adesso il taglio si applica PER LIVELLO
+  // della curva: aggiungere capitale a un mercato sottile smette di aiutare oltre il tetto, ed è
+  // esattamente la concavità che la selezione doveva sentire.
+  //
+  // LE DUE CORREZIONI NON SI SOVRAPPONGONO, e la ragione è algebrica: la posizione agisce sul NUMERATORE
+  // della quota (S·size invece di size), il tetto sul suo VALORE massimo. Sono la stessa composizione,
+  // nello stesso ordine, che `realisticEstimate` applica da sempre — riusata, non ricostruita.
   const S = fin(punteggioPosizione) && punteggioPosizione >= 0 ? punteggioPosizione : null;
-  const grossScoredPerDay = S != null && fin(row.grossPerDay) ? row.grossPerDay * S : null;
+  const qShare = row.sizePerSideShares, qComp = row.limDepthShares;
+  // ATTENZIONE: il fattore di posizione NON è `S`. Vedi `placementShareFactor`: moltiplicare per S
+  // darebbe `pot·shareCeiling·S`, mentre la quota vera è `pot·S·size/(S·size+cQ)`, sempre più grande.
+  // Fino al 7 agosto qui c'era `× S`, e penalizzava di più proprio i tick grossi (S piccolo).
+  const fPosizione = S != null ? placementShareFactor(qShare, qComp, S) : null;
+  const tetto = fin(maxCredibleShare) && maxCredibleShare > 0
+    ? credibleShareFactor(qShare, qComp, maxCredibleShare) : null;
+  // Ripiego dichiarato: se la quota non è leggibile ma il punteggio sì, resta il vecchio `× S` — è
+  // meno esatto, non è inventato, e viene marcato per essere visto.
+  const fPosizioneUsato = fPosizione != null ? fPosizione : S;
+  const posizioneEsatta = fPosizione != null;
+  const fTetto = tetto ? tetto.factor : null;
+  const pesato = fPosizioneUsato != null || fTetto != null;
+  const grossScoredPerDay = pesato && fin(row.grossPerDay)
+    ? row.grossPerDay * (fPosizioneUsato != null ? fPosizioneUsato : 1) * (fTetto != null ? fTetto : 1)
+    : null;
   const netScoredPerDay = grossScoredPerDay != null && fin(costPerDay5m) ? grossScoredPerDay - costPerDay5m : null;
   return {
     marketId, sizeUsd, capital: 2 * sizeUsd, excluded: false,
     spanHours: row.spanHours, grossPerDay: row.grossPerDay, grossWindow: row.grossWindow,
     cost5m, costPerDay5m, netWindow5m, netPerDay5m,                         // ← netPerDay5m is the objective
     punteggioPosizione: S, grossScoredPerDay, netScoredPerDay,
+    // I due fattori, separati e leggibili: chi guarda una riga deve poter dire QUALE delle due
+    // correzioni l'ha spostata, non solo che è stata spostata.
+    fattorePosizione: fPosizioneUsato, posizioneEsatta,
+    fattoreCredibilita: fTetto, quotaCeiling: tetto ? tetto.shareCeiling : null, quotaCapata: tetto ? tetto.capped : false,
     fills: fillsRes.fills.length, closed, stuck, nakedRefused, noBook, share: row.share,
     minSizeShares: row.minSizeShares, sizePerSideShares: row.sizePerSideShares,
     belowVenueMinSize: row.belowVenueMinSize, capitalToQualifyUsd: row.capitalToQualifyUsd,
@@ -122,17 +180,21 @@ function perMarketNetAtSize(marketId, marketRows, tokenTrades, potByCond, cfg) {
  *            netWindow5m, netPerDay5m, net5m, fills, share, spanHours }] }
  */
 function perMarketNetCurve(marketId, marketRows, tokenTrades, potByCond, opts) {
-  const { offsetCents, offsetTicks = null, maxInventoryUsd, sizeGrid, unitUsd, policy, minSizeByMarket = null, pairCostUsd = null, punteggioPosizione = null } = opts;
-  const levels = [{ sizeUsd: 0, capital: 0, units: 0, grossPerDay: 0, cost5m: 0, costPerDay5m: 0, netWindow5m: 0, netPerDay5m: 0, net5m: 0, fills: 0, closed: 0, stuck: 0, nakedRefused: 0, share: 0, spanHours: null, punteggioPosizione: null, grossScoredPerDay: 0, netScoredPerDay: 0 }];
+  const { offsetCents, offsetTicks = null, maxInventoryUsd, sizeGrid, unitUsd, policy, minSizeByMarket = null, pairCostUsd = null, punteggioPosizione = null, maxCredibleShare = null } = opts;
+  const levels = [{ sizeUsd: 0, capital: 0, units: 0, grossPerDay: 0, cost5m: 0, costPerDay5m: 0, netWindow5m: 0, netPerDay5m: 0, net5m: 0, fills: 0, closed: 0, stuck: 0, nakedRefused: 0, share: 0, spanHours: null, punteggioPosizione: null, grossScoredPerDay: 0, netScoredPerDay: 0, fattorePosizione: null, posizioneEsatta: false, fattoreCredibilita: null, quotaCeiling: null, quotaCapata: false }];
   let excluded = false;
   for (const s of sizeGrid) {
-    const r = perMarketNetAtSize(marketId, marketRows, tokenTrades, potByCond, { offsetCents, offsetTicks, sizeUsd: s, maxInventoryUsd, policy, minSizeByMarket, pairCostUsd, punteggioPosizione });
+    const r = perMarketNetAtSize(marketId, marketRows, tokenTrades, potByCond, { offsetCents, offsetTicks, sizeUsd: s, maxInventoryUsd, policy, minSizeByMarket, pairCostUsd, punteggioPosizione, maxCredibleShare });
     if (r.excluded) { excluded = true; continue; }         // pot/depth missing → unfundable; keep only zero level
     if (r.netPerDay5m == null) continue;                   // cost UNKNOWN at this size → skip (never default to 0)
     levels.push({
       sizeUsd: s, capital: r.capital, units: Math.round(r.capital / unitUsd), spanHours: r.spanHours,
       grossPerDay: r.grossPerDay, cost5m: r.cost5m, costPerDay5m: r.costPerDay5m,
       punteggioPosizione: r.punteggioPosizione, grossScoredPerDay: r.grossScoredPerDay, netScoredPerDay: r.netScoredPerDay,
+      // Il tetto di credibilita' morde PER LIVELLO, non per mercato: e' cio' che rende l'obiettivo
+      // concavo dove il book e' sottile, invece di premiare il capitale in piu' come se il book reggesse.
+      fattorePosizione: r.fattorePosizione, posizioneEsatta: r.posizioneEsatta,
+      fattoreCredibilita: r.fattoreCredibilita, quotaCeiling: r.quotaCeiling, quotaCapata: r.quotaCapata,
       // L'OBIETTIVO DEL KNAPSACK. Col punteggio di posizione è il netto visto da dove il motore si
       // mette davvero; senza, è esattamente `netPerDay5m` come è sempre stato. `netPerDay5m` non viene
       // toccato in nessuno dei due casi: chi legge il netto misurato continua a leggere quello.
@@ -288,7 +350,15 @@ function pairCostForMarket(marketRows, { offsetCents, offsetTicks, usePairCost, 
  * @returns { budgetUsd, unitUsd, ...knapsack result, grossWindow, cost5mWindow }
  */
 function allocateBudget(byMarket, marketTokens, tapeByToken, potByCond, opts) {
-  const { offsetCents, offsetTicks = null, maxInventoryUsd, budgetUsd, unitUsd, maxPerMarketUsd, policy, minSizeByMarket = null, pairCostUsd = null, usePairCost = false, usePlacementScore = false, maxSpreadByMarket = null } = opts;
+  const {
+    offsetCents, offsetTicks = null, maxInventoryUsd, budgetUsd, unitUsd, maxPerMarketUsd, policy,
+    minSizeByMarket = null, pairCostUsd = null, usePairCost = false, usePlacementScore = false, maxSpreadByMarket = null,
+    // ── IL TETTO DI CREDIBILITA' NELL'OBIETTIVO — SPENTO PER DIFETTO, come gli altri tre ────────────
+    // Acceso da `planAllocation` e da nessun driver di backtest. `maxCredibleShare` prende per difetto
+    // LA STESSA costante della correzione «thin-book» (realistic-estimate DEFAULTS): un secondo numero
+    // per la stessa soglia significherebbe che l'obiettivo e la stima finale giudicano diversamente.
+    useCredibleShareCap = false, maxCredibleShare = RE_DEFAULTS.maxCredibleShare,
+  } = opts;
   const inTick = fin(offsetTicks) && offsetTicks > 0;
   // Mercati per cui il peso non è stato applicabile (banda o punteggio illeggibili). Elencati, non
   // silenziosamente assenti: sono gli unici che restano giudicati al ceiling mentre gli altri no.
@@ -318,7 +388,7 @@ function allocateBudget(byMarket, marketTokens, tapeByToken, potByCond, opts) {
       })
       : null;
     if (usePlacementScore && pw == null) pesoNonApplicato.push(marketId);
-    const c = perMarketNetCurve(marketId, rows, trades, potByCond, { offsetCents, offsetTicks, maxInventoryUsd, sizeGrid, unitUsd, policy, minSizeByMarket, pairCostUsd: pc, punteggioPosizione: pw ? pw.S : null });
+    const c = perMarketNetCurve(marketId, rows, trades, potByCond, { offsetCents, offsetTicks, maxInventoryUsd, sizeGrid, unitUsd, policy, minSizeByMarket, pairCostUsd: pc, punteggioPosizione: pw ? pw.S : null, maxCredibleShare: useCredibleShareCap ? maxCredibleShare : null });
     c.punteggioPosizione = pw ? pw.S : null;
     c.punteggioOffsetCents = pw ? pw.offsetCents : null;
     c.punteggioTick = pw ? pw.tick : null;
@@ -339,7 +409,7 @@ function allocateBudget(byMarket, marketTokens, tapeByToken, potByCond, opts) {
     const need = funded.map((l) => l.capitalToQualifyUsd).filter((x) => fin(x));
     belowMinSize.push({ marketId: c.marketId, minSizeShares: funded[0].minSizeShares, capitalToQualifyUsd: need.length ? Math.min.apply(null, need) : null });
   }
-  return { budgetUsd, unitUsd, curves, grossPerDay, costPerDay5m, belowMinSize, usePlacementScore, pesoNonApplicato, ...res };
+  return { budgetUsd, unitUsd, curves, grossPerDay, costPerDay5m, belowMinSize, usePlacementScore, pesoNonApplicato, useCredibleShareCap, maxCredibleShare: useCredibleShareCap ? maxCredibleShare : null, ...res };
 }
 
 module.exports = { perMarketNetAtSize, perMarketNetCurve, knapsack, allocateBudget, marketTick, pairCostForMarket, placementWeightForMarket };
