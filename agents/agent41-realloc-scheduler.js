@@ -989,7 +989,8 @@ function main() {
   // il processo non sa ancora niente, e un mini-ciclo su un saldo letto un secondo dopo l'avvio
   // sarebbe una decisione presa senza contesto. `unref()` non serve — questo processo vive comunque.
   if (TRIGGER_ATTIVO) {
-    annuncia('log', `trigger capitale fermo ACCESO — soglia $${TRIG.SOGLIA_USD}, controllo ogni ${TRIG.CADENZA_MS / 1000}s`
+    annuncia('log', `trigger capitale fermo ACCESO — cadenza operativa ${TRIG.CADENZA_OPERATIVA_MS / 60000} min`
+      + ` (rilevazione del saldo ogni ${TRIG.CADENZA_MS / 1000}s), soglia $${TRIG.SOGLIA_USD}`
       + ` · non cancella niente, rilegge AVVIA/FERMA e il kill a ogni controllo`
       + ` · obiettivo di utilizzo ${Math.round(UTIL.TARGET_UTILIZZO * 100)}%, fino a ${TRIG.MAX_MERCATI_PER_GIRO} mercati per giro`
       + ` · se il piano salvato manca, e' vecchio (> ${PIANO_FRESCO_MAX_MS / 60000} min) o non ha spazio, RICALCOLA (piano leggero a ${FINESTRA_LEGGERA_ORE}h)`);
