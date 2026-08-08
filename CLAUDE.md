@@ -3,7 +3,7 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt**: non serve più reincollarlo ogni volta.
 
-Ultima verifica contro codice/stato reali: **8 agosto 2026**, ~19:30 UTC.
+Ultima verifica contro codice/stato reali: **8 agosto 2026**, ~21:00 UTC.
 
 > ## 🔴 KILL ATTIVO DALLE 17:20:17 UTC DELL'8 AGOSTO 2026 — CONTO PIATTO
 > `data/safety-kill-switch.json` dice `killed:true`, `by:"operator · liquidity-rewards tab"`. Verificato
@@ -383,7 +383,7 @@ cancellava invece di rappresentare. Adesso:
   concesso $63,82, usato $52 — sotto quota senza che la quota abbia dovuto mordere; 4 mercati lunghi
   restano fuori con motivo `quota-coda-lunga`, che è distinto da un rifiuto per orizzonte.
 
-**~~L'orizzonte ha DUE estremi: `[0,25 · 1,5]` giorni~~** (superato dal blocco qui sopra) (`lib/rewards/horizon.js`, 8 agosto
+**~~L'orizzonte ha DUE estremi: `[0,25 · 1,5]` giorni~~** *(il pavimento è 0,75 g dall'8 agosto sera — §5 punto 38 fase 1)* (superato dal blocco qui sopra) (`lib/rewards/horizon.js`, 8 agosto
 2026 sera — in `main`; il pianificatore nasce in un processo figlio a ogni ciclo, quindi **non serve
 riavviare niente**). Il pavimento c'era dal principio; il tetto no, e la sua assenza non era benigna:
 il knapsack massimizza un **tasso al giorno**, e un tasso al giorno non contiene la durata. Un mercato
@@ -1599,6 +1599,117 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
 
     **Nessun peso, filtro o soglia è stato modificato in questa sessione.** L'unica correzione applicata
     è al testo del punto 23 qui sopra, che attribuiva al pavimento un'assenza che è strutturale.
+
+38. **LE OTTO FASI DELL'8 AGOSTO SERA — IN `main`, E ASPETTANO QUATTRO RIAVVII.** Il bot è su KILL con
+    conto piatto, quindi nessuna di queste modifiche può muovere capitale finché il kill resta. Ogni
+    fase ha il suo commit.
+
+    | # | cosa | dove |
+    |---|---|---|
+    | 1 | pavimento orizzonte **0,25 → 0,75 g** (18 h) | `lib/rewards/horizon.js` |
+    | 2 | punteggio **rischio/beneficio** ordinabile | `lib/rewards/rischio-beneficio.js` (nuovo) |
+    | 3 | decisione di riprezzo **guidata dal feed** anche sui lenti | `lib/maker/cadenza-adattiva.js` |
+    | 4 | **mid stantio**: 20 s, poi l'ordine si ritira | `lib/maker/mid-stantio.js` (nuovo) |
+    | 5 | fill: riequilibrio e merge **senza conflitti** | `lib/maker/auto-close.js` |
+    | 6 | cadenza operativa del trigger **10 min**, invariante contro la scoperta | `lib/maker/trigger-capitale-fermo.js` |
+    | 7 | **caricatore `.env`** su tutti e quattro i processi critici | `agents/agent35,41,43` |
+    | 8 | **backoff** distinto per 429 e **verifica dopo l'ambiguo** | `lib/maker/backoff-venue.js` (nuovo) |
+
+    **Fase 1 — il pavimento era tarato sulla popolazione sbagliata.** 0,25 g veniva dalla mediana di
+    0,22 g di TUTTI gli ingressi dei 21; la ricerca del punto 37 ha mostrato che il 91% di quelli non
+    paga premi. Sui soli premianti la mediana è **22,7 h**. 18 e non 21 perché **fra 12,4 h e 19,6 h il
+    campione è vuoto**: la scelta è insensibile a ±5 h, che è la forma di argomento usata anche per il
+    tetto di orizzonte e per la finestra del piano leggero. **Effetto misurato: ZERO, oggi** — il board
+    ha 111 mercati con minimo 1,17 g, e nell'universo premiante 0-48 h non esiste un solo mercato fra 6
+    e 18 ore. È una correzione di taratura che morderà quando i premianti a scadenza breve torneranno.
+    **Il prezzo, detto prima:** esclude 9 dei 38 ingressi premianti misurati, cioè la famiglia
+    `<ticker>-up-or-down` (2,6-8 h) che il report segnalava come la più interessante per affollamento.
+    *Chiuso di conseguenza uno dei quattro test rossi noti:* `risk-classifier` dichiarava
+    `MIN_HORIZON_DAYS = 2` in un commento e 2880 minuti in un `.d.ts` mentre il valore era 0,25 — la
+    classe di difetto che il rilevatore D7 cerca. Ora 0,75 e 1080, e il test passa 52/52.
+
+    **Fase 2 — il rischio diventa un asse, non solo un cancello.**
+    `punteggio = beneficio / (fVolatilità · fProfondità · fOrizzonte · fConcentrazione)`, ogni fattore
+    fra 1 e 2, prodotto fra 1 e 16, punteggio in **$/giorno** come il numeratore. Nessuna soglia è
+    nuova: `VELOCE_TICK_ORA` dalla cadenza adattiva, `maxCredibleShare 0,60` più il nozionale mediano
+    dei 21 per la profondità di riferimento ($25), `MIN_HORIZON_DAYS`/`LONG_TAIL_DAYS` per le **due
+    code** dell'orizzonte, `CONCENTRATION_CAP_FRAC` per la concentrazione. Si vede sulle righe e sui
+    candidati di `/api/rewards/allocate` (punteggio intero) e su `/api/maker/board` (solo il fattore di
+    rischio: quella rotta non pubblica $/giorno per scelta, e la console divide il proprio).
+    **La proprietà che lo rende sicuro:** l'annotazione avviene DOPO il knapsack, e un test lo verifica
+    per posizione nel sorgente più camminando gli import. Sul piano vero riordina: il mercato col
+    beneficio più alto ($16,72/g) scende al terzo posto per rischio 3,05.
+
+    **Fase 3 — il dato era live, la decisione no.** Un mercato «lento» aspettava dieci secondi anche col
+    book appena cambiato. Ora `decidiCadenza` riceve l'istante dell'ultimo book e valuta subito se è più
+    recente di quello su cui ha già deciso. **Il compromesso, dichiarato:** non è una riscrittura
+    event-driven di agent40 — il ciclo esterno resta a 5 s, quindi si toglie l'attesa *artificiale* dei
+    dieci secondi, non il ciclo. Il freno sui veloci è intatto: `MIN_MS` (1 s) vale anche per gli
+    eventi, e `hysteresisTicks`/`confirmSamples`/`minIntervalMs` non sono stati sfiorati.
+    **Difetto vero trovato per strada:** `cadenzaPer` leggeva `r.tickSize`, che `resolveMarketRules` non
+    restituisce — `tickCents` restava **1 per ogni mercato**, quindi la misura era in centesimi/ora
+    invece che in tick/ora. Su un mercato a tick 0,1¢ risultava dieci volte più lento del vero. Nessun
+    test funzionale poteva vederlo: il risultato era plausibile, solo sbagliato di un fattore.
+
+    **Fase 4 — venti secondi di cecità, poi ci si ritira.** Il rifiuto `mid-stale` era giusto e senza
+    fine: si ripeteva per sempre e il capitale restava esposto su un book che non vedevamo. Ora il primo
+    ciclo cieco fa partire un orologio; sotto i 20 s non cambia niente, sopra **si cancella**. Venti
+    secondi = ~7 pubblicazioni mancate di agent34. `MAKER_MID_STANTIO_TIMEOUT_MS`, fuori da [5 s, 120 s]
+    scartato. L'orologio si azzera **solo su una lettura buona**, e una cancellazione fallita NON lo
+    azzera. L'unica azione del percorso è la cancellazione; il capitale liberato lo rimette al lavoro il
+    trigger. L'orologio non sopravvive al riavvio, e non deve.
+
+    **Fase 5 — un conflitto vero, trovato dal test che il requisito chiedeva.** La chiusura forzata
+    vendeva **con il completamento del Livello 2 ancora sul libro**: `d.cancelOrderIds` porta le uscite
+    sul lato riempito, il completamento sta sull'altro, quindi non ci finiva mai. Adesso entra nella
+    stessa lista ed eredita la stessa regola (se una cancellazione fallisce, non si vende), e l'attesa
+    viene chiusa. **E una cosa che non si può fare, scoperta provandola:** «posizionamento più
+    aggressivo» non può alzare il prezzo del Livello 2 — è già `min(tetto, ask − tick)`, cioè il massimo
+    dei due soli vincoli, e qualunque alzata sarebbe limitata dagli stessi termini. Il primo tentativo
+    era codice morto; al suo posto resta la sola cosa vera: si **dichiara** se il prezzo cade in banda.
+
+    **Fase 6 — due orologi con nomi che dicono cosa fanno.** `CADENZA_MS` (120 s) è ogni quanto si
+    GUARDA il saldo; `CADENZA_OPERATIVA_MS` (600 s = **10 min**) è ogni quanto il trigger può AGIRE, ed
+    è il numero che il requisito chiede. **La rilevazione resta a 2 minuti**, ed è una decisione:
+    portarla a dieci renderebbe il trigger più lento ad accorgersi del capitale libero. L'invariante
+    `10 min < 15 min` è ora un test che legge `SCAN_INTERVAL_MS` dal sorgente di agent24, non una
+    costante copiata. La cadenza della scoperta non è stata toccata.
+
+    **Fase 7 — un crash notturno non lascia più processi senza ambiente.** Lo scenario pericoloso non
+    era il crash del processo (pm2 lo rilancia con la descrizione in memoria) ma il riavvio del
+    **demone**: pm2 risorge dal dump su disco, che qui è pulito. agent41, agent35 e agent43 non avevano
+    un caricatore di `.env`; ora ce l'hanno, **lo stesso blocco di agent40**. Misurato eseguendolo su un
+    ambiente vuoto: **19 variabili dal file e 4/4 critiche su tutti e quattro**.
+    `REALLOC_SCHEDULER_ENABLED` sta nel blocco `env` di ecosystem, versionato. **Non può rompere un
+    avvio che funziona:** la condizione è `process.env[k] === undefined`, quindi pm2 vince sul file — ed
+    è per questo che `REALLOC_SCHEDULER_DRY_RUN` resta dov'è e inerte.
+
+    **Fase 8 — un 429 non è un 5xx.** Il backoff era 250/500/1000 ms per tutto. Ora il 429 parte da un
+    secondo e raddoppia (1 → 2 → 4), e **`Retry-After` vince** su qualunque progressione (secondi o data
+    HTTP), limitato a 30 s. E dopo un esito **ambiguo** — la POST era partita — non si ritenta alla
+    cieca: si interroga il venue, e se l'ordine c'è l'esito viene dichiarato **riuscito**. Una verifica
+    che non riesce vale «non ritentare»: fra due ordini e zero ordini, il secondo errore costa meno.
+    La POST resta deliberatamente non avvolta in `withRetry`, come prima.
+
+39. **QUATTRO RIAVVII PENDENTI per le otto fasi.** Nessuno eseguito: §2 regola 2.
+
+    | processo | cosa entra in servizio | comando |
+    |---|---|---|
+    | `agent40-manual-reprice` | fasi 3, 4, 5 (decisione per evento, mid stantio, conflitto della chiusura forzata) + il fix del tick | `pm2 restart agent40-manual-reprice` |
+    | `agent41-realloc-scheduler` | fasi 1, 6, 7 (pavimento nel piano leggero, cadenza operativa, caricatore `.env`) | `pm2 restart agent41-realloc-scheduler` — **e da ora basta questo**: il caricatore rende inutile la ricostruzione da `/proc` del punto 3 |
+    | `agent35-maker` | fase 7 (caricatore `.env`) | `pm2 restart agent35-maker` |
+    | `agent43-guardian` | fase 7 (caricatore `.env`) | `pm2 restart agent43-guardian` |
+    | `dashboard` | fase 2 (fattore di rischio su `/api/maker/board`) | `pm2 restart dashboard` (verificare PRIMA `.next/prerender-manifest.json` — §5 punto 7) |
+
+    **La nota del punto 3 è superata dalla fase 7 per agent41:** con il caricatore di `.env` un
+    `pm2 restart agent41-realloc-scheduler` non perde più le 63 variabili, perché tornano dal file. La
+    ricostruzione da `/proc` resta valida ma non è più necessaria.
+
+40. **I ROSSI NOTI SONO SCESI DA QUATTRO A TRE.** `risk-classifier` è verde dalla fase 1 (era il
+    commento fermo a `MIN_HORIZON_DAYS = 2`). Restano `dipendenze-collegate` (falso positivo su un
+    ternario andato a capo), `scaduto-senza-rinnovo` (fixture il cui ordine viene riprezzato al primo
+    giro) e `scadenza-ereditata`, più i tre test JS su moduli TypeScript che `node` non avvia
+    (`lib/leg-order.test.js` e i due in `lib/venues/__tests__/`). Nessun rosso nuovo dalle otto fasi.
 
 ---
 
