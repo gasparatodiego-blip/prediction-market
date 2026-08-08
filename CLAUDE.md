@@ -13,9 +13,12 @@ Ultima verifica contro codice/stato reali: **8 agosto 2026**, ~07:20 UTC.
 > agent34 e il `dashboard` sono stati riavviati alle ~07:21–07:22 UTC con l'autorizzazione esplicita
 > dell'utente in chat: graduatoria della corsia calda con K/N rimisurati, punteggio di posizione nella
 > selezione e confronto stima/consuntivo sono **attivi**. Vedi §5 punto 9 per la verifica.
-> Resta pendente la stessa cosa di ieri, ed è nel punto 3 di §5: `REALLOC_SCHEDULER_DRY_RUN` è ancora
-> nell'ambiente di agent41 (inerte — nessuna riga di codice la legge), perché toglierla richiede un
-> riavvio di forma diversa (`env -u … --update-env`) che non è stato chiesto.
+> **Non resta niente in sospeso sui riavvii.** `REALLOC_SCHEDULER_DRY_RUN` è ancora nell'ambiente di
+> agent41 e ci **resta per decisione dell'operatore** (8 agosto 2026): è inerte, e un `restart` non può
+> toglierla in nessuna forma — vive nella descrizione in memoria di pm2, e `--update-env` fonde invece
+> di sostituire. Il punto 3 di §5 è stato riscritto con la misura, con la tecnica giusta per riavviare
+> agent41 senza perdere l'ambiente, e con l'avvertenza che il comando documentato prima ne avrebbe
+> perse 63.
 
 ---
 
@@ -405,19 +408,50 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
    che è uno stato per-mercato, non un blocco globale. Il limite reale resta quello documentato:
    **FERMA copre agent41, non agent35 né il pannello manuale**, e non esiste un punto in cui bloccare
    i piazzamenti nuovi senza bloccare anche le uscite. Da correggere: il commento, o la copertura.
-3. **`REALLOC_SCHEDULER_DRY_RUN=1` è ancora nell'ambiente del processo agent41** (ereditato dal demone
-   pm2, non da `ecosystem.config.js`). Inerte, perché nessuna riga di codice la legge, ma chi ispeziona
-   l'ambiente la trova e può concluderne il contrario.
-   **Verificato il 7 agosto 2026, ~23:20 UTC:** la variabile **non è in `.env`** e non è in
-   `ecosystem.config.js` — in entrambi i file compare solo dentro commenti storici. Non c'è quindi
-   niente da togliere da `.env`: vive **solo** nell'ambiente del demone pm2 e, attenzione, **anche nel
-   dump** `~/.pm2/dump.pm2`, quindi un `pm2 kill` + `resurrect` la rimetterebbe. La rimozione pulita è
-   un riavvio del solo agent41 da una shell che non ce l'ha, seguito da `pm2 save`:
+3. **`REALLOC_SCHEDULER_DRY_RUN=1` resta nell'ambiente del processo agent41 — PER DECISIONE
+   DELL'OPERATORE (8 agosto 2026), e un riavvio non può toglierla.** Inerte: nessuna riga di codice la
+   legge, e `lib/maker/gestione-manuale-nel-flusso.test.js` fallisce se ricompare nel codice.
+
+   **DOVE VIVE DAVVERO — misurato l'8 agosto 2026, ~07:30 UTC, e smentisce quello che questo punto
+   diceva prima.** Non è nel demone pm2 (`/proc/<pid-demone>/environ`: assente), non è in
+   `~/.pm2/dump.pm2` (nessuna delle 41 app la porta), non è in `.env` né in `ecosystem.config.js` —
+   in questi due compare solo dentro commenti storici. Vive nella **descrizione in memoria che pm2
+   tiene del processo** (`pm2_env.REALLOC_SCHEDULER_DRY_RUN = 1`), fissata al primo avvio da una shell
+   che ce l'aveva. Da lì un `resurrect` non la rimetterebbe: il dump è pulito.
+
+   **PERCHÉ NESSUN `restart` LA TOGLIE, in nessuna forma.** `--update-env` **fonde**, non sostituisce:
+   aggiunge e aggiorna le chiavi che trova, e non cancella mai quelle che non ci sono più. Una chiave
+   entrata una volta nella descrizione sopravvive a ogni riavvio. Provato: riavvio eseguito da una
+   shell in cui la variabile era dimostrabilmente assente, e dopo il riavvio era ancora lì.
+
+   **IL COMANDO CHE QUESTO PUNTO DOCUMENTAVA ERA SBAGLIATO E PERICOLOSO.** Era
+   `env -u REALLOC_SCHEDULER_DRY_RUN pm2 restart … --update-env`. Non solo non funziona: su questa
+   macchina avrebbe **perso 63 variabili**, fra cui `DATABASE_URL`, `ADMIN_ACCESS_SECRET`,
+   `POLYGON_RPC_URL`, `MAKER_FUNDER_ADDRESS`, `MAKER_SIGNATURE_TYPE`, `MANUAL_ORDER_PLACEMENT` — tutte
+   ereditate e **nessuna presente nel demone**. agent41 **non ha il caricatore di `.env`** (lo dice il
+   blocco `env` in `ecosystem.config.js`), quindi le avrebbe perse davvero.
+
+   **LA TECNICA GIUSTA PER RIAVVIARE agent41 SENZA PERDERE L'AMBIENTE** (usata l'8 agosto, verificata:
+   102 → 102 variabili, zero chiavi perse). Si ricostruisce l'ambiente VERO dal processo vivo:
    ```bash
-   env -u REALLOC_SCHEDULER_DRY_RUN pm2 restart agents/ecosystem.config.js \
-     --only agent41-realloc-scheduler --update-env && pm2 save
+   PID=$(pm2 jlist | node -e "…")           # mai da pgrep — vedi il punto 8
+   while IFS= read -r -d '' kv; do
+     k=${kv%%=*}
+     case "$k" in
+       NODE_CHANNEL_FD|NODE_CHANNEL_SERIALIZATION_MODE|PM2_JSON_PROCESSING|PM2_USAGE|NODE_APP_INSTANCE) continue ;;
+     esac
+     case "$k" in [A-Z]*) export "$kv" ;; esac   # solo MAIUSCOLE: scarta la contabilità interna di pm2
+   done < /proc/$PID/environ
+   pm2 restart agents/ecosystem.config.js --only agent41-realloc-scheduler --update-env && pm2 save
    ```
-   Richiede conferma (regola 2) ed è fra i riavvii pendenti del punto 7.
+   I due filtri non sono cosmetici: `NODE_CHANNEL_FD` è il canale IPC del processo **vecchio** ed
+   ereditarlo è l'unico modo di rompere davvero il riavvio; il filtro sulle maiuscole toglie le chiavi
+   di servizio di pm2 (`pm_id`, `exec_mode`, `name`, `status`, `cwd`, `script`…) finite nell'ambiente.
+
+   **L'unica rimozione possibile sarebbe `pm2 delete` + `pm2 start`** (dalla shell qui sopra, perché
+   il demone non ha le variabili critiche). L'operatore ha deciso l'8 agosto 2026 di **non farlo**: la
+   variabile è inerte, il dump è pulito, e un `delete` azzera il contatore dei riavvii e lascia agent41
+   giù se lo `start` fallisce. Questo punto resta aperto come **nota**, non come lavoro da fare.
 4. **L'header di `lib/maker/strategia-merge.js` è invecchiato.** Elenca ancora quattro ragioni per cui
    il merge «NON è eseguibile dallo stack attuale»; il relayer gasless ne ha tolte tre e
    `ctf-relayer.js` la quarta, e il ciclo è stato eseguito davvero il 7 agosto 2026 (commit `95aa634`
@@ -462,13 +496,14 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
 
    | Processo | restart | Cosa è entrato in servizio | Verifica |
    |---|---|---|---|
-   | `agent41-realloc-scheduler` | 31 → 32 | punteggio di posizione nella selezione + graduatoria e K/N della corsia calda (è chi *scrive* `collector-priority.json`) | env intatto: 102 variabili, `MAKER_FUNDING_APPROVED=true`, `MAKER_MODE=off`; «tetto per mercato 20% · il bot è FERMO» |
+   | `agent41-realloc-scheduler` | 31 → 33 (due riavvii: uno col resto della flotta, uno per il tentativo di togliere `REALLOC_SCHEDULER_DRY_RUN` — vedi punto 3) | punteggio di posizione nella selezione + graduatoria e K/N della corsia calda (è chi *scrive* `collector-priority.json`) | env intatto: 102 variabili, `MAKER_FUNDING_APPROVED=true`, `MAKER_MODE=off`; «tetto per mercato 20% · il bot è FERMO» |
    | `agent40-manual-reprice` | 50 → 51 | percorso corretto del consuntivo, guardia di attribuzione, scomposizione per mercato, avviso di deriva | cadenza adattiva regolare, log di errore vuoto |
    | `agent34-clob-ws` | 15 → 16 | `MAX_MARKETS=30` in `readCollectorPriority` | risottoscrizione pulita, 107 mercati / 214 asset |
    | `dashboard` | 168 → 169 | `divergenza` e `soglie` su `/api/maker/confronto-reward` | http 200 sulla root; la rotta risponde 401 come `board` e `status` (stesso gate operatore); «divergenza» nel chunk servito |
 
    Log di errore vuoti su tutti e tre gli agent; le righe rosse del `dashboard` sono le vecchie delle
-   03:36 e il contatore dei riavvii non sale (verificato a +3 minuti: 169/16/51/32, tutti +1).
+   03:36 e nessun contatore sale da solo (verificato a +3 minuti: 169/16/51/32, tutti +1 rispetto al
+   prima; agent41 è poi passato a 33 per il secondo riavvio, voluto, del punto 3).
    `.next/prerender-manifest.json` verificato PRIMA del riavvio del dashboard (nota del punto 7).
 
    **Effetto immediato, misurato:** `collector-priority.json` è ancora quello scritto alle 04:16 dal
