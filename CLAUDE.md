@@ -3,7 +3,7 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt**: non serve più reincollarlo ogni volta.
 
-Ultima verifica contro codice/stato reali: **8 agosto 2026**, ~09:50 UTC.
+Ultima verifica contro codice/stato reali: **8 agosto 2026**, ~10:40 UTC.
 
 > **Il codice della sera del 7 agosto è in `main` E nei processi vivi** (riavvii autorizzati alle
 > ~23:52–23:57 UTC): fine scala su quattro percorsi, cadenza adattiva, pannello del mid vivo, timbro
@@ -30,7 +30,12 @@ Ultima verifica contro codice/stato reali: **8 agosto 2026**, ~09:50 UTC.
 > **Nuovo in flotta: `agent44-audit-scoperta`**, l'audit di sola scoperta. Non è sempre vivo: gira alle
 > 03:07 UTC, scansiona, scrive la coda ed esce. Vedi §3 e §5 punto 16.
 >
-> **A parte quelli, sui riavvii non resta altro.** `REALLOC_SCHEDULER_DRY_RUN` è ancora nell'ambiente di
+> **Resta pendente UN riavvio**, ed è nuovo: il **trigger a capitale fermo** aggiunto stamattina vive
+> dentro agent41 stesso (non in un processo figlio, a differenza dell'allocatore), quindi finché
+> `agent41-realloc-scheduler` gira col codice delle 09:15 il trigger non esiste. Il ciclo fisso continua
+> a funzionare. Vedi §5 punto 17.
+>
+> **A parte quello, sui riavvii non resta altro.** `REALLOC_SCHEDULER_DRY_RUN` è ancora nell'ambiente di
 > agent41 e ci **resta per decisione dell'operatore** (8 agosto 2026): è inerte, e un `restart` non può
 > toglierla in nessuna forma — vive nella descrizione in memoria di pm2, e `--update-env` fonde invece
 > di sostituire. Il punto 3 di §5 è stato riscritto con la misura, con la tecnica giusta per riavviare
@@ -211,7 +216,7 @@ Si completa tutto il resto, si dice cosa è pronto, e si aspetta il messaggio um
 | `agent37-maker-watchdog` | **Dead-man dei processi**: sorveglia i battiti di agent35/agent40; se un motore si ferma, cancella i suoi ordini rimasti soli sul venue. Guarda la salute, non i dollari. | `agents/agent37-maker-watchdog.js` |
 | `agent38-tape-watchdog` | Watchdog di **continuità** dei giornali (trade tape + mid-history): copre il buco che l'auto-heal del socket di agent34 non vede. | `agents/agent38-tape-watchdog.js` |
 | `agent40-manual-reprice` | **Riprezzatura / uscita dalla banda** per gli ordini piazzati a mano: l'asse giusto non è la scadenza a 180 s ma «l'ordine è ancora dentro la banda che paga?». Scrive lo snapshot posizioni. | `agents/agent40-manual-reprice.js` |
-| `agent41-realloc-scheduler` | **Riallocazione periodica** (ogni 6 h). Due trigger indipendenti: *validità* (i mercati in gestione sono ancora buoni?) e *valore* (il piano fresco vale >20% in più?). **È l'unico processo che può cancellare e piazzare ordini veri senza conferma umana**, per eccezione esplicita dell'operatore (3 agosto 2026). | `agents/agent41-realloc-scheduler.js` |
+| `agent41-realloc-scheduler` | **Riallocazione periodica** (ogni 6 h) + **trigger a capitale fermo** (ogni 2 min, dall'8 agosto 2026). Il ciclo fisso ha due trigger indipendenti: *validità* e *valore*. Il trigger event-driven ne ha uno solo: c'è collaterale libero sopra **$50**. **È l'unico processo che può cancellare e piazzare ordini veri senza conferma umana**, per eccezione esplicita dell'operatore (3 agosto 2026). | `agents/agent41-realloc-scheduler.js` |
 | `agent42-watch-makers` | Monitor dei **21 maker di riferimento**: ingressi, convergenze, ritiri pre-risoluzione. L'unico processo della flotta che **non può toccare capitale nemmeno in linea di principio** (nessun import da `lib/maker/`, nessuna credenziale). | `agents/agent42-watch-makers.js` |
 | `agent24-liquidity-rewards` | Scanner dei mercati con reward: ogni 15 min legge Gamma + book e assegna il punteggio con la formula quadratica esatta del venue. | `agents/agent24-liquidity-rewards.js` |
 | `agent27-news-guard` | Guardia notizie/volatilità: segnala che il prezzo sta per muoversi, così le quote si ritirano prima del fill avverso. | `agents/agent27-news-guard.js` |
@@ -416,6 +421,34 @@ delle coperibili e oltre non guadagna nulla fino a 50+), **RETENTION 12h conferm
 osservati a 3,01h · 6,01h · 8,01h), **MAX_MARKETS 40 → 30** (righe 7-9 + K 15 = 24, restano 6 slot;
 il feed sta a **112 mercati su 125** di `TOTAL_MARKET_CAP`, quindi ogni slot chiesto è un mercato del
 board in meno). Misura riproducibile: `node scripts/misura-ricambio-candidati.js` (sola lettura).
+
+**Il capitale fermo non aspetta sei ore** (`lib/maker/trigger-capitale-fermo.js`, 8 agosto 2026 — in
+`main`, **non ancora nel processo**: serve un riavvio di agent41, §5 punto 17). Il ciclo fisso resta
+identico e continua a girare ogni 6 h; accanto c'è un **mini-ciclo** che ogni **120 s** guarda una cosa
+sola: quanto collaterale è libero.
+- **La misura**: il saldo pUSD. Su questo venue un ordine BUY a riposo *immobilizza* il collaterale,
+  quindi il saldo libero **è** per costruzione il capitale non allocato — dedurlo sottraendo gli ordini
+  sarebbe una seconda lettura che può divergere dalla prima.
+- **Soglia $50** (decisa dall'operatore): con quella cifra c'è spazio per un ordine intero, dato che il
+  nozionale mediano dei 21 maker di riferimento è ~$34.
+- **Cadenza 120 s**: la cache del saldo ha TTL 45 s, quindi sotto i 45 s si rileggerebbe lo stesso
+  valore. 120 s sono 2,7 TTL e costano una chiamata al dashboard locale. La lettura del **venue** non
+  avviene a ogni giro, solo quando la soglia è già superata.
+- **Non ricalcola il piano** — è tutto il punto: quel calcolo costa ~52 s e 687 MB. Legge l'**ultimo
+  piano salvato** (`data/realloc-ultimo-piano.json`, scritto dal ciclo fisso, ridotto ai soli campi che
+  servono a costruire le due gambe).
+- **Dove manda il capitale**: sul mercato dove il piano aveva messo capitale e adesso ne ha meno del
+  previsto — la definizione operativa di «capitale liberato». Riporta il portafoglio *verso* il piano
+  invece di inventarne uno nuovo.
+- **Le sei cose che non può fare**, strutturali: non cancella niente (ed è la risposta completa a «e gli
+  ordini manuali?» — non tocca **nessun** ordine esistente); non piazza a bot FERMO; non si sovrappone
+  al ciclo fisso (`inCorso` condiviso, rilasciato in `finally`); non piazza su saldo illeggibile né su
+  board più vecchio di 20 min; non forza (spazio sotto $34 o size sotto il minimo del venue ⇒ il
+  capitale resta liquido).
+- **Audit distinto**: `reason: 'capital-idle-trigger'`, per contare nel tempo quanto spesso scatta e
+  quanto capitale rimette al lavoro senza confonderlo coi cicli fissi.
+- **Si guarda lavorare senza toccare capitale**: `node scripts/simula-trigger-capitale.js 120` esegue la
+  funzione vera con la sola corsia di piazzamento sostituita da un registratore.
 
 **Il pannello non si accoda più a se stesso.** `placeManualOrder`, quando il chiamante non passa
 `ownOrders`, li **legge** dal venue e tiene solo il lato che sta quotando (per token id). Prima solo
@@ -729,6 +762,19 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     `agent-monitor` non sorveglia questo processo (non è in `WATCHED_AGENTS_RAW`) e agent37 guarda i
     battiti dei motori. Il campo `by` dei referti passa al nome nuovo solo per i referti futuri: quelli
     storici restano col vecchio, ed è giusto, dicono chi li ha scritti.
+
+17. **Il trigger a capitale fermo è in `main` ma non nel processo: serve un riavvio di agent41.**
+    A differenza del lavoro sull'allocatore (punto 14), questo **non** vive in un processo figlio: è il
+    poller e il mini-ciclo di agent41 stesso, quindi finché il processo gira col codice delle 09:15 il
+    trigger non esiste. Il ciclo fisso continua a funzionare come sempre nel frattempo.
+    Riavviarlo con la tecnica del punto 3 (agent41 non ha il caricatore di `.env`: un `--update-env` da
+    una shell qualsiasi gli toglierebbe 63 variabili).
+    **Cosa succede al primo giro dopo il riavvio:** `data/realloc-ultimo-piano.json` non esiste ancora —
+    lo scrive il primo ciclo completo — quindi fino ad allora il mini-ciclo risponde «nessun piano
+    salvato» e non piazza niente. È il comportamento voluto: non si inventa un piano per avere qualcosa
+    da fare.
+    **E oggi non piazzerebbe comunque:** il bot è FERMO (punto 1), e il trigger rilegge quell'interruttore
+    a ogni controllo esattamente come il ciclo delle sei ore.
 
 ---
 
