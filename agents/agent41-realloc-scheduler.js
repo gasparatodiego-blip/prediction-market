@@ -675,6 +675,53 @@ function piazzaCoppia(rows, diag) {
 // Oltre, il ricalcolo leggero costa tredici secondi e risponde alla domanda di ADESSO.
 const PIANO_FRESCO_MAX_MS = Number(process.env.REALLOC_PIANO_FRESCO_MAX_MS || 60 * 60_000);
 
+/**
+ * LE DUE PRECONDIZIONI DI UN MERCATO CHE NON ABBIAMO MAI TOCCATO, nell'ordine in cui contano.
+ *
+ * Non e' una regola nuova: e' la fase 3 di `runAllocationReset` (lib/maker/allocation-reset.js:302-353)
+ * applicata al percorso che non l'aveva. Le stesse due scritture, lo stesso verso di fallimento, la
+ * stessa ragione — con una differenza voluta: qui NON si tocca la allowlist di auto-reprice
+ * (`setEnabled`). Il reset la scrive perche' ridefinisce l'intero insieme dei mercati gestiti; questo
+ * giro aggiunge capitale e basta, e quella lista governa dove si puo' APRIRE per i processi che girano
+ * in `MAKER_MODE=live-min` — allargarla da qui vorrebbe dire concedere a un altro processo un permesso
+ * che nessuno gli ha chiesto. agent41 gira in `MAKER_MODE=off`, quindi per i SUOI ordini quel gate non
+ * si applica (adapter.js:277), e l'uscita di una posizione resta comunque possibile per l'eccezione di
+ * riduzione (adapter.js:294). Il prezzo, dichiarato: agent40 non riprezzera' questi ordini finche' il
+ * ciclo delle sei ore non porta il mercato nel piano vero.
+ *
+ * SE LA PRIMA RIESCE E LA SECONDA NO, il mercato resta in gestione manuale senza ordini. E' il
+ * comportamento del reset, e si tiene per non divergere: la scrittura di ritorno sarebbe essa stessa
+ * una scrittura che puo' fallire, e agent35 che sta alla larga da un mercato su cui nessuno piazza
+ * costa un'occasione, non capitale. Il ciclo delle sei ore rimette ordine.
+ *
+ * @returns {Promise<{ok: boolean, motivo: string|null}>}
+ */
+async function preparaMercatoNuovo(marketId, prendiInGestione, accendiUscita) {
+  if (typeof prendiInGestione !== 'function') {
+    return { ok: false, motivo: 'nessuna funzione setManual cablata: non si piazza su un mercato che agent35 puo ancora scrivere' };
+  }
+  if (typeof accendiUscita !== 'function') {
+    return { ok: false, motivo: 'nessuna funzione setAutoClose cablata: non si piazza su un mercato di cui non si puo accendere l uscita automatica' };
+  }
+  let mn = null;
+  try {
+    mn = await prendiInGestione({ marketId, manual: true,
+      reason: 'trigger a capitale fermo: il motore automatico si tiene fuori da questo mercato' });
+  } catch (e) { mn = { ok: false, error: e && e.message ? e.message : String(e) }; }
+  if (!(mn && mn.ok)) {
+    return { ok: false, motivo: `gestione manuale non presa (${(mn && mn.error) || 'esito non leggibile'})` };
+  }
+  let ac = null;
+  try {
+    ac = await accendiUscita({ marketId, enabled: true,
+      reason: 'trigger a capitale fermo: l uscita automatica e pronta PRIMA che il mercato abbia ordini' });
+  } catch (e) { ac = { ok: false, error: e && e.message ? e.message : String(e) }; }
+  if (!(ac && ac.ok)) {
+    return { ok: false, motivo: `uscita automatica non accesa (${(ac && ac.error) || 'esito non leggibile'})` };
+  }
+  return { ok: true, motivo: null };
+}
+
 async function miniCiclo(decisione, deps = {}) {
   const leggiPiano = deps.leggiPiano || leggiUltimoPiano;
   const leggiOrdini = deps.listOrders || (() => listManualOrders({}));
@@ -683,6 +730,14 @@ async function miniCiclo(decisione, deps = {}) {
   const posizioni = deps.leggiPosizioni || readVenuePositions;
   const rampaOra = deps.rampa || rampa;
   const registra = deps.registraMercatoAperto || registraMercatoAperto;
+  // ── LE DUE SCRITTURE CHE TRASFORMANO UN MERCATO SCELTO IN UN MERCATO PIAZZABILE ─────────────────
+  // Stessa forma della fase 3 del reset (`runAllocationReset`), stesso `by` distinguibile: chi legge
+  // l'audit deve poter separare «preso in gestione dal ciclo delle sei ore» da «preso in gestione dal
+  // trigger a capitale fermo», perche' sono due decisioni con due raggi d'azione diversi.
+  const prendiInGestione = deps.setManual
+    || (({ marketId, manual, reason }) => setManualMode({ marketId, manual, by: 'riallocatore · trigger capitale fermo', reason }));
+  const accendiUscita = deps.setAutoClose
+    || (({ marketId, enabled, reason }) => setAutoClose({ scope: 'market', marketId, enabled, by: 'riallocatore · trigger capitale fermo', reason }));
   const etaBoard = deps.etaBoardMs !== undefined
     ? () => deps.etaBoardMs
     : () => { try { return Date.now() - fs.statSync(path.join(DATA_DIR, 'liquidity-rewards.json')).mtimeMs; } catch { return null; } };
@@ -800,15 +855,57 @@ async function miniCiclo(decisione, deps = {}) {
   //     due non e' piazzabile non si piazza NESSUNA delle due di QUEL mercato — gli altri proseguono.
   const righeOrdine = [];
   const mercati = [];
+  const nonPreparati = [];
   for (const s of giro.scelte) {
     const g = gambeDiUnaRiga(s.riga, s.riga.computedDefaultOffsetTicks);
     if (g.scarto || !g.rows) continue;   // gia' filtrato dal predicato, ma il verdetto vale solo se ricontrollato
+
+    // ── 5-bis · UN MERCATO NUOVO VA PRESO IN GESTIONE PRIMA DI RICEVERE ORDINI ────────────────────
+    // Il difetto che questa riga chiude: il mini-ciclo sceglieva i mercati e piazzava, ma non faceva
+    // MAI le due scritture che la fase 3 del reset fa su ogni mercato del piano. Finche' sceglieva dal
+    // piano salvato non si vedeva — quei mercati il reset li aveva gia' preparati. Dal momento in cui
+    // puo' RICALCOLARE (piano vecchio, assente o senza spazio) sceglie mercati che nessuno ha mai
+    // preparato, e allora ogni singola gamba veniva rifiutata al gate 1 di `placeManualOrder`
+    // (`manual-mode-inactive`, lib/maker/manual-order.js:546). L'8 agosto 2026: 5 mercati scelti,
+    // 5 rifiuti, 0 ordini, con il bot su AVVIA e $291 liquidi.
+    //
+    // Il gate NON viene toccato ne' allentato, ed e' il punto: resta esattamente com'e' per chiunque
+    // altro, e continua a impedire che agent35 e questo processo scrivano sullo stesso libro. Qui si
+    // soddisfa la sua PRECONDIZIONE — prendere davvero il mercato in gestione — invece di piazzare
+    // sperando che qualcun altro l'abbia fatto. Su un mercato che questo giro non tocca, agent35
+    // resta padrone come prima.
+    //
+    // SOLO I NUOVI. `nuovo` significa «nessun ordine nostro a riposo qui» (trigger-capitale-fermo.js:358):
+    // un mercato che ordini gia' ce li ha e' gia' stato preparato da chi ce li ha messi, e riscriverlo
+    // a ogni giro sporcherebbe due file di stato e i loro audit ogni dieci minuti per nulla —
+    // `setManualMode` riscrive il record e appende una riga a ogni chiamata, non e' idempotente.
+    //
+    // E L'USCITA SI ACCENDE PRIMA DEGLI ORDINI, non dopo: e' la stessa regola della fase 3 del reset,
+    // e vale qui per la stessa ragione. `runAutoCloseCycle` visita SOLO i mercati con l'opt-in acceso
+    // (agent40 gli passa `readAutoCloseConfig().enabledMarketIds`), quindi un mercato aperto senza
+    // questa riga avrebbe due gambe vive e nessuno che le chiuda su un fill. Entrambe sono FERMI DURI:
+    // se una delle due scritture non riesce, quel mercato esce dal giro e gli altri proseguono —
+    // meglio un mercato in meno che un mercato con ordini e senza via d'uscita.
+    if (s.nuovo === true) {
+      const p = await preparaMercatoNuovo(s.riga.marketId, prendiInGestione, accendiUscita);
+      if (!p.ok) {
+        nonPreparati.push({ marketId: s.riga.marketId, titolo: s.riga.name || null, motivo: p.motivo });
+        continue;
+      }
+    }
+
     righeOrdine.push(...g.rows);
     mercati.push({ marketId: s.riga.marketId, titolo: s.riga.name || null, allocatoUsd: s.allocatoUsd, nuovo: s.nuovo });
   }
+  if (nonPreparati.length) {
+    annuncia('log', `mini-ciclo: ${nonPreparati.length} mercato/i NUOVI esclusi — non si e' potuto prenderli in gestione`
+      + ` (${nonPreparati.map((x) => `${String(x.marketId).slice(0, 10)}…: ${x.motivo}`).join(' · ')})`);
+  }
   if (!righeOrdine.length) {
-    return { ...referto, esito: 'nessuna-azione', fonte, utilizzo: utilPrima,
-      motivo: 'nessuna gamba costruibile fra i mercati scelti' };
+    return { ...referto, esito: 'nessuna-azione', fonte, utilizzo: utilPrima, nonPreparati,
+      motivo: nonPreparati.length
+        ? `nessun mercato piazzabile: ${nonPreparati.length} scelti erano nuovi e non si e' potuto prenderli in gestione (${nonPreparati[0].motivo})`
+        : 'nessuna gamba costruibile fra i mercati scelti' };
   }
 
   // 6 · IL PIAZZAMENTO, UNA SOLA CHIAMATA per tutte le gambe del giro. Stessa corsia del reset, stesso
@@ -862,6 +959,7 @@ async function miniCiclo(decisione, deps = {}) {
     utilizzo: utilPrima, utilizzoStimatoDopo: utilDopo,
     capitaleTotale: +capitaleTotale.toFixed(2), aRiposoUsd: +aRiposo.toFixed(2),
     piazzati: esito && esito.placed, rifiutati: esito && esito.refused,
+    nonPreparati,
     durataMs: Date.now() - t0, risultati: esito && esito.results,
   };
 }
@@ -1048,5 +1146,5 @@ function main() {
 if (require.main === module) main();
 
 module.exports = { leggiVenue, leggiSaldo, prossimoRitardo, scriviUltimoPiano, leggiUltimoPiano,
-  miniCiclo, pianoLeggero, sorvegliaAvvio, LOG_FILE, STATE_FILE, POOLS_FILE, ULTIMO_PIANO_FILE,
+  miniCiclo, preparaMercatoNuovo, pianoLeggero, sorvegliaAvvio, LOG_FILE, STATE_FILE, POOLS_FILE, ULTIMO_PIANO_FILE,
   FINESTRA_LEGGERA_ORE, PIANO_FRESCO_MAX_MS, AVVIO_CADENZA_MS };

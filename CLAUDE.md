@@ -3,7 +3,21 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt**: non serve più reincollarlo ogni volta.
 
-Ultima verifica contro codice/stato reali: **8 agosto 2026**, ~21:00 UTC.
+Ultima verifica contro codice/stato reali: **8 agosto 2026**, ~21:30 UTC.
+
+> ## 🔧 UN RIAVVIO PENDENTE, E ASPETTA LA CONFERMA DI DIEGO IN CHAT
+> `agent41-realloc-scheduler` gira ancora col codice per cui **il mini-ciclo sceglie mercati che poi non
+> può toccare**: non li prende in gestione manuale, e il gate 1 di `placeManualOrder` rifiuta ogni gamba
+> (`manual-mode-inactive`). È la ragione per cui alle 20:56 dell'8 agosto il piano da $600 ha prodotto
+> **0 ordini piazzati e 5 rifiutati** con il bot su AVVIA. **Non era l'arming**, che con agent41 non
+> c'entra. Correzione in `main`, test e build verdi: **§5 punto 41**. Comando:
+> `pm2 restart agent41-realloc-scheduler`.
+>
+> **Stato reale verificato alle ~21:10 UTC**, e smentisce il banner qui sotto: il KILL è stato
+> **revocato** alle 20:55:50Z (`data/safety-kill-switch.json` → `killed:false`,
+> `clearedReason:"ripristino dal pannello operatore"`) e l'interruttore è su **AVVIA** dalle 20:56:04Z.
+> `data/maker-arming.json` resta `armed:false` dal disarm delle 17:20 causato dal kill: il kill revocato
+> **non ri-arma da solo** (§5 punto 5), ma questo ferma agent35, non agent41.
 
 > ## 🔴 KILL ATTIVO DALLE 17:20:17 UTC DELL'8 AGOSTO 2026 — CONTO PIATTO
 > `data/safety-kill-switch.json` dice `killed:true`, `by:"operator · liquidity-rewards tab"`. Verificato
@@ -1710,6 +1724,67 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     ternario andato a capo), `scaduto-senza-rinnovo` (fixture il cui ordine viene riprezzato al primo
     giro) e `scadenza-ereditata`, più i tre test JS su moduli TypeScript che `node` non avvia
     (`lib/leg-order.test.js` e i due in `lib/venues/__tests__/`). Nessun rosso nuovo dalle otto fasi.
+
+41. **IL MINI-CICLO SCEGLIEVA MERCATI CHE POI NON POTEVA TOCCARE — CORRETTO in `main` l'8 agosto 2026,
+    ~21:30 UTC. ASPETTA IL RIAVVIO DI agent41, DA CONFERMARE DA DIEGO IN CHAT.**
+
+    **Come si è presentato.** 20:56 UTC: bot su AVVIA, kill spento, $668 liquidi, piano da $600 su
+    8 mercati visibile nella tab «Mercati ottimizzati». L'operatore preme AVVIA, il mini-ciclo forzato
+    parte, e il log dice `mini-ciclo FORZATO: $377 rimessi al lavoro su 5 mercato/i (0 ordini piazzati,
+    5 rifiutati)`. Nell'audit, cinque volte lo stesso gate: `reject-manual-mode-inactive`.
+
+    **La causa, e non era l'arming.** `data/maker-arming.json` è `armed:false` (§5 punto 5) ma non
+    c'entra: `lib/maker/arming.js` è importato solo da agent35 e dalle route API, mai da
+    `placeManualOrder` né da agent41. Il blocco vero era il **gate 1** di `placeManualOrder`
+    (`evaluateManualGate`, `lib/maker/manual-order.js:546`), che esige la gestione manuale PRIMA degli
+    ordini. La fase 3 del reset la prende su ogni mercato del piano
+    (`allocation-reset.js:323`, cablata da `agent41-realloc-scheduler.js:506`); il **mini-ciclo non la
+    prendeva mai** — zero occorrenze di `setManual` nella funzione. Finché sceglieva dal piano salvato
+    il difetto era invisibile, perché quei mercati il reset li aveva già preparati (e infatti quei
+    mini-cicli piazzavano: `2 ordini piazzati, 0 rifiutati`). Dal momento in cui può **RICALCOLARE**
+    (piano oltre `PIANO_FRESCO_MAX_MS`, 60 min) sceglie mercati **nuovi** che nessuno ha preparato.
+
+    **Il fix, e cosa NON tocca.** `agents/agent41-realloc-scheduler.js`: nuova `preparaMercatoNuovo`
+    (righe 678-724) e passo **5-bis** dentro `miniCiclo` (righe 858-897), più le due deps iniettabili
+    (righe 733-740) e `nonPreparati` nel referto. **Il gate non è stato toccato di una virgola**: resta
+    identico per chiunque altro e continua a impedire due scrittori sullo stesso libro. Qui se ne
+    soddisfa la **precondizione**, che è il rapporto che il reset ha col gate da sempre.
+    - **Solo i mercati `nuovo`** (nessun nostro ordine a riposo, `trigger-capitale-fermo.js:358`):
+      `setManualMode` riscrive il record e appende un audit a ogni chiamata, non è idempotente, e il
+      mini-ciclo può girare ogni dieci minuti.
+    - **Anche `setAutoClose`, e non è extra-scopo**: `runAutoCloseCycle` visita SOLO i mercati con
+      l'opt-in acceso (`agent40-manual-reprice.js:485` gli passa `readAutoCloseConfig().enabledMarketIds`),
+      quindi il solo `setManual` avrebbe aperto mercati con due gambe vive e **nessuna via d'uscita** —
+      esattamente ciò che la fase 3 del reset tratta come fermo duro. Entrambe sono fermi duri: se una
+      scrittura fallisce quel mercato esce dal giro e gli altri proseguono.
+    - **`setEnabled` NON è stato aggiunto, di proposito.** Quella lista è la allowlist live-min, che
+      governa dove si può APRIRE per i processi in `MAKER_MODE=live-min`: allargarla da qui darebbe a un
+      altro processo un permesso che nessuno gli ha chiesto. agent41 gira in `MAKER_MODE=off` (verificato
+      su `/proc`), quindi per i suoi ordini quel gate non si applica (`adapter.js:277`), e l'uscita di
+      una posizione resta possibile per l'eccezione di riduzione (`adapter.js:294`). **Il prezzo,
+      dichiarato:** agent40 non riprezzerà questi ordini finché il ciclo delle sei ore non porta il
+      mercato nel piano vero.
+    - **Asimmetria**: il mini-ciclo può PRENDERE un mercato e ACCENDERGLI l'uscita, mai il contrario.
+
+    **Verifica.** Nuovo `lib/maker/miniciclo-prende-il-mercato.test.js` (**28/28**), che esegue
+    `miniCiclo` vero con la corsia di piazzamento sostituita da un registratore. **Provato che fallisce
+    senza il fix**: ripristinando il file pre-fix cadono 12 asserzioni, fra cui «setManual fallito ⇒
+    nessun ordine parte — 2 gambe», cioè il vecchio codice piazzava su un mercato mai preparato.
+    Le sezioni 5 e 6 passano anche pre-fix, ed è giusto: il gate non è mai stato il problema.
+    `lib/maker/trigger-capitale-fermo.test.js` **aggiornato** (54 → 58/58): l'asserzione «non cambia la
+    modalità manuale, non tocca l auto-close» era diventata la descrizione del difetto ed è stata
+    **ristretta**, non rimossa — ora verifica che tracking e allowlist auto-reprice restino intoccati e
+    che le due nuove scritture siano di sola acquisizione (`manual:true`/`enabled:true`, mai `false`).
+    Suite: **115 verdi / 6 rossi**, gli stessi sei del punto 40. `npm run build` verde, `BUILD_ID`
+    presente.
+
+    **Riavvio: NON eseguito, in attesa di conferma esplicita di Diego in chat** (§2 regola 2). Comando —
+    dalla fase 7 basta la forma semplice, agent41 ha il caricatore di `.env`:
+    ```bash
+    pm2 restart agent41-realloc-scheduler
+    ```
+    Finché il processo non riparte, il mini-ciclo continua a scegliere mercati nuovi e a farsi rifiutare
+    ogni gamba: fallisce **chiuso**, quindi nessun capitale è a rischio, ma il piano non viene eseguito.
 
 ---
 
