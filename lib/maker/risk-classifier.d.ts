@@ -74,7 +74,7 @@ export function fuoriBanda(a?: RiskSubject): boolean | null;
 
 /** 3 — derivato da VENUE_GTD_MIN_FUTURE_SEC (lib/maker/order-ttl.js), mai riscritto. */
 export const VENUE_FLOOR_MINUTES: number;
-/** 2880 — derivato da MIN_HORIZON_DAYS (lib/rewards/horizon.js), mai riscritto. */
+/** 1080 — derivato da MIN_HORIZON_DAYS = 0,75 g (lib/rewards/horizon.js), mai riscritto. */
 export const SAFE_FLOOR_MINUTES: number;
 /** 300 — STALE_S (lib/rewards/plan-to-orders.js), mai riscritto. */
 export const STALE_SECONDS: number;
