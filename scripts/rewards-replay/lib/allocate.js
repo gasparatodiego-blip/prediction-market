@@ -89,6 +89,9 @@ function perMarketNetAtSize(marketId, marketRows, tokenTrades, potByCond, cfg) {
     // correzione «thin-book» in lib/rewards/realistic-estimate.js. null ⇒ nessun tetto, e l'obiettivo
     // resta quello di prima.
     maxCredibleShare = null,
+    // `rifiutaOttimismo` — la profondita' di questo mercato non e' misurata abbastanza da credere allo
+    // zero che ne risulterebbe. Vedi `profonditaVerificata`.
+    rifiutaOttimismo = false,
   } = cfg; // policy: 'hold' (default) | 'close-now'
   const fillsRes = reconstructTapeFillsForMarket(marketRows, tokenTrades, { offsetCents, offsetTicks, sizeUsd, maxInventoryUsd });
   const one = new Map([[marketId, marketRows]]);
@@ -152,15 +155,19 @@ function perMarketNetAtSize(marketId, marketRows, tokenTrades, potByCond, cfg) {
   const posizioneEsatta = fPosizione != null;
   const fTetto = tetto ? tetto.factor : null;
   const pesato = fPosizioneUsato != null || fTetto != null;
-  const grossScoredPerDay = pesato && fin(row.grossPerDay)
+  // IL RIFIUTO. Non e' un fattore piu' basso: e' l'assenza di un punteggio. Un mercato la cui
+  // profondita' non e' stata misurata abbastanza non deve poter VINCERE il piano sul numero che quella
+  // mancanza produce — `share → 1` — e assegnargli un fattore inventato sarebbe fingere di saperlo.
+  // E' la stessa risposta che `realisticEstimate` da' gia' a valle: si astiene.
+  const grossScoredPerDay = rifiutaOttimismo ? null : (pesato && fin(row.grossPerDay)
     ? row.grossPerDay * (fPosizioneUsato != null ? fPosizioneUsato : 1) * (fTetto != null ? fTetto : 1)
-    : null;
+    : null);
   const netScoredPerDay = grossScoredPerDay != null && fin(costPerDay5m) ? grossScoredPerDay - costPerDay5m : null;
   return {
     marketId, sizeUsd, capital: 2 * sizeUsd, excluded: false,
     spanHours: row.spanHours, grossPerDay: row.grossPerDay, grossWindow: row.grossWindow,
     cost5m, costPerDay5m, netWindow5m, netPerDay5m,                         // ← netPerDay5m is the objective
-    punteggioPosizione: S, grossScoredPerDay, netScoredPerDay,
+    punteggioPosizione: S, grossScoredPerDay, netScoredPerDay, rifiutaOttimismo,
     // I due fattori, separati e leggibili: chi guarda una riga deve poter dire QUALE delle due
     // correzioni l'ha spostata, non solo che è stata spostata.
     fattorePosizione: fPosizioneUsato, posizioneEsatta,
@@ -180,11 +187,11 @@ function perMarketNetAtSize(marketId, marketRows, tokenTrades, potByCond, cfg) {
  *            netWindow5m, netPerDay5m, net5m, fills, share, spanHours }] }
  */
 function perMarketNetCurve(marketId, marketRows, tokenTrades, potByCond, opts) {
-  const { offsetCents, offsetTicks = null, maxInventoryUsd, sizeGrid, unitUsd, policy, minSizeByMarket = null, pairCostUsd = null, punteggioPosizione = null, maxCredibleShare = null } = opts;
+  const { offsetCents, offsetTicks = null, maxInventoryUsd, sizeGrid, unitUsd, policy, minSizeByMarket = null, pairCostUsd = null, punteggioPosizione = null, maxCredibleShare = null, rifiutaOttimismo = false } = opts;
   const levels = [{ sizeUsd: 0, capital: 0, units: 0, grossPerDay: 0, cost5m: 0, costPerDay5m: 0, netWindow5m: 0, netPerDay5m: 0, net5m: 0, fills: 0, closed: 0, stuck: 0, nakedRefused: 0, share: 0, spanHours: null, punteggioPosizione: null, grossScoredPerDay: 0, netScoredPerDay: 0, fattorePosizione: null, posizioneEsatta: false, fattoreCredibilita: null, quotaCeiling: null, quotaCapata: false }];
   let excluded = false;
   for (const s of sizeGrid) {
-    const r = perMarketNetAtSize(marketId, marketRows, tokenTrades, potByCond, { offsetCents, offsetTicks, sizeUsd: s, maxInventoryUsd, policy, minSizeByMarket, pairCostUsd, punteggioPosizione, maxCredibleShare });
+    const r = perMarketNetAtSize(marketId, marketRows, tokenTrades, potByCond, { offsetCents, offsetTicks, sizeUsd: s, maxInventoryUsd, policy, minSizeByMarket, pairCostUsd, punteggioPosizione, maxCredibleShare, rifiutaOttimismo });
     if (r.excluded) { excluded = true; continue; }         // pot/depth missing → unfundable; keep only zero level
     if (r.netPerDay5m == null) continue;                   // cost UNKNOWN at this size → skip (never default to 0)
     levels.push({
@@ -195,11 +202,15 @@ function perMarketNetCurve(marketId, marketRows, tokenTrades, potByCond, opts) {
       // concavo dove il book e' sottile, invece di premiare il capitale in piu' come se il book reggesse.
       fattorePosizione: r.fattorePosizione, posizioneEsatta: r.posizioneEsatta,
       fattoreCredibilita: r.fattoreCredibilita, quotaCeiling: r.quotaCeiling, quotaCapata: r.quotaCapata,
+      rifiutaOttimismo: r.rifiutaOttimismo === true,
       // L'OBIETTIVO DEL KNAPSACK. Col punteggio di posizione è il netto visto da dove il motore si
       // mette davvero; senza, è esattamente `netPerDay5m` come è sempre stato. `netPerDay5m` non viene
       // toccato in nessuno dei due casi: chi legge il netto misurato continua a leggere quello.
       netWindow5m: r.netWindow5m, netPerDay5m: r.netPerDay5m,
-      net5m: r.netScoredPerDay != null ? r.netScoredPerDay : r.netPerDay5m, // net5m := objective (net/day)
+      // Col rifiuto l'obiettivo del livello e' ZERO, non il netto misurato: il livello resta nella curva
+      // (il knapsack lo vede e non lo sceglie) invece di sparire, cosi' il registro dei candidati puo'
+      // dire PERCHE' quel mercato non c'e'.
+      net5m: r.rifiutaOttimismo ? 0 : (r.netScoredPerDay != null ? r.netScoredPerDay : r.netPerDay5m), // net5m := objective (net/day)
       fills: r.fills, closed: r.closed, stuck: r.stuck, nakedRefused: r.nakedRefused, noBook: r.noBook, share: r.share,
       minSizeShares: r.minSizeShares, sizePerSideShares: r.sizePerSideShares,
       belowVenueMinSize: r.belowVenueMinSize, capitalToQualifyUsd: r.capitalToQualifyUsd,
@@ -331,6 +342,48 @@ function placementWeightForMarket(marketRows, { offsetCents, offsetTicks, maxSpr
   return { S, tick, offsetCents: +offC.toFixed(6), maxSpreadCents };
 }
 
+/**
+ * ── «BOOK VUOTO VERIFICATO» CONTRO «NON L'HO MISURATO» ─────────────────────────────────────────────
+ *
+ * Il problema. `share = size/(size + cQ)` vale **1** quando la concorrenza in banda vale 0, e il
+ * knapsack massimizza: un book vuoto e' l'occasione migliore che possa leggere. `realisticEstimate` su
+ * quel caso si RIFIUTA di stimare (`empty-book`: «non e' un'opportunita' da scontare, e' una formula
+ * usata fuori dal suo dominio»), ma solo a valle. Prima di decidere cosa fare a monte serviva sapere se
+ * quello zero e' un fatto o un buco.
+ *
+ * E' UN FATTO, E SI PUO' DIMOSTRARE. agent34 scrive `bidDepthInBand`/`askDepthInBand` come **null**
+ * quando la banda, il mid o il book stesso mancano, e come **numero** solo dopo aver camminato ogni
+ * ordine del book dentro la banda (`inBandDepth`, agents/agent34-clob-ws.js). Uno **0** e' quindi
+ * «ho guardato e non c'era nessuno»; un dato mancante e' `null` e non arriva mai a zero. In piu' `src`
+ * distingue un book aggiornato da un websocket fresco (`'ws'`) da uno trascinato (`'stale'`).
+ *
+ * MISURATO l'8 agosto 2026 su cinque finestre (dal vivo a −36h, 95-114 mercati ciascuna): i mercati con
+ * profondita' mediana zero sono 0-2 per finestra, e **tutti verificati** — centinaia di campioni
+ * misurati, decine di zeri su book freschi. Lo «zero non verificato» non si e' mai presentato. Il
+ * guardrail qui sotto e' quindi protettivo, non correttivo: esiste perche' il giorno in cui il feed
+ * avesse un buco, quel buco non diventi il mercato migliore del piano.
+ *
+ * @returns {{stato:'misurata'|'vuota-verificata'|'non-verificata', misurati:number, zeri:number, zeriFreschi:number, mediana:number|null}}
+ */
+const MIN_CAMPIONI_VUOTO = 10;
+function profonditaVerificata(marketRows, { minCampioni = MIN_CAMPIONI_VUOTO } = {}) {
+  const mis = [];
+  let zeri = 0, zeriFreschi = 0;
+  for (const r of marketRows || []) {
+    if (!r || !fin(r.bidDepthInBand) || !fin(r.askDepthInBand)) continue;   // null = non misurato, mai 0
+    const m = Math.min(r.bidDepthInBand, r.askDepthInBand);
+    mis.push(m);
+    if (m === 0) { zeri += 1; if (r.src === 'ws') zeriFreschi += 1; }
+  }
+  if (!mis.length) return { stato: 'non-verificata', misurati: 0, zeri: 0, zeriFreschi: 0, mediana: null };
+  const v = mis.slice().sort((a, b) => a - b);
+  const mediana = v.length % 2 ? v[(v.length - 1) / 2] : (v[v.length / 2 - 1] + v[v.length / 2]) / 2;
+  if (mediana > 0) return { stato: 'misurata', misurati: mis.length, zeri, zeriFreschi, mediana };
+  // Mediana zero: vale come FATTO solo con abbastanza campioni misurati e almeno uno su un book fresco.
+  const verificata = mis.length >= minCampioni && zeriFreschi >= 1;
+  return { stato: verificata ? 'vuota-verificata' : 'non-verificata', misurati: mis.length, zeri, zeriFreschi, mediana };
+}
+
 function pairCostForMarket(marketRows, { offsetCents, offsetTicks, usePairCost, pairCostUsd }) {
   if (!usePairCost) return pairCostUsd;      // niente costo della coppia ⇒ l'aritmetica storica, invariata
   const tick = fin(offsetTicks) && offsetTicks > 0 ? marketTick(marketRows) : null;
@@ -358,11 +411,15 @@ function allocateBudget(byMarket, marketTokens, tapeByToken, potByCond, opts) {
     // LA STESSA costante della correzione «thin-book» (realistic-estimate DEFAULTS): un secondo numero
     // per la stessa soglia significherebbe che l'obiettivo e la stima finale giudicano diversamente.
     useCredibleShareCap = false, maxCredibleShare = RE_DEFAULTS.maxCredibleShare,
+    // ── LA DISTINZIONE FRA UNO ZERO MISURATO E UN BUCO — spenta per difetto come le altre ──────────
+    usaProfonditaVerificata = false,
   } = opts;
   const inTick = fin(offsetTicks) && offsetTicks > 0;
   // Mercati per cui il peso non è stato applicabile (banda o punteggio illeggibili). Elencati, non
   // silenziosamente assenti: sono gli unici che restano giudicati al ceiling mentre gli altri no.
   const pesoNonApplicato = [];
+  // I mercati la cui profondita' in banda non e' misurata abbastanza da credere al suo zero.
+  const profonditaNonVerificata = [];
   const perSideStep = unitUsd / 2;
   const capPerMarket = Math.min(maxPerMarketUsd || budgetUsd, budgetUsd); // a single market may take up to the whole budget
   const maxLevels = Math.max(1, Math.floor(capPerMarket / unitUsd));
@@ -388,7 +445,17 @@ function allocateBudget(byMarket, marketTokens, tapeByToken, potByCond, opts) {
       })
       : null;
     if (usePlacementScore && pw == null) pesoNonApplicato.push(marketId);
-    const c = perMarketNetCurve(marketId, rows, trades, potByCond, { offsetCents, offsetTicks, maxInventoryUsd, sizeGrid, unitUsd, policy, minSizeByMarket, pairCostUsd: pc, punteggioPosizione: pw ? pw.S : null, maxCredibleShare: useCredibleShareCap ? maxCredibleShare : null });
+    // ── LA CLASSIFICAZIONE DELLA PROFONDITA', E L'UNICO CASO IN CUI L'OBIETTIVO SI RIFIUTA ─────────
+    // `non-verificata` = la profondita' in banda non e' stata misurata abbastanza per credere allo zero
+    // che ne risulterebbe. Li' l'obiettivo NON scora con ottimismo: e' lo stesso trattamento che
+    // `realisticEstimate` applica gia' a valle, portato dove la scelta viene fatta.
+    const prof = usaProfonditaVerificata ? profonditaVerificata(rows) : null;
+    const rifiutaOttimismo = !!(prof && prof.stato === 'non-verificata');
+    if (rifiutaOttimismo) profonditaNonVerificata.push(marketId);
+    const c = perMarketNetCurve(marketId, rows, trades, potByCond, { offsetCents, offsetTicks, maxInventoryUsd, sizeGrid, unitUsd, policy, minSizeByMarket, pairCostUsd: pc, punteggioPosizione: pw ? pw.S : null, maxCredibleShare: useCredibleShareCap ? maxCredibleShare : null,
+      rifiutaOttimismo });
+    c.profondita = prof ? prof.stato : null;
+    c.profonditaMisura = prof;
     c.punteggioPosizione = pw ? pw.S : null;
     c.punteggioOffsetCents = pw ? pw.offsetCents : null;
     c.punteggioTick = pw ? pw.tick : null;
@@ -409,7 +476,7 @@ function allocateBudget(byMarket, marketTokens, tapeByToken, potByCond, opts) {
     const need = funded.map((l) => l.capitalToQualifyUsd).filter((x) => fin(x));
     belowMinSize.push({ marketId: c.marketId, minSizeShares: funded[0].minSizeShares, capitalToQualifyUsd: need.length ? Math.min.apply(null, need) : null });
   }
-  return { budgetUsd, unitUsd, curves, grossPerDay, costPerDay5m, belowMinSize, usePlacementScore, pesoNonApplicato, useCredibleShareCap, maxCredibleShare: useCredibleShareCap ? maxCredibleShare : null, ...res };
+  return { budgetUsd, unitUsd, curves, grossPerDay, costPerDay5m, belowMinSize, usePlacementScore, pesoNonApplicato, useCredibleShareCap, maxCredibleShare: useCredibleShareCap ? maxCredibleShare : null, usaProfonditaVerificata, profonditaNonVerificata, ...res };
 }
 
-module.exports = { perMarketNetAtSize, perMarketNetCurve, knapsack, allocateBudget, marketTick, pairCostForMarket, placementWeightForMarket };
+module.exports = { perMarketNetAtSize, perMarketNetCurve, knapsack, allocateBudget, marketTick, pairCostForMarket, placementWeightForMarket, profonditaVerificata, MIN_CAMPIONI_VUOTO };
