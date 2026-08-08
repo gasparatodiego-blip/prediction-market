@@ -3,7 +3,7 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt**: non serve più reincollarlo ogni volta.
 
-Ultima verifica contro codice/stato reali: **8 agosto 2026**, ~09:40 UTC.
+Ultima verifica contro codice/stato reali: **8 agosto 2026**, ~09:50 UTC.
 
 > **Il codice della sera del 7 agosto è in `main` E nei processi vivi** (riavvii autorizzati alle
 > ~23:52–23:57 UTC): fine scala su quattro percorsi, cadenza adattiva, pannello del mid vivo, timbro
@@ -21,10 +21,14 @@ Ultima verifica contro codice/stato reali: **8 agosto 2026**, ~09:40 UTC.
 > `RUNNER_PIANO` per agent41 (`agents/agent41-realloc-scheduler.js:225`). Verificato eseguendo **quel
 > comando esatto**: risponde `tettoCredibilita: true`. Vedi §5 punto 14.
 >
-> **Due cose invece aspettano.** Il consuntivo reward dalla fonte nuova entra in servizio al prossimo
-> giro notturno di **agent40**, che gira ancora col codice delle 07:22 (il registro è già stato
-> riempito a mano con i consuntivi veri, quindi il dato non manca: manca solo l'automatismo). E la
-> rinomina in `agent43-guardian` è nel codice ma non in pm2 — serve un `delete` + `start`, §5 punto 15.
+> **E le due cose che aspettavano sono state fatte dall'operatore alle 09:15-09:16 UTC** (dal log del
+> demone pm2, non dedotto): `agent42-guardian` eliminato e `agent43-guardian` avviato al suo posto
+> (pm_id 44, script `agents/agent43-guardian.js`), e `agent40-manual-reprice` riavviato (51 → 52).
+> Verificato: 89 e 95 variabili d'ambiente, **tutte e quattro le critiche presenti** in entrambi, e il
+> guardiano legge il capitale — «PnL +8,47 USD · baseline $660,56 → $669,03». §5 punto 15 è chiuso.
+>
+> **Nuovo in flotta: `agent44-audit-scoperta`**, l'audit di sola scoperta. Non è sempre vivo: gira alle
+> 03:07 UTC, scansiona, scrive la coda ed esce. Vedi §3 e §5 punto 16.
 >
 > **A parte quelli, sui riavvii non resta altro.** `REALLOC_SCHEDULER_DRY_RUN` è ancora nell'ambiente di
 > agent41 e ci **resta per decisione dell'operatore** (8 agosto 2026): è inerte, e un `restart` non può
@@ -45,7 +49,7 @@ per un maker l'esecuzione è il costo, non il ricavo.
 |---|---|
 | Runtime | Next.js 14.2 (App Router) · Node v20.20.2 · TypeScript |
 | DB | Prisma 5 → **PostgreSQL** (`DATABASE_URL` in `.env`) |
-| Processi | **pm2**, 41 processi definiti in `agents/ecosystem.config.js`; **12 online**, gli altri deliberatamente fermi (commit `47ff87e`: «riduzione all'insieme minimo») |
+| Processi | **pm2**, 42 processi definiti in `agents/ecosystem.config.js`; **12 online**, uno (`agent44-audit-scoperta`) schedulato e a riposo, gli altri deliberatamente fermi (commit `47ff87e`: «riduzione all'insieme minimo») |
 | Server | Hetzner Helsinki, Ubuntu, `62.238.52.227` (verificato) |
 | Path | Repo in `/root/rewards-bot`. **`/root/prediction-market` è un symlink allo stesso path** ed è il `cwd` dichiarato in pm2: i due nomi sono la stessa directory |
 | Repo | GitHub privato `git@github.com:gasparatodiego-blip/prediction-market.git`, branch `main` |
@@ -214,6 +218,20 @@ Si completa tutto il resto, si dice cosa è pronto, e si aspetta il messaggio um
 | `agent43-guardian` | **Guardiano delle perdite economiche** — vedi la scheda sotto. In servizio dalle 21:27:31 del 7 agosto 2026 (allora col nome `agent42-guardian`), baseline **$660,56**, nessuno scatto. **Rinominato l'8 agosto 2026: il processo pm2 vivo porta ancora il nome vecchio finché non lo si ricrea — §5 punto 15.** | `agents/agent43-guardian.js` |
 | `agent-monitor` | Sorveglia la flotta via heartbeat e riavvia gli agenti fermi, con circuit breaker per agente. | `agents/agent-monitor.js` |
 | `dashboard` | Il Next.js che serve pannello e `/api/*` sulla porta 3000. Il **pannello ordini manuali gira dentro questo processo**. | `npm start -- --port 3000` |
+
+**Non sempre vivo, e apposta — `agent44-audit-scoperta`** (8 agosto 2026). L'**audit di scoperta**:
+legge il codice del bot, cerca i pattern di rischio che in questo progetto hanno già prodotto guasti
+veri, scrive la coda ed **esce**. Non corregge niente, non tocca ordini né capitale, non scrive nessun
+file che non sia la propria coda — provato da un test che cammina il suo albero dei `require`.
+
+| | |
+|---|---|
+| **quando** | `cron_restart: '7 3 * * *'` + `autorestart: false`. Fra una scansione e l'altra sta in `waiting restart` con **CPU 0% e RAM 0 MB**: costa zero. Le 03 UTC perché `sar` su nove giorni dà 02-04 come le ore più quiete (28,5-29,2% contro il 40,7% delle 08) ed è l'unica **dopo** la riconciliazione notturna di agent40, quindi legge il confronto della notte appena chiusa. Il minuto 7 per non accodarsi ai cron di sistema. |
+| **quanto costa** | misurato: **63-68 s**, **99-107 MB** di picco, 889 file letti, 126 test eseguiti. Gira a **nice 19** e **ionice classe idle** (se li applica da sé sul proprio pid: pm2 non permette di anteporre `nice`), con deadline 12 min e un vigile interno che si ferma da solo oltre 150 MB. |
+| **cosa cerca** | sette rilevatori, ognuno nato da un guasto vero: costanti dello stesso concetto con valori diversi · protezioni presenti su un percorso e assenti su un altro · la stima che diverge dal consuntivo · flag che nessuno legge più · test rossi (nuovi vs già noti) · collisioni di numerazione · **commenti fermi a un valore che non è più quello**. |
+| **il report** | `data/audit-coda.json` (la memoria) e `data/audit-coda.md` (la vista). **Come si guarda:** `node scripts/vedi-audit.js` — oppure `--tutti` per i risolti, `--storia` per l'andamento, o semplicemente `cat data/audit-coda.md`. |
+| **la memoria** | niente sparisce: un reperto che non si ritrova diventa **risolto** con la data, uno che torna è **riaperto**, e `primaVisto` non viene mai sovrascritto — «aperto da nove giorni» resta distinguibile da «aperto da stanotte». |
+| **file** | `agents/agent44-audit-scoperta.js` · `lib/audit/{rilevatori,coda}.js` · `scripts/vedi-audit.js` |
 
 **La scheda del guardiano:**
 
@@ -658,9 +676,33 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     scrive un test che cammina i `require` (ce ne sono già tre in questo repo) tenga conto che una
     stringa non è un import — e che qui la differenza è fra «serve un riavvio» e «non serve».
 
-15. **La rinomina `agent42-guardian` → `agent43-guardian` è nel codice, non ancora in pm2.** Il processo
-    vivo porta ancora il nome vecchio, e un `restart` non basta: pm2 identifica un'app per nome, quindi
-    serve **`delete` + `start`**. Non chiesto, non fatto (regola 2 di §2).
+15. **~~La rinomina non è ancora in pm2~~ — CHIUSO alle 09:15:41 UTC dell'8 agosto 2026.** Eseguito
+    dall'operatore: `agent42-guardian` (pm_id 43) fermato, `agent43-guardian` (pm_id 44) avviato al suo
+    posto. Verificato: **89 variabili d'ambiente, tutte e quattro le critiche presenti**
+    (`DATABASE_URL`, `KEY_CUSTODY_MASTER`, `POLYGON_RPC_URL`, `MAKER_FUNDER_ADDRESS`), contatore dei
+    riavvii a 0 come previsto, e soprattutto **il guardiano legge il capitale**: «ok — PnL +8,47 USD
+    (+1,282%) · baseline $660,56 → $669,03 · soglie −30 USD / −5%». Era il rischio del punto: un
+    guardiano senza quelle variabili non scatta mai, e il log dimostra che non è il caso.
+    Alle 09:16:08 è stato riavviato anche `agent40-manual-reprice` (51 → 52, 95 variabili, 4/4
+    critiche), quindi da stanotte il consuntivo reward usa la fonte nuova in automatico.
+
+    *(Il comando che era documentato qui, con la ricostruzione dell'ambiente dal processo vivo, resta
+    valido e riutilizzabile: è nel punto 3.)*
+
+16. **`agent44-audit-scoperta` esiste, gira alle 03:07 UTC, e la sua coda va guardata.** Prima
+    scansione: **17 reperti aperti, nessuno ad alta severità**. Vale la pena sapere cosa ha trovato al
+    primo colpo, perché due cose non le sapevamo:
+    - il commento di `lib/maker/risk-classifier.js:26` fermo a `MIN_HORIZON_DAYS = 2` — lo stesso che
+      §5 punto 12 registra come «da correggere»: il rilevatore lo trova da solo;
+    - **tre flag di `.env` che nessuna riga legge più**: `CAPITAL_USD`, `OFFSET_TICKS`, `MAX_MARKETS`
+      (verificati a mano: zero occorrenze di `process.env.<nome>` in tutto il repo);
+    - **tre test che `node` non riesce nemmeno ad avviare** — `lib/leg-order.test.js` e i due in
+      `lib/venues/__tests__/`: sono test in JS per moduli **TypeScript**, quindi `require('./leg-order')`
+      non si risolve. Non sono rossi: non sono mai partiti, ed è una copertura che si credeva di avere.
+      Sono in aggiunta ai cinque rossi noti del punto 12, che restano cinque.
+    Si guarda con **`node scripts/vedi-audit.js`** (o `cat data/audit-coda.md`). La coda è ignorata da
+    git: descrive questo albero di lavoro su questa macchina, e versionarla farebbe ripartire da zero
+    l'età dei problemi aperti.
 
     **Il comando, e i due motivi per cui non è quello ovvio:**
     ```bash
