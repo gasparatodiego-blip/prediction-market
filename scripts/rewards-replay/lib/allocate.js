@@ -28,11 +28,25 @@
 // lo passano e restano numero per numero quelli di sempre. Chi lo accende e' `planAllocation` in
 // lib/rewards/allocator.js — il pianificatore che alimenta il piazzamento vero — e la' la scelta e'
 // dichiarata per esteso, con la data e il motivo.
+//
+// ── E UNA TERZA COSA: QUANTO IL VENUE PAGA QUELLA DISTANZA (8 agosto 2026) ─────────────────────────
+// `offsetTicks` corregge DOVE si sta; non correggeva QUANTO VALE starci. Il lordo dell'obiettivo e' il
+// ceiling a S=1 — un ordine appoggiato sul mid — e non contiene nessun termine di offset, quindi in
+// selezione ogni mercato veniva pesato uguale: l'equivalente esatto di una distanza fissa per tutti.
+// `usePlacementScore` fa sentire all'obiettivo il quadratico pubblicato alla distanza REALE del
+// mercato. Assente per difetto, come gli altri due: i driver di backtest non lo passano.
+// Vedi `placementWeightForMarket` per la misura e per l'unico caso in cui non e' applicabile.
 
 const { reconstructTapeFillsForMarket } = require('./tape');
 const { markoutAll } = require('./markout');
 const { computeNet } = require('./net');
 const { closeNowPolicy } = require('./close-now');
+// IL QUADRATICO DEL VENUE, IMPORTATO E NON RISCRITTO. `placementScore` è la stessa funzione che pesa
+// l'offset in lib/rewards/realistic-estimate.js e che computedDefaultOffset usa per scegliere il tick:
+// due implementazioni della stessa formula sono due opinioni su quanto vale una posizione, e possono
+// divergere senza che nessuno se ne accorga. Il modulo è puro (nessun I/O, nessun orologio), quindi
+// importarlo da qui non porta dentro niente che un backtest non possa eseguire.
+const { placementScore } = require('../../../lib/rewards/realistic-estimate');
 
 function fin(x) { return typeof x === 'number' && Number.isFinite(x); }
 
@@ -46,7 +60,9 @@ function fin(x) { return typeof x === 'number' && Number.isFinite(x); }
 function perMarketNetAtSize(marketId, marketRows, tokenTrades, potByCond, cfg) {
   // `offsetTicks` — la distanza dal mid in TICK DI QUESTO MERCATO invece che in centesimi uguali per
   // tutti. Assente ⇒ si usa `offsetCents` e i fill sono quelli di sempre. Vedi tape.reconstructTapeFillsForMarket.
-  const { offsetCents, offsetTicks = null, sizeUsd, maxInventoryUsd, policy, minSizeByMarket = null, pairCostUsd = null } = cfg; // policy: 'hold' (default) | 'close-now'
+  // `punteggioPosizione` — il peso S del venue per la posizione REALE di questo mercato (vedi
+  // `placementWeightForMarket`). null ⇒ nessun peso, e il netto oggettivo resta quello di sempre.
+  const { offsetCents, offsetTicks = null, sizeUsd, maxInventoryUsd, policy, minSizeByMarket = null, pairCostUsd = null, punteggioPosizione = null } = cfg; // policy: 'hold' (default) | 'close-now'
   const fillsRes = reconstructTapeFillsForMarket(marketRows, tokenTrades, { offsetCents, offsetTicks, sizeUsd, maxInventoryUsd });
   const one = new Map([[marketId, marketRows]]);
   const MO = markoutAll(fillsRes.fills, one);
@@ -76,10 +92,21 @@ function perMarketNetAtSize(marketId, marketRows, tokenTrades, potByCond, cfg) {
     netPerDay5m = costPerDay5m == null ? null : row.grossPerDay - costPerDay5m;
     closed = cn.aggregate.closed; stuck = cn.aggregate.stuck; nakedRefused = cn.aggregate.nakedRefused; noBook = cn.aggregate.noBook;
   }
+  // ── IL LORDO PESATO DALLA POSIZIONE REALE ────────────────────────────────────────────────────────
+  // `grossPerDay` è il ceiling a S=1: quanto renderebbe un ordine appoggiato ESATTAMENTE sul mid. Non
+  // dipende dall'offset, quindi da solo non distingue un mercato a tick 0,01 (dove un tick vale 1¢ e
+  // vale S≈0,31 di una banda da 4,5¢) da uno a tick 0,001 (dove lo stesso tick vale 0,1¢ e S≈0,91).
+  // `grossScoredPerDay` è lo stesso lordo visto da dove il motore si mette DAVVERO. Resta ACCANTO al
+  // ceiling, mai al posto suo: il ceiling continua ad alimentare la scelta dell'offset e la stima
+  // realistica, che lo pesano già per conto loro e lo peserebbero due volte.
+  const S = fin(punteggioPosizione) && punteggioPosizione >= 0 ? punteggioPosizione : null;
+  const grossScoredPerDay = S != null && fin(row.grossPerDay) ? row.grossPerDay * S : null;
+  const netScoredPerDay = grossScoredPerDay != null && fin(costPerDay5m) ? grossScoredPerDay - costPerDay5m : null;
   return {
     marketId, sizeUsd, capital: 2 * sizeUsd, excluded: false,
     spanHours: row.spanHours, grossPerDay: row.grossPerDay, grossWindow: row.grossWindow,
     cost5m, costPerDay5m, netWindow5m, netPerDay5m,                         // ← netPerDay5m is the objective
+    punteggioPosizione: S, grossScoredPerDay, netScoredPerDay,
     fills: fillsRes.fills.length, closed, stuck, nakedRefused, noBook, share: row.share,
     minSizeShares: row.minSizeShares, sizePerSideShares: row.sizePerSideShares,
     belowVenueMinSize: row.belowVenueMinSize, capitalToQualifyUsd: row.capitalToQualifyUsd,
@@ -95,17 +122,22 @@ function perMarketNetAtSize(marketId, marketRows, tokenTrades, potByCond, cfg) {
  *            netWindow5m, netPerDay5m, net5m, fills, share, spanHours }] }
  */
 function perMarketNetCurve(marketId, marketRows, tokenTrades, potByCond, opts) {
-  const { offsetCents, offsetTicks = null, maxInventoryUsd, sizeGrid, unitUsd, policy, minSizeByMarket = null, pairCostUsd = null } = opts;
-  const levels = [{ sizeUsd: 0, capital: 0, units: 0, grossPerDay: 0, cost5m: 0, costPerDay5m: 0, netWindow5m: 0, netPerDay5m: 0, net5m: 0, fills: 0, closed: 0, stuck: 0, nakedRefused: 0, share: 0, spanHours: null }];
+  const { offsetCents, offsetTicks = null, maxInventoryUsd, sizeGrid, unitUsd, policy, minSizeByMarket = null, pairCostUsd = null, punteggioPosizione = null } = opts;
+  const levels = [{ sizeUsd: 0, capital: 0, units: 0, grossPerDay: 0, cost5m: 0, costPerDay5m: 0, netWindow5m: 0, netPerDay5m: 0, net5m: 0, fills: 0, closed: 0, stuck: 0, nakedRefused: 0, share: 0, spanHours: null, punteggioPosizione: null, grossScoredPerDay: 0, netScoredPerDay: 0 }];
   let excluded = false;
   for (const s of sizeGrid) {
-    const r = perMarketNetAtSize(marketId, marketRows, tokenTrades, potByCond, { offsetCents, offsetTicks, sizeUsd: s, maxInventoryUsd, policy, minSizeByMarket, pairCostUsd });
+    const r = perMarketNetAtSize(marketId, marketRows, tokenTrades, potByCond, { offsetCents, offsetTicks, sizeUsd: s, maxInventoryUsd, policy, minSizeByMarket, pairCostUsd, punteggioPosizione });
     if (r.excluded) { excluded = true; continue; }         // pot/depth missing → unfundable; keep only zero level
     if (r.netPerDay5m == null) continue;                   // cost UNKNOWN at this size → skip (never default to 0)
     levels.push({
       sizeUsd: s, capital: r.capital, units: Math.round(r.capital / unitUsd), spanHours: r.spanHours,
       grossPerDay: r.grossPerDay, cost5m: r.cost5m, costPerDay5m: r.costPerDay5m,
-      netWindow5m: r.netWindow5m, netPerDay5m: r.netPerDay5m, net5m: r.netPerDay5m, // net5m := objective (net/day)
+      punteggioPosizione: r.punteggioPosizione, grossScoredPerDay: r.grossScoredPerDay, netScoredPerDay: r.netScoredPerDay,
+      // L'OBIETTIVO DEL KNAPSACK. Col punteggio di posizione è il netto visto da dove il motore si
+      // mette davvero; senza, è esattamente `netPerDay5m` come è sempre stato. `netPerDay5m` non viene
+      // toccato in nessuno dei due casi: chi legge il netto misurato continua a leggere quello.
+      netWindow5m: r.netWindow5m, netPerDay5m: r.netPerDay5m,
+      net5m: r.netScoredPerDay != null ? r.netScoredPerDay : r.netPerDay5m, // net5m := objective (net/day)
       fills: r.fills, closed: r.closed, stuck: r.stuck, nakedRefused: r.nakedRefused, noBook: r.noBook, share: r.share,
       minSizeShares: r.minSizeShares, sizePerSideShares: r.sizePerSideShares,
       belowVenueMinSize: r.belowVenueMinSize, capitalToQualifyUsd: r.capitalToQualifyUsd,
@@ -197,6 +229,46 @@ function marketTick(marketRows) {
  * ricade sui centesimi: un tick non si inventa, e il numero deve restare quello con cui i fill di
  * QUESTO mercato sono stati ricostruiti.
  */
+/**
+ * ── IL PESO DELLA POSIZIONE REALE DI QUESTO MERCATO ────────────────────────────────────────────────
+ *
+ * Il difetto che chiude (misurato l'8 agosto 2026). L'obiettivo del knapsack è il netto per giorno, e
+ * il suo LORDO è il ceiling a S=1 di `computeNet`: quanto renderebbe un ordine appoggiato esattamente
+ * sul mid. Quel numero non contiene nessun termine di offset, quindi in fase di SELEZIONE tutti i
+ * mercati venivano giudicati come se stessero alla stessa distanza dal mid — l'equivalente esatto di
+ * un centesimo fisso uguale per tutti. Il motore invece si mette sempre a UN TICK dal concorrente, e
+ * un tick è una distanza diversa secondo il mercato:
+ *
+ *     tick 0,01  → 1,0¢ dal mid → su banda 4,5¢  S = ((2,25−1,0)/2,25)² = 0,309
+ *     tick 0,001 → 0,1¢ dal mid → su banda 4,5¢  S = ((2,25−0,1)/2,25)² = 0,913
+ *
+ * cioè 2,96 volte tanto. Misurato sull'universo dell'8 agosto 2026: 48 mercati su 113 hanno tick
+ * 0,001, e la selezione li valutava come i 65 a tick grosso. Non è una differenza cosmetica: il
+ * knapsack MASSIMIZZA, quindi un mercato a tick fine che rende tre volte quello che gli si attribuiva
+ * perdeva il posto contro uno a tick grosso che rendeva quello che sembrava.
+ *
+ * Il tick è LO STESSO che risolve l'offset e il costo della coppia (`marketTick`), che è lo stesso che
+ * il motore usa quando piazza: una fonte sola, mai una seconda lettura.
+ *
+ * FALLISCE VERSO IL NEUTRO, E LO DICE. Banda o tick illeggibili ⇒ `null`: quel mercato resta pesato
+ * come prima (S implicito 1) e finisce nell'elenco dei non pesati. È l'unica asimmetria di questa
+ * modifica — un mercato senza banda leggibile viene giudicato più generosamente di uno con la banda
+ * nota — e resta dichiarata invece che nascosta. Sull'universo reale dell'8 agosto 2026 quell'elenco
+ * era vuoto: tutti i 115 mercati con montepremi pubblicano `rewardsMaxSpread`.
+ *
+ * @returns {{S:number, tick:number|null, offsetCents:number, maxSpreadCents:number}|null}
+ */
+function placementWeightForMarket(marketRows, { offsetCents, offsetTicks, maxSpreadCents }) {
+  if (!fin(maxSpreadCents) || !(maxSpreadCents > 0)) return null;
+  const tick = fin(offsetTicks) && offsetTicks > 0 ? marketTick(marketRows) : null;
+  // In modo tick la distanza è `offsetTicks × tick` convertita in centesimi; senza tick leggibile non
+  // si inventa un tick — si ricade sui centesimi, esattamente come fa il costo della coppia.
+  const offC = tick != null ? offsetTicks * tick * 100 : offsetCents;
+  const S = placementScore(offC, maxSpreadCents);
+  if (S == null) return null;
+  return { S, tick, offsetCents: +offC.toFixed(6), maxSpreadCents };
+}
+
 function pairCostForMarket(marketRows, { offsetCents, offsetTicks, usePairCost, pairCostUsd }) {
   if (!usePairCost) return pairCostUsd;      // niente costo della coppia ⇒ l'aritmetica storica, invariata
   const tick = fin(offsetTicks) && offsetTicks > 0 ? marketTick(marketRows) : null;
@@ -216,8 +288,11 @@ function pairCostForMarket(marketRows, { offsetCents, offsetTicks, usePairCost, 
  * @returns { budgetUsd, unitUsd, ...knapsack result, grossWindow, cost5mWindow }
  */
 function allocateBudget(byMarket, marketTokens, tapeByToken, potByCond, opts) {
-  const { offsetCents, offsetTicks = null, maxInventoryUsd, budgetUsd, unitUsd, maxPerMarketUsd, policy, minSizeByMarket = null, pairCostUsd = null, usePairCost = false } = opts;
+  const { offsetCents, offsetTicks = null, maxInventoryUsd, budgetUsd, unitUsd, maxPerMarketUsd, policy, minSizeByMarket = null, pairCostUsd = null, usePairCost = false, usePlacementScore = false, maxSpreadByMarket = null } = opts;
   const inTick = fin(offsetTicks) && offsetTicks > 0;
+  // Mercati per cui il peso non è stato applicabile (banda o punteggio illeggibili). Elencati, non
+  // silenziosamente assenti: sono gli unici che restano giudicati al ceiling mentre gli altri no.
+  const pesoNonApplicato = [];
   const perSideStep = unitUsd / 2;
   const capPerMarket = Math.min(maxPerMarketUsd || budgetUsd, budgetUsd); // a single market may take up to the whole budget
   const maxLevels = Math.max(1, Math.floor(capPerMarket / unitUsd));
@@ -233,7 +308,20 @@ function allocateBudget(byMarket, marketTokens, tapeByToken, potByCond, opts) {
     // distanza vista da un'altra angolazione: se i due venissero da posti diversi potrebbero
     // scollarsi, ed e' esattamente lo scollamento che questa modifica esiste per chiudere.
     const pc = pairCostForMarket(rows, { offsetCents, offsetTicks: inTick ? offsetTicks : null, usePairCost, pairCostUsd });
-    const c = perMarketNetCurve(marketId, rows, trades, potByCond, { offsetCents, offsetTicks, maxInventoryUsd, sizeGrid, unitUsd, policy, minSizeByMarket, pairCostUsd: pc });
+    // Il peso della posizione nasce nella STESSA riga, e per la stessa ragione: è la stessa distanza
+    // dal mid vista da una terza angolazione (quanto la paga il venue). Se venisse da un altro posto
+    // potrebbe scollarsi dall'offset con cui i fill sono stati ricostruiti.
+    const pw = usePlacementScore
+      ? placementWeightForMarket(rows, {
+        offsetCents, offsetTicks: inTick ? offsetTicks : null,
+        maxSpreadCents: maxSpreadByMarket ? (maxSpreadByMarket.get(marketId) ?? null) : null,
+      })
+      : null;
+    if (usePlacementScore && pw == null) pesoNonApplicato.push(marketId);
+    const c = perMarketNetCurve(marketId, rows, trades, potByCond, { offsetCents, offsetTicks, maxInventoryUsd, sizeGrid, unitUsd, policy, minSizeByMarket, pairCostUsd: pc, punteggioPosizione: pw ? pw.S : null });
+    c.punteggioPosizione = pw ? pw.S : null;
+    c.punteggioOffsetCents = pw ? pw.offsetCents : null;
+    c.punteggioTick = pw ? pw.tick : null;
     curves.push(c);
   }
   const budgetUnits = Math.floor(budgetUsd / unitUsd);
@@ -251,7 +339,7 @@ function allocateBudget(byMarket, marketTokens, tapeByToken, potByCond, opts) {
     const need = funded.map((l) => l.capitalToQualifyUsd).filter((x) => fin(x));
     belowMinSize.push({ marketId: c.marketId, minSizeShares: funded[0].minSizeShares, capitalToQualifyUsd: need.length ? Math.min.apply(null, need) : null });
   }
-  return { budgetUsd, unitUsd, curves, grossPerDay, costPerDay5m, belowMinSize, ...res };
+  return { budgetUsd, unitUsd, curves, grossPerDay, costPerDay5m, belowMinSize, usePlacementScore, pesoNonApplicato, ...res };
 }
 
-module.exports = { perMarketNetAtSize, perMarketNetCurve, knapsack, allocateBudget, marketTick, pairCostForMarket };
+module.exports = { perMarketNetAtSize, perMarketNetCurve, knapsack, allocateBudget, marketTick, pairCostForMarket, placementWeightForMarket };
