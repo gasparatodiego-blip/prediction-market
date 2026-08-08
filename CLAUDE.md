@@ -80,7 +80,7 @@ for(const l of fs.readFileSync('.env','utf8').split('\n')){const m=l.match(/^\s*
 3. **Mai piazzare ordini reali senza conferma esplicita dell'utente in chat.** Due sole eccezioni,
    e sono le uniche azioni su capitale reale che procedono in autonomia:
    - **(a) agent41** — riallocazione periodica, quando è fuori dry-run *e* il bot è su AVVIA;
-   - **(b) agent42-guardian** — cancellazioni automatiche in caso di perdita oltre soglia.
+   - **(b) agent43-guardian** — cancellazioni automatiche in caso di perdita oltre soglia.
 4. **`npm run build` in autonomia; il restart no** (vedi regola 2).
 5. **Ogni modifica di codice va deployata subito sul bot live** — build + attivazione — non solo
    committata. Il deploy che richiede un restart pm2 si chiede (regola 2) e si esegue subito dopo.
@@ -206,7 +206,7 @@ Si completa tutto il resto, si dice cosa è pronto, e si aspetta il messaggio um
 | `agent42-watch-makers` | Monitor dei **21 maker di riferimento**: ingressi, convergenze, ritiri pre-risoluzione. L'unico processo della flotta che **non può toccare capitale nemmeno in linea di principio** (nessun import da `lib/maker/`, nessuna credenziale). | `agents/agent42-watch-makers.js` |
 | `agent24-liquidity-rewards` | Scanner dei mercati con reward: ogni 15 min legge Gamma + book e assegna il punteggio con la formula quadratica esatta del venue. | `agents/agent24-liquidity-rewards.js` |
 | `agent27-news-guard` | Guardia notizie/volatilità: segnala che il prezzo sta per muoversi, così le quote si ritirano prima del fill avverso. | `agents/agent27-news-guard.js` |
-| `agent42-guardian` | **Guardiano delle perdite economiche** — vedi la scheda sotto. **In servizio dalle 21:27:31 del 7 agosto 2026**, baseline fissato a **$660,56** (saldo $590,26 + $70,30 su 1 mercato), PnL 0,00, nessuno scatto. | `agents/agent42-guardian.js` |
+| `agent43-guardian` | **Guardiano delle perdite economiche** — vedi la scheda sotto. In servizio dalle 21:27:31 del 7 agosto 2026 (allora col nome `agent42-guardian`), baseline **$660,56**, nessuno scatto. **Rinominato l'8 agosto 2026: il processo pm2 vivo porta ancora il nome vecchio finché non lo si ricrea — §5 punto 15.** | `agents/agent43-guardian.js` |
 | `agent-monitor` | Sorveglia la flotta via heartbeat e riavvia gli agenti fermi, con circuit breaker per agente. | `agents/agent-monitor.js` |
 | `dashboard` | Il Next.js che serve pannello e `/api/*` sulla porta 3000. Il **pannello ordini manuali gira dentro questo processo**. | `npm start -- --port 3000` |
 
@@ -214,9 +214,9 @@ Si completa tutto il resto, si dice cosa è pronto, e si aspetta il messaggio um
 
 | | |
 |---|---|
-| `agent42-guardian` | **Il guardiano delle perdite economiche.** Ogni 30 s confronta (saldo pUSD + posizioni al prezzo corrente) con il baseline in `data/guardian-baseline.json`; oltre `GUARDIAN_LOSS_PCT` (default 5%) o `GUARDIAN_LOSS_ABS` (default $30) cancella **tutti gli ordini a riposo**, deposita un referto `reason='guardian-auto-kill'` e mette il bot su **FERMA**. Non tocca le posizioni aperte e non ferma l'uscita automatica. Nessun auto-riarmo: si riparte cancellando `data/guardian-state.json` a mano. Le soglie si rileggono da `.env` **a ogni giro**, senza restart. Strutturalmente incapace di piazzare (unica superficie: `lib/maker/cancel-all`), verificato da un test che cammina l'albero dei `require` (65/65 verdi). File: `agents/agent42-guardian.js` + `lib/maker/guardian-perdite.js`. **Stato: online da pm2, ma il blocco in `ecosystem.config.js` e i tre file sorgente sono ancora fuori da git.** Vedi §5 punto 1. |
+| `agent43-guardian` | **Il guardiano delle perdite economiche.** Ogni 30 s confronta (saldo pUSD + posizioni al prezzo corrente) con il baseline in `data/guardian-baseline.json`; oltre `GUARDIAN_LOSS_PCT` (default 5%) o `GUARDIAN_LOSS_ABS` (default $30) cancella **tutti gli ordini a riposo**, deposita un referto `reason='guardian-auto-kill'` e mette il bot su **FERMA**. Non tocca le posizioni aperte e non ferma l'uscita automatica. Nessun auto-riarmo: si riparte cancellando `data/guardian-state.json` a mano. Le soglie si rileggono da `.env` **a ogni giro**, senza restart. Strutturalmente incapace di piazzare (unica superficie: `lib/maker/cancel-all`), verificato da un test che cammina l'albero dei `require` (65/65 verdi). File: `agents/agent43-guardian.js` + `lib/maker/guardian-perdite.js`. Codice e blocco pm2 sono in git dal 7 agosto (`dbba34e`). |
 
-Distinzione da tenere ferma: **agent37 guarda i processi, agent42-guardian guarda il capitale.** Sono
+Distinzione da tenere ferma: **agent37 guarda i processi, agent43-guardian guarda il capitale.** Sono
 due guasti indipendenti (un motore può battere regolare e perdere soldi), quindi due processi.
 
 **Fuori da pm2, a richiesta — il monitor delle «Reti dei 21»** (7 agosto 2026). Non è un agent e non va
@@ -402,7 +402,7 @@ assente ⇒ fermo. agent41 gira il ciclo intero ogni 6 ore, registra cosa *avreb
 né piazza niente. Ultimo ciclo: `2026-08-07T16:16:26Z`, azione `reset`, motivo «il piano fresco vale
 $7,89/g contro $2,73/g dei mercati in gestione (188,8% in più, soglia 20%)».
 
-**Guardiano delle perdite: attivo.** `agent42-guardian` gira dalle 21:27:31 del 7 agosto 2026 con
+**Guardiano delle perdite: attivo.** Il processo gira dalle 21:27:31 del 7 agosto 2026 con
 baseline **$660,56** in `data/guardian-baseline.json` (sopravvive ai riavvii, si azzera solo
 cancellando il file). Soglie lette da `.env` a ogni giro: `GUARDIAN_LOSS_PCT=5`,
 `GUARDIAN_LOSS_ABS=30`. Nessuno scatto: `data/guardian-state.json` non esiste.
@@ -432,25 +432,17 @@ giornate confrontabili** — vedi §5 punto 11.
 
 Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di stato.
 
-1. **agent42-guardian è in servizio, ma il suo codice non è ancora in git — e un suo test ha lasciato
-   residui sullo stato reale.**
-   - **Avviato alle 21:27:31 del 7 agosto 2026** (da una sessione parallela, non da questa),
-     baseline $660,56, PnL 0,00, nessuno scatto. Codice e blocco pm2 **committati alle 21:33**
-     (`dbba34e`): questo punto è chiuso per la parte «fuori da git».
-   - **Residui di test, ora ripuliti.** Fino alle ~21:35 `data/maker-bot-enabled.json` portava
-     `enabled:false`, `by:"agent42-guardian"`, motivo «perdita oltre soglia: −100% / −1000 USD», e
-     `data/cancellazioni-di-emergenza.json` un referto con `id: guardian-1786200000000` e data
-     **futura** `2026-08-08T14:40Z` — cioè esattamente la costante `NOW = 1_786_200_000_000` del test.
-     Una perdita del 100% è impossibile per costruzione (il guardiano rifiuta di scattare su un
-     capitale illeggibile): erano residui di una versione precedente del test che non iniettava
-     `impostaBot` / `registraCancellazione`. La versione attuale li inietta (riverificato eseguendo il
-     test), e **la sessione parallela ha cancellato entrambi i file**.
-   - **Resta aperto: il bot non è mai stato avviato.** `statoBot()` ora risponde `enabled:false`,
+1. **Il bot non è mai stato avviato.** (Il resto di questo punto è chiuso: il codice del guardiano è in
+   git dal 7 agosto — `dbba34e` — e i residui che un suo test aveva lasciato sullo stato vero
+   (`data/maker-bot-enabled.json` con `by:"agent42-guardian"` e un referto datato al futuro) sono stati
+   cancellati la sera stessa; la versione attuale del test inietta `impostaBot` e
+   `registraCancellazione` e non tocca più niente di reale.)
+   `statoBot()` risponde `enabled:false`,
      motivo «mai avviato: il flag non è mai stato scritto» — file assente ⇒ fermo, che è il default
      giusto. Non l'ho messo su AVVIA da solo: è un'azione su capitale reale e richiede la conferma
      esplicita dell'utente in chat (regola 3).
 2. **La copertura dichiarata di FERMA non corrisponde al runtime di agent35.** L'header di
-   `agent42-guardian.js` afferma che agent35 «è fermato a monte da `MAKER_MODE=off` e non può
+   `agent43-guardian.js` afferma che agent35 «è fermato a monte da `MAKER_MODE=off` e non può
    piazzare». Il processo in esecuzione ha invece `MAKER_MODE=live-min` e `MAKER_PLACEMENT=send`
    (letto da `/proc/<pid>/environ`; è ciò che `ecosystem.config.js:620` dichiara). Oggi non piazza per
    un'altra ragione — `manual mode active` sul mercato in questione (`data/maker-manual-mode.json`) —
@@ -623,6 +615,36 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     dichiarato che agent41 importa l'allocatore in-process, e non è vero: c'è solo quella stringa. Chi
     scrive un test che cammina i `require` (ce ne sono già tre in questo repo) tenga conto che una
     stringa non è un import — e che qui la differenza è fra «serve un riavvio» e «non serve».
+
+15. **La rinomina `agent42-guardian` → `agent43-guardian` è nel codice, non ancora in pm2.** Il processo
+    vivo porta ancora il nome vecchio, e un `restart` non basta: pm2 identifica un'app per nome, quindi
+    serve **`delete` + `start`**. Non chiesto, non fatto (regola 2 di §2).
+
+    **Il comando, e i due motivi per cui non è quello ovvio:**
+    ```bash
+    # 1 · l'ambiente VERO del processo vivo (95 variabili), meno le chiavi di servizio di pm2.
+    #     Senza questo passo il guardiano perde DATABASE_URL, KEY_CUSTODY_MASTER, POLYGON_RPC_URL e
+    #     MAKER_FUNDER_ADDRESS — nessuna delle quali sta nel suo blocco `env` e nessuna nel demone —
+    #     e un guardiano che non sa leggere il capitale è un guardiano che non scatta mai.
+    PID=$(pm2 jlist | node -e "…")          # mai da pgrep, vedi il punto 8
+    while IFS= read -r -d '' kv; do
+      k=${kv%%=*}
+      case "$k" in NODE_CHANNEL_FD|NODE_CHANNEL_SERIALIZATION_MODE|PM2_JSON_PROCESSING|PM2_USAGE|NODE_APP_INSTANCE) continue ;; esac
+      case "$k" in [A-Z]*) export "$kv" ;; esac
+    done < /proc/$PID/environ
+    # 2 · e solo adesso
+    pm2 delete agent42-guardian && pm2 start agents/ecosystem.config.js --only agent43-guardian && pm2 save
+    ```
+    **Cosa NON si perde:** la memoria del guardiano è nei file, non nel nome —
+    `data/guardian-baseline.json` (il punto zero, $660,56) e `data/guardian-state.json` (la latch)
+    sopravvivono, quindi il guardiano riparte dallo stesso baseline e non si «riarma» da solo.
+    **Cosa si perde:** il contatore dei riavvii riparte da zero, e fra il `delete` e lo `start` il
+    capitale resta per qualche secondo senza guardiano. Oggi l'esposizione è nulla — il bot è FERMO e
+    l'ultimo ciclo di agent41 ha piazzato 0 ordini — ma va detto prima, non dopo.
+    **Cosa non instrada nulla:** la chiave di battito è cambiata insieme al nome, e nessuno la legge —
+    `agent-monitor` non sorveglia questo processo (non è in `WATCHED_AGENTS_RAW`) e agent37 guarda i
+    battiti dei motori. Il campo `by` dei referti passa al nome nuovo solo per i referti futuri: quelli
+    storici restano col vecchio, ed è giusto, dicono chi li ha scritti.
 
 ---
 

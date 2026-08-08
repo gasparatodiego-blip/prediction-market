@@ -845,17 +845,22 @@ module.exports = {
       env:           { NODE_ENV: 'production', HOME: '/root' },
     },
     {
-      name:          'agent42-guardian',
-      script:        './agents/agent42-guardian.js',
+      name:          'agent43-guardian',
+      script:        './agents/agent43-guardian.js',
       cwd:           '/root/prediction-market',
       restart_delay: 20000,
       max_restarts:  20,
       // IL GUARDIANO DELLE PERDITE ECONOMICHE. Sorveglia il CAPITALE, non i processi.
       //
-      // NOME: condivide il 42 con agent42-watch-makers qui sopra, su richiesta esplicita dell'operatore.
-      // pm2 distingue per nome intero e i due non collidono, ma rompe la convenzione «un numero, un
-      // processo» che il resto della flotta rispetta (vedi agent37: «Named 37, not 36»). Se un giorno si
-      // rinumera, questo è il candidato: agent43-guardian.
+      // NOME: era `agent42-guardian`, e condivideva il 42 con agent42-watch-makers qui sopra. pm2
+      // distingue per nome intero e i due non collidevano, ma rompeva la convenzione «un numero, un
+      // processo» che il resto della flotta rispetta (vedi agent37: «Named 37, not 36»). Rinominato
+      // l'8 agosto 2026 in `agent43-guardian`, che era il candidato gia' indicato qui.
+      //
+      // COSA NON INSTRADA. La chiave di battito e' cambiata insieme al nome, ma NESSUNO la legge:
+      // agent-monitor non sorveglia questo processo (non e' in WATCHED_AGENTS_RAW) e agent37 guarda i
+      // battiti dei MOTORI, non i suoi. Il campo `by` del referto passa a `agent43-guardian` per i
+      // referti NUOVI; quelli storici restano col nome vecchio, ed e' giusto — dicono chi li ha scritti.
       //
       // COSA FA CHE agent37 NON PUÒ FARE. agent37 chiede «il motore è vivo?» e guarda i battiti: un
       // motore che batte regolare, supera ogni preflight e intanto perde soldi è, per lui, sano. Questo
@@ -880,7 +885,7 @@ module.exports = {
       // NON FERMA LE USCITE. Usa FERMA (data/maker-bot-enabled.json) e NON il kill-switch, perché il
       // kill blocca anche lib/maker/auto-close («una chiusura è comunque un ordine nuovo»): killare
       // lascerebbe senza uscita proprio le posizioni che c'era da proteggere. Vedi il blocco in testa
-      // ad agents/agent42-guardian.js per il ragionamento completo, incluso ciò che FERMA NON copre.
+      // ad agents/agent43-guardian.js per il ragionamento completo, incluso ciò che FERMA NON copre.
       //
       // Footprint atteso simile ad agent37 (due letture JSON e una lettura di saldo in cache per giro),
       // con l'aggiunta del path ethers di saldo-cache: 200M lascia margine abbondante.

@@ -247,7 +247,7 @@ function esci(esito) {
     + `Il segnale letto è «${String(esito.prova).slice(0, 80)}».\n\n`
     + `Questo comando porta a un ordine con capitale reale, e la regola 3 di CLAUDE.md §2 dice che si `
     + `piazza solo dopo conferma esplicita dell'utente IN CHAT, ogni volta. Le due sole eccezioni sono `
-    + `agent41 (riallocazione, quando il bot è su AVVIA) e agent42-guardian (cancellazioni), e non `
+    + `agent41 (riallocazione, quando il bot è su AVVIA) e agent43-guardian (cancellazioni), e non `
     + `passano da qui.\n\n`
     + `Cosa fare: descrivi in chat cosa vuoi piazzare e aspetta il via libera dell'utente. `
     + `Non aggirare l'hook riscrivendo il comando: guarda anche dentro gli script e i loro require.`;

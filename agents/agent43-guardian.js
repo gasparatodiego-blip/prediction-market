@@ -1,7 +1,12 @@
 #!/usr/bin/env node
 'use strict';
 // ─────────────────────────────────────────────────────────────────────────────
-// agent42-guardian — IL GUARDIANO DELLE PERDITE ECONOMICHE.
+// agent43-guardian — IL GUARDIANO DELLE PERDITE ECONOMICHE.
+//
+// NOME: era `agent42-guardian` fino all'8 agosto 2026, e condivideva il 42 con agent42-watch-makers.
+// pm2 distingue per nome intero e i due non collidevano, ma la convenzione di questa flotta e' «un
+// numero, un processo» (vedi agent37: «Named 37, not 36»), e il blocco in ecosystem.config.js aveva
+// gia' indicato agent43 come il candidato. Rinominato su richiesta dell'operatore.
 //
 // ═══ COSA SORVEGLIA, E PERCHÉ NON BASTAVA agent37 ═══════════════════════════════════════════════════
 // agent37 chiede «il motore è vivo?». Se un battito si ferma, i suoi ordini restano soli sul venue e
@@ -97,12 +102,15 @@ const BASELINE_FILE = path.join(DATA_DIR, 'guardian-baseline.json');
 const STATE_FILE = path.join(DATA_DIR, 'guardian-state.json');
 const HEARTBEATS = '/tmp/agent-heartbeats.json';
 
-const log = (...a) => console.log(new Date().toISOString(), '[agent42-guardian]', ...a);
+const log = (...a) => console.log(new Date().toISOString(), '[agent43-guardian]', ...a);
 
 function readJson(f) { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return null; } }
 function heartbeat() {
   const hb = readJson(HEARTBEATS) || {};
-  hb['agent42-guardian'] = Date.now();
+  // La chiave del battito segue il nome del processo. NESSUNO LA LEGGE oggi — agent-monitor non
+  // sorveglia questo processo (non e' in WATCHED_AGENTS_RAW) — quindi rinominarla non instrada niente
+  // di diverso; la vecchia chiave resta nel file finche' non lo si riscrive, e non fa danno.
+  hb['agent43-guardian'] = Date.now();
   try { atomicWriteJson(HEARTBEATS, hb); } catch { /* best-effort */ }
 }
 
@@ -194,7 +202,7 @@ async function poll(deps = {}) {
   let botFermato = { ok: false, motivo: 'non tentato' };
   try {
     botFermato = (deps.impostaBot || impostaBot)({
-      enabled: false, by: 'agent42-guardian',
+      enabled: false, by: 'agent43-guardian',
       reason: `perdita oltre soglia: ${decisione.motivo}`,
     });
     log(botFermato.ok ? `bot messo su FERMA (era ${botFermato.prima ? 'AVVIATO' : 'già fermo'})` : `FERMA NON scritto: ${botFermato.motivo}`);
