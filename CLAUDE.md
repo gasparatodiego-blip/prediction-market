@@ -3,14 +3,13 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt**: non serve più reincollarlo ogni volta.
 
-Ultima verifica contro codice/stato reali: **7 agosto 2026**, ~23:45 UTC.
+Ultima verifica contro codice/stato reali: **7 agosto 2026**, ~23:58 UTC.
 
-> **Il codice di questa sera è committato ma NON è ancora nei processi vivi.** agent35, agent40 e
-> agent41 tengono in memoria il codice con cui sono partiti, e il `dashboard` serve il bundle
-> compilato prima delle fasi 1–8. Tutto ciò che §4 descrive come *nuovo* (fine scala su quattro
-> percorsi, cadenza adattiva, pannello del mid vivo, timbro `origine`, ordini propri sottratti dalla
-> coda) **è vero nel repo e non ancora nel runtime**: serve un riavvio, e il riavvio si chiede.
-> Vedi §5 punto 7.
+> **Il codice di questa sera è in `main` E nei processi vivi.** agent35, agent40, agent41 e il
+> `dashboard` sono stati riavviati alle ~23:52–23:57 UTC con l'autorizzazione esplicita dell'utente in
+> chat: fine scala su quattro percorsi, cadenza adattiva, pannello del mid vivo, timbro `origine` e
+> ordini propri sottratti dalla coda sono **attivi**. Resta pendente una sola cosa, ed è nel punto 3
+> di §5: `REALLOC_SCHEDULER_DRY_RUN` è ancora nell'ambiente di agent41 (inerte).
 
 ---
 
@@ -91,7 +90,7 @@ non se può piazzare.
 ### Permessi della sessione (stato al 7 agosto 2026, ~23:05 UTC)
 
 `.claude/settings.json` (progetto) e `~/.claude/settings.json` (utente) portano una **copia identica**
-della stessa policy: `allow` ampio + **163 regole `ask`**. `ask` batte `allow` da qualunque file arrivi,
+della stessa policy: `allow` ampio + **164 regole `ask`**. `ask` batte `allow` da qualunque file arrivi,
 e le regole si **fondono** fra i file. `.claude/settings.local.json` deve restare privo di regole `ask`.
 Le due copie vanno tenute in sync: se ne modifichi una, modifica l'altra — e
 `lib/safety/policy-permessi.test.js` fallisce se divergono.
@@ -127,6 +126,12 @@ Due dettagli di forma che contano, e sono verificati dal test:
   una versione del test del guardiano ha lasciato residui sullo stato **vero** (§5 punto 1).
 
 ### L'hook che guarda dentro gli script (dal 7 agosto 2026)
+
+> **Un riavvio pm2 non passa da qui.** I segnali sugli agent chiedono una *forma di esecuzione*
+> (`node`, `bash`, `sh`, `npx`, `./`) davanti al nome: `node agents/agent35-maker.js` è bloccato,
+> `pm2 restart agent35-maker` no. Non è un allentamento — pm2 ha già il presidio migliore, cioè le
+> regole `ask` che fermano il comando e lo mettono davanti a te. Un `deny` non lascerebbe quella
+> possibilità, e l'unico modo di procedere diventerebbe aggirare l'hook.
 
 `.claude/hooks/blocca-piazzamento.js`, registrato in entrambe le copie di `settings.json` sotto
 `PreToolUse` / matcher `Bash`, timeout 15s. Chiude il limite che le regole `ask` dichiarano da sempre:
@@ -373,24 +378,24 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
    file dello stesso tipo — comprese baseline e latch del guardiano — sono ignorati per una ragione
    esplicita: descrivono *questa* macchina in *questo* momento, e versionare l'interruttore
    AVVIA/FERMA significa che un `git checkout` può spostarlo. Da aggiungere all'ignore.
-7. **Il codice della sera del 7 agosto è committato, buildato e NON attivo: i riavvii sono pendenti.**
-   Il tetto di concentrazione al 20% è **deployato** (agent41 e dashboard riavviati alle ~22:30–22:41,
-   con l'autorizzazione esplicita dell'utente): quel punto è chiuso e verificato sul piano vero.
-   Restano da attivare le fasi 1–8, tutte già in `main` e con build verde:
+7. **~~Il codice della sera del 7 agosto non è attivo~~ — CHIUSO alle 23:57 UTC del 7 agosto 2026.**
+   Il tetto di concentrazione al 20% era stato deployato alle ~22:30–22:41; le fasi 1–8 sono state
+   attivate con un secondo giro di riavvii autorizzati esplicitamente in chat («Riavvia agent35,
+   agent40, agent41 e dashboard»):
 
-   | Processo | Cosa aspetta | Perché serve il riavvio |
-   |---|---|---|
-   | `agent35-maker` | rotaia `end-of-scale` in `risk-rails` | costanti e moduli letti al `require` |
-   | `agent40-manual-reprice` | cadenza adattiva, ordini propri letti in coda, fine scala | idem |
-   | `agent41-realloc-scheduler` | timbro `origine: 'auto'`, `leggiOrigini` nel reset | idem (+ vedi punto 3) |
-   | `dashboard` | pannello «Mid vivo» e rotta SSE `/api/maker/live-mid` | serve il bundle di ~22:39 |
+   | Processo | restart | Cosa è entrato in servizio | Verifica |
+   |---|---|---|---|
+   | `agent35-maker` | 24 → 25 | rotaia `end-of-scale` in `risk-rails` | env intatto (`MAKER_MODE=live-min`, `MAKER_PLACEMENT=send`, funding approvato), log puliti |
+   | `agent40-manual-reprice` | 49 → 50 | cadenza adattiva, ordini propri in coda, fine scala | soglie invariate all'avvio (`hysteresis 1 tick`, `confirm 2 samples`) — la cadenza non le tocca |
+   | `agent41-realloc-scheduler` | 29 → 30 | timbro `origine: 'auto'`, `leggiOrigini` nel reset | «tetto per mercato 20% · il bot è FERMO» |
+   | `dashboard` | 167 → 168 | pannello «Mid vivo», rotta SSE `/api/maker/live-mid` | http 200; la rotta risponde 401 come `board` e `status` (stesso gate operatore); «Mid vivo» nel chunk servito |
 
-   **Nessuno di questi riavvii è stato fatto**: l'utente ha autorizzato in chat solo quelli della fase 0
-   (agent41 e dashboard, per il tetto). Regola 2: si chiede ogni volta.
+   Log di errore vuoti su tutti e tre gli agent; le righe rosse del dashboard sono le vecchie delle
+   22:39 e il contatore dei riavvii non sale.
    Nota operativa registrata: **verificare `.next/prerender-manifest.json` prima di riavviare il
    dashboard**. Una build incompleta ne produce solo la variante `.js`, e il processo entra in crash
    loop con `ENOENT` (successo il 7 agosto: 19 riavvii automatici prima che una build nuova lo
-   risolvesse).
+   risolvesse). Verificato prima di questo riavvio, ed è andato liscio.
 
 8. **`pgrep -f <nome-processo>` non è affidabile in questa sessione.** Il comando che lo esegue contiene
    il nome cercato, quindi `pgrep` trova anche la propria shell e `head -1` può restituire quella: il
