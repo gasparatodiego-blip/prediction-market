@@ -40,6 +40,27 @@
 
 const fs = require('fs');
 const path = require('path');
+// ── IL CARICATORE DI `.env` — PERCHÉ UN RIAVVIO AUTOMATICO NON DEVE ROMPERE NIENTE ──────────────────
+// Stesso blocco di agent40 e agent41, e per la stessa ragione. Un riavvio automatico di pm2 (crash,
+// OOM) riparte con la descrizione in memoria del demone, che le variabili ce le ha. Ma un riavvio del
+// DEMONE — riavvio del server, `pm2 update` — risorge dal dump su disco, che su questa macchina è
+// PULITO (misurato l'8 agosto 2026, CLAUDE.md §5 §3): nessuna delle variabili critiche è lì dentro.
+// Senza un caricatore, un reboot notturno lascerebbe questo processo vivo e senza le variabili che gli
+// servono. Con il caricatore le variabili tornano a venire da un file, che sopravvive a tutto.
+//
+// NON SOVRASCRIVE MAI: `process.env[k] === undefined` è la condizione, quindi ciò che pm2 già passa
+// vince sul file. Può solo riempire i buchi — non può cambiare il comportamento di un avvio che oggi
+// funziona.
+for (const envFile of ['.env.local', '.env']) {
+  try {
+    const envPath = path.join(__dirname, '..', envFile);
+    for (const line of fs.readFileSync(envPath, 'utf8').split('\n')) {
+      const m = line.match(/^\s*(?:export\s+)?([A-Z0-9_]+)\s*=\s*"?([^"]*?)"?\s*$/);
+      if (m && process.env[m[1]] === undefined) process.env[m[1]] = m[2];
+    }
+  } catch { /* file assente → si prosegue con l'ambiente che c'è */ }
+}
+
 const { httpGet } = require('../lib/httpGet');
 const { loadMakerConfig } = require('../lib/maker/config');
 const { checkTtlVsRefresh, computeGtdExpiration, MIN_EFFECTIVE_TTL_SEC } = require('../lib/maker/order-ttl');

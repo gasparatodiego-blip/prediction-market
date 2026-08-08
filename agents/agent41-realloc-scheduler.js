@@ -43,6 +43,43 @@ const http = require('http');
 const https = require('https');
 const { execFile } = require('child_process');
 
+// ── IL CARICATORE DI `.env` — PERCHÉ UN RIAVVIO AUTOMATICO NON DEVE ROMPERE NIENTE ──────────────────
+//
+// ═══ COS'ERA ═══════════════════════════════════════════════════════════════════════════════════════
+// Questo processo NON aveva un caricatore, a differenza di agent40 e del dashboard. Le sue variabili
+// arrivavano dall'ambiente EREDITATO dalla shell che lo aveva avviato la prima volta e conservato nella
+// descrizione in memoria di pm2 — 63 variabili fra cui `DATABASE_URL`, `KEY_CUSTODY_MASTER`,
+// `POLYGON_RPC_URL`, `MAKER_FUNDER_ADDRESS`, `MANUAL_ORDER_PLACEMENT`, nessuna delle quali sta nel
+// blocco `env` di ecosystem.config.js né nel demone pm2 (misurato l'8 agosto 2026, CLAUDE.md §5 §3).
+//
+// La conseguenza era operativa e sgradevole: riavviare agent41 richiedeva di RICOSTRUIRE l'ambiente a
+// mano leggendo `/proc/<pid>/environ` del processo vivo. Una procedura che funziona quando c'è una
+// persona davanti, e che non esiste alle tre di notte — perché un riavvio AUTOMATICO (crash, OOM,
+// `max_restarts` di pm2) non la esegue. Un crash notturno poteva quindi lasciare in piedi un processo
+// senza le variabili che gli servono per leggere il saldo, firmare o parlare col database.
+//
+// ═══ PERCHÉ QUESTO LO RISOLVE ══════════════════════════════════════════════════════════════════════
+// Le variabili tornano a venire da un FILE su disco, che sopravvive a qualunque riavvio e non dipende
+// da chi ha lanciato il processo. Un crash a qualunque ora riparte con lo stesso ambiente della prima
+// volta. Ed è esattamente lo stesso caricatore di agent40 (righe 56-62): non una seconda strada, la
+// stessa — se un domani il formato del `.env` cambia, cambia per entrambi.
+//
+// ═══ LA REGOLA CHE LO RENDE SICURO: NON SOVRASCRIVE MAI ════════════════════════════════════════════
+// `process.env[k] === undefined` è la condizione. Ciò che pm2 già passa VINCE sul file, quindi questo
+// caricatore non può cambiare il comportamento di un processo che oggi parte bene: può solo riempire i
+// buchi. È la ragione per cui aggiungerlo non è un rischio anche a fronte di una descrizione pm2 che
+// contiene già tutto — e per cui `REALLOC_SCHEDULER_DRY_RUN`, che vive in quella descrizione e che
+// l'operatore ha deciso di lasciare, resta esattamente dov'è e continua a essere inerte.
+for (const envFile of ['.env.local', '.env']) {
+  try {
+    const envPath = path.join(__dirname, '..', envFile);
+    for (const line of fs.readFileSync(envPath, 'utf8').split('\n')) {
+      const m = line.match(/^\s*(?:export\s+)?([A-Z0-9_]+)\s*=\s*"?([^"]*?)"?\s*$/);
+      if (m && process.env[m[1]] === undefined) process.env[m[1]] = m[2];
+    }
+  } catch { /* file assente → si prosegue con l'ambiente che c'è */ }
+}
+
 const { runReallocCycle, CONCENTRATION_CAP_FRAC, INTERVAL_MS } = require('../lib/maker/realloc-cycle');
 const { runAllocationReset } = require('../lib/maker/allocation-reset');
 const { runBulkAllocation } = require('../lib/maker/bulk-allocate');
