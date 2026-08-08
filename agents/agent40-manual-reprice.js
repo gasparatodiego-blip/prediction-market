@@ -966,10 +966,11 @@ async function main() {
           // La scomposizione per mercato e la prova che il venue ha ATTRIBUITO la lettura a noi: un
           // 200 pieno di zeri non attribuito non è un consuntivo. Vedi lib/maker/reward-reale.js.
           perMercato: r.perMercato, attribuito: r.attribuito ?? null, righeLette: r.righe ?? null,
+          fonte: r.fonte ?? null, pagamenti: r.pagamenti ?? null,
         });
         if (w.scritto) {
           log(r.disponibile
-            ? `CONFRONTO REWARD · consuntivo di ${c.giornoReale}: $${r.totaleUsd.toFixed(2)} su ${(r.perMercato || []).length} mercati (tentativo ${c.tentativo})`
+            ? `CONFRONTO REWARD · consuntivo di ${c.giornoReale}: $${r.totaleUsd.toFixed(2)} da ${(r.pagamenti || []).length} pagamento/i (fonte ${r.fonte}, tentativo ${c.tentativo})`
             : `CONFRONTO REWARD · consuntivo di ${c.giornoReale} non disponibile (tentativo ${c.tentativo}/3): ${r.motivo}`
               + (w.esaurito ? ' — tentativi esauriti, la giornata resta marcata non disponibile' : ''));
         }
