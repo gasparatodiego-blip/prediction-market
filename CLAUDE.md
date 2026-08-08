@@ -3,7 +3,7 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt**: non serve più reincollarlo ogni volta.
 
-Ultima verifica contro codice/stato reali: **8 agosto 2026**, ~15:00 UTC.
+Ultima verifica contro codice/stato reali: **8 agosto 2026**, ~15:40 UTC.
 
 > ## ⚠ IL BOT È SU AVVIA DALLE 12:07:55 UTC DELL'8 AGOSTO 2026
 > Non è più un'anteprima: **il prossimo ciclo di agent41 piazza ordini veri con capitale reale.**
@@ -323,7 +323,34 @@ i due bucket ci mettevano sopra una scalinata che il venue non paga. Nessun `if 
    capitale», e il piano servito dal pannello su $660 si ferma a **$130 = 19,7%** (tetto $132). Con il
    vecchio 30% gli stessi dati davano $195 = 29,5%.
 
-**L'orizzonte ha finalmente DUE estremi: `[0,25 · 1,5]` giorni** (`lib/rewards/horizon.js`, 8 agosto
+**L'orizzonte: un MURO e una QUOTA, e fanno due lavori diversi** (8 agosto 2026 sera — in `main`; il
+piano nasce in un processo figlio a ogni ciclo, quindi **non serve riavviare**). Per mezza giornata il
+tetto è stato un cancello secco a 1,5 g: giusto come direzione, sbagliato come forma. I **307 ingressi
+veri** dei 21 maker dicono mediana 0,212 g · Q3 0,504 · **P90 7,00** · max **145,7**, cioè il **10,4%
+(32 su 307) va oltre i 7 giorni** — un comportamento che i vincitori hanno davvero, e che un cancello
+cancellava invece di rappresentare. Adesso:
+- **Il muro**, in `lib/rewards/horizon.js`: `MAX_HORIZON_DAYS = 150`, sopra il massimo mai osservato.
+  Oltre, `too-far`, senza appello. Tutto ciò che sta sotto torna **ammissibile**.
+- **La quota**, in `lib/rewards/allocator.js`: il capitale oltre `LONG_TAIL_DAYS = 7` (il P90) non può
+  superare **`LONG_TAIL_CAP_FRAC = 0,12`** del piano. 12% e non il 10,4% misurato perché un tetto messo
+  sulla stima puntuale boccia una composizione che finisce al 10,5% per rumore campionario.
+- **La divisione non è organizzativa, è logica**: «questo mercato è ammissibile?» è una proprietà del
+  mercato e si risponde in `horizonVerdict`; «quanto del capitale può starci?» è una proprietà del
+  **portafoglio**, e un verdetto per-mercato non ha modo di conoscerla.
+- **DUE PASSATE, non una potatura.** Il primo tentativo lasciava scegliere il knapsack, guardava se la
+  coda sforava e potava rigirando il DP: **non converge**, misurato sull'universo vero — tolti due
+  mercati lunghi il DP ne pesca altri due, e dopo tre giri la composizione era ancora al **26,5%**
+  contro il 12%. Ora la fascia corta gira per prima con **tutto** il budget (quindi la sua allocazione
+  è, per costruzione, quella di prima), e la coda riceve solo `S·q/(1−q)` — non `S·q`, che sbaglierebbe
+  in difetto, perché la quota è sul totale e il totale contiene la coda.
+- **Fascia corta vuota ⇒ la coda non ottiene niente.** Severo e voluto: «al più il 12% del piano» su un
+  piano di sola coda vale 100%. Fallisce nella direzione sicura e il piano lo dichiara
+  (`codaLungaBudgetUsd`, `codaLungaFrazione`, `codaLungaOltreLaQuota`).
+- **Misurato sull'universo vero l'8 agosto**: piano a **90,0% fascia corta / 10,0% coda lunga**, budget
+  concesso $63,82, usato $52 — sotto quota senza che la quota abbia dovuto mordere; 4 mercati lunghi
+  restano fuori con motivo `quota-coda-lunga`, che è distinto da un rifiuto per orizzonte.
+
+**~~L'orizzonte ha DUE estremi: `[0,25 · 1,5]` giorni~~** (superato dal blocco qui sopra) (`lib/rewards/horizon.js`, 8 agosto
 2026 sera — in `main`; il pianificatore nasce in un processo figlio a ogni ciclo, quindi **non serve
 riavviare niente**). Il pavimento c'era dal principio; il tetto no, e la sua assenza non era benigna:
 il knapsack massimizza un **tasso al giorno**, e un tasso al giorno non contiene la durata. Un mercato
