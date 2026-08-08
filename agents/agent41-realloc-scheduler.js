@@ -661,6 +661,12 @@ async function miniCiclo(decisione, deps = {}) {
 /** Il controllo periodico. Costa una lettura di saldo (in cache) e niente altro finche' non scatta. */
 async function controlloCapitaleFermo() {
   if (inCorso) return;                    // il lucchetto, prima di qualunque I/O
+  // ── I CANCELLI GRATUITI PRIMA DI QUELLO CHE COSTA (8 agosto 2026) ──────────────────────────────
+  // `leggiSaldo` e' una chiamata HTTP al dashboard che a sua volta fa una lettura on-chain (cache TTL
+  // 45s, sotto la cadenza di 120s: quindi ogni giro ne provocava una nuova). Farla PRIMA di guardare
+  // se il bot e' avviato significava ~720 letture al giorno per una decisione gia' presa: a bot FERMO
+  // il trigger non scatta comunque. I due controlli che non costano niente vanno prima.
+  if (!TRIGGER_ATTIVO || !botAttivo()) return;
   let saldo = null;
   try { saldo = await leggiSaldo(); } catch (e) { saldo = { readable: false, error: e.message }; }
   const st = leggiStato();

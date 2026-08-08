@@ -103,7 +103,6 @@ const { campionaProfonditaAltrui, mediaProfonditaAltrui } = require('../lib/make
 const {
   fotografaPreesistenti, potaPreesistenti, separaPreesistenti, idsPreesistenti,
 } = require('../lib/maker/ordini-preesistenti');
-const { leggiFinestraMercato } = require('../lib/rewards/velocita-mercato');
 // LE CANCELLAZIONI CHE SI DEVONO VEDERE. Il 6 agosto 2026 una gamba e' stata cancellata correttamente
 // e nessun evento e' arrivato a una superficie: l'operatore se n'e' accorto guardando l'app del venue.
 const { registraCancellazioni } = require('../lib/maker/cancellazioni-visibili');
@@ -595,11 +594,69 @@ async function fotografiaSuRiarmo() {
 // In memoria di proposito: è una cadenza, non uno stato di sicurezza. Dopo un riavvio ogni mercato
 // viene guardato al primo giro (nessuna `ultimaValutazione` ⇒ si valuta), che è il verso giusto.
 const ultimaValutazione = new Map();
-function cadenzaPer(marketId, difettoMs) {
+
+/**
+ * ── LA MAPPA DELLE VELOCITÀ DEL GIRO, LETTA UNA VOLTA SOLA (8 agosto 2026) ─────────────────────────
+ *
+ * Il difetto che chiude, misurato: `cadenzaPer` chiamava `leggiFinestraMercato` UNA VOLTA PER MERCATO,
+ * e ogni chiamata rileggeva l'intero giornale del giorno costruendo la mappa di TUTTI i mercati per poi
+ * restituirne uno. Tredici mercati = tredici letture identiche da 524 ms l'una = 6,8 s di CPU dentro un
+ * ciclo da 5 s, cioè il 136% di un core, in crescita con il file e con azzeramento a mezzanotte.
+ *
+ * Adesso la mappa si costruisce UNA volta per giro e si consulta tredici volte. Insieme al seek
+ * dimensionato sulla finestra (lib/rewards/velocita-mercato), il costo passa da 6.812 ms a 36 ms per
+ * ciclo — misurato, non stimato.
+ *
+ * SE LA LETTURA FALLISCE si restituisce `null`, e `cadenzaPer` lo tratta come «velocità non
+ * misurabile»: `decidiCadenza` risponde con la cadenza di DIFETTO, cioè si guarda il mercato più
+ * spesso, non meno. È lo stesso verso prudente che aveva il try/catch di prima.
+ */
+function velocitaDelGiro() {
+  try {
+    const { FINESTRA_MIN } = require('../lib/maker/cadenza-adattiva');
+    const { leggiFinestraTutti } = require('../lib/rewards/velocita-mercato');
+    return leggiFinestraTutti({ windowMinutes: FINESTRA_MIN, minCampioni: 4 });
+  } catch (e) {
+    log('velocità del giro non misurata:', e && e.message ? e.message : String(e));
+    return null;
+  }
+}
+
+/**
+ * ── LA LIQUIDITÀ MEDIA DEL GIRO, LETTA AL MASSIMO UNA VOLTA E SOLO SE SERVE ────────────────────────
+ *
+ * Stesso difetto della cadenza, in un punto meno battuto: `liquiditaMedia` chiedeva una finestra da
+ * 240 MINUTI, una volta per mercato, e la chiede solo il percorso di riprezzo — quindi non compariva
+ * nella misura del ciclo a vuoto, ma quando il bot lavora davvero costa più della cadenza.
+ *
+ * PIGRA di proposito: se in questo giro nessuno la chiede — il caso normale — non si legge niente.
+ * Al primo che la chiede si legge UNA volta per tutti, e il resto del giro consulta la mappa.
+ */
+function memoLiquidita() {
+  let mappa = null;
+  let tentato = false;
+  return {
+    per(marketId) {
+      if (!tentato) {
+        tentato = true;
+        try { mappa = require('../lib/rewards/velocita-mercato').leggiFinestraTutti({ windowMinutes: 240 }); }
+        catch { mappa = null; }
+      }
+      const w = mappa && mappa.per ? mappa.per.get(marketId) : null;
+      return { media: w && w.depthMedia != null ? w.depthMedia : null, campioni: (w && w.depthCampioni) || 0 };
+    },
+  };
+}
+
+function cadenzaPer(marketId, difettoMs, mappa = null) {
   try {
     const { decidiCadenza, cadenzaAttiva, FINESTRA_MIN } = require('../lib/maker/cadenza-adattiva');
-    const { leggiFinestraMercato } = require('../lib/rewards/velocita-mercato');
-    const misura = leggiFinestraMercato({ marketId, windowMinutes: FINESTRA_MIN, minCampioni: 4 });
+    const { leggiFinestraMercato, finestraVuota } = require('../lib/rewards/velocita-mercato');
+    // La mappa del giro quando c'è; la lettura singola solo per chi chiama senza mappa (nessuno oggi
+    // nel ciclo, ma la funzione resta usabile da sola senza cambiare comportamento).
+    const misura = mappa && mappa.per
+      ? (mappa.per.get(marketId) || finestraVuota(marketId, 'nessun campione per questo mercato nella finestra'))
+      : leggiFinestraMercato({ marketId, windowMinutes: FINESTRA_MIN, minCampioni: 4 });
     let tickCents = 1;
     try {
       const r = resolveMarketRules(marketId);
@@ -618,6 +675,13 @@ function cadenzaPer(marketId, difettoMs) {
 
 async function cycle() {
   const saldo = await saldoDelGiro();
+  // La mappa delle velocita' del giro: UNA lettura del giornale per ciclo, non una per mercato.
+  // Vedi la nota su `velocitaDelGiro`. Si legge PRIMA del ciclo perche' la cadenza e' il primo gate
+  // che ogni mercato incontra, e perche' cosi' tutti i mercati del giro vengono giudicati sullo
+  // STESSO istante — prima ognuno aveva la sua finestra, spostata di qualche centinaio di ms.
+  const velocita = velocitaDelGiro();
+  // Pigra: costa zero nei giri in cui nessuno riprezza, che sono la stragrande maggioranza.
+  const liquiditaGiro = memoLiquidita();
   await fotografiaSuRiarmo();
   // Gli id si rileggono UNA volta per giro e si passano al filtro: dentro il ciclo il filtro viene
   // chiamato una volta per mercato, e rileggere il file ogni volta sarebbe I/O per lo stesso fatto.
@@ -625,7 +689,7 @@ async function cycle() {
   const res = await runAutoRepriceCycle({
     // La cadenza adattiva: il difetto è l'orologio di questo motore (5s), e da lì si scende a 1s sui
     // mercati veloci e si sale a 10s su quelli fermi.
-    cadenza: (marketId) => cadenzaPer(marketId, loadAutoRepriceTuning().pollMs),
+    cadenza: (marketId) => cadenzaPer(marketId, loadAutoRepriceTuning().pollMs, velocita),
     segnaValutazione: (marketId, t) => ultimaValutazione.set(marketId, t),
     killStatus: () => killSwitch.killStatus(),
     isManual: (marketId) => isManualMarket(marketId),
@@ -670,10 +734,8 @@ async function cycle() {
     // (`pavimentoLordoUsd`): somma il book pubblico, i nostri ordini compresi, quindi non puo' fare da
     // denominatore a un numeratore che li toglie. Non decide piu' nessun pavimento.
     liquiditaMedia: (marketId) => {
-      try {
-        const w = leggiFinestraMercato({ marketId, windowMinutes: 240 });
-        return { media: w && w.depthMedia != null ? w.depthMedia : null, campioni: (w && w.depthCampioni) || 0 };
-      } catch { return { media: null, campioni: 0 }; }
+      try { return liquiditaGiro.per(marketId); }
+      catch { return { media: null, campioni: 0 }; }
     },
     // Used ONLY by the reconnect-after-blackout path AND by the top-of-book cancel. It goes through the
     // CANCEL-ONLY adapter (address-only signer, structurally cannot place), so both can stop orders and
