@@ -433,6 +433,50 @@ async function snapshotPosizioniTask() {
   return { girato: true, ok };
 }
 
+// ── IL REGISTRO DELLE ATTESE DEL LIVELLO 2 (merge) ────────────────────────────────────────────────
+// Quando il Livello 2 mette l'ordine di completamento sul secondo lato, parte un orologio di 60 minuti;
+// scaduto quello si ripiega sul Livello 3. L'orologio deve stare su DISCO: in memoria si azzererebbe a
+// ogni riavvio di questo processo, e un timeout che riparte da zero a ogni riavvio non scade mai.
+//
+// File minuscolo, una chiave per posizione (`${marketId}:${tokenId}`). Ogni lettura fallita vale
+// «nessuna attesa in corso», che e' la direzione sicura: auto-close, senza attesa registrata e con un
+// ordine di completamento gia' a riposo, non ne piazza un secondo — perche' senza registro il ramo del
+// merge non parte affatto (fail-closed esplicito in auto-close.js).
+const MERGE_WAIT_FILE = path.join(__dirname, '..', 'data', 'merge-attese.json');
+
+function registroAttesaMerge() {
+  const leggiTutto = () => {
+    try {
+      const raw = fs.readFileSync(MERGE_WAIT_FILE, 'utf8');
+      const j = JSON.parse(raw);
+      return j && typeof j === 'object' && j.attese && typeof j.attese === 'object' ? j.attese : {};
+    } catch { return {}; }
+  };
+  const scriviTutto = (attese) => {
+    // Scrittura atomica: un file mezzo scritto e' un registro illeggibile, e un registro illeggibile
+    // spegne il merge (fail-closed) invece di lasciarlo in uno stato ambiguo.
+    const tmp = `${MERGE_WAIT_FILE}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify({ atIso: new Date().toISOString(), attese }, null, 1));
+    fs.renameSync(tmp, MERGE_WAIT_FILE);
+  };
+  return {
+    leggi: (chiave) => {
+      const a = leggiTutto()[String(chiave)];
+      return a && Number.isFinite(Number(a.at)) ? a : null;
+    },
+    segna: (chiave, rec) => {
+      const attese = leggiTutto();
+      attese[String(chiave)] = { at: Number(rec && rec.at) || Date.now(), orderId: (rec && rec.orderId) || null,
+        size: (rec && rec.size) || null, prezzo: (rec && rec.prezzo) || null, atIso: new Date(Number(rec && rec.at) || Date.now()).toISOString() };
+      scriviTutto(attese);
+    },
+    pulisci: (chiave) => {
+      const attese = leggiTutto();
+      if (Object.prototype.hasOwnProperty.call(attese, String(chiave))) { delete attese[String(chiave)]; scriviTutto(attese); }
+    },
+  };
+}
+
 async function closeTask() {
   try {
     const cfg = readAutoCloseConfig();
@@ -442,6 +486,16 @@ async function closeTask() {
       killStatus: () => killSwitch.killStatus(),
       isManual: (marketId) => isManualMarket(marketId),
       resolveRules: (marketId) => resolveMarketRules(marketId),
+      // ── LA PROFONDITA' DELL'ALTRO LATO, per il Livello 1 del merge ──────────────────────────────
+      // La STESSA funzione gia' iniettata nel ciclo mm-tracking (piu' sotto): una fonte sola, lo
+      // snapshot di agent34. Senza questa riga `deps.readDepth` era undefined, `asksAltroLato` arrivava
+      // sempre null e il Livello 1 non era nemmeno valutabile — si cadeva al Livello 2 a prescindere dal
+      // prezzo vero del secondo lato. Vedi CLAUDE.md §5 punto 27.
+      readDepth: (marketId) => resolveMarketDepth(marketId),
+      // ── IL REGISTRO DELLE ATTESE DEL LIVELLO 2 ──────────────────────────────────────────────────
+      // Su file e non in memoria: un'attesa di 60 minuti che si azzera a ogni riavvio del processo non
+      // e' un timeout, e agent40 riavvia. auto-close resta puro — qui c'e' l'unica scrittura.
+      attesaMerge: registroAttesaMerge(),
       listOrders: ({ marketId }) => listManualOrders({ marketId }),
       // La stessa lettura del compito dello snapshot, riusata: una fonte sola, e nessuna seconda
       // chiamata al venue nello stesso giro.

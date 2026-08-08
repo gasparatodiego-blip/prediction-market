@@ -3,14 +3,22 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt**: non serve più reincollarlo ogni volta.
 
-Ultima verifica contro codice/stato reali: **8 agosto 2026**, ~16:05 UTC.
+Ultima verifica contro codice/stato reali: **8 agosto 2026**, ~16:40 UTC.
 
-> ## 🔴 DUE POSIZIONI APERTE NON POSSONO USCIRE — §5 PUNTO 26
-> Matt Little `0x822409` (32,27 YES @ 0,80 · **$25,82**) e Schwartzel `0xc16fade4` (22,20 NO @ 0,5177 ·
-> **$11,49**) hanno l'uscita automatica **abilitata** e **rifiutata** ogni 60 s con
-> `reject-live-min-market-mismatch`: la allowlist live-min è `data/maker-auto-reprice.json`, che il
-> **reset di agent41 riscrive a ogni riallocazione**, mentre le posizioni sopravvivono alla rotazione.
-> Nessun ordine di uscita è a riposo. Diagnosi sola, **nessuna correzione scritta**.
+> ## 🟠 IL MERGE È ACCESO IN `main` — E ASPETTA UN RIAVVIO DI agent40
+> `MERGE_STRATEGY_ENABLED = true` (costante di sorgente, **non** una env). Dal riavvio di agent40 un
+> fill su un lato solo **compra il secondo lato con capitale reale** invece di vendere subito: è
+> un'espansione vera di ciò che il bot fa da solo, e il riavvio è l'atto che la arma.
+> **Comando pendente: `pm2 restart agent40-manual-reprice`** — §5 punto 28.
+>
+> **Le due posizioni bloccate ora possono uscire.** L'eccezione di riduzione è in `main`: un SELL su
+> posizione realmente detenuta non è più vincolato alla allowlist live-min. Matt Little `0x822409`
+> (32,27 YES @ 0,80) e Schwartzel `0xc16fade4` (22,20 NO @ 0,5177) escono al primo ciclo dopo il
+> riavvio. **Fino al riavvio restano bloccate** — il codice è in `main`, non nel processo.
+>
+> **Il Livello 1 (taker) oggi non può eseguire**, e non è un difetto di questo lavoro: `manual-order`
+> consente di attraversare lo spread **solo in vendita**. Degrada al Livello 2 nello stesso ciclo. §5
+> punto 29.
 
 > ## ⚠ IL BOT È SU AVVIA DALLE 12:07:55 UTC DELL'8 AGOSTO 2026
 > Non è più un'anteprima: **il prossimo ciclo di agent41 piazza ordini veri con capitale reale.**
@@ -569,18 +577,33 @@ si scrive con `findIndex` o `some`, mai con la truthiness di `find`.
 agent40 li passava: tutti gli altri percorsi con `inCoda:true` mandavano una lista vuota, e dal secondo
 ordine in poi il «concorrente» da battere eravamo noi — un tick per ogni nostro ordine davanti.
 
-**Merge — eseguibile, spento.** Strategia a livelli in `lib/maker/strategia-merge.js`: L1 taker
-immediato se la coppia YES+NO costa ≤ 99¢, L2 maker con skew (attesa 60 min), L3 ripiego sull'uscita
-classica. Il **ciclo split→merge è stato provato davvero** il 7 agosto 2026 su Schwartzel FL-19
-(`negRisk=true`, il caso più difficile): split $2 → merge $2, saldo tornato alla cifra esatta di
-partenza, gas pagato dal relayer gasless. **Nessun livello è attivo oggi**, perché due costanti
-distinte sono entrambe `false`:
+**Merge — I LIVELLI 1 E 2 SONO ACCESI (in `main`, dal riavvio di agent40).** Strategia a livelli in
+`lib/maker/strategia-merge.js`: L1 taker immediato se la coppia YES+NO costa ≤ 99¢, L2 maker con skew
+(attesa 60 min), L3 ripiego sull'uscita classica. Il **ciclo split→merge è stato provato davvero** il
+7 agosto 2026 su Schwartzel FL-19 (`negRisk=true`, il caso più difficile): split $2 → merge $2, saldo
+tornato alla cifra esatta di partenza, gas pagato dal relayer gasless.
+
+`MERGE_STRATEGY_ENABLED = true` dall'8 agosto 2026, su decisione esplicita dell'operatore in chat, e
+`auto-close.js` **esegue** i due livelli: al posto dell'uscita ordinaria piazza il completamento della
+coppia sul secondo lato. Tre cose da tenere ferme:
+- **il merge on-chain resta impossibile** (`CTF_RELAYER_ENABLED = false`, sotto): la coppia completata
+  paga $1 **alla risoluzione**, non subito. Il profitto è matematico, la liquidità è differita;
+- **il Livello 1 oggi non passa** — l'anti-incrocio consente di attraversare lo spread solo in vendita
+  (§5 punto 29) — e degrada al Livello 2 nello stesso ciclo;
+- il Livello 2 è prezzato a `min(tetto, migliorAsk − tick)` per **riposare** invece di incrociare, e la
+  sua attesa vive in `data/merge-attese.json`, su disco, perché sopravviva ai riavvii.
+
+Restano `false` le due costanti che governano il merge **on-chain**, e accendere la prima non accende
+la seconda:
 - `CTF_RELAYER_ENABLED = false` — costante nel sorgente di `lib/maker/ctf-relayer.js:94`, **non** una
   env. Sotto di essa ogni operazione si ferma *prima* della firma.
 - `MERGE_STRATEGY_ENABLED = false` — `lib/maker/strategia-merge.js`. Accendere la prima non accende la
   seconda. Nessun agent, route o scheduler importa `ctf-relayer`.
-Motivo dichiarato dello spegnimento: senza merge, completare la coppia **immobilizza** capitale invece
-di liberarlo — profilo diverso da quello approvato, e la decisione è dell'operatore.
+Motivo per cui il merge on-chain resta spento: non è una scelta, è il blocco tecnico delle quattro
+ragioni nell'intestazione di `strategia-merge.js` (nessun percorso di scrittura on-chain, token nel
+funder-contratto, funder senza MATIC, deposit wallet ERC-1271). La conseguenza — completare la coppia
+**immobilizza** capitale invece di liberarlo — è stata accettata esplicitamente dall'operatore l'8
+agosto 2026 accendendo i Livelli 1 e 2.
 Trappola operativa registrata: il relayer rifiuta le deadline corte (`400 deadline too soon`);
 `DEADLINE_SEC` è ora **900 s**.
 
@@ -1109,9 +1132,23 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     Serve a poter dire fra un mese se il canale delle scadenze vicine è ancora aperto: se il board
     torna ad avere il minimo sopra i due giorni, la seconda passata ha smesso di funzionare.
 
-26. **DUE POSIZIONI APERTE SENZA VIA D'USCITA: la rotazione dei mercati non porta con sé le posizioni**
-    (trovato l'8 agosto 2026, ~16:00 UTC, sola diagnosi — niente è stato toccato). **È il punto più
-    urgente di questo file.**
+26. **~~DUE POSIZIONI APERTE SENZA VIA D'USCITA~~ — CORRETTO in `main` l'8 agosto 2026, ~16:30 UTC;
+    ASPETTA IL RIAVVIO DI agent40.** La correzione è l'**eccezione di riduzione**
+    (`evaluateReductionProof`, `lib/venues/polymarket-clob-maker/adapter.js`): un ordine che *toglie*
+    esposizione non è più vincolato alla allowlist live-min, che governa dove si può *aprire*.
+    - **La prova è positiva, mai per difetto**: serve lato `SELL`, size detenuta **letta** dallo
+      snapshot del venue (fresco, `MAX_AGE_MS`) e `size ≤ detenuto`. Possesso illeggibile, zero o
+      snapshot scaduto ⇒ nessuna eccezione e il gate si comporta come prima. Un errore di lettura non
+      può allargare niente.
+    - **I BUY restano vincolati**, e per scelta: comprare il secondo lato riduce il *rischio* ma
+      aumenta il *capitale impegnato*, che è esattamente ciò che la allowlist esiste per impedire su un
+      mercato che nessun umano ha abilitato. Un fill su un mercato uscito dalla allowlist si gestisce
+      **uscendo**, non impegnando altri soldi. Il merge resta vivo dove l'operatore ha abilitato.
+    - **Non è stato allargato niente**: 15 asserzioni coprono la non-regressione, fra cui «ingresso su
+      mercato fuori allowlist: ancora bloccato» e «SELL più grande del posseduto: bloccato».
+    - L'eccezione **lascia traccia**: `outcome: 'allow-live-min-reduction'` nell'audit dell'adapter, così
+      «era in allowlist» e «siamo passati perché stavamo riducendo» restano contabili separatamente.
+    *(Il testo originale del punto resta qui sotto come registro di com'era.)*
 
     Due registri distinti governano la stessa posizione, e uno solo dei due ruota:
     - `data/maker-auto-close.json` dice **se** una posizione ha diritto all'uscita automatica — 22
@@ -1147,8 +1184,23 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     scritta** (turno di sola diagnosi). La direzione: esentare dalla allowlist gli ordini di **riduzione**
     su una posizione realmente detenuta — non allargare la allowlist, che riaprirebbe anche gli ingressi.
 
-27. **I Livelli 1 e 2 non sono mai stati raggiunti — e per tre ragioni indipendenti, non per la
-    freschezza del book.** Diagnosi dell'8 agosto 2026 sui fill di Matt Little e Schwartzel.
+27. **~~I Livelli 1 e 2 non sono mai stati raggiunti~~ — CORRETTI TUTTI E QUATTRO in `main` l'8 agosto
+    2026; ASPETTANO IL RIAVVIO DI agent40.** Cosa è stato scritto, oltre ai quattro fix elencati sotto:
+    - **il ramo che ESEGUE i Livelli 1 e 2 non esisteva e ora esiste** (`auto-close.js`). Era il difetto
+      che nascondeva gli altri: accendere `MERGE_STRATEGY_ENABLED` da solo avrebbe cambiato **solo la
+      stringa nell'audit**, facendogli dichiarare eseguito ciò che non accadeva;
+    - il ramo si innesta **dove auto-close stava per piazzare l'uscita ordinaria**, cioè al posto del
+      Livello 3, e **non** sui percorsi urgenti: mercato chiuso, mercato che non accetta ordini,
+      posizione già coperta e chiusura forzata a mercato passano prima e restano intatti;
+    - **non si fanno le due cose insieme**: o si piazza il completamento e si salta l'uscita, o si
+      rinuncia e si lascia proseguire il Livello 3. E se al timeout la cancellazione del completamento
+      fallisce, **non si vende** — comprare e vendere insieme è il guasto peggiore dei due;
+    - `readDepth` iniettato in `closeTask`, `attesaDaMs` passato con un registro **su disco**
+      (`data/merge-attese.json`: un'attesa di 60 minuti che si azzera a ogni riavvio non è un timeout),
+      e `askLetta` che distingue in audit «non l'ho letta» da «l'ha letta ed è cara»;
+    - **senza registro il merge non parte affatto** (fail-closed esplicito): senza orologio il Livello 2
+      non avrebbe scadenza e ripiazzerebbe il completamento a ogni ciclo.
+    *(La diagnosi originale resta qui sotto: è il registro di come ci si è arrivati.)*
     - **Niente viene eseguito, a nessun livello.** `MERGE_STRATEGY_ENABLED = false`: `auto-close.js:341-353`
       **calcola** il livello e lo scrive in audit come `merge-livello-N-osservato`, poi prosegue con
       l'uscita classica. Entrambe le posizioni sono a **Livello 2 osservato**, riscritto ogni 60 s. La
@@ -1177,6 +1229,45 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
       d'audit (fa credere misurato ciò che non lo è), poi `readDepth`. Accendere
       `MERGE_STRATEGY_ENABLED` resta una **decisione dell'operatore** e non è implicata da nulla di
       quanto sopra: senza merge on-chain, completare la coppia immobilizza capitale invece di liberarlo.
+
+28. **IL RIAVVIO DI agent40 ARMA UN COMPORTAMENTO NUOVO SU CAPITALE REALE — e va saputo prima di darlo.**
+    `pm2 restart agent40-manual-reprice` (forma semplice: agent40 **ha** il proprio caricatore di `.env`,
+    righe 56-62, a differenza di agent41 — §5 punto 3). Da quel momento e senza altre conferme:
+    - **un fill su un lato solo fa COMPRARE il secondo lato**, su qualunque mercato in gestione manuale
+      *e* dentro la allowlist live-min. È il primo BUY autonomo di questo stack: auto-close finora
+      piazzava solo SELL. La spesa è limitata per costruzione (size ≤ posizione detenuta, prezzo ≤ tetto
+      della coppia, quindi al più ~`(1 − carico) × size`), ma è capitale nuovo;
+    - **il capitale così impegnato NON torna subito.** `CTF_RELAYER_ENABLED` è ancora `false`: senza
+      merge on-chain la coppia paga $1 **alla risoluzione**, non adesso. Il profitto è matematico e
+      indipendente da chi vince; la liquidità no. È la premessa su cui la decisione è stata presa;
+    - contemporaneamente si attivano l'eccezione di riduzione (punto 26) e i quattro fix del punto 27.
+    **Spegnere:** rimettere `false` a `lib/maker/strategia-merge.js` e riavviare. Non esiste una env che
+    lo governi, deliberatamente — due interruttori per una decisione sola vogliono dire che spegnerne
+    uno non la spegne.
+
+29. **IL LIVELLO 1 (TAKER) NON PUÒ ESEGUIRE, ed è una protezione che NON è stata toccata.**
+    `manual-order.js:1017` — `const attraversaApposta = lato === 'SELL' && spec.attraversaApposta === true`:
+    l'eccezione all'anti-incrocio vale **solo in vendita**, perché «un acquisto aggressivo APRE
+    esposizione: per il BUY la regola resta assoluta» (riga 1008). Il Livello 1 è un BUY aggressivo,
+    quindi il gate lo rifiuta.
+    - **Non è stato allentato**: allargare l'eccezione ai BUY è una decisione dell'operatore su una
+      protezione esplicita, non un dettaglio implementativo.
+    - **La gerarchia regge lo stesso**: il Livello 1 si tenta, e quando viene rifiutato si degrada al
+      **Livello 2 nello stesso ciclo** — non precipita al Livello 3. La coppia resta completabile, solo
+      più lentamente e da maker.
+    - **Il Livello 2 è prezzato per RIPOSARE**: `min(tetto, migliorAsk − tick)`, arrotondato giù al tick.
+      Prezzare al tetto secco lo avrebbe fatto incrociare e rifiutare esattamente come il Livello 1 —
+      trovato in simulazione, non in produzione.
+    - **Da decidere:** se si vuole il Livello 1 vero (prendere l'ask conveniente prima che sparisca),
+      la riga da discutere è quell'eccezione, non il codice del merge.
+
+30. **Verifica del gate fatta per test unitario, non sui dati vivi — e per una ragione buona.**
+    L'hook `.claude/hooks/blocca-piazzamento.js` blocca qualunque comando che faccia `require`
+    dell'adapter, anche in sola lettura: non può sapere che quella valutazione non piazzava niente.
+    Non è stato aggirato. La copertura è quindi: **verdetti dei livelli** calcolati sui dati veri
+    (posizioni dal venue + book live di agent34), **decisione del gate** provata da 15 asserzioni sui
+    casi esatti di queste due posizioni. Chi vorrà la conferma sui dati vivi la avrà dai log del primo
+    ciclo dopo il riavvio, che è comunque la prova migliore.
 
 ---
 

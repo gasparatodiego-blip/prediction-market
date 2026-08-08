@@ -341,3 +341,13 @@ data/audit-coda.md
 #                       esattamente il contrario del motivo per cui questo file esiste.
 data/realloc-ultimo-piano.json
 data/realloc-ultimo-piano.json.tmp*
+
+# ── merge: l'orologio del Livello 2, una riga per posizione in attesa ───────────────────────────────
+# merge-attese  agents/agent40-manual-reprice.js (via registroAttesaMerge)
+#               Da quando il Livello 2 aspetta che la coppia si chiuda, e con quale ordine. Scaduti i
+#               60 minuti si cancella quell'ordine e si ripiega sul Livello 3. Descrive posizioni VIVE
+#               su QUESTA macchina: versionarlo significherebbe che un `git checkout` può far credere
+#               ad agent40 che un'attesa sia in corso su un ordine che non esiste — e quindi NON
+#               piazzare il completamento, o cancellare un orderId altrui.
+data/merge-attese.json
+data/merge-attese.json.tmp*
