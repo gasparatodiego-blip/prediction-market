@@ -299,7 +299,9 @@ async function passataTest(foto) {
   const completa = !scadutoIl() && !esitoTest.nonEseguiti.length;
   const adessoIso = new Date().toISOString();
   const precedente = leggiCoda(CODA_JSON);
-  const u = fondi(precedente.reperti, trovati, { adessoIso, scansioneN: precedente.scansioni.length + 1 });
+  // `parziale` viaggia fin dentro la fusione: una scansione che non ha guardato tutto non può
+  // dichiarare risolto ciò che non ha guardato. Vedi la nota in lib/audit/coda.fondi.
+  const u = fondi(precedente.reperti, trovati, { adessoIso, scansioneN: precedente.scansioni.length + 1, parziale: !completa });
 
   const corpo = {
     versione: 1,
