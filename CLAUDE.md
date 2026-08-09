@@ -5,6 +5,20 @@ Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code a
 
 Ultima verifica contro codice/stato reali: **9 agosto 2026**, ~20:15 UTC.
 
+> ## 🧟 LA GAMBA ORFANA NON VIENE PIÙ RINNOVATA — §5 punto 68
+> Una coppia nasce con due gambe a riposo. Se una viene fillata e la posizione che ne nasce sparisce per
+> una **causa esterna al ciclo** (Diego la chiude a mano), la gamba superstite restava sul libro e veniva
+> **attivamente rinnovata** a ogni finestra GTD — `auto-close` itera le POSIZIONI e con zero posizioni non
+> gira, `auto-reprice` itera gli ORDINI e la teneva viva, e la Regola 4 la teneva apposta. Un ordine
+> mantenuto premiante che, se fillato, apre esposizione **direzionale non coperta**.
+> **Misurato**: `0xd25c820d…` teneva 135,4 share, il giornale si interrompe alle 12:22:43 senza una riga
+> di chiusura, e `merge-attese.json` portava ancora l'attesa di quel completamento (**$60,93**) nove ore
+> dopo. Zero merge on-chain e zero SELL nostre: sparita, e nessuno se n'è accorto.
+> **Adesso** al rinnovo GTD si chiede «la posizione che giustificava quest'ordine esiste ancora?». Una
+> gamba sola + zero posizioni ⇒ si **cancella** invece di rinnovare, e il mercato torna da ripianificare
+> per la **stessa strada del Lavoro B**. **Conferma in due osservazioni**: la prima arma soltanto, così la
+> corsa del fill non può produrre una cancellazione. **ASPETTA IL RIAVVIO di agent40.**
+
 > ## 💸 IL TETTO PER ORDINE ERA $25 CONTRO $130 PER MERCATO — CORRETTO E VIVO, §5 punto 67
 > Il quinto punto del tetto, e l'unico rimasto fuori dall'unificazione del punto 65: non un tetto di
 > allocazione ma un tetto **per ordine**, in **due** costanti indipendenti (`adapter.js:66` e la gemella
@@ -3351,6 +3365,114 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     cancellazioni** su 1.491 righe d'audit dopo il riavvio (il mini-ciclo non cancella per costruzione;
     il ciclo da 6h, che invece cancella, non era ancora caduto). Contatori pm2 stabili a +5 minuti:
     nessun riavvio automatico, nessun crash loop.
+
+68. **LA GAMBA ORFANA VENIVA RINNOVATA ALL'INFINITO — corretto in `main` il 9 agosto 2026, ~22:10 UTC.
+    ASPETTA IL RIAVVIO di agent40, DA CONFERMARE DA DIEGO IN CHAT.**
+
+    **Lo scenario.** BUY YES @0,40 e BUY NO @0,60. La YES viene fillata e apre una posizione. La posizione
+    sparisce per una causa **esterna** al ciclo — chiusura manuale, o un ordine dell'operatore che la
+    vende. La gamba NO resta sul libro senza più niente con cui accoppiarsi.
+
+    **Perché nessuno se ne accorgeva, ed è strutturale — le tre difese guardavano tutte altrove:**
+    - `auto-close` itera le **posizioni** (`for (const pos of mine)`, `auto-close.js:982`) e lo snapshot
+      scarta le size a zero: con zero posizioni il corpo del ciclo **non gira nemmeno una volta**. Niente
+      merge, niente `decidiLivello`, nessuna riga di audit — il mercato smette di comparire nel giornale;
+    - `auto-reprice` itera gli **ordini**, quindi la gamba la vede — e la **rinnova**, tenendola dentro la
+      banda premiante a ogni finestra GTD (23 minuti);
+    - la **Regola 4** (`motore-unico.js:76`) dentro `[0,10 · 0,90]` dice «un lato solo matura comunque un
+      terzo: tenerlo è meglio che chiuderlo», quindi la tiene **apposta**.
+
+    L'unica cosa che la toglieva era la scadenza GTD limitata dalla chiusura del **mercato**: giorni.
+
+    **MISURATO IN PRODUZIONE, non ipotizzato.** `0xd25c820d…` teneva **135,4 share**; il giornale del
+    mercato si interrompe di colpo alle **12:22:43** senza una riga di chiusura, e `data/merge-attese.json`
+    portava ancora l'attesa aperta di quel completamento — BUY 135,4 @ 0,45 = **$60,93** — **nove ore dopo**.
+    Zero righe `merge-onchain-*` in tutta la storia del giornale e zero SELL nostre da 135,4: la posizione
+    non è stata né venduta da noi né fusa.
+
+    **PERCHÉ NON SERVE DISTINGUERE LE CAUSE.** La domanda non è «perché la posizione non c'è più» ma «c'è
+    ancora?». Fortuna, perché ricostruire il fill dallo storico **non è possibile**: `execution-audit.jsonl`
+    registra solo le NOSTRE azioni (807 intent + 807 esiti, stati `live`/400/403) e **non contiene nessun
+    evento di fill** — le 301 occorrenze di «fill» sono l'etichetta della corsia `auto-close-on-fill`. E nel
+    giornale grande il `marketId` sotto `requested` viene **oscurato** dalla cintura 64-hex di `redact.js`
+    (11.593 occorrenze di `redacted` negli ultimi 5 MB), quindi la conta degli ordini a riposo non è
+    nemmeno attribuibile a un mercato. *(È la stessa classe di difetto che l'intestazione di `redact.js`
+    documenta già tre volte — `orderId`, `canceled`, `transactionHash` — alla quarta occorrenza. `marketRef`
+    sopravvive solo perché è scritto come `cid_<hex>`, e quel prefisso rompe la cintura.)*
+
+    **IL DISCRIMINANTE È L'ASIMMETRIA, non lo zero.** Zero posizioni da solo è anche lo stato **sano** di
+    una coppia appena piazzata:
+
+    | posizioni | gambe a riposo | verdetto |
+    |---|---|---|
+    | 0 | **2** | SANO — coppia intatta, nessun fill |
+    | 0 | **1** | ORFANO — l'altra è stata fillata e la posizione non c'è |
+    | > 0 | qualunque | SANO — c'è cosa gestire, se ne occupa `auto-close` |
+
+    **LA CONFERMA IN DUE OSSERVAZIONI, ed è la parte che rende sicura la cancellazione.** C'è un istante in
+    cui il caso sano SEMBRA orfano: la gemella è stata fillata pochi secondi fa (gambe = 1) e l'API delle
+    posizioni non ha ancora pubblicato la posizione appena nata (posizioni = 0). Cancellare lì toglierebbe
+    la gamba superstite **proprio mentre il Lavoro B sta per gestire il fill**. La finestra non si chiude
+    con una lettura più fresca: si chiude **aspettando**. La prima osservazione **arma soltanto** e
+    l'ordine viene rinnovato; solo una seconda oltre `CONFERMA_MS = 60s` cancella, e una posizione
+    ricomparsa **disarma**. Prezzo dichiarato: l'orfano vive una finestra GTD in più (~20 min) — contro
+    «per sempre», che è il comportamento di oggi.
+
+    **DOVE È AGGANCIATO.** In `auto-reprice.decideReprice`, sul ramo `expiring` — cioè **solo** quando
+    `d.action === 'reprice' && d.gate === 'expiry-refresh'`. Un riprezzo che INSEGUE il mid non passa di
+    qui. È l'istante in cui il sistema tocca comunque quella gamba per darle altri 23 minuti di vita.
+    - **La lettura delle posizioni è pigra e memoizzata per mercato**: `auto-reprice`, a differenza di
+      `auto-close`, non le legge — metterla in cima al ciclo sarebbe una chiamata ogni pochi secondi.
+      Così scatta al più ~3 volte l'ora per mercato. È la **stessa** `leggiPosizioniVenue` della chiusura
+      automatica (cache 5s condivisa), non un secondo percorso: due letture potrebbero divergere, e qui
+      la divergenza deciderebbe una cancellazione.
+    - **Il riposizionamento NON si fa lì.** Il ciclo di riprezzo non ha mai aperto esposizione e non
+      comincia adesso: dichiara il mercato «da ripianificare» e lo raccoglie `auto-close`, che lo mette
+      nella **stessa lista `riposizionamenti`** del merge riuscito — quindi eredita senza modifiche
+      `capitalePerRiposizionamento`, il tetto in vigore ($130) e il ripiego sul capitale libero.
+    - Il referto visibile usa `gamba-orfana-scaduta`, il motivo che `cancellazioni-visibili.MOTIVI`
+      **dichiarava già e che non aveva nessun produttore**.
+
+    **FAIL-CLOSED OVUNQUE:** posizioni illeggibili, ordini illeggibili, token non risolti, `readPositions`
+    non iniettato, eccezione ⇒ verdetto `ignoto` e **si rinnova esattamente come prima**.
+
+    **DUE DIFETTI VERI TROVATI DAI TEST E CORRETTI PRIMA DEL COMMIT** — nessuno dei due sarebbe stato
+    visibile in produzione se non come un silenzio:
+    - `deps.resolveRules` in `auto-close` è **posizionale** (`resolveRules(marketId)`, riga 941) e la prima
+      stesura passava `{marketId}`: il riposizionamento sarebbe fallito ogni volta con «regole non
+      leggibili»;
+    - `runAutoCloseCycle` **esce subito** se `marketIds` è vuoto, e un mercato orfano ha zero posizioni per
+      definizione — quindi può benissimo non essere in quella lista. La coda non sarebbe **mai** stata
+      drenata. Adesso si legge in cima, una volta sola, e la sua presenza basta a far girare il ciclo.
+
+    E il selfcheck del modulo ha trovato per la **terza volta** in questo stack la famiglia `Number(null) === 0`:
+    un `armatoDa` mai armato diventava «armato dal 1970» ⇒ ORFANO alla **prima** osservazione, cioè
+    esattamente la corsa che la conferma esiste per evitare.
+
+    **File:** `lib/maker/ordine-orfano.js` (nuovo, puro + selfcheck) · `lib/maker/auto-reprice.js` (il
+    controllo sul ramo `expiring`, `daRipianificare` nel referto) · `lib/maker/auto-close.js` (la coda letta
+    in cima e versata in `riposizionamenti`) · `agents/agent40-manual-reprice.js` (`readPositions`,
+    `registroOrfani` in memoria, la coda drenata alla lettura) · nuovo `lib/maker/ordine-orfano.test.js`.
+
+    **Verifica.** `ordine-orfano.selfcheck` **17/17** · `ordine-orfano.test` **42/42** (caso sano invariato,
+    caso orfano cancellato e ripianificato al tetto pieno, corsa del fill innocua, ogni dato mancante che
+    rinnova, e il riposizionamento provato sul ciclo di chiusura VERO) · `riposizionamento-cablato` 23/23 ·
+    `risposta-al-fill` 27/27 · `mid-stantio` 46/46 · `chiusura-rapida` 76/76 · `controparte-primo-assoluto`
+    41/41. Suite: **159 eseguiti, 153 verdi**, i 6 rossi sono i preesistenti del punto 40 — zero nuovi.
+    `npm run build` verde, `BUILD_ID` `zMNV-tOBzL3e7MsbiV-7N`. Commit `eceb907`.
+
+    **NESSUN CONFLITTO CON IL LAVORO B, e le due condizioni sono mutuamente esclusive per costruzione:**
+    il Lavoro B agisce **sul fill**, quando la posizione ESISTE; questo agisce **al rinnovo GTD**, quando la
+    posizione NON esiste. `posizioni > 0` ⇒ verdetto `sano`, sempre. I due moduli non si importano a
+    vicenda e non condividono stato.
+
+    **Riavvio: NON eseguito** (§2 regola 2) — `pm2 restart agent40-manual-reprice`.
+
+    **⚠ RESTA UN ORFANO VIVO IN PRODUZIONE**, ed è quello che ha fatto scoprire il difetto:
+    `0xd25c820d…`, attesa di merge da $60,93 registrata alle 11:59:08 del 9 agosto. Il riavvio di agent40
+    lo intercetta ai primi due rinnovi utili (~20 min l'uno dall'altro) **se quell'ordine è ancora sul
+    libro**; se nel frattempo è scaduto, resta solo la voce stantia in `data/merge-attese.json`, che questo
+    lavoro **non** ripulisce — la pulizia di quel registro è un intervento a parte.
 
 ---
 
