@@ -3,7 +3,18 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt**: non serve più reincollarlo ogni volta.
 
-Ultima verifica contro codice/stato reali: **9 agosto 2026**, ~18:50 UTC.
+Ultima verifica contro codice/stato reali: **9 agosto 2026**, ~20:15 UTC.
+
+> ## 🩹 LA RISPOSTA AL FILL È COMPLETA E CABLATA — §5 punto 66
+> Quattro correzioni: **(a)** parziale vs completo è ora un ramo esplicito (`classificaFill`); **(b)** il
+> rimasuglio sotto il minimo non finisce più solo a registro — si piazza anche un ordine «rimanenza» in
+> banda; **(c)** contestualmente si apre la gamba contraria stessa size, **seconda e ultima** eccezione a
+> «mai primo sul libro»; **(d)** il riposizionamento post-fill usa il **tetto in vigore** ($130) col
+> ripiego `min(tetto, capitale libero)`, e parte da **entrambi** i percorsi terminali, non solo dal merge.
+> **Le due letture sono ora CABLATE in agent40** (`tettoMercato`, `capitaleLibero`): senza di esse il
+> punto (d) rispondeva `azione: 'niente'`. Provato sul ciclo vero: **$130 pieni** a capitale abbondante,
+> **$80** a capitale ridotto, `accumula` sotto il minimo, `niente` se una delle due letture manca.
+> **agent40 riavviato** — vedi §5 punto 66.
 
 > ## 📏 IL TETTO PER MERCATO È $130 FISSI, E NON C'È PIÙ UN LIMITE DI POSIZIONI — §5 punto 65
 > Era il **20% del capitale**: cresceva in dollari col saldo, quindi a capitale doppio il bot metteva il
@@ -3177,6 +3188,62 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     delle due corsie piazza**, quindi non c'è divergenza in atto — ma se un domani si riparte senza aver
     riavviato agent40, il suo percorso di riprezzo applicherebbe ancora il 20% del saldo. Da fare
     insieme agli altri due quando si decide di ripartire.
+
+66. **LA RISPOSTA AL FILL: QUATTRO CORREZIONI, E IL CABLAGGIO CHE LE RENDE EFFETTIVE — 9 agosto 2026,
+    ~20:15 UTC. agent40 RIAVVIATO su autorizzazione di Diego.**
+
+    Il modulo puro è `lib/maker/risposta-al-fill.js`; il cablaggio vive in `auto-close.js` e in agent40.
+    Nulla di ciò che esisteva è stato ricostruito: `TETTO_COPPIA_CENTS` (110¢), i livelli 1/2 del merge,
+    il registro `accumulo-residui` e `completaCoppia` come punto di convergenza sono riusati intatti.
+
+    | | cosa | dove |
+    |---|---|---|
+    | **(a)** | `classificaFill` — `fill-completo` (nessuna copertura) · `fill-parziale` (copertura insufficiente) · `coppia-completa` · **`ignoto`, che non fa scattare niente** | `risposta-al-fill.js`, cablato in `completaCoppia` |
+    | **(b)** | ordine «rimanenza» in banda per la size residua, **in aggiunta** al registro | `pianificaRimasuglio` |
+    | **(c)** | gamba contraria stessa size, esente da «mai primo» | idem, `primoAssoluto: true` |
+    | **(d)** | `min(tetto in vigore, capitale libero)`, da **entrambi** i percorsi terminali | `capitalePerRiposizionamento` + il loop dei riposizionamenti |
+
+    **IL CABLAGGIO, che è ciò che rende (d) effettivo.** `tettoMercato` (da `readAllocatedCapital`, la
+    stessa fonte del rimpiazzo di gamba) e `capitaleLibero` (dal saldo del giro, passato **solo se
+    affidabile** — stantio ⇒ `null`, mai zero) sono iniettati nel blocco deps di `closeTask`. Senza,
+    il riposizionamento rispondeva `azione: 'niente'`: era lo stato in cui il modulo era stato
+    consegnato, di proposito.
+
+    **Provato sul ciclo VERO** (`riposizionamento-cablato.test.js`, 23/23): senza le deps → `niente`;
+    con tetto $130 e libero $500 → **$130 per riposizionamento**, due gambe BUY YES/BUY NO, entrambe con
+    `inCoda: true`; con libero $80 → **$80**, non si blocca e non forza $130; con $6 → `accumula`; con
+    capitale illeggibile → `niente`, e `null` **non** viene contato come zero.
+
+    **LE ECCEZIONI A «MAI PRIMO SUL LIBRO» SONO DUE, E UN TEST LE CONTA.** La regola non è stata toccata:
+    è `spec.inCoda`, opt-in per chiamante. Le eccezioni sono omissioni puntuali di un flag su UNA gamba —
+    `primoAssoluto` di `chiusura-rapida` (banda sotto il carico) e quella nuova (rimasuglio da chiudere).
+    `risposta-al-fill.test.js` conta le omissioni nel sorgente e ne pretende **esattamente due, entrambe
+    condizionate**, con `inCoda: true` ancora su 8 gambe del file.
+
+    **DUE DIFETTI VERI TROVATI DAL SELFCHECK MENTRE LO SCRIVEVO**, stessa famiglia: `Number(null)` vale 0,
+    quindi un `sizeAltroLato` non letto diventava «zero copertura» ⇒ **fill completo**, un ramo che apre
+    ordini dedotto da un dato assente; e un capitale libero non letto diventava «zero capitale». Ora si
+    guarda il valore grezzo, e sul capitale illeggibile si fallisce chiuso.
+
+    **⚠ UN LIMITE DICHIARATO, che il requisito non può superare su questo venue.** Con `manca < minSize`
+    il venue rifiuta **entrambe** le gambe: `BELOW_MIN_SIZE` è bloccante e resta tale. Il guadagno del
+    punto (b) non è quindi «l'ordine passa» — è che il tentativo diventa **visibile e a verbale** invece
+    di essere silenzio, e che quando il registro accumula fino al minimo lo stesso ordine passa da sé.
+    La size **non** viene mai arrotondata al minimo: comprerebbe più di quanto serve.
+
+    **⚠ E UN EFFETTO COLLATERALE DEL TETTO FISSO, misurato qui.** Con $130 fissi il pianificatore riempie
+    molte righe ESATTAMENTE al tetto, e il fattore concentrazione del punteggio di rischio
+    (`1 + capitale/130`) satura a **2,000 identico**: sul piano del 9 agosto 4 righe su 6 erano al tetto e
+    le graduatorie per beneficio e per punteggio **coincidevano**. `rischio-beneficio.test.js` asseriva
+    «riordina davvero» ed è stato reso condizionato ai dati, **con la misura scritta come osservazione**
+    invece che indebolito in silenzio. Non è un guasto: è che su quell'asse il punteggio oggi dice poco.
+
+    **File:** `lib/maker/risposta-al-fill.js` (nuovo) · `lib/maker/auto-close.js` · `agents/agent40-manual-reprice.js`
+    (le due deps + `saldoGiro`) · test nuovi `risposta-al-fill.test.js` e `riposizionamento-cablato.test.js`.
+
+    **Verifica.** `risposta-al-fill.selfcheck` 28/28 · `risposta-al-fill.test` 27/27 ·
+    `riposizionamento-cablato` 23/23 · `chiusura-rapida` 76/76 · `rischio-beneficio` 44/44.
+    Suite: **157 eseguiti, 151 verdi**, i 6 rossi sono i preesistenti del punto 40. `npm run build` verde.
 
 ---
 

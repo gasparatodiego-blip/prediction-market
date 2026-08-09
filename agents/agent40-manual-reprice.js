@@ -482,6 +482,10 @@ async function closeTask() {
   try {
     const cfg = readAutoCloseConfig();
     if (!cfg.readable || !cfg.enabledMarketIds.length) return;   // OFF: silent — lo snapshot lo tiene vivo snapshotPosizioniTask
+    // Il saldo del giro: UNA lettura per ciclo, come gia' fa il ciclo di riprezzo. Serve al
+    // riposizionamento post-fill, che deve dimensionarsi su quanto c'e' DAVVERO adesso e non sul
+    // capitale appena fuso. Se la lettura non e' affidabile si passa `null` piu' sotto.
+    const saldoGiro = await saldoDelGiro();
     const res = await runAutoCloseCycle({
       marketIds: cfg.enabledMarketIds,
       killStatus: () => killSwitch.killStatus(),
@@ -590,6 +594,24 @@ async function closeTask() {
         });
         return { ...d, ok: res && res.ok === true, sent: res && res.sent === true, gate: (res && res.gate) || d.gate };
       },
+      // ── LE DUE LETTURE DEL RIPOSIZIONAMENTO POST-FILL (9 agosto 2026) ───────────────────────────
+      // Senza queste due righe `capitalePerRiposizionamento` risponde `azione: 'niente'` e il punto (d)
+      // resta scritto ma inerte: e' esattamente lo stato in cui il modulo e' stato consegnato, di
+      // proposito, perche' cablarle e' cio' che lo ATTIVA su capitale reale.
+      //
+      // Stesso pattern del resto del file: si iniettano i VALORI letti qui, non i moduli. `auto-close`
+      // resta puro e non sa da dove vengano — e i test lo guidano senza rete.
+      //
+      //   · `tettoMercato`  il tetto in vigore per QUEL mercato, dalla stessa `readAllocatedCapital`
+      //     gia' usata dal rimpiazzo di gamba qui sopra (riga ~557). Non e' il piano salvato: e' la
+      //     regola che vale ADESSO, ed e' la decisione presa dall'operatore il 9 agosto.
+      //   · `capitaleLibero`  il saldo del giro, gia' letto UNA volta prima del ciclo. Si passa il
+      //     numero solo se la lettura e' AFFIDABILE: un saldo stantio o illeggibile deve valere
+      //     «non lo so» e non «zero», e a valle `null` fa fallire chiuso il riposizionamento invece di
+      //     dimensionarlo su un dato vecchio. E' la stessa disciplina della Regola 5.
+      tettoMercato: (marketId) => { try { return readAllocatedCapital(marketId); } catch { return null; } },
+      capitaleLibero: () => (saldoGiro && saldoGiro.affidabile === true && Number.isFinite(saldoGiro.usd)
+        ? saldoGiro.usd : null),
       audit: (rec) => { try { appendMakerAudit(rec); } catch (e) { log('audit write failed:', e.message); } },
     });
     for (const m of res.markets) if (m.gate && m.gate !== 'disabled') log(`auto-close cid_${String(m.marketId).replace(/^0x/, '')}: ${m.gate} — ${m.reason}`);
