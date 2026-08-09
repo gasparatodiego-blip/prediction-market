@@ -92,7 +92,7 @@ const { setManualMode } = require('../lib/maker/manual-mode');
 const { setAutoClose } = require('../lib/maker/auto-close-config');
 const { fetchVenuePositions } = require('../lib/maker/manual-reset');
 const { resolveMarketRules } = require('../lib/maker/manual-order');
-const { writeAllocatedCapital } = require('../lib/maker/allocated-capital');
+const { writeAllocatedCapital, readAllocatedCapitalAll } = require('../lib/maker/allocated-capital');
 const { writeCollectorPriority } = require('../lib/rewards/collector-priority');
 const { gambeDiUnaRiga } = require('../lib/rewards/plan-to-orders');
 const { capPerMarketUsd } = require('../lib/rewards/concentration');
@@ -959,6 +959,48 @@ async function miniCiclo(decisione, deps = {}) {
     return { ...referto, esito: 'nessuna-azione', motivo: giro.motivoStop, fonte,
       esaminate: (giro.esaminate || []).slice(0, 6), utilizzo: utilPrima,
       capitaleTotale: +capitaleTotale.toFixed(2), aRiposoUsd: +aRiposo.toFixed(2) };
+  }
+
+  // 4-bis · I TETTI DI CAPITALE, ALLINEATI AL PIANO DI ADESSO E AL CAPITALE DI ADESSO.
+  //
+  // Il tetto per mercato lo scriveva solo il ciclo da 6h, dopo un reset. Il mini-ciclo ricalcolava un
+  // piano ogni dieci minuti e non lo scriveva mai: la fotografia restava quella delle 03:42 del 9 agosto
+  // — dodici tetti per $600 in tutto, il capitale di ALLORA — mentre il capitale era salito a $850,82.
+  // Da qui due guasti misurati: il 90% di utilizzo era irraggiungibile per costruzione (il massimo
+  // teorico era 70,5%) e i mercati che il piano fresco sceglieva restavano senza tetto, cioe' senza
+  // permesso di esporsi (`saltato-tetto-non-leggibile`, dieci volte su Dallas).
+  //
+  // Va QUI, prima del passo 5: i tetti devono esistere PRIMA che le gambe partano, altrimenti il primo
+  // fill trova ancora la fotografia vecchia. La regola sta nel modulo puro (`TRIG.decidiTetti`), qui c'e'
+  // solo il cablaggio: leggere, decidere, scrivere se serve.
+  //
+  // FALLISCE MORBIDO, di proposito. Un tetto non scritto vuol dire «niente esposizione nuova» a valle,
+  // che e' il verso sicuro; fermare il giro per una scrittura fallita significherebbe invece lasciare
+  // fermo del capitale per un file. Si dichiara nel referto e si prosegue.
+  const leggiTetti = deps.leggiTetti || readAllocatedCapitalAll;
+  const scriviTetti = deps.scriviTetti || writeAllocatedCapital;
+  try {
+    // Dove c'e' del denaro nostro: ordini a riposo PIU' posizioni aperte. Se le posizioni non si sono
+    // potute leggere non si pota NIENTE — un mercato con una posizione viva che perdesse il tetto
+    // resterebbe ingestibile, e «non ho potuto guardare» non e' «non c'e' niente».
+    const attivi = posLette && posLette.readable === true
+      ? Object.keys(perMercato).concat((posLette.positions || []).map((p) => String(p && (p.conditionId || p.marketId) || '')).filter(Boolean))
+      : null;
+    const tetti = TRIG.decidiTetti({
+      righe: righeCandidate, capPerMercatoUsd: capMercato, capitaleTotaleUsd: capitaleTotale,
+      snapshot: leggiTetti(), mercatiAttivi: attivi,
+    });
+    if (tetti.scrivi) {
+      const w = scriviTetti({ rows: tetti.rows, capital: tetti.capital, by: 'riallocatore · trigger capitale fermo' });
+      referto.tetti = { scritti: w && w.ok === true, motivo: tetti.motivo, mercati: tetti.rows.length,
+        capitaleUsd: tetti.capital, aggiunti: tetti.aggiunti, aggiornati: tetti.aggiornati, potati: tetti.potati };
+      annuncia('log', `mini-ciclo: tetti ${w && w.ok === true ? 'aggiornati' : 'NON scritti'} — ${tetti.motivo}`
+        + ` (${tetti.rows.length} mercati, capitale $${tetti.capital == null ? '?' : tetti.capital.toFixed(2)})`);
+    } else {
+      referto.tetti = { scritti: false, motivo: tetti.motivo, mercati: tetti.rows.length };
+    }
+  } catch (e) {
+    referto.tetti = { scritti: false, motivo: `decisione sui tetti fallita: ${e.message}` };
   }
 
   // 5 · LE GAMBE DI OGNI MERCATO SCELTO, con la STESSA funzione del piano e del pannello. Se una delle

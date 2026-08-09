@@ -3,7 +3,15 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt**: non serve più reincollarlo ogni volta.
 
-Ultima verifica contro codice/stato reali: **9 agosto 2026**, ~07:10 UTC.
+Ultima verifica contro codice/stato reali: **9 agosto 2026**, ~07:35 UTC.
+
+> ## 📐 I TETTI DI CAPITALE ERANO FERMI A $600 SU UN CAPITALE DI $850,82 — CORRETTO, §5 punto 53
+> `maker-allocated-capital.json` lo scriveva solo il ciclo da 6h; il mini-ciclo ricalcolava un piano ogni
+> dieci minuti e non lo scriveva mai. I dodici tetti delle 03:42 sommavano **esattamente $600**, quindi
+> l'utilizzo massimo teorico era **70,5%** contro un obiettivo del 90%: il deficit era reale e **nessun
+> piano poteva colmarlo**. Stessa causa dietro `saltato-tetto-non-leggibile` su Dallas. Adesso il
+> mini-ciclo aggiorna i tetti — in **unione** (non cancella chi ha del denaro nostro) e **solo quando
+> cambia qualcosa davvero**, non a ogni giro. **Aspetta il riavvio: `pm2 restart agent41-realloc-scheduler`.**
 
 > ## ✍️ IL MERGE ON-CHAIN NON HA MAI FIRMATO: MANCAVA IL FIRMATARIO — CORRETTO, §5 punto 52
 > `CTF_RELAYER_ENABLED` è `true` **e vive nel processo dal riavvio delle 05:06** (agent40 restart 60):
@@ -2378,6 +2386,65 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     39,7 contro YES 36,3. Il merge fonde il minimo e lascia **3,4 share di NO scoperte**; il Livello 2
     vorrebbe comprare le 3,4 mancanti ma è **sotto il minimo del venue (20)**, quindi
     `merge-saltato-rinuncia` a ogni giro. Quel residuo non si chiude da solo.
+
+53. **I TETTI DI CAPITALE ERANO FERMI AL CAPITALE DI TRE ORE PRIMA, E IL 90% ERA IRRAGGIUNGIBILE PER
+    COSTRUZIONE — CORRETTO in `main` il 9 agosto 2026, ~07:35 UTC. ASPETTA IL RIAVVIO DI agent41.**
+
+    **L'aritmetica che nessuno aveva fatto.** `data/maker-allocated-capital.json` la scriveva **solo** il
+    ciclo fisso da 6h, dopo un reset riuscito (`realloc-cycle.js:479`). Il mini-ciclo ricalcola un piano
+    fresco ogni ~10 minuti e non l'ha **mai** scritta. Alle 06:37 la fotografia era ancora quella delle
+    **03:42**: dodici mercati, `capital: 600`, tetti che sommavano **esattamente $600**. Nel frattempo il
+    capitale era **$850,82**.
+
+    ```
+    utilizzo massimo teorico = 600 / 850,82 = 70,5%      obiettivo = 90%
+    ```
+
+    Il riallocatore dichiarava «utilizzo 28,7%, mancano $521,20» e si fermava con «nessun mercato del
+    piano ha spazio sufficiente adesso» — **27 giri su 259**. Il deficit era vero, ma **nessun piano
+    poteva colmarlo**: lo spazio veniva misurato contro i tetti di un capitale che non esisteva più.
+
+    **Il secondo effetto, sullo stesso file.** Un mercato che il piano fresco sceglieva e la fotografia
+    vecchia non conosceva restava **senza tetto**, e a valle un tetto assente vale «nessuna esposizione
+    nuova». È l'origine di `saltato-tetto-non-leggibile`, **dieci volte su Dallas** — il mercato su cui
+    tenevamo una coppia completa (§5 punto 52).
+
+    **Il fix, e le tre scelte che porta.** La regola sta in `TRIG.decidiTetti` (puro, non tocca il
+    disco); il cablaggio è in `miniCiclo` al passo **4-bis**, prima che le gambe partano.
+
+    | scelta | perché |
+    |---|---|
+    | **unione, non sostituzione** | `writeAllocatedCapital` sostituisce tutta la mappa, ed è giusto per chi parla a nome dell'intero piano — il ciclo da 6h, che prima cancella e poi ripiazza. Il mini-ciclo non è quello: se scrivesse le sue sole righe, ogni mercato fuori dal ricalcolo di quel giro perderebbe il tetto **ogni dieci minuti**. Stessa disciplina «solo acquisire» del punto 41. |
+    | **si pota solo il vuoto** | Un mercato fuori dal piano e **senza denaro nostro** (nessun ordine a riposo, nessuna posizione) esce. Uno dove c'è del nostro denaro non esce **mai**. Se le posizioni non si leggono, **non si pota niente**. |
+    | **non si riscrive a ogni giro** | `ageSec` viaggia insieme al tetto in ogni verdetto a valle: un file che cambia di continuo rende impossibile sapere quando un tetto è stato deciso davvero. Si scrive solo per un mercato in più, un tetto oltre **5% e $1** insieme, un capitale totale oltre le stesse soglie, o una fotografia più vecchia di **12 h** (sotto le 24 h in cui `readAllocatedCapital` la dichiara scaduta — così un ciclo da 6h fermo non fa scadere tutto, e il motivo `rinfresco` lo rende visibile). |
+
+    Le righe di un piano **salvato** vengono clampate al tetto di concentrazione del capitale di adesso
+    (20%): furono decise contro un capitale di allora, che può essere stato più grande. Il verso è sempre
+    verso il basso.
+
+    **Il ciclo da 6h non è stato toccato** — resta l'unico a sostituzione piena — e `allocated-capital.js`
+    resta con **una** semantica sola: l'unione la costruisce chi ne ha bisogno.
+
+    **File:** `lib/maker/trigger-capitale-fermo.js` (nuova `decidiTetti` + `TETTI_DELTA_FRAC` 0,05 ·
+    `TETTI_DELTA_USD` 1 · `TETTI_ETA_MAX_MS` 12 h) · `agents/agent41-realloc-scheduler.js:95` (import) e
+    passo 4-bis in `miniCiclo`, con `deps.leggiTetti` / `deps.scriviTetti` iniettabili.
+
+    **⚠ UNA TRAPPOLA APERTA DA QUESTO CAMBIO, e chiusa.** Da adesso `miniCiclo` **scrive** i tetti, quindi
+    ogni test che lo guida senza iniettare `scriviTetti` riscrive il file **VERO**. È successo davvero
+    mentre si scriveva il fix: una suite ha lasciato `data/maker-allocated-capital.json` con i mercati
+    finti `0xaa/0xbb/0xcc` e `capital: 600` — cioè **nessun tetto per nessun mercato reale**, che a valle
+    vale «nessuna esposizione nuova» ovunque. Il file è stato **ripristinato** dal backup
+    (`by: allocation-plan`, 12 mercati, 03:42:31) e ri-verificato identico dopo una suite intera.
+    `miniciclo-prende-il-mercato.test.js` e `passate-mini-ciclo.test.js` ora iniettano entrambe le
+    dipendenze, e `tetti-dal-miniciclo.test.js` **asserisce che lo facciano**.
+
+    **Verifica.** Nuovo `lib/maker/tetti-dal-miniciclo.test.js` **65/65**: il caso vero $600 → $850,82
+    (i tetti risalgono a $906, sopra i $765,74 che il 90% richiede), Dallas che passa da «non compare nel
+    piano» a un tetto leggibile **end-to-end su un file vero**, la stabilità fra giri, l'unione e la
+    potatura, il clamp, i rifiuti fail-closed, e il mini-ciclo **vero** guidato dal vivo. Suite: **151
+    eseguiti, 145 verdi**, i 6 rossi sono i preesistenti del punto 40. `npm run build` verde.
+
+    **Riavvio: NON eseguito** (§2 regola 2) — `pm2 restart agent41-realloc-scheduler`.
 
 ---
 
