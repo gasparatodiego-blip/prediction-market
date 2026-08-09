@@ -5,6 +5,18 @@ Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code a
 
 Ultima verifica contro codice/stato reali: **9 agosto 2026**, ~20:15 UTC.
 
+> ## 📖 IL GIORNALE DA 731 MB SI LEGGE, MA NON ERA LUI A BLOCCARE — §5 punto 71
+> `readFileSync(file,'utf8')` costruisce UNA stringa e V8 si ferma a ~512 MB. A 731 MB i due lettori
+> superstiti fallivano **chiuso**: `origine-ordine.mappaOrigini()` (⇒ ogni ordine «ignoto», il reset non
+> cancella più niente) e `manual-reset.cancelledOrderIds()`. **Corretti** riusando il pattern già in
+> servizio in `attribuzione-ordini`, ora **estratto** in `lib/maker/giornale-incrementale.js` invece di
+> restare in tre copie. Misurato sul registro vero: **1307 chiavi in 3,2 s con 60 MB di RSS**.
+> **⚠ MA NON SBLOCCA I PIAZZAMENTI, e la diagnosi precedente era sbagliata su questo punto.** Misurato
+> DOPO il fix: ordini irrisolti **ZERO**; l'esposizione di **$2.405,91** viene per **$2.303,58** da
+> posizioni **CONFERMATE** nel ledger dei fill — 8 posizioni, di cui **una da $1.925,32** — contro **6
+> posizioni vere al venue per $126,45**. È un secondo difetto, diverso: il ledger dei fill non ha mai
+> nettato posizioni chiuse. **Il bot resta bloccato dal tetto $600 finché non si affronta quello.**
+
 > ## 🔓 IL GATE live-min LEGGEVA LA LISTA STRETTA — §5 punto 69
 > §5 punto 62 aveva stabilito che la allowlist del gate live-min è «abilitati ∪ mercati con posizione
 > aperta». L'unione **veniva calcolata e non la leggeva nessun percorso di piazzamento**: i due soli
@@ -3559,6 +3571,77 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     modulo puro senza rete; la gamba orfana **cancella** (azione sempre consentita, è ciò che il
     guardiano deve poter fare) e delega il riposizionamento ad `auto-close`, che ha il proprio gate del
     kill; il fix dell'adapter ha cambiato **quale lista** viene letta, non l'ordine dei gate.
+
+71. **IL REGISTRO DA 731 MB: LETTURA INCREMENTALE SU TUTTI I PUNTI NOTI — in `main` il 9 agosto 2026,
+    ~23:00 UTC. agent40 (71) e agent41 (51) RIAVVIATI.**
+
+    **Il muro.** `fs.readFileSync(file, 'utf8')` costruisce UNA stringa, e V8 ne ammette al più
+    `0x1fffffe8` caratteri (~512 MB). Riprodotto: il file era a **767.271.276 byte (731 MB)** e la
+    lettura sollevava `Cannot create a string longer than 0x1fffffe8 characters`. Non è lentezza: è un
+    tetto secco, e oltre quello la funzione **smette di funzionare**.
+
+    **I due lettori rotti, e cosa produceva il loro fallire chiuso:**
+    - `origine-ordine.mappaOrigini()` ⇒ mappa vuota ⇒ ogni ordine di origine «ignota» ⇒ **il reset di
+      agent41 non cancella più niente** (cancella solo ciò che è provatamente `auto`);
+    - `manual-reset.cancelledOrderIds()` ⇒ insieme vuoto ⇒ nessun ordine dichiarabile «cancellato da noi».
+
+    **La cura è quella già in servizio, ed è stata ESTRATTA invece che ricopiata.**
+    `lib/maker/giornale-incrementale.js` (nuovo) porta il pattern di `attribuzione-ordini`: offset già
+    consumato, blocchi da **1 MiB**, `StringDecoder` per non spezzare un carattere multi-byte a cavallo,
+    ricostruzione da zero su rotazione o troncamento. Tre copie della stessa lettura sarebbero il reperto
+    che il rilevatore **D1** cerca.
+
+    **Due miglioramenti sull'originale, entrambi trovati dal selfcheck:**
+    - **la TESTA del file come terzo segnale**: inode e dimensione non bastano — un file riscritto in
+      place con lo stesso inode e dimensione maggiore passerebbe entrambi i controlli. 64 byte letti
+      dall'inizio lo scoprono;
+    - **l'ultima riga senza `\n` finale** — cioè il record **più recente** — ora viene consegnata, senza
+      essere consumata: quando il resto arriva la riga vale intera e il pezzo monco non si incolla alla
+      successiva. Prima il record più nuovo restava invisibile finché non ne arrivava un altro, e per
+      `cancelledOrderIds` avrebbe significato non vedere proprio la cancellazione appena avvenuta.
+
+    **Misurato sul registro vero:** `mappaOrigini()` recupera **1307 chiavi in 3,2 s con 60 MB di RSS**,
+    dove prima sollevava. Nessun terzo lettore in produzione: gli altri due (`barlow-riprezzi-replay`,
+    `analyze-shadow-logs`) sono script diagnostici offline, e `polymarket-clob-maker/audit.js` è lo
+    **scrittore**.
+
+    **⚠ E QUI LA DIAGNOSI PRECEDENTE ERA SBAGLIATA, VA DETTO.** Si era concluso che i $2.406 di
+    esposizione fossero ordini inviati e mai riconciliati, contati a pieno nozionale. **Misurato dopo il
+    fix, con `diagnoseExposure` che ora legge davvero:**
+
+    | | |
+    |---|---|
+    | `openNotionalUsd` (quello confrontato col tetto $600) | **$2.405,91** |
+    | da **posizioni confermate** dal ledger dei fill | **$2.303,58** (8 posizioni) |
+    | da **ordini non risolti** | **$0** — **zero** ordini |
+    | posizioni **vere** al venue | **6, per $126,45** |
+
+    Una sola voce del ledger vale **$1.925,32**. Quindi il blocco non è contabilità di ordini fantasma:
+    è il **ledger dei fill che non ha mai nettato le posizioni chiuse**. È un secondo difetto, diverso, e
+    questo lavoro non lo tocca. **Il bot resta bloccato finché non lo si affronta** — verificato dopo il
+    riavvio: il mini-ciclo continua a dire `utilizzo 100% · liberi $0.00 · 0 ordini piazzati, 0 rifiutati`.
+
+    **LA ROTAZIONE NON È STATA IMPLEMENTATA, ed è una scelta.** Toglie il muro per QUALUNQUE lettore
+    futuro, ma cambia cosa significa «il giornale»: un lettore che deve conoscere la storia dovrà
+    attraversare anche gli archivi, e quella è una decisione **per lettore**, non una riga nello
+    scrittore. Farla nella stessa sessione in cui si corregge la lettura vorrebbe dire cambiare due
+    variabili insieme su un sistema già bloccato. Resta come lavoro successivo, con il costo residuo
+    dichiarato: la prima scansione di ogni processo attraversa comunque 731 MB (~3-4 s, memoria costante).
+
+    **File:** `lib/maker/giornale-incrementale.js` (nuovo, 13/13 nel selfcheck) ·
+    `lib/maker/origine-ordine.js` · `lib/maker/manual-reset.js`.
+
+    **Verifica.** `giornale-incrementale.selfcheck` **13/13** · `origine-ordine` **29/29** (era 27/2
+    subito dopo il cablaggio: le due rosse hanno scoperto il caso dell'ultima riga senza a capo) ·
+    `allowlist-piazzamento` **21/21**. Suite: **160 eseguiti, 152 verdi**; gli 8 rossi sono i 6
+    preesistenti più `guardian-perdite` (latch vero presente dalle 21:46:37) e uno mio, corretto:
+    `allowlist-piazzamento` aveva un'asserzione che leggeva `git diff HEAD` — verde durante la
+    lavorazione, rossa un minuto dopo il commit. Sostituita con la proprietà letta dal sorgente, che vale
+    in entrambi gli stati. `npm run build` verde. Commit `70631f5`.
+
+    **Riavvii eseguiti** su autorizzazione: `agent41-realloc-scheduler` (50 → **51**),
+    `agent40-manual-reprice` (70 → **71**). Error log invariati (31 luglio e 8 agosto). Posizioni
+    preesistenti **invariate**: impronta `4dfb43eddc67e7ee` identica prima e dopo, zero righe mutate.
 
 ---
 
