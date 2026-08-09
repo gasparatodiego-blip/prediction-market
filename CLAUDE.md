@@ -2723,6 +2723,44 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     Nessuno dei quattro attraversa più lo spread. Suite: **155 eseguiti, 149 verdi**, i 6 rossi sono i
     preesistenti del punto 40. `npm run build` verde.
 
+61. **IL BOT NON VEDEVA IL LIBRO DEI MERCATI IN CUI AVEVA DEI SOLDI — corretto il 9 agosto 2026,
+    ~12:00 UTC. ASPETTA IL RIAVVIO di agent34.**
+
+    `agent34-clob-ws` aveva **quattro** corsie di sottoscrizione — board premi, tracking, piano, permessi
+    temporanei — e **nessuna guardava le posizioni**. Misurato alle 11:32, dopo un riavvio **pulito**
+    (quindi non è staleness: lo snapshot era fresco, 97 mercati):
+
+    | mercato | posizione | perché era cieco |
+    |---|---|---|
+    | London 18°C | 23,15 share | **fuori dal board**: uscito dal tabellone, il libro se n'è andato con lui |
+    | Chengdu | 21,69 share | **sul board ma tagliato**: `SUBSCRIPTION_CAP = 90` contro 105 mercati |
+
+    **Due cause diverse, stesso effetto, una sola cura:** entrambi avevano una posizione aperta, quindi
+    una corsia «posizioni» li recupera **senza toccare nessun tetto** — che è la ragione per cui ho
+    scelto questa strada invece di alzare `SUBSCRIPTION_CAP`.
+
+    **A valle non era teorico:** senza libro dell'altro lato `pianificaRiposizionamentoScoperto` non può
+    sapere davanti a chi mettersi, e il completamento della coppia veniva rifiutato con `would-cross` a
+    ogni giro (§5 punto 60). Il fix del prezzo era corretto e **inerte** per mancanza di dati.
+
+    **Fonte riusata, non inventata:** `readVenuePositions`, lo stesso snapshot che agent40, agent41 e
+    agent43 già leggono. Priorità pari al tracking, **sopra** piano e permessi temporanei: se serve
+    spazio si cede un mercato del **board** (il più povero), mai uno dove c'è capitale nostro. Le
+    posizioni sono poche per costruzione (5 il 9 agosto contro un budget di 125 mercati). Fail-closed:
+    snapshot illeggibile ⇒ corsia **vuota**, non «nessuna posizione»; size ≤ 0 non sottoscrive.
+
+    **SUBSCRIPTION_CAP NON è stato alzato, ed è una scelta.** 90 su 105 taglia 15 mercati del board, ma
+    `TOTAL_MARKET_CAP` (125) deriva da `FEED_ASSET_BUDGET` = 250 asset su una connessione — che il file
+    stesso dichiara **budget nostro, non limite del venue** (ri-verificato 2026-07-31: il venue non
+    documenta un massimo). Alzarlo è possibile ma cambia il carico di una connessione sola, e non ho un
+    modo di validarlo qui. **Resta aperto**, e i 15 mercati tagliati sono i più poveri del board.
+
+    **File:** `agents/agent34-clob-ws.js` (`unionPositionMarkets`, chiamata prima di piano e permessi).
+
+    **Verifica.** Nuovo `lib/maker/sottoscrizione-posizioni.test.js` **21/21**, con i `conditionId`
+    **veri** dei mercati ciechi. Suite: **156 eseguiti, 150 verdi**, i 6 rossi sono i preesistenti del
+    punto 40. `npm run build` verde.
+
 ---
 
 ## 6 · COME L'UTENTE VUOLE ESSERE SERVITO

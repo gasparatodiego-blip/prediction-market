@@ -338,6 +338,76 @@ async function unionTrackedMarkets(into, deps = {}) {
   return into;
 }
 
+// ── LA CORSIA DELLE POSIZIONI APERTE ────────────────────────────────────────────────────────────────
+// UN MERCATO DOVE ABBIAMO DEL DENARO NON PUO' USCIRE DAL NOSTRO CAMPO VISIVO, e fino al 9 agosto 2026
+// poteva. Le corsie erano quattro — board, tracking, piano, permessi temporanei — e nessuna guardava le
+// POSIZIONI. Un mercato che esce dal tabellone premi si portava via il suo libro, mentre noi ci
+// tenevamo dentro capitale vero.
+//
+// MISURATO il 9 agosto 2026 alle 11:32, dopo un riavvio pulito di questo agente:
+//   London 18°C  23,15 share  FUORI dal board  ⇒ assente dallo snapshot
+//   Chengdu      21,69 share  sul board        ⇒ assente lo stesso (tetto di 90 sui 105 del board)
+// Entrambi avevano una posizione aperta, ed entrambi erano ciechi. La conseguenza a valle non era
+// teorica: `pianificaRiposizionamentoScoperto` non poteva sapere davanti a chi mettersi (§5 punto 60) e
+// il completamento della coppia veniva rifiutato con `would-cross` a ogni giro.
+//
+// FONTE RIUSATA, NON INVENTATA: `readVenuePositions`, lo stesso snapshot che agent40, agent41 e agent43
+// gia' leggono. Se non e' leggibile la corsia resta VUOTA e non tocca niente — non si evince
+// «nessuna posizione» da una lettura fallita, e le altre corsie continuano a lavorare.
+//
+// PRIORITA' pari al tracking, sopra il piano e i permessi temporanei: se serve spazio si cede un
+// mercato del BOARD (il piu' povero), mai uno dove c'e' capitale nostro. Le posizioni sono poche per
+// costruzione — 5 il 9 agosto, contro un budget di 125 mercati — quindi l'eviction non si presenta.
+let positionDropped = [];
+let positionActiveIds = [];
+async function unionPositionMarkets(into, deps = {}) {
+  positionDropped = [];
+  let ids = [];
+  try {
+    const { readVenuePositions } = require('../lib/safety/venue-positions-snapshot');
+    const snap = deps.posizioni !== undefined ? deps.posizioni : readVenuePositions();
+    if (!snap || snap.readable !== true) {
+      log(`posizioni non leggibili (nessuna sottoscrizione da posizione questo giro): ${(snap && snap.reason) || 'nessuna lettura'}`);
+      positionActiveIds = [];
+      return into;
+    }
+    const visti = new Set();
+    for (const pos of snap.positions || []) {
+      const cid = String((pos && (pos.conditionId || pos.marketId)) || '').trim();
+      if (!cid || visti.has(normId(cid))) continue;
+      if (!(Number(pos.size) > 0)) continue;   // una posizione a zero non e' una posizione
+      visti.add(normId(cid));
+      ids.push(cid);
+    }
+  } catch (e) {
+    log('snapshot delle posizioni non leggibile (nessuna sottoscrizione da posizione questo giro):', e.message);
+    positionActiveIds = [];
+    return into;
+  }
+  positionActiveIds = ids.slice();
+  if (!ids.length) return into;
+  const byLower = new Map([...into.keys()].map((k) => [normId(k), k]));
+  for (const id of ids) {
+    const existing = byLower.get(normId(id));
+    if (existing) { into.get(existing).posizione = true; continue; }
+    if (into.size >= TOTAL_MARKET_CAP) {
+      const evicted = evictWeakestRewardMarket(into, 'un mercato con una posizione aperta');
+      if (!evicted) { positionDropped.push(id); continue; }
+      byLower.delete(normId(evicted));
+    }
+    const meta = await operatorMarketMeta(id, deps);
+    if (!meta) { positionDropped.push(id); continue; }
+    meta.source = 'posizione-aperta';
+    meta.posizione = true;
+    into.set(id, meta);
+    byLower.set(normId(id), id);
+  }
+  if (positionDropped.length) {
+    log(`ATTENZIONE: ${positionDropped.length} mercati CON POSIZIONE APERTA non sottoscritti — il loro libro resta cieco: ${positionDropped.join(', ')}`);
+  }
+  return into;
+}
+
 // ── LA CORSIA DEL PIANO ─────────────────────────────────────────────────────────────────────────────
 // Il board si ordina per MONTEPREMI; l'ottimizzatore sceglie per reward atteso PER DOLLARO sotto il
 // tetto di concentrazione. Sono due criteri diversi, e il secondo pesca regolarmente sotto la soglia
@@ -592,6 +662,7 @@ async function reconcileSubscriptions() {
   await unionOperatorMarkets(desired); // + every market the operator enabled by hand (cfg.enabledMarketIds)
   await unionLegMarkets(desired);   // Phase 2: + markets where a user has legs
   await unionTrackedMarkets(desired); // + i mercati con il market making attivo (PERMANENTI, prima dei temporanei)
+  await unionPositionMarkets(desired); // + i mercati dove abbiamo una POSIZIONE aperta (permanenti)
   await unionPlanMarkets(desired);    // + i mercati che l'ottimizzatore ha scelto o valutato meglio
   await unionLeaseMarkets(desired); // + i mercati con un pannello di piazzamento aperto adesso (temporanei)
   await loadDriftInputs();          // Phase 4: refresh legs/placements/rewardScore/rails
@@ -1132,6 +1203,7 @@ module.exports = {
   // deps iniettate, senza rete e senza toccare data/.
   unionLeaseMarkets, leaseLaneState: () => ({ dropped: [...leaseDropped], active: [...leaseActiveIds] }),
   unionTrackedMarkets, trackedLaneState: () => ({ dropped: [...trackedDropped], active: [...trackedActiveIds] }),
+  unionPositionMarkets, positionLaneState: () => ({ dropped: [...positionDropped], active: [...positionActiveIds] }),
   unionPlanMarkets, planLaneState: () => ({ dropped: [...planDropped], active: [...planActiveIds], reason: planLaneReason }),
   operatorLaneState: () => ({ dropped: [...operatorDropped], unresolved: [...operatorUnresolved], evicted: [...operatorEvicted] }),
   SUBSCRIPTION_CAP, TOTAL_MARKET_CAP, FEED_ASSET_BUDGET,
