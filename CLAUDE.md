@@ -5,6 +5,22 @@ Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code a
 
 Ultima verifica contro codice/stato reali: **9 agosto 2026**, ~20:15 UTC.
 
+> ## 💸 IL TETTO PER ORDINE ERA $25 CONTRO $130 PER MERCATO — CORRETTO E VIVO, §5 punto 67
+> Il quinto punto del tetto, e l'unico rimasto fuori dall'unificazione del punto 65: non un tetto di
+> allocazione ma un tetto **per ordine**, in **due** costanti indipendenti (`adapter.js:66` e la gemella
+> `manual-order.js:94`). Con il bot su AVVIA ogni gamba moriva a `manual-order-cap`, utilizzo **16,4%**
+> contro il 90%. Adesso è **uno solo e derivato**: `LIVE_MIN_ORDER_CAP_USD = MARKET_CAP_FIXED_USD/2 + 5`
+> = **$70**, importato da entrambi.
+> **⚠ $70 sblocca 2 mercati su 4:** il costo di una gamba è proporzionale al prezzo, quindi la finestra
+> di mid ammessa è **[0,43 · 0,57]** — a mid 0,05 la gamba cara vale $113,83. Ammettere qualunque mid
+> richiederebbe un tetto per ordine ≈ **$130**: decisione aperta per l'operatore.
+> **⚠ E il «ripiego» non è più un ripiego:** `/tmp/maker-state.json` lo scriveva agent35, rimosso — quel
+> file non sarà mai più fresco, quindi quella costante è l'**unico** percorso.
+> **TRE RIAVVII ESEGUITI il 9 agosto, 21:04-21:06Z** (agent41 49, agent40 68, dashboard 174). Effetto al
+> primo mini-ciclo: **2 ordini piazzati, 0 rifiutati** — la coppia di Ankara 32°C a $56,96 e $60,60,
+> entrambe sopra il vecchio $25. Posizioni preesistenti **invariate**, impronta `5af077ed3e3359e4`
+> identica, zero cancellazioni. **Nessun riavvio pendente per questo lavoro.**
+
 > ## 🩹 LA RISPOSTA AL FILL È COMPLETA E CABLATA — §5 punto 66
 > Quattro correzioni: **(a)** parziale vs completo è ora un ramo esplicito (`classificaFill`); **(b)** il
 > rimasuglio sotto il minimo non finisce più solo a registro — si piazza anche un ordine «rimanenza» in
@@ -3244,6 +3260,97 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     **Verifica.** `risposta-al-fill.selfcheck` 28/28 · `risposta-al-fill.test` 27/27 ·
     `riposizionamento-cablato` 23/23 · `chiusura-rapida` 76/76 · `rischio-beneficio` 44/44.
     Suite: **157 eseguiti, 151 verdi**, i 6 rossi sono i preesistenti del punto 40. `npm run build` verde.
+
+67. **IL QUARTO PUNTO DEL TETTO: $25 PER ORDINE CONTRO $130 PER MERCATO — corretto e DEPLOYATO il
+    9 agosto 2026, ~21:04 UTC. TRE RIAVVII ESEGUITI su autorizzazione esplicita di Diego.**
+
+    **Il guasto.** Il punto 65 ha portato il tetto per MERCATO a $130 (~$65 per lato) e ha unificato i
+    quattro consumatori. Ne esisteva un **quinto**, che quella diagnosi non aveva toccato perché non è un
+    tetto di allocazione ma un tetto **per ordine**: `LIVE_MIN_DEFAULT_CAP_USD = 25`. Con il bot su AVVIA
+    e $561,37 liberi, **ogni** gamba moriva così:
+
+    ```
+    gate: manual-order-cap — controvalore $99.14 oltre il tetto per ordine $25.00
+      (il più stretto fra safety-risk-limits $1000 e il cap live-min dell'adapter $25)
+    ```
+
+    Utilizzo del capitale **16,4%** contro l'obiettivo del 90%, e **zero ordini in due mini-cicli di fila**.
+
+    **Il 25 viveva in DUE costanti, non una** — `adapter.js:66` e la gemella `manual-order.js:94`
+    (`FALLBACK_LIVE_MIN_CAP_USD`), nessuna configurabile da `.env`. Adesso è **una sola e derivata**, in
+    `lib/rewards/concentration.js` accanto al tetto per mercato:
+
+    ```js
+    const MARGINE_ORDINE_USD = 5;
+    const LIVE_MIN_ORDER_CAP_USD = MARKET_CAP_FIXED_USD / 2 + MARGINE_ORDINE_USD;   // 130/2 + 5 = 70
+    ```
+
+    I due consumatori la **importano**: un cambio del tetto per mercato la muove da sé, e la quinta
+    divergenza non può nascere. `concentration.js` non importa nulla, quindi nessun ciclo e nessun
+    caricamento pesante al `require` dell'adapter.
+
+    **⚠ IL RIPIEGO NON È PIÙ UN RIPIEGO, ED È LA SCOPERTA CHE CAMBIA IL PESO DEL NUMERO.**
+    `readEngineState()` legge `/tmp/maker-state.json`, che alla misura era vecchio di **407 minuti**
+    contro `STATE_STALE_MS = 60_000`. Lo scriveva **agent35, rimosso il 9 agosto** (punto 63): non sarà
+    mai più fresco, `liveMinCapUsd` resta `null` per sempre, e quella costante **è l'unico percorso**.
+
+    **⚠ $70 SBLOCCA 2 MERCATI SU 4, e va detto perché non è un dettaglio.** Il modello di size è
+    `coppia-in-collaterale`: si comprano le **stesse share** sui due lati, quindi il costo in dollari di
+    una gamba è **proporzionale al prezzo**. Le due gambe valgono $65 e $65 **solo a mid 0,50**. Sulle
+    quattro coppie rifiutate alle 20:37:
+
+    | mercato | mid | gambe | con $70 |
+    |---|---|---|---|
+    | Istanbul 28°C | 0,54 | $65,45 / $55,75 | **passa** |
+    | Ankara 32°C | 0,48 | $58,18 / $63,02 | **passa** |
+    | Jay Schroeder | 0,16 | $19,58 / **$100,37** | ancora bloccata |
+    | David Crowley | 0,05 | $6,12 / **$113,83** | ancora bloccata |
+
+    **Finestra di mid ammessa: [0,43 · 0,57]**; fuori da lì la gamba cara sfonda, e una coppia si piazza
+    solo se passano **entrambe**. Per ammettere qualunque mid servirebbe un tetto per ordine ≈ al tetto
+    per **mercato** ($130): a mid 0,99 una gamba sola vale $121,22. **Non adottato** — è una decisione
+    sul perimetro di rischio, non un dettaglio implementativo — ma il numero è scritto nel test.
+
+    **Cosa NON è stato toccato**, verificato per nome e con `git diff`: il limite di safety ($1000, e il
+    gate resta il **minimo** dei due) · la cintura indipendente dell'adapter in `live-min` ·
+    `missing ≠ unlimited` (un cap illeggibile continua a rifiutare tutto) · il **ritiro della gamba
+    orfana** in `bulk-allocate.js` e la costruzione delle due gambe in `plan-to-orders.js`, nessuno dei
+    due nel diff.
+
+    **File:** `lib/rewards/concentration.js` (+ `.d.ts`) · `lib/venues/polymarket-clob-maker/adapter.js:66` ·
+    `lib/maker/manual-order.js:94` · nuovo `lib/maker/tetto-per-ordine.test.js`.
+
+    **Verifica.** `tetto-per-ordine` **34/34** · `concentration.selfcheck` **19/19**. Suite: **158
+    eseguiti, 152 verdi**, i 6 rossi sono i preesistenti del punto 40. `npm run build` verde. Commit
+    `05d9207`.
+
+    **TRE RIAVVII ESEGUITI il 9 agosto 2026, 21:04-21:06 UTC**, su autorizzazione esplicita di Diego in
+    chat, nell'ordine e con verifica dopo ciascuno:
+
+    | processo | restart | verifica |
+    |---|---|---|
+    | `agent41-realloc-scheduler` | 48 → **49** | 9/9 variabili critiche · error log fermo al **2026-08-08 15:19:15** (righe storiche del punto 21), zero errori nuovi · log d'avvio «tetto per mercato $130 FISSO · nessun limite al numero di mercati» |
+    | `agent40-manual-reprice` | 67 → **68** | error log **vuoto** dal 31 luglio · feed in PUSH agganciato |
+    | `dashboard` | 173 → **174** | `.next/prerender-manifest.json` verificato PRIMA (build `UfIXVyEDbvCoM2CZkSdGL`) · root **200**, `/api/maker/board` 401 come sempre (gate operatore) |
+
+    **L'EFFETTO SUI DATI VIVI, al primo mini-ciclo dopo il riavvio — 21:09:18Z:**
+
+    > `mini-ciclo: $456 rimessi al lavoro su 4 mercato/i (2 ordini piazzati, 0 rifiutati)`
+
+    **Zero rifiuti** — non era mai successo con questo tetto. Le due gambe sono la coppia completa di
+    **Ankara 32°C**, uno dei due mercati che la previsione indicava:
+
+    | ora | gamba | controvalore | col vecchio $25 | esito |
+    |---|---|---|---|---|
+    | 21:09:18 | BUY 121,2 @ 0,47 | **$56,96** | rifiutata | `0x96683251…` live |
+    | 21:09:18 | BUY 121,2 @ 0,50 | **$60,60** | rifiutata | `0x1dc6e0ff…` live |
+    | 21:07:04 | BUY 66,3 @ 0,43 (agent40, Houston) | **$28,51** | rifiutata | `0x46a1eee2…` live |
+
+    **Nessun ordine o posizione preesistente è stato toccato**, verificato con l'impronta prima/dopo: 6
+    posizioni, SHA-256 `5af077ed3e3359e4` **identico**, zero righe mutate, zero sparite, e **zero
+    cancellazioni** su 1.491 righe d'audit dopo il riavvio (il mini-ciclo non cancella per costruzione;
+    il ciclo da 6h, che invece cancella, non era ancora caduto). Contatori pm2 stabili a +5 minuti:
+    nessun riavvio automatico, nessun crash loop.
 
 ---
 
