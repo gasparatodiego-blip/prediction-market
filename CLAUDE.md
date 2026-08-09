@@ -2021,6 +2021,70 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     pm2 restart agent41-realloc-scheduler
     ```
 
+45. **IL MERGE ON-CHAIN È COLLEGATO AL FLUSSO — `CTF_RELAYER_ENABLED` RESTA `false`, IN ATTESA DI
+    AUTORIZZAZIONE ESPLICITA DI DIEGO IN CHAT.** In `main` dal 9 agosto 2026, ~04:10 UTC.
+
+    **Cosa mancava.** `lib/maker/ctf-relayer.js` esiste dal 7 agosto — split/merge/redeem via relayer
+    gasless, **provato on-chain** (split $2 `0x96072ab7…` · merge $2 `0x792b31e5…`, saldo tornato alla
+    cifra esatta, gas pagato dal relayer) — ma **nessun modulo di produzione lo importava**: era
+    un'attrezzatura senza chiamante. Verificato di nuovo il 9 agosto: gli unici `require` erano i suoi
+    stessi test.
+
+    **Il punto d'aggancio esisteva già, e non è stato inventato.** `decidiLivello` risponde
+    `azione: 'merge'` quando `mancaAllaCoppia <= 0` (`strategia-merge.js:218`), cioè quando YES e NO sono
+    in parti uguali. Fino a oggi **quel caso cadeva nel vuoto**: `liv.prezzo` è `null` e `manca` è 0,
+    quindi entrambi i tentativi di `completaCoppia` venivano scartati e si ripiegava sulla **vendita**.
+
+    **Perché non c'è un confronto di convenienza, ed è stato scritto e poi buttato.** Il primo istinto era
+    «fondi se conviene più che vendere». Scartato: il merge rende **esattamente $1 per coppia, subito,
+    senza slippage e senza gas**; la vendita rende `bid × size` su **un lato solo**, lascia l'altro in
+    portafoglio (quindi non chiude la posizione, la rende direzionale) e attraversa lo spread. Il
+    confronto avrebbe due termini di cui uno è sempre maggiore: potrebbe solo sbagliare. **Coppia
+    completa ⇒ merge**; la vendita resta il ripiego.
+
+    **Il wiring** (`lib/maker/auto-close.js`): nuova `fondiCoppia`, chiamata da `completaCoppia` **dopo**
+    le cancellazioni e **prima** dei due tentativi di completamento. Nuovo esito `fuso`, che
+    `registraCoppia` riconosce e che chiude il caso — dopo un merge la coppia non esiste più, non c'è
+    niente da vendere e niente da attendere. `mergeOnChain` è **iniettabile**, così i test guidano la
+    fusione senza rete e il relayer resta importato in **un punto solo**.
+    - **Il confine non si allarga**: `ctf-relayer` continua a costruire **una** chiamata sola, a
+      ri-decodificarla prima di firmare (`verificaConfinamento`) e a rifiutare qualunque target che non
+      sia uno dei due adapter CTF. Il wiring aggiunge un **chiamante**, non una capacità. Non si chiamano
+      `splitPosition` né `redeemPosition`.
+    - **Fail-closed in ogni direzione**: `negRisk` non booleano ⇒ non si tenta (decide *quale* adapter, e
+      con quello sbagliato la transazione reverte senza dire perché) · size non finita o ≤ 0 ⇒ non si
+      tenta · flag spento ⇒ `esegui` non firma e non invia, restituisce il piano con `eseguito:false` ·
+      qualunque eccezione ⇒ `ok:false` col motivo. **Mai un'azione a metà**: o la coppia è fusa on-chain,
+      o non è successo niente — e in entrambi i casi il ramo prosegue col comportamento di prima.
+    - **Audit completo** per ogni tentativo, con tre esiti distinti: `merge-onchain-eseguito` (con size,
+      `transactionID` e `transactionHash`), `merge-onchain-non-eseguito`, `merge-onchain-fallito`. Un
+      merge che non parte e non lascia traccia sarebbe indistinguibile da un merge mai tentato.
+    - **Nessun secondo interruttore**: la costante nel sorgente resta l'unica, e un test verifica che
+      `auto-close` non legga nessuna env né forzi `abilitato`.
+
+    **Stato del relayer, verificato il 9 agosto.** Modulo integro (482 righe, 3 commit, ultimo `d21669d`).
+    `POLYMARKET_RELAYER_API_KEY` e `POLYMARKET_RELAYER_API_KEY_ADDRESS` **sono in `.env`** —
+    ma **NON nell'ambiente del processo agent40**, che è chi eseguirebbe la fusione. Con il caricatore
+    `.env` della fase 7 rientrano al prossimo riavvio; senza, `credenziali()` solleverebbe e la fusione
+    ripiegherebbe pulita sulla vendita. Da sapere prima di accendere il flag.
+
+    **Cosa succederebbe accendendo il flag OGGI: niente.** Nessuna delle due posizioni London ha una
+    coppia completa — 23,15 NO e 21,18 NO, `sizeAltroLato: 0` su entrambe, verdetto `livello 2`,
+    `azione: maker-con-tetto`. La prima fusione reale avverrà sulla **prima coppia che si completa**, e
+    sarà di `mancaAllaCoppia` share per un controvalore di **$1 × size**.
+
+    **Per accendere servono TRE cose, non una:** (1) `CTF_RELAYER_ENABLED = true` in
+    `lib/maker/ctf-relayer.js:94`; (2) un **riavvio di agent40** — è una costante di sorgente, non una
+    env; (3) le due credenziali del relayer **nell'ambiente di agent40**, che il riavvio porta con sé
+    grazie al caricatore `.env`. **Nessuna delle tre è stata fatta.**
+
+    **Verifica.** Nuovo `lib/maker/merge-onchain-collegato.test.js` (**51/51**): coppia completa ⇒
+    `mergePosition` chiamata una volta con id, size e `negRisk` **copiato**; neg-risk e non-neg-risk
+    entrambi, con l'adapter giusto per ciascuno; cinque forme di `negRisk` non leggibile e cinque di size
+    invalida che **non tentano**; tre modi di fallire che valgono tutti «non è successo niente»; il flag
+    spento che non tocca la rete ma costruisce il piano; e l'isolamento del relayer invariato. Suite:
+    **146 eseguiti, 140 verdi**, i 6 rossi sono i preesistenti del punto 40. `npm run build` verde.
+
 ---
 
 ## 6 · COME L'UTENTE VUOLE ESSERE SERVITO
