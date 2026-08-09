@@ -2761,6 +2761,40 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     **veri** dei mercati ciechi. Suite: **156 eseguiti, 150 verdi**, i 6 rossi sono i preesistenti del
     punto 40. `npm run build` verde.
 
+62. **VISTI MA INTOCCABILI — la TERZA volta della stessa lacuna, il 9 agosto 2026, ~12:20 UTC.
+    ASPETTA IL RIAVVIO di agent40 e agent41.**
+
+    Tre volte nello stesso giorno una lista ha seguito il **tabellone** invece di «tabellone ∪ mercati
+    con posizione aperta»: prima il catalogo dei metadati, poi la sottoscrizione del book (punto 61),
+    infine la **allowlist che il gate `live-min` legge**. Misurato alle 11:48, subito dopo aver reso
+    London 18°C e Chengdu di nuovo visibili nel book:
+
+    ```
+    riposizionamento-scoperto-controparte-reject-live-min-market-mismatch  x4
+    {"book":"yes","side":"BUY","price":0.38,"size":21.69}   ← prezzo giusto, mercato non consentito
+    ```
+
+    **Non allarga il perimetro di rischio, e va detto con precisione:** aggiunge solo mercati dove il
+    capitale è **già esposto**. Non apre un mercato nuovo — apre la *gestione* di una posizione che
+    esiste. È lo stesso verso per cui `evaluateReductionProof` lascia passare fuori allowlist un ordine
+    che riduce. Fail-closed come le altre due volte: snapshot illeggibile ⇒ **nessuna** aggiunta; e resta
+    subordinata all'interruttore generale (`globalEnabled` spento ⇒ lista vuota, posizioni o no).
+
+    **⚠ UN ACCOPPIAMENTO NASCOSTO, trovato da un test e non da me.** La prima versione univa le posizioni
+    dentro `enabledMarketIds` di `readAutoRepriceConfig` — che però legge anche il **watcher di
+    riprezzo**. `end-of-scale-cycle.test.js` è diventato rosso vedendo tre mercati in più e **sei rinnovi
+    invece di uno**: non un test fragile, un allargamento che non avevo previsto. L'unione vive ora in un
+    campo separato, `liveMinMarketIds`, che consuma **solo** `manual-order` per costruire l'adapter;
+    `enabledMarketIds` è invariato. Le due componenti restano leggibili separatamente
+    (`enabledDaOperatore` / `enabledDaPosizione`): «l'operatore l'ha abilitato» e «ci abbiamo dentro dei
+    soldi» sono due risposte diverse e il pannello deve poterle distinguere.
+
+    **File:** `lib/maker/auto-reprice-config.js` (`liveMinMarketIds`) · `lib/maker/manual-order.js` (due
+    punti che passano la allowlist all'adapter).
+
+    **Verifica.** Nuovo `lib/maker/allowlist-con-posizioni.test.js` **17/17** con i `conditionId` veri.
+    Suite: **157 eseguiti, 151 verdi**, i 6 rossi sono i preesistenti del punto 40. `npm run build` verde.
+
 ---
 
 ## 6 · COME L'UTENTE VUOLE ESSERE SERVITO
