@@ -10,7 +10,10 @@
 // scripts/simula-trigger-capitale.js, esteso ai quattro scenari del lavoro dell'8 agosto 2026.
 //
 // Sostituito anche `registraMercatoAperto`: nella realta' SCRIVE il file dell'interruttore, e una
-// simulazione non deve poter toccare uno stato vero nemmeno per contare.
+// simulazione non deve poter toccare uno stato vero nemmeno per contare. Stessa ragione per le tre
+// scritture di preparazione del mercato (allowlist live-min, gestione manuale, uscita automatica):
+// sono state aggiunte al mini-ciclo dopo questo script, e finche' non sono state riportate qui una
+// simulazione lasciava i suoi marketId finti dentro tre registri veri.
 //
 // Uso:  node scripts/simula-capitale-al-lavoro.js            (tutti gli scenari, piano finto)
 //       node scripts/simula-capitale-al-lavoro.js --ricalcolo-vero   (scenario 1 e 3 col piano VERO)
@@ -45,12 +48,13 @@ const RIGHE = [riga('0xAAA', 'Mercato A', 9), riga('0xBBB', 'Mercato B', 8),
 async function giro({ saldo, piano, ordini = [], forzato = false, ricalcolo = null, posizioni = [] }) {
   const mandati = [];
   const aperture = [];
+  const preparati = [];
   const d = TRIG.decidiTrigger({
     abilitato: true, botAttivo: true, cicloInCorso: false, killAttivo: false,
     saldo: { readable: true, usd: saldo }, ignoraAttese: forzato,
     motivoForzatura: forzato ? 'AVVIA appena premuto' : null,
   });
-  if (!d.scatta) return { d, r: null, mandati, aperture };
+  if (!d.scatta) return { d, r: null, mandati, aperture, preparati };
   const t0 = Date.now();
   const r = await A.miniCiclo(d, {
     leggiPiano: () => piano,
@@ -62,6 +66,17 @@ async function giro({ saldo, piano, ordini = [], forzato = false, ricalcolo = nu
     // 2026 e' la regola vera che decide quanti mercati nuovi si aprono. Sostituirla vorrebbe dire
     // simulare tutto TRANNE la cosa che si sta verificando.
     registraMercatoAperto: ({ marketId }) => { aperture.push(marketId); return { ok: true, giaPresente: false }; },
+    // ── LE TRE SCRITTURE DEL PASSO 5-BIS, SOSTITUITE ─────────────────────────────────────────────
+    // Il mini-ciclo, dal commit e50585f dell'8 agosto 2026, PREPARA i mercati che sceglie: allowlist
+    // live-min, gestione manuale, uscita automatica. Sono scritture su stato VERO, e questo file usa
+    // marketId finti: senza queste tre righe una simulazione lascia `0xAAA…0xEEE` dentro
+    // data/maker-auto-reprice.json, data/maker-manual-mode.json e data/maker-auto-close.json.
+    // E' successo davvero il 9 agosto, eseguendo lo script dopo che il passo 5-bis era stato aggiunto:
+    // le dipendenze nuove non erano state riportate qui. Inerti (quei mercati non esistono al venue) ma
+    // sporcano tre registri che si leggono per capire cosa il bot sta gestendo.
+    setEnabled: ({ marketId }) => { preparati.push(['allowlist', marketId]); return { ok: true }; },
+    setManual: ({ marketId }) => { preparati.push(['manuale', marketId]); return { ok: true }; },
+    setAutoClose: ({ marketId }) => { preparati.push(['uscita', marketId]); return { ok: true }; },
     ...(ricalcolo ? { pianoLeggero: ricalcolo } : {}),
     piazza: async (rows) => {
       mandati.push(...rows);
@@ -69,7 +84,7 @@ async function giro({ saldo, piano, ordini = [], forzato = false, ricalcolo = nu
         results: rows.map((x) => ({ ...x, esito: 'SIMULATO — non inviato' })) };
     },
   });
-  return { d, r, mandati, aperture, durataMs: Date.now() - t0 };
+  return { d, r, mandati, aperture, preparati, durataMs: Date.now() - t0 };
 }
 
 (async () => {
