@@ -3,7 +3,18 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt**: non serve più reincollarlo ogni volta.
 
-Ultima verifica contro codice/stato reali: **9 agosto 2026**, ~14:00 UTC.
+Ultima verifica contro codice/stato reali: **9 agosto 2026**, ~17:45 UTC.
+
+> ## 🕳️ IL BOOK SOTTILE ORA È UN CANCELLO, NON SOLO UN'ATTENUAZIONE — §5 punto 64
+> Il tetto di credibilità (`maxCredibleShare = 0,60`) tagliava la quota di un book deserto ma **lasciava
+> il mercato nel set**, e il knapsack massimizza: lo sceglieva lo stesso. Il piano del 9 agosto aveva
+> **7 righe capate su 9** e dichiarava il 44%/giorno di rendimento. Ora `filtroProfondita` toglie quei
+> mercati **prima** della scelta, con la **stessa misura e la stessa soglia** (importata, non
+> ridichiarata), valutata a un metro fisso di **$500**.
+> **La copertura del capitale non cambia:** $588,00 e **99,0%** con e senza, misurato sul board vero —
+> col tetto al 20% bastano 5 mercati e ne restano 62. Righe capate **3/6 → 0/5**.
+> **Il cancello è già attivo** su ogni piano (nasce in un processo figlio); **il riavvio di agent41
+> serve solo per la riga di rendiconto per ciclo** — e aspetta la tua autorizzazione.
 
 > ## 🧹 MAKER ARMING, agent35 E agent37 SONO STATI RIMOSSI — §5 punto 63
 > Decisione dell'operatore, eseguita il 9 agosto 2026. Non esistono più: il **motore automatico**
@@ -600,6 +611,33 @@ un'informazione più ottimistica di quella con cui il piano veniva poi giudicato
   campionate la stima realistica del piano non peggiora **mai**.
 - **Non tocca l'esecuzione**: zero offset di piazzamento cambiati, e un test verifica che nessun modulo
   di `lib/maker/` nomini il tetto (158 file controllati).
+
+**IL TETTO DI CREDIBILITÀ È DIVENTATO ANCHE UN CANCELLO** (`filtroProfondita`, 9 agosto 2026 — in
+`main`; il piano nasce in un processo figlio a ogni ciclo, quindi **non serve riavviare per il pannello
+«Ottimizza»**, ma agent41 va riavviato perché il log del rendiconto vive nel suo processo). Il tetto qui
+sopra ATTENUA la quota di un book sottile e lascia il mercato nel set. Il knapsack **massimizza**: un
+mercato tagliato a 0,60 batte comunque uno onesto al 5%, e viene scelto lo stesso. Il punto di
+applicazione era sbagliato, non la misura.
+- **La misura non cambia di una riga**: stessa `ceilingShare(size, competitorQ)` di
+  `realistic-estimate`, stessa soglia `maxCredibleShare = 0,60` **importata e non ridichiarata**
+  (`lib/rewards/profondita-minima.js`). Cambia solo QUANDO si guarda: prima della scelta.
+- **Il metro è FISSO**: la quota si valuta a **$500 di capitale di riferimento** — lo stesso livello su
+  cui agent24 pubblica già `levels["500"].share` — e non alla size che la riga riceverebbe. La
+  sottigliezza è una proprietà del *book*, non del nostro conto: a metro variabile lo stesso mercato
+  sarebbe sottile o no a seconda di quanto denaro c'è in cassa. Si cambia con
+  `MAKER_PROFONDITA_CAPITALE_RIF`; un valore illeggibile viene scartato in favore del difetto.
+- **`ignota` non esclude MAI.** Profondità non misurata o size per dollaro non calcolabile ⇒ il mercato
+  resta, come per una scadenza illeggibile in `horizonVerdict`.
+- **L'attenuazione resta viva** per chi supera il cancello: il cancello toglie i book che non esistono,
+  il tetto continua a correggere chi diventa sottile alle size grandi. Due domande diverse.
+- **La copertura del capitale NON ne risente, ed è misurato**: quattro piani appaiati sullo stesso board
+  danno **$588,00 e 99,0%** in tutti e quattro gli scenari, anche togliendo il 72% del board. Col tetto
+  di concentrazione al 20% bastano **cinque** mercati per coprire il capitale e ne restano **62**.
+- **Effetto misurato sul piano vero** (9 agosto, $594,10 liberi): **42 mercati esclusi**, righe capate da
+  **3/6 a 0/5**, quota mediana delle righe scelte da 60-95% a **21-57%**, lordo dichiarato $274 → $120/g
+  e realistico $122,66 → $35,09/g. **Non è capitale perso: è ottimismo che non viene più contabilizzato.**
+- **`capVuotiFrac` diventa in pratica irraggiungibile**: un book vuoto verificato ha quota 1, quindi il
+  cancello lo prende sempre per primo. Resta come seconda linea e i suoi test lo coprono ancora.
 
 **E il caso degenere: concorrenza misurata ZERO** (8 agosto 2026 sera — in `main`, già in servizio).
 `share = size/(size+cQ)` vale **1** quando la concorrenza in banda vale 0, e il knapsack massimizza: un
@@ -2909,6 +2947,92 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     ```
     `pm2 save` non è un extra: senza, il dump su disco continua a contenere i due processi e un riavvio
     del demone li resusciterebbe puntando a script che non esistono più.
+
+64. **IL TETTO DI CREDIBILITÀ ERA UN'ATTENUAZIONE E ORA È ANCHE UN CANCELLO — in `main` il 9 agosto
+    2026, ~17:45 UTC. ASPETTA IL RIAVVIO di agent41, DA CONFERMARE DA DIEGO IN CHAT.**
+
+    **La diagnosi che l'ha motivato, misurata sui dati vivi.** Il piano vero del 9 agosto copriva il
+    **99,0%** del capitale libero ($588 su $594,10) e lo faceva con **sette righe su nove capate** da
+    `maxCredibleShare` e **due su book vuoto verificato**. Sette erano meteo asiatico misurato all'una-due
+    di notte locale. Il piano dichiarava **$697/g di lordo — il 67% dell'INTERO montepremi di quei
+    mercati** — e $259/g di «realistico» su $588, cioè il **44% al giorno**. Il board non conteneva
+    qualche mercato sottile: **73 righe su 108 (68%)** avevano quota oltre il 60% a $500, 98 su 108
+    avevano `thinBookFlag`, 99 su 108 erano `sane500:false`.
+
+    **Perché un cancello e non (solo) un'attenuazione.** `credibleShareFactor` faceva la cosa giusta a
+    metà: taglia la quota a 0,60 ma lascia il mercato NEL SET. Il knapsack massimizza, quindi il mercato
+    tagliato vince lo stesso. **Provato dal test, e più forte di come lo avevo ipotizzato:** a cancello
+    spento un mercato deserto non si limita a entrare — si prende **tutto** il budget e lascia a zero
+    quello con il book vero.
+
+    **Il fix, e le tre scelte che porta.**
+
+    | scelta | perché |
+    |---|---|
+    | **la soglia è IMPORTATA, non ridichiarata** | `MAX_QUOTA_CREDIBILE = realistic-estimate.DEFAULTS.maxCredibleShare`. Due costanti per lo stesso concetto sono il difetto che il rilevatore **D1** dell'audit cerca, e qui sarebbe peggio del solito: cancello e attenuazione devono per costruzione parlare dello stesso confine. Un test lo asserisce. |
+    | **il metro è FISSO a $500** | Non alla size che la riga riceverebbe: le curve si fermano al tetto di concentrazione (~$134), quindi un metro variabile renderebbe la sottigliezza dipendente dal capitale del conto. $500 è il livello che agent24 già pubblica come `levels["500"].share`, cioè la grandezza con cui la diagnosi ha contato i 73 sottili. |
+    | **una sola passata di DP** | Il cancello si applica nella STESSA passata del filtro orizzonte: i due insiemi di scarti si uniscono e il knapsack rigira **una** volta invece di due. Restano due liste distinte perché i candidati devono poter dire QUALE dei due li ha tolti. |
+
+    **`ignota` non esclude mai** — profondità non misurata o size per dollaro non calcolabile lasciano il
+    mercato dov'è, la stessa regola di `horizonVerdict` su una scadenza illeggibile.
+
+    **VERIFICA DI COPERTURA, ed era la condizione per considerare il lavoro finito.** Stesso
+    `planFromCollection` del ciclo vero, stesso `RUNNER_PIANO`, finestra 6h, capitale reale $594,10,
+    tetto 20%:
+
+    | | cancello SPENTO | cancello ACCESO |
+    |---|---|---|
+    | allocato | $588,00 su 6 mercati | **$588,00 su 5 mercati** |
+    | **copertura** | 99,0% | **99,0%** ✓ |
+    | righe capate dal tetto | 3/6 | **0/5** |
+    | quota delle righe scelte | 60,2% – 94,5% | **21,0% – 57,1%** |
+    | lordo dichiarato | $274,06/g | $120,03/g |
+    | realistico | $122,66/g | $35,09/g |
+    | esclusi dal cancello | 0 | **42** (lordo apparente $1.642,49 · montepremi $3.187 · quota mediana 71,0%) |
+    | superstiti / minimi per coprire | 102 / 5 | **62 / 5 = 12,4x** |
+
+    Il crollo del lordo **non è capitale perso**: è la cifra con cui quei mercati avrebbero vinto il
+    knapsack, e che non viene più contabilizzata.
+
+    **Il rendiconto per ciclo** (requisito esplicito): `annunciaCancelloProfondita` in agent41 scrive una
+    riga per ogni piano — ciclo da 6h, piano ristretto e piano leggero — con esclusi, **lordo apparente
+    lasciato fuori**, montepremi, quota mediana e il rapporto **superstiti/minimi**. Sotto 1 quel rapporto
+    stampa `⚠ IL CANCELLO STA AFFAMANDO IL PIANO`: è il numero che rende il cancello sicuro, e va visto
+    subito invece di essere dedotto da una copertura bassa.
+
+    **Cosa NON è stato toccato**, verificato per nome dal test: tetto di concentrazione al 20% ·
+    `useCredibleShareCap` ancora acceso di difetto · `usaProfonditaVerificata` ancora acceso ·
+    `horizonFilter` ancora spento di difetto · **`allocateBudget` non lo vede**, quindi i backtest restano
+    invariati numero per numero · nessun modulo di `lib/maker/` nomina il cancello, cioè il piazzamento
+    non è sfiorato.
+
+    **UNA CONSEGUENZA DA SAPERE: `capVuotiFrac` diventa in pratica irraggiungibile.** Un book vuoto
+    verificato ha quota 1, quindi il cancello lo prende sempre per primo e la quota di categoria non ha
+    più occasione di pronunciarsi. Il meccanismo resta come seconda linea — vale ancora se il cancello
+    venisse spento — e i suoi test lo coprono ancora, ma a cancello spento nel fixture.
+
+    **Due test preesistenti sono stati AGGIORNATI, non allentati.** `punteggio-in-selezione.test.js`
+    provava l'attenuazione e la quota di categoria su fixture costruite apposta con book deserti: quei
+    mercati ora non arrivano più al knapsack, e tenere il cancello acceso lì non avrebbe reso il test più
+    severo — lo avrebbe reso **vuoto**. I due fixture passano `filtroProfondita: false` con la ragione
+    scritta accanto; il cancello ha il suo test, che verifica proprio che quei mercati NON entrino.
+
+    **File:** `lib/rewards/profondita-minima.js` (nuovo) · `lib/rewards/allocator.js` (import, opzione
+    `filtroProfondita`, la passata unica di scarti, il ramo dei candidati, il rendiconto in `selezione`) ·
+    `agents/agent41-realloc-scheduler.js` (`annunciaCancelloProfondita`, chiamata dai due percorsi).
+
+    **Verifica.** `profondita-minima.selfcheck()` **18/18** · nuovo `lib/rewards/cancello-profondita.test.js`
+    **32/32** · `punteggio-in-selezione` **88/88**. Suite: **155 eseguiti, 149 verdi**, e i **6 rossi sono
+    esattamente i preesistenti del punto 40** — zero nuovi. `npm run build` verde, `BUILD_ID`
+    `BPaTKaN3OqPq9PvAugqRf`, `prerender-manifest.json` presente.
+
+    **Riavvio: NON eseguito** (§2 regola 2). Il cancello è **già attivo** sul pannello «Ottimizza» e su
+    ogni piano calcolato da adesso, perché il piano nasce sempre in un processo figlio che rilegge il
+    codice da disco (§5 punto 14). Il riavvio serve **solo** perché la riga di rendiconto per ciclo vive
+    nel processo di agent41:
+    ```bash
+    pm2 restart agent41-realloc-scheduler
+    ```
 
 ---
 
