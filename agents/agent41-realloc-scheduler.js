@@ -912,13 +912,16 @@ async function miniCiclo(decisione, deps = {}) {
     mercatiGiaAperti: Object.keys(perMercato),
   };
 
+  let righeCandidate = [];
+  let motivoPassate = null;
   const piano = leggiPiano();
   const etaPianoMs = piano.ok && piano.at ? Date.now() - Date.parse(piano.at) : null;
   const pianoFresco = piano.ok && Number.isFinite(etaPianoMs) && etaPianoMs <= PIANO_FRESCO_MAX_MS;
   let giro = { scelte: [], motivoStop: piano.ok ? null : (piano.motivo || 'nessun piano salvato') };
   let fonte = null;
   if (pianoFresco) {
-    giro = TRIG.pianificaGiro({ ...comuni, righe: piano.righe, disponibileUsd: decisione.saldoUsd });
+    righeCandidate = piano.righe;
+    giro = TRIG.pianificaGiro({ ...comuni, righe: righeCandidate, disponibileUsd: decisione.saldoUsd });
     fonte = `piano salvato (${Math.round(etaPianoMs / 60000)} min)`;
   }
 
@@ -947,6 +950,7 @@ async function miniCiclo(decisione, deps = {}) {
         motivo: `${perche} — e il ricalcolo leggero non ha trovato nessun mercato ammissibile adesso:`
           + ' il capitale resta liquido perche' + ' non c\'e\' dove metterlo, non perche\' non si e\' guardato' };
     }
+    righeCandidate = righeFresche;
     giro = TRIG.pianificaGiro({ ...comuni, righe: righeFresche, disponibileUsd: decisione.saldoUsd });
     fonte = `ricalcolo leggero (${FINESTRA_LEGGERA_ORE}h, ${Date.now() - tRic}ms)`;
   }
@@ -959,11 +963,43 @@ async function miniCiclo(decisione, deps = {}) {
 
   // 5 · LE GAMBE DI OGNI MERCATO SCELTO, con la STESSA funzione del piano e del pannello. Se una delle
   //     due non e' piazzabile non si piazza NESSUNA delle due di QUEL mercato — gli altri proseguono.
-  const righeOrdine = [];
-  const mercati = [];
-  const nonPreparati = [];
-  const senzaRipiego = [];
-  for (const s of giro.scelte) {
+  // ── LE PASSATE: UN MERCATO RIFIUTATO NON FERMA IL GIRO ──────────────────────────────────────────
+  // Il difetto che questo chiude (misurato il 9 agosto 2026, quattro cicli di fila): il mini-ciclo
+  // sceglieva il mercato migliore del piano, la gamba veniva rifiutata da `mai-primo-sul-libro`, e il
+  // giro finiva li'. Al giro dopo — dieci minuti — sceglieva LO STESSO mercato, perche' il piano non e'
+  // cambiato e quel mercato e' ancora il migliore. Risultato: `0 piazzati, 1 rifiutati` alle 03:49,
+  // 04:13, 04:25, 04:35, con $644 fermi e altri mercati del piano mai provati.
+  //
+  // `mai-primo-sul-libro` NON viene toccata, ed e' il punto: resta un rifiuto assoluto. Cambia solo cosa
+  // si fa DOPO — si esclude quel mercato e si ripianifica sul resto del piano, invece di rinunciare.
+  //
+  // IL TETTO E' QUELLO CHE C'E' GIA': `MAX_MERCATI_PER_GIRO` (6). Non e' un numero nuovo, ed e' il
+  // limite giusto perche' misura la stessa cosa — quanti mercati un solo giro puo' toccare. Senza, un
+  // piano con trenta righe tutte rifiutate produrrebbe trenta tentativi di piazzamento in un giro.
+  //
+  // SI RIPROVA SOLO SU UN RIFIUTO ATTRIBUIBILE A UN MERCATO. Un rifiuto che non nomina un mercato (kill,
+  // saldo, errore di rete) non si cura cambiando mercato: insistere sarebbe spam. Quindi si guarda il
+  // campo `gate` dei risultati, e si esclude solo chi ha un gate della lista qui sotto.
+  const normId = (v) => (typeof v === 'string' ? v.trim().toLowerCase() : '');
+  const GATE_DI_MERCATO = new Set(['mai-primo-sul-libro', 'live-min-market-mismatch', 'manual-mode-inactive',
+    'rules-unreadable', 'mid-stale', 'end-of-scale', 'market-not-accepting-orders', 'market-closed']);
+  const esclusi = new Set();
+  const passate = [];
+
+  const costruisciGambe = (scelte) => {
+    const righeOrdine = [];
+    const mercati = [];
+    const nonPreparati = [];
+    const senzaRipiego = [];
+    return { righeOrdine, mercati, nonPreparati, senzaRipiego, scelte };
+  };
+  let acc = costruisciGambe(giro.scelte);
+  let righeOrdine = acc.righeOrdine;
+  let mercati = acc.mercati;
+  const nonPreparati = acc.nonPreparati;
+  const senzaRipiego = acc.senzaRipiego;
+  const preparaScelte = async (scelte, righeOrdine, mercati) => {
+  for (const s of scelte) {
     const g = gambeDiUnaRiga(s.riga, s.riga.computedDefaultOffsetTicks);
     if (g.scarto || !g.rows) continue;   // gia' filtrato dal predicato, ma il verdetto vale solo se ricontrollato
 
@@ -1010,6 +1046,8 @@ async function miniCiclo(decisione, deps = {}) {
     righeOrdine.push(...g.rows);
     mercati.push({ marketId: s.riga.marketId, titolo: s.riga.name || null, allocatoUsd: s.allocatoUsd, nuovo: s.nuovo });
   }
+  };
+  await preparaScelte(giro.scelte, righeOrdine, mercati);
   if (nonPreparati.length) {
     annuncia('log', `mini-ciclo: ${nonPreparati.length} mercato/i NUOVI esclusi — non si e' potuto prenderli in gestione`
       + ` (${nonPreparati.map((x) => `${String(x.marketId).slice(0, 10)}…: ${x.motivo}`).join(' · ')})`);
@@ -1032,7 +1070,41 @@ async function miniCiclo(decisione, deps = {}) {
   //     timbro. NESSUNA cancellazione: la corsia riceve `cancelOrder` solo perche' la usa per RITIRARE
   //     una gamba rimasta sola se l'altra viene rifiutata — e' l'unico uso, e riduce esposizione.
   const diag = deps.diag !== undefined ? deps.diag : diagnoseExposure({});
-  const esito = await piazza(righeOrdine, diag);
+  let esito = await piazza(righeOrdine, diag);
+  passate.push({ n: 1, mercati: mercati.map((m) => m.marketId), piazzati: esito && esito.placed, rifiutati: esito && esito.refused });
+
+  // ── LE PASSATE SUCCESSIVE ───────────────────────────────────────────────────────────────────────
+  // Si riprova SOLO se nessun ordine e' passato: se anche uno solo e' andato a segno il giro ha fatto il
+  // suo lavoro, e insistere sugli altri mercati vorrebbe dire allargare il raggio d'azione oltre quello
+  // che il tetto per giro concede. E si riprova SOLO escludendo i mercati che hanno un gate attribuibile
+  // a loro: un rifiuto che non nomina un mercato (kill, saldo, rete) non si cura cambiando mercato.
+  const gateDiMercato = (ris) => [...new Set((ris || [])
+    .filter((r) => r && r.status === 'refused' && GATE_DI_MERCATO.has(String(r.gate)))
+    .map((r) => normId(r.marketId)).filter(Boolean))];
+
+  while (esito && esito.placed === 0 && passate.length < TRIG.MAX_MERCATI_PER_GIRO) {
+    const bloccati = gateDiMercato(esito.results);
+    if (!bloccati.length) break;                       // rifiuto non attribuibile: non si insiste
+    const primaN = esclusi.size;
+    bloccati.forEach((id) => esclusi.add(id));
+    if (esclusi.size === primaN) break;                // niente di nuovo da escludere: si smette
+    const restanti = (righeCandidate || []).filter((r) => !esclusi.has(normId(r.marketId)));
+    if (!restanti.length) { motivoPassate = `tutti i mercati del piano sono stati provati (${esclusi.size} esclusi)`; break; }
+    const g2 = TRIG.pianificaGiro({ ...comuni, righe: restanti, disponibileUsd: decisione.saldoUsd });
+    if (!g2.scelte.length) { motivoPassate = `nessun altro mercato del piano ha spazio (${g2.motivoStop})`; break; }
+    const r2 = [];
+    const m2 = [];
+    await preparaScelte(g2.scelte, r2, m2);
+    if (!r2.length) { motivoPassate = 'nessuna gamba costruibile fra i mercati rimasti'; break; }
+    annuncia('log', `mini-ciclo: passata ${passate.length + 1} — ${bloccati.length} mercato/i esclusi`
+      + ` (${bloccati.map((x) => x.slice(0, 10)).join(', ')}), si prova ${m2.map((x) => String(x.marketId).slice(0, 10)).join(', ')}`);
+    esito = await piazza(r2, diag);
+    passate.push({ n: passate.length + 1, mercati: m2.map((m) => m.marketId), piazzati: esito && esito.placed, rifiutati: esito && esito.refused, esclusi: bloccati });
+    righeOrdine = r2; mercati = m2;
+  }
+  if (esito && esito.placed === 0 && passate.length >= TRIG.MAX_MERCATI_PER_GIRO) {
+    motivoPassate = `tetto di ${TRIG.MAX_MERCATI_PER_GIRO} passate raggiunto: gli altri mercati si provano al giro dopo`;
+  }
 
   // 7 · IL REGISTRO DELLE APERTURE. Dal 9 agosto 2026 non limita piu' niente — il tetto giornaliero e'
   //     stato tolto — ma resta la memoria di cosa ha aperto il bot da quando e' stato acceso, ed e'
@@ -1078,7 +1150,7 @@ async function miniCiclo(decisione, deps = {}) {
     utilizzo: utilPrima, utilizzoStimatoDopo: utilDopo,
     capitaleTotale: +capitaleTotale.toFixed(2), aRiposoUsd: +aRiposo.toFixed(2),
     piazzati: esito && esito.placed, rifiutati: esito && esito.refused,
-    nonPreparati, senzaRipiego,
+    nonPreparati, senzaRipiego, passate, motivoPassate,
     durataMs: Date.now() - t0, risultati: esito && esito.results,
   };
 }
