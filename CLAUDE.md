@@ -2180,10 +2180,60 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     lato e non cerca premi — la domanda andrebbe rifatta da capo: lì lo split competerebbe con
     l'attraversare lo spread su un lato solo, che è un confronto diverso da questo.
 
-    **Nota su una premessa da correggere:** `CTF_RELAYER_ENABLED` **non è acceso**. È `false` in
-    `lib/maker/ctf-relayer.js:94` e non è mai stato riacceso dopo la prova del 7 agosto. Il wiring del
-    **merge** (§5 punto 45) è in `main` ma inerte: per attivarlo servono le tre cose elencate lì, e
-    nessuna è stata fatta.
+    *(Aggiornamento: `CTF_RELAYER_ENABLED` è stato acceso poche ore dopo, su istruzione dell'operatore —
+    punto 49. Non cambia nulla di questa analisi: il flag governa merge, split e redeem, ma **solo il
+    merge ha un chiamante**. Lo split resta esportato e mai invocato, ed è lo stato giusto.)*
+
+49. **`CTF_RELAYER_ENABLED = true` — ACCESO il 9 agosto 2026, ~04:30 UTC, su istruzione esplicita di
+    Diego in chat. IN `main`. NON ANCORA NEI PROCESSI: serve un riavvio di agent40 CHE NON HO FATTO.**
+
+    **Cosa accende, esattamente.** Solo il **merge on-chain di una coppia già completa**. Il flag governa
+    tre funzioni ma **una sola ha un chiamante**: `auto-close.fondiCoppia` → `mergePosition`, raggiunta
+    quando `decidiLivello` risponde `azione:'merge'`, cioè quando YES e NO sono in parti uguali sullo
+    stesso mercato. `splitPosition` e `redeemPosition` **restano senza chiamanti** — nessun percorso
+    automatico le raggiunge (§5 punto 48 spiega perché lo split non conviene mai in questa strategia).
+
+    **Cosa succederebbe adesso: niente.** Nessuna coppia è completa. Le due posizioni London hanno un
+    lato solo — 23,15 NO e 21,18 NO, `sizeAltroLato: 0`, verdetto `livello 2 · maker-con-tetto`. La prima
+    fusione reale avverrà sulla **prima coppia che si completa**, per `size` share e un controvalore di
+    **$1 × size** che tornano **liquidi subito** invece che alla risoluzione.
+
+    **La spesa è zero, e va detto perché non è un dettaglio.** `mergePositions` converte token **già
+    nostri** in collaterale: non compra, non vende, non tocca il book, non ha slippage. Il gas lo paga il
+    relayer di Polymarket. È l'unica operazione del sistema che *libera* capitale invece di impegnarlo —
+    l'opposto dello split, che è la ragione per cui uno è collegato e l'altro no.
+
+    **Il confine non è stato allargato di una riga.** `calls` non è mai un parametro, `verificaConfinamento()`
+    ri-decodifica il batch prima della firma e rifiuta qualunque target che non sia uno dei due adapter
+    CTF, nessun ramo chiama `approve`/`transfer`. L'interruttore decide **quando** si firma, non **cosa**.
+
+    **Le credenziali ci sono, e la verifica precedente era misurata male.** Avevo scritto che
+    `POLYMARKET_RELAYER_API_KEY` non era «nell'ambiente di agent40» leggendo `/proc/<pid>/environ`:
+    quella è l'ambiente con cui il processo è **partito**, e agent40 ha il proprio caricatore `.env`
+    (righe 56-62) che riempie `process.env` **a runtime**. Le quattro variabili che servono
+    (`POLYMARKET_RELAYER_API_KEY`, `..._ADDRESS`, `MAKER_FUNDER_ADDRESS`, `KEY_CUSTODY_MASTER`) sono tutte
+    in `.env`, quindi arrivano. Se mancassero, `credenziali()` solleverebbe e `fondiCoppia` ripiegherebbe
+    pulita sulla vendita — fail-closed, non un guasto.
+
+    **I due test che pretendevano `false` sono stati aggiornati, non rimossi.** Difendevano una proprietà
+    («un flip silenzioso deve far cadere il test»), non un valore. Ora pretendono che **la costante e
+    l'intestazione che la racconta dicano la stessa cosa**: un flip in qualunque direzione senza
+    aggiornare il testo continua a far cadere il blocco. E il ramo *spento* resta provato passando
+    `abilitato:false` esplicito, che è più forte di provarlo perché era il difetto di default.
+
+    **Verifica.** `merge-onchain-collegato` **53/53** · `strategia-merge` **39/39** · `ctf-relayer`
+    **95/95**. Suite: **147 eseguiti, 141 verdi**, i 6 rossi sono i preesistenti del punto 40.
+    `npm run build` verde.
+
+    **RIAVVIO NON ESEGUITO — serve una conferma NUOVA di Diego in chat** (§2 regola 2: un'autorizzazione
+    vale solo per quel riavvio specifico, e quella delle 04:22 riguardava il codice di prima). Il processo
+    vivo — agent40 restart **58**, avviato alle ~04:22 — ha ancora `false` compilato dentro, quindi al
+    momento **non può firmare niente**. Comando:
+    ```bash
+    pm2 restart agent40-manual-reprice
+    ```
+    Da quel riavvio in poi, la prima coppia completa viene **fusa on-chain in autonomia**, senza altre
+    conferme. È la prima operazione on-chain automatica di questo stack.
 
 ---
 
