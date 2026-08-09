@@ -86,6 +86,7 @@ const { reconcileManualLane, fetchVenuePositions } = require('../lib/maker/manua
 const { decideRimpiazzo } = require('../lib/maker/rimpiazzo-gamba');
 const { resolveOffsetFor } = require('../lib/maker/offset-config');
 const { readAllocatedCapital } = require('../lib/maker/allocated-capital');
+const { registraResiduoScoperto, potaScadute, leggiRegistroResidui, scriviRegistroResidui } = require('../lib/maker/accumulo-residui');
 // ── IL PERCORSO DI PROFILO, CABLATO AL CICLO ────────────────────────────────────────────────────────
 // `valutaPiazzamento` instrada un mercato verso i controlli Safe (mai-primo, depth $15 cumulata,
 // volatilita' 8h, spread anomalo, quota 65%, esposizione 30%) o Risk (mai-primo, depth $20 sul
@@ -513,6 +514,24 @@ async function closeTask() {
       // riduce esposizione e non e' mai vincolata alla allowlist, quindi non apre nessuna superficie
       // nuova — toglie soltanto il caso in cui «non ho potuto togliere l'ordine» era indistinguibile da
       // «non ho nemmeno provato».
+      // ── IL REGISTRO DEI LATI SCOPERTI SOTTO IL MINIMO (regola generale del 9 agosto 2026, punto 3) ──
+      // `auto-close` resta puro: chiama questa funzione e non sa che esiste un file. Qui c'e' l'unica
+      // scrittura. Read-modify-write a ogni osservazione invece di un accumulo in memoria: le
+      // osservazioni sono poche (solo i mercati che arrivano alla rinuncia, non tutti) e il file e'
+      // minuscolo, mentre un accumulo in memoria andrebbe svuotato a fine ciclo — un secondo momento in
+      // cui sbagliare, per risparmiare una scrittura che non pesa.
+      registraResiduo: ({ marketId, book, sizeScoperta, minSize, causa, prezzoCarico, t0: quando }) => {
+        const prima = leggiRegistroResidui();
+        const { registro: potato } = potaScadute(prima, quando || Date.now());
+        const r = registraResiduoScoperto({
+          registro: potato, marketId, book, sizeScoperta, minSize, causa, prezzoCarico,
+          now: quando || Date.now(),
+        });
+        if (!r.ok || r.azione === 'ignorato') return r;
+        scriviRegistroResidui(r.registro);
+        log(`residuo scoperto · cid_${String(marketId).replace(/^0x/, '').slice(0, 8)} ${String(book).toUpperCase()}: ${r.motivo}`);
+        return r;
+      },
       cancelOrder: (spec) => cancelManualOrder(spec, AUTO_CLOSE_SOURCE),
       listOrders: ({ marketId }) => listManualOrders({ marketId }),
       // La stessa lettura del compito dello snapshot, riusata: una fonte sola, e nessuna seconda

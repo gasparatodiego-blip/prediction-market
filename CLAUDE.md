@@ -3,7 +3,15 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt**: non serve più reincollarlo ogni volta.
 
-Ultima verifica contro codice/stato reali: **9 agosto 2026**, ~07:35 UTC.
+Ultima verifica contro codice/stato reali: **9 agosto 2026**, ~08:05 UTC.
+
+> ## 🧩 LA REGOLA GENERALE DEL LATO SCOPERTO — §5 punto 54
+> Qualunque lato posseduto senza controparte, **da qualunque causa** (fill, residuo di merge parziale,
+> chiusura rapida incompleta), segue sempre le stesse tre regole: riposiziona a **+1% dal carico** dentro
+> banda e mai sotto il carico, apri **contestualmente** il limit contrario, e se la quantità è sotto il
+> minimo del venue **accumulala** in `data/residui-scoperti.json` per mercato/lato invece di lasciarla
+> muta. Un solo punto di convergenza (`auto-close.js`, esito `rinuncia`), non tre toppe. Il minimo è del
+> venue e **per mercato** — 20/50/100/200 sui 108 mercati del board, non una costante nostra.
 
 > ## 📐 I TETTI DI CAPITALE ERANO FERMI A $600 SU UN CAPITALE DI $850,82 — CORRETTO, §5 punto 53
 > `maker-allocated-capital.json` lo scriveva solo il ciclo da 6h; il mini-ciclo ricalcolava un piano ogni
@@ -2445,6 +2453,70 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     eseguiti, 145 verdi**, i 6 rossi sono i preesistenti del punto 40. `npm run build` verde.
 
     **Riavvio: NON eseguito** (§2 regola 2) — `pm2 restart agent41-realloc-scheduler`.
+
+54. **LA REGOLA GENERALE DEL LATO SCOPERTO — decisa da Diego il 9 agosto 2026, in `main` alle ~08:05 UTC.**
+
+    Non è una correzione per Dallas: è il principio con cui il bot tratta **qualunque** lato posseduto
+    senza controparte, **a prescindere dalla causa** — un fill originale, il residuo di un merge parziale,
+    ciò che la chiusura rapida non ha coperto, o una causa che ancora non esiste.
+
+    | # | regola | dove vive |
+    |---|---|---|
+    | 1 | riposiziona il lato posseduto a **+1% dal carico**, sempre dentro la banda premiante, **mai sotto il carico** | `chiusura-rapida.pianificaRiposizionamentoScoperto` |
+    | 2 | apri **contestualmente** il limit uguale e contrario sulla controparte mancante | idem |
+    | 3 | se la quantità è **sotto il minimo piazzabile**, accumulala in un registro per mercato/lato invece di lasciarla bloccata e silenziosa | **`lib/maker/accumulo-residui.js`** (nuovo) |
+
+    **UN SOLO PUNTO DI CONVERGENZA, ed è ciò che lo rende un principio.** Tutti i modi di *non* aver
+    coperto un lato finiscono già in fondo a `completaCoppia`, all'esito `rinuncia`
+    (`auto-close.js:765`): i Livelli 1 e 2 del merge, la chiusura rapida, il riposizionamento scoperto.
+    Il residuo di un merge **parziale** non ha bisogno di un percorso suo — vive sull'altro lato, dove
+    `manca > 0`, e il giro successivo lo porta esattamente lì. Quindi la registrazione sta in **una**
+    funzione (`segnalaScoperto`) chiamata da due esiti terminali, non in tre punti che possono divergere.
+
+    **IL MINIMO È DEL VENUE, ED È PER MERCATO — non 20, e non nostro.** Misurato sul board vivo (108
+    mercati): `min_incentive_size` vale **20** su 65, **50** su 26, **100** su 4, **200** su 13. Arriva
+    dal catalogo premi (`rewardsMinSize` → `manual-order.js:316` → `rules.minSize`). Nel senso stretto di
+    Polymarket significa «sotto questa size non maturi reward» (`venue-rules.js:86`: *earns nothing*),
+    ma nel **nostro** stack `BELOW_MIN_SIZE` è **bloccante**: `splitVerdict` declassa ad avviso soltanto
+    `OUT_OF_BAND`. Scelta deliberata e **non toccata** — un ordine sotto il minimo immobilizzerebbe
+    capitale per un premio che vale zero. Il registro risolve il problema che quel vincolo lascia aperto:
+    dove finisce la quantità che non si può piazzare.
+
+    **PERCHÉ NON SI SOMMANO LE OSSERVAZIONI, ed è la scelta meno ovvia.** «Accumulare» non è addizionare
+    una riga a ogni giro. Ogni osservazione misura l'**intera** quantità scoperta di quel mercato/lato in
+    quel momento (`sizePosseduta − sizeAltroLato`), non un incremento: sommarne due conterebbe due volte
+    la stessa cosa e il registro direbbe che siamo scoperti del doppio. Si tiene quindi l'**ultima**
+    osservazione come verità corrente, con la storia delle `voci` accanto — è lì che si legge che il
+    residuo è cresciuto da 3,4 a 21,6 share, con quali cause e quando. La somma di residui diversi sullo
+    stesso mercato/lato **avviene già nel mondo**: la posizione li contiene entrambi, e arrivano qui come
+    una singola osservazione più grande. Fra mercati diversi non si somma, e non si potrebbe: un ordine
+    vive su un mercato solo.
+
+    **Il rilascio non ha un percorso speciale.** Quando la quantità raggiunge il minimo la voce diventa
+    `pronto`, e da lì il meccanismo generale smette da solo di rifiutarla — il rifiuto *era* `size <
+    minSize`. Il registro **non piazza e non cancella niente**: tiene il conto e lo rende visibile, ed è
+    proprio il fatto che non piazzi a renderlo sicuro (nessuna seconda politica di quando si compra).
+
+    **Non è `residui-sotto-soglia.js`**, che esiste e serve ad altro: quello registra **ordini** in
+    scadenza col residuo sotto il minimo, chiave `orderId`, finestra di visibilità 30 minuti, per la
+    dashboard. Qui la chiave è **`mercato:lato`**, non c'è finestra, e l'oggetto è una **posizione**
+    scoperta che aspetta di poter essere coperta. Due domande diverse, due registri.
+
+    **File:** `lib/maker/accumulo-residui.js` (nuovo) · `lib/maker/auto-close.js` (`segnalaScoperto` in
+    `completaCoppia`, chiamato da `rinuncia` e da `coppia fusa`) · `agents/agent40-manual-reprice.js`
+    (l'unica scrittura su disco; `auto-close` resta puro e non sa che esiste un file). Registro in
+    `data/residui-scoperti.json`, voci potate dopo **48 h** senza conferme.
+
+    **Vincoli duri non toccati, e il test lo verifica:** `mai-primo-sul-libro`, la banda premiante, il
+    «mai sotto il carico». Senza `deps.registraResiduo` cablato il comportamento è **identico** a prima:
+    il registro è un'osservazione, non un gate.
+
+    **Verifica.** Nuovo `lib/maker/lato-scoperto-principio.test.js` **57/57**: il caso Dallas (3,4 share
+    dopo il merge parziale ⇒ accumulate con `manca: 16.6` e $1,80 di capitale fermo quantificato), due
+    residui sullo stesso mercato/lato che salgono a 21,6 e diventano piazzabili, lo **stesso** codice su
+    un fill scoperto normale con soglia 50 invece di 20, e `completaCoppia` **vero** che segnala invece di
+    tacere. Suite: **152 eseguiti, 146 verdi**, i 6 rossi sono i preesistenti del punto 40.
+    `npm run build` verde.
 
 ---
 
