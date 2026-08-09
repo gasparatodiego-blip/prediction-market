@@ -700,7 +700,27 @@ const PIANO_FRESCO_MAX_MS = Number(process.env.REALLOC_PIANO_FRESCO_MAX_MS || 60
  *
  * @returns {Promise<{ok: boolean, motivo: string|null}>}
  */
-async function preparaMercatoNuovo(marketId, abilita, prendiInGestione, accendiUscita) {
+// ── LA RIGA DEL BOARD NORMALIZZATO ──────────────────────────────────────────────────────────────────
+// STESSO FILE che `resolveMarketRules` legge come prima scelta (lib/maker/manual-order.js:89). Il
+// percorso e' ripetuto qui e non importato perche' li' e' una costante di modulo non esportata; se un
+// giorno diventasse esportabile, questa e' la riga da sostituire. Il test verifica che i due percorsi
+// coincidano leggendo entrambi i sorgenti, cosi' una divergenza non puo' passare inosservata.
+//
+// Sola lettura, e non solleva mai: un board illeggibile vale «nessuna riga», che a valle diventa
+// «nessuna copia di sicurezza» — annotato, mai indovinato.
+const BOARD_NORMALIZZATO = '/tmp/liquidity-rewards.json';
+
+function rigaBoardNormalizzata(marketId, file = BOARD_NORMALIZZATO) {
+  const id = typeof marketId === 'string' ? marketId.trim().toLowerCase() : '';
+  if (!id) return null;
+  try {
+    const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const righe = raw && Array.isArray(raw.markets) ? raw.markets : [];
+    return righe.find((m) => m && String(m.marketId || '').toLowerCase() === id) || null;
+  } catch { return null; }
+}
+
+async function preparaMercatoNuovo(marketId, abilita, prendiInGestione, accendiUscita, registraCatalogo) {
   if (typeof abilita !== 'function') {
     return { ok: false, motivo: 'nessuna funzione setEnabled cablata: non si piazza su un mercato che la corsia manuale rifiutera per allowlist' };
   }
@@ -734,7 +754,37 @@ async function preparaMercatoNuovo(marketId, abilita, prendiInGestione, accendiU
   if (!(ac && ac.ok)) {
     return { ok: false, motivo: `uscita automatica non accesa (${(ac && ac.error) || 'esito non leggibile'})` };
   }
-  return { ok: true, motivo: null };
+
+  // ── LA QUARTA SCRITTURA, E L'UNICA CHE NON E' UN FERMO DURO ────────────────────────────────────
+  // Le tre sopra decidono se il mercato e' operabile ADESSO: senza, ogni gamba muore a un gate, quindi
+  // non ha senso proseguire. Questa decide se sara' gestibile DOPO, e la differenza cambia il verso del
+  // fallimento.
+  //
+  // Il problema che chiude (9 agosto 2026): un mercato aperto da qui vive sulle regole del board, e il
+  // board ruota ogni 15 minuti tenendo i primi 120 per montepremi. Quando un mercato ne esce mentre la
+  // posizione e' ancora aperta, `resolveMarketRules` non trova piu' tick, banda, minSize e negRisk, e si
+  // fermano insieme chiusura automatica, riprezzatura, tracking e qualunque ordine — cioe' la posizione
+  // resta senza via d'uscita. Misurato: 10 mercati su 39 in gestione, quattro aperti la sera prima.
+  // Il ripiego (`market-catalog`) esisteva gia' ed e' letto da `resolveMarketRules`; mancava solo chi lo
+  // riempisse per i mercati aperti in automatico. Lo si riempie ADESSO, mentre il board ha ancora i dati:
+  // dopo la rotazione non ci sarebbe piu' nessuna fonte locale da cui prenderli.
+  //
+  // PERCHE' NON E' UN FERMO DURO. Un catalogo non scritto non impedisce niente oggi — il board ha le
+  // regole, il mercato e' operabile, gli ordini partono. Rinunciare al piazzamento per una copia di
+  // sicurezza mancata sarebbe scambiare un danno certo (capitale fermo adesso) con uno possibile
+  // (gestione persa se e quando il board ruota). Si registra il fallimento e si va avanti.
+  let cat = null;
+  if (typeof registraCatalogo === 'function') {
+    try { cat = await registraCatalogo({ marketId }); }
+    catch (e) { cat = { ok: false, error: e && e.message ? e.message : String(e) }; }
+  } else {
+    cat = { ok: false, error: 'nessuna funzione di registrazione cablata' };
+  }
+  return {
+    ok: true, motivo: null,
+    catalogo: cat && cat.ok === true,
+    catalogoMotivo: cat && cat.ok === true ? null : ((cat && (cat.error || cat.motivo)) || 'esito non leggibile'),
+  };
 }
 
 async function miniCiclo(decisione, deps = {}) {
@@ -755,6 +805,20 @@ async function miniCiclo(decisione, deps = {}) {
     || (({ marketId, manual, reason }) => setManualMode({ marketId, manual, by: 'riallocatore · trigger capitale fermo', reason }));
   const accendiUscita = deps.setAutoClose
     || (({ marketId, enabled, reason }) => setAutoClose({ scope: 'market', marketId, enabled, by: 'riallocatore · trigger capitale fermo', reason }));
+  // La COPIA DI SICUREZZA delle regole di venue, presa dal board mentre il board ce le ha ancora.
+  // La fonte e' lo STESSO file che `resolveMarketRules` legge come prima scelta
+  // (`manual-order.js:89` → /tmp/liquidity-rewards.json): cosi' il ripiego non puo' contenere numeri
+  // diversi da quelli su cui il mercato e' stato scelto. Se il board non ha la riga non si inventa
+  // niente e non si registra niente.
+  const registraCatalogo = deps.registraCatalogo || (({ marketId }) => {
+    const riga = rigaBoardNormalizzata(marketId);
+    if (!riga) return { ok: false, error: 'riga di board non trovata: nessuna regola da copiare nel ripiego' };
+    const rec = require('../lib/maker/market-catalog').recordDaRigaBoard(riga);
+    if (!rec) return { ok: false, error: 'riga di board non traducibile in un record di catalogo' };
+    return require('../lib/maker/market-catalog').upsertMarket(rec,
+      { by: 'riallocatore · trigger capitale fermo',
+        reason: 'copia di sicurezza delle regole di venue: se il mercato esce dal board la gestione deve poter continuare' });
+  });
   const etaBoard = deps.etaBoardMs !== undefined
     ? () => deps.etaBoardMs
     : () => { try { return Date.now() - fs.statSync(path.join(DATA_DIR, 'liquidity-rewards.json')).mtimeMs; } catch { return null; } };
@@ -878,6 +942,7 @@ async function miniCiclo(decisione, deps = {}) {
   const righeOrdine = [];
   const mercati = [];
   const nonPreparati = [];
+  const senzaRipiego = [];
   for (const s of giro.scelte) {
     const g = gambeDiUnaRiga(s.riga, s.riga.computedDefaultOffsetTicks);
     if (g.scarto || !g.rows) continue;   // gia' filtrato dal predicato, ma il verdetto vale solo se ricontrollato
@@ -908,11 +973,17 @@ async function miniCiclo(decisione, deps = {}) {
     // questa riga avrebbe due gambe vive e nessuno che le chiuda su un fill. Tutte e tre sono FERMI
     // DURI: se una delle scritture non riesce, quel mercato esce dal giro e gli altri proseguono —
     // meglio un mercato in meno che un mercato con ordini e senza via d'uscita.
+    //
+    // La QUARTA (la copia delle regole nel catalogo di ripiego, 9 agosto 2026) NON e' un fermo duro:
+    // riguarda la gestibilita' futura, non l'operabilita' di adesso. Si annota e si prosegue.
     if (s.nuovo === true) {
-      const p = await preparaMercatoNuovo(s.riga.marketId, abilita, prendiInGestione, accendiUscita);
+      const p = await preparaMercatoNuovo(s.riga.marketId, abilita, prendiInGestione, accendiUscita, registraCatalogo);
       if (!p.ok) {
         nonPreparati.push({ marketId: s.riga.marketId, titolo: s.riga.name || null, motivo: p.motivo });
         continue;
+      }
+      if (p.catalogo !== true) {
+        senzaRipiego.push({ marketId: s.riga.marketId, titolo: s.riga.name || null, motivo: p.catalogoMotivo });
       }
     }
 
@@ -923,8 +994,15 @@ async function miniCiclo(decisione, deps = {}) {
     annuncia('log', `mini-ciclo: ${nonPreparati.length} mercato/i NUOVI esclusi — non si e' potuto prenderli in gestione`
       + ` (${nonPreparati.map((x) => `${String(x.marketId).slice(0, 10)}…: ${x.motivo}`).join(' · ')})`);
   }
+  // Non blocca niente, ma va DETTO: un mercato aperto senza copia delle regole e' un mercato che perde
+  // la gestione il giorno in cui esce dal board, e nessun log successivo lo collegherebbe a questo giro.
+  if (senzaRipiego.length) {
+    annuncia('log', `mini-ciclo: ${senzaRipiego.length} mercato/i aperti SENZA copia delle regole nel catalogo di ripiego`
+      + ` — resteranno gestibili solo finche' sono sul board`
+      + ` (${senzaRipiego.map((x) => `${String(x.marketId).slice(0, 10)}…: ${x.motivo}`).join(' · ')})`);
+  }
   if (!righeOrdine.length) {
-    return { ...referto, esito: 'nessuna-azione', fonte, utilizzo: utilPrima, nonPreparati,
+    return { ...referto, esito: 'nessuna-azione', fonte, utilizzo: utilPrima, nonPreparati, senzaRipiego,
       motivo: nonPreparati.length
         ? `nessun mercato piazzabile: ${nonPreparati.length} scelti erano nuovi e non si e' potuto prenderli in gestione (${nonPreparati[0].motivo})`
         : 'nessuna gamba costruibile fra i mercati scelti' };
@@ -980,7 +1058,7 @@ async function miniCiclo(decisione, deps = {}) {
     utilizzo: utilPrima, utilizzoStimatoDopo: utilDopo,
     capitaleTotale: +capitaleTotale.toFixed(2), aRiposoUsd: +aRiposo.toFixed(2),
     piazzati: esito && esito.placed, rifiutati: esito && esito.refused,
-    nonPreparati,
+    nonPreparati, senzaRipiego,
     durataMs: Date.now() - t0, risultati: esito && esito.results,
   };
 }
@@ -1168,4 +1246,5 @@ if (require.main === module) main();
 
 module.exports = { leggiVenue, leggiSaldo, prossimoRitardo, scriviUltimoPiano, leggiUltimoPiano,
   miniCiclo, preparaMercatoNuovo, pianoLeggero, sorvegliaAvvio, LOG_FILE, STATE_FILE, POOLS_FILE, ULTIMO_PIANO_FILE,
-  FINESTRA_LEGGERA_ORE, PIANO_FRESCO_MAX_MS, AVVIO_CADENZA_MS };
+  FINESTRA_LEGGERA_ORE, PIANO_FRESCO_MAX_MS, AVVIO_CADENZA_MS,
+  rigaBoardNormalizzata, BOARD_NORMALIZZATO };

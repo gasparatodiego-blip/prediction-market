@@ -1950,6 +1950,77 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     ```
     Il riavvio di agent41 porta con sé anche il punto 42 (idempotenza), che era già pendente.
 
+44. **UN MERCATO CHE ESCE DAL BOARD PERDEVA LA GESTIONE — CORRETTO in `main` il 9 agosto 2026, ~03:50 UTC.
+    GLI 11 ORFANI SONO GIÀ SANATI E VERIFICATI SUI DATI VIVI. IL FIX PREVENTIVO ASPETTA IL RIAVVIO DI
+    agent41, DA CONFERMARE DA DIEGO IN CHAT.**
+
+    **La causa.** Un mercato aperto da agent41 vive sulle regole del board reward. agent24 lo riscrive
+    ogni 15 minuti tenendo i primi 120 per montepremi: quando un mercato ne esce **mentre la posizione è
+    ancora aperta**, `resolveMarketRules` (`lib/maker/manual-order.js:276`) non trova più tick, banda,
+    minSize e negRisk. Il book live di agent34 non li ha e non può averli — porta il prezzo, non il
+    regolamento. Da lì si fermano **insieme** quattro percorsi: `auto-close.js:78` e `:464` (nessuna
+    chiusura), `auto-reprice.js:219` (nessuna riprezzatura), `mm-tracking.js:217` (nessun tracking) e il
+    **gate 2** di `placeManualOrder` (`manual-order.js:835`, qualunque ordine rifiutato, uscite comprese).
+    Cioè **una posizione senza via d'uscita, per un motivo che con la posizione non c'entra**.
+
+    **Il ripiego era già progettato, mancava chi lo riempisse.** `resolveMarketRules` consulta
+    `data/maker-manual-markets.json` quando il board non conosce il mercato (righe 283-299), ma quel
+    catalogo lo scriveva **solo** il pannello operatore (`upsertMarket` in
+    `app/api/maker/markets/enable/route.ts`): agent41 non lo chiamava mai.
+
+    **Misura che l'ha fatto scattare** (9 agosto, 03:40): **10 mercati su 39** in gestione erano orfani,
+    fra cui quattro aperti la sera prima. Primo `rules-unreadable` su London 18°C: **02:09:42Z**, il giro
+    di board subito dopo l'ultimo ciclo di auto-close riuscito (02:08:57Z). Da lì, 967 righe di rifiuto.
+
+    **Il fix, in due pezzi.**
+    - `lib/maker/market-catalog.js` — nuova `recordDaRigaBoard(row)`: mapper **puro** riga-di-board →
+      record di catalogo. Sta qui e non nello scheduler perché è una proprietà del formato del catalogo;
+      un mapper nello scheduler sarebbe la seconda definizione dello stesso record. Non inventa: un campo
+      assente resta assente e `upsertMarket` **rifiuta** il record se mancano i quattro obbligatori —
+      meglio nessun ripiego che un tick indovinato, che produrrebbe ordini fuori banda invece di un
+      rifiuto leggibile.
+    - `agents/agent41-realloc-scheduler.js` — **quarta scrittura** nel passo 5-bis (`preparaMercatoNuovo`),
+      che copia le regole **mentre il board ce le ha ancora**: dopo la rotazione non esisterebbe più
+      nessuna fonte locale. La fonte è `BOARD_NORMALIZZATO = '/tmp/liquidity-rewards.json'`, cioè lo
+      **stesso file** che `resolveMarketRules` legge come prima scelta — così il ripiego non può contenere
+      numeri diversi da quelli su cui il mercato è stato scelto, e un test confronta i due percorsi
+      leggendo entrambi i sorgenti.
+
+    **NON è un fermo duro, e la distinzione è il punto.** Le prime tre scritture decidono se il mercato è
+    operabile *adesso*: senza, ogni gamba muore a un gate, quindi non ha senso proseguire. La quarta
+    decide se sarà gestibile *dopo*. Rinunciare al piazzamento per una copia di sicurezza mancata
+    scambierebbe un danno certo (capitale fermo adesso) con uno possibile (gestione persa se e quando il
+    board ruota). Si annota in `senzaRipiego` — che viaggia nel referto e in una riga di log — e si va
+    avanti. **Il board resta la prima scelta**: se il mercato ci torna, vince il board.
+
+    **GLI 11 ORFANI SONO STATI SANATI, ed è una scrittura di stato che ho eseguito** —
+    `node scripts/registra-mercati-orfani.js --esegui`, 03:45:24Z, 11 registrati / 0 saltati. La scelta:
+    lo script scrive **solo metadati**, che come dice l'intestazione di `market-catalog.js` non rendono
+    piazzabile un mercato — possono solo rendere un ordine *rifiutabile con un motivo leggibile* invece
+    che per un dato mancante. L'effetto pratico è che **torna la via d'uscita** a posizioni che non ne
+    avevano, che è la direzione sicura. I dati vengono da `fetchMarketByConditionId`, la **stessa**
+    funzione del pannello operatore: tick, negRisk e i token id non si possono dedurre, e indovinarli
+    sarebbe il difetto peggiore. Lo script è in **anteprima di difetto** (`--esegui` per scrivere).
+    - **Verificato sui dati vivi, senza riavvio:** alle **03:47:19Z**, due minuti dopo la scrittura,
+      London 18°C è passato da `rules-unreadable` a valutazione completa (`merge-livello-2` +
+      `skip-no-target`). `resolveMarketRules` risponde `readable: true` con tutti e quattro i campi. Il
+      catalogo si legge a ogni chiamata da disco, quindi non serviva riavviare niente.
+    - Restano **9 mercati sul board** (che non hanno bisogno del ripiego) e **26 nel catalogo**.
+
+    **Verifica.** Nuovo `lib/maker/catalogo-di-ripiego.test.js` (**43/43**): riproduce la scena completa
+    — sul board → aperto → board che ruota → regole ancora leggibili — e verifica che senza ripiego
+    manchino *esattamente* i quattro campi visti in produzione. Più: ogni obbligatorio mancante fa
+    rifiutare il record, `negRisk:"true"` stringa non diventa `true`, le prime tre scritture restano fermi
+    duri, la quarta non lo è (anche se **esplode**), il flusso del pannello è invariato, e i due percorsi
+    del board coincidono. Suite: **145 eseguiti, 139 verdi**, i 6 rossi sono i preesistenti del punto 40.
+    `npm run build` verde.
+
+    **Riavvio: NON eseguito, serve conferma esplicita di Diego in chat** (§2 regola 2). Serve solo per il
+    fix **preventivo** — la sanatoria è già attiva perché il catalogo si rilegge da disco:
+    ```bash
+    pm2 restart agent41-realloc-scheduler
+    ```
+
 ---
 
 ## 6 · COME L'UTENTE VUOLE ESSERE SERVITO
