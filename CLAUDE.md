@@ -3,7 +3,14 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt**: non serve più reincollarlo ogni volta.
 
-Ultima verifica contro codice/stato reali: **9 agosto 2026**, ~08:05 UTC.
+Ultima verifica contro codice/stato reali: **9 agosto 2026**, ~08:40 UTC.
+
+> ## ⛓️ LA CATENA DI SOSTITUZIONI MURAVA UNA GAMBA VIVA — §5 punto 55
+> `MAX_CATENA` era 64 e cresce di **un anello al minuto** su una gamba ripiazzata a ogni giro: l'uscita
+> su Dallas era murata a 64/64. Alzato a **20.000** (~2 settimane). La protezione anti-doppio-invio non
+> è il tetto — è la verifica che l'ordine precedente sia morto, e resta intatta a ogni anello.
+> **Il merge on-chain HA funzionato:** tx `0x0711b86f…414e`, `STATE_CONFIRMED`, 36,3 share fuse alle
+> 07:59:19. La posizione Dallas YES che il portfolio mostra ancora **non esiste più** sul venue.
 
 > ## 🧩 LA REGOLA GENERALE DEL LATO SCOPERTO — §5 punto 54
 > Qualunque lato posseduto senza controparte, **da qualunque causa** (fill, residuo di merge parziale,
@@ -2517,6 +2524,55 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     un fill scoperto normale con soglia 50 invece di 20, e `completaCoppia` **vero** che segnala invece di
     tacere. Suite: **152 eseguiti, 146 verdi**, i 6 rossi sono i preesistenti del punto 40.
     `npm run build` verde.
+
+55. **IL TETTO DELLA CATENA DI SOSTITUZIONI MURAVA UNA GAMBA VIVA — corretto in `main` il 9 agosto 2026,
+    ~08:35 UTC. ASPETTA IL RIAVVIO di agent40 e agent41.**
+
+    Il fix del punto 42 fa sì che una gamba cancellata non bruci la sua chiave: la sostituzione ne riceve
+    una nuova, derivata dall'id dell'ordine morto. Le sostituzioni formano una **catena**, e la catena
+    aveva un tetto di **64 anelli**. Alle 08:10 la gamba di uscita su Dallas (SELL 39,7 @ 0,54) aveva una
+    catena di **esattamente 64** — misurata sul giornale vero — cioè murata:
+
+    ```
+    AUTO-CLOSE FALLITA · NO SELL 39.7 @ 0.54 su carico 0.53 (+1c/share)
+    gate=idempotent-duplicate … (catena di sostituzioni oltre 64 anelli)
+    ```
+
+    **Perché cresce così in fretta, e non è un difetto:** un'uscita a riposo viene ricancellata e
+    ripiazzata a ogni giro di auto-close (~65 s) quando il mid si muove. **Un anello al minuto**: 64
+    anelli sono poco più di un'ora, quindi qualunque posizione che duri mezza giornata li esaurisce.
+
+    **Fix: `MAX_CATENA` 64 → 20.000** (`lib/safety/execution-audit.js`), circa **due settimane** di
+    ricambio continuo. Il tetto non protegge dal costo — 20.000 anelli si percorrono in **~80 ms**,
+    misurato dal test — ma da un giornale corrotto. **Il confine utile è 19.999**: il ciclo spende
+    un'iterazione per anello trovato e gliene serve una in più per accertare che la coda sia libera.
+
+    **LA PROTEZIONE ANTI-DOPPIO-INVIO NON È IL TETTO** ed è intatta: è la verifica che l'ordine
+    precedente sia MORTO sul venue, e vale a **ogni singolo anello**. Alzare il tetto non rende
+    ripiazzabile nulla che prima non lo fosse — rende raggiungibile la fine di una catena troppo lunga.
+    Il test lo prova a profondità 1, 64, 500 e 5000: con l'ultimo ordine **vivo** si rifiuta sempre.
+
+    **La risposta durevole non è un numero più grande**, e va detto: è la **rotazione del giornale** (o
+    un indice della coda per chiave economica). Non fatta qui perché tocca il formato del giornale, che è
+    la fonte di verità dell'idempotenza.
+
+56. **IL LIVELLO 3 USCIVA IN SILENZIO — corretto il 9 agosto 2026, stesso commit.** Il principio del
+    punto 54 dice «qualunque lato scoperto, qualunque causa», ma `completaCoppia` restituisce
+    `non-applicabile` **prima** di `segnalaScoperto` quando il livello non è 1 o 2. Misurato su London
+    19°C (`cid_cf92c777`): Livello 2 scaduto da **546 minuti** contro un limite di 60, completamento
+    cancellato, e 21,18 share NO restavano scoperte **senza** che il registro ne sapesse niente. Un
+    timeout è una causa come le altre: ora quel ramo registra prima di uscire.
+
+57. **CINQUE MERCATI FINTI NEI DATI VIVI — rimossi il 9 agosto 2026.** `0xaaa`…`0xeee`, scritti alle
+    02:57:51 da `riallocatore · trigger capitale fermo` (residuo di una suite che guidava il mini-ciclo
+    senza iniettare le scritture di stato — la stessa classe di trappola del punto 53). Erano in **tre**
+    file, non uno: `maker-auto-close.json` (48→43), `maker-manual-mode.json` (63→58),
+    `maker-auto-reprice.json` (65→60). Producevano cinque `rules-unreadable` per giro senza altro
+    effetto. Rimossi con scrittura atomica, backup preso prima; `global`/`updatedAt` intatti. Verificato
+    che non fossero referenziati da `maker-manual-markets.json` né da `maker-allocated-capital.json`.
+
+    **Come riconoscerli:** un `conditionId` vero è `0x` + **64** esadecimali. Qualunque chiave più corta
+    in questi file è un residuo di test.
 
 ---
 
