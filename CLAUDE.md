@@ -5,6 +5,20 @@ Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code a
 
 Ultima verifica contro codice/stato reali: **9 agosto 2026**, ~20:15 UTC.
 
+> ## 🔓 IL GATE live-min LEGGEVA LA LISTA STRETTA — §5 punto 69
+> §5 punto 62 aveva stabilito che la allowlist del gate live-min è «abilitati ∪ mercati con posizione
+> aperta». L'unione **veniva calcolata e non la leggeva nessun percorso di piazzamento**: i due soli
+> consumatori stavano nell'oggetto di STATO del pannello, e `buildPlacementAdapter` non inietta nessuna
+> lista — quindi l'adapter cadeva sul proprio provider di difetto, `cfg.enabledMarketIds`.
+> **Costo misurato su Ankara**: mercato tolto dal piano alle ~21:40, gamba NO fillata alle 21:46:47 (101
+> share), e da lì **tutti e tre** i tentativi di comprare la gamba opposta (merge L2, chiusura rapida
+> taker, controparte del riposizionamento) rifiutati con `live-min-market-mismatch`. Passava **solo il
+> SELL**, per l'eccezione di riduzione. **Corretto**: il provider di difetto legge `liveMinMarketIds`.
+> Non allarga il perimetro — aggiunge solo mercati dove il capitale è **già** esposto.
+> **⚠ LO SCOPE DEL RINNOVO RESTA LA LISTA STRETTA** (`auto-reprice.js:1054`), ed è una decisione
+> documentata: un mercato fuori dal piano non viene visitato, quindi i suoi ordini muoiono per GTD in 23
+> minuti. Il fix **non** cambia questo. **Riavviati agent40 (70), agent41 (50), dashboard (175).**
+
 > ## 🧟 LA GAMBA ORFANA NON VIENE PIÙ RINNOVATA — §5 punto 68
 > Una coppia nasce con due gambe a riposo. Se una viene fillata e la posizione che ne nasce sparisce per
 > una **causa esterna al ciclo** (Diego la chiude a mano), la gamba superstite restava sul libro e veniva
@@ -3473,6 +3487,78 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     lo intercetta ai primi due rinnovi utili (~20 min l'uno dall'altro) **se quell'ordine è ancora sul
     libro**; se nel frattempo è scaduto, resta solo la voce stantia in `data/merge-attese.json`, che questo
     lavoro **non** ripulisce — la pulizia di quel registro è un intervento a parte.
+
+69. **IL GATE live-min LEGGEVA LA LISTA STRETTA: L'UNIONE DEL PUNTO 62 NON ARRIVAVA AL PIAZZAMENTO —
+    corretto in `main` il 9 agosto 2026, ~22:15 UTC. TRE PROCESSI RIAVVIATI.**
+
+    **La causa radice, localizzata.** `buildPlacementAdapter` (`manual-order.js:735-755`) **non passa**
+    né `allowedMarketIds` né `allowedMarketIdsProvider`, quindi l'adapter usa il proprio provider di
+    difetto, che leggeva `cfg.enabledMarketIds`. I due consumatori di `liveMinMarketIds` in
+    `manual-order` (righe 631 e 658) stanno **entrambi dentro l'oggetto di stato del pannello** — una
+    superficie di sola lettura. **L'unione era calcolata e nessun percorso di piazzamento la leggeva.**
+    Il commento in `auto-reprice-config.js` che diceva «la legge `manual-order` per costruire l'adapter»
+    era **falso**, ed è la ragione per cui la lacuna è rimasta invisibile: è stato corretto.
+
+    **Cercato sistematicamente lo stesso pattern**, e il punto effettivo è **uno solo**:
+    `lib/maker/config.js:45-51` legge anch'esso `enabledMarketIds`, ma **nessun modulo lo importa** — è
+    codice morto per questo scopo, e la nota di §5 punto 26 che lo indicava come la allowlist live-min è
+    invecchiata. `auto-reprice.js:1054` usa la lista stretta come **scope del watcher**, ed è una scelta
+    dichiarata (vedi sotto), non lo stesso difetto.
+
+    **Il costo, misurato su Ankara (`0x2be0b367`) il 9 agosto**: 21:09:18 le due gambe · ~21:40 il ciclo
+    da 6h toglie il mercato dal piano · 21:46:47 la gamba NO viene fillata per 101 share · da lì, ogni
+    ~60s, `merge-livello-2`, `chiusura-rapida-taker` e `riposizionamento-scoperto-controparte` tutti
+    `reject-live-min-market-mismatch`, e passa solo il SELL per l'eccezione di riduzione (§5 punto 26).
+    Il merge — coppia a ≤99¢ che vale $1 subito — irraggiungibile proprio dove serviva.
+
+    **⚠ LO SCOPE DEL RINNOVO NON È STATO TOCCATO, ed è deliberato.** `auto-reprice.js:1054` itera
+    `cfgState.enabledMarketIds`: un mercato fuori dal piano **non viene visitato**, quindi non viene
+    rinnovato e i suoi ordini muoiono per scadenza GTD entro 23 minuti. Allargare quello scope non era
+    l'intenzione del punto 62 — `end-of-scale-cycle.test.js` lo scoprì come accoppiamento nascosto (tre
+    mercati in più, sei rinnovi invece di uno). **Conseguenza da conoscere**: una rotazione di piano
+    lascia morire per GTD gli ordini dei mercati usciti, ed è il comportamento voluto (il piano non
+    vuole più capitale lì); ma è anche il motivo per cui il controllo della **gamba orfana** (§5 punto
+    68) non si esercita su quei mercati — lì l'ordine muore da solo.
+
+    **Verifica.** Nuovo `lib/maker/allowlist-piazzamento.test.js` **20/20**: lo scenario Ankara prima e
+    dopo sulla **stessa** funzione di gate (cambia solo quale lista riceve) · un mercato in nessuna delle
+    due liste resta rifiutato · Ankara **senza** posizione aperta torna rifiutato (l'unione aggiunge solo
+    dove il capitale è già esposto) · lista vuota, lista `null` e config assente rifiutano tutto · il pin
+    continua a valere da solo · l'eccezione di riduzione non è stata sfiorata. Suite: **160 eseguiti, 153
+    verdi**; i rossi sono i 6 preesistenti **più `guardian-perdite`**, che è rosso perché
+    `data/guardian-state.json` **esiste** dalle 21:46:38 (il guardiano è scattato davvero) e il test
+    legge il latch vero — non è una regressione, e il file non è stato toccato perché cancellarlo
+    riarmerebbe il guardiano. `npm run build` verde, `BUILD_ID` `2FhmblFNKbey1q_NzWTjP`. Commit `ddd3401`.
+
+    **Riavviati** su autorizzazione: `agent40-manual-reprice` (69 → **70**), `agent41-realloc-scheduler`
+    (49 → **50**), `dashboard` (174 → **175**, `prerender-manifest.json` verificato prima, root 200).
+    Tutti e tre raggiungono l'adapter via `manual-order`.
+
+70. **IL GUARDIANO DELLE PERDITE È SCATTATO — 9 agosto 2026, 21:46:38 UTC. PRIMO SCATTO REALE.**
+
+    `agent43-guardian` ha messo il bot su **FERMA** e cancellato gli ordini a riposo:
+
+    > `perdita oltre soglia: superate: percentuale (-6,051312% ≤ -5%) e assoluta (-39,972693 USD ≤ -30 USD)`
+
+    Ha superato **entrambe** le soglie, non una. `data/maker-bot-enabled.json` porta `enabled:false`,
+    `by:"agent43-guardian"`. È la ragione per cui gli ordini a riposo sono andati a zero — **non un
+    difetto di piazzamento**. Non c'è riarmo automatico: si riparte cancellando
+    `data/guardian-state.json` a mano, ed è una decisione dell'operatore.
+
+    **E il KILL è stato attivato a mano alle 22:20:09 UTC** (`by: "operator · liquidity-rewards tab"`).
+    **Zero righe in `execution-audit.jsonl` dopo quell'istante** — nessun ordine è partito.
+
+    **Il kill è verificato su OGNI percorso di piazzamento**, e i controlli stanno tutti **prima** del
+    lavoro: `manual-order.js:585` (l'imbuto obbligatorio di ogni ordine) · `auto-close.js:934-935` (prima
+    del giro sui mercati) · `auto-reprice.js:1014-1015` (prima del loop di riga 1054, quindi copre anche
+    il controllo della gamba orfana) · nell'adapter il kill è il **primo** dei gate di sicurezza.
+    `percorsi-di-invio.test.js` **18/18** asserisce che **nessun** percorso sfugga all'imbuto,
+    `maker-kill-selfcheck` **25/25**, `kill-blocca-avvia` **13/13**.
+
+    **Le modifiche di oggi non hanno introdotto nessun percorso di piazzamento nuovo.** Il Lavoro B è un
+    modulo puro senza rete; la gamba orfana **cancella** (azione sempre consentita, è ciò che il
+    guardiano deve poter fare) e delega il riposizionamento ad `auto-close`, che ha il proprio gate del
+    kill; il fix dell'adapter ha cambiato **quale lista** viene letta, non l'ordine dei gate.
 
 ---
 
