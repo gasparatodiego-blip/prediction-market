@@ -878,15 +878,25 @@ async function miniCiclo(decisione, deps = {}) {
   const utilPrima = UTIL.misuraUtilizzo({
     saldoUsd: decisione.saldoUsd, ordiniARiposoUsd: +aRiposo.toFixed(4), posizioniUsd: valorePos,
   });
-  // Il capitale TOTALE per il tetto di concentrazione: se le posizioni non si leggono si usa
-  // liquido + ordini, che e' la stima piu' BASSA possibile — quindi il tetto per mercato piu' stretto.
-  // Sbagliare in difetto qui vuol dire piazzare meno, che e' il verso sicuro.
-  const capitaleTotale = utilPrima.leggibile ? utilPrima.capitaleTotaleUsd : decisione.saldoUsd + aRiposo;
+  // Il capitale TOTALE per il tetto di concentrazione. Se le posizioni non si leggono si usa il solo
+  // liquido — NON `liquido + ordini`, che era la stima gonfiata del doppio conteggio: un BUY a riposo e'
+  // gia' coperto da quel liquido. Il ripiego e' quindi la stima piu' BASSA possibile, quindi il tetto
+  // per mercato piu' stretto, e sbagliare in difetto qui vuol dire piazzare meno: il verso sicuro.
+  const capitaleTotale = utilPrima.leggibile ? utilPrima.capitaleTotaleUsd : decisione.saldoUsd;
   const capMercato = capPerMarketUsd(capitaleTotale);
-  // Quanto si PUNTA a impegnare in questo giro: il deficit rispetto al 90%, mai piu' del liquido.
-  // Non e' un permesso — non alza nessun tetto — e se la misura non e' leggibile si usa il liquido,
-  // cioe' il comportamento di prima.
-  const obiettivoUsd = utilPrima.leggibile ? Math.min(decisione.saldoUsd, utilPrima.deficitUsd) : decisione.saldoUsd;
+  // ── QUANTO SI PUNTA A IMPEGNARE IN QUESTO GIRO ──────────────────────────────────────────────────
+  // Il deficit rispetto al 90%, mai piu' del LIBERO VERO. Fino al 9 agosto 2026 qui c'era
+  // `decisione.saldoUsd`, cioe' il saldo PIENO: ma una parte di quel saldo copre gia' gli ordini BUY a
+  // riposo (su questo venue il collaterale resta nel wallet fino al match), quindi il trigger poteva
+  // puntare a impegnare capitale gia' promesso altrove. Misurato il 9 agosto: saldo $633,90 contro un
+  // libero vero di $526,44 — $107,46 contati due volte. Ora si usa `utilPrima.liberoUsd`, che quel
+  // nozionale lo ha gia' sottratto.
+  const obiettivoUsd = utilPrima.leggibile ? Math.min(utilPrima.liberoUsd, utilPrima.deficitUsd) : decisione.saldoUsd;
+  // ── QUANTO SI PUO' DAVVERO SPENDERE ────────────────────────────────────────────────────────────
+  // Stesso difetto, secondo punto: `pianificaGiro` riceveva il saldo PIENO come disponibile, quindi
+  // poteva allocare capitale gia' impegnato in ordini a riposo. Il libero vero lo ha gia' sottratto.
+  // Ripiego sul saldo grezzo solo se la misura non e' leggibile, che e' il comportamento di prima.
+  const spendibileUsd = utilPrima.leggibile ? utilPrima.liberoUsd : decisione.saldoUsd;
 
   // 4 · LE RIGHE FRA CUI SCEGLIERE. Prima l'ultimo piano se e' fresco (costa una lettura di file), e
   //     solo se quello non produce niente si RICALCOLA. E' l'ordine giusto: il caso comune — un piano
@@ -921,7 +931,7 @@ async function miniCiclo(decisione, deps = {}) {
   let fonte = null;
   if (pianoFresco) {
     righeCandidate = piano.righe;
-    giro = TRIG.pianificaGiro({ ...comuni, righe: righeCandidate, disponibileUsd: decisione.saldoUsd });
+    giro = TRIG.pianificaGiro({ ...comuni, righe: righeCandidate, disponibileUsd: spendibileUsd });
     fonte = `piano salvato (${Math.round(etaPianoMs / 60000)} min)`;
   }
 
@@ -951,7 +961,7 @@ async function miniCiclo(decisione, deps = {}) {
           + ' il capitale resta liquido perche' + ' non c\'e\' dove metterlo, non perche\' non si e\' guardato' };
     }
     righeCandidate = righeFresche;
-    giro = TRIG.pianificaGiro({ ...comuni, righe: righeFresche, disponibileUsd: decisione.saldoUsd });
+    giro = TRIG.pianificaGiro({ ...comuni, righe: righeFresche, disponibileUsd: spendibileUsd });
     fonte = `ricalcolo leggero (${FINESTRA_LEGGERA_ORE}h, ${Date.now() - tRic}ms)`;
   }
 
@@ -1132,7 +1142,7 @@ async function miniCiclo(decisione, deps = {}) {
     if (esclusi.size === primaN) break;                // niente di nuovo da escludere: si smette
     const restanti = (righeCandidate || []).filter((r) => !esclusi.has(normId(r.marketId)));
     if (!restanti.length) { motivoPassate = `tutti i mercati del piano sono stati provati (${esclusi.size} esclusi)`; break; }
-    const g2 = TRIG.pianificaGiro({ ...comuni, righe: restanti, disponibileUsd: decisione.saldoUsd });
+    const g2 = TRIG.pianificaGiro({ ...comuni, righe: restanti, disponibileUsd: spendibileUsd });
     if (!g2.scelte.length) { motivoPassate = `nessun altro mercato del piano ha spazio (${g2.motivoStop})`; break; }
     const r2 = [];
     const m2 = [];

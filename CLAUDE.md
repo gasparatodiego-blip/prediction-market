@@ -2574,6 +2574,64 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     **Come riconoscerli:** un `conditionId` vero è `0x` + **64** esadecimali. Qualunque chiave più corta
     in questi file è un residuo di test.
 
+58. **🔴 IL CAPITALE ERA CONTATO DUE VOLTE — BUG DI SICUREZZA OPERATIVA, non estetico. Corretto in
+    `main` il 9 agosto 2026, ~10:00 UTC. ASPETTA IL RIAVVIO di agent40 e agent41.**
+
+    `misuraUtilizzo` sommava tre fonti come indipendenti — `saldo + ordiniARiposo + posizioni` — ma non
+    lo sono e non lo sono mai:
+
+    - un **BUY** a riposo è coperto dal **cash**. Su Polymarket l'ordine è firmato off-chain e il
+      collaterale **resta nel wallet fino al match**: il saldo pUSD **non scende** quando lo si mette.
+    - un **SELL** a riposo è coperto dai **token**, cioè dalla posizione: già dentro `posizioniUsd`.
+
+    `ordiniARiposoUsd` è quindi un **sottoinsieme** di `saldo + posizioni`, mai un addendo.
+
+    **Misurato con lettura on-chain del funder il 9 agosto 2026:**
+
+    ```
+    cash $633,90 + posizioni $35,19 = $669,09   ← esattamente il Portfolio dell'app Polymarket
+    il sistema dichiarava            $776,65    ← +$107,46, cioè +16,1%
+    ```
+
+    **PERCHÉ NON ERA ESTETICO — due conseguenze operative.**
+    1. `liberoUsd` riportava il **saldo pieno** come impegnabile, mentre $107,46 erano già promessi a
+       ordini sul libro. Il trigger a capitale fermo decide **su quel numero** quanto piazzare
+       (`obiettivoUsd`, `disponibileUsd`): poteva puntare a impegnare capitale già impegnato altrove.
+    2. Il tetto di concentrazione è il **20% del totale**: gonfiare il totale **allarga un limite di
+       rischio**. Il 9 agosto valeva **$155,33** invece di **$133,82** — il 16% più permissivo del
+       dichiarato, sullo stesso vincolo che `concentration.js` esiste per non far divergere.
+
+    **Il fix.**
+    - `utilizzo-capitale.js`: `totale = saldo + posizioni`; `libero = max(0, saldo − ordiniARiposo)`;
+      `impegnato = totale − libero`, **derivato** e non sommato a parte, così le due misure non possono
+      divergere. `saldoUsd` e `ordiniARiposoUsd` restano esposti accanto: «quanto ho in cassa» e «quanto
+      posso impegnare» sono due domande diverse, e confonderle **era** il difetto.
+    - **Deliberatamente conservativo:** si sottrae l'intero nozionale a riposo dal cash anche se la parte
+      SELL è coperta dai token. Senza la scomposizione per lato non si possono separare, e sbagliare in
+      difetto qui vuol dire piazzare **meno** — il verso sicuro.
+    - `agent41`: `obiettivoUsd` e `disponibileUsd` (in **tutti e tre** i punti di pianificazione) usano
+      ora `liberoUsd`, non il saldo grezzo. Il ripiego per il capitale totale non somma più gli ordini.
+    - `trigger-capitale-fermo.js`: **corretto il commento falso** che aveva originato tutto («un ordine
+      BUY a riposo immobilizza il collaterale: quei dollari non sono nel saldo»). È marcato come
+      affermazione smentita, non cancellato, perché è la radice dell'errore.
+
+    **L'utilizzo vero è PIÙ ALTO di quello che si leggeva** — il denominatore era gonfiato più del
+    numeratore: 21,3% invece di 18,4% sui numeri del 9 agosto.
+
+    **I tetti si riscrivono da soli.** Quelli scritti stamattina portano `capital: 776,65`; il salto al
+    valore vero (~$669) è **−13,8%**, oltre la soglia del 5% di `decidiTetti`, quindi il primo mini-ciclo
+    dopo il riavvio li rifà. Nessuna forzatura necessaria.
+
+    **Due test preesistenti sono stati corretti, non silenziati:** `capitale-al-lavoro` e
+    `apertura-guidata-dal-target` avevano fixture con `ordiniARiposo > saldo`, uno stato **impossibile**
+    per la parte BUY. Il cash è stato alzato del nozionale a riposo, così totale, impegnato e percentuali
+    restano identici e il punto dei test non cambia.
+
+    **Verifica.** Nuovo `lib/maker/capitale-senza-doppio-conteggio.test.js` **31/31**. Suite: **154
+    eseguiti, 148 verdi**, i 6 rossi sono i preesistenti del punto 40. `npm run build` verde.
+
+    **Riavvio: NON eseguito** — `pm2 restart agent40-manual-reprice agent41-realloc-scheduler`.
+
 ---
 
 ## 6 · COME L'UTENTE VUOLE ESSERE SERVITO
