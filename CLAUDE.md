@@ -3,7 +3,17 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt**: non serve più reincollarlo ogni volta.
 
-Ultima verifica contro codice/stato reali: **9 agosto 2026**, ~02:40 UTC.
+Ultima verifica contro codice/stato reali: **9 agosto 2026**, ~07:10 UTC.
+
+> ## ✍️ IL MERGE ON-CHAIN NON HA MAI FIRMATO: MANCAVA IL FIRMATARIO — CORRETTO, §5 punto 52
+> `CTF_RELAYER_ENABLED` è `true` **e vive nel processo dal riavvio delle 05:06** (agent40 restart 60):
+> l'interruttore non è mai stato il problema, e il punto 49 che diceva il contrario è stato corretto.
+> Il problema era che `auto-close.js` chiamava `mergePosition(id, size, { negRisk })` **senza `deps`**,
+> quindi `ctf-relayer` moriva alla firma con `deps.signerProvider is not a function`. Misurato su Dallas
+> (`cid_a7245f90…`): **21 tentativi in 21 minuti**, 21 righe `fase:'intento'` e **zero** righe
+> `fase:'esito'`, con il nonce letto dal relayer ogni volta. Ora si passa il firmatario di
+> `live-providers` — **lo stesso wallet** della corsia manuale, verificato on-chain.
+> **Aspetta il riavvio: `pm2 restart agent40-manual-reprice`.**
 
 > ## 🚦 IL TETTO GIORNALIERO DI APERTURE È STATO RIMOSSO — 9 agosto 2026, §5 punto 43
 > La **rampa** (5 mercati nuovi ogni 24h dall'AVVIA) non esiste più. Al suo posto un vincolo **continuo**
@@ -2185,7 +2195,18 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     merge ha un chiamante**. Lo split resta esportato e mai invocato, ed è lo stato giusto.)*
 
 49. **`CTF_RELAYER_ENABLED = true` — ACCESO il 9 agosto 2026, ~04:30 UTC, su istruzione esplicita di
-    Diego in chat. IN `main`. NON ANCORA NEI PROCESSI: serve un riavvio di agent40 CHE NON HO FATTO.**
+    Diego in chat. IN `main` E NEI PROCESSI.**
+
+    > **CORREZIONE del 9 agosto, ~07:10 UTC.** Questo punto diceva «NON ANCORA NEI PROCESSI: serve un
+    > riavvio di agent40 CHE NON HO FATTO» e citava «agent40 restart **58**, avviato alle ~04:22». Era
+    > vero quando è stato scritto e non lo è più: **agent40 è stato riavviato alle 05:06:13 UTC** (restart
+    > **60**), cioè *dopo* il commit `d8b8303` delle 04:30. Il flag è compilato dentro il processo vivo, e
+    > l'audit lo conferma dall'esterno (`observed.eseguito: true` su ogni riga `merge-livello-*`).
+    >
+    > **E la prima coppia completa È arrivata** — Dallas 98-99°F, 36,3 share — contraddicendo il «cosa
+    > succederebbe adesso: niente» più sotto. Non è stata fusa lo stesso, per una ragione diversa da tutte
+    > quelle elencate in questo punto: **il firmatario non era cablato**. Vedi **§5 punto 52**. Il resto di
+    > questo punto — cosa accende il flag, il confine, le credenziali, i test — resta valido.
 
     **Cosa accende, esattamente.** Solo il **merge on-chain di una coppia già completa**. Il flag governa
     tre funzioni ma **una sola ha un chiamante**: `auto-close.fondiCoppia` → `mergePosition`, raggiunta
@@ -2279,6 +2300,84 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     preesistenti del punto 40. `npm run build` verde.
 
     **Riavvio: NON eseguito** (§2 regola 2) — `pm2 restart agent40-manual-reprice`.
+
+52. **IL MERGE ON-CHAIN NON HA MAI FIRMATO: `deps.signerProvider` NON ERA CABLATO — CORRETTO in `main`
+    il 9 agosto 2026, ~07:05 UTC. ASPETTA IL RIAVVIO DI agent40.**
+
+    **La causa, in una riga.** `auto-close.js:326-327` costruiva la chiamata al relayer così:
+
+    ```js
+    ((a) => require('./ctf-relayer').mergePosition(a.marketId, a.size, { negRisk: a.negRisk }))
+    ```
+
+    Nessun `deps`. `mergePosition` inoltra `opzioni.deps || {}` (`ctf-relayer.js:473`), quindi `esegui`
+    arrivava a `await deps.signerProvider()` (`ctf-relayer.js:411`) con un **oggetto vuoto** e sollevava
+    `TypeError: deps.signerProvider is not a function`.
+
+    **Misurato, non dedotto.** Sul mercato Dallas 98-99°F (`cid_a7245f90…`, coppia completa per 36,3
+    share) fra le **06:11:05 e le 06:32:00 UTC**: **21 tentativi**, uno ogni ~65 secondi, tutti falliti
+    con quel messaggio. La forma dell'incidente nel giornale è la cosa da riconoscere:
+
+    | riga | quante |
+    |---|---|
+    | `fase:'intento'` (canale `ctf-relayer`) | una per tentativo |
+    | `fase:'esito'` | **zero** |
+    | `merge-livello-1` con `azione:'merge'`, `eseguito:true` | una per tentativo |
+
+    Il nonce **veniva letto davvero** dal relayer prima di ogni fallimento — quindi le credenziali erano
+    buone e l'interruttore era acceso. La decisione era giusta, il cablaggio no.
+
+    **PERCHÉ RIUSARE IL FIRMATARIO DELLA CORSIA MANUALE È SICURO** — verificato on-chain, sola lettura,
+    con `scripts/maker-wallet-preflight.ts`:
+
+    | | |
+    |---|---|
+    | SIGNER in custodia (`live-providers.makerSignerProvider`) | `0x7bd09f34…85d3` |
+    | `POLYMARKET_RELAYER_API_KEY_ADDRESS` in `.env` | `0x7bd09f34…85d3` ← **lo stesso** |
+    | PROXY/funder che tiene i token da fondere | `0x4C81F1…bdee` (owner: il signer) |
+
+    Stesso wallet, stesso scopo. Il proxy portava **pUSD 606,283753** e tutte le approvazioni CTF a
+    `PASS`. **Non è stato aggiunto un controllo di coerenza** in `auto-close`: ce n'è già uno in
+    `ctf-relayer.js:415-417`, che ricava l'indirizzo dalla chiave e rifiuta di firmare se non coincide
+    con quello delle credenziali. Un secondo controllo sarebbe una seconda verità da tenere allineata.
+
+    **Il fix.** Solo il wiring — `negRisk` e la costruzione della transazione non sono stati toccati:
+
+    ```js
+    ((a) => require('./ctf-relayer').mergePosition(a.marketId, a.size, {
+      negRisk: a.negRisk,
+      deps: { signerProvider: require('./live-providers').makerLiveProviders().signerProvider },
+    }))
+    ```
+
+    Si passa **solo** `signerProvider`: è l'unica dep che `esegui` chiede per firmare — le intestazioni
+    del relayer se le prende da `.env` con `credenziali()` — e `credsProvider` è della corsia ordini.
+    `require` **differito**, come quello del relayer: chi non fonde non carica nemmeno la custodia.
+
+    **File:** `lib/maker/auto-close.js:326-352` (solo il ramo di default di `fondiCoppia`).
+
+    **Verifica.** Nuovo `lib/maker/merge-firma-cablata.test.js` **42/42**, e prova che **senza** il fix
+    fallisce (7 rosse). Non è un test di forma: con `http` iniettato e le chiavi pubbliche di Hardhat
+    produce una **firma EIP-712 vera**, la rimanda a `ethers.verifyTypedData` e verifica che l'indirizzo
+    ricavato sia quello atteso — cioè che il relayer riceva un firmatario **funzionante**, non solo
+    presente. Copre anche: il rifiuto quando la chiave non corrisponde alle credenziali (e che in quel
+    caso **niente** viene inviato), che il cablaggio **non invoca** il firmatario (nessuna decifratura per
+    costruire la chiamata), e che quello passato è **identicamente** `live-providers.makerSignerProvider`
+    — non un secondo firmatario. Il giornale di produzione **non viene toccato**: il modulo di audit è
+    sostituito nella `require.cache`, il che permette anche di asserire le righe.
+
+    Suite: **150 eseguiti, 144 verdi**, i 6 rossi sono i preesistenti del punto 40. `npm run build` verde,
+    `BUILD_ID` nuovo alle 07:07.
+
+    **Riavvio: NON eseguito** (§2 regola 2) — `pm2 restart agent40-manual-reprice`. Da quel riavvio la
+    coppia Dallas viene fusa al primo giro utile: **36,3 share → $36,30 di collaterale liquido subito**,
+    a costo zero (il gas lo paga il relayer). Sarà la **prima operazione on-chain automatica** di questo
+    stack.
+
+    **RESTA APERTO, e non è coperto da questo fix.** Le size della coppia Dallas sono **diverse**: NO
+    39,7 contro YES 36,3. Il merge fonde il minimo e lascia **3,4 share di NO scoperte**; il Livello 2
+    vorrebbe comprare le 3,4 mancanti ma è **sotto il minimo del venue (20)**, quindi
+    `merge-saltato-rinuncia` a ogni giro. Quel residuo non si chiude da solo.
 
 ---
 
