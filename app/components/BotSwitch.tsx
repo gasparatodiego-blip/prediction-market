@@ -27,7 +27,7 @@ type Stato = {
   reason?: string | null;
   leggibile?: boolean;
   motivo?: string | null;
-  rampa?: { attiva?: boolean; residuo?: number; aperti?: number; motivo?: string; ore?: number; maxMercati?: number; oreRimaste?: number };
+  aperture?: { aperti?: number; motivo?: string; oreDallAvvio?: number; maxNuoviPerGiro?: number; targetUtilizzoPct?: number };
   kill?: { effectivelyKilled?: boolean | null; readable?: boolean };
   posizioni?: { leggibile?: boolean; n?: number | null; costoUsd?: number | null; at?: string | null };
   ciclo?: { letto?: boolean; at?: string | null; azione?: string | null; motivo?: string | null; soloPiano?: boolean; capitale?: number | null; capitaleImpegnatoUsd?: number | null; mercati?: Mercato[]; };
@@ -161,10 +161,12 @@ export default function BotSwitch() {
         )}
       </div>
 
-      {acceso && s?.rampa?.motivo && (
+      {acceso && s?.aperture?.motivo && (
         <div style={{ marginTop: 6, fontSize: 12.5, opacity: 0.9 }}>
-          Rampa: {s.rampa.motivo}
-          {s.rampa.attiva && typeof s.rampa.oreRimaste === 'number' && <> · finisce fra {s.rampa.oreRimaste.toFixed(1)}h</>}
+          Aperture: {s.aperture.motivo}
+          {typeof s.aperture.targetUtilizzoPct === 'number' && typeof s.aperture.maxNuoviPerGiro === 'number' && (
+            <> · si apre finché l’utilizzo sta sotto il {s.aperture.targetUtilizzoPct}%, max {s.aperture.maxNuoviPerGiro} mercati nuovi per giro</>
+          )}
         </div>
       )}
       {!acceso && s?.leggibile === false && (

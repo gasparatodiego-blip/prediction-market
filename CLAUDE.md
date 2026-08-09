@@ -3,7 +3,15 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt**: non serve più reincollarlo ogni volta.
 
-Ultima verifica contro codice/stato reali: **8 agosto 2026**, ~21:30 UTC.
+Ultima verifica contro codice/stato reali: **9 agosto 2026**, ~02:40 UTC.
+
+> ## 🚦 IL TETTO GIORNALIERO DI APERTURE È STATO RIMOSSO — 9 agosto 2026, §5 punto 43
+> La **rampa** (5 mercati nuovi ogni 24h dall'AVVIA) non esiste più. Al suo posto un vincolo **continuo**
+> guidato dall'obiettivo di utilizzo: si aprono mercati nuovi finché il capitale non è al lavoro, **mai
+> più di 6 per giro**. Diagnosi che l'ha motivato, misurata sui dati veri alle 02:31 del 9 agosto:
+> saldo **$644,39**, ordini a riposo **ZERO**, utilizzo **3,9%** contro l'obiettivo 90%, e il mini-ciclo
+> che ogni dieci minuti ricalcolava un piano valido per poi buttarlo via con «rampa esaurita» — e sarebbe
+> rimasto così fino alle 20:56. **Aspetta il riavvio di agent41 e del dashboard.**
 
 > ## 🔧 UN SECONDO RIAVVIO PENDENTE, E SERVE UNA NUOVA CONFERMA DI DIEGO IN CHAT
 > Il mini-ciclo sceglieva mercati che poi non poteva toccare: non faceva le tre scritture che il reset
@@ -619,8 +627,8 @@ mini-cicli, e fra uno e l'altro c'è il cooldown di dieci minuti — quasi un'or
 capitale già tutto disponibile al primo giro. Ora `scegliMercato` viene chiamata in sequenza su un libro
 mastro che si aggiorna: **nessuna seconda logica di selezione**, la stessa funzione con gli stessi
 cancelli, applicata più volte. Si ferma al primo fra: capitale sotto il minimo di un ordine sensato ·
-obiettivo di impegno raggiunto · **6 mercati per giro** (`TRIGGER_CAPITALE_MAX_MERCATI`) · **rampa
-esaurita** · nessuna riga più utilizzabile — e il motivo dello stop viaggia nel referto.
+obiettivo di impegno raggiunto · **6 mercati per giro** (`TRIGGER_CAPITALE_MAX_MERCATI`) · **posti per
+mercati NUOVI esauriti** · nessuna riga più utilizzabile — e il motivo dello stop viaggia nel referto.
 
 **AVVIA piazza in minuti, non in ore** (`sorvegliaAvvio` in agent41, 8 agosto 2026 sera — in `main`,
 **serve il riavvio di agent41**). Premere AVVIA non anticipava niente: il ciclo fisso conta dalle sei ore
@@ -764,8 +772,8 @@ ritorno). La decisione «racconta / fa» è passata interamente ad AVVIA/FERMA.
 **STATO OPERATIVO ALL'8 AGOSTO 2026, 12:07:55 UTC: IL BOT È SU AVVIA.** L'operatore ha premuto il
 bottone dalla tab «Mercati ottimizzati»: `data/maker-bot-enabled.json` esiste e dice `enabled:true`,
 `by:"operatore · tab Mercati"`, `reason:"AVVIA dalla dashboard"`. **Da questo momento il prossimo ciclo
-di agent41 piazza ordini VERI** — non è più un'anteprima. La rampa è a `0/5 mercati aperti nelle prime
-24h` (scade alle 12:07:55Z del 9 agosto).
+di agent41 piazza ordini VERI** — non è più un'anteprima. *(All'epoca la rampa era a `0/5 mercati aperti
+nelle prime 24h`: quel tetto è stato rimosso il 9 agosto 2026 — §5 punto 43.)*
 
 **Ma alle 12:45 UTC non era ancora stato piazzato niente, e la ragione è strutturale.** L'ultimo ciclo
 completo è delle `2026-08-08T10:16:26Z` — *prima* dell'AVVIA e prima che agent41 ripartisse (11:24) col
@@ -1871,6 +1879,76 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     ```
     Finché non riparte, il loop continua: fallisce **chiuso**, nessun capitale a rischio, ma i $608
     restano fermi.
+
+43. **IL TETTO GIORNALIERO DI APERTURE È STATO RIMOSSO — 9 agosto 2026, ~02:40 UTC. ASPETTA IL RIAVVIO
+    DI agent41 E DEL DASHBOARD, DA CONFERMARE DA DIEGO IN CHAT.**
+
+    **La diagnosi, misurata sui dati vivi e non dedotta.** Alle 02:31 del 9 agosto: bot su AVVIA, kill
+    spento, saldo **$644,39**, **zero** ordini a riposo (`listOpenOrders → count: 0`), due sole posizioni
+    per $26,09 ⇒ utilizzo **3,9%** contro l'obiettivo del 90%, deficit **$577,34**. Il mini-ciclo girava
+    regolarmente ogni dieci minuti, **ricalcolava davvero** il piano leggero (11,9 s, 12 righe) e poi lo
+    buttava via: `mini-ciclo: nessuna azione — rampa esaurita: 0x0320a702… sarebbe un mercato NUOVO`.
+    I cinque posti erano stati consumati fra le 22:43 e le 23:15 dell'8 (trentadue minuti), e sarebbero
+    tornati disponibili solo alle **20:56:04Z del 9**. Diciotto ore di capitale fermo con mercati validi
+    sul tavolo, senza che nessun processo fosse rotto.
+
+    **Il difetto non era il numero, era la FORMA.** Un contatore giornaliero misura il tempo passato
+    dall'AVVIA, che non è una proprietà del rischio; e conta le **aperture** invece del **capitale
+    esposto**. I due numeri divergono esattamente nel caso che interessa — mercati aperti e richiusi in
+    fretta — quindi il tetto restava chiuso proprio quando il capitale tornava tutto libero. Sul percorso
+    del reset era anche incoerente: il ciclo da 6h cancella e ripiazza, quindi ogni riga si ripresenta
+    come «nuova» a ogni giro.
+
+    **Cosa c'è adesso: un vincolo CONTINUO, senza memoria e senza calendario.**
+    `utilizzo-capitale.aperturaNuoviMercati({ utilizzo })` — si aprono mercati nuovi finché l'utilizzo sta
+    sotto l'obiettivo, **mai più di `MAX_NUOVI_PER_GIRO = 6` per giro** (`MAKER_MAX_NUOVI_PER_GIRO`; un
+    valore assurdo viene scartato in favore del difetto, come per fine scala e orizzonte). Si chiude da sé
+    quando il capitale è al lavoro e **si riapre da sé nello stesso istante** in cui torna libero.
+    - **Perché un tetto per giro e non zero limiti** (era una scelta lasciata a me): i due limiti
+      rispondono a domande diverse — il target dice *quanto* capitale impegnare, il tetto per giro dice
+      *quanto in fretta*. Senza il secondo, un solo giro potrebbe aprire tutte le righe del piano insieme:
+      non violerebbe nessuna regola di rischio, ma trasformerebbe un errore di piano (un board vecchio,
+      una stima gonfia) in un errore su tutto il conto **prima che qualcuno abbia un giro per accorgersene**.
+    - **Nel regime stazionario è PIÙ STRETTO di prima**, e vale la pena dirlo: la rampa dava `Infinity`
+      — nessun limite di alcun tipo — passate le 24h dall'AVVIA. La regola nuova non restituisce mai
+      `Infinity`, dal primo minuto e per sempre.
+    - **Utilizzo non misurabile ⇒ NON blocca**, resta il solo tetto per giro, e lo dichiara. È l'unico
+      punto in cui non si fallisce nella direzione stretta, ed è deliberato: il cancello del capitale sta
+      già a monte (senza saldo letto il mini-ciclo non arriva fin qui), e un secondo blocco su un dato
+      mancante riprodurrebbe esattamente la paralisi che questa modifica esiste per togliere.
+    - **Il registro resta, il cancello no.** `mercatiDallAvvio` e `registraMercatoAperto` sopravvivono
+      come **memoria** di cosa ha aperto il bot dall'accensione (utile a leggere l'audit), con la
+      rilettura-prima-di-scrivere che protegge un FERMA premuto nel frattempo. `rampa()`, `RAMPA_ORE` e
+      `RAMPA_MAX_MERCATI` **non esistono più**; al loro posto `apertureDallAvvio()`, che non pubblica
+      nessun `residuo` né `attiva` — non c'è niente che un chiamante possa scambiare per una quota.
+    - **Sul ciclo da 6h la rampa è stata tolta e basta**: lì la protezione vera è `MAX_POSIZIONI = 10`,
+      che vincola l'esposizione e non l'anzianità della sessione, ed è rimasta intatta.
+
+    **Nessun'altra protezione è stata toccata, ed è verificato per nome** (sezione 4 del test nuovo, con
+    il tetto sui mercati nuovi spalancato a 999): tetto di concentrazione del 20% per mercato · minimo di
+    $34 per un ordine sensato · tetto di mercati per giro · l'obiettivo di impegno come *freno* · righe
+    con gambe non costruibili saltate · bot fermo / kill / ciclo in corso che continuano a non far
+    scattare il trigger · la misura dell'utilizzo che non è diventata più permissiva. Restano ovviamente
+    intatte, perché stanno tutte a valle e non sono state sfiorate, le regole per-ordine: mai primo sul
+    libro, banda premiante, gate anti-duplicato, fine scala, soglia di perdita del guardiano.
+
+    **Verifica.** Nuovo `lib/maker/apertura-guidata-dal-target.test.js` (**43/43**), che riproduce la
+    scena del 9 agosto con i numeri veri: registro a 5 mercati aperti + capitale fermo ⇒ il giro **sceglie**
+    invece di fermarsi, e con l'obiettivo già raggiunto **non apre** nulla di nuovo citando l'utilizzo e
+    non un calendario. `bot-enabled.test.js` riscritto (36/36): la sezione «rampa» è diventata «registro»
+    e asserisce che 8 aperture vengano registrate **senza limitare**. `capitale-al-lavoro.test.js` 71/71,
+    `trigger-capitale-fermo.test.js` 59/59, `miniciclo-prende-il-mercato.test.js` 36/36. Suite completa:
+    **144 eseguiti, 138 verdi**, e i 6 rossi sono esattamente i preesistenti del punto 40 — zero nuovi.
+    `npm run build` verde. La simulazione (`scripts/simula-capitale-al-lavoro.js`) ora esegue la regola
+    **vera** invece di sostituirla e resta a 0% → 90%.
+
+    **Riavvio: NON eseguito, serve conferma esplicita di Diego in chat** (§2 regola 2).
+    ```bash
+    pm2 restart agent41-realloc-scheduler     # la regola nuova nel mini-ciclo e nel ciclo da 6h
+    pm2 restart dashboard                     # /api/maker/bot pubblica `aperture` al posto di `rampa`
+                                              # (verificare PRIMA .next/prerender-manifest.json — §5 punto 7)
+    ```
+    Il riavvio di agent41 porta con sé anche il punto 42 (idempotenza), che era già pendente.
 
 ---
 

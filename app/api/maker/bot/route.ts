@@ -11,7 +11,8 @@ import { NextResponse } from 'next/server';
 // invariato e assoluto. Sono due bottoni perché sono due intenzioni diverse.
 import fs from 'fs';
 import path from 'path';
-import { statoBot, impostaBot, rampa, RAMPA_ORE, RAMPA_MAX_MERCATI } from '@/lib/maker/bot-enabled';
+import { statoBot, impostaBot, apertureDallAvvio } from '@/lib/maker/bot-enabled';
+import { MAX_NUOVI_PER_GIRO, TARGET_UTILIZZO } from '@/lib/maker/utilizzo-capitale';
 import { killStatus, checkKill } from '@/lib/safety/kill-switch';
 import { DATA_DIR } from '@/lib/safety/store';
 
@@ -84,7 +85,7 @@ function posizioniAperte() {
 
 function istantanea() {
   const s = statoBot({});
-  const r = rampa({});
+  const r = apertureDallAvvio({});
   let kill: { effectivelyKilled: boolean | null; readable: boolean } = { effectivelyKilled: null, readable: false };
   try {
     const k = killStatus() as { effectivelyKilled?: boolean; readable?: boolean };
@@ -94,7 +95,10 @@ function istantanea() {
     enabled: s.enabled,
     at: s.at, atIso: s.atIso, by: s.by, reason: s.reason,
     leggibile: s.leggibile, motivo: s.motivo,
-    rampa: { ...r, ore: RAMPA_ORE, maxMercati: RAMPA_MAX_MERCATI },
+    // Il tetto giornaliero («rampa», 5 mercati / 24h) è stato rimosso il 9 agosto 2026: qui viaggia il
+    // REGISTRO di cosa è stato aperto, più i due numeri della regola che l'ha sostituita — l'obiettivo
+    // di utilizzo e il tetto di velocità per giro. Il pannello mostra una constatazione, non un timer.
+    aperture: { ...r, maxNuoviPerGiro: MAX_NUOVI_PER_GIRO, targetUtilizzoPct: +(TARGET_UTILIZZO * 100).toFixed(0) },
     kill,
     posizioni: posizioniAperte(),
     ciclo: ultimoCiclo(),
@@ -105,7 +109,7 @@ function istantanea() {
 // l'ultima volta, e uno spread lo sovrascriveva silenziosamente con l'ora della risposta — o meglio, il
 // contrario: il campo dichiarato ISO finiva rimpiazzato dall'epoch numerico del flag. Due significati
 // diversi non possono condividere un nome in un oggetto che si spalma.
-/** GET /api/maker/bot — stato dell'interruttore, della rampa e del kill. Sola lettura. */
+/** GET /api/maker/bot — stato dell'interruttore, del registro aperture e del kill. Sola lettura. */
 export async function GET() {
   try {
     return NextResponse.json({ ok: true, serverAt: new Date().toISOString(), ...istantanea() });

@@ -4,7 +4,7 @@
 // default: `reason = null` diventerebbe il TIPO `null`, e passare un motivo — che è tutto il punto di
 // avere un registro di chi ha premuto cosa e perché — sarebbe un errore di compilazione.
 
-/** Un mercato aperto dal bot dall'ultimo AVVIA, per il conteggio della rampa. */
+/** Un mercato aperto dal bot dall'ultimo AVVIA. Registro, non quota: non limita più niente. */
 export interface MercatoDallAvvio {
   marketId: string;
   at: number;
@@ -27,14 +27,18 @@ export interface StatoBot {
   motivo: string | null;
 }
 
-export interface Rampa {
-  /** true finché la finestra delle prime ore dall'AVVIA è aperta e sta ancora limitando. */
-  attiva: boolean;
-  /** Mercati NUOVI ancora concessi. `Infinity` quando la rampa è conclusa e non limita più. */
-  residuo: number;
+/**
+ * Il registro delle aperture dall'ultimo AVVIA. **Osservazione pura**: dal 9 agosto 2026 non esiste
+ * più un tetto giornaliero, e quante aperture nuove siano concesse adesso lo dice
+ * `utilizzo-capitale.aperturaNuoviMercati` guardando l'obiettivo di utilizzo del capitale.
+ */
+export interface ApertureDallAvvio {
+  /** Mercati DISTINTI aperti dal bot dall'ultimo AVVIA. */
   aperti: number;
-  scadenza?: number;
-  oreRimaste?: number;
+  mercati: string[];
+  dallAvvio: number | null;
+  dallAvvioIso: string | null;
+  oreDallAvvio: number | null;
   motivo: string;
 }
 
@@ -60,7 +64,7 @@ export declare function statoBot(args?: { file?: string }): StatoBot;
 /** Il bot può aprire posizioni nuove adesso? */
 export declare function botAttivo(args?: { file?: string }): boolean;
 
-/** Commuta l'interruttore. Accendere azzera il conteggio della rampa. */
+/** Commuta l'interruttore. Accendere azzera il registro delle aperture. */
 export declare function impostaBot(args: {
   enabled: boolean;
   by?: string;
@@ -69,9 +73,9 @@ export declare function impostaBot(args: {
   now?: number;
 }): EsitoImposta;
 
-export declare function rampa(args?: { file?: string; now?: number }): Rampa;
+export declare function apertureDallAvvio(args?: { file?: string; now?: number }): ApertureDallAvvio;
 
-/** Idempotente sul marketId: due gambe sullo stesso mercato non consumano due posti. */
+/** Idempotente sul marketId: due gambe sullo stesso mercato sono un mercato solo. */
 export declare function registraMercatoAperto(args: {
   marketId: string;
   file?: string;
@@ -79,5 +83,3 @@ export declare function registraMercatoAperto(args: {
 }): EsitoRegistra;
 
 export declare const FILE: string;
-export declare const RAMPA_ORE: number;
-export declare const RAMPA_MAX_MERCATI: number;

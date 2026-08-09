@@ -130,7 +130,7 @@ const TRIGGER_ATTIVO = process.env.TRIGGER_CAPITALE_FERMO !== '0';
 // Due interruttori per la stessa decisione sono peggio di quello sbagliato da solo, perché chi ne
 // spegne uno crede di aver spento la cosa. Se `bot-enabled` non è leggibile la risposta è FERMO — il
 // ripiego è già dentro quel modulo e non ha bisogno di una seconda variabile che lo duplichi.
-const { statoBot, botAttivo, rampa, registraMercatoAperto, FILE: FILE_INTERRUTTORE } = require('../lib/maker/bot-enabled');
+const { statoBot, botAttivo, apertureDallAvvio, registraMercatoAperto, FILE: FILE_INTERRUTTORE } = require('../lib/maker/bot-enabled');
 const DASHBOARD = (process.env.REALLOC_DASHBOARD_BASE || 'http://127.0.0.1:3000').replace(/\/+$/, '');
 const CLOB_BASE = process.env.POLY_CLOB_BASE || 'https://clob.polymarket.com';
 // Un ciclo non parte mai nel primo minuto di vita del processo: un riavvio in serie di pm2 non deve
@@ -445,48 +445,45 @@ function leggiUltimoPiano() {
 const MAX_POSIZIONI = 10;
 
 /**
- * Applica le due politiche di apertura alle righe del piano, PRIMA che diventino ordini.
+ * Applica la politica di apertura alle righe del piano, PRIMA che diventino ordini.
  *
- * Ordine deliberato: prima la rampa (che limita solo i mercati NUOVI), poi il tetto complessivo. Al
- * contrario un mercato gia' in gestione potrebbe essere tagliato dal tetto per far posto a uno nuovo
- * che la rampa avrebbe comunque fermato.
+ * ═══ QUI C'ERANO DUE POLITICHE, E UNA E' STATA TOLTA IL 9 AGOSTO 2026 ═══════════════════════════════
+ * La prima era la RAMPA — 5 mercati nuovi ogni 24h dall'AVVIA — e su QUESTO percorso era anche
+ * incoerente, non solo troppo stretta: il reset CANCELLA tutto e ripiazza, quindi ogni riga del piano
+ * si presenta come un mercato «nuovo» ogni sei ore, e un contatore che non si azzera mai avrebbe
+ * bloccato la riallocazione periodica dopo il primo giorno. Non e' mai successo solo perche' la rampa
+ * scadeva prima; la forma era sbagliata comunque.
+ *
+ * Resta il TETTO DI POSIZIONI, che e' la protezione vera di questo percorso e non e' un calendario: dice
+ * quante posizioni si tengono aperte contemporaneamente, cioe' vincola l'esposizione e non l'anzianita'
+ * della sessione. Quante aperture per giro le governa il target di utilizzo nel mini-ciclo
+ * (`utilizzo-capitale.aperturaNuoviMercati`), che e' il posto dove quella domanda ha una risposta.
  */
-function applicaPolitiche(rows, gestiti, now) {
+function applicaPolitiche(rows, gestiti) {
   const inGestione = new Set((gestiti || []).map((x) => String(x).trim().toLowerCase()));
-  const r = rampa({ now });
   const tenute = [];
   const scartate = [];
-  let nuoviAmmessi = r.attiva ? r.residuo : Infinity;
   for (const riga of rows || []) {
-    const id = String(riga.marketId || '').toLowerCase();
-    const nuovo = !inGestione.has(id);
-    if (nuovo && nuoviAmmessi <= 0) {
-      scartate.push({ marketId: riga.marketId, motivo: 'rampa', dettaglio: r.motivo });
-      continue;
-    }
     if (tenute.length >= MAX_POSIZIONI) {
       scartate.push({ marketId: riga.marketId, motivo: 'tetto-posizioni', dettaglio: `gia' ${MAX_POSIZIONI} posizioni nel piano` });
       continue;
     }
-    if (nuovo) nuoviAmmessi -= 1;
     tenute.push(riga);
   }
-  return { tenute, scartate, rampa: r, tetto: MAX_POSIZIONI };
+  return { tenute, scartate, tetto: MAX_POSIZIONI, gestiti: inGestione.size };
 }
 
 async function eseguiReset({ rows, dryRunOnly }) {
   const diag = diagnoseExposure({});
-  // LE POLITICHE DI APERTURA SI APPLICANO QUI, sulle righe che stanno per diventare ordini — non nel
-  // piano. Il piano deve continuare a dire cosa sarebbe meglio fare; il tetto e la rampa dicono quanto
-  // di quel meglio ci concediamo oggi, e la differenza fra i due va registrata invece che appianata.
+  // LA POLITICA DI APERTURA SI APPLICA QUI, sulle righe che stanno per diventare ordini — non nel
+  // piano. Il piano deve continuare a dire cosa sarebbe meglio fare; il tetto dice quanto di quel
+  // meglio ci concediamo oggi, e la differenza fra i due va registrata invece che appianata.
   const gestiti = (() => { try { return readAutoRepriceConfig({}).enabledMarketIds || []; } catch { return []; } })();
-  const pol = applicaPolitiche(rows, gestiti, Date.now());
+  const pol = applicaPolitiche(rows, gestiti);
   if (pol.scartate.length) {
-    scrivi({ tipo: 'politiche-apertura', tetto: pol.tetto, rampa: pol.rampa,
-      tenute: pol.tenute.length, scartate: pol.scartate });
+    scrivi({ tipo: 'politiche-apertura', tetto: pol.tetto, tenute: pol.tenute.length, scartate: pol.scartate });
     annuncia('log', `politiche di apertura: ${pol.tenute.length} righe tenute, ${pol.scartate.length} scartate`
-      + ` (${pol.scartate.filter((x) => x.motivo === 'rampa').length} dalla rampa, `
-      + `${pol.scartate.filter((x) => x.motivo === 'tetto-posizioni').length} dal tetto di ${pol.tetto})`);
+      + ` dal tetto di ${pol.tetto} posizioni`);
   }
   return runAllocationReset(
     { rows: pol.tenute, dryRunOnly },
@@ -562,13 +559,13 @@ async function giro(motivoAvvio) {
   // IL FLAG SI RILEGGE ADESSO, non all'avvio del processo: FERMA deve avere effetto dal giro
   // successivo, non dal prossimo riavvio.
   const bot = statoBot();
-  const r = rampa({ now: avvio });
+  const r = apertureDallAvvio({ now: avvio });
   // `dryRunOnly` resta il nome del parametro a valle (runReallocCycle non cambia): qui significa
   // «calcola tutto ma non toccare il venue». Con il bot fermo è esattamente quello che vogliamo, e il
   // ciclo continua a girare per intero — verifica, saldo, piano — così il pannello ha sempre da mostrare.
   const soloRacconto = !bot.enabled;
   scrivi({ at: new Date(avvio).toISOString(), tipo: 'ciclo-avvio', motivoAvvio, dryRun: soloRacconto,
-    botEnabled: bot.enabled, botBy: bot.by, botAt: bot.atIso, rampa: r,
+    botEnabled: bot.enabled, botBy: bot.by, botAt: bot.atIso, aperture: r,
     intervalloOre: INTERVAL_MS / 3_600_000, tettoFrazione: CONCENTRATION_CAP_FRAC });
   annuncia('log', `ciclo avviato (${motivoAvvio}) — bot ${bot.enabled ? 'AVVIATO' : 'FERMO'}`
     + (bot.enabled ? ` (${r.motivo})` : `: ${bot.motivo || 'nessun piazzamento, solo piano'}`));
@@ -746,7 +743,7 @@ async function miniCiclo(decisione, deps = {}) {
   const piazza = deps.piazza || piazzaCoppia;
   const ricalcola = deps.pianoLeggero || pianoLeggero;
   const posizioni = deps.leggiPosizioni || readVenuePositions;
-  const rampaOra = deps.rampa || rampa;
+  const quantiNuovi = deps.aperturaNuovi || UTIL.aperturaNuoviMercati;
   const registra = deps.registraMercatoAperto || registraMercatoAperto;
   // ── LE DUE SCRITTURE CHE TRASFORMANO UN MERCATO SCELTO IN UN MERCATO PIAZZABILE ─────────────────
   // Stessa forma della fase 3 del reset (`runAllocationReset`), stesso `by` distinguibile: chi legge
@@ -816,13 +813,18 @@ async function miniCiclo(decisione, deps = {}) {
     if (!g.rows) return { ok: false, motivo: 'nessuna riga costruita' };
     return { ok: true };
   };
-  const r = rampaOra();
+  // ── QUANTI MERCATI NUOVI PUO' APRIRE QUESTO GIRO ────────────────────────────────────────────────
+  // Fino al 9 agosto 2026 il numero veniva dalla RAMPA: 5 nuovi ogni 24h dall'AVVIA, e una volta finiti
+  // il giro si fermava anche a capitale interamente libero — misurato, per diciotto ore di fila. Adesso
+  // il numero viene dall'utilizzo appena misurato al passo 3: si apre finche' il capitale non e' al
+  // lavoro, mai piu' di sei per giro. Il vincolo non ha memoria, quindi si riapre da se' non appena il
+  // capitale torna libero — che e' esattamente il caso che la rampa gestiva al contrario.
+  const ap = quantiNuovi({ utilizzo: utilPrima });
   const comuni = {
     notionalePerMercato: perMercato, capPerMercatoUsd: capMercato, gambeCostruibili,
     obiettivoImpegnoUsd: obiettivoUsd,
-    // La RAMPA e' una protezione esistente e vince sul target di utilizzo (Requisito 1.3): se non
-    // restano mercati nuovi da aprire nelle prime ore dall'AVVIA, il giro si ferma e lo dichiara.
-    nuoviAmmessi: r && r.attiva ? r.residuo : Infinity,
+    nuoviAmmessi: ap.ammessi,
+    motivoNuoviEsauriti: ap.motivo,
     mercatiGiaAperti: Object.keys(perMercato),
   };
 
@@ -934,15 +936,14 @@ async function miniCiclo(decisione, deps = {}) {
   const diag = deps.diag !== undefined ? deps.diag : diagnoseExposure({});
   const esito = await piazza(righeOrdine, diag);
 
-  // 7 · LA RAMPA CONTA DAVVERO. `registraMercatoAperto` era esportata e non la chiamava nessuno, quindi
-  //     il tetto delle prime ore non si chiudeva mai (CLAUDE.md §5 punto 22). Adesso che questo giro
-  //     puo' aprire piu' mercati in una volta, contarli non e' un dettaglio: e' la differenza fra una
-  //     rampa e una decorazione. Si registra solo dopo un piazzamento riuscito.
+  // 7 · IL REGISTRO DELLE APERTURE. Dal 9 agosto 2026 non limita piu' niente — il tetto giornaliero e'
+  //     stato tolto — ma resta la memoria di cosa ha aperto il bot da quando e' stato acceso, ed e'
+  //     l'unica traccia che sopravvive a un riavvio. Si registra solo dopo un piazzamento riuscito.
   const registrati = [];
   if (esito && esito.placed > 0) {
     for (const m of mercati) {
       try { const rr = registra({ marketId: m.marketId }); if (rr && rr.ok && !rr.giaPresente) registrati.push(m.marketId); }
-      catch { /* il conteggio della rampa non deve poter far fallire un ordine gia' mandato */ }
+      catch { /* il registro non deve poter far fallire un ordine gia' mandato */ }
     }
   }
 
@@ -975,7 +976,7 @@ async function miniCiclo(decisione, deps = {}) {
     ...referto, esito: 'allocato', fonte,
     mercati, marketId: mercati[0] && mercati[0].marketId, titolo: mercati[0] && mercati[0].titolo,
     allocatoUsd: impegnatoOra, residuoUsd: giro.residuoUsd, motivoStop: giro.motivoStop,
-    rampaRegistrati: registrati,
+    apertureRegistrate: registrati, aperturaNuovi: ap,
     utilizzo: utilPrima, utilizzoStimatoDopo: utilDopo,
     capitaleTotale: +capitaleTotale.toFixed(2), aRiposoUsd: +aRiposo.toFixed(2),
     piazzati: esito && esito.placed, rifiutati: esito && esito.refused,

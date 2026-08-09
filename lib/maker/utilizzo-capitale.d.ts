@@ -37,3 +37,24 @@ export function valorePosizioni(posizioni: unknown): number | null;
 export function leggiTarget(env?: Record<string, string | undefined>): number;
 
 export const TARGET_UTILIZZO: number;
+
+/**
+ * Quanti mercati NUOVI un giro può aprire adesso. Ha sostituito il 9 agosto 2026 il tetto giornaliero
+ * della rampa (5 ogni 24h): questo vincolo non ha memoria né calendario — si chiude quando il capitale
+ * è al lavoro e si riapre quando torna libero.
+ */
+export interface AperturaNuovi {
+  /** Mai `Infinity`: il tetto di velocità vale sempre, anche quando l'utilizzo non è misurabile. */
+  ammessi: number;
+  tetto: number;
+  motivo: string;
+}
+
+export function aperturaNuoviMercati(a?: {
+  utilizzo?: MisuraUtilizzo | null;
+  maxPerGiro?: number;
+}): AperturaNuovi;
+
+export function leggiMaxNuoviPerGiro(env?: Record<string, string | undefined>): number;
+
+export const MAX_NUOVI_PER_GIRO: number;

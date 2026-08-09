@@ -44,13 +44,13 @@ const RIGHE = [riga('0xAAA', 'Mercato A', 9), riga('0xBBB', 'Mercato B', 8),
 /** Il mini-ciclo vero, con ogni corsia che tocca il mondo esterno sostituita. */
 async function giro({ saldo, piano, ordini = [], forzato = false, ricalcolo = null, posizioni = [] }) {
   const mandati = [];
-  const rampaChiamate = [];
+  const aperture = [];
   const d = TRIG.decidiTrigger({
     abilitato: true, botAttivo: true, cicloInCorso: false, killAttivo: false,
     saldo: { readable: true, usd: saldo }, ignoraAttese: forzato,
     motivoForzatura: forzato ? 'AVVIA appena premuto' : null,
   });
-  if (!d.scatta) return { d, r: null, mandati, rampaChiamate };
+  if (!d.scatta) return { d, r: null, mandati, aperture };
   const t0 = Date.now();
   const r = await A.miniCiclo(d, {
     leggiPiano: () => piano,
@@ -58,8 +58,10 @@ async function giro({ saldo, piano, ordini = [], forzato = false, ricalcolo = nu
     etaBoardMs: 60_000,
     diag: { readable: true, openNotionalUsd: 0 },
     leggiPosizioni: () => ({ readable: true, ageMs: 0, positions: posizioni }),
-    rampa: () => ({ attiva: false, residuo: Infinity, aperti: 0, motivo: 'simulazione: rampa non applicata' }),
-    registraMercatoAperto: ({ marketId }) => { rampaChiamate.push(marketId); return { ok: true, giaPresente: false }; },
+    // `aperturaNuoviMercati` NON viene sostituita: e' pura (nessun file, nessuna rete) e dal 9 agosto
+    // 2026 e' la regola vera che decide quanti mercati nuovi si aprono. Sostituirla vorrebbe dire
+    // simulare tutto TRANNE la cosa che si sta verificando.
+    registraMercatoAperto: ({ marketId }) => { aperture.push(marketId); return { ok: true, giaPresente: false }; },
     ...(ricalcolo ? { pianoLeggero: ricalcolo } : {}),
     piazza: async (rows) => {
       mandati.push(...rows);
@@ -67,7 +69,7 @@ async function giro({ saldo, piano, ordini = [], forzato = false, ricalcolo = nu
         results: rows.map((x) => ({ ...x, esito: 'SIMULATO — non inviato' })) };
     },
   });
-  return { d, r, mandati, rampaChiamate, durataMs: Date.now() - t0 };
+  return { d, r, mandati, aperture, durataMs: Date.now() - t0 };
 }
 
 (async () => {
