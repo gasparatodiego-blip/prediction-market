@@ -3,7 +3,19 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt**: non serve più reincollarlo ogni volta.
 
-Ultima verifica contro codice/stato reali: **9 agosto 2026**, ~17:45 UTC.
+Ultima verifica contro codice/stato reali: **9 agosto 2026**, ~18:50 UTC.
+
+> ## 📏 IL TETTO PER MERCATO È $130 FISSI, E NON C'È PIÙ UN LIMITE DI POSIZIONI — §5 punto 65
+> Era il **20% del capitale**: cresceva in dollari col saldo, quindi a capitale doppio il bot metteva il
+> doppio su OGNI mercato invece di usarne di più. Adesso è **$130 fissi** su YES+NO sommati (~$65 per
+> lato), scritto in `lib/rewards/concentration.js` e **importato da tutti e quattro** i consumatori —
+> pianificatore, **motore di piazzamento (Regola 5)**, rimpiazzo gamba, punteggio di rischio.
+> **`MAX_POSIZIONI = 10` è stato rimosso**: quanti mercati si usano è ora `capitale ÷ 130`, limitato solo
+> dal pool qualificato reale.
+> **Il rischio critico è chiuso e verificato**: il motore ACCETTA una riga da $130 sul saldo vero
+> ($594,10) — col vecchio 20% avrebbe verificato contro $118,82 e rifiutato ogni riga del piano.
+> **Copertura invariata: $588,00 e 99,0%.** A $1.000 usa 9 mercati invece di 6.
+> **Aspetta il riavvio di agent41 e del dashboard** (§5 punto 65).
 
 > ## 🕳️ IL BOOK SOTTILE ORA È UN CANCELLO, NON SOLO UN'ATTENUAZIONE — §5 punto 64
 > Il tetto di credibilità (`maxCredibleShare = 0,60`) tagliava la quota di un book deserto ma **lasciava
@@ -452,17 +464,28 @@ i due bucket ci mettevano sopra una scalinata che il venue non paga. Nessun `if 
 4. **Lato singolo deciso dalla formula, non da un timer** — dentro `[0.10, 0.90]` un lato solo matura
    comunque un terzo e si tiene; fuori da quel range matura **zero** e si cancella subito. Il mid si
    rilegge a ogni ciclo. (Ha sostituito la tolleranza a 10 minuti del 6 agosto.)
-5. **Tetto di capitale 20% per mercato** — `MARKET_CAP_PCT = 0.20`. È gestione del rischio di
-   risoluzione, deliberatamente fuori dal calcolo del punteggio.
-   Dal 7 agosto 2026 è **un numero solo**: anche il *pianificatore* (`lib/rewards/concentration.js`,
-   `CONCENTRATION_CAP_FRAC = 0.20`) usa 20%, ed è quello che leggono il pannello «Ottimizza» e
-   `realloc-cycle.js`. Prima erano 20% nel motore e 30% nel pianificatore: il vincolo più stretto
-   vinceva comunque, ma il pianificatore proponeva righe che il quoting tagliava. Il valore giusto è
-   quello del motore, che è il tetto di sicurezza deciso esplicitamente. Se cambia, cambiano insieme:
-   un test lo verifica (`netto-centralizzato.test.js`, `realloc-cycle.test.js`).
-   **Deployato il 7 agosto 2026, ~22:40 UTC**: agent41 riavviato scrive «tetto per mercato 20% del
-   capitale», e il piano servito dal pannello su $660 si ferma a **$130 = 19,7%** (tetto $132). Con il
-   vecchio 30% gli stessi dati davano $195 = 29,5%.
+5. **Tetto di capitale per mercato — $130 FISSI dal 9 agosto 2026** (`lib/rewards/concentration.js`,
+   `MARKET_CAP_FIXED_USD = 130`). È gestione del rischio di risoluzione, deliberatamente fuori dal
+   calcolo del punteggio, e si applica al **mercato intero: YES+NO sommati**, quindi vale ~$65 per lato
+   (`allocate.perMarketNetAtSize` restituisce `capital: 2 * sizeUsd` — misurato, non assunto).
+   **Era una PERCENTUALE (20% del capitale) fino al 9 agosto.** Cresceva in dollari col saldo: su $670
+   valeva $134, su $2.000 sarebbe valso $400, cioè dodici volte il nozionale mediano dei 21 maker
+   (~$34). La decisione dell'operatore è l'opposto — **quando il capitale cresce si spalma su PIÙ
+   mercati, non si ingrossa la size su ciascuno** — ed è la stessa filosofia del resto del sistema.
+   Con un tetto fisso il **numero di mercati è una conseguenza** (`capitale ÷ 130`), non un parametro.
+   **UN NUMERO SOLO, IMPORTATO DA QUATTRO CONSUMATORI**, ed è la parte che conta perché il rischio è
+   che divergano: (1) il pianificatore/knapsack via `realloc-cycle` e agent41, (2) il **motore di
+   piazzamento** — `motore-unico.tettoMercato`, Regola 5, che prima aveva la sua costante
+   `MARKET_CAP_PCT`, (3) `decideRimpiazzo`, che legge il tetto per mercato da
+   `data/maker-allocated-capital.json` scritto da agent41 e quindi lo segue da sé, (4) il punteggio di
+   rischio (`rischio-beneficio.js`), la cui normalizzazione è ancorata al tetto. `netto-centralizzato.test.js`
+   verifica che tutti e quattro lo **importino** invece di ridichiararlo.
+   **Il clamp**: `capPerMarketUsd` si abbassa al capitale quando questo è più piccolo del tetto — può
+   solo stringere — e **non restituisce mai `null`**, perché a valle `null` varrebbe «nessun tetto»
+   (era un fail-**open** della versione a percentuale).
+   **Effetto misurato il 9 agosto**: sul capitale di oggi il piano è identico a quello col tetto
+   percentuale ($588,00 allocati, 99,0% di copertura); a $1.000 usa **9 mercati** invece di 6; a $2.000
+   si ferma all'88% perché il pool qualificato si esaurisce, non per il tetto.
 
 **L'orizzonte: un MURO e una QUOTA, e fanno due lavori diversi** (8 agosto 2026 sera — in `main`; il
 piano nasce in un processo figlio a ogni ciclo, quindi **non serve riavviare**). Per mezza giornata il
@@ -3050,6 +3073,110 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     Il cancello era comunque **già attivo** sul pannello «Ottimizza» e su ogni piano calcolato anche
     prima del riavvio, perché il piano nasce sempre in un processo figlio che rilegge il codice da disco
     (§5 punto 14): il riavvio serviva solo per la riga di log.
+
+65. **TETTO PER MERCATO FISSO A $130 E NESSUN LIMITE DI POSIZIONI — decisioni di Diego, in `main` il
+    9 agosto 2026, ~18:50 UTC. ASPETTA IL RIAVVIO di agent41 e del dashboard.**
+
+    **Le due decisioni, e perché stanno insieme.** Il tetto per mercato era il **20% del capitale**:
+    cresceva in dollari col saldo, quindi a capitale doppio il bot metteva il doppio su OGNI mercato
+    invece di usarne di più. Su $2.000 sarebbe valso $400 — dodici volte il nozionale mediano dei 21
+    maker (~$34). Adesso è **$130 fissi** su YES+NO sommati, e **il numero di mercati è una conseguenza**
+    (`capitale ÷ 130`) invece di un parametro. `MAX_POSIZIONI = 10` è stato rimosso perché con un tetto
+    fisso quel numero smetteva di limitare il rischio e cominciava a limitare la COPERTURA — misurato:
+
+    | capitale | righe scelte | dopo il troncamento a 10 | copertura |
+    |---|---|---|---|
+    | $1.200 | 10 | $1.200 | 100% |
+    | $1.400 | 13 | $1.120 | **80%** |
+    | $1.800 | 15 | $1.044 | **58%** |
+    | $2.000 | 15 | $1.200 | **60%** |
+
+    **IL RISCHIO CRITICO ERA LA DIVERGENZA FRA I QUATTRO PUNTI, ED È CHIUSO.** Il tetto vive in
+    `lib/rewards/concentration.js` (`MARKET_CAP_FIXED_USD = 130`) e viene **importato**, mai
+    ridichiarato, da tutti e quattro i consumatori:
+
+    | # | consumatore | prima | adesso |
+    |---|---|---|---|
+    | a | pianificatore / knapsack (`realloc-cycle`, agent41, route del pannello) | `capitale × 0,20` | `capPerMarketUsd()` |
+    | b | **motore di piazzamento**, `motore-unico.tettoMercato` (Regola 5) | costante propria `MARKET_CAP_PCT = 0.20` sul **saldo** | importa il modulo condiviso |
+    | c | `decideRimpiazzo` | legge `data/maker-allocated-capital.json` scritto da agent41 | **invariato**: segue da sé, verificato |
+    | d | `rischio-beneficio.js` | `1 + quota / CONCENTRATION_CAP_FRAC` | `1 + capitaleSulMercato / MARKET_CAP_FIXED_USD` |
+
+    Il punto (b) era quello che avrebbe rotto tutto in silenzio: il pianificatore avrebbe proposto $130
+    e la Regola 5 avrebbe verificato contro il **20% del saldo — $118,82** — rifiutando **ogni riga del
+    piano** al momento di quotare. È lo stesso difetto che l'unificazione del 7 agosto aveva chiuso.
+
+    **Il test critico, eseguito sui numeri veri:**
+    ```
+    tetto del pianificatore : $130,00
+    Regola 5 su   $65,00 → ACCETTATO   cap $130,00
+    Regola 5 su  $130,00 → ACCETTATO   cap $130,00     ← col vecchio 20% sarebbe stato RIFIUTATO
+    Regola 5 su  $130,01 → RIFIUTATO   cap $130,00
+    TUTTE le 6 righe del piano di oggi passano la Regola 5 ✓
+    ```
+
+    **Due miglioramenti che il passaggio ha portato con sé**, entrambi nella direzione sicura:
+    - `capPerMarketUsd` **non restituisce più `null`**. Prima lo faceva su un capitale illeggibile, e a
+      valle `null` vale «nessun tetto» (l'allocatore ripiega su `budgetUsd`): era un fail-**open** su un
+      vincolo di rischio. Con un tetto fisso il numero è sempre noto.
+    - **Si clampa al capitale**: con $50 in cassa il tetto scende a $50. Può solo stringere.
+    - Il punteggio di rischio diventa misurabile con **un ingresso invece di due**: non serve più il
+      capitale totale, che ora serve solo a riportare la percentuale nel referto.
+
+    **Copertura verificata a capitale odierno e in proiezione** (stesso `planFromCollection` del ciclo
+    vero, board filtrato dal cancello di profondità, `horizonFilter` attivo):
+
+    | scenario | tetto | allocato | copertura | mercati | necessari | battuti |
+    |---|---|---|---|---|---|---|
+    | **oggi, $594,10 liberi** | $130 | **$588,00** | **99,0%** | 6 | 5 | 9 |
+    | $1.000 ipotetico | $130 | $1.000,00 | 100,0% | **9** | 8 | 7 |
+    | $2.000 ipotetico | $130 | $1.760,00 | 88,0% | 15 | 16 | 2 |
+
+    A $2.000 si ferma all'88% perché **il pool qualificato si esaurisce** (2 candidati battuti su 17
+    utili), non per il tetto. È noto, atteso e accettato: la risposta è più scoperta (§ soglia $10-25/g),
+    non un tetto più largo.
+
+    **Il tetto è sul MERCATO INTERO, YES+NO sommati** — misurato, non assunto: ogni riga del piano ha
+    `sizePerSideUsd = capital / 2` esatto. $130 valgono quindi ~$65 per lato.
+
+    **Cosa NON è cambiato:** il tetto TOTALE resta dinamico e segue il capitale reale
+    (`utilizzo-capitale`, obiettivo 90%) — sono due domande diverse; il tetto di apertura per giro del
+    mini-ciclo (`MAX_NUOVI_PER_GIRO = 6`) limita la velocità e resta; il guardiano delle perdite, la
+    banda premiante, «mai primo sul libro», fine scala e il cancello di profondità non sono stati
+    sfiorati.
+
+    **File:** `lib/rewards/concentration.js` (riscritto) + `.d.ts` · `lib/maker/motore-unico.js`
+    (Regola 5) · `lib/maker/realloc-cycle.js` · `agents/agent41-realloc-scheduler.js` (import, log,
+    rimozione di `MAX_POSIZIONI` e del troncamento in `applicaPolitiche`) · `lib/rewards/rischio-beneficio.js` ·
+    `app/api/rewards/allocate/route.ts` · `lib/audit/rilevatori.js` (il rilevatore **D1** ora sorveglia
+    `MARKET_CAP_FIXED_USD` e tiene in elenco i due nomi vecchi, così una loro reintroduzione verrebbe
+    vista) · 4 script diagnostici.
+
+    **Cinque test aggiornati, non allentati** — difendevano «le due costanti coincidono», una proprietà
+    che ora è strutturale, e sono stati riscritti per difendere quella nuova, più forte: «di costante ce
+    n'è **una**, e i quattro consumatori la importano». `netto-centralizzato.test.js` verifica per nome
+    tutti e quattro gli import; `realloc-cycle.test.js` e `motore-unico.test.js` contengono ora il test
+    critico (una riga al tetto passa la Regola 5 sul saldo vero); `ingressi-del-motore.test.js` è stato
+    **ritarato**: la sua fixture bloccava con $100 di saldo perché il 20% dava $20, e ora con il clamp
+    il tetto è $100 e un ordine da $39 passa — cioè il comportamento voluto, non una protezione persa.
+
+    **Verifica.** `concentration.selfcheck()` **13/13** · `motore-unico` 58/58 · `realloc-cycle` 141/141 ·
+    `netto-centralizzato` 54/54 · `rischio-beneficio` 42/42 · `capitale-senza-doppio-conteggio` 30/30 ·
+    `ingressi-del-motore` 46/46. `npm run build` verde.
+
+    **Riavvii: NON eseguiti** (§2 regola 2).
+    ```bash
+    pm2 restart agent41-realloc-scheduler   # il tetto nel ciclo 6h e nel mini-ciclo, e la rimozione del limite
+    pm2 restart dashboard                   # la route «Ottimizza» pubblica `fissoUsd` al posto di `frac`
+                                            # (verificare PRIMA .next/prerender-manifest.json — §5 punto 7)
+    ```
+    **agent40 NON va riavviato per questo lavoro**: `decideRimpiazzo` legge il tetto da
+    `data/maker-allocated-capital.json`, che lo scrive agent41 — quindi segue da sé al primo mini-ciclo
+    dopo il riavvio di agent41. La Regola 5 vive invece nel processo di agent40 (`valutaMercato`), e
+    finché non lo si riavvia continua a usare il codice vecchio: **con il bot su FERMA + KILL nessuna
+    delle due corsie piazza**, quindi non c'è divergenza in atto — ma se un domani si riparte senza aver
+    riavviato agent40, il suo percorso di riprezzo applicherebbe ancora il 20% del saldo. Da fare
+    insieme agli altri due quando si decide di ripartire.
 
 ---
 

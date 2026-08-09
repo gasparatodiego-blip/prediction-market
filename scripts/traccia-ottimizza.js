@@ -27,7 +27,7 @@ const ROOT = path.resolve(__dirname, '..');
 const { planFromCollection } = require(path.join(ROOT, 'lib/rewards/allocator'));
 const { planToOrders, gambeDiUnaRiga } = require(path.join(ROOT, 'lib/rewards/plan-to-orders'));
 const { runBulkAllocation } = require(path.join(ROOT, 'lib/maker/bulk-allocate'));
-const { capPerMarketUsd, CONCENTRATION_CAP_FRAC } = require(path.join(ROOT, 'lib/rewards/concentration'));
+const { capPerMarketUsd, MARKET_CAP_FIXED_USD } = require(path.join(ROOT, 'lib/rewards/concentration'));
 const { resolveCaps, OPERATOR_USER } = require(path.join(ROOT, 'lib/maker/manual-order'));
 const { readUsage } = require(path.join(ROOT, 'lib/safety/usage'));
 const killSwitch = require(path.join(ROOT, 'lib/safety/kill-switch'));
@@ -151,7 +151,7 @@ async function leggiVenue(marketId) {
   titolo('4-5 · CALCOLO DEL PIANO — formula di sizing, tetto per mercato, tetto totale');
   riga(`modello di size   ${piano.sizing.model} · pairCostUsd ${piano.sizing.pairCostUsd}`);
   riga(`                  ${piano.sizing.note}`);
-  riga(`tetto per mercato ${usd(piano.concentration.maxPerMarketUsd)} (${Math.round(CONCENTRATION_CAP_FRAC * 100)}% di ${usd(capitaleRichiesto)}) · applicato: ${piano.concentration.capped}`);
+  riga(`tetto per mercato ${usd(piano.concentration.maxPerMarketUsd)} (tetto FISSO $${MARKET_CAP_FIXED_USD}) · applicato: ${piano.concentration.capped}`);
   riga(`capitale          richiesto ${usd(piano.requested)} · allocato ${usd(piano.totals.capital)} · non allocato ${usd(piano.totals.unallocated)}`);
   riga(`tetto esposizione ${usd(caps.maxOpenNotionalUsd)} — il capitale richiesto ${capitaleRichiesto <= caps.maxOpenNotionalUsd ? 'ci sta' : 'LO SUPERA'}`);
   riga('');

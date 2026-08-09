@@ -12,7 +12,7 @@ import { writeCollectorPriority } from '@/lib/rewards/collector-priority';
 // questa route non ne passava nessuno, quindi il tetto effettivo del pannello era il capitale intero:
 // sullo stesso saldo e nello stesso istante «Ottimizza» e il ciclo automatico producevano piani diversi
 // (4 mercati col 76,5% su uno solo contro 7 mercati col 29,4% al massimo) senza che nulla lo dicesse.
-import { CONCENTRATION_CAP_FRAC, capPerMarketUsd } from '@/lib/rewards/concentration';
+import { MARKET_CAP_FIXED_USD, capPerMarketUsd } from '@/lib/rewards/concentration';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -36,10 +36,11 @@ export const dynamic = 'force-dynamic';
 // Inline runner — plain node, no webpack. Prints the plan JSON for the requested capital.
 // argv[2] carries the auto-optimise flag: with it on, the allocator also applies the resolution-horizon
 // test (lib/rewards/horizon) before the knapsack. OFF is the shipped path, byte-for-byte.
-// argv[3] carries the per-market concentration cap in dollars ("" = no cap). It is NOT a new knob typed
-// by anyone: it is CONCENTRATION_CAP_FRAC × capital, the same 20% the periodic reallocator applies —
-// and the same ceiling the placement engine enforces at quoting time (motore-unico.MARKET_CAP_PCT) —
-// read from the same module (lib/rewards/concentration.js) so the paths cannot drift.
+// argv[3] carries the per-market cap in dollars ("" = no cap). It is NOT a new knob typed by anyone:
+// it is MARKET_CAP_FIXED_USD, the same fixed $ ceiling the periodic reallocator applies — and the same
+// one the placement engine enforces at quoting time (motore-unico Regola 5) — read from the same module
+// (lib/rewards/concentration.js) so the paths cannot drift. Fixed since 9 Aug 2026: when capital grows
+// the system spreads over MORE markets instead of sizing up each one.
 const RUNNER = 'process.stdout.write(JSON.stringify(require("/root/prediction-market/lib/rewards/allocator").planFromCollection({ capital: Number(process.argv[1]), horizonFilter: process.argv[2] === "1", maxPerMarketUsd: process.argv[3] === "" ? null : Number(process.argv[3]) })))';
 const RESULT_TTL_MS = 180_000; // 3 min — the plan auto-refreshes at this cadence; recompute costs ~19s, so a fresh plan every 3 min is live-enough while the per-row data age ticks locally every 15s
 const SPAWN_TIMEOUT_MS = 90_000; // planFromCollection scores the universe + builds per-tick fill curves
@@ -103,8 +104,8 @@ export async function GET(req: NextRequest) {
     // si somigliano nei numeri e non nella storia. `concentration` lo porta gia' dall'allocatore; questa
     // riga aggiunge da DOVE viene, che e' l'unica parte che il pannello non potrebbe dedurre.
     body.concentrationSource = capOverride == null
-      ? { frac: CONCENTRATION_CAP_FRAC, origin: 'difetto', note: `tetto ${Math.round(CONCENTRATION_CAP_FRAC * 100)}% del capitale — lo stesso del riallocatore periodico` }
-      : { frac: null, origin: 'richiesto', note: capUsd == null ? 'nessun tetto: richiesto esplicitamente con cap=0' : `tetto $${capUsd} richiesto esplicitamente` };
+      ? { fissoUsd: MARKET_CAP_FIXED_USD, origin: 'difetto', note: `tetto $${MARKET_CAP_FIXED_USD} FISSO per mercato (YES+NO) — lo stesso del riallocatore periodico e del motore` }
+      : { fissoUsd: null, origin: 'richiesto', note: capUsd == null ? 'nessun tetto: richiesto esplicitamente con cap=0' : `tetto $${capUsd} richiesto esplicitamente` };
     resultCache.set(bucket, { atMs: Date.now(), body });
     // Il tetto di posizione e la priorita' del raccoglitore, dall'unico piano che esiste. Il ramo per
     // profilo che stava qui non serve piu': con uno scrittore solo non c'e' nessuna mappa da fondere.

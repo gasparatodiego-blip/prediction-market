@@ -33,7 +33,7 @@ const { loadTape, reconstructTapeFillsForMarket } = require(path.join(ROOT, 'scr
 const { prezzoInCoda } = require(path.join(ROOT, 'lib/maker/prezzo-in-coda'));
 const { decideRimpiazzo } = require(path.join(ROOT, 'lib/maker/rimpiazzo-gamba'));
 const { planExit, EXIT_PROFIT_PCT } = require(path.join(ROOT, 'lib/maker/exit-plan'));
-const { capPerMarketUsd, CONCENTRATION_CAP_FRAC } = require(path.join(ROOT, 'lib/rewards/concentration'));
+const { capPerMarketUsd, MARKET_CAP_FIXED_USD } = require(path.join(ROOT, 'lib/rewards/concentration'));
 const { inBand } = require(path.join(ROOT, 'lib/rewards-live-band'));
 
 const CAPITALE = Number(process.argv[2]) || 200;
@@ -49,7 +49,7 @@ const tit = (s) => { console.log('\n' + '═'.repeat(100)); console.log(s); cons
   tit(`SIMULAZIONE STORICA · ${usd(CAPITALE)} · ${new Date(INIZIO).toISOString()} → ${new Date(FINE).toISOString()}`);
   console.log('NESSUNA scrittura verso il venue. Solo journal, tape e board già su disco.');
   const tetto = capPerMarketUsd(CAPITALE);
-  console.log(`tetto per mercato: ${usd(tetto)} (${Math.round(CONCENTRATION_CAP_FRAC * 100)}% di ${usd(CAPITALE)})`);
+  console.log(`tetto per mercato: ${usd(tetto)} (tetto FISSO $${MARKET_CAP_FIXED_USD})`);
 
   // ── MINUTO 0 · IL PIANO ─────────────────────────────────────────────────────────────────────────
   // La finestra di storico è quella che il sistema avrebbe avuto a mezzanotte: le 48 ore PRECEDENTI.

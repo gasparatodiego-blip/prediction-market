@@ -66,7 +66,7 @@ import MidVivoPanel from './MidVivoPanel';
 import { bucketizza } from '@/lib/maker/risk-classifier';
 // LE COSTANTI DEL MOTORE UNICO, lette dal motore invece che scritte a mano: se una cambia, la frase
 // che la descrive cambia con lei. `motore-unico` è puro, quindi importabile da un componente client.
-import { MARKET_CAP_PCT, DEPTH_FLOOR_PCT_OF_AVG, MID_MIN_UN_LATO, MID_MAX_UN_LATO } from '@/lib/maker/motore-unico';
+import { DEPTH_FLOOR_PCT_OF_AVG, MID_MIN_UN_LATO, MID_MAX_UN_LATO } from '@/lib/maker/motore-unico';
 
 // ── TRE SEZIONI, NON SEI ────────────────────────────────────────────────────────────────────────
 // Sei tab volevano dire che rispondere a «i miei ordini stanno maturando?» costava tre passaggi:

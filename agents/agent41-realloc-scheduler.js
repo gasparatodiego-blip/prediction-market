@@ -80,7 +80,7 @@ for (const envFile of ['.env.local', '.env']) {
   } catch { /* file assente → si prosegue con l'ambiente che c'è */ }
 }
 
-const { runReallocCycle, CONCENTRATION_CAP_FRAC, INTERVAL_MS } = require('../lib/maker/realloc-cycle');
+const { runReallocCycle, INTERVAL_MS } = require('../lib/maker/realloc-cycle');
 const { runAllocationReset } = require('../lib/maker/allocation-reset');
 const { runBulkAllocation } = require('../lib/maker/bulk-allocate');
 const { diagnoseExposure } = require('../lib/maker/manual-reset');
@@ -95,7 +95,7 @@ const { resolveMarketRules } = require('../lib/maker/manual-order');
 const { writeAllocatedCapital, readAllocatedCapitalAll } = require('../lib/maker/allocated-capital');
 const { writeCollectorPriority } = require('../lib/rewards/collector-priority');
 const { gambeDiUnaRiga } = require('../lib/rewards/plan-to-orders');
-const { capPerMarketUsd } = require('../lib/rewards/concentration');
+const { capPerMarketUsd, mercatiNecessari, MARKET_CAP_FIXED_USD } = require('../lib/rewards/concentration');
 const TRIG = require('../lib/maker/trigger-capitale-fermo');
 const { appendMakerAudit } = require('../lib/venues/polymarket-clob-maker/audit');
 const killSwitch = require('../lib/safety/kill-switch');
@@ -479,15 +479,36 @@ function leggiUltimoPiano() {
 // Cablaggio identico a quello di /api/maker/manual/bulk-allocate: stesse funzioni, stessa corsia
 // cancel-only, stesso runBulkAllocation. Non esiste una seconda strada verso il venue, e questo processo
 // non ne apre una: passa dalla stessa porta del bottone.
-// ── QUANTE POSIZIONI, E QUANTE NUOVE AL PRIMO GIORNO ───────────────────────────────────────────────
-// Il tetto vive QUI e non nell'allocatore: `maxCount` di planAllocation governa solo la curva
-// `frontier` che il pannello disegna, non le righe del piano (verificato il 7 agosto 2026 —
-// data/indagine-offset.md §3). Il numero di posizioni che teniamo davvero e' una politica operativa
-// dello scheduler, e questo e' lo scheduler.
+// ── QUANTE POSIZIONI — NESSUN TETTO, ED È UNA DECISIONE DEL 9 AGOSTO 2026 ──────────────────────────
+// Qui c'era `MAX_POSIZIONI = 10`, e `applicaPolitiche` troncava le righe del piano a dieci con motivo
+// `tetto-posizioni`. Veniva dalla mediana dei 21 maker misurati (Q1 6 · Q3 22) — una ricerca su una
+// strategia che l'operatore non segue più — ed era tarato su un mondo in cui il tetto per mercato era
+// una PERCENTUALE: con $620 e il 20%, dieci posizioni bastavano sempre e il tetto non mordeva mai.
 //
-// 10 e' la mediana dei 21 maker misurati (data/manuale-operativo-maker-v2.md, Q1 6 · Q3 22). Con $620
-// sono ~$62 a mercato, cioe' ~$31 per lato: dentro la forchetta del nozionale osservato ($16-74).
-const MAX_POSIZIONI = 10;
+// Col tetto FISSO a $130 quel numero diventa il vincolo che decide, e decide male. Misurato in
+// diagnosi, stesso board e stesso capitale:
+//
+//     capitale   righe scelte dal piano   dopo il troncamento a 10   copertura
+//     $1.200              10                      $1.200               100%
+//     $1.400              13                      $1.120                80%
+//     $1.800              15                      $1.044                58%
+//     $2.000              15                      $1.200                60%
+//
+// Cioè: sopra ~$1.300 il tetto di posizioni faceva crollare la copertura invece di limitare il rischio,
+// e la faceva crollare in modo BRUSCO — perché il troncamento prende le prime dieci righe e butta via
+// proprio quelle grosse. Un limite che tagliava il capitale al lavoro senza ridurre l'esposizione per
+// mercato (che è già limitata dai $130) non stava proteggendo niente.
+//
+// ADESSO IL NUMERO DI MERCATI È UNA CONSEGUENZA, NON UN PARAMETRO: `capitale ÷ 130`, limitato solo da
+// quanti mercati qualificati il board offre davvero — cioè da quelli che passano banda, orizzonte, size
+// minima del venue e il cancello di profondità. Se il pool non basta il piano copre meno del 90% e lo
+// DICHIARA (`profonditaSuperstiti` contro `profonditaMinimiPerCoprire` nel referto), invece di essere
+// tagliato in silenzio da una costante.
+//
+// L'ESPOSIZIONE RESTA LIMITATA, e va detto quale protezione fa quel lavoro adesso: il tetto per mercato
+// ($130, YES+NO), l'obiettivo di utilizzo del capitale (90%, che è il tetto sul TOTALE impegnato), il
+// tetto di apertura per giro nel mini-ciclo (`MAX_NUOVI_PER_GIRO = 6`, che limita la velocità) e il
+// guardiano delle perdite. Nessuna di queste è stata toccata.
 
 /**
  * Applica la politica di apertura alle righe del piano, PRIMA che diventino ordini.
@@ -506,16 +527,12 @@ const MAX_POSIZIONI = 10;
  */
 function applicaPolitiche(rows, gestiti) {
   const inGestione = new Set((gestiti || []).map((x) => String(x).trim().toLowerCase()));
-  const tenute = [];
-  const scartate = [];
-  for (const riga of rows || []) {
-    if (tenute.length >= MAX_POSIZIONI) {
-      scartate.push({ marketId: riga.marketId, motivo: 'tetto-posizioni', dettaglio: `gia' ${MAX_POSIZIONI} posizioni nel piano` });
-      continue;
-    }
-    tenute.push(riga);
-  }
-  return { tenute, scartate, tetto: MAX_POSIZIONI, gestiti: inGestione.size };
+  // NESSUN TRONCAMENTO. Le righe del piano passano tutte: quante sono lo ha già deciso il knapsack
+  // contro il tetto per mercato, e non c'è una seconda politica che le riduca dopo. `scartate` resta
+  // (vuoto) perché il chiamante e il referto ne leggono la forma, e perché se un giorno tornasse una
+  // politica di apertura questo è il posto dove vivrebbe.
+  const tenute = (rows || []).slice();
+  return { tenute, scartate: [], tetto: null, gestiti: inGestione.size };
 }
 
 async function eseguiReset({ rows, dryRunOnly }) {
@@ -615,7 +632,7 @@ async function giro(motivoAvvio) {
   const soloRacconto = !bot.enabled;
   scrivi({ at: new Date(avvio).toISOString(), tipo: 'ciclo-avvio', motivoAvvio, dryRun: soloRacconto,
     botEnabled: bot.enabled, botBy: bot.by, botAt: bot.atIso, aperture: r,
-    intervalloOre: INTERVAL_MS / 3_600_000, tettoFrazione: CONCENTRATION_CAP_FRAC });
+    intervalloOre: INTERVAL_MS / 3_600_000, tettoPerMercatoUsd: MARKET_CAP_FIXED_USD });
   annuncia('log', `ciclo avviato (${motivoAvvio}) — bot ${bot.enabled ? 'AVVIATO' : 'FERMO'}`
     + (bot.enabled ? ` (${r.motivo})` : `: ${bot.motivo || 'nessun piazzamento, solo piano'}`));
 
@@ -1400,7 +1417,7 @@ function main() {
     return;
   }
   const bot0 = statoBot();
-  annuncia('log', `ACCESO — intervallo ${INTERVAL_MS / 3_600_000}h, tetto per mercato ${Math.round(CONCENTRATION_CAP_FRAC * 100)}% del capitale`
+  annuncia('log', `ACCESO — intervallo ${INTERVAL_MS / 3_600_000}h, tetto per mercato $${MARKET_CAP_FIXED_USD} FISSO (YES+NO sommati) · nessun limite al numero di mercati`
     + ` · il bot e' ${bot0.enabled ? 'AVVIATO (ordini veri quando le regole lo consentono)' : 'FERMO (solo piano, nessun ordine)'}`
     + ` · l'interruttore e' ${FILE_INTERRUTTORE}, si commuta dalla tab «Mercati ottimizzati»`);
   scrivi({ at: new Date().toISOString(), tipo: 'avvio', stato: 'acceso', botEnabled: bot0.enabled,
