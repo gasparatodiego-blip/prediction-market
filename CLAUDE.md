@@ -2680,6 +2680,49 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     nuova semantica. Suite: **155 eseguiti, 149 verdi**, i 6 rossi sono i preesistenti del punto 40.
     `npm run build` verde.
 
+60. **«PRIMO ASSOLUTO» SI MISURA SUL LIBRO, NON SULLA BANDA — corretto il 9 agosto 2026, ~11:00 UTC.
+    ASPETTA IL RIAVVIO di agent40.**
+
+    Il punto 59 prezzava la controparte al **bordo della banda**, e in produzione non ha piazzato
+    niente. Misurato alle **10:25**, subito dopo il riavvio:
+
+    ```
+    riposizionamento-scoperto-controparte-reject-would-cross          x4
+    riposizionamento-scoperto-controparte-reject-mai-primo-sul-libro  x1
+    ```
+
+    Il bordo banda non ha nessuna relazione con dove sono gli altri: su Chengdu il prezzo da tetto era
+    **48¢** e stava **oltre il miglior ask**, quindi l'ordine avrebbe attraversato lo spread e
+    `manual-order` lo rifiuta (non dichiara `attraversaApposta`).
+
+    **La correzione.** Essere primi in coda su un BUY vuol dire stare **un tick sopra il miglior bid
+    altrui**, e per restare maker bisogna stare **sotto il miglior ask**. Il prezzo è il più **basso**
+    fra tre limiti, ognuno per una ragione diversa: `bestBid + tick` (scavalca la coda, è lo scopo) ·
+    `bestAsk − tick` (non attraversa) · `massimo` (tetto 110¢, resta **duro**). La profondità è
+    `dpMerge[altroBook]`, già in scope per il Livello 1: **nessuna lettura nuova del venue**.
+
+    **La banda non è fra i limiti**, ed è deliberato: restarci è preferibile ma non è un divieto —
+    `OUT_OF_BAND` è l'unico codice che il sistema declassa ad avviso — e la priorità dichiarata
+    dall'operatore è scavalcare la coda. Il piano riporta `fuoriBanda` quando succede.
+
+    **ESTESO ANCHE AL PERCORSO NORMALE, ed è una decisione mia.** Su Chengdu `primoAssoluto` era
+    **falso** — la banda stava sopra il carico — eppure l'ordine incrociava lo stesso: il difetto non era
+    solo del caso nuovo. Il clamp `bestAsk − tick` si applica quindi **sempre** a questa gamba, che è un
+    limit che aspetta e non deve mai diventare taker. Il clamp può solo **abbassare** il prezzo, quindi
+    non apre niente e non tocca il tetto.
+
+    **Verifica sui numeri VERI dei mercati bloccati** (`controparte-primo-assoluto.test.js` **41/41**):
+
+    | mercato | carico | prima | adesso | esito |
+    |---|---|---|---|---|
+    | Chengdu | 61,64¢ | 48¢ → `would-cross` | **46¢** | limit maker, eccezione non aperta |
+    | Houston | 55¢ | muto | **43¢** (bid 42¢ +1 tick) | primo assoluto, in banda |
+    | London 18°C | 65¢ | muto | **34¢** (bid 33¢ +1 tick) | coppia 99¢ ≤ 110¢ |
+    | London 19°C | 59¢ | muto | **40¢** (bid 39¢ +1 tick) | coppia 99¢ ≤ 110¢ |
+
+    Nessuno dei quattro attraversa più lo spread. Suite: **155 eseguiti, 149 verdi**, i 6 rossi sono i
+    preesistenti del punto 40. `npm run build` verde.
+
 ---
 
 ## 6 · COME L'UTENTE VUOLE ESSERE SERVITO
