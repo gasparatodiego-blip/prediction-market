@@ -2085,6 +2085,106 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     spento che non tocca la rete ma costruisce il piano; e l'isolamento del relayer invariato. Suite:
     **146 eseguiti, 140 verdi**, i 6 rossi sono i preesistenti del punto 40. `npm run build` verde.
 
+46. **IL PERIODO DEL BOARD ERA 22,5 MINUTI, NON 15 — CORRETTO in `main` il 9 agosto 2026, ~04:40 UTC.
+    ASPETTA IL RIAVVIO DI agent24 E agent41, DA CONFERMARE DA DIEGO IN CHAT.**
+
+    **La causa, e non era un ritardo.** `agents/agent24-liquidity-rewards.js` faceva
+    `await scan(); await sleep(SCAN_INTERVAL_MS)`, cioè un periodo **reale** di
+    `durata della scansione + 15 minuti`. Finché la scansione costava 14 secondi la differenza non si
+    vedeva; dall'allargamento della scoperta dell'8 agosto (§5 punto 23: 21 pagine → 141) costa **~7,5
+    minuti**, quindi il board si riscriveva ogni **22,5 minuti** mentre due costanti, un commento e un
+    test dicevano quindici. agent41 rifiutava di quotare oltre i 20 ⇒ una fascia strutturalmente morta.
+
+    **La prova è nei numeri, non nel ragionamento:** le età che hanno bloccato un mini-ciclo sono
+    **21,0 · 22,0 · 22,2 minuti** — tutte sopra il limite di 20 e tutte sotto il periodo di 22,5. È la
+    firma esatta di un periodo cresciuto in silenzio. **3 mini-cicli su 22** persi il 9 agosto (14%, non
+    la metà: la stima «metà» veniva da un campione di tre cicli e va corretta).
+
+    **Due interventi, e fanno lavori diversi — li ho fatti entrambi.**
+    - **La causa**, in agent24: si dorme il **resto** del periodo (`SCAN_INTERVAL_MS − durata`), con un
+      **pavimento** di 60 s perché una scansione più lunga del periodo non faccia girare le scansioni
+      schiena a schiena martellando Gamma. Lo sforamento si **dichiara** con una riga di log che indica
+      l'età massima che i lettori devono aspettarsi: è precisamente il modo in cui questo difetto è
+      rimasto invisibile per un giorno.
+    - **Il margine**, in `trigger-capitale-fermo.js`: `ETA_BOARD_MAX_MS` **20 → 25 minuti**. Non basta
+      correggere la causa: la cadenza della scoperta è già cresciuta **due volte** (14 s → 97 s → 7,5 min)
+      e crescerà ancora; un limite a cinque minuti dal periodo si romperà di nuovo, e in silenzio. 25 dà
+      **dieci minuti** di margine sopra il periodo di 15, cioè assorbe una scansione che sfora fino al
+      doppio. **E non di più**: il limite deve restare capace di vedere agent24 **morto**, e a 30 si
+      tollererebbe una scansione saltata per intero — proprio l'evento che il controllo esiste per
+      cogliere. Un'età **ignota** continua a non passare.
+
+47. **IL RIPIEGO DELLE REGOLE COPRIVA UN PERCORSO SU DUE — ESTESO il 9 agosto 2026.** Il punto 44 aveva
+    collegato la copia di sicurezza al **mini-ciclo**; la **fase 3 del reset delle sei ore** —
+    `lib/maker/allocation-reset.js`, che accende **tutto il piano in una volta** — non la scriveva.
+    Cioè la maggioranza dei mercati nasceva ancora senza copia.
+
+    **E il caso che conta di più non è la rotazione: è la scadenza.** Un mercato esce dal board per due
+    motivi — rotazione (i primi 120 per montepremi) o **avvicinamento alla risoluzione**. Il secondo è
+    quello su cui una posizione va gestita *fino alla fine*, ed è massivo: il **9 agosto alle 03:41:31**
+    il reset ne ha lasciati **dieci in una volta**, tutti `in-scadenza`. Il ripiego è indifferente al
+    motivo perché è keyed sul mercato — ma va **scritto**, e da entrambi i percorsi.
+    - **Una funzione sola** (`copiaRegoleNelRipiego` in agent41) per i due chiamanti: due traduzioni
+      della stessa riga di board divergerebbero, e qui la divergenza costerebbe di più.
+    - **Non è un fermo duro**, a differenza di `setEnabled`/`setManual`/`setAutoClose`: quelle decidono
+      se il mercato è operabile *adesso*, questa se sarà gestibile *dopo*. Copia fallita, dep non
+      cablata o eccezione ⇒ il mercato si accende lo stesso e il fallimento viaggia nel referto
+      (`ripiegoRegole`, `ripiegoMotivo`).
+    - **Il reset non rimuove mai** un record dal catalogo, e non nomina nemmeno il modulo: la scrittura
+      è iniettata. Quindi una posizione su un mercato che sta per risolvere resta gestibile fino alla
+      risoluzione vera.
+
+    **Verifica.** Nuovo `lib/maker/cadenza-board.test.js` (**45/45**): l'aritmetica del periodo prima e
+    dopo · le tre età osservate che ora passano e tre davvero stantie che no · l'invariante
+    `ETA_BOARD_MAX_MS > SCAN_INTERVAL_MS` letto **dal sorgente** di agent24, non da una copia · le
+    protezioni non toccate (soglia $50, minimo $34, 6 mercati/giro, cadenze) · l'uscita per **scadenza**
+    coperta dal ripiego · la fase 3 che chiama la copia una volta per mercato, e i tre modi di fallire.
+    *(Una nota di metodo: la prima stesura provava il reset in `dryRunOnly:true` — che esce alla fase 0 —
+    e l'asserzione passava a vuoto su un array vuoto. Corretta.)* Suite: **147 eseguiti, 141 verdi**, i 6
+    rossi sono i preesistenti del punto 40. `npm run build` verde.
+
+    **Riavvii: NON eseguiti, serve conferma esplicita di Diego in chat** (§2 regola 2).
+    ```bash
+    pm2 restart agent24-liquidity-rewards     # il periodo torna a 15 minuti esatti
+    pm2 restart agent41-realloc-scheduler     # limite 25 min + la copia nel reset da 6h
+    ```
+
+48. **LO SPLIT NON VA COLLEGATO, E LA MISURA È NETTA — deciso il 9 agosto 2026, nessun codice scritto.**
+    `splitPosition` è pronto e provato on-chain, ma **non conviene mai in questa strategia**, e la
+    ragione non è marginale.
+
+    **Il confronto, sui dati veri.** Lo split rende esattamente 1 YES + 1 NO per **$1,00** depositato,
+    senza spread. Comprare le due gambe sul book costa quanto la coppia costa davvero, e su **37 coppie
+    realmente piazzate** (`data/execution-audit.jsonl`, 8-9 agosto): **min 0,93 · mediana 0,97 · max
+    0,999**. *(Una 38ª riga a 1,13 è un falso accoppiamento della mia euristica — due gambe di mercati
+    diversi cadute nella stessa finestra di 3 s — e non un pagamento sopra la pari.)* Il piano salvato
+    dichiara la stessa cosa per costruzione: `pairCostUsd` **0,98 su tutte e 12 le righe**.
+
+    **Non è un caso: è la strategia.** Il bot posa le due gambe *dentro la banda premiante*, un tick
+    dietro il tocco su ciascun lato, quindi la coppia costa `1 − 2 × offset` **per costruzione**. Il
+    3% di sconto mediano **è il margine**. Lo split lo pagherebbe pieno: ~3¢ peggio per dollaro.
+
+    **E c'è un secondo argomento che da solo chiude la questione: lo split non mette niente sul libro.**
+    Questo bot non guadagna dai fill — guadagna dai premi di liquidità sugli ordini **a riposo**. Una
+    posizione creata per split è due token fermi nel portafoglio che non maturano **nulla**. Quindi lo
+    split non costa solo 3¢ in più: rinuncia all'intero ricavo.
+
+    **L'ipotesi «conviene quando il book non offre la coppia a sconto» non si verifica**, ed è per una
+    ragione strutturale: se la coppia costasse più di $1 il bot **non aprirebbe quella posizione**, non
+    la aprirebbe in un altro modo — lo sconto della coppia *è* la condizione di ingresso. Anche il
+    Livello 1 del merge, che è l'unico acquisto aggressivo del sistema, ha un tetto che tiene la coppia
+    **≤ 99¢**. Non esiste percorso in cui il bot paga una coppia $1 o più.
+
+    **Conclusione: nessun collegamento scritto.** Il modulo resta con `splitPosition` esportata e senza
+    chiamanti, ed è lo stato giusto. Se un giorno nascesse una strategia direzionale — che tiene un solo
+    lato e non cerca premi — la domanda andrebbe rifatta da capo: lì lo split competerebbe con
+    l'attraversare lo spread su un lato solo, che è un confronto diverso da questo.
+
+    **Nota su una premessa da correggere:** `CTF_RELAYER_ENABLED` **non è acceso**. È `false` in
+    `lib/maker/ctf-relayer.js:94` e non è mai stato riacceso dopo la prova del 7 agosto. Il wiring del
+    **merge** (§5 punto 45) è in `main` ma inerte: per attivarlo servono le tre cose elencate lì, e
+    nessuna è stata fatta.
+
 ---
 
 ## 6 · COME L'UTENTE VUOLE ESSERE SERVITO

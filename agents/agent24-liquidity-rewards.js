@@ -853,10 +853,40 @@ async function main() {
   console.log(`[agent24-liquidity-rewards] starting (capital levels: ${CAPITAL_LEVELS.map(c => '$'+c).join(', ')})…`);
   runFormulaVerification();
   await sleep(STARTUP_DELAY_MS);
+  // ── IL PERIODO È IL PERIODO, NON «IL LAVORO PIÙ IL PERIODO» ──────────────────────────────────────
+  // Qui c'era `await scan(); await sleep(SCAN_INTERVAL_MS)`, cioè un periodo REALE di
+  // `durata della scansione + 15 minuti`. Finché la scansione costava 14 secondi la differenza non si
+  // vedeva. Dall'allargamento del 8 agosto (§5 punto 23: 21 pagine → 141, la partizione in fette da 6h)
+  // costa ~7,5 minuti, quindi il board si riscriveva ogni **22,5 minuti** mentre due costanti, un
+  // commento e un test dicevano quindici.
+  //
+  // Non era un difetto estetico: agent41 rifiuta di quotare su un board più vecchio del suo limite, e
+  // quel limite era tarato sui quindici. Misurato il 9 agosto sul giornale vero — le età che hanno
+  // bloccato un mini-ciclo sono **21,0 · 22,0 · 22,2 minuti**, cioè tutte sopra il limite di 20 e tutte
+  // sotto il periodo di 22,5: la firma esatta di un periodo che è cresciuto senza che nessuno lo dicesse.
+  // 3 mini-cicli su 22 persi così in una giornata.
+  //
+  // Ora si dorme il RESTO del periodo. Con una scansione da 7,5 minuti il board si riscrive ogni 15
+  // esatti, e il periodo smette di dipendere da quanto è larga la scoperta.
+  //
+  // IL PAVIMENTO NON È COSMETICO: se un giorno la scansione superasse i 15 minuti, dormire «il resto»
+  // varrebbe zero e si girerebbe schiena a schiena martellando Gamma. `PAUSA_MINIMA_MS` garantisce che
+  // fra due scansioni ci sia sempre un respiro, e lo sforamento si DICHIARA invece di degradare in
+  // silenzio — è precisamente il modo in cui questo difetto è rimasto nascosto per un giorno.
+  const PAUSA_MINIMA_MS = 60_000;
   while (true) {
+    const inizio = Date.now();
     try   { await scan(); }
     catch (e) { console.error(`[agent24] uncaught:`, e.message, e.stack?.split('\n')[1]); }
-    await sleep(SCAN_INTERVAL_MS);
+    const durata = Date.now() - inizio;
+    const resto = SCAN_INTERVAL_MS - durata;
+    if (resto < PAUSA_MINIMA_MS) {
+      console.log(`[agent24-liquidity-rewards] la scansione ha impiegato ${(durata / 60_000).toFixed(1)} min,`
+        + ` cioè più del periodo di ${SCAN_INTERVAL_MS / 60_000} min: il board non può essere riscritto a quella cadenza.`
+        + ` Si attende comunque la pausa minima di ${PAUSA_MINIMA_MS / 1000}s — chi legge il board deve tollerare`
+        + ` un'età fino a ${((durata + PAUSA_MINIMA_MS) / 60_000).toFixed(1)} min.`);
+    }
+    await sleep(Math.max(PAUSA_MINIMA_MS, resto));
   }
 }
 

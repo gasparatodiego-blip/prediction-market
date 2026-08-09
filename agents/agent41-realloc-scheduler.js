@@ -503,6 +503,10 @@ async function eseguiReset({ rows, dryRunOnly }) {
       setManual: ({ marketId, manual, reason }) => setManualMode({ marketId, manual, by: 'riallocatore periodico', reason }),
       // OGNI mercato del piano ha l'uscita automatica accesa PRIMA di avere ordini (fase 3 del reset).
       setAutoClose: ({ marketId, enabled, reason }) => setAutoClose({ scope: 'market', marketId, enabled, by: 'riallocatore periodico', reason }),
+      // LA COPIA DI SICUREZZA DELLE REGOLE, sullo STESSO percorso del mini-ciclo (`copiaRegoleNelRipiego`).
+      // Una funzione sola per i due chiamanti: due copie divergerebbero, e questo e' il posto in cui la
+      // divergenza costerebbe di piu' — il ciclo delle sei ore accende tutto il piano in una volta.
+      registraCatalogo: ({ marketId }) => copiaRegoleNelRipiego({ marketId }, 'riallocatore periodico'),
       // Serve solo a decidere se SPEGNERE l'uscita su un mercato che esce dal piano. Le posizioni si
       // leggono dal VENUE, e si incrociano con i due token del mercato: una posizione su uno dei due
       // libri è una posizione su questo mercato. Illeggibile ⇒ `leggibile:false`, e allora l'uscita
@@ -720,6 +724,29 @@ function rigaBoardNormalizzata(marketId, file = BOARD_NORMALIZZATO) {
   } catch { return null; }
 }
 
+/**
+ * LA COPIA DI SICUREZZA DELLE REGOLE DI VENUE nel catalogo di ripiego.
+ *
+ * UNA funzione per i DUE percorsi che aprono mercati — il mini-ciclo del trigger e la fase 3 del reset
+ * delle sei ore. Erano due closure separate nella prima stesura: due copie della stessa traduzione sono
+ * due copie che possono divergere, e qui la divergenza costerebbe caro perche' il ciclo delle sei ore
+ * accende tutto il piano in una volta.
+ *
+ * La fonte e' il board normalizzato, cioe' lo stesso file che `resolveMarketRules` legge come prima
+ * scelta: il ripiego non puo' contenere numeri diversi da quelli su cui il mercato e' stato scelto.
+ * Non solleva mai e non inventa: senza riga non si registra niente, e `upsertMarket` rifiuta da solo
+ * un record a cui manchi uno dei quattro campi obbligatori.
+ */
+function copiaRegoleNelRipiego({ marketId }, by) {
+  const riga = rigaBoardNormalizzata(marketId);
+  if (!riga) return { ok: false, error: 'riga di board non trovata: nessuna regola da copiare nel ripiego' };
+  const CATALOGO = require('../lib/maker/market-catalog');
+  const rec = CATALOGO.recordDaRigaBoard(riga);
+  if (!rec) return { ok: false, error: 'riga di board non traducibile in un record di catalogo' };
+  return CATALOGO.upsertMarket(rec, { by,
+    reason: 'copia di sicurezza delle regole di venue: se il mercato esce dal board — per rotazione o perche\' sta per risolvere — la gestione deve poter continuare' });
+}
+
 async function preparaMercatoNuovo(marketId, abilita, prendiInGestione, accendiUscita, registraCatalogo) {
   if (typeof abilita !== 'function') {
     return { ok: false, motivo: 'nessuna funzione setEnabled cablata: non si piazza su un mercato che la corsia manuale rifiutera per allowlist' };
@@ -810,15 +837,8 @@ async function miniCiclo(decisione, deps = {}) {
   // (`manual-order.js:89` → /tmp/liquidity-rewards.json): cosi' il ripiego non puo' contenere numeri
   // diversi da quelli su cui il mercato e' stato scelto. Se il board non ha la riga non si inventa
   // niente e non si registra niente.
-  const registraCatalogo = deps.registraCatalogo || (({ marketId }) => {
-    const riga = rigaBoardNormalizzata(marketId);
-    if (!riga) return { ok: false, error: 'riga di board non trovata: nessuna regola da copiare nel ripiego' };
-    const rec = require('../lib/maker/market-catalog').recordDaRigaBoard(riga);
-    if (!rec) return { ok: false, error: 'riga di board non traducibile in un record di catalogo' };
-    return require('../lib/maker/market-catalog').upsertMarket(rec,
-      { by: 'riallocatore · trigger capitale fermo',
-        reason: 'copia di sicurezza delle regole di venue: se il mercato esce dal board la gestione deve poter continuare' });
-  });
+  const registraCatalogo = deps.registraCatalogo
+    || (({ marketId }) => copiaRegoleNelRipiego({ marketId }, 'riallocatore · trigger capitale fermo'));
   const etaBoard = deps.etaBoardMs !== undefined
     ? () => deps.etaBoardMs
     : () => { try { return Date.now() - fs.statSync(path.join(DATA_DIR, 'liquidity-rewards.json')).mtimeMs; } catch { return null; } };
@@ -1247,4 +1267,4 @@ if (require.main === module) main();
 module.exports = { leggiVenue, leggiSaldo, prossimoRitardo, scriviUltimoPiano, leggiUltimoPiano,
   miniCiclo, preparaMercatoNuovo, pianoLeggero, sorvegliaAvvio, LOG_FILE, STATE_FILE, POOLS_FILE, ULTIMO_PIANO_FILE,
   FINESTRA_LEGGERA_ORE, PIANO_FRESCO_MAX_MS, AVVIO_CADENZA_MS,
-  rigaBoardNormalizzata, BOARD_NORMALIZZATO };
+  rigaBoardNormalizzata, copiaRegoleNelRipiego, BOARD_NORMALIZZATO };
