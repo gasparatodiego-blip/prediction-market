@@ -2632,6 +2632,54 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
 
     **Riavvio: NON eseguito** — `pm2 restart agent40-manual-reprice agent41-realloc-scheduler`.
 
+59. **⚠️ L'UNICA ECCEZIONE A «MAI PRIMI SUL LIBRO» — mirata, circoscritta, decisa da Diego il 9 agosto
+    2026. In `main` alle ~10:30 UTC. ASPETTA IL RIAVVIO di agent40.**
+
+    **Il problema.** Quando la banda premiante scende sotto il prezzo di carico, il lato posseduto non si
+    può quotare — «mai sotto il carico» è duro — e la posizione resta **direzionale, senza premi, a tempo
+    indeterminato**. Il 9 agosto era lo stato di **tre** posizioni su cinque: Houston (banda 50¢ / carico
+    55¢), London 18°C (63¢ / 65¢), London 19°C (48¢ / 59¢), tutte con `skip-no-target`.
+
+    **La regola.** In quel caso — e **solo** in quel caso — la controparte mancante smette di essere una
+    quota che aspetta e diventa **lo strumento che chiude la coppia**. Quindi:
+    1. size **esattamente uguale e contraria** al lato posseduto (è `manca`, uguale per costruzione);
+    2. **primo assoluto** sul libro dentro la banda — il prezzo più vicino al mid disponibile in banda,
+       anche scavalcando chi è già in coda.
+
+    **Il compromesso, accettato esplicitamente:** qualche centesimo per azione per stare in cima alla
+    coda invece che in fondo, in cambio di una chiusura rapida invece di un blocco indefinito.
+
+    **PERCHÉ RESTA CIRCOSCRITTA, ed è la parte che conta.** «Mai primi sul libro» è `spec.inCoda`, ed è
+    **opt-in per chiamante** (`manual-order.js:879`): la regola si applica solo a chi la dichiara, e il
+    rifiuto `mai-primo-sul-libro` vive **dentro** quel ramo. La deroga è quindi l'omissione di un flag su
+    **una gamba sola**, non una modifica alla regola — che non è stata toccata di una riga e continua a
+    valere ovunque altro, incluse tutte le altre gambe di `auto-close`.
+
+    Il gancio è `primoAssoluto`, che `pianificaRiposizionamentoScoperto` marca **solo** quando il lato
+    posseduto tace **per banda-sotto-carico**. Un silenzio per qualunque altro motivo (size sotto il
+    minimo, carico illeggibile, banda assente) **non** apre la deroga, e senza la banda della controparte
+    non si apre comunque: si torna al prezzo da tetto, cioè al comportamento di prima.
+
+    **Cosa non cambia:** il lato **posseduto** resta protetto dal «mai sotto il carico» — la deroga è
+    legata a `!vende`, quindi non può raggiungerlo nemmeno per errore — e il **tetto della coppia (110¢)**
+    resta duro: si prende il **più basso** fra bordo banda e tetto, mai il più alto.
+
+    **L'aggancio al merge è automatico e non ha percorso nuovo:** se la controparte viene fillata, al giro
+    dopo `decidiLivello` risponde `azione:'merge'` (`mancaAllaCoppia <= 0`) e cade nel ramo già collegato
+    al relayer. Verificato nel test.
+
+    **File:** `lib/maker/chiusura-rapida.js` (`bandaHiControparte`, `bandaSottoCarico`, `primoAssoluto`
+    sulla controparte) · `lib/maker/auto-close.js` (banda dell'altro libro + `inCoda` omesso su quella
+    sola gamba, con la nota nell'ordine e `primoAssoluto` nell'audit).
+
+    **Verifica.** Nuovo `lib/maker/controparte-primo-assoluto.test.js` **27/27**: prezzo al bordo banda,
+    size uguale e contraria, il tetto che vince sul bordo, e **quattro** casi in cui l'eccezione NON si
+    apre. Sweep su 60 combinazioni: **zero** prezzi del lato posseduto sotto il carico o fuori banda.
+    Un'asserzione di `chiusura-rapida.test.js` è stata **aggiornata, non allentata**: pretendeva la
+    stringa letterale `inCoda: true` su entrambe le gambe; ora verifica l'intento vero («mai taker») e la
+    nuova semantica. Suite: **155 eseguiti, 149 verdi**, i 6 rossi sono i preesistenti del punto 40.
+    `npm run build` verde.
+
 ---
 
 ## 6 · COME L'UTENTE VUOLE ESSERE SERVITO
