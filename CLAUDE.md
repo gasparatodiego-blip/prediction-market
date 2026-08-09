@@ -2235,6 +2235,51 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     Da quel riavvio in poi, la prima coppia completa viene **fusa on-chain in autonomia**, senza altre
     conferme. È la prima operazione on-chain automatica di questo stack.
 
+51. **LA SEQUENZA COMPLETA DEL LATO SCOPERTO — in `main` il 9 agosto 2026, ~05:45 UTC. ASPETTA IL
+    RIAVVIO DI agent40.** Un fill che lascia un lato scoperto passa ora per **quattro** stadi, in ordine:
+
+    | # | chi | cosa | tetto |
+    |---|---|---|---|
+    | 1 | Livello 1 del merge | taker sull'altro lato | coppia ≤ **99¢** |
+    | 2 | Livello 2 del merge | maker a riposo sull'altro lato, attesa 60 min | coppia ≤ **99¢** |
+    | 3 | **chiusura rapida** | taker fin dove il book copre + limit per il resto | coppia ≤ **110¢** |
+    | 4 | **riposizionamento scoperto** *(nuovo)* | SELL sul lato posseduto a +1% dentro banda **+** BUY a limit sulla controparte | coppia ≤ 110¢ |
+
+    Lo stadio 4 si raggiunge solo se **nessuno** dei tre precedenti ha completato — se il taker scatta si
+    torna prima, quindi non c'è conflitto e non c'è doppio ordine.
+
+    **Il buco che chiude.** Quando la banda premiante scende sotto il prezzo di carico, `planExit`
+    (`exit-plan.js:146`) rifiuta di piazzare un'uscita — giustamente, sarebbe in perdita — e nessun altro
+    percorso proponeva niente: **zero ordini, zero premi, posizione direzionale ferma**. Era lo stato di
+    entrambe le posizioni London il 9 agosto (18°C: banda fino a 63¢ su carico 65¢; 19°C: 51¢ su 59¢).
+
+    **VA DETTO, PERCHÉ È IL LIMITE DELLA REGOLA STESSA.** Il requisito chiede «+1% dal carico, sempre
+    dentro banda, mai sotto il carico». Nel caso che l'ha motivato — banda **interamente** sotto il
+    carico — quei tre vincoli sono **incompatibili fra loro**: non esiste un prezzo che li soddisfi.
+    `pianificaRiposizionamentoScoperto` non ne inventa uno: restituisce `latoPosseduto: null` col motivo,
+    e propone comunque la **controparte**, che è sempre prezzabile. **Il silenzio si riduce, non
+    sparisce** — e farlo sparire vorrebbe dire vendere sotto il carico, cioè rompere il vincolo che il
+    requisito stesso dichiara duro. Nelle due London il risultato pratico è: nessun SELL (corretto), ma
+    **un BUY di completamento a limit** dove prima non c'era niente.
+
+    **Dove +1% è satisfacibile** la regola fa quel che dice: prezzo `carico × 1,01` arrotondato **in su**,
+    e se supera il tetto della banda si scende **al tetto della banda** — il prezzo più vicino a +1% che
+    resta premiante, mai oltre. Sweep su 90 combinazioni (5 carichi × 6 bande × 3 tick): **zero** prezzi
+    sotto il carico o fuori banda.
+
+    **`skip-no-target` non è stato toccato** per gli altri casi che gestisce: vive in `decideClose`, nasce
+    da `planExit`, e continua a decidere l'uscita ordinaria come sempre. Il riposizionamento agisce prima,
+    in `completaCoppia`, e solo sul lato scoperto.
+
+    **File:** `lib/maker/chiusura-rapida.js` (nuova `pianificaRiposizionamentoScoperto`) ·
+    `lib/maker/auto-close.js` (stadio 4 in fondo a `completaCoppia`, con audit
+    `riposizionamento-scoperto-{lato-posseduto,controparte}-{piazzato,reject-*}`).
+
+    **Verifica.** `chiusura-rapida.test.js` **72/72**. Suite **149 eseguiti, 143 verdi**, i 6 rossi sono i
+    preesistenti del punto 40. `npm run build` verde.
+
+    **Riavvio: NON eseguito** (§2 regola 2) — `pm2 restart agent40-manual-reprice`.
+
 ---
 
 ## 6 · COME L'UTENTE VUOLE ESSERE SERVITO
