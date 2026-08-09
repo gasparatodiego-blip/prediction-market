@@ -347,8 +347,9 @@ interface WalletResp {
   // IL RANGE IN CUI UN LATO SOLO MATURA ANCORA. Dal 6 agosto 2026 non c'è più un countdown: la
   // formula decide. Servono gli estremi per poter dire PERCHÉ un lato solo è stato tenuto o chiuso.
   latoSingolo?: { midMin: number; midMax: number } | null;
-  // IL LIBRO SVUOTATO DAL GUARDIANO. Il 6 agosto 2026 alle 00:16:03 UTC agent37 ha cancellato nove
-  // ordini reali su cinque mercati perché il battito del motore maker era fermo da 121s (soglia 120s):
+  // IL LIBRO SVUOTATO DAL GUARDIANO. Il 6 agosto 2026 alle 00:16:03 UTC il dead-man dei motori (allora
+  // agent37-maker-watchdog, rimosso il 9 agosto 2026 insieme al motore che sorvegliava) ha cancellato
+  // nove ordini reali su cinque mercati perché il battito del motore era fermo da 121s (soglia 120s):
   // $663 tornati fermi, e l'unica traccia leggibile era in un log di processo. È l'evento più grosso
   // che questo sistema possa produrre da solo, ed era l'unico che non arrivava fin qui.
   cancellazioniDiEmergenza?: {
@@ -606,7 +607,7 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
     try {
       const r = await fetch('/api/maker/kill', { method: 'POST' });
       const b = await r.json();
-      setKillMsg(b.ok ? 'KILL eseguito: maker disarmato e ordini cancellati sul venue.' : `KILL parziale: ${b.error ?? b.cancelError ?? 'vedi audit'}`);
+      setKillMsg(b.ok ? 'KILL eseguito: blocco durevole attivo e ordini cancellati sul venue.' : `KILL parziale: ${b.error ?? b.cancelError ?? 'vedi audit'}`);
       loadBoard(); loadResting();
     } catch (e) { setKillMsg(`KILL fallito: ${(e as Error).message}`); }
     finally { setKillBusy(null); }
@@ -829,9 +830,9 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
   // ── THE ONE QUESTION THE TOP OF THE PAGE ANSWERS ──────────────────────────────────────────────────
   // "Il capitale sta maturando premi?" — derived ONLY from data this console already fetched.
   //
-  // It deliberately does NOT answer "is the bot armed". That is a different fact with a different source
-  // (/api/maker/status) and it belongs to MakerArmingPanel, rendered directly above this component.
-  // Deriving the same claim twice, from two fetches, is exactly how two panels start disagreeing.
+  // It deliberately does NOT answer "il bot è acceso?". That is a different fact with a different source
+  // (AVVIA/FERMA, /api/maker/bot) and it has its own control. Deriving the same claim twice, from two
+  // fetches, is exactly how two panels start disagreeing.
   //
   // FOUR states, not three. A traffic light with only green/amber/red would force "we could not read the
   // venue" to borrow a colour from "nothing is earning". Those are different claims — one is a fact about
@@ -1108,6 +1109,24 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
             { k: 'Mercati', ageSec: null, everySec: 60, valueOverride: String(board?.marketCount ?? 0) },
           ]}
         />
+      </div>
+
+      {/* ── KILL e RIPRISTINA, FUORI DALLE SEZIONI ────────────────────────────────────────────────
+          Erano in fondo alla sola scheda «Riepilogo», con un commento che dichiarava di volerli
+          raggiungibili «qualunque cosa si stia guardando» — cosa che una scheda non può garantire.
+          Fino al 9 agosto 2026 la copertura arrivava dal pannello di arming, che stava sopra le schede
+          e portava con sé il KILL; rimosso quello, il comando torna dove il suo stesso commento lo
+          voleva. Nessun cambio di comportamento: stessi due handler, stesso endpoint. */}
+      <div className="ex-actionbar" data-lrc-killbar>
+        <button className="ex-btn is-danger" onClick={doKill} disabled={killBusy != null} data-lrc-kill>
+          {killBusy === 'kill' ? 'KILL in corso…' : '⛔ KILL'}
+        </button>
+        <button className="ex-btn" onClick={doReset} disabled={killBusy != null} data-lrc-reset>
+          {killBusy === 'reset' ? 'Ripristino…' : 'Ripristina'}
+        </button>
+        <span className="lrc-killnote">
+          {killMsg ?? 'KILL ferma ogni corsia e cancella tutto sul venue. Ripristina verifica da due fonti che non resti esposizione.'}
+        </span>
       </div>
 
       {/* ── 1 · RIEPILOGO ─────────────────────────────────────────────────────────────────────────── */}
@@ -2031,20 +2050,6 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
           <p className="lrc-note">
             Stesse cifre dell&apos;intestazione: un fetch, una lettura del venue, un giudizio di banda.
           </p>
-
-          {/* KILL e RIPRISTINA, ancorati in fondo: sono i due comandi che devono restare raggiungibili
-              qualunque cosa si stia guardando, senza cercarli. */}
-          <div className="ex-actionbar" data-lrc-killbar>
-            <button className="ex-btn is-danger" onClick={doKill} disabled={killBusy != null} data-lrc-kill>
-              {killBusy === 'kill' ? 'KILL in corso…' : '⛔ KILL'}
-            </button>
-            <button className="ex-btn" onClick={doReset} disabled={killBusy != null} data-lrc-reset>
-              {killBusy === 'reset' ? 'Ripristino…' : 'Ripristina'}
-            </button>
-            <span className="lrc-killnote">
-              {killMsg ?? 'KILL disarma e cancella tutto sul venue. Ripristina verifica da due fonti che non resti esposizione.'}
-            </span>
-          </div>
         </section>
       )}
 

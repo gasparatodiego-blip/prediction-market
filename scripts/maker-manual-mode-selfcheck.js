@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 // scripts/maker-manual-mode-selfcheck.js — repeatable proof that the PER-MARKET manual-mode flag really
-// isolates agent35, in both directions, and that it is NOT a second kill switch.
+// isolates one lane from another, in both directions, and that it is NOT a second kill switch.
 //
 //   node scripts/maker-manual-mode-selfcheck.js
 //
@@ -16,7 +16,8 @@
 //   4. clearing is refused on an unreadable state — handing a market back to the engine needs a state we
 //      can actually read; taking one MANUAL is always permitted (the safe direction);
 //   5. the cancel filter excludes manual markets from the engine's routine sweeps and only those;
-//   6. agent35 REALLY calls both gates — the source is asserted, so the wiring cannot silently rot;
+//   6. il KILL non conosce eccezioni — la spazzata non sa cosa sia la gestione manuale (fino al 9
+//      agosto 2026 questo punto asseriva anche il cablaggio del motore automatico, ora rimosso);
 //   7. it touches NO kill-switch state: setting/clearing manual mode leaves the global kill exactly as
 //      it was (this is a scalpel, not a second kill switch);
 //   8. the manual placement path refuses a market that is NOT manual (isolation is a precondition).
@@ -125,16 +126,13 @@ console.log('\n5. routine cancel sweeps skip manual markets — and only those')
 }
 
 // ── 6 · THE WIRING IS REAL ──────────────────────────────────────────────────────────────────────────
-console.log('\n6. agent35 really calls both gates (asserted against its source)');
+console.log('\n6. il KILL non conosce eccezioni');
 {
-  const src = fs.readFileSync(path.join(__dirname, '..', 'agents', 'agent35-maker.js'), 'utf8');
-  ok(/require\('\.\.\/lib\/maker\/manual-mode'\)/.test(src), 'agent35 imports lib/maker/manual-mode — one implementation, no second copy of the rule');
-  ok(/const manualBlock = placementBlockReason\(marketId\)/.test(src), 'agent35 calls placementBlockReason(marketId) inside the per-market loop');
-  ok(/manualBlock \? manualBlock/.test(src), '…and manual ownership is the FIRST gate in placementBlocked, ahead of every engine-side belt');
-  const filterCalls = (src.match(/filterCancelTargets\(/g) || []).length;
-  ok(filterCalls === 3, `all THREE routine cancel paths are filtered (universe-leave, stand-down, auto-disarm) — found ${filterCalls}`);
-  ok(/manual mode active, skip/.test(src), 'the engine logs the exact phrase "manual mode active, skip" — the operator can prove the isolation from pm2 logs');
-  ok(/manualMode:/.test(src), 'the engine publishes manual ownership into /tmp/maker-state.json — externally observable, not a claim');
+  // FINO AL 9 AGOSTO 2026 questa sezione leggeva il sorgente di agent35-maker e provava che il motore
+  // automatico chiamasse i due gate. Il motore è stato rimosso il 9 agosto 2026 insieme all'ARMING, e
+  // la proprietà «il gate della proprietà per mercato è cablato dove si piazza davvero» è oggi
+  // asserita, sul percorso vivo, da lib/maker/gestione-manuale-nel-flusso.test.js — che gira nella
+  // suite e legge il funnel reale. Qui resta la parte che nessun altro prova: la spazzata del KILL.
 
   // The KILL path must NOT be filtered: the panic button has no exceptions.
   const killSrc = fs.readFileSync(path.join(__dirname, '..', 'lib', 'maker', 'cancel-all.js'), 'utf8');

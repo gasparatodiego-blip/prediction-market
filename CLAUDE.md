@@ -3,7 +3,21 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt**: non serve più reincollarlo ogni volta.
 
-Ultima verifica contro codice/stato reali: **9 agosto 2026**, ~08:40 UTC.
+Ultima verifica contro codice/stato reali: **9 agosto 2026**, ~14:00 UTC.
+
+> ## 🧹 MAKER ARMING, agent35 E agent37 SONO STATI RIMOSSI — §5 punto 63
+> Decisione dell'operatore, eseguita il 9 agosto 2026. Non esistono più: il **motore automatico**
+> (`agent35-maker`), il suo **dead-man** (`agent37-maker-watchdog`) e l'intero meccanismo di
+> **ARMING** (modulo, preflight, cinque route, pannello, `data/maker-arming.json`). I comandi
+> dell'operatore sono ora **due**: **AVVIA/FERMA** e **KILL**.
+> **Il KILL è invariato e verificato** — 25/25 nel suo selfcheck, 13/13 in `kill-blocca-avvia`, e la
+> rotta continua a non importare nessuna superficie di piazzamento. L'unica riga tolta dalla rotta era
+> il ritiro dell'arming, che era un **parametro opzionale**.
+> **Il ciclo automatico non è stato toccato**: agent41 (riallocazione + mini-ciclo) e agent40
+> (riprezzo, uscita, merge) sono identici — 59/59, 72/72, 36/36.
+> **DUE `pm2 delete` E UN `pm2 restart` SONO IN ATTESA DELLA TUA AUTORIZZAZIONE** (§5 punto 63):
+> finché non li esegui, i due processi rimossi dal repo **continuano a girare** col codice che avevano
+> in memoria, e il dashboard serve ancora il build vecchio.
 
 > ## ⛓️ LA CATENA DI SOSTITUZIONI MURAVA UNA GAMBA VIVA — §5 punto 55
 > `MAX_CATENA` era 64 e cresce di **un anello al minuto** su una gamba ripiazzata a ogni giro: l'uscita
@@ -66,8 +80,7 @@ Ultima verifica contro codice/stato reali: **9 agosto 2026**, ~08:40 UTC.
 > **Stato reale verificato alle ~21:10 UTC**, e smentisce il banner qui sotto: il KILL è stato
 > **revocato** alle 20:55:50Z (`data/safety-kill-switch.json` → `killed:false`,
 > `clearedReason:"ripristino dal pannello operatore"`) e l'interruttore è su **AVVIA** dalle 20:56:04Z.
-> `data/maker-arming.json` resta `armed:false` dal disarm delle 17:20 causato dal kill: il kill revocato
-> **non ri-arma da solo** (§5 punto 5), ma questo ferma agent35, non agent41.
+> *(La riga sull'arming che stava qui è decaduta il 9 agosto 2026: l'arming non esiste più — §5 punto 63.)*
 
 > ## 🔴 KILL ATTIVO DALLE 17:20:17 UTC DELL'8 AGOSTO 2026 — CONTO PIATTO
 > `data/safety-kill-switch.json` dice `killed:true`, `by:"operator · liquidity-rewards tab"`. Verificato
@@ -174,7 +187,7 @@ per un maker l'esecuzione è il costo, non il ricavo.
 |---|---|
 | Runtime | Next.js 14.2 (App Router) · Node v20.20.2 · TypeScript |
 | DB | Prisma 5 → **PostgreSQL** (`DATABASE_URL` in `.env`) |
-| Processi | **pm2**, 42 processi definiti in `agents/ecosystem.config.js`; **12 online**, uno (`agent44-audit-scoperta`) schedulato e a riposo, gli altri deliberatamente fermi (commit `47ff87e`: «riduzione all'insieme minimo») |
+| Processi | **pm2**, **40** processi definiti in `agents/ecosystem.config.js` (erano 42: `agent35-maker` e `agent37-maker-watchdog` sono stati rimossi il 9 agosto 2026 — §5 punto 63); **10 online** una volta eseguiti i due `pm2 delete` in attesa, uno (`agent44-audit-scoperta`) schedulato e a riposo, gli altri deliberatamente fermi (commit `47ff87e`: «riduzione all'insieme minimo») |
 | Server | Hetzner Helsinki, Ubuntu, `62.238.52.227` (verificato) |
 | Path | Repo in `/root/rewards-bot`. **`/root/prediction-market` è un symlink allo stesso path** ed è il `cwd` dichiarato in pm2: i due nomi sono la stessa directory |
 | Repo | GitHub privato `git@github.com:gasparatodiego-blip/prediction-market.git`, branch `main` |
@@ -223,13 +236,16 @@ for(const l of fs.readFileSync('.env','utf8').split('\n')){const m=l.match(/^\s*
    lettura superficiale: leggere il codice che decide davvero, non il commento che lo descrive, e
    controllare lo stato runtime (`pm2 env`, i file in `data/`) e non solo la configurazione.
 
-### I tre interruttori, e chi decide cosa
+### I due interruttori, e chi decide cosa
+
+Erano tre. **ARM / DISARM è stato rimosso il 9 agosto 2026** (§5 punto 63) insieme al motore che lo
+consultava: era un'autorizzazione di sessione con TTL e cap di collaterale, e l'unico processo che la
+leggeva era `agent35-maker`. Restano i due che decidono davvero.
 
 | Interruttore | File / flag | Semantica |
 |---|---|---|
 | **AVVIA / FERMA** | `data/maker-bot-enabled.json` via `lib/maker/bot-enabled.js`, bottone in cima alla tab **Mercati ottimizzati** | Decide se il bot apre posizioni da solo. `agent41` lo rilegge **a ogni ciclo**: FERMA vale dal ciclo dopo, senza restart. File mancante/illeggibile/malformato ⇒ **fermo**. Ferma i piazzamenti *nuovi*, lascia gestite le posizioni aperte (auto-close, riprezzatura, rinnovi). |
-| **KILL** | `data/safety-kill-switch.json`, `lib/safety/kill-switch`, `/api/maker/kill` | Emergenza assoluta. Lo leggono tutti i percorsi **compreso `auto-close`**: killare lascia le posizioni aperte *senza uscita*. Non è l'interruttore operativo. |
-| **ARM / DISARM** | `data/maker-arming.json`, `/api/maker/{arm,disarm}` | Autorizzazione di sessione al piazzamento, con cap di collaterale. |
+| **KILL** | `data/safety-kill-switch.json`, `lib/safety/kill-switch`, `/api/maker/kill` | Emergenza assoluta. Lo leggono tutti i percorsi **compreso `auto-close`**: killare lascia le posizioni aperte *senza uscita*. Non è l'interruttore operativo. **Invariato dalla rimozione dell'arming**: la rotta faceva due cose e ora ne fa due — interruttore durevole + spazzata di cancellazione — perché il ritiro dell'arming era un parametro **opzionale**. |
 
 `REALLOC_SCHEDULER_DRY_RUN` **è stato rimosso** il 7 agosto 2026 da `ecosystem.config.js` e da ogni
 riga di `agent41`. Non reintrodurlo e non aggiungere un env di fallback accanto ad AVVIA/FERMA: due
@@ -246,21 +262,29 @@ e le regole si **fondono** fra i file. `.claude/settings.local.json` deve restar
 Le due copie vanno tenute in sync: se ne modifichi una, modifica l'altra — e
 `lib/safety/policy-permessi.test.js` fallisce se divergono.
 
+> **NOTA DEL 9 AGOSTO 2026 — la policy NON è stata toccata dalla rimozione dell'arming.** Le regole che
+> nominano `agent35-maker`, `/api/maker/{arm,disarm}` e `maker-arming` sono rimaste tutte al loro posto,
+> e da oggi non possono più corrispondere a niente. Sono state lasciate **di proposito**: toglierle è
+> l'unica operazione di questa pulizia che *allenta* un presidio, e §2 regola 2 dice che §2 non si
+> riscrive senza istruzione esplicita. Restano anche i segnali dell'hook e `policy-permessi.test.js`
+> (che le conta): il test è verde, e il costo di tenerle è zero prompt in più su comandi che non esistono.
+
 Le regole `ask` si dividono in **tre famiglie, con criteri diversi**, e la differenza è voluta:
 
 1. **Capitale reale — `ask` anche in lettura.** Ordini manuali (`/api/maker/manual/*`), script di
-   piazzamento, `node agent35-maker` / `agent40-manual-reprice`, armamento (`/api/maker/{arm,disarm}`)
-   e gli env che abilitano il piazzamento (`MAKER_PLACEMENT`, `MANUAL_ORDER_PLACEMENT`,
-   `MAKER_MODE=live|on`, `MAKER_FUNDING_APPROVED`). Qui basta *nominare* la cosa per far scattare il
-   prompt: massima cautela, anche a costo di chiedere su un `grep`. **Questa famiglia non si allarga.**
+   piazzamento, `node agent40-manual-reprice` (e `agent35-maker`, che non esiste più), armamento
+   (`/api/maker/{arm,disarm}`, rimosso) e gli env che abilitano il piazzamento (`MAKER_PLACEMENT`,
+   `MANUAL_ORDER_PLACEMENT`, `MAKER_MODE=live|on`, `MAKER_FUNDING_APPROVED`). Qui basta *nominare* la
+   cosa per far scattare il prompt: massima cautela, anche a costo di chiedere su un `grep`.
+   **Questa famiglia non si allarga.**
 2. **pm2 — `ask` anche solo se nominato** (dal 7 agosto 2026): `restart`, `stop`, `delete`, `reload`,
    `kill`, `startOrRestart`. Prima non c'era **nessuna** regola su pm2: la regola 2 di §2 viveva solo
    in questo file, e un riavvio poteva partire muto. `pm2 list/describe/env/logs` passano.
 3. **Flag di stato/sicurezza — `ask` solo in scrittura** (dal 7 agosto 2026). AVVIA/FERMA
    (`bot-enabled`, `impostaBot`, `api/maker/bot`), KILL (`safety-kill`, `kill-maker`,
    `/api/maker/kill`), il guardiano delle perdite (`guardian-baseline`, `guardian-state`), la gestione
-   manuale per mercato (`maker-manual-mode`) e il file di armamento (`maker-arming`) non hanno una
-   regola-ombrello sul nome. Al suo posto c'è, per **ognuno** di questi sei flag, la stessa famiglia di
+   manuale per mercato (`maker-manual-mode`) e il file di armamento (`maker-arming`, oggi inesistente)
+   non hanno una regola-ombrello sul nome. Al suo posto c'è, per **ognuno** di questi sei flag, la stessa famiglia di
    **19 forme di scrittura**: redirezione (`*> *T*` e `*>*T*.json`), `tee`, `sed`, `rm`, `mv`, `cp`,
    `touch`, `truncate`, `dd of=`, esecuzione via `node`/`python`/`perl`/`bash`/`sh -c`/`./`, e
    `git checkout` / `git restore` / `git reset` (che possono rimettere indietro il flag); più
@@ -327,13 +351,14 @@ Si completa tutto il resto, si dice cosa è pronto, e si aspetta il messaggio um
 
 ## 3 · AGENTI CHIAVE
 
-**Online al 7 agosto 2026** (`pm2 list` — verificato, non assunto):
+**Online al 7 agosto 2026** (`pm2 list` — verificato, non assunto), **meno i due rimossi il 9 agosto
+2026**: `agent35-maker` (il motore automatico) e `agent37-maker-watchdog` (il suo dead-man) non sono
+più nel repo né in `ecosystem.config.js`. Finché non vengono eseguiti i due `pm2 delete` in attesa
+(§5 punto 63) i processi restano vivi in memoria con il codice vecchio, e `pm2 list` li mostra ancora.
 
 | pm2 | Cosa fa | File |
 |---|---|---|
 | `agent34-clob-ws` | Feed **websocket** dei book CLOB Polymarket. Sola lettura, canale pubblico e senza chiavi: non può firmare, piazzare o cancellare nulla. Alimenta tape e mid-history. | `agents/agent34-clob-ws.js` |
-| `agent35-maker` | **Il motore maker**: pianifica ed espone le quote sui mercati selezionati. Gira con `MAKER_MODE=live-min`, `MAKER_PLACEMENT=send` (vedi §5, punto 2). | `agents/agent35-maker.js` |
-| `agent37-maker-watchdog` | **Dead-man dei processi**: sorveglia i battiti di agent35/agent40; se un motore si ferma, cancella i suoi ordini rimasti soli sul venue. Guarda la salute, non i dollari. | `agents/agent37-maker-watchdog.js` |
 | `agent38-tape-watchdog` | Watchdog di **continuità** dei giornali (trade tape + mid-history): copre il buco che l'auto-heal del socket di agent34 non vede. | `agents/agent38-tape-watchdog.js` |
 | `agent40-manual-reprice` | **Riprezzatura / uscita dalla banda** per gli ordini piazzati a mano: l'asse giusto non è la scadenza a 180 s ma «l'ordine è ancora dentro la banda che paga?». Scrive lo snapshot posizioni. | `agents/agent40-manual-reprice.js` |
 | `agent41-realloc-scheduler` | **Riallocazione periodica** (ogni 6 h) + **trigger a capitale fermo** (ogni 2 min, dall'8 agosto 2026). Il ciclo fisso ha due trigger indipendenti: *validità* e *valore*. Il trigger event-driven ne ha uno solo: c'è collaterale libero sopra **$50**. **È l'unico processo che può cancellare e piazzare ordini veri senza conferma umana**, per eccezione esplicita dell'operatore (3 agosto 2026). | `agents/agent41-realloc-scheduler.js` |
@@ -364,8 +389,14 @@ file che non sia la propria coda — provato da un test che cammina il suo alber
 |---|---|
 | `agent43-guardian` | **Il guardiano delle perdite economiche.** Ogni 30 s confronta (saldo pUSD + posizioni al prezzo corrente) con il baseline in `data/guardian-baseline.json`; oltre `GUARDIAN_LOSS_PCT` (default 5%) o `GUARDIAN_LOSS_ABS` (default $30) cancella **tutti gli ordini a riposo**, deposita un referto `reason='guardian-auto-kill'` e mette il bot su **FERMA**. Non tocca le posizioni aperte e non ferma l'uscita automatica. Nessun auto-riarmo: si riparte cancellando `data/guardian-state.json` a mano. Le soglie si rileggono da `.env` **a ogni giro**, senza restart. Strutturalmente incapace di piazzare (unica superficie: `lib/maker/cancel-all`), verificato da un test che cammina l'albero dei `require` (65/65 verdi). File: `agents/agent43-guardian.js` + `lib/maker/guardian-perdite.js`. Codice e blocco pm2 sono in git dal 7 agosto (`dbba34e`). |
 
-Distinzione da tenere ferma: **agent37 guarda i processi, agent43-guardian guarda il capitale.** Sono
-due guasti indipendenti (un motore può battere regolare e perdere soldi), quindi due processi.
+Distinzione che era da tenere ferma, e che il 9 agosto 2026 ha perso una delle due metà: **agent37
+guardava i processi, agent43-guardian guarda il capitale** — due guasti indipendenti (un motore può
+battere regolare e perdere soldi), quindi due processi. Con la rimozione di agent37 **resta solo il
+secondo**, e va detto per intero: **oggi nessun processo sorveglia il battito di agent40**. Se agent40
+si blocca con ordini a riposo, ciò che li toglie è la scadenza **GTD nativa** del venue
+(`lib/maker/order-ttl.js`) e, per la parte economica, agent43-guardian se la perdita supera la soglia.
+Era la copertura dichiarata anche prima per la morte dell'host; da oggi vale anche per la morte del
+solo processo. **È una conseguenza voluta della rimozione, non un difetto scoperto dopo** (§5 punto 63).
 
 **Fuori da pm2, a richiesta — il monitor delle «Reti dei 21»** (7 agosto 2026). Non è un agent e non va
 messo in pm2: si lancia in un terminale dedicato quando serve guardare.
@@ -472,8 +503,9 @@ di riferimento — **328 volte** — mentre il manuale v1 si era già dato «< 2
 **Fine scala — la regola sta su tutti e quattro i percorsi** (dal 7 agosto 2026). Sotto i 3¢ o sopra i
 97¢ un mercato non fa più mercato: sta risolvendo, e un ordine a riposo lì è una scommessa asimmetrica.
 `lib/maker/end-of-scale.js` resta l'unica definizione, ma ora la chiamano **quattro** moduli e non due:
-`auto-reprice` (agent40), `mm-tracking`, la rotaia `end-of-scale` di `risk-rails` (che copre **agent35**,
-azione `halt-market`) e il gate 2-ter di `placeManualOrder` (che copre pannello manuale, `bulk-allocate`
+`auto-reprice` (agent40), `mm-tracking`, la rotaia `end-of-scale` di `risk-rails` (che copriva
+**agent35**, azione `halt-market`; il motore è stato rimosso il 9 agosto 2026 e la rotaia resta nel
+modulo) e il gate 2-ter di `placeManualOrder` (che copre pannello manuale, `bulk-allocate`
 e quindi **agent41**). Le soglie si rileggono da `.env` a ogni chiamata — `MID_EXTREME_LOW=0.03`,
 `MID_EXTREME_HIGH=0.97`, in prezzo e non in centesimi — e un valore che non si capisce viene **scartato**
 in favore del difetto: un `.env` sbagliato non può spegnere la protezione.
@@ -502,7 +534,7 @@ millisecondi: è un difetto che nessun test funzionale vede, perché il risultat
 
 **Origine degli ordini — una mano o un ciclo** (`lib/maker/origine-ordine.js`, 7 agosto 2026). Campo
 `origine` **accanto** a `source`, non al posto suo: `source` dice quale corsia piazza (ed è quello che
-agent35/agent40 leggono), `origine` dice se dietro c'era una persona. Serve perché `bulk-allocate` timbra
+agent40 legge — fino al 9 agosto 2026 anche agent35), `origine` dice se dietro c'era una persona. Serve perché `bulk-allocate` timbra
 `manual-ui` sia per il bottone del pannello sia per agent41. Il reset di agent41 ora cancella **solo** ciò
 che è provatamente `auto`: manuale e **ignoto** restano sul libro, e gli ordini piazzati prima di questa
 modifica sono ignoti per costruzione. Il pannello non cambia: la mano `leggiOrigini` è iniettata solo da
@@ -857,9 +889,10 @@ tx `0x4333636f…3be` — il reward della giornata del **6 agosto**, per cui la 
 Il percorso CLOB è diventato `leggiRewardDaMercati`, fonte **secondaria e spenta** (≈51 richieste a
 notte per un catalogo non attribuito), riaccendibile con `conScomposizione`.
 
-**Altri stati letti:** kill-switch **non attivo** (`killed:false`); arming **disarmato**
-(`armed:false`, `disarmReason:"kill-switch"`, del 6 agosto, mai riarmato); `MANUAL_ORDER_PLACEMENT=send`;
-`MAKER_FUNDING_APPROVED=true` su agent35/40/41 (attestazione umana, non un armamento).
+**Altri stati letti:** kill-switch **non attivo** (`killed:false`); `MANUAL_ORDER_PLACEMENT=send`;
+`MAKER_FUNDING_APPROVED=true` su agent40/41 (attestazione umana, non un armamento — e dal 9 agosto 2026
+non esiste più nemmeno l'armamento a cui contrapporla: §5 punto 63). *(La riga sull'arming disarmato
+che stava qui è decaduta con la rimozione del meccanismo.)*
 
 ---
 
@@ -873,14 +906,16 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
    prodotto ordini. (Era già chiuso il resto del punto: il codice del guardiano è in git dal 7 agosto
    — `dbba34e` — e i residui che un suo test aveva lasciato sullo stato vero sono stati cancellati la
    sera stessa; la versione attuale del test inietta `impostaBot` e `registraCancellazione`.)
-2. **La copertura dichiarata di FERMA non corrisponde al runtime di agent35.** L'header di
-   `agent43-guardian.js` afferma che agent35 «è fermato a monte da `MAKER_MODE=off` e non può
-   piazzare». Il processo in esecuzione ha invece `MAKER_MODE=live-min` e `MAKER_PLACEMENT=send`
-   (letto da `/proc/<pid>/environ`; è ciò che `ecosystem.config.js:620` dichiara). Oggi non piazza per
-   un'altra ragione — `manual mode active` sul mercato in questione (`data/maker-manual-mode.json`) —
-   che è uno stato per-mercato, non un blocco globale. Il limite reale resta quello documentato:
-   **FERMA copre agent41, non agent35 né il pannello manuale**, e non esiste un punto in cui bloccare
-   i piazzamenti nuovi senza bloccare anche le uscite. Da correggere: il commento, o la copertura.
+2. **~~La copertura dichiarata di FERMA non corrisponde al runtime di agent35~~ — CHIUSO il 9 agosto
+   2026 rimuovendo il processo (§5 punto 63).** Il difetto era una divergenza fra un commento
+   (`agent43-guardian.js`: «agent35 è fermato a monte da `MAKER_MODE=off`») e il runtime vero
+   (`MAKER_MODE=live-min`, `MAKER_PLACEMENT=send` letti da `/proc/<pid>/environ`). Non è stato chiuso
+   correggendo il commento: è stato chiuso togliendo il processo di cui parlava.
+   **Il limite residuo resta, ed è più stretto di prima:** FERMA copre agent41; il pannello manuale e
+   agent40 restano fuori, e continua a non esistere un punto in cui bloccare i piazzamenti nuovi senza
+   bloccare anche le uscite. Con agent35 rimosso, però, ogni strada verso il venue passa ora
+   dall'imbuto manuale — `lib/maker/percorsi-di-invio.test.js` lo asserisce, e l'asserzione è passata
+   da «esattamente UN percorso sfugge» a «NESSUN percorso sfugge».
 3. **`REALLOC_SCHEDULER_DRY_RUN=1` resta nell'ambiente del processo agent41 — PER DECISIONE
    DELL'OPERATORE (8 agosto 2026), e un riavvio non può toglierla.** Inerte: nessuna riga di codice la
    legge, e `lib/maker/gestione-manuale-nel-flusso.test.js` fallisce se ricompare nel codice.
@@ -929,10 +964,13 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
    il merge «NON è eseguibile dallo stack attuale»; il relayer gasless ne ha tolte tre e
    `ctf-relayer.js` la quarta, e il ciclo è stato eseguito davvero il 7 agosto 2026 (commit `95aa634`
    e `d21669d`). Il manuale operativo v2 è già stato corretto; questo file no.
-5. **Arming disarmato da un kill ormai revocato.** `data/maker-arming.json` è `armed:false` con
-   `disarmReason:"kill-switch"` del 6 agosto 22:13; il kill è stato revocato il 7 agosto («nuovo
-   interruttore AVVIA/FERMA: il kill torna a essere lo STOP di emergenza»), ma l'arming non è mai
-   stato ripreso. Da chiarire se è voluto.
+5. **~~Arming disarmato da un kill ormai revocato~~ — CHIUSO il 9 agosto 2026: l'arming non esiste
+   più** (§5 punto 63). La domanda aperta era «è voluto che nessuno l'abbia più riarmato dal 6
+   agosto?». La risposta, data dai fatti prima che dalla decisione: per tre giorni il bot ha lavorato
+   con capitale reale e l'arming è rimasto `armed:false` senza che nulla ne risentisse — perché
+   l'unico processo che lo leggeva era agent35, che in quei tre giorni non ha piazzato niente. Un
+   interruttore che nessuno accende e che niente richiede non è un presidio: è un pezzo di stato che
+   può solo ingannare chi lo legge. Rimosso insieme al suo lettore.
 6. **`data/maker-bot-enabled.json` e `data/cancellazioni-di-emergenza.json` non sono coperti da
    `.gitignore`.** **Non è più teorico: dalle 12:07:55 dell'8 agosto `data/maker-bot-enabled.json`
    esiste e compare come `??` in `git status`** — esattamente come questo punto prevedeva. Va aggiunto
@@ -1676,7 +1714,7 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     | 4 | **mid stantio**: 20 s, poi l'ordine si ritira | `lib/maker/mid-stantio.js` (nuovo) |
     | 5 | fill: riequilibrio e merge **senza conflitti** | `lib/maker/auto-close.js` |
     | 6 | cadenza operativa del trigger **10 min**, invariante contro la scoperta | `lib/maker/trigger-capitale-fermo.js` |
-    | 7 | **caricatore `.env`** su tutti e quattro i processi critici | `agents/agent35,41,43` |
+    | 7 | **caricatore `.env`** su tutti e quattro i processi critici | `agents/agent35,41,43` *(agent35 rimosso il 9 agosto 2026 — §5 punto 63)* |
     | 8 | **backoff** distinto per 429 e **verifica dopo l'ambiguo** | `lib/maker/backoff-venue.js` (nuovo) |
 
     **Fase 1 — il pavimento era tarato sulla popolazione sbagliata.** 0,25 g veniva dalla mediana di
@@ -1761,7 +1799,7 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     |---|---|---|
     | `agent40-manual-reprice` | fasi 3, 4, 5 (decisione per evento, mid stantio, conflitto della chiusura forzata) + il fix del tick | `pm2 restart agent40-manual-reprice` |
     | `agent41-realloc-scheduler` | fasi 1, 6, 7 (pavimento nel piano leggero, cadenza operativa, caricatore `.env`) | `pm2 restart agent41-realloc-scheduler` — **e da ora basta questo**: il caricatore rende inutile la ricostruzione da `/proc` del punto 3 |
-    | `agent35-maker` | fase 7 (caricatore `.env`) | `pm2 restart agent35-maker` |
+    | ~~`agent35-maker`~~ | fase 7 (caricatore `.env`) — **decaduto: il processo è stato RIMOSSO il 9 agosto 2026** (§5 punto 63). Non riavviarlo: al suo posto c'è un `pm2 delete` | ~~`pm2 restart agent35-maker`~~ |
     | `agent43-guardian` | fase 7 (caricatore `.env`) | `pm2 restart agent43-guardian` |
     | `dashboard` | fase 2 (fattore di rischio su `/api/maker/board`) | `pm2 restart dashboard` (verificare PRIMA `.next/prerender-manifest.json` — §5 punto 7) |
 
@@ -2794,6 +2832,83 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
 
     **Verifica.** Nuovo `lib/maker/allowlist-con-posizioni.test.js` **17/17** con i `conditionId` veri.
     Suite: **157 eseguiti, 151 verdi**, i 6 rossi sono i preesistenti del punto 40. `npm run build` verde.
+
+63. **🧹 MAKER ARMING, agent35-maker E agent37-maker-watchdog SONO STATI RIMOSSI — 9 agosto 2026,
+    ~14:00 UTC, su decisione esplicita di Diego. In `main`. DUE `pm2 delete` E UN `pm2 restart`
+    ASPETTANO LA SUA AUTORIZZAZIONE.**
+
+    **Perché era possibile farlo senza perdere niente.** Le tre funzioni per cui si tiene un motore e il
+    suo dead-man erano già coperte altrove, e da processi che non dipendevano da agent35:
+    cancellazione d'emergenza (`/api/maker/kill` → `lib/maker/cancel-all`, percorso di sola
+    cancellazione, e `agent43-guardian` sulla perdita), snapshot posizioni (agent40), gestione delle
+    posizioni aperte e riallocazione (agent40 e agent41). agent35 non piazzava da giorni: quando il
+    capitale è tornato al lavoro l'8-9 agosto, a piazzare erano il ciclo e il mini-ciclo di agent41.
+
+    **Cosa è stato rimosso, per intero.**
+
+    | | |
+    |---|---|
+    | processi | `agents/agent35-maker.js` · `agents/agent37-maker-watchdog.js` (+ le due `apps[]` in `ecosystem.config.js`: 42 → **40**) |
+    | moduli | `lib/maker/arming.js` · `lib/maker/arm-preview.js` · `lib/maker/preflight.js` (il preflight **è** il gate di arming: la sua intestazione lo dichiara, e senza arming non aveva più chiamanti) |
+    | route | `/api/maker/{arm, arm-preview, disarm, renew, gates, preflight, status}` — sette. `gates` e `status` non erano «di arming» per nome ma **lo erano per contenuto**: leggevano `/tmp/maker-state.json` (scritto da agent35), `data/maker-heartbeat.json` e `data/maker-watchdog-state.json` (di agent37) più il record di arming, quindi da oggi avrebbero risposto `null` per sempre |
+    | UI | `app/components/MakerArmingPanel.tsx` · la sezione «Esecuzione» di `MarketTerminal` (passi 2-3-4: gate del motore, preflight, ARM in due tempi) · il pannello «Live status» di `MakerKillClient` |
+    | stato | `data/maker-arming.json` (era `armed:false`). **`data/maker-arming-audit.jsonl` è stato lasciato**: è un registro storico, e cancellare un audit non è pulizia |
+    | script | `scripts/maker-arming-selfcheck.js` · `scripts/maker-cap-dryrun.js` e `scripts/maker-seed-test-leg.ts` (esistevano per provare/alimentare il motore) |
+    | test | `lib/maker/dead-man-per-motore.test.js` (il suo soggetto era agent37) |
+
+    **IL KILL È LA PARTE CHE CONTA, ED È INVARIATO — verificato, non affermato.** Dalla rotta è sparita
+    **una** riga: `disarmArming`, che era un **parametro opzionale** di `killMaker` (`disarmArming = null`,
+    invocato solo `if (typeof … === 'function')`). Il KILL faceva due cose e ne fa due: interruttore
+    durevole + spazzata di cancellazione.
+    - `scripts/maker-kill-selfcheck.js` **25/25**, compresa l'asserzione strutturale «la rotta non importa
+      nessuna superficie di piazzamento/firma: può FERMARE, non può far PARTIRE un ordine»;
+    - `lib/maker/kill-blocca-avvia.test.js` **13/13** (il kill come cancello dell'AVVIA);
+    - il KILL **non è stato eseguito** contro il venue: sarebbe un'azione su capitale reale. La prova è per
+      test e per lettura del codice, com'è giusto — la prova sul campo la fa Diego a costo zero.
+
+    **AVVIA/FERMA e il ciclo automatico non sono stati sfiorati:** `bot-enabled` **36/36**,
+    `trigger-capitale-fermo` **59/59**, `capitale-al-lavoro` **72/72**, `miniciclo-prende-il-mercato`
+    **36/36**. Nessun file di agent40 o agent41 è nel diff.
+
+    **DUE CONSEGUENZE DA SAPERE, entrambe volute e nessuna delle due un difetto scoperto dopo.**
+    1. **Nessuno sorveglia più il battito di agent40.** Era il mestiere di agent37. Se agent40 si blocca
+       con ordini a riposo, a toglierli resta la **scadenza GTD nativa** del venue (`order-ttl.js`) e,
+       sul lato economico, `agent43-guardian` oltre la soglia di perdita. Era già l'unica copertura per
+       la morte dell'host; da oggi vale anche per la morte del solo processo.
+    2. **Il KILL è tornato fuori dalle schede.** Il pannello di arming stava sopra le schede e portava
+       con sé il KILL; togliendolo, il KILL sarebbe rimasto in fondo alla sola scheda «Riepilogo». La
+       barra KILL/Ripristina è stata quindi **spostata fuori** dalle sezioni di `LiquidityRewardsConsole`
+       — stessi due handler, stesso endpoint, nessun comportamento nuovo — che è esattamente ciò che il
+       suo commento dichiarava già di voler garantire («raggiungibili qualunque cosa si stia guardando»).
+
+    **La policy dei permessi e l'hook NON sono stati toccati** (§2 regola 2). Le regole `ask` che
+    nominano `agent35-maker`, `/api/maker/{arm,disarm}` e `maker-arming` restano: sono ormai regole che
+    non possono corrispondere a niente, e toglierle sarebbe l'unica parte di questa pulizia che
+    *allenta* un presidio. `policy-permessi.test.js` e `hook-piazzamento.test.js` restano verdi.
+
+    **Un artefatto di build ha dovuto essere spostato:** `.next-verifica/` (build del 5 agosto,
+    gitignored ma **incluso da `tsconfig.json`**) conteneva i tipi generati delle route rimosse e faceva
+    fallire `tsc` con «Cannot find module …/arm-preview/route.js». Spostato nello scratchpad di sessione,
+    non cancellato. Se un domani serve, si rigenera con la sua build.
+
+    **Verifica.** Suite: **156 eseguiti, 150 verdi** (un file in meno: il test del dead-man), e i **6
+    rossi sono esattamente i preesistenti del punto 40** — zero nuovi. `npm run build` verde,
+    `BUILD_ID` nuovo e `prerender-manifest.json` presente (la nota del punto 7, che va verificata prima
+    di riavviare il dashboard). Scansione finale: **zero** `require`/`import`/`fetch` verso i file
+    rimossi in tutto il repo.
+
+    **AZIONI pm2 IN ATTESA — NON ESEGUITE** (§2 regola 2). Finché non le esegui, i due processi
+    rimossi dal repo **continuano a girare** con il codice che hanno già in memoria, e il dashboard
+    serve il build vecchio (quindi il pannello di arming è ancora visibile e le sue route rispondono
+    404 solo dopo il riavvio):
+    ```bash
+    pm2 delete agent35-maker
+    pm2 delete agent37-maker-watchdog
+    pm2 restart dashboard      # verificare PRIMA .next/prerender-manifest.json — §5 punto 7 (fatto: presente)
+    pm2 save                   # altrimenti un resurrect li rimette entrambi
+    ```
+    `pm2 save` non è un extra: senza, il dump su disco continua a contenere i due processi e un riavvio
+    del demone li resusciterebbe puntando a script che non esistono più.
 
 ---
 

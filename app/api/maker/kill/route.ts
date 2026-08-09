@@ -4,7 +4,6 @@ import { NextResponse } from 'next/server';
 // can STOP orders but structurally cannot start one.
 import { killMaker } from '@/lib/maker/kill';
 import { buildCancelCredsProviders } from '@/lib/maker/cancel-creds-provider';
-import { disarm } from '@/lib/maker/arming';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -14,8 +13,8 @@ export const dynamic = 'force-dynamic';
  *
  * Middleware has already gated this to an authenticated admin session (ADMIN_ACCESS_SECRET). It runs
  * INSIDE the Edgeradar backend — the browser never talks to polymarket.com — so it works even when the
- * operator's ISP blocks polymarket.com and even when agent35 is unresponsive (the durable global kill is
- * set here, and the cancel sweep runs here, not through agent35).
+ * operator's ISP blocks polymarket.com and even when every agent is unresponsive: the durable global kill
+ * is set here and the cancel sweep runs here, not through any agent.
  *
  * Fail-safe: with the maker off and nothing resting this is a safe no-op that still sets the durable kill
  * and runs a real (empty) cancel sweep. Returns venue-reported figures only; a partial failure is 207.
@@ -27,8 +26,6 @@ export async function POST() {
       by: 'operator · liquidity-rewards tab',
       reason: 'manual KILL from the liquidity-rewards tab',
       credsProviders,
-      // KILL also withdraws the arming authorization, so a later MAKER_MODE flip cannot resume a stale arm.
-      disarmArming: () => { disarm('kill-switch'); },
     });
     const anyFail =
       res.killed === false ||

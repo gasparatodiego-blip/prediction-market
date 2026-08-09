@@ -1,7 +1,7 @@
 'use client';
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
-// MARKET TERMINAL — ONE screen for one liquidity-reward market, from "is this worth touching?" to ARM.
+// MARKET TERMINAL — ONE screen for one liquidity-reward market, from "is this worth touching?" al KILL.
 //
 // It replaces three disconnected views: the list's preview bar, the separate "Apri il book" page, and
 // the separate "Scheda mercato". Splitting them meant the answer to "should I quote here" lived on a
@@ -15,7 +15,7 @@
 //   4  numbers            gross $/day, your weight on the book, net — with the adverse disclosure
 //   5  per-order rules    follow-the-mid or pinned; what happens per side when a leg fills
 //   5b risk limit         the per-market collateral ceiling that bounds inventory accumulation
-//   6  execution          the four gates, each with its REAL state, ending in the two-step ARM
+//   6  universo del bot   l'unica azione di configurazione rimasta su questa schermata
 //   7  market data        the read-only declaration (identifiers, dates, venue rules, pUSD), collapsed
 //   8  KILL               sticky, one tap, no dialog
 //
@@ -27,8 +27,10 @@
 //     lib/rewards-live-band, the placement verdict from lib/maker/venue-rules, the worth-it verdict from
 //     lib/maker/worth-it, the adverse cost from lib/rewards-estimate.
 //
-// THIS SCREEN ARMS NOTHING BY BEING OPENED. Sections 5b/6/8 are operator-only (they probe the same
+// QUESTA SCHERMATA NON PIAZZA NULLA. Sections 5b/6/8 are operator-only (they probe the same
 // admin gate /api/maker/* rides) and every one of their actions is an explicit tap by the operator.
+// Il meccanismo di ARMING che chiudeva questa schermata è stato rimosso il 9 agosto 2026 con il motore
+// automatico: restano l'universo del bot (una lista, non un ordine) e il KILL.
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -58,12 +60,6 @@ function countdown(hours: number | null | undefined): string | null {
   const h = Math.floor((total % 1440) / 60);
   return `${d}g ${String(h).padStart(2, '0')}h`;
 }
-function fmtDur(s: number | null): string {
-  if (s == null) return '—';
-  if (s <= 0) return 'scaduto';
-  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
-  return h > 0 ? `${h}h ${m}m ${sec}s` : m > 0 ? `${m}m ${sec}s` : `${sec}s`;
-}
 
 // ── shared, sticky operator inputs. The SAME localStorage keys the board and the data card already
 //    use, so the size/offset the operator set on the list is the size/offset this screen computes.
@@ -84,17 +80,6 @@ interface BookPayload {
   maxSpreadCents: number | null; bandRadiusCents: number | null; bandLo: number | null; bandHi: number | null;
   ladderCap: number; source: string;
 }
-interface Gates {
-  engine: { fresh: boolean; ageSec: number | null; cycle: number | null; lastError: string | null; unknownReason: string | null };
-  gates: {
-    funding: { key: string; value: boolean | null; pass: boolean; how: string };
-    mode: { key: string; value: string | null; pass: boolean; ladder: string[]; how: string };
-    kill: { killed: boolean | null; reason: string | null };
-    canWrite: boolean | null;
-  };
-  arming: { armed: boolean; expiresInSec: number | null; expiresAt: string | null; totalSizeUsd: number | null; ttlSeconds: number | null };
-}
-interface PreflightCheck { key: string; label: string; pass: boolean; value: string; detail: string }
 interface CapState { capUsd: number | null; source: string; fallbackUsd: number | null; note: string | null; error: string | null }
 
 function Section({ id, n, title, sub, children }:
@@ -126,9 +111,6 @@ export default function MarketTerminal({ marketId }: { marketId: string }) {
 
   // ── operator-only state (sections 5b/6/8) ──
   const [operator, setOperator] = useState<boolean | null>(null);
-  const [gates, setGates] = useState<Gates | null>(null);
-  const [preflight, setPreflight] = useState<{ checks: PreflightCheck[]; go: boolean; error?: string } | null>(null);
-  const [pfRunning, setPfRunning] = useState(false);
   const [universe, setUniverse] = useState<{ marketIds: string[] } | null>(null);
   const [uniBusy, setUniBusy] = useState(false);
   const [uniMsg, setUniMsg] = useState<string | null>(null);
@@ -140,11 +122,6 @@ export default function MarketTerminal({ marketId }: { marketId: string }) {
   const [maxInvSaved, setMaxInvSaved] = useState<number | null>(null);
   const [maxInvMsg, setMaxInvMsg] = useState<string | null>(null);
   const [capMsg, setCapMsg] = useState<string | null>(null);
-  const [armOpen, setArmOpen] = useState(false);
-  const [typedTotal, setTypedTotal] = useState('');
-  const [armMsg, setArmMsg] = useState<string | null>(null);
-  const [arming, setArming] = useState(false);
-  const [ttl, setTtl] = useState<number | null>(null);
   const [killing, setKilling] = useState(false);
   const [killMsg, setKillMsg] = useState<string | null>(null);
 
@@ -205,9 +182,6 @@ export default function MarketTerminal({ marketId }: { marketId: string }) {
     return () => { alive = false; clearInterval(t); };
   }, [marketId]);
 
-  const loadGates = useCallback(async () => {
-    try { const r = await fetch('/api/maker/gates', { cache: 'no-store' }); if (r.ok) setGates(await r.json()); } catch { /* keep prior */ }
-  }, []);
   const loadCap = useCallback(async () => {
     try {
       const r = await fetch(`/api/maker/market-cap?marketId=${encodeURIComponent(marketId)}`, { cache: 'no-store' });
@@ -220,29 +194,22 @@ export default function MarketTerminal({ marketId }: { marketId: string }) {
 
   // Operator probe — the SAME admin gate every /api/maker/* action rides. A non-admin visitor gets the
   // decision surface (1–5, 7) and no execution controls at all; nothing is hidden that they could use.
+  // La sonda usa /api/maker/market-cap e non /api/maker/universe: quest'ultima è ESENTE dal gate admin
+  // in lettura (middleware.ts), quindi risponderebbe 200 anche a un visitatore e direbbe «operatore».
   useEffect(() => {
     let alive = true;
     (async () => {
       try {
-        const r = await fetch('/api/maker/status', { cache: 'no-store' });
+        const r = await fetch(`/api/maker/market-cap?marketId=${encodeURIComponent(marketId)}`, { cache: 'no-store' });
         if (!alive) return;
         setOperator(r.ok);
-        if (r.ok) { loadGates(); loadCap(); loadUniverse(); }
+        if (r.ok) { loadCap(); loadUniverse(); }
       } catch { if (alive) setOperator(false); }
     })();
-    const t = setInterval(() => { if (alive && operator) { loadGates(); loadUniverse(); } }, 15_000);
+    const t = setInterval(() => { if (alive && operator) { loadUniverse(); } }, 15_000);
     return () => { alive = false; clearInterval(t); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadGates, loadCap, loadUniverse]);
-
-  // TTL countdown, seeded from the server and re-read at zero (the record auto-disarms on read past expiry).
-  useEffect(() => { setTtl(gates?.arming?.armed ? gates.arming.expiresInSec ?? null : null); }, [gates]);
-  useEffect(() => {
-    if (ttl == null) return;
-    if (ttl <= 0) { loadGates(); return; }
-    const t = setTimeout(() => setTtl((c) => (c == null ? null : c - 1)), 1_000);
-    return () => clearTimeout(t);
-  }, [ttl, loadGates]);
+  }, [marketId, loadCap, loadUniverse]);
 
   // ── derived ──
   const feed = ev?.feed ?? null;
@@ -438,65 +405,19 @@ export default function MarketTerminal({ marketId }: { marketId: string }) {
     } catch (e: any) { setCapMsg(e?.message ?? 'errore'); }
   }, [marketId, capInput]);
 
-  const runPreflight = useCallback(async () => {
-    setPfRunning(true);
-    try {
-      const r = await fetch('/api/maker/preflight', { cache: 'no-store' });
-      setPreflight(await r.json());
-    } catch (e: any) { setPreflight({ checks: [], go: false, error: e?.message ?? 'errore' }); }
-    finally { setPfRunning(false); }
-  }, []);
-
-  const doArm = useCallback(async () => {
-    if (committable == null) return;
-    setArming(true); setArmMsg(null);
-    try {
-      const r = await fetch('/api/maker/arm', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          totalSizeUsd: committable, typedSizeConfirm: Number(typedTotal),
-          perSideSizeUsd: committable / 2, universeMarketIds: [marketId],
-          collateralCapUsd: effectiveCapUsd ?? undefined,
-        }),
-      });
-      const j = await r.json();
-      if (j.ok) { setArmMsg('ARMATO.'); setArmOpen(false); setTypedTotal(''); }
-      else setArmMsg(`Rifiutato (${j.refusedBy || 'errore'}): ${j.reason || j.error || 'bloccato'}`);
-      loadGates();
-    } catch (e: any) { setArmMsg(e?.message ?? 'errore'); }
-    finally { setArming(false); }
-  }, [committable, typedTotal, marketId, effectiveCapUsd, loadGates]);
-
-  const doDisarm = useCallback(async () => {
-    try { await fetch('/api/maker/disarm', { method: 'POST' }); loadGates(); } catch { /* ignore */ }
-  }, [loadGates]);
-
   const doKill = useCallback(async () => {
     setKilling(true); setKillMsg(null);
     try {
       const r = await fetch('/api/maker/kill', { method: 'POST' });
       const j = await r.json();
       setKillMsg(j?.ok
-        ? `disarmato · ${j.cancelledTotal ?? 0} ordini cancellati${j.simulated ? ' (a vuoto — nessuna credenziale di cancellazione)' : ''}`
+        ? `fermato · ${j.cancelledTotal ?? 0} ordini cancellati${j.simulated ? ' (a vuoto — nessuna credenziale di cancellazione)' : ''}`
         : `KILL fallito: ${j?.error ?? j?.killError ?? 'errore'}`);
-      loadGates();
     } catch (e: any) { setKillMsg(`richiesta fallita — niente confermato: ${e?.message ?? 'errore'}`); }
     finally { setKilling(false); }
-  }, [loadGates]);
+  }, []);
 
-  // ── the four execution gates, resolved to a real status each ──
   const step1Ok = inUniverse;
-  const step2Ok = gates?.gates?.funding?.pass === true;
-  const step3Ok = gates?.gates?.mode?.pass === true;
-  const preflightGo = preflight?.go === true;
-  const armBlockers: string[] = [];
-  if (!step1Ok) armBlockers.push('1 · il mercato non è nella lista del bot');
-  if (!step2Ok) armBlockers.push(`2 · fondi non autorizzati (MAKER_FUNDING_APPROVED ${gates?.gates?.funding?.value === null ? 'non leggibile' : 'non attivo'})`);
-  if (!step3Ok) armBlockers.push(`3 · motore non acceso (MAKER_MODE = ${gates?.gates?.mode?.value ?? '—'})`);
-  if (!preflightGo) armBlockers.push(preflight ? '4 · preflight NON-GO — risolvi i controlli rossi' : '4 · preflight non ancora eseguito');
-  if (committable == null) armBlockers.push('size non calcolabile — configura la size nella sezione 2');
-  if (Number(typedTotal) !== committable) armBlockers.push('digita il collaterale esatto per confermare');
-  const armDisabled = arming || armBlockers.length > 0;
 
   if (err) {
     return (
@@ -830,18 +751,14 @@ export default function MarketTerminal({ marketId }: { marketId: string }) {
         </Section>
         )}
 
-        {/* ══ 6 · EXECUTION (operator) ═════════════════════════════════════════════════════════ */}
+        {/* ══ 6 · UNIVERSO DEL BOT (operator) ══════════════════════════════════════════════════
+            Era la sezione «Esecuzione»: quattro passaggi che finivano nell'ARM in due tempi. I
+            passaggi 2, 3 e 4 leggevano lo stato del motore automatico e il record di arming, rimossi
+            entrambi il 9 agosto 2026. Resta il passaggio che non dipendeva da loro — la lista dei
+            mercati — che salva una lista e non piazza niente. ══════════════════════════════════ */}
         {operator === true && (
-        <Section id="exec" n="6" title="Esecuzione"
-          sub="Quattro passaggi, ognuno con lo stato reale letto dal motore.">
-          {gates?.engine?.unknownReason && (
-            <p className="mkt-foot" style={{ color: 'var(--cc-amber)' }}>
-              Stato dei gate non determinabile: {gates.engine.unknownReason}. Finché è così nessun
-              passaggio può risultare verde.
-            </p>
-          )}
-
-          {/* STEP 1 */}
+        <Section id="exec" n="6" title="Universo del bot"
+          sub="Quali mercati il bot considera. Salva una lista: non piazza nulla.">
           <div className="mkt-step" data-mkt-step="1">
             <span className={`mkt-step-d ${step1Ok ? 'is-ok' : 'is-no'}`}>{step1Ok ? '●' : '✕'}</span>
             <div>
@@ -857,111 +774,12 @@ export default function MarketTerminal({ marketId }: { marketId: string }) {
               {uniMsg && <div className="mkt-step-v">{uniMsg}</div>}
             </div>
           </div>
-
-          {/* STEP 2 */}
-          <div className="mkt-step" data-mkt-step="2">
-            <span className={`mkt-step-d ${step2Ok ? 'is-ok' : gates?.gates?.funding?.value == null ? 'is-unk' : 'is-no'}`}>
-              {step2Ok ? '●' : gates?.gates?.funding?.value == null ? '?' : '✕'}
-            </span>
-            <div>
-              <div className="mkt-step-t">2 · Fondi autorizzati</div>
-              <div className="mkt-step-v">
-                <b>MAKER_FUNDING_APPROVED</b> = {gates?.gates?.funding?.value == null ? '— (non leggibile)' : String(gates.gates.funding.value)}
-                <br />{gates?.gates?.funding?.how ?? 'stato non ancora letto'}
-              </div>
-            </div>
-          </div>
-
-          {/* STEP 3 */}
-          <div className="mkt-step" data-mkt-step="3">
-            <span className={`mkt-step-d ${step3Ok ? 'is-ok' : gates?.gates?.mode?.value == null ? 'is-unk' : 'is-no'}`}>
-              {step3Ok ? '●' : gates?.gates?.mode?.value == null ? '?' : '✕'}
-            </span>
-            <div>
-              <div className="mkt-step-t">3 · Motore acceso</div>
-              <div className="mkt-step-v">
-                <b>MAKER_MODE</b> = {gates?.gates?.mode?.value ?? '— (non leggibile)'}
-                {' '}(scala: {(gates?.gates?.mode?.ladder ?? ['off', 'paper', 'live-min', 'live']).join(' → ')})
-                <br />{gates?.gates?.mode?.how ?? 'stato non ancora letto'}
-                {gates?.gates?.kill?.killed ? <><br /><b>KILL durevole attivo</b>{gates.gates.kill.reason ? ` — ${gates.gates.kill.reason}` : ''}</> : null}
-              </div>
-            </div>
-          </div>
-
-          {/* STEP 4 */}
-          <div className="mkt-step" data-mkt-step="4">
-            <span className={`mkt-step-d ${gates?.arming?.armed ? 'is-ok' : armBlockers.length ? 'is-no' : 'is-unk'}`}>
-              {gates?.arming?.armed ? '●' : armBlockers.length ? '✕' : '○'}
-            </span>
-            <div>
-              <div className="mkt-step-t">4 · ARMA E PIAZZA</div>
-              <div className="mkt-step-v"><b>Questo fa partire ordini reali.</b> Due passaggi: apri il
-                controllo, poi digita il collaterale esatto. Il server ri-esegue il preflight sull&rsquo;ARM.</div>
-
-              {/* preflight — the arming gate, read live at click time */}
-              <button className="mkt-btn" type="button" onClick={runPreflight} disabled={pfRunning}>
-                {pfRunning ? 'Leggo lo stato reale…' : preflight ? `Ri-esegui preflight (${preflight.go ? 'GO' : 'NON-GO'})` : 'Esegui il preflight'}
-              </button>
-              {preflight?.error && <div className="mkt-step-v" style={{ color: 'var(--ds-danger)' }}>preflight fallito: {preflight.error}</div>}
-              {preflight && !preflight.error && preflight.checks.map((c) => (
-                <div key={c.key} className="mkt-step-v">
-                  <span style={{ color: c.pass ? 'var(--cc-green)' : 'var(--ds-danger)', fontWeight: 800 }}>{c.pass ? '●' : '✕'}</span>{' '}
-                  {c.label} — <b>{c.value}</b>{!c.pass && c.detail ? ` · ${c.detail}` : ''}
-                </div>
-              ))}
-
-              {gates?.arming?.armed ? (
-                <>
-                  <div className="mkt-ttl" data-mkt-ttl>
-                    ARMATO · {gates.arming.totalSizeUsd != null ? usd(gates.arming.totalSizeUsd) : '—'} ·
-                    {' '}auto-disarmo fra <b>{fmtDur(ttl)}</b>
-                    {gates.arming.ttlSeconds != null ? ` (TTL ${Math.round(gates.arming.ttlSeconds / 3600)}h)` : ''}
-                    {gates.arming.expiresAt ? ` · scade ${gates.arming.expiresAt}` : ''}
-                  </div>
-                  <p className="mkt-foot" title="Non esiste un arm senza scadenza.">⏱ Alla scadenza si disarma da solo e cancella gli ordini aperti.</p>
-                  <button className="mkt-btn" type="button" onClick={doDisarm}>DISARMA</button>
-                </>
-              ) : !armOpen ? (
-                <button className="mkt-btn" type="button" onClick={() => setArmOpen(true)}>Abilita l&rsquo;armamento…</button>
-              ) : (
-                <>
-                  <label className="mkt-lab" htmlFor="mkt-typed" style={{ marginTop: 8 }}>
-                    <span>Digita il collaterale esatto per confermare</span>
-                    <span>{committable != null ? usd(committable) : '—'}</span>
-                  </label>
-                  <input id="mkt-typed" className="mkt-input" type="number" inputMode="decimal"
-                    value={typedTotal} onChange={(e) => setTypedTotal(e.target.value)} />
-                  <button className="mkt-btn is-arm" type="button" onClick={doArm} disabled={armDisabled} data-mkt-arm>
-                    {arming ? 'ARMO…' : 'ARMA E PIAZZA'}
-                  </button>
-                  <button className="mkt-btn" type="button" onClick={() => { setArmOpen(false); setTypedTotal(''); }}>Annulla</button>
-                </>
-              )}
-
-              {/* The TTL is stated in EVERY state — before arming, while choosing, and once armed. An
-                  expiry the operator only reads on the confirmation screen is an expiry they forget. */}
-              {!gates?.arming?.armed && (
-                <p className="mkt-foot" data-mkt-ttl-note>
-                  Durata dell&rsquo;armamento: <strong>4h</strong> (predefinita, massimo 24h). Alla scadenza il
-                  motore <strong>si disarma e cancella gli ordini da solo</strong>; l&rsquo;unico modo di
-                  estenderla è un rinnovo esplicito, che ri-esegue il preflight. Non esiste un arm senza scadenza.
-                </p>
-              )}
-
-              {armBlockers.length > 0 && !gates?.arming?.armed && (
-                <ul className="mkt-blockers" data-mkt-blockers>
-                  {armBlockers.map((b) => <li key={b}>manca: {b}</li>)}
-                </ul>
-              )}
-              {armMsg && <div className="mkt-step-v"><b>{armMsg}</b></div>}
-            </div>
-          </div>
         </Section>
         )}
 
         {operator === false && (
           <p className="mkt-foot" data-mkt-section="exec-hidden">
-            I controlli di esecuzione (limite di rischio, universo del bot, armamento, KILL) sono
+            I controlli di esecuzione (limite di rischio, universo del bot, KILL) sono
             riservati all&rsquo;operatore e non sono raggiungibili da questa sessione.
           </p>
         )}
@@ -978,11 +796,11 @@ export default function MarketTerminal({ marketId }: { marketId: string }) {
         {operator === true && (
           <div className="mkt-kill" data-mkt-section="kill">
             <button className="mkt-killbtn" type="button" onClick={doKill} disabled={killing} data-mkt-kill
-              aria-label="Disarma il maker e cancella tutti gli ordini adesso">
-              {killing ? 'FERMO TUTTO…' : 'KILL — DISARMA E CANCELLA TUTTO'}
+              aria-label="Ferma ogni corsia e cancella tutti gli ordini adesso">
+              {killing ? 'FERMO TUTTO…' : 'KILL — FERMA E CANCELLA TUTTO'}
             </button>
             <p className="mkt-killnote">
-              Un tocco, nessuna conferma. Gira sul server di Edgeradar, non nel browser. Sicuro anche a motore già spento.
+              Un tocco, nessuna conferma. Gira sul server di Edgeradar, non nel browser. Sicuro anche a bot già fermo.
               {killMsg ? ` · ${killMsg}` : ''}
             </p>
           </div>

@@ -62,6 +62,10 @@
 // `autostart: false`, oppure `pm2 start <nome>` per una riaccensione temporanea. Poi `pm2 save`.
 //
 // ── IL DIFETTO DEL NEWS-GUARD: TROVATO IL 6 AGOSTO, CORRETTO LO STESSO GIORNO ─────────────────────
+// ⚠ REGISTRO STORICO. Il consumatore descritto qui sotto — agent35-maker — È STATO RIMOSSO dalla
+// flotta e dal repo il 9 agosto 2026, insieme ad agent37-maker-watchdog e all'intero meccanismo di
+// ARMING. Quello che segue resta come memoria del difetto e del criterio, non come descrizione dello
+// stato attuale: oggi la severità di agent27 raggiunge /api/rewards-unified e nessun rail di motore.
 // agent27-news-guard era stato fermato con gli altri. È RIENTRATO poche ore dopo, perché la
 // correzione al suo consumatore lo ha reso di nuovo utile: prima non lo era, e il motivo merita di
 // restare scritto.
@@ -202,8 +206,8 @@ module.exports = {
       // refused at the 'funding-approval' gate (adapter.js evaluatePlacementGate), BEFORE signing,
       // BEFORE validateOrder() and BEFORE the placement switch — so a hand order could never reach the
       // venue no matter what MANUAL_ORDER_PLACEMENT said, and the panel's banner did not surface it.
-      // It is the SAME attestation agent35 already carries (funder 0x4C81F1…bdee, 100 pUSD, all six v2
-      // approvals granted, read on-chain 2026-07-29); this only stops the two processes disagreeing.
+      // It is the SAME attestation the maker lane has always carried (funder 0x4C81F1…bdee, 100 pUSD,
+      // all six v2 approvals granted, read on-chain 2026-07-29).
       // It gates ONLY funding: the kill switch, caps, manual-mode ownership, venue-rules, the live-min
       // pin and validateOrder() are all independent and all still apply.
       // Set HERE rather than in .env deliberately: an ecosystem env survives pm2 restarts AND is
@@ -525,101 +529,6 @@ module.exports = {
       env:           { NODE_ENV: 'production', HOME: '/root' },
     },
     {
-      name:          'agent35-maker',
-      script:        './agents/agent35-maker.js',
-      cwd:           '/root/prediction-market',
-      restart_delay: 15000,
-      max_restarts:  20,
-      // The automated liquidity-reward MAKER engine. FIRST component that can place orders — so it runs
-      // behind the staged MAKER_MODE ladder and defaults to 'off' (venue writes unreachable). Its own
-      // process for failure isolation. It reads agent34's live books + the operator's RewardsLeg config,
-      // computes quotes off the ADJUSTED mid, runs every risk rail, and (in paper) logs what it WOULD
-      // post. Live modes require a separate reviewed change to wire the custody signer — off/paper cannot
-      // reach a venue write. Default env pins MAKER_MODE=off; advancing a stage is an explicit human edit.
-      max_memory_restart: '250M',
-      watch:         false,
-      autorestart:   true,
-      // MAKER_ORDER_TTL_SECONDS: venue-native GTD expiry on every order (survives host death). Must exceed
-      // the maker refresh interval or agent35 refuses to start (startup assertion). Venue GTD floor is 3min.
-      // ADMIN_ACCESS_SECRET is read from .env (gitignored), never inlined here — this file is tracked.
-      // MAKER_FUNDING_APPROVED — the HUMAN attestation that the funder is actually funded and approved.
-      // It was 'false' from 2026-07-29 because the previous attestation referred to a wallet whose
-      // signing key had since been revoked; attesting for a wallet you no longer hold is exactly the
-      // failure this flag exists to prevent.
-      //
-      // Set to 'true' on 2026-07-29 for funder 0x4C81F1…bdee, and it is an attestation with a verified
-      // basis rather than a formality. Read on-chain the same day (eth_call, block 91098546):
-      //   pUSD balance on the funder                          100.0
-      //   pUSD allowance → CTFExchangeV2                      unlimited
-      //   pUSD allowance → NegRiskCtfExchangeV2               unlimited
-      //   pUSD allowance → NegRiskAdapter                     unlimited
-      //   CTF ERC-1155 setApprovalForAll → all three           granted
-      // Confirmed twice, by scripts/maker-wallet-preflight.ts and by an independent direct read.
-      //
-      // THIS FLAG ALONE PLACES NOTHING. It removes ONE gate. MAKER_MODE=off still means no adapter is
-      // built at all, and MAKER_PLACEMENT=dry-run still means a fully armed adapter signs and validates
-      // but never POSTs. If the funder ever changes, set this back to 'false' FIRST.
-      //
-      // MAKER_FUNDER_ADDRESS / MAKER_SIGNATURE_TYPE — WHO the maker signs FOR (lib/.../funder.js).
-      // agent35-maker.js does NOT read .env itself; it takes process.env from pm2, so these must be
-      // named HERE or the agent silently falls back to self-custody EOA (type 0, maker == signer, an
-      // account holding nothing). Both are PUBLIC values (a 0x address and a small integer), so they
-      // are inlined rather than pulled from the gitignored .env — .env carries the same pair for the
-      // tsx scripts, which load it by hand. KEEP THE TWO IN SYNC: agent35 logs the pair it resolved on
-      // every boot ("signing identity — signatureType=… funder=…"), so drift shows up in `pm2 logs
-      // agent35-maker` rather than at the venue.
-      //
-      // funder 0x4C81F1…bdee: confirmed by polymarket.com's profile API, by eth_getCode (a deployed
-      // Solady ERC-1967 proxy whose owner() is the signer), and by CTFExchangeV2.validateOrder().
-      // It is NOT getProxyWalletAddress(signer) = 0x87a01e28…, which has no code and no funds.
-      // type 3 (POLY_1271): chosen by the VENUE, not by us — scripts/maker-signing-proof.ts signed a
-      // real order for this funder at each candidate type and validateOrder() reverted on 1 and 2 and
-      // ACCEPTED 3. This is a post-2026-06-29 ERC-1271 deposit wallet, so 1 and 2 cannot work on it.
-      //
-      // MAKER_LIVE_MIN_MARKET — repointed 2026-07-29 to the Harry Kane Ballon d'Or market
-      // (0x12dc2b61…d06a). The previous pin (0x6bd56627…, "Putin out by 2026") could not host a viable
-      // test: its mid is 0.085, and a one-sided configuration with the mid in the tails (<0.10) scores
-      // EXACTLY ZERO under Polymarket's reward formula, while making it two-sided cost ~$198 because
-      // min_incentive_size there is 200 shares and the NO side prices near $0.91. The new market has
-      // min_incentive_size 50, mid ≈0.461 (nowhere near the tails) and a $117/day pool, so a genuine
-      // two-sided pair costs ~$50 against the 100 pUSD actually deposited. Tick 0.001, negRisk TRUE —
-      // its orders route to NegRiskCtfExchangeV2, so the Neg-Risk approvals are load-bearing here.
-      //
-      // MAKER_LIVE_MIN_CAP_USD — 25 → 30 (luglio) → 1000 il 3 agosto 2026, su istruzione esplicita
-      // dell'operatore. Questo tetto e' PER ORDINE (adapter.js rifiuta qualunque postOrder sopra), non un
-      // totale, ed e' il MINIMO fra questo e maxOrderNotionalUsd in data/safety-risk-limits.json a
-      // vincolare davvero: vanno alzati INSIEME, altrimenti il piu' basso continua a mordere.
-      //
-      // PERCHE' E' STATO TOLTO. A $30 il tetto non proteggeva da un rischio: tagliava l'allocazione.
-      // L'allocatore di produzione proponeva $324 su un mercato e il motore poteva piazzarne $30 per
-      // lato, quindi i $600 finivano spalmati su dieci mercati mediocri per aggirare un limite invece
-      // che concentrati dove rendono. A 1000 il vincolo sparisce e l'allocazione torna quella ottimale.
-      //
-      // COSA RESTA A PROTEGGERE: maxOpenNotionalUsd ($600, ma conta solo i fill RICONCILIATI e la
-      // riconciliazione gira ogni 60s), maxOrdersPerWindow (20/60s, immediato), maxDailyLossUsd ($25,
-      // ma sulla perdita REALIZZATA) e — il backstop vero — il collaterale sul venue, che non lascia
-      // comprare piu' di quanto si possiede.
-      //
-      // MAKER_PLACEMENT — 'send' as of 2026-07-29, at the operator's explicit instruction. THIS IS THE
-      // SWITCH THAT LETS REAL ORDERS LEAVE THIS HOST. In 'dry-run' (the code default, and every value
-      // that is not the exact string 'send') the engine builds and SIGNS each order, puts it to
-      // CTFExchangeV2.validateOrder() via eth_call, reports it and drops it. In 'send' that same order
-      // continues to POST /order with real collateral behind it.
-      //
-      // WHAT STILL STANDS BETWEEN THIS AND A LIVE ORDER: exactly one thing — the ARMING RECORD
-      // (lib/maker/arming, data/maker-arming.json), which is currently DISARMED. An unarmed live engine
-      // stands down exactly like a killed one, so nothing is placed today. Arming it is now the last
-      // act; it is deliberately a two-step, TTL-bounded, preflight-gated write and not an env edit.
-      //
-      // If you are reading this while trying to work out why an order went out: this line is the answer.
-      // Set it back to 'dry-run' to stop sends without touching anything else.
-      //
-      // Bounds in force when the first order does go out: per-order cap $30 (adapter, hard), open
-      // notional $120, realised daily loss $25 (trips a durable auto-kill), post-only, GTD 180s native
-      // expiry that survives host death, single pinned market, two legs totalling ~$49.55.
-      env:           { NODE_ENV: 'production', HOME: '/root', ADMIN_ACCESS_SECRET: process.env.ADMIN_ACCESS_SECRET, MAKER_MODE: 'live-min', MAKER_PLACEMENT: 'send', MAKER_FUNDING_APPROVED: 'true', MAKER_FUNDER_ADDRESS: '0x4C81F19a436e8174f1f3b07d7c0169150Fbdbdee', MAKER_SIGNATURE_TYPE: '3', MAKER_LIVE_MIN_MARKET: '0x12dc2b61723b2a54fc1947a307389b5f32038e7a29a0e936ad1fe410b969d06a', MAKER_LIVE_MIN_CAP_USD: '1000', MAKER_ORDER_TTL_SECONDS: '180' },
-    },
-    {
       name:          'agent36-book-velocity',
       // DISABILITATO 2026-08-06 — vedi la nota in testa al file.
       autostart:     false,
@@ -645,24 +554,6 @@ module.exports = {
       watch:         false,
       autorestart:   true,
       env:           { NODE_ENV: 'production', HOME: '/root' },
-    },
-    {
-      name:          'agent37-maker-watchdog',
-      script:        './agents/agent37-maker-watchdog.js',
-      cwd:           '/root/prediction-market',
-      restart_delay: 15000,
-      max_restarts:  20,
-      // The DEAD-MAN switch for agent35-maker. SEPARATE process by design — a watchdog inside the process
-      // it watches dies with it. Polls data/maker-heartbeat.json every 15s; if stale beyond
-      // MAKER_DEADMAN_SECONDS (120) it cancels ALL open orders on every configured venue via the
-      // CANCEL-ONLY surface (lib/maker/cancel-all → address-only signer; structurally cannot place) and
-      // alerts Telegram. Tiny footprint (reads two small JSON files, no book/market data). NOTE: a
-      // same-host watchdog does NOT survive host death — that is the venue-native order TTL's job.
-      // (Named 37, not 36: slot 36 is agent36-book-velocity.)
-      max_memory_restart: '150M',
-      watch:         false,
-      autorestart:   true,
-      env:           { NODE_ENV: 'production', HOME: '/root', MAKER_DEADMAN_SECONDS: '120' },
     },
     {
       name:          'agent40-manual-reprice',
@@ -693,7 +584,9 @@ module.exports = {
       // a minute — a restart loop with an EMPTY error log and exit code 0, because nothing crashed: pm2
       // was enforcing the ceiling. 350M leaves room for that one-off catch-up and for the trail to keep
       // growing, while still being a real ceiling at ~3x the steady state.
-      // (Named 40: slots 36-39 are book-velocity, maker-watchdog, tape-watchdog, net-rerun.)
+      // (Named 40: slots 36-39 erano book-velocity, maker-watchdog, tape-watchdog, net-rerun. Il 37 è
+      // libero dal 9 agosto 2026 — il dead-man dei motori è stato rimosso con agent35 — e resta tale:
+      // riusare un numero renderebbe illeggibili i log storici.)
       max_memory_restart: '350M',
       watch:         false,
       autorestart:   true,
@@ -854,16 +747,17 @@ module.exports = {
       //
       // NOME: era `agent42-guardian`, e condivideva il 42 con agent42-watch-makers qui sopra. pm2
       // distingue per nome intero e i due non collidevano, ma rompeva la convenzione «un numero, un
-      // processo» che il resto della flotta rispetta (vedi agent37: «Named 37, not 36»). Rinominato
+      // processo» che il resto della flotta rispetta (era la stessa regola del vecchio agent37,
+      // «Named 37, not 36», rimosso il 9 agosto 2026). Rinominato
       // l'8 agosto 2026 in `agent43-guardian`, che era il candidato gia' indicato qui.
       //
       // COSA NON INSTRADA. La chiave di battito e' cambiata insieme al nome, ma NESSUNO la legge:
-      // agent-monitor non sorveglia questo processo (non e' in WATCHED_AGENTS_RAW) e agent37 guarda i
-      // battiti dei MOTORI, non i suoi. Il campo `by` del referto passa a `agent43-guardian` per i
+      // agent-monitor non sorveglia questo processo (non e' in WATCHED_AGENTS_RAW), e il dead-man dei
+      // motori che guardava i battiti non esiste piu'. Il campo `by` del referto passa a `agent43-guardian` per i
       // referti NUOVI; quelli storici restano col nome vecchio, ed e' giusto — dicono chi li ha scritti.
       //
-      // COSA FA CHE agent37 NON PUÒ FARE. agent37 chiede «il motore è vivo?» e guarda i battiti: un
-      // motore che batte regolare, supera ogni preflight e intanto perde soldi è, per lui, sano. Questo
+      // COSA FA CHE UN DEAD-MAN NON PUÒ FARE. Un dead-man chiede «il motore è vivo?» e guarda i battiti:
+      // un motore che batte regolare e intanto perde soldi è, per lui, sano. Questo
       // guarda l'unica cosa che quella domanda non copre — il capitale scende? Ogni 30 s confronta
       // (saldo pUSD + posizioni al prezzo corrente) con il baseline in data/guardian-baseline.json, e
       // oltre GUARDIAN_LOSS_PCT o GUARDIAN_LOSS_ABS cancella tutti gli ordini a riposo, deposita un
@@ -887,7 +781,7 @@ module.exports = {
       // lascerebbe senza uscita proprio le posizioni che c'era da proteggere. Vedi il blocco in testa
       // ad agents/agent43-guardian.js per il ragionamento completo, incluso ciò che FERMA NON copre.
       //
-      // Footprint atteso simile ad agent37 (due letture JSON e una lettura di saldo in cache per giro),
+      // Footprint atteso da processo leggero (due letture JSON e una lettura di saldo in cache per giro),
       // con l'aggiunta del path ethers di saldo-cache: 200M lascia margine abbondante.
       max_memory_restart: '200M',
       watch:         false,
@@ -929,7 +823,7 @@ module.exports = {
       cron_restart: '7 3 * * *',
       autorestart:  false,
       // ── I TETTI DI RISORSA ──────────────────────────────────────────────────────────────────────
-      // 150M è il taglio che questo repo usa già per i processi leggeri (agent37, agent38): non
+      // 150M è il taglio che questo repo usa già per i processi leggeri (agent38): non
       // introduce una scala nuova. La fotografia del codice sta in decine di MB, quindi c'è margine.
       // NB: con `autorestart:false` questo tetto è la seconda linea — la prima è il vigile interno
       // dell'agente, che si ferma da solo e SCRIVE PERCHÉ invece di essere ucciso in silenzio.

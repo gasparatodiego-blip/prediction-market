@@ -1,8 +1,8 @@
+// Il pannello di ARMING che stava qui sopra è stato rimosso il 9 agosto 2026 insieme al motore
+// automatico: i comandi dell'operatore sono ora due soli — AVVIA/FERMA e KILL — e vivono dentro la
+// console, con la barra KILL renderizzata FUORI dalle schede proprio perché resti raggiungibile da
+// ogni sezione senza dover prima trovare la scheda giusta.
 import LiquidityRewardsConsole from '@/app/components/LiquidityRewardsConsole';
-// Operator-only arming + KILL console, unchanged and deliberately kept ABOVE the tabs: the kill switch
-// must be reachable from every section without first finding the right tab. It self-hides for non-admins
-// (it probes the admin-gated /api/maker/*), so the public page is unaffected.
-import MakerArmingPanel from '@/app/components/MakerArmingPanel';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,9 +32,6 @@ export default function LiquidityRewardsPage({
   searchParams?: { tab?: string };
 }) {
   return (
-    <>
-      <MakerArmingPanel />
-      <LiquidityRewardsConsole initialTab={searchParams?.tab} />
-    </>
+    <LiquidityRewardsConsole initialTab={searchParams?.tab} />
   );
 }

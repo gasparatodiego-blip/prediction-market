@@ -26,7 +26,7 @@ const KS = require('../lib/safety/kill-switch');
 const tmp = () => path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'kill-sc-')), 'state.json');
 
 // ── 1 · killMaker sets the DURABLE global kill, and it survives a fresh read (post-restart) ──────────────
-console.log('\n1. killMaker — durable disarm');
+console.log('\n1. killMaker — durable stop');
 {
   const stateFile = tmp();
   const auditFile = stateFile.replace('state.json', 'audit.jsonl');
@@ -43,26 +43,27 @@ console.log('\n1. killMaker — durable disarm');
 
     ok(res.killed === true, 'killMaker reports killed:true when setGlobalKill succeeds');
     ok(res.killError === null, 'killMaker carries NO killError on success');
-    ok(cancelCalled === true, 'killMaker runs the cancel sweep (independent of agent35)');
+    ok(cancelCalled === true, 'killMaker runs the cancel sweep (independent of every agent)');
     // THE LOAD-BEARING PROOF: the durable file genuinely flipped, and a FRESH read (a simulated pm2 restart) still sees it.
     ok(KS.checkKill({}, { stateFile }).killed === true, 'AFTER: the durable state file genuinely flipped to killed');
     ok(KS.checkKill({}, { stateFile }).gate === 'kill-global', 'AFTER: a fresh read (simulated post-restart) still sees the GLOBAL kill — durable, a restart cannot clear it');
 
     // the exact shape the dashboard control (MakerKillClient KillResponse) renders — every field present.
-    for (const k of ['at', 'killed', 'killError', 'armingDisarmed', 'cancel', 'cancelError', 'simulated', 'cancelledTotal']) {
+    for (const k of ['at', 'killed', 'killError', 'cancel', 'cancelError', 'simulated', 'cancelledTotal']) {
       ok(Object.prototype.hasOwnProperty.call(res, k), `killMaker returns the client-rendered field "${k}"`);
     }
     ok(Array.isArray(res.cancel), 'killMaker.cancel is the per-venue array the UI maps over');
 
-    // ── 2 · arming record is withdrawn too (best-effort), and reported honestly ──
-    console.log('\n2. killMaker — arming withdrawal + honest cancel flags');
+    // ── 2 · honest cancel flags ──
+    // Fino al 9 agosto 2026 questa sezione provava anche il ritiro dell'autorizzazione di ARMING, che
+    // killMaker riceveva come callback opzionale. L'arming è stato rimosso: il KILL resta due cose sole
+    // — l'interruttore durevole e la spazzata — ed è esattamente ciò che le sezioni 1, 3 e 4 provano.
+    console.log('\n2. killMaker — honest cancel flags');
     {
-      let disarmed = false;
       const res2 = await killMaker(
-        { by: 'sc', reason: 'r', disarmArming: () => { disarmed = true; } },
+        { by: 'sc', reason: 'r' },
         { setGlobalKill: (a) => KS.setGlobalKill(a, { stateFile: tmp() }), cancelAllOrders, now: () => 1 },
       );
-      ok(disarmed === true && res2.armingDisarmed === true, 'killMaker withdraws the arming authorization and reports armingDisarmed:true');
       ok(res2.simulated === true, 'a fully dry-run cancel sweep (no creds) is reported simulated:true — the honest "no live cancel attempted" signal');
     }
 
@@ -106,6 +107,6 @@ console.log('\n1. killMaker — durable disarm');
       ok(!/createMakerAdapter|signerProvider|maker-adapter|\/placement/i.test(imports), 'the kill route IMPORTS no placement/signer surface — it can STOP orders but structurally cannot START one');
     }
 
-    console.log(`\nmaker-kill selfcheck: ${checks} assertions passed — killMaker durably disarms (survives a fresh read), withdraws arming, reports cancel flags honestly, NEVER claims an unachieved kill; the button, the shell script and the endpoint are ONE code path to ONE durable switch.`);
+    console.log(`\nmaker-kill selfcheck: ${checks} assertions passed — killMaker sets the durable kill (survives a fresh read), reports cancel flags honestly, NEVER claims an unachieved kill; the button, the shell script and the endpoint are ONE code path to ONE durable switch.`);
   })().catch((e) => { console.error('\nFAILED:', e.message); process.exit(1); });
 }
