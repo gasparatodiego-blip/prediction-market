@@ -13,8 +13,10 @@ Ultima verifica contro codice/stato reali: **9 agosto 2026**, ~17:45 UTC.
 > ridichiarata), valutata a un metro fisso di **$500**.
 > **La copertura del capitale non cambia:** $588,00 e **99,0%** con e senza, misurato sul board vero —
 > col tetto al 20% bastano 5 mercati e ne restano 62. Righe capate **3/6 → 0/5**.
-> **Il cancello è già attivo** su ogni piano (nasce in un processo figlio); **il riavvio di agent41
-> serve solo per la riga di rendiconto per ciclo** — e aspetta la tua autorizzazione.
+> **Il cancello è attivo** su ogni piano (nasce in un processo figlio). **agent41 è stato riavviato alle
+> 18:19:20Z** su autorizzazione di Diego (restart 46 → 47, 102/102 variabili, 9/9 critiche, zero errori
+> nuovi): serviva solo per la riga di rendiconto per ciclo, che comparirà al primo piano calcolato —
+> col KILL attivo, il prossimo ciclo fisso. **Nessun riavvio pendente per questo lavoro.**
 
 > ## 🧹 MAKER ARMING, agent35 E agent37 SONO STATI RIMOSSI — §5 punto 63
 > Decisione dell'operatore, eseguita il 9 agosto 2026. Non esistono più: il **motore automatico**
@@ -3026,13 +3028,28 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     esattamente i preesistenti del punto 40** — zero nuovi. `npm run build` verde, `BUILD_ID`
     `BPaTKaN3OqPq9PvAugqRf`, `prerender-manifest.json` presente.
 
-    **Riavvio: NON eseguito** (§2 regola 2). Il cancello è **già attivo** sul pannello «Ottimizza» e su
-    ogni piano calcolato da adesso, perché il piano nasce sempre in un processo figlio che rilegge il
-    codice da disco (§5 punto 14). Il riavvio serve **solo** perché la riga di rendiconto per ciclo vive
-    nel processo di agent41:
-    ```bash
-    pm2 restart agent41-realloc-scheduler
-    ```
+    **RIAVVIO ESEGUITO alle 18:19:20Z del 9 agosto 2026**, su autorizzazione esplicita di Diego in chat
+    (restart **46 → 47**, pid 1301819). Verificato:
+    - **ambiente intatto**: 102 variabili prima, **102 dopo**, tutte e nove le critiche presenti — il
+      caricatore `.env` della fase 7 rende superflua la ricostruzione da `/proc` del punto 3;
+    - **il processo gira sul codice nuovo**: commit `573b616` delle 17:45:25Z, processo avviato alle
+      18:19:20Z;
+    - **zero errori nuovi**: `agent41-realloc-scheduler-error.log` non viene scritto dal **2026-08-08
+      15:19:15**, cioè le 13 righe `MINI-CICLO FERMATO` sono quelle storiche che il punto 21 già
+      registra come «del processo vecchio»;
+    - **silenzio atteso dal trigger**: con il KILL attivo il mini-ciclo esce al cancello prima di leggere
+      il saldo, quindi non calcola nessun piano e non stampa niente.
+
+    **La riga di rendiconto non è ancora comparsa, ed è corretto così:** la scrive `calcolaPiano` o
+    `pianoLeggero`, e nessuno dei due gira sotto KILL. Comparirà al **prossimo ciclo fisso** (202 minuti
+    dall'avvio, ~21:41Z), che calcola il piano anche a bot FERMO, oppure al primo mini-ciclo dopo che il
+    KILL è stato revocato. Il contenuto del rendiconto è comunque già verificato: i campi che legge
+    (`selezione.profonditaSottili`, `…LordoApparenteUsd`, `…Superstiti`) sono popolati dai piani veri
+    misurati prima del riavvio.
+
+    Il cancello era comunque **già attivo** sul pannello «Ottimizza» e su ogni piano calcolato anche
+    prima del riavvio, perché il piano nasce sempre in un processo figlio che rilegge il codice da disco
+    (§5 punto 14): il riavvio serviva solo per la riga di log.
 
 ---
 
