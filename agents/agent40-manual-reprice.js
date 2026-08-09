@@ -373,6 +373,27 @@ async function reconcileTask() {
 // Adesso la lettura del venue è un compito suo, sullo stesso ritmo della riconciliazione (60s, ben
 // sotto i 180 di scadenza) e SENZA condizioni. La chiusura automatica la riusa invece di rifarla: la
 // cache brevissima qui sotto evita di chiedere due volte al venue nello stesso giro.
+// ── L'ALLARME DELL'ORDINE ORFANO, E LA CODA CHE NE ESCE ────────────────────────────────────────────
+// `registroOrfani` tiene, per mercato, l'istante della PRIMA osservazione «una gamba sola e zero
+// posizioni». Sta in memoria e non su disco DI PROPOSITO: e' un allarme che deve poter ripartire da zero
+// a ogni riavvio, esattamente come l'orologio del mid stantio. Un armamento sopravvissuto a un riavvio
+// varrebbe «confermato» su un'osservazione che questo processo non ha mai fatto, e la conferma esiste
+// proprio per non cancellare su informazione che non abbiamo.
+const registroOrfani = (() => {
+  const m = new Map();
+  return {
+    leggi: (k) => (m.has(k) ? m.get(k) : null),
+    scrivi: (k, v) => m.set(k, v),
+    pulisci: (k) => m.delete(k),
+  };
+})();
+
+// I mercati la cui gamba orfana e' stata cancellata dal ciclo di riprezzo e che vanno rimessi in
+// pianificazione. Il riposizionamento NON si fa nel ciclo di riprezzo — non ha mai aperto esposizione e
+// non deve cominciare adesso: la coda viene consegnata al ciclo di chiusura, che il riposizionamento lo
+// sa gia' fare (Lavoro B, `capitalePerRiposizionamento` + tetto in vigore).
+const daRipianificareCoda = new Map();
+
 const POSIZIONI_FRESCHE_MS = 5_000;
 let ultimePosizioni = { at: 0, res: null };
 
@@ -609,6 +630,14 @@ async function closeTask() {
       //     numero solo se la lettura e' AFFIDABILE: un saldo stantio o illeggibile deve valere
       //     «non lo so» e non «zero», e a valle `null` fa fallire chiuso il riposizionamento invece di
       //     dimensionarlo su un dato vecchio. E' la stessa disciplina della Regola 5.
+      // I mercati la cui gamba orfana e' stata cancellata dal ciclo di riprezzo. Si DRENA la coda
+      // leggendola: un mercato consegnato una volta non deve tornare al giro dopo, altrimenti il
+      // riposizionamento si ripeterebbe a ogni ciclo finche' qualcosa non lo toglie.
+      mercatiDaRipianificare: () => {
+        const v = Array.from(daRipianificareCoda.values());
+        daRipianificareCoda.clear();
+        return v;
+      },
       tettoMercato: (marketId) => { try { return readAllocatedCapital(marketId); } catch { return null; } },
       capitaleLibero: () => (saldoGiro && saldoGiro.affidabile === true && Number.isFinite(saldoGiro.usd)
         ? saldoGiro.usd : null),
@@ -889,6 +918,16 @@ async function cycle() {
     // CANCEL-ONLY adapter (address-only signer, structurally cannot place), so both can stop orders and
     // neither can ever start one.
     cancelOrder: (spec) => cancelManualOrder(spec, 'auto-reprice-band-exit'),
+    // ── IL CONTROLLO DELL'ORDINE ORFANO ──────────────────────────────────────────────────────────
+    // La STESSA lettura che usa la chiusura automatica (`leggiPosizioniVenue`, cache 5s condivisa nel
+    // processo), non un secondo percorso: due letture delle posizioni potrebbero divergere, e qui la
+    // divergenza deciderebbe una cancellazione. Viene chiamata solo quando un rinnovo GTD sta per
+    // partire — al piu' ~3 volte l'ora per mercato — non a ogni giro del ciclo.
+    readPositions: async () => {
+      try { return { ok: true, positions: (await leggiPosizioniVenue()).positions || [] }; }
+      catch (e) { return { ok: false, reason: e && e.message ? e.message : String(e) }; }
+    },
+    registroOrfani,
     // TOGLIERE UN MERCATO CHIUSO DALLA ALLOWLIST. Gemella di `disableTracking` qui sotto, sulla stessa
     // condizione e per lo stesso motivo: il motore decide QUANDO (solo a mercato risolto e a libro gia'
     // libero), qui si passa la mano che scrive. Senza questa riga la decisione esisterebbe e non la
@@ -953,6 +992,11 @@ async function cycle() {
   // Stessa strada delle due sopra, e per lo stesso motivo — con una differenza: qui il motivo NON si
   // riassume. «Ordine cancellato» non e' un avviso, e' una notifica; «mai primo sul libro» e «gamba
   // rimasta sola oltre la tolleranza» chiedono due reazioni diverse.
+  for (const r of (res.daRipianificare || [])) {
+    if (!r || !r.marketId) continue;
+    daRipianificareCoda.set(String(r.marketId), r);
+    log(`ORDINE ORFANO cancellato su ${String(r.marketId).slice(0, 10)}… — la posizione con cui doveva accoppiarsi non esiste piu'. Il mercato torna da ripianificare al prossimo giro di chiusura.`);
+  }
   const cancellazioni = res.cancellazioni || [];
   if (cancellazioni.length) {
     for (const c of cancellazioni) {
