@@ -5,6 +5,21 @@ Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code a
 
 Ultima verifica contro codice/stato reali: **9 agosto 2026**, ~20:15 UTC.
 
+> ## 🧮 UN FILL VALEVA UNA VOLTA PER RIPIAZZAMENTO — §5 punto 72
+> `planReconcile` confrontava **grandezze su scale diverse**: `totalFilled` è il volume dei trade del
+> venue su un token+lato (per TOKEN), `already` è quanto risulta registrato per UNA `idempotencyKey`. Il
+> ciclo di riprezzo sostituisce la stessa gamba ogni ~60 s e ogni sostituzione porta una chiave nuova:
+> ognuna ritrovava lo stesso volume e lo registrava **intero** come fill proprio.
+> **Misurato su Chengdu 37°C**: 136 righe di fill, 136 chiavi, `filledSize` sempre lo stesso valore reale
+> (21,69 · 14 · 7,69) ⇒ **2.790,32 share di netto FIFO contro ZERO al venue**. `openNotionalUsd` $2.406
+> contro un tetto di $600 ⇒ `limit-max-open-notional` rifiutava **ogni** piazzamento con AVVIA attivo e
+> kill revocato. **Il bot si è fermato per una somma sbagliata, non per una regola.**
+> **Corretto** (confronto omogeneo per token+lato, e per id-ordine-venue nel ramo `size_matched`) e
+> **stato riparato**: 152 duplicati esatti rimossi, `openNotionalUsd` **$2.406,06 → $207,87**.
+> **Effetto immediato e misurato: 951 ordini piazzati nelle 7 ore successive**, da zero. Capitale
+> $689,80 contro il baseline $660,56 ⇒ **P&L +$29,24**. Il ledger **non si è rigonfiato**: 16 righe
+> fill, zero nuove. agent40 (72) e agent41 (52) riavviati.
+
 > ## 📖 IL GIORNALE DA 731 MB SI LEGGE, MA NON ERA LUI A BLOCCARE — §5 punto 71
 > `readFileSync(file,'utf8')` costruisce UNA stringa e V8 si ferma a ~512 MB. A 731 MB i due lettori
 > superstiti fallivano **chiuso**: `origine-ordine.mappaOrigini()` (⇒ ogni ordine «ignoto», il reset non
@@ -3642,6 +3657,100 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     **Riavvii eseguiti** su autorizzazione: `agent41-realloc-scheduler` (50 → **51**),
     `agent40-manual-reprice` (70 → **71**). Error log invariati (31 luglio e 8 agosto). Posizioni
     preesistenti **invariate**: impronta `4dfb43eddc67e7ee` identica prima e dopo, zero righe mutate.
+
+72. **UN FILL VALEVA UNA VOLTA PER RIPIAZZAMENTO — corretto in `main` il 9 agosto 2026, ~23:25 UTC.
+    agent40 (72) e agent41 (52) RIAVVIATI.**
+
+    **Il meccanismo, esatto.** `planReconcile` (`lib/safety/reconcile-fills.js`) risolve un ordine sparito
+    dagli ordini aperti guardando i trade del venue:
+
+    ```js
+    const totalFilled = matchedFills.reduce(...);   // volume del venue su QUESTO token+lato
+    const delta = totalFilled - already;            // `already` = registrato per QUESTA idempotencyKey
+    ```
+
+    Le due grandezze sono su **scale diverse**: una per TOKEN, l'altra per CHIAVE. Il ciclo di riprezzo
+    sostituisce la stessa gamba ogni ~60 s e ogni sostituzione porta una chiave **nuova**: appena
+    l'ordine sostituito lascia gli ordini aperti cade in quel ramo, ritrova lo stesso identico volume, e
+    siccome il suo `already` vale 0 lo registra **intero** come fill proprio.
+
+    **Non è «ogni ordine inviato conta come un fill»** — la diagnosi iniziale diceva così ed era
+    imprecisa. Il ledger conta solo righe `kind:'fill'`, e quelle le scrive solo la riconciliazione dopo
+    una conferma del venue. Il difetto è che la **stessa** conferma veniva attribuita N volte.
+
+    **Misurato su Chengdu 37°C (`0x2be0b367`, token `8830816894…`):**
+
+    | | |
+    |---|---|
+    | righe di fill | **136** |
+    | `idempotencyKey` distinte | **136** |
+    | valori distinti di `filledSize` | **21,69 · 14 · 7,69** — lo stesso fill vero, riscritto |
+    | share registrate / netto FIFO | 2.892,46 / **2.790,32** |
+    | posizione VERA al venue | **ZERO** |
+
+    **Il danno era operativo, non contabile:** `openNotionalUsd` **$2.405,40** contro un tetto di **$600**
+    ⇒ `limit-max-open-notional` rifiutava OGNI piazzamento, e a monte `libero = max(0, saldo −
+    esposizione)` andava a zero, quindi il mini-ciclo non tentava nemmeno una gamba
+    (`0 piazzati, 0 rifiutati`). Con AVVIA attivo e kill revocato.
+
+    **La correzione: confronti fra grandezze OMOGENEE.**
+    - ramo `/trades`: `totalFilled` (per token+lato) contro **quanto è già registrato per lo stesso
+      token+lato** su TUTTE le chiavi (`recordedFilledByTokenSide`), aggiornato **dentro la stessa
+      passata** perché due ordini dello stesso token non rivendichino due volte lo stesso delta;
+    - ramo `size_matched`: **il test ha trovato una seconda faccia dello stesso difetto** — due nostri
+      invii possono mappare sullo **stesso** ordine del venue (`findVenueOrder` riconosce anche per
+      token+lato+prezzo+size) e il confronto per chiave li contava due volte. Corretto confrontando per
+      **id dell'ordine del venue** (`recordedFilledByOrderId`), che è la grandezza omogenea a
+      `vo.size_matched`.
+    - **Nessun fail-closed toccato**: venue irraggiungibile ⇒ niente registrato; senza la lettura delle
+      posizioni non si dichiara «mai fillato»; un lato non leggibile non produce chiave.
+
+    **Lo stato già scritto è stato riparato**, con `scripts/ripulisci-fill-duplicati.js` — anteprima di
+    difetto, backup con timestamp, e stampa riga per riga di cosa toglierebbe. Criterio: si tiene UNA
+    riga per `(userId, venue, tokenId, side, filledSize, filledPrice)`, la più vecchia. **152 duplicati
+    esatti rimossi**, di cui **130 su Chengdu SELL (2.819,70 share fantasma)**. Limite dichiarato: due
+    fill genuinamente identici collasserebbero in uno — è il verso che sottostima, e per questo lo script
+    non gira mai da solo.
+
+    **Effetto misurato:**
+
+    | | prima | dopo |
+    |---|---|---|
+    | `openNotionalUsd` | **$2.406,06** | **$207,87** |
+    | voci del ledger | 8 (6 fantasma) | 7, tutte fra $10 e $25 |
+    | tetto $600 | **SATURO** | **LIBERO** |
+
+    **E la prova finale, sui dati vivi:** dalle **23:28:31** — l'istante della pulizia — il bot ha
+    ripreso a piazzare. **951 ordini in sette ore** (74/136/152/198/147/87/154 per ora), da zero.
+    Capitale a fine finestra: **$486,89 liquidi + $202,91 di posizioni = $689,80** contro il baseline del
+    guardiano di $660,56 ⇒ **P&L +$29,24**, cioè la perdita di −$39,97 che aveva fatto scattare il
+    guardiano è stata recuperata.
+
+    **Il ledger NON si è rigonfiato**: 16 righe di fill, **zero** nuove nelle sette ore — la correzione
+    regge sul traffico vero, non solo sul fixture.
+
+    **Verifica.** Nuovo `lib/safety/riconciliazione-per-token.test.js` **15/15**: dieci ripiazzamenti su
+    un solo fill vero ⇒ 21,69 share contabilizzate una volta (con il confronto per chiave davano 216,90,
+    misurato nel test stesso) · un fill nuovo registrato per il solo delta · tre ripiazzamenti su volume
+    già registrato ⇒ zero righe · il ramo `size_matched` invariato e non sommabile col ramo `/trades` ·
+    i fail-closed. Suite: **161 eseguiti, 154 verdi**; i 7 rossi sono i 6 preesistenti più
+    `guardian-perdite`, rosso perché il latch vero esiste dal 21:46:37 e non va toccato.
+    `npm run build` verde, `BUILD_ID` `JScwCE2dJtMXUg2fbgZSA`. Commit `4c97d9e`.
+
+    **Riavvii eseguiti** su autorizzazione: agent41 (51 → **52**), agent40 (71 → **72**). Impronta delle
+    posizioni **stabile** a cavallo del riavvio (`6961390d08cfce40`, 10 posizioni, invariata a 65 s di
+    distanza) e **zero** righe di audit dopo il riavvio — il KILL, riattivato dall'operatore alle
+    06:20:43, blocca tutto come deve.
+
+    **⚠ DUE COSE APERTE, nessuna delle due di questo lavoro.**
+    1. **Il volume dei ripiazzamenti**: 951 ordini in 7 ore sono ~136 all'ora. È il ciclo che ricancella
+       e ripiazza la stessa gamba ogni ~60 s. Non è più un problema di contabilità — adesso il conteggio
+       è giusto — ma resta un costo: ogni ripiazzamento azzera la priorità di coda, e per un maker il
+       tempo a riposo *è* il ricavo.
+    2. **Il ciclo da 6h si è fermato alle 03:42:31** con `dopo 3 ricalcoli il piano contiene ancora
+       mercati che il venue rifiuta (1 all'ultimo giro): la fotografia da cui nasce il piano non è
+       affidabile — nessun ordine viene toccato`. È un fail-closed che ha funzionato, ma dice che un
+       mercato del piano viene rifiutato dal venue e il ricalcolo non se ne libera. Da diagnosticare.
 
 ---
 
