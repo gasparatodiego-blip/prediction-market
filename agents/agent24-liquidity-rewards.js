@@ -41,33 +41,33 @@ const FLOOR_DAILY_USD   = 1.0;   // $/day minimum gross; below = below-floor fla
 const NEAR_EXPIRY_DAYS  = 14;    // markets closing within → force HIGH vol
 const GAMMA_PAGE_SIZE   = 100;
 const MAX_PAGES         = 21;    // offset 0..2000 (21 × 100)
-const MAX_CLOB_MARKETS  = 400;   // vedi il blocco qui sotto: tarato sul TEMPO, non sulla classifica
-// ── IL TAGLIO PER NUMERO: 120 → RIMOSSO → 400, IN VENTI MINUTI ──────────────────────────────────
-// L'11 agosto 2026 il taglio ai primi 120 e' stato tolto del tutto: non era una soglia di qualita' ma
-// una posizione in classifica (il 120esimo rendeva $53/g, il 200esimo $42/g). La diagnosi era giusta;
-// la stima del costo NO, ed e' stata corretta dai fatti nel giro di venti minuti.
+const MAX_CLOB_MARKETS  = Number(process.env.REWARD_MAX_CLOB_MARKETS) > 0
+  ? Number(process.env.REWARD_MAX_CLOB_MARKETS) : 150;   // vedi il blocco qui sotto: tarato sul MISURATO
+// ── IL TAGLIO PER NUMERO: 120 → NESSUNO → 400 → 150, E IL NUMERO ORA VIENE DA UN CRONOMETRO ─────
+// Due errori di stima in mezza giornata, sullo stesso numero, ed entrambi hanno fermato i piazzamenti.
 //
-// COSA E' ANDATO STORTO, misurato: il costo era stato stimato «x2,6» ragionando sui 309 mercati del
-// board NORMALIZZATO. Ma il filtro a monte ne lascia passare **1.097**, e la profondita' CLOB si legge
-// per OGNI mercato processato a `MAX_RPS = 1.5`:
-//     1097 / 1,5 = 731 s = 12,2 minuti  di sola profondita', piu' la scoperta.
-// Alle 13:41 agent24 e' ripartito; alle 14:00 non aveva ancora riscritto il board, fermo alle 13:29.
-// Eta' del board: **30 minuti** contro il limite di 25 di agent41 ⇒ `il board ha 30 minuti (limite 25)`
-// e il mini-ciclo ha smesso di piazzare. Effetto a catena: `readAllocatedCapital` scaduta ⇒ gamba
-// orfana e riposizionamento post-fill inerti, entrambi fail-closed ma fermi.
+// PRIMO ERRORE (11 agosto, 13:41): tolto il taglio del tutto. Il costo era stato stimato sui 309 mercati
+// del board NORMALIZZATO, ma il filtro a monte ne lascia passare ~1.100. La scansione non ha piu' finito:
+// partita alle 13:41, alle 14:13 non aveva ancora riscritto il board, fermo alle 13:29. Eta' 30+ minuti
+// contro il limite di 25 di agent41 ⇒ mini-ciclo fermo, e a cascata `readAllocatedCapital` scaduta,
+// gamba orfana e riposizionamento post-fill inerti.
 //
-// IL NUMERO NUOVO E' 400, E VIENE DAL TEMPO, NON DALLA CLASSIFICA:
-//     400 / 1,5 = 267 s = 4,4 minuti  di profondita'
-//   + la seconda passata (scoperta a fette), misurata ~3 min
-//   = ~7,5 minuti, cioe' il costo che il sistema aveva PRIMA e che stava dentro il periodo di 15.
-// Margine sul limite di freschezza di agent41: **25 − ~8 = 17 minuti**. Il vincolo che il numero deve
-// rispettare e' `tempo_scansione < SCAN_INTERVAL_MS`, non «quanti mercati vorremmo»: sopra il periodo
-// la cadenza slitta e il board invecchia oltre il limite. Un test lo verifica leggendo le due costanti
-// dal sorgente invece di ricopiarle.
+// SECONDO ERRORE (14:13): tetto 400, tarato con `400 / MAX_RPS = 4,4 min`. Sbagliato anche quello, e la
+// ragione e' istruttiva: `_drain()` aggiunge attesa SOLO se la richiesta e' piu' veloce di 667 ms
+// (`gap = 1000/MAX_RPS − elapsed`, dormito solo se positivo). Se la latenza reale del book supera quella
+// soglia, il limitatore non interviene mai e il tempo per mercato E' LA LATENZA, non `1/MAX_RPS`.
+// Misurato sul processo vivo: 400 mercati ancora in corso dopo **18 minuti** ⇒ **≥2,7 s per mercato**.
 //
-// 400 E NON 309: il board normalizzato ne tiene ~309, ma la lista qui e' PRIMA dei filtri — tenerla piu'
-// larga del board significa che il taglio non morde mai su un mercato che il board avrebbe voluto.
-// Restano fuori solo i mercati oltre il 400esimo per rate, che rendono meno del 400esimo.
+// IL NUMERO ADESSO: 150. Viene dalla misura, non da una formula — `150 x 2,7 s ≈ 6,8 min` di profondita'
+// piu' ~3 min di scoperta ≈ **10 min**, dentro il periodo di 15 e con 15 minuti di margine sul limite di
+// freschezza di agent41. E' poco sopra il 120 storico, l'unico valore che avesse mai dimostrato di
+// stare nei tempi. Si cambia con `REWARD_MAX_CLOB_MARKETS`.
+//
+// E SOPRATTUTTO: LA DURATA ORA SI CRONOMETRA E SI DICHIARA (vedi `dtProfondita` sotto). Il costo per
+// mercato dipende dalla latenza del venue, che non e' sotto il nostro controllo e cambia nel tempo: un
+// numero tarato una volta su una stima invecchia in silenzio, un numero che si misura a ogni scansione
+// no. Se la fase supera il periodo, il log lo dice con il secondi-per-mercato osservato — cosi' il
+// prossimo che deve scegliere il tetto legge un fatto invece di rifare la mia aritmetica.
 // ── LA SECONDA PASSATA (8 agosto 2026) ────────────────────────────────────────
 // Quanto in là guarda la camminata ordinata sulle scadenze. 3 giorni e non 1,5 (il tetto del
 // pianificatore) perche' la scoperta non applica politiche: vedere anche cio' che si scartera' e'
@@ -574,10 +574,10 @@ async function scan() {
   markets.sort((a, b) => b.rewardsDailyRate - a.rewardsDailyRate);
   const toProcess = markets.slice(0, MAX_CLOB_MARKETS);
   console.log(`  Processing top ${toProcess.length} of ${markets.length} reward markets for CLOB depth`
-    + ` (tetto ${MAX_CLOB_MARKETS}, tarato sul TEMPO: ~${(MAX_CLOB_MARKETS / 1.5 / 60).toFixed(1)} min di profondità`
-    + ` contro un periodo di ${SCAN_INTERVAL_MS / 60_000} min)`);
+    + ` (tetto ${MAX_CLOB_MARKETS}, tarato sul MISURATO — la durata reale è cronometrata qui sotto)`);
 
   let results = [];
+  const t0Profondita = Date.now();
 
   for (const m of toProcess) {
     const fallbackMid = m.lastTradePrice
@@ -683,6 +683,21 @@ async function scan() {
       _atMidShare500:    parseFloat((levels['500']._atMidShare || 0).toFixed(6)), // ceiling; not UI headline
     });
   }
+
+  // ── IL CRONOMETRO DELLA FASE PROFONDITA' ────────────────────────────────────────────────────────
+  // Il secondi-per-mercato e' l'unico numero da cui si puo' scegliere il tetto, e dipende dalla latenza
+  // del venue: non e' sotto il nostro controllo e cambia. Si misura e si dichiara a OGNI scansione,
+  // cosi' non serve piu' indovinarlo — e se un giorno peggiora, il log lo dice prima che il board
+  // invecchi oltre il limite dei lettori.
+  const dtProfondita = Date.now() - t0Profondita;
+  const perMercato = toProcess.length > 0 ? dtProfondita / toProcess.length / 1000 : null;
+  const oltre = dtProfondita > SCAN_INTERVAL_MS;
+  console.log(`  profondità: ${(dtProfondita / 60_000).toFixed(1)} min per ${toProcess.length} mercati`
+    + ` = ${perMercato == null ? '—' : perMercato.toFixed(2)}s/mercato`
+    + ` · periodo ${SCAN_INTERVAL_MS / 60_000} min`
+    + (perMercato ? ` · a questo ritmo il tetto che sta nel periodo è ~${Math.floor((SCAN_INTERVAL_MS / 1000) * 0.6 / perMercato)}` : '')
+    + (oltre ? '  ⚠ LA FASE HA SUPERATO IL PERIODO: il board invecchia oltre la cadenza dichiarata,'
+      + ' abbassare REWARD_MAX_CLOB_MARKETS' : ''));
 
   // Default sort: LOW vol sane first, then MED, then HIGH, then flagged; by rate desc within group
   const volOrder = { LOW: 0, MEDIUM: 1, HIGH: 2 };

@@ -3842,11 +3842,29 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     **Verifica.** `tetto-e-scoperta.test.js` **33/33**. Suite: **164 eseguiti, 155 verdi**, i 9 rossi sono
     i preesistenti. `npm run build` verde.
 
-    **⚠ DUE LAVORI RESTANO APERTI E NON SONO STATI FATTI**, dichiarati invece di essere lasciati
+    **⚠ AGGIORNAMENTO DEL 11 AGOSTO, ore 14:35: ANCHE 400 ERA SBAGLIATO — ora il numero è 150 e viene
+    da un CRONOMETRO.** La formula `400 / MAX_RPS = 4,4 min` assumeva che il pacing fosse il collo di
+    bottiglia. Non lo è: `_drain()` aggiunge attesa **solo** se la richiesta è più veloce di
+    `1000/MAX_RPS` (667 ms), quindi oltre quella soglia il tempo per mercato **è la latenza del venue**.
+    Misurato sul processo vivo: 400 mercati **ancora in corso dopo 18 minuti** ⇒ **≥2,7 s/mercato**.
+    - **150**: `150 × 2,7 s ≈ 6,8 min` di profondità più ~3 min di scoperta ≈ **10 min**, dentro il
+      periodo di 15 e con 15 minuti di margine sul limite di freschezza. È poco sopra il **120 storico**,
+      l'unico valore che avesse mai dimostrato di stare nei tempi. Si cambia con `REWARD_MAX_CLOB_MARKETS`.
+    - **E soprattutto la durata ora si MISURA**: `dtProfondita` cronometra la fase e logga
+      `X min per N mercati = Ys/mercato`, più **il tetto che starebbe nel periodo a quel ritmo** e un
+      avviso esplicito se la fase supera il periodo. Il costo per mercato dipende dalla latenza del venue,
+      che non è sotto il nostro controllo e cambia: un numero tarato una volta su una stima invecchia in
+      silenzio, uno che si misura a ogni scansione no.
+    - **Due stime sbagliate di fila sullo stesso numero**, entrambe con lo stesso effetto. La lezione
+      generale: quando un numero governa una finestra temporale, si tara su un cronometro, non su
+      un'aritmetica — e il cronometro va lasciato acceso.
+
+    **⚠ TRE LAVORI RESTANO APERTI E NON SONO STATI FATTI**, dichiarati invece di essere lasciati
     impliciti: **cablare il segnale «mercato nuovo»** (il modulo esiste, `BONUS_ATTIVO=true`, ma nessun
     consumatore lo importa — quindi il moltiplicatore 1,25× non tocca nessuna classifica) e
     **trasformare il cancello di profondità in una scala** (oggi esclude il mercato invece di ridurre la
-    size). Entrambi richiedono lavoro di progetto, non una costante.
+    size), e la **pulizia dei dati obsoleti** (fra cui la rotazione di `polymarket-maker-audit.jsonl`,
+    ancora assente). Tutti e tre richiedono lavoro di progetto, non una costante.
 
 ---
 
