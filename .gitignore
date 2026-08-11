@@ -116,6 +116,13 @@ data/polymarket-clob-audit.jsonl
 
 # maker runtime logs / measurement artifacts (like news-guard-shadow)
 data/polymarket-maker-audit.jsonl
+# … e i suoi ARCHIVI di rotazione (dall'11 agosto 2026, lib/maker/rotazione-giornale.js). Il nome
+# porta l'istante — `polymarket-maker-audit-2026-08-11T16-29-07Z.jsonl` — e NON corrisponde alla riga
+# qui sopra: senza questa regola comparirebbe in `git status` un file da ~400 MB, cioè un archivio di
+# audit di QUESTA macchina che qualcuno può committare per sbaglio. Stessa ragione delle altre righe
+# di questo blocco: descrive un runtime, non il progetto.
+data/polymarket-maker-audit-*.jsonl
+data/polymarket-clob-audit-*.jsonl
 data/requote-economics-raw.json
 data/maker-*.jsonl
 # agent42 — monitor dei 21 maker. Stato di RUNTIME: cursori, cache Gamma, consuntivo rigenerabile.
