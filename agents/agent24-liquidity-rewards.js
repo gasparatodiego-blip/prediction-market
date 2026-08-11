@@ -761,9 +761,23 @@ async function scan() {
   // a $500–$50k maker "owns" ~100% of the pool and the $/day reads absurdly high. The 2%/day
   // cap only flags it; this HIDES it (never rewrites the number). Prints before/after + the
   // removed rows so the effect is visible, not asserted.
+  //
+  // ── LE RIGHE SOPPRESSE NON SI BUTTANO: SI CONSEGNANO A PARTE (11 agosto 2026) ──────────────────
+  // `lib/rewards-normalize.buildCombined` applica LA STESSA soppressione con un'eccezione: un mercato
+  // dove abbiamo capitale dentro resta visibile (`liveMinMarketIds`). Quell'eccezione NON POTEVA
+  // SCATTARE, e il commento che la descrive lo dava per fatto: buildCombined legge `markets[]` di
+  // questo file, e la riga sottile era già stata tolta QUI, a monte. Due filtri con lo stesso
+  // predicato in sequenza, e solo il secondo aveva l'eccezione: il primo vinceva sempre.
+  //
+  // La correzione NON legge la allowlist qui — `capitale-al-lavoro.test.js` §4 difende la proprietà
+  // che la SCOPERTA resti disaccoppiata da capitale, interruttore e allowlist, e resta intatta: questo
+  // ciclo non sa e non chiede dove sia il nostro capitale. Si limita a non distruggere l'informazione,
+  // consegnando le righe soppresse in un campo SEPARATO. `markets[]` resta byte per byte quello di
+  // prima per ogni altro lettore; chi conosce il capitale decide a valle, dove l'eccezione già vive.
   const floor = depthFloorUsd();
   const beforeCount = results.length;
   const removed = [];
+  const soppressePerProfondita = [];
   const kept = results.filter(r => {
     const depth = competitorDepthUsd({
       venue: 'polymarket',
@@ -773,6 +787,7 @@ async function scan() {
     if (belowDepthFloor(depth, floor)) {
       removed.push({ q: r.question, pool: r.rewardsDailyRate, depthUsd: depth,
         dayYieldPct: r.levels?.['500']?.dayYieldPct ?? null, grossDay: r.levels?.['500']?.grossRewardDay ?? null });
+      soppressePerProfondita.push(r);          // la riga INTERA, non un riassunto: a valle va normalizzata
       return false;
     }
     return true;
@@ -810,6 +825,11 @@ async function scan() {
       ].join(' '),
     },
     markets: results,
+    // ── LE RIGHE CHE IL PAVIMENTO DI PROFONDITA' HA TOLTO DA `markets` ────────────────────────────
+    // Consegnate, non buttate. Le rilegge SOLO `lib/rewards-normalize.buildCombined`, che riammette
+    // quelle dove abbiamo capitale dentro (`liveMinMarketIds`) e lascia fuori tutte le altre. Un
+    // lettore che non conosce questo campo si comporta esattamente come prima.
+    suppressedThinDepthMarkets: soppressePerProfondita,
   };
 
   atomicWrite(OUTPUT_FILE, out);

@@ -75,7 +75,7 @@ const { runAutoRepriceCycle } = require('../lib/maker/auto-reprice');
 const { runTrackingCycle, TRACKING_POLL_MS, MID_STALE_PAUSE_SEC } = require('../lib/maker/mm-tracking');
 const { readTrackingConfig, setTracking } = require('../lib/maker/mm-tracking-config');
 const { marketWindowFor } = require('../lib/maker/market-clock');
-const { loadAutoRepriceTuning, EXPECTED_RENEWALS_PER_HOUR, setAutoReprice } = require('../lib/maker/auto-reprice-config');
+const { loadAutoRepriceTuning, EXPECTED_RENEWALS_PER_HOUR, setAutoReprice, readAutoRepriceConfig } = require('../lib/maker/auto-reprice-config');
 const { listManualOrders, replaceManualOrder, resolveMarketRules, resolveMarketDepth, cancelManualOrder } = require('../lib/maker/manual-order');
 // THE STANDING RECONCILIATION FOR THE MANUAL LANE. Without it, every hand order that reaches its
 // venue-side expiry leaves a permanent phantom at full notional in the risk ledger, and the cap gate
@@ -502,13 +502,36 @@ function registroAttesaMerge() {
 async function closeTask() {
   try {
     const cfg = readAutoCloseConfig();
-    if (!cfg.readable || !cfg.enabledMarketIds.length) return;   // OFF: silent — lo snapshot lo tiene vivo snapshotPosizioniTask
+    // ── DOVE ABBIAMO CAPITALE SI PASSA COMUNQUE, ANCHE SE L'USCITA È SPENTA ───────────────────────
+    // `runAutoCloseCycle` itera SOLO i mercati che riceve, e fino all'11 agosto 2026 riceveva la sola
+    // allowlist dell'uscita automatica. Il reset la spegne sui mercati fuori dal piano quando NON
+    // hanno una posizione — corretto — ma un ordine risparmiato dalla cancellazione (manuale o di
+    // origine ignota) può riempirsi DOPO: nasce una posizione su un mercato la cui uscita è già
+    // spenta, e nessun ciclo la visita più. Niente uscita, niente merge, niente registro dei residui.
+    //
+    // La lista si unisce con `liveMinMarketIds` — la STESSA funzione già in servizio nel gate live-min
+    // (§5 punto 69), nella sottoscrizione del book (punto 61) e nella composizione del board: quattro
+    // punti, una definizione. Contiene «abilitati al riprezzo ∪ mercati con posizione aperta», quindi
+    // include per costruzione ogni mercato dove il capitale è esposto.
+    //
+    // NON ALLARGA IL RISCHIO: un giro di auto-close su un mercato senza posizione non fa niente (esce
+    // con `skip-no-position`), il gate della gestione manuale resta davanti, e ogni ordine che ne
+    // nascesse passa dagli stessi cancelli di sempre. Fail-closed: configurazione del riprezzo
+    // illeggibile ⇒ lista vuota ⇒ comportamento identico a prima.
+    let daPosizione = [];
+    try {
+      const rp = readAutoRepriceConfig();
+      if (rp && rp.readable === true) daPosizione = rp.liveMinMarketIds || [];
+    } catch (_) { daPosizione = []; }
+    const visitare = [...new Set([...(cfg.readable ? cfg.enabledMarketIds : []), ...daPosizione]
+      .map((x) => String(x || '').trim().toLowerCase()).filter(Boolean))];
+    if (!visitare.length) return;   // OFF: silent — lo snapshot lo tiene vivo snapshotPosizioniTask
     // Il saldo del giro: UNA lettura per ciclo, come gia' fa il ciclo di riprezzo. Serve al
     // riposizionamento post-fill, che deve dimensionarsi su quanto c'e' DAVVERO adesso e non sul
     // capitale appena fuso. Se la lettura non e' affidabile si passa `null` piu' sotto.
     const saldoGiro = await saldoDelGiro();
     const res = await runAutoCloseCycle({
-      marketIds: cfg.enabledMarketIds,
+      marketIds: visitare,
       killStatus: () => killSwitch.killStatus(),
       isManual: (marketId) => isManualMarket(marketId),
       resolveRules: (marketId) => resolveMarketRules(marketId),
