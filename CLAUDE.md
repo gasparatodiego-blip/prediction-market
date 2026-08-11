@@ -3878,6 +3878,31 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     - **1,25× non è un salto arbitrario**: un mercato noto con rate del 30% più alto resta davanti a uno
       nuovo. Il bonus decide **fra pari**, non contro un cancello.
     - Il log dichiara quante righe sono state pesate a ogni scansione.
+    - **Un timore infondato, corretto**: avevo scritto che il bonus poteva spingere fuori dal taglio a
+      150 un mercato con capitale dentro. **Falso**: il taglio ordina `markets` sul rate **grezzo**, il
+      bonus si applica a `results` **dopo** la lettura della profondità. Governa l'ordinamento del board
+      finale, non chi viene processato. Un test fissa ora questo rapporto.
+
+    **IL QUARTO PUNTO DELL'UNIONE — `rewards-normalize.buildCombined`, 11 agosto 2026.** La regola «un
+    mercato con capitale dentro resta visibile, ed esce solo se i reward finiscono davvero» era applicata
+    in tre punti (gate live-min, sottoscrizione del book, eccezione di riduzione). Ne mancava un quarto, e
+    **non era quello che cercavo**: la **soppressione per profondità al tocco** in `buildCombined`
+    NASCONDE le righe con book sottile. Un mercato dove abbiamo già capitale che diventa sottile spariva
+    dal board **proprio quando la posizione va gestita con più attenzione, non con meno**.
+    - **L'unione sta QUI e non in agent24**, ed è una decisione dell'operatore: `capitale-al-lavoro.test.js`
+      difende la proprietà che la **scoperta** resti disaccoppiata da capitale, interruttore e allowlist,
+      così agent24 gira H24 indipendente dallo stato del conto. Leggere la allowlist nella scoperta
+      avrebbe rotto quella garanzia per un risultato che si ottiene ugualmente a valle. La normalizzazione
+      è dove il board viene **composto**: conoscere lì cosa stiamo gestendo non tocca nulla a monte.
+      *(Un primo tentativo l'aveva messa in agent24 e il test è diventato rosso — correttamente.)*
+    - **Stessa funzione dei tre punti noti**: `liveMinMarketIds` di `auto-reprice-config`. Quattro punti,
+      **una** definizione.
+    - **Esenta solo la VISIBILITÀ**: i cancelli che decidono se piazzarci sopra — banda, orizzonte,
+      minSize, tetto per mercato, mai-primo, e il cancello di profondità pre-knapsack — stanno a valle e
+      non sanno che l'esenzione esiste. Verificato per assenza di riferimenti.
+    - **Contati a parte** (`esentatiPerCapitale`, `esentatiIds` nel meta): senza, «il board è più largo» e
+      «il filtro ha smesso di filtrare» sarebbero indistinguibili. Fail-closed: config illeggibile ⇒
+      nessuna esenzione.
 
 ---
 

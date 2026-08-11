@@ -572,6 +572,14 @@ async function scan() {
   }
 
   markets.sort((a, b) => b.rewardsDailyRate - a.rewardsDailyRate);
+
+  // IL TAGLIO RESTA PURO, E L'UNIONE VIVE A VALLE. Un mercato con capitale dentro che scivola oltre il
+  // taglio verrebbe perso — ma la correzione NON va qui: `capitale-al-lavoro.test.js` difende una
+  // proprieta' decisa prima, cioe' che la SCOPERTA resti disaccoppiata da capitale, interruttore e
+  // allowlist, cosi' agent24 gira H24 indipendente dallo stato del conto. Leggere qui la allowlist
+  // avrebbe rotto quella garanzia per ottenere un risultato che si ottiene ugualmente dopo.
+  // L'unione sta in `lib/rewards-normalize.buildCombined`, dove il board viene composto: stesso effetto
+  // pratico a valle, garanzia intatta a monte.
   const toProcess = markets.slice(0, MAX_CLOB_MARKETS);
   console.log(`  Processing top ${toProcess.length} of ${markets.length} reward markets for CLOB depth`
     + ` (tetto ${MAX_CLOB_MARKETS}, tarato sul MISURATO — la durata reale è cronometrata qui sotto)`);
