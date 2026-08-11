@@ -41,27 +41,33 @@ const FLOOR_DAILY_USD   = 1.0;   // $/day minimum gross; below = below-floor fla
 const NEAR_EXPIRY_DAYS  = 14;    // markets closing within → force HIGH vol
 const GAMMA_PAGE_SIZE   = 100;
 const MAX_PAGES         = 21;    // offset 0..2000 (21 × 100)
-// ── IL TAGLIO PER NUMERO E' STATO RIMOSSO — 10 agosto 2026 ──────────────────────────────────────
-// Qui c'era `MAX_CLOB_MARKETS = 120`, e la lista ordinata per rate veniva troncata ai primi 120. Non era
-// una soglia di qualita': era una posizione in classifica. Misurato sul board del 10 agosto — 309 mercati
-// premianti — il 120esimo rendeva **$53/g** e il 200esimo **$42/g**: i mercati tagliati non erano scarsi,
-// erano semplicemente 121esimi.
+const MAX_CLOB_MARKETS  = 400;   // vedi il blocco qui sotto: tarato sul TEMPO, non sulla classifica
+// ── IL TAGLIO PER NUMERO: 120 → RIMOSSO → 400, IN VENTI MINUTI ──────────────────────────────────
+// L'11 agosto 2026 il taglio ai primi 120 e' stato tolto del tutto: non era una soglia di qualita' ma
+// una posizione in classifica (il 120esimo rendeva $53/g, il 200esimo $42/g). La diagnosi era giusta;
+// la stima del costo NO, ed e' stata corretta dai fatti nel giro di venti minuti.
 //
-// PERCHE' NON E' STATO SOSTITUITO DA UNA SOGLIA DI RATE, che era l'ipotesi di partenza: **tutti e 309**
-// i mercati del board superano gia' $25/g, quindi una soglia $10-25 non filtrerebbe NIENTE. Sostituire un
-// taglio che morde con una soglia che non morde e' un cambio di nome, non di comportamento. Il taglio si
-// toglie e basta; a filtrare restano i controlli che guardano il MERCATO — banda, orizzonte, minSize,
-// profondita' — e non la sua posizione relativa.
+// COSA E' ANDATO STORTO, misurato: il costo era stato stimato «x2,6» ragionando sui 309 mercati del
+// board NORMALIZZATO. Ma il filtro a monte ne lascia passare **1.097**, e la profondita' CLOB si legge
+// per OGNI mercato processato a `MAX_RPS = 1.5`:
+//     1097 / 1,5 = 731 s = 12,2 minuti  di sola profondita', piu' la scoperta.
+// Alle 13:41 agent24 e' ripartito; alle 14:00 non aveva ancora riscritto il board, fermo alle 13:29.
+// Eta' del board: **30 minuti** contro il limite di 25 di agent41 ⇒ `il board ha 30 minuti (limite 25)`
+// e il mini-ciclo ha smesso di piazzare. Effetto a catena: `readAllocatedCapital` scaduta ⇒ gamba
+// orfana e riposizionamento post-fill inerti, entrambi fail-closed ma fermi.
 //
-// IMPATTO MISURATO sul board del 10 agosto, incrociato col tetto per mercato e con `minSize`:
-//   oggi (taglio 120 + tetto $130) → **47** mercati piazzabili
-//   senza taglio  (tetto $130)     → **92**   ·  senza taglio + tetto $65 → **86**
-// Il taglio valeva **+45**; il tetto piu' basso ne costa 6. Saldo **+39**.
+// IL NUMERO NUOVO E' 400, E VIENE DAL TEMPO, NON DALLA CLASSIFICA:
+//     400 / 1,5 = 267 s = 4,4 minuti  di profondita'
+//   + la seconda passata (scoperta a fette), misurata ~3 min
+//   = ~7,5 minuti, cioe' il costo che il sistema aveva PRIMA e che stava dentro il periodo di 15.
+// Margine sul limite di freschezza di agent41: **25 − ~8 = 17 minuti**. Il vincolo che il numero deve
+// rispettare e' `tempo_scansione < SCAN_INTERVAL_MS`, non «quanti mercati vorremmo»: sopra il periodo
+// la cadenza slitta e il board invecchia oltre il limite. Un test lo verifica leggendo le due costanti
+// dal sorgente invece di ricopiarle.
 //
-// IL COSTO, dichiarato: la profondita' CLOB si legge per ogni mercato processato, quindi passare da 120 a
-// ~309 moltiplica per ~2,6 le chiamate di quella fase. La cadenza e' gia' protetta dal periodo fisso di
-// 15 minuti (si dorme il RESTO, §5 punto 46): se la scansione si allunga, il periodo NON si allunga con
-// lei — sfora e lo dichiara, e i lettori hanno 25 minuti di tolleranza.
+// 400 E NON 309: il board normalizzato ne tiene ~309, ma la lista qui e' PRIMA dei filtri — tenerla piu'
+// larga del board significa che il taglio non morde mai su un mercato che il board avrebbe voluto.
+// Restano fuori solo i mercati oltre il 400esimo per rate, che rendono meno del 400esimo.
 // ── LA SECONDA PASSATA (8 agosto 2026) ────────────────────────────────────────
 // Quanto in là guarda la camminata ordinata sulle scadenze. 3 giorni e non 1,5 (il tetto del
 // pianificatore) perche' la scoperta non applica politiche: vedere anche cio' che si scartera' e'
@@ -565,12 +571,11 @@ async function scan() {
     return;
   }
 
-  // L'ORDINAMENTO RESTA, IL TAGLIO NO. La lista continua a essere ordinata per rate decrescente — serve
-  // a chi legge e alla priorita' del raccoglitore — ma non viene piu' troncata: ogni mercato premiante
-  // arriva alla lettura della profondita', e a escluderlo saranno i filtri che guardano il mercato.
   markets.sort((a, b) => b.rewardsDailyRate - a.rewardsDailyRate);
-  const toProcess = markets;
-  console.log(`  Processing ALL ${toProcess.length} reward markets for CLOB depth (nessun taglio per numero)`);
+  const toProcess = markets.slice(0, MAX_CLOB_MARKETS);
+  console.log(`  Processing top ${toProcess.length} of ${markets.length} reward markets for CLOB depth`
+    + ` (tetto ${MAX_CLOB_MARKETS}, tarato sul TEMPO: ~${(MAX_CLOB_MARKETS / 1.5 / 60).toFixed(1)} min di profondità`
+    + ` contro un periodo di ${SCAN_INTERVAL_MS / 60_000} min)`);
 
   let results = [];
 

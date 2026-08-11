@@ -3812,6 +3812,42 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     - **Un difetto vero trovato dal test nuovo**: la cache di `mappaPrimaVisto` ignorava `dir`, quindi un
       chiamante con directory diversa riceveva la mappa sbagliata. Corretto con cache per directory.
 
+53. **TOGLIERE IL TAGLIO DEL TUTTO HA FERMATO I PIAZZAMENTI IN VENTI MINUTI — corretto l'11 agosto 2026,
+    tetto rimesso a 400 e tarato sul TEMPO.**
+
+    **Cosa è andato storto.** Il punto 52 ② aveva tolto `MAX_CLOB_MARKETS` stimando il costo «×2,6» sui
+    **309** mercati del board normalizzato. Ma il filtro a monte ne lascia passare **1.097**, e la
+    profondità CLOB si legge per ognuno a `MAX_RPS = 1.5`: `1097 / 1,5 = 731 s = 12,2 minuti` di sola
+    profondità. **Misurato**: agent24 riavviato alle 13:41, alle 14:00 non aveva ancora riscritto il
+    board — fermo alle 13:29, **età 30 minuti** contro il limite di **25** di agent41 ⇒
+    `il board ha 30 minuti (limite 25)` e il mini-ciclo ha smesso di piazzare.
+    - **Effetto a catena**: `readAllocatedCapital` scaduta (26 h) ⇒ **gamba orfana** e **riposizionamento
+      post-fill** inerti, entrambi fail-closed ma fermi. I due problemi si tenevano a vicenda: il
+      riposizionamento aspettava i tetti, e i tetti aspettavano un mini-ciclo che non partiva.
+
+    **La correzione: 400, e il numero viene dal tempo.** `400 / 1,5 = 4,4 min` di profondità più ~3 min
+    di scoperta = **~7,5 min**, cioè il costo che il sistema aveva prima e che stava dentro il periodo di
+    15. Margine sul limite di freschezza: **25 − ~8 = 17 minuti**.
+    - **Il vincolo che il numero deve rispettare è `tempo_scansione < periodo`**, non «quanti mercati
+      vorremmo»: sopra il periodo la cadenza slitta e il board invecchia oltre il limite. Il test lo
+      verifica leggendo `MAX_CLOB_MARKETS`, `MAX_RPS`, `SCAN_INTERVAL_MS` **dal sorgente** e
+      `ETA_BOARD_MAX_MS` dal modulo, invece di ricopiarli.
+    - **400 e non 309**: la lista qui è PRIMA dei filtri, quindi tenerla più larga del board significa che
+      il taglio non morde mai su un mercato che il board avrebbe voluto.
+
+    **La lezione, che vale oltre questo caso:** il costo di una scansione si stima sul numero di elementi
+    che la scansione **processa davvero**, non su quelli che sopravvivono ai filtri a valle. Fra i due
+    numeri qui c'era un fattore **3,5**, ed è bastato a fermare il capitale.
+
+    **Verifica.** `tetto-e-scoperta.test.js` **33/33**. Suite: **164 eseguiti, 155 verdi**, i 9 rossi sono
+    i preesistenti. `npm run build` verde.
+
+    **⚠ DUE LAVORI RESTANO APERTI E NON SONO STATI FATTI**, dichiarati invece di essere lasciati
+    impliciti: **cablare il segnale «mercato nuovo»** (il modulo esiste, `BONUS_ATTIVO=true`, ma nessun
+    consumatore lo importa — quindi il moltiplicatore 1,25× non tocca nessuna classifica) e
+    **trasformare il cancello di profondità in una scala** (oggi esclude il mercato invece di ridurre la
+    size). Entrambi richiedono lavoro di progetto, non una costante.
+
 ---
 
 ## 6 · COME L'UTENTE VUOLE ESSERE SERVITO
