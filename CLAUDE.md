@@ -3,7 +3,22 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt**: non serve più reincollarlo ogni volta.
 
-Ultima verifica contro codice/stato reali: **9 agosto 2026**, ~20:15 UTC.
+Ultima verifica contro codice/stato reali: **11 agosto 2026**, ~15:30 UTC (§4 blocco profondità e §5 punto 54).
+
+> ## 📉 LA PROFONDITÀ ORA SCALA LA SIZE, NON TOGLIE IL MERCATO — §5 punto 54
+> `profondita-minima` escludeva un mercato la cui quota modellata superava il **60% a un metro fisso di
+> $500**. Quel metro aveva una ragione — «altrimenti lo stesso mercato è sottile o no a seconda di quanto
+> denaro c'è in cassa» — ed **è caduta con la costante che la motivava**: il tetto per mercato non è più
+> il 20% del capitale ma **$65 fissi**. Adesso `scalaProfondita` limita il capitale a quanto il book
+> assorbe restando dentro **quella stessa quota**, e esclude solo dove nessuna size piazzabile regge.
+> **Misurato sul board dell'11 agosto** ($594,10, tetto $65): il vecchio cancello toglieva **35 candidati
+> su 132** e produceva un piano da **$66,09/g lordo · $20,18/g realistico**; la scala ne toglie **2** e
+> produce **$168,72/g · $61,40/g** — stessa copertura ($588,00 · 99,0%), **zero righe in comune** fra i
+> due piani, e **ZERO righe sopra la quota sicura ALLA SIZE ALLOCATA**. Non è ottimismo che rientra: è la
+> stessa asticella applicata alla size vera invece che a una che il tetto rende impossibile.
+> **⚠ OGGI LA SCALA NON RIDUCE NESSUNO, e va saputo**: con il tetto a $65 solo 2 mercati su 132 stanno
+> nella fascia in cui il book lega prima del tetto. La riduzione è la regola giusta, ma il vincolo che
+> morde quasi sempre è il tetto per mercato. **agent41 riavviato (55 → 56).**
 
 > ## 🧮 UN FILL VALEVA UNA VOLTA PER RIPIAZZAMENTO — §5 punto 72
 > `planReconcile` confrontava **grandezze su scale diverse**: `totalFilled` è il volume dei trade del
@@ -719,7 +734,79 @@ un'informazione più ottimistica di quella con cui il piano veniva poi giudicato
 - **Non tocca l'esecuzione**: zero offset di piazzamento cambiati, e un test verifica che nessun modulo
   di `lib/maker/` nomini il tetto (158 file controllati).
 
-**IL TETTO DI CREDIBILITÀ È DIVENTATO ANCHE UN CANCELLO** (`filtroProfondita`, 9 agosto 2026 — in
+**LA PROFONDITÀ È UNA SCALA DI SIZE, E SOLO IN CODA UN CANCELLO** (`scalaProfondita`, 11 agosto 2026 —
+in `main`; il piano nasce in un processo figlio a ogni ciclo, quindi la scala è **già in servizio** su
+ogni percorso che calcola un piano, pannello «Ottimizza» compreso; agent41 è stato riavviato solo per la
+riga di rendiconto, che vive nel suo processo). Il tetto di credibilità ATTENUA la quota; il cancello del
+9 agosto TOGLIEVA il mercato; adesso si **limita la size** e si toglie solo dove nessuna size piazzabile
+regge. Le quattro regole, tutte in `lib/rewards/profondita-minima.js`:
+1. **size effettiva = min(tetto per mercato, capitale che il book assorbe entro la quota sicura)**. Il
+   tetto per mercato **non è ridichiarato qui**: la curva è già costruita dentro `maxPerMarketUsd`,
+   quindi il minimo dei due è il più grande livello sopravvissuto, per costruzione. Un test verifica che
+   il modulo non nomini né importi `concentration`.
+2. **se nemmeno la size minima del venue sta dentro la quota, il mercato ESCE** — `escluso-troppo-sottile`.
+   È il caso del book vuoto verificato (`cQ = 0` ⇒ `S_max = 0`), che resta escluso come prima.
+3. **se una size sicura ≥ minimo esiste ma nessun livello finanziabile ci finisce dentro**, il mercato
+   esce con un motivo diverso — `escluso-sotto-minimo` — perché è la griglia del capitale a non avere un
+   gradino utile, non il book a essere deserto.
+4. **VINCOLO ASSOLUTO: mai forzare la size al minimo del venue oltre la quota sicura.** È **strutturale**,
+   non promesso: `tenuti` si calcola con un solo `.map` PRIMA di sapere se resterà qualcosa, e i due rami
+   di esclusione lo restituiscono senza toccarlo. Un test dedicato lo prova in quattro modi — sulla
+   funzione pura su 9 profondità × 5 minimi × 3 griglie, sul caso «minimo 20 contro S_max 15», sul piano
+   vero end-to-end, e per **assenza** nel sorgente (nessun `tenuti[i] =`).
+
+**L'ARITMETICA, PER INTERO.** `S/(S+cQ) ≤ q` ⇒ `S_max = cQ · q/(1−q)`, cioè **1,5 · cQ** a q = 0,60. È una
+proprietà del solo book. La conversione in dollari **non richiede una seconda formula**: ogni livello
+della curva porta già la sua size in share accanto al suo capitale, quindi si interroga direttamente lui
+— nessuna estrapolazione lineare, nessun secondo modello capitale→share da tenere allineato al primo.
+
+**PERCHÉ IL METRO FISSO DI $500 NON DECIDE PIÙ.** L'intestazione di `CAPITALE_RIFERIMENTO_USD_DEFAULT`
+diceva: «giudicare alla size che riceverebbe renderebbe la soglia dipendente dal capitale del conto». Era
+vero il 9 agosto, quando il tetto per mercato era il **20% del capitale**. Dal 9 agosto sera è un **numero
+fisso in dollari** ($130, poi $65 dall'11): giudicare alla size vera è oggi **altrettanto metro-fisso** che
+giudicare a $500, e in più è la size che il capitale prenderebbe davvero. L'obiezione è caduta con la
+costante che la motivava. `verdettoProfondita` **resta** e continua a pubblicare la quota a $500 su ogni
+candidato (`quotaRiferimento`) e nel rendiconto: è il numero con cui la diagnosi del 9 agosto ha contato i
+mercati sottili, e toglierlo renderebbe le due serie storiche non confrontabili.
+
+**MISURATO SUL BOARD DELL'11 AGOSTO** ($594,10 liberi, tetto $65, `horizonFilter` attivo, 132 candidati):
+
+| | nessun limite | vecchio CANCELLO (emulato) | **SCALA** |
+|---|---|---|---|
+| allocato / copertura | $588,00 · 99,0% | $588,00 · 99,0% | **$588,00 · 99,0%** |
+| mercati | 10 | 10 | **10** |
+| lordo dichiarato | $168,72/g | $66,09/g | **$168,72/g** |
+| realistico | $61,40/g | $20,18/g | **$61,40/g** |
+| tolti dal set | 0 | **35** | **2** (1 troppo sottile · 1 sotto il minimo) |
+| ridotti | — | — | **0** |
+| righe in comune con la scala | — | **0 su 10** | — |
+
+- **Il piano del cancello e quello della scala non hanno UNA riga in comune**, e il realistico è **3×**.
+  Non è ottimismo che rientra: **zero righe del piano nuovo superano la quota sicura ALLA SIZE ALLOCATA**
+  (verificato riga per riga) e nessuna sta sotto il minimo del venue — una garanzia **più stretta** di
+  quella del cancello, che escludeva a $500 e poi lasciava ai superstiti qualunque size.
+- **⚠ OGGI LA SCALA NON RIDUCE NESSUNO, e il numero va detto**: dei 113 candidati con profondità misurata,
+  **1 ha cQ = 0**, **1 sta fra 14 e 44 share** e **111 stanno sopra 44** — cioè con il tetto a $65 il book
+  lega prima del tetto solo in due casi su 132. La riduzione è la regola giusta; il vincolo che morde
+  quasi sempre resta il **tetto per mercato**. Se un giorno il tetto risalisse, la scala comincerebbe a
+  mordere senza che nessuno debba toccarla.
+- **`ignota` non tocca niente**: profondità non misurata ⇒ né ridotto né escluso, stessa regola cardinale
+  di `horizonVerdict`. Un livello finanziato con size illeggibile viene invece **tolto** (può solo
+  ridurre), ma se **nessun** livello è verificabile si torna a `ignota` e il mercato resta intatto.
+- **LA PROFONDITÀ PARLA SOLO QUANDO LEGA — difetto vero trovato dalla misura, non ipotizzato.** La prima
+  stesura escludeva anche quando non aveva tagliato niente: sul board vero si prendeva la diagnosi di
+  **28 mercati** che il **minimo del venue** teneva fuori da sempre, li toglieva PRIMA del knapsack invece
+  di lasciarli scorare zero, e falsava il rapporto superstiti/minimi che è ciò che rende la scala sicura.
+  Adesso, se nessun livello finanziabile è stato tolto, lo stato è `ok` e la diagnosi resta a `min-size`.
+- **L'attenuazione resta viva** (`credibleShareFactor`), e **`capVuotiFrac` resta come seconda linea**.
+- **Il rendiconto per ciclo** (`annunciaScalaProfondita` in agent41) dichiara ora anche i **ridotti** e il
+  **capitale che la profondità ha tolto loro**, più le due cause di esclusione separate. Verificato su un
+  piano vero: «scala profondità: 0 mercato/i con size RIDOTTA (−$0.00) · 1 esclusi … (1 book troppo
+  sottile, 0 sotto il minimo) … superstiti 81 contro 10 minimi = 8.1x».
+
+*(Il blocco storico del cancello del 9 agosto resta qui sotto: è la ragione per cui il limite esiste.)*
+
+**~~IL TETTO DI CREDIBILITÀ È DIVENTATO ANCHE UN CANCELLO~~** (`filtroProfondita`, 9 agosto 2026 — in
 `main`; il piano nasce in un processo figlio a ogni ciclo, quindi **non serve riavviare per il pannello
 «Ottimizza»**, ma agent41 va riavviato perché il log del rendiconto vive nel suo processo). Il tetto qui
 sopra ATTENUA la quota di un book sottile e lascia il mercato nel set. Il knapsack **massimizza**: un
@@ -3859,11 +3946,10 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
       generale: quando un numero governa una finestra temporale, si tara su un cronometro, non su
       un'aritmetica — e il cronometro va lasciato acceso.
 
-    **✅ IL SEGNALE «MERCATO NUOVO» È STATO CABLATO** l'11 agosto (vedi sotto). **⚠ DUE LAVORI RESTANO
-    APERTI E NON SONO STATI FATTI**, dichiarati invece di essere lasciati impliciti:
-    **trasformare il cancello di profondità in una scala** (oggi esclude il mercato invece di ridurre la
-    size) e la **pulizia dei dati obsoleti** (fra cui la rotazione di `polymarket-maker-audit.jsonl`,
-    ancora assente). Entrambi richiedono lavoro di progetto, non una costante.
+    **✅ IL SEGNALE «MERCATO NUOVO» È STATO CABLATO** l'11 agosto (vedi sotto). **~~DUE LAVORI RESTANO
+    APERTI~~ — UNO È STATO FATTO l'11 agosto** (§5 punto 54): il cancello di profondità è diventato una
+    **scala di size**. **RESTA APERTA la pulizia dei dati obsoleti** (fra cui la rotazione di
+    `polymarket-maker-audit.jsonl`, ancora assente). Richiede lavoro di progetto, non una costante.
 
     **IL CABLAGGIO DEL SEGNALE «NUOVO» — `agent24`, sort finale.** Il bonus pesa il **terzo** criterio
     dell'ordinamento, e la scelta del punto è tutta la sicurezza del meccanismo: il sort è
@@ -3903,6 +3989,68 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     - **Contati a parte** (`esentatiPerCapitale`, `esentatiIds` nel meta): senza, «il board è più largo» e
       «il filtro ha smesso di filtrare» sarebbero indistinguibili. Fail-closed: config illeggibile ⇒
       nessuna esenzione.
+
+54. **IL CANCELLO DI PROFONDITÀ È DIVENTATO UNA SCALA DI SIZE — in `main` l'11 agosto 2026, ~15:20 UTC.
+    agent41 RIAVVIATO (55 → 56) su istruzione esplicita di Diego nel prompt del lavoro.**
+
+    Il contenuto tecnico sta in §4, blocco «LA PROFONDITÀ È UNA SCALA DI SIZE». Qui restano le cose che
+    §4 non dice.
+
+    **IL PASSO 1 È SERVITO, ed è la ragione per cui è obbligatorio.** Il censimento ha dato **quattro**
+    consumatori e nessuno in più: `lib/rewards/allocator.js` (l'unico punto di applicazione, più il
+    riassunto `selezione`), `agents/agent41-realloc-scheduler.js` (il rendiconto per ciclo), i tre test
+    che lo nominano, e un **commento** in `agent24`. Fuori elenco per costruzione: `allocateBudget` in
+    `scripts/rewards-replay/lib/allocate.js` **non vede** il filtro — un'asserzione lo verifica leggendo
+    il sorgente — quindi **i backtest restano invariati numero per numero**, e nessun modulo di
+    `lib/maker/` lo nomina, quindi **il piazzamento non è sfiorato**.
+
+    **LA SCELTA CHE IL PROMPT NON COPRIVA, e come è stata risolta.** I criteri di prova del prompt
+    dicevano «mercati con quota 55-65% entrano con size ridotta» e «quota >80% restano esclusi». Con la
+    regola 1 applicata alla lettera — `min($65, capitale assorbibile)` — quei due enunciati **sono veri
+    se la quota si legge ALLA SIZE EFFETTIVA e falsi se si legge al metro fisso di $500**, ed è
+    aritmetica, non opinione: `capitale assorbibile = 750 · (1 − q₅₀₀)/q₅₀₀`, quindi a q₅₀₀ = 80% il
+    book assorbe **$187,50**, cioè quasi il triplo del tetto per mercato. Ho implementato la **regola 1
+    alla lettera** — è la parte esplicita del prompt — e ho scritto i test sull'aritmetica vera invece
+    che su un'aspettativa che il codice non può produrre. **Conseguenza da conoscere, ed è la ragione
+    per cui è scritta qui e non solo in un commento: la soglia di esclusione effettiva si è spostata da
+    q₅₀₀ > 60% a q₅₀₀ ≳ 97%** (con minimo 20 share), e quella di riduzione a **q₅₀₀ ≳ 92%**. In cambio
+    ogni riga del piano ha ora una garanzia che prima non aveva: **quota ≤ 60% alla size che riceve
+    davvero**.
+
+    **IL VINCOLO 4 HA IL SUO TEST, ed è il punto del lavoro.** `lib/rewards/scala-profondita.test.js`
+    sezione 3, quattro prove indipendenti (funzione pura su 135 combinazioni · il caso «minimo 20 contro
+    S_max 15» · il piano vero end-to-end su dieci book dal deserto al pieno con i quattro minimi veri del
+    venue 20/50/100/200 · l'assenza di `tenuti[i] =` nel sorgente). Il difetto che cerca produrrebbe un
+    piano **apparentemente sano** — un mercato in più, size esattamente al minimo — costruito
+    sull'ottimismo che il modulo esiste per togliere.
+
+    **UN DIFETTO VERO TROVATO DALLA MISURA E NON DAL RAGIONAMENTO.** La prima stesura escludeva anche i
+    mercati su cui la scala non aveva tagliato niente: sul board vero si prendeva la diagnosi di **28
+    mercati** che il **minimo del venue contro il tetto da $65** teneva fuori da sempre, li toglieva
+    **prima** del knapsack invece di lasciarli scorare zero, e falsava `profonditaSuperstiti` — cioè
+    proprio il rapporto che rende la scala sicura (54 invece di 80). Corretto: se nessun livello
+    finanziabile è stato tolto lo stato è `ok`, e il motivo resta `min-size`, che è chi lo misura.
+
+    **Verifica.** `profondita-minima.selfcheck()` **36/36** · nuovo `scala-profondita.test.js` **35/35** ·
+    `cancello-profondita.test.js` **32/32** invariato (le sue asserzioni valgono ancora: il book vuoto
+    verificato resta escluso, e il `reasonCode` resta `profondita-sottile` per entrambe le cause, perché
+    sdoppiarlo spezzerebbe la serie storica dell'audit). Suite: **165 eseguiti, 157 verdi**; gli **8
+    rossi sono esattamente i preesistenti** — verificati uno per uno rieseguendoli su `HEAD` con le tre
+    modifiche messe da parte, **zero nuovi**. `npm run build` verde, `BUILD_ID` `uSwXU1XKMeigr9tflnKQX`,
+    `prerender-manifest.json` presente.
+
+    **RIAVVIO: solo agent41, e solo per la riga di log.** L'allocatore vive in un **processo figlio** a
+    ogni piano (§5 punto 14), quindi la scala era già in servizio sul pannello «Ottimizza» e su agent41
+    prima del riavvio; il rendiconto invece vive nel processo. Verificato dopo il riavvio: **60 variabili
+    d'ambiente, 9/9 critiche presenti**, error log fermo al **10 agosto 15:42** (zero errori nuovi),
+    log d'avvio regolare. **Il dashboard NON è stato riavviato**: nessun file di `app/` è nel diff e la
+    rotta `/api/rewards/allocate` calcola il piano in un processo figlio, quindi pubblica già i campi
+    nuovi. **agent40 non è toccato**: non importa l'allocatore.
+
+    **Posizioni preesistenti invariate**: impronta `4f53cda18c2baa0c` prima e dopo il riavvio — **zero
+    posizioni aperte** (il bot è FERMO + KILL dal 10 agosto), quindi non c'era capitale esposto da
+    proteggere, e `data/execution-audit.jsonl` resta a **3.652 righe**, invariato: nessun ordine è
+    partito.
 
 ---
 
