@@ -312,7 +312,7 @@ function calcolaPianoFuoriProcesso(opzioni) {
 // bocciato: il piano si rifà senza di loro e quel capitale va altrove. Un piano così NON è un piano
 // ristretto — l'universo resta intero meno quei mercati — quindi le priorità del raccoglitore si
 // scrivono lo stesso.
-/** ── IL RENDICONTO DEL CANCELLO SULLA PROFONDITÀ, UNA RIGA PER PIANO ────────────────────────────────
+/** ── IL RENDICONTO DELLA SCALA SULLA PROFONDITÀ, UNA RIGA PER PIANO ─────────────────────────────────
  *
  *  Serve a rispondere nel tempo a una domanda sola: «quanto reward APPARENTE stiamo lasciando fuori, e
  *  il piano ne sta soffrendo?». Il primo numero è `lordoApparente` — la cifra con cui quei mercati
@@ -323,22 +323,31 @@ function calcolaPianoFuoriProcesso(opzioni) {
  *  Sta qui e non nell'allocatore perché l'allocatore è puro e non ha un canale di log; e sta in una
  *  funzione sola perché i due percorsi che calcolano un piano (ciclo da 6h e ricalcolo leggero del
  *  mini-ciclo) devono raccontarlo con le stesse parole, altrimenti l'audit storico non è confrontabile. */
-function annunciaCancelloProfondita(piano, dove) {
+function annunciaScalaProfondita(piano, dove) {
   const s = piano && piano.selezione;
   if (!s || s.filtroProfondita !== true) return;
   const superstiti = s.profonditaSuperstiti, minimi = s.profonditaMinimiPerCoprire;
   const margine = (Number.isFinite(superstiti) && Number.isFinite(minimi) && minimi > 0)
     ? (superstiti / minimi) : null;
   annuncia('log',
-    `cancello profondità (${dove}): ${s.profonditaSottili} mercato/i esclusi sopra la quota ${Math.round((s.profonditaSoglia || 0) * 100)}%`
+    `scala profondità (${dove}): ${s.profonditaRidotti ?? 0} mercato/i con size RIDOTTA`
+    + ` (−$${(s.profonditaRidottiCapitaleTagliatoUsd ?? 0).toFixed(2)} di capitale rispetto al tetto per mercato)`
+    + ` · ${s.profonditaSottili} esclusi perché nessuna size piazzabile resta sotto la quota ${Math.round((s.profonditaSoglia || 0) * 100)}%`
+    + ` (${s.profonditaTroppoSottili ?? 0} book troppo sottile, ${s.profonditaSottoMinimo ?? 0} sotto il minimo del venue)`
     + ` — lordo APPARENTE lasciato fuori $${(s.profonditaSottiliLordoApparenteUsd ?? 0).toFixed(2)}/g`
     + ` su montepremi $${(s.profonditaSottiliPotUsd ?? 0).toFixed(2)}/g`
     + (s.profonditaSottiliQuotaMediana != null ? ` (quota mediana ${(s.profonditaSottiliQuotaMediana * 100).toFixed(1)}%)` : '')
     + ` · superstiti ${superstiti} contro ${minimi} minimi per coprire il capitale`
     + (margine != null ? ` = ${margine.toFixed(1)}x` : '')
-    + (margine != null && margine < 1 ? ' ⚠ IL CANCELLO STA AFFAMANDO IL PIANO' : ''),
+    + (margine != null && margine < 1 ? ' ⚠ LA SCALA STA AFFAMANDO IL PIANO' : ''),
     {
       esclusi: s.profonditaSottili,
+      // Le tre cifre che il cancello non poteva produrre: quanti mercati sono entrati con meno soldi
+      // invece di sparire, quanto capitale la profondità ha tolto loro, e come si dividono gli esclusi.
+      ridotti: s.profonditaRidotti ?? null,
+      capitaleTagliatoUsd: s.profonditaRidottiCapitaleTagliatoUsd ?? null,
+      troppoSottili: s.profonditaTroppoSottili ?? null,
+      sottoMinimo: s.profonditaSottoMinimo ?? null,
       lordoApparenteUsd: s.profonditaSottiliLordoApparenteUsd ?? null,
       potUsd: s.profonditaSottiliPotUsd ?? null,
       quotaMediana: s.profonditaSottiliQuotaMediana ?? null,
@@ -355,7 +364,7 @@ function annunciaCancelloProfondita(piano, dove) {
 
 async function calcolaPiano({ capital, maxPerMarketUsd, onlyMarketIds = null, excludeMarketIds = null }) {
   const piano = await calcolaPianoFuoriProcesso({ capital, maxPerMarketUsd, onlyMarketIds, excludeMarketIds, horizonFilter: true });
-  try { annunciaCancelloProfondita(piano, onlyMarketIds ? 'piano ristretto' : 'ciclo 6h'); } catch (_) { /* un log non fa cadere un piano */ }
+  try { annunciaScalaProfondita(piano, onlyMarketIds ? 'piano ristretto' : 'ciclo 6h'); } catch (_) { /* un log non fa cadere un piano */ }
 
   // Il piano LIBERO dice al raccoglitore cosa tenere caldo: le righe scelte e i migliori candidati
   // valutati. Si scrive SEMPRE, anche in dry run e anche quando nessun trigger scatta — non è un'azione
@@ -436,7 +445,7 @@ async function pianoLeggero({ capital, maxPerMarketUsd, excludeMarketIds = null 
     // di queste è un parametro che si passa da qui.
     horizonFilter: true, excludeMarketIds,
   });
-  try { annunciaCancelloProfondita(p, 'piano leggero'); } catch (_) { /* un log non fa cadere un piano */ }
+  try { annunciaScalaProfondita(p, 'piano leggero'); } catch (_) { /* un log non fa cadere un piano */ }
   return p;
 }
 
