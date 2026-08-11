@@ -4336,9 +4336,18 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     `inseguimento-contro-mai-primo` 56/56 · `mid-vivo` 38/38.
     Suite: **167 eseguiti, 159 verdi**; gli **8 rossi sono esattamente i preesistenti**, zero nuovi (167
     invece di 166 e 159 invece di 158 perché il file di test è nuovo). `npm run build` verde, `BUILD_ID`
-    `2uQRMxJozyTQJSJh07e0e`, `prerender-manifest.json` presente. **Stato di produzione invariato dalla
-    suite**: sei impronte MD5 identiche prima e dopo, `execution-audit.jsonl` fermo a 3.652 righe, nessun
-    archivio di rotazione nuovo.
+    `QrT895kn0RgtdSLH-t4Zv`, `prerender-manifest.json` presente. **Stato di produzione invariato dalla
+    suite**: otto impronte MD5 identiche prima e dopo, `execution-audit.jsonl` fermo a 3.652 righe,
+    nessun archivio di rotazione nuovo.
+
+    **⚠ TRAPPOLA OPERATIVA REGISTRATA — due `npm run build` insieme si distruggono a vicenda.** Il primo
+    tentativo è morto con `ENOENT … .next/static/<altro-BUILD_ID>/_ssgManifest.js` dopo aver compilato e
+    generato tutte e 68 le pagine: non era un errore del codice, erano **due `next build` concorrenti**
+    (pid diversi, due BUILD_ID diversi) che scrivevano lo stesso `.next`, e il secondo ha rimosso la
+    cartella statica che il primo stava per riempire. Sintomo riconoscibile: il BUILD_ID nel messaggio
+    d'errore **non** è quello che finisce in `.next/BUILD_ID`. Rimedio: `ps aux | grep "[n]ext build"`,
+    aspettare che finisca, ricostruire. Rifatta da sola è verde al primo colpo. Conta perché un `.next`
+    incompleto manda il **dashboard** in crash loop al riavvio (§5 punto 7).
 
     **⚠ RESTA APERTO, e va detto invece che lasciato implicito.** Il precontrollo della chiave rifiuta
     anche quando il duplicato **sarebbe** superabile, perché nessun chiamante passa oggi `ordiniVivi`.
