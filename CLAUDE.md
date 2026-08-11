@@ -3,7 +3,30 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt**: non serve più reincollarlo ogni volta.
 
-Ultima verifica contro codice/stato reali: **11 agosto 2026**, ~15:30 UTC (§4 blocco profondità e §5 punto 54).
+Ultima verifica contro codice/stato reali: **11 agosto 2026**, ~16:40 UTC (§5 punti 54 e 55).
+
+> ## 🔎 DUE FILTRI CON LO STESSO PREDICATO IN FILA, E SOLO IL SECONDO AVEVA L'ECCEZIONE — §5 punto 55
+> La ricerca dei punti di filtro è stata rifatta **esaustiva** (`grep -rn "\.filter("` su `lib/rewards/`,
+> `lib/maker/`, `agents/` — **533 occorrenze lette una per una**) invece che per pattern, e ha trovato
+> **due** non conformità che nessuna ricerca per `slice(0,`/`MAX_`/`TOP_K`/`CAP` poteva vedere.
+> **NC-1**: `agent24` sopprimeva le righe con book sottile **prima** che `rewards-normalize.buildCombined`
+> potesse applicarci la sua eccezione «un mercato con capitale dentro non sparisce». La riga non arrivava
+> mai fin lì: **l'eccezione documentata era lettera morta proprio nel caso che l'aveva motivata.**
+> **NC-2**: `closeTask` passava a `runAutoCloseCycle` la sola allowlist dell'uscita automatica — un ordine
+> risparmiato dalla cancellazione che si riempie **dopo** che il reset ha spento l'uscita produce una
+> posizione che nessun ciclo visita più: niente uscita, niente merge, niente registro dei residui.
+> Entrambe corrette riusando `liveMinMarketIds`, entrambe fail-closed. **agent24 (11), agent40 (76),
+> agent41 (57) e dashboard (177) riavviati.**
+
+> ## 🗜️ IL GIORNALE DA 763 MB HA UNA ROTAZIONE, E SI PORTA DIETRO VENTI ORE — §5 punto 55
+> `data/polymarket-maker-audit.jsonl` cresce di **67-82 MB al giorno** (misurato sui timestamp a offset
+> diversi dello stesso file). Sopra **400 MB** si archivia con timestamp e si riparte — **non da vuoto**:
+> gli ultimi **64 MB** allineati a un a capo vengono portati nel file nuovo, perché senza passato recente
+> `origine-ordine` dichiarerebbe ogni ordine «ignoto» e il reset si piazzerebbe **sopra** i propri ordini.
+> **Già avvenuta e verificata**: archivio 763,2 MB, file vivo **64,0 MB con 235.099 righe e ZERO non
+> parsabili**, coda riportata. I lettori sono **10× più veloci**: `mappaOrigini` da 3,2 s a **0,3 s**.
+> **⚠ L'ha innescata la SUITE**, non il deploy: `appendMakerAudit` scrive sempre sul file vero. Trappola
+> chiusa — sotto un `*.test.js` la rotazione non si innesca più. **Gli archivi non si cancellano.**
 
 > ## 📉 LA PROFONDITÀ ORA SCALA LA SIZE, NON TOGLIE IL MERCATO — §5 punto 54
 > `profondita-minima` escludeva un mercato la cui quota modellata superava il **60% a un metro fisso di
@@ -3969,7 +3992,15 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
       bonus si applica a `results` **dopo** la lettura della profondità. Governa l'ordinamento del board
       finale, non chi viene processato. Un test fissa ora questo rapporto.
 
-    **IL QUARTO PUNTO DELL'UNIONE — `rewards-normalize.buildCombined`, 11 agosto 2026.** La regola «un
+    **IL QUARTO PUNTO DELL'UNIONE — `rewards-normalize.buildCombined`, 11 agosto 2026.**
+    **⚠ CORRETTO IL GIORNO STESSO, §5 punto 55: questo punto DAVA PER FATTO ciò che non poteva accadere.**
+    Sia il taglio a 150 sia la soppressione per profondità stanno **a monte**, in agent24, e tolgono la
+    riga da `data/liquidity-rewards.json` — che è l'INGRESSO di `buildCombined`. L'eccezione scritta qui
+    non poteva quindi vedere nessuna delle due categorie. Adesso: la soppressione per profondità consegna
+    le righe tolte in un campo separato e l'eccezione le ri-giudica davvero; per il **taglio a 150** la
+    copertura vera **non è questa** — è il **catalogo di ripiego** (`maker-manual-markets.json`, §5 punti
+    44 e 47), che conserva tick, banda, minSize e negRisk di ogni mercato mentre era nel piano.
+    *(Il testo originale resta qui sotto come registro.)* La regola «un
     mercato con capitale dentro resta visibile, ed esce solo se i reward finiscono davvero» era applicata
     in tre punti (gate live-min, sottoscrizione del book, eccezione di riduzione). Ne mancava un quarto, e
     **non era quello che cercavo**: la **soppressione per profondità al tocco** in `buildCombined`
@@ -4051,6 +4082,157 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     posizioni aperte** (il bot è FERMO + KILL dal 10 agosto), quindi non c'era capitale esposto da
     proteggere, e `data/execution-audit.jsonl` resta a **3.652 righe**, invariato: nessun ordine è
     partito.
+
+55. **LA RICERCA ESAUSTIVA DEI PUNTI DI FILTRO, E LA ROTAZIONE DEL GIORNALE — 11 agosto 2026, ~16:40
+    UTC. In `main`. agent24 (11), agent40 (76), agent41 (57) e dashboard (177) RIAVVIATI.**
+
+    ### A · LA TABELLA COMPLETA DEI PUNTI DI FILTRO SUI MERCATI
+
+    Ricerca rifatta **esaustiva** invece che per pattern: `grep -rn "\.filter("` su `lib/rewards/`,
+    `lib/maker/` e `agents/` — **533 occorrenze, lette una per una**. La triage è: *filtra MERCATI* (nel
+    perimetro) oppure *filtra altro* — livelli di book, ordini, posizioni, righe di giornale, file su
+    disco (fuori). Restano **sedici** punti che filtrano mercati:
+
+    | # | punto | cosa filtra | conforme |
+    |---|---|---|---|
+    | 1 | `auto-reprice-config.liveMinMarketIds` | allowlist del gate live-min | ✅ unione con le posizioni (punto 69) |
+    | 2 | `agent34.unionPositionMarkets` | sottoscrizione dei book | ✅ unione, fail-closed (punto 61) |
+    | 3 | `adapter.evaluateReductionProof` | gate BUY/SELL del merge | ✅ eccezione di riduzione (punto 26) |
+    | 4 | `rewards-normalize` soppressione profondità | visibilità sul board | ⚠️ **NC-1, corretto** |
+    | 5 | `agent24` taglio a 150 (`slice`) | quanti mercati si processano | ✅ coperto dal **catalogo di ripiego**, non da buildCombined |
+    | 6 | `agent24` soppressione profondità (`kept`) | righe scritte sul board | ⚠️ **NC-1, corretto** |
+    | 7 | `collector-priority` graduatoria + K | corsia calda di agent34 | ✅ a valle agent34 unisce le posizioni |
+    | 8 | `agent40.closeTask` lista dell'uscita | chi visita auto-close | ⚠️ **NC-2, corretto** |
+    | 9 | `allocation-reset` `daSpegnere` | chi perde l'abilitazione | ✅ l'uscita resta accesa dove c'è una posizione, e fallisce verso l'ACCESO |
+    | 10 | `allocation-reset` `gestiti` | dove si cerca cosa cancellare | ✅ fallisce sicuro: un mercato fuori dai tre insiemi non viene toccato |
+    | 11 | `manual-mode` | il gate della gestione manuale | ✅ **acquisizione monotòna**: nessuno la spegne mai |
+    | 12 | `trigger-capitale-fermo.decidiTetti` | potatura dei tetti | ✅ si pota solo il vuoto (punto 53) |
+    | 13 | `verifica-mercati-venue.filtraRighe` | righe del piano | ✅ toglie solo chi il VENUE boccia |
+    | 14 | `allocator` scarti pre-knapsack | universo del piano | ✅ riguarda dove METTERE capitale nuovo |
+    | 15 | `universe.dropResolvedRewards` | mercati risolti | ✅ fatto di ciclo di vita |
+    | 16 | `agent27` top-N per montepremi | a quali mercati chiedere notizie | ➖ fuori perimetro: **segnala**, non gestisce |
+
+    **NC-1 · LA SOPPRESSIONE PER PROFONDITÀ ERA IN DUE COPIE IN FILA, E SOLO LA SECONDA AVEVA
+    L'ECCEZIONE.** `agent24:767` e `rewards-normalize:341` applicano lo **stesso** predicato
+    (`belowDepthFloor`, stessa costante importata). Ma agent24 scrive `data/liquidity-rewards.json`, che
+    è l'**ingresso** di `buildCombined`: la riga sottile era già tolta, quindi l'esenzione «un mercato
+    con capitale dentro non sparisce» — scritta l'11 agosto e documentata come fatta — **non poteva
+    scattare nel caso che l'aveva motivata**. Il commento di `buildCombined` lo dichiarava
+    esplicitamente («e QUESTO filtro NASCONDE le righe con book sottile»), ed era falso per costruzione.
+    - **La correzione non tocca la garanzia a monte.** `capitale-al-lavoro.test.js` §4 difende che la
+      SCOPERTA resti disaccoppiata da capitale, interruttore e allowlist — e agent24 continua a non
+      leggerne nessuno. Si limita a **non distruggere l'informazione**: le righe tolte viaggiano in
+      `suppressedThinDepthMarkets`, un campo separato, e `markets[]` resta byte per byte quello di prima
+      per ogni altro lettore. Chi conosce il capitale decide a valle, dove l'eccezione già vive.
+    - **Fail-closed doppio**: file vecchio senza il campo ⇒ nessuna riammissione; configurazione del
+      riprezzo illeggibile ⇒ nessuna esenzione. In entrambi i casi il comportamento è quello di prima.
+    - Il rendiconto dichiara `riammesseDaAgent24` accanto a `esentatiPerCapitale`: senza, «zero esentati»
+      non distingue «nessuno aveva capitale dentro» da «non è arrivata una riga».
+
+    **NC-2 · UNA POSIZIONE POTEVA NASCERE SU UN MERCATO CHE NESSUN CICLO VISITAVA PIÙ.**
+    `runAutoCloseCycle` itera SOLO i mercati che riceve, e riceveva `readAutoCloseConfig().enabledMarketIds`.
+    Il reset spegne l'uscita sui mercati fuori dal piano **quando non hanno una posizione** — corretto —
+    ma la fase 1 **risparmia** dalla cancellazione gli ordini di origine manuale o ignota: uno di quelli
+    può riempirsi **dopo**, e la posizione che ne nasce vive su un mercato la cui uscita è già spenta.
+    Niente uscita, niente merge, niente registro dei residui. La lista si unisce ora con
+    `liveMinMarketIds`, che contiene per costruzione ogni mercato con capitale esposto.
+    - **Non allarga il rischio**: un giro su un mercato senza posizione esce con `skip-no-position`, il
+      gate della gestione manuale resta davanti, e ogni ordine passa dagli stessi cancelli.
+    - **Misurato al momento del deploy**: uscita automatica su 71 mercati, riprezzo su 22, posizioni 0 ⇒
+      l'unione oggi non aggiunge niente. Conterà quando il bot riparte.
+
+    **LA META-LEZIONE, ed è la ragione per cui questo punto esiste.** Due filtri con lo **stesso
+    predicato** in sequenza, e l'eccezione messa solo sul secondo: la correzione sembrava fatta, il
+    commento la descriveva, un test l'avrebbe vista passare — e non poteva funzionare. Quando si esenta
+    qualcosa da un filtro, la domanda da farsi non è «l'eccezione è scritta?» ma **«la riga arriva fin
+    qui?»**. Nuovo `lib/maker/punti-di-filtro.test.js` (**26/26**) che esegue `buildCombined` vero su
+    file finti e verifica i punti già conformi per nome, così la tabella qui sopra non invecchia in
+    silenzio.
+
+    ### B · LA ROTAZIONE DEL GIORNALE, E LA PULIZIA
+
+    **`data/polymarket-maker-audit.jsonl` non cresce più senza fine.** Era **763,2 MB** e cresce di
+    **67-82 MB al giorno** — misurato sui timestamp a offset diversi dello stesso file, non stimato. Il
+    9 agosto aveva superato il muro dei 512 MB di V8 fermando il bot per intero (punto 71): la lettura
+    incrementale aveva tolto il muro a chi legge, questa toglie la crescita.
+    `lib/maker/rotazione-giornale.js` (nuovo, selfcheck **20/20**), chiamato da `appendMakerAudit`.
+    - **Soglia 400 MB**, sotto il muro con margine. Si controlla ogni 8 MB appesi, e **sempre** alla
+      prima scrittura di un processo, così chi parte su un file già oltre soglia ruota subito.
+    - **Non riparte da vuoto**: gli ultimi **64 MB** (~20 ore al ritmo misurato), allineati a un a capo,
+      vengono portati nel file nuovo. Senza, `origine-ordine.mappaOrigini()` dichiarerebbe ogni ordine
+      «ignoto» e il reset — che cancella solo ciò che è provatamente `auto` — si piazzerebbe **sopra** i
+      propri ordini. Non è un'ipotesi: è il guasto del 9 agosto con un'altra causa. La duplicazione è
+      innocua **per costruzione**, perché i tre accumulatori sono `Set.add` e `Map.set` sulle stesse
+      chiavi — e va saputo da un quarto lettore che un domani CONTASSE le righe.
+    - **Ordine scelto per non perdere righe**: lucchetto esclusivo → ri-`stat` sotto lucchetto → `rename`
+      → `appendFileSync` della coda. Fra rename e append una riga può finire prima della coda: fuori
+      ordine, **mai persa**. La variante «scrivi la coda e poi rinomina» avrebbe una finestra più stretta
+      ma **clobbererebbe** quella riga — scartata.
+    - **I LETTORI REGGONO, verificato leggendo il codice e non assunto**: `giornale-incrementale` rileva
+      la rotazione dall'inode (più dimensione e testa) e ricostruisce da zero; `attribuzione-ordini`, che
+      ha una copia sua della lettura incrementale, fa lo stesso controllo. I lettori offline
+      (`barlow-riprezzi-replay`, `analyze-shadow-logs`) vedranno solo il file vivo: dovranno passare
+      anche dagli archivi, ed è la conseguenza che `giornale-incrementale` dichiarava in anticipo.
+    - **GLI ARCHIVI NON SI CANCELLANO.** Non si potano, non si comprimono, non scadono. «Cancellare un
+      audit non è pulizia» è già la regola di questo repo (punto 63). Un archivio ogni ~5 giorni da ~400
+      MB su 54 GB liberi è una decisione che va presa da una persona, con calma.
+
+    **⚠ LA ROTAZIONE È SCATTATA DALLA SUITE, NON DAL DEPLOY.** `appendMakerAudit` scrive sempre sul file
+    di produzione, quindi qualunque test che lo chiami passa anche di lì: la suite ha ruotato i 763 MB
+    veri prima che il codice fosse deployato. **L'esito era corretto** — archivio **763,2 MB**, file vivo
+    **64,0 MB con 235.099 righe e ZERO non parsabili**, prima riga JSON completa, ultima riga
+    dell'archivio presente nella coda — ma è la stessa classe di trappola del punto 53, e una rotazione
+    innescata da un test è un'azione sullo stato di produzione che nessuno ha chiesto. **Chiusa**:
+    `forseRuota` guarda `argv[1]` e sotto un `*.test.js` non innesca; `ruotaSeServe` resta senza guardia
+    per chi la vuole provare su un file suo. Verificato dopo: una suite intera, **zero archivi nuovi**.
+    **Effetto misurato sui lettori**: `mappaOrigini()` da **3,2 s a 0,3 s** (2.631 chiavi, 83 MB di RSS),
+    `manualIdempotencyKeys()` 2.636 chiavi in 0,7 s.
+
+    **LA PULIZIA: DUE FILE CANCELLATI, TUTTO IL RESTO REFERENZIATO.** Censimento di tutti i **136** file
+    di `data/` con `grep` del nome (e della radice) su `lib/`, `agents/`, `app/`, `scripts/`.
+    - **Cancellati** (backup preso prima, in scratchpad): `data/maker-heartbeat.json` (598 B, lo scriveva
+      **agent35**) e `data/maker-watchdog-state.json` (1.123 B, lo scriveva **agent37**) — entrambi
+      processi rimossi il 9 agosto. Zero riferimenti nel codice; l'unica occorrenza del secondo è un
+      **commento** in `cancellazione-di-emergenza.test.js` che cita i numeri di quella notte, non una
+      lettura (verificato: le sue `readFileSync` puntano ad altri due file). Spazio liberato: **1,7 KB**.
+    - **Referenziati, non toccati**: `/tmp/maker-state.json` (stantio per sempre dal 9 agosto — lo
+      scriveva agent35 — ma `readEngineState()` della corsia manuale lo legge ancora, punto 67) ·
+      `cancellazioni-motore.json`, `residui-scoperti.json`, `residui-sotto-soglia.json` (tutti con
+      lettore vivo) · `maker-arming-audit.jsonl` (lasciato di proposito dal punto 63) · i `.md` di
+      ricerca in `data/`, che si citano a vicenda.
+    - **RITENZIONE: NIENTE È OLTRE SOGLIA, contro quanto ci si aspettava.** `mid-history-*` e
+      `trade-tape-*` hanno ritenzione **14 giorni** applicata da agent34 a ogni rotazione: il più vecchio
+      è **2026-07-29**, cioè dentro. `data/history/rewards-poly/` ha ritenzione **30 giorni** applicata
+      da `history-logger` a ogni scrittura: il più vecchio è **2026-07-12**, esattamente il taglio.
+      **Nessun file da potare in nessuno dei tre.**
+    - **Fuori perimetro, e dichiarato invece che toccato**: `data/history/funding` (1,0 GB),
+      `rewards-unified` (919 MB), `rewards-kalshi` (168 MB), `perp-spot` (45 MB), `basis` (40 MB). I
+      primi hanno file oltre i 30 giorni **perché i loro scrittori sono fermi** (ultimo giorno scritto
+      2026-08-06) e la potatura avviene sulla scrittura. Ma `funding`, `perp-spot` e `basis` sono
+      **letti da script di backtest** e `rewards-unified` è **scritto vivo** da `rewards-normalize`:
+      referenziati, non toccati. Sono ~1,2 GB su cui serve una decisione dell'operatore, non una mia.
+
+    **Verifica.** `rotazione-giornale.selfcheck` **20/20** · nuovo `punti-di-filtro.test.js` **26/26** ·
+    `capitale-al-lavoro` verde (la garanzia a monte regge) · `end-of-scale-cycle` verde (l'accoppiamento
+    nascosto del punto 62 non si è ripresentato). Suite: **166 eseguiti, 158 verdi**; gli **8 rossi sono
+    esattamente i preesistenti**, zero nuovi. `npm run build` verde, `BUILD_ID` `P9NSwK_Opt4VBy9R5oxco`,
+    `prerender-manifest.json` presente.
+
+    **Riavvii eseguiti e verificati**: agent24 (10 → **11**, 31 variabili come sempre — usa solo API
+    pubbliche), agent40 (75 → **76**, 4/4 critiche), agent41 (56 → **57**, 4/4 critiche), dashboard
+    (176 → **177**, root 200, `prerender-manifest.json` verificato prima). Nessun error log scritto dopo
+    i riavvii. **Posizioni preesistenti invariate**: impronta `4f53cda18c2baa0c` prima e dopo — zero
+    posizioni, il bot è FERMO + KILL — e `execution-audit.jsonl` fermo a **3.652 righe**: nessun ordine
+    è partito.
+
+    **⚠ RESTA APERTO, dichiarato invece che lasciato implicito.** La regola dice «posizione aperta **o
+    ordine a riposo**»: l'unione implementata è `abilitati ∪ posizioni`, perché `liveMinMarketIds` è
+    quella già in servizio e **non esiste uno snapshot locale degli ordini a riposo** (esiste solo per le
+    posizioni, `venue-positions-snapshot`). La metà «ordine a riposo» è coperta **indirettamente**: un
+    ordine su un mercato disabilitato o muore per GTD entro 23 minuti (decisione documentata al punto 69)
+    o si riempie, e allora la posizione che ne nasce entra nell'unione entro un giro di snapshot (≤ 60 s).
+    Coprirla direttamente richiede uno snapshot degli ordini, cioè un file, uno scrittore e una regola di
+    freschezza: è un lavoro a sé, non una riga in più.
 
 ---
 
