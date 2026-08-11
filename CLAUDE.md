@@ -3859,12 +3859,25 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
       generale: quando un numero governa una finestra temporale, si tara su un cronometro, non su
       un'aritmetica — e il cronometro va lasciato acceso.
 
-    **⚠ TRE LAVORI RESTANO APERTI E NON SONO STATI FATTI**, dichiarati invece di essere lasciati
-    impliciti: **cablare il segnale «mercato nuovo»** (il modulo esiste, `BONUS_ATTIVO=true`, ma nessun
-    consumatore lo importa — quindi il moltiplicatore 1,25× non tocca nessuna classifica) e
+    **✅ IL SEGNALE «MERCATO NUOVO» È STATO CABLATO** l'11 agosto (vedi sotto). **⚠ DUE LAVORI RESTANO
+    APERTI E NON SONO STATI FATTI**, dichiarati invece di essere lasciati impliciti:
     **trasformare il cancello di profondità in una scala** (oggi esclude il mercato invece di ridurre la
-    size), e la **pulizia dei dati obsoleti** (fra cui la rotazione di `polymarket-maker-audit.jsonl`,
-    ancora assente). Tutti e tre richiedono lavoro di progetto, non una costante.
+    size) e la **pulizia dei dati obsoleti** (fra cui la rotazione di `polymarket-maker-audit.jsonl`,
+    ancora assente). Entrambi richiedono lavoro di progetto, non una costante.
+
+    **IL CABLAGGIO DEL SEGNALE «NUOVO» — `agent24`, sort finale.** Il bonus pesa il **terzo** criterio
+    dell'ordinamento, e la scelta del punto è tutta la sicurezza del meccanismo: il sort è
+    `sane500 → volatilità → rate`, quindi moltiplicare il rate sposta un mercato **dentro** il suo gruppo
+    di qualità e **non può spostarlo di gruppo**. Un book sottile ha `sane500:false` e resta nell'ultimo
+    gruppo **anche se nuovissimo** — verificato da un test che confronta un mercato sano a rate 10 con uno
+    sottile e nuovo a rate 500: vince il sano. E il cancello vero (`profondita-minima`, pre-knapsack) non
+    importa nulla di tutto questo, verificato per assenza di riferimenti.
+    - **Il rate nudo non viene toccato**: si aggiunge `rateOrdinamento` accanto, così nessun consumatore a
+      valle si ritrova un montepremi gonfiato. Sulla riga viaggiano anche `bonusNuovo`, `nuovoEtaGiorni` e
+      `nuovoAttendibile`, perché chi legge il board possa vedere *perché* un mercato sta dove sta.
+    - **1,25× non è un salto arbitrario**: un mercato noto con rate del 30% più alto resta davanti a uno
+      nuovo. Il bonus decide **fra pari**, non contro un cancello.
+    - Il log dichiara quante righe sono state pesate a ogni scansione.
 
 ---
 

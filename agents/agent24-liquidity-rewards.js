@@ -699,6 +699,41 @@ async function scan() {
     + (oltre ? '  ⚠ LA FASE HA SUPERATO IL PERIODO: il board invecchia oltre la cadenza dichiarata,'
       + ' abbassare REWARD_MAX_CLOB_MARKETS' : ''));
 
+  // ── IL BONUS «MERCATO NUOVO» — CABLATO QUI, E SOLO QUI ──────────────────────────────────────────
+  // Il modulo esisteva dall'11 agosto 2026 con `BONUS_ATTIVO = true`, ma NESSUN consumatore lo chiamava:
+  // il moltiplicatore non toccava nessuna classifica. Questo e' il cablaggio.
+  //
+  // ═══ PERCHE' PROPRIO QUI, E NON PIU' IN ALTO ═══════════════════════════════════════════════════
+  // Il sort ha tre criteri in ordine: `sane500` (la qualita' del book), poi la volatilita', poi il rate.
+  // Il bonus si applica AL TERZO, cioe' moltiplica il rate DENTRO il gruppo di qualita', e non puo'
+  // spostare un mercato da un gruppo all'altro. Un mercato con book sottile ha `sane500:false` e resta
+  // nell'ultimo gruppo **anche se e' nuovissimo**: il bonus non lo tira su di un solo posto rispetto a
+  // un mercato sano. E il cancello di profondita' vero (`profondita-minima`, §5 punto 64) vive ancora
+  // piu' a valle, PRIMA del knapsack, e non sa nemmeno che questo bonus esiste.
+  //
+  // Cioe': il bonus decide fra pari, mai contro un cancello. Era la condizione posta per accenderlo.
+  const { bonusPriorita } = require('../lib/rewards/mercato-nuovo');
+  for (const r of results) {
+    let b;
+    try { b = bonusPriorita(r.marketId || r.conditionId || r.id); }
+    catch { b = null; }
+    // Il moltiplicatore e i suoi dati viaggiano SULLA RIGA: chi legge il board deve poter vedere perche'
+    // un mercato sta dove sta, e con `attendibile:false` sapere che in questa finestra il segnale non e'
+    // ancora provato (§5: lo storico e' stato scritto col vecchio taglio ai primi 120).
+    r.bonusNuovo = b && Number.isFinite(b.moltiplicatore) ? b.moltiplicatore : 1;
+    r.nuovoMercato = !!(b && b.applicato);
+    r.nuovoEtaGiorni = b && b.eta ? b.eta.giorni : null;
+    r.nuovoAttendibile = b && b.eta ? b.eta.attendibile : null;
+    // Il rate PESATO e' quello che ordina; il rate nudo resta pubblicato accanto e non viene toccato,
+    // cosi' nessun consumatore a valle si ritrova un montepremi gonfiato.
+    r.rateOrdinamento = +((Number(r.rewardsDailyRate) || 0) * r.bonusNuovo).toFixed(6);
+  }
+  const nuovi = results.filter((r) => r.nuovoMercato).length;
+  if (nuovi) {
+    console.log(`  bonus «mercato nuovo»: ${nuovi}/${results.length} righe pesate x${require('../lib/rewards/mercato-nuovo').BONUS_MAX}`
+      + ` (a parita' di gruppo di qualita'; non scavalca sane500 ne' la volatilita')`);
+  }
+
   // Default sort: LOW vol sane first, then MED, then HIGH, then flagged; by rate desc within group
   const volOrder = { LOW: 0, MEDIUM: 1, HIGH: 2 };
   results.sort((a, b) => {
@@ -708,7 +743,8 @@ async function scan() {
     const vA = volOrder[a.volatilityRisk] ?? 2;
     const vB = volOrder[b.volatilityRisk] ?? 2;
     if (vA !== vB) return vA - vB;
-    return b.rewardsDailyRate - a.rewardsDailyRate;
+    // IL TERZO CRITERIO, ed e' l'unico che il bonus tocca.
+    return (b.rateOrdinamento ?? b.rewardsDailyRate) - (a.rateOrdinamento ?? a.rewardsDailyRate);
   });
 
   // ── DEPTH-AT-TOUCH SUPPRESSION ──────────────────────────────────────────────
