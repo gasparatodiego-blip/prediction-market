@@ -3752,6 +3752,66 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
        affidabile — nessun ordine viene toccato`. È un fail-closed che ha funzionato, ma dice che un
        mercato del piano viene rifiutato dal venue e il ricalcolo non se ne libera. Da diagnosticare.
 
+52. **TETTO $65, TAGLIO PER NUMERO RIMOSSO, SEGNALE «MERCATO NUOVO» ACCESO — decisioni di Diego, in
+    `main` l'11 agosto 2026.**
+
+    **① Il tetto per mercato: $130 → $65** (`lib/rewards/concentration.js:49`). Il tetto per ordine si è
+    mosso **da solo** a **$37,50**, perché è derivato (`MARKET_CAP_FIXED_USD / 2 + 5`) e undici
+    consumatori lo importano invece di ridichiararlo.
+    - **Perché**: il modello compra share UGUALI sui due lati (`Q = capitale / (p_yes + p_no)`,
+      `plan-to-orders.js:242`), quindi **il mid non c'entra** — a 0,16/0,84 e a 0,50/0,50 lo stesso
+      capitale compra le stesse share. Il numero che conta è la frazione di fill oltre la quale il
+      residuo scoperto è ancora piazzabile: `f_min = minSize × pairCost / capitale`. Su `minSize 20`:
+      **$130 → 15% · $65 → 30% · $40 → 49% · $25 → 78%**.
+    - **UNA GARANZIA PIENA NON ESISTE, e va detto**: il residuo è `Q × f`, quindi per `f` abbastanza
+      piccolo sta sotto il minimo con **qualunque** tetto. $65 non elimina il caso, sposta la soglia dal
+      15% al 30% — rende «residuo bloccato» un evento di coda invece dell'esito di un fill ordinario.
+    - **Il costo, misurato**: a $65 le share per lato scendono a 66,3, quindi i mercati con `minSize 100`
+      escono dal perimetro — **6 mercati**.
+
+    **② Il taglio ai primi 120 è stato rimosso** (`agent24`, righe 44 e 549). Non era una soglia di
+    qualità: era una **posizione in classifica**. Il 120° rendeva **$53/g** e il 200° **$42/g** — i
+    tagliati non erano scarsi, erano 121esimi.
+    - **NON è stato sostituito da una soglia di rate**, che era l'ipotesi di partenza: **tutti e 309** i
+      mercati del board superano già $25/g, quindi una soglia $10-25 non filtrerebbe niente. Sostituire
+      un taglio che morde con una soglia che non morde è un cambio di nome, non di comportamento.
+    - **L'ordinamento per rate resta**; a filtrare restano i controlli che guardano il MERCATO — banda,
+      orizzonte, `minSize`, profondità.
+    - **Costo dichiarato**: la profondità CLOB si legge per ogni mercato processato, quindi da 120 a ~309
+      le chiamate di quella fase ×2,6. La cadenza è già protetta dal periodo fisso (§5 punto 46).
+
+    **③ Il segnale «mercato nuovo» — ACCESO SUBITO, col tradeoff accettato** (`lib/rewards/mercato-nuovo.js`,
+    nuovo). «Meno concorrenza» non è misurabile; il proxy onesto è l'**età**, e la fonte affidabile è
+    **nostra**: `data/history/rewards-poly/`, 31 giorni, 1.090 snapshot, **1.222 mercati distinti**.
+    `startDate` di Gamma resta scartato (riscritto quasi ogni giorno, 82% di falsi positivi).
+    - **⚠ IL TRADEOFF, DICHIARATO E ACCETTATO DA DIEGO**: gli snapshot storici li ha scritti agent24 **col
+      taglio già applicato**, quindi «assente dallo storico» oggi significa «non è mai stato nei primi
+      120», non «nuovo». Misurato: **200 dei 308 mercati del board** risultano mai visti — il 65%. E le
+      due cause **non si separano**: 200 su 200 hanno rate sopra il minimo mai registrato ($5/g).
+    - **Perché è accettabile**: il bonus è un **moltiplicatore sul rate (1,25×)**, non un riordino — un
+      mercato scarso promosso per errore resta scarso; non salta nessun cancello; e **si auto-pulisce**,
+      perché ogni giorno di storico scritto senza taglio registra i mercati che sembravano nuovi. Dopo
+      `GIORNI_MINIMI_SENZA_TAGLIO = 7` il segnale è quello vero senza che nessuno tocchi niente.
+    - `attendibile:false` continua a viaggiare nell'esito: il bonus si applica, ma l'audit dice che in
+      questa finestra il segnale non è ancora provato.
+
+    **Impatto combinato, misurato sul board dell'11 agosto**: mercati piazzabili **45 → 81 (+36)**. Il
+    taglio valeva **+45**, il tetto più basso ne costa 6. Mercati per coprire $594: da 5 a **10**.
+
+    **Verifica.** Nuovo `lib/rewards/tetto-e-scoperta.test.js` **31/31** · `concentration.selfcheck()`
+    **19/19**. Suite: **164 eseguiti, 155 verdi**; i 9 rossi sono i 6 preesistenti del punto 40 più i 3
+    fuori perimetro (`guardian-perdite` — latch vero presente; `categoria-mercato` — 5,4% non
+    classificati su campione cresciuto; `tetto-orizzonte`). `npm run build` verde.
+    - **Cinque fixture ritarate, non indebolite**: `tetto-per-ordine`, `motore-unico`, `realloc-cycle`,
+      `netto-centralizzato`, `ingressi-del-motore`, `rischio-beneficio` e `miniciclo-prende-il-mercato`
+      asserivano i vecchi $130/$70. Ognuna è stata riscritta per **derivare** i valori dal tetto invece di
+      ripeterli, così al prossimo cambio non vanno ritoccate e continuano a difendere la stessa proprietà.
+      In `miniciclo` è stato abbassato l'ORDINE preesistente della fixture (da $60 a $20 a riposo), non
+      l'asserzione: con $65 di tetto un mercato con $60 dentro non ha più i $34 di spazio minimo, e il
+      caso avrebbe smesso di provare ciò per cui esiste.
+    - **Un difetto vero trovato dal test nuovo**: la cache di `mappaPrimaVisto` ignorava `dir`, quindi un
+      chiamante con directory diversa riceveva la mappa sbagliata. Corretto con cache per directory.
+
 ---
 
 ## 6 · COME L'UTENTE VUOLE ESSERE SERVITO

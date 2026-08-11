@@ -41,7 +41,27 @@ const FLOOR_DAILY_USD   = 1.0;   // $/day minimum gross; below = below-floor fla
 const NEAR_EXPIRY_DAYS  = 14;    // markets closing within → force HIGH vol
 const GAMMA_PAGE_SIZE   = 100;
 const MAX_PAGES         = 21;    // offset 0..2000 (21 × 100)
-const MAX_CLOB_MARKETS  = 120;   // top-N by rate for CLOB depth
+// ── IL TAGLIO PER NUMERO E' STATO RIMOSSO — 10 agosto 2026 ──────────────────────────────────────
+// Qui c'era `MAX_CLOB_MARKETS = 120`, e la lista ordinata per rate veniva troncata ai primi 120. Non era
+// una soglia di qualita': era una posizione in classifica. Misurato sul board del 10 agosto — 309 mercati
+// premianti — il 120esimo rendeva **$53/g** e il 200esimo **$42/g**: i mercati tagliati non erano scarsi,
+// erano semplicemente 121esimi.
+//
+// PERCHE' NON E' STATO SOSTITUITO DA UNA SOGLIA DI RATE, che era l'ipotesi di partenza: **tutti e 309**
+// i mercati del board superano gia' $25/g, quindi una soglia $10-25 non filtrerebbe NIENTE. Sostituire un
+// taglio che morde con una soglia che non morde e' un cambio di nome, non di comportamento. Il taglio si
+// toglie e basta; a filtrare restano i controlli che guardano il MERCATO — banda, orizzonte, minSize,
+// profondita' — e non la sua posizione relativa.
+//
+// IMPATTO MISURATO sul board del 10 agosto, incrociato col tetto per mercato e con `minSize`:
+//   oggi (taglio 120 + tetto $130) → **47** mercati piazzabili
+//   senza taglio  (tetto $130)     → **92**   ·  senza taglio + tetto $65 → **86**
+// Il taglio valeva **+45**; il tetto piu' basso ne costa 6. Saldo **+39**.
+//
+// IL COSTO, dichiarato: la profondita' CLOB si legge per ogni mercato processato, quindi passare da 120 a
+// ~309 moltiplica per ~2,6 le chiamate di quella fase. La cadenza e' gia' protetta dal periodo fisso di
+// 15 minuti (si dorme il RESTO, §5 punto 46): se la scansione si allunga, il periodo NON si allunga con
+// lei — sfora e lo dichiara, e i lettori hanno 25 minuti di tolleranza.
 // ── LA SECONDA PASSATA (8 agosto 2026) ────────────────────────────────────────
 // Quanto in là guarda la camminata ordinata sulle scadenze. 3 giorni e non 1,5 (il tetto del
 // pianificatore) perche' la scoperta non applica politiche: vedere anche cio' che si scartera' e'
@@ -545,9 +565,12 @@ async function scan() {
     return;
   }
 
+  // L'ORDINAMENTO RESTA, IL TAGLIO NO. La lista continua a essere ordinata per rate decrescente — serve
+  // a chi legge e alla priorita' del raccoglitore — ma non viene piu' troncata: ogni mercato premiante
+  // arriva alla lettura della profondita', e a escluderlo saranno i filtri che guardano il mercato.
   markets.sort((a, b) => b.rewardsDailyRate - a.rewardsDailyRate);
-  const toProcess = markets.slice(0, MAX_CLOB_MARKETS);
-  console.log(`  Processing top ${toProcess.length} of ${markets.length} reward markets for CLOB depth`);
+  const toProcess = markets;
+  console.log(`  Processing ALL ${toProcess.length} reward markets for CLOB depth (nessun taglio per numero)`);
 
   let results = [];
 
