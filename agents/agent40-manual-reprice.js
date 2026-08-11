@@ -87,6 +87,7 @@ const { decideRimpiazzo } = require('../lib/maker/rimpiazzo-gamba');
 const { resolveOffsetFor } = require('../lib/maker/offset-config');
 const { readAllocatedCapital } = require('../lib/maker/allocated-capital');
 const { registraResiduoScoperto, potaScadute, leggiRegistroResidui, scriviRegistroResidui } = require('../lib/maker/accumulo-residui');
+const MC = require('../lib/maker/modalita-chiusura');
 // ── IL PERCORSO DI PROFILO, CABLATO AL CICLO ────────────────────────────────────────────────────────
 // `valutaPiazzamento` instrada un mercato verso i controlli Safe (mai-primo, depth $15 cumulata,
 // volatilita' 8h, spread anomalo, quota 65%, esposizione 30%) o Risk (mai-primo, depth $20 sul
@@ -499,6 +500,77 @@ function registroAttesaMerge() {
   };
 }
 
+// ── IL REGISTRO DELLA MODALITA' CHIUSURA, SU DISCO ───────────────────────────────────────────────
+// Stessa forma e stesse ragioni del registro delle attese qui sopra: `lib/maker/modalita-chiusura.js`
+// e' PURO — prende un registro e ne restituisce uno nuovo — e la persistenza vive qui, dove gia' vivono
+// le altre due (attese di merge, residui scoperti).
+//
+// PERCHE' SU DISCO E NON IN MEMORIA: il timestamp deve rispondere a «da quando questa coppia sta
+// chiudendo», e il requisito dice esplicitamente «nessun limite di tempo». Un registro in memoria si
+// azzererebbe a ogni `pm2 restart`, e dopo un riavvio una coppia in chiusura da sei ore risulterebbe
+// entrata adesso — con la conseguenza pratica che il passo 2 ricancellerebbe (`nuova` tornerebbe true)
+// e le regole di chiusura si spegnerebbero proprio mentre servono.
+const CHIUSURA_FILE = path.join(__dirname, '..', 'data', 'modalita-chiusura.json');
+
+function registroModalitaChiusura() {
+  const leggiTutto = () => {
+    try {
+      const j = JSON.parse(fs.readFileSync(CHIUSURA_FILE, 'utf8'));
+      return j && typeof j === 'object' && j.coppie && typeof j.coppie === 'object' ? j.coppie : {};
+    } catch { return {}; }
+  };
+  const scriviTutto = (coppie) => {
+    const tmp = `${CHIUSURA_FILE}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify({ atIso: new Date().toISOString(), coppie }, null, 1));
+    fs.renameSync(tmp, CHIUSURA_FILE);
+  };
+  return {
+    leggi: (marketId, book) => MC.leggiChiusura(leggiTutto(), marketId, book),
+    entra: (a) => {
+      const r = MC.entraInChiusura({ ...a, registro: leggiTutto() });
+      if (r.voce) scriviTutto(r.registro);
+      return r;
+    },
+    attiva: (a) => {
+      const r = MC.attivaRegole({ ...a, registro: leggiTutto() });
+      if (r.attivate) scriviTutto(r.registro);
+      return r;
+    },
+    esci: (a) => {
+      const r = MC.esciDaChiusura({ ...a, registro: leggiTutto() });
+      if (r.uscita) scriviTutto(r.registro);
+      return r;
+    },
+    fase: (a) => {
+      const r = MC.segnaFase({ ...a, registro: leggiTutto() });
+      if (r.cambiata) scriviTutto(r.registro);
+      return r;
+    },
+  };
+}
+
+// ── LA SCADENZA DI UN MERCATO, PER IL PASSO 5 ────────────────────────────────────────────────────
+// `resolveMarketRules` non porta `endDate` (verificato leggendo il suo `return`: readable, tick, banda,
+// minSize, i due token, i book — e nient'altro), quindi la scadenza si legge dal board, che e' la
+// stessa fonte da cui il mercato e' stato scelto.
+//
+// FAIL-CLOSED, E LA DIFFERENZA FRA I DUE «NON SO» CONTA: se il board non e' leggibile o il mercato non
+// c'e' piu', si restituisce `null` — e `validoPerRipianificare` lo tratta come «non si ripianifica».
+// E' la direzione giusta: qui si aprono due ordini NUOVI, e §5 punto 44 e' la storia di cosa costa
+// aprire liquidita' su un mercato di cui non si conoscono piu' le proprieta'.
+const BOARD_FILE = path.join(__dirname, '..', 'data', 'liquidity-rewards.json');
+function scadenzaMercato(marketId) {
+  try {
+    const j = JSON.parse(fs.readFileSync(BOARD_FILE, 'utf8'));
+    const righe = Array.isArray(j) ? j : (Array.isArray(j.markets) ? j.markets : []);
+    const id = String(marketId).toLowerCase();
+    const r = righe.find((x) => String(x && (x.conditionId || x.marketId || x.id) || '').toLowerCase() === id);
+    if (!r) return null;
+    const t = Date.parse(r.endDate || r.endDateIso || r.end_date_iso || '');
+    return Number.isFinite(t) ? t : null;
+  } catch { return null; }
+}
+
 async function closeTask() {
   try {
     const cfg = readAutoCloseConfig();
@@ -545,6 +617,11 @@ async function closeTask() {
       // Su file e non in memoria: un'attesa di 60 minuti che si azzera a ogni riavvio del processo non
       // e' un timeout, e agent40 riavvia. auto-close resta puro — qui c'e' l'unica scrittura.
       attesaMerge: registroAttesaMerge(),
+      // Il registro della MODALITA' CHIUSURA e la scadenza del mercato. Senza queste due dep
+      // `auto-close` si comporta esattamente come prima: nessun timestamp, nessuna cancellazione del
+      // residuo, nessuna esenzione da «mai primo» e nessun controllo di validita' al passo 5.
+      chiusura: registroModalitaChiusura(),
+      scadenzaMercato,
       // ── IL CANCELLATORE, CHE QUI NON C'ERA — E TRE PERCORSI LO ASPETTAVANO ───────────────────────
       // `auto-close` chiama `deps.cancelOrder` in tre punti, tutti e tre PRIMA di fare qualcosa di
       // irreversibile: la chiusura forzata a mercato (toglie l'uscita e la liquidita' prima di vendere

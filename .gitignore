@@ -358,3 +358,8 @@ data/realloc-ultimo-piano.json.tmp*
 #               piazzare il completamento, o cancellare un orderId altrui.
 data/merge-attese.json
 data/merge-attese.json.tmp*
+
+# Lo stato della modalità chiusura: descrive QUESTA macchina in QUESTO momento — quali coppie stanno
+# chiudendo e da quando. Versionarlo significherebbe che un `git checkout` può dire al bot che una
+# coppia è in chiusura quando non lo è, o il contrario.
+data/modalita-chiusura.json
