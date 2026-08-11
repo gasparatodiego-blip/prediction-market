@@ -3,7 +3,23 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt**: non serve più reincollarlo ogni volta.
 
-Ultima verifica contro codice/stato reali: **11 agosto 2026**, ~19:20 UTC (§5 punto 73).
+Ultima verifica contro codice/stato reali: **11 agosto 2026**, ~20:50 UTC (§5 punto 74 — verifica
+completa degli otto lavori della giornata e riavvio pulito di tutta la flotta).
+
+> ## 🛡️ IL GUARDIANO DELLE PERDITE È FUORI SERVIZIO — §5 punto 74
+> `data/guardian-state.json` porta ancora il latch dello scatto del **9 agosto**, e con quel file
+> presente `agent43-guardian` risponde `gia-scattato` e **non fa altro**: nessuno sorveglia le perdite
+> quando il bot riparte. **Il riarmo è sicuro adesso**, misurato: capitale **$663,11** contro baseline
+> **$660,56** ⇒ **+$2,54 (+0,385%)**, lontanissimo dalle soglie −$30 / −5% — cancellare il latch non lo
+> farebbe riscattare al primo giro. **Non cancellato: è una decisione dell'operatore.**
+
+> ## ✅ TUTTA LA FLOTTA GIRA SUL CODICE DI OGGI — §5 punto 74
+> Sei riavvii l'11 agosto, 20:21-20:50 UTC: agent24 (12), agent34 (19), agent40 (**77**), agent41 (58),
+> agent43 (2), dashboard (178). **agent40 era l'unico davvero indietro**: girava da 16:38 contro il
+> commit del riprezzo atomico delle 18:19, quindi i due precontrolli nuovi erano in `main` e non nel
+> processo. Suite **167/159 verdi, gli 8 rossi sono i preesistenti**; build verde, `BUILD_ID`
+> `V8lGYaLrX8NWQiUBgqN57`. Impronta posizioni **identica** prima/dopo (`4f53cda18c2baa0c`, zero
+> posizioni), `execution-audit.jsonl` fermo a 3.652 righe. `pm2 save` eseguito.
 
 > ## 🔒 IL RIPREZZO NON CANCELLA PIÙ UN ORDINE CHE NON PUÒ RIPIAZZARE — §5 punto 73
 > `replaceManualOrder` è cancella→ripiazza e aveva **tre** precontrolli prima della cancellazione (kill,
@@ -4356,6 +4372,59 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     recuperare anche quel caso, la strada è passare da `auto-reprice` l'insieme **completo** degli ordini
     vivi del venue, non una sua parte: un insieme parziale direbbe «morto» di un ordine vivo, che è
     esattamente il fail-**open** che questo lavoro chiude.
+
+74. **VERIFICA COMPLETA E RIAVVIO PULITO DELLA FLOTTA — 11 agosto 2026, 20:21-20:50 UTC, su
+    autorizzazione esplicita di Diego. Nessuna modifica di codice: solo verifica e deploy.**
+
+    **IL DIFETTO CHE LA VERIFICA HA TROVATO, ed era l'unico:** `agent40-manual-reprice` girava con
+    **codice più vecchio del riprezzo atomico**. Processo avviato alle **16:38:13**, commit `5c6e792`
+    delle **18:19:49** — cioè i due precontrolli nuovi (tetto per ordine, chiave di idempotenza) erano in
+    `main` e **non nel processo**, e il ciclo poteva ancora cancellare una gamba che non avrebbe potuto
+    ripiazzare. Chiuso dal riavvio delle 20:22:10. **Lezione di metodo: «è committato» e «è nel processo»
+    si verificano confrontando due timestamp, non leggendo il diff.**
+
+    **Gli otto lavori della giornata, tutti verificati in `main` E nel processo vivo** (ogni processo ha
+    ora un avvio successivo a tutti i commit che lo riguardano): tetto $65 / ordine $37,50 derivato ·
+    taglio agent24 a 150 col cronometro · segnale «mercato nuovo» sul terzo criterio del sort · unione
+    board ∪ posizioni in `rewards-normalize` · esenzione dei mercati gestiti dalla soppressione per
+    profondità · `scalaProfondita` · riprezzo atomico · rotazione del giornale.
+
+    **Le due conferme che vengono dai dati vivi e non dal sorgente**, lette dal log di agent24 dopo il
+    riavvio: la profondità costa **2,73-3,38 s/mercato** per **6,8-8,5 min** su 150 mercati — dentro il
+    periodo di 15, col cronometro che dichiara «a questo ritmo il tetto che sta nel periodo è ~159-198»,
+    quindi 150 è conservativo e regge; e il bonus «mercato nuovo» pesa **128-131 righe su 150**, che è
+    l'85% previsto dal tradeoff dichiarato al punto 52 ③ (lo storico è stato scritto col taglio a 120, e
+    il segnale si auto-pulisce dopo 7 giorni di storico senza taglio).
+
+    **Suite: 167 eseguiti, 159 verdi, 8 rossi — esattamente i preesistenti, zero nuovi.** `npm run build`
+    verde, `BUILD_ID` `V8lGYaLrX8NWQiUBgqN57`, `prerender-manifest.json` presente.
+    **La suite non ha toccato lo stato**, ed era la cosa da verificare (punti 53, 55, 57): 9 impronte MD5
+    su 10 identiche prima/dopo, `execution-audit.jsonl` fermo a **3.652 righe**, e **nessun archivio di
+    rotazione nuovo** — la guardia `argv[1]` del punto 55 regge. La decima è il giornale vivo, che cresce
+    perché lo scrive agent40.
+
+    **Riavvii eseguiti e verificati uno per uno**: agent24 (11 → **12**), agent34 (18 → **19**), agent40
+    (76 → **77**), agent41 (57 → **58**), agent43 (1 → **2**), dashboard (177 → **178**, root 200,
+    `prerender-manifest.json` verificato PRIMA). Zero errori nuovi in tutti e sei i log di errore.
+    Variabili critiche: 4/4 su agent40, agent41 e agent43. `pm2 save` eseguito, e il dump **non contiene
+    più** agent35 né agent37. **Impronta delle posizioni identica prima e dopo: `4f53cda18c2baa0c`**, zero
+    posizioni (il bot è FERMO + KILL), zero ordini partiti.
+
+    **⚠ IL GUARDIANO DELLE PERDITE È FUORI SERVIZIO, ed è la cosa più importante di questo punto.**
+    `data/guardian-state.json` porta ancora il latch dello scatto del **9 agosto 21:46:37**, e
+    `agent43-guardian.js:169` è esplicito: latch presente ⇒ `azione: 'gia-scattato'`, non fa altro. Il
+    processo è vivo e lo ripete ogni 30 s nel log. **Finché quel file esiste, nessuno sorveglia le
+    perdite economiche quando il bot riparte.**
+    **Il riarmo è sicuro adesso, e la misura c'è**: capitale reale **$663,11** (saldo $663,11 + zero
+    posizioni) contro baseline **$660,56** ⇒ **P&L +$2,54 (+0,385%)**, molto lontano dalle soglie −$30 /
+    −5%. Cancellare il latch **non** farebbe riscattare il guardiano al primo giro. Non è stato fatto:
+    è una decisione dell'operatore (§2 regola 2 e istruzione esplicita in chat).
+
+    **⚠ E UNA COSA DA GUARDARE ALLA RIPARTENZA, vista nel log di agent40 dopo il riavvio:** la
+    `data-api /positions` risponde **429** a intermittenza («snapshot posizioni NON aggiornato»), con
+    recupero entro pochi secondi ogni volta. Oggi è innocuo perché non c'è nulla da gestire, ma lo
+    snapshot oltre **180 s** fa rifiutare **ogni** piazzamento: se i 429 si infittiscono a bot acceso, è
+    il primo posto dove guardare.
 
 ---
 
