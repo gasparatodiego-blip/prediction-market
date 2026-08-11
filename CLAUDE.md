@@ -3,7 +3,23 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt**: non serve più reincollarlo ogni volta.
 
-Ultima verifica contro codice/stato reali: **11 agosto 2026**, ~16:40 UTC (§5 punti 54 e 55).
+Ultima verifica contro codice/stato reali: **11 agosto 2026**, ~19:20 UTC (§5 punto 73).
+
+> ## 🔒 IL RIPREZZO NON CANCELLA PIÙ UN ORDINE CHE NON PUÒ RIPIAZZARE — §5 punto 73
+> `replaceManualOrder` è cancella→ripiazza e aveva **tre** precontrolli prima della cancellazione (kill,
+> orologio del mercato, guard condiviso sul prezzo). Mancavano i **due limiti nostri** che possono
+> rifiutare il piazzamento: il **tetto per ordine** e la **chiave di idempotenza**. Misurato su
+> **3.040.003 righe** e venti giorni: **otto volte** il vecchio ordine è stato cancellato e il nuovo
+> rifiutato, e in tutti e otto il rifiuto veniva da uno di quei due (6 `idempotent-duplicate`, 1
+> `mai-primo-sul-libro`, 1 `manual-order-cap`). **È l'unico meccanismo con danno misurabile** trovato
+> nell'analisi: il 10 agosto alle 04:08:55 una gamba da $70,38 contro un tetto di $70,00 è stata
+> cancellata e non ripiazzata, 21 s dopo la gamba opposta è stata riempita — **$33,42 scoperti per 112
+> minuti**, con auto-close rifiutato **54 volte** dallo stesso tetto.
+> **Adesso i precontrolli sono CINQUE**, tutti prima dello STEP 1, tutti con `oldCancelled:false`: si
+> lascia l'ordine dov'è e il ciclo successivo riprova. **Nessuna costante nuova** — il tetto arriva da
+> `resolveCaps`+`evaluateManualCapGate`, cioè le stesse due funzioni del GATE 4 del piazzamento.
+> **I tre percorsi di cancellazione VOLUTA sono intatti e non sono nel diff**: `mai-primo-sul-libro`,
+> mid stantio e fine vita cancellano con `deps.cancelOrder`, che non passa di qui. **agent40 riavviato.**
 
 > ## 🔎 DUE FILTRI CON LO STESSO PREDICATO IN FILA, E SOLO IL SECONDO AVEVA L'ECCEZIONE — §5 punto 55
 > La ricerca dei punti di filtro è stata rifatta **esaustiva** (`grep -rn "\.filter("` su `lib/rewards/`,
@@ -4233,6 +4249,104 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     o si riempie, e allora la posizione che ne nasce entra nell'unione entro un giro di snapshot (≤ 60 s).
     Coprirla direttamente richiede uno snapshot degli ordini, cioè un file, uno scrittore e una regola di
     freschezza: è un lavoro a sé, non una riga in più.
+
+73. **IL RIPREZZO È DIVENTATO ATOMICO NEL SENSO CHE CONTA: NON CANCELLA CIÒ CHE NON PUÒ RIPIAZZARE —
+    in `main` l'11 agosto 2026, ~19:20 UTC. agent40 RIAVVIATO.**
+
+    **La diagnosi che l'ha motivato, misurata e non ipotizzata.** Analisi di sola lettura su
+    **3.040.003 righe** dei due giornali maker (archivio 800 MB + file vivo), 1.785 gambe ricostruite su
+    54 mercati e 195 ore-ordine a riposo, 22 luglio → 11 agosto. Domanda di partenza: il riprezzo **per
+    gamba singola** (mentre la size è decisa in coppia) crea disallineamenti? Risposta: **91 rotture di
+    coppia su 205 sono sue, ma mediana 0,2 min**, e **una sola volta in venti giorni** una posizione
+    scoperta è nata dentro una finestra di asimmetria da riprezzo. **Le size divergono solo per fill
+    parziale**, mai per riprezzo (472/478 sostituzioni conservano la size; le 3 che la riducono
+    corrispondono a fill verificati: 32,27 · 21,181 · 14,0 share). Il riprezzo accoppiato costerebbe 407
+    mosse superflue su gambe sane e **+814 chiamate** su un rate limit che rifiuta già **1.962** volte.
+    **Il riprezzo per gamba resta la scelta giusta.** Quello che non lo era è l'**atomicità**.
+
+    **IL GUASTO.** `replaceManualOrder` è cancella→ripiazza. Aveva **tre** precontrolli prima della
+    cancellazione — kill switch, orologio del mercato, guard condiviso sul prezzo (`validateQuote`, che
+    verifica tick/banda/minSize, cioè le regole del **venue**) — e **non** i due limiti **nostri** che il
+    piazzamento applica dopo: il **tetto per ordine** e la **chiave di idempotenza**. Otto volte in venti
+    giorni il ciclo ha cancellato convinto di poter ripiazzare:
+
+    | classe | casi | stato |
+    |---|---|---|
+    | `idempotent-duplicate` | **6** | la chiave del rimpiazzo era già in uso |
+    | `mai-primo-sul-libro` | 1 | il prezzo del rimpiazzo sarebbe finito primo sul libro |
+    | `manual-order-cap` | 1 | il controvalore superava il tetto per ordine |
+
+    **Il caso con danno, per intero** (2026-08-10 04:08:55, `33c3b9a093`): l'inseguimento del mid sposta
+    la gamba NO da 0,671 a 0,677 · il vecchio ordine **è cancellato** e il nuovo **rifiutato** ($70,38
+    contro $70,00) · **21 secondi dopo** la gamba YES è riempita, **103,8 share @ 0,322 = $33,42 di
+    esposizione direzionale scoperta** · auto-close prova a coprirla e viene rifiutato dallo **stesso**
+    tetto **54 volte** · la posizione resta scoperta **112 minuti**, fino al KILL.
+
+    **LA CORREZIONE, e dove vive.** Non in `auto-reprice.js` ma in **`manual-order.replaceManualOrder`**,
+    cioè nel punto in cui la cancellazione avviene davvero. Due ragioni: la garanzia vale così per **ogni**
+    chiamante (ciclo di riprezzo, auto-close, pannello) e non solo per quello che ha prodotto la misura; e
+    il modulo che **decide** non deve conoscere il tetto, altrimenti nasce la sesta copia della costante.
+    I precontrolli sono ora **cinque**, in sequenza e tutti prima dello STEP 1:
+
+    | # | precontrollo | preesistente |
+    |---|---|---|
+    | 1 | kill switch | sì |
+    | 2 | orologio del mercato | sì |
+    | 3 | guard condiviso sul prezzo proposto (`validateQuote`) | sì |
+    | 4 | **tetto per ordine** | **nuovo** |
+    | 5 | **chiave di idempotenza** | **nuovo** |
+
+    - **NESSUNA COSTANTE NUOVA**, ed è la parte che conta: il tetto arriva da `resolveCaps` +
+      `evaluateManualCapGate`, **le stesse due funzioni del GATE 4 del piazzamento**, quindi da
+      `LIVE_MIN_ORDER_CAP_USD` in `lib/rewards/concentration` (oggi **$37,50** = `MARKET_CAP_FIXED_USD/2 + 5`).
+      Precontrollare con un numero diverso da quello che poi rifiuta sarebbe peggio di non precontrollare.
+    - **LA CHIAVE È DERIVATA IN UN PUNTO SOLO** (`chiaveDiRimpiazzo`) e la stessa variabile precontrollata
+      viene spedita allo STEP 2. Era un'espressione scritta in linea; due copie che divergono qui
+      vorrebbero dire precontrollare una chiave e spedirne un'altra.
+    - **La regola sulla chiave è più stretta di quella del piazzamento, e deve esserlo**: nessun intent ⇒
+      si procede; un intent che esiste ⇒ **non si cancella**, a meno che il chiamante possa **provare** che
+      l'ordine con cui collide è morto sul venue (`spec.ordiniVivi`, che oggi nessuno passa). Il
+      piazzamento può scoprirlo dopo — `risolviDuplicato` supera il duplicato e conia una chiave nuova —
+      qui no, perché «dopo» significa averlo già cancellato. **E non costa un riprezzo legittimo**: la
+      chiave nomina l'ordine che sostituisce, quindi un intent che esiste già dice che quell'ordine è già
+      stato sostituito a quel prezzo e quella size, cioè che la fotografia del ciclo è vecchia.
+    - **Fail-closed in ogni direzione**: registro illeggibile, `risolviDuplicato` che solleva, controvalore
+      non calcolabile, limiti di rischio illeggibili ⇒ **non si cancella**.
+    - **Due esiti d'audit nuovi e distinti** — `reject-cap-preflight` e `reject-idempotency-preflight` —
+      perché «quante volte il precontrollo ha salvato una gamba» sia una domanda con una risposta.
+
+    **I TRE PERCORSI DI CANCELLAZIONE VOLUTA SONO INTATTI, E LO DIMOSTRA IL DIFF.** «Mai primo sul libro»
+    quando un tick dietro uscirebbe dalla banda (`cancelled-top-of-book`), il **mid stantio** oltre 20 s e
+    la **fine vita** del mercato cancellano con `deps.cancelOrder` → `cancelManualOrder`, che non passa da
+    `replaceManualOrder` e **non è stata toccata**. L'unica modifica a `auto-reprice.js` è di **sole 8
+    righe di commento** nell'intestazione: il punto 6 della sua lista di garanzie prometteva «it never
+    cancels an order it cannot validly replace», ed era vero a metà. Ora dice quale metà mancava e dove
+    vive la verifica completa.
+
+    **Verifica.** Nuovo `lib/maker/riprezzo-atomico.test.js` **33/33**, con il registro di idempotenza
+    **finto in memoria** (il giornale vero non viene né letto né scritto — verificato contando le righe
+    prima e dopo, 3.652 invariate). Copre: il caso reale $70,38 contro $70,00 · il tetto di oggi · un
+    riprezzo legittimo da $28,51 che deve continuare a passare · le quattro forme di fail-closed · la
+    chiave bruciata da un ordine **vivo** (rifiuta) e da uno **morto e provato tale** (procede) · l'ordine
+    dei cinque precontrolli letto dal sorgente · e — **funzionale, non solo strutturale** — che
+    `decideReprice` risponda ancora `cancel/sarebbe-primo-sul-libro` sui numeri veri del 5 agosto.
+    **Provato che fallisce senza il fix** (`git stash`: asserzione strutturale rossa e
+    `valutaChiaveRimpiazzo is not a function`). Test mirati sulle superfici toccate: `tetto-per-ordine`
+    33/33 · `percorsi-di-invio` 18/18 · `gestione-manuale-nel-flusso` 55/55 ·
+    `inseguimento-contro-mai-primo` 56/56 · `mid-vivo` 38/38.
+    Suite: **167 eseguiti, 159 verdi**; gli **8 rossi sono esattamente i preesistenti**, zero nuovi (167
+    invece di 166 e 159 invece di 158 perché il file di test è nuovo). `npm run build` verde, `BUILD_ID`
+    `2uQRMxJozyTQJSJh07e0e`, `prerender-manifest.json` presente. **Stato di produzione invariato dalla
+    suite**: sei impronte MD5 identiche prima e dopo, `execution-audit.jsonl` fermo a 3.652 righe, nessun
+    archivio di rotazione nuovo.
+
+    **⚠ RESTA APERTO, e va detto invece che lasciato implicito.** Il precontrollo della chiave rifiuta
+    anche quando il duplicato **sarebbe** superabile, perché nessun chiamante passa oggi `ordiniVivi`.
+    È la direzione sicura — non si cancella — e sui casi misurati non toglie niente (la chiave nomina
+    l'ordine sostituito, quindi un intent esistente significa fotografia vecchia). Se un domani si volesse
+    recuperare anche quel caso, la strada è passare da `auto-reprice` l'insieme **completo** degli ordini
+    vivi del venue, non una sua parte: un insieme parziale direbbe «morto» di un ordine vivo, che è
+    esattamente il fail-**open** che questo lavoro chiude.
 
 ---
 
