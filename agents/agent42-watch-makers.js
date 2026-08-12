@@ -1,5 +1,18 @@
 #!/usr/bin/env node
 'use strict';
+
+// ══ IL CARICATORE DI `.env` — SOLO LA FAMIGLIA `WATCH21_` (12 agosto 2026) ═════════════════════════
+// Perche' esiste, perche' e' ristretto e perche' oggi carica zero: lib/safety/carica-env.js.
+// LA RESTRIZIONE QUI E' LA PIU' STRETTA DELLE TRE, e per la ragione piu' forte: §3 chiama questo
+// «l'unico processo della flotta che non puo' toccare capitale nemmeno in linea di principio (nessun
+// import da lib/maker/, nessuna credenziale)». Quella frase e' difesa da un test che cammina l'albero
+// dei require; caricare `.env` per intero non la farebbe fallire — e proprio per questo sarebbe il
+// modo di indebolirla senza che nulla diventi rosso.
+require('../lib/safety/carica-env').caricaEnv({
+  radice: require('path').join(__dirname, '..'),
+  consentite: [/^WATCH21_/],
+});
+
 // ════════════════════════════════════════════════════════════════════════════════════════════════
 // agent42-watch-makers — IL MONITOR LIVE DEI 21 MAKER DI RIFERIMENTO
 // ════════════════════════════════════════════════════════════════════════════════════════════════

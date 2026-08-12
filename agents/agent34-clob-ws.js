@@ -1,5 +1,18 @@
 #!/usr/bin/env node
 'use strict';
+
+// ══ IL CARICATORE DI `.env` — SOLO LA FAMIGLIA `MID_HISTORY_` (12 agosto 2026) ═════════════════════
+// Perche' esiste, perche' e' ristretto e perche' oggi carica zero: lib/safety/carica-env.js.
+// LA RESTRIZIONE QUI E' LA PARTE CHE CONTA: §3 descrive questo processo come «sola lettura, canale
+// pubblico e senza chiavi: non puo' firmare, piazzare o cancellare nulla». Caricare `.env` per intero
+// gli metterebbe in ambiente `KEY_CUSTODY_MASTER`, `POLYGON_RPC_URL` e `MAKER_FUNDER_ADDRESS` — che
+// oggi, misurato sul processo vivo, NON ha. Nessuna riga di codice le userebbe, ma la proprieta' si
+// difende togliendo la possibilita', non fidandosi dell'assenza di chiamanti.
+require('../lib/safety/carica-env').caricaEnv({
+  radice: require('path').join(__dirname, '..'),
+  consentite: [/^MID_HISTORY_/],
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // agent34-clob-ws — LIVE Polymarket CLOB order books for liquidity-rewards.
 //

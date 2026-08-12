@@ -1,4 +1,16 @@
 #!/usr/bin/env node
+
+// ══ IL CARICATORE DI `.env` — SOLO LA FAMIGLIA `REWARD_` (12 agosto 2026) ══════════════════════════
+// Perche' esiste, perche' e' ristretto e perche' oggi carica zero: lib/safety/carica-env.js.
+// In due righe: senza, `REWARD_MAX_CLOB_MARKETS` — la manopola che §5 punto 53 documenta come il modo
+// di cambiare il tetto a 150 — messa in `.env` non verrebbe letta MAI, perche' questo processo non ha
+// mai aperto `.env`. Con la lista di famiglie, le credenziali del file restano fuori: questo agent usa
+// solo API pubbliche e non deve avere in ambiente ne' chiavi ne' RPC.
+require('../lib/safety/carica-env').caricaEnv({
+  radice: require('path').join(__dirname, '..'),
+  consentite: [/^REWARD_/],
+});
+
 // agent24-liquidity-rewards.js — Polymarket Liquidity Reward Scanner
 //
 // Every 15 min:
