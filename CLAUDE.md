@@ -3,7 +3,33 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt**: non serve più reincollarlo ogni volta.
 
-Ultima verifica contro codice/stato reali: **12 agosto 2026**, ~14:10 UTC (§5 punti 103-106).
+Ultima verifica contro codice/stato reali: **12 agosto 2026**, ~16:25 UTC (§5 punti 107-109).
+
+> ## 📐 IL TETTO PER MERCATO NON È PIÙ UNA COSTANTE: DERIVA DA `f_min` — §5 punto 107
+> $130 → $65 → e adesso **nessun numero**. Il tetto nasce da `minSize × costoCoppia / f_min_obiettivo`
+> (obiettivo **0,60**), cioè dalla grandezza con cui l'operatore lo ha già mosso due volte.
+> **$663,11 → $32,67 per mercato · $16,34 per lato · 20 mercati · ordine $21,34.**
+> **Il numero di mercati SCALA col capitale** finché il carico regge ($400→12, $1.000→30, $1.500→40),
+> poi cresce la size. ⚠ **Una frazione pura NON funziona** e l'ho scritta e buttata: con `tetto = C×k`
+> il numero di mercati resta costante e cresce la size — l'opposto della filosofia di §5 punto 65.
+> **Pavimento premiante per MERCATO** (20/50/100/200 ⇒ $24,50/$61,25/$122,50/$245) con margine **25%**:
+> sotto `min_incentive_size` il reward è **ZERO**, e un mercato sotto il pavimento **non si quota**.
+> **Tetto di carico 40 mercati.** Effetto collaterale confermato: la finestra di mid si allarga da
+> [0,435 · 0,565] a **[0,360 · 0,640]**.
+
+> ## 🧮 UNA SOLA FORMULA CAPITALE→SHARE: IL MID NON DECIDE PIÙ CHI QUALIFICA — §5 punto 108
+> Convivevano **tre** copie: `plan-to-orders` con `Q = C/(p_yes+p_no)` (corretta), `minSizeVerdict` e
+> `net.js` con `(C/2)/mid`, più `curve.capitalToQualify` che teneva il ramo sbagliato come ripiego.
+> A mid 0,055 la formula sbagliata diceva che bastavano **$2,20** dove ne servono **$19,60** — nove
+> volte meno — e faceva risultare qualificato un mercato su cui il capitale non compra il minimo.
+> **Impatto misurato sul board: 14 mercati da «qualificato» a NO, 1 nel verso opposto, 97 invariati.**
+
+> ## ⚠️ IL PIANO RICALCOLATO: 25 MERCATI, MA IL REALISTICO È PIATTO — §5 punto 109
+> `11 mercati · ~$60 · $51,88/g` → **`25 mercati · $26,00 · $51,80/g`**. La direzione è quella voluta,
+> **il rendimento no**: −0,2%, non il +47% stimato in `docs/quanti-mercati-12ago.md`, che confrontava
+> il **lordo modellato** a size uguali invece del realistico con tutti i vincoli attivi.
+> E **la griglia si ferma a $26**, sotto il tetto: il tetto è un SOFFITTO, non l'allocazione — quindi
+> il `f_min` reale di questo piano è **75%**, non il 60% dell'obiettivo.
 
 > ## 🧾 IL LEDGER NON SI CHIUDEVA MAI: $16.960 CONTRO ZERO POSIZIONI REALI — §5 punto 106
 > **Due cause, e nessuna correzione bastava da sola.** ① `diagnoseExposure` **non passava affatto** lo
@@ -5280,6 +5306,45 @@ una non era iniziata. Questi punti coprono **tutte e sei**, più il rosso che la
        Ora il referto porta `saltati` e `motiviSaltati` (motivo + quante volte) e il log li stampa.
      `ledger-nettato.test.js` **19/19**, coi cinque modi di non avere una lettura fresca che lasciano
      l'esposizione invariata. Baseline test: **188 eseguiti, 181 verdi, 7 rossi**.
+
+107. **IL TETTO DERIVATO** (commit `3021562`, `b7ac270`). Vedi il banner. Quello che va tenuto qui:
+     - **la forma scelta e quella scartata**: una frazione del capitale (`tetto = C × k`) tiene il
+       numero di mercati COSTANTE e fa crescere la size — l'opposto esatto della filosofia. Il tetto è
+       in dollari, ancorato a `f_min`, e il numero di mercati è `capitale ÷ tetto`;
+     - **`MARKET_CAP_FIXED_USD` resta esportata** come il tetto al capitale di riferimento, ma **non
+       decide più niente**: un test verifica che i due percorsi che pianificano usino
+       `capPerMarketUsd(capitale)`;
+     - **⚠ UN DIFETTO VERO TROVATO DALLA SUITE, e senza sarebbe passato**: `MIN_ALLOCAZIONE_USD = 34`
+       (il nozionale mediano dei 21 maker) contro un tetto di $32,67. Lo spazio di un mercato non supera
+       mai il suo tetto, quindi il minimo non poteva **mai** essere soddisfatto: il mini-ciclo
+       rispondeva «nessun mercato ha spazio sufficiente» a **ogni** giro — un fermo totale e silenzioso.
+       Ora deriva dal pavimento premiante ($24,50) e per costruzione sta sempre sotto il tetto;
+     - **undici file di test ritarati, nessuno silenziato**: sei per derivazione, tre asserzioni
+       **ribaltate** (difendevano le proprietà del tetto fisso), due fixture ritarate **all'ingresso**.
+
+108. **UNA SOLA FORMULA CAPITALE→SHARE** (commit `4b56ad3`). Vedi il banner.
+     - `lib/rewards/size-da-capitale.js` è l'unico punto; `minSizeVerdict`, `net.js` e
+       `curve.capitalToQualify` ci passano tutte e tre;
+     - **il ripiego non torna mai alla formula vecchia**: senza il costo della coppia si usa il tipico
+       **0,98** e lo si **dichiara** (`modello: 'ripiego-tipico'`). Era sbagliata, non meno precisa;
+     - **il mid non è più un ingresso** della soglia: `capitalToQualifyUsd(0, 20)` e
+       `capitalToQualifyUsd(0.9, 20)` danno lo stesso numero, ed è la proprietà che il test difende;
+     - **sette file ritarati**, fra cui due asserzioni che pretendevano esplicitamente
+       `2 × mid × minSize` — **ribaltate**, così un ritorno resta rosso.
+
+109. **LA COERENZA A VALLE, E UNA MISURA CHE CORREGGE UNA STIMA DI OGGI** (commit `18fb0e8`).
+     Cinque superfici verificate: allocatore, minimo per ordine sensato, scala di profondità, registro
+     dei residui, `f_min`. La scala di profondità **esclude** invece di tagliare sotto il pavimento
+     («meglio non quotare che quotare sotto soglia»), e il registro dei residui usa `minSize` **per
+     mercato**, mai una costante.
+     **Il piano ricalcolato in sola lettura corregge la stima di `docs/quanti-mercati-12ago.md`**:
+     25 mercati invece di 11 — la direzione voluta — ma realistico **$51,80/g contro $51,88/g**, cioè
+     **piatto**, non +47%. Le due misure non si contraddicono: il documento confrontava il lordo
+     modellato a size uguali, questo è il realistico con tutti i vincoli attivi insieme.
+     **E la griglia del capitale si ferma a $26**, sotto il tetto di $32,67: il tetto è un soffitto, non
+     l'allocazione — quindi il `f_min` reale del piano è **75%**, non il 60% dell'obiettivo. Se
+     l'operatore vuole davvero il 60% realizzato, la leva non è il tetto ma il passo della griglia.
+     **Baseline test: 190 eseguiti, 183 verdi, 7 rossi preesistenti.**
 
 ---
 
