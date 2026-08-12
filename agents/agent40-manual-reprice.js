@@ -1478,6 +1478,19 @@ async function cycle() {
     } catch (e) { log('referto cancellazioni NON depositato:', e.message); }
   }
 
+  // ── I RINNOVI FERMATI: QUESTI SONO UN ALLARME ────────────────────────────────────────────────────
+  // Un rinnovo dovuto e non partito è un ordine con un conto alla rovescia: se il gate non si sposta
+  // entro `secondsToExpiry`, quel capitale torna fermo. Si stampa PRIMA dei lati singoli perché è
+  // l'unica riga di questo blocco su cui si può ancora agire.
+  for (const a of (res.events || []).filter((x) => x && x.type === 'rinnovo-fermato')) {
+    log(`${a.costaLOrdine ? '⚠ RINNOVO FERMATO' : 'rinnovo rimandato'} · cid_${String(a.marketId).replace(/^0x/, '').slice(0, 10)}`
+      + ` · ${String(a.book).toUpperCase()} ${a.price} x ${a.size}${a.notionalUsd != null ? ` ($${a.notionalUsd})` : ''}`
+      + ` · ${a.secondsToExpiry}s alla scadenza · gate ${a.gate}`
+      + (a.costaLOrdine
+        ? ' — se il gate non si sposta, l ordine MUORE e il capitale torna fermo'
+        : ' — intervallo anti-churn locale, il margine di rinnovo lo assorbe: nessun rischio'));
+  }
+
   // I lati singoli che maturano un terzo: non un allarme, uno stato che va detto.
   for (const o of (res.latiSingoli || [])) {
     log(`LATO SINGOLO · cid_${String(o.marketId).replace(/^0x/, '').slice(0, 10)}`
