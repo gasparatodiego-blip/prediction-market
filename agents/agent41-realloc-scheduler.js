@@ -972,10 +972,16 @@ async function miniCiclo(decisione, deps = {}) {
   // essere assurdo senza che niente lo dicesse — ed e' esattamente cio' che e' successo il 12 agosto.
   // Oltre soglia si FERMA il giro dichiarando il motivo: agire su un capitale che non si sa quanto
   // sia vuol dire impegnare denaro gia' impegnato altrove.
-  const ric = UTIL.riconcilia({
-    a: decisione.saldoUsd, b: utilPrima.leggibile ? utilPrima.saldoUsd : null,
-    etichettaA: 'saldo del trigger', etichettaB: 'saldo della misura di utilizzo',
-  });
+  // ⚠ SI RICONCILIA SOLO SE C'E' QUALCOSA DA CONFRONTARE. Una misura non leggibile perche' le
+  // POSIZIONI non si leggono e' un caso tollerato per progetto — «il cancello del trigger e' il saldo,
+  // e quello e' gia' stato letto» — e trattarlo come divergenza fermerebbe giri sani. La divergenza da
+  // prendere e' fra due letture ENTRAMBE presenti che dicono numeri diversi: quella si', ferma.
+  const ric = utilPrima.leggibile
+    ? UTIL.riconcilia({
+      a: decisione.saldoUsd, b: utilPrima.saldoUsd,
+      etichettaA: 'saldo del trigger', etichettaB: 'saldo della misura di utilizzo',
+    })
+    : { concorde: true, scartoUsd: null, sogliaUsd: null, motivo: 'misura di utilizzo non leggibile: nessun confronto possibile, si prosegue col saldo del trigger (comportamento documentato)' };
   if (!ric.concorde) {
     annuncia('log', `mini-ciclo FERMATO — ${ric.motivo}`);
     scrivi({ at: new Date().toISOString(), tipo: 'mini-ciclo', esito: 'fermato-capitale-incoerente',
