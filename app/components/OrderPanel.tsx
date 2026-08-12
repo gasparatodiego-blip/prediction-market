@@ -196,8 +196,18 @@ interface PlaceResult {
   /** Il prezzo che il server ha applicato, se diverso da quello scritto. La regola «mai primo sul
    *  libro» sposta la quotazione dietro al miglior altro ordine per non essere il bersaglio di un
    *  taker informato — ma un prezzo che cambia senza dirlo è peggio del male che cura. */
-  priceAdjusted?: { inCoda?: { from: number; to: number; mode?: string; onTop?: boolean; bestOther?: number | null } } | null;
-  inCoda?: { ok: boolean; mode?: string; onTop?: boolean; bestOther?: number | null; reason?: string | null } | null;
+  priceAdjusted?: {
+    from?: number; to?: number; distanceCents?: number; midUsed?: number;
+    inCoda?: {
+      from: number; to: number; mode?: string; onTop?: boolean; bestOther?: number | null;
+      depth?: { minPrice?: number; finalPrice?: number; ticksBack?: number; depthAhead?: number; required?: number; stoppedBy?: string } | null;
+    };
+  } | null;
+  inCoda?: {
+    ok: boolean; mode?: string; onTop?: boolean; bestOther?: number | null; reason?: string | null;
+    quotabile?: boolean | null;
+    ownOrders?: { conteggio?: number; origine?: string; dalVenue?: number; dalPannello?: number; duplicati?: number; venueLetto?: boolean } | null;
+  } | null;
 }
 
 const fin = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
@@ -1804,6 +1814,38 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled, onP
                     {result.ok && !result.priceAdjusted?.inCoda && result.inCoda && result.inCoda.onTop === false && (
                       <span className="op-banner-sub" data-op-qs-in-coda>
                         Non era primo sul libro: prezzo lasciato com’era.
+                      </span>
+                    )}
+                    {/* ── IL RIEPILOGO DELLA DECISIONE, ANCHE QUANDO L'ORDINE È STATO RIFIUTATO ──
+                        I due fatti sopra si vedevano solo sul buon esito. Ma è sul RIFIUTO che
+                        servono di più: «mai-primo-sul-libro» è uno dei gate che rifiutano, e senza
+                        questa riga il pannello diceva perché era stato rifiutato senza dire contro
+                        CHI. Qui si legge il concorrente misurato, quanti ordini nostri sono stati
+                        sottratti dal libro e da dove venivano — che è il modo per accorgersi che il
+                        server non ha potuto leggerli, invece di scoprirlo da un prezzo strano. */}
+                    {result.inCoda && (
+                      <span className="op-banner-sub" data-op-qs-in-coda-riepilogo>
+                        Coda: {result.inCoda.mode ?? '—'}
+                        {result.inCoda.bestOther != null
+                          ? <> · miglior concorrente <b>{cents(result.inCoda.bestOther)}</b></>
+                          : <> · nessun concorrente misurato</>}
+                        {result.inCoda.onTop === true ? <> · <b>saremmo primi</b></> : null}
+                        {result.inCoda.ownOrders ? (
+                          <> · nostri sottratti: <b>{result.inCoda.ownOrders.conteggio ?? 0}</b>
+                            {result.inCoda.ownOrders.venueLetto === false
+                              ? <> (<b>venue non letto</b>, solo dal pannello)</>
+                              : <> ({result.inCoda.ownOrders.dalVenue ?? 0} dal venue
+                                {(result.inCoda.ownOrders.dalPannello ?? 0) > 0 ? <> + {result.inCoda.ownOrders.dalPannello} dal pannello</> : null})</>}
+                          </>
+                        ) : null}
+                        {result.inCoda.reason ? <> · {result.inCoda.reason}</> : null}
+                      </span>
+                    )}
+                    {result.priceAdjusted?.inCoda?.depth && (
+                      <span className="op-banner-sub" data-op-qs-profondita>
+                        Arretrato per profondità: {result.priceAdjusted.inCoda.depth.ticksBack ?? '?'} tick
+                        {' '}(davanti {result.priceAdjusted.inCoda.depth.depthAhead ?? '?'} su {result.priceAdjusted.inCoda.depth.required ?? '?'} richiesti
+                        {result.priceAdjusted.inCoda.depth.stoppedBy ? `, fermato da ${result.priceAdjusted.inCoda.depth.stoppedBy}` : ''})
                       </span>
                     )}
                     {/* ── LA SECONDA GAMBA: IN CODA, MAI IN AUTOMATICO ────────────────────────────
