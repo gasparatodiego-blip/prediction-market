@@ -1454,16 +1454,51 @@ async function controlloCapitaleFermo({ forzatoDa = null } = {}) {
 const AVVIO_CADENZA_MS = Number(process.env.REALLOC_AVVIO_CADENZA_MS || 15_000);
 let ultimoAvvioVisto = null;
 
-async function sorvegliaAvvio() {
+// Le tre dipendenze sono iniettabili per poter provare la transizione senza rete e senza toccare
+// capitale: chi non le passa ha esattamente il comportamento del processo vivo.
+async function sorvegliaAvvio(deps = {}) {
+  const leggiInterruttore = deps.statoBot || statoBot;
+  const eseguiGiro = deps.giro || giro;
+  const ripianifica = deps.pianificaProssimo || pianificaProssimo;
   let s;
-  try { s = statoBot(); } catch { return; }
+  try { s = leggiInterruttore(); } catch { return; }
   if (!s || s.leggibile !== true || !Number.isFinite(s.at)) return;
   if (ultimoAvvioVisto == null) { ultimoAvvioVisto = s.at; return; }
   if (s.at <= ultimoAvvioVisto) return;
   ultimoAvvioVisto = s.at;
   if (s.enabled !== true) { annuncia('log', 'interruttore commutato su FERMA: nessun ciclo, i piazzamenti nuovi si fermano dal prossimo giro'); return; }
-  annuncia('log', `AVVIA rilevato (${s.by || 'ignoto'}) — mini-ciclo forzato subito: non si aspetta ne' il cooldown ne' il ciclo delle sei ore`);
-  await controlloCapitaleFermo({ forzatoDa: 'AVVIA appena premuto' });
+
+  // ── AVVIA FA PARTIRE UN CICLO COMPLETO, SUBITO (12 agosto 2026) ────────────────────────────────────
+  // Prima qui partiva il MINI-ciclo. La rilevazione era gia' rapida — 15 secondi — ma il mini-ciclo
+  // sceglie dal piano salvato e ha le sue attese: il piano vero ripartiva alla cadenza successiva,
+  // quindi fino a dieci minuti di capitale fermo dopo che una persona ha premuto il bottone.
+  //
+  // SI RIUSA `giro`, IL CICLO NORMALE, e non se ne scrive uno parallelo. Non e' pigrizia: e' l'unico
+  // modo di garantire «stesse regole, stesso fail-closed, stesso freno» senza doverlo promettere in un
+  // commento. `giro` rilegge l'interruttore, consulta il freno di prova (due punti: il referto e
+  // `dryRunOnly` del reset), passa dal motore e dai suoi cancelli. L'unica cosa che cambia e' il
+  // MOTIVO, che viaggia in `ciclo-avvio` e `ciclo-referto` e rende questo ciclo distinguibile da quelli
+  // a cadenza senza guardare l'orologio.
+  //
+  // I TRE VINCOLI, e nessuno dei tre e' nuovo codice:
+  //   · SOLO SULLA TRANSIZIONE — `s.at <= ultimoAvvioVisto` sopra: si guarda l'ISTANTE in cui
+  //     l'interruttore e' stato scritto, non il fatto che sia acceso. Una lettura ripetuta dello stesso
+  //     AVVIA non passa di qui.
+  //   · MAI DUE VOLTE PER LO STESSO AVVIA — `ultimoAvvioVisto` e' aggiornato PRIMA di questo await:
+  //     una seconda passata del poller durante il ciclo trova lo stesso istante e torna indietro.
+  //   · MAI DUE CICLI INSIEME — `giro` esce con `null` se `inCorso`, che e' lo stesso lucchetto del
+  //     ciclo a cadenza e del mini-ciclo.
+  annuncia('log', `AVVIA rilevato (${s.by || 'ignoto'}) — ciclo di allocazione COMPLETO subito:`
+    + ' non si aspetta ne\' la finestra del mini-ciclo ne\' il ciclo delle sei ore');
+  const r = await eseguiGiro('avvia-operatore');
+  if (r == null) {
+    annuncia('log', 'AVVIA: un ciclo era gia\' in corso — non se ne apre un secondo, quello in corso vale');
+    return;
+  }
+  // LA CADENZA RIPARTE DA ADESSO, non da prima. `giro` ha appena scritto `lastRunAt`, quindi
+  // `prossimoRitardo()` conta dall'avvio di questo ciclo: senza il riallineamento il timeout gia'
+  // armato sarebbe scattato all'ora vecchia, cioe' un secondo ciclo prima del dovuto.
+  ripianifica('dopo il ciclo innescato dall\'AVVIA');
 }
 
 // ── IL TIMER ────────────────────────────────────────────────────────────────────────────────────────
@@ -1476,10 +1511,17 @@ function prossimoRitardo() {
   return Math.max(STARTUP_DELAY_MS, INTERVAL_MS - trascorso); // il turno non è ancora arrivato: si aspetta il resto
 }
 
+// IL TIMER E' UNO SOLO, E LO SI TIENE IN MANO. Prima era un `setTimeout` anonimo: un ciclo eseguito
+// fuori cadenza (l'AVVIA, sotto) spostava `lastRunAt` ma NON il timeout gia' armato, che sarebbe
+// scattato all'ora vecchia — cioe' un secondo ciclo troppo presto. Tenendo il riferimento, chi esegue
+// un ciclo fuori cadenza puo' riallineare la cadenza al momento dell'avvio invece che a quello di prima.
+let timerProssimo = null;
+
 function pianificaProssimo(motivo) {
+  if (timerProssimo) { clearTimeout(timerProssimo); timerProssimo = null; }
   const ms = prossimoRitardo();
   annuncia('log', `prossimo ciclo fra ${(ms / 60_000).toFixed(1)} minuti (${motivo})`);
-  setTimeout(async () => { await giro('timer'); pianificaProssimo('dopo un ciclo'); }, ms);
+  timerProssimo = setTimeout(async () => { await giro('timer'); pianificaProssimo('dopo un ciclo'); }, ms);
 }
 
 // `--once` esegue UN ciclo subito e esce: serve a guardarlo lavorare senza aspettare sei ore. Rispetta
@@ -1571,4 +1613,4 @@ if (require.main === module) main();
 module.exports = { leggiVenue, leggiSaldo, prossimoRitardo, scriviUltimoPiano, leggiUltimoPiano,
   miniCiclo, preparaMercatoNuovo, pianoLeggero, sorvegliaAvvio, LOG_FILE, STATE_FILE, POOLS_FILE, ULTIMO_PIANO_FILE,
   FINESTRA_LEGGERA_ORE, PIANO_FRESCO_MAX_MS, AVVIO_CADENZA_MS,
-  rigaBoardNormalizzata, copiaRegoleNelRipiego, BOARD_NORMALIZZATO };
+  rigaBoardNormalizzata, copiaRegoleNelRipiego, BOARD_NORMALIZZATO, sorvegliaAvvio, scadenzaDalBoard };
