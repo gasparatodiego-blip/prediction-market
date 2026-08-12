@@ -110,7 +110,23 @@ export async function POST(req: NextRequest) {
     if (!look.ok || !look.market) {
       return NextResponse.json({ ok: false, gate: 'market-not-found', marketId: id, error: look.error }, { status: 404 });
     }
-    const m = look.market;
+    let m = look.market;
+
+    // ══ CAMPO ASSENTE NON È CAMPO A ZERO: SI RICHIEDE, POI SI DECIDE (12 agosto 2026) ═════════════
+    // Se `clobRewards` non è arrivato, il gate qui sotto scarterebbe il mercato su UNA sola lettura —
+    // e la prima lettura è proprio quella che a volte omette il campo. Prima di decidere si richiede
+    // per condition_id, con cache a TTL 10 minuti (`lib/maker/reward-riprova.js`).
+    //
+    // NON ALLARGA IL GATE: se la seconda lettura dice `senza-premio`, il rifiuto resta identico. Cambia
+    // solo che una risposta incompleta non viene più scambiata per un no del venue.
+    let rewardRiprovato: string | null = null;
+    if (m.rewardsStato === 'illeggibile') {
+      try {
+        const RR = await import('@/lib/maker/reward-riprova');
+        const rr = await RR.risolviPremiMancanti({ righe: [m], tetto: 1 });
+        if (rr.righe && rr.righe[0]) { m = rr.righe[0]; rewardRiprovato = rr.righe[0].rewardsRiprova || null; }
+      } catch { /* una riprova che fallisce lascia il verdetto di prima, mai peggio */ }
+    }
 
     const autoCloseCfg = readAutoCloseConfig();
     const minMinutes = minMinutesToClose();
@@ -144,14 +160,21 @@ export async function POST(req: NextRequest) {
     if (contraddizionePot) {
       const nonLetto = m.rewardsStato === 'illeggibile';
       return NextResponse.json({
-        ok: false, gate: nonLetto ? 'reward-non-letto' : 'reward-contraddizione', marketId: id,
+        // ── DUE MOTIVI DI SCARTO CHE NON SI CONFONDONO ────────────────────────────────────────
+        // `reward-zero`: il venue ha parlato e dice che non c'e' programma. E' un fatto SUL MERCATO.
+        // `reward-sconosciuto`: abbiamo chiesto DUE volte e non lo sappiamo. E' un fatto sulla nostra
+        // lettura. Schiacciarli in un motivo solo e' il difetto del 5 agosto, un livello piu' in la'.
+        ok: false, gate: nonLetto ? 'reward-non-letto' : 'reward-contraddizione',
+        motivoScarto: nonLetto ? 'reward-sconosciuto' : 'reward-zero',
+        rewardRiprovato,
+        marketId: id,
         potAtPlan, potAlVenue: m.rewardsDailyRate, hasRewards: m.hasRewards,
         rewardsStato: m.rewardsStato, rewardsPerche: m.rewardsPerche,
         error: nonLetto
           ? `Il piano ha proposto questo mercato con un montepremi di $${potAtPlan}/g, e il montepremi al venue NON È STATO LETTO (${m.rewardsPerche}). Non si impegna capitale su un dato che non si è letto: NON viene abilitato. Questo non vuol dire che il mercato non paghi — vuol dire che in questo momento non lo sappiamo.`
           : `Il piano ha proposto questo mercato con un montepremi di $${potAtPlan}/g, ma il venue in questo momento non pubblica nessun programma reward (${NO_REWARD_LABEL}). Le due fonti si contraddicono sullo stesso mercato: NON viene abilitato.`,
         note: nonLetto
-          ? 'La lettura del venue è intermittente: riprova fra qualche secondo. Se il montepremi torna, era una risposta incompleta; se resta illeggibile, il problema è la fonte e non il mercato.'
+          ? `Il montepremi è stato richiesto una SECONDA volta per condition_id${rewardRiprovato ? ` (esito: ${rewardRiprovato})` : ''} e ancora non è pubblicato. Se torna al prossimo tentativo era una risposta incompleta; se resta così, il problema è la fonte e non il mercato.`
           : 'Il montepremi della card viene dal board (agent24, riscritto ogni ~15 min); questo controllo lo chiede al venue adesso. Ricalcola il piano: se il programma è finito davvero, il mercato sparirà dalle proposte; se torna con il montepremi, era il board a essere indietro.',
         summary: null,
       }, { status: 409 });
