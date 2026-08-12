@@ -3,7 +3,21 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt**: non serve più reincollarlo ogni volta.
 
-Ultima verifica contro codice/stato reali: **12 agosto 2026**, ~19:50 UTC (§5 punti 112-113).
+Ultima verifica contro codice/stato reali: **12 agosto 2026**, ~21:40 UTC (§5 punto 114).
+
+> ## 🚦 IL TETTO ANTI-RUNAWAY UCCIDEVA GLI ORDINI CHE DOVEVA PROTEGGERE — §5 punto 114
+> Utilizzo fermo al **42,6%** contro l'obiettivo 90%, e **due** cause sulla stessa finestra da 60 s.
+> ① Il tetto di **6 mercati per giro** lasciava fermo metà del capitale: referto del mini-ciclo delle
+> 20:57:26Z — `motivoStop: «tetto di 6 mercati per giro raggiunto»`, allocato $156, **residuo $331,67**
+> con **17 righe di piano** disponibili. ② `maxOrdersPerWindow: 20` è **CONDIVISO** fra la corsia che
+> piazza (a raffica) e quella che rinnova: **10 invii alle 20:51 → 18 `skip-rate-limited` nello stesso
+> minuto → 6 `scaduto-senza-rinnovo` alle 20:54**. Gli ordini morivano per scadenza GTD perché il tetto
+> non lasciava spazio al rinnovo che li teneva vivi. **6 → 12** mercati per giro e **20 → 40** invii per
+> finestra: 24 invii su 40, **16 posti liberi** per i rinnovi. Carico **0,560 → 0,677 req/s (+21%)**.
+> **Il numero di mercati per giro vive ora in UN posto solo** (`utilizzo-capitale`), importato dal
+> trigger. **⚠ La premessa del punto 2 del prompt è stata SMENTITA dalla misura**: lo scope del rinnovo
+> copriva già tutti e 12 i mercati con ordini vivi, quindi non era lui a produrre l'oscillazione.
+> L'unione (piano ∪ posizioni ∪ ordini a riposo) è stata scritta comunque, come copertura.
 
 > ## 🪟 LA «FINESTRA DI MID» NON È UN CANCELLO, È UNA RIGA DI LOG — §5 punto 113
 > Stasera è stato piazzato un ordine su Vindman a mid **0,8675**, fuori dalla finestra `[0,36 · 0,64]`
@@ -5756,6 +5770,126 @@ una non era iniziata. Questi punti coprono **tutte e sei**, più il rosso che la
 
      **Non corretto**, come richiesto. La leva non è la finestra — che è un rendiconto — ma il **passo
      della griglia del capitale**, che è la stessa conclusione di §5 punto 109.
+
+114. **I TETTI PER GIRO ALZATI, E IL TETTO ANTI-RUNAWAY CHE AFFAMAVA IL RINNOVO — 12 agosto 2026,
+     ~21:40 UTC. Decisione dell'operatore: il capitale deve lavorare tutto, obiettivo utilizzo > 90%.**
+
+     **LE DUE CAUSE, MISURATE, E STANNO SULLA STESSA FINESTRA DA 60 SECONDI.**
+     - **① il raggio d'azione.** `motivoStop: «tetto di 6 mercati per giro raggiunto»` nel referto del
+       mini-ciclo delle **20:57:26Z**, con `allocatoUsd 156` e **`residuoUsd 331,67`** — cioè metà del
+       capitale fermo mentre il piano fresco offriva **17 righe**. Il 6 era tarato quando il tetto per
+       mercato era il 20% del capitale e il piano tipico aveva sette righe; col tetto derivato da
+       `f_min` ($32,67, allocato ~$26) i mercati necessari sono ~23 e 6 per giro sono meno di un terzo.
+     - **② il rate limit condiviso, ed è la causa che nessuno cercava.** `maxOrdersPerWindow` è UNO e
+       vale per **entrambe** le corsie: quella che PIAZZA (bulk, a raffica) e quella che RINNOVA
+       (cancel→replace ogni ~20 min per ordine). La correlazione temporale è esatta:
+
+       | minuto | invii | `skip-rate-limited` | `scaduto-senza-rinnovo` |
+       |---|---|---|---|
+       | 20:51 | 10 | **18** | — |
+       | 20:52 | — | 3 | — |
+       | **20:54** | — | — | **6** |
+       | 20:55-56 | 3 | 11 | — |
+       | 20:58 | — | — | 1 |
+       | 21:11-12 | 4 | 4 | — |
+       | 21:14 | — | — | 2 |
+
+       **La raffica consumava la finestra e i rinnovi venivano rifiutati; tre minuti dopo gli ordini
+       morivano per scadenza GTD.** È il difetto più insidioso dei due, perché il tetto che uccideva gli
+       ordini è lo stesso che esiste per proteggerli da un runaway.
+
+     **I VALORI, E DA DOVE VENGONO.**
+
+     | | prima | dopo | dove |
+     |---|---|---|---|
+     | mercati per giro | **6** | **12** | `lib/maker/utilizzo-capitale.js` |
+     | invii per finestra 60 s | **20** | **40** | `data/safety-risk-limits.json` |
+
+     **12 e non 20**: due giri coprono il capitale da zero (24 mercati contro ~23 necessari) e il limite
+     continua a fare il suo lavoro — un errore di piano diventa un errore su metà del conto, non su
+     tutto, e c'è un giro per accorgersene. **40 e non di più**: `2 × 12 = 24` invii lasciano **16 posti
+     liberi** nella stessa finestra per i rinnovi, ed è quel margine la correzione della causa ②. Il
+     ceiling del codice resta **60** e non è stato toccato.
+
+     **⚠ LA RELAZIONE FRA I DUE NUMERI È ORA UN TEST, non un commento**: `rateCap ≥ 2 × mercatiPerGiro`
+     con almeno 8 posti di margine. Se il raggio d'azione risale, il rate limit va risalito con lui.
+
+     **IL NUMERO DI MERCATI PER GIRO VIVE IN UN POSTO SOLO.** Era in due — `TRIGGER_CAPITALE_MAX_MERCATI`
+     nel trigger e `MAX_NUOVI_PER_GIRO` in `utilizzo-capitale` — con un commento che diceva «è lo stesso
+     numero», cioè due copie allineate a mano: il reperto che il rilevatore **D1** cerca. Adesso il
+     trigger **importa** il difetto condiviso; l'override d'ambiente resta e vince.
+
+     **⚠ LA PREMESSA DEL PUNTO 2 DEL PROMPT È STATA SMENTITA DALLA MISURA, e va detto.** L'ipotesi era
+     che il rinnovo coprisse solo la allowlist stretta e che i mercati usciti dal piano perdessero gli
+     ordini per scadenza. **Verificato sui dati vivi: `enabledMarketIds` conteneva 16 mercati e TUTTI E
+     12 quelli con ordini vivi erano dentro** — zero fuori scope. Quindi non era lui a produrre
+     l'oscillazione. **La correzione è stata scritta lo stesso**, perché la lacuna è reale e diventa la
+     causa appena il piano ruota: lo scope del rinnovo è ora l'unione **piano ∪ posizioni ∪ mercati con
+     ordini a riposo**, la stessa regola di copertura di §5 punti 44, 61, 62/69 e 82.
+     - **La terza componente è una MEMORIA, non una lettura**, ed è deliberato: non esiste uno snapshot
+       locale degli ordini a riposo (§5 punto 55) e interrogare il venue sui mercati che non stiamo
+       guardando costerebbe una chiamata per mercato per ciclo — il carico che questo lavoro riduce. Il
+       caso che serve davvero è più stretto: un mercato che ERA nello scope e ne è uscito lasciandoci
+       ordini. Quel mercato lo abbiamo guardato l'ultimo giro, quindi la memoria del giro precedente
+       basta e costa zero. Limite dichiarato: dopo un riavvio vale la lista vuota — cioè il
+       comportamento di prima — e le posizioni rientrano comunque dallo snapshot del venue.
+     - **Fail-safe verso il comportamento di prima**: qualunque componente illeggibile viene omessa, e
+       il minimo garantito resta `enabledMarketIds`. KILL e interruttore generale restano davanti: uno
+       scope più largo non apre nessuna strada nuova, e due asserzioni lo verificano.
+     - Il referto porta `scope: {totale, daPiano, aggiunti, perche}` — «lo scope si è allargato» e «il
+       piano è cresciuto» non devono essere lo stesso numero.
+
+     **IL CARICO, MISURATO E DICHIARATO.**
+
+     | | valore |
+     |---|---|
+     | raffica per giro | 24 invii in ~12 s = **2,0 req/s di picco**, 0,040 req/s di media |
+     | occupazione finestra | **24/40 = 60%**, margine 16 posti |
+     | rinnovi a regime | 23 mercati × 2 gambe × 3/ora = 138/ora = 0,077 req/s |
+     | **totale flotta** | **0,560 → 0,677 req/s (+21%)** |
+
+     **⚠ L'unica sovrapposizione che può ancora saturare**, e perché non è pericolosa: una coorte di 24
+     ordini piazzata insieme chiede il rinnovo insieme ~20 minuti dopo, e se cade nella stessa finestra
+     di una raffica nuova servirebbero 48 posti su 40. Non uccide niente perché il rinnovo scatta a
+     **180 s dalla scadenza** e il ciclo riprova ogni **5 s**: ci sono ~36 tentativi prima che l'ordine
+     muoia, e con 16 posti liberi al minuto una coorte da 24 si smaltisce in ~2 minuti. `ordersInWindow`
+     conta i soli `intent` (`lib/safety/usage.js:68`), quindi un rinnovo costa **un** posto, non due.
+
+     **I VINCOLI DI CARICO A VALLE, verificati ai nuovi valori:** 23 mercati a regime contro
+     `MAX_MERCATI` **40** (margine 17) · 46 asset sottoscritti contro il budget del feed **250**
+     (margine 204) · 23 mercati contro `TOTAL_MARKET_CAP` **125** (margine 102). **Il tetto per mercato
+     e il pavimento premiante non sono stati toccati e non dipendono da quanti mercati apre un giro**:
+     più mercati NON significa size più piccole, ed è una sezione del test invece di una promessa.
+
+     **EFFETTO ATTESO, in sola lettura:** da $281,87 (42,6%) mancano $313,58; un giro aggiunge
+     12 × $26 = **$312**, quindi **2 giri** invece di 3, cioè **~20 minuti** invece di ~30. Da zero:
+     2 giri, ~20 minuti. A regime 23 mercati × $26 = **$598 = 90,4%**.
+     **⚠ COSA MANCA PERCHÉ IL 90% SIA STABILE E NON UN PICCO:** il rate limit non è più il collo di
+     bottiglia, ma il ricambio resta — ogni ordine vive 23 minuti e va rinnovato tre volte l'ora. Il
+     regime regge finché i rinnovi passano; il primo numero da guardare se l'utilizzo torna a oscillare
+     è di nuovo `skip-rate-limited`, non il numero di mercati.
+
+     **Cosa NON è stato toccato**, verificato per nome dal test: tetto per ordine ($1000), esposizione
+     aperta ($600), perdita giornaliera ($25), allowlist dei venue, finestra di 60 s, tetto per mercato,
+     pavimento premiante, «mai primo sul libro», banda premiante, KILL, FERMA, freno di prova.
+
+     **File:** `lib/maker/utilizzo-capitale.js` · `lib/maker/trigger-capitale-fermo.js` ·
+     `data/safety-risk-limits.json` (quinta revisione) · `lib/maker/auto-reprice.js` ·
+     `agents/agent40-manual-reprice.js` · nuovo `lib/maker/tetti-per-giro-e-scope.test.js` (**32/32**).
+
+     **Quattro test preesistenti RITARATI, non silenziati** — tutti asserivano i vecchi valori come
+     letterali: `apertura-guidata-dal-target` e `cadenza-board` (che ora derivano il tetto dal modulo
+     invece di ricopiarlo), `passate-mini-ciclo` (la fixture aveva otto righe tarate su un giro da sei:
+     con dodici posti stavano tutte in una passata e il caso che il test prova spariva — ora la
+     larghezza si **deriva**, `MAX + 2`), e `sette-punti`, che è un **tripwire deliberato** sui limiti di
+     rischio e resta tale: il valore è stato aggiornato a 40 con la ragione scritta accanto, così un
+     cambio silenzioso futuro continua a farlo scattare.
+
+     **Suite: 194 eseguiti, 187 verdi, 7 rossi** — esattamente i preesistenti del punto 84, **zero
+     nuovi** (194 e non 193 perché il file di test è nuovo). `npm run build` verde, `BUILD_ID`
+     `fisC7rSnXVNFOG7cGEl1x`, `prerender-manifest.json` presente. **La suite non ha toccato lo stato**:
+     impronte MD5 identiche su kill, AVVIA/FERMA, allowlist e limiti di rischio; le uniche righe nuove
+     in `execution-audit.jsonl` sono i rinnovi del bot vivo (`auto-reprice-band-exit`, 21:25-21:26).
 
 ---
 

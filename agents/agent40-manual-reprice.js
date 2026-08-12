@@ -425,6 +425,12 @@ const registroOrfani = (() => {
 const RIPIANIFICA_FILE = path.join(__dirname, '..', 'data', 'da-ripianificare.json');
 const RIPIANIFICA_TTL_MS = 24 * 3_600_000;
 
+// I mercati su cui il venue ci ha detto di avere ordini a riposo nell'ULTIMO giro di riprezzo. E' la
+// terza componente dello scope del rinnovo (piano ∪ posizioni ∪ ordini vivi): tiene visitabile un
+// mercato appena uscito dal piano finche' ci restano ordini sopra. In memoria e non su disco — dopo un
+// riavvio vale la lista vuota, cioe' il comportamento che il ciclo aveva prima del 12 agosto 2026.
+let mercatiConOrdiniUltimoGiro = new Set();
+
 const daRipianificareCoda = (() => {
   const m = new Map();
   const scrivi = () => {
@@ -1373,6 +1379,14 @@ async function cycle() {
       catch (e) { return { ok: false, reason: e && e.message ? e.message : String(e) }; }
     },
     registroOrfani,
+    // ── LA MEMORIA DELLO SCOPE DEL RINNOVO ────────────────────────────────────────────────────────
+    // Cosa il venue ci ha detto di avere a riposo l'ULTIMO giro. Serve a tenere visitabile un mercato
+    // che il piano ha appena lasciato ma su cui abbiamo ancora ordini: senza, quegli ordini non
+    // vengono piu' rinnovati e muoiono per scadenza GTD in 23 minuti, che e' il modo ordinario in cui
+    // il capitale tornava fermo. Vive in memoria e non su disco di proposito: descrive l'ultimo giro,
+    // e dopo un riavvio l'unica risposta onesta e' «non lo so» — che vale la lista vuota, cioe' il
+    // comportamento di prima, mentre le posizioni rientrano comunque dallo snapshot del venue.
+    mercatiConOrdiniVivi: () => [...mercatiConOrdiniUltimoGiro],
     // TOGLIERE UN MERCATO CHIUSO DALLA ALLOWLIST. Gemella di `disableTracking` qui sotto, sulla stessa
     // condizione e per lo stesso motivo: il motore decide QUANDO (solo a mercato risolto e a libro gia'
     // libero), qui si passa la mano che scrive. Senza questa riga la decisione esisterebbe e non la
@@ -1437,6 +1451,14 @@ async function cycle() {
   // Stessa strada delle due sopra, e per lo stesso motivo — con una differenza: qui il motivo NON si
   // riassume. «Ordine cancellato» non e' un avviso, e' una notifica; «mai primo sul libro» e «gamba
   // rimasta sola oltre la tolleranza» chiedono due reazioni diverse.
+  // ── SI RICORDA COSA ERA A RIPOSO, PER IL GIRO DOPO ───────────────────────────────────────────────
+  // Si sostituisce, non si accumula: un mercato che non ha piu' ordini deve USCIRE dallo scope, e un
+  // insieme che cresce e non cala terrebbe visitato per sempre ogni mercato mai toccato. Si scrive solo
+  // se il ciclo ha girato davvero (`ran`), perche' un giro fermato da un gate non ha letto niente e
+  // «non ho guardato» non e' «non c'e' piu' niente».
+  if (res.ran === true && Array.isArray(res.mercatiConOrdini)) {
+    mercatiConOrdiniUltimoGiro = new Set(res.mercatiConOrdini);
+  }
   for (const r of (res.daRipianificare || [])) {
     if (!r || !r.marketId) continue;
     daRipianificareCoda.set(String(r.marketId), r);
