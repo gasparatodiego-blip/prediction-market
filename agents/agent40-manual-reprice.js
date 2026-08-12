@@ -121,7 +121,7 @@ const { registraCancellazioni } = require('../lib/maker/cancellazioni-visibili')
 // Due controlli orari dentro QUESTO processo: nessun pm2 nuovo. agent40 e' gia' sempre acceso e gira
 // ogni 5 secondi, quindi ha gia' l'orologio che serve — aggiungere un processo per due letture al
 // giorno sarebbe stato un demone in piu' da sorvegliare per niente.
-const { compitiDovuti, registraStima, registraReale, leggiConfronto } = require('../lib/maker/confronto-reward');
+const { compitiDovuti, registraStima, registraReale, leggiConfronto, giorniDaRecuperare } = require('../lib/maker/confronto-reward');
 // La lettura del consuntivo. SOLA LETTURA per costruzione: usa solo le credenziali L2, parla solo in
 // GET, e non importa l'adapter — l'unico oggetto del progetto che sappia mandare un ordine.
 const { leggiRewardReale } = require('../lib/maker/reward-reale');
@@ -1589,6 +1589,30 @@ async function main() {
         // Si dice UNA volta per verdetto, non a ogni tentativo: un avviso ripetuto ogni notte
         // diventa rumore, e il rumore è il modo in cui un allarme smette di essere letto. Non
         // corregge niente — vedi le soglie in lib/maker/confronto-reward.js.
+        // ══ IL RECUPERO A RITROSO (12 agosto 2026) ═══════════════════════════════════════════════
+        // I tre tentativi cadono tutti nella notte, ma il pagamento reward arriva alle ~00:00 del
+        // giorno DOPO e la finestra si dichiara chiusa sei ore piu' tardi: la risposta legittima e'
+        // «non ancora», e dopo il terzo tentativo nessuno tornava a chiedere. Misurato: la giornata
+        // del 2026-08-11 e' rimasta senza consuntivo per questo, con il pagamento gia' visibile nel
+        // registro attivita' pubblico.
+        //
+        // Costa poco e non ha effetti collaterali: la fonte e' pubblica, `registraReale` non
+        // sovrascrive una riga gia' consuntivata, e `giorniDaRecuperare` esclude oggi e l'ieri la cui
+        // finestra non e' ancora chiusa — cioe' non ripropone il caso che ha creato il problema.
+        try {
+          const arretrate = giorniDaRecuperare({ giorni: leggiConfronto().giorni || [], now: Date.now() });
+          for (const g of arretrate) {
+            const rr = await leggiRewardReale({ giorno: g });
+            if (!rr.disponibile) continue;
+            const wr = registraReale({
+              giorno: g, disponibile: true, realeUsd: rr.totaleUsd, motivo: rr.motivo, tentativo: 99,
+              perMercato: rr.perMercato, attribuito: rr.attribuito ?? null, righeLette: rr.righe ?? null,
+              fonte: rr.fonte ?? null, pagamenti: rr.pagamenti ?? null,
+            });
+            if (wr.scritto) log(`CONFRONTO REWARD · RECUPERATA la giornata ${g}: $${Number(rr.totaleUsd).toFixed(2)} (recupero a ritroso)`);
+          }
+        } catch (e) { log('recupero a ritroso NON eseguito:', e && e.message ? e.message : String(e)); }
+
         const d = leggiConfronto().divergenza;
         if (d && d.stato !== ultimoStatoDivergenza) {
           ultimoStatoDivergenza = d.stato;
