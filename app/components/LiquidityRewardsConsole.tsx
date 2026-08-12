@@ -494,6 +494,19 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
   const [conf, setConf] = useState<ConfrontoResp | null>(null);
   const [killBusy, setKillBusy] = useState<'kill' | 'reset' | null>(null);
   const [killMsg, setKillMsg] = useState<string | null>(null);
+  // Lo stato del freno di prova di agent41. Sola lettura, e la fonte è ciò che agent41 ha dichiarato
+  // di sé su disco: il dashboard è un altro processo e l'ambiente di agent41 non ce l'ha.
+  const [freno, setFreno] = useState<{ attivo: boolean | null; motivo: string | null; etichetta: string } | null>(null);
+  useEffect(() => {
+    let vivo = true;
+    const leggi = () => fetch('/api/maker/freno-prova')
+      .then((r) => r.json())
+      .then((b) => { if (vivo) setFreno({ attivo: b?.attivo ?? null, motivo: b?.motivo ?? null, etichetta: b?.etichetta ?? 'SCONOSCIUTO' }); })
+      .catch(() => { if (vivo) setFreno({ attivo: null, motivo: 'stato del freno non raggiungibile', etichetta: 'SCONOSCIUTO' }); });
+    leggi();
+    const t = setInterval(leggi, 30_000);
+    return () => { vivo = false; clearInterval(t); };
+  }, []);
 
   // A slow clock, so every freshness readout AGES VISIBLY between polls instead of looking frozen-fresh
   // until the next fetch lands. 5s is finer than the fastest cadence on this page (20s) and costs one
@@ -1125,6 +1138,20 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
         <button className="ex-btn" onClick={doReset} disabled={killBusy != null} data-lrc-reset>
           {killBusy === 'reset' ? 'Ripristino…' : 'Ripristina'}
         </button>
+        {/* ── IL FRENO DI PROVA DI agent41 ────────────────────────────────────────────────────────
+            Sta QUI, accanto a KILL, e non in una scheda: è la stessa domanda — «il capitale è al
+            sicuro adesso?» — e fino al 12 agosto la risposta era invisibile. Il flag
+            REALLOC_SCHEDULER_DRY_RUN esisteva ma non lo leggeva nessuno, e per due giorni ha fatto
+            credere che agent41 fosse in prova mentre non lo era. Ora si vede a colpo d'occhio.
+            «SCONOSCIUTO» è un terzo stato e NON vuol dire «piazza»: vuol dire che agent41 non l'ha
+            ancora dichiarato. */}
+        <span
+          className={`lrc-freno ${freno?.attivo === true ? 'is-prova' : freno?.attivo === false ? 'is-vivo' : 'is-ignoto'}`}
+          title={freno?.motivo ?? 'stato del freno di prova di agent41'}
+          data-lrc-freno={freno?.etichetta ?? 'SCONOSCIUTO'}
+        >
+          {freno?.attivo === true ? '🧪 agent41 IN PROVA' : freno?.attivo === false ? '🔴 agent41 PIAZZA DAVVERO' : '❔ freno SCONOSCIUTO'}
+        </span>
         <span className="lrc-killnote">
           {killMsg ?? 'KILL ferma ogni corsia e cancella tutto sul venue. Ripristina verifica da due fonti che non resti esposizione.'}
         </span>
@@ -2810,6 +2837,13 @@ const CSS = `
 .lrc-modal-body { overflow-y: auto; padding: 4px 13px 13px; }
 
 .lrc-killnote { font-size: 10.5px; color: var(--ex-txt-3); line-height: 1.4; flex: 1 1 140px; min-width: 0; }
+/* Il freno di prova: compatto, leggibile su mobile, e con tre stati distinti — «sconosciuto» non deve
+   somigliare a «disinserito», perche' e' l'errore che ha ingannato una persona per due giorni. */
+.lrc-freno { font-size: 10.5px; font-weight: 700; letter-spacing: .02em; padding: 3px 8px; border-radius: 999px;
+  white-space: nowrap; border: 1px solid transparent; }
+.lrc-freno.is-prova { color: #7dd3a7; background: rgba(45,160,110,.12); border-color: rgba(45,160,110,.35); }
+.lrc-freno.is-vivo  { color: #ff9b9b; background: rgba(200,60,60,.14);  border-color: rgba(200,60,60,.42); }
+.lrc-freno.is-ignoto{ color: var(--ex-txt-3); background: rgba(140,140,140,.12); border-color: rgba(140,140,140,.3); }
 
 .lrc-ladderbox { padding: 12px; margin-bottom: 12px; }
 .lrc-rulesbox { padding: 12px; margin-bottom: 4px; }

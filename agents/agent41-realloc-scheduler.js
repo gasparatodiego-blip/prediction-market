@@ -966,6 +966,23 @@ async function miniCiclo(decisione, deps = {}) {
   // liquido — NON `liquido + ordini`, che era la stima gonfiata del doppio conteggio: un BUY a riposo e'
   // gia' coperto da quel liquido. Il ripiego e' quindi la stima piu' BASSA possibile, quindi il tetto
   // per mercato piu' stretto, e sbagliare in difetto qui vuol dire piazzare meno: il verso sicuro.
+  // ── LA RICONCILIAZIONE, PRIMA DI AGIRE ────────────────────────────────────────────────────────
+  // Il saldo con cui il TRIGGER ha deciso di svegliarsi e quello con cui la MISURA calcola quanto
+  // impegnare devono essere lo stesso conto. Finche' nessuno li confrontava, uno dei due poteva
+  // essere assurdo senza che niente lo dicesse — ed e' esattamente cio' che e' successo il 12 agosto.
+  // Oltre soglia si FERMA il giro dichiarando il motivo: agire su un capitale che non si sa quanto
+  // sia vuol dire impegnare denaro gia' impegnato altrove.
+  const ric = UTIL.riconcilia({
+    a: decisione.saldoUsd, b: utilPrima.leggibile ? utilPrima.saldoUsd : null,
+    etichettaA: 'saldo del trigger', etichettaB: 'saldo della misura di utilizzo',
+  });
+  if (!ric.concorde) {
+    annuncia('log', `mini-ciclo FERMATO — ${ric.motivo}`);
+    scrivi({ at: new Date().toISOString(), tipo: 'mini-ciclo', esito: 'fermato-capitale-incoerente',
+      motivo: ric.motivo, scartoUsd: ric.scartoUsd, sogliaUsd: ric.sogliaUsd,
+      saldoTrigger: decisione.saldoUsd, saldoMisura: utilPrima.leggibile ? utilPrima.saldoUsd : null, pid: process.pid });
+    return { azione: 'nessuna', motivo: ric.motivo, riconciliazione: ric };
+  }
   const capitaleTotale = utilPrima.leggibile ? utilPrima.capitaleTotaleUsd : decisione.saldoUsd;
   const capMercato = capPerMarketUsd(capitaleTotale);
   // ── QUANTO SI PUNTA A IMPEGNARE IN QUESTO GIRO ──────────────────────────────────────────────────
@@ -1257,12 +1274,14 @@ async function miniCiclo(decisione, deps = {}) {
   //     tale: il venue conferma gli ordini in modo asincrono, e la misura vera torna al giro dopo
   //     leggendo di nuovo saldo e ordini. Serve a rispondere subito a «quanto ci siamo avvicinati».
   const impegnatoOra = giro.allocatoUsd;
-  const utilDopo = UTIL.misuraUtilizzo({
-    saldoUsd: Math.max(0, decisione.saldoUsd - impegnatoOra),
-    ordiniARiposoUsd: +(aRiposo + impegnatoOra).toFixed(4),
-    posizioniUsd: valorePos,
-    motivoDeficit: giro.motivoStop,
-  });
+  // ── DERIVATO DALLA MISURA DI PRIMA, NON RICALCOLATO DA CAPO ────────────────────────────────────
+  // Qui c'era `saldoUsd: Math.max(0, decisione.saldoUsd - impegnatoOra)` insieme a
+  // `ordiniARiposoUsd: aRiposo + impegnatoOra`: lo STESSO importo sottratto dal saldo E aggiunto agli
+  // ordini, cioe' contato due volte. Su questo venue un BUY a riposo tiene il collaterale nel wallet
+  // fino al match, quindi piazzare NON abbassa il saldo. Il 12 agosto produceva «$273,11 al lavoro /
+  // $273,11 totali · liberi $0,00» a fronte di un saldo vero di $663,11.
+  // `misuraDopo` non accetta il saldo come parametro: l'errore non e' piu' esprimibile.
+  const utilDopo = UTIL.misuraDopo(utilPrima, impegnatoOra, { motivoDeficit: giro.motivoStop });
 
   // 9 · L'AUDIT, con un motivo TUTTO SUO. Serve a poter contare nel tempo quante volte il trigger e'
   //     scattato e quanto capitale ha rimesso al lavoro, senza confonderlo coi cicli fissi.
