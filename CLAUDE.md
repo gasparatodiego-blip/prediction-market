@@ -3,7 +3,23 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt**: non serve più reincollarlo ogni volta.
 
-Ultima verifica contro codice/stato reali: **12 agosto 2026**, ~21:40 UTC (§5 punto 114).
+Ultima verifica contro codice/stato reali: **12 agosto 2026**, ~21:55 UTC (§5 punti 114-115).
+
+> ## ⚛️ LA COPPIA SI VALUTA PRIMA, NON SI RIPARA DOPO — §5 punto 115
+> Le due gambe si inviano in **sequenza** e il tetto per ordine si valuta per **singolo ordine**: su un
+> mercato a mid estremo la gamba cara sfonda, e cosa succede dipende **solo dall'ordine di invio** —
+> economica prima ⇒ piazzata e poi ritirata; cara prima ⇒ coppia abbandonata intera.
+> **⚠ IL RIPRISTINO C'ERA E HA SEMPRE FUNZIONATO**: `leg-rolled-back` **×6**, `leg-orphan` **ZERO**.
+> Non era un buco di esposizione — era **spreco**: Massachusetts (mid 0,04) ha inviato e cancellato la
+> stessa gamba **sei volte in un'ora**, due chiamate al venue e una posizione in coda per giro.
+> Adesso un **precontrollo** valuta **entrambe** le gambe prima di inviarne una, con `evaluateManualCapGate`
+> — **la stessa funzione** che poi rifiuterebbe, e lo stesso `caps`. Una gamba fuori ⇒ **zero invii**,
+> `gate: coppia-non-atomica`, riga `coppia-scartata-preflight`.
+> **Si precontrolla ciò che si può sapere prima, si ripristina ciò che si scopre dopo**: banda,
+> mai-primo e minimo premiante dipendono dal **libro all'istante del piazzamento**, e leggerlo qui
+> vorrebbe dire due letture che possono divergere. Per quelli resta il rollback.
+> **Le CHIUSURE restano esenti per costruzione**: il precontrollo vive dentro `if (accoppiato)`, e una
+> riga di uscita non porta `coppia` — è un gruppo di una e non lo attraversa nemmeno.
 
 > ## 🚦 IL TETTO ANTI-RUNAWAY UCCIDEVA GLI ORDINI CHE DOVEVA PROTEGGERE — §5 punto 114
 > Utilizzo fermo al **42,6%** contro l'obiettivo 90%, e **due** cause sulla stessa finestra da 60 s.
@@ -5890,6 +5906,90 @@ una non era iniziata. Questi punti coprono **tutte e sei**, più il rosso che la
      `fisC7rSnXVNFOG7cGEl1x`, `prerender-manifest.json` presente. **La suite non ha toccato lo stato**:
      impronte MD5 identiche su kill, AVVIA/FERMA, allowlist e limiti di rischio; le uniche righe nuove
      in `execution-audit.jsonl` sono i rinnovi del bot vivo (`auto-reprice-band-exit`, 21:25-21:26).
+
+115. **IL PIAZZAMENTO DELLA COPPIA È ATOMICO IN PRECONTROLLO — 12 agosto 2026, ~21:55 UTC.**
+
+     **LA PREMESSA ERA IN PARTE SBAGLIATA, E LA MISURA L'HA DETTO PRIMA DEL CODICE.** L'ipotesi era che
+     l'asimmetria del tetto per ordine producesse **gambe orfane permanenti**. Non è così: il ripristino
+     esiste in `bulk-allocate` da sempre e ha funzionato **ogni volta** — `leg-rolled-back` **×6**,
+     `leg-orphan` **ZERO** su tutta la giornata, e `cancelOrder` è iniettato in tutti e tre i punti in
+     cui agent41 chiama la corsia. Quindi **non era un buco di esposizione**.
+
+     **Quello che era davvero rotto è lo SPRECO, e si vede nel conteggio:** Massachusetts (`0xcace1894`,
+     mid **0,04**) ha ripetuto lo stesso ciclo **sei volte in un'ora** — invio della gamba economica
+     ($1,06), rifiuto della cara ($24,64 contro il tetto $21,34), cancellazione della prima. Due chiamate
+     al venue e una posizione in coda bruciate a ogni giro, più una finestra di ~0,5 s in cui una gamba
+     sola era davvero sul libro e poteva essere riempita. E su Vindman (mid 0,913) la stessa causa dava
+     l'esito opposto — coppia abbandonata intera — **solo perché la gamba cara veniva per prima**.
+
+     **IL FIX: un precontrollo dentro il ramo della coppia.** Prima di inviare qualunque gamba si valuta
+     il controvalore di **entrambe** con `evaluateManualCapGate` — **la stessa funzione** che rifiuterebbe
+     al gate vero, con **lo stesso oggetto `caps`**. Una gamba fuori ⇒ **nessuna delle due parte**, gate
+     `coppia-non-atomica`, una riga `coppia-scartata-preflight` che nomina quale gamba e con che
+     controvalore. **L'esito non dipende più dall'ordine di invio**, ed è la sezione 2 del test.
+
+     **⚠ COSA SI PRECONTROLLA E COSA NO — la distinzione è deliberata e va tenuta.** Il tetto per ordine
+     è **puro e deterministico**: dipende da controvalore e limiti, entrambi già noti. Banda,
+     `mai-primo-sul-libro` e minimo premiante dipendono invece dal **libro nell'istante del piazzamento**:
+     leggerlo nel precontrollo vorrebbe dire **due letture del book a mezzo secondo di distanza che
+     possono divergere**, cioè un precontrollo che dice «passa» su un libro che non è più quello — la
+     classe di difetto che questo repo ha già incontrato più volte. Per quelli la garanzia resta il
+     **ripristino**, che agisce sul fatto invece che sulla previsione. *Si precontrolla ciò che si può
+     sapere prima, si ripristina ciò che si scopre solo dopo.*
+     Tetto per **mercato** e **capitale** non si precontrollano qui perché non appartengono a questo
+     punto: il primo è già dentro la griglia da cui la riga nasce (`allocateBudget` non produce livelli
+     oltre il tetto), il secondo è il cap cumulativo, che guarda già la coppia intera.
+
+     **LE CHIUSURE RESTANO ESENTI, E LA GARANZIA È STRUTTURALE.** Il precontrollo vive dentro
+     `if (accoppiato)`, e `accoppiato` è vero solo per un gruppo di più righe. Una riga di uscita non
+     porta `coppia`, quindi è un gruppo di **una** e il precontrollo non la vede nemmeno. Provato con un
+     SELL da **$90** — quattro volte il tetto per ordine — che passa e arriva alla corsia dove vive
+     l'esenzione di chiusura di §5 punto 76.
+
+     **I QUATTRO PERCORSI, verificati per nome:** piano di agent41, mini-ciclo e le due rotte del
+     pannello passano **tutti** da `bulk-allocate`, quindi un precontrollo lì li copre tutti. Il
+     **riprezzo di agent40 e la corsia manuale non costruiscono coppie** — zero occorrenze di `coppia:`
+     in `auto-reprice.js` e `manual-order.js` — e non devono: è lì che vivono le uscite a gamba singola.
+
+     **LE GAMBE SOLE VIVE, misurate alle 21:48 dalla fonte autorevole** (il ciclo di agent40, che le
+     legge dal venue e le dichiara come `LATO SINGOLO`): **tre, non sei**.
+
+     | mercato | resta | mid | matura |
+     |---|---|---|---|
+     | `0x791c61d4` | NO | 0,535 | **Q/3** |
+     | `0xcb034071` | NO | 0,435 | **Q/3** |
+     | `0xd99edda0` | NO | 0,555 | **Q/3** |
+
+     **Tutte e tre dentro `[0,10 · 0,90]`: nessuna a rendimento zero, nessuna da cancellare.** E la loro
+     causa **non è l'asimmetria del tetto**: gli audit di quei tre mercati portano `scaduto-senza-rinnovo`
+     (3+1+1) preceduto da `skip-rate-limited` (6+6+5), cioè **la gamba mancante è morta per scadenza GTD
+     dopo che il rinnovo era stato rifiutato dal rate limit** — la causa ② già corretta al punto 114.
+
+     **⚠ LACUNA APERTA E DICHIARATA, NON CORRETTA: nessuno riaccoppia una gamba sola.** Il ramo
+     `latoSingolo` di `auto-reprice.js` con verdetto `tieni` fa **solo** `latiSingoli.push(...)` — non
+     ripiazza la gamba mancante. Il commento accanto dice «mentre il ciclo ritenta l'altro lato», ed è
+     una frase che **nessun codice mantiene**: è la stessa classe di §5 punto 113, un commento che
+     descrive un comportamento che non esiste. Il mercato torna accoppiato solo se il mini-ciclo di
+     agent41 lo riseleziona, il che dipende dallo spazio residuo sotto il tetto e non dal fatto che gli
+     manchi una gamba. **Non corretto in questa sessione**: riaccoppiare significa piazzare capitale
+     nuovo, e va deciso dall'operatore.
+
+     **File:** `lib/maker/bulk-allocate.js` (il precontrollo) · nuovo `lib/maker/coppia-atomica.test.js`
+     (**29/29**, e **provato che cade senza il fix: 12 asserzioni rosse**).
+
+     **Tre test preesistenti aggiornati.** `bulk-allocate.test.js` e `conferma-un-tocco.test.js` avevano
+     un `caps` finto **senza `effectiveOrderCapUsd`**: `resolveCaps` lo ha sempre restituito, ma finché
+     nessuno lo leggeva la fixture poteva ometterlo — e ometterlo ora vale `cap-missing`, che è il
+     comportamento **giusto** (limite assente ≠ illimitato). Il terzo è più interessante:
+     `tetto-per-ordine.test.js` asseriva **«questo lavoro non ha toccato bulk-allocate» leggendo
+     `git diff --name-only HEAD`** — non una proprietà, una fotografia del working tree, verde durante
+     la lavorazione e rossa un minuto dopo il commit. È **la stessa trappola di §5 punto 71, ripetuta**.
+     Sostituita con la proprietà che voleva davvero: bulk-allocate non deve ridichiarare un tetto per
+     ordine proprio, e quando lo valuta deve usare la funzione condivisa.
+
+     **Suite: 195 eseguiti, 188 verdi, 7 rossi** — i preesistenti del punto 84, zero nuovi.
+     `npm run build` verde, `BUILD_ID` `nHW_RGX3ksSCn5lwYTB-K`. Stato di produzione intatto: impronte
+     MD5 identiche su kill, AVVIA/FERMA e limiti di rischio prima e dopo la suite.
 
 ---
 
