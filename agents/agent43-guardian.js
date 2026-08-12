@@ -89,8 +89,15 @@ const { leggiSaldoUsd } = require('../lib/maker/saldo-cache');
 const { readVenuePositions } = require('../lib/safety/venue-positions-snapshot');
 const { atomicWriteJson } = require('../lib/atomicJsonWrite');
 const { DATA_DIR } = require('../lib/safety/store');
+// ── LA RIGA D'AUDIT DELL'AZZERAMENTO DEL LATCH ──────────────────────────────────────────────────────
+// Il giornale maker, lo stesso che usano gli altri percorsi. E' una SCRITTURA SU FILE e nient'altro:
+// `audit.js` importa `fs`, `path`, `redact`, `DATA_DIR` e la rotazione — nessuna superficie di
+// piazzamento o di firma. La proprieta' che il test dell'albero dei `require` difende resta intatta.
+const { appendMakerAudit } = require('../lib/venues/polymarket-clob-maker/audit');
+const audit = (riga) => appendMakerAudit(riga);
 const {
   valutaCapitale, calcolaPnl, decidiScatto, baselineDaScrivere, leggiBaseline, costruisciEventoGuardian,
+  valutaLatch, eventoRiarmo, ETA_RIARMO_MS,
 } = require('../lib/maker/guardian-perdite');
 
 const ENV_FILES = ['.env.local', '.env'];
@@ -165,13 +172,58 @@ async function poll(deps = {}) {
   // Già scattato ⇒ non si rifà niente. Senza questa, ogni 30 secondi partirebbe una nuova spazzata e un
   // nuovo referto sulla stessa perdita, e l'operatore che riarma il bot per rimetterlo in piedi se lo
   // vedrebbe rispegnere al giro dopo — un guardiano che litiga con la persona che deve riarmarlo.
-  const stato = deps.stato || readJson(stateFile);
-  if (stato && stato.scattato === true) {
-    return { azione: 'gia-scattato', scattatoAl: stato.atIso || null,
-      motivo: 'il guardiano ha già scattato: nessun auto-riarmo. Cancella data/guardian-state.json per rimetterlo in servizio.' };
+  // ══ IL LATCH NON SI LEGGE PIU' COME UN BOOLEANO (12 agosto 2026) ════════════════════════════════
+  // Era: `scattato === true` ⇒ esci, e nient'altro veniva guardato. Conseguenza misurata: il latch del
+  // 9 agosto teneva il guardiano fuori servizio il 12, con il P&L tornato a +$2,54 su soglie -$30/-5%
+  // — cioe' nel momento in cui il capitale era sano, nessuno lo sorvegliava.
+  //
+  // Adesso il latch si VALUTA dal P&L corrente. Ma il P&L costa una lettura del venue, e leggerlo prima
+  // di sapere se serve significherebbe farlo a ogni giro anche a latch fresco: si guarda quindi prima
+  // l'eta'. Sotto le 24h la risposta e' la stessa di prima e non si legge niente.
+  // `!== undefined` E NON `||`: un chiamante che passa `stato: null` sta DICHIARANDO che non c'e'
+  // latch, e con `||` quella dichiarazione veniva ignorata cadendo sul file vero. E' la stessa forma
+  // di `baselineRaw` due blocchi piu' sotto, che questa riga non seguiva.
+  const stato = deps.stato !== undefined ? deps.stato : readJson(stateFile);
+  const latchPresente = !!(stato && stato.scattato === true);
+  let capitale = null;
+
+  if (latchPresente) {
+    const etaMs = Number.isFinite(Number(stato.at)) ? now - Number(stato.at) : null;
+    if (etaMs == null || etaMs < ETA_RIARMO_MS) {
+      const l = valutaLatch({ stato, pnl: null, sogliaPct: soglie.pct, sogliaAbs: soglie.abs, now });
+      return { azione: 'gia-scattato', scattatoAl: stato.atIso || null, etaMs, motivo: l.motivo };
+    }
+    // Oltre le 24h: adesso il P&L serve davvero, e decide lui.
+    capitale = await capitaleOra(deps);
+    const baselineRawL = deps.baselineRaw !== undefined ? deps.baselineRaw : readJson(baselineFile);
+    const baselineL = leggiBaseline(baselineRawL);
+    const pnlL = (capitale.leggibile && baselineL.valido)
+      ? calcolaPnl({ baselineUsd: baselineL.baselineUsd, totaleUsd: capitale.totaleUsd })
+      : null;
+    const l = valutaLatch({ stato, pnl: pnlL, sogliaPct: soglie.pct, sogliaAbs: soglie.abs, now });
+    if (!l.azzera) {
+      return { azione: 'gia-scattato', scattatoAl: stato.atIso || null, etaMs: l.etaMs, motivo: l.motivo };
+    }
+    // ── L'AZZERAMENTO, DICHIARATO PRIMA DI ESSERE FATTO ────────────────────────────────────────
+    // La riga d'audit si scrive PRIMA di togliere il file: se la cancellazione fallisce resta la
+    // traccia del tentativo, e «ho provato e non ci sono riuscito» e' un'informazione. Al contrario,
+    // cancellare e poi non riuscire a scrivere l'audit lascerebbe un azzeramento muto.
+    const ev = eventoRiarmo({ stato, pnl: pnlL, etaMs: l.etaMs, motivo: l.motivo, at: now });
+    try { (deps.audit || audit)(ev); } catch { /* un audit che non riesce non blocca il riarmo */ }
+    let tolto = false;
+    try {
+      if (typeof deps.rimuoviStato === 'function') { deps.rimuoviStato(stateFile); tolto = true; }
+      else { fs.unlinkSync(stateFile); tolto = true; }
+    } catch (e) {
+      return { azione: 'riarmo-fallito', motivo: `latch da azzerare ma il file non si e' potuto rimuovere: ${e.message}` };
+    }
+    log(`LATCH AZZERATO — ${l.motivo}`);
+    // Si prosegue nello STESSO giro: il guardiano e' di nuovo in servizio adesso, non fra trenta
+    // secondi, e il capitale e' gia' letto.
+    void tolto;
   }
 
-  const capitale = await capitaleOra(deps);
+  if (!capitale) capitale = await capitaleOra(deps);
 
   // ── IL BASELINE ───────────────────────────────────────────────────────────────────────────────────
   // Sopravvive ai riavvii di proposito (vedi guardian-perdite). Si crea solo se manca, e solo se il
