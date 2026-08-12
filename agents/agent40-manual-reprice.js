@@ -128,7 +128,7 @@ const { leggiRewardReale } = require('../lib/maker/reward-reale');
 // dal database — nessuna connessione Prisma entra in questo processo.
 const { buildMarketBoard, buildOrderBoard, buildSummary } = require('../lib/maker/operator-board');
 const { AUTO_CLOSE_SOURCE } = require('../lib/maker/auto-close-config');
-const { writeVenuePositions, readVenuePositions } = require('../lib/safety/venue-positions-snapshot');
+const { writeVenuePositions, readVenuePositions, readVenuePositionsConRefresh } = require('../lib/safety/venue-positions-snapshot');
 // L'AVVISO SUI RESIDUI CHE MUOIONO SOTTO LA SOGLIA MINIMA. Deposita in data/ quello che il ciclo scopre,
 // perché lo legga la dashboard: la riga di log da sola non ha mai avvisato nessuno (0x4c19a7, 5 agosto).
 const { registraResiduiSottoSoglia } = require('../lib/maker/residui-sotto-soglia');
@@ -416,10 +416,28 @@ async function leggiPosizioniVenue() {
   // tetto di esposizione non le vedeva.
   try {
     const w = writeVenuePositions(p);
-    if (!w.written) log('snapshot posizioni NON aggiornato:', w.reason);
+    if (!w.written) {
+      // ── IL 429 SI RICONOSCE, E SI DICE ────────────────────────────────────────────────────────
+      // «Il venue ci sta limitando» e «il venue e' caduto» portano entrambi a uno snapshot vecchio, ma
+      // sono due diagnosi diverse: il primo si risolve aspettando, il secondo no. `fetchVenuePositions`
+      // ora classifica, e qui il tipo finisce nel log invece di essere schiacciato in «non aggiornato».
+      log(`snapshot posizioni NON aggiornato: ${w.reason}`
+        + (p && p.tipo ? ` · causa: ${p.tipo}${p.tentativi ? ` dopo ${p.tentativi} tentativi con backoff` : ''}` : ''));
+    }
   } catch (e) { log('snapshot posizioni fallito:', e && e.message ? e.message : String(e)); }
   ultimePosizioni = { at: now, res: p };
   return p;
+}
+
+// ── L'ULTIMO TENTATIVO PRIMA CHE UN PIAZZAMENTO VENGA RIFIUTATO PER SNAPSHOT VECCHIO ──────────────
+// Sopra i 180 s ogni piazzamento viene rifiutato. La soglia NON si allarga — e' la protezione che
+// impedisce di piazzare su una fotografia vecchia delle posizioni — ma prima di arrendersi si prova a
+// RIFARE la fotografia, saltando la cache dei 5 secondi (che qui sarebbe proprio il dato stantio).
+// Se non riesce, il rifiuto arriva identico a prima.
+async function posizioniFrescheOFallisci() {
+  return readVenuePositionsConRefresh({
+    refresh: async () => { ultimePosizioni = { at: 0, res: null }; await leggiPosizioniVenue(); },
+  });
 }
 
 // ── LO SNAPSHOT HA IL SUO OROLOGIO, E NON LO PRENDE IN PRESTITO DA NESSUNO ────────────────────────
@@ -713,7 +731,11 @@ async function scansioneRegistri({ forzata = false } = {}) {
   } catch { perMercato = null; }
 
   const board = mercatiSulBoard();
-  const snap = readVenuePositions();
+  // Qui si USA l'ultimo tentativo: la scansione puo' permettersi di aspettare un refresh, e uno
+  // snapshot illeggibile le farebbe saltare tutti i mercati con posizione — cioe' esaminare meno di
+  // quanto dovrebbe. Se il refresh non riesce, si prosegue con `posizioni: null`, che e' dichiarato.
+  const snap = await posizioniFrescheOFallisci();
+  if (snap && snap.rinfrescato) log(`scansione registri · snapshot posizioni: ${snap.motivoRefresh}`);
   const posizioni = (snap && snap.readable === true)
     ? (snap.positions || []).map((p) => ({ marketId: String(p.conditionId || p.marketId || '').toLowerCase() })).filter((x) => x.marketId)
     : null;
