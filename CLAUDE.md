@@ -3,8 +3,40 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt**: non serve più reincollarlo ogni volta.
 
-Ultima verifica contro codice/stato reali: **12 agosto 2026**, ~11:10 UTC (§5 punti 85-91 — sei voci del
-blocco B, un commit per ciascuna).
+Ultima verifica contro codice/stato reali: **12 agosto 2026**, ~12:20 UTC (§5 punti 92-98 — le sei voci
+del blocco C, più il rosso che la suite ha trovato).
+
+> ## 🛡️ NESSUN PROCESSO CRITICO PUÒ PIÙ ARRENDERSI DOPO CINQUE MINUTI — §5 punto 97
+> `max_restarts: 20` + `min_uptime` di difetto (1 s) volevano dire: **20 crash rapidi × 15 s = 5 minuti**,
+> poi `errored` e **pm2 smette di riprovare**. Su `agent43-guardian` e `agent40` significa capitale senza
+> sorveglianza e posizioni senza gestione, e dal 9 agosto **nessuno guarda più il loro battito**. Adesso
+> `min_uptime: 30 s` (chi regge 30 s azzera il contatore) e `max_restarts: 500` — da 42 minuti a 8 ore di
+> tentativi. In **un punto solo** del config, non in dieci blocchi.
+> **PROVATO CON `kill -9` SU TUTTI E NOVE** (agent41 escluso per istruzione): 9 su 9 tornati con pid nuovo
+> e con una riga di lavoro dopo il riavvio.
+
+> ## 🔌 IL DASHBOARD NON SI RIALZAVA DA UN CRASH, E L'HA DETTO IL `kill -9` — §5 punto 97
+> pm2 gestiva `npm`, che lancia `next start`, che lancia `next-server`: **la porta 3000 la teneva il
+> nipote**. Un `kill -9` lasciava `next-server` **orfano e vivo** con la porta occupata ⇒ EADDRINUSE a
+> ogni rilancio, **30 riavvii instabili in tre minuti**, e servizio tornato solo uccidendo l'orfano a mano.
+> Con la politica vecchia sarebbe stato `errored` **per sempre**. Ora pm2 esegue il binario di next
+> direttamente: ucciso 12:06:35 → online 12:06:40, HTTP 200, e la porta è tenuta **dallo stesso pid che
+> pm2 gestisce**. Ha richiesto `pm2 delete` + `pm2 start`, autorizzato dall'operatore.
+
+> ## 🏷️ IL RESET DISTINGUE PER ORIGINE, MA UNA SORGENTE SU TRE HA IL NOME SBAGLIATO — §5 punto 96
+> `SORGENTI_AUTOMATICHE` contiene `'auto-close'`; la costante vera è **`'auto-close-on-fill'`**. Misurato
+> sul giornale vivo: **4.686 righe** `auto-close-on-fill → manual-ui`, zero `→ auto`. Sbagliata **dal
+> commit che ha introdotto il meccanismo**. Il reset quindi risparmia le uscite protettive — che è
+> probabilmente ciò che si vuole — **per accidente e non per decisione**. Solo diagnosi: correggere la
+> stringa CAMBIA il comportamento, ed è una scelta dell'operatore.
+
+> ## ⏱️ IL PIANO NASCE SENZA LA SCADENZA CON CUI VERRÀ GIUDICATO — §5 punto 98
+> `CICLO FERMATO` del 12 agosto 09:42: 11 mercati esclusi su tre passate, **tutti** della stessa coorte a
+> `2026-08-13T00:00:00Z`. Non è il venue a rifiutarli: è `HORIZON_MIN_HOURS = 24` con 14,3 ore residue.
+> Due pavimenti per la stessa domanda — pianificatore **18 h**, verifica **24 h** — e in mezzo una fascia
+> di disaccordo permanente. Ma qui erano sotto entrambe: **il board normalizzato non porta `endDate`**
+> (306 righe su 306; ha `hoursToResolution`), e scadenza assente vale `unknown`, che **non esclude mai**.
+> **Il fail-closed ha funzionato: nessun ordine toccato.**
 
 > ## ⏱ LA CHIUSURA FORZATA A 3 ORE ESISTEVA E NON POTEVA SCATTARE — §5 punto 85
 > Due cause, nessuna era il numero. **①** Il verdetto si calcolava DOPO la guardia `livello !== 1 && !== 2`:
@@ -4923,6 +4955,147 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     innocuo. I due mercati sono stati sanati con lo stesso ordine.
     **Baseline dei test: 178 eseguiti, 171 verdi, 7 rossi** — i preesistenti, zero nuovi.
     `BUILD_ID` `8Yo_ljg3NeybO2MCSJRcc`.
+
+---
+
+## 5-bis · IL BLOCCO C — le sei voci, 12 agosto 2026
+
+Il blocco C è stato interrotto a metà: quattro voci erano committate, una era a metà nel working tree e
+una non era iniziata. Questi punti coprono **tutte e sei**, più il rosso che la suite ha trovato.
+
+92. **VOCE 1 · LA SOVRASTIMA DEL 465% È UN TASSO LETTO COME QUANTITÀ — sola diagnosi** (commit `c01c498`,
+    report in `docs/diagnosi-sovrastima-465.md`). `estUsdPerDay` è un **tasso** («se le cose restassero
+    così, in 24 h incasseresti tanto»), fotografato **una volta** alle 23:55 sugli ordini vivi in
+    quell'istante, e confrontato con il **bonifico della giornata**, che è una quantità realizzata su
+    24 ore. Le due grandezze non sono confrontabili se l'ordine non è rimasto vivo tutto il giorno.
+    **L'8 agosto è il 94% dell'intera stima confrontabile** ($49,17 su $52,26) e i suoi tre mercati non
+    esistono nel giornale prima delle **21:42:16** — finestra reale 2,28 h, cioè il **9,5%** della
+    giornata. `$49,17/g × 9,5% = $4,67` attesi contro **$3,68** incassati ⇒ **+27%**, da +1236%. La sola
+    assunzione di durata spiega **il 97,8%** dello scarto di quel giorno.
+    **Controprova che conferma:** il 10 agosto stima $0 contro $4,25 incassati — **sottostima del 100%**,
+    perché alle 23:55 non c'erano ordini vivi mentre le prime sei ore avevano prodotto reward veri.
+    Stessa causa, segno invertito.
+    **Quattro ipotesi verificate e scartate**: la formula non ignora i concorrenti, gli ordini fuori banda
+    non sono contati, la stima usa gli ordini VERI del venue e non i candidati del piano, il minimo del
+    venue restituisce zero e non «ignoto». **Nessuna formula toccata**: la taratura è una decisione
+    dell'operatore, e il residuo del 27% non è distinguibile dal rumore su una giornata sola.
+
+93. **VOCE 3 · LE DUE CADENZE ERANO GIÀ A TERRA: VERIFICATE E BLOCCATE** (commit `d8177af`, solo
+    `lib/maker/cadenze-invarianti.test.js`, 100 righe). **Nessun valore cambiato**: `CADENZA_OPERATIVA_MS`
+    era già 10 minuti dall'8 agosto e `SCAN_INTERVAL_MS` già 15 in agent24. Il file non le applica: le
+    **blocca**, e le costanti si **leggono dal sorgente** invece di essere ricopiate — un test che ricopia
+    la costante che difende non difende niente.
+    **L'invariante**: cadenza operativa (10 min) **<** periodo di scoperta (15 min). Se il trigger potesse
+    agire più spesso di quanto il board si aggiorna, agirebbe due volte sulla stessa fotografia e la
+    seconda crederebbe libero un capitale già impegnato. Il limite di freschezza (25 min) sta sopra il
+    periodo ma sotto il doppio: a 30 una scansione saltata per intero passerebbe inosservata.
+    **Carico misurato riga per riga**: agent24 9,40 + 10,00 · agent41 0,50 + 0,10 · agent40 12,00 + 1,33 =
+    **33,33 req/min = 0,56 req/s**, con la fase più pesante di agent24 a **un nono** del pacing che
+    agent24 si impone da solo.
+
+94. **VOCE 4 · TRE CECITÀ DIVERSE SOTTO LO STESSO OROLOGIO** (commit `39a41bf`). **Il timeout era già
+    20 secondi** (`TIMEOUT_DEFAULT_MS`, env con clamp [5 s, 120 s]): nessun valore cambiato.
+    **Il difetto era nei log.** `GATE_CIECHI` raccoglie `mid-stale`, `mid-not-live` e `mid-age-unknown`,
+    che portano alla stessa **azione** — e giustamente: in tutti e tre non sappiamo che prezzo c'è. Ma non
+    sono la stessa **diagnosi**: «il feed pubblica in ritardo» e «non c'è nessun libro» si risolvono in
+    due modi diversi, e finivano entrambi in `mid-stantio-*`, indistinguibili.
+    Ora l'esito è `cecita-timeout-{mid-stantio|nessun-libro|eta-ignota}` con il conteggio **per causa**;
+    la cancellazione per ordine tiene `mid-stantio-cancellato` come **prefisso**, così la serie storica
+    non si spezza. **Il comportamento non cambia di una riga.** La terza etichetta chiesta — «ordine
+    orfano» — era già distinta (`gamba-orfana-scaduta`) e non passa dai gate ciechi: non è cecità, il
+    book si vede benissimo.
+
+95. **VOCE 5 · VERIFICA DI TENUTA DEI BLOCCHI A+B: TRE PUNTI REGGONO, IL QUARTO AVEVA UNA LACUNA**
+    (commit `218f46c`). Rilettura a freddo delle dodici correzioni sui quattro punti dove si toccano.
+    **Tengono**: pulizia registri vs allowlist del riprezzo (si toglie prima dalla allowlist, poi si
+    spegne l'uscita, e oggi i mercati piazzabili senza via d'uscita sono **zero**) · bordo esterno vs
+    «mai primo» vs banda (il ramo «soli» nasce dentro banda, e con un concorrente che spingerebbe fuori
+    banda il lato **non si quota**) · chiusura forzata vs merge livello 3 (verdetto prima della guardia,
+    esecuzione dopo le cancellazioni) · filtro di quotabilità vs ridistribuzione.
+    **La lacuna**: `da-ripianificare.json` è diventato persistente il giorno prima e **non era
+    nell'elenco della scansione dei registri**. Un mercato la cui unica traccia fosse una voce in coda non
+    sarebbe stato visitato. Si pota da sola a 24 h, quindi il danno era limitato — ma «si pota da sola» e
+    «viene ripulita quando il mercato muore» sono due cose diverse. **I registri governati passano da sei
+    a SETTE**, e il selfcheck ora li **deriva** da `REGISTRI` invece di contarli a mano.
+
+96. **VOCE 6 · IL RESET DISTINGUE PER ORIGINE — MA UNA SORGENTE SU TRE HA IL NOME SBAGLIATO.**
+    **Sola diagnosi** (commit `434cd1a`, report in `docs/diagnosi-origine-ordini-reset.md`). agent41 non
+    è stato riavviato e il suo flag di dry-run non è stato toccato.
+    **Sì, distingue**: `leggiOrigini` è iniettata a `agent41:570` ed è l'unico interruttore;
+    `separaPerOrigine` passa alla cancellazione **solo ciò che è provatamente `auto`**, e `manual-ui` e
+    `ignota` restano sul libro. Il pannello non la inietta, ed è giusto — lì a premere il bottone c'è
+    davvero l'operatore. Sono gli unici due chiamanti del reset in tutto il repo. Registro illeggibile ⇒
+    mappa vuota ⇒ **non si cancella niente**: il verso giusto.
+    **Il buco, misurato** sul giornale vivo (237.500 righe): `manual-ui→manual-ui` 1.324 ✅ ·
+    `manual-ui→auto` 214 ✅ · `auto-reprice-band-exit→auto` 103 ✅ · **`auto-close-on-fill→manual-ui`
+    4.686 ❌**. `SORGENTI_AUTOMATICHE` contiene `'auto-close'`, la costante vera è
+    `AUTO_CLOSE_SOURCE = 'auto-close-on-fill'`, e `origineDaSource` risponde `manual-ui` a qualunque
+    sorgente sconosciuta. `git log -S`: **sbagliata dal commit che ha introdotto il meccanismo**.
+    **L'effetto sul reset è sicuro ma accidentale** (le uscite protettive vengono risparmiate); **quello
+    sul registro è un danno presente**: 4.686 righe dicono che una persona ha piazzato ordini che nessuna
+    persona ha toccato.
+    **Quattro punti proposti e NON implementati**: (P1) decidere fra «cancellare anche le uscite» e «un
+    terzo valore di origine che il reset non tocca» — raccomandato il secondo, perché correggere la
+    stringa **cambia il comportamento**; (P2) **importare** le tre costanti invece di ricopiarle, più un
+    test che pretenda che ogni corsia sia classificata; (P3) l'intestazione di `mappaOrigini` dichiara
+    «lettura intera e senza cache» mentre il corpo usa quella incrementale **accumulativa** — reperto
+    **D7**, il codice è giusto e il commento è rimasto indietro; (P4) dichiarare che la mappa vede solo il
+    file vivo (~20 h dalla rotazione) e perché oggi è innocuo.
+
+97. **VOCE 2 · RIAVVII AUTOMATICI ROBUSTI, E IL DASHBOARD CHE NON SI RIALZAVA** (commit `4c4bb9f` e
+    `7b7e09f`). Vedi i due banner in cima. Quello che va tenuto qui:
+    - **la politica vive in UN punto solo** in coda a `ecosystem.config.js` (`RIAVVIO_ROBUSTO` +
+      `PROCESSI_CRITICI`), non in dieci blocchi: la stessa decisione ripetuta dieci volte è il reperto
+      **D1**, e qui la divergenza vorrebbe dire «un critico ha una politica diversa e nessuno se n'è
+      accorto». Il test legge i valori **finali** dal modulo, quindi un blocco che ridichiarasse
+      `max_restarts: 20` verrebbe visto lo stesso;
+    - **`restart_delay` NON è stato toccato** e resta per-agente (**6 valori distinti**, e un test lo
+      pretende: appiattirli sarebbe una regressione travestita da uniformità). agent24 conserva i suoi
+      60 s per non martellare Gamma;
+    - **agent44-audit-scoperta resta fuori per costruzione**: `autorestart:false` + cron è la sua politica
+      giusta, applicargli questa lo renderebbe un processo sempre vivo;
+    - **⚠ diventa effettiva solo con `pm2 restart agents/ecosystem.config.js --only <nome>`**: pm2 tiene
+      la propria copia in memoria e un `pm2 restart <nome>` non rilegge il file;
+    - **⚠ agent41 NON è stato riavviato** (istruzione esplicita dell'operatore), quindi **gira ancora con
+      `max_restarts: 20` e senza `min_uptime`**: è l'unico critico ancora sulla politica vecchia. Il suo
+      blocco nel file è già aggiornato e la politica entrerà al primo riavvio da file.
+    - **la prova sul campo**: SIGKILL simultaneo alle **11:54:46** su nove processi, **9 su 9** tornati
+      `online` con pid nuovo e con una riga di lavoro successiva al riavvio. Il dashboard è l'unico che ha
+      fallito, per la causa strutturale nel banner, e dopo la correzione ha superato la prova.
+
+98. **IL ROSSO CHE LA SUITE HA TROVATO, E CHE NON VENIVA DA OGGI** (commit `a51174f`).
+    `riprezzo-atomico.test.js` cercava `outcome: 'mid-stantio-timeout'` come **stringa letterale**; la
+    voce 4 (commit di ieri sera) l'ha rinominato in `cecita-timeout-${causa}`, calcolato a runtime.
+    Il test è diventato rosso **senza che si fosse rotto niente**: segnalava un rinominamento, non un
+    difetto. **La sessione precedente non ha rieseguito la suite dopo quel commit**, quindi il rosso non
+    era stato visto.
+    **La correzione non reinserisce la stringa nuova** — sarebbe lo stesso difetto con un valore
+    aggiornato, rosso di nuovo al prossimo rinominamento. Il marcatore diventa
+    `action: 'mid-stantio-cancel'`, cioè **il nome della cosa che fa** invece del nome della sua riga di
+    log: quella sezione difende che il percorso *cancelli* senza passare da `replaceManualOrder`.
+    **Baseline aggiornata: 182 eseguiti, 175 verdi, 7 rossi** — i 7 preesistenti del punto 84, zero
+    nuovi. I 182 sono i 178 del punto 84 più due test del blocco C di ieri (`cadenze-invarianti`,
+    `cecita-distinta`) e due di oggi (`carica-env`, `riavvio-robusto`).
+
+99. **IL CARICATORE `.env` SUI TRE AGENT RESTANTI, MA RISTRETTO** (commit `e0400b3`). La voce era a metà
+    nel working tree: il blocco generico di agent40 copiato in agent24/34/42 e mai committato. **La misura
+    dice che quella forma faceva due cose, e nessuna era quella voluta.**
+    **Non risolveva niente**: le uniche variabili che i tre leggono sono `REWARD_*`, `MID_HISTORY_*` e
+    `WATCH21_*`, e **nessuna di queste è in `.env`** (che ne contiene 19, tutte di altre famiglie).
+    **E allargava l'ambiente dei due processi senza chiavi**: `.env` porta `KEY_CUSTODY_MASTER`,
+    `POLYGON_RPC_URL`, `DATABASE_URL` e `MAKER_FUNDER_ADDRESS`, e misurato sui processi vivi **agent24 e
+    agent34 ne hanno una su quattro**. §3 descrive agent34 come «sola lettura, senza chiavi» e agent42
+    come «l'unico che non può toccare capitale nemmeno in linea di principio». Nessuna riga di codice le
+    userebbe — **ed è esattamente per questo che nessun test sarebbe diventato rosso**: quella proprietà è
+    difesa da un test che cammina i `require`, e l'ambiente non è un `require`.
+    Adesso `lib/safety/carica-env.js`: ogni chiamante **dichiara le famiglie** che gli servono, lista
+    vuota ⇒ carica **zero** (non «tutto»), e `env[k] === undefined` resta la condizione — quindi pm2
+    continua a vincere sul file e `REALLOC_SCHEDULER_DRY_RUN` resta inerte dov'è.
+    **A cosa serve se oggi carica zero**: a far funzionare una manopola che il repo documenta come
+    funzionante e che non lo è — `REWARD_MAX_CLOB_MARKETS` scritta in `.env` **non verrebbe letta mai**,
+    perché agent24 non ha mai aperto `.env`. **I tre inline preesistenti non sono stati toccati**:
+    agent40/41/43 le credenziali le usano davvero. Il test include la **controprova** che senza
+    restrizione le quattro credenziali passerebbero (4/4).
 
 ---
 
