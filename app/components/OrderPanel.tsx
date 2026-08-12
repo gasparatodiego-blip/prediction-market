@@ -916,10 +916,41 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled, onP
   const place = useCallback(async () => {
     setBusy(true); setResult(null);
     try {
+      // ── I NOSTRI ORDINI GIÀ A RIPOSO, DICHIARATI AL SERVER ─────────────────────────────────────
+      // Senza questa riga il server aveva UNA sola fonte per sapere quali ordini del libro sono
+      // nostri: una lettura di rete che, quando fallisce, lasciava la lista vuota — e allora i nostri
+      // stessi ordini diventavano «concorrenza», con la regola «mai primo sul libro» che ci faceva
+      // accodare a noi stessi un tick per volta fino al bordo della banda.
+      //
+      // Best-effort DI PROPOSITO: se questa lettura non riesce non si blocca niente e non si avvisa,
+      // perché il server la rifà comunque per conto suo e UNISCE le due liste deduplicando per
+      // orderId. È un'aggiunta di informazione, non una precondizione — trattarla come tale
+      // trasformerebbe un miglioramento in un nuovo modo di non piazzare.
+      let ownOrders: Array<Record<string, unknown>> = [];
+      try {
+        const ro = await fetch(`/api/maker/manual/orders?marketId=${encodeURIComponent(target.marketId)}`, { cache: 'no-store' });
+        const rj = await ro.json();
+        if (rj && Array.isArray(rj.orders)) {
+          ownOrders = rj.orders
+            .map((o: Record<string, unknown>) => ({
+              orderId: typeof o.orderId === 'string' ? o.orderId : null,
+              tokenId: typeof o.tokenId === 'string' ? o.tokenId : null,
+              book: o.book === 'yes' || o.book === 'no' ? o.book : null,
+              price: typeof o.price === 'number' ? o.price : null,
+              size: typeof o.size === 'number' ? o.size : null,
+              sizeRemaining: typeof o.sizeRemaining === 'number' ? o.sizeRemaining : null,
+            }))
+            .slice(0, 200);   // lo stesso tetto dello schema della route: mai un corpo che verrebbe rifiutato
+        }
+      } catch { /* il server rilegge comunque: qui si aggiunge informazione, non se ne pretende */ }
+
       const r = await fetch('/api/maker/manual/order', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           marketId: target.marketId, book, price, size,
+          // Il server NON si fida di questa lista: la unisce alla propria e deduplica per orderId,
+          // quindi può solo aggiungere righe a ciò che il venue ha già confermato.
+          ...(ownOrders.length ? { ownOrders } : {}),
           // 0 ⇒ GTC. Con il rinnovo disattivato si chiede la finestra fissa; altrimenti si lascia
           // decidere al server dallo switch per-mercato, che è la fonte di verità.
           ...(autoRenew ? {} : { ttlSeconds }),

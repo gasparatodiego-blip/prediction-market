@@ -85,6 +85,25 @@ const bodySchema = z.object({
   // Assente ⇒ comportamento di prima. Il pannello lo manda `true` e mostra l'eventuale spostamento
   // in `priceAdjusted`, così il prezzo non cambia mai di nascosto a chi l'ha scritto.
   inCoda: z.boolean().optional(),
+  // ── I NOSTRI ORDINI GIÀ A RIPOSO SU QUESTO LIBRO ─────────────────────────────────────────────
+  // Il pannello li manda perché li ha già in mano (sono gli stessi che mostra a schermo), e senza
+  // di essi la corsia di piazzamento dipenderebbe da una sola lettura di rete: quando quella
+  // fallisce si proseguiva con la lista VUOTA, cioè con i NOSTRI ordini scambiati per concorrenza —
+  // e dal secondo ordine sullo stesso mercato ci si accodava a se stessi un tick per volta.
+  //
+  // IL SERVER NON SI FIDA: legge comunque dal venue e UNISCE le due liste deduplicando per
+  // `orderId` (`lib/maker/nostri-ordini.unisci`). Questo campo può quindi solo AGGIUNGERE righe a
+  // ciò che il server ha già trovato — non può toglierne, e non può far passare per «non nostro»
+  // un ordine che il venue conferma essere nostro. Un ordine di troppo rende il calcolo più
+  // prudente (ci si accoda più indietro); uno mancante lo rende sbagliato nella direzione che fa male.
+  ownOrders: z.array(z.object({
+    orderId: z.string().optional().nullable(),
+    tokenId: z.string().optional().nullable(),
+    book: z.enum(['yes', 'no']).optional().nullable(),
+    price: z.number().finite().optional().nullable(),
+    size: z.number().finite().optional().nullable(),
+    sizeRemaining: z.number().finite().optional().nullable(),
+  })).max(200).optional(),
 });
 
 export async function POST(req: NextRequest) {
