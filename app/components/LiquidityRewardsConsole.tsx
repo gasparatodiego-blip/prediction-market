@@ -247,7 +247,7 @@ interface TrkMarket {
   dynamicGate: string | null;
 }
 interface TrkTarget {
-  mode: 'behind-best' | 'band-clamped' | 'fallback-alone' | 'erosion-retreat' | string;
+  mode: 'behind-best' | 'band-clamped' | 'fallback-alone' | 'fallback-alone-bordo-esterno' | 'erosion-retreat' | string;
   onTop: boolean | null; alone: boolean | null;
   bestOther: number | null; offsetCents: number | null; priceCents: number | null;
 }
@@ -1683,7 +1683,7 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
                           {(['yes', 'no'] as const).map((sd) => {
                             const t = live?.target?.[sd];
                             if (!t) return null;
-                            const b = t.mode === 'fallback-alone'
+                            const b = String(t.mode || '').startsWith('fallback-alone')
                               ? { txt: `${sd.toUpperCase()} solo`, cls: '', ttl: 'nessun altro su questo lato: si usa l offset di ripiego, e si torna dietro al migliore appena ricompare qualcuno' }
                               : t.onTop === true
                                 ? { txt: `${sd.toUpperCase()} in cima`, cls: 'is-warn', ttl: 'un tick dietro il migliore altrui cadrebbe fuori banda: ci si è fermati al bordo premiante, e questo ci mette in cima al book' }
@@ -1775,7 +1775,7 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
                                     in cima
                                   </span>
                                 )}
-                                {a.placement?.mode === 'fallback-alone' && (
+                                {String(a.placement?.mode || '').startsWith('fallback-alone') && (
                                   <span className="ex-badge lrc-bdg" data-lrc-log-alone
                                     title="nessun altro su questo lato: offset di ripiego">soli</span>
                                 )}
