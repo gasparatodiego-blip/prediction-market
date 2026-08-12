@@ -695,9 +695,25 @@ function maniPulizia(regMerge, regChiusura) {
         return { ok: true, rimosso: true };
       } catch (e) { return { ok: false, motivo: e && e.message ? e.message : String(e) }; }
     },
+    // ⚠ L'ORDINE QUI DENTRO NON E' LIBERO, e un test l'ha preso.
+    // L'invariante del sistema e' «un mercato che puo' ricevere ordini deve gia' avere una via
+    // d'uscita» (`allocation-reset` fase 3, `simmetria-percorsi.test.js`). Spegnere l'uscita
+    // automatica lasciando il mercato nella allowlist del riprezzo crea esattamente lo stato che
+    // quell'invariante vieta: piazzabile e senza uscita. La prima stesura di questa mano faceva solo
+    // la meta' sbagliata, e la suite l'ha dichiarato su due mercati veri.
+    //
+    // Quindi si toglie PRIMA dalla allowlist, POI si spegne l'uscita: fra le due c'e' al piu' un
+    // istante in cui il mercato ha una via d'uscita e non puo' ricevere ordini — che e' il verso
+    // innocuo. Il contrario sarebbe il verso pericoloso.
     autoClose: (marketId) => {
       try {
-        if (!isAutoCloseEnabled(marketId)) return { ok: true, rimosso: false };
+        const inAllowlist = (readAutoRepriceConfig().enabledMarketIds || [])
+          .some((x) => String(x).toLowerCase() === id(marketId));
+        if (inAllowlist) {
+          setAutoReprice({ scope: 'market', marketId, enabled: false, by: 'agent40 · mercato chiuso',
+            reason: 'mercato risolto o annullato sul venue, libro libero: esce dalla allowlist PRIMA che si spenga l\'uscita' });
+        }
+        if (!isAutoCloseEnabled(marketId)) return { ok: true, rimosso: inAllowlist };
         setAutoClose({ marketId, enabled: false, by: 'agent40 · mercato chiuso', reason: 'mercato risolto o annullato sul venue, libro libero' });
         return { ok: true, rimosso: true };
       } catch (e) { return { ok: false, motivo: e && e.message ? e.message : String(e) }; }

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-// @ts-expect-error — modulo JS senza .d.ts: la vista è costruita interamente lì, qui non c'è logica.
+// Modulo JS senza `.d.ts`: `allowJs` lo risolve da sé, e la vista è costruita interamente lì —
+// qui non c'è logica da tipizzare.
 import { costruisciRegistro } from '@/lib/maker/registro-reward';
 
 export const runtime = 'nodejs';
