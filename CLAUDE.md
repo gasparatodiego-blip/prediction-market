@@ -3,8 +3,35 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt**: non serve più reincollarlo ogni volta.
 
-Ultima verifica contro codice/stato reali: **12 agosto 2026**, ~13:30 UTC (§5 punti 78-83 — sei difetti
-indipendenti chiusi, un commit per ciascuno).
+Ultima verifica contro codice/stato reali: **12 agosto 2026**, ~11:10 UTC (§5 punti 85-91 — sei voci del
+blocco B, un commit per ciascuna).
+
+> ## ⏱ LA CHIUSURA FORZATA A 3 ORE ESISTEVA E NON POTEVA SCATTARE — §5 punto 85
+> Due cause, nessuna era il numero. **①** Il verdetto si calcolava DOPO la guardia `livello !== 1 && !== 2`:
+> il livello 3 è l'esito più comune — **1.119 occorrenze** di `merge-livello-3` sui due giornali — e su
+> tutte quelle la regola non veniva nemmeno valutata. **②** `scadenzaMercato` leggeva SOLO il board, quindi
+> un mercato uscito dal tabellone (cioè proprio quello che sta per risolvere) dava `null` ⇒ `forza:false`.
+> Ora il verdetto sta prima della guardia, `manca` si DERIVA, e la scadenza si legge da **board ∪ catalogo
+> di ripiego**: misurato, 81 mercati su 82 sono fuori dal board e per **40** la scadenza ora si legge.
+
+> ## 💰 IL PRIMO CONSUNTIVO VERO: $17,59 INCASSATI, STIMA SOVRASTIMATA DEL 466% — §5 punti 86 e 87
+> Il 401 non c'è più dall'8 agosto (fonte pubblica, niente credenziali). Il difetto era che i tre tentativi
+> cadono di notte, **quando il pagamento non è ancora arrivato**, e dopo il terzo nessuno tornava a
+> chiedere. Con il recupero a ritroso il registro è completo: **06/08 $1,30 · 07/08 $0 · 08/08 $3,68 ·
+> 09/08 $8,35 · 10/08 $4,25 · 11/08 $0**. Contro **$52,26 stimati** sulle 5 giornate confrontabili
+> (reali $9,24) ⇒ **sovrastima del 465,84%**. Visibile nel pannello, scheda «alloca».
+> **⚠ Il consuntivo è per GIORNO, non per mercato**: sulle righe REWARD `conditionId` è vuoto.
+
+> ## 🎯 SOLI SUL LATO ⇒ BORDO ESTERNO DELLA BANDA — §5 punto 89
+> Non più un offset dal mid. Senza concorrenti si è primi **per forza**; l'obiettivo è stare al prezzo
+> **peggiore che resta premiante**, così il fill è improbabile e il reward matura comunque. Modo distinto
+> negli audit: `fallback-alone-bordo-esterno`.
+
+> ## 🚧 38 MERCATI SU 110 NON ERANO QUOTABILI, E VENIVANO SCELTI LO STESSO — §5 punto 90
+> Il filtro «mai primo + dentro banda» viveva solo al piazzamento: l'allocatore assegnava capitale e poi
+> lo vedeva rifiutare una gamba alla volta. Ora è un filtro **a monte**, che chiama la **stessa** funzione
+> del piazzamento. E il capitale liberato si ridistribuisce in **30-276 µs** invece dei 52 s / 951 MB del
+> ricalcolo completo.
 
 > ## 🟢 IL GUARDIANO DELLE PERDITE È TORNATO IN SERVIZIO — §5 punto 81
 > `data/guardian-state.json` **non esiste più**: il latch del 9 agosto è stato azzerato applicando la
@@ -4809,6 +4836,93 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     (`righe = null` ⇒ `null | undefined`) e un array legittimo viene **rifiutato**. Non è un errore di
     codice: è un contratto mancante. Vedi `lib/maker/reward-riprova.d.ts`, che dichiara anche perché
     `RigaPremio` **non** ha una index signature (costringerebbe ogni tipo passato ad averne una).
+
+85. **LA CHIUSURA FORZATA A 3 ORE ESISTEVA E NON POTEVA SCATTARE — 12 agosto 2026.** Commit `9706a9a`.
+    Diagnosi: `chiusuraForzataPreScadenza` c'era dall'11 agosto ed era cablata. Zero occorrenze negli
+    audit — ma il codice è del tardo 11 agosto e il bot è FERMO+KILL dal 10, quindi l'assenza da sola
+    non prova niente. Le due cause vengono dal codice e dai conteggi:
+    **①** il verdetto si calcolava DOPO la guardia `livello !== 1 && !== 2`; il livello 3 è l'esito più
+    comune (**1.119** `merge-livello-3` sui due giornali) e lì la regola non veniva valutata. In più
+    `manca` veniva LETTO da `mancaAllaCoppia`, non scritto al livello 3 ⇒ `null` ⇒ `forza:false`.
+    **②** `scadenzaMercato` leggeva SOLO il board (primi 150 per montepremi): un mercato che ne esce —
+    per rotazione o perché sta per risolvere — dava `null`. Vale la **regola di copertura** già in
+    servizio in quattro punti: board ∪ mercati con posizione. La seconda metà è il **catalogo di
+    ripiego**. Misurato: **81 mercati su 82 fuori dal board, 40 con scadenza ora leggibile**.
+    **NON toccato**: una coppia COMPLETA non si forza — alla risoluzione vale $1 comunque.
+
+86. **IL CONSUNTIVO REWARD SI RECUPERA A RITROSO — 12 agosto 2026.** Commit `d78ccdb`.
+    La premessa «401» era invecchiata: il 401 era `/rewards/user` del CLOB, sostituito l'8 agosto dal
+    registro attività **pubblico**. Il difetto vero: i tre tentativi cadono tutti di notte, ma il
+    pagamento arriva alle ~00:00 del giorno dopo e la finestra si chiude sei ore più tardi — nella
+    finestra dei tentativi la risposta legittima è «non ancora», e dopo il terzo nessuno tornava.
+    `giorniDaRecuperare` (orizzonte 30 giorni) chiude il buco. **Mancava la sola giornata 2026-08-11**,
+    recuperata: $0,00, corretto — il bot è fermo dal 10.
+
+87. **IL REGISTRO DEI REWARD INCASSATI — 12 agosto 2026.** Commit `d1d3fdd`.
+    `confronto-reward.json` era già la fonte e non viene duplicata: il modulo la legge e ne costruisce
+    la vista. **NASCE CON I DATI VERI, non cieco.** Totali: **$17,59 incassati** dal 6 agosto, contro
+    **$52,26 stimati** su 5 giornate confrontabili ($9,24 reali) ⇒ **sovrastima 465,84%**; il giorno
+    peggiore è l'8 agosto ($49,17 stimati contro $3,68).
+    **⚠ IL LIMITE, MISURATO**: il reale NON esiste per mercato — su tutte le righe REWARD `conditionId`,
+    `title` e `slug` sono **vuoti**, perché il venue paga un bonifico aggregato. La scomposizione per
+    mercato esiste solo sul lato stima, e **il totale reale non viene diviso in proporzione**: sarebbe
+    un numero inventato con l'aspetto di una misura. Il pannello lo scrive a schermo.
+    Rotta `GET /api/maker/registro-reward` (sola lettura) e pannello compatto nella scheda «alloca».
+
+88. **PERSISTENZA DOPO CRASH, PROVATA CON UN `kill -9` — 12 agosto 2026.** Commit `8a0ba97`.
+    SIGKILL su agent40 alle **10:11:19Z**, bot FERMO+KILL, zero posizioni. Risorto 15 s dopo.
+    **Nessuna corruzione**: registri byte-identici, `execution-audit.jsonl` fermo a 3.652 righe. Le
+    scritture atomiche tmp+rename fanno il loro mestiere.
+    **Persistente**: attese di merge · modalità chiusura (bersaglio sorella compreso) · residui scoperti
+    e sotto soglia · tetti · gestione manuale · allowlist · catalogo di ripiego · idempotenza ·
+    confronto reward · baseline e latch del guardiano · piano dell'allocatore.
+    **Ricostruito all'avvio**: ordini, posizioni, snapshot, board, scansione registri.
+    **In memoria e perso SENZA costo**: contatori di conferma del riprezzo (un ciclo) · insiemi
+    anti-ripetizione dei log (una riga doppia) · cache posizioni 5 s · registro orfani (una finestra
+    GTD in più, costo già dichiarato dal suo design).
+    **⚠ IN MEMORIA E PERSO CON UN COSTO — l'unico**: `daRipianificareCoda`. Si riempie solo alla
+    cancellazione di una gamba orfana e la drena il ciclo di chiusura: un crash nel mezzo la faceva
+    sparire e nessuno l'avrebbe riempita di nuovo. Nessun capitale a rischio — l'esposizione era appena
+    SCESA — ma il capitale liberato restava fermo per sempre. **Ora è su disco**
+    (`data/da-ripianificare.json`), atomico, ripreso all'avvio, potato a 24 h.
+    **Nessun buco strutturale.**
+
+89. **SOLI SUL LATO: AL BORDO ESTERNO DELLA BANDA — 12 agosto 2026.** Commit `bcf0462`.
+    Il ramo `fallback-alone` ripiegava su un offset configurato dal mid. Adesso il **bordo esterno** è
+    il bersaglio. Il motivo non è evitare la prima posizione — senza concorrenti ci si sta per forza —
+    ma stare al **prezzo peggiore che resta premiante**: il fill diventa improbabile e il reward matura
+    comunque, perché su questo bot l'esecuzione è il costo e non il ricavo.
+    Il bordo è `b.lo`: la funzione ragiona nello spazio BID, e dopo lo specchio di `prezzo-in-coda` lo
+    stesso `b.lo` diventa il prezzo più ALTO in vendita. **Una regola sola, due letture corrette.**
+    Banda senza prezzi validi ⇒ **non si quota**, coerente con «mai primo». Appena compare un
+    concorrente si torna a un tick dietro. Modo `fallback-alone-bordo-esterno`, che **contiene il nome
+    vecchio come prefisso** così le due serie storiche restano confrontabili — e i consumatori lo
+    riconoscono per prefisso, non per uguaglianza. Sei test preesistenti aggiornati.
+
+90. **LA QUOTABILITÀ È UN FILTRO A MONTE, E IL CAPITALE LIBERATO SI RIDISTRIBUISCE — 12 agosto 2026.**
+    Commit `aa153b3`.
+    «Mai primo + dentro banda» viveva solo al piazzamento: l'allocatore sceglieva, assegnava capitale, e
+    il capitale veniva rifiutato una gamba alla volta. **Misurato sul board di oggi: su 110 mercati, 71
+    quotabili, 38 NON quotabili, 1 ignota** — oltre un terzo poteva essere scelto e poi rifiutato.
+    `verdettoQuotabilita` **non riscrive il criterio**: chiama `planBehindBest`, la stessa funzione del
+    piazzamento. Si chiede per **entrambi i lati** (una riga con una gamba sola è esposizione
+    direzionale), col SELL nello spazio specchiato. **Fail-open**: dati mancanti ⇒ `ignota`, il mercato
+    resta; e «nessun concorrente» **non** è un dato mancante — è il ramo «soli», quotabilissimo.
+    **RIDISTRIBUZIONE INCREMENTALE**: il capitale liberato va fra le righe **già selezionate**, in
+    ordine di rendimento, rispettando il tetto per mercato **e** quello per ordine (una gamba = metà
+    riga). Non sceglie mercati nuovi — quello richiederebbe il knapsack. **Costo misurato** (media su
+    100 chiamate): **10 righe 30 µs · 50 righe 48 µs · 200 righe 101 µs · 1000 righe 276 µs**, RSS
+    piatto. Contro **52 s e 951 MB** del ricalcolo completo.
+
+91. **⚠ LA SCANSIONE DEI REGISTRI AVEVA ROTTO UN'INVARIANTE, e un test l'ha preso.** La mano `autoClose`
+    spegneva l'uscita automatica **lasciando il mercato nella allowlist del riprezzo**: cioè piazzabile
+    e senza via d'uscita, esattamente lo stato che `allocation-reset` fase 3 vieta. Due mercati veri
+    (`0x19fa888c…`, `0x30bd3cfb…`) erano in quello stato dopo la scansione delle 09:48.
+    **Corretto l'ordine**: si toglie PRIMA dalla allowlist, POI si spegne l'uscita — fra le due c'è al
+    più un istante in cui il mercato ha una via d'uscita e non può ricevere ordini, che è il verso
+    innocuo. I due mercati sono stati sanati con lo stesso ordine.
+    **Baseline dei test: 178 eseguiti, 171 verdi, 7 rossi** — i preesistenti, zero nuovi.
+    `BUILD_ID` `8Yo_ljg3NeybO2MCSJRcc`.
 
 ---
 
