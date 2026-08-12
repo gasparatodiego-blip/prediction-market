@@ -54,6 +54,7 @@ import ManualOrdersPanel from './ManualOrdersPanel';
 import RewardsAllocatePanel from './RewardsAllocatePanel';
 import BotSwitch from './BotSwitch';
 import RewardsUnified from './RewardsUnified';
+import RegistroRewardPanel from './RegistroRewardPanel';
 // «I 21 ora» — la finestra sui maker di riferimento. Legge un endpoint di sola lettura e non ha
 // nessun comando: vive nel Riepilogo perché è stato, non perché sia una leva.
 import Watch21Panel from './Watch21Panel';
@@ -2074,6 +2075,17 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
         <section className="lrc-sec" data-lrc-section="bot">
           <Ask q="Il bot puo' lavorare da solo?" sub="AVVIA e' la conferma esplicita: da li' in poi il riallocatore piazza, sempre passando da tutte le regole del motore." />
           <BotSwitch />
+        </section>
+      )}
+
+      {/* ── L'UNICO CONSUNTIVO DEL PANNELLO ────────────────────────────────────────────────────────
+          Ogni altro numero qui e' una stima in avanti. Questo dice quanto il venue ha DAVVERO
+          bonificato, e di quanto la stima si e' discostata. Sta subito sotto l'interruttore perche' e'
+          la domanda che uno si fa prima di premerlo: sta funzionando o no? */}
+      {tab === 'alloca' && (
+        <section className="lrc-sec" data-lrc-section="registro-reward">
+          <Ask q="Quanto abbiamo incassato davvero?" sub="Consuntivo del venue, non una stima: bonifici REWARD letti dal registro attivita' pubblico, confrontati con la stima dello stesso giorno." />
+          <RegistroRewardPanel />
         </section>
       )}
 
